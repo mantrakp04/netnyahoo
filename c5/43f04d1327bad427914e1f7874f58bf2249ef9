@@ -1,0 +1,185 @@
+apps/desktop/.env.example
+  s_3cca6a183fdea8::t_61c3ea76286e36 1-16
+pnpm-workspace.yaml
+  s_2fad0bf3071c35::t_5463c4b417e86e 4,10-12
+  s_2fad0bf3071c35::t_bca00f0973c1ca 5,9
+  s_2fad0bf3071c35::t_b7efe93420af98 6-7
+packages/db/src/index.ts
+  s_2fad0bf3071c35::t_d83693b4f2e585 2-41
+apps/desktop/vite.config.ts
+  s_2fad0bf3071c35::t_fdfc806a0f3b46 1-21
+packages/backend/tsconfig.json
+  s_2fad0bf3071c35::t_5944e89c846fbe 1-8
+apps/desktop/tsconfig.node.json
+  s_2fad0bf3071c35::t_6ee37f761dcfab 1-13,15-16
+  s_2fad0bf3071c35::t_e24462b979b362 14
+packages/db/package.json
+  s_2fad0bf3071c35::t_06dfdb84592d25 1-19,22-23
+  s_2fad0bf3071c35::t_3c8618722ee092 20-21
+apps/desktop/src/preload/index.ts
+  s_2fad0bf3071c35::t_4fba5e4ef3f344 1-5
+apps/desktop/package.json
+  s_3cca6a183fdea8::t_fc240d12aad42c 12-13
+  s_b18ecab1eacd2e::t_802902a86ea14c 49
+  s_2fad0bf3071c35::t_73cf095a4c1586 14-15,19-23,25-27
+  s_2fad0bf3071c35::t_7b02aabfe89a75 16,33-35
+  s_2fad0bf3071c35::t_993a57491b37e9 28-29,38-44,47-48,51-53,55,59
+  s_2fad0bf3071c35::t_19901e73548115 30-32,50,54
+  s_2fad0bf3071c35::t_c3b9ec006670ba 36
+  s_2fad0bf3071c35::t_471e643dd8f448 1-10,60-61
+  s_2fad0bf3071c35::t_0d11a801307d3e 45
+  s_2fad0bf3071c35::t_cd99b01f1a94bf 17-18,37,56,58
+packages/db/tsconfig.json
+  s_2fad0bf3071c35::t_46f0d00599f36e 1-8
+apps/desktop/src/renderer/src/lib/utils.ts
+  s_2fad0bf3071c35::t_c7297730044410 1-28
+apps/desktop/src/renderer/src/styles.css
+  s_2fad0bf3071c35::t_e0c8cdf6ce2313 247,315
+  s_b18ecab1eacd2e::t_8cb0171c469552 334-335,348-349,352,355,366,370,388,410,412,418,422,426,436-437,439,449,456,559,565,591-592,681-682,685-686,693,695-697,701,709-710,713-715,722-723,726-727
+  s_b18ecab1eacd2e::t_40cd0a9a4e8ed1 338-347,350-351,353-354,356-357,367-369,687-692,694,698-700,745
+  s_3d21f394c463a9::t_62c918e2dd48bd 569,572,578-584,609,619
+  s_2fad0bf3071c35::t_f6389fd56bbc02 210-211,756-757,761-763,766
+  s_2fad0bf3071c35::t_19901e73548115 3-4,9,11,13,15-17,20-23,25-40,44-51,54-57,61-67,69-74,173-182,195,199-201
+  s_b18ecab1eacd2e::t_f4dcf9c2812a44 289
+  s_b18ecab1eacd2e::t_8a874510b776a0 487,489,496
+  s_2fad0bf3071c35::t_1654def6537ab6 753-755,758-760,764-765
+  s_2fad0bf3071c35::t_71b4deae12d09e 271
+  s_b18ecab1eacd2e::t_64fef81735a4d4 77-141,212-246,248-267,269-270,272-288,290-314,316-333,336-337,358-365,371-387,389-409,411,413-417,420-421,423-425,427-435,438,440-448,450-455,457-486,488,490-491,494-495,497-558,560-564,566-568,570-571,573-577,585-590,593-608,610-618,620-680,683-684,702-708,711-712,716-721,724-725,728-744,746-752,767
+  s_2fad0bf3071c35::t_78171936163e84 1-2,5-8,10,12,14,18-19,24,41-43,52-53,58-60,68,75-76,142-172,183-194,196-198,202-209
+  s_2fad0bf3071c35::t_2e84f4d3a4f8b3 268,419,492-493
+apps/desktop/src/main/index.ts
+  s_2fad0bf3071c35::t_60d24e643bb6c9 3-4,9-58,61-70
+packages/backend/src/routers/bookmarks.ts
+  s_2fad0bf3071c35::t_4020a1bfe4f68e 1-30
+apps/desktop/src/renderer/src/hooks/use-browser.tsx
+  s_2fad0bf3071c35::t_4a5635b705dd03 13
+  s_b18ecab1eacd2e::t_2450b8e2acf53d 51-117
+apps/desktop/src/renderer/src/components/sidebar.tsx
+  s_2fad0bf3071c35::t_da14e63f09c4b4 105
+  s_2fad0bf3071c35::t_338a94522cbb26 28
+  s_2fad0bf3071c35::t_3f5871fb3eec25 31-39
+  s_2fad0bf3071c35::t_0a038ecba1718f 29-30,42-44
+  s_2fad0bf3071c35::t_06bcaa35bb2c43 68
+apps/desktop/electron.vite.config.ts
+  s_2fad0bf3071c35::t_80e4235488283f 1-8,16-18,20-23,25-27,29-58
+  s_2fad0bf3071c35::t_37bdb48a425313 9-15
+apps/desktop/tsconfig.web.json
+  s_2fad0bf3071c35::t_c3623c7a0dccac 1-11,13-16
+apps/desktop/README.md
+  s_3cca6a183fdea8::t_4cf9e778547c43 62-104
+apps/desktop/src/renderer/src/components/tab-list.tsx
+  s_b18ecab1eacd2e::t_74dad6195b3975 2,25-78
+  s_2fad0bf3071c35::t_4a5635b705dd03 5
+apps/desktop/src/renderer/src/routes/__root.tsx
+  s_2fad0bf3071c35::t_4a5635b705dd03 14
+  s_2fad0bf3071c35::t_233706e4c63316 112
+  s_b18ecab1eacd2e::t_1fa95294449d0b 1,45-106
+  s_2fad0bf3071c35::t_5feccfc9825c1e 109
+apps/desktop/src/renderer/src/assets/logo-mono.svg
+  s_5f2def42db40f5::t_2b0c32dfd53a6c 1-16
+packages/backend/src/routers/spaces.ts
+  s_2fad0bf3071c35::t_4020a1bfe4f68e 1-16
+apps/desktop/src/renderer/index.html
+  s_2fad0bf3071c35::t_d00656f5faea8e 1,3-7,9-32
+apps/desktop/electron-builder.config.mjs
+  s_3cca6a183fdea8::t_4e5f09262d00a1 3-8
+  s_3cca6a183fdea8::t_d4e176b58b985d 1-2,9-77
+packages/backend/src/routers/tabs.ts
+  s_2fad0bf3071c35::t_4020a1bfe4f68e 1-128
+packages/env/package.json
+  s_2fad0bf3071c35::t_364dc9f0dd3169 1-16,19-20
+  s_2fad0bf3071c35::t_3c8618722ee092 17-18
+apps/desktop/tsconfig.json
+  s_2fad0bf3071c35::t_dba4f48c1a6d6f 1-12
+packages/backend/package.json
+  s_2fad0bf3071c35::t_afe6dbbcb5c431 1-18,21-22
+  s_2fad0bf3071c35::t_3c8618722ee092 19-20
+apps/desktop/components.json
+  s_2fad0bf3071c35::t_a1c3fb3f2ff3ec 1-2,4-8,10-12,14-19,25
+  s_2fad0bf3071c35::t_19901e73548115 3,9,13,20-24
+packages/db/drizzle.config.ts
+  s_2fad0bf3071c35::t_ebfb0611aecaa9 5
+packages/backend/src/index.ts
+  s_2fad0bf3071c35::t_0c7d9a64dac1f2 1-2
+apps/desktop/src/renderer/src/lib/trpc.ts
+  s_2fad0bf3071c35::t_4a5635b705dd03 2
+  s_2fad0bf3071c35::t_b8a98a69fc0d3e 1,3-5
+apps/desktop/src/renderer/src/assets/logo-wordmark.svg
+  s_5f2def42db40f5::t_8ce013a9669b78 2-31,34
+  s_5f2def42db40f5::t_8c6fc1c3ad5e46 32-33
+packages/env/tsconfig.json
+  s_2fad0bf3071c35::t_18328997181b7a 1-8
+apps/desktop/src/renderer/src/components/browser-area.tsx
+  s_b18ecab1eacd2e::t_c700935a032c18 10,116-120,146,297-304,308,311-320,323,327-335,337,339-346,470-471
+  s_2fad0bf3071c35::t_8cc76d6da1e68f 25
+  s_2fad0bf3071c35::t_4a5635b705dd03 26
+  s_2fad0bf3071c35::t_fcb311c61cd217 103-107,135,138-143
+  s_b18ecab1eacd2e::t_733b33e7d00a0c 1-5,7-9,11-24,144-145,147-265,281-294,296,338,347-356,358-423,428-469,472-478,480-505,507-521
+  s_b18ecab1eacd2e::t_17c6cbb2b0acb4 6,506
+  s_2fad0bf3071c35::t_42e8ba9f43ded5 111
+  s_2fad0bf3071c35::t_d75011c0c44252 357
+  s_b18ecab1eacd2e::t_078e20628a099c 295,305-307,309-310,321-322,324-326,336
+  s_b18ecab1eacd2e::t_d0936d53147b3d 136-137,277-280,424-427
+  s_b18ecab1eacd2e::t_f69640ca4a7332 266-276,479
+.gitignore
+  s_3cca6a183fdea8::t_f1b94a9a5acd3e 9-12
+apps/desktop/src/renderer/src/main.tsx
+  s_2fad0bf3071c35::t_7482c5f9741f96 1-6,8-38
+  s_2fad0bf3071c35::t_4a5635b705dd03 7
+packages/backend/src/trpc.ts
+  s_2fad0bf3071c35::t_60c6a7aabb33c4 2-5
+packages/backend/src/routers/history.ts
+  s_2fad0bf3071c35::t_4020a1bfe4f68e 1-38
+apps/desktop/src/renderer/src/assets/logo.svg
+  s_5f2def42db40f5::t_f6d403ddc4bfec 1-38
+packages/env/src/index.ts
+  s_2fad0bf3071c35::t_f1c67f72de0c63 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "c543f04d1327bad427914e1f7874f58bf2249ef9",
+  "prompts": {},
+  "sessions": {
+    "s_2fad0bf3071c35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7327099b-2ed6-446f-a0df-eec2631351ba",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_3cca6a183fdea8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "751b299e-cb7e-4fe9-831d-4d50caeeee2e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_3d21f394c463a9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee0cf-baab-72e0-afcc-25a20cbc5990",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_5f2def42db40f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b934a6bb-012a-4f06-8efe-f4df0d082a70",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_b18ecab1eacd2e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee08e-cd7c-7f73-89d9-4eb39d39921d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
