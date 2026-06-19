@@ -1,3 +1,15 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+allowBuilds:
+  esbuild: true
+  electron: true
+  electron-winstaller: set this to true or false
+
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+
+patchedDependencies:
+  electron-trpc@0.7.1: patches/electron-trpc@0.7.1.patch

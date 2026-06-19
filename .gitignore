@@ -6,10 +6,15 @@ node_modules
 # Build outputs
 dist
 build
+# …but apps/desktop/build is electron-builder's buildResources dir (entitlements,
+# icon), not a build output — keep it tracked.
+!apps/desktop/build/
+!apps/desktop/build/**
 *.tsbuildinfo
 
 # Generated files
-apps/web/src/routeTree.gen.ts
+apps/*/src/renderer/src/routeTree.gen.ts
+apps/desktop/out
 
 # Environment variables
 .env
@@ -52,3 +57,4 @@ coverage
 .cache
 tmp
 temp
+.gstack/

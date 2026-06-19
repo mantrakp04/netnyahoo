@@ -1,0 +1,16 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="netnyahoo">
+  <!-- single-color UI mark; inherits text color via currentColor -->
+  <rect x="54" y="54" width="404" height="404" rx="120"
+        fill="none" stroke="currentColor" stroke-width="26"/>
+
+  <ellipse cx="256" cy="286" rx="146" ry="62" transform="rotate(-22 256 286)"
+           stroke="currentColor" stroke-opacity="0.45" stroke-width="20" fill="none"/>
+
+  <g stroke="currentColor" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M178 360 V206"/>
+    <path d="M178 258 C178 200 334 200 334 262 V360"/>
+  </g>
+
+  <path d="M405 88 C410 117 415 122 444 127 C415 132 410 137 405 166 C400 137 395 132 366 127 C395 122 400 117 405 88 Z"
+        fill="currentColor"/>
+</svg>

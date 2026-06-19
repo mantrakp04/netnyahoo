@@ -1,0 +1,23 @@
+{
+  "name": "@netnyahoo/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit -p tsconfig.json",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "drizzle-orm": "1.0.0-rc.3"
+  },
+  "devDependencies": {
+    "@netnyahoo/config": "workspace:*",
+    "drizzle-kit": "^0.31.10",
+    "@types/node": "^25.9.3"
+  }
+}

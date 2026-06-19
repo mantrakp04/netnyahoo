@@ -1,0 +1,22 @@
+{
+  "name": "@netnyahoo/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@netnyahoo/db": "workspace:*",
+    "@trpc/server": "^11.18.0",
+    "drizzle-orm": "1.0.0-rc.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@netnyahoo/config": "workspace:*",
+    "@types/node": "^25.9.3"
+  }
+}
