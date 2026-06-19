@@ -1,0 +1,24 @@
+{
+  "name": "netnyahoo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "check-types": "turbo check-types"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.2",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@netnyahoo/config": "workspace:*",
+    "turbo": "^2.9.16",
+    "typescript": "^6"
+  },
+  "packageManager": "pnpm@11.1.3"
+}
