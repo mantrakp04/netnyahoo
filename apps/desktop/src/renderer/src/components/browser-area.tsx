@@ -1,13 +1,7 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Command as CommandPrimitive } from "cmdk";
+import { motion } from "motion/react";
 import {
   ArrowUp,
   Bookmark,
@@ -19,19 +13,44 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useBrowser } from "@/hooks/use-browser";
+import { Button } from "@/components/ui/button";
+import {
+  CommandGroup,
+  CommandItem,
+  CommandList,
+  CommandShortcut,
+} from "@/components/ui/command";
+import {
+  BookmarksInternalPage,
+  HistoryInternalPage,
+} from "@/components/internal-pages";
+import { useNewTabCardMotion, useNewTabPageMotion } from "@/hooks/motion";
+import { useBrowser, type BrowserTab } from "@/hooks/use-browser";
+import {
+  getInternalPage,
+  getInternalPageTitle,
+  getInternalPageUrlForInput,
+  isInternalPageUrl,
+} from "@/lib/internal-pages";
 import { useTRPC } from "@/lib/trpc";
 import { cn, prettyUrl } from "@/lib/utils";
-import type { PaletteMode } from "@/components/command-palette";
-import type { Tab } from "@netnyahoo/db";
 import type { WebviewTag } from "@/types/webview";
 
-function WebviewTab({ tab, active }: { tab: Tab; active: boolean }) {
-  const { registerWebview, setNav, patchTab, recordVisit } = useBrowser();
+// cmdk's Command forwards its ref to a <div>, so Motion can drive it directly.
+const MotionCommand = motion.create(CommandPrimitive);
+
+function WebviewTab({ tab, visible }: { tab: BrowserTab; visible: boolean }) {
+  const {
+    registerWebview,
+    setNav,
+    patchTab,
+    recordVisit,
+    updateHistoryFavicon,
+  } = useBrowser();
   const ref = useRef<WebviewTag | null>(null);
   // Capture the initial URL once; further navigation goes through loadURL so
   // React never re-navigates the webview out from under the user.
-  const initialUrl = useRef(tab.url === "about:blank" ? "" : tab.url).current;
+  const initialUrl = useRef(tab.url).current;
 
   useEffect(() => {
     const el = ref.current;
@@ -50,10 +69,16 @@ function WebviewTab({ tab, active }: { tab: Tab; active: boolean }) {
     };
     const onFavicon = (e: Event) => {
       const favicons = (e as unknown as { favicons: string[] }).favicons;
-      if (favicons?.[0]) patchTab(tab.id, { favicon: favicons[0] });
+      const favicon = favicons?.[0];
+      if (!favicon) return;
+      const url = el.getURL();
+      patchTab(tab.id, { favicon });
+      updateHistoryFavicon({ url, favicon });
     };
     const onNavigate = (e: Event) => {
       const url = (e as unknown as { url: string }).url;
+      // The empty guest a fresh tab boots into isn't a real visit.
+      if (url === "about:blank") return;
       patchTab(tab.id, { url });
       recordVisit({ url, title: el.getTitle() });
       syncNav();
@@ -89,75 +114,147 @@ function WebviewTab({ tab, active }: { tab: Tab; active: boolean }) {
   }, [tab.id]);
 
   return (
-    // @ts-expect-error -- webview is an Electron custom element
-    <webview
-      ref={ref as never}
-      src={initialUrl || undefined}
-      partition="persist:netnyahoo"
-      allowpopups="true"
-      className={cn("h-full w-full", active ? "flex" : "hidden")}
-    />
+    <div
+      className={cn(
+        "absolute inset-0 overflow-hidden",
+        visible ? "block" : "hidden",
+      )}
+    >
+      <webview
+        ref={ref as never}
+        src={initialUrl}
+        partition="persist:netnyahoo"
+        allowpopups={true}
+        className="h-full w-full"
+      />
+    </div>
   );
 }
 
-export function BrowserArea({
-  onOpenPalette,
-}: {
-  onOpenPalette: (mode: PaletteMode) => void;
-}) {
-  const { tabs, activeTab } = useBrowser();
+export function BrowserArea() {
+  const { tabs, activeTab, newTabAnimationId, finishNewTabAnimation } =
+    useBrowser();
+  const previousActiveId = useRef<string | undefined>(activeTab?.id);
+  const [slideOver, setSlideOver] = useState<{
+    incomingId: string;
+    outgoingId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const nextActiveId = activeTab?.id;
+    const outgoingId = previousActiveId.current;
+
+    if (nextActiveId === outgoingId) return;
+
+    const shouldSlideOver =
+      !!nextActiveId &&
+      !!outgoingId &&
+      nextActiveId === newTabAnimationId &&
+      activeTab?.url === "about:blank";
+
+    setSlideOver(
+      shouldSlideOver ? { incomingId: nextActiveId, outgoingId } : null,
+    );
+    previousActiveId.current = nextActiveId;
+  }, [activeTab?.id, activeTab?.url, newTabAnimationId]);
+
+  const activeSlideOver =
+    !!activeTab && slideOver?.incomingId === activeTab.id;
+  const activeInternalPage = getInternalPage(activeTab?.url);
+  const visibleWebviewId =
+    activeInternalPage
+      ? undefined
+      : activeTab?.url === "about:blank"
+      ? activeSlideOver
+        ? slideOver.outgoingId
+        : undefined
+      : activeTab?.id;
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-xl border shadow-sm">
-      {tabs.map((tab) => (
-        <WebviewTab key={tab.id} tab={tab} active={tab.id === activeTab?.id} />
-      ))}
-      {tabs.length === 0 && <EmptyState />}
-      <AnimatePresence mode="popLayout">
+    <div className="browser-frame relative h-full w-full overflow-hidden rounded-lg bg-background">
+      <div className="absolute inset-0 overflow-hidden rounded-[inherit] [contain:paint] [isolation:isolate] [-webkit-mask-image:-webkit-radial-gradient(white,black)]">
+        {tabs
+          // Blank tabs are rendered by the React new-tab page. Creating a hidden
+          // <webview src="about:blank"> for each one makes Cmd+T feel sticky.
+          .filter((tab) => tab.url !== "about:blank" && !isInternalPageUrl(tab.url))
+          .map((tab) => (
+            <WebviewTab
+              key={tab.id}
+              tab={tab}
+              visible={tab.id === visibleWebviewId}
+            />
+          ))}
         {activeTab && activeTab.url === "about:blank" && (
-          <NewTabState key={activeTab.id} onOpenPalette={onOpenPalette} />
+          <NewTabState
+            key={activeTab.id}
+            slideOver={activeSlideOver}
+            onSlideComplete={() => {
+              setSlideOver((current) =>
+                current?.incomingId === activeTab.id ? null : current,
+              );
+              finishNewTabAnimation(activeTab.id);
+            }}
+          />
         )}
-      </AnimatePresence>
+        {activeInternalPage === "history" && <HistoryInternalPage />}
+        {activeInternalPage === "bookmarks" && <BookmarksInternalPage />}
+      </div>
+      <div
+        aria-hidden
+        className="browser-frame-corner-mask browser-frame-corner-mask-top-left"
+      />
+      <div
+        aria-hidden
+        className="browser-frame-corner-mask browser-frame-corner-mask-top-right"
+      />
+      <div
+        aria-hidden
+        className="browser-frame-corner-mask browser-frame-corner-mask-bottom-right"
+      />
+      <div
+        aria-hidden
+        className="browser-frame-corner-mask browser-frame-corner-mask-bottom-left"
+      />
+      <div aria-hidden className="browser-frame-border" />
     </div>
   );
 }
 
-function EmptyState() {
-  return (
-    <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-3">
-      <Globe className="size-10 opacity-40" />
-      <p className="text-sm">No tabs open</p>
-      <p className="text-xs opacity-60">Press ⌘T to open a new tab</p>
-    </div>
-  );
+interface Suggestion {
+  id: string;
+  icon: ReactNode;
+  label: string;
+  detail?: string;
+  shortcut?: string;
+  action: () => void;
 }
 
 /**
- * Dia-style new-tab surface: one persistent command object that breathes at
- * rest, expands in place for suggestions, and morphs into the voice state.
+ * The new-tab launcher: a single command card, intentionally kept visually
+ * plain while the new-tab surface is still being shaped.
  */
 function NewTabState({
-  onOpenPalette,
+  slideOver,
+  onSlideComplete,
 }: {
-  onOpenPalette: (mode: PaletteMode) => void;
+  slideOver: boolean;
+  onSlideComplete: () => void;
 }) {
   const trpc = useTRPC();
   const { navigate, openTab } = useBrowser();
-  const reduceMotion = useReducedMotion();
   const [query, setQuery] = useState("");
   const [listening, setListening] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [panelState, setPanelState] = useState<"closed" | "open" | "closing">(
-    "closed",
-  );
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const trimmedQuery = query.trim();
-  const hasQuery = trimmedQuery.length > 0;
-  const suggestionsOpen = hasQuery && !listening;
+  const pageMotion = useNewTabPageMotion(slideOver);
+  const cardMotion = useNewTabCardMotion(!slideOver);
+  const trimmed = query.trim();
+  const hasQuery = trimmed.length > 0;
+  const showSuggestions = hasQuery && !listening;
 
   const historyQuery = useQuery(
     trpc.history.list.queryOptions(
-      { search: trimmedQuery, limit: 5 },
+      { search: trimmed, limit: 5 },
       { enabled: hasQuery },
     ),
   );
@@ -174,350 +271,254 @@ function NewTabState({
       setElapsed(0);
       return;
     }
-
-    const interval = window.setInterval(() => {
-      setElapsed((value) => value + 1);
-    }, 1000);
-
-    return () => window.clearInterval(interval);
+    const id = window.setInterval(() => setElapsed((v) => v + 1), 1000);
+    return () => window.clearInterval(id);
   }, [listening]);
 
-  useEffect(() => {
-    if (suggestionsOpen) {
-      setPanelState("open");
-      return;
-    }
-
-    setPanelState((state) => (state === "open" ? "closing" : state));
-  }, [suggestionsOpen]);
-
-  useEffect(() => {
-    if (panelState !== "closing") return;
-
-    const rootStyles = window.getComputedStyle(document.documentElement);
-    const closeMs =
-      Number.parseFloat(rootStyles.getPropertyValue("--dropdown-close-dur")) ||
-      150;
-    const timeout = window.setTimeout(() => setPanelState("closed"), closeMs);
-
-    return () => window.clearTimeout(timeout);
-  }, [panelState]);
-
-  const submit = (value = trimmedQuery) => {
+  const search = (value = trimmed) => {
     const next = value.trim();
     if (!next) return;
     setListening(false);
     navigate(next);
   };
 
-  const suggestions = useMemo<NewTabSuggestion[]>(() => {
+  const suggestions = useMemo<Suggestion[]>(() => {
     if (!hasQuery) return [];
 
-    const isUrlLike = trimmedQuery.includes(".") && !trimmedQuery.includes(" ");
-    const primary: NewTabSuggestion[] = [
+    const isUrlLike = trimmed.includes(".") && !trimmed.includes(" ");
+    const internalPageUrl = getInternalPageUrlForInput(trimmed);
+    const internalPage = getInternalPage(internalPageUrl);
+    const primary: Suggestion[] = [
       {
-        id: "current-tab",
-        icon: isUrlLike ? (
+        id: "go",
+        icon: internalPage ? (
+          internalPage === "history" ? (
+            <History className="size-4" />
+          ) : (
+            <Bookmark className="size-4" />
+          )
+        ) : isUrlLike ? (
           <Globe className="size-4" />
         ) : (
           <Search className="size-4" />
         ),
-        label: trimmedQuery,
-        detail: isUrlLike ? "Open address" : "Google",
+        label: internalPage ? getInternalPageTitle(internalPage) : trimmed,
+        detail: internalPage ? "Open page" : isUrlLike ? "Open address" : "Google",
         shortcut: "↩",
-        action: () => submit(trimmedQuery),
+        action: () => navigate(trimmed),
       },
       {
         id: "new-tab",
         icon: <MessageCircle className="size-4" />,
-        label: trimmedQuery,
+        label: trimmed,
         detail: "New tab",
         shortcut: "⇧↩",
-        action: () => openTab(trimmedQuery),
+        action: () => openTab(trimmed),
       },
     ];
 
     const history = (historyQuery.data ?? [])
-      .filter((entry) => entry.url !== "about:blank")
+      .filter(
+        (entry) => entry.url !== "about:blank" && !isInternalPageUrl(entry.url),
+      )
       .slice(0, 3)
-      .map<NewTabSuggestion>((entry) => ({
+      .map<Suggestion>((entry) => ({
         id: `history-${entry.id}`,
-        icon: <History className="size-4" />,
+        icon: entry.favicon ? (
+          <img src={entry.favicon} alt="" className="size-4 rounded-sm" />
+        ) : (
+          <History className="size-4" />
+        ),
         label: entry.title || entry.url,
         detail: prettyUrl(entry.url),
-        action: () => submit(entry.url),
+        action: () => navigate(entry.url),
       }));
 
     const bookmarks = (bookmarksQuery.data ?? [])
-      .filter((bookmark) =>
-        `${bookmark.title} ${bookmark.url}`
-          .toLowerCase()
-          .includes(trimmedQuery.toLowerCase()),
+      .filter(
+        (bookmark) =>
+          !isInternalPageUrl(bookmark.url) &&
+          `${bookmark.title} ${bookmark.url}`
+            .toLowerCase()
+            .includes(trimmed.toLowerCase()),
       )
       .slice(0, Math.max(0, 5 - history.length))
-      .map<NewTabSuggestion>((bookmark) => ({
+      .map<Suggestion>((bookmark) => ({
         id: `bookmark-${bookmark.id}`,
         icon: <Bookmark className="size-4" />,
         label: bookmark.title || bookmark.url,
         detail: prettyUrl(bookmark.url),
-        action: () => submit(bookmark.url),
+        action: () => navigate(bookmark.url),
       }));
 
-    const fallbackSearches = isUrlLike
+    const fallback = isUrlLike
       ? []
-      : ["near me", "today", "this week", "reddit"].map<NewTabSuggestion>(
+      : ["near me", "today", "this week", "reddit"].map<Suggestion>(
           (suffix, index) => ({
             id: `search-${index}`,
-            icon: <Search className="size-4" />,
-            label: `${trimmedQuery} ${suffix}`,
-            action: () => submit(`${trimmedQuery} ${suffix}`),
+            icon: <Search className="size-3.5" />,
+            label: `${trimmed} ${suffix}`,
+            action: () => navigate(`${trimmed} ${suffix}`),
           }),
         );
 
-    return [...primary, ...history, ...bookmarks, ...fallbackSearches].slice(
-      0,
-      6,
-    );
-  }, [
-    bookmarksQuery.data,
-    hasQuery,
-    historyQuery.data,
-    openTab,
-    trimmedQuery,
-  ]);
-
-  const panelClassName =
-    panelState === "open"
-      ? "is-open"
-      : panelState === "closing"
-        ? "is-closing"
-        : "";
-  const diaEase = [0.22, 1, 0.36, 1] as const;
-
-  const surfaceMotion = reduceMotion
-    ? {
-        initial: { opacity: 0 },
-        animate: { opacity: 1 },
-        exit: { opacity: 0 },
-        transition: { duration: 0.16 },
-      }
-    : {
-        initial: { opacity: 0, scale: 0.998, y: 8 },
-        animate: { opacity: 1, scale: 1, y: 0 },
-        exit: { opacity: 0, scale: 0.998, y: -3 },
-        transition: {
-          duration: 0.2,
-          ease: diaEase,
-        },
-      };
-
-  const markMotion = reduceMotion
-    ? {
-        initial: { opacity: 0 },
-        animate: { opacity: 1 },
-        transition: { duration: 0.18 },
-      }
-    : {
-        initial: { opacity: 0, scale: 0.992, y: 5 },
-        animate: { opacity: 1, scale: 1, y: 0 },
-        transition: {
-          duration: 0.24,
-          ease: diaEase,
-          delay: 0.015,
-        },
-      };
+    return [...primary, ...history, ...bookmarks, ...fallback].slice(0, 6);
+  }, [bookmarksQuery.data, hasQuery, historyQuery.data, navigate, openTab, trimmed]);
 
   return (
     <motion.div
-      className="new-tab-canvas absolute inset-0 flex flex-col items-center justify-center px-6"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: reduceMotion ? 0.12 : 0.16, ease: diaEase }}
+      {...pageMotion}
+      onAnimationComplete={onSlideComplete}
+      className="new-tab-page absolute inset-0 z-20 flex items-center justify-center overflow-hidden px-6 pb-12 will-change-transform"
     >
-      <div className="new-tab-ambient" aria-hidden />
-      <motion.div className="new-tab-stack" {...surfaceMotion}>
-        <motion.div
-          className="new-tab-mark-shell"
-          aria-hidden
-          {...markMotion}
+      <div className="relative z-[1] w-full max-w-xl">
+        <MotionCommand
+          {...cardMotion}
+          shouldFilter={false}
+          className="new-tab-command-card bg-popover text-popover-foreground relative z-10 flex flex-col overflow-hidden rounded-2xl"
         >
-          <div className="new-tab-mark" />
-        </motion.div>
-        <form
-          className={cn(
-            "new-tab-command t-resize",
-            suggestionsOpen && "is-expanded",
-            listening && "is-listening",
-          )}
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <div className="new-tab-query-row">
-            <Search className="new-tab-search-icon size-5" />
+          <div className="flex items-center gap-2.5 px-3 py-2.5">
+            <Search className="text-muted-foreground size-4 shrink-0" />
             {listening ? (
-              <span className="new-tab-listening-label">Listening...</span>
+              <span className="text-muted-foreground flex-1 text-base">
+                Listening…
+              </span>
             ) : (
-              <input
+              <CommandPrimitive.Input
                 ref={inputRef}
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    if (query) {
-                      event.preventDefault();
-                      setQuery("");
-                    }
+                onValueChange={setQuery}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape" && query) {
+                    e.preventDefault();
+                    setQuery("");
                     return;
                   }
-
-                  if (event.key === "Enter" && event.shiftKey && hasQuery) {
-                    event.preventDefault();
-                    openTab(trimmedQuery);
+                  if (e.key === "Enter" && e.shiftKey && hasQuery) {
+                    e.preventDefault();
+                    openTab(trimmed);
                   }
                 }}
-                placeholder="Ask anything..."
+                placeholder="Ask anything…"
                 aria-label="Search or enter a URL"
-                className="new-tab-input"
+                className="placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none"
               />
             )}
           </div>
 
-          <div
-            className={cn("new-tab-suggestions t-dropdown", panelClassName)}
-            data-origin="top-center"
-            role="listbox"
-            aria-hidden={!suggestionsOpen}
-          >
-            {suggestions.map((suggestion, index) => (
-              <button
-                key={suggestion.id}
-                type="button"
-                className={cn(
-                  "new-tab-suggestion",
-                  index === 0 && "is-selected",
-                )}
-                onClick={suggestion.action}
-              >
-                <span className="new-tab-suggestion-icon">
-                  {suggestion.icon}
-                </span>
-                <span className="new-tab-suggestion-label">
-                  {suggestion.label}
-                </span>
-                <span className="new-tab-suggestion-detail">
-                  {suggestion.detail}
-                </span>
-                {suggestion.shortcut && (
-                  <kbd className="new-tab-suggestion-shortcut">
-                    {suggestion.shortcut}
-                  </kbd>
-                )}
-              </button>
-            ))}
-          </div>
+          {showSuggestions && suggestions.length > 0 && (
+            <CommandList className="border-border/60 max-h-72 border-t p-1">
+              <CommandGroup className="p-0">
+                {suggestions.map((s) => (
+                  <CommandItem
+                    key={s.id}
+                    value={s.id}
+                    onSelect={s.action}
+                    className="min-w-0 gap-2 overflow-hidden rounded-md px-2 py-1.5 text-xs"
+                  >
+                    <span className="text-muted-foreground shrink-0">{s.icon}</span>
+                    <span className="min-w-0 flex-1 truncate">{s.label}</span>
+                    {s.detail && (
+                      <span className="text-muted-foreground max-w-[42%] min-w-0 shrink truncate text-xs font-medium">
+                        {s.detail}
+                      </span>
+                    )}
+                    {s.shortcut && (
+                      <CommandShortcut>{s.shortcut}</CommandShortcut>
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          )}
 
-          <div className="new-tab-footer">
+          <div className="border-border/60 flex items-center gap-2 border-t px-2.5 py-2">
             {listening ? (
-              <VoiceMeter
+              <ListeningBar
                 elapsed={elapsed}
-                onCancel={() => setListening(false)}
+                onStop={() => setListening(false)}
               />
             ) : (
               <>
-                <button
+                <Button
                   type="button"
-                  className="new-tab-context-button"
-                  onClick={() => onOpenPalette("new-tab")}
+                  variant="secondary"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => inputRef.current?.focus()}
                 >
-                  <Plus className="size-3.5" />
+                  <Plus />
                   Add tabs or files
-                </button>
-                <div className="new-tab-action-group">
-                  <button
+                </Button>
+                <div className="ml-auto flex items-center gap-1.5">
+                  <Button
                     type="button"
-                    className="new-tab-icon-button"
-                    onClick={() => setListening(true)}
+                    variant="ghost"
+                    size="icon"
+                    className="rounded-full"
                     aria-label="Start voice input"
+                    onClick={() => setListening(true)}
                   >
-                    <span className="t-icon-swap" data-state="a">
-                      <span className="t-icon" data-icon="a">
-                        <Mic className="size-4" />
-                      </span>
-                      <span className="t-icon" data-icon="b">
-                        <X className="size-4" />
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    type="submit"
-                    className={cn(
-                      "new-tab-submit",
-                      hasQuery && "has-query",
-                    )}
+                    <Mic />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="new-tab-send-button rounded-full"
                     disabled={!hasQuery}
+                    onClick={() => search()}
                   >
                     {hasQuery && <span>Google</span>}
-                    <ArrowUp className="size-4" />
-                  </button>
+                    <ArrowUp />
+                  </Button>
                 </div>
               </>
             )}
           </div>
-        </form>
-      </motion.div>
+        </MotionCommand>
+      </div>
     </motion.div>
   );
 }
 
-interface NewTabSuggestion {
-  id: string;
-  icon: ReactNode;
-  label: string;
-  detail?: string;
-  shortcut?: string;
-  action: () => void;
-}
-
-function VoiceMeter({
+function ListeningBar({
   elapsed,
-  onCancel,
+  onStop,
 }: {
   elapsed: number;
-  onCancel: () => void;
+  onStop: () => void;
 }) {
-  const seconds = String(elapsed % 60).padStart(2, "0");
   const minutes = String(Math.floor(elapsed / 60)).padStart(2, "0");
+  const seconds = String(elapsed % 60).padStart(2, "0");
 
   return (
     <>
-      <button
-        type="button"
-        className="new-tab-icon-button is-cancel"
-        onClick={onCancel}
-        aria-label="Cancel voice input"
-      >
-        <X className="size-4" />
-      </button>
-      <div className="new-tab-waveform" aria-hidden>
-        {Array.from({ length: 28 }).map((_, index) => (
-          <span key={index} style={{ "--bar-index": index } as CSSProperties} />
+      <span
+        className="bg-destructive size-2 shrink-0 animate-pulse rounded-full"
+        aria-hidden
+      />
+      <div className="flex flex-1 items-center gap-0.5 overflow-hidden" aria-hidden>
+        {Array.from({ length: 24 }).map((_, i) => (
+          <span
+            key={i}
+            className="bg-muted-foreground/50 w-0.5 shrink-0 animate-pulse rounded-full"
+            style={{ height: `${6 + (i % 5) * 3}px`, animationDelay: `${i * 60}ms` }}
+          />
         ))}
       </div>
-      <span className="new-tab-timer">
+      <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
         {minutes}:{seconds}
       </span>
-      <span className="new-tab-record-dot" aria-hidden />
-      <button
+      <Button
         type="button"
-        className="new-tab-submit has-query"
-        onClick={onCancel}
+        variant="ghost"
+        size="icon"
+        className="rounded-full"
         aria-label="Stop voice input"
+        onClick={onStop}
       >
-        <ArrowUp className="size-4" />
-      </button>
+        <X />
+      </Button>
     </>
   );
 }

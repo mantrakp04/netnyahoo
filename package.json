@@ -12,11 +12,11 @@
     "check-types": "turbo check-types"
   },
   "dependencies": {
-    "dotenv": "^17.2.2",
     "zod": "^4.1.13"
   },
   "devDependencies": {
     "@netnyahoo/config": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "turbo": "^2.9.16",
     "typescript": "^6"
   },

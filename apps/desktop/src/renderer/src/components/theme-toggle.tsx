@@ -26,11 +26,11 @@ export function ThemeToggle() {
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground size-8 shrink-0"
+          className="text-muted-foreground size-6 shrink-0"
           onClick={() => setTheme(next)}
           aria-label={`Theme: ${META[theme].label}. Switch to ${META[next].label}.`}
         >
-          <Icon className="size-4" />
+          <Icon className="size-3.5" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="top">

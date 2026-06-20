@@ -1,33 +1,123 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   ArrowLeft,
   ArrowRight,
   Bookmark,
   History,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   RotateCw,
-  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TabList } from "@/components/tab-list";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Omnibox, type OmniboxHandle } from "@/components/omnibox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useBrowser } from "@/hooks/use-browser";
-import { cn, prettyUrl } from "@/lib/utils";
-import type { PaletteMode } from "@/components/command-palette";
+import { INTERNAL_PAGE_URLS, isInternalPageUrl } from "@/lib/internal-pages";
+import { cn } from "@/lib/utils";
+
+const sidebarWidthStorageKey = "netnyahoo:sidebar-width";
+const sidebarMinWidth = 196;
+const sidebarDefaultWidth = 256;
+const sidebarMaxWidth = 380;
+type SidebarSide = "left" | "right";
 
 export function Sidebar({
-  onOpenPalette,
+  omniboxRef,
+  side = "left",
+  isCollapsed = false,
+  onToggleCollapsed,
 }: {
-  onOpenPalette: (mode: PaletteMode) => void;
+  omniboxRef: RefObject<OmniboxHandle | null>;
+  side?: SidebarSide;
+  isCollapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }) {
-  const { spaceName, activeTab, nav, openTab, goBack, goForward, reload } =
-    useBrowser();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const {
+    spaceName,
+    activeTab,
+    nav,
+    openTab,
+    openInternalPage,
+    goBack,
+    goForward,
+    reload,
+  } = useBrowser();
+  const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth);
+  const [tabsOverflow, setTabsOverflow] = useState(false);
+  const tabsSectionRef = useRef<HTMLDivElement>(null);
+  const tabContentRef = useRef<HTMLDivElement>(null);
+  const newTabRowRef = useRef<HTMLDivElement>(null);
+  const activeIsInternal = isInternalPageUrl(activeTab?.url);
+
+  useEffect(() => {
+    window.localStorage.setItem(sidebarWidthStorageKey, String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    const tabsSection = tabsSectionRef.current;
+    const tabContent = tabContentRef.current;
+    const newTabRow = newTabRowRef.current;
+    if (!tabsSection || !tabContent || !newTabRow) return;
+
+    let frame = 0;
+    const updateTabsOverflow = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const contentHeight = tabContent.scrollHeight;
+        const newTabHeight = newTabRow.offsetHeight;
+        const availableHeight = tabsSection.clientHeight;
+        setTabsOverflow(contentHeight + newTabHeight > availableHeight + 1);
+      });
+    };
+
+    updateTabsOverflow();
+
+    const resizeObserver = new ResizeObserver(updateTabsOverflow);
+    resizeObserver.observe(tabsSection);
+    resizeObserver.observe(tabContent);
+    resizeObserver.observe(newTabRow);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   return (
-    <aside className="text-sidebar-foreground flex w-64 shrink-0 flex-col">
+    <aside
+      className={cn(
+        "text-sidebar-foreground bg-sidebar relative z-10 flex h-full shrink-0 flex-col",
+        isCollapsed &&
+          "overflow-hidden rounded-xl border border-sidebar-border/70 bg-sidebar/95 shadow-[0_20px_54px_rgb(0_0_0/0.34),0_0_0_1px_rgb(255_255_255/0.04)_inset] backdrop-blur-xl",
+      )}
+      style={{ width: sidebarWidth }}
+      data-sidebar-state={isCollapsed ? "peeked" : "expanded"}
+    >
       {/* Draggable header with nav controls, beside the traffic lights. */}
-      <div className="app-drag flex h-11 shrink-0 items-center gap-1 pr-3 pl-20">
+      <div
+        className={cn(
+          "app-drag flex h-9 shrink-0 items-center gap-0.5",
+          side === "left" ? "pr-2 pl-20" : "pr-20 pl-2",
+        )}
+      >
         <div className="app-no-drag flex items-center gap-0.5">
           <NavButton onClick={goBack} disabled={!nav.canGoBack}>
             <ArrowLeft className="size-3.5" />
@@ -35,56 +125,99 @@ export function Sidebar({
           <NavButton onClick={goForward} disabled={!nav.canGoForward}>
             <ArrowRight className="size-3.5" />
           </NavButton>
-          <NavButton onClick={reload} disabled={!activeTab}>
+          <NavButton onClick={reload} disabled={!activeTab || activeIsInternal}>
             <RotateCw className={cn("size-3.5", nav.loading && "animate-spin")} />
           </NavButton>
         </div>
+        {onToggleCollapsed && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={isCollapsed ? "Keep sidebar open" : "Hide sidebar"}
+                onClick={onToggleCollapsed}
+                className={cn(
+                  "app-no-drag ml-auto size-6",
+                  side === "right" && "mr-auto ml-0",
+                )}
+              >
+                {getSidebarToggleIcon(side, isCollapsed)}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side={side === "left" ? "right" : "left"} sideOffset={6}>
+              {isCollapsed ? "Keep sidebar open" : "Hide sidebar"}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
-      <div className="app-no-drag flex flex-col gap-2 px-3 pb-2">
+      <div className="app-no-drag flex flex-col gap-1.5 px-2 pb-1.5">
         {/* The omnibox / URL bar */}
-        <button
-          type="button"
-          onClick={() => onOpenPalette("navigate")}
-          className="bg-background/60 hover:bg-background text-muted-foreground flex h-9 items-center gap-2 rounded-lg border px-3 text-left text-sm transition-colors"
-        >
-          <Search className="size-4 shrink-0" />
-          <span className="truncate">
-            {activeTab && activeTab.url !== "about:blank"
-              ? prettyUrl(activeTab.url)
-              : "Search or Enter URL…"}
-          </span>
-        </button>
+        <Omnibox ref={omniboxRef} />
       </div>
 
       {/* Tabs */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
-        <div className="text-muted-foreground px-2.5 pb-1.5 text-xs font-semibold tracking-wide uppercase">
-          {spaceName}
-        </div>
-        <TabList />
-        <button
-          type="button"
-          onClick={() => openTab()}
-          className="text-muted-foreground hover:bg-sidebar-accent/50 mt-1 flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors"
+      <div ref={tabsSectionRef} className="min-h-0 flex-1">
+        <div
+          className={cn(
+            "px-2 pt-2",
+            tabsOverflow
+              ? "h-full overflow-y-auto pb-2 [scrollbar-gutter:stable]"
+              : "shrink-0 overflow-visible pb-0",
+          )}
         >
-          <Plus className="size-4" />
-          New Tab
-        </button>
+          <div ref={tabContentRef}>
+            <div className="text-muted-foreground px-1.5 pb-1.5 text-xs font-semibold tracking-wide uppercase">
+              {spaceName}
+            </div>
+            <TabList />
+          </div>
+          <div
+            ref={newTabRowRef}
+            className={cn(
+              "app-no-drag pt-0.5",
+              tabsOverflow && "sticky bottom-0",
+            )}
+          >
+            <Button
+              type="button"
+              size="lg"
+              onClick={() => openTab()}
+              className="w-full justify-start bg-primary/85 backdrop-blur-md supports-backdrop-filter:bg-primary/70 hover:bg-primary/90"
+            >
+              <Plus className="size-4" />
+              New Tab
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Footer nav */}
-      <div className="app-no-drag flex items-center gap-1 border-t p-3">
-        <FooterLink to="/history" active={pathname === "/history"}>
+      <div className="app-no-drag flex items-center gap-1 border-t p-2">
+        <FooterButton
+          active={activeTab?.url === INTERNAL_PAGE_URLS.history}
+          onClick={() => openInternalPage("history")}
+        >
           <History className="size-4" />
           History
-        </FooterLink>
-        <FooterLink to="/bookmarks" active={pathname === "/bookmarks"}>
+        </FooterButton>
+        <FooterButton
+          active={activeTab?.url === INTERNAL_PAGE_URLS.bookmarks}
+          onClick={() => openInternalPage("bookmarks")}
+        >
           <Bookmark className="size-4" />
           Bookmarks
-        </FooterLink>
+        </FooterButton>
         <ThemeToggle />
       </div>
+
+      <SidebarResizeHandle
+        width={sidebarWidth}
+        side={side}
+        onWidthChange={setSidebarWidth}
+      />
     </aside>
   );
 }
@@ -94,7 +227,7 @@ function NavButton({
   onClick,
   disabled,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   onClick: () => void;
   disabled?: boolean;
 }) {
@@ -102,7 +235,7 @@ function NavButton({
     <Button
       variant="ghost"
       size="icon"
-      className="size-7"
+      className="size-6"
       onClick={onClick}
       disabled={disabled}
     >
@@ -111,26 +244,136 @@ function NavButton({
   );
 }
 
-function FooterLink({
-  to,
+function SidebarResizeHandle({
+  width,
+  side,
+  onWidthChange,
+}: {
+  width: number;
+  side: SidebarSide;
+  onWidthChange: (width: number) => void;
+}) {
+  const resizeFrom = useCallback(
+    (startX: number, startWidth: number) => {
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+
+      const onPointerMove = (event: globalThis.PointerEvent) => {
+        const delta =
+          side === "left" ? event.clientX - startX : startX - event.clientX;
+        onWidthChange(clampSidebarWidth(startWidth + delta));
+      };
+      const onPointerUp = () => {
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp, { once: true });
+    },
+    [onWidthChange, side],
+  );
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    resizeFrom(event.clientX, width);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      onWidthChange(clampSidebarWidth(width + (side === "right" ? 12 : -12)));
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      onWidthChange(clampSidebarWidth(width + (side === "right" ? -12 : 12)));
+      return;
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      onWidthChange(sidebarMinWidth);
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      onWidthChange(sidebarMaxWidth);
+    }
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-valuemin={sidebarMinWidth}
+      aria-valuemax={sidebarMaxWidth}
+      aria-valuenow={Math.round(width)}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      className={cn(
+        "app-no-drag absolute top-0 bottom-0 z-30 w-2 cursor-col-resize outline-none after:absolute after:top-2 after:bottom-2 after:left-1/2 after:w-px after:-translate-x-1/2 after:rounded-full after:bg-border/0 after:transition-colors hover:after:bg-border focus-visible:after:bg-ring",
+        side === "left" ? "right-0 translate-x-1/2" : "left-0 -translate-x-1/2",
+      )}
+    />
+  );
+}
+
+function getInitialSidebarWidth() {
+  const storedWidth = Number.parseFloat(
+    window.localStorage.getItem(sidebarWidthStorageKey) ?? "",
+  );
+  return clampSidebarWidth(
+    Number.isFinite(storedWidth) ? storedWidth : sidebarDefaultWidth,
+  );
+}
+
+function clampSidebarWidth(width: number) {
+  return Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, width));
+}
+
+function FooterButton({
   active,
+  onClick,
   children,
 }: {
-  to: string;
   active: boolean;
-  children: React.ReactNode;
+  onClick: () => void;
+  children: ReactNode;
 }) {
   return (
-    <Link
-      to={to}
+    <button
+      type="button"
+      onClick={onClick}
       className={cn(
-        "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors",
+        "flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium transition-colors",
         active
           ? "bg-sidebar-accent text-sidebar-accent-foreground"
           : "text-muted-foreground hover:bg-sidebar-accent/50",
       )}
     >
       {children}
-    </Link>
+    </button>
+  );
+}
+
+function getSidebarToggleIcon(side: SidebarSide, isCollapsed: boolean) {
+  if (side === "right") {
+    return isCollapsed ? (
+      <PanelRightOpen className="size-3.5" />
+    ) : (
+      <PanelRightClose className="size-3.5" />
+    );
+  }
+
+  return isCollapsed ? (
+    <PanelLeftOpen className="size-3.5" />
+  ) : (
+    <PanelLeftClose className="size-3.5" />
   );
 }

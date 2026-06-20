@@ -4,8 +4,8 @@ import { bookmarks } from "@netnyahoo/db";
 import { publicProcedure, router } from "../trpc";
 
 export const bookmarksRouter = router({
-  list: publicProcedure.query(({ ctx }) =>
-    ctx.db.select().from(bookmarks).orderBy(asc(bookmarks.order)).all(),
+  list: publicProcedure.query(async ({ ctx }) =>
+    await ctx.db.select().from(bookmarks).orderBy(asc(bookmarks.order)).all(),
   ),
 
   create: publicProcedure
@@ -17,14 +17,14 @@ export const bookmarksRouter = router({
         folder: z.string().nullish(),
       }),
     )
-    .mutation(({ ctx, input }) =>
-      ctx.db.insert(bookmarks).values(input).returning().get(),
+    .mutation(async ({ ctx, input }) =>
+      await ctx.db.insert(bookmarks).values(input).returning().get(),
     ),
 
   remove: publicProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(({ ctx, input }) => {
-      ctx.db.delete(bookmarks).where(eq(bookmarks.id, input.id)).run();
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.delete(bookmarks).where(eq(bookmarks.id, input.id)).run();
       return { id: input.id };
     }),
 });

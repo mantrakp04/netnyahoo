@@ -10,8 +10,8 @@ tabs, omnibox) is React; web pages are rendered by Chromium via `<webview>`.
 | Shell          | [electron-vite](https://electron-vite.org) (main / preload / renderer) |
 | UI             | React 19, [TanStack Router](https://tanstack.com/router) (file routes) |
 | Data fetching  | [TanStack Query](https://tanstack.com/query)                     |
-| IPC / backend  | [tRPC v11](https://trpc.io) over [electron-trpc](https://github.com/jsonnull/electron-trpc) (patched, see below) |
-| Database       | Electron's native `node:sqlite` + [Drizzle ORM](https://orm.drizzle.team) (`drizzle-orm/node-sqlite`) |
+| IPC / backend  | [tRPC v11](https://trpc.io) over a local Electron IPC bridge |
+| Database       | Electron's native `node:sqlite` + [Drizzle ORM](https://orm.drizzle.team) through Drizzle's sqlite proxy driver |
 | Components     | [shadcn/ui](https://ui.shadcn.com) + Tailwind CSS v4             |
 | Keybinds       | [react-hotkeys-hook](https://react-hotkeys-hook.vercel.app)      |
 
@@ -19,28 +19,28 @@ tabs, omnibox) is React; web pages are rendered by Chromium via `<webview>`.
 
 ```
 src/
-  main/index.ts         BrowserWindow + electron-trpc IPC handler; wires db + env
-  preload/index.ts      exposeElectronTRPC() bridge
+  main/index.ts         BrowserWindow + local tRPC IPC handler; wires db + env
+  preload/index.ts      electronTRPC bridge exposure
   renderer/             React app
     src/
       routes/           __root (app shell), index, history, bookmarks
-      components/        sidebar, tab-list, browser-area (webview), command-palette
+      components/        sidebar, tab-list, browser-area (webview), omnibox
       hooks/use-browser  central browser state (tabs, nav, omnibox actions)
       lib/trpc.ts        typed tRPC + TanStack Query context
 ```
 
 The data layer lives in workspace packages, consumed here:
 
-- `@netnyahoo/db` — Drizzle schema, `node:sqlite` client, idempotent migrations
+- `@netnyahoo/db` — Drizzle schema, `node:sqlite` adapter, Drizzle migrations
 - `@netnyahoo/backend` — tRPC router + procedures (spaces, tabs, history, bookmarks)
 - `@netnyahoo/env` — t3-env validated environment
 
 These are bundled into the main process (see the `externalizeDepsPlugin` exclude
 list in `electron.vite.config.ts`); the renderer imports only their types. The
-database lives in Electron's `userData` dir as `netnyahoo.db` —
-`main/index.ts` passes that path to `initDb()`. The schema is applied
-idempotently on boot (`@netnyahoo/db`'s `migrate.ts`); for real migration history
-use `pnpm --filter @netnyahoo/db db:generate` and switch to drizzle's migrator.
+database path is resolved by `@netnyahoo/env` as `env.NETNYAHOO_DB_URL`, with
+zod defaults for the app `userData` directory and `netnyahoo.db`. `initDb()`
+runs Drizzle's migrator against `packages/db/drizzle` in dev and the packaged
+`drizzle` resource in production.
 
 ## Keybinds
 
@@ -58,7 +58,7 @@ use `pnpm --filter @netnyahoo/db db:generate` and switch to drizzle's migrator.
 - `pnpm dev` — run the app with HMR
 - `pnpm build` — bundle main/preload/renderer to `out/`
 - `pnpm check-types` — type-check all three TS projects
-- `pnpm --filter @netnyahoo/db db:generate` / `db:studio` — drizzle-kit
+- `pnpm --filter @netnyahoo/db db:generate` / `db:push` / `db:studio` — drizzle-kit
 - `pnpm pack:mac` — build + sign a DMG, **no** notarization (fast local check)
 - `pnpm dist:mac` — build + sign + (if Apple creds are set) notarize a DMG
 
@@ -103,20 +103,10 @@ Then `pnpm dist:mac`. electron-builder uploads to Apple's notary service and
 staples the ticket into the DMG. Verify the result with
 `spctl -a -t open --context context:primary-signature -vv <app-or-dmg>`.
 
-## electron-trpc + tRPC v11 patch
+## Dependency Notes
 
-`electron-trpc@0.7.1` predates tRPC v11 and breaks on it: its IPC handler calls
-procedures the v10 way and uses the removed `router.getErrorShape`, and its
-renderer link reads the old single-transformer shape. We ship a `pnpm patch`
-(`/patches/electron-trpc@0.7.1.patch`, recorded in `pnpm-workspace.yaml`) that:
-
-- main: resolves procedures via `callProcedure(...)` and formats errors via
-  `getErrorShape({ config, ... })` from `@trpc/server/unstable-core-do-not-import`
-- renderer: reads the v11 combined transformer (`transformer.input.serialize` /
-  `transformer.output.deserialize`), falling back to identity
-
-The patch re-applies automatically on `pnpm install`.
-
-> Note: `node:sqlite` support in Drizzle landed in the 1.0 line, so this app
-> pins `drizzle-orm@1.0.0-rc`. Electron 42 ships Node 24, which includes
-> `node:sqlite`.
+The Electron IPC bridge lives in app source and speaks tRPC v11 directly; there
+is no pnpm patch for `electron-trpc`. Drizzle packages use normal semver ranges;
+pnpm resolves the current stable versions. Because stable Drizzle does not
+expose a dedicated `node:sqlite` driver, `@netnyahoo/db` wraps Electron's native
+sqlite connection with Drizzle's sqlite proxy driver.

@@ -1,4 +1,4 @@
-import { exposeElectronTRPC } from "electron-trpc/main";
+import { exposeElectronTRPC } from "./trpc-ipc";
 
 process.once("loaded", () => {
   exposeElectronTRPC();

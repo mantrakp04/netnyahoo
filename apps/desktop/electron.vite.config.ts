@@ -16,7 +16,7 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: resolve(__dirname, "src/main/index.ts"),
-        external: ["electron", "electron-trpc"],
+        external: ["electron"],
       },
     },
   },
@@ -25,7 +25,7 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: resolve(__dirname, "src/preload/index.ts"),
-        external: ["electron", "electron-trpc"],
+        external: ["electron"],
       },
     },
   },

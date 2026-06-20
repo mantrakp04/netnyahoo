@@ -8,10 +8,24 @@ import {
   type ReactNode,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  INTERNAL_PAGE_URLS,
+  getInternalPage,
+  getInternalPageTitle,
+  isInternalPageUrl,
+  type InternalPage,
+} from "@/lib/internal-pages";
 import { useTRPC } from "@/lib/trpc";
 import { toUrl } from "@/lib/utils";
 import type { Tab } from "@netnyahoo/db";
 import type { WebviewTag } from "@/types/webview";
+
+type SerializedTab = Omit<Tab, "createdAt" | "lastAccessedAt"> & {
+  createdAt: string;
+  lastAccessedAt: string;
+};
+
+export type BrowserTab = SerializedTab & { groupName: string | null };
 
 interface NavState {
   loading: boolean;
@@ -19,23 +33,44 @@ interface NavState {
   canGoForward: boolean;
 }
 
+type ClosedTab = Pick<Tab, "title" | "url" | "favicon" | "groupId" | "pinned">;
+type CreateTabInput = {
+  spaceId: string;
+  url?: string;
+  title?: string;
+  favicon?: string | null;
+  groupId?: string | null;
+  pinned?: boolean;
+  activate?: boolean;
+};
+
 interface BrowserContextValue {
   spaceId: string | undefined;
   spaceName: string;
-  tabs: Tab[];
-  activeTab: Tab | undefined;
+  tabs: BrowserTab[];
+  activeTab: BrowserTab | undefined;
   nav: NavState;
+  newTabAnimationId: string | null;
   registerWebview: (id: string, el: WebviewTag | null) => void;
-  getWebview: (id: string) => WebviewTag | null;
   setNav: (id: string, state: Partial<NavState>) => void;
+  finishNewTabAnimation: (id: string) => void;
   openTab: (input?: string) => void;
+  reopenClosedTab: () => void;
+  openInternalPage: (page: InternalPage) => void;
   activateTab: (id: string) => void;
   closeTab: (id: string) => void;
+  moveTab: (input: {
+    id: string;
+    targetId?: string;
+    placement: "before" | "after" | "group" | "end";
+  }) => void;
+  renameGroup: (id: string, name: string) => void;
   patchTab: (
     id: string,
     patch: Partial<Pick<Tab, "title" | "url" | "favicon">>,
   ) => void;
   recordVisit: (entry: { url: string; title: string; favicon?: string | null }) => void;
+  updateHistoryFavicon: (entry: { url: string; favicon: string }) => void;
   navigate: (input: string) => void;
   goBack: () => void;
   goForward: () => void;
@@ -48,8 +83,10 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
   const trpc = useTRPC();
   const qc = useQueryClient();
   const webviews = useRef(new Map<string, WebviewTag | null>());
-  const openTabGate = useRef<{ signature: string; at: number } | null>(null);
+  const createTabQueue = useRef<Promise<void>>(Promise.resolve());
+  const recentlyClosedTabs = useRef<ClosedTab[]>([]);
   const [navByTab, setNavByTab] = useState<Record<string, NavState>>({});
+  const [newTabAnimationId, setNewTabAnimationId] = useState<string | null>(null);
 
   const spacesQuery = useQuery(trpc.spaces.list.queryOptions());
   const spaceId = spacesQuery.data?.[0]?.id;
@@ -69,25 +106,73 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     [qc, trpc.tabs.list],
   );
 
+  // Tab mutations refetch the list on success — the local IPC + sqlite round-trip
+  // is fast and the DB is the single source of truth. (Optimistic cache writes
+  // were tried but accumulated phantom rows on rapid creates; snappiness comes
+  // from not blocking on UI animation, not from the cache.) onMutate cancels any
+  // in-flight list refetch so a stale one can't land after a newer write and
+  // resurrect a just-closed tab.
+  const cancelTabsRefetch = useCallback(
+    () => qc.cancelQueries({ queryKey: trpc.tabs.list.queryKey() }),
+    [qc, trpc.tabs.list],
+  );
   const createTab = useMutation(
-    trpc.tabs.create.mutationOptions({ onSuccess: invalidateTabs }),
+    trpc.tabs.create.mutationOptions({
+      onMutate: cancelTabsRefetch,
+      onSuccess: (tab) => {
+        if (tab.url === "about:blank") setNewTabAnimationId(tab.id);
+        return invalidateTabs();
+      },
+    }),
   );
   const activateMut = useMutation(
-    trpc.tabs.activate.mutationOptions({ onSuccess: invalidateTabs }),
+    trpc.tabs.activate.mutationOptions({
+      onMutate: cancelTabsRefetch,
+      onSuccess: invalidateTabs,
+    }),
   );
   const closeMut = useMutation(
-    trpc.tabs.close.mutationOptions({ onSuccess: invalidateTabs }),
+    trpc.tabs.close.mutationOptions({
+      onMutate: cancelTabsRefetch,
+      onSuccess: invalidateTabs,
+    }),
   );
+  const moveMut = useMutation(
+    trpc.tabs.move.mutationOptions({
+      onMutate: cancelTabsRefetch,
+      onSuccess: invalidateTabs,
+    }),
+  );
+  const renameGroupMut = useMutation(trpc.tabs.renameGroup.mutationOptions());
   const updateMut = useMutation(trpc.tabs.update.mutationOptions());
-  const recordMut = useMutation(trpc.history.record.mutationOptions());
+  const invalidateHistory = useCallback(
+    () => qc.invalidateQueries({ queryKey: trpc.history.list.queryKey() }),
+    [qc, trpc.history.list],
+  );
+  const recordMut = useMutation(
+    trpc.history.record.mutationOptions({ onSuccess: invalidateHistory }),
+  );
+  const updateHistoryFaviconMut = useMutation(
+    trpc.history.updateFavicon.mutationOptions({
+      onSuccess: invalidateHistory,
+    }),
+  );
+  const enqueueCreateTab = useCallback(
+    (input: CreateTabInput) => {
+      const request = createTabQueue.current.then(() =>
+        createTab.mutateAsync(input),
+      );
+      createTabQueue.current = request
+        .catch(() => undefined)
+        .then(() => undefined);
+      return request;
+    },
+    [createTab],
+  );
 
   const registerWebview = useCallback((id: string, el: WebviewTag | null) => {
     webviews.current.set(id, el);
   }, []);
-  const getWebview = useCallback(
-    (id: string) => webviews.current.get(id) ?? null,
-    [],
-  );
 
   const setNav = useCallback((id: string, state: Partial<NavState>) => {
     setNavByTab((prev) => ({
@@ -102,23 +187,61 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const finishNewTabAnimation = useCallback((id: string) => {
+    setNewTabAnimationId((current) => (current === id ? null : current));
+  }, []);
+
   const openTab = useCallback(
     (input?: string) => {
       if (!spaceId) return;
       const url = input ? toUrl(input) : "about:blank";
-      const signature = `${spaceId}:${url}`;
-      const now = Date.now();
-      const recentOpen = openTabGate.current;
+      const internalPage = getInternalPage(url);
 
-      if (recentOpen?.signature === signature && now - recentOpen.at < 500) {
+      void enqueueCreateTab({
+        spaceId,
+        url,
+        title: internalPage ? getInternalPageTitle(internalPage) : "New Tab",
+        activate: true,
+      }).catch(() => undefined);
+    },
+    [enqueueCreateTab, spaceId],
+  );
+
+  const openInternalPage = useCallback(
+    (page: InternalPage) => {
+      const url = INTERNAL_PAGE_URLS[page];
+      const existing = tabs.find((tab) => tab.url === url);
+      if (existing) {
+        activateMut.mutate({ id: existing.id });
         return;
       }
-
-      openTabGate.current = { signature, at: now };
-      createTab.mutate({ spaceId, url, activate: true });
+      openTab(url);
     },
-    [spaceId, createTab],
+    [activateMut, openTab, tabs],
   );
+
+  const reopenClosedTab = useCallback(() => {
+    if (!spaceId) return;
+    const tab = recentlyClosedTabs.current.pop();
+    if (!tab) return;
+
+    const request = enqueueCreateTab({
+      spaceId,
+      url: tab.url,
+      title: tab.title,
+      favicon: tab.favicon,
+      groupId: tab.groupId,
+      pinned: tab.pinned,
+      activate: true,
+    });
+    void request
+      .then((restored) => {
+        if (restored.url === "about:blank") setNewTabAnimationId(restored.id);
+      })
+      .catch(() => {
+        recentlyClosedTabs.current.push(tab);
+      });
+  }, [enqueueCreateTab, spaceId]);
 
   const activateTab = useCallback(
     (id: string) => activateMut.mutate({ id }),
@@ -126,10 +249,58 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
   );
   const closeTab = useCallback(
     (id: string) => {
+      const tab = tabs.find((candidate) => candidate.id === id);
+      const isLastTab = tabs.length === 1 && tabs[0]?.id === id;
       webviews.current.delete(id);
-      closeMut.mutate({ id });
+      closeMut.mutate(
+        { id },
+        {
+          onSuccess: () => {
+            if (tab) {
+              recentlyClosedTabs.current.push({
+                title: tab.title,
+                url: tab.url,
+                favicon: tab.favicon,
+                groupId: tab.groupId,
+                pinned: tab.pinned,
+              });
+            }
+            if (isLastTab) window.close();
+          },
+        },
+      );
     },
-    [closeMut],
+    [closeMut, tabs],
+  );
+  const moveTab = useCallback(
+    (input: {
+      id: string;
+      targetId?: string;
+      placement: "before" | "after" | "group" | "end";
+    }) => {
+      if (input.id === input.targetId) return;
+      moveMut.mutate(input);
+    },
+    [moveMut],
+  );
+  const renameGroup = useCallback(
+    (id: string, name: string) => {
+      const nextName = name.trim();
+      if (!nextName) return;
+
+      qc.setQueriesData(
+        { queryKey: trpc.tabs.list.queryKey() },
+        (old: BrowserTab[] | undefined) =>
+          old?.map((tab) =>
+            tab.groupId === id ? { ...tab, groupName: nextName } : tab,
+          ),
+      );
+      renameGroupMut.mutate(
+        { id, name: nextName },
+        { onError: () => void invalidateTabs() },
+      );
+    },
+    [invalidateTabs, qc, renameGroupMut, trpc.tabs.list],
   );
 
   const patchTab = useCallback(
@@ -138,7 +309,7 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
       // without a round-trip per keystroke of in-page navigation.
       qc.setQueriesData(
         { queryKey: trpc.tabs.list.queryKey() },
-        (old: Tab[] | undefined) =>
+        (old: BrowserTab[] | undefined) =>
           old?.map((t) => (t.id === id ? { ...t, ...patch } : t)),
       );
       updateMut.mutate({ id, ...patch });
@@ -148,18 +319,53 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
 
   const recordVisit = useCallback(
     (entry: { url: string; title: string; favicon?: string | null }) => {
+      if (isInternalPageUrl(entry.url)) return;
       recordMut.mutate(entry);
     },
     [recordMut],
   );
 
+  const updateHistoryFavicon = useCallback(
+    (entry: { url: string; favicon: string }) => {
+      if (isInternalPageUrl(entry.url)) return;
+      updateHistoryFaviconMut.mutate(entry);
+    },
+    [updateHistoryFaviconMut],
+  );
+
   const navigate = useCallback(
     (input: string) => {
       const url = toUrl(input);
+      const internalPage = getInternalPage(url);
       if (activeTab) {
+        if (internalPage) {
+          patchTab(activeTab.id, {
+            url,
+            title: getInternalPageTitle(internalPage),
+            favicon: null,
+          });
+          return;
+        }
         const el = webviews.current.get(activeTab.id);
-        if (el) el.loadURL(url);
-        patchTab(activeTab.id, { url });
+        if (el) {
+          try {
+            el.loadURL(url);
+          } catch {
+            // Guest not ready yet (brand-new tab) — load as soon as it is.
+            el.addEventListener(
+              "dom-ready",
+              () => {
+                try {
+                  el.loadURL(url);
+                } catch {
+                  /* ignore */
+                }
+              },
+              { once: true },
+            );
+          }
+        }
+        patchTab(activeTab.id, { url, favicon: null });
       } else {
         openTab(input);
       }
@@ -195,14 +401,20 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     tabs,
     activeTab,
     nav,
+    newTabAnimationId,
     registerWebview,
-    getWebview,
     setNav,
+    finishNewTabAnimation,
     openTab,
+    reopenClosedTab,
+    openInternalPage,
     activateTab,
     closeTab,
+    moveTab,
+    renameGroup,
     patchTab,
     recordVisit,
+    updateHistoryFavicon,
     navigate,
     goBack,
     goForward,

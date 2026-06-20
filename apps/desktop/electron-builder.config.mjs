@@ -1,11 +1,15 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 
-// electron-builder reads creds from process.env but doesn't load .env itself.
+// electron-builder reads credentials from the environment but doesn't load .env itself.
 // Pull in apps/desktop/.env (gitignored) so `pnpm dist:mac` picks up the
 // notarization credentials. quiet:true keeps the build log clean.
-loadEnv({ quiet: true });
+loadEnv({
+  path: fileURLToPath(new URL(".env", import.meta.url)),
+  quiet: true,
+});
 
 // This repo lives under ~/Desktop, which is synced by iCloud Desktop &
 // Documents. The iCloud file provider stamps every file it manages with
@@ -48,12 +52,22 @@ export default {
   // sources, configs and local caches that have no business in the bundle.
   files: [
     "out/**/*",
+    // Runtime icon imported by the main process via `?asset`
+    // (resolves to ../../resources/icon.png relative to out/main).
+    "resources/**",
     "package.json",
     "!**/*.{ts,tsx,map,md}",
     "!**/{.turbo,.tanstack,.vscode,.git,.github}",
     "!**/{tsconfig.json,tsconfig.node.json,tsconfig.web.json}",
     "!**/{electron.vite.config.*,vite.config.*,components.json}",
     "!**/{.env,.env.*}",
+  ],
+
+  extraResources: [
+    {
+      from: "../../packages/db/drizzle",
+      to: "drizzle",
+    },
   ],
 
   asar: true,

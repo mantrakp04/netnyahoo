@@ -9,15 +9,18 @@
   },
   "scripts": {
     "check-types": "tsc --noEmit -p tsconfig.json",
+    "db:delete": "node ./scripts/delete-db.mjs",
     "db:generate": "drizzle-kit generate",
+    "db:push": "node --no-warnings ./scripts/push-db.mjs",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "drizzle-orm": "1.0.0-rc.3"
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@netnyahoo/config": "workspace:*",
-    "drizzle-kit": "^0.31.10",
-    "@types/node": "^25.9.3"
+    "@netnyahoo/env": "workspace:*",
+    "@types/node": "^25.9.3",
+    "drizzle-kit": "^0.31.10"
   }
 }

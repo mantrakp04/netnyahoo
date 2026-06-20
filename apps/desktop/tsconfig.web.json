@@ -6,11 +6,11 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["node"],
+    "types": ["node", "vite/client"],
     "noEmit": true,
     "paths": {
       "@/*": ["./src/renderer/src/*"]
     }
   },
-  "include": ["src/renderer/src/**/*", "src/preload/**/*"]
+  "include": ["src/renderer/src/**/*", "src/preload/**/*", "src/shared/**/*"]
 }
