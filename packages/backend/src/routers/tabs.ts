@@ -91,6 +91,7 @@ export const tabsRouter = router({
         .select({
           ...getTableColumns(tabs),
           groupName: tabGroups.name,
+          groupCollapsed: tabGroups.collapsed,
         })
         .from(tabs)
         .leftJoin(tabGroups, eq(tabGroups.id, tabs.groupId));
@@ -263,6 +264,116 @@ export const tabsRouter = router({
         .where(eq(tabGroups.id, input.id))
         .returning()
         .get();
+    }),
+
+  moveGroup: publicProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        targetId: z.string().optional(),
+        placement: z.enum(["before", "after", "end"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const groupTabs = await ctx.db
+        .select()
+        .from(tabs)
+        .where(eq(tabs.groupId, input.id))
+        .orderBy(asc(tabs.order))
+        .all();
+      const first = groupTabs[0];
+      if (!first) return { id: input.id };
+
+      const movingIds = new Set(groupTabs.map((tab) => tab.id));
+      const rows = (await ctx.db
+        .select()
+        .from(tabs)
+        .where(eq(tabs.spaceId, first.spaceId))
+        .orderBy(asc(tabs.order))
+        .all())
+        .filter((tab) => !movingIds.has(tab.id));
+
+      const targetIndex = input.targetId
+        ? rows.findIndex((tab) => tab.id === input.targetId)
+        : -1;
+
+      if (input.placement !== "end" && targetIndex >= 0) {
+        const insertAt = targetIndex + (input.placement === "after" ? 1 : 0);
+        rows.splice(insertAt, 0, ...groupTabs);
+      } else {
+        rows.push(...groupTabs);
+      }
+
+      for (const [order, tab] of rows.entries()) {
+        await ctx.db
+          .update(tabs)
+          .set({ order })
+          .where(eq(tabs.id, tab.id))
+          .run();
+      }
+
+      return { id: input.id };
+    }),
+
+  setGroupCollapsed: publicProcedure
+    .input(z.object({ id: z.string(), collapsed: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.db
+        .update(tabGroups)
+        .set({ collapsed: input.collapsed })
+        .where(eq(tabGroups.id, input.id))
+        .returning()
+        .get();
+    }),
+
+  ungroup: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db
+        .update(tabs)
+        .set({ groupId: null })
+        .where(eq(tabs.groupId, input.id))
+        .run();
+      await ctx.db.delete(tabGroups).where(eq(tabGroups.id, input.id)).run();
+      return { id: input.id };
+    }),
+
+  deleteGroup: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const groupTabs = await ctx.db
+        .select()
+        .from(tabs)
+        .where(eq(tabs.groupId, input.id))
+        .all();
+      const first = groupTabs[0];
+      if (!first) return { id: input.id };
+
+      const spaceId = first.spaceId;
+      const hadActive = groupTabs.some((tab) => tab.active);
+
+      await ctx.db.delete(tabs).where(eq(tabs.groupId, input.id)).run();
+      await ctx.db.delete(tabGroups).where(eq(tabGroups.id, input.id)).run();
+
+      // If the active tab was in the deleted group, focus the nearest remaining
+      // tab (mirrors the close procedure's focus handling).
+      if (hadActive) {
+        const remaining = await ctx.db
+          .select()
+          .from(tabs)
+          .where(eq(tabs.spaceId, spaceId))
+          .orderBy(asc(tabs.order))
+          .all();
+        const next = remaining[remaining.length - 1];
+        if (next) {
+          await ctx.db
+            .update(tabs)
+            .set({ active: true })
+            .where(eq(tabs.id, next.id))
+            .run();
+        }
+      }
+      return { id: input.id };
     }),
 
   activate: publicProcedure

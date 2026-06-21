@@ -167,7 +167,7 @@ export const Omnibox = forwardRef<OmniboxHandle>(function Omnibox(_props, ref) {
         spellCheck={false}
         placeholder="Search or Enter URL…"
         aria-label="Search or enter a URL"
-        className="h-7 pr-1.5 pl-7 text-xs"
+        className="sidebar-omnibox h-7 border-[color-mix(in_oklch,var(--sidebar-border)_96%,transparent)] bg-[var(--sidebar-control-surface)] pr-1.5 pl-7 text-xs shadow-[inset_0_1px_0_color-mix(in_oklch,var(--background)_72%,transparent),0_1px_1px_color-mix(in_oklch,var(--foreground)_5%,transparent)] dark:border-[color-mix(in_oklch,var(--sidebar-border)_88%,transparent)] dark:shadow-[inset_0_1px_0_color-mix(in_oklch,var(--foreground)_5%,transparent)]"
         onFocus={(e) => {
           if (blurTimer.current) window.clearTimeout(blurTimer.current);
           setFocused(true);

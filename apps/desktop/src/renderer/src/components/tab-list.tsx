@@ -1,6 +1,14 @@
 import { useMemo, useRef, useState, type DragEvent } from "react";
-import { Bookmark, Globe, History, Layers2, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import {
+  Bookmark,
+  ChevronRight,
+  Globe,
+  History,
+  Trash2,
+  Ungroup,
+  X,
+} from "lucide-react";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import {
   SIDEBAR_ACTIVE_LAYOUT_ID,
   useActiveIndicatorTransition,
@@ -14,12 +22,14 @@ type DropPlacement = "before" | "after" | "group" | "end";
 
 interface DropTarget {
   tabId?: string;
+  groupId?: string;
   placement: DropPlacement;
 }
 
 interface TabGroup {
   id: string;
   name: string | null;
+  collapsed: boolean;
   tabs: BrowserTab[];
 }
 
@@ -28,6 +38,9 @@ type TabListRow =
   | { type: "group"; group: TabGroup };
 
 const tabDragMime = "application/x-netnyahoo-tab";
+const groupDragMime = "application/x-netnyahoo-group";
+
+type DragSource = { type: "tab" | "group"; id: string };
 
 function Favicon({ tab }: { tab: BrowserTab }) {
   const internalPage = getInternalPage(tab.url);
@@ -54,36 +67,55 @@ function Favicon({ tab }: { tab: BrowserTab }) {
 }
 
 export function TabList() {
-  const { tabs, activeTab, activateTab, closeTab, moveTab, renameGroup } =
-    useBrowser();
+  const {
+    tabs,
+    activeTab,
+    activateTab,
+    closeTab,
+    moveTab,
+    moveGroup,
+    renameGroup,
+    setGroupCollapsed,
+    ungroupGroup,
+    deleteGroup,
+  } = useBrowser();
   const tabMotion = useTabMotion();
   const indicatorTransition = useActiveIndicatorTransition();
-  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [dragSource, setDragSource] = useState<DragSource | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
   const [groupNameDraft, setGroupNameDraft] = useState("");
   const suppressClickUntil = useRef(0);
   const rows = useMemo(() => buildTabRows(tabs), [tabs]);
 
-  const dragging = draggingTabId !== null;
+  const dragging = dragSource !== null;
+  const draggingTabId = dragSource?.type === "tab" ? dragSource.id : null;
+  const draggingGroupId = dragSource?.type === "group" ? dragSource.id : null;
 
-  const startDrag = (event: DragEvent<HTMLElement>, tab: BrowserTab) => {
+  const startTabDrag = (event: DragEvent<HTMLElement>, tab: BrowserTab) => {
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData(tabDragMime, tab.id);
-    setDraggingTabId(tab.id);
+    setDragSource({ type: "tab", id: tab.id });
+  };
+
+  const startGroupDrag = (event: DragEvent<HTMLElement>, group: TabGroup) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(groupDragMime, group.id);
+    setDragSource({ type: "group", id: group.id });
   };
 
   const finishDrag = () => {
     suppressClickUntil.current = Date.now() + 250;
-    setDraggingTabId(null);
+    setDragSource(null);
     setDropTarget(null);
   };
 
-  const updateRowDropTarget = (
+  // Tab dragged over a tab row — used by standalone and group-member tabs alike.
+  const updateTabDropTarget = (
     event: DragEvent<HTMLElement>,
     targetTab: BrowserTab,
   ) => {
-    if (!dragging || draggingTabId === targetTab.id) return;
+    if (dragSource?.type !== "tab" || dragSource.id === targetTab.id) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     setDropTarget({
@@ -93,6 +125,7 @@ export function TabList() {
   };
 
   const dropOnTab = (event: DragEvent<HTMLElement>, targetTab: BrowserTab) => {
+    if (dragSource?.type !== "tab") return;
     event.preventDefault();
     const id = event.dataTransfer.getData(tabDragMime) || draggingTabId;
     const placement = dropTarget?.tabId === targetTab.id
@@ -105,10 +138,65 @@ export function TabList() {
     finishDrag();
   };
 
+  // Standalone tabs also accept a dragged group docking before/after them.
+  const onStandaloneDragOver = (
+    event: DragEvent<HTMLElement>,
+    tab: BrowserTab,
+  ) => {
+    if (dragSource?.type !== "group") return updateTabDropTarget(event, tab);
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTarget({ tabId: tab.id, placement: getEdgePlacement(event) });
+  };
+
+  const onStandaloneDrop = (event: DragEvent<HTMLElement>, tab: BrowserTab) => {
+    if (dragSource?.type !== "group") return dropOnTab(event, tab);
+    event.preventDefault();
+    const id = event.dataTransfer.getData(groupDragMime) || draggingGroupId;
+    const placement =
+      dropTarget?.tabId === tab.id ? dropTarget.placement : getEdgePlacement(event);
+    if (id && (placement === "before" || placement === "after")) {
+      moveGroup({ id, targetId: tab.id, placement });
+    }
+    finishDrag();
+  };
+
+  // A group can be reordered relative to another group (never nested into it).
+  const updateGroupDropTarget = (
+    event: DragEvent<HTMLElement>,
+    group: TabGroup,
+  ) => {
+    if (dragSource?.type !== "group" || dragSource.id === group.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTarget({ groupId: group.id, placement: getEdgePlacement(event) });
+  };
+
+  const dropOnGroup = (event: DragEvent<HTMLElement>, group: TabGroup) => {
+    if (dragSource?.type !== "group" || dragSource.id === group.id) return;
+    event.preventDefault();
+    const id = event.dataTransfer.getData(groupDragMime) || draggingGroupId;
+    const placement =
+      dropTarget?.groupId === group.id
+        ? dropTarget.placement
+        : getEdgePlacement(event);
+    const boundary =
+      placement === "before" ? group.tabs[0] : group.tabs[group.tabs.length - 1];
+    if (id && boundary && (placement === "before" || placement === "after")) {
+      moveGroup({ id, targetId: boundary.id, placement });
+    }
+    finishDrag();
+  };
+
   const dropAtEnd = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
-    const id = event.dataTransfer.getData(tabDragMime) || draggingTabId;
-    if (id) moveTab({ id, placement: "end" });
+    if (dragSource?.type === "group") {
+      const id = event.dataTransfer.getData(groupDragMime) || draggingGroupId;
+      if (id) moveGroup({ id, placement: "end" });
+    } else {
+      const id = event.dataTransfer.getData(tabDragMime) || draggingTabId;
+      if (id) moveTab({ id, placement: "end" });
+    }
     finishDrag();
   };
 
@@ -139,88 +227,147 @@ export function TabList() {
         }
       }}
     >
-      <AnimatePresence initial={false} mode="popLayout">
-        {rows.map((row) =>
-          row.type === "group" ? (
-            <motion.div
-              key={row.group.id}
-              layout="position"
-              transition={indicatorTransition}
-              className="my-0.5 rounded-md bg-sidebar-accent/25 px-1 py-1"
-            >
-              <div className="text-muted-foreground flex h-5 items-center gap-1.5 px-1 text-[0.625rem] font-medium">
-                <Layers2 className="size-3" />
-                {renamingGroupId === row.group.id ? (
-                  <input
-                    autoFocus
-                    value={groupNameDraft}
-                    onChange={(event) => setGroupNameDraft(event.target.value)}
-                    onBlur={commitGroupRename}
-                    onFocus={(event) => event.currentTarget.select()}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") commitGroupRename();
-                      if (event.key === "Escape") cancelGroupRename();
-                    }}
-                    className="selection:bg-primary/20 min-w-0 flex-1 rounded-sm bg-transparent px-0 text-[0.625rem] font-medium text-sidebar-foreground outline-none"
-                    aria-label="Rename tab group"
-                  />
-                ) : (
+      <LayoutGroup id="sidebar-tabs">
+        <AnimatePresence initial={false} mode="popLayout">
+          {rows.map((row) =>
+            row.type === "group" ? (
+              <motion.div
+                key={row.group.id}
+                layout="position"
+                transition={indicatorTransition}
+                onDragOver={(event) => updateGroupDropTarget(event, row.group)}
+                onDrop={(event) => dropOnGroup(event, row.group)}
+                className={cn(
+                  "relative my-0.5 rounded-md bg-sidebar-accent/25 px-1 py-1",
+                  draggingGroupId === row.group.id && "opacity-45",
+                )}
+              >
+                {dropTarget?.groupId === row.group.id &&
+                  dropTarget.placement === "before" && <DropLine edge="top" />}
+                {dropTarget?.groupId === row.group.id &&
+                  dropTarget.placement === "after" && <DropLine edge="bottom" />}
+                <div
+                  draggable={renamingGroupId !== row.group.id}
+                  onDragStart={(event) => startGroupDrag(event, row.group)}
+                  onDragEnd={finishDrag}
+                  className="group/header text-muted-foreground flex h-5 cursor-grab items-center gap-1.5 px-1 text-[0.625rem] font-medium active:cursor-grabbing"
+                >
                   <button
                     type="button"
-                    onClick={() => startRenamingGroup(row.group)}
-                    className="hover:text-sidebar-foreground min-w-0 flex-1 truncate text-left transition-colors"
-                    aria-label={`Rename ${getGroupTitle(row.group)}`}
+                    onClick={() =>
+                      setGroupCollapsed(row.group.id, !row.group.collapsed)
+                    }
+                    className="hover:text-sidebar-foreground flex size-3 shrink-0 items-center justify-center transition-colors"
+                    aria-label={`${row.group.collapsed ? "Expand" : "Collapse"} ${getGroupTitle(row.group)}`}
+                    aria-expanded={!row.group.collapsed}
+                    title={row.group.collapsed ? "Expand" : "Collapse"}
                   >
-                    {getGroupTitle(row.group)}
+                    <ChevronRight
+                      className={cn(
+                        "size-3 transition-transform",
+                        !row.group.collapsed && "rotate-90",
+                      )}
+                    />
                   </button>
-                )}
-                <span className="tabular-nums">{row.group.tabs.length}</span>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                {row.group.tabs.map((tab) => (
-                  <TabRow
-                    key={tab.id}
-                    tab={tab}
-                    isActive={tab.id === activeTab?.id}
-                    isDragging={tab.id === draggingTabId}
-                    dropTarget={dropTarget}
-                    tabMotion={tabMotion}
-                    indicatorTransition={indicatorTransition}
-                    onActivate={() => {
-                      if (Date.now() < suppressClickUntil.current) return;
-                      activateTab(tab.id);
-                    }}
-                    onClose={() => closeTab(tab.id)}
-                    onDragStart={(event) => startDrag(event, tab)}
-                    onDragEnd={finishDrag}
-                    onDragOver={(event) => updateRowDropTarget(event, tab)}
-                    onDrop={(event) => dropOnTab(event, tab)}
-                  />
-                ))}
-              </div>
-            </motion.div>
-          ) : (
-            <TabRow
-              key={row.tab.id}
-              tab={row.tab}
-              isActive={row.tab.id === activeTab?.id}
-              isDragging={row.tab.id === draggingTabId}
-              dropTarget={dropTarget}
-              tabMotion={tabMotion}
-              indicatorTransition={indicatorTransition}
-              onActivate={() => {
-                if (Date.now() < suppressClickUntil.current) return;
-                activateTab(row.tab.id);
-              }}
-              onClose={() => closeTab(row.tab.id)}
-              onDragStart={(event) => startDrag(event, row.tab)}
-              onDragEnd={finishDrag}
-              onDragOver={(event) => updateRowDropTarget(event, row.tab)}
-              onDrop={(event) => dropOnTab(event, row.tab)}
-            />
-          ),
-        )}
-      </AnimatePresence>
+                  {renamingGroupId === row.group.id ? (
+                    <input
+                      autoFocus
+                      value={groupNameDraft}
+                      onChange={(event) =>
+                        setGroupNameDraft(event.target.value)
+                      }
+                      onBlur={commitGroupRename}
+                      onFocus={(event) => event.currentTarget.select()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") commitGroupRename();
+                        if (event.key === "Escape") cancelGroupRename();
+                      }}
+                      className="selection:bg-primary/20 min-w-0 flex-1 rounded-sm bg-transparent px-0 text-[0.625rem] font-medium text-sidebar-foreground outline-none"
+                      aria-label="Rename tab group"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startRenamingGroup(row.group)}
+                      className="hover:text-sidebar-foreground min-w-0 flex-1 truncate text-left transition-colors"
+                      aria-label={`Rename ${getGroupTitle(row.group)}`}
+                    >
+                      {getGroupTitle(row.group)}
+                    </button>
+                  )}
+                  <span className="tabular-nums group-hover/header:hidden">
+                    {row.group.tabs.length}
+                  </span>
+                  <div className="hidden items-center gap-0.5 group-hover/header:flex">
+                    <button
+                      type="button"
+                      onClick={() => ungroupGroup(row.group.id)}
+                      className="hover:bg-background/80 hover:text-sidebar-foreground flex size-4 items-center justify-center rounded-sm transition-colors"
+                      aria-label={`Ungroup ${getGroupTitle(row.group)}`}
+                      title="Ungroup"
+                    >
+                      <Ungroup className="size-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteGroup(row.group.id)}
+                      className="hover:bg-destructive/15 hover:text-destructive flex size-4 items-center justify-center rounded-sm transition-colors"
+                      aria-label={`Delete ${getGroupTitle(row.group)}`}
+                      title="Delete group"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <AnimatePresence initial={false}>
+                    {!row.group.collapsed &&
+                      row.group.tabs.map((tab) => (
+                        <TabRow
+                          key={tab.id}
+                          tab={tab}
+                          isActive={tab.id === activeTab?.id}
+                          isDragging={tab.id === draggingTabId}
+                          dropTarget={dropTarget}
+                          tabMotion={tabMotion}
+                          indicatorTransition={indicatorTransition}
+                          onActivate={() => {
+                            if (Date.now() < suppressClickUntil.current) return;
+                            activateTab(tab.id);
+                          }}
+                          onClose={() => closeTab(tab.id)}
+                          onDragStart={(event) => startTabDrag(event, tab)}
+                          onDragEnd={finishDrag}
+                          onDragOver={(event) => updateTabDropTarget(event, tab)}
+                          onDrop={(event) => dropOnTab(event, tab)}
+                        />
+                      ))}
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+            ) : (
+              <TabRow
+                key={row.tab.id}
+                tab={row.tab}
+                isActive={row.tab.id === activeTab?.id}
+                isDragging={row.tab.id === draggingTabId}
+                dropTarget={dropTarget}
+                tabMotion={tabMotion}
+                indicatorTransition={indicatorTransition}
+                onActivate={() => {
+                  if (Date.now() < suppressClickUntil.current) return;
+                  activateTab(row.tab.id);
+                }}
+                onClose={() => closeTab(row.tab.id)}
+                onDragStart={(event) => startTabDrag(event, row.tab)}
+                onDragEnd={finishDrag}
+                onDragOver={(event) => onStandaloneDragOver(event, row.tab)}
+                onDrop={(event) => onStandaloneDrop(event, row.tab)}
+              />
+            ),
+          )}
+        </AnimatePresence>
+      </LayoutGroup>
       {dragging && (
         <div
           className={cn(
@@ -278,7 +425,7 @@ function TabRow({
       onDragOver={onDragOver}
       onDrop={onDrop}
       className={cn(
-        "group relative h-7 w-full overflow-hidden rounded-md transition-colors",
+        "group relative h-7 w-full rounded-md transition-colors",
         !isActive && "hover:bg-sidebar-accent/50",
         isDragging && "opacity-45",
       )}
@@ -298,7 +445,7 @@ function TabRow({
           layout="position"
           transition={indicatorTransition}
           aria-hidden
-          className="bg-sidebar-accent absolute inset-0 block rounded-md shadow-sm"
+          className="sidebar-active-row absolute inset-0 block rounded-md"
         />
       )}
       <button
@@ -360,6 +507,11 @@ function getTabDropPlacement(event: DragEvent<HTMLElement>): DropPlacement {
   return "group";
 }
 
+function getEdgePlacement(event: DragEvent<HTMLElement>): "before" | "after" {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return (event.clientY - rect.top) / rect.height < 0.5 ? "before" : "after";
+}
+
 function buildTabRows(tabs: BrowserTab[]): TabListRow[] {
   const groups = new Map<string, BrowserTab[]>();
   const rows: TabListRow[] = [];
@@ -392,6 +544,7 @@ function buildTabRows(tabs: BrowserTab[]): TabListRow[] {
         id: tab.groupId,
         name:
           groupTabs.find((groupTab) => groupTab.groupName)?.groupName ?? null,
+        collapsed: groupTabs.some((groupTab) => groupTab.groupCollapsed),
         tabs: groupTabs,
       },
     });

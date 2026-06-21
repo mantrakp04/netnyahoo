@@ -2,6 +2,7 @@ import { BrowserWindow, Menu, app } from "electron";
 import type { Input, MenuItemConstructorOptions, WebContents } from "electron";
 import {
   BROWSER_COMMAND_CHANNEL,
+  isRepeatableBrowserCommand,
   type BrowserCommand,
 } from "../shared/browser-commands";
 
@@ -144,9 +145,20 @@ function registerInputShortcuts() {
 
 function getBrowserCommand(input: Input): BrowserCommand | null {
   if (input.type !== "keyDown") return null;
-  if (input.isAutoRepeat || input.isComposing) return null;
+  if (input.isComposing) return null;
   if (input.alt || (!input.meta && !input.control)) return null;
 
+  const command = resolveBrowserCommand(input);
+  if (!command) return null;
+
+  // OS key auto-repeat fires while the shortcut is held. Pass it through only
+  // for long-press commands; everything else stays one-shot per press.
+  if (input.isAutoRepeat && !isRepeatableBrowserCommand(command)) return null;
+
+  return command;
+}
+
+function resolveBrowserCommand(input: Input): BrowserCommand | null {
   const key = input.key.toLowerCase();
   const code = input.code.toLowerCase();
 

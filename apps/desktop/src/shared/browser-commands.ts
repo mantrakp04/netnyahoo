@@ -12,6 +12,20 @@ export const browserCommands = [
 
 export type BrowserCommand = (typeof browserCommands)[number];
 
+/**
+ * Commands that should keep firing while their shortcut is held down
+ * (OS key auto-repeat / long-press). Everything else fires once per press.
+ * Add a command here to give it long-press behavior — e.g. holding Cmd+W to
+ * auto-close tabs one after another.
+ */
+export const repeatableBrowserCommands = new Set<BrowserCommand>([
+  "close-tab",
+]);
+
+export function isRepeatableBrowserCommand(command: BrowserCommand): boolean {
+  return repeatableBrowserCommands.has(command);
+}
+
 export function isBrowserCommand(value: unknown): value is BrowserCommand {
   return (
     typeof value === "string" &&

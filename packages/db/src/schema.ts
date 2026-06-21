@@ -30,6 +30,9 @@ export const tabGroups = sqliteTable(
       .notNull()
       .references(() => spaces.id, { onDelete: "cascade" }),
     name: text("name").notNull().default("Tab Group"),
+    collapsed: integer("collapsed", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: createdAt(),
   },
   (table) => [index("tab_groups_space_idx").on(table.spaceId)],

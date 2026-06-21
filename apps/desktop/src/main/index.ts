@@ -14,7 +14,10 @@ import icon from "../../resources/icon.png?asset";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
+const APP_NAME = "netnyahoo";
 let pendingWindowCreate: Promise<BrowserWindow> | null = null;
+
+app.setName(APP_NAME);
 
 // In dev, expose a CDP endpoint so the renderer can be inspected/automated.
 if (isDev) app.commandLine.appendSwitch("remote-debugging-port", "9222");
@@ -39,7 +42,8 @@ async function createWindowInner() {
     icon,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 14 },
-    backgroundColor: "#1a1a1e",
+    vibrancy: "under-window",
+    visualEffectState: "active",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
@@ -67,6 +71,8 @@ async function createWindowInner() {
 }
 
 app.whenReady().then(async () => {
+  app.setAboutPanelOptions({ applicationName: APP_NAME });
+
   // Show the logo in the dev dock — packaged macOS builds use the bundle icon.
   if (process.platform === "darwin" && isDev) app.dock?.setIcon(icon);
   await initDb(env.NETNYAHOO_DB_URL, {

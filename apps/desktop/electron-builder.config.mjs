@@ -74,6 +74,7 @@ export default {
 
   mac: {
     category: "public.app-category.productivity",
+    icon: "build/icon.icns",
     target: [{ target: "dmg", arch: ["arm64", "x64"] }],
     // Hardened runtime is mandatory for notarization.
     hardenedRuntime: true,

@@ -25,7 +25,10 @@ type SerializedTab = Omit<Tab, "createdAt" | "lastAccessedAt"> & {
   lastAccessedAt: string;
 };
 
-export type BrowserTab = SerializedTab & { groupName: string | null };
+export type BrowserTab = SerializedTab & {
+  groupName: string | null;
+  groupCollapsed: boolean | null;
+};
 
 interface NavState {
   loading: boolean;
@@ -51,6 +54,8 @@ interface BrowserContextValue {
   activeTab: BrowserTab | undefined;
   nav: NavState;
   newTabAnimationId: string | null;
+  newTabDrafts: Record<string, string>;
+  setNewTabDraft: (id: string, value: string) => void;
   registerWebview: (id: string, el: WebviewTag | null) => void;
   setNav: (id: string, state: Partial<NavState>) => void;
   finishNewTabAnimation: (id: string) => void;
@@ -64,7 +69,15 @@ interface BrowserContextValue {
     targetId?: string;
     placement: "before" | "after" | "group" | "end";
   }) => void;
+  moveGroup: (input: {
+    id: string;
+    targetId?: string;
+    placement: "before" | "after" | "end";
+  }) => void;
   renameGroup: (id: string, name: string) => void;
+  setGroupCollapsed: (id: string, collapsed: boolean) => void;
+  ungroupGroup: (id: string) => void;
+  deleteGroup: (id: string) => void;
   patchTab: (
     id: string,
     patch: Partial<Pick<Tab, "title" | "url" | "favicon">>,
@@ -87,6 +100,8 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
   const recentlyClosedTabs = useRef<ClosedTab[]>([]);
   const [navByTab, setNavByTab] = useState<Record<string, NavState>>({});
   const [newTabAnimationId, setNewTabAnimationId] = useState<string | null>(null);
+  // Per-tab new-tab search drafts so switching tabs doesn't wipe what was typed.
+  const [newTabDrafts, setNewTabDrafts] = useState<Record<string, string>>({});
 
   const spacesQuery = useQuery(trpc.spaces.list.queryOptions());
   const spaceId = spacesQuery.data?.[0]?.id;
@@ -143,7 +158,28 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
       onSuccess: invalidateTabs,
     }),
   );
+  const moveGroupMut = useMutation(
+    trpc.tabs.moveGroup.mutationOptions({
+      onMutate: cancelTabsRefetch,
+      onSuccess: invalidateTabs,
+    }),
+  );
   const renameGroupMut = useMutation(trpc.tabs.renameGroup.mutationOptions());
+  const setGroupCollapsedMut = useMutation(
+    trpc.tabs.setGroupCollapsed.mutationOptions(),
+  );
+  const ungroupMut = useMutation(
+    trpc.tabs.ungroup.mutationOptions({
+      onMutate: cancelTabsRefetch,
+      onSuccess: invalidateTabs,
+    }),
+  );
+  const deleteGroupMut = useMutation(
+    trpc.tabs.deleteGroup.mutationOptions({
+      onMutate: cancelTabsRefetch,
+      onSuccess: invalidateTabs,
+    }),
+  );
   const updateMut = useMutation(trpc.tabs.update.mutationOptions());
   const invalidateHistory = useCallback(
     () => qc.invalidateQueries({ queryKey: trpc.history.list.queryKey() }),
@@ -191,6 +227,12 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     setNewTabAnimationId((current) => (current === id ? null : current));
   }, []);
 
+  const setNewTabDraft = useCallback((id: string, value: string) => {
+    setNewTabDrafts((prev) =>
+      prev[id] === value ? prev : { ...prev, [id]: value },
+    );
+  }, []);
+
   const openTab = useCallback(
     (input?: string) => {
       if (!spaceId) return;
@@ -225,7 +267,7 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     const tab = recentlyClosedTabs.current.pop();
     if (!tab) return;
 
-    const request = enqueueCreateTab({
+    void enqueueCreateTab({
       spaceId,
       url: tab.url,
       title: tab.title,
@@ -233,14 +275,9 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
       groupId: tab.groupId,
       pinned: tab.pinned,
       activate: true,
+    }).catch(() => {
+      recentlyClosedTabs.current.push(tab);
     });
-    void request
-      .then((restored) => {
-        if (restored.url === "about:blank") setNewTabAnimationId(restored.id);
-      })
-      .catch(() => {
-        recentlyClosedTabs.current.push(tab);
-      });
   }, [enqueueCreateTab, spaceId]);
 
   const activateTab = useCallback(
@@ -252,6 +289,11 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
       const tab = tabs.find((candidate) => candidate.id === id);
       const isLastTab = tabs.length === 1 && tabs[0]?.id === id;
       webviews.current.delete(id);
+      setNewTabDrafts((prev) => {
+        if (!(id in prev)) return prev;
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      });
       closeMut.mutate(
         { id },
         {
@@ -283,6 +325,14 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     },
     [moveMut],
   );
+  const moveGroup = useCallback(
+    (input: {
+      id: string;
+      targetId?: string;
+      placement: "before" | "after" | "end";
+    }) => moveGroupMut.mutate(input),
+    [moveGroupMut],
+  );
   const renameGroup = useCallback(
     (id: string, name: string) => {
       const nextName = name.trim();
@@ -301,6 +351,38 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
       );
     },
     [invalidateTabs, qc, renameGroupMut, trpc.tabs.list],
+  );
+
+  const setGroupCollapsed = useCallback(
+    (id: string, collapsed: boolean) => {
+      qc.setQueriesData(
+        { queryKey: trpc.tabs.list.queryKey() },
+        (old: BrowserTab[] | undefined) =>
+          old?.map((tab) =>
+            tab.groupId === id ? { ...tab, groupCollapsed: collapsed } : tab,
+          ),
+      );
+      setGroupCollapsedMut.mutate(
+        { id, collapsed },
+        { onError: () => void invalidateTabs() },
+      );
+    },
+    [invalidateTabs, qc, setGroupCollapsedMut, trpc.tabs.list],
+  );
+
+  const ungroupGroup = useCallback(
+    (id: string) => ungroupMut.mutate({ id }),
+    [ungroupMut],
+  );
+  const deleteGroup = useCallback(
+    (id: string) => {
+      const isLastTabs = tabs.every((tab) => tab.groupId === id);
+      deleteGroupMut.mutate(
+        { id },
+        { onSuccess: () => isLastTabs && window.close() },
+      );
+    },
+    [deleteGroupMut, tabs],
   );
 
   const patchTab = useCallback(
@@ -402,6 +484,8 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     activeTab,
     nav,
     newTabAnimationId,
+    newTabDrafts,
+    setNewTabDraft,
     registerWebview,
     setNav,
     finishNewTabAnimation,
@@ -411,7 +495,11 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     activateTab,
     closeTab,
     moveTab,
+    moveGroup,
     renameGroup,
+    setGroupCollapsed,
+    ungroupGroup,
+    deleteGroup,
     patchTab,
     recordVisit,
     updateHistoryFavicon,

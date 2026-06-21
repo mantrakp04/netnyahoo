@@ -13,6 +13,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/sidebar";
 import { BrowserArea } from "@/components/browser-area";
+import { WebglGlow } from "@/components/webgl-glow";
 import type { OmniboxHandle } from "@/components/omnibox";
 import { BrowserProvider, useBrowser } from "@/hooks/use-browser";
 import { ThemeProvider } from "@/hooks/use-theme";
@@ -35,6 +36,7 @@ function RootLayout() {
       <TooltipProvider delayDuration={300}>
         <BrowserProvider>
           <Shell />
+          <Outlet />
         </BrowserProvider>
       </TooltipProvider>
     </ThemeProvider>
@@ -195,6 +197,7 @@ function Shell() {
 
   return (
     <div className="theme-gradient relative flex h-full w-full overflow-hidden">
+      <WebglGlow variant="shell" />
       {sidebarCollapsed && sidebarPeeked && (
         <div
           aria-hidden
@@ -216,7 +219,7 @@ function Shell() {
             animate={getSidebarMotionState("visible", reduceMotion)}
             exit={getSidebarMotionState("hidden", reduceMotion)}
             transition={{
-              duration: reduceMotion ? 0.12 : 0.22,
+              duration: reduceMotion ? 0.12 : 0.24,
               ease: sidebarMotionEase,
             }}
             onPointerEnter={keepSidebarPeeked}
@@ -259,9 +262,8 @@ function Shell() {
           )}
         />
       )}
-      <main className="relative flex-1 p-1">
+      <main className="main-view relative z-10 flex-1 p-1 pl-0">
         <BrowserArea />
-        <Outlet />
       </main>
     </div>
   );
@@ -275,8 +277,15 @@ function getSidebarMotionState(
   state: "hidden" | "visible",
   reduceMotion: boolean | null,
 ) {
-  if (state === "visible") return { opacity: 1, x: 0, scale: 1 };
+  if (state === "visible") {
+    return { opacity: 1, x: 0, scale: 1, filter: "blur(0px)" };
+  }
 
-  const x = reduceMotion ? 0 : sidebarSide === "left" ? -18 : 18;
-  return { opacity: 0, x, scale: reduceMotion ? 1 : 0.985 };
+  const x = reduceMotion ? 0 : sidebarSide === "left" ? -22 : 22;
+  return {
+    opacity: 0,
+    x,
+    scale: reduceMotion ? 1 : 0.992,
+    filter: reduceMotion ? "blur(0px)" : "blur(5px)",
+  };
 }

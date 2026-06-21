@@ -1,0 +1,1 @@
+ALTER TABLE `tab_groups` ADD `collapsed` integer DEFAULT false NOT NULL;

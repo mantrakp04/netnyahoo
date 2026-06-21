@@ -26,7 +26,7 @@ export function ThemeToggle() {
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground size-6 shrink-0"
+          className="text-sidebar-foreground/80 size-6 shrink-0"
           onClick={() => setTheme(next)}
           aria-label={`Theme: ${META[theme].label}. Switch to ${META[next].label}.`}
         >

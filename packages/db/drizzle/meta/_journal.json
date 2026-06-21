@@ -15,6 +15,13 @@
       "when": 1781929504005,
       "tag": "0001_right_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782021732888,
+      "tag": "0002_long_proteus",
+      "breakpoints": true
     }
   ]
 }

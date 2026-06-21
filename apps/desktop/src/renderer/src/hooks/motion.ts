@@ -67,7 +67,7 @@ export function useActiveIndicatorTransition(): Transition {
     : { type: "spring", stiffness: 500, damping: 42, mass: 0.9 };
 }
 
-/** New-tab page fade-in (replaces the `new-tab-page-in` keyframes). */
+/** New-tab page motion for slide-over geometry; CSS owns the reveal blur. */
 export function useNewTabPageMotion(slideOver = false) {
   const reduceMotion = useReducedMotion();
   if (slideOver) {
@@ -84,36 +84,13 @@ export function useNewTabPageMotion(slideOver = false) {
         };
   }
 
-  return {
-    initial: { opacity: 0 },
-    animate: { opacity: 1 },
-    transition: reduceMotion
-      ? { duration: 0 }
-      : { duration: 0.14, ease: diaEase },
-  };
+  return { initial: false };
 }
 
-/** New-tab command-card settle (replaces the `new-tab-card-settle` keyframes). */
+/** New-tab command-card reveal is CSS-owned so opacity never sticks inline. */
 export function useNewTabCardMotion(enabled = true) {
   const reduceMotion = useReducedMotion();
-  if (!enabled) {
-    return {
-      initial: false,
-      animate: { opacity: 1, y: 0, scale: 1 },
-      transition: { duration: 0 },
-    };
-  }
+  if (!enabled || reduceMotion) return { initial: false };
 
-  return reduceMotion
-    ? {
-        initial: { opacity: 0 },
-        animate: { opacity: 1 },
-        transition: { duration: 0 },
-      }
-    : {
-        // 0.18rem ≈ 2.88px — kept from the original keyframes.
-        initial: { opacity: 0, y: 2.88, scale: 0.999 },
-        animate: { opacity: 1, y: 0, scale: 1 },
-        transition: { duration: 0.18, ease: diaEase },
-      };
+  return { initial: false };
 }

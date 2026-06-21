@@ -5,6 +5,7 @@ import {
   useState,
   type KeyboardEvent,
   type PointerEvent,
+  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -20,6 +21,7 @@ import {
   Plus,
   RotateCw,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { TabList } from "@/components/tab-list";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -34,10 +36,37 @@ import { INTERNAL_PAGE_URLS, isInternalPageUrl } from "@/lib/internal-pages";
 import { cn } from "@/lib/utils";
 
 const sidebarWidthStorageKey = "netnyahoo:sidebar-width";
-const sidebarMinWidth = 196;
-const sidebarDefaultWidth = 256;
+const sidebarMinWidth = 248;
+const sidebarDefaultWidth = 248;
 const sidebarMaxWidth = 380;
 type SidebarSide = "left" | "right";
+
+const sidebarPanelStyle = {
+  expanded: {
+    background: "transparent",
+  },
+  peeked: {
+    background:
+      "linear-gradient(180deg, var(--sidebar-material), color-mix(in oklch, var(--sidebar-material) 78%, transparent))",
+    borderColor: "color-mix(in oklch, var(--sidebar-border) 88%, transparent)",
+    boxShadow:
+      "0 22px 64px var(--shadow-deep), inset 0 1px 0 color-mix(in oklch, var(--foreground) 7%, transparent)",
+    WebkitBackdropFilter: "blur(26px) saturate(1.22) brightness(0.98)",
+    backdropFilter: "blur(26px) saturate(1.22) brightness(0.98)",
+  },
+} satisfies Record<"expanded" | "peeked", CSSProperties>;
+
+const newTabButtonStyle = {
+  background: "var(--sidebar-button-surface)",
+  borderColor: "color-mix(in oklch, var(--sidebar-border) 0%, transparent)",
+  boxShadow: "none",
+  color: "color-mix(in oklch, var(--sidebar-foreground) 86%, transparent)",
+} satisfies CSSProperties;
+
+const newTabButtonHoverStyle = {
+  background: "var(--sidebar-button-hover-surface)",
+  borderColor: "color-mix(in oklch, var(--sidebar-border) 44%, transparent)",
+} satisfies CSSProperties;
 
 export function Sidebar({
   omniboxRef,
@@ -102,13 +131,17 @@ export function Sidebar({
   }, []);
 
   return (
-    <aside
+    <motion.aside
       className={cn(
-        "text-sidebar-foreground bg-sidebar relative z-10 flex h-full shrink-0 flex-col",
+        "sidebar-panel text-sidebar-foreground relative z-10 flex h-full shrink-0 flex-col",
         isCollapsed &&
-          "overflow-hidden rounded-xl border border-sidebar-border/70 bg-sidebar/95 shadow-[0_20px_54px_rgb(0_0_0/0.34),0_0_0_1px_rgb(255_255_255/0.04)_inset] backdrop-blur-xl",
+          "overflow-hidden rounded-xl border border-sidebar-border/70 shadow-[0_20px_54px_rgb(0_0_0/0.34),0_0_0_1px_rgb(255_255_255/0.04)_inset]",
       )}
+      animate={isCollapsed ? "peeked" : "expanded"}
+      initial={false}
       style={{ width: sidebarWidth }}
+      transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+      variants={sidebarPanelStyle}
       data-sidebar-state={isCollapsed ? "peeked" : "expanded"}
     >
       {/* Draggable header with nav controls, beside the traffic lights. */}
@@ -164,7 +197,7 @@ export function Sidebar({
           className={cn(
             "px-2 pt-2",
             tabsOverflow
-              ? "h-full overflow-y-auto pb-2 [scrollbar-gutter:stable]"
+              ? "no-scrollbar h-full overflow-y-auto pb-2 [scrollbar-gutter:auto]"
               : "shrink-0 overflow-visible pb-0",
           )}
         >
@@ -183,12 +216,19 @@ export function Sidebar({
           >
             <Button
               type="button"
+              variant="ghost"
               size="lg"
+              asChild
               onClick={() => openTab()}
-              className="w-full justify-start bg-primary/85 backdrop-blur-md supports-backdrop-filter:bg-primary/70 hover:bg-primary/90"
+              className="w-full justify-start border"
             >
-              <Plus className="size-4" />
-              New Tab
+              <motion.button
+                style={newTabButtonStyle}
+                whileHover={newTabButtonHoverStyle}
+              >
+                <Plus className="size-4" />
+                New Tab
+              </motion.button>
             </Button>
           </div>
         </div>
@@ -218,7 +258,7 @@ export function Sidebar({
         side={side}
         onWidthChange={setSidebarWidth}
       />
-    </aside>
+    </motion.aside>
   );
 }
 
@@ -353,8 +393,8 @@ function FooterButton({
       className={cn(
         "flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium transition-colors",
         active
-          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-          : "text-muted-foreground hover:bg-sidebar-accent/50",
+          ? "bg-sidebar-accent/80 text-sidebar-accent-foreground shadow-sm"
+          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/45",
       )}
     >
       {children}
