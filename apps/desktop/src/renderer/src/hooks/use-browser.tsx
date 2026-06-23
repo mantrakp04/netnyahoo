@@ -289,6 +289,7 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
       const tab = tabs.find((candidate) => candidate.id === id);
       const isLastTab = tabs.length === 1 && tabs[0]?.id === id;
       webviews.current.delete(id);
+      setNewTabAnimationId((current) => (current === id ? null : current));
       setNewTabDrafts((prev) => {
         if (!(id in prev)) return prev;
         const { [id]: _, ...rest } = prev;

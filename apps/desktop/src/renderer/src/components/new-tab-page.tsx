@@ -22,7 +22,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { WebglGlow } from "@/components/webgl-glow";
-import { useNewTabCardMotion, useNewTabPageMotion } from "@/hooks/motion";
+import { useNewTabInputMotion } from "@/hooks/motion";
 import { useBrowser } from "@/hooks/use-browser";
 import {
   getInternalPage,
@@ -36,20 +36,16 @@ import { cn, prettyUrl } from "@/lib/utils";
 // cmdk's Command forwards its ref to a <div>, so Motion can drive it directly.
 const MotionCommand = motion.create(CommandPrimitive);
 const revealTransition = { duration: 0.24, ease: [0.22, 1, 0.36, 1] } as const;
-const pageRevealMotion = {
-  initial: { opacity: 0, filter: "blur(3px)" },
-  animate: { opacity: 1, filter: "blur(0)" },
-  transition: revealTransition,
-};
 const cardRevealMotion = {
-  initial: { opacity: 0, filter: "blur(5px)", y: 8, scale: 0.986 },
-  animate: { opacity: 1, filter: "blur(0)", y: 0, scale: 1 },
+  initial: { opacity: 0, scale: 0.95 },
+  animate: { opacity: 1, scale: 1 },
   transition: revealTransition,
 };
 
 interface NewTabPageProps {
   tabId: string;
   slideOver: boolean;
+  reveal: boolean;
   onSlideComplete: () => void;
 }
 
@@ -62,7 +58,12 @@ interface Suggestion {
   action: () => void;
 }
 
-export function NewTabPage({ tabId, slideOver, onSlideComplete }: NewTabPageProps) {
+export function NewTabPage({
+  tabId,
+  slideOver,
+  reveal,
+  onSlideComplete,
+}: NewTabPageProps) {
   const trpc = useTRPC();
   const { navigate, openTab, newTabDrafts, setNewTabDraft } = useBrowser();
   // Draft lives in the browser store so it survives this page unmounting on tab switch.
@@ -71,13 +72,15 @@ export function NewTabPage({ tabId, slideOver, onSlideComplete }: NewTabPageProp
   const [listening, setListening] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const pageMotion = useNewTabPageMotion(slideOver);
-  const cardMotion = useNewTabCardMotion(!slideOver);
-  const pageReveal = slideOver ? {} : pageRevealMotion;
-  const cardReveal = slideOver ? cardMotion : cardRevealMotion;
+  const inputMotion = useNewTabInputMotion(slideOver);
+  const commandMotion = slideOver ? inputMotion : reveal ? cardRevealMotion : null;
+  const CommandCard = commandMotion ? MotionCommand : CommandPrimitive;
   const trimmed = query.trim();
   const hasQuery = trimmed.length > 0;
   const showSuggestions = hasQuery && !listening;
+  const finishIntro = () => {
+    if (slideOver || reveal) onSlideComplete();
+  };
 
   const historyQuery = useQuery(
     trpc.history.list.queryOptions(
@@ -193,21 +196,15 @@ export function NewTabPage({ tabId, slideOver, onSlideComplete }: NewTabPageProp
   }, [bookmarksQuery.data, hasQuery, historyQuery.data, navigate, openTab, trimmed]);
 
   return (
-    <motion.div
-      {...pageMotion}
-      {...pageReveal}
-      onAnimationComplete={onSlideComplete}
-      className="new-tab-page absolute inset-0 z-20 overflow-hidden bg-[var(--new-tab-scrim)] px-6 backdrop-blur-[22px] backdrop-saturate-[1.08] will-change-transform dark:backdrop-blur-[30px]"
-    >
-      <WebglGlow variant="new-tab" tabId={tabId} />
+    <div className="new-tab-page absolute inset-0 z-20 overflow-hidden bg-[var(--new-tab-scrim)] px-6 backdrop-blur-[22px] backdrop-saturate-[1.08] dark:backdrop-blur-[30px]">
+      <WebglGlow variant="new-tab" tabId={tabId} playIntro={reveal} />
       {/* Anchor by half the *compact* card height (~57px) so suggestions grow downward without shoving the input box up. */}
       <div className="new-tab-launcher absolute top-1/2 left-1/2 z-[1] flex w-[clamp(32rem,44vw,43.25rem)] -translate-x-1/2 -translate-y-[57px] flex-col items-center">
         <div
           aria-hidden
           className="new-tab-emblem-shell pointer-events-none absolute bottom-full left-1/2 mb-7 size-[4.25rem] -translate-x-1/2"
         >
-          <motion.img
-            {...cardReveal}
+          <img
             src={logoAi}
             alt=""
             draggable={false}
@@ -215,10 +212,11 @@ export function NewTabPage({ tabId, slideOver, onSlideComplete }: NewTabPageProp
           />
         </div>
         <div className="new-tab-command-stack relative isolate w-full">
-          <MotionCommand
-            {...cardReveal}
+          <CommandCard
+            {...(commandMotion ?? {})}
+            onAnimationComplete={commandMotion ? finishIntro : undefined}
             shouldFilter={false}
-            className="new-tab-command-card text-popover-foreground relative z-10 flex w-full flex-col overflow-hidden rounded-[1.35rem] border border-[color-mix(in_oklch,var(--foreground)_8%,transparent)] bg-[var(--new-tab-card-surface)] shadow-[0_24px_76px_color-mix(in_oklch,var(--new-tab-glow)_12%,transparent),0_14px_44px_color-mix(in_oklch,var(--shadow-deep)_34%,transparent),inset_0_1px_0_color-mix(in_oklch,white_20%,transparent)] backdrop-blur-[24px] backdrop-saturate-[1.08] dark:border-[color-mix(in_oklch,white_7%,transparent)] dark:shadow-[0_24px_82px_color-mix(in_oklch,var(--new-tab-glow)_15%,transparent),0_16px_48px_color-mix(in_oklch,black_26%,transparent),inset_0_1px_0_color-mix(in_oklch,white_4%,transparent)] dark:backdrop-blur-[26px] dark:backdrop-saturate-[1.06]"
+            className="new-tab-command-card text-popover-foreground relative z-10 flex w-full flex-col overflow-hidden rounded-[1.35rem] border border-[color-mix(in_oklch,var(--foreground)_8%,transparent)] bg-[var(--new-tab-card-surface)] shadow-[inset_0_1px_0_color-mix(in_oklch,white_20%,transparent)] backdrop-blur-[24px] backdrop-saturate-[1.08] will-change-transform dark:border-[color-mix(in_oklch,white_7%,transparent)] dark:shadow-[inset_0_1px_0_color-mix(in_oklch,white_4%,transparent)] dark:backdrop-blur-[26px] dark:backdrop-saturate-[1.06]"
           >
             <div className="new-tab-command-input-row flex min-h-[3.3rem] items-center gap-3.5 px-5 pt-4 pb-2 text-foreground">
               <Search className="text-muted-foreground size-5 shrink-0" />
@@ -327,10 +325,10 @@ export function NewTabPage({ tabId, slideOver, onSlideComplete }: NewTabPageProp
                 </>
               )}
             </div>
-          </MotionCommand>
+          </CommandCard>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 

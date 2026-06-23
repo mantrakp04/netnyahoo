@@ -117,6 +117,14 @@ export function BrowserArea() {
     incomingId: string;
     outgoingId: string;
   } | null>(null);
+  const pendingSlideOver =
+    activeTab?.id &&
+    previousActiveId.current &&
+    activeTab.id !== previousActiveId.current &&
+    activeTab.id === newTabAnimationId &&
+    activeTab.url === "about:blank"
+      ? { incomingId: activeTab.id, outgoingId: previousActiveId.current }
+      : null;
 
   useEffect(() => {
     const nextActiveId = activeTab?.id;
@@ -136,15 +144,17 @@ export function BrowserArea() {
     previousActiveId.current = nextActiveId;
   }, [activeTab?.id, activeTab?.url, newTabAnimationId]);
 
+  const currentSlideOver =
+    slideOver?.incomingId === activeTab?.id ? slideOver : pendingSlideOver;
   const activeSlideOver =
-    !!activeTab && slideOver?.incomingId === activeTab.id;
+    !!activeTab && currentSlideOver?.incomingId === activeTab.id;
   const activeInternalPage = getInternalPage(activeTab?.url);
   const visibleWebviewId =
     activeInternalPage
       ? undefined
       : activeTab?.url === "about:blank"
       ? activeSlideOver
-        ? slideOver.outgoingId
+        ? currentSlideOver.outgoingId
         : undefined
       : activeTab?.id;
 
@@ -167,6 +177,7 @@ export function BrowserArea() {
             key={activeTab.id}
             tabId={activeTab.id}
             slideOver={activeSlideOver}
+            reveal={activeTab.id === newTabAnimationId}
             onSlideComplete={() => {
               setSlideOver((current) =>
                 current?.incomingId === activeTab.id ? null : current,

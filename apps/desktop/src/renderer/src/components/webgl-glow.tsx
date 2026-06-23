@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { newTabIntroDurationMs } from "@/hooks/motion";
 import { useTheme } from "@/hooks/use-theme";
 
 type WebglGlowVariant = "shell" | "new-tab";
@@ -6,6 +7,7 @@ type WebglGlowVariant = "shell" | "new-tab";
 interface WebglGlowProps {
   variant: WebglGlowVariant;
   tabId?: string;
+  playIntro?: boolean;
 }
 
 const vertexShaderSource = `
@@ -19,7 +21,7 @@ void main() {
 `;
 
 const fragmentShaderSource = `
-precision mediump float;
+precision highp float;
 
 uniform vec2 u_resolution;
 uniform float u_time;
@@ -58,6 +60,10 @@ float noise(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
 
+float dither(vec2 p) {
+  return (noise(p) - 0.5) / 255.0;
+}
+
 vec3 lightPalette(float index) {
   if (index < 0.5) return vec3(0.965, 0.984, 0.976);
   if (index < 1.5) return vec3(0.815, 0.918, 0.882);
@@ -89,10 +95,10 @@ vec4 shellGlow(vec2 p) {
   float sidebarMask = 1.0 - smoothstep(sidebarEdge - 0.012, sidebarEdge + 0.018, p.x);
   base = mix(base, sidebar, sidebarMask * (0.24 + 0.06 * u_dark));
 
-  float topWash = ellipse(p, vec2(0.58, -0.12), vec2(0.66, 0.38));
-  float mainBreath = ellipse(p, vec2(u_card_rect.x + u_card_rect.z * 0.5, u_card_rect.y + u_card_rect.w * 0.68), vec2(0.46, 0.24));
-  float sidebarBloom = ellipse(p, vec2(max(sidebarEdge * 0.45, 0.08), 0.20), vec2(0.22, 0.48));
-  float frameGlow = rectGlow(p, u_main_rect, 0.035, 14.0);
+  float topWash = ellipse(p, vec2(0.58, -0.12), vec2(0.825, 0.475));
+  float mainBreath = ellipse(p, vec2(u_card_rect.x + u_card_rect.z * 0.5, u_card_rect.y + u_card_rect.w * 0.68), vec2(0.575, 0.300));
+  float sidebarBloom = ellipse(p, vec2(max(sidebarEdge * 0.45, 0.08), 0.20), vec2(0.275, 0.600));
+  float frameGlow = rectGlow(p, u_main_rect, 0.044, 11.2);
   float pulse = 0.96 + 0.04 * sin(u_time * 0.34);
 
   vec3 color = base;
@@ -111,14 +117,12 @@ vec4 shellGlow(vec2 p) {
 }
 
 vec4 newTabGlow(vec2 p) {
-  vec3 glow = u_primary;
-  vec3 glowSoft = mix(u_primary, vec3(1.0), mix(0.34, 0.18, u_dark));
-  vec3 shadowTint = mix(glow, vec3(0.08, 0.07, 0.075), mix(0.44, 0.60, u_dark));
+  vec3 glow = mix(u_primary, mix(u_primary, vec3(0.92, 0.58, 0.72), 0.36), u_dark);
+  vec3 glowSoft = mix(glow, vec3(1.0, 0.86, 0.91), mix(0.28, 0.14, u_dark));
+  vec3 shadowTint = mix(glow, vec3(0.09, 0.075, 0.08), mix(0.58, 0.70, u_dark));
 
-  // Dia's new-tab light reads as a material glow attached to the search card:
-  // a tight rim around the rounded rect plus a wide, blurred shelf below it.
-  // Keep the source geometric instead of free-floating so every frame feels
-  // docked to the input rather than animated in the background.
+  // Keep the source geometric and tight to the card so it does not pool under
+  // the command surface.
   vec2 inset = 18.0 / u_resolution;
   vec4 rect = vec4(u_card_rect.xy + inset, u_card_rect.zw - inset * 2.0);
   rect.y += (1.0 - u_intro) * 0.40;
@@ -127,43 +131,41 @@ vec4 newTabGlow(vec2 p) {
   vec2 P = vec2(p.x * aspect, p.y);
   vec4 rectC = vec4(rect.x * aspect, rect.y, rect.z * aspect, rect.w);
 
-  float outside = max(roundedRectDistance(P, rectC, u_card_radius), 0.0);
+  float signedDistance = roundedRectDistance(P, rectC, u_card_radius);
+  float outside = max(signedDistance, 0.0);
 
   vec2 center = rect.xy + rect.zw * 0.5;
-  float lowerEdge = rect.y + rect.w;
   float upperEdge = rect.y;
-  float xFromCenter = abs(p.x - center.x) / max(rect.z * 0.5, 0.001);
-  float withinWidth = 1.0 - smoothstep(0.70, 1.32, xFromCenter);
-  float belowCard = smoothstep(upperEdge - 0.01, lowerEdge + 0.08, p.y);
-  float aboveFade = 1.0 - smoothstep(upperEdge - 0.16, upperEdge + 0.02, p.y);
+  float aboveFade = 1.0 - smoothstep(upperEdge - 0.14, upperEdge + 0.05, p.y);
 
-  float breath = 0.5 + 0.5 * sin(u_time * 0.75);
-  float rim = exp(-outside * mix(250.0, 305.0, u_dark));
-  float veil = exp(-outside * mix(52.0, 64.0, u_dark));
-  float shelf = ellipse(
-    p,
-    vec2(center.x, lowerEdge + mix(0.046, 0.054, u_dark)),
-    vec2(rect.z * 0.62, mix(0.090, 0.108, u_dark))
-  );
-  float underLine = exp(-abs(p.y - lowerEdge) * mix(105.0, 132.0, u_dark)) * withinWidth;
-  float cardWash = ellipse(
-    p,
-    vec2(center.x, rect.y + rect.w * 0.56),
-    vec2(rect.z * 0.50, rect.w * 0.72)
-  );
+  float breath = 0.5 + 0.5 * sin(u_time * 0.72);
+  float leftBreath = 0.5 + 0.5 * sin(u_time * 0.72 + 0.55);
+  float rightBreath = 0.5 + 0.5 * sin(u_time * 0.72 - 0.38);
+  float sideBlend = smoothstep(-0.95, 0.95, (p.x - center.x) / max(rect.z * 0.5, 0.001));
+  float sideBreath = mix(leftBreath, rightBreath, sideBlend);
+  float breathIntensity = 1.0 + (breath - 0.5) * 0.10 + (sideBreath - 0.5) * 0.030;
+  float breathRadius = 1.0 + (breath - 0.5) * 0.10 + (sideBreath - 0.5) * 0.026;
+  float lift = mix(0.008125, 0.006875, u_dark) * breathRadius;
+  float irradiance = 1.0 / (1.0 + pow(outside / lift, 2.35));
+  float rim = smoothstep(0.018, 0.82, irradiance);
+  float outerBloom = 1.0 / (1.0 + pow(outside / (mix(0.034, 0.030, u_dark) * breathRadius), 2.0));
+  float topFalloff = 1.0 - smoothstep(upperEdge + rect.w * 0.18, upperEdge + rect.w * 0.78, p.y);
+  float upperCrown = outerBloom * topFalloff * aboveFade;
+  float edgeSource = outerBloom;
+  float faintStreaks = pow(noise(vec2(p.x * 34.0, p.y * 7.0 + u_time * 0.035)), 2.6);
 
   float glowField =
     rim * mix(0.24, 0.42, u_dark) +
-    veil * belowCard * mix(0.065, 0.12, u_dark) +
-    shelf * mix(0.11, 0.20, u_dark) +
-    underLine * mix(0.18, 0.28, u_dark) +
-    cardWash * aboveFade * mix(0.035, 0.060, u_dark);
-  glowField *= mix(0.94, 1.05, breath) * u_intro;
+    edgeSource * mix(0.030, 0.052, u_dark) +
+    upperCrown * mix(0.026, 0.044, u_dark) +
+    faintStreaks * upperCrown * mix(0.006, 0.011, u_dark);
+  glowField *= breathIntensity * u_intro;
 
-  vec3 color = mix(shadowTint, glowSoft, rim * 0.52 + underLine * 0.44);
-  color = mix(color, glow, shelf * 0.36 + veil * 0.18);
-  color += (noise(p * u_resolution + u_time * 0.25) - 0.5) * 0.0025;
-  float alpha = clamp(glowField, 0.0, mix(0.34, 0.58, u_dark));
+  vec3 color = mix(shadowTint, glowSoft, rim * 0.42 + edgeSource * 0.12);
+  color += glow * upperCrown * 0.08 * breathIntensity;
+  float outputDither = dither(gl_FragCoord.xy + u_time * 17.0);
+  color += outputDither + (noise(p * u_resolution * 0.42 + u_time * 0.25) - 0.5) * 0.0016;
+  float alpha = clamp(glowField + outputDither, 0.0, mix(0.34, 0.58, u_dark));
   return vec4(color, alpha);
 }
 
@@ -173,11 +175,7 @@ void main() {
 }
 `;
 
-// The intro glide plays once per tab (keyed by id): on a tab's first load, not
-// when refocusing it — refocus remounts this component.
-const introPlayedTabs = new Set<string>();
-
-export function WebglGlow({ variant, tabId }: WebglGlowProps) {
+export function WebglGlow({ variant, tabId, playIntro = false }: WebglGlowProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const { resolvedTheme } = useTheme();
 
@@ -213,16 +211,7 @@ export function WebglGlow({ variant, tabId }: WebglGlowProps) {
     const cardRectLocation = gl.getUniformLocation(program, "u_card_rect");
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const introStart = performance.now();
-    const introDuration = 720;
-    const playIntro =
-      variant === "new-tab" && tabId != null && !introPlayedTabs.has(tabId);
-    // Mark the tab played shortly after it's shown — longer than StrictMode's
-    // synchronous remount (so the real glide still runs) but short enough that
-    // any normal view records it, so refocus never replays even on fast switches.
-    const markPlayed =
-      playIntro && tabId
-        ? window.setTimeout(() => introPlayedTabs.add(tabId), 200)
-        : 0;
+    const shouldPlayIntro = variant === "new-tab" && playIntro;
     let animationFrame = 0;
     let reduceMotion = motionQuery.matches;
 
@@ -250,10 +239,13 @@ export function WebglGlow({ variant, tabId }: WebglGlowProps) {
       gl.uniform1f(timeLocation, timestamp / 1000);
       gl.uniform1f(darkLocation, resolvedTheme === "dark" ? 1 : 0);
       gl.uniform1f(variantLocation, variant === "shell" ? 0 : 1);
-      const introT = Math.min((performance.now() - introStart) / introDuration, 1);
+      const introT = Math.min(
+        (performance.now() - introStart) / newTabIntroDurationMs,
+        1,
+      );
       gl.uniform1f(
         introLocation,
-        reduceMotion || !playIntro ? 1 : 1 - Math.pow(1 - introT, 3),
+        reduceMotion || !shouldPlayIntro ? 1 : 1 - Math.pow(1 - introT, 3),
       );
       gl.uniform1f(cardRadiusLocation, rects.cardRadius);
       gl.uniform3fv(primaryLocation, primary);
@@ -280,23 +272,20 @@ export function WebglGlow({ variant, tabId }: WebglGlowProps) {
     render();
 
     return () => {
-      window.clearTimeout(markPlayed);
       window.cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
       motionQuery.removeEventListener("change", onMotionChange);
       gl.deleteBuffer(positionBuffer);
       gl.deleteProgram(program);
     };
-  }, [resolvedTheme, variant, tabId]);
+  }, [playIntro, resolvedTheme, variant, tabId]);
 
   return (
     <canvas
       ref={canvasRef}
       aria-hidden
       className="pointer-events-none absolute inset-0 z-0 h-full w-full"
-      // Real gaussian dispersal on the glow itself — the page's backdrop-blur
-      // only frosts the window behind this overlay, not the canvas.
-      style={variant === "new-tab" ? { filter: "blur(13px)" } : undefined}
+      style={variant === "new-tab" ? { filter: "blur(10px)" } : undefined}
     />
   );
 }
@@ -375,7 +364,7 @@ function measureRects(canvas: HTMLCanvasElement) {
 // aspect-corrected distance field works in, so it tracks the box exactly.
 function readRadius(bounds: DOMRect, selector: string) {
   const element = document.querySelector(selector);
-  if (!element || bounds.height <= 0) return 0.03;
+  if (!element || bounds.height <= 0) return 0.02;
   const radiusPx = parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
   return radiusPx / bounds.height;
 }

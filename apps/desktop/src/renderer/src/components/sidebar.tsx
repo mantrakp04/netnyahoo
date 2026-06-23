@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useRef,
   useState,
   type KeyboardEvent,
   type PointerEvent,
@@ -12,8 +11,6 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
-  Bookmark,
-  History,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -32,11 +29,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useBrowser } from "@/hooks/use-browser";
-import { INTERNAL_PAGE_URLS, isInternalPageUrl } from "@/lib/internal-pages";
+import { isInternalPageUrl } from "@/lib/internal-pages";
 import { cn } from "@/lib/utils";
 
 const sidebarWidthStorageKey = "netnyahoo:sidebar-width";
-const sidebarMinWidth = 248;
+const sidebarMinWidth = 188;
 const sidebarDefaultWidth = 248;
 const sidebarMaxWidth = 380;
 type SidebarSide = "left" | "right";
@@ -84,51 +81,16 @@ export function Sidebar({
     activeTab,
     nav,
     openTab,
-    openInternalPage,
     goBack,
     goForward,
     reload,
   } = useBrowser();
   const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth);
-  const [tabsOverflow, setTabsOverflow] = useState(false);
-  const tabsSectionRef = useRef<HTMLDivElement>(null);
-  const tabContentRef = useRef<HTMLDivElement>(null);
-  const newTabRowRef = useRef<HTMLDivElement>(null);
   const activeIsInternal = isInternalPageUrl(activeTab?.url);
 
   useEffect(() => {
     window.localStorage.setItem(sidebarWidthStorageKey, String(sidebarWidth));
   }, [sidebarWidth]);
-
-  useEffect(() => {
-    const tabsSection = tabsSectionRef.current;
-    const tabContent = tabContentRef.current;
-    const newTabRow = newTabRowRef.current;
-    if (!tabsSection || !tabContent || !newTabRow) return;
-
-    let frame = 0;
-    const updateTabsOverflow = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const contentHeight = tabContent.scrollHeight;
-        const newTabHeight = newTabRow.offsetHeight;
-        const availableHeight = tabsSection.clientHeight;
-        setTabsOverflow(contentHeight + newTabHeight > availableHeight + 1);
-      });
-    };
-
-    updateTabsOverflow();
-
-    const resizeObserver = new ResizeObserver(updateTabsOverflow);
-    resizeObserver.observe(tabsSection);
-    resizeObserver.observe(tabContent);
-    resizeObserver.observe(newTabRow);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      resizeObserver.disconnect();
-    };
-  }, []);
 
   return (
     <motion.aside
@@ -192,28 +154,15 @@ export function Sidebar({
       </div>
 
       {/* Tabs */}
-      <div ref={tabsSectionRef} className="min-h-0 flex-1">
-        <div
-          className={cn(
-            "px-2 pt-2",
-            tabsOverflow
-              ? "no-scrollbar h-full overflow-y-auto pb-2 [scrollbar-gutter:auto]"
-              : "shrink-0 overflow-visible pb-0",
-          )}
-        >
-          <div ref={tabContentRef}>
+      <div className="min-h-0 flex-1">
+        <div className="flex h-full min-h-0 flex-col px-2 pt-2 pb-2">
+          <div className="sidebar-tabs-scroll no-scrollbar min-h-0 shrink overflow-y-auto [scrollbar-gutter:auto]">
             <div className="text-muted-foreground px-1.5 pb-1.5 text-xs font-semibold tracking-wide uppercase">
               {spaceName}
             </div>
             <TabList />
           </div>
-          <div
-            ref={newTabRowRef}
-            className={cn(
-              "app-no-drag pt-0.5",
-              tabsOverflow && "sticky bottom-0",
-            )}
-          >
+          <div className="app-no-drag shrink-0 pt-0.5">
             <Button
               type="button"
               variant="ghost"
@@ -234,22 +183,7 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Footer nav */}
-      <div className="app-no-drag flex items-center gap-1 border-t p-2">
-        <FooterButton
-          active={activeTab?.url === INTERNAL_PAGE_URLS.history}
-          onClick={() => openInternalPage("history")}
-        >
-          <History className="size-4" />
-          History
-        </FooterButton>
-        <FooterButton
-          active={activeTab?.url === INTERNAL_PAGE_URLS.bookmarks}
-          onClick={() => openInternalPage("bookmarks")}
-        >
-          <Bookmark className="size-4" />
-          Bookmarks
-        </FooterButton>
+      <div className="app-no-drag flex items-center justify-end border-t p-2">
         <ThemeToggle />
       </div>
 
@@ -375,31 +309,6 @@ function getInitialSidebarWidth() {
 
 function clampSidebarWidth(width: number) {
   return Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, width));
-}
-
-function FooterButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium transition-colors",
-        active
-          ? "bg-sidebar-accent/80 text-sidebar-accent-foreground shadow-sm"
-          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/45",
-      )}
-    >
-      {children}
-    </button>
-  );
 }
 
 function getSidebarToggleIcon(side: SidebarSide, isCollapsed: boolean) {

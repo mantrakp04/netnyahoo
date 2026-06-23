@@ -52,10 +52,12 @@ function Shell() {
     openTab,
     reopenClosedTab,
     closeTab,
+    activateTab,
     reload,
     goBack,
     goForward,
     activeTab,
+    tabs,
   } = useBrowser();
   const omniboxRef = useRef<OmniboxHandle>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -69,6 +71,13 @@ function Shell() {
 
   const runBrowserCommand = useCallback(
     (command: BrowserCommand) => {
+      const tabIndex = getSelectedTabIndex(command, tabs.length);
+      if (tabIndex != null) {
+        const tab = tabs[tabIndex];
+        if (tab) activateTab(tab.id);
+        return;
+      }
+
       switch (command) {
         case "new-tab":
           openTab();
@@ -93,7 +102,17 @@ function Shell() {
           break;
       }
     },
-    [activeTab, closeTab, goBack, goForward, openTab, reload, reopenClosedTab],
+    [
+      activateTab,
+      activeTab,
+      closeTab,
+      goBack,
+      goForward,
+      openTab,
+      reload,
+      reopenClosedTab,
+      tabs,
+    ],
   );
 
   useEffect(() => {
@@ -267,6 +286,18 @@ function Shell() {
       </main>
     </div>
   );
+}
+
+function getSelectedTabIndex(
+  command: BrowserCommand,
+  tabCount: number,
+): number | null {
+  const match = /^select-tab-([1-9])$/.exec(command);
+  if (!match) return null;
+
+  const shortcutNumber = Number(match[1]);
+  if (shortcutNumber === 9) return Math.max(0, tabCount - 1);
+  return shortcutNumber - 1;
 }
 
 function getInitialSidebarCollapsed() {

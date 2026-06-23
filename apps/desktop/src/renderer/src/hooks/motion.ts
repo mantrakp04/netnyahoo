@@ -15,6 +15,8 @@ export const diaEase = [0.22, 1, 0.36, 1] as const;
 export const newTabSlideEase = [0.16, 1, 0.3, 1] as const;
 
 export const newTabSlideDuration = 0.18;
+export const newTabIntroDurationMs = 720;
+export const newTabIntroDuration = newTabIntroDurationMs / 1000;
 
 export const newTabSidebarSpring: Transition = {
   type: "spring",
@@ -67,20 +69,20 @@ export function useActiveIndicatorTransition(): Transition {
     : { type: "spring", stiffness: 500, damping: 42, mass: 0.9 };
 }
 
-/** New-tab page motion for slide-over geometry; CSS owns the reveal blur. */
-export function useNewTabPageMotion(slideOver = false) {
+/** New-tab input motion for the create-tab zoom; CSS owns the page reveal blur. */
+export function useNewTabInputMotion(slideOver = false) {
   const reduceMotion = useReducedMotion();
   if (slideOver) {
     return reduceMotion
       ? {
-          initial: { x: 0 },
-          animate: { x: 0 },
+          initial: { scale: 1 },
+          animate: { scale: 1 },
           transition: { duration: 0 },
         }
       : {
-          initial: { x: "-100%" },
-          animate: { x: 0 },
-          transition: { duration: newTabSlideDuration, ease: newTabSlideEase },
+          initial: { scale: 0.95 },
+          animate: { scale: 1 },
+          transition: { duration: newTabIntroDuration, ease: newTabSlideEase },
         };
   }
 

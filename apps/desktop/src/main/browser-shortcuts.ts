@@ -165,6 +165,9 @@ function resolveBrowserCommand(input: Input): BrowserCommand | null {
   if (input.shift && key === "t") return "reopen-closed-tab";
   if (input.shift) return null;
 
+  const tabIndexCommand = getTabIndexCommand(key, code);
+  if (tabIndexCommand) return tabIndexCommand;
+
   if (key === "t") return "new-tab";
   if (key === "w") return "close-tab";
   if (key === "l") return "focus-omnibox";
@@ -173,4 +176,20 @@ function resolveBrowserCommand(input: Input): BrowserCommand | null {
   if (key === "arrowright" || code === "bracketright") return "go-forward";
 
   return null;
+}
+
+function getTabIndexCommand(
+  key: string,
+  code: string,
+): BrowserCommand | null {
+  const digit = getShortcutDigit(key, code);
+  if (digit < 1 || digit > 9) return null;
+  return `select-tab-${digit}` as BrowserCommand;
+}
+
+function getShortcutDigit(key: string, code: string): number {
+  if (/^[1-9]$/.test(key)) return Number(key);
+
+  const digitCode = /^(?:digit|numpad)([1-9])$/.exec(code);
+  return digitCode ? Number(digitCode[1]) : 0;
 }

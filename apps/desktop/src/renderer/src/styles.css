@@ -47,8 +47,7 @@
   --sidebar-control-surface: rgb(255 255 255 / 0.58);
   --sidebar-row-surface: rgb(255 255 255 / 0.78);
   --sidebar-active-row-surface: rgb(255 255 255 / 0.96);
-  --sidebar-active-glow: color-mix(in oklch, var(--sidebar-primary) 20%, transparent);
-  --sidebar-active-ring: color-mix(in oklch, var(--sidebar-primary) 16%, transparent);
+  --sidebar-active-glow: color-mix(in oklch, var(--sidebar-primary) 16%, transparent);
   --sidebar-button-surface: rgb(255 255 255 / 0.34);
   --sidebar-button-hover-surface: rgb(255 255 255 / 0.62);
   --browser-frame-surface: var(--main-view-surface);
@@ -99,10 +98,9 @@
   --sidebar-control-surface: rgb(9 23 17 / 0.42);
   --sidebar-row-surface: rgb(39 18 22 / 0.82);
   --sidebar-active-row-surface: rgb(255 255 255 / 0.08);
-  --sidebar-active-glow: color-mix(in oklch, var(--shell-glow) 34%, transparent);
-  --sidebar-active-ring: color-mix(in oklch, var(--shell-glow) 24%, transparent);
-  --sidebar-button-surface: rgb(255 255 255 / 0.00);
-  --sidebar-button-hover-surface: rgb(255 255 255 / 0.08);
+  --sidebar-active-glow: color-mix(in oklch, var(--shell-glow) 28%, transparent);
+  --sidebar-button-surface: rgb(255 255 255 / 0.055);
+  --sidebar-button-hover-surface: rgb(255 255 255 / 0.105);
   --browser-frame-surface: var(--main-view-surface);
   --browser-frame-outline: color-mix(in oklch, white 11%, transparent);
   --new-tab-card-surface: rgb(18 24 22 / 0.94);
@@ -234,19 +232,22 @@
 }
 
 /* Active tab indicator: surface + a soft Dia-style glow bloom around the pill. */
+.sidebar-tabs-scroll {
+  margin: -1.75rem;
+  padding: 1.75rem;
+}
+
 .sidebar-active-row {
   background: var(--sidebar-active-row-surface);
   box-shadow:
-    0 0 0 1px var(--sidebar-active-ring),
-    0 0 18px 1px var(--sidebar-active-glow),
+    0 0 16px 0 var(--sidebar-active-glow),
     0 6px 16px color-mix(in oklch, var(--foreground) 7%, transparent),
     inset 0 1px 0 color-mix(in oklch, white 32%, transparent);
 }
 
 .dark .sidebar-active-row {
   box-shadow:
-    0 0 0 1px var(--sidebar-active-ring),
-    0 0 24px 2px var(--sidebar-active-glow),
+    0 0 20px 1px var(--sidebar-active-glow),
     0 8px 22px color-mix(in oklch, black 24%, transparent),
     inset 0 1px 0 color-mix(in oklch, white 5%, transparent);
 }
