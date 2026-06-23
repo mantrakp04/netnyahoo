@@ -1,0 +1,34 @@
+apps/desktop/src/main/browser-shortcuts.ts
+  s_bcab804b0c3beb::t_70c4cc2d4d4b27 168-170,180-195
+apps/desktop/src/renderer/src/components/sidebar.tsx
+  s_f0a301ba0f9055::t_d79584821c2153 234
+  s_f0a301ba0f9055::t_0961715557bf3b 33
+apps/desktop/src/renderer/src/routes/__root.tsx
+  s_bcab804b0c3beb::t_70c4cc2d4d4b27 55,60,74-80,105-115,291-300
+apps/desktop/src/shared/browser-commands.ts
+  s_bcab804b0c3beb::t_70c4cc2d4d4b27 7-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "5cfc71710a49d5671e25c08937a7b391e4ac0e08",
+  "prompts": {},
+  "sessions": {
+    "s_bcab804b0c3beb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef2d8-4bae-7dc0-b231-cfc8b1f3a897",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f0a301ba0f9055": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef2de-cda1-77a1-b593-496b9e75145e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
