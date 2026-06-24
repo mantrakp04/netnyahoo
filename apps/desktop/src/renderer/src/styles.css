@@ -593,7 +593,7 @@ html[data-accent="orange"] {
 .browser-frame-webview {
   --browser-frame-webview-radius: calc(var(--browser-frame-radius) - 0.625rem);
 
-  display: block;
+  display: flex;
   corner-shape: inherit;
   clip-path: inset(0 round var(--browser-frame-webview-radius));
 }
