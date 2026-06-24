@@ -1,0 +1,19 @@
+apps/desktop/src/renderer/src/styles.css
+  s_106a2aeb08f313::t_6b0cd4816b4fd8 596
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "92fabcc6325d74b06e8d74c0a53512a681a947cc",
+  "prompts": {},
+  "sessions": {
+    "s_106a2aeb08f313": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef6bf-4a6f-7602-a632-276ecb510e3b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
