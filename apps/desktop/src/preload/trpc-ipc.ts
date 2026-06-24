@@ -1,9 +1,18 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   BROWSER_COMMAND_CHANNEL,
+  BROWSER_MENU_STATE_CHANNEL,
   isBrowserCommand,
   type BrowserCommand,
+  type BrowserMenuState,
 } from "../shared/browser-commands";
+import {
+  EXTENSIONS_INSTALL_UNPACKED_CHANNEL,
+  EXTENSIONS_INSTALL_WEBSTORE_CHANNEL,
+  EXTENSIONS_LIST_CHANNEL,
+  EXTENSIONS_REMOVE_CHANNEL,
+  type InstalledExtension,
+} from "../shared/extensions";
 
 export const ELECTRON_TRPC_CHANNEL = "electron-trpc";
 
@@ -33,6 +42,34 @@ export function exposeElectronTRPC() {
 
       ipcRenderer.on(BROWSER_COMMAND_CHANNEL, listener);
       return () => ipcRenderer.removeListener(BROWSER_COMMAND_CHANNEL, listener);
+    },
+    updateMenuState(state: BrowserMenuState) {
+      ipcRenderer.send(BROWSER_MENU_STATE_CHANNEL, state);
+    },
+  });
+
+  contextBridge.exposeInMainWorld("netnyahooExtensions", {
+    list() {
+      return ipcRenderer.invoke(
+        EXTENSIONS_LIST_CHANNEL,
+      ) as Promise<InstalledExtension[]>;
+    },
+    installUnpacked() {
+      return ipcRenderer.invoke(
+        EXTENSIONS_INSTALL_UNPACKED_CHANNEL,
+      ) as Promise<InstalledExtension[]>;
+    },
+    installFromChromeWebStore(input: string) {
+      return ipcRenderer.invoke(
+        EXTENSIONS_INSTALL_WEBSTORE_CHANNEL,
+        input,
+      ) as Promise<InstalledExtension[]>;
+    },
+    remove(id: string) {
+      return ipcRenderer.invoke(
+        EXTENSIONS_REMOVE_CHANNEL,
+        id,
+      ) as Promise<InstalledExtension[]>;
     },
   });
 }

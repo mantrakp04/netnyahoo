@@ -52,6 +52,7 @@ interface BrowserContextValue {
   spaceName: string;
   tabs: BrowserTab[];
   activeTab: BrowserTab | undefined;
+  recentlyClosedTabs: ClosedTab[];
   nav: NavState;
   newTabAnimationId: string | null;
   newTabDrafts: Record<string, string>;
@@ -63,7 +64,13 @@ interface BrowserContextValue {
   reopenClosedTab: () => void;
   openInternalPage: (page: InternalPage) => void;
   activateTab: (id: string) => void;
+  activateNextTab: () => void;
+  activatePreviousTab: () => void;
   closeTab: (id: string) => void;
+  togglePinActiveTab: () => void;
+  duplicateActiveTab: () => void;
+  createGroupWithActiveTab: () => void;
+  renameActiveTab: () => void;
   moveTab: (input: {
     id: string;
     targetId?: string;
@@ -97,8 +104,9 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const webviews = useRef(new Map<string, WebviewTag | null>());
   const createTabQueue = useRef<Promise<void>>(Promise.resolve());
-  const recentlyClosedTabs = useRef<ClosedTab[]>([]);
+  const recentlyClosedTabsRef = useRef<ClosedTab[]>([]);
   const [navByTab, setNavByTab] = useState<Record<string, NavState>>({});
+  const [recentlyClosedTabs, setRecentlyClosedTabs] = useState<ClosedTab[]>([]);
   const [newTabAnimationId, setNewTabAnimationId] = useState<string | null>(null);
   // Per-tab new-tab search drafts so switching tabs doesn't wipe what was typed.
   const [newTabDrafts, setNewTabDrafts] = useState<Record<string, string>>({});
@@ -167,6 +175,12 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
   const renameGroupMut = useMutation(trpc.tabs.renameGroup.mutationOptions());
   const setGroupCollapsedMut = useMutation(
     trpc.tabs.setGroupCollapsed.mutationOptions(),
+  );
+  const createGroupWithTabMut = useMutation(
+    trpc.tabs.createGroupWithTab.mutationOptions({
+      onMutate: cancelTabsRefetch,
+      onSuccess: invalidateTabs,
+    }),
   );
   const ungroupMut = useMutation(
     trpc.tabs.ungroup.mutationOptions({
@@ -264,8 +278,10 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
 
   const reopenClosedTab = useCallback(() => {
     if (!spaceId) return;
-    const tab = recentlyClosedTabs.current.pop();
+    const tab = recentlyClosedTabsRef.current[0];
     if (!tab) return;
+    recentlyClosedTabsRef.current = recentlyClosedTabsRef.current.slice(1);
+    setRecentlyClosedTabs(recentlyClosedTabsRef.current);
 
     void enqueueCreateTab({
       spaceId,
@@ -276,7 +292,8 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
       pinned: tab.pinned,
       activate: true,
     }).catch(() => {
-      recentlyClosedTabs.current.push(tab);
+      recentlyClosedTabsRef.current = [tab, ...recentlyClosedTabsRef.current];
+      setRecentlyClosedTabs(recentlyClosedTabsRef.current);
     });
   }, [enqueueCreateTab, spaceId]);
 
@@ -284,6 +301,60 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     (id: string) => activateMut.mutate({ id }),
     [activateMut],
   );
+  const activateTabByOffset = useCallback(
+    (offset: number) => {
+      if (tabs.length < 2) return;
+      const activeIndex = Math.max(
+        0,
+        tabs.findIndex((tab) => tab.id === activeTab?.id),
+      );
+      const nextIndex = (activeIndex + offset + tabs.length) % tabs.length;
+      const nextTab = tabs[nextIndex];
+      if (nextTab) activateMut.mutate({ id: nextTab.id });
+    },
+    [activateMut, activeTab?.id, tabs],
+  );
+  const activateNextTab = useCallback(
+    () => activateTabByOffset(1),
+    [activateTabByOffset],
+  );
+  const activatePreviousTab = useCallback(
+    () => activateTabByOffset(-1),
+    [activateTabByOffset],
+  );
+  const togglePinActiveTab = useCallback(() => {
+    if (!activeTab) return;
+    qc.setQueriesData(
+      { queryKey: trpc.tabs.list.queryKey() },
+      (old: BrowserTab[] | undefined) =>
+        old?.map((tab) =>
+          tab.id === activeTab.id ? { ...tab, pinned: !activeTab.pinned } : tab,
+        ),
+    );
+    updateMut.mutate(
+      { id: activeTab.id, pinned: !activeTab.pinned },
+      { onError: () => void invalidateTabs() },
+    );
+  }, [activeTab, invalidateTabs, qc, trpc.tabs.list, updateMut]);
+  const duplicateActiveTab = useCallback(() => {
+    if (!activeTab || !spaceId) return;
+    void enqueueCreateTab({
+      spaceId,
+      url: activeTab.url,
+      title: activeTab.title,
+      favicon: activeTab.favicon,
+      groupId: activeTab.groupId,
+      pinned: activeTab.pinned,
+      activate: true,
+    }).catch(() => undefined);
+  }, [activeTab, enqueueCreateTab, spaceId]);
+  const createGroupWithActiveTab = useCallback(() => {
+    if (!activeTab) return;
+    createGroupWithTabMut.mutate({
+      id: activeTab.id,
+      name: activeTab.title?.trim() || "Tab Group",
+    });
+  }, [activeTab, createGroupWithTabMut]);
   const closeTab = useCallback(
     (id: string) => {
       const tab = tabs.find((candidate) => candidate.id === id);
@@ -300,13 +371,17 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
         {
           onSuccess: () => {
             if (tab) {
-              recentlyClosedTabs.current.push({
-                title: tab.title,
-                url: tab.url,
-                favicon: tab.favicon,
-                groupId: tab.groupId,
-                pinned: tab.pinned,
-              });
+              recentlyClosedTabsRef.current = [
+                {
+                  title: tab.title,
+                  url: tab.url,
+                  favicon: tab.favicon,
+                  groupId: tab.groupId,
+                  pinned: tab.pinned,
+                },
+                ...recentlyClosedTabsRef.current,
+              ].slice(0, 12);
+              setRecentlyClosedTabs(recentlyClosedTabsRef.current);
             }
             if (isLastTab) window.close();
           },
@@ -400,6 +475,15 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     [qc, trpc.tabs.list, updateMut],
   );
 
+  const renameActiveTab = useCallback(() => {
+    if (!activeTab) return;
+    const nextTitle = window.prompt("Rename tab", activeTab.title || activeTab.url);
+    if (nextTitle == null) return;
+    const title = nextTitle.trim();
+    if (!title) return;
+    patchTab(activeTab.id, { title });
+  }, [activeTab, patchTab]);
+
   const recordVisit = useCallback(
     (entry: { url: string; title: string; favicon?: string | null }) => {
       if (isInternalPageUrl(entry.url)) return;
@@ -483,6 +567,7 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     spaceName,
     tabs,
     activeTab,
+    recentlyClosedTabs,
     nav,
     newTabAnimationId,
     newTabDrafts,
@@ -494,7 +579,13 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     reopenClosedTab,
     openInternalPage,
     activateTab,
+    activateNextTab,
+    activatePreviousTab,
     closeTab,
+    togglePinActiveTab,
+    duplicateActiveTab,
+    createGroupWithActiveTab,
+    renameActiveTab,
     moveTab,
     moveGroup,
     renameGroup,

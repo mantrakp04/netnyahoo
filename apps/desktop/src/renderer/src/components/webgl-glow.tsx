@@ -73,11 +73,11 @@ vec3 lightPalette(float index) {
 }
 
 vec3 darkPalette(float index) {
-  if (index < 0.5) return vec3(0.038, 0.066, 0.057);
-  if (index < 1.5) return vec3(0.118, 0.192, 0.168);
-  if (index < 2.5) return vec3(0.372, 0.470, 0.436);
-  if (index < 3.5) return vec3(0.150, 0.206, 0.188);
-  return vec3(0.013, 0.024, 0.021);
+  if (index < 0.5) return vec3(0.028, 0.050, 0.042);
+  if (index < 1.5) return vec3(0.088, 0.148, 0.128);
+  if (index < 2.5) return vec3(0.290, 0.380, 0.350);
+  if (index < 3.5) return vec3(0.110, 0.158, 0.142);
+  return vec3(0.010, 0.018, 0.016);
 }
 
 vec3 palette(float index) {
@@ -85,11 +85,13 @@ vec3 palette(float index) {
 }
 
 vec4 shellGlow(vec2 p) {
-  vec3 base = palette(0.0);
-  vec3 sidebar = palette(1.0);
-  vec3 glow = palette(2.0);
-  vec3 glowSoft = palette(3.0);
-  vec3 shade = palette(4.0);
+  vec3 baseNeutral = mix(vec3(0.965, 0.964, 0.950), vec3(0.030, 0.026, 0.028), u_dark);
+  vec3 sidebarNeutral = mix(vec3(0.895, 0.888, 0.868), vec3(0.095, 0.076, 0.082), u_dark);
+  vec3 base = mix(baseNeutral, u_primary, mix(0.030, 0.075, u_dark));
+  vec3 sidebar = mix(sidebarNeutral, u_primary, mix(0.050, 0.125, u_dark));
+  vec3 glow = mix(mix(u_primary, vec3(1.0), 0.14), u_primary, u_dark);
+  vec3 glowSoft = mix(mix(u_primary, vec3(1.0), 0.58), mix(u_primary, vec3(0.10, 0.075, 0.082), 0.18), u_dark);
+  vec3 shade = mix(vec3(0.148, 0.138, 0.132), vec3(0.012, 0.010, 0.011), u_dark);
 
   float sidebarEdge = clamp(u_sidebar_rect.x + u_sidebar_rect.z, 0.0, 1.0);
   float sidebarMask = 1.0 - smoothstep(sidebarEdge - 0.012, sidebarEdge + 0.018, p.x);
@@ -102,18 +104,18 @@ vec4 shellGlow(vec2 p) {
   float pulse = 0.96 + 0.04 * sin(u_time * 0.34);
 
   vec3 color = base;
-  color = mix(color, glowSoft, topWash * (0.10 + 0.012 * u_dark));
-  color += glow * mainBreath * (0.007 + 0.005 * u_dark) * pulse;
-  color += glow * sidebarBloom * (0.014 + 0.005 * u_dark);
-  color += glowSoft * frameGlow * (0.010 + 0.005 * u_dark);
+  color = mix(color, glowSoft, topWash * (0.10 + 0.008 * u_dark));
+  color += glow * mainBreath * (0.007 + 0.004 * u_dark) * pulse;
+  color += glow * sidebarBloom * (0.014 + 0.004 * u_dark);
+  color += glowSoft * frameGlow * (0.010 + 0.004 * u_dark);
 
-  float vignette = ellipse(p, vec2(0.50, 0.46), vec2(0.82, 0.72));
-  color = mix(color, shade, (1.0 - vignette) * (0.018 + 0.028 * u_dark));
+  float vignette = ellipse(p, vec2(0.50, 0.46), vec2(0.80, 0.70));
+  color = mix(color, shade, (1.0 - vignette) * (0.018 + 0.038 * u_dark));
   color += (noise(p * u_resolution + u_time) - 0.5) * (0.003 + 0.002 * u_dark);
 
   float alpha = 0.18 + sidebarMask * 0.05 + topWash * 0.02 + mainBreath * 0.008;
-  alpha = mix(alpha, alpha * 0.55, u_dark);
-  return vec4(color, clamp(alpha, 0.08, 0.24));
+  alpha = mix(alpha, alpha * 0.46, u_dark);
+  return vec4(color, clamp(alpha, 0.07, 0.23));
 }
 
 vec4 newTabGlow(vec2 p) {
@@ -145,27 +147,27 @@ vec4 newTabGlow(vec2 p) {
   float sideBreath = mix(leftBreath, rightBreath, sideBlend);
   float breathIntensity = 1.0 + (breath - 0.5) * 0.10 + (sideBreath - 0.5) * 0.030;
   float breathRadius = 1.0 + (breath - 0.5) * 0.10 + (sideBreath - 0.5) * 0.026;
-  float lift = mix(0.008125, 0.006875, u_dark) * breathRadius;
+  float lift = mix(0.01015625, 0.00859375, u_dark) * breathRadius;
   float irradiance = 1.0 / (1.0 + pow(outside / lift, 2.35));
   float rim = smoothstep(0.018, 0.82, irradiance);
-  float outerBloom = 1.0 / (1.0 + pow(outside / (mix(0.034, 0.030, u_dark) * breathRadius), 2.0));
+  float outerBloom = 1.0 / (1.0 + pow(outside / (mix(0.0425, 0.0375, u_dark) * breathRadius), 2.0));
   float topFalloff = 1.0 - smoothstep(upperEdge + rect.w * 0.18, upperEdge + rect.w * 0.78, p.y);
   float upperCrown = outerBloom * topFalloff * aboveFade;
   float edgeSource = outerBloom;
   float faintStreaks = pow(noise(vec2(p.x * 34.0, p.y * 7.0 + u_time * 0.035)), 2.6);
 
   float glowField =
-    rim * mix(0.24, 0.42, u_dark) +
-    edgeSource * mix(0.030, 0.052, u_dark) +
-    upperCrown * mix(0.026, 0.044, u_dark) +
-    faintStreaks * upperCrown * mix(0.006, 0.011, u_dark);
+    rim * mix(0.30, 0.525, u_dark) +
+    edgeSource * mix(0.0375, 0.065, u_dark) +
+    upperCrown * mix(0.0325, 0.055, u_dark) +
+    faintStreaks * upperCrown * mix(0.0075, 0.01375, u_dark);
   glowField *= breathIntensity * u_intro;
 
   vec3 color = mix(shadowTint, glowSoft, rim * 0.42 + edgeSource * 0.12);
-  color += glow * upperCrown * 0.08 * breathIntensity;
+  color += glow * upperCrown * 0.10 * breathIntensity;
   float outputDither = dither(gl_FragCoord.xy + u_time * 17.0);
   color += outputDither + (noise(p * u_resolution * 0.42 + u_time * 0.25) - 0.5) * 0.0016;
-  float alpha = clamp(glowField + outputDither, 0.0, mix(0.34, 0.58, u_dark));
+  float alpha = clamp(glowField + outputDither, 0.0, mix(0.34, 0.52, u_dark));
   return vec4(color, alpha);
 }
 
@@ -177,7 +179,7 @@ void main() {
 
 export function WebglGlow({ variant, tabId, playIntro = false }: WebglGlowProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const { resolvedTheme } = useTheme();
+  const { accent, resolvedTheme } = useTheme();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -205,7 +207,10 @@ export function WebglGlow({ variant, tabId, playIntro = false }: WebglGlowProps)
     const introLocation = gl.getUniformLocation(program, "u_intro");
     const cardRadiusLocation = gl.getUniformLocation(program, "u_card_radius");
     const primaryLocation = gl.getUniformLocation(program, "u_primary");
-    const primary = readCssColor(canvas, "--new-tab-glow");
+    const primary = readCssColor(
+      canvas,
+      resolvedTheme === "light" ? "--primary" : "--new-tab-glow",
+    );
     const sidebarRectLocation = gl.getUniformLocation(program, "u_sidebar_rect");
     const mainRectLocation = gl.getUniformLocation(program, "u_main_rect");
     const cardRectLocation = gl.getUniformLocation(program, "u_card_rect");
@@ -278,7 +283,7 @@ export function WebglGlow({ variant, tabId, playIntro = false }: WebglGlowProps)
       gl.deleteBuffer(positionBuffer);
       gl.deleteProgram(program);
     };
-  }, [playIntro, resolvedTheme, variant, tabId]);
+  }, [accent, playIntro, resolvedTheme, variant, tabId]);
 
   return (
     <canvas
@@ -352,11 +357,12 @@ function resizeCanvas(canvas: HTMLCanvasElement, gl: WebGLRenderingContext) {
 
 function measureRects(canvas: HTMLCanvasElement) {
   const bounds = canvas.getBoundingClientRect();
+  const cardSelector = ".new-tab-command-card, .internal-page-card";
   return {
     sidebar: readRect(bounds, ".sidebar-panel", [0, 0, 0.13, 1]),
     main: readRect(bounds, ".browser-frame", [0.13, 0.004, 0.87, 0.992]),
-    card: readRect(bounds, ".new-tab-command-card", [0.41, 0.43, 0.38, 0.13]),
-    cardRadius: readRadius(bounds, ".new-tab-command-card"),
+    card: readRect(bounds, cardSelector, [0.41, 0.43, 0.38, 0.13]),
+    cardRadius: readRadius(bounds, cardSelector),
   };
 }
 

@@ -2,12 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import {
   BookmarksInternalPage,
   HistoryInternalPage,
+  ExtensionsInternalPage,
+  KeybindsInternalPage,
   NewTabInternalPage,
 } from "@/components/internal-pages";
+import { WEBVIEW_PARTITION } from "../../../shared/extensions";
 import { useBrowser, type BrowserTab } from "@/hooks/use-browser";
 import { getInternalPage, isInternalPageUrl } from "@/lib/internal-pages";
 import { cn } from "@/lib/utils";
 import type { WebviewTag } from "@/types/webview";
+
+const chromeCompatibleUserAgent = navigator.userAgent
+  .replace(/\sElectron\/\S+/g, "")
+  .replace(/\snetnyahoo\/\S+/g, "");
 
 function WebviewTab({ tab, visible }: { tab: BrowserTab; visible: boolean }) {
   const {
@@ -86,20 +93,17 @@ function WebviewTab({ tab, visible }: { tab: BrowserTab; visible: boolean }) {
   return (
     <div
       className={cn(
-        "absolute inset-0 overflow-hidden rounded-[inherit]",
+        "absolute inset-0 overflow-hidden",
         visible ? "block" : "hidden",
       )}
     >
       <webview
         ref={ref as never}
         src={initialUrl}
-        partition="persist:netnyahoo"
+        partition={WEBVIEW_PARTITION}
         allowpopups={true}
-        // A <webview> is composited into its own guest layer that an ancestor's
-        // overflow/border-radius can't clip — that's why the page corners stay
-        // square. clip-path applies to the layer itself, so they follow the
-        // frame radius.
-        className="h-full w-full rounded-[inherit] [clip-path:inset(0_round_var(--browser-frame-radius))]"
+        useragent={chromeCompatibleUserAgent}
+        className="browser-frame-webview h-full w-full"
       />
     </div>
   );
@@ -188,6 +192,8 @@ export function BrowserArea() {
         )}
         {activeInternalPage === "history" && <HistoryInternalPage />}
         {activeInternalPage === "bookmarks" && <BookmarksInternalPage />}
+        {activeInternalPage === "extensions" && <ExtensionsInternalPage />}
+        {activeInternalPage === "keybinds" && <KeybindsInternalPage />}
       </div>
       <div aria-hidden className="browser-frame-border" />
     </div>

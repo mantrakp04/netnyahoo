@@ -6,6 +6,7 @@ import { getDb, initDb } from "@netnyahoo/db";
 import { env } from "@netnyahoo/env";
 import { registerBrowserShortcuts } from "./browser-shortcuts";
 import { registerWebviewContextMenus } from "./context-menu";
+import { registerExtensionSupport } from "./extensions";
 import { createIPCHandler } from "./trpc-ipc";
 // Packaged builds get their icon from build/icon.icns via electron-builder;
 // this is the runtime icon for the dev dock (macOS) and the window/taskbar
@@ -82,8 +83,10 @@ app.whenReady().then(async () => {
     router: appRouter,
     createContext: async () => ({ db: getDb() }),
   });
+  const extensionManager = registerExtensionSupport();
+  await extensionManager.loadPersistedExtensions();
   registerWebviewContextMenus();
-  registerBrowserShortcuts();
+  registerBrowserShortcuts(extensionManager);
   await createWindow();
 
   app.on("activate", () => {

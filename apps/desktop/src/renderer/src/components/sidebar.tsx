@@ -11,17 +11,19 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
+  Keyboard,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  Puzzle,
   RotateCw,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { TabList } from "@/components/tab-list";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemePersonalization } from "@/components/theme-personalization";
 import { Omnibox, type OmniboxHandle } from "@/components/omnibox";
 import {
   Tooltip,
@@ -41,15 +43,19 @@ type SidebarSide = "left" | "right";
 const sidebarPanelStyle = {
   expanded: {
     background: "transparent",
+    borderColor: "transparent",
+    boxShadow: "none",
+    WebkitBackdropFilter: "none",
+    backdropFilter: "none",
   },
   peeked: {
     background:
-      "linear-gradient(180deg, var(--sidebar-material), color-mix(in oklch, var(--sidebar-material) 78%, transparent))",
-    borderColor: "color-mix(in oklch, var(--sidebar-border) 88%, transparent)",
+      "linear-gradient(180deg, color-mix(in oklch, var(--background) 88%, black 12%) 0%, color-mix(in oklch, var(--background) 82%, var(--new-tab-scrim) 18%) 48%, color-mix(in oklch, var(--background) 76%, var(--new-tab-glow-soft) 24%) 100%)",
+    borderColor: "color-mix(in oklch, var(--sidebar-border) 80%, transparent)",
     boxShadow:
-      "0 22px 64px var(--shadow-deep), inset 0 1px 0 color-mix(in oklch, var(--foreground) 7%, transparent)",
-    WebkitBackdropFilter: "blur(26px) saturate(1.22) brightness(0.98)",
-    backdropFilter: "blur(26px) saturate(1.22) brightness(0.98)",
+      "0 22px 64px var(--shadow-deep), inset 0 1px 0 color-mix(in oklch, var(--foreground) 6%, transparent)",
+    WebkitBackdropFilter: "blur(96px) saturate(1.5) brightness(1.04)",
+    backdropFilter: "blur(96px) saturate(1.5) brightness(1.04)",
   },
 } satisfies Record<"expanded" | "peeked", CSSProperties>;
 
@@ -81,6 +87,7 @@ export function Sidebar({
     activeTab,
     nav,
     openTab,
+    openInternalPage,
     goBack,
     goForward,
     reload,
@@ -156,13 +163,13 @@ export function Sidebar({
       {/* Tabs */}
       <div className="min-h-0 flex-1">
         <div className="flex h-full min-h-0 flex-col px-2 pt-2 pb-2">
-          <div className="sidebar-tabs-scroll no-scrollbar min-h-0 shrink overflow-y-auto [scrollbar-gutter:auto]">
+          <div className="sidebar-tabs-scroll no-scrollbar relative z-0 min-h-0 shrink overflow-y-auto [scrollbar-gutter:auto]">
             <div className="text-muted-foreground px-1.5 pb-1.5 text-xs font-semibold tracking-wide uppercase">
               {spaceName}
             </div>
             <TabList />
           </div>
-          <div className="app-no-drag shrink-0 pt-0.5">
+          <div className="app-no-drag relative z-10 shrink-0 pt-0.5">
             <Button
               type="button"
               variant="ghost"
@@ -183,8 +190,40 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="app-no-drag flex items-center justify-end border-t p-2">
-        <ThemeToggle />
+      <div className="app-no-drag flex items-center justify-end gap-1 border-t p-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Open extensions"
+              onClick={() => openInternalPage("extensions")}
+            >
+              <Puzzle className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side={side === "left" ? "right" : "left"} sideOffset={6}>
+            Extensions
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Open keybinds"
+              onClick={() => openInternalPage("keybinds")}
+            >
+              <Keyboard className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side={side === "left" ? "right" : "left"} sideOffset={6}>
+            Keybinds
+          </TooltipContent>
+        </Tooltip>
+        <ThemePersonalization />
       </div>
 
       <SidebarResizeHandle

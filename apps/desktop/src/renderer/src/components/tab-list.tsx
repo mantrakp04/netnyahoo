@@ -531,11 +531,6 @@ function buildTabRows(tabs: BrowserTab[]): TabListRow[] {
     }
 
     const groupTabs = groups.get(tab.groupId) ?? [tab];
-    if (groupTabs.length < 2) {
-      rows.push({ type: "tab", tab });
-      continue;
-    }
-
     if (emittedGroups.has(tab.groupId)) continue;
     emittedGroups.add(tab.groupId);
     rows.push({

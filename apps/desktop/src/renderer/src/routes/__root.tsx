@@ -7,7 +7,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
-import type { QueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type { TRPCClient } from "@trpc/client";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,8 +22,15 @@ import { WebglGlow } from "@/components/webgl-glow";
 import type { OmniboxHandle } from "@/components/omnibox";
 import { BrowserProvider, useBrowser } from "@/hooks/use-browser";
 import { ThemeProvider } from "@/hooks/use-theme";
+import { isInternalPageUrl } from "@/lib/internal-pages";
+import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import type { BrowserCommand } from "../../../shared/browser-commands";
+import type {
+  BrowserCommand,
+  BrowserCommandName,
+  BrowserMenuItemSnapshot,
+  BrowserMenuState,
+} from "../../../shared/browser-commands";
 import type { AppRouter } from "@netnyahoo/backend";
 
 export interface RouterContext {
@@ -53,12 +65,23 @@ function Shell() {
     reopenClosedTab,
     closeTab,
     activateTab,
+    activateNextTab,
+    activatePreviousTab,
     reload,
     goBack,
     goForward,
+    openInternalPage,
+    togglePinActiveTab,
+    duplicateActiveTab,
+    createGroupWithActiveTab,
+    renameActiveTab,
     activeTab,
+    recentlyClosedTabs,
+    nav,
     tabs,
   } = useBrowser();
+  const trpc = useTRPC();
+  const qc = useQueryClient();
   const omniboxRef = useRef<OmniboxHandle>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     getInitialSidebarCollapsed,
@@ -68,17 +91,27 @@ function Shell() {
   const sidebarTriggerRef = useRef<HTMLButtonElement | null>(null);
   const sidebarPeekCloseTimer = useRef<number | null>(null);
   const reduceMotion = useReducedMotion();
+  const bookmarksQuery = useQuery(trpc.bookmarks.list.queryOptions());
+  const historyQuery = useQuery(trpc.history.list.queryOptions({ limit: 18 }));
+  const invalidateBookmarks = useCallback(
+    () => qc.invalidateQueries({ queryKey: trpc.bookmarks.list.queryKey() }),
+    [qc, trpc.bookmarks.list],
+  );
+  const createBookmark = useMutation(
+    trpc.bookmarks.create.mutationOptions({ onSuccess: invalidateBookmarks }),
+  );
 
   const runBrowserCommand = useCallback(
     (command: BrowserCommand) => {
-      const tabIndex = getSelectedTabIndex(command, tabs.length);
+      const commandName = getBrowserCommandName(command);
+      const tabIndex = getSelectedTabIndex(commandName, tabs.length);
       if (tabIndex != null) {
         const tab = tabs[tabIndex];
         if (tab) activateTab(tab.id);
         return;
       }
 
-      switch (command) {
+      switch (commandName) {
         case "new-tab":
           openTab();
           break;
@@ -88,7 +121,14 @@ function Shell() {
         case "close-tab":
           if (activeTab) closeTab(activeTab.id);
           break;
+        case "next-tab":
+          activateNextTab();
+          break;
+        case "previous-tab":
+          activatePreviousTab();
+          break;
         case "focus-omnibox":
+        case "search-tabs":
           omniboxRef.current?.focus();
           break;
         case "reload":
@@ -100,20 +140,104 @@ function Shell() {
         case "go-forward":
           goForward();
           break;
+        case "toggle-pin-tab":
+          togglePinActiveTab();
+          break;
+        case "duplicate-tab":
+          duplicateActiveTab();
+          break;
+        case "new-group-with-tab":
+          createGroupWithActiveTab();
+          break;
+        case "rename-tab":
+          renameActiveTab();
+          break;
+        case "bookmark-page":
+          if (
+            activeTab &&
+            isBookmarkableUrl(activeTab.url) &&
+            !(bookmarksQuery.data ?? []).some(
+              (bookmark) => bookmark.url === activeTab.url,
+            )
+          ) {
+            createBookmark.mutate({
+              url: activeTab.url,
+              title: activeTab.title,
+              favicon: activeTab.favicon,
+            });
+          }
+          break;
+        case "manage-bookmarks":
+          openInternalPage("bookmarks");
+          break;
+        case "show-history":
+          openInternalPage("history");
+          break;
+        case "open-keybinds":
+          openInternalPage("keybinds");
+          break;
+        case "open-url":
+          if (typeof command === "object" && command.url) openTab(command.url);
+          break;
       }
     },
     [
       activateTab,
+      activateNextTab,
+      activatePreviousTab,
       activeTab,
+      bookmarksQuery.data,
       closeTab,
+      createBookmark,
+      createGroupWithActiveTab,
+      duplicateActiveTab,
       goBack,
       goForward,
       openTab,
+      openInternalPage,
       reload,
+      renameActiveTab,
       reopenClosedTab,
       tabs,
+      togglePinActiveTab,
     ],
   );
+
+  useEffect(() => {
+    const bookmarkable =
+      !!activeTab &&
+      isBookmarkableUrl(activeTab.url) &&
+      !(bookmarksQuery.data ?? []).some(
+        (bookmark) => bookmark.url === activeTab.url,
+      );
+    const state: BrowserMenuState = {
+      tabCount: tabs.length,
+      activeTab: activeTab
+        ? {
+            title: activeTab.title,
+            url: activeTab.url,
+            pinned: activeTab.pinned,
+            bookmarkable,
+          }
+        : undefined,
+      nav: {
+        canGoBack: nav.canGoBack,
+        canGoForward: nav.canGoForward,
+      },
+      recentBookmarks: (bookmarksQuery.data ?? []).slice(0, 18).map(toMenuItem),
+      recentHistory: (historyQuery.data ?? []).slice(0, 18).map(toMenuItem),
+      recentlyClosedTabs: recentlyClosedTabs.slice(0, 8).map(toMenuItem),
+    };
+    window.netnyahooBrowserCommands?.updateMenuState(state);
+  }, [
+    activeTab,
+    bookmarksQuery.data,
+    historyQuery.data,
+    nav.canGoBack,
+    nav.canGoForward,
+    recentlyClosedTabs,
+    tabs.length,
+  ]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -281,7 +405,12 @@ function Shell() {
           )}
         />
       )}
-      <main className="main-view relative z-10 flex-1 p-1 pl-0">
+      <main
+        className={cn(
+          "main-view relative z-10 flex-1 p-1",
+          !sidebarCollapsed && "pl-0",
+        )}
+      >
         <BrowserArea />
       </main>
     </div>
@@ -289,7 +418,7 @@ function Shell() {
 }
 
 function getSelectedTabIndex(
-  command: BrowserCommand,
+  command: BrowserCommandName,
   tabCount: number,
 ): number | null {
   const match = /^select-tab-([1-9])$/.exec(command);
@@ -300,8 +429,30 @@ function getSelectedTabIndex(
   return shortcutNumber - 1;
 }
 
+function getBrowserCommandName(command: BrowserCommand): BrowserCommandName {
+  return typeof command === "string" ? command : command.command;
+}
+
 function getInitialSidebarCollapsed() {
   return window.localStorage.getItem(sidebarCollapsedStorageKey) === "true";
+}
+
+function isBookmarkableUrl(url: string) {
+  return !!url && url !== "about:blank" && !isInternalPageUrl(url);
+}
+
+function toMenuItem(item: {
+  title: string;
+  url: string;
+  favicon?: string | null;
+  folder?: string | null;
+}): BrowserMenuItemSnapshot {
+  return {
+    title: item.title || item.url,
+    url: item.url,
+    favicon: item.favicon,
+    folder: item.folder,
+  };
 }
 
 function getSidebarMotionState(

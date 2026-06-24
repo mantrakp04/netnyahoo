@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Bookmark, Globe, History, Search } from "lucide-react";
+import { ArrowRight, Bookmark, Globe, History, Keyboard, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useBrowser } from "@/hooks/use-browser";
 import {
@@ -104,8 +104,10 @@ export const Omnibox = forwardRef<OmniboxHandle>(function Omnibox(_props, ref) {
         icon: internalPage ? (
           internalPage === "history" ? (
             <History className="size-3.5" />
-          ) : (
+          ) : internalPage === "bookmarks" ? (
             <Bookmark className="size-3.5" />
+          ) : (
+            <Keyboard className="size-3.5" />
           )
         ) : isUrlLike ? (
           <Globe className="size-3.5" />

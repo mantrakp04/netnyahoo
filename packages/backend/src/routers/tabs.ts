@@ -326,6 +326,27 @@ export const tabsRouter = router({
         .get();
     }),
 
+  createGroupWithTab: publicProcedure
+    .input(z.object({ id: z.string(), name: z.string().trim().min(1).max(80) }))
+    .mutation(async ({ ctx, input }) => {
+      const tab = await ctx.db
+        .select()
+        .from(tabs)
+        .where(eq(tabs.id, input.id))
+        .get();
+      if (!tab) return null;
+
+      const groupId = tab.groupId ?? randomUUID();
+      await ensureTabGroup(ctx.db, groupId, tab.spaceId, input.name);
+
+      return await ctx.db
+        .update(tabs)
+        .set({ groupId })
+        .where(eq(tabs.id, input.id))
+        .returning()
+        .get();
+    }),
+
   ungroup: publicProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {

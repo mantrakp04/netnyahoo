@@ -7,6 +7,7 @@ import {
   Bookmark,
   Globe,
   History,
+  Keyboard,
   MessageCircle,
   Mic,
   Plus,
@@ -22,7 +23,11 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { WebglGlow } from "@/components/webgl-glow";
-import { useNewTabInputMotion } from "@/hooks/motion";
+import {
+  diaEase,
+  newTabIntroDuration,
+  useNewTabInputMotion,
+} from "@/hooks/motion";
 import { useBrowser } from "@/hooks/use-browser";
 import {
   getInternalPage,
@@ -35,7 +40,7 @@ import { cn, prettyUrl } from "@/lib/utils";
 
 // cmdk's Command forwards its ref to a <div>, so Motion can drive it directly.
 const MotionCommand = motion.create(CommandPrimitive);
-const revealTransition = { duration: 0.24, ease: [0.22, 1, 0.36, 1] } as const;
+const revealTransition = { duration: newTabIntroDuration, ease: diaEase } as const;
 const cardRevealMotion = {
   initial: { opacity: 0, scale: 0.95 },
   animate: { opacity: 1, scale: 1 },
@@ -74,7 +79,6 @@ export function NewTabPage({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const inputMotion = useNewTabInputMotion(slideOver);
   const commandMotion = slideOver ? inputMotion : reveal ? cardRevealMotion : null;
-  const CommandCard = commandMotion ? MotionCommand : CommandPrimitive;
   const trimmed = query.trim();
   const hasQuery = trimmed.length > 0;
   const showSuggestions = hasQuery && !listening;
@@ -124,8 +128,10 @@ export function NewTabPage({
         icon: internalPage ? (
           internalPage === "history" ? (
             <History className="size-4" />
-          ) : (
+          ) : internalPage === "bookmarks" ? (
             <Bookmark className="size-4" />
+          ) : (
+            <Keyboard className="size-4" />
           )
         ) : isUrlLike ? (
           <Globe className="size-4" />
@@ -212,7 +218,7 @@ export function NewTabPage({
           />
         </div>
         <div className="new-tab-command-stack relative isolate w-full">
-          <CommandCard
+          <MotionCommand
             {...(commandMotion ?? {})}
             onAnimationComplete={commandMotion ? finishIntro : undefined}
             shouldFilter={false}
@@ -325,7 +331,7 @@ export function NewTabPage({
                 </>
               )}
             </div>
-          </CommandCard>
+          </MotionCommand>
         </div>
       </div>
     </div>

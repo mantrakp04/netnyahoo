@@ -1,4 +1,8 @@
-import type { BrowserCommand } from "../../../shared/browser-commands";
+import type {
+  BrowserCommand,
+  BrowserMenuState,
+} from "../../../shared/browser-commands";
+import type { InstalledExtension } from "../../../shared/extensions";
 
 declare global {
   interface Window {
@@ -8,6 +12,15 @@ declare global {
     };
     netnyahooBrowserCommands?: {
       onCommand: (callback: (command: BrowserCommand) => void) => () => void;
+      updateMenuState: (state: BrowserMenuState) => void;
+    };
+    netnyahooExtensions?: {
+      list: () => Promise<InstalledExtension[]>;
+      installUnpacked: () => Promise<InstalledExtension[]>;
+      installFromChromeWebStore: (
+        input: string,
+      ) => Promise<InstalledExtension[]>;
+      remove: (id: string) => Promise<InstalledExtension[]>;
     };
   };
 }
