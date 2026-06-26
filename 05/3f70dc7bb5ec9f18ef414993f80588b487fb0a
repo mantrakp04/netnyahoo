@@ -1,0 +1,123 @@
+apps/desktop/src/main/index.ts
+  s_406b159d95f75f::t_08bcd900add901 7-10
+  s_406b159d95f75f::t_67d21decc9542a 77-102
+  s_406b159d95f75f::t_2bc4c422544ab4 118
+apps/desktop/src/renderer/src/types/electron-trpc.d.ts
+  s_406b159d95f75f::t_ac27acb240a93a 17-18
+  s_406b159d95f75f::t_dfb152a9cdca6c 16
+apps/desktop/src/renderer/src/components/find-bar.tsx
+  s_406b159d95f75f::t_49265a86a589e3 69-73
+  s_406b159d95f75f::t_40e2c0bb067169 42
+  s_406b159d95f75f::t_0fb94c9e62d25a 35-37
+  s_406b159d95f75f::t_006d82e2c2b1f1 1-34,38-41,43,46-57,63-68,74-127
+  s_406b159d95f75f::t_3267897e52cab0 44-45
+  s_406b159d95f75f::t_a495e96be3b51f 58-62
+apps/desktop/src/renderer/src/hooks/use-browser.tsx
+  s_406b159d95f75f::t_dc628f2b0652be 117-121
+  s_406b159d95f75f::t_c68621171267dd 635-649
+  s_406b159d95f75f::t_ecf17b56e8396a 98,101-102,104
+  s_406b159d95f75f::t_fd85b607c99f99 574,578,589-596,605,608,618-634
+  s_406b159d95f75f::t_d83ffd549139ac 273,282
+  s_406b159d95f75f::t_61268d43482391 585-588,597-603,606-607,609-617
+  s_406b159d95f75f::t_328123ee3ac02b 63
+  s_406b159d95f75f::t_286a6bbd75eeb6 575-577
+  s_406b159d95f75f::t_0229f004fe9b52 99-100,103,105-112
+  s_406b159d95f75f::t_bcb52ce0130faf 604
+  s_406b159d95f75f::t_2b8cc237179305 133-134
+  s_406b159d95f75f::t_f142617133446e 694,697-698,700
+  s_406b159d95f75f::t_6bca8a050e569a 695-696,699,701-708
+apps/desktop/src/main/context-menu.ts
+  s_406b159d95f75f::t_ddd55c5eeadfe3 38-43
+  s_406b159d95f75f::t_0cb1131a98f2cb 7
+  s_406b159d95f75f::t_ff02237639f0bf 113
+  s_406b159d95f75f::t_84840174432c1d 129,133
+  s_406b159d95f75f::t_5f1f25fab6876a 44-52
+  s_406b159d95f75f::t_a260fac5d1d7a8 9,16-19
+apps/desktop/src/shared/browser-commands.ts
+  s_406b159d95f75f::t_848503400a3172 4-5
+  s_406b159d95f75f::t_5b4f58923f52ba 104-106
+  s_406b159d95f75f::t_f269c2c3fdb6eb 26,29-32,35
+  s_406b159d95f75f::t_84b3a5aecf8fbe 3
+  s_406b159d95f75f::t_f86bee313c8c65 56-57
+  s_406b159d95f75f::t_5e78fee7dac8d8 25,33-34,36
+apps/desktop/src/renderer/src/types/webview.d.ts
+  s_406b159d95f75f::t_1c135dbfc6ccb4 3-17,34-35
+  s_406b159d95f75f::t_9fa40906932a6d 33
+  s_406b159d95f75f::t_f60ed1e8e54560 24,26
+apps/desktop/src/renderer/src/components/new-tab-page.tsx
+  s_9f955e99df97f9::t_6d31cbc138f569 49
+  s_9f955e99df97f9::t_5542cfdebb551c 64,74,79
+  s_9f955e99df97f9::t_4604c20caf2f76 26
+apps/desktop/src/renderer/src/components/internal-pages/keybinds.tsx
+  s_406b159d95f75f::t_6c83e605351a6a 3
+  s_406b159d95f75f::t_e842a7aa45494d 69-70
+  s_406b159d95f75f::t_d34fc2d06c5f1c 193-197
+  s_406b159d95f75f::t_04b46c9d8d0338 57
+  s_406b159d95f75f::t_e4dd024208ba1e 169-176
+  s_406b159d95f75f::t_2745980fbd599f 38-47,58-68,71
+apps/desktop/src/preload/trpc-ipc.ts
+  s_406b159d95f75f::t_73da297bd9a595 7
+  s_406b159d95f75f::t_102c52f81a5530 55-60
+  s_406b159d95f75f::t_238a9299b0ba09 52-54
+  s_406b159d95f75f::t_276f6cd5baab5e 5-6
+apps/desktop/src/renderer/src/components/browser-area.tsx
+  s_406b159d95f75f::t_2c9495e838ce39 152
+  s_9f955e99df97f9::t_2393597f4e91fe 114-115,117-120,122
+  s_9f955e99df97f9::t_69206ef2f2bb59 1
+  s_406b159d95f75f::t_592a1c7602a6c8 9
+  s_9f955e99df97f9::t_c2cef8b61c056a 145
+apps/desktop/src/renderer/src/components/new-tab-page.test.tsx
+  s_9f955e99df97f9::t_b215d9641d8044 57,64
+apps/desktop/src/renderer/src/routes/__root.tsx
+  s_406b159d95f75f::t_8cfdb85b0b1fdb 71,76-77,79
+  s_406b159d95f75f::t_438bd17f236004 171-176,179-182
+  s_406b159d95f75f::t_d63fb2bc2f43d0 238,241-242,250
+  s_406b159d95f75f::t_fa04742a899610 147-149
+  s_406b159d95f75f::t_26e2add6d31fe4 74-75,78,80-82
+  s_406b159d95f75f::t_63e0662fad0a93 150-152,159-170,177-178
+  s_406b159d95f75f::t_0f18a6a7dc182b 236-237,243,246,251,254
+  s_406b159d95f75f::t_0139f7b74eed21 220-222
+apps/desktop/src/main/browser-shortcuts.ts
+  s_406b159d95f75f::t_6d923239d9139c 421-422,431-446
+  s_406b159d95f75f::t_80e9b1f3516fd7 34
+  s_406b159d95f75f::t_bc45ed84fbe920 506-509
+  s_406b159d95f75f::t_717e3848a01c05 401-405
+  s_406b159d95f75f::t_041c09c4f5bfb3 505,510-512,521,524-525,529-531,540-542
+  s_406b159d95f75f::t_dac3419e72e70f 131-135
+  s_406b159d95f75f::t_87dac2bca7daf0 1,3,7
+  s_406b159d95f75f::t_8eff6d303e181c 69-72,78-81
+  s_406b159d95f75f::t_1b7dd9cea00b5e 413-416,418-420
+  s_406b159d95f75f::t_11e210b863ed3b 115-127,137-140
+  s_406b159d95f75f::t_ea9d50bc74f3f1 453-457,467-497
+  s_406b159d95f75f::t_c026ac489f61cf 394-396,407,412,417,423-429,498
+  s_406b159d95f75f::t_7c50b1eff53a45 77,82-85
+  s_406b159d95f75f::t_f3d2a9d6dc8048 359
+  s_406b159d95f75f::t_e2017fec0746bb 520
+  s_406b159d95f75f::t_79ad971117dbff 543-544,547-551,554-556
+  s_406b159d95f75f::t_859d92a85261f6 430
+  s_406b159d95f75f::t_5a4d097d17500c 499
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "053f70dc7bb5ec9f18ef414993f80588b487fb0a",
+  "prompts": {},
+  "sessions": {
+    "s_406b159d95f75f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40c60633-d0ee-47ac-84c9-716ee244643e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9f955e99df97f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca13321f-fc26-4278-ae22-21dec684f5ab",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
