@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  FileText,
   Keyboard,
   PanelLeft,
   Rows3,
@@ -34,6 +35,16 @@ const shortcutGroups: ShortcutGroup[] = [
         detail: "Jump to tabs 1 through 8",
       },
       { action: "Select last tab", keys: [["mod", "9"]] },
+      {
+        action: "Next tab",
+        keys: [["shift", "mod", "]"], ["ctrl", "tab"]],
+        detail: "On macOS, also Cmd Opt Right",
+      },
+      {
+        action: "Previous tab",
+        keys: [["shift", "mod", "["], ["ctrl", "shift", "tab"]],
+        detail: "On macOS, also Cmd Opt Left",
+      },
     ],
   },
   {
@@ -43,6 +54,21 @@ const shortcutGroups: ShortcutGroup[] = [
       { action: "Back", keys: [["mod", "["], ["mod", "left"]] },
       { action: "Forward", keys: [["mod", "]"], ["mod", "right"]] },
       { action: "Reload", keys: [["mod", "R"]] },
+      { action: "Force reload", keys: [["shift", "mod", "R"]] },
+      { action: "Stop loading", keys: [["esc"]] },
+    ],
+  },
+  {
+    title: "Page",
+    icon: <FileText className="size-4" />,
+    shortcuts: [
+      { action: "Find in page", keys: [["mod", "F"]] },
+      { action: "Find next", keys: [["mod", "G"]] },
+      { action: "Find previous", keys: [["shift", "mod", "G"]] },
+      { action: "Print", keys: [["mod", "P"]] },
+      { action: "Save page", keys: [["mod", "S"]] },
+      { action: "Open file", keys: [["mod", "O"]] },
+      { action: "View source", keys: [["alt", "mod", "U"]] },
     ],
   },
   {
@@ -140,6 +166,14 @@ function getKeyLabel(key: string, modKey: string) {
       return modKey;
     case "shift":
       return "Shift";
+    case "alt":
+      return isMac() ? "Opt" : "Alt";
+    case "ctrl":
+      return "Ctrl";
+    case "tab":
+      return "Tab";
+    case "esc":
+      return "Esc";
     case "left":
       return "Left";
     case "right":
@@ -156,5 +190,9 @@ function formatKeys(keys: string[], modKey: string) {
 }
 
 function getModKeyLabel() {
-  return /mac|iphone|ipad|ipod/i.test(window.navigator.platform) ? "Cmd" : "Ctrl";
+  return isMac() ? "Cmd" : "Ctrl";
+}
+
+function isMac() {
+  return /mac|iphone|ipad|ipod/i.test(window.navigator.platform);
 }

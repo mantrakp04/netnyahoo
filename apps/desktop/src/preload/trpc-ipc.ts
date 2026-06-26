@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from "electron";
 import {
   BROWSER_COMMAND_CHANNEL,
   BROWSER_MENU_STATE_CHANNEL,
+  BROWSER_OPEN_FILE_CHANNEL,
+  BROWSER_SAVE_PAGE_CHANNEL,
+  BROWSER_VIEW_SOURCE_CHANNEL,
   isBrowserCommand,
   type BrowserCommand,
   type BrowserMenuState,
@@ -45,6 +48,15 @@ export function exposeElectronTRPC() {
     },
     updateMenuState(state: BrowserMenuState) {
       ipcRenderer.send(BROWSER_MENU_STATE_CHANNEL, state);
+    },
+    openViewSource(url: string) {
+      ipcRenderer.send(BROWSER_VIEW_SOURCE_CHANNEL, url);
+    },
+    savePage(webContentsId: number) {
+      ipcRenderer.send(BROWSER_SAVE_PAGE_CHANNEL, webContentsId);
+    },
+    openFile() {
+      ipcRenderer.send(BROWSER_OPEN_FILE_CHANNEL);
     },
   });
 

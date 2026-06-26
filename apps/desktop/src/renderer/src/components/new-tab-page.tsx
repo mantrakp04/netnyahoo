@@ -23,11 +23,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { WebglGlow } from "@/components/webgl-glow";
-import {
-  diaEase,
-  newTabIntroDuration,
-  useNewTabInputMotion,
-} from "@/hooks/motion";
+import { diaEase, newTabIntroDuration } from "@/hooks/motion";
 import { useBrowser } from "@/hooks/use-browser";
 import {
   getInternalPage,
@@ -49,9 +45,8 @@ const cardRevealMotion = {
 
 interface NewTabPageProps {
   tabId: string;
-  slideOver: boolean;
   reveal: boolean;
-  onSlideComplete: () => void;
+  onRevealComplete: () => void;
 }
 
 interface Suggestion {
@@ -65,9 +60,8 @@ interface Suggestion {
 
 export function NewTabPage({
   tabId,
-  slideOver,
   reveal,
-  onSlideComplete,
+  onRevealComplete,
 }: NewTabPageProps) {
   const trpc = useTRPC();
   const { navigate, openTab, newTabDrafts, setNewTabDraft } = useBrowser();
@@ -77,13 +71,12 @@ export function NewTabPage({
   const [listening, setListening] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const inputMotion = useNewTabInputMotion(slideOver);
-  const commandMotion = slideOver ? inputMotion : reveal ? cardRevealMotion : null;
+  const commandMotion = reveal ? cardRevealMotion : null;
   const trimmed = query.trim();
   const hasQuery = trimmed.length > 0;
   const showSuggestions = hasQuery && !listening;
   const finishIntro = () => {
-    if (slideOver || reveal) onSlideComplete();
+    if (reveal) onRevealComplete();
   };
 
   const historyQuery = useQuery(

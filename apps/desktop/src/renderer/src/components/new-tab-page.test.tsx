@@ -54,24 +54,14 @@ describe("NewTabPage", () => {
     browser.newTabDrafts = { "tab-1": "" };
 
     const { rerender } = render(
-      <NewTabPage
-        tabId="tab-1"
-        slideOver={false}
-        reveal={true}
-        onSlideComplete={vi.fn()}
-      />,
+      <NewTabPage tabId="tab-1" reveal={true} onRevealComplete={vi.fn()} />,
     );
 
     const input = screen.getByLabelText("Search or enter a URL");
     await waitFor(() => expect(document.activeElement).toBe(input));
 
     rerender(
-      <NewTabPage
-        tabId="tab-1"
-        slideOver={false}
-        reveal={false}
-        onSlideComplete={vi.fn()}
-      />,
+      <NewTabPage tabId="tab-1" reveal={false} onRevealComplete={vi.fn()} />,
     );
 
     const inputAfterReveal = screen.getByLabelText("Search or enter a URL");

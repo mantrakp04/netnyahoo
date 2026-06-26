@@ -60,7 +60,7 @@ interface BrowserContextValue {
   registerWebview: (id: string, el: WebviewTag | null) => void;
   setNav: (id: string, state: Partial<NavState>) => void;
   finishNewTabAnimation: (id: string) => void;
-  openTab: (input?: string) => void;
+  openTab: (input?: string, options?: { background?: boolean }) => void;
   reopenClosedTab: () => void;
   openInternalPage: (page: InternalPage) => void;
   activateTab: (id: string) => void;
@@ -95,9 +95,29 @@ interface BrowserContextValue {
   goBack: () => void;
   goForward: () => void;
   reload: () => void;
+  forceReload: () => void;
+  stopLoading: () => void;
+  printPage: () => void;
+  savePage: () => void;
+  openFile: () => void;
+  viewSource: () => void;
+  openDevTools: () => void;
+  getActiveWebview: () => WebviewTag | null;
+  findBarOpen: boolean;
+  findQuery: string;
+  openFindBar: () => void;
+  closeFindBar: () => void;
+  find: (text: string) => void;
+  findNext: () => void;
+  findPrevious: () => void;
 }
 
 const BrowserContext = createContext<BrowserContextValue | null>(null);
+
+/** A tab whose page can be saved to disk or have its source viewed. */
+function isSavablePage(url: string | undefined): url is string {
+  return !!url && url !== "about:blank" && !isInternalPageUrl(url);
+}
 
 export function BrowserProvider({ children }: { children: ReactNode }) {
   const trpc = useTRPC();
@@ -110,6 +130,8 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
   const [newTabAnimationId, setNewTabAnimationId] = useState<string | null>(null);
   // Per-tab new-tab search drafts so switching tabs doesn't wipe what was typed.
   const [newTabDrafts, setNewTabDrafts] = useState<Record<string, string>>({});
+  const [findBarOpen, setFindBarOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
 
   const spacesQuery = useQuery(trpc.spaces.list.queryOptions());
   const spaceId = spacesQuery.data?.[0]?.id;
@@ -248,7 +270,7 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openTab = useCallback(
-    (input?: string) => {
+    (input?: string, options?: { background?: boolean }) => {
       if (!spaceId) return;
       const url = input ? toUrl(input) : "about:blank";
       const internalPage = getInternalPage(url);
@@ -257,7 +279,7 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
         spaceId,
         url,
         title: internalPage ? getInternalPageTitle(internalPage) : "New Tab",
-        activate: true,
+        activate: !options?.background,
       }).catch(() => undefined);
     },
     [enqueueCreateTab, spaceId],
@@ -549,12 +571,82 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     [activeTab],
   );
 
+  const getActiveWebview = useCallback(() => {
+    const id = activeTab?.id;
+    return id ? (webviews.current.get(id) ?? null) : null;
+  }, [activeTab?.id]);
+
   const goBack = useCallback(() => withActive((el) => el.goBack()), [withActive]);
   const goForward = useCallback(
     () => withActive((el) => el.goForward()),
     [withActive],
   );
   const reload = useCallback(() => withActive((el) => el.reload()), [withActive]);
+  const forceReload = useCallback(
+    () => withActive((el) => el.reloadIgnoringCache()),
+    [withActive],
+  );
+  const stopLoading = useCallback(
+    () => withActive((el) => el.stop()),
+    [withActive],
+  );
+  const printPage = useCallback(
+    () => withActive((el) => el.print()),
+    [withActive],
+  );
+  const openDevTools = useCallback(
+    () => withActive((el) => el.openDevTools()),
+    [withActive],
+  );
+  // Source view and save-as need the guest's own webContents, which the
+  // <webview> tag doesn't expose directly, so main does the work — handed the
+  // page URL / webContents id over the bridge. about:blank and internal pages
+  // have no real document to act on (see isSavablePage).
+  const viewSource = useCallback(() => {
+    if (!isSavablePage(activeTab?.url)) return;
+    window.netnyahooBrowserCommands?.openViewSource(activeTab.url);
+  }, [activeTab]);
+  const savePage = useCallback(() => {
+    if (!isSavablePage(activeTab?.url)) return;
+    const el = getActiveWebview();
+    if (el) window.netnyahooBrowserCommands?.savePage(el.getWebContentsId());
+  }, [activeTab, getActiveWebview]);
+  const openFile = useCallback(
+    () => window.netnyahooBrowserCommands?.openFile(),
+    [],
+  );
+
+  const openFindBar = useCallback(() => setFindBarOpen(true), []);
+  const closeFindBar = useCallback(() => {
+    setFindBarOpen(false);
+    setFindQuery("");
+    withActive((el) => el.stopFindInPage("clearSelection"));
+  }, [withActive]);
+  const find = useCallback(
+    (text: string) => {
+      setFindQuery(text);
+      withActive((el) => {
+        if (text) el.findInPage(text);
+        else el.stopFindInPage("clearSelection");
+      });
+    },
+    [withActive],
+  );
+  // Stepping matches with the bar closed opens it first (Chrome's F3 / Cmd+G
+  // behavior); with a query in hand it advances to the next/previous match.
+  const stepMatch = useCallback(
+    (forward: boolean) => {
+      if (!findBarOpen) {
+        setFindBarOpen(true);
+        return;
+      }
+      if (!findQuery) return;
+      withActive((el) => el.findInPage(findQuery, { findNext: true, forward }));
+    },
+    [findBarOpen, findQuery, withActive],
+  );
+  const findNext = useCallback(() => stepMatch(true), [stepMatch]);
+  const findPrevious = useCallback(() => stepMatch(false), [stepMatch]);
 
   const nav = (activeTab && navByTab[activeTab.id]) || {
     loading: false,
@@ -599,6 +691,21 @@ export function BrowserProvider({ children }: { children: ReactNode }) {
     goBack,
     goForward,
     reload,
+    forceReload,
+    stopLoading,
+    printPage,
+    savePage,
+    openFile,
+    viewSource,
+    openDevTools,
+    getActiveWebview,
+    findBarOpen,
+    findQuery,
+    openFindBar,
+    closeFindBar,
+    find,
+    findNext,
+    findPrevious,
   };
 
   return (

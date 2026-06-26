@@ -1,5 +1,8 @@
 export const BROWSER_COMMAND_CHANNEL = "netnyahoo:browser-command";
 export const BROWSER_MENU_STATE_CHANNEL = "netnyahoo:browser-menu-state";
+export const BROWSER_VIEW_SOURCE_CHANNEL = "netnyahoo:browser-view-source";
+export const BROWSER_SAVE_PAGE_CHANNEL = "netnyahoo:browser-save-page";
+export const BROWSER_OPEN_FILE_CHANNEL = "netnyahoo:browser-open-file";
 
 export const browserCommandNames = [
   "new-tab",
@@ -19,8 +22,18 @@ export const browserCommandNames = [
   "focus-omnibox",
   "search-tabs",
   "reload",
+  "force-reload",
+  "stop-loading",
   "go-back",
   "go-forward",
+  "find-in-page",
+  "find-next",
+  "find-previous",
+  "print-page",
+  "save-page",
+  "open-file",
+  "view-source",
+  "open-devtools",
   "toggle-pin-tab",
   "duplicate-tab",
   "new-group-with-tab",
@@ -40,6 +53,8 @@ export type BrowserCommand =
   | {
       command: BrowserCommandName;
       url?: string;
+      /** open-url: open the tab behind the current one instead of focusing it. */
+      background?: boolean;
     };
 
 export interface BrowserMenuItemSnapshot {
@@ -86,7 +101,9 @@ export function isBrowserCommand(value: unknown): value is BrowserCommand {
   const command = (value as { command?: unknown }).command;
   if (!isBrowserCommandName(command)) return false;
   const url = (value as { url?: unknown }).url;
-  return url === undefined || typeof url === "string";
+  if (url !== undefined && typeof url !== "string") return false;
+  const background = (value as { background?: unknown }).background;
+  return background === undefined || typeof background === "boolean";
 }
 
 export function isBrowserCommandName(value: unknown): value is BrowserCommandName {

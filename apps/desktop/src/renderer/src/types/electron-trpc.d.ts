@@ -13,6 +13,9 @@ declare global {
     netnyahooBrowserCommands?: {
       onCommand: (callback: (command: BrowserCommand) => void) => () => void;
       updateMenuState: (state: BrowserMenuState) => void;
+      openViewSource: (url: string) => void;
+      savePage: (webContentsId: number) => void;
+      openFile: () => void;
     };
     netnyahooExtensions?: {
       list: () => Promise<InstalledExtension[]>;

@@ -68,31 +68,3 @@ export function useActiveIndicatorTransition(): Transition {
     ? { duration: 0 }
     : { type: "spring", stiffness: 500, damping: 42, mass: 0.9 };
 }
-
-/** New-tab input motion for the create-tab zoom; CSS owns the page reveal blur. */
-export function useNewTabInputMotion(slideOver = false) {
-  const reduceMotion = useReducedMotion();
-  if (slideOver) {
-    return reduceMotion
-      ? {
-          initial: { scale: 1 },
-          animate: { scale: 1 },
-          transition: { duration: 0 },
-        }
-      : {
-          initial: { scale: 0.95 },
-          animate: { scale: 1 },
-          transition: { duration: newTabIntroDuration, ease: newTabSlideEase },
-        };
-  }
-
-  return { initial: false };
-}
-
-/** New-tab command-card reveal is CSS-owned so opacity never sticks inline. */
-export function useNewTabCardMotion(enabled = true) {
-  const reduceMotion = useReducedMotion();
-  if (!enabled || reduceMotion) return { initial: false };
-
-  return { initial: false };
-}

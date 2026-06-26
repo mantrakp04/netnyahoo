@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
   BookmarksInternalPage,
   HistoryInternalPage,
@@ -6,6 +6,7 @@ import {
   KeybindsInternalPage,
   NewTabInternalPage,
 } from "@/components/internal-pages";
+import { FindBar } from "@/components/find-bar";
 import { WEBVIEW_PARTITION } from "../../../shared/extensions";
 import { useBrowser, type BrowserTab } from "@/hooks/use-browser";
 import { getInternalPage, isInternalPageUrl } from "@/lib/internal-pages";
@@ -110,56 +111,16 @@ function WebviewTab({ tab, visible }: { tab: BrowserTab; visible: boolean }) {
 }
 
 export function BrowserArea() {
-  const {
-    tabs,
-    activeTab,
-    newTabAnimationId,
-    finishNewTabAnimation,
-  } = useBrowser();
-  const previousActiveId = useRef<string | undefined>(activeTab?.id);
-  const [slideOver, setSlideOver] = useState<{
-    incomingId: string;
-    outgoingId: string;
-  } | null>(null);
-  const pendingSlideOver =
-    activeTab?.id &&
-    previousActiveId.current &&
-    activeTab.id !== previousActiveId.current &&
-    activeTab.id === newTabAnimationId &&
-    activeTab.url === "about:blank"
-      ? { incomingId: activeTab.id, outgoingId: previousActiveId.current }
-      : null;
-
-  useEffect(() => {
-    const nextActiveId = activeTab?.id;
-    const outgoingId = previousActiveId.current;
-
-    if (nextActiveId === outgoingId) return;
-
-    const shouldSlideOver =
-      !!nextActiveId &&
-      !!outgoingId &&
-      nextActiveId === newTabAnimationId &&
-      activeTab?.url === "about:blank";
-
-    setSlideOver(
-      shouldSlideOver ? { incomingId: nextActiveId, outgoingId } : null,
-    );
-    previousActiveId.current = nextActiveId;
-  }, [activeTab?.id, activeTab?.url, newTabAnimationId]);
-
-  const currentSlideOver =
-    slideOver?.incomingId === activeTab?.id ? slideOver : pendingSlideOver;
-  const activeSlideOver =
-    !!activeTab && currentSlideOver?.incomingId === activeTab.id;
+  const { tabs, activeTab, newTabAnimationId, finishNewTabAnimation } =
+    useBrowser();
   const activeInternalPage = getInternalPage(activeTab?.url);
+  // A blank tab is the React new-tab page, an internal URL is its own page —
+  // neither shows a webview. Keeping the outgoing tab's webview visible here is
+  // what made the new-tab launcher frost the *previous* page during its intro,
+  // then pop to its real background once the animation hid that webview.
   const visibleWebviewId =
-    activeInternalPage
+    activeInternalPage || activeTab?.url === "about:blank"
       ? undefined
-      : activeTab?.url === "about:blank"
-      ? activeSlideOver
-        ? currentSlideOver.outgoingId
-        : undefined
       : activeTab?.id;
 
   return (
@@ -180,20 +141,15 @@ export function BrowserArea() {
           <NewTabInternalPage
             key={activeTab.id}
             tabId={activeTab.id}
-            slideOver={activeSlideOver}
             reveal={activeTab.id === newTabAnimationId}
-            onSlideComplete={() => {
-              setSlideOver((current) =>
-                current?.incomingId === activeTab.id ? null : current,
-              );
-              finishNewTabAnimation(activeTab.id);
-            }}
+            onRevealComplete={() => finishNewTabAnimation(activeTab.id)}
           />
         )}
         {activeInternalPage === "history" && <HistoryInternalPage />}
         {activeInternalPage === "bookmarks" && <BookmarksInternalPage />}
         {activeInternalPage === "extensions" && <ExtensionsInternalPage />}
         {activeInternalPage === "keybinds" && <KeybindsInternalPage />}
+        <FindBar />
       </div>
       <div aria-hidden className="browser-frame-border" />
     </div>

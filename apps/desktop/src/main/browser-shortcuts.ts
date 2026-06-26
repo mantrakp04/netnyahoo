@@ -1,8 +1,10 @@
-import { BrowserWindow, Menu, app, ipcMain } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain } from "electron";
 import type { Input, MenuItemConstructorOptions, WebContents } from "electron";
+import { pathToFileURL } from "node:url";
 import {
   BROWSER_COMMAND_CHANNEL,
   BROWSER_MENU_STATE_CHANNEL,
+  BROWSER_OPEN_FILE_CHANNEL,
   isBrowserCommandName,
   isRepeatableBrowserCommand,
   type BrowserCommand,
@@ -29,6 +31,7 @@ export function registerBrowserShortcuts(manager?: ExtensionManager) {
   rebuildApplicationMenu();
   registerMenuStateUpdates();
   registerInputShortcuts();
+  registerFileOpen();
 }
 
 function createMenuTemplate(): MenuItemConstructorOptions[] {
@@ -63,8 +66,21 @@ function createMenuTemplate(): MenuItemConstructorOptions[] {
           enabled: menuState.recentlyClosedTabs.length > 0,
         }),
         { type: "separator" },
+        browserCommandItem("Open File...", "open-file", {
+          accelerator: "CommandOrControl+O",
+        }),
+        { type: "separator" },
         browserCommandItem("Close Tab", "close-tab", {
           accelerator: "CommandOrControl+W",
+          enabled: !!menuState.activeTab,
+        }),
+        { type: "separator" },
+        browserCommandItem("Save Page As...", "save-page", {
+          accelerator: "CommandOrControl+S",
+          enabled: !!menuState.activeTab,
+        }),
+        browserCommandItem("Print...", "print-page", {
+          accelerator: "CommandOrControl+P",
           enabled: !!menuState.activeTab,
         }),
         ...(process.platform === "darwin"
@@ -96,11 +112,32 @@ function createMenuTemplate(): MenuItemConstructorOptions[] {
           accelerator: "CommandOrControl+/",
         }),
         { type: "separator" },
+        browserCommandItem("Find in Page...", "find-in-page", {
+          accelerator: "CommandOrControl+F",
+          enabled: !!menuState.activeTab,
+        }),
+        browserCommandItem("Find Next", "find-next", {
+          accelerator: "CommandOrControl+G",
+          enabled: !!menuState.activeTab,
+        }),
+        browserCommandItem("Find Previous", "find-previous", {
+          accelerator: "Shift+CommandOrControl+G",
+          enabled: !!menuState.activeTab,
+        }),
+        { type: "separator" },
         browserCommandItem("Reload", "reload", {
           accelerator: "CommandOrControl+R",
         }),
-        { role: "forceReload" },
+        // A real command (not the role) so it reloads the focused page inside
+        // the <webview>, not the app chrome's own webContents.
+        browserCommandItem("Force Reload", "force-reload", {
+          accelerator: "Shift+CommandOrControl+R",
+        }),
         { role: "toggleDevTools" },
+        browserCommandItem("View Page Source", "view-source", {
+          accelerator: "Alt+CommandOrControl+U",
+          enabled: !!menuState.activeTab,
+        }),
         { type: "separator" },
         { role: "resetZoom" },
         { role: "zoomIn" },
@@ -319,7 +356,7 @@ function sendBrowserCommand(command: BrowserCommand) {
   sendBrowserCommandToWebContents(target, command);
 }
 
-function sendBrowserCommandToWebContents(
+export function sendBrowserCommandToWebContents(
   target: WebContents,
   command: BrowserCommand,
 ) {
@@ -354,15 +391,57 @@ function registerInputShortcuts() {
     const type = contents.getType();
     if (type !== "window" && type !== "webview") return;
 
+    const hostOf = () =>
+      type === "webview" ? contents.hostWebContents : contents;
+
     contents.on("before-input-event", (event, input) => {
       const command = getBrowserCommand(input);
       if (!command) return;
 
+      // Esc maps to stop-loading, but it also dismisses in-page menus/dialogs.
+      // Only consume it while the guest is actually loading, so an idle page
+      // keeps its own Escape behavior.
+      if (command === "stop-loading" && !contents.isLoadingMainFrame()) return;
+
       event.preventDefault();
-      const target =
-        type === "webview" ? contents.hostWebContents : contents;
+      const target = hostOf();
       if (!target) return;
       sendBrowserCommandToWebContents(target, command);
+    });
+  });
+
+  // Mouse thumb buttons (4/5) arrive as a window-level app-command, not key
+  // input. Fires reliably on Windows/Linux; harmless where macOS omits it.
+  app.on("browser-window-created", (_event, window) => {
+    window.on("app-command", (_appEvent, command) => {
+      const browserCommand = mouseAppCommand(command);
+      if (browserCommand) {
+        sendBrowserCommandToWebContents(window.webContents, browserCommand);
+      }
+    });
+  });
+}
+
+function mouseAppCommand(command: string): BrowserCommandName | null {
+  if (command === "browser-backward") return "go-back";
+  if (command === "browser-forward") return "go-forward";
+  return null;
+}
+
+// Cmd/Ctrl+O picks a local file via the native dialog, then opens it in a new
+// tab through the renderer's normal open-url flow (file:// URLs navigate the
+// webview like any other page).
+function registerFileOpen() {
+  ipcMain.on(BROWSER_OPEN_FILE_CHANNEL, async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = win
+      ? await dialog.showOpenDialog(win, { properties: ["openFile"] })
+      : await dialog.showOpenDialog({ properties: ["openFile"] });
+    const filePath = result.filePaths[0];
+    if (result.canceled || !filePath) return;
+    sendBrowserCommandToWebContents(event.sender, {
+      command: "open-url",
+      url: pathToFileURL(filePath).toString(),
     });
   });
 }
@@ -370,9 +449,12 @@ function registerInputShortcuts() {
 function getBrowserCommand(input: Input): BrowserCommandName | null {
   if (input.type !== "keyDown") return null;
   if (input.isComposing) return null;
-  if (!input.meta && !input.control) return null;
 
-  const command = resolveBrowserCommand(input);
+  // Function keys and Esc act without Cmd/Ctrl, so resolve them before the
+  // modifier gate; everything else needs Cmd or Ctrl held.
+  const command =
+    resolveModifierlessCommand(input) ??
+    (input.meta || input.control ? resolveBrowserCommand(input) : null);
   if (!command) return null;
 
   // OS key auto-repeat fires while the shortcut is held. Pass it through only
@@ -382,12 +464,52 @@ function getBrowserCommand(input: Input): BrowserCommandName | null {
   return command;
 }
 
+// Shortcuts that fire without Cmd/Ctrl: bare Esc/function keys, plus the
+// Windows/Linux Alt+D address-bar focus. Returning here bypasses the modifier
+// gate in getBrowserCommand.
+function resolveModifierlessCommand(input: Input): BrowserCommandName | null {
+  if (input.meta || input.control) return null;
+  const key = input.key.toLowerCase();
+  const code = input.code.toLowerCase();
+
+  if (input.alt) {
+    // Chrome reserves Alt+D for the address bar on Windows/Linux; on macOS
+    // Opt+D types a glyph, so leave it alone there.
+    if (process.platform !== "darwin" && !input.shift && (key === "d" || code === "keyd")) {
+      return "focus-omnibox";
+    }
+    return null;
+  }
+
+  if (input.shift) {
+    if (key === "f3") return "find-previous";
+    if (key === "f5") return "force-reload";
+    return null;
+  }
+
+  // Bare Escape stops loading, but it also dismisses in-page menus/dialogs; the
+  // before-input-event handler only consumes it while the guest is loading.
+  if (key === "escape") return "stop-loading";
+  if (key === "f3") return "find-next";
+  if (key === "f5") return "reload";
+  if (key === "f6") return "focus-omnibox";
+  if (key === "f12") return "open-devtools";
+  return null;
+}
+
 function resolveBrowserCommand(input: Input): BrowserCommandName | null {
   const key = input.key.toLowerCase();
   const code = input.code.toLowerCase();
 
   if (input.alt) {
-    if (!input.shift && key === "b") return "manage-bookmarks";
+    if (input.shift) return null;
+    // Opt+letter is a dead key on macOS (Opt+U starts an umlaut), so match the
+    // physical key code, which stays stable regardless of the composed glyph.
+    if (key === "b" || code === "keyb") return "manage-bookmarks";
+    if (key === "u" || code === "keyu") return "view-source";
+    // mac canonical tab cycling: Cmd+Opt+Right / Cmd+Opt+Left.
+    if (key === "arrowright" || code === "arrowright") return "next-tab";
+    if (key === "arrowleft" || code === "arrowleft") return "previous-tab";
     return null;
   }
 
@@ -395,10 +517,17 @@ function resolveBrowserCommand(input: Input): BrowserCommandName | null {
     if (key === "t") return "reopen-closed-tab";
     if (key === "/" || key === "?" || code === "slash") return "open-keybinds";
     if (key === "a") return "search-tabs";
+    if (key === "r") return "force-reload";
+    if (key === "g") return "find-previous";
     if (key === "]" || code === "bracketright") return "next-tab";
     if (key === "[" || code === "bracketleft") return "previous-tab";
+    // Ctrl+Shift+Tab cycles to the previous tab (Windows/Linux canonical).
+    if (key === "tab" || code === "tab") return "previous-tab";
     return null;
   }
+
+  // Ctrl+Tab cycles to the next tab (Windows/Linux canonical).
+  if (key === "tab" || code === "tab") return "next-tab";
 
   const tabIndexCommand = getTabIndexCommand(key, code);
   if (tabIndexCommand) return tabIndexCommand;
@@ -408,10 +537,23 @@ function resolveBrowserCommand(input: Input): BrowserCommandName | null {
   if (key === "l") return "focus-omnibox";
   if (key === "/" || code === "slash") return "open-keybinds";
   if (key === "r") return "reload";
+  if (key === "f") return "find-in-page";
+  if (key === "g") return "find-next";
+  if (key === "p") return "print-page";
+  if (key === "s") return "save-page";
+  if (key === "o") return "open-file";
   if (key === "d") return "bookmark-page";
   if (key === "y") return "show-history";
+  // Ctrl+U is Chrome's canonical view-source on Windows/Linux; macOS uses the
+  // Opt+Cmd+U mapping in the alt branch above (plain Cmd+U is unbound there).
+  if (process.platform !== "darwin" && (key === "u" || code === "keyu")) {
+    return "view-source";
+  }
   if (key === "arrowleft" || code === "bracketleft") return "go-back";
   if (key === "arrowright" || code === "bracketright") return "go-forward";
+  // Ctrl+PgDn / Ctrl+PgUp cycle tabs (Windows/Linux canonical).
+  if (key === "pagedown" || code === "pagedown") return "next-tab";
+  if (key === "pageup" || code === "pageup") return "previous-tab";
 
   return null;
 }

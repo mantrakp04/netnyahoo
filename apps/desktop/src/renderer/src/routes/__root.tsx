@@ -68,8 +68,18 @@ function Shell() {
     activateNextTab,
     activatePreviousTab,
     reload,
+    forceReload,
     goBack,
     goForward,
+    stopLoading,
+    printPage,
+    savePage,
+    openFile,
+    viewSource,
+    openDevTools,
+    openFindBar,
+    findNext,
+    findPrevious,
     openInternalPage,
     togglePinActiveTab,
     duplicateActiveTab,
@@ -134,11 +144,41 @@ function Shell() {
         case "reload":
           reload();
           break;
+        case "force-reload":
+          forceReload();
+          break;
+        case "stop-loading":
+          stopLoading();
+          break;
         case "go-back":
           goBack();
           break;
         case "go-forward":
           goForward();
+          break;
+        case "find-in-page":
+          openFindBar();
+          break;
+        case "find-next":
+          findNext();
+          break;
+        case "find-previous":
+          findPrevious();
+          break;
+        case "print-page":
+          printPage();
+          break;
+        case "save-page":
+          savePage();
+          break;
+        case "open-file":
+          openFile();
+          break;
+        case "view-source":
+          viewSource();
+          break;
+        case "open-devtools":
+          openDevTools();
           break;
         case "toggle-pin-tab":
           togglePinActiveTab();
@@ -177,7 +217,9 @@ function Shell() {
           openInternalPage("keybinds");
           break;
         case "open-url":
-          if (typeof command === "object" && command.url) openTab(command.url);
+          if (typeof command === "object" && command.url) {
+            openTab(command.url, { background: command.background });
+          }
           break;
       }
     },
@@ -191,15 +233,25 @@ function Shell() {
       createBookmark,
       createGroupWithActiveTab,
       duplicateActiveTab,
+      findNext,
+      findPrevious,
+      forceReload,
       goBack,
       goForward,
+      openDevTools,
+      openFile,
+      openFindBar,
       openTab,
       openInternalPage,
+      printPage,
       reload,
       renameActiveTab,
       reopenClosedTab,
+      savePage,
+      stopLoading,
       tabs,
       togglePinActiveTab,
+      viewSource,
     ],
   );
 

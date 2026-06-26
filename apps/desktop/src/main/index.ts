@@ -4,7 +4,10 @@ import { BrowserWindow, app, shell } from "electron";
 import { appRouter, ensureDefaultTab } from "@netnyahoo/backend";
 import { getDb, initDb } from "@netnyahoo/db";
 import { env } from "@netnyahoo/env";
-import { registerBrowserShortcuts } from "./browser-shortcuts";
+import {
+  registerBrowserShortcuts,
+  sendBrowserCommandToWebContents,
+} from "./browser-shortcuts";
 import { registerWebviewContextMenus } from "./context-menu";
 import { registerExtensionSupport } from "./extensions";
 import { createIPCHandler } from "./trpc-ipc";
@@ -71,6 +74,32 @@ async function createWindowInner() {
   return win;
 }
 
+// Cmd/Ctrl+click, middle-click, and Cmd/Ctrl+Shift+click on links open new
+// tabs inside the app instead of leaking to the OS browser. The main window's
+// own handler (above) still sends genuine window.open/new-window popups out.
+function registerGuestWindowOpenHandler() {
+  app.on("web-contents-created", (_event, contents) => {
+    if (contents.getType() !== "webview") return;
+    contents.setWindowOpenHandler((details) => {
+      const host = contents.hostWebContents;
+      if (
+        host &&
+        (details.disposition === "background-tab" ||
+          details.disposition === "foreground-tab")
+      ) {
+        sendBrowserCommandToWebContents(host, {
+          command: "open-url",
+          url: details.url,
+          background: details.disposition === "background-tab",
+        });
+        return { action: "deny" };
+      }
+      shell.openExternal(details.url);
+      return { action: "deny" };
+    });
+  });
+}
+
 app.whenReady().then(async () => {
   app.setAboutPanelOptions({ applicationName: APP_NAME });
 
@@ -86,6 +115,7 @@ app.whenReady().then(async () => {
   const extensionManager = registerExtensionSupport();
   await extensionManager.loadPersistedExtensions();
   registerWebviewContextMenus();
+  registerGuestWindowOpenHandler();
   registerBrowserShortcuts(extensionManager);
   await createWindow();
 

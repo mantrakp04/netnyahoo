@@ -4,13 +4,19 @@ import {
   app,
   clipboard,
   dialog,
+  ipcMain,
   shell,
+  webContents,
 } from "electron";
 import type {
   ContextMenuParams,
   MenuItemConstructorOptions,
   WebContents,
 } from "electron";
+import {
+  BROWSER_SAVE_PAGE_CHANNEL,
+  BROWSER_VIEW_SOURCE_CHANNEL,
+} from "../shared/browser-commands";
 
 /**
  * Native right-click menus for web pages.
@@ -28,6 +34,21 @@ export function registerWebviewContextMenus() {
       const win = BrowserWindow.fromWebContents(contents) ?? undefined;
       menu.popup(win ? { window: win } : {});
     });
+  });
+
+  // The View Source keybind shares the context menu's source window — the
+  // renderer holds the active tab's URL, so it asks main to open it here.
+  ipcMain.on(BROWSER_VIEW_SOURCE_CHANNEL, (_event, url: unknown) => {
+    if (typeof url === "string") openViewSource(url);
+  });
+
+  // The Save Page keybind reuses the context menu's Save As… flow. The renderer
+  // sends the guest's webContents id (the <webview> tag can't savePage itself),
+  // which main resolves back to the live contents to write the document.
+  ipcMain.on(BROWSER_SAVE_PAGE_CHANNEL, (_event, webContentsId: unknown) => {
+    if (typeof webContentsId !== "number") return;
+    const contents = webContents.fromId(webContentsId);
+    if (contents) void savePageAs(contents, contents.getURL());
   });
 }
 
@@ -89,7 +110,7 @@ function buildTemplate(
 
   items.push(
     { type: "separator" },
-    { label: "Save As…", click: () => void savePageAs(contents, params) },
+    { label: "Save As…", click: () => void savePageAs(contents, params.pageURL) },
     { label: "Print…", click: () => contents.print() },
     { type: "separator" },
     {
@@ -105,12 +126,11 @@ function buildTemplate(
   return items;
 }
 
-async function savePageAs(contents: WebContents, params: ContextMenuParams) {
+async function savePageAs(contents: WebContents, pageURL: string) {
   const win = BrowserWindow.fromWebContents(contents) ?? undefined;
-  const suggested = suggestFileName(params.pageURL);
   const { canceled, filePath } = await dialog.showSaveDialog(
     win ?? BrowserWindow.getAllWindows()[0]!,
-    { defaultPath: suggested },
+    { defaultPath: suggestFileName(pageURL) },
   );
   if (canceled || !filePath) return;
   await contents.savePage(filePath, "HTMLComplete");
