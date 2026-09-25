@@ -158,7 +158,8 @@ class TabRouter : public CefClient,
                   public CefContextMenuHandler,
                   public CefFocusHandler,
                   public CefKeyboardHandler,
-                  public CefCommandHandler {
+                  public CefCommandHandler,
+                  public CefJSDialogHandler {
  public:
   TabRouter(Ghost *ghost, NSString *profile) : ghost_(ghost), profile_([profile copy]) {}
   void Detach() { ghost_ = nullptr; }
@@ -181,6 +182,7 @@ class TabRouter : public CefClient,
   CefRefPtr<CefFocusHandler> GetFocusHandler() override { return this; }
   CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override { return this; }
   CefRefPtr<CefCommandHandler> GetCommandHandler() override { return this; }
+  CefRefPtr<CefJSDialogHandler> GetJSDialogHandler() override { return this; }
 
   // Lifespan: the first browser is the founder's tab or the anchor; any other is a tab Chrome made.
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
@@ -325,6 +327,14 @@ class TabRouter : public CefClient,
   }
   bool OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) override {
     NN_FORWARD_RETURN(OnChromeCommand(browser, command_id, disposition), false)
+  }
+  bool OnJSDialog(CefRefPtr<CefBrowser> browser, const CefString &origin, JSDialogType type, const CefString &text,
+                  const CefString &prompt, CefRefPtr<CefJSDialogCallback> callback, bool &suppress) override {
+    NN_FORWARD_RETURN(OnJSDialog(browser, origin, type, text, prompt, callback, suppress), false)
+  }
+  bool OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString &text, bool is_reload,
+                            CefRefPtr<CefJSDialogCallback> callback) override {
+    NN_FORWARD_RETURN(OnBeforeUnloadDialog(browser, text, is_reload, callback), false)
   }
 #if NN_TAB_DISCARD
   void OnTabDiscardedChanged(CefRefPtr<CefBrowser> browser, bool discarded) override {
@@ -1056,6 +1066,23 @@ int TabId(CefRefPtr<CefBrowser> browser) {
   if (IsChromeTab(browser)) return MAX(0, browser->GetHost()->GetTabId());
 #endif
   return 0;
+}
+
+NSWindow *OpenWindowOf(CefRefPtr<CefBrowser> browser) {
+  Ghost *ghost = IsChromeTab(browser) ? GhostOf(browser) : nullptr;
+  NSWindow *window = ghost ? ghost->Parent() : nil;
+  return window.isVisible && ViewsIn(window).count ? window : nil;
+}
+
+bool ReadoptTab(CefRefPtr<CefBrowser> browser, CefRefPtr<Client> client) {
+  NNBrowserView *any = ViewsIn(OpenWindowOf(browser)).firstObject;
+  if (!any || !client) return false;
+  // As a tab Chrome made (TabRouter::OnAfterCreated): the app adopts the live browser.
+  NSString *adoptId = [NSString stringWithFormat:@"tab:%d", browser->GetIdentifier()];
+  client->adoptId_ = adoptId.UTF8String;
+  Popups()[client->adoptId_] = {client, browser, nil};
+  [any emit:@"openWindow" payload:@{@"url" : client->URL(), @"adoptId" : adoptId, @"disposition" : @"foreground"}];
+  return true;
 }
 
 bool ForwardKeyEvent(NSEvent *event, NSString *profile) {

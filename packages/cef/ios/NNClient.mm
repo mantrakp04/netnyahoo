@@ -1024,6 +1024,33 @@ bool Client::OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event,
   return [NSApp.mainMenu performKeyEquivalent:ns] || host::ForwardKeyEvent(ns, profile_) || IsChromeOnlyShortcut(ns);
 }
 
+// MARK: CefJSDialogHandler
+
+bool Client::OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString &message_text, bool is_reload,
+                                  CefRefPtr<CefJSDialogCallback> callback) {
+  // A page still in the app (reload, navigation, window.close()): Chrome's dialog, as before.
+  if (view_ || is_reload || ShuttingDown()) return false;
+  // The app already closed the tab (⌘W, the close button): Chrome keeps it open while it asks,
+  // and a "Cancel" kept a page with no tab showing it, loaded and playing, until quit. The same
+  // question here, and a cancelled close brings the page back as a tab of its window.
+  NSWindow *window = host::OpenWindowOf(browser);
+  if (!window) return false;
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = @"Leave site?";
+  alert.informativeText = @"Changes you made may not be saved.";
+  [alert addButtonWithTitle:@"Leave"];
+  [alert addButtonWithTitle:@"Cancel"];
+  CefRefPtr<Client> self(this);
+  CefRefPtr<CefBrowser> tab = browser;
+  [alert beginSheetModalForWindow:window
+                completionHandler:^(NSModalResponse response) {
+                  bool leave = response == NSAlertFirstButtonReturn;
+                  callback->Continue(leave, "");
+                  if (!leave && !host::ReadoptTab(tab, self)) tab->GetHost()->CloseBrowser(true);
+                }];
+  return true;
+}
+
 // MARK: CefCommandHandler
 
 bool Client::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) {

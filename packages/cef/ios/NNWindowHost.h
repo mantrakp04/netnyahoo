@@ -61,6 +61,13 @@ int TabId(CefRefPtr<CefBrowser> browser);
 /// (window.close(), chrome.tabs.remove, their Browser closing).
 bool IsChromeTab(CefRefPtr<CefBrowser> browser);
 
+/// The app window of a Chrome tab's Browser, while it's open and shows tabs: where a tab the app
+/// closed can come back (ReadoptTab). nil otherwise.
+NSWindow *OpenWindowOf(CefRefPtr<CefBrowser> browser);
+/// Hands a Chrome tab whose view is gone back to the app, as a new tab of its window (Chrome kept
+/// it: "Leave site?" was cancelled). False if its window can't take it.
+bool ReadoptTab(CefRefPtr<CefBrowser> browser, CefRefPtr<Client> client);
+
 /// Keys the page and our menus didn't handle: Chrome shortcuts extensions registered
 /// (chrome.commands) run in the key window's ghost. YES if one did.
 bool ForwardKeyEvent(NSEvent *event, NSString *profile);

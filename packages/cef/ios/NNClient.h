@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "include/cef_command_handler.h"
+#include "include/cef_jsdialog_handler.h"
 #include "include/cef_keyboard_handler.h"
 
 namespace nn {
@@ -26,7 +27,8 @@ class Client : public CefClient,
                public CefContextMenuHandler,
                public CefFocusHandler,
                public CefKeyboardHandler,
-               public CefCommandHandler {
+               public CefCommandHandler,
+               public CefJSDialogHandler {
  public:
   Client(NNBrowserView *view, NSString *profile);
 
@@ -83,6 +85,7 @@ class Client : public CefClient,
   CefRefPtr<CefFocusHandler> GetFocusHandler() override { return this; }
   CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override { return this; }
   CefRefPtr<CefCommandHandler> GetCommandHandler() override { return this; }
+  CefRefPtr<CefJSDialogHandler> GetJSDialogHandler() override { return this; }
   bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source,
                                 CefRefPtr<CefProcessMessage> message) override;
 
@@ -169,6 +172,14 @@ class Client : public CefClient,
 
   // CefCommandHandler (Chrome style: commands Chrome runs for the active tab)
   bool OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) override;
+
+  // CefJSDialogHandler (Chrome's own dialogs, except "Leave site?" for a tab the app closed)
+  bool OnJSDialog(CefRefPtr<CefBrowser>, const CefString &, JSDialogType, const CefString &, const CefString &,
+                  CefRefPtr<CefJSDialogCallback>, bool &) override {
+    return false;
+  }
+  bool OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString &message_text, bool is_reload,
+                            CefRefPtr<CefJSDialogCallback> callback) override;
 
   /// Set for popup browsers created by OnBeforePopup until a view adopts them.
   std::string adoptId_;
