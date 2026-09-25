@@ -1,0 +1,40 @@
+apps/launch-video/src/timeline.ts
+  s_9c356f9574d31c::t_ebfc2b393ba439 16-22,24-29,32-33
+apps/launch-video/src/Yahu3D.tsx
+  s_9c356f9574d31c::t_702bded5de395d 25,117
+apps/launch-video/scripts/capture-game.mjs
+  s_9c356f9574d31c::t_0c536cfab9a7be 6-8,16,18-20,35
+apps/launch-video/src/Stage.tsx
+  s_9c356f9574d31c::t_ebfc2b393ba439 3-6,8-11,13-15,17-19,21,25-32,36-57,67-68,73-75
+  s_9c356f9574d31c::t_27a78af8e07f03 20,22
+apps/launch-video/scripts/make-sound.mjs
+  s_9c356f9574d31c::t_3e3db9a079f78a 2-3,7,67-88
+apps/launch-video/src/Launch.tsx
+  s_9c356f9574d31c::t_3e3db9a079f78a 68-69
+  s_9c356f9574d31c::t_27a78af8e07f03 25
+  s_9c356f9574d31c::t_28337742122f1b 3,5,7,12-24,27-28,35-43,46-54,56-61,63,65-67,70,72-76,78,84-89,94-103,105-112,114,118,120-121,124,126,128-132,137,177,182
+apps/launch-video/README.md
+  s_9c356f9574d31c::t_fcf2d1536649fd 3-7,29-30
+apps/launch-video/scripts/prepare-assets.mjs
+  s_9c356f9574d31c::t_049d8962e676c0 1
+apps/launch-video/src/Answer.tsx
+  s_9c356f9574d31c::t_fe5c3eb48ccf46 3,17,37
+apps/launch-video/src/Cover.tsx
+  s_9c356f9574d31c::t_d99ca261dc9f4a 4-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "462e0b6411b03e2ce79d3c9141569b888fc6757e",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
