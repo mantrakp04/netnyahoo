@@ -1,0 +1,306 @@
+apps/desktop/src/renderer/src/components/internal-pages/frame.tsx
+  s_25fff6873dbfd8::t_8461e3d66f0764 2-5,20-30,43
+apps/desktop/src/renderer/index.html
+  s_1fdd98e5b2a50e::t_731d5e45cc6004 21-22
+apps/desktop/src/renderer/src/components/sidebar.tsx
+  s_1d776a192cfd16::t_9193c980f1d5de 20,194-209
+  s_4453406fbf4041::t_2ba3d007ca36c9 53-54,56-58
+  s_380b8135d61bd1::t_e5f75b16a133a9 166,172
+  s_1d776a192cfd16::t_452d372465d157 46-49
+  s_1fdd98e5b2a50e::t_583e6726c84f5c 26,226
+  s_c184ff3b574bc1::t_951b59f8ff4bdb 14,90,193,210-225
+apps/desktop/src/renderer/src/components/new-tab-page.tsx
+  s_c184ff3b574bc1::t_11a4c69d3d0e0a 10,131,133-134
+  s_1be06e2dff8696::t_062dcd5c4a4504 43
+  s_1be06e2dff8696::t_bd4d9d79b72897 26-30
+  s_6c042026297d3f::t_22b92909e50e45 221,334
+apps/desktop/src/renderer/src/components/internal-pages/extensions.tsx
+  s_1d776a192cfd16::t_de751548995869 11,26,65-79,117-141
+  s_1d776a192cfd16::t_9193c980f1d5de 1-10,12-25,27-64,80-116,142-213
+apps/desktop/package.json
+  s_1d776a192cfd16::t_d4441f4aa3f68a 53
+  s_6c042026297d3f::t_22b92909e50e45 12
+  s_5aa6067cd7fe73::t_7dcbc91997b911 21,30,32-33
+apps/desktop/src/renderer/src/types/electron-trpc.d.ts
+  s_1d776a192cfd16::t_9193c980f1d5de 5,16-19,23
+  s_5aa6067cd7fe73::t_76937331fce9c1 1-4,15
+  s_1d776a192cfd16::t_cc3addb7826a0b 20-22
+apps/desktop/src/shared/extensions.ts
+  s_1d776a192cfd16::t_cc3addb7826a0b 5
+  s_1d776a192cfd16::t_9193c980f1d5de 1-4,6-15
+apps/desktop/src/renderer/src/lib/internal-pages.ts
+  s_1d776a192cfd16::t_9193c980f1d5de 4,19-23,60
+  s_c184ff3b574bc1::t_3edb70a1ca6199 5,24-30,50,56-59,61-62
+apps/desktop/src/main/index.ts
+  s_1d776a192cfd16::t_01018c45c7bfdb 89
+  s_1d776a192cfd16::t_9193c980f1d5de 9,86-87
+apps/desktop/src/renderer/src/routes/__root.tsx
+  s_c184ff3b574bc1::t_2613c77bc3f46f 28-30,33,421
+  s_c184ff3b574bc1::t_05bd59c4ea64e5 73,126,129,145,148,151,154,169,172,175-181,186-187,189,191-193,197
+  s_0d7effda80615c::t_534253a6c7f10f 408-413
+  s_5aa6067cd7fe73::t_1a76831c9c79b1 207-212,220
+  s_5aa6067cd7fe73::t_ee68cd8e5030d9 432-435,440-456
+  s_5aa6067cd7fe73::t_e2052b26e3b5c4 10-15,25-26,31-32
+  s_5aa6067cd7fe73::t_ad678a826d9a16 168,213-219,221-241
+apps/desktop/src/main/extensions.ts
+  s_1d776a192cfd16::t_be0b9643c990bb 151-152,156-159
+  s_1d776a192cfd16::t_8a2e58f5222499 479,488-491,498-503
+  s_1d776a192cfd16::t_cc3addb7826a0b 2,4-5,18,30,48-54,71-75,97-110,113,119,121-124,126-140,317-338,562-608,624-634
+  s_1d776a192cfd16::t_928f1cd6222ac0 493-497,507-508
+  s_1d776a192cfd16::t_01018c45c7bfdb 68
+  s_1d776a192cfd16::t_753df221712610 224,365,370,380-421
+  s_1d776a192cfd16::t_5471c303509bbe 637-641
+  s_1d776a192cfd16::t_fe0604d04ebc07 114-118
+  s_1d776a192cfd16::t_a578901f49491c 32-38,62,241-257,424-427,480,486-487,492,504-506,509
+  s_1d776a192cfd16::t_af6423b6fbaced 1,3,15,111-112,125,609-623
+  s_1d776a192cfd16::t_9193c980f1d5de 6-12,14,16-17,19-29,39-47,55-61,64-67,69-70,76-96,141-150,153-155,160-212,274-316,644
+  s_31d33b34e9a2f7::t_7153a7e6b1076e 13,31,63,120,213-223,225-240,258-273
+  s_31d33b34e9a2f7::t_a68115e493ed77 339-364,366-369,371-379,422-423,428-449,452-453,460,469-478,481-485,510-526,533-561,635-636,642-643
+  s_31d33b34e9a2f7::t_42e0d3db6f2788 450-451,454-459,461-468,527-532
+apps/desktop/src/preload/trpc-ipc.ts
+  s_1d776a192cfd16::t_9193c980f1d5de 9-10,12-15,48-59,66-73
+  s_5aa6067cd7fe73::t_e9e567f750bc83 4,7,46-47
+  s_1d776a192cfd16::t_cc3addb7826a0b 11,60-65
+apps/desktop/src/renderer/src/components/theme-personalization.tsx
+  s_1fdd98e5b2a50e::t_4925c8ab1a35f3 1,5-24,26-51,53-58,60-81,83-104,106-114,118-125,127,129-135,137
+  s_1fdd98e5b2a50e::t_f582f05af36381 2,52,126
+apps/desktop/src/renderer/src/hooks/use-browser.tsx
+  s_5aa6067cd7fe73::t_c9dd5ff2e3a4f0 55,67-68,70-73,107,109,179-184,281,283-284,295-296,304-357,374-384
+  s_5aa6067cd7fe73::t_5f331ba164fff9 478-486,570,582-583,585-588
+apps/desktop/src/shared/browser-commands.ts
+  s_c184ff3b574bc1::t_05bd59c4ea64e5 31
+  s_5aa6067cd7fe73::t_a347dbfe259e7d 59,75
+  s_5aa6067cd7fe73::t_40c110fef0a9cc 2,4,8-9,20,24-30,32,35-58,60-67,79,84-92,95
+apps/desktop/src/renderer/src/components/new-tab-page.test.tsx
+  s_6c042026297d3f::t_22b92909e50e45 1-81
+apps/desktop/src/renderer/src/components/internal-pages/index.ts
+  s_1d776a192cfd16::t_9193c980f1d5de 2
+  s_c184ff3b574bc1::t_6ae322c12d3a3e 4
+apps/desktop/src/main/browser-shortcuts.ts
+  s_5aa6067cd7fe73::t_d8cdabe7dd6bc3 16,313,441
+  s_c184ff3b574bc1::t_47f1f92177a8cc 396
+  s_1d776a192cfd16::t_01018c45c7bfdb 13,25,27-28,194-198,213-275
+  s_5aa6067cd7fe73::t_8c0908c440e838 1,5-6,9-11,15,17-24,26,29-30,58-64,66-69,92-94,99-101,113,115-172,175-193,276,280-281,285,290-312,314,337-351,370,373,385,389-395,397-401,411-412,422,425-426,435-440,442-455
+  s_c184ff3b574bc1::t_05bd59c4ea64e5 95-98,409
+packages/backend/src/routers/tabs.ts
+  s_5aa6067cd7fe73::t_d0d2a143442796 329-349
+apps/desktop/vitest.config.ts
+  s_6c042026297d3f::t_22b92909e50e45 1-16
+apps/desktop/src/renderer/src/components/browser-area.tsx
+  s_1d776a192cfd16::t_8477d881aa3461 15-18,105
+  s_1d776a192cfd16::t_9193c980f1d5de 5,9,103,195
+  s_c184ff3b574bc1::t_6ae322c12d3a3e 6,196
+  h_8c1b79571cf22c 96,106
+apps/desktop/src/renderer/src/hooks/use-theme.tsx
+  s_1fdd98e5b2a50e::t_8738c6ade20385 11-16,18-19,22-33,35-37,42-43,47,62,65,76-81,83-85,90-92,104-112,118,125,129,132-133
+  s_1fdd98e5b2a50e::t_6f24720f706b50 17,34,82
+  s_1fdd98e5b2a50e::t_420a1b0a10aec8 102-103
+apps/desktop/src/renderer/src/components/internal-pages/keybinds.tsx
+  s_c184ff3b574bc1::t_d3037f693d99dd 1-160
+apps/desktop/src/renderer/src/styles.css
+  s_4453406fbf4041::t_9c447b74b60aa8 410-414
+  s_4453406fbf4041::t_27dbb1fc503a81 649-651,656,659-660
+  s_99408879d5987c::t_384e53d269625c 631,633
+  s_42ea4405ee83b6::t_4d0554ba0a3a00 34
+  s_106a2aeb08f313::t_7cb4dfa8a4c582 596
+  s_4453406fbf4041::t_a96a68641f05ce 268-272
+  s_42ea4405ee83b6::t_81a3ca64d0dea2 54
+  s_4453406fbf4041::t_71fc02a0275ece 363-367
+  s_4453406fbf4041::t_b48cdb068d1bc3 456-460
+  s_42ea4405ee83b6::t_0d0196b30b8f47 107
+  s_106a2aeb08f313::t_e3bf20f5e77a22 594-595,598
+  s_4453406fbf4041::t_ea0b3e23f41341 314-318
+  s_4453406fbf4041::t_dc62bb9550d10f 256-257
+  s_4453406fbf4041::t_3fb2c988114d88 351-352
+  h_8c1b79571cf22c 572
+  s_42ea4405ee83b6::t_b8fef7278fccca 80-81
+  s_4453406fbf4041::t_df84695bd293d2 398-399
+  s_4453406fbf4041::t_f0316031a86f7e 443,446-450,455,461-463
+  s_1fdd98e5b2a50e::t_e435023fae6466 60-61,115,117,124-128,134-140,149-152,162-180,183-186,193-197,203-208,217-220,230-232,239-243,249-254,263-266,276-278,285-289,295-300,309-312,322-323,325,346-347,349,372-374,381-385,391-396,405-408,418-420,427-431,437-442,451-454,682-703
+  s_4453406fbf4041::t_71b94b85195e63 154-158
+  s_4453406fbf4041::t_b9c8e6c591c9b6 96-101
+  s_4453406fbf4041::t_564f79703a3178 679
+  s_4453406fbf4041::t_4888d9bec56860 210-211
+  s_4453406fbf4041::t_d9442413365f9d 397,400-404,409,415-417
+  s_4453406fbf4041::t_d75678e0786fea 444-445
+  s_4453406fbf4041::t_3eec3474a92419 255,258-262,267,273-275
+  s_4453406fbf4041::t_330167f63a5089 142-143
+  s_367faf33ecc62e::t_090d166570948b 629-630,632,634,647-648,652
+  s_4453406fbf4041::t_c3aba600626264 222-226
+  s_4453406fbf4041::t_9f23ed617ae67e 301,304-308,313,319-321
+  s_42ea4405ee83b6::t_3d939e635e5fb3 89
+  s_3c1f51d8e97b54::t_8dbf67ddd385e8 574,579-582,590,597
+  s_367faf33ecc62e::t_d17abc54e757d8 591-592
+  s_4453406fbf4041::t_66c7a9d468f685 617-619
+  s_4453406fbf4041::t_14a7c2cf6ce40f 141,144-148,153,159-161
+  s_42ea4405ee83b6::t_5766a49cabcd89 25-26
+  s_4453406fbf4041::t_c0cd074e4fa070 302-303
+  s_4453406fbf4041::t_8f1f943f13c5e3 209,212-216,221,227-229
+  s_4453406fbf4041::t_50e5195d27f979 65,67,69,73,75,77,83,87,102-105,108-114
+  s_4453406fbf4041::t_6b20f7e772229a 350,353-357,362,368-371
+  s_1fdd98e5b2a50e::t_cb7f68903ddb7c 118-123,129-133,187-192,198-202,233-238,244-248,279-284,290-294,324,326-345,348,358-361,375-380,386-390,421-426,432-436
+apps/desktop/src/renderer/src/components/omnibox.tsx
+  s_c184ff3b574bc1::t_11a4c69d3d0e0a 11,107,109-110
+apps/desktop/src/renderer/src/components/webgl-glow.tsx
+  s_42ea4405ee83b6::t_82a06810a77476 167
+  s_42ea4405ee83b6::t_c8ff8e5b7463a6 150
+  s_42ea4405ee83b6::t_733d7ea4b1598c 160-163
+  s_4453406fbf4041::t_b338b4811ae76b 170
+  s_e69ecb3b54f9e9::t_aeb999c8d2b680 210-213
+  s_42ea4405ee83b6::t_856783a354a655 153
+  s_1fdd98e5b2a50e::t_48c616d329ca4b 92-94
+  s_4453406fbf4041::t_0aa2db946905d7 107-110,112-113,117-118
+  s_1fdd98e5b2a50e::t_dcf67fd3854d37 182,286
+  s_4453406fbf4041::t_36b0f5ef322943 88-91
+  s_4453406fbf4041::t_bd0b28ae2e3c79 76-80
+  s_25fff6873dbfd8::t_8c57722e732d00 360,364-365
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "58abee19681f56c85199ea652e39c5f87263cdf2",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_0d7effda80615c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef36b-3580-76f2-8994-fd6b6090e0c7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_106a2aeb08f313": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef6bf-4a6f-7602-a632-276ecb510e3b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_1be06e2dff8696": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef36b-d505-7470-8ba7-17552bd6642b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_1d776a192cfd16": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef375-123c-7893-8efb-259e3ee62b12",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_1fdd98e5b2a50e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef352-e9f5-7cd2-bd59-fdb49a165268",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_25fff6873dbfd8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef35a-987c-7d73-8f82-ac4eeac17c07",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_31d33b34e9a2f7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef59b-d1dd-71b0-b955-ade65e86498a",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_367faf33ecc62e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef366-412f-76d1-aa47-f1c010f6ae35",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_380b8135d61bd1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef345-cebb-73d0-9685-95726282905d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_3c1f51d8e97b54": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "93426a61-b84b-4478-a6a5-2c74a4bd03fe",
+        "model": "composer-2.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_42ea4405ee83b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3fe718af-6b87-4d71-b6c3-996e41947308",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_4453406fbf4041": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6ca1e62-49cf-41e4-9c23-1dbf21e73dfb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_5aa6067cd7fe73": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef351-f37a-7192-a068-f51cf849f5e2",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_6c042026297d3f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef34f-2b34-77b3-82b1-b92b12cdc5a6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_99408879d5987c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef599-f723-7680-9e1f-f64c53001847",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_c184ff3b574bc1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef352-0763-7942-9ba9-fa9f5ec4a2ed",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_e69ecb3b54f9e9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef356-dbd1-7f01-b8e4-7dcf03626c08",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

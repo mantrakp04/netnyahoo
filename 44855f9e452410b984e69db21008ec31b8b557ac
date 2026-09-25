@@ -1,0 +1,144 @@
+apps/desktop/src/renderer/src/hooks/motion.ts
+  s_5216861cf8a31f::t_67a8f613430c19 72,78-79,83-84
+  s_5216861cf8a31f::t_8cfeac0f47b487 73
+  s_5216861cf8a31f::t_c5da92008aecc4 18-19,85
+apps/desktop/src/renderer/src/styles.css
+  s_380b8135d61bd1::t_57fbea6b2ec7a2 50,101,243,250
+  s_f9d8ef27568dde::t_a6459002656a4e 102-103
+  s_380b8135d61bd1::t_51121916e3b58e 235-239
+apps/desktop/src/renderer/src/components/webgl-glow.tsx
+  s_fb6a0b5b529041::t_238edc09adb7ef 288
+  s_fb6a0b5b529041::t_4d1fc61802a82b 367
+  s_ff5126bcd51a5b::t_a5219e43ad42d6 163
+  s_fb6a0b5b529041::t_230cb574c87051 160-161
+  s_fb6a0b5b529041::t_d440fd5fdf7cb5 142-147
+  s_fb6a0b5b529041::t_1347cb5318dade 98-101
+  s_fb6a0b5b529041::t_bea21f375f9c34 134-135,152-154
+  s_fb6a0b5b529041::t_560a05a3093d1b 120
+  s_fb6a0b5b529041::t_2fc2b5acf3a522 121-122,139,155,159,164
+  s_fb6a0b5b529041::t_a5b3a12ff80e4e 141,148,151,162,165
+  s_5216861cf8a31f::t_6055684061d36d 2,242-245
+  s_c4d0cd49922f0d::t_440e61cc8d46ca 140
+  s_7fe4bcd3239593::t_c9fd256c3dd7ca 24,63-66,166-167
+  s_a988eb50cc91fb::t_eb02f2e0257174 10,178,214,248,281
+apps/desktop/src/renderer/src/components/browser-area.tsx
+  s_5216861cf8a31f::t_ca6762244398e0 120-127,147-148,150,157
+  s_8165a53d9e41f6::t_d7e34a55bb2bd1 180
+apps/desktop/src/renderer/src/components/sidebar.tsx
+  s_f0a301ba0f9055::t_0961715557bf3b 32
+  s_f0a301ba0f9055::t_a9ff08b360a11d 36
+  s_380b8135d61bd1::t_ab1cd920631802 159
+  s_380b8135d61bd1::t_1d775af417d2d6 157-158,165
+  s_f0a301ba0f9055::t_d79584821c2153 186
+apps/desktop/src/renderer/src/components/new-tab-page.tsx
+  s_5216861cf8a31f::t_ad1b9de084bd10 75-76,199,331
+  s_a988eb50cc91fb::t_a51fb9d798649f 81-83,200,217
+  s_8165a53d9e41f6::t_4bb115c822400e 207
+  s_5216861cf8a31f::t_d743320c1e8fdb 25
+  s_5216861cf8a31f::t_56419ba5efc849 219
+  s_8165a53d9e41f6::t_c7629114d939b7 48,61-66
+apps/desktop/src/renderer/src/hooks/use-browser.tsx
+  s_a988eb50cc91fb::t_7bbf4e34264c28 292
+apps/desktop/src/renderer/src/routes/__root.tsx
+  s_bcab804b0c3beb::t_70c4cc2d4d4b27 55,60,74-80,105-115,291-300
+apps/desktop/src/shared/browser-commands.ts
+  s_bcab804b0c3beb::t_70c4cc2d4d4b27 7-15
+apps/desktop/src/main/browser-shortcuts.ts
+  s_bcab804b0c3beb::t_70c4cc2d4d4b27 168-170,180-195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "44855f9e452410b984e69db21008ec31b8b557ac",
+  "prompts": {},
+  "sessions": {
+    "s_380b8135d61bd1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef345-cebb-73d0-9685-95726282905d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_5216861cf8a31f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef315-1e5f-7831-a33b-0deb4e9739b3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_7fe4bcd3239593": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef2fb-eb1b-78c0-a2be-fe68354f068e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_8165a53d9e41f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef309-7343-78e2-a6c4-e5fc44ca7a21",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_a988eb50cc91fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef33e-941f-7ad1-add0-922e97bb942c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_bcab804b0c3beb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef2d8-4bae-7dc0-b231-cfc8b1f3a897",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_c4d0cd49922f0d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc40ab6b-32af-42df-bfeb-4a939c7f158a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f0a301ba0f9055": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef2de-cda1-77a1-b593-496b9e75145e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f9d8ef27568dde": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef33e-504a-7652-aaf9-bb80ae8866e7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_fb6a0b5b529041": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef337-bed4-7243-a2cd-0e925dfd7b6f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_ff5126bcd51a5b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef313-65e5-75a3-b5fe-85476dacbfb8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
