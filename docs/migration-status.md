@@ -289,6 +289,7 @@ Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs 
   steps 13–14).
 - 43: the offline game after a DNS probe (needs a network with no route to the internet).
 - 44: profile paging with a real trackpad, Magic Mouse and wheel mouse.
+- Chrome-hosted windows (phase 1): the checks that need the unlocked screen or VoiceOver (ledger below).
 
 ## Test ledger
 
@@ -614,6 +615,29 @@ Still to run (needs the user at the screen, with Dia key):
    scratchpad `translucency/fit.py`; ours derive them from the swatch hue.
 5. **Profile swipe.** Page between two profiles with the window key: the blur must stay steady while the tints
    cross-fade (each page layer carries its own blur).
+
+### Chrome-hosted windows (`NETNYAHOO_CHROME_WINDOW=1`, `CEF_NN_CLIENT_WINDOW`; docs/research/chrome-hosted-window.md)
+Verified 2026-09-26 (phase 1, instances `c1`–`c6`, screen locked).
+- Flag on, headless: page, typing and sidebar input, autofill, `<select>`, the context menu, the passkey sheet in
+  front with no lift, no zoom bubble, the command bar over the page, and the Chrome shortcut blocklist.
+- Keep-alive: every web tab closed leaves the window and its Browser, with no `about:blank` target; the next page
+  joins the same Browser.
+- Accessibility: in-process walk, identical to the default window.
+- Default path on the new engine: release smoke test 9/12, the same as the shipped 0.1.5 and 0.1.6 on the locked
+  screen.
+
+Still to run, with the screen unlocked:
+1. **Z-order smoke checks.** `SMOKE_APP=<Release build> .claude/skills/release/scripts/smoke.sh <version>
+   <previous>`. Pass if 12/12; the three ghost z-order checks fail for every build while the screen is locked.
+2. **Dialogs, flag on.** `spike.mjs … passkey alert` (docs/research/chrome-hosted-window/spike). Pass if the
+   passkey sheet goes when the page navigates and the alert shows in front. Both failed only on the locked screen,
+   for the old engine's default path as well.
+3. **VoiceOver, flag on.** Turn VoiceOver on over a flagged window showing a web page. Pass if VO reads the sidebar,
+   the toolbar and the page's own content (headings, links), and never Chrome's toolbar or tab strip.
+4. **A real key window, flag on.** Click into the window. Pass if:
+   - ⌘-keys a page handles (e.g. ⌘B in a rich-text editor) stay the page's;
+   - ⇧⌘W asks before closing a window with several tabs (warn setting on);
+   - the command bar keeps focus after the window becomes key again.
 
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order

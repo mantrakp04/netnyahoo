@@ -1,6 +1,8 @@
 // Chrome-hosted window spike checks over CDP + the dev harness.
 // usage: node spike.mjs <dataDirName> <cdpPort> <pid> <pagesOrigin> <outDir> [steps...]
-// steps: interact passkey autofill alert zoom overlay select menu (default: all but select/menu)
+// steps: interact autofill passkey alert zoom overlay select keepalive ax menu (default: the first six).
+// Run menu last and keepalive in its own session: a context menu blocks the app's main thread, and
+// keepalive closes the tab this session drives.
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -229,6 +231,37 @@ for (const step of steps) {
     check("right-click shows Chrome's page context menu", !!menu, menu ? `layer ${menu.layer} @${menu.x},${menu.y} ${menu.w}x${menu.h}; clicked ${hit.split(" < ")[0]}` : JSON.stringify(list));
     if (menu) shot("context-menu", menu.id);
     writeFileSync(`${out}/menu-windows.json`, JSON.stringify(list, null, 1));
+  }
+  if (step === "keepalive") {
+    // Every web tab of the window closes: the window and its Browser stay (no placeholder tab), and
+    // the next page becomes a tab of the same Browser.
+    const pageTargets = async () =>
+      (await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => t.type === "page").map((t) => t.url);
+    await dev(`const s = nn.store.getState(); const w = Object.values(s.windows)[0];
+      for (const id of [...w.tabIds]) if (/^https?:/.test(s.tabs[id]?.url || "")) nn.actions.closeTab(id); return 1`);
+    await sleep(2500);
+    const [g1] = await ghosts();
+    const t1 = await pageTargets();
+    const winAlive = windows().some((w) => w.id === W);
+    check("closing every web tab keeps the window and its Browser", winAlive && g1?.hosting && g1.window === W && g1.anyTabBrowserId === 0,
+      `window ${winAlive}, anyTab ${g1?.anyTabBrowserId}, pages ${JSON.stringify(t1)}`);
+    check("…with no placeholder tab (nothing about:blank for extensions)", !t1.some((u) => u === "about:blank"), JSON.stringify(t1));
+    await dev(`nn.actions.openUrls(["${pages}/page.html"]); return 1`);
+    await sleep(2500);
+    const [g2] = await ghosts();
+    const t2 = await pageTargets();
+    check("the next page is a tab of the same Browser window", g2?.window === W && g2.anyTabBrowserId > 0 && t2.some((u) => u.includes("page.html")),
+      `anyTab ${g2?.anyTabBrowserId}, pages ${JSON.stringify(t2)}`);
+  }
+  if (step === "ax") {
+    // The window's tree as assistive technologies walk it (NSAccessibility, in-process: the AX server
+    // answers nothing while the screen is locked).
+    const tree = await win("ax");
+    writeFileSync(`${out}/ax.txt`, tree);
+    const chrome = ["Address and search bar", "Tab search", "AXToolbar", "Sign In to Chromium"].filter((t) => tree.includes(t));
+    const ours = ["New Tab", "Back", "Forward"].filter((t) => tree.includes(t));
+    check("accessibility: our views, none of Chrome's hidden ones", ours.length === 3 && chrome.length === 0,
+      `ours ${JSON.stringify(ours)}, Chrome's ${JSON.stringify(chrome)}`);
   }
 }
 const failed = results.filter((r) => !r.ok).length;

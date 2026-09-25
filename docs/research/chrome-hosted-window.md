@@ -1,7 +1,9 @@
 # Chrome-hosted windows: Chrome's Browser window is the app window
 
-Status: design + working spike, 2026-09-25. Spike code is behind `NETNYAHOO_CHROME_WINDOW=1`; the default path is
-unchanged. Screenshots and the spike's test scripts are in `docs/research/chrome-hosted-window/`.
+Status: design, spike, and phase 1 (engine) done, 2026-09-26. Chrome-hosted windows are behind
+`NETNYAHOO_CHROME_WINDOW=1` and need the engine's `CEF_NN_CLIENT_WINDOW` (in the shared `vendor/cef` since
+2026-09-26); the default path is unchanged. Screenshots and the test scripts are in
+`docs/research/chrome-hosted-window/`. Phase 1 results: [Phase 1](#phase-1-engine-done).
 
 ## Summary
 
@@ -35,6 +37,77 @@ The approach needs three changes from how the task framed it: the root goes *ins
 to it; Chrome's top chrome must be turned off in the engine, not just covered; and accessibility needs the same
 deferral as hit testing. Plan: 5–7 weeks in six phases, each one shippable.
 
+## Phase 1 (engine), done
+
+Two incremental patches (`docs/cef-source-build.md`, `CEF_NN_CLIENT_WINDOW`) replace the spike's runtime overrides:
+
+- **`cef-zwindow-client.patch`** (10 CEF files; a new `include/` API, so the translator ran):
+  - `CefBrowserSettings.client_window`: no tab strip, toolbar, location bar or bookmarks bar
+    (`SupportsWindowFeature`), no zoom bubble for its tabs, `omit_from_session_restore`, and the Browser stays
+    open without tabs.
+  - `CefBrowserView::CreateTab`: adds a tab to such a Browser even when it has none.
+- **`chromium-window-hosted.patch`** (5 Chromium files):
+  - `BridgedContentView.netnyahooEmbeddedView`: hit testing and accessibility ask it first.
+  - `Browser::TabStripEmpty` / `UnloadController::TabStripEmpty` keep a client window open unless it is closing.
+  - Tab-strip-less normal Browsers use the popup layout. The tabbed layout CHECKs for the tabbed toolbar's
+    background (`browser_view_tabbed_layout_impl.cc:1673`) and crashed the first build that hid the tab strip.
+
+**The placeholder tab: keep-alive, not hide-from-extensions.**
+- Hiding one tab of a tab strip from extensions leaks everywhere: every `Tab.index`, `tabs.move`/`highlight`
+  indexes, `tabs.query`, `windows.get({populate})`, and the tab events (onCreated, onActivated, onRemoved,
+  onMoved…) across `tabs_api.cc`, the event router and `ExtensionTabUtil`.
+- A Browser with no tabs is a state Chrome already passes through while closing a window. It's also the truth
+  when the window shows only our New Tab page.
+- The cost is one API: every existing tab API addresses a Browser through one of its tabs, hence
+  `CefBrowserView::CreateTab`.
+- The app side:
+  - The window's Browser is made with its first real tab (no placeholder in the common path).
+  - A tab moved or reopened into an empty window uses a placeholder made with `CreateTab`, dropped a second later
+    as ghosts already do.
+
+**App side** (`NNChromeWindow.mm`, `NNWindowHost.mm`, `NNClient.mm`):
+- Key routing:
+  - In a client window, a key the page and our menus don't take goes on to Chrome.
+  - `HiddenChromeUICommand` in `OnChromeCommand` is the one filter.
+  - No keycode table, no forwarding to a ghost.
+- File › Close Window has its own action. Chrome's command dispatcher maps a `performClose:` menu item to its
+  reserved `IDC_CLOSE_WINDOW` and would run it before our first responder.
+
+**Checks** (hidden instances, flag on, new engine; `spike/spike.mjs`, `spike/keys.mjs`):
+
+| Check | Result |
+|---|---|
+| Page click, typing, sidebar click and back | PASS |
+| Autofill ↓ + Enter, `<select>`, context menu | PASS |
+| Passkey sheet in front, with no lift | PASS. Dialogs now start at the page's top edge (y 186 → 100 pt), since Chrome's toolbar is gone |
+| JS alert in front, dismisses | PASS (the run before the screen locked) |
+| Zoom | PASS: no bubble at all (was a 262×48 window over the page) |
+| Command bar over the page | PASS |
+| ⇧⌘M, ⌥⌘↑, ⌥⌘L | Nothing happens (Chrome's commands are off without main UI, and the blocklist) |
+| ⌘T, ⌘L | Our menu |
+| ⇧⌘W | Not taken by Chrome's dispatcher (our menu item) |
+| Closing every web tab | Window and Browser stay, no tab left, no `about:blank` target; the next page is a tab of the same Browser |
+| Accessibility | Identical to the default window apart from the window title: our sidebar, toolbar and page controls, none of Chrome's toolbar, tab strip or bookmarks bar. Walked in-process through `NSAccessibility` (`devWindow(n, "ax")`), because the AX server returns nothing while the screen is locked |
+
+Default path on the new engine:
+- The release smoke test (`SMOKE_APP=…`) gives 9/12, the same as the shipped 0.1.5 and 0.1.6 builds on the same
+  locked screen. The three ghost z-order checks read CGWindowList order, which is unreliable while the screen is
+  locked.
+- The spike steps give the same results as the old engine run side by side.
+- The lift itself works: `lifted=true` with the passkey sheet in front.
+
+Still to run with the screen unlocked (ledger in `docs/migration-status.md`): the z-order smoke checks, passkey
+dismissal on navigation, and a VoiceOver pass over web content.
+
+Estimates after phase 1:
+- Phase 1 took about a day instead of 4–6. The layout CHECK was the only surprise.
+- Phase 2 loses the placeholder and command-filter work but gains a few items:
+  - the popup layout's behaviour in full screen;
+  - moves into an empty window (placeholder path, written but not exercised);
+  - `browser_delegate.h` is included by `browser.h`, so any change to that CEF header rebuilds ~1,700 Chrome UI
+    objects (7 minutes here, still incremental).
+- Phases 2–5 otherwise unchanged: about 4–6 weeks.
+
 ## 1. Putting the RN view hierarchy inside Chrome's `NSWindow`
 
 ### What the window is
@@ -61,9 +134,8 @@ deferral as hit testing. Plan: 5–7 weeks in six phases, each one shippable.
 | CEF overlays (`CefWindow::AddOverlayView`) | Views only. It can't hold an `NSView`. |
 
 **Decision: root inside `BridgedContentView`, with our views first for hit testing and accessibility.** The spike
-does it with a runtime override of three `BridgedContentView` methods (`NNChromeWindow.mm`, `LetRootComeFirst`):
-`-hitTest:`, `-accessibilityChildren` and `-accessibilityHitTest:`. The product version should be a small Chromium
-patch in `bridged_content_view.mm` instead of a swizzle (see §5).
+did it with a runtime override of `-hitTest:`, `-accessibilityChildren` and `-accessibilityHitTest:`. Phase 1
+replaced that with `BridgedContentView.netnyahooEmbeddedView` (`chromium-window-hosted.patch`).
 
 Keeping `BridgedContentView` as the content view matters. Chromium updates the widget's geometry from its
 `-setFrameSize:` only while it is the content view (`bridged_content_view.mm:775-795`). `NativeWidgetMacNSWindow
@@ -245,14 +317,9 @@ visible.
 
 | Patch | Files | Notes |
 |---|---|---|
-| `BridgedContentView` embedder subview: hit testing and accessibility consult a designated subview first | 1–2 (`components/remote_cocoa/app_shim/bridged_content_view.{h,mm}`) | Replaces the spike's swizzle. The API is an `NSView` property; reached through CEF's `CefWindow` handle or a `cef_netnyahoo.h` C function |
-| Hide Chrome's top chrome for `native_contents_hosting` Browsers | 1–3 (`chrome_browser_delegate.cc`, maybe `browser_command_controller.cc`) | `SupportsWindowFeature` + the command-gating fallout |
-| No zoom bubble for hosted tabs | 1 (`cef` hosting code) | `ZoomController::SetShowsNotificationBubble(false)` when a tab is marked hosted |
-| `omit_from_session_restore` for hosting Browsers | 1 (`chrome_browser_host_impl.cc`) | |
-| Placeholder tab hidden from extensions, *or* Browser survives an empty tab strip | 2–3 | See §3 |
-| Maybe: `CanClose` reason / window-close routing | CEF only if `CanClose` isn't enough | |
-
-About 8–10 Chromium/CEF files in total: `.cc`/`.mm` edits, plus `cef_netnyahoo.h` markers. Only a new
+Done in phase 1 (see [Phase 1](#phase-1-engine-done)): 15 files in two patches, `cef-zwindow-client.patch`
+and `chromium-window-hosted.patch`. The planned "maybe" left: `CanClose` routing for the close warning (phase 2,
+CEF only if `CanClose` isn't enough). Only a new
 `include/` API triggers CEF's translator (`version_manager.py -u --fast-check`), then an incremental `05-build.sh`
 and `06-distrib.sh`. Nothing touches GN args or `out/` beyond the normal incremental build.
 
@@ -263,7 +330,7 @@ Every phase ships; the flag keeps the ghost path as the default until phase 4.
 | Phase | Work | Exit criteria | Time |
 |---|---|---|---|
 | 0. Spike | Done: `NETNYAHOO_CHROME_WINDOW=1`, this doc | 13/14 seam checks pass (`spike/spike.mjs`) | done |
-| 1. Engine groundwork | The patches in §5 (one `nn-chromium.lock` cycle each, private CEF install first). `cef_netnyahoo.h` markers so the app builds without them | Default path unaffected; the spike without its swizzle; zoom bubble and profile menu gone; no `about:blank` in `chrome.tabs` | 4–6 days |
+| 1. Engine groundwork | Done 2026-09-26 (see [Phase 1](#phase-1-engine-done)) | Default path unaffected; the spike without its swizzle; zoom bubble and profile menu gone; no `about:blank` in `chrome.tabs` | done (~1 day) |
 | 2. One window type behind the flag, production quality | `NNChromeWindow` without dynamic lookups. `WindowManager`: close warning through `CanClose`, frame autosave, traffic-light x inset, incognito windows. `rootView(of:)` for every `contentView` user (§4). Command policy reviewed against Chrome's full shortcut table. Keep the ghost for secondary profiles | A browser window with the flag passes the release smoke test (`smoke.mjs` hosted variant) and the spike checks | 1–1.5 weeks |
 | 3. Parity checklist | Each item tested in a flagged build, with fixes. Surfaces: save card/address, permission prompts, extension popups and install, device chooser, Cast, find, downloads, status. Window: full screen (window and HTML5; decide on `chromium-browser-view-hosted-fullscreen.patch`), Spaces, minimise, multiple displays, split view, popups, PiP, DevTools docked and undocked, drag and drop, swipes, IME, VoiceOver, extension `chrome.commands`, multi-profile windows, session restore, quitting with dialogs open | `docs/migration-status.md` ledger entries for each, user-run checks listed | 2 weeks |
 | 4. Switch the default | Flag inverted (`NETNYAHOO_CHROME_WINDOW=0` = ghost), one or two releases of dogfooding | No seam regressions reported | 3 days + a dogfood week |
@@ -273,7 +340,7 @@ Total: about 5–7 weeks calendar, most of it phase 3's long tail.
 
 ### Risks and unknowns
 
-- **Accessibility.** The spike's override exposes our tree, but the page's web area inside our view still has to be
+- **Accessibility.** The engine hook exposes our tree, but the page's web area inside our view still has to be
   checked with VoiceOver. Chrome's `AccessibilityFocusOverrider` on the widget may also fight focus reporting.
 - **Full screen.** Immersive mode and HTML5 full screen now drive our real window. They might need
   `UsesImmersiveFullscreenMode` to consult CEF.
@@ -291,22 +358,24 @@ Total: about 5–7 weeks calendar, most of it phase 3's long tail.
 
 Code (default path unchanged: every new branch needs `NETNYAHOO_CHROME_WINDOW=1`):
 
-- `packages/cef/ios/NNChromeWindow.{h,mm}`: `NNChromeWindowHost` makes the window, embeds the root in Chrome's
-  content view, overrides `BridgedContentView` hit testing and accessibility, and adds DEV input actions.
+- `packages/cef/ios/NNChromeWindow.{h,mm}`: `NNChromeWindowHost` makes the window and embeds the root in Chrome's
+  content view (since phase 1 through `netnyahooEmbeddedView`; the spike overrode `BridgedContentView` at runtime).
+  It also adds DEV input actions.
   - `hit:` / `click:` / `type:` / `keys:` through `devWindow`, because test instances get no OS events and are never
     active.
   - The DEV `click:` goes through `NSWindow -sendEvent:` for RN views (their touch handler is window-driven) and
     straight to `RenderWidgetHostViewCocoa` for the page. The same probe on the default path gives the same page
     result, so it measures hit testing and Chromium's `-shouldIgnoreMouseEvent:`, not activation.
-- `packages/cef/ios/NNWindowHost.mm`: `Ghost::StartHosting` (the ghost *is* the window: no inert/align/lift, keeps
-  its placeholder tab, standard buttons, resizable), `MakeHostingWindow`, `BlocksChromeCommand` / `HiddenChromeUICommand`.
+- `packages/cef/ios/NNWindowHost.mm`: `Ghost::StartHosting` (the ghost *is* the window: no inert/align/lift,
+  standard buttons, resizable; since phase 1 its Browser comes with the first tab and outlives the last),
+  `MakeHostingWindow`, `BlocksChromeCommand` / `HiddenChromeUICommand`.
 - `packages/cef/ios/NNClient.mm`: `OnChromeCommand` consults the policy (false outside hosting windows).
 - `packages/shell/ios/ChromeWindowSpike.swift` + `Windows.swift`: `WindowManager.open` asks for a Chrome window
   first. It embeds the root instead of setting `contentViewController`, follows the window through notifications,
   and unmounts the root on close.
-- `NETNYAHOO_CHROME_WINDOW_ROOT=frame` keeps the failed frame-view placement for comparison.
+- (Spike only, removed in phase 1: `NETNYAHOO_CHROME_WINDOW_ROOT=frame`, the failed frame-view placement.)
 
-Running it:
+Running it (with an engine that has `CEF_NN_CLIENT_WINDOW`):
 
 ```bash
 cd apps/browser && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \

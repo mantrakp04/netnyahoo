@@ -46,6 +46,7 @@ const cases = [
   ["⌥⌘↑ (Chrome-only: focus toolbar)", CMD | OPT, "", 126],
   ["⇧⌘M (Chrome-only: profile menu)", CMD | SHIFT, "M", 46],
   ["⌘L (our command bar)", CMD, "l", 37],
+  ["⇧⌘W (Close Window: our menu, not Chrome's reserved command)", CMD | SHIFT, "W", 13],
 ];
 for (const [name, flags, ch, code] of cases) {
   const before = { ...(await state()), chrome: await chromeTabs(), windows: windows().length };
