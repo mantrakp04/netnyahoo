@@ -71,9 +71,15 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "setBookmarksBar":
       if (arg === "always" || arg === "newTab" || arg === "never") s.updateSettings({ bookmarksBar: arg });
       return;
-    case "toggleBookmarksBar":
-      // Like Chrome: shown (in any mode) → Never; hidden → Always.
-      return s.updateSettings({ bookmarksBar: s.settings.bookmarksBar === "never" ? "always" : "never" });
+    case "toggleBookmarksBar": {
+      // Like Chrome: shown (in any mode) → Never; hidden → Always. "On New Tab Only" shows it on the
+      // New Tab page alone, so on a web page ⇧⌘B shows it rather than setting Never (no change).
+      const mode = s.settings.bookmarksBar;
+      const target = resolveWindowId(s, requested);
+      const active = target ? activeTabId(s, target) : undefined;
+      const shown = mode === "always" || (mode === "newTab" && !(active && s.tabs[active]?.url));
+      return s.updateSettings({ bookmarksBar: shown ? "never" : "always" });
+    }
   }
 
   const windowId = resolveWindowId(s, requested);
