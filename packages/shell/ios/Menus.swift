@@ -441,12 +441,21 @@ enum MainMenu {
     return item
   }
 
+  /// Help › Release Notes: the running version's entry on the website (Info.plist NNReleaseNotesURL).
+  private static func releaseNotesItem() -> NSMenuItem {
+    let item = CommandItem("Release Notes", "releaseNotes", key: "")
+    let url = Bundle.main.object(forInfoDictionaryKey: "NNReleaseNotesURL") as? String ?? ""
+    item.isHidden = URL(string: url)?.scheme?.hasPrefix("http") != true
+    return item
+  }
+
   private static func helpItems() -> [NSMenuItem] {
     var items: [NSMenuItem] = [
       CommandItem("Send Feedback…", "sendFeedback", key: ""),
       CommandItem("Keyboard Shortcuts", "keyboardShortcuts", key: ""),
       CommandItem("Tool Tour", "toolTour", key: ""),
       videoTourItem(),
+      releaseNotesItem(),
       .separator(),
       CommandItem("Copy Diagnostics", "copyDiagnostics", key: ""),
       CommandItem("Record Performance Issue…", "recordPerformanceIssue", key: ""),

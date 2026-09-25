@@ -160,5 +160,15 @@ extension AppUpdater: SPUStandardUserDriverDelegate {
   public func standardUserDriverWillFinishUpdateSession() {
     deferredUpdate = false
   }
+
+  /// "You're up to date" › Version History (the appcast's fullReleaseNotesLink, scripts/release.sh):
+  /// the running version's entry, in a tab here rather than in the default browser.
+  @objc(standardUserDriverShowVersionHistoryForAppcastItem:)
+  public func standardUserDriverShowVersionHistory(for item: SUAppcastItem) {
+    guard let page = item.fullReleaseNotesURL else { return }
+    var components = URLComponents(url: page, resolvingAgainstBaseURL: false)
+    components?.fragment = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    OpenURLInbox.receive([components?.url ?? page])
+  }
 }
 #endif

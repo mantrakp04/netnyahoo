@@ -70,6 +70,12 @@ export type SystemInfo = {
   feedbackEmail?: string | null;
   /** Help › Video Tour's page (Info.plist NNVideoTourURL); null = hidden. */
   videoTourURL?: string | null;
+  /** The release notes page (Info.plist NNReleaseNotesURL; versions are its #anchors); null = none. */
+  releaseNotesURL?: string | null;
+  /** Launched as a hidden test instance (NETNYAHOO_BACKGROUND=1 or NETNYAHOO_DATA_DIR). */
+  isolatedInstance?: boolean;
+  /** NETNYAHOO_RELEASE_NOTES=1: open the release notes after an update even in a test instance. */
+  forceReleaseNotes?: boolean;
 };
 
 /** What AppleScript reads (see Netnyahoo.sdef). Windows in any order; tabs in sidebar order. */

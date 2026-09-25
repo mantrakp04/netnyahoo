@@ -74,20 +74,23 @@ const useReleaseNotes = create<State>(() => ({ pending: null, page: null }));
  * notes the running version, and queues the postcard when it changed and has notes. Installs from
  * before this existed (a saved session, no record) count as updated. DEV builds only queue it with
  * NETNYAHOO_WHATS_NEW=1, so the many dev instances don't all show it.
+ * Returns whether this launch is the first of a new version (never on a fresh install).
  */
-export function trackAppVersion() {
+export function trackAppVersion(): boolean {
   const version = systemInfo().appVersion;
-  if (!version) return;
+  if (!version) return false;
   const saved = readSaved();
+  const updated = saved ? saved.lastVersion !== version : !!readDocument("session.json");
   let pending = saved?.pending ?? null;
   if (__DEV__) {
     if (launchEnvironment("NETNYAHOO_WHATS_NEW") === "1") pending = { version, since: Date.now() };
-  } else if (saved ? saved.lastVersion !== version : !!readDocument("session.json")) {
+  } else if (updated) {
     pending = notesFor(version) ? { version, since: Date.now() } : null;
   }
   if (pending && Date.now() - pending.since > POSTCARD_SECONDS * 1000) pending = null;
   save({ lastVersion: version, pending });
   useReleaseNotes.setState({ pending });
+  return updated;
 }
 
 /** The notes the postcard is for, if it's showing. */

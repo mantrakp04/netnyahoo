@@ -17,17 +17,19 @@ import {
   type ScriptState,
 } from "@netnyahoo/shell";
 import { maybeStartOnboarding, openVideoTour, startOnboarding, startToolTour } from "../components/onboarding";
+import { trackAppVersion } from "../components/ntp/releaseNotes";
 import { openTaskManager } from "../components/taskManager/window";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { activeTabId, resolveWindowId, viewTabIds, windowTitle } from "../store/model";
 import { focus, openUrls, openWindow, switchProfile, switchToTab } from "./actions";
+import { openReleaseNotesAfterUpdate, openReleaseNotesPage } from "./releaseNotesPage";
 import { webviews } from "./webviews";
 import { handleWebNotificationResponse } from "./webNotifications";
 
 /**
- * App-level integration with macOS: the Help menu, Handoff, AppleScript,
- * notification clicks and first-launch onboarding. Call once at startup, after the session
- * has been restored and the native sync started.
+ * App-level integration with macOS: the Help menu, Handoff, AppleScript, notification clicks,
+ * first-launch onboarding and the release notes after an update. Call once at startup, after the
+ * session has been restored and the native sync started.
  */
 export function startAppIntegration() {
   onCommand(runAppCommand);
@@ -40,7 +42,10 @@ export function startAppIntegration() {
   });
   startHandoff();
   startScripting();
+  // Before the first session save, like onboarding's checks: tells an update from a fresh install.
+  const updated = trackAppVersion();
   maybeStartOnboarding();
+  if (updated) openReleaseNotesAfterUpdate();
 }
 
 function runAppCommand({ command, windowId }: CommandEvent) {
@@ -57,6 +62,8 @@ function runAppCommand({ command, windowId }: CommandEvent) {
       return void startToolTour(windowId);
     case "videoTour":
       return openVideoTour(windowId);
+    case "releaseNotes":
+      return openReleaseNotesPage(windowId);
     case "taskManager":
       return openTaskManager();
   }

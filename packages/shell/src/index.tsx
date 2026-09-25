@@ -93,6 +93,8 @@ export type BrowserCommand =
   /** Help › Tool Tour (coach marks over the window) and Video Tour (hidden without a URL). */
   | "toolTour"
   | "videoTour"
+  /** Help › Release Notes: this version's entry on the website. */
+  | "releaseNotes"
   /** DEV builds: Help › Show Onboarding. */
   | "showOnboarding"
   | "taskManager"

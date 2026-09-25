@@ -16,17 +16,18 @@ beforeEach(() => {
 });
 
 test("a fresh install records its version and shows nothing", () => {
-  notes.trackAppVersion();
+  assert.equal(notes.trackAppVersion(), false);
   assert.equal(saved().lastVersion, "1.0");
   assert.equal(pendingVersion(), null);
 });
 
 test("an update to a version with notes queues the postcard, once", () => {
   shell.docs.set("release-notes.json", JSON.stringify({ version: 1, lastVersion: "0.9", pending: null }));
-  notes.trackAppVersion();
+  // The launch that updated says so (lib/releaseNotesPage opens the notes page), once.
+  assert.equal(notes.trackAppVersion(), true);
   assert.equal(pendingVersion(), "1.0");
   // Relaunching the same version keeps it until it's opened or dismissed…
-  notes.trackAppVersion();
+  assert.equal(notes.trackAppVersion(), false);
   assert.equal(pendingVersion(), "1.0");
   // …and retiring it is remembered.
   notes.retireReleaseNotes();

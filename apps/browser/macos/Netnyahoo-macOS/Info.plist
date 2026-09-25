@@ -71,6 +71,8 @@
 	<string></string>
 	<key>NNFeedbackURL</key>
 	<string></string>
+	<key>NNReleaseNotesURL</key>
+	<string>https://netnyahoo.com/release-notes</string>
 	<key>NNVideoTourURL</key>
 	<string></string>
 	<key>NSAppTransportSecurity</key>

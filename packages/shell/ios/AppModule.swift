@@ -95,6 +95,7 @@ public class AppModule: Module {
     /// App, OS and hardware facts for Help › Copy Diagnostics.
     Function("systemInfo") { () -> [String: Any] in
       let info = Bundle.main.infoDictionary ?? [:]
+      let env = ProcessInfo.processInfo.environment
       let os = ProcessInfo.processInfo.operatingSystemVersion
       var model = [CChar](repeating: 0, count: 256)
       var size = model.count
@@ -122,6 +123,12 @@ public class AppModule: Module {
         "feedbackEmail": Self.infoString("NNFeedbackEmail") as Any,
         // Help › Video Tour (hidden while empty).
         "videoTourURL": Self.infoString("NNVideoTourURL") as Any,
+        // Help › Release Notes, and the page that opens once after an update (hidden / off while empty).
+        "releaseNotesURL": Self.infoString("NNReleaseNotesURL") as Any,
+        // A hidden test instance (docs/agent-brief.md): no release notes tab after an "update"…
+        "isolatedInstance": env["NETNYAHOO_BACKGROUND"] == "1" || env["NETNYAHOO_DATA_DIR"] != nil,
+        // …unless the test asks for it (NETNYAHOO_RELEASE_NOTES=1; apps/browser/src/lib/releaseNotesPage.ts).
+        "forceReleaseNotes": env["NETNYAHOO_RELEASE_NOTES"] == "1",
       ]
     }
 

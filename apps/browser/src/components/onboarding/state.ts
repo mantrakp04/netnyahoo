@@ -2,7 +2,6 @@ import { launchEnvironment, readDocument, stopIntroMusic, writeDocument } from "
 import { create } from "zustand";
 import { useBrowser } from "../../store/browser";
 import { resolveWindowId } from "../../store/model";
-import { trackAppVersion } from "../ntp/releaseNotes";
 import { pinSites } from "./sites";
 import { endToolTour, startToolTour } from "./tour/state";
 
@@ -128,8 +127,6 @@ export function dismissOnboarding(session: number) {
  * aren't covered by it.
  */
 export function maybeStartOnboarding() {
-  // Before the first session save, like the checks below: tells an update from a fresh install.
-  trackAppVersion();
   const saved = readSaved();
   if (saved?.completedAt) return;
   if (saved?.startedAt) return startOnboarding(null, "defaultBrowser");
