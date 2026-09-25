@@ -52,7 +52,7 @@ function originOf(url: string): string | null {
  * security (with certificate details), zoom, the ad blocker for this site,
  * permissions, clearing cookies & site data, a clean link copy, Show Full URL.
  */
-export function SiteControls({ tabId, right, top }: { tabId: string; right: number; top: number }) {
+export function SiteControls({ tabId, right, left, top }: { tabId: string; right?: number; left?: number; top: number }) {
   const theme = useTheme();
   const tab = useTab(tabId);
   const security = usePage(tabId, (p) => p.security);
@@ -129,7 +129,7 @@ export function SiteControls({ tabId, right, top }: { tabId: string; right: numb
   };
 
   return (
-    <Popover width={306} top={top} right={right} onDismiss={close}>
+    <Popover width={306} top={top} right={right} left={left} onDismiss={close}>
       <View style={{ paddingVertical: 6 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 13, paddingTop: 6, paddingBottom: 8 }}>
           <Favicon url={url} favicon={tab.favicon} size={20} profileId={tab.profileId} />

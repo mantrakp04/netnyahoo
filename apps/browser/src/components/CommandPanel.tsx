@@ -12,6 +12,8 @@ const MAX_WIDTH = 888;
 /** A narrow split pane still gets a usable panel (it may overhang the pane, never the window). */
 const MIN_WIDTH = 420;
 const WINDOW_MARGIN = 12;
+/** The panel's input row (Omnibox "panel"): centred on the sidebar's URL field. */
+const INPUT_ROW = 55;
 
 /**
  * URL click / ⌘L: the command bar expands in place over the focused pane's toolbar, with no
@@ -28,9 +30,13 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
   // An empty split pane (no URL yet) opens the panel too: it has no New Tab page bar of its own.
   if (!panel.open || !active || !anchor) return null;
 
-  const left = Math.max(WINDOW_MARGIN, anchor.left - LEFT_OF_URL);
+  // The sidebar's field (Settings › Appearance › Address Bar): the panel grows from it, over the
+  // sidebar and into the page, with its input row where the field is.
+  const field = anchor.sidebar;
+  const left = field ? anchor.left : Math.max(WINDOW_MARGIN, anchor.left - LEFT_OF_URL);
+  const top = field ? anchor.top + field.height / 2 - INPUT_ROW / 2 : Math.max(0.5, anchor.top - ABOVE_PANE);
   // Right edge where the pane's URL field ends (12pt in from the pane), like Dia's single pane.
-  const fitted = Math.min(MAX_WIDTH, anchor.width + LEFT_OF_URL);
+  const fitted = field ? MAX_WIDTH : Math.min(MAX_WIDTH, anchor.width + LEFT_OF_URL);
   const room = windowWidth > 0 ? windowWidth - left - WINDOW_MARGIN : fitted;
   const width = Math.min(Math.max(fitted, MIN_WIDTH), room);
   return (
@@ -43,7 +49,7 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
       shadowOpacity={theme.panelShadowOpacity}
       shadowRadius={24}
       shadowOffset={[0, 10]}
-      style={{ position: "absolute", top: Math.max(0.5, anchor.top - ABOVE_PANE), left, width }}
+      style={{ position: "absolute", top, left, width }}
     >
       <Omnibox
         key={active.id}

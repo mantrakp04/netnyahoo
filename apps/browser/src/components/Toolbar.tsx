@@ -1,7 +1,7 @@
 import { breadcrumb, urlForDisplay } from "@netnyahoo/core";
-import { ContextMenuArea, MouseArea, Symbol, WindowDragRegion } from "@netnyahoo/shell";
+import { ContextMenuArea, FadeLabel, MouseArea, Symbol, WindowDragRegion } from "@netnyahoo/shell";
 import { useEffect, useRef } from "react";
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { layout, useTheme } from "../lib/theme";
 import { webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
@@ -45,7 +45,6 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
   }, [focused]);
   if (!tab) return <View style={{ height: layout.toolbarHeight }} />;
 
-  const web = () => webviews.get(tab.id);
   // Acting on an unfocused pane focuses it first, like clicking into its page.
   const focus = () => {
     if (!focused) useBrowser.getState().activate(tab.id);
@@ -70,22 +69,11 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
         )}
         <HistoryButton style={at(geometry.back)} tab={tab} direction={-1} disabled={!history.back} palette={palette} onFocus={focus} />
         <HistoryButton style={at(geometry.forward)} tab={tab} direction={1} disabled={!history.forward} palette={palette} onFocus={focus} />
-        <ToolbarButton
-          style={at(geometry.reload)}
-          palette={palette}
-          icon={live.isLoading ? "xmark" : "arrow.clockwise"}
-          size={14}
-          disabled={!tab.url}
-          onPress={(m) => {
-            focus();
-            if (live.isLoading) return void web()?.stopLoading();
-            if (m.metaKey) return void useBrowser.getState().newTab(tab.windowId, { url: tab.url, background: true, openerId: tab.id });
-            void (m.shiftKey ? web()?.forceReload() : web()?.reload());
-          }}
-          tooltip={live.isLoading ? "Stop Loading This Page" : "Refresh (⌘R)"}
-        />
+        <ReloadButton style={at(geometry.reload)} tab={tab} loading={live.isLoading} palette={palette} onFocus={focus} />
         <ToolbarExtensions tabId={tab.id} windowId={windowId} palette={palette} top={21.2 - 14} right={inSplit ? 8 + 60 : 8} />
-        {tab.url ? <UrlField tab={tab} left={geometry.urlLeft} right={right} palette={palette} windowId={windowId} inSplit={inSplit} onFocus={focus} /> : null}
+        {tab.url ? (
+          <UrlField tab={tab} palette={palette} windowId={windowId} inSplit={inSplit} onFocus={focus} style={{ position: "absolute", left: geometry.urlLeft, right, top: 21.2 - 15 }} />
+        ) : null}
         {inSplit && (
           <View style={{ position: "absolute", top, right: 8, flexDirection: "row", gap: -2 }}>
             <ToolbarButton palette={palette} icon="rectangle.split.2x1" size={14} box={30} onPress={() => showSplitMenu(tab.id)} tooltip="Split View" />
@@ -100,7 +88,28 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
   );
 }
 
-/** Thin load-progress line along the toolbar's bottom edge; it glides between reports. */
+/** Reload (⇧: ignoring the cache, ⌘: in a background tab); Stop while the page loads. */
+export function ReloadButton({ tab, loading, palette, style, onFocus }: { tab: Tab; loading: boolean; palette: ToolbarPalette; style?: ViewStyle; onFocus: () => void }) {
+  const web = () => webviews.get(tab.id);
+  return (
+    <ToolbarButton
+      style={style}
+      palette={palette}
+      icon={loading ? "xmark" : "arrow.clockwise"}
+      size={14}
+      disabled={!tab.url}
+      onPress={(m) => {
+        onFocus();
+        if (loading) return void web()?.stopLoading();
+        if (m.metaKey) return void useBrowser.getState().newTab(tab.windowId, { url: tab.url, background: true, openerId: tab.id });
+        void (m.shiftKey ? web()?.forceReload() : web()?.reload());
+      }}
+      tooltip={loading ? "Stop Loading This Page" : "Refresh (⌘R)"}
+    />
+  );
+}
+
+/** Thin load-progress line along the toolbar's (or the sidebar field's) bottom edge; it glides between reports. */
 function ProgressBar({ progress, color }: { progress: number; color: string }) {
   const width = useRef(new Animated.Value(Math.max(progress, 0.08))).current;
   useEffect(() => {
@@ -126,7 +135,7 @@ function ProgressBar({ progress, color }: { progress: number; color: string }) {
  * background tab (⇧ a new window); press-and-hold or right-click lists the history in
  * that direction (layout/HistoryPopover).
  */
-function HistoryButton({
+export function HistoryButton({
   tab,
   direction,
   disabled,
@@ -138,7 +147,7 @@ function HistoryButton({
   direction: -1 | 1;
   disabled: boolean;
   palette: ToolbarPalette;
-  style: object;
+  style?: object;
   onFocus: () => void;
 }) {
   const openMenu = () => {
@@ -172,23 +181,29 @@ function HistoryButton({
   );
 }
 
-function UrlField({
+/**
+ * The host / title breadcrumb: hovering shows the full URL and the page actions, clicking opens
+ * the command bar. `sidebar`: the sidebar's field (Settings › Appearance › Address Bar), filled
+ * like a resting pinned tile, with the load progress along its bottom edge.
+ */
+export function UrlField({
   tab,
-  left,
-  right,
   palette,
   windowId,
   inSplit,
   onFocus,
+  style,
+  sidebar,
 }: {
   tab: Tab;
-  left: number;
-  right: number;
   palette: ToolbarPalette;
   windowId: string;
   inSplit: boolean;
   onFocus: () => void;
+  style?: ViewStyle;
+  sidebar?: { height: number; progress: number | null };
 }) {
+  const theme = useTheme();
   const showFullUrl = useSettings((s) => s.showFullUrl);
   const bookmarked = useIsBookmarked(tab.url);
   const insecure = usePage(tab.id, (p) => (p.security && (p.security.level === "insecure" || p.security.level === "certificateError") ? p.security.level : null));
@@ -218,17 +233,20 @@ function UrlField({
   return (
     <View
       {...hoverProps}
-      style={{
-        position: "absolute",
-        left,
-        right,
-        top: 21.2 - 15,
-        height: 30,
-        borderRadius: 8,
-        backgroundColor: hovered ? palette.pill : undefined,
-        flexDirection: "row",
-        alignItems: "center",
-      }}
+      style={[
+        style,
+        { flexDirection: "row", alignItems: "center" },
+        sidebar
+          ? {
+              height: sidebar.height,
+              borderRadius: 10,
+              borderWidth: StyleSheet.hairlineWidth * 2,
+              borderColor: theme.pinnedRestingStroke,
+              backgroundColor: hovered ? theme.tabHover : theme.pinnedResting,
+              overflow: "hidden",
+            }
+          : { height: 30, borderRadius: 8, backgroundColor: hovered ? palette.pill : undefined },
+      ]}
     >
       {insecure && (
         <Pressable onPress={toggleSiteControls} style={{ paddingLeft: 7 }} tooltip="Connection is not secure">
@@ -242,18 +260,35 @@ function UrlField({
       )}
       {/* Right-click: Paste and Go / Paste and Search, Copy URL (Dia). */}
       <ContextMenuArea style={{ flex: 1 }} onContextMenu={() => void showUrlBarMenu(tab)}>
-      <Pressable onPress={() => openPanel(tab.url)} style={{ flex: 1, height: 30, justifyContent: "center", paddingLeft: insecure ? 3 : 8 }}>
-        <Text numberOfLines={1} style={{ fontSize: 13, color: palette.text }}>
-          <Text style={{ fontWeight: "500" }}>{host}</Text>
-          {expanded ? (
-            <Text style={{ color: palette.secondary }}>{path}</Text>
-          ) : tab.title ? (
-            <Text style={{ color: palette.secondary }}>
-              {" / "}
-              {tab.title}
+      <Pressable onPress={() => openPanel(tab.url)} style={{ flex: 1, height: sidebar?.height ?? 30, justifyContent: "center", paddingLeft: insecure ? 3 : sidebar ? 10 : 8 }}>
+        {sidebar ? (
+          // The sidebar's narrow field fades the title / path out, like the tab titles under it.
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 13, fontWeight: "500", color: palette.text }}>
+              {host}
             </Text>
-          ) : null}
-        </Text>
+            {/* FadeLabel pads its text 2pt on each side. */}
+            <FadeLabel
+              text={expanded ? path : tab.title ? ` / ${tab.title}` : ""}
+              fontSize={13}
+              color={palette.secondary}
+              fadeWidth={14}
+              style={{ flex: 1, height: 18, marginLeft: -2 }}
+            />
+          </View>
+        ) : (
+          <Text numberOfLines={1} style={{ fontSize: 13, color: palette.text }}>
+            <Text style={{ fontWeight: "500" }}>{host}</Text>
+            {expanded ? (
+              <Text style={{ color: palette.secondary }}>{path}</Text>
+            ) : tab.title ? (
+              <Text style={{ color: palette.secondary }}>
+                {" / "}
+                {tab.title}
+              </Text>
+            ) : null}
+          </Text>
+        )}
       </Pressable>
       </ContextMenuArea>
       <View style={{ flexDirection: "row", alignItems: "center", paddingRight: 3 }}>
@@ -275,7 +310,7 @@ function UrlField({
         {hovered && (
           <>
             <ToolbarButton palette={palette} icon={bookmarked ? "bookmark.fill" : "bookmark"} size={13} box={24} radius={6} onPress={toggleBookmark} tooltip={bookmarked ? "Remove Bookmark" : "Bookmark This Page (⌘D)"} />
-            {!inSplit && (
+            {!inSplit && !sidebar && (
               <ToolbarButton
                 palette={palette}
                 icon="rectangle.split.2x1"
@@ -290,6 +325,7 @@ function UrlField({
           </>
         )}
       </View>
+      {sidebar && sidebar.progress !== null ? <ProgressBar progress={sidebar.progress} color={theme.accent} /> : null}
     </View>
   );
 }

@@ -85,6 +85,8 @@ export type Settings = {
 
   // Appearance
   appearance: "auto" | "light" | "dark";
+  /** Where the address bar and back / forward / reload sit: the page's toolbar, or the sidebar's top (Arc). */
+  addressBar: "toolbar" | "sidebar";
 
   // Profiles
   defaultProfileId: string;
@@ -126,6 +128,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bookmarksBar: "never",
   hideBookmarksBarImport: false,
   appearance: "auto",
+  addressBar: "toolbar",
   defaultProfileId: DEFAULT_PROFILE_ID,
   shortcuts: {},
 };

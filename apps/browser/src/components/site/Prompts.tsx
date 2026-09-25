@@ -94,7 +94,7 @@ function CloseButton({ onPress, color }: { onPress: () => void; color: string })
  * Pop-ups the blocker stopped: Dia's "Always allow pop-ups from example.com?"
  * with Always Allow / Only Once / Always Deny, plus the blocked addresses.
  */
-export function BlockedPopupsPrompt({ tabId, right, top }: { tabId: string; right: number; top: number }) {
+export function BlockedPopupsPrompt({ tabId, right, left, top }: { tabId: string; right?: number; left?: number; top: number }) {
   const theme = useTheme();
   const popups = usePage(tabId, (p) => p.popups);
   if (!popups.length) return null;
@@ -108,7 +108,7 @@ export function BlockedPopupsPrompt({ tabId, right, top }: { tabId: string; righ
   };
   const profile = () => engineProfile(useBrowser.getState().tabs[tabId]?.profileId ?? "");
   return (
-    <Popover width={360} top={top} right={right} onDismiss={close}>
+    <Popover width={360} top={top} right={right} left={left} onDismiss={close}>
       <View style={{ paddingBottom: 6 }}>
         <PromptBody
           icons={["macwindow.badge.plus"]}

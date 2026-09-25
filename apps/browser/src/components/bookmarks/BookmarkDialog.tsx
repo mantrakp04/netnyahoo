@@ -7,6 +7,7 @@ import { useWindowId } from "../../store/hooks";
 import { Button, TextField, useFormColors } from "../settings/controls";
 import { useBookmarkDialog, type BookmarkDialogState } from "./actions";
 import { FolderTree } from "./FolderTree";
+import { SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "../layout/windowLayout";
 
 /**
  * Dia's bookmark save dialog: the page is bookmarked as soon as ⌘D is pressed;
@@ -23,6 +24,8 @@ export function BookmarkDialog() {
 function DialogPanel({ state }: { state: BookmarkDialogState }) {
   const theme = useTheme();
   const colors = useFormColors();
+  // Under the URL field's bookmark button: the toolbar's (top right) or the sidebar's.
+  const addressBar = useAddressBarInSidebar();
   const bookmark = useBrowser((s) => (state.kind === "page" ? s.bookmarks.nodes[state.bookmarkId] : undefined));
   const profileId = state.kind === "page" ? profileOfNode(state.bookmarkId) : state.profileId;
   const [name, setName] = useState(() => (state.kind === "page" ? (bookmark?.title ?? "") : ""));
@@ -76,7 +79,12 @@ function DialogPanel({ state }: { state: BookmarkDialogState }) {
         shadowOpacity={theme.panelShadowOpacity}
         shadowRadius={24}
         shadowOffset={[0, 10]}
-        style={{ position: "absolute", top: layout.cardTop + layout.toolbarHeight - 2, right: layout.cardInset + 10, width: 320, padding: 14 }}
+        style={{
+          position: "absolute",
+          ...(addressBar ? { top: SIDEBAR_HEADER_WITH_FIELD + 4, left: layout.sidebarInset } : { top: layout.cardTop + layout.toolbarHeight - 2, right: layout.cardInset + 10 }),
+          width: 320,
+          padding: 14,
+        }}
       >
         <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary }}>{heading}</Text>
         <Text style={{ fontSize: 11.5, marginTop: 12, marginBottom: 5, color: theme.textSecondary }}>{state.kind === "allTabs" ? "Folder name" : "Name"}</Text>

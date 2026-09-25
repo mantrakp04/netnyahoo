@@ -7,11 +7,13 @@ import { PageProfileContext, useSettings, useWindowId, useWindowProfileId } from
 import { activeTabId } from "../store/model";
 import { cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
+import { SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
 import { IconButton, useHover } from "./primitives";
 import { ProfileIndicator } from "./ProfileIndicator";
 import { usePageOffset, usePagerPages } from "./layout/profilePager";
 import { PROFILE_DOTS_HEIGHT, ProfileDots, useProfileDotsShown } from "./profiles/ProfileDots";
+import { SIDEBAR_NAV_WIDTH, SidebarAddressRow, SidebarNavigation } from "./sidebar/AddressBar";
 import { DragGhost } from "./sidebar/DragGhost";
 import { DragProvider, DragScope, useDragController, useDragItem, type Ghost } from "./sidebar/dnd";
 import { useSidebarEntries } from "./sidebar/entries";
@@ -51,8 +53,13 @@ export function Sidebar() {
   const playerHeight = playerTab ? SIDEBAR_PLAYER_HEIGHT : 0;
   // Dia's footer with the space switcher: a dot per profile.
   const footer = useProfileDotsShown() ? PROFILE_DOTS_HEIGHT : 0;
+  // Settings › Appearance › Address Bar: the header also holds the URL field, and the list starts
+  // under it. The field is translucent, so the list doesn't reach under it for the glow.
+  const addressBar = useAddressBarInSidebar();
+  const header = addressBar ? SIDEBAR_HEADER_WITH_FIELD : layout.sidebarHeader;
+  const glowRoom = addressBar ? 0 : GLOW_ROOM;
 
-  useRevealTabs(windowId, scroll, scrollY);
+  useRevealTabs(windowId, scroll, scrollY, glowRoom);
 
   return (
     <DragProvider>
@@ -69,7 +76,7 @@ export function Sidebar() {
               position: "absolute",
               left: 0,
               right: 0,
-              top: layout.sidebarHeader - GLOW_ROOM,
+              top: header - glowRoom,
               bottom: (docked ? ROW_PITCH + 10 : 0) + playerHeight + footer,
               // Pages are clipped to the sidebar only while they move.
               overflow: paging ? "hidden" : "visible",
@@ -84,6 +91,7 @@ export function Sidebar() {
                 width={width}
                 current={page.id === current}
                 docked={docked}
+                glowRoom={glowRoom}
                 ghost={ghost}
                 // The pages beside the window's only draw the rows that fit.
                 rows={page.id === current ? undefined : Math.ceil(available / ROW_PITCH) + 1}
@@ -119,23 +127,38 @@ export function Sidebar() {
           ) : null}
 
           {/* Traffic lights sit in this header (positioned natively); the rest drags the window. */}
-          <View
-            style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", justifyContent: "flex-end", paddingRight: 7, paddingTop: 27 - 17 }}
-          >
+          <View style={{ height: header }}>
             <WindowDragRegion style={StyleSheet.absoluteFill} />
-            {/* It has the header between the traffic lights and Downloads (34 pt, 7 pt in from the edge). */}
-            <ProfileIndicator room={width - layout.trafficLightsWidth - 34 - 7 - 2} />
-            <IconButton
-              icon="arrow.down.circle"
-              size={16}
-              box={34}
-              radius={10}
-              tooltip="Downloads (⇧⌘J)"
-              onPress={() => {
-                const s = useBrowser.getState();
-                s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
-              }}
-            />
+            <View
+              style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", justifyContent: "flex-end", paddingRight: 7, paddingTop: 27 - 17 }}
+            >
+              {addressBar ? (
+                <>
+                  {/* Back / forward / reload take Downloads' place (it moves beside the URL field). */}
+                  <ProfileIndicator room={width - layout.trafficLightsWidth - SIDEBAR_NAV_WIDTH - 7 - 2} />
+                  <View style={{ marginTop: 2 }}>
+                    <SidebarNavigation />
+                  </View>
+                </>
+              ) : (
+                <>
+                  {/* It has the header between the traffic lights and Downloads (34 pt, 7 pt in from the edge). */}
+                  <ProfileIndicator room={width - layout.trafficLightsWidth - 34 - 7 - 2} />
+                  <IconButton
+                    icon="arrow.down.circle"
+                    size={16}
+                    box={34}
+                    radius={10}
+                    tooltip="Downloads (⇧⌘J)"
+                    onPress={() => {
+                      const s = useBrowser.getState();
+                      s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
+                    }}
+                  />
+                </>
+              )}
+            </View>
+            {addressBar ? <SidebarAddressRow /> : null}
           </View>
 
           <ResizeHandle windowId={windowId} width={width} />
@@ -153,6 +176,8 @@ type PageProps = {
   /** The window's profile: the page you use. The others are drawn beside it during a swipe. */
   current: boolean;
   docked: boolean;
+  /** Room above the list's first row for the selected row's glow. */
+  glowRoom: number;
   ghost: Ghost | null;
   /** How many list entries to draw (pages beside the window's). */
   rows: number | undefined;
@@ -162,7 +187,7 @@ type PageProps = {
 };
 
 /** A profile's pinned tiles, groups, live folders and tabs: the scrolling part of the sidebar. */
-function SidebarPage({ profileId, slot, width, current, docked, ghost, rows, onListHeight, onScrollView, onScrollY }: PageProps) {
+function SidebarPage({ profileId, slot, width, current, docked, glowRoom, ghost, rows, onListHeight, onScrollView, onScrollY }: PageProps) {
   const windowId = useWindowId();
   const { tiles, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
   const list = rows === undefined ? all : all.slice(0, rows);
@@ -191,12 +216,12 @@ function SidebarPage({ profileId, slot, width, current, docked, ghost, rows, onL
                 showsVerticalScrollIndicator={false}
                 scrollEventThrottle={16}
                 onScroll={current ? (e) => onScrollY(e.nativeEvent.contentOffset.y) : undefined}
-                contentContainerStyle={{ flexGrow: 1, width, paddingHorizontal: layout.sidebarInset, paddingTop: GLOW_ROOM }}
+                contentContainerStyle={{ flexGrow: 1, width, paddingHorizontal: layout.sidebarInset, paddingTop: glowRoom }}
               >
                 <View
                   // Measured without the inline New Tab row, so docking doesn't flip back and forth.
                   onLayout={(e) => {
-                    measured.current = e.nativeEvent.layout.height + GLOW_ROOM - (inlineNewTab ? ROW_PITCH : 0);
+                    measured.current = e.nativeEvent.layout.height + glowRoom - (inlineNewTab ? ROW_PITCH : 0);
                     if (current) onListHeight(measured.current);
                   }}
                   style={{ paddingBottom: inlineNewTab ? 0 : 8 }}
@@ -265,7 +290,7 @@ function Tail({ id, section }: { id: string; section: "list" | "pinnedGroups" })
  * Scrolls the sidebar to show the selected tab when it changes, and background
  * tabs opened from links (⌘-click) as they appear, so new work isn't offscreen.
  */
-function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, scrollY: RefObject<number>) {
+function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, scrollY: RefObject<number>, glowRoom: number) {
   useEffect(() => {
     const reveal = (tabId: string) =>
       setTimeout(async () => {
@@ -277,7 +302,7 @@ function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, s
           ),
         ]);
         if (!row || !viewport || !scroll.current) return;
-        const top = viewport.y + GLOW_ROOM;
+        const top = viewport.y + glowRoom;
         const bottom = viewport.y + viewport.h - 8;
         const y = scrollY.current ?? 0;
         if (row.y < top) scroll.current.scrollTo({ y: Math.max(0, y - (top - row.y)), animated: true });
@@ -294,7 +319,7 @@ function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, s
         if (!before.tabIds.includes(id) && s.tabs[id]?.openerId && id !== active) reveal(id);
       }
     });
-  }, [windowId]);
+  }, [windowId, glowRoom]);
 }
 
 /** "+ New Tab", with the overflow menu's chevron at its trailing edge. */

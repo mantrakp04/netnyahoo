@@ -29,6 +29,8 @@ export function ProfileIndicator({ room }: { room: number }) {
   const { hovered, hoverProps } = useHover();
   const [measured, setMeasured] = useState<{ text: string; width: number } | null>(null);
   if (!incognito && profiles.length < 2) return null;
+  // Not even the icon fits beside back / forward / reload (address bar in the sidebar): hidden, the footer's dots still switch profiles.
+  if (room < PILL_OVERHEAD - 5) return null;
   // The whole name when it fits; cut short (fading) when at least 52 pt of it fit; else only the icon.
   // FadeLabel's text field pads the text 2 pt on each side.
   const textWidth = measured?.text === profile.name ? measured.width + 4 : 0;

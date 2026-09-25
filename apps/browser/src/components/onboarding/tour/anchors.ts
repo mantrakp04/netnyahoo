@@ -45,7 +45,8 @@ export async function locateAnchor(windowId: string, id: TourAnchor): Promise<Re
     case "sidebarButton": {
       // It sits in the leading pane's toolbar, at the geometry ContentCard gives that pane.
       const url = useUrlAnchors.getState()[windowId];
-      if (!url || tabLayout !== "sidebar" || splitOf(s, activeTabId(s, windowId))) return null;
+      // None with the address bar in the sidebar (panes have no toolbar).
+      if (!url || url.sidebar || tabLayout !== "sidebar" || splitOf(s, activeTabId(s, windowId))) return null;
       const g = toolbarGeometry({ sidebarButton: true, clearTrafficLights: !w.sidebarOpen });
       if (g.sidebarButton === null) return null;
       const size = layout.toolbarButton;

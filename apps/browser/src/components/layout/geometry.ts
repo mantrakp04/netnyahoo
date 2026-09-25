@@ -105,3 +105,9 @@ export function toolbarGeometry(o: { sidebarButton: boolean; clearTrafficLights:
   const shift = c1 - c0;
   return { sidebarButton: null, back: offset + c1 - shift, forward: offset + c2 - shift, reload: offset + c3 - shift, urlLeft: offset + layout.breadcrumbX - 8 - shift };
 }
+
+/**
+ * Panes without a toolbar (the address bar is in the sidebar): what hangs off the toolbar
+ * (history list, permission prompts) opens at the page's top-left corner, next to the sidebar.
+ */
+export const NO_TOOLBAR: ToolbarGeometry = { sidebarButton: null, back: 21, forward: 21, reload: 21, urlLeft: 8 };

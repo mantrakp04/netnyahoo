@@ -16,14 +16,14 @@ import { splitOf } from "../store/splits";
 import type { SplitView } from "../store/types";
 import { BookmarksBar } from "./bookmarks/BookmarksBar";
 import { FindBar } from "./FindBar";
-import { splitGeometry, toolbarGeometry, type Rect, type ToolbarGeometry } from "./layout/geometry";
+import { NO_TOOLBAR, splitGeometry, toolbarGeometry, type Rect, type ToolbarGeometry } from "./layout/geometry";
 import { dismissPermissions, startPermissionPrompts } from "./site/permissions";
 import { patchPage, pageOf, setBrowserId, setPopover, useFullscreenTab, usePage, usePopover } from "./layout/pageState";
 import { SadTab, StatusBubble } from "./layout/PaneOverlays";
 import { DropTargets, SplitDividers, SplitToast } from "./layout/SplitChrome";
 import { SplitEmptyState } from "./layout/SplitEmptyState";
 import { openLinkInSplit } from "./layout/splitActions";
-import { setUrlAnchor, useTabLayout } from "./layout/windowLayout";
+import { setUrlAnchor, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { NewTabPage } from "./NewTabPage";
 import { InternalPage, isInternalTab } from "./pages";
 import { BlockedPopupsPrompt, PasswordPrompt, PermissionPrompt, shouldPromptForPopups, showPasswordPrompt } from "./site/Prompts";
@@ -53,6 +53,8 @@ export function ContentCard() {
   const fullscreenTab = useFullscreenTab(windowId);
   const sidebarOpen = useSidebarOpen();
   const tabLayout = useTabLayout();
+  // Settings › Appearance › Address Bar: in the sidebar, panes have no toolbar.
+  const addressInSidebar = useAddressBarInSidebar();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const container = useRef<View>(null);
@@ -101,17 +103,18 @@ export function ContentCard() {
   // The pane touching the window's top-left corner holds the sidebar button, and makes room
   // for the traffic lights when nothing else does.
   const geometryFor = (rect: Rect | undefined): ToolbarGeometry => {
+    if (addressInSidebar) return NO_TOOLBAR;
     const leading = !!rect && rect.x === 0 && rect.y === 0;
     return toolbarGeometry({ sidebarButton: leading && tabLayout === "sidebar", clearTrafficLights: leading && tabLayout === "sidebar" && !sidebarOpen });
   };
 
-  // The command panel opens over the focused pane's URL field.
+  // The command panel opens over the focused pane's URL field (the sidebar's field sets its own).
   const focusedRect = activeId ? panes[activeId] : undefined;
   useEffect(() => {
-    if (!origin || !focusedRect) return;
+    if (!origin || !focusedRect || addressInSidebar) return;
     const g = geometryFor(focusedRect);
     setUrlAnchor(windowId, { left: origin.x + focusedRect.x + g.urlLeft, top: origin.y + focusedRect.y, width: focusedRect.width - g.urlLeft - 12 });
-  }, [origin, focusedRect?.x, focusedRect?.y, focusedRect?.width, tabLayout, sidebarOpen]);
+  }, [origin, focusedRect?.x, focusedRect?.y, focusedRect?.width, tabLayout, sidebarOpen, addressInSidebar]);
 
   return (
     <View
@@ -138,6 +141,7 @@ export function ContentCard() {
               split={split}
               fullscreen={tabId === fullscreenTab}
               geometry={geometryFor(rect)}
+              toolbar={!addressInSidebar}
               mounted={mounted.includes(tabId)}
             />
           );
@@ -163,6 +167,7 @@ function TabPane({
   split,
   fullscreen,
   geometry,
+  toolbar,
   mounted,
 }: {
   tabId: string;
@@ -173,6 +178,8 @@ function TabPane({
   split: SplitView | undefined;
   fullscreen: boolean;
   geometry: ToolbarGeometry;
+  /** False when the address bar is in the sidebar: the page starts at the card's top. */
+  toolbar: boolean;
   mounted: boolean;
 }) {
   const theme = useTheme();
@@ -205,9 +212,9 @@ function TabPane({
         backgroundColor: visible && !fullscreen ? theme.card : undefined,
       }}
     >
-      {visible && !fullscreen ? (
+      {!toolbar || fullscreen ? null : visible ? (
         <Toolbar tabId={tabId} geometry={geometry} windowId={windowId} inSplit={inSplit} focused={focused || !inSplit} />
-      ) : fullscreen ? null : (
+      ) : (
         <View style={{ height: layout.toolbarHeight }} />
       )}
       {!fullscreen && !inSplit && <BookmarksBar tabId={tabId} placeholder={!visible} />}
@@ -224,8 +231,9 @@ function TabPane({
             <SadTab tabId={tabId} />
             <PermissionPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 308))} top={4} />
             <PasswordPrompt tabId={tabId} right={8} top={4} />
-            {popover === "siteControls" && <SiteControls tabId={tabId} right={8} top={2} />}
-            {popover === "popups" && <BlockedPopupsPrompt tabId={tabId} right={8} top={2} />}
+            {/* Under the toolbar's URL field, or beside the sidebar's. */}
+            {popover === "siteControls" && <SiteControls tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
+            {popover === "popups" && <BlockedPopupsPrompt tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
             <SharePicker tabId={tabId} paneWidth={frame.width} />
             <DeviceChooser tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />
             <CastPicker tabId={tabId} paneWidth={frame.width} />
