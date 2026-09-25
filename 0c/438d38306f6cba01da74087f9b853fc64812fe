@@ -1,0 +1,36 @@
+docs/research/chrome-hosted-window/spike/pages/select.html
+  s_9c356f9574d31c::t_de79f5031618e7 1-5
+docs/research/chrome-hosted-window/spike/pages/passkey.html
+  s_9c356f9574d31c::t_de79f5031618e7 1-14
+docs/research/chrome-hosted-window/spike/pages/alert.html
+  s_9c356f9574d31c::t_de79f5031618e7 1-4
+docs/research/chrome-hosted-window.md
+  s_9c356f9574d31c::t_8f04d3a7daf9dd 1-84,86-346
+  s_9c356f9574d31c::t_191bb25717aecb 85
+docs/research/chrome-hosted-window/spike/launch.sh
+  s_9c356f9574d31c::t_4bff1328cf407e 1-13
+docs/research/chrome-hosted-window/spike/pages/page.html
+  s_9c356f9574d31c::t_de79f5031618e7 1-7
+docs/research/chrome-hosted-window/spike/spike.mjs
+  s_9c356f9574d31c::t_4bff1328cf407e 1-236
+docs/research/chrome-hosted-window/spike/pages/form.html
+  s_9c356f9574d31c::t_de79f5031618e7 1-6
+docs/research/chrome-hosted-window/spike/keys.mjs
+  s_9c356f9574d31c::t_4bff1328cf407e 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0c438d38306f6cba01da74087f9b853fc64812fe",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
