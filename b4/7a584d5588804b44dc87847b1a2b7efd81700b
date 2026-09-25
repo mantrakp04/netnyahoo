@@ -1,0 +1,25 @@
+scripts/release.sh
+  s_9c356f9574d31c::t_1b2753cd74a526 6-8,19,36-41,45,137-150,157-158,165,168,175
+  s_9c356f9574d31c::t_934497ec93c2ae 42-44
+docs/releasing.md
+  s_9c356f9574d31c::t_6546c55ffb7e7b 11-16,38-42,52-56,60-61,64-68,74-77
+  s_9c356f9574d31c::t_ac3698581e3970 78
+docs/release-notes/README.md
+  s_9c356f9574d31c::t_c9fa34b4c138e6 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b47a584d5588804b44dc87847b1a2b7efd81700b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
