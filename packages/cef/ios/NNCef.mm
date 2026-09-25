@@ -284,6 +284,24 @@ NSString *AppSupportRoot() {
   return [[base.path stringByAppendingPathComponent:bundleId] stringByAppendingPathComponent:@"Chromium"];
 }
 
+/// The system's preferred languages as Chrome writes its language list ("de-DE,de,en-US,en"),
+/// for Accept-Language and `navigator.languages`. Chrome takes its locale from the app bundle's
+/// localizations, and ours only has English, so without this every page (and uBlock Origin
+/// Lite, which turns on the regional lists for these languages) sees "en-US,en".
+std::string AcceptLanguages() {
+  NSMutableOrderedSet<NSString *> *list = [NSMutableOrderedSet orderedSet];
+  for (NSString *identifier in NSLocale.preferredLanguages) {
+    NSLocale *locale = [NSLocale localeWithLocaleIdentifier:identifier];
+    NSString *language = locale.languageCode, *region = locale.regionCode, *script = locale.scriptCode;
+    if (!language.length) continue;
+    // Chrome names Chinese by region: zh-CN (Simplified), zh-TW / zh-HK (Traditional).
+    if ([language isEqualToString:@"zh"] && !region.length) region = [script isEqualToString:@"Hant"] ? @"TW" : @"CN";
+    if (region.length) [list addObject:[NSString stringWithFormat:@"%@-%@", language, region]];
+    [list addObject:language];
+  }
+  return [list.array componentsJoinedByString:@","].UTF8String;
+}
+
 NSString *ProfilePath(NSString *profile) {
   NSString *root = AppSupportRoot();
   if (profile.length == 0) return [root stringByAppendingPathComponent:@"Default"];
@@ -671,6 +689,7 @@ NSView *ParkingView() {
   CefString(&settings.root_cache_path) = root.UTF8String;
   CefString(&settings.cache_path) = ProfilePath(@"").UTF8String;
   CefString(&settings.log_file) = [root stringByAppendingPathComponent:@"debug.log"].UTF8String;
+  CefString(&settings.accept_language_list) = AcceptLanguages();
   NSString *helper = [NSBundle.mainBundle.privateFrameworksPath
       stringByAppendingPathComponent:[NSString stringWithFormat:@"%@ Helper.app/Contents/MacOS/%@ Helper",
                                                                 NSBundle.mainBundle.infoDictionary[@"CFBundleName"],
