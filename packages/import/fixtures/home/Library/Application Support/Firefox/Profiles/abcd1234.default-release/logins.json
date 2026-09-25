@@ -1,0 +1,40 @@
+{
+  "nextId": 3,
+  "logins": [
+    {
+      "id": 1,
+      "hostname": "https://accounts.mozilla.example",
+      "httpRealm": null,
+      "formSubmitURL": "https://accounts.mozilla.example",
+      "usernameField": "user",
+      "passwordField": "pass",
+      "encryptedUsername": "MDoEEPgAAAAAAAAAAAAAAAAAAAEwFAYIKoZIhvcNAwcECDEyMzQ1Njc4BBAyB3jGORROrmAlugYLiRF8",
+      "encryptedPassword": "MDoEEPgAAAAAAAAAAAAAAAAAAAEwFAYIKoZIhvcNAwcECDEyMzQ1Njc4BBCdiy4wWKtMiDUZsjrMYYnA",
+      "guid": "{00000000-0000-4000-8000-000000000001}",
+      "encType": 1,
+      "timeCreated": 1788134400000,
+      "timeLastUsed": 1788220800000,
+      "timePasswordChanged": 1788134400000,
+      "timesUsed": 1
+    },
+    {
+      "id": 2,
+      "hostname": "https://unicode.example",
+      "httpRealm": null,
+      "formSubmitURL": "",
+      "usernameField": "user",
+      "passwordField": "pass",
+      "encryptedUsername": "MDoEEPgAAAAAAAAAAAAAAAAAAAEwFAYIKoZIhvcNAwcECDEyMzQ1Njc4BBAH8Qqqc2HqV3FEkcP2ik93",
+      "encryptedPassword": "MEIEEPgAAAAAAAAAAAAAAAAAAAEwFAYIKoZIhvcNAwcECDEyMzQ1Njc4BBhHd09MrdaosFCRQhU24jQwHYnXZGaeppw=",
+      "guid": "{00000000-0000-4000-8000-000000000002}",
+      "encType": 1,
+      "timeCreated": 1788134400000,
+      "timeLastUsed": 1788220800000,
+      "timePasswordChanged": 1788134400000,
+      "timesUsed": 2
+    }
+  ],
+  "potentiallyVulnerablePasswords": [],
+  "dismissedBreachAlertsByLoginGUID": {},
+  "version": 3
+}

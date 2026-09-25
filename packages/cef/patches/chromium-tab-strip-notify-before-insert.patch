@@ -1,0 +1,14 @@
+--- a/chrome/browser/ui/tabs/tab_strip_model.cc	2026-09-25 09:12:51
++++ b/chrome/browser/ui/tabs/tab_strip_model.cc	2026-09-25 09:04:23
+@@ -1324,6 +1324,11 @@
+ 
+ void TabStripModel::NotifyTabChanged(tabs::TabInterface* tab,
+                                      TabChangeType change_type) {
++  // CEF makes the Browser a new tab's WebContentsDelegate before the tab is
++  // inserted; observers expect tabs that are in the model.
++  if (GetIndexOfTab(tab) == kNoTab) {
++    return;
++  }
+   for (auto& observer : observers_) {
+     observer.OnTabChangedAt(tab, change_type);
+   }

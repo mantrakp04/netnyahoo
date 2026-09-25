@@ -1,0 +1,14 @@
+{
+  "platforms": [
+    "apple"
+  ],
+  "apple": {
+    "modules": [
+      "AreaLightModule",
+      "WindowBackdropModule",
+      "OrbModule",
+      "EdgeLightModule",
+      "PowerUpModule"
+    ]
+  }
+}

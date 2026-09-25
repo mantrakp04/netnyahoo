@@ -1,0 +1,110 @@
+{
+  "checksum": "00000000000000000000000000000000",
+  "roots": {
+    "bookmark_bar": {
+      "children": [
+        {
+          "date_added": "13424054400000000",
+          "date_last_used": "0",
+          "guid": "00000000-0000-4000-8000-000000000101",
+          "id": "0101",
+          "meta_info": {},
+          "name": "Netnyahoo",
+          "type": "url",
+          "url": "https://netnyahoo.example/"
+        },
+        {
+          "children": [
+            {
+              "date_added": "13424054400000000",
+              "date_last_used": "0",
+              "guid": "00000000-0000-4000-8000-000000000102",
+              "id": "0102",
+              "meta_info": {},
+              "name": "Swift Forums",
+              "type": "url",
+              "url": "https://forums.swift.example/"
+            },
+            {
+              "children": [
+                {
+                  "date_added": "13424054400000000",
+                  "date_last_used": "0",
+                  "guid": "00000000-0000-4000-8000-000000000103",
+                  "id": "0103",
+                  "meta_info": {},
+                  "name": "SQLite — Docs",
+                  "type": "url",
+                  "url": "https://sqlite.example/docs.html"
+                }
+              ],
+              "date_added": "13424054400000000",
+              "date_last_used": "0",
+              "date_modified": "13424054460000000",
+              "guid": "00000000-0000-4000-8000-000000000104",
+              "id": "0104",
+              "name": "Docs",
+              "type": "folder"
+            }
+          ],
+          "date_added": "13424054400000000",
+          "date_last_used": "0",
+          "date_modified": "13424054460000000",
+          "guid": "00000000-0000-4000-8000-000000000105",
+          "id": "0105",
+          "name": "Dev",
+          "type": "folder"
+        },
+        {
+          "date_added": "13424054400000000",
+          "date_last_used": "0",
+          "guid": "00000000-0000-4000-8000-000000000106",
+          "id": "0106",
+          "meta_info": {},
+          "name": "Bookmarklet",
+          "type": "url",
+          "url": "javascript:alert(1)"
+        }
+      ],
+      "date_added": "13398134400000000",
+      "date_last_used": "0",
+      "date_modified": "13398134460000000",
+      "guid": "0bc5d13f-2cba-5d74-951f-3f233fe60001",
+      "id": "0001",
+      "name": "Bookmarks bar",
+      "type": "folder"
+    },
+    "other": {
+      "children": [
+        {
+          "date_added": "13424054400000000",
+          "date_last_used": "0",
+          "guid": "00000000-0000-4000-8000-000000000107",
+          "id": "0107",
+          "meta_info": {},
+          "name": "Café ☕",
+          "type": "url",
+          "url": "https://cafe.example/menu?a=1&b=2"
+        }
+      ],
+      "date_added": "13398134400000000",
+      "date_last_used": "0",
+      "date_modified": "13398134460000000",
+      "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+      "id": "90dd",
+      "name": "Other bookmarks",
+      "type": "folder"
+    },
+    "synced": {
+      "children": [],
+      "date_added": "13398134400000000",
+      "date_last_used": "0",
+      "date_modified": "13398134460000000",
+      "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
+      "id": "8d0f",
+      "name": "Mobile bookmarks",
+      "type": "folder"
+    }
+  },
+  "version": 1
+}

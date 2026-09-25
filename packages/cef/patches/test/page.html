@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>proto</title>
+<style>
+  html,body{margin:0;height:100%;font:600 28px -apple-system,system-ui;background:#fff;color:#111;overflow:hidden}
+  .stripes{position:absolute;inset:0;background:repeating-linear-gradient(90deg,#e11 0 40px,#fff 40px 80px,#11e 80px 120px,#fff 120px 160px)}
+  #box{position:absolute;top:220px;left:0;width:120px;height:120px;background:#0a0;border-radius:16px}
+  #hud{position:absolute;left:24px;bottom:24px;background:#000;color:#0f0;padding:8px 12px;font:14px ui-monospace,monospace}
+  #probe{position:absolute;right:0;top:0;width:64px;height:64px;background:#000}
+  input{position:absolute;left:24px;top:24px;font-size:24px;width:400px}
+  h1{position:absolute;left:24px;top:80px;margin:0;font-size:56px;background:#fff8}
+</style></head>
+<body>
+<div class="stripes"></div>
+<h1>Web content under native chrome</h1>
+<input id="field" placeholder="type here">
+<div id="box"></div>
+<div id="probe"></div>
+<div id="hud">…</div>
+<script>
+  const box = document.getElementById('box'), hud = document.getElementById('hud'), probe = document.getElementById('probe');
+  const field = document.getElementById('field');
+  let frames = 0, last = performance.now(), fps = 0, clicks = 0, lastInputDelay = 0;
+  function tick(t) {
+    frames++;
+    const x = (t / 4) % (innerWidth - 120);
+    box.style.transform = `translateX(${x}px)`;
+    if (t - last >= 1000) { fps = frames * 1000 / (t - last); frames = 0; last = t; console.log('fps ' + fps.toFixed(1) + ' moves ' + moves); }
+    hud.textContent = `rAF ${fps.toFixed(1)} fps · clicks ${clicks} · input→handler ${lastInputDelay.toFixed(2)} ms · ${innerWidth}×${innerHeight}@${devicePixelRatio}`;
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  // Probe: flips color on every mousemove so the embedder can time input → paint.
+  let flip = false; var moves = 0;
+  addEventListener('mousemove', e => { moves++; flip = !flip; probe.style.background = flip ? '#fff' : '#000'; lastInputDelay = performance.now() - e.timeStamp; });
+  addEventListener('mousedown', e => { clicks++; console.log(`click ${e.clientX},${e.clientY} delay ${(performance.now() - e.timeStamp).toFixed(2)}`); });
+  addEventListener('wheel', e => console.log(`wheel ${e.deltaY}`));
+  field.addEventListener('input', () => { document.title = 'typed:' + field.value; });
+  addEventListener('keydown', e => console.log(`keydown ${e.key} delay ${(performance.now() - e.timeStamp).toFixed(2)}`));
+</script>
+</body></html>

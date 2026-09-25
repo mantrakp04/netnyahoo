@@ -1,0 +1,9 @@
+{
+ "object": "user",
+ "id": "bot1",
+ "name": "Netnyahoo",
+ "type": "bot",
+ "bot": {
+  "workspace_name": "Acme"
+ }
+}

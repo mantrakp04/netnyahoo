@@ -1,0 +1,40 @@
+require 'pathname'
+
+# node_modules is hoisted to the monorepo root.
+ws_dir = Pathname.new(__dir__)
+ws_dir = ws_dir.parent until
+  File.exist?("#{ws_dir}/node_modules/react-native-macos/scripts/react_native_pods.rb") ||
+  ws_dir.expand_path.to_s == '/'
+require "#{ws_dir}/node_modules/react-native-macos/scripts/react_native_pods.rb"
+require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
+
+# Legacy architecture: react-native-macos 0.81's Fabric support is still experimental.
+ENV['RCT_NEW_ARCH_ENABLED'] ||= '0'
+
+prepare_react_native_project!
+
+target 'Netnyahoo-macOS' do
+  platform :macos, '14.0'
+
+  use_expo_modules!
+  use_native_modules!
+
+  use_react_native!(
+    :path => Pathname.new("#{ws_dir}/node_modules/react-native-macos").relative_path_from(Pathname.new(__dir__)).to_s,
+    :fabric_enabled => ENV['RCT_NEW_ARCH_ENABLED'] == '1',
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(installer)
+
+    # RN assumes node_modules sits next to the app; ours is hoisted to the monorepo root.
+    rn_path = "${PODS_ROOT}/" + Pathname.new("#{ws_dir}/node_modules/react-native-macos").relative_path_from(Pathname.new(installer.sandbox.root)).to_s
+    installer.pods_project.build_configurations.each { |c| c.build_settings['REACT_NATIVE_PATH'] = rn_path }
+
+    # Xcode 26+ rejects deployment targets below 12; some Expo resource bundles default to 11.
+    installer.pods_project.targets.each do |t|
+      t.build_configurations.each { |c| c.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '14.0' }
+    end
+  end
+end

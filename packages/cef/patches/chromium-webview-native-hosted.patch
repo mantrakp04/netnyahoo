@@ -1,0 +1,124 @@
+diff -ruN a/ui/views/controls/webview/BUILD.gn b/ui/views/controls/webview/BUILD.gn
+--- a/ui/views/controls/webview/BUILD.gn	2026-09-25 06:33:14
++++ b/ui/views/controls/webview/BUILD.gn	2026-09-25 06:33:14
+@@ -6,6 +6,8 @@
+ 
+ component("webview") {
+   sources = [
++    "native_hosted_contents.cc",
++    "native_hosted_contents.h",
+     "simple_web_view.h",
+     "simple_web_view_dialog_delegate.h",
+     "unhandled_keyboard_event_handler.cc",
+diff -ruN a/ui/views/controls/webview/native_hosted_contents.cc b/ui/views/controls/webview/native_hosted_contents.cc
+--- a/ui/views/controls/webview/native_hosted_contents.cc	1970-01-01 05:30:00
++++ b/ui/views/controls/webview/native_hosted_contents.cc	2026-09-25 06:33:14
+@@ -0,0 +1,28 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "ui/views/controls/webview/native_hosted_contents.h"
++
++#include "content/public/browser/web_contents.h"
++
++namespace views {
++
++NativeHostedContents::NativeHostedContents(content::WebContents* web_contents)
++    : content::WebContentsUserData<NativeHostedContents>(*web_contents) {}
++
++NativeHostedContents::~NativeHostedContents() = default;
++
++// static
++void NativeHostedContents::Mark(content::WebContents* web_contents) {
++  CreateForWebContents(web_contents);
++}
++
++// static
++bool NativeHostedContents::IsMarked(const content::WebContents* web_contents) {
++  return web_contents && FromWebContents(web_contents);
++}
++
++WEB_CONTENTS_USER_DATA_KEY_IMPL(NativeHostedContents);
++
++}  // namespace views
+diff -ruN a/ui/views/controls/webview/native_hosted_contents.h b/ui/views/controls/webview/native_hosted_contents.h
+--- a/ui/views/controls/webview/native_hosted_contents.h	1970-01-01 05:30:00
++++ b/ui/views/controls/webview/native_hosted_contents.h	2026-09-25 06:33:14
+@@ -0,0 +1,41 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef UI_VIEWS_CONTROLS_WEBVIEW_NATIVE_HOSTED_CONTENTS_H_
++#define UI_VIEWS_CONTROLS_WEBVIEW_NATIVE_HOSTED_CONTENTS_H_
++
++#include "content/public/browser/web_contents_user_data.h"
++#include "ui/views/controls/webview/webview_export.h"
++
++namespace views {
++
++// Marks a WebContents whose native view the embedder hosts itself, outside the
++// Views hierarchy. A WebView showing it never attaches that native view to its
++// NativeViewHost. On macOS attaching would permanently switch the tab's
++// RenderWidgetHostViewMac to drawing through the Views compositor
++// (RenderWidgetHostViewMac::SetParentUiLayer), leaving the embedder's copy of
++// the NSView blank; unattached, it keeps its own compositor and draws into its
++// own NSView wherever the embedder puts it.
++class WEBVIEW_EXPORT NativeHostedContents
++    : public content::WebContentsUserData<NativeHostedContents> {
++ public:
++  NativeHostedContents(const NativeHostedContents&) = delete;
++  NativeHostedContents& operator=(const NativeHostedContents&) = delete;
++  ~NativeHostedContents() override;
++
++  // Marks |web_contents|. Call before it is shown in a WebView; a WebView that
++  // already attached it detaches it the next time it changes contents.
++  static void Mark(content::WebContents* web_contents);
++  static bool IsMarked(const content::WebContents* web_contents);
++
++ private:
++  friend class content::WebContentsUserData<NativeHostedContents>;
++  explicit NativeHostedContents(content::WebContents* web_contents);
++
++  WEB_CONTENTS_USER_DATA_KEY_DECL();
++};
++
++}  // namespace views
++
++#endif  // UI_VIEWS_CONTROLS_WEBVIEW_NATIVE_HOSTED_CONTENTS_H_
+diff -ruN a/ui/views/controls/webview/webview.cc b/ui/views/controls/webview/webview.cc
+--- a/ui/views/controls/webview/webview.cc	2026-09-25 06:33:14
++++ b/ui/views/controls/webview/webview.cc	2026-09-25 06:33:14
+@@ -27,6 +27,7 @@
+ #include "ui/events/event.h"
+ #include "ui/views/accessibility/tree/widget_ax_manager.h"
+ #include "ui/views/accessibility/view_accessibility.h"
++#include "ui/views/controls/webview/native_hosted_contents.h"
+ #include "ui/views/controls/webview/web_contents_set_background_color.h"
+ #include "ui/views/focus/focus_manager.h"
+ #include "ui/views/views_delegate.h"
+@@ -599,6 +600,11 @@
+     return;
+   }
+ 
++  // The embedder hosts this WebContents' native view itself.
++  if (NativeHostedContents::IsMarked(web_contents())) {
++    return;
++  }
++
+   gfx::NativeView view_to_attach = web_contents()->GetNativeView();
+   OnBoundsChanged(bounds());
+   if (holder_->native_view() == view_to_attach) {
+@@ -632,7 +638,10 @@
+ void WebView::DetachWebContentsNativeView() {
+   TRACE_EVENT0("views", "WebView::DetachWebContentsNativeView");
+   if (web_contents()) {
+-    holder_->Detach();
++    // Never attached if the embedder hosts it (AttachWebContentsNativeView).
++    if (holder_->native_view()) {
++      holder_->Detach();
++    }
+     web_contents_detached_callbacks_.Notify(this);
+   }
+ }

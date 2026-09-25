@@ -1,0 +1,12 @@
+// Ad-hoc signing, for machines without the U5L5T3NGVV signing identities:
+//   xcodebuild … -xcconfig macos/AdHoc.xcconfig
+// No provisioning profile, so none of the restricted entitlements (keychain groups:
+// Chrome-profile passkeys) and no hardened runtime (library validation rejects
+// ad-hoc code). Security keys and phone passkeys still work; the app falls back to
+// Chromium's mock keychain (NNCef.mm).
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+PROVISIONING_PROFILE_SPECIFIER =
+CODE_SIGN_ENTITLEMENTS =
+ENABLE_HARDENED_RUNTIME = NO

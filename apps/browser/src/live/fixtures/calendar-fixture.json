@@ -1,0 +1,191 @@
+{
+ "calendars": [
+  {
+   "id": "work",
+   "title": "Work",
+   "color": "#1A73E8",
+   "account": "octo@acme.com",
+   "accountType": "calDAV",
+   "owned": true
+  },
+  {
+   "id": "home",
+   "title": "Home",
+   "color": "#34A853",
+   "account": "iCloud",
+   "accountType": "calDAV",
+   "owned": true
+  },
+  {
+   "id": "holidays",
+   "title": "US Holidays",
+   "color": "#8E8E93",
+   "account": "Subscribed Calendars",
+   "accountType": "subscribed",
+   "owned": false
+  }
+ ],
+ "events": [
+  {
+   "id": "standup",
+   "calendarId": "work",
+   "color": "#1A73E8",
+   "title": "Team standup",
+   "startInMinutes": -50,
+   "durationMinutes": 15,
+   "allDay": false,
+   "location": "",
+   "notes": "",
+   "url": "",
+   "cancelled": false,
+   "declined": false,
+   "organizer": null,
+   "attendees": []
+  },
+  {
+   "id": "design",
+   "calendarId": "work",
+   "color": "#1A73E8",
+   "title": "Design review: Live folders",
+   "startInMinutes": 2,
+   "durationMinutes": 30,
+   "allDay": false,
+   "location": "https://meet.google.com/abc-defg-hij",
+   "notes": "Agenda and spec: https://docs.google.com/document/d/spec123/edit\nBoard: https://www.figma.com/file/xyz/Live-Folders\n\nJoin with Google Meet: https://meet.google.com/abc-defg-hij\nLearn more about Meet at: https://support.google.com/a/users/answer/9282720",
+   "url": "",
+   "cancelled": false,
+   "declined": false,
+   "organizer": {
+    "name": "Mira Chen",
+    "email": "mira@acme.com",
+    "status": "accepted",
+    "me": false
+   },
+   "attendees": [
+    {
+     "name": "Mira Chen",
+     "email": "mira@acme.com",
+     "status": "accepted",
+     "me": false
+    },
+    {
+     "name": "Sam Patel",
+     "email": "sam@acme.com",
+     "status": "accepted",
+     "me": false
+    },
+    {
+     "name": "",
+     "email": "ana@acme.com",
+     "status": "tentative",
+     "me": false
+    },
+    {
+     "name": "Jo Park",
+     "email": "jo@acme.com",
+     "status": "pending",
+     "me": false
+    },
+    {
+     "name": "Octo Dev",
+     "email": "octo@acme.com",
+     "status": "accepted",
+     "me": true
+    }
+   ]
+  },
+  {
+   "id": "1on1",
+   "calendarId": "work",
+   "color": "#1A73E8",
+   "title": "1:1 Octo / Sam",
+   "startInMinutes": 75,
+   "durationMinutes": 30,
+   "allDay": false,
+   "location": "https://acme.zoom.us/j/81234567890?pwd=abc",
+   "notes": "",
+   "url": "",
+   "cancelled": false,
+   "declined": false,
+   "organizer": null,
+   "attendees": [
+    {
+     "name": "Sam Patel",
+     "email": "sam@acme.com",
+     "status": "accepted",
+     "me": false
+    },
+    {
+     "name": "Octo Dev",
+     "email": "octo@acme.com",
+     "status": "accepted",
+     "me": true
+    }
+   ]
+  },
+  {
+   "id": "allhands",
+   "calendarId": "work",
+   "color": "#1A73E8",
+   "title": "All hands",
+   "startInMinutes": 180,
+   "durationMinutes": 60,
+   "allDay": false,
+   "location": "",
+   "notes": "Click here to join the meeting <https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%7d>",
+   "url": "",
+   "cancelled": false,
+   "declined": false,
+   "organizer": null,
+   "attendees": []
+  },
+  {
+   "id": "declined",
+   "calendarId": "work",
+   "color": "#1A73E8",
+   "title": "Declined sync",
+   "startInMinutes": 30,
+   "durationMinutes": 30,
+   "allDay": false,
+   "location": "",
+   "notes": "",
+   "url": "",
+   "cancelled": false,
+   "declined": true,
+   "organizer": null,
+   "attendees": []
+  },
+  {
+   "id": "gym",
+   "calendarId": "home",
+   "color": "#34A853",
+   "title": "Gym",
+   "startInMinutes": 300,
+   "durationMinutes": 60,
+   "allDay": false,
+   "location": "",
+   "notes": "",
+   "url": "",
+   "cancelled": false,
+   "declined": false,
+   "organizer": null,
+   "attendees": []
+  },
+  {
+   "id": "holiday",
+   "calendarId": "holidays",
+   "color": "#8E8E93",
+   "title": "Autumn Equinox",
+   "startInMinutes": -600,
+   "durationMinutes": 1440,
+   "allDay": true,
+   "location": "",
+   "notes": "",
+   "url": "",
+   "cancelled": false,
+   "declined": false,
+   "organizer": null,
+   "attendees": []
+  }
+ ]
+}

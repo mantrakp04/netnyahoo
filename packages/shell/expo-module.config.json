@@ -1,0 +1,20 @@
+{
+  "platforms": [
+    "apple"
+  ],
+  "apple": {
+    "modules": [
+      "ShellModule",
+      "SymbolModule",
+      "FadeLabelModule",
+      "ContextMenuAreaModule",
+      "SurfaceModule",
+      "VisualEffectModule",
+      "SystemModule",
+      "FileDragModule",
+      "AppModule",
+      "CalendarModule",
+      "KeychainModule"
+    ]
+  }
+}

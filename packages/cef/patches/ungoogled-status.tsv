@@ -1,0 +1,111 @@
+patch	status	note
+upstream-fixes/missing-dependencies.patch	applied	exact
+core/inox-patchset/0001-fix-building-without-safebrowsing.patch	reverted	assumes safe_browsing_mode=0: stubs out //chrome/browser/safe_browsing and breaks gn gen with it enabled
+core/inox-patchset/0003-disable-autofill-download-manager.patch	applied	exact
+core/inox-patchset/0005-disable-default-extensions.patch	applied	exact
+core/inox-patchset/0015-disable-update-pings.patch	applied	exact
+core/inox-patchset/0021-disable-rlz.patch	partial	rlz/buildflags.gni hunk reverted: CEF requires enable_rlz=true (RLZ stays inert: no brand code, and its server host is domain-substituted)
+core/iridium-browser/safe_browsing-disable-incident-reporting.patch	applied	exact
+core/iridium-browser/safe_browsing-disable-reporting-of-safebrowsing-over.patch	applied	exact
+core/ungoogled-chromium/disable-crash-reporter.patch	applied	exact
+core/ungoogled-chromium/disable-google-host-detection.patch	applied	exact
+core/ungoogled-chromium/replace-google-search-engine-with-nosearch.patch	applied	exact
+core/ungoogled-chromium/toggle-translation-via-switch.patch	applied	exact
+core/ungoogled-chromium/disable-untraceable-urls.patch	applied	exact
+core/ungoogled-chromium/disable-profile-avatar-downloading.patch	applied	exact
+core/ungoogled-chromium/disable-gcm.patch	partial	GCMClientImpl::Start hunk dropped: CEF already stubs Start()
+core/ungoogled-chromium/disable-domain-reliability.patch	applied	exact
+core/ungoogled-chromium/block-trk-and-subdomains.patch	applied	exact
+core/ungoogled-chromium/disable-gaia.patch	applied	exact
+core/ungoogled-chromium/disable-fonts-googleapis-references.patch	applied	exact
+core/ungoogled-chromium/disable-webstore-urls.patch	reverted	disables the Chrome Web Store and extension update checks; Netnyahoo needs both (user decision)
+core/ungoogled-chromium/fix-learn-doubleclick-hsts.patch	applied	exact
+core/ungoogled-chromium/disable-webrtc-log-uploader.patch	applied	exact
+core/ungoogled-chromium/disable-ai.patch	applied	exact, plus a BUILDFLAG(ENABLE_SCREEN_AI_SERVICE) guard around the ScreenAI sandbox setup in ChromeContentBrowserClient (macOS path the patch misses)
+core/ungoogled-chromium/fix-building-with-prunned-binaries.patch	skipped	assumes pruned binaries; this build does not prune (gclient checkout)
+core/ungoogled-chromium/disable-network-time-tracker.patch	applied	exact
+core/ungoogled-chromium/disable-mei-preload.patch	applied	exact
+core/ungoogled-chromium/fix-building-without-safebrowsing.patch	skipped	build fix for safe_browsing_mode=0, which this build does not set (CEF compatibility)
+core/ungoogled-chromium/remove-unused-preferences-fields.patch	reverted	removes Safe Browsing/signin prefs that the kept Safe Browsing code (safe_browsing_mode=1, needed by CEF) still uses; breaks the compile
+core/ungoogled-chromium/block-requests.patch	applied	exact
+core/ungoogled-chromium/disable-privacy-sandbox.patch	applied	exact
+core/ungoogled-chromium/doh-changes.patch	applied	exact
+core/ungoogled-chromium/extensions-manifestv2.patch	applied	exact
+core/ungoogled-chromium/remove-f1-shortcut.patch	applied	exact
+core/ungoogled-chromium/move-js-optimizer-unfamiliar-sites.patch	reverted	moves a pref out of safe_browsing_prefs.h assuming Safe Browsing is compiled out; duplicate definition otherwise
+core/ungoogled-chromium/build-with-wasm-rollup.patch	skipped	only needed when prebuilt rollup is pruned
+core/ungoogled-chromium/remove-navigation-source-param.patch	applied	exact
+core/ungoogled-chromium/disable-tos-dialog.patch	applied	exact
+core/bromite/disable-fetching-field-trials.patch	applied	exact
+extra/ungoogled-chromium/add-ungoogled-flag-headers.patch	applied	exact
+extra/inox-patchset/0006-modify-default-prefs.patch	partial	password saving and address/card autofill defaults kept on (Chrome password manager/autofill are used; local only); autosign-in stays off
+extra/inox-patchset/0008-restore-classic-ntp.patch	applied	exact
+extra/inox-patchset/0013-disable-missing-key-warning.patch	applied	exact
+extra/inox-patchset/0016-chromium-sandbox-pie.patch	skipped	Linux-only
+extra/inox-patchset/0019-disable-battery-status-service.patch	applied	exact
+extra/debian/disable/google-api-warning.patch	applied	exact
+extra/iridium-browser/mime_util-force-text-x-suse-ymp-to-be-downloaded.patch	applied	exact
+extra/iridium-browser/prefs-always-prompt-for-download-directory-by-defaul.patch	applied	exact
+extra/iridium-browser/updater-disable-auto-update.patch	applied	exact
+extra/iridium-browser/Remove-EV-certificates.patch	applied	exact
+extra/iridium-browser/browser-disable-profile-auto-import-on-first-run.patch	applied	exact
+extra/bromite/fingerprinting-flags-client-rects-and-measuretext.patch	applied	exact
+extra/bromite/flag-max-connections-per-host.patch	applied	exact
+extra/bromite/flag-fingerprinting-canvas-image-data-noise.patch	applied	exact
+extra/ungoogled-chromium/add-components-ungoogled.patch	applied	exact
+extra/ungoogled-chromium/disable-formatting-in-omnibox.patch	applied	exact
+extra/ungoogled-chromium/add-ipv6-probing-option.patch	applied	exact
+extra/ungoogled-chromium/remove-disable-setuid-sandbox-as-bad-flag.patch	skipped	Linux-only
+extra/ungoogled-chromium/disable-intranet-redirect-detector.patch	applied	exact
+extra/ungoogled-chromium/disable-download-quarantine.patch	applied	exact
+extra/ungoogled-chromium/fix-building-without-mdns-and-service-discovery.patch	reverted	build fix for enable_mdns/enable_service_discovery=false, which this build keeps enabled; breaks dns_sd_registry otherwise
+extra/ungoogled-chromium/add-flag-to-configure-extension-downloading.patch	applied	exact
+extra/ungoogled-chromium/add-flag-for-search-engine-collection.patch	applied	exact
+extra/ungoogled-chromium/add-flag-to-disable-beforeunload.patch	applied	exact
+extra/ungoogled-chromium/add-flag-to-force-punycode-hostnames.patch	applied	exact
+extra/ungoogled-chromium/add-flag-to-show-avatar-button.patch	partial	toolbar_view.cc hunk dropped (CEF toolbar patch conflict; Chrome toolbar unused)
+extra/ungoogled-chromium/add-suggestions-url-field.patch	applied	exact
+extra/ungoogled-chromium/add-flag-to-hide-crashed-bubble.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-scroll-tabs.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/enable-paste-and-go-new-tab-button.patch	applied	exact
+extra/ungoogled-chromium/add-flag-for-bookmark-bar-ntp.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/enable-menu-on-reload-button.patch	applied	exact
+extra/ungoogled-chromium/add-flag-for-omnibox-autocomplete-filtering.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/disable-dial-repeating-discovery.patch	applied	exact
+extra/ungoogled-chromium/remove-uneeded-ui.patch	applied	exact (its security_page.html hunk re-applied on the original file after the prefs revert)
+extra/ungoogled-chromium/add-flag-to-close-window-with-last-tab.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-convert-popups-to-tabs.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-disable-local-history-expiration.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-extra-channel-info.patch	applied	exact
+extra/ungoogled-chromium/prepopulated-search-engines.patch	applied	exact
+extra/ungoogled-chromium/add-flag-to-clear-data-on-exit.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-for-qr-generator.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-for-grab-handle.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-for-close-confirmation.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/keep-expired-flags.patch	applied	exact
+extra/ungoogled-chromium/add-flag-for-custom-ntp.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-for-tab-hover-cards.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-hide-tab-close-buttons.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-disable-tls-grease.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-change-http-accept-header.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-for-disabling-link-drag.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-hide-extensions-menu.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-hide-fullscreen-exit-ui.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-for-incognito-themes.patch	partial	browser_widget.cc hunk dropped (CEF patch conflict; Chrome frame unused)
+extra/ungoogled-chromium/add-flags-for-referrer-customization.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/default-webrtc-ip-handling-policy.patch	applied	exact
+extra/ungoogled-chromium/add-flags-for-existing-switches.patch	applied	exact
+extra/ungoogled-chromium/first-run-page.patch	applied	exact
+extra/ungoogled-chromium/add-flag-to-reduce-system-info.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-remove-client-hints.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/enable-extra-locales.patch	reverted	extra UI locales break CEF cef_strings.grd output list; not privacy-related
+extra/ungoogled-chromium/remove-pac-size-limit.patch	applied	exact
+extra/ungoogled-chromium/enable-certificate-transparency-and-add-flag.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-spoof-webgl-renderer-info.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-flag-to-increase-incognito-storage-quota.patch	applied	applied in pass 2 (after the chain fix)
+extra/ungoogled-chromium/add-credits.patch	applied	exact
+extra/ungoogled-chromium/disable-ai-search-shortcuts.patch	applied	exact
+extra/ungoogled-chromium/disable-fedcm-by-default.patch	applied	exact
+extra/ungoogled-chromium/bundle-hyphenation-patterns.patch	applied	exact
+extra/ungoogled-chromium/add-flag-for-disabling-jit.patch	applied	applied in pass 2 (after the chain fix)
+ungoogled-chromium/macos/fix-disabling-safebrowsing.patch	skipped	build fix for safe_browsing_mode=0 (not set)

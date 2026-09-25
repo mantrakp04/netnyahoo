@@ -1,0 +1,1342 @@
+diff --git a/cef_paths2.gypi b/cef_paths2.gypi
+index 6de0bd818..f2ef67a03 100644
+--- a/cef_paths2.gypi
++++ b/cef_paths2.gypi
+@@ -36,6 +36,7 @@
+       'include/base/internal/cef_thread_checker_impl.h',
+       'include/cef_api_hash.h',
+       'include/cef_base.h',
++      'include/cef_netnyahoo.h',
+       'include/internal/cef_export.h',
+       'include/internal/cef_ptr.h',
+       'include/internal/cef_string_wrappers.h',
+diff --git a/include/cef_browser.h b/include/cef_browser.h
+index 1831ac202..d2239d414 100644
+--- a/include/cef_browser.h
++++ b/include/cef_browser.h
+@@ -1088,6 +1088,128 @@ class CefBrowserHost : public virtual CefBaseRefCounted {
+   ///
+   /*--cef(added=experimental)--*/
+   virtual void SetAxViewportCollapse(bool enabled) = 0;
++
++  ///
++  /// Creates a new tab in the Chrome window that hosts |existing|: a Chrome
++  /// style browser created with a CefBrowserView and
++  /// CefBrowserSettings.native_contents_hosting enabled. The tab is appended
++  /// to the window's tab strip and becomes the active tab if |foreground| is
++  /// true. |client|, |settings| and |extra_info| apply to the new browser;
++  /// an empty |client| uses the default client
++  /// (CefBrowserProcessHandler::GetDefaultClient). An empty |url| creates the
++  /// tab without navigating. The new tab shares the window's profile
++  /// (CefRequestContext). Returns nullptr on failure. Must be called on the
++  /// browser process UI thread.
++  ///
++  /*--cef(added=experimental,optional_param=client,optional_param=url,
++          optional_param=extra_info)--*/
++  static CefRefPtr<CefBrowser> CreateTabInBrowser(
++      CefRefPtr<CefBrowser> existing,
++      CefRefPtr<CefClient> client,
++      const CefString& url,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info,
++      bool foreground);
++
++  ///
++  /// Returns the native view that shows this browser's contents (on macOS the
++  /// tab's WebContentsViewCocoa NSView). For a Chrome style browser with
++  /// CefBrowserSettings.native_contents_hosting enabled the client adds this
++  /// view to its own view hierarchy. Returns nullptr for windowless browsers.
++  /// Must be called on the browser process UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual CefWindowHandle GetContentsView() = 0;
++
++  ///
++  /// Chrome style only: tells Chrome whether the window that hosts this
++  /// browser is the active (key) window. Chrome tracks the last active window
++  /// for extensions (the "current window"), commands and new tab placement;
++  /// with native_contents_hosting the Chrome window itself is never
++  /// activated, so the client reports its own window's activation instead.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual void SetWindowActive(bool active) = 0;
++
++  ///
++  /// Chrome style only: makes this browser the active tab of the Chrome
++  /// window that hosts it (as if the user selected it in Chrome's tab strip).
++  ///
++  /*--cef(added=experimental)--*/
++  virtual void ActivateTab() = 0;
++
++  ///
++  /// Chrome style only: moves this browser's tab into the Chrome window that
++  /// hosts |target|, at tab strip |index| (-1 or out of range appends), and
++  /// makes it that window's active tab if |foreground| is true. The browser
++  /// (identifier, client, frames) stays the same. Chrome closes a window when
++  /// its last tab leaves it. Returns false if the tab can't be moved (not
++  /// Chrome style, or already in that window). Must be called on the browser
++  /// process UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual bool MoveToBrowser(CefRefPtr<CefBrowser> target,
++                             int index,
++                             bool foreground) = 0;
++
++  ///
++  /// Chrome style only: returns the tab ID Chrome and its extension APIs
++  /// (chrome.tabs) use for this browser, or -1 if it has none.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual int GetTabId() = 0;
++
++  ///
++  /// Chrome style only: moves this tab to |index| in its Chrome window's tab
++  /// strip (clamped to the valid range). Must be called on the browser process
++  /// UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual void SetTabIndex(int index) = 0;
++
++  ///
++  /// Chrome style only: pins or unpins this tab in its Chrome window. Pinned
++  /// tabs move to the start of the tab strip. Must be called on the browser
++  /// process UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual void SetTabPinned(bool pinned) = 0;
++
++  ///
++  /// Chrome style only: runs the toolbar action of the extension with ID
++  /// |extension_id| for this tab, as if the user clicked its toolbar button
++  /// (this grants the extension activeTab access). Returns 0 if the action
++  /// was handled by the extension (chrome.action.onClicked), 1 if the client
++  /// should show the extension's popup, 2 if it should toggle the extension's
++  /// side panel, or -1 if the extension isn't enabled for this profile. Must
++  /// be called on the browser process UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual int ExecuteExtensionAction(const CefString& extension_id) = 0;
++
++  ///
++  /// Chrome style only: returns the state of Chrome's password manager prompt
++  /// for this tab (what Chrome's password bubble would show), or nullptr if
++  /// there is none. Keys: "state" (int, password_manager::ui::State: 1 save,
++  /// 2 saved, 7 update, ...), "origin", "username", "passwordLength",
++  /// "federation", and "usernames" (list; the saved usernames for the update
++  /// picker). The password itself is never returned. Must be called on the
++  /// browser process UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual CefRefPtr<CefDictionaryValue> GetPasswordPrompt() = 0;
++
++  ///
++  /// Chrome style only: answers Chrome's password manager prompt for this tab.
++  /// |action| is "save" or "update" (store |username|, and |password| if not
++  /// empty, else the pending password), "never" (never save for this site),
++  /// "nope" (don't update) or "dismiss" (close the prompt without a decision).
++  /// Must be called on the browser process UI thread.
++  ///
++  /*--cef(added=experimental,optional_param=username,optional_param=password)--*/
++  virtual void ResolvePasswordPrompt(const CefString& action,
++                                     const CefString& username,
++                                     const CefString& password) = 0;
+ #endif
+ };
+ 
+diff --git a/include/cef_life_span_handler.h b/include/cef_life_span_handler.h
+index 44819f49c..3cd311183 100644
+--- a/include/cef_life_span_handler.h
++++ b/include/cef_life_span_handler.h
+@@ -291,6 +291,21 @@ class CefLifeSpanHandler : public virtual CefBaseRefCounted {
+   ///
+   /*--cef()--*/
+   virtual void OnBeforeClose(CefRefPtr<CefBrowser> browser) {}
++
++#if CEF_API_ADDED(CEF_EXPERIMENTAL)
++  ///
++  /// Chrome style browsers with CefBrowserSettings.native_contents_hosting
++  /// only. Called on the UI thread for every tab of a Chrome window after its
++  /// tab strip changed (tabs added, removed, moved, activated, pinned or
++  /// unpinned), in tab strip order. |index| is the tab's position, |active|
++  /// is true for the window's active tab and |pinned| for pinned tabs.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual void OnTabStripChanged(CefRefPtr<CefBrowser> browser,
++                                 int index,
++                                 bool active,
++                                 bool pinned) {}
++#endif
+ };
+ 
+ #endif  // CEF_INCLUDE_CEF_LIFE_SPAN_HANDLER_H_
+diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
+new file mode 100644
+index 000000000..5cbe520c7
+--- /dev/null
++++ b/include/cef_netnyahoo.h
+@@ -0,0 +1,53 @@
++// Copyright (c) 2026 The Netnyahoo Authors. All rights reserved.
++//
++// Feature markers for Netnyahoo's CEF patches (see the Netnyahoo repository,
++// packages/cef/patches and docs/cef-source-build.md). Clients test for this
++// header with __has_include and for each marker with #ifdef, so they build
++// against stock CEF too. All of these APIs are CEF_API_ADDED(CEF_EXPERIMENTAL).
++
++#ifndef CEF_INCLUDE_CEF_NETNYAHOO_H_
++#define CEF_INCLUDE_CEF_NETNYAHOO_H_
++#pragma once
++
++// CefGetMediaCaptureSourceId (include/cef_media_capture.h); desktop audio of a
++// captured tab is that tab's audio.
++#define CEF_NN_TAB_CAPTURE 1
++
++// CefBrowserSettings.native_contents_hosting, CefBrowserHost::GetContentsView,
++// CefBrowserHost::CreateTabInBrowser, CefBrowserHost::SetWindowActive,
++// CefBrowserHost::ActivateTab, CefBrowserHost::MoveToBrowser.
++#define CEF_NN_CHROME_TABS 1
++
++// CefRequestContext::LoadComponentExtension / UnloadComponentExtension.
++#define CEF_NN_COMPONENT_EXTENSIONS 1
++
++// CefBrowserHost::GetTabId.
++#define CEF_NN_TAB_SESSION_ID 1
++
++// CefBrowserHost::ExecuteExtensionAction.
++#define CEF_NN_EXTENSION_ACTION 1
++
++// Tab fullscreen of natively hosted tabs leaves the (hidden) Chrome window
++// alone; the client gets CefDisplayHandler::OnFullscreenModeChange.
++#define CEF_NN_TAB_FULLSCREEN 1
++
++// CefBrowserHost::GetPasswordPrompt / ResolvePasswordPrompt.
++#define CEF_NN_PASSWORD_PROMPT 1
++
++// CefLifeSpanHandler::OnTabStripChanged, CefBrowserHost::SetTabIndex /
++// SetTabPinned.
++#define CEF_NN_TAB_STRIP 1
++
++// Popups allowed in OnBeforePopup from natively hosted tabs become background
++// tabs of the opener's Chrome window instead of new windows.
++#define CEF_NN_POPUP_TABS 1
++
++// Chrome's password bubble first offers the tab's client
++// IDC_MANAGE_PASSWORDS_FOR_PAGE (CefCommandHandler::OnChromeCommand); returning
++// true skips the bubble. ResolvePasswordPrompt closes the prompt either way.
++#define CEF_NN_PASSWORD_BUBBLE 1
++
++// CefBrowserSettings.hidden_from_extensions.
++#define CEF_NN_HIDDEN_BROWSER 1
++
++#endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
+diff --git a/include/cef_request_context.h b/include/cef_request_context.h
+index 77a1c0249..0e6f2b0df 100644
+--- a/include/cef_request_context.h
++++ b/include/cef_request_context.h
+@@ -365,6 +365,28 @@ class CefRequestContext : public CefPreferenceManager {
+   ///
+   /*--cef(default_retval=CEF_COLOR_VARIANT_SYSTEM)--*/
+   virtual cef_color_variant_t GetChromeColorSchemeVariant() = 0;
++
++#if CEF_API_ADDED(CEF_EXPERIMENTAL)
++  ///
++  /// Chrome style only. Loads the unpacked extension in |root_directory| as a
++  /// component (built-in) extension of this context's profile, replacing an
++  /// earlier one with the same ID. Component extensions need no developer
++  /// mode, can't be disabled or removed by the user, and run in incognito
++  /// profiles too. The manifest must contain a "key" (the extension ID is
++  /// derived from it). Returns the extension ID, or an empty string on
++  /// failure. Must be called on the browser process UI thread after the
++  /// context is initialized.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual CefString LoadComponentExtension(const CefString& root_directory) = 0;
++
++  ///
++  /// Chrome style only. Unloads a component extension added with
++  /// LoadComponentExtension. Must be called on the browser process UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual void UnloadComponentExtension(const CefString& extension_id) = 0;
++#endif
+ };
+ 
+ #endif  // CEF_INCLUDE_CEF_REQUEST_CONTEXT_H_
+diff --git a/include/internal/cef_types.h b/include/internal/cef_types.h
+index fed23a55e..e8ea5ae60 100644
+--- a/include/internal/cef_types.h
++++ b/include/internal/cef_types.h
+@@ -736,6 +736,25 @@ typedef struct _cef_browser_settings_t {
+   /// CefBrowserHost::SetAxViewportCollapse.
+   ///
+   cef_state_t ax_viewport_collapse;
++
++  ///
++  /// Chrome style browsers created with a CefBrowserView only: the client
++  /// hosts each tab's native view itself (see
++  /// CefBrowserHost::GetContentsView) instead of the Chrome window showing it.
++  /// Tabs of that Chrome window are never attached to its views hierarchy, so
++  /// on macOS they keep drawing into their own NSView wherever the client
++  /// puts it. The Chrome window also keeps the normal (tabbed) browser type,
++  /// so CefBrowserHost::CreateTabInBrowser can add tabs to it.
++  ///
++  cef_state_t native_contents_hosting;
++
++  ///
++  /// Chrome style browsers created with a CefBrowserView only: leaves the
++  /// Chrome window (and its tabs) out of extension APIs such as
++  /// chrome.windows and chrome.tabs, for windows the client uses internally.
++  /// WebUI pages still see it.
++  ///
++  cef_state_t hidden_from_extensions;
+ #endif
+ } cef_browser_settings_t;
+ 
+diff --git a/include/internal/cef_types_wrappers.h b/include/internal/cef_types_wrappers.h
+index 9aaca31ab..78ed4118e 100644
+--- a/include/internal/cef_types_wrappers.h
++++ b/include/internal/cef_types_wrappers.h
+@@ -586,6 +586,12 @@ struct CefBrowserSettingsTraits {
+     if (CEF_MEMBER_EXISTS(src, ax_viewport_collapse)) {
+       target->ax_viewport_collapse = src->ax_viewport_collapse;
+     }
++    if (CEF_MEMBER_EXISTS(src, native_contents_hosting)) {
++      target->native_contents_hosting = src->native_contents_hosting;
++    }
++    if (CEF_MEMBER_EXISTS(src, hidden_from_extensions)) {
++      target->hidden_from_extensions = src->hidden_from_extensions;
++    }
+ #endif
+   }
+ };
+diff --git a/libcef/browser/alloy/alloy_browser_host_impl.cc b/libcef/browser/alloy/alloy_browser_host_impl.cc
+index 248604ecd..c64a70ab3 100644
+--- a/libcef/browser/alloy/alloy_browser_host_impl.cc
++++ b/libcef/browser/alloy/alloy_browser_host_impl.cc
+@@ -341,6 +341,49 @@ void AlloyBrowserHostImpl::ExecuteChromeCommand(
+   NOTIMPLEMENTED();
+ }
+ 
++void AlloyBrowserHostImpl::SetWindowActive(bool active) {
++  NOTIMPLEMENTED();
++}
++
++void AlloyBrowserHostImpl::ActivateTab() {
++  NOTIMPLEMENTED();
++}
++
++bool AlloyBrowserHostImpl::MoveToBrowser(CefRefPtr<CefBrowser> target,
++                                         int index,
++                                         bool foreground) {
++  NOTIMPLEMENTED();
++  return false;
++}
++
++int AlloyBrowserHostImpl::GetTabId() {
++  return -1;
++}
++
++void AlloyBrowserHostImpl::SetTabIndex(int index) {
++  NOTIMPLEMENTED();
++}
++
++void AlloyBrowserHostImpl::SetTabPinned(bool pinned) {
++  NOTIMPLEMENTED();
++}
++
++int AlloyBrowserHostImpl::ExecuteExtensionAction(
++    const CefString& extension_id) {
++  NOTIMPLEMENTED();
++  return -1;
++}
++
++CefRefPtr<CefDictionaryValue> AlloyBrowserHostImpl::GetPasswordPrompt() {
++  return nullptr;
++}
++
++void AlloyBrowserHostImpl::ResolvePasswordPrompt(const CefString& action,
++                                                 const CefString& username,
++                                                 const CefString& password) {
++  NOTIMPLEMENTED();
++}
++
+ bool AlloyBrowserHostImpl::IsWindowRenderingDisabled() {
+   return IsWindowless();
+ }
+diff --git a/libcef/browser/alloy/alloy_browser_host_impl.h b/libcef/browser/alloy/alloy_browser_host_impl.h
+index 9eeb0055c..2bb749c55 100644
+--- a/libcef/browser/alloy/alloy_browser_host_impl.h
++++ b/libcef/browser/alloy/alloy_browser_host_impl.h
+@@ -113,6 +113,19 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
+   bool CanExecuteChromeCommand(int command_id) override;
+   void ExecuteChromeCommand(int command_id,
+                             cef_window_open_disposition_t disposition) override;
++  void SetWindowActive(bool active) override;
++  void ActivateTab() override;
++  bool MoveToBrowser(CefRefPtr<CefBrowser> target,
++                     int index,
++                     bool foreground) override;
++  int GetTabId() override;
++  void SetTabIndex(int index) override;
++  void SetTabPinned(bool pinned) override;
++  int ExecuteExtensionAction(const CefString& extension_id) override;
++  CefRefPtr<CefDictionaryValue> GetPasswordPrompt() override;
++  void ResolvePasswordPrompt(const CefString& action,
++                             const CefString& username,
++                             const CefString& password) override;
+ 
+   // CefBrowserHostBase methods:
+   bool IsWindowless() const override;
+diff --git a/libcef/browser/browser_host_base.cc b/libcef/browser/browser_host_base.cc
+index c9f84e503..d89e805b7 100644
+--- a/libcef/browser/browser_host_base.cc
++++ b/libcef/browser/browser_host_base.cc
+@@ -16,6 +16,7 @@
+ #include "cef/libcef/browser/navigation_entry_impl.h"
+ #include "cef/libcef/browser/printing/print_util.h"
+ #include "cef/libcef/browser/thread_util.h"
++#include "cef/libcef/browser/views/view_util.h"
+ #include "cef/libcef/common/frame_util.h"
+ #include "cef/libcef/common/net/url_util.h"
+ #include "chrome/browser/platform_util.h"
+@@ -990,6 +991,18 @@ void CefBrowserHostBase::SetAxViewportCollapse(bool enabled) {
+   }
+ }
+ 
++CefWindowHandle CefBrowserHostBase::GetContentsView() {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return kNullWindowHandle;
++  }
++  auto* web_contents = GetWebContents();
++  if (!web_contents || IsWindowless()) {
++    return kNullWindowHandle;
++  }
++  return view_util::GetViewHandle(web_contents->GetNativeView());
++}
++
+ void CefBrowserHostBase::ReplaceMisspelling(const CefString& word) {
+   if (!CEF_CURRENTLY_ON_UIT()) {
+     CEF_POST_TASK(
+diff --git a/libcef/browser/browser_host_base.h b/libcef/browser/browser_host_base.h
+index f984a1542..6c7befd52 100644
+--- a/libcef/browser/browser_host_base.h
++++ b/libcef/browser/browser_host_base.h
+@@ -280,6 +280,7 @@ class CefBrowserHostBase : public CefBrowserHost,
+   bool IsRenderProcessUnresponsive() override;
+   cef_runtime_style_t GetRuntimeStyle() override;
+   void SetAxViewportCollapse(bool enabled) override;
++  CefWindowHandle GetContentsView() override;
+ 
+   // CefBrowser methods:
+   bool IsValid() override;
+diff --git a/libcef/browser/browser_host_create.cc b/libcef/browser/browser_host_create.cc
+index 1d1f4b424..5a79742e1 100644
+--- a/libcef/browser/browser_host_create.cc
++++ b/libcef/browser/browser_host_create.cc
+@@ -151,6 +151,37 @@ CefRefPtr<CefBrowser> CefBrowserHost::CreateBrowserSync(
+   return CefBrowserHostBase::Create(create_params);
+ }
+ 
++// static
++CefRefPtr<CefBrowser> CefBrowserHost::CreateTabInBrowser(
++    CefRefPtr<CefBrowser> existing,
++    CefRefPtr<CefClient> client,
++    const CefString& url,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info,
++    bool foreground) {
++  if (!CONTEXT_STATE_VALID()) {
++    DCHECK(false) << "context not valid";
++    return nullptr;
++  }
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return nullptr;
++  }
++  if (!CEF_MEMBER_EXISTS(&settings, chrome_zoom_bubble)) {
++    DCHECK(false) << "invalid CefBrowserSettings structure size";
++    return nullptr;
++  }
++
++  auto host_base = CefBrowserHostBase::FromBrowser(existing);
++  if (!host_base || !host_base->IsChromeStyle()) {
++    LOG(ERROR) << "CreateTabInBrowser requires a Chrome style browser";
++    return nullptr;
++  }
++  return ChromeBrowserHostImpl::FromBaseChecked(host_base)
++      ->CreateTabInBrowser(client, url, settings, extra_info, foreground)
++      .get();
++}
++
+ // static
+ CefRefPtr<CefBrowser> CefBrowserHost::GetBrowserByIdentifier(int browser_id) {
+   // Verify that the context is in a valid state.
+diff --git a/libcef/browser/browser_info_manager.cc b/libcef/browser/browser_info_manager.cc
+index 8b077f071..a7f8f3a5a 100644
+--- a/libcef/browser/browser_info_manager.cc
++++ b/libcef/browser/browser_info_manager.cc
+@@ -26,6 +26,7 @@
+ #include "content/public/browser/web_ui.h"
+ #include "content/public/browser/web_ui_controller.h"
+ #include "content/public/common/url_constants.h"
++#include "ui/views/controls/webview/native_hosted_contents.h"
+ 
+ namespace {
+ 
+@@ -224,6 +225,13 @@ bool CefBrowserInfoManager::CanCreateWindow(
+ 
+     create_params.popup_with_views_hosted_opener = ShouldCreateViewsHostedPopup(
+         browser, pending_popup->use_default_browser_creation);
++    if (views::NativeHostedContents::IsMarked(browser->GetWebContents()) &&
++        !pending_popup->use_default_browser_creation) {
++      // Popups of tabs the client hosts itself become tabs of the opener's
++      // Chrome window (ChromeBrowserDelegate::AddWebContents), not Views-hosted
++      // windows.
++      create_params.popup_with_views_hosted_opener = false;
++    }
+ 
+     // Potentially use Alloy style.
+     create_params.popup_with_alloy_style_opener = browser->IsAlloyStyle();
+diff --git a/libcef/browser/chrome/chrome_browser_delegate.cc b/libcef/browser/chrome/chrome_browser_delegate.cc
+index 3c4eead6f..57fdf3d23 100644
+--- a/libcef/browser/chrome/chrome_browser_delegate.cc
++++ b/libcef/browser/chrome/chrome_browser_delegate.cc
+@@ -13,10 +13,12 @@
+ #include "cef/libcef/browser/chrome/browser_util.h"
+ #include "cef/libcef/browser/chrome/chrome_browser_context.h"
+ #include "cef/libcef/browser/chrome/chrome_browser_host_impl.h"
++#include "cef/libcef/browser/chrome/hidden_from_extensions.h"
+ #include "cef/libcef/browser/chrome/views/chrome_browser_view.h"
+ #include "cef/libcef/browser/chrome/views/chrome_child_window.h"
+ #include "cef/libcef/browser/devtools/devtools_window_runner.h"
+ #include "cef/libcef/browser/request_context_impl.h"
++#include "cef/libcef/browser/thread_util.h"
+ #include "cef/libcef/browser/views/browser_view_impl.h"
+ #include "cef/libcef/browser/views/window_impl.h"
+ #include "cef/libcef/common/app_manager.h"
+@@ -24,15 +26,25 @@
+ #include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/browser_tabstrip.h"
+ #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
++#include "chrome/browser/ui/tabs/tab_enums.h"
++#include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
+ #include "content/public/browser/global_routing_id.h"
+ #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
++#include "ui/base/page_transition_types.h"
++#include "ui/views/controls/webview/native_hosted_contents.h"
+ 
+ ChromeBrowserDelegate::ChromeBrowserDelegate(
+     Browser* browser,
+     const CefBrowserCreateParams& create_params,
+     const Browser* opener)
+-    : browser_(browser), create_params_(create_params) {
++    : browser_(browser),
++      create_params_(create_params),
++      native_contents_hosting_(
++          create_params.browser_view &&
++          create_params.settings.native_contents_hosting == STATE_ENABLED),
++      hidden_from_extensions_(
++          create_params.settings.hidden_from_extensions == STATE_ENABLED) {
+   DCHECK(browser_);
+ 
+   if (opener) {
+@@ -202,6 +214,20 @@ Browser* ChromeBrowserDelegate::CreateDevToolsBrowser(
+ 
+ std::unique_ptr<content::WebContents> ChromeBrowserDelegate::AddWebContents(
+     std::unique_ptr<content::WebContents> new_contents) {
++  if (native_contents_hosting_ &&
++      CefBrowserInfoManager::GetInstance()->AddWebContents(
++          new_contents.get())) {
++    // A popup allowed in OnBeforePopup from a tab the client hosts becomes a
++    // background tab of this window (the client decides when to show it)
++    // instead of a new Chrome window. Browser::SetAsDelegate associates the
++    // browser host created in OnPopupWebContentsCreated with this Browser.
++    views::NativeHostedContents::Mark(new_contents.get());
++    browser_->tab_strip_model()->AddWebContents(
++        std::move(new_contents), /*index=*/-1, ui::PAGE_TRANSITION_LINK,
++        AddTabTypes::ADD_NONE);
++    return nullptr;
++  }
++
+   if (CefBrowserInfoManager::GetInstance()->AddWebContents(
+           new_contents.get())) {
+     // The browser host should have been created in OnPopupWebContentsCreated().
+@@ -221,8 +247,42 @@ std::unique_ptr<content::WebContents> ChromeBrowserDelegate::AddWebContents(
+   return new_contents;
+ }
+ 
++CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserDelegate::CreateTab(
++    CefRefPtr<CefClient> client,
++    const GURL& url,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info,
++    bool foreground) {
++  CEF_REQUIRE_UIT();
++  DCHECK(native_contents_hosting_);
++  DCHECK(!pending_tab_);
++
++  // Consumed by SetAsDelegate() via OnWebContentsCreated(), which runs before
++  // AddAndReturnTabAt() returns. An empty URL doesn't navigate (see
++  // ChromeBrowserHostImpl::Create).
++  pending_tab_ = PendingTab{client, settings, extra_info};
++  auto* web_contents = chrome::AddAndReturnTabAt(
++      browser_.get(), url.is_empty() ? GURL("chrome://ignore/") : url,
++      /*index=*/-1, foreground);
++  pending_tab_.reset();
++
++  return web_contents
++             ? ChromeBrowserHostImpl::GetBrowserForContents(web_contents)
++             : nullptr;
++}
++
+ void ChromeBrowserDelegate::OnWebContentsCreated(
+     content::WebContents* new_contents) {
++  // The client shows this tab itself: keep it out of the Browser's views so it
++  // keeps drawing into its own native view.
++  if (native_contents_hosting_) {
++    views::NativeHostedContents::Mark(new_contents);
++    if (!observing_tab_strip_) {
++      observing_tab_strip_ = true;
++      browser_->tab_strip_model()->AddObserver(this);
++    }
++  }
++
+   // Necessary to receive LoadingStateChanged calls during initial navigation.
+   // This will be called again in Browser::SetAsDelegate, which should be
+   // fine.
+@@ -253,7 +313,21 @@ void ChromeBrowserDelegate::SetAsDelegate(content::WebContents* web_contents,
+   // CreateDevToolsBrowser should have already created the browser host.
+   DCHECK(!is_devtools_popup || !opener_host_);
+ 
+-  auto platform_delegate = CefBrowserPlatformDelegate::Create(create_params_);
++  CefBrowserCreateParams create_params = create_params_;
++  if (native_contents_hosting_) {
++    if (pending_tab_) {
++      create_params.client = pending_tab_->client;
++      create_params.settings = pending_tab_->settings;
++      create_params.extra_info = pending_tab_->extra_info;
++    }
++    // One CefBrowserView per Browser: only the first tab belongs to it.
++    if (views_tab_created_) {
++      create_params.browser_view = nullptr;
++    }
++    views_tab_created_ = true;
++  }
++
++  auto platform_delegate = CefBrowserPlatformDelegate::Create(create_params);
+   CHECK(platform_delegate);
+ 
+   // Expect runtime style to match.
+@@ -261,18 +335,51 @@ void ChromeBrowserDelegate::SetAsDelegate(content::WebContents* web_contents,
+ 
+   auto browser_info = CefBrowserInfoManager::GetInstance()->CreateBrowserInfo(
+       is_devtools_popup, platform_delegate->GetBrowserConfig(),
+-      create_params_.extra_info);
++      create_params.extra_info);
+ 
+   auto request_context_impl =
+       CefRequestContextImpl::GetOrCreateForRequestContext(
+-          create_params_.request_context);
++          create_params.request_context);
+ 
+-  CreateBrowserHost(browser_, web_contents, create_params_.settings,
+-                    create_params_.client, std::move(platform_delegate),
++  CreateBrowserHost(browser_, web_contents, create_params.settings,
++                    create_params.client, std::move(platform_delegate),
+                     browser_info, is_devtools_popup, /*opener=*/nullptr,
+                     request_context_impl);
+ }
+ 
++void ChromeBrowserDelegate::OnTabStripModelChanged(
++    TabStripModel* tab_strip_model,
++    const TabStripModelChange& change,
++    const TabStripSelectionChange& selection) {
++  NotifyTabStripChanged();
++}
++
++void ChromeBrowserDelegate::OnTabPinnedStateChanged(tabs::TabInterface* tab,
++                                                    int index) {
++  NotifyTabStripChanged();
++}
++
++void ChromeBrowserDelegate::NotifyTabStripChanged() {
++  if (browser_->IsDeleteScheduled()) {
++    return;
++  }
++  auto* model = browser_->tab_strip_model();
++  const int active = model->active_index();
++  for (int i = 0; i < model->count(); ++i) {
++    auto host =
++        ChromeBrowserHostImpl::GetBrowserForContents(model->GetWebContentsAt(i));
++    if (!host) {
++      continue;
++    }
++    if (auto client = host->GetClient()) {
++      if (auto handler = client->GetLifeSpanHandler()) {
++        handler->OnTabStripChanged(host.get(), i, i == active,
++                                   model->IsTabPinned(i));
++      }
++    }
++  }
++}
++
+ bool ChromeBrowserDelegate::ShowStatusBubble(bool show_by_default) {
+   if (!show_status_bubble_.has_value()) {
+     show_status_bubble_ = show_by_default;
+@@ -624,6 +731,15 @@ CefWindowView* ChromeBrowserDelegate::GetCefWindowView() const {
+ 
+ namespace cef {
+ 
++bool IsHiddenFromExtensions(const BrowserWindowInterface* browser) {
++  const Browser* chrome_browser = BrowserForBWI(browser);
++  auto* delegate = chrome_browser
++                       ? static_cast<ChromeBrowserDelegate*>(
++                             chrome_browser->cef_delegate())
++                       : nullptr;
++  return delegate && delegate->hidden_from_extensions();
++}
++
+ // static
+ std::unique_ptr<BrowserDelegate> BrowserDelegate::Create(
+     Browser* browser,
+diff --git a/libcef/browser/chrome/chrome_browser_delegate.h b/libcef/browser/chrome/chrome_browser_delegate.h
+index 639ecc820..cbdd28007 100644
+--- a/libcef/browser/chrome/chrome_browser_delegate.h
++++ b/libcef/browser/chrome/chrome_browser_delegate.h
+@@ -13,6 +13,7 @@
+ #include "cef/libcef/browser/browser_host_base.h"
+ #include "cef/libcef/browser/browser_info.h"
+ #include "cef/libcef/browser/chrome/browser_delegate.h"
++#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
+ 
+ class CefRequestContextImpl;
+ class CefWindowImpl;
+@@ -37,7 +38,8 @@ class ChromeBrowserHostImpl;
+ // time, and that ChromeBrowserHostImpl continues to exist until the tab's
+ // WebContents is destroyed. The associated WebContents object does not change,
+ // but the Browser object will change when the tab is dragged between windows.
+-class ChromeBrowserDelegate : public cef::BrowserDelegate {
++class ChromeBrowserDelegate : public cef::BrowserDelegate,
++                              public TabStripModelObserver {
+  public:
+   // The |create_params| and |opener| values are specified via the
+   // Browser::CreateParams passed to Browser::Create. |opener| will only be
+@@ -90,7 +92,35 @@ class ChromeBrowserDelegate : public cef::BrowserDelegate {
+ 
+   Browser* browser() const { return browser_; }
+ 
++  // True if the client hosts this Browser's tabs itself
++  // (CefBrowserSettings.native_contents_hosting on the CefBrowserView that
++  // created it). Browsers that Chrome creates later (popups, dragged-out tabs)
++  // show their tabs normally.
++  bool native_contents_hosting() const { return native_contents_hosting_; }
++
++  // CefBrowserSettings.hidden_from_extensions (see IsHiddenFromExtensions).
++  bool hidden_from_extensions() const { return hidden_from_extensions_; }
++
++  // Adds a tab to this Browser with its own client, settings and extra info
++  // (CefBrowserHost::CreateTabInBrowser). Requires native_contents_hosting().
++  CefRefPtr<ChromeBrowserHostImpl> CreateTab(
++      CefRefPtr<CefClient> client,
++      const GURL& url,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info,
++      bool foreground);
++
+  private:
++  // TabStripModelObserver methods (only with native_contents_hosting_):
++  void OnTabStripModelChanged(
++      TabStripModel* tab_strip_model,
++      const TabStripModelChange& change,
++      const TabStripSelectionChange& selection) override;
++  void OnTabPinnedStateChanged(tabs::TabInterface* tab, int index) override;
++
++  // Reports every tab's position/state (CefLifeSpanHandler::OnTabStripChanged).
++  void NotifyTabStripChanged();
++
+   static CefRefPtr<ChromeBrowserHostImpl> CreateBrowserHost(
+       Browser* browser,
+       content::WebContents* web_contents,
+@@ -123,6 +153,21 @@ class ChromeBrowserDelegate : public cef::BrowserDelegate {
+   // Used when creating a new browser host.
+   const CefBrowserCreateParams create_params_;
+ 
++  const bool native_contents_hosting_;
++  const bool hidden_from_extensions_;
++  // With native_contents_hosting_, only the first tab is associated with the
++  // CefBrowserView; later tabs get a plain Chrome platform delegate.
++  bool views_tab_created_ = false;
++  bool observing_tab_strip_ = false;
++
++  // Client, settings and extra info for the tab CreateTab() is adding.
++  struct PendingTab {
++    CefRefPtr<CefClient> client;
++    CefBrowserSettings settings;
++    CefRefPtr<CefDictionaryValue> extra_info;
++  };
++  std::optional<PendingTab> pending_tab_;
++
+   std::optional<bool> show_status_bubble_;
+   std::optional<SkRegion> draggable_region_;
+   mutable std::optional<bool> frameless_pip_;
+diff --git a/libcef/browser/chrome/chrome_browser_host_impl.cc b/libcef/browser/chrome/chrome_browser_host_impl.cc
+index b363de851..169be79ee 100644
+--- a/libcef/browser/chrome/chrome_browser_host_impl.cc
++++ b/libcef/browser/chrome/chrome_browser_host_impl.cc
+@@ -4,24 +4,38 @@
+ 
+ #include "cef/libcef/browser/chrome/chrome_browser_host_impl.h"
+ 
++#include <algorithm>
++
+ #include "base/logging.h"
+ #include "base/notimplemented.h"
+ #include "cef/libcef/browser/browser_platform_delegate.h"
+ #include "cef/libcef/browser/chrome/browser_platform_delegate_chrome.h"
+ #include "cef/libcef/browser/chrome/browser_util.h"
++#include "cef/libcef/browser/chrome/chrome_browser_delegate.h"
++#include "cef/libcef/browser/chrome/password_bubble.h"
+ #include "cef/libcef/browser/chrome/views/chrome_browser_view.h"
+ #include "cef/libcef/browser/chrome/views/chrome_browser_widget.h"
+ #include "cef/libcef/browser/thread_util.h"
+ #include "cef/libcef/browser/views/browser_view_impl.h"
+ #include "cef/libcef/common/net/url_util.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
+ #include "chrome/browser/ui/browser_commands.h"
+ #include "chrome/browser/ui/browser_tabstrip.h"
+ #include "chrome/browser/ui/browser_window.h"
+ #include "chrome/browser/ui/navigator/browser_navigator.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/views/frame/contents_web_view.h"
++#include "chrome/browser/extensions/extension_action_runner.h"
++#include "chrome/browser/ui/passwords/passwords_model_delegate.h"
++#include "chrome/app/chrome_command_ids.h"
+ #include "chrome/common/pref_names.h"
++#include "components/password_manager/core/browser/password_form.h"
++#include "components/password_manager/core/common/password_manager_ui.h"
++#include "extensions/browser/extension_action.h"
++#include "extensions/browser/extension_registry.h"
++#include "components/sessions/content/session_tab_helper.h"
++#include "chrome/browser/ui/tabs/tab_model.h"
+ 
+ // static
+ CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserHostImpl::Create(
+@@ -343,6 +357,270 @@ void ChromeBrowserHostImpl::ExecuteChromeCommand(
+   }
+ }
+ 
++void ChromeBrowserHostImpl::SetWindowActive(bool active) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    CEF_POST_TASK(CEF_UIT,
++                  base::BindOnce(&ChromeBrowserHostImpl::SetWindowActive, this,
++                                 active));
++    return;
++  }
++
++  if (!browser_) {
++    return;
++  }
++  // Normally BrowserView::OnWidgetActivationChanged reports this. Updates the
++  // last active Browser and notifies BrowserCollectionObservers.
++  auto* manager = BrowserActiveStateManager::From(browser_.get());
++  if (active) {
++    manager->DidBecomeActive();
++  } else {
++    manager->DidBecomeInactive();
++  }
++}
++
++void ChromeBrowserHostImpl::ActivateTab() {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    CEF_POST_TASK(CEF_UIT,
++                  base::BindOnce(&ChromeBrowserHostImpl::ActivateTab, this));
++    return;
++  }
++
++  if (!browser_ || !GetWebContents()) {
++    return;
++  }
++  auto* model = browser_->tab_strip_model();
++  const int index = model->GetIndexOfWebContents(GetWebContents());
++  if (index != TabStripModel::kNoTab && index != model->active_index()) {
++    model->ActivateTabAt(index);
++  }
++}
++
++bool ChromeBrowserHostImpl::MoveToBrowser(CefRefPtr<CefBrowser> target,
++                                          int index,
++                                          bool foreground) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return false;
++  }
++
++  auto target_base = CefBrowserHostBase::FromBrowser(target);
++  if (!target_base || !target_base->IsChromeStyle() || !browser_ ||
++      !GetWebContents()) {
++    return false;
++  }
++  Browser* target_browser = FromBaseChecked(target_base)->browser();
++  if (!target_browser || target_browser == browser_) {
++    return false;
++  }
++
++  auto* from_model = browser_->tab_strip_model();
++  const int from_index = from_model->GetIndexOfWebContents(GetWebContents());
++  if (from_index == TabStripModel::kNoTab) {
++    return false;
++  }
++
++  // Same as dragging a tab between windows: the tab (and this browser host)
++  // survives; the target Browser's delegate re-associates it in
++  // SetAsDelegate().
++  std::unique_ptr<tabs::TabModel> tab =
++      from_model->DetachTabAtForInsertion(from_index);
++  auto* to_model = target_browser->tab_strip_model();
++  const int to_index =
++      (index < 0 || index > to_model->count()) ? to_model->count() : index;
++  to_model->InsertDetachedTabAt(
++      to_index, std::move(tab),
++      foreground ? AddTabTypes::ADD_ACTIVE : AddTabTypes::ADD_NONE);
++  return true;
++}
++
++int ChromeBrowserHostImpl::GetTabId() {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return -1;
++  }
++  auto* web_contents = GetWebContents();
++  if (!web_contents) {
++    return -1;
++  }
++  const SessionID id = sessions::SessionTabHelper::IdForTab(web_contents);
++  return id.is_valid() ? id.id() : -1;
++}
++
++void ChromeBrowserHostImpl::SetTabIndex(int index) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return;
++  }
++  const int from = GetCurrentTabIndex();
++  if (from == TabStripModel::kNoTab) {
++    return;
++  }
++  auto* model = browser_->tab_strip_model();
++  const int to = std::clamp(index, 0, model->count() - 1);
++  if (to != from) {
++    model->MoveWebContentsAt(from, to, /*select_after_move=*/false);
++  }
++}
++
++void ChromeBrowserHostImpl::SetTabPinned(bool pinned) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return;
++  }
++  const int index = GetCurrentTabIndex();
++  if (index != TabStripModel::kNoTab &&
++      browser_->tab_strip_model()->IsTabPinned(index) != pinned) {
++    browser_->tab_strip_model()->SetTabPinned(index, pinned);
++  }
++}
++
++int ChromeBrowserHostImpl::ExecuteExtensionAction(
++    const CefString& extension_id) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return -1;
++  }
++  auto* web_contents = GetWebContents();
++  if (!web_contents) {
++    return -1;
++  }
++  const extensions::Extension* extension =
++      extensions::ExtensionRegistry::Get(web_contents->GetBrowserContext())
++          ->enabled_extensions()
++          .GetByID(extension_id.ToString());
++  auto* runner =
++      extensions::ExtensionActionRunner::GetForWebContents(web_contents);
++  if (!extension || !runner) {
++    return -1;
++  }
++  switch (runner->RunAction(extension, /*grant_tab_permissions=*/true)) {
++    case extensions::ExtensionAction::ShowAction::kNone:
++      return 0;
++    case extensions::ExtensionAction::ShowAction::kShowPopup:
++      return 1;
++    case extensions::ExtensionAction::ShowAction::kToggleSidePanel:
++      return 2;
++  }
++  return 0;
++}
++
++CefRefPtr<CefDictionaryValue> ChromeBrowserHostImpl::GetPasswordPrompt() {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return nullptr;
++  }
++  auto* web_contents = GetWebContents();
++  base::WeakPtr<PasswordsModelDelegate> delegate =
++      web_contents ? PasswordsModelDelegateFromWebContents(web_contents)
++                   : nullptr;
++  if (!delegate ||
++      delegate->GetState() == password_manager::ui::INACTIVE_STATE) {
++    return nullptr;
++  }
++
++  auto dict = CefDictionaryValue::Create();
++  const auto state = delegate->GetState();
++  dict->SetInt("state", static_cast<int>(state));
++  dict->SetString("origin", delegate->GetOrigin().Serialize());
++  if (state == password_manager::ui::PENDING_PASSWORD_STATE ||
++      state == password_manager::ui::PENDING_PASSWORD_UPDATE_STATE ||
++      state == password_manager::ui::SAVE_CONFIRMATION_STATE ||
++      state == password_manager::ui::AUTO_SIGNIN_STATE) {
++    const auto& form = delegate->GetPendingPassword();
++    dict->SetString("username", form.username_value);
++    dict->SetInt("passwordLength", static_cast<int>(form.password_value.size()));
++    dict->SetString("federation", form.federation_origin.IsValid()
++                                      ? form.federation_origin.Serialize()
++                                      : std::string());
++  }
++  auto usernames = CefListValue::Create();
++  for (const auto& form : delegate->GetCurrentForms()) {
++    if (form && !form->username_value.empty()) {
++      usernames->SetString(usernames->GetSize(), form->username_value);
++    }
++  }
++  dict->SetList("usernames", usernames);
++  return dict;
++}
++
++namespace cef {
++
++bool HandlePasswordBubble(content::WebContents* web_contents) {
++  auto browser = ChromeBrowserHostImpl::GetBrowserForContents(web_contents);
++  auto client = browser ? browser->GetClient() : nullptr;
++  auto handler = client ? client->GetCommandHandler() : nullptr;
++  if (!handler || !handler->OnChromeCommand(browser.get(),
++                                            IDC_MANAGE_PASSWORDS_FOR_PAGE,
++                                            CEF_WOD_CURRENT_TAB)) {
++    return false;
++  }
++  // What Chrome's bubble would report once shown; ResolvePasswordPrompt
++  // reports it hidden again.
++  if (auto delegate = PasswordsModelDelegateFromWebContents(web_contents)) {
++    delegate->OnBubbleShown();
++  }
++  return true;
++}
++
++}  // namespace cef
++
++void ChromeBrowserHostImpl::ResolvePasswordPrompt(const CefString& action,
++                                                  const CefString& username,
++                                                  const CefString& password) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return;
++  }
++  auto* web_contents = GetWebContents();
++  base::WeakPtr<PasswordsModelDelegate> delegate =
++      web_contents ? PasswordsModelDelegateFromWebContents(web_contents)
++                   : nullptr;
++  if (!delegate) {
++    return;
++  }
++
++  const std::string what = action.ToString();
++  if (what == "save" || what == "update") {
++    const auto& pending = delegate->GetPendingPassword();
++    delegate->SavePassword(
++        username.empty() ? pending.username_value : username.ToString16(),
++        password.empty() ? pending.password_value
++                         : password_manager::PasswordString(
++                               password.ToString16()));
++  } else if (what == "never") {
++    delegate->NeverSavePassword();
++  } else if (what == "nope") {
++    delegate->OnNopeUpdateClicked();
++  } else if (what != "dismiss") {
++    return;
++  }
++  // Like closing Chrome's bubble after any of these (it may have been
++  // destroyed by the action).
++  if (delegate) {
++    delegate->OnBubbleHidden();
++  }
++}
++
++CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserHostImpl::CreateTabInBrowser(
++    CefRefPtr<CefClient> client,
++    const CefString& url,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info,
++    bool foreground) {
++  CEF_REQUIRE_UIT();
++  if (!browser_ || !browser_->cef_delegate()) {
++    return nullptr;
++  }
++  auto* delegate = static_cast<ChromeBrowserDelegate*>(browser_->cef_delegate());
++  if (!delegate->native_contents_hosting()) {
++    LOG(ERROR) << "CreateTabInBrowser requires a browser created with "
++                  "native_contents_hosting";
++    return nullptr;
++  }
++  return delegate->CreateTab(client, url_util::MakeGURL(url, /*fixup=*/true),
++                             settings, extra_info, foreground);
++}
++
+ ChromeBrowserView* ChromeBrowserHostImpl::chrome_browser_view() const {
+   if (browser_ && is_views_hosted_) {
+     return static_cast<ChromeBrowserView*>(
+@@ -422,7 +700,10 @@ Browser* ChromeBrowserHostImpl::CreateBrowser(
+   // documentation.
+   ChromeBrowserView* chrome_browser_view = nullptr;
+   if (params.browser_view) {
+-    if (chrome_params.type == BrowserWindowInterface::TYPE_NORMAL) {
++    // With native_contents_hosting the client shows the tabs itself, so the
++    // Browser stays a normal tabbed browser (see CreateTabInBrowser).
++    if (chrome_params.type == BrowserWindowInterface::TYPE_NORMAL &&
++        params.settings.native_contents_hosting != STATE_ENABLED) {
+       // Don't show most controls.
+       chrome_params.type = BrowserWindowInterface::TYPE_POPUP;
+       // Don't show title bar or address.
+diff --git a/libcef/browser/chrome/chrome_browser_host_impl.h b/libcef/browser/chrome/chrome_browser_host_impl.h
+index d65742e17..b1cb596dc 100644
+--- a/libcef/browser/chrome/chrome_browser_host_impl.h
++++ b/libcef/browser/chrome/chrome_browser_host_impl.h
+@@ -108,6 +108,28 @@ class ChromeBrowserHostImpl : public CefBrowserHostBase {
+   bool CanExecuteChromeCommand(int command_id) override;
+   void ExecuteChromeCommand(int command_id,
+                             cef_window_open_disposition_t disposition) override;
++  void SetWindowActive(bool active) override;
++  void ActivateTab() override;
++  bool MoveToBrowser(CefRefPtr<CefBrowser> target,
++                     int index,
++                     bool foreground) override;
++  int GetTabId() override;
++  void SetTabIndex(int index) override;
++  void SetTabPinned(bool pinned) override;
++  int ExecuteExtensionAction(const CefString& extension_id) override;
++  CefRefPtr<CefDictionaryValue> GetPasswordPrompt() override;
++  void ResolvePasswordPrompt(const CefString& action,
++                             const CefString& username,
++                             const CefString& password) override;
++
++  // Implementation of CefBrowserHost::CreateTabInBrowser for this browser's
++  // Chrome window.
++  CefRefPtr<ChromeBrowserHostImpl> CreateTabInBrowser(
++      CefRefPtr<CefClient> client,
++      const CefString& url,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info,
++      bool foreground);
+ 
+   Browser* browser() const { return browser_; }
+ 
+diff --git a/libcef/browser/chrome/hidden_from_extensions.h b/libcef/browser/chrome/hidden_from_extensions.h
+new file mode 100644
+index 000000000..0e2b8d11b
+--- /dev/null
++++ b/libcef/browser/chrome/hidden_from_extensions.h
+@@ -0,0 +1,21 @@
++// Copyright 2026 The Netnyahoo Authors. Portions copyright the Chromium
++// Embedded Framework Authors. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++#ifndef CEF_LIBCEF_BROWSER_CHROME_HIDDEN_FROM_EXTENSIONS_H_
++#define CEF_LIBCEF_BROWSER_CHROME_HIDDEN_FROM_EXTENSIONS_H_
++#pragma once
++
++class BrowserWindowInterface;
++
++namespace cef {
++
++// True if |browser| was created from a CefBrowserView with
++// CefBrowserSettings.hidden_from_extensions: its window and tabs are left out
++// of extension APIs (chrome.windows, chrome.tabs). Defined in
++// chrome_browser_delegate.cc.
++bool IsHiddenFromExtensions(const BrowserWindowInterface* browser);
++
++}  // namespace cef
++
++#endif  // CEF_LIBCEF_BROWSER_CHROME_HIDDEN_FROM_EXTENSIONS_H_
+diff --git a/libcef/browser/chrome/password_bubble.h b/libcef/browser/chrome/password_bubble.h
+new file mode 100644
+index 000000000..92f45add2
+--- /dev/null
++++ b/libcef/browser/chrome/password_bubble.h
+@@ -0,0 +1,25 @@
++// Copyright 2026 The Netnyahoo Authors. Portions copyright the Chromium
++// Embedded Framework Authors. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++#ifndef CEF_LIBCEF_BROWSER_CHROME_PASSWORD_BUBBLE_H_
++#define CEF_LIBCEF_BROWSER_CHROME_PASSWORD_BUBBLE_H_
++#pragma once
++
++namespace content {
++class WebContents;
++}
++
++namespace cef {
++
++// Called before Chrome shows its password manager bubble for |web_contents|.
++// Offers the tab's client IDC_MANAGE_PASSWORDS_FOR_PAGE through
++// CefCommandHandler::OnChromeCommand; returns true if the client handled it
++// (it shows its own UI from CefBrowserHost::GetPasswordPrompt and answers with
++// ResolvePasswordPrompt), in which case Chrome's bubble is skipped. Defined in
++// chrome_browser_host_impl.cc.
++bool HandlePasswordBubble(content::WebContents* web_contents);
++
++}  // namespace cef
++
++#endif  // CEF_LIBCEF_BROWSER_CHROME_PASSWORD_BUBBLE_H_
+diff --git a/libcef/browser/request_context_impl.cc b/libcef/browser/request_context_impl.cc
+index 40dc0900a..8b8b60be5 100644
+--- a/libcef/browser/request_context_impl.cc
++++ b/libcef/browser/request_context_impl.cc
+@@ -17,6 +17,7 @@
+ #include "cef/libcef/common/task_runner_impl.h"
+ #include "cef/libcef/common/values_impl.h"
+ #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
++#include "chrome/browser/extensions/component_loader.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/themes/theme_service.h"
+ #include "chrome/browser/themes/theme_service_factory.h"
+@@ -678,6 +679,38 @@ cef_color_t CefRequestContextImpl::GetChromeColorSchemeColor() {
+   return 0;
+ }
+ 
++CefString CefRequestContextImpl::LoadComponentExtension(
++    const CefString& root_directory) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return CefString();
++  }
++  if (!VerifyBrowserContext() || root_directory.empty()) {
++    return CefString();
++  }
++  auto* loader = extensions::ComponentLoader::Get(
++      browser_context()->AsBrowserContext());
++  if (!loader) {
++    return CefString();
++  }
++  return loader->AddOrReplace(base::FilePath(root_directory.ToString()));
++}
++
++void CefRequestContextImpl::UnloadComponentExtension(
++    const CefString& extension_id) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return;
++  }
++  if (!VerifyBrowserContext()) {
++    return;
++  }
++  if (auto* loader = extensions::ComponentLoader::Get(
++          browser_context()->AsBrowserContext())) {
++    loader->Remove(extensions::ExtensionId(extension_id.ToString()));
++  }
++}
++
+ cef_color_variant_t CefRequestContextImpl::GetChromeColorSchemeVariant() {
+   if (!VerifyBrowserContext()) {
+     return CEF_COLOR_VARIANT_SYSTEM;
+diff --git a/libcef/browser/request_context_impl.h b/libcef/browser/request_context_impl.h
+index 7a61f4a5f..db0a5bcf4 100644
+--- a/libcef/browser/request_context_impl.h
++++ b/libcef/browser/request_context_impl.h
+@@ -147,6 +147,8 @@ class CefRequestContextImpl : public CefRequestContext {
+   cef_color_variant_t GetChromeColorSchemeMode() override;
+   cef_color_t GetChromeColorSchemeColor() override;
+   cef_color_variant_t GetChromeColorSchemeVariant() override;
++  CefString LoadComponentExtension(const CefString& root_directory) override;
++  void UnloadComponentExtension(const CefString& extension_id) override;
+ 
+   const CefRequestContextSettings& settings() const { return config_.settings; }
+ 
+diff --git a/libcef/browser/views/browser_view_impl.cc b/libcef/browser/views/browser_view_impl.cc
+index d0c486772..1be48e55d 100644
+--- a/libcef/browser/views/browser_view_impl.cc
++++ b/libcef/browser/views/browser_view_impl.cc
+@@ -177,7 +177,10 @@ void CefBrowserViewImpl::WebContentsDestroyed(
+   // This will always be called before BrowserDestroyed().
+   DisassociateFromWidget();
+ 
+-  if (web_view()) {
++  // With Chrome style the WebView may already show another tab of the same
++  // Browser (native_contents_hosting); leave that one alone.
++  if (web_view() && (!web_view()->web_contents() ||
++                     web_view()->web_contents() == web_contents)) {
+     web_view()->SetWebContents(nullptr);
+   }
+ }
+diff --git a/libcef/browser/views/view_util.h b/libcef/browser/views/view_util.h
+index b1f5df332..7ae8f8a0c 100644
+--- a/libcef/browser/views/view_util.h
++++ b/libcef/browser/views/view_util.h
+@@ -149,6 +149,10 @@ CefWindowHandle GetWindowHandle(views::Widget* widget);
+ // Returns the platform window handle for |window|. May return nullptr.
+ CefWindowHandle GetWindowHandle(gfx::NativeWindow window);
+ 
++// Returns the platform handle for |view| itself (on macOS its NSView). May
++// return nullptr.
++CefWindowHandle GetViewHandle(gfx::NativeView view);
++
+ views::NativeWidget* CreateNativeWidget(
+     views::internal::NativeWidgetDelegate* delegate,
+     CefRefPtr<CefWindow> window,
+diff --git a/libcef/browser/views/view_util_aura.cc b/libcef/browser/views/view_util_aura.cc
+index a0c358212..936eec8d4 100644
+--- a/libcef/browser/views/view_util_aura.cc
++++ b/libcef/browser/views/view_util_aura.cc
+@@ -49,6 +49,11 @@ CefWindowHandle GetWindowHandle(gfx::NativeWindow window) {
+   return kNullWindowHandle;
+ }
+ 
++CefWindowHandle GetViewHandle(gfx::NativeView view) {
++  // Aura child views have no platform handle of their own.
++  return kNullWindowHandle;
++}
++
+ views::NativeWidget* CreateNativeWidget(
+     views::internal::NativeWidgetDelegate* delegate,
+     CefRefPtr<CefWindow> window,
+diff --git a/libcef/browser/views/view_util_mac.mm b/libcef/browser/views/view_util_mac.mm
+index 4a6f4dfbc..0256e57a9 100644
+--- a/libcef/browser/views/view_util_mac.mm
++++ b/libcef/browser/views/view_util_mac.mm
+@@ -60,6 +60,13 @@ CefWindowHandle GetWindowHandle(gfx::NativeWindow window) {
+   return kNullWindowHandle;
+ }
+ 
++CefWindowHandle GetViewHandle(gfx::NativeView view) {
++  if (view) {
++    return CAST_NSVIEW_TO_CEF_WINDOW_HANDLE(view.GetNativeNSView());
++  }
++  return kNullWindowHandle;
++}
++
+ views::NativeWidget* CreateNativeWidget(
+     views::internal::NativeWidgetDelegate* delegate,
+     CefRefPtr<CefWindow> window,
+diff --git a/tools/translator.py b/tools/translator.py
+index 54797dd7a..4decf57ac 100644
+--- a/tools/translator.py
++++ b/tools/translator.py
+@@ -156,7 +156,8 @@ def translate(cef_dir,
+   # add include files to be processed
+   header.set_root_directory(cpp_header_dir)
+   excluded_files = [
+-      'cef_api_hash.h', 'cef_application_mac.h', 'cef_version_info.h'
++      'cef_api_hash.h', 'cef_application_mac.h', 'cef_netnyahoo.h',
++      'cef_version_info.h'
+   ]
+   header.add_directory(cpp_header_dir, excluded_files)
+   header.add_directory(cpp_header_test_dir)

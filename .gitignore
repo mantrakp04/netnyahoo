@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Turbo / TypeScript
+.turbo/
+*.tsbuildinfo
+
+# Expo / Metro / React Native
+.expo/
+.metro-health-check*
+*.jsbundle
+
+# Env and machine-local Xcode
+.env
+.env.*
+!.env.example
+.xcode.env.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Xcode DerivedData, including per-agent build-<name> dirs
+build/
+build-*/
+DerivedData/
+*.xcuserstate
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# CocoaPods / SwiftPM
+Pods/
+.swiftpm/
+.build/
+
+# CEF binary + filter lists (packages/cef/scripts/setup.sh)
+packages/cef/vendor/
+
+# Generated design / video frames
+output/
+
+# Test / coverage
+coverage/
+.nyc_output/

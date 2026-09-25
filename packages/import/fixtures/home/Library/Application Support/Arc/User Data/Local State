@@ -1,0 +1,20 @@
+{
+  "browser": {
+    "enabled_labs_experiments": []
+  },
+  "profile": {
+    "info_cache": {
+      "Default": {
+        "name": "Your Chromium"
+      },
+      "Profile 1": {
+        "name": "Work"
+      }
+    },
+    "last_used": "Default",
+    "profiles_order": [
+      "Default",
+      "Profile 1"
+    ]
+  }
+}

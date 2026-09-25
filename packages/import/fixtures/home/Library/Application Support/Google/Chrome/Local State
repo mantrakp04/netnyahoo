@@ -1,0 +1,29 @@
+{
+  "browser": {
+    "enabled_labs_experiments": []
+  },
+  "profile": {
+    "info_cache": {
+      "Default": {
+        "name": "Personal",
+        "user_name": "alex@example.com",
+        "gaia_name": "Alex Example",
+        "avatar_icon": "chrome://theme/IDR_PROFILE_AVATAR_26",
+        "is_using_default_name": false,
+        "profile_highlight_color": -12627531,
+        "default_avatar_fill_color": -12627531
+      },
+      "Profile 1": {
+        "name": "Work",
+        "user_name": "",
+        "avatar_icon": "chrome://theme/IDR_PROFILE_AVATAR_20",
+        "is_using_default_name": false
+      }
+    },
+    "last_used": "Default",
+    "profiles_order": [
+      "Default",
+      "Profile 1"
+    ]
+  }
+}

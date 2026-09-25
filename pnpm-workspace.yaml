@@ -1,0 +1,16 @@
+packages:
+  - apps/*
+  - packages/*
+
+# React Native + CocoaPods expect a flat node_modules (the Podfile and Metro
+# resolve react-native-macos by path), so hoist instead of pnpm's symlink store.
+nodeLinker: hoisted
+
+# NativeWind lists Reanimated as a peer, but only needs it for animation
+# classes. Reanimated 4 has no react-native-macos 0.81 build, so keep it out.
+autoInstallPeers: false
+peerDependencyRules:
+  ignoreMissing:
+    - react-native-reanimated
+    - react-native-safe-area-context
+    - react-native-svg

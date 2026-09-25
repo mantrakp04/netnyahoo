@@ -1,0 +1,391 @@
+{
+ "data": {
+  "viewer": {
+   "login": "octo-dev",
+   "name": "Octo Dev",
+   "avatarUrl": "https://avatars.githubusercontent.com/octo-dev"
+  },
+  "authored": {
+   "nodes": [
+    {
+     "id": "PR_101",
+     "number": 101,
+     "title": "Add live folders framework",
+     "url": "https://github.com/acme/browser/pull/101",
+     "isDraft": false,
+     "updatedAt": "2026-09-25T09:00:00Z",
+     "createdAt": "2026-09-20T10:00:00Z",
+     "headRefName": "live-folders",
+     "baseRefName": "main",
+     "mergeable": "MERGEABLE",
+     "reviewDecision": "APPROVED",
+     "additions": 840,
+     "deletions": 112,
+     "changedFiles": 23,
+     "repository": {
+      "nameWithOwner": "acme/browser"
+     },
+     "author": {
+      "login": "octo-dev",
+      "avatarUrl": "https://avatars.githubusercontent.com/octo-dev"
+     },
+     "comments": {
+      "totalCount": 3
+     },
+     "reviewThreads": {
+      "nodes": []
+     },
+     "commits": {
+      "nodes": [
+       {
+        "commit": {
+         "statusCheckRollup": {
+          "state": "PENDING",
+          "contexts": {
+           "nodes": [
+            {
+             "__typename": "CheckRun",
+             "name": "build",
+             "status": "COMPLETED",
+             "conclusion": "SUCCESS",
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/64123"
+            },
+            {
+             "__typename": "CheckRun",
+             "name": "test",
+             "status": "COMPLETED",
+             "conclusion": "SUCCESS",
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/11302"
+            },
+            {
+             "__typename": "CheckRun",
+             "name": "lint",
+             "status": "COMPLETED",
+             "conclusion": "SUCCESS",
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/84326"
+            }
+           ]
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "PR_102",
+     "number": 102,
+     "title": "Live folder hover cards",
+     "url": "https://github.com/acme/browser/pull/102",
+     "isDraft": false,
+     "updatedAt": "2026-09-25T09:30:00Z",
+     "createdAt": "2026-09-20T10:00:00Z",
+     "headRefName": "live-hover",
+     "baseRefName": "live-folders",
+     "mergeable": "MERGEABLE",
+     "reviewDecision": "REVIEW_REQUIRED",
+     "additions": 310,
+     "deletions": 40,
+     "changedFiles": 9,
+     "repository": {
+      "nameWithOwner": "acme/browser"
+     },
+     "author": {
+      "login": "octo-dev",
+      "avatarUrl": "https://avatars.githubusercontent.com/octo-dev"
+     },
+     "comments": {
+      "totalCount": 1
+     },
+     "reviewThreads": {
+      "nodes": [
+       {
+        "isResolved": false
+       },
+       {
+        "isResolved": true
+       }
+      ]
+     },
+     "commits": {
+      "nodes": [
+       {
+        "commit": {
+         "statusCheckRollup": {
+          "state": "PENDING",
+          "contexts": {
+           "nodes": [
+            {
+             "__typename": "CheckRun",
+             "name": "build",
+             "status": "COMPLETED",
+             "conclusion": "SUCCESS",
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/64123"
+            },
+            {
+             "__typename": "CheckRun",
+             "name": "test",
+             "status": "COMPLETED",
+             "conclusion": "FAILURE",
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/11302"
+            },
+            {
+             "__typename": "CheckRun",
+             "name": "lint",
+             "status": "COMPLETED",
+             "conclusion": "SUCCESS",
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/84326"
+            },
+            {
+             "__typename": "StatusContext",
+             "context": "ci/e2e",
+             "state": "FAILURE",
+             "targetUrl": "https://ci.example.com/ci/e2e"
+            }
+           ]
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "PR_103",
+     "number": 103,
+     "title": "Unread pip for live folders",
+     "url": "https://github.com/acme/browser/pull/103",
+     "isDraft": true,
+     "updatedAt": "2026-09-25T09:45:00Z",
+     "createdAt": "2026-09-20T10:00:00Z",
+     "headRefName": "live-pip",
+     "baseRefName": "live-hover",
+     "mergeable": "MERGEABLE",
+     "reviewDecision": "REVIEW_REQUIRED",
+     "additions": 96,
+     "deletions": 8,
+     "changedFiles": 3,
+     "repository": {
+      "nameWithOwner": "acme/browser"
+     },
+     "author": {
+      "login": "octo-dev",
+      "avatarUrl": "https://avatars.githubusercontent.com/octo-dev"
+     },
+     "comments": {
+      "totalCount": 0
+     },
+     "reviewThreads": {
+      "nodes": []
+     },
+     "commits": {
+      "nodes": [
+       {
+        "commit": {
+         "statusCheckRollup": {
+          "state": "PENDING",
+          "contexts": {
+           "nodes": [
+            {
+             "__typename": "CheckRun",
+             "name": "build",
+             "status": "COMPLETED",
+             "conclusion": "SUCCESS",
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/64123"
+            },
+            {
+             "__typename": "CheckRun",
+             "name": "test",
+             "status": "IN_PROGRESS",
+             "conclusion": null,
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/11302"
+            },
+            {
+             "__typename": "CheckRun",
+             "name": "lint",
+             "status": "QUEUED",
+             "conclusion": null,
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/84326"
+            }
+           ]
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "PR_57",
+     "number": 57,
+     "title": "Fix flaky download test",
+     "url": "https://github.com/acme/infra/pull/57",
+     "isDraft": false,
+     "updatedAt": "2026-09-24T18:00:00Z",
+     "createdAt": "2026-09-20T10:00:00Z",
+     "headRefName": "fix-flaky",
+     "baseRefName": "main",
+     "mergeable": "CONFLICTING",
+     "reviewDecision": "CHANGES_REQUESTED",
+     "additions": 12,
+     "deletions": 4,
+     "changedFiles": 1,
+     "repository": {
+      "nameWithOwner": "acme/infra"
+     },
+     "author": {
+      "login": "octo-dev",
+      "avatarUrl": "https://avatars.githubusercontent.com/octo-dev"
+     },
+     "comments": {
+      "totalCount": 7
+     },
+     "reviewThreads": {
+      "nodes": []
+     },
+     "commits": {
+      "nodes": [
+       {
+        "commit": {
+         "statusCheckRollup": {
+          "state": "PENDING",
+          "contexts": {
+           "nodes": [
+            {
+             "__typename": "CheckRun",
+             "name": "unit",
+             "status": "COMPLETED",
+             "conclusion": "SUCCESS",
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/13372"
+            }
+           ]
+          }
+         }
+        }
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "review": {
+   "nodes": [
+    {
+     "id": "PR_88",
+     "number": 88,
+     "title": "Calendar preview polish",
+     "url": "https://github.com/acme/browser/pull/88",
+     "isDraft": false,
+     "updatedAt": "2026-09-25T08:00:00Z",
+     "createdAt": "2026-09-20T10:00:00Z",
+     "headRefName": "calendar-polish",
+     "baseRefName": "main",
+     "mergeable": "MERGEABLE",
+     "reviewDecision": "REVIEW_REQUIRED",
+     "additions": 120,
+     "deletions": 30,
+     "changedFiles": 6,
+     "repository": {
+      "nameWithOwner": "acme/browser"
+     },
+     "author": {
+      "login": "mira",
+      "avatarUrl": "https://avatars.githubusercontent.com/mira"
+     },
+     "comments": {
+      "totalCount": 2
+     },
+     "reviewThreads": {
+      "nodes": []
+     },
+     "commits": {
+      "nodes": [
+       {
+        "commit": {
+         "statusCheckRollup": {
+          "state": "PENDING",
+          "contexts": {
+           "nodes": [
+            {
+             "__typename": "CheckRun",
+             "name": "build",
+             "status": "QUEUED",
+             "conclusion": null,
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/64123"
+            },
+            {
+             "__typename": "CheckRun",
+             "name": "test",
+             "status": "QUEUED",
+             "conclusion": null,
+             "detailsUrl": "https://github.com/acme/browser/actions/runs/11302"
+            }
+           ]
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "PR_412",
+     "number": 412,
+     "title": "Tokens for sidebar",
+     "url": "https://github.com/acme/design-system/pull/412",
+     "isDraft": false,
+     "updatedAt": "2026-09-24T12:00:00Z",
+     "createdAt": "2026-09-20T10:00:00Z",
+     "headRefName": "sidebar-tokens",
+     "baseRefName": "main",
+     "mergeable": "MERGEABLE",
+     "reviewDecision": "REVIEW_REQUIRED",
+     "additions": 40,
+     "deletions": 2,
+     "changedFiles": 2,
+     "repository": {
+      "nameWithOwner": "acme/design-system"
+     },
+     "author": {
+      "login": "sam",
+      "avatarUrl": "https://avatars.githubusercontent.com/sam"
+     },
+     "comments": {
+      "totalCount": 0
+     },
+     "reviewThreads": {
+      "nodes": []
+     },
+     "commits": {
+      "nodes": [
+       {
+        "commit": {
+         "statusCheckRollup": {
+          "state": "PENDING",
+          "contexts": {
+           "nodes": [
+            {
+             "__typename": "StatusContext",
+             "context": "ci/build",
+             "state": "SUCCESS",
+             "targetUrl": "https://ci.example.com/ci/build"
+            }
+           ]
+          }
+         }
+        }
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "direct": {
+   "nodes": [
+    {
+     "id": "PR_88"
+    }
+   ]
+  }
+ }
+}

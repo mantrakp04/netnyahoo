@@ -1,0 +1,17 @@
+--- a/chrome/browser/ui/browser_ui_controller/browser_ui_controller.cc
++++ b/chrome/browser/ui/browser_ui_controller/browser_ui_controller.cc
+@@ -144,8 +144,12 @@
+     // immediately start/stop, which gives a more snappy feel. We want to do
+     // this for any tab so they start & stop quickly.
+     // Guard against notifications during tab insertion when the tab strip model
+-    // state is not yet fully consistent.
+-    if (tab_strip_model_->GetActiveWebContents()) {
++    // state is not yet fully consistent. CEF sets the Browser as a new tab's
++    // WebContentsDelegate before the tab is inserted, so a background tab can
++    // start loading while another tab is active.
++    if (tab_strip_model_->GetActiveWebContents() &&
++        tab_strip_model_->GetIndexOfWebContents(source) !=
++            TabStripModel::kNoTab) {
+       NotifyTabUIChanged(tab, TabChangeType::kLoadingOnly);
+     }
+     // The status bubble needs to be updated during INVALIDATE_TYPE_LOAD too,

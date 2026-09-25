@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<!--
+  Netnyahoo's AppleScript dictionary. Terms and codes follow Dia's (and Chrome's for reload,
+  go back/forward and execute), so scripts and launchers written for those work here too.
+  Implemented in packages/shell/ios/Scripting.swift against the JS store.
+-->
+<dictionary title="Netnyahoo Terminology" xmlns:xi="http://www.w3.org/2003/XInclude">
+  <suite name="Standard Suite" code="core" description="Common classes and commands for all applications.">
+    <class name="application" code="capp" description="The Netnyahoo application.">
+      <cocoa class="NSApplication"/>
+      <property name="name" code="pnam" type="text" access="r" description="The name of the application."/>
+      <property name="frontmost" code="pisf" type="boolean" access="r" description="Is this the active application?">
+        <cocoa key="isActive"/>
+      </property>
+      <property name="version" code="vers" type="text" access="r" description="The version of the application."/>
+      <element type="window" access="r">
+        <cocoa key="appleScriptWindows"/>
+      </element>
+      <element type="profile" access="r">
+        <cocoa key="appleScriptProfiles"/>
+      </element>
+    </class>
+
+    <class name="window" code="cwin" plural="windows" description="A browser window.">
+      <cocoa class="NNScriptWindow"/>
+      <property name="id" code="ID  " type="text" access="r" description="The unique identifier of the window.">
+        <cocoa key="uniqueID"/>
+      </property>
+      <property name="name" code="pnam" type="text" access="r" description="The window's title (its active tab's).">
+        <cocoa key="name"/>
+      </property>
+      <property name="index" code="pidx" type="integer" access="r" description="The index of the window, ordered front to back.">
+        <cocoa key="orderedIndex"/>
+      </property>
+      <property name="active tab" code="acTa" type="tab" access="r" description="The selected tab.">
+        <cocoa key="activeTab"/>
+      </property>
+      <property name="active tab index" code="acTI" type="integer" access="rw" description="The index of the selected tab (setting it selects that tab).">
+        <cocoa key="activeTabIndex"/>
+      </property>
+      <property name="active profile" code="acPr" type="profile" access="r" description="The profile the window shows (missing value for incognito windows).">
+        <cocoa key="activeProfile"/>
+      </property>
+      <property name="incognito" code="NNin" type="boolean" access="r" description="Whether this is an incognito window (can be set when making one).">
+        <cocoa key="incognito"/>
+      </property>
+      <property name="visible" code="pvis" type="boolean" access="r" description="Whether the window is on screen.">
+        <cocoa key="isVisible"/>
+      </property>
+      <property name="minimized" code="pmnd" type="boolean" access="rw" description="Whether the window is minimized.">
+        <cocoa key="isMiniaturized"/>
+      </property>
+      <property name="zoomed" code="pzum" type="boolean" access="rw" description="Whether the window is zoomed.">
+        <cocoa key="isZoomed"/>
+      </property>
+      <element type="tab" access="r" description="The tabs of the window's profile, in sidebar order (pinned first).">
+        <cocoa key="appleScriptTabs"/>
+      </element>
+      <responds-to command="close">
+        <cocoa method="handleCloseScriptCommand:"/>
+      </responds-to>
+    </class>
+
+    <command name="count" code="corecnte" description="Return the number of elements of a particular class within an object.">
+      <cocoa class="NSCountCommand"/>
+      <direct-parameter type="specifier" description="The objects to be counted."/>
+      <parameter name="each" code="kocl" type="type" optional="yes" description="The class of objects to be counted.">
+        <cocoa key="ObjectClass"/>
+      </parameter>
+      <result type="integer" description="The count."/>
+    </command>
+
+    <command name="exists" code="coredoex" description="Verify that an object exists.">
+      <cocoa class="NSExistsCommand"/>
+      <direct-parameter type="any" description="The object(s) to check."/>
+      <result type="boolean" description="Did the object(s) exist?"/>
+    </command>
+
+    <command name="make" code="corecrel" description="Create a new window or tab.">
+      <cocoa class="NNScriptCreateCommand"/>
+      <parameter name="new" code="kocl" type="type" description="The class of the new object (window or tab).">
+        <cocoa key="ObjectClass"/>
+      </parameter>
+      <parameter name="at" code="insh" type="location specifier" optional="yes" description="Where to put a new tab (default: the end of the front window's tabs).">
+        <cocoa key="Location"/>
+      </parameter>
+      <parameter name="with properties" code="prdt" type="record" optional="yes" description="Initial values: URL, and for windows incognito.">
+        <cocoa key="KeyDictionary"/>
+      </parameter>
+      <result type="specifier" description="The new object."/>
+    </command>
+
+    <command name="close" code="coreclos" description="Close a window or tab.">
+      <cocoa class="NSCloseCommand"/>
+      <direct-parameter type="specifier" description="The window or tab to close."/>
+    </command>
+  </suite>
+
+  <suite name="Netnyahoo Suite" code="NNys" description="Browsing: tabs, profiles and page scripting.">
+    <class name="tab" code="DiaT" plural="tabs" description="A browser tab.">
+      <cocoa class="NNScriptTab"/>
+      <property name="id" code="ID  " type="text" access="r" description="The unique identifier of the tab.">
+        <cocoa key="uniqueID"/>
+      </property>
+      <property name="title" code="pnam" type="text" access="r" description="The page title.">
+        <cocoa key="title"/>
+      </property>
+      <property name="URL" code="URL " type="text" access="rw" description="The page address (empty for the New Tab page). Setting it loads the address.">
+        <cocoa key="URL"/>
+      </property>
+      <property name="loading" code="ldng" type="boolean" access="r" description="Whether the page is loading.">
+        <cocoa key="loading"/>
+      </property>
+      <property name="isPinned" code="DiPi" type="boolean" access="r" description="Whether the tab is pinned.">
+        <cocoa key="isPinned"/>
+      </property>
+      <property name="isFocused" code="DiFo" type="boolean" access="r" description="Whether the tab is its window's selected tab.">
+        <cocoa key="isFocused"/>
+      </property>
+      <responds-to command="close">
+        <cocoa method="handleCloseScriptCommand:"/>
+      </responds-to>
+      <responds-to command="reload">
+        <cocoa method="handleReloadScriptCommand:"/>
+      </responds-to>
+      <responds-to command="go back">
+        <cocoa method="handleGoBackScriptCommand:"/>
+      </responds-to>
+      <responds-to command="go forward">
+        <cocoa method="handleGoForwardScriptCommand:"/>
+      </responds-to>
+      <responds-to command="focus">
+        <cocoa method="handleFocusScriptCommand:"/>
+      </responds-to>
+      <responds-to command="execute">
+        <cocoa method="handleExecuteScriptCommand:"/>
+      </responds-to>
+    </class>
+
+    <class name="profile" code="DiaP" plural="profiles" description="A profile: its own tabs, history, bookmarks and cookies.">
+      <cocoa class="NNScriptProfile"/>
+      <property name="id" code="ID  " type="text" access="r" description="The unique identifier of the profile.">
+        <cocoa key="uniqueID"/>
+      </property>
+      <property name="name" code="pnam" type="text" access="r" description="The profile name.">
+        <cocoa key="name"/>
+      </property>
+      <property name="index" code="pidx" type="integer" access="r" description="The one-based profile index.">
+        <cocoa key="orderedIndex"/>
+      </property>
+      <element type="tab" access="r" description="The profile's open tabs, window by window.">
+        <cocoa key="appleScriptTabs"/>
+      </element>
+      <responds-to command="focus">
+        <cocoa method="handleFocusScriptCommand:"/>
+      </responds-to>
+    </class>
+
+    <command name="reload" code="CrSuRlod" description="Reload a tab.">
+      <direct-parameter type="specifier" description="The tab to reload."/>
+    </command>
+
+    <command name="go back" code="CrSuBack" description="Go back in a tab's history.">
+      <direct-parameter type="specifier" description="The tab."/>
+    </command>
+
+    <command name="go forward" code="CrSuFwd " description="Go forward in a tab's history.">
+      <direct-parameter type="specifier" description="The tab."/>
+    </command>
+
+    <command name="focus" code="DiaTabFc" description="Select a tab (bringing its window forward), or show a profile in the front window.">
+      <direct-parameter type="specifier" description="The tab or profile."/>
+    </command>
+
+    <command name="execute" code="CrSuExJa" description="Run JavaScript in a tab's page.">
+      <direct-parameter type="specifier" description="The tab."/>
+      <parameter name="javascript" code="JvSc" type="text" description="The code to run.">
+        <cocoa key="javascript"/>
+      </parameter>
+      <result type="text" description="The value of the last expression, as text (awaited if it's a promise)."/>
+    </command>
+  </suite>
+</dictionary>

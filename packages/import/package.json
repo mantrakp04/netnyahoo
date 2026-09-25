@@ -1,0 +1,21 @@
+{
+  "name": "@netnyahoo/import",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Import bookmarks, history, tabs, passwords and Arc spaces from other browsers",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "swift test --scratch-path \"${TMPDIR:-/tmp}/netnyahoo-import-swiftpm\" && node --test src/index.test.ts",
+    "fixtures": "python3 fixtures/generate.py"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6"
+  }
+}

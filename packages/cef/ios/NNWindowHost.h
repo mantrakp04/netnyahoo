@@ -1,0 +1,77 @@
+// Every app window gets a hidden "ghost" Chrome window (one per profile shown in
+// it) holding a real Chrome `Browser`: TabStripModel, the extensions tabs/windows
+// APIs, Chrome's own dialogs and bubbles. The ghost is invisible (alpha 0,
+// click-through, never key, never activates the app) and kept exactly behind the
+// app window as a child window, so it follows moves, resizes, Spaces, full screen
+// and minimising, and Chrome places its window-anchored UI over our window.
+//
+// Tabs are created and hosted through this file only. With stock CEF they are
+// Alloy child browsers (the ghost's Browser can't host a tab in our views);
+// with the patched CEF (NN_CHROME_TABS, packages/cef/patches) they're tabs of the
+// ghost's Browser whose WebContents NSView NNBrowserView hosts. Then the ghost is
+// made by its window's first tab of a profile (no placeholder tab for extensions
+// to see) and closes with its last one, as a Chrome window does.
+// Objective-C++ only.
+#pragma once
+
+#import "NNCefInternal.h"
+
+namespace nn {
+class Client;
+}
+
+namespace nn::host {
+
+/// Tabs are the ghost Browser's own Chrome tabs (patched CEF) instead of Alloy child browsers.
+bool ChromeTabs();
+
+/// The view joined a window. Stock CEF: makes sure the window has its ghost for the
+/// view's profile. Chrome tabs: the first tab of a profile creates the ghost instead.
+void Attach(NNBrowserView *view);
+/// Whether `view` gets a tab of its window's ghost Browser (else a standalone Alloy browser:
+/// extension popups, popup/PiP windows).
+bool Hostable(NNBrowserView *view);
+/// Creates `view`'s tab browser; `client` gets OnAfterCreated.
+void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, const CefBrowserSettings &settings);
+/// Popup browsers the engine creates for window.open & co., before a view adopts them.
+void ConfigurePopup(CefWindowInfo &info, NSSize size);
+/// The NSView showing a tab browser's page, for its NNBrowserView to host.
+NSView *ContentsView(CefRefPtr<CefBrowser> browser);
+
+/// The view's page is the one its window shows (or was focused): Chrome's active tab
+/// (extensions' activeTab and tabs.query), and where Chrome centers its tab dialogs.
+void TabShown(NNBrowserView *view);
+/// The view's browser is now shown in another window: moves the Chrome tab to that
+/// window's Browser (same browser, history and page).
+void TabMoved(NNBrowserView *view);
+/// Where pages sit in `window` changed (resize, split, sidebar): Chrome's tab-modal
+/// dialogs and page-anchored bubbles follow the shown page.
+void LayoutChanged(NSWindow *window);
+/// Chrome's tab id (what chrome.tabs calls it), or 0 for Alloy browsers.
+int TabId(CefRefPtr<CefBrowser> browser);
+/// A tab of a ghost Browser (Chrome style). Chrome closes those without DoClose
+/// (window.close(), chrome.tabs.remove, their Browser closing).
+bool IsChromeTab(CefRefPtr<CefBrowser> browser);
+
+/// Keys the page and our menus didn't handle: Chrome shortcuts extensions registered
+/// (chrome.commands) run in the key window's ghost. YES if one did.
+bool ForwardKeyEvent(NSEvent *event, NSString *profile);
+/// Keybindings of enabled extensions changed (re-read lazily).
+void InvalidateExtensionCommands(NSString *profile);
+
+/// Client for browsers Chrome creates without one of ours (new windows from extensions).
+CefRefPtr<CefClient> DefaultClient();
+
+/// Live ghost windows (for engineInfo / leak checks).
+NSUInteger GhostCount();
+/// {parentWindow, frame, parentFrame, alpha, key, visible, childOfParent, level} per ghost (DEV checks).
+NSArray<NSDictionary *> *GhostStates();
+/// DEV: moves / resizes / minimises an app window (by window number) to check its ghost follows:
+/// "frame:x,y,w,h" (AppKit screen coordinates), "miniaturize", "deminiaturize", "active:1|0" (the key
+/// state its ghosts report to Chrome); or sends it a key
+/// the page didn't handle, "key:<modifier flags>:<character>".
+NSString *DevWindowAction(NSInteger windowNumber, NSString *action);
+/// Closes every ghost (shutdown).
+void CloseAll();
+
+}  // namespace nn::host

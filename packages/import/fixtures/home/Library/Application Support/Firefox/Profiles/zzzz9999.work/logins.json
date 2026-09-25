@@ -1,0 +1,24 @@
+{
+  "nextId": 2,
+  "logins": [
+    {
+      "id": 1,
+      "hostname": "https://intranet.example",
+      "httpRealm": null,
+      "formSubmitURL": "https://intranet.example",
+      "usernameField": "user",
+      "passwordField": "pass",
+      "encryptedUsername": "MEMEEPgAAAAAAAAAAAAAAAAAAAEwHQYJYIZIAWUDBAEqBBAwMTIzNDU2Nzg5YWJjZGVmBBDtKd8772SGbekZm2WuKzNT",
+      "encryptedPassword": "MEMEEPgAAAAAAAAAAAAAAAAAAAEwHQYJYIZIAWUDBAEqBBAwMTIzNDU2Nzg5YWJjZGVmBBB95F0cYAOBtXDY6J+PfPhS",
+      "guid": "{00000000-0000-4000-8000-000000000001}",
+      "encType": 1,
+      "timeCreated": 1788134400000,
+      "timeLastUsed": 1788220800000,
+      "timePasswordChanged": 1788134400000,
+      "timesUsed": 1
+    }
+  ],
+  "potentiallyVulnerablePasswords": [],
+  "dismissedBreachAlertsByLoginGUID": {},
+  "version": 3
+}

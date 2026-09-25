@@ -1,0 +1,16 @@
+{
+  "name": "@netnyahoo/shell",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Native window chrome, menu bar and shortcuts for the macOS browser",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

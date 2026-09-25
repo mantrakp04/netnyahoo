@@ -1,0 +1,6 @@
+{
+  "globalSalt": "R0dHR0dHR0dHR0dHR0dHR0dHR0c=",
+  "password": "old-primary",
+  "der": "MDwwKAYLKoZIhvcNAQwFAQMwGQQUbGVnYWN5LWVudHJ5LXNhbHQtMjACAQEEED503K7uH0yJbFSJSeIV4TY=",
+  "plain": "password-check"
+}

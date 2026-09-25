@@ -1,0 +1,157 @@
+diff --git a/include/cef_media_capture.h b/include/cef_media_capture.h
+new file mode 100644
+index 000000000..d31153b95
+--- /dev/null
++++ b/include/cef_media_capture.h
+@@ -0,0 +1,66 @@
++// Copyright (c) 2026 The Netnyahoo Authors. Portions copyright (c) 2016 Marshall A.
++// Greenblatt. All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//    * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//    * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//    * Neither the name of Google Inc. nor the name Chromium Embedded
++// Framework nor the names of its contributors may be used to endorse
++// or promote products derived from this software without specific prior
++// written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++//
++// ---------------------------------------------------------------------------
++//
++// The contents of this file must follow a specific format in order to
++// support the CEF translator tool. See the translator.README.txt file in the
++// tools directory for more information.
++//
++
++#ifndef CEF_INCLUDE_CEF_MEDIA_CAPTURE_H_
++#define CEF_INCLUDE_CEF_MEDIA_CAPTURE_H_
++#pragma once
++
++#include "include/cef_base.h"
++#include "include/cef_browser.h"
++
++#if CEF_API_ADDED(CEF_EXPERIMENTAL)
++///
++/// Returns a desktop media source id that captures the contents of |browser|
++/// (tab capture), in the form
++/// "web-contents-media-stream://<render process id>:<main frame routing id>".
++/// Pass it to getUserMedia() in any browser as the `chromeMediaSourceId`
++/// mandatory constraint together with `chromeMediaSource: "desktop"`, and
++/// allow the resulting CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE request in
++/// CefPermissionHandler::OnRequestMediaAccessPermission. When the same request
++/// also asks for desktop audio (`audio: {mandatory: {chromeMediaSource:
++/// "desktop"}}`) the tab's own audio is captured instead of system audio.
++/// Capturing a tab needs no OS screen recording permission. The id is only
++/// valid while the browser's main frame lives in the same render process, so
++/// request it right before calling getUserMedia(). Returns an empty string if
++/// |browser| has no live main frame. Must be called on the browser process UI
++/// thread.
++///
++/*--cef(added=experimental)--*/
++CefString CefGetMediaCaptureSourceId(CefRefPtr<CefBrowser> browser);
++#endif
++
++#endif  // CEF_INCLUDE_CEF_MEDIA_CAPTURE_H_
+diff --git a/libcef/browser/media_access_query.cc b/libcef/browser/media_access_query.cc
+index 65b52df5e..652f8f201 100644
+--- a/libcef/browser/media_access_query.cc
++++ b/libcef/browser/media_access_query.cc
+@@ -6,12 +6,17 @@
+ 
+ #include "base/command_line.h"
+ #include "base/functional/callback_helpers.h"
++#include "cef/include/cef_media_capture.h"
+ #include "cef/include/cef_permission_handler.h"
+ #include "cef/libcef/browser/browser_host_base.h"
+ #include "cef/libcef/browser/media_stream_registrar.h"
+ #include "cef/libcef/browser/thread_util.h"
+ #include "cef/libcef/common/cef_switches.h"
+ #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
++#include "content/public/browser/render_frame_host.h"
++#include "content/public/browser/render_process_host.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_contents_media_capture_id.h"
+ #include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
+ 
+ namespace media_access_query {
+@@ -198,13 +203,8 @@ class CefMediaAccessQuery {
+                          true, &video_devices);
+     }
+ 
+-    if (desktop_audio_requested()) {
+-      audio_devices.emplace_back(request_.audio_type, "loopback",
+-                                 "System Audio");
+-    }
+-
++    content::DesktopMediaID media_id;
+     if (desktop_video_requested()) {
+-      content::DesktopMediaID media_id;
+       if (!request_.requested_video_device_ids.empty() &&
+           !request_.requested_video_device_ids.front().empty()) {
+         media_id = content::DesktopMediaID::Parse(
+@@ -215,8 +215,23 @@ class CefMediaAccessQuery {
+                                     -1 /* webrtc::kFullDesktopScreenId */);
+       }
+       if (media_id.type != content::DesktopMediaID::TYPE_NONE) {
+-        video_devices.emplace_back(request_.video_type, media_id.ToString(),
+-                                   "Screen");
++        video_devices.emplace_back(
++            request_.video_type, media_id.ToString(),
++            media_id.type == content::DesktopMediaID::TYPE_WEB_CONTENTS
++                ? "Tab"
++                : "Screen");
++      }
++    }
++
++    if (desktop_audio_requested()) {
++      // Sharing a tab (see CefGetMediaCaptureSourceId) captures that tab's
++      // audio rather than system audio.
++      if (media_id.type == content::DesktopMediaID::TYPE_WEB_CONTENTS) {
++        audio_devices.emplace_back(request_.audio_type, media_id.ToString(),
++                                   "Tab Audio");
++      } else {
++        audio_devices.emplace_back(request_.audio_type, "loopback",
++                                   "System Audio");
+       }
+     }
+ 
+@@ -413,3 +428,21 @@ content::MediaResponseCallback RequestMediaAccessPermission(
+ }
+ 
+ }  // namespace media_access_query
++
++CefString CefGetMediaCaptureSourceId(CefRefPtr<CefBrowser> browser) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return CefString();
++  }
++  auto browser_impl = CefBrowserHostBase::FromBrowser(browser);
++  content::WebContents* web_contents =
++      browser_impl ? browser_impl->GetWebContents() : nullptr;
++  content::RenderFrameHost* frame =
++      web_contents ? web_contents->GetPrimaryMainFrame() : nullptr;
++  if (!frame || !frame->IsRenderFrameLive()) {
++    return CefString();
++  }
++  return content::WebContentsMediaCaptureId(frame->GetProcess()->GetDeprecatedID(),
++                                            frame->GetRoutingID())
++      .ToString();
++}

@@ -1,0 +1,47 @@
+{
+ "results": [
+  {
+   "id": "9001",
+   "type": "page",
+   "title": "Onboarding checklist",
+   "space": {
+    "key": "ENG",
+    "name": "Engineering"
+   },
+   "history": {
+    "lastUpdated": {
+     "when": "2026-09-25T07:00:00.000Z",
+     "by": {
+      "displayName": "Ana Ruiz"
+     }
+    }
+   },
+   "_links": {
+    "webui": "/spaces/ENG/pages/9001/Onboarding+checklist"
+   }
+  },
+  {
+   "id": "9002",
+   "type": "page",
+   "title": "Release process",
+   "space": {
+    "key": "OPS",
+    "name": "Operations"
+   },
+   "history": {
+    "lastUpdated": {
+     "when": "2026-09-22T07:00:00.000Z",
+     "by": {
+      "displayName": "Octo Dev"
+     }
+    }
+   },
+   "_links": {
+    "webui": "/spaces/OPS/pages/9002/Release+process"
+   }
+  }
+ ],
+ "_links": {
+  "base": "https://acme.atlassian.net/wiki"
+ }
+}

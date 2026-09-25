@@ -1,0 +1,6 @@
+{
+  "platforms": ["apple"],
+  "apple": {
+    "modules": ["CefModule", "ExtensionsModule", "SwipeModule"]
+  }
+}

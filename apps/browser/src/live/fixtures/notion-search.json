@@ -1,0 +1,79 @@
+{
+ "results": [
+  {
+   "object": "page",
+   "id": "a1b2",
+   "url": "https://www.notion.so/acme/Q4-Roadmap-a1b2",
+   "last_edited_time": "2026-09-25T09:10:00.000Z",
+   "last_edited_by": {
+    "id": "u1"
+   },
+   "icon": {
+    "type": "emoji",
+    "emoji": "🗺️"
+   },
+   "properties": {
+    "Name": {
+     "type": "title",
+     "title": [
+      {
+       "plain_text": "Q4 Roadmap"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "object": "page",
+   "id": "c3d4",
+   "url": "https://www.notion.so/acme/Live-folders-spec-c3d4",
+   "last_edited_time": "2026-09-24T16:40:00.000Z",
+   "last_edited_by": {
+    "id": "u2"
+   },
+   "icon": null,
+   "properties": {
+    "title": {
+     "type": "title",
+     "title": [
+      {
+       "plain_text": "Live folders spec"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "object": "database",
+   "id": "e5f6",
+   "url": "https://www.notion.so/acme/e5f6",
+   "last_edited_time": "2026-09-23T11:00:00.000Z",
+   "title": [
+    {
+     "plain_text": "Bug triage"
+    }
+   ],
+   "icon": {
+    "type": "emoji",
+    "emoji": "🐞"
+   }
+  },
+  {
+   "object": "page",
+   "id": "dead",
+   "url": "https://www.notion.so/acme/Old-dead",
+   "archived": true,
+   "last_edited_time": "2026-09-01T11:00:00.000Z",
+   "properties": {
+    "Name": {
+     "type": "title",
+     "title": [
+      {
+       "plain_text": "Archived page"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

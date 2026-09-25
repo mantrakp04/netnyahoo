@@ -1,0 +1,18 @@
+{
+  "name": "netnyahoo",
+  "private": true,
+  "packageManager": "pnpm@11.1.3",
+  "scripts": {
+    "dev": "turbo run dev --filter=@netnyahoo/browser",
+    "macos": "pnpm --filter @netnyahoo/browser macos",
+    "pods": "pnpm --filter @netnyahoo/browser pods",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "shaders:check": "turbo run shaders:check",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.3",
+    "typescript": "~5.9.2"
+  }
+}

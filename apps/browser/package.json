@@ -1,0 +1,40 @@
+{
+  "name": "@netnyahoo/browser",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "dev": "react-native start",
+    "macos": "xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build -destination 'platform=macOS,arch=arm64' -quiet -configuration Debug && open build/Build/Products/Debug/Netnyahoo.app",
+    "pods": "cd macos && pod install",
+    "build": "xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build -destination 'platform=macOS,arch=arm64' -quiet -configuration Release",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@netnyahoo/core": "workspace:*",
+    "@netnyahoo/shaders": "workspace:*",
+    "@netnyahoo/shell": "workspace:*",
+    "@netnyahoo/cef": "workspace:*",
+    "@netnyahoo/import": "workspace:*",
+    "expo": "~54.0.37",
+    "expo-modules-core": "~3.0.29",
+    "nativewind": "^4.2.1",
+    "react": "19.1.4",
+    "react-native": "0.81.6",
+    "react-native-macos": "0.81.9",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@netnyahoo/tailwind-config": "workspace:*",
+    "@react-native-community/cli": "^20.0.0",
+    "@react-native-community/cli-platform-apple": "^20.0.0",
+    "@react-native-community/cli-platform-ios": "^20.0.0",
+    "@react-native/babel-preset": "0.81.6",
+    "@react-native/metro-config": "0.81.6",
+    "@types/react": "~19.1.10",
+    "babel-preset-expo": "~54.0.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.9.2"
+  }
+}

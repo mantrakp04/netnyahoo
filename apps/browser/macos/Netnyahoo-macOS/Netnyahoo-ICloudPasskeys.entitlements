@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Netnyahoo.entitlements plus Apple's managed web-browser passkey capability (iCloud Keychain passkeys
+	     through ASAuthorizationWebBrowserPublicKeyCredentialManager). Use it (CODE_SIGN_ENTITLEMENTS) only once
+	     Apple has granted the capability to team U5L5T3NGVV and it is enabled on the com.netnyahoo.browser App ID:
+	     until then no provisioning profile allows it and signing fails. Keep the rest in sync with
+	     Netnyahoo.entitlements. -->
+	<key>com.apple.developer.web-browser.public-key-credential</key>
+	<true/>
+	<!-- Not App Sandboxed: Chromium runs its own sandbox for child processes, like Chrome and Dia. -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<!-- Passkeys from a phone (hybrid / caBLE) talk to it over Bluetooth. -->
+	<key>com.apple.security.device.bluetooth</key>
+	<true/>
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<!-- USB security keys (FIDO2 / U2F over HID). -->
+	<key>com.apple.security.device.usb</key>
+	<true/>
+	<!-- Live Calendar reads macOS Calendar (EventKit) under the hardened runtime. -->
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+	<!-- Websites' geolocation (CoreLocation) under the hardened runtime. -->
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+	<!-- Chromium's keychain groups (chrome_version.h MAC_TEAM_IDENTIFIER_STRING "." MAC_BUNDLE_IDENTIFIER_STRING,
+	     set by our CEF build's BRANDING): Chrome-profile passkeys (Touch ID), Device Bound Session Credentials,
+	     Secure Payment Confirmation. Needs a provisioning profile, so ad-hoc builds sign without this file
+	     (macos/AdHoc.xcconfig). -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).webauthn</string>
+		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).unexportable-keys</string>
+		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).secure-payment-confirmation</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,30 @@
+diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
+index 1ec1b8270d..69a50baa59 100644
+--- a/chrome/browser/extensions/browser_extension_window_controller.cc
++++ b/chrome/browser/extensions/browser_extension_window_controller.cc
+@@ -29,6 +29,11 @@
+ #include "extensions/common/mojom/context_type.mojom.h"
+ #include "ui/base/base_window.h"
+ 
++#include "cef/libcef/features/features.h"
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/hidden_from_extensions.h"
++#endif
++
+ // TODO(http://crbug.com/453008083): Stop including
+ // "android/chrome_feature_list.h".
+ #if BUILDFLAG(IS_ANDROID)
+@@ -183,6 +188,13 @@ bool BrowserExtensionWindowController::IsVisibleToTabsAPIForExtension(
+     return false;
+   }
+ 
++#if BUILDFLAG(ENABLE_CEF)
++  // Windows the CEF client uses internally.
++  if (extension && cef::IsHiddenFromExtensions(&*browser_)) {
++    return false;
++  }
++#endif
++
+   return (window_type_ != api::tabs::WindowType::kDevtools) ||
+          allow_dev_tools_windows;
+ }
