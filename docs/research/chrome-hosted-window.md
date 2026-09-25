@@ -108,6 +108,65 @@ Estimates after phase 1:
     objects (7 minutes here, still incremental).
 - Phases 2–5 otherwise unchanged: about 4–6 weeks.
 
+## Profiles in a Chrome-hosted window (phase 2 decision)
+
+**Decision: the window is its home profile's Chrome window; any other profile it pages to keeps a ghost Browser,
+parented to that window.** The home profile is the one the window was opened with (or its only one: incognito
+windows, single-profile windows). Other profiles' ghosts:
+- sit exactly over the window as child windows, transparent and click-through;
+- lift in front for Chrome's dialogs and titled bubbles, as shipped;
+- are `client_window` Browsers, so no tab strip, toolbar, zoom bubble, status bubble or session restore of their own,
+  and they outlive their last tab.
+
+Chrome's "active window" follows the profile on screen: the current profile's Browser gets `SetWindowActive`, not
+whichever Browser's window became key last.
+
+**Why.** A Chrome `Browser` has one profile for life, and a `CefWindow` holds exactly one `Browser` (the
+`ChromeBrowserWidget` is initialised once). So a window that pages between profiles either:
+1. swaps `NSWindow`s when the profile changes (one Chrome window per window and profile, with our root moving to
+   the new one), or
+2. keeps one Chrome window and a ghost for the other profiles.
+
+What the pager needs:
+- Paging (`layout/profilePager.ts`) moves only React Native content during the drag: the sidebar pages (or the top
+  tab strip's), the page dots, and the tint layers (`ProfileTint`, one vibrancy backdrop per page).
+- The page area keeps showing the current profile's tab until the settle finishes. Only then does the window's
+  profile change, while the pages and tint layers linger 150 ms to cover the switch.
+
+So the drag and the cross-fade are smooth under both options; they differ only at the switch.
+
+Option 1's switch replaces the whole window at the end of the user's favourite gesture:
+- Our root must move to the other `NSWindow`. Nothing can show it in both, so there's a moment where one window
+  shows Chrome's own drawing.
+- Chrome's widgets are opaque: `CefWindowView` creates them without `kTranslucent`, and the compositor clears to
+  white. So that moment is a white window, unless the ordering and the layer commit land in the same window-server
+  frame. A public API can't guarantee that: `NSDisableScreenUpdates` and `CGWindowListCreateImage` are gone, and a
+  cross-window portal is private.
+- Full screen owns a Space per `NSWindow`, so paging in full screen would need a second mechanism: the other
+  profile's window as an auxiliary child of the full-screen one.
+- The window's identity would change on every page: the WindowManager registry, Mission Control and ⌘\`,
+  occlusion reports, Stage Manager, the Window menu.
+
+None of that can be measured while the screen is locked, and a one-frame white flash on every profile swipe would
+fail the user's bar.
+
+Option 2's switch changes nothing native, so paging stays exactly as smooth as shipped. What it costs is that
+tabs of a profile other than the window's home one keep today's model:
+- the lift for dialogs;
+- the context-menu fallback patch;
+- keys through the page's client to our menu, then the ghost;
+- `SetWindowActive` emulation.
+
+That is today's shipped behaviour, not a regression. The seam bugs the inversion fixes stay fixed for every
+single-profile window, every incognito window, and the home profile of multi-profile windows. The ghost also gets
+simpler: as a `client_window` Browser it has none of the leaks that made the lift logic fussy (hover cards, zoom and
+status bubbles).
+
+**Revisit** when the screen can be watched: a prototype of option 1's switch (order the new window behind, move the
+root, commit, order the old one out) measured frame by frame with ScreenCaptureKit. If it's clean on real hardware,
+option 1 can replace the ghosts in phase 4 or later without touching the pager. Until then, `docs/research` keeps
+the ghost for secondary profiles, and phase 5 deletes only the ghost code that single-profile windows used.
+
 ## 1. Putting the RN view hierarchy inside Chrome's `NSWindow`
 
 ### What the window is
@@ -242,10 +301,8 @@ already, turned off, or fine at the page's top edge. If one turns up that must a
   - a per-tab version of `hidden_from_extensions` (extension tab util skips it, ~30 lines, 2–3 files), or
   - a `BrowserDelegate::ShouldCloseOnTabStripEmpty()` hook in `Browser` and `UnloadController` (2 files). Riskier:
     Chrome code assumes an active tab.
-- **Several profiles in one window.** A Chrome Browser has one profile. A window showing tabs of a second profile
-  still needs a ghost Browser for them (the existing code does this; the spike keeps it). That's the one place the
-  seam survives. Options: switch the window's hosting Browser with the profile (move tabs), or accept the ghost for
-  secondary profiles. Decide with the product: Dia binds a window to one profile at a time.
+- **Several profiles in one window.** A Chrome Browser has one profile. Decided in phase 2: a window's other
+  profiles keep ghost Browsers ([Profiles](#profiles-in-a-chrome-hosted-window-phase-2-decision)).
 - **Incognito.** The spike falls back to the ghost path. A hosting window for an incognito profile is the same code
   with the off-the-record context.
 - **Aux windows** (Settings, Import, Task Manager) and popup/PiP windows stay as they are.
