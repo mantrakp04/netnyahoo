@@ -93,6 +93,12 @@
 #else
 #define NN_CLIENT_WINDOW 0
 #endif
+// CefWindowDelegate::IsTranslucent: a Chrome-hosted window can leave the screen transparent.
+#if NN_CLIENT_WINDOW && defined(CEF_NN_TRANSLUCENT_WINDOW)
+#define NN_TRANSLUCENT_WINDOW 1
+#else
+#define NN_TRANSLUCENT_WINDOW 0
+#endif
 // Allowed popups of a hosted tab join its Browser as tabs (not new Chrome windows).
 #if NN_CHROME_TABS && defined(CEF_NN_POPUP_TABS)
 #define NN_POPUP_TABS 1

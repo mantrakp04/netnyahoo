@@ -235,6 +235,7 @@ const Shell = requireNativeModule<{
   hasWindowHost?(): boolean;
   openWindow(id: string, options: OpenWindowOptions): Promise<void>;
   closeWindow(id: string): Promise<void>;
+  setWindowProfile?(id: string, profile: string, neighbours: string[]): Promise<void>;
   focusWindow(id: string): Promise<void>;
   setWindowTitle(id: string, title: string): Promise<void>;
   windowIds(): Promise<string[]>;
@@ -270,6 +271,13 @@ export function showMenu(items: MenuItem[]): Promise<string | null> {
  */
 export const hasWindowHost = typeof Shell.hasWindowHost === "function" && Shell.hasWindowHost();
 export const openWindow = (id: string, options: OpenWindowOptions = {}) => Shell.openWindow(id, options);
+/**
+ * The window shows another profile (engine profile names). Chrome-hosted windows
+ * (NETNYAHOO_CHROME_WINDOW) move to that profile's Chrome window and make `neighbours`' ahead;
+ * other windows ignore it. Missing in builds that predate it.
+ */
+export const setWindowProfile = (id: string, profile: string, neighbours: string[]) =>
+  Shell.setWindowProfile?.(id, profile, neighbours) ?? Promise.resolve();
 export const closeWindow = (id: string) => Shell.closeWindow(id);
 export const focusWindow = (id: string) => Shell.focusWindow(id);
 export const setWindowTitle = (id: string, title: string) => Shell.setWindowTitle(id, title);

@@ -80,13 +80,8 @@ final class WindowManager: NSObject, NSWindowDelegate {
       // Chrome owns this window and its delegate: our root goes over Chrome's views, and the
       // delegate calls below come as notifications.
       ChromeWindowSpike.embed(makeContentView(id), in: chromeWindow)
-      for (name, selector) in [
-        (NSWindow.didBecomeKeyNotification, #selector(windowDidBecomeKey(_:))),
-        (NSWindow.didChangeOcclusionStateNotification, #selector(windowDidChangeOcclusionState(_:))),
-        (NSWindow.willCloseNotification, #selector(windowWillClose(_:))),
-      ] {
-        NotificationCenter.default.addObserver(self, selector: selector, name: name, object: chromeWindow)
-      }
+      ChromeWindowSpike.onSwap { [weak self] from, to in self?.adopt(from: from, to: to) }
+      observeDelegateNotifications(chromeWindow)
       return show(chromeWindow, id: id, frame: frame, title: title, focus: focus)
     }
     let window = makeWindow()
@@ -108,11 +103,46 @@ final class WindowManager: NSObject, NSWindowDelegate {
     windows[id] = window
     lastPlaced = window
     if focus { window.makeKeyAndOrderFront(nil) } else { window.orderFront(nil) }
+    observeFrame(window)
+    reportFrame(window)
+  }
+
+  private func observeFrame(_ window: NSWindow) {
     for name in [NSWindow.didMoveNotification, NSWindow.didEndLiveResizeNotification] {
       NotificationCenter.default.addObserver(self, selector: #selector(frameChanged(_:)), name: name, object: window)
     }
     NotificationCenter.default.addObserver(self, selector: #selector(sizeChanged(_:)), name: NSWindow.didResizeNotification, object: window)
-    reportFrame(window)
+  }
+
+  /// A Chrome-hosted window's delegate is Chrome's: the delegate calls come as notifications.
+  private func observeDelegateNotifications(_ window: NSWindow) {
+    for (name, selector) in [
+      (NSWindow.didBecomeKeyNotification, #selector(windowDidBecomeKey(_:))),
+      (NSWindow.didChangeOcclusionStateNotification, #selector(windowDidChangeOcclusionState(_:))),
+      (NSWindow.willCloseNotification, #selector(windowWillClose(_:))),
+    ] {
+      NotificationCenter.default.addObserver(self, selector: selector, name: name, object: window)
+    }
+  }
+
+  /// The window shows another profile (Chrome-hosted windows): that profile's Chrome window takes
+  /// the app window over. `neighbours`: the profiles it can page to next, made ahead.
+  func setProfile(id: String, profile: String, neighbours: [String]) {
+    guard let window = windows[id] else { return }
+    ChromeWindowSpike.showProfile(profile, in: window)
+    // `adopt` has moved the registry to the profile's window if it swapped.
+    if let current = windows[id] { ChromeWindowSpike.prepare(neighbours, for: current) }
+  }
+
+  /// A Chrome-hosted app window moved to another of its windows (another profile's).
+  private func adopt(from: NSWindow, to: NSWindow) {
+    guard let id = id(of: from) else { return }
+    NotificationCenter.default.removeObserver(self, name: nil, object: from)
+    windows[id] = to
+    if lastPlaced === from { lastPlaced = to }
+    observeDelegateNotifications(to)
+    observeFrame(to)
+    reportFrame(to)
   }
 
   /// Settings / Import: a plain titled window with a transparent titlebar, sized for

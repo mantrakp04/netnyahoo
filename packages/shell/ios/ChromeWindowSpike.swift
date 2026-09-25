@@ -46,6 +46,27 @@ enum ChromeWindowSpike {
     host?.perform(NSSelectorFromString("closeWindow:"), with: window)
   }
 
+  /// The app window shows `profile`: its Chrome window of that profile takes over (see
+  /// NNChromeWindowHost showProfile:inWindow:; onSwap hears of it).
+  static func showProfile(_ profile: String, in window: NSWindow) {
+    host?.perform(NSSelectorFromString("showProfile:inWindow:"), with: profile, with: window)
+  }
+
+  /// Makes the app window's Chrome windows for `profiles` ahead of a swap.
+  static func prepare(_ profiles: [String], for window: NSWindow) {
+    guard !profiles.isEmpty else { return }
+    host?.perform(NSSelectorFromString("prepareProfiles:forWindow:"), with: profiles, with: window)
+  }
+
+  /// Every swap of an app window from one of its Chrome windows to another.
+  private static var swapHandlerInstalled = false
+  static func onSwap(_ handler: @escaping (NSWindow, NSWindow) -> Void) {
+    guard !swapHandlerInstalled, let host else { return }
+    swapHandlerInstalled = true
+    let block: @convention(block) (NSWindow, NSWindow) -> Void = handler
+    (host as AnyObject).setValue(block, forKey: "swappedHandler")
+  }
+
   static func removeRoot(of window: NSWindow) {
     host?.perform(NSSelectorFromString("removeRootViewOfWindow:"), with: window)
   }

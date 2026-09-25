@@ -1,6 +1,7 @@
 #import "NNChromeWindow.h"
 
 #import <QuartzCore/QuartzCore.h>
+#include <dlfcn.h>
 #import <objc/runtime.h>
 
 #import "NNWindowHost.h"
@@ -15,6 +16,7 @@
 namespace {
 
 const void *kRootKey = &kRootKey;
+const void *kConfiguredKey = &kConfiguredKey;
 
 bool TakesEmbeddedView(NSView *content) {
   return [content respondsToSelector:@selector(setNetnyahooEmbeddedView:)];
@@ -56,6 +58,86 @@ void KeepTrafficLightsInset(NSWindow *window) {
   dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
 }
 
+void (^gSwapped)(NSWindow *, NSWindow *);
+const void *kPendingProfileKey = &kPendingProfileKey;
+
+void ConfigureHostingWindow(NSWindow *window) {
+  window.minSize = NSMakeSize(720, 460);
+  window.title = @"Netnyahoo";
+  KeepTrafficLightsInset(window);
+}
+
+/// BrowserWindow's colour (what a Chrome-hosted window shows before our views paint).
+NSColor *WindowColor() {
+  return [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
+    const bool dark = [[appearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameDarkAqua, NSAppearanceNameAqua ]]
+        isEqualToString:NSAppearanceNameDarkAqua];
+    return dark ? [NSColor colorWithSRGBRed:0.17 green:0.12 blue:0.14 alpha:1] : [NSColor colorWithSRGBRed:0.93 green:0.91 blue:0.90 alpha:1];
+  }];
+}
+
+/// "snapshot": a picture of `window` as it is now, in a borderless window over it (nil if it can't
+/// be taken). CGWindowListCreateImage is looked up at run time: the SDK marks it obsolete.
+NSWindow *CoverWindow(NSWindow *window) {
+  using CreateImage = CGImageRef (*)(CGRect, uint32_t, uint32_t, uint32_t);
+  static auto create = (CreateImage)dlsym(RTLD_DEFAULT, "CGWindowListCreateImage");
+  if (!create) return nil;
+  // kCGWindowListOptionIncludingWindow, kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution
+  CGImageRef image = create(CGRectNull, 1 << 3, (uint32_t)window.windowNumber, (1 << 0) | (1 << 3));
+  if (!image) return nil;
+  NSWindow *cover = [[NSWindow alloc] initWithContentRect:window.frame styleMask:NSWindowStyleMaskBorderless
+                                                  backing:NSBackingStoreBuffered defer:NO];
+  cover.releasedWhenClosed = NO;
+  cover.opaque = NO;
+  cover.backgroundColor = NSColor.clearColor;
+  cover.hasShadow = NO;
+  cover.ignoresMouseEvents = YES;
+  cover.animationBehavior = NSWindowAnimationBehaviorNone;
+  cover.level = window.level;
+  cover.collectionBehavior = NSWindowCollectionBehaviorTransient | NSWindowCollectionBehaviorIgnoresCycle;
+  NSView *view = cover.contentView;
+  view.wantsLayer = YES;
+  view.layer.contents = (__bridge id)image;
+  view.layer.contentsGravity = kCAGravityResize;
+  CGImageRelease(image);
+  [cover orderWindow:NSWindowAbove relativeTo:window.windowNumber];
+  return cover;
+}
+
+/// Moves our views from `from` to `to` (another window of the same app window) and puts `to` on
+/// screen in its place.
+void Swap(NSWindow *from, NSWindow *to) {
+  NSView *root = [NNChromeWindowHost rootViewOfWindow:from];
+  if (!root || from == to) return;
+  NSString *strategy = nn::host::SwapStrategy();
+  const BOOL key = from.isKeyWindow;
+  to.appearance = from.appearance;
+  to.level = from.level;
+  to.title = from.title;
+  // A cut: AppKit fades document windows in and out.
+  from.animationBehavior = to.animationBehavior = NSWindowAnimationBehaviorNone;
+  [to setFrame:from.frame display:NO];
+  NSWindow *cover = [strategy isEqualToString:@"snapshot"] ? CoverWindow(from) : nil;
+  [to orderWindow:NSWindowBelow relativeTo:from.windowNumber];
+  // Transparent: once our views leave, the window leaving shows nothing (its compositor clears to
+  // transparent), so the window behind, already showing them, is what's on screen.
+  if ([strategy isEqualToString:@"transparent"]) from.backgroundColor = NSColor.clearColor;
+  objc_setAssociatedObject(from, kRootKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  ((id<NNEmbeddingContentView>)from.contentView).netnyahooEmbeddedView = nil;
+  [NNChromeWindowHost embedRootView:root inWindow:to];
+  [CATransaction flush];
+  [from orderOut:nil];
+  from.backgroundColor = WindowColor();
+  if (key) [to makeKeyWindow];
+  nn::host::WindowShown(to);
+  if (gSwapped) gSwapped(from, to);
+  // The picture goes once the window under it has drawn a frame or two.
+  if (cover)
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+      [cover orderOut:nil];
+    });
+}
+
 }  // namespace
 
 NSView *NNWindowRootView(NSWindow *window) {
@@ -78,10 +160,55 @@ NSView *NNWindowRootView(NSWindow *window) {
     [window close];
     return nil;
   }
-  window.minSize = NSMakeSize(720, 460);
-  window.title = @"Netnyahoo";
-  KeepTrafficLightsInset(window);
+  ConfigureHostingWindow(window);
   return window;
+}
+
++ (void)showProfile:(NSString *)profile inWindow:(NSWindow *)window {
+  if (![self rootViewOfWindow:window]) return;
+  // Full screen owns a Space per window: the swap waits until the window leaves it (meanwhile the
+  // profile's pages show in this window).
+  if (window.styleMask & NSWindowStyleMaskFullScreen) {
+    const bool waiting = objc_getAssociatedObject(window, kPendingProfileKey) != nil;
+    objc_setAssociatedObject(window, kPendingProfileKey, profile ?: @"", OBJC_ASSOCIATION_COPY_NONATOMIC);
+    if (waiting) return;
+    __block id observer = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidExitFullScreenNotification
+                                                                          object:window
+                                                                           queue:nil
+                                                                      usingBlock:^(NSNotification *) {
+      [NSNotificationCenter.defaultCenter removeObserver:observer];
+      NSString *pending = objc_getAssociatedObject(window, kPendingProfileKey);
+      objc_setAssociatedObject(window, kPendingProfileKey, nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
+      dispatch_async(dispatch_get_main_queue(), ^{ [NNChromeWindowHost showProfile:pending inWindow:window]; });
+    }];
+    return;
+  }
+  NSWindow *to = nn::host::GroupWindowForProfile(window, profile);
+  if (!to || to == window) return;
+  if (!objc_getAssociatedObject(to, kConfiguredKey)) {
+    ConfigureHostingWindow(to);
+    objc_setAssociatedObject(to, kConfiguredKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  }
+  Swap(window, to);
+}
+
++ (void)prepareProfiles:(NSArray<NSString *> *)profiles forWindow:(NSWindow *)window {
+  if (![self rootViewOfWindow:window]) return;
+  for (NSString *profile in profiles) {
+    NSWindow *made = nn::host::GroupWindowForProfile(window, profile);
+    if (made && !objc_getAssociatedObject(made, kConfiguredKey)) {
+      ConfigureHostingWindow(made);
+      objc_setAssociatedObject(made, kConfiguredKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+  }
+}
+
++ (void)setSwappedHandler:(void (^)(NSWindow *, NSWindow *))handler {
+  gSwapped = [handler copy];
+}
+
++ (void (^)(NSWindow *, NSWindow *))swappedHandler {
+  return gSwapped;
 }
 
 + (void)closeWindow:(NSWindow *)window {
@@ -130,6 +257,8 @@ NSView *NNWindowRootView(NSWindow *window) {
 namespace {
 
 NSString *Describe(NSView *view) {
+  // A window's first responder may be the window itself.
+  if (view && ![view isKindOfClass:NSView.class]) return NSStringFromClass([(id)view class]);
   NSMutableArray *chain = [NSMutableArray array];
   for (NSView *v = view; v && chain.count < 6; v = v.superview) [chain addObject:NSStringFromClass(v.class)];
   return [chain componentsJoinedByString:@" < "];

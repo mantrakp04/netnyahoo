@@ -28,6 +28,15 @@ NS_ASSUME_NONNULL_BEGIN
 /// The app closes a Chrome-hosted window: it hides now and closes once no tab is moving out of it.
 + (void)closeWindow:(NSWindow *)window;
 
+/// The app window shown in `window` now shows `profile`: its Chrome window of that profile takes
+/// our views over (docs/research/chrome-hosted-window.md › Profiles), with the swap strategy
+/// host::SwapStrategy picks. In full screen the swap waits for the window to leave it.
+/// `swappedHandler` hears of every swap (the shell's window registry follows it).
++ (void)showProfile:(NSString *)profile inWindow:(NSWindow *)window;
+/// Makes the app window's Chrome windows for `profiles` ahead of a swap (off screen).
++ (void)prepareProfiles:(NSArray<NSString *> *)profiles forWindow:(NSWindow *)window;
+@property(class, nonatomic, copy, nullable) void (^swappedHandler)(NSWindow *from, NSWindow *to);
+
 /// Asked when the user closes a Chrome-hosted window (close button, performClose:): the app's
 /// windowShouldClose (it may ask first and close the window itself). Set by the shell.
 @property(class, nonatomic, copy, nullable) BOOL (^shouldCloseHandler)(NSWindow *window);

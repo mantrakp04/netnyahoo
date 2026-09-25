@@ -93,6 +93,10 @@ public class ShellModule: Module {
     }.runOnQueue(.main)
 
     AsyncFunction("closeWindow") { (id: String) in WindowManager.shared.close(id: id) }.runOnQueue(.main)
+    /// Chrome-hosted windows (NETNYAHOO_CHROME_WINDOW): the window's profile changed; others do nothing.
+    AsyncFunction("setWindowProfile") { (id: String, profile: String, neighbours: [String]) in
+      WindowManager.shared.setProfile(id: id, profile: profile, neighbours: neighbours)
+    }.runOnQueue(.main)
     AsyncFunction("focusWindow") { (id: String) in WindowManager.shared.focus(id: id) }.runOnQueue(.main)
     AsyncFunction("setWindowTitle") { (id: String, title: String) in
       WindowManager.shared.setTitle(id: id, title: title)

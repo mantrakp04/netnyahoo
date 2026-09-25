@@ -78,7 +78,21 @@ void InvalidateExtensionCommands(NSString *profile);
 /// window for the app to put its views in, whose tabs are the Browser's own (nil if the engine
 /// can't: not running, or without CEF_NN_CLIENT_WINDOW).
 NSWindow *MakeHostingWindow(NSString *profile);
-/// The app closes a Chrome-hosted window (see Ghost::CloseHosting). False if it isn't one.
+/// Chrome-hosted windows of one app window, one per profile it shows (docs/research/
+/// chrome-hosted-window.md › Profiles). The group's window for `profile`, made (off screen) if
+/// needed; nil if `window` isn't Chrome-hosted.
+NSWindow *GroupWindowForProfile(NSWindow *window, NSString *profile);
+/// Every Chrome-hosted window of `window`'s app window.
+NSArray<NSWindow *> *GroupWindows(NSWindow *window);
+/// `window` just took our views over from another window of its group.
+void WindowShown(NSWindow *window);
+/// How a Chrome-hosted app window changes profile windows: "transparent" (the window leaving is
+/// translucent, so it shows nothing once our views leave it; the default when the engine has
+/// CEF_NN_TRANSLUCENT_WINDOW), "snapshot" (a picture of the window covers the swap) or "naive".
+/// NETNYAHOO_PROFILE_SWAP picks one.
+NSString *SwapStrategy();
+/// The app closes a Chrome-hosted window (see Ghost::CloseHosting): every window of its group.
+/// False if it isn't one.
 bool CloseHostingWindow(NSWindow *window);
 /// DEV: "hide" / "show" / "close" a Chrome-hosted window through CEF (its widget).
 NSString *HostingWindowAction(NSWindow *window, NSString *action);
