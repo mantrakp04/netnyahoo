@@ -144,22 +144,20 @@ function hostInitial(url: string): string {
   return Array.from(shown)[0]?.toLocaleUpperCase() ?? "";
 }
 
-/** Dia marks New Tab rows with a small grey dome. */
+/**
+ * Dia marks New Tab rows with its mark: a dome with a concave bottom (a circle of diameter s minus
+ * a circle of radius s centred 1.25·s below, smooth-subtracted with k = 0.05·s, as OrbView draws
+ * it), drawn the full 16pt wide. Dark: white at 0.28 (measured on Dia 1.50.1 over selected,
+ * hovered and resting rows alike); light is unmeasured.
+ */
+const NEW_TAB_MARK = require("../../assets/new-tab-mark.png");
+
 export function NewTabIcon({ size = 16 }: { size?: number }) {
   const theme = useTheme();
   return (
-    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-      <View
-        style={{
-          width: size - 2,
-          height: size - 4,
-          borderTopLeftRadius: size,
-          borderTopRightRadius: size,
-          borderBottomLeftRadius: size / 3,
-          borderBottomRightRadius: size / 3,
-          backgroundColor: theme.dark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.3)",
-        }}
-      />
-    </View>
+    <Image
+      source={NEW_TAB_MARK}
+      style={{ width: size, height: size, tintColor: theme.dark ? "#FFFFFF" : "#000000", opacity: theme.dark ? 0.28 : 0.3 }}
+    />
   );
 }
