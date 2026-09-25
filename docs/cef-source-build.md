@@ -24,6 +24,7 @@ What the build adds:
 | `cef-ui-triggers.patch` (after `cef-ui-surfaces.patch`) | `CefShowAutofillSuggestions`: Chrome's autofill dropdown at the tab's focused form field (below) |
 | `cef-zidle-pump.patch` | The external message pump runs Chromium's idle work whenever no task is due now. Stock CEF waited for no delayed tasks either, which never happens in a browser, so next-idle callbacks never ran and autofill popups (saved logins, passkeys, addresses) ignored clicks and Enter |
 | `cef-zwindow-client.patch` (after `cef-zidle-pump.patch`) | `CefBrowserSettings.client_window` and `CefBrowserView::CreateTab`: Chrome's Browser window is the app's visible window (below) |
+| `cef-zwindow-keys.patch` (after `cef-zwindow-client.patch`) | In a `client_window`, Chrome's key equivalents wait for the client's first responder and menus: its dispatcher no longer runs reserved commands (new/close tab or window, tab switching) before them. Chrome's shortcuts still run after them, through `CefCommandHandler::OnChromeCommand` |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the ghost window alone |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
@@ -40,7 +41,7 @@ What the build adds:
 The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
 substitution). Step 2 applies the `cef-*.patch` files in name order, which is the order they were
 made in: `cef-chrome-tabs`, `cef-tab-capture`, `cef-tab-state`, `cef-ui-surfaces`, `cef-ui-triggers`,
-`cef-zidle-pump`, `cef-zwindow-client` (checked on a clean worktree of the CEF checkout on 2026-09-25: the
+`cef-zidle-pump`, `cef-zwindow-client`, `cef-zwindow-keys` (checked on a clean worktree of the CEF checkout on 2026-09-25: the
 first four reproduce the built tree exactly; `cef-ui-triggers` reverse-applies cleanly to it;
 `cef-zwindow-client` and `chromium-window-hosted` were made as diffs of their files against the fully patched
 tree). A new patch needs a name that sorts last.

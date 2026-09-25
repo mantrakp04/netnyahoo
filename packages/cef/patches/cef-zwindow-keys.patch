@@ -1,0 +1,64 @@
+--- a/libcef/browser/views/native_widget_mac.h
++++ b/libcef/browser/views/native_widget_mac.h
+@@ -45,6 +45,10 @@
+   void OnWindowInitialized() override;
+ 
+  private:
++  // Netnyahoo: Chrome's key equivalents wait for the client's first
++  // responder and menus in a client window (see WillExecuteCommand).
++  bool DefersToClient(bool is_before_first_responder) const;
++
+   const CefRefPtr<CefWindow> window_;
+   const raw_ptr<CefWindowDelegate> window_delegate_;
+ 
+--- a/libcef/browser/views/native_widget_mac.mm
++++ b/libcef/browser/views/native_widget_mac.mm
+@@ -6,6 +6,7 @@
+ 
+ #include "cef/include/views/cef_window.h"
+ #include "cef/include/views/cef_window_delegate.h"
++#include "cef/libcef/browser/chrome/chrome_browser_delegate.h"
+ #include "cef/libcef/browser/views/ns_window.h"
+ #include "cef/libcef/browser/views/window_impl.h"
+ #include "chrome/browser/apps/app_shim/app_shim_host_mac.h"
+@@ -61,6 +62,10 @@
+     return false;
+   }
+ 
++  if (DefersToClient(is_before_first_responder)) {
++    return false;
++  }
++
+   return BrowserNativeWidgetMac::WillExecuteCommand(
+       browser_view_->browser(), command, window_open_disposition,
+       is_before_first_responder);
+@@ -70,7 +75,7 @@
+     int32_t command,
+     WindowOpenDisposition window_open_disposition,
+     bool is_before_first_responder) {
+-  if (!browser_view_) {
++  if (!browser_view_ || DefersToClient(is_before_first_responder)) {
+     return false;
+   }
+ 
+@@ -79,6 +84,20 @@
+       is_before_first_responder);
+ }
+ 
++bool CefNativeWidgetMac::DefersToClient(bool is_before_first_responder) const {
++  // Netnyahoo: in the client's own window (CefBrowserSettings.client_window)
++  // the client's menus and views get keys first. Chrome's reserved commands
++  // (new/close tab or window, tab switching) would otherwise run before them,
++  // and swallow the key even while disabled. After them, Chrome's shortcuts
++  // still run (CefCommandHandler::OnChromeCommand can refuse them).
++  if (!is_before_first_responder || !browser_view_) {
++    return false;
++  }
++  auto* delegate = static_cast<ChromeBrowserDelegate*>(
++      browser_view_->browser()->cef_delegate());
++  return delegate && delegate->client_window();
++}
++
+ NativeWidgetMacNSWindow* CefNativeWidgetMac::CreateNSWindow(
+     const remote_cocoa::mojom::CreateWindowParams* params) {
+   NSUInteger style_mask =
