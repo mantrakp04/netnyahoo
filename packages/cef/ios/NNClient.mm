@@ -869,7 +869,10 @@ void Client::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFra
 /// items for Chrome UI we don't show are gone.
 void Client::ChromeTabContextMenu(CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params,
                                   CefRefPtr<CefMenuModel> model) {
-  for (int id : kUnavailableChromeItems) model->Remove(id);
+  // Chrome adds some twice (Open in Reading Mode on editable fields); Remove takes one at a time.
+  for (int id : kUnavailableChromeItems)
+    while (model->Remove(id)) {
+    }
   if (!params->GetSelectionText().empty()) {
     NSString *label = [NSString stringWithFormat:@"Search %@ for “%@”", gSearchEngineName,
                                                  SelectionLabel(ToNS(params->GetSelectionText()))];
