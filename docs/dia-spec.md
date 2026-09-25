@@ -508,6 +508,20 @@ than ours at the same cap height.
   `toggleDisplayPageTitleInURLBarPreferenceEnabled` does the same, but nothing sends it (dead).
 - Nothing else gates it: no rebrand flag, width or title check.
 
+### Sidebar rows (1.50.1, from the binary)
+- `TabListCollectionViewLayout` (`0x105383360`): items full width, 37 tall, no gap; the list has a symmetric horizontal
+  inset of 6 (`0x105391ac4`; 20 in another mode), so rows and pinned tiles span x 6 … 184 in a 190 sidebar (1.49
+  measured 7).
+- `TabView` (`0x103dbd2f4`): the background is the row inset (1.5, 0, 1.5, 0), i.e. 34 tall; `TabShapeView` radius
+  `min(h/3, 10)`, continuous corners. `TabContentView` (`0x103da24c4`): favicon 16 × 16 at x 9, centred; title at
+  favicon.maxX + 7 (+ 4 with a badge slot); trailing affordance at W − 8 − size.
+- The New Tab row's icon is the Dia mark (the NTP logo's shape), 16 pt wide, white 0.28 in dark over any row state
+  (measured; which asset draws it wasn't traced).
+- The clean-tabs upsell is a borderless child window (not a popover), 316 wide: title at (24, 24), a 21 × 26
+  illustration, body 16 below, then one row of 32 pt buttons 21 below: Not Now (or Don't Ask Again) at the left,
+  Clean Up Once and Clean Up Daily (8 apart) at the right (`0x103bca7d0`). Netnyahoo's card lives in the 160–400 pt
+  sidebar, so it stacks the three buttons.
+
 ### Menus (1.50.1, menu builder `0x10000f000`–`0x10001c8f4`)
 - View: Appearance ▸ (Automatic, Light, Dark; still there although the Appearance pane is gone), Refresh ⌘R, Force
   Refresh the Page ⇧⌘R (built with the alternate flag, so probably shown only with ⇧ held; medium confidence), —,
