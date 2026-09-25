@@ -1013,6 +1013,11 @@ bool Client::OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event,
   }
   if (!(ns.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagFunction)))
     return false;
+  // ⌘↩ a text field didn't use isn't Back to Pinned URL (the menu keeps it from our own fields the
+  // same way): on a pinned tab it could navigate away from a half-written form.
+  if (event.focus_on_editable_field && event.windows_key_code == 0x0D &&
+      (ns.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) == NSEventModifierFlagCommand)
+    return false;
   // The page didn't consume it: give the menu bar its turn (⌘L, ⌘F, ⌘R, Edit menu…),
   // then Chrome (shortcuts extensions registered with chrome.commands), but not Chrome's
   // shortcuts for its own hidden UI.
