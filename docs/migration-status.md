@@ -203,6 +203,18 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - Before the patch, an offline load showed Chrome's dino page, in a Chrome-style tab and in an Alloy-style
     standalone view (an extension popup) alike: the renderer is Chrome's for both, so no Alloy fallback is needed.
   - With CDP `Network.emulateNetworkConditions({offline: true})` (and the cache disabled), `https://example.com/`
+    in a tab shows the game: `YAHU_ERROR` `{code: "ERR_INTERNET_DISCONNECTED", url: "https://example.com/"}`, header
+    "ERR_INTERNET_DISCONNECTED · example.com", title "example.com · No internet", 63 images from `data:` URLs, no
+    other request, no console message. Start plays level 1; Retry while offline shows the game again; Retry after
+    going back online loads Example Domain. The same in an extension-popup view (Alloy).
+  - `ERR_NAME_NOT_RESOLVED` (`.invalid` host) and `ERR_CONNECTION_REFUSED` (127.0.0.1:59999) keep Chrome's page.
+  - `netnyahoo://yahu` typed through the store: the tab reads `netnyahoo://yahu/` "Where's Big Yahu?", the engine
+    loads `chrome://yahu/`, and the game runs standalone (no offline header); `chrome://dino` too. Play (clicks,
+    hint key) makes no request. A best of 4200 stored through `updateEasterEggHighScore` came back after a reload.
+  - The DNS-probe path's document swap (`document.open/write` of the resource, as `UpdateErrorPage` does) run by
+    hand on an `ERR_NAME_NOT_RESOLVED` page: the hashed scripts run, `errorPageController` survives, no request.
+    The probe itself ending in "no internet" is ledger 43.
+
 - Profile paging (layout/profilePager, 2026-09-25, instance `/tmp/nn-pager`, three profiles plum/blue/green with
   different tabs; synthetic events through `nnSwipe.sidebar(w)` / `nnSwipe.strip(w)` `devSimulate`, frames from
   ScreenCaptureKit in scratchpad `profile-swipe/`):
@@ -218,19 +230,6 @@ because it needs the user present), add it to the **Test ledger** with the exact
     Mac has it off; before, the tracker ignored every swipe here); a wheel mouse's two notches page once, one notch
     doesn't, five in a burst page once, vertical wheel scrolls the list, Shift+wheel pages.
 
-    in a tab shows the game: `YAHU_ERROR` `{code: "ERR_INTERNET_DISCONNECTED", url: "https://example.com/"}`, header
-    "ERR_INTERNET_DISCONNECTED · example.com", title "example.com · No internet", 63 images from `data:` URLs, no
-    other request, no console message. Start plays level 1; Retry while offline shows the game again; Retry after
-    going back online loads Example Domain. The same in an extension-popup view (Alloy).
-  - `ERR_NAME_NOT_RESOLVED` (`.invalid` host) and `ERR_CONNECTION_REFUSED` (127.0.0.1:59999) keep Chrome's page.
-  - `netnyahoo://yahu` typed through the store: the tab reads `netnyahoo://yahu/` "Where's Big Yahu?", the engine
-    loads `chrome://yahu/`, and the game runs standalone (no offline header); `chrome://dino` too. Play (clicks,
-    hint key) makes no request. A best of 4200 stored through `updateEasterEggHighScore` came back after a reload.
-  - The DNS-probe path's document swap (`document.open/write` of the resource, as `UpdateErrorPage` does) run by
-    hand on an `ERR_NAME_NOT_RESOLVED` page: the hashed scripts run, `errorPageController` survives, no request.
-    The probe itself ending in "no internet" is ledger 43.
-
-- 44: profile paging with a real trackpad, Magic Mouse and wheel mouse.
 ## Still to run
 Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs the user present" has the script.
 - 15: fullscreen changes Spaces.
@@ -243,6 +242,7 @@ Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs 
 - Polish: the PiP extras with a real pointer, and the Raycast extension installed in Raycast (parity checklist
   steps 13–14).
 - 43: the offline game after a DNS probe (needs a network with no route to the internet).
+- 44: profile paging with a real trackpad, Magic Mouse and wheel mouse.
 
 ## Test ledger
 
@@ -540,6 +540,15 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
     `DNS_PROBE_FINISHED_NO_INTERNET` and the site's host, Retry reloads, and CDP shows no console error. (A fully
     offline Mac gives `ERR_INTERNET_DISCONNECTED` at once, which is verified.)
 
+### Profile paging (layout/profilePager, ProfileSwipe, profiles/ProfileDots)
+
+44. **Real devices.** With 3 profiles and tabs in each, in a key window: (a) two-finger swipes over the sidebar and
+    the top tab strip, slow and fast, with Swipe between pages on and off: the pages follow at half the finger
+    distance with no stutter, a tick at each halfway detent, a flick commits, a slow release past/under halfway
+    commits/returns, rubber band at the ends; (b) the same with one finger on a Magic Mouse; (c) a wheel mouse's
+    horizontal scroll and Shift+scroll page once per burst; (d) a swipe over a horizontally scrolled top strip
+    scrolls the chips first. Pass if all of that holds and the tab list never janks during a swipe with 50+ tabs.
+
 ### Window translucency (WindowBackdrop `vibrancy`, lib/windowTint; dia-spec › Window translucency)
 Verified so far: build `build-transl`, instance `/tmp/nn-transl`, captures in the session scratchpad `translucency/`
 (composited with the windows below, over our own non-activating helper windows). Inactive, dark, plum: the sidebar
@@ -567,12 +576,3 @@ Still to run (needs the user at the screen, with Dia key):
   is pushed to Chrome.
 - The stock-CEF build (`NN_CHROME_TABS=0`, `docs/cef-source-build.md`) still has the Alloy-era gaps: no in-page
   password or autofill filling, no ad blocking in incognito, and extensions don't see our tabs.
-### Profile paging (layout/profilePager, ProfileSwipe, profiles/ProfileDots)
-
-44. **Real devices.** With 3 profiles and tabs in each, in a key window: (a) two-finger swipes over the sidebar and
-    the top tab strip, slow and fast, with Swipe between pages on and off: the pages follow at half the finger
-    distance with no stutter, a tick at each halfway detent, a flick commits, a slow release past/under halfway
-    commits/returns, rubber band at the ends; (b) the same with one finger on a Magic Mouse; (c) a wheel mouse's
-    horizontal scroll and Shift+scroll page once per burst; (d) a swipe over a horizontally scrolled top strip
-    scrolls the chips first. Pass if all of that holds and the tab list never janks during a swipe with 50+ tabs.
-
