@@ -1,0 +1,22 @@
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_b489c25e3da32f 1016
+  s_9c356f9574d31c::t_4557b73e1010e4 1018-1019
+  s_9c356f9574d31c::t_6c6e5f3eb534f2 1017
+  s_9c356f9574d31c::t_47bcdd06754ebb 1020
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "285f2f5ae0831cde49c5e0516c48cccf6fa8b9e6",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
