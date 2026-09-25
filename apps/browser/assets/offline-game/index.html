@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>No internet</title>
+<link rel="stylesheet" href="game.css">
+</head>
+<body>
+<main class="page">
+  <header class="offline" id="offline">
+    <div class="offline-icon" aria-hidden="true">
+      <svg viewBox="0 0 48 48" width="48" height="48"><path d="M8 18.5a23 23 0 0 1 32 0M13.5 24.5a15 15 0 0 1 21 0M19 30.5a7 7 0 0 1 10 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="37" r="2.6" fill="currentColor"/><path d="M9 9l30 30" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></svg>
+    </div>
+    <div class="offline-text">
+      <h1 id="offline-title">No internet</h1>
+      <p class="offline-sub" id="offline-sub">Try checking your network cables, router, or Wi‑Fi. Meanwhile, somebody slipped into the crowd.</p>
+      <p class="offline-code"><span id="error-code">ERR_INTERNET_DISCONNECTED</span><span class="offline-host" id="error-host"></span></p>
+    </div>
+    <button class="btn btn-primary" id="retry" type="button">Retry</button>
+  </header>
+
+  <section class="game" id="game" aria-label="Where's Big Yahu? game">
+    <div class="hud" id="hud">
+      <div class="hud-title">
+        <img class="wanted" id="wanted" alt="" width="36" height="36">
+        <div>
+          <div class="hud-name">Where's Big Yahu?</div>
+          <div class="hud-meta" id="hud-level">Level 1</div>
+        </div>
+      </div>
+      <div class="hud-stats">
+        <div class="stat"><span class="stat-label">Time</span><span class="stat-value" id="hud-time">60.0</span></div>
+        <div class="stat"><span class="stat-label">Score</span><span class="stat-value" id="hud-score">0</span></div>
+        <div class="stat"><span class="stat-label">Best</span><span class="stat-value" id="hud-best">0</span></div>
+        <button class="btn btn-quiet" id="hint-btn" type="button" title="Hint (H) — costs 8 seconds" disabled>Hint <kbd>H</kbd></button>
+        <button class="btn btn-quiet btn-icon" id="pause-btn" type="button" title="Pause (Esc)" aria-label="Pause" disabled>
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3.5" y="3" width="3" height="10" rx="1" fill="currentColor"/><rect x="9.5" y="3" width="3" height="10" rx="1" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="stage" id="stage">
+      <canvas id="canvas" aria-label="A crowd of politicians. Click Big Yahu when you spot him."></canvas>
+      <div class="timebar" aria-hidden="true"><div class="timebar-fill" id="timebar"></div></div>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+      <div class="overlay" id="overlay">
+        <div class="card" id="card">
+          <img class="card-portrait" id="card-portrait" alt="Big Yahu">
+          <h2 class="card-title" id="card-title">Where's Big Yahu?</h2>
+          <p class="card-body" id="card-body">He's hiding in a crowd of donors, lobbyists and very generous friends. Find him before the clock runs out.</p>
+          <p class="card-quote" id="card-quote" hidden></p>
+          <div class="card-actions">
+            <button class="btn btn-primary" id="card-action" type="button">Start</button>
+          </div>
+          <p class="card-keys" id="card-keys"><kbd>Space</kbd> start · <kbd>H</kbd> hint · <kbd>Esc</kbd> pause · pinch or scroll to zoom and pan</p>
+        </div>
+      </div>
+      <div class="loading" id="loading">Rounding up donors…</div>
+    </div>
+  </section>
+
+  <div class="online" id="online" role="status" hidden>
+    <span>You're back online.</span>
+    <button class="btn btn-primary btn-small" id="online-retry" type="button">Reload page</button>
+  </div>
+</main>
+<script src="assets/manifest.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
