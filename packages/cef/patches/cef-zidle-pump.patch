@@ -1,0 +1,17 @@
+diff --git a/libcef/browser/browser_message_loop.cc b/libcef/browser/browser_message_loop.cc
+index 072a176cc..93de52f55 100644
+--- a/libcef/browser/browser_message_loop.cc
++++ b/libcef/browser/browser_message_loop.cc
+@@ -80,7 +80,11 @@ class MessagePumpExternal : public base::MessagePumpForUI {
+       }
+     }
+ 
+-    if (!more_immediate_work && !more_delayed_work) {
++    // Idle means no immediate work, as in Chromium's own pumps: a browser
++    // always has delayed tasks queued, so waiting for none of those too never
++    // ran the next-idle callbacks (autofill popups only accept clicks and
++    // Enter after one).
++    if (!more_immediate_work) {
+       delegate->DoIdleWork();
+     }
+   }
