@@ -1,0 +1,20 @@
+docs/migration-status.md
+  s_9c356f9574d31c::t_792730df9e6da3 245,543-550
+  s_9c356f9574d31c::t_6d30f7619625fd 206-217,551
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2d139ea6ed023c56b39bfe154e22e7eed6b65c41",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
