@@ -74,6 +74,14 @@ bool ForwardKeyEvent(NSEvent *event, NSString *profile);
 /// Keybindings of enabled extensions changed (re-read lazily).
 void InvalidateExtensionCommands(NSString *profile);
 
+/// Chrome-hosted window spike (NETNYAHOO_CHROME_WINDOW, NNChromeWindow.mm): a visible Chrome
+/// Browser window for the app to put its views in, whose tabs are the Browser's own (nil if the
+/// engine isn't running).
+NSWindow *MakeHostingWindow(NSString *profile);
+/// `command_id` is one of Chrome's commands for its own (hidden) toolbar and tab strip UI, and
+/// `browser` is a tab of a hosting window: Chrome mustn't run it there.
+bool BlocksChromeCommand(CefRefPtr<CefBrowser> browser, int command_id);
+
 /// Client for browsers Chrome creates without one of ours (new windows from extensions).
 CefRefPtr<CefClient> DefaultClient();
 

@@ -68,6 +68,19 @@ final class WindowManager: NSObject, NSWindowDelegate {
     }
     if kind != "browser" { return openAux(id: id, kind: kind, title: title) }
     guard let makeWindow = WindowHost.makeWindow, let makeContentView = WindowHost.makeContentView else { return }
+    if let chromeWindow = ChromeWindowSpike.makeWindow(incognito: incognito) {
+      // Chrome owns this window and its delegate: our root goes over Chrome's views, and the
+      // delegate calls below come as notifications.
+      ChromeWindowSpike.embed(makeContentView(id), in: chromeWindow)
+      for (name, selector) in [
+        (NSWindow.didBecomeKeyNotification, #selector(windowDidBecomeKey(_:))),
+        (NSWindow.didChangeOcclusionStateNotification, #selector(windowDidChangeOcclusionState(_:))),
+        (NSWindow.willCloseNotification, #selector(windowWillClose(_:))),
+      ] {
+        NotificationCenter.default.addObserver(self, selector: selector, name: name, object: chromeWindow)
+      }
+      return show(chromeWindow, id: id, frame: frame, title: title, focus: focus)
+    }
     let window = makeWindow()
     let controller = NSViewController()
     controller.view = makeContentView(id)
@@ -75,9 +88,13 @@ final class WindowManager: NSObject, NSWindowDelegate {
     controller.view.frame = NSRect(origin: .zero, size: window.contentRect(forFrameRect: window.frame).size)
     window.contentViewController = controller
     window.delegate = self
-    window.title = title
     // Incognito windows are always dark, like Dia's; JS themes its own views to match.
     if incognito { window.appearance = NSAppearance(named: .darkAqua) }
+    show(window, id: id, frame: frame, title: title, focus: focus)
+  }
+
+  private func show(_ window: NSWindow, id: String, frame: [Double]?, title: String, focus: Bool) {
+    window.title = title
     place(window, frame: frame)
     relayoutRoot(window)
     windows[id] = window
@@ -189,7 +206,10 @@ final class WindowManager: NSObject, NSWindowDelegate {
       emit?("onWindowEvent", ["type": "close", "id": id])
     }
     // Releasing the root view unmounts its React tree; do it after AppKit is done closing.
-    DispatchQueue.main.async { window.contentViewController = nil }
+    DispatchQueue.main.async {
+      if ChromeWindowSpike.root(of: window) != nil { return ChromeWindowSpike.removeRoot(of: window) }
+      window.contentViewController = nil
+    }
   }
 
   /// Resized by code (session restore, zoom, AppleScript bounds…); live resizes relayout when they end.
@@ -203,7 +223,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
   /// window may not get: a window restored from the session at a new size kept the React layout
   /// of its old size until resized by hand. So lay out now.
   private func relayoutRoot(_ window: NSWindow) {
-    guard let root = window.contentView else { return }
+    guard let root = ChromeWindowSpike.root(of: window) ?? window.contentView else { return }
     root.needsLayout = true
     for view in root.subviews { view.needsLayout = true } // RCTRootContentView re-measures in its own -layout
     root.layoutSubtreeIfNeeded()

@@ -1,6 +1,7 @@
 #import "NNWindowHost.h"
 
 #import "NNChromePages.h"
+#import "NNChromeWindow.h"
 #import "NNClient.h"
 #import "NNExtensionsInternal.h"
 
@@ -325,9 +326,7 @@ class TabRouter : public CefClient,
   bool OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event, CefEventHandle os_event) override {
     NN_FORWARD_RETURN(OnKeyEvent(browser, event, os_event), false)
   }
-  bool OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) override {
-    NN_FORWARD_RETURN(OnChromeCommand(browser, command_id, disposition), false)
-  }
+  bool OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) override;
   bool OnJSDialog(CefRefPtr<CefBrowser> browser, const CefString &origin, JSDialogType type, const CefString &text,
                   const CefString &prompt, CefRefPtr<CefJSDialogCallback> callback, bool &suppress) override {
     NN_FORWARD_RETURN(OnJSDialog(browser, origin, type, text, prompt, callback, suppress), false)
@@ -411,6 +410,41 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     observe(NSWindowDidResignKeyNotification, ^{ self->SetActive(false); });
   }
 
+  /// Chrome-hosted window spike (NETNYAHOO_CHROME_WINDOW, NNChromeWindow.mm): the Browser's own
+  /// window is the app window. It's made now, empty, for the app to put its views in, and gets its
+  /// Browser (founded by a placeholder tab it keeps, so it never runs out of tabs) once the profile
+  /// is ready. Nothing to align: the ghost is the window.
+  NSWindow *StartHosting() {
+    hosting_ = true;
+    router_ = new TabRouter(this, profile_);
+    CefWindow::CreateTopLevelWindow(this);  // OnWindowCreated sets window_ and parent_
+    NSWindow *window = Window();
+    if (!window) return nil;
+    CefRefPtr<Ghost> self(this);
+    pages::WhenProfileReady(profile_, ^(CefRefPtr<CefRequestContext> context) {
+      if (self->closing_ || !self->window_) return;
+      CefBrowserSettings first;
+      first.native_contents_hosting = STATE_ENABLED;
+      self->view_ = CefBrowserView::CreateBrowserView(self->router_, "about:blank", first, nullptr, context, self.get());
+      self->window_->AddChildView(self->view_);
+      self->laidOut_ = false;
+      self->ScheduleLayout();
+    });
+    observers_ = [NSMutableArray array];
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    auto observe = [&](NSNotificationName name, void (^block)(void)) {
+      [observers_ addObject:[center addObserverForName:name object:window queue:nil usingBlock:^(NSNotification *) { block(); }]];
+    };
+    for (NSNotificationName name in @[ NSWindowDidResizeNotification, NSWindowDidEndLiveResizeNotification ])
+      observe(name, ^{ self->ScheduleLayout(); });
+    observe(NSWindowWillCloseNotification, ^{ self->Close(); });
+    observe(NSWindowDidBecomeKeyNotification, ^{ self->SetActive(true); });
+    observe(NSWindowDidResignKeyNotification, ^{ self->SetActive(false); });
+    return window;
+  }
+
+  bool Hosting() const { return hosting_; }
+
   /// The Browser has its first tab: queued work (more tabs, moves) can run.
   void FirstTabCreated() {
     // OnAfterCreated runs before Chrome puts the tab in its tab strip: the Browser
@@ -449,6 +483,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   /// A placeholder first tab has served its purpose once a real tab joined (Chrome tabs only).
   void DropAnchor() {
 #if NN_CHROME_TABS
+    if (hosting_) return;  // the window lives as long as its Browser has a tab
     CefRefPtr<CefBrowser> anchor = Anchor();
     if (!anchor || !AnyTab(anchor) || droppingAnchor_) return;
     droppingAnchor_ = true;
@@ -473,6 +508,11 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
         client->closingByEngine_ = true;
     NSWindow *ghost = Window();
     if (ghost.parentWindow) [ghost.parentWindow removeChildWindow:ghost];
+    // A hosting window closes itself (this runs from its NSWindowWillCloseNotification).
+    if (hosting_) {
+      Forget();
+      return;
+    }
     // A tab leaving with the window (its last tab moved elsewhere) must get out of this
     // Browser first; Chrome closes the window itself once it's empty.
     if (window_ && TabTransfersPending()) {
@@ -488,6 +528,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   /// Exactly behind the app window: same frame, same Space, just below it. In front of it
   /// while Chrome shows a window of its own over the page (see ShowsChromeWindows).
   void Align() {
+    if (hosting_) return ScheduleLayout();
     NSWindow *ghost = Window(), *parent = parent_;
     if (!ghost || !parent || closing_) return;
     if (!NSEqualRects(ghost.frame, parent.frame)) [ghost setFrame:parent.frame display:NO];
@@ -634,6 +675,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
       @"ready" : @(ready_),
       @"active" : @(active_),
       @"pageInsets" : @[ @(insets_.top), @(insets_.left), @(insets_.bottom), @(insets_.right) ],
+      @"hosting" : @(hosting_),
     };
   }
 
@@ -641,6 +683,10 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   void OnWindowCreated(CefRefPtr<CefWindow> window) override {
     // Called from inside CreateTopLevelWindow, before `window_` is set.
     window_ = window;
+    if (hosting_) {
+      parent_ = Window();
+      return;
+    }
     window->AddChildView(view_);
     NSWindow *ghost = Window();
     MakeWindowInert(ghost);
@@ -672,14 +718,22 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   cef_runtime_style_t GetWindowRuntimeStyle() override { return CEF_RUNTIME_STYLE_CHROME; }
   cef_show_state_t GetInitialShowState(CefRefPtr<CefWindow> window) override { return CEF_SHOW_STATE_HIDDEN; }
   CefRect GetInitialBounds(CefRefPtr<CefWindow> window) override {
+    if (hosting_) return CefRect(0, 0, 1360, 860);  // the app places it
     NSRect f = parent_.frame;
     NSRect primary = NSScreen.screens.firstObject.frame;
     return CefRect((int)f.origin.x, (int)(NSMaxY(primary) - NSMaxY(f)), (int)f.size.width, (int)f.size.height);
   }
+  // A hosting window is the app's (Dia's hidden titlebar, traffic lights over the sidebar).
   bool IsFrameless(CefRefPtr<CefWindow> window) override { return true; }
-  bool CanResize(CefRefPtr<CefWindow> window) override { return false; }
-  bool CanMaximize(CefRefPtr<CefWindow> window) override { return false; }
-  bool CanMinimize(CefRefPtr<CefWindow> window) override { return false; }
+  bool WithStandardWindowButtons(CefRefPtr<CefWindow> window) override { return hosting_; }
+  bool GetTitlebarHeight(CefRefPtr<CefWindow> window, float *height) override {
+    if (!hosting_) return false;
+    *height = 53;  // BrowserWindow's traffic lights sit 19.5 pt down, centred in this
+    return true;
+  }
+  bool CanResize(CefRefPtr<CefWindow> window) override { return hosting_; }
+  bool CanMaximize(CefRefPtr<CefWindow> window) override { return hosting_; }
+  bool CanMinimize(CefRefPtr<CefWindow> window) override { return hosting_; }
 
   // CefBrowserViewDelegate
   cef_runtime_style_t GetBrowserRuntimeStyle() override { return CEF_RUNTIME_STYLE_CHROME; }
@@ -709,6 +763,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   bool ready_ = false;
   bool closing_ = false;
   bool active_ = false;
+  bool hosting_ = false;
   IMPLEMENT_REFCOUNTING(Ghost);
 };
 
@@ -764,6 +819,28 @@ CefRefPtr<CefBrowser> TabRouter::AnyTab() {
   for (auto &tab : tabs)
     if (GhostOf(tab) == ghost_) return tab;
   return nullptr;
+}
+
+/// Chrome-hosted window spike: Chrome's commands for its own UI (toolbar, tab strip, profile menu,
+/// app menu), which a visible Browser window runs from Chrome's shortcut table for keys our menus
+/// don't take. Ours covers the rest.
+bool HiddenChromeUICommand(int command_id) {
+  switch (command_id) {
+    case IDC_SHOW_AVATAR_MENU: case IDC_SHOW_APP_MENU: case IDC_FOCUS_TOOLBAR: case IDC_FOCUS_LOCATION:
+    case IDC_FOCUS_SEARCH: case IDC_FOCUS_MENU_BAR: case IDC_FOCUS_NEXT_PANE: case IDC_FOCUS_PREVIOUS_PANE:
+    case IDC_FOCUS_BOOKMARKS: case IDC_FOCUS_INACTIVE_POPUP_FOR_ACCESSIBILITY: case IDC_FOCUS_WEB_CONTENTS_PANE:
+    case IDC_SHOW_DOWNLOADS: case IDC_DEV_TOOLS_INSPECT: case IDC_ADD_NEW_TAB_TO_GROUP: case IDC_CREATE_NEW_TAB_GROUP:
+    case IDC_FOCUS_NEXT_TAB_GROUP: case IDC_FOCUS_PREV_TAB_GROUP: case IDC_CLOSE_TAB_GROUP: case IDC_MOVE_TAB_NEXT:
+    case IDC_MOVE_TAB_PREVIOUS: case IDC_SHOW_READING_MODE_SIDE_PANEL:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool TabRouter::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) {
+  if (Client *c = Tab(browser)) return c->OnChromeCommand(browser, command_id, disposition);
+  return ghost_ && ghost_->Hosting() && HiddenChromeUICommand(command_id);
 }
 
 void TabRouter::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
@@ -1119,6 +1196,24 @@ void InvalidateExtensionCommands(NSString *profile) { gKeybindings.erase(pages::
 
 CefRefPtr<CefClient> DefaultClient() { return new StrayWindowClient(); }
 
+NSWindow *MakeHostingWindow(NSString *profile) {
+#if NN_CHROME_TABS
+  if (![NNCef isStarted] || ShuttingDown()) return nil;
+  Ghost *ghost = NewGhost(nil, profile);
+  NSWindow *window = ghost->StartHosting();
+  if (!window) ghost->Close();
+  return window;
+#else
+  return nil;
+#endif
+}
+
+bool BlocksChromeCommand(CefRefPtr<CefBrowser> browser, int command_id) {
+  if (!HiddenChromeUICommand(command_id)) return false;
+  Ghost *ghost = GhostOf(browser);
+  return ghost && ghost->Hosting();
+}
+
 NSUInteger GhostCount() { return gGhosts.size(); }
 
 NSArray<NSDictionary *> *GhostStates() {
@@ -1129,6 +1224,7 @@ NSArray<NSDictionary *> *GhostStates() {
 
 NSString *DevWindowAction(NSInteger windowNumber, NSString *action) {
   NSWindow *window = [NSApp windowWithWindowNumber:windowNumber];
+  if (NSString *handled = [NNChromeWindowHost devAction:action window:window]) return handled;
   if ([action hasPrefix:@"key:"]) {
     // "key:<modifier flags>:<character>": the path an unhandled key takes (ForwardKeyEvent).
     NSArray<NSString *> *parts = [action componentsSeparatedByString:@":"];

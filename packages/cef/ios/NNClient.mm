@@ -1056,7 +1056,7 @@ bool Client::OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString
 bool Client::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) {
   // Chrome's password bubble would hang off its (hidden) toolbar: ours shows instead.
   if (command_id == IDC_MANAGE_PASSWORDS_FOR_PAGE) return chromeui::ShowPasswordPrompt(this, browser);
-  return false;
+  return host::BlocksChromeCommand(browser, command_id);  // Chrome-hosted window spike
 }
 
 }  // namespace nn
