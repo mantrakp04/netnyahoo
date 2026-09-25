@@ -137,7 +137,7 @@ Scripts: `spike/p2.mjs` (steps), `spike/restore.sh`, fixtures in `spike/pages` a
 | Tabs into an empty window | done | ⇧⌘T (with its history), a tab dragged out to a new window and back as that window's last (same page: the leaving window's Browser now outlives the move), reopen closed window |
 | Split view | done | 2 and 3 panes, all visible at their widths. A pane's alert shows; its position matches the default path |
 | PiP | done | `requestPictureInPicture` opens Chrome's PiP window |
-| DevTools | done / human | Opens undocked in its own window. Docking (DevTools' dock-side menu) would dock into Chrome's hidden contents view on both paths (shipped behaviour since the ghost); see Findings |
+| DevTools | done | Opens in its own window. Docking isn't offered: CEF sets `can_dock = false` for CEF-managed browsers (`devtools_window.cc`), on both paths |
 | window.open / sign-in popups | done | A sized popup opens in its own window; `window.close()` closes it |
 | Downloads | done / human | Download completes into our list; the fly-in animation is visual (human) |
 | Find in page | done | 3 matches counted |
@@ -154,9 +154,10 @@ Scripts: `spike/p2.mjs` (steps), `spike/restore.sh`, fixtures in `spike/pages` a
   - window geometry and z-order read from `CGWindowList` are unreliable while locked;
   - the smoke test's three z-order checks fail for every build, shipped ones included;
   - screen captures fail entirely.
-- **DevTools docking** (shipped behaviour, both paths) docks into Chrome's contents view, which nobody sees (under
-  our root, or in the ghost). A small Chromium patch could stop DevTools from docking for natively hosted tabs
-  (`DevToolsWindow` `can_dock_`). Phase 3; it touches the default path.
+- **DevTools can't dock**, on either path: CEF passes `can_dock = false` for its browsers, so the dock-side menu never
+  appears and DevTools always opens in its own window (checked live: the frontend URL has no `can_dock`).
+  Docked DevTools inside our window would be a feature: a CEF API handing the app the DevTools view and its
+  resize strategy, and a pane in our UI.
 - **Closing a Chrome-hosted window** must go through the engine: an `NSWindow` close destroys its Browser
   immediately, including a tab that is still moving out.
 
