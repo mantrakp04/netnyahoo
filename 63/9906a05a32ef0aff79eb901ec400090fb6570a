@@ -1,0 +1,39 @@
+scripts/release.sh
+  s_9c356f9574d31c::t_c1e4f9eddab8c8 1-34,36-61,63-64,67-68,70-93,95-108,115-122
+  s_9c356f9574d31c::t_8f3241a08d9be7 35,62,65-66,69,94
+  s_9c356f9574d31c::t_4d87565cee666f 109-114
+docs/releasing.md
+  s_9c356f9574d31c::t_0cfa8ce7f878c2 1-55
+packages/shell/ios/Updater.swift
+  s_9c356f9574d31c::t_971cff7f7d6611 6
+packages/cef/scripts/embed.sh
+  s_9c356f9574d31c::t_a0f452228003af 82-83
+apps/browser/macos/Netnyahoo-macOS/Info.plist
+  s_9c356f9574d31c::t_c0a5520384fffc 45,67,116,118
+.gitignore
+  s_9c356f9574d31c::t_8f3241a08d9be7 59-61
+packages/shell/docktile/build.sh
+  s_9c356f9574d31c::t_a0f452228003af 49-50
+apps/browser/src/components/settings/panes/General.tsx
+  s_9c356f9574d31c::t_971cff7f7d6611 97
+apps/browser/macos/Netnyahoo.xcodeproj/project.pbxproj
+  s_9c356f9574d31c::t_c0a5520384fffc 400,431
+README.md
+  s_9c356f9574d31c::t_34577ffce0291b 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "639906a05a32ef0aff79eb901ec400090fb6570a",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
