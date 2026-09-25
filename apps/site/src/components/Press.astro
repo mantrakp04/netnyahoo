@@ -1,7 +1,3 @@
----
-import { DMG_SIZE, MIN_MACOS, REPO, VERSION } from "../data/release";
----
-
 <section class="press" id="press" aria-labelledby="press-title" data-shot="press">
   <div class="wrap press-grid">
     <header class="press-head">
@@ -13,70 +9,26 @@ import { DMG_SIZE, MIN_MACOS, REPO, VERSION } from "../data/release";
     <dl class="qa">
       <div class="item">
         <dt>Is this a joke?</dt>
-        <dd>
-          The name is. The browser isn’t: it’s a full Chromium browser with the extensions, passwords and codecs you’d
-          expect. The satire is aimed at Benjamin Netanyahu and his government’s politics, and at nobody else.
-        </dd>
+        <dd>The name is. The browser isn’t.</dd>
       </div>
       <div class="item" id="install">
         <dt>macOS won’t open it.</dt>
         <dd>
-          <p>
-            Version {VERSION} is signed with a Developer ID but not yet notarized by Apple, so Gatekeeper blocks the
-            first launch. Once:
-          </p>
-          <ol>
-            <li>Open the DMG and drag Netnyahoo into Applications.</li>
-            <li>Open Netnyahoo. macOS refuses; click Done.</li>
-            <li>Go to System Settings › Privacy &amp; Security, scroll down, and click <b>Open Anyway</b>.</li>
-          </ol>
-          <p>Or, in Terminal:</p>
-          <pre><code>xattr -dr com.apple.quarantine /Applications/Netnyahoo.app</code></pre>
+          It’s signed, not notarized yet. Open it once, click Done, then System Settings › Privacy &amp;
+          Security › <b>Open Anyway</b>.
         </dd>
-      </div>
-      <div class="item">
-        <dt>Will it run on my Mac?</dt>
-        <dd>
-          If it has Apple Silicon (M1 or later) and runs {MIN_MACOS} or later, yes. There’s no Intel build. The
-          download is {DMG_SIZE}.
-        </dd>
-      </div>
-      <div class="item">
-        <dt>What doesn’t it do yet?</dt>
-        <dd>
-          Sync, Translate, and Widevine DRM, so Netflix and other protected video won’t play. Passkeys stored in iCloud
-          Keychain are waiting on an entitlement from Apple; Touch ID and phone passkeys work. There’s no AI assistant.
-        </dd>
-      </div>
-      <div class="item">
-        <dt>Does it update itself?</dt>
-        <dd>The app updates through Sparkle with signed releases. Extensions update themselves through the Web Store.</dd>
       </div>
       <div class="item">
         <dt>What does it collect?</dt>
-        <dd>
-          Nothing. The app has no analytics, and Chromium’s crash reporting and usage pings are compiled out. The sites
-          you visit, the extensions you install and your search engine see what they always see. Google is the default
-          search engine until you change it; nobody paid for that.
-        </dd>
+        <dd>Nothing. Not even contributions.</dd>
       </div>
       <div class="item">
         <dt>Is this Dia?</dt>
-        <dd>
-          No. The interface follows Dia’s closely. Netnyahoo has nothing to do with The Browser Company, which has not
-          been asked for its opinion and would probably rather not give one.
-        </dd>
-      </div>
-      <div class="item">
-        <dt>Is it really open source?</dt>
-        <dd>
-          All of it, including the Chromium patches, is on <a class="link" href={REPO} rel="noopener">GitHub</a>.
-          Issues and pull requests are welcome; so is a fork.
-        </dd>
+        <dd>No. It just dresses like it.</dd>
       </div>
       <div class="item">
         <dt>Why “Netnyahoo”?</dt>
-        <dd>Because a browser should do what it’s told and leave when asked. Some offices could take notes.</dd>
+        <dd>A browser should leave when asked. Some offices could take notes.</dd>
       </div>
     </dl>
   </div>
@@ -156,30 +108,8 @@ import { DMG_SIZE, MIN_MACOS, REPO, VERSION } from "../data/release";
     content: "A.";
     top: 0;
   }
-  dd > * + * {
-    margin-top: 12px;
-  }
-  ol {
-    margin-block: 12px;
-    padding-left: 1.3em;
-  }
-  li + li {
-    margin-top: 4px;
-  }
   b {
     font-weight: 600;
-    color: var(--ink);
-  }
-  pre {
-    margin: 12px 0 0;
-    padding: 12px 14px;
-    background: var(--paper-deep);
-    border-radius: 3px;
-    overflow-x: auto;
-    font-family: var(--mono);
-    font-size: 0.74rem;
-    font-stretch: 87.5%;
-    line-height: 1.6;
     color: var(--ink);
   }
   @media (max-width: 960px) {

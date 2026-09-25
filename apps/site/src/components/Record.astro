@@ -2,18 +2,15 @@
 // The engineering record, styled as a ballot: what's in (ticked), what isn't yet (empty box).
 type Vote = "yes" | "part" | "no";
 const rows: { item: string; detail: string; vote: Vote; label?: string }[] = [
-  { item: "Engine", detail: "Chromium 154 through our own patched build of CEF, Chrome runtime. Every tab is a real Chrome tab.", vote: "yes" },
-  { item: "De-Googled", detail: "ungoogled-chromium’s patches: Google sign-in, crash reporting, GCM and domain-reliability pings compiled out.", vote: "yes" },
-  { item: "Chrome Web Store", detail: "Left on deliberately, with extension auto-update.", vote: "yes" },
-  { item: "Video and audio", detail: "H.264 and AAC, built with Chrome’s proprietary codecs.", vote: "yes" },
-  { item: "Content blocking", detail: "uBlock Origin Lite in every profile, incognito included.", vote: "yes" },
-  { item: "Passwords and autofill", detail: "Chrome’s password manager and autofill, per profile.", vote: "yes" },
-  { item: "Passkeys", detail: "Touch ID and phone work. iCloud Keychain passkeys wait on an Apple entitlement.", vote: "part" },
-  { item: "App updates", detail: "Sparkle, with signed releases.", vote: "yes" },
-  { item: "Sync", detail: "Not yet. There’s no server to sync through.", vote: "no" },
-  { item: "Translate", detail: "Not yet. Its Google backend is one of the things removed.", vote: "no" },
-  { item: "Widevine DRM", detail: "Not yet, so Netflix and other protected video won’t play.", vote: "no" },
-  { item: "Intel Macs", detail: "Apple Silicon only, macOS 14 or later.", vote: "no", label: "No" },
+  { item: "Engine", detail: "Chromium 154. Our own CEF build.", vote: "yes" },
+  { item: "De-Googled", detail: "ungoogled-chromium underneath.", vote: "yes" },
+  { item: "H.264 and AAC", detail: "The codecs Chromium leaves out.", vote: "yes" },
+  { item: "Passkeys", detail: "Touch ID yes. iCloud Keychain soon.", vote: "part" },
+  { item: "Sync", detail: "", vote: "no" },
+  { item: "Translate", detail: "", vote: "no" },
+  { item: "Widevine", detail: "So no Netflix.", vote: "no" },
+  { item: "Intel Macs", detail: "Apple Silicon only.", vote: "no", label: "No" },
+  { item: "AI", detail: "", vote: "no", label: "Abstained" },
 ];
 const labels: Record<Vote, string> = { yes: "Yes", part: "Partly", no: "Not yet" };
 ---
@@ -23,14 +20,10 @@ const labels: Record<Vote, string> = { yes: "Yes", part: "Partly", no: "Not yet"
     <header class="record-head">
       <p class="label kicker">The record</p>
       <h2 class="poster" id="record-title" data-reveal>It’s actually Chromium.</h2>
-      <p class="lede" data-reveal style="--i: 1">
-        Not a WebKit skin and not Electron. Netnyahoo is our own build of Chromium, patched and compiled from
-        source, hosted in a native Mac shell written in React Native, Swift and Objective-C++. Unlike most campaign
-        promises, all of it can be checked: the patches are in the repository.
-      </p>
+      <p class="lede" data-reveal style="--i: 1">Not WebKit. Not Electron. The patches are in the repo.</p>
     </header>
 
-    <div class="ballot" role="table" aria-label="What Netnyahoo 0.1.0 does and doesn’t do">
+    <div class="ballot" role="table" aria-label="What Netnyahoo does and doesn’t do yet">
       <div class="ballot-top label" role="row">
         <span role="columnheader">Measure</span>
         <span role="columnheader">Details</span>

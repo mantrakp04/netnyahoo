@@ -15,13 +15,12 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
         <p class="label">Wanted<br />for questioning</p>
       </div>
       <div class="game-title">
-        <p class="label kicker">Offline page · in development</p>
+        <p class="label kicker">The offline page</p>
         <h2 class="poster" id="game-title" data-reveal>Where’s Big Yahu?</h2>
       </div>
       <p class="game-copy" data-reveal style="--i: 1">
-        When the Wi-Fi drops, Chrome gives you a dinosaur. Netnyahoo gives you a ballroom of donors, lobbyists and
-        very generous friends, and one man hiding among them. It’s coming to the offline page in a later term.
-        Until then, practise here: he’s in this picture.
+        Chrome gives you a dinosaur. We give you a room full of donors, lobbyists and very generous friends. Find
+        him.
       </p>
     </div>
 
@@ -29,7 +28,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       <div class="board-img" style={`aspect-ratio: ${crowd.width} / ${crowd.height}`}>
         <Picture
           src={crowd}
-          alt="A work-in-progress screenshot of the game: a ballroom packed with caricatured party guests, Big Yahu somewhere among them."
+          alt="An early screenshot of the game: a ballroom packed with caricatured party guests, Big Yahu somewhere among them."
           formats={["avif"]}
           fallbackFormat="webp"
           widths={[640, 1024, 1440, 2248]}
@@ -46,8 +45,8 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
         <p class="toast label" role="status" aria-live="polite" data-toast></p>
       </div>
       <figcaption class="label">
-        <span>Fig. 9 — Level 1, 83 suspects</span>
-        <span>Work-in-progress screenshot</span>
+        <span>Fig. 8 — Level 1, 83 suspects</span>
+        <span>Online too, at netnyahoo://yahu</span>
       </figcaption>
     </figure>
   </div>
@@ -193,7 +192,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       if (board.hasAttribute("data-solved")) return;
       board.setAttribute("data-solved", "");
       const s = started ? ((performance.now() - started) / 1000).toFixed(1) : null;
-      say(s ? `Found him in ${s} s. He’ll hide better offline.` : "Found him. He’ll hide better offline.");
+      say(s ? `Found him in ${s} s. He hides better offline.` : "Found him. He hides better offline.");
     });
     const lines = ["That’s a donor.", "That’s a lobbyist.", "Close. That’s his friend with the envelope.", "Not him. Keep looking."];
     board.addEventListener("click", () => {

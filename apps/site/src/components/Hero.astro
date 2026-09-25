@@ -2,7 +2,7 @@
 import { Image } from "astro:assets";
 import poster from "../assets/yahu-poster.webp";
 import DownloadButton from "./DownloadButton.astro";
-import { MIN_MACOS, REPO, VERSION } from "../data/release";
+import { REPO, VERSION } from "../data/release";
 ---
 
 <section class="hero" id="top" data-shot="hero">
@@ -15,15 +15,15 @@ import { MIN_MACOS, REPO, VERSION } from "../data/release";
 
     <div class="hero-copy">
       <p class="lede" data-reveal style="--i: 3">
-        A Chromium browser for the Mac with tabs in the sidebar, split view, every Chrome extension and uBlock
-        Origin built in. Make it your default. It will never step down.
+        Real Chromium for the Mac, tabs down the side, ads blocked. Make it your default. It will never step
+        down.
       </p>
       <div class="cta-row" data-reveal style="--i: 4">
         <DownloadButton />
         <a class="link source" href={REPO} rel="noopener">Read the source</a>
       </div>
       <p class="label fine" data-reveal style="--i: 5">
-        <span>v{VERSION}</span><span>Free</span><span>{MIN_MACOS}+</span><span>Apple Silicon</span>
+        <span>v{VERSION}</span><span>Free</span><span>macOS 14+</span><span>Apple Silicon</span>
       </p>
     </div>
 

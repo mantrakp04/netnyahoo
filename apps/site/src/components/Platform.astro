@@ -11,11 +11,7 @@ const count = words[total] ?? String(total);
   <div class="wrap">
     <header class="platform-head" data-shot="platform">
       <p class="label kicker">The platform</p>
-      <h2 class="poster" id="platform-title" data-reveal>{count} pledges.<br />All of them shipped.</h2>
-      <p class="intro" data-reveal style="--i: 1">
-        Unusual for a campaign, so here they are with screenshots. Everything below is the real app, captured
-        from version 0.1.0.
-      </p>
+      <h2 class="poster" id="platform-title" data-reveal>{count} pledges.<br />All of them kept.</h2>
     </header>
 
     <ol class="pledges">
@@ -28,11 +24,6 @@ const count = words[total] ?? String(total);
               </p>
               <h3>{p.title}</h3>
               <p class="body">{p.body}</p>
-              <ul class="specs label">
-                {p.specs.map((s) => (
-                  <li>{s}</li>
-                ))}
-              </ul>
             </div>
             <figure class="pledge-figure" data-reveal style="--i: 1">
               <Shot src={p.shots} alt={p.alt} panel={p.panel} sizes="(max-width: 900px) 100vw, 58vw" />
@@ -46,7 +37,7 @@ const count = words[total] ?? String(total);
     </ol>
 
     <div class="also" data-shot="also">
-      <p class="label also-head">Also passed, without a photo op</p>
+      <p class="label also-head">Also passed, no photo op</p>
       <ol class="also-list" start={pledges.length + 1}>
         {
           alsoPassed.map((a, i) => (
@@ -83,13 +74,6 @@ const count = words[total] ?? String(total);
   .platform-head h2 {
     grid-column: 1 / span 8;
     font-size: var(--t-h2);
-  }
-  .intro {
-    grid-column: 9 / -1;
-    align-self: end;
-    font-size: var(--t-body);
-    color: var(--ink-2);
-    max-width: 24em;
   }
 
   .pledges {
@@ -141,20 +125,6 @@ const count = words[total] ?? String(total);
     margin-top: 18px;
     color: var(--ink-2);
     max-width: 26em;
-  }
-  .specs {
-    list-style: none;
-    padding: 0;
-    margin: 22px 0 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    color: var(--ink-2);
-  }
-  .specs li {
-    border: 1px solid var(--rule);
-    border-radius: 2px;
-    padding: 4px 8px 3px;
   }
   .pledge-figure {
     grid-column: 6 / -1;
@@ -209,8 +179,7 @@ const count = words[total] ?? String(total);
   }
 
   @media (max-width: 900px) {
-    .platform-head h2,
-    .intro {
+    .platform-head h2 {
       grid-column: 1 / -1;
     }
     .pledge {
