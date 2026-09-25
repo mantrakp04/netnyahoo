@@ -99,6 +99,10 @@ export type GhostWindow = {
   ignoresMouse: boolean;
   childOfParent: boolean;
   belowParent: boolean;
+  /** In front of the app window, because Chrome shows a window of its own (a dialog, bubble, dropdown). */
+  lifted?: boolean;
+  /** The ghost's child windows (Chrome's dialogs, bubbles, dropdowns), shown or not. */
+  chromeWindows?: number;
   anchorBrowserId: number;
   /** A tab of the ghost's Browser (0 when it has none). */
   anyTabBrowserId?: number;

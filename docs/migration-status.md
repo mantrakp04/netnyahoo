@@ -97,6 +97,34 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - Touch ID was unavailable on that CEF: "keychain-access-group entitlement is missing or incorrect.
     Expected value: .org.chromium.Chromium.webauthn". The BRANDING change has since shipped in the vendored
     framework (test 40).
+- Passkey dialogs were invisible (bug in 0.1.1, fixed 2026-09-25, Debug `build-pkfix` and a Developer ID archive +
+  export of the fix, data dirs `/tmp/nn-pkfix`, `/tmp/nn-pkrel`; captures in the session scratchpad `passkey-fix/`):
+  - Symptom: Google's "Verifying it's you… Complete sign-in using your passkey" stayed stuck with no UI.
+  - Cause: Chrome shows web-modal dialogs (all of WebAuthn's sheets, security key PINs…) as level-0 child windows
+    of the Browser window, and AppKit keeps a window's children right above it. Our ghost Browser window sits below
+    the app window, so the dialog was created, sized and centred over the page, then drawn behind our window. The
+    earlier checks read its frame and accessibility tree only. Chrome's popups (autofill dropdowns, level 999)
+    weren't affected.
+  - Fix (`NNWindowHost.mm`): the ghost watches its child windows (Chromium's `childWindowAddedHandler`, KVO on
+    `visible`) and moves in front of the app window while one shows, back behind when none does. It stays
+    transparent and click-through: macOS and Chromium's occlusion checker both ignore it, so the page stays VISIBLE
+    (WebAuthn needs that to complete), and focus never moves. `ghostWindows()` reports `lifted` / `chromeWindows`.
+  - Verified in the Developer ID build (hardened runtime, keychain groups, no iCloud entitlement), windows composited
+    with ScreenCaptureKit: a Google-like `get()` (allowCredentials of a passkey the Mac doesn't have) shows
+    "Passkeys: use your phone or tablet" with its QR code over the page; a discoverable `get()` shows "Passkeys &
+    Security Keys"; Cancel rejects both with `NotAllowedError`. webauthn.io Platform: "Create a passkey for
+    webauthn.io" (Chrome profile), Continue → created ("Chromium Browser" AAGUID), Authenticate → logged in. With
+    user verification required, macOS's Touch ID sheet ("Netnyahoo is trying to verify your identity on
+    webauthn.io") appears over the window, and the user completed register and sign-in with it. Picking a passkey:
+    "Use a saved passkey for webauthn.io" lists the profile's passkeys plus "Use a phone, tablet, or security key".
+    Cross-platform register: the QR sheet with Back / Cancel. A CDP virtual authenticator completes webauthn.io's
+    register + login end to end. Switching tabs hides the dialog with its tab and lowers the ghost; switching back
+    shows it again.
+  - Testing note: a DevTools session that detaches (every one-shot `Runtime.evaluate` script) disables the page's
+    virtual authenticator environment for everyone, so a virtual-authenticator flow must run in one session
+    (scratchpad `passkey-fix/virtflow.mjs`). Test instances behind other apps are occluded and WebAuthn then fails
+    with "the page does not have focus": launch them with
+    `NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows`.
 - The app bundle stays sealed (2026-09-25, Release archive + Developer ID export, data dirs `/tmp/nn-sigfix-*`):
   - Bug in 0.1.0: its first launch wrote `Resources/Extensions/ublock-lite/_metadata/generated_indexed_rulesets/
     _ruleset1…6` into the bundle (DNR indexes uBlock's rulesets next to the extension), so `codesign --verify --deep
@@ -238,7 +266,7 @@ Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs 
 - W2: the Remove sheets need a key window.
 - R2: dragging tabs between windows, and Cast with a real device (parity checklist steps 11–12).
 - 28–31: visual QA against Dia 1.50.1 (needs the unlocked screen).
-- 39–41: phone passkeys, Touch ID passkeys, Safe Storage.
+- 39, 41: phone passkeys, Safe Storage; 40's Google sign-in in the shipped app (checklist step 6).
 - Polish: the PiP extras with a real pointer, and the Raycast extension installed in Raycast (parity checklist
   steps 13–14).
 - 43: the offline game after a DNS probe (needs a network with no route to the internet).
@@ -511,12 +539,10 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
     → "Use a phone or tablet", scan the QR with an iPhone/Android camera. Pass if the phone connects (tunnel through
     cable.ua5v.com, which domain substitution left alone), the passkey is saved on the phone, and Authenticate with it
     works.
-40. **Touch ID ("Chrome profile") passkeys.** The BRANDING change is in the vendored framework (its keychain group is
-    `U5L5T3NGVV.com.netnyahoo.browser.webauthn`), so this can run now. Pass if all of these hold:
-    - The log no longer says "keychain-access-group entitlement is missing".
-    - webauthn.io Register offers this Mac / Chrome profile.
-    - macOS's Touch ID sheet appears. Stop there unattended: completing it needs the user's finger.
-    - After the user completes it, Authenticate with the same passkey works.
+40. **Touch ID ("Chrome profile") passkeys.** ✅ 2026-09-25 in a Developer ID build (above, "Passkey dialogs were
+    invisible"): webauthn.io Register (Platform) offers the Chrome profile, macOS's Touch ID sheet appears when the
+    site requires user verification, and the user completed register and sign-in with Touch ID. Still to see in the
+    shipped app: the same on Google (checklist step 6).
 41. **Safe Storage (`CEF_NN_SAFE_STORAGE`).** In a team-signed Debug run without `NETNYAHOO_DATA_DIR`, pass if:
     - A "Netnyahoo Safe Storage" item appears in the login keychain, with no prompt.
     - Cookies survive a rebuild and relaunch with no prompt.

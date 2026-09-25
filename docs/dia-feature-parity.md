@@ -153,12 +153,13 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 5. **Passwords unlock** (ledger 27). ⌘, › Passwords › Unlock. Pass: exactly one Touch ID (or password) prompt;
    the login from step 2 shows; opening it and revealing the password within 5 minutes asks nothing more; the
    toggle reads "Offer to save and fill passwords". (Unlock only prompts when at least one login is saved.)
-6. **Touch ID passkey** (ledger 40). On `https://webauthn.io`, enter a username and click Register. Pass: Chrome's
-   dialog over the page offers this Mac / the Chrome profile; the macOS Touch ID sheet appears; after your finger
-   webauthn.io reports success; Authenticate with Touch ID succeeds too. If only a security key and a phone are
-   offered, note it: the passkeys agent then checks whether the scratch data dir's mock keychain is the cause
-   (without it, the first launch moves the profile to "Netnyahoo Safe Storage" and existing cookies and passwords
-   are lost once, ledger 41, so don't try that on your real profile without deciding to).
+6. **Passkeys on Google** (ledger 40). At accounts.google.com, sign in to an account that has a passkey. When it
+   says "Complete sign-in using your passkey", pass if Chrome's dialog shows over the page within a second or two:
+   with the passkey on your iPhone (iCloud Keychain), "Use your phone or tablet" and a QR code; scanning it with the
+   iPhone camera and approving with Face ID signs you in. Cancel must bring back Google's "Try another way". Then on
+   `https://webauthn.io`, set Advanced Settings › User Verification to Required, pick Platform, Register: Chrome's
+   "Create a passkey" sheet, Continue, the macOS Touch ID sheet; Authenticate the same way. (iCloud Keychain
+   passkeys can't be offered until Apple grants the entitlement, ledger 42.)
 7. **Phone passkey** (ledger 39). On webauthn.io, register a second username and choose "Use a phone or tablet";
    scan the QR code with your phone's camera. Pass: the phone connects and saves the passkey; Authenticate with the
    phone succeeds.
@@ -505,7 +506,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Save / update passwords, never for this site | ✓ | ✅ | Chrome captures; Chrome's bubble is replaced by our Dia-style prompt (`CEF_NN_PASSWORD_BUBBLE`), with Save / Update (username picker) / Never / Not Now; verified (17, 18, and 19's revisit fill on a fresh profile). Settings › Passwords per profile: list, search, reveal/edit/delete, "Never saved" list, CSV import, the Offer-to-save toggle, unlock through Chrome's own device check |
 | Filling saved logins in pages | ✓ | 🧪 | Chrome's dropdown under the focused field (ledger 19); needs a key window: checklist step 2 |
 | Suggest strong password on sign-up | ✓ (Chromium) | 🧪 | Chrome's generation in the same dropdown on new-password fields; the generated-password confirmation stays Chrome's bubble (ledger 20). Checklist step 3 |
-| Passkeys / WebAuthn (iCloud Keychain) | ✓ | 🟡 | Chrome's WebAuthn stack and dialogs, centred over the page. Security keys ✅ (dialog verified). Phone (hybrid): QR sheet ✅; a real phone scan is checklist step 7. Touch ID "Chrome profile" passkeys: the vendored CEF now carries our BRANDING (bundle/team id) and the app has the `.webauthn` keychain group, so it's engine-ready; checklist step 6. iCloud Keychain ⛔: waits on Apple granting `com.apple.developer.web-browser.public-key-credential` (entitlements file ready) |
+| Passkeys / WebAuthn (iCloud Keychain) | ✓ | 🟡 | Chrome's WebAuthn stack and dialogs, centred over the page and in front of it (the ghost window lifts while Chrome shows one; before that fix, 0.1.1 drew them behind the window, so passkey sign-in looked stuck). Verified in a Developer ID build: security keys and phone (QR sheet) ✅, a real phone scan is checklist step 7; Touch ID "Chrome profile" passkeys ✅ (register and sign-in on webauthn.io with Touch ID), Google sign-in is checklist step 6; Cancel rejects the request so sites fall back. iCloud Keychain ⛔: waits on Apple granting `com.apple.developer.web-browser.public-key-credential` (entitlements file ready) |
 | Address & credit‑card autofill | ✓ | 🧪 | Chrome's autofill (save bubble + dropdown, ledger 21); Settings › Autofill lists, adds, edits and deletes addresses and cards (card number behind Touch ID). Dropdown and save bubble: checklist step 4 |
 | Edit › AutoFill menu (Contact, Passwords, Credit Card) | ✓ | ✅ | like Chrome's field menu, each item opens Chrome's dropdown at the page's focused form field (engine hook `CefShowAutofillSuggestions`, `CEF_NN_AUTOFILL_TRIGGER`): Passwords… lists the saved passwords on any text field (Chrome's "Select password" fallback), Contact… and Credit Card… the field's own suggestions (addresses or cards). With no form field focused, they open Settings on the window's profile (Passwords, or Autofill). Verified: a focused address field got Chrome's dropdown window right under it, a blurred page opened Settings; picking an entry is Chrome's own (checklist step 4) |
 | Password reveal button | ✓ | ✅ | eye button in the page's password field once the user types (never for a filled saved password; sites with their own toggle keep theirs) in `helper/page_script.js`, and reveal in Settings › Passwords. Not visually re-checked on Chrome tabs |

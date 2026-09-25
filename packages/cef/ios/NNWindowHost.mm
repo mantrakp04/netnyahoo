@@ -21,6 +21,69 @@ using namespace nn;
 @protocol NNChromiumWindow
 - (void)setActivationIndependence:(BOOL)independence;
 - (void)setPreventKeyWindow:(BOOL)prevent;
+@property(nonatomic, copy) void (^childWindowAddedHandler)(NSWindow *child);
+@property(nonatomic, copy) void (^childWindowRemovedHandler)(NSWindow *child);
+@end
+
+/// Calls `change` whenever one of the watched windows is shown or hidden (KVO on `visible`,
+/// which Chromium's own windows observe too).
+@interface NNWindowVisibilityWatcher : NSObject
+- (instancetype)initWithChange:(void (^)(void))change;
+- (void)watch:(NSWindow *)window;
+- (void)unwatch:(NSWindow *)window;
+@end
+
+@implementation NNWindowVisibilityWatcher {
+  void (^_change)(void);
+  NSMutableArray<NSWindow *> *_windows;
+  NSMutableArray *_closeObservers;
+}
+
+- (instancetype)initWithChange:(void (^)(void))change {
+  if ((self = [super init])) {
+    _change = [change copy];
+    _windows = [NSMutableArray array];
+    _closeObservers = [NSMutableArray array];
+  }
+  return self;
+}
+
+- (void)watch:(NSWindow *)window {
+  if (!window || [_windows indexOfObjectIdenticalTo:window] != NSNotFound) return;
+  [_windows addObject:window];
+  [window addObserver:self forKeyPath:@"visible" options:0 context:nil];
+  __weak NNWindowVisibilityWatcher *weakSelf = self;
+  __weak NSWindow *weakWindow = window;
+  [_closeObservers addObject:[NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification
+                                                                              object:window
+                                                                               queue:nil
+                                                                          usingBlock:^(NSNotification *) {
+                                                                            [weakSelf unwatch:weakWindow];
+                                                                          }]];
+}
+
+- (void)unwatch:(NSWindow *)window {
+  NSUInteger i = window ? [_windows indexOfObjectIdenticalTo:window] : NSNotFound;
+  if (i == NSNotFound) return;
+  [window removeObserver:self forKeyPath:@"visible"];
+  [NSNotificationCenter.defaultCenter removeObserver:_closeObservers[i]];
+  [_windows removeObjectAtIndex:i];
+  [_closeObservers removeObjectAtIndex:i];
+  if (_change) _change();
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary *)change
+                       context:(void *)context {
+  if (_change) _change();
+}
+
+- (void)dealloc {
+  for (NSWindow *window in _windows) [window removeObserver:self forKeyPath:@"visible"];
+  for (id observer in _closeObservers) [NSNotificationCenter.defaultCenter removeObserver:observer];
+}
+
 @end
 
 namespace nn {
@@ -404,21 +467,63 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     Forget();
   }
 
-  /// Exactly behind the app window: same frame, same Space, just below it.
+  /// Exactly behind the app window: same frame, same Space, just below it. In front of it
+  /// while Chrome shows a window of its own over the page (see ShowsChromeWindows).
   void Align() {
     NSWindow *ghost = Window(), *parent = parent_;
     if (!ghost || !parent || closing_) return;
     if (!NSEqualRects(ghost.frame, parent.frame)) [ghost setFrame:parent.frame display:NO];
     // Child windows go with their parent (moves, Spaces, full screen, minimising);
     // AppKit drops the link when the parent is ordered out, so restore it.
-    if (ghost.parentWindow != parent && parent.isVisible) {
-      [parent addChildWindow:ghost ordered:NSWindowBelow];
+    const bool lift = ShowsChromeWindows(ghost);
+    if (parent.isVisible && (ghost.parentWindow != parent || lift != lifted_)) {
+      if (ghost.parentWindow) [ghost.parentWindow removeChildWindow:ghost];
+      const NSWindowOrderingMode place = lift ? NSWindowAbove : NSWindowBelow;
+      [parent addChildWindow:ghost ordered:place];
       // Through Chromium's override too, so its widget knows it's on screen (its
       // child dialogs and bubbles only show over a visible Browser window).
-      [ghost orderWindow:NSWindowBelow relativeTo:parent.windowNumber];
+      [ghost orderWindow:place relativeTo:parent.windowNumber];
+      lifted_ = lift;
     }
     if (ghost.alphaValue != 0) ghost.alphaValue = 0;
     ScheduleLayout();
+  }
+
+  void ScheduleAlign() {
+    if (alignQueued_) return;
+    alignQueued_ = true;
+    CefRefPtr<Ghost> self(this);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self->alignQueued_ = false;
+      self->Align();
+    });
+  }
+
+  /// Chrome shows its web-modal dialogs (WebAuthn's passkey sheets, security key PINs…) as
+  /// normal-level child windows of the Browser window, and AppKit keeps a window's children
+  /// right above it: behind the app window while the ghost is (0.1.1 drew passkey dialogs
+  /// there, invisible). The ghost (transparent, click-through, ignored by macOS's and
+  /// Chromium's occlusion) goes in front of the app window while one of them shows.
+  static bool ShowsChromeWindows(NSWindow *ghost) {
+    for (NSWindow *child in ghost.childWindows)
+      if (child.isVisible) return true;
+    return false;
+  }
+
+  /// Follows the Chrome windows the ghost shows (ShowsChromeWindows).
+  void WatchChromeWindows(NSWindow *ghost) {
+    if (![ghost respondsToSelector:@selector(setChildWindowAddedHandler:)]) return;
+    Ghost *raw = this;  // Live() guards it: Chrome may keep the window a moment longer.
+    childWatcher_ = [[NNWindowVisibilityWatcher alloc] initWithChange:^{
+      if (Live(raw)) raw->ScheduleAlign();
+    }];
+    __weak NNWindowVisibilityWatcher *watcher = childWatcher_;
+    id<NNChromiumWindow> window = (id<NNChromiumWindow>)ghost;
+    window.childWindowAddedHandler = ^(NSWindow *child) {
+      [watcher watch:child];
+      if (Live(raw)) raw->ScheduleAlign();
+    };
+    window.childWindowRemovedHandler = ^(NSWindow *child) { [watcher unwatch:child]; };
   }
 
   NNBrowserView *Shown() const { return shown_; }
@@ -495,6 +600,8 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
       @"ignoresMouse" : @(ghost.ignoresMouseEvents),
       @"childOfParent" : @(ghost.parentWindow == parent),
       @"belowParent" : @(ghost && [parent.childWindows containsObject:ghost]),
+      @"lifted" : @(lifted_),
+      @"chromeWindows" : @(ghost.childWindows.count),
       @"anchorBrowserId" : @(Anchor() ? Anchor()->GetIdentifier() : 0),
       @"anyTabBrowserId" : @(tab ? tab->GetIdentifier() : 0),
       @"ready" : @(ready_),
@@ -512,6 +619,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     MakeWindowInert(ghost);
     ghost.collectionBehavior = NSWindowCollectionBehaviorFullScreenAuxiliary | NSWindowCollectionBehaviorIgnoresCycle |
                                NSWindowCollectionBehaviorFullScreenDisallowsTiling;
+    WatchChromeWindows(ghost);
     Align();
   }
   void OnWindowDestroyed(CefRefPtr<CefWindow> window) override {
@@ -562,12 +670,15 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   CefRefPtr<CefBrowserView> view_;
   CefRefPtr<CefWindow> window_;
   NSMutableArray *observers_;
+  NNWindowVisibilityWatcher *childWatcher_;
   NSMutableArray *pending_;
   __weak NNBrowserView *shown_;
   CefInsets insets_;
   bool laidOut_ = false;
   bool droppingAnchor_ = false;
   bool layoutQueued_ = false;
+  bool alignQueued_ = false;
+  bool lifted_ = false;
   bool ready_ = false;
   bool closing_ = false;
   bool active_ = false;
