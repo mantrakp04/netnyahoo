@@ -42,7 +42,7 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -64,7 +64,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NNFeedbackEmail</key>
@@ -113,9 +113,9 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string></string>
+	<string>https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>zQVQPc1GFFpI6r2KtdX5uKixiZmbmLw4UuDas8MHYig=</string>
+	<string>gi1pBCemmSVpHM36dT5BJPPTcKC98QwS19mztCTyd4s=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>28800</integer>
 </dict>

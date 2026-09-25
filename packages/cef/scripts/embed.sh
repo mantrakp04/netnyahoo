@@ -79,8 +79,8 @@ make_helper() {
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>$name</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>${MARKETING_VERSION:-1.0}</string>
+  <key>CFBundleVersion</key><string>${CURRENT_PROJECT_VERSION:-1}</string>
   <key>LSEnvironment</key><dict><key>MallocNanoZone</key><string>0</string></dict>
   <key>LSFileQuarantineEnabled</key><true/>
   <key>LSMinimumSystemVersion</key><string>14.0</string>

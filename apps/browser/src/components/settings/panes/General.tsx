@@ -94,7 +94,7 @@ export function GeneralPane() {
 
 /**
  * Sparkle's settings (Dia: "Automatically update Dia"). A build without an update feed
- * (Info.plist `SUFeedURL`, empty in this repo) shows them off and says so.
+ * (Info.plist `SUFeedURL` emptied) shows them off and says so.
  */
 function UpdatesSection() {
   const [state, setState] = useState<UpdaterState | null>(null);

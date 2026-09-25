@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Builds a release: scripts/release.sh <version>  (docs/releasing.md)
+#
+# Archives the Release configuration (arm64 only, like our CEF build), exports it signed with
+# Developer ID, notarizes and staples it when the notarytool keychain profile exists, and writes
+# dist/<version>/: Netnyahoo-<version>.dmg, Netnyahoo-<version>.zip (Sparkle's update archive)
+# and appcast.xml, signed with the Sparkle EdDSA key in the login keychain.
+#
+# NOTARY_PROFILE   notarytool keychain profile (default netnyahoo); missing → unnotarized
+# SPARKLE_ACCOUNT  keychain account of the Sparkle key (default netnyahoo)
+set -euo pipefail
+
+version="${1:?usage: scripts/release.sh <version>}"
+root="$(cd "$(dirname "$0")/.." && pwd)"
+app_dir="$root/apps/browser"
+macos="$app_dir/macos"
+repo="mantrakp04/netnyahoo"
+notary_profile="${NOTARY_PROFILE:-netnyahoo}"
+sparkle_account="${SPARKLE_ACCOUNT:-netnyahoo}"
+sparkle="$macos/Pods/Sparkle/bin"
+dist="$root/dist/$version"
+build="$app_dir/build-release"
+archive="$dist/Netnyahoo.xcarchive"
+app="$dist/export/Netnyahoo.app"
+zip="$dist/Netnyahoo-$version.zip"
+dmg="$dist/Netnyahoo-$version.dmg"
+
+# The version ships from the tagged commit: bump it in the project first.
+project_version="$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' "$macos/Netnyahoo.xcodeproj/project.pbxproj" | sort -u)"
+if [ "$project_version" != "$version" ]; then
+  echo "error: MARKETING_VERSION is '$project_version'. Set it to $version (and bump CURRENT_PROJECT_VERSION) first." >&2
+  exit 1
+fi
+identity="Developer ID Application"
+[[ "$(security find-identity -v -p codesigning)" == *"$identity"* ]] || { echo "error: no $identity identity" >&2; exit 1; }
+notarize=0
+if xcrun notarytool history --keychain-profile "$notary_profile" >/dev/null 2>&1; then
+  notarize=1
+else
+  echo "warning: no notarytool profile '$notary_profile'; the release won't be notarized" >&2
+fi
+
+rm -rf "$dist"
+mkdir -p "$dist"
+
+echo "==> CEF"
+"$root/packages/cef/scripts/setup.sh"
+
+echo "==> Archive"
+(cd "$app_dir" && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \
+  -configuration Release -destination 'generic/platform=macOS' ARCHS=arm64 \
+  -derivedDataPath "$build" -archivePath "$archive" -allowProvisioningUpdates archive) \
+  > "$dist/archive.log" 2>&1 || { grep -E "error:" "$dist/archive.log" >&2; echo "error: archive failed ($dist/archive.log)" >&2; exit 1; }
+
+echo "==> Export (Developer ID)"
+xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$macos/ExportOptions-DeveloperID.plist" \
+  -exportPath "$dist/export" -allowProvisioningUpdates > "$dist/export.log" 2>&1 \
+  || { cat "$dist/export.log" >&2; exit 1; }
+
+echo "==> Verify"
+codesign --verify --deep --strict "$app"
+entitlements() { codesign -d --entitlements - --xml "$1" 2>/dev/null; }
+# Chromium's helpers need their JIT entitlements under the hardened runtime.
+for helper in "(Renderer)" "(GPU)"; do
+  [[ "$(entitlements "$app/Contents/Frameworks/Netnyahoo Helper $helper.app")" == *cs.allow-jit* ]] \
+    || { echo "error: Netnyahoo Helper $helper lost allow-jit" >&2; exit 1; }
+done
+# Apple hasn't granted the managed passkey capability (Netnyahoo-ICloudPasskeys.entitlements).
+if [[ "$(entitlements "$app")" == *web-browser.public-key-credential* ]]; then
+  echo "error: the app is signed with com.apple.developer.web-browser.public-key-credential" >&2
+  exit 1
+fi
+
+notarize_file() {
+  echo "Notarizing $(basename "$1")"
+  xcrun notarytool submit "$1" --keychain-profile "$notary_profile" --wait --timeout 1h \
+    | tee "$dist/notary-$(basename "$1").log"
+  grep -q "status: Accepted" "$dist/notary-$(basename "$1").log" || { echo "error: notarization failed" >&2; exit 1; }
+}
+if [ "$notarize" = 1 ]; then
+  echo "==> Notarize app"
+  ditto -c -k --keepParent "$app" "$dist/notarize.zip"
+  notarize_file "$dist/notarize.zip"
+  rm "$dist/notarize.zip"
+  xcrun stapler staple "$app"
+fi
+
+echo "==> Package"
+ditto -c -k --keepParent "$app" "$zip"
+staging="$dist/dmg"
+mkdir -p "$staging"
+ditto "$app" "$staging/Netnyahoo.app"
+ln -s /Applications "$staging/Applications"
+hdiutil create -volname Netnyahoo -srcfolder "$staging" -format ULFO -ov "$dmg" >/dev/null
+rm -rf "$staging"
+codesign --force --sign "$identity" --timestamp "$dmg"
+if [ "$notarize" = 1 ]; then
+  notarize_file "$dmg"
+  xcrun stapler staple "$dmg"
+fi
+
+echo "==> Appcast"
+# generate_appcast updates an existing appcast, so start from the published one to keep
+# earlier versions listed.
+updates="$dist/updates"
+mkdir -p "$updates"
+cp "$zip" "$updates/"
+curl -fsL "https://github.com/$repo/releases/latest/download/appcast.xml" -o "$updates/appcast.xml" || rm -f "$updates/appcast.xml"
+# Only generate_keys (which created or imported the key) may read it without a keychain
+# prompt, so hand generate_appcast an exported copy.
+key="$(mktemp -d)/sparkle-key"
+trap 'rm -rf "$(dirname "$key")"' EXIT
+"$sparkle/generate_keys" --account "$sparkle_account" -x "$key"
+"$sparkle/generate_appcast" --ed-key-file "$key" \
+  --download-url-prefix "https://github.com/$repo/releases/download/v$version/" \
+  --link "https://github.com/$repo" "$updates"
+mv "$updates/appcast.xml" "$dist/appcast.xml"
+rm -rf "$updates"
+
+echo
+[ "$notarize" = 1 ] && echo "Notarized and stapled." || echo "NOT notarized."
+du -sh "$app" "$dmg" "$zip" "$dist/appcast.xml"

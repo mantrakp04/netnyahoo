@@ -56,3 +56,6 @@ output/
 # Test / coverage
 coverage/
 .nyc_output/
+
+# Release builds (scripts/release.sh)
+dist/

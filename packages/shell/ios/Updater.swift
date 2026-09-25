@@ -3,7 +3,7 @@ import AppKit
 import Sparkle
 #endif
 
-/// Sparkle 2 auto-updates. The feed comes from Info.plist `SUFeedURL` (empty in this repo; the
+/// Sparkle 2 auto-updates. The feed comes from Info.plist `SUFeedURL` (the GitHub releases appcast; the
 /// EdDSA public key, `SUPublicEDKey`, is set), overridable with the `NETNYAHOO_UPDATE_FEED_URL`
 /// environment variable (or the `NNUpdateFeedURL` default) so a build can be pointed at a staging
 /// appcast. A build without a feed never starts Sparkle, and Check for Updates… says updates

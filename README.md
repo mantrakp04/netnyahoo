@@ -57,6 +57,7 @@ pnpm macos
 
 Other tasks: `pnpm typecheck`, `pnpm test`, `pnpm shaders:check` (compiles the embedded Metal offline),
 `pnpm build` (Release `.app` with a Hermes bytecode bundle in `apps/browser/build/`).
+Signed releases (DMG, Sparkle zip and appcast): `scripts/release.sh <version>`, see `docs/releasing.md`.
 
 Shortcuts: ⌘T new tab, ⌘L command bar, ⌘W close, ⇧⌘T reopen, ⌘S sidebar, ⌘[ / ⌘] back/forward,
 ⌘R reload, ⌘1–⌘9 select tab, ⌃Tab cycle.

@@ -46,8 +46,8 @@ cat > "$plugin/Contents/Info.plist" <<PLIST
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>$name</string>
   <key>CFBundlePackageType</key><string>BNDL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>${MARKETING_VERSION:-1.0}</string>
+  <key>CFBundleVersion</key><string>${CURRENT_PROJECT_VERSION:-1}</string>
   <key>LSMinimumSystemVersion</key><string>$min_os</string>
   <key>NSPrincipalClass</key><string>NNDockTilePlugIn</string>
 </dict>
