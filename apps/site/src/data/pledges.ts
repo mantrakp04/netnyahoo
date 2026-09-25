@@ -1,5 +1,6 @@
 import type { ImageMetadata } from "astro";
-import browse from "../assets/shots/browse.webp";
+import addressToolbar from "../assets/shots/address-toolbar.webp";
+import addressSidebar from "../assets/shots/address-sidebar.webp";
 import split from "../assets/shots/split.webp";
 import plum from "../assets/shots/profile-plum.webp";
 import blue from "../assets/shots/profile-blue.webp";
@@ -24,12 +25,12 @@ export interface Pledge {
 
 export const pledges: Pledge[] = [
   {
-    id: "sidebar",
-    title: "Tabs belong in the sidebar.",
-    body: "Pinned tiles wear the site’s colours. Your wallpaper shows through.",
-    shots: [browse],
-    alt: "The Netnyahoo window in dark mode: three pinned tiles and seven tabs in the sidebar, the project’s GitHub page open.",
-    caption: "The sidebar",
+    id: "address-bar",
+    title: "Dissolves the toolbar.",
+    body: "Put the address bar in the sidebar. The page gets the whole window.",
+    shots: [addressToolbar, addressSidebar],
+    alt: "Two Netnyahoo windows on the same Wikipedia page: behind, the address bar in a toolbar above the page; in front, the address bar in the sidebar under the traffic lights and the page running to the top of the window.",
+    caption: "Before and after",
   },
   {
     id: "split",
