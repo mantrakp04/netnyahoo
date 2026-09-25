@@ -1,0 +1,45 @@
+packages/cef/ios/NNWindowHost.h
+  s_9c356f9574d31c::t_843dcbdcd2c15d 81-95
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_718668bd3b73b8 238,274-280
+packages/cef/ios/NNChromeWindow.mm
+  s_9c356f9574d31c::t_13f3c22e0a01a9 260-261
+  s_9c356f9574d31c::t_9b0366860c90fa 4,19,61-140,163,167-212
+  s_9c356f9574d31c::t_f3ba82668165e4 213
+packages/shell/ios/ChromeWindowSpike.swift
+  s_9c356f9574d31c::t_718668bd3b73b8 49-69
+apps/browser/src/lib/native.ts
+  s_9c356f9574d31c::t_077bc769f113b0 14
+  s_9c356f9574d31c::t_b18cd25848ad74 100,120,125-136
+packages/cef/ios/NNChromeWindow.h
+  s_9c356f9574d31c::t_9b0366860c90fa 31-39
+packages/shell/ios/ShellModule.swift
+  s_9c356f9574d31c::t_718668bd3b73b8 96-99
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_843dcbdcd2c15d 96-101
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_26026280824f31 926-928,930-931,934-940,945-946,959-978,1191,1232,1319,1404-1405,1418,1420-1447,1458-1465
+  s_9c356f9574d31c::t_843dcbdcd2c15d 131-134,437-438,447-449,522-526,591,863-866,1411-1417
+  s_9c356f9574d31c::t_3cfc117f6e68f2 129,135-138,519-521,529-532,808,906,1500-1501
+  s_9c356f9574d31c::t_6ef388c5623bf1 809-810
+  s_9c356f9574d31c::t_a0ffd5f04735e8 533,1419
+packages/shell/ios/Windows.swift
+  s_9c356f9574d31c::t_968cfff5edc5f3 132-133
+  s_9c356f9574d31c::t_718668bd3b73b8 83-84,106-110,115-131,134-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "06382452529e255c867ee96e6349cf86dc3f9f7e",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
