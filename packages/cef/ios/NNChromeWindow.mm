@@ -481,6 +481,19 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     if (!window.opaque) window.backgroundColor = NSColor.clearColor;
     return [NSString stringWithFormat:@"opaque=%d", window.opaque];
   }
+  if ([action hasPrefix:@"ime:"]) {
+    // "ime:<marked>|<committed>": an input method composing in the first responder through
+    // NSTextInputClient (as the system's IMEs do), then committing.
+    NSArray<NSString *> *parts = [[action substringFromIndex:4] componentsSeparatedByString:@"|"];
+    id<NSTextInputClient> client = (id<NSTextInputClient>)window.firstResponder;
+    if (![(id)client conformsToProtocol:@protocol(NSTextInputClient)]) return @"first responder isn't a text input client";
+    [client setMarkedText:parts[0] selectedRange:NSMakeRange(parts[0].length, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
+    const BOOL marked = client.hasMarkedText;
+    const NSRange range = client.markedRange;
+    if (parts.count > 1) [client insertText:parts[1] replacementRange:NSMakeRange(NSNotFound, 0)];
+    return [NSString stringWithFormat:@"%@ marked=%d range=%@ after commit marked=%d", Describe((NSView *)client), marked,
+                                      NSStringFromRange(range), client.hasMarkedText];
+  }
   if ([action isEqualToString:@"responder"]) {
     id r = window.firstResponder;
     return [r isKindOfClass:NSView.class] ? Describe(r) : NSStringFromClass([r class]);
