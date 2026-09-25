@@ -1,10 +1,10 @@
 # Chrome-hosted windows: Chrome's Browser window is the app window
 
-Status: design, spike, phase 1 (engine) and phase 2 (production behind the flag) done, 2026-09-26. Chrome-hosted windows are behind
+Status: design, spike, phases 1, 2 and 3a (per-profile Chrome windows) done, 2026-09-26. Chrome-hosted windows are behind
 `NETNYAHOO_CHROME_WINDOW=1` and need the engine's `CEF_NN_CLIENT_WINDOW` (in the shared `vendor/cef` since
 2026-09-26); the default path is unchanged. Screenshots and the test scripts are in
 `docs/research/chrome-hosted-window/`. Results: [Phase 1](#phase-1-engine-done),
-[Phase 2](#phase-2-production-behind-the-flag-done).
+[Phase 2](#phase-2-production-behind-the-flag-done), [Phase 3](#phase-3-per-profile-windows-and-the-rest-in-progress).
 
 ## Summary
 
@@ -108,6 +108,77 @@ Estimates after phase 1:
   - `browser_delegate.h` is included by `browser.h`, so any change to that CEF header rebuilds ~1,700 Chrome UI
     objects (7 minutes here, still incremental).
 - Phases 2–5 otherwise unchanged: about 4–6 weeks.
+
+## Phase 3 (per-profile windows and the rest), in progress
+
+**3a is done: in a flagged window no profile uses a ghost.** An app window is a group of Chrome-hosted windows, one
+per profile it shows.
+
+The engine gains **`cef-zwindow-translucent.patch`**:
+- `CefWindowDelegate::IsTranslucent` creates the window's widget `kTranslucent`.
+- Chrome-hosted windows use it, and their compositor background is transparent.
+- Installed shared on 2026-09-26; nothing on the default path asks for it.
+
+The app side:
+- `setWindowProfile(id, profile, neighbours)` from `lib/native.ts` (a no-op for ordinary windows) runs whenever
+  a window's profile changes: a swipe settles, ⌃1–9, a tab of another profile.
+- The window's Chrome window of that profile takes our root: `NNChromeWindowHost showProfile:inWindow:`, then
+  the shell's registry follows through the swap callback.
+- The profiles next to it in profile order get their windows ahead, off screen; each Browser comes with its first tab.
+- A tab of profile B mounted while profile A's window is on screen belongs to B's window's Browser
+  (`GhostForTab` → the group's window for B). So when B comes on screen its tabs are already that window's.
+- Closing the app window closes the whole group, each Browser once no tab is moving out of it.
+
+The swap (`Swap` in `NNChromeWindow.mm`) orders the new window in behind at the same frame with window
+animations off, moves the root, commits, and orders the old window out. `NETNYAHOO_PROFILE_SWAP` picks how the
+seam is covered:
+- **transparent (default):** the window leaving is translucent, so once the root has left it shows nothing.
+- **snapshot:** a picture of the window (`CGWindowListCreateImage`, looked up at run time because the SDK marks it
+  obsolete) sits in a borderless window over the swap for about 50 ms.
+- **naive:** neither.
+
+In full screen, the swap waits until the window leaves full screen. Until then that profile's pages show in the
+full-screen window, where their Chrome dialogs would belong to a window that isn't on screen. That's a known gap,
+listed for human testing.
+
+| 3a check (headless, `spike/p3.mjs`, `spike/restore3.sh`) | Result |
+|---|---|
+| The neighbour profile's window made ahead, off screen | PASS |
+| A profile switch moves our views to that profile's own Chrome window; one window on screen | PASS |
+| No ghosts: every Browser of the window is a Chrome-hosted window of one group | PASS |
+| Swipe paging Work ↔ home ×4: the store and the Chrome window on screen always agree | PASS |
+| ⌃2 / ⌃1 | PASS |
+| In the second profile's own window: autofill ↓ + Enter, passkey sheet in front with no lift, Chrome's context menu | PASS |
+| Session restore: a window left on its second profile reopens as that profile's window, home window made ahead; a second window keeps its own profile | PASS |
+| Flag off on the new engine: smoke 9/12 (same as shipped, screen locked), bundle sealed | PASS |
+
+`spike/swapmeasure.sh <app> <port> <transparent|snapshot|naive|ghost> [swaps]` records store profile switches at
+120 fps and counts frames matching neither side; `ghost` is the unflagged baseline. The plumbing is checked up to
+capture, which says plainly why it can't run (locked screen, or no Screen Recording permission). Pick the default
+strategy from its numbers.
+
+**The rest of phase 3, headless:**
+
+| Check | Flag on | Flag off |
+|---|---|---|
+| IME through `NSTextInputClient` on the page's view (marked "にほん", committed "日本") | PASS | PASS |
+| IME through CDP (`Input.imeSetComposition`, `insertText`) | PASS | PASS |
+| An extension's keyboard command (⇧⌘Y, `chrome.commands`) from the page | PASS: Chrome's own dispatcher on the key Browser window, no forwarding | PASS (our forwarding into the ghost) |
+| Multiple displays | human: this Mac has one display attached | |
+
+**Docked DevTools:**
+- CEF sets `can_dock = false` for its browsers, so today DevTools always opens in its own window.
+- Letting a `client_window` Browser dock would not make it visible. Chrome docks DevTools into `BrowserView`'s
+  contents container, a Views child drawn in the content view's own layer. Our root is a subview over that layer
+  and covers the whole window, page area included.
+- Our page is our own `NSView`, laid out by React, so it wouldn't shrink to Chrome's DevTools resizing strategy
+  either.
+- Showing Chrome's docked DevTools would need the same pieces as the API route:
+  - the page bounds from Chrome's resizing strategy;
+  - a transparent hole in our layout where DevTools draws;
+  - hit testing that falls through the hole to Chrome's views.
+- So docked DevTools is the "API + pane" item: a CEF hook handing the app the DevTools contents view and its
+  strategy, plus a pane in our layout. 2–3 days, after the rest of phase 3.
 
 ## Phase 2 (production, behind the flag), done
 
@@ -225,7 +296,7 @@ single-profile window, every incognito window, and the home profile of multi-pro
 simpler: as a `client_window` Browser it has none of the leaks that made the lift logic fussy (hover cards, zoom and
 status bubbles).
 
-This is the **phase 2 interim, not the end state**. With it, every profile other than a window's home one keeps the
+This was the **phase 2 interim**; phase 3a replaced it (below, and [Phase 3](#phase-3-per-profile-windows-and-the-rest-in-progress)). With it, every profile other than a window's home one keeps the
 seams (context menus through the fallback patch, lifted dialogs and bubbles, key forwarding), and phase 5 can't
 delete the ghost. The target is option 1, planned below as a phase 3 item.
 
@@ -506,7 +577,7 @@ Every phase ships; the flag keeps the ghost path as the default until phase 4.
 | 0. Spike | Done: `NETNYAHOO_CHROME_WINDOW=1`, this doc | 13/14 seam checks pass (`spike/spike.mjs`) | done |
 | 1. Engine groundwork | Done 2026-09-26 (see [Phase 1](#phase-1-engine-done)) | Default path unaffected; the spike without its swizzle; zoom bubble and profile menu gone; no `about:blank` in `chrome.tabs` | done (~1 day) |
 | 2. One window type behind the flag, production quality (done 2026-09-26, see [Phase 2](#phase-2-production-behind-the-flag-done)) | `NNChromeWindow` without dynamic lookups. `WindowManager`: close warning through `CanClose`, frame autosave, traffic-light x inset, incognito windows. `rootView(of:)` for every `contentView` user (§4). Command policy reviewed against Chrome's full shortcut table. Keep the ghost for secondary profiles | A browser window with the flag passes the release smoke test (`smoke.mjs` hosted variant) and the spike checks | 1–1.5 weeks |
-| 3a. Profiles: hosted per-profile windows | See [Phase 3 item](#phase-3-item-profiles-hosted-per-profile-windows): the transparent-window CEF patch, pre-made neighbour windows, the cut, full screen; measured with `spike/swapmeasure.sh` | 0 transient frames in 20 swaps; paging looks unchanged; secondary-profile ghosts gone | 1.5–2 weeks |
+| 3a. Profiles: hosted per-profile windows (done 2026-09-26 but for the measurement) | See [Phase 3 item](#phase-3-item-profiles-hosted-per-profile-windows): the transparent-window CEF patch, pre-made neighbour windows, the cut, full screen; measured with `spike/swapmeasure.sh` | 0 transient frames in 20 swaps; paging looks unchanged; secondary-profile ghosts gone | 1.5–2 weeks |
 | 3. Parity checklist | Each item tested in a flagged build, with fixes. Surfaces: save card/address, permission prompts, extension popups and install, device chooser, Cast, find, downloads, status. Window: full screen (window and HTML5; decide on `chromium-browser-view-hosted-fullscreen.patch`), Spaces, minimise, multiple displays, split view, popups, PiP, DevTools docked and undocked, drag and drop, swipes, IME, VoiceOver, extension `chrome.commands`, multi-profile windows, session restore, quitting with dialogs open | `docs/migration-status.md` ledger entries for each, user-run checks listed | 2 weeks |
 | 4. Switch the default | Flag inverted (`NETNYAHOO_CHROME_WINDOW=0` = ghost), one or two releases of dogfooding | No seam regressions reported | 3 days + a dogfood week |
 | 5. Delete the ghost | Remove the lift machinery, keycode tables, `ForwardKeyEvent`, the context-menu patch, the flag. Keep ghosts only if secondary-profile windows still need them | Smaller `NNWindowHost.mm`; release smoke test green | 2–3 days |

@@ -667,6 +667,25 @@ Still to run with the screen unlocked, flag on (`NETNYAHOO_CHROME_WINDOW=1`):
 10. **Drag and drop.** Drag a link or file from the page into the sidebar and back, and a file from Finder into the
     page.
 
+Phase 3a (per-profile Chrome windows, verified headless 2026-09-26: paging, ⌃1–9, restore, each profile's autofill,
+passkey and context menu in its own window; see the design doc › Phase 3). Still to run, screen unlocked, flag on:
+11. **Swap measurement per strategy.** `swapmeasure.sh <app> <port> transparent 20`, then `snapshot`, `naive` and
+    `ghost` (the unflagged baseline). Pass if transparent (or snapshot) shows 0 transient frames; keep the better one
+    as the default (`NNWindowHost SwapStrategy`).
+12. **Swipe paging by eye**, both ways, fast and slow, and ⌃1–9 across three profiles. Pass if it looks exactly
+    like the unflagged app (no blink, the tint cross-fade intact).
+13. **Full screen with two profiles.** Enter full screen, page to the other profile, open a passkey sheet or alert in
+    one of its tabs, then leave full screen. Pass if the page shows in full screen and the window switches to the
+    profile's own window on exit. Note what the dialog does in full screen (the known gap: it belongs to the
+    off-screen window).
+14. **Window identity.** With a window paged to its second profile: Mission Control, ⌘\`, the Window menu, Stage
+    Manager, Keep on Top, minimise and restore, moving to another Space. Pass if the app window behaves as one
+    window throughout.
+15. **Translucent windows' look.** Items 6 and 14 in Chrome-hosted windows (now non-opaque): window shadow,
+    rounded corners, vibrancy active and inactive, dark and light.
+16. **Multiple displays.** A flagged window on a second display: paging, full screen, dialogs placement, moving the
+    window across displays mid-page.
+
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order
   is pushed to Chrome.

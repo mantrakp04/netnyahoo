@@ -1,0 +1,3 @@
+{ "manifest_version": 3, "name": "Spike command", "version": "1.0",
+  "background": { "service_worker": "sw.js" },
+  "commands": { "spike": { "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" }, "description": "Spike command" } } }
