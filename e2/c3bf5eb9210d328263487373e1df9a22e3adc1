@@ -1,0 +1,92 @@
+packages/cef/ios/NNCef.mm
+  s_9c356f9574d31c::t_e740a633ee87cb 5,230,437
+packages/cef/patches/chromium-extension-install-prompt-hook.patch
+  s_9c356f9574d31c::t_d05a007f256a0e 1-31
+packages/cef/patches/cef-chrome-tabs.patch
+  s_9c356f9574d31c::t_d05a007f256a0e 174,177,227-231,235-239,274-331,569,572,576,586-590,617,638,681,704,760-762,764-827,830-886,1338-1379,1438-1468
+packages/shaders/ios/PowerUpView.swift
+  s_9c356f9574d31c::t_4135f39c5a2f5b 67-99,102-103
+  s_9c356f9574d31c::t_cf61a13fb4c6e4 4-7,10-13,18-21,24-28
+  s_9c356f9574d31c::t_c7401711ac5fbe 150-159,161-303
+  s_9c356f9574d31c::t_3c80b85050499e 160
+  s_9c356f9574d31c::t_1ac1200c4d8f28 104
+packages/cef/src/extensions.ts
+  s_9c356f9574d31c::t_336e2cbf51a5f9 149-168,174-177,314-319
+  s_9c356f9574d31c::t_efc8a8d5063cb1 201
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_57af58f37bf33c 375-376,378-380
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_b10973fd0a8018 120
+  s_9c356f9574d31c::t_ea9e25c4116489 4-7,9-11,13-15,19,21,23-95,100-119,121-169,176-177,180-181,186-187,189-190,199,201,204,207,221,225,227-228,237,242,252,259,262,270-273,275-276,278-279,288,298-300,302,304,307,319,322,324,334-335,337-338,341-352,422,432,434,440,443-444,450-452,455-463,466-468,471-477,482-483,485,487,493-496,498-506,513-514,519,530,532-533,540,543,549-550,554,559,561-562,568,572,574,579-583,609,618,635,639-640,646-647,651,655-728
+packages/cef/patches/test/ext/manifest.json
+  s_9c356f9574d31c::t_d05a007f256a0e 1-9
+apps/browser/src/components/extensions/bridge.ts
+  s_9c356f9574d31c::t_bf40588383ece2 21,292,296,305-306,343-352,359
+  s_9c356f9574d31c::t_80a4b7797af198 3,6,9
+apps/browser/src/components/extensions/ExtensionOverlays.tsx
+  s_9c356f9574d31c::t_bf40588383ece2 187-191,214,249
+packages/cef/ios/NNExtensionsInternal.h
+  s_9c356f9574d31c::t_4248fb9ffbeedc 6-7,15-22
+  s_9c356f9574d31c::t_c97b3844ea98e9 23
+packages/cef/ios/ExtensionsModule.swift
+  s_9c356f9574d31c::t_4248fb9ffbeedc 7,14,20-23
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_e96f8ad1adc37f 3-100,104-188,192-206
+apps/browser/src/components/NewTabPage.tsx
+  s_9c356f9574d31c::t_4ecf8b17961a46 2,4,21-28,47,56,68,79-82,108-110,113,117-128,150-161,163,170-171,173
+  s_9c356f9574d31c::t_1e2c92255746e9 111-112,129,134
+packages/cef/patches/ungoogled-status.tsv
+  s_9c356f9574d31c::t_d05a007f256a0e 5
+packages/cef/patches/test/nativehost.mm
+  s_9c356f9574d31c::t_d05a007f256a0e 68,73,76-90,116-121,132-160,220,258-268,271
+packages/shaders/src/index.tsx
+  s_9c356f9574d31c::t_88cd224ed22e2f 127,131-134,137-139,141-153
+packages/cef/patches/chromium-passkeys.patch
+  s_9c356f9574d31c::t_d05a007f256a0e 1-52
+packages/cef/patches/test/ext/sw.js
+  s_9c356f9574d31c::t_d05a007f256a0e 1
+apps/browser/src/lib/theme.ts
+  s_9c356f9574d31c::t_3b7cda27c63868 149-157,168,217
+  s_9c356f9574d31c::t_7d1162f5159b7b 72-73,124
+  s_9c356f9574d31c::t_926a5845125c9a 167
+packages/cef/ios/NNExtensions.mm
+  s_9c356f9574d31c::t_126e70e3585761 286-287
+  s_9c356f9574d31c::t_4248fb9ffbeedc 170-218,233-238,242,244-246
+  s_9c356f9574d31c::t_e740a633ee87cb 239-241,243
+  s_9c356f9574d31c::t_693de0db2eaf5c 247
+apps/browser/src/components/extensions/state.ts
+  s_9c356f9574d31c::t_f546f2e7dfaecd 12,14,95-99,101-105
+  s_9c356f9574d31c::t_bf40588383ece2 10,16
+  s_9c356f9574d31c::t_efc8a8d5063cb1 37-38,129-152,156-162,176
+docs/migration-status.md
+  s_9c356f9574d31c::t_bc7fca9cf30605 76-77
+  s_9c356f9574d31c::t_ab8f0ed424cc91 231-262
+packages/cef/ios/NNChromePages.mm
+  s_9c356f9574d31c::t_5c0cefba5ef0a4 132-133,140-147,150,458
+docs/dia-spec.md
+  s_9c356f9574d31c::t_9ec6cc4cf4252a 170-173,270-271,274,293-317,319-351
+  s_9c356f9574d31c::t_4e2c2b3527e9b4 318
+  s_9c356f9574d31c::t_048c3375287a55 352
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_4248fb9ffbeedc 63-68
+packages/shaders/ios/ShadersModule.swift
+  s_9c356f9574d31c::t_3c80b85050499e 110-113
+packages/cef/ios/NNExtensions.h
+  s_9c356f9574d31c::t_4248fb9ffbeedc 22-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e2c3bf5eb9210d328263487373e1df9a22e3adc1",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
