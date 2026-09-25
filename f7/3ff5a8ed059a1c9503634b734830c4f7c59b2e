@@ -1,0 +1,23 @@
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_79b6585f5153ea 19,23,25-30,53-57,119,692
+  s_9c356f9574d31c::t_d3e9ee3b8913e7 189-190,379,526,577,626,628,698
+  s_9c356f9574d31c::t_5cb09ea13de26b 260,304,367
+docs/dia-spec.md
+  s_9c356f9574d31c::t_3272fc89190fea 97,495-540,542-545
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f73ff5a8ed059a1c9503634b734830c4f7c59b2e",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
