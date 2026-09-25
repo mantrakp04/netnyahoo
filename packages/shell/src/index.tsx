@@ -39,6 +39,7 @@ export type BrowserCommand =
   | "focusNextPane"
   | "focusPreviousPane"
   | "toggleFullUrl"
+  | "toggleAddressBar"
   | "cast"
   | "zoomReset"
   | "zoomIn"

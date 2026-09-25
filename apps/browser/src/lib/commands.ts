@@ -58,6 +58,8 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return;
     case "toggleFullUrl":
       return s.updateSettings({ showFullUrl: !s.settings.showFullUrl });
+    case "toggleAddressBar":
+      return s.updateSettings({ addressBar: s.settings.addressBar === "sidebar" ? "toolbar" : "sidebar" });
     case "openSettings":
       return openSettings();
     case "keyboardShortcuts":

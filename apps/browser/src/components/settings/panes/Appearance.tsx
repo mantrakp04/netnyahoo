@@ -27,8 +27,78 @@ export function AppearancePane() {
           <ModeChoice key={m.value} mode={m.value} title={m.title} description={m.description} selected={appearance === m.value} onPress={() => choose(m.value)} />
         ))}
       </View>
+      <AddressBarPicker />
       <AppIconPicker />
     </View>
+  );
+}
+
+/** Where the address bar and back / forward / reload go: the page's toolbar, or the top of the sidebar (Arc). */
+function AddressBarPicker() {
+  const addressBar = useBrowser((s) => s.settings.addressBar);
+  const topTabs = useBrowser((s) => s.settings.tabLayout === "top");
+  const choose = (value: Settings["addressBar"]) => useBrowser.getState().updateSettings({ addressBar: value });
+  return (
+    <>
+      <SectionHeader
+        title="Address Bar"
+        description={
+          topTabs
+            ? "Tabs are across the top of the window, so the address bar stays in the toolbar. Also in View › Show Address Bar in Sidebar."
+            : "In the sidebar, the page gets the toolbar’s height. While the sidebar is hidden, the address bar is in the toolbar. Also in View › Show Address Bar in Sidebar."
+        }
+      />
+      <View style={{ flexDirection: "row", gap: 14 }}>
+        <AddressBarChoice value="toolbar" title="In the toolbar" selected={addressBar !== "sidebar"} onPress={() => choose("toolbar")} />
+        <AddressBarChoice value="sidebar" title="In the sidebar" selected={addressBar === "sidebar"} onPress={() => choose("sidebar")} />
+      </View>
+    </>
+  );
+}
+
+/** A miniature window with the address bar over the page, or at the top of the sidebar. */
+function AddressBarChoice({ value, title, selected, onPress }: { value: Settings["addressBar"]; title: string; selected: boolean; onPress: () => void }) {
+  const theme = useTheme();
+  const colors = useFormColors();
+  const bar = theme.dark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.16)";
+  const field = theme.dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
+  const page = theme.dark ? "rgba(255,255,255,0.08)" : "#FFFFFF";
+  const sidebar = value === "sidebar";
+  return (
+    <Pressable onPress={onPress} style={{ flex: 1, alignItems: "center", gap: 7 }}>
+      <View
+        style={{
+          width: "100%",
+          height: 84,
+          borderRadius: 9,
+          padding: 6,
+          flexDirection: "row",
+          gap: 5,
+          borderWidth: selected ? 2.5 : 1,
+          borderColor: selected ? colors.accent : colors.groupBorder,
+          backgroundColor: theme.dark ? "#2A2A2C" : "#E9E9EB",
+        }}
+      >
+        <View style={{ width: "28%", gap: 3, paddingTop: sidebar ? 3 : 8 }}>
+          {sidebar && <View style={{ height: 8, borderRadius: 3, marginBottom: 2, backgroundColor: field, borderWidth: 1, borderColor: colors.accent }} />}
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={{ height: 5, borderRadius: 2.5, backgroundColor: bar }} />
+          ))}
+        </View>
+        <View style={{ flex: 1, borderRadius: 4, backgroundColor: page, overflow: "hidden" }}>
+          {!sidebar && (
+            <View style={{ height: 13, flexDirection: "row", alignItems: "center", paddingHorizontal: 5, gap: 5, borderBottomWidth: 1, borderBottomColor: field }}>
+              <View style={{ width: 14, height: 4, borderRadius: 2, backgroundColor: bar }} />
+              <View style={{ flex: 1, height: 7, borderRadius: 2.5, backgroundColor: field, borderWidth: 1, borderColor: colors.accent }} />
+            </View>
+          )}
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+        {selected && <Symbol name="checkmark.circle.fill" size={12} color={colors.accent} style={{ width: 14, height: 14 }} />}
+        <Text style={{ fontSize: 12, color: selected ? theme.textPrimary : theme.textSecondary }}>{title}</Text>
+      </View>
+    </Pressable>
   );
 }
 
