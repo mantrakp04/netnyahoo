@@ -19,7 +19,7 @@ import {
 import { Appearance } from "react-native";
 import { folderChildren, isBookmarked } from "../store/bookmarks";
 import { useBrowser, type BrowserState } from "../store/browser";
-import { activeTab, bookmarkProfileId, IDLE_LIVE, incognitoProfileId, tabLabel, windowTitle } from "../store/model";
+import { activeTab, bookmarkProfileId, engineProfile, IDLE_LIVE, incognitoProfileId, tabLabel, windowTitle } from "../store/model";
 import { splitOf } from "../store/splits";
 import { canGoBack, canGoForward } from "../components/layout/history";
 import type { Bookmarks, BookmarkNode } from "../store/types";
@@ -106,7 +106,9 @@ export function startNativeSync() {
       if (!open.has(id)) {
         open.add(id);
         titles.set(id, windowTitle(s, id));
-        void openWindow(id, { frame: w.frame, incognito: w.incognito, title: titles.get(id), focus: id === s.ui.focusedWindowId });
+        // An incognito window's profile is its own ("incognito:<id>").
+        const profile = engineProfile(w.profileId);
+        void openWindow(id, { frame: w.frame, incognito: w.incognito, title: titles.get(id), focus: id === s.ui.focusedWindowId, profile });
       }
     }
     for (const id of [...open]) {

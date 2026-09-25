@@ -426,7 +426,11 @@ void Client::OnFullscreenModeChange(CefRefPtr<CefBrowser> browser, bool fullscre
   fullscreen_ = fullscreen;
   NSWindow *window = view_.window;
   BOOL windowFullscreen = (window.styleMask & NSWindowStyleMaskFullScreen) != 0;
-  if (fullscreen && !windowFullscreen) {
+  // A test instance (NETNYAHOO_BACKGROUND) never takes the window full screen: that opens a new
+  // Space on the screen of whoever is working next to it. The page still goes full screen in the
+  // window (logged to activation.log).
+  const bool mayToggle = !activation::Background() || activation::Allow(@"toggleFullScreen: (page full screen)");
+  if (fullscreen && !windowFullscreen && mayToggle) {
     enteredFullscreen_ = true;
     [window toggleFullScreen:nil];
   } else if (!fullscreen && windowFullscreen && enteredFullscreen_) {

@@ -66,14 +66,17 @@ final class WindowManager: NSObject, NSWindowDelegate {
     window.level = window.level == .floating ? .normal : .floating
   }
 
-  func open(id: String, frame: [Double]?, incognito: Bool, title: String, focus: Bool, kind: String = "browser") {
+  /// `profile`: the engine profile the window shows first (only Chrome-hosted windows use it; they
+  /// are that profile's Chrome window).
+  func open(id: String, frame: [Double]?, incognito: Bool, title: String, focus: Bool, kind: String = "browser", profile: String? = nil) {
     if let existing = windows[id] {
       if focus { existing.makeKeyAndOrderFront(nil) }
       return
     }
     if kind != "browser" { return openAux(id: id, kind: kind, title: title) }
     guard let makeWindow = WindowHost.makeWindow, let makeContentView = WindowHost.makeContentView else { return }
-    if let chromeWindow = ChromeWindowSpike.makeWindow(incognito: incognito) {
+    if let chromeWindow = ChromeWindowSpike.makeWindow(profile: profile) {
+      if incognito { chromeWindow.appearance = NSAppearance(named: .darkAqua) }
       // Chrome owns this window and its delegate: our root goes over Chrome's views, and the
       // delegate calls below come as notifications.
       ChromeWindowSpike.embed(makeContentView(id), in: chromeWindow)

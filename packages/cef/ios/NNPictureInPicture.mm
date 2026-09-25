@@ -1,5 +1,7 @@
 #import "NNPictureInPicture.h"
 
+#import "NNChromeWindow.h"
+
 #import "NNClient.h"
 
 #import <objc/runtime.h>
@@ -287,12 +289,14 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 - (instancetype)initWithWindow:(NSWindow *)window {
   if ((self = [super init])) {
     _window = window;
-    _overlay = [[NNPiPOverlay alloc] initWithFrame:window.contentView.bounds];
+    // Over our root (in a Chrome-hosted window the root takes every click on the content view).
+    NSView *root = NNWindowRootView(window);
+    _overlay = [[NNPiPOverlay alloc] initWithFrame:root.bounds];
     _overlay.controller = self;
     __weak NNPiPController *weakSelf = self;
     _overlay.pill.onClick = ^{ [weakSelf backToTab]; };
     _overlay.handle.onClick = ^{ [weakSelf unstash]; };
-    [window.contentView addSubview:_overlay];
+    [root addSubview:_overlay];
     objc_setAssociatedObject(window, kControllerKey, self, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
@@ -499,7 +503,7 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
   // The window's layers at 2x over a grey stand-in for the video (the compositor's layers
   // don't render here, and screencapture fails while the screen is locked).
   auto snapshot = [=](NSString *name) {
-    NSView *content = window.contentView;
+    NSView *content = NNWindowRootView(window);
     NSSize size = content.bounds.size;
     NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil pixelsWide:size.width * 2 pixelsHigh:size.height * 2
                                                                   bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
@@ -530,7 +534,7 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
     [self settle];
   };
 
-  record(@"attached", self.overlay.superview == window.contentView && [window.contentView.subviews.lastObject isEqual:self.overlay],
+  record(@"attached", self.overlay.superview == NNWindowRootView(window) && [NNWindowRootView(window).subviews.lastObject isEqual:self.overlay],
          @{@"level" : @(window.level), @"keepOnTop" : @(self.keepOnTop)});
   self.pointerInside = YES;
   after(0.6, ^{

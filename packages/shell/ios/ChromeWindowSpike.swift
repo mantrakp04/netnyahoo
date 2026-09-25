@@ -13,12 +13,22 @@ enum ChromeWindowSpike {
     return cls
   }
 
-  /// A Chrome Browser window for a new browser window, or nil to make the usual one.
-  static func makeWindow(incognito: Bool) -> NSWindow? {
-    // Incognito windows keep the ghost path (their profile is made later, per window).
-    guard !incognito, let host else { return nil }
+  /// A Chrome Browser window of `profile` (the engine's name for the window's profile, incognito
+  /// ones included) for a new browser window, or nil to make the usual one.
+  static func makeWindow(profile: String?) -> NSWindow? {
+    guard let profile, let host else { return nil }
+    installCloseHandler(host)
     let selector = NSSelectorFromString("makeWindowForProfile:")
-    return host.perform(selector, with: "")?.takeUnretainedValue() as? NSWindow
+    return host.perform(selector, with: profile)?.takeUnretainedValue() as? NSWindow
+  }
+
+  /// The close button of a Chrome-hosted window asks the WindowManager, as its delegate would.
+  private static var closeHandlerInstalled = false
+  private static func installCloseHandler(_ host: NSObject.Type) {
+    guard !closeHandlerInstalled else { return }
+    closeHandlerInstalled = true
+    let handler: @convention(block) (NSWindow) -> Bool = { WindowManager.shared.windowShouldClose($0) }
+    (host as AnyObject).setValue(handler, forKey: "shouldCloseHandler")
   }
 
   static func embed(_ root: NSView, in window: NSWindow) {

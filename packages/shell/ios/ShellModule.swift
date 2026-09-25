@@ -88,7 +88,8 @@ public class ShellModule: Module {
         incognito: options["incognito"] as? Bool ?? false,
         title: options["title"] as? String ?? "",
         focus: options["focus"] as? Bool ?? true,
-        kind: options["kind"] as? String ?? "browser")
+        kind: options["kind"] as? String ?? "browser",
+        profile: options["profile"] as? String)
     }.runOnQueue(.main)
 
     AsyncFunction("closeWindow") { (id: String) in WindowManager.shared.close(id: id) }.runOnQueue(.main)

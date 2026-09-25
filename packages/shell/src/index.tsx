@@ -168,6 +168,8 @@ export type OpenWindowOptions = {
   focus?: boolean;
   /** "settings" / "import" / "taskManager": a utility window (own React root, no tabs, frame autosaved). */
   kind?: "browser" | "settings" | "import" | "taskManager";
+  /** The engine profile the window shows first (Chrome-hosted windows are that profile's Chrome window). */
+  profile?: string;
 };
 
 export type MenuEntry = { id: string; title: string; current?: boolean };

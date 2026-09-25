@@ -25,7 +25,17 @@ NS_ASSUME_NONNULL_BEGIN
 /// Unmounts `window`'s root view (it's closing).
 + (void)removeRootViewOfWindow:(NSWindow *)window;
 
+/// Asked when the user closes a Chrome-hosted window (close button, performClose:): the app's
+/// windowShouldClose (it may ask first and close the window itself). Set by the shell.
+@property(class, nonatomic, copy, nullable) BOOL (^shouldCloseHandler)(NSWindow *window);
++ (BOOL)windowShouldClose:(NSWindow *)window;
+
 @end
+
+/// The view our React root fills a window with: the embedded root of a Chrome-hosted window (its
+/// content view is Chrome's), else the content view. Add views over the whole window to this one:
+/// in a Chrome-hosted window the root takes every click on the content view first.
+NSView *_Nullable NNWindowRootView(NSWindow *_Nullable window);
 
 @interface NNChromeWindowHost (Dev)
 

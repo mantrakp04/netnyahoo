@@ -19,7 +19,47 @@ bool TakesEmbeddedView(NSView *content) {
   return [content respondsToSelector:@selector(setNetnyahooEmbeddedView:)];
 }
 
+BOOL (^gShouldClose)(NSWindow *);
+
+/// BrowserWindow's traffic lights: 18 pt in from the left, centred in the 53 pt titlebar (CEF centres
+/// them vertically in GetTitlebarHeight; its frame puts them further in).
+constexpr CGFloat kTrafficLightInsetX = 18;
+
+void LayoutTrafficLights(NSWindow *window) {
+  if (window.styleMask & NSWindowStyleMaskFullScreen) return;
+  NSButton *close = [window standardWindowButton:NSWindowCloseButton];
+  NSButton *mini = [window standardWindowButton:NSWindowMiniaturizeButton];
+  NSButton *zoom = [window standardWindowButton:NSWindowZoomButton];
+  if (!close || !mini || !zoom) return;
+  const CGFloat spacing = NSMinX(mini.frame) - NSMinX(close.frame);
+  // In window coordinates: CEF's titlebar container sits a little in from the window's edge.
+  const CGFloat offset = [close.superview convertPoint:NSZeroPoint toView:nil].x;
+  const CGFloat x = kTrafficLightInsetX - offset;
+  if (fabs(NSMinX(close.frame) - x) < 0.5) return;
+  NSArray<NSButton *> *buttons = @[ close, mini, zoom ];
+  for (NSUInteger i = 0; i < buttons.count; i++)
+    [buttons[i] setFrameOrigin:NSMakePoint(x + i * spacing, NSMinY(buttons[i].frame))];
+}
+
+/// CefThemeFrame lays the buttons out again on resizes, key changes and full-screen exits.
+void KeepTrafficLightsInset(NSWindow *window) {
+  __weak NSWindow *weakWindow = window;
+  for (NSNotificationName name in @[
+         NSWindowDidResizeNotification, NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
+         NSWindowDidExitFullScreenNotification, NSWindowDidBecomeMainNotification
+       ])
+    [NSNotificationCenter.defaultCenter addObserverForName:name object:window queue:nil usingBlock:^(NSNotification *) {
+      LayoutTrafficLights(weakWindow);
+      dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
+    }];
+  dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
+}
+
 }  // namespace
+
+NSView *NNWindowRootView(NSWindow *window) {
+  return [NNChromeWindowHost rootViewOfWindow:window] ?: window.contentView;
+}
 
 @implementation NNChromeWindowHost
 
@@ -39,7 +79,20 @@ bool TakesEmbeddedView(NSView *content) {
   }
   window.minSize = NSMakeSize(720, 460);
   window.title = @"Netnyahoo";
+  KeepTrafficLightsInset(window);
   return window;
+}
+
++ (void)setShouldCloseHandler:(BOOL (^)(NSWindow *))handler {
+  gShouldClose = [handler copy];
+}
+
++ (BOOL (^)(NSWindow *))shouldCloseHandler {
+  return gShouldClose;
+}
+
++ (BOOL)windowShouldClose:(NSWindow *)window {
+  return gShouldClose ? gShouldClose(window) : YES;
 }
 
 + (void)embedRootView:(NSView *)root inWindow:(NSWindow *)window {
@@ -179,6 +232,65 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     };
     walk(window, 0);
     return [lines componentsJoinedByString:@"\n"];
+  }
+  if ([action isEqualToString:@"winfo"]) {
+    // The window as AppKit and the window server see it.
+    NSMutableDictionary *info = [NSMutableDictionary dictionary];
+    info[@"frame"] = NSStringFromRect(window.frame);
+    info[@"contentView"] = [NSString stringWithFormat:@"%@ %@", window.contentView.className, NSStringFromRect(window.contentView.frame)];
+    info[@"frameView"] = [NSString stringWithFormat:@"%@ %@", window.contentView.superview.className, NSStringFromRect(window.contentView.superview.frame)];
+    info[@"root"] = NSStringFromRect([NNChromeWindowHost rootViewOfWindow:window].frame);
+    info[@"styleMask"] = @(window.styleMask);
+    info[@"opaque"] = @(window.opaque);
+    info[@"hasShadow"] = @(window.hasShadow);
+    info[@"alpha"] = @(window.alphaValue);
+    info[@"level"] = @(window.level);
+    info[@"background"] = window.backgroundColor.description ?: @"";
+    NSButton *close = [window standardWindowButton:NSWindowCloseButton];
+    info[@"closeButton"] = close ? NSStringFromRect([close convertRect:close.bounds toView:nil]) : @"";
+    info[@"appearance"] = window.appearance.name ?: @"";
+    NSWindow *sheet = window.attachedSheet;
+    info[@"sheet"] = sheet ? [NSString stringWithFormat:@"%@ %@", sheet.className, NSStringFromRect(sheet.frame)] : @"";
+    if ([sheet.windowController respondsToSelector:@selector(window)] || sheet) {
+      NSMutableArray *texts = [NSMutableArray array];
+      NSMutableArray *stack = [NSMutableArray arrayWithObject:sheet.contentView ?: [NSView new]];
+      while (stack.count) {
+        NSView *v = stack.lastObject;
+        [stack removeLastObject];
+        if ([v isKindOfClass:NSTextField.class] && [(NSTextField *)v stringValue].length) [texts addObject:[(NSTextField *)v stringValue]];
+        if ([v isKindOfClass:NSButton.class] && [(NSButton *)v title].length) [texts addObject:[(NSButton *)v title]];
+        [stack addObjectsFromArray:v.subviews];
+      }
+      info[@"sheetText"] = texts;
+    }
+    NSArray *list = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionIncludingWindow, (CGWindowID)window.windowNumber));
+    info[@"cgBounds"] = [list.firstObject objectForKey:(id)kCGWindowBounds] ?: @{};
+    NSData *json = [NSJSONSerialization dataWithJSONObject:info options:0 error:nil];
+    return [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
+  }
+  if ([action isEqualToString:@"performClose"]) {
+    // The close button's path (windowShouldClose → the app's close warning).
+    dispatch_async(dispatch_get_main_queue(), ^{ [window performClose:nil]; });
+    return @"ok";
+  }
+  if ([action hasPrefix:@"style:"]) {
+    // "style:<styleMask>" / "shadow:0|1" (DEV experiments on the window server's view of the window).
+    window.styleMask = (NSWindowStyleMask)[action substringFromIndex:6].longLongValue;
+    return @"ok";
+  }
+  if ([action hasPrefix:@"shadow:"]) {
+    window.hasShadow = [action hasSuffix:@"1"];
+    return @"ok";
+  }
+  if ([action hasPrefix:@"root:"]) {
+    // "root:hide|show": what the window shows without our views (Chrome's own drawing).
+    [NNChromeWindowHost rootViewOfWindow:window].hidden = [action hasSuffix:@"hide"];
+    return @"ok";
+  }
+  if ([action hasPrefix:@"opaque:"]) {
+    window.opaque = [action hasSuffix:@"1"];
+    if (!window.opaque) window.backgroundColor = NSColor.clearColor;
+    return [NSString stringWithFormat:@"opaque=%d", window.opaque];
   }
   if ([action isEqualToString:@"responder"]) {
     id r = window.firstResponder;

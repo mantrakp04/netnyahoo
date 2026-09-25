@@ -126,6 +126,10 @@ bool gActivatingTab = false;
 Ghost *GhostFor(NSWindow *window, NSString *profile);
 Ghost *GhostOf(CefRefPtr<CefBrowser> browser);
 bool Live(Ghost *ghost);
+/// `window` is a Chrome-hosted window (its home profile's Browser window).
+bool IsHostingWindow(NSWindow *window);
+/// Chrome's "current window" for a Chrome-hosted window: the Browser of the profile it shows.
+void ActivateCurrentProfile(NSWindow *window);
 
 /// NNBrowserViews of `window`, the visible ones first.
 NSArray<NNBrowserView *> *ViewsIn(NSWindow *window) {
@@ -386,6 +390,8 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     if (founder) router_->SetFounder(founder);
     CefBrowserSettings browserSettings = settings ? *settings : CefBrowserSettings();
     NSString *firstURL = founder && url.length ? url : @"about:blank";
+    // A Chrome-hosted window's other profiles (docs/research/chrome-hosted-window.md › Profiles).
+    companion_ = NN_CLIENT_WINDOW && IsHostingWindow(parent_);
     CefRefPtr<Ghost> self(this);
     pages::WhenProfileReady(profile_, ^(CefRefPtr<CefRequestContext> context) {
       if (self->closing_ || !self->parent_) return;
@@ -393,6 +399,14 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
 #if NN_CHROME_TABS
       // A normal (tabbed) Browser whose tabs we host in our views.
       first.native_contents_hosting = STATE_ENABLED;
+#endif
+#if NN_CLIENT_WINDOW
+      // Nothing of Chrome's own UI (tab strip, toolbar, zoom and status bubbles) to leak over the
+      // page when the ghost lifts, and a Browser that outlives its tabs as the window's does.
+      if (self->companion_) {
+        first.client_window = STATE_ENABLED;
+        first.chrome_status_bubble = STATE_DISABLED;
+      }
 #endif
       self->view_ = CefBrowserView::CreateBrowserView(self->router_, ToCef(firstURL), first, nullptr, context, self.get());
       self->window_ = CefWindow::CreateTopLevelWindow(self.get());
@@ -468,7 +482,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   /// isn't ready). An empty `url` makes a placeholder anchor, which the next DropAnchor closes.
   CefRefPtr<CefBrowser> CreateHostedTab(CefRefPtr<Client> client, NSString *url, const CefBrowserSettings &settings) {
 #if NN_CLIENT_WINDOW
-    if (!view_ || !ready_) return nullptr;
+    if (!view_ || !ready_ || !KeepsBrowser()) return nullptr;
     const bool anchor = !client;
     if (anchor) router_->ExpectAnchor();
     Ghost *previous = gCreatingIn;
@@ -488,10 +502,24 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   /// for a hosting window without tabs a new placeholder anchor. nullptr if there's none.
   CefRefPtr<CefBrowser> AnyTabOrAnchor(CefRefPtr<CefBrowser> except = nullptr) {
     if (CefRefPtr<CefBrowser> tab = AnyTab(except)) return tab;
-    return hosting_ ? CreateHostedTab(nullptr, nil, CefBrowserSettings()) : nullptr;
+    return KeepsBrowser() ? CreateHostedTab(nullptr, nil, CefBrowserSettings()) : nullptr;
   }
 
   bool Hosting() const { return hosting_; }
+  /// A client_window Browser: a Chrome-hosted window's own, or one of its other profiles' ghosts.
+  /// It outlives its last tab (tabs are added with CefBrowserView::CreateTab then).
+  bool KeepsBrowser() const { return hosting_ || companion_; }
+
+  /// The profile the window shows now is this Browser's: its shown page is on screen, or (the
+  /// window's home Browser) no other profile's is.
+  bool ShowsCurrentProfile() const {
+    NNBrowserView *shown = shown_;
+    if (shown && shown.window == parent_ && shown.visible && !shown.hidden) return true;
+    if (!hosting_) return false;
+    for (auto &g : gGhosts)
+      if (g.get() != this && g->parent_ == parent_ && !g->Closed() && g->ShowsCurrentProfile()) return false;
+    return true;
+  }
 
   /// The Browser has its first tab: queued work (more tabs, moves) can run.
   void FirstTabCreated() {
@@ -647,6 +675,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   void SetShown(NNBrowserView *view) {
     shown_ = view;
     ScheduleLayout();
+    if (NSWindow *parent = parent_; parent.isKeyWindow && IsHostingWindow(parent)) ActivateCurrentProfile(parent);
   }
 
   void ScheduleLayout() {
@@ -691,9 +720,20 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   }
 
   void SetActive(bool active) {
+    // A Chrome-hosted window's key state goes to the Browser of the profile it shows (after
+    // Chrome's own activation of the window's home Browser).
+    if (active && (hosting_ || companion_)) return ActivateCurrentProfile(parent_);
     active_ = active;
 #if NN_CHROME_TABS
     // Chrome's "current window" (extensions, chrome.commands, Chrome commands) is this Browser.
+    if (CefRefPtr<CefBrowser> tab = AnyTab()) tab->GetHost()->SetWindowActive(active);
+#endif
+  }
+
+  /// Tells Chrome this Browser's window is (or isn't) the active one.
+  void ReportActive(bool active) {
+    active_ = active;
+#if NN_CHROME_TABS
     if (CefRefPtr<CefBrowser> tab = AnyTab()) tab->GetHost()->SetWindowActive(active);
 #endif
   }
@@ -723,6 +763,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
       @"active" : @(active_),
       @"pageInsets" : @[ @(insets_.top), @(insets_.left), @(insets_.bottom), @(insets_.right) ],
       @"hosting" : @(hosting_),
+      @"companion" : @(companion_),
     };
   }
 
@@ -757,6 +798,9 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     }
   }
   bool CanClose(CefRefPtr<CefWindow> window) override {
+    // The close button (or performClose:) on a Chrome-hosted window: the app decides, as its
+    // window delegate would (Dia's "warn before closing a window"), and closes it itself.
+    if (hosting_ && !closing_ && !ShuttingDown()) return [NNChromeWindowHost windowShouldClose:Window()];
     // Stock: the ghost lives as long as the app window does (Chrome would close it
     // with its anchor tab, or on chrome.windows.remove). Chrome tabs: it's a Chrome
     // window like any other, closing when its last tab does.
@@ -811,6 +855,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   bool closing_ = false;
   bool active_ = false;
   bool hosting_ = false;
+  bool companion_ = false;
   bool browserStarted_ = false;
   IMPLEMENT_REFCOUNTING(Ghost);
 };
@@ -820,6 +865,28 @@ bool Live(Ghost *ghost) {
   for (auto &g : gGhosts)
     if (g.get() == ghost) return true;
   return false;
+}
+
+bool IsHostingWindow(NSWindow *window) {
+  if (!window) return false;
+  for (auto &ghost : gGhosts)
+    if (ghost->Hosting() && ghost->Parent() == window && !ghost->Closed()) return true;
+  return false;
+}
+
+/// The Browser of the profile `window` shows is (or isn't) Chrome's active one; its other
+/// profiles' Browsers aren't.
+void ReportCurrentProfileActive(NSWindow *window, bool active) {
+  for (auto &ghost : gGhosts)
+    if (ghost->Parent() == window && !ghost->Closed()) ghost->ReportActive(active && ghost->ShowsCurrentProfile());
+}
+
+void ActivateCurrentProfile(NSWindow *window) {
+  // After this turn: Chrome's own handling of the window becoming key marks its home Browser
+  // active first.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (window.isKeyWindow) ReportCurrentProfileActive(window, true);
+  });
 }
 
 Ghost *GhostFor(NSWindow *window, NSString *profile) {
@@ -1057,8 +1124,8 @@ void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, con
     CefBrowserSettings tabSettings = settings;
     ghost->WhenReady(^(Ghost *g) {
       if (!client->View()) return;  // the view went away meanwhile
-      // A Chrome-hosted window's Browser outlives its tabs.
-      if (g->Hosting() && !g->AnyTab()) {
+      // A Chrome-hosted window's Browsers outlive their tabs.
+      if (g->KeepsBrowser() && !g->AnyTab()) {
         g->CreateHostedTab(client, url, tabSettings);
         return;
       }
@@ -1304,8 +1371,14 @@ NSString *DevWindowAction(NSInteger windowNumber, NSString *action) {
   }
   if ([action hasPrefix:@"active:"]) {
     // "active:1|0": the window's key state as its ghosts report it to Chrome (test instances never become key).
-    for (auto &ghost : gGhosts)
-      if (ghost->Parent() == window) ghost->SetActive([action hasSuffix:@"1"]);
+    const bool active = [action hasSuffix:@"1"];
+    // A Chrome-hosted window: only the Browser of the profile it shows.
+    if (IsHostingWindow(window)) {
+      ReportCurrentProfileActive(window, active);
+    } else {
+      for (auto &ghost : gGhosts)
+        if (ghost->Parent() == window) ghost->SetActive(active);
+    }
     return @"ok";
   }
   if ([action hasPrefix:@"frame:"]) {
