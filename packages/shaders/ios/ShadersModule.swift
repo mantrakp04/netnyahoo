@@ -61,7 +61,14 @@ public class WindowBackdropModule: Module {
 
     View(WindowBackdropView.self) {
       Prop("colors") { (view: WindowBackdropView, colors: [String]) in view.setColors(colors) }
-      Prop("inactiveColors") { (view: WindowBackdropView, colors: [String]) in view.setInactiveColors(colors) }
+      Prop("vibrancy") { (view: WindowBackdropView, on: Bool) in view.setVibrancy(on) }
+      Prop("tintColor") { (view: WindowBackdropView, hex: String) in
+        if let c = SIMD4<Float>(hex: hex) {
+          view.setTint { $0.color = NSColor(displayP3Red: CGFloat(c.x), green: CGFloat(c.y), blue: CGFloat(c.z), alpha: 1) }
+        }
+      }
+      Prop("tintAlpha") { (view: WindowBackdropView, v: Double) in view.setTint { $0.alpha = v } }
+      Prop("tintLightness") { (view: WindowBackdropView, v: Double) in view.setTint { $0.lightness = v } }
       Prop("angle") { (view: WindowBackdropView, deg: Double) in view.setAngle(deg) }
       Prop("grainOpacity") { (view: WindowBackdropView, v: Double) in view.set(\.grainOpacity, Float(v)) }
       Prop("grainScale") { (view: WindowBackdropView, v: Double) in view.set(\.grainScale, Float(v)) }

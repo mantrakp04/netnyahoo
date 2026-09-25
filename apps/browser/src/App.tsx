@@ -60,7 +60,7 @@ function BrowserWindow() {
 
   return (
     <View style={{ flex: 1, flexDirection: "row" }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      <WindowBackdrop colors={theme.windowTint} inactiveColors={theme.windowTintInactive} grainOpacity={theme.grain} style={StyleSheet.absoluteFill} />
+      <WindowBackdrop vibrancy {...theme.backdrop} colors={theme.windowTint} grainOpacity={theme.grain} style={StyleSheet.absoluteFill} />
       {/* While the sidebar pages between profiles, the tint cross-fades between their colours. */}
       <ProfileTint />
       {showSidebar && (

@@ -45,10 +45,20 @@ export function AreaLight({ source, palette = "pink", ...props }: AreaLightProps
 }
 
 export type WindowBackdropProps = ViewProps & {
-  /** Gradient stops as hex; interpolated in OKLab. */
+  /** Gradient stops as hex; interpolated in OKLab. Drawn without `vibrancy`. */
   colors: [string, string];
-  /** Stops while the window is inactive (neither it nor a parent window is key or main). */
-  inactiveColors?: [string, string];
+  /**
+   * The browser window's own backdrop, as Dia 1.50 draws it: the desktop behind the window, blurred,
+   * under a translucent `tintColor` gradient (opaque while the window is inactive or Reduce
+   * Transparency is on). Replaces the `colors` gradient.
+   */
+  vibrancy?: boolean;
+  /** The profile colour the vibrant backdrop is tinted with (Display P3 hex). */
+  tintColor?: string;
+  /** Alpha of the tint gradient: 0.36, or 0.12 for the neutral theme. */
+  tintAlpha?: number;
+  /** HSL lightness added to the tint at the bottom of the gradient. */
+  tintLightness?: number;
   /** CSS-style gradient angle in degrees (180 = top→bottom). */
   angle?: number;
   grainOpacity?: number;

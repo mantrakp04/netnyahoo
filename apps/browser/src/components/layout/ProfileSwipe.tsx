@@ -65,7 +65,8 @@ export function ProfileSwipeArea({ surface, style, pageWidth }: { surface: "side
 /**
  * The window tint while pages move: each page's profile tint as a layer, in page order, each
  * fading in as the view reaches its page, so the window cross-fades between the two profiles it's
- * between. Covers the window's own backdrop, which switches when the profile does.
+ * between. Covers the window's own backdrop, which switches when the profile does. Each layer is a
+ * whole backdrop (desktop blur + translucent tint), so layers cover each other instead of stacking tints.
  */
 export function ProfileTint() {
   const windowId = useWindowId();
@@ -79,7 +80,7 @@ export function ProfileTint() {
         const opacity = k === 0 ? 1 : pager.pos.interpolate({ inputRange: [pages[k - 1]!.slot, page.slot], outputRange: [0, 1], extrapolate: "clamp" });
         return (
           <Animated.View key={page.id} pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity }]}>
-            <WindowBackdrop colors={theme.windowTint} inactiveColors={theme.windowTintInactive} grainOpacity={theme.grain} style={StyleSheet.absoluteFill} />
+            <WindowBackdrop vibrancy {...theme.backdrop} colors={theme.windowTint} grainOpacity={theme.grain} style={StyleSheet.absoluteFill} />
           </Animated.View>
         );
       })}

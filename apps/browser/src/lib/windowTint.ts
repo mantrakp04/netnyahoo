@@ -1,76 +1,85 @@
 /**
- * The key window's tint on Dia 1.50. The profile tints below were measured on 1.49.1; a
- * window-only capture of Dia 1.50.1 (dark, key, plum; rec150 intro) reads its window tint much
- * lighter: (65,50,53) at the top to (73,66,67) at the bottom, where the 1.49 values give
- * (39,25,30) → (47,45,46) through our backdrop. That capture is opaque and a smooth gradient, the
- * same across the window's width, so it's the tint, not the desktop showing through (Dia's theme
- * layer is non-opaque, but nothing behind it varies). OKLab shift fitted along the window's right
- * edge through the same capture path, with 1.50's lighter grain (theme.ts; grain darkens the
- * tint on average), so our backdrop reads within 1 level on average; other dark themes get the
- * same shift, light is unmeasured.
- * Turn off with TINT_150 to get the 1.49 tints back.
+ * Dia 1.50's window background (docs/dia-spec.md › Window translucency), `PlatformWindowViewController`
+ * `backgroundBaseView` + `backgroundOverlayTintView`:
+ * - the desktop behind the window, blurred: an NSVisualEffectView (material 29 dark / `.hudWindow`
+ *   light) that AppKit turns into an opaque fill while the window is inactive or Reduce
+ *   Transparency is on;
+ * - `WindowBackground/BaseTint` over it: black 0.4 (dark) / white 0.8 (light);
+ * - a vertical gradient of the profile colour at `gradientAlpha`, in a view at alpha 0.5 (dark) /
+ *   0.75 (light): the colour at the top, the colour with its HSL lightness raised by
+ *   `gradientLightnessDelta` at the bottom (HSL of the P3 components).
+ * The native side (WindowBackdrop `vibrancy`) has the fixed parts; these are the per-window inputs,
+ * from `WindowViewModel.State.BackgroundTintInfo`.
  */
-const TINT_150 = true;
-const DARK_ACTIVE_SHIFT: [Lab, Lab] = [
-  [0.0954, -0.0016, 0.0033],
-  [0.0778, 0.0066, 0.0014],
-];
+export type BackdropTint = {
+  /** The profile colour as Display P3 hex: Dia's is a P3 colour, lightened in P3. */
+  tintColor: string;
+  tintAlpha: number;
+  tintLightness: number;
+};
 
-export function activeTint(tint: [string, string], dark: boolean): [string, string] {
-  if (!dark || !TINT_150) return tint;
-  return [shift(tint[0], DARK_ACTIVE_SHIFT[0]), shift(tint[1], DARK_ACTIVE_SHIFT[1])];
+/** `gradientLightnessDelta`: 0.25 with the New Tab rebrand (on in 1.50), 0.4 without. */
+const LIGHTNESS = 0.25;
+
+export function backdropTint(color: string, neutral: boolean): BackdropTint {
+  // `gradientAlpha ?? (isNeutralTheme ? 0.12 : 0.36)`.
+  return { tintColor: color, tintAlpha: neutral ? 0.12 : 0.36, tintLightness: LIGHTNESS };
 }
 
 /**
- * The window tint while the window is inactive. Dia's window background is vibrant while the
- * window is active, so its tint depends on what's behind the window; inactive, it falls back to
- * an opaque tint that is lighter and a little warmer. Measured on Dia's plum theme (dark) from a
- * 2x capture of an inactive window, de-grained, and fitted in OKLab along the sidebar
- * (docs/dia-spec.md): #2A191F → #312F30 becomes #352224 → #423C3C. Other dark themes get the same
- * OKLab shift, applied to the 1.49 tints (not to activeTint's). There's no light-appearance
- * capture yet, so light tints don't change.
+ * The blur's opaque fill while the window is inactive (Display P3, measured over this Mac's
+ * wallpaper, which AppKit tints it with): material 29 (dark) and `.hudWindow` (light).
  */
-const DARK_SHIFT: [Lab, Lab] = [
-  [0.0382, -0.0002, 0.0072],
-  [0.0548, 0.0035, 0.0036],
-];
+const INACTIVE_FILL = { dark: [40.7, 33.1, 31.8], light: [235, 231, 230] };
 
-type Lab = [number, number, number];
-
-export function inactiveTint(tint: [string, string], dark: boolean): [string, string] {
-  if (!dark) return tint;
-  return [shift(tint[0], DARK_SHIFT[0]), shift(tint[1], DARK_SHIFT[1])];
+/**
+ * What the backdrop looks like with the blur opaque (inactive window, Reduce Transparency), top →
+ * bottom: for surfaces that need the window colour as a solid fill (P3 values written as sRGB hex,
+ * a close enough approximation for these dark and light greys).
+ */
+export function opaqueTint(tint: BackdropTint, dark: boolean): [string, string] {
+  const a = tint.tintAlpha * (dark ? 0.5 : 0.75);
+  const under = dark ? INACTIVE_FILL.dark.map((f) => 0.6 * f) : INACTIVE_FILL.light.map((f) => 0.8 * 255 + 0.2 * f);
+  const top = rgb(tint.tintColor);
+  const bottom = lighten(top, tint.tintLightness);
+  const over = (c: number[]) => hex(c.map((v, i) => a * v + (1 - a) * under[i]!));
+  return [over(top), over(bottom)];
 }
 
-function shift(hex: string, d: Lab): string {
-  const [L, a, b] = toOklab(hex);
-  return fromOklab([L + d[0], a + d[1], b + d[2]]);
+/**
+ * The profile colour for a swatch's hue, at the saturation and lightness of the one measured from
+ * Dia (pink profile, P3 #B25B6B: HSL 349°, 0.36, 0.53). Other colours are unmeasured.
+ */
+export function tintForHue(swatch: string, grey = false): string {
+  const [h] = hsl(rgb(swatch));
+  return hex(fromHsl(h, grey ? 0 : 0.36, 0.527));
 }
 
-const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-const toGamma = (c: number) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055);
+const rgb = (hex: string) => [0, 1, 2].map((i) => parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16));
+const hex = (c: number[]) =>
+  `#${c.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 
-function toOklab(hex: string): Lab {
-  const [r, g, b] = [0, 1, 2].map((i) => toLinear(parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16) / 255)) as Lab;
-  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  return [
-    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
-    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
-  ];
+function hsl([r, g, b]: number[]): [number, number, number] {
+  const [R, G, B] = [r! / 255, g! / 255, b! / 255];
+  const max = Math.max(R, G, B), min = Math.min(R, G, B), l = (max + min) / 2, d = max - min;
+  if (d === 0) return [0, 0, l];
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === R ? (G - B) / d + (G < B ? 6 : 0) : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
+  return [h / 6, s, l];
 }
 
-function fromOklab([L, a, b]: Lab): string {
-  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
-  const rgb = [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  ];
-  const byte = (c: number) => Math.round(Math.min(1, Math.max(0, toGamma(c))) * 255).toString(16).padStart(2, "0");
-  return `#${rgb.map(byte).join("").toUpperCase()}`;
+function fromHsl(h: number, s: number, l: number): number[] {
+  if (s === 0) return [l * 255, l * 255, l * 255];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  const ch = (t: number) => {
+    t = t < 0 ? t + 1 : t > 1 ? t - 1 : t;
+    return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;
+  };
+  return [ch(h + 1 / 3), ch(h), ch(h - 1 / 3)].map((v) => v * 255);
+}
+
+/** HSL lightness + `delta`, clamped: Dia's colour helper (and WindowBackdropView's). */
+function lighten(c: number[], delta: number): number[] {
+  const [h, s, l] = hsl(c);
+  return fromHsl(h, s, Math.min(1, Math.max(0, l + delta)));
 }

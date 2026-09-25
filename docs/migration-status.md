@@ -495,6 +495,28 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
     `DNS_PROBE_FINISHED_NO_INTERNET` and the site's host, Retry reloads, and CDP shows no console error. (A fully
     offline Mac gives `ERR_INTERNET_DISCONNECTED` at once, which is verified.)
 
+### Window translucency (WindowBackdrop `vibrancy`, lib/windowTint; dia-spec › Window translucency)
+Verified so far: build `build-transl`, instance `/tmp/nn-transl`, captures in the session scratchpad `translucency/`
+(composited with the windows below, over our own non-activating helper windows). Inactive, dark, plum: the sidebar
+gutter reads (53, 33.5, 36) / (56, 40, 42) / (59, 48, 48) at 7 / 50 / 95 % height, identical over white and black,
+against Dia's inactive (52.6, 33.8, 35.8) / (55.7, 40.8, 41.7) / (58.7, 47.6, 48.6). Forced key
+(`NetnyahooAreaLight.debugSetWindowActive(true)`): the gutter top goes from (42.5, 27, 30) over black to (73, 58, 60.5)
+over white, and a bright disc behind the window's bottom-left shows through the sidebar and, at about half strength,
+the New Tab card (`comparison-sheet.png`). Light appearance renders (pink-tinted, blur under it) but has no Dia
+reference. Dia itself could only be captured inactive (it's never key while we work), where it is opaque.
+Still to run (needs the user at the screen, with Dia key):
+1. **Key window vs Dia.** Put Dia (pink profile, New Tab) and Netnyahoo (plum, New Tab) side by side over the same
+   wallpaper, each key in turn, and capture the screen (not a window-only capture: those never show the desktop).
+   Pass if the sidebar gutter and the card read within 2 levels of Dia's at the top and bottom, and a bright
+   wallpaper feature shows through both by the same amount.
+2. **Light mode.** Same, in light appearance; the `.hudWindow` inactive fill and the light tint are unmeasured.
+3. **Reduce Transparency / Increase Contrast.** Turn each on (System Settings › Accessibility › Display) with
+   both apps key: pass if both go opaque the same way.
+4. **Other profile colours.** Set a Dia profile to blue/green/…, capture it inactive, and fit its tint with
+   scratchpad `translucency/fit.py`; ours derive them from the swatch hue.
+5. **Profile swipe.** Page between two profiles with the window key: the blur must stay steady while the tints
+   cross-fade (each page layer carries its own blur).
+
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order
   is pushed to Chrome.

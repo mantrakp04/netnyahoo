@@ -14,6 +14,7 @@ Dia 1.50 ("Sunglow") changes are in the last section; where it says "rebrand fla
   (`WindowTint/BaseGradient`).
 - Grain is multiply-blended over the tint (ARC_WindowThemeUI `renderFragment`).
 
+- 1.49-era notes (the Metal backdrop); for 1.50.1 see "Window translucency" below.
 - The window tint is not constant. It changes with key state and content: the sidebar samples
   (35,30,32) when key on the NTP, and (58,46,47) when inactive over a web page. Compare backdrops
   only in the same state.
@@ -22,6 +23,63 @@ Dia 1.50 ("Sunglow") changes are in the last section; where it says "rebrand fla
   tint depends on what's behind it). Inactive, it falls back to an opaque, lighter tint: plum dark
   fitted in OKLab from an inactive 2x capture, de-grained: `#352224` → `#423C3C`
   (ΔOKLab top +0.0382/−0.0002/+0.0072, bottom +0.0548/+0.0035/+0.0036; apps/browser/src/lib/windowTint.ts).
+
+### Window translucency (1.50.1, recovered from the binary; supersedes the tint notes above)
+
+The window background is **not** the Metal `WindowThemeUI` backdrop (that module and
+`WindowBackground.*` are Arc code with no callers outside themselves in 1.50.1). `PlatformWindowViewController`
+owns `backgroundBaseView` + `backgroundOverlayTintView` from the **WindowTreatment** module (`0x1055fc58c`,
+`0x1055fc5ac`), bottom to top:
+
+1. **Blur** — `WindowBackgroundBaseView`: an `NSVisualEffectView` with `blendingMode = .behindWindow` (0),
+   `isEmphasized = true`, `state` left at `.followsWindowActiveState`, and `material = dark ? 29 : 13`
+   (`updateLayer`, `0x103b0d398`; 29 is a private material, 13 is `.hudWindow`). This is the only
+   translucency: the desktop behind the window shows through it while the window is key/main; AppKit swaps it
+   for an opaque fill when the window is inactive (checked: an inactive Dia window captured over a white and a
+   black helper window is identical, pixel for pixel) and, by AppKit's own rules, with Reduce Transparency /
+   Increase Contrast. Dia never reads `accessibilityDisplayShouldReduceTransparency` or `…IncreaseContrast`
+   (the only accessibility display query in the binary is Reduce Motion), so it has no extra fallback of its own.
+2. **Base tint** — `WindowBackgroundOverlayTintView.baseTintView`: `WindowBackground/BaseTint`, black 0.4 (dark)
+   / white 0.8 (light), full opacity.
+3. **Profile gradient** — `…OverlayTintView.gradientView` (`ARCUI.GradientView`, start (0.5, 0), end (0.5, 1)):
+   colours `[tint.lightened(ΔL) @ gradientAlpha, tint @ gradientAlpha]` (`0x103b0d5b4`), i.e. the tint at the top
+   and the tint with its **HSL lightness + ΔL** (clamped; `0x10052c3dc`, in the colour's own space) at the bottom.
+   The view's `alphaValue` is **0.5 dark / 0.75 light** (`0x103b0e2e4`).
+   - `tint` = `WindowViewModel.State.BackgroundTintInfo.color` (the profile colour; `overrideTintColor`,
+     falling back to `controlAccentColor`), refreshed on `AppleColorPreferencesChangedNotification`.
+   - `gradientAlpha` = `BackgroundTintInfo.gradientAlpha ?? (isNeutralTheme ? 0.12 : 0.36)` (`0x1056004fc`).
+   - `ΔL` = `gradientLightnessDelta` = rebrand ? **0.25** : 0.4 (`0x1055ffee4`); the rebrand is on in 1.50.1.
+4. The content card on top is a plain `WindowContent` fill (#121212 at 0.5 dark / white 0.7 light with the
+   rebrand, `0x103b0e6f0`), so the blur shows through it at half strength. There is no grain in this stack.
+
+Composite (dark): `out = 0.18·tint_y + 0.82·0.6·blur`, where `tint_y` runs from the tint (top) to the lightened
+tint (bottom) and `blur` is the vibrancy output (the blurred desktop, or its opaque fill when inactive).
+Light: `out = 0.27·tint_y + 0.73·(0.8·255 + 0.2·blur)`.
+
+**Fitted from an inactive 2× capture of the user's Dia (dark, pink profile)**, sidebar gutter x = 186–189 pt,
+Display P3 values, linear in y with ≤ 0.3 level residual: top (52.0, 32.7, 34.9), bottom (59.4, 48.3, 49.0).
+The inactive fill of material 29 at Dia's window frame, measured on our own inactive panel over the same
+wallpaper, is P3 (40.7, 33.1, 31.8) (AppKit tints it with the wallpaper). Solving the composite for the tint
+at the top and at the bottom, the bottom one equals the top one with its **P3 HSL lightness + 0.25** to
+**0.3 levels** (1.7 if lightened in sRGB; ΔL = 0.4 or the alpha on the whole overlay do not fit). The tint is
+**Display P3 (177.6, 91.1, 106.8) = #B25B6B ≈ sRGB #BF556A**, HSL 349°, 0.36, 0.53 — next to the New Tab
+band colour measured separately (#B5556B, the palette's primary colour).
+
+Window-only captures (`screencapture -l`, ScreenCaptureKit `desktopIndependentWindow`) never contain the
+desktop: an active blur panel over red reads neutral (68, 68, 68) in SCK and (119, 119, 119) in
+`screencapture -l`, but (79, 32, 28) when composited with the windows below it. Compare vibrant windows only
+through a composite (`CGWindowListCreateImage` with `.optionOnScreenBelowWindow | .optionIncludingWindow`,
+scratchpad `translucency/stack`) or a screen capture.
+
+Measured materials (our own non-activating panels over solid backdrops; sRGB; active = blur state `.active`):
+
+| Material | Appearance | Active over black / 20 / 60 / white | Inactive fill |
+|---|---|---|---|
+| 29 (private) | dark | 24 / 32 / 45 / 104 (neutral) | (52, 43, 41) here; wallpaper-tinted |
+| 29 | light | 192 / 197 / 208 / 255 | 248 |
+| 13 `.hudWindow` | light | 137 / 146 / 165 / 243 | (239, 237, 236) |
+| 13 `.hudWindow` | dark | 33 / 44 / 72 / 182 | (58, 54, 53) |
+| 2 `.dark` (for reference) | any | 54 / 54 / 62 / 170 | 40 |
 
 ## Content card
 
@@ -411,7 +469,10 @@ level): the same #121212 0.5 / white 0.7 pair the binary sets next to `WindowBac
 the "selected tab" override in item 6), where 1.49's card was 0.6 / 0.8. The window tint itself reads (65, 50, 53) at
 the top to (73, 66, 67) at the bottom (key, plum), much lighter than 1.49's key values. The capture is opaque and the
 tint is the same across the window's width, so it isn't the desktop showing through
-(`WindowThemeBackgroundViewMetal` does make its CAMetalLayer non-opaque, `0x1042d73e8`).
+(`WindowThemeBackgroundViewMetal` does make its CAMetalLayer non-opaque, `0x1042d73e8`). **Correction:** the window's
+background is WindowTreatment's behind-window blur + tint (see "Window translucency"), not that Metal view;
+the capture was window-only (ScreenCaptureKit `desktopIndependentWindow`), which never shows the desktop, and
+the recording's key/inactive difference is the blur's active output vs its inactive fill.
 
 **Bar geometry, measured.** Fitting the capture's edges through its resampling (to 0.5 pt): the bar spans x 522.5 …
 1174.5 and y 375.5 … 487.5 in the 1512 × 949 window (card 190 … 1505 × 6 … 942), i.e. 652 × 112, 1 pt right of and

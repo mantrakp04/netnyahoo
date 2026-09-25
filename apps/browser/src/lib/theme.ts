@@ -3,7 +3,7 @@ import { useContext } from "react";
 import { useBrowser } from "../store/browser";
 import { WindowContext } from "../store/hooks";
 import type { ProfileColor } from "../store/types";
-import { activeTint, inactiveTint } from "./windowTint";
+import { backdropTint, opaqueTint, tintForHue, type BackdropTint } from "./windowTint";
 
 /**
  * Chrome colors, taken from Dia's asset-catalog tokens and pixel samples of the
@@ -12,8 +12,13 @@ import { activeTint, inactiveTint } from "./windowTint";
  * the window's profile colour (PROFILE_THEMES); incognito windows are always dark.
  */
 export type Theme = typeof dark & ProfileTheme & {
-  /** Window tint while the window is inactive (lib/windowTint). */
-  windowTintInactive: [string, string];
+  /** The window backdrop's tint over the desktop blur (lib/windowTint). */
+  backdrop: BackdropTint;
+  /**
+   * The backdrop with the blur opaque (inactive window), top → bottom: the window colour for
+   * surfaces that need a solid fill, and the backdrop where the blur isn't built in yet.
+   */
+  windowTint: [string, string];
   /** Dia 1.50's hand-painted New Tab mark: the painting for the profile colour. */
   logoPaint: LogoPaint;
   /** Dia 1.50 power-up band: one theme colour instead of the per-hue palette; null = none. */
@@ -141,8 +146,6 @@ export function hex(color: string): string {
 }
 
 type ProfileTheme = {
-  /** Window tint, top → bottom (OKLab-interpolated with grain). */
-  windowTint: [string, string];
   /** Area light / power-up palette; null = no light (Dia's neutral theme). */
   lightPalette: AreaLightPalette | null;
   orbTint: string;
@@ -156,13 +159,15 @@ type ProfileColorSpec = {
   palette: AreaLightPalette | null;
   /** Dia 1.50's power-up band/halo colour (the palette's primary colour), where measured; else the swatch. */
   powerUp?: string;
+  /** The window backdrop's tint colour (`BackgroundTintInfo.color`), where measured; else from the swatch's hue. */
+  tint?: string;
   dark?: ProfileTheme;
   light?: ProfileTheme;
 };
 
 /**
- * Profile theme colours. Plum is measured from Dia (the user's theme); the
- * others derive their tints from the matching area-light palette's first stop.
+ * Profile theme colours. Plum is measured from Dia (the user's theme, Dia's pink); the others
+ * take their window tint from the swatch's hue and their light from the area-light palette.
  */
 export const PROFILE_COLORS: Record<ProfileColor, ProfileColorSpec> = {
   plum: {
@@ -170,9 +175,12 @@ export const PROFILE_COLORS: Record<ProfileColor, ProfileColorSpec> = {
     swatch: "#C07A98",
     // Measured from Dia 1.50.1's New Tab band and halo (dark).
     powerUp: "#B5556B",
+    // Display P3, fitted from an inactive Dia 1.50.1 window (dark) through the window-treatment model
+    // (dia-spec › Window translucency); ≈ sRGB #BF556A, next to the band colour above.
+    tint: "#B25B6B",
     palette: "pink",
-    dark: { windowTint: ["#2A191F", "#312F30"], lightPalette: "pink", orbTint: "#E9A9C4", edgeLight: "#EBB3CB80" },
-    light: { windowTint: ["#F2E8EC", "#E9E5E7"], lightPalette: "pink", orbTint: "#E59CC0", edgeLight: "#D37B8B66" },
+    dark: { lightPalette: "pink", orbTint: "#E9A9C4", edgeLight: "#EBB3CB80" },
+    light: { lightPalette: "pink", orbTint: "#E59CC0", edgeLight: "#D37B8B66" },
   },
   blue: { name: "Blue", swatch: "#4691C3", palette: "blue" },
   purple: { name: "Purple", swatch: "#7873AF", palette: "purple" },
@@ -185,13 +193,14 @@ export const PROFILE_COLORS: Record<ProfileColor, ProfileColorSpec> = {
     name: "Neutral",
     swatch: "#8E8E93",
     palette: null,
-    dark: { windowTint: ["#1E1E1F", "#2B2B2C"], lightPalette: null, orbTint: "#C8C8CC", edgeLight: "#FFFFFF40" },
-    light: { windowTint: ["#F2F2F2", "#E6E6E6"], lightPalette: null, orbTint: "#B8B8BC", edgeLight: "#00000026" },
+    dark: { lightPalette: null, orbTint: "#C8C8CC", edgeLight: "#FFFFFF40" },
+    light: { lightPalette: null, orbTint: "#B8B8BC", edgeLight: "#00000026" },
   },
 };
 
 /** Incognito: a darker neutral, whatever the app appearance. */
-const INCOGNITO: ProfileTheme = { windowTint: ["#171718", "#222223"], lightPalette: null, orbTint: "#C8C8CC", edgeLight: "#FFFFFF33" };
+const INCOGNITO_TINT = "#3A3A3C";
+const INCOGNITO: ProfileTheme = { lightPalette: null, orbTint: "#C8C8CC", edgeLight: "#FFFFFF33" };
 
 function mix(a: string, b: string, t: number): string {
   const ch = (h: string, i: number) => parseInt(h.slice(1 + 2 * i, 3 + 2 * i), 16);
@@ -204,8 +213,8 @@ function profileTheme(color: ProfileColor, isDark: boolean): ProfileTheme {
   const explicit = isDark ? spec.dark : spec.light;
   if (explicit) return explicit;
   return isDark
-    ? { windowTint: [mix("#141214", spec.swatch, 0.13), mix("#2F2E2F", spec.swatch, 0.03)], lightPalette: spec.palette, orbTint: mix(spec.swatch, "#FFFFFF", 0.45), edgeLight: `${mix(spec.swatch, "#FFFFFF", 0.5)}80` }
-    : { windowTint: [mix("#F5F3F4", spec.swatch, 0.09), mix("#EAE8E9", spec.swatch, 0.03)], lightPalette: spec.palette, orbTint: mix(spec.swatch, "#FFFFFF", 0.35), edgeLight: `${spec.swatch}66` };
+    ? { lightPalette: spec.palette, orbTint: mix(spec.swatch, "#FFFFFF", 0.45), edgeLight: `${mix(spec.swatch, "#FFFFFF", 0.5)}80` }
+    : { lightPalette: spec.palette, orbTint: mix(spec.swatch, "#FFFFFF", 0.35), edgeLight: `${spec.swatch}66` };
 }
 
 const cache = new Map<string, Theme>();
@@ -219,10 +228,11 @@ export function themeFor(key: string): Theme {
     const spec = color === "incognito" ? null : (PROFILE_COLORS[color] ?? PROFILE_COLORS.plum);
     // NewTabPageViewController (rebrand): neutral's band is grey (0.502) at 0.65, others the theme colour.
     const powerUpColor = !spec ? null : spec.palette ? (spec.powerUp ?? spec.swatch) : "#808080A6";
+    const backdrop = backdropTint(spec ? (spec.tint ?? tintForHue(spec.swatch, !spec.palette)) : INCOGNITO_TINT, !spec?.palette);
     theme = {
       ...base,
-      windowTint: activeTint(base.windowTint, base.dark),
-      windowTintInactive: inactiveTint(base.windowTint, base.dark),
+      backdrop,
+      windowTint: opaqueTint(backdrop, base.dark),
       logoPaint: spec?.palette ?? "neutral",
       powerUpColor,
     };
