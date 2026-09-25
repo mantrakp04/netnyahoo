@@ -100,7 +100,7 @@ final class CommandItem: NSMenuItem {
     defaultTitle = title
     defaultKey = key
     defaultModifiers = mods
-    super.init(title: title, action: #selector(MenuTarget.perform(_:)), keyEquivalent: key)
+    super.init(title: title, action: #selector(MenuTarget.performCommand(_:)), keyEquivalent: key)
     keyEquivalentModifierMask = mods
     target = MenuTarget.shared
   }
@@ -120,7 +120,10 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
   /// (command, arg, windowId of the key browser window)
   var handler: ((String, String?, String?) -> Void)?
 
-  @objc func perform(_ sender: NSMenuItem) {
+  /// Not `perform(_:)`: `#selector(MenuTarget.perform(_:))` resolves to NSObject's
+  /// `perform(_:)` (`performSelector:`), which then took the menu item for a selector and
+  /// every command item's action (⌘T, ⌘W…) died with "unrecognized selector".
+  @objc func performCommand(_ sender: NSMenuItem) {
     guard let item = sender as? CommandItem else { return }
     handler?(item.command, item.arg, item.windowless ? nil : WindowManager.shared.keyWindowId)
   }

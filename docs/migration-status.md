@@ -125,6 +125,24 @@ because it needs the user present), add it to the **Test ledger** with the exact
     (scratchpad `passkey-fix/virtflow.mjs`). Test instances behind other apps are occluded and WebAuthn then fails
     with "the page does not have focus": launch them with
     `NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows`.
+- Menu commands crashed the app (bug in 0.1.0 and 0.1.1, fixed 2026-09-25, Release `build-keycrash`, data dir
+  `/tmp/nn-keycrash`):
+  - Symptom: ⌘T, ⌘W (and every other command item: its shortcut or a click in the menu bar) quit with
+    "unrecognized selector sent to instance", from a New Tab page (AppKit's `routeKeyEquivalent` → main menu) and
+    from a web page (`RenderWidgetHostViewCocoa` → CEF `OnPreKeyEvent` → `[NSApp.mainMenu performKeyEquivalent:]`).
+  - Cause (`packages/shell/ios/Menus.swift`): `CommandItem`'s action was `#selector(MenuTarget.perform(_:))`, and
+    Swift resolves that to NSObject's `perform(_:)`, i.e. `performSelector:`. `MenuTarget` answers it, so AppKit
+    called `[MenuTarget performSelector:<the menu item>]` and the runtime threw on the item's address used as a
+    selector. The items read `action: performSelector:` in lldb.
+  - Fix: the action is `performCommand:`.
+  - Verified in the Release build (same symptoms reproduced first: the unfixed build crashed on the first ⌘T),
+    shortcuts posted to the background instance with `CGEventPostToPid`, tabs checked in `session.json`: ⌘T ×3 from
+    a New Tab page and from a web page, ⌘W on a New Tab page, a web page and a pinned tab, ⌘W on a window's last tab
+    ("Close 1 tab?" prompt), ⇧⌘T (reopens the closed page), ⌘1 / ⌘9, ⇧⌘[ / ⇧⌘], ⌃Tab, ⌘N, ⇧⌘N, ⌥⌘T, ⌘L, ⌘R,
+    ⇧⌘R, ⌘F, ⌘G, ⌘[ / ⌘], ⌘= / ⌘- / ⌘0, ⇧⌘B, ⇧⌘A, ⌘S, ⇧⌘C, ⌥⌘U, ⇧⌘J, ⌘Y, ⌘D, ⌃⇧], ⌘, — no crash. The CEF
+    path, driven in lldb (`-[RenderWidgetHostViewCocoa keyEvent:wasKeyEquivalent:]` with ⌘T on example.com),
+    reaches `MenuTarget.performCommand` through `nn::Client::OnPreKeyEvent` → `-[NSMenu performKeyEquivalent:]`
+    and opens the tab.
 - The app bundle stays sealed (2026-09-25, Release archive + Developer ID export, data dirs `/tmp/nn-sigfix-*`):
   - Bug in 0.1.0: its first launch wrote `Resources/Extensions/ublock-lite/_metadata/generated_indexed_rulesets/
     _ruleset1…6` into the bundle (DNR indexes uBlock's rulesets next to the extension), so `codesign --verify --deep
