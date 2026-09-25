@@ -1,0 +1,106 @@
+packages/cef/ios/NNContentBlocker.mm
+  s_9c356f9574d31c::t_a7e37790d90415 5-8,162-165
+  s_9c356f9574d31c::t_76e01fd9744c27 198-205
+  s_9c356f9574d31c::t_400e5bdd216110 108-161,166-192
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_f7b4f881844dcb 199-221
+  s_9c356f9574d31c::t_52ec4c9e8929eb 222
+docs/releasing.md
+  s_9c356f9574d31c::t_45fafc3f34dafd 37-39,53
+apps/browser/src/components/layout/ProfileSwipe.tsx
+  s_9c356f9574d31c::t_f32bfafe2a1731 29-30,43,45-46
+  s_9c356f9574d31c::t_c53921ec4180f7 1-4,6,9,12-15,18-25,28,32,44,47-51,56-63,65-74,76-86,90-91,95-99
+scripts/release.sh
+  s_9c356f9574d31c::t_12a0ba88889631 74-91,93-94
+  s_9c356f9574d31c::t_f7ba86f4accc9b 92
+packages/cef/ios/NNSwipe.h
+  s_9c356f9574d31c::t_34ad10d6c1af50 17-22,34,46
+  s_9c356f9574d31c::t_c23c2e5839bf5c 47
+packages/cef/ios/SwipeModule.swift
+  s_9c356f9574d31c::t_34ad10d6c1af50 35,54
+docs/dia-spec.md
+  s_9c356f9574d31c::t_3b63f76544362e 317-349
+packages/cef/src/swipe.tsx
+  s_9c356f9574d31c::t_c53921ec4180f7 11-15,29-32,35-36,45-49
+  s_9c356f9574d31c::t_c23c2e5839bf5c 33-34
+packages/cef/ios/NNSwipe.mm
+  s_9c356f9574d31c::t_7ccf70d33fe47d 476-477,568
+  s_9c356f9574d31c::t_c23c2e5839bf5c 475
+  s_9c356f9574d31c::t_34ad10d6c1af50 253-280,286,344-345,451-456,470-472,474,478-481,487
+  s_9c356f9574d31c::t_569fc27e0c77f3 491,536
+apps/browser/src/components/layout/profilePager.ts
+  s_9c356f9574d31c::t_9ffded4aa8ecd0 52,102,113,332
+  s_9c356f9574d31c::t_c53921ec4180f7 28-32,53,120-137
+  s_9c356f9574d31c::t_3d85756dc3d192 1-27,33-51,54-101,103-112,114-119,138-331,333-377
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_792730df9e6da3 298
+  s_9c356f9574d31c::t_ba260c366caf34 305
+apps/browser/src/components/layout/TopTabStrip.tsx
+  s_9c356f9574d31c::t_ec9de636fb2120 53-62,67-70
+  s_9c356f9574d31c::t_f32bfafe2a1731 84
+  s_9c356f9574d31c::t_c78a26cdc90b8d 64,90-92,95,109,125-126
+  s_9c356f9574d31c::t_178148c608317c 8,19-20,50-52,63,65-66,71-83,85-89,131-151,375-376
+apps/browser/src/components/ProfileIndicator.tsx
+  s_9c356f9574d31c::t_68b3f8ade7dd18 33-34
+  s_9c356f9574d31c::t_f284869c691986 12-13,59
+  s_9c356f9574d31c::t_56e969ac57c3ca 2,14-16,21,23,30,32,35-36,40-49,69-71,131
+packages/cef/ios/NNContentBlocker.h
+  s_9c356f9574d31c::t_f2c7ddd9a5eb21 11-12
+apps/browser/src/components/Sidebar.tsx
+  s_9c356f9574d31c::t_3d85756dc3d192 2,6,13-14,16,40-42,52-53,67-76,79-101,104,110,115-120,126-127,149-248,250
+  s_9c356f9574d31c::t_af4834979af253 249
+docs/migration-status.md
+  s_9c356f9574d31c::t_2c675ff906393b 100-111
+  s_9c356f9574d31c::t_792730df9e6da3 233
+  s_700057959d4ce2::t_084552ab53571d 206-220,503-511
+apps/browser/src/App.tsx
+  s_9c356f9574d31c::t_b627aa4eea24f7 17,64-65
+apps/browser/src/components/layout/swipeMotion.test.mjs
+  s_9c356f9574d31c::t_e8fc3310a75910 55-77
+apps/browser/src/components/layout/swipeMotion.ts
+  s_9c356f9574d31c::t_ca1506b3ad995b 50-56,58,61-64,67-68,70-74,77-84
+apps/browser/src/components/profiles/ProfileDots.tsx
+  s_9c356f9574d31c::t_e1fcf6cc642346 1-65
+apps/browser/src/components/sidebar/GroupBlock.tsx
+  s_9c356f9574d31c::t_5f5fed74b1be52 6,35,39
+apps/browser/src/components/sidebar/LiveFolderBlock.tsx
+  s_9c356f9574d31c::t_5661551396a48b 14,35-36,89,92,96,342-344
+apps/browser/src/components/sidebar/TabRow.tsx
+  s_9c356f9574d31c::t_3043458f92e601 7,175-176
+apps/browser/src/components/sidebar/dnd.tsx
+  s_9c356f9574d31c::t_a1f5e809432fdf 363-371
+apps/browser/src/components/sidebar/entries.ts
+  s_9c356f9574d31c::t_ea6dea500770fc 14-15,18-19,21-22,26,33,71-74
+apps/browser/src/lib/actions.ts
+  s_9c356f9574d31c::t_b857353fa8c420 3,127-130,138
+apps/browser/src/lib/commands.ts
+  s_9c356f9574d31c::t_2105d414bfa4bc 216
+apps/browser/src/store/hooks.ts
+  s_9c356f9574d31c::t_91a154d59d1e1b 31-43,85-90
+apps/browser/src/store/model.ts
+  s_9c356f9574d31c::t_954f10fc61a844 89-93,96-97,100-101,104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2051212651aaea57b94e0dfc52c6f7b66abfb64f",
+  "prompts": {},
+  "sessions": {
+    "s_700057959d4ce2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad9a3137c1152af62",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
