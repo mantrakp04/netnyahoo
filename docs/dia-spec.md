@@ -94,7 +94,7 @@ Measured materials (our own non-activating panels over solid backdrops; sRGB; ac
   chevron.right, arrow.clockwise). Glyphs are about 15pt, regular weight.
 - Button hover: a ~30pt rounded square (radius 7) at white 10%.
 - Breadcrumb at x 153: `host` (primary, medium) + ` / ` + the full page title (secondary, 50%).
-  The title is not split on `·`, `|` or `—`.
+  The title is not split on `·`, `|` or `—`. **1.50.1: web pages show the host alone**, see "URL bar (1.50.1)".
 - URL hover: the breadcrumb morphs into a pill (white ~8%, radius 8) showing the full URL, with
   the host bright and the path dim. Actions appear on the right: `bookmark`, `rectangle.split.2x1`,
   `signature`, `slider.horizontal.3`.
@@ -492,8 +492,55 @@ than ours at the same cap height.
 **Grain.** With the gradient removed row by row, the 1.50.1 window has almost no grain in the capture: 0.09 levels
 (sidebar) and 0.05 (page) of channel-mean noise. 1.49 captures needed a multiply grain of 0.06.
 
+### URL bar (1.50.1, recovered from the binary on 2026-09-26)
+- The nav bar's title is an enum `Title { string, placeholder, url(URL), path(PathConfiguration{prefix, path,
+  pathToggleEmphasisMode}), artifact }`. Web pages always get `.url(URL)` (`0x104ebe3a8`); no web page title is
+  passed at all. The only `.path` constructions (`0x104eb47fc`, `0x104ecac28`) hard-code the prefix "Dia" with a chat or
+  internal title: `Dia / <title>`.
+- The URL renderer (`0x104ca22b8`) shows the host with `www.` stripped (`0x1003a6b9c`); with
+  `titleState.alwaysShowURLPath` it appends path, query and fragment and trims a trailing "/". Width fitting
+  (`boundingRectWithSize`, `0x104ca27f8`) is layout only.
+- `alwaysShowURLPath = !displayPageTitleInURLBarEnabled && !isWorkspaceCompanion` (reducer `0x104ccd44c`; popups use
+  `!pref`, `0x104f20ec8`). The preference is registered **true** at launch (`initiateAppLaunch`, `0x1007fce20`, with
+  three other Bools), so the path is hidden by default. Despite its name it no longer controls a page title.
+- Its UI is View › **Show Full URL** (command `toggleShowFullURL`, category 2 id 40, no shortcut): the action flips the
+  preference (`0x1055326f0`) and the checkmark is `!pref` (`0x10552eb90`), unchecked by default. A nav-bar click target
+  `toggleDisplayPageTitleInURLBarPreferenceEnabled` does the same, but nothing sends it (dead).
+- Nothing else gates it: no rebrand flag, width or title check.
+
+### Menus (1.50.1, menu builder `0x10000f000`–`0x10001c8f4`)
+- View: Appearance ▸ (Automatic, Light, Dark; still there although the Appearance pane is gone), Refresh ⌘R, Force
+  Refresh the Page ⇧⌘R (built with the alternate flag, so probably shown only with ⇧ held; medium confidence), —,
+  Show Tabs in Sidebar ⇧⌘S, Auto-Hide Tabs ⌘S, —, Open Split Pane ⌃⇧=, Focus Next / Previous Split Pane ⌃⇧] / ⌃⇧[, —,
+  Show Bookmarks Bar ▸ (Always, On New Tab Only, Never, —, Toggle Bookmarks Bar ⇧⌘B), —, Show Full URL, —, Zoom to
+  Actual Size ⌘0, Zoom In ⌘+ (hidden ⌘= alternate), Zoom Out ⌘-, —, Enter Full Screen, —, Developer ▸ (Developer
+  Tools ⌥⌘I, hidden F12 alternate). Same as 1.49.1.
+- Help (`0x10001b448`): Chat with Support (help centre, probably help.diabrowser.com), Video Tour
+  (www.diabrowser.com/tour), Status (status.diabrowser.com), —, Copy Diagnostics, Record Performance Issue… (titled
+  "Cancel Performance Recording" while a trace runs, `0x100856100`), Export Sync Log… (behind an internal Bool of the
+  menu builder, `0x10001c468`). AppKit adds "Send Dia Feedback to Apple" and the search field. No gating otherwise.
+  The Help URLs come from the URL enum at `0x100126xxx` and weren't traced to each action (medium confidence).
+
+### Trial Guide (1.50.1)
+- A "Start with Dia" page (`BoostBrowser_TrialGuideBundle.bundle/.../site/index.html`) opened as an artifact tab
+  (`ArtifactKind.trialGuide`) from a New Tab stamp card. 12 actions in 4 levels (level table `0x105cc03a8`
+  `[1,1,1,2,2,2,3,3,3]`, rest level 4): First steps (createAccount, unlockMorningBrief, sendFirstMessage), Open the map
+  (makeDefaultBrowser, connectApps, askOnPage), Find your rhythm (createTabGroup, messageConnectedApps, createReport),
+  Go further (useSplitView, addChatContext, createProfiles). The page unlocks the next level after 2 of 3 done
+  (unless `showsAllLevels`); completed actions get a rubber stamp.
+- `trial-guide-enabled` (`0x100ed43e8`) and `trial-guide-stamp-card-on-new-tab-page-enabled` (`0x100ed4408`) pack
+  0x200: off by default, rolled out remotely. No plan or subscription check found.
+
+### Block lists (1.50.1)
+- `BlockListClient` reads `known_block_lists` from a manifest (bundled in `ARCClients_BlockListClient.bundle`, refreshed
+  from dia-blocklists-release.diabrowser.engineering/manifest.json with ETags): 10 generic / privacy / cookie lists
+  (EasyList, AdGuard, uBlock filters, CookieMonster, AdGuard Cookie Notices, EasyPrivacy…), 35 regional ones and
+  "BCNY Blocklists". The decoder has a `languages` key, but neither the bundled nor the live manifest sets it, so no
+  regional list is turned on by locale.
+
 ### Still unknown (needs a capture of Dia 1.50.1)
-- The painted mark's exact outline and position inside the 84pt view (particle uniforms), and the `shadeLayer` path.
-- The toolbar breadcrumb: the 1.50.1 window shows the host alone ("…trycloudflare.com") where 1.49.1 showed
-  `host / title`; the rule (`displayPageTitleInURLBarEnabled`, `AssistantBarViewModel.State.pageTitle`) is not decoded.
+- The painted mark's exact outline and position inside the 84pt view (particle uniforms). The `shadeLayer` path
+  (`0x102b69e28`) is computed, not fixed: 128 points around a 3D-rotated disc of radius `r·(1 − 0.45a)·(1 + 0.05b)`
+  (a, b clamped from `self+0x14` / `self+0x94`), each lit or unlit by its dot product with the light direction
+  (−0.2, −1, −0.55)/√1.34, joined into a closed CGPath: the unlit crescent of the rim. Not rendered at 84 pt yet.
 - Light appearance of everything above (the user's Dia runs dark).

@@ -16,14 +16,18 @@ Legend: **✅** done · **🧪** built, but the deciding test needs the user pre
 
 ## Summary
 
-**304 feature rows** (§1–§25):
+**307 feature rows** (§1–§25, recounted from the tables on 2026-09-26):
 
 | ✅ done | 🧪 needs the user | 🟡 partial | ❌ missing | ⛔ blocked | ⏸ deferred (AI) | — n/a |
 |---|---|---|---|---|---|---|
-| 207 | 9 | 9 | 0 | 7 | 58 | 14 |
+| 214 | 9 | 2 | 0 | 9 | 59 | 14 |
 
-Of the 232 rows that count (not ⏸ or —), 207 are done (89 %), 216 with the nine 🧪 rows. Keyboard shortcuts: every
-Dia shortcut is bound except the Chat ones (⏸). Menus: all ten exist; View and Help are partial.
+Of the 234 rows that count (not ⏸ or —), 214 are done (91 %), 223 with the nine 🧪 rows. The two 🟡 rows are
+passkeys (iCloud Keychain waits on Apple) and the block lists' freshness (§17). Keyboard shortcuts: every Dia
+shortcut is bound except the Chat ones (⏸). Menus: all ten exist; View is partial (its separators, in `Menus.swift`).
+
+The summary before this recount (304 rows, 207 ✅, 9 🟡, 7 ⛔) didn't match its tables, which held 307 rows: 211 ✅,
+7 🟡, 8 ⛔ (its 🟡 count included the View and Help menu rows, which sit outside §1–§25).
 
 The previous summary (296 rows, 181 ✅) didn't match its own tables, which held 301 rows and 199 ✅. This audit
 adds three rows: "Filling saved logins in pages" (§16), "Protected video (Widevine DRM)" (§18) and the
@@ -46,7 +50,11 @@ What changed since the last audit, in rows (mostly the migration):
   PiP window (🟡 → ✅); the Raycast extension is built and needs the user to install it (🟡 → 🧪, checklist step 14).
 - Since, from R2 (2026-09-25): done, the side panel, "Share this tab instead" and the Bluetooth chooser (❌ → ✅);
   built, needing the user: dragging tabs between windows and Cast (🟡 / ❌ → 🧪, checklist steps 11–12).
-- Still blocked: Sync (4 rows), Translate, auto-updates, Widevine DRM, and iCloud Keychain passkeys (inside the 🟡
+- Since, from the partial-rows pass (2026-09-26): done, the Sunglow row (checked side by side with Dia 1.50.1),
+  the host-only URL bar (Dia's rule, from its binary), the Help menu (Send Feedback opens a GitHub issue) and the
+  onboarding row (Dia's Trial Guide is —) (🟡 → ✅); the overflow menu and the mic button have nothing left but
+  Sync and AI (🟡 → ⛔ / ⏸); regional block lists now follow the system languages (§17 stays 🟡 for list freshness).
+- Still blocked: Sync (5 rows), Translate, auto-updates, Widevine DRM, and iCloud Keychain passkeys (inside the 🟡
   passkeys row).
 
 ## Remaining work
@@ -108,7 +116,7 @@ The 🧪 rows need no code until the user checklist below finds a problem.
 ### ⛔ Blocked, and what would unblock it
 | Item | Blocked by | Unblocks when |
 |---|---|---|
-| Sync: E2E sync, per-profile sync, synced devices' tabs (§13 and the overflow menu), Sync pane (4 rows + 1 partial) | no backend | a sync server + account system exists (then it's a client package) |
+| Sync: E2E sync, per-profile sync, synced devices' tabs (§13 and the overflow menu), Sync pane (5 rows) | no backend | a sync server + account system exists (then it's a client package) |
 | Auto-updates (§24) | no update feed | an appcast is hosted and `SUFeedURL` points at it, the EdDSA private key (public half already in Info.plist) is in a release pipeline, and releases are notarized (the Developer ID export already works) |
 | Translate page (§8) | Chrome's Translate is in the engine, but ungoogled's domain substitution removed its Google servers | we pick a translation provider (API key, billing) or an on-device model, point Chrome's translate at it or build our own UI |
 | Protected video, Widevine (§18) | the CDM comes through the component updater, whose Google host is substituted; shipping also needs Google's VMP signing | Google grants VMP signing and we allow the component updater host (or bundle the CDM) |
@@ -178,8 +186,8 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 10. **Visual QA against Dia 1.50.1** (ledger 28–31). Same profile colour, same window size, dark mode first, the two
     windows side by side. (a) New Tab: the painted mark's size, outline and centre (48 pt above the bar) and its
     texture. (b) The selected tab row's tint in the sidebar, then in light mode. (c) Light mode: the command bar's
-    shadow under its bottom edge. (d) Open the same page in both and note when Dia's toolbar shows the host alone.
-    (e) A loading tab: the spinner at the row's end (ours copies Dia's `transform.rotation.z` 0 → −2π in its unflipped
+    shadow under its bottom edge. (d) Done: Dia's host-only rule came from its binary (§8), and the dark New Tab was
+    compared with a stored Dia capture (bar and mark geometry, colours; §21's Sunglow row). (e) A loading tab: the spinner at the row's end (ours copies Dia's `transform.rotation.z` 0 → −2π in its unflipped
     view, which should turn clockwise on screen; the spec's "counter-clockwise" was read in y-down terms). Pass: no difference you can see
     in (a)–(c) at 100 %; take a window screenshot (⇧⌘4, Space) of anything that differs, and note (d).
 11. **Dragging tabs between windows** (§1). Open two windows side by side (⌘N), each with a few tabs. Drag a sidebar
@@ -249,7 +257,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Search Tabs ⇧⌘A (all windows, recently closed, chats) | ✓ | ✅ | all windows of the profile + recently closed tabs/groups; chats ⏸ |
 | Tab Switcher ⌃Tab (MRU cycling with UI) | ✓ | ✅ | overlay after 140 ms, commits on ⌃ release |
 | ⌘1–⌘8 / ⌘9 select tab | ✓ (Chromium) | ✅ | |
-| Overflow menu (open + recently closed + synced devices) | ✓ | 🟡 | open, recently closed, recently cleaned, clean up, mute all done; synced devices need Sync (⛔) |
+| Overflow menu (open + recently closed + synced devices) | ✓ | ⛔ | everything but synced devices is done (open, recently closed, recently cleaned, clean up, mute all); synced devices' tabs need Sync, which has no backend (⛔ table) |
 | Clean Up Tabs ⌥⌘K / auto‑archive untouched tabs → "Recently Cleaned" | ✓ | ✅ | + daily auto clean-up and the sidebar upsell |
 | Auto‑clear abandoned New Tab Pages | ✓ | ✅ | on app resign-active / screen lock |
 | Links `_blank` / ⌘‑click open new tab | ✓ | ✅ | Chrome makes the tab in the opener's Browser (`window.opener` kept) and the app adopts it; ⌘-click → background tab next to its opener (ledger 7) |
@@ -293,7 +301,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Top Apps / Favorites dock | ✓ | ✅ | the pinned-tile dock; command bar "Move to Top Apps" / "Unpin from Top Apps" like Dia |
 | Library (chats & files Dia made) | ✓ | ⏸ | |
 | Downloads button in header | ✓ | ✅ | |
-| Selected/hover/pressed row styling + selected glow | ✓ | ✅ | Dia 1.50 selected tint (#121212 at 0.5 dark, white 0.7 light); not yet compared with Dia on screen (checklist step 10). Loading spinner in rows: Dia's `ActivitySpinnerView` (12 pt, 8 pt from the row's end, track + 72 % arc 1.5 pt wide in secondaryLabelColor, 1.88 s per turn), hidden under the hover close button |
+| Selected/hover/pressed row styling + selected glow | ✓ | ✅ | Dia 1.50 selected tint (#121212 at 0.5 dark, white 0.7 light). Compared with a Dia 1.50.1 capture (dark, 1×, 2026-09-26): the fill is #121212 at 0.5 over the sidebar in both, within 2 levels (rows at different heights); the selected row spans x 6.5 … 184.3 in Dia and 7.6 … 182 in ours, so ours is about 1 pt short on the left and 2 pt on the right (not fixed; a 2× capture should confirm before changing `sidebarInset`); light mode not compared (checklist step 10). Loading spinner in rows: Dia's `ActivitySpinnerView` (12 pt, 8 pt from the row's end, track + 72 % arc 1.5 pt wide in secondaryLabelColor, 1.88 s per turn), hidden under the hover close button |
 | Pinned tile tooltip (title + URL) | ✓ | ✅ | hover card with title and URL |
 | Website colour extended into tab bar / toolbar | ✓ | ✅ | nav bar tint from theme-color / header / background, eased; setting in Tabs |
 | Profile indicator in sidebar header | ✓ | ✅ | menu: switch, new, rename, colour, icon, default, delete. Sized like Dia's SidebarProfileIndicatorButton: the whole name when it fits between the traffic lights and Downloads, cut short (fading) only if 52 pt of it fit, else just the icon |
@@ -356,7 +364,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | "new doc / sheet / jira / meeting / figma…" commands | ✓ | ✅ | 17 `*.new` shortcuts + browser actions in the bar, Share and Keyboard Shortcuts included (both now in `runCommand`) |
 | `@` mentions & `/` skills in bar | ✓ | ⏸ | |
 | "+ Add tabs or files" chip | ✓ | ⏸ | the chip exists but attaching needs Chat |
-| Mic / dictation button | ✓ (streaming, hold‑to‑speak) | 🟡 | starts system dictation; Dia's streaming, hold-to-speak transcription is ⏸ |
+| Mic / dictation button | ✓ (streaming, hold‑to‑speak) | ⏸ | the button starts macOS dictation in the bar (done); what's left, Dia's streaming hold-to-speak transcription, is its AI voice input (⏸) |
 | Paste and Go / Paste and Search | ✓ | ✅ | bar and URL right-click menus; strips trackers |
 | Paste URLs as attachments | ✓ | ⏸ | |
 
@@ -368,7 +376,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Hold back button for history list; ⌘/middle‑click entries | ✓ | ✅ | our popover (layout/HistoryPopover): up to 15 entries + Show Full History, modifier clicks open tabs |
 | Two‑finger swipe navigation (custom UI, works on native pages) | ✓ | 🧪 | NNSwipe + Dia's overlay (layout/SwipeOverlay), on web, New Tab and internal pages. Only synthetic events verified; needs a real trackpad (checklist step 9). NNSwipe sits in front of Chrome's own responder delegate and forwards to it (spelling, speech, dialog focus), except the scroll events Chrome's history swiper would act on |
 | Load progress | ✓ | ✅ | |
-| URL bar shows host / title; hover reveals full URL; Show Full URL | ✓ | ✅ | Dia 1.50.1 sometimes shows the host alone; its rule isn't decoded (checklist step 10) |
+| URL bar shows host / title; hover reveals full URL; Show Full URL | ✓ | ✅ | Dia 1.50's rule, from its binary: a web page shows its host alone (no `www.`), and View › Show Full URL adds the path, query and fragment without a trailing "/" (`displayPageTitleInURLBarEnabled`, default on, only decides that); only Dia's own pages and chats show `Dia / title`. Ours does the same, and our own pages and local files keep `host / title`. Hover still shows the full URL. Checked in a Release instance (example.com/docs/intro/: `example.com`, then `example.com/docs/intro` with Show Full URL) |
 | Punycode display | ✓ | ✅ | `core/idn.ts`: Chrome's spoof checks, punycode otherwise |
 | Find in page ⌘F / ⌘G / ⇧⌘G | ✓ | ✅ | per-tab state, "n of m", ⇧↩ |
 | Use Selection for Find | ✓ | ✅ | |
@@ -515,7 +523,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
 | Built‑in ad + tracker blocker (EasyList, EasyPrivacy), per‑site toggle | ✓ | ✅ | uBlock Origin Lite (MV3 DNR + cosmetic) as a component extension in every profile, incognito included (ledger 16); per-site "disable on this site"; blocked count from `ERR_BLOCKED_BY_CLIENT` |
-| Cookie‑banner blocking, regional lists | ✓ | 🟡 | uBOL's cookie and regional rulesets, toggles in Privacy › Advanced Ad Block Settings, which lists every uBOL ruleset truthfully (ads, trackers, cookie banners, annoyances, malware and scams, regional; filter counts; "On by default") and says which uBOL version the lists come from. Gap: the lists only change when the app ships a newer uBOL (a built-in extension doesn't update itself); there's no in-app list update |
+| Cookie‑banner blocking, regional lists | ✓ | 🟡 | uBOL's cookie and regional rulesets, toggles in Privacy › Advanced Ad Block Settings, which lists every uBOL ruleset truthfully (ads, trackers, cookie banners, annoyances, malware and scams, regional; filter counts; "On by default") and says which uBOL version the lists come from. The regional list for the user's languages is on from the first launch: the engine's languages now follow macOS's preferred languages (`accept_language_list`; before, every Mac got `en-US,en`), and uBOL turns on the lists for them as it does in Chrome (checked: German → deu-0, Simplified Chinese → chn-0, Canadian French → fra-0, English → none). Dia has no such default: its block-list manifest (bundled, and the live one on its server) gives no list a `languages` value, so its regional lists are opt-in. Remaining gap: freshness. Dia refreshes its lists from its server between releases; ours change only when a release bumps uBOL (`UBOL_VERSION` in `packages/cef/scripts/setup.sh`), because a component extension doesn't update itself, and uBOL's URL-imported lists compile to dynamic rules, which Chrome caps far below EasyList's size. Closing it means a uBOL bump in every release (the release skill) |
 | Clear cookies / cache for site | ✓ | ✅ | Site Controls and Settings › Privacy › site permissions |
 | Incognito | ✓ | ✅ | in-memory profile per window; favicons and downloads stay in the window (WP5); uBOL blocks there too |
 | Usage / content data sharing opt‑in | ✓ | — | no telemetry here |
@@ -566,7 +574,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Profile theme colours | ✓ | ✅ | 9 colours |
 | Custom app icons (Dock tile plug‑in) | ✓ | ✅ | Settings › Appearance › App Icon (7 variants); `NetnyahooDockTile.plugin` keeps it after quitting. Not yet seen in the real Dock |
 | Pro / unlockable backgrounds | ✓ | — | plans feature |
-| Liquid Glass / "Sunglow" refresh (1.50) | ✓ | 🟡 | painted New Tab mark, bar shadows, one-colour power-up band, selected-tab tint, 0.25 s profile-swipe settle done (WP11); the lighter 1.50 key tint and 0.5 card, the bar's 1 pt offset and 112 pt height, and the tab loading spinner (R3). Dia uses no Liquid Glass API; app icon stays ours. R3 also fitted the painted mark's size (76 pt), the bar's rows and the lighter grain. Open: the breadcrumb's host-only rule; a side-by-side check against Dia 1.50.1 (checklist step 10) |
+| Liquid Glass / "Sunglow" refresh (1.50) | ✓ | ✅ | painted New Tab mark, bar shadows, one-colour power-up band, selected-tab tint, 0.25 s profile-swipe settle (WP11); the lighter 1.50 key tint (the WindowTreatment blur + tint stack: material 29 / `.hudWindow`, base tint black 0.4 / white 0.8, profile gradient at 0.5 / 0.75 with ΔL 0.25) and the 0.5 card, the bar's 1 pt offset and 112 pt height, the tab loading spinner, the mark's 76 pt size, the bar's rows and the lighter grain (R3); the host-only URL bar (§8, from the binary). Dia uses no Liquid Glass API; the app icon stays ours. Checked side by side with a Dia 1.50.1 capture (settled New Tab, dark, key, plum, 1512 × 949 at 1×, same crop, window-only ScreenCaptureKit on both): bar edges identical (x 522.5 … 1174.5, y 375.5 … 487.5), mark within 1 px (x 811 … 885 against 810 … 886, y 289 … 349 against 289 … 350, same centre), bar fill (45, 45, 45) in both, page and sidebar gutter within 1.5 levels (page top (42.0, 34.5, 36.0) against (42.0, 34.5, 36.4)). Still for the user (checklist step 10): the light appearance, which no Dia capture shows yet |
 | Appearance pane (Light/Dark/Auto, app icons) | removed in 1.50 | ✅ | Dia deleted its pane in 1.50; ours stays |
 | Daylight effect (sun‑based shadow) | ✓ (flagged, excluded with area light) | — | intentionally off |
 
@@ -615,9 +623,9 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 |---|---|---|---|
 | Intro animation with music (mute / skip) | ✓ | ✅ | our own synthesized music on the animation's cues; Dia's mute button, remembered |
 | Onboarding steps (email, role, apps, default browser, pinned‑tab suggestions) | ✓ | ✅ | default browser / Dock / login, personalization, import, pinned-tab suggestions; email and role are account steps (—), apps ⏸ |
-| Welcome postcard, tool tour, Trial Guide, video tour | ✓ | 🟡 | welcome postcard and coach-mark tool tour done; video tour hidden while Info.plist `NNVideoTourURL` is empty (no video yet); Trial Guide — |
+| Welcome postcard, tool tour, Trial Guide, video tour | ✓ | ✅ | welcome postcard and coach-mark tool tour done. Video tour: Help › Video Tour opens Info.plist `NNVideoTourURL` (Dia's opens diabrowser.com/tour); hidden while that's empty, on purpose, until there's a public video. Trial Guide —: Dia's (1.50.1 binary and its bundled page) is a "Start with Dia" checklist of 12 actions in 4 levels (First steps: create account, unlock morning brief, send first message; Open the map: make default browser, connect apps, ask on page; Find your rhythm: create tab group, message connected apps, create report; Go further: split view, @ context, profiles), where a level unlocks after 2 of its 3 actions. 8 of the 12 are account or AI actions (— / ⏸), level 1 has none we have, so the guide couldn't get past it. It's also off by default in Dia (`trial-guide-enabled` and its New Tab stamp card compiled false, rolled out remotely) |
 | "What's new" postcard / Dia Weekly | ✓ | ✅ | NTP release-notes postcard and full-page notes; Dia Weekly (a newsletter) — |
-| Help menu (Chat with Support, Status, Feedback) | ✓ | 🟡 | Send Feedback (a mail draft with no recipient until `NNFeedbackURL` / `NNFeedbackEmail` are set in Info.plist), Keyboard Shortcuts, Tool Tour, Video Tour (hidden), Copy Diagnostics, Record Performance Issue. Chat with Support ⏸, Status — |
+| Help menu (Chat with Support, Status, Feedback) | ✓ | ✅ | Send Feedback… opens a new GitHub issue (github.com/mantrakp04/netnyahoo) with Copy Diagnostics' report as its body (Info.plist `NNFeedbackURL`, `%s` = the report; a build can point it elsewhere, or clear it for `NNFeedbackEmail` or a mail draft; checked: signed out, GitHub's sign-in page keeps the prefilled issue as its return URL). Keyboard Shortcuts, Tool Tour, Video Tour (hidden until there's a video), Release Notes, Copy Diagnostics, Record Performance Issue…. Dia's Chat with Support (its help centre) and Status (status.diabrowser.com) are pages about Dia's own service: — for us, with no support desk or online service (feedback goes to GitHub issues) |
 | Plans / trial / usage credits | ✓ | — | |
 
 ## Keyboard shortcuts — Dia vs Netnyahoo
@@ -681,13 +689,13 @@ lib/appIntegration.ts).
 | App (About, Updates, Invite, Settings, Import, Services, Sign Out, Hide, Quit) | ✓ | ✅ About, Check for Updates…, Settings…, Import from Another Browser…, Services, Hide / Hide Others / Show All, Quit (Invite and Sign Out are account features: —) |
 | File | ✓ | ✅ New Tab, New Tab in Group, New Window, New Incognito Window, Reopen Closed Tab / Window, Open Command Bar, Close Window / Tab / All Tabs, Clean Up Tabs, Share…, Print… (Chat ⏸) |
 | Edit | ✓ | ✅ Undo … Select All, Copy URL (as Markdown), Paste and Match Style; Find ▸ (Find, Find and Replace, Next, Previous, Use Selection for Find, Jump to Selection); Spelling and Grammar, Substitutions, Transformations, Speech; AutoFill ▸ (Contact…, Passwords…, Credit Card…: Chrome's dropdown at the focused field, else Settings, see §16) |
-| View | ✓ | 🟡 Appearance, Refresh / Force Refresh, Show Tabs in Sidebar, Auto-Hide Tabs, split panes, Show Bookmarks Bar ▸, Show Full URL, zoom, Enter Full Screen, Developer ▸ (View Source, Developer Tools, JavaScript Console). Unchanged since the last audit, which rated it partial without naming the missing items |
+| View | ✓ | 🟡 every Dia 1.50.1 item, same titles and shortcuts: Appearance ▸, Refresh / Force Refresh the Page, Show Tabs in Sidebar, Auto-Hide Tabs, split panes, Show Bookmarks Bar ▸, Show Full URL (now the same toggle as Dia's, §8), zoom, Enter Full Screen, Developer ▸; plus ours: Show Address Bar in Sidebar, Cast…, View Source, JavaScript Console. Left (all in `Menus.swift`'s View block, owned elsewhere): Dia's grouping (no separator after Appearance; separators after Auto-Hide Tabs, between Show Bookmarks Bar ▸ and Show Full URL, and between Enter Full Screen and Developer ▸) and Force Refresh the Page as the ⇧ alternate of Refresh (medium confidence from the binary) |
 | Tabs | ✓ | ✅ Back/Forward, Next/Previous Tab, Search Tabs…, Pin, Duplicate, New Group with Tab, Move to Profile / Window, Add to Bookmarks…, Add Bookmark to Folder, Rename…, Change Icon…, Mute Site |
 | Bookmarks | ✓ | ✅ Bookmark This Page, Bookmark All Tabs…, Manage Bookmarks, Recent Bookmarks, Bookmarks Bar / Other Bookmarks trees |
 | History | ✓ | ✅ Show History…, Clear Browsing Data…, Recently Closed, Recently Closed Groups |
 | Extensions | ✓ | ✅ one item per enabled extension (opens its popup or runs its action), Add Extension…, Manage Extensions…, Pin Extensions… |
 | Window | ✓ | ✅ Minimize (+ Minimize All), Arrange in Front, Keep Window on Top, Downloads, Task Manager, Merge All Windows, Profiles, AppKit's Move & Resize and window list |
-| Help | ✓ | 🟡 Send Feedback… (mail draft until a destination is configured), Keyboard Shortcuts, Tool Tour, Video Tour (hidden until configured), Copy Diagnostics, Record Performance Issue… (+ DEBUG Show Onboarding); no Chat with Support (⏸) |
+| Help | ✓ | ✅ Send Feedback… (a GitHub issue with the diagnostics), Keyboard Shortcuts, Tool Tour, Video Tour (hidden until there's a video), Release Notes, Copy Diagnostics, Record Performance Issue… (+ DEBUG Show Onboarding). Dia 1.50.1: Chat with Support, Video Tour, Status, Copy Diagnostics, Record Performance Issue… (Cancel Performance Recording while it records; ours asks Stop / Discard in a dialog instead), and an internal Export Sync Log…; Chat with Support and Status are Dia-service pages (—) |
 
 ## Broken or inconsistent after the migration (found during this audit)
 The previous audit's list (Broken 1–13) was all fixed and is dropped. "Likely" means read in the code but not
