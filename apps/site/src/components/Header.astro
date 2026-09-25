@@ -2,19 +2,27 @@
 import { Image } from "astro:assets";
 import icon from "../assets/app-icon.png";
 import { DMG, REPO } from "../data/release";
+
+interface Props {
+  /** Where the section links point: "" on the home page itself, the home page's URL elsewhere. */
+  home?: string;
+}
+const { home = "" } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <header class="bar" data-bar>
   <div class="wrap bar-inner">
-    <a class="mark" href="#top" aria-label="Netnyahoo, back to top">
+    <a class="mark" href={`${home}#top`} aria-label={home ? "Netnyahoo home" : "Netnyahoo, back to top"}>
       <Image src={icon} alt="" width={30} height={30} densities={[1, 2]} loading="eager" />
       <span>netnyahoo</span>
     </a>
     <nav aria-label="Sections">
-      <a href="#platform">Platform</a>
-      <a href="#record">Record</a>
-      <a href="#game">Game</a>
-      <a href="#press">Press</a>
+      <a href={`${home}#platform`}>Platform</a>
+      <a href={`${home}#record`}>Record</a>
+      <a href={`${home}#game`}>Game</a>
+      <a href={`${home}#press`}>Press</a>
+      <a href={`${base}/release-notes`}>Notes</a>
       <a href={REPO} rel="noopener">GitHub</a>
     </nav>
     <a class="bar-cta" href={DMG} data-download>Download</a>

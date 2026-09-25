@@ -1,6 +1,7 @@
 ---
 import DownloadButton from "./DownloadButton.astro";
-import { DMG_SIZE, MIN_MACOS, RELEASES, VERSION } from "../data/release";
+import { DMG_SIZE, MIN_MACOS, VERSION } from "../data/release";
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <section class="closing" aria-labelledby="closing-title" data-shot="closing">
@@ -13,7 +14,7 @@ import { DMG_SIZE, MIN_MACOS, RELEASES, VERSION } from "../data/release";
       </p>
       <div class="cta" data-reveal style="--i: 2">
         <DownloadButton label={`Download ${VERSION}`} meta="DMG" />
-        <a class="link" href={RELEASES} rel="noopener">Release notes</a>
+        <a class="link" href={`${base}/release-notes`}>Release notes</a>
       </div>
       <p class="label fine">{MIN_MACOS} or later · Apple Silicon · <a class="link" href="#install">First launch help</a></p>
     </div>

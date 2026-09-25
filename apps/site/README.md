@@ -20,6 +20,9 @@ Pages without a custom domain).
 
 - **A release:** bump `VERSION` and `DMG_SIZE` in `src/data/release.ts`. The download button links to
   `releases/latest/download/Netnyahoo-<version>.dmg`.
+- **Release notes:** `/release-notes` renders the repo's `docs/release-notes/<version>.md` (one file per version,
+  `src/content.config.ts`), newest first, each at `/release-notes#<version>`. The app opens that anchor after it
+  updates, so rebuild and redeploy the site when a release ships (`docs/releasing.md`).
 - **Screenshots:** `src/assets/shots/*.webp` are real captures of Netnyahoo 0.1.0: ScreenCaptureKit window
   captures (2×, transparent outside the window), except `privacy.webp`, the app's own offscreen render of
   that Settings pane (`devSnapshotWindow`, no window frame) because the screen was locked. `game/crowd.webp` is

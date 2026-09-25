@@ -1,0 +1,531 @@
+---
+// Release notes, as the incumbent's official gazette: one entry per version, newest first, each
+// anchored at its version (/release-notes#0.1.4). The app opens that anchor after it updates.
+// The entries are the repo's docs/release-notes/<version>.md (src/content.config.ts).
+import { getCollection } from "astro:content";
+import Base from "../layouts/Base.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import DownloadButton from "../components/DownloadButton.astro";
+
+const parts = (v: string) => v.split(".").map(Number);
+const byNewest = (a: string, b: string) => {
+  const [x, y] = [parts(a), parts(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (y[i] ?? 0) - (x[i] ?? 0);
+    if (d) return d;
+  }
+  return 0;
+};
+const notes = (await getCollection("releaseNotes")).sort((a, b) => byNewest(a.id, b.id));
+const releases = notes.map((n, i) => ({
+  version: n.id,
+  no: notes.length - i,
+  date: n.data.date,
+  headline: n.data.headline,
+  // Written for GitHub, where "##" is a section; here the release's headline is the h2.
+  html: (n.rendered?.html ?? "").replace(/<(\/?)h2\b/g, "<$1h3"),
+}));
+const latest = releases[0]!;
+const longDate = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<Base
+  title="Release notes — Netnyahoo"
+  description="Every Netnyahoo release on the record: what’s new, what’s fixed, what got smaller."
+>
+  <Header home={`${base}/`} />
+  <main class="gazette">
+    <header class="wrap nameplate">
+      <p class="label ears">
+        <span>Netnyahoo release notes</span>
+        <span>No. {latest.no}<span class="optional"> · {longDate.format(latest.date)}</span></span>
+      </p>
+      <h1 class="poster title">
+        <span class="visually-hidden">Netnyahoo release notes: </span>
+        <span class="word"><span>Official</span></span>{" "}
+        <span class="word"><span>Gazette</span></span>
+      </h1>
+      <p class="label dateline">
+        <span>Every release, on the record</span>
+        <span class="optional">Published whenever the incumbent ships</span>
+        <span>Price: free</span>
+      </p>
+    </header>
+
+    <div class="wrap layout">
+      <nav class="index" aria-label="Releases">
+        <p class="label index-head">In this record</p>
+        <ol>
+          {
+            releases.map((r) => (
+              <li>
+                <a href={`#${r.version}`} data-index={r.version}>
+                  <span class="index-version">{r.version}</span>
+                  <span class="index-headline">{r.headline}</span>
+                </a>
+              </li>
+            ))
+          }
+        </ol>
+      </nav>
+
+      <div class="entries">
+        {
+          releases.map((r, i) => (
+            <article class:list={["entry", { latest: i === 0 }]} id={r.version} aria-labelledby={`title-${r.version}`}>
+              <header class="entry-head">
+                <p class="label meta">
+                  <span>No. {r.no}</span>
+                  <time datetime={isoDate(r.date)}>{longDate.format(r.date)}</time>
+                  {i > 0 && <span class="superseded">Superseded</span>}
+                  <span class="here">You are here</span>
+                </p>
+                <p class="poster version" aria-hidden="true">
+                  {r.version}
+                </p>
+                <h2 class="headline" id={`title-${r.version}`}>
+                  <a href={`#${r.version}`}>
+                    <span class="visually-hidden">Netnyahoo {r.version}: </span>
+                    {r.headline}
+                  </a>
+                </h2>
+                {i === 0 && (
+                  <p class="stamp" aria-hidden="true">
+                    <span>Incumbent</span>
+                  </p>
+                )}
+              </header>
+              <div class="notes" set:html={r.html} />
+            </article>
+          ))
+        }
+
+        <footer class="end">
+          <p class="poster end-title">End of record.</p>
+          <p class="end-line">Nothing before 0.1.0 was ever written down. Reading this in another browser? That can be arranged.</p>
+          <DownloadButton />
+        </footer>
+      </div>
+    </div>
+  </main>
+  <Footer />
+</Base>
+
+<style>
+  .gazette {
+    padding-bottom: clamp(24px, 4vw, 48px);
+  }
+
+  /* Nameplate: a newspaper's, set in the campaign's poster type. */
+  .nameplate {
+    padding-top: clamp(28px, 5vw, 64px);
+  }
+  .ears {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    color: var(--ink-2);
+  }
+  .title {
+    margin: clamp(10px, 1.6vw, 22px) 0 clamp(14px, 2vw, 26px);
+    font-size: clamp(3.4rem, 11.6vw, 12.4rem);
+    line-height: 0.82;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .word {
+    display: inline-block;
+    overflow: clip;
+    overflow-clip-margin: 0.1em;
+    vertical-align: top;
+  }
+  .word > span {
+    display: block;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .js .word > span {
+      animation: rise 1000ms var(--ease-out) both;
+    }
+    .js .word + .word > span {
+      animation-delay: 70ms;
+    }
+  }
+  @keyframes rise {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  .dateline {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 9px 0 8px;
+    border-top: 3px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    color: var(--ink);
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--gutter);
+    margin-top: clamp(40px, 6vw, 88px);
+  }
+
+  /* The index: sticky beside the entries, following the one being read. */
+  .index {
+    grid-column: 1 / span 3;
+    align-self: start;
+    position: sticky;
+    top: 96px;
+  }
+  .index-head {
+    color: var(--ink-2);
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .index ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .index a {
+    display: grid;
+    grid-template-columns: 3.6rem minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px 0 13px;
+    border-bottom: 1px solid var(--rule);
+    text-decoration: none;
+    color: var(--ink-3);
+    transition: color 150ms;
+  }
+  .index a:hover,
+  .index a[aria-current="true"] {
+    color: var(--ink);
+  }
+  .index-version {
+    font-family: var(--poster);
+    font-weight: 780;
+    font-stretch: 75%;
+    font-size: 1.12rem;
+    line-height: 1.15;
+  }
+  .index a[aria-current="true"] .index-version {
+    color: var(--tie);
+  }
+  .index-headline {
+    font-size: var(--t-small);
+    line-height: 1.3;
+    text-wrap: pretty;
+  }
+
+  .entries {
+    grid-column: 5 / -1;
+    min-width: 0;
+  }
+
+  .entry {
+    position: relative;
+    padding: clamp(28px, 3.4vw, 44px) 0 clamp(48px, 6vw, 88px);
+    border-top: 1px solid var(--rule-strong);
+  }
+  .entry.latest {
+    padding-top: 0;
+    border-top: 0;
+  }
+  .entry-head {
+    position: relative;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 0;
+    color: var(--ink-2);
+  }
+  .meta > * + *::before {
+    content: "·";
+    margin: 0 10px;
+    color: var(--ink-3);
+  }
+  .superseded {
+    color: var(--ink-3);
+  }
+  .here {
+    display: none;
+  }
+  .version {
+    margin: 14px 0 0 -0.04em;
+    font-size: clamp(2.8rem, 1.9rem + 2.8vw, 4.6rem);
+    color: var(--ink);
+    transition: color 300ms var(--ease-out);
+  }
+  .latest .version {
+    font-size: clamp(4.6rem, 2.2rem + 8vw, 10.5rem);
+    margin-top: 10px;
+  }
+  .headline {
+    margin-top: 14px;
+    max-width: 22em;
+    font-family: var(--serif);
+    font-weight: 470;
+    font-size: clamp(1.5rem, 1.25rem + 0.9vw, 2.1rem);
+    line-height: 1.12;
+    letter-spacing: -0.016em;
+  }
+  .latest .headline {
+    margin-top: 18px;
+    max-width: 17em;
+    font-size: clamp(1.9rem, 1.2rem + 2.3vw, 3.4rem);
+    line-height: 1.05;
+    letter-spacing: -0.022em;
+  }
+  .headline a {
+    text-decoration: none;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  /* The newest release is the one in office. */
+  .stamp {
+    position: absolute;
+    right: 0;
+    top: clamp(28px, 4vw, 64px);
+    margin: 0;
+    transform: rotate(-9deg);
+    pointer-events: none;
+    font-family: var(--poster);
+    font-weight: 850;
+    font-stretch: 75%;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-size: clamp(0.85rem, 0.7rem + 0.5vw, 1.2rem);
+    color: var(--stamp);
+    border: 2.5px solid currentColor;
+    padding: 3px;
+    border-radius: 4px;
+    mix-blend-mode: multiply;
+    opacity: 0.9;
+  }
+  .stamp span {
+    display: block;
+    border: 1px solid currentColor;
+    padding: 5px 12px 4px;
+    border-radius: 2px;
+  }
+
+  /* Arriving at /release-notes#<version> (the app does after an update): that entry is marked. */
+  .entry:target .here {
+    display: block;
+    order: -1;
+    flex-basis: 100%;
+    margin-bottom: 4px;
+    color: var(--tie);
+    font-weight: 560;
+  }
+  .meta > .here::before {
+    content: "↓";
+    margin: 0 8px 0 0;
+    color: inherit;
+  }
+  .entry:target .version {
+    color: var(--tie);
+  }
+  .entry:target .headline a {
+    background-image: linear-gradient(rgb(33 80 217 / 0.16), rgb(33 80 217 / 0.16));
+    background-repeat: no-repeat;
+    background-position: 0 92%;
+    background-size: 100% 0.36em;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .entry:target .headline a {
+      animation: mark 900ms var(--ease-out) 300ms both;
+    }
+  }
+  @keyframes mark {
+    from {
+      background-size: 0% 0.36em;
+    }
+  }
+
+  /* The notes themselves (rendered Markdown): section labels in the margin, numbered items. */
+  .notes {
+    display: grid;
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+    column-gap: var(--gutter);
+    max-width: 56rem;
+    margin-top: clamp(28px, 3.4vw, 44px);
+  }
+  .notes > :global(*) {
+    grid-column: 2;
+  }
+  .notes > :global(p) {
+    grid-column: 1 / -1;
+    max-width: 34em;
+    margin-bottom: 30px;
+    color: var(--ink-2);
+  }
+  .notes > :global(h3) {
+    grid-column: 1;
+    padding-top: 16px;
+    font-family: var(--mono);
+    font-size: var(--t-label);
+    font-stretch: 87.5%;
+    font-weight: 520;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1.5;
+  }
+  .notes > :global(ul) {
+    list-style: none;
+    margin: 0 0 30px;
+    padding: 0;
+    border-top: 1px solid var(--rule-strong);
+    counter-reset: item;
+  }
+  .notes > :global(ul:last-child) {
+    margin-bottom: 0;
+  }
+  .notes :global(li) {
+    position: relative;
+    padding: 14px 0 15px 2.4rem;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-2);
+    counter-increment: item;
+  }
+  .notes :global(li:not(:has(strong))) {
+    color: var(--ink);
+  }
+  .notes :global(li)::before {
+    content: counter(item, decimal-leading-zero);
+    position: absolute;
+    left: 0;
+    top: 14px;
+    font-family: var(--mono);
+    font-size: var(--t-label);
+    font-stretch: 87.5%;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    line-height: 2.3;
+  }
+  .notes :global(strong) {
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .notes :global(code) {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    font-stretch: 87.5%;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--paper-deep);
+    color: var(--ink);
+  }
+  .notes :global(a) {
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+  }
+
+  .end {
+    padding-top: clamp(28px, 3.4vw, 44px);
+    border-top: 2px solid var(--ink);
+  }
+  .end-title {
+    font-size: clamp(2.4rem, 1.4rem + 3vw, 4.4rem);
+  }
+  .end-line {
+    margin: 16px 0 28px;
+    max-width: 30em;
+    color: var(--ink-2);
+  }
+
+  @media (max-width: 1100px) {
+    .index {
+      grid-column: 1 / span 4;
+    }
+    .entries {
+      grid-column: 5 / -1;
+    }
+  }
+
+  /* Tablets and phones: the index becomes a row of versions above the entries. */
+  @media (max-width: 900px) {
+    .index,
+    .entries {
+      grid-column: 1 / -1;
+    }
+    .index {
+      position: static;
+      margin-bottom: clamp(36px, 7vw, 56px);
+    }
+    .index-head {
+      border-bottom-width: 1px;
+      border-bottom-color: var(--rule-strong);
+    }
+    .index ol {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-top: 14px;
+    }
+    .index a {
+      display: block;
+      padding: 7px 11px 6px;
+      border: 1px solid var(--rule);
+      border-radius: 3px;
+    }
+    .index a:hover {
+      border-color: var(--ink);
+    }
+    .index-headline {
+      display: none;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .title {
+      font-size: clamp(3.2rem, 22vw, 7rem);
+      line-height: 0.84;
+    }
+    .word {
+      display: block;
+    }
+    .optional {
+      display: none;
+    }
+    .notes {
+      display: block;
+    }
+    .notes > :global(h3) {
+      padding-top: 0;
+      margin-bottom: 10px;
+    }
+    .stamp {
+      top: 34px;
+    }
+  }
+</style>
+
+<script>
+  // The index follows the entry being read.
+  const links = new Map(
+    [...document.querySelectorAll<HTMLAnchorElement>("[data-index]")].map((a) => [a.dataset.index!, a] as const),
+  );
+  const visible = new Set<string>();
+  const entries = [...document.querySelectorAll<HTMLElement>(".entry")];
+  const mark = () => {
+    const current = entries.find((e) => visible.has(e.id))?.id;
+    for (const [version, a] of links) a.setAttribute("aria-current", String(version === current));
+  };
+  const watch = new IntersectionObserver(
+    (changes) => {
+      for (const c of changes) c.isIntersecting ? visible.add(c.target.id) : visible.delete(c.target.id);
+      mark();
+    },
+    { rootMargin: "-40% 0px -55% 0px" },
+  );
+  for (const e of entries) watch.observe(e);
+</script>

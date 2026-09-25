@@ -1,5 +1,6 @@
 ---
 import { RELEASES, REPO } from "../data/release";
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <footer class="foot" data-shot="footer">
@@ -9,7 +10,8 @@ import { RELEASES, REPO } from "../data/release";
       <nav class="col" aria-label="Project">
         <p class="label h">Project</p>
         <a class="link" href={REPO} rel="noopener">Source on GitHub</a>
-        <a class="link" href={RELEASES} rel="noopener">Releases</a>
+        <a class="link" href={`${base}/release-notes`}>Release notes</a>
+        <a class="link" href={RELEASES} rel="noopener">Downloads</a>
         <a class="link" href={`${REPO}/issues`} rel="noopener">Report a bug</a>
       </nav>
       <div class="col">
