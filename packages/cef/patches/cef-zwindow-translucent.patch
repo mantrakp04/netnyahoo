@@ -1,0 +1,44 @@
+--- a/include/cef_netnyahoo.h
++++ b/include/cef_netnyahoo.h
+@@ -100,4 +100,9 @@
+ // view first.
+ #define CEF_NN_CLIENT_WINDOW 1
+ 
++// CefWindowDelegate::IsTranslucent: a window whose compositor clears to
++// transparent (a Chrome-hosted window that can leave the screen without a
++// frame of its own drawing).
++#define CEF_NN_TRANSLUCENT_WINDOW 1
++
+ #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
+--- a/include/views/cef_window_delegate.h
++++ b/include/views/cef_window_delegate.h
+@@ -155,6 +155,15 @@
+   virtual bool IsFrameless(CefRefPtr<CefWindow> window) { return false; }
+ 
+   ///
++  /// Return true if |window| should be created translucent: its native window
++  /// isn't opaque and its compositor clears to transparent, so wherever the
++  /// window's views (and its background color, see CefView::SetBackgroundColor)
++  /// draw nothing, what is behind the window shows. Only supported on macOS.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual bool IsTranslucent(CefRefPtr<CefWindow> window) { return false; }
++
++  ///
+   /// Return true if |window| should be created with standard window buttons
+   /// like close, minimize and zoom. This method is only supported on macOS.
+   ///
+--- a/libcef/browser/views/window_view.cc
++++ b/libcef/browser/views/window_view.cc
+@@ -544,6 +544,11 @@
+   if (cef_delegate()) {
+     CefRefPtr<CefWindow> cef_window = GetCefWindow();
+ 
++    // Netnyahoo: a translucent window (CefWindowDelegate::IsTranslucent).
++    if (!has_native_parent && cef_delegate()->IsTranslucent(cef_window)) {
++      params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
++    }
++
+     auto bounds = cef_delegate()->GetInitialBounds(cef_window);
+     params.bounds = gfx::Rect(bounds.x, bounds.y, bounds.width, bounds.height);
+ 
