@@ -21,6 +21,8 @@ using namespace nn;
 @protocol NNChromiumWindow
 - (void)setActivationIndependence:(BOOL)independence;
 - (void)setPreventKeyWindow:(BOOL)prevent;
+/// The visible child window with a modal type (web-modal dialogs), topmost first.
+- (NSWindow *)topmostVisibleChildModalWindow;
 @property(nonatomic, copy) void (^childWindowAddedHandler)(NSWindow *child);
 @property(nonatomic, copy) void (^childWindowRemovedHandler)(NSWindow *child);
 @end
@@ -504,10 +506,13 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   /// right above it: behind the app window while the ghost is (0.1.1 drew passkey dialogs
   /// there, invisible). The ghost (transparent, click-through, ignored by macOS's and
   /// Chromium's occlusion) goes in front of the app window while one of them shows.
+  /// Only a modal one: the ghost's other children are Chrome's bubbles for its own tab strip
+  /// and toolbar (tab hover cards, the zoom bubble, the status bubble, which stays ordered in
+  /// at alpha 0), which 0.1.2 and 0.1.3 lifted over the page, keeping the ghost in front.
   static bool ShowsChromeWindows(NSWindow *ghost) {
-    for (NSWindow *child in ghost.childWindows)
-      if (child.isVisible) return true;
-    return false;
+    if (![ghost respondsToSelector:@selector(topmostVisibleChildModalWindow)]) return false;
+    NSWindow *dialog = [(id<NNChromiumWindow>)ghost topmostVisibleChildModalWindow];
+    return dialog && dialog.alphaValue > 0;
   }
 
   /// Follows the Chrome windows the ghost shows (ShowsChromeWindows).
