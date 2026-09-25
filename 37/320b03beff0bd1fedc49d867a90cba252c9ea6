@@ -1,0 +1,50 @@
+docs/research/chrome-hosted-window/spike/ext-popup/popup.html
+  s_9c356f9574d31c::t_df2bb6835230a2 1
+docs/research/chrome-hosted-window/spike/pages/download.html
+  s_9c356f9574d31c::t_df2bb6835230a2 1-2
+docs/research/chrome-hosted-window/spike/pages/keys.html
+  s_9c356f9574d31c::t_df2bb6835230a2 1-5
+docs/research/chrome-hosted-window/spike/pages/file.txt
+  s_9c356f9574d31c::t_df2bb6835230a2 1
+docs/research/chrome-hosted-window.md
+  s_9c356f9574d31c::t_cf8c4379462c63 3,6-7,112-172,507
+docs/research/chrome-hosted-window/spike/pages/video.html
+  s_9c356f9574d31c::t_df2bb6835230a2 1-11
+docs/research/chrome-hosted-window/spike/pages/alert.html
+  s_9c356f9574d31c::t_df2bb6835230a2 4
+docs/research/chrome-hosted-window/spike/restore.sh
+  s_9c356f9574d31c::t_df2bb6835230a2 1-2,5-24
+  s_9c356f9574d31c::t_5f58b92b0493fa 3-4
+docs/research/chrome-hosted-window/spike/dev.sh
+  s_9c356f9574d31c::t_df2bb6835230a2 1-7
+docs/research/chrome-hosted-window/spike/h.mjs
+  s_9c356f9574d31c::t_df2bb6835230a2 1-97
+docs/research/chrome-hosted-window/spike/ext-popup/manifest.json
+  s_9c356f9574d31c::t_df2bb6835230a2 1
+docs/research/chrome-hosted-window/spike/pages/popup.html
+  s_9c356f9574d31c::t_df2bb6835230a2 1-3
+docs/research/chrome-hosted-window/spike/p2.mjs
+  s_9c356f9574d31c::t_df2bb6835230a2 1-340
+docs/research/chrome-hosted-window/spike/pages/find.html
+  s_9c356f9574d31c::t_df2bb6835230a2 1-2
+docs/research/chrome-hosted-window/spike/pages/fullscreen.html
+  s_9c356f9574d31c::t_df2bb6835230a2 1-6
+docs/migration-status.md
+  s_9c356f9574d31c::t_a2b6a7c7fdb03e 642-669
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "37320b03beff0bd1fedc49d867a90cba252c9ea6",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
