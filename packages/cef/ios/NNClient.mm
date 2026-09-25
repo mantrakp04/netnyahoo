@@ -179,8 +179,15 @@ void Client::Emit(NSString *name, NSDictionary *payload) { [view_ emit:name payl
 
 void Client::EmitNavigation() {
   if (!browser_) return;
+  // A view-source: tab's frame shows the page's own URL; Chrome's address bar (and a restored or
+  // reloaded tab) keep the view-source: one.
+  NSString *url = URL();
+  if (CefRefPtr<CefNavigationEntry> entry = browser_->GetHost()->GetVisibleNavigationEntry()) {
+    NSString *display = ToNS(entry->GetDisplayURL());
+    if ([display hasPrefix:@"view-source:"]) url = display;
+  }
   Emit(@"navigation", @{
-    @"url" : URL(),
+    @"url" : url,
     @"title" : title_ ?: @"",
     @"canGoBack" : @(browser_->CanGoBack()),
     @"canGoForward" : @(browser_->CanGoForward()),
