@@ -1,5 +1,5 @@
 import { AreaLight, EdgeLight, Orb, PowerUp } from "@netnyahoo/shaders";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Surface, VisualEffect } from "@netnyahoo/shell";
 import { StyleSheet, View } from "react-native";
 import { hex, useTheme } from "../lib/theme";
@@ -43,6 +43,8 @@ const NEGATE_ANGLE = true;
 type Frame = { x: number; y: number; width: number; height: number };
 type Size = { width: number; height: number };
 let lastSize: Size | null = null;
+/** Tabs whose New Tab page already played the entrance; switching back to one doesn't replay it. */
+const introPlayed = new Set<string>();
 const frameStyle = (f: Frame) => ({ left: f.x, top: f.y, width: f.width, height: f.height });
 
 function logoFrame(viewWidth: number, barTop: number): Frame {
@@ -104,6 +106,11 @@ export function NewTabPage({ tabId }: { tabId: string }) {
     setSizeState((prev) => (prev && prev.width === next.width && prev.height === next.height ? prev : next));
   };
   const [panelHeight, setPanelHeight] = useState(BAR_HEIGHT);
+  // The band and halo fade out completely, so a page that has played them just leaves them out.
+  const [playIntro] = useState(() => !introPlayed.has(tabId));
+  useEffect(() => {
+    introPlayed.add(tabId);
+  }, [tabId]);
 
   if (!size) return <View style={{ flex: 1 }} onLayout={(e) => setSize(e.nativeEvent.layout)} />;
 
@@ -129,7 +136,7 @@ export function NewTabPage({ tabId }: { tabId: string }) {
     <View style={{ flex: 1 }} onLayout={(e) => setSize(e.nativeEvent.layout)}>
       {/* CommandBarPowerUpView: full-page band rising from the bottom, behind everything, and the
           halo (shown while the area light is off). Incognito has neither. */}
-      {theme.powerUpColor && (
+      {playIntro && theme.powerUpColor && (
         <PowerUp
           style={StyleSheet.absoluteFill}
           palette={[theme.powerUpColor]}
