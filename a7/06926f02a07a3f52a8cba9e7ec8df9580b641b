@@ -1,0 +1,23 @@
+apps/browser/src/components/omnibox/actions.ts
+  s_9c356f9574d31c::t_52751a04b7f2d9 69
+apps/browser/src/components/Toolbar.tsx
+  s_9c356f9574d31c::t_66b401a6636c46 185-187,233-234,275,285
+apps/browser/src/components/settings/panes/Advanced.tsx
+  s_9c356f9574d31c::t_52751a04b7f2d9 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a706926f02a07a3f52a8cba9e7ec8df9580b641b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
