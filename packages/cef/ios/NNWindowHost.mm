@@ -27,8 +27,8 @@ using namespace nn;
 @property(nonatomic, copy) void (^childWindowRemovedHandler)(NSWindow *child);
 @end
 
-/// Calls `change` whenever one of the watched windows is shown or hidden (KVO on `visible`,
-/// which Chromium's own windows observe too).
+/// Calls `change` whenever one of the watched windows is shown, hidden or faded (KVO on `visible`,
+/// which Chromium's own windows observe too, and `alphaValue`).
 @interface NNWindowVisibilityWatcher : NSObject
 - (instancetype)initWithChange:(void (^)(void))change;
 - (void)watch:(NSWindow *)window;
@@ -54,6 +54,8 @@ using namespace nn;
   if (!window || [_windows indexOfObjectIdenticalTo:window] != NSNotFound) return;
   [_windows addObject:window];
   [window addObserver:self forKeyPath:@"visible" options:0 context:nil];
+  // Chrome fades some of its windows in and out (and keeps its status bubble at alpha 0).
+  [window addObserver:self forKeyPath:@"alphaValue" options:0 context:nil];
   __weak NNWindowVisibilityWatcher *weakSelf = self;
   __weak NSWindow *weakWindow = window;
   [_closeObservers addObject:[NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification
@@ -68,6 +70,7 @@ using namespace nn;
   NSUInteger i = window ? [_windows indexOfObjectIdenticalTo:window] : NSNotFound;
   if (i == NSNotFound) return;
   [window removeObserver:self forKeyPath:@"visible"];
+  [window removeObserver:self forKeyPath:@"alphaValue"];
   [NSNotificationCenter.defaultCenter removeObserver:_closeObservers[i]];
   [_windows removeObjectAtIndex:i];
   [_closeObservers removeObjectAtIndex:i];
@@ -82,7 +85,10 @@ using namespace nn;
 }
 
 - (void)dealloc {
-  for (NSWindow *window in _windows) [window removeObserver:self forKeyPath:@"visible"];
+  for (NSWindow *window in _windows) {
+    [window removeObserver:self forKeyPath:@"visible"];
+    [window removeObserver:self forKeyPath:@"alphaValue"];
+  }
   for (id observer in _closeObservers) [NSNotificationCenter.defaultCenter removeObserver:observer];
 }
 
@@ -506,13 +512,19 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   /// right above it: behind the app window while the ghost is (0.1.1 drew passkey dialogs
   /// there, invisible). The ghost (transparent, click-through, ignored by macOS's and
   /// Chromium's occlusion) goes in front of the app window while one of them shows.
-  /// Only a modal one: the ghost's other children are Chrome's bubbles for its own tab strip
-  /// and toolbar (tab hover cards, the zoom bubble, the status bubble, which stays ordered in
-  /// at alpha 0), which 0.1.2 and 0.1.3 lifted over the page, keeping the ghost in front.
+  /// Only a modal one, or a bubble with a title: the ghost's other children are Chrome's bubbles
+  /// for its own tab strip and toolbar (tab hover cards, the zoom bubble, the status bubble, which
+  /// stays ordered in at alpha 0), which 0.1.2 and 0.1.3 lifted over the page, keeping the ghost in
+  /// front. None of those has a title; the bubbles that ask the user something do ("Save
+  /// address?", "Save card?"), and 0.1.4 left those behind the window, unanswerable.
   static bool ShowsChromeWindows(NSWindow *ghost) {
-    if (![ghost respondsToSelector:@selector(topmostVisibleChildModalWindow)]) return false;
-    NSWindow *dialog = [(id<NNChromiumWindow>)ghost topmostVisibleChildModalWindow];
-    return dialog && dialog.alphaValue > 0;
+    if ([ghost respondsToSelector:@selector(topmostVisibleChildModalWindow)]) {
+      NSWindow *dialog = [(id<NNChromiumWindow>)ghost topmostVisibleChildModalWindow];
+      if (dialog && dialog.alphaValue > 0) return true;
+    }
+    for (NSWindow *child in ghost.childWindows)
+      if (child.isVisible && child.alphaValue > 0 && child.title.length) return true;
+    return false;
   }
 
   /// Follows the Chrome windows the ghost shows (ShowsChromeWindows).
