@@ -113,6 +113,12 @@ final class CommandItem: NSMenuItem {
     allowsKeyEquivalentWhenHidden = true
     return self
   }
+
+  /// Shown in place of the item above it while its extra modifier is held (same key).
+  func alternate() -> CommandItem {
+    isAlternate = true
+    return self
+  }
 }
 
 final class MenuTarget: NSObject, NSMenuItemValidation {
@@ -320,12 +326,14 @@ enum MainMenu {
         cmd("Light", "setAppearance", arg: "light"),
         cmd("Dark", "setAppearance", arg: "dark"),
       ]),
-      .separator(),
+      // Dia 1.50.1's grouping (its menu builder): no separator after Appearance, and Force Refresh
+      // is Refresh's ⇧ alternate.
       cmd("Refresh", "reload", "r"),
-      cmd("Force Refresh the Page", "forceReload", "r", [.command, .shift]),
+      cmd("Force Refresh the Page", "forceReload", "r", [.command, .shift]).alternate(),
       .separator(),
       cmd("Show Tabs in Sidebar", "toggleTabLayout", "s", [.command, .shift]),
       cmd("Auto-Hide Tabs", "toggleSidebar", "s"),
+      .separator(),
       cmd("Open Split Pane", "openSplitPane", "=", [.control, .shift]),
       cmd("Focus Next Split Pane", "focusNextPane", "]", [.control, .shift]),
       cmd("Focus Previous Split Pane", "focusPreviousPane", "[", [.control, .shift]),
@@ -341,6 +349,7 @@ enum MainMenu {
         .separator(),
         cmd("Toggle Bookmarks Bar", "toggleBookmarksBar", "b", [.command, .shift]),
       ]),
+      .separator(),
       cmd("Show Full URL", "toggleFullUrl"),
       cmd("Show Address Bar in Sidebar", "toggleAddressBar"),
       cmd("Cast…", "cast"),
@@ -351,6 +360,7 @@ enum MainMenu {
       cmd("Zoom Out", "zoomOut", "-"),
       .separator(),
       fullScreen,
+      .separator(),
       sub("Developer", [
         cmd("View Source", "viewSource", "u", [.command, .option]),
         cmd("Developer Tools", "devTools", "i", [.command, .option]),
@@ -616,7 +626,8 @@ enum MainMenu {
       modifierNames.filter { mods.contains($0.1) }.map(\.0)
     }
     walk(NSApp.mainMenu) { item, path in
-      guard !item.isHidden, !item.isAlternate, !item.title.isEmpty, item.title != "Empty" else { return }
+      // Our alternates (Force Refresh) are real commands with their own shortcut; AppKit's aren't listed.
+      guard !item.isHidden, !item.isAlternate || item is CommandItem, !item.title.isEmpty, item.title != "Empty" else { return }
       if let item = item as? CommandItem {
         guard !dynamicCommands.contains(item.command), seen.insert(item.stateKey).inserted else { return }
         // Items without a key still carry AppKit's default ⌘ mask; report no modifiers for them.
