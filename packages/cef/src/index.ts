@@ -6,5 +6,6 @@ export * from "./zoom";
 export * from "./passwords";
 export * from "./autofill";
 export * from "./extensions";
+export * from "./chromeUI";
 export * from "./favicons";
 export * from "./swipe";

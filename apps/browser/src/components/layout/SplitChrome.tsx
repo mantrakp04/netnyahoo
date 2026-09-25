@@ -7,6 +7,7 @@ import type { SplitView } from "../../store/types";
 import { resize, type Divider, type Rect } from "./geometry";
 import { useHover } from "../primitives";
 import { hideToast, useToasts } from "./splitActions";
+import { useWindowId } from "../../store/hooks";
 import { setDropTarget, useTabDrag, type DropTarget } from "./tabDrag";
 
 /**
@@ -95,7 +96,9 @@ function DividerHandle({ split, divider, width, height }: { split: SplitView; di
  */
 export function DropTargets({ panes, origin }: { panes: Record<string, Rect>; origin: { x: number; y: number } | null }) {
   const theme = useTheme();
-  const dragging = useTabDrag((s) => s.tabId);
+  const windowId = useWindowId();
+  // Only the window the drag is in: other windows' coordinates differ.
+  const dragging = useTabDrag((s) => (s.windowId === windowId ? s.tabId : null));
   const x = useTabDrag((s) => s.x);
   const y = useTabDrag((s) => s.y);
   const target = useTabDrag((s) => s.target);

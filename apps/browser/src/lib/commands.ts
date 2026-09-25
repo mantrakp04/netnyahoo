@@ -1,4 +1,4 @@
-import { closeWindow as closeNativeWindow, copyText, prompt, setAppearance, type BrowserCommand, type CommandEvent } from "@netnyahoo/shell";
+import { closeWindow as closeNativeWindow, copyText, prompt, setAppearance, sharePage, type CommandEvent } from "@netnyahoo/shell";
 import { markdownLink } from "@netnyahoo/core";
 import { useBrowser } from "../store/browser";
 import { activeTabId, bookmarkProfileId, resolveWindowId } from "../store/model";
@@ -23,6 +23,7 @@ import { openSplitPane } from "../components/layout/splitActions";
 import { runSidebarCommand } from "../components/sidebar/commands";
 import { setZoom } from "./zoom";
 import { openExtensionFromMenu } from "../components/extensions/bridge";
+import { toggleCastPicker } from "../components/media/cast";
 import { openManageExtensions, openPinDialog, openWebStore } from "../components/extensions/state";
 import { requestAutofill } from "../components/site/Autofill";
 import { copyPageUrl, jumpToSelection } from "../components/site/selection";
@@ -34,7 +35,6 @@ import { copyPageUrl, jumpToSelection } from "../components/site/selection";
  */
 export function runCommand({ command, arg, windowId: requested }: CommandEvent) {
   const s = useBrowser.getState();
-  ({ command, arg } = legacyCommand(command, arg));
 
   // Settings / Import windows: ⌘W closes them; tab commands go to the last browser window.
   if (isUtilityWindowId(requested)) {
@@ -60,6 +60,8 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return s.updateSettings({ showFullUrl: !s.settings.showFullUrl });
     case "openSettings":
       return openSettings();
+    case "keyboardShortcuts":
+      return openSettings("shortcuts");
     case "importBrowserData":
       return openImport();
     case "manageExtensions":
@@ -110,6 +112,9 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return tabId ? void closeTab(tabId) : undefined;
     case "print":
       return void web?.print();
+    // File › Share… and the command bar's Share: the macOS share picker, for web pages.
+    case "share":
+      return page && /^https?:/i.test(page.url) ? void sharePage(page.url, page.customTitle || page.title, windowId) : undefined;
     // Dia copies links "without any trackers" (and offers a quote link for selected text).
     case "copyUrl":
       return page ? void copyPageUrl(page.id) : undefined;
@@ -194,6 +199,8 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return page ? toggleMute(page.id) : undefined;
     case "downloads":
       return s.setDownloadsOpen(windowId, !ui?.downloadsOpen);
+    case "cast":
+      return void toggleCastPicker(windowId);
     case "showHistory":
       return openInternalPage("history", windowId);
     case "clearBrowsingData":
@@ -218,7 +225,7 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "pinExtensions":
       return openPinDialog(windowId);
     case "autofill":
-      return requestAutofill(page ? tabId! : undefined, arg);
+      return requestAutofill(windowId, arg);
     case "newProfile":
       return void createProfile(windowId).then((id) => id && switchProfile(windowId, id));
   }
@@ -245,12 +252,4 @@ async function addBookmarkToFolder(windowId: string, folder: string) {
     parentId = useBrowser.getState().addBookmarkFolder({ profileId, title });
   }
   useBrowser.getState().addBookmark({ profileId, url: tab.url, title: tab.title, favicon: tab.favicon, parentId });
-}
-
-/** App builds from before multi-window support send e.g. "selectTab3" / "inspect". */
-function legacyCommand(command: string, arg: string | null): { command: BrowserCommand; arg: string | null } {
-  const tab = /^selectTab(\d)$/.exec(command);
-  if (tab) return { command: "selectTab", arg: tab[1]! };
-  if (command === "inspect") return { command: "devTools", arg };
-  return { command: command as BrowserCommand, arg };
 }

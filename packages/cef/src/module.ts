@@ -119,11 +119,12 @@ export const devWindowAction = (windowNumber: number, action: string) => Cef.dev
  * views hand the page over instead of closing it. Call right when the app decides the
  * move, before the views re-render.
  */
-export const prepareTabTransfer = (transferKey: string) => Cef.prepareTransfer?.(transferKey);
-/** Chromium's component-updater components (Widevine CDM, CRLSet…). */
+export const prepareTabTransfer = (transferKey: string) => Cef.prepareTransfer(transferKey);
+/**
+ * Chromium's component-updater components (Widevine CDM, CRLSet…). None download in this
+ * build: the updater's Google host is domain-substituted, so they stay at 0.0.0.0.
+ */
 export const listComponents = () => Cef.components();
-/** Installs/updates a component now; `error` is null on success. */
-export const updateComponent = (id: string) => Cef.updateComponent(id);
 
 /**
  * Starts recording a performance trace of every engine process (chrome://tracing
@@ -160,13 +161,12 @@ export const onSystemState = (listener: (state: SystemState) => void) => Cef.add
 /**
  * Routes pages' getDisplayMedia() through the app's source picker: tabs get
  * `onDisplayMediaRequest` and answer with `resolveDisplayMedia`. Off by
- * default: without it Chromium (Alloy) shares the whole main screen with no
- * choice. A tab can be shared too when `engineInfo().tabCapture`: answer with
- * that tab's WebView `mediaCaptureSourceId()`.
+ * default (Chromium handles the request itself). A tab can be shared too when
+ * `engineInfo().tabCapture`: answer with that tab's WebView `mediaCaptureSourceId()`.
  */
 export const setDisplayMediaPicker = (enabled: boolean) => Cef.setDisplayMediaPicker(enabled);
 /** The default search engine's name, for the page context menu's "Search <name> for “…”". */
-export const setSearchEngineName = (name: string) => Cef.setSearchEngineName?.(name) ?? Promise.resolve();
+export const setSearchEngineName = (name: string) => Cef.setSearchEngineName(name);
 /** Screens and windows that can be shared right now (window titles need Screen Recording permission). */
 export const getDisplayMediaSources = () => Cef.displayMediaSources();
 
@@ -174,8 +174,6 @@ export const onDownload = (listener: (d: Download) => void) => Cef.addListener("
 export const cancelDownload = (id: string) => Cef.cancelDownload(id);
 export const pauseDownload = (id: string) => Cef.pauseDownload(id);
 export const resumeDownload = (id: string) => Cef.resumeDownload(id);
-export const openDownload = (id: string) => Cef.openDownload(id);
-export const revealDownload = (id: string) => Cef.revealDownload(id);
 
 export const onPermission = (listener: (p: PermissionRequest) => void) => Cef.addListener("onPermission", listener);
 export const onPermissionDismissed = (listener: (p: { id: string }) => void) =>
@@ -189,12 +187,19 @@ export const onPermissionDismissed = (listener: (p: { id: string }) => void) =>
 export const resolvePermission = (id: string, result: PermissionResult, remember = false) =>
   Cef.resolvePermission(id, result, remember);
 
-/** Deletes cookies + cache now and site storage before the profile next loads. */
-export const clearProfileData = (profile: string) => Cef.clearProfileData(profile);
-/** Deletes the cookies created since `since` (ms since 1970); resolves with how many. */
-export const deleteCookiesSince = (profile: string, since: number) => Cef.deleteCookiesSince(profile, since);
-/** Empties the profile's HTTP cache (the engine can't clear a time range of it). */
-export const clearHttpCache = (profile: string) => Cef.clearHttpCache(profile);
+/**
+ * What Chrome's "Delete browsing data" clears: "history" is the engine's own history database
+ * (what extensions' chrome.history sees; the app's History is its own store), "siteData" cookies
+ * and every kind of site storage, "cache" cached files, "downloads" the engine's download list.
+ */
+export type BrowsingDataType = "history" | "siteData" | "cache" | "downloads";
+/**
+ * Clears a profile's browsing data now, through Chrome's BrowsingDataRemover: everything since
+ * `since` (ms since 1970), or all of it without one. Stock CEF clears only cookies (all of them)
+ * and the whole cache.
+ */
+export const clearBrowsingData = (profile: string, types: BrowsingDataType[], since?: number) =>
+  Cef.clearBrowsingData(profile, types, since ?? null);
 /** Drops an incognito profile's in-memory context (call when its window closes). */
 export const releaseProfile = (profile: string) => Cef.releaseProfile(profile);
 /** Removes a deleted profile's data directory. */

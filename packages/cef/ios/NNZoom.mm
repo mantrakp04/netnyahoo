@@ -101,11 +101,6 @@ void InstallScrollMonitor() {
   return levels;
 }
 
-+ (double)zoomForProfile:(NSString *)profile host:(NSString *)host {
-  NSNumber *factor = [self zoomLevelsForProfile:profile][host.lowercaseString];
-  return factor ? factor.doubleValue : 1;
-}
-
 + (void)setZoom:(double)zoom profile:(NSString *)profile host:(NSString *)host {
   host = host.lowercaseString;
   if (!host.length || zoom <= 0) return;

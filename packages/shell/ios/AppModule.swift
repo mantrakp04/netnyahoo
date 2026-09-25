@@ -117,7 +117,7 @@ public class AppModule: Module {
         "memoryGB": Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824,
         "locale": Locale.current.identifier,
         "updates": AppUpdater.shared.isAvailable,
-        // Help › Send Feedback… destinations (Info.plist's "Distribution" block; empty = not set up).
+        // Help › Send Feedback… destinations (Info.plist NNFeedbackURL / NNFeedbackEmail; empty = not set up).
         "feedbackURL": Self.infoString("NNFeedbackURL") as Any,
         "feedbackEmail": Self.infoString("NNFeedbackEmail") as Any,
         // Help › Video Tour (hidden while empty).
@@ -166,9 +166,9 @@ public class AppModule: Module {
       #endif
     }.runOnQueue(.main)
 
-    AsyncFunction("devSnapshotWindow") { (windowId: String, path: String) -> Bool in
+    AsyncFunction("devSnapshotWindow") { (windowId: String, path: String, transparent: Bool?) -> Bool in
       #if DEBUG
-      return Self.snapshot(windowId: windowId, path: path)
+      return Self.snapshot(windowId: windowId, path: path, transparent: transparent ?? false)
       #else
       return false
       #endif
@@ -202,7 +202,7 @@ public class AppModule: Module {
 
   /// DEV: a window's layer tree drawn into a PNG (works while the screen is locked, when
   /// `screencapture` can't; Metal and blur layers come out blank).
-  static func snapshot(windowId: String, path: String) -> Bool {
+  static func snapshot(windowId: String, path: String, transparent: Bool = false) -> Bool {
     guard let view = WindowManager.shared.windows[windowId]?.contentView, let layer = view.layer else { return false }
     let scale = view.window?.backingScaleFactor ?? 2
     let size = view.bounds.size
@@ -211,11 +211,13 @@ public class AppModule: Module {
       samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
       let context = NSGraphicsContext(bitmapImageRep: rep) else { return false }
     let cg = context.cgContext
-    (view.window?.backgroundColor ?? .windowBackgroundColor).setFill()
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = context
-    NSRect(origin: .zero, size: CGSize(width: size.width * scale, height: size.height * scale)).fill()
-    NSGraphicsContext.restoreGraphicsState()
+    if !transparent {
+      NSGraphicsContext.saveGraphicsState()
+      NSGraphicsContext.current = context
+      (view.window?.backgroundColor ?? .windowBackgroundColor).setFill()
+      NSRect(origin: .zero, size: CGSize(width: size.width * scale, height: size.height * scale)).fill()
+      NSGraphicsContext.restoreGraphicsState()
+    }
     cg.scaleBy(x: scale, y: scale)
     if view.isFlipped || layer.isGeometryFlipped {
       cg.translateBy(x: 0, y: size.height)

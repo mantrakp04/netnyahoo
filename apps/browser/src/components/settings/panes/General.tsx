@@ -93,8 +93,8 @@ export function GeneralPane() {
 }
 
 /**
- * Sparkle's settings (Dia: "Automatically update Dia"). A build without an update feed (see
- * Info.plist's "Distribution" block) shows them off and says so.
+ * Sparkle's settings (Dia: "Automatically update Dia"). A build without an update feed
+ * (Info.plist `SUFeedURL`, empty in this repo) shows them off and says so.
  */
 function UpdatesSection() {
   const [state, setState] = useState<UpdaterState | null>(null);
@@ -106,7 +106,7 @@ function UpdatesSection() {
     return () => sub.remove();
   }, []);
   if (!state?.available) return null;
-  const ready = state.configured !== false;
+  const ready = state.configured;
   const set = (patch: { automaticChecks?: boolean; automaticDownloads?: boolean }) => {
     setState({ ...state, ...patch });
     if (patch.automaticChecks !== undefined) void setAutomaticUpdateChecks(patch.automaticChecks).finally(refresh);

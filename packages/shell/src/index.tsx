@@ -1,4 +1,5 @@
-import { requireNativeModule, requireNativeViewManager, type EventSubscription } from "expo-modules-core";
+import { requireNativeModule, requireNativeViewManager, requireOptionalNativeModule, type EventSubscription } from "expo-modules-core";
+import type { ComponentType } from "react";
 import type { ViewProps } from "react-native";
 
 export * from "./system";
@@ -38,6 +39,7 @@ export type BrowserCommand =
   | "focusNextPane"
   | "focusPreviousPane"
   | "toggleFullUrl"
+  | "cast"
   | "zoomReset"
   | "zoomIn"
   | "zoomOut"
@@ -313,6 +315,14 @@ export type FadeLabelProps = ViewProps & {
 
 /** Single-line text that fades out at the trailing edge instead of using an ellipsis. */
 export const FadeLabel = requireNativeViewManager<FadeLabelProps>("NetnyahooFadeLabel");
+
+/**
+ * Dia's tab loading spinner (a track ring and a turning arc in secondaryLabelColor); size it
+ * with `style`, 12×12 in tab rows. Renders nothing on app builds from before it existed.
+ */
+export const ActivitySpinner: ComponentType<ViewProps> = requireOptionalNativeModule("NetnyahooActivitySpinner")
+  ? requireNativeViewManager<ViewProps>("NetnyahooActivitySpinner")
+  : () => null;
 
 export type ContextMenuAreaProps = ViewProps & {
   onContextMenu?: () => void;

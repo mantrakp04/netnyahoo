@@ -1,5 +1,4 @@
 import { Cef, valueOr } from "./native";
-import type { FieldRect } from "./WebView";
 
 /**
  * Saved addresses and credit cards are Chrome autofill's, per profile (incognito
@@ -37,40 +36,6 @@ export type SavedCard = {
   modified: number;
 };
 export type CardInput = { id?: string; name?: string; expMonth?: number; expYear?: number };
-
-export type AutofillSection = "address" | "card";
-export type AutofillSuggestion = { id: string; title: string; subtitle: string; network?: CardNetwork };
-/**
- * Events of the app-drawn autofill menu. Chrome shows its own dropdown and save
- * prompts now, so WebView `onAutofill` no longer fires; the type stays for the UI
- * that handled it.
- */
-export type AutofillEvent =
-  | {
-      type: "focus";
-      section: AutofillSection;
-      /** Autocomplete type of the field ("postal-code", "cc-number"…), null when forced on an unknown field. */
-      field: string | null;
-      origin: string;
-      rect: FieldRect | null;
-      isMainFrame: boolean;
-      forced: boolean;
-      items: AutofillSuggestion[];
-    }
-  | { type: "key"; key: "ArrowDown" | "ArrowUp" | "Enter" | "Escape" }
-  | { type: "move"; rect: FieldRect | null }
-  | { type: "blur" }
-  | {
-      type: "captured";
-      captureId: string;
-      kind: AutofillSection;
-      origin: string;
-      title: string;
-      subtitle: string;
-      /** It changes a saved entry ("Update saved address?"). */
-      isUpdate: boolean;
-    };
-export type AutofillCapture = Extract<AutofillEvent, { type: "captured" }>;
 
 /** Chrome offers and saves addresses / cards (default on). */
 export const getAutofillSettings = (profile = "") => Cef.getAutofillSettings(profile);

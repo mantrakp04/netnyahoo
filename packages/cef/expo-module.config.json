@@ -1,6 +1,6 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["CefModule", "ExtensionsModule", "SwipeModule"]
+    "modules": ["CefModule", "ExtensionsModule", "SwipeModule", "ChromeUIModule"]
   }
 }

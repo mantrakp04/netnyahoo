@@ -167,6 +167,8 @@ export type ClosedTab = {
   kind: "tab";
   id: string;
   tab: TabSnapshot;
+  /** The tab's id when it closed: the engine keeps its back/forward list under it (this session only). */
+  tabId?: string;
   windowId: string;
   /** Position in the window's tab order when it closed. */
   index: number;

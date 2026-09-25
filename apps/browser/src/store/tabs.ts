@@ -23,7 +23,11 @@ export type NewTabOptions = {
   url?: string;
   /** Open without selecting it (⌘-click). */
   background?: boolean;
-  /** Adopt the popup browser Chromium already created (keeps window.opener). */
+  /**
+   * Adopt the popup browser Chromium already created (keeps window.opener), or start with
+   * another tab's back/forward list: "clone:<tab id>" (a copy of that open tab) or
+   * "restore:<tab id>" (that closed tab's). Without one the tab loads `url`.
+   */
   adoptId?: string;
   openerId?: string;
   /** Defaults to the window's current profile (always the window's own when incognito). */
@@ -145,6 +149,7 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
           kind: "tab",
           id: newId("ct"),
           tab: snapshotTab(t),
+          tabId: id,
           windowId: w.id,
           index,
           group: group ? { id: group.id, name: group.name, icon: group.icon, color: group.color } : null,
@@ -321,6 +326,8 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
       profileId: source.profileId,
       snapshot: { ...snapshotTab(source), pinned: false },
       index: w.tabIds.indexOf(id) + 1,
+      // Chrome's Duplicate: the same back/forward list and session storage.
+      adoptId: source.url ? `clone:${id}` : undefined,
     });
     set(next);
     return copy;

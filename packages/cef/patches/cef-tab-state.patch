@@ -1,0 +1,779 @@
+--- a/include/cef_browser.h
++++ b/include/cef_browser.h
+@@ -1210,6 +1210,61 @@
+   virtual void ResolvePasswordPrompt(const CefString& action,
+                                      const CefString& username,
+                                      const CefString& password) = 0;
++
++  ///
++  /// Chrome style only: returns this tab's back/forward history the way
++  /// Chrome's session restore stores it (an opaque base64 string), for
++  /// RestoreTabInBrowser. Returns an empty string if the tab has no
++  /// history. Must be called on the browser process UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual CefString GetNavigationState() = 0;
++
++  ///
++  /// Creates a tab in the Chrome window that hosts |existing| (see
++  /// CreateTabInBrowser) whose back/forward history is |navigation_state|
++  /// (from GetNavigationState), as Chrome restores a closed tab. The tab is
++  /// appended to the tab strip in the background and loads its current entry
++  /// once it is shown. Returns nullptr on failure. Must be called on the
++  /// browser process UI thread.
++  ///
++  /*--cef(added=experimental,optional_param=client,optional_param=extra_info)--*/
++  static CefRefPtr<CefBrowser> RestoreTabInBrowser(
++      CefRefPtr<CefBrowser> existing,
++      CefRefPtr<CefClient> client,
++      const CefString& navigation_state,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info);
++
++  ///
++  /// Chrome style only (native_contents_hosting): duplicates this tab as
++  /// Chrome's "Duplicate" does (same back/forward history and session
++  /// storage) into a new background tab right after it in the same Chrome
++  /// window, with its own |client|, |settings| and |extra_info|. Returns
++  /// nullptr on failure. Must be called on the browser process UI thread.
++  ///
++  /*--cef(added=experimental,optional_param=client,optional_param=extra_info)--*/
++  virtual CefRefPtr<CefBrowser> DuplicateTab(
++      CefRefPtr<CefClient> client,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info) = 0;
++
++  ///
++  /// Chrome style only: discards this tab as Chrome's tab discarding does (the
++  /// renderer is freed, the tab and its history stay, and it reloads when
++  /// shown or reloaded). Returns false if Chrome won't discard it (already
++  /// discarded, not in a tab strip). The client is told through
++  /// CefLifeSpanHandler::OnTabDiscardedChanged, as for discards Chrome or
++  /// extensions make. Must be called on the browser process UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual bool DiscardTab() = 0;
++
++  ///
++  /// Chrome style only: returns true while this tab is discarded.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual bool IsTabDiscarded() = 0;
+ #endif
+ };
+ 
+--- a/include/cef_life_span_handler.h
++++ b/include/cef_life_span_handler.h
+@@ -305,6 +305,17 @@
+                                  int index,
+                                  bool active,
+                                  bool pinned) {}
++
++  ///
++  /// Chrome style only. Called on the UI thread when a tab is discarded
++  /// (CefBrowserHost::DiscardTab, Chrome's own memory-pressure discarding,
++  /// chrome.tabs.discard) and again with |discarded| false when it starts
++  /// loading again. With the WebContentsDiscard feature the browser stays
++  /// the same; without it Chrome replaces the tab's contents.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual void OnTabDiscardedChanged(CefRefPtr<CefBrowser> browser,
++                                     bool discarded) {}
+ #endif
+ };
+ 
+--- a/include/cef_netnyahoo.h
++++ b/include/cef_netnyahoo.h
+@@ -60,4 +60,20 @@
+ // for iCloud Keychain passkeys.
+ #define CEF_NN_SAFE_STORAGE 1
+ 
++// CefBrowserHost::GetNavigationState / RestoreTabInBrowser / DuplicateTab:
++// reopened and duplicated tabs keep their back/forward history. Tabs Chrome
++// adds to a natively hosted window by any path stay natively hosted.
++#define CEF_NN_TAB_HISTORY 1
++
++// CefBrowserHost::DiscardTab / IsTabDiscarded and
++// CefLifeSpanHandler::OnTabDiscardedChanged.
++#define CEF_NN_TAB_DISCARD 1
++
++// CefRequestContext::ClearBrowsingData with these data types.
++#define CEF_NN_BROWSING_DATA 1
++#define CEF_NN_BROWSING_DATA_HISTORY (1 << 0)
++#define CEF_NN_BROWSING_DATA_SITE_DATA (1 << 1)
++#define CEF_NN_BROWSING_DATA_CACHE (1 << 2)
++#define CEF_NN_BROWSING_DATA_DOWNLOADS (1 << 3)
++
+ #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
+--- a/include/cef_request_context.h
++++ b/include/cef_request_context.h
+@@ -386,6 +386,22 @@
+   ///
+   /*--cef(added=experimental)--*/
+   virtual void UnloadComponentExtension(const CefString& extension_id) = 0;
++
++  ///
++  /// Chrome style only. Deletes this context's browsing data from |begin| to
++  /// |end| through Chrome's BrowsingDataRemover, as Chrome's "Delete browsing
++  /// data" does for web origins. |data_types| combines the
++  /// CEF_NN_BROWSING_DATA_* flags in cef_netnyahoo.h: history (Chrome's
++  /// history database and what depends on it), cookies and other site data,
++  /// cached files, download history. An empty |begin| means the beginning of
++  /// time and an empty |end| now. |callback| (optional) is executed on the UI
++  /// thread when done.
++  ///
++  /*--cef(added=experimental,optional_param=callback)--*/
++  virtual void ClearBrowsingData(int data_types,
++                                 CefBaseTime begin,
++                                 CefBaseTime end,
++                                 CefRefPtr<CefCompletionCallback> callback) = 0;
+ #endif
+ };
+ 
+--- a/libcef/browser/alloy/alloy_browser_host_impl.cc
++++ b/libcef/browser/alloy/alloy_browser_host_impl.cc
+@@ -384,6 +384,27 @@
+   NOTIMPLEMENTED();
+ }
+ 
++CefString AlloyBrowserHostImpl::GetNavigationState() {
++  return CefString();
++}
++
++CefRefPtr<CefBrowser> AlloyBrowserHostImpl::DuplicateTab(
++    CefRefPtr<CefClient> client,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info) {
++  NOTIMPLEMENTED();
++  return nullptr;
++}
++
++bool AlloyBrowserHostImpl::DiscardTab() {
++  NOTIMPLEMENTED();
++  return false;
++}
++
++bool AlloyBrowserHostImpl::IsTabDiscarded() {
++  return false;
++}
++
+ bool AlloyBrowserHostImpl::IsWindowRenderingDisabled() {
+   return IsWindowless();
+ }
+--- a/libcef/browser/alloy/alloy_browser_host_impl.h
++++ b/libcef/browser/alloy/alloy_browser_host_impl.h
+@@ -126,6 +126,13 @@
+   void ResolvePasswordPrompt(const CefString& action,
+                              const CefString& username,
+                              const CefString& password) override;
++  CefString GetNavigationState() override;
++  CefRefPtr<CefBrowser> DuplicateTab(
++      CefRefPtr<CefClient> client,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info) override;
++  bool DiscardTab() override;
++  bool IsTabDiscarded() override;
+ 
+   // CefBrowserHostBase methods:
+   bool IsWindowless() const override;
+--- a/libcef/browser/browser_host_create.cc
++++ b/libcef/browser/browser_host_create.cc
+@@ -179,6 +179,36 @@
+   }
+   return ChromeBrowserHostImpl::FromBaseChecked(host_base)
+       ->CreateTabInBrowser(client, url, settings, extra_info, foreground)
++      .get();
++}
++
++// static
++CefRefPtr<CefBrowser> CefBrowserHost::RestoreTabInBrowser(
++    CefRefPtr<CefBrowser> existing,
++    CefRefPtr<CefClient> client,
++    const CefString& navigation_state,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info) {
++  if (!CONTEXT_STATE_VALID()) {
++    DCHECK(false) << "context not valid";
++    return nullptr;
++  }
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return nullptr;
++  }
++  if (!CEF_MEMBER_EXISTS(&settings, chrome_zoom_bubble)) {
++    DCHECK(false) << "invalid CefBrowserSettings structure size";
++    return nullptr;
++  }
++
++  auto host_base = CefBrowserHostBase::FromBrowser(existing);
++  if (!host_base || !host_base->IsChromeStyle()) {
++    LOG(ERROR) << "RestoreTabInBrowser requires a Chrome style browser";
++    return nullptr;
++  }
++  return ChromeBrowserHostImpl::FromBaseChecked(host_base)
++      ->RestoreTabInBrowser(client, navigation_state, settings, extra_info)
+       .get();
+ }
+ 
+--- a/libcef/browser/chrome/chrome_browser_delegate.cc
++++ b/libcef/browser/chrome/chrome_browser_delegate.cc
+@@ -38,7 +38,57 @@
+ #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
+ #include "ui/base/page_transition_types.h"
+ #include "ui/views/controls/webview/native_hosted_contents.h"
++#include "chrome/browser/resource_coordinator/lifecycle_unit.h"
++#include "chrome/browser/resource_coordinator/lifecycle_unit_observer.h"
++#include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
++#include "chrome/browser/resource_coordinator/tab_lifecycle_unit_source.h"
++#include "chrome/browser/resource_coordinator/utils.h"
++#include "chrome/browser/ui/browser_tabrestore.h"
++#include "components/sessions/core/serialized_navigation_entry.h"
++#include "components/sessions/core/serialized_user_agent_override.h"
+ 
++namespace {
++
++// Tells the clients of natively hosted tabs when Chrome discards them or they
++// load again (CefLifeSpanHandler::OnTabDiscardedChanged), whoever discarded
++// them: CefBrowserHost::DiscardTab, Chrome's memory-pressure discarding,
++// chrome.tabs.discard.
++class TabDiscardObserver : public resource_coordinator::LifecycleUnitObserver {
++ public:
++  static void EnsureStarted() {
++    static TabDiscardObserver* observer = nullptr;
++    if (observer) {
++      return;
++    }
++    observer = new TabDiscardObserver();
++    resource_coordinator::GetTabLifecycleUnitSource()->AddLifecycleObserver(
++        observer);
++  }
++
++  void OnLifecycleUnitStateChanged(
++      resource_coordinator::LifecycleUnit* lifecycle_unit,
++      ::mojom::LifecycleUnitState last_state) override {
++    const bool discarded =
++        lifecycle_unit->GetState() == ::mojom::LifecycleUnitState::DISCARDED;
++    if (discarded == (last_state == ::mojom::LifecycleUnitState::DISCARDED)) {
++      return;
++    }
++    auto* external = lifecycle_unit->AsTabLifecycleUnitExternal();
++    auto* web_contents = external ? external->GetWebContents() : nullptr;
++    if (!web_contents ||
++        !views::NativeHostedContents::IsMarked(web_contents)) {
++      return;
++    }
++    auto host = ChromeBrowserHostImpl::GetBrowserForContents(web_contents);
++    auto client = host ? host->GetClient() : nullptr;
++    if (auto handler = client ? client->GetLifeSpanHandler() : nullptr) {
++      handler->OnTabDiscardedChanged(host.get(), discarded);
++    }
++  }
++};
++
++}  // namespace
++
+ ChromeBrowserDelegate::ChromeBrowserDelegate(
+     Browser* browser,
+     const CefBrowserCreateParams& create_params,
+@@ -51,6 +101,9 @@
+       hidden_from_extensions_(
+           create_params.settings.hidden_from_extensions == STATE_ENABLED) {
+   DCHECK(browser_);
++  if (native_contents_hosting_) {
++    TabDiscardObserver::EnsureStarted();
++  }
+ 
+   if (opener) {
+     DCHECK(browser->GetType() ==
+@@ -276,16 +329,75 @@
+              : nullptr;
+ }
+ 
++CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserDelegate::DuplicateTab(
++    content::WebContents* source,
++    CefRefPtr<CefClient> client,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info) {
++  CEF_REQUIRE_UIT();
++  DCHECK(native_contents_hosting_);
++  auto* model = browser_->tab_strip_model();
++  const int index = model->GetIndexOfWebContents(source);
++  if (index == TabStripModel::kNoTab || pending_tab_) {
++    return nullptr;
++  }
++
++  // chrome::DuplicateTabAt, except that the copy opens in the background (the
++  // client decides when to show it).
++  std::unique_ptr<content::WebContents> copy = source->Clone();
++  content::WebContents* raw_copy = copy.get();
++  pending_tab_ = PendingTab{client, settings, extra_info};
++  model->InsertWebContentsAt(index + 1, std::move(copy),
++                             AddTabTypes::ADD_INHERIT_OPENER,
++                             model->GetTabGroupForTab(index));
++  pending_tab_.reset();
++  return ChromeBrowserHostImpl::GetBrowserForContents(raw_copy);
++}
++
++CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserDelegate::RestoreTab(
++    const std::vector<sessions::SerializedNavigationEntry>& navigations,
++    int selected_navigation,
++    CefRefPtr<CefClient> client,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info) {
++  CEF_REQUIRE_UIT();
++  DCHECK(native_contents_hosting_);
++  if (navigations.empty() || pending_tab_) {
++    return nullptr;
++  }
++
++  // Chrome's own path for reopening a closed tab (TabRestoreService), in the
++  // background: it loads its current entry once the client shows it.
++  pending_tab_ = PendingTab{client, settings, extra_info};
++  content::WebContents* web_contents = chrome::AddRestoredTab(
++      browser_.get(), navigations, browser_->tab_strip_model()->count(),
++      selected_navigation, /*extension_app_id=*/std::string(),
++      /*group=*/std::nullopt, /*select=*/false, /*pin=*/false,
++      base::TimeTicks::Now(), base::Time::Now(),
++      /*storage_namespace=*/nullptr, sessions::SerializedUserAgentOverride(),
++      /*extra_data=*/{}, /*from_session_restore=*/false,
++      /*is_active_browser=*/std::nullopt);
++  pending_tab_.reset();
++  return web_contents
++             ? ChromeBrowserHostImpl::GetBrowserForContents(web_contents)
++             : nullptr;
++}
++
++void ChromeBrowserDelegate::MarkNativeHosted(
++    content::WebContents* web_contents) {
++  views::NativeHostedContents::Mark(web_contents);
++  if (!observing_tab_strip_) {
++    observing_tab_strip_ = true;
++    browser_->tab_strip_model()->AddObserver(this);
++  }
++}
++
+ void ChromeBrowserDelegate::OnWebContentsCreated(
+     content::WebContents* new_contents) {
+   // The client shows this tab itself: keep it out of the Browser's views so it
+   // keeps drawing into its own native view.
+   if (native_contents_hosting_) {
+-    views::NativeHostedContents::Mark(new_contents);
+-    if (!observing_tab_strip_) {
+-      observing_tab_strip_ = true;
+-      browser_->tab_strip_model()->AddObserver(this);
+-    }
++    MarkNativeHosted(new_contents);
+   }
+ 
+   // Necessary to receive LoadingStateChanged calls during initial navigation.
+@@ -299,6 +411,11 @@
+ void ChromeBrowserDelegate::SetAsDelegate(content::WebContents* web_contents,
+                                           bool set_delegate) {
+   DCHECK(web_contents);
++  // Tabs added without OnWebContentsCreated (restored, duplicated, or
++  // replaced by a discard without WebContentsDiscard) are hosted too.
++  if (native_contents_hosting_ && set_delegate) {
++    MarkNativeHosted(web_contents);
++  }
+   auto browser_host =
+       ChromeBrowserHostImpl::GetBrowserForContents(web_contents);
+ 
+--- a/libcef/browser/chrome/chrome_browser_delegate.h
++++ b/libcef/browser/chrome/chrome_browser_delegate.h
+@@ -8,6 +8,7 @@
+ 
+ #include <memory>
+ #include <optional>
++#include <vector>
+ 
+ #include "base/memory/raw_ptr.h"
+ #include "cef/libcef/browser/browser_host_base.h"
+@@ -16,6 +17,10 @@
+ #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
+ 
+ class CefRequestContextImpl;
++
++namespace sessions {
++class SerializedNavigationEntry;
++}
+ class CefWindowImpl;
+ class CefWindowView;
+ class ChromeBrowserHostImpl;
+@@ -110,6 +115,25 @@
+       CefRefPtr<CefDictionaryValue> extra_info,
+       bool foreground);
+ 
++  // Adds a copy of |source| (a tab of this Browser, with its history and
++  // session storage) right after it, in the background
++  // (CefBrowserHost::DuplicateTab). Requires native_contents_hosting().
++  CefRefPtr<ChromeBrowserHostImpl> DuplicateTab(
++      content::WebContents* source,
++      CefRefPtr<CefClient> client,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info);
++
++  // Appends a background tab with this back/forward history, as Chrome
++  // restores a closed tab (CefBrowserHost::RestoreTabInBrowser). Requires
++  // native_contents_hosting().
++  CefRefPtr<ChromeBrowserHostImpl> RestoreTab(
++      const std::vector<sessions::SerializedNavigationEntry>& navigations,
++      int selected_navigation,
++      CefRefPtr<CefClient> client,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info);
++
+  private:
+   // TabStripModelObserver methods (only with native_contents_hosting_):
+   void OnTabStripModelChanged(
+@@ -121,6 +145,10 @@
+   // Reports every tab's position/state (CefLifeSpanHandler::OnTabStripChanged).
+   void NotifyTabStripChanged();
+ 
++  // Keeps |web_contents| out of the Browser's views: the client hosts every
++  // tab of this Browser, however Chrome added it.
++  void MarkNativeHosted(content::WebContents* web_contents);
++
+   static CefRefPtr<ChromeBrowserHostImpl> CreateBrowserHost(
+       Browser* browser,
+       content::WebContents* web_contents,
+--- a/libcef/browser/chrome/chrome_browser_host_impl.cc
++++ b/libcef/browser/chrome/chrome_browser_host_impl.cc
+@@ -36,6 +36,14 @@
+ #include "extensions/browser/extension_registry.h"
+ #include "components/sessions/content/session_tab_helper.h"
+ #include "chrome/browser/ui/tabs/tab_model.h"
++#include "base/base64.h"
++#include "base/pickle.h"
++#include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom.h"
++#include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
++#include "components/sessions/content/content_serialized_navigation_builder.h"
++#include "components/sessions/core/serialized_navigation_entry.h"
++#include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/navigation_entry.h"
+ 
+ // static
+ CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserHostImpl::Create(
+@@ -600,7 +608,150 @@
+     delegate->OnBubbleHidden();
+   }
+ }
++
++namespace {
+ 
++// GetNavigationState's format: version, selected index, entry count, then each
++// sessions::SerializedNavigationEntry as session restore pickles it.
++constexpr int kNavigationStateVersion = 1;
++// Per entry, like session restore's on-disk limit (the page state is dropped
++// from larger entries).
++constexpr int kMaxNavigationEntryBytes = 256 * 1024;
++
++bool ParseNavigationState(
++    const std::string& state,
++    std::vector<sessions::SerializedNavigationEntry>* navigations,
++    int* selected) {
++  std::optional<std::vector<uint8_t>> bytes = base::Base64Decode(state);
++  if (!bytes || bytes->empty()) {
++    return false;
++  }
++  base::Pickle pickle = base::Pickle::WithUnownedBuffer(*bytes);
++  base::PickleIterator it(pickle);
++  int version = 0, count = 0;
++  if (!it.ReadInt(&version) || version != kNavigationStateVersion ||
++      !it.ReadInt(selected) || !it.ReadInt(&count) || count <= 0) {
++    return false;
++  }
++  for (int i = 0; i < count; ++i) {
++    sessions::SerializedNavigationEntry entry;
++    if (!entry.ReadFromPickle(&it)) {
++      return false;
++    }
++    navigations->push_back(std::move(entry));
++  }
++  *selected = std::clamp(*selected, 0, count - 1);
++  return true;
++}
++
++}  // namespace
++
++CefString ChromeBrowserHostImpl::GetNavigationState() {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return CefString();
++  }
++  auto* web_contents = GetWebContents();
++  if (!web_contents) {
++    return CefString();
++  }
++  // What TabRestoreService records for a closed tab (TabRestoreServiceHelper).
++  auto& controller = web_contents->GetController();
++  const int pending_index = controller.GetPendingEntryIndex();
++  const int count = controller.GetEntryCount();
++  if (count == 0) {
++    return CefString();
++  }
++  base::Pickle pickle;
++  pickle.WriteInt(kNavigationStateVersion);
++  pickle.WriteInt(std::max(0, controller.GetCurrentEntryIndex()));
++  pickle.WriteInt(count);
++  for (int i = 0; i < count; ++i) {
++    content::NavigationEntry* entry = i == pending_index
++                                          ? controller.GetPendingEntry()
++                                          : controller.GetEntryAtIndex(i);
++    sessions::ContentSerializedNavigationBuilder::FromNavigationEntry(i, entry)
++        .WriteToPickle(kMaxNavigationEntryBytes, &pickle);
++  }
++  return base::Base64Encode(pickle.AsBytes());
++}
++
++CefRefPtr<CefBrowser> ChromeBrowserHostImpl::DuplicateTab(
++    CefRefPtr<CefClient> client,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return nullptr;
++  }
++  if (!browser_ || !browser_->cef_delegate() || !GetWebContents()) {
++    return nullptr;
++  }
++  auto* delegate = static_cast<ChromeBrowserDelegate*>(browser_->cef_delegate());
++  if (!delegate->native_contents_hosting()) {
++    return nullptr;
++  }
++  return delegate->DuplicateTab(GetWebContents(), client, settings, extra_info)
++      .get();
++}
++
++bool ChromeBrowserHostImpl::DiscardTab() {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return false;
++  }
++  auto* web_contents = GetWebContents();
++  auto* unit =
++      web_contents
++          ? resource_coordinator::TabLifecycleUnitExternal::FromWebContents(
++                web_contents)
++          : nullptr;
++  // EXTERNAL, like chrome.tabs.discard: the embedder asked for it.
++  return unit && unit->DiscardTab(
++                     ::mojom::LifecycleUnitDiscardReason::EXTERNAL);
++}
++
++bool ChromeBrowserHostImpl::IsTabDiscarded() {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return false;
++  }
++  auto* web_contents = GetWebContents();
++  auto* unit =
++      web_contents
++          ? resource_coordinator::TabLifecycleUnitExternal::FromWebContents(
++                web_contents)
++          : nullptr;
++  return unit &&
++         unit->GetTabState() == ::mojom::LifecycleUnitState::DISCARDED;
++}
++
++CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserHostImpl::RestoreTabInBrowser(
++    CefRefPtr<CefClient> client,
++    const CefString& navigation_state,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info) {
++  CEF_REQUIRE_UIT();
++  if (!browser_ || !browser_->cef_delegate()) {
++    return nullptr;
++  }
++  auto* delegate = static_cast<ChromeBrowserDelegate*>(browser_->cef_delegate());
++  if (!delegate->native_contents_hosting()) {
++    LOG(ERROR) << "RestoreTabInBrowser requires a browser created with "
++                  "native_contents_hosting";
++    return nullptr;
++  }
++  std::vector<sessions::SerializedNavigationEntry> navigations;
++  int selected = 0;
++  if (!ParseNavigationState(navigation_state.ToString(), &navigations,
++                            &selected)) {
++    LOG(ERROR) << "RestoreTabInBrowser: invalid navigation state";
++    return nullptr;
++  }
++  return delegate->RestoreTab(navigations, selected, client, settings,
++                              extra_info);
++}
++
+ CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserHostImpl::CreateTabInBrowser(
+     CefRefPtr<CefClient> client,
+     const CefString& url,
+--- a/libcef/browser/chrome/chrome_browser_host_impl.h
++++ b/libcef/browser/chrome/chrome_browser_host_impl.h
+@@ -121,6 +121,13 @@
+   void ResolvePasswordPrompt(const CefString& action,
+                              const CefString& username,
+                              const CefString& password) override;
++  CefString GetNavigationState() override;
++  CefRefPtr<CefBrowser> DuplicateTab(
++      CefRefPtr<CefClient> client,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info) override;
++  bool DiscardTab() override;
++  bool IsTabDiscarded() override;
+ 
+   // Implementation of CefBrowserHost::CreateTabInBrowser for this browser's
+   // Chrome window.
+@@ -131,6 +138,14 @@
+       CefRefPtr<CefDictionaryValue> extra_info,
+       bool foreground);
+ 
++  // Implementation of CefBrowserHost::RestoreTabInBrowser for this browser's
++  // Chrome window.
++  CefRefPtr<ChromeBrowserHostImpl> RestoreTabInBrowser(
++      CefRefPtr<CefClient> client,
++      const CefString& navigation_state,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info);
++
+   Browser* browser() const { return browser_; }
+ 
+   // Return the CEF specialization of BrowserView.
+--- a/libcef/browser/request_context_impl.cc
++++ b/libcef/browser/request_context_impl.cc
+@@ -16,6 +16,8 @@
+ #include "cef/libcef/common/app_manager.h"
+ #include "cef/libcef/common/task_runner_impl.h"
+ #include "cef/libcef/common/values_impl.h"
++#include "cef/include/cef_netnyahoo.h"
++#include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
+ #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+ #include "chrome/browser/extensions/component_loader.h"
+ #include "chrome/browser/profiles/profile.h"
+@@ -24,6 +26,7 @@
+ #include "components/content_settings/core/browser/host_content_settings_map.h"
+ #include "components/prefs/pref_service.h"
+ #include "content/public/browser/browser_task_traits.h"
++#include "content/public/browser/browsing_data_remover.h"
+ #include "content/public/browser/child_process_host.h"
+ #include "content/public/browser/ssl_host_state_delegate.h"
+ #include "mojo/public/cpp/bindings/receiver.h"
+@@ -495,6 +498,19 @@
+                      callback));
+ }
+ 
++void CefRequestContextImpl::ClearBrowsingData(
++    int data_types,
++    CefBaseTime begin,
++    CefBaseTime end,
++    CefRefPtr<CefCompletionCallback> callback) {
++  GetBrowserContext(
++      content::GetUIThreadTaskRunner({}),
++      base::BindOnce(&CefRequestContextImpl::ClearBrowsingDataInternal, this,
++                     data_types, static_cast<base::Time>(begin),
++                     static_cast<base::Time>(end),
++                     callback));
++}
++
+ void CefRequestContextImpl::ClearHttpAuthCredentials(
+     CefRefPtr<CefCompletionCallback> callback) {
+   GetBrowserContext(
+@@ -899,6 +915,76 @@
+       /*start_time=*/base::Time(), /*end_time=*/base::Time::Max(),
+       /*filter=*/nullptr,
+       base::BindOnce(&CefCompletionCallback::OnComplete, callback));
++}
++
++namespace {
++
++// Runs the client's callback once Chrome's BrowsingDataRemover is done with
++// the task it was passed to (the remover only reports to registered
++// observers).
++class BrowsingDataDone : public content::BrowsingDataRemover::Observer {
++ public:
++  BrowsingDataDone(content::BrowsingDataRemover* remover,
++                   CefRefPtr<CefCompletionCallback> callback)
++      : remover_(remover), callback_(callback) {
++    if (remover_) {
++      remover_->AddObserver(this);
++    }
++  }
++
++  void OnBrowsingDataRemoverDone(uint64_t failed_data_types) override {
++    if (remover_) {
++      remover_->RemoveObserver(this);
++    }
++    if (callback_) {
++      callback_->OnComplete();
++    }
++    delete this;
++  }
++
++ private:
++  const raw_ptr<content::BrowsingDataRemover> remover_;
++  CefRefPtr<CefCompletionCallback> callback_;
++};
++
++}  // namespace
++
++void CefRequestContextImpl::ClearBrowsingDataInternal(
++    int data_types,
++    base::Time begin,
++    base::Time end,
++    CefRefPtr<CefCompletionCallback> callback,
++    CefBrowserContext::Getter browser_context_getter) {
++  auto browser_context = browser_context_getter.Run();
++  if (!browser_context) {
++    return;
++  }
++
++  // The categories of Chrome's "Delete browsing data" dialog.
++  uint64_t remove_mask = 0;
++  if (data_types & CEF_NN_BROWSING_DATA_HISTORY) {
++    remove_mask |= chrome_browsing_data_remover::DATA_TYPE_HISTORY;
++  }
++  if (data_types & CEF_NN_BROWSING_DATA_SITE_DATA) {
++    remove_mask |= chrome_browsing_data_remover::DATA_TYPE_SITE_DATA;
++  }
++  if (data_types & CEF_NN_BROWSING_DATA_CACHE) {
++    remove_mask |= content::BrowsingDataRemover::DATA_TYPE_CACHE;
++  }
++  if (data_types & CEF_NN_BROWSING_DATA_DOWNLOADS) {
++    remove_mask |= content::BrowsingDataRemover::DATA_TYPE_DOWNLOADS;
++  }
++  if (!remove_mask) {
++    if (callback) {
++      callback->OnComplete();
++    }
++    return;
++  }
++  auto* remover = browser_context->AsBrowserContext()->GetBrowsingDataRemover();
++  remover->RemoveAndReply(
++      begin, end.is_null() ? base::Time::Max() : end, remove_mask,
++      content::BrowsingDataRemover::ORIGIN_TYPE_UNPROTECTED_WEB,
++      new BrowsingDataDone(remover, callback));
+ }
+ 
+ void CefRequestContextImpl::ClearHttpAuthCredentialsInternal(
+--- a/libcef/browser/request_context_impl.h
++++ b/libcef/browser/request_context_impl.h
+@@ -149,6 +149,10 @@
+   cef_color_variant_t GetChromeColorSchemeVariant() override;
+   CefString LoadComponentExtension(const CefString& root_directory) override;
+   void UnloadComponentExtension(const CefString& extension_id) override;
++  void ClearBrowsingData(int data_types,
++                         CefBaseTime begin,
++                         CefBaseTime end,
++                         CefRefPtr<CefCompletionCallback> callback) override;
+ 
+   const CefRequestContextSettings& settings() const { return config_.settings; }
+ 
+@@ -200,6 +204,12 @@
+       CefBrowserContext::Getter browser_context_getter);
+   void ClearHttpCacheInternal(CefRefPtr<CefCompletionCallback> callback,
+                               CefBrowserContext::Getter browser_context_getter);
++  void ClearBrowsingDataInternal(
++      int data_types,
++      base::Time begin,
++      base::Time end,
++      CefRefPtr<CefCompletionCallback> callback,
++      CefBrowserContext::Getter browser_context_getter);
+   void ClearHttpAuthCredentialsInternal(
+       CefRefPtr<CefCompletionCallback> callback,
+       CefBrowserContext::Getter browser_context_getter);

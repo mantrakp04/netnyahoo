@@ -332,6 +332,7 @@ enum MainMenu {
         cmd("Toggle Bookmarks Bar", "toggleBookmarksBar", "b", [.command, .shift]),
       ]),
       cmd("Show Full URL", "toggleFullUrl"),
+      cmd("Cast…", "cast"),
       .separator(),
       cmd("Zoom to Actual Size", "zoomReset", "0"),
       cmd("Zoom In", "zoomIn", "+"),
@@ -453,7 +454,6 @@ enum MainMenu {
     return items
   }
 
-  /// Rebuilds the dynamic submenus from MenuState.current.
   /// A 16pt menu image from an extension's icon data URL (cached).
   private static func extensionIcon(_ dataURL: String?) -> NSImage? {
     guard let dataURL, let comma = dataURL.firstIndex(of: ",") else { return nil }
@@ -466,6 +466,7 @@ enum MainMenu {
     return image
   }
 
+  /// Rebuilds the dynamic submenus from MenuState.current.
   static func refresh() {
     let state = MenuState.current
 

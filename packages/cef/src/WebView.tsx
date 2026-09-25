@@ -2,8 +2,6 @@ import { requireNativeViewManager } from "expo-modules-core";
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import type { NativeSyntheticEvent, ViewProps } from "react-native";
 import type { FaviconImage } from "./favicons";
-import type { AutofillEvent, AutofillSection } from "./autofill";
-import { generatePassword } from "./passwords";
 
 export type NavigationState = {
   url: string;
@@ -59,8 +57,6 @@ export type OpenWindowRequest = {
   userGesture?: boolean;
 };
 
-/** A sized popup (OAuth, window.open with features) opened in its own little window. */
-export type PopupWindowInfo = { url: string; adoptId: string };
 /** window.open() without a click; `openBlockedPopup(id)` opens it (with opener) after all. */
 export type BlockedPopup = { id: string; url: string; origin: string };
 
@@ -92,8 +88,6 @@ export type SecurityInfo = {
   mixedContent?: "ran" | "displayed" | null;
   isEV?: boolean;
 };
-/** Chromium shows its own interstitial ("Your connection is not private"); this is informational. */
-export type CertificateErrorInfo = { url: string; code: number; errors: string[]; certificate?: Certificate };
 
 /**
  * A main-frame navigation turned into a file download. Like Chrome, the tab
@@ -152,31 +146,6 @@ export type ZoomState = { zoom: number; host: string; isDefault: boolean; pinchS
 /** Requests the content blocker (uBlock Origin Lite) blocked on the current page. */
 export type ContentBlockedState = { count: number; url: string };
 
-export type PasswordFormKind = "login" | "signup" | "change";
-/** Field rect in the (frame's) viewport, CSS px. */
-export type FieldRect = { x: number; y: number; width: number; height: number };
-export type PasswordForm = {
-  origin: string;
-  kind: PasswordFormKind;
-  /** The focused field; offer a strong password in a "newPassword" one (`fillGeneratedPassword`). */
-  field?: "username" | "password" | "newPassword";
-  /** Edit › AutoFill › Passwords… asked (`requestAutofill("password")`). */
-  forced?: boolean;
-  /** Saved usernames for this origin (offer a picker; `fillPassword(username)`). */
-  usernames: string[];
-  rect: FieldRect | null;
-  isMainFrame: boolean;
-};
-/** Retired (Chrome saves passwords; see `PasswordPrompt`): a submitted login that wasn't saved yet. */
-export type PasswordCapture = {
-  captureId: string;
-  origin: string;
-  username: string;
-  kind: PasswordFormKind;
-  /** A different password is saved for this username ("Update password?"). */
-  isUpdate: boolean;
-};
-
 /**
  * Chrome is ready to save a login the page just submitted (the app draws the prompt:
  * Chrome's own bubble would hang off its hidden toolbar). Answer with
@@ -208,6 +177,12 @@ export type WebViewProps = ViewProps & {
   url?: string;
   /** "" = default profile, a profile id, or "incognito:<window id>". Fixed at creation. */
   profile?: string;
+  /**
+   * Adopts a browser the engine made (an `OpenWindowRequest.adoptId`). Or "clone:<transferKey>":
+   * a copy of that open tab, with its back/forward list and session storage (Duplicate); or
+   * "restore:<transferKey>": that closed tab with its back/forward list (Reopen Closed Tab,
+   * this session). Without one to take, the view loads `url`.
+   */
   adoptId?: string;
   /**
    * The app's id for the tab. After `prepareTabTransfer(key)` the tab's view in another
@@ -235,7 +210,6 @@ export type WebViewProps = ViewProps & {
   onNowPlaying?: (state: NowPlaying | null) => void;
   onMediaAccess?: (access: MediaAccess) => void;
   onOpenWindow?: (request: OpenWindowRequest) => void;
-  onPopupWindow?: (info: PopupWindowInfo) => void;
   onPopupBlocked?: (popup: BlockedPopup) => void;
   onFindResult?: (result: FindResult) => void;
   onFullscreen?: (fullscreen: boolean) => void;
@@ -245,20 +219,11 @@ export type WebViewProps = ViewProps & {
   onUnresponsive?: () => void;
   onResponsive?: () => void;
   onLoadError?: (error: LoadError) => void;
-  onCertificateError?: (error: CertificateErrorInfo) => void;
   /** After each navigation/load. */
   onSecurity?: (info: SecurityInfo) => void;
   onZoom?: (zoom: ZoomState) => void;
   /** Reset to 0 on each new page; coalesced (a few per second). */
   onContentBlocked?: (state: ContentBlockedState) => void;
-  /**
-   * Chrome's password manager and autofill now detect forms, show their own
-   * dropdowns and save prompts, and fill: these four never fire.
-   */
-  onPasswordFormDetected?: (form: PasswordForm) => void;
-  onPasswordFieldFocused?: (form: PasswordForm) => void;
-  onPasswordCaptured?: (capture: PasswordCapture) => void;
-  onAutofill?: (event: AutofillEvent) => void;
   onDownloadNavigation?: (navigation: DownloadNavigation) => void;
   onNotification?: (notification: WebNotification) => void;
   /** The page called notification.close(): remove it from Notification Center. */
@@ -272,9 +237,15 @@ export type WebViewProps = ViewProps & {
   onCommand?: (command: PageCommand) => void;
   onPageFocus?: () => void;
   onPageMessage?: (kind: string, data: unknown) => void;
-  /** `chromeTabId`: Chrome's id for the tab (chrome.tabs), 0 without Chrome tabs. */
+  /**
+   * The browser was created, or its discarded page is loading again. `chromeTabId`: Chrome's id
+   * for the tab (chrome.tabs), 0 without Chrome tabs.
+   */
   onReady?: (browserId: number, chromeTabId: number) => void;
-  /** `discard()` freed the browser; it comes back (at `url`) when visible again. */
+  /**
+   * The tab went to sleep: `discard()`, or Chrome discarded it (memory pressure, an extension's
+   * chrome.tabs.discard). It loads `url` again when visible (`onReady`).
+   */
   onDiscarded?: (url: string) => void;
   onPasswordPrompt?: (prompt: PasswordPrompt) => void;
   /** Chrome tabs: the tab's place in Chrome's tab strip changed. */
@@ -295,19 +266,14 @@ export type WebViewHandle = {
   stopLoading(): Promise<void>;
   focus(): Promise<void>;
   setMuted(muted: boolean): Promise<void>;
-  /** Sets the zoom of this tab's host (1 = 100%); all tabs on the host follow. */
-  setZoom(zoom: number): Promise<void>;
   /** ⌘+ (1) / ⌘- (-1) along Chrome's zoom steps, or back to 100% (0). */
   zoomStep(direction: 1 | -1 | 0): Promise<void>;
-  getZoom(): Promise<number>;
   /** Results arrive through `onFindResult`. Empty text clears. */
   find(text: string, forward: boolean, findNext: boolean): Promise<void>;
   stopFinding(clearSelection: boolean): Promise<void>;
   print(): Promise<void>;
   /** `panel` ("console", "elements"…) switches an open DevTools window to it too. */
   showDevTools(panel?: string): Promise<void>;
-  viewSource(): Promise<void>;
-  exitFullscreen(): Promise<void>;
   executeJavaScript(code: string): Promise<void>;
   /**
    * Runs `code` in the page's main frame with a private `post(kind, json)` in
@@ -317,8 +283,6 @@ export type WebViewHandle = {
    * Example: `evaluate<string>('post("result", JSON.stringify(getSelection().toString()))')`.
    */
   evaluate<T = unknown>(code: string): Promise<T | null>;
-  getText(): Promise<string>;
-  getSource(): Promise<string>;
   navigationEntries(): Promise<NavigationEntry[]>;
   /**
    * Downloads an icon (a `onFavicon` URL) through this tab's own request context,
@@ -334,7 +298,6 @@ export type WebViewHandle = {
 
   /** Media controls for the tab's now-playing media (Media Session handlers first). `seconds` for seekBy/seekTo. */
   mediaCommand(action: MediaCommand, seconds?: number): Promise<void>;
-  getNowPlaying(): Promise<NowPlaying | null>;
   /** PiP for the tab's main video; false if there's none. */
   requestPictureInPicture(): Promise<boolean>;
   exitPictureInPicture(): Promise<void>;
@@ -345,19 +308,6 @@ export type WebViewHandle = {
   /** Clears cookies and storage for the current page's origin. */
   clearSiteData(): Promise<{ cookies: number | false; storage: boolean }>;
 
-  /**
-   * Chrome's password manager and autofill fill pages themselves (their own dropdowns,
-   * generation and prompts); these do nothing. `fillGeneratedPassword` resolves with
-   * `password` or a new strong one without filling it.
-   */
-  fillPassword(username?: string): Promise<void>;
-  fillGeneratedPassword(password?: string): Promise<string>;
-  fillAutofill(kind: AutofillSection, id: string): Promise<boolean>;
-  setAutofillMenuOpen(open: boolean, hasSelection?: boolean): Promise<void>;
-  requestAutofill(section: AutofillSection | "password"): Promise<void>;
-
-  /** The login Chrome would offer to save for this page now (what `onPasswordPrompt` reports), or null. */
-  getPasswordPrompt(): Promise<PasswordPrompt | null>;
   /** Answers `onPasswordPrompt`, with the username / password as edited in the prompt. */
   resolvePasswordPrompt(answer: PasswordPromptAnswer, edits?: { username?: string; password?: string }): Promise<void>;
   /**
@@ -381,9 +331,13 @@ export type WebViewHandle = {
 
   /** After `onUnresponsive`: kill the page (it then reports `onCrashed`) or keep waiting. */
   resolveUnresponsive(terminate: boolean): Promise<void>;
-  /** Frees the browser's memory; it's recreated with the last URL when shown (history is lost). */
-  discard(): Promise<void>;
-  isDiscarded(): Promise<boolean>;
+  /**
+   * Puts the tab to sleep (`onDiscarded`). A Chrome tab is discarded as Chrome does it: its page's
+   * memory is freed, the tab (history, chrome.tabs) stays and reloads when shown. `unload`, or any
+   * other browser: the browser closes and is recreated with the last URL when shown (history is
+   * lost), so its profile can unload. Resolves true when the browser closed.
+   */
+  discard(options?: { unload?: boolean }): Promise<boolean>;
   /** Freezes a hidden page (no script, timers or loading) or thaws it; showing the view thaws it too. */
   setFrozen(frozen: boolean): Promise<void>;
 };
@@ -397,7 +351,6 @@ type NativeEvents = {
   onNowPlaying: { state: NowPlaying | null };
   onMediaAccess: MediaAccess;
   onOpenWindow: OpenWindowRequest;
-  onPopupWindow: PopupWindowInfo;
   onPopupBlocked: BlockedPopup;
   onFindResult: FindResult;
   onFullscreen: { fullscreen: boolean };
@@ -406,7 +359,6 @@ type NativeEvents = {
   onUnresponsive: object;
   onResponsive: object;
   onLoadError: LoadError;
-  onCertificateError: CertificateErrorInfo;
   onSecurity: SecurityInfo;
   onZoom: ZoomState;
   onContentBlocked: ContentBlockedState;
@@ -426,10 +378,7 @@ type NativeEvents = {
   onTabStrip: TabStripPlace;
 };
 type Handlers = keyof NativeEvents;
-/** Props Chrome made obsolete (see WebViewProps): not passed to the native view. */
-type Retired = "onPasswordFormDetected" | "onPasswordFieldFocused" | "onPasswordCaptured" | "onAutofill";
-const RETIRED = new Set<string>(["onPasswordFormDetected", "onPasswordFieldFocused", "onPasswordCaptured", "onAutofill"]);
-type NativeProps = Omit<WebViewProps, Handlers | Retired> & { [K in Handlers]?: Evt<NativeEvents[K]> };
+type NativeProps = Omit<WebViewProps, Handlers> & { [K in Handlers]?: Evt<NativeEvents[K]> };
 
 /**
  * The app names Chrome's WebUI pages netnyahoo://x (core appUrls.ts); the engine only knows
@@ -448,7 +397,6 @@ const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<
   onNowPlaying: (e) => [e.state],
   onMediaAccess: (e) => [e],
   onOpenWindow: (e) => [{ ...e, url: fromEngine(e.url) }],
-  onPopupWindow: (e) => [{ ...e, url: fromEngine(e.url) }],
   onPopupBlocked: (e) => [{ ...e, url: fromEngine(e.url) }],
   onFindResult: (e) => [e],
   onFullscreen: (e) => [e.fullscreen],
@@ -457,7 +405,6 @@ const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<
   onUnresponsive: () => [],
   onResponsive: () => [],
   onLoadError: (e) => [{ ...e, url: fromEngine(e.url) }],
-  onCertificateError: (e) => [e],
   onSecurity: (e) => [e],
   onZoom: (e) => [e],
   onContentBlocked: (e) => [e],
@@ -479,27 +426,13 @@ const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<
 
 type NativeHandle = Omit<
   WebViewHandle,
-  | "evaluate"
-  | "loadUrl"
-  | "downloadFavicon"
-  | "fillPassword"
-  | "fillGeneratedPassword"
-  | "fillAutofill"
-  | "setAutofillMenuOpen"
-  | "requestAutofill"
-  | "resolvePasswordPrompt"
-  | "executeExtensionAction"
-  | "setTabStrip"
-  | "getPasswordPrompt"
+  "evaluate" | "loadUrl" | "downloadFavicon" | "resolvePasswordPrompt" | "discard"
 > & {
   evaluate(code: string): Promise<string | null>;
   downloadFavicon(url: string, name: string | null): Promise<FaviconImage | null>;
   loadUrl(url: string, userInitiated?: boolean): Promise<void>;
-  // Absent in app builds from before they existed (Metro serves this JS to those too).
-  resolvePasswordPrompt?(answer: string, username: string | null, password: string | null): Promise<void>;
-  executeExtensionAction?(extensionId: string): Promise<ExtensionActionResult | null>;
-  setTabStrip?(index: number, pinned: boolean): Promise<void>;
-  pendingPasswordPrompt?(): Promise<PasswordPrompt | null>;
+  resolvePasswordPrompt(answer: string, username: string | null, password: string | null): Promise<void>;
+  discard(unload: boolean): Promise<boolean>;
 };
 
 const NativeWebView = requireNativeViewManager<NativeProps>("NetnyahooCEF");
@@ -518,16 +451,11 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
       stopLoading: () => n().stopLoading(),
       focus: () => n().focus(),
       setMuted: (muted) => n().setMuted(muted),
-      setZoom: (zoom) => n().setZoom(zoom),
       zoomStep: (direction) => n().zoomStep(direction),
-      getZoom: () => n().getZoom(),
       find: (text, forward, findNext) => n().find(text, forward, findNext),
       stopFinding: (clear) => n().stopFinding(clear),
       print: () => n().print(),
-      // Builds from before `panel` existed take no argument.
-      showDevTools: (panel) => (panel ? n().showDevTools(panel) : n().showDevTools()),
-      viewSource: () => n().viewSource(),
-      exitFullscreen: () => n().exitFullscreen(),
+      showDevTools: (panel) => n().showDevTools(panel),
       executeJavaScript: (code) => n().executeJavaScript(code),
       evaluate: async <T,>(code: string) => {
         const json = await n().evaluate(code);
@@ -538,44 +466,29 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
           return null;
         }
       },
-      getText: () => n().getText(),
-      getSource: () => n().getSource(),
       navigationEntries: async () => (await n().navigationEntries()).map((e) => ({ ...e, url: fromEngine(e.url) })),
       downloadImage: (url, maxPixels) => n().downloadImage(url, maxPixels),
       downloadFavicon: (url, name) => n().downloadFavicon(url, name ?? null),
       mediaCommand: (action, seconds) => n().mediaCommand(action, seconds),
-      getNowPlaying: () => n().getNowPlaying(),
       requestPictureInPicture: () => n().requestPictureInPicture(),
       exitPictureInPicture: () => n().exitPictureInPicture(),
       getSecurityInfo: () => n().getSecurityInfo(),
       openBlockedPopup: (id, always) => n().openBlockedPopup(id, always),
       clearSiteData: () => n().clearSiteData(),
-      fillPassword: async () => {},
-      fillGeneratedPassword: async (password) => password ?? (await generatePassword()),
-      fillAutofill: async () => false,
-      setAutofillMenuOpen: async () => {},
-      requestAutofill: async () => {},
-      resolvePasswordPrompt: async (answer, edits) => {
-        await n().resolvePasswordPrompt?.(answer, edits?.username ?? null, edits?.password ?? null);
-      },
-      getPasswordPrompt: async () => (await n().pendingPasswordPrompt?.()) ?? null,
-      executeExtensionAction: async (extensionId) => (await n().executeExtensionAction?.(extensionId)) ?? null,
-      setTabStrip: async (index, pinned) => {
-        await n().setTabStrip?.(index, pinned);
-      },
+      resolvePasswordPrompt: (answer, edits) => n().resolvePasswordPrompt(answer, edits?.username ?? null, edits?.password ?? null),
+      executeExtensionAction: (extensionId) => n().executeExtensionAction(extensionId),
+      setTabStrip: (index, pinned) => n().setTabStrip(index, pinned),
       resolveDisplayMedia: (id, sourceId) => n().resolveDisplayMedia(id, sourceId),
       mediaCaptureSourceId: () => n().mediaCaptureSourceId(),
       notificationAction: (id, action) => n().notificationAction(id, action),
       resolveUnresponsive: (terminate) => n().resolveUnresponsive(terminate),
-      discard: () => n().discard(),
-      isDiscarded: () => n().isDiscarded(),
+      discard: (options) => n().discard(options?.unload ?? false),
       setFrozen: (frozen) => n().setFrozen(frozen),
     };
   });
 
   const nativeProps: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {
-    if (RETIRED.has(key)) continue;
     if (key === "url") {
       nativeProps.url = typeof value === "string" ? toEngine(value) : value;
       continue;

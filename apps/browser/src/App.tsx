@@ -7,6 +7,7 @@ import { ContentCard } from "./components/ContentCard";
 import { BookmarkDialog } from "./components/bookmarks/BookmarkDialog";
 import { EditBookmarkDialog } from "./components/bookmarks/EditBookmarkDialog";
 import { ExtensionOverlays } from "./components/extensions/ExtensionOverlays";
+import { ExtensionSidePanel } from "./components/extensions/SidePanel";
 import { DownloadMagnet, DownloadsPopover } from "./components/Downloads";
 import { UtilityWindow } from "./components/settings/UtilityWindow";
 import { isUtilityWindowId } from "./components/settings/windows";
@@ -71,6 +72,8 @@ function BrowserWindow() {
             ? { flex: 1 }
             : {
                 flex: 1,
+                // An extension's side panel sits beside the page (components/extensions/SidePanel).
+                flexDirection: "row",
                 paddingTop: showStrip ? TOP_STRIP_HEIGHT : layout.cardTop,
                 paddingRight: layout.cardInset,
                 paddingBottom: layout.cardInset,
@@ -79,6 +82,7 @@ function BrowserWindow() {
         }
       >
         <ContentCard />
+        {!fullscreen && <ExtensionSidePanel />}
       </View>
       {showStrip && (
         <View style={{ position: "absolute", left: 0, right: 0, top: 0 }}>

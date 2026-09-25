@@ -10,7 +10,6 @@ import {
   revealFile,
   setScriptState,
   setWindowActivity,
-  sharePage,
   systemInfo,
   updaterState,
   type CommandEvent,
@@ -18,7 +17,6 @@ import {
   type ScriptState,
 } from "@netnyahoo/shell";
 import { maybeStartOnboarding, openVideoTour, startOnboarding, startToolTour } from "../components/onboarding";
-import { openSettings } from "../components/settings/windows";
 import { openTaskManager } from "../components/taskManager/window";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { activeTabId, resolveWindowId, viewTabIds, windowTitle } from "../store/model";
@@ -27,7 +25,7 @@ import { webviews } from "./webviews";
 import { handleWebNotificationResponse } from "./webNotifications";
 
 /**
- * App-level integration with macOS: File › Share…, the Help menu, Handoff, AppleScript,
+ * App-level integration with macOS: the Help menu, Handoff, AppleScript,
  * notification clicks and first-launch onboarding. Call once at startup, after the session
  * has been restored and the native sync started.
  */
@@ -46,19 +44,9 @@ export function startAppIntegration() {
 }
 
 function runAppCommand({ command, windowId }: CommandEvent) {
-  const s = useBrowser.getState();
   switch (command) {
-    case "share": {
-      const id = resolveWindowId(s, windowId);
-      const tabId = id ? activeTabId(s, id) : undefined;
-      const tab = tabId ? s.tabs[tabId] : undefined;
-      if (tab?.url && /^https?:/i.test(tab.url)) void sharePage(tab.url, tab.customTitle || tab.title, id);
-      return;
-    }
     case "sendFeedback":
       return void sendFeedback(windowId);
-    case "keyboardShortcuts":
-      return openSettings("shortcuts");
     case "copyDiagnostics":
       return void diagnostics().then(copyText);
     case "recordPerformanceIssue":
@@ -78,8 +66,8 @@ function runAppCommand({ command, windowId }: CommandEvent) {
 
 /**
  * Help › Send Feedback… (and the default-browser check-in's "Leave us feedback"). Where it goes
- * is set per build in Info.plist's "Distribution" block: NNFeedbackURL (a page; "%s" becomes the
- * report), else NNFeedbackEmail. Neither set: a mail draft with the report and no recipient.
+ * is set per build in Info.plist: NNFeedbackURL (a page; "%s" becomes the report), else
+ * NNFeedbackEmail. Neither set (as in this repo): a mail draft with the report and no recipient.
  */
 export async function sendFeedback(windowId?: string | null) {
   const app = systemInfo();
@@ -107,7 +95,7 @@ export async function diagnostics(): Promise<string> {
     `Windows: ${regular.length} (+${s.windowOrder.length - regular.length} incognito), tabs: ${Object.keys(s.tabs).length}, profiles: ${s.profileOrder.length}`,
     !updates?.available
       ? "Updates: not built in"
-      : updates.configured === false
+      : !updates.configured
         ? "Updates: not set up for this build"
         : `Updates: automatic checks ${updates.automaticChecks ? "on" : "off"}, feed ${updates.feedURL ?? "none"}`,
   ].join("\n");

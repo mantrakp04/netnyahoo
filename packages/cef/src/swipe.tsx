@@ -44,7 +44,6 @@ type NativeProps = Omit<SwipeAreaProps, "onSwipe"> & { onSwipe: (e: NativeSynthe
 type NativeHandle = { devLocate(): Promise<{ windowNumber: number; x: number; y: number; width: number; height: number } | null> };
 
 type SwipeModule = {
-  isSwipeNavigationEnabled(): boolean;
   haptic(pattern: string): void;
   devSimulate(x: number, y: number, windowNumber: number, steps: SwipeStep[], ignorePreference: boolean): Promise<unknown>;
 };
@@ -62,9 +61,6 @@ const Module = (() => {
 // LogBox before index.js silences it (and LogBox crashes react-native-macos).
 let Native: NativeComponent | null | undefined;
 const native = () => (Native ??= Module ? (requireNativeViewManager<NativeProps>("NetnyahooSwipe") as unknown as NativeComponent) : null);
-
-/** System Settings › Trackpad › Swipe between pages allows two-finger swipes. */
-export const isSwipeNavigationEnabled = () => Module?.isSwipeNavigationEnabled() ?? false;
 
 /** Trackpad haptic: "levelChange" (a threshold reached), "alignment" (detents, selection), "generic". */
 export const swipeHaptic = (pattern: "levelChange" | "alignment" | "generic") => Module?.haptic(pattern);

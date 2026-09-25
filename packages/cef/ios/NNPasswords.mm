@@ -3,8 +3,6 @@
 // passwords page API (passwordsPrivate) in a hidden chrome://password-manager.
 #import "NNChromePages.h"
 
-#import <Security/Security.h>
-
 using namespace nn;
 
 namespace {
@@ -143,24 +141,6 @@ CefRefPtr<CefRequestContext> Context(NSString *profile) { return ContextForProfi
                                 "})()",
                                @[ OriginOf(origin) ?: origin ]);
   Run(profile, js, completion);
-}
-
-+ (NSString *)generatePassword {
-  // Three groups of six, one digit and one capital somewhere: "abcdef-GHIjk2-lmnopq".
-  static NSString *const lower = @"abcdefghijkmnopqrstuvwxyz";
-  uint8_t bytes[32];
-  if (SecRandomCopyBytes(kSecRandomDefault, sizeof bytes, bytes) != errSecSuccess) arc4random_buf(bytes, sizeof bytes);
-  NSMutableString *out = [NSMutableString string];
-  for (int i = 0; i < 18; i++) {
-    if (i && i % 6 == 0) [out appendString:@"-"];
-    [out appendFormat:@"%C", [lower characterAtIndex:bytes[i] % lower.length]];
-  }
-  NSUInteger digitAt = bytes[18] % 18, upperAt = (digitAt + 1 + bytes[19] % 17) % 18;
-  auto position = [](NSUInteger i) { return i + i / 6; };  // skip the dashes
-  [out replaceCharactersInRange:NSMakeRange(position(digitAt), 1) withString:[NSString stringWithFormat:@"%d", bytes[20] % 10]];
-  NSRange upper = NSMakeRange(position(upperAt), 1);
-  [out replaceCharactersInRange:upper withString:[out substringWithRange:upper].uppercaseString];
-  return out;
 }
 
 @end

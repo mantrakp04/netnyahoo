@@ -27,7 +27,7 @@ core/ungoogled-chromium/disable-network-time-tracker.patch	applied	exact
 core/ungoogled-chromium/disable-mei-preload.patch	applied	exact
 core/ungoogled-chromium/fix-building-without-safebrowsing.patch	skipped	build fix for safe_browsing_mode=0, which this build does not set (CEF compatibility)
 core/ungoogled-chromium/remove-unused-preferences-fields.patch	reverted	removes Safe Browsing/signin prefs that the kept Safe Browsing code (safe_browsing_mode=1, needed by CEF) still uses; breaks the compile
-core/ungoogled-chromium/block-requests.patch	applied	exact
+core/ungoogled-chromium/block-requests.patch	partial	the early return in UpdateCheckerImpl::CheckForUpdates is undone (chromium-extension-updates.patch): it left every update check pending, so Web Store extensions never updated
 core/ungoogled-chromium/disable-privacy-sandbox.patch	applied	exact
 core/ungoogled-chromium/doh-changes.patch	applied	exact
 core/ungoogled-chromium/extensions-manifestv2.patch	applied	exact

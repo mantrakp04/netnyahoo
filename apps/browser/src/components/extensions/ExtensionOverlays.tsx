@@ -1,13 +1,12 @@
 import { permissionWarnings, WebView, type InstalledExtension, type WebViewHandle } from "@netnyahoo/cef";
 import { Surface } from "@netnyahoo/shell";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
 import { PromptButton } from "../layout/controls";
 import { Checkbox } from "../settings/controls";
-import { registerView } from "./bridge";
 import {
   cancelInstall,
   closeExtensionPopup,
@@ -85,7 +84,6 @@ function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; pro
   const web = useRef<WebViewHandle>(null);
   const window = useWindowDimensions();
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  const browserId = useRef(0);
   const appear = useRef(new Animated.Value(0)).current;
   const alive = useRef(true);
 
@@ -93,7 +91,6 @@ function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; pro
     alive.current = true;
     return () => {
       alive.current = false;
-      if (browserId.current) registerView(browserId.current, null);
     };
   }, []);
 
@@ -152,10 +149,6 @@ function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; pro
               // A popup, not a tab: outside the window's Chrome tab strip.
               standalone
               pageBackgroundColor="#FFFFFF"
-              onReady={(id) => {
-                browserId.current = id;
-                registerView(id, windowId);
-              }}
               onNavigationChange={({ isLoading }) => {
                 if (isLoading) return;
                 watchSize();
@@ -184,22 +177,15 @@ function InstallDialog({ request }: { request: InstallRequest }) {
   const theme = useTheme();
   const pkg = request.pkg;
   const name = pkg?.name ?? "Extension";
-  // Chrome's own flow brings its warnings; our store download reads them off the manifest.
+  // Chrome's own flow brings its warnings; an unpacked folder's are read off its manifest.
   const warnings = request.prompt ? request.prompt.permissions : pkg ? permissionWarnings(pkg) : [];
   const kind = request.prompt?.type;
   const title = kind === "re-enable" ? `Turn “${name}” back on?` : kind === "permissions" ? `“${name}” needs new permissions` : `Add “${name}”?`;
   const action = kind === "re-enable" ? "Turn On" : kind === "permissions" ? "Allow" : "Add Extension";
-  const busy = request.status === "downloading" || request.status === "installing";
+  const busy = request.status === "installing";
 
   let body;
-  if (request.status === "downloading") {
-    body = (
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6 }}>
-        <ActivityIndicator size="small" />
-        <Text style={{ fontSize: 13, color: theme.textSecondary }}>Getting the extension from the Chrome Web Store…</Text>
-      </View>
-    );
-  } else if (request.status === "error") {
+  if (request.status === "error") {
     body = (
       <>
         <Text style={{ fontSize: 15, fontWeight: "600", color: theme.textPrimary }}>Couldn't add the extension</Text>

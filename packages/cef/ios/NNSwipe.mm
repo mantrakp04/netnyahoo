@@ -40,9 +40,14 @@ NSMutableArray *gTrace;  // DEV: renderer acks while simulating
 }  // namespace
 
 /// RenderWidgetHostViewCocoa's responder delegate (content's RenderWidgetHostViewMacDelegate
-/// protocol). CEF's Alloy runtime leaves it unset; Chrome puts its HistorySwiper there.
-/// Chromium passes C++ references, which are pointers at the ABI level.
+/// protocol), in front of the one the page view had. On Chrome tabs that's Chrome's
+/// ChromeRenderWidgetHostViewMacDelegate: spelling and speech menu items, dialog focus,
+/// mouse acceptance, and its HistorySwiper. Everything goes on to it except the scroll events
+/// its history swiper would act on: this file is the swiper (Dia's overlay), and two would
+/// navigate twice. Alloy views have none. Chromium passes C++ references, which are pointers at
+/// the ABI level.
 @interface NNRendererScrollObserver : NSObject
+- (instancetype)initWithOriginal:(nullable NSObject *)original;
 @property (nonatomic) RendererScroll scroll;
 /// The renderer reported an overscroll this gesture; `overscrollAllowed`: its
 /// overscroll-behavior-x is auto (none/contain opt the page out of swipe navigation).
@@ -50,7 +55,24 @@ NSMutableArray *gTrace;  // DEV: renderer acks while simulating
 @property (nonatomic) BOOL overscrollAllowed;
 @end
 
-@implementation NNRendererScrollObserver
+@implementation NNRendererScrollObserver {
+ @public
+  /// The page view's own delegate (the view held the only strong reference to it).
+  NSObject *_original;
+}
+
+- (instancetype)initWithOriginal:(NSObject *)original {
+  if ((self = [super init])) _original = original;
+  return self;
+}
+
+- (BOOL)respondsToSelector:(SEL)selector {
+  return [super respondsToSelector:selector] || [_original respondsToSelector:selector];
+}
+
+- (id)forwardingTargetForSelector:(SEL)selector {
+  return [_original respondsToSelector:selector] ? _original : [super forwardingTargetForSelector:selector];
+}
 
 - (void)reset {
   _scroll = RendererScroll::AwaitingBegin;
@@ -59,6 +81,8 @@ NSMutableArray *gTrace;  // DEV: renderer acks while simulating
 }
 
 - (void)rendererHandledGestureScrollEvent:(const void *)event consumed:(BOOL)consumed {
+  if ([_original respondsToSelector:_cmd])
+    ((void (*)(id, SEL, const void *, BOOL))objc_msgSend)(_original, _cmd, event, consumed);
   int type = *reinterpret_cast<const int32_t *>(static_cast<const char *>(event) + kInputEventTypeOffset);
   if (gTrace) [gTrace addObject:@{@"ack" : @"gesture", @"raw" : [self words:event count:12], @"consumed" : @(consumed)}];
   if (type == kGestureScrollBegin) {
@@ -70,6 +94,7 @@ NSMutableArray *gTrace;  // DEV: renderer acks while simulating
 }
 
 - (void)rendererHandledOverscrollEvent:(const void *)params {
+  if ([_original respondsToSelector:_cmd]) ((void (*)(id, SEL, const void *))objc_msgSend)(_original, _cmd, params);
   const char *p = static_cast<const char *>(params);
   int behaviorX = *reinterpret_cast<const int32_t *>(p + kOverscrollBehaviorOffset);
   if (gTrace) [gTrace addObject:@{@"ack" : @"overscroll", @"raw" : [self words:params count:10]}];
@@ -77,24 +102,24 @@ NSMutableArray *gTrace;  // DEV: renderer acks while simulating
   _overscrollAllowed = behaviorX == kOverscrollBehaviorAuto;
 }
 
-// The protocol's optional methods, as no-ops: Chromium calls some of them without asking
-// respondsToSelector: first.
-- (void)viewGone:(NSView *)view {
+/// Every key and mouse event: scroll events stay away from Chrome's history swiper.
+- (BOOL)handleEvent:(NSEvent *)event {
+  if (event.type == NSEventTypeScrollWheel || ![_original respondsToSelector:_cmd]) return NO;
+  return ((BOOL (*)(id, SEL, NSEvent *))objc_msgSend)(_original, _cmd, event);
 }
-- (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item isValidItem:(BOOL *)valid {
-  return NO;
-}
-- (void)beginGestureWithEvent:(NSEvent *)event {
-}
-- (void)endGestureWithEvent:(NSEvent *)event {
-}
+
+// The protocol's required methods, which Chromium calls without asking respondsToSelector:.
 - (void)touchesBeganWithEvent:(NSEvent *)event {
+  if ([_original respondsToSelector:_cmd]) [(id)_original touchesBeganWithEvent:event];
 }
 - (void)touchesMovedWithEvent:(NSEvent *)event {
+  if ([_original respondsToSelector:_cmd]) [(id)_original touchesMovedWithEvent:event];
 }
 - (void)touchesCancelledWithEvent:(NSEvent *)event {
+  if ([_original respondsToSelector:_cmd]) [(id)_original touchesCancelledWithEvent:event];
 }
 - (void)touchesEndedWithEvent:(NSEvent *)event {
+  if ([_original respondsToSelector:_cmd]) [(id)_original touchesEndedWithEvent:event];
 }
 
 /// DEV trace: the struct as 32-bit words (floats show up as their bit patterns).
@@ -135,20 +160,23 @@ BOOL IsRenderWidgetView(NSView *view) {
   return cls && [view isKindOfClass:cls];
 }
 
-/// The page's scroll acks come to us: attach to the page view the gesture starts on.
-/// A page gets a new RenderWidgetHostViewCocoa on cross-site navigations, so this runs
-/// for every gesture (before the view sees its first event).
+/// The page's scroll acks come to us: attach to the page view the gesture starts on, in front of
+/// its own responder delegate. A page gets a new RenderWidgetHostViewCocoa on cross-site
+/// navigations, so this runs for every gesture (before the view sees its first event).
 NNRendererScrollObserver *ObserverFor(NSView *hit) {
+  static Ivar ivar = class_getInstanceVariable(NSClassFromString(@"RenderWidgetHostViewCocoa"), "_responderDelegate");
   for (NSView *v = hit; v; v = v.superview) {
     if (!IsRenderWidgetView(v)) continue;
     static const void *kKey = &kKey;
     NNRendererScrollObserver *observer = objc_getAssociatedObject(v, kKey);
     if (!observer) {
-      SEL setter = NSSelectorFromString(@"setResponderDelegate:");
-      if (![v respondsToSelector:setter]) return nil;
-      observer = [NNRendererScrollObserver new];
+      // Without the ivar (another Chromium layout) Chrome's delegate can't be kept: leave it be.
+      if (!ivar) return nil;
+      NSObject *original = object_getIvar(v, ivar);
+      observer = [[NNRendererScrollObserver alloc] initWithOriginal:original];
       objc_setAssociatedObject(v, kKey, observer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-      ((void (*)(id, SEL, id))objc_msgSend)(v, setter, observer);
+      // A strong ivar (content is ARC): the view now owns the observer, the observer the original.
+      object_setIvar(v, ivar, observer);
     }
     return observer;
   }
@@ -373,6 +401,28 @@ void InstallMonitor() {
 
 // MARK: DEV simulation
 
+/// DEV: the page view's responder delegate chain and what it validates (Edit › Spelling and
+/// Grammar, Speech), to check Chrome's delegate still answers behind ours.
+NSDictionary *ResponderReport(NSView *hit) {
+  static Ivar ivar = class_getInstanceVariable(NSClassFromString(@"RenderWidgetHostViewCocoa"), "_responderDelegate");
+  NSView *page = hit;
+  while (page && !IsRenderWidgetView(page)) page = page.superview;
+  if (!page || !ivar) return @{};
+  id delegate = object_getIvar(page, ivar);
+  NSObject *original = [delegate isKindOfClass:NNRendererScrollObserver.class] ? ((NNRendererScrollObserver *)delegate)->_original : nil;
+  NSMutableDictionary *valid = [NSMutableDictionary dictionary];
+  for (NSString *action in @[ @"checkSpelling:", @"showGuessPanel:", @"toggleContinuousSpellChecking:", @"toggleGrammarChecking:",
+                              @"startSpeaking:", @"stopSpeaking:" ]) {
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:action action:NSSelectorFromString(action) keyEquivalent:@""];
+    valid[action] = @([(id<NSUserInterfaceValidations>)page validateUserInterfaceItem:item]);
+  }
+  return @{
+    @"delegate" : delegate ? NSStringFromClass([delegate class]) : @"",
+    @"chainedTo" : original ? NSStringFromClass(original.class) : @"",
+    @"valid" : valid,
+  };
+}
+
 CGScrollPhase ScrollPhaseOf(NSString *phase) {
   if ([phase isEqualToString:@"began"]) return kCGScrollPhaseBegan;
   if ([phase isEqualToString:@"changed"]) return kCGScrollPhaseChanged;
@@ -419,10 +469,6 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
 
 @implementation NNSwipe
 
-+ (BOOL)systemSwipeEnabled {
-  return NSEvent.isSwipeTrackingFromScrollEventsEnabled;
-}
-
 + (void)performHaptic:(NSString *)pattern {
   NSHapticFeedbackPattern p = [pattern isEqualToString:@"levelChange"] ? NSHapticFeedbackPatternLevelChange
                               : [pattern isEqualToString:@"alignment"]  ? NSHapticFeedbackPatternAlignment
@@ -461,7 +507,7 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   __block void (^next)(void);
   void (^step)(void) = ^{
     if (index >= steps.count) {
-      NSDictionary *result = @{@"where" : where, @"events" : log, @"acks" : gTrace ?: @[]};
+      NSDictionary *result = @{@"where" : where, @"events" : log, @"acks" : gTrace ?: @[], @"responder" : ResponderReport(hit)};
       gTrace = nil;
       next = nil;
       completion(result);

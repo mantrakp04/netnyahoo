@@ -69,12 +69,14 @@ final class WindowManager: NSObject, NSWindowDelegate {
     // Incognito windows are always dark, like Dia's; JS themes its own views to match.
     if incognito { window.appearance = NSAppearance(named: .darkAqua) }
     place(window, frame: frame)
+    relayoutRoot(window)
     windows[id] = window
     lastPlaced = window
     if focus { window.makeKeyAndOrderFront(nil) } else { window.orderFront(nil) }
     for name in [NSWindow.didMoveNotification, NSWindow.didEndLiveResizeNotification] {
       NotificationCenter.default.addObserver(self, selector: #selector(frameChanged(_:)), name: name, object: window)
     }
+    NotificationCenter.default.addObserver(self, selector: #selector(sizeChanged(_:)), name: NSWindow.didResizeNotification, object: window)
     reportFrame(window)
   }
 
@@ -178,6 +180,23 @@ final class WindowManager: NSObject, NSWindowDelegate {
     }
     // Releasing the root view unmounts its React tree; do it after AppKit is done closing.
     DispatchQueue.main.async { window.contentViewController = nil }
+  }
+
+  /// Resized by code (session restore, zoom, AppleScript bounds…); live resizes relayout when they end.
+  @objc private func sizeChanged(_ notification: Notification) {
+    guard let window = notification.object as? NSWindow, !window.inLiveResize else { return }
+    relayoutRoot(window)
+  }
+
+  /// RCTRootView only passes its size to React in -layout (and when a live resize ends). After a
+  /// programmatic frame change AppKit lays views out on the next display pass, which an occluded
+  /// window may not get: a window restored from the session at a new size kept the React layout
+  /// of its old size until resized by hand. So lay out now.
+  private func relayoutRoot(_ window: NSWindow) {
+    guard let root = window.contentView else { return }
+    root.needsLayout = true
+    for view in root.subviews { view.needsLayout = true } // RCTRootContentView re-measures in its own -layout
+    root.layoutSubtreeIfNeeded()
   }
 
   @objc private func frameChanged(_ notification: Notification) {

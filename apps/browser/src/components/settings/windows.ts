@@ -29,7 +29,7 @@ export type SettingsPane =
 
 type Nav = {
   pane: SettingsPane;
-  /** Profiles › Profile Details. */
+  /** Profiles › Profile Details; for Passwords and Autofill, the profile they start on. */
   profileId: string | null;
   /** Back / forward history, like Dia's toolbar arrows. */
   back: { pane: SettingsPane; profileId: string | null }[];

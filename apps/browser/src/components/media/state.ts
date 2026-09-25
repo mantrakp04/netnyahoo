@@ -27,9 +27,20 @@ type Store = {
   pipOpen: Record<string, PictureInPictureState["kind"]>;
   /** getDisplayMedia() calls waiting on the share picker, by tab. */
   displayRequests: Record<string, DisplayMediaRequest>;
+  /** Tabs a page is sharing (picked in the share picker), by the sharing tab (ShareBar.tsx). */
+  tabShares: Record<string, TabShare>;
 };
 
-export const useMedia = create<Store>()(() => ({ sessions: {}, dismissed: {}, pip: {}, pipOpen: {}, displayRequests: {} }));
+export type TabShare = {
+  /** The tab being shared now ("Share this tab instead" changes it). */
+  capturedTabId: string;
+  /** The site it's shared with. */
+  origin: string;
+  /** Tabs whose bar the user dismissed (for this share). */
+  dismissed: Record<string, true>;
+};
+
+export const useMedia = create<Store>()(() => ({ sessions: {}, dismissed: {}, pip: {}, pipOpen: {}, displayRequests: {}, tabShares: {} }));
 
 /**
  * The engine's onPictureInPicture, for the tab's indicator and the PiP toggles. (PiP the
@@ -205,7 +216,7 @@ export function usePictureInPicture(tabId: string): [boolean, () => void] {
 useBrowser.subscribe((s, prev) => {
   if (s.tabs === prev.tabs) return;
   const m = useMedia.getState();
-  const keys = ["sessions", "dismissed", "pip", "pipOpen", "displayRequests"] as const;
+  const keys = ["sessions", "dismissed", "pip", "pipOpen", "displayRequests", "tabShares"] as const;
   const gone = [...new Set(keys.flatMap((k) => Object.keys(m[k])))].filter((id) => !s.tabs[id]);
   if (!gone.length) return;
   const next = Object.fromEntries(keys.map((k) => [k, { ...m[k] }])) as Pick<Store, (typeof keys)[number]>;

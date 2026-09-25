@@ -1,4 +1,4 @@
-import { engineInfo, listComponents, updateComponent, WIDEVINE_COMPONENT_ID, type EngineComponent, type EngineInfo } from "@netnyahoo/cef";
+import { engineInfo, listComponents, WIDEVINE_COMPONENT_ID, type EngineComponent, type EngineInfo } from "@netnyahoo/cef";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
@@ -11,15 +11,17 @@ export function AdvancedPane() {
   const settings = useBrowser((s) => s.settings);
   const update = useBrowser((s) => s.updateSettings);
   const [info, setInfo] = useState<EngineInfo | null>(null);
-  const [widevine, setWidevine] = useState<EngineComponent | null>(null);
-  const [checking, setChecking] = useState(false);
-  const load = () => {
+  const [widevine, setWidevine] = useState<EngineComponent | null | undefined>(undefined);
+  useEffect(() => {
     void engineInfo().then(setInfo).catch(() => {});
     void listComponents()
       .then((list) => setWidevine(list.find((c) => c.id === WIDEVINE_COMPONENT_ID) ?? null))
-      .catch(() => {});
-  };
-  useEffect(load, []);
+      .catch(() => setWidevine(null));
+  }, []);
+  // The CDM only arrives through Chrome's component updater, whose Google host this build's
+  // domain substitution replaced, so it can't be downloaded (and "Check for Update" never
+  // finished). Say so instead of offering it; a version shows if one is ever installed.
+  const widevineVersion = widevine && widevine.version !== "0.0.0.0" ? widevine.version : null;
 
   return (
     <View>
@@ -60,19 +62,16 @@ export function AdvancedPane() {
             {info?.chromiumVersion ?? "…"}
           </Text>
         </Row>
-        <Row title="Widevine (protected video)" description={widevine ? `${widevine.version === "0.0.0.0" ? "Not installed" : `Version ${widevine.version}`} · ${widevine.state}` : "Checking…"}>
-          <Button
-            title={checking ? "Checking…" : "Check for Update"}
-            disabled={checking}
-            onPress={() => {
-              setChecking(true);
-              void updateComponent(WIDEVINE_COMPONENT_ID).finally(() => {
-                setChecking(false);
-                load();
-              });
-            }}
-          />
-        </Row>
+        <Row
+          title="Widevine (protected video)"
+          description={
+            widevine === undefined
+              ? "Checking…"
+              : widevineVersion
+                ? `Version ${widevineVersion}`
+                : "Not available in this build: video that needs it, like Netflix or Disney+, won't play."
+          }
+        />
       </Group>
     </View>
   );

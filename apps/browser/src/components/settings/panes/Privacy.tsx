@@ -11,7 +11,6 @@ import {
   setFilterListEnabled,
   setSiteSetting,
   setZoom,
-  updateFilterLists,
   type ContentBlockerState,
   type FilterList,
   type FilterListCategory,
@@ -30,12 +29,17 @@ import { Favicon } from "../../primitives";
 import { Button, Checkbox, Group, PopUp, Row, SectionHeader, Sheet, Toggle } from "../controls";
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 
+/** Dia's three toggles, then every list uBlock Origin Lite ships, by category (the sheet). */
 const CATEGORIES: { id: FilterListCategory; toggle: string; section: string }[] = [
   { id: "ads", toggle: "Block ads", section: "Ad blockers" },
   { id: "trackers", toggle: "Block trackers", section: "Trackers" },
   { id: "cookies", toggle: "Block cookie banners", section: "Cookie banners" },
+  { id: "annoyances", toggle: "", section: "Annoyances" },
+  { id: "security", toggle: "", section: "Malware and scams" },
   { id: "regional", toggle: "", section: "Regional blockers" },
 ];
+
+const filtersText = (n: number) => `${n.toLocaleString()} ${n === 1 ? "filter" : "filters"}`;
 
 function useContentBlocker() {
   const [state, setState] = useState<ContentBlockerState | null>(null);
@@ -53,7 +57,7 @@ const categoryOn = (s: ContentBlockerState, c: FilterListCategory) => s.enabled 
 /** Turns a category's lists on (the bundled ones) or off, and the blocker with it. */
 async function setCategory(s: ContentBlockerState, c: FilterListCategory, on: boolean) {
   const lists = s.lists.filter((l) => l.category === c);
-  for (const l of on ? lists.filter((l) => l.bundled || l.enabled) : lists.filter((l) => l.enabled)) await setFilterListEnabled(l.id, on);
+  for (const l of on ? lists.filter((l) => l.defaultOn || l.enabled) : lists.filter((l) => l.enabled)) await setFilterListEnabled(l.id, on);
   const anyOn = CATEGORIES.some((x) => (x.id === c ? on : categoryOn(s, x.id)));
   if (anyOn !== s.enabled) await setContentBlockerEnabled(anyOn);
 }
@@ -118,17 +122,14 @@ export function PrivacyPane() {
   );
 }
 
-/** Dia's "Advanced Ad Block Settings" dialog: every list, by category. */
+/**
+ * Dia's "Advanced Ad Block Settings" dialog: every list uBlock Origin Lite ships, by category,
+ * including its annoyance and malware lists. The lists come with the app's copy of uBOL (they
+ * change when the app ships a newer one), so there's nothing to download or update here.
+ */
 function FilterListsSheet() {
   const theme = useTheme();
   const [blocker, refresh] = useContentBlocker();
-  const [updating, setUpdating] = useState<string | null>(null);
-  const update = async () => {
-    setUpdating("Updating…");
-    const result = await updateFilterLists().catch(() => ({ updated: [], failed: ["all"] }));
-    setUpdating(result.failed.length ? "Some lists couldn't be updated." : "Lists are up to date.");
-    refresh();
-  };
   const toggle = async (l: FilterList, on: boolean) => {
     await setFilterListEnabled(l.id, on);
     if (on && blocker && !blocker.enabled) await setContentBlockerEnabled(true);
@@ -150,13 +151,7 @@ function FilterListsSheet() {
                   <Row
                     key={l.id}
                     title={<Checkbox value={l.enabled} onChange={(v) => void toggle(l, v)} label={l.title} />}
-                    description={
-                      l.enabled && l.rules
-                        ? `${l.rules.toLocaleString()} rules${l.lastModified ? ` · updated ${l.lastModified}` : ""}`
-                        : l.bundled
-                          ? undefined
-                          : "Downloaded when turned on"
-                    }
+                    description={l.defaultOn ? `${filtersText(l.filters)} · On by default` : filtersText(l.filters)}
                   />
                 ))}
               </Group>
@@ -165,8 +160,9 @@ function FilterListsSheet() {
         })}
       </ScrollView>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 16 }}>
-        <Button title="Update Lists" disabled={updating === "Updating…"} onPress={() => void update()} />
-        <Text style={{ flex: 1, fontSize: 12, color: theme.textSecondary }}>{updating ?? ""}</Text>
+        <Text style={{ flex: 1, fontSize: 11.5, color: theme.textTertiary }}>
+          {blocker?.version ? `Lists from uBlock Origin Lite ${blocker.version}, included with Netnyahoo. They update with the app.` : ""}
+        </Text>
         <Button title="Done" kind="primary" onPress={closeSettingsSheet} />
       </View>
     </Sheet>

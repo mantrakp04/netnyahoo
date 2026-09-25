@@ -6,6 +6,8 @@ import { useBrowser } from "../../store/browser";
 import { useSettings } from "../../store/hooks";
 import { viewTabIds } from "../../store/model";
 import { pageOf, usePage } from "../layout/pageState";
+import { startCast } from "./cast";
+import { startTabShareCleanup } from "./ShareBar";
 import { cancelDisplayMediaOnNavigation } from "./SharePicker";
 import { exitPictureInPicture, inPictureInPicture, isPlaying, isTabShown, setPip, useMedia } from "./state";
 
@@ -46,6 +48,8 @@ export function startMedia() {
   started = true;
   void setDisplayMediaPicker(true);
   cancelDisplayMediaOnNavigation();
+  startTabShareCleanup();
+  startCast();
 
   // Returning to a tab closes its PiP window, whoever opened it (the engine's
   // own tab-switch PiP closes itself).

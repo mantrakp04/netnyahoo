@@ -2,7 +2,7 @@ import { requireNativeModule, type EventSubscription } from "expo-modules-core";
 import type { ContentBlockerState, ContentBlockerStats, BlockingCheck } from "./contentBlocker";
 import type { DisplayMediaSource } from "./WebView";
 import type { FaviconImage } from "./favicons";
-import type { Download, EngineComponent, EngineInfo, EngineTask, GhostWindow, PermissionRequest, PermissionResult, SystemState } from "./module";
+import type { BrowsingDataType, Download, EngineComponent, EngineInfo, EngineTask, GhostWindow, PermissionRequest, PermissionResult, SystemState } from "./module";
 import type { SavedPassword } from "./passwords";
 import type { AddressInput, CardInput, SavedAddress, SavedCard } from "./autofill";
 import type { ClearSiteDataResult, SiteSettingType, SiteSettingValue, SiteSettings } from "./siteSettings";
@@ -29,17 +29,15 @@ export const Cef = requireNativeModule<{
 
   engineInfo(): Promise<EngineInfo>;
   ghostWindows(): Promise<GhostWindow[]>;
-  /** Synchronous. Missing in app builds from before it existed. */
-  prepareTransfer?(key: string): void;
+  /** Synchronous. */
+  prepareTransfer(key: string): void;
   devWindow(windowNumber: number, action: string): Promise<string>;
   components(): Promise<EngineComponent[]>;
-  updateComponent(id: string): Promise<{ id: string; error: string | null }>;
   beginTracing(): Promise<boolean>;
   endTracing(keep: boolean): Promise<string | null>;
   isTracing(): Promise<boolean>;
   setDisplayMediaPicker(enabled: boolean): Promise<void>;
-  /** Missing in app builds from before it existed. */
-  setSearchEngineName?(name: string): Promise<void>;
+  setSearchEngineName(name: string): Promise<void>;
   displayMediaSources(): Promise<DisplayMediaSource[]>;
   listTasks(): Promise<EngineTask[]>;
   killTask(id: number): Promise<boolean>;
@@ -48,12 +46,8 @@ export const Cef = requireNativeModule<{
   cancelDownload(id: string): Promise<void>;
   pauseDownload(id: string): Promise<void>;
   resumeDownload(id: string): Promise<void>;
-  openDownload(id: string): Promise<void>;
-  revealDownload(id: string): Promise<void>;
   resolvePermission(id: string, result: PermissionResult, remember?: boolean): Promise<void>;
-  clearProfileData(profile: string): Promise<void>;
-  deleteCookiesSince(profile: string, since: number): Promise<number>;
-  clearHttpCache(profile: string): Promise<void>;
+  clearBrowsingData(profile: string, types: BrowsingDataType[], since: number | null): Promise<void>;
   fetchFavicon(url: string, profile: string, name: string | null): Promise<FaviconImage | null>;
   pruneFavicons(profile: string, keep: string[]): Promise<void>;
   releaseProfile(profile: string): Promise<void>;
@@ -73,13 +67,12 @@ export const Cef = requireNativeModule<{
   resetSiteSettings(profile: string, origin: string): Promise<void>;
   clearSiteData(profile: string, origin: string): Promise<ClearSiteDataResult>;
 
-  getZoom(profile: string, host: string): Promise<number>;
   setZoom(profile: string, host: string, zoom: number): Promise<void>;
   getZoomLevels(profile: string): Promise<Record<string, number>>;
 
   listPasswords(profile: string): Promise<Result<{ passwords: SavedPassword[] }>>;
   /** Missing in app builds from before it existed. */
-  unlockPasswords?(profile: string): Promise<Result<{ unlocked: boolean }>>;
+  unlockPasswords(profile: string): Promise<Result<{ unlocked: boolean }>>;
   getPassword(profile: string, origin: string, username: string): Promise<Result<{ password: string | null }>>;
   savePassword(profile: string, origin: string, username: string, password: string): Promise<Result<{ ok: true }>>;
   updatePassword(
@@ -92,7 +85,6 @@ export const Cef = requireNativeModule<{
   deletePassword(profile: string, origin: string, username: string): Promise<Result<{ ok: true }>>;
   getNeverSavePasswordOrigins(profile: string): Promise<Result<{ origins: string[] }>>;
   allowSavingPasswords(profile: string, origin: string): Promise<Result<{ ok: true }>>;
-  generatePassword(): Promise<string>;
   getPasswordAutofill(profile: string): Promise<boolean>;
   setPasswordAutofill(profile: string, enabled: boolean): Promise<void>;
 

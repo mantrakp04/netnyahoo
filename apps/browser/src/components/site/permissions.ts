@@ -2,6 +2,7 @@ import { onPermission, onPermissionDismissed, resolvePermission, type Permission
 import { ensureNotificationPermission } from "../../lib/webNotifications";
 import { useBrowser } from "../../store/browser";
 import { patchPage, pageOf, tabForBrowser, usePages } from "../layout/pageState";
+import { startDeviceChoosers } from "./DeviceChooser";
 
 /**
  * Web permission requests (camera, location, notifications…) → a prompt on the
@@ -17,6 +18,8 @@ let started = false;
 export function startPermissionPrompts() {
   if (started) return;
   started = true;
+  // Chrome's device choosers (Bluetooth, USB, HID, serial) ask the same way.
+  startDeviceChoosers();
   onPermission((request) => {
     const tabId = tabForBrowser(request.browserId);
     if (!tabId) {

@@ -1,4 +1,4 @@
-import { clearHttpCache, clearProfileData, deleteCookiesSince } from "@netnyahoo/cef";
+import { clearBrowsingData, type BrowsingDataType } from "@netnyahoo/cef";
 import { Surface } from "@netnyahoo/shell";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -27,10 +27,9 @@ export const useClearDataRequest = create<{ windowId: string | null; request(win
 
 /**
  * Clears a profile's history for a time range (visit by visit, with the icons
- * of pages that are gone) and, optionally, its cookies, site data and cache.
- * For a range, only cookies can be picked by date: those created in it go, the
- * HTTP cache is emptied whole, and other site storage stays (the engine can't
- * date it), which the dialog says.
+ * of pages that are gone, and the engine's own history that extensions read) and,
+ * optionally, its cookies, site data and cache for that range, through Chrome's
+ * BrowsingDataRemover.
  */
 export function ClearDataDialog({ profileId, onClose }: { profileId: string; onClose: () => void }) {
   const theme = useTheme();
@@ -49,11 +48,8 @@ export function ClearDataDialog({ profileId, onClose }: { profileId: string; onC
       useBrowser.getState().clearHistory(profileId, since);
       pruneProfileFavicons(profileId);
     }
-    if (siteData && !isIncognitoProfile(profileId)) {
-      const engine = engineProfile(profileId);
-      if (since === undefined) await clearProfileData(engine);
-      else await Promise.all([deleteCookiesSince(engine, since), clearHttpCache(engine)]);
-    }
+    const types: BrowsingDataType[] = [...(history ? ["history" as const] : []), ...(siteData ? ["siteData" as const, "cache" as const] : [])];
+    if (types.length && !isIncognitoProfile(profileId)) await clearBrowsingData(engineProfile(profileId), types, since);
     setBusy(false);
     onClose();
   };
@@ -84,11 +80,7 @@ export function ClearDataDialog({ profileId, onClose }: { profileId: string; onC
             value={siteData}
             onChange={setSiteData}
             title="Cookies, site data and cached files"
-            subtitle={
-              range === "all"
-                ? "Signs you out of most sites."
-                : "Cookies from this time range and all cached files. Other site data can only be cleared for All time."
-            }
+            subtitle="Signs you out of most sites."
           />
         </View>
         <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 22 }}>

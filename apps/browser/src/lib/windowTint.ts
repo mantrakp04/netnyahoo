@@ -1,10 +1,34 @@
 /**
+ * The key window's tint on Dia 1.50. The profile tints below were measured on 1.49.1; a
+ * window-only capture of Dia 1.50.1 (dark, key, plum; rec150 intro) reads its window tint much
+ * lighter: (65,50,53) at the top to (73,66,67) at the bottom, where the 1.49 values give
+ * (39,25,30) → (47,45,46) through our backdrop. That capture is opaque and a smooth gradient, the
+ * same across the window's width, so it's the tint, not the desktop showing through (Dia's theme
+ * layer is non-opaque, but nothing behind it varies). OKLab shift fitted along the window's right
+ * edge through the same capture path, with 1.50's lighter grain (theme.ts; grain darkens the
+ * tint on average), so our backdrop reads within 1 level on average; other dark themes get the
+ * same shift, light is unmeasured.
+ * Turn off with TINT_150 to get the 1.49 tints back.
+ */
+const TINT_150 = true;
+const DARK_ACTIVE_SHIFT: [Lab, Lab] = [
+  [0.0954, -0.0016, 0.0033],
+  [0.0778, 0.0066, 0.0014],
+];
+
+export function activeTint(tint: [string, string], dark: boolean): [string, string] {
+  if (!dark || !TINT_150) return tint;
+  return [shift(tint[0], DARK_ACTIVE_SHIFT[0]), shift(tint[1], DARK_ACTIVE_SHIFT[1])];
+}
+
+/**
  * The window tint while the window is inactive. Dia's window background is vibrant while the
  * window is active, so its tint depends on what's behind the window; inactive, it falls back to
  * an opaque tint that is lighter and a little warmer. Measured on Dia's plum theme (dark) from a
  * 2x capture of an inactive window, de-grained, and fitted in OKLab along the sidebar
  * (docs/dia-spec.md): #2A191F → #312F30 becomes #352224 → #423C3C. Other dark themes get the same
- * OKLab shift. There's no light-appearance capture yet, so light tints don't change.
+ * OKLab shift, applied to the 1.49 tints (not to activeTint's). There's no light-appearance
+ * capture yet, so light tints don't change.
  */
 const DARK_SHIFT: [Lab, Lab] = [
   [0.0382, -0.0002, 0.0072],

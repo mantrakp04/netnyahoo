@@ -1,17 +1,18 @@
 # Netnyahoo
 
-A macOS browser that looks and feels like [Dia](https://diabrowser.com): WebKit rendering, an Expo +
-React Native macOS shell, NativeWind (Tailwind) styling, and Metal shaders reconstructed from Dia's
-own new-tab light.
+A macOS browser that looks and feels like [Dia](https://diabrowser.com): Chromium rendering through our
+own patched, Chrome-style build of CEF, an Expo + React Native macOS shell, and Metal shaders
+reconstructed from Dia's own New Tab effects.
 
 ```
 apps/
   browser/            Expo + react-native-macos app (UI in src/, Xcode project in macos/)
 packages/
-  webkit/             WKWebView as an Expo native view (tabs, KVO nav state, ⌘-click → new tab)
-  shaders/            Metal: New Tab area light + grained OKLab window backdrop
-  shell/              Native menu bar + shortcuts → JS, window drag regions, SF Symbols
-  core/               Pure TS: omnibox input → URL, Dia-style breadcrumbs (tested)
+  cef/                The engine: CEF 154 (Chrome tabs hosted in our views), JS API in src/
+  shell/              Native menu bar + shortcuts → JS, windows, SF Symbols, native primitives
+  shaders/            Metal: New Tab effects + grained OKLab window backdrop
+  import/             Import from other browsers (bookmarks, history, passwords, Arc spaces)
+  core/               Pure TS: omnibox input → URL, suggestions, Dia-style breadcrumbs (tested)
   tailwind-config/    Shared Tailwind preset (Dia tokens)
 ```
 
@@ -21,6 +22,20 @@ Requires Xcode 26+, CocoaPods, Node 22+, pnpm 11.
 
 ```bash
 pnpm install
+```
+
+Install the engine. By default this copies our own CEF build from `~/chromium-build`
+(`docs/cef-source-build.md` builds it; the first build takes about 2 hours):
+
+```bash
+packages/cef/scripts/setup.sh
+```
+
+Without it, use the stock prebuilt CEF instead, and build with `NN_CHROME_TABS=0` (it loses what our
+engine patches add; see `docs/cef-source-build.md`):
+
+```bash
+CEF_PREBUILT=1 packages/cef/scripts/setup.sh
 ```
 
 ```bash
@@ -33,7 +48,8 @@ In one terminal, start Metro:
 pnpm dev
 ```
 
-In another, build and launch the Debug app:
+In another, build and launch the Debug app (with the stock CEF, run the `xcodebuild` line from
+`apps/browser/package.json`'s `macos` script with `NN_CHROME_TABS=0` appended):
 
 ```bash
 pnpm macos
@@ -46,6 +62,10 @@ Shortcuts: ⌘T new tab, ⌘L command bar, ⌘W close, ⇧⌘T reopen, ⌘S side
 ⌘R reload, ⌘1–⌘9 select tab, ⌃Tab cycle.
 
 ## How Dia's New Tab light works
+
+Dia 1.50 turns this light off along with its rebrand (a painted mark, a single-colour power-up band
+and a halo around the bar; `docs/dia-spec.md` › "1.50 Sunglow"), and so does Netnyahoo. The
+reconstruction stays in the tree.
 
 These findings come from disassembling the Metal libraries in `Dia.app` (v1.49.1) with
 `xcrun metal-objdump`. `BoostBrowser_PowerUp.bundle/default.metallib` contains

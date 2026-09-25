@@ -1,6 +1,7 @@
 import { type CardNetwork } from "@netnyahoo/cef";
 import { Symbol } from "@netnyahoo/shell";
 import { Text, View } from "react-native";
+import { useBrowser } from "../../store/browser";
 import { openSettings } from "../settings/windows";
 
 /**
@@ -12,10 +13,15 @@ import { openSettings } from "../settings/windows";
 
 /**
  * Edit › AutoFill › Contact… / Passwords… / Credit Card…: Chrome offers saved entries
- * itself when a field is focused, so the menu opens where they're managed.
+ * itself when a field is focused (its dropdown, or its context menu's manual fallback), so
+ * the menu opens where they're managed: Passwords, or Autofill (addresses and cards), on the
+ * window's profile. Incognito windows use the default profile's, which the pane starts on.
  */
-export function requestAutofill(_tabId: string | undefined, arg: string | null) {
-  openSettings(arg === "passwords" ? "passwords" : "autofill");
+export function requestAutofill(windowId: string, arg: string | null) {
+  const s = useBrowser.getState();
+  const w = s.windows[windowId];
+  const profileId = w && !w.incognito && s.profiles[w.profileId] ? w.profileId : null;
+  openSettings(arg === "passwords" ? "passwords" : "autofill", profileId);
 }
 
 const BADGES: Record<CardNetwork, { label: string; fill: string; text: string }> = {

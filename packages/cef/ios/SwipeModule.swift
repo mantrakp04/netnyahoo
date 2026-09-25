@@ -6,8 +6,6 @@ public class SwipeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooSwipe")
 
-    /// System Settings › Trackpad › Swipe between pages allows two-finger swipes.
-    Function("isSwipeNavigationEnabled") { NNSwipe.systemSwipeEnabled }
     /// Haptic feedback: "levelChange" (threshold reached), "alignment" (detents), "generic".
     Function("haptic") { (pattern: String) in
       DispatchQueue.main.async { NNSwipe.performHaptic(pattern) }

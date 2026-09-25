@@ -116,7 +116,7 @@ export async function moveTabToProfile(tabId: string, target: string) {
   store().moveTabToProfile(tabId, profileId);
 }
 
-/** Tabs › Move to Window ("new" opens one). The page reloads in its new window. */
+/** Tabs › Move to Window ("new" opens one). The page keeps its state in the new window (lib/chromeTabs). */
 export function moveTabToWindow(tabId: string, target: string) {
   const windowId = store().moveTabsToWindow([tabId], target === "new" ? null : target);
   if (windowId) focus(windowId);

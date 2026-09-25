@@ -32,6 +32,9 @@ import { SelectionPopover } from "./site/SelectionPopover";
 import { copyLinkToSelection, searchSelection, setPageSelection, startSelectionTools, type PageSelection } from "./site/selection";
 import { startMedia, useAutoPictureInPicture } from "./media/pip";
 import { SharePicker, requestDisplayMedia } from "./media/SharePicker";
+import { ShareBar } from "./media/ShareBar";
+import { CastPicker } from "./media/CastPicker";
+import { DeviceChooser } from "./site/DeviceChooser";
 import { setNowPlaying, setPictureInPictureState } from "./media/state";
 import { Toolbar } from "./Toolbar";
 import { NavigationOverlays } from "./layout/SwipeOverlay";
@@ -208,6 +211,7 @@ function TabPane({
         <View style={{ height: layout.toolbarHeight }} />
       )}
       {!fullscreen && !inSplit && <BookmarksBar tabId={tabId} placeholder={!visible} />}
+      {visible && !fullscreen && <ShareBar tabId={tabId} />}
       <View style={{ flex: 1 }}>
         {mounted && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} />}
         {visible && isNewTab && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} />)}
@@ -223,6 +227,8 @@ function TabPane({
             {popover === "siteControls" && <SiteControls tabId={tabId} right={8} top={2} />}
             {popover === "popups" && <BlockedPopupsPrompt tabId={tabId} right={8} top={2} />}
             <SharePicker tabId={tabId} paneWidth={frame.width} />
+            <DeviceChooser tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />
+            <CastPicker tabId={tabId} paneWidth={frame.width} />
             <NavigationOverlays tabId={tabId} windowId={windowId} geometry={geometry} />
             <SelectionPopover tabId={tabId} zoom={zoom} />
           </>
@@ -416,7 +422,7 @@ function TabWebView({ tabId, visible }: { tabId: string; visible: boolean }) {
       }}
       onNotificationClose={closeWebNotification}
       // A PiP window's "back to tab" button.
-      // Put to sleep (lib/tabLifecycle): it reloads its URL when shown, without the back/forward list.
+      // Asleep (lib/tabLifecycle, or Chrome discarded it): it reloads its page when shown (onReady).
       onDiscarded={(url) => {
         pending.current = url;
         fromNewTab.current = false;

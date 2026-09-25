@@ -20,9 +20,9 @@ Legend: **✅** done · **🧪** built, but the deciding test needs the user pre
 
 | ✅ done | 🧪 needs the user | 🟡 partial | ❌ missing | ⛔ blocked | ⏸ deferred (AI) | — n/a |
 |---|---|---|---|---|---|---|
-| 197 | 6 | 18 | 4 | 7 | 58 | 14 |
+| 204 | 8 | 13 | 0 | 7 | 58 | 14 |
 
-Of the 232 rows that count (not ⏸ or —), 197 are done (85 %), 203 with the six 🧪 rows. Keyboard shortcuts: every
+Of the 232 rows that count (not ⏸ or —), 204 are done (88 %), 212 with the eight 🧪 rows. Keyboard shortcuts: every
 Dia shortcut is bound except the Chat ones (⏸). Menus: all ten exist; View and Help are partial.
 
 The previous summary (296 rows, 181 ✅) didn't match its own tables, which held 301 rows and 199 ✅. This audit
@@ -40,6 +40,8 @@ What changed since the last audit, in rows (mostly the migration):
 - No longer blocked, now ours to build (⛔ → ❌): back/forward history on Reopen Closed Tab and Duplicate, Cast,
   Web Bluetooth. Chrome's own code for each is in the engine now.
 - Lost in the migration: the video-PiP edge stash and host pill (they lived in `NNPictureInPicture.mm`).
+- Since, from R2 (2026-09-25): done, the side panel, "Share this tab instead" and the Bluetooth chooser (❌ → ✅);
+  built, needing the user: dragging tabs between windows and Cast (🟡 / ❌ → 🧪, checklist steps 11–12).
 - Still blocked: Sync (4 rows), Translate, auto-updates, Widevine DRM, and iCloud Keychain passkeys (inside the 🟡
   passkeys row).
 
@@ -49,7 +51,8 @@ Three agent-sized packages. Each owns the files listed (shared files, such as Me
 theme.ts and App.tsx, take small additive edits only, as the agent brief says). Each package deletes the dead code in
 its own files (Findings 1).
 
-**R1 · Tab state on Chrome** (engine + store)
+**R1 · Tab state on Chrome** (engine + store) — **done 2026-09-25** (`docs/migration-status.md` › "R1"; CEF hooks
+in `packages/cef/patches/cef-tab-state.patch`).
 - Reopen Closed Tab and Duplicate keep the back/forward list: `IDC_RESTORE_TAB` / `IDC_DUPLICATE_TAB` (or
   TabRestoreService) on the Chrome tab, adopted into our snapshot's place, pin and group (§2, 2 ❌).
 - Sleeping tabs through Chrome's own discard, so history survives and `chrome.tabs` lists them as
@@ -63,7 +66,9 @@ its own files (Findings 1).
   `packages/cef/src/{WebView.tsx,module.ts}`; `apps/browser/src/store/{windows,tabs}.ts`, `lib/tabLifecycle.ts`,
   `lib/chromeTabs.ts`, `components/pages/ClearDataDialog.tsx`.
 
-**R2 · Chrome surfaces still missing from our UI**
+**R2 · Chrome surfaces still missing from our UI** — done 2026-09-25 (instance r2; ledger "R2 · Chrome surfaces")
+except extension-provided search engines (§7) and the optional PiP stash, which weren't in its scope. Chrome's
+surfaces come to the app through our CEF build's `CEF_NN_CHROME_UI` (docs/cef-source-build.md).
 - "Share this tab instead" bar while a page is capturing (§18).
 - Web Bluetooth chooser and a Cast entry: route Chrome's chooser / cast dialog to our UI, as WP4 did for
   passwords and permissions (§18, 2 ❌; for Cast, first check that discovery works in the ungoogled build).
@@ -79,7 +84,8 @@ its own files (Findings 1).
   `components/settings/panes/Privacy.tsx`,
   `components/sidebar/dnd.tsx`, `components/layout/tabDrag.ts`.
 
-**R3 · App loose ends and docs**
+**R3 · App loose ends and docs** — done 2026-09-25 except filling at the focused field (§16) and the items
+listed in Findings 1 and 13 that sit in R1/R2 files.
 - The command bar's Share and Keyboard Shortcuts actions (Findings 6); the Autofill pane's per-profile toggles
   (Findings 8); Edit › AutoFill should fill at the focused field, or at least open the right pane per item (§16).
 - Dia 1.50 tab loading spinner (counter-clockwise, 1.88 s) in tab rows (§21).
@@ -103,7 +109,7 @@ The 🧪 rows need no code until the user checklist below finds a problem.
 | Protected video, Widevine (§18) | the CDM comes through the component updater, whose Google host is substituted; shipping also needs Google's VMP signing | Google grants VMP signing and we allow the component updater host (or bundle the CDM) |
 | iCloud Keychain passkeys (inside §16's passkeys row) | Apple hasn't granted `com.apple.developer.web-browser.public-key-credential` | the grant arrives: switch `CODE_SIGN_ENTITLEMENTS` to `Netnyahoo-ICloudPasskeys.entitlements` (ledger 42) |
 
-## Needs the user present: test script (about 15 minutes)
+## Needs the user present: test script (about 20 minutes)
 
 These need a key window, Touch ID, a phone, Spaces, or eyes on Dia, so no agent can run them. Run them in one
 sitting; note the step number and what you saw for anything that fails.
@@ -159,14 +165,24 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
    circle and chevron, a haptic at the threshold, back on release; a horizontally scrolling carousel scrolls
    first. (b) On `/login.html`, Choose File. Pass: the Open panel attaches to or centres on our window, and the
    chosen name shows. (c) ⌘P. Pass: Chrome's print preview over the page, Cancel closes it. (d) Right-click a link.
-   Pass: "Open Link in New Tab" appears once (Findings 2). (e) With a text field focused in a page, the Edit ›
-   Spelling and Grammar items are enabled (Findings 3).
+   Pass: the menu shows, "Open Link in New Tab" once, and choosing it opens a background tab (the menu's content
+   and items were verified headless; showing the NSMenu wasn't). (e) With a text field focused in a page, the Edit ›
+   Spelling and Grammar items are enabled (the page view's validation was verified headless).
 10. **Visual QA against Dia 1.50.1** (ledger 28–31). Same profile colour, same window size, dark mode first, the two
     windows side by side. (a) New Tab: the painted mark's size, outline and centre (48 pt above the bar) and its
     texture. (b) The selected tab row's tint in the sidebar, then in light mode. (c) Light mode: the command bar's
     shadow under its bottom edge. (d) Open the same page in both and note when Dia's toolbar shows the host alone.
-    (e) A loading tab: Dia's spinner turns counter-clockwise; ours has none (known). Pass: no difference you can see
+    (e) A loading tab: the spinner at the row's end (ours copies Dia's `transform.rotation.z` 0 → −2π in its unflipped
+    view, which should turn clockwise on screen; the spec's "counter-clockwise" was read in y-down terms). Pass: no difference you can see
     in (a)–(c) at 100 %; take a window screenshot (⇧⌘4, Space) of anything that differs, and note (d).
+11. **Dragging tabs between windows** (§1). Open two windows side by side (⌘N), each with a few tabs. Drag a sidebar
+    row onto the other window. Pass: the other window's tab list lights up while you hover it, and on release the tab
+    is there with its page still loaded (scroll position kept). Drag another row out onto the desktop. Pass: a new
+    window opens under the pointer with that tab. Repeat with a top-strip chip (⇧⌘S) and a ⌘-click multi-selection.
+12. **Cast** (§18, needs a Chromecast or Google TV on the same Wi‑Fi). View › Cast…. Pass: macOS asks once for Local
+    Network access; the device shows in the picker; clicking it casts the tab (status "Casting tab", Stop), and the
+    toolbar shows the highlighted cast button until you stop. On YouTube, the player's own Cast button opens the same
+    picker and casts the video.
 
 ## 1. Windows & app shell
 | Feature | Dia | Netnyahoo | Gap |
@@ -178,7 +194,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Close Window ⇧⌘W | ✓ | ✅ | |
 | Reopen closed **window** / recently closed groups | ✓ | ✅ | File › Reopen Closed Window, History › Recently Closed (+ Recently Closed Groups) |
 | Merge All Windows | ✓ | ✅ | groups survive the merge; pages move without reloading |
-| Move tab to another window | ✓ | 🟡 | Tabs › Move to Window, the tab menu and Merge All Windows move the live page (history, form state, the Chrome tab via `MoveToBrowser`; ledger 10). Moving to another profile reloads, as it must. Missing: dragging a tab onto another window or tearing it off into a new one (sidebar/dnd.tsx, layout/tabDrag.ts stay inside one window) |
+| Move tab to another window | ✓ | 🧪 | Tabs › Move to Window, the tab menu and Merge All Windows move the live page (history, form state, the Chrome tab via `MoveToBrowser`; ledger 10). Moving to another profile reloads, as it must. Dragging tabs (sidebar rows, pinned tiles, a multi-selection, top-strip chips) onto another window moves them there, its tab list lighting up while you hover; dropping outside every window tears them off into a new window under the pointer (layout/windowDrop.ts, unit-tested). Incognito tabs stay put. The drag itself needs a real mouse: checklist step 11 |
 | Keep Window on Top | ✓ | ✅ | |
 | Window › Move & Resize tiling (halves/quarters/arrange) | ✓ (macOS) | ✅ | AppKit adds Fill / Center / Move & Resize to our `windowsMenu` |
 | Minimize / Minimize All / Zoom / Full Screen | ✓ | ✅ | Minimize All is the ⌥ alternate of Minimize |
@@ -187,7 +203,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Warn before quitting / closing window with many tabs | ✓ | ✅ | ⌘Q warning; ⇧⌘W / close button on a window with 2+ tabs, and ⌘W on a window's last tab, use Dia's close-window confirmation ("Close 3 tabs?", per-profile breakdown, "Don’t ask me again"); setting in General |
 | Quit guard with active downloads | ✓ | ✅ | |
 | Battery Saver / freeze CPU‑heavy background tabs | ✓ | ✅ | lib/tabLifecycle: on battery or Low Power Mode, hidden tabs using ≥ 10 % CPU (engine task manager, two samples) freeze through CDP `Page.setWebLifecycleState` and thaw when shown; Dia's Activated/Deactivated toasts; Advanced › Battery Saver |
-| Tab discarding (sleep idle tabs, keep last 10 alive) | ✓ | ✅ | lib/tabLifecycle: background tabs sleep after 30 min of app-active time (sooner under memory pressure); 10 most recent protected; never audio, capture, PiP, split, pinned mini player or unsaved input; faded icon + "This tab needs to reload"; recent tabs reload on launch. Our discard closes the Chrome tab, so its back/forward list is lost and extensions see it closed; Chrome's own discard would keep both. WebAudio-only sound isn't seen as playing |
+| Tab discarding (sleep idle tabs, keep last 10 alive) | ✓ | ✅ | lib/tabLifecycle: background tabs sleep after 30 min of app-active time (sooner under memory pressure); 10 most recent protected; never audio, capture, PiP, split, pinned mini player or unsaved input; faded icon + "This tab needs to reload"; recent tabs reload on launch. Sleeping is Chrome's own discard (in place, `WebContentsDiscard`): the tab keeps its back/forward list, `chrome.tabs` lists it `discarded: true`, and Chrome's own discards (memory pressure, `chrome.tabs.discard`) show as sleeping too. WebAudio-only sound isn't seen as playing |
 | Sad‑tab / native error page with Reload | ✓ | ✅ | SadTab + Page Unresponsive (Wait / Exit Page) in layout/PaneOverlays |
 
 ## 2. Tabs
@@ -198,13 +214,13 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Close other tabs | ✓ | ✅ | |
 | Close tabs above/below/left/right | ✓ | ✅ | sidebar: Above / Below; top strip: Close Tabs to the Left / Right (sidebar/menus.ts) |
 | Close All Tabs ⇧⌘K | ✓ | ✅ | keeps pinned tabs and pinned groups |
-| Reopen closed tab ⇧⌘T | ✓ (full state) | ❌ | position, pin, group, custom name/icon, mute come back, but the page reopens from its URL without its back/forward list (store/windows.ts `restoreTab`). **No longer blocked:** tabs are Chrome tabs, Chrome's tab restore is in the engine, and tabs Chrome creates are already adopted (NNWindowHost `tab:<id>` adoption). Needs `IDC_RESTORE_TAB` (or a TabRestoreService call) wired to our snapshot |
+| Reopen closed tab ⇧⌘T | ✓ (full state) | ✅ | position, pin, group, custom name/icon, mute and the back/forward list (with the current entry) come back: the closing tab's list is kept (this session) and restored through Chrome's own `chrome::AddRestoredTab` (`restore:<tab id>` adoption, CEF_NN_TAB_HISTORY). After a relaunch it reopens from its URL, like open tabs |
 | Drag reorder | ✓ | ✅ | rows, pinned tiles, groups, splits, across sections, into/out of groups, onto the page to split |
 | Haptic tick while reordering | ✓ | ✅ | setting in Tabs |
 | Pin / unpin (grid of pinned tiles) | ✓ | ✅ | pins are mirrored into Chrome's tab strip |
 | Pinned tab remembers base URL; "Back to Pinned URL" ⌘↩; Replace Pin; Edit Pinned Page | ✓ | ✅ | |
 | Pinned tab badge | ✓ | ✅ | "Back to Pinned URL" badge on tiles away from their base URL |
-| Duplicate tab | ✓ | ❌ | copies URL, title, icon, name, mute, not history (store/tabs.ts `duplicateTab`). **No longer blocked:** `IDC_DUPLICATE_TAB` on a Chrome tab makes a tab with the full history, which the app would adopt |
+| Duplicate tab | ✓ | ✅ | Chrome's Duplicate (`WebContents::Clone`): back/forward list and session storage, also from a sleeping tab; plus title, icon, name, mute (store/tabs.ts `duplicateTab`, `clone:<tab id>` adoption) |
 | Rename tab (double‑click inline) | ✓ | ✅ | pinned tiles rename in a sheet |
 | Change tab icon (emoji/icon picker) | ✓ | ✅ | emoji + SF Symbols |
 | Mute site / audio indicator | ✓ (domain‑wide) | ✅ | per host per profile, persisted (`settings.mutedSites`), follows navigation |
@@ -259,7 +275,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Top Apps / Favorites dock | ✓ | ✅ | the pinned-tile dock; command bar "Move to Top Apps" / "Unpin from Top Apps" like Dia |
 | Library (chats & files Dia made) | ✓ | ⏸ | |
 | Downloads button in header | ✓ | ✅ | |
-| Selected/hover/pressed row styling + selected glow | ✓ | ✅ | Dia 1.50 selected tint (#121212 at 0.5 dark, white 0.7 light); not yet compared with Dia on screen (checklist step 10). No tab loading spinner in rows (Dia 1.50's turns counter-clockwise) |
+| Selected/hover/pressed row styling + selected glow | ✓ | ✅ | Dia 1.50 selected tint (#121212 at 0.5 dark, white 0.7 light); not yet compared with Dia on screen (checklist step 10). Loading spinner in rows: Dia's `ActivitySpinnerView` (12 pt, 8 pt from the row's end, track + 72 % arc 1.5 pt wide in secondaryLabelColor, 1.88 s per turn), hidden under the hover close button |
 | Pinned tile tooltip (title + URL) | ✓ | ✅ | hover card with title and URL |
 | Website colour extended into tab bar / toolbar | ✓ | ✅ | nav bar tint from theme-color / header / background, eased; setting in Tabs |
 | Profile indicator in sidebar header | ✓ | ✅ | menu: switch, new, rename, colour, icon, default, delete |
@@ -275,7 +291,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Share data between profiles | ✓ | ✅ | profiles sharing one engine profile share cookies, logins, site data, passwords, extensions, zoom, history and bookmarks; tabs stay per profile |
 | Guest profile | ✗ | — | not in Dia |
 | Dock menu: New Window per profile | ✓ | ✅ | |
-| Unload unused profiles | ✓ | ✅ | a profile no window has shown for 10 min: its tabs sleep, then its engine context is released (checked every 15 s). Whether Chrome then unloads the profile itself (ghost, hidden WebUI pages) hasn't been measured on the new engine |
+| Unload unused profiles | ✓ | ✅ | a profile no window has shown for 10 min: its tabs' browsers close (unlike sleeping, their history is lost), then its engine context is released (checked every 15 s). Whether Chrome then unloads the profile itself (ghost, hidden WebUI pages) hasn't been measured on the new engine |
 | Per‑profile extensions | ✓ | ✅ | every extension call takes the profile; Settings › Extensions has a profile picker ("Each profile has its own"); uBOL runs in every profile (ledger 11) |
 | Per‑profile sync | ✓ | ⛔ | needs the Sync server (see §20) |
 | Per‑profile Morning Brief | ✓ | ⏸ | |
@@ -294,13 +310,13 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 ## 7. New Tab Page & command bar
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
-| NTP layout (bar width, position, HUD blur material, fill, border, radius 20) | ✓ | ✅ | |
-| Logo: glass orb (1.49) → hand-painted mark per profile colour (1.50) | ✓ | ✅ | `Orb variant="painted"`: our own stand-in paintings matched to each Dia painting's OKLab lightness (within 0.02) and chroma; outline/offset vs a Dia 1.50.1 capture not compared yet (checklist step 10) |
+| NTP layout (bar width, position, HUD blur material, fill, border, radius 20) | ✓ | ✅ | 1.50: bar edges fitted to 0.5 pt from the 1.50.1 intro capture: Dia's bar and mark sit 1 pt right of and below NewTabPageViewController's formulas for our card, and the bar is 112 pt tall; ours now match (2x layer snapshot). Inside the bar the input row and the chip row now sit where Dia's do (magnifier, chip borders, mic and send within 0.1 pt of the capture; the chip label 0.5 pt low). Still different: Dia's magnifier is ~3 pt further right and 1 pt smaller, and its placeholder ~5 % narrower |
+| Logo: glass orb (1.49) → hand-painted mark per profile colour (1.50) | ✓ | ✅ | `Orb variant="painted"`: our own stand-in paintings matched to each Dia painting's OKLab lightness (within 0.02) and chroma. Outline fitted to the 1.50.1 capture: 76 pt (19/21 of Dia's 84 pt icon view), centre 48.6 pt above the bar; ours fits within 0.15 pt (it was 68.5 pt). The paintings' statistics were measured over a 68.5/84 middle, not the 76/84 now shown |
 | Power‑up band intro | ✓ | ✅ | 1.50: one theme colour (grey 0.65 for Neutral), corner radius 20 |
 | Area light (intro, breathing, fade) | ✓ | ✅ | palette follows the profile colour; Dia's clock model (skip-ahead, key/occlusion pause, × 0.5 when not key) |
 | Edge light around bar | ✓ | ✅ | colour from the profile theme |
 | Entrance spring / Reduce Motion | ✓ | ✅ | like Dia under Reduce Motion: no spring, no band, edge light settled, area light still |
-| Profile‑colour NTP theme & gradient | ✓ | ✅ | |
+| Profile‑colour NTP theme & gradient | ✓ | ✅ | 1.50: the key window's tint reads much lighter than 1.49's (plum (65,50,53) → (73,66,67)) and the content card is #121212 at 0.5 (white 0.7 light) instead of 0.6/0.8; ours follows (lib/windowTint.ts `activeTint`, one OKLab shift for every dark theme; the inactive tint is unchanged). Grain 0.006 (was 0.06): Dia 1.50.1's window is almost grain-free in the capture (0.09 / 0.05 levels of detrended noise, sidebar / page; ours now ≈ 0.09 / 0.04 through the same path). Predicted through the capture's colour path, our page and backdrop read within 1 level of Dia on average (3 at most); a real side-by-side recording is still to do (screen was locked). Light-mode grain unchanged (unmeasured) |
 | NTP release‑notes postcard, Trial Guide, personalize button | ✓ | ✅ | postcard with Dia's geometry and springs, full-page notes, 1 day, never on fresh installs or incognito; Personalize button. Trial Guide is a plans feature (—). Our own artwork |
 | NTP connect‑apps upsell | ✓ | ⏸ | |
 | NTP query restore when navigating back | ✓ | ✅ | |
@@ -319,7 +335,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Default search engine choice (Google, Bing, DDG, Perplexity, ChatGPT, custom, extension engines) | ✓ | 🟡 | 12 built-ins + custom engines with keywords. Extension-provided engines (`chrome_settings_overrides.search_provider`) aren't read anywhere: not started |
 | Site search (Tab‑to‑search) | ✓ | ✅ | engines, known sites, history scope |
 | Calculator in command bar | ✓ | ✅ | ↩ copies the result |
-| "new doc / sheet / jira / meeting / figma…" commands | ✓ | ✅ | 17 `*.new` shortcuts + browser actions in the bar; the bar's Share and Keyboard Shortcuts actions do nothing (Findings 6) |
+| "new doc / sheet / jira / meeting / figma…" commands | ✓ | ✅ | 17 `*.new` shortcuts + browser actions in the bar, Share and Keyboard Shortcuts included (both now in `runCommand`) |
 | `@` mentions & `/` skills in bar | ✓ | ⏸ | |
 | "+ Add tabs or files" chip | ✓ | ⏸ | the chip exists but attaching needs Chat |
 | Mic / dictation button | ✓ (streaming, hold‑to‑speak) | 🟡 | starts system dictation; Dia's streaming, hold-to-speak transcription is ⏸ |
@@ -332,7 +348,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Back / forward / reload / force reload | ✓ | ✅ | ⌘-click reload/back/forward → background tab |
 | Stop (X next to address bar) | ✓ | ✅ | Esc stops a loading page |
 | Hold back button for history list; ⌘/middle‑click entries | ✓ | ✅ | our popover (layout/HistoryPopover): up to 15 entries + Show Full History, modifier clicks open tabs |
-| Two‑finger swipe navigation (custom UI, works on native pages) | ✓ | 🧪 | NNSwipe + Dia's overlay (layout/SwipeOverlay), on web, New Tab and internal pages. Only synthetic events verified; needs a real trackpad (checklist step 9). On Chrome tabs NNSwipe installs itself as `RenderWidgetHostViewCocoa`'s responder delegate, which is where Chrome keeps its own delegate (history swiper, spelling/speech menu validation); ours replaces it instead of chaining (Findings 3) |
+| Two‑finger swipe navigation (custom UI, works on native pages) | ✓ | 🧪 | NNSwipe + Dia's overlay (layout/SwipeOverlay), on web, New Tab and internal pages. Only synthetic events verified; needs a real trackpad (checklist step 9). NNSwipe sits in front of Chrome's own responder delegate and forwards to it (spelling, speech, dialog focus), except the scroll events Chrome's history swiper would act on |
 | Load progress | ✓ | ✅ | |
 | URL bar shows host / title; hover reveals full URL; Show Full URL | ✓ | ✅ | Dia 1.50.1 sometimes shows the host alone; its rule isn't decoded (checklist step 10) |
 | Punycode display | ✓ | ✅ | `core/idn.ts`: Chrome's spoof checks, punycode otherwise |
@@ -344,7 +360,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Selected‑text popover (Search) | ✓ | ✅ | Search bar over a mouse selection (default engine, new tab next to the page); page menu "Search <engine> for “…”" |
 | Selected‑text popover / context menu (Ask) | ✓ | ⏸ | hidden until Chat exists (`kChatEnabled` in NNClient.mm) |
 | Clean link copy (trackers stripped), Copy URL as Markdown ⌥⇧⌘C | ✓ | ✅ | every Copy URL / Copy Link (as Markdown) strips trackers |
-| Quote link / "Super Copy" (text fragment link) | ✓ | ✅ | ⇧⌘C with a selection: Dia's toast with Copy Quote Link; page menu "Copy Link to Highlight" (core/textFragment.ts). The menu item may appear twice on Chrome tabs (Findings 2) |
+| Quote link / "Super Copy" (text fragment link) | ✓ | ✅ | ⇧⌘C with a selection: Dia's toast with Copy Quote Link; page menu "Copy Link to Highlight" (Chrome's item, run by core/textFragment.ts for Dia's toast and clean link) |
 | JS alert / confirm / prompt dialogs | ✓ | ✅ | Chrome's tab-modal dialogs, centred over the page area (or the focused split pane); `alert()` and HTTP auth verified (ledger 26); `beforeunload` untested. Chrome's styling, not Dia's |
 | `<input type=file>` open panel | ✓ | 🧪 | now Chrome's file picker, whose owner window is the ghost's Browser; untested whether it shows attached to our window (checklist step 9) |
 | Pop‑up blocker (always allow/deny) | ✓ | ✅ | ours (`disable-popup-blocking` turns Chrome's off): toolbar badge + Dia's dialog, Only Once opens a tab with `opener` (ledger 24) |
@@ -431,7 +447,7 @@ own sign-ins instead.
 | History recorded | ✓ | ✅ | per profile, 5 000 pages, history.json; never for incognito |
 | History page (⌘Y, `dia://history`) | ✓ | ✅ | `netnyahoo://history` (our page, also when Chrome opens chrome://history): by day, search, bulk delete |
 | History menu | ✓ | ✅ | Show History, Clear Browsing Data, Recently Closed, Recently Closed Groups |
-| Clear browsing data | ✓ | 🟡 | our history by visit time, favicons, cookies by creation date, HTTP cache; other site storage only for All time, deleted from disk before the profile next loads (an Alloy-era workaround). Chrome's own stores in the same profile (its history database, which Chrome-style tabs probably fill, form data, site-engagement) aren't cleared, and Chrome's BrowsingDataRemover, which could do ranged clearing, is unused (Findings 5) |
+| Clear browsing data | ✓ | ✅ | our history by visit time and its favicons, plus Chrome's BrowsingDataRemover for the same range: Chrome's history database (what `chrome.history` shows), cookies and every kind of site storage, cached files, live. Form data and passwords stay, as in the dialog's two options |
 | Synced devices' tabs | ✓ | ⛔ | needs Sync (§20) |
 
 ## 14. Downloads
@@ -452,14 +468,15 @@ actions, commands and the Web Store are Chrome's (ledger items 1–14, 22, W1–
 
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
-| Chrome Web Store MV3 extensions | ✓ | ✅ | installed by Chrome's WebstoreInstaller (location FROM_STORE, clients2 update URL), per profile; verified with Bitwarden and Dark Reader (W1). Auto-update not yet seen happening (W3). The store keeps a cosmetic "Switch to Chrome" banner |
-| Web Store "Add" button | ✓ | ✅ | the store's own button runs Chrome's install flow; `CEF_NN_INSTALL_PROMPT` hands its confirmation to our Dia-style dialog with Chrome's warning list; buttons relabelled "Add to / Remove from Netnyahoo" (components/extensions/bridge.ts) |
-| Extensions menu, pin extensions, toolbar buttons with badges and popups | ✓ | ✅ | Extensions menu (installed ones, Add Extension…, Manage Extensions…, Pin Extensions…); badge/title/popup polled per tab every 1.5 s (Chrome has no change event); `action.setIcon` images still not shown (the manifest icon is) |
+| Chrome Web Store MV3 extensions | ✓ | ✅ | installed by Chrome's WebstoreInstaller (location FROM_STORE, clients2 update URL), per profile; verified with Bitwarden and Dark Reader (W1). Auto-update verified end to end (W3): our build had
+  never checked for updates (ungoogled's block-requests stub; fixed by `chromium-extension-updates.patch`). The store keeps a cosmetic "Switch to Chrome" banner |
+| Web Store "Add" button | ✓ | ✅ | the store's own button runs Chrome's install flow; `CEF_NN_INSTALL_PROMPT` hands its confirmation to our Dia-style dialog with Chrome's warning list; buttons relabelled "Add to / Remove from Netnyahoo" (components/extensions/bridge.ts). Every store install goes this way (our own CRX download path is gone, so there's no launch race, Findings 9); a prompt Chrome still waits on is asked again after a JS reload |
+| Extensions menu, pin extensions, toolbar buttons with badges and popups | ✓ | ✅ | Extensions menu (installed ones, Add Extension…, Manage Extensions…, Pin Extensions…); badge, title, popup, enabled state and `action.setIcon` images read straight from Chrome's `ExtensionAction` for the tab every 1.5 s and on tab switches (`CefGetExtensionActionState`; Chrome has no change event) |
 | Manage Extensions (`dia://extensions`) | ✓ | ✅ | Settings › Extensions (on/off, details, site access, incognito, pin, reload, remove, add by link, load unpacked); `netnyahoo://extensions` is Chrome's own page (developer mode, errors, shortcuts) |
 | Install/uninstall permission dialogs | ✓ | ✅ | install, re-enable and new-permission prompts through our dialog (verified, W1); removal asks with our "Remove “…”?" sheet from Settings, the toolbar menu and the store page, then Chrome uninstalls (engine verified, W2). The sheet itself needs a key window: checklist step 8 |
-| chrome.tabs / chrome.windows | ✓ | ✅ | Chrome's real tabs and windows: one Chrome window per app window and profile, sidebar order, active/pinned both ways, `tabs.create` / `windows.create` / popups adopted as our tabs, moves between windows and profiles (ledger 1–14). Known gaps: an extension's `tabs.move` doesn't reorder the sidebar; a sleeping (discarded) tab is missing from `chrome.tabs` instead of listed as `discarded: true` |
-| action.onClicked (no popup), keyboard `commands`, extension context-menu items | ✓ | 🟡 | onClicked + activeTab + `scripting.executeScript` verified (22); `chrome.commands` shortcuts forwarded to the key window's ghost Browser (13, NNWindowHost `ForwardKeyEvent`). Extension context-menu items: untested. Our page menu inserts its own items on top of the model Chrome passes to `OnBeforeContextMenu` (NNClient.mm), which in Chrome style already holds Chrome's items, so check for duplicates ("Open Link in New Tab" twice) while testing |
-| Side‑panel API | ✓ | 🟡 | `ExecuteExtensionAction` reports "sidePanel", and the panel page opens as a tab: Chrome's side panel isn't drawn |
+| chrome.tabs / chrome.windows | ✓ | ✅ | Chrome's real tabs and windows: one Chrome window per app window and profile, sidebar order, active/pinned both ways, `tabs.create` / `windows.create` / popups adopted as our tabs, moves between windows and profiles (ledger 1–14); sleeping tabs are `discarded: true`, and `tabs.discard` / `tabs.reload` sleep and wake them in the app. Known gap: an extension's `tabs.move` doesn't reorder the sidebar |
+| action.onClicked (no popup), keyboard `commands`, extension context-menu items | ✓ | ✅ | onClicked + activeTab + `scripting.executeScript` verified (22); `chrome.commands` shortcuts forwarded to the key window's ghost Browser (13, NNWindowHost `ForwardKeyEvent`); `chrome.contextMenus` items show in the page menu and their `onClicked` runs (R1) |
+| Side‑panel API | ✓ | ✅ | Dia's extension side panel: a card to the right of the page (header with the extension's icon, name, ⋯ menu and close; resizable 320–600 pt, width saved) showing the panel page outside the tab strip. Opens from the toolbar button (`openPanelOnActionClick`), the extension's menu and `chrome.sidePanel.open()`, closes with `close()` or `window.close()`; follows per-tab `setOptions` paths and closes where it's disabled. `chrome.tabs.query({active, currentWindow})` from the panel (and from popups) returns the page |
 | Per‑profile extensions | ✓ | ✅ | lists, pins and installs per engine profile; incognito windows run the default profile's extensions that are allowed in incognito; sync ⛔ |
 
 ## 16. Passwords & autofill
@@ -473,14 +490,14 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Suggest strong password on sign-up | ✓ (Chromium) | 🧪 | Chrome's generation in the same dropdown on new-password fields; the generated-password confirmation stays Chrome's bubble (ledger 20). Checklist step 3 |
 | Passkeys / WebAuthn (iCloud Keychain) | ✓ | 🟡 | Chrome's WebAuthn stack and dialogs, centred over the page. Security keys ✅ (dialog verified). Phone (hybrid): QR sheet ✅; a real phone scan is checklist step 7. Touch ID "Chrome profile" passkeys: the vendored CEF now carries our BRANDING (bundle/team id) and the app has the `.webauthn` keychain group, so it's engine-ready; checklist step 6. iCloud Keychain ⛔: waits on Apple granting `com.apple.developer.web-browser.public-key-credential` (entitlements file ready) |
 | Address & credit‑card autofill | ✓ | 🧪 | Chrome's autofill (save bubble + dropdown, ledger 21); Settings › Autofill lists, adds, edits and deletes addresses and cards (card number behind Touch ID). Dropdown and save bubble: checklist step 4 |
-| Edit › AutoFill menu (Contact, Passwords, Credit Card) | ✓ | 🟡 | the submenu exists, but each item opens Settings (Passwords or Autofill) instead of offering entries at the focused field; Contact… and Credit Card… open the same pane |
+| Edit › AutoFill menu (Contact, Passwords, Credit Card) | ✓ | 🟡 | the submenu exists, and each item opens Settings on the window's profile: Passwords… the Passwords pane, Contact… and Credit Card… the Autofill pane (addresses and cards). Offering entries at the focused field would need an engine hook into Chrome's manual-fallback suggestions (its field context menu's Autofill items) |
 | Password reveal button | ✓ | ✅ | eye button in the page's password field once the user types (never for a filled saved password; sites with their own toggle keep theirs) in `helper/page_script.js`, and reveal in Settings › Passwords. Not visually re-checked on Chrome tabs |
 
 ## 17. Privacy & security
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
 | Built‑in ad + tracker blocker (EasyList, EasyPrivacy), per‑site toggle | ✓ | ✅ | uBlock Origin Lite (MV3 DNR + cosmetic) as a component extension in every profile, incognito included (ledger 16); per-site "disable on this site"; blocked count from `ERR_BLOCKED_BY_CLIENT` |
-| Cookie‑banner blocking, regional lists | ✓ | 🟡 | uBOL's cookie and regional rulesets, toggles in Privacy › Advanced Ad Block Settings. The lists are frozen at the bundled uBOL (2026.920.1710) until the app ships a newer one: component extensions don't update, and "Update Lists" is a no-op that always says "Lists are up to date". uBOL's annoyance and malware rulesets exist but the sheet doesn't show those two categories |
+| Cookie‑banner blocking, regional lists | ✓ | 🟡 | uBOL's cookie and regional rulesets, toggles in Privacy › Advanced Ad Block Settings, which lists every uBOL ruleset truthfully (ads, trackers, cookie banners, annoyances, malware and scams, regional; filter counts; "On by default") and says which uBOL version the lists come from. Gap: the lists only change when the app ships a newer uBOL (a built-in extension doesn't update itself); there's no in-app list update |
 | Clear cookies / cache for site | ✓ | ✅ | Site Controls and Settings › Privacy › site permissions |
 | Incognito | ✓ | ✅ | in-memory profile per window; favicons and downloads stay in the window (WP5); uBOL blocks there too |
 | Usage / content data sharing opt‑in | ✓ | — | no telemetry here |
@@ -495,15 +512,15 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Document PiP | ✓ | ✅ | Chrome's own Document PiP window (its frame shows the origin and Back to tab) |
 | PiP stash, return to tab, hostname bar | ✓ | 🟡 | Chrome's PiP window keeps its own Back to tab (and we switch to the tab when a video keeps playing after PiP closes). Our edge stash, host pill and Keep on Top menu went with `NNPictureInPicture.mm` in the migration; rebuild them on Chrome's PiP window if still wanted |
 | Mini player for pinned media tabs (skip ±15 s, art, marquee) | ✓ | ✅ | hover mini player + sidebar player |
-| Cast (Google Cast) | ✓ | ❌ | no longer an engine limit: the Chrome-style engine carries Chrome's Media Router, but nothing exposes it (no Cast entry in our UI; its dialog would anchor to the hidden toolbar). Untested whether discovery works in this ungoogled build |
-| Screen‑share indicator, "Share this tab instead" | ✓ | 🟡 | indicator ✅ (red capture glyph + tab badges); Dia-style picker with Tabs (tab video + tab audio through our tab-capture patch), screens and windows ✅. Missing: the "Share this tab instead" bar that switches an ongoing share to the current tab |
+| Cast (Google Cast) | ✓ | 🧪 | Chrome's Media Router drives our Cast picker (devices, status, Stop; "Sources" for tab or screen) from View › Cast…, Site Controls › Cast…, the page menu's Cast… and a site's own Cast button (Presentation API); the toolbar shows a highlighted cast button while this profile casts (click: the picker; right-click: Stop Casting). Discovery runs in this build (mDNS + DIAL started, `media-router-internals`); no Cast device was on the test network, so casting itself is checklist step 12 |
+| Screen‑share indicator, "Share this tab instead" | ✓ | ✅ | indicator (red capture glyph + tab badges); Dia-style picker with Tabs (tab video + tab audio through our tab-capture patch), screens and windows. While a site shares a tab, Dia's info bar sits above the page: "Sharing this tab with …" with Stop Sharing on the shared tab, "Sharing another tab with …" with Share This Tab Instead on the profile's other pages (the site's tracks keep running with the new tab), Dismiss on both |
 | Camera / mic permission prompts | ✓ | ✅ | our prompt, no Chrome bubble (ledger 23) |
 | Notifications permission | ✓ | ✅ | our prompt, then macOS permission; the page script shows web notifications natively with click-through |
 | Location permission | ✓ | ✅ | our prompt verified (Don't Allow → denied); Allow (which raises macOS's own prompt) not run yet |
-| Bluetooth permission | ✓ | ❌ | no longer an engine limit (Chrome-style has Chrome's device chooser; Info.plist and entitlement are in place), but untested, and Chrome's chooser is a bubble anchored to the hidden location bar, like the other bubbles WP4 re-routed |
+| Bluetooth permission | ✓ | ✅ | Chrome's device chooser drawn as our prompt under the address ("example.com wants to pair", devices with signal and paired / connected state, Scanning…, Scan Again, Bluetooth off / no macOS access with a link to System Settings, Pair / Cancel); also WebUSB, WebHID and Web Serial choosers and requestLEScan's scanning prompt. Verified with the Mac's real Bluetooth devices listed and Cancel rejecting the page's request |
 | Fullscreen video (incl. other display) | ✓ | 🧪 | page fullscreen puts our window into fullscreen while the ghost stays put (`CEF_NN_TAB_FULLSCREEN`); Esc exits. Changes Spaces, so checklist step 1 |
 | Proprietary codecs (H.264 / AAC / MP4) | ✓ | ✅ | our CEF build (`proprietary_codecs`, `ffmpeg_branding="Chrome"`, VideoToolbox decode) |
-| Protected video (Widevine DRM: Netflix, Spotify…) | ✓ | ⛔ | Widevine is compiled in, but the CDM arrives through the component updater, whose Google host domain substitution removed, and a shipping app also needs Google's VMP signing. Settings › Advanced shows a Widevine row with an update button that can't download |
+| Protected video (Widevine DRM: Netflix, Spotify…) | ✓ | ⛔ | Widevine is compiled in, but the CDM arrives through the component updater, whose Google host domain substitution removed, and a shipping app also needs Google's VMP signing. Settings › Advanced's Widevine row says it isn't available in this build (no update button) |
 
 ## 19. Sharing & printing
 | Feature | Dia | Netnyahoo | Gap |
@@ -529,7 +546,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Profile theme colours | ✓ | ✅ | 9 colours |
 | Custom app icons (Dock tile plug‑in) | ✓ | ✅ | Settings › Appearance › App Icon (7 variants); `NetnyahooDockTile.plugin` keeps it after quitting. Not yet seen in the real Dock |
 | Pro / unlockable backgrounds | ✓ | — | plans feature |
-| Liquid Glass / "Sunglow" refresh (1.50) | ✓ | 🟡 | painted New Tab mark, bar shadows, one-colour power-up band, selected-tab tint, 0.25 s profile-swipe settle done (WP11); Dia uses no Liquid Glass API; app icon stays ours. Open: the breadcrumb's host-only rule, the counter-clockwise tab loading spinner (we have no spinner in tab rows), and a side-by-side check against Dia 1.50.1 (checklist step 10) |
+| Liquid Glass / "Sunglow" refresh (1.50) | ✓ | 🟡 | painted New Tab mark, bar shadows, one-colour power-up band, selected-tab tint, 0.25 s profile-swipe settle done (WP11); the lighter 1.50 key tint and 0.5 card, the bar's 1 pt offset and 112 pt height, and the tab loading spinner (R3). Dia uses no Liquid Glass API; app icon stays ours. R3 also fitted the painted mark's size (76 pt), the bar's rows and the lighter grain. Open: the breadcrumb's host-only rule; a side-by-side check against Dia 1.50.1 (checklist step 10) |
 | Appearance pane (Light/Dark/Auto, app icons) | removed in 1.50 | ✅ | Dia deleted its pane in 1.50; ours stays |
 | Daylight effect (sun‑based shadow) | ✓ (flagged, excluded with area light) | — | intentionally off |
 
@@ -547,11 +564,11 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Personalization | ✓ | ⏸ | |
 | Memory | ✓ (retired 1.50) | — | |
 | Privacy (content blocking, data sharing) | ✓ | ✅ | content blocking (uBOL rulesets; see §17 for the list-update gap), per-site permissions, zoom levels; data sharing — |
-| Passwords / Autofill / Extensions (Chrome's) | ✓ | ✅ | Passwords: Chrome's password manager per profile, unlock through Chrome's device check, CSV import. Autofill: addresses and cards per profile (the pane's two "offer to save" toggles only act on the default profile, Findings 8). Extensions: per profile |
+| Passwords / Autofill / Extensions (Chrome's) | ✓ | ✅ | Passwords: Chrome's password manager per profile, unlock through Chrome's device check, CSV import. Autofill: addresses, cards and the two "offer to save" toggles per profile (the toggles are read once the profile has loaded: a profile without a window only initializes then). Extensions: per profile |
 | Sync | ✓ | ⛔ | needs the Sync server |
 | Keyboard Shortcuts (remap any action, F‑keys, conflict handling) | ✓ | ✅ | every menu command, recorder, conflicts filter, reset |
 | Usage / Billing | ✓ | — | |
-| Advanced | ✓ | ✅ | Battery Saver, Widevine status (Findings 11); also our Search Engine, Live Folders and Calendar panes |
+| Advanced | ✓ | ✅ | Battery Saver, the engine version, Widevine ("not available in this build"); also our Search Engine, Live Folders and Calendar panes |
 
 ## 23. Developer & scripting
 | Feature | Dia | Netnyahoo | Gap |
@@ -643,7 +660,7 @@ lib/appIntegration.ts).
 |---|---|---|
 | App (About, Updates, Invite, Settings, Import, Services, Sign Out, Hide, Quit) | ✓ | ✅ About, Check for Updates…, Settings…, Import from Another Browser…, Services, Hide / Hide Others / Show All, Quit (Invite and Sign Out are account features: —) |
 | File | ✓ | ✅ New Tab, New Tab in Group, New Window, New Incognito Window, Reopen Closed Tab / Window, Open Command Bar, Close Window / Tab / All Tabs, Clean Up Tabs, Share…, Print… (Chat ⏸) |
-| Edit | ✓ | ✅ Undo … Select All, Copy URL (as Markdown), Paste and Match Style; Find ▸ (Find, Find and Replace, Next, Previous, Use Selection for Find, Jump to Selection); Spelling and Grammar, Substitutions, Transformations, Speech; AutoFill ▸ (Contact…, Passwords…, Credit Card…: they open Settings, see §16) |
+| Edit | ✓ | ✅ Undo … Select All, Copy URL (as Markdown), Paste and Match Style; Find ▸ (Find, Find and Replace, Next, Previous, Use Selection for Find, Jump to Selection); Spelling and Grammar, Substitutions, Transformations, Speech; AutoFill ▸ (Contact…, Passwords…, Credit Card…: they open Settings on the window's profile, see §16) |
 | View | ✓ | 🟡 Appearance, Refresh / Force Refresh, Show Tabs in Sidebar, Auto-Hide Tabs, split panes, Show Bookmarks Bar ▸, Show Full URL, zoom, Enter Full Screen, Developer ▸ (View Source, Developer Tools, JavaScript Console). Unchanged since the last audit, which rated it partial without naming the missing items |
 | Tabs | ✓ | ✅ Back/Forward, Next/Previous Tab, Search Tabs…, Pin, Duplicate, New Group with Tab, Move to Profile / Window, Add to Bookmarks…, Add Bookmark to Folder, Rename…, Change Icon…, Mute Site |
 | Bookmarks | ✓ | ✅ Bookmark This Page, Bookmark All Tabs…, Manage Bookmarks, Recent Bookmarks, Bookmarks Bar / Other Bookmarks trees |
@@ -656,73 +673,51 @@ lib/appIntegration.ts).
 The previous audit's list (Broken 1–13) was all fixed and is dropped. "Likely" means read in the code but not
 reproduced.
 
-1. **Dead code from the Alloy era and retired APIs.** Each remaining-work package removes what's in its files.
-   - `packages/cef/src/WebView.tsx`: the retired props `onPasswordFormDetected`, `onPasswordFieldFocused`,
-     `onPasswordCaptured`, `onAutofill` (the native side no longer emits them) and the no-op methods `fillPassword`,
-     `fillGeneratedPassword`, `fillAutofill`, `setAutofillMenuOpen`, `requestAutofill`. Never called by the app:
-     `setZoom`, `getZoom`, `viewSource`, `exitFullscreen`, `getText`, `getSource`, `getNowPlaying`, `isDiscarded`,
-     `getPasswordPrompt`, and props `onPopupWindow`, `onCertificateError`. Also the optional-call shims "for
-     builds from before it existed" (`resolvePasswordPrompt?`, `setTabStrip?`, `setSearchEngineName?`…) and
-     `lib/commands.ts` `legacyCommand`.
-   - `packages/cef/src`: `generatePassword` (+ `NNPasswords generatePassword`), `ZOOM_LEVELS` and `getZoom` (its
-     comment says `zoomStep` walks it; the engine uses Chrome's steps), `checkContentBlocking`,
-     `updateFilterLists` (a no-op), `setExtensionPinned`, `extensionPopupUrl`, `openDownload`, `revealDownload`,
-     `isSwipeNavigationEnabled`, the `AutofillEvent` / `AutofillSuggestion` types, and `ZoomState.pinchScale`
-     (sent, never read).
-   - Extensions: `resolveOpenedTab` is a no-op; `TabsRequest` actions other than "open" "no longer occur" but
-     `bridge.ts` still handles them; `bridge.ts` still rebuilds the whole window/tab model on every store change
-     (40 ms debounce) although `setExtensionTabModel` only passes `probes` on; the whole CRX download-and-verify
-     path (`NNExtensionPackage.mm`, 431 lines, `prepareWebStore`, `discardPrepared`) only runs when the engine
-     lacks `CEF_NN_INSTALL_PROMPT`, which ours has.
-   - Native fallbacks reachable only with `NN_CHROME_TABS 0` (the stock-CEF build): `host::Attach`'s ghost
-     branch, `ConfigurePopup`'s parking path, the `load-extension` blocker path in NNCef.mm, the probe lookup in
-     NNExtensions.mm. Keep them only if the stock-CEF build is still wanted (see 12). Alloy stays on purpose for
-     the hidden WebUI helper pages and non-hostable views (NNChromePages.mm, NNWindowHost.mm `CreateTab`).
-2. **Page context menu on Chrome tabs.** `NNClient::OnBeforeContextMenu` inserts our items (Open Link in New
-   Tab…, Copy Link to Highlight, Search…, Inspect) at the top of the model it's given. On Chrome-style tabs that
-   model already holds Chrome's own items, and nothing removes them, so duplicates are likely. Extension
-   context-menu items (`chrome.contextMenus`) come through the same model and are untested.
-3. **NNSwipe replaces Chrome's responder delegate.** `NNSwipe.mm` sets itself as `RenderWidgetHostViewCocoa`'s
-   `responderDelegate`; its comment says "CEF's Alloy runtime leaves it unset", but on Chrome tabs that slot holds
-   Chrome's `ChromeRenderWidgetHostViewMacDelegate` (history swiper, and menu validation for spelling and speech).
-   Ours should forward to the original instead of dropping it.
-4. **Sleeping tabs.** Our discard closes the Chrome tab (history lost, extensions see a close). Separately, Chrome's
-   own tab discarding isn't turned off; if it discards a hosted tab under memory pressure, its WebContents is
-   replaced behind our view. Likely harmless, not tested.
-5. **Clear Browsing Data vs Chrome's stores.** Chrome-style tabs probably also fill Chrome's own history database
-   in each profile, which nothing clears (and which `chrome.history` shows extensions). Site storage is still
-   deleted from disk before the next launch, an Alloy-era workaround; Chrome's BrowsingDataRemover is available now.
-6. **Command bar "Share" and "Keyboard Shortcuts" do nothing.** `omnibox/actions.ts` sends them to `runCommand`,
-   which has no case for either; only `appIntegration.ts` `runAppCommand` (native menu events) handles them.
-7. **Content blocker sheet.** "Update Lists" calls a no-op and always reports "Lists are up to date"; rows can say
-   "Downloaded when turned on", though every list is bundled; uBOL's "annoyances" and "security" categories never
-   show (`Privacy.tsx` CATEGORIES lists four). The lists only change when the bundled uBOL
-   (`vendor/ubol`, 2026.920.1710) is bumped.
-8. **Autofill pane toggles ignore the selected profile.** `settings/panes/Autofill.tsx` reads and writes "offer to
-   save addresses / cards" with no profile (the default one), while the lists follow the pane's profile picker.
-9. **Web Store install race.** `bridge.ts` injects the store script with `chromeInstalls` as known at that moment;
-   `supportsExtensionInstallPrompt()` resolves asynchronously, so a store page loaded right at launch gets the
-   old override and installs through our CRX path (no auto-update) instead of Chrome's flow.
+1. **Dead code from the Alloy era and retired APIs. Mostly removed** (R1, R2 and R3 each in their files):
+   `WebView.tsx`'s retired props, no-op and never-called methods and old-build shims, `legacyCommand`,
+   `generatePassword`, `getZoom` / `ZOOM_LEVELS`, the `AutofillEvent` types, `isSwipeNavigationEnabled`,
+   `updateFilterLists`, `setExtensionPinned`, `extensionPopupUrl`, `openDownload` / `revealDownload`,
+   `resolveOpenedTab`, and NNExtensionPackage's CRX download-and-verify path (now only manifest reading for Load
+   Unpacked). Also gone since: the `unlockPasswords` old-build fallback and with it the shell's `authenticate`, and
+   `updateComponent` (Findings 11). Still there: `ZoomState.pinchScale` (sent, never read; the page script's `pinch`
+   report feeds it). R2 also dropped `checkContentBlocking`'s JS export, the extension tab model and its "probe"
+   extensions (tab ids now come from Chrome itself; with `NN_CHROME_TABS 0` toolbar badges fall back to the
+   extension's defaults) and the `TabsRequest` actions that no longer occur. The `NN_CHROME_TABS 0` fallbacks stay: the stock-CEF build is kept (12). Alloy stays on
+   purpose for the hidden WebUI helper pages and non-hostable views (NNChromePages.mm, NNWindowHost.mm `CreateTab`).
+2. **Fixed (R1).** Page context menu on Chrome tabs: it's Chrome's own menu now, with our search engine's name and
+   action on "Search … for", our Inspect, Dia's quote link on "Copy Link to Highlight", our split for "Open Link in
+   Split View", and items for Chrome UI we don't show removed (translate, Lens, QR code, send to devices, reading
+   mode, "Open Link as" profiles). Chrome's Cast… is back (R2): it opens our Cast picker. Extension items show and run.
+3. **Fixed (R1).** NNSwipe sits in front of Chrome's responder delegate and forwards everything but the scroll events
+   Chrome's history swiper would act on; spelling and speech validate again.
+4. **Fixed (R1).** Sleeping is Chrome's in-place discard (`WebContentsDiscard`), and every discard of a hosted tab,
+   Chrome's own included, reaches the app (`OnTabDiscardedChanged`).
+5. **Fixed (R1).** Clear Browsing Data goes through Chrome's BrowsingDataRemover (Chrome's history, site data and
+   cache for the range); the next-launch disk wipe is gone.
+6. **Fixed (R3).** Command bar "Share" and "Keyboard Shortcuts" did nothing: `runCommand` had no case for either.
+   Both cases moved from `appIntegration.ts` into `runCommand`, which the menus and the bar share.
+7. **Fixed (R2).** Content blocker sheet: the fake "Update Lists" is gone; every ruleset shows under its category,
+   annoyances and malware included, with its filter count and whether it's on by default, and the footer names the
+   uBOL version the lists come from. The lists still only change when the bundled uBOL (`vendor/ubol`) is bumped.
+8. **Fixed (R3).** The Autofill pane's toggles ignored the selected profile. They follow the picker now, and are read
+   after the profile's list call: a profile with no window open has no initialized request context before that, so
+   its prefs read as defaults and a write is dropped (seen: a toggle set before that call didn't stick).
+9. **Fixed (R2).** Web Store install race: the store script no longer overrides `webstorePrivate` at all and our
+   CRX download path is gone, so every store install, including one from a store page restored at launch, is
+   Chrome's (verified: Dark Reader from a session-restored store tab installed FROM_STORE through our dialog).
 10. **Extensions see Chrome's bookmarks and history, not ours.** Our bookmarks and history live in our JSON stores,
     so `chrome.bookmarks` is empty and `chrome.history` holds only what Chrome recorded itself (5).
-11. **Widevine row.** Settings › Advanced offers to update the Widevine component, but the component updater's
-    host is domain-substituted in our build, so it can't download.
-12. **Building from a fresh checkout.** `NN_CHROME_TABS` defaults to 1 and `#error`s without our CEF distribution,
-    which exists only in `~/chromium-build` (2 h first build); `CEF_PREBUILT=1` needs `NN_CHROME_TABS=0`, which no
-    build setting passes. Decide whether the stock-CEF path stays (and wire the flag) or goes (with 1's fallbacks).
-13. **Docs and comments that contradict the code.**
-    - `docs/agent-brief.md`: "Alloy-style child views"; `packages/webkit` (deleted); "The repo has none" (one commit
-      exists); `packages/import` isn't listed.
-    - `docs/migration-status.md`: "In progress: WP1 — patched CEF build" and "Known regressions until the patched CEF
-      is in" (it is in, and those regressions are gone); tests 40–41 "need the BRANDING change", but the vendored
-      framework already carries `com.netnyahoo.browser` / U5L5T3NGVV.
-    - `docs/research/chromium-ui-layer.md` WP3 said to delete NNPasswords, NNAutofill, NNZoom, NNSiteSettings and
-      NNExtensions; they became thin wrappers over Chrome's WebUI APIs instead, which is fine, but the plan reads as
-      if they were gone.
-    - The Info.plist "Distribution" block cited by `Updater.swift`, `AppModule.swift`, `shell/src/app.ts`,
-      `General.tsx` and `appIntegration.ts` doesn't exist: the keys are plain; `SUPublicEDKey` is already set.
-    - Stale comments: "see NNFavicons.mm" (the class lives in NNBrowsingData.mm); `lib/actions.ts:119` "the page
-      reloads in its new window"; `module.ts:163` and `page_script.js:485` describe Alloy screen sharing;
-      `components/import/apply.ts` "engine Keychain" / "Keychain namespace" (passwords go to Chrome's password
-      manager); `NNSwipe.mm:43` (3); a doc comment above the wrong function at `Menus.swift:456`.
+11. **Fixed (R3).** The Widevine row offered an update that can't download (and never completed). It now says
+    Widevine isn't available in this build; `updateComponent` is gone from the engine API.
+12. **Fixed (R3): the stock-CEF path stays.** `NN_CHROME_TABS` is now a build setting (`NetnyahooCEF.podspec` passes
+    it to the preprocessor, default 1): `CEF_PREBUILT=1 packages/cef/scripts/setup.sh`, then `xcodebuild …
+    NN_CHROME_TABS=0` builds and runs against the stock 154.0.26 prebuilt (checked; README and
+    `docs/cef-source-build.md`). So 1's `NN_CHROME_TABS 0` fallbacks stay.
+13. **Fixed (R3): docs and comments that contradicted the code.** `docs/agent-brief.md` rewritten for the current
+    architecture (Chrome-style CEF, `NETNYAHOO_BACKGROUND` / NNActivation, the own-CEF rebuild flow, `packages/import`,
+    no `packages/webkit`, a repo with history); `docs/migration-status.md`'s finished "In progress", "Known regressions"
+    and "Remaining after the build" sections and the BRANDING notes on tests 40–41; an as-built note on
+    `docs/research/chromium-ui-layer.md` WP3; the Info.plist "Distribution" block (now the real key names); the
+    NNFavicons, Move to Window, Alloy screen-sharing, import-Keychain and `Menus.swift` comments; the README (it still
+    described WebKit). The `NNSwipe.mm` responder-delegate comment went with Findings 3 (R1).
 14. No `TODO`/`FIXME`/`XXX` markers in the code paths audited.

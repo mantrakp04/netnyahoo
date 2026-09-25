@@ -5,10 +5,10 @@ export type UpdaterState =
   | {
       available: true;
       /**
-       * Whether the build has an update feed (Info.plist's "Distribution" block). Without one,
-       * Sparkle never starts and checkForUpdates() says updates aren't set up. Undefined in older builds.
+       * Whether the build has an update feed (Info.plist `SUFeedURL`). Without one, Sparkle
+       * never starts and checkForUpdates() says updates aren't set up.
        */
-      configured?: boolean;
+      configured: boolean;
       automaticChecks: boolean;
       automaticDownloads: boolean;
       canCheck: boolean;
@@ -65,7 +65,7 @@ export type SystemInfo = {
   locale: string;
   /** Whether this build can update itself (Sparkle linked). */
   updates: boolean;
-  /** Help › Send Feedback… destinations from Info.plist ("Distribution"); null = not set up. */
+  /** Help › Send Feedback… destinations from Info.plist (NNFeedbackURL, NNFeedbackEmail); null = not set up. */
   feedbackURL?: string | null;
   feedbackEmail?: string | null;
   /** Help › Video Tour's page (Info.plist NNVideoTourURL); null = hidden. */
@@ -126,7 +126,7 @@ type AppModule = {
   stopIntroMusic?(fade: number): Promise<void>;
   devRenderIntroMusic?(cues: IntroMusicCues, path: string): Promise<number | null>;
   devRunAppleScript(source: string): Promise<{ ok: boolean; result?: unknown; error?: string; number?: number }>;
-  devSnapshotWindow(windowId: string, path: string): Promise<boolean>;
+  devSnapshotWindow(windowId: string, path: string, transparent?: boolean): Promise<boolean>;
   devMenuCommand(command: string, arg: string | null): Promise<void>;
 };
 
@@ -233,6 +233,12 @@ export const launchEnvironment = (name: string) => App.launchEnvironment(name);
 /** DEV builds only: runs AppleScript inside the app (scripts aimed at its own bundle id need no Automation consent). */
 export const devRunAppleScript = (source: string) => App.devRunAppleScript(source);
 /** DEV builds only: renders a window's layers to a PNG (works while the screen is locked). */
-export const devSnapshotWindow = (windowId: string, path: string) => App.devSnapshotWindow(windowId, path);
+/**
+ * DEV: the window's layers as a 2x PNG (Metal views render blank). `transparent` leaves out the window
+ * background, to composite over the shader views' own snapshots (shaders `debugSnapshot`).
+ */
+export const devSnapshotWindow = (windowId: string, path: string, transparent = false) =>
+  // Two arguments unless asked: builds from before `transparent` reject a third.
+  transparent ? App.devSnapshotWindow(windowId, path, true) : App.devSnapshotWindow(windowId, path);
 /** DEV builds only: fires a menu-bar command through the native menu path. */
 export const devMenuCommand = (command: string, arg: string | null = null) => App.devMenuCommand(command, arg);

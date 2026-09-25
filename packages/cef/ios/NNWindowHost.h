@@ -33,6 +33,12 @@ void Attach(NNBrowserView *view);
 bool Hostable(NNBrowserView *view);
 /// Creates `view`'s tab browser; `client` gets OnAfterCreated.
 void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, const CefBrowserSettings &settings);
+/// Creates `view`'s tab with a back/forward list: a copy of `source`'s tab (Duplicate), or the
+/// list in `state` (a closed tab's GetNavigationState, for Reopen Closed Tab). A source in another
+/// window or profile is restored from its list instead. Falls back to CreateTab with `url` when the
+/// engine can't. False if neither is usable (nothing was started).
+bool CreateTabWithHistory(NNBrowserView *view, CefRefPtr<Client> client, CefRefPtr<CefBrowser> source, NSString *state,
+                          NSString *url, const CefBrowserSettings &settings);
 /// Popup browsers the engine creates for window.open & co., before a view adopts them.
 void ConfigurePopup(CefWindowInfo &info, NSSize size);
 /// The NSView showing a tab browser's page, for its NNBrowserView to host.
@@ -41,6 +47,8 @@ NSView *ContentsView(CefRefPtr<CefBrowser> browser);
 /// The view's page is the one its window shows (or was focused): Chrome's active tab
 /// (extensions' activeTab and tabs.query), and where Chrome centers its tab dialogs.
 void TabShown(NNBrowserView *view);
+/// Inside TabShown's Chrome activation, which focuses the tab (not the user focusing it).
+bool ActivatingTab();
 /// The view's browser is now shown in another window: moves the Chrome tab to that
 /// window's Browser (same browser, history and page).
 void TabMoved(NNBrowserView *view);

@@ -19,6 +19,8 @@ What the build adds:
 |---|---|
 | `cef-tab-capture.patch` | Tab capture: `CefGetMediaCaptureSourceId()`, with a tab's audio for desktop audio |
 | `cef-chrome-tabs.patch` | The Chrome-style hosting API and hooks below, plus `include/cef_netnyahoo.h` |
+| `cef-tab-state.patch` (after `cef-chrome-tabs.patch`) | Tab history for reopened and duplicated tabs, Chrome's tab discarding, Chrome's BrowsingDataRemover (below) |
+| `cef-ui-surfaces.patch` (after `cef-tab-state.patch`: its `cef_netnyahoo.h` hunk follows that patch's markers) | `include/cef_chrome_ui.h`: Chrome's device choosers, Cast dialog and extension side panels handed to the client, toolbar action state, "Share this tab instead" and Stop Sharing; `CefMediaRoute::IsLocal` / `GetDescription` (below) |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the ghost window alone |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
@@ -26,9 +28,13 @@ What the build adds:
 | `chromium-password-bubble-hook.patch` | The client may replace Chrome's password bubble |
 | `chromium-extension-install-prompt-hook.patch` | The client may replace Chrome's extension install dialog |
 | `chromium-passkeys.patch` | Netnyahoo bundle/team id branding, iCloud Keychain window fallback, "Netnyahoo Safe Storage" |
+| `chromium-chrome-ui-hooks.patch` | `chrome::ShowDeviceChooserDialog`, the Media Router's Cast dialog (and Presentation API requests) and `side_panel_util` ask the client first; extension pages in hidden windows take the last active window as their current window |
+| `chromium-extension-updates.patch` | Undoes ungoogled's early `return` in `UpdateCheckerImpl::CheckForUpdates`, which left every update check pending: Web Store extensions never updated |
 
 The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
-substitution).
+substitution). Step 2 applies the `cef-*.patch` files in name order, which is the order they were
+made in: `cef-chrome-tabs`, `cef-tab-capture`, `cef-tab-state`, `cef-ui-surfaces` (checked on a
+clean worktree of the CEF checkout on 2026-09-25: the four reproduce the built tree exactly).
 
 ## Using it
 
@@ -41,8 +47,20 @@ framework changes (rebuilt in place).
 - `CEF_ROOT=<dir>` installs somewhere other than `vendor/cef`. Build one app against that with
   `xcodebuild … NN_CEF_ROOT=<dir>`: the pod's header/library paths use
   `$(NN_CEF_ROOT:default=…/vendor/cef)` and `scripts/embed.sh` reads the same setting.
-- `CEF_PREBUILT=1` downloads the stock 154.0.26 prebuilt instead. It lacks every patch, so the app
-  has to be built with `NN_CHROME_TABS=0`.
+- `CEF_PREBUILT=1` downloads the stock 154.0.26 prebuilt instead (a fresh checkout without
+  `~/chromium-build`). It lacks every patch, so build the app with the `NN_CHROME_TABS=0` build
+  setting, which `NetnyahooCEF.podspec` passes to the preprocessor (default 1):
+
+  ```bash
+  CEF_PREBUILT=1 packages/cef/scripts/setup.sh
+  cd apps/browser && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \
+    -configuration Debug -destination 'platform=macOS,arch=arm64' build NN_CHROME_TABS=0
+  ```
+
+  That build hosts Alloy browsers instead of Chrome tabs, so it loses what the patches add:
+  extensions don't see our tabs, pages get no password or autofill filling, incognito windows
+  aren't ad-blocked, and none of the `CEF_NN_*` hooks below exist. Checked 2026-09-25: every `packages/cef/ios/*.mm` compiles against the stock headers, and the
+  app builds and runs (`engineInfo().chromeTabs` false).
 
 `packages/cef/ios/NNCefInternal.h` turns each feature on with `__has_include` plus the
 `CEF_NN_*` markers in `include/cef_netnyahoo.h`.
@@ -94,6 +112,50 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
   - Web Store CRX downloads stay out of `CefDownloadHandler`.
 - **`CEF_NN_SAFE_STORAGE`**
   - The Safe Storage key lives in its own "Netnyahoo Safe Storage" keychain item.
+- **`CEF_NN_TAB_HISTORY`**
+  - `CefBrowserHost::GetNavigationState()`: the tab's back/forward list as Chrome's tab restore
+    records it (base64 of pickled `SerializedNavigationEntry`s, 256 KB per entry at most).
+  - `static CefBrowserHost::RestoreTabInBrowser(existing, client, state, settings, extra_info)`:
+    a background tab with that list, through `chrome::AddRestoredTab`.
+  - `DuplicateTab(client, settings, extra_info)`: `WebContents::Clone()` (history and session
+    storage, as Chrome's Duplicate) inserted after the tab, in the background.
+  - Every tab added to a `native_contents_hosting` Browser by any path is marked natively hosted.
+- **`CEF_NN_TAB_DISCARD`**
+  - `CefBrowserHost::DiscardTab()` (Chrome's `TabLifecycleUnit`, reason EXTERNAL) and
+    `IsTabDiscarded()`.
+  - `CefLifeSpanHandler::OnTabDiscardedChanged(browser, discarded)` for every discard of a hosted
+    tab (ours, Chrome's urgent discarding, `chrome.tabs.discard`) and when it loads again. The app
+    runs with `--enable-features=WebContentsDiscard`, so a discard keeps the WebContents (and the
+    browser); without it Chrome would swap in a new one.
+- **`CEF_NN_BROWSING_DATA`**
+  - `CefRequestContext::ClearBrowsingData(types, begin, end, callback)`: Chrome's
+    `BrowsingDataRemover` for web origins. `types`: `CEF_NN_BROWSING_DATA_HISTORY`, `_SITE_DATA`
+    (Chrome's "Cookies and other site data"), `_CACHE`, `_DOWNLOADS`.
+
+- **`CEF_NN_CHROME_UI`** (`include/cef_chrome_ui.h`)
+  - `CefSetChromeUIHandler(handler)`: a global `CefChromeUIHandler` gets, instead of Chrome's
+    bubbles in the hidden window:
+    - `OnDeviceChooser(browser, CefDeviceChooser)` / `OnDeviceChooserChanged`: Web Bluetooth
+      (`requestDevice`, `requestLEScan`), WebUSB, WebHID and Web Serial choosers. `GetState()`
+      has Chrome's title, labels, scanning / adapter / OS-permission state and the options;
+      answer with `Select(index)` or `Cancel()`; `Refresh()`, `OpenPermissionSettings()`.
+    - `OnCastDialog(browser, CefCastDialog)` / `OnCastDialogChanged`: the Media Router's Cast
+      dialog model (`MediaRouterUI`), for the client's own request (`CefShowCastDialog`) and a
+      page's (Presentation API, Cast SDK buttons). `StartCasting(sink, mode)`, `StopCasting`,
+      `Close()` (rejects a pending presentation request).
+    - `OnExtensionSidePanel(browser, extension_id, open)`: `chrome.sidePanel.open()` / `close()`
+      (and Chrome's toggles).
+  - `CefGetExtensionActionState(browser, id)`: the action's title, displayed badge text and
+    colours, popup URL, enabled state and `action.setIcon` image (PNG data URL at 2x) for the tab.
+  - `CefGetExtensionSidePanel(browser, id)`: the side panel URL for the tab (per-tab options, else
+    the default).
+  - `CefChangeMediaCaptureSource(capturer, source_id)` / `CefGetMediaCaptureTarget(capturer)`:
+    "Share this tab instead" for a running tab capture (the page keeps its tracks).
+  - `CefMediaRoute::IsLocal()` / `GetDescription()`, for the toolbar's cast state.
+- **`CEF_NN_CAPTURE_STOP`**
+  - `CefStopMediaCapture(capturer)`: Chrome's "Stop sharing" for screen, window and tab captures.
+  - Extension pages outside any tab strip (hidden windows: our popups and side panels) use the
+    last active window as `currentWindow` in `chrome.tabs` / `chrome.windows`.
 
 A Chrome-style Browser survives closing its `CefBrowserView`'s first tab while it has other tabs.
 A tab created in the background starts hidden, and becomes visible once its view is in a visible
@@ -142,7 +204,7 @@ Rules for editing the tree after the first build:
 ## ungoogled-chromium
 
 The patch set comes from the 154.0.8037.57-1 series plus the macOS repo's
-`fix-disabling-safebrowsing.patch`: 110 patches in all. Of those, 92 applied, 6 partial,
+`fix-disabling-safebrowsing.patch`: 110 patches in all. Of those, 91 applied, 7 partial,
 6 reverted and 6 skipped. The full list with reasons is `packages/cef/patches/ungoogled-status.tsv`.
 
 **Partial:**
@@ -155,6 +217,9 @@ The patch set comes from the 154.0.8037.57-1 series plus the macOS repo's
 - `0005-disable-default-extensions`: its WebstoreInstaller stubs are dropped.
 - `0006-modify-default-prefs`: saving passwords and autofilling addresses and cards stay on, because
   Chrome's password manager and autofill are used (locally). Autosign-in stays off.
+- `block-requests`: its early `return` in `UpdateCheckerImpl::CheckForUpdates` is undone
+  (`chromium-extension-updates.patch`), so Web Store extensions auto-update. The component updater's
+  hosts stay unreachable through domain substitution.
 
 **Reverted (they assume `safe_browsing_mode=0` or disabled mdns, which break CEF):**
 

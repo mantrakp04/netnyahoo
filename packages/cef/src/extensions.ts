@@ -1,11 +1,13 @@
 import { requireOptionalNativeModule, type EventSubscription } from "expo-modules-core";
+import { ChromeUI } from "./chromeUI";
 
 /**
  * Chrome Web Store (MV3) extensions, per profile: Chrome's own extension system.
  * Each window's tabs belong to a real Chrome Browser (packages/cef/ios/NNWindowHost.h),
- * so extensions' tabs/windows APIs see real tabs and windows. Their popups /
- * options / side panels are extension pages you render in a `WebView` with the
- * same `profile`. `profile` is the WebView profile string ("" = default);
+ * so extensions' tabs/windows APIs see real tabs and windows, and the store's own
+ * button installs through Chrome (its dialog asks the app: `onExtensionInstallPrompt`).
+ * Their popups / options / side panels are extension pages you render in a `WebView`
+ * with the same `profile`. `profile` is the WebView profile string ("" = default);
  * incognito profiles use the default profile's extensions.
  */
 
@@ -33,7 +35,7 @@ export type InstalledExtension = {
   mayModify: boolean;
   errors: string[];
   location: string;
-  /** Unpacked folder (ours for store installs, the developer's otherwise). */
+  /** Where Chrome keeps it (the developer's folder for unpacked ones). */
   path: string | null;
   fromWebStore: boolean;
   webStoreUrl: string | null;
@@ -48,7 +50,7 @@ export type InstalledExtension = {
   sidePanel?: string | null;
 };
 
-/** A downloaded/inspected extension waiting for the install confirmation. */
+/** An unpacked extension folder (Load Unpacked) waiting for the install confirmation. */
 export type ExtensionPackage = {
   id?: string;
   name: string;
@@ -71,13 +73,15 @@ export type ExtensionPackage = {
 
 export type ActionState = {
   badgeText: string;
-  /** #rrggbb */
-  badgeColor: string;
+  /** #rrggbb, or null for Chrome's default. */
+  badgeColor: string | null;
   badgeTextColor: string | null;
   title: string;
   /** Full popup URL ("" = none: the extension handles clicks itself). */
   popup: string;
   enabled: boolean;
+  /** action.setIcon's image for this tab (PNG data URL at 2x), "" for the manifest icon. */
+  icon: string;
 };
 
 export type ExtensionsChange = {
@@ -86,64 +90,18 @@ export type ExtensionsChange = {
   event: "installed" | "uninstalled" | "enabled" | "disabled" | "configured" | "reloaded";
 };
 
-type TabsRequestBase = {
+/**
+ * A page Chrome opened outside our windows (a new Chrome window from an extension,
+ * an uninstall survey): open it as a tab.
+ */
+export type TabsRequest = {
+  action: "open";
   profile: string;
   extensionId: string;
-  /** App window id the request is about (the page's own window unless it named another), or null. */
+  /** App window id, or null. */
   window: string | null;
-};
-/**
- * A page Chrome opened outside our windows ("open": a new Chrome window from an
- * extension): open it as a tab. The other actions came from the old tabs/windows
- * emulation and no longer occur — extensions act on Chrome's real tabs.
- */
-export type TabsRequest =
-  | (TabsRequestBase & {
-      action: "open";
-      url: string;
-      active?: boolean;
-      pinned?: boolean;
-      index?: number;
-      newWindow?: boolean;
-      incognito?: boolean;
-      openerTabId?: number;
-      /** Answer with `resolveOpenedTab(requestId, browserId)` once the tab's browser exists. */
-      requestId?: string;
-    })
-  | (TabsRequestBase & { action: "activate"; tabId: number })
-  | (TabsRequestBase & { action: "close"; tabIds: number[] })
-  | (TabsRequestBase & { action: "pin"; tabId: number; pinned: boolean })
-  | (TabsRequestBase & { action: "popup" })
-  | (TabsRequestBase & { action: "sidePanel"; tabId?: number })
-  | (TabsRequestBase & { action: "focusWindow" });
-
-/**
- * The app's windows and tabs. Only `probes` is still used (per-tab action state
- * maps browser ids to Chrome's tab ids through them); Chrome itself knows the
- * windows and tabs now.
- */
-export type ExtensionTabModel = {
-  windows: {
-    id: number;
-    /** App window id. */
-    key: string;
-    profile: string;
-    incognito: boolean;
-    focused: boolean;
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-    /** Browser ids, in tab order. */
-    tabs: { id: number; active: boolean; pinned: boolean }[];
-  }[];
-  /** Extension pages that aren't tabs (popups, side panels): browser id → window id. */
-  views: Record<string, number>;
-  /**
-   * An enabled extension per profile. Extension APIs name tabs by Chrome's own ids, which
-   * the engine looks up from that extension's context (they aren't browser ids).
-   */
-  probes: Record<string, string>;
+  url: string;
+  active?: boolean;
 };
 
 /**
@@ -172,20 +130,14 @@ type NativeExtensions = {
   addListener(name: "onChanged", listener: (e: ExtensionsChange) => void): EventSubscription;
   addListener(name: "onTabs", listener: (e: TabsRequest) => void): EventSubscription;
   addListener(name: "onInstallPrompt", listener: (e: ExtensionInstallPrompt) => void): EventSubscription;
-  /** Missing in app builds from before they existed. */
-  supportsInstallPrompt?(): Promise<boolean>;
-  resolveInstallPrompt?(requestId: string, accepted: boolean): Promise<void>;
+  resolveInstallPrompt(requestId: string, accepted: boolean): Promise<void>;
   list(profile: string): Promise<Result<{ extensions: InstalledExtension[] }>>;
-  prepareWebStore(id: string, profile: string): Promise<Result<ExtensionPackage>>;
   inspectUnpacked(path: string): Promise<Result<ExtensionPackage>>;
   install(path: string, profile: string): Promise<Result<{ id: string }>>;
-  discardPrepared(path: string): Promise<void>;
   setEnabled(id: string, profile: string, enabled: boolean): Promise<Result<{ ok: true }>>;
   uninstall(id: string, profile: string): Promise<Result<{ ok: true }>>;
   reload(id: string, profile: string): Promise<Result<{ ok: true }>>;
   configure(id: string, profile: string, options: Record<string, unknown>): Promise<Result<{ ok: true }>>;
-  actionState(profile: string, ids: string[], tabId: number): Promise<{ states: Record<string, ActionState> }>;
-  setTabModel(model: ExtensionTabModel): Promise<void>;
   /** DEV: runs in the profile's hidden chrome://extensions/ (evaluateInPage: any hidden page). */
   evaluateInHost(expression: string, profile: string): Promise<unknown>;
   evaluateInPage(expression: string, profile: string, page: string): Promise<unknown>;
@@ -198,7 +150,7 @@ type NativeExtensions = {
  */
 function unavailable(): NativeExtensions {
   const error = { error: "Extensions aren't available in this build" };
-  const fallbacks: Record<string, unknown> = { list: { extensions: [] }, actionState: { states: {} }, chooseFolder: null, supportsInstallPrompt: false };
+  const fallbacks: Record<string, unknown> = { list: { extensions: [] }, chooseFolder: null };
   return new Proxy({} as NativeExtensions, {
     get: (_, name: string) =>
       name === "addListener" ? () => ({ remove() {} }) : async () => (name in fallbacks ? fallbacks[name] : name.startsWith("set") || name.startsWith("resolve") ? undefined : error),
@@ -244,25 +196,15 @@ export async function listExtensions(profile: string): Promise<InstalledExtensio
   return unwrap(await Native.list(profile)).extensions;
 }
 
-/** Downloads the store's package and verifies it; show the result in the install dialog. */
-export async function prepareWebStoreExtension(urlOrId: string, profile: string): Promise<ExtensionPackage> {
-  const id = webStoreExtensionId(urlOrId);
-  if (!id) throw new ExtensionError("That isn't a Chrome Web Store extension");
-  return unwrap(await Native.prepareWebStore(id, profile));
-}
-
 /** Reads a developer's unpacked extension folder (Load Unpacked). */
 export async function inspectUnpackedExtension(path: string): Promise<ExtensionPackage> {
   return unwrap(await Native.inspectUnpacked(path));
 }
 
-/** Installs a prepared package (or loads a developer folder) into the profile. */
+/** Loads a developer's unpacked folder into the profile. */
 export async function installExtension(pkg: Pick<ExtensionPackage, "path">, profile: string): Promise<string> {
   return unwrap(await Native.install(pkg.path, profile)).id;
 }
-
-/** The user declined the install dialog: drop the download. */
-export const discardExtensionPackage = (pkg: Pick<ExtensionPackage, "path">) => Native.discardPrepared(pkg.path);
 
 export async function setExtensionEnabled(id: string, profile: string, enabled: boolean) {
   unwrap(await Native.setEnabled(id, profile, enabled));
@@ -289,34 +231,18 @@ export async function configureExtension(
   unwrap(await Native.configure(id, profile, options));
 }
 
-export const setExtensionPinned = (id: string, profile: string, pinned: boolean) => configureExtension(id, profile, { pinned });
-
-/** Badge / title / popup of each extension's toolbar action for a tab (its browser id; 0 = defaults). */
-export async function extensionActionStates(profile: string, ids: string[], tabId: number) {
-  if (!ids.length) return {};
-  return (await Native.actionState(profile, ids, tabId)).states;
+/** Badge / title / popup / icon of each extension's toolbar action for a tab (its browser id), from Chrome. */
+export async function extensionActionStates(browserId: number, ids: string[]): Promise<Record<string, ActionState>> {
+  if (!ids.length || !browserId) return {};
+  return ChromeUI.actionStates(browserId, ids);
 }
 
 /** chrome-extension://<id>/<path> */
 export const extensionUrl = (id: string, path: string) => `chrome-extension://${id}/${path.replace(/^\//, "")}`;
 
-/** The page to show in the action popover, or null when the extension takes clicks itself. */
-export function extensionPopupUrl(ext: InstalledExtension, state?: ActionState | null): string | null {
-  if (state) return state.popup || null;
-  return ext.popup ? extensionUrl(ext.id, ext.popup) : null;
-}
-
-export const setExtensionTabModel = (model: ExtensionTabModel) => Native.setTabModel({ windows: [], views: {}, probes: model.probes });
-/** No request waits for an answer any more (Chrome creates extensions' tabs itself). */
-export const resolveOpenedTab = async (_requestId: string, _browserId: number) => {};
-
 export const onExtensionsChanged = (listener: (e: ExtensionsChange) => void) => Native.addListener("onChanged", listener);
 export const onExtensionInstallPrompt = (listener: (e: ExtensionInstallPrompt) => void) => Native.addListener("onInstallPrompt", listener);
-/** Whether Chrome's install flow asks the app (else the Web Store button goes through `prepareWebStoreExtension`). */
-export const supportsExtensionInstallPrompt = async () => (await Native.supportsInstallPrompt?.()) ?? false;
-export const resolveExtensionInstallPrompt = async (requestId: string, accepted: boolean) => {
-  await Native.resolveInstallPrompt?.(requestId, accepted);
-};
+export const resolveExtensionInstallPrompt = (requestId: string, accepted: boolean) => Native.resolveInstallPrompt(requestId, accepted);
 export const onExtensionTabsRequest = (listener: (e: TabsRequest) => void) => Native.addListener("onTabs", listener);
 
 /** Folder picker for Load Unpacked. */

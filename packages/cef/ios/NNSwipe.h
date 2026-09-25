@@ -28,9 +28,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// horizontally that way. Honours System Settings › Trackpad › Swipe between pages.
 @interface NNSwipe : NSObject
 
-/// "Swipe between pages" allows two-finger scroll swipes.
-@property (class, nonatomic, readonly) BOOL systemSwipeEnabled;
-
 /// NSHapticFeedbackManager pattern: "levelChange" | "alignment" | "generic".
 + (void)performHaptic:(NSString *)pattern;
 

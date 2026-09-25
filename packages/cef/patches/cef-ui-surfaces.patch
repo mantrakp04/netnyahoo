@@ -1,0 +1,1343 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 92c540976..6f59611d7 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -561,6 +561,8 @@ source_set("libcef_static") {
+     "libcef/browser/chrome/chrome_browser_context.h",
+     "libcef/browser/chrome/chrome_browser_delegate.cc",
+     "libcef/browser/chrome/chrome_browser_delegate.h",
++    "libcef/browser/chrome/chrome_ui_hooks.cc",
++    "libcef/browser/chrome/chrome_ui_hooks.h",
+     "libcef/browser/chrome/chrome_browser_host_impl.cc",
+     "libcef/browser/chrome/chrome_browser_host_impl.h",
+     "libcef/browser/chrome/chrome_browser_main_extra_parts_cef.cc",
+diff --git a/include/cef_media_router.h b/include/cef_media_router.h
+index 0550c2a55..9d8a59d85 100644
+--- a/include/cef_media_router.h
++++ b/include/cef_media_router.h
+@@ -195,6 +195,22 @@ class CefMediaRoute : public virtual CefBaseRefCounted {
+   ///
+   /*--cef()--*/
+   virtual void Terminate() = 0;
++
++#if CEF_API_ADDED(CEF_EXPERIMENTAL)
++  ///
++  /// Returns true if this browser started the route, false for a route that
++  /// another device started on the sink.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual bool IsLocal() = 0;
++
++  ///
++  /// Returns the route's description, as Chrome's Cast dialog shows it
++  /// ("Casting tab", the app's name...).
++  ///
++  /*--cef(added=experimental)--*/
++  virtual CefString GetDescription() = 0;
++#endif
+ };
+ 
+ ///
+diff --git a/libcef/browser/media_router/media_route_impl.cc b/libcef/browser/media_router/media_route_impl.cc
+index 36f52c017..82ffaf09c 100644
+--- a/libcef/browser/media_router/media_route_impl.cc
++++ b/libcef/browser/media_router/media_route_impl.cc
+@@ -78,6 +78,14 @@ void CefMediaRouteImpl::Terminate() {
+       route_.media_route_id());
+ }
+ 
++bool CefMediaRouteImpl::IsLocal() {
++  return route_.is_local();
++}
++
++CefString CefMediaRouteImpl::GetDescription() {
++  return route_.description();
++}
++
+ void CefMediaRouteImpl::SendRouteMessageInternal(std::string message) {
+   auto browser_context = GetBrowserContext(browser_context_getter_);
+   if (!browser_context) {
+diff --git a/libcef/browser/media_router/media_route_impl.h b/libcef/browser/media_router/media_route_impl.h
+index b23eace78..888cee607 100644
+--- a/libcef/browser/media_router/media_route_impl.h
++++ b/libcef/browser/media_router/media_route_impl.h
+@@ -25,6 +25,8 @@ class CefMediaRouteImpl : public CefMediaRoute {
+   CefRefPtr<CefMediaSink> GetSink() override;
+   void SendRouteMessage(const void* message, size_t message_size) override;
+   void Terminate() override;
++  bool IsLocal() override;
++  CefString GetDescription() override;
+ 
+   const media_router::MediaRoute& route() const { return route_; }
+ 
+diff --git a/libcef/browser/media_stream_registrar.cc b/libcef/browser/media_stream_registrar.cc
+index 8f81280e9..6de81130a 100644
+--- a/libcef/browser/media_stream_registrar.cc
++++ b/libcef/browser/media_stream_registrar.cc
+@@ -5,6 +5,7 @@
+ #include "cef/libcef/browser/media_stream_registrar.h"
+ 
+ #include "cef/libcef/browser/browser_host_base.h"
++#include "base/functional/bind.h"
+ #include "cef/libcef/browser/thread_util.h"
+ 
+ class CefMediaStreamUI : public content::MediaStreamUI {
+@@ -12,11 +13,14 @@ class CefMediaStreamUI : public content::MediaStreamUI {
+   CefMediaStreamUI(base::WeakPtr<CefMediaStreamRegistrar> registrar,
+                    bool has_video,
+                    bool has_audio)
+-      : registrar_(registrar), has_video_(has_video), has_audio_(has_audio) {}
++      : registrar_(registrar), has_video_(has_video), has_audio_(has_audio) {
++    static int last_id = 0;
++    id_ = ++last_id;
++  }
+ 
+   ~CefMediaStreamUI() override {
+     if (registrar_) {
+-      registrar_->UnregisterMediaStream(label_);
++      registrar_->UnregisterMediaStream(label_, id_);
+     }
+   }
+ 
+@@ -31,7 +35,10 @@ class CefMediaStreamUI : public content::MediaStreamUI {
+       StateChangeCallback state_change) override {
+     if (registrar_) {
+       label_ = label;
+-      registrar_->RegisterMediaStream(label, has_video_, has_audio_);
++      registrar_->RegisterMediaStream(label, id_, has_video_, has_audio_,
++                                      std::move(source),
++                                      std::move(screen_capture_ids),
++                                      std::move(stop));
+     }
+     return 0;
+   }
+@@ -50,6 +57,7 @@ class CefMediaStreamUI : public content::MediaStreamUI {
+   const bool has_video_;
+   const bool has_audio_;
+   std::string label_;
++  int id_;
+ };
+ 
+ CefMediaStreamRegistrar::CefMediaStreamRegistrar(CefBrowserHostBase* browser)
+@@ -68,26 +76,107 @@ CefMediaStreamRegistrar::MaybeCreateMediaStreamUI(bool has_video,
+   return nullptr;
+ }
+ 
+-void CefMediaStreamRegistrar::RegisterMediaStream(const std::string& label,
+-                                                  bool video,
+-                                                  bool audio) {
++void CefMediaStreamRegistrar::RegisterMediaStream(
++    const std::string& label,
++    int ui_id,
++    bool video,
++    bool audio,
++    content::MediaStreamUI::SourceCallback source,
++    std::vector<content::DesktopMediaID> captured,
++    base::RepeatingClosure stop) {
+   CEF_REQUIRE_UIT();
+-  MediaStreamInfo info = {video, audio};
+-  registered_streams_.insert(std::make_pair(label, info));
++  // A source change starts the same stream again with a new UI.
++  changing_.erase(label);
++  registered_streams_[label] = {{video, audio},
++                                ui_id,
++                                std::move(source),
++                                std::move(captured),
++                                std::move(stop)};
++  NotifyMediaStreamChange();
++}
++
++void CefMediaStreamRegistrar::UnregisterMediaStream(const std::string& label,
++                                                    int ui_id) {
++  CEF_REQUIRE_UIT();
++  auto it = registered_streams_.find(label);
++  if (it == registered_streams_.end() || it->second.ui_id != ui_id) {
++    return;
++  }
++  if (changing_.count(label)) {
++    // Switching sources: the new UI registers the stream again, so keep
++    // reporting it (no capture-ended blip) unless that never happens.
++    it->second.ui_id = 0;
++    CEF_POST_DELAYED_TASK(
++        CEF_UIT,
++        base::BindOnce(&CefMediaStreamRegistrar::DropReplacedStream,
++                       weak_ptr_factory_.GetWeakPtr(), label),
++        5000);
++    return;
++  }
++  registered_streams_.erase(it);
+   NotifyMediaStreamChange();
+ }
+ 
+-void CefMediaStreamRegistrar::UnregisterMediaStream(const std::string& label) {
++void CefMediaStreamRegistrar::DropReplacedStream(const std::string& label) {
+   CEF_REQUIRE_UIT();
+-  registered_streams_.erase(label);
++  auto it = registered_streams_.find(label);
++  if (it == registered_streams_.end() || it->second.ui_id != 0) {
++    return;
++  }
++  changing_.erase(label);
++  registered_streams_.erase(it);
+   NotifyMediaStreamChange();
+ }
+ 
++bool CefMediaStreamRegistrar::ChangeSource(
++    const content::DesktopMediaID& media_id) {
++  CEF_REQUIRE_UIT();
++  bool changed = false;
++  for (auto& [label, stream] : registered_streams_) {
++    if (!stream.source.is_null()) {
++      changing_.insert(label);
++      stream.source.Run(media_id, /*captured_surface_control_active=*/false);
++      changed = true;
++    }
++  }
++  return changed;
++}
++
++content::DesktopMediaID CefMediaStreamRegistrar::GetChangeableSource() const {
++  CEF_REQUIRE_UIT();
++  for (const auto& [label, stream] : registered_streams_) {
++    if (stream.source.is_null()) {
++      continue;
++    }
++    for (const auto& id : stream.captured) {
++      if (id.type == content::DesktopMediaID::TYPE_WEB_CONTENTS) {
++        return id;
++      }
++    }
++  }
++  return content::DesktopMediaID();
++}
++
++bool CefMediaStreamRegistrar::StopScreenCaptures() {
++  CEF_REQUIRE_UIT();
++  std::vector<base::RepeatingClosure> stops;
++  for (const auto& [label, stream] : registered_streams_) {
++    if (!stream.captured.empty() && !stream.stop.is_null()) {
++      stops.push_back(stream.stop);
++    }
++  }
++  // Stopping unregisters streams: run the closures after the loop.
++  for (auto& stop : stops) {
++    stop.Run();
++  }
++  return !stops.empty();
++}
++
+ void CefMediaStreamRegistrar::NotifyMediaStreamChange() {
+   bool video = false;
+   bool audio = false;
+   for (const auto& [key, value] : registered_streams_) {
+-    const auto& info = value;
++    const auto& info = value.info;
+     if (!video) {
+       video = info.video;
+     }
+diff --git a/libcef/browser/media_stream_registrar.h b/libcef/browser/media_stream_registrar.h
+index 9d1e09f89..ccd7ded30 100644
+--- a/libcef/browser/media_stream_registrar.h
++++ b/libcef/browser/media_stream_registrar.h
+@@ -8,7 +8,9 @@
+ 
+ #include <map>
+ #include <memory>
++#include <set>
+ #include <string>
++#include <vector>
+ 
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/weak_ptr.h"
+@@ -28,15 +30,37 @@ class CefMediaStreamRegistrar {
+       bool has_video,
+       bool has_audio);
+ 
++  // Switches the tab captures of this browser to |media_id| (a web contents
++  // capture), like Chrome's "Share this tab instead". Returns false if no
++  // stream supports switching (only tab captures do).
++  bool ChangeSource(const content::DesktopMediaID& media_id);
++
++  // The tab a switchable capture of this browser is capturing, or a null id.
++  content::DesktopMediaID GetChangeableSource() const;
++
++  // Stops this browser's screen, window and tab captures. Returns false if
++  // there are none.
++  bool StopScreenCaptures();
++
+  private:
+   friend class CefMediaStreamUI;
+ 
+-  // Called from CefMediaStreamUI.
+-  void RegisterMediaStream(const std::string& label, bool video, bool audio);
+-  void UnregisterMediaStream(const std::string& label);
++  // Called from CefMediaStreamUI. A stream's UI is replaced when its source
++  // changes; |ui_id| identifies the registration to remove.
++  void RegisterMediaStream(const std::string& label,
++                           int ui_id,
++                           bool video,
++                           bool audio,
++                           content::MediaStreamUI::SourceCallback source,
++                           std::vector<content::DesktopMediaID> captured,
++                           base::RepeatingClosure stop);
++  void UnregisterMediaStream(const std::string& label, int ui_id);
+ 
+   void NotifyMediaStreamChange();
+ 
++  // A stream whose source change didn't start it again: gone after all.
++  void DropReplacedStream(const std::string& label);
++
+   // Guaranteed to outlive this object.
+   const raw_ptr<CefBrowserHostBase> browser_;
+ 
+@@ -45,8 +69,20 @@ class CefMediaStreamRegistrar {
+     bool audio;
+   };
+ 
++  struct RegisteredStream {
++    MediaStreamInfo info;
++    int ui_id;
++    // Null unless the stream can switch sources (tab captures).
++    content::MediaStreamUI::SourceCallback source;
++    std::vector<content::DesktopMediaID> captured;
++    base::RepeatingClosure stop;
++  };
++
++  // Streams switching sources: their old UI goes before the new one starts.
++  std::set<std::string> changing_;
++
+   // Current in use media streams.
+-  std::map<std::string, MediaStreamInfo> registered_streams_;
++  std::map<std::string, RegisteredStream> registered_streams_;
+ 
+   // Last notified media stream info.
+   MediaStreamInfo last_notified_info_{};
+--- a/include/cef_netnyahoo.h
++++ b/include/cef_netnyahoo.h
+@@ -76,4 +76,15 @@
+ #define CEF_NN_BROWSING_DATA_CACHE (1 << 2)
+ #define CEF_NN_BROWSING_DATA_DOWNLOADS (1 << 3)
+ 
++// include/cef_chrome_ui.h: CefSetChromeUIHandler (device choosers, the Cast
++// dialog, extension side panels), CefGetExtensionActionState,
++// CefGetExtensionSidePanel, CefShowCastDialog, CefChangeMediaCaptureSource /
++// CefGetMediaCaptureTarget ("Share this tab instead"); CefMediaRoute::IsLocal /
++// GetDescription.
++#define CEF_NN_CHROME_UI 1
++
++// CefStopMediaCapture (include/cef_chrome_ui.h); extension pages outside tab
++// strips (hidden windows) use the last active window as their current window.
++#define CEF_NN_CAPTURE_STOP 1
++
+ #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
+diff --git a/include/cef_chrome_ui.h b/include/cef_chrome_ui.h
+new file mode 100644
+index 000000000..c5a982092
+--- /dev/null
++++ b/include/cef_chrome_ui.h
+@@ -0,0 +1,291 @@
++// Copyright (c) 2026 The Netnyahoo Authors. Portions copyright (c) 2016 Marshall A.
++// Greenblatt. All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//    * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//    * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//    * Neither the name of Google Inc. nor the name Chromium Embedded
++// Framework nor the names of its contributors may be used to endorse
++// or promote products derived from this software without specific prior
++// written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++//
++//
++// ---------------------------------------------------------------------------
++//
++// The contents of this file must follow a specific format in order to
++// support the CEF translator tool. See the translator.README.txt file in the
++// tools directory for more information.
++//
++
++#ifndef CEF_INCLUDE_CEF_CHROME_UI_H_
++#define CEF_INCLUDE_CEF_CHROME_UI_H_
++#pragma once
++
++#include "include/cef_base.h"
++#include "include/cef_browser.h"
++#include "include/cef_values.h"
++
++#if CEF_API_ADDED(CEF_EXPERIMENTAL)
++
++///
++/// Chrome style only. Chrome's device chooser: a site asked for a Bluetooth
++/// device (navigator.bluetooth.requestDevice / requestLEScan), a USB, HID or
++/// serial device. Handed to CefChromeUIHandler::OnDeviceChooser instead of
++/// Chrome's bubble. Use it on the browser process UI thread. Answer with
++/// Select or Cancel exactly once; it stops being open when answered or when
++/// Chrome closes it (the page navigated or gave up).
++///
++/*--cef(source=library,added=experimental)--*/
++class CefDeviceChooser : public virtual CefBaseRefCounted {
++ public:
++  ///
++  /// Returns an identifier unique for this run of the browser.
++  ///
++  /*--cef()--*/
++  virtual int GetIdentifier() = 0;
++
++  ///
++  /// Returns true until the chooser is answered or closed.
++  ///
++  /*--cef()--*/
++  virtual bool IsOpen() = 0;
++
++  ///
++  /// Returns what Chrome's chooser would show: "title" (includes the site),
++  /// "okLabel", "cancelLabel", "noOptionsText", "scanningText" (the throbber
++  /// label), "refreshing", "canRefresh", "adapterOff" (Bluetooth is off),
++  /// "unauthorized" (the app lacks the OS Bluetooth permission),
++  /// "bothButtonsEnabled" (a scanning prompt: OK and Cancel are Allow and
++  /// Block), "showSignal", and "options": a list of dictionaries with "name",
++  /// "connected", "paired" and "signal" (0-4, -1 for none).
++  ///
++  /*--cef()--*/
++  virtual CefRefPtr<CefDictionaryValue> GetState() = 0;
++
++  ///
++  /// Grants the site the option at |index| (for a scanning prompt any index
++  /// allows it).
++  ///
++  /*--cef()--*/
++  virtual void Select(int index) = 0;
++
++  ///
++  /// Denies the request.
++  ///
++  /*--cef()--*/
++  virtual void Cancel() = 0;
++
++  ///
++  /// Scans again (when "canRefresh").
++  ///
++  /*--cef()--*/
++  virtual void Refresh() = 0;
++
++  ///
++  /// Opens the OS settings that grant the app Bluetooth access (for
++  /// "unauthorized").
++  ///
++  /*--cef()--*/
++  virtual void OpenPermissionSettings() = 0;
++};
++
++///
++/// Chrome style only. Chrome's Cast dialog for a tab (its Media Router UI):
++/// the sinks Chrome found and what casting to each would do. Handed to
++/// CefChromeUIHandler::OnCastDialog instead of Chrome's dialog, both when the
++/// client asks (CefShowCastDialog) and when a page does (Presentation API,
++/// Cast SDK buttons). Use it on the browser process UI thread.
++///
++/*--cef(source=library,added=experimental)--*/
++class CefCastDialog : public virtual CefBaseRefCounted {
++ public:
++  ///
++  /// Returns an identifier unique for this run of the browser.
++  ///
++  /*--cef()--*/
++  virtual int GetIdentifier() = 0;
++
++  ///
++  /// Returns true until the dialog is closed (Close, or Chrome closed it).
++  ///
++  /*--cef()--*/
++  virtual bool IsOpen() = 0;
++
++  ///
++  /// Returns Chrome's dialog model: "header" (the source, e.g. "Cast tab"),
++  /// "permissionRejected" (the OS denied local network access) and "sinks": a
++  /// list of dictionaries with "id", "name", "status" (Chrome's status line),
++  /// "state" ("available", "connecting", "connected", "disconnecting" or
++  /// "unavailable"), "icon" (media_router::SinkIconType), "modes" (bitmask of
++  /// media_router::MediaCastMode: 1 presentation, 2 tab, 4 screen, 8 remote
++  /// playback), "routeId" (the active route, or empty) and "issue" (an error
++  /// title, or empty).
++  ///
++  /*--cef()--*/
++  virtual CefRefPtr<CefDictionaryValue> GetState() = 0;
++
++  ///
++  /// Starts casting to |sink_id| in |cast_mode| (one of the "modes" bits).
++  ///
++  /*--cef()--*/
++  virtual void StartCasting(const CefString& sink_id, int cast_mode) = 0;
++
++  ///
++  /// Stops the route |route_id|.
++  ///
++  /*--cef()--*/
++  virtual void StopCasting(const CefString& route_id) = 0;
++
++  ///
++  /// Closes the dialog (a pending Presentation API request is rejected).
++  ///
++  /*--cef()--*/
++  virtual void Close() = 0;
++};
++
++///
++/// Chrome style only. Implement to draw Chrome UI surfaces the hidden Chrome
++/// window can't show (see CefSetChromeUIHandler). Called on the browser
++/// process UI thread.
++///
++/*--cef(source=client,added=experimental)--*/
++class CefChromeUIHandler : public virtual CefBaseRefCounted {
++ public:
++  ///
++  /// A site asked for a device (see CefDeviceChooser) from |browser|. Return
++  /// true to show your own chooser (then answer through |chooser|), or false
++  /// for Chrome's.
++  ///
++  /*--cef()--*/
++  virtual bool OnDeviceChooser(CefRefPtr<CefBrowser> browser,
++                               CefRefPtr<CefDeviceChooser> chooser) {
++    return false;
++  }
++
++  ///
++  /// |chooser|'s options, scanning state or adapter state changed, or it
++  /// closed (IsOpen() is false).
++  ///
++  /*--cef()--*/
++  virtual void OnDeviceChooserChanged(CefRefPtr<CefDeviceChooser> chooser) {}
++
++  ///
++  /// Chrome would show its Cast dialog for |browser|. Return true to show your
++  /// own (driven by |dialog|), or false for Chrome's.
++  ///
++  /*--cef()--*/
++  virtual bool OnCastDialog(CefRefPtr<CefBrowser> browser,
++                            CefRefPtr<CefCastDialog> dialog) {
++    return false;
++  }
++
++  ///
++  /// |dialog|'s model changed, or it closed (IsOpen() is false).
++  ///
++  /*--cef()--*/
++  virtual void OnCastDialogChanged(CefRefPtr<CefCastDialog> dialog) {}
++
++  ///
++  /// Chrome would open (|open| true) or close the side panel of the extension
++  /// |extension_id| (chrome.sidePanel.open / close) in the window of
++  /// |browser|, the tab it's for. Return true if you show extension side
++  /// panels yourself (see CefGetExtensionSidePanel); Chrome's side panel then
++  /// stays closed.
++  ///
++  /*--cef()--*/
++  virtual bool OnExtensionSidePanel(CefRefPtr<CefBrowser> browser,
++                                    const CefString& extension_id,
++                                    bool open) {
++    return false;
++  }
++};
++
++///
++/// Sets the handler for Chrome UI surfaces (an empty |handler| restores
++/// Chrome's own). Call on the browser process UI thread.
++///
++/*--cef(added=experimental,optional_param=handler)--*/
++void CefSetChromeUIHandler(CefRefPtr<CefChromeUIHandler> handler);
++
++///
++/// Chrome style only. Returns the toolbar action state of the extension
++/// |extension_id| for |browser|'s tab, what Chrome's toolbar button would
++/// show: "title", "badgeText" (as displayed, including declarativeNetRequest
++/// match counts), "badgeColor" and "badgeTextColor" (ARGB, 0 when unset),
++/// "popup" (URL, empty when clicks go to the extension), "enabled", and "icon"
++/// (a PNG data: URL of the icon set with action.setIcon or declaratively for
++/// this tab at 2x, empty when the manifest's icon applies). Returns nullptr if
++/// the extension isn't enabled or has no action.
++///
++/*--cef(added=experimental)--*/
++CefRefPtr<CefDictionaryValue> CefGetExtensionActionState(
++    CefRefPtr<CefBrowser> browser,
++    const CefString& extension_id);
++
++///
++/// Chrome style only. Returns the URL of the side panel the extension
++/// |extension_id| has for |browser|'s tab (chrome.sidePanel options: the
++/// tab's own path, else the default), or an empty string if it has none or it
++/// is disabled for the tab.
++///
++/*--cef(added=experimental)--*/
++CefString CefGetExtensionSidePanel(CefRefPtr<CefBrowser> browser,
++                                   const CefString& extension_id);
++
++///
++/// Chrome style only. Shows the Cast dialog for |browser|'s tab (see
++/// CefChromeUIHandler::OnCastDialog). Returns false if the Media Router is
++/// unavailable for its profile.
++///
++/*--cef(added=experimental)--*/
++bool CefShowCastDialog(CefRefPtr<CefBrowser> browser);
++
++///
++/// Switches the tab capture that |capturer| is running (a getUserMedia
++/// desktop capture of a tab, see CefGetMediaCaptureSourceId) to the tab
++/// |source_id|, as Chrome's "Share this tab instead" does: the page's tracks
++/// keep running with the new tab's video (and audio). The new source needs
++/// the client's permission again (CefPermissionHandler). Returns false if
++/// |capturer| isn't capturing a tab.
++///
++/*--cef(added=experimental)--*/
++bool CefChangeMediaCaptureSource(CefRefPtr<CefBrowser> capturer,
++                                 const CefString& source_id);
++
++///
++/// Returns the source id (see CefGetMediaCaptureSourceId) of the tab that
++/// |capturer| is capturing and could switch, or an empty string.
++///
++/*--cef(added=experimental)--*/
++CefString CefGetMediaCaptureTarget(CefRefPtr<CefBrowser> capturer);
++
++///
++/// Stops the screen, window and tab captures |capturer| is running, as
++/// Chrome's "Stop sharing" does (the page's tracks end). Returns false if it
++/// has none.
++///
++/*--cef(added=experimental)--*/
++bool CefStopMediaCapture(CefRefPtr<CefBrowser> capturer);
++
++#endif  // CEF_API_ADDED(CEF_EXPERIMENTAL)
++
++#endif  // CEF_INCLUDE_CEF_CHROME_UI_H_
+diff --git a/libcef/browser/chrome/chrome_ui_hooks.h b/libcef/browser/chrome/chrome_ui_hooks.h
+new file mode 100644
+index 000000000..69577a4bb
+--- /dev/null
++++ b/libcef/browser/chrome/chrome_ui_hooks.h
+@@ -0,0 +1,63 @@
++// Copyright 2026 The Netnyahoo Authors. Portions copyright the Chromium
++// Embedded Framework Authors. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++#ifndef CEF_LIBCEF_BROWSER_CHROME_CHROME_UI_HOOKS_H_
++#define CEF_LIBCEF_BROWSER_CHROME_CHROME_UI_HOOKS_H_
++#pragma once
++
++#include <memory>
++
++#include "base/functional/callback_forward.h"
++#include "extensions/common/extension_id.h"
++
++class BrowserWindowInterface;
++
++namespace content {
++class RenderFrameHost;
++class WebContents;
++}  // namespace content
++
++namespace media_router {
++class MediaRouterUI;
++}
++
++namespace permissions {
++class ChooserController;
++}
++
++namespace cef {
++
++// Chrome UI surfaces the client may draw itself (CefChromeUIHandler in
++// include/cef_chrome_ui.h). Defined in chrome_ui_hooks.cc.
++
++// chrome::ShowDeviceChooserDialog: if the client shows its own chooser, takes
++// |controller|, sets |close_closure| (closes the client's chooser) and returns
++// true.
++bool HandleDeviceChooser(
++    content::RenderFrameHost* owner,
++    std::unique_ptr<permissions::ChooserController>* controller,
++    base::OnceClosure* close_closure);
++
++// MediaRouterDialogControllerViews: true if a client handler may take the
++// Cast dialog for |initiator| (Presentation API requests then go through
++// CreateMediaRouterDialog instead of the global media controls).
++bool WantsCastDialog(content::WebContents* initiator);
++
++// MediaRouterDialogControllerViews::CreateMediaRouterDialog, after the
++// MediaRouterUI exists: returns true if the client shows its own dialog for
++// |ui| (owned by the dialog controller; HideMediaRouterDialog ends it).
++bool HandleCastDialog(content::WebContents* initiator,
++                      media_router::MediaRouterUI* ui);
++
++// extensions::side_panel_util: opening (|open|) or closing an extension's side
++// panel. |web_contents| is the tab it's for, or null for the window's active
++// tab. Returns true if the client shows extension side panels itself.
++bool HandleExtensionSidePanel(BrowserWindowInterface* browser_window,
++                              content::WebContents* web_contents,
++                              const extensions::ExtensionId& extension_id,
++                              bool open);
++
++}  // namespace cef
++
++#endif  // CEF_LIBCEF_BROWSER_CHROME_CHROME_UI_HOOKS_H_
+diff --git a/libcef/browser/chrome/chrome_ui_hooks.cc b/libcef/browser/chrome/chrome_ui_hooks.cc
+new file mode 100644
+index 000000000..a13696b1c
+--- /dev/null
++++ b/libcef/browser/chrome/chrome_ui_hooks.cc
+@@ -0,0 +1,639 @@
++// Copyright 2026 The Netnyahoo Authors. Portions copyright the Chromium
++// Embedded Framework Authors. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++#include "cef/libcef/browser/chrome/chrome_ui_hooks.h"
++
++#include <map>
++#include <string>
++#include <vector>
++
++#include "base/base64.h"
++#include "base/functional/bind.h"
++#include "base/memory/weak_ptr.h"
++#include "base/no_destructor.h"
++#include "cef/include/cef_chrome_ui.h"
++#include "cef/libcef/browser/browser_host_base.h"
++#include "cef/libcef/browser/thread_util.h"
++#include "chrome/browser/extensions/api/side_panel/side_panel_service.h"
++#include "chrome/browser/media/router/media_router_feature.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/media_router/cast_dialog_controller.h"
++#include "chrome/browser/ui/media_router/cast_dialog_model.h"
++#include "chrome/browser/ui/media_router/media_cast_mode.h"
++#include "chrome/browser/ui/media_router/media_router_ui.h"
++#include "chrome/browser/ui/media_router/ui_media_sink.h"
++#include "components/media_router/browser/media_router_dialog_controller.h"
++#include "components/media_router/browser/media_router_metrics.h"
++#include "components/permissions/chooser_controller.h"
++#include "components/sessions/content/session_tab_helper.h"
++#include "components/tabs/public/tab_interface.h"
++#include "content/public/browser/desktop_media_id.h"
++#include "content/public/browser/render_frame_host.h"
++#include "content/public/browser/web_contents.h"
++#include "extensions/browser/extension_action.h"
++#include "extensions/browser/extension_action_manager.h"
++#include "extensions/browser/extension_registry.h"
++#include "extensions/common/extension.h"
++#include "ui/gfx/codec/png_codec.h"
++#include "ui/gfx/image/image.h"
++#include "ui/gfx/image/image_skia.h"
++#include "ui/gfx/image/image_skia_rep.h"
++
++namespace {
++
++CefRefPtr<CefChromeUIHandler>& Handler() {
++  static base::NoDestructor<CefRefPtr<CefChromeUIHandler>> handler;
++  return *handler;
++}
++
++CefRefPtr<CefBrowserHostBase> BrowserFor(content::WebContents* web_contents) {
++  return web_contents ? CefBrowserHostBase::GetBrowserForContents(web_contents)
++                      : nullptr;
++}
++
++content::WebContents* ContentsOf(CefRefPtr<CefBrowser> browser) {
++  auto host = CefBrowserHostBase::FromBrowser(browser);
++  return host ? host->GetWebContents() : nullptr;
++}
++
++std::string PngDataUrl(const gfx::Image& image) {
++  if (image.IsEmpty()) {
++    return std::string();
++  }
++  // The toolbar draws on Retina screens: the 2x representation (scaled from 1x
++  // if the extension gave only that).
++  const gfx::ImageSkiaRep& rep = image.ToImageSkia()->GetRepresentation(2.0f);
++  auto png = gfx::PNGCodec::EncodeBGRASkBitmap(rep.GetBitmap(),
++                                               /*discard_transparency=*/false);
++  if (!png) {
++    return std::string();
++  }
++  return "data:image/png;base64," + base::Base64Encode(*png);
++}
++
++// MARK: Device chooser
++
++class DeviceChooserImpl : public CefDeviceChooser,
++                          public permissions::ChooserController::View {
++ public:
++  explicit DeviceChooserImpl(
++      std::unique_ptr<permissions::ChooserController> controller)
++      : controller_(std::move(controller)) {
++    static int last_id = 0;
++    id_ = ++last_id;
++    controller_->set_view(this);
++  }
++  DeviceChooserImpl(const DeviceChooserImpl&) = delete;
++  DeviceChooserImpl& operator=(const DeviceChooserImpl&) = delete;
++
++  ~DeviceChooserImpl() override {
++    if (controller_) {
++      controller_->set_view(nullptr);
++    }
++  }
++
++  static std::map<int, CefRefPtr<DeviceChooserImpl>>& Live() {
++    static base::NoDestructor<std::map<int, CefRefPtr<DeviceChooserImpl>>>
++        live;
++    return *live;
++  }
++
++  // The client declined: Chrome's bubble gets the controller back.
++  std::unique_ptr<permissions::ChooserController> TakeController() {
++    open_ = false;
++    Live().erase(id_);
++    controller_->set_view(nullptr);
++    return std::move(controller_);
++  }
++
++  void Announced() { announced_ = true; }
++
++  // The owner (the page's request) closed the chooser.
++  void CloseFromChrome() {
++    if (!open_) {
++      return;
++    }
++    Finish(/*notify=*/true);
++  }
++
++  // CefDeviceChooser:
++  int GetIdentifier() override { return id_; }
++  bool IsOpen() override { return open_; }
++
++  CefRefPtr<CefDictionaryValue> GetState() override {
++    auto state = CefDictionaryValue::Create();
++    state->SetBool("open", open_);
++    auto options = CefListValue::Create();
++    if (open_ && controller_ && CEF_CURRENTLY_ON_UIT()) {
++      auto* c = controller_.get();
++      state->SetString("title", c->GetTitle());
++      state->SetString("okLabel", c->GetOkButtonLabel());
++      state->SetString("cancelLabel", c->GetCancelButtonLabel());
++      state->SetString("noOptionsText", c->GetNoOptionsText());
++      state->SetString("scanningText", c->GetThrobberLabelAndTooltip().first);
++      state->SetBool("refreshing", refreshing_);
++      state->SetBool("canRefresh", c->ShouldShowReScanButton());
++      state->SetBool("adapterOff", c->ShouldShowAdapterOffView() && !adapter_on_);
++      state->SetBool("unauthorized",
++                     c->ShouldShowAdapterUnauthorizedView() && !authorized_);
++      state->SetBool("bothButtonsEnabled", c->BothButtonsAlwaysEnabled());
++      state->SetBool("showSignal", c->ShouldShowIconBeforeText());
++      for (size_t i = 0; i < c->NumOptions(); ++i) {
++        auto option = CefDictionaryValue::Create();
++        option->SetString("name", c->GetOption(i));
++        option->SetBool("connected", c->IsConnected(i));
++        option->SetBool("paired", c->IsPaired(i));
++        option->SetInt("signal", c->ShouldShowIconBeforeText()
++                                     ? c->GetSignalStrengthLevel(i)
++                                     : -1);
++        options->SetDictionary(options->GetSize(), option);
++      }
++    }
++    state->SetList("options", options);
++    return state;
++  }
++
++  void Select(int index) override {
++    if (!CEF_CURRENTLY_ON_UIT()) {
++      CEF_POST_TASK(CEF_UIT,
++                    base::BindOnce(&DeviceChooserImpl::Select, this, index));
++      return;
++    }
++    if (!open_ || !controller_) {
++      return;
++    }
++    // A scanning prompt has no options to pick: OK allows it.
++    std::vector<size_t> indices;
++    if (index >= 0 && static_cast<size_t>(index) < controller_->NumOptions()) {
++      indices.push_back(static_cast<size_t>(index));
++    } else if (!controller_->BothButtonsAlwaysEnabled()) {
++      return;
++    }
++    CefRefPtr<DeviceChooserImpl> self(this);
++    Finish(/*notify=*/false);
++    controller_->Select(indices);
++    ReleaseController();
++  }
++
++  void Cancel() override {
++    if (!CEF_CURRENTLY_ON_UIT()) {
++      CEF_POST_TASK(CEF_UIT, base::BindOnce(&DeviceChooserImpl::Cancel, this));
++      return;
++    }
++    if (!open_ || !controller_) {
++      return;
++    }
++    CefRefPtr<DeviceChooserImpl> self(this);
++    Finish(/*notify=*/false);
++    controller_->Cancel();
++    ReleaseController();
++  }
++
++  void Refresh() override {
++    if (!CEF_CURRENTLY_ON_UIT()) {
++      CEF_POST_TASK(CEF_UIT, base::BindOnce(&DeviceChooserImpl::Refresh, this));
++      return;
++    }
++    if (open_ && controller_) {
++      controller_->RefreshOptions();
++    }
++  }
++
++  void OpenPermissionSettings() override {
++    if (!CEF_CURRENTLY_ON_UIT()) {
++      CEF_POST_TASK(
++          CEF_UIT,
++          base::BindOnce(&DeviceChooserImpl::OpenPermissionSettings, this));
++      return;
++    }
++    if (open_ && controller_) {
++      controller_->OpenPermissionPreferences();
++    }
++  }
++
++  // permissions::ChooserController::View:
++  void OnOptionsInitialized() override { Changed(); }
++  void OnOptionAdded(size_t index) override { Changed(); }
++  void OnOptionRemoved(size_t index) override { Changed(); }
++  void OnOptionUpdated(size_t index) override { Changed(); }
++  void OnAdapterEnabledChanged(bool enabled) override {
++    adapter_on_ = enabled;
++    Changed();
++  }
++  void OnAdapterAuthorizationChanged(bool authorized) override {
++    authorized_ = authorized;
++    Changed();
++  }
++  void OnRefreshStateChanged(bool refreshing) override {
++    refreshing_ = refreshing;
++    Changed();
++  }
++
++ private:
++  void Changed() {
++    if (open_ && announced_ && Handler()) {
++      Handler()->OnDeviceChooserChanged(this);
++    }
++  }
++
++  void Finish(bool notify) {
++    CefRefPtr<DeviceChooserImpl> self(this);
++    open_ = false;
++    Live().erase(id_);
++    if (notify && announced_ && Handler()) {
++      Handler()->OnDeviceChooserChanged(this);
++    }
++    if (notify) {
++      ReleaseController();
++    }
++  }
++
++  // The controller may still be calling us: let it go after this task.
++  void ReleaseController() {
++    if (!controller_) {
++      return;
++    }
++    controller_->set_view(nullptr);
++    CEF_POST_TASK(
++        CEF_UIT,
++        base::BindOnce(
++            [](std::unique_ptr<permissions::ChooserController> controller) {},
++            std::move(controller_)));
++  }
++
++  std::unique_ptr<permissions::ChooserController> controller_;
++  int id_;
++  bool open_ = true;
++  bool announced_ = false;
++  bool refreshing_ = false;
++  bool adapter_on_ = true;
++  bool authorized_ = true;
++
++  IMPLEMENT_REFCOUNTING(DeviceChooserImpl);
++};
++
++// MARK: Cast dialog
++
++std::string SinkState(media_router::UIMediaSinkState state) {
++  switch (state) {
++    case media_router::UIMediaSinkState::AVAILABLE:
++      return "available";
++    case media_router::UIMediaSinkState::CONNECTING:
++      return "connecting";
++    case media_router::UIMediaSinkState::CONNECTED:
++      return "connected";
++    case media_router::UIMediaSinkState::DISCONNECTING:
++      return "disconnecting";
++    case media_router::UIMediaSinkState::UNAVAILABLE:
++      return "unavailable";
++  }
++  return "unavailable";
++}
++
++class CastDialogImpl : public CefCastDialog,
++                       public media_router::CastDialogController::Observer {
++ public:
++  CastDialogImpl(content::WebContents* initiator,
++                 media_router::MediaRouterUI* ui)
++      : initiator_(initiator->GetWeakPtr()), ui_(ui->GetWeakPtr()) {
++    static int last_id = 0;
++    id_ = ++last_id;
++    // Reports the current model right away.
++    ui->AddObserver(this);
++  }
++  CastDialogImpl(const CastDialogImpl&) = delete;
++  CastDialogImpl& operator=(const CastDialogImpl&) = delete;
++
++  ~CastDialogImpl() override { Detach(); }
++
++  static std::map<int, CefRefPtr<CastDialogImpl>>& Live() {
++    static base::NoDestructor<std::map<int, CefRefPtr<CastDialogImpl>>> live;
++    return *live;
++  }
++
++  void Announced() { announced_ = true; }
++
++  void Detach() {
++    if (ui_) {
++      ui_->RemoveObserver(this);
++      ui_.reset();
++    }
++    open_ = false;
++    Live().erase(id_);
++  }
++
++  // CefCastDialog:
++  int GetIdentifier() override { return id_; }
++  bool IsOpen() override { return open_; }
++
++  CefRefPtr<CefDictionaryValue> GetState() override {
++    auto state = state_ ? state_->Copy(false) : CefDictionaryValue::Create();
++    state->SetBool("open", open_);
++    state->SetBool("castingStarted", casting_started_);
++    return state;
++  }
++
++  void StartCasting(const CefString& sink_id, int cast_mode) override {
++    if (!CEF_CURRENTLY_ON_UIT()) {
++      CEF_POST_TASK(CEF_UIT, base::BindOnce(&CastDialogImpl::StartCasting,
++                                            this, sink_id, cast_mode));
++      return;
++    }
++    if (ui_) {
++      ui_->StartCasting(sink_id.ToString(),
++                        static_cast<media_router::MediaCastMode>(cast_mode));
++    }
++  }
++
++  void StopCasting(const CefString& route_id) override {
++    if (!CEF_CURRENTLY_ON_UIT()) {
++      CEF_POST_TASK(CEF_UIT, base::BindOnce(&CastDialogImpl::StopCasting,
++                                            this, route_id));
++      return;
++    }
++    if (ui_) {
++      ui_->StopCasting(route_id.ToString());
++    }
++  }
++
++  void Close() override {
++    if (!CEF_CURRENTLY_ON_UIT()) {
++      CEF_POST_TASK(CEF_UIT, base::BindOnce(&CastDialogImpl::Close, this));
++      return;
++    }
++    if (!open_) {
++      return;
++    }
++    CefRefPtr<CastDialogImpl> self(this);
++    // Destroys the MediaRouterUI (OnControllerDestroying).
++    if (initiator_) {
++      media_router::MediaRouterDialogController::GetOrCreateForWebContents(
++          initiator_.get())
++          ->HideMediaRouterDialog();
++    }
++    if (open_) {
++      Detach();
++      Notify();
++    }
++  }
++
++  // media_router::CastDialogController::Observer:
++  void OnModelUpdated(const media_router::CastDialogModel& model) override {
++    auto state = CefDictionaryValue::Create();
++    state->SetString("header", model.dialog_header());
++    state->SetBool("permissionRejected", model.is_permission_rejected());
++    auto sinks = CefListValue::Create();
++    for (const auto& sink : model.media_sinks()) {
++      auto item = CefDictionaryValue::Create();
++      item->SetString("id", sink.id);
++      item->SetString("name", sink.friendly_name);
++      item->SetString("status", sink.GetStatusTextForDisplay());
++      item->SetString("state", SinkState(sink.state));
++      item->SetInt("icon", static_cast<int>(sink.icon_type));
++      int modes = 0;
++      for (auto mode : sink.cast_modes) {
++        modes |= static_cast<int>(mode);
++      }
++      item->SetInt("modes", modes);
++      item->SetString("routeId",
++                      sink.route ? sink.route->media_route_id() : std::string());
++      item->SetString("issue",
++                      sink.issue ? sink.issue->info().title : std::string());
++      sinks->SetDictionary(sinks->GetSize(), item);
++    }
++    state->SetList("sinks", sinks);
++    state_ = state;
++    Notify();
++  }
++
++  void OnCastingStarted() override {
++    casting_started_ = true;
++    Notify();
++  }
++
++  void OnControllerDestroying() override {
++    CefRefPtr<CastDialogImpl> self(this);
++    ui_.reset();
++    Detach();
++    Notify();
++  }
++
++ private:
++  void Notify() {
++    if (announced_ && Handler()) {
++      Handler()->OnCastDialogChanged(this);
++    }
++  }
++
++  base::WeakPtr<content::WebContents> initiator_;
++  base::WeakPtr<media_router::MediaRouterUI> ui_;
++  CefRefPtr<CefDictionaryValue> state_;
++  int id_;
++  bool open_ = true;
++  bool announced_ = false;
++  bool casting_started_ = false;
++
++  IMPLEMENT_REFCOUNTING(CastDialogImpl);
++};
++
++const extensions::Extension* EnabledExtension(content::WebContents* contents,
++                                              const CefString& extension_id) {
++  if (!contents) {
++    return nullptr;
++  }
++  return extensions::ExtensionRegistry::Get(contents->GetBrowserContext())
++      ->enabled_extensions()
++      .GetByID(extension_id.ToString());
++}
++
++int TabIdOf(content::WebContents* contents) {
++  const SessionID id = sessions::SessionTabHelper::IdForTab(contents);
++  return id.is_valid() ? id.id() : -1;
++}
++
++}  // namespace
++
++namespace cef {
++
++bool HandleDeviceChooser(
++    content::RenderFrameHost* owner,
++    std::unique_ptr<permissions::ChooserController>* controller,
++    base::OnceClosure* close_closure) {
++  CEF_REQUIRE_UIT();
++  auto handler = Handler();
++  auto browser =
++      owner ? BrowserFor(content::WebContents::FromRenderFrameHost(owner))
++            : nullptr;
++  if (!handler || !browser || !controller || !*controller) {
++    return false;
++  }
++  CefRefPtr<DeviceChooserImpl> chooser =
++      new DeviceChooserImpl(std::move(*controller));
++  DeviceChooserImpl::Live()[chooser->GetIdentifier()] = chooser;
++  if (!handler->OnDeviceChooser(browser.get(), chooser.get())) {
++    *controller = chooser->TakeController();
++    return false;
++  }
++  chooser->Announced();
++  *close_closure = base::BindOnce(
++      [](CefRefPtr<DeviceChooserImpl> chooser) { chooser->CloseFromChrome(); },
++      chooser);
++  return true;
++}
++
++bool WantsCastDialog(content::WebContents* initiator) {
++  return Handler() && BrowserFor(initiator);
++}
++
++bool HandleCastDialog(content::WebContents* initiator,
++                      media_router::MediaRouterUI* ui) {
++  CEF_REQUIRE_UIT();
++  auto handler = Handler();
++  auto browser = BrowserFor(initiator);
++  if (!handler || !browser || !ui) {
++    return false;
++  }
++  CefRefPtr<CastDialogImpl> dialog = new CastDialogImpl(initiator, ui);
++  CastDialogImpl::Live()[dialog->GetIdentifier()] = dialog;
++  if (!handler->OnCastDialog(browser.get(), dialog.get())) {
++    dialog->Detach();
++    return false;
++  }
++  dialog->Announced();
++  return true;
++}
++
++bool HandleExtensionSidePanel(BrowserWindowInterface* browser_window,
++                              content::WebContents* web_contents,
++                              const extensions::ExtensionId& extension_id,
++                              bool open) {
++  auto handler = Handler();
++  if (!handler) {
++    return false;
++  }
++  content::WebContents* contents = web_contents;
++  if (!contents && browser_window && browser_window->GetActiveTabInterface()) {
++    contents = browser_window->GetActiveTabInterface()->GetContents();
++  }
++  auto browser = BrowserFor(contents);
++  return browser &&
++         handler->OnExtensionSidePanel(browser.get(), extension_id, open);
++}
++
++}  // namespace cef
++
++void CefSetChromeUIHandler(CefRefPtr<CefChromeUIHandler> handler) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    CEF_POST_TASK(CEF_UIT, base::BindOnce(&CefSetChromeUIHandler, handler));
++    return;
++  }
++  Handler() = handler;
++}
++
++CefRefPtr<CefDictionaryValue> CefGetExtensionActionState(
++    CefRefPtr<CefBrowser> browser,
++    const CefString& extension_id) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return nullptr;
++  }
++  auto* contents = ContentsOf(browser);
++  const auto* extension = EnabledExtension(contents, extension_id);
++  auto* action = extension ? extensions::ExtensionActionManager::Get(
++                                 contents->GetBrowserContext())
++                                 ->GetExtensionAction(*extension)
++                           : nullptr;
++  if (!action) {
++    return nullptr;
++  }
++  const int tab_id = TabIdOf(contents);
++  auto state = CefDictionaryValue::Create();
++  state->SetString("title", action->GetTitle(tab_id));
++  state->SetString("badgeText", action->GetDisplayBadgeText(tab_id));
++  state->SetInt("badgeColor",
++                static_cast<int>(action->GetBadgeBackgroundColor(tab_id)));
++  state->SetInt("badgeTextColor",
++                static_cast<int>(action->GetBadgeTextColor(tab_id)));
++  state->SetString("popup", action->GetPopupUrl(tab_id).spec());
++  state->SetBool("enabled", action->GetIsVisible(tab_id));
++  gfx::Image icon = action->GetExplicitlySetIcon(tab_id);
++  if (icon.IsEmpty()) {
++    icon = action->GetDeclarativeIcon(tab_id);
++  }
++  state->SetString("icon", PngDataUrl(icon));
++  return state;
++}
++
++CefString CefGetExtensionSidePanel(CefRefPtr<CefBrowser> browser,
++                                   const CefString& extension_id) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return CefString();
++  }
++  auto* contents = ContentsOf(browser);
++  const auto* extension = EnabledExtension(contents, extension_id);
++  auto* service = extension ? extensions::SidePanelService::Get(
++                                  contents->GetBrowserContext())
++                            : nullptr;
++  if (!service) {
++    return CefString();
++  }
++  auto options = service->GetOptions(*extension, TabIdOf(contents));
++  if (!options.path || !options.enabled.value_or(false)) {
++    return CefString();
++  }
++  return extension->GetResourceURL(*options.path).spec();
++}
++
++bool CefShowCastDialog(CefRefPtr<CefBrowser> browser) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return false;
++  }
++  auto* contents = ContentsOf(browser);
++  if (!contents ||
++      !media_router::MediaRouterEnabled(contents->GetBrowserContext())) {
++    return false;
++  }
++  media_router::MediaRouterDialogController::GetOrCreateForWebContents(contents)
++      ->ShowMediaRouterDialog(
++          media_router::MediaRouterDialogActivationLocation::TOOLBAR);
++  return true;
++}
++
++bool CefChangeMediaCaptureSource(CefRefPtr<CefBrowser> capturer,
++                                 const CefString& source_id) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return false;
++  }
++  auto host = CefBrowserHostBase::FromBrowser(capturer);
++  const auto media_id = content::DesktopMediaID::Parse(source_id.ToString());
++  if (!host || media_id.type != content::DesktopMediaID::TYPE_WEB_CONTENTS) {
++    return false;
++  }
++  return host->GetMediaStreamRegistrar()->ChangeSource(media_id);
++}
++
++CefString CefGetMediaCaptureTarget(CefRefPtr<CefBrowser> capturer) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return CefString();
++  }
++  auto host = CefBrowserHostBase::FromBrowser(capturer);
++  if (!host) {
++    return CefString();
++  }
++  const auto media_id = host->GetMediaStreamRegistrar()->GetChangeableSource();
++  return media_id.is_null() ? CefString() : CefString(media_id.ToString());
++}
++
++bool CefStopMediaCapture(CefRefPtr<CefBrowser> capturer) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return false;
++  }
++  auto host = CefBrowserHostBase::FromBrowser(capturer);
++  return host && host->GetMediaStreamRegistrar()->StopScreenCaptures();
++}

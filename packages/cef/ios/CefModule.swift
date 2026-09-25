@@ -28,9 +28,6 @@ public class CefModule: Module {
     // Synchronous: it must land before the moved tab's views mount and unmount.
     Function("prepareTransfer") { (key: String) in NNBrowserView.prepareTransfer(key) }
     AsyncFunction("components") { NNCef.components }.runOnQueue(.main)
-    AsyncFunction("updateComponent") { (id: String, promise: Promise) in
-      NNCef.updateComponent(id) { promise.resolve($0) }
-    }.runOnQueue(.main)
 
     // Diagnostics
     AsyncFunction("beginTracing") { (promise: Promise) in
@@ -51,14 +48,6 @@ public class CefModule: Module {
     AsyncFunction("cancelDownload") { (id: String) in NNCef.cancelDownload(id) }.runOnQueue(.main)
     AsyncFunction("pauseDownload") { (id: String) in NNCef.pauseDownload(id) }.runOnQueue(.main)
     AsyncFunction("resumeDownload") { (id: String) in NNCef.resumeDownload(id) }.runOnQueue(.main)
-    AsyncFunction("openDownload") { (id: String) in
-      if let path = NNCef.path(forDownload: id) { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
-    }.runOnQueue(.main)
-    AsyncFunction("revealDownload") { (id: String) in
-      if let path = NNCef.path(forDownload: id) {
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-      }
-    }.runOnQueue(.main)
 
     // Permissions
     AsyncFunction("resolvePermission") { (id: String, result: String, remember: Bool?) in
@@ -66,14 +55,8 @@ public class CefModule: Module {
     }.runOnQueue(.main)
 
     // Profiles
-    AsyncFunction("clearProfileData") { (profile: String, promise: Promise) in
-      NNCef.clearData(forProfile: profile) { promise.resolve(nil) }
-    }.runOnQueue(.main)
-    AsyncFunction("deleteCookiesSince") { (profile: String, since: Double, promise: Promise) in
-      NNBrowsingData.deleteCookies(profile: profile, since: since) { promise.resolve($0) }
-    }.runOnQueue(.main)
-    AsyncFunction("clearHttpCache") { (profile: String, promise: Promise) in
-      NNBrowsingData.clearCache(profile: profile) { promise.resolve(nil) }
+    AsyncFunction("clearBrowsingData") { (profile: String, types: [String], since: Double?, promise: Promise) in
+      NNCef.clearBrowsingData(profile: profile, types: types, since: since ?? 0) { promise.resolve(nil) }
     }.runOnQueue(.main)
     AsyncFunction("releaseProfile") { (profile: String) in NNCef.releaseProfile(profile) }.runOnQueue(.main)
     AsyncFunction("deleteProfileData") { (profile: String) in
@@ -130,7 +113,6 @@ public class CefModule: Module {
     }.runOnQueue(.main)
 
     // Zoom
-    AsyncFunction("getZoom") { (profile: String, host: String) in NNZoom.zoom(profile: profile, host: host) }.runOnQueue(.main)
     AsyncFunction("setZoom") { (profile: String, host: String, zoom: Double) in
       NNZoom.setZoom(zoom, profile: profile, host: host)
     }.runOnQueue(.main)
@@ -163,7 +145,6 @@ public class CefModule: Module {
     AsyncFunction("allowSavingPasswords") { (profile: String, origin: String, promise: Promise) in
       NNPasswords.allowSaving(profile: profile, origin: origin) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("generatePassword") { NNPasswords.generatePassword() }.runOnQueue(.main)
     AsyncFunction("getPasswordAutofill") { (profile: String) in NNPasswords.autofillEnabled(profile: profile) }.runOnQueue(.main)
     AsyncFunction("setPasswordAutofill") { (profile: String, enabled: Bool) in
       NNPasswords.setAutofillEnabled(enabled, profile: profile)
@@ -221,9 +202,7 @@ public class CefModule: Module {
       AsyncFunction("stopLoading") { (view: CefWebView) in view.browser.stopLoading() }.runOnQueue(.main)
       AsyncFunction("focus") { (view: CefWebView) in view.browser.focusPage() }.runOnQueue(.main)
       AsyncFunction("setMuted") { (view: CefWebView, muted: Bool) in view.browser.setMuted(muted) }.runOnQueue(.main)
-      AsyncFunction("setZoom") { (view: CefWebView, zoom: Double) in view.browser.setZoomFactor(zoom) }.runOnQueue(.main)
       AsyncFunction("zoomStep") { (view: CefWebView, direction: Int) in view.browser.zoomStep(direction) }.runOnQueue(.main)
-      AsyncFunction("getZoom") { (view: CefWebView) in view.browser.zoomFactor }.runOnQueue(.main)
       AsyncFunction("find") { (view: CefWebView, text: String, forward: Bool, findNext: Bool) in
         view.browser.find(text, forward: forward, findNext: findNext)
       }.runOnQueue(.main)
@@ -231,19 +210,11 @@ public class CefModule: Module {
       AsyncFunction("print") { (view: CefWebView) in view.browser.print() }.runOnQueue(.main)
       AsyncFunction("showDevTools") { (view: CefWebView, panel: String?) in view.browser.showDevTools(panel: panel) }
         .runOnQueue(.main)
-      AsyncFunction("viewSource") { (view: CefWebView) in view.browser.viewSource() }.runOnQueue(.main)
-      AsyncFunction("exitFullscreen") { (view: CefWebView) in view.browser.exitFullscreen() }.runOnQueue(.main)
       AsyncFunction("executeJavaScript") { (view: CefWebView, code: String) in
         view.browser.executeJavaScript(code)
       }.runOnQueue(.main)
       AsyncFunction("evaluate") { (view: CefWebView, code: String, promise: Promise) in
         view.browser.evaluate(code) { json in promise.resolve(json) }
-      }.runOnQueue(.main)
-      AsyncFunction("getText") { (view: CefWebView, promise: Promise) in
-        view.browser.getText { promise.resolve($0) }
-      }.runOnQueue(.main)
-      AsyncFunction("getSource") { (view: CefWebView, promise: Promise) in
-        view.browser.getSource { promise.resolve($0) }
       }.runOnQueue(.main)
       AsyncFunction("navigationEntries") { (view: CefWebView, promise: Promise) in
         view.browser.navigationEntries { promise.resolve($0) }
@@ -259,7 +230,6 @@ public class CefModule: Module {
       AsyncFunction("mediaCommand") { (view: CefWebView, action: String, seconds: Double?) in
         view.browser.mediaCommand(action, seconds: seconds ?? 0)
       }.runOnQueue(.main)
-      AsyncFunction("getNowPlaying") { (view: CefWebView) in view.browser.nowPlaying }.runOnQueue(.main)
       AsyncFunction("requestPictureInPicture") { (view: CefWebView, promise: Promise) in
         view.browser.requestPictureInPicture { promise.resolve($0) }
       }.runOnQueue(.main)
@@ -279,7 +249,6 @@ public class CefModule: Module {
       AsyncFunction("resolvePasswordPrompt") { (view: CefWebView, action: String, username: String?, password: String?) in
         view.browser.resolvePasswordPrompt(action, username: username, password: password)
       }.runOnQueue(.main)
-      AsyncFunction("pendingPasswordPrompt") { (view: CefWebView) in view.browser.pendingPasswordPrompt }.runOnQueue(.main)
       AsyncFunction("setTabStrip") { (view: CefWebView, index: Int, pinned: Bool) in
         view.browser.setTabStrip(index: index, pinned: pinned)
       }.runOnQueue(.main)
@@ -299,8 +268,8 @@ public class CefModule: Module {
       AsyncFunction("resolveUnresponsive") { (view: CefWebView, terminate: Bool) in
         view.browser.resolveUnresponsive(terminate: terminate)
       }.runOnQueue(.main)
-      AsyncFunction("discard") { (view: CefWebView) in view.browser.discard() }.runOnQueue(.main)
-      AsyncFunction("isDiscarded") { (view: CefWebView) in view.browser.discarded }.runOnQueue(.main)
+      AsyncFunction("discard") { (view: CefWebView, unload: Bool?) in view.browser.discard(unload: unload ?? false) }
+        .runOnQueue(.main)
       AsyncFunction("setFrozen") { (view: CefWebView, frozen: Bool) in view.browser.frozen = frozen }.runOnQueue(.main)
 
       OnViewDidUpdateProps { (view: CefWebView) in view.propsDidUpdate() }
@@ -318,7 +287,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
     "onNowPlaying",
     "onMediaAccess",
     "onOpenWindow",
-    "onPopupWindow",
     "onPopupBlocked",
     "onFindResult",
     "onFullscreen",
@@ -327,7 +295,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
     "onUnresponsive",
     "onResponsive",
     "onLoadError",
-    "onCertificateError",
     "onSecurity",
     "onZoom",
     "onContentBlocked",
@@ -357,7 +324,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
   let onNowPlaying = EventDispatcher()
   let onMediaAccess = EventDispatcher()
   let onOpenWindow = EventDispatcher()
-  let onPopupWindow = EventDispatcher()
   let onPopupBlocked = EventDispatcher()
   let onFindResult = EventDispatcher()
   let onFullscreen = EventDispatcher()
@@ -366,7 +332,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
   let onUnresponsive = EventDispatcher()
   let onResponsive = EventDispatcher()
   let onLoadError = EventDispatcher()
-  let onCertificateError = EventDispatcher()
   let onSecurity = EventDispatcher()
   let onZoom = EventDispatcher()
   let onContentBlocked = EventDispatcher()
@@ -421,7 +386,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
     case "nowPlaying": onNowPlaying(payload)
     case "mediaAccess": onMediaAccess(payload)
     case "openWindow": onOpenWindow(payload)
-    case "popupWindow": onPopupWindow(payload)
     case "popupBlocked": onPopupBlocked(payload)
     case "find": onFindResult(payload)
     case "fullscreen": onFullscreen(payload)
@@ -430,7 +394,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
     case "unresponsive": onUnresponsive(payload)
     case "responsive": onResponsive(payload)
     case "loadError": onLoadError(payload)
-    case "certificateError": onCertificateError(payload)
     case "security": onSecurity(payload)
     case "zoom": onZoom(payload)
     case "contentBlocked": onContentBlocked(payload)

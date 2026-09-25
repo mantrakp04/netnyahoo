@@ -1,12 +1,22 @@
 // Chrome's own UI surfaces that the app draws instead (WP4 of
-// docs/research/chromium-ui-layer.md): the password save/update prompt and
-// extension toolbar actions. Chrome would anchor these to its toolbar, which the
-// ghost window hides. Each needs a hook of our CEF build (NNCefInternal.h); without
-// it Chrome's own bubble shows, or the action isn't available.
-// Objective-C++ only.
+// docs/research/chromium-ui-layer.md): the password save/update prompt,
+// extension toolbar actions and side panels, device choosers, the Cast dialog
+// and "Share this tab instead" (the last ones through NNChromeSurfaces.h).
+// Chrome would anchor these to its toolbar, which the ghost window hides. Each
+// needs a hook of our CEF build (NNCefInternal.h); without it Chrome's own
+// bubble shows, or the feature isn't available. Objective-C++ only.
 #pragma once
 
 #import "NNCefInternal.h"
+
+// include/cef_chrome_ui.h: CefSetChromeUIHandler and friends.
+#if NN_CHROME_TABS && defined(CEF_NN_CHROME_UI)
+#define NN_CHROME_UI 1
+#include "include/cef_chrome_ui.h"
+#include "include/cef_media_router.h"
+#else
+#define NN_CHROME_UI 0
+#endif
 
 namespace nn {
 class Client;

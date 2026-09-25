@@ -3,7 +3,7 @@ import { useContext } from "react";
 import { useBrowser } from "../store/browser";
 import { WindowContext } from "../store/hooks";
 import type { ProfileColor } from "../store/types";
-import { inactiveTint } from "./windowTint";
+import { activeTint, inactiveTint } from "./windowTint";
 
 /**
  * Chrome colors, taken from Dia's asset-catalog tokens and pixel samples of the
@@ -22,9 +22,13 @@ export type Theme = typeof dark & ProfileTheme & {
 
 const dark = {
   dark: true,
-  grain: 0.06,
-  // WindowContent/BaseTint: #121212 at 60% over the tint.
-  card: "rgba(18,18,18,0.6)",
+  // Window grain (multiplied over the tint). 1.49 captures gave 0.06; Dia 1.50.1's capture is almost
+  // grain-free once its gradient is removed (row-detrended noise 0.09 levels in the sidebar, 0.05 on
+  // the page). Our capture path shows 0.74× what the backdrop renders, so 0.006 gives ≈0.10 / 0.045.
+  grain: 0.006,
+  // WindowContent/BaseTint is #121212 at 60% over the tint; Dia 1.50's rebrand overrides it to 50%
+  // (fitted exactly from a 1.50.1 capture: page = tint·0.5 + 9 in every channel).
+  card: "rgba(18,18,18,0.5)",
   cardEdge: "rgba(0,0,0,0.35)",
   divider: "rgba(255,255,255,0.08)",
 
@@ -79,7 +83,7 @@ const dark = {
 const light: typeof dark = {
   dark: false,
   grain: 0.05,
-  card: "rgba(255,255,255,0.8)",
+  card: "rgba(255,255,255,0.7)", // rebrand override (1.49: 0.8); the pair to dark's 0.5, not yet seen in a light capture
   cardEdge: "rgba(0,0,0,0.08)",
   divider: "rgba(0,0,0,0.08)",
 
@@ -215,7 +219,13 @@ export function themeFor(key: string): Theme {
     const spec = color === "incognito" ? null : (PROFILE_COLORS[color] ?? PROFILE_COLORS.plum);
     // NewTabPageViewController (rebrand): neutral's band is grey (0.502) at 0.65, others the theme colour.
     const powerUpColor = !spec ? null : spec.palette ? (spec.powerUp ?? spec.swatch) : "#808080A6";
-    theme = { ...base, windowTintInactive: inactiveTint(base.windowTint, base.dark), logoPaint: spec?.palette ?? "neutral", powerUpColor };
+    theme = {
+      ...base,
+      windowTint: activeTint(base.windowTint, base.dark),
+      windowTintInactive: inactiveTint(base.windowTint, base.dark),
+      logoPaint: spec?.palette ?? "neutral",
+      powerUpColor,
+    };
     cache.set(key, theme);
   }
   return theme;

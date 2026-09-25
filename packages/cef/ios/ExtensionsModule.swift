@@ -6,32 +6,21 @@ public class ExtensionsModule: Module {
     Name("NetnyahooExtensions")
     Events("onChanged", "onTabs", "onInstallPrompt")
 
-    OnCreate {
-      NNExtensions.eventHandler = { [weak self] name, payload in
-        switch name {
-        case "changed": self?.sendEvent("onChanged", payload)
-        case "tabs": self?.sendEvent("onTabs", payload)
-        case "installPrompt": self?.sendEvent("onInstallPrompt", payload)
-        default: break
-        }
-      }
-    }
+    // Set as soon as the module exists (Chrome's install prompts come here, never to its hidden
+    // dialog) and again once JS listens: prompts Chrome still waits on are asked again then.
+    OnCreate { self.attach() }
+    OnStartObserving { self.attach() }
 
-    AsyncFunction("supportsInstallPrompt") { NNExtensions.supportsInstallPrompt }.runOnQueue(.main)
     AsyncFunction("resolveInstallPrompt") { (requestId: String, accepted: Bool) in
       NNExtensions.resolveInstallPrompt(requestId, accepted: accepted)
     }.runOnQueue(.main)
     AsyncFunction("list") { (profile: String, promise: Promise) in
       NNExtensions.list(profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("prepareWebStore") { (id: String, profile: String, promise: Promise) in
-      NNExtensions.prepareWebStore(id, profile: profile) { promise.resolve($0) }
-    }.runOnQueue(.main)
     AsyncFunction("inspectUnpacked") { (path: String) in NNExtensions.inspectUnpacked(path) }.runOnQueue(.main)
     AsyncFunction("install") { (path: String, profile: String, promise: Promise) in
       NNExtensions.install(path: path, profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("discardPrepared") { (path: String) in NNExtensions.discardPrepared(path) }.runOnQueue(.main)
     AsyncFunction("setEnabled") { (id: String, profile: String, enabled: Bool, promise: Promise) in
       NNExtensions.setEnabled(enabled, extension: id, profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)
@@ -44,10 +33,6 @@ public class ExtensionsModule: Module {
     AsyncFunction("configure") { (id: String, profile: String, options: [String: Any], promise: Promise) in
       NNExtensions.configure(id, profile: profile, options: options) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("actionState") { (profile: String, ids: [String], tabId: Int, promise: Promise) in
-      NNExtensions.actionState(profile: profile, extensions: ids, tabId: tabId) { promise.resolve($0) }
-    }.runOnQueue(.main)
-    AsyncFunction("setTabModel") { (model: [String: Any]) in NNExtensions.setTabModel(model) }.runOnQueue(.main)
     AsyncFunction("evaluateInHost") { (expression: String, profile: String, promise: Promise) in
       NNExtensions.evaluateInHost(expression, profile: profile, page: nil) { promise.resolve($0) }
     }.runOnQueue(.main)
@@ -65,5 +50,16 @@ public class ExtensionsModule: Module {
       panel.message = "Choose an extension folder (with a manifest.json)"
       panel.begin { response in promise.resolve(response == .OK ? panel.url?.path : nil) }
     }.runOnQueue(.main)
+  }
+
+  private func attach() {
+    NNExtensions.eventHandler = { [weak self] name, payload in
+      switch name {
+      case "changed": self?.sendEvent("onChanged", payload)
+      case "tabs": self?.sendEvent("onTabs", payload)
+      case "installPrompt": self?.sendEvent("onInstallPrompt", payload)
+      default: break
+      }
+    }
   }
 }

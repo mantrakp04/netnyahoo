@@ -279,7 +279,13 @@ what the macOS 26 SDK gives standard AppKit controls, menus and popovers. Our bu
    with a `CAKeyframeAnimation` on `sublayerTransform.translation.x` (key `space_swipe_settling`, linear, sampled
    every 1/240 s from the spring) and a **0.25 s** critically damped spring (0.4 s without). Rubber band unchanged:
    `255·(1 − 1/(0.15·x/255 + 1))`; no keyframes when the overshoot reaches 255pt.
-8. **Tab loading spinner** turns the other way: `transform.rotation.z` 0 → −2π (was +2π), 1.88 s, linear, repeating.
+8. **Tab loading spinner** turns the other way: `transform.rotation.z` 0 → −2π (was +2π), 1.88 s, linear, repeating
+   (`0x103d9e9a4`, key `activityRotation`). The view is unflipped, so −2π is clockwise on screen (1.49 turned
+   counter-clockwise). It's TabUI's private `ActivitySpinnerView` (`0x103dab0bc`): a `trackLayer` and a `ringLayer`
+   (CAShapeLayers, no fill, line width 1.5) on an ellipse in the bounds inset 1.25; the ring has round caps and
+   strokeEnd 0.72; colours `secondaryLabelColor` (ring) and the same at alpha 0.18 (track), resolved per appearance.
+   `TabContentView` shows it as its trailing affordance when the view model's `showsActivitySpinner` is set and the
+   row is at least 48 pt wide: 12 × 12 at x = width − 8 − 12, centred vertically (`0x103d9fea4`).
 9. Tab row background change fades 0.3 s easeOut (new, `0x103dbce4c`); an 82pt width gate and a 17.5pt bottom inset
    belong to the Tasks sidebar style (`TabGroupSidebarStyle.tasks`, AI, off by default).
 10. Settings: the Appearance pane (`better-days-appearance-settings-enabled`: Light/Dark/Automatic, app icon options)
@@ -348,7 +354,31 @@ and the glass orb. 1.50.1 shows a single-colour band at speed 1.0, a halo that r
 painted mark, and a completely flat page after ≈ 3.25 s.
 
 **Page background.** In the 1.50.1 capture the NTP page around the bar is (43, 37, 39) at the top to (46, 42, 42) at
-the bottom; the 1.49 recording (different capture path) read ≈ (25, 23, 24).
+the bottom; the 1.49 recording (different capture path) read ≈ (25, 23, 24). It is the content card over the window
+tint, and it fits #121212 at **0.5** over the tint exactly (page = 0.5·tint + 9 in every channel, all samples within 1
+level): the same #121212 0.5 / white 0.7 pair the binary sets next to `WindowBackgroundOverlayTintView` (`0x103b0e6f0`,
+the "selected tab" override in item 6), where 1.49's card was 0.6 / 0.8. The window tint itself reads (65, 50, 53) at
+the top to (73, 66, 67) at the bottom (key, plum), much lighter than 1.49's key values. The capture is opaque and the
+tint is the same across the window's width, so it isn't the desktop showing through
+(`WindowThemeBackgroundViewMetal` does make its CAMetalLayer non-opaque, `0x1042d73e8`).
+
+**Bar geometry, measured.** Fitting the capture's edges through its resampling (to 0.5 pt): the bar spans x 522.5 …
+1174.5 and y 375.5 … 487.5 in the 1512 × 949 window (card 190 … 1505 × 6 … 942), i.e. 652 × 112, 1 pt right of and
+1 pt below `x = midX − w/2`, `top = contentH/2 − 158 + 38` for the card's content area (1315 × 895).
+
+**Painted mark, fitted.** Fitting the orb outline (circle of diameter s minus a circle of radius s centred 1.25·s
+below, smooth-subtracted with k = 0.05·s) to the capture's silhouette: s = 76.5 (≈ 76.1 after the method's bias,
+checked on our own render), centre x 848.5, y 327.0 (≈ 326.9), i.e. **s = 76 = 19/21 of the 84 pt icon view** (the
+shape layer's 19/21 constant) with its centre **48.6 pt above the bar top** and 1 pt right of the page centre, like
+the bar. 1.49's glass orb measured 68.5 / 49.5.
+
+**Inside the bar** (same capture, dark): magnifier centre 30.5 pt below the bar top; the chip (31 pt between its
+border lines, 441.5 … 472.5) centred 30.5 pt above the bar bottom, with the mic and send button on the same line.
+The magnifier sits at x ≈ 30 pt from the bar's left edge and is about 14 pt wide; the placeholder is ~5 % narrower
+than ours at the same cap height.
+
+**Grain.** With the gradient removed row by row, the 1.50.1 window has almost no grain in the capture: 0.09 levels
+(sidebar) and 0.05 (page) of channel-mean noise. 1.49 captures needed a multiply grain of 0.06.
 
 ### Still unknown (needs a capture of Dia 1.50.1)
 - The painted mark's exact outline and position inside the 84pt view (particle uniforms), and the `shadeLayer` path.

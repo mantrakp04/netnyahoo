@@ -113,6 +113,9 @@ class Client : public CefClient,
 #if NN_TAB_STRIP
   void OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) override;
 #endif
+#if NN_TAB_DISCARD
+  void OnTabDiscardedChanged(CefRefPtr<CefBrowser> browser, bool discarded) override;
+#endif
 
   // CefRequestHandler
   bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request,
@@ -153,6 +156,8 @@ class Client : public CefClient,
   bool OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                             CefRefPtr<CefContextMenuParams> params, int command_id,
                             cef_event_flags_t event_flags) override;
+  bool RunContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params,
+                      CefRefPtr<CefMenuModel> model, CefRefPtr<CefRunContextMenuCallback> callback) override;
 
   // CefFocusHandler
   void OnGotFocus(CefRefPtr<CefBrowser> browser) override;
@@ -172,6 +177,8 @@ class Client : public CefClient,
 
  private:
   void OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, id data);
+  void ChromeTabContextMenu(CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params,
+                            CefRefPtr<CefMenuModel> model);
 
   __weak NNBrowserView *view_;
   NSString *profile_;
@@ -222,6 +229,8 @@ std::map<std::string, PendingPopup> &Popups();
 - (void)emit:(NSString *)name payload:(NSDictionary *)payload;
 - (void)browserCreated:(CefRefPtr<CefBrowser>)browser;
 - (void)browserClosed;
+/// Chrome discarded the tab, or it's loading again after that.
+- (void)tabDiscardedChanged:(BOOL)discarded;
 @property (nonatomic, readonly) BOOL closingByRequest;
 /// nullptr until the browser exists.
 @property (nonatomic, readonly) CefRefPtr<nn::Client> client;

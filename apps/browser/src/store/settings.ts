@@ -66,6 +66,8 @@ export type Settings = {
   sidebarWidth: number;
   /** On battery or in Low Power Mode, freeze CPU-heavy background tabs (lib/tabLifecycle). */
   batterySaver: boolean;
+  /** An extension side panel's width, dragged at its edge (Dia's extensionSidePanelPreferredWidth). */
+  extensionSidePanelWidth: number;
 
   // View
   showFullUrl: boolean;
@@ -110,6 +112,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoPictureInPicture: true,
   sidebarWidth: 190,
   batterySaver: true,
+  extensionSidePanelWidth: 360,
   showFullUrl: false,
   bookmarksBar: "never",
   hideBookmarksBarImport: false,

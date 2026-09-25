@@ -297,18 +297,9 @@ NSDictionary *SecurityInfo(CefRefPtr<CefBrowser> browser) {
   return info;
 }
 
-bool OnCertificateError(Client *client, cef_errorcode_t error, NSString *url, CefRefPtr<CefSSLInfo> info,
-                        CefRefPtr<CefCallback> callback) {
-  NSMutableDictionary *payload = [@{
-    @"url" : url,
-    @"code" : @(error),
-    @"errors" : CertErrorNames(info ? info->GetCertStatus() & kCertErrorMask : 0),
-  } mutableCopy];
-  if (info) {
-    if (NSDictionary *cert = CertificateInfo(info->GetX509Certificate())) payload[@"certificate"] = cert;
-  }
-  client->Emit(@"certificateError", payload);
-  // Cancel: Chromium shows its SSL interstitial (with "Proceed" for overridable errors).
+bool OnCertificateError(Client *, cef_errorcode_t, NSString *, CefRefPtr<CefSSLInfo>, CefRefPtr<CefCallback>) {
+  // Chrome shows its SSL interstitial (with "Proceed" for overridable errors); Site Controls
+  // read the page's certificate state from its security info.
   return false;
 }
 

@@ -14,12 +14,15 @@ import { webviews } from "./webviews";
 /**
  * Tab lifecycle, after Dia (changelog 1.5, 1.8, 1.40) and Chrome's Memory and
  * Energy Saver:
- * - Idle background tabs sleep: their browser is discarded (the page reloads
- *   when shown). The 10 most recently used tabs are protected, idle time only
- *   counts while the app is active, and memory pressure makes it eager.
+ * - Idle background tabs sleep: Chrome discards them (the page reloads when
+ *   shown, with its back/forward list; extensions see `discarded: true`). The 10
+ *   most recently used tabs are protected, idle time only counts while the app is
+ *   active, and memory pressure makes it eager. Chrome's own discarding (memory
+ *   pressure, chrome.tabs.discard) lands in the same state (`onDiscarded`).
  * - Tabs that play audio, capture, sit in a split, show PiP or hold unsaved
  *   form input never sleep.
- * - Profiles no window shows unload: their tabs sleep, then the engine context goes.
+ * - Profiles no window shows unload: their tabs' browsers close (history is lost), then
+ *   the engine context goes.
  * - Battery Saver: on battery or in Low Power Mode, CPU-heavy background tabs freeze.
  * - On launch a few recent background tabs reload, depending on the Mac.
  */
@@ -97,8 +100,10 @@ function shownTabIds(s: BrowserState): Set<string> {
   return shown;
 }
 
-/** Tabs with a web view whose browser is alive (mounted and not discarded). */
+/** Tabs with a web view whose page is loaded (mounted and not asleep). */
 const loadedTabIds = () => [...webviews.keys()].filter((id) => !useLifecycle.getState().discarded[id]);
+/** Asleep tabs whose browser closed (their profile unloading); the others are Chrome's discarded tabs. */
+const unloaded = new Set<string>();
 
 /** Why a background tab must keep its page as is, or null if it may sleep or freeze. */
 export function keepAliveReason(s: BrowserState, id: string): string | null {
@@ -157,16 +162,22 @@ async function hasUnsavedInput(handle: WebViewHandle): Promise<boolean | null> {
   return typeof result === "boolean" ? result : null;
 }
 
-/** Discards a background tab's browser if it's still safe to; true when it went to sleep. */
-export async function sleepTab(id: string): Promise<boolean> {
+/**
+ * Puts a background tab to sleep if it's still safe to; true when it went to sleep. `unload`
+ * closes its browser instead of discarding the page, so its profile can unload too.
+ */
+export async function sleepTab(id: string, unload = false): Promise<boolean> {
   const handle = webviews.get(id);
-  if (!handle || useLifecycle.getState().discarded[id]) return false;
-  const unsaved = useLifecycle.getState().frozen[id] ? (dirtyWhenFrozen.get(id) ?? null) : await hasUnsavedInput(handle);
+  const asleep = !!useLifecycle.getState().discarded[id];
+  if (!handle || unloaded.has(id) || (asleep && !unload)) return false;
+  // A discarded page has no input left to lose.
+  const l = useLifecycle.getState();
+  const unsaved = asleep ? false : l.frozen[id] ? (dirtyWhenFrozen.get(id) ?? null) : await hasUnsavedInput(handle);
   if (unsaved !== false) return false;
   // The check took a moment: the tab may have been shown, started playing…
   const s = store();
   if (shownTabIds(s).has(id) || keepAliveReason(s, id) || webviews.get(id) !== handle) return false;
-  await handle.discard();
+  if (await handle.discard({ unload })) unloaded.add(id);
   // Counted as asleep now (onDiscarded follows), so this sweep can release its profile.
   noteDiscarded(id);
   return true;
@@ -174,14 +185,14 @@ export async function sleepTab(id: string): Promise<boolean> {
 
 // MARK: Web view events (ContentCard)
 
-/** A tab's browser was created (first load, or back from sleep). */
+/** A tab's browser was created, or its discarded page is loading again (`onReady`). */
 export function noteReady(tabId: string) {
   const tab = store().tabs[tabId];
   if (tab) loadedProfiles.add(engineProfile(tab.profileId));
   forget(tabId, false);
 }
 
-/** The engine discarded the tab's browser (`onDiscarded`). */
+/** The engine discarded the tab: we did, or Chrome (memory pressure, an extension) did (`onDiscarded`). */
 export function noteDiscarded(tabId: string) {
   dirtyWhenFrozen.delete(tabId);
   useLifecycle.setState((l) => ({ discarded: { ...l.discarded, [tabId]: true }, frozen: omit(l.frozen, tabId) }));
@@ -194,6 +205,7 @@ export function noteGone(tabId: string) {
 
 function forget(tabId: string, all: boolean) {
   dirtyWhenFrozen.delete(tabId);
+  unloaded.delete(tabId);
   busyStreak.delete(tabId);
   if (all) hiddenAt.delete(tabId);
   const l = useLifecycle.getState();
@@ -234,9 +246,11 @@ export async function sweep(overrides: Partial<typeof POLICY> = {}): Promise<str
         .map((t) => t.id),
     );
     const unused = unusedProfiles(s, now, policy.profileIdleMs);
-    const candidates = loadedTabIds().filter((id) => {
+    // A discarded tab still holds its profile in the engine: an unused profile's close too.
+    const candidates = [...webviews.keys()].filter((id) => {
       const tab = s.tabs[id];
-      if (!tab || shown.has(id)) return false;
+      if (!tab || shown.has(id) || unloaded.has(id)) return false;
+      if (useLifecycle.getState().discarded[id]) return unused.has(tab.profileId);
       const idle = now - (hiddenAt.get(id) ?? now);
       if (!unused.has(tab.profileId) && (recent.has(id) || (pressure === "normal" && idle < policy.idleMs))) return false;
       return !keepAliveReason(s, id);
@@ -245,7 +259,7 @@ export async function sweep(overrides: Partial<typeof POLICY> = {}): Promise<str
     candidates.sort((a, b) => (hiddenAt.get(a) ?? now) - (hiddenAt.get(b) ?? now));
     for (const id of candidates) {
       if (slept.length >= policy.perSweep) break;
-      if (await sleepTab(id)) slept.push(id);
+      if (await sleepTab(id, unused.has(s.tabs[id]!.profileId))) slept.push(id);
     }
     releaseUnusedProfiles();
   } finally {
@@ -272,13 +286,15 @@ function unusedProfiles(s: BrowserState, now: number, idleMs: number): Set<strin
 
 /**
  * Drops the engine context of every profile with no live browser and no window
- * showing it (its last tab closed, or all its tabs sleep). The default profile
- * uses the global context, which stays; incognito ones go with their window.
+ * showing it (its last tab closed, or all its tabs unloaded). A discarded tab's
+ * browser is alive. The default profile uses the global context, which stays;
+ * incognito ones go with their window.
  */
 function releaseUnusedProfiles() {
   const s = store();
   const inUse = new Set(Object.values(s.windows).map((w) => engineProfile(w.profileId)));
-  for (const id of loadedTabIds()) {
+  for (const id of webviews.keys()) {
+    if (unloaded.has(id)) continue;
     const tab = s.tabs[id];
     if (tab) inUse.add(engineProfile(tab.profileId));
   }

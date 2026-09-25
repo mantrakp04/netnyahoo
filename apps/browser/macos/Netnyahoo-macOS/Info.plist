@@ -90,6 +90,8 @@
 	<string>Websites may ask to use your camera.</string>
 	<key>NSDockTilePlugIn</key>
 	<string>NetnyahooDockTile.plugin</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Netnyahoo finds Cast devices on your network so you can cast tabs to them.</string>
 	<key>NSLocationUsageDescription</key>
 	<string>Websites may ask to use your location.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

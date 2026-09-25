@@ -482,9 +482,8 @@
 
   // Native answers "hello" with which features to run in this frame.
   // MARK: Screen sharing — getDisplayMedia() through the app's source picker
-  // (screen / window / tab). Alloy Chromium has no picker and always shares the
-  // whole main screen; the picked source goes back in through Chromium's
-  // desktop-capture constraints.
+  // (screen / window / tab) instead of Chromium's; the picked source goes back in
+  // through Chromium's desktop-capture constraints.
   const displayRequests = new Map();
   let displaySeq = 0;
   const installDisplayMedia = () => {

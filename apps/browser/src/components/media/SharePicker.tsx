@@ -9,6 +9,7 @@ import { engineProfile } from "../../store/model";
 import { Popover, PromptButton } from "../layout/controls";
 import { usePages } from "../layout/pageState";
 import { Favicon, useHover } from "../primitives";
+import { noteTabShare } from "./ShareBar";
 import { useMedia } from "./state";
 
 /**
@@ -121,10 +122,15 @@ export function SharePicker({ tabId, paneWidth }: { tabId: string; paneWidth: nu
     if (!id) return;
     // A tab's capture id changes when its page moves to another renderer: ask right before sharing.
     if (isTab(id)) {
+      const shared = id.slice(TAB.length);
       void webviews
-        .get(id.slice(TAB.length))
+        .get(shared)
         ?.mediaCaptureSourceId()
-        .then((source) => answerDisplayMedia(tabId, source));
+        .then((source) => {
+          // The info bars offer "Share this tab instead" while it runs (ShareBar.tsx).
+          if (source) noteTabShare(tabId, shared, request.origin);
+          answerDisplayMedia(tabId, source);
+        });
       return;
     }
     if (sources.some((s) => s.id === id)) answerDisplayMedia(tabId, id);

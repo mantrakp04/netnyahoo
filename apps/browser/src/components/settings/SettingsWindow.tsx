@@ -92,9 +92,9 @@ function Pane({ pane, profileId }: { pane: SettingsPane; profileId: string | nul
     case "privacy":
       return <PrivacyPane />;
     case "passwords":
-      return <PasswordsPane />;
+      return <PasswordsPane profileId={profileId} />;
     case "autofill":
-      return <AutofillPane />;
+      return <AutofillPane profileId={profileId} />;
     case "extensions":
       return <ExtensionsPane />;
     case "search":

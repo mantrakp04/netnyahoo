@@ -1,9 +1,11 @@
 import { hapticTick } from "@netnyahoo/shell";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Animated, Easing, PanResponder, type ScrollView, type View } from "react-native";
+import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
+import { useWindowId } from "../../store/hooks";
 import type { TabPlacement } from "../../store/organize";
-import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag } from "../layout/tabDrag";
+import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag, useTabDrag } from "../layout/tabDrag";
 import { suppressHover } from "./hover";
 
 /**
@@ -108,9 +110,12 @@ class DragController {
       : [item];
     const token = (this.token = {});
     suppressHover(true);
-    // A single tab can also be dropped on the page, to split (layout/tabDrag shows the targets).
-    const single = this.sources.length === 1 && (item.kind === "row" || item.kind === "tile") ? item.tabIds[0] : undefined;
-    if (single) beginTabDrag(single);
+    // Tabs can also go onto another window or out into a new one, and a single tab onto
+    // the page to split (layout/tabDrag).
+    if (item.kind === "row" || item.kind === "tile") {
+      const single = this.sources.length === 1 ? (item.tabIds[0] ?? null) : null;
+      beginTabDrag(single, [...new Set(this.sources.flatMap((i) => i.tabIds))]);
+    }
     this.pointer = { x, y };
     this.measured = false;
     this.startScrollY = this.scrollY;
@@ -238,7 +243,7 @@ class DragController {
 
     const sidebar = this.viewport ?? this.rootFrame;
     const tiles = this.at(this.regionFrames.get("tiles") ?? null);
-    if (x > sidebar.x + sidebar.w + 40 || x < sidebar.x - 40) {
+    if (x > sidebar.x + sidebar.w + 40 || x < sidebar.x - 40 || useTabDrag.getState().outside) {
       drop = { type: "none" };
     } else if (tabsDrag && tiles && inside(tiles, x, y, 6)) {
       // Pinned tiles, row by row.
@@ -319,7 +324,40 @@ export function DragProvider({ children }: { children: (ghost: Ghost | null, con
   controller.setGhost = setGhost;
   controller.setDropInto = setDropInto;
   const value = useMemo(() => ({ controller, sources, dropInto }), [controller, sources, dropInto]);
-  return <DragContext.Provider value={value}>{children(ghost, controller)}</DragContext.Provider>;
+  return (
+    <DragContext.Provider value={value}>
+      {children(ghost, controller)}
+      <WindowDropHighlight />
+    </DragContext.Provider>
+  );
+}
+
+/** Tabs dragged from another window hover this one: its tab list lights up (dropping moves them here). */
+function WindowDropHighlight() {
+  const windowId = useWindowId();
+  const theme = useTheme();
+  const over = useTabDrag((d) => d.overWindow === windowId);
+  const glow = useMemo(() => new Animated.Value(0), []);
+  useEffect(() => {
+    Animated.timing(glow, { toValue: over ? 1 : 0, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+  }, [over]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        left: 5,
+        right: 5,
+        top: 44,
+        bottom: 6,
+        borderRadius: 10,
+        borderWidth: 1.5,
+        borderColor: theme.accent,
+        backgroundColor: theme.dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
+        opacity: glow,
+      }}
+    />
+  );
 }
 
 export const useDragController = () => useContext(DragContext)?.controller;

@@ -48,6 +48,8 @@ std::vector<CefRefPtr<Ghost>> gGhosts;
 std::map<int, Ghost *> gTabGhost;
 /// The ghost CreateTabInBrowser is adding a tab to (the tab's OnAfterCreated runs inside it).
 Ghost *gCreatingIn = nullptr;
+/// Inside TabShown's ActivateTab (Chrome focuses the tab it activates).
+bool gActivatingTab = false;
 
 Ghost *GhostFor(NSWindow *window, NSString *profile);
 Ghost *GhostOf(CefRefPtr<CefBrowser> browser);
@@ -238,6 +240,10 @@ class TabRouter : public CefClient,
                             CefRefPtr<CefContextMenuParams> params, int command, cef_event_flags_t flags) override {
     NN_FORWARD_RETURN(OnContextMenuCommand(browser, frame, params, command, flags), false)
   }
+  bool RunContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params,
+                      CefRefPtr<CefMenuModel> model, CefRefPtr<CefRunContextMenuCallback> callback) override {
+    NN_FORWARD_RETURN(RunContextMenu(browser, frame, params, model, callback), false)
+  }
   void OnGotFocus(CefRefPtr<CefBrowser> browser) override { NN_FORWARD(OnGotFocus(browser)) }
   bool OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event, CefEventHandle os_event,
                      bool *is_keyboard_shortcut) override {
@@ -249,6 +255,11 @@ class TabRouter : public CefClient,
   bool OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) override {
     NN_FORWARD_RETURN(OnChromeCommand(browser, command_id, disposition), false)
   }
+#if NN_TAB_DISCARD
+  void OnTabDiscardedChanged(CefRefPtr<CefBrowser> browser, bool discarded) override {
+    NN_FORWARD(OnTabDiscardedChanged(browser, discarded))
+  }
+#endif
 #undef NN_FORWARD
 #undef NN_FORWARD_RETURN
 
@@ -409,6 +420,8 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     if (ghost.alphaValue != 0) ghost.alphaValue = 0;
     ScheduleLayout();
   }
+
+  NNBrowserView *Shown() const { return shown_; }
 
   /// The page the window shows now (Chrome's dialogs center on it).
   void SetShown(NNBrowserView *view) {
@@ -748,6 +761,8 @@ namespace nn::host {
 
 bool ChromeTabs() { return NN_CHROME_TABS; }
 
+bool ActivatingTab() { return gActivatingTab; }
+
 bool Hostable(NNBrowserView *view) {
   NSWindow *window = view.window;
   // Only app windows: popup and PiP windows (and extension popups) are their own business.
@@ -795,6 +810,48 @@ void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, con
   CefBrowserHost::CreateBrowser(info, client, ToCef(url), settings, nullptr, context);
 }
 
+bool CreateTabWithHistory(NNBrowserView *view, CefRefPtr<Client> client, CefRefPtr<CefBrowser> source, NSString *state,
+                          NSString *url, const CefBrowserSettings &settings) {
+#if NN_TAB_HISTORY
+  if (!Hostable(view) || (source && !IsChromeTab(source))) return false;
+  Ghost *ghost = GhostFor(view.window, view.profile);
+  // Only a tab of this window's Browser can be copied in place; any other gives its list.
+  if (source && GhostOf(source) != ghost) {
+    state = ToNS(source->GetHost()->GetNavigationState());
+    source = nullptr;
+  }
+  if (!source && !state.length) return false;
+  // A window without a Browser of this profile gets one, founded by a placeholder (a restored
+  // tab can't found it), as when a tab moves in.
+  if (!ghost) (ghost = NewGhost(view.window, view.profile))->Start();
+  NSString *navigationState = [state copy], *fallbackURL = [url copy];
+  CefBrowserSettings tabSettings = settings;
+  __weak NNBrowserView *weakView = view;
+  ghost->WhenReady(^(Ghost *g) {
+    NNBrowserView *target = weakView;
+    if (!target || !client->View()) return;
+    CefRefPtr<CefBrowser> any = g->AnyTab();
+    CefRefPtr<CefBrowser> tab;
+    gCreatingIn = g;
+    if (source && source->IsValid() && GhostOf(source) == g)
+      tab = source->GetHost()->DuplicateTab(client, tabSettings, nullptr);
+    else if (any && navigationState.length)
+      tab = CefBrowserHost::RestoreTabInBrowser(any, client, ToCef(navigationState), tabSettings, nullptr);
+    gCreatingIn = nullptr;
+    if (tab) {
+      gTabGhost[tab->GetIdentifier()] = g;
+      g->DropAnchor();
+      return;
+    }
+    // The engine refused (source gone, bad state): a plain tab at the URL.
+    CreateTab(target, client, fallbackURL.length ? fallbackURL : @"about:blank", tabSettings);
+  });
+  return true;
+#else
+  return false;
+#endif
+}
+
 void ConfigurePopup(CefWindowInfo &info, NSSize size) {
   // Chrome adds it to the opener's Browser as a tab; the app adopts it (as a tab, or
   // into its popup window).
@@ -826,10 +883,14 @@ void TabShown(NNBrowserView *view) {
   if (!ghost || ghost->Parent() != view.window) return;
   ghost->SetShown(view);
 #if NN_CHROME_TABS
-  // Later in this turn: a tab being created isn't in Chrome's tab strip yet.
+  // Later in this turn: a tab being created isn't in Chrome's tab strip yet. Only the last view
+  // shown (two split panes are shown together; the focused one comes last).
   dispatch_async(dispatch_get_main_queue(), ^{
-    if (view.visible && view.client && view.client->Browser() && view.client->Browser()->IsSame(browser))
-      browser->GetHost()->ActivateTab();
+    if (!view.visible || !view.client || !view.client->Browser() || !view.client->Browser()->IsSame(browser)) return;
+    if (!Live(ghost) || ghost->Shown() != view) return;
+    gActivatingTab = true;
+    browser->GetHost()->ActivateTab();
+    gActivatingTab = false;
   });
 #endif
 }

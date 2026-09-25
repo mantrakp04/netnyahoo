@@ -381,6 +381,91 @@ final class FadeLabel: ExpoView {
   }
 }
 
+/// Dia's tab loading spinner (TabUI `ActivitySpinnerView`, in a tab row's trailing slot):
+/// a faint track ring and a 72% arc, both 1.5pt wide on an ellipse inset 1.25pt, in
+/// secondaryLabelColor (the track at alpha 0.18), turning once per 1.88 s. Dia 1.50 animates
+/// `transform.rotation.z` 0 → −2π in its unflipped (y-up) view, which is clockwise on screen;
+/// 1.49 used +2π, counter-clockwise.
+public class ActivitySpinnerModule: Module {
+  public func definition() -> ModuleDefinition {
+    Name("NetnyahooActivitySpinner")
+
+    View(ActivitySpinner.self) {}
+  }
+}
+
+final class ActivitySpinner: ExpoView {
+  private let track = CAShapeLayer()
+  private let ring = CAShapeLayer()
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+    wantsLayer = true
+    for shape in [track, ring] {
+      shape.fillColor = nil
+      shape.lineWidth = 1.5
+    }
+    ring.lineCap = .round
+    ring.strokeStart = 0
+    ring.strokeEnd = 0.72
+  }
+
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+  override func setFrameSize(_ newSize: NSSize) {
+    super.setFrameSize(newSize)
+    relayout()
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    relayout()
+    spin()
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    recolor()
+  }
+
+  /// Sublayers, not the backing layer: RCTView resets its own layer's properties on updates.
+  private func relayout() {
+    guard let layer else { return }
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    for shape in [track, ring] where shape.superlayer !== layer { layer.addSublayer(shape) }
+    let path = CGPath(ellipseIn: bounds.insetBy(dx: 1.25, dy: 1.25), transform: nil)
+    for shape in [track, ring] {
+      shape.frame = bounds
+      shape.path = path
+    }
+    CATransaction.commit()
+    recolor()
+  }
+
+  private func recolor() {
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      track.strokeColor = NSColor.secondaryLabelColor.withAlphaComponent(0.18).cgColor
+      ring.strokeColor = NSColor.secondaryLabelColor.cgColor
+    }
+  }
+
+  /// Removed when the view leaves its window, so re-added on every move.
+  private func spin() {
+    guard window != nil, ring.animation(forKey: "activityRotation") == nil else { return }
+    let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+    turn.fromValue = 0
+    // Dia's −2π is in y-up coordinates; this view is flipped (y-down), where the same on-screen
+    // turn is +2π.
+    turn.toValue = isFlipped ? 2 * Double.pi : -2 * Double.pi
+    turn.duration = 1.88
+    turn.repeatCount = .infinity
+    turn.timingFunction = CAMediaTimingFunction(name: .linear)
+    turn.isRemovedOnCompletion = false
+    ring.add(turn, forKey: "activityRotation")
+  }
+}
+
 // One view per module: on the legacy architecture Expo's view-manager adapter
 // instantiates a module's first view class for every view it declares.
 public class SymbolModule: Module {

@@ -1,5 +1,4 @@
-// Extension packages: Chrome Web Store CRX downloads (CRX3 parsing and
-// signature checks), unpacking, and reading manifests for the install dialog
+// Extension folders: reading manifests for the install dialog (Load Unpacked)
 // and the toolbar. Objective-C++ only.
 #pragma once
 
@@ -9,13 +8,6 @@ namespace nn::ext {
 
 /// "abcdefghijklmnopabcdefghijklmnop" (32 letters a–p).
 bool IsExtensionId(NSString *s);
-
-/// Downloads the store's current CRX for `extensionId`, verifies it and unpacks
-/// it into a fresh folder under `stagingRoot`. The manifest gets the CRX's
-/// public key as `key`, so the unpacked extension keeps the store id.
-/// Completion (main queue): the folder, or nil and an error message.
-void DownloadFromWebStore(NSString *extensionId, NSString *chromiumVersion, NSString *stagingRoot,
-                          void (^completion)(NSString *folder, NSString *error));
 
 /// Manifest facts for UI: {id?, name, version, description, manifestVersion, icon (data URL),
 /// permissions, optionalPermissions, hostPermissions (incl. content script matches), popup,

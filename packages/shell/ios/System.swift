@@ -1,6 +1,5 @@
 import AppKit
 import ExpoModulesCore
-import LocalAuthentication
 import UniformTypeIdentifiers
 import ServiceManagement
 
@@ -54,22 +53,6 @@ public class SystemModule: Module {
         try SMAppService.mainApp.unregister()
       }
     }.runOnQueue(.main)
-
-    // MARK: Authentication
-
-    /// Touch ID, or the login password when Touch ID isn't available (Passwords
-    /// settings). Resolves with whether the user authenticated.
-    AsyncFunction("authenticate") { (reason: String, promise: Promise) in
-      let context = LAContext()
-      var error: NSError?
-      guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-        // No passcode / biometrics configured: nothing to check against.
-        return promise.resolve(true)
-      }
-      context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { ok, _ in
-        promise.resolve(ok)
-      }
-    }
 
     // MARK: Files
 

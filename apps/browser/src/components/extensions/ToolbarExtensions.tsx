@@ -1,8 +1,10 @@
-import type { InstalledExtension } from "@netnyahoo/cef";
+import { terminateCastRoute, type CastRoute, type InstalledExtension } from "@netnyahoo/cef";
 import { ContextMenuArea, showMenu, Symbol } from "@netnyahoo/shell";
 import { useMemo, useRef } from "react";
 import { Image, Pressable, Text, View } from "react-native";
+import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
+import { toggleCastPicker, useCastRoutes } from "../media/cast";
 import type { ToolbarPalette } from "../layout/toolbarColors";
 import { usePages } from "../layout/pageState";
 import { useHover } from "../primitives";
@@ -31,10 +33,11 @@ function useToolbarExtensions(windowId: string) {
   }, [list]);
 }
 
-/** Width the toolbar reserves at its right end for the extension buttons. */
+/** Width the toolbar reserves at its right end for the extension (and cast) buttons. */
 export function useToolbarExtensionsWidth(windowId: string): number {
   const { pinned, overflow } = useToolbarExtensions(windowId);
-  const count = pinned.length + (overflow ? 1 : 0);
+  const casting = useCastRoutes(windowId).length > 0;
+  const count = pinned.length + (overflow ? 1 : 0) + (casting ? 1 : 0);
   return count ? count * BUTTON + 6 : 0;
 }
 
@@ -56,13 +59,15 @@ export function ToolbarExtensions({
   right: number;
 }) {
   const { pinned, overflow } = useToolbarExtensions(windowId);
+  const routes = useCastRoutes(windowId);
   const browserId = usePages((p) => {
     for (const [id, tab] of Object.entries(p.browsers)) if (tab === tabId) return Number(id);
     return 0;
   });
-  if (!pinned.length && !overflow) return null;
+  if (!pinned.length && !overflow && !routes.length) return null;
   return (
     <View style={{ position: "absolute", top, right, flexDirection: "row" }}>
+      {routes.length ? <CastButton windowId={windowId} routes={routes} palette={palette} /> : null}
       {pinned.map((ext) => (
         <ExtensionButton key={ext.id} ext={ext} windowId={windowId} browserId={browserId} palette={palette} />
       ))}
@@ -94,6 +99,8 @@ function ExtensionButton({ ext, windowId, browserId, palette }: { ext: Installed
   const badge = state?.badgeText ?? "";
   const dimmed = state ? !state.enabled : false;
   const title = state?.title || ext.actionTitle || ext.name;
+  // action.setIcon's image for this tab, else the manifest's.
+  const icon = state?.icon || ext.actionIcon || ext.icon;
   return (
     <View ref={ref} tooltip={title} {...hoverProps} onLayout={() => void measure()}>
       <ContextMenuArea onContextMenu={() => void showExtensionMenu(windowId, ext)}>
@@ -109,8 +116,8 @@ function ExtensionButton({ ext, windowId, browserId, palette }: { ext: Installed
                 backgroundColor: pressed || open ? palette.pressed : hovered ? palette.hover : undefined,
               }}
             >
-              {ext.actionIcon || ext.icon ? (
-                <Image source={{ uri: ext.actionIcon || ext.icon }} style={{ width: 16, height: 16, opacity: dimmed ? 0.45 : 1 }} />
+              {icon ? (
+                <Image source={{ uri: icon }} style={{ width: 16, height: 16, opacity: dimmed ? 0.45 : 1 }} />
               ) : (
                 <Symbol name="puzzlepiece.extension" size={14} color={palette.icon} style={{ width: 18, height: 18 }} />
               )}
@@ -124,7 +131,7 @@ function ExtensionButton({ ext, windowId, browserId, palette }: { ext: Installed
 }
 
 /** Chrome's badge: a small rounded label over the icon's bottom-right corner (max 4 characters). */
-function Badge({ text, color, textColor }: { text: string; color?: string; textColor?: string | null }) {
+function Badge({ text, color, textColor }: { text: string; color?: string | null; textColor?: string | null }) {
   const fill = color && color !== "#000000" ? color : "#5F6368";
   return (
     <View
@@ -153,6 +160,47 @@ function contrastText(hex: string) {
   const n = parseInt(hex.slice(1, 7), 16);
   const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   return 0.299 * r + 0.587 * g + 0.114 * b > 160 ? "#000000" : "#FFFFFF";
+}
+
+/**
+ * Chrome's cast toolbar state: while something casts from this profile, a highlighted cast
+ * button. Click: the Cast picker for the page; the menu (right-click) stops a cast.
+ */
+function CastButton({ windowId, routes, palette }: { windowId: string; routes: CastRoute[]; palette: ToolbarPalette }) {
+  const theme = useTheme();
+  const { hovered, hoverProps } = useHover();
+  const tooltip = routes.map((r) => (r.description ? `${r.description} on ${r.sink}` : `Casting to ${r.sink}`)).join("\n");
+  const menu = async () => {
+    const choice = await showMenu([
+      ...routes.map((r) => ({ id: `stop:${r.id}`, title: `Stop Casting to ${r.sink}`, symbol: "stop.circle" })),
+      { separator: true as const },
+      { id: "open", title: "Cast…", symbol: "tv.and.mediabox" },
+    ]);
+    if (choice === "open") void toggleCastPicker(windowId);
+    else if (choice?.startsWith("stop:")) void terminateCastRoute(choice.slice(5));
+  };
+  return (
+    <View tooltip={tooltip} {...hoverProps}>
+      <ContextMenuArea onContextMenu={() => void menu()}>
+        <Pressable onPress={() => void toggleCastPicker(windowId)}>
+          {({ pressed }) => (
+            <View
+              style={{
+                width: BUTTON,
+                height: BUTTON,
+                borderRadius: 7,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: pressed ? palette.pressed : hovered ? palette.hover : undefined,
+              }}
+            >
+              <Symbol name="tv.and.mediabox.fill" size={14} color={theme.accent} style={{ width: 18, height: 18 }} />
+            </View>
+          )}
+        </Pressable>
+      </ContextMenuArea>
+    </View>
+  );
 }
 
 /** Lists every extension (open its popup), then Pin / Manage Extensions. */

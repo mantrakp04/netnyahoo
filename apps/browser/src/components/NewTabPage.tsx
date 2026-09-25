@@ -6,18 +6,6 @@ import { hex, useTheme } from "../lib/theme";
 import { NewTabExtras } from "./ntp";
 import { Omnibox } from "./Omnibox";
 
-const BAR_HEIGHT = 110;
-/** Dia's logo box (the circle's diameter), measured: its centre sits 49.5pt above the bar. */
-const LOGO_SIZE = 68.5;
-const LOGO_CENTER_ABOVE_BAR = 49.5;
-/** OrbView draws the logo inset by this much so its antialiased edge isn't clipped. */
-const ORB_PAD = 2;
-const SHOW_ORB = true;
-/**
- * NewTabAreaLightView.negateAngle (= showDiaIcon, true with the logo shown): flips and halves the
- * tilt. It would also halve the intensity, but Dia computes intensity before the flag is set.
- */
-const NEGATE_ANGLE = true;
 /**
  * Dia 1.50's rebrand (`ntp-rebrand-enabled`, rolled out remotely): the mark is painted, the bar
  * gets a shadow, and the page's light configuration turns off both the area light and the edge
@@ -26,6 +14,31 @@ const NEGATE_ANGLE = true;
  * opaque AssistantPanel background instead of a translucent panel over the light.
  */
 const REBRAND = true;
+/** The bar's height before its first layout, so the halo is placed right from the first frame. */
+const BAR_HEIGHT = 112;
+/**
+ * The logo's circle (its diameter) and how far its centre sits above the bar top. 1.49's glass orb
+ * was measured from the screen: 68.5, 49.5. 1.50's painted mark, fitted to the 1.50.1 capture
+ * with the orb's own outline (scratchpad r3/markfit.py): 76 (19/21 of Dia's 84pt icon view, the
+ * shape layer's radius constant) and 48.6 (the icon view is centred 48 above the bar).
+ */
+const LOGO_SIZE = REBRAND ? 76 : 68.5;
+const LOGO_CENTER_ABOVE_BAR = REBRAND ? 48.6 : 49.5;
+/**
+ * Measured on Dia 1.50.1 (rec150 intro, edges fitted to 0.5pt through the capture's resampling):
+ * its bar, and the mark above it, sit 1pt right of and 1pt below where NewTabPageViewController's
+ * formulas put them for our card size, as if its New Tab view were 2pt larger than the card's
+ * content area. The bar is 112pt tall (the hero Omnibox's rows).
+ */
+const DIA_OFFSET = 1;
+/** OrbView draws the logo inset by this much so its antialiased edge isn't clipped. */
+const ORB_PAD = 2;
+const SHOW_ORB = true;
+/**
+ * NewTabAreaLightView.negateAngle (= showDiaIcon, true with the logo shown): flips and halves the
+ * tilt. It would also halve the intensity, but Dia computes intensity before the flag is set.
+ */
+const NEGATE_ANGLE = true;
 
 type Frame = { x: number; y: number; width: number; height: number };
 type Size = { width: number; height: number };
@@ -34,7 +47,7 @@ const frameStyle = (f: Frame) => ({ left: f.x, top: f.y, width: f.width, height:
 
 function logoFrame(viewWidth: number, barTop: number): Frame {
   const r = LOGO_SIZE / 2;
-  return { x: viewWidth / 2 - r, y: barTop - LOGO_CENTER_ABOVE_BAR - r, width: LOGO_SIZE, height: LOGO_SIZE };
+  return { x: viewWidth / 2 + DIA_OFFSET - r, y: barTop - LOGO_CENTER_ABOVE_BAR - r, width: LOGO_SIZE, height: LOGO_SIZE };
 }
 
 const outset = (f: Frame, d: number): Frame => ({ x: f.x - d, y: f.y - d, width: f.width + 2 * d, height: f.height + 2 * d });
@@ -95,8 +108,8 @@ export function NewTabPage({ tabId }: { tabId: string }) {
   if (!size) return <View style={{ flex: 1 }} onLayout={(e) => setSize(e.nativeEvent.layout)} />;
 
   const width = barWidth(size.width);
-  const x = Math.max(size.width / 2 - width / 2, 14);
-  const top = Math.max(size.height / 2 - 158, 100) + 38;
+  const x = Math.max(size.width / 2 - width / 2, 14) + DIA_OFFSET;
+  const top = Math.max(size.height / 2 - 158, 100) + 38 + DIA_OFFSET;
 
   // NewTabAreaLightView: the emitter is the panel inset by 8; taller panels sit lower and flatter.
   const r = (panelHeight - 112) / 240;

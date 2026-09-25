@@ -41,7 +41,6 @@ typedef void (^NNEventHandler)(NSString *name, NSDictionary<NSString *, id> *pay
 + (void)cancelDownload:(NSString *)downloadId;
 + (void)pauseDownload:(NSString *)downloadId;
 + (void)resumeDownload:(NSString *)downloadId;
-+ (nullable NSString *)pathForDownload:(NSString *)downloadId;
 
 /// Answers a "permission" event. `result`: "accept" | "deny" | "dismiss".
 /// `remember` stores the decision for the origin (no prompt next time);
@@ -49,8 +48,14 @@ typedef void (^NNEventHandler)(NSString *name, NSDictionary<NSString *, id> *pay
 + (void)resolvePermission:(NSString *)requestId result:(NSString *)result remember:(BOOL)remember
     NS_SWIFT_NAME(resolvePermission(_:result:remember:));
 
-/// Deletes cookies, cache and site data for a profile ("" = default profile).
-+ (void)clearDataForProfile:(NSString *)profile completion:(void (^)(void))completion;
+/// Deletes a profile's browsing data ("" = default profile) since `sinceMs` (ms since 1970; 0 =
+/// all time). `types`: "history" (the engine's own history), "siteData" (cookies and every kind
+/// of site storage), "cache", "downloads" (the engine's download history).
++ (void)clearBrowsingDataForProfile:(NSString *)profile
+                              types:(NSArray<NSString *> *)types
+                              since:(double)sinceMs
+                         completion:(void (^)(void))completion
+    NS_SWIFT_NAME(clearBrowsingData(profile:types:since:completion:));
 /// Drops an ephemeral (incognito) profile's in-memory context.
 + (void)releaseProfile:(NSString *)profile;
 /// The on-disk root for all profiles (Application Support/<bundle id>/Chromium).
@@ -67,9 +72,6 @@ typedef void (^NNEventHandler)(NSString *name, NSDictionary<NSString *, id> *pay
 /// Chromium components (e.g. Widevine CDM "oimompecagnajdejgnnjijobebaeigek"):
 /// [{id, name, version, state}].
 @property (class, nonatomic, readonly) NSArray<NSDictionary<NSString *, id> *> *components;
-/// Checks for / installs an update now. Completion gets {id, error} (error null on success).
-+ (void)updateComponent:(NSString *)componentId completion:(void (^)(NSDictionary<NSString *, id> *result))completion
-    NS_SWIFT_NAME(updateComponent(_:completion:));
 @end
 
 @interface NNCef (Diagnostics)
@@ -133,7 +135,6 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 
 /// Chrome's per-host zoom (all tabs of a host share it; Chrome saves it per profile).
 @interface NNZoom : NSObject
-+ (double)zoomForProfile:(NSString *)profile host:(NSString *)host NS_SWIFT_NAME(zoom(profile:host:));
 + (void)setZoom:(double)zoom profile:(NSString *)profile host:(NSString *)host NS_SWIFT_NAME(setZoom(_:profile:host:));
 /// {host: zoom} for hosts with a non-default level.
 + (NSDictionary<NSString *, NSNumber *> *)zoomLevelsForProfile:(NSString *)profile NS_SWIFT_NAME(zoomLevels(profile:));
@@ -173,10 +174,9 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 + (void)allowSavingForProfile:(NSString *)profile origin:(NSString *)origin completion:(NNResultCompletion)completion
     NS_SWIFT_NAME(allowSaving(profile:origin:completion:));
 /// Strong password like Safari's: "abcdef-GHIjk2-lmnopq".
-+ (NSString *)generatePassword;
 @end
 
-/// Favicons for the app's UI, cached per profile (see NNFavicons.mm). Results are
+/// Favicons for the app's UI, cached per profile (NNFavicons.fetch, in NNBrowsingData.mm). Results are
 /// {uri, width, height}: a file: URI in the profile's directory when `name` is
 /// given, else a data: URI; incognito profiles never write.
 @interface NNFavicons : NSObject
@@ -226,8 +226,8 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 
 @protocol NNBrowserViewDelegate <NSObject>
 /// Per-browser events: navigation, progress, favicon, media, nowPlaying,
-/// mediaAccess, openWindow, popupWindow, popupBlocked, find, fullscreen,
-/// status, crashed, unresponsive, responsive, loadError, certificateError,
+/// mediaAccess, openWindow, popupBlocked, find, fullscreen,
+/// status, crashed, unresponsive, responsive, loadError,
 /// security, zoom, contentBlocked, downloadNavigation, notification, notificationClose,
 /// pictureInPicture, activateRequest, displayMediaRequest, windowClose, command, focus,
 /// pageMessage, ready, discarded, passwordPrompt, tabStrip.
@@ -244,7 +244,9 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 @property (nonatomic, copy) NSString *profile;
 @property (nonatomic, copy, nullable) NSString *initialURL;
 /// Adopts a browser the engine made (the `adoptId` of an `openWindow` event: a popup,
-/// or a tab Chrome created) instead of creating one.
+/// or a tab Chrome created) instead of creating one. "clone:<transferKey>" copies that tab
+/// (Duplicate) and "restore:<transferKey>" reopens that closed tab, both with their
+/// back/forward list; without one (engine, or nothing known) the view loads `initialURL`.
 @property (nonatomic, copy, nullable) NSString *adoptId;
 /// The tab this view shows (the app's tab id). A tab moving to another window keeps its
 /// browser (page, history, the Chrome tab) when +prepareTransfer: announced the move:
@@ -259,7 +261,7 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 @property (nonatomic) BOOL visible;
 /// Picture-in-picture the playing video when the tab is hidden (and leave it when shown).
 @property (nonatomic) BOOL autoPictureInPicture;
-/// YES after -discard until the browser is recreated.
+/// YES while the tab sleeps (-discard:, or Chrome discarded it) until it loads again.
 @property (nonatomic, readonly) BOOL discarded;
 /// Battery Saver: a frozen page runs no script, timers or loading (Chrome's tab
 /// freezing). Only a hidden view freezes; showing it thaws the page.
@@ -289,23 +291,18 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 - (void)setZoomFactor:(double)factor;
 /// Chrome's preset steps (direction ±1) or back to 100% (0).
 - (void)zoomStep:(NSInteger)direction NS_SWIFT_NAME(zoomStep(_:));
-@property (nonatomic, readonly) double zoomFactor;
 - (void)find:(NSString *)text forward:(BOOL)forward findNext:(BOOL)findNext;
 - (void)stopFinding:(BOOL)clearSelection;
 - (void)print;
 - (void)showDevTools;
 /// Opens DevTools on a panel ("console"…), switching an open DevTools window to it.
 - (void)showDevToolsPanel:(nullable NSString *)panel NS_SWIFT_NAME(showDevTools(panel:));
-- (void)viewSource;
 - (void)executeJavaScript:(NSString *)code;
 /// Runs `code` in the page with a private `post(kind, json)` in scope and resolves
 /// with the JSON string passed to `post("result", …)`.
 - (void)evaluate:(NSString *)code completion:(void (^)(NSString *_Nullable json))completion;
-- (void)getText:(void (^)(NSString *text))completion;
-- (void)getSource:(void (^)(NSString *source))completion;
 /// Back/forward list: [{url, title, current}], oldest first.
 - (void)navigationEntries:(void (^)(NSArray<NSDictionary<NSString *, id> *> *entries))completion;
-- (void)exitFullscreen;
 /// Downloads an icon through this tab's browser (its own request context, no
 /// cookies) as a favicon; see NNFavicons for the result.
 - (void)downloadFavicon:(NSString *)url name:(nullable NSString *)name
@@ -321,8 +318,6 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 // Media
 /// "play" | "pause" | "toggle" | "next" | "previous" | "seekBy" | "seekTo" | "stop".
 - (void)mediaCommand:(NSString *)action seconds:(double)seconds NS_SWIFT_NAME(mediaCommand(_:seconds:));
-/// Current now-playing state (as in the "nowPlaying" event), or nil.
-@property (nonatomic, readonly, nullable) NSDictionary<NSString *, id> *nowPlaying;
 - (void)requestPictureInPicture:(void (^)(BOOL ok))completion NS_SWIFT_NAME(requestPictureInPicture(_:));
 - (void)exitPictureInPicture;
 
@@ -341,9 +336,6 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 /// Places this tab in its Chrome window's tab strip like the app's tab list (index among the
 /// window's Chrome tabs of this profile, pinned first): what chrome.tabs reports. No-op without Chrome tabs.
 - (void)setTabStripIndex:(NSInteger)index pinned:(BOOL)pinned NS_SWIFT_NAME(setTabStrip(index:pinned:));
-/// The login Chrome's password manager would offer to save for this page now (a "passwordPrompt"
-/// payload), or nil.
-@property (nonatomic, readonly, nullable) NSDictionary<NSString *, id> *pendingPasswordPrompt;
 /// Clicks an extension's toolbar button for this tab: "none" (it handled the click), "popup"
 /// or "sidePanel" (show it), or nil when the engine can't run actions.
 - (nullable NSString *)executeExtensionAction:(NSString *)extensionId NS_SWIFT_NAME(executeExtensionAction(_:));
@@ -365,9 +357,12 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 // Robustness
 /// After an "unresponsive" event: kill the renderer (YES) or keep waiting (NO).
 - (void)resolveUnresponsive:(BOOL)terminate NS_SWIFT_NAME(resolveUnresponsive(terminate:));
-/// Frees the browser (memory) but keeps the view; it's recreated with the
-/// last URL when the view becomes visible or loads a URL. History is lost.
-- (void)discard;
+/// Frees the page's memory but keeps the view. A Chrome tab is discarded as Chrome does it
+/// (history kept, still a tab to extensions) and reloads when shown. `unload`, and any other
+/// browser: the browser closes and is recreated with the last URL when the view becomes
+/// visible or loads a URL (history is lost), so its profile can unload. Returns YES when the
+/// browser closed.
+- (BOOL)discard:(BOOL)unload NS_SWIFT_NAME(discard(unload:));
 /// Closes the browser (the view becomes empty). Called on unmount.
 - (void)closeBrowser;
 

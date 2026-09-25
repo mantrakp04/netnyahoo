@@ -25,7 +25,6 @@ const System = requireOptionalNativeModule<{
   setAsDefaultBrowser(): Promise<boolean>;
   launchAtLoginStatus(): Promise<LaunchAtLoginStatus>;
   setLaunchAtLogin(enabled: boolean): Promise<void>;
-  authenticate(reason: string): Promise<boolean>;
   fileExists(path: string): boolean;
   openFile(path: string): Promise<boolean>;
   revealFile(path: string): Promise<boolean>;
@@ -48,8 +47,6 @@ export const setAsDefaultBrowser = async () => (await System?.setAsDefaultBrowse
 /** The app's login item (SMAppService). "requiresApproval" = waiting in System Settings › Login Items. */
 export const launchAtLoginStatus = async (): Promise<LaunchAtLoginStatus> => (await System?.launchAtLoginStatus()) ?? "notFound";
 export const setLaunchAtLogin = async (enabled: boolean) => System?.setLaunchAtLogin(enabled);
-/** Touch ID or the login password ("Netnyahoo is trying to <reason>"). */
-export const authenticate = async (reason: string) => (await System?.authenticate(reason)) ?? false;
 
 export const fileExists = (path: string) => System?.fileExists(path) ?? true;
 export const openFile = async (path: string) => (await System?.openFile(path)) ?? false;

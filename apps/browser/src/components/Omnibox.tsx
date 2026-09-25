@@ -320,7 +320,18 @@ export function Omnibox({
   );
 
   const bottomRow = (
-    <View style={{ flexDirection: "row", alignItems: "center", paddingLeft: hero ? 13 : 14, paddingRight: hero ? 15 : 13, height: 52 }}>
+    // Hero: measured on Dia 1.50.1's New Tab bar, the chip row's centre is 30.5pt above the bar's bottom edge
+    // (the input row's is 30pt below its top), so the row is 43 tall with 8 below it.
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingLeft: hero ? 13 : 14,
+        paddingRight: hero ? 15 : 13,
+        height: hero ? 43 : 52,
+        marginBottom: hero ? 8 : 0,
+      }}
+    >
       <AddChip tabId={tabId} onGo={(url) => go(url)} />
       <View style={{ flex: 1 }} />
       <IconButton icon="mic" size={14} color={theme.textTertiary} tooltip="Dictation" onPress={() => { input.current?.focus(); startDictation(); }} />
@@ -335,7 +346,7 @@ export function Omnibox({
   return (
     <View ref={root}>
       <ContextMenuArea captureDescendants onContextMenu={() => void onContextMenu()}>
-        <View style={{ flexDirection: "row", alignItems: "center", height: hero ? 58 : 55, paddingLeft: hero ? 18 : 20, paddingRight: 18, gap: hero ? 8 : 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", height: hero ? 60 : 55, paddingLeft: hero ? 18 : 20, paddingRight: 18, gap: hero ? 8 : 10 }}>
           <View style={{ width: 18, alignItems: "center" }}>{leadingIcon}</View>
           {scope && <ScopeChip scope={scope} large={hero} />}
           {field}

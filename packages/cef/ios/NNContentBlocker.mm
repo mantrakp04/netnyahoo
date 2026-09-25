@@ -34,13 +34,21 @@ NSString *Category(NSDictionary *ruleset) {
 
 double Count(NSDictionary *d, NSString *key) { return [d[key] isKindOfClass:NSNumber.class] ? [d[key] doubleValue] : 0; }
 
+/// The bundled uBlock Origin Lite's version: its lists are the ones it shipped with.
+NSString *BundledVersion() {
+  NSString *path = [blocker::ExtensionPath() stringByAppendingPathComponent:@"manifest.json"];
+  NSData *data = path ? [NSData dataWithContentsOfFile:path] : nil;
+  NSDictionary *manifest = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+  return [manifest isKindOfClass:NSDictionary.class] && [manifest[@"version"] isKindOfClass:NSString.class] ? manifest[@"version"] : @"";
+}
+
 /// {enabled, lists, allowedHosts, stats} from the options page data and the per-site modes.
 void State(void (^completion)(NSDictionary *state)) {
   Send(@{@"what" : @"getOptionsPageData"}, ^(id options, NSString *error) {
     Send(@{@"what" : @"getFilteringModeDetails"}, ^(id modes, NSString *) {
       if (![options isKindOfClass:NSDictionary.class]) {
         return completion(@{
-          @"enabled" : @NO, @"lists" : @[], @"allowedHosts" : @[],
+          @"enabled" : @NO, @"lists" : @[], @"allowedHosts" : @[], @"version" : BundledVersion(),
           @"stats" : @{@"ready" : @NO, @"enabled" : @NO, @"parseMs" : @0, @"lookups" : @0, @"averageLookupMicros" : @0,
                        @"maxLookupMicros" : @0, @"error" : error ?: @"unavailable"},
         });
@@ -54,6 +62,7 @@ void State(void (^completion)(NSDictionary *state)) {
         BOOL enabled = [enabledIds containsObject:r[@"id"]];
         NSDictionary *rules = [r[@"rules"] isKindOfClass:NSDictionary.class] ? r[@"rules"] : @{};
         NSDictionary *css = [r[@"css"] isKindOfClass:NSDictionary.class] ? r[@"css"] : @{};
+        NSDictionary *filters = [r[@"filters"] isKindOfClass:NSDictionary.class] ? r[@"filters"] : @{};
         double count = Count(rules, @"total");
         if (enabled) {
           network += count;
@@ -64,10 +73,10 @@ void State(void (^completion)(NSDictionary *state)) {
           @"title" : r[@"name"] ?: r[@"id"],
           @"category" : Category(r),
           @"enabled" : @(enabled),
-          // On by default in uBOL; the rest are shipped too but opt-in.
-          @"bundled" : @([r[@"enabled"] boolValue]),
-          @"rules" : @(enabled ? count : 0),
-          @"lastModified" : [NSNull null],
+          // On by default in uBOL; every list ships with it, the rest are opt-in.
+          @"defaultOn" : @([r[@"enabled"] boolValue]),
+          // The list's own filters (DNR packs many of them into one rule).
+          @"filters" : @(Count(filters, @"accepted") ?: count),
         }];
       }
       NSMutableArray *allowed = [NSMutableArray array];
@@ -76,6 +85,7 @@ void State(void (^completion)(NSDictionary *state)) {
         if ([host isKindOfClass:NSString.class] && ![host isEqualToString:@"all-urls"]) [allowed addObject:host];
       completion(@{
         @"enabled" : @(on),
+        @"version" : BundledVersion(),
         @"lists" : lists,
         @"allowedHosts" : allowed,
         @"stats" : @{

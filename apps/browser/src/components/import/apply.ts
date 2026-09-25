@@ -9,7 +9,7 @@ import type { ProfileColor } from "../../store/types";
 /**
  * Maps import results into Netnyahoo: bookmark trees (the source's toolbar onto
  * the Bookmarks Bar), history, open tabs (lazily loaded, unpinned ones in an
- * "Imported" group), Arc spaces and favourites, and passwords (engine Keychain).
+ * "Imported" group), Arc spaces and favourites, and passwords (Chrome's password manager).
  * Cookies aren't imported: the engine has no API to set them.
  */
 export type ImportCounts = { bookmarks: number; history: number; tabs: number; passwords: number };
@@ -60,7 +60,7 @@ export function importHistory(profileId: string, entries: { url: string; title: 
   return entries.length;
 }
 
-/** Saves logins in the profile's Keychain namespace; returns how many were saved. */
+/** Saves logins in the profile's Chrome password manager; returns how many were saved. */
 export async function importPasswords(profileId: string, credentials: Credential[]): Promise<number> {
   let saved = 0;
   for (const c of credentials) {

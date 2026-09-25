@@ -3,12 +3,12 @@ import AppKit
 import Sparkle
 #endif
 
-/// Sparkle 2 auto-updates. The feed comes from Info.plist `SUFeedURL` (see the "Distribution"
-/// block there), overridable with the `NETNYAHOO_UPDATE_FEED_URL` environment variable (or the
-/// `NNUpdateFeedURL` default) so a build can be pointed at a staging appcast. A build without a
-/// feed never starts Sparkle, and Check for Updates… says updates aren't set up. Like Dia, an
-/// update found while a window is in full screen (usually a video) waits until full screen ends
-/// before it's shown or installed.
+/// Sparkle 2 auto-updates. The feed comes from Info.plist `SUFeedURL` (empty in this repo; the
+/// EdDSA public key, `SUPublicEDKey`, is set), overridable with the `NETNYAHOO_UPDATE_FEED_URL`
+/// environment variable (or the `NNUpdateFeedURL` default) so a build can be pointed at a staging
+/// appcast. A build without a feed never starts Sparkle, and Check for Updates… says updates
+/// aren't set up. Like Dia, an update found while a window is in full screen (usually a video)
+/// waits until full screen ends before it's shown or installed.
 public final class AppUpdater: NSObject {
   public static let shared = AppUpdater()
 

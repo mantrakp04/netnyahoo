@@ -3,9 +3,10 @@
 Architecture: patched CEF (Chrome style). One hidden "ghost" Chrome `Browser` per app window/profile owns the tabs;
 each tab's WebContents NSView is hosted in our RN views. See `docs/research/chromium-ui-layer.md`.
 
-Rule for everyone working on the migration: when you finish something that can't be verified yet (usually because the
-patched CEF isn't built), add it under **Built, not yet tested** with the exact test to run. Move it to **Verified** only
-after running that test.
+The patched CEF (154.0.28, `NN_CHROME_TABS 1`) has been in since 2026-09-25; `docs/dia-feature-parity.md` holds the
+current feature status and the remaining work. Rule: when you finish something that can't be verified yet (usually
+because it needs the user present), add it to the **Test ledger** with the exact test to run, and move it to
+**Done & verified** only after running that test.
 
 ## Done & verified
 - WP2/WP3 on stock CEF (cutover agent): ghost window per app window, uBlock Origin Lite as the content blocker,
@@ -23,7 +24,7 @@ after running that test.
   - `executeExtensionAction` returns null and `resolvePasswordPrompt` does nothing on stock CEF, so the old
     behaviour stays.
 - Integration, on the patched CEF 154.0.28 with `NN_CHROME_TABS 1` (instance `integration`, 2026-09-25). Results
-  per ledger item below (numbers as in "Built, not yet tested"):
+  per ledger item below (numbers as in the Test ledger):
   - **1 Hosting.** Our tabs are Chrome tabs of each window's ghost Browser, and there's no placeholder tab.
     `pageInsets` follow the page rect (47,190,7,7).
   - **2 Extensions see our tabs.** One normal Chrome window per app window, and tabs in sidebar order. Hidden WebUI
@@ -70,7 +71,7 @@ after running that test.
     - uBOL blocks in the second profile too.
     - In a profile created at runtime, pages loaded in its first ~3 s aren't blocked: its extension system finishes
       setting up after our first load, so we load again 3 s later.
-  - **12 Discard.** A discarded tab leaves `chrome.tabs`; showing it recreates it in the same Chrome window.
+  - **12 Discard.** Superseded by R1 below: a sleeping tab stays in `chrome.tabs` as `discarded: true`.
   - **Split view.** Both panes are Chrome tabs at their own sizes (578 pt each) and both visible. Chrome's dialogs
     follow the focused pane (`pageInsets` 47,775,7,7).
   - **After the switch to the real keychain** ("Netnyahoo Safe Storage" dist), a fresh-profile regression passed:
@@ -93,26 +94,92 @@ after running that test.
     opens Chrome's "Passkeys" sheet over the page (448×492): "Use your phone or tablet", "Scan this QR code with the
     camera on the device where you want to create and save your passkey for webauthn.io", a QR code, Back and
     Cancel (read through the accessibility tree). Scanning it with a phone is test 39.
-  - Touch ID is unavailable on this CEF, as expected: "keychain-access-group entitlement is missing or incorrect.
-    Expected value: .org.chromium.Chromium.webauthn" (needs the BRANDING change, test 40).
+  - Touch ID was unavailable on that CEF: "keychain-access-group entitlement is missing or incorrect.
+    Expected value: .org.chromium.Chromium.webauthn". The BRANDING change has since shipped in the vendored
+    framework (test 40).
 
-## In progress
-- WP1 — patched CEF build (chromium agent): ungoogled patches, H.264/AAC, tab-capture API, external tab hosting,
-  native view accessor, multi-tab Browser, add tab to Browser, active window, component extension loading,
-  activate/move tab, tab SessionID.
-- WP5 + WP4 (major surfaces only): integration agent, on the patched CEF (vendor/cef) with `NN_CHROME_TABS 1`.
-  Verified items are listed above. Still to run:
-  - 15: fullscreen changes Spaces, so it needs the user present.
-  - 19–21: autofill dropdowns need a key window, so the user must be present.
-  - 27: Touch ID, user present.
-  - The Web Store items W1–W3 below: they wait for hook 10.
+- R1, tab state on Chrome (instance `r1`, CEF 154.0.28 + `cef-tab-state.patch`, 2026-09-25). Driven through
+  devHarness and CDP, with a fixture extension (`contextMenus`, `tabs`, `history`, `scripting`):
+  - **Duplicate** (`clone:<tab id>` → `CefBrowserHost::DuplicateTab`, Chrome's `WebContents::Clone`): the copy has
+    the same 3-entry back/forward list, current entry and `canGoBack`, and the source's `sessionStorage`; also from
+    a sleeping tab.
+  - **Reopen Closed Tab** (the closing tab's `GetNavigationState`, then `RestoreTabInBrowser` →
+    `chrome::AddRestoredTab`, `restore:<tab id>`): the reopened tab has the whole list with the current entry in
+    the middle (a → **b** → c after going back), also for a tab closed while asleep. After a relaunch it reopens
+    from its URL (the lists are kept for the session only, like open tabs').
+  - **Sleeping** (`DiscardTab`, `--enable-features=WebContentsDiscard`): `chrome.tabs` keeps the same tab id with
+    `discarded: true, status: "unloaded"`, no crash event; showing it reloads it with its list
+    (`document.wasDiscarded`, `history.length` 3) and the app's sleeping state clears (`ready` again).
+    `chrome.tabs.discard` from the extension puts the app's tab to sleep, `chrome.tabs.reload` wakes it. An
+    unused profile's tabs close instead (`discard({unload})`), asleep ones too. Chrome's own urgent discard goes
+    through the same `TabLifecycleUnit` path and observer; it wasn't forced here (it needs real memory pressure).
+  - **Clear Browsing Data** (`CefRequestContext::ClearBrowsingData`, Chrome's BrowsingDataRemover): a range that
+    starts in the future clears nothing; "last hour" empties Chrome's history (`chrome.history.search` 4 → 0),
+    the page's `localStorage` and cookies, and resolves (60 ms–1.2 s). No `.clear-site-data` marker any more.
+  - **Page menu** (NETNYAHOO_CONTEXT_MENU_LOG dumps the model and runs a picked item instead of showing the menu):
+    on a link, one "Open Link in New Tab" / "New Window" / "Split View" / "Incognito Window", Save Link As, Copy
+    Link Address; on a selection, Look Up, Copy, Copy Link to Highlight, "Search <engine> for “…”" (relabelled when
+    the engine name changes); Print, the extension's item, Inspect, Speech. Picked: the extension item ran its
+    `onClicked` (it retitled the page), Open Link in New Tab opened a background tab with its opener, Open Link in
+    Split View made a split, Search ran our search. Not seen: the NSMenu itself on screen (checklist step 9d).
+  - **NNSwipe**: after a synthetic swipe the page view's delegate is ours in front of
+    `ChromeRenderWidgetHostViewMacDelegate`; Check Spelling, Spelling panel, Check Spelling While Typing, Grammar
+    and Start Speaking validate enabled (Stop Speaking off while nothing speaks); a back swipe goes back exactly
+    one entry (Chrome's own history swiper doesn't also navigate).
+  - Found and fixed on the way: switching from a tab into a split made the two panes activate each other in
+    Chrome forever (Chrome focuses the tab it activates, which reported as the user focusing it, 200 % CPU).
+    Chrome's active tab is now the last pane shown, until the user clicks one.
 
-## Built, not yet tested (needs patched CEF)
+- R2, Chrome surfaces (instance `r2`, CEF 154.0.28 + `cef-ui-surfaces.patch`, `chromium-chrome-ui-hooks.patch`,
+  `chromium-extension-updates.patch`, 2026-09-25). Driven through devHarness and CDP; the screen was locked, so
+  nothing below was seen on screen (layout checked through the page's `innerHeight`):
+  - **Toolbar action state** (`CefGetExtensionActionState`): a fixture extension's `action.setIcon` (imageData)
+    comes back as a 32×32 PNG (the 2x image for the 16 pt button), with its badge "R2" and colour `#1a73e8`.
+  - **Side panel** (`CefChromeUIHandler::OnExtensionSidePanel`, `CefGetExtensionSidePanel`): the toolbar click
+    (`openPanelOnActionClick` → `ExecuteExtensionAction` "sidePanel") opens the panel card (page 360 pt wide);
+    `chrome.sidePanel.open({tabId})` opens it, `close()` closes it, a per-tab `setOptions({path})` switches its page.
+    `chrome.tabs.query({active:true,currentWindow:true})` from the panel returned `[]` before and returns the page
+    after the `chrome_extension_function_details.cc` hunk (hidden windows use the last active window).
+  - **"Share this tab instead"** (`CefChangeMediaCaptureSource`): a page sharing tab B (tab video + tab audio)
+    switched to tab A; `CefGetMediaCaptureTarget` moved from B to A, both tracks stayed `live`, and the page kept
+    reporting `screen` (the registrar no longer blinks "capture ended" while the source changes). The info bar takes
+    38 pt above the page (`innerHeight` 806 → 768) and goes when sharing ends. **Stop Sharing**
+    (`CefStopMediaCapture`): both tracks `ended`, `onended` fired, the bar went away.
+  - **Device chooser** (`OnDeviceChooser`): `navigator.bluetooth.requestDevice({acceptAllDevices:true})` shows our
+    chooser with Chrome's model: "example.com wants to pair", Pair / Cancel, "Scanning…", and 14 of the Mac's real
+    Bluetooth devices; Cancel rejects the page's promise ("User cancelled the requestDevice() chooser").
+    `navigator.usb.requestDevice` shows "example.com wants to connect" / Connect ("No compatible devices found.").
+    Selecting a device wasn't tried (nothing to pair with safely).
+  - **Cast** (`OnCastDialog`, `CefShowCastDialog`): our request and a page's `PresentationRequest.start()` ("Cast
+    example.com") both reach our picker; closing it rejects the page's request ("No screens found").
+    `chrome://media-router-internals`: mDNS and DIAL discovery started; no sinks on this network (`dns-sd -B
+    _googlecast._tcp` finds none either), so casting itself is checklist step 12. Info.plist gained
+    `NSLocalNetworkUsageDescription`.
+  - **Web Store**: with a store tab restored at launch, its own Add button went through Chrome's flow and our dialog
+    (Dark Reader 4.9.133, FROM_STORE). The old JS-reload loss of a pending prompt (the install then waits forever)
+    is fixed: pending prompts are asked again when JS listens.
+  - **Auto-update (W3), verified**: see W3.
+  - **Content blocker**: `getContentBlocker` lists 55 rulesets in all six categories (ads 5, trackers 3, cookie
+    banners 1, annoyances 6, malware 2, regional 38) with filter counts, and version 2026.920.1710.
+  - **Tabs between windows**: the drop logic is unit-tested (`layout/windowDrop.test.mjs`); a real mouse drag across
+    windows is checklist step 11 in `docs/dia-feature-parity.md`.
 
-**Setup.** `CEF_DIST=<dist> packages/cef/scripts/setup.sh` → set `#define NN_CHROME_TABS 1` in
-`packages/cef/ios/NNCefInternal.h`. That one line is the whole flip: hooks switch on from `include/cef_netnyahoo.h`,
-and the build fails with `#error` against stock CEF. Then build `build-integration`, and launch with
-`NETNYAHOO_BACKGROUND=1 NETNYAHOO_DATA_DIR=/tmp/nn-integration NETNYAHOO_REMOTE_DEBUGGING_PORT=9341`.
+## Still to run
+Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs the user present" has the script.
+- 15: fullscreen changes Spaces.
+- 19–21: autofill dropdowns need a key window.
+- 27: Touch ID.
+- W2: the Remove sheets need a key window.
+- R2: dragging tabs between windows, and Cast with a real device (parity checklist steps 11–12).
+- 28–31: visual QA against Dia 1.50.1 (needs the unlocked screen).
+- 39–41: phone passkeys, Touch ID passkeys, Safe Storage.
+
+## Test ledger
+
+**Setup.** `packages/cef/scripts/setup.sh` puts our CEF build in `vendor/cef`, and `NN_CHROME_TABS` defaults to 1: hooks
+switch on from `include/cef_netnyahoo.h`, and the build fails with `#error` against stock CEF. Build with your
+derived-data folder, and launch with `NETNYAHOO_BACKGROUND=1 NETNYAHOO_DATA_DIR=/tmp/nn-<you>
+NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
 
 **Tools.**
 - Drive the store with scratchpad `nneval.sh '<js>'` (devHarness `nn`).
@@ -163,8 +230,8 @@ and the build fails with `#error` against stock CEF. Then build `build-integrati
       left.
 11. **Moving to another profile.** The page reloads in the new profile (expected). The tab must leave profile A's
     `chrome.tabs` and appear in B's.
-12. **Discard / freeze.** A tab slept by lib/tabLifecycle must leave `chrome.tabs`. Showing it must recreate it in
-    the same window's ghost. A frozen tab must thaw when shown.
+12. **Discard / freeze.** A tab slept by lib/tabLifecycle must stay in `chrome.tabs` as `discarded: true` with the
+    same id and history, and reload when shown. A frozen tab must thaw when shown.
 13. **Active window.** With 2 app windows, focus window B. `chrome.windows.getLastFocused()` must return B's Chrome
     window, and an extension `chrome.commands` shortcut must run for B.
 14. **Stray windows.** `chrome.windows.create({url})` from the fixture must open the page as our tab, with no
@@ -206,7 +273,7 @@ and the build fails with `#error` against stock CEF. Then build `build-integrati
       toolbar button must run the script.
     - An action with a popup: our popup must show, `chrome.tabs.query({active:true,currentWindow:true})` from the
       popup must return the page, and the popup must not appear in `chrome.tabs.query({})` (`standalone`).
-    - A side-panel extension must open its page.
+    - A side-panel extension must open its page in the side panel (verified by r2).
     - The overflow menu must show the extensions, then Pin / Manage / Add Extension….
 23. **Permission prompt.** Try getUserMedia, geolocation and `Notification.requestPermission()`. Pass if our prompt
     shows ("Allow … to access your camera?", "Click the lock to change this any time"), with no Chrome bubble
@@ -250,16 +317,20 @@ W2. **Uninstall. Verified at the engine level:** `NNExtensions.uninstall` remove
     - "Remove from Netnyahoo" on the store page and Settings › Extensions › Remove. Both go through our "Remove …?"
       confirmation, a native sheet that needs a key window.
     - Chrome's uninstall dialog isn't hooked; our confirmation replaces it.
-W3. **Auto-update. Partly verified.**
-    - Store installs carry the clients2 update URL. `extension_urls.cc` keeps the real host (domain substitution only
-      touched test files there). `https://clients2.google.com/service/update2/crx?...&x=id%3Deimadpbcbfnmbkopoojfekhnkhdbieeh%26v%3D4.9.100`
-      answers with the 4.9.133 codebase.
-    - Not yet seen: an installed extension actually updating. Editing the installed manifest's version doesn't
-      stick, because Chrome keeps the loaded manifest in prefs. `developerPrivate.autoUpdate()` was still running
-      after 20 s.
-    - Test: install an older store CRX, e.g. ask the chromium agent for a `--extensions-update-frequency=30` build
-      flag, or use an extension that ships an update during testing. Pass if the version moves to the store's
-      without a prompt.
+W3. **Auto-update. Verified 2026-09-25 (r2).**
+    - Our build never checked: ungoogled's `block-requests.patch` returns early from
+      `UpdateCheckerImpl::CheckForUpdates`, so every update check (and `developerPrivate.autoUpdate()`) stayed pending,
+      and the update client's default URL is update.googleapis.com, which domain substitution cuts off.
+      `chromium-extension-updates.patch` removes the early return and points extension update checks at
+      `https://clients2.google.com/service/update2/json` (the same protocol; the component updater stays cut off).
+    - Test: Dark Reader installed from the store at 4.9.133; with the app quit, its on-disk manifest was set to
+      4.9.100 and the app relaunched with `NETNYAHOO_CHROMIUM_SWITCHES="--lang=fr --extensions-update-frequency=30"`
+      (a new locale makes Chrome reload the manifest from disk, so it reported 4.9.100; the manifest isn't
+      content-verified).
+    - Result: the net log shows `clients2.google.com/service/update2/json` and the CRX from
+      `clients2.googleusercontent.com/crx/blobs/…`, unpacked into `4.9.133_1` with no prompt. Chrome delayed the
+      install while Dark Reader's service worker was busy (its normal rule) and finished it at the next launch:
+      `developerPrivate` reports 4.9.133 from `4.9.133_1`, and the old folder was garbage-collected.
 
 ### Dia 1.50 "Sunglow" visuals (WP11; needs the unlocked screen, not the patched CEF)
 
@@ -279,9 +350,10 @@ read-only (never click it).
     matches Dia row by row.
 31. **Toolbar breadcrumb.** Find when Dia 1.50.1 shows only the host (seen on a trycloudflare.com page whose title
     was "Netnyahoo Build Status") and match it.
-32. **Focus.** On 2026-09-25 a `build-sunglow` instance launched with `open -g` and `NETNYAHOO_BACKGROUND=1` was
-    frontmost right after launch, twice (`lsappinfo front` showed its pid). Find out what activates it before
-    running more visual tests next to the user.
+32. **Focus. Resolved.** On 2026-09-25 a `build-sunglow` instance launched with `open -g` and `NETNYAHOO_BACKGROUND=1`
+    was frontmost right after launch, twice. `NNActivation.mm` now makes such instances BackgroundOnly and guards
+    every activation path (logged to `activation.log`); `lsappinfo front` hasn't shown a test instance since
+    (Done › Focus).
 
 ### netnyahoo:// URLs (core appUrls.ts, cef WebView, NNClient; see docs/store-api.md)
 
@@ -324,7 +396,8 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
     → "Use a phone or tablet", scan the QR with an iPhone/Android camera. Pass if the phone connects (tunnel through
     cable.ua5v.com, which domain substitution left alone), the passkey is saved on the phone, and Authenticate with it
     works.
-40. **Touch ID ("Chrome profile") passkeys.** Needs the BRANDING change. Pass if all of these hold:
+40. **Touch ID ("Chrome profile") passkeys.** The BRANDING change is in the vendored framework (its keychain group is
+    `U5L5T3NGVV.com.netnyahoo.browser.webauthn`), so this can run now. Pass if all of these hold:
     - The log no longer says "keychain-access-group entitlement is missing".
     - webauthn.io Register offers this Mac / Chrome profile.
     - macOS's Touch ID sheet appears. Stop there unattended: completing it needs the user's finger.
@@ -344,19 +417,10 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
       NSWindow fallback in the patch).
     - A passkey created there shows in Passwords.app.
 
-## Known regressions until the patched CEF is in
-- No in-page password/autofill filling on Alloy tabs, so our password prompt (Chrome's data) never shows. Edit ›
-  AutoFill opens Settings: Chrome offers saved entries itself in pages.
-- No ad blocking in incognito (needs component-extension loading).
-- Extensions see the ghost windows instead of our tabs.
-- Dia PiP extras (edge stash, host pill) removed; to be rebuilt on Chrome's PiP in WP4 if still wanted.
-
 ## Known gaps (by design, for now)
-- Chrome's side panel isn't drawn: an extension's side panel opens as a tab.
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order
   is pushed to Chrome.
-- A discarded (sleeping) tab isn't in `chrome.tabs`. Chrome would list it as `discarded: true`.
-
-## Remaining after the build
-- Flip `NN_CHROME_TABS`, run every test above, fix failures.
-- Visual QA vs Dia once the screen is unlocked.
+- The Dia PiP extras (edge stash, host pill) aren't rebuilt on Chrome's PiP window (optional in
+  `docs/dia-feature-parity.md` R2).
+- The stock-CEF build (`NN_CHROME_TABS=0`, `docs/cef-source-build.md`) still has the Alloy-era gaps: no in-page
+  password or autofill filling, no ad blocking in incognito, and extensions don't see our tabs.

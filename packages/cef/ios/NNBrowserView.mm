@@ -14,20 +14,6 @@ using namespace nn;
 
 namespace {
 
-class StringVisitor : public CefStringVisitor {
- public:
-  explicit StringVisitor(void (^block)(NSString *)) : block_([block copy]) {}
-  void Visit(const CefString &string) override {
-    NSString *s = ToNS(string);
-    auto block = block_;  // not `this`: we may be released before the block runs
-    dispatch_async(dispatch_get_main_queue(), ^{ block(s); });
-  }
-
- private:
-  void (^block_)(NSString *);
-  IMPLEMENT_REFCOUNTING(StringVisitor);
-};
-
 class EntriesVisitor : public CefNavigationEntryVisitor {
  public:
   explicit EntriesVisitor(void (^block)(NSArray *)) : block_([block copy]), entries_([NSMutableArray array]) {}
@@ -92,6 +78,45 @@ bool nn::TabTransfersPending() {
 
 namespace {
 
+// MARK: Closed tabs' history
+//
+// A Chrome tab's back/forward list as it closed, by its view's transferKey (the app's tab id),
+// for Reopen Closed Tab ("restore:<key>" adoptIds). Kept for this session only, like the
+// rest of the app's history of open tabs.
+
+constexpr NSUInteger kClosedTabStates = 50;
+constexpr NSUInteger kClosedTabStateBytes = 32 * 1024 * 1024;
+NSMutableArray<NSString *> *gClosedTabOrder;                       // oldest first
+NSMutableDictionary<NSString *, NSString *> *gClosedTabStates;
+
+void NoteClosedTabState(NSString *key, NSString *state) {
+  if (!key.length || !state.length) return;
+  if (!gClosedTabStates) {
+    gClosedTabStates = [NSMutableDictionary dictionary];
+    gClosedTabOrder = [NSMutableArray array];
+  }
+  [gClosedTabOrder removeObject:key];
+  [gClosedTabOrder addObject:key];
+  gClosedTabStates[key] = state;
+  NSUInteger bytes = 0;
+  for (NSString *s in gClosedTabStates.allValues) bytes += s.length;
+  while (gClosedTabOrder.count > kClosedTabStates || (bytes > kClosedTabStateBytes && gClosedTabOrder.count > 1)) {
+    NSString *oldest = gClosedTabOrder.firstObject;
+    bytes -= gClosedTabStates[oldest].length;
+    [gClosedTabStates removeObjectForKey:oldest];
+    [gClosedTabOrder removeObjectAtIndex:0];
+  }
+}
+
+NSString *TakeClosedTabState(NSString *key) {
+  NSString *state = key.length ? gClosedTabStates[key] : nil;
+  if (state) {
+    [gClosedTabStates removeObjectForKey:key];
+    [gClosedTabOrder removeObject:key];
+  }
+  return state;
+}
+
 /// The same document (a fragment doesn't count).
 bool SamePage(NSString *a, NSString *b) {
   auto strip = [](NSString *url) {
@@ -127,6 +152,8 @@ NSString *const kExitPictureInPictureScript =
   NSString *_discardedURL;
   /// The page a transferred browser showed: the app asks this view to load it again.
   NSString *_transferredURL;
+  /// Chrome discarded the tab (NN_TAB_DISCARD): it reloads by itself when shown.
+  BOOL _chromeDiscarded;
   BOOL _autoPictureInPictureActive;
   BOOL _muted;
   /// Watches the hosted page view's frame (see -keepPageFrame:).
@@ -176,7 +203,7 @@ NSString *const kExitPictureInPictureScript =
 }
 
 - (BOOL)discarded {
-  return _discardedURL != nil;
+  return _discardedURL != nil || _chromeDiscarded;
 }
 
 - (void)viewDidMoveToWindow {
@@ -225,19 +252,53 @@ NSString *const kExitPictureInPictureScript =
       }
       return;
     }
+    if ([self createTabWithHistory]) return;
     // Unknown/expired popup: fall back to loading the URL normally.
   }
 
   _client = new Client(self, _profile);
+  NSString *url = _pendingURL ?: _initialURL;
+  _pendingURL = nil;
+  host::CreateTab(self, _client, url.length ? url : @"about:blank", [self browserSettings]);
+}
+
+- (CefBrowserSettings)browserSettings {
   CefBrowserSettings settings;
   NSColor *bg = [_pageBackgroundColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
   if (bg) {
     settings.background_color = CefColorSetARGB(255, (int)round(bg.redComponent * 255), (int)round(bg.greenComponent * 255),
                                                 (int)round(bg.blueComponent * 255));
   }
+  return settings;
+}
+
+/// adoptId "clone:<key>" (Duplicate) or "restore:<key>" (Reopen Closed Tab): the tab starts with
+/// the back/forward list of the tab whose view has that transferKey, or had it when it closed.
+- (BOOL)createTabWithHistory {
+  NSRange colon = [_adoptId rangeOfString:@":"];
+  if (colon.location == NSNotFound) return NO;
+  NSString *kind = [_adoptId substringToIndex:colon.location], *key = [_adoptId substringFromIndex:NSMaxRange(colon)];
+  CefRefPtr<CefBrowser> source;
+  NSString *state = nil;
+  if ([kind isEqualToString:@"clone"]) {
+    for (NNBrowserView *view in LiveViews())
+      if (view != self && [view.transferKey isEqualToString:key] && view.client) source = view.client->Browser();
+  } else if ([kind isEqualToString:@"restore"]) {
+    state = TakeClosedTabState(key);
+  } else {
+    return NO;
+  }
+  // Set first: the tab may be created (and -browserCreated: run) right away.
+  _client = new Client(self, _profile);
   NSString *url = _pendingURL ?: _initialURL;
   _pendingURL = nil;
-  host::CreateTab(self, _client, url.length ? url : @"about:blank", settings);
+  if (!host::CreateTabWithHistory(self, _client, source, state, url.length ? url : @"about:blank", [self browserSettings])) {
+    _client = nullptr;
+    _pendingURL = url == _initialURL ? nil : url;
+    return NO;
+  }
+  _adoptId = nil;
+  return YES;
 }
 
 /// Takes the browser of this tab's old view (parked, or still in the other window).
@@ -322,6 +383,9 @@ NSString *const kExitPictureInPictureScript =
   browserView.hidden = !_visible;
   [self keepPageFrame:browserView];
   if (_muted) _client->SetUserMuted(true);
+#if NN_TAB_DISCARD
+  _chromeDiscarded = host::IsChromeTab(browser) && browser->GetHost()->IsTabDiscarded();
+#endif
   browser->GetHost()->WasResized();
   if (_pendingURL) {
     browser->GetMainFrame()->LoadURL(ToCef(_pendingURL));
@@ -360,6 +424,7 @@ NSString *const kExitPictureInPictureScript =
 
 - (void)browserClosed {
   [self keepPageFrame:nil];
+  _chromeDiscarded = NO;
   _browser = nullptr;
   _creating = NO;
 }
@@ -469,10 +534,6 @@ NSString *const kExitPictureInPictureScript =
   if (_client) _client->SetUserMuted(muted);
 }
 
-- (double)zoomFactor {
-  return _browser ? zoom::FactorForLevel(_browser->GetHost()->GetZoomLevel()) : 1;
-}
-
 // Chrome's zoom: one level per host, persisted by Chrome; every tab on the host follows.
 - (void)setZoomFactor:(double)factor {
   if (!_browser || factor <= 0) return;
@@ -511,10 +572,6 @@ NSString *const kExitPictureInPictureScript =
   if (_browser) nn::ShowDevTools(_browser, panel);
 }
 
-- (void)viewSource {
-  if (_browser) _browser->GetMainFrame()->ViewSource();
-}
-
 - (void)executeJavaScript:(NSString *)code {
   if (_browser) _browser->GetMainFrame()->ExecuteJavaScript(ToCef(code), "", 0);
 }
@@ -532,32 +589,12 @@ NSString *const kExitPictureInPictureScript =
   _browser->GetMainFrame()->SendProcessMessage(PID_RENDERER, message);
 }
 
-- (void)getText:(void (^)(NSString *))completion {
-  if (!_browser) {
-    completion(@"");
-    return;
-  }
-  _browser->GetMainFrame()->GetText(new StringVisitor(completion));
-}
-
-- (void)getSource:(void (^)(NSString *))completion {
-  if (!_browser) {
-    completion(@"");
-    return;
-  }
-  _browser->GetMainFrame()->GetSource(new StringVisitor(completion));
-}
-
 - (void)navigationEntries:(void (^)(NSArray<NSDictionary<NSString *, id> *> *))completion {
   if (!_browser) {
     completion(@[]);
     return;
   }
   _browser->GetHost()->GetNavigationEntries(new EntriesVisitor(completion), false);
-}
-
-- (void)exitFullscreen {
-  if (_browser) _browser->GetHost()->ExitFullscreen(true);
 }
 
 - (void)downloadFavicon:(NSString *)url name:(NSString *)name completion:(void (^)(NSDictionary *))completion {
@@ -574,13 +611,6 @@ NSString *const kExitPictureInPictureScript =
 
 - (void)mediaCommand:(NSString *)action seconds:(double)seconds {
   if (_client) _client->MediaCommand(action, seconds);
-}
-
-- (NSDictionary *)nowPlaying {
-  if (!_client) return nil;
-  NSMutableDictionary *state = [_client->NowPlaying() mutableCopy];
-  [state removeObjectForKey:@"frame"];
-  return state;
 }
 
 - (void)requestPictureInPicture:(void (^)(BOOL))completion {
@@ -630,10 +660,6 @@ NSString *const kExitPictureInPictureScript =
 #endif
 }
 
-- (NSDictionary *)pendingPasswordPrompt {
-  return _browser ? chromeui::PasswordPrompt(_browser) : nil;
-}
-
 - (NSString *)executeExtensionAction:(NSString *)extensionId {
   return _browser ? chromeui::ExecuteExtensionAction(_browser, extensionId) : nil;
 }
@@ -677,12 +703,31 @@ NSString *const kExitPictureInPictureScript =
   if (_browser) DevToolsCall(_browser, @"Page.setWebLifecycleState", @{@"state" : frozen ? @"frozen" : @"active"}, nil);
 }
 
-- (void)discard {
-  if (!_browser || _discardedURL) return;
+- (BOOL)discard:(BOOL)unload {
+  if (!_browser || _discardedURL) return _discardedURL != nil;
+#if NN_TAB_DISCARD
+  // Chrome's own discard: the tab stays (history, chrome.tabs) and reports it through
+  // -tabDiscardedChanged:.
+  if (!unload && host::IsChromeTab(_browser)) {
+    if (!_chromeDiscarded) _browser->GetHost()->DiscardTab();
+    return NO;
+  }
+#endif
   NSString *url = _client->URL();
   [self closeBrowser];
   _discardedURL = url.length ? url : @"about:blank";
   [self emit:@"discarded" payload:@{@"url" : _discardedURL}];
+  return YES;
+}
+
+- (void)tabDiscardedChanged:(BOOL)discarded {
+  if (_chromeDiscarded == discarded) return;
+  _chromeDiscarded = discarded;
+  _frozen = NO;
+  // Whoever discarded it (us, Chrome under memory pressure, an extension); back to life when it
+  // loads again, as if its browser had just been created.
+  if (discarded) [self emit:@"discarded" payload:@{@"url" : _client ? _client->URL() : @""}];
+  else if (_browser) [self emit:@"ready" payload:@{@"browserId" : @(_browser->GetIdentifier()), @"tabId" : @(host::TabId(_browser))}];
 }
 
 - (void)closeBrowser {
@@ -696,6 +741,11 @@ NSString *const kExitPictureInPictureScript =
   }
   _adoptId = nil;
   if (_browser && TransferRequested(_transferKey)) return [self parkBrowserForTransfer];
+#if NN_TAB_HISTORY
+  // For Reopen Closed Tab.
+  if (_browser && host::IsChromeTab(_browser) && !ShuttingDown())
+    NoteClosedTabState(_transferKey, ToNS(_browser->GetHost()->GetNavigationState()));
+#endif
   if (_browser) {
     _closingByRequest = YES;
     _browser->GetHost()->CloseBrowser(true);

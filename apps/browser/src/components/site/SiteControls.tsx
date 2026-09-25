@@ -22,6 +22,7 @@ import { engineProfile, tabLabel } from "../../store/model";
 import { Favicon, useHover } from "../primitives";
 import { Popover, PopoverRow, PopoverSeparator, Toggle } from "../layout/controls";
 import { patchPage, setPopover, usePage } from "../layout/pageState";
+import { toggleCastPicker } from "../media/cast";
 import { useMedia, usePictureInPicture } from "../media/state";
 
 /** The permissions Dia lists in its site menu, with their choices. */
@@ -152,18 +153,26 @@ export function SiteControls({ tabId, right, top }: { tabId: string; right: numb
         <PopoverSeparator />
 
         {video ? (
-          <>
-            <PopoverRow
-              icon={pip ? "pip.exit" : "pip.enter"}
-              title={pip ? "Exit Picture in Picture" : "Picture in Picture"}
-              onPress={() => {
-                togglePip();
-                close();
-              }}
-            />
-            <PopoverSeparator />
-          </>
+          <PopoverRow
+            icon={pip ? "pip.exit" : "pip.enter"}
+            title={pip ? "Exit Picture in Picture" : "Picture in Picture"}
+            onPress={() => {
+              togglePip();
+              close();
+            }}
+          />
         ) : null}
+        {origin ? (
+          <PopoverRow
+            icon="tv.and.mediabox"
+            title="Cast…"
+            onPress={() => {
+              close();
+              if (tab) void toggleCastPicker(tab.windowId);
+            }}
+          />
+        ) : null}
+        {video || origin ? <PopoverSeparator /> : null}
 
         {origin && (
           <>

@@ -25,23 +25,35 @@ import { Button, Group, PopUp, Row, SectionHeader, Sheet, TextField, Toggle, typ
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 
 /** Settings › Autofill: saved addresses and credit cards, per profile (Chrome's Addresses / Payment methods). */
-export function AutofillPane() {
+export function AutofillPane({ profileId: initial }: { profileId?: string | null }) {
   const theme = useTheme();
   const profiles = useProfiles();
-  const [profileId, setProfileId] = useState(() => useBrowser.getState().settings.defaultProfileId);
+  const [profileId, setProfileId] = useState(() => initial ?? useBrowser.getState().settings.defaultProfileId);
   const [addresses, setAddresses] = useState<SavedAddress[] | null>(null);
   const [cards, setCards] = useState<SavedCard[] | null>(null);
-  const [enabled, setEnabled] = useState({ addresses: true, cards: true });
+  const [enabled, setEnabled] = useState<{ addresses: boolean; cards: boolean } | null>(null);
   const profile = engineProfile(profileId);
 
   const load = () => {
-    void listAddresses(profile).then(setAddresses).catch(() => setAddresses([]));
+    const addressesLoaded = listAddresses(profile).then(setAddresses).catch(() => setAddresses([]));
     void listCards(profile).then(setCards).catch(() => setCards([]));
+    return addressesLoaded;
   };
-  useEffect(load, [profileId]);
-  useEffect(() => void getAutofillSettings().then(setEnabled).catch(() => {}), []);
+  useEffect(() => {
+    setEnabled(null);
+    // The toggles are Chrome prefs of the picked profile. A profile with no window open yet only
+    // starts loading with the list call (its request context isn't initialized before that, and
+    // its prefs read as defaults and don't take writes), so read them once the list is back.
+    let current = true;
+    void load().then(() =>
+      getAutofillSettings(profile)
+        .then((e) => current && setEnabled(e))
+        .catch(() => {}),
+    );
+    return () => void (current = false);
+  }, [profileId]);
   const toggle = (key: "addresses" | "cards", value: boolean) =>
-    void setAutofillSettings({ [key]: value }).then(() => setEnabled((e) => ({ ...e, [key]: value })));
+    void setAutofillSettings({ [key]: value }, profile).then(() => setEnabled((e) => e && { ...e, [key]: value }));
 
   return (
     <View>
@@ -56,10 +68,10 @@ export function AutofillPane() {
       />
       <Group>
         <Row title="Save and fill addresses" description="Names, addresses, email addresses and phone numbers.">
-          <Toggle value={enabled.addresses} onChange={(v) => toggle("addresses", v)} />
+          <Toggle value={enabled?.addresses ?? true} disabled={!enabled} onChange={(v) => toggle("addresses", v)} />
         </Row>
         <Row title="Save and fill credit cards" description="Filling in or showing a card number asks for Touch ID or your password.">
-          <Toggle value={enabled.cards} onChange={(v) => toggle("cards", v)} />
+          <Toggle value={enabled?.cards ?? true} disabled={!enabled} onChange={(v) => toggle("cards", v)} />
         </Row>
       </Group>
 

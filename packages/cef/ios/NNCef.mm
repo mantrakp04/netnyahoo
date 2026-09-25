@@ -181,6 +181,14 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
     std::string disabled = command_line->GetSwitchValue("disable-features").ToString();
     command_line->AppendSwitchWithValue("disable-features",
                                         (disabled.empty() ? "" : disabled + ",") + "MacAppCodeSignClone");
+#if NN_CHROME_TABS
+    // Chrome discards a tab (ours through DiscardTab, its own under memory pressure, extensions'
+    // chrome.tabs.discard) in place: without this it swaps in a new WebContents, and so a new
+    // browser, behind the view hosting the tab.
+    std::string enabled = command_line->GetSwitchValue("enable-features").ToString();
+    command_line->AppendSwitchWithValue("enable-features",
+                                        (enabled.empty() ? "" : enabled + ",") + "WebContentsDiscard");
+#endif
     // NETNYAHOO_REMOTE_DEBUGGING_PORT=9222 exposes DevTools/CDP for local testing.
     if (const char *port = getenv("NETNYAHOO_REMOTE_DEBUGGING_PORT")) {
       command_line->AppendSwitchWithValue("remote-debugging-port", port);
@@ -344,20 +352,6 @@ NSString *UniqueDownloadPath(NSString *suggested) {
   return candidate;
 }
 
-NSString *const kClearMarker = @".clear-site-data";
-
-/// Deletes site storage for a profile that was cleared last session.
-void ClearPendingSiteData(NSString *profilePath) {
-  NSFileManager *fm = NSFileManager.defaultManager;
-  NSString *marker = [profilePath stringByAppendingPathComponent:kClearMarker];
-  if (![fm fileExistsAtPath:marker]) return;
-  for (NSString *dir in @[ @"Local Storage", @"Session Storage", @"IndexedDB", @"Service Worker", @"File System",
-                           @"WebStorage", @"shared_proto_db", @"Code Cache", @"GPUCache", @"blob_storage" ]) {
-    [fm removeItemAtPath:[profilePath stringByAppendingPathComponent:dir] error:nil];
-  }
-  [fm removeItemAtPath:marker error:nil];
-}
-
 class DoneCallback : public CefCompletionCallback, public CefDeleteCookiesCallback {
  public:
   explicit DoneCallback(void (^block)(void)) : block_([block copy]) {}
@@ -429,7 +423,6 @@ CefRefPtr<CefRequestContext> ContextForProfile(NSString *profile) {
   if (![profile hasPrefix:@"incognito"]) {
     NSString *path = ProfilePath(profile);
     [[NSFileManager defaultManager] createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
-    ClearPendingSiteData(path);
     CefString(&settings.cache_path) = path.UTF8String;
     settings.persist_session_cookies = true;
   }
@@ -675,7 +668,6 @@ NSView *ParkingView() {
   settings.log_severity = getenv("NETNYAHOO_VERBOSE_LOG") ? LOGSEVERITY_VERBOSE : LOGSEVERITY_WARNING;
   NSString *root = AppSupportRoot();
   [[NSFileManager defaultManager] createDirectoryAtPath:ProfilePath(@"") withIntermediateDirectories:YES attributes:nil error:nil];
-  ClearPendingSiteData(ProfilePath(@""));
   CefString(&settings.root_cache_path) = root.UTF8String;
   CefString(&settings.cache_path) = ProfilePath(@"").UTF8String;
   CefString(&settings.log_file) = [root stringByAppendingPathComponent:@"debug.log"].UTF8String;
@@ -795,11 +787,6 @@ static DownloadEntry *FindDownload(NSString *downloadId) {
   if (DownloadEntry *e = FindDownload(downloadId); e && e->callback) e->callback->Resume();
 }
 
-+ (NSString *)pathForDownload:(NSString *)downloadId {
-  DownloadEntry *e = FindDownload(downloadId);
-  return e && !e->path.empty() ? [NSString stringWithUTF8String:e->path.c_str()] : nil;
-}
-
 + (void)resolvePermission:(NSString *)requestId result:(NSString *)result remember:(BOOL)remember {
   auto it = gPermissions.find(requestId.UTF8String);
   if (it == gPermissions.end()) return;
@@ -825,21 +812,41 @@ static DownloadEntry *FindDownload(NSString *downloadId) {
   }
 }
 
-+ (void)clearDataForProfile:(NSString *)profile completion:(void (^)(void))completion {
++ (void)clearBrowsingDataForProfile:(NSString *)profile
+                              types:(NSArray<NSString *> *)types
+                              since:(double)sinceMs
+                         completion:(void (^)(void))completion {
   CefRefPtr<CefRequestContext> context = ContextForProfile(profile);
-  // Cookies and the HTTP cache clear live. Site storage (localStorage,
-  // IndexedDB, service workers…) can't be cleared wholesale through the API, so
-  // it's deleted from disk before the profile next loads (see ClearPendingSiteData).
-  if (![profile hasPrefix:@"incognito"]) {
-    [@"" writeToFile:[ProfilePath(profile) stringByAppendingPathComponent:kClearMarker]
-          atomically:YES encoding:NSUTF8StringEncoding error:nil];
-  }
-  __block int pending = 2;
+#if NN_BROWSING_DATA
+  // Chrome's BrowsingDataRemover, as its "Delete browsing data" does it: history is Chrome's
+  // history database (what chrome.history shows), site data every kind of site storage, live.
+  static NSDictionary<NSString *, NSNumber *> *kTypes = @{
+    @"history" : @(CEF_NN_BROWSING_DATA_HISTORY),
+    @"siteData" : @(CEF_NN_BROWSING_DATA_SITE_DATA),
+    @"cache" : @(CEF_NN_BROWSING_DATA_CACHE),
+    @"downloads" : @(CEF_NN_BROWSING_DATA_DOWNLOADS),
+  };
+  int mask = 0;
+  for (NSString *type in types) mask |= kTypes[type].intValue;
+  CefBaseTime begin;
+  if (sinceMs > 0) begin = CefBaseTime(cef_basetime_t{(int64_t)((sinceMs / 1000 + 11644473600.0) * 1000000)});
+  context->ClearBrowsingData(mask, begin, CefBaseTime(), new DoneCallback(completion ?: ^{}));
+#else
+  // Stock CEF: all cookies (for a range too) and the whole HTTP cache; site storage stays.
+  __block int pending = 1;
   void (^done)(void) = ^{
     if (--pending == 0 && completion) completion();
   };
-  context->GetCookieManager(nullptr)->DeleteCookies("", "", new DoneCallback(done));
-  context->ClearHttpCache(new DoneCallback(done));
+  if ([types containsObject:@"siteData"]) {
+    pending++;
+    context->GetCookieManager(nullptr)->DeleteCookies("", "", new DoneCallback(done));
+  }
+  if ([types containsObject:@"cache"]) {
+    pending++;
+    context->ClearHttpCache(new DoneCallback(done));
+  }
+  done();
+#endif
 }
 
 + (void)releaseProfile:(NSString *)profile {

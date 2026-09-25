@@ -22,7 +22,8 @@
 
 // Tabs are Chrome tabs of each window's ghost Browser, hosted in our views
 // (patched CEF, docs/cef-source-build.md "Chrome-style hosting API"). Needs
-// vendor/cef to be our own build; 0 builds against the stock distribution.
+// vendor/cef to be our own build; 0 builds against the stock distribution
+// (the NN_CHROME_TABS build setting, passed through NetnyahooCEF.podspec).
 #ifndef NN_CHROME_TABS
 #define NN_CHROME_TABS 1
 #endif
@@ -34,7 +35,7 @@
 #include "include/cef_netnyahoo.h"
 #endif
 #if NN_CHROME_TABS && !defined(CEF_NN_CHROME_TABS)
-#error "NN_CHROME_TABS needs our CEF build (packages/cef/scripts/setup.sh with CEF_DIST)"
+#error "NN_CHROME_TABS needs our CEF build (packages/cef/scripts/setup.sh); against stock CEF (CEF_PREBUILT=1) build with NN_CHROME_TABS=0"
 #endif
 // CefBrowserHost::ExecuteExtensionAction: a toolbar click runs the extension's action.
 #if NN_CHROME_TABS && defined(CEF_NN_EXTENSION_ACTION)
@@ -65,6 +66,25 @@
 #define NN_INSTALL_PROMPT 1
 #else
 #define NN_INSTALL_PROMPT 0
+#endif
+// Reopened and duplicated tabs keep their back/forward list (CefBrowserHost::RestoreTabInBrowser,
+// DuplicateTab, GetNavigationState).
+#if NN_CHROME_TABS && defined(CEF_NN_TAB_HISTORY)
+#define NN_TAB_HISTORY 1
+#else
+#define NN_TAB_HISTORY 0
+#endif
+// Sleeping tabs are Chrome's discarded tabs (CefBrowserHost::DiscardTab, OnTabDiscardedChanged).
+#if NN_CHROME_TABS && defined(CEF_NN_TAB_DISCARD)
+#define NN_TAB_DISCARD 1
+#else
+#define NN_TAB_DISCARD 0
+#endif
+// CefRequestContext::ClearBrowsingData: Chrome's BrowsingDataRemover.
+#if NN_CHROME_TABS && defined(CEF_NN_BROWSING_DATA)
+#define NN_BROWSING_DATA 1
+#else
+#define NN_BROWSING_DATA 0
 #endif
 // Allowed popups of a hosted tab join its Browser as tabs (not new Chrome windows).
 #if NN_CHROME_TABS && defined(CEF_NN_POPUP_TABS)
@@ -102,7 +122,7 @@ NSString *ProfileForContext(CefRefPtr<CefRequestContext> context);
 NSString *DataRoot();
 /// A persistent profile's data directory ("" = Default).
 NSString *ProfileDirectory(NSString *profile);
-/// Downloads a favicon with `browser`'s image downloader (see NNFavicons.mm).
+/// Downloads a favicon with `browser`'s image downloader (NNFavicons, in NNBrowsingData.mm).
 void DownloadFavicon(CefRefPtr<CefBrowser> browser, NSString *url, NSString *name, void (^completion)(NSDictionary *));
 /// Any image (Media Session artwork, notification icons) the same way, at most `maxPixels` on
 /// its longer side, as a data: URI only: nothing is written to disk, whatever the profile.

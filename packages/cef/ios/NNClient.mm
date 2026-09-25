@@ -513,7 +513,6 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
     request.origin = NSMakePoint(features.x, features.y);
     request.opener = view_;
     OpenPopupWindow(request);
-    Emit(@"popupWindow", @{@"url" : url, @"adoptId" : adopt});
     return false;
   }
   Emit(@"openWindow", @{
@@ -590,6 +589,12 @@ void Client::OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool ac
   tabStripActive_ = active;
   tabStripPinned_ = pinned;
   Emit(@"tabStrip", @{@"index" : @(index), @"active" : @(active), @"pinned" : @(pinned)});
+}
+#endif
+
+#if NN_TAB_DISCARD
+void Client::OnTabDiscardedChanged(CefRefPtr<CefBrowser> browser, bool discarded) {
+  [view_ tabDiscardedChanged:discarded];
 }
 #endif
 
@@ -733,8 +738,61 @@ bool Client::OnShowPermissionPrompt(CefRefPtr<CefBrowser> browser, uint64_t prom
 
 // MARK: CefContextMenuHandler
 
+namespace {
+
+/// Chrome's page menu items that open Chrome UI this app doesn't show (Chrome's own split view,
+/// profile windows, side panels, bubbles anchored to its hidden toolbar) or need Google services.
+constexpr int kUnavailableChromeItems[] = {
+    IDC_CONTENT_CONTEXT_OPENLINKINPROFILE, IDC_CONTENT_CONTEXT_OPENLINKBOOKMARKAPP, IDC_CONTENT_CONTEXT_OPENLINKWITH,
+    IDC_CONTENT_CONTEXT_OPENLINK_ISOLATED, IDC_CONTENT_CONTEXT_TRANSLATE, IDC_CONTENT_CONTEXT_PARTIAL_TRANSLATE,
+    IDC_CONTENT_CONTEXT_OPEN_IN_READING_MODE, IDC_CONTENT_CONTEXT_LENS_REGION_SEARCH, IDC_CONTENT_CONTEXT_LENS_OVERLAY,
+    IDC_CONTENT_CONTEXT_SEARCHWEBFORIMAGE, IDC_CONTENT_CONTEXT_SEARCHWEBFORVIDEOFRAME, IDC_CONTENT_CONTEXT_GLIC,
+    IDC_CONTENT_CONTEXT_GLICSHAREIMAGE, IDC_CONTENT_CONTEXT_GENERATE_QR_CODE, IDC_CONTENT_CONTEXT_SHARING_SUBMENU,
+    IDC_SEND_TAB_TO_SELF,
+};
+
+/// No separator first, last or twice in a row.
+void TidySeparators(CefRefPtr<CefMenuModel> model) {
+  for (int i = (int)model->GetCount() - 1; i >= 0; i--) {
+    bool separator = model->GetTypeAt(i) == MENUITEMTYPE_SEPARATOR;
+    bool edge = i == 0 || i == (int)model->GetCount() - 1;
+    if (separator && (edge || model->GetTypeAt(i - 1) == MENUITEMTYPE_SEPARATOR)) model->RemoveAt(i);
+  }
+}
+
+/// DEV (NETNYAHOO_CONTEXT_MENU_LOG=<file>): each page menu is written to <file> as JSON instead of
+/// shown; if <file>.pick holds an item's label, that item runs (its extension, Chrome's handler or
+/// ours), then the pick file is removed. Test instances can't show a menu nobody closes.
+NSArray *DescribeMenu(CefRefPtr<CefMenuModel> model) {
+  NSMutableArray *items = [NSMutableArray array];
+  for (size_t i = 0; i < model->GetCount(); i++) {
+    NSMutableDictionary *item = [@{
+      @"id" : @(model->GetCommandIdAt(i)),
+      @"label" : ToNS(model->GetLabelAt(i)),
+      @"type" : @(model->GetTypeAt(i)),
+      @"enabled" : @(model->IsEnabledAt(i)),
+      @"visible" : @(model->IsVisibleAt(i)),
+    } mutableCopy];
+    if (CefRefPtr<CefMenuModel> sub = model->GetSubMenuAt(i)) item[@"submenu"] = DescribeMenu(sub);
+    [items addObject:item];
+  }
+  return items;
+}
+
+int FindMenuItem(CefRefPtr<CefMenuModel> model, NSString *label) {
+  for (size_t i = 0; i < model->GetCount(); i++) {
+    if ([ToNS(model->GetLabelAt(i)) isEqualToString:label]) return model->GetCommandIdAt(i);
+    if (CefRefPtr<CefMenuModel> sub = model->GetSubMenuAt(i))
+      if (int id = FindMenuItem(sub, label)) return id;
+  }
+  return 0;
+}
+
+}  // namespace
+
 void Client::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                                  CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model) {
+  if (host::IsChromeTab(browser)) return ChromeTabContextMenu(frame, params, model);
   int index = 0;
   auto insert = [&](int id, NSString *label) { model->InsertItemAt(index++, id, ToCef(label)); };
   auto separator = [&]() { model->InsertSeparatorAt(index++); };
@@ -771,11 +829,68 @@ void Client::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFra
   while (model->GetCount() > 0 && model->GetTypeAt(0) == MENUITEMTYPE_SEPARATOR) model->RemoveAt(0);
 }
 
+/// Chrome's own page menu (links, images, media, spelling, extensions' items, Print, Save As…,
+/// View Page Source) with what differs in this app: the search engine and Inspect are ours, Copy
+/// Link to Highlight makes Dia's clean quote link, Open Link in Split View opens our split, and
+/// items for Chrome UI we don't show are gone.
+void Client::ChromeTabContextMenu(CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params,
+                                  CefRefPtr<CefMenuModel> model) {
+  for (int id : kUnavailableChromeItems) model->Remove(id);
+  if (!params->GetSelectionText().empty()) {
+    NSString *label = [NSString stringWithFormat:@"Search %@ for “%@”", gSearchEngineName,
+                                                 SelectionLabel(ToNS(params->GetSelectionText()))];
+    if (model->GetIndexOf(IDC_CONTENT_CONTEXT_SEARCHWEBFOR) >= 0) {
+      model->SetLabel(IDC_CONTENT_CONTEXT_SEARCHWEBFOR, ToCef(label));
+    } else if (model->GetIndexOf(IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB) >= 0) {
+      model->SetLabel(IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB, ToCef(label));
+    } else if (!params->IsEditable() && model->GetIndexOf(MENU_ID_COPY) >= 0) {
+      // Chrome only offers it with a default search engine of its own.
+      model->InsertItemAt(model->GetIndexOf(MENU_ID_COPY) + 1, kSearchSelection, ToCef(label));
+    }
+    if (kChatEnabled && !params->IsEditable() && model->GetIndexOf(MENU_ID_COPY) >= 0)
+      model->InsertItemAt(model->GetIndexOf(MENU_ID_COPY) + 1, kAskSelection, "Ask About Selection");
+  }
+  TidySeparators(model);
+}
+
+bool Client::RunContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                            CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model,
+                            CefRefPtr<CefRunContextMenuCallback> callback) {
+  static const char *log = getenv("NETNYAHOO_CONTEXT_MENU_LOG");
+  if (!log) return false;
+  NSString *path = @(log), *pickPath = [path stringByAppendingString:@".pick"];
+  NSDictionary *menu = @{@"url" : URL(), @"link" : ToNS(params->GetLinkUrl()), @"items" : DescribeMenu(model)};
+  [ToJSON(menu) writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  NSString *pick = [NSString stringWithContentsOfFile:pickPath encoding:NSUTF8StringEncoding error:nil];
+  [NSFileManager.defaultManager removeItemAtPath:pickPath error:nil];
+  pick = [pick stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+  if (int id = pick.length ? FindMenuItem(model, pick) : 0) callback->Continue(id, EVENTFLAG_NONE);
+  else callback->Cancel();
+  return true;
+}
+
 bool Client::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                                   CefRefPtr<CefContextMenuParams> params, int command_id,
                                   cef_event_flags_t event_flags) {
   NSString *link = ToNS(params->GetLinkUrl());
   NSString *src = ToNS(params->GetSourceUrl());
+  switch (command_id) {
+    // Chrome's items that are ours to run.
+    case IDC_CONTENT_CONTEXT_SEARCHWEBFOR:
+    case IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB:
+      command_id = kSearchSelection;
+      break;
+    case IDC_CONTENT_CONTEXT_COPYLINKTOTEXT:
+      command_id = kCopyLinkToHighlight;
+      break;
+    case IDC_CONTENT_CONTEXT_INSPECTELEMENT:
+      command_id = kInspect;
+      break;
+    case IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW:
+      AllowUserNavigation(link);
+      Emit(@"openWindow", @{@"url" : link, @"disposition" : @"split", @"userGesture" : @YES});
+      return true;
+  }
   switch (command_id) {
     case kOpenLinkNewTab:
       AllowUserNavigation(link);
@@ -815,12 +930,9 @@ bool Client::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFr
     case kCopyLinkToHighlight:
       Emit(@"command", @{@"command" : @"copyLinkToHighlight", @"text" : ToNS(params->GetSelectionText())});
       return true;
-    case kInspect: {
-      CefWindowInfo info;
-      CefBrowserSettings settings;
-      browser->GetHost()->ShowDevTools(info, nullptr, settings, CefPoint(params->GetXCoord(), params->GetYCoord()));
+    case kInspect:
+      nn::ShowDevTools(browser, nil, CefPoint(params->GetXCoord(), params->GetYCoord()));
       return true;
-    }
   }
   return false;
 }
@@ -828,6 +940,9 @@ bool Client::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFr
 // MARK: CefFocusHandler
 
 void Client::OnGotFocus(CefRefPtr<CefBrowser> browser) {
+  // Chrome focuses a tab it activates (host::TabShown): not the user's doing, and reporting it
+  // made two split panes activate each other forever.
+  if (host::ActivatingTab()) return;
   if (view_) host::TabShown(view_);
   Emit(@"focus", @{});
 }

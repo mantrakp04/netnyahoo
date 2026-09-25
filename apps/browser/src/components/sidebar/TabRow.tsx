@@ -1,4 +1,4 @@
-import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
+import { ActivitySpinner, ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Pressable, TextInput, View, type GestureResponderEvent } from "react-native";
 import { closeTab, toggleMute } from "../../lib/actions";
@@ -35,7 +35,7 @@ export function TabRowItem({ tabId, section, parentGroup }: { tabId: string; sec
   );
 }
 
-/** Dia's tab row: favicon, audio glyph, fading title, close button on hover. */
+/** Dia's tab row: favicon, audio glyph, fading title, loading spinner, close button on hover. */
 export function TabRow({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
@@ -44,6 +44,7 @@ export function TabRow({ tabId }: { tabId: string }) {
   const active = useIsActiveTab(tabId);
   const selected = useBrowser((s) => (s.selection[windowId] ?? []).includes(tabId));
   const playingAudio = useTabLive(tabId, (l) => l.playingAudio);
+  const loading = useTabLive(tabId, (l) => l.isLoading);
   const renaming = useSidebarUi((u) => u.renaming?.kind === "tab" && u.renaming.id === tabId);
   const { hovered, hoverProps } = useRowHover(windowId, renaming ? null : { kind: "tab", id: tabId });
   if (!tab) return null;
@@ -102,8 +103,11 @@ export function TabRow({ tabId }: { tabId: string }) {
               ) : (
                 <FadeLabel text={title} fontSize={13} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 18, marginLeft: 5 }} />
               )}
-              {hovered && !renaming && (
+              {hovered && !renaming ? (
                 <IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => void closeTab(tab.id)} tooltip="Close Tab (⌘W)" />
+              ) : (
+                // TabContentView's trailing ActivitySpinnerView: 12pt, 8pt from the row's end.
+                loading && <ActivitySpinner style={{ width: 12, height: 12, marginLeft: 6, marginRight: 2 }} />
               )}
             </Surface>
           )}

@@ -217,6 +217,12 @@ that package may edit.
      - `NNPictureInPicture.*` → Chrome PiP and auto-PiP.
      - The passwords, autofill and favicon parts of `helper/page_script.js`.
    - Keep `NNSwipe`, `NNDevTools`, `NNBrowsingData`, downloads, `NNDiagnostics` and `NNComponents`.
+   - **As built:** the engines went, the files stayed. `NNPasswords`, `NNAutofill`, `NNZoom`,
+     `NNSiteSettings` and `NNExtensions` (with their `.ts` files) are now thin wrappers that drive
+     Chrome's own settings and extensions pages (passwordsPrivate, autofillPrivate, HostZoomMap
+     through the tabs, content settings, developerPrivate) for our settings panes.
+     `NNFilterEngine`, the filter-list fetch, `NNPictureInPicture` and `extension_shim.js` are gone;
+     `NNContentBlocker` now manages uBlock Origin Lite.
 4. **WP4 — Chrome UI surfaces** (~2–3 eng-weeks, long tail; depends on WP2)
    - Owns the new `packages/cef/ios/NNChromeUI.*` and `apps/browser/src/components/site/*`.
    - Implement the table above: verify each surface's position, route the anchored bubbles (passwords,

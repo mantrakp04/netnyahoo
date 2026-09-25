@@ -11,7 +11,7 @@ import {
   updatePassword,
   type SavedPassword,
 } from "@netnyahoo/cef";
-import { authenticate, confirm, copyText, Symbol } from "@netnyahoo/shell";
+import { confirm, copyText, Symbol } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
@@ -32,10 +32,10 @@ const UNLOCK_MS = 5 * 60_000;
 const unlockedUntil = new Map<string, number>();
 const isUnlocked = (profile: string) => Date.now() < (unlockedUntil.get(profile) ?? 0);
 
-export function PasswordsPane() {
+export function PasswordsPane({ profileId: initial }: { profileId?: string | null }) {
   const theme = useTheme();
   const profiles = useProfiles();
-  const [profileId, setProfileId] = useState(() => useBrowser.getState().settings.defaultProfileId);
+  const [profileId, setProfileId] = useState(() => initial ?? useBrowser.getState().settings.defaultProfileId);
   const [, setUnlockedAt] = useState(0);
   const [list, setList] = useState<SavedPassword[] | null>(null);
   const [never, setNever] = useState<string[]>([]);
@@ -55,9 +55,8 @@ export function PasswordsPane() {
   useEffect(() => void getPasswordAutofill(profile).then(setAutofill).catch(() => {}), [profile]);
 
   const unlock = async () => {
-    // One prompt: Chrome's own (older app builds: ours, then Chrome's on reveal).
-    const chrome = await unlockPasswords(profile);
-    if (!(chrome ?? (await authenticate("show your saved passwords")))) return;
+    // One prompt: Chrome's own, which revealing a password needs anyway.
+    if (!(await unlockPasswords(profile))) return;
     unlockedUntil.set(profile, Date.now() + UNLOCK_MS);
     setUnlockedAt(Date.now());
   };

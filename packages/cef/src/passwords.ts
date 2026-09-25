@@ -13,12 +13,10 @@ export const listPasswords = async (profile: string): Promise<SavedPassword[]> =
 /**
  * Touch ID / the login password through Chrome's own check, which revealing a password
  * needs anyway: unlocking with it means one prompt, and reveals pass for 5 minutes.
- * Resolves false if the user cancelled. `null`: this app build can't (use your own check).
+ * Resolves false if the user cancelled.
  */
-export const unlockPasswords = async (profile: string): Promise<boolean | null> => {
-  if (!Cef.unlockPasswords) return null;
-  return valueOr(await Cef.unlockPasswords(profile), { unlocked: false }).unlocked;
-};
+export const unlockPasswords = async (profile: string): Promise<boolean> =>
+  valueOr(await Cef.unlockPasswords(profile), { unlocked: false }).unlocked;
 /** Reveals a saved password (for a Passwords settings pane). */
 export const getPassword = async (profile: string, origin: string, username: string) =>
   valueOr(await Cef.getPassword(profile, origin, username), { password: null }).password;
@@ -41,8 +39,6 @@ export const setNeverSavePasswords = async (profile: string, origin: string, nev
 };
 export const getNeverSavePasswordOrigins = async (profile: string) =>
   valueOr(await Cef.getNeverSavePasswordOrigins(profile), { origins: [] }).origins;
-/** A strong password like Safari's ("abcdef-GHIjk2-lmnopq"). */
-export const generatePassword = () => Cef.generatePassword();
 /** Chrome offers to save and fills passwords (default on). */
 export const getPasswordAutofill = (profile = "") => Cef.getPasswordAutofill(profile);
 export const setPasswordAutofill = (enabled: boolean, profile = "") => Cef.setPasswordAutofill(profile, enabled);

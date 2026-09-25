@@ -190,6 +190,21 @@ test("reopened tabs go back to their index and group", () => {
   assert.equal(S().groups[g].tabIds.length, 2);
 });
 
+test("duplicated and reopened tabs ask the engine for their back/forward list", () => {
+  reset();
+  const w = S().createWindow({ url: "a.com" });
+  const a = model.viewTabIds(S(), w)[0];
+  const copy = S().duplicateTab(a);
+  assert.equal(S().tabs[copy].adoptId, `clone:${a}`);
+  assert.equal(S().tabs[copy].navigation, null);
+  assert.deepEqual(view(w), ["https://a.com", "https://a.com"]);
+  S().closeTab(copy);
+  assert.equal(S().closedTabs.at(-1).tabId, copy);
+  S().reopenClosedTab(w);
+  const reopened = model.viewTabIds(S(), w)[1];
+  assert.equal(S().tabs[reopened].adoptId, `restore:${copy}`);
+});
+
 test("hydrate repairs dangling references", () => {
   S().hydrate({
     profiles: { default: { id: "default", name: "Personal", color: "plum", icon: null, createdAt: 0 } },

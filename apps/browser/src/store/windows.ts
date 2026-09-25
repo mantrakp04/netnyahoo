@@ -329,6 +329,8 @@ function restoreTab(s: BrowserState, entry: ClosedTab, requested?: string | null
     profileId,
     snapshot: entry.tab,
     index: w.id === entry.windowId ? entry.index : undefined,
+    // With its back/forward list, if the engine still has it.
+    adoptId: entry.tabId && entry.tab.url ? `restore:${entry.tabId}` : undefined,
   });
   next = withTab;
   const g = entry.group;
