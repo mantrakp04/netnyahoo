@@ -1,0 +1,7 @@
+node_modules
+dist
+.DS_Store
+.env
+# Filled by scripts/prepare-assets.mjs and scripts/capture-game.mjs.
+public
+out

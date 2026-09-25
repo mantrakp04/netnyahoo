@@ -1,0 +1,30 @@
+{
+  "name": "@netnyahoo/launch-video",
+  "private": true,
+  "type": "module",
+  "description": "The Netnyahoo launch video (Remotion). Renders to output/launch-video/.",
+  "scripts": {
+    "dev": "remotion studio",
+    "prepare-assets": "node scripts/prepare-assets.mjs && node scripts/make-sound.mjs",
+    "capture": "node scripts/capture-game.mjs",
+    "render": "remotion render Launch ../../output/launch-video/netnyahoo-launch.mp4 --codec=h264 --crf=17 --x264-preset=slow --pixel-format=yuv420p --audio-codec=aac --audio-bitrate=192k",
+    "cover": "remotion still Cover ../../output/launch-video/netnyahoo-launch-cover.png && remotion still Answer ../../output/launch-video/netnyahoo-round3-answer.png",
+    "lint": "tsc"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource-variable/martian-mono": "^5.3.0",
+    "@remotion/cli": "4.0.529",
+    "@remotion/fonts": "4.0.529",
+    "@remotion/media": "4.0.529",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.529",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/three": "^0.186.0",
+    "typescript": "5.9.3"
+  }
+}

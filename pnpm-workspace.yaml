@@ -3,6 +3,8 @@ packages:
   - packages/*
   # The landing page is a standalone static site with its own lockfile (apps/site/README.md).
   - "!apps/site"
+  # The launch video is standalone too (apps/launch-video).
+  - "!apps/launch-video"
 
 # React Native + CocoaPods expect a flat node_modules (the Podfile and Metro
 # resolve react-native-macos by path), so hoist instead of pnpm's symlink store.
