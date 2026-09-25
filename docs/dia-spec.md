@@ -314,6 +314,39 @@ what the macOS 26 SDK gives standard AppKit controls, menus and popovers. Our bu
 12. Not in the binary, despite the release-notes mock-up: the placeholder "Search or ask a question" and a "…" button
     in the bar. 1.50.1 still says "Ask anything…".
 
+### Profile paging (ARCUI PageSwipeController, TabSidebar space switcher; 1.50.1)
+
+Implemented in `apps/browser/src/components/layout/profilePager.ts` (+ `swipeMotion.ts`, `profiles/ProfileDots.tsx`).
+- **Tracking** (trackpad loop `0x10059733c`, a `nextEventMatchingMask:` loop on phased scroll events): each event
+  adds `scrollingDeltaX × −0.5` to the position in points (`0x100597ba0`: `fmul d0, d0, d8` with d8 = −0.5), so the
+  pages move at half the scroll distance. No check of System Settings › Swipe between pages anywhere in ARCUI's
+  paging code (no `isSwipeTrackingFromScrollEventsEnabled`); Magic Mouse one-finger swipes are the same phased events.
+- **Rubber band** past the first/last page: `255·(1 − 1/(0.15·x/255 + 1))` (`0x100598070`, `0x10059ae34`).
+- **Release** (`0x100599610`, fed the position's velocity from its sample tracker): if |velocity| ≥ **5 pt/s** the
+  target is the next page in the velocity's direction (floor + 1 / ceil − 1), otherwise the nearest page; clamped to
+  the pages and to one page either side of the page the swipe began on. The settle spring gets the release velocity
+  when it points at the target (`0x100597fa8`), else 0.
+- **Settle**: 0.25 s critically damped (0.4 s without `sidebar-space-swipe-animations`), `space_swipe_settling`
+  keyframes (see 1.50 item 7). Page detent haptics (`performsPageDetentHaptics`, `lastDetentPageID`) as the nearest
+  page changes.
+- **Wheel mice** (`nonGesturalScrollState`, `0x1005983c4`, events with no phase): scroll deltas add up while they
+  come less than ~0.049 s apart; once |Σ| > 1 pt the view pages one page that way (sign flipped by
+  `isDirectionInvertedFromDevice`), then ignores wheel events for 0.25 s.
+- `TabSidebar.PagingContainerViewController` keeps `loadedPages` / `transitionPageIDs` and schedules page cleanup:
+  pages beside the current one only exist during a transition. `TabStrip.TabStripSpacePagingController` pages the
+  top tab strip too (with a content fade on settle, `settleUsesContentFade`, not decoded).
+- **Space switcher** (sidebar footer, `spaces-ui-enabled` defaults **on** in 1.50.1: flag word 0x201):
+  `SidebarContainerFooterView` is 41 pt tall (`0x1054263c8`), library cell at the left, overflow button 42 pt wide
+  3 pt from the right; the `SpaceSwitcherView` band is 28 pt tall, centred in the footer above its bottom 3 pt
+  (`0x10541d014`), 31 pt in from each side when those buttons show. `SpaceSwitcherLayout`: 12 pt per item, centred,
+  at most 84 pt (7 items) before it scrolls with the edge items scaled 0.75–1 (`0x10540e184`).
+  `SpaceSwitcherItemView`: a 6 × edgeScale pt round dot centred in its cell (`0x10540cb78`), `labelColor` at alpha
+  **0.85** selected, **0.4** hovered, **0.2** otherwise (`0x10540cc90`). Clicking a dot focuses that space
+  (`SpaceFocusChangedSource.switcherDotClick`).
+- **Sidebar profile indicator** (`SidebarProfileIndicatorButton`, sizing `0x10542eea8`): the header is a stack
+  (window controls, 6 pt, the indicator's wrapper, 2 pt, Downloads) and the wrapper takes the room left. The button
+  shows its title whole when it fits, cut short only if at least **52 pt** of it fit, else only the profile icon.
+
 ### 1.50 New Tab intro (rebrand light configuration)
 
 Recovered from the 1.50.1 binary and checked against a window-only ScreenCaptureKit capture of the user's Dia

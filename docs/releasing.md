@@ -34,6 +34,9 @@ Releases are GitHub releases of `mantrakp04/netnyahoo`, tagged `v<version>`. Eac
    - checks the signature, the helpers' JIT entitlements and that the app isn't signed with
      `com.apple.developer.web-browser.public-key-credential` (Apple hasn't granted it yet;
      `Netnyahoo-ICloudPasskeys.entitlements` is the future entitlements file),
+   - launches the app once in the background (throwaway data dir), waits for uBlock's rulesets to be indexed,
+     quits it and checks the signature again: the app must never write into its own bundle
+     (`docs/cef-source-build.md` › "Nothing writes into the app bundle"),
    - notarizes and staples the app and the DMG when the `netnyahoo` profile exists,
    - packages the DMG and the zip, and signs `appcast.xml` with the Sparkle key. It starts from the
      published appcast, so earlier versions stay listed.
@@ -47,7 +50,7 @@ Releases are GitHub releases of `mantrakp04/netnyahoo`, tagged `v<version>`. Eac
 
 Before publishing, check the build the way the script can't: launch `dist/<version>/export/Netnyahoo.app` with
 `NETNYAHOO_BACKGROUND=1`, a throwaway `NETNYAHOO_DATA_DIR` and `NETNYAHOO_REMOTE_DEBUGGING_PORT`, and load a
-page over CDP.
+page over CDP. Afterwards `codesign --verify --deep --strict` must still pass on it.
 
 ## Unnotarized builds
 

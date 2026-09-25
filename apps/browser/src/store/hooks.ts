@@ -28,6 +28,19 @@ export function useWindowField<T>(select: (w: BrowserWindow) => T, fallback: T):
   });
 }
 
+/**
+ * The profile a subtree shows: a sidebar or tab-strip page names its own (during a profile swipe
+ * the neighbouring profile's page is drawn beside the window's, layout/profilePager).
+ */
+export const PageProfileContext = createContext<string | null>(null);
+
+/** The profile this page shows: its PageProfileContext, else the window's. */
+export function usePageProfileId(): string {
+  const page = useContext(PageProfileContext);
+  const own = useWindowProfileId();
+  return page ?? own;
+}
+
 export const useIsIncognito = () => useWindowField((w) => w.incognito, false);
 export const useSidebarOpen = () => useWindowField((w) => w.sidebarOpen, true);
 /** The profile id the window shows (`incognito:<id>` in incognito windows). */
@@ -69,7 +82,12 @@ export function useActiveTab(): Tab | undefined {
   });
 }
 
-export const useIsActiveTab = (tabId: string) => useBrowser((s) => activeTabId(s, s.tabs[tabId]?.windowId ?? "") === tabId);
+/** Whether the tab is its profile's selected tab in its window (for the window's profile: the selected tab). */
+export const useIsActiveTab = (tabId: string) =>
+  useBrowser((s) => {
+    const tab = s.tabs[tabId];
+    return !!tab && activeTabId(s, tab.windowId, tab.profileId) === tabId;
+  });
 
 export const useTab = (tabId: string | undefined): Tab | undefined => useBrowser((s) => (tabId ? s.tabs[tabId] : undefined));
 

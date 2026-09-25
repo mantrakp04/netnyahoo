@@ -8,7 +8,8 @@
 
 namespace nn::blocker {
 
-/// The bundled extension's folder (nil if the app was built without it).
+/// The folder Chrome loads the extension from: a copy of the bundled one in the data directory,
+/// because Chrome writes into it (nil if the app was built without it, or the copy failed).
 NSString *_Nullable ExtensionPath();
 /// Its extension id (fixed by the manifest key setup.sh adds).
 NSString *ExtensionId();

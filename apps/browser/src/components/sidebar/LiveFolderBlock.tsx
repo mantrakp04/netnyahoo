@@ -11,6 +11,7 @@ import { SOURCES } from "../../live/sources";
 import { setLive, updateFolder, useLive, profileFolders } from "../../live/store";
 import type { CompletedItem, LiveItem } from "../../live/types";
 import { useBrowser } from "../../store/browser";
+import { usePageProfileId } from "../../store/hooks";
 import { activeTabId, viewTabIds } from "../../store/model";
 import { openSettings } from "../settings/windows";
 import { IconButton, useHover } from "../primitives";
@@ -31,7 +32,8 @@ export const liveRowKey = (folderId: string, itemId: string) => `live|${folderId
 
 /** The window profile's live folders, between the pinned groups and the tab list. */
 export function LiveFolders({ windowId, spaced }: { windowId: string; spaced: boolean }) {
-  const profileId = useBrowser((s) => (s.windows[windowId]?.incognito ? "" : (s.windows[windowId]?.profileId ?? "")));
+  const page = usePageProfileId();
+  const profileId = useBrowser((s) => (s.windows[windowId]?.incognito ? "" : page));
   const ids = useLive(useShallow((s) => profileFolders(s, profileId)));
   if (!ids.length) return null;
   return (
@@ -84,13 +86,14 @@ function LiveFolderBlock({ folderId, windowId }: { folderId: string; windowId: s
   const collapsed = !!folder?.collapsed;
   const rows = useMemo(() => (folder ? folderRows(folder, items, showAll) : []), [folder, items, showAll]);
   const itemIds = useMemo(() => new Set(items.map((i) => i.id)), [items]);
+  const profileId = usePageProfileId();
   // Tabs from this folder whose item has left it (merged PR, filter change): shown as plain tabs at the end.
   const strays = useBrowser(
-    useShallow((s) => viewTabIds(s, windowId).filter((id) => s.tabs[id]?.liveItem?.folderId === folderId && !itemIds.has(s.tabs[id]!.liveItem!.itemId))),
+    useShallow((s) => viewTabIds(s, windowId, profileId).filter((id) => s.tabs[id]?.liveItem?.folderId === folderId && !itemIds.has(s.tabs[id]!.liveItem!.itemId))),
   );
   // Closed, the folder still shows the selected tab's row.
   const activeItem = useBrowser((s) => {
-    const t = s.tabs[activeTabId(s, windowId) ?? ""];
+    const t = s.tabs[activeTabId(s, windowId, profileId) ?? ""];
     return t?.liveItem?.folderId === folderId ? t.liveItem.itemId : null;
   });
   const { style, moving, onLayout } = useDisclosure(collapsed);
@@ -336,8 +339,9 @@ function LiveItemRow({ folderId, item, windowId, indent = 0 }: { folderId: strin
   const theme = useTheme();
   const colors = useLiveColors();
   const key = liveRowKey(folderId, item.id);
-  const tabId = useBrowser((s) => viewTabIds(s, windowId).find((id) => s.tabs[id]?.liveItem?.itemId === item.id && s.tabs[id]?.liveItem?.folderId === folderId) ?? null);
-  const active = useBrowser((s) => !!tabId && activeTabId(s, windowId) === tabId);
+  const profileId = usePageProfileId();
+  const tabId = useBrowser((s) => viewTabIds(s, windowId, profileId).find((id) => s.tabs[id]?.liveItem?.itemId === item.id && s.tabs[id]?.liveItem?.folderId === folderId) ?? null);
+  const active = useBrowser((s) => !!tabId && activeTabId(s, windowId, profileId) === tabId);
   const unread = useLive((s) => !!s.unread[folderId]?.includes(item.id));
   const completion = useLive((s) => (s.completing[folderId]?.includes(item.id) ? (s.completed[folderId]?.find((c) => c.item.id === item.id)?.state ?? "merged") : null));
   const { hovered, hoverProps } = useRowHover(windowId, completion ? null : { kind: "live", id: key });

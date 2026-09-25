@@ -1,5 +1,6 @@
 import { deleteProfileData } from "@netnyahoo/cef";
 import { confirm, focusWindow, hasWindowHost, prompt } from "@netnyahoo/shell";
+import { pageToProfile } from "../components/layout/profilePager";
 import { profileNames, requestCreateProfile, type CreateProfilePreset } from "../components/profiles/CreateProfile";
 import { useBrowser, type CreateWindowOptions } from "../store/browser";
 import { activeTabId, engineProfile, isIncognitoProfile, resolveWindowId, viewTabIds } from "../store/model";
@@ -123,8 +124,10 @@ export function moveTabToWindow(tabId: string, target: string) {
 }
 
 /** ⌃1–⌃9 / next / previous profile. */
-export function switchProfile(windowId: string, profileId: string) {
-  store().switchProfile(windowId, profileId);
+/** `animated`: the sidebar (or tab strip) pages to it first, like a swipe (layout/profilePager). */
+export function switchProfile(windowId: string, profileId: string, animated = false) {
+  if (animated) pageToProfile(windowId, profileId);
+  else store().switchProfile(windowId, profileId);
 }
 
 export function cycleProfile(windowId: string, delta: 1 | -1) {
@@ -132,7 +135,7 @@ export function cycleProfile(windowId: string, delta: 1 | -1) {
   const w = s.windows[windowId];
   if (!w || w.incognito || s.profileOrder.length < 2) return;
   const i = s.profileOrder.indexOf(w.profileId);
-  switchProfile(windowId, s.profileOrder[(i + delta + s.profileOrder.length) % s.profileOrder.length]!);
+  switchProfile(windowId, s.profileOrder[(i + delta + s.profileOrder.length) % s.profileOrder.length]!, true);
 }
 
 /**

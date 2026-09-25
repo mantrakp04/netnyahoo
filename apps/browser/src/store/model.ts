@@ -86,17 +86,22 @@ export function pinnedFirst(ids: string[], tabs: Record<string, Tab>): string[] 
   return [...ids.filter((id) => tabs[id]?.pinned), ...ids.filter((id) => !tabs[id]?.pinned)];
 }
 
-/** Tabs the window shows: its current profile's, in sidebar order. */
-export function viewTabIds(s: BrowserState, windowId: string): string[] {
+/**
+ * Tabs the window shows: its current profile's, in sidebar order. `profileId` asks for
+ * another profile's (the page beside it during a profile swipe).
+ */
+export function viewTabIds(s: BrowserState, windowId: string, profileId?: string): string[] {
   const w = s.windows[windowId];
   if (!w) return [];
-  return w.tabIds.filter((id) => s.tabs[id]?.profileId === w.profileId);
+  const profile = profileId ?? w.profileId;
+  return w.tabIds.filter((id) => s.tabs[id]?.profileId === profile);
 }
 
-export function activeTabId(s: BrowserState, windowId: string): string | undefined {
+/** The window's selected tab (for `profileId`: the one that profile comes back to). */
+export function activeTabId(s: BrowserState, windowId: string, profileId?: string): string | undefined {
   const w = s.windows[windowId];
   if (!w) return undefined;
-  const id = w.activeTabIds[w.profileId];
+  const id = w.activeTabIds[profileId ?? w.profileId];
   return id && s.tabs[id]?.windowId === windowId ? id : undefined;
 }
 

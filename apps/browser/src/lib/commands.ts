@@ -213,7 +213,7 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "mergeAllWindows":
       return s.mergeAllWindows(windowId);
     case "switchProfile":
-      return arg ? switchProfile(windowId, arg) : undefined;
+      return arg ? switchProfile(windowId, arg, true) : undefined;
     case "nextProfile":
       return cycleProfile(windowId, 1);
     case "previousProfile":

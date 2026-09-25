@@ -250,16 +250,40 @@ CGFloat ReleaseVelocity(NSTimeInterval now) {
   return now - oldest > 0.004 ? sum / (now - oldest) : 0;
 }
 
+BOOL IsPager(NSView<NNSwipeTarget> *target) {
+  return [target respondsToSelector:@selector(isPager)] && target.isPager;
+}
+
+/// Wheel mice (no phases; Shift-scroll turns vertical into horizontal): a horizontal scroll
+/// over a pager goes to it as a "wheel" event (Dia's PageSwipeController pages once the burst
+/// adds up to 1 pt, layout/profilePager). Everything else passes through.
+NSEvent *HandleWheel(NSEvent *event) {
+  CGFloat dx = event.scrollingDeltaX;
+  if (fabs(dx) <= fabs(event.scrollingDeltaY)) return event;
+  NSView *hit = HitView(event.window, event.locationInWindow);
+  NSView<NNSwipeTarget> *target = TargetAt(event.window, event.locationInWindow, hit);
+  if (!target || !IsPager(target)) return event;
+  // The content moves the way the device says: + is "back" with natural scrolling.
+  BOOL back = (dx > 0) == event.isDirectionInvertedFromDevice;
+  if (NativeContentScrolls(hit, target.superview, back ? 1 : -1)) return event;
+  [target swipeEvent:@{
+    @"phase" : @"wheel",
+    @"direction" : back ? @"back" : @"forward",
+    @"distance" : @(fabs(dx)),
+    @"dy" : @0,
+    @"velocity" : @0,
+    @"available" : @(back ? target.canSwipeBack : target.canSwipeForward),
+    @"width" : @(NSWidth(target.bounds)),
+  }];
+  return nil;
+}
+
 void Begin(NSEvent *event, BOOL ignoreSystemPreference) {
   gGesture = Gesture();
   gGesture.ignoreSystemPreference = ignoreSystemPreference;
-  if (!NSEvent.isSwipeTrackingFromScrollEventsEnabled && !ignoreSystemPreference) {
-    gGesture.state = State::Ignored;
-    return;
-  }
   NSView *hit = HitView(event.window, event.locationInWindow);
   NSView<NNSwipeTarget> *target = TargetAt(event.window, event.locationInWindow, hit);
-  if (!target) {
+  if (!target || (!NSEvent.isSwipeTrackingFromScrollEventsEnabled && !ignoreSystemPreference && !IsPager(target))) {
     gGesture.state = State::Ignored;
     return;
   }
@@ -316,8 +340,9 @@ BOOL ShouldTrack() {
 
 /// Returns the event to let it through to the view under the pointer, or nil to swallow it.
 NSEvent *HandleScroll(NSEvent *event, BOOL ignoreSystemPreference) {
-  if (!event.hasPreciseScrollingDeltas) return event;  // mouse wheels
   NSEventPhase phase = event.phase;
+  if (phase == NSEventPhaseNone && event.momentumPhase == NSEventPhaseNone) return HandleWheel(event);
+  if (!event.hasPreciseScrollingDeltas) return event;
 
   // Like Chrome's history swiper, only the Changed events of a swipe are taken: the view
   // still sees each gesture begin and end (and its momentum), which keeps Chromium's
@@ -423,6 +448,12 @@ NSDictionary *ResponderReport(NSView *hit) {
   };
 }
 
+/// `point` (top-left origin, as devLocate reports it) in the content view's coordinates.
+NSPoint LocalPoint(NSWindow *window, NSPoint point) {
+  NSView *content = window.contentView;
+  return content.isFlipped ? point : NSMakePoint(point.x, NSHeight(content.bounds) - point.y);
+}
+
 CGScrollPhase ScrollPhaseOf(NSString *phase) {
   if ([phase isEqualToString:@"began"]) return kCGScrollPhaseBegan;
   if ([phase isEqualToString:@"changed"]) return kCGScrollPhaseChanged;
@@ -436,21 +467,28 @@ CGScrollPhase ScrollPhaseOf(NSString *phase) {
 NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   NSString *phase = step[@"phase"];
   double dx = [step[@"dx"] doubleValue], dy = [step[@"dy"] doubleValue];
-  CGEventRef cg = CGEventCreateScrollWheelEvent2(NULL, kCGScrollEventUnitPixel, 2, (int32_t)lround(dy), (int32_t)lround(dx), 0);
+  // "wheel": a wheel mouse's notch (lines, not continuous, no phase).
+  BOOL wheel = [phase isEqualToString:@"wheel"];
+  CGEventRef cg = CGEventCreateScrollWheelEvent2(NULL, wheel ? kCGScrollEventUnitLine : kCGScrollEventUnitPixel, 2, (int32_t)lround(dy), (int32_t)lround(dx), 0);
   if (!cg) return nil;
-  CGEventSetIntegerValueField(cg, kCGScrollWheelEventIsContinuous, 1);
-  CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis1, dy);
-  CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis2, dx);
+  CGEventSetIntegerValueField(cg, kCGScrollWheelEventIsContinuous, wheel ? 0 : 1);
+  if ([step[@"shift"] boolValue]) CGEventSetFlags(cg, kCGEventFlagMaskShift);
+  // Real events carry the time they happened; the release velocity is measured from it.
+  CGEventSetTimestamp(cg, clock_gettime_nsec_np(CLOCK_UPTIME_RAW));
+  if (!wheel) {
+    CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis1, dy);
+    CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis2, dx);
+  }
   if ([phase hasPrefix:@"momentum"]) {
     CGMomentumScrollPhase momentum = [phase isEqualToString:@"momentumBegan"] ? kCGMomentumScrollPhaseBegin
                                      : [phase isEqualToString:@"momentumEnded"] ? kCGMomentumScrollPhaseEnd
                                                                                 : kCGMomentumScrollPhaseContinue;
     CGEventSetIntegerValueField(cg, kCGScrollWheelEventMomentumPhase, momentum);
-  } else {
+  } else if (!wheel) {
     CGEventSetIntegerValueField(cg, kCGScrollWheelEventScrollPhase, ScrollPhaseOf(phase));
   }
   // Global display coordinates (origin top-left of the main screen).
-  NSPoint local = NSMakePoint(point.x, NSHeight(window.contentView.bounds) - point.y);
+  NSPoint local = LocalPoint(window, point);
   NSPoint screen = [window convertPointToScreen:[window.contentView convertPoint:local toView:nil]];
   CGFloat mainHeight = NSHeight(NSScreen.screens.firstObject.frame);
   CGEventSetLocation(cg, CGPointMake(screen.x, mainHeight - screen.y));
@@ -495,7 +533,7 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
               completion:(void (^)(NSDictionary<NSString *, id> *))completion {
   gTrace = [NSMutableArray array];
   NSMutableArray *log = [NSMutableArray array];
-  NSPoint local = NSMakePoint(point.x, NSHeight(window.contentView.bounds) - point.y);
+  NSPoint local = LocalPoint(window, point);
   NSPoint inWindow = [window.contentView convertPoint:local toView:nil];
   NSView *hit = HitView(window, inWindow);
   NSDictionary *where = @{
@@ -527,6 +565,7 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
       NSEvent *out = HandleScroll(event, ignoreSystemPreference);
       [log addObject:@{
         @"phase" : phase,
+        @"time" : @(event.timestamp),
         @"state" : @((int)gGesture.state),
         @"swallowed" : @(out == nil),
         @"renderer" : gGesture.renderer ? @((int)gGesture.renderer.scroll) : @(-1),

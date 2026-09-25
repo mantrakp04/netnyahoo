@@ -2,6 +2,10 @@
 
 #import "NNChromePages.h"
 
+#import <CommonCrypto/CommonDigest.h>
+#include <sys/clonefile.h>
+#include <sys/stat.h>
+
 using namespace nn;
 
 namespace {
@@ -101,13 +105,104 @@ void Changed() {
   State(^(NSDictionary *state) { EmitGlobal(@"contentBlocker", state[@"stats"]); });
 }
 
+/// Identifies the bundled extension's contents: its manifest (version and key), file count and size.
+NSString *Fingerprint(NSString *dir) {
+  NSData *manifest = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"manifest.json"]];
+  if (!manifest) return nil;
+  unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+  CC_SHA256(manifest.bytes, (CC_LONG)manifest.length, digest);
+  NSMutableString *fingerprint = [NSMutableString string];
+  for (unsigned char byte : digest) [fingerprint appendFormat:@"%02x", byte];
+  unsigned long long files = 0, bytes = 0;
+  NSDirectoryEnumerator<NSURL *> *entries = [NSFileManager.defaultManager enumeratorAtURL:[NSURL fileURLWithPath:dir]
+                                                               includingPropertiesForKeys:@[ NSURLFileSizeKey ]
+                                                                                  options:0
+                                                                             errorHandler:nil];
+  for (NSURL *entry in entries) {
+    // A bundle Chrome wrote into before (Netnyahoo 0.1.0) also has _metadata: not part of the extension.
+    if ([entry.lastPathComponent isEqualToString:@"_metadata"]) {
+      [entries skipDescendants];
+      continue;
+    }
+    NSNumber *size;
+    [entry getResourceValue:&size forKey:NSURLFileSizeKey error:nil];
+    files++;
+    bytes += size.unsignedLongLongValue;
+  }
+  [fingerprint appendFormat:@"-%llu-%llu", files, bytes];
+  return fingerprint;
+}
+
+/// Chrome writes into the folder of an extension it loads: declarativeNetRequest indexes the
+/// static rulesets into <extension>/_metadata/generated_indexed_rulesets the first time a profile
+/// loads it, and again whenever an index goes stale (a new Chrome ruleset format, say). Written
+/// into the app bundle, that breaks its code signature, and a read-only or translocated app can't
+/// be written at all. So Chrome loads a copy in the data directory (an APFS clone, next to the
+/// Chromium folder), made again whenever the bundled extension changes; its indexes persist there.
+NSString *WritableCopy(NSString *bundled) {
+  NSFileManager *fm = NSFileManager.defaultManager;
+  NSString *dir = [[DataRoot() stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"Built-in Extensions"];
+  NSString *copy = [dir stringByAppendingPathComponent:@"ublock-lite"];
+  NSString *stampPath = [dir stringByAppendingPathComponent:@"ublock-lite.source"];
+  NSString *fingerprint = Fingerprint(bundled);
+  NSString *stamp = [NSString stringWithContentsOfFile:stampPath encoding:NSUTF8StringEncoding error:nil];
+  if (fingerprint && [stamp isEqualToString:fingerprint] &&
+      [fm fileExistsAtPath:[copy stringByAppendingPathComponent:@"manifest.json"]])
+    return copy;
+
+  NSError *error;
+  if (![fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:&error]) {
+    NSLog(@"[blocker] %@: %@", dir, error);
+    return nil;
+  }
+  // Leftovers of an interrupted copy.
+  for (NSString *name in [fm contentsOfDirectoryAtPath:dir error:nil])
+    if ([name hasPrefix:@".ublock-lite"]) [fm removeItemAtPath:[dir stringByAppendingPathComponent:name] error:nil];
+  NSString *staging = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@".ublock-lite-%d", getpid()]];
+  // Not on APFS, or across volumes: a real copy.
+  bool cloned = clonefile(bundled.fileSystemRepresentation, staging.fileSystemRepresentation, 0) == 0;
+  if (!cloned) [fm removeItemAtPath:staging error:nil];
+  if (!cloned && ![fm copyItemAtPath:bundled toPath:staging error:&error]) {
+    NSLog(@"[blocker] copying %@: %@", bundled, error);
+    [fm removeItemAtPath:staging error:nil];
+    return nil;
+  }
+  // A read-only bundle makes a read-only copy: Chrome must be able to write its indexes, and a
+  // later update to replace the copy.
+  NSDirectoryEnumerator<NSString *> *entries = [fm enumeratorAtPath:staging];
+  for (NSString *entry = @""; entry; entry = entries.nextObject) {
+    NSString *path = [staging stringByAppendingPathComponent:entry];
+    struct stat info;
+    if (lstat(path.fileSystemRepresentation, &info) == 0 && !S_ISLNK(info.st_mode) && !(info.st_mode & S_IWUSR))
+      chmod(path.fileSystemRepresentation, info.st_mode | S_IWUSR);
+  }
+  [fm removeItemAtPath:[staging stringByAppendingPathComponent:@"_metadata"] error:nil];
+
+  NSString *old = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@".ublock-lite-old-%d", getpid()]];
+  bool hadCopy = [fm fileExistsAtPath:copy];
+  if ((hadCopy && ![fm moveItemAtPath:copy toPath:old error:&error]) || ![fm moveItemAtPath:staging toPath:copy error:&error]) {
+    NSLog(@"[blocker] installing %@: %@", copy, error);
+    [fm removeItemAtPath:staging error:nil];
+    return nil;
+  }
+  if (hadCopy) [fm removeItemAtPath:old error:nil];
+  [fingerprint writeToFile:stampPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  return copy;
+}
+
 }  // namespace
 
 namespace nn::blocker {
 
 NSString *ExtensionPath() {
-  NSString *path = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"Extensions/ublock-lite"];
-  return [NSFileManager.defaultManager fileExistsAtPath:[path stringByAppendingPathComponent:@"manifest.json"]] ? path : nil;
+  static NSString *path;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    NSString *bundled = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"Extensions/ublock-lite"];
+    if ([NSFileManager.defaultManager fileExistsAtPath:[bundled stringByAppendingPathComponent:@"manifest.json"]])
+      path = WritableCopy(bundled);
+  });
+  return path;
 }
 
 NSString *ExtensionId() { return @"bnjeokpoejhioagiokhkhmdogkhbnbki"; }

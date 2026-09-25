@@ -360,6 +360,15 @@ function WindowDropHighlight() {
   );
 }
 
+/**
+ * Drag and drop for a subtree, or none: a profile page drawn beside the window's during a swipe
+ * (layout/profilePager) keeps its items and drop regions out of the sidebar's drag controller.
+ */
+export function DragScope({ enabled, children }: { enabled: boolean; children: ReactNode }) {
+  const ctx = useContext(DragContext);
+  return <DragContext.Provider value={enabled ? ctx : null}>{children}</DragContext.Provider>;
+}
+
 export const useDragController = () => useContext(DragContext)?.controller;
 /** The group a dragged tab would drop into (its collapsed header highlights). */
 export const useDropInto = () => useContext(DragContext)?.dropInto ?? null;

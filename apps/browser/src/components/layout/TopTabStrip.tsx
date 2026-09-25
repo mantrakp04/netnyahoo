@@ -5,7 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
-import { useIsActiveTab, useTab, useTabLive, useWindowId } from "../../store/hooks";
+import { PageProfileContext, useIsActiveTab, usePageProfileId, useTab, useTabLive, useWindowId, useWindowProfileId } from "../../store/hooks";
 import { viewTabIds } from "../../store/model";
 import type { TabGroup } from "../../store/types";
 import { ProfileIndicator } from "../ProfileIndicator";
@@ -16,6 +16,8 @@ import { TabIcon } from "../sidebar/TabIcon";
 import { TabBadges } from "../media/TabBadges";
 import { GROUP_COLORS, withAlpha } from "../sidebar/tokens";
 import { modifiersOf } from "./controls";
+import { usePageOffset, usePagerPages } from "./profilePager";
+import { ProfileSwipeArea } from "./ProfileSwipe";
 import { openNewTabInSplit } from "./splitActions";
 import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag } from "./tabDrag";
 
@@ -45,9 +47,52 @@ type Entry =
 export function TopTabStrip({ floating }: { floating?: boolean }) {
   const windowId = useWindowId();
   const [width, setWidth] = useState(0);
+  const current = useWindowProfileId();
+  // Swiping between profiles pages the tabs (layout/profilePager), as in the sidebar.
+  const { pages } = usePagerPages(windowId);
+  // The tabs end where the profile indicator and Downloads begin.
+  const [controls, setControls] = useState(76);
+  const left = floating ? 8 : layout.trafficLightsWidth;
+  const right = Math.max(84, controls + 8 + 6);
+  const pageWidth = Math.max(0, width - left - right);
+
+  return (
+    <View style={{ height: TOP_STRIP_HEIGHT }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      <WindowDragRegion style={StyleSheet.absoluteFill} />
+      <View style={{ position: "absolute", left, right, top: 0, bottom: 0, overflow: "hidden" }}>
+        {pages.map((page) => (
+          <StripPage key={page.id} profileId={page.id} slot={page.slot} pageWidth={pageWidth} current={page.id === current} />
+        ))}
+      </View>
+      <View
+        onLayout={(e) => setControls(Math.ceil(e.nativeEvent.layout.width))}
+        style={{ position: "absolute", right: 8, top: CHIP_TOP - 1, flexDirection: "row", alignItems: "center", gap: 2 }}
+      >
+        <ProfileIndicator room={140} />
+        <IconButton
+          icon="arrow.down.circle"
+          size={16}
+          box={34}
+          radius={10}
+          tooltip="Downloads (⇧⌘J)"
+          onPress={() => {
+            const s = useBrowser.getState();
+            s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
+          }}
+        />
+      </View>
+      <ProfileSwipeArea surface="strip" style={StyleSheet.absoluteFill} pageWidth={pageWidth} />
+    </View>
+  );
+}
+
+/** A profile's tabs in the strip; the window's, or one beside it while a swipe pages between them. */
+function StripPage({ profileId, slot, pageWidth, current }: { profileId: string; slot: number; pageWidth: number; current: boolean }) {
+  const windowId = useWindowId();
+  const translateX = usePageOffset(windowId, slot, pageWidth);
   const entries = useBrowser(
     useShallow((s): string[] => {
-      const view = viewTabIds(s, windowId);
+      const view = viewTabIds(s, windowId, profileId);
       const seen = new Set<string>();
       const out: string[] = [];
       for (const id of view) {
@@ -61,7 +106,7 @@ export function TopTabStrip({ floating }: { floating?: boolean }) {
           seen.add(group.id);
           out.push(`group:${group.id}`);
         }
-        if (group?.collapsed && s.windows[windowId]?.activeTabIds[s.windows[windowId]!.profileId] !== id) continue;
+        if (group?.collapsed && s.windows[windowId]?.activeTabIds[profileId] !== id) continue;
         const split = Object.values(s.splits).find((v) => v.tabIds.includes(id));
         if (split) {
           if (!seen.has(split.id)) out.push(`split:${split.id}:${split.tabIds.join(",")}:${group?.id ?? ""}`);
@@ -77,43 +122,33 @@ export function TopTabStrip({ floating }: { floating?: boolean }) {
   const tabCount = parsed.filter((e) => e.kind === "tab" || e.kind === "split").length;
   const pinnedCount = parsed.filter((e) => e.kind === "pinned").length;
   const groupCount = parsed.filter((e) => e.kind === "group").length;
-  // Room for tabs: after the traffic lights, pinned tiles, group labels and the + button.
-  const room = width - layout.trafficLightsWidth - pinnedCount * (PINNED_WIDTH + GAP) - groupCount * (110 + GAP) - 40 - 90;
+  // Room for tabs: the page less its pinned tiles, group labels and the + button.
+  const room = pageWidth - pinnedCount * (PINNED_WIDTH + GAP) - groupCount * (110 + GAP) - 46;
   const chip = Math.max(MIN_CHIP, Math.min(MAX_CHIP, tabCount ? room / tabCount - GAP : MAX_CHIP));
   const regular = parsed.filter((e) => e.kind === "tab").map((e) => e.id);
 
   return (
-    <View style={{ height: TOP_STRIP_HEIGHT }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      <WindowDragRegion style={StyleSheet.absoluteFill} />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ position: "absolute", left: floating ? 8 : layout.trafficLightsWidth, right: 84, top: 0, bottom: 0 }}
-        contentContainerStyle={{ alignItems: "flex-start", gap: GAP, paddingTop: CHIP_TOP, paddingRight: 6 }}
-      >
-        {parsed.map((e) => {
-          if (e.kind === "pinned") return <PinnedChip key={e.id} tabId={e.id} />;
-          if (e.kind === "group") return <GroupLabel key={e.id} groupId={e.id} />;
-          if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} group={e.group} />;
-          return <DraggableChip key={e.id} tabId={e.id} width={chip} index={regular.indexOf(e.id)} count={regular.length} group={e.group} />;
-        })}
-        <NewTabButton windowId={windowId} />
-      </ScrollView>
-      <View style={{ position: "absolute", right: 8, top: CHIP_TOP - 1, flexDirection: "row", alignItems: "center", gap: 2 }}>
-        <ProfileIndicator />
-        <IconButton
-          icon="arrow.down.circle"
-          size={16}
-          box={34}
-          radius={10}
-          tooltip="Downloads (⇧⌘J)"
-          onPress={() => {
-            const s = useBrowser.getState();
-            s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
-          }}
-        />
-      </View>
-    </View>
+    <Animated.View
+      pointerEvents={current ? "auto" : "none"}
+      style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pageWidth, transform: [{ translateX }] }}
+    >
+      <PageProfileContext.Provider value={profileId}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ alignItems: "flex-start", gap: GAP, paddingTop: CHIP_TOP, paddingRight: 6 }}
+        >
+          {parsed.map((e) => {
+            if (e.kind === "pinned") return <PinnedChip key={e.id} tabId={e.id} />;
+            if (e.kind === "group") return <GroupLabel key={e.id} groupId={e.id} />;
+            if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} group={e.group} />;
+            return <DraggableChip key={e.id} tabId={e.id} width={chip} index={regular.indexOf(e.id)} count={regular.length} group={e.group} />;
+          })}
+          <NewTabButton windowId={windowId} />
+        </ScrollView>
+      </PageProfileContext.Provider>
+    </Animated.View>
   );
 }
 
@@ -337,10 +372,8 @@ function GroupLabel({ groupId }: { groupId: string }) {
 function SplitChip({ tabIds, width, group }: { tabIds: string[]; width: number; group: string | null }) {
   const theme = useTheme();
   const windowId = useWindowId();
-  const active = useBrowser((s) => {
-    const w = s.windows[windowId];
-    return !!w && tabIds.includes(w.activeTabIds[w.profileId] ?? "");
-  });
+  const profileId = usePageProfileId();
+  const active = useBrowser((s) => tabIds.includes(s.windows[windowId]?.activeTabIds[profileId] ?? ""));
   const groupColor = useBrowser((s) => (group ? s.groups[group]?.color : null));
   const { hovered, hoverProps } = useHover();
   return (

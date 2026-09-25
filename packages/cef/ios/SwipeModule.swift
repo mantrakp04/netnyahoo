@@ -32,6 +32,7 @@ public class SwipeModule: Module {
       Prop("canSwipeForward") { (view: SwipeArea, value: Bool?) in view.canSwipeForward = value ?? false }
       Prop("tracksUnavailableDirections") { (view: SwipeArea, value: Bool?) in view.tracksUnavailableDirections = value ?? false }
       Prop("allowsVerticalMotion") { (view: SwipeArea, value: Bool?) in view.allowsVerticalMotion = value ?? false }
+      Prop("isPager") { (view: SwipeArea, value: Bool?) in view.isPager = value ?? false }
       /// DEV: where the area is, for devSimulate (window number + its frame, top-left origin).
       AsyncFunction("devLocate") { (view: SwipeArea) -> [String: Any]? in
         guard let window = view.window, let content = window.contentView else { return nil }
@@ -50,6 +51,7 @@ final class SwipeArea: ExpoView, NNSwipeTarget {
   var canSwipeForward = false
   var tracksUnavailableDirections = false
   var allowsVerticalMotion = false
+  @objc var isPager = false
 
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 

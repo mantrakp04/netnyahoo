@@ -8,8 +8,11 @@ import type { NativeSyntheticEvent, ViewProps } from "react-native";
  * once it reports "began", the gesture is the area's until "ended" / "cancelled".
  */
 export type SwipeEvent = {
-  /** "swipe": a whole three-finger swipe (Swipe between pages › Swipe with three fingers). */
-  phase: "began" | "changed" | "ended" | "cancelled" | "swipe";
+  /**
+   * "swipe": a whole three-finger swipe (Swipe between pages › Swipe with three fingers).
+   * "wheel": a wheel mouse's horizontal scroll over a pager (`distance`: this event's |ΔX|).
+   */
+  phase: "began" | "changed" | "ended" | "cancelled" | "swipe" | "wheel";
   /** "back": the content moves right (fingers right with natural scrolling). */
   direction: "back" | "forward";
   /** Points travelled along `direction` since the gesture began (negative when it comes back). */
@@ -23,7 +26,14 @@ export type SwipeEvent = {
   width: number;
 };
 
-export type SwipeStep = { phase: "began" | "changed" | "ended" | "cancelled" | "momentum" | "momentumBegan" | "momentumEnded" | "mayBegin" | "swipe"; dx?: number; dy?: number; delayMs?: number };
+export type SwipeStep = {
+  phase: "began" | "changed" | "ended" | "cancelled" | "momentum" | "momentumBegan" | "momentumEnded" | "mayBegin" | "swipe" | "wheel";
+  dx?: number;
+  dy?: number;
+  /** "wheel": Shift held (macOS scrolls sideways). */
+  shift?: boolean;
+  delayMs?: number;
+};
 
 export type SwipeAreaProps = ViewProps & {
   canSwipeBack: boolean;
@@ -32,6 +42,11 @@ export type SwipeAreaProps = ViewProps & {
   tracksUnavailableDirections?: boolean;
   /** Vertical motion doesn't cancel the swipe (while a destination list is picked from). */
   allowsVerticalMotion?: boolean;
+  /**
+   * A pager (profile paging): tracks whatever Swipe between pages is set to, and wheel mice
+   * page it too ("wheel" events). Dia's PageSwipeController doesn't look at the setting.
+   */
+  isPager?: boolean;
   onSwipe: (event: SwipeEvent) => void;
 };
 

@@ -52,14 +52,27 @@ test("destination list: a row per 75 pt, rubber band past the ends", () => {
   assert.ok(before.nudge < 0);
 });
 
-test("profile paging: half speed, rubber band at the ends, commits past halfway", () => {
-  assert.equal(m.pagingOffset(100, "back", true, 250), 50);
-  assert.equal(m.pagingOffset(100, "forward", true, 250), -50);
-  const end = m.pagingOffset(100, "back", false, 250);
-  assert.ok(end > 0 && end < 50);
-  assert.equal(m.pagingCommits(130, 0, true, 250), true);
-  assert.equal(m.pagingCommits(100, 0, true, 250), false);
-  // A flick carries it over.
-  assert.equal(m.pagingCommits(100, 400, true, 250), true);
-  assert.equal(m.pagingCommits(200, 0, false, 250), false);
+test("profile paging: half speed, rubber band past the ends", () => {
+  close(m.pagingPosition(0, 100, "forward", 250, -1, 1), 0.2);
+  close(m.pagingPosition(0, 100, "back", 250, -1, 1), -0.2);
+  // Mid-settle starts carry on from where the page is.
+  close(m.pagingPosition(0.5, 100, "back", 250, -1, 1), 0.3);
+  // No page before the first: rubber band from the start, 255 pt at most.
+  const end = m.pagingPosition(0, 100, "back", 250, 0, 1);
+  assert.ok(end < 0 && end > -0.2);
+  assert.ok(m.pagingPosition(0, 1e6, "back", 250, 0, 1) > -255 / 250);
+  close(m.pagingPosition(1, 250, "forward", 250, 0, 1) - 1, (1 - 1 / ((125 * 0.15) / 255 + 1)) * 255 / 250);
+});
+
+test("profile paging: the release picks the nearest page, or the way a flick goes", () => {
+  assert.equal(m.pagingTarget(0.6, 0, 250, -1, 1, 0), 1);
+  assert.equal(m.pagingTarget(0.4, 0, 250, -1, 1, 0), 0);
+  // 5 pt/s either way decides it (Dia's threshold).
+  assert.equal(m.pagingTarget(0.2, 5 / 250, 250, -1, 1, 0), 1);
+  assert.equal(m.pagingTarget(0.2, 4 / 250, 250, -1, 1, 0), 0);
+  assert.equal(m.pagingTarget(0.8, -1, 250, -1, 1, 0), 0);
+  assert.equal(m.pagingTarget(-0.3, -1, 250, -1, 1, 0), -1);
+  // Never past the last page, nor more than one page from home.
+  assert.equal(m.pagingTarget(0.2, 1, 250, -1, 0, 0), 0);
+  assert.equal(m.pagingTarget(1.4, 3, 250, -1, 2, 0), 1);
 });

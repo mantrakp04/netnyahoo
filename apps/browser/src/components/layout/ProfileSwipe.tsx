@@ -1,34 +1,35 @@
-import { SwipeArea, swipeHaptic, type SwipeAreaHandle, type SwipeEvent } from "@netnyahoo/cef";
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { Animated, StyleSheet, View } from "react-native";
+import { SwipeArea, type SwipeAreaHandle, type SwipeEvent } from "@netnyahoo/cef";
+import { WindowBackdrop } from "@netnyahoo/shaders";
+import { useEffect, useRef, type ReactNode } from "react";
+import { Animated, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { useShallow } from "zustand/react/shallow";
-import { adjacentProfile, switchProfile } from "../../lib/actions";
+import { themeFor } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
-import { spring } from "./SwipeOverlay";
-import { pagingCommits, pagingOffset } from "./swipeMotion";
+import { pagerFor, usePagerPages, usePagerSurface } from "./profilePager";
 
 /*
- * Swipe between profiles (Dia 1.43): two fingers across the sidebar page through the
- * window's profiles, like Dia's PageSwipeController: the tab list follows at half the
- * finger's speed, clicks as it passes the halfway detent, rubber-bands past the first and
- * last profile (c = 0.15 over 255 pt) and settles with a critically damped spring: 0.25 s
- * since Dia 1.50 (`sidebar-space-swipe-animations`, on by default, settles on Core Animation
- * with the faster spring), 0.4 s before. The next profile's list slides in from the side it
- * came from.
+ * Swipe between profiles (Dia 1.43): two fingers across the sidebar or the top tab strip (or one
+ * on a Magic Mouse) page through the window's profiles, whatever System Settings › Swipe between
+ * pages says; a wheel mouse's horizontal scroll (or Shift-scroll) pages one profile at a time.
+ * layout/profilePager has the motion: Dia's PageSwipeController.
  */
 
-type Paging = { style: { opacity: Animated.AnimatedInterpolation<number>; transform: { translateX: Animated.Value }[] } };
-const PagingContext = createContext<Paging | null>(null);
-
-/** Style for the sidebar's tab list: it moves with a profile swipe. Empty outside ProfileSwipe. */
-export function useProfilePagingStyle() {
-  return useContext(PagingContext)?.style ?? null;
+/** Wraps the sidebar: horizontal swipes over it page between the window's profiles. */
+export function ProfileSwipe({ children }: { children: ReactNode }) {
+  return (
+    <View style={{ height: "100%" }}>
+      {children}
+      <ProfileSwipeArea surface="sidebar" style={StyleSheet.absoluteFill} />
+    </View>
+  );
 }
 
-/** Wraps the sidebar: horizontal swipes over it switch the window's profile. */
-export function ProfileSwipe({ children }: { children: ReactNode }) {
+/** The swipe tracker for a view of the pages (lay it over the view; it's never hit-tested). */
+/** `pageWidth`: how wide the pages are, when narrower than the area (the strip's tabs). */
+export function ProfileSwipeArea({ surface, style, pageWidth }: { surface: "sidebar" | "strip"; style: StyleProp<ViewStyle>; pageWidth?: number }) {
   const windowId = useWindowId();
+  usePagerSurface(windowId);
   // [a previous profile, a next one, more than one] — incognito windows have none.
   const [previous, next, multiple] = useBrowser(
     useShallow((s) => {
@@ -37,72 +38,63 @@ export function ProfileSwipe({ children }: { children: ReactNode }) {
       return i < 0 ? [false, false, false] : [i > 0, i < s.profileOrder.length - 1, s.profileOrder.length > 1];
     }),
   );
-  const x = useRef(new Animated.Value(0)).current;
-  const paging = useRef<Paging>({
-    style: { opacity: x.interpolate({ inputRange: [-300, 0, 300], outputRange: [0.35, 1, 0.35], extrapolate: "clamp" }), transform: [{ translateX: x }] },
-  }).current;
-  const g = useRef({ detent: false }).current;
-  // The list is clipped to the sidebar only while it's moving: tab drags leave the sidebar.
-  const [clipped, setClipped] = useState(false);
-  const settle = () => spring(x, 0, 0.25, 1).start(({ finished }) => finished && setClipped(false));
   const area = useRef<SwipeAreaHandle>(null);
 
-  const offsetFor = (e: SwipeEvent) => pagingOffset(e.distance, e.direction, e.available, e.width);
-
-  const commit = (e: SwipeEvent, from: number) => {
-    const target = adjacentProfile(windowId, e.direction === "back" ? -1 : 1);
-    if (!target) return settle();
-    switchProfile(windowId, target);
-    // The new profile's list continues the motion from the side the swipe came from.
-    x.setValue(e.direction === "back" ? from - e.width : from + e.width);
-    settle();
-  };
-
-  const onSwipe = (e: SwipeEvent) => {
-    if (e.phase === "began" || e.phase === "swipe") setClipped(true);
-    if (e.phase === "swipe") return commit(e, 0);
-    if (e.phase === "began") {
-      x.stopAnimation();
-      g.detent = false;
-    }
-    const offset = offsetFor(e);
-    if (e.phase === "changed" || e.phase === "began") {
-      x.setValue(offset);
-      const past = e.available && Math.abs(offset) > e.width / 2;
-      if (past !== g.detent) {
-        g.detent = past;
-        swipeHaptic("alignment");
-      }
-      return;
-    }
-    if (e.phase !== "cancelled" && pagingCommits(offset, e.velocity, e.available, e.width)) commit(e, offset);
-    else settle();
+  const onSwipe = (event: SwipeEvent) => {
+    const pager = pagerFor(windowId);
+    // The pages move with the fingers at their own width.
+    const e = pageWidth ? { ...event, width: pageWidth } : event;
+    if (e.phase === "swipe") return pager.step(e.direction === "back" ? -1 : 1);
+    if (e.phase === "wheel") return pager.wheel(e);
+    if (e.phase === "began") pager.beginDrag();
+    if (e.phase === "began" || e.phase === "changed") return pager.track(e);
+    pager.release(e, e.phase === "cancelled");
   };
 
   useEffect(() => {
     if (!__DEV__) return;
-    devAreas.set(windowId, area);
-    return () => void (devAreas.get(windowId) === area && devAreas.delete(windowId));
-  }, [windowId]);
+    const key = `${surface}:${windowId}`;
+    devAreas.set(key, area);
+    return () => void (devAreas.get(key) === area && devAreas.delete(key));
+  }, [windowId, surface]);
 
+  if (!multiple) return null;
+  return <SwipeArea ref={area} style={style} canSwipeBack={previous} canSwipeForward={next} tracksUnavailableDirections isPager onSwipe={onSwipe} />;
+}
+
+/**
+ * The window tint while pages move: each page's profile tint as a layer, in page order, each
+ * fading in as the view reaches its page, so the window cross-fades between the two profiles it's
+ * between. Covers the window's own backdrop, which switches when the profile does.
+ */
+export function ProfileTint() {
+  const windowId = useWindowId();
+  const { pages, paging, pager } = usePagerPages(windowId);
+  const keys = useBrowser(useShallow((s) => pages.map((p) => `${s.profiles[p.id]?.color ?? "plum"}:${s.ui.appDark ? "dark" : "light"}`)));
+  if (!paging) return null;
   return (
-    <View style={{ height: "100%", overflow: clipped ? "hidden" : "visible" }}>
-      <PagingContext.Provider value={paging}>{children}</PagingContext.Provider>
-      <SwipeArea
-        ref={area}
-        style={StyleSheet.absoluteFill}
-        canSwipeBack={previous}
-        canSwipeForward={next}
-        tracksUnavailableDirections={multiple}
-        onSwipe={onSwipe}
-      />
-    </View>
+    <>
+      {pages.map((page, k) => {
+        const theme = themeFor(keys[k]!);
+        const opacity = k === 0 ? 1 : pager.pos.interpolate({ inputRange: [pages[k - 1]!.slot, page.slot], outputRange: [0, 1], extrapolate: "clamp" });
+        return (
+          <Animated.View key={page.id} pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity }]}>
+            <WindowBackdrop colors={theme.windowTint} inactiveColors={theme.windowTintInactive} grainOpacity={theme.grain} style={StyleSheet.absoluteFill} />
+          </Animated.View>
+        );
+      })}
+    </>
   );
 }
 
-// DEV: `globalThis.nnSwipe.sidebar(windowId).devSimulate(steps)` (see SwipeOverlay).
+// DEV: `globalThis.nnSwipe.sidebar(windowId).devSimulate(steps)` (and `.strip`), see SwipeOverlay;
+// `globalThis.nnPager(windowId).debug()` has the pager's state.
 const devAreas = new Map<string, React.RefObject<SwipeAreaHandle | null>>();
 if (__DEV__) {
   const g = globalThis as { nnSwipe?: Record<string, unknown> };
-  g.nnSwipe = { ...g.nnSwipe, sidebar: (windowId: string) => devAreas.get(windowId)?.current ?? null };
+  g.nnSwipe = {
+    ...g.nnSwipe,
+    sidebar: (windowId: string) => devAreas.get(`sidebar:${windowId}`)?.current ?? null,
+    strip: (windowId: string) => devAreas.get(`strip:${windowId}`)?.current ?? null,
+  };
 }

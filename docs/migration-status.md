@@ -97,6 +97,18 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - Touch ID was unavailable on that CEF: "keychain-access-group entitlement is missing or incorrect.
     Expected value: .org.chromium.Chromium.webauthn". The BRANDING change has since shipped in the vendored
     framework (test 40).
+- The app bundle stays sealed (2026-09-25, Release archive + Developer ID export, data dirs `/tmp/nn-sigfix-*`):
+  - Bug in 0.1.0: its first launch wrote `Resources/Extensions/ublock-lite/_metadata/generated_indexed_rulesets/
+    _ruleset1…6` into the bundle (DNR indexes uBlock's rulesets next to the extension), so `codesign --verify --deep
+    --strict` failed. From a read-only copy of 0.1.0, nothing was blocked. Nothing else wrote into the bundle
+    (settings, extensions, uBlock's pages, a PDF, the offline page, New Tab, chrome://components, YouTube).
+  - Fix: Chrome loads uBlock from `<data dir>/Built-in Extensions/ublock-lite`, a clone of the bundled folder
+    (`docs/cef-source-build.md` › "Nothing writes into the app bundle").
+  - Verified: over CDP, a fetch of `pagead2.googlesyndication.com/…/adsbygoogle.js` fails with
+    `net::ERR_BLOCKED_BY_CLIENT` while `www.iana.org/favicon.ico` loads, and the signature still verifies after
+    quitting, in each case: a fresh data dir; a relaunch (copy and indexes untouched); a 0.1.0 data dir; the bundle
+    `chmod -R a-w`; the app on a read-only disk image (a plain copy, not a clone); a stale copy (copied again, stray
+    staging folder removed). `scripts/release.sh` now runs the launch-and-verify check itself.
 
 - R1, tab state on Chrome (instance `r1`, CEF 154.0.28 + `cef-tab-state.patch`, 2026-09-25). Driven through
   devHarness and CDP, with a fixture extension (`contextMenus`, `tabs`, `history`, `scripting`):
@@ -191,6 +203,21 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - Before the patch, an offline load showed Chrome's dino page, in a Chrome-style tab and in an Alloy-style
     standalone view (an extension popup) alike: the renderer is Chrome's for both, so no Alloy fallback is needed.
   - With CDP `Network.emulateNetworkConditions({offline: true})` (and the cache disabled), `https://example.com/`
+- Profile paging (layout/profilePager, 2026-09-25, instance `/tmp/nn-pager`, three profiles plum/blue/green with
+  different tabs; synthetic events through `nnSwipe.sidebar(w)` / `nnSwipe.strip(w)` `devSimulate`, frames from
+  ScreenCaptureKit in scratchpad `profile-swipe/`):
+  - Sidebar swipe held at 25 / 50 / 75 % (position 0.25 / 0.50 / 0.76 = half the scroll distance over the 190 pt
+    page): the next profile's page (its own selected row, favicons, New Tab row) slides in clipped to the sidebar,
+    the window tint cross-fades plum (56,44,44) → blue (47,50,54) in steps, the dots brighten continuously. A flick
+    commits from 18 % (velocity 349 pt/s); a slow release under half returns; the window's profile switches when
+    the page lands. Dark and light.
+  - Dot click, Next Profile, ⌃1 (a jump over a profile: the target is placed beside the current page) slide the same
+    way (0 → −1 page in 0.25–0.3 s, then the switch).
+  - Top tab strip: the same swipe pages the chips (page 1144 pt wide, clipped before the profile pill).
+  - Devices: phased swipes (trackpad / Magic Mouse) track with System Settings › Swipe between pages **off** (this
+    Mac has it off; before, the tracker ignored every swipe here); a wheel mouse's two notches page once, one notch
+    doesn't, five in a burst page once, vertical wheel scrolls the list, Shift+wheel pages.
+
     in a tab shows the game: `YAHU_ERROR` `{code: "ERR_INTERNET_DISCONNECTED", url: "https://example.com/"}`, header
     "ERR_INTERNET_DISCONNECTED · example.com", title "example.com · No internet", 63 images from `data:` URLs, no
     other request, no console message. Start plays level 1; Retry while offline shows the game again; Retry after
@@ -203,6 +230,7 @@ because it needs the user present), add it to the **Test ledger** with the exact
     hand on an `ERR_NAME_NOT_RESOLVED` page: the hashed scripts run, `errorPageController` survives, no request.
     The probe itself ending in "no internet" is ledger 43.
 
+- 44: profile paging with a real trackpad, Magic Mouse and wheel mouse.
 ## Still to run
 Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs the user present" has the script.
 - 15: fullscreen changes Spaces.
@@ -472,3 +500,12 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
   is pushed to Chrome.
 - The stock-CEF build (`NN_CHROME_TABS=0`, `docs/cef-source-build.md`) still has the Alloy-era gaps: no in-page
   password or autofill filling, no ad blocking in incognito, and extensions don't see our tabs.
+### Profile paging (layout/profilePager, ProfileSwipe, profiles/ProfileDots)
+
+44. **Real devices.** With 3 profiles and tabs in each, in a key window: (a) two-finger swipes over the sidebar and
+    the top tab strip, slow and fast, with Swipe between pages on and off: the pages follow at half the finger
+    distance with no stutter, a tick at each halfway detent, a flick commits, a slow release past/under halfway
+    commits/returns, rubber band at the ends; (b) the same with one finger on a Magic Mouse; (c) a wheel mouse's
+    horizontal scroll and Shift+scroll page once per burst; (d) a swipe over a horizontally scrolled top strip
+    scrolls the chips first. Pass if all of that holds and the tab list never janks during a swipe with 50+ tabs.
+

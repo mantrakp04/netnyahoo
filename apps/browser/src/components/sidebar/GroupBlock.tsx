@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
-import { useWindowId } from "../../store/hooks";
+import { usePageProfileId, useWindowId } from "../../store/hooks";
 import { activeTabId } from "../../store/model";
 import { groupLabel } from "../../store/organize";
 import { MeetingTimeLabel, useMeetingCountdown } from "../live/MeetingCountdown";
@@ -32,10 +32,11 @@ export function GroupBlock({ groupId, section }: { groupId: string; section: "li
   const color = useBrowser((s) => s.groups[groupId]?.color ?? null);
   const tabIds = useBrowser((s) => s.groups[groupId]?.tabIds.join(",") ?? "");
   const entries = useGroupEntries(groupId);
+  const profileId = usePageProfileId();
   // Collapsed, the selected tab (and so a split it's in) stays visible — Dia's peek at the active tab.
   const shownWhileCollapsed = useBrowser((s) => {
     if (!s.groups[groupId]?.collapsed) return null;
-    const active = activeTabId(s, windowId);
+    const active = activeTabId(s, windowId, profileId);
     return entries.find((e) => e === `t:${active}` || (e.startsWith("s:") && !!active && !!s.splits[e.slice(2)]?.tabIds.includes(active))) ?? null;
   });
   const { wrapper, handle, headerRef } = useDragItem(`g:${groupId}`, { kind: "group", tabIds: tabIds.split(",").filter(Boolean), section, groupId, collapsed });

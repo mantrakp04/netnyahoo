@@ -47,26 +47,39 @@ export function listSelection(dySinceShown: number, count: number) {
   return { index, nudge };
 }
 
-// MARK: Profile paging (sidebar)
+// MARK: Profile paging (sidebar, tab strip)
+//
+// ARCUI's PageSwipeController (Dia 1.50.1). Positions are in pages ("slots"): page k sits at
+// (k − position) × page width. Its trackpad loop adds −0.5 × scrollingDeltaX per event to the
+// position in points (0x100597ba0), rubber-bands past the first and last page (255 pt, c = 0.15),
+// and on release picks the page with the position's velocity (0x100599610): at 5 pt/s or more
+// the next page that way (one at most from where the swipe began), slower the nearest one.
 
-/** The tab list follows at half the fingers' speed. */
+/** Points of page travel per point of scroll (PageSwipeController: `delta × −0.5`). */
 export const PAGING_TRACKING_SCALE = 0.5;
 export const PAGING_RUBBER_DIMENSION = 255;
-/** How far the release speed carries the page when deciding where it settles (s). */
-export const PAGING_PROJECTION = 0.2;
+/** Release speed (page points per second) at which the swipe goes the way it was moving. */
+export const PAGING_FLICK_VELOCITY = 5;
+/** The settle: a critically damped spring, 0.25 s (`sidebar-space-swipe-animations`; 0.4 s before 1.50). */
+export const PAGING_SETTLE_RESPONSE = 0.25;
 
 /**
- * Signed offset of the sidebar's list for a profile swipe: 1:1 up to a page, then rubber
- * band; toward a missing profile (the first / last) it rubber-bands from the start.
+ * The position for a swipe that began at `start` and has travelled `distance` points of scroll
+ * toward `direction` ("back" shows the page before): half speed, rubber band outside [lo, hi].
  */
-export function pagingOffset(distance: number, direction: "back" | "forward", available: boolean, pageWidth: number) {
-  const travel = Math.max(0, distance) * PAGING_TRACKING_SCALE;
-  const along = rubberBand(travel, available ? pageWidth : 0, PAGING_RUBBER_DIMENSION);
-  return direction === "back" ? along : -along;
+export function pagingPosition(start: number, distance: number, direction: "back" | "forward", pageWidth: number, lo: number, hi: number) {
+  const raw = start + ((direction === "back" ? -1 : 1) * distance * PAGING_TRACKING_SCALE) / pageWidth;
+  if (raw > hi) return hi + rubberBand((raw - hi) * pageWidth, 0, PAGING_RUBBER_DIMENSION) / pageWidth;
+  if (raw < lo) return lo - rubberBand((lo - raw) * pageWidth, 0, PAGING_RUBBER_DIMENSION) / pageWidth;
+  return raw;
 }
 
-/** Whether a released profile swipe moves to the next page. */
-export function pagingCommits(offset: number, velocity: number, available: boolean, pageWidth: number) {
-  if (!available) return false;
-  return Math.abs(offset) + Math.max(0, velocity) * PAGING_TRACKING_SCALE * PAGING_PROJECTION > pageWidth / 2;
+/**
+ * Where a released swipe settles: `velocity` in pages per second. Within [lo, hi] and one page
+ * of `home` (the page the swipe started from).
+ */
+export function pagingTarget(position: number, velocity: number, pageWidth: number, lo: number, hi: number, home: number) {
+  const flick = Math.abs(velocity * pageWidth) >= PAGING_FLICK_VELOCITY;
+  const target = !flick ? Math.round(position) : velocity > 0 ? Math.floor(position) + 1 : Math.ceil(position) - 1;
+  return Math.max(lo, home - 1, Math.min(hi, home + 1, target));
 }

@@ -14,6 +14,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL tracksUnavailableDirections;
 /// Vertical motion doesn't cancel the swipe (a list of destinations is being picked from).
 @property (nonatomic, readonly) BOOL allowsVerticalMotion;
+@optional
+/// A pager (profile paging, like Dia's PageSwipeController): it tracks whatever System Settings
+/// › Swipe between pages says, and wheel mice (horizontal scroll, Shift-scroll) page it too,
+/// as "wheel" events: {phase: "wheel", direction, distance: |ΔX| of the event}.
+@property (nonatomic, readonly) BOOL isPager;
+@required
 /// {phase: "began"|"changed"|"ended"|"cancelled"|"swipe", direction: "back"|"forward",
 ///  distance (points along the direction, can go negative), dy, velocity (points/s along
 ///  the direction), available (the direction can commit), width (the target's width)}.
@@ -25,7 +31,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// page first. It starts only when the first scroll update of a gesture wasn't consumed
 /// by the page (renderer ack), the renderer reported an overscroll that its
 /// `overscroll-behavior-x` allows, and nothing native under the pointer scrolls
-/// horizontally that way. Honours System Settings › Trackpad › Swipe between pages.
+/// horizontally that way. Honours System Settings › Trackpad › Swipe between pages (pagers aside).
 @interface NNSwipe : NSObject
 
 /// NSHapticFeedbackManager pattern: "levelChange" | "alignment" | "generic".
@@ -37,7 +43,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// DEV: plays a synthetic trackpad gesture over `window` at `point` (window coordinates,
 /// origin top-left) through the same tracker path real events take, then delivers the
 /// events it lets through to the window (so pages scroll and the renderer acks them).
-/// Steps: [{phase: "began"|"changed"|"ended"|"cancelled"|"momentum", dx, dy, delayMs?}].
+/// Steps: [{phase: "began"|"changed"|"ended"|"cancelled"|"momentum", dx, dy, delayMs?}], or
+/// "wheel" for a wheel mouse's notch (dx/dy in lines; `shift: true` holds Shift).
 /// `ignoreSystemPreference` tracks even when Swipe between pages is off.
 + (void)simulateInWindow:(NSWindow *)window
                    point:(NSPoint)point

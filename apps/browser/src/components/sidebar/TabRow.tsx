@@ -4,7 +4,7 @@ import { Animated, Pressable, TextInput, View, type GestureResponderEvent } from
 import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
-import { useIsActiveTab, useTab, useTabLive, useWindowId } from "../../store/hooks";
+import { useIsActiveTab, usePageProfileId, useTab, useTabLive, useWindowId } from "../../store/hooks";
 import { IconButton } from "../primitives";
 import { clickTab, commitRename, endRename, startRename, tabTitle } from "./actions";
 import { useDragItem } from "./dnd";
@@ -172,10 +172,8 @@ export function SplitRowItem({ splitId, section, parentGroup }: { splitId: strin
   const tabIds = useBrowser((s) => s.splits[splitId]?.tabIds.filter((id) => s.tabs[id] && !s.tabs[id]!.pinned).join(",") ?? "").split(",").filter(Boolean);
   const { wrapper, handle } = useDragItem(`s:${splitId}`, { kind: "split", tabIds, section, parentGroup });
   const theme = useTheme();
-  const active = useBrowser((s) => {
-    const w = s.windows[windowId];
-    return !!w && tabIds.includes(w.activeTabIds[w.profileId] ?? "");
-  });
+  const profileId = usePageProfileId();
+  const active = useBrowser((s) => tabIds.includes(s.windows[windowId]?.activeTabIds[profileId] ?? ""));
   const { hovered, hoverProps } = useRowHover(windowId, null);
   if (tabIds.length < 2) return null;
   return (

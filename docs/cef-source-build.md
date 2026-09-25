@@ -196,6 +196,30 @@ A Chrome-style Browser survives closing its `CefBrowserView`'s first tab while i
 A tab created in the background starts hidden, and becomes visible once its view is in a visible
 window (NSView occlusion).
 
+## Nothing writes into the app bundle
+
+The signature seals every file in `Netnyahoo.app`, so the app must never write there: one added file and
+`codesign --verify --deep --strict` fails ("a sealed resource is missing or invalid"), and an app on a read-only
+volume or run translocated can't be written at all. A background run of a signed build, with pages, PDFs, the offline
+page, chrome://settings, chrome://extensions, chrome://components and uBlock's own pages, then a diff of the bundle,
+found one writer (2026-09-25):
+
+- **declarativeNetRequest indexes next to the extension.** An extension's static rulesets are indexed into
+  `<extension>/_metadata/generated_indexed_rulesets/_ruleset<N>`, a path Chrome derives from the extension's folder
+  (`FileBackedRulesetSource::CreateStatic`). The ruleset checksums live in the profile's prefs, so a profile with none
+  (every new profile; component extensions are never "installed") indexes again, and so does any profile whose
+  indexes go stale (a new indexed format in a Chrome update). Shipping prebuilt indexes wouldn't stop the writes.
+  So `NNContentBlocker.mm` loads uBlock Origin Lite from a copy in the data directory,
+  `<data dir>/Built-in Extensions/ublock-lite` (an APFS clone of the bundled folder, made writable, next to
+  `Chromium`), and copies it again when the bundled extension changes (`ublock-lite.source` holds the manifest's
+  SHA-256, file count and size). Chrome's indexes persist in the copy, so later launches load them without indexing.
+  Netnyahoo 0.1.0 loaded it straight from the bundle: its first launch wrote the six indexes into the bundle, and
+  from a read-only bundle nothing was blocked at all.
+
+Everything else Chrome writes (crashpad, component updater, caches, extension installs) goes to the user data dir,
+and `MacAppCodeSignClone` is disabled (NNCef.mm). `scripts/release.sh` launches the exported app once and verifies the
+signature again, so a new writer fails the release.
+
 ## Rebuilding
 
 Everything lives outside the repo in `~/chromium-build`, which carries `.metadata_never_index`.

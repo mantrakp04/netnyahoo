@@ -71,6 +71,27 @@ if [[ "$(entitlements "$app")" == *web-browser.public-key-credential* ]]; then
   exit 1
 fi
 
+echo "==> Launch check"
+# Running the app must leave its bundle as signed: anything written into it breaks the signature
+# (Chrome indexing uBlock's rulesets next to the extension did, in 0.1.0). Launch it once in the
+# background with a throwaway data dir, wait for the first-launch indexing, quit, verify again.
+check_data="$(mktemp -d)"
+open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR="$check_data" "$app"
+indexes="$check_data/Built-in Extensions/ublock-lite/_metadata/generated_indexed_rulesets"
+for _ in $(seq 1 90); do
+  [ "$(ls "$indexes" 2>/dev/null | wc -l)" -ge 6 ] && break
+  sleep 1
+done
+sleep 5
+pid="$(pgrep -f "^$app/Contents/MacOS/Netnyahoo" || true)"
+[ -n "$pid" ] || { echo "error: the app didn't start (or quit)" >&2; exit 1; }
+kill -TERM $pid
+for _ in $(seq 1 30); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+kill -KILL $pid 2>/dev/null || true
+codesign --verify --deep --strict "$app" || { echo "error: running the app changed its bundle" >&2; exit 1; }
+[ -d "$indexes" ] || { echo "error: uBlock's rulesets weren't indexed in the data dir" >&2; exit 1; }
+rm -rf "$check_data"
+
 notarize_file() {
   echo "Notarizing $(basename "$1")"
   xcrun notarytool submit "$1" --keychain-profile "$notary_profile" --wait --timeout 1h \
