@@ -1,5 +1,6 @@
 #import "NNChromeWindow.h"
 
+#import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
 #import "NNWindowHost.h"
@@ -267,6 +268,46 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     info[@"cgBounds"] = [list.firstObject objectForKey:(id)kCGWindowBounds] ?: @{};
     NSData *json = [NSJSONSerialization dataWithJSONObject:info options:0 error:nil];
     return [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
+  }
+  if ([action hasPrefix:@"swapProbe:"]) {
+    // "swapProbe:<ms>": the naive per-profile window swap (docs/research/chrome-hosted-window.md ›
+    // phase 3 "Profiles: hosted per-profile windows"), for swapcap/swapscan to measure. A second
+    // Chrome window at the same frame is ordered in behind, our root moves into it, the layer
+    // tree commits, the first window orders out; <ms> later it swaps back and the probe window
+    // closes. Both windows show the same root, so any frame unlike the settled state is the seam.
+    NSView *root = [NNChromeWindowHost rootViewOfWindow:window];
+    NSWindow *probe = nn::host::MakeHostingWindow(@"");
+    if (!root || !probe || !TakesEmbeddedView(probe.contentView)) return @"no probe window";
+    const double ms = [action substringFromIndex:10].doubleValue;
+    probe.appearance = window.appearance;
+    // A cut, not AppKit's fade in/out of document windows.
+    const NSWindowAnimationBehavior behavior = window.animationBehavior;
+    window.animationBehavior = probe.animationBehavior = NSWindowAnimationBehaviorNone;
+    auto swap = ^(NSWindow *from, NSWindow *to) {
+      [to setFrame:from.frame display:NO];
+      [to orderWindow:NSWindowBelow relativeTo:from.windowNumber];
+      objc_setAssociatedObject(from, kRootKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+      ((id<NNEmbeddingContentView>)from.contentView).netnyahooEmbeddedView = nil;
+      [NNChromeWindowHost embedRootView:root inWindow:to];
+      [CATransaction flush];
+      [from orderOut:nil];
+    };
+    const CFTimeInterval t0 = CACurrentMediaTime();
+    swap(window, probe);
+    const CFTimeInterval t1 = CACurrentMediaTime();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(ms * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+      swap(probe, window);
+      window.animationBehavior = behavior;
+      nn::host::HostingWindowAction(probe, @"close");
+    });
+    return [NSString stringWithFormat:@"swapped in %.2f ms, back in %.0f ms", (t1 - t0) * 1000, ms];
+  }
+  if ([action hasPrefix:@"cef:"]) return nn::host::HostingWindowAction(window, [action substringFromIndex:4]);
+  if ([action hasPrefix:@"ns:"]) {
+    // "ns:out" / "ns:front": AppKit ordering, to compare with CEF's.
+    if ([action hasSuffix:@"out"]) [window orderOut:nil];
+    else [window orderFront:nil];
+    return [NSString stringWithFormat:@"visible=%d", window.visible];
   }
   if ([action isEqualToString:@"performClose"]) {
     // The close button's path (windowShouldClose → the app's close warning).

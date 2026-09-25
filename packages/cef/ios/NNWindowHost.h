@@ -78,6 +78,8 @@ void InvalidateExtensionCommands(NSString *profile);
 /// window for the app to put its views in, whose tabs are the Browser's own (nil if the engine
 /// can't: not running, or without CEF_NN_CLIENT_WINDOW).
 NSWindow *MakeHostingWindow(NSString *profile);
+/// DEV: "hide" / "show" / "close" a Chrome-hosted window through CEF (its widget).
+NSString *HostingWindowAction(NSWindow *window, NSString *action);
 /// `browser` is a tab of a Chrome-hosted window.
 bool InClientWindow(CefRefPtr<CefBrowser> browser);
 /// The one filter of Chrome's shortcuts in Chrome-hosted windows: `command_id` is one of Chrome's

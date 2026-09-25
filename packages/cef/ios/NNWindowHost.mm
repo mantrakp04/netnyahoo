@@ -730,6 +730,16 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
 #endif
   }
 
+  /// DEV: "hide" / "show" / "close" through CEF (the widget), not the NSWindow.
+  NSString *CefWindowAction(NSString *action) {
+    if (!window_) return @"no window";
+    if ([action isEqualToString:@"hide"]) window_->Hide();
+    else if ([action isEqualToString:@"show"]) window_->Show();
+    else if ([action isEqualToString:@"close"]) window_->Close();
+    else return @"unknown";
+    return @"ok";
+  }
+
   /// Tells Chrome this Browser's window is (or isn't) the active one.
   void ReportActive(bool active) {
     active_ = active;
@@ -1344,6 +1354,12 @@ bool InClientWindow(CefRefPtr<CefBrowser> browser) {
 
 bool BlocksChromeCommand(CefRefPtr<CefBrowser> browser, int command_id) {
   return HiddenChromeUICommand(command_id) && InClientWindow(browser);
+}
+
+NSString *HostingWindowAction(NSWindow *window, NSString *action) {
+  for (auto &ghost : gGhosts)
+    if (ghost->Hosting() && ghost->Parent() == window && !ghost->Closed()) return ghost->CefWindowAction(action);
+  return @"not a hosting window";
 }
 
 NSUInteger GhostCount() { return gGhosts.size(); }

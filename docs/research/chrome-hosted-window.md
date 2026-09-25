@@ -162,10 +162,64 @@ single-profile window, every incognito window, and the home profile of multi-pro
 simpler: as a `client_window` Browser it has none of the leaks that made the lift logic fussy (hover cards, zoom and
 status bubbles).
 
-**Revisit** when the screen can be watched: a prototype of option 1's switch (order the new window behind, move the
-root, commit, order the old one out) measured frame by frame with ScreenCaptureKit. If it's clean on real hardware,
-option 1 can replace the ghosts in phase 4 or later without touching the pager. Until then, `docs/research` keeps
-the ghost for secondary profiles, and phase 5 deletes only the ghost code that single-profile windows used.
+This is the **phase 2 interim, not the end state**. With it, every profile other than a window's home one keeps the
+seams (context menus through the fallback patch, lifted dialogs and bubbles, key forwarding), and phase 5 can't
+delete the ghost. The target is option 1, planned below as a phase 3 item.
+
+### Phase 3 item: "Profiles: hosted per-profile windows"
+
+**Target:** one Chrome-hosted `NSWindow` per (window, profile). Paging swaps which one is visible, at the same
+frame.
+
+**The pieces:**
+- **One root that moves.** Our React root moves between the window's profile windows; there isn't one root per
+  profile window. A second root would mount every tab view twice (a tab's `WebContentsViewCocoa` can only be in
+  one place). It would also split state that must stay coherent: sidebar scroll, the command bar and find text,
+  pager drags, focus. Moving the root keeps all of it; only its window changes.
+- **Neighbours pre-made.** Each profile the window can page to gets its Chrome window up front, laid out at the
+  same frame and kept ordered out:
+  - A Browser is created lazily with the profile's first tab, so an unused window costs little.
+  - The profile's active tab is kept visible to Chrome's occlusion (the neighbour window ordered in behind at
+    alpha 0, or offscreen), so its compositor has a frame when the swap comes.
+- **Previews unchanged.** During the drag the pager keeps showing what it shows today (the sidebar pages and
+  tint layers are React content in the moving root), so the gesture itself doesn't change.
+- **The cut, at the end of the settle, inside the 150 ms linger:**
+  1. Order the incoming window in directly behind the outgoing one, same frame, window animations off
+     (`NSWindowAnimationBehaviorNone`: AppKit fades document windows in and out, which the probe showed).
+  2. Move the root, then `[CATransaction flush]`.
+  3. Order the outgoing window out.
+  4. Hand over key status; update the registry and observers.
+
+**Covering the seam (the moment the outgoing window no longer has our root):**
+- **Preferred: a transparent outgoing window.** A small CEF patch creates client windows `kTranslucent` (non-opaque
+  `NSWindow`, compositor cleared to transparent, not white). Then the outgoing window shows nothing once the root
+  has left, and the incoming one, already ordered in behind with the root, shows through. The order-out is
+  invisible, and no snapshot or permission is needed. The same patch helps the vibrancy question (§ translucency).
+- **Fallback: a cover layer.** Put a snapshot of the settled state over the seam and remove it after the incoming
+  window has presented a frame. The snapshot must include web content (a `CALayerHost` from the GPU process). The
+  only public way to get that is ScreenCaptureKit, which needs Screen Recording permission, so it's a last resort.
+  A private portal layer or `SLSDisableUpdate` grouping would be the other fallback, as would
+  `disableScreenUpdatesUntilFlush` if it still has an effect on this macOS.
+- **Other work in the item:**
+  - full screen: an incoming window joins the full-screen Space as an auxiliary child of the full-screen window, or
+    the Space moves with the swap (to test);
+  - the WindowManager registry and observers follow the visible window (the id maps to it; occlusion, key and
+    close come from it);
+  - the ghost code for secondary profiles goes, and so do the lift logic and the context-menu fallback patch.
+
+**Measurement (built in phase 2, runs once the screen is unlocked):**
+- `devWindow(n, "swapProbe:<ms>")` does the naive cut (steps 1–4, without the transparent window) into a second
+  Chrome window and back, with the same content in both, so any frame unlike the settled state is the seam.
+  Mechanics checked headless: 24 ms for the swap including the root's re-layout, and the page stays `visible`.
+- `spike/swapcap.swift` records only the app's windows in the window's region at 120 fps (ScreenCaptureKit; other
+  apps are left out, so the hidden instance can be measured behind them).
+- `spike/swapscan.py` flags every frame that matches neither settled state or is mostly white (validated on
+  synthetic frames).
+- `spike/swapmeasure.sh <app> <port>` runs the whole thing.
+
+**Pass:** zero transient frames over 20 swaps, with the naive cut first to size the problem, then with the
+transparent window. Headless on a locked screen none of this can run: window order-in and order-out animations
+never complete there (`orderOut:` reports the window hidden, but the window server keeps listing it).
 
 ## 1. Putting the RN view hierarchy inside Chrome's `NSWindow`
 
@@ -389,6 +443,7 @@ Every phase ships; the flag keeps the ghost path as the default until phase 4.
 | 0. Spike | Done: `NETNYAHOO_CHROME_WINDOW=1`, this doc | 13/14 seam checks pass (`spike/spike.mjs`) | done |
 | 1. Engine groundwork | Done 2026-09-26 (see [Phase 1](#phase-1-engine-done)) | Default path unaffected; the spike without its swizzle; zoom bubble and profile menu gone; no `about:blank` in `chrome.tabs` | done (~1 day) |
 | 2. One window type behind the flag, production quality | `NNChromeWindow` without dynamic lookups. `WindowManager`: close warning through `CanClose`, frame autosave, traffic-light x inset, incognito windows. `rootView(of:)` for every `contentView` user (§4). Command policy reviewed against Chrome's full shortcut table. Keep the ghost for secondary profiles | A browser window with the flag passes the release smoke test (`smoke.mjs` hosted variant) and the spike checks | 1–1.5 weeks |
+| 3a. Profiles: hosted per-profile windows | See [Phase 3 item](#phase-3-item-profiles-hosted-per-profile-windows): the transparent-window CEF patch, pre-made neighbour windows, the cut, full screen; measured with `spike/swapmeasure.sh` | 0 transient frames in 20 swaps; paging looks unchanged; secondary-profile ghosts gone | 1.5–2 weeks |
 | 3. Parity checklist | Each item tested in a flagged build, with fixes. Surfaces: save card/address, permission prompts, extension popups and install, device chooser, Cast, find, downloads, status. Window: full screen (window and HTML5; decide on `chromium-browser-view-hosted-fullscreen.patch`), Spaces, minimise, multiple displays, split view, popups, PiP, DevTools docked and undocked, drag and drop, swipes, IME, VoiceOver, extension `chrome.commands`, multi-profile windows, session restore, quitting with dialogs open | `docs/migration-status.md` ledger entries for each, user-run checks listed | 2 weeks |
 | 4. Switch the default | Flag inverted (`NETNYAHOO_CHROME_WINDOW=0` = ghost), one or two releases of dogfooding | No seam regressions reported | 3 days + a dogfood week |
 | 5. Delete the ghost | Remove the lift machinery, keycode tables, `ForwardKeyEvent`, the context-menu patch, the flag. Keep ghosts only if secondary-profile windows still need them | Smaller `NNWindowHost.mm`; release smoke test green | 2–3 days |
