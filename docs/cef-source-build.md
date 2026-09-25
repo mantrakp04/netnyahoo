@@ -32,6 +32,7 @@ What the build adds:
 | `chromium-passkeys.patch` | Netnyahoo bundle/team id branding, iCloud Keychain window fallback, "Netnyahoo Safe Storage" |
 | `chromium-chrome-ui-hooks.patch` | `chrome::ShowDeviceChooserDialog`, the Media Router's Cast dialog (and Presentation API requests) and `side_panel_util` ask the client first; extension pages in hidden windows take the last active window as their current window |
 | `chromium-extension-updates.patch` | Undoes ungoogled's early `return` in `UpdateCheckerImpl::CheckForUpdates`, which left every update check pending: Web Store extensions never updated |
+| `chromium-context-menu-hosted.patch` | Chrome's page context menu shows for hosted tabs. Its Mac menu took the widget above the tab's view, which our window isn't, and silently showed nothing; it falls back to the tab's Browser window widget and still pops up at the click |
 | `chromium-neterror-yahu.patch` | "Where's Big Yahu?" replaces the dino: the offline page and chrome://yahu (below) |
 
 The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
