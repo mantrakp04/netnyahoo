@@ -1,0 +1,26 @@
+docs/research/chrome-hosted-window/spike/keys.mjs
+  s_9c356f9574d31c::t_5055cfebbd1e89 49
+docs/research/chrome-hosted-window.md
+  s_9c356f9574d31c::t_87864f6ae6c813 3-6,40-110,137-138,320-322,333,343,361-363,369-371,376,378
+docs/research/chrome-hosted-window/spike/spike.mjs
+  s_9c356f9574d31c::t_5055cfebbd1e89 3-5,235-265
+docs/migration-status.md
+  s_9c356f9574d31c::t_f1f1e7282111ef 292,619-640
+  s_9c356f9574d31c::t_be087ee1b05110 641
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cc653f2b767bd084d4f4135e99265a8422f8c7da",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
