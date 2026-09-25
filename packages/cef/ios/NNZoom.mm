@@ -40,12 +40,30 @@ void Committed(Client *client) {
 }
 
 void InstallScrollMonitor() {
-  static id monitor;
+  static id monitor, touchMonitor;
   if (monitor) return;
   static double accumulated = 0;
-  // ⌘-scroll over a page zooms it (trackpads accumulate a few points per step).
+  // Fingers on a trackpad or Magic Mouse right now, and when that was last reported.
+  static NSUInteger touching = 0;
+  static NSTimeInterval touchedAt = 0;
+  // The scroll in progress (its fingers and its momentum) comes from a trackpad.
+  static BOOL trackpadScroll = NO;
+  // Scroll events look the same from a trackpad and a Magic Mouse; the touches don't: a trackpad
+  // scrolls with two fingers, a Magic Mouse with one (and a wheel mouse has none).
+  touchMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskGesture handler:^NSEvent *(NSEvent *event) {
+    touching = [event touchesMatchingPhase:NSTouchPhaseTouching inView:nil].count;
+    touchedAt = event.timestamp;
+    return event;
+  }];
+  // ⌘-scroll over a page zooms it with a mouse (a Magic Mouse accumulates a few points per
+  // step). With a trackpad it's an ordinary scroll: resting a thumb on ⌘ while scrolling with
+  // two fingers zoomed pages by accident, and a trackpad pinches to zoom.
   monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel handler:^NSEvent *(NSEvent *event) {
-    if (!(event.modifierFlags & NSEventModifierFlagCommand)) return event;
+    if (event.phase & (NSEventPhaseBegan | NSEventPhaseMayBegin))
+      trackpadScroll = touching >= 2 && event.timestamp - touchedAt < 0.5;
+    else if (event.phase == NSEventPhaseNone && event.momentumPhase == NSEventPhaseNone)
+      trackpadScroll = NO;  // a wheel mouse's notch
+    if (!(event.modifierFlags & NSEventModifierFlagCommand) || trackpadScroll) return event;
     NSWindow *window = event.window;
     NSPoint point = event.locationInWindow;
     if (!window) {  // no window: locationInWindow is in screen coordinates
