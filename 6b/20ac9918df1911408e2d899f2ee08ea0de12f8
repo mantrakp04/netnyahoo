@@ -1,0 +1,43 @@
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_81f58817cc3ab4 89-95
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_6fd353dd367e1f 1021-1029,1064
+packages/cef/ios/NNChromeWindow.mm
+  s_9c356f9574d31c::t_5bb4d55bec79cf 28,35,37-39,46-48,55,182
+  s_9c356f9574d31c::t_f8a7a9574bf50e 7-13,18-19,36,50,54
+  s_9c356f9574d31c::t_93d0870c1e8baf 159-181
+packages/cef/ios/NNChromeWindow.h
+  s_9c356f9574d31c::t_93d0870c1e8baf 35-36
+  s_9c356f9574d31c::t_768354c55fcf63 1-6,13
+packages/cef/ios/NNWindowHost.h
+  s_9c356f9574d31c::t_6fd353dd367e1f 77-79,81-85
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_6fd353dd367e1f 872-874,1262,1273-1274,1278-1279
+  s_9c356f9574d31c::t_a5d0aa7fa3bf51 1053-1054,1060-1064,1102,1109,1184,1189
+  s_9c356f9574d31c::t_81f58817cc3ab4 416-419,440-493,814
+  s_9c356f9574d31c::t_dac9f97510d586 171-172,364,897-901
+  s_9c356f9574d31c::t_0092f5d9c3381c 1280-1281
+packages/shell/ios/ChromeWindowSpike.swift
+  s_9c356f9574d31c::t_768354c55fcf63 3
+packages/shell/ios/Menus.swift
+  s_9c356f9574d31c::t_359e04c702a4e5 132,152,213-215,217,246
+  s_9c356f9574d31c::t_d80019f019b3a6 216
+packages/shell/ios/Windows.swift
+  s_9c356f9574d31c::t_359e04c702a4e5 58-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6b20ac9918df1911408e2d899f2ee08ea0de12f8",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
