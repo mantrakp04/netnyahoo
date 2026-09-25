@@ -74,7 +74,8 @@ function runAppCommand({ command, windowId }: CommandEvent) {
 /**
  * Help › Send Feedback… (and the default-browser check-in's "Leave us feedback"). Where it goes
  * is set per build in Info.plist: NNFeedbackURL (a page; "%s" becomes the report), else
- * NNFeedbackEmail. Neither set (as in this repo): a mail draft with the report and no recipient.
+ * NNFeedbackEmail, else a mail draft with the report and no recipient. This repo's NNFeedbackURL
+ * is a new GitHub issue with the report as its body.
  */
 export async function sendFeedback(windowId?: string | null) {
   const app = systemInfo();

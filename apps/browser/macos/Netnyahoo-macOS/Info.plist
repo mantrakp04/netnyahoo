@@ -70,7 +70,7 @@
 	<key>NNFeedbackEmail</key>
 	<string></string>
 	<key>NNFeedbackURL</key>
-	<string></string>
+	<string>https://github.com/mantrakp04/netnyahoo/issues/new?body=%s</string>
 	<key>NNReleaseNotesURL</key>
 	<string>https://netnyahoo.com/release-notes</string>
 	<key>NNVideoTourURL</key>
