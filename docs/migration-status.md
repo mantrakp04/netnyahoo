@@ -639,6 +639,34 @@ Still to run, with the screen unlocked:
    - ⇧⌘W asks before closing a window with several tabs (warn setting on);
    - the command bar keeps focus after the window becomes key again.
 
+Phase 2 (verified 2026-09-26, headless, screen locked; docs/research/chrome-hosted-window.md › Phase 2 has the
+checklist). All of these pass headless:
+- home and companion profiles, and swipe paging;
+- incognito windows;
+- the close warning sheet;
+- traffic lights;
+- HTML5 full screen with Chrome's Esc hint;
+- ⇧⌘T, drag out and back, reopen window;
+- split (2–3 panes), PiP, DevTools (undocked), popups, downloads, find;
+- extension popups;
+- session restore.
+
+Still to run with the screen unlocked, flag on (`NETNYAHOO_CHROME_WINDOW=1`):
+5. **Window full screen.** ⌃⌘F, the green button and a page's full screen, in and out, with two windows and on a
+   second display. Pass if the page fills the screen, the traffic lights and sidebar come back on exit, and
+   Chrome's Esc hint is centred over the page.
+6. **Translucency.** Put a bright wallpaper behind a flagged and an unflagged window, dark and light, key and not.
+   Pass if the sidebar gutter and New Tab card read the same in both (Dia's treatment: blur while key, opaque
+   while inactive).
+7. **Swap measurement.** `docs/research/chrome-hosted-window/spike/swapmeasure.sh <app> <port>` (Screen Recording
+   permission for the terminal). Record the transient-frame count; it sizes phase 3a.
+8. **Profile swipe, by hand.** Two profiles; swipe the sidebar both ways, and ⌃1 / ⌃2. Pass if paging looks as it
+   does unflagged, and a passkey sheet or alert in the second profile's tab shows in front.
+9. **Download fly-in and extension popup.** A download's fly-in lands on the downloads button. An extension's
+   popup opens under its toolbar button, sized to its content.
+10. **Drag and drop.** Drag a link or file from the page into the sidebar and back, and a file from Finder into the
+    page.
+
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order
   is pushed to Chrome.

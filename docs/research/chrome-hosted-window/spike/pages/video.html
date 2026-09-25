@@ -1,0 +1,11 @@
+<!doctype html><title>video</title>
+<body style="margin:0;background:#111">
+<canvas id="c" width="320" height="180" style="display:none"></canvas>
+<video id="v" autoplay muted playsinline width="480" height="270" style="margin:40px"></video>
+<button id="b" style="font-size:20px;margin:40px">pip</button>
+<script>
+const c = document.getElementById("c"), x = c.getContext("2d"); let t = 0;
+setInterval(() => { x.fillStyle = `hsl(${t++ % 360},70%,50%)`; x.fillRect(0, 0, 320, 180); }, 33);
+v.srcObject = c.captureStream(30);
+b.onclick = () => v.requestPictureInPicture().then(() => document.title = "in pip", (e) => document.title = "pip failed " + e.name);
+</script></body>

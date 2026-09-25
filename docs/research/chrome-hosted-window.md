@@ -1,9 +1,10 @@
 # Chrome-hosted windows: Chrome's Browser window is the app window
 
-Status: design, spike, and phase 1 (engine) done, 2026-09-26. Chrome-hosted windows are behind
+Status: design, spike, phase 1 (engine) and phase 2 (production behind the flag) done, 2026-09-26. Chrome-hosted windows are behind
 `NETNYAHOO_CHROME_WINDOW=1` and need the engine's `CEF_NN_CLIENT_WINDOW` (in the shared `vendor/cef` since
 2026-09-26); the default path is unchanged. Screenshots and the test scripts are in
-`docs/research/chrome-hosted-window/`. Phase 1 results: [Phase 1](#phase-1-engine-done).
+`docs/research/chrome-hosted-window/`. Results: [Phase 1](#phase-1-engine-done),
+[Phase 2](#phase-2-production-behind-the-flag-done).
 
 ## Summary
 
@@ -107,6 +108,67 @@ Estimates after phase 1:
   - `browser_delegate.h` is included by `browser.h`, so any change to that CEF header rebuilds ~1,700 Chrome UI
     objects (7 minutes here, still incremental).
 - Phases 2–5 otherwise unchanged: about 4–6 weeks.
+
+## Phase 2 (production, behind the flag), done
+
+`NETNYAHOO_CHROME_WINDOW=1` is now something to run daily. Every check below is headless, on hidden instances, on
+a locked screen; "human" marks what needs a person at an unlocked screen.
+Scripts: `spike/p2.mjs` (steps), `spike/restore.sh`, fixtures in `spike/pages` and `spike/ext-popup`.
+
+**Engine** (`cef-zwindow-keys.patch`, CEF-only, installed shared 2026-09-26):
+- Chrome's command dispatcher ran its reserved commands before the first responder (⌥⌘→, ⇧⌘}, ⌃PgDn, and
+  ⌘T/⌘W/⌘N when mapped), swallowing the key even while the command was disabled.
+- In a `client_window` it now waits for the page and our menus. Chrome's shortcuts still run after them, through
+  the command-id blocklist.
+
+| Area | Status | Notes |
+|---|---|---|
+| Home profile | done | The window is the Chrome window of the profile it opened with (`OpenWindowOptions.profile`) |
+| Other profiles | done (interim) | Companion ghosts as `client_window` Browsers; Chrome's active window follows the profile on screen; an alert in the second profile's tab shows in front |
+| Swipe paging, ⌃1–9 | done | A sidebar swipe (real tracker, `nnSwipe.sidebar().devSimulate`) pages to the other profile and back; ⌃2 switches |
+| Incognito windows | done | Chrome-hosted too (their own `incognito:<id>` profile), dark |
+| Close warning | done | The close button asks the app through `CanClose`: Dia's "Close 5 tabs?" sheet on the window |
+| ⇧⌘W | done | Our own menu action (phase 1) |
+| Traffic lights | done | 18 pt in, 19.5 pt down, as BrowserWindow |
+| Content-view users (9) | done | PiP's overlay goes over our root (it was unclickable under it). The others only do geometry, identical for the root and the content view, or hit tests, which reach the root through the engine hook |
+| First frame | done | BrowserWindow's colours for the `NSWindow` and Chrome's compositor (no white frame) |
+| HTML5 full screen | done | Page full screen, our chrome hides, Chrome's "Press Esc" hint at the top centre, Esc exits |
+| Window full screen | human | A test instance never goes native full screen (it would open a Space on the user's screen) |
+| Tabs into an empty window | done | ⇧⌘T (with its history), a tab dragged out to a new window and back as that window's last (same page: the leaving window's Browser now outlives the move), reopen closed window |
+| Split view | done | 2 and 3 panes, all visible at their widths. A pane's alert shows; its position matches the default path |
+| PiP | done | `requestPictureInPicture` opens Chrome's PiP window |
+| DevTools | done / human | Opens undocked in its own window. Docking (DevTools' dock-side menu) would dock into Chrome's hidden contents view on both paths (shipped behaviour since the ghost); see Findings |
+| window.open / sign-in popups | done | A sized popup opens in its own window; `window.close()` closes it |
+| Downloads | done / human | Download completes into our list; the fly-in animation is visual (human) |
+| Find in page | done | 3 matches counted |
+| Extension action popups | done | Open anchored to our button and render (25×25 before sizing, same as the default path) |
+| Session restore | done | Two windows, two profiles: same frames, pages, each window its profile's Chrome window, no extra tabs from Chrome's session service |
+| Keys | done / human | Command-id blocklist; reserved keys reach the first responder. Page-first ⌘-keys need a key window (human) |
+| Accessibility | done / human | Tree identical to the default window (phase 1); VoiceOver pass is human |
+| Translucency | human | Same vibrancy view in both windows (behind-window, material 29, follows active state, emphasized). Pixels need an unlocked screen: active and inactive, dark and light |
+
+**Findings:**
+- **A locked display freezes window animations.** Open, order-out and dialog fade-in all stall. The window server
+  keeps windows at their first animation frame: 0.981 scale, dialogs at alpha 0, ordered-out windows still
+  listed. So:
+  - window geometry and z-order read from `CGWindowList` are unreliable while locked;
+  - the smoke test's three z-order checks fail for every build, shipped ones included;
+  - screen captures fail entirely.
+- **DevTools docking** (shipped behaviour, both paths) docks into Chrome's contents view, which nobody sees (under
+  our root, or in the ghost). A small Chromium patch could stop DevTools from docking for natively hosted tabs
+  (`DevToolsWindow` `can_dock_`). Phase 3; it touches the default path.
+- **Closing a Chrome-hosted window** must go through the engine: an `NSWindow` close destroys its Browser
+  immediately, including a tab that is still moving out.
+
+Estimates:
+- Phase 2 took about 1.5 days instead of 1–1.5 weeks.
+- Phase 3:
+  - 3a, per-profile hosted windows: 1.5–2 weeks, the new long pole. It needs the translucent-window CEF patch and
+    the unlocked-screen measurement.
+  - The parity checklist: 1–1.5 weeks. Most of what it listed is done; the rest is window full screen, Spaces,
+    drag and drop, IME, VoiceOver, DevTools docking, multiple displays and the visual checks, most of them human.
+- Phases 4–5: unchanged.
+- Total remaining: about 4–5 weeks.
 
 ## Profiles in a Chrome-hosted window (phase 2 decision)
 
@@ -442,7 +504,7 @@ Every phase ships; the flag keeps the ghost path as the default until phase 4.
 |---|---|---|---|
 | 0. Spike | Done: `NETNYAHOO_CHROME_WINDOW=1`, this doc | 13/14 seam checks pass (`spike/spike.mjs`) | done |
 | 1. Engine groundwork | Done 2026-09-26 (see [Phase 1](#phase-1-engine-done)) | Default path unaffected; the spike without its swizzle; zoom bubble and profile menu gone; no `about:blank` in `chrome.tabs` | done (~1 day) |
-| 2. One window type behind the flag, production quality | `NNChromeWindow` without dynamic lookups. `WindowManager`: close warning through `CanClose`, frame autosave, traffic-light x inset, incognito windows. `rootView(of:)` for every `contentView` user (§4). Command policy reviewed against Chrome's full shortcut table. Keep the ghost for secondary profiles | A browser window with the flag passes the release smoke test (`smoke.mjs` hosted variant) and the spike checks | 1–1.5 weeks |
+| 2. One window type behind the flag, production quality (done 2026-09-26, see [Phase 2](#phase-2-production-behind-the-flag-done)) | `NNChromeWindow` without dynamic lookups. `WindowManager`: close warning through `CanClose`, frame autosave, traffic-light x inset, incognito windows. `rootView(of:)` for every `contentView` user (§4). Command policy reviewed against Chrome's full shortcut table. Keep the ghost for secondary profiles | A browser window with the flag passes the release smoke test (`smoke.mjs` hosted variant) and the spike checks | 1–1.5 weeks |
 | 3a. Profiles: hosted per-profile windows | See [Phase 3 item](#phase-3-item-profiles-hosted-per-profile-windows): the transparent-window CEF patch, pre-made neighbour windows, the cut, full screen; measured with `spike/swapmeasure.sh` | 0 transient frames in 20 swaps; paging looks unchanged; secondary-profile ghosts gone | 1.5–2 weeks |
 | 3. Parity checklist | Each item tested in a flagged build, with fixes. Surfaces: save card/address, permission prompts, extension popups and install, device chooser, Cast, find, downloads, status. Window: full screen (window and HTML5; decide on `chromium-browser-view-hosted-fullscreen.patch`), Spaces, minimise, multiple displays, split view, popups, PiP, DevTools docked and undocked, drag and drop, swipes, IME, VoiceOver, extension `chrome.commands`, multi-profile windows, session restore, quitting with dialogs open | `docs/migration-status.md` ledger entries for each, user-run checks listed | 2 weeks |
 | 4. Switch the default | Flag inverted (`NETNYAHOO_CHROME_WINDOW=0` = ghost), one or two releases of dogfooding | No seam regressions reported | 3 days + a dogfood week |
