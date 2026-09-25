@@ -1,0 +1,21 @@
+apps/browser/macos/Netnyahoo-macOS/Info.plist
+  s_9c356f9574d31c::t_8a86ef9c80fcee 73
+apps/browser/src/lib/appIntegration.ts
+  s_9c356f9574d31c::t_37f06520b5a9ed 77-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d056b2b1d028b4c741c567c5c233f775e7615542",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
