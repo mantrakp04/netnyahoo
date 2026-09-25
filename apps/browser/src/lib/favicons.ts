@@ -1,5 +1,5 @@
 import { fetchFavicon, pruneFavicons, type FaviconImage } from "@netnyahoo/cef";
-import { readDocument, writeDocument } from "@netnyahoo/shell";
+import { hasDockSelection, iconTheme, readDocument, writeDocument, type IconTheme } from "@netnyahoo/shell";
 import { useEffect } from "react";
 import { create } from "zustand";
 import { useBrowser, type BrowserState } from "../store/browser";
@@ -21,7 +21,15 @@ import { webviews } from "./webviews";
  * lookups that don't name them.
  */
 
-type Icon = { uri: string; /** The page's icon URL it came from. */ src: string; /** ms epoch */ at: number };
+type Icon = {
+  uri: string;
+  /** The page's icon URL it came from. */
+  src: string;
+  /** ms epoch */
+  at: number;
+  /** Dia's selected-pinned-tile theme, worked out once per icon; null: none, absent: not yet. */
+  theme?: IconTheme | null;
+};
 type ProfileIcons = {
   /** By name (a hash of `src`). */
   icons: Record<string, Icon>;
@@ -191,14 +199,15 @@ export function faviconFailed(profileId: string, uri: string) {
 
 export type ResolvedFavicon = { uri: string; profileId: string };
 
-function lookupIn(profileId: string, url: string, src: string | null | undefined): Icon | undefined {
+/** The icon's name in `profileId`'s index. */
+function lookupIn(profileId: string, url: string, src: string | null | undefined): string | undefined {
   const index = indexFor(profileId);
   const byPage = index.pages[pageKey(url)];
-  return (
-    (src ? index.icons[iconName(src)] : undefined) ??
-    (byPage ? index.icons[byPage] : undefined) ??
-    index.icons[index.hosts[hostKey(url)] ?? ""]
-  );
+  const name = src ? iconName(src) : undefined;
+  if (name && index.icons[name]) return name;
+  if (byPage && index.icons[byPage]) return byPage;
+  const byHost = index.hosts[hostKey(url)];
+  return byHost && index.icons[byHost] ? byHost : undefined;
 }
 
 /**
@@ -207,17 +216,23 @@ function lookupIn(profileId: string, url: string, src: string | null | undefined
  * then the persistent profiles' caches (reading them leaks nothing; the reverse
  * never happens). Without one, the persistent profiles', default first.
  */
-export function resolveFavicon(url: string, src?: string | null, profileId?: string): ResolvedFavicon | null {
+function resolveIcon(url: string, src?: string | null, profileId?: string): { profileId: string; name: string; icon: Icon } | null {
   if (!url) return null;
   const order =
     profileId && !isIncognitoProfile(profileId)
       ? [profileId]
       : [...new Set([...(profileId ? [profileId] : []), DEFAULT_PROFILE_ID, ...useBrowser.getState().profileOrder])];
   for (const id of order) {
-    const icon = lookupIn(id, url, src);
-    if (icon) return { uri: icon.uri, profileId: id };
+    const name = lookupIn(id, url, src);
+    if (name) return { profileId: id, name, icon: indexFor(id).icons[name]! };
   }
   return null;
+}
+
+/** `resolveIcon`'s file: or data: URI. */
+export function resolveFavicon(url: string, src?: string | null, profileId?: string): ResolvedFavicon | null {
+  const found = resolveIcon(url, src, profileId);
+  return found ? { uri: found.icon.uri, profileId: found.profileId } : null;
 }
 
 /**
@@ -238,6 +253,41 @@ export function useFavicon(url: string, src?: string | null, profileId?: string)
     if (missing) fetchMissing(profileId!, url, src!);
   }, [missing, profileId, url, src]);
   return resolved;
+}
+
+// MARK: Themes
+
+const theming = new Set<string>();
+
+/**
+ * The theme Dia gives a selected pinned tile for `url`'s icon (see `IconTheme`),
+ * worked out natively the first time it's asked for and kept with the icon (a
+ * refreshed icon starts over). Undefined until it's known.
+ */
+export function useFaviconTheme(url: string, src?: string | null, profileId?: string): IconTheme | null | undefined {
+  // The icon record itself: it only changes when the icon (or its theme) does.
+  const icon = useFavicons(() => resolveIcon(url, src, profileId)?.icon ?? null);
+  const pending = !!icon && icon.theme === undefined && hasDockSelection;
+  useEffect(() => {
+    if (!pending) return;
+    const found = resolveIcon(url, src, profileId);
+    if (!found) return;
+    const { profileId: id, name, icon: current } = found;
+    const key = `${id}|${name}|${current.uri}`;
+    if (theming.has(key)) return;
+    theming.add(key);
+    void iconTheme({ uri: current.uri })
+      .catch(() => null)
+      .then((theme) =>
+        update(id, (index) => {
+          const now = index.icons[name];
+          // Replaced meanwhile: the new icon gets its own.
+          if (!now || now.uri !== current.uri) return index;
+          return { ...index, icons: { ...index.icons, [name]: { ...now, theme } } };
+        }),
+      );
+  }, [pending, url, src, profileId]);
+  return icon?.theme;
 }
 
 // MARK: Housekeeping

@@ -1,7 +1,8 @@
-import { ContextMenuArea, Surface, Symbol } from "@netnyahoo/shell";
+import { ContextMenuArea, DockSelection, Surface, Symbol } from "@netnyahoo/shell";
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, View } from "react-native";
 import { hex, layout, useTheme } from "../../lib/theme";
+import { useTileTheme } from "../../lib/tileTheme";
 import { useBrowser } from "../../store/browser";
 import { useIsActiveTab, useTab, useTabLive, useWindowId } from "../../store/hooks";
 import { awayFromPin } from "../../store/organize";
@@ -18,6 +19,8 @@ import { useSidebarTokens } from "./tokens";
 
 const GAP = 6;
 const MIN_TILE = 50;
+/** TabDockView's itemStrokeWidth: the selected tile's ring. */
+const SELECTION_STROKE = 3;
 
 /** Pinned tabs as tiles (Dia's tab dock), as many per row as fit. */
 export function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; innerWidth: number; dragging: boolean }) {
@@ -77,6 +80,7 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
   const { hovered, hoverProps } = useRowHover(windowId, { kind: "tab", id: tabId });
   const { wrapper, handle } = useDragItem(`t:${tabId}`, { kind: "tile", tabIds: [tabId], section: "tiles" }, () => useBrowser.getState().selection[windowId] ?? []);
   const away = !!tab && awayFromPin(tab);
+  const tileTheme = useTileTheme(tab?.url ?? "", tab?.favicon, tab?.customIcon, tab?.profileId ?? "");
   // Dia animates its pinned-tab badge in and out.
   const badge = useRef(new Animated.Value(away ? 1 : 0)).current;
   useEffect(() => {
@@ -105,8 +109,31 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
             }}
           >
             {({ pressed }) =>
-              active ? (
-                // Selected: black rim (SelectedPrimary) → white fill (SelectedSecondary) → top bevel (TabOutline).
+              active && tileTheme ? (
+                // Selected, themed by its icon (lib/tileTheme): the icon's colours in the fill and ring.
+                <DockSelection
+                  image={tileTheme.image}
+                  emoji={tileTheme.emoji}
+                  theme={tileTheme.theme.kind}
+                  fill={tileTheme.theme.kind === "template" ? tileTheme.theme.fill : undefined}
+                  stroke={tileTheme.theme.kind === "template" ? tileTheme.theme.stroke : undefined}
+                  cornerRadius={radius}
+                  strokeWidth={SELECTION_STROKE}
+                  dark={theme.dark}
+                  style={{ width, height: layout.pinnedHeight, alignItems: "center", justifyContent: "center" }}
+                >
+                  <View>
+                    {tileTheme.theme.kind === "template" ? (
+                      // DockSelection draws a one-colour icon itself, white on its colour.
+                      <View style={{ width: 16, height: 16 }} />
+                    ) : (
+                      <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
+                    )}
+                    <TabBadges tabId={tabId} />
+                  </View>
+                </DockSelection>
+              ) : active ? (
+                // Selected, no icon theme: black rim (SelectedPrimary) → white fill (SelectedSecondary) → top bevel (TabOutline).
                 <Surface
                   fill={hex(theme.pinnedSelectedRim)}
                   cornerRadius={radius}

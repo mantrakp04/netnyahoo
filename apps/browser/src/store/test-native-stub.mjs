@@ -24,4 +24,6 @@ export const removeNotifications = () => Promise.resolve();
 // Favicons and downloads (lib/favicons, lib/persist).
 export const fetchFavicon = () => Promise.resolve(null);
 export const pruneFavicons = () => Promise.resolve();
+export const hasDockSelection = false;
+export const iconTheme = () => Promise.resolve(null);
 export const cancelDownload = () => Promise.resolve();

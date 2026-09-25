@@ -59,8 +59,25 @@ Dia 1.50 ("Sunglow") changes are in the last section; where it says "rebrand fla
 
 - Header 46: traffic lights, and a downloads button (`arrow.down.circle`) centered at x 166, y 26.
 - Pinned tabs: tiles inset 7 (x 7…183), 40 tall, top at 54.5, radius ~10, favicon centered.
-  - Selected: `TabBackgroundSelectedSecondary` (white 25%) fill, black rim (`SelectedPrimary`),
-    `TabOutline` (white 20%) top bevel, shadow `TabSelectedShadow`.
+  - Selected (TabUI `TabDockItemView` + `SelectionOutlineView`, from the 1.50.1 binary): themed by
+    the icon (`TabIconProcessorImpl._generateTheme`, a `TabIconTheme`). The icon is drawn at most
+    32 px on its long side; its pixels with alpha ≥ 0.975 are averaged (RGB 0…1) and their mean
+    Euclidean distance from that mean decides:
+    - ≥ 0.055, colourful → `blur`: the icon through CIGaussianBlur (radius 5), aspect-filled into
+      2.5× the tile, centred. The tile is white 20% (dark) / white (light) under that image at 22%;
+      the ring is a 3pt border (`itemStrokeWidth`, backing-aligned) masking the same image over
+      black (dark: image at 75% with CIColorControls saturation 2, brightness −0.1) / white (light,
+      image at 100%). So YouTube gets a red ring, X a black one.
+    - < 0.055, one colour → `template`: the tile filled with the mean colour, the icon drawn as a
+      white template, the ring white with a soft-light compositing filter. A near-white icon (WCAG
+      relative luminance > 0.88) gets a black fill and an opaque white 30% ring instead.
+    - No theme (a non-RGB image, no opaque pixels, no favicon): fill `TabBackgroundSelectedPrimary`
+      (black / white), ring `TabDockItemDefaultSelectionStroke` (white .45 dark / black .48 light).
+      Netnyahoo still draws its older look there (white 25% fill, black rim, `TabOutline` bevel).
+    - Only the primary selection draws the ring; a secondary selection is a
+      `TabBackgroundSelectedSecondary` fill with no ring. The dock item has no `TabOutline` bevel
+      or `TabSelectedShadow` of its own.
+    Emoji custom icons are drawn at 16pt and themed the same way.
   - Unselected: white ~8% (`TabDockItemRestingBackground` white 10%, stroke 14%).
 - Tab rows: 33 tall on a ~37 pitch, inset 7. Favicon 16 at x 16, title at x 38.5, 13–14pt.
   Title color: `TabTitleUnselected` white 78% (dark) or black 68% (light); selected white 100%.
@@ -188,6 +205,7 @@ Dia 1.50 ("Sunglow") changes are in the last section; where it says "rebrand fla
 | TabSelectedShadow | black .12 | white .15 |
 | TabTitleSelected / Unselected | black 1 / .68 | white 1 / .78 |
 | TabDockItemRestingBackground / Stroke | black .05 / .18 | white .10 / .14 |
+| TabDockItemDefaultSelectionStroke | black .48 | white .45 |
 | WindowContent/BaseTint | white .80 | #121212 .60 |
 | Menu/ItemBackgroundHovered | black .07 | white .07 |
 | Menu/HairlineBorder | black .25 | white .30 |

@@ -15,7 +15,8 @@
       "FileDragModule",
       "AppModule",
       "CalendarModule",
-      "KeychainModule"
+      "KeychainModule",
+      "DockSelectionModule"
     ]
   }
 }

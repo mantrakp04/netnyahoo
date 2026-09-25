@@ -390,3 +390,43 @@ export type VisualEffectProps = ViewProps & {
 
 /** Native blur material (NSVisualEffectView). Ignores mouse events. */
 export const VisualEffect = requireNativeViewManager<VisualEffectProps>("NetnyahooVisualEffect");
+
+/**
+ * How Dia themes a selected pinned tile by its icon (TabUI `TabIconProcessor`): `blur` for a
+ * colourful icon, `template` for a one-colour one (the tile filled with `fill`, the icon drawn
+ * white, the ring `stroke` or white in soft-light).
+ */
+export type IconTheme = { kind: "blur" } | { kind: "template"; fill: string; stroke?: string };
+
+const DockSelectionModule = requireOptionalNativeModule<{
+  iconTheme(uri: string | null, emoji: string | null): Promise<IconTheme | null>;
+}>("NetnyahooDockSelection");
+
+/** Whether this build draws themed tiles (DockSelection); older builds keep the plain tile. */
+export const hasDockSelection = !!DockSelectionModule;
+
+/** The theme of a favicon (file: or data: URI) or an emoji; null when it has none. */
+export const iconTheme = (source: { uri: string } | { emoji: string }): Promise<IconTheme | null> =>
+  DockSelectionModule
+    ? DockSelectionModule.iconTheme("uri" in source ? source.uri : null, "emoji" in source ? source.emoji : null)
+    : Promise.resolve(null);
+
+export type DockSelectionProps = ViewProps & {
+  /** The icon the theme came from: a favicon URI, or `emoji`. */
+  image?: string;
+  emoji?: string;
+  theme: IconTheme["kind"];
+  /** template: the tile's fill and ring (hex); no stroke = white soft-light. */
+  fill?: string;
+  stroke?: string;
+  cornerRadius?: number;
+  strokeWidth?: number;
+  /** template: the white icon it draws itself, centred (RN's Image can't tint a template). */
+  iconSize?: number;
+  dark: boolean;
+};
+
+/** A selected pinned tile drawn from its icon's theme (see IconTheme); children go on top. */
+export const DockSelection: ComponentType<DockSelectionProps> = DockSelectionModule
+  ? requireNativeViewManager<DockSelectionProps>("NetnyahooDockSelection")
+  : () => null;
