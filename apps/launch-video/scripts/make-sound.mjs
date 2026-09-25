@@ -71,10 +71,14 @@ function powerDown(frame) {
   add(at(frame), SR * 0.7, (t) => Math.sin(2 * Math.PI * (660 * Math.exp(-t * 3.5)) * t) * 0.3 * Math.exp(-t * 3));
 }
 
-// A thud and a small bell for each pledge "kept"; the Wi-Fi powering down; the game's clock
+// A thud and a small bell for each pledge, a whoosh as the toolbar folds away, "kept"; the Wi-Fi powering down; the game's clock
 // ticking; a pop when Big Yahu comes up; a stab and the stamp for "Impeach Chrome."
-stab(B.poster.from + 1);
-for (let i = 0; i < 6; i++) {
+stab(B.opener.from + 1);
+thud(B.toolbar.from, 0.8);
+add(at(B.toolbar.from + 3), SR * 0.6, (t) => Math.sin(2 * Math.PI * 1568 * t) * 0.12 * Math.exp(-t * 7));
+whoosh(B.toolbar.from + 28, 0.6, true);
+pop(B.toolbar.from + 44);
+for (let i = 0; i < 4; i++) {
   thud(B.pledges.from + i * PLEDGE_LEN, 0.8);
   add(at(B.pledges.from + i * PLEDGE_LEN + 3), SR * 0.6, (t) => Math.sin(2 * Math.PI * 1568 * t) * 0.12 * Math.exp(-t * 7));
 }

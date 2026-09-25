@@ -16,12 +16,13 @@ const seq = <T extends Record<string, number>>(lengths: T) => {
 export const PLEDGE_LEN = 60;
 
 export const { beats: B, total: TOTAL } = seq({
-  poster: 66, // the hook: the window, the slogan, the stamp
-  pledges: PLEDGE_LEN * 6, // six pledges, one window
-  offline: 54, // the Wi-Fi dies: the offline page, "Chrome gives you a dinosaur."
+  opener: 75, // the window, live: "Full immunity."
+  toolbar: 84, // pledge 1: the toolbar folds into the sidebar
+  pledges: PLEDGE_LEN * 4, // pledges 2–5 on real window captures
+  offline: 54, // the Wi-Fi dies: "Chrome gives you a dinosaur."
   find: 54, // into the tab: "Find him." on the game's own clock
   cta: 84, // Big Yahu comes up out of the crowd; "Impeach Chrome."
-  bridge: 26, // back out to the poster (the loop)
+  bridge: 26, // back out to the opener (the loop)
 });
 
 /** Round 1's clock (capture-game.mjs): 3.0 on frame 0. */

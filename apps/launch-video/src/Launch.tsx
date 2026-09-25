@@ -4,8 +4,7 @@ import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame } f
 import { B, FPS, PLEDGE_LEN, R1_CLOCK } from "./timeline";
 import { C, mono, poster } from "./theme";
 import { CAM_GAME, CAM_HEADER, CAM_WINDOW, STAGE, Stage, frameSrc, mixCam, type Cam } from "./Stage";
-import { LiveWindow, WindowShot, place, type Push } from "./Window";
-import { Fit } from "./Fit";
+import { LiveWindow, OPENER_FRAMES, TOOLBAR_H, WindowShot, place, type Push } from "./Window";
 import { Yahu3D } from "./Yahu3D";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
@@ -15,82 +14,71 @@ const ease = (f: number, a: number, b: number, e = inOutCubic) => interpolate(f,
 const lerpPush = (a: Push, b: Push, t: number): Push => ({ fx: a.fx + (b.fx - a.fx) * t, fy: a.fy + (b.fy - a.fy) * t, z: a.z + (b.z - a.z) * t });
 
 // A campaign ad for a browser. One narrator; every line is about what the window is showing.
+// Type sizes are fixed per line (no measuring), so no frame can lay out differently from the next.
 type Line = { kicker: string; title: string; size: number; sub?: string };
-const POSTER: Line = { kicker: "Paid political browser", title: "Netnyahoo for\ndefault browser.", size: 140, sub: "Real Chromium, for the Mac." };
+const OPENER: Line = { kicker: "Netnyahoo for default browser", title: "Full immunity.", size: 164, sub: "Immune to ads, trackers and prosecution." };
+const TOOLBAR: Line = {
+  kicker: "Pledge 1 · kept",
+  title: "Dissolves\nthe toolbar.",
+  size: 140,
+  sub: "The address bar moves into the sidebar.\nThe page gets the whole window.",
+};
 
 // `clip`: a real recording the user can drop into clips/<clip>.mp4 (see README, "Shot list"); when it
 // exists it plays in the window's place instead of the still.
-type Pledge = Line & { shots: string[]; from: Push; to: Push; panel?: { w: number; h: number }; fan?: boolean; clip: string };
+type Pledge = Line & { shot: string; from: Push; to: Push; panel?: { w: number; h: number }; clip: string };
 const PLEDGES: Pledge[] = [
   {
-    kicker: "Pledge 1 · kept",
-    clip: "sidebar",
-    title: "Tabs belong\nin the sidebar.",
-    size: 130,
-    sub: "Pinned tiles wear each site’s colours.",
-    shots: ["shots/browse.webp"],
-    from: { fx: 0.5, fy: 0.5, z: 1 },
-    to: { fx: 0.07, fy: 0.1, z: 1.9 },
-  },
-  {
-    kicker: "Pledge 2 · kept",
     clip: "split",
+    kicker: "Pledge 2 · kept",
     title: "Two pages.\nNo coalition talks.",
-    size: 130,
+    size: 116,
     sub: "Split view, in one window.",
-    shots: ["shots/split.webp"],
+    shot: "shots/split.webp",
     from: { fx: 0.5, fy: 0.5, z: 1 },
     to: { fx: 0.58, fy: 0.3, z: 1.3 },
   },
   {
-    kicker: "Pledge 3 · kept",
-    clip: "profiles",
-    title: "Separate profiles for\nseparate lives.",
-    size: 130,
-    sub: "Plausible deniability comes standard.",
-    shots: ["shots/profile-green.webp", "shots/profile-blue.webp", "shots/profile-plum.webp"],
-    fan: true,
-    from: { fx: 0.5, fy: 0.5, z: 1 },
-    to: { fx: 0.5, fy: 0.5, z: 1 },
-  },
-  {
-    kicker: "Pledge 4 · kept",
     clip: "extensions",
+    kicker: "Pledge 3 · kept",
     title: "Forms a coalition\nwith any extension.",
-    size: 130,
+    size: 114,
     sub: "The Chrome Web Store says “Add to Netnyahoo”.",
-    shots: ["shots/extensions.webp"],
+    shot: "shots/extensions.webp",
     from: { fx: 0.5, fy: 0.4, z: 1 },
     to: { fx: 0.9, fy: 0.365, z: 1.8 },
   },
   {
-    kicker: "Pledge 5 · kept",
     clip: "ublock",
+    kicker: "Pledge 4 · kept",
     title: "Tracks nothing.",
-    size: 150,
+    size: 140,
     sub: "Unusual, for a man in his position.",
-    shots: ["shots/privacy.webp"],
+    shot: "shots/privacy.webp",
     panel: { w: 1640, h: 1280 },
     from: { fx: 0.5, fy: 0.3, z: 1 },
     to: { fx: 0.62, fy: 0.3, z: 1.25 },
   },
   {
-    kicker: "Pledge 6 · kept",
     clip: "command-bar",
+    kicker: "Pledge 5 · kept",
     title: "AI features: zero.",
-    size: 150,
+    size: 124,
     sub: "On purpose. Search just searches.",
-    shots: ["shots/command-bar.webp"],
+    shot: "shots/command-bar.webp",
     from: { fx: 0.5, fy: 0.3, z: 1 },
     to: { fx: 0.55, fy: 0.1, z: 1.55 },
   },
 ];
-const OFFLINE: Line = { kicker: "And when the Wi-Fi dies", title: "Chrome gives you\na dinosaur.", size: 140 };
-const FIND: Line = { kicker: "Netnyahoo gives you him", title: "Find him.", size: 230, sub: "82 suspects. 3 seconds." };
-const CTA: Line = { kicker: "Netnyahoo 2026", title: "Impeach Chrome.", size: 200, sub: "Make Netnyahoo your default.\nIt won’t step down." };
+const OFFLINE: Line = { kicker: "And when the Wi-Fi dies", title: "Chrome gives you\na dinosaur.", size: 128 };
+const FIND: Line = { kicker: "Netnyahoo gives you him", title: "Find him.", size: 196, sub: "82 suspects. 3 seconds." };
+const CTA: Line = { kicker: "Netnyahoo 2026", title: "Impeach Chrome.", size: 148, sub: "Make Netnyahoo your default." };
 
 const FIND_FRAMES = 54;
-const POSTER_PUSH = (l: number): Push => ({ fx: 0.5, fy: 0.5, z: 1 + 0.035 * Math.min(1, l / B.poster.dur) }); // round 1's clock runs 3.0 → 1.2 while you look; then he comes up anyway
+const OPENER_PUSH = (l: number): Push => ({ fx: 0.5, fy: 0.5, z: 1 + 0.035 * Math.min(1, l / B.opener.dur) });
+// The toolbar pledge frames the window's top-left, where the address bar moves, then pulls back.
+const TOP_PUSH: Push = { fx: 0, fy: 0, z: 1.9 };
+const FULL_PUSH: Push = { fx: 0.5, fy: 0.5, z: 1 }; // round 1's clock runs 3.0 → 1.2 while you look; then he comes up anyway
 
 export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips = [] }) => {
   const current = useCurrentFrame();
@@ -98,17 +86,49 @@ export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips 
   const inB = (b: { from: number; to: number }) => f >= b.from && f < b.to;
 
   let media: React.ReactNode = null;
-  let line: Line = POSTER;
-  let lineAt = -99; // the frame the line slams in (frame 0's poster is already settled)
+  let line: Line = OPENER;
+  let lineAt = -99; // the frame the line slams in (frame 0's line is already settled)
   let stamp = 1; // INCUMBENT, on the window's corner
   let smallPrint = 1;
   let sticker = 0;
 
-  if (inB(B.poster)) {
-    const l = f - B.poster.from;
-    media = <LiveWindow f={l} push={POSTER_PUSH(l)} />;
-    stamp = 0; // the page wears its own INCUMBENT stamp
-    smallPrint = 1 - ease(l, B.poster.dur - 6, B.poster.dur);
+  if (inB(B.opener)) {
+    const l = f - B.opener.from;
+    media = <LiveWindow f={l} push={OPENER_PUSH(l)} />;
+    stamp = 1 - ease(l, B.opener.dur - 6, B.opener.dur);
+    smallPrint = 1 - ease(l, B.opener.dur - 6, B.opener.dur);
+  } else if (inB(B.toolbar)) {
+    const l = f - B.toolbar.from;
+    const into = ease(l, 0, 10); // opener framing → the window's top
+    const fold = ease(l, 32, 40); // the toolbar folds away
+    const live = B.opener.dur + l; // the page keeps moving in the "after" window
+    const out = ease(l, 58, 80); // back to the whole window: the page runs top to bottom
+    const push = lerpPush(lerpPush(OPENER_PUSH(B.opener.dur), TOP_PUSH, into), FULL_PUSH, out);
+    media = (
+      <>
+        <LiveWindow mode="toolbar" push={push} opacity={1}>
+          {/* The toolbar, outlined, then folding up to nothing */}
+          <div
+            style={{
+              position: "absolute",
+              left: 380,
+              top: 0,
+              width: 2500,
+              height: TOOLBAR_H * (1 - fold),
+              border: `10px solid ${C.stamp}`,
+              borderRadius: 18,
+              opacity: ease(l, 10, 16) * (1 - ease(l, 36, 40)),
+              background: `rgba(195,55,31,${0.18 * fold})`,
+            }}
+          />
+        </LiveWindow>
+        {fold > 0 && <LiveWindow f={Math.min(live, OPENER_FRAMES - 1)} push={push} opacity={fold} />}
+      </>
+    );
+    line = TOOLBAR;
+    lineAt = B.toolbar.from;
+    stamp = 0;
+    smallPrint = 0;
   } else if (inB(B.pledges)) {
     const l = f - B.pledges.from;
     const i = Math.floor(l / PLEDGE_LEN);
@@ -116,33 +136,12 @@ export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips 
     const p = PLEDGES[i];
     const prev = i > 0 ? PLEDGES[i - 1] : null;
     const push = lerpPush(p.from, p.to, ease(k, 2, PLEDGE_LEN, Easing.bezier(0.33, 0, 0.2, 1)));
-    const n = p.shots.length;
-    const part = Math.min(n - 1, Math.floor((k / PLEDGE_LEN) * n));
     const fadeIn = ease(k, 0, 5);
-    media = clips.includes(p.clip) ? (
+    media = (
       <>
-        {prev && fadeIn < 1 && <WindowShot src={prev.shots[prev.shots.length - 1]} push={prev.to} w={prev.panel?.w} h={prev.panel?.h} />}
-        <ClipView id={p.clip} opacity={fadeIn} />
-      </>
-    ) : p.fan ? (
-      <>
-        {prev && fadeIn < 1 && <WindowShot src={prev.shots[0]} push={prev.to} />}
-        <Fan shots={p.shots} k={k} />
-      </>
-    ) : (
-      <>
-        {prev && fadeIn < 1 && (
-          <WindowShot src={prev.shots[prev.shots.length - 1]} push={prev.to} w={prev.panel?.w} h={prev.panel?.h} />
-        )}
-        {i === 0 && fadeIn < 1 && <LiveWindow f={B.poster.dur} push={POSTER_PUSH(B.poster.dur)} />}
-        {part > 0 && <WindowShot src={p.shots[part - 1]} push={push} w={p.panel?.w} h={p.panel?.h} opacity={fadeIn} />}
-        <WindowShot
-          src={p.shots[part]}
-          push={push}
-          w={p.panel?.w}
-          h={p.panel?.h}
-          opacity={part > 0 ? ease(k - (part * PLEDGE_LEN) / n, 0, 5) : fadeIn}
-        />
+        {prev && fadeIn < 1 && <WindowShot src={prev.shot} push={prev.to} w={prev.panel?.w} h={prev.panel?.h} />}
+        {i === 0 && fadeIn < 1 && <LiveWindow f={Math.min(B.opener.dur + B.toolbar.dur, OPENER_FRAMES - 1)} push={FULL_PUSH} />}
+        {clips.includes(p.clip) ? <ClipView id={p.clip} opacity={fadeIn} /> : <WindowShot src={p.shot} push={push} w={p.panel?.w} h={p.panel?.h} opacity={fadeIn} />}
       </>
     );
     line = p;
@@ -155,7 +154,7 @@ export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips 
     const cam = mixCam(CAM_WINDOW, CAM_HEADER, ease(l, 12, 34));
     media = (
       <>
-        {l < 8 && <WindowShot src={last.shots[0]} push={last.to} opacity={1 - ease(l, 0, 8)} />}
+        {l < 8 && <WindowShot src={last.shot} push={last.to} opacity={1 - ease(l, 0, 8)} />}
         <div style={{ opacity: ease(l, 0, 8) }}>
           <Stage cam={cam} page={frameSrc("r1", 0)} />
         </div>
@@ -198,11 +197,10 @@ export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips 
             {up > 0 && <YahuInCrowd up={up} t={(B.cta.dur + l) / FPS} />}
           </Stage>
         </div>
-        {swap > 0 && <LiveWindow f={0} push={POSTER_PUSH(0)} opacity={swap} />}
+        {swap > 0 && <LiveWindow f={0} push={OPENER_PUSH(0)} opacity={swap} />}
       </>
     );
-    stamp = 1 - ease(l, 8, 16);
-    line = l < 8 ? CTA : POSTER;
+    line = l < 8 ? CTA : OPENER;
     lineAt = l < 8 ? B.cta.from + 8 : B.bridge.from + 8;
   }
 
@@ -215,7 +213,7 @@ export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips 
       <Audio src={staticFile("sound/track.wav")} />
       <Grain />
       {media}
-      <Headline line={line} local={local} opacity={lineOut} width={sticker > 0 ? 730 : 1000} />
+      <Headline line={line} local={local} opacity={lineOut} />
       {sticker > 0 && <Sticker show={sticker} timer={findTimer(f)} />}
       {stamp > 0 && <Stamp opacity={stamp} slam={stampSlam} />}
       {smallPrint > 0 && <SmallPrint opacity={smallPrint} />}
@@ -233,35 +231,6 @@ const ClipView: React.FC<{ id: string; opacity: number }> = ({ id, opacity }) =>
   );
 };
 
-// Three profiles, three real windows (Studio, Work, Home), dealt onto the desk one after another.
-const Fan: React.FC<{ shots: string[]; k: number }> = ({ shots, k }) => (
-  <>
-    {shots.map((src, j) => {
-      const t = ease(k, j * 7, j * 7 + 12, outCubic);
-      const w = 820;
-      const h = (w * 1800) / 2880;
-      const x = 20 + j * 110 + (1 - t) * 60;
-      const y = 470 + j * 150 + (1 - t) * 120;
-      return (
-        <Img
-          key={src}
-          src={staticFile(src)}
-          style={{
-            position: "absolute",
-            left: x,
-            top: y,
-            width: w,
-            height: h,
-            opacity: t,
-            transform: `rotate(${(j - 1) * 2.5}deg)`,
-            filter: "drop-shadow(0 24px 40px rgba(22,19,15,0.4))",
-          }}
-        />
-      );
-    })}
-  </>
-);
-
 // Big Yahu comes up out of the crowd, inside the tab (clipped to the game's stage), doing the Griddy.
 const YAHU = { x: 338, y: 470, w: 1000, h: 1150 };
 const YahuInCrowd: React.FC<{ up: number; t: number }> = ({ up, t }) => (
@@ -277,16 +246,14 @@ function findTimer(f: number): { text: string; live: boolean } {
   return { text: Math.max(0, R1_CLOCK - (i + 1) / FPS).toFixed(1), live: f < B.find.to };
 }
 
-const Headline: React.FC<{ line: Line; local: number; opacity: number; width: number }> = ({ line, local, opacity, width }) => {
+const Headline: React.FC<{ line: Line; local: number; opacity: number }> = ({ line, local, opacity }) => {
   const s = interpolate(local, [0, 6], [1.15, 1], { ...clamp, easing: outCubic });
   const o = interpolate(local, [0, 2], [0, 1], clamp) * opacity;
   const subO = interpolate(local, [3, 8], [0, 1], clamp) * opacity;
   return (
-    <div style={{ position: "absolute", left: 40, top: 40, width }}>
+    <div style={{ position: "absolute", left: 40, top: 40 }}>
       <div style={{ ...mono(30, 600), color: C.stamp, opacity: o }}>{line.kicker}</div>
-      <div style={{ marginTop: 16, transformOrigin: "0% 60%", transform: `scale(${s})`, opacity: o }}>
-        <Fit text={line.title} width={width} style={poster(line.size)} />
-      </div>
+      <div style={{ ...poster(line.size), marginTop: 16, transformOrigin: "0% 60%", transform: `scale(${s})`, opacity: o, whiteSpace: "pre" }}>{line.title}</div>
       {line.sub && (
         <div
           style={{
@@ -298,7 +265,7 @@ const Headline: React.FC<{ line: Line; local: number; opacity: number; width: nu
             color: C.inkSoft,
             marginTop: 20,
             opacity: subO,
-            whiteSpace: "pre-line",
+            whiteSpace: "pre",
           }}
         >
           {line.sub}

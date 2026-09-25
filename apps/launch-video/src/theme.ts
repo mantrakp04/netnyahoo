@@ -1,5 +1,5 @@
 import { loadFont } from "@remotion/fonts";
-import { staticFile } from "remotion";
+import { continueRender, delayRender, staticFile } from "remotion";
 
 // The site's palette and type (apps/site/src/styles/global.css).
 export const C = {
@@ -14,8 +14,14 @@ export const C = {
 export const POSTER = "Archivo Poster";
 export const MONO = "Martian Mono";
 
-loadFont({ family: POSTER, url: staticFile("fonts/archivo-wdth.woff2"), weight: "100 900", format: "woff2" });
-loadFont({ family: MONO, url: staticFile("fonts/martian-mono-wdth.woff2"), weight: "100 800", format: "woff2" });
+// Every frame waits for both faces, so no frame is ever laid out in a fallback font.
+const fonts = delayRender("Loading fonts");
+Promise.all([
+  loadFont({ family: POSTER, url: staticFile("fonts/archivo-wdth.woff2"), weight: "100 900", format: "woff2" }),
+  loadFont({ family: MONO, url: staticFile("fonts/martian-mono-wdth.woff2"), weight: "100 800", format: "woff2" }),
+])
+  .then(() => document.fonts.ready)
+  .then(() => continueRender(fonts));
 
 /** The site's `.poster` style: Archivo at 62% width, heavy, uppercase, tight. */
 export const poster = (size: number): React.CSSProperties => ({

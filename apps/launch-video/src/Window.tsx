@@ -42,21 +42,38 @@ export const WindowShot: React.FC<{ src: string; push: Push; opacity?: number; w
   );
 };
 
-// The opening poster: Netnyahoo on netnyahoo.com, recorded live (scripts/record-poster.mjs). The window is
-// a ScreenCaptureKit capture; its page area plays the page's own recording, frame `f` (0-based).
-const SITE_PAGE = { x: 380, y: 94, w: 2486, h: 1692 };
-export const POSTER_FRAMES = 80;
-export const LiveWindow: React.FC<{ push: Push; f: number; opacity?: number }> = ({ push, f, opacity = 1 }) => {
+// A live window: a ScreenCaptureKit capture of a Netnyahoo window, its page area playing that page's own
+// CDP screencast (retimed to 30 fps), frame `f` (0-based). `mode` is the address bar's place.
+export type LiveMode = "sidebar" | "toolbar";
+const LIVE = {
+  // Address bar in the sidebar: the page runs the window's full height.
+  sidebar: { window: "window/window-sidebar.webp", frames: "opener", count: 118, page: { x: 380, y: 12, w: 2486, h: 1774 } },
+  // Address bar in the toolbar (a still of the same page; its page area is part of the capture).
+  toolbar: { window: "window/window-toolbar.webp", frames: null, count: 0, page: { x: 380, y: 93, w: 2486, h: 1693 } },
+} as const;
+export const OPENER_FRAMES = LIVE.sidebar.count;
+export const TOOLBAR_H = 93; // window px (2×): the toolbar row the sidebar address bar removes
+
+export const LiveWindow: React.FC<{ mode?: LiveMode; push: Push; f?: number; opacity?: number; children?: React.ReactNode }> = ({
+  mode = "sidebar",
+  push,
+  f = 0,
+  opacity = 1,
+  children,
+}) => {
+  const L = LIVE[mode];
   const r = place(push);
   const k = r.w / SHOT.w;
-  const src = staticFile(`poster/${String(Math.min(POSTER_FRAMES - 1, Math.max(0, f)) + 1).padStart(4, "0")}.jpg`);
   return (
     <div style={{ position: "absolute", left: r.x, top: r.y, width: r.w, height: (r.w * SHOT.h) / SHOT.w, opacity, filter: `drop-shadow(0 ${24 * push.z}px ${44 * push.z}px rgba(22,19,15,0.38))` }}>
-      <Img src={staticFile("window/window-site.webp")} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
-      <Img
-        src={src}
-        style={{ position: "absolute", left: SITE_PAGE.x * k, top: SITE_PAGE.y * k, width: SITE_PAGE.w * k, height: SITE_PAGE.h * k, borderBottomLeftRadius: 16 * k, borderBottomRightRadius: 16 * k }}
-      />
+      <Img src={staticFile(L.window)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+      {L.frames && (
+        <Img
+          src={staticFile(`${L.frames}/${String(Math.min(L.count - 1, Math.max(0, Math.round(f))) + 1).padStart(4, "0")}.jpg`)}
+          style={{ position: "absolute", left: L.page.x * k, top: L.page.y * k, width: L.page.w * k, height: L.page.h * k, borderRadius: 16 * k }}
+        />
+      )}
+      <div style={{ position: "absolute", inset: 0, transformOrigin: "0 0", transform: `scale(${k})`, width: SHOT.w, height: SHOT.h }}>{children}</div>
     </div>
   );
 };
