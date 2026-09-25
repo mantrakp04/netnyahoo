@@ -67,7 +67,7 @@ deployed with the new entry by the time the update reaches people.
    first so the download button points at the new DMG. Deploying is the maintainer's call: an agent cutting
    a release stops before this step unless told to do it.
 
-Before publishing, check the build the way the script can't: launch `dist/<version>/export/Netnyahoo.app` with
+Before publishing, run the smoke test: `.claude/skills/release/scripts/smoke.sh <version> <previous>` (the `release` skill runs the whole flow). By hand, check the build the way the script can't: launch `dist/<version>/export/Netnyahoo.app` with
 `NETNYAHOO_BACKGROUND=1`, a throwaway `NETNYAHOO_DATA_DIR` and `NETNYAHOO_REMOTE_DEBUGGING_PORT`, and load a
 page over CDP. Afterwards `codesign --verify --deep --strict` must still pass on it.
 
