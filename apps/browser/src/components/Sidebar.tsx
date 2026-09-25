@@ -392,7 +392,7 @@ function CleanUpUpsell({ windowId }: { windowId: string }) {
   }, [windowId]);
   if (hidden || daily || count < UPSELL_MIN) return null;
   const button = (title: string, onPress: () => void, primary = false) => (
-    <Pressable onPress={onPress} style={{ flex: primary ? 1 : undefined }}>
+    <Pressable onPress={onPress}>
       {({ pressed }) => (
         <View
           style={{
@@ -420,12 +420,14 @@ function CleanUpUpsell({ windowId }: { windowId: string }) {
         <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: theme.textPrimary }}>{count} tabs haven’t been touched in a while</Text>
       </View>
       <Text style={{ fontSize: 12, color: theme.textSecondary }}>Netnyahoo can tidy up for you. You can always reopen closed tabs from the ⌄ menu.</Text>
-      <View style={{ flexDirection: "row", gap: 6 }}>
+      {/* Dia's buttons sit in a row in its 316pt-wide upsell; the sidebar card (160–400pt) stacks them
+          so each title fits whole at any sidebar width. */}
+      <View style={{ gap: 6 }}>
         {button("Clean Up Once", () => {
           useBrowser.getState().cleanUpTabs(windowId);
           dismiss();
         }, true)}
-        {button("Daily", () => {
+        {button("Clean Up Daily", () => {
           useBrowser.getState().updateSettings({ cleanUpInactiveTabsAfterHours: 24 });
           useBrowser.getState().cleanUpTabs(windowId);
         })}
