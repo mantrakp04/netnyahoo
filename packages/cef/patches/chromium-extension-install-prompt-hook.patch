@@ -1,0 +1,31 @@
+--- a/chrome/browser/extensions/extension_install_prompt.cc
++++ b/chrome/browser/extensions/extension_install_prompt.cc
+@@ -34,6 +34,11 @@
+ #include "ui/gfx/image/image_skia.h"
+ #include "ui/gfx/image/image_skia_rep.h"
+ 
++#include "cef/libcef/features/features.h"
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/extension_install_prompt_hook.h"
++#endif
++
+ static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+ 
+ using extensions::Extension;
+@@ -287,7 +292,16 @@
+ 
+   // If true, auto confirm is enabled and already handled the result.
+   if (AutoConfirmPromptIfEnabled())
++    return;
++
++#if BUILDFLAG(ENABLE_CEF)
++  // The CEF client may show its own install prompt.
++  if (cef::HandleExtensionInstallPrompt(
++          profile_, show_params_->GetParentWebContents(), *prompt_,
++          &done_callback_)) {
+     return;
++  }
++#endif
+ 
+   if (show_dialog_callback_.is_null())
+     show_dialog_callback_ = GetDefaultShowDialogCallback();

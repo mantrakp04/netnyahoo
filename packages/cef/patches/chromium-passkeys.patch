@@ -1,0 +1,52 @@
+diff -ruN a/chrome/app/theme/netnyahoo/BRANDING b/chrome/app/theme/netnyahoo/BRANDING
+--- a/chrome/app/theme/netnyahoo/BRANDING	1970-01-01 05:30:00
++++ b/chrome/app/theme/netnyahoo/BRANDING	2026-09-25 09:37:30
+@@ -0,0 +1,10 @@
++COMPANY_FULLNAME=The Chromium Authors
++COMPANY_SHORTNAME=The Chromium Authors
++PRODUCT_FULLNAME=Chromium
++PRODUCT_SHORTNAME=Chromium
++PRODUCT_INSTALLER_FULLNAME=Chromium Installer
++PRODUCT_INSTALLER_SHORTNAME=Chromium Installer
++COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Chromium Authors. All rights reserved.
++MAC_BUNDLE_ID=com.netnyahoo.browser
++MAC_CREATOR_CODE=Cr24
++MAC_TEAM_ID=U5L5T3NGVV
+diff -ruN a/chrome/browser/webauthn/chrome_authenticator_request_delegate.cc b/chrome/browser/webauthn/chrome_authenticator_request_delegate.cc
+--- a/chrome/browser/webauthn/chrome_authenticator_request_delegate.cc	2026-09-25 09:37:30
++++ b/chrome/browser/webauthn/chrome_authenticator_request_delegate.cc	2026-09-25 09:37:37
+@@ -32,6 +32,7 @@
+ #include "build/build_config.h"
+ #include "build/chromeos_buildflags.h"
+ #include "chrome/browser/net/system_network_context_manager.h"
++#include "chrome/browser/platform_util.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/profiles/profile_observer.h"
+ #include "components/signin/public/base/signin_buildflags.h"
+@@ -1213,6 +1214,11 @@
+     if (window) {
+       discovery_factory->set_nswindow(window);
+     }
++  } else if (const gfx::NativeWindow window =
++                 platform_util::GetTopLevel(web_contents->GetNativeView())) {
++    // Netnyahoo: the tab's view is hosted in the embedder's own NSWindow, which
++    // isn't a views::Widget. iCloud Keychain's sheet attaches to that window.
++    discovery_factory->set_nswindow(window);
+   }
+ }
+ void ChromeAuthenticatorRequestDelegate::ConfigureICloudKeychain(
+diff -ruN a/components/os_crypt/common/keychain_password_mac.mm b/components/os_crypt/common/keychain_password_mac.mm
+--- a/components/os_crypt/common/keychain_password_mac.mm	2026-09-25 09:37:30
++++ b/components/os_crypt/common/keychain_password_mac.mm	2026-09-25 09:37:31
+@@ -38,8 +38,9 @@
+ const char kDefaultServiceName[] = "Chrome Safe Storage";
+ const char kDefaultAccountName[] = "Chrome";
+ #else
+-const char kDefaultServiceName[] = "Chromium Safe Storage";
+-const char kDefaultAccountName[] = "Chromium";
++// Netnyahoo: its own item, not the one other Chromium builds share.
++const char kDefaultServiceName[] = "Netnyahoo Safe Storage";
++const char kDefaultAccountName[] = "Netnyahoo";
+ #endif
+ 
+ // These values are persisted to logs. Entries should not be renumbered and

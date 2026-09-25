@@ -65,13 +65,29 @@ static CALayer *FindLayerHost(CALayer *l) {
   return nil;
 }
 
+static void ClickAt(CefRefPtr<CefBrowser> b, int x, int y);
 static int gTabStripEvents = 0;
 static int gCreated = 0;
 static CefRefPtr<CefBrowser> gPopup;
 
-class Client : public CefClient, public CefDisplayHandler, public CefLifeSpanHandler {
+class Client : public CefClient, public CefDisplayHandler, public CefLifeSpanHandler, public CefDownloadHandler {
  public:
   explicit Client(const char *name) : name_(name) {}
+  CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
+  bool OnBeforeDownload(CefRefPtr<CefBrowser>, CefRefPtr<CefDownloadItem> item, const CefString &name,
+                        CefRefPtr<CefBeforeDownloadCallback>) override {
+    fprintf(stdout, "RESULT download_before %s %s\n", name.ToString().c_str(), item->GetURL().ToString().substr(0, 80).c_str());
+    fflush(stdout);
+    return false;  // Chrome's own handling
+  }
+  void OnDownloadUpdated(CefRefPtr<CefBrowser>, CefRefPtr<CefDownloadItem> item,
+                         CefRefPtr<CefDownloadItemCallback>) override {
+    if (item->IsComplete() || item->IsCanceled() || item->IsInterrupted())
+      fprintf(stdout, "RESULT download_done complete=%d canceled=%d interrupted=%d reason=%d path=%s\n",
+              item->IsComplete(), item->IsCanceled(), item->IsInterrupted(), item->GetInterruptReason(),
+              item->GetFullPath().ToString().c_str());
+    fflush(stdout);
+  }
   void OnTabStripChanged(CefRefPtr<CefBrowser> b, int index, bool active, bool pinned) override {
     gTabStripEvents++;
     Log(@"OnTabStripChanged %s id=%d index=%d active=%d pinned=%d", name_, b->GetIdentifier(), index, active, pinned);
@@ -97,6 +113,12 @@ class Client : public CefClient, public CefDisplayHandler, public CefLifeSpanHan
                         int) override {
     // The page reports results as console messages starting with "RESULT ".
     std::string s = m.ToString();
+    int x, y;
+    if (sscanf(s.c_str(), "CLICK %d %d", &x, &y) == 2) {
+      Log(@"clicking at %d,%d", x, y);
+      ClickAt(b, x, y);
+      return true;
+    }
     if (s.rfind("RESULT ", 0) == 0) {
       fprintf(stdout, "%s [%s]\n", s.c_str(), name_);
       fflush(stdout);
@@ -106,6 +128,35 @@ class Client : public CefClient, public CefDisplayHandler, public CefLifeSpanHan
   const char *name_;
   IMPLEMENT_REFCOUNTING(Client);
 };
+
+// Web Store installs: our own "dialog" accepts right away (CEF_NN_INSTALL_PROMPT).
+class RCHandler : public CefRequestContextHandler {
+ public:
+  bool OnExtensionInstallPrompt(CefRefPtr<CefBrowser> browser, const CefString &id,
+                                CefRefPtr<CefDictionaryValue> details,
+                                CefRefPtr<CefExtensionPromptCallback> callback) override {
+    auto perms = details->GetList("permissions");
+    fprintf(stdout, "RESULT install_prompt id=%s name=%s version=%s type=%s icon=%zu permissions=%zu first=%s browser=%d\n",
+            id.ToString().c_str(), details->GetString("name").ToString().c_str(),
+            details->GetString("version").ToString().c_str(), details->GetString("type").ToString().c_str(),
+            details->GetString("icon").ToString().size(), perms ? perms->GetSize() : 0,
+            perms && perms->GetSize() ? perms->GetString(0).ToString().c_str() : "",
+            browser ? browser->GetIdentifier() : 0);
+    fflush(stdout);
+    callback->Continue(true);
+    return true;
+  }
+  IMPLEMENT_REFCOUNTING(RCHandler);
+};
+
+static void ClickAt(CefRefPtr<CefBrowser> b, int x, int y) {
+  CefMouseEvent e;
+  e.x = x;
+  e.y = y;
+  b->GetHost()->SendMouseMoveEvent(e, false);
+  b->GetHost()->SendMouseClickEvent(e, MBT_LEFT, false, 1);
+  b->GetHost()->SendMouseClickEvent(e, MBT_LEFT, true, 1);
+}
 
 class BVDelegate : public CefBrowserViewDelegate {
  public:
@@ -166,6 +217,7 @@ static void Check(CefRefPtr<CefBrowser> browser, NSView *slot, const char *name)
 class App : public CefApp, public CefBrowserProcessHandler {
  public:
   CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override { return this; }
+  CefRefPtr<CefRequestContextHandler> GetDefaultRequestContextHandler() override { return new RCHandler(); }
   void OnBeforeCommandLineProcessing(const CefString &type, CefRefPtr<CefCommandLine> cl) override {
     if (type.empty()) {
       cl->AppendSwitch("use-mock-keychain");
@@ -203,10 +255,20 @@ class App : public CefApp, public CefBrowserProcessHandler {
             "console.log('RESULT webstorePrivate ' + typeof (window.chrome && chrome.webstorePrivate));"
             "console.log('RESULT store_button ' + JSON.stringify([...document.querySelectorAll('button')]"
             ".map(b => b.innerText.trim()).filter(t => /chrome|add|remove/i.test(t)).slice(0, 3)));"
-            "console.log('RESULT store_url ' + location.host);",
+            "console.log('RESULT store_url ' + location.host);"
+            "document.addEventListener('click', e => console.log('RESULT page_click trusted=' + e.isTrusted + ' ' + (e.target.innerText || '').slice(0, 30)), true);"
+            "const wp = chrome.webstorePrivate; for (const k of ['beginInstallWithManifest3', 'completeInstall']) { const f = wp[k];"
+            "  wp[k] = function (...a) { console.log('RESULT webstore_call ' + k); const r = f.apply(this, a);"
+            "  if (r && r.then) r.then(v => console.log('RESULT webstore_result ' + k + ' ' + JSON.stringify(v)), e => console.log('RESULT webstore_error ' + k + ' ' + e)); return r; }; }"
+            "const btn = re => [...document.querySelectorAll('button')].find(b => re.test(b.innerText));"
+            "const no = btn(/no thanks/i); if (no) no.click();"
+            "setTimeout(() => { const add = btn(/add to chrome/i);"
+            "  if (!add) return console.log('RESULT add_button missing');"
+            "  add.scrollIntoView({block: 'center'}); setTimeout(() => { const r = add.getBoundingClientRect();"
+            "    console.log('CLICK ' + Math.round(r.x + r.width / 2) + ' ' + Math.round(r.y + r.height / 2)); }, 500); }, 1000);",
             "", 0);
       });
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 45 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 70 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         exit(0);
       });
       return;

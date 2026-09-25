@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "nn component test",
+  "version": "1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzEbD4hhFiCvA49I5LY3QHUXO/NOG6rnYd5fkk1Xj+KYO6Fl46rHzFIw8W1jDQ3xggjwrKxMbn+3VXxbsTTDrZomUXg7BydKElFvC8X6+DJMaZtGp9LtgCHUVugrFLZH99J09rR9IRK8SzeM14OrfTJMvwS8GqCxvCL7E0ETwpyG6iwNgpKJNmF9EJCVSkwz0FcC4pXd8WJecf4mvms86DPRxCkCE4eCf5OfPNHEsH+G+IMr+9F66OzVsJ0r6siWz/kQ8UKNqItA3v6G0Xqm5dHENu9BzatzLd1oG+lehcEP2Uf4oXeYc3HFMTE928KD1AIGmKZksl1XFknFP5msVnwIDAQAB",
+  "action": {},
+  "background": { "service_worker": "sw.js" },
+  "incognito": "split"
+}

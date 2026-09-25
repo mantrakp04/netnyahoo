@@ -69,6 +69,8 @@ const dark = {
 
   // TransparentBackground (0.8) over a .hudWindow material: the area light shows through.
   ntpBar: "rgba(24,24,24,0.8)",
+  // AssistantPanelUIBase Background: the opaque panel Dia 1.50 (rebrand) shows with the area light off.
+  ntpBarSolid: "#2D2D2D",
   ntpBarBorder: "rgba(120,125,134,0.32)", // Border/None
   lightIntensity: 4,
   accent: "#4A77D4", // Input/Cursor/Search
@@ -119,6 +121,7 @@ const light: typeof dark = {
   sendIdle: "rgba(0,0,0,0.06)",
 
   ntpBar: "rgba(255,255,255,0.85)",
+  ntpBarSolid: "#FEFFFF",
   ntpBarBorder: "rgba(0,0,0,0.07)",
   lightIntensity: 0.5,
   accent: "#6395FC",
@@ -143,7 +146,15 @@ type ProfileTheme = {
   edgeLight: string;
 };
 
-type ProfileColorSpec = { name: string; swatch: string; palette: AreaLightPalette | null; dark?: ProfileTheme; light?: ProfileTheme };
+type ProfileColorSpec = {
+  name: string;
+  swatch: string;
+  palette: AreaLightPalette | null;
+  /** Dia 1.50's power-up band/halo colour (the palette's primary colour), where measured; else the swatch. */
+  powerUp?: string;
+  dark?: ProfileTheme;
+  light?: ProfileTheme;
+};
 
 /**
  * Profile theme colours. Plum is measured from Dia (the user's theme); the
@@ -153,6 +164,8 @@ export const PROFILE_COLORS: Record<ProfileColor, ProfileColorSpec> = {
   plum: {
     name: "Plum",
     swatch: "#C07A98",
+    // Measured from Dia 1.50.1's New Tab band and halo (dark).
+    powerUp: "#B5556B",
     palette: "pink",
     dark: { windowTint: ["#2A191F", "#312F30"], lightPalette: "pink", orbTint: "#E9A9C4", edgeLight: "#EBB3CB80" },
     light: { windowTint: ["#F2E8EC", "#E9E5E7"], lightPalette: "pink", orbTint: "#E59CC0", edgeLight: "#D37B8B66" },
@@ -201,7 +214,7 @@ export function themeFor(key: string): Theme {
     const base = color === "incognito" ? { ...dark, ...INCOGNITO } : { ...(mode === "dark" ? dark : light), ...profileTheme(color, mode === "dark") };
     const spec = color === "incognito" ? null : (PROFILE_COLORS[color] ?? PROFILE_COLORS.plum);
     // NewTabPageViewController (rebrand): neutral's band is grey (0.502) at 0.65, others the theme colour.
-    const powerUpColor = !spec ? null : spec.palette ? spec.swatch : "#808080A6";
+    const powerUpColor = !spec ? null : spec.palette ? (spec.powerUp ?? spec.swatch) : "#808080A6";
     theme = { ...base, windowTintInactive: inactiveTint(base.windowTint, base.dark), logoPaint: spec?.palette ?? "neutral", powerUpColor };
     cache.set(key, theme);
   }

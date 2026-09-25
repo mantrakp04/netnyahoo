@@ -171,10 +171,10 @@ index 44819f49c..3cd311183 100644
  #endif  // CEF_INCLUDE_CEF_LIFE_SPAN_HANDLER_H_
 diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
 new file mode 100644
-index 000000000..5cbe520c7
+index 000000000..d97afa4a9
 --- /dev/null
 +++ b/include/cef_netnyahoo.h
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,63 @@
 +// Copyright (c) 2026 The Netnyahoo Authors. All rights reserved.
 +//
 +// Feature markers for Netnyahoo's CEF patches (see the Netnyahoo repository,
@@ -224,8 +224,18 @@ index 000000000..5cbe520c7
 +// true skips the bubble. ResolvePasswordPrompt closes the prompt either way.
 +#define CEF_NN_PASSWORD_BUBBLE 1
 +
++// CefRequestContextHandler::OnExtensionInstallPrompt replaces Chrome's
++// extension install dialog. Chrome Web Store installs work end to end (CRX
++// downloads stay out of CefDownloadHandler) and store extensions auto-update.
++#define CEF_NN_INSTALL_PROMPT 1
++
 +// CefBrowserSettings.hidden_from_extensions.
 +#define CEF_NN_HIDDEN_BROWSER 1
++
++// The Safe Storage key lives in its own "Netnyahoo Safe Storage" keychain
++// item; webauthn uses Netnyahoo's bundle/team id and the embedder's NSWindow
++// for iCloud Keychain passkeys.
++#define CEF_NN_SAFE_STORAGE 1
 +
 +#endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
 diff --git a/include/cef_request_context.h b/include/cef_request_context.h
@@ -261,6 +271,64 @@ index 77a1c0249..0e6f2b0df 100644
  };
  
  #endif  // CEF_INCLUDE_CEF_REQUEST_CONTEXT_H_
+diff --git a/include/cef_request_context_handler.h b/include/cef_request_context_handler.h
+index 4f0241baf..849f9b591 100644
+--- a/include/cef_request_context_handler.h
++++ b/include/cef_request_context_handler.h
+@@ -44,6 +44,24 @@
+ #include "include/cef_preference.h"
+ #include "include/cef_request.h"
+ #include "include/cef_resource_request_handler.h"
++#include "include/cef_values.h"
++
++#if CEF_API_ADDED(CEF_EXPERIMENTAL)
++///
++/// Callback for CefRequestContextHandler::OnExtensionInstallPrompt. Call
++/// Continue exactly once; releasing it without calling Continue cancels the
++/// install.
++///
++/*--cef(source=library,added=experimental)--*/
++class CefExtensionPromptCallback : public virtual CefBaseRefCounted {
++ public:
++  ///
++  /// Accept (true) or cancel (false) the install.
++  ///
++  /*--cef(capi_name=cont)--*/
++  virtual void Continue(bool accepted) = 0;
++};
++#endif
+ 
+ ///
+ /// Implement this interface to provide handler implementations. The handler
+@@ -93,6 +111,28 @@ class CefRequestContextHandler : public virtual CefBaseRefCounted {
+       bool& disable_default_handling) {
+     return nullptr;
+   }
++
++#if CEF_API_ADDED(CEF_EXPERIMENTAL)
++  ///
++  /// Chrome style only. Called on the browser process UI thread before Chrome
++  /// shows its extension install dialog (Chrome Web Store installs, re-enable
++  /// and permission-increase prompts, externally installed extensions).
++  /// |browser| is the tab that asked, if any. |details| holds "id", "name",
++  /// "version", "type" ("install", "re-enable", "permissions", "external",
++  /// "remote", "repair" or "other"), "icon" (a PNG data: URL, may be empty) and
++  /// "permissions" (list of the warnings Chrome would show, in order). Return
++  /// true to show your own UI and call |callback| with the user's choice, or
++  /// false for Chrome's dialog.
++  ///
++  /*--cef(added=experimental,optional_param=browser)--*/
++  virtual bool OnExtensionInstallPrompt(
++      CefRefPtr<CefBrowser> browser,
++      const CefString& extension_id,
++      CefRefPtr<CefDictionaryValue> details,
++      CefRefPtr<CefExtensionPromptCallback> callback) {
++    return false;
++  }
++#endif
+ };
+ 
+ #endif  // CEF_INCLUDE_CEF_REQUEST_CONTEXT_HANDLER_H_
 diff --git a/include/internal/cef_types.h b/include/internal/cef_types.h
 index fed23a55e..e8ea5ae60 100644
 --- a/include/internal/cef_types.h
@@ -498,13 +566,14 @@ index 8b077f071..a7f8f3a5a 100644
      // Potentially use Alloy style.
      create_params.popup_with_alloy_style_opener = browser->IsAlloyStyle();
 diff --git a/libcef/browser/chrome/chrome_browser_delegate.cc b/libcef/browser/chrome/chrome_browser_delegate.cc
-index 3c4eead6f..57fdf3d23 100644
+index 3c4eead6f..fc6b1c68c 100644
 --- a/libcef/browser/chrome/chrome_browser_delegate.cc
 +++ b/libcef/browser/chrome/chrome_browser_delegate.cc
-@@ -13,10 +13,12 @@
+@@ -13,26 +13,43 @@
  #include "cef/libcef/browser/chrome/browser_util.h"
  #include "cef/libcef/browser/chrome/chrome_browser_context.h"
  #include "cef/libcef/browser/chrome/chrome_browser_host_impl.h"
++#include "cef/libcef/browser/chrome/extension_install_prompt_hook.h"
 +#include "cef/libcef/browser/chrome/hidden_from_extensions.h"
  #include "cef/libcef/browser/chrome/views/chrome_browser_view.h"
  #include "cef/libcef/browser/chrome/views/chrome_child_window.h"
@@ -514,7 +583,11 @@ index 3c4eead6f..57fdf3d23 100644
  #include "cef/libcef/browser/views/browser_view_impl.h"
  #include "cef/libcef/browser/views/window_impl.h"
  #include "cef/libcef/common/app_manager.h"
-@@ -24,15 +26,25 @@
++#include "base/base64.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "extensions/browser/install_prompt_data.h"
++#include "extensions/common/extension.h"
++#include "ui/gfx/image/image.h"
  #include "chrome/browser/ui/browser.h"
  #include "chrome/browser/ui/browser_tabstrip.h"
  #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
@@ -541,7 +614,7 @@ index 3c4eead6f..57fdf3d23 100644
    DCHECK(browser_);
  
    if (opener) {
-@@ -202,6 +214,20 @@ Browser* ChromeBrowserDelegate::CreateDevToolsBrowser(
+@@ -202,6 +219,20 @@ Browser* ChromeBrowserDelegate::CreateDevToolsBrowser(
  
  std::unique_ptr<content::WebContents> ChromeBrowserDelegate::AddWebContents(
      std::unique_ptr<content::WebContents> new_contents) {
@@ -562,7 +635,7 @@ index 3c4eead6f..57fdf3d23 100644
    if (CefBrowserInfoManager::GetInstance()->AddWebContents(
            new_contents.get())) {
      // The browser host should have been created in OnPopupWebContentsCreated().
-@@ -221,8 +247,42 @@ std::unique_ptr<content::WebContents> ChromeBrowserDelegate::AddWebContents(
+@@ -221,8 +252,42 @@ std::unique_ptr<content::WebContents> ChromeBrowserDelegate::AddWebContents(
    return new_contents;
  }
  
@@ -605,7 +678,7 @@ index 3c4eead6f..57fdf3d23 100644
    // Necessary to receive LoadingStateChanged calls during initial navigation.
    // This will be called again in Browser::SetAsDelegate, which should be
    // fine.
-@@ -253,7 +313,21 @@ void ChromeBrowserDelegate::SetAsDelegate(content::WebContents* web_contents,
+@@ -253,7 +318,21 @@ void ChromeBrowserDelegate::SetAsDelegate(content::WebContents* web_contents,
    // CreateDevToolsBrowser should have already created the browser host.
    DCHECK(!is_devtools_popup || !opener_host_);
  
@@ -628,7 +701,7 @@ index 3c4eead6f..57fdf3d23 100644
    CHECK(platform_delegate);
  
    // Expect runtime style to match.
-@@ -261,18 +335,51 @@ void ChromeBrowserDelegate::SetAsDelegate(content::WebContents* web_contents,
+@@ -261,18 +340,51 @@ void ChromeBrowserDelegate::SetAsDelegate(content::WebContents* web_contents,
  
    auto browser_info = CefBrowserInfoManager::GetInstance()->CreateBrowserInfo(
        is_devtools_popup, platform_delegate->GetBrowserConfig(),
@@ -684,10 +757,133 @@ index 3c4eead6f..57fdf3d23 100644
  bool ChromeBrowserDelegate::ShowStatusBubble(bool show_by_default) {
    if (!show_status_bubble_.has_value()) {
      show_status_bubble_ = show_by_default;
-@@ -624,6 +731,15 @@ CefWindowView* ChromeBrowserDelegate::GetCefWindowView() const {
+@@ -622,8 +734,138 @@ CefWindowView* ChromeBrowserDelegate::GetCefWindowView() const {
+   return nullptr;
+ }
  
++namespace {
++
++// Hands the client's decision back to ExtensionInstallPrompt. Cancels the
++// install if released without an answer.
++class ExtensionPromptCallbackImpl : public CefExtensionPromptCallback {
++ public:
++  using DoneCallback = extensions::ExtensionInstallPromptClient::DoneCallback;
++  using Payload = extensions::ExtensionInstallPromptClient::DoneCallbackPayload;
++  using Result = extensions::ExtensionInstallPromptClient::Result;
++
++  explicit ExtensionPromptCallbackImpl(DoneCallback done)
++      : done_(std::move(done)) {}
++  ExtensionPromptCallbackImpl(const ExtensionPromptCallbackImpl&) = delete;
++  ExtensionPromptCallbackImpl& operator=(const ExtensionPromptCallbackImpl&) =
++      delete;
++
++  ~ExtensionPromptCallbackImpl() override {
++    if (!done_.is_null()) {
++      CEF_POST_TASK(CEF_UIT, base::BindOnce(std::move(done_),
++                                            Payload(Result::USER_CANCELED)));
++    }
++  }
++
++  DoneCallback TakeDoneCallback() { return std::move(done_); }
++
++  void Continue(bool accepted) override {
++    if (!CEF_CURRENTLY_ON_UIT()) {
++      CEF_POST_TASK(CEF_UIT, base::BindOnce(&ExtensionPromptCallbackImpl::Continue,
++                                            this, accepted));
++      return;
++    }
++    if (!done_.is_null()) {
++      std::move(done_).Run(
++          Payload(accepted ? Result::ACCEPTED : Result::USER_CANCELED));
++    }
++  }
++
++ private:
++  DoneCallback done_;
++
++  IMPLEMENT_REFCOUNTING(ExtensionPromptCallbackImpl);
++};
++
++std::string PromptTypeName(extensions::InstallPromptData::PromptType type) {
++  switch (type) {
++    case extensions::InstallPromptData::INSTALL_PROMPT:
++      return "install";
++    case extensions::InstallPromptData::RE_ENABLE_PROMPT:
++      return "re-enable";
++    case extensions::InstallPromptData::PERMISSIONS_PROMPT:
++      return "permissions";
++    case extensions::InstallPromptData::EXTERNAL_INSTALL_PROMPT:
++      return "external";
++    case extensions::InstallPromptData::REMOTE_INSTALL_PROMPT:
++      return "remote";
++    case extensions::InstallPromptData::REPAIR_PROMPT:
++      return "repair";
++    default:
++      return "other";
++  }
++}
++
++}  // namespace
++
  namespace cef {
  
++bool HandleExtensionInstallPrompt(
++    Profile* profile,
++    content::WebContents* parent,
++    const extensions::InstallPromptData& prompt,
++    extensions::ExtensionInstallPromptClient::DoneCallback* done_callback) {
++  const extensions::Extension* extension = prompt.extension();
++  if (!extension || !done_callback || done_callback->is_null()) {
++    return false;
++  }
++
++  // The asking tab's request context handler, else the default one.
++  auto browser =
++      parent ? CefBrowserHostBase::GetBrowserForContents(parent) : nullptr;
++  CefRefPtr<CefRequestContextHandler> handler;
++  if (browser && browser->request_context()) {
++    handler = browser->request_context()->GetHandler();
++  }
++  if (!handler) {
++    if (auto app = CefAppManager::Get()->GetApplication()) {
++      if (auto bph = app->GetBrowserProcessHandler()) {
++        handler = bph->GetDefaultRequestContextHandler();
++      }
++    }
++  }
++  if (!handler) {
++    return false;
++  }
++
++  auto details = CefDictionaryValue::Create();
++  details->SetString("id", extension->id());
++  details->SetString("name", extension->name());
++  details->SetString("version", extension->VersionString());
++  details->SetString("type", PromptTypeName(prompt.type()));
++  std::string icon;
++  if (!prompt.icon().IsEmpty()) {
++    if (auto png = prompt.icon().As1xPNGBytes(); png && png->size()) {
++      icon = "data:image/png;base64," + base::Base64Encode(base::span<const uint8_t>(*png));
++    }
++  }
++  details->SetString("icon", icon);
++  auto permissions = CefListValue::Create();
++  for (size_t i = 0; i < prompt.GetPermissionCount(); ++i) {
++    permissions->SetString(i, prompt.GetPermission(i));
++  }
++  details->SetList("permissions", permissions);
++
++  CefRefPtr<ExtensionPromptCallbackImpl> callback =
++      new ExtensionPromptCallbackImpl(std::move(*done_callback));
++  if (handler->OnExtensionInstallPrompt(browser.get(), extension->id(), details,
++                                        callback.get())) {
++    return true;
++  }
++  // Not taken: give the callback back for Chrome's dialog.
++  *done_callback = callback->TakeDoneCallback();
++  return false;
++}
++
 +bool IsHiddenFromExtensions(const BrowserWindowInterface* browser) {
 +  const Browser* chrome_browser = BrowserForBWI(browser);
 +  auto* delegate = chrome_browser
@@ -1139,6 +1335,48 @@ index d65742e17..b1cb596dc 100644
  
    Browser* browser() const { return browser_; }
  
+diff --git a/libcef/browser/chrome/extension_install_prompt_hook.h b/libcef/browser/chrome/extension_install_prompt_hook.h
+new file mode 100644
+index 000000000..287873b82
+--- /dev/null
++++ b/libcef/browser/chrome/extension_install_prompt_hook.h
+@@ -0,0 +1,36 @@
++// Copyright 2026 The Netnyahoo Authors. Portions copyright the Chromium
++// Embedded Framework Authors. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++#ifndef CEF_LIBCEF_BROWSER_CHROME_EXTENSION_INSTALL_PROMPT_HOOK_H_
++#define CEF_LIBCEF_BROWSER_CHROME_EXTENSION_INSTALL_PROMPT_HOOK_H_
++#pragma once
++
++#include "extensions/browser/extension_install_prompt_client.h"
++
++class Profile;
++
++namespace content {
++class WebContents;
++}
++
++namespace extensions {
++class InstallPromptData;
++}
++
++namespace cef {
++
++// Called before ExtensionInstallPrompt shows Chrome's install dialog. Offers
++// the prompt to CefRequestContextHandler::OnExtensionInstallPrompt of the
++// requesting tab's request context (or the default handler); if the client
++// takes it, |done_callback| is moved into the client's callback and true is
++// returned. Defined in chrome_browser_delegate.cc.
++bool HandleExtensionInstallPrompt(
++    Profile* profile,
++    content::WebContents* parent,
++    const extensions::InstallPromptData& prompt,
++    extensions::ExtensionInstallPromptClient::DoneCallback* done_callback);
++
++}  // namespace cef
++
++#endif  // CEF_LIBCEF_BROWSER_CHROME_EXTENSION_INSTALL_PROMPT_HOOK_H_
 diff --git a/libcef/browser/chrome/hidden_from_extensions.h b/libcef/browser/chrome/hidden_from_extensions.h
 new file mode 100644
 index 000000000..0e2b8d11b
@@ -1197,6 +1435,37 @@ index 000000000..92f45add2
 +}  // namespace cef
 +
 +#endif  // CEF_LIBCEF_BROWSER_CHROME_PASSWORD_BUBBLE_H_
+diff --git a/libcef/browser/download_manager_delegate_impl.cc b/libcef/browser/download_manager_delegate_impl.cc
+index e5363cc46..00aa5dc4c 100644
+--- a/libcef/browser/download_manager_delegate_impl.cc
++++ b/libcef/browser/download_manager_delegate_impl.cc
+@@ -376,6 +376,12 @@ void CefDownloadManagerDelegateImpl::OnDownloadDestroyed(DownloadItem* item) {
+ 
+ void CefDownloadManagerDelegateImpl::OnDownloadCreated(DownloadManager* manager,
+                                                        DownloadItem* item) {
++  // Chrome Web Store CRX downloads belong to WebstoreInstaller, not the client.
++  if (item->GetDownloadSource() ==
++      download::DownloadSource::EXTENSION_INSTALLER) {
++    return;
++  }
++
+   // This callback may arrive after DetermineDownloadTarget, so we allow
+   // association from either method.
+   CefRefPtr<CefBrowserHostBase> browser = GetOrAssociateBrowser(item);
+@@ -403,6 +409,13 @@ void CefDownloadManagerDelegateImpl::ManagerGoingDown(
+ bool CefDownloadManagerDelegateImpl::DetermineDownloadTarget(
+     DownloadItem* item,
+     download::DownloadTargetCallback* callback) {
++  // Chrome Web Store CRX downloads: Chrome's own handling (the path is set by
++  // WebstoreInstaller), without the client's download UI.
++  if (item->GetDownloadSource() ==
++      download::DownloadSource::EXTENSION_INSTALLER) {
++    return false;
++  }
++
+   // This callback may arrive before OnDownloadCreated, so we allow association
+   // from either method.
+   CefRefPtr<CefBrowserHostBase> browser = GetOrAssociateBrowser(item);
 diff --git a/libcef/browser/request_context_impl.cc b/libcef/browser/request_context_impl.cc
 index 40dc0900a..8b8b60be5 100644
 --- a/libcef/browser/request_context_impl.cc

@@ -146,11 +146,35 @@ export type ExtensionTabModel = {
   probes: Record<string, string>;
 };
 
+/**
+ * Chrome's own install flow (the Web Store's "Add" button, re-enabling an extension whose
+ * permissions grew, extensions installed from outside) asks the app instead of showing
+ * its dialog. Answer with `resolveExtensionInstallPrompt`.
+ */
+export type ExtensionInstallPrompt = {
+  requestId: string;
+  profile: string;
+  id: string;
+  name: string;
+  version: string;
+  type: "install" | "re-enable" | "permissions" | "external" | "remote" | "repair" | "other";
+  /** PNG data: URL, or "". */
+  icon: string;
+  /** The warnings Chrome would list, in order. */
+  permissions: string[];
+  /** The tab that asked (the store page), 0 if none. */
+  browserId: number;
+};
+
 type Result<T> = T | { error: string };
 
 type NativeExtensions = {
   addListener(name: "onChanged", listener: (e: ExtensionsChange) => void): EventSubscription;
   addListener(name: "onTabs", listener: (e: TabsRequest) => void): EventSubscription;
+  addListener(name: "onInstallPrompt", listener: (e: ExtensionInstallPrompt) => void): EventSubscription;
+  /** Missing in app builds from before they existed. */
+  supportsInstallPrompt?(): Promise<boolean>;
+  resolveInstallPrompt?(requestId: string, accepted: boolean): Promise<void>;
   list(profile: string): Promise<Result<{ extensions: InstalledExtension[] }>>;
   prepareWebStore(id: string, profile: string): Promise<Result<ExtensionPackage>>;
   inspectUnpacked(path: string): Promise<Result<ExtensionPackage>>;
@@ -174,7 +198,7 @@ type NativeExtensions = {
  */
 function unavailable(): NativeExtensions {
   const error = { error: "Extensions aren't available in this build" };
-  const fallbacks: Record<string, unknown> = { list: { extensions: [] }, actionState: { states: {} }, chooseFolder: null };
+  const fallbacks: Record<string, unknown> = { list: { extensions: [] }, actionState: { states: {} }, chooseFolder: null, supportsInstallPrompt: false };
   return new Proxy({} as NativeExtensions, {
     get: (_, name: string) =>
       name === "addListener" ? () => ({ remove() {} }) : async () => (name in fallbacks ? fallbacks[name] : name.startsWith("set") || name.startsWith("resolve") ? undefined : error),
@@ -287,6 +311,12 @@ export const setExtensionTabModel = (model: ExtensionTabModel) => Native.setTabM
 export const resolveOpenedTab = async (_requestId: string, _browserId: number) => {};
 
 export const onExtensionsChanged = (listener: (e: ExtensionsChange) => void) => Native.addListener("onChanged", listener);
+export const onExtensionInstallPrompt = (listener: (e: ExtensionInstallPrompt) => void) => Native.addListener("onInstallPrompt", listener);
+/** Whether Chrome's install flow asks the app (else the Web Store button goes through `prepareWebStoreExtension`). */
+export const supportsExtensionInstallPrompt = async () => (await Native.supportsInstallPrompt?.()) ?? false;
+export const resolveExtensionInstallPrompt = async (requestId: string, accepted: boolean) => {
+  await Native.resolveInstallPrompt?.(requestId, accepted);
+};
 export const onExtensionTabsRequest = (listener: (e: TabsRequest) => void) => Native.addListener("onTabs", listener);
 
 /** Folder picker for Load Unpacked. */

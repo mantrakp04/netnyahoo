@@ -1,19 +1,31 @@
 import ExpoModulesCore
 import MetalKit
 
-/// Dia's power-up band: a faint, slightly sheared wash of the theme palette that
-/// enters from the bottom of the New Tab page and sweeps up past the command bar.
-/// Shader reconstructed from `powerUpFragment`; parameters from
-/// CommandBarPowerUpView / PowerUpBackgroundView (docs/dia-spec.md).
+/// Dia's CommandBarPowerUpView: the power-up band (PowerUpBackgroundView), a faint, slightly
+/// sheared wash of the theme palette that enters from the bottom of the New Tab page and
+/// sweeps up past the command bar, plus, when the area light is off, the halo (HaloView) that
+/// wraps the bar. Shaders reconstructed from `powerUpFragment` / `haloFragment` (docs/dia-spec.md).
 final class PowerUpView: MetalSurface {
   var direction: Int32 = 0          // 0 = up (enters from the bottom)
-  var speed: Float = 1.25
+  /// CommandBarPowerUpView.speed also sets the halo's.
+  var speed: Float = 1.25 {
+    didSet { halo?.speed = speed }
+  }
   var delay: Float = 0
   var fadeOutStart: Float = 1.0
   var fadeOutDuration: Float = 2.0
   var origin: Float = 0.5
+  /// The command bar's corner radius; the halo traces it at +2.
+  var cornerRadius: Float = 20 {
+    didSet { halo?.cornerRadius = cornerRadius + 2 }
+  }
   /// Palette stops in OKLab (L, a, b, alpha), as the shader expects.
   private var colors: [SIMD4<Float>] = PowerUpView.oklab(PowerUpView.palettes["pink"]!)
+  /// sRGB palette, for the halo.
+  private var srgbColors: [SIMD4<Float>] = PowerUpView.palettes["pink"]!
+  private var halo: HaloView?
+  /// The rect the halo wraps (the command bar), in this view's coordinates.
+  private var haloFrame: CGRect?
 
   /// CommandBarPowerUpView's per-hue tables (sRGB, converted to OKLab on upload). These are
   /// brighter than the area light's; `default` is used when there's no theme.
@@ -52,8 +64,43 @@ final class PowerUpView: MetalSurface {
     } else {
       srgb = value.compactMap { SIMD4<Float>(hex: $0) }
     }
-    if !srgb.isEmpty { colors = Self.oklab(srgb) }
+    if !srgb.isEmpty {
+      colors = Self.oklab(srgb)
+      srgbColors = srgb
+      halo?.setColors(srgb)
+    }
   }
+
+  /// CommandBarPowerUpView(showHalo:): the halo view spans `frame` outset by its 50pt inset.
+  /// nil removes it (Dia shows it only while the area light is off).
+  func setHaloFrame(_ frame: CGRect?) {
+    haloFrame = frame
+    if frame != nil, halo == nil {
+      let view = HaloView()
+      view.speed = speed
+      view.cornerRadius = cornerRadius + 2
+      view.setColors(srgbColors)
+      addSubview(view)
+      halo = view
+    } else if frame == nil, let view = halo {
+      view.removeFromSuperview()
+      halo = nil
+    }
+    layoutHalo()
+  }
+
+  private func layoutHalo() {
+    guard let halo, let haloFrame else { return }
+    halo.frame = haloFrame.insetBy(dx: -CGFloat(halo.inset), dy: -CGFloat(halo.inset))
+  }
+
+  override func setFrameSize(_ newSize: NSSize) {
+    super.setFrameSize(newSize)
+    layoutHalo()
+  }
+
+  // RN lays out top-down; the halo frame arrives in those coordinates.
+  override var isFlipped: Bool { true }
 
   /// Under Reduce Motion Dia never creates the band (the New Tab entrance is skipped).
   func replay() {
@@ -99,6 +146,160 @@ final class PowerUpView: MetalSurface {
 
   override class var shaderSource: String { powerUpSource }
 }
+
+/// Dia's HaloView: a light that runs around the command bar's outline, from the bottom centre
+/// up both sides to the top (easeOutExpo), with a noisy glow that tightens onto the edge.
+/// CommandBarPowerUpView sets inset 50, delay 0.18 and cornerRadius +2; the rest are
+/// HaloView's defaults. Shader reconstructed from `haloFragment` (docs/dia-spec.md).
+final class HaloView: MetalSurface {
+  var speed: Float = 1
+  var delay: Float = 0.18
+  /// The outline sits this far inside the view on every side.
+  var inset: Float = 50
+  var direction: Int32 = 0          // 0 = starts at the bottom centre
+  var cornerRadius: Float = 18
+  var fadeOutStart: Float = 1.0
+  var fadeOutDuration: Float = 0.2
+  /// Two sRGB stops, mixed by noise. Dia's default is #FF844F → #F773A5.
+  private var colors: [SIMD4<Float>] = [SIMD4(1, 0.5176, 0.3098, 1), SIMD4(0.9686, 0.4510, 0.6471, 1)]
+
+  /// Frame-counted clock (1/fps per frame); Dia pauses the view once it passes 2.
+  private var time: Float = 0
+  private let finishTime: Float = 2
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+    metalView.preferredFramesPerSecond = 60
+    metalView.isPaused = true
+  }
+
+  /// One colour is used for both stops (Dia 1.50 passes the single theme colour).
+  func setColors(_ srgb: [SIMD4<Float>]) {
+    guard let first = srgb.first else { return }
+    colors = [first, srgb.count > 1 ? srgb[1] : first]
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    time = 0
+    metalView.isPaused = window == nil || WindowActivity.reduceMotion
+  }
+
+  override class var premultipliedOutput: Bool { true }
+  override class var fragmentName: String { "haloFragment" }
+
+  override func encode(_ encoder: MTLRenderCommandEncoder, size: SIMD2<Float>) {
+    var resolution = size
+    var dir = direction
+    var dark: Bool = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    var t = time
+    var s = speed
+    var d = delay
+    var fStart = fadeOutStart
+    var fDuration = fadeOutDuration
+    var i = inset
+    var r = cornerRadius
+    encoder.setFragmentBytes(&resolution, length: 8, index: 0)
+    encoder.setFragmentBytes(&dir, length: 4, index: 1)
+    colors.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 2) }
+    encoder.setFragmentBytes(&dark, length: 1, index: 3)
+    encoder.setFragmentBytes(&t, length: 4, index: 4)
+    encoder.setFragmentBytes(&s, length: 4, index: 5)
+    encoder.setFragmentBytes(&d, length: 4, index: 6)
+    encoder.setFragmentBytes(&fStart, length: 4, index: 7)
+    encoder.setFragmentBytes(&fDuration, length: 4, index: 8)
+    encoder.setFragmentBytes(&i, length: 4, index: 9)
+    encoder.setFragmentBytes(&r, length: 4, index: 10)
+    time += 1 / Float(max(metalView.preferredFramesPerSecond, 1))
+    if time > finishTime {
+      DispatchQueue.main.async { [weak self] in self?.metalView.isPaused = true }
+    }
+  }
+
+  override class var shaderSource: String { haloSource }
+}
+
+let haloSource = """
+// Simplex noise with Dave Hoskins' hash33 (4th-power kernel, scaled by 31.316).
+static inline float3 haloHash33(float3 p) {
+    float3 p3 = fract(p * float3(0.1031f, 0.11369f, 0.13787f));
+    p3 += dot(p3, p3.yxz + 19.19f);
+    return -1.0f + 2.0f * fract((p3.xxy + p3.yzz) * p3.zyx);
+}
+
+static float haloNoise(float3 p) {
+    const float F3 = 0.333333343f, G3 = 0.166666672f;
+    float3 s = floor(p + (p.x + p.y + p.z) * F3);
+    float3 x = p - s + (s.x + s.y + s.z) * G3;
+    float3 e = select(float3(0.0f), float3(1.0f), x - x.yzx >= 0.0f);
+    float3 i1 = e * (1.0f - e.zxy);
+    float3 i2 = 1.0f - e.zxy * (1.0f - e);
+    float3 x1 = x - i1 + G3;
+    float3 x2 = x - i2 + 2.0f * G3;
+    float3 x3 = x - 0.5f;
+    float4 w = max(0.6f - float4(dot(x, x), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0f);
+    w = pow(w, float4(4.0f));
+    float4 d = float4(dot(x, haloHash33(s)), dot(x1, haloHash33(s + i1)),
+                      dot(x2, haloHash33(s + i2)), dot(x3, haloHash33(s + 1.0f)));
+    return dot(float4(31.316f), d * w);
+}
+
+// Premultiplied output. The outline is the view inset by `inset` on every side.
+fragment float4 haloFragment(FullscreenOut in                 [[stage_in]],
+                             constant float2 &resolution      [[buffer(0)]],
+                             constant int    &direction       [[buffer(1)]],
+                             constant float4 *colors          [[buffer(2)]],
+                             constant bool   &isDark          [[buffer(3)]],
+                             constant float  &time            [[buffer(4)]],
+                             constant float  &speed           [[buffer(5)]],
+                             constant float  &delay           [[buffer(6)]],
+                             constant float  &fadeOutStart    [[buffer(7)]],
+                             constant float  &fadeOutDuration [[buffer(8)]],
+                             constant float  &inset           [[buffer(9)]],
+                             constant float  &cornerRadius    [[buffer(10)]])
+{
+    // Normalized space: the short axis spans [-1, 1].
+    float aspect = resolution.x / resolution.y;
+    float2 p = (in.uv - 0.5f) * 2.0f;
+    p.x *= aspect;
+    float inset2 = inset * 2.0f;
+    float hx = 1.0f - inset2 / resolution.x;
+    float hy = 1.0f - inset2 / resolution.y;
+    float2 halfSize = aspect > 1.0f ? float2(hx * aspect, hy) : float2(hx, hy / aspect);
+    float r = cornerRadius / min(resolution.x - inset2, resolution.y - inset2);
+    float dist = abs(length(max(abs(p) - halfSize + r, 0.0f)) - r);
+
+    // The lit arc: angle 0 at the bottom centre (direction 0), 1 at the top, both sides at once.
+    float t = speed * 0.8f * time - delay;
+    float sweep = (t == 1.0f) ? 1.25f : (1.0f - pow(2.0f, -10.0f * t)) * 1.25f;
+    float2 n = p / halfSize;
+    float angle = atan2(n.y, n.x);
+    if (angle < 0.0f) angle += 6.28318548f;
+    float offset = direction == 1 ? 1.57079637f : direction == 2 ? 3.14159274f : direction == 3 ? 4.71238899f : 0.0f;
+    float around = fmod(1.25f - fmod(offset + angle, 6.28318548f) * 0.159154937f, 1.0f);
+    if (around > 0.5f) around = 1.0f - around;
+    around *= 2.0f;
+    float arc = smoothstep(0.0f, 1.0f, clamp((abs(around - sweep) - 0.22f) * -4.54545450f, 0.0f, 1.0f));
+
+    float line = smoothstep(0.0f, 1.0f, clamp((dist - 0.025f) * -40.0f, 0.0f, 1.0f)) * arc * (isDark ? 0.4f : 1.0f);
+
+    // Glow: a noisy band around the outline that narrows from ~0.95 to nothing as t → 1.
+    float nz = haloNoise(float3(p * 0.5f, time)) + 0.5f;
+    float glowWidth = mix(0.1f, 0.2f, nz);
+    float shrink = (1.0f - t) * 0.95f;
+    float g1 = shrink == 0.0f ? 0.0f : clamp((dist - shrink) / -shrink, 0.0f, 1.0f);
+    float g2 = clamp((dist - glowWidth) / -glowWidth, 0.0f, 1.0f);
+    float g = g1 * g2;
+    float glow = g * g * (isDark ? 0.1f : 0.12f) * arc * (3.0f - 2.0f * g1) * (3.0f - 2.0f * g2);
+
+    float alpha = mix(colors[0].a, colors[1].a, nz) * clamp(glow + line, 0.0f, 1.0f);
+    if (t > fadeOutStart) {
+        alpha *= 1.0f - clamp((t - fadeOutStart) / fadeOutDuration, 0.0f, 1.0f);
+    }
+    float3 rgb = clamp(mix(colors[0].rgb, colors[1].rgb, nz) + line, 0.0f, 1.0f);
+    return float4(rgb * alpha, alpha);
+}
+"""
 
 let powerUpSource = """
 // Full-screen quad, drawn as a 4-vertex triangle strip (IR: @_ZL9positions /

@@ -4,18 +4,23 @@ import ExpoModulesCore
 public class ExtensionsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooExtensions")
-    Events("onChanged", "onTabs")
+    Events("onChanged", "onTabs", "onInstallPrompt")
 
     OnCreate {
       NNExtensions.eventHandler = { [weak self] name, payload in
         switch name {
         case "changed": self?.sendEvent("onChanged", payload)
         case "tabs": self?.sendEvent("onTabs", payload)
+        case "installPrompt": self?.sendEvent("onInstallPrompt", payload)
         default: break
         }
       }
     }
 
+    AsyncFunction("supportsInstallPrompt") { NNExtensions.supportsInstallPrompt }.runOnQueue(.main)
+    AsyncFunction("resolveInstallPrompt") { (requestId: String, accepted: Bool) in
+      NNExtensions.resolveInstallPrompt(requestId, accepted: accepted)
+    }.runOnQueue(.main)
     AsyncFunction("list") { (profile: String, promise: Promise) in
       NNExtensions.list(profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)

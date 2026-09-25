@@ -124,17 +124,33 @@ export function EdgeLight({ rectFrame, lightStart, lightEnd, logoFrame, ...props
 
 export type PowerUpProps = ViewProps & {
   palette?: AreaLightPalette | string[];
-  /** 1.25 when the area light is on (Dia's New Tab), 1.5 for skill chips. */
+  /** Dia's New Tab: 1.25 with the area light on, 1 without; 1.5 for skill chips. Also the halo's. */
   speed?: number;
   /** Horizontal start of the band's centre (0–1), sliding to 0.5. */
   origin?: number;
+  /** The command bar's corner radius; the halo traces the bar at +2. */
+  cornerRadius?: number;
+  /** The rect the halo wraps (the command bar), in this view's coordinates; null = no halo. */
+  halo?: Rect | null;
 };
 
-const NativePowerUp = requireNativeViewManager<Omit<PowerUpProps, "palette"> & { palette?: string[] }>("NetnyahooPowerUp");
+type NativePowerUpProps = Omit<PowerUpProps, "palette" | "halo"> & { palette?: string[]; haloFrame: number[] };
 
-/** Dia's power-up band: a faint palette wash rising from the bottom of the page. */
-export function PowerUp({ palette = "pink", ...props }: PowerUpProps) {
-  return <NativePowerUp pointerEvents="none" {...props} palette={typeof palette === "string" ? [palette] : palette} />;
+const NativePowerUp = requireNativeViewManager<NativePowerUpProps>("NetnyahooPowerUp");
+
+/**
+ * Dia's CommandBarPowerUpView: a faint palette wash rising from the bottom of the page and,
+ * with `halo`, a light that runs around the command bar's outline.
+ */
+export function PowerUp({ palette = "pink", halo = null, ...props }: PowerUpProps) {
+  return (
+    <NativePowerUp
+      pointerEvents="none"
+      {...props}
+      palette={typeof palette === "string" ? [palette] : palette}
+      haloFrame={halo ? rect(halo) : [0, 0, 0, 0]}
+    />
+  );
 }
 
 type AreaLightDebugModule = {

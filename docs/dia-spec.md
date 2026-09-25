@@ -167,7 +167,10 @@ Dia 1.50 ("Sunglow") changes are in the last section; where it says "rebrand fla
 - The edge light's `lightColor` is the user's theme `primaryColorPalette.midTone` (0.5 dark /
   0.4 light), not a hue table.
 - Bar entrance: a spring from 0.99 to 1 that starts +0.25s after appear (response 0.7,
-  bounce 0.3). The edge light layer scales with it.
+  bounce 0.3). The edge light layer scales with it. **Correction (1.50 capture + binary):** without
+  the daylight effect NTPVC stops the entrance animator and pins the elevation at its resting value
+  (`0x104e3e72c`), so the bar is at scale 1 from the first frame. The 1.50.1 capture shows no
+  movement of the bar edges (< 0.1 px; 0.99 would be 3.3 px).
 - Measured at 60 fps (plum, dark): band energy peaks 118–134 ms after appear, with its centroid
   about 180pt below the bar. It is magenta (≈ 133:65:101 in the difference image). It reaches
   the bar by about 270 ms.
@@ -264,9 +267,11 @@ what the macOS 26 SDK gives standard AppKit controls, menus and popovers. Our bu
    (`AssistantPanelRootView`) is unchanged.
 4. **Power-up band** (rebrand): one theme colour instead of the per-hue palette: the palette's primary colour, or
    sRGB (0.502, 0.502, 0.502, 0.65) for neutral. `CommandBarPowerUpView` now takes `cornerRadius` (NTP passes 20; halo
-   uses +2 = 22, as before).
+   uses +2 = 22, as before). With the rebrand the area light and edge light are **off**, so the band runs at speed
+   1.0 and the halo is shown: see "1.50 New Tab intro" below.
 5. **Entrance elevation** 10mm → **5mm** (8 sites, e.g. `0x104e3e784`); the scale is now `0.99 + 0.01·mm/5`, so the
    scale curve (0.99 → 1, response 0.7, damping 1.0) looks the same. Only the daylight shadow depth would differ.
+   The spring runs only with the daylight effect; otherwise the elevation is set straight to 5 (scale 1).
 6. **Selected tab tint** (`TabShapeView`, rebrand override `0x103b0e6f0`): dark `#121212` at 0.5, light white at 0.7
    (1.49: black ≈ 0.36–0.4 / opaque white). Capture check: fill (42, 35, 37) over sidebar (66, 52, 54) =
    #121212 at 0.50 exactly. `gradientLightnessDelta` 0.25 with the rebrand (0.4 without); its use is not decoded.
@@ -284,6 +289,66 @@ what the macOS 26 SDK gives standard AppKit controls, menus and popovers. Our bu
     images and the Dia Pro background button are gone.
 12. Not in the binary, despite the release-notes mock-up: the placeholder "Search or ask a question" and a "…" button
     in the bar. 1.50.1 still says "Ask anything…".
+
+### 1.50 New Tab intro (rebrand light configuration)
+
+Recovered from the 1.50.1 binary and checked against a window-only ScreenCaptureKit capture of the user's Dia
+(1512×949 pt at 1×, ~60 fps, dark, key, plum-like theme; 7 New Tab intros, ⌘T ~4 s apart). t = 0 is the first
+frame that changes.
+
+**What drives the change.** `NewTabPage…State.lightConfiguration` is `{isAreaLightEnabled, isEdgeLightEnabled,
+isDaylightEffectEnabled}` (state bytes +0x5a/+0x5b/+0x5c; NTPVC applies it in `0x104e3e584`). The controller
+(`0x104e0c2d0`) sets it to **all false when `isRebrandEnabled` and the daylight flag is off**, and to
+`(false, false, true)` with the daylight effect. The 1.49 path (area + edge light) is only taken without the rebrand.
+So on 1.50.1 with the rebrand rolled out:
+- **No area light** (`NewTabAreaLightView` is removed) and **no edge light**. The page is perfectly flat once the
+  band has faded: at t ≥ 3.25 s every pixel around the bar equals the page background.
+- `CommandBarPowerUpView(colors: [theme colour], direction: 0, showHalo: !isAreaLightEnabled, cornerRadius: 20,
+  origin: 0.5)` (`0x104e48080`), added at the bottom of the NTP view. **Speed** = `isAreaLightEnabled ? 1.25 : 1.0`
+  (`0x104e480bc`), so **1.0**; the speed setter (`0x102b6202c`) also sets the halo's.
+- The command bar panel uses the opaque `AssistantPanelUIBase/Background` (dark sRGB 0.176 = #2D2D2D, light
+  (0.996, 1, 1)) instead of `TransparentBackground` over a `.hudWindow` material. Capture: flat (45, 45, 45).
+- No bar entrance (scale 1 throughout) and no logo entrance: the painted mark is at full opacity in the first frame.
+- Shaders are unchanged from 1.49; only which views exist and their parameters changed.
+
+**Power-up band** (`PowerUpBackgroundView`, same shader, blur 24): speed 1.0, so `t = 0.75·time + 0.45`; the fade
+starts at time 0.73 s and ends at 3.4 s. Capture (band region 300–600pt below the bar, mean delta over the page,
+dark): rises within 1 frame, peaks at t = 0.10–0.20 s (≈ +9.3, +3.0, +4.6 RGB levels over (44, 40, 41)), the head
+passes the bar at ≈ 0.3 s, plateau ≈ +5 levels from 0.4 to 1.2 s, then a linear fade to 0 at ≈ 3.25 s (last visible
+levels). The band covers the page from ≈ 125pt above the bar to ≈ 20pt above the bottom edge. Colour fitted from the
+capture: **#B5556B** (the delta is `α·(c − page)` with the same α in all three channels).
+
+**Halo** (`HaloView`, `haloVertex`/`haloFragment` in the PowerUp metallib):
+- View frame = `haloFrame` (the command bar) outset by 50 (`CommandBarPowerUpView.layout`, `0x102b62f0c`); set by
+  CBPU init: inset 50, delay 0.18, cornerRadius = bar radius + 2 = 22. HaloView defaults: speed 1, direction 0,
+  cornerRadius 18, fadeOutStart 1.0, fadeOutDuration 0.2, colours #FF844F → #F773A5 (replaced by the theme colour).
+- Clock: `time += 1/preferredFramesPerSecond` per drawn frame (60 fps); paused once time > 2. Pipeline bgra8Unorm,
+  no blending (the fragment writes premultiplied colour).
+- Fragment (buffers: 0 resolution, 1 direction, 2 two float4 colours (sRGB), 3 isDark (bool), 4 time, 5 speed,
+  6 delay, 7 fadeOutStart, 8 fadeOutDuration, 9 inset, 10 cornerRadius):
+  - `p = (uv − 0.5)·2`, `p.x ·= w/h`; half size `(1 − 2i/w)·aspect, 1 − 2i/h` (for w > h);
+    `r = cornerRadius / min(w − 2i, h − 2i)`; `dist = |length(max(|p| − half + r, 0)) − r|`.
+  - `t = 0.8·speed·time − delay`; `sweep = 1.25·(1 − 2^(−10t))`.
+  - `around`: angle of `p/half` from +x, + direction·π/2, as a fraction of a turn `a`;
+    `around = 2·fold(fmod(1.25 − a, 1))` (fold: x > 0.5 → 1 − x), so 0 at the bottom centre, 1 at the top.
+  - `arc = smoothstep(clamp(1 − |around − sweep|/0.22))`; `line = smoothstep(clamp(1 − dist/0.025))·arc·(dark ? 0.4 : 1)`.
+  - `nz = simplex(p·0.5, time) + 0.5` (3D simplex, Hoskins hash33 (.1031, .11369, .13787, +19.19), kernel
+    `max(0.6 − d², 0)^4`, ×31.316); glow width `mix(0.1, 0.2, nz)`; `g1 = clamp(1 − dist/(0.95·(1 − t)))`,
+    `g2 = clamp(1 − dist/width)`; `glow = (g1·g2)²·(3 − 2g1)(3 − 2g2)·(dark ? 0.1 : 0.12)·arc`.
+  - `alpha = mix(c0.a, c1.a, nz)·clamp(glow + line)`, faded by `1 − clamp((t − 1)/0.2)`;
+    `rgb = clamp(mix(c0, c1, nz) + line)·alpha`.
+- Timing (delay 0.18 at speed 1): nothing until time 0.225 s; the lit arc starts at the bottom centre, runs up both
+  sides and meets at the top; faded out by time 1.725 s. Capture (mean of 6 intros, a >20-level line 1pt outside
+  the bar): bottom **0.225 ± 0.007 s**, sides peak ≈ 0.30 s (+36, +20, +23), top **0.376 ± 0.007 s** (peak +61, +36,
+  +42 at 0.40–0.45 s), top gone at **0.529 ± 0.006 s**. The line sits 1pt outside the bar edge, half under the bar.
+
+**Compared with 1.49** (user-dia.mov): 1.49 showed the multi-colour pink band at speed 1.25, then a persistent
+magenta area-light haze around a translucent bar (breathing, 60 s), the edge light tracing the border from below,
+and the glass orb. 1.50.1 shows a single-colour band at speed 1.0, a halo that runs around the opaque bar once, the
+painted mark, and a completely flat page after ≈ 3.25 s.
+
+**Page background.** In the 1.50.1 capture the NTP page around the bar is (43, 37, 39) at the top to (46, 42, 42) at
+the bottom; the 1.49 recording (different capture path) read ≈ (25, 23, 24).
 
 ### Still unknown (needs a capture of Dia 1.50.1)
 - The painted mark's exact outline and position inside the 84pt view (particle uniforms), and the `shadeLayer` path.

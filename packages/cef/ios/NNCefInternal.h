@@ -60,6 +60,12 @@
 #else
 #define NN_HIDDEN_BROWSER 0
 #endif
+// CefRequestContextHandler::OnExtensionInstallPrompt: our install dialog instead of Chrome's.
+#if NN_CHROME_TABS && defined(CEF_NN_INSTALL_PROMPT)
+#define NN_INSTALL_PROMPT 1
+#else
+#define NN_INSTALL_PROMPT 0
+#endif
 // Allowed popups of a hosted tab join its Browser as tabs (not new Chrome windows).
 #if NN_CHROME_TABS && defined(CEF_NN_POPUP_TABS)
 #define NN_POPUP_TABS 1

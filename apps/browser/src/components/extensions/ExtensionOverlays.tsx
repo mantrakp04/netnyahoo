@@ -184,7 +184,11 @@ function InstallDialog({ request }: { request: InstallRequest }) {
   const theme = useTheme();
   const pkg = request.pkg;
   const name = pkg?.name ?? "Extension";
-  const warnings = pkg ? permissionWarnings(pkg) : [];
+  // Chrome's own flow brings its warnings; our store download reads them off the manifest.
+  const warnings = request.prompt ? request.prompt.permissions : pkg ? permissionWarnings(pkg) : [];
+  const kind = request.prompt?.type;
+  const title = kind === "re-enable" ? `Turn “${name}” back on?` : kind === "permissions" ? `“${name}” needs new permissions` : `Add “${name}”?`;
+  const action = kind === "re-enable" ? "Turn On" : kind === "permissions" ? "Allow" : "Add Extension";
   const busy = request.status === "downloading" || request.status === "installing";
 
   let body;
@@ -207,7 +211,7 @@ function InstallDialog({ request }: { request: InstallRequest }) {
       <>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           {pkg?.icon ? <Image source={{ uri: pkg.icon }} style={{ width: 36, height: 36 }} /> : null}
-          <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: theme.textPrimary }}>{`Add “${name}”?`}</Text>
+          <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: theme.textPrimary }}>{title}</Text>
         </View>
         {warnings.length ? (
           <>
@@ -242,7 +246,7 @@ function InstallDialog({ request }: { request: InstallRequest }) {
         ) : (
           <>
             <PromptButton title="Cancel" onPress={cancelInstall} />
-            <PromptButton title={request.status === "installing" ? "Adding…" : "Add Extension"} primary onPress={() => void confirmInstall()} />
+            <PromptButton title={request.status === "installing" ? "Adding…" : action} primary onPress={() => void confirmInstall()} />
           </>
         )}
       </View>

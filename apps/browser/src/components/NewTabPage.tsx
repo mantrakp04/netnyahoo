@@ -1,7 +1,7 @@
 import { AreaLight, EdgeLight, Orb, PowerUp } from "@netnyahoo/shaders";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Surface, VisualEffect } from "@netnyahoo/shell";
-import { AccessibilityInfo, Animated, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { hex, useTheme } from "../lib/theme";
 import { NewTabExtras } from "./ntp";
 import { Omnibox } from "./Omnibox";
@@ -16,10 +16,16 @@ const SHOW_ORB = true;
 /**
  * NewTabAreaLightView.negateAngle (= showDiaIcon, true with the logo shown): flips and halves the
  * tilt. It would also halve the intensity, but Dia computes intensity before the flag is set.
- * Dia 1.50 rolls out its rebrand (`ntp-rebrand-enabled`, which forces showDiaIcon on): the mark is
- * painted, the bar gets a shadow and the power-up band takes one theme colour.
  */
 const NEGATE_ANGLE = true;
+/**
+ * Dia 1.50's rebrand (`ntp-rebrand-enabled`, rolled out remotely): the mark is painted, the bar
+ * gets a shadow, and the page's light configuration turns off both the area light and the edge
+ * light (NewTabPageController: rebrand without the daylight effect = no lights). The power-up
+ * band then takes one theme colour at speed 1, a halo runs around the bar, and the bar is the
+ * opaque AssistantPanel background instead of a translucent panel over the light.
+ */
+const REBRAND = true;
 
 type Frame = { x: number; y: number; width: number; height: number };
 type Size = { width: number; height: number };
@@ -38,7 +44,7 @@ const outset = (f: Frame, d: number): Frame => ({ x: f.x - d, y: f.y - d, width:
  * by 10pt (at least 480 tall). The light rises from 300pt below the bar to its
  * top edge over 1s (easeOutExpo), tracing the border; the logo gets a rim light.
  */
-function EdgeLightLayer({ bar, orb, color, scale }: { bar: Frame; orb: Frame | null; color: string; scale: Animated.AnimatedInterpolation<number> | Animated.Value }) {
+function EdgeLightLayer({ bar, orb, color }: { bar: Frame; orb: Frame | null; color: string }) {
   const minX = Math.min(bar.x, orb?.x ?? bar.x) - 10;
   const minY = Math.min(bar.y, orb?.y ?? bar.y) - 10;
   const maxX = Math.max(bar.x + bar.width, orb ? orb.x + orb.width : 0) + 10;
@@ -47,7 +53,7 @@ function EdgeLightLayer({ bar, orb, color, scale }: { bar: Frame; orb: Frame | n
   const local = (f: Frame) => ({ x: f.x - container.x, y: f.y - container.y, width: f.width, height: f.height });
   const rect = local(bar);
   return (
-    <Animated.View pointerEvents="none" style={{ position: "absolute", ...frameStyle(container), transform: [{ scale }] }}>
+    <View pointerEvents="none" style={{ position: "absolute", ...frameStyle(container) }}>
       <EdgeLight
         style={StyleSheet.absoluteFill}
         rectFrame={rect}
@@ -59,7 +65,7 @@ function EdgeLightLayer({ bar, orb, color, scale }: { bar: Frame; orb: Frame | n
         logoFrame={orb ? local(orb) : null}
         animationDuration={1}
       />
-    </Animated.View>
+    </View>
   );
 }
 
@@ -70,9 +76,10 @@ function barWidth(viewWidth: number) {
 }
 
 /**
- * Dia's New Tab page: the command bar floats over the translucent card and
- * doubles as an area light, so the page underneath picks up a soft glow that
- * rises in, then slowly breathes.
+ * Dia's New Tab page: the command bar floats over the translucent card. A power-up band rises
+ * from the bottom as the page opens; with the rebrand a halo then wraps the bar, otherwise the
+ * bar doubles as an area light (a soft glow that rises in, then slowly breathes) and an edge
+ * light traces its border.
  */
 export function NewTabPage({ tabId }: { tabId: string }) {
   const theme = useTheme();
@@ -84,7 +91,6 @@ export function NewTabPage({ tabId }: { tabId: string }) {
     setSizeState((prev) => (prev && prev.width === next.width && prev.height === next.height ? prev : next));
   };
   const [panelHeight, setPanelHeight] = useState(BAR_HEIGHT);
-  const elevation = useElevationSpring();
 
   if (!size) return <View style={{ flex: 1 }} onLayout={(e) => setSize(e.nativeEvent.layout)} />;
 
@@ -99,18 +105,33 @@ export function NewTabPage({ tabId }: { tabId: string }) {
   const tilt = (r < 1 ? 5 - 4 * Math.max(r, 0) : 1) * (NEGATE_ANGLE ? -0.5 : 1);
   const source = { x: x + 8, y: top + 8, width: width - 16, height: panelHeight - 16 };
   const lightHeight = Math.max(0.85 * size.height, 720);
+  const bar = { x, y: top, width, height: panelHeight };
+  // NewTabPageViewController's light configuration; the daylight effect (and with it the bar's
+  // elevation spring) is off, so the bar sits at its resting elevation (scale 1) from the start.
+  const lightPalette = REBRAND ? null : theme.lightPalette;
+  const areaLight = lightPalette !== null;
+  const edgeLight = !REBRAND;
 
   return (
     <View style={{ flex: 1 }} onLayout={(e) => setSize(e.nativeEvent.layout)}>
-      {/* CommandBarPowerUpView: full-page band rising from the bottom, behind everything.
-          Dia's neutral theme (and incognito) has no light. */}
-      {theme.powerUpColor && <PowerUp style={StyleSheet.absoluteFill} palette={[theme.powerUpColor]} speed={1.25} origin={0.5} />}
-      {theme.lightPalette && (
+      {/* CommandBarPowerUpView: full-page band rising from the bottom, behind everything, and the
+          halo (shown while the area light is off). Incognito has neither. */}
+      {theme.powerUpColor && (
+        <PowerUp
+          style={StyleSheet.absoluteFill}
+          palette={[theme.powerUpColor]}
+          speed={areaLight ? 1.25 : 1}
+          origin={0.5}
+          cornerRadius={20}
+          halo={areaLight ? null : bar}
+        />
+      )}
+      {lightPalette && (
         <AreaLight
           style={{ position: "absolute", left: 0, top: 0, width: size.width, height: lightHeight }}
           source={source}
           cornerRadius={22}
-          palette={theme.lightPalette}
+          palette={lightPalette}
           lift={lift}
           tilt={[tilt, 0]}
           falloff={1}
@@ -126,60 +147,30 @@ export function NewTabPage({ tabId }: { tabId: string }) {
           style={{ position: "absolute", ...frameStyle(outset(logoFrame(size.width, top), ORB_PAD)) }}
         />
       )}
-      <Animated.View
-        onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)}
-        style={{ position: "absolute", left: x, top, width, transform: [{ scale: elevation }] }}
-      >
-        {/* AssistantPanelRootView: a .hudWindow material (blended within the window) under the
-            TransparentBackground fill, radius 20, 1 device-pixel border. The rebrand (1.50) adds two
-            shadows: black 0.08 r2 (0, 0.5) and black 0.04 r1 (0, 2). */}
-        <Surface style={StyleSheet.absoluteFill} fill="#00000000" cornerRadius={20} shadowColor="#000000" shadowOpacity={0.08} shadowRadius={2} shadowOffset={[0, 0.5]} />
-        <Surface style={StyleSheet.absoluteFill} fill="#00000000" cornerRadius={20} shadowColor="#000000" shadowOpacity={0.04} shadowRadius={1} shadowOffset={[0, 2]} />
-        <VisualEffect style={StyleSheet.absoluteFill} material="hudWindow" blendingMode="withinWindow" cornerRadius={20} />
+      <View onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)} style={{ position: "absolute", left: x, top, width }}>
+        {/* AssistantPanelRootView, radius 20, 1 device-pixel border. Over the area light: a .hudWindow
+            material (blended within the window) under the TransparentBackground fill, so the light
+            shows through; without it, the opaque Background. The rebrand adds two shadows: black
+            0.08 r2 (0, 0.5) and black 0.04 r1 (0, 2). */}
+        {REBRAND && (
+          <>
+            <Surface style={StyleSheet.absoluteFill} fill="#00000000" cornerRadius={20} shadowColor="#000000" shadowOpacity={0.08} shadowRadius={2} shadowOffset={[0, 0.5]} />
+            <Surface style={StyleSheet.absoluteFill} fill="#00000000" cornerRadius={20} shadowColor="#000000" shadowOpacity={0.04} shadowRadius={1} shadowOffset={[0, 2]} />
+          </>
+        )}
+        {areaLight && <VisualEffect style={StyleSheet.absoluteFill} material="hudWindow" blendingMode="withinWindow" cornerRadius={20} />}
         <Surface
-          fill={hex(theme.ntpBar)}
+          fill={hex(areaLight ? theme.ntpBar : theme.ntpBarSolid)}
           cornerRadius={20}
           borderColor={hex(theme.ntpBarBorder)}
           borderWidth={0.5}
         >
           <Omnibox variant="hero" tabId={tabId} />
         </Surface>
-      </Animated.View>
-      <EdgeLightLayer bar={{ x, y: top, width, height: panelHeight }} orb={SHOW_ORB ? logoFrame(size.width, top) : null} color={theme.edgeLight} scale={elevation} />
+      </View>
+      {edgeLight && <EdgeLightLayer bar={bar} orb={SHOW_ORB ? logoFrame(size.width, top) : null} color={theme.edgeLight} />}
       {/* Postcard slot (components/ntp): release notes, check-in, Personalize. */}
-      <NewTabExtras size={size} bar={{ x, y: top, width, height: panelHeight }} />
+      <NewTabExtras size={size} bar={bar} />
     </View>
   );
-}
-
-/**
- * Entrance: a CASpringAnimation on the bar (and edge light) from scale 0.99 to 1,
- * starting 0.25s after appear (response 0.7, bounce 0.3). Skipped under Reduce Motion.
- */
-function useElevationSpring() {
-  const value = useRef(new Animated.Value(0.99)).current;
-  useEffect(() => {
-    let cancelled = false;
-    AccessibilityInfo.isReduceMotionEnabled().then((reduce) => {
-      if (cancelled) return;
-      if (reduce) return value.setValue(1);
-      const response = 0.7;
-      const dampingRatio = 1 - 0.3;
-      const stiffness = (2 * Math.PI / response) ** 2;
-      Animated.sequence([
-        Animated.delay(250),
-        Animated.spring(value, {
-          toValue: 1,
-          stiffness,
-          damping: 2 * dampingRatio * Math.sqrt(stiffness),
-          mass: 1,
-          useNativeDriver: false,
-        }),
-      ]).start();
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [value]);
-  return value;
 }

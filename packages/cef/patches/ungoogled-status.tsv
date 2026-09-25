@@ -2,7 +2,7 @@ patch	status	note
 upstream-fixes/missing-dependencies.patch	applied	exact
 core/inox-patchset/0001-fix-building-without-safebrowsing.patch	reverted	assumes safe_browsing_mode=0: stubs out //chrome/browser/safe_browsing and breaks gn gen with it enabled
 core/inox-patchset/0003-disable-autofill-download-manager.patch	applied	exact
-core/inox-patchset/0005-disable-default-extensions.patch	applied	exact
+core/inox-patchset/0005-disable-default-extensions.patch	partial	without its extensions/browser/webstore_installer.cc hunks (they stub out Web Store installs); default component extensions stay disabled
 core/inox-patchset/0015-disable-update-pings.patch	applied	exact
 core/inox-patchset/0021-disable-rlz.patch	partial	rlz/buildflags.gni hunk reverted: CEF requires enable_rlz=true (RLZ stays inert: no brand code, and its server host is domain-substituted)
 core/iridium-browser/safe_browsing-disable-incident-reporting.patch	applied	exact

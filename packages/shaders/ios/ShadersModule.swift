@@ -107,6 +107,10 @@ public class PowerUpModule: Module {
       Prop("palette") { (view: PowerUpView, v: [String]) in view.setPalette(v) }
       Prop("speed") { (view: PowerUpView, v: Double) in view.speed = Float(v) }
       Prop("origin") { (view: PowerUpView, v: Double) in view.origin = Float(v) }
+      Prop("cornerRadius") { (view: PowerUpView, v: Double) in view.cornerRadius = Float(v) }
+      Prop("haloFrame") { (view: PowerUpView, v: [Double]) in
+        view.setHaloFrame(v.count == 4 && v[2] > 0 && v[3] > 0 ? CGRect(x: v[0], y: v[1], width: v[2], height: v[3]) : nil)
+      }
     }
   }
 }

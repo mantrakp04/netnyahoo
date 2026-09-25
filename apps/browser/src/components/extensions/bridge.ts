@@ -1,9 +1,12 @@
 import {
   extensionActionStates,
+  onExtensionInstallPrompt,
   onExtensionsChanged,
   onExtensionTabsRequest,
+  resolveExtensionInstallPrompt,
   resolveOpenedTab,
   setExtensionTabModel,
+  supportsExtensionInstallPrompt,
   webStoreExtensionId,
   type ExtensionTabModel,
   type TabsRequest,
@@ -15,7 +18,7 @@ import { useBrowser, type BrowserState } from "../../store/browser";
 import { activeTabId, engineProfile, incognitoProfileId, viewTabIds } from "../../store/model";
 import { tabForBrowser, usePages } from "../layout/pageState";
 import * as state from "./state";
-import { activateExtension, addFromWebStore, extensionProfile, findExtension, refreshExtensions, useExtensions } from "./state";
+import { activateExtension, addFromWebStore, extensionProfile, findExtension, refreshExtensions, showInstallPrompt, useExtensions } from "./state";
 
 /**
  * Connects the engine's extension system to the app: the tab model extension
@@ -286,10 +289,11 @@ function startBadgePolling() {
  * install through Chrome's own UI. On store pages the button reads "Add to
  * Netnyahoo" and opens our install dialog instead.
  */
-const STORE_SCRIPT = `
+const storeScript = (chromeInstalls: boolean) => `
 const g = window;
 if (!g.__netnyahooStore) {
   const store = (g.__netnyahooStore = { waiting: null, queued: [] });
+  const chromeInstalls = ${chromeInstalls};
   const request = (id) => {
     if (!id) return;
     if (store.waiting) { const w = store.waiting; store.waiting = null; w(id); } else store.queued.push(id);
@@ -298,7 +302,8 @@ if (!g.__netnyahooStore) {
     if (typeof callback === "function") { setTimeout(() => callback(result)); return; }
     return Promise.resolve(result);
   };
-  const wp = g.chrome && g.chrome.webstorePrivate;
+  // With Chrome's install flow asking the app, the store installs for real (auto-updates).
+  const wp = !chromeInstalls && g.chrome && g.chrome.webstorePrivate;
   if (wp) {
     for (const name of ["beginInstallWithManifest3", "install"]) {
       if (typeof wp[name] !== "function") continue;
@@ -335,13 +340,23 @@ else store.waiting = (id) => post("result", JSON.stringify(id));
 const isStorePage = (url: string | undefined) => !!url && /^https:\/\/chromewebstore\.google\.com\//.test(url);
 
 function startWebStoreIntegration() {
+  let chromeInstalls = false;
+  void supportsExtensionInstallPrompt().then((supported) => (chromeInstalls = supported));
+  // Chrome's install flow (the store's own button, re-enabling…) asks through our dialog.
+  onExtensionInstallPrompt((prompt) => {
+    const s = useBrowser.getState();
+    const tabId = prompt.browserId ? tabForBrowser(prompt.browserId) : undefined;
+    const windowId = (tabId && s.tabs[tabId]?.windowId) || s.ui.focusedWindowId || s.windowOrder[0];
+    if (windowId) showInstallPrompt(windowId, prompt);
+    else void resolveExtensionInstallPrompt(prompt.requestId, false);
+  });
   // Tab → the page URL we're listening on (one pending evaluate per page).
   const listening = new Map<string, string>();
   const listen = (tabId: string, url: string) => {
     listening.set(tabId, url);
     const web = webviews.get(tabId);
     if (!web) return void listening.delete(tabId);
-    void web.evaluate<string>(STORE_SCRIPT).then((id) => {
+    void web.evaluate<string>(storeScript(chromeInstalls)).then((id) => {
       const s = useBrowser.getState();
       const tab = s.tabs[tabId];
       // The page navigated away: its pending listener never answers; a new one starts below.

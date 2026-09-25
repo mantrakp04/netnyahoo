@@ -372,10 +372,12 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     closing_ = true;
     for (id observer in observers_) [NSNotificationCenter.defaultCenter removeObserver:observer];
     observers_ = nil;
-    // The app window is going: its tabs close with the Browser, which the app already knows.
+    // The app window is going: its tabs close with the Browser, which the app already knows
+    // (they stay in the session). A tab already shown in another window is moving out instead.
     for (NNBrowserView *view in LiveViews())
-      if (CefRefPtr<Client> client = view.client;
-          client && client->Browser() && view.window == parent_ && GhostOf(client->Browser()) == this)
+      if (CefRefPtr<Client> client = view.client; client && client->Browser() &&
+                                                  (!view.window || view.window == parent_) &&
+                                                  GhostOf(client->Browser()) == this)
         client->closingByEngine_ = true;
     NSWindow *ghost = Window();
     if (ghost.parentWindow) [ghost.parentWindow removeChildWindow:ghost];

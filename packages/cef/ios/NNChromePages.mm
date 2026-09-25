@@ -129,15 +129,25 @@ class IdleTimer {
 
 class ContextReady : public CefRequestContextHandler {
  public:
-  explicit ContextReady(void (^ready)(CefRefPtr<CefRequestContext>)) : ready_([ready copy]) {}
+  ContextReady(NSString *profile, void (^ready)(CefRefPtr<CefRequestContext>))
+      : profile_([profile copy]), ready_([ready copy]) {}
   void OnRequestContextInitialized(CefRefPtr<CefRequestContext> context) override {
     auto ready = ready_;
     ready_ = nil;
     // Not re-entrantly inside CreateContext.
     if (ready) dispatch_async(dispatch_get_main_queue(), ^{ ready(context); });
   }
+#if NN_INSTALL_PROMPT
+  // Our ghosts' tabs live in these contexts: their install prompts go to the app too.
+  bool OnExtensionInstallPrompt(CefRefPtr<CefBrowser> browser, const CefString &extension_id,
+                                CefRefPtr<CefDictionaryValue> details,
+                                CefRefPtr<CefExtensionPromptCallback> callback) override {
+    return ext::OnInstallPrompt(profile_, browser, extension_id, details, callback);
+  }
+#endif
 
  private:
+  NSString *profile_;
   void (^ready_)(CefRefPtr<CefRequestContext>);
   IMPLEMENT_REFCOUNTING(ContextReady);
 };
@@ -445,7 +455,7 @@ void CloseAll() {
 void WhenProfileReady(NSString *profile, void (^ready)(CefRefPtr<CefRequestContext> context)) {
   // A context sharing the profile's storage is created just to get the callback.
   ready = [ready copy];
-  CefRequestContext::CreateContext(ContextForProfile(profile), new ContextReady(^(CefRefPtr<CefRequestContext> context) {
+  CefRequestContext::CreateContext(ContextForProfile(profile), new ContextReady(profile, ^(CefRefPtr<CefRequestContext> context) {
     // Our hidden Chrome windows are normal windows to Chrome's session service:
     // "continue where you left off" would reopen every one of them, visibly.
     static NSMutableSet<NSString *> *prepared = [NSMutableSet set];

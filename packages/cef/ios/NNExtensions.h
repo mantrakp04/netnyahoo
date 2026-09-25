@@ -19,6 +19,12 @@ typedef void (^NNExtensionsCompletion)(NSDictionary<NSString *, id> *result);
 /// reloaded); "tabs" {action: "open", url, profile, active}: a page Chrome opened outside our
 /// windows, to open as a tab.
 @property (class, nonatomic, copy, nullable) NNEventHandler eventHandler;
+/// Chrome's own install flow (Web Store "Add", re-enable, permission increases) asks through
+/// an "installPrompt" event ({requestId, profile, id, name, version, type, icon, permissions,
+/// browserId}) instead of showing its dialog. NO on engines without that hook.
+@property (class, nonatomic, readonly) BOOL supportsInstallPrompt;
+/// The user's answer to an "installPrompt".
++ (void)resolveInstallPrompt:(NSString *)requestId accepted:(BOOL)accepted NS_SWIFT_NAME(resolveInstallPrompt(_:accepted:));
 
 /// [{id, name, version, description, enabled, state, icon (data URL), permissions [message],
 ///   hostAccess, optionsUrl, popup, sidePanel, actionTitle, location, path, webStoreUrl,

@@ -7,9 +7,13 @@ import {
   installExtension,
   listExtensions,
   prepareWebStoreExtension,
+  resolveExtensionInstallPrompt,
   setExtensionEnabled,
+  supportsExtensionInstallPrompt,
   uninstallExtension,
+  webStoreExtensionId,
   type ActionState,
+  type ExtensionInstallPrompt,
   type ExtensionPackage,
   type InstalledExtension,
 } from "@netnyahoo/cef";
@@ -30,6 +34,8 @@ export type InstallRequest = {
   status: "downloading" | "ready" | "installing" | "error";
   pkg?: ExtensionPackage;
   error?: string;
+  /** Chrome's own install flow is asking (the store's button, a re-enable…): it installs on accept. */
+  prompt?: ExtensionInstallPrompt;
 };
 
 type ExtensionsStore = {
@@ -86,8 +92,17 @@ export const findExtension = (profile: string, id: string) => useExtensions.getS
 
 // MARK: Installing
 
-/** Web Store link or id → the install dialog (downloads and verifies the package first). */
+/**
+ * Web Store link or id → the install dialog. With Chrome's install flow (it asks through our
+ * dialog, and its store installs auto-update) that's the store's own page and Add button;
+ * otherwise we download and verify the package first and load it ourselves.
+ */
 export async function addFromWebStore(windowId: string, urlOrId: string, profile = extensionProfile(useBrowser.getState(), windowId)) {
+  const id = webStoreExtensionId(urlOrId);
+  if (id && (await supportsExtensionInstallPrompt())) {
+    useBrowser.getState().newTab(windowId, { url: `https://chromewebstore.google.com/detail/${id}` });
+    return;
+  }
   cancelInstall();
   useExtensions.setState({ install: { windowId, profile, source: "webStore", status: "downloading" } });
   try {
@@ -111,9 +126,40 @@ export async function loadUnpacked(windowId: string, profile = extensionProfile(
   }
 }
 
+/** Chrome's install flow asks (see `ExtensionInstallPrompt`): our dialog answers. */
+export function showInstallPrompt(windowId: string, prompt: ExtensionInstallPrompt) {
+  const current = useExtensions.getState().install;
+  if (current?.prompt) void resolveExtensionInstallPrompt(current.prompt.requestId, false);
+  else cancelInstall();
+  const pkg: ExtensionPackage = {
+    id: prompt.id,
+    name: prompt.name,
+    version: prompt.version,
+    description: "",
+    manifestVersion: 3,
+    icon: prompt.icon || null,
+    permissions: [],
+    optionalPermissions: [],
+    hostPermissions: [],
+    hasAction: false,
+    popup: null,
+    optionsPage: null,
+    sidePanel: null,
+    path: "",
+  };
+  useExtensions.setState({ install: { windowId, profile: prompt.profile, source: "webStore", status: "ready", pkg, prompt } });
+}
+
 export async function confirmInstall() {
   const request = useExtensions.getState().install;
   if (!request?.pkg || request.status !== "ready") return;
+  if (request.prompt) {
+    // Chrome downloads and installs it (a store install: it auto-updates); the list catches up.
+    useExtensions.setState({ install: null });
+    await resolveExtensionInstallPrompt(request.prompt.requestId, true);
+    for (const ms of [1500, 5000]) setTimeout(() => void refreshExtensions(request.profile), ms);
+    return;
+  }
   useExtensions.setState({ install: { ...request, status: "installing" } });
   try {
     await installExtension(request.pkg, request.profile);
@@ -127,6 +173,7 @@ export async function confirmInstall() {
 export function cancelInstall() {
   const request = useExtensions.getState().install;
   if (!request) return;
+  if (request.prompt) void resolveExtensionInstallPrompt(request.prompt.requestId, false);
   if (request.pkg && request.source === "webStore" && request.status !== "installing") void discardExtensionPackage(request.pkg);
   useExtensions.setState({ install: null });
 }

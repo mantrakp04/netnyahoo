@@ -2,6 +2,7 @@
 
 #import "NNChromePages.h"
 #import "NNContentBlocker.h"
+#import "NNExtensionsInternal.h"
 #import "NNPopupWindow.h"
 #import "NNSiteSettings.h"
 #import "NNWindowHost.h"
@@ -226,6 +227,7 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
 
   // Windows Chrome opens by itself (extension pages, uninstall surveys) become our tabs.
   CefRefPtr<CefClient> GetDefaultClient() override { return nn::host::DefaultClient(); }
+  CefRefPtr<CefRequestContextHandler> GetDefaultRequestContextHandler() override { return nn::ext::ContextHandler(@""); }
 
  private:
   IMPLEMENT_REFCOUNTING(BrowserApp);
@@ -432,7 +434,7 @@ CefRefPtr<CefRequestContext> ContextForProfile(NSString *profile) {
     settings.persist_session_cookies = true;
   }
   // Empty cache_path = in-memory ("off the record") context.
-  CefRefPtr<CefRequestContext> context = CefRequestContext::CreateContext(settings, nullptr);
+  CefRefPtr<CefRequestContext> context = CefRequestContext::CreateContext(settings, ext::ContextHandler(profile));
   gContexts[key] = context;
   return context;
 }

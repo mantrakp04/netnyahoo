@@ -73,6 +73,8 @@ after running that test.
   - **12 Discard.** A discarded tab leaves `chrome.tabs`; showing it recreates it in the same Chrome window.
   - **Split view.** Both panes are Chrome tabs at their own sizes (578 pt each) and both visible. Chrome's dialogs
     follow the focused pane (`pageInsets` 47,775,7,7).
+  - **After the switch to the real keychain** ("Netnyahoo Safe Storage" dist), a fresh-profile regression passed:
+    items 1/2, 7, 10, 16, 17 (save) and 19 (a saved login auto-fills on revisit).
   - **Focus.** Test instances can't activate (see NNActivation.mm: prohibited policy, activation guards, log).
     `lsappinfo front` never changed over several launches, popups, dialogs and new windows.
 - Signing and passkeys (instance `passkeys`, patched CEF 154.0.28, 2026-09-25):
@@ -226,23 +228,38 @@ and the build fails with `#error` against stock CEF. Then build `build-integrati
     - Another profile unlocks on its own.
     - The copy reads "Offer to save and fill passwords" and "Saved on this Mac, separately for each profile…".
 
-### Chrome Web Store (integration; hook 10 `CEF_NN_INSTALL_PROMPT` requested)
+### Chrome Web Store (integration; hook 10 `CEF_NN_INSTALL_PROMPT`)
 
-W1. **Install from the store.** On chromewebstore.google.com, "Add to Chrome" reads "Add to Netnyahoo" and opens our
-    Dia-style dialog ("Add “Dark Reader”?", "It can: Read and change all your data on all websites"). Add Extension
-    installs it. Verified 2026-09-25 with Dark Reader 4.9.133, through the fallback path: our CRX download from
-    clients2.google.com works on the new dist, then an unpacked install. Still to do:
-    - With hook 10: let Chrome's own webstorePrivate / WebstoreInstaller install it (location INTERNAL,
-      `update_url` set), with our dialog in place of Chrome's.
-    - Bitwarden and uBlock Origin Lite (store copy).
-    - Check that the install survives a clean quit. Killing the instance lost Chrome's unsaved prefs, so the
-      extension was gone after relaunch.
-W2. **Uninstall.** "Remove from Netnyahoo" on the store page, and Settings › Extensions › Remove. Pass if the
-    extension is gone from `developerPrivate.getExtensionsInfo` and the store page flips back to "Add to Netnyahoo".
-W3. **Auto-update.** Only store installs (W1 with hook 10) update. Install an older Dark Reader CRX with its store
-    `update_url`, run `chrome.developerPrivate.autoUpdate()`, and pass if the version moves to the store's. The
-    update check must go to clients2.google.com/service/update2/crx: with domain substitution it would show
-    `*.qjz9zk`. Report those URLs to the chromium agent.
+W1. **Install from the store. Verified 2026-09-25.**
+    - The store's own button runs Chrome's webstorePrivate / WebstoreInstaller flow.
+    - Chrome's confirmation goes to our Dia-style dialog through `OnExtensionInstallPrompt`, with Chrome's own
+      warning list.
+    - Tested with Bitwarden 2026.8.0 (3 warnings) and Dark Reader 4.9.133: each installed as a store extension,
+      location FROM_STORE, update_url `https://clients2.google.com/service/update2/crx`, and the page then shows
+      "Remove from Netnyahoo".
+    - The store opens the extension's welcome tab, and it's adopted as our tab.
+    - A Web Store link in Settings now opens the store page: there's no unpacked fallback any more when the engine
+      has the hook.
+    - Still open:
+      - A "Switch to Chrome" banner stays on the store. Adding "Google Chrome" to `navigator.userAgentData.brands`
+        and `getHighEntropyValues` in the page, and to the `sec-ch-ua` request header, didn't remove it, so both
+        shims were reverted. It's cosmetic; install and remove work.
+      - uBlock Origin Lite from the store is untested. We ship it built in, and a store copy would duplicate it.
+W2. **Uninstall. Verified at the engine level:** `NNExtensions.uninstall` removed Bitwarden, and it left
+    `getExtensionsInfo`. Still to test with the user present:
+    - "Remove from Netnyahoo" on the store page and Settings › Extensions › Remove. Both go through our "Remove …?"
+      confirmation, a native sheet that needs a key window.
+    - Chrome's uninstall dialog isn't hooked; our confirmation replaces it.
+W3. **Auto-update. Partly verified.**
+    - Store installs carry the clients2 update URL. `extension_urls.cc` keeps the real host (domain substitution only
+      touched test files there). `https://clients2.google.com/service/update2/crx?...&x=id%3Deimadpbcbfnmbkopoojfekhnkhdbieeh%26v%3D4.9.100`
+      answers with the 4.9.133 codebase.
+    - Not yet seen: an installed extension actually updating. Editing the installed manifest's version doesn't
+      stick, because Chrome keeps the loaded manifest in prefs. `developerPrivate.autoUpdate()` was still running
+      after 20 s.
+    - Test: install an older store CRX, e.g. ask the chromium agent for a `--extensions-update-frequency=30` build
+      flag, or use an extension that ships an update during testing. Pass if the version moves to the store's
+      without a prompt.
 
 ### Dia 1.50 "Sunglow" visuals (WP11; needs the unlocked screen, not the patched CEF)
 

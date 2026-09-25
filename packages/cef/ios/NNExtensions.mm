@@ -167,6 +167,55 @@ void EmitOpenTab(NSString *url, NSString *profile) {
                   @"extensionId" : @""});
 }
 
+#if NN_INSTALL_PROMPT
+namespace {
+std::map<std::string, CefRefPtr<CefExtensionPromptCallback>> gInstallPrompts;  // request id → Chrome's callback
+int gInstallPromptSeq = 0;
+}  // namespace
+
+bool OnInstallPrompt(NSString *profile, CefRefPtr<CefBrowser> browser, const CefString &extensionId,
+                     CefRefPtr<CefDictionaryValue> details, CefRefPtr<CefExtensionPromptCallback> callback) {
+  if (!gHandler || !details) return false;
+  NSMutableArray *permissions = [NSMutableArray array];
+  if (CefRefPtr<CefListValue> list = details->GetList("permissions"))
+    for (size_t i = 0; i < list->GetSize(); i++) [permissions addObject:ToNS(list->GetString(i))];
+  NSString *requestId = [NSString stringWithFormat:@"install%d", ++gInstallPromptSeq];
+  NSDictionary *payload = @{
+    @"requestId" : requestId,
+    @"profile" : DataProfile(profile ?: @""),
+    @"id" : ToNS(extensionId),
+    @"name" : ToNS(details->GetString("name")),
+    @"version" : ToNS(details->GetString("version")),
+    @"type" : ToNS(details->GetString("type")),
+    @"icon" : ToNS(details->GetString("icon")),
+    @"permissions" : permissions,
+    @"browserId" : @(browser ? browser->GetIdentifier() : 0),
+  };
+  gInstallPrompts[requestId.UTF8String] = callback;
+  dispatch_async(dispatch_get_main_queue(), ^{ Emit(@"installPrompt", payload); });
+  return true;
+}
+#endif
+
+CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
+  class Handler : public CefRequestContextHandler {
+   public:
+    explicit Handler(NSString *profile) : profile_([profile copy]) {}
+#if NN_INSTALL_PROMPT
+    bool OnExtensionInstallPrompt(CefRefPtr<CefBrowser> browser, const CefString &extension_id,
+                                  CefRefPtr<CefDictionaryValue> details,
+                                  CefRefPtr<CefExtensionPromptCallback> callback) override {
+      return OnInstallPrompt(profile_, browser, extension_id, details, callback);
+    }
+#endif
+
+   private:
+    NSString *profile_;
+    IMPLEMENT_REFCOUNTING(Handler);
+  };
+  return new Handler(profile ?: @"");
+}
+
 }  // namespace nn::ext
 
 // MARK: - Public API
@@ -179,6 +228,21 @@ void EmitOpenTab(NSString *url, NSString *profile) {
 
 + (void)setEventHandler:(NNEventHandler)eventHandler {
   gHandler = [eventHandler copy];
+}
+
++ (BOOL)supportsInstallPrompt {
+  return NN_INSTALL_PROMPT;
+}
+
++ (void)resolveInstallPrompt:(NSString *)requestId accepted:(BOOL)accepted {
+#if NN_INSTALL_PROMPT
+  auto &prompts = nn::ext::gInstallPrompts;
+  auto it = prompts.find(requestId.UTF8String ?: "");
+  if (it == prompts.end()) return;
+  CefRefPtr<CefExtensionPromptCallback> callback = it->second;
+  prompts.erase(it);
+  callback->Continue(accepted);
+#endif
 }
 
 + (void)evaluateInHost:(NSString *)expression profile:(NSString *)profile page:(NSString *)page completion:(void (^)(id))completion {
@@ -219,7 +283,8 @@ void EmitOpenTab(NSString *url, NSString *profile) {
       NSDictionary *manifest = path ? ext::ReadManifest(path) : nil;
       for (NSString *key in @[ @"popup", @"actionTitle", @"actionIcon", @"sidePanel", @"hasAction" ])
         if (manifest[key]) item[key] = manifest[key];
-      BOOL fromStore = path && [path hasPrefix:managed];
+      // Chrome's own store installs (they auto-update), or our earlier download-and-load ones.
+      BOOL fromStore = [info[@"location"] isEqual:@"FROM_STORE"] || (path && [path hasPrefix:managed]);
       item[@"fromWebStore"] = @(fromStore);
       item[@"webStoreUrl"] = fromStore ? [@"https://chromewebstore.google.com/detail/" stringByAppendingString:info[@"id"]] : [NSNull null];
       [list addObject:item];
