@@ -1,5 +1,4 @@
-// Copies what the video uses into public/ (gitignored): the site's real window captures and
-// mascot model, the game's Big Yahu portraits, fonts, and this package's own window capture.
+// Copies what the video uses into public/ (gitignored): the site's mascot model, the game's Big Yahu portraits, fonts, and this package's own window capture.
 // Run before `pnpm dev` / `pnpm render` (the `capture` script fills public/capture/).
 import { cpSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -14,9 +13,6 @@ const copy = (from, to) => {
 };
 
 copy(join(repo, "apps/site/public/models/big-yahu.glb"), "models/big-yahu.glb");
-for (const s of ["browse", "extensions", "privacy", "split", "command-bar", "profile-plum", "profile-blue", "profile-green"]) {
-  copy(join(repo, `apps/site/src/assets/shots/${s}.webp`), `shots/${s}.webp`);
-}
 copy(join(repo, "apps/site/src/assets/game/wanted.webp"), "game/wanted.webp");
 copy(join(repo, "apps/site/src/assets/app-icon.png"), "game/app-icon.png");
 copy(join(root, "assets/window-offline.webp"), "window/window-offline.webp");

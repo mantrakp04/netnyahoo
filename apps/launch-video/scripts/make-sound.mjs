@@ -1,10 +1,10 @@
 // Synthesizes the sound design into public/sound/track.wav, timed to src/timeline.ts:
-// clock ticks while you search, a bell and a till on a find, a buzzer at time's up, thuds on
-// headline slams, a whoosh for the pull-back, a stab for the end card. No samples, no music.
+// clock ticks, a bonk when time runs out, a bell when the game shows him, whooshes for the camera,
+// a pop and a stab when Big Yahu comes up. No samples, no music.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { B, FPS, R1_CLICK, R2_CLICK, TOTAL } from "../src/timeline.ts";
+import { B, FPS, ROUNDS, TOTAL, TWIST } from "../src/timeline.ts";
 
 const SR = 44100;
 const out = new Float32Array(Math.ceil((TOTAL / FPS) * SR));
@@ -64,20 +64,28 @@ function stab(frame) {
   thud(frame, 1.2);
 }
 
-// Round 1 and 2: a tick every 10 frames until the find. Round 3: faster in the last second.
-for (let i = 0; i < R1_CLICK; i += 10) tick(B.r1.from + i);
-bell(B.r1.from + R1_CLICK);
-thud(B.r2.from);
-for (let i = 0; i < R2_CLICK; i += 10) tick(B.r2.from + i);
-bell(B.r2.from + R2_CLICK);
-thud(B.r3.from);
-for (let i = 0; i < B.r3.dur; i += i < 60 ? 10 : 5) tick(B.r3.from + i, i >= 60);
-buzzer(B.timeUp.from);
-whoosh(B.twist.from + 2, 1.0);
-thud(B.twist.from + 4, 0.8);
-for (let j = 0; j < 4; j++) thud(B.receipts.from + j * 37, 0.9);
-stab(B.end.from);
-whoosh(B.bridge.from + 2, 0.9, true);
+function pop(frame) {
+  add(at(frame), SR * 0.35, (t) => Math.sin(2 * Math.PI * (220 + 520 * Math.min(1, t * 9)) * t) * 0.4 * Math.exp(-t * 9));
+}
+
+// Ticks while you look (faster in the one-second round), a bonk when the clock runs out, a bell
+// when the game shows him. Round 3: the bonk and nothing else.
+const rounds = [["r1", 10], ["r2", 10], ["r3", 5]];
+for (const [id, every] of rounds) {
+  const b = B[id];
+  const r = ROUNDS[id];
+  for (let i = 0; i < r.search; i += every) tick(b.from + i, id === "r3");
+  buzzer(b.from + r.search);
+  if (id !== "r3") bell(b.from + r.search + 4);
+  if (id !== "r1") thud(b.from, 0.8);
+}
+whoosh(B.twist.from, 0.8);
+thud(B.twist.from + 4, 0.7);
+whoosh(B.twist.from + TWIST.in[0], 0.9);
+pop(B.twist.from + TWIST.line2 + 2);
+stab(B.twist.from + TWIST.line2);
+thud(B.end.from, 0.9);
+whoosh(B.bridge.from + 1, 0.8, true);
 
 let peak = 0;
 for (const v of out) peak = Math.max(peak, Math.abs(v));

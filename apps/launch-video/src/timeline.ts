@@ -3,9 +3,6 @@ export const FPS = 30;
 export const W = 1080;
 export const H = 1350;
 
-/** The game's clock starts at 3.02 s so frame 0 reads 3.0 and frame 89 reads 0.0 (see capture-game.mjs). */
-export const CLOCK = 3.02;
-
 const seq = <T extends Record<string, number>>(lengths: T) => {
   let at = 0;
   const out = {} as { [K in keyof T]: { from: number; dur: number; to: number } };
@@ -16,16 +13,21 @@ const seq = <T extends Record<string, number>>(lengths: T) => {
   return { beats: out, total: at };
 };
 
+/** Each round's clock (see capture-game.mjs): N.0 on frame 0, 0.0 on frame 30·N − 1, out on 30·N. */
+export const ROUNDS = {
+  r1: { clock: 3.02, search: 90 },
+  r2: { clock: 2.02, search: 60 },
+  r3: { clock: 1.02, search: 30 },
+} as const;
+
 export const { beats: B, total: TOTAL } = seq({
-  r1: 108, // level 1: 60 frames of searching, the click, the game's found animation
-  r2: 114, // level 4: 69 frames of searching, then found
-  r3: 90, // level 10: the whole clock, no reveal
-  timeUp: 36, // frozen on 0.0
-  twist: 105, // pull back: it's the browser's offline page
-  receipts: 148, // four lines, 37 frames each
-  end: 108, // Big Yahu, the name, the line
-  bridge: 30, // back into round 1, frame 0 (the loop)
+  r1: 90 + 40, // 3 s to look, then the game shows where he was
+  r2: 60 + 32, // 2 s, then the reveal again, shorter
+  r3: 30 + 54, // 1 s, 503 suspects, no reveal: hold on 0.0
+  twist: 96, // pull back to the window: it's the offline page
+  end: 66, // the name, inside the same window
+  bridge: 26, // back into the tab: round 1, frame 0 (the loop)
 });
 
-export const R1_CLICK = 60;
-export const R2_CLICK = 69;
+/** Twist: camera out to the whole window, then in on its header; the second line and Big Yahu. */
+export const TWIST = { out: [0, 18], hold: 30, in: [30, 54], line2: 54 } as const;

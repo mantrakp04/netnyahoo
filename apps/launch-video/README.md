@@ -1,8 +1,10 @@
 # Netnyahoo launch video
 
-A 25-second, 4:5 (1080×1350) loop for X, made with Remotion. "Only 1% can find him": three rounds of
-Where's Big Yahu? (the offline game) on a 3-second clock, then the reveal that it's the browser's
-no-internet page, four receipts, and the end card. The last frame is the first, so it loops.
+A 16.5-second, 4:5 (1080×1350) loop for X, made with Remotion. One voice (the game's host) and one
+space (the Netnyahoo window): three rounds of Where's Big Yahu? on a 3, 2 and 1 second clock (the game
+shows him after the first two, not the third), then the camera pulls back out of the tab to the
+window's "No internet" page for x.com, Big Yahu comes up out of the crowd, and the camera pushes back
+into the tab onto round 1's first frame, so it loops.
 
 Standalone package (excluded from the root workspace, like `apps/site`):
 
@@ -24,5 +26,5 @@ Where the pictures come from:
   are captured at 30 fps.
 - `assets/window-offline.webp` is a window capture of Netnyahoo 0.1.2 showing that page for x.com while
   offline. The video lays the captured game frames into its tab area (`src/Stage.tsx`).
-- The receipts are the site's window captures (`apps/site/src/assets/shots`); Big Yahu is the site's
-  model (`apps/site/public/models/big-yahu.glb`), rendered with three.js per frame.
+- Big Yahu is the site's model (`apps/site/public/models/big-yahu.glb`), rendered with three.js per
+  frame inside the tab.

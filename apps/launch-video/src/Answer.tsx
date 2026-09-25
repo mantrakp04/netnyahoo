@@ -1,6 +1,6 @@
 import { AbsoluteFill, Img } from "remotion";
 import { C, mono, poster } from "./theme";
-import { PANEL, Stage, frameSrc } from "./Stage";
+import { CAM_GAME, PANEL, Stage, frameSrc } from "./Stage";
 
 // For a reply under the post: round 3's answer. The crowd exactly as the video leaves it (0.0 on the
 // clock), a ring where he is, and a magnifier on him.
@@ -14,7 +14,7 @@ export const Answer: React.FC = () => {
   const k = K0 * LENS.zoom;
   return (
     <AbsoluteFill style={{ backgroundColor: C.paper }}>
-      <Stage page={frameSrc("r3", 89)} p={0} />
+      <Stage cam={CAM_GAME} page={frameSrc("r3", 29)} />
       <svg width={1080} height={1350} style={{ position: "absolute", inset: 0 }}>
         <line x1={ON_SCREEN.x + 30} y1={ON_SCREEN.y - 10} x2={LENS.x - LENS.r + 8} y2={LENS.y + 20} stroke={C.stamp} strokeWidth={6} />
         <circle cx={ON_SCREEN.x} cy={ON_SCREEN.y} r={34} fill="none" stroke={C.stamp} strokeWidth={7} />
@@ -34,7 +34,7 @@ export const Answer: React.FC = () => {
         }}
       >
         <Img
-          src={frameSrc("r3", 89)}
+          src={frameSrc("r3", 29)}
           style={{ position: "absolute", width: 1846 * k, height: 1612 * k, left: LENS.r - 8 - HEAD.x * k, top: LENS.r - 8 - HEAD.y * k }}
         />
       </div>

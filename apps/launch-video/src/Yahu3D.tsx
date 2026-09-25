@@ -6,14 +6,10 @@ import {
   Group,
   DirectionalLight,
   HemisphereLight,
-  Mesh,
   NeutralToneMapping,
-  PCFShadowMap,
   PerspectiveCamera,
-  PlaneGeometry,
   PMREMGenerator,
   Scene,
-  ShadowMaterial,
   SkinnedMesh,
   SRGBColorSpace,
   Vector3,
@@ -26,7 +22,7 @@ import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.j
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 // Big Yahu, the site's model (apps/site/public/models/big-yahu.glb) lit like the site's hero,
-// posed by the current frame: `clip` at `time` seconds, `yaw` radians of turn.
+// with no floor (he stands in the game's crowd), posed by the current frame: `clip` at `time` seconds, `yaw` radians of turn.
 type Rig = { renderer: WebGLRenderer; scene: Scene; camera: PerspectiveCamera; mixer: AnimationMixer; actions: Map<string, AnimationAction>; root: Object3D };
 
 export const Yahu3D: React.FC<{ width: number; height: number; clip: "Griddy" | "Default Dance"; time: number; yaw?: number }> = ({ width, height, clip, time, yaw = 0.12 }) => {
@@ -45,8 +41,6 @@ export const Yahu3D: React.FC<{ width: number; height: number; clip: "Griddy" | 
     renderer.outputColorSpace = SRGBColorSpace;
     renderer.toneMapping = NeutralToneMapping;
     renderer.toneMappingExposure = 1.05;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = PCFShadowMap;
 
     const scene = new Scene();
     const pmrem = new PMREMGenerator(renderer);
@@ -56,19 +50,10 @@ export const Yahu3D: React.FC<{ width: number; height: number; clip: "Griddy" | 
     scene.add(new HemisphereLight(0xfff6ea, 0x4a4036, 1.1));
     const key = new DirectionalLight(0xfff0dc, 2.4);
     key.position.set(-1.1, 3.6, 3.2);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    Object.assign(key.shadow.camera, { left: -1.2, right: 1.2, top: 1.2, bottom: -1.2, near: 0.5, far: 8 });
-    key.shadow.radius = 4;
-    key.shadow.bias = -0.0005;
     scene.add(key);
     const rim = new DirectionalLight(0xb9c8ff, 1.6);
     rim.position.set(2.2, 1.8, -2.4);
     scene.add(rim);
-    const floor = new Mesh(new PlaneGeometry(6, 6), new ShadowMaterial({ opacity: 0.22 }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
 
     new GLTFLoader()
       .setMeshoptDecoder(MeshoptDecoder)
@@ -77,7 +62,6 @@ export const Yahu3D: React.FC<{ width: number; height: number; clip: "Griddy" | 
         if (cancelled) return;
         gltf.scene.traverse((o: Object3D) => {
           if (o instanceof SkinnedMesh) {
-            o.castShadow = true;
             o.frustumCulled = false;
           }
         });
@@ -130,5 +114,5 @@ export const Yahu3D: React.FC<{ width: number; height: number; clip: "Griddy" | 
     }
   }, [rig, clip, time, yaw, frame, fps, handle]);
 
-  return <canvas ref={canvas} width={width} height={height} style={{ width, height }} />;
+  return <canvas ref={canvas} width={width} height={height} style={{ width, height, display: "block" }} />;
 };
