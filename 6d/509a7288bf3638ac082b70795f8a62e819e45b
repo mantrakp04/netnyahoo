@@ -1,0 +1,21 @@
+packages/cef/patches/chromium-context-menu-hosted.patch
+  s_9c356f9574d31c::t_359e3c3e45663e 1-33
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_ac4b10cdd74a34 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6d509a7288bf3638ac082b70795f8a62e819e45b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
