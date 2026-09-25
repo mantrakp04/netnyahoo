@@ -1,4 +1,4 @@
-// Frame numbers (30 fps) for every beat. Rounds use the captured game frames 1:1.
+// Frame numbers (30 fps) for every beat.
 export const FPS = 30;
 export const W = 1080;
 export const H = 1350;
@@ -13,21 +13,16 @@ const seq = <T extends Record<string, number>>(lengths: T) => {
   return { beats: out, total: at };
 };
 
-/** Each round's clock (see capture-game.mjs): N.0 on frame 0, 0.0 on frame 30·N − 1, out on 30·N. */
-export const ROUNDS = {
-  r1: { clock: 3.02, search: 90 },
-  r2: { clock: 2.02, search: 60 },
-  r3: { clock: 1.02, search: 30 },
-} as const;
+export const PLEDGE_LEN = 60;
 
 export const { beats: B, total: TOTAL } = seq({
-  r1: 90 + 40, // 3 s to look, then the game shows where he was
-  r2: 60 + 32, // 2 s, then the reveal again, shorter
-  r3: 30 + 54, // 1 s, 503 suspects, no reveal: hold on 0.0
-  twist: 96, // pull back to the window: it's the offline page
-  end: 66, // the name, inside the same window
-  bridge: 26, // back into the tab: round 1, frame 0 (the loop)
+  poster: 66, // the hook: the window, the slogan, the stamp
+  pledges: PLEDGE_LEN * 6, // six pledges, one window
+  offline: 54, // the Wi-Fi dies: the offline page, "Chrome gives you a dinosaur."
+  find: 54, // into the tab: "Find him." on the game's own clock
+  cta: 84, // Big Yahu comes up out of the crowd; "Impeach Chrome."
+  bridge: 26, // back out to the poster (the loop)
 });
 
-/** Twist: camera out to the whole window, then in on its header; the second line and Big Yahu. */
-export const TWIST = { out: [0, 18], hold: 30, in: [30, 54], line2: 54 } as const;
+/** Round 1's clock (capture-game.mjs): 3.0 on frame 0. */
+export const R1_CLOCK = 3.02;

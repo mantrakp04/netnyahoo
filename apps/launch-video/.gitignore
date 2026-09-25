@@ -5,3 +5,5 @@ dist
 # Filled by scripts/prepare-assets.mjs and scripts/capture-game.mjs.
 public
 out
+# The user's own recordings (README, "Shot list").
+clips

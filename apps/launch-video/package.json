@@ -8,7 +8,7 @@
     "prepare-assets": "node scripts/prepare-assets.mjs && node scripts/make-sound.mjs",
     "capture": "node scripts/capture-game.mjs",
     "render": "remotion render Launch ../../output/launch-video/netnyahoo-launch.mp4 --codec=h264 --crf=17 --x264-preset=slow --pixel-format=yuv420p --audio-codec=aac --audio-bitrate=192k",
-    "cover": "remotion still Cover ../../output/launch-video/netnyahoo-launch-cover.png && remotion still Answer ../../output/launch-video/netnyahoo-round3-answer.png",
+    "cover": "remotion still Cover ../../output/launch-video/netnyahoo-launch-cover.png && remotion still Answer ../../output/launch-video/netnyahoo-answer.png",
     "lint": "tsc"
   },
   "dependencies": {

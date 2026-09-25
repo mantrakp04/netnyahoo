@@ -1,10 +1,10 @@
 // Synthesizes the sound design into public/sound/track.wav, timed to src/timeline.ts:
-// clock ticks, a bonk when time runs out, a bell when the game shows him, whooshes for the camera,
-// a pop and a stab when Big Yahu comes up. No samples, no music.
+// pledge thuds, a power-down, the game's clock, a pop for Big Yahu, a stab and a stamp for the
+// call to action. No samples, no music.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { B, FPS, ROUNDS, TOTAL, TWIST } from "../src/timeline.ts";
+import { B, FPS, PLEDGE_LEN, TOTAL } from "../src/timeline.ts";
 
 const SR = 44100;
 const out = new Float32Array(Math.ceil((TOTAL / FPS) * SR));
@@ -67,24 +67,26 @@ function stab(frame) {
 function pop(frame) {
   add(at(frame), SR * 0.35, (t) => Math.sin(2 * Math.PI * (220 + 520 * Math.min(1, t * 9)) * t) * 0.4 * Math.exp(-t * 9));
 }
-
-// Ticks while you look (faster in the one-second round), a bonk when the clock runs out, a bell
-// when the game shows him. Round 3: the bonk and nothing else.
-const rounds = [["r1", 10], ["r2", 10], ["r3", 5]];
-for (const [id, every] of rounds) {
-  const b = B[id];
-  const r = ROUNDS[id];
-  for (let i = 0; i < r.search; i += every) tick(b.from + i, id === "r3");
-  buzzer(b.from + r.search);
-  if (id !== "r3") bell(b.from + r.search + 4);
-  if (id !== "r1") thud(b.from, 0.8);
+function powerDown(frame) {
+  add(at(frame), SR * 0.7, (t) => Math.sin(2 * Math.PI * (660 * Math.exp(-t * 3.5)) * t) * 0.3 * Math.exp(-t * 3));
 }
-whoosh(B.twist.from, 0.8);
-thud(B.twist.from + 4, 0.7);
-whoosh(B.twist.from + TWIST.in[0], 0.9);
-pop(B.twist.from + TWIST.line2 + 2);
-stab(B.twist.from + TWIST.line2);
-thud(B.end.from, 0.9);
+
+// A thud and a small bell for each pledge "kept"; the Wi-Fi powering down; the game's clock
+// ticking; a pop when Big Yahu comes up; a stab and the stamp for "Impeach Chrome."
+stab(B.poster.from + 1);
+for (let i = 0; i < 6; i++) {
+  thud(B.pledges.from + i * PLEDGE_LEN, 0.8);
+  add(at(B.pledges.from + i * PLEDGE_LEN + 3), SR * 0.6, (t) => Math.sin(2 * Math.PI * 1568 * t) * 0.12 * Math.exp(-t * 7));
+}
+powerDown(B.offline.from);
+thud(B.offline.from + 2, 0.7);
+whoosh(B.offline.from + 10, 0.8);
+whoosh(B.find.from, 0.5);
+for (let i = 0; i < 54; i += 10) tick(B.find.from + i);
+pop(B.cta.from + 1);
+thud(B.cta.from + 8, 1);
+stab(B.cta.from + 26);
+thud(B.cta.from + 26, 1.3);
 whoosh(B.bridge.from + 1, 0.8, true);
 
 let peak = 0;

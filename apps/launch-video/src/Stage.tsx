@@ -17,9 +17,9 @@ export const PANEL = { x: 20, y: 452, w: 1040 };
 export const CAM_GAME: Cam = { s: PANEL.w / GAME.w, x: PANEL.x - GAME.x * (PANEL.w / GAME.w), y: PANEL.y - GAME.y * (PANEL.w / GAME.w), mask: 0 };
 export const PANEL_H = GAME.h * CAM_GAME.s;
 // The whole window, 1040 wide.
-export const CAM_WINDOW: Cam = { s: 1040 / WIN.w, x: 20, y: 450, mask: 1 };
+export const CAM_WINDOW: Cam = { s: 1040 / WIN.w, x: 20, y: 468, mask: 1 };
 // Its top-left: traffic lights, sidebar, address bar and the "No internet" header, readable.
-export const CAM_HEADER: Cam = { s: 0.74, x: 20, y: 450, mask: 1 };
+export const CAM_HEADER: Cam = { s: 0.78, x: 20, y: 440, mask: 1 };
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const mixCam = (a: Cam, b: Cam, t: number): Cam => ({

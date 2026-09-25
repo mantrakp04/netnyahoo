@@ -1,6 +1,6 @@
-// Copies what the video uses into public/ (gitignored): the site's mascot model, the game's Big Yahu portraits, fonts, and this package's own window capture.
+// Copies what the video uses into public/ (gitignored): the site's window captures and mascot model, the game's Big Yahu portraits, fonts, and this package's own window capture.
 // Run before `pnpm dev` / `pnpm render` (the `capture` script fills public/capture/).
-import { cpSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +13,15 @@ const copy = (from, to) => {
 };
 
 copy(join(repo, "apps/site/public/models/big-yahu.glb"), "models/big-yahu.glb");
+for (const s of ["browse", "extensions", "privacy", "split", "command-bar", "profile-plum", "profile-blue", "profile-green"]) {
+  copy(join(repo, `apps/site/src/assets/shots/${s}.webp`), `shots/${s}.webp`);
+}
+// The user's recordings (README, "Shot list"): clips/<id>.mp4 replaces that pledge's still.
+const clipsDir = join(root, "clips");
+const clips = existsSync(clipsDir) ? readdirSync(clipsDir).filter((f) => f.endsWith(".mp4")) : [];
+for (const c of clips) copy(join(clipsDir, c), `clips/${c}`);
+mkdirSync(join(pub, "clips"), { recursive: true });
+writeFileSync(join(pub, "clips/manifest.json"), JSON.stringify(clips.map((c) => c.replace(/\.mp4$/, ""))));
 copy(join(repo, "apps/site/src/assets/game/wanted.webp"), "game/wanted.webp");
 copy(join(repo, "apps/site/src/assets/app-icon.png"), "game/app-icon.png");
 copy(join(root, "assets/window-offline.webp"), "window/window-offline.webp");
