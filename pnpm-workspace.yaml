@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+  # The landing page is a standalone static site with its own lockfile (apps/site/README.md).
+  - "!apps/site"
 
 # React Native + CocoaPods expect a flat node_modules (the Podfile and Metro
 # resolve react-native-macos by path), so hoist instead of pnpm's symlink store.

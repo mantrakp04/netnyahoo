@@ -1,0 +1,186 @@
+---
+// The engineering record, styled as a ballot: what's in (ticked), what isn't yet (empty box).
+type Vote = "yes" | "part" | "no";
+const rows: { item: string; detail: string; vote: Vote; label?: string }[] = [
+  { item: "Engine", detail: "Chromium 154 through our own patched build of CEF, Chrome runtime. Every tab is a real Chrome tab.", vote: "yes" },
+  { item: "De-Googled", detail: "ungoogled-chromium’s patches: Google sign-in, crash reporting, GCM and domain-reliability pings compiled out.", vote: "yes" },
+  { item: "Chrome Web Store", detail: "Left on deliberately, with extension auto-update.", vote: "yes" },
+  { item: "Video and audio", detail: "H.264 and AAC, built with Chrome’s proprietary codecs.", vote: "yes" },
+  { item: "Content blocking", detail: "uBlock Origin Lite in every profile, incognito included.", vote: "yes" },
+  { item: "Passwords and autofill", detail: "Chrome’s password manager and autofill, per profile.", vote: "yes" },
+  { item: "Passkeys", detail: "Touch ID and phone work. iCloud Keychain passkeys wait on an Apple entitlement.", vote: "part" },
+  { item: "App updates", detail: "Sparkle, with signed releases.", vote: "yes" },
+  { item: "Sync", detail: "Not yet. There’s no server to sync through.", vote: "no" },
+  { item: "Translate", detail: "Not yet. Its Google backend is one of the things removed.", vote: "no" },
+  { item: "Widevine DRM", detail: "Not yet, so Netflix and other protected video won’t play.", vote: "no" },
+  { item: "Intel Macs", detail: "Apple Silicon only, macOS 14 or later.", vote: "no", label: "No" },
+];
+const labels: Record<Vote, string> = { yes: "Yes", part: "Partly", no: "Not yet" };
+---
+
+<section class="record" id="record" aria-labelledby="record-title" data-shot="record">
+  <div class="wrap record-grid">
+    <header class="record-head">
+      <p class="label kicker">The record</p>
+      <h2 class="poster" id="record-title" data-reveal>It’s actually Chromium.</h2>
+      <p class="lede" data-reveal style="--i: 1">
+        Not a WebKit skin and not Electron. Netnyahoo is our own build of Chromium, patched and compiled from
+        source, hosted in a native Mac shell written in React Native, Swift and Objective-C++. Unlike most campaign
+        promises, all of it can be checked: the patches are in the repository.
+      </p>
+    </header>
+
+    <div class="ballot" role="table" aria-label="What Netnyahoo 0.1.0 does and doesn’t do">
+      <div class="ballot-top label" role="row">
+        <span role="columnheader">Measure</span>
+        <span role="columnheader">Details</span>
+        <span role="columnheader">Vote</span>
+      </div>
+      {
+        rows.map((r) => (
+          <div class:list={["row", r.vote]} role="row">
+            <span class="item" role="cell">{r.item}</span>
+            <span class="detail" role="cell">{r.detail}</span>
+            <span class="vote label" role="cell">
+              <span class="box" aria-hidden="true">
+                {r.vote !== "no" && (
+                  <svg viewBox="0 0 20 20" width="20" height="20">
+                    <path d={r.vote === "yes" ? "M3.5 10.5l4.2 4.3L16.8 4" : "M4 10h12"} fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square" />
+                  </svg>
+                )}
+              </span>
+              {r.label ?? labels[r.vote]}
+            </span>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .record {
+    margin-top: var(--section);
+    background: var(--night);
+    color: var(--night-ink);
+    padding: var(--section) 0;
+  }
+  .record ::selection {
+    background: var(--night-ink);
+    color: var(--night);
+  }
+  .record-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--gutter);
+    row-gap: clamp(48px, 7vw, 96px);
+  }
+  .record-head {
+    grid-column: 1 / span 5;
+    align-self: start;
+    position: sticky;
+    top: 100px;
+  }
+  .kicker {
+    color: var(--night-ink-2);
+    margin-bottom: 20px;
+  }
+  h2 {
+    font-size: clamp(2.6rem, 1.2rem + 4vw, 5.6rem);
+  }
+  .lede {
+    margin-top: 28px;
+    color: var(--night-ink-2);
+    max-width: 28em;
+  }
+  .ballot {
+    grid-column: 7 / -1;
+    border-top: 2px solid var(--night-ink);
+  }
+  .ballot-top {
+    display: grid;
+    grid-template-columns: 11rem 1fr 7.5rem;
+    gap: 16px;
+    padding: 10px 0;
+    color: var(--night-ink-2);
+    border-bottom: 1px solid var(--night-rule);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 11rem 1fr 7.5rem;
+    gap: 16px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--night-rule);
+    align-items: baseline;
+  }
+  .item {
+    font-family: var(--poster);
+    font-weight: 720;
+    font-stretch: 80%;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    font-size: 1.05rem;
+  }
+  .detail {
+    color: var(--night-ink-2);
+    font-size: var(--t-small);
+    line-height: 1.45;
+  }
+  .vote {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    justify-self: start;
+    align-self: center;
+  }
+  .box {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid var(--night-ink);
+    border-radius: 2px;
+  }
+  .yes .box {
+    color: var(--night-ink);
+  }
+  .part .box {
+    color: var(--night-ink-2);
+  }
+  .no {
+    color: color-mix(in srgb, var(--night-ink) 62%, transparent);
+  }
+  .no .box {
+    border-color: var(--night-ink-2);
+  }
+  .no .vote {
+    color: #ff8a73;
+  }
+
+  @media (max-width: 960px) {
+    .record-head,
+    .ballot {
+      grid-column: 1 / -1;
+      position: static;
+    }
+  }
+  @media (max-width: 600px) {
+    .ballot-top {
+      display: none;
+    }
+    .row {
+      grid-template-columns: 1fr auto;
+      grid-template-areas: "item vote" "detail detail";
+      row-gap: 6px;
+    }
+    .item {
+      grid-area: item;
+    }
+    .vote {
+      grid-area: vote;
+    }
+    .detail {
+      grid-area: detail;
+    }
+  }
+</style>

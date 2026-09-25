@@ -1,0 +1,107 @@
+---
+import { Image } from "astro:assets";
+import icon from "../assets/app-icon.png";
+import { DMG, REPO } from "../data/release";
+---
+
+<header class="bar" data-bar>
+  <div class="wrap bar-inner">
+    <a class="mark" href="#top" aria-label="Netnyahoo, back to top">
+      <Image src={icon} alt="" width={30} height={30} densities={[1, 2]} loading="eager" />
+      <span>netnyahoo</span>
+    </a>
+    <nav aria-label="Sections">
+      <a href="#platform">Platform</a>
+      <a href="#record">Record</a>
+      <a href="#game">Game</a>
+      <a href="#press">Press</a>
+      <a href={REPO} rel="noopener">GitHub</a>
+    </nav>
+    <a class="bar-cta" href={DMG} data-download>Download</a>
+  </div>
+</header>
+
+<style>
+  .bar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    backdrop-filter: saturate(1.2) blur(10px);
+    -webkit-backdrop-filter: saturate(1.2) blur(10px);
+    border-bottom: 1px solid transparent;
+    transition: border-color 200ms;
+  }
+  .bar[data-scrolled] {
+    border-bottom-color: var(--rule);
+  }
+  .bar-inner {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    height: 60px;
+  }
+  .mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    font-family: var(--poster);
+    font-weight: 880;
+    font-stretch: 112%;
+    font-size: 1.3rem;
+    letter-spacing: -0.035em;
+    line-height: 1;
+    margin-right: auto;
+  }
+  .mark img {
+    width: 30px;
+    height: 30px;
+  }
+  nav {
+    display: flex;
+    gap: 26px;
+  }
+  nav a {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-stretch: 87.5%;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--ink-2);
+    transition: color 150ms;
+  }
+  nav a:hover {
+    color: var(--ink);
+  }
+  .bar-cta {
+    font-family: var(--poster);
+    font-weight: 760;
+    font-stretch: 80%;
+    text-transform: uppercase;
+    font-size: 0.92rem;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 9px 14px 8px;
+    border-radius: 3px;
+    transition: background-color 150ms;
+  }
+  .bar-cta:hover {
+    background: var(--tie);
+  }
+  @media (max-width: 820px) {
+    nav {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  const bar = document.querySelector<HTMLElement>("[data-bar]")!;
+  const onScroll = () => bar.toggleAttribute("data-scrolled", scrollY > 8);
+  addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+</script>

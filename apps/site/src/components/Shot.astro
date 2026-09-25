@@ -1,0 +1,74 @@
+---
+// Real captures of the app. Window shots are the window only (rounded corners, transparent outside),
+// so the shadow here follows the window's shape. Several shots fan out, back to front.
+// A `panel` is one view rendered by the app without its window frame; it gets a plain rounded card.
+import type { ImageMetadata } from "astro";
+import { Picture } from "astro:assets";
+
+interface Props {
+  src: ImageMetadata | ImageMetadata[];
+  alt: string;
+  sizes: string;
+  panel?: boolean;
+  eager?: boolean;
+}
+const { src, alt, sizes, panel = false, eager = false } = Astro.props;
+const shots = Array.isArray(src) ? src : [src];
+const first = shots[0];
+const fan = shots.length > 1;
+const widths = (s: ImageMetadata) => [640, 960, 1280, 1600, 2200, s.width].filter((w, i, a) => w <= s.width && a.indexOf(w) === i);
+---
+
+<div
+  class:list={["shot", { panel, fan }]}
+  style={`--n: ${shots.length}; aspect-ratio: ${first.width} / ${first.height}`}
+  role={fan ? "img" : undefined}
+  aria-label={fan ? alt : undefined}
+>
+  {
+    shots.map((s, i) => (
+      <Picture
+        src={s}
+        alt={fan ? "" : alt}
+        formats={["avif"]}
+        fallbackFormat="webp"
+        widths={widths(s)}
+        sizes={sizes}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        style={`--i: ${i}`}
+      />
+    ))
+  }
+</div>
+
+<style>
+  .shot {
+    position: relative;
+    width: 100%;
+    filter: drop-shadow(0 1px 1px rgb(22 19 15 / 0.14)) drop-shadow(0 22px 44px rgb(22 19 15 / 0.2));
+  }
+  .shot :global(img) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .panel :global(img) {
+    border-radius: 12px;
+  }
+  /* Fanned windows: each one down and to the right of the last, the front one full size. */
+  .fan {
+    --step: 10%;
+  }
+  .fan :global(picture) {
+    position: absolute;
+    inset: 0;
+  }
+  .fan :global(img) {
+    position: absolute;
+    top: calc(var(--i) * var(--step) * 0.62);
+    left: calc(var(--i) * var(--step));
+    width: calc(100% - (var(--n) - 1) * var(--step));
+    height: auto;
+  }
+</style>
