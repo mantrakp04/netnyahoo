@@ -41,6 +41,7 @@ public class ShellModule: Module {
       _ = installScrollViewInsetFix
       DispatchQueue.main.async { [weak self] in
         MenuTarget.shared.handler = { command, arg, windowId in
+          if command == "closeTab", WindowManager.shared.closeForeignKeyWindow() { return }
           self?.sendEvent("onCommand", ["command": command, "arg": arg as Any, "windowId": windowId as Any])
         }
         WindowManager.shared.emit = { name, body in self?.sendEvent(name, body) }

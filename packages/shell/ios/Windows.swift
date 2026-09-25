@@ -42,6 +42,16 @@ final class WindowManager: NSObject, NSWindowDelegate {
   /// The window menu commands apply to.
   var keyWindowId: String? { id(of: NSApp.keyWindow) ?? id(of: NSApp.mainWindow) }
 
+  /// ⌘W while a page's own window is key (a `window.open` popup, DevTools): closes that window.
+  /// Commands from windows that aren't ours go to the last browser window, so ⌘W in a sign-in
+  /// popup closed the tab behind it instead.
+  func closeForeignKeyWindow() -> Bool {
+    guard keyWindowId == nil, let key = NSApp.keyWindow, !(key is NSPanel), key.styleMask.contains(.closable)
+    else { return false }
+    key.performClose(nil)
+    return true
+  }
+
   /// The browser window the Window menu acts on.
   var keyBrowserWindow: NSWindow? { keyWindowId.flatMap { windows[$0] } }
 
