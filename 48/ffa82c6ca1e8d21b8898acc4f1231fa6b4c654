@@ -1,0 +1,327 @@
+packages/shell/ios/ShellModule.swift
+  s_9c356f9574d31c::t_d209b234d02f3f 384-385,389-457,461-468
+  s_9c356f9574d31c::t_a350ef2357182e 386-388,458-460
+apps/browser/src/components/media/SharePicker.tsx
+  s_9c356f9574d31c::t_1d7cc5b0e07c9e 12,125,127,129-133
+apps/browser/src/components/import/apply.ts
+  s_9c356f9574d31c::t_3dd67c23ee827b 12,63
+packages/cef/ios/NNClient.h
+  s_9c356f9574d31c::t_dd4e105198d1f6 159-160,180-181
+  s_9c356f9574d31c::t_95706a250e1006 116-118,232-233
+apps/browser/src/components/settings/SettingsWindow.tsx
+  s_9c356f9574d31c::t_469520b5484227 95,97
+apps/browser/src/components/media/cast.ts
+  s_9c356f9574d31c::t_140bd1257390db 29-30
+  s_9c356f9574d31c::t_72984457487b3f 1-28,31-87
+  s_9c356f9574d31c::t_9f304ba9cc8e81 88-92
+apps/browser/src/components/site/SiteControls.tsx
+  s_9c356f9574d31c::t_9ca99cfa94c2ee 25,156-173,175
+apps/browser/src/components/layout/tabDrag.ts
+  s_9c356f9574d31c::t_9c0ae9fac718a4 1,3,10-15,17,25,27-29,34-37,40,42-44,48-50,52-53,62-67,70-75,82
+  s_9c356f9574d31c::t_50f60521fdf602 4,7,51,76-77
+  s_9c356f9574d31c::t_bcaf8fa6214fa4 69
+apps/browser/src/components/layout/windowDrop.test.mjs
+  s_9c356f9574d31c::t_b3d318a7f2e933 1-59
+apps/browser/src/components/ContentCard.tsx
+  s_9c356f9574d31c::t_75b59602881cc1 425
+  s_9c356f9574d31c::t_00328c24d1add5 35-37,214,230-231
+packages/cef/ios/CefModule.swift
+  s_9c356f9574d31c::t_fabdacf92ea0fe 271-272
+  s_9c356f9574d31c::t_58421a4a03f30c 58-59
+packages/cef/ios/NNCef.h
+  s_9c356f9574d31c::t_48cfcf0fb369a8 229-230
+  s_9c356f9574d31c::t_f925d36147230d 179
+  s_9c356f9574d31c::t_717db80e445fcd 51-58
+  s_9c356f9574d31c::t_d2ed3a86b51975 247-249,264,360-362
+  s_9c356f9574d31c::t_b8c2b099d358a9 363-365
+packages/cef/src/contentBlocker.ts
+  s_9c356f9574d31c::t_1c8143a48acd89 18-19
+  s_9c356f9574d31c::t_c73cdf6dc4b13a 4-5,16-17,37-41,48-49
+packages/cef/ios/NNContentBlocker.mm
+  s_9c356f9574d31c::t_1c8143a48acd89 37-44,51,65,76-79,88
+apps/browser/src/components/settings/windows.ts
+  s_9c356f9574d31c::t_5715aeacc474fc 32
+apps/browser/src/components/layout/windowDrop.ts
+  s_9c356f9574d31c::t_50f60521fdf602 1-28,30-57
+  s_9c356f9574d31c::t_0f737135193933 29
+docs/dia-spec.md
+  s_9c356f9574d31c::t_31ff126eaac33b 282-288,357-366
+  s_9c356f9574d31c::t_8fba176a8b173d 367-381
+packages/cef/ios/NNBrowserView.mm
+  s_9c356f9574d31c::t_7eade50b521a7a 81-119,155-156,206,255,260-265,272-290,298,300-301,386-388,427,708-712,714-715,721,723-730,744-748
+  s_9c356f9574d31c::t_b8c2b099d358a9 706-707,713,720
+  s_9c356f9574d31c::t_aa75161b91854e 291-292,295-297,299,722
+packages/cef/patches/chromium-extension-updates.patch
+  s_9c356f9574d31c::t_616e50d877ed2a 1-13
+  s_9c356f9574d31c::t_fd4171f1100649 14-26
+packages/shell/ios/Menus.swift
+  s_9c356f9574d31c::t_f925d36147230d 469
+  s_9c356f9574d31c::t_e84bf631ea63b6 335
+apps/browser/src/components/settings/panes/Autofill.tsx
+  s_9c356f9574d31c::t_6d7458e6c7436c 28,31
+  s_9c356f9574d31c::t_a7b54997f9c302 34,38,40,42-54,56,71,74
+apps/browser/src/lib/theme.ts
+  s_9c356f9574d31c::t_c4342e8694f6b9 6,29-31,86,222-228
+  s_9c356f9574d31c::t_05069fab2dcbee 27-28
+  s_9c356f9574d31c::t_e0b62cbcf540c5 25-26
+packages/cef/expo-module.config.json
+  s_9c356f9574d31c::t_78a8fcfa333c6a 4
+packages/cef/src/WebView.tsx
+  s_9c356f9574d31c::t_f979bb16b0d801 458
+  s_9c356f9574d31c::t_b1101ae635d700 180-185,240-243,245-248,334-340,381,429,434-435,478-480,485
+packages/cef/ios/ChromeUIModule.swift
+  s_9c356f9574d31c::t_53234ebb8ec9e9 9-10
+  s_9c356f9574d31c::t_58106952b1abfc 49
+  s_9c356f9574d31c::t_98e6b595feb396 1-8,11-48,50-54
+apps/browser/src/lib/windowTint.ts
+  s_9c356f9574d31c::t_10feabb5ebcb81 2-4,11-14,17-23,30-31
+  s_9c356f9574d31c::t_e8427a1edbd38d 8-10,15-16
+  s_9c356f9574d31c::t_88c975863f5c1f 5-7
+  s_9c356f9574d31c::t_4ae4776bd1dcf2 1
+apps/browser/src/components/settings/panes/Privacy.tsx
+  s_9c356f9574d31c::t_1c8143a48acd89 42,154
+  s_9c356f9574d31c::t_c11d463c45173b 32,37-38,43,60,125-129,163-165
+packages/shell/src/app.ts
+  s_9c356f9574d31c::t_36e82a0cd75c93 241-242
+  s_9c356f9574d31c::t_9a93240aacb99b 129,236-240
+  s_9c356f9574d31c::t_9ed27646a230bd 8-9,11,68
+packages/cef/src/index.ts
+  s_9c356f9574d31c::t_00871a7a626f1a 9
+docs/migration-status.md
+  s_9c356f9574d31c::t_026dcd48c80587 133-165,172-173,276,320-333,423-424
+  s_9c356f9574d31c::t_0b676b894d2cbe 74,101-131,233-234
+  s_9c356f9574d31c::t_23eca5f642d851 6-9,97-99,167-171,174-182,353-356,399-400,425-426
+  s_9c356f9574d31c::t_27e11948c4bcce 27
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_08046a8281e9be 51-52,424-425,764-765,886-887,889-893
+  s_9c356f9574d31c::t_e2e73550c5cae7 258-262,813-852
+  s_9c356f9574d31c::t_a2c6c89d647a23 243-246
+  s_9c356f9574d31c::t_2cee75ceede41e 853-854
+apps/browser/src/lib/appIntegration.ts
+  s_9c356f9574d31c::t_7f0c763a5bb3bd 28
+  s_9c356f9574d31c::t_ddeade38bd527e 69-70
+  s_9c356f9574d31c::t_3757d877ee977f 98
+packages/cef/helper/page_script.js
+  s_9c356f9574d31c::t_f925d36147230d 485-486
+packages/cef/ios/NNChromeUI.mm
+  s_9c356f9574d31c::t_3f7661b8d7b742 9-11,236-244,250,273-274
+  s_9c356f9574d31c::t_e9c025521bce28 3,5-8,74-123,125-148,150-155,157-158,160-166,168-173,175-176,178-226,251-272,275-280,284-289,293-347,349,352-409,419-432
+  s_9c356f9574d31c::t_58106952b1abfc 410-418
+  s_9c356f9574d31c::t_edc19c61aa7578 124,149,156,159,167,174,177,227-235,245-249,281-283,290-292
+  s_9c356f9574d31c::t_9e1523fdb7050f 348,350-351
+packages/cef/ios/NNChromeSurfaces.h
+  s_9c356f9574d31c::t_36e462fed0033b 1-56,59-64
+  s_9c356f9574d31c::t_58106952b1abfc 57-58
+apps/browser/src/components/pages/ClearDataDialog.tsx
+  s_9c356f9574d31c::t_48cfcf0fb369a8 1,30-32,51-52,83
+packages/cef/ios/NNSwipe.mm
+  s_9c356f9574d31c::t_9adaa71dbf87fb 59,404-416,418-425,510
+  s_9c356f9574d31c::t_f2b604f85c7c7f 417
+  s_9c356f9574d31c::t_09e4aabf2daf17 43-48,50,58,60-75,84-85,97,105-108,110-111,113,116,119,122,163-165,167,173-176,178-179
+apps/browser/src/store/settings.ts
+  s_9c356f9574d31c::t_50240beffbc894 69-70,115
+apps/browser/src/lib/commands.ts
+  s_9c356f9574d31c::t_e84bf631ea63b6 26,202-203
+  s_9c356f9574d31c::t_c3d045fc040570 1
+  s_9c356f9574d31c::t_469520b5484227 228
+  s_9c356f9574d31c::t_c07261239f2d10 63-64,115-117
+apps/browser/src/lib/tabLifecycle.ts
+  s_9c356f9574d31c::t_b1d65d80daa401 17-21,24-25,103,165-169,188,195,262
+  s_9c356f9574d31c::t_420912c9d4b6ff 289-291,296-297
+  s_9c356f9574d31c::t_a83f7f681f13dd 105-106,171-175,208,249-250,252-253
+  s_9c356f9574d31c::t_9afbb22cbab764 180
+apps/browser/src/store/store.test.mjs
+  s_9c356f9574d31c::t_6dff850fc31048 193-207
+packages/shell/expo-module.config.json
+  s_9c356f9574d31c::t_d209b234d02f3f 10
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_08046a8281e9be 943-945
+  s_9c356f9574d31c::t_dd4e105198d1f6 741-750,752-792,795,832-871,877-893,933-934
+  s_9c356f9574d31c::t_95706a250e1006 595-600
+  s_9c356f9574d31c::t_a516fecb63e0a4 751
+apps/browser/src/components/sidebar/TabRow.tsx
+  s_9c356f9574d31c::t_b5fabb98b12b24 1,38,47,106,108-110
+README.md
+  s_9c356f9574d31c::t_d22112bdcfee19 3-5,11-15,27-40,51-52
+  s_9c356f9574d31c::t_0b15a37d218086 66-69
+apps/browser/src/components/media/state.ts
+  s_9c356f9574d31c::t_6b71ad9421f899 30-31,34-43,219
+docs/store-api.md
+  s_9c356f9574d31c::t_a7629765b30e05 21-22
+packages/shell/ios/Updater.swift
+  s_9c356f9574d31c::t_ddeade38bd527e 7-8
+  s_9c356f9574d31c::t_c5be7d5d498848 9-11
+  s_9c356f9574d31c::t_bbfba5f384ecc7 6
+packages/cef/ios/NNExtensionPackage.h
+  s_9c356f9574d31c::t_8af83cdf72820f 1
+apps/browser/src/components/settings/panes/Advanced.tsx
+  s_9c356f9574d31c::t_d00682b265bda7 1,14-15,19-24,65-74
+packages/shell/ios/Windows.swift
+  s_9c356f9574d31c::t_435c8b0447b5c9 72,79,185-190,195-198,200
+  s_9c356f9574d31c::t_de2ba0508e8796 191-194,199,201
+apps/browser/src/store/types.ts
+  s_9c356f9574d31c::t_1f08ccc05fd5c3 170-171
+packages/cef/ios/NNExtensionPackage.mm
+  s_9c356f9574d31c::t_8af83cdf72820f 9
+apps/browser/macos/Netnyahoo-macOS/Info.plist
+  s_9c356f9574d31c::t_713738b986b6c9 93-94
+apps/browser/src/components/site/DeviceChooser.tsx
+  s_9c356f9574d31c::t_6dfc5d679bf28a 1-26,29-214
+  s_9c356f9574d31c::t_66700a48a8e1b7 27-28
+apps/browser/src/store/tabs.ts
+  s_9c356f9574d31c::t_1f08ccc05fd5c3 26-30,152,329-330
+apps/browser/src/components/media/ShareBar.tsx
+  s_9c356f9574d31c::t_8a2b51b99af102 2-15,17-39,42-121,127-131
+  s_9c356f9574d31c::t_58106952b1abfc 1,16,122-126
+  s_9c356f9574d31c::t_3d0576e66d8354 40-41
+apps/browser/src/components/NewTabPage.tsx
+  s_9c356f9574d31c::t_ca2d9faea43dab 18
+  s_9c356f9574d31c::t_4ba4440b85960c 17,31
+  s_9c356f9574d31c::t_d0d19ada6f04ce 19-24
+  s_9c356f9574d31c::t_8dfae75e7af760 27-30,32-41,50,111-112
+  s_9c356f9574d31c::t_187c86811fcc24 25-26
+apps/browser/src/components/Omnibox.tsx
+  s_9c356f9574d31c::t_4ba4440b85960c 323-334,349
+packages/cef/src/native.ts
+  s_9c356f9574d31c::t_85a2a19d1bf9d5 75
+  s_9c356f9574d31c::t_f8da6a161cab9e 5,32-33,40,50
+packages/cef/ios/NNSiteSettings.mm
+  s_9c356f9574d31c::t_a516fecb63e0a4 300-302
+apps/browser/src/App.tsx
+  s_9c356f9574d31c::t_27b594472f7ff3 10,75-76,85
+apps/browser/src/lib/actions.ts
+  s_9c356f9574d31c::t_52dcb2d2c9f646 119
+apps/browser/src/components/extensions/ExtensionOverlays.tsx
+  s_9c356f9574d31c::t_eadf099dcc20da 4,180,185,188
+apps/browser/src/components/media/pip.ts
+  s_9c356f9574d31c::t_1d7cc5b0e07c9e 10,51
+  s_9c356f9574d31c::t_252f4060c4ed8c 9,52
+packages/cef/ios/ExtensionsModule.swift
+  s_9c356f9574d31c::t_7be4fd6853d573 9-12,54-63
+  s_9c356f9574d31c::t_306e5c687ee04e 64
+packages/cef/src/chromeUI.ts
+  s_9c356f9574d31c::t_8813f497a668ea 1-90,92-105,107-152,155-156
+  s_9c356f9574d31c::t_58106952b1abfc 91,106,153-154
+apps/browser/src/components/extensions/bridge.ts
+  s_9c356f9574d31c::t_5b7b12f41737e2 115-116
+  s_9c356f9574d31c::t_dc4d94cd7fe923 87,90-92,95,103-105,108-110,112,114,130-171,177-180,182,194-197,233,238-240
+  s_9c356f9574d31c::t_10573cc6f048c8 4,12,15,18-29,32-34,37,55-56,62-64,66-72
+packages/cef/patches/chromium-chrome-ui-hooks.patch
+  s_9c356f9574d31c::t_a172b081645edc 1-197
+apps/browser/src/components/media/CastPicker.tsx
+  s_9c356f9574d31c::t_2da3537b530fd1 1-142
+apps/browser/src/components/settings/panes/Passwords.tsx
+  s_9c356f9574d31c::t_26102362bfea4c 14
+  s_9c356f9574d31c::t_469520b5484227 35,38
+  s_9c356f9574d31c::t_85a2a19d1bf9d5 58-59
+apps/browser/src/components/site/Autofill.tsx
+  s_9c356f9574d31c::t_469520b5484227 4,16-18,20-24
+packages/cef/patches/ungoogled-status.tsv
+  s_9c356f9574d31c::t_7ae2e68c417c3c 30
+packages/cef/src/passwords.ts
+  s_9c356f9574d31c::t_85a2a19d1bf9d5 16,18-19
+docs/research/chromium-ui-layer.md
+  s_9c356f9574d31c::t_cceda2b66b1b50 220-225
+packages/cef/patches/cef-tab-state.patch
+  s_9c356f9574d31c::t_7a6a9e0a73f051 1-86,88-656,658-670,678-684,688-689,697-740,743-745,748,751-779
+  s_9c356f9574d31c::t_7300dfab2cba83 87
+  s_9c356f9574d31c::t_f138e166f69c33 657,671-677,685-687,690-696,741-742,746-747,749-750
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_ed80635ccf43e4 697-698,702-704,710-715
+  s_9c356f9574d31c::t_dced37ea6e275b 23,69-71,197,471-474,479,500,515-516,520
+  s_9c356f9574d31c::t_67a510caf0f192 87-88,676-681,686,716-721
+  s_9c356f9574d31c::t_68fc9df643baeb 112
+  s_9c356f9574d31c::t_5b3881d47089f2 54-55,168-170,206,217,223,294,351,363,450,477-478
+  s_9c356f9574d31c::t_e62b06e03527e4 175-176,278,338,493,523,567,571,663
+  s_9c356f9574d31c::t_82112ea3703c49 25,43-44
+  s_9c356f9574d31c::t_8fba176a8b173d 313-314,319,549
+  s_9c356f9574d31c::t_ea2254b1b7e33f 722
+  s_9c356f9574d31c::t_bfd46fd28a7e54 178-185,683-685,690,699-701,705-707
+  s_9c356f9574d31c::t_6a5e9b4507e9bc 687-689,691-696
+  s_9c356f9574d31c::t_33721e8f1f11b1 682
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_d02720a4e0ae29 22,115-133
+  s_9c356f9574d31c::t_7ae2e68c417c3c 207
+  s_9c356f9574d31c::t_f5c77a5c1540d7 23,31-32,35-37,135-158,220-222
+  s_9c356f9574d31c::t_06c80b5f45e026 60-62
+  s_9c356f9574d31c::t_4ef01ebe620166 50-59,63
+  s_9c356f9574d31c::t_5965eb11c18f1a 134
+packages/cef/ios/NetnyahooCEF.podspec
+  s_9c356f9574d31c::t_78a8fcfa333c6a 24
+  s_9c356f9574d31c::t_d0739aeb4bb553 6-7,31
+packages/cef/ios/NNChromeUI.h
+  s_9c356f9574d31c::t_628777ceb14c61 2-7,12-19
+  s_9c356f9574d31c::t_8781f97cbbec1f 20
+docs/agent-brief.md
+  s_9c356f9574d31c::t_dffc0bc5125b5b 14-25,27-45,51-52,54-59,61,65,71-72,74-84,86-88,91-92,97-115,119-120,124-126,133
+apps/browser/src/store/windows.ts
+  s_9c356f9574d31c::t_1f08ccc05fd5c3 332-333
+apps/browser/src/components/extensions/state.ts
+  s_9c356f9574d31c::t_e9e808a778440d 121
+  s_9c356f9574d31c::t_808d513d9bfcb9 5,20,34,51-52,55-63,106-108,110,112-114,117-120,200,256-257,269,276-277,283,287-332,344-346,357
+  s_9c356f9574d31c::t_fa87a84c62fe52 24,278-282,284-286
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_d0739aeb4bb553 25-26,38
+  s_9c356f9574d31c::t_1edfa1cec1c01d 70-88
+  s_9c356f9574d31c::t_f925d36147230d 125
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_a67b2bbcb3913e 319-326
+  s_9c356f9574d31c::t_e84bf631ea63b6 1-2,42
+packages/cef/ios/NNCef.mm
+  s_9c356f9574d31c::t_717db80e445fcd 815-818,820-836,840-849
+  s_9c356f9574d31c::t_f5a72d8be5d5e6 184-191
+packages/cef/ios/NNExtensions.h
+  s_9c356f9574d31c::t_504e758d75a91b 5-7,24,33-34,36,44
+apps/browser/src/components/extensions/ToolbarExtensions.tsx
+  s_9c356f9574d31c::t_9ca99cfa94c2ee 1,5,7,36,39-40,62,67,70,164-203
+  s_9c356f9574d31c::t_f4c572ae80415a 102-103,119-120,134
+  s_9c356f9574d31c::t_aa12eed02d67b4 204
+packages/cef/ios/NNExtensions.mm
+  s_9c356f9574d31c::t_5572866d236e09 57-61,83,120-124,132
+  s_9c356f9574d31c::t_9d46616a172e36 30-31,192
+packages/cef/src/extensions.ts
+  s_9c356f9574d31c::t_8bb5313e792df8 2,7-10,38,53,76-77,83-84,93-98,101,103-104,133,153,204,234-237,245
+packages/cef/ios/NNWindowHost.h
+  s_9c356f9574d31c::t_08046a8281e9be 50-51
+  s_9c356f9574d31c::t_483e0a4389cd7f 36-41
+packages/shell/ios/AppModule.swift
+  s_9c356f9574d31c::t_9a93240aacb99b 169,171,205,214-220
+  s_9c356f9574d31c::t_ab4970f3cde624 120
+apps/browser/src/components/extensions/SidePanel.tsx
+  s_9c356f9574d31c::t_024dfc2d2dd816 1-86,89-137
+  s_9c356f9574d31c::t_27b594472f7ff3 87-88
+packages/cef/src/module.ts
+  s_9c356f9574d31c::t_633dd74c9f1061 123-126
+  s_9c356f9574d31c::t_f8da6a161cab9e 122,169,190-202
+  s_9c356f9574d31c::t_c82af69f10f839 164-165
+apps/browser/macos/Podfile.lock
+  s_9c356f9574d31c::t_b8e71370e6dd6d 2585
+apps/browser/src/components/layout/SplitChrome.tsx
+  s_9c356f9574d31c::t_f604981746c405 10,99-101
+apps/browser/src/components/settings/panes/General.tsx
+  s_9c356f9574d31c::t_dae955e91e5bb3 96-97,109
+apps/browser/src/components/sidebar/dnd.tsx
+  s_9c356f9574d31c::t_2d7c0f11b91228 4,6,8,113-118,246,327-360
+apps/browser/src/components/site/permissions.ts
+  s_9c356f9574d31c::t_cffa3f36772db1 5,21-22
+packages/cef/ios/NNComponents.mm
+  s_9c356f9574d31c::t_7d55eefe32e356 1
+packages/cef/patches/cef-ui-surfaces.patch
+  s_9c356f9574d31c::t_9b04ddf5a7c899 1-1343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "48ffa82c6ca1e8d21b8898acc4f1231fa6b4c654",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
