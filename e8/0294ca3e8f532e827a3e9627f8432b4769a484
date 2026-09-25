@@ -1,0 +1,42 @@
+apps/site/package.json
+  s_bd985e916df5a3::t_291a123c539507 9
+  s_bd985e916df5a3::t_b0950f07ad7275 10
+apps/site/hexclave.deploy.ts
+  s_bd985e916df5a3::t_244a2525e22172 3-16
+  s_bd985e916df5a3::t_b0950f07ad7275 2
+  s_bd985e916df5a3::t_291a123c539507 1
+apps/site/Dockerfile
+  s_bd985e916df5a3::t_34504811b431e2 1-2,5
+  s_bd985e916df5a3::t_7c04b34284c968 3-4,6
+apps/site/.dockerignore
+  s_bd985e916df5a3::t_1013e704a19a31 1-6
+apps/site/src/data/release.ts
+  s_9c356f9574d31c::t_3c56822dcae51a 2-3
+apps/site/nginx.conf
+  s_bd985e916df5a3::t_1b8fb92e37af22 1-4,8-22
+  s_9c356f9574d31c::t_bf2ef22b1c2b67 5-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e80294ca3e8f532e827a3e9627f8432b4769a484",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_bd985e916df5a3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06378ce9-94d8-47c1-a714-451f18d41365",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
