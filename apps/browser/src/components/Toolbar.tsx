@@ -182,7 +182,9 @@ export function HistoryButton({
 }
 
 /**
- * The host / title breadcrumb: hovering shows the full URL and the page actions, clicking opens
+ * The breadcrumb: a web page's host alone, like Dia 1.50 (its URL bar has no page title for web
+ * pages; View › Show Full URL adds the path, without a trailing "/"). The app's own pages and
+ * local files keep `host / title`. Hovering shows the full URL and the page actions, clicking opens
  * the command bar. `sidebar`: the sidebar's field (Settings › Appearance › Address Bar), filled
  * like a resting pinned tile, with the load progress along its bottom edge.
  */
@@ -228,7 +230,8 @@ export function UrlField({
   // The host as `breadcrumb` shows it: an IDN in Unicode only when it passes the spoof checks.
   const full = isFile ? ` ${safeDecode(tab.url.slice("file://".length))}` : urlForDisplay(tab.url);
   const path = !isFile && full.startsWith(host) ? full.slice(host.length) : full;
-  const expanded = hovered || showFullUrl;
+  const web = /^https?:/i.test(tab.url);
+  const trail = hovered ? path : showFullUrl ? path.replace(/\/$/, "") : !web && tab.title ? ` / ${tab.title}` : "";
 
   return (
     <View
@@ -269,7 +272,7 @@ export function UrlField({
             </Text>
             {/* FadeLabel pads its text 2pt on each side. */}
             <FadeLabel
-              text={expanded ? path : tab.title ? ` / ${tab.title}` : ""}
+              text={trail}
               fontSize={13}
               color={palette.secondary}
               fadeWidth={14}
@@ -279,14 +282,7 @@ export function UrlField({
         ) : (
           <Text numberOfLines={1} style={{ fontSize: 13, color: palette.text }}>
             <Text style={{ fontWeight: "500" }}>{host}</Text>
-            {expanded ? (
-              <Text style={{ color: palette.secondary }}>{path}</Text>
-            ) : tab.title ? (
-              <Text style={{ color: palette.secondary }}>
-                {" / "}
-                {tab.title}
-              </Text>
-            ) : null}
+            {trail ? <Text style={{ color: palette.secondary }}>{trail}</Text> : null}
           </Text>
         )}
       </Pressable>

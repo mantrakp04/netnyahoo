@@ -27,7 +27,7 @@ export function AdvancedPane() {
     <View>
       <SectionHeader title="Browsing" />
       <Group>
-        <Row title="Show full URL in the address bar" description="Instead of the site and page title.">
+        <Row title="Show full URL in the address bar" description="Instead of the site alone.">
           <Toggle value={settings.showFullUrl} onChange={(v) => update({ showFullUrl: v })} />
         </Row>
         <Row title="Warn before moving tabs between profiles" description="Some site data doesn't come along.">
