@@ -1,0 +1,29 @@
+apps/launch-video/scripts/record-poster.mjs
+  s_9c356f9574d31c::t_52b9998269b1f8 1-50
+apps/launch-video/scripts/prepare-assets.mjs
+  s_9c356f9574d31c::t_52b9998269b1f8 3,29-32
+apps/launch-video/src/Window.tsx
+  s_9c356f9574d31c::t_d52d5577d558ce 44-62
+apps/launch-video/src/Launch.tsx
+  s_9c356f9574d31c::t_d52d5577d558ce 7,19,92-93,109-110,137,201
+  s_9c356f9574d31c::t_237eb44b8ad8d3 339
+  s_9c356f9574d31c::t_dde90cc5ca4d59 204
+apps/launch-video/README.md
+  s_9c356f9574d31c::t_834dc1269649e8 23-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f56d8af92d2399826491682d2b6a65ae32cee186",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
