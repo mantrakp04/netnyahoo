@@ -16,7 +16,8 @@
       "AppModule",
       "CalendarModule",
       "KeychainModule",
-      "DockSelectionModule"
+      "DockSelectionModule",
+      "InlineCompletionModule"
     ]
   }
 }

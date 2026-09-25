@@ -37,14 +37,46 @@ test("displayUrl strips scheme, www and trailing slash", () => {
   assert.equal(displayUrl("http://localhost:3000/a/"), "localhost:3000/a");
 });
 
-test("typing 'x' mirrors Dia: top hit with inline completion, then search, then more", () => {
+test("typing 'x' completes the site's host inline: top hit, then search, then its pages", () => {
   const { items, completion } = buildSuggestions("x", { tabs: [], history }, { now });
-  assert.equal(completion, ".com/home");
-  assert.deepEqual(rows(items), ["https://x.com/home", "search:x", "https://x.com/notifications", "https://www.xing.com/"]);
+  assert.equal(completion, ".com");
+  assert.deepEqual(rows(items), ["https://x.com/", "search:x", "https://x.com/home", "https://x.com/notifications", "https://www.xing.com/"]);
 });
 
 test("the completion keeps the typed case and extends it", () => {
-  assert.equal(buildSuggestions("X.c", { tabs: [], history }, { now }).completion, "om/home");
+  assert.equal(buildSuggestions("X.c", { tabs: [], history }, { now }).completion, "om");
+});
+
+test("inline completion never takes a long query URL: 'm' completes to the host", () => {
+  const signIn =
+    "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2F0%2F&service=mail&flowName=GlifWebSignIn&flowEntry=AccountChooser&ec=asw-gmail-globalnav-signin#inbox";
+  const hist = [
+    { url: "https://mail.google.com/mail/u/0/?service=mail&continue=" + encodeURIComponent(signIn) + "#inbox", title: "Inbox - me@gmail.com - Gmail", favicon: "gmail.ico", visits: 50, lastVisit: now - 1000 },
+    { url: signIn, title: "Sign in - Google Accounts", favicon: null, visits: 3, lastVisit: now - 2000 },
+  ];
+  const m = buildSuggestions("m", { tabs: [], history: hist }, { now });
+  assert.equal(m.completion, "ail.google.com");
+  assert.deepEqual(m.items[0], { kind: "page", url: "https://mail.google.com/", title: "", favicon: "gmail.ico" });
+  // The Inbox is still listed, just not inlined.
+  assert.ok(rows(m.items).includes(hist[0]!.url));
+  const a = buildSuggestions("a", { tabs: [], history: hist }, { now });
+  assert.equal(a.completion, "ccounts.google.com");
+  // Past the host, only a clean address completes; a query URL doesn't.
+  assert.equal(buildSuggestions("mail.google.com/m", { tabs: [], history: hist }, { now }).completion, "");
+  assert.equal(buildSuggestions("x.com/h", { tabs: [], history }, { now }).completion, "ome");
+});
+
+test("the host's own page, when known, is the completed top hit (titled, switchable)", () => {
+  const tabs = [{ id: "t1", url: "https://github.com/", title: "GitHub", favicon: null }];
+  const { items, completion } = buildSuggestions("gi", { tabs, history }, { now });
+  assert.equal(completion, "thub.com");
+  assert.deepEqual(items[0], { kind: "page", url: "https://github.com/", title: "GitHub", favicon: null, tabId: "t1", visited: true });
+});
+
+test("typing a whole host completes nothing more", () => {
+  const { items, completion } = buildSuggestions("x.com", { tabs: [], history }, { now });
+  assert.equal(completion, "");
+  assert.equal(items[0]?.kind === "page" && items[0].url, "https://x.com");
 });
 
 test("free text puts a search first-class and never autocompletes", () => {
@@ -69,7 +101,7 @@ test("open tabs are marked so the bar can switch to them, except the bar's own t
 
 test("an open tab that isn't in history yet is still found", () => {
   const tabs = [{ id: "t9", url: "https://linear.app/team", title: "Linear", favicon: null }];
-  assert.deepEqual(rows(buildSuggestions("line", { tabs, history: [] }, { now }).items).slice(0, 2), ["tab:https://linear.app/team", "search:line"]);
+  assert.deepEqual(rows(buildSuggestions("line", { tabs, history: [] }, { now }).items).slice(0, 3), ["https://linear.app/", "search:line", "tab:https://linear.app/team"]);
 });
 
 test("bookmarks are suggested and outrank equally-matching history", () => {
@@ -115,8 +147,9 @@ test("engine suggestions follow the local results, de-duplicated", () => {
   const remote = ["x", "X Corp", "x corp", "xbox", "xkcd", "xcode", "xiaomi"];
   const { items } = buildSuggestions("x", { tabs: [], history }, { now, remote, limit: 20 });
   assert.deepEqual(rows(items), [
-    "https://x.com/home",
+    "https://x.com/",
     "search:x",
+    "https://x.com/home",
     "https://x.com/notifications",
     "https://www.xing.com/",
     "suggest:X Corp",
@@ -158,7 +191,7 @@ test("browser actions: exact names are the top hit, partial ones follow the sear
 
 test("the current page is deranked so the bar doesn't suggest where you already are", () => {
   const { items } = buildSuggestions("x", { tabs: [], history }, { now, currentUrl: "https://x.com/home" });
-  assert.equal(items[0]?.kind === "page" && items[0].url, "https://x.com/notifications");
+  assert.equal(rows(items)[2], "https://x.com/notifications");
 });
 
 test("a leading ? only searches", () => {

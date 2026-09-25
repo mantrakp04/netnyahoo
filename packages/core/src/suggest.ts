@@ -214,14 +214,17 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   const websiteFirst = preference === "website";
 
   const best = ranked[0];
-  const bestShown = best ? displayUrl(best.c.url) : "";
-  const completion =
-    websiteFirst && best && !/\s/.test(query) && bestShown.toLowerCase().startsWith(q) ? bestShown.slice(query.length) : "";
+  const inline = websiteFirst && !/\s/.test(query) ? inlineTarget(q, ranked) : null;
+  const completion = inline ? inline.text.slice(query.length) : "";
 
   let top: Suggestion;
   if (creates.length && /^\S+\s+\S/.test(query)) top = createRow(creates[0]!);
   else if (actionMatches[0]?.exact) top = actionRow(actionMatches[0].action);
-  else if (completion) top = pageSuggestion(best!.c);
+  else if (completion) {
+    // ↩ goes where the bar says: the completed host (titled if we know its page), not the page it came from.
+    const known = pool.find((c) => pageKey(c.url) === pageKey(inline!.url));
+    top = known ? pageSuggestion(known) : { kind: "page", url: inline!.url, title: "", favicon: inline!.favicon };
+  }
   else if (typedUrl) {
     // A typed address; titled if we know the page, else just the address (no " — url" suffix).
     const known = pool.find((c) => pageKey(c.url) === pageKey(typedUrl));
@@ -239,6 +242,22 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   out.push(...remoteRows((text) => searchUrl(engine, text), engine.name));
   out.push(...pages.slice(3));
   return { items: out.items, completion };
+}
+
+/**
+ * Chrome's inline autocompletion, which is conservative: the text completes to a site's host
+ * ("m" → "mail.google.com", from any page on it), or, once a path is being typed, to a visited
+ * address that carries no query or fragment. Never to a long sign-in / redirect URL.
+ */
+function inlineTarget(q: string, ranked: readonly { c: Candidate }[]): { text: string; url: string; favicon: string | null } | null {
+  for (const { c } of ranked) {
+    const shown = displayUrl(c.url);
+    const host = /^[^/?#]*/.exec(shown)![0];
+    const origin = /^https?:\/\/[^/?#]+/i.exec(c.url)?.[0];
+    if (origin && host.toLowerCase().startsWith(q)) return { text: host, url: `${origin}/`, favicon: c.favicon };
+    if (q.includes("/") && !/[?#]/.test(shown) && shown.toLowerCase().startsWith(q)) return { text: shown, url: c.url, favicon: c.favicon };
+  }
+  return null;
 }
 
 /** Collects rows up to `limit`, dropping duplicates. */

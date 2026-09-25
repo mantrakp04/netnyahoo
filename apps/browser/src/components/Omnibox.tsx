@@ -1,6 +1,6 @@
 import { displayUrl, resolveInput, searchUrl, scopedSearchUrl, type SearchScope, type Suggestion } from "@netnyahoo/core";
 import { ContextMenuArea, Symbol, copyText, pickFiles, showMenu, startDictation } from "@netnyahoo/shell";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
@@ -14,6 +14,7 @@ import { dispositionFor, openFromBar, switchFromBar, type Disposition } from "./
 import { clipboardPasteAction, pasteMenuItem, pasteTarget, readClipboard } from "./omnibox/paste";
 import { ScopeChip } from "./omnibox/ScopeChip";
 import { SuggestionIcon, SuggestionRow } from "./omnibox/SuggestionRow";
+import { useInlineCompletion } from "./omnibox/useInlineCompletion";
 import { scopeFor, useSuggestions } from "./omnibox/useSuggestions";
 import { IconButton, useHover } from "./primitives";
 
@@ -71,8 +72,10 @@ export function Omnibox({
   const [scope, setScope] = useState<SearchScope | null>(restored?.scope ?? null);
   /** What was typed before entering a scope, put back when it's removed. */
   const scopeFrom = useRef("");
-  /** A selection to apply once (restore, Select All), then leave to the user. */
-  const [pendingSelection, setPendingSelection] = useState<Selection | null>(restored?.selection ?? null);
+  /** A selection to apply once (restore, Select All, the panel's preselected URL), then leave to the user. */
+  const [pendingSelection, setPendingSelection] = useState<Selection | null>(
+    restored?.selection ?? (initial ? { start: 0, end: initial.length } : null),
+  );
   const selection = useRef<Selection>(restored?.selection ?? { start: 0, end: typed.length });
   const input = useRef<TextInput>(null);
   const root = useRef<View>(null);
@@ -86,7 +89,8 @@ export function Omnibox({
     currentUrl: currentUrl || undefined,
     scope,
   });
-  const shownCompletion = suppressCompletion || scope ? "" : completion;
+  const inline = useInlineCompletion(input, typed, suppressCompletion || scope ? "" : completion);
+  const shownCompletion = inline.shown;
   const value = typed + shownCompletion;
   // The highlighted row (the list can shrink under the selection as you type).
   const selectedIndex = Math.min(selected, items.length - 1);
@@ -110,6 +114,17 @@ export function Omnibox({
       saveNtpQuery(tabId, snapshot.current);
     };
   }, [hero, windowId, tabId]);
+
+  // Selections are applied once, imperatively, after the text they belong to. Never through
+  // TextInput's `selection` prop: react-native-macos puts the caret back where it was when the prop
+  // was first set whenever the prop goes away, so typing over a completion ("m" + "ail.google.com",
+  // then "f") left the caret after the "m" and the next keys landed before the "f".
+  useLayoutEffect(() => {
+    if (!pendingSelection) return;
+    input.current?.setSelection(pendingSelection.start, pendingSelection.end);
+    selection.current = pendingSelection;
+    setPendingSelection(null);
+  }, [pendingSelection]);
 
   const reset = () => {
     setTyped("");
@@ -203,6 +218,7 @@ export function Omnibox({
       if (shownCompletion) {
         setTyped(value);
         setSuppressCompletion(true);
+        setPendingSelection({ start: value.length, end: value.length });
         return;
       }
       return move(1);
@@ -245,13 +261,14 @@ export function Omnibox({
   };
 
   const onChangeText = (next: string) => {
+    const change = inline.read(next);
+    if (change.echo) {
+      if (!change.stale) selection.current = { start: change.inline.typed.length, end: next.length };
+      return;
+    }
     setEdited(true);
-    // Deleting (the selected completion, or back from the end) means "don't complete this";
-    // typing over a selection (the panel's preselected URL) does complete.
-    const deletedCompletion = shownCompletion && next === typed;
-    const deleting = next.length < typed.length && typed.startsWith(next);
-    setSuppressCompletion(!!deletedCompletion || deleting);
-    setTyped(next);
+    setTyped(change.typed);
+    setSuppressCompletion(change.suppress);
     setSelected(0);
   };
 
@@ -261,7 +278,7 @@ export function Omnibox({
     key: (key, mods) => onKeyDown({ nativeEvent: { key, ...mods } }),
     submit: () => choose(current),
     measure: () => new Promise((resolve) => root.current?.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }))),
-    state: () => ({ typed, value, completion: shownCompletion, selected: selectedIndex, scope, scopeFrom: scopeFrom.current, tabScope, items }),
+    state: () => ({ typed, value, completion: shownCompletion, suggested: completion, selected: selectedIndex, scope, scopeFrom: scopeFrom.current, tabScope, items }),
   });
 
   const leadingIcon =
@@ -276,14 +293,8 @@ export function Omnibox({
       ref={input}
       autoFocus
       value={value}
-      selection={
-        shownCompletion
-          ? { start: typed.length, end: value.length }
-          : (pendingSelection ?? (!edited && initial ? { start: 0, end: initial.length } : undefined))
-      }
       onSelectionChange={(e) => {
         selection.current = e.nativeEvent.selection;
-        if (pendingSelection) setPendingSelection(null);
       }}
       onChangeText={onChangeText}
       placeholder={scope ? `Search ${scope.name}` : hero ? "Ask anything…" : "Search or enter address"}

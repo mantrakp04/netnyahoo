@@ -433,3 +433,19 @@ export type DockSelectionProps = ViewProps & {
 export const DockSelection: ComponentType<DockSelectionProps> = DockSelectionModule
   ? requireNativeViewManager<DockSelectionProps>("NetnyahooDockSelection")
   : () => null;
+
+const InlineCompletionModule = requireOptionalNativeModule<{
+  complete(tag: number, typed: string, completion: string): Promise<InlineWrite>;
+}>("NetnyahooInlineCompletion");
+
+/** How `completeInline` went: refused (nothing changed), selected (the text was already there), edited (an `onChange` follows). */
+export type InlineWrite = 0 | 1 | 2;
+
+/**
+ * Shows `typed` + `completion` in the TextInput with react tag `tag`, the completion selected, if
+ * the field still shows exactly `typed` (with the caret after it, or an earlier completion
+ * selected), in one step on the main thread. Null on builds from before it.
+ */
+export const completeInline = InlineCompletionModule
+  ? (tag: number, typed: string, completion: string) => InlineCompletionModule.complete(tag, typed, completion)
+  : null;
