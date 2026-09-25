@@ -1,0 +1,32 @@
+.claude/skills/release/scripts/pages/form.html
+  s_9c356f9574d31c::t_38141d1b0d3281 1-6
+.claude/skills/release/scripts/smoke.sh
+  s_9c356f9574d31c::t_e970c3326828ae 1-53
+.claude/skills/release/scripts/pages/passkey.html
+  s_9c356f9574d31c::t_47013152c5a1b4 1-14
+.claude/skills/release/scripts/smoke.mjs
+  s_9c356f9574d31c::t_cdd1869a2cc0e5 1-126,128-129,131-135
+  s_9c356f9574d31c::t_da5b99d9b65b74 127,130
+.claude/skills/release/scripts/windows.swift
+  s_9c356f9574d31c::t_94a46a9957a860 1-16
+.claude/skills/release/SKILL.md
+  s_9c356f9574d31c::t_983506ed5f5121 1-129
+docs/releasing.md
+  s_9c356f9574d31c::t_a5bdb96c15d34b 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3059229c73082b06ddf28d7912b4bc7b8edaab98",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
