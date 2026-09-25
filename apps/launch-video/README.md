@@ -20,8 +20,12 @@ pnpm cover            # → the cover still and the answer still
 
 Where the pictures come from:
 
-- The pledges and the poster are the site's real window captures of Netnyahoo 0.1.0
-  (`apps/site/src/assets/shots`), with camera moves on them. They are stills.
+- The opening poster is live: Netnyahoo 0.1.2 on netnyahoo.com in a hidden test instance, the page
+  recorded with a CDP screencast while the site's Big Yahu dances (`scripts/record-poster.mjs`, retimed to
+  30 fps → `assets/poster-page.mp4`), inside a ScreenCaptureKit capture of the same window
+  (`assets/window-site.webp`).
+- The pledges are the site's real window captures of Netnyahoo 0.1.0 (`apps/site/src/assets/shots`),
+  with camera moves on them. They are stills.
 - The offline window is a window capture of Netnyahoo 0.1.2 on x.com while offline
   (`assets/window-offline.webp`); its tab shows frames of the real offline game, captured at the tab's
   exact size by `scripts/capture-game.mjs` in headless Chromium on a frame-exact clock (real motion).

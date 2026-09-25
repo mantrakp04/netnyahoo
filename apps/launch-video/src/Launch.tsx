@@ -4,7 +4,7 @@ import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame } f
 import { B, FPS, PLEDGE_LEN, R1_CLOCK } from "./timeline";
 import { C, mono, poster } from "./theme";
 import { CAM_GAME, CAM_HEADER, CAM_WINDOW, STAGE, Stage, frameSrc, mixCam, type Cam } from "./Stage";
-import { WindowShot, place, type Push } from "./Window";
+import { LiveWindow, WindowShot, place, type Push } from "./Window";
 import { Fit } from "./Fit";
 import { Yahu3D } from "./Yahu3D";
 
@@ -16,7 +16,7 @@ const lerpPush = (a: Push, b: Push, t: number): Push => ({ fx: a.fx + (b.fx - a.
 
 // A campaign ad for a browser. One narrator; every line is about what the window is showing.
 type Line = { kicker: string; title: string; size: number; sub?: string };
-const POSTER: Line = { kicker: "Netnyahoo for default browser", title: "The browser that\nwon’t leave office.", size: 140, sub: "Real Chromium, for the Mac." };
+const POSTER: Line = { kicker: "Paid political browser", title: "Netnyahoo for\ndefault browser.", size: 140, sub: "Real Chromium, for the Mac." };
 
 // `clip`: a real recording the user can drop into clips/<clip>.mp4 (see README, "Shot list"); when it
 // exists it plays in the window's place instead of the still.
@@ -89,7 +89,8 @@ const OFFLINE: Line = { kicker: "And when the Wi-Fi dies", title: "Chrome gives 
 const FIND: Line = { kicker: "Netnyahoo gives you him", title: "Find him.", size: 230, sub: "82 suspects. 3 seconds." };
 const CTA: Line = { kicker: "Netnyahoo 2026", title: "Impeach Chrome.", size: 200, sub: "Make Netnyahoo your default.\nIt won’t step down." };
 
-const FIND_FRAMES = 54; // round 1's clock runs 3.0 → 1.2 while you look; then he comes up anyway
+const FIND_FRAMES = 54;
+const POSTER_PUSH = (l: number): Push => ({ fx: 0.5, fy: 0.5, z: 1 + 0.035 * Math.min(1, l / B.poster.dur) }); // round 1's clock runs 3.0 → 1.2 while you look; then he comes up anyway
 
 export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips = [] }) => {
   const current = useCurrentFrame();
@@ -105,8 +106,8 @@ export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips 
 
   if (inB(B.poster)) {
     const l = f - B.poster.from;
-    media = <WindowShot src="shots/browse.webp" push={{ fx: 0.5, fy: 0.5, z: 1 + 0.035 * ease(l, 0, B.poster.dur, Easing.linear) }} />;
-    stamp = 1 - ease(l, B.poster.dur - 6, B.poster.dur);
+    media = <LiveWindow f={l} push={POSTER_PUSH(l)} />;
+    stamp = 0; // the page wears its own INCUMBENT stamp
     smallPrint = 1 - ease(l, B.poster.dur - 6, B.poster.dur);
   } else if (inB(B.pledges)) {
     const l = f - B.pledges.from;
@@ -133,7 +134,7 @@ export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips 
         {prev && fadeIn < 1 && (
           <WindowShot src={prev.shots[prev.shots.length - 1]} push={prev.to} w={prev.panel?.w} h={prev.panel?.h} />
         )}
-        {i === 0 && fadeIn < 1 && <WindowShot src="shots/browse.webp" push={{ fx: 0.5, fy: 0.5, z: 1.035 }} />}
+        {i === 0 && fadeIn < 1 && <LiveWindow f={B.poster.dur} push={POSTER_PUSH(B.poster.dur)} />}
         {part > 0 && <WindowShot src={p.shots[part - 1]} push={push} w={p.panel?.w} h={p.panel?.h} opacity={fadeIn} />}
         <WindowShot
           src={p.shots[part]}
@@ -197,9 +198,10 @@ export const Launch: React.FC<{ at?: number; clips?: string[] }> = ({ at, clips 
             {up > 0 && <YahuInCrowd up={up} t={(B.cta.dur + l) / FPS} />}
           </Stage>
         </div>
-        {swap > 0 && <WindowShot src="shots/browse.webp" push={{ fx: 0.5, fy: 0.5, z: 1 }} opacity={swap} />}
+        {swap > 0 && <LiveWindow f={0} push={POSTER_PUSH(0)} opacity={swap} />}
       </>
     );
+    stamp = 1 - ease(l, 8, 16);
     line = l < 8 ? CTA : POSTER;
     lineAt = l < 8 ? B.cta.from + 8 : B.bridge.from + 8;
   }
@@ -334,7 +336,7 @@ const Stamp: React.FC<{ opacity: number; slam: number }> = ({ opacity, slam }) =
 // Where to get it, and the campaign disclaimer.
 const SmallPrint: React.FC<{ opacity: number }> = ({ opacity }) => (
   <div style={{ position: "absolute", left: 40, right: 40, bottom: 34, opacity, textAlign: "center" }}>
-    <div style={{ ...mono(26, 700), textTransform: "none" }}>Free for Mac · github.com/mantrakp04/netnyahoo</div>
+    <div style={{ ...mono(26, 700), textTransform: "none" }}>Free for Mac · netnyahoo.com</div>
     <div style={{ ...mono(17, 500), color: C.inkSoft, marginTop: 12 }}>Paid for by nobody. Not authorized by any candidate.</div>
   </div>
 );
