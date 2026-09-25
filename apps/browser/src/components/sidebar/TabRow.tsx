@@ -50,6 +50,7 @@ export function TabRow({ tabId }: { tabId: string }) {
   if (!tab) return null;
   const title = tabTitle(tab);
   const fill = active ? theme.tabSelected : selected ? tokens.multiSelected : hovered ? theme.tabHover : "rgba(0,0,0,0)";
+  const border = active ? 1 : selected ? 0.5 : 0;
 
   return (
     <View
@@ -74,7 +75,7 @@ export function TabRow({ tabId }: { tabId: string }) {
             <Surface
               fill={hex(!active && pressed ? theme.tabPressed : fill)}
               cornerRadius={10}
-              borderWidth={active ? 1 : selected ? 0.5 : 0}
+              borderWidth={border}
               borderColor={selected && !active ? hex(tokens.multiSelectedStroke) : undefined}
               borderColors={active ? theme.tabSelectedBorder.map(hex) : undefined}
               shadowColor={active ? hex(theme.tabSelectedShadow) : undefined}
@@ -82,7 +83,8 @@ export function TabRow({ tabId }: { tabId: string }) {
               shadowRadius={theme.tabSelectedShadowRadius}
               shadowOffset={[0, 0.5]}
               // TabContentView: favicon 16 at x 9, title 7 after it, close button 22 at 6 from the end.
-              style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9, paddingRight: 6 }}
+              // The border takes layout room, so the padding gives it back: nothing moves on selection.
+              style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 - border, paddingRight: 6 - border }}
             >
               <View>
                 <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
@@ -188,7 +190,7 @@ export function SplitRowItem({ splitId, section, parentGroup }: { splitId: strin
           shadowOpacity={active ? 1 : 0}
           shadowRadius={theme.tabSelectedShadowRadius}
           shadowOffset={[0, 0.5]}
-          style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingHorizontal: 3 }}
+          style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingHorizontal: active ? 2 : 3 }}
         >
           {tabIds.map((id, i) => (
             <View key={id} style={{ flex: 1, flexDirection: "row", alignItems: "center", minWidth: 0 }}>

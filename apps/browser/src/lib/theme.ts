@@ -257,7 +257,8 @@ export function useTheme(): Theme {
 export const layout = {
   sidebarWidth: 190,
   sidebarHeader: 46,
-  sidebarInset: 7,
+  // TabList's horizontal inset (Dia 1.50.1, 0x105391ac4); tiles and rows span x 6 … 184 at 190.
+  sidebarInset: 6,
   pinnedTop: 54.5,
   pinnedHeight: 40,
   rowHeight: 33,
