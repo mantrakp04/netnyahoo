@@ -7,9 +7,10 @@
     "dev": "remotion studio",
     "prepare-assets": "node scripts/prepare-assets.mjs && node scripts/make-sound.mjs",
     "capture": "node scripts/capture-game.mjs",
-    "render": "remotion render Launch ../../output/launch-video/netnyahoo-launch.mp4 --codec=h264 --crf=17 --x264-preset=slow --pixel-format=yuv420p --audio-codec=aac --audio-bitrate=192k",
+    "render": "remotion render Launch ../../output/launch-video/netnyahoo-launch.mp4 --codec=h264 --crf=17 --x264-preset=slow --pixel-format=yuv420p --audio-codec=aac --audio-bitrate=192k && node scripts/mux-audio.mjs",
     "cover": "remotion still Cover ../../output/launch-video/netnyahoo-launch-cover.png && remotion still Answer ../../output/launch-video/netnyahoo-answer.png",
-    "lint": "tsc"
+    "lint": "tsc",
+    "sound": "node scripts/make-sound.mjs"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",

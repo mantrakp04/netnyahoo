@@ -13,10 +13,10 @@ Standalone package (excluded from the root workspace, like `apps/site`):
 ```bash
 cd apps/launch-video
 pnpm install
-pnpm prepare-assets   # site shots, the Big Yahu model, fonts, your clips/; synthesizes public/sound/track.wav
+pnpm prepare-assets   # window captures, the Big Yahu model, fonts, your clips/, and the soundtrack
 pnpm capture          # renders the game's rounds from apps/browser/assets/offline-game, frame by frame
 pnpm dev              # Remotion Studio
-pnpm render           # → output/launch-video/netnyahoo-launch.mp4
+pnpm render           # → output/launch-video/netnyahoo-launch.mp4 (the soundtrack muxed on with ffmpeg)
 pnpm cover            # → the cover still and the answer still
 ```
 
@@ -34,6 +34,24 @@ Where the pictures come from:
   (`assets/window-offline.webp`); its tab shows frames of the real offline game, captured at the tab's
   exact size by `scripts/capture-game.mjs` in headless Chromium on a frame-exact clock (real motion).
 - Big Yahu is the site's model (`apps/site/public/models/big-yahu.glb`), rendered with three.js per frame.
+
+## Sound
+
+`scripts/make-sound.mjs` builds `public/sound/track.wav`, all generated locally:
+
+- The score and effects (`scripts/sound/score.js`), synthesized with WebAudio in headless Chromium:
+  a campaign-ad march in B♭ at 120 bpm (detuned-saw brass, a trumpet lead, tuba, snare, timpani, a
+  convolution hall) under the opener and pledges, one bar per pledge; a record scratch and power-down
+  at "And when the Wi-Fi dies", then mains hum; a game-show clock and pulse under "Find him."; a sting
+  under "Impeach Chrome." with an orchestra hit on the INCUMBENT stamp; a snare roll in the bridge
+  that lands on frame 0's fanfare. The timeline is rendered twice and the second pass kept, so tails
+  wrap across the loop point.
+- The narrator (optional): `VO_VOICE="<voice>" SOUND_OUT=track-vo.wav node scripts/make-sound.mjs`
+  renders the lines with macOS `say`, shapes them with ffmpeg and ducks the music under them;
+  `pnpm render` then also writes `netnyahoo-launch-vo-preview.mp4`. The main cut has no narrator
+  until an Enhanced or Premium voice is installed (System Settings › Accessibility › Spoken Content ›
+  System Voice › Manage Voices); only compact voices are installed now.
+- The mix is set to -14 LUFS integrated with a limiter at about -1 dBTP.
 
 ## Shot list (real UI motion to replace the stills)
 
