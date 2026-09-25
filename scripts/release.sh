@@ -59,6 +59,8 @@ xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$macos/Ex
 
 echo "==> Verify"
 codesign --verify --deep --strict "$app"
+# Crash reports from users can only be symbolicated with the archive's dSYM (0.1.0/0.1.1 had none).
+[ -d "$archive/dSYMs/Netnyahoo.app.dSYM" ] || { echo "error: the archive has no Netnyahoo.app.dSYM" >&2; exit 1; }
 entitlements() { codesign -d --entitlements - --xml "$1" 2>/dev/null; }
 # Chromium's helpers need their JIT entitlements under the hardened runtime.
 for helper in "(Renderer)" "(GPU)"; do
