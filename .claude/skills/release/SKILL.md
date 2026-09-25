@@ -64,6 +64,8 @@ sed -i '' 's/MARKETING_VERSION = <previous>;/MARKETING_VERSION = <version>;/; s/
 git add docs/release-notes/<version>.md apps/browser/macos/Netnyahoo.xcodeproj/project.pbxproj
 git commit -m "Release <version>"
 scripts/release.sh <version>     # ~5–10 min; run it in the background and wait
+# "resources-to-copy-…txt: No such file" in the archive log means another build shared the Pods dir at
+# the same moment (each build writes and deletes that file): make sure no other xcodebuild runs, retry.
 ```
 
 `CURRENT_PROJECT_VERSION` is the build number Sparkle compares — it must go up every release (read the
@@ -88,7 +90,12 @@ and checks, over CDP and the window list:
 - right-click shows the native context menu (0.1.5);
 - the bundle's signature is still valid after running (0.1.0 wrote into its own bundle).
 
-Everything must pass before publishing. A failure is either a real regression (fix it, commit, rebuild —
+Everything must pass before publishing. One known exception: the three window-order checks read
+CGWindowList, which isn't reliable while the Mac's screen is locked (check with
+`CGSessionCopyCurrentDictionary()["CGSSessionScreenIsLocked"]`). If they fail with the screen locked,
+run the same script on the previous release's export (`dist/<previous>`, still on disk) as a control: if
+it fails the same three, it's the lock, and you can publish when the release doesn't touch window
+ordering. Say so in the report. A failure is either a real regression (fix it, commit, rebuild —
 don't publish) or the check itself going stale after an intended change (fix the check in
 `scripts/smoke.mjs`, and say so). When a release fixes a new class of bug that can be observed over CDP or
 the window list, add a check for it to `smoke.mjs` so the next release guards it.
