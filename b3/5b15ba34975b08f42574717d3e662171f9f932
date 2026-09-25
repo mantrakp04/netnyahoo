@@ -1,0 +1,61 @@
+apps/browser/assets/offline-game-pipeline/inline.py
+  s_9c356f9574d31c::t_8983b431e2e88a 1-80
+apps/browser/assets/offline-game-pipeline/build_assets.py
+  s_9c356f9574d31c::t_930bf0570e9700 9
+apps/browser/assets/offline-game/game.js
+  s_9c356f9574d31c::t_f8b3ddac275df6 13-14,82,91,164,171
+  s_9c356f9574d31c::t_01cfe0c9405212 80-81,83-90,902
+packages/cef/patches/chromium-neterror-yahu.patch
+  s_9c356f9574d31c::t_033defff32e937 1-158
+.gitignore
+  s_9c356f9574d31c::t_152468e02346fe 33-34
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_7a5320ce233614 34,171-194,210
+docs/migration-status.md
+  s_9c356f9574d31c::t_7a5320ce233614 190-204,217,462-468
+  s_9c356f9574d31c::t_4516f6236e0a36 469
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_7a5320ce233614 224
+packages/cef/patches/build/01-sync.sh
+  s_9c356f9574d31c::t_7727f575d977f3 1-10
+packages/cef/patches/build/02-cef-patch-and-gen.sh
+  s_9c356f9574d31c::t_ecd7f0c91a7f1f 1-19
+packages/cef/patches/build/03-ungoogled.py
+  s_9c356f9574d31c::t_6a37b5c3c2ef79 1-146
+packages/cef/patches/build/04-domain-substitution.sh
+  s_9c356f9574d31c::t_4a77bbd957eefa 1-24
+packages/cef/patches/build/05-build.sh
+  s_9c356f9574d31c::t_a871450b74f043 1-9
+packages/cef/patches/build/06-distrib.sh
+  s_9c356f9574d31c::t_de4ba434ca5561 1-10
+packages/cef/patches/build/apply-chromium-patches.sh
+  s_9c356f9574d31c::t_f0347cf91d0e45 1-14
+packages/cef/patches/build/domsub-keep-store.txt
+  s_9c356f9574d31c::t_f81ee4390d8c7d 1-22
+packages/cef/patches/build/domsub-restore-store.py
+  s_9c356f9574d31c::t_0bde4fbfcf186a 1-30
+packages/cef/patches/build/env.sh
+  s_9c356f9574d31c::t_9b3e0241695c73 1-19
+packages/cef/patches/build/gn_defines.sh
+  s_9c356f9574d31c::t_bd4d94d6eb3d6f 1-39
+packages/cef/patches/build/regen-gn-args.sh
+  s_9c356f9574d31c::t_e4b233a49c8056 1-22
+packages/cef/patches/build/yahu-resource.sh
+  s_9c356f9574d31c::t_eb065f5fa791c0 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b35b15ba34975b08f42574717d3e662171f9f932",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
