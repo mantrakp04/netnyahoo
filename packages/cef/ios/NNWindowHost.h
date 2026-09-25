@@ -78,6 +78,8 @@ void InvalidateExtensionCommands(NSString *profile);
 /// window for the app to put its views in, whose tabs are the Browser's own (nil if the engine
 /// can't: not running, or without CEF_NN_CLIENT_WINDOW).
 NSWindow *MakeHostingWindow(NSString *profile);
+/// The app closes a Chrome-hosted window (see Ghost::CloseHosting). False if it isn't one.
+bool CloseHostingWindow(NSWindow *window);
 /// DEV: "hide" / "show" / "close" a Chrome-hosted window through CEF (its widget).
 NSString *HostingWindowAction(NSWindow *window, NSString *action);
 /// `browser` is a tab of a Chrome-hosted window.

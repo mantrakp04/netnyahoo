@@ -437,6 +437,17 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     CefWindow::CreateTopLevelWindow(this);  // OnWindowCreated sets window_ and parent_
     NSWindow *window = Window();
     if (!window) return nil;
+    // What shows for a frame before our views paint: BrowserWindow's colours, as the window's and
+    // as the colour Chrome's compositor clears its views to (else white).
+    const bool dark = [[NSApp.effectiveAppearance bestMatchFromAppearancesWithNames:@[
+      NSAppearanceNameDarkAqua, NSAppearanceNameAqua
+    ]] isEqualToString:NSAppearanceNameDarkAqua];
+    window.backgroundColor = [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
+      const bool d = [[appearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameDarkAqua, NSAppearanceNameAqua ]]
+          isEqualToString:NSAppearanceNameDarkAqua];
+      return d ? [NSColor colorWithSRGBRed:0.17 green:0.12 blue:0.14 alpha:1] : [NSColor colorWithSRGBRed:0.93 green:0.91 blue:0.90 alpha:1];
+    }];
+    window_->SetBackgroundColor(dark ? CefColorSetARGB(255, 43, 31, 36) : CefColorSetARGB(255, 237, 232, 230));
     CefRefPtr<Ghost> self(this);
     observers_ = [NSMutableArray array];
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
@@ -730,6 +741,32 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
 #endif
   }
 
+  /// Hosting: the app closes the window. It hides now; its Browser closes (through CEF) once no tab
+  /// is on its way out of it to another window, at most 4 s later. A tab dragged out as the
+  /// window's last one: the app closes the window before React has parked the tab for its new
+  /// window, so the check starts a second later.
+  void CloseHosting() {
+    NSWindow *window = Window();
+    if (!window_ || closing_ || closeRequested_) return;
+    closeRequested_ = true;  // Close() still runs when the window does close
+    window.animationBehavior = NSWindowAnimationBehaviorNone;
+    [window orderOut:nil];
+    CefRefPtr<Ghost> self(this);
+    const CFTimeInterval deadline = CACurrentMediaTime() + 4;
+    __block void (^attempt)(void);
+    __block __weak void (^weakAttempt)(void);
+    weakAttempt = attempt = ^{
+      if (!self->window_) return;
+      if (TabTransfersPending() && CACurrentMediaTime() < deadline) {
+        void (^again)(void) = weakAttempt;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), again);
+        return;
+      }
+      self->window_->Close();
+    };
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), attempt);
+  }
+
   /// DEV: "hide" / "show" / "close" through CEF (the widget), not the NSWindow.
   NSString *CefWindowAction(NSString *action) {
     if (!window_) return @"no window";
@@ -810,7 +847,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   bool CanClose(CefRefPtr<CefWindow> window) override {
     // The close button (or performClose:) on a Chrome-hosted window: the app decides, as its
     // window delegate would (Dia's "warn before closing a window"), and closes it itself.
-    if (hosting_ && !closing_ && !ShuttingDown()) return [NNChromeWindowHost windowShouldClose:Window()];
+    if (hosting_ && !closing_ && !closeRequested_ && !ShuttingDown()) return [NNChromeWindowHost windowShouldClose:Window()];
     // Stock: the ghost lives as long as the app window does (Chrome would close it
     // with its anchor tab, or on chrome.windows.remove). Chrome tabs: it's a Chrome
     // window like any other, closing when its last tab does.
@@ -867,6 +904,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   bool hosting_ = false;
   bool companion_ = false;
   bool browserStarted_ = false;
+  bool closeRequested_ = false;
   IMPLEMENT_REFCOUNTING(Ghost);
 };
 
@@ -1354,6 +1392,15 @@ bool InClientWindow(CefRefPtr<CefBrowser> browser) {
 
 bool BlocksChromeCommand(CefRefPtr<CefBrowser> browser, int command_id) {
   return HiddenChromeUICommand(command_id) && InClientWindow(browser);
+}
+
+bool CloseHostingWindow(NSWindow *window) {
+  for (auto &ghost : gGhosts)
+    if (ghost->Hosting() && ghost->Parent() == window && !ghost->Closed()) {
+      ghost->CloseHosting();
+      return true;
+    }
+  return false;
 }
 
 NSString *HostingWindowAction(NSWindow *window, NSString *action) {

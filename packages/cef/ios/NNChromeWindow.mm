@@ -84,6 +84,10 @@ NSView *NNWindowRootView(NSWindow *window) {
   return window;
 }
 
++ (void)closeWindow:(NSWindow *)window {
+  if (!nn::host::CloseHostingWindow(window)) [window close];
+}
+
 + (void)setShouldCloseHandler:(BOOL (^)(NSWindow *))handler {
   gShouldClose = [handler copy];
 }
@@ -264,6 +268,21 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
       }
       info[@"sheetText"] = texts;
     }
+    // The window treatment (WindowBackdrop's behind-window vibrancy) as configured.
+    NSMutableArray *effects = [NSMutableArray array];
+    NSMutableArray *walk = [NSMutableArray arrayWithObject:NNWindowRootView(window) ?: window.contentView];
+    while (walk.count) {
+      NSView *v = walk.lastObject;
+      [walk removeLastObject];
+      if ([v isKindOfClass:NSVisualEffectView.class]) {
+        NSVisualEffectView *e = (NSVisualEffectView *)v;
+        [effects addObject:[NSString stringWithFormat:@"material %ld blending %ld state %ld emphasized %d %@ hidden %d alpha %.2f",
+                                                      (long)e.material, (long)e.blendingMode, (long)e.state, e.emphasized,
+                                                      NSStringFromSize(e.frame.size), e.isHiddenOrHasHiddenAncestor, e.alphaValue]];
+      }
+      [walk addObjectsFromArray:v.subviews];
+    }
+    info[@"effects"] = effects;
     NSArray *list = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionIncludingWindow, (CGWindowID)window.windowNumber));
     info[@"cgBounds"] = [list.firstObject objectForKey:(id)kCGWindowBounds] ?: @{};
     NSData *json = [NSJSONSerialization dataWithJSONObject:info options:0 error:nil];

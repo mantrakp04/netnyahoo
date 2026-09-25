@@ -50,6 +50,10 @@ export function startDevHarness() {
     get permissions(): typeof import("../components/site/permissions") {
       return require("../components/site/permissions");
     },
+    /** Extensions (install, toolbar actions, popups): `nn.extensions.activateExtension(windowId, ext, anchor)`. */
+    get extensions(): typeof import("../components/extensions/state") {
+      return require("../components/extensions/state");
+    },
   };
   (globalThis as { nn?: typeof nn }).nn = nn;
   const scriptId = (source: string | null) => source?.match(/^\/\/ *(\S+)/)?.[1];

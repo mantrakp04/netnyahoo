@@ -167,6 +167,16 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
   func close(id: String) {
     guard let window = windows[id] else { return }
+    if ChromeWindowSpike.root(of: window) != nil {
+      // A Chrome-hosted window's Browser must outlive a tab still moving out of it (dragged out
+      // as the window's last): it hides now and closes a little later, so it's done with here.
+      NotificationCenter.default.removeObserver(self, name: nil, object: window)
+      windows[id] = nil
+      auxKinds[id] = nil
+      ChromeWindowSpike.close(window)
+      DispatchQueue.main.async { ChromeWindowSpike.removeRoot(of: window) }
+      return
+    }
     closingFromJS.insert(id)
     window.close()
   }

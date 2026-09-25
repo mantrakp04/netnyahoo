@@ -25,6 +25,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Unmounts `window`'s root view (it's closing).
 + (void)removeRootViewOfWindow:(NSWindow *)window;
 
+/// The app closes a Chrome-hosted window: it hides now and closes once no tab is moving out of it.
++ (void)closeWindow:(NSWindow *)window;
+
 /// Asked when the user closes a Chrome-hosted window (close button, performClose:): the app's
 /// windowShouldClose (it may ask first and close the window itself). Set by the shell.
 @property(class, nonatomic, copy, nullable) BOOL (^shouldCloseHandler)(NSWindow *window);

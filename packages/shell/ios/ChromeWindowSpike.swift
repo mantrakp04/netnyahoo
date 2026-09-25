@@ -41,6 +41,11 @@ enum ChromeWindowSpike {
     return host.perform(NSSelectorFromString("rootViewOfWindow:"), with: window)?.takeUnretainedValue() as? NSView
   }
 
+  /// Closes a Chrome-hosted window the app closes itself (hidden now, gone once no tab is moving out of it).
+  static func close(_ window: NSWindow) {
+    host?.perform(NSSelectorFromString("closeWindow:"), with: window)
+  }
+
   static func removeRoot(of window: NSWindow) {
     host?.perform(NSSelectorFromString("removeRootViewOfWindow:"), with: window)
   }
