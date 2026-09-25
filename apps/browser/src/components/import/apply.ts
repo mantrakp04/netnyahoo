@@ -55,9 +55,11 @@ export function importSafariBookmarks(profileId: string, root: ImportedNode | un
   return importBookmarks(profileId, root, "Safari");
 }
 
+/** Returns how many entries the profile's history actually gained (it keeps the newest 5,000). */
 export function importHistory(profileId: string, entries: { url: string; title: string; visits: number; lastVisit: number }[]): number {
+  const before = useBrowser.getState().history[profileId]?.length ?? 0;
   useBrowser.getState().importHistory(profileId, entries);
-  return entries.length;
+  return (useBrowser.getState().history[profileId]?.length ?? 0) - before;
 }
 
 /** Saves logins in the profile's Chrome password manager; returns how many were saved. */
@@ -143,6 +145,8 @@ export async function applySafari(profileId: string, data: SafariExport): Promis
   // The default Safari profile's history (named profiles' history could become Netnyahoo profiles later).
   const history = data.profiles.find((p) => !p.name)?.history ?? data.profiles[0]?.history ?? [];
   counts.history = importHistory(profileId, history);
+  // Open tabs only come from a direct import (the export archive has none).
+  if (data.tabs.length) counts.tabs += importTabs(profileId, data.tabs, "Imported");
   counts.passwords = await importPasswords(profileId, data.credentials);
   return counts;
 }

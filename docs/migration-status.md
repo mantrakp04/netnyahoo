@@ -365,6 +365,51 @@ NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
     - Another profile unlocks on its own.
     - The copy reads "Offer to save and fill passwords" and "Saved on this Mac, separately for each profile…".
 
+### Import (packages/import)
+
+I1. **Browsers.** The importer now covers Chrome (+ Beta/Dev/Canary/Chromium), Brave, Edge, Opera,
+    Opera GX, Vivaldi, Island, Arc, Firefox, **Dia** and **Helium**, plus Safari (direct and via the
+    export `.zip`). Dia and Helium are ordinary Chromium sources: Dia's data lives under `Dia/User Data`
+    with plaintext `Bookmarks`/`History`/SNSS `Sessions` and secrets under Keychain "Dia Safe Storage" /
+    "Dia"; Helium (imput's ungoogled-chromium) under `net.imput.helium`, Keychain "Helium Storage Key" /
+    "Helium" (confirmed from the binary's `saltysaltHelium Storage Key` string and the Keychain item's
+    attributes). Both add only a `BrowserDefinition`; discovery/parse/unlock are unchanged.
+I2. **Safari direct.** `SafariDirect` reads `~/Library/Safari` when Netnyahoo has Full Disk Access:
+    `Bookmarks.plist` (bookmarks + Reading List), `History.db` (`history_items`⋈`history_visits`,
+    CFAbsoluteTime), and `LastSession.plist` (open tabs). `hasAccess()` probes without a prompt; the
+    import UI shows a "Give Netnyahoo Full Disk Access" step that opens System Settings
+    (`x-apple.systempreferences:…Privacy_AllFiles`) and re-checks on app re-activation. The export
+    `.zip` remains the fallback and the only path for Safari passwords/cards.
+I3. **Dia sidebar.** Not imported. Dia keeps its spaces / pinned tiles / folders / custom names in a
+    SQLCipher-encrypted `tabs.db` (GRDB; schema recovered — tables `nodes`, `tabs`, `tab_groups`,
+    `spaces`, `windows`, `content_panes`, `favorites`, `pinned_container`, `live_folders`; columns
+    `space_id`, `custom_title`, `custom_icon`, `title_source`, `icon_source`, colour names
+    green/purple/…). Its key is derived by CryptoKit HKDF-SHA256, and verifying a decryptor would mean
+    reading real browsing data (forbidden by the task's data rules), so it's left out. Dia's open tabs
+    still import from its plaintext SNSS `Sessions/`.
+I4. **Chrome and Brave need Full Disk Access.** On this macOS both protect their data folders from
+    other apps: inside Netnyahoo, listing `Google/Chrome` or `BraveSoftware/Brave-Browser` fails with a
+    permission error, while Arc, Dia and Helium read fine. Discovery used to drop them silently; it now
+    lists a browser whose folder exists but can't be listed (and has a `Local State`/`Default` marker,
+    which can still be stat'ed) with `needsFullDiskAccess`, and the import window routes it to the same
+    Full Disk Access step as Safari, re-listing when the app becomes active again.
+I5. **Tests.** `swift test` (51 cases, incl. Helium/Dia import, Safari-direct and the protected-folder
+    discovery) and `node --test src/index.test.ts` (6) pass; fixtures for Helium, Dia (two profiles,
+    SNSS session) and Safari-direct (`Bookmarks.plist`/`History.db`/`LastSession.plist`) come from
+    `fixtures/generate.py`. `pnpm -C apps/browser typecheck` passes.
+I6. **Real installs, verified 2026-09-25** (background instance, throwaway `NETNYAHOO_DATA_DIR`, counts only):
+    discovery lists exactly Chrome (data only: the app isn't installed, so it gets the globe icon; needs
+    FDA), Arc (1 profile, 2 spaces), Dia (2 profiles), Safari (no FDA → Full Disk Access step / .zip),
+    Brave (needs FDA) and Helium (1 profile). A real Helium import into the throwaway profile read 8
+    bookmarks and 11,877 history rows; the store then held 8 bookmarks and 5,000 history entries (the
+    history store's `MAX_ENTRIES` cap; the done screen now reports what was kept). Dia's Default profile
+    read 7 bookmarks and 1 open tab from its plaintext session, with no failures. Import-window snapshots
+    (choose, per-browser kinds, Dia profile picker, Brave/Safari Full Disk Access, Arc spaces) were taken
+    with `devSnapshotWindow`.
+    - Not verified: real password/cookie decryption (needs the user to approve the Keychain prompt for
+      "Helium Storage Key" / "Dia Safe Storage"); Safari direct and Chrome/Brave against real data
+      (need Full Disk Access granted by the user).
+
 ### Chrome Web Store (integration; hook 10 `CEF_NN_INSTALL_PROMPT`)
 
 W1. **Install from the store. Verified 2026-09-25.**

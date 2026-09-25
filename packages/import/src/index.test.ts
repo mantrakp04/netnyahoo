@@ -7,6 +7,7 @@ type Listener = (e: Record<string, unknown>) => void;
 const listeners = new Set<Listener>();
 const calls: string[] = [];
 let unlocked = false;
+let fullDiskAccess = false;
 
 const native = {
   addListener(_name: string, listener: Listener) {
@@ -46,6 +47,16 @@ const native = {
   isBrowserUnlocked: () => unlocked,
   forgetUnlockedKeys() {
     unlocked = false;
+  },
+  safariHasFullDiskAccess: () => fullDiskAccess,
+  async openFullDiskAccessSettings() {
+    calls.push("openFDA");
+    return null;
+  },
+  async importSafariDirect(jobId: string) {
+    if (!fullDiskAccess) throw Object.assign(new Error("Needs Full Disk Access"), { code: "locked" });
+    calls.push(`importSafariDirect ${jobId}`);
+    return JSON.stringify({ bookmarks: undefined, history: [], profiles: [{ history: [], extensions: [] }], tabs: [], warnings: [] });
   },
 };
 
@@ -106,4 +117,15 @@ test("flattenBookmarks and toolbarFolder", () => {
   };
   assert.deepEqual(lib.flattenBookmarks(root).map((b) => b.title), ["A", "B"]);
   assert.equal(lib.toolbarFolder(root)?.title, "Bar");
+});
+
+test("safari direct import gates on Full Disk Access", async () => {
+  assert.equal(lib.safariHasFullDiskAccess(), false);
+  await lib.openFullDiskAccessSettings();
+  assert.ok(calls.includes("openFDA"));
+  await assert.rejects(lib.importSafariDirect(), (e: unknown) => e instanceof lib.ImportError && e.code === "locked");
+  fullDiskAccess = true;
+  const result = await lib.importSafariDirect();
+  assert.deepEqual(result.tabs, []);
+  assert.ok(calls.some((c) => c.startsWith("importSafariDirect import-")));
 });

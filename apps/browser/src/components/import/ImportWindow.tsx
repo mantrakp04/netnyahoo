@@ -1,7 +1,7 @@
 import type { BrowserSource, ImportKind, ImportResult, SpaceSummary } from "@netnyahoo/import";
 import { closeWindow, confirm, Symbol, VisualEffect, WindowDragRegion } from "@netnyahoo/shell";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Animated, AppState, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useProfiles } from "../../store/hooks";
@@ -15,7 +15,7 @@ import { importModule } from "./module";
 
 const APP = "Netnyahoo";
 
-type Step = "loading" | "choose" | "profiles" | "safari" | "unlock" | "progress" | "done";
+type Step = "loading" | "choose" | "profiles" | "safari" | "access" | "unlock" | "progress" | "done";
 type Status = "pending" | "active" | "done" | "failed";
 
 /** Category names, in the order the progress list shows them (Dia's "Import category … title"). */
@@ -48,7 +48,33 @@ export function ImportWindow() {
   const [preparing, setPreparing] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  // Safari: whether we have Full Disk Access to read ~/Library/Safari directly.
+  const [fullDiskAccess, setFullDiskAccess] = useState(false);
   const abort = useRef<AbortController | null>(null);
+
+  // While waiting on Full Disk Access, re-check whenever the app regains focus (the user just
+  // came back from System Settings) so the Safari step advances on its own.
+  useEffect(() => {
+    if (!api || !((step === "safari" && !fullDiskAccess) || step === "access")) return;
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") void recheckAccess();
+    });
+    return () => sub.remove();
+  }, [step, fullDiskAccess, api, source?.id]);
+
+  /** After the user visits System Settings: Safari re-probes; a protected browser is listed again. */
+  const recheckAccess = async () => {
+    if (!api) return;
+    if (step === "safari") return setFullDiskAccess(api.safariHasFullDiskAccess());
+    const list = await api.listBrowsers().catch(() => null);
+    if (!list) return;
+    setBrowsers(list);
+    const updated = list.find((b) => b.id === source?.id);
+    if (updated && !updated.needsFullDiskAccess) {
+      choose(updated);
+      setStep("choose");
+    }
+  };
 
   useEffect(() => {
     if (!api) return setStep("choose");
@@ -56,7 +82,9 @@ export function ImportWindow() {
       .listBrowsers()
       .then((list) => {
         setBrowsers(list);
-        if (list[0]) choose(list[0]);
+        // Preselect one we can read right away (not Safari, not a browser behind Full Disk Access).
+        const first = list.find((b) => !b.needsFullDiskAccess && !b.requiresExport) ?? list[0];
+        if (first) choose(first);
         setStep("choose");
       })
       .catch(() => setStep("choose"));
@@ -74,6 +102,7 @@ export function ImportWindow() {
     const available = b.requiresExport ? (["bookmarks", "history", "passwords"] as ImportKind[]) : [...new Set(b.profiles.flatMap((p) => p.available))];
     // Cookies can't be set in the engine; spaces/pinned tabs/favourites are Arc's part of "Tabs".
     setKinds(new Set(available.filter((k) => k !== "cookies")));
+    if (b.family === "safari" && api) setFullDiskAccess(api.safariHasFullDiskAccess());
     setError(null);
   };
 
@@ -84,6 +113,7 @@ export function ImportWindow() {
     if (!source) return;
     setError(null);
     if (step === "choose") {
+      if (source.needsFullDiskAccess) return setStep("access");
       if (source.requiresExport) return setStep("safari");
       if (source.profiles.length > 1 || (isArc && allSpaces.length > 1)) return setStep("profiles");
     }
@@ -202,6 +232,32 @@ export function ImportWindow() {
     }
   };
 
+  const importSafariDirect = async () => {
+    if (!api) return;
+    setError(null);
+    setStatus({ bookmarks: "active", history: "active", tabs: "active" });
+    setPreparing(1);
+    setStep("progress");
+    abort.current = new AbortController();
+    try {
+      const data = await api.importSafariDirect({ signal: abort.current.signal });
+      const c = await applySafari(target, data);
+      setStatus({ bookmarks: "done", history: "done", tabs: "done" });
+      setCounts(c);
+      setFailures([]);
+      setTimeout(() => setStep("done"), 700);
+    } catch (e) {
+      if ((e as { code?: string }).code === "cancelled") return;
+      setStep("safari");
+      setError(
+        (e as { code?: string }).code === "locked"
+          ? "Netnyahoo still doesn't have Full Disk Access. Grant it above, or use the export file below."
+          : "Couldn't read Safari's data. Try the export file below.",
+      );
+      setFullDiskAccess(api.safariHasFullDiskAccess());
+    }
+  };
+
   const importHtml = async () => {
     if (!api) return;
     const path = await api.chooseImportFile("bookmarksHTML");
@@ -220,6 +276,24 @@ export function ImportWindow() {
   };
 
   const close = () => void closeWindow(IMPORT_WINDOW_ID);
+
+  // DEV: lets lib/devHarness step through the flow (`globalThis.nnImport.select("dia")`, `.next()`,
+  // `.back()`) for snapshots, since the utility window isn't reachable through accessibility.
+  useEffect(() => {
+    if (!__DEV__) return;
+    const g = globalThis as { nnImport?: object };
+    g.nnImport = {
+      select: (id: string) => {
+        const b = browsers.find((x) => x.id === id);
+        if (b) choose(b);
+        return !!b;
+      },
+      next,
+      back: () => setStep("choose"),
+      step,
+    };
+    return () => void delete g.nnImport;
+  });
 
   let body: ReactNode = null;
   let footer: ReactNode = null;
@@ -250,7 +324,7 @@ export function ImportWindow() {
             ))}
           </View>
         )}
-        {source && !source.requiresExport && (
+        {source && !source.requiresExport && !source.needsFullDiskAccess && (
           <View style={{ marginTop: 18 }}>
             <Text style={{ fontSize: 12, fontWeight: "600", color: theme.textSecondary, marginBottom: 8 }}>What to import</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
@@ -281,7 +355,7 @@ export function ImportWindow() {
         <View style={{ flex: 1 }} />
         {targetPicker}
         <Button title="Cancel" onPress={close} />
-        <Button title="Continue" kind="primary" disabled={!source || (!source.requiresExport && kinds.size === 0)} onPress={next} />
+        <Button title="Continue" kind="primary" disabled={!source || (!source.requiresExport && !source.needsFullDiskAccess && kinds.size === 0)} onPress={next} />
       </>
     );
   } else if (step === "profiles" && source) {
@@ -371,17 +445,33 @@ export function ImportWindow() {
       </>
     );
   } else if (step === "safari") {
-    body = (
+    body = fullDiskAccess ? (
       <>
-        <Title title="Import from Safari" subtitle="Open Safari and follow these steps to import your passwords, history, and bookmarks." />
-        <View style={{ gap: 10, marginBottom: 18 }}>
-          {["Open Safari", "Open File menu and click Export Browsing Data to File", "Click Download and save the file", `Upload the .zip file to ${APP}`].map((t, i) => (
-            <View key={t} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.rowHover, alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ fontSize: 11, fontWeight: "600", color: theme.textSecondary }}>{i + 1}</Text>
-              </View>
-              <Text style={{ fontSize: 13, color: theme.textPrimary }}>{t}</Text>
-            </View>
+        <Title title="Import from Safari" subtitle={`Netnyahoo can read Safari directly. Bring your bookmarks, history, Reading List and open tabs into ${APP}.`} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 18 }}>
+          {source?.iconPath ? <Image source={{ uri: `file://${source.iconPath}` }} style={{ width: 40, height: 40 }} /> : null}
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary }}>Bookmarks, history, Reading List and tabs</Text>
+            <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 1 }}>Full Disk Access is granted.</Text>
+          </View>
+          <Button title="Import from Safari" kind="primary" onPress={() => void importSafariDirect()} />
+        </View>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: theme.textSecondary, marginBottom: 8 }}>
+          Passwords and payment cards can't be read directly — import them from an export file:
+        </Text>
+        <FileDrop onFile={(path) => void importSafari(path)} onChoose={async () => (await api?.chooseImportFile("safariExport")) ?? null} />
+        {error && <ErrorText text={error} />}
+      </>
+    ) : (
+      <>
+        <Title title="Give Netnyahoo access to Safari" subtitle={`To import Safari's bookmarks, history and tabs directly, ${APP} needs Full Disk Access.`} />
+        <FullDiskAccessSteps onOpen={() => void api?.openFullDiskAccessSettings()} onRecheck={() => void recheckAccess()} />
+        <Text style={{ fontSize: 12, fontWeight: "600", color: theme.textSecondary, marginBottom: 8 }}>
+          Or import everything (including passwords) from an export file:
+        </Text>
+        <View style={{ gap: 6, marginBottom: 12 }}>
+          {["Open Safari", "File menu › Export Browsing Data to File", `Upload the .zip file to ${APP}`].map((t, i) => (
+            <Text key={t} style={{ fontSize: 12, color: theme.textSecondary }}>{`${i + 1}. ${t}`}</Text>
           ))}
         </View>
         <FileDrop onFile={(path) => void importSafari(path)} onChoose={async () => (await api?.chooseImportFile("safariExport")) ?? null} />
@@ -393,6 +483,21 @@ export function ImportWindow() {
         <Button title="Back" onPress={() => setStep("choose")} />
         <View style={{ flex: 1 }} />
         {targetPicker}
+        <Button title="Cancel" onPress={close} />
+      </>
+    );
+  } else if (step === "access" && source) {
+    body = (
+      <>
+        <Title title={`Give ${APP} access to ${source.name}`} subtitle={`macOS protects ${source.name}'s data from other apps. To import your bookmarks, history, tabs and passwords, ${APP} needs Full Disk Access.`} />
+        <FullDiskAccessSteps onOpen={() => void api?.openFullDiskAccessSettings()} onRecheck={() => void recheckAccess()} />
+        {error && <ErrorText text={error} />}
+      </>
+    );
+    footer = (
+      <>
+        <Button title="Back" onPress={() => setStep("choose")} />
+        <View style={{ flex: 1 }} />
         <Button title="Cancel" onPress={close} />
       </>
     );
@@ -521,8 +626,10 @@ function BrowserRow({ browser, selected, onPress }: { browser: BrowserSource; se
   const colors = useFormColors();
   const { hovered, hoverProps } = useHover();
   const spaces = browser.profiles.reduce((n, p) => n + (p.spaces?.length ?? 0), 0);
-  const detail = browser.requiresExport
-    ? "From an exported .zip"
+  const detail = browser.needsFullDiskAccess
+    ? "Needs Full Disk Access"
+    : browser.requiresExport
+    ? "Direct or from an exported .zip"
     : browser.family === "arc" && spaces
       ? plural(spaces, "space")
       : browser.profiles.length > 1
@@ -680,6 +787,29 @@ function SuccessMark() {
     <Animated.View style={{ transform: [{ scale }] }}>
       <Symbol name="checkmark.circle.fill" size={46} color="#30D158" style={{ width: 60, height: 60 }} />
     </Animated.View>
+  );
+}
+
+/** The Full Disk Access instructions, with the System Settings link and a manual re-check. */
+function FullDiskAccessSteps({ onOpen, onRecheck }: { onOpen: () => void; onRecheck: () => void }) {
+  const theme = useTheme();
+  return (
+    <>
+      <View style={{ gap: 10, marginBottom: 16 }}>
+        {["Click “Open Full Disk Access Settings” below", `Turn on ${APP} in the list`, "Come back here: we'll continue automatically"].map((t, i) => (
+          <View key={t} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.rowHover, alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: theme.textSecondary }}>{i + 1}</Text>
+            </View>
+            <Text style={{ fontSize: 13, color: theme.textPrimary }}>{t}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 18 }}>
+        <Button title="Open Full Disk Access Settings" kind="primary" onPress={onOpen} />
+        <Button title="Check Again" onPress={onRecheck} />
+      </View>
+    </>
   );
 }
 

@@ -72,6 +72,26 @@ public class ImportModule: Module {
       self.run(promise, job: jobId) { try Self.json(SafariExport.load(Self.fileURL(path), cancellation: cancellation)) }
     }
 
+    /// Whether Netnyahoo can read Safari's data straight from `~/Library/Safari` (i.e. it has
+    /// Full Disk Access). No prompt; the UI polls this to switch between the direct path and
+    /// the export `.zip`.
+    Function("safariHasFullDiskAccess") { () -> Bool in SafariDirect.hasAccess() }
+
+    /// Opens System Settings › Privacy & Security › Full Disk Access so the user can grant it.
+    AsyncFunction("openFullDiskAccessSettings") { (promise: Promise) in
+      let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
+      NSWorkspace.shared.open(url)
+      promise.resolve(nil)
+    }.runOnQueue(.main)
+
+    /// Reads Safari's live bookmarks, history, Reading List and open tabs directly. Requires
+    /// Full Disk Access (rejects with code "locked" otherwise); passwords/cards still need the
+    /// export `.zip`.
+    AsyncFunction("importSafariDirect") { (jobId: String, promise: Promise) in
+      let cancellation = self.jobs.start(jobId)
+      self.run(promise, job: jobId) { try Self.json(SafariDirect.load(cancellation: cancellation)) }
+    }
+
     AsyncFunction("importBookmarksHTML") { (path: String, promise: Promise) in
       self.run(promise) { try Self.json(NetscapeBookmarks.load(Self.fileURL(path))) }
     }

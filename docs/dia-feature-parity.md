@@ -550,8 +550,10 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 ## 20. Import, account & sync
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
-| Import from Chrome, Safari (.zip), Firefox, Edge, Brave, Opera, Vivaldi, Arc | ✓ | ✅ | + Opera GX, Island, Chrome channels, Chromium; bookmarks, history, open tabs, passwords (into Chrome's password manager) |
+| Import from Chrome, Safari, Firefox, Edge, Brave, Opera, Vivaldi, Arc, Dia, Helium | ✓ | ✅ | + Opera GX, Island, Chrome channels, Chromium; bookmarks, history, open tabs, passwords (into Chrome's password manager). Dia and Helium (imput's ungoogled-chromium) import as ordinary Chromium — Dia's tabs are plaintext SNSS, secrets under "Dia Safe Storage"; Helium's Keychain item is "Helium Storage Key" / "Helium". Chrome and Brave protect their data from other apps on current macOS, so they're listed as "Needs Full Disk Access" and go through the same FDA step as Safari |
+| Safari direct import (no export .zip) | — | ✅ | Reads `~/Library/Safari` directly (bookmarks, history, Reading List, open tabs) when Netnyahoo has Full Disk Access; the import UI detects FDA, links to System Settings and re-checks on return. The export `.zip` stays as the fallback and the only path for Safari passwords/cards |
 | Arc import (spaces, pinned tabs, custom names) | ✓ | ✅ | |
+| Dia sidebar import (spaces, pinned tiles, custom names/colours) | ✓ | ⛔ | Dia moved its sidebar out of Arc's `StorableSidebar.json` into a SQLCipher-encrypted `tabs.db` (GRDB; tables `nodes`/`tabs`/`tab_groups`/`spaces`/`windows`/`content_panes`, columns `space_id`/`custom_title`/`custom_icon`/`title_source`/`pinned_container`/`favorites`). Its key is derived by CryptoKit HKDF-SHA256, so decrypting it isn't implemented — and verifying against the real profile would mean decrypting real browsing data, which the data rules forbid. Dia's open tabs still import from its plaintext SNSS `Sessions/` |
 | Account (Atlassian identity, OTP, delete account) | ✓ | — | |
 | E2E‑encrypted sync (24‑word phrase, recovery kit, device transfer) | ✓ | ⛔ | needs a sync server and account system we don't have |
 | Invite / referrals | ✓ | — | |

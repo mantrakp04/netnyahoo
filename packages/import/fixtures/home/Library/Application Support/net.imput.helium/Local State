@@ -1,0 +1,17 @@
+{
+  "browser": {
+    "enabled_labs_experiments": []
+  },
+  "profile": {
+    "info_cache": {
+      "Default": {
+        "name": "Helium",
+        "user_name": ""
+      }
+    },
+    "last_used": "Default",
+    "profiles_order": [
+      "Default"
+    ]
+  }
+}

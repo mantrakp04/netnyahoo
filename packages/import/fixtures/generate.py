@@ -22,6 +22,7 @@ import hashlib
 import hmac
 import json
 import os
+import plistlib
 import shutil
 import sqlite3
 import struct
@@ -388,6 +389,159 @@ def build_opera():
     chromium_bookmarks(os.path.join(root, "Bookmarks"), bar=[bookmark("Opera link", "https://opera.example/",
                                                                       BASE_UNIX, "00000000-0000-4000-8000-000000000501")],
                        other=[], synced=[])
+
+
+def build_helium():
+    # Helium (imput's ungoogled-chromium fork) is an ordinary Chromium profile on disk; only
+    # its Keychain item name differs ("Helium Storage Key" / "Helium"). Same OSCrypt v10.
+    root = os.path.join(SUPPORT, "net.imput.helium")
+    chromium_local_state(root, {"Default": {"name": "Helium", "user_name": ""}})
+    d = os.path.join(root, "Default")
+    write_json(os.path.join(d, "Preferences"), {})
+    t = BASE_UNIX - 86400 * 5
+    chromium_bookmarks(os.path.join(d, "Bookmarks"),
+                       bar=[bookmark("Helium", "https://helium.example/", t, "00000000-0000-4000-8000-000000000601"),
+                            bookmark("Imput", "https://imput.example/", t, "00000000-0000-4000-8000-000000000602")],
+                       other=[], synced=[])
+    chromium_history(os.path.join(d, "History"), [
+        ("https://helium.example/", "Helium", 4, 1, BASE_UNIX - 60, 0),
+        ("https://imput.example/", "Imput", 2, 0, BASE_UNIX - 120, 0),
+    ])
+    chromium_logins(os.path.join(d, "Login Data"), [
+        ("https://helium.example/", "https://helium.example/", "he@example.com", v10(b"helium-pass"), 0, 3)])
+    cmds = [
+        ids(9, 1, 0),  # normal window
+        ids(0, 1, 10), ids(2, 10, 0), nav(10, 0, "https://helium.example/", "Helium"),
+        ids(7, 10, 0),
+        ids(8, 1, 0),
+        (255, b""),
+    ]
+    write(os.path.join(d, "Sessions", f"Session_{webkit(BASE_UNIX)}"), snss_plain(cmds))
+
+
+def build_dia():
+    # Dia (The Browser Company). Its bookmarks / history / open tabs are ordinary Chromium
+    # files (plaintext SNSS Sessions), passwords under "Dia Safe Storage" / "Dia". Dia's own
+    # sidebar (spaces, pinned tiles) lives in a SQLCipher-encrypted tabs.db we can't decrypt,
+    # so nothing here mirrors that — Dia imports as a normal Chromium browser.
+    root = os.path.join(SUPPORT, "Dia", "User Data")
+    chromium_local_state(root, {
+        "Default": {"name": "Personal", "user_name": "me@example.com", "profile_highlight_color": -12627531},
+        # Dia leaves Chromium's colour at opaque black (unset).
+        "Profile 2": {"name": "Work", "user_name": "", "profile_highlight_color": -16777216},
+    }, last_used="Default")
+    d = os.path.join(root, "Default")
+    write_json(os.path.join(d, "Preferences"), {})
+    t = BASE_UNIX - 86400 * 3
+    chromium_bookmarks(os.path.join(d, "Bookmarks"),
+                       bar=[bookmark("Dia", "https://dia.example/", t, "00000000-0000-4000-8000-000000000701"),
+                            folder("Reading", [
+                                bookmark("Long read", "https://read.example/", t, "00000000-0000-4000-8000-000000000702")],
+                                t, "00000000-0000-4000-8000-000000000703")],
+                       other=[bookmark("Other", "https://other.example/", t, "00000000-0000-4000-8000-000000000704")],
+                       synced=[])
+    chromium_history(os.path.join(d, "History"), [
+        ("https://dia.example/", "Dia", 5, 2, BASE_UNIX - 30, 0),
+        ("https://read.example/", "Long read", 1, 0, BASE_UNIX - 300, 0),
+    ])
+    chromium_logins(os.path.join(d, "Login Data"), [
+        ("https://dia.example/", "https://dia.example/", "me@example.com", v10(b"dia-pass"), 0, 2)])
+    cmds = [
+        ids(9, 1, 0),  # normal window
+        ids(0, 1, 10), ids(2, 10, 0), nav(10, 0, "https://dia.example/", "Dia"),
+        (12, struct.pack("<i?3x", 10, True)),  # pinned
+        ids(7, 10, 0),
+        ids(0, 1, 11), ids(2, 11, 1), nav(11, 0, "https://read.example/", "Long read"),
+        ids(7, 11, 0),
+        ids(8, 1, 1),
+        (255, b""),
+    ]
+    write(os.path.join(d, "Sessions", f"Session_{webkit(BASE_UNIX)}"), snss_plain(cmds))
+    p2 = os.path.join(root, "Profile 2")
+    write_json(os.path.join(p2, "Preferences"), {})
+    chromium_bookmarks(os.path.join(p2, "Bookmarks"),
+                       bar=[bookmark("Work", "https://work.dia.example/", t, "00000000-0000-4000-8000-000000000705")],
+                       other=[], synced=[])
+
+
+# --------------------------------------------------------------------------------------
+# Safari direct (Full Disk Access): ~/Library/Safari/{Bookmarks.plist, History.db, LastSession.plist}
+
+
+def safari_leaf(url, title, reading_list_date=None):
+    node = {"WebBookmarkType": "WebBookmarkTypeLeaf", "URLString": url,
+            "URIDictionary": {"title": title}, "WebBookmarkUUID": url}
+    if reading_list_date is not None:
+        node["ReadingList"] = {"DateAdded": reading_list_date}
+    return node
+
+
+def safari_list(children, title=None, identifier=None):
+    node = {"WebBookmarkType": "WebBookmarkTypeList", "Children": children, "Title": title or ""}
+    if identifier is not None:
+        node["WebBookmarkIdentifier"] = identifier
+    return node
+
+
+def build_safari_direct():
+    import datetime
+    home = os.path.join(HERE, "home")
+    safari = os.path.join(home, "Library", "Safari")
+    os.makedirs(safari, exist_ok=True)
+
+    # Bookmarks.plist (binary plist): Bookmarks Bar, a user folder, and the Reading List.
+    root = safari_list([
+        safari_list([
+            safari_leaf("https://apple.example/", "Apple"),
+            safari_list([safari_leaf("https://kyoto.example/", "京都 guide")], title="Travel"),
+        ], title="BookmarksBar", identifier="BookmarksBar"),
+        safari_list([], title="History", identifier="History"),  # proxy-ish list with no kids: skipped
+        safari_list([
+            safari_leaf("https://longread.example/article", "A long read",
+                        reading_list_date=datetime.datetime(2026, 8, 30, 0, 0, 0)),
+        ], title="com.apple.ReadingList", identifier="com.apple.ReadingList"),
+    ], title="", identifier=None)
+    root["WebBookmarkType"] = "WebBookmarkTypeList"
+    with open(os.path.join(safari, "Bookmarks.plist"), "wb") as f:
+        plistlib.dump(root, f, fmt=plistlib.FMT_BINARY)
+
+    # History.db (Safari schema; visit_time is CFAbsoluteTime = seconds since 2001-01-01).
+    def cf(unix_seconds):
+        return float(unix_seconds - 978307200)
+    db = new_db(os.path.join(safari, "History.db"))
+    db.executescript("""
+        CREATE TABLE history_items (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE,
+          domain_expansion TEXT, visit_count INTEGER NOT NULL, daily_visit_counts BLOB,
+          weekly_visit_counts BLOB, autocomplete_triggers BLOB, should_recompute_derived_visit_counts INTEGER,
+          visit_count_score INTEGER, status_code INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE history_visits (id INTEGER PRIMARY KEY AUTOINCREMENT, history_item INTEGER NOT NULL,
+          visit_time REAL NOT NULL, title TEXT, load_successful BOOLEAN NOT NULL DEFAULT 1,
+          http_non_get BOOLEAN NOT NULL DEFAULT 0, synthesized BOOLEAN NOT NULL DEFAULT 0,
+          redirect_source INTEGER, redirect_destination INTEGER, origin INTEGER NOT NULL DEFAULT 0,
+          generation INTEGER NOT NULL DEFAULT 0, attributes INTEGER NOT NULL DEFAULT 0, score REAL NOT NULL DEFAULT 0);
+    """)
+    rows = [
+        ("https://apple.example/", "apple", 3, "Apple - Home", BASE_UNIX - 100),
+        ("https://news.example/", "news", 5, "News Today", BASE_UNIX),
+        ("file:///tmp/x.html", None, 1, "local", BASE_UNIX - 500),  # non-web, dropped
+    ]
+    for url, dom, vc, title, when in rows:
+        cur = db.execute("INSERT INTO history_items(url, domain_expansion, visit_count) VALUES (?,?,?)", (url, dom, vc))
+        db.execute("INSERT INTO history_visits(history_item, visit_time, title) VALUES (?,?,?)",
+                   (cur.lastrowid, cf(when), title))
+    db.commit()
+    db.close()
+
+    # LastSession.plist: one window, two tabs, the second selected.
+    session = {"SessionVersion": "1.0", "SessionWindows": [
+        {"SelectedTabIndex": 1, "TabStates": [
+            {"TabURL": "https://apple.example/", "TITLE": "Apple"},
+            {"TabURL": "https://news.example/", "TITLE": "News Today"},
+            {"TabURL": "favorites://", "TITLE": "Favorites"},  # non-web, dropped
+        ]},
+    ]}
+    with open(os.path.join(safari, "LastSession.plist"), "wb") as f:
+        plistlib.dump(session, f, fmt=plistlib.FMT_BINARY)
 
 
 # --------------------------------------------------------------------------------------
@@ -903,6 +1057,9 @@ def main():
     build_chrome()
     build_brave()
     build_opera()
+    build_helium()
+    build_dia()
+    build_safari_direct()
     build_arc()
     build_firefox()
     build_exports()

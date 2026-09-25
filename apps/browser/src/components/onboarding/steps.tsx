@@ -252,6 +252,8 @@ const BROWSERS = [
   { name: "Chrome", path: "/Applications/Google Chrome.app" },
   { name: "Safari", path: "/Applications/Safari.app" },
   { name: "Arc", path: "/Applications/Arc.app" },
+  { name: "Dia", path: "/Applications/Dia.app" },
+  { name: "Helium", path: "/Applications/Helium.app" },
   { name: "Firefox", path: "/Applications/Firefox.app" },
   { name: "Edge", path: "/Applications/Microsoft Edge.app" },
   { name: "Brave", path: "/Applications/Brave Browser.app" },

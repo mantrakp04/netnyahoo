@@ -136,3 +136,38 @@ final class SafariExportTests: XCTestCase {
     }
   }
 }
+
+final class SafariDirectTests: XCTestCase {
+  func testReadsBookmarksHistoryAndTabsFromLibrary() throws {
+    XCTAssertTrue(SafariDirect.hasAccess(home: Fixtures.home))
+    let out = try SafariDirect.load(home: Fixtures.home)
+
+    // Bookmarks Bar tagged toolbar (with a nested folder), Reading List tagged readingList,
+    // and Safari's synthetic empty "History" list dropped.
+    XCTAssertEqual(out.bookmarks?.outline,
+      "Bookmarks[Bookmarks Bar{toolbar}[Apple<https://apple.example/>, Travel[京都 guide<https://kyoto.example/>]], " +
+      "Reading List{readingList}[A long read<https://longread.example/article>]]")
+    // ReadingList DateAdded surfaces on the leaf.
+    let readingList = out.bookmarks?.children?.first { $0.role == "readingList" }
+    XCTAssertNotNil(readingList?.children?.first?.dateAdded)
+
+    // History: newest first, web-only (the file:// row is dropped), CFAbsoluteTime → Unix ms.
+    let history = out.profiles.first?.history ?? []
+    XCTAssertEqual(history.map(\.url), ["https://news.example/", "https://apple.example/"])
+    XCTAssertEqual(history[0].title, "News Today")
+    XCTAssertEqual(history[0].lastVisit, Double(1788220800) * 1000)
+    XCTAssertEqual(history.first(where: { $0.url == "https://apple.example/" })?.visits, 3)
+
+    // Open tabs from LastSession.plist, non-web dropped, second selected.
+    XCTAssertEqual(out.tabs.map(\.url), ["https://apple.example/", "https://news.example/"])
+    XCTAssertEqual(out.tabs.first(where: { $0.active })?.url, "https://news.example/")
+  }
+
+  func testMissingLibraryReportsNoAccess() {
+    let empty = Fixtures.url("misc")  // has no Library/Safari
+    XCTAssertFalse(SafariDirect.hasAccess(home: empty))
+    XCTAssertThrowsError(try SafariDirect.load(home: empty)) { error in
+      XCTAssertEqual((error as? ImportError)?.code, "locked")
+    }
+  }
+}

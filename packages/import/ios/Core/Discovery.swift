@@ -21,10 +21,15 @@ public struct BrowserDefinition: Sendable {
   public static let all: [BrowserDefinition] = [
     chromium("chrome", "Google Chrome", ["com.google.Chrome"], "Google/Chrome", "Chrome"),
     arc,
+    dia,
     .init(id: "safari", name: "Safari", family: .safari, bundleIds: ["com.apple.Safari"]),
     .init(id: "firefox", name: "Firefox", family: .firefox, bundleIds: ["org.mozilla.firefox"], dataPath: "Firefox"),
     chromium("edge", "Microsoft Edge", ["com.microsoft.edgemac"], "Microsoft Edge", "Microsoft Edge"),
     chromium("brave", "Brave", ["com.brave.Browser"], "BraveSoftware/Brave-Browser", "Brave"),
+    // Helium (imput's ungoogled-chromium fork) names its Keychain item "Helium Storage Key",
+    // account "Helium" — not the usual "<Browser> Safe Storage". Otherwise standard Chromium.
+    BrowserDefinition(id: "helium", name: "Helium", family: .chromium, bundleIds: ["net.imput.helium"],
+                      dataPath: "net.imput.helium", keychainService: "Helium Storage Key", keychainAccount: "Helium"),
     chromium("opera", "Opera", ["com.operasoftware.Opera"], "com.operasoftware.Opera", "Opera", rootIsProfile: true),
     chromium("operaGX", "Opera GX", ["com.operasoftware.OperaGX"], "com.operasoftware.OperaGX", "Opera", rootIsProfile: true),
     chromium("vivaldi", "Vivaldi", ["com.vivaldi.Vivaldi"], "Vivaldi", "Vivaldi"),
@@ -37,6 +42,15 @@ public struct BrowserDefinition: Sendable {
 
   static let arc = BrowserDefinition(id: "arc", name: "Arc", family: .arc, bundleIds: ["company.thebrowser.Browser"],
                                      dataPath: "Arc/User Data", keychainService: "Arc Safe Storage", keychainAccount: "Arc")
+
+  /// Dia (The Browser Company's second browser). Its bookmarks, history and open tabs live in
+  /// the ordinary Chromium files (`Bookmarks`, `History`, plaintext SNSS `Sessions/`), and its
+  /// passwords/cookies under "Dia Safe Storage" / "Dia" — so it imports as a normal Chromium
+  /// browser. Dia's own sidebar (spaces, pinned tiles, folders, custom names/colours) is *not*
+  /// in `StorableSidebar.json` like Arc's; it moved into a SQLCipher-encrypted `tabs.db`
+  /// (GRDB), which we can describe but not decrypt without its key — see `DiaSidebar`.
+  static let dia = BrowserDefinition(id: "dia", name: "Dia", family: .chromium, bundleIds: ["company.thebrowser.dia"],
+                                     dataPath: "Dia/User Data", keychainService: "Dia Safe Storage", keychainAccount: "Dia")
 
   static func chromium(_ id: String, _ name: String, _ bundleIds: [String], _ path: String, _ keychain: String,
                        rootIsProfile: Bool = false) -> BrowserDefinition {
@@ -86,6 +100,10 @@ public struct BrowserSource: Codable, Equatable, Sendable {
   public var requiresExport: Bool
   /// Chromium family: passwords/cookies need a Keychain unlock (macOS will prompt).
   public var needsKeychain: Bool
+  /// The browser's data folder exists but macOS won't let us list it: Chrome and Brave protect
+  /// their data from other apps, so reading it needs Full Disk Access. `profiles` is empty
+  /// until the user grants it; the UI shows the Full Disk Access step.
+  public var needsFullDiskAccess = false
   public var profiles: [BrowserProfile]
 }
 
@@ -124,12 +142,34 @@ public struct BrowserDiscovery {
       profiles = chromiumProfiles(def)
       if def.family == .arc { attachArcSpaces(&profiles) }
     }
-    guard def.family == .safari || !profiles.isEmpty else { return nil }
+    // A protected folder can't be listed, but its well-known entries can still be stat'ed: only
+    // offer it when there's evidently a profile there (an empty leftover folder isn't a browser).
+    let denied = def.family != .safari && profiles.isEmpty && dataDirectory(def).map { root in
+      Self.isAccessDenied(root) && ["Local State", "Default", "profiles.ini"].contains {
+        FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path)
+      }
+    } == true
+    guard def.family == .safari || !profiles.isEmpty || denied else { return nil }
     return BrowserSource(
       id: def.id, name: def.name, family: def.family, appPath: app?.path,
       iconPath: app.flatMap { iconFor($0, def.id) },
-      requiresExport: def.family == .safari, needsKeychain: def.isChromiumBased, profiles: profiles
+      requiresExport: def.family == .safari, needsKeychain: def.isChromiumBased,
+      needsFullDiskAccess: denied, profiles: profiles
     )
+  }
+
+  /// True when `dir` exists but listing it fails with a permission error (macOS's app-data
+  /// protection, lifted by Full Disk Access). A missing folder isn't "denied".
+  static func isAccessDenied(_ dir: URL) -> Bool {
+    guard FileManager.default.fileExists(atPath: dir.path) else { return false }
+    do {
+      _ = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+      return false
+    } catch let error as NSError {
+      if error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoPermissionError { return true }
+      let posix = (error.userInfo[NSUnderlyingErrorKey] as? NSError)
+      return posix?.domain == NSPOSIXErrorDomain && (posix?.code == Int(EPERM) || posix?.code == Int(EACCES))
+    }
   }
 
   public func dataDirectory(_ def: BrowserDefinition) -> URL? {
@@ -190,7 +230,9 @@ public struct BrowserDiscovery {
         name = dir == "Default" || dir == "." ? "Default" : "Profile \(fallbackIndex)"
       }
       let picture = path.appendingPathComponent("Google Profile Picture.png")
-      let color = (info["profile_highlight_color"] as? Int ?? info["default_avatar_fill_color"] as? Int).map(Hex.color(skColor:))
+      // Opaque black (0xFF000000) is "unset": Dia leaves it so and keeps its own profile colours elsewhere.
+      let color = (info["profile_highlight_color"] as? Int ?? info["default_avatar_fill_color"] as? Int)
+        .flatMap { UInt32(truncatingIfNeeded: $0) == 0xFF00_0000 ? nil : Hex.color(skColor: $0) }
       out.append(BrowserProfile(
         id: dir,
         name: name!,

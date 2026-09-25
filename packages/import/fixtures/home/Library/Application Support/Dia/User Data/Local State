@@ -1,0 +1,24 @@
+{
+  "browser": {
+    "enabled_labs_experiments": []
+  },
+  "profile": {
+    "info_cache": {
+      "Default": {
+        "name": "Personal",
+        "user_name": "me@example.com",
+        "profile_highlight_color": -12627531
+      },
+      "Profile 2": {
+        "name": "Work",
+        "user_name": "",
+        "profile_highlight_color": -16777216
+      }
+    },
+    "last_used": "Default",
+    "profiles_order": [
+      "Default",
+      "Profile 2"
+    ]
+  }
+}

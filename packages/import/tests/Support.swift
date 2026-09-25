@@ -6,6 +6,7 @@ import XCTest
 enum Fixtures {
   static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
     .appendingPathComponent("fixtures", isDirectory: true)
+  static let home = root.appendingPathComponent("home", isDirectory: true)
   static let support = root.appendingPathComponent("home/Library/Application Support", isDirectory: true)
 
   static func url(_ path: String) -> URL { root.appendingPathComponent(path) }
@@ -19,13 +20,14 @@ enum Fixtures {
   static var chromiumSecret: Data { Data(secrets["chromiumSafeStorageSecret"]!.utf8) }
   static var chromiumKey: Data { ChromiumCrypto.deriveKey(secret: chromiumSecret) }
 
-  /// Pretends Chrome, Arc, Firefox, Safari, Brave and Opera are installed; Edge is not.
+  /// Pretends Chrome, Arc, Dia, Firefox, Safari, Brave, Opera and Helium are installed; Edge is not.
   static func discovery() -> BrowserDiscovery {
     BrowserDiscovery(
       applicationSupport: support,
       locateApp: { ids in
-        let installed = ["com.google.Chrome", "company.thebrowser.Browser", "org.mozilla.firefox", "com.apple.Safari",
-                         "com.brave.Browser", "com.operasoftware.Opera"]
+        let installed = ["com.google.Chrome", "company.thebrowser.Browser", "company.thebrowser.dia",
+                         "org.mozilla.firefox", "com.apple.Safari", "com.brave.Browser",
+                         "com.operasoftware.Opera", "net.imput.helium"]
         return ids.first(where: installed.contains).map { URL(fileURLWithPath: "/Applications/\($0).app") }
       },
       iconFor: { _, id in "/tmp/icons/\(id).png" }

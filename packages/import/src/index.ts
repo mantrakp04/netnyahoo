@@ -57,6 +57,12 @@ export type BrowserSource = {
   requiresExport: boolean;
   /** Passwords/cookies need unlockBrowser(), which shows the macOS Keychain prompt. */
   needsKeychain: boolean;
+  /**
+   * The browser's data exists but macOS blocks reading it (Chrome and Brave protect their data
+   * from other apps). `profiles` is empty until the user grants Full Disk Access
+   * (`openFullDiskAccessSettings()`); list again after that.
+   */
+  needsFullDiskAccess?: boolean;
   profiles: BrowserProfile[];
 };
 
@@ -171,6 +177,8 @@ export type SafariExport = {
   credentials: Credential[];
   /** One per Safari profile; `name` is absent for the default profile. */
   profiles: { name?: string; history: ImportedHistoryEntry[]; extensions: string[] }[];
+  /** Open tabs — only from a direct import; the export archive has none. */
+  tabs: ImportedTab[];
   warnings: ImportWarning[];
 };
 
@@ -220,6 +228,9 @@ const Native = requireNativeModule<{
   isBrowserUnlocked(browserId: string): boolean;
   forgetUnlockedKeys(): void;
   importSafariExport(jobId: string, path: string): Promise<string>;
+  safariHasFullDiskAccess(): boolean;
+  openFullDiskAccessSettings(): Promise<null>;
+  importSafariDirect(jobId: string): Promise<string>;
   importBookmarksHTML(path: string): Promise<string>;
   importPasswordsCSV(path: string): Promise<string>;
   chooseImportFile(kind: "safariExport" | "bookmarksHTML" | "passwordsCSV"): Promise<string | null>;
@@ -326,6 +337,24 @@ export async function decryptFirefoxPasswords(
 /** Safari's File › Export Browsing Data archive (.zip) or its unzipped folder. */
 export const importSafariExport = (path: string, options: Pick<ImportOptions, "signal"> = {}) =>
   job<SafariExport>(options, (jobId) => Native.importSafariExport(jobId, path));
+
+/**
+ * Whether Netnyahoo can read Safari's data straight from `~/Library/Safari` — i.e. it has
+ * Full Disk Access. Poll this to decide between `importSafariDirect()` and the export `.zip`;
+ * re-check it when the app regains focus after the user visits System Settings.
+ */
+export const safariHasFullDiskAccess = () => Native.safariHasFullDiskAccess();
+
+/** Opens System Settings › Privacy & Security › Full Disk Access so the user can grant it. */
+export const openFullDiskAccessSettings = () => call<void>(Native.openFullDiskAccessSettings());
+
+/**
+ * Reads Safari's live bookmarks, history, Reading List and open tabs directly (no export).
+ * Requires Full Disk Access — rejects with code "locked" otherwise. Passwords and payment
+ * cards can't be read this way; use the export `.zip` (`importSafariExport`) for those.
+ */
+export const importSafariDirect = (options: Pick<ImportOptions, "signal"> = {}) =>
+  job<SafariExport>(options, (jobId) => Native.importSafariDirect(jobId));
 
 /** Any browser's "Export bookmarks" HTML (Netscape format). */
 export const importBookmarksHTML = (path: string) => call<BookmarkNode>(Native.importBookmarksHTML(path));

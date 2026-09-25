@@ -1,7 +1,8 @@
 import Foundation
 
 /// Safari's File › Export Browsing Data archive (Safari 18.2+), as a .zip or an unzipped
-/// folder. Reading Safari's live data would need Full Disk Access, so this is the only path.
+/// folder. With Full Disk Access, `SafariDirect` reads Safari's live data instead; the archive
+/// stays the fallback and the only way to bring Safari's passwords.
 ///
 /// Contents (en_US names; other locales translate them, so files are recognised by type and
 /// by the JSON `metadata.data_type`, not by name):
@@ -24,6 +25,8 @@ public struct SafariExport: Codable, Equatable, Sendable {
   public var bookmarks: BookmarkNode?
   public var credentials: [Credential] = []
   public var profiles: [Profile] = []
+  /// Open tabs, only from a direct import (`SafariDirect`); the export archive has none.
+  public var tabs: [ImportedTab] = []
   public var warnings: [ImportWarning] = []
 
   public static func load(_ url: URL, cancellation: Cancellation = .init()) throws -> SafariExport {

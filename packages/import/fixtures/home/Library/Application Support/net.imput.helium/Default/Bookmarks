@@ -1,0 +1,57 @@
+{
+  "checksum": "00000000000000000000000000000000",
+  "roots": {
+    "bookmark_bar": {
+      "children": [
+        {
+          "date_added": "13432262400000000",
+          "date_last_used": "0",
+          "guid": "00000000-0000-4000-8000-000000000601",
+          "id": "0601",
+          "meta_info": {},
+          "name": "Helium",
+          "type": "url",
+          "url": "https://helium.example/"
+        },
+        {
+          "date_added": "13432262400000000",
+          "date_last_used": "0",
+          "guid": "00000000-0000-4000-8000-000000000602",
+          "id": "0602",
+          "meta_info": {},
+          "name": "Imput",
+          "type": "url",
+          "url": "https://imput.example/"
+        }
+      ],
+      "date_added": "13398134400000000",
+      "date_last_used": "0",
+      "date_modified": "13398134460000000",
+      "guid": "0bc5d13f-2cba-5d74-951f-3f233fe60001",
+      "id": "0001",
+      "name": "Bookmarks bar",
+      "type": "folder"
+    },
+    "other": {
+      "children": [],
+      "date_added": "13398134400000000",
+      "date_last_used": "0",
+      "date_modified": "13398134460000000",
+      "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+      "id": "90dd",
+      "name": "Other bookmarks",
+      "type": "folder"
+    },
+    "synced": {
+      "children": [],
+      "date_added": "13398134400000000",
+      "date_last_used": "0",
+      "date_modified": "13398134460000000",
+      "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
+      "id": "8d0f",
+      "name": "Mobile bookmarks",
+      "type": "folder"
+    }
+  },
+  "version": 1
+}
