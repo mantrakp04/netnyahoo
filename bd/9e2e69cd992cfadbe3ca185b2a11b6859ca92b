@@ -1,0 +1,100 @@
+packages/import/src/index.ts
+  s_9c356f9574d31c::t_3e40115c0dba50 231-233
+  s_9c356f9574d31c::t_a9bf88680e7178 180-181
+  s_9c356f9574d31c::t_e9ca0923779b04 341-357
+  s_9c356f9574d31c::t_941fb737f56fb2 60-65
+  s_9c356f9574d31c::t_66adc2a7762331 358
+apps/browser/src/components/import/ImportWindow.tsx
+  s_9c356f9574d31c::t_2d41c6467d1b6f 448,450-467,469-474
+  s_9c356f9574d31c::t_b5dc8b9cbc4a97 18,58,60,63-78,116,258-259,327,358,468,489-503,629-631,793-812
+  s_9c356f9574d31c::t_a800de8e75a161 235-257
+  s_9c356f9574d31c::t_6fc0142ac08712 51-52,55-56,59,61-62
+  s_9c356f9574d31c::t_4c7effda99ea19 85-87,632
+  s_9c356f9574d31c::t_f19f91ed896422 57,280-297
+  s_9c356f9574d31c::t_4d0577ab281ac5 4
+  s_9c356f9574d31c::t_da75c85fe6fd00 105
+  s_9c356f9574d31c::t_8feacf3916de60 260,813-815
+packages/import/ios/Core/Discovery.swift
+  s_9c356f9574d31c::t_cff20212a4b175 24,29-32
+  s_9c356f9574d31c::t_ab5f28f53fb899 145-151
+  s_9c356f9574d31c::t_1c5bf73bad26e3 46-54
+  s_9c356f9574d31c::t_5337c3e31302e4 103-106,152,156-157,161-172
+  s_9c356f9574d31c::t_0a942e31915a5b 233-235
+  s_9c356f9574d31c::t_8f2ae8ceffa604 173-174
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_44bc5f3b7b4c34 553
+  s_9c356f9574d31c::t_0fcf2c421a720f 554,556
+packages/import/ios/ImportModule.swift
+  s_9c356f9574d31c::t_b6cba2cb90ba15 75-94
+packages/import/tests/ImporterTests.swift
+  s_9c356f9574d31c::t_941fb737f56fb2 65,67-71,73-80,87-88
+  s_9c356f9574d31c::t_24a7b3b87d1984 9-18,21-27
+  s_9c356f9574d31c::t_ab5f28f53fb899 81-83,85-86
+  s_9c356f9574d31c::t_7f7312c012847e 72,84
+  s_9c356f9574d31c::t_0a942e31915a5b 19-20
+  s_9c356f9574d31c::t_b449a65d5d4621 63,110-149
+  s_9c356f9574d31c::t_ac92d4a6035297 66
+  s_9c356f9574d31c::t_e5d256651dc1a8 51,55,61-62
+  s_9c356f9574d31c::t_8dc39dbd4168cb 64,150
+apps/browser/src/components/onboarding/steps.tsx
+  s_9c356f9574d31c::t_aa8e0d9b8836af 255-256
+"packages/import/fixtures/home/Library/Application Support/Dia/User Data/Default/Bookmarks"
+  s_9c356f9574d31c::t_c05a1b3b8a5ad4 1-79
+packages/import/tests/FileImportTests.swift
+  s_9c356f9574d31c::t_71303451bad82b 139-173
+"packages/import/fixtures/home/Library/Application Support/Dia/User Data/Profile 2/Bookmarks"
+  s_9c356f9574d31c::t_c05a1b3b8a5ad4 1-47
+packages/import/tests/Support.swift
+  s_9c356f9574d31c::t_72e017183ffc78 9
+  s_9c356f9574d31c::t_9f7f4232823148 23,28-30
+apps/browser/src/components/import/apply.ts
+  s_9c356f9574d31c::t_a47fa5c9e42b11 148-149
+  s_9c356f9574d31c::t_0a626a4a989357 58,60,62
+packages/import/fixtures/generate.py
+  s_9c356f9574d31c::t_25a1850063d9b0 1060-1062
+  s_9c356f9574d31c::t_755275a68fcb4c 25
+  s_9c356f9574d31c::t_0a942e31915a5b 430-431
+  s_9c356f9574d31c::t_14650d340d3f68 394-429,432-546
+"packages/import/fixtures/home/Library/Application Support/Dia/User Data/Default/Preferences"
+  s_9c356f9574d31c::t_c05a1b3b8a5ad4 1
+packages/import/ios/Core/SafariDirect.swift
+  s_9c356f9574d31c::t_e95d882a7e39f2 150
+  s_9c356f9574d31c::t_64e8491c64cc94 1-149,151-177
+"packages/import/fixtures/home/Library/Application Support/net.imput.helium/Default/Bookmarks"
+  s_9c356f9574d31c::t_c05a1b3b8a5ad4 1-57
+"packages/import/fixtures/home/Library/Application Support/net.imput.helium/Default/Preferences"
+  s_9c356f9574d31c::t_c05a1b3b8a5ad4 1
+"packages/import/fixtures/home/Library/Application Support/Dia/User Data/Profile 2/Preferences"
+  s_9c356f9574d31c::t_c05a1b3b8a5ad4 1
+"packages/import/fixtures/home/Library/Application Support/net.imput.helium/Local State"
+  s_9c356f9574d31c::t_c05a1b3b8a5ad4 1-17
+packages/import/src/index.test.ts
+  s_9c356f9574d31c::t_946902025f0bd9 51-60
+  s_9c356f9574d31c::t_149af565ce74ac 121-130
+  s_9c356f9574d31c::t_f5e346fccb41f7 10
+  s_9c356f9574d31c::t_f69859df99b259 131
+"packages/import/fixtures/home/Library/Application Support/Dia/User Data/Local State"
+  s_9c356f9574d31c::t_c05a1b3b8a5ad4 1-13,16-24
+  s_9c356f9574d31c::t_0a942e31915a5b 14-15
+packages/import/ios/Core/SafariExport.swift
+  s_9c356f9574d31c::t_7c43c166779181 28-29
+  s_9c356f9574d31c::t_ec76302714f069 4-5
+docs/migration-status.md
+  s_9c356f9574d31c::t_68a33f615d02f6 368-412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bd9e2e69cd992cfadbe3ca185b2a11b6859ca92b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
