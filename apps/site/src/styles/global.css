@@ -1,0 +1,237 @@
+/* Netnyahoo — campaign-poster system.
+   One theme on purpose: a printed poster on warm stock, with night sections for rhythm. */
+
+:root {
+  color-scheme: light;
+
+  --paper: #f1ece2;
+  --paper-deep: #e6dfd1;
+  --ink: #16130f;
+  --ink-2: #57524a;
+  --ink-3: #6e685f;
+  --rule: rgb(22 19 15 / 0.16);
+  --rule-strong: rgb(22 19 15 / 0.85);
+  --tie: #2150d9;
+  --tie-deep: #1a3fae;
+  --stamp: #c3371f;
+  --night: #15120f;
+  --night-2: #221e1a;
+  --night-ink: #efe8dc;
+  --night-ink-2: #a79f93;
+  --night-rule: rgb(239 232 220 / 0.14);
+
+  --poster: "Archivo Variable", "Arial Narrow", sans-serif;
+  --serif: "Newsreader Variable", Georgia, serif;
+  --mono: "Martian Mono Variable", ui-monospace, "SF Mono", monospace;
+
+  /* Fluid type scale. */
+  --t-mega: clamp(3.4rem, 1.2rem + 9.4vw, 11.5rem);
+  --t-h2: clamp(2.6rem, 1.3rem + 5.4vw, 7rem);
+  --t-h3: clamp(1.7rem, 1.25rem + 1.5vw, 2.6rem);
+  --t-lede: clamp(1.2rem, 1.05rem + 0.55vw, 1.55rem);
+  --t-body: clamp(1.06rem, 1rem + 0.2vw, 1.19rem);
+  --t-small: 0.94rem;
+  --t-label: 0.69rem;
+
+  --gutter: clamp(16px, 3.2vw, 40px);
+  --max: 1440px;
+  --section: clamp(96px, 7rem + 6vw, 220px);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: 72px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: var(--t-body);
+  line-height: 1.5;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+
+img,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+img,
+video {
+  height: auto;
+}
+
+a {
+  color: inherit;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  text-wrap: balance;
+}
+
+::selection {
+  background: var(--tie);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--tie);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--max);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* Poster headline: condensed, black, tight. */
+.poster {
+  font-family: var(--poster);
+  font-weight: 860;
+  font-stretch: 62%;
+  text-transform: uppercase;
+  line-height: 0.86;
+  letter-spacing: -0.005em;
+  font-kerning: normal;
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  font-stretch: 87.5%;
+  font-weight: 460;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.5;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Buttons: printed, square-shouldered. */
+.btn {
+  --h: 56px;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  height: var(--h);
+  padding: 0 22px 0 20px;
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--poster);
+  font-weight: 760;
+  font-stretch: 80%;
+  font-size: 1.06rem;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color 160ms var(--ease-out),
+    transform 160ms var(--ease-out);
+  touch-action: manipulation;
+}
+
+.btn:hover {
+  background: var(--tie);
+}
+
+.btn:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.btn svg {
+  flex: none;
+}
+
+.btn .btn-meta {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 450;
+  font-stretch: 87.5%;
+  letter-spacing: 0.04em;
+  opacity: 0.62;
+  padding-left: 14px;
+  border-left: 1px solid rgb(241 236 226 / 0.25);
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Small phones: the requirements line under the button already says Apple Silicon. */
+@media (max-width: 400px) {
+  .btn .btn-meta {
+    display: none;
+  }
+}
+
+.link {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  transition: text-decoration-color 160ms;
+}
+
+.link:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Reveal on scroll: only when motion is welcome and JS is running. */
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal] {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity 700ms var(--ease-out),
+      transform 900ms var(--ease-out);
+    transition-delay: calc(var(--i, 0) * 70ms);
+  }
+
+  .js [data-reveal].in {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -1,0 +1,18 @@
+---
+import { DMG } from "../data/release";
+
+interface Props {
+  label?: string;
+  meta?: string;
+  class?: string;
+}
+const { label = "Download for Mac", meta = "Apple Silicon", class: className } = Astro.props;
+---
+
+<a class:list={["btn", className]} href={DMG} data-download>
+  <svg width="16" height="18" viewBox="0 0 16 18" fill="none" aria-hidden="true">
+    <path d="M8 1v11.5M2.5 7.5 8 13l5.5-5.5M1.5 17h13" stroke="currentColor" stroke-width="2" stroke-linecap="square"></path>
+  </svg>
+  <span>{label}</span>
+  {meta && <span class="btn-meta">{meta}</span>}
+</a>

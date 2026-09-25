@@ -1,0 +1,230 @@
+---
+import Shot from "./Shot.astro";
+import { alsoPassed, pledges } from "../data/pledges";
+const pad = (n: number) => String(n).padStart(2, "0");
+const words = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
+const total = pledges.length + alsoPassed.length;
+const count = words[total] ?? String(total);
+---
+
+<section class="platform" id="platform" aria-labelledby="platform-title">
+  <div class="wrap">
+    <header class="platform-head" data-shot="platform">
+      <p class="label kicker">The platform</p>
+      <h2 class="poster" id="platform-title" data-reveal>{count} pledges.<br />All of them shipped.</h2>
+      <p class="intro" data-reveal style="--i: 1">
+        Unusual for a campaign, so here they are with screenshots. Everything below is the real app, captured
+        from version 0.1.0.
+      </p>
+    </header>
+
+    <ol class="pledges">
+      {
+        pledges.map((p, i) => (
+          <li class="pledge" id={p.id} data-shot={`pledge-${p.id}`}>
+            <div class="pledge-text" data-reveal>
+              <p class="label num">
+                Pledge <span>No. {pad(i + 1)}</span>
+              </p>
+              <h3>{p.title}</h3>
+              <p class="body">{p.body}</p>
+              <ul class="specs label">
+                {p.specs.map((s) => (
+                  <li>{s}</li>
+                ))}
+              </ul>
+            </div>
+            <figure class="pledge-figure" data-reveal style="--i: 1">
+              <Shot src={p.shots} alt={p.alt} panel={p.panel} sizes="(max-width: 900px) 100vw, 58vw" />
+              <figcaption class="label">
+                Fig. {i + 3} — {p.caption}
+              </figcaption>
+            </figure>
+          </li>
+        ))
+      }
+    </ol>
+
+    <div class="also" data-shot="also">
+      <p class="label also-head">Also passed, without a photo op</p>
+      <ol class="also-list" start={pledges.length + 1}>
+        {
+          alsoPassed.map((a, i) => (
+            <li data-reveal style={`--i: ${i}`}>
+              <p class="label num">
+                Pledge <span>No. {pad(pledges.length + i + 1)}</span>
+              </p>
+              <h3 class="also-title">{a.title}</h3>
+              <p class="also-body">{a.body}</p>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </div>
+</section>
+
+<style>
+  .platform {
+    padding-top: var(--section);
+  }
+  .platform-head {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--gutter);
+    row-gap: 20px;
+    padding-bottom: clamp(56px, 8vw, 120px);
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  .kicker {
+    grid-column: 1 / -1;
+    color: var(--ink-2);
+  }
+  .platform-head h2 {
+    grid-column: 1 / span 8;
+    font-size: var(--t-h2);
+  }
+  .intro {
+    grid-column: 9 / -1;
+    align-self: end;
+    font-size: var(--t-body);
+    color: var(--ink-2);
+    max-width: 24em;
+  }
+
+  .pledges {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .pledge {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--gutter);
+    align-items: center;
+    min-height: min(88vh, 860px);
+    padding: clamp(56px, 9vh, 112px) 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .pledge:last-child {
+    border-bottom: 0;
+  }
+  .pledge-text {
+    grid-column: 1 / span 4;
+    grid-row: 1;
+  }
+  /* Alternate sides, so the column of screenshots reads as a sequence, not a list. */
+  .pledge:nth-child(even) .pledge-text {
+    grid-column: 9 / -1;
+  }
+  .pledge:nth-child(even) .pledge-figure {
+    grid-column: 1 / span 7;
+  }
+  .num {
+    color: var(--ink-3);
+    display: flex;
+    gap: 10px;
+  }
+  .num span {
+    color: var(--stamp);
+  }
+  h3 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: var(--t-h3);
+    line-height: 1.06;
+    letter-spacing: -0.018em;
+    font-variation-settings: "opsz" 72;
+    margin-top: 18px;
+  }
+  .body {
+    margin-top: 18px;
+    color: var(--ink-2);
+    max-width: 26em;
+  }
+  .specs {
+    list-style: none;
+    padding: 0;
+    margin: 22px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--ink-2);
+  }
+  .specs li {
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 4px 8px 3px;
+  }
+  .pledge-figure {
+    grid-column: 6 / -1;
+    grid-row: 1;
+    margin: 0;
+  }
+  .pledge-figure figcaption {
+    margin-top: 16px;
+    color: var(--ink-3);
+  }
+
+  .also {
+    border-top: 2px solid var(--ink);
+    padding-top: 14px;
+    margin-top: clamp(24px, 4vw, 48px);
+  }
+  .also-head {
+    color: var(--ink-2);
+  }
+  .also-list {
+    list-style: none;
+    margin: 28px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: var(--gutter);
+    row-gap: 40px;
+  }
+  .also-list li {
+    border-left: 1px solid var(--rule);
+    padding-left: 18px;
+  }
+  .also-title {
+    font-size: 1.45rem;
+    margin-top: 12px;
+  }
+  .also-body {
+    margin-top: 10px;
+    color: var(--ink-2);
+    font-size: var(--t-small);
+    line-height: 1.5;
+  }
+  @media (max-width: 1100px) {
+    .also-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 560px) {
+    .also-list {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .platform-head h2,
+    .intro {
+      grid-column: 1 / -1;
+    }
+    .pledge {
+      display: block;
+      min-height: 0;
+      padding: 56px 0 64px;
+    }
+    .pledge-text,
+    .pledge-figure {
+      position: static;
+      padding: 0;
+    }
+    .pledge-figure {
+      margin-top: 32px;
+    }
+  }
+</style>

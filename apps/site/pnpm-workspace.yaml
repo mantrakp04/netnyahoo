@@ -1,0 +1,6 @@
+# The site is its own workspace (excluded from the repo root's, which hoists for React Native),
+# so installing it never touches the app's node_modules.
+packages:
+  - .
+allowBuilds:
+  esbuild: true

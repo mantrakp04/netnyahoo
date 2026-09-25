@@ -1,0 +1,65 @@
+---
+import Shot from "./Shot.astro";
+import office from "../assets/shots/office.webp";
+import { VERSION } from "../data/release";
+---
+
+<section class="office" aria-label="The app" data-shot="office">
+  <div class="wrap">
+    <figure class="office-figure">
+      <div class="tilt">
+        <Shot
+          src={office}
+          alt="The Netnyahoo window in light mode: pinned tiles and tabs in a sidebar on the left, Wikipedia’s article on Chromium on the right."
+          sizes="(max-width: 1440px) 94vw, 1360px"
+        />
+      </div>
+      <figcaption class="label">
+        <span>Fig. 2 — In office</span>
+        <span>Netnyahoo {VERSION} on macOS. A screenshot, not a mockup.</span>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<style>
+  .office {
+    padding-top: clamp(24px, 4vw, 64px);
+  }
+  .office-figure {
+    margin: 0;
+    perspective: 1600px;
+  }
+  .tilt {
+    transform-origin: 50% 0%;
+  }
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+      .tilt {
+        animation: settle linear both;
+        animation-timeline: view();
+        animation-range: entry 0% cover 45%;
+      }
+    }
+  }
+  @keyframes settle {
+    from {
+      transform: rotateX(14deg) scale(0.9) translateY(40px);
+      opacity: 0.4;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  figcaption {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px 24px;
+    flex-wrap: wrap;
+    margin-top: 22px;
+    padding-top: 10px;
+    border-top: 1px solid var(--rule-strong);
+    color: var(--ink-2);
+  }
+</style>
