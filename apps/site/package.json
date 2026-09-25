@@ -6,7 +6,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check"
+    "check": "astro check",
+    "deploy": "SITE_URL=https://netnyahoo.com astro build && npx @hexclave/cli@latest deploy --cloud-project-id 49be2e2e-87c4-433e-b42f-f255854bff56"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",

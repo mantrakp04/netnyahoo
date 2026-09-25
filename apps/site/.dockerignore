@@ -1,0 +1,6 @@
+# `hexclave deploy` uploads only the prebuilt site and what serves it (dist/ is gitignored).
+*
+!Dockerfile
+!nginx.conf
+!dist/
+!dist/**
