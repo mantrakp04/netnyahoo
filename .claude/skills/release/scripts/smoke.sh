@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Smoke test of dist/<version>/export/Netnyahoo.app before publishing it.
 # usage: smoke.sh <version> <previous-version>
+# SMOKE_APP=<path to Netnyahoo.app> tests that build instead of the exported one (an engine change
+# before it ships, say); the version arguments still drive the release-notes check.
 #
 # Launches the exported app hidden (NETNYAHOO_BACKGROUND=1: no Dock icon, never takes focus) with a
 # throwaway data dir that says <previous-version> ran last, so the after-update release-notes tab
@@ -12,7 +14,7 @@ version="${1:?usage: smoke.sh <version> <previous-version>}"
 previous="${2:?usage: smoke.sh <version> <previous-version>}"
 root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 here="$(cd "$(dirname "$0")" && pwd)"
-app="$root/dist/$version/export/Netnyahoo.app"
+app="${SMOKE_APP:-$root/dist/$version/export/Netnyahoo.app}"
 port="${SMOKE_CDP_PORT:-9398}"
 pages_port="${SMOKE_PAGES_PORT:-8798}"
 [ -d "$app" ] || { echo "error: no $app (run scripts/release.sh $version first)" >&2; exit 1; }
