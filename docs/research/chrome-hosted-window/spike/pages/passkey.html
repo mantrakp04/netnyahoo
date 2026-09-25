@@ -1,0 +1,14 @@
+<!doctype html>
+<title>passkey</title>
+<button id="b" style="font-size: 20px; margin: 80px">create</button>
+<script>
+  b.onclick = () =>
+    navigator.credentials.create({
+      publicKey: {
+        challenge: new Uint8Array(16),
+        rp: { name: "smoke", id: "localhost" },
+        user: { id: new Uint8Array(8), name: "smoke", displayName: "smoke" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+      },
+    }).catch(() => {});
+</script>
