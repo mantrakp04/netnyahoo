@@ -168,6 +168,8 @@ class TabRouter : public CefClient,
   CefRefPtr<CefBrowser> Anchor() const { return anchor_; }
   /// The first tab will be `client`'s (the view that made the ghost) instead of a placeholder.
   void SetFounder(CefRefPtr<Client> client) { founder_ = client; }
+  /// The next tab created is a placeholder anchor (a hosting window's Browser without tabs).
+  void ExpectAnchor() { expectAnchor_ = true; }
   /// Any tab the router knows (its own and the founder's) still in its Browser, for
   /// CreateTabInBrowser & co. (Tabs keep their router when they move to another window.)
   CefRefPtr<CefBrowser> AnyTab();
@@ -359,6 +361,7 @@ class TabRouter : public CefClient,
   CefRefPtr<Client> founder_;
   CefRefPtr<CefBrowser> anchor_;
   bool anchored_ = false;
+  bool expectAnchor_ = false;
   std::map<int, CefRefPtr<Client>> tabs_;  // read on the IO thread too
   std::mutex mutex_;
   IMPLEMENT_REFCOUNTING(TabRouter);
@@ -410,10 +413,10 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     observe(NSWindowDidResignKeyNotification, ^{ self->SetActive(false); });
   }
 
-  /// Chrome-hosted window spike (NETNYAHOO_CHROME_WINDOW, NNChromeWindow.mm): the Browser's own
-  /// window is the app window. It's made now, empty, for the app to put its views in, and gets its
-  /// Browser (founded by a placeholder tab it keeps, so it never runs out of tabs) once the profile
-  /// is ready. Nothing to align: the ghost is the window.
+  /// Chrome-hosted windows (NETNYAHOO_CHROME_WINDOW, NNChromeWindow.mm): the Browser's own
+  /// window is the app window (CefBrowserSettings.client_window). It's made now, empty, for the
+  /// app to put its views in; its Browser comes with the window's first tab (StartBrowser) and
+  /// stays when its last tab closes. Nothing to align: the ghost is the window.
   NSWindow *StartHosting() {
     hosting_ = true;
     router_ = new TabRouter(this, profile_);
@@ -421,15 +424,6 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     NSWindow *window = Window();
     if (!window) return nil;
     CefRefPtr<Ghost> self(this);
-    pages::WhenProfileReady(profile_, ^(CefRefPtr<CefRequestContext> context) {
-      if (self->closing_ || !self->window_) return;
-      CefBrowserSettings first;
-      first.native_contents_hosting = STATE_ENABLED;
-      self->view_ = CefBrowserView::CreateBrowserView(self->router_, "about:blank", first, nullptr, context, self.get());
-      self->window_->AddChildView(self->view_);
-      self->laidOut_ = false;
-      self->ScheduleLayout();
-    });
     observers_ = [NSMutableArray array];
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     auto observe = [&](NSNotificationName name, void (^block)(void)) {
@@ -441,6 +435,60 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
     observe(NSWindowDidBecomeKeyNotification, ^{ self->SetActive(true); });
     observe(NSWindowDidResignKeyNotification, ^{ self->SetActive(false); });
     return window;
+  }
+
+  /// Hosting: the window's Browser is being or has been made.
+  bool BrowserStarted() const { return browserStarted_; }
+
+  /// Hosting: makes the window's Browser. Its first tab is `founder`'s (a view's tab, loading
+  /// `url` with `settings`), or a placeholder anchor (dropped once a real tab joins).
+  void StartBrowser(CefRefPtr<Client> founder = nullptr, NSString *url = nil, const CefBrowserSettings *settings = nullptr) {
+#if NN_CLIENT_WINDOW
+    if (browserStarted_) return;
+    browserStarted_ = true;
+    if (founder) router_->SetFounder(founder);
+    CefBrowserSettings first = settings ? *settings : CefBrowserSettings();
+    first.native_contents_hosting = STATE_ENABLED;
+    first.client_window = STATE_ENABLED;
+    // Chrome draws its link-status bubble as a window over the page; ours shows instead.
+    first.chrome_status_bubble = STATE_DISABLED;
+    NSString *firstURL = founder && url.length ? url : @"about:blank";
+    CefRefPtr<Ghost> self(this);
+    pages::WhenProfileReady(profile_, ^(CefRefPtr<CefRequestContext> context) {
+      if (self->closing_ || !self->window_) return;
+      self->view_ = CefBrowserView::CreateBrowserView(self->router_, ToCef(firstURL), first, nullptr, context, self.get());
+      self->window_->AddChildView(self->view_);
+      self->laidOut_ = false;
+      self->ScheduleLayout();
+    });
+#endif
+  }
+
+  /// Hosting: a new tab of the window's Browser, also when it has no tabs left (nullptr if it
+  /// isn't ready). An empty `url` makes a placeholder anchor, which the next DropAnchor closes.
+  CefRefPtr<CefBrowser> CreateHostedTab(CefRefPtr<Client> client, NSString *url, const CefBrowserSettings &settings) {
+#if NN_CLIENT_WINDOW
+    if (!view_ || !ready_) return nullptr;
+    const bool anchor = !client;
+    if (anchor) router_->ExpectAnchor();
+    Ghost *previous = gCreatingIn;
+    gCreatingIn = this;
+    CefRefPtr<CefBrowser> tab =
+        view_->CreateTab(anchor ? CefRefPtr<CefClient>(router_) : CefRefPtr<CefClient>(client),
+                         ToCef(anchor ? @"about:blank" : url), settings, nullptr, false);
+    gCreatingIn = previous;
+    if (tab) gTabGhost[tab->GetIdentifier()] = this;
+    return tab;
+#else
+    return nullptr;
+#endif
+  }
+
+  /// A tab to address this Browser by (CreateTabInBrowser, MoveToBrowser…): any of its tabs, or
+  /// for a hosting window without tabs a new placeholder anchor. nullptr if there's none.
+  CefRefPtr<CefBrowser> AnyTabOrAnchor(CefRefPtr<CefBrowser> except = nullptr) {
+    if (CefRefPtr<CefBrowser> tab = AnyTab(except)) return tab;
+    return hosting_ ? CreateHostedTab(nullptr, nil, CefBrowserSettings()) : nullptr;
   }
 
   bool Hosting() const { return hosting_; }
@@ -483,7 +531,6 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   /// A placeholder first tab has served its purpose once a real tab joined (Chrome tabs only).
   void DropAnchor() {
 #if NN_CHROME_TABS
-    if (hosting_) return;  // the window lives as long as its Browser has a tab
     CefRefPtr<CefBrowser> anchor = Anchor();
     if (!anchor || !AnyTab(anchor) || droppingAnchor_) return;
     droppingAnchor_ = true;
@@ -764,6 +811,7 @@ class Ghost : public CefWindowDelegate, public CefBrowserViewDelegate {
   bool closing_ = false;
   bool active_ = false;
   bool hosting_ = false;
+  bool browserStarted_ = false;
   IMPLEMENT_REFCOUNTING(Ghost);
 };
 
@@ -821,9 +869,9 @@ CefRefPtr<CefBrowser> TabRouter::AnyTab() {
   return nullptr;
 }
 
-/// Chrome-hosted window spike: Chrome's commands for its own UI (toolbar, tab strip, profile menu,
-/// app menu), which a visible Browser window runs from Chrome's shortcut table for keys our menus
-/// don't take. Ours covers the rest.
+/// Chrome's commands for its own UI (toolbar, tab strip, profile menu, app menu, tab groups),
+/// which a visible Browser window runs from Chrome's shortcut table for keys our menus don't take.
+/// Our menus cover the rest. Many are disabled anyway in a client window (no main UI).
 bool HiddenChromeUICommand(int command_id) {
   switch (command_id) {
     case IDC_SHOW_AVATAR_MENU: case IDC_SHOW_APP_MENU: case IDC_FOCUS_TOOLBAR: case IDC_FOCUS_LOCATION:
@@ -846,6 +894,11 @@ bool TabRouter::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, c
 void TabRouter::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   BrowserCreated(browser);
   if (ghost_) gTabGhost[browser->GetIdentifier()] = ghost_;
+  if (expectAnchor_) {
+    expectAnchor_ = false;
+    anchor_ = browser;
+    return;
+  }
   if (!anchored_) {
     anchored_ = true;
     if (CefRefPtr<Client> founder = founder_) {
@@ -997,11 +1050,18 @@ void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, con
   if (Hostable(view)) {
     Ghost *ghost = GhostFor(view.window, view.profile);
     if (!ghost) return NewGhost(view.window, view.profile)->Start(client, url, &settings);
+    // A Chrome-hosted window's first tab makes its Browser.
+    if (ghost->Hosting() && !ghost->BrowserStarted()) return ghost->StartBrowser(client, url, &settings);
     NSWindow *window = view.window;
     NSString *profile = view.profile;
     CefBrowserSettings tabSettings = settings;
     ghost->WhenReady(^(Ghost *g) {
       if (!client->View()) return;  // the view went away meanwhile
+      // A Chrome-hosted window's Browser outlives its tabs.
+      if (g->Hosting() && !g->AnyTab()) {
+        g->CreateHostedTab(client, url, tabSettings);
+        return;
+      }
       CefRefPtr<CefBrowser> any = g->AnyTab();
       if (!any) {
         // The Browser lost its last tab and is closing: this tab starts the window's next one.
@@ -1039,13 +1099,14 @@ bool CreateTabWithHistory(NNBrowserView *view, CefRefPtr<Client> client, CefRefP
   // A window without a Browser of this profile gets one, founded by a placeholder (a restored
   // tab can't found it), as when a tab moves in.
   if (!ghost) (ghost = NewGhost(view.window, view.profile))->Start();
+  else if (ghost->Hosting()) ghost->StartBrowser();
   NSString *navigationState = [state copy], *fallbackURL = [url copy];
   CefBrowserSettings tabSettings = settings;
   __weak NNBrowserView *weakView = view;
   ghost->WhenReady(^(Ghost *g) {
     NNBrowserView *target = weakView;
     if (!target || !client->View()) return;
-    CefRefPtr<CefBrowser> any = g->AnyTab();
+    CefRefPtr<CefBrowser> any = g->AnyTabOrAnchor();
     CefRefPtr<CefBrowser> tab;
     gCreatingIn = g;
     if (source && source->IsValid() && GhostOf(source) == g)
@@ -1120,11 +1181,12 @@ void TabMoved(NNBrowserView *view) {
   // A window without a Browser of this profile yet gets one, founded by a placeholder
   // the move replaces (a Browser can't be made around an existing tab).
   if (!to) (to = NewGhost(view.window, view.profile))->Start();
+  else if (to->Hosting()) to->StartBrowser();
   __weak NNBrowserView *weakView = view;
   to->WhenReady(^(Ghost *target) {
     NNBrowserView *moved = weakView;
     if (!moved || moved.client != client || !client->Browser()) return;
-    CefRefPtr<CefBrowser> into = target->AnyTab(browser);
+    CefRefPtr<CefBrowser> into = target->AnyTabOrAnchor(browser);
     if (!into || !browser->GetHost()->MoveToBrowser(into, -1, moved.visible)) return;
     gTabGhost[browser->GetIdentifier()] = target;
     target->DropAnchor();
@@ -1197,7 +1259,7 @@ void InvalidateExtensionCommands(NSString *profile) { gKeybindings.erase(pages::
 CefRefPtr<CefClient> DefaultClient() { return new StrayWindowClient(); }
 
 NSWindow *MakeHostingWindow(NSString *profile) {
-#if NN_CHROME_TABS
+#if NN_CLIENT_WINDOW
   if (![NNCef isStarted] || ShuttingDown()) return nil;
   Ghost *ghost = NewGhost(nil, profile);
   NSWindow *window = ghost->StartHosting();
@@ -1208,10 +1270,13 @@ NSWindow *MakeHostingWindow(NSString *profile) {
 #endif
 }
 
-bool BlocksChromeCommand(CefRefPtr<CefBrowser> browser, int command_id) {
-  if (!HiddenChromeUICommand(command_id)) return false;
-  Ghost *ghost = GhostOf(browser);
+bool InClientWindow(CefRefPtr<CefBrowser> browser) {
+  Ghost *ghost = IsChromeTab(browser) ? GhostOf(browser) : nullptr;
   return ghost && ghost->Hosting();
+}
+
+bool BlocksChromeCommand(CefRefPtr<CefBrowser> browser, int command_id) {
+  return HiddenChromeUICommand(command_id) && InClientWindow(browser);
 }
 
 NSUInteger GhostCount() { return gGhosts.size(); }

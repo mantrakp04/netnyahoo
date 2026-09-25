@@ -4,59 +4,19 @@
 
 #import "NNWindowHost.h"
 
+/// Chromium's BridgedContentView with chromium-window-hosted.patch: hit testing and accessibility
+/// ask this view first. Chrome's views cover the whole window, so without it no click would reach
+/// our views and assistive technologies would see only Chrome's hidden ones.
+@protocol NNEmbeddingContentView
+@property(nonatomic, weak) NSView *netnyahooEmbeddedView;
+@end
+
 namespace {
 
 const void *kRootKey = &kRootKey;
 
-/// NETNYAHOO_CHROME_WINDOW_ROOT=frame: the root goes in the window's frame view, next to Chrome's
-/// content view, instead of inside it. Kept to show why not: Chromium looks for the page under
-/// window.contentView (RenderWidgetHostViewCocoa's -shouldIgnoreMouseEvent: hit-tests from it,
-/// and the occlusion checker only walks it), so the page ignores every click there.
-bool RootInFrameView() {
-  static bool frame = [NSProcessInfo.processInfo.environment[@"NETNYAHOO_CHROME_WINDOW_ROOT"] isEqualToString:@"frame"];
-  return frame;
-}
-
-/// Our root inside Chrome's content view, if `content` is one.
-NSView *EmbeddedRoot(NSView *content) {
-  NSView *root = content.window ? objc_getAssociatedObject(content.window, kRootKey) : nil;
-  return root.superview == content ? root : nil;
-}
-
-/// Chrome's BridgedContentView claims every point one of its views covers (-hitTest: returns
-/// itself), and its views cover the whole window; for accessibility its only child is Chrome's
-/// views tree. With our root inside it, points our root covers go to our views first, and our
-/// views are its accessibility children (in front of Chrome's hidden ones). A product build would
-/// do this in Chromium itself (docs/research/chrome-hosted-window.md).
-void LetRootComeFirst() {
-  static bool done = false;
-  if (done) return;
-  done = true;
-  Class cls = NSClassFromString(@"BridgedContentView");
-  if (!cls) return;
-  if (Method method = class_getInstanceMethod(cls, @selector(hitTest:))) {
-    auto original = (NSView * (*)(id, SEL, NSPoint)) method_getImplementation(method);
-    method_setImplementation(method, imp_implementationWithBlock(^NSView *(NSView *content, NSPoint point) {
-      if (NSView *root = EmbeddedRoot(content))
-        if (NSView *hit = [root hitTest:[content convertPoint:point fromView:content.superview]]) return hit;
-      return original(content, @selector(hitTest:), point);
-    }));
-  }
-  if (Method method = class_getInstanceMethod(cls, @selector(accessibilityChildren))) {
-    auto original = (NSArray * (*)(id, SEL)) method_getImplementation(method);
-    method_setImplementation(method, imp_implementationWithBlock(^NSArray *(NSView *content) {
-      if (NSView *root = EmbeddedRoot(content)) return NSAccessibilityUnignoredChildren(@[ root ]);
-      return original(content, @selector(accessibilityChildren));
-    }));
-  }
-  if (Method method = class_getInstanceMethod(cls, @selector(accessibilityHitTest:))) {
-    auto original = (id (*)(id, SEL, NSPoint)) method_getImplementation(method);
-    method_setImplementation(method, imp_implementationWithBlock(^id(NSView *content, NSPoint point) {
-      if (NSView *root = EmbeddedRoot(content))
-        if (id hit = [root accessibilityHitTest:point]) return hit;
-      return original(content, @selector(accessibilityHitTest:), point);
-    }));
-  }
+bool TakesEmbeddedView(NSView *content) {
+  return [content respondsToSelector:@selector(setNetnyahooEmbeddedView:)];
 }
 
 }  // namespace
@@ -65,35 +25,34 @@ void LetRootComeFirst() {
 
 + (BOOL)enabled {
   static BOOL requested = [NSProcessInfo.processInfo.environment[@"NETNYAHOO_CHROME_WINDOW"] isEqualToString:@"1"];
-  return requested && nn::host::ChromeTabs() && [NNCef isStarted];
+  return requested && NN_CLIENT_WINDOW && [NNCef isStarted];
 }
 
 + (NSWindow *)makeWindowForProfile:(NSString *)profile {
   if (!self.enabled) return nil;
   NSWindow *window = nn::host::MakeHostingWindow(profile ?: @"");
   if (!window) return nil;
+  // An engine without the content view hook can't take our views.
+  if (!TakesEmbeddedView(window.contentView)) {
+    [window close];
+    return nil;
+  }
   window.minSize = NSMakeSize(720, 460);
   window.title = @"Netnyahoo";
   return window;
 }
 
 + (void)embedRootView:(NSView *)root inWindow:(NSWindow *)window {
-  // Chrome's BridgedContentView stays the window's content view: Chromium keeps the widget's
-  // geometry through it (-setFrameSize:) and draws its views into its layer.
+  // Inside Chrome's BridgedContentView, over its views: Chromium keeps the widget's geometry
+  // through that view, and looks for the page under it (RenderWidgetHostViewCocoa's
+  // -shouldIgnoreMouseEvent:, the occlusion checker).
   NSView *content = window.contentView;
-  NSView *frameView = content.superview;
-  if (!frameView) return;
+  if (!TakesEmbeddedView(content)) return;
   root.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  objc_setAssociatedObject(window, kRootKey, root, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  if (RootInFrameView()) {
-    root.frame = frameView.bounds;
-    [frameView addSubview:root positioned:NSWindowAbove relativeTo:content];
-    return;
-  }
-  // Inside Chrome's content view (where Chromium expects the page), over its views.
-  LetRootComeFirst();
   root.frame = content.bounds;
   [content addSubview:root];
+  ((id<NNEmbeddingContentView>)content).netnyahooEmbeddedView = root;
+  objc_setAssociatedObject(window, kRootKey, root, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 + (NSView *)rootViewOfWindow:(NSWindow *)window {
@@ -196,6 +155,30 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
       handler = @"keyDown";
     }
     return [NSString stringWithFormat:@"%@ (first responder %@)", handler, Describe((NSView *)window.firstResponder)];
+  }
+  if ([action isEqualToString:@"ax"]) {
+    // The window's accessibility tree as assistive technologies walk it (NSAccessibility),
+    // roles and labels, depth-first. For screen-locked test machines, where the AX server
+    // answers nothing.
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    __block void (^walk)(id, NSUInteger);
+    __block __weak void (^weakWalk)(id, NSUInteger);
+    weakWalk = walk = ^(id element, NSUInteger depth) {
+      if (lines.count > 400 || depth > 40) return;
+      NSString *role = [element respondsToSelector:@selector(accessibilityRole)] ? [element accessibilityRole] : @"?";
+      NSMutableArray *text = [NSMutableArray array];
+      for (NSString *key in @[ @"accessibilityTitle", @"accessibilityLabel", @"accessibilityValue" ]) {
+        SEL sel = NSSelectorFromString(key);
+        id value = [element respondsToSelector:sel] ? [element valueForKey:key] : nil;
+        if ([value isKindOfClass:NSString.class] && [value length]) [text addObject:value];
+      }
+      [lines addObject:[NSString stringWithFormat:@"%@%@%@", [@"" stringByPaddingToLength:depth withString:@" " startingAtIndex:0],
+                                                 role ?: @"", text.count ? [@": " stringByAppendingString:[text componentsJoinedByString:@" | "]] : @""]];
+      NSArray *children = [element respondsToSelector:@selector(accessibilityChildren)] ? [element accessibilityChildren] : nil;
+      for (id child in children) weakWalk(child, depth + 1);
+    };
+    walk(window, 0);
+    return [lines componentsJoinedByString:@"\n"];
   }
   if ([action isEqualToString:@"responder"]) {
     id r = window.firstResponder;

@@ -1018,10 +1018,15 @@ bool Client::OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event,
   if (event.focus_on_editable_field && event.windows_key_code == 0x0D &&
       (ns.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) == NSEventModifierFlagCommand)
     return false;
-  // The page didn't consume it: give the menu bar its turn (⌘L, ⌘F, ⌘R, Edit menu…),
-  // then Chrome (shortcuts extensions registered with chrome.commands), but not Chrome's
-  // shortcuts for its own hidden UI.
-  return [NSApp.mainMenu performKeyEquivalent:ns] || host::ForwardKeyEvent(ns, profile_) || IsChromeOnlyShortcut(ns);
+  // The page didn't consume it: give the menu bar its turn (⌘L, ⌘F, ⌘R, Edit menu…).
+  if ([NSApp.mainMenu performKeyEquivalent:ns]) return true;
+  // In a Chrome-hosted window the Browser's window is the key window: Chrome's own handling
+  // runs extensions' chrome.commands, and its commands for its hidden UI are refused in
+  // OnChromeCommand (host::BlocksChromeCommand).
+  if (host::InClientWindow(browser)) return false;
+  // Else Chrome's hidden ghost window gets extension shortcuts, but not Chrome's shortcuts for
+  // its own hidden UI.
+  return host::ForwardKeyEvent(ns, profile_) || IsChromeOnlyShortcut(ns);
 }
 
 // MARK: CefJSDialogHandler
@@ -1056,7 +1061,7 @@ bool Client::OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString
 bool Client::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) {
   // Chrome's password bubble would hang off its (hidden) toolbar: ours shows instead.
   if (command_id == IDC_MANAGE_PASSWORDS_FOR_PAGE) return chromeui::ShowPasswordPrompt(this, browser);
-  return host::BlocksChromeCommand(browser, command_id);  // Chrome-hosted window spike
+  return host::BlocksChromeCommand(browser, command_id);
 }
 
 }  // namespace nn

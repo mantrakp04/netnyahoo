@@ -55,6 +55,11 @@ final class WindowManager: NSObject, NSWindowDelegate {
   /// The browser window the Window menu acts on.
   var keyBrowserWindow: NSWindow? { keyWindowId.flatMap { windows[$0] } }
 
+  /// File › Close Window: the window `performClose:` would reach (key window, else main window).
+  var closableWindow: NSWindow? {
+    [NSApp.keyWindow, NSApp.mainWindow].compactMap { $0 }.first { $0.styleMask.contains(.closable) }
+  }
+
   /// Window › Keep Window on Top: floats this window above other apps' windows.
   func toggleKeepOnTop() {
     guard let window = keyBrowserWindow else { return }

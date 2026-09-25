@@ -86,6 +86,13 @@
 #else
 #define NN_BROWSING_DATA 0
 #endif
+// The app window is the Browser's own Chrome window (CefBrowserSettings.client_window,
+// CefBrowserView::CreateTab, BridgedContentView.netnyahooEmbeddedView): NNChromeWindow.mm.
+#if NN_CHROME_TABS && defined(CEF_NN_CLIENT_WINDOW)
+#define NN_CLIENT_WINDOW 1
+#else
+#define NN_CLIENT_WINDOW 0
+#endif
 // Allowed popups of a hosted tab join its Browser as tabs (not new Chrome windows).
 #if NN_CHROME_TABS && defined(CEF_NN_POPUP_TABS)
 #define NN_POPUP_TABS 1

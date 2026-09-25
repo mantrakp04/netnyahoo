@@ -129,6 +129,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
   }
 
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    if menuItem.action == #selector(closeWindow(_:)) { return WindowManager.shared.closableWindow != nil }
     if menuItem.action == #selector(toggleKeepOnTop(_:)) {
       guard let window = WindowManager.shared.keyBrowserWindow else { return false }
       menuItem.state = window.level == .floating ? .on : .off
@@ -148,6 +149,7 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
   @objc func quit(_ sender: Any?) { WindowManager.shared.confirmQuit() }
   @objc func arrangeWindowsInFront(_ sender: Any?) { NSApp.arrangeInFront(sender) }
   @objc func toggleKeepOnTop(_ sender: Any?) { WindowManager.shared.toggleKeepOnTop() }
+  @objc func closeWindow(_ sender: Any?) { WindowManager.shared.closableWindow?.performClose(sender) }
 
   /// ⇧⌘V: web content answers `pasteAndMatchStyle:`, AppKit text views `pasteAsPlainText:`.
   @objc func pasteAndMatchStyle(_ sender: Any?) {
@@ -208,6 +210,11 @@ enum MainMenu {
 
     let quit = std("Quit \(appName)", #selector(MenuTarget.quit(_:)), "q")
     quit.target = MenuTarget.shared
+    // Not performClose: (the key window's own action): Chrome's command dispatcher takes a menu
+    // item with that action for its reserved Close Window command, which would close a
+    // Chrome-hosted window before our "warn before closing" could ask.
+    let closeWindow = std("Close Window", #selector(MenuTarget.closeWindow(_:)), "w", [.command, .shift])
+    closeWindow.target = MenuTarget.shared
     let services = NSMenu(title: "Services")
     NSApp.servicesMenu = services
     _ = top(appName, [
@@ -236,7 +243,7 @@ enum MainMenu {
       .separator(),
       cmd("Open Command Bar", "focusCommandBar", "l"),
       .separator(),
-      std("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]),
+      closeWindow,
       cmd("Close Tab", "closeTab", "w"),
       cmd("Close All Tabs", "closeAllTabs", "k", [.command, .shift]),
       cmd("Clean Up Tabs", "cleanUpTabs", "k", [.command, .option]),

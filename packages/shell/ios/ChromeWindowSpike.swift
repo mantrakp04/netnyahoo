@@ -1,6 +1,6 @@
 import AppKit
 
-/// Chrome-hosted window spike (docs/research/chrome-hosted-window.md), behind
+/// Chrome-hosted windows (docs/research/chrome-hosted-window.md), behind
 /// NETNYAHOO_CHROME_WINDOW=1: browser windows are Chrome's own Browser windows with the
 /// React root laid over them (NNChromeWindowHost in packages/cef, found by name so the
 /// shell doesn't link the engine). Chrome owns such a window's delegate, so the
