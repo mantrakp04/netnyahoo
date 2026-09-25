@@ -225,7 +225,7 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "pinExtensions":
       return openPinDialog(windowId);
     case "autofill":
-      return requestAutofill(windowId, arg);
+      return void requestAutofill(windowId, arg);
     case "newProfile":
       return void createProfile(windowId).then((id) => id && switchProfile(windowId, id));
   }

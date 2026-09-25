@@ -21,6 +21,7 @@ What the build adds:
 | `cef-chrome-tabs.patch` | The Chrome-style hosting API and hooks below, plus `include/cef_netnyahoo.h` |
 | `cef-tab-state.patch` (after `cef-chrome-tabs.patch`) | Tab history for reopened and duplicated tabs, Chrome's tab discarding, Chrome's BrowsingDataRemover (below) |
 | `cef-ui-surfaces.patch` (after `cef-tab-state.patch`: its `cef_netnyahoo.h` hunk follows that patch's markers) | `include/cef_chrome_ui.h`: Chrome's device choosers, Cast dialog and extension side panels handed to the client, toolbar action state, "Share this tab instead" and Stop Sharing; `CefMediaRoute::IsLocal` / `GetDescription` (below) |
+| `cef-ui-triggers.patch` (after `cef-ui-surfaces.patch`) | `CefShowAutofillSuggestions`: Chrome's autofill dropdown at the tab's focused form field (below) |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the ghost window alone |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
@@ -33,8 +34,9 @@ What the build adds:
 
 The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
 substitution). Step 2 applies the `cef-*.patch` files in name order, which is the order they were
-made in: `cef-chrome-tabs`, `cef-tab-capture`, `cef-tab-state`, `cef-ui-surfaces` (checked on a
-clean worktree of the CEF checkout on 2026-09-25: the four reproduce the built tree exactly).
+made in: `cef-chrome-tabs`, `cef-tab-capture`, `cef-tab-state`, `cef-ui-surfaces`, `cef-ui-triggers`
+(checked on a clean worktree of the CEF checkout on 2026-09-25: the first four reproduce the built tree
+exactly; `cef-ui-triggers` reverse-applies cleanly to it). A new patch needs a name that sorts last.
 
 ## Using it
 
@@ -152,6 +154,14 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
   - `CefChangeMediaCaptureSource(capturer, source_id)` / `CefGetMediaCaptureTarget(capturer)`:
     "Share this tab instead" for a running tab capture (the page keeps its tracks).
   - `CefMediaRoute::IsLocal()` / `GetDescription()`, for the toolbar's cast state.
+- **`CEF_NN_AUTOFILL_TRIGGER`** (`include/cef_chrome_ui.h`)
+  - `CefShowAutofillSuggestions(browser, type)`: Chrome's autofill suggestions at the form field focused in the
+    tab, as its field context menu asks for them. `CEF_NN_AUTOFILL_PASSWORDS` shows the saved passwords (the
+    "Select password" manual fallback, on any text field), `CEF_NN_AUTOFILL_FIELD` the field's own suggestions
+    (as a click on it: addresses, cards, earlier entries). Returns false when no form field has focus.
+  - The browser process keeps no record of the focused field, so `libcef/browser/chrome/autofill_trigger.cc`
+    follows each tab's AutofillManagers (`ScopedAutofillManagersObservation`: the renderer reports every focus
+    change) from the tab's insertion into a tab strip.
 - **`CEF_NN_CAPTURE_STOP`**
   - `CefStopMediaCapture(capturer)`: Chrome's "Stop sharing" for screen, window and tab captures.
   - Extension pages outside any tab strip (hidden windows: our popups and side panels) use the

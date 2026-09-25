@@ -89,6 +89,8 @@ type NativeChromeUI = {
   changeCaptureSource(capturer: number, target: number): Promise<boolean>;
   captureTarget(capturer: number, candidates: number[]): Promise<number>;
   stopCapture(capturer: number): Promise<boolean>;
+  /** Missing in app builds from before it existed. */
+  showAutofillSuggestions?(browserId: number, passwords: boolean): Promise<boolean>;
 };
 
 type NativeActionState = {
@@ -154,3 +156,13 @@ export const changeCaptureSource = (capturer: number, target: number) => ChromeU
 export const stopCapture = (capturer: number) => ChromeUI.stopCapture(capturer);
 /** Which of `candidates` the tab capture of `capturer` shows (0 if it isn't capturing a tab). */
 export const captureTarget = (capturer: number, candidates: number[]) => ChromeUI.captureTarget(capturer, candidates);
+
+// MARK: Autofill
+
+/**
+ * Opens Chrome's autofill dropdown at the form field focused in the tab, like Chrome's field
+ * menu: "passwords" lists the saved passwords (on any text field), "field" the field's own
+ * suggestions (addresses, cards). False if no form field has focus there.
+ */
+export const showAutofillSuggestions = async (browserId: number, kind: "passwords" | "field") =>
+  (await ChromeUI.showAutofillSuggestions?.(browserId, kind === "passwords")) ?? false;

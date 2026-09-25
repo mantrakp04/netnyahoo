@@ -47,6 +47,9 @@ public class ChromeUIModule: Module {
       NNChromeSurfaces.changeCaptureSource(capturer, toTab: target)
     }.runOnQueue(.main)
     AsyncFunction("stopCapture") { (capturer: Int) in NNChromeSurfaces.stopCapture(capturer) }.runOnQueue(.main)
+    AsyncFunction("showAutofillSuggestions") { (browserId: Int, passwords: Bool) in
+      NNChromeSurfaces.showAutofillSuggestions(browserId, passwords: passwords)
+    }.runOnQueue(.main)
     AsyncFunction("captureTarget") { (capturer: Int, candidates: [Int]) in
       NNChromeSurfaces.captureTarget(of: capturer, among: candidates.map { NSNumber(value: $0) })
     }.runOnQueue(.main)

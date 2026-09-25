@@ -59,6 +59,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// Which of `browserIds` the tab capture of `capturerId` shows now (0 if none).
 + (NSInteger)captureTargetOf:(NSInteger)capturerId among:(NSArray<NSNumber *> *)browserIds NS_SWIFT_NAME(captureTarget(of:among:));
 
+/// Opens Chrome's autofill dropdown at the form field focused in the tab, as its field menu does:
+/// the saved `passwords` (manual fallback, any text field), or the field's own suggestions
+/// (addresses, cards). NO if no form field has focus (or this engine can't).
++ (BOOL)showAutofillSuggestions:(NSInteger)browserId passwords:(BOOL)passwords
+    NS_SWIFT_NAME(showAutofillSuggestions(_:passwords:));
+
 @end
 
 NS_ASSUME_NONNULL_END

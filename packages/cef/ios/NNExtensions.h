@@ -61,4 +61,16 @@ typedef void (^NNExtensionsCompletion)(NSDictionary<NSString *, id> *result);
 
 @end
 
+/// Search engines extensions add (NNSearchEngines.mm).
+@interface NNExtensions (SearchEngines)
+
+/// Chrome's search engine list for the profile, as its settings page gets it
+/// (`getSearchEnginesList`: {defaults, actives, others, extensions}, each engine with name,
+/// keyword, url and suggestionsUrl with %s, default, and for extension engines
+/// extension {id, name}) in `result[@"list"]`, or {error}.
++ (void)searchEngineListForProfile:(NSString *)profile completion:(NNExtensionsCompletion)completion
+    NS_SWIFT_NAME(searchEngineList(profile:completion:));
+
+@end
+
 NS_ASSUME_NONNULL_END

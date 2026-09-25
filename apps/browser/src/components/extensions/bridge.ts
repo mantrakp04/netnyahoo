@@ -14,6 +14,7 @@ import { webviews } from "../../lib/webviews";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { activeTabId, engineProfile } from "../../store/model";
 import { tabForBrowser, usePages } from "../layout/pageState";
+import { startExtensionSearchEngines } from "./searchEngines";
 import * as state from "./state";
 import {
   activateExtension,
@@ -35,6 +36,7 @@ import {
  */
 export function startExtensionsBridge() {
   onExtensionTabsRequest(openRequestedTab);
+  startExtensionSearchEngines();
   onExtensionsChanged(({ profile }) => void refreshExtensions(profile));
 
   // Every open window's extensions (the toolbars and the menu need them).

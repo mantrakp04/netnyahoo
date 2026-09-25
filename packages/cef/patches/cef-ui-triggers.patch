@@ -1,0 +1,245 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 6f59611d7..20cf12eb1 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -563,6 +563,8 @@ source_set("libcef_static") {
+     "libcef/browser/chrome/chrome_browser_delegate.h",
+     "libcef/browser/chrome/chrome_ui_hooks.cc",
+     "libcef/browser/chrome/chrome_ui_hooks.h",
++    "libcef/browser/chrome/autofill_trigger.cc",
++    "libcef/browser/chrome/autofill_trigger.h",
+     "libcef/browser/chrome/chrome_browser_host_impl.cc",
+     "libcef/browser/chrome/chrome_browser_host_impl.h",
+     "libcef/browser/chrome/chrome_browser_main_extra_parts_cef.cc",
+diff --git a/include/cef_chrome_ui.h b/include/cef_chrome_ui.h
+index c5a982092..65fc877f6 100644
+--- a/include/cef_chrome_ui.h
++++ b/include/cef_chrome_ui.h
+@@ -286,6 +286,18 @@ CefString CefGetMediaCaptureTarget(CefRefPtr<CefBrowser> capturer);
+ /*--cef(added=experimental)--*/
+ bool CefStopMediaCapture(CefRefPtr<CefBrowser> capturer);
+ 
++///
++/// Chrome style only. Shows Chrome's autofill suggestions at the form field
++/// that has focus in |browser|'s tab, as Chrome's field context menu does.
++/// |type| is CEF_NN_AUTOFILL_FIELD (the field's own suggestions: addresses,
++/// cards or earlier entries, as clicking the field shows them) or
++/// CEF_NN_AUTOFILL_PASSWORDS (the saved passwords, Chrome's "Select
++/// password" manual fallback, on any text field). Returns false if no form
++/// field has focus.
++///
++/*--cef(added=experimental)--*/
++bool CefShowAutofillSuggestions(CefRefPtr<CefBrowser> browser, int type);
++
+ #endif  // CEF_API_ADDED(CEF_EXPERIMENTAL)
+ 
+ #endif  // CEF_INCLUDE_CEF_CHROME_UI_H_
+diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
+index 68edead6b..d044c4844 100644
+--- a/include/cef_netnyahoo.h
++++ b/include/cef_netnyahoo.h
+@@ -87,4 +87,10 @@
+ // strips (hidden windows) use the last active window as their current window.
+ #define CEF_NN_CAPTURE_STOP 1
+ 
++// CefShowAutofillSuggestions (include/cef_chrome_ui.h): Chrome's autofill
++// suggestions at the tab's focused form field, with these types.
++#define CEF_NN_AUTOFILL_TRIGGER 1
++#define CEF_NN_AUTOFILL_FIELD 0
++#define CEF_NN_AUTOFILL_PASSWORDS 1
++
+ #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
+diff --git a/libcef/browser/chrome/chrome_browser_delegate.cc b/libcef/browser/chrome/chrome_browser_delegate.cc
+index a41fca65f..3c2fa8f26 100644
+--- a/libcef/browser/chrome/chrome_browser_delegate.cc
++++ b/libcef/browser/chrome/chrome_browser_delegate.cc
+@@ -10,6 +10,7 @@
+ #include "cef/libcef/browser/browser_host_base.h"
+ #include "cef/libcef/browser/browser_info_manager.h"
+ #include "cef/libcef/browser/browser_platform_delegate.h"
++#include "cef/libcef/browser/chrome/autofill_trigger.h"
+ #include "cef/libcef/browser/chrome/browser_util.h"
+ #include "cef/libcef/browser/chrome/chrome_browser_context.h"
+ #include "cef/libcef/browser/chrome/chrome_browser_host_impl.h"
+@@ -473,6 +474,12 @@ void ChromeBrowserDelegate::OnTabStripModelChanged(
+     TabStripModel* tab_strip_model,
+     const TabStripModelChange& change,
+     const TabStripSelectionChange& selection) {
++  // Chrome's tab helpers (its autofill client) exist once a tab is in a strip.
++  if (change.type() == TabStripModelChange::kInserted) {
++    for (const auto& inserted : change.GetInsert()->contents) {
++      cef::TrackAutofillFocus(inserted.contents);
++    }
++  }
+   NotifyTabStripChanged();
+ }
+ 
+diff --git a/libcef/browser/chrome/autofill_trigger.h b/libcef/browser/chrome/autofill_trigger.h
+new file mode 100644
+index 000000000..cf80c2d27
+--- /dev/null
++++ b/libcef/browser/chrome/autofill_trigger.h
+@@ -0,0 +1,23 @@
++// Copyright 2026 The Netnyahoo Authors. Portions copyright the Chromium
++// Embedded Framework Authors. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++#ifndef CEF_LIBCEF_BROWSER_CHROME_AUTOFILL_TRIGGER_H_
++#define CEF_LIBCEF_BROWSER_CHROME_AUTOFILL_TRIGGER_H_
++#pragma once
++
++namespace content {
++class WebContents;
++}
++
++namespace cef {
++
++// Starts following which form field has focus in |web_contents|, for
++// CefShowAutofillSuggestions (include/cef_chrome_ui.h). Does nothing until
++// Chrome's autofill client exists (its tab helpers are attached) or when it
++// already follows the tab. Defined in autofill_trigger.cc.
++void TrackAutofillFocus(content::WebContents* web_contents);
++
++}  // namespace cef
++
++#endif  // CEF_LIBCEF_BROWSER_CHROME_AUTOFILL_TRIGGER_H_
+diff --git a/libcef/browser/chrome/autofill_trigger.cc b/libcef/browser/chrome/autofill_trigger.cc
+new file mode 100644
+index 000000000..ff8a86c08
+--- /dev/null
++++ b/libcef/browser/chrome/autofill_trigger.cc
+@@ -0,0 +1,134 @@
++// Copyright 2026 The Netnyahoo Authors. Portions copyright the Chromium
++// Embedded Framework Authors. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++#include "cef/libcef/browser/chrome/autofill_trigger.h"
++
++#include "base/memory/weak_ptr.h"
++#include "cef/include/cef_chrome_ui.h"
++#include "cef/include/cef_netnyahoo.h"
++#include "cef/libcef/browser/browser_host_base.h"
++#include "cef/libcef/browser/thread_util.h"
++#include "components/autofill/content/browser/content_autofill_client.h"
++#include "components/autofill/content/browser/content_autofill_driver.h"
++#include "components/autofill/core/browser/foundations/autofill_driver.h"
++#include "components/autofill/core/browser/foundations/autofill_manager.h"
++#include "components/autofill/core/browser/foundations/scoped_autofill_managers_observation.h"
++#include "components/autofill/core/common/aliases.h"
++#include "components/autofill/core/common/unique_ids.h"
++#include "content/public/browser/render_frame_host.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/browser/web_contents_user_data.h"
++
++namespace {
++
++using autofill::AutofillManager;
++using autofill::AutofillSuggestionTriggerSource;
++using autofill::FieldGlobalId;
++using autofill::FormGlobalId;
++
++// The form field that has focus in a tab. The browser process keeps no such
++// record (Chrome's context menu gets the field from the click), but the
++// renderer reports every focus change to the frame's AutofillManager.
++class FocusedField : public content::WebContentsUserData<FocusedField>,
++                     public AutofillManager::Observer {
++ public:
++  FocusedField(const FocusedField&) = delete;
++  FocusedField& operator=(const FocusedField&) = delete;
++  ~FocusedField() override = default;
++
++  // Asks the field's renderer for suggestions, as Chrome's context menu does.
++  bool Trigger(AutofillSuggestionTriggerSource source) {
++    AutofillManager* manager = manager_.get();
++    content::RenderFrameHost* frame = GetWebContents().GetFocusedFrame();
++    auto* driver =
++        frame ? autofill::ContentAutofillDriver::GetForRenderFrameHost(frame)
++              : nullptr;
++    // Focus may have moved to another frame without a report from this one.
++    if (!manager || !driver || !driver->IsActive() ||
++        &driver->GetAutofillManager() != manager) {
++      return false;
++    }
++    // Public on AutofillDriver (ContentAutofillDriver's override is private).
++    static_cast<autofill::AutofillDriver*>(driver)
++        ->RendererShouldTriggerSuggestions(field_, source);
++    return true;
++  }
++
++ private:
++  friend class content::WebContentsUserData<FocusedField>;
++
++  FocusedField(content::WebContents* web_contents,
++               autofill::ContentAutofillClient* client)
++      : content::WebContentsUserData<FocusedField>(*web_contents) {
++    observation_.Observe(client, autofill::ScopedAutofillManagersObservation::
++                                     InitializationPolicy::
++                                         kObservePreexistingManagers);
++  }
++
++  // AutofillManager::Observer:
++  void OnAfterFocusOnFormField(AutofillManager& manager,
++                               FormGlobalId form,
++                               FieldGlobalId field) override {
++    Focused(manager, field);
++  }
++  void OnAfterAskForValuesToFill(AutofillManager& manager,
++                                 FormGlobalId form,
++                                 FieldGlobalId field) override {
++    Focused(manager, field);
++  }
++  void OnAfterFocusOnNonFormField(AutofillManager& manager) override {
++    if (manager_.get() == &manager) {
++      manager_.reset();
++    }
++  }
++
++  void Focused(AutofillManager& manager, FieldGlobalId field) {
++    manager_ = manager.GetWeakPtr();
++    field_ = field;
++  }
++
++  base::WeakPtr<AutofillManager> manager_;
++  FieldGlobalId field_;
++  autofill::ScopedAutofillManagersObservation observation_{this};
++
++  WEB_CONTENTS_USER_DATA_KEY_DECL();
++};
++
++WEB_CONTENTS_USER_DATA_KEY_IMPL(FocusedField);
++
++}  // namespace
++
++namespace cef {
++
++void TrackAutofillFocus(content::WebContents* web_contents) {
++  auto* client =
++      web_contents
++          ? autofill::ContentAutofillClient::FromWebContents(web_contents)
++          : nullptr;
++  if (client && !FocusedField::FromWebContents(web_contents)) {
++    FocusedField::CreateForWebContents(web_contents, client);
++  }
++}
++
++}  // namespace cef
++
++bool CefShowAutofillSuggestions(CefRefPtr<CefBrowser> browser, int type) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return false;
++  }
++  auto host = CefBrowserHostBase::FromBrowser(browser);
++  content::WebContents* contents = host ? host->GetWebContents() : nullptr;
++  if (!contents) {
++    return false;
++  }
++  // A tab that isn't followed yet can't have reported its focus.
++  cef::TrackAutofillFocus(contents);
++  auto* focused = FocusedField::FromWebContents(contents);
++  return focused &&
++         focused->Trigger(
++             type == CEF_NN_AUTOFILL_PASSWORDS
++                 ? AutofillSuggestionTriggerSource::kManualFallbackPasswords
++                 : AutofillSuggestionTriggerSource::kFormControlElementClicked);
++}

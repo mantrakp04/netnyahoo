@@ -138,6 +138,8 @@ type NativeExtensions = {
   uninstall(id: string, profile: string): Promise<Result<{ ok: true }>>;
   reload(id: string, profile: string): Promise<Result<{ ok: true }>>;
   configure(id: string, profile: string, options: Record<string, unknown>): Promise<Result<{ ok: true }>>;
+  /** Missing in app builds from before it existed. */
+  searchEngineList?(profile: string): Promise<Result<{ list: unknown }>>;
   /** DEV: runs in the profile's hidden chrome://extensions/ (evaluateInPage: any hidden page). */
   evaluateInHost(expression: string, profile: string): Promise<unknown>;
   evaluateInPage(expression: string, profile: string, page: string): Promise<unknown>;
@@ -190,6 +192,17 @@ export function webStoreExtensionId(urlOrId: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Chrome's search engine list for the profile, as its settings page gets it
+ * (`getSearchEnginesList`: `{defaults, actives, others, extensions}`). Engines that
+ * extensions add (`chrome_settings_overrides.search_provider`) carry `extension: {id, name}`;
+ * core's `extensionEnginesFromChrome` picks them out. Null if the engine can't tell.
+ */
+export async function searchEngineList(profile: string): Promise<unknown> {
+  if (!Native.searchEngineList) return null;
+  return unwrap(await Native.searchEngineList(profile)).list;
 }
 
 export async function listExtensions(profile: string): Promise<InstalledExtension[]> {

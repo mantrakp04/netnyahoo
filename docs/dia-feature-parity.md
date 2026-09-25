@@ -20,9 +20,9 @@ Legend: **✅** done · **🧪** built, but the deciding test needs the user pre
 
 | ✅ done | 🧪 needs the user | 🟡 partial | ❌ missing | ⛔ blocked | ⏸ deferred (AI) | — n/a |
 |---|---|---|---|---|---|---|
-| 204 | 8 | 13 | 0 | 7 | 58 | 14 |
+| 207 | 9 | 9 | 0 | 7 | 58 | 14 |
 
-Of the 232 rows that count (not ⏸ or —), 204 are done (88 %), 212 with the eight 🧪 rows. Keyboard shortcuts: every
+Of the 232 rows that count (not ⏸ or —), 207 are done (89 %), 216 with the nine 🧪 rows. Keyboard shortcuts: every
 Dia shortcut is bound except the Chat ones (⏸). Menus: all ten exist; View and Help are partial.
 
 The previous summary (296 rows, 181 ✅) didn't match its own tables, which held 301 rows and 199 ✅. This audit
@@ -39,7 +39,11 @@ What changed since the last audit, in rows (mostly the migration):
   trackpad swipe, the file picker.
 - No longer blocked, now ours to build (⛔ → ❌): back/forward history on Reopen Closed Tab and Duplicate, Cast,
   Web Bluetooth. Chrome's own code for each is in the engine now.
-- Lost in the migration: the video-PiP edge stash and host pill (they lived in `NNPictureInPicture.mm`).
+- Lost in the migration, since rebuilt on Chrome's PiP window: the video-PiP edge stash and host pill
+  (`NNPictureInPicture.mm`).
+- Since, from the polish pass (2026-09-25, instance `polish`): done, extension search engines, Edit › AutoFill at
+  the focused field (engine hook `CEF_NN_AUTOFILL_TRIGGER`) and the PiP stash / host pill / Keep on Top on Chrome's
+  PiP window (🟡 → ✅); the Raycast extension is built and needs the user to install it (🟡 → 🧪, checklist step 14).
 - Since, from R2 (2026-09-25): done, the side panel, "Share this tab instead" and the Bluetooth chooser (❌ → ✅);
   built, needing the user: dragging tabs between windows and Cast (🟡 / ❌ → 🧪, checklist steps 11–12).
 - Still blocked: Sync (4 rows), Translate, auto-updates, Widevine DRM, and iCloud Keychain passkeys (inside the 🟡
@@ -67,7 +71,8 @@ in `packages/cef/patches/cef-tab-state.patch`).
   `lib/chromeTabs.ts`, `components/pages/ClearDataDialog.tsx`.
 
 **R2 · Chrome surfaces still missing from our UI** — done 2026-09-25 (instance r2; ledger "R2 · Chrome surfaces")
-except extension-provided search engines (§7) and the optional PiP stash, which weren't in its scope. Chrome's
+except extension-provided search engines (§7) and the optional PiP stash, which weren't in its scope (both done
+since, in the polish pass). Chrome's
 surfaces come to the app through our CEF build's `CEF_NN_CHROME_UI` (docs/cef-source-build.md).
 - "Share this tab instead" bar while a page is capturing (§18).
 - Web Bluetooth chooser and a Cast entry: route Chrome's chooser / cast dialog to our UI, as WP4 did for
@@ -84,8 +89,8 @@ surfaces come to the app through our CEF build's `CEF_NN_CHROME_UI` (docs/cef-so
   `components/settings/panes/Privacy.tsx`,
   `components/sidebar/dnd.tsx`, `components/layout/tabDrag.ts`.
 
-**R3 · App loose ends and docs** — done 2026-09-25 except filling at the focused field (§16) and the items
-listed in Findings 1 and 13 that sit in R1/R2 files.
+**R3 · App loose ends and docs** — done 2026-09-25 except the items listed in Findings 1 and 13 that sit in
+R1/R2 files (filling at the focused field, §16, was done since in the polish pass).
 - The command bar's Share and Keyboard Shortcuts actions (Findings 6); the Autofill pane's per-profile toggles
   (Findings 8); Edit › AutoFill should fill at the focused field, or at least open the right pane per item (§16).
 - Dia 1.50 tab loading spinner (counter-clockwise, 1.88 s) in tab rows (§21).
@@ -109,7 +114,7 @@ The 🧪 rows need no code until the user checklist below finds a problem.
 | Protected video, Widevine (§18) | the CDM comes through the component updater, whose Google host is substituted; shipping also needs Google's VMP signing | Google grants VMP signing and we allow the component updater host (or bundle the CDM) |
 | iCloud Keychain passkeys (inside §16's passkeys row) | Apple hasn't granted `com.apple.developer.web-browser.public-key-credential` | the grant arrives: switch `CODE_SIGN_ENTITLEMENTS` to `Netnyahoo-ICloudPasskeys.entitlements` (ledger 42) |
 
-## Needs the user present: test script (about 20 minutes)
+## Needs the user present: test script (about 25 minutes)
 
 These need a key window, Touch ID, a phone, Spaces, or eyes on Dia, so no agent can run them. Run them in one
 sitting; note the step number and what you saw for anything that fails.
@@ -143,7 +148,8 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
    confirmation appears over the page, not in a window corner.
 4. **Addresses** (ledger 21). Open `/address.html`, fill in a fake US address, Save. Pass: Chrome's "Save address?"
    bubble shows over the page area. Save it, reload, click Full name. Pass: the dropdown offers the address and
-   fills every field; ⌘, › Autofill lists it.
+   fills every field; ⌘, › Autofill lists it. Press Esc, then Edit › AutoFill › Contact…. Pass: the same dropdown
+   opens under Full name; with no field focused (click the page background) it opens ⌘, › Autofill instead.
 5. **Passwords unlock** (ledger 27). ⌘, › Passwords › Unlock. Pass: exactly one Touch ID (or password) prompt;
    the login from step 2 shows; opening it and revealing the password within 5 minutes asks nothing more; the
    toggle reads "Offer to save and fill passwords". (Unlock only prompts when at least one login is saved.)
@@ -183,6 +189,16 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
     Network access; the device shows in the picker; clicking it casts the tab (status "Casting tab", Stop), and the
     toolbar shows the highlighted cast button until you stop. On YouTube, the player's own Cast button opens the same
     picker and casts the video.
+13. **PiP extras** (§18). On a YouTube video, Site Controls › Picture in Picture. Hover the PiP window. Pass: a dark
+    pill with the host covers Chrome's origin row; clicking it brings the tab back with the video still playing.
+    Right-click the PiP window: Back to Tab, Keep Window on Top (checked); unchecking it lets other windows cover
+    the PiP. Drag the window mostly off the right edge of the screen and let go. Pass: it slides in, leaving a 28 pt
+    strip with a chevron; clicking the strip brings it back; the same on the left edge; dragging it onto a second
+    display doesn't stash it.
+14. **Raycast** (§23, needs Raycast). `cd ~/Documents/netnyahoo/extras/raycast-netnyahoo && npm install && npm run dev`.
+    In Raycast, run "Search Tabs" (Netnyahoo). Pass: macOS asks once whether Raycast may control Netnyahoo; the
+    list shows your tabs with favicons and hosts; typing filters; ↵ switches to the tab and brings Netnyahoo
+    forward; ⌃X closes a tab.
 
 ## 1. Windows & app shell
 | Feature | Dia | Netnyahoo | Gap |
@@ -332,7 +348,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Force route ⇧⌘↩ → search | ✓ | ✅ | searches with the default engine (Dia: Google) |
 | Google / Chat destination toggle | ✓ | ⏸ | the Go pill names the engine |
 | "Prefer search engine" vs "Use website first" setting | ✓ | ✅ | Settings › General |
-| Default search engine choice (Google, Bing, DDG, Perplexity, ChatGPT, custom, extension engines) | ✓ | 🟡 | 12 built-ins + custom engines with keywords. Extension-provided engines (`chrome_settings_overrides.search_provider`) aren't read anywhere: not started |
+| Default search engine choice (Google, Bing, DDG, Perplexity, ChatGPT, custom, extension engines) | ✓ | ✅ | 12 built-ins + custom engines with keywords + the engines extensions add (`chrome_settings_overrides.search_provider`), read from Chrome's own TemplateURLService (its settings page's list, `components/extensions/searchEngines.ts`) whenever a profile's extensions change. They're listed under "Extensions" in Settings › Search Engine, can be made the default and have Tab-to-search keywords; like Chrome, an extension that asked to be the default (`is_default`) controls it ("… is controlling this setting", Manage / Disable) until it's disabled or removed, then the user's own choice is back. Verified with two fixture extensions (instance `polish`) |
 | Site search (Tab‑to‑search) | ✓ | ✅ | engines, known sites, history scope |
 | Calculator in command bar | ✓ | ✅ | ↩ copies the result |
 | "new doc / sheet / jira / meeting / figma…" commands | ✓ | ✅ | 17 `*.new` shortcuts + browser actions in the bar, Share and Keyboard Shortcuts included (both now in `runCommand`) |
@@ -490,7 +506,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Suggest strong password on sign-up | ✓ (Chromium) | 🧪 | Chrome's generation in the same dropdown on new-password fields; the generated-password confirmation stays Chrome's bubble (ledger 20). Checklist step 3 |
 | Passkeys / WebAuthn (iCloud Keychain) | ✓ | 🟡 | Chrome's WebAuthn stack and dialogs, centred over the page. Security keys ✅ (dialog verified). Phone (hybrid): QR sheet ✅; a real phone scan is checklist step 7. Touch ID "Chrome profile" passkeys: the vendored CEF now carries our BRANDING (bundle/team id) and the app has the `.webauthn` keychain group, so it's engine-ready; checklist step 6. iCloud Keychain ⛔: waits on Apple granting `com.apple.developer.web-browser.public-key-credential` (entitlements file ready) |
 | Address & credit‑card autofill | ✓ | 🧪 | Chrome's autofill (save bubble + dropdown, ledger 21); Settings › Autofill lists, adds, edits and deletes addresses and cards (card number behind Touch ID). Dropdown and save bubble: checklist step 4 |
-| Edit › AutoFill menu (Contact, Passwords, Credit Card) | ✓ | 🟡 | the submenu exists, and each item opens Settings on the window's profile: Passwords… the Passwords pane, Contact… and Credit Card… the Autofill pane (addresses and cards). Offering entries at the focused field would need an engine hook into Chrome's manual-fallback suggestions (its field context menu's Autofill items) |
+| Edit › AutoFill menu (Contact, Passwords, Credit Card) | ✓ | ✅ | like Chrome's field menu, each item opens Chrome's dropdown at the page's focused form field (engine hook `CefShowAutofillSuggestions`, `CEF_NN_AUTOFILL_TRIGGER`): Passwords… lists the saved passwords on any text field (Chrome's "Select password" fallback), Contact… and Credit Card… the field's own suggestions (addresses or cards). With no form field focused, they open Settings on the window's profile (Passwords, or Autofill). Verified: a focused address field got Chrome's dropdown window right under it, a blurred page opened Settings; picking an entry is Chrome's own (checklist step 4) |
 | Password reveal button | ✓ | ✅ | eye button in the page's password field once the user types (never for a filled saved password; sites with their own toggle keep theirs) in `helper/page_script.js`, and reveal in Settings › Passwords. Not visually re-checked on Chrome tabs |
 
 ## 17. Privacy & security
@@ -510,7 +526,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Picture‑in‑Picture | ✓ | ✅ | Chrome's video PiP; hover card and Site Controls toggle it |
 | Auto‑PiP on tab switch / window occluded (Meet, YouTube) | ✓ | ✅ | ours (NNBrowserView `autoPictureInPicture`): audible or capturing pages only; setting in Tabs |
 | Document PiP | ✓ | ✅ | Chrome's own Document PiP window (its frame shows the origin and Back to tab) |
-| PiP stash, return to tab, hostname bar | ✓ | 🟡 | Chrome's PiP window keeps its own Back to tab (and we switch to the tab when a video keeps playing after PiP closes). Our edge stash, host pill and Keep on Top menu went with `NNPictureInPicture.mm` in the migration; rebuild them on Chrome's PiP window if still wanted |
+| PiP stash, return to tab, hostname bar | ✓ | ✅ | on Chrome's own video PiP window, in-process (`NNPictureInPicture.mm`): the host pill on hover over Chrome's origin row (click: back to the tab, the video keeps playing there); right-click anywhere: Back to Tab / Keep Window on Top (remembered); dragged mostly past a screen's left or right edge it tucks in with a 28 pt peek and a chevron handle (click: back on screen), and stays tucked if Chrome moves it. Chrome's own controls unchanged. Verified with the DEV self-test (`NETNYAHOO_PIP_SELFTEST`, all 10 steps) and layer snapshots, not a real pointer drag (checklist step 13) |
 | Mini player for pinned media tabs (skip ±15 s, art, marquee) | ✓ | ✅ | hover mini player + sidebar player |
 | Cast (Google Cast) | ✓ | 🧪 | Chrome's Media Router drives our Cast picker (devices, status, Stop; "Sources" for tab or screen) from View › Cast…, Site Controls › Cast…, the page menu's Cast… and a site's own Cast button (Presentation API); the toolbar shows a highlighted cast button while this profile casts (click: the picker; right-click: Stop Casting). Discovery runs in this build (mDNS + DIAL started, `media-router-internals`); no Cast device was on the test network, so casting itself is checklist step 12 |
 | Screen‑share indicator, "Share this tab instead" | ✓ | ✅ | indicator (red capture glyph + tab badges); Dia-style picker with Tabs (tab video + tab audio through our tab-capture patch), screens and windows. While a site shares a tab, Dia's info bar sits above the page: "Sharing this tab with …" with Stop Sharing on the shared tab, "Sharing another tab with …" with Share This Tab Instead on the profile's other pages (the site's tracks keep running with the new tab), Dismiss on both |
@@ -576,7 +592,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | DevTools ⌥⌘I / F12 | ✓ | ✅ | ⌥⌘I, F12 (hidden alias), context-menu Inspect; View › Developer › View Source ⌥⌘U (`view-source:` tab) and JavaScript Console ⌥⌘J |
 | Task Manager | ✓ | ✅ | Chromium task rows, CPU/memory, End Process |
 | AppleScript dictionary (windows, tabs, profiles, execute JS) | ✓ | ✅ | Netnyahoo.sdef; execute runs through the renderer's `nn-eval`, which works on Chrome tabs |
-| Raycast extension support (via AppleScript) | ✓ | 🟡 | the dictionary matches Dia's shape; nothing ships for Netnyahoo's bundle id |
+| Raycast extension support (via AppleScript) | ✓ | 🧪 | `extras/raycast-netnyahoo`: Search Tabs lists every window's tabs and switches to one (also Copy URL, Close Tab), through the AppleScript dictionary. Its scripts were run against a live instance with the app's DEV AppleScript runner; installing it in Raycast (`npm install`, `npm run dev`) is checklist step 14 |
 | Record Performance Issue, Copy Diagnostics | ✓ | ✅ | engine trace saved to Downloads |
 
 ## 24. System integration
@@ -660,7 +676,7 @@ lib/appIntegration.ts).
 |---|---|---|
 | App (About, Updates, Invite, Settings, Import, Services, Sign Out, Hide, Quit) | ✓ | ✅ About, Check for Updates…, Settings…, Import from Another Browser…, Services, Hide / Hide Others / Show All, Quit (Invite and Sign Out are account features: —) |
 | File | ✓ | ✅ New Tab, New Tab in Group, New Window, New Incognito Window, Reopen Closed Tab / Window, Open Command Bar, Close Window / Tab / All Tabs, Clean Up Tabs, Share…, Print… (Chat ⏸) |
-| Edit | ✓ | ✅ Undo … Select All, Copy URL (as Markdown), Paste and Match Style; Find ▸ (Find, Find and Replace, Next, Previous, Use Selection for Find, Jump to Selection); Spelling and Grammar, Substitutions, Transformations, Speech; AutoFill ▸ (Contact…, Passwords…, Credit Card…: they open Settings on the window's profile, see §16) |
+| Edit | ✓ | ✅ Undo … Select All, Copy URL (as Markdown), Paste and Match Style; Find ▸ (Find, Find and Replace, Next, Previous, Use Selection for Find, Jump to Selection); Spelling and Grammar, Substitutions, Transformations, Speech; AutoFill ▸ (Contact…, Passwords…, Credit Card…: Chrome's dropdown at the focused field, else Settings, see §16) |
 | View | ✓ | 🟡 Appearance, Refresh / Force Refresh, Show Tabs in Sidebar, Auto-Hide Tabs, split panes, Show Bookmarks Bar ▸, Show Full URL, zoom, Enter Full Screen, Developer ▸ (View Source, Developer Tools, JavaScript Console). Unchanged since the last audit, which rated it partial without naming the missing items |
 | Tabs | ✓ | ✅ Back/Forward, Next/Previous Tab, Search Tabs…, Pin, Duplicate, New Group with Tab, Move to Profile / Window, Add to Bookmarks…, Add Bookmark to Folder, Rename…, Change Icon…, Mute Site |
 | Bookmarks | ✓ | ✅ Bookmark This Page, Bookmark All Tabs…, Manage Bookmarks, Recent Bookmarks, Bookmarks Bar / Other Bookmarks trees |

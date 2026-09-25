@@ -164,6 +164,30 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - **Tabs between windows**: the drop logic is unit-tested (`layout/windowDrop.test.mjs`); a real mouse drag across
     windows is checklist step 11 in `docs/dia-feature-parity.md`.
 
+- Polish pass (instance `polish`, CEF 154.0.28 + `cef-ui-triggers.patch`, 2026-09-25). Driven through devHarness,
+  CDP and the app's DEV AppleScript runner; the screen was locked, so nothing was seen on screen:
+  - **Extension search engines.** Two unpacked fixture extensions with `chrome_settings_overrides.search_provider`
+    (one `is_default: true`). Chrome's settings list (`getSearchEnginesList` in the hidden chrome://settings,
+    `NNExtensions searchEngineList`) reports both with their extension; the app keeps them in
+    `settings.extensionSearchEngines`. A typed search went to the default-claiming extension's URL
+    (`duckduckgo.com/?q=…&t=nnfixture`); Settings › Search Engine showed "Search Fixture Default is controlling this
+    setting" (Manage / Disable), the built-ins' Make Default disabled, and an "Extensions" section with both engines
+    (checked in a window snapshot); the other extension's keyword (`wfix`) set Tab-to-search's scope; disabling the
+    extension brought the user's own default back (Google), enabling it made it control again.
+  - **Edit › AutoFill** (`CefShowAutofillSuggestions`). With a form field focused (CDP `focus()`), the call returns
+    true and Chrome's dropdown window opens under the field (a 174×108 level-999 window for a saved address,
+    148×54 for Passwords…); with the page blurred it returns false and the menu command opened Settings.
+  - **PiP extras** (`NNPictureInPicture.mm`). `NETNYAHOO_PIP_SELFTEST=1` on a canvas-stream video in Chrome's PiP
+    window: pill on hover with the host, stash past the right edge (28 pt peek, handle), re-stash after a Chrome
+    move, handle click back on screen, stash on the left edge, drag out, Keep Window on Top toggling the level,
+    Back to Tab (the app switched back to the tab from another one, PiP closed, the video still playing). All 10
+    steps pass; layer snapshots show the pill, its hover state and both handles. A real pointer drag is parity
+    checklist step 13.
+  - **Raycast** (`extras/raycast-netnyahoo`). The extension's list, focus and close scripts (with `tell current
+    application` in place of the bundle id) ran in the app: the list returned every tab with window id, title, URL,
+    pinned and selected state; focus selected the tab; close removed it; an unknown tab id fails with AppleScript's
+    -1728. Its `npm test` checks the parser against that output. Installing it in Raycast is checklist step 14.
+
 ## Still to run
 Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs the user present" has the script.
 - 15: fullscreen changes Spaces.
@@ -173,6 +197,8 @@ Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs 
 - R2: dragging tabs between windows, and Cast with a real device (parity checklist steps 11–12).
 - 28–31: visual QA against Dia 1.50.1 (needs the unlocked screen).
 - 39–41: phone passkeys, Touch ID passkeys, Safe Storage.
+- Polish: the PiP extras with a real pointer, and the Raycast extension installed in Raycast (parity checklist
+  steps 13–14).
 
 ## Test ledger
 
@@ -420,7 +446,5 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order
   is pushed to Chrome.
-- The Dia PiP extras (edge stash, host pill) aren't rebuilt on Chrome's PiP window (optional in
-  `docs/dia-feature-parity.md` R2).
 - The stock-CEF build (`NN_CHROME_TABS=0`, `docs/cef-source-build.md`) still has the Alloy-era gaps: no in-page
   password or autofill filling, no ad blocking in incognito, and extensions don't see our tabs.

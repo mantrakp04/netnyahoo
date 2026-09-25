@@ -1,11 +1,14 @@
 import {
   allEngines,
   BUILT_IN_ENGINES,
+  controllingExtensionEngine,
   engineById,
+  extensionEngineId,
   makeCustomEngine,
   validateEngine,
   type CustomSearchEngine,
   type EngineInput,
+  type ExtensionSearchEngine,
   type SearchEngine,
 } from "@netnyahoo/core";
 import type { StateCreator } from "zustand";
@@ -35,6 +38,11 @@ export type Settings = {
   customSearchUrl: string;
   /** User-added engines (name, Tab-to-search keyword, URL with `%s`); see addCustomEngine. */
   customSearchEngines: CustomSearchEngine[];
+  /**
+   * Engines extensions add, per engine profile, as Chrome last reported them
+   * (components/extensions/searchEngines). Kept so an extension's engine is there from launch.
+   */
+  extensionSearchEngines: ExtensionSearchEngine[];
   /** Show the search engine's suggestions in the command bar. */
   searchSuggestions: boolean;
   /**
@@ -95,6 +103,7 @@ export const DEFAULT_SETTINGS: Settings = {
   searchEngine: "google",
   customSearchUrl: "",
   customSearchEngines: [],
+  extensionSearchEngines: [],
   searchSuggestions: true,
   commandBarPreference: "website",
   tabLayout: "sidebar",
@@ -122,29 +131,43 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 const NO_CUSTOM_ENGINES: CustomSearchEngine[] = [];
-const engineCache = new WeakMap<CustomSearchEngine[], { legacyUrl: string; engines: SearchEngine[] }>();
+const NO_EXTENSION_ENGINES: ExtensionSearchEngine[] = [];
+const engineCache = new WeakMap<
+  CustomSearchEngine[],
+  { legacyUrl: string; extension: ExtensionSearchEngine[]; engines: SearchEngine[] }
+>();
 
 /**
- * Every engine the user can pick, built-ins first. A legacy single custom URL
- * (`searchEngine: "custom"` + customSearchUrl) shows up as "Custom".
+ * Every engine the user can pick: built-ins, the user's own, then the ones extensions add.
+ * A legacy single custom URL (`searchEngine: "custom"` + customSearchUrl) shows up as "Custom".
  */
 export function searchEngines(settings: Settings): SearchEngine[] {
   // Memoised so selectors get a stable array (and a stable default engine object).
   const custom = settings.customSearchEngines ?? NO_CUSTOM_ENGINES;
+  const extension = settings.extensionSearchEngines ?? NO_EXTENSION_ENGINES;
   const cached = engineCache.get(custom);
-  if (cached && cached.legacyUrl === settings.customSearchUrl) return cached.engines;
-  const engines = allEngines(custom);
+  if (cached && cached.legacyUrl === settings.customSearchUrl && cached.extension === extension) return cached.engines;
+  const engines = allEngines(custom, extension);
   if (settings.customSearchUrl?.includes("%s")) {
-    engines.push({ id: "custom", name: "Custom", keyword: "custom", url: settings.customSearchUrl, custom: true });
+    const at = engines.findIndex((e) => e.extension);
+    engines.splice(at < 0 ? engines.length : at, 0, { id: "custom", name: "Custom", keyword: "custom", url: settings.customSearchUrl, custom: true });
   }
-  engineCache.set(custom, { legacyUrl: settings.customSearchUrl, engines });
+  engineCache.set(custom, { legacyUrl: settings.customSearchUrl, extension, engines });
   return engines;
 }
 
+/**
+ * The extension that controls the default search engine, like Chrome: one that asked to be the
+ * default (`is_default`) wins over the user's choice until it's disabled or removed.
+ */
+export function controllingSearchExtension(settings: Settings): ExtensionSearchEngine | undefined {
+  return controllingExtensionEngine(settings.extensionSearchEngines ?? NO_EXTENSION_ENGINES);
+}
 
 /** The engine the command bar searches with (Google if the chosen one is gone). */
 export function defaultSearchEngine(settings: Settings): SearchEngine {
-  return engineById(searchEngines(settings), settings.searchEngine);
+  const controlling = controllingSearchExtension(settings);
+  return engineById(searchEngines(settings), controlling ? extensionEngineId(controlling.extensionId) : settings.searchEngine);
 }
 
 /**

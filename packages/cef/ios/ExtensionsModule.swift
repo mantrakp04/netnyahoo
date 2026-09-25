@@ -33,6 +33,9 @@ public class ExtensionsModule: Module {
     AsyncFunction("configure") { (id: String, profile: String, options: [String: Any], promise: Promise) in
       NNExtensions.configure(id, profile: profile, options: options) { promise.resolve($0) }
     }.runOnQueue(.main)
+    AsyncFunction("searchEngineList") { (profile: String, promise: Promise) in
+      NNExtensions.searchEngineList(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
     AsyncFunction("evaluateInHost") { (expression: String, profile: String, promise: Promise) in
       NNExtensions.evaluateInHost(expression, profile: profile, page: nil) { promise.resolve($0) }
     }.runOnQueue(.main)

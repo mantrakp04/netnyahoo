@@ -1,7 +1,9 @@
-import { type CardNetwork } from "@netnyahoo/cef";
+import { showAutofillSuggestions, type CardNetwork } from "@netnyahoo/cef";
 import { Symbol } from "@netnyahoo/shell";
 import { Text, View } from "react-native";
 import { useBrowser } from "../../store/browser";
+import { activeTabId } from "../../store/model";
+import { browserIdOf } from "../extensions/state";
 import { openSettings } from "../settings/windows";
 
 /**
@@ -12,16 +14,21 @@ import { openSettings } from "../settings/windows";
  */
 
 /**
- * Edit › AutoFill › Contact… / Passwords… / Credit Card…: Chrome offers saved entries
- * itself when a field is focused (its dropdown, or its context menu's manual fallback), so
- * the menu opens where they're managed: Passwords, or Autofill (addresses and cards), on the
- * window's profile. Incognito windows use the default profile's, which the pane starts on.
+ * Edit › AutoFill › Contact… / Passwords… / Credit Card…: like Chrome's field menu, Chrome's
+ * dropdown opens at the page's focused form field (Passwords… lists every saved password
+ * there; Contact… and Credit Card… show what the field takes: addresses or cards). With no
+ * form field focused it opens where they're managed: Passwords, or Autofill (addresses and
+ * cards), on the window's profile. Incognito windows use the default profile's, which the
+ * pane starts on.
  */
-export function requestAutofill(windowId: string, arg: string | null) {
+export async function requestAutofill(windowId: string, arg: string | null) {
+  const passwords = arg === "passwords";
+  const browserId = browserIdOf(activeTabId(useBrowser.getState(), windowId));
+  if (browserId && (await showAutofillSuggestions(browserId, passwords ? "passwords" : "field"))) return;
   const s = useBrowser.getState();
   const w = s.windows[windowId];
   const profileId = w && !w.incognito && s.profiles[w.profileId] ? w.profileId : null;
-  openSettings(arg === "passwords" ? "passwords" : "autofill", profileId);
+  openSettings(passwords ? "passwords" : "autofill", profileId);
 }
 
 const BADGES: Record<CardNetwork, { label: string; fill: string; text: string }> = {

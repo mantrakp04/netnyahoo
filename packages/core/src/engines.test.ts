@@ -3,7 +3,9 @@ import { test } from "node:test";
 import {
   allEngines,
   BUILT_IN_ENGINES,
+  controllingExtensionEngine,
   engineById,
+  extensionEnginesFromChrome,
   engineHost,
   makeCustomEngine,
   parseSuggestions,
@@ -68,4 +70,91 @@ test("custom engines: validation and normalisation", () => {
   assert.match(validateEngine({ ...ok, keyword: "google.com" }, engines)!, /already used/);
   // Editing an engine may keep its own keyword.
   assert.equal(validateEngine({ ...ok, keyword: "w" }, engines, "c1"), null);
+});
+
+// Chrome's getSearchEnginesList for a profile with two fixture extensions (one asking to be the
+// default search engine), trimmed to the fields we read; the Bing entry shows a leftover
+// template parameter, the omnibox keyword an extension's chrome.omnibox.
+const CHROME_LIST = {
+  defaults: [
+    {
+      id: 2,
+      name: "DuckDuckGo Fixture",
+      keyword: "ddgfix",
+      url: "https://duckduckgo.com/?q=%s&t=nnfixture",
+      suggestionsUrl: "https://duckduckgo.com/ac/?q=%s&type=list",
+      default: true,
+      isOmniboxExtension: false,
+      extension: { id: "dcielhccnenaljfdmekhnepaeenphgjp", name: "Search Fixture Default", canBeDisabled: true },
+    },
+    { id: 2, name: "No Search", keyword: "nosearch", url: "http://%s", suggestionsUrl: "", default: false, isOmniboxExtension: false },
+    {
+      id: 5,
+      name: "Microsoft Bing",
+      keyword: "bing.com",
+      url: "https://www.bing.com/search?q=%s",
+      suggestionsUrl: "https://www.bing.com/osjson.aspx?query=%s&language={language}",
+      default: false,
+      isOmniboxExtension: false,
+    },
+  ],
+  actives: [{ id: 7, name: "Bookmarks", keyword: "@bookmarks", url: "chrome://bookmarks/?q=%s", suggestionsUrl: "", default: false, isOmniboxExtension: false }],
+  others: [
+    {
+      id: 3,
+      name: "Wikipedia Fixture",
+      keyword: "wfix",
+      url: "https://en.wikipedia.org/w/index.php?search=%s&lang={language}",
+      suggestionsUrl: "",
+      default: false,
+      isOmniboxExtension: false,
+      extension: { id: "lfkochledepkdapbginilfnephdpkfjc", name: "Search Fixture Extra", canBeDisabled: true },
+    },
+  ],
+  extensions: [
+    { id: 9, name: "Omni", keyword: "om", url: "chrome-extension://abc/?q=%s", default: false, isOmniboxExtension: true, extension: { id: "abc", name: "Omni" } },
+  ],
+};
+
+test("extension engines come from Chrome's list, without omnibox keywords or template leftovers", () => {
+  const engines = extensionEnginesFromChrome("", CHROME_LIST);
+  assert.deepEqual(engines, [
+    {
+      profile: "",
+      extensionId: "dcielhccnenaljfdmekhnepaeenphgjp",
+      extensionName: "Search Fixture Default",
+      name: "DuckDuckGo Fixture",
+      keyword: "ddgfix",
+      url: "https://duckduckgo.com/?q=%s&t=nnfixture",
+      suggestUrl: "https://duckduckgo.com/ac/?q=%s&type=list",
+      isDefault: true,
+    },
+    {
+      profile: "",
+      extensionId: "lfkochledepkdapbginilfnephdpkfjc",
+      extensionName: "Search Fixture Extra",
+      name: "Wikipedia Fixture",
+      keyword: "wfix",
+      url: "https://en.wikipedia.org/w/index.php?search=%s&lang=",
+      suggestUrl: undefined,
+      isDefault: false,
+    },
+  ]);
+  assert.equal(controllingExtensionEngine(engines)?.extensionId, "dcielhccnenaljfdmekhnepaeenphgjp");
+  assert.deepEqual(extensionEnginesFromChrome("", null), []);
+});
+
+test("extension engines follow the built-ins and custom ones, once per extension", () => {
+  const fromProfiles = [...extensionEnginesFromChrome("", CHROME_LIST), ...extensionEnginesFromChrome("work", CHROME_LIST)];
+  const engines = allEngines([{ id: "c1", name: "Wikipedia", keyword: "w", url: "https://en.wikipedia.org/w/index.php?search=%s" }], fromProfiles);
+  const added = engines.filter((e) => e.extension);
+  assert.deepEqual(
+    added.map((e) => [e.id, e.name, e.extension?.name]),
+    [
+      ["extension:dcielhccnenaljfdmekhnepaeenphgjp", "DuckDuckGo Fixture", "Search Fixture Default"],
+      ["extension:lfkochledepkdapbginilfnephdpkfjc", "Wikipedia Fixture", "Search Fixture Extra"],
+    ],
+  );
+  assert.equal(engines.indexOf(added[0]!), BUILT_IN_ENGINES.length + 1);
+  assert.equal(searchUrl(engineById(engines, "extension:dcielhccnenaljfdmekhnepaeenphgjp"), "a b"), "https://duckduckgo.com/?q=a%20b&t=nnfixture");
 });

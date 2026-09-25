@@ -416,6 +416,15 @@ CefRefPtr<CefBrowser> BrowserById(NSInteger browserId) {
 #endif
 }
 
++ (BOOL)showAutofillSuggestions:(NSInteger)browserId passwords:(BOOL)passwords {
+#if NN_CHROME_UI && defined(CEF_NN_AUTOFILL_TRIGGER)
+  CefRefPtr<CefBrowser> browser = BrowserById(browserId);
+  return browser && CefShowAutofillSuggestions(browser, passwords ? CEF_NN_AUTOFILL_PASSWORDS : CEF_NN_AUTOFILL_FIELD);
+#else
+  return NO;
+#endif
+}
+
 + (NSInteger)captureTargetOf:(NSInteger)capturerId among:(NSArray<NSNumber *> *)browserIds {
 #if NN_CHROME_UI && NN_TAB_CAPTURE
   CefRefPtr<CefBrowser> capturer = BrowserById(capturerId);

@@ -1,6 +1,7 @@
 #import "NNClient.h"
 
 #import "NNChromeUI.h"
+#import "NNPictureInPicture.h"
 #import "NNPopupWindow.h"
 #import "NNSiteSettings.h"
 #import "NNWindowHost.h"
@@ -338,6 +339,8 @@ void Client::OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, i
   } else if (kind == "pip" && dict) {
     bool active = [dict[@"active"] boolValue];
     Emit(@"pictureInPicture", @{@"kind" : dict[@"kind"] ?: @"video", @"active" : @(active)});
+    // Dia's host pill, menu and edge stash on Chrome's video PiP window.
+    if (![dict[@"kind"] isEqual:@"document"]) pip::VideoChanged(view_, HostOf(URL()), frame, active);
     // "Back to tab" from Chromium's PiP window reaches no delegate; the video
     // still playing after PiP closed is the tell.
     if (!active && [dict[@"playing"] boolValue] && (!view_.visible || !NSApp.isActive))

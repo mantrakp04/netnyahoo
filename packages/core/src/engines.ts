@@ -13,10 +13,29 @@ export type SearchEngine = {
   /** Returns OpenSearch suggestion JSON: `[query, [suggestion, …], …]`. */
   suggestUrl?: string;
   custom?: boolean;
+  /** Added by this extension (`chrome_settings_overrides.search_provider`). */
+  extension?: { id: string; name: string };
 };
 
 /** A user-added engine, as stored in settings. */
 export type CustomSearchEngine = { id: string; name: string; keyword: string; url: string };
+
+/**
+ * An engine an extension adds (its manifest's `chrome_settings_overrides.search_provider`), as
+ * Chrome's search engine list reports it for one engine profile.
+ */
+export type ExtensionSearchEngine = {
+  /** The engine profile ("" = default) whose extension it is. */
+  profile: string;
+  extensionId: string;
+  extensionName: string;
+  name: string;
+  keyword: string;
+  url: string;
+  suggestUrl?: string;
+  /** Chrome made it the default search engine: the extension asked to be (`is_default`), and it's the newest one that did. */
+  isDefault: boolean;
+};
 
 export const DEFAULT_ENGINE_ID = "google";
 
@@ -87,9 +106,63 @@ export const BUILT_IN_ENGINES: readonly SearchEngine[] = [
   },
 ];
 
-/** Built-ins first, then the user's own. */
-export function allEngines(custom: readonly CustomSearchEngine[] = []): SearchEngine[] {
-  return [...BUILT_IN_ENGINES, ...custom.map((e) => ({ ...e, custom: true }))];
+/** Built-ins first, then the user's own, then the extensions' (one per extension, whichever profiles have it). */
+export function allEngines(custom: readonly CustomSearchEngine[] = [], extension: readonly ExtensionSearchEngine[] = []): SearchEngine[] {
+  const engines: SearchEngine[] = [...BUILT_IN_ENGINES, ...custom.map((e) => ({ ...e, custom: true }))];
+  const seen = new Set<string>();
+  for (const e of extension) {
+    if (seen.has(e.extensionId)) continue;
+    seen.add(e.extensionId);
+    engines.push({
+      id: extensionEngineId(e.extensionId),
+      name: e.name,
+      keyword: e.keyword,
+      url: e.url,
+      suggestUrl: e.suggestUrl || undefined,
+      extension: { id: e.extensionId, name: e.extensionName },
+    });
+  }
+  return engines;
+}
+
+export const extensionEngineId = (extensionId: string) => `extension:${extensionId}`;
+
+/** The extension engine Chrome made the default (the extension controls the setting), if any. */
+export function controllingExtensionEngine(extension: readonly ExtensionSearchEngine[]): ExtensionSearchEngine | undefined {
+  return extension.find((e) => e.isDefault);
+}
+
+/** Chrome's display URLs keep the template's other parameters ("{language}"); we have no values for them. */
+const withoutPlaceholders = (url: string) => url.replace(/\{[^{}%]*\}/g, "");
+
+/**
+ * Chrome's search engine list (its settings page's `getSearchEnginesList`) → the extensions'
+ * engines. Chrome's display URLs already have `%s` for the query; omnibox keywords
+ * (`chrome.omnibox`) aren't search engines.
+ */
+export function extensionEnginesFromChrome(profile: string, list: unknown): ExtensionSearchEngine[] {
+  const groups = list && typeof list === "object" ? Object.values(list as Record<string, unknown>) : [];
+  const out: ExtensionSearchEngine[] = [];
+  for (const group of groups) {
+    if (!Array.isArray(group)) continue;
+    for (const e of group as Record<string, unknown>[]) {
+      const ext = e?.extension as { id?: unknown; name?: unknown } | undefined;
+      if (!ext || typeof ext.id !== "string" || e.isOmniboxExtension) continue;
+      if (typeof e.url !== "string" || !e.url.includes("%s") || out.some((o) => o.extensionId === ext.id)) continue;
+      out.push({
+        profile,
+        extensionId: ext.id,
+        extensionName: typeof ext.name === "string" ? ext.name : "",
+        name: typeof e.name === "string" && e.name ? e.name : String(ext.name ?? ""),
+        keyword: typeof e.keyword === "string" ? e.keyword : "",
+        url: withoutPlaceholders(e.url),
+        suggestUrl:
+          typeof e.suggestionsUrl === "string" && e.suggestionsUrl.includes("%s") ? withoutPlaceholders(e.suggestionsUrl) : undefined,
+        isDefault: e.default === true,
+      });
+    }
+  }
+  return out;
 }
 
 /** The engine with `id`, falling back to Google (e.g. a deleted custom default). */
