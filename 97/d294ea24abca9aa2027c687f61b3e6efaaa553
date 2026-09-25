@@ -1,0 +1,103 @@
+apps/launch-video/remotion.config.ts
+  s_9c356f9574d31c::t_f43fd1ac1067c6 1-2,4
+  s_9c356f9574d31c::t_c8b96042e8be4b 3,5
+apps/launch-video/.gitignore
+  s_9c356f9574d31c::t_8accf33cdfafa1 1-7
+apps/launch-video/src/Cover.tsx
+  s_9c356f9574d31c::t_be924ae229fcec 4-5
+  s_9c356f9574d31c::t_2876c7cdfe44b3 1-3
+apps/launch-video/scripts/survey.mjs
+  s_9c356f9574d31c::t_8aa6dd7d8fc014 1-9,12-20
+  s_9c356f9574d31c::t_2c3e4ce05ba943 10-11
+apps/launch-video/src/Root.tsx
+  s_9c356f9574d31c::t_d2a2abddac47b9 4,11
+  s_9c356f9574d31c::t_2876c7cdfe44b3 1-3,5,7-10,12-13
+  s_9c356f9574d31c::t_f43fd1ac1067c6 6
+apps/launch-video/src/Stage.tsx
+  s_9c356f9574d31c::t_cca624a9671739 1-14,17-21,23-64,66-67,79-80
+  s_9c356f9574d31c::t_a2705c8c17b704 15-16
+  s_9c356f9574d31c::t_2876c7cdfe44b3 22,65,68-78
+apps/launch-video/scripts/clock.js
+  s_9c356f9574d31c::t_2c3e4ce05ba943 21-26
+  s_9c356f9574d31c::t_8aa6dd7d8fc014 1-20,27-39
+apps/launch-video/src/Fit.tsx
+  s_9c356f9574d31c::t_a2705c8c17b704 1-2,4-5,8,10-11,14-24
+  s_9c356f9574d31c::t_b2b5a5f101ff78 3,6-7,9,12-13,25-35
+apps/launch-video/src/Answer.tsx
+  s_9c356f9574d31c::t_d2a2abddac47b9 2,4,47
+  s_9c356f9574d31c::t_30427a5dbb9837 8
+  s_9c356f9574d31c::t_8ca3e85bb639c0 1,3,5-7,9-46,48-50
+apps/launch-video/tsconfig.json
+  s_9c356f9574d31c::t_2876c7cdfe44b3 1-13
+apps/launch-video/scripts/prepare-assets.mjs
+  s_9c356f9574d31c::t_8accf33cdfafa1 1-26
+pnpm-workspace.yaml
+  s_9c356f9574d31c::t_65da48dff483e3 6-7
+apps/launch-video/src/Yahu3D.tsx
+  s_9c356f9574d31c::t_2f183bc523832d 6,36,98-100,106,125,127-130
+  s_9c356f9574d31c::t_37818ab0ae0efa 1-5,7-35,37-97,101-105,107-124,126,131-134
+apps/launch-video/README.md
+  s_9c356f9574d31c::t_fec6c5fc68e9c6 1-28
+apps/launch-video/scripts/make-sound.mjs
+  s_9c356f9574d31c::t_1b0e8efeeb91ea 1-102
+apps/launch-video/src/Receipts.tsx
+  s_9c356f9574d31c::t_a2705c8c17b704 26
+  s_9c356f9574d31c::t_caa493924cd088 13,45
+  s_9c356f9574d31c::t_2876c7cdfe44b3 1-3,5-12,14,16-20,22,24-25,27,29,35-44,46,51-109
+  s_9c356f9574d31c::t_b2b5a5f101ff78 4,15,21,23,28,30-34,48-50
+  s_9c356f9574d31c::t_d2a2abddac47b9 47
+apps/launch-video/src/theme.ts
+  s_9c356f9574d31c::t_b6a2e5c0c441b1 1-40
+apps/launch-video/src/timeline.ts
+  s_9c356f9574d31c::t_b6a2e5c0c441b1 1-31
+apps/launch-video/scripts/headless.mjs
+  s_9c356f9574d31c::t_8aa6dd7d8fc014 1-95
+apps/launch-video/src/EndCard.tsx
+  s_9c356f9574d31c::t_caa493924cd088 36-37,43
+  s_9c356f9574d31c::t_2876c7cdfe44b3 1-17,19-35,38-42,44-58
+  s_9c356f9574d31c::t_b432534b247c6f 18
+apps/launch-video/src/index.ts
+  s_9c356f9574d31c::t_b6a2e5c0c441b1 1-4
+apps/launch-video/pnpm-workspace.yaml
+  s_9c356f9574d31c::t_c8b96042e8be4b 1-35
+  s_9c356f9574d31c::t_b0d96d03f0ffce 36
+apps/launch-video/package.json
+  s_9c356f9574d31c::t_f43fd1ac1067c6 1,3,14,17,20-22,24-26,28
+  s_9c356f9574d31c::t_d2a2abddac47b9 10-11
+  s_9c356f9574d31c::t_a972260f797617 19
+  s_9c356f9574d31c::t_b0d96d03f0ffce 18
+  s_9c356f9574d31c::t_3835305e189c81 8
+  s_9c356f9574d31c::t_c8b96042e8be4b 2,4-7,9,12-13,15-16,23,27,29-30
+apps/launch-video/scripts/capture-game.mjs
+  s_9c356f9574d31c::t_e079332faf1ae4 1-30,32,34-57
+  s_9c356f9574d31c::t_a8b9814b256f0f 31,33
+apps/launch-video/src/Launch.tsx
+  s_9c356f9574d31c::t_a71d080c77598a 2-7,9-18,26-27,32-81,83-86,88-110,112-113,117-145,148-153,156-189,191-192,194-220
+  s_9c356f9574d31c::t_d2a2abddac47b9 114
+  s_9c356f9574d31c::t_3835305e189c81 1,82
+  s_9c356f9574d31c::t_be924ae229fcec 28-31
+  s_9c356f9574d31c::t_cc727921e1f6cc 87,190,193
+  s_9c356f9574d31c::t_b2b5a5f101ff78 8,19-24,111,115-116
+  s_9c356f9574d31c::t_a2705c8c17b704 25
+  s_9c356f9574d31c::t_d831bb97537afb 146-147,154-155
+apps/launch-video/.prettierrc
+  s_9c356f9574d31c::t_8d507098920ee8 1-5
+apps/launch-video/pnpm-lock.yaml
+  s_9c356f9574d31c::t_11880431e9a5fb 1-2776
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "97d294ea24abca9aa2027c687f61b3e6efaaa553",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
