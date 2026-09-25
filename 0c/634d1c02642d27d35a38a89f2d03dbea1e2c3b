@@ -1,0 +1,21 @@
+packages/cef/patches/cef-zidle-pump.patch
+  s_9c356f9574d31c::t_d2f7d49e2a2a7b 1-17
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_f39a55a1e95ac7 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0c634d1c02642d27d35a38a89f2d03dbea1e2c3b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
