@@ -23,6 +23,7 @@ What the build adds:
 | `cef-ui-surfaces.patch` (after `cef-tab-state.patch`: its `cef_netnyahoo.h` hunk follows that patch's markers) | `include/cef_chrome_ui.h`: Chrome's device choosers, Cast dialog and extension side panels handed to the client, toolbar action state, "Share this tab instead" and Stop Sharing; `CefMediaRoute::IsLocal` / `GetDescription` (below) |
 | `cef-ui-triggers.patch` (after `cef-ui-surfaces.patch`) | `CefShowAutofillSuggestions`: Chrome's autofill dropdown at the tab's focused form field (below) |
 | `cef-zidle-pump.patch` | The external message pump runs Chromium's idle work whenever no task is due now. Stock CEF waited for no delayed tasks either, which never happens in a browser, so next-idle callbacks never ran and autofill popups (saved logins, passkeys, addresses) ignored clicks and Enter |
+| `cef-zwindow-client.patch` (after `cef-zidle-pump.patch`) | `CefBrowserSettings.client_window` and `CefBrowserView::CreateTab`: Chrome's Browser window is the app's visible window (below) |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the ghost window alone |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
@@ -33,13 +34,16 @@ What the build adds:
 | `chromium-chrome-ui-hooks.patch` | `chrome::ShowDeviceChooserDialog`, the Media Router's Cast dialog (and Presentation API requests) and `side_panel_util` ask the client first; extension pages in hidden windows take the last active window as their current window |
 | `chromium-extension-updates.patch` | Undoes ungoogled's early `return` in `UpdateCheckerImpl::CheckForUpdates`, which left every update check pending: Web Store extensions never updated |
 | `chromium-context-menu-hosted.patch` | Chrome's page context menu shows for hosted tabs. Its Mac menu took the widget above the tab's view, which our window isn't, and silently showed nothing; it falls back to the tab's Browser window widget and still pops up at the click |
+| `chromium-window-hosted.patch` | `BridgedContentView.netnyahooEmbeddedView`: hit testing and accessibility ask the embedder's subview of a Chrome window's content view first. A Browser whose CEF delegate says so (`client_window`) stays open when its last tab closes, unless the window is closing |
 | `chromium-neterror-yahu.patch` | "Where's Big Yahu?" replaces the dino: the offline page and chrome://yahu (below) |
 
 The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
 substitution). Step 2 applies the `cef-*.patch` files in name order, which is the order they were
-made in: `cef-chrome-tabs`, `cef-tab-capture`, `cef-tab-state`, `cef-ui-surfaces`, `cef-ui-triggers`
-(checked on a clean worktree of the CEF checkout on 2026-09-25: the first four reproduce the built tree
-exactly; `cef-ui-triggers` reverse-applies cleanly to it). A new patch needs a name that sorts last.
+made in: `cef-chrome-tabs`, `cef-tab-capture`, `cef-tab-state`, `cef-ui-surfaces`, `cef-ui-triggers`,
+`cef-zidle-pump`, `cef-zwindow-client` (checked on a clean worktree of the CEF checkout on 2026-09-25: the
+first four reproduce the built tree exactly; `cef-ui-triggers` reverse-applies cleanly to it;
+`cef-zwindow-client` and `chromium-window-hosted` were made as diffs of their files against the fully patched
+tree). A new patch needs a name that sorts last.
 
 ## Using it
 
@@ -169,6 +173,25 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
   - `CefStopMediaCapture(capturer)`: Chrome's "Stop sharing" for screen, window and tab captures.
   - Extension pages outside any tab strip (hidden windows: our popups and side panels) use the
     last active window as `currentWindow` in `chrome.tabs` / `chrome.windows`.
+
+- **`CEF_NN_CLIENT_WINDOW`** (Chrome-hosted windows, `docs/research/chrome-hosted-window.md`)
+  - `CefBrowserSettings.client_window` (with `native_contents_hosting`, on the `CefBrowserView`): the Chrome
+    window is the client's own visible window.
+    - Chrome's tab strip, toolbar, location bar and bookmarks bar are off (`ChromeBrowserDelegate::
+      SupportsWindowFeature`). With them off, Chrome also disables its commands for them (focus toolbar, app
+      menu…), and its bubbles fall back to anchors at the top of the page.
+    - No zoom bubble for its tabs (`ZoomController::SetShowsNotificationBubble(false)` as each tab is marked
+      hosted). Chrome's status bubble is the existing `chrome_status_bubble` setting.
+    - `omit_from_session_restore`: Chrome's session service never restores into it.
+    - The window stays open when its last tab closes (`BrowserDelegate::KeepsWindowWithoutTabs`, checked in
+      `Browser::TabStripEmpty` and `UnloadController::TabStripEmpty`), unless it is closing.
+  - `CefBrowserView::CreateTab(client, url, settings, extra_info, foreground)`: `CreateTabInBrowser` for such a
+    window, which may have no tab to address it by.
+  - macOS: the window's content view (Chromium's `BridgedContentView`) has `netnyahooEmbeddedView` (weak
+    `NSView`). The client adds its view as a subview of the content view and sets it: hit testing asks it first
+    (Chrome's views cover the window, and `-hitTest:` would claim every point), and so do
+    `-accessibilityChildren` / `-accessibilityHitTest:`. The page must stay under the content view:
+    `RenderWidgetHostViewCocoa -shouldIgnoreMouseEvent:` hit-tests from it, and the occlusion checker only walks it.
 
 ## The offline page
 

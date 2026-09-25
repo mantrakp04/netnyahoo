@@ -1,0 +1,257 @@
+--- a/include/cef_netnyahoo.h
++++ b/include/cef_netnyahoo.h
+@@ -93,4 +93,11 @@
+ #define CEF_NN_AUTOFILL_FIELD 0
+ #define CEF_NN_AUTOFILL_PASSWORDS 1
+ 
++// CefBrowserSettings.client_window, CefBrowserView::CreateTab. On macOS the
++// window's content view (Chromium's BridgedContentView) has a
++// netnyahooEmbeddedView property (weak NSView): set it to the client's
++// subview of the content view, and hit testing and accessibility ask that
++// view first.
++#define CEF_NN_CLIENT_WINDOW 1
++
+ #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
+--- a/include/internal/cef_types.h
++++ b/include/internal/cef_types.h
+@@ -755,6 +755,18 @@
+   /// WebUI pages still see it.
+   ///
+   cef_state_t hidden_from_extensions;
++
++  ///
++  /// Chrome style browsers created with a CefBrowserView and
++  /// native_contents_hosting only: the Chrome window is the client's own
++  /// visible window, with the client's views over Chrome's (on macOS a subview
++  /// of the window's content view; see CEF_NN_CLIENT_WINDOW in
++  /// cef_netnyahoo.h). Chrome shows no tab strip, toolbar, location bar or
++  /// bookmarks bar in it and no zoom bubble for its tabs, leaves it out of
++  /// session restore, and keeps it open when its last tab closes (add tabs
++  /// with CefBrowserView::CreateTab).
++  ///
++  cef_state_t client_window;
+ #endif
+ } cef_browser_settings_t;
+ 
+--- a/include/internal/cef_types_wrappers.h
++++ b/include/internal/cef_types_wrappers.h
+@@ -592,6 +592,9 @@
+     if (CEF_MEMBER_EXISTS(src, hidden_from_extensions)) {
+       target->hidden_from_extensions = src->hidden_from_extensions;
+     }
++    if (CEF_MEMBER_EXISTS(src, client_window)) {
++      target->client_window = src->client_window;
++    }
+ #endif
+   }
+ };
+--- a/include/views/cef_browser_view.h
++++ b/include/views/cef_browser_view.h
+@@ -114,6 +114,22 @@
+   ///
+   /*--cef(default_retval=CEF_RUNTIME_STYLE_DEFAULT)--*/
+   virtual cef_runtime_style_t GetRuntimeStyle() = 0;
++
++  ///
++  /// Chrome style BrowserViews created with CefBrowserSettings.client_window
++  /// only: creates a new tab in this BrowserView's Chrome window, as
++  /// CefBrowserHost::CreateTabInBrowser does, also when the window has no
++  /// tabs left. Returns nullptr on failure (not such a BrowserView, or its
++  /// Browser isn't created yet or is closing).
++  ///
++  /*--cef(added=experimental,optional_param=client,optional_param=url,
++          optional_param=extra_info)--*/
++  virtual CefRefPtr<CefBrowser> CreateTab(
++      CefRefPtr<CefClient> client,
++      const CefString& url,
++      const CefBrowserSettings& settings,
++      CefRefPtr<CefDictionaryValue> extra_info,
++      bool foreground) = 0;
+ };
+ 
+ #endif  // CEF_INCLUDE_VIEWS_CEF_BROWSER_VIEW_H_
+--- a/libcef/browser/chrome/browser_delegate.h
++++ b/libcef/browser/chrome/browser_delegate.h
+@@ -197,6 +197,10 @@
+   // Returns true if this browser has a Views-hosted opener. Only
+   // applicable for Browsers of type picture_in_picture and devtools.
+   virtual bool HasViewsHostedOpener() const { return false; }
++
++  // Returns true if the Browser window stays open when its last tab closes
++  // (CefBrowserSettings.client_window).
++  virtual bool KeepsWindowWithoutTabs() const { return false; }
+ };
+ 
+ }  // namespace cef
+--- a/libcef/browser/chrome/chrome_browser_delegate.h
++++ b/libcef/browser/chrome/chrome_browser_delegate.h
+@@ -86,6 +86,7 @@
+   void UpdateFindBarBoundingBox(gfx::Rect* bounds) override;
+   void UpdateDialogTopInset(int* dialog_top_y) override;
+   std::optional<bool> SupportsWindowFeature(int feature) const override;
++  bool KeepsWindowWithoutTabs() const override { return client_window_; }
+   bool SupportsDraggableRegion() const override;
+   void UpdateDraggableRegions(
+       const std::vector<blink::mojom::DraggableRegionPtr>& regions,
+@@ -103,6 +104,10 @@
+   // show their tabs normally.
+   bool native_contents_hosting() const { return native_contents_hosting_; }
+ 
++  // CefBrowserSettings.client_window (with native_contents_hosting): the
++  // Chrome window is the client's own window.
++  bool client_window() const { return client_window_; }
++
+   // CefBrowserSettings.hidden_from_extensions (see IsHiddenFromExtensions).
+   bool hidden_from_extensions() const { return hidden_from_extensions_; }
+ 
+@@ -183,6 +188,7 @@
+ 
+   const bool native_contents_hosting_;
+   const bool hidden_from_extensions_;
++  const bool client_window_;
+   // With native_contents_hosting_, only the first tab is associated with the
+   // CefBrowserView; later tabs get a plain Chrome platform delegate.
+   bool views_tab_created_ = false;
+--- a/libcef/browser/chrome/chrome_browser_delegate.cc
++++ b/libcef/browser/chrome/chrome_browser_delegate.cc
+@@ -34,6 +34,7 @@
+ #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
+ #include "chrome/browser/ui/tabs/tab_enums.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
++#include "components/zoom/zoom_controller.h"
+ #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
+ #include "content/public/browser/global_routing_id.h"
+ #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
+@@ -100,7 +101,9 @@
+           create_params.browser_view &&
+           create_params.settings.native_contents_hosting == STATE_ENABLED),
+       hidden_from_extensions_(
+-          create_params.settings.hidden_from_extensions == STATE_ENABLED) {
++          create_params.settings.hidden_from_extensions == STATE_ENABLED),
++      client_window_(native_contents_hosting_ &&
++                     create_params.settings.client_window == STATE_ENABLED) {
+   DCHECK(browser_);
+   if (native_contents_hosting_) {
+     TabDiscardObserver::EnsureStarted();
+@@ -387,6 +390,13 @@
+ void ChromeBrowserDelegate::MarkNativeHosted(
+     content::WebContents* web_contents) {
+   views::NativeHostedContents::Mark(web_contents);
++  if (client_window_) {
++    // The client shows the zoom level itself; Chrome's bubble would hang off
++    // its hidden toolbar. May run before TabHelpers::AttachTabHelpers().
++    zoom::ZoomController::CreateForWebContents(web_contents);
++    zoom::ZoomController::FromWebContents(web_contents)
++        ->SetShowsNotificationBubble(false);
++  }
+   if (!observing_tab_strip_) {
+     observing_tab_strip_ = true;
+     browser_->tab_strip_model()->AddObserver(this);
+@@ -640,6 +650,19 @@
+ 
+ std::optional<bool> ChromeBrowserDelegate::SupportsWindowFeature(
+     int feature) const {
++  // The client draws its own UI over a client window: Chrome's top chrome is
++  // never shown there (bubbles fall back to anchors at the top of the page).
++  if (client_window_) {
++    switch (static_cast<WindowFeatureController::WindowFeature>(feature)) {
++      case WindowFeatureController::WindowFeature::kFeatureTabStrip:
++      case WindowFeatureController::WindowFeature::kFeatureToolbar:
++      case WindowFeatureController::WindowFeature::kFeatureLocationBar:
++      case WindowFeatureController::WindowFeature::kFeatureBookmarkBar:
++        return false;
++      default:
++        break;
++    }
++  }
+   // Override the default value from
+   // Browser::PictureInPictureBrowserSupportsWindowFeature.
+   if (static_cast<WindowFeatureController::WindowFeature>(feature) ==
+--- a/libcef/browser/chrome/chrome_browser_host_impl.cc
++++ b/libcef/browser/chrome/chrome_browser_host_impl.cc
+@@ -861,6 +861,13 @@
+       chrome_params.is_trusted_source = true;
+     }
+ 
++    // The client's own window (CefBrowserSettings.client_window): the client
++    // restores its windows itself.
++    if (params.settings.native_contents_hosting == STATE_ENABLED &&
++        params.settings.client_window == STATE_ENABLED) {
++      chrome_params.omit_from_session_restore = true;
++    }
++
+     auto view_impl =
+         static_cast<CefBrowserViewImpl*>(params.browser_view.get());
+ 
+--- a/libcef/browser/views/browser_view_impl.h
++++ b/libcef/browser/views/browser_view_impl.h
+@@ -73,6 +73,11 @@
+   CefRefPtr<CefView> GetChromeToolbar() override;
+   void SetPreferAccelerators(bool prefer_accelerators) override;
+   cef_runtime_style_t GetRuntimeStyle() override;
++  CefRefPtr<CefBrowser> CreateTab(CefRefPtr<CefClient> client,
++                                  const CefString& url,
++                                  const CefBrowserSettings& settings,
++                                  CefRefPtr<CefDictionaryValue> extra_info,
++                                  bool foreground) override;
+ 
+   // CefView methods:
+   CefRefPtr<CefBrowserView> AsBrowserView() override { return this; }
+--- a/libcef/browser/views/browser_view_impl.cc
++++ b/libcef/browser/views/browser_view_impl.cc
+@@ -9,13 +9,18 @@
+ 
+ #include "cef/libcef/browser/browser_event_util.h"
+ #include "cef/libcef/browser/browser_host_base.h"
++#include "cef/libcef/browser/chrome/chrome_browser_delegate.h"
++#include "cef/libcef/browser/chrome/chrome_browser_host_impl.h"
+ #include "cef/libcef/browser/chrome/views/chrome_browser_view.h"
+ #include "cef/libcef/browser/context.h"
+ #include "cef/libcef/browser/request_context_impl.h"
+ #include "cef/libcef/browser/thread_util.h"
+ #include "cef/libcef/browser/views/widget.h"
+ #include "cef/libcef/browser/views/window_impl.h"
++#include "cef/libcef/common/net/url_util.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/unload_controller.h"
+ #include "components/input/native_web_keyboard_event.h"
+ #include "ui/content_accelerators/accelerator_util.h"
+ 
+@@ -270,6 +275,36 @@
+   return IsAlloyStyle() ? CEF_RUNTIME_STYLE_ALLOY : CEF_RUNTIME_STYLE_CHROME;
+ }
+ 
++CefRefPtr<CefBrowser> CefBrowserViewImpl::CreateTab(
++    CefRefPtr<CefClient> client,
++    const CefString& url,
++    const CefBrowserSettings& settings,
++    CefRefPtr<CefDictionaryValue> extra_info,
++    bool foreground) {
++  CEF_REQUIRE_VALID_RETURN(nullptr);
++  if (!CEF_MEMBER_EXISTS(&settings, chrome_zoom_bubble)) {
++    DCHECK(false) << "invalid CefBrowserSettings structure size";
++    return nullptr;
++  }
++  if (is_alloy_style_ || !root_view()) {
++    return nullptr;
++  }
++  BrowserWindowInterface* browser = chrome_browser_view()->browser();
++  if (!browser || !browser->cef_delegate() ||
++      UnloadController::From(browser)->is_attempting_to_close_browser()) {
++    return nullptr;
++  }
++  auto* delegate = static_cast<ChromeBrowserDelegate*>(browser->cef_delegate());
++  if (!delegate->client_window()) {
++    LOG(ERROR) << "CefBrowserView::CreateTab requires client_window";
++    return nullptr;
++  }
++  return delegate
++      ->CreateTab(client, url_util::MakeGURL(url, /*fixup=*/true), settings,
++                  extra_info, foreground)
++      .get();
++}
++
+ void CefBrowserViewImpl::RequestFocus() {
+   CEF_REQUIRE_VALID_RETURN_VOID();
+   // Always execute asynchronously to work around issue #3040.

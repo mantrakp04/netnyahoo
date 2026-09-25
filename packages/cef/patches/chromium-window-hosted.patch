@@ -1,0 +1,135 @@
+--- a/components/remote_cocoa/app_shim/bridged_content_view.h
++++ b/components/remote_cocoa/app_shim/bridged_content_view.h
+@@ -57,6 +57,13 @@
+ @property(assign, nonatomic) BOOL drawMenuBackgroundForBlur;
+ @property(strong, nonatomic) NSEvent* keyDownEventForTesting;
+ 
++// Netnyahoo: a view the embedder added as a subview of this one to show its
++// own UI over the widget's views (CEF_NN_CLIENT_WINDOW in CEF's
++// include/cef_netnyahoo.h). Hit testing and accessibility ask it first, so
++// the points it covers reach its views and assistive technologies see its
++// tree rather than the widget's views underneath.
++@property(weak, nonatomic) NSView* netnyahooEmbeddedView;
++
+ // Initialize the NSView -> views::View bridge. |viewToHost| must be non-NULL.
+ - (instancetype)initWithBridge:(remote_cocoa::NativeWidgetNSWindowBridge*)bridge
+                         bounds:(gfx::Rect)rect;
+--- a/components/remote_cocoa/app_shim/bridged_content_view.mm
++++ b/components/remote_cocoa/app_shim/bridged_content_view.mm
+@@ -198,6 +198,7 @@
+ @synthesize bridge = _bridge;
+ @synthesize drawMenuBackgroundForBlur = _drawMenuBackgroundForBlur;
+ @synthesize keyDownEventForTesting = _keyDownEvent;
++@synthesize netnyahooEmbeddedView = _netnyahooEmbeddedView;
+ 
+ - (instancetype)initWithBridge:(remote_cocoa::NativeWidgetNSWindowBridge*)bridge
+                         bounds:(gfx::Rect)bounds {
+@@ -291,6 +292,13 @@
+   // This is important when the window has a native titlebar, in which case the
+   // superview is taller than the contentView.
+   NSPoint pointInView = [self convertPoint:point fromView:self.superview];
++
++  // Netnyahoo: the embedder's views come first.
++  if (NSView* embedded = [self netnyahooEmbeddedSubview]) {
++    if (NSView* hit = [embedded hitTest:pointInView]) {
++      return hit;
++    }
++  }
+   gfx::Point flippedPoint(point.x, NSHeight(self.frame) - pointInView.y);
+   remote_cocoa::mojom::HitTestResult hitTestResult;
+   _bridge->host()->GetHitTestResult(flippedPoint, &hitTestResult);
+@@ -1714,6 +1722,10 @@
+ // NSAccessibility formal protocol implementation:
+ 
+ - (NSArray*)accessibilityChildren {
++  // Netnyahoo: the embedder's views cover the widget's.
++  if (NSView* embedded = [self netnyahooEmbeddedSubview]) {
++    return NSAccessibilityUnignoredChildren(@[ embedded ]);
++  }
+   if (id accessible = _bridge->host_helper()->GetNativeViewAccessible())
+     return @[ accessible ];
+   return [super accessibilityChildren];
+@@ -1722,10 +1734,22 @@
+ // NSAccessibility informal protocol implementation:
+ 
+ - (id)accessibilityHitTest:(NSPoint)point {
++  if (NSView* embedded = [self netnyahooEmbeddedSubview]) {
++    if (id hit = [embedded accessibilityHitTest:point]) {
++      return hit;
++    }
++  }
+   return [_bridge->host_helper()->GetNativeViewAccessible()
+       accessibilityHitTest:point];
+ }
+ 
++// Netnyahoo: netnyahooEmbeddedView while it is a visible subview of this view.
++- (NSView*)netnyahooEmbeddedSubview {
++  NSView* embedded = self.netnyahooEmbeddedView;
++  return embedded && embedded.superview == self && !embedded.hidden ? embedded
++                                                                     : nil;
++}
++
+ - (id)accessibilityFocusedUIElement {
+   // This function should almost-never be called because when |self| is the
+   // first responder for the key NSWindow, NativeWidgetMacNSWindowHost's
+--- a/chrome/browser/ui/browser.cc
++++ b/chrome/browser/ui/browser.cc
+@@ -620,6 +620,14 @@
+ 
+ 
+ void Browser::TabStripEmpty() {
++#if BUILDFLAG(ENABLE_CEF)
++  // Netnyahoo: a window the CEF client shows its own UI in stays open without
++  // tabs, unless it is closing.
++  if (cef_delegate() && cef_delegate()->KeepsWindowWithoutTabs() &&
++      !UnloadController::From(this)->is_attempting_to_close_browser()) {
++    return;
++  }
++#endif
+   // Note: even though the tab strip is empty, the call to Close() may not
+   // result in closing this Browser. This can happen in the case of closing
+   // the last Browser with ongoing downloads.
+--- a/chrome/browser/ui/unload_controller.cc
++++ b/chrome/browser/ui/unload_controller.cc
+@@ -577,6 +577,13 @@
+ }
+ 
+ void UnloadController::TabStripEmpty() {
++#if BUILDFLAG(ENABLE_CEF)
++  // Netnyahoo: see Browser::TabStripEmpty. The window stays open for new tabs.
++  if (!is_attempting_to_close_browser_ && browser_->cef_delegate() &&
++      browser_->cef_delegate()->KeepsWindowWithoutTabs()) {
++    return;
++  }
++#endif
+   // Set is_attempting_to_close_browser_ here, so that extensions, etc, do not
+   // attempt to add tabs to the browser before it closes.
+   is_attempting_to_close_browser_ = true;
+--- a/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
++++ b/chrome/browser/ui/views/frame/layout/browser_view_layout.cc
+@@ -19,6 +19,7 @@
+ #include "chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.h"
+ #include "chrome/browser/ui/views/frame/multi_contents_view.h"
+ #include "chrome/browser/ui/web_applications/app_browser_controller.h"
++#include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
+ #include "components/web_modal/web_contents_modal_dialog_host.h"
+ #include "ui/views/view.h"
+ #include "ui/views/widget/widget.h"
+@@ -148,6 +149,17 @@
+   if (browser) {
+     switch (browser->GetType()) {
+       case BrowserWindowInterface::Type::TYPE_NORMAL:
++#if BUILDFLAG(ENABLE_CEF)
++        // Netnyahoo: a normal browser that shows no tab strip (a CEF client's
++        // own window, CefBrowserSettings.client_window) lays out like a popup;
++        // the tabbed layout expects the tabbed toolbar.
++        if (browser->cef_delegate() &&
++            !WindowFeatureController::From(browser)->SupportsWindowFeature(
++                WindowFeatureController::WindowFeature::kFeatureTabStrip)) {
++          return std::make_unique<BrowserViewPopupLayoutImpl>(
++              std::move(delegate), std::move(views));
++        }
++#endif
+         return std::make_unique<BrowserViewTabbedLayoutImpl>(
+             std::move(delegate), std::move(views));
+       case BrowserWindowInterface::Type::TYPE_APP:
