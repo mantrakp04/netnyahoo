@@ -10,7 +10,8 @@
  *   debug=1         exposes window.__yahu for automated checks
  * An embedder that can't use the query string (e.g. a patched Chrome net-error
  * page, whose URL is the failed URL) may set window.YAHU_ERROR = {code, url}
- * before this script runs.
+ * before this script runs. The single-file build (offline-game-pipeline/
+ * inline.py) also sets window.YAHU_ASSETS, asset path → data: URL.
  * Retry, in order: window.netnyahoo.retry(), Chrome's error-page
  * errorPageController.reloadButtonClick(), navigate to `url`, reload.
  */
@@ -76,6 +77,18 @@
   window.initializeEasterEggHighScore = (v) => {
     if (v > best) { best = v; updateHud(); }
   };
+  // Asks the browser for the stored score (answered through the hook above). Chrome
+  // installs errorPageController and answers only once the page has finished loading.
+  function requestStoredBest() {
+    const ask = () => setTimeout(() => {
+      try {
+        const epc = window.errorPageController;
+        if (epc && typeof epc.trackEasterEgg === "function") epc.trackEasterEgg();
+      } catch (_) {}
+    });
+    if (document.readyState === "complete") ask();
+    else addEventListener("load", ask, { once: true });
+  }
 
   // ---------------------------------------------------------------- random
   function mulberry32(a) {
@@ -148,13 +161,14 @@
   function parseMask(rows) {
     return Uint32Array.from(rows, (h) => parseInt(h, 16) >>> 0);
   }
+  const INLINED = window.YAHU_ASSETS || {};
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.decoding = "async";
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error("failed to load " + src));
-      img.src = src;
+      img.src = INLINED[src] || src;
     });
   }
   async function loadAssets() {
@@ -885,6 +899,7 @@
 
   // ---------------------------------------------------------------- boot
   async function boot() {
+    requestStoredBest();
     resize();
     updateHud();
     try {

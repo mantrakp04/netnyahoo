@@ -1,0 +1,22 @@
+# Files left out of ungoogled-chromium's domain substitution so the Chrome Web
+# Store works: installing from chromewebstore.google.com (webstorePrivate),
+# CRX downloads and extension auto-updates (clients2.google.com /
+# clients2.googleusercontent.com). fnmatch patterns, relative to chromium/src.
+extensions/common/extension_urls.*
+extensions/common/api/_*features.json
+chrome/common/extensions/api/_*features.json
+chrome/common/extensions/extension_constants.*
+chrome/browser/extensions/api/webstore_private/*
+chrome/browser/extensions/webstore_*
+chrome/browser/extensions/extension_management*
+chrome/browser/extensions/updater/*
+chrome/browser/extensions/chrome_content_verifier_delegate.*
+chrome/browser/extensions/chrome_content_browser_client_extensions_part.*
+chrome/browser/extensions/extension_migrator.*
+chrome/browser/extensions/crx_installer.*
+chrome/browser/download/download_crx_util.*
+chrome/browser/resources/webstore_app/*
+extensions/browser/updater/*
+extensions/browser/content_verifier/*
+extensions/browser/content_verifier.*
+extensions/browser/extension_protocols.*

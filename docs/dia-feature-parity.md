@@ -221,6 +221,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Battery Saver / freeze CPU‑heavy background tabs | ✓ | ✅ | lib/tabLifecycle: on battery or Low Power Mode, hidden tabs using ≥ 10 % CPU (engine task manager, two samples) freeze through CDP `Page.setWebLifecycleState` and thaw when shown; Dia's Activated/Deactivated toasts; Advanced › Battery Saver |
 | Tab discarding (sleep idle tabs, keep last 10 alive) | ✓ | ✅ | lib/tabLifecycle: background tabs sleep after 30 min of app-active time (sooner under memory pressure); 10 most recent protected; never audio, capture, PiP, split, pinned mini player or unsaved input; faded icon + "This tab needs to reload"; recent tabs reload on launch. Sleeping is Chrome's own discard (in place, `WebContentsDiscard`): the tab keeps its back/forward list, `chrome.tabs` lists it `discarded: true`, and Chrome's own discards (memory pressure, `chrome.tabs.discard`) show as sleeping too. WebAudio-only sound isn't seen as playing |
 | Sad‑tab / native error page with Reload | ✓ | ✅ | SadTab + Page Unresponsive (Wait / Exit Page) in layout/PaneOverlays |
+| Offline page game (Chrome's dino) | ✓ (dino) | ✅ | Our own: "Where's Big Yahu?" (apps/browser/assets/offline-game) wherever Chrome shows the dino, in tabs and popups, with the error code, host and Retry; `netnyahoo://yahu` plays it on its own. Other net errors keep Chrome's page. Engine patch `chromium-neterror-yahu.patch` (docs/cef-source-build.md › "The offline page") |
 
 ## 2. Tabs
 | Feature | Dia | Netnyahoo | Gap |

@@ -1,0 +1,158 @@
+diff --git a/chrome/renderer/net/net_error_helper.cc b/chrome/renderer/net/net_error_helper.cc
+index ea3b62a023..67fa4b8dd9 100644
+--- a/chrome/renderer/net/net_error_helper.cc
++++ b/chrome/renderer/net/net_error_helper.cc
+@@ -18,6 +18,7 @@
+ #include "base/metrics/histogram.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/strings/strcat.h"
++#include "base/strings/string_util.h"
+ #include "base/strings/stringprintf.h"
+ #include "base/strings/utf_string_conversions.h"
+ #include "build/build_config.h"
+@@ -35,6 +36,7 @@
+ #include "components/strings/grit/components_strings.h"
+ #include "content/public/common/content_client.h"
+ #include "content/public/common/content_features.h"
++#include "content/public/common/url_constants.h"
+ #include "content/public/renderer/content_renderer_client.h"
+ #include "content/public/renderer/render_frame.h"
+ #include "content/public/renderer/render_thread.h"
+@@ -97,6 +99,51 @@ bool IsRunningInForcedAppMode() {
+       switches::kForceAppMode);
+ }
+ 
++// Netnyahoo: "Where's Big Yahu?" takes the dino's place. Wherever Chrome would
++// start the dino (an offline error in a main frame, the easter egg allowed),
++// the page is IDR_NETNYAHOO_YAHU_HTML instead, one self-contained document
++// whose JSON block receives the failed load.
++constexpr char kYahuErrorBlock[] =
++    "<script type=\"application/json\" id=\"yahu-error\">null</script>";
++constexpr char kYahuErrorPrefix[] =
++    "<script type=\"application/json\" id=\"yahu-error\">";
++
++bool ShowsYahu(RenderFrame* render_frame,
++               const LocalizedError::PageState& page_state) {
++  return render_frame->IsMainFrame() && page_state.is_offline_error &&
++         !page_state.strings.Find("disabledEasterEgg");
++}
++
++// Empty if the resource lacks its JSON block (Chrome's page is shown then).
++std::string YahuHtml(const error_page::Error& error) {
++  std::string html =
++      ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
++          IDR_NETNYAHOO_YAHU_HTML);
++  const size_t block = html.find(kYahuErrorBlock);
++  if (block == std::string::npos) {
++    return std::string();
++  }
++  const GURL& url = error.url();
++  // chrome://dino and chrome://yahu play the game on its own.
++  const bool standalone = url.SchemeIs(content::kChromeUIScheme) &&
++                          (url.GetHost() == content::kChromeUIDinoHost ||
++                           url.GetHost() == content::kChromeUIYahuHost);
++  std::string json = "null";
++  if (!standalone) {
++    base::DictValue info;
++    info.Set("code", error.domain() == error_page::Error::kDnsProbeErrorDomain
++                         ? std::string(DnsProbeStatusToString(error.reason()))
++                         : net::ErrorToShortString(error.reason()));
++    info.Set("url", url.possibly_invalid_spec());
++    json = base::WriteJson(info).value_or("null");
++    // Nothing in it may close the <script> block.
++    base::ReplaceSubstringsAfterOffset(&json, 0, "<", "\\u003C");
++  }
++  html.replace(block + std::size(kYahuErrorPrefix) - 1, std::size("null") - 1,
++               json);
++  return html;
++}
++
+ }  // namespace
+ 
+ NetErrorHelper::NetErrorHelper(RenderFrame* render_frame)
+@@ -225,6 +272,13 @@ LocalizedError::PageState NetErrorHelper::GenerateLocalizedErrorPage(
+         IsExtensionExtendedErrorCode(error.extended_reason()),
+         &error_page_params_);
+   }
++  if (resource_id == IDR_NET_ERROR_HTML &&
++      ShowsYahu(render_frame(), page_state)) {
++    *error_html = YahuHtml(error);
++    if (!error_html->empty()) {
++      return page_state;
++    }
++  }
+   std::string template_html =
+       ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
+           resource_id);
+@@ -251,6 +305,18 @@ LocalizedError::PageState NetErrorHelper::UpdateErrorPage(
+       IsExtensionExtendedErrorCode(error.extended_reason()),
+       &error_page_params_);
+ 
++  // A DNS probe that ends in "no internet" turns the page offline, where
++  // Chrome's page would start the dino: swap in the game's document.
++  if (ShowsYahu(render_frame(), page_state)) {
++    std::string yahu = YahuHtml(error);
++    if (!yahu.empty()) {
++      std::string html = base::WriteJson(base::Value(yahu)).value_or("\"\"");
++      render_frame()->ExecuteJavaScript(base::UTF8ToUTF16(base::StrCat(
++          {"document.open(); document.write(", html, "); document.close();"})));
++      return page_state;
++    }
++  }
++
+   std::string json = base::WriteJson(page_state.strings).value_or("");
+ 
+   std::string js = "if (window.updateForDnsProbe) "
+diff --git a/components/resources/neterror_resources.grdp b/components/resources/neterror_resources.grdp
+index d13a11bfa2..d67bef3692 100644
+--- a/components/resources/neterror_resources.grdp
++++ b/components/resources/neterror_resources.grdp
+@@ -1,4 +1,7 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <grit-part>
+   <include name="IDR_NET_ERROR_HTML" file="../neterror/resources/neterror.html" flattenhtml="true" type="BINDATA"/>
++  <!-- Netnyahoo: "Where's Big Yahu?", shown instead of the dino. Generated from the app's
++       offline-game folder by its inline.py before each build (untracked here). -->
++  <include name="IDR_NETNYAHOO_YAHU_HTML" file="../neterror/resources/yahu/yahu.html" type="BINDATA" compress="brotli"/>
+ </grit-part>
+diff --git a/content/browser/webui/network_error_url_loader.cc b/content/browser/webui/network_error_url_loader.cc
+index 80ccb77bde..8b18c320a8 100644
+--- a/content/browser/webui/network_error_url_loader.cc
++++ b/content/browser/webui/network_error_url_loader.cc
+@@ -18,7 +18,8 @@ void StartNetworkErrorsURLLoader(
+     const network::ResourceRequest& request,
+     mojo::PendingRemote<network::mojom::URLLoaderClient> client) {
+   int net_error = net::ERR_INVALID_URL;
+-  if (request.url.GetHost() == kChromeUIDinoHost) {
++  if (request.url.GetHost() == kChromeUIDinoHost ||
++      request.url.GetHost() == kChromeUIYahuHost) {
+     net_error = net::Error::ERR_INTERNET_DISCONNECTED;
+   } else {
+     std::string error_code_string = request.url.GetPath().substr(1);
+diff --git a/content/browser/webui/web_ui_url_loader_factory.cc b/content/browser/webui/web_ui_url_loader_factory.cc
+index caf5809c5e..98b6e1cb99 100644
+--- a/content/browser/webui/web_ui_url_loader_factory.cc
++++ b/content/browser/webui/web_ui_url_loader_factory.cc
+@@ -329,7 +329,8 @@ class WebUIURLLoaderFactory : public network::SelfDeletingURLLoaderFactory {
+     // does not trigger this path.
+     if (request.url.scheme() == kChromeUIScheme &&
+         (request.url.host() == kChromeUINetworkErrorHost ||
+-         request.url.host() == kChromeUIDinoHost)) {
++         request.url.host() == kChromeUIDinoHost ||
++         request.url.host() == kChromeUIYahuHost)) {
+       // Simulate a network error.
+       StartNetworkErrorsURLLoader(request, std::move(client));
+       // Logs WebUI usage. These WebUIs don't create a WebUI object.
+diff --git a/content/public/common/url_constants.h b/content/public/common/url_constants.h
+index 75eb817c98..bbd6b1cdea 100644
+--- a/content/public/common/url_constants.h
++++ b/content/public/common/url_constants.h
+@@ -37,6 +37,8 @@ inline constexpr char kChromeUIBlobInternalsHost[] = "blob-internals";
+ inline constexpr char kChromeUIBrowserCrashHost[] =
+     "inducebrowsercrashforrealz";
+ inline constexpr char kChromeUIDinoHost[] = "dino";
++// Netnyahoo: chrome://yahu, the offline game on its own (as chrome://dino).
++inline constexpr char kChromeUIYahuHost[] = "yahu";
+ inline constexpr char kChromeUIGpuHost[] = "gpu";
+ inline constexpr char kChromeUIHistogramHost[] = "histograms";
+ inline constexpr char kChromeUIIndexedDBInternalsHost[] = "indexeddb-internals";

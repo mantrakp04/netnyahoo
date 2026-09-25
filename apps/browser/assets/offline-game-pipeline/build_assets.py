@@ -6,6 +6,7 @@ Usage (from this folder):
 
 <raw-dir> holds the codex outputs: sheet1..N.png, decoys.png, yahu.png, bg-*.png.
 Writes ../offline-game/assets/{crowd,bg}/*.webp and ../offline-game/assets/manifest.js.
+The engine ships the folder packed into one file by inline.py (the CEF build runs it).
 """
 
 import json

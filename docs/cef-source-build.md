@@ -31,6 +31,7 @@ What the build adds:
 | `chromium-passkeys.patch` | Netnyahoo bundle/team id branding, iCloud Keychain window fallback, "Netnyahoo Safe Storage" |
 | `chromium-chrome-ui-hooks.patch` | `chrome::ShowDeviceChooserDialog`, the Media Router's Cast dialog (and Presentation API requests) and `side_panel_util` ask the client first; extension pages in hidden windows take the last active window as their current window |
 | `chromium-extension-updates.patch` | Undoes ungoogled's early `return` in `UpdateCheckerImpl::CheckForUpdates`, which left every update check pending: Web Store extensions never updated |
+| `chromium-neterror-yahu.patch` | "Where's Big Yahu?" replaces the dino: the offline page and chrome://yahu (below) |
 
 The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
 substitution). Step 2 applies the `cef-*.patch` files in name order, which is the order they were
@@ -167,6 +168,30 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
   - Extension pages outside any tab strip (hidden windows: our popups and side panels) use the
     last active window as `currentWindow` in `chrome.tabs` / `chrome.windows`.
 
+## The offline page
+
+Wherever Chrome would start the dino (`LocalizedError::IsOfflineError`: `ERR_INTERNET_DISCONNECTED`, or a DNS
+probe that ends in `DNS_PROBE_FINISHED_NO_INTERNET`; main frames only; not with `--disable-dinosaur-easter-egg`),
+`NetErrorHelper` serves `IDR_NETNYAHOO_YAHU_HTML` instead of `neterror.html`: the game from
+`apps/browser/assets/offline-game`, one self-contained document (2.5 MB, brotli in `resources.pak`: CSS, scripts and
+manifest inline, every WebP a `data:` URL, a CSP that allows exactly those inline blocks by hash). Its
+`<script type="application/json" id="yahu-error">` block gets `{code, url}` of the failed load, which the game reads as
+`window.YAHU_ERROR`. Every other error keeps Chrome's page. A DNS probe that turns the page offline after it loaded
+swaps the game's document in (`document.write`), where Chrome's page would start the dino. The page runs as Chrome's
+error page, so Retry is `errorPageController.reloadButtonClick()` and the best score is Chrome's easter-egg high
+score (`trackEasterEgg` / `updateEasterEggHighScore`).
+
+`chrome://yahu` (the app's `netnyahoo://yahu`) is an alias of `chrome://dino`: a simulated `ERR_INTERNET_DISCONNECTED`
+whose page plays the game on its own, without the offline header. The renderer is the same for Chrome-style tabs and
+Alloy-style views (popups, side panels), so both show it; there is no CEF error page to replace.
+
+The resource file is generated, not patched in: `yahu-resource.sh` runs
+`apps/browser/assets/offline-game-pipeline/inline.py` (Python standard library only) into
+`components/neterror/resources/yahu/yahu.html` of the Chromium tree. `apply-chromium-patches.sh` and step 5 run it,
+so every build ships the game folder as it is; `NN_REPO` (in `env.sh`, default `~/Documents/netnyahoo`) says where the
+checkout is. The sprites stay at the art pipeline's 400 px: at the default zoom the front rows already draw them at
+about 1:1 on a 2x screen, so 256 px sprites (about 1 MB) would be visibly soft.
+
 A Chrome-style Browser survives closing its `CefBrowserView`'s first tab while it has other tabs.
 A tab created in the background starts hidden, and becomes visible once its view is in a visible
 window (NSView occlusion).
@@ -182,7 +207,7 @@ The step scripts are copied in `packages/cef/patches/build/`, and each expects `
 | 2. Our CEF/Chromium patches, CEF's patches, translator, `gn gen` | `02-cef-patch-and-gen.sh` | 2 min |
 | 3. ungoogled-chromium series, with the exceptions below | `03-ungoogled.py` | 2 min |
 | 4. Domain substitution, minus the store files (`domsub-keep-store.txt`), then our Chromium patches | `04-domain-substitution.sh` | 5 min |
-| 5. Compile `cefclient cefsimple` (make_distrib takes the framework from cefclient.app) | `05-build.sh` | first build 2 h 8 min; incremental 20 s–2 min |
+| 5. Regenerate the offline page (`yahu-resource.sh`), compile `cefclient cefsimple` (make_distrib takes the framework from cefclient.app) | `05-build.sh` | first build 2 h 8 min; incremental 20 s–2 min |
 | 6. Minimal binary distribution (Release, no docs or symbols) | `06-distrib.sh` | 1 min |
 
 Disk: about 43 GB in total. That's 40 GB for the checkout with its 10 GB out dir, 0.5 GB for the

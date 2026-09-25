@@ -187,6 +187,21 @@ because it needs the user present), add it to the **Test ledger** with the exact
     application` in place of the bundle id) ran in the app: the list returned every tab with window id, title, URL,
     pinned and selected state; focus selected the tab; close removed it; an unknown tab id fails with AppleScript's
     -1728. Its `npm test` checks the parser against that output. Installing it in Raycast is checklist step 14.
+- Offline page, "Where's Big Yahu?" (`chromium-neterror-yahu.patch`, 2026-09-25; Debug build `build-yahu`, CDP):
+  - Before the patch, an offline load showed Chrome's dino page, in a Chrome-style tab and in an Alloy-style
+    standalone view (an extension popup) alike: the renderer is Chrome's for both, so no Alloy fallback is needed.
+  - With CDP `Network.emulateNetworkConditions({offline: true})` (and the cache disabled), `https://example.com/`
+    in a tab shows the game: `YAHU_ERROR` `{code: "ERR_INTERNET_DISCONNECTED", url: "https://example.com/"}`, header
+    "ERR_INTERNET_DISCONNECTED · example.com", title "example.com · No internet", 63 images from `data:` URLs, no
+    other request, no console message. Start plays level 1; Retry while offline shows the game again; Retry after
+    going back online loads Example Domain. The same in an extension-popup view (Alloy).
+  - `ERR_NAME_NOT_RESOLVED` (`.invalid` host) and `ERR_CONNECTION_REFUSED` (127.0.0.1:59999) keep Chrome's page.
+  - `netnyahoo://yahu` typed through the store: the tab reads `netnyahoo://yahu/` "Where's Big Yahu?", the engine
+    loads `chrome://yahu/`, and the game runs standalone (no offline header); `chrome://dino` too. Play (clicks,
+    hint key) makes no request. A best of 4200 stored through `updateEasterEggHighScore` came back after a reload.
+  - The DNS-probe path's document swap (`document.open/write` of the resource, as `UpdateErrorPage` does) run by
+    hand on an `ERR_NAME_NOT_RESOLVED` page: the hashed scripts run, `errorPageController` survives, no request.
+    The probe itself ending in "no internet" is ledger 43.
 
 ## Still to run
 Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs the user present" has the script.
@@ -199,6 +214,7 @@ Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs 
 - 39–41: phone passkeys, Touch ID passkeys, Safe Storage.
 - Polish: the PiP extras with a real pointer, and the Raycast extension installed in Raycast (parity checklist
   steps 13–14).
+- 43: the offline game after a DNS probe (needs a network with no route to the internet).
 
 ## Test ledger
 
@@ -442,6 +458,14 @@ phone passkeys still work). The Chromium side is in the passkeys agent's patch
     - The first use raises macOS's "Allow Netnyahoo to use passkeys…" prompt, attached to our window (needs the
       NSWindow fallback in the patch).
     - A passkey created there shows in Passwords.app.
+
+### Offline page (`chromium-neterror-yahu.patch`)
+
+43. **DNS probe ending in "no internet".** Join a Wi-Fi network with no upstream (or unplug the router's WAN), keep
+    the Mac's interface up, and load a site not in the DNS cache. Chrome's page first shows the DNS error while the
+    probe runs. Pass if, once the probe finishes, the tab switches to the game with the code
+    `DNS_PROBE_FINISHED_NO_INTERNET` and the site's host, Retry reloads, and CDP shows no console error. (A fully
+    offline Mac gives `ERR_INTERNET_DISCONNECTED` at once, which is verified.)
 
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order

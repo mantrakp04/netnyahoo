@@ -30,6 +30,8 @@ Thumbs.db
 
 # Xcode DerivedData, including per-agent build-<name> dirs
 build/
+# …but not the CEF source build's step scripts (docs/cef-source-build.md)
+!packages/cef/patches/build/
 build-*/
 DerivedData/
 *.xcuserstate
