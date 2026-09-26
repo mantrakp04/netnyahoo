@@ -203,8 +203,10 @@ public enum ImportError: Error, Equatable, CustomStringConvertible {
   case notFound(String)
   case unreadable(String)
   case unsupported(String)
-  /// The user denied (or hasn't yet granted) the Keychain / primary password.
+  /// The user denied (or hasn't yet granted) the Keychain / primary password, or Automation.
   case locked(String)
+  /// The source app has to be running (Dia's tabs come from Dia itself).
+  case notRunning(String)
 
   public var code: String {
     switch self {
@@ -213,13 +215,14 @@ public enum ImportError: Error, Equatable, CustomStringConvertible {
     case .unreadable: "unreadable"
     case .unsupported: "unsupported"
     case .locked: "locked"
+    case .notRunning: "notRunning"
     }
   }
 
   public var description: String {
     switch self {
     case .cancelled: "Import cancelled"
-    case .notFound(let s), .unreadable(let s), .unsupported(let s), .locked(let s): s
+    case .notFound(let s), .unreadable(let s), .unsupported(let s), .locked(let s), .notRunning(let s): s
     }
   }
 }

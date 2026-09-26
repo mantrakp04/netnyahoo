@@ -1,0 +1,64 @@
+[
+  {
+    "id": "window-b",
+    "name": "Back window",
+    "index": 2,
+    "profiles": [
+      {
+        "name": "Personal",
+        "index": 1,
+        "tabs": [
+          { "id": "t10", "title": "Inbox", "url": "https://mail.example.com/", "isPinned": true, "isFocused": false },
+          { "id": "t11", "title": "Docs", "url": "https://Docs.Example.com", "isPinned": true, "isFocused": false },
+          { "id": "t12", "title": "Story A", "url": "https://news.example.com/a", "isPinned": false, "isFocused": true },
+          { "id": "t13", "title": "New Tab", "url": "dia://newtab", "isPinned": false, "isFocused": false },
+          { "id": "t14", "title": "Recipes", "url": "https://food.example.com/soup?page=2", "isPinned": false, "isFocused": false }
+        ]
+      },
+      {
+        "name": "Work",
+        "index": 2,
+        "tabs": [
+          { "id": "t20", "title": "Status", "url": "https://status.example.com", "isPinned": true, "isFocused": false },
+          { "id": "t21", "title": "Tracker", "url": "https://linear.example.com/", "isPinned": true, "isFocused": false }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "window-a",
+    "name": "Front window",
+    "index": 1,
+    "profiles": [
+      {
+        "name": "Personal",
+        "index": 1,
+        "tabs": [
+          { "id": "t1", "title": "Inbox", "url": "https://mail.example.com/", "isPinned": true, "isFocused": false },
+          { "id": "t2", "title": "Docs", "url": "https://docs.example.com/", "isPinned": true, "isFocused": false },
+          { "id": "t3", "title": "Story A", "url": "https://news.example.com/a#", "isPinned": false, "isFocused": false },
+          { "id": "t4", "title": "Cart", "url": "https://shop.example.com/cart", "isPinned": false, "isFocused": true },
+          { "id": "t5", "title": "Settings", "url": "chrome://settings", "isPinned": false, "isFocused": false },
+          { "id": "t6", "title": "Docs", "url": "https://docs.example.com/", "isPinned": false, "isFocused": false }
+        ]
+      },
+      {
+        "name": "Work",
+        "index": 2,
+        "tabs": [
+          { "id": "t7", "title": "Status", "url": "https://status.example.com/", "isPinned": false, "isFocused": true },
+          { "id": "t8", "title": "Story A", "url": "https://news.example.com/a", "isPinned": false, "isFocused": false },
+          { "id": "t9", "title": "Blank", "url": "about:blank", "isPinned": false, "isFocused": false },
+          { "id": "t15", "title": "Loading", "isPinned": false, "isFocused": false }
+        ]
+      },
+      {
+        "name": "Side project",
+        "index": 3,
+        "tabs": [
+          { "id": "t16", "title": "New Tab", "url": "dia://newtab", "isPinned": false, "isFocused": true }
+        ]
+      }
+    ]
+  }
+]

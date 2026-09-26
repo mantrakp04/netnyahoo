@@ -1,5 +1,5 @@
 import { savePassword } from "@netnyahoo/cef";
-import type { BookmarkNode as ImportedNode, Credential, ImportedTab, ImportResult, SafariExport, SpaceSuggestion } from "@netnyahoo/import";
+import type { BookmarkNode as ImportedNode, Credential, DiaTabsProfile, ImportedTab, ImportResult, SafariExport, SpaceSuggestion } from "@netnyahoo/import";
 import type { BookmarkDraft } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";
 import { engineProfile } from "../../store/model";
@@ -82,7 +82,8 @@ function windowFor(profileId: string): string {
 
 /**
  * Adds tabs to a profile without loading them (they load when first selected, like a
- * restored session). Pinned ones are pinned; the rest go into one group named `group`.
+ * restored session). Pinned ones are pinned; the rest go into one group named `group`. Both keep
+ * the source's order.
  */
 export function importTabs(profileId: string, tabs: Pick<ImportedTab, "url" | "title" | "pinned" | "customTitle">[], group: string | null): number {
   const usable = tabs.filter((t) => /^(https?|file):/.test(t.url));
@@ -91,12 +92,15 @@ export function importTabs(profileId: string, tabs: Pick<ImportedTab, "url" | "t
   let s = useBrowser.getState();
   const unpinned: string[] = [];
   for (const t of usable) {
+    // Each unpinned tab right after the previous one (new tabs may otherwise open at the top).
+    const after = t.pinned ? undefined : unpinned.at(-1);
     const [next, id] = withNewTab(s, windowId, {
       url: t.url,
       profileId,
       background: true,
       pinned: t.pinned,
       snapshot: { title: t.title, customTitle: t.customTitle ?? null },
+      index: after ? s.windows[windowId]!.tabIds.indexOf(after) + 1 : undefined,
     });
     if (!id) continue;
     s = { ...next, tabs: { ...next.tabs, [id]: { ...next.tabs[id]!, navigation: null } } };
@@ -126,6 +130,31 @@ export function importArcSpace(profileId: string, space: SpaceSuggestion, spaceN
     }
   }
   return { tabs, bookmarks };
+}
+
+/** Same page, spelled differently ("https://A.com" / "https://a.com/", a bare "#"), as the native Dia import dedupes. */
+function pageKey(url: string): string {
+  const m = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)(.*)$/i.exec(url.trim());
+  if (!m) return url;
+  const rest = m[3]!.startsWith("/") ? m[3]! : `/${m[3]}`;
+  return `${m[1]!.toLowerCase()}${m[2]!.toLowerCase()}${rest.replace(/#$/, "")}`;
+}
+
+/**
+ * A Dia profile's tabs, read through Dia's AppleScript: its favourites and pinned tabs become
+ * pinned tabs in Dia's order, its open tabs go into "Imported". Pages the profile already has
+ * (open, or a pinned tab's base URL) aren't added again, so importing twice adds nothing.
+ */
+export function importDiaProfile(profileId: string, profile: DiaTabsProfile, what: { pinned: boolean; open: boolean }): number {
+  const have = new Set(
+    Object.values(useBrowser.getState().tabs)
+      .filter((t) => t.profileId === profileId)
+      .flatMap((t) => [t.url, t.pinnedUrl ?? ""].filter(Boolean).map(pageKey)),
+  );
+  const fresh = (tabs: ImportedTab[]) => tabs.filter((t) => !have.has(pageKey(t.url)));
+  let n = what.pinned ? importTabs(profileId, fresh(profile.pinned), null) : 0;
+  if (what.open) n += importTabs(profileId, fresh(profile.tabs).map((t) => ({ ...t, pinned: false })), "Imported");
+  return n;
 }
 
 export async function applyResult(profileId: string, result: ImportResult, browserName: string): Promise<ImportCounts> {

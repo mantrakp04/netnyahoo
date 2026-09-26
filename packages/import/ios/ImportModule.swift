@@ -30,6 +30,10 @@ public class ImportModule: Module {
     return SafeStorageKeychain.secret
   }()
 
+  /// Dev override: send the Dia tab import's Apple Events to another scriptable app (a stand-in
+  /// with Dia's dictionary) instead of Dia.
+  private static let diaBundleId = ProcessInfo.processInfo.environment["NETNYAHOO_IMPORT_DIA_BUNDLE_ID"] ?? DiaAutomation.bundleIdentifier
+
   private let jobs = ImportJobs()
   private static let work = DispatchQueue(label: "netnyahoo.import", qos: .userInitiated, attributes: .concurrent)
 
@@ -90,6 +94,45 @@ public class ImportModule: Module {
     AsyncFunction("importSafariDirect") { (jobId: String, promise: Promise) in
       let cancellation = self.jobs.start(jobId)
       self.run(promise, job: jobId) { try Self.json(SafariDirect.load(cancellation: cancellation)) }
+    }
+
+    /// Dia's tabs through its AppleScript interface. Whether Dia is installed and running and
+    /// whether macOS lets Netnyahoo send it Apple Events; never shows the consent prompt.
+    AsyncFunction("diaAutomationStatus") { (promise: Promise) in
+      self.run(promise) { try Self.json(DiaAutomation.status(Self.diaBundleId, ask: false)) }
+    }
+
+    /// Shows macOS's "Netnyahoo wants to control Dia" prompt if the user hasn't answered it yet
+    /// (the promise waits for the answer), then resolves with the status.
+    AsyncFunction("requestDiaAutomation") { (promise: Promise) in
+      self.run(promise) { try Self.json(DiaAutomation.status(Self.diaBundleId, ask: true)) }
+    }
+
+    /// Opens System Settings › Privacy & Security › Automation.
+    AsyncFunction("openAutomationSettings") { (promise: Promise) in
+      NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
+      promise.resolve(nil)
+    }.runOnQueue(.main)
+
+    /// Launches Dia in the background (the import window stays in front). Resolves once it runs.
+    AsyncFunction("openDia") { (promise: Promise) in
+      guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.diaBundleId) else {
+        return promise.reject("notFound", "Dia isn't installed")
+      }
+      let config = NSWorkspace.OpenConfiguration()
+      config.activates = false
+      NSWorkspace.shared.openApplication(at: app, configuration: config) { _, error in
+        if let error { promise.reject("unreadable", error.localizedDescription) } else { promise.resolve(nil) }
+      }
+    }.runOnQueue(.main)
+
+    /// Dia's profiles with their pinned and open tabs, deduplicated (`DiaTabsImport`). Rejects
+    /// with "notRunning", "locked" (Automation denied) or "unreadable" (Dia didn't answer).
+    AsyncFunction("readDiaTabs") { (promise: Promise) in
+      self.run(promise) {
+        guard DiaAutomation.isRunning(Self.diaBundleId) else { throw ImportError.notRunning("Dia isn't running") }
+        return try Self.json(DiaTabsImport.read(from: DiaAppleEvents(bundleIdentifier: Self.diaBundleId)))
+      }
     }
 
     AsyncFunction("importBookmarksHTML") { (path: String, promise: Promise) in

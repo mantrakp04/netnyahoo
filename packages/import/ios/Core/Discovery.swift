@@ -2,7 +2,11 @@ import Foundation
 
 /// A browser Netnyahoo knows how to import from.
 public struct BrowserDefinition: Sendable {
-  public enum Family: String, Codable, Sendable { case chromium, firefox, safari, arc }
+  public enum Family: String, Codable, Sendable {
+    case chromium, firefox, safari, arc
+    /// Read from the running app through its AppleScript interface (Dia's open and pinned tabs).
+    case automation
+  }
 
   public var id: String
   public var name: String
@@ -48,9 +52,13 @@ public struct BrowserDefinition: Sendable {
   /// passwords/cookies under "Dia Safe Storage" / "Dia" — so it imports as a normal Chromium
   /// browser. Dia's own sidebar (spaces, pinned tiles, folders, custom names/colours) is *not*
   /// in `StorableSidebar.json` like Arc's; it moved into a SQLCipher-encrypted `tabs.db`
-  /// (GRDB), which we can describe but not decrypt without its key — see `DiaSidebar`.
+  /// (GRDB), which we can't decrypt without its key. Its profiles, open and pinned tabs come
+  /// from Dia itself instead, through AppleScript (`DiaTabsImport`, the "diaTabs" source).
   static let dia = BrowserDefinition(id: "dia", name: "Dia", family: .chromium, bundleIds: ["company.thebrowser.dia"],
                                      dataPath: "Dia/User Data", keychainService: "Dia Safe Storage", keychainAccount: "Dia")
+
+  /// The source id of Dia's tabs read through its AppleScript interface (not in `all`: it has no files).
+  public static let diaTabsId = "diaTabs"
 
   static func chromium(_ id: String, _ name: String, _ bundleIds: [String], _ path: String, _ keychain: String,
                        rootIsProfile: Bool = false) -> BrowserDefinition {
@@ -126,7 +134,20 @@ public struct BrowserDiscovery {
   }
 
   public func list() -> [BrowserSource] {
-    BrowserDefinition.all.compactMap(source)
+    var out = BrowserDefinition.all.compactMap(source)
+    if let tabs = diaTabsSource() {
+      out.insert(tabs, at: out.firstIndex { $0.id == "dia" }.map { $0 + 1 } ?? out.count)
+    }
+    return out
+  }
+
+  /// "Dia: open and pinned tabs (via Dia)": listed whenever Dia is installed. Its profiles and
+  /// tabs are only known once Dia answers (`DiaTabsImport`), after the user has allowed Automation.
+  func diaTabsSource() -> BrowserSource? {
+    guard let app = locateApp(BrowserDefinition.dia.bundleIds) else { return nil }
+    return BrowserSource(id: BrowserDefinition.diaTabsId, name: "Dia: open and pinned tabs (via Dia)", family: .automation,
+                         appPath: app.path, iconPath: iconFor(app, BrowserDefinition.dia.id), requiresExport: false,
+                         needsKeychain: false, profiles: [])
   }
 
   public func source(_ def: BrowserDefinition) -> BrowserSource? {
@@ -141,6 +162,8 @@ public struct BrowserDiscovery {
     case .chromium, .arc:
       profiles = chromiumProfiles(def)
       if def.family == .arc { attachArcSpaces(&profiles) }
+    case .automation:
+      return nil
     }
     // A protected folder can't be listed, but its well-known entries can still be stat'ed: only
     // offer it when there's evidently a profile there (an empty leftover folder isn't a browser).

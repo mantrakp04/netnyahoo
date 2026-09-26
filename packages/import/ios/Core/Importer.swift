@@ -33,7 +33,7 @@ public final class Importer: @unchecked Sendable {
       lock.withLock { keys[browserId] = key }
     case .firefox:
       lock.withLock { firefoxPasswords[browserId] = primaryPassword }
-    case .safari:
+    case .safari, .automation:
       break
     }
   }

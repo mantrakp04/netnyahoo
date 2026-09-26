@@ -6,7 +6,7 @@ final class DiscoveryTests: XCTestCase {
   func testListsInstalledBrowsersWithProfiles() throws {
     let list = Fixtures.discovery().list()
     // Edge etc. have no data; Safari is listed because its app is "installed".
-    XCTAssertEqual(list.map(\.id), ["chrome", "arc", "dia", "safari", "firefox", "brave", "helium", "opera"])
+    XCTAssertEqual(list.map(\.id), ["chrome", "arc", "dia", "diaTabs", "safari", "firefox", "brave", "helium", "opera"])
     let byId = Dictionary(uniqueKeysWithValues: list.map { ($0.id, $0) })
 
     // Dia: a plain Chromium source (its encrypted sidebar isn't advertised).

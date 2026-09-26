@@ -82,6 +82,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Netnyahoo asks Dia for its profiles, open tabs and pinned tabs when you import them. It only reads them and changes nothing in Dia.</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>

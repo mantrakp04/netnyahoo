@@ -16,7 +16,8 @@ export type ImportKind =
   /** Arc: the favourites row. */
   | "favorites";
 
-export type BrowserFamily = "chromium" | "firefox" | "safari" | "arc";
+/** "automation": read from the running app through its AppleScript interface (Dia's tabs, `readDiaTabs`). */
+export type BrowserFamily = "chromium" | "firefox" | "safari" | "arc" | "automation";
 
 export type SpaceSummary = {
   id: string;
@@ -204,7 +205,37 @@ export type ImportOptions = {
   signal?: AbortSignal;
 };
 
-/** Thrown by every call. `code` is "cancelled", "notFound", "locked", "unreadable" or "unsupported". */
+/** A Dia profile's tabs, read through Dia's AppleScript interface. */
+export type DiaTabsProfile = {
+  /** "<index>:<name>" (Dia's dictionary gives profiles no id). */
+  id: string;
+  name: string;
+  /** Dia's one-based profile order. */
+  index: number;
+  /** Favourites and pinned tabs in Dia's order, once each. */
+  pinned: ImportedTab[];
+  /** Open tabs, windows front to back, once each and without pages that are pinned. */
+  tabs: ImportedTab[];
+};
+
+export type DiaTabsResult = {
+  /** Profiles with something to import. */
+  profiles: DiaTabsProfile[];
+  windowCount: number;
+  /** Internal pages left out (dia://, chrome://, about:). */
+  skipped: number;
+  /** Tabs dropped as the same page again. */
+  duplicates: number;
+};
+
+/**
+ * macOS Automation consent for Dia ("Netnyahoo wants to control Dia"). "notDetermined": the
+ * prompt hasn't been shown yet; "denied": the user turned it off (System Settings › Privacy &
+ * Security › Automation).
+ */
+export type DiaAutomationStatus = "granted" | "denied" | "notDetermined" | "notRunning" | "notInstalled";
+
+/** Thrown by every call. `code` is "cancelled", "notFound", "locked", "unreadable", "unsupported" or "notRunning". */
 export class ImportError extends Error {
   readonly code: string;
 
@@ -234,6 +265,11 @@ const Native = requireNativeModule<{
   importBookmarksHTML(path: string): Promise<string>;
   importPasswordsCSV(path: string): Promise<string>;
   chooseImportFile(kind: "safariExport" | "bookmarksHTML" | "passwordsCSV"): Promise<string | null>;
+  diaAutomationStatus(): Promise<string>;
+  requestDiaAutomation(): Promise<string>;
+  openAutomationSettings(): Promise<null>;
+  openDia(): Promise<null>;
+  readDiaTabs(): Promise<string>;
 }>("NetnyahooImport");
 
 let jobSeq = 0;
@@ -331,6 +367,29 @@ export const importPasswordsCSV = (path: string) => call<Credential[]>(Native.im
 
 /** Open panel for the file-based imports. Resolves with a path, or null when cancelled. */
 export const chooseImportFile = (kind: "safariExport" | "bookmarksHTML" | "passwordsCSV") => Native.chooseImportFile(kind);
+
+/** Whether Dia is running and Netnyahoo may send it Apple Events. Never shows a prompt. */
+export const diaAutomationStatus = () => call<DiaAutomationStatus>(Native.diaAutomationStatus());
+
+/**
+ * Shows macOS's Automation prompt for Dia if the user hasn't answered it yet, and resolves with
+ * the answer. Explain what it's for first: macOS asks once, and a "Don't Allow" can only be
+ * undone in System Settings (`openAutomationSettings()`).
+ */
+export const requestDiaAutomation = () => call<DiaAutomationStatus>(Native.requestDiaAutomation());
+
+/** Opens System Settings › Privacy & Security › Automation. */
+export const openAutomationSettings = () => call<void>(Native.openAutomationSettings());
+
+/** Launches Dia without bringing it to the front. */
+export const openDia = () => call<void>(Native.openDia());
+
+/**
+ * Asks Dia (through AppleScript) for every window's profiles and their pinned and open tabs.
+ * Custom tab names, colours, spaces and folders aren't in Dia's dictionary, so they don't come.
+ * Rejects with "notRunning", "locked" (Automation not allowed) or "unreadable".
+ */
+export const readDiaTabs = () => call<DiaTabsResult>(Native.readDiaTabs());
 
 /** Every link in a bookmark tree, depth-first — for Netnyahoo's flat bookmarks list. */
 export function flattenBookmarks(node: BookmarkNode | undefined): { url: string; title: string }[] {

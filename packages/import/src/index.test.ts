@@ -58,6 +58,25 @@ const native = {
     calls.push(`importSafariDirect ${jobId}`);
     return JSON.stringify({ bookmarks: undefined, history: [], profiles: [{ history: [], extensions: [] }], tabs: [], warnings: [] });
   },
+  diaStatus: "notRunning",
+  async diaAutomationStatus() {
+    return JSON.stringify(native.diaStatus);
+  },
+  async requestDiaAutomation() {
+    calls.push("requestDia");
+    if (native.diaStatus === "notDetermined") native.diaStatus = "granted";
+    return JSON.stringify(native.diaStatus);
+  },
+  async openDia() {
+    calls.push("openDia");
+    native.diaStatus = "notDetermined";
+    return null;
+  },
+  async readDiaTabs() {
+    if (native.diaStatus !== "granted") throw Object.assign(new Error("macOS didn't allow Netnyahoo to read Dia's tabs"), { code: "locked" });
+    const tab = { url: "https://a.example/", title: "A", pinned: true, windowIndex: 0, active: false };
+    return JSON.stringify({ profiles: [{ id: "1:Personal", name: "Personal", index: 1, pinned: [tab], tabs: [] }], windowCount: 1, skipped: 0, duplicates: 0 });
+  },
 };
 
 // Swap expo-modules-core for the fake before loading the wrapper.
@@ -117,4 +136,14 @@ test("safari direct import gates on Full Disk Access", async () => {
   const result = await lib.importSafariDirect();
   assert.deepEqual(result.tabs, []);
   assert.ok(calls.some((c) => c.startsWith("importSafariDirect import-")));
+});
+
+test("Dia tabs: status, consent, then read", async () => {
+  assert.equal(await lib.diaAutomationStatus(), "notRunning");
+  await lib.openDia();
+  assert.equal(await lib.diaAutomationStatus(), "notDetermined");
+  await assert.rejects(lib.readDiaTabs(), (e: unknown) => e instanceof lib.ImportError && e.code === "locked");
+  assert.equal(await lib.requestDiaAutomation(), "granted");
+  const result = await lib.readDiaTabs();
+  assert.deepEqual(result.profiles.map((p) => `${p.name}:${p.pinned.length}/${p.tabs.length}`), ["Personal:1/0"]);
 });

@@ -21,10 +21,11 @@ Legend: **✅** done · **🧪** built, but the deciding test needs the user pre
 
 | ✅ done | 🧪 needs the user | 🟡 partial | ❌ missing | ⛔ blocked | ⏸ deferred (AI) | — n/a |
 |---|---|---|---|---|---|---|
-| 230 | 1 | 1 | 0 | 2 | 59 | 14 |
+| 230 | 1 | 2 | 0 | 1 | 59 | 14 |
 
-Of the 234 rows that count (not ⏸ or —), 230 are done (98 %), 231 with the one 🧪 row (Cast). The one 🟡 row is
-passkeys (iCloud Keychain waits on Apple). Keyboard shortcuts: every Dia shortcut is bound except the Chat ones
+Of the 234 rows that count (not ⏸ or —), 230 are done (98 %), 231 with the one 🧪 row (Cast). The two 🟡 rows are
+passkeys (iCloud Keychain waits on Apple) and the Dia sidebar import (profiles, open and pinned tabs come through
+Dia's AppleScript; custom names, colours, spaces and folders don't). Keyboard shortcuts: every Dia shortcut is bound except the Chat ones
 (⏸). Menus: all ten exist and match.
 
 The summary before this recount (304 rows, 207 ✅, 9 🟡, 7 ⛔) didn't match its tables, which held 307 rows: 211 ✅,
@@ -136,7 +137,7 @@ The 🧪 row (Cast) needs no code until the user checklist below finds a problem
 |---|---|---|
 | Protected video, Widevine (§18) | Google licenses the CDM only to VMP-signed browsers; the CDM comes through its component updater, whose host is substituted | Google grants a Widevine licence and VMP signing; then we allow the component updater host (or bundle the CDM) |
 | iCloud Keychain passkeys (inside §16's passkeys row) | Apple hasn't granted `com.apple.developer.web-browser.public-key-credential`, which macOS requires before a browser may use iCloud Keychain passkeys for any site | the grant arrives: switch `CODE_SIGN_ENTITLEMENTS` to `Netnyahoo-ICloudPasskeys.entitlements` (ledger 42) |
-| Dia sidebar import (§20) | Dia's `tabs.db` is encrypted with a key from its team's keychain access group | Dia exports its sidebar, or keeps it readable |
+| Dia sidebar import's custom tab names, colours, spaces and folders (inside §20's 🟡 row) | Dia's `tabs.db` is encrypted with a key from its team's keychain access group, and Dia's AppleScript dictionary doesn't expose them | Dia exports its sidebar, keeps it readable, or adds them to its dictionary |
 
 ## Needs the user present: test script (about 35 minutes)
 
@@ -236,6 +237,15 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
     1 has them within a minute or two (as fast as iCloud Drive carries files). Put Mac 2 to sleep, make changes on Mac
     1, wake Mac 2. Pass: it catches up. Finally ⌘, › Sync › Advanced… › Stop Syncing… on Mac 2, Keep Sync Data. Pass:
     everything stays on Mac 2, and Mac 1's devices list drops it.
+16. **Dia tab import** (§20, needs Dia running with a few pinned and open tabs in two profiles). Netnyahoo › Import from
+    Another Browser…, pick "Dia: open and pinned tabs (via Dia)", Continue. Pass: the window explains the macOS
+    prompt before it shows; Continue shows macOS's "“Netnyahoo” wants access to control “Dia”" with our reason;
+    Allow. Pass: the profile step lists Dia's profiles with their pinned and open counts; importing puts each
+    profile's pinned tabs at the top in Dia's order and its open tabs in "Imported", with no dia:// pages and no
+    duplicates. Run it again. Pass: nothing new is added. Then in System Settings › Privacy & Security ›
+    Automation turn Dia off under Netnyahoo and repeat. Pass: the window says it's blocked and links there; turning
+    Dia back on and returning continues on its own. Quit Dia and repeat. Pass: "Open Dia" opens it behind the window
+    and the import continues.
 
 ## 1. Windows & app shell
 | Feature | Dia | Netnyahoo | Gap |
@@ -590,7 +600,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Import from Chrome, Safari, Firefox, Edge, Brave, Opera, Vivaldi, Arc, Dia, Helium | ✓ | ✅ | + Opera GX, Island, Chrome channels, Chromium; bookmarks, history, open tabs, passwords (into Chrome's password manager). Dia and Helium (imput's ungoogled-chromium) import as ordinary Chromium — Dia's tabs are plaintext SNSS, secrets under "Dia Safe Storage"; Helium's Keychain item is "Helium Storage Key" / "Helium". Chrome and Brave protect their data from other apps on current macOS, so they're listed as "Needs Full Disk Access" and go through the same FDA step as Safari |
 | Safari direct import (no export .zip) | — | ✅ | Reads `~/Library/Safari` directly (bookmarks, history, Reading List, open tabs) when Netnyahoo has Full Disk Access; the import UI detects FDA, links to System Settings and re-checks on return. The export `.zip` stays as the fallback and the only path for Safari passwords/cards |
 | Arc import (spaces, pinned tabs, custom names) | ✓ | ✅ | |
-| Dia sidebar import (spaces, pinned tiles, custom names/colours) | ✓ | ⛔ | Dia moved its sidebar out of Arc's `StorableSidebar.json` into a SQLCipher-encrypted `tabs.db` (GRDB; tables `nodes`/`tabs`/`tab_groups`/`spaces`/`windows`/`content_panes`, columns `space_id`/`custom_title`/`custom_icon`/`title_source`/`pinned_container`/`favorites`). Its key is derived (HKDF-SHA256) from a root key Dia shares with its sync escrow (`RootEncryptionKeyProvider`, which the sync client uses too), and Dia keeps its secrets in keychain access groups of its own team (`S6N382Y83G.company.thebrowser.browser.auth`, from its entitlements), which macOS lets only that team's apps read. So another browser can't open `tabs.db` (the root key's storage is inferred from the binary; nothing was decrypted). Dia's open tabs still import from its plaintext SNSS `Sessions/` |
+| Dia sidebar import (spaces, pinned tiles, custom names/colours) | ✓ | 🟡 | Covered: Dia's profiles, pinned tabs and open tabs, through Dia's AppleScript dictionary (Import › "Dia: open and pinned tabs (via Dia)", `DiaTabs.swift` / `DiaAppleEvents.swift`). With Dia running and after macOS's Automation consent (explained first; if denied, the window links System Settings › Privacy & Security › Automation and continues when allowed; if Dia isn't running, it offers to open it), ten Apple Events read every window's profiles and their tabs (id, title, URL, isPinned, isFocused), 10 s timeout each. Each Dia profile maps onto a Netnyahoo profile with the importer's profile step (the first into the chosen profile, the rest new ones or the same-named one); favourites and pinned tabs become pinned tabs in Dia's order, open tabs go into "Imported"; pages open in several windows or both pinned and open come once, `dia://` / `chrome://` / `about:` pages are skipped, and pages the profile already has aren't added again. Not covered, and blocked: custom tab names, colours, spaces and folders. Dia's dictionary doesn't expose them, and its sidebar store is a SQLCipher-encrypted `tabs.db` (GRDB; tables `nodes`/`tabs`/`tab_groups`/`spaces`/`windows`/`content_panes`, columns `space_id`/`custom_title`/`custom_icon`/`title_source`/`pinned_container`/`favorites`) whose key is derived (HKDF-SHA256) from a root key in Dia's own team keychain access group (`S6N382Y83G.company.thebrowser.browser.auth`), which other apps can't read (inferred from the binary; nothing was decrypted). Verified: 8 Swift tests on sdef-shaped fixtures (mapping, dedupe, skipping, status codes, the object specifiers), the real Apple Events path end to end against a scriptable stand-in with Dia's own sdef (in-process, so no consent prompt; its answers matched the fixture exactly), and a hidden instance pointed at the stand-in: the listing, the not-running, consent (macOS's real check, without prompting) and denied screens, and the stand-in's answer imported into two profiles (pinned order, "Imported", a page already open skipped, a second run adding nothing). Not run against the real Dia, whose consent prompt needs the user (checklist step 16) |
 | Account (Atlassian identity, OTP, delete account) | ✓ | — | |
 | E2E‑encrypted sync (24‑word phrase, recovery kit, device transfer) | ✓ | ✅ | no server: every Mac reads and writes sealed files in a folder the user picks (iCloud Drive › Netnyahoo Sync by default, no entitlement; Dropbox, a NAS or a USB drive work too). 24 BIP-39 words from the CSPRNG, as Dia's; HKDF-SHA256 keys, AES-256-GCM per file bound to its name, keyed or random names, 1 KiB padding; the key in the login Keychain, this Mac only. Per-device append-only logs, last writer wins per record by hybrid logical clock, snapshots with safe pruning; iCloud placeholders and half-copied files wait. Syncs bookmarks, 90 days of history, open tabs, pinned tabs and groups, settings and saved passwords (Chrome's, read from its store on disk, written through its API; turning sync off never removes one). Recovery Kit PDF / text with a QR code; device transfer by entering the phrase (or scanning its QR code with an iPhone and pasting with Universal Clipboard). Design and threat model: `docs/sync.md`. Verified: 21 Swift and 21 JS unit tests, and 40 end-to-end checks with two and three hidden instances through a temporary folder (`packages/sync/scripts/e2e.mjs`, 2026-09-26). Left for a person: two real Macs over iCloud Drive (checklist step 15) |
 | Invite / referrals | ✓ | — | |
