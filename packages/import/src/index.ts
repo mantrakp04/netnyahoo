@@ -301,39 +301,6 @@ export const isBrowserUnlocked = (browserId: string) => Native.isBrowserUnlocked
 /** Drops every unlocked key (call when the import flow closes). */
 export const forgetUnlockedKeys = () => Native.forgetUnlockedKeys();
 
-/** Explicit consent flag for the password APIs; a literal so it can't be passed by accident. */
-export type PasswordConsent = { userConsented: true };
-
-/**
- * Unlocks (Keychain prompt) and decrypts a Chromium-family profile's saved logins, including
- * Arc's. Requires `{ userConsented: true }`.
- */
-export async function decryptChromiumPasswords(browserId: string, profileId: string, consent: PasswordConsent) {
-  if (consent?.userConsented !== true) throw new ImportError("locked", "Password import needs the user's consent");
-  if (!isBrowserUnlocked(browserId)) await unlockBrowser(browserId);
-  const result = await importData(browserId, profileId, ["passwords"]);
-  if (result.failed.includes("passwords")) {
-    const w = result.warnings.find((x) => x.kind === "passwords");
-    throw new ImportError(w?.code ?? "unreadable", w?.message ?? "Couldn't import passwords");
-  }
-  return result.credentials;
-}
-
-/** Decrypts a Firefox profile's logins (logins.json + key4.db). No system prompt is involved. */
-export async function decryptFirefoxPasswords(
-  profileId: string,
-  consent: PasswordConsent & { primaryPassword?: string },
-) {
-  if (consent?.userConsented !== true) throw new ImportError("locked", "Password import needs the user's consent");
-  await unlockBrowser("firefox", { primaryPassword: consent.primaryPassword });
-  const result = await importData("firefox", profileId, ["passwords"]);
-  if (result.failed.includes("passwords")) {
-    const w = result.warnings.find((x) => x.kind === "passwords");
-    throw new ImportError(w?.code ?? "unreadable", w?.message ?? "Couldn't import passwords");
-  }
-  return result.credentials;
-}
-
 /** Safari's File › Export Browsing Data archive (.zip) or its unzipped folder. */
 export const importSafariExport = (path: string, options: Pick<ImportOptions, "signal"> = {}) =>
   job<SafariExport>(options, (jobId) => Native.importSafariExport(jobId, path));

@@ -97,17 +97,6 @@ test("aborting cancels the native job and rejects with code cancelled", async ()
   assert.ok(calls.some((c) => c.startsWith("cancel import-")));
 });
 
-test("password helpers require literal consent and unlock first", async () => {
-  await assert.rejects(lib.decryptChromiumPasswords("chrome", "Default", {} as never), /consent/);
-  assert.ok(!calls.some((c) => c.startsWith("unlock")));
-  const creds = await lib.decryptChromiumPasswords("chrome", "Default", { userConsented: true });
-  assert.deepEqual(creds.map((c) => c.password), ["p"]);
-  assert.ok(calls.includes("unlock chrome null"));
-  lib.forgetUnlockedKeys();
-  await assert.rejects(lib.decryptChromiumPasswords("brave", "Default", { userConsented: true }),
-    (e: unknown) => e instanceof lib.ImportError && e.code === "locked");
-});
-
 test("flattenBookmarks and toolbarFolder", () => {
   const root = {
     type: "folder" as const, title: "Bookmarks", children: [
