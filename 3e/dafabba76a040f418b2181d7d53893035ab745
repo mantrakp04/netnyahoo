@@ -1,0 +1,31 @@
+pnpm-workspace.yaml
+  s_9c356f9574d31c::t_3fc9c0e9fd1a6f 13-14
+README.md
+  s_9c356f9574d31c::t_5ac156b949e310 113
+apps/browser/babel.config.js
+  s_9c356f9574d31c::t_5ac156b949e310 4
+apps/browser/index.js
+  s_9c356f9574d31c::t_f2bee32c776533 1,8,17-18
+apps/browser/tsconfig.json
+  s_9c356f9574d31c::t_5ac156b949e310 4,9
+apps/browser/metro.config.js
+  s_9c356f9574d31c::t_5ac156b949e310 23
+docs/agent-brief.md
+  s_9c356f9574d31c::t_3fc9c0e9fd1a6f 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3edafabba76a040f418b2181d7d53893035ab745",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
