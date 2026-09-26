@@ -1,0 +1,69 @@
+apps/browser/src/components/site/SiteControls.tsx
+  s_9c356f9574d31c::t_26083f94d4e466 107-109
+  s_9c356f9574d31c::t_5fe8e83ba3c81d 27,179
+apps/browser/src/components/site/TranslateControls.tsx
+  s_9c356f9574d31c::t_13338366ac7b24 1-4,6-15,17-46,48-56,58-75,79-109
+  s_9c356f9574d31c::t_b024cf1e4ca2d3 5,16,47,57,76-78
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_984eadbb68dac1 466-486
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_80569e71227779 24,26,60-64,390
+apps/browser/src/components/layout/splitActions.ts
+  s_9c356f9574d31c::t_96c8e26db52cfb 36-39
+  s_9c356f9574d31c::t_25137580083256 19-23,27-31
+apps/browser/src/components/Toolbar.tsx
+  s_9c356f9574d31c::t_5fe8e83ba3c81d 22,291
+packages/shell/expo-module.config.json
+  s_9c356f9574d31c::t_19f01eb5e421a0 20-21
+packages/shell/ios/TranslateModule.swift
+  s_9c356f9574d31c::t_a3f5e46922ef6b 1-58,98-100,102-104,106-114,124,126-127,147,151,153-206
+  s_9c356f9574d31c::t_41000dda50523f 63,74-75
+  s_9c356f9574d31c::t_22b406ef80e696 65,105,117-122
+  s_9c356f9574d31c::t_6aeaabfc5e57ac 66-67,76-87
+  s_9c356f9574d31c::t_377cb1264dee3f 59-62,64,68-73,88-97,101,115-116,123,125,128-146,148-150,152
+apps/browser/src/components/layout/SplitChrome.tsx
+  s_9c356f9574d31c::t_25137580083256 184,190
+  s_9c356f9574d31c::t_353c54160746d0 176-183
+apps/browser/src/lib/devHarness.ts
+  s_9c356f9574d31c::t_8b6d42da3db3b4 53-60
+apps/browser/src/components/site/translate.ts
+  s_9c356f9574d31c::t_da4b152729dd68 182-185,202-203
+  s_9c356f9574d31c::t_86671626ec7bda 1-6,8-25,28-29,31-32,34-36,42-110,112-114,116-125,127,149,151-153,167-173,175-177,179,181,187-201,204-212,216,218-219,221-222,224-228,230-239,241-253,256-257,260,262-277
+  s_9c356f9574d31c::t_cd0f67220f5f38 254-255,258-259,261
+  s_9c356f9574d31c::t_6b729508b6889f 26-27,30,111,115,150,154-156,165,174,178,180,186,213-215,217,223,229,240
+  s_9c356f9574d31c::t_b024cf1e4ca2d3 33
+  s_9c356f9574d31c::t_7bee97188488bb 7,37-39,126,128-148,157-164,166,220
+  s_9c356f9574d31c::t_253a9e81d721e3 40-41
+packages/shell/ios/NetnyahooShell.podspec
+  s_9c356f9574d31c::t_19f01eb5e421a0 14-16
+apps/browser/src/store/settings.ts
+  s_9c356f9574d31c::t_7fa71bcbea4b4f 65-66,119
+apps/browser/src/components/site/pageTranslator.ts
+  s_9c356f9574d31c::t_8112e7f7e89c1c 1-3,7-9,15-16,19-23,26,28,32-38,45-48,50,52-53,60,62-66,98,108,120-125,128-130,132,137,154,157-163,170-175,177,185-194,196-197
+  s_9c356f9574d31c::t_19fcd5c0f46ff7 13-14
+  s_9c356f9574d31c::t_6f25949c486293 4-6,17-18,24-25,27,29,39-44,54-56,68-71,73,75,77,80,83-95,99-105,116,135-136,138-153,155-156,180-181
+  s_9c356f9574d31c::t_6b729508b6889f 49,106-107,109,131,133-134,176,195
+  s_9c356f9574d31c::t_31dbbdedfae5e4 164-169
+  s_9c356f9574d31c::t_3bdd4c732a28ee 10-12,30,51,57-59,61,67,72,74,76,78-79,81-82,96-97,110-115,117-119,126-127,178-179,182-184
+  s_9c356f9574d31c::t_81a1bf37f587df 31
+apps/browser/index.js
+  s_9c356f9574d31c::t_1b5ee954acb498 4,25
+apps/browser/macos/Podfile.lock
+  s_9c356f9574d31c::t_7bdf33151a8079 2588
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "eb406a4480ecaa42c3ebfe0344b417b790b2ee9f",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
