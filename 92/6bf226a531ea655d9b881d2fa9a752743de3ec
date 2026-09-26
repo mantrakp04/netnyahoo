@@ -1,0 +1,191 @@
+.claude/skills/elevenlabs/speech-engine/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-194
+.claude/skills/elevenlabs/agents/references/agent-configuration.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-796
+.claude/skills/elevenlabs/agents/references/outbound-calls.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-239
+.claude/skills/elevenlabs/text-to-speech/references/streaming.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-307
+.claude/skills/elevenlabs/text-to-speech/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-243
+apps/launch-video/scripts/capture/harness/swipe.js
+  s_9c356f9574d31c::t_99752c162b1651 1-11
+apps/launch-video/src/theme.ts
+  s_9c356f9574d31c::t_d88c0652e74176 4
+.claude/skills/elevenlabs/sound-effects/references/installation.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-93
+docs/research/launch-video-playbook.md
+  s_9c356f9574d31c::t_ece28970cd19b3 93-94,126
+  s_9c356f9574d31c::t_82ce22dc497890 1-92,127-207
+  s_9c356f9574d31c::t_33b5fe6fd7e303 95-125,208
+.claude/skills/elevenlabs/speech-to-text/references/realtime-events.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-280
+apps/launch-video/src/Launch.tsx
+  s_9c356f9574d31c::t_9efc621c3dd3f4 2,4-5,8-12,14-22,25-28,40,52-53,56-61,64,66-77,80-82,88-89,91-102,107-133,135-141,144-150,153-159,161-176,179,181-182,184-202,205,211,213-214,216,218-219,221,225-226,228-241,243-245,249-256,258-267,269-270,272,279-280,282,284-290,294,298-310,313-314
+  s_9c356f9574d31c::t_ffce52d0001a70 65,227,242
+  s_9c356f9574d31c::t_f8efae969a7085 29-39,41-51,62-63,78-79,103-104,183,203-204,209-210,247-248,276-277,296-297
+  s_9c356f9574d31c::t_d0c193c9aa5ea1 23-24,86-87,90,105-106,212,215,220
+  s_9c356f9574d31c::t_8594075d513687 271
+  s_9c356f9574d31c::t_f9f9047ab7b87e 278,283
+  s_9c356f9574d31c::t_338266e53f3ca2 83-85
+apps/launch-video/scripts/capture/harness/store.js
+  s_9c356f9574d31c::t_99752c162b1651 1-2
+.claude/skills/elevenlabs/music/references/api_reference.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-529
+apps/launch-video/scripts/capture/composite.py
+  s_9c356f9574d31c::t_df0e9c90a345b8 7,9
+  s_9c356f9574d31c::t_99752c162b1651 1-6,8,10-63
+.claude/skills/elevenlabs/LICENSE
+  s_9c356f9574d31c::t_0685c2ce82845d 1-21
+apps/launch-video/scripts/mux-audio.mjs
+  s_9c356f9574d31c::t_f9f9047ab7b87e 1-3,5,11,13-17
+.claude/skills/elevenlabs/agents/references/widget-embedding.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-373
+.claude/skills/elevenlabs/speech-to-text/references/realtime-server-side.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-359
+.claude/skills/elevenlabs/speech-to-text/references/transcription-options.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-291
+.claude/skills/elevenlabs/README.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-79
+.claude/skills/elevenlabs/speech-to-text/references/installation.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-118
+.claude/skills/elevenlabs/dubbing/references/installation.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-106
+.claude/skills/elevenlabs/agents/references/writing-procedures.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-112
+apps/launch-video/scripts/prepare-assets.mjs
+  s_9c356f9574d31c::t_d88c0652e74176 1-4,16-18,20
+.claude/skills/elevenlabs/speech-engine/references/python-sdk-reference.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-121
+apps/launch-video/src/ui.tsx
+  s_9c356f9574d31c::t_d0c193c9aa5ea1 97,102,106
+  s_9c356f9574d31c::t_46d91e5fab5ab6 1-96,98-101,103-105,107-165
+.claude/skills/elevenlabs/speech-to-text/references/realtime-commit-strategies.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-144
+.claude/skills/elevenlabs/speech-engine/references/installation.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-85
+.claude/skills/elevenlabs/setup-api-key/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-88
+apps/launch-video/scripts/capture/netcount.mjs
+  s_9c356f9574d31c::t_99752c162b1651 1-18
+.claude/skills/elevenlabs/speech-to-text/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-318
+apps/launch-video/scripts/capture/screencast.mjs
+  s_9c356f9574d31c::t_99752c162b1651 1-43
+.claude/skills/elevenlabs/dubbing/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-272
+apps/launch-video/README.md
+  s_9c356f9574d31c::t_904b1507c74298 1,3-8,15,17-18,21-22,24,26-55,57-60,62,64-66,68-83,85-86
+.claude/skills/elevenlabs/speech-engine/references/javascript-sdk-reference.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-113
+.claude/skills/elevenlabs/voice-changer/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-264
+apps/launch-video/scripts/capture/shotloop.mjs
+  s_9c356f9574d31c::t_99752c162b1651 1-21
+.claude/skills/elevenlabs/agents/references/installation.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-154
+apps/launch-video/src/timeline.ts
+  s_9c356f9574d31c::t_1fc11f9017def0 23-24,37
+  s_9c356f9574d31c::t_4b65eeecdec35f 15-22,35-36,42
+  s_9c356f9574d31c::t_d66625560a189c 2-4,13
+  s_9c356f9574d31c::t_81b05f6590aa88 1,9,11-12,14,25-27,29-34,38-41,43-48,50
+apps/launch-video/scripts/capture/dev.mjs
+  s_9c356f9574d31c::t_99752c162b1651 3,5,8-16
+  s_9c356f9574d31c::t_df0e9c90a345b8 1-2,4,6-7
+.claude/skills/elevenlabs/agents/references/client-tools.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-623
+apps/launch-video/scripts/audio/transcribe.mjs
+  s_9c356f9574d31c::t_2508eb5239b5d8 1-16
+apps/launch-video/scripts/audio/sfx.mjs
+  s_9c356f9574d31c::t_ce111c28af779b 1-30
+apps/launch-video/package.json
+  s_9c356f9574d31c::t_f9f9047ab7b87e 10
+  s_9c356f9574d31c::t_8594075d513687 5,9,11-12
+apps/launch-video/scripts/audio/design-voice.mjs
+  s_9c356f9574d31c::t_533fe7f947c968 1-24
+.claude/skills/elevenlabs/dubbing/references/api-reference.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-338
+apps/launch-video/src/Root.tsx
+  s_9c356f9574d31c::t_d88c0652e74176 7
+  s_9c356f9574d31c::t_8594075d513687 1
+.claude/skills/elevenlabs/voice-isolator/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-118
+.claude/skills/elevenlabs/music/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-439
+apps/launch-video/scripts/capture/prep-web.py
+  s_9c356f9574d31c::t_99752c162b1651 2,5-16
+  s_9c356f9574d31c::t_1aa386c8643b1c 1
+  s_9c356f9574d31c::t_df0e9c90a345b8 3-4
+.claude/skills/elevenlabs/SKILL.md
+  s_9c356f9574d31c::t_87d0cd3a66e52f 1-44
+.claude/skills/elevenlabs/voice-isolator/references/installation.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-91
+apps/launch-video/scripts/audio/music.mjs
+  s_9c356f9574d31c::t_cc0aed23039478 22-23
+  s_9c356f9574d31c::t_ffdbfe2033f230 12,29-30,34-37,40-49
+  s_9c356f9574d31c::t_84df8ac81585fe 20
+  s_9c356f9574d31c::t_a57ddf09123a8f 1-11,13-19,21,24-28,31-33,38-39,50-58
+apps/launch-video/scripts/capture/harness/common.js
+  s_9c356f9574d31c::t_99752c162b1651 2-7
+  s_9c356f9574d31c::t_df0e9c90a345b8 1
+.claude/skills/elevenlabs/agents/references/using-procedure-api.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-351
+apps/launch-video/scripts/capture/clickloop.mjs
+  s_9c356f9574d31c::t_99752c162b1651 1-32
+apps/launch-video/scripts/audio/eleven.mjs
+  s_9c356f9574d31c::t_74cd48741cb300 1-52
+apps/launch-video/scripts/capture/harness/addr.js
+  s_9c356f9574d31c::t_99752c162b1651 1-10
+.claude/skills/elevenlabs/music/references/installation.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-96
+.claude/skills/elevenlabs/speech-to-text/references/realtime-client-side.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-207
+.claude/skills/elevenlabs/voice-changer/references/installation.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-96
+.claude/skills/elevenlabs/text-to-speech/references/voice-settings.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-109
+.claude/skills/elevenlabs/agents/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-558
+.claude/skills/elevenlabs/sound-effects/SKILL.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-119
+apps/launch-video/scripts/make-sound.mjs
+  s_9c356f9574d31c::t_2e407b2673024d 9
+  s_9c356f9574d31c::t_ca01e53712c8e9 1-8,14,17,21,23-24,26-52,58-67,69-70,72-80,82-90,92-102,104-137,157-164
+  s_9c356f9574d31c::t_851e7ed39f3f89 53,56-57
+  s_9c356f9574d31c::t_4b65eeecdec35f 54-55
+  s_9c356f9574d31c::t_08ee50056481f6 139-149,151-152,154-155
+  s_9c356f9574d31c::t_4bdc0a03f6bebe 10
+  s_9c356f9574d31c::t_9734009a2c965b 71,91,103
+.claude/skills/elevenlabs/text-to-speech/references/installation.md
+  s_9c356f9574d31c::t_0685c2ce82845d 1-117
+apps/launch-video/scripts/capture/build-shots.py
+  s_9c356f9574d31c::t_1aa386c8643b1c 23,49-59
+  s_9c356f9574d31c::t_99752c162b1651 1-4,7-22,24-48,60-64
+  s_9c356f9574d31c::t_df0e9c90a345b8 5-6
+apps/launch-video/scripts/capture/clockcap.mjs
+  s_9c356f9574d31c::t_df0e9c90a345b8 6
+  s_9c356f9574d31c::t_99752c162b1651 1-5,7-29
+apps/launch-video/scripts/capture/launch.sh
+  s_9c356f9574d31c::t_99752c162b1651 1-2,6-14
+  s_9c356f9574d31c::t_df0e9c90a345b8 3-5
+apps/launch-video/scripts/audio/vo.mjs
+  s_9c356f9574d31c::t_84df8ac81585fe 1-43
+apps/launch-video/.gitignore
+  s_9c356f9574d31c::t_ad02f71ef7ec24 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "926bf226a531ea655d9b881d2fa9a752743de3ec",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
