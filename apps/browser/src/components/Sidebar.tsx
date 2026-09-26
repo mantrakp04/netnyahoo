@@ -5,12 +5,13 @@ import { layout, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
 import { PageProfileContext, useSettings, useWindowId, useWindowProfileId } from "../store/hooks";
 import { activeTabId } from "../store/model";
+import { downloadsIn } from "../store/ui";
 import { cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
 import { SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
 import { IconButton, useHover } from "./primitives";
-import { ProfileIndicator } from "./ProfileIndicator";
+import { PROFILE_INDICATOR_X, ProfileIndicator } from "./ProfileIndicator";
 import { usePageOffset, usePagerPages } from "./layout/profilePager";
 import { PROFILE_DOTS_HEIGHT, ProfileDots, useProfileDotsShown } from "./profiles/ProfileDots";
 import { SIDEBAR_NAV_WIDTH, SidebarAddressRow, SidebarNavigation } from "./sidebar/AddressBar";
@@ -58,6 +59,9 @@ export function Sidebar() {
   const addressBar = useAddressBarInSidebar();
   const header = addressBar ? SIDEBAR_HEADER_WITH_FIELD : layout.sidebarHeader;
   const glowRoom = addressBar ? 0 : GLOW_ROOM;
+  // Dia's Downloads button is there only while the window lists downloads (in progress or done);
+  // clearing the list hides it again.
+  const hasDownloads = useBrowser((s) => downloadsIn(s, windowId).length > 0);
 
   useRevealTabs(windowId, scroll, scrollY, glowRoom);
 
@@ -129,32 +133,35 @@ export function Sidebar() {
           {/* Traffic lights sit in this header (positioned natively); the rest drags the window. */}
           <View style={{ height: header }}>
             <WindowDragRegion style={StyleSheet.absoluteFill} />
-            <View
-              style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", justifyContent: "flex-end", paddingRight: 7, paddingTop: 27 - 17 }}
-            >
+            {/* Dia's header stack: window controls, 6 pt, the profile name, then (2 pt apart, 7 pt from the
+                edge) Downloads while any are listed. */}
+            <View style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", paddingLeft: PROFILE_INDICATOR_X, paddingRight: 7, paddingTop: 27 - 17 }}>
               {addressBar ? (
                 <>
                   {/* Back / forward / reload take Downloads' place (it moves beside the URL field). */}
-                  <ProfileIndicator room={width - layout.trafficLightsWidth - SIDEBAR_NAV_WIDTH - 7 - 2} />
+                  <ProfileIndicator room={width - PROFILE_INDICATOR_X - SIDEBAR_NAV_WIDTH - 7 - 2} />
+                  <View style={{ flex: 1 }} />
                   <View style={{ marginTop: 2 }}>
                     <SidebarNavigation />
                   </View>
                 </>
               ) : (
                 <>
-                  {/* It has the header between the traffic lights and Downloads (34 pt, 7 pt in from the edge). */}
-                  <ProfileIndicator room={width - layout.trafficLightsWidth - 34 - 7 - 2} />
-                  <IconButton
-                    icon="arrow.down.circle"
-                    size={16}
-                    box={34}
-                    radius={10}
-                    tooltip="Downloads (⇧⌘J)"
-                    onPress={() => {
-                      const s = useBrowser.getState();
-                      s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
-                    }}
-                  />
+                  <ProfileIndicator room={width - PROFILE_INDICATOR_X - 7 - (hasDownloads ? 34 + 2 : 0)} />
+                  <View style={{ flex: 1 }} />
+                  {hasDownloads ? (
+                    <IconButton
+                      icon="arrow.down.circle"
+                      size={16}
+                      box={34}
+                      radius={10}
+                      tooltip="Downloads (⇧⌘J)"
+                      onPress={() => {
+                        const s = useBrowser.getState();
+                        s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
+                      }}
+                    />
+                  ) : null}
                 </>
               )}
             </View>

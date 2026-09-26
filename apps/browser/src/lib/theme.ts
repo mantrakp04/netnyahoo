@@ -162,6 +162,8 @@ type ProfileColorSpec = {
   powerUp?: string;
   /** The window backdrop's tint colour (`BackgroundTintInfo.color`), where measured; else from the swatch's hue. */
   tint?: string;
+  /** The palette's `themeActionColor` (the sidebar header's profile name), where measured; else the swatch. */
+  action?: string;
   dark?: ProfileTheme;
   light?: ProfileTheme;
 };
@@ -179,6 +181,8 @@ export const PROFILE_COLORS: Record<ProfileColor, ProfileColorSpec> = {
     // Display P3, fitted from an inactive Dia 1.50.1 window (dark) through the window-treatment model
     // (dia-spec › Window translucency); ≈ sRGB #BF556A, next to the band colour above.
     tint: "#B25B6B",
+    // Dia 1.50.1's header name reads Display P3 (236, 209, 215) in dark (a 2× capture): this, 60% toward white.
+    action: "#DD899B",
     palette: "pink",
     dark: { lightPalette: "pink", orbTint: "#E9A9C4", edgeLight: "#EBB3CB80" },
     light: { lightPalette: "pink", orbTint: "#E59CC0", edgeLight: "#D37B8B66" },
@@ -202,6 +206,16 @@ export const PROFILE_COLORS: Record<ProfileColor, ProfileColorSpec> = {
 /** Incognito: a darker neutral, whatever the app appearance. */
 const INCOGNITO_TINT = "#3A3A3C";
 const INCOGNITO: ProfileTheme = { lightPalette: null, orbTint: "#C8C8CC", edgeLight: "#FFFFFF33" };
+
+/**
+ * The sidebar header's profile name (Dia's SidebarProfileIndicatorButton): the palette's action
+ * colour 60% toward white in dark, 40% toward black in light.
+ */
+export function profileNameColor(color: ProfileColor, dark: boolean): string {
+  const spec = PROFILE_COLORS[color] ?? PROFILE_COLORS.plum;
+  const base = spec.action ?? spec.swatch;
+  return dark ? mix(base, "#FFFFFF", 0.6) : mix(base, "#000000", 0.4);
+}
 
 function mix(a: string, b: string, t: number): string {
   const ch = (h: string, i: number) => parseInt(h.slice(1 + 2 * i, 3 + 2 * i), 16);
