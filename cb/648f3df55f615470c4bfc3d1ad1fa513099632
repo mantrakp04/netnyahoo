@@ -1,0 +1,50 @@
+apps/browser/src/lib/tabLifecycle.ts
+  s_9c356f9574d31c::t_93eb22204f0917 404-405
+apps/browser/src/store/tabs.ts
+  s_9c356f9574d31c::t_c47380cdb83052 210-278
+  s_9c356f9574d31c::t_408010c42a3062 378-379
+  s_9c356f9574d31c::t_cfa868516a3cd2 57-60,62
+  s_9c356f9574d31c::t_8b7e5da368a48b 112-113
+  s_9c356f9574d31c::t_6ca533f7207cf3 334,341-342,346,348
+  s_9c356f9574d31c::t_d4f6833d9b54b7 175-178
+  s_9c356f9574d31c::t_598b738365b660 16,18
+  s_9c356f9574d31c::t_c61b48b3794c16 279
+apps/browser/src/lib/actions.ts
+  s_9c356f9574d31c::t_93eb22204f0917 36-39,45
+apps/browser/src/store/types.ts
+  s_9c356f9574d31c::t_91b818ecddb019 182-183
+  s_9c356f9574d31c::t_8c035d9019b5eb 81-85
+apps/browser/src/store/pinnedClose.test.mjs
+  s_9c356f9574d31c::t_7e5257b5e4910d 1-200
+apps/browser/src/components/sidebar/PinnedGrid.tsx
+  s_9c356f9574d31c::t_d4b1e283462310 1,4,100-101,188
+  s_9c356f9574d31c::t_610aba8f506880 102-103,105,108-166,169-174,184-187
+apps/browser/src/components/sidebar/TabRow.tsx
+  s_9c356f9574d31c::t_79b054aa53b700 1,61,119
+  s_9c356f9574d31c::t_610aba8f506880 62-63,65,68-118
+apps/browser/src/store/windows.ts
+  s_9c356f9574d31c::t_73b64f526e61ec 316-325
+docs/store-api.md
+  s_9c356f9574d31c::t_ed0a2196c075b7 21-23
+apps/browser/src/lib/chromeTabs.ts
+  s_9c356f9574d31c::t_fdba0e0014501d 67-73,106,123-130
+  s_9c356f9574d31c::t_6ff925d0e31683 38-47,52,102-103
+apps/browser/src/store/store.test.mjs
+  s_9c356f9574d31c::t_dd0c54334f94da 48-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cb648f3df55f615470c4bfc3d1ad1fa513099632",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
