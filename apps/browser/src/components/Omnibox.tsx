@@ -14,11 +14,13 @@ import { dispositionFor, openFromBar, switchFromBar, type Disposition } from "./
 import { clipboardPasteAction, pasteMenuItem, pasteTarget, readClipboard } from "./omnibox/paste";
 import { ScopeChip } from "./omnibox/ScopeChip";
 import { SuggestionIcon, SuggestionRow } from "./omnibox/SuggestionRow";
+import { useDropdownStart } from "./omnibox/dropdownStart";
 import { useInlineCompletion } from "./omnibox/useInlineCompletion";
 import { scopeFor, useSuggestions } from "./omnibox/useSuggestions";
+import { setPopover } from "./layout/pageState";
 import { IconButton, useHover } from "./primitives";
 
-type Variant = "panel" | "hero";
+type Variant = "panel" | "hero" | "sidebar";
 type Selection = { start: number; end: number };
 
 /** Keys the bar handles itself (the text field never sees them). */
@@ -40,7 +42,9 @@ const SCOPE_KEYS = [...BASE_KEYS, { key: "Backspace" }];
 
 /**
  * Dia's command bar. `panel` is the one anchored over the toolbar (URL click, ⌘L); `hero` is
- * the New Tab page bar. Both share suggestions and keyboard handling, and open things in `tabId`.
+ * the New Tab page bar; `sidebar` is Arc's dropdown from the sidebar's URL field (Settings ›
+ * Appearance › Address Bar): the full URL, a site-info button, and rows from the start. All
+ * share suggestions, inline completion and keyboard handling, and open things in `tabId`.
  */
 export function Omnibox({
   variant,
@@ -60,11 +64,13 @@ export function Omnibox({
   const engine = useBrowser((s) => defaultSearchEngine(s.settings));
   const currentUrl = useBrowser((s) => s.tabs[tabId]?.url ?? "");
   const hero = variant === "hero";
+  const dropdown = variant === "sidebar";
 
   // The New Tab page restores its last query (Dia 1.28); the panel opens on the page URL,
-  // shown without its scheme, fully selected, with no suggestions until you type.
+  // shown without its scheme, fully selected, with no suggestions until you type. Arc's dropdown
+  // shows the whole URL, selected, over the page you're on and the pages you visited last.
   const [restored] = useState(() => (hero ? savedNtpQuery(tabId) : null));
-  const initial = initialText ? initialText.replace(/^https?:\/\//, "") : "";
+  const initial = !initialText ? "" : dropdown ? initialText : initialText.replace(/^https?:\/\//, "");
   const [typed, setTyped] = useState(restored?.typed ?? initial);
   const [edited, setEdited] = useState(restored?.edited ?? false);
   const [suppressCompletion, setSuppressCompletion] = useState(true);
@@ -80,7 +86,7 @@ export function Omnibox({
   const input = useRef<TextInput>(null);
   const root = useRef<View>(null);
 
-  const { items, completion } = useSuggestions({
+  const { items: suggested, completion } = useSuggestions({
     text: typed,
     active: edited || !!scope,
     windowId,
@@ -89,6 +95,8 @@ export function Omnibox({
     currentUrl: currentUrl || undefined,
     scope,
   });
+  const start = useDropdownStart(dropdown && !edited && !scope, tabId, profileId);
+  const items = dropdown && !edited && !scope ? start : suggested;
   const inline = useInlineCompletion(input, typed, suppressCompletion || scope ? "" : completion);
   const shownCompletion = inline.shown;
   const value = typed + shownCompletion;
@@ -307,7 +315,7 @@ export function Omnibox({
       onKeyDown={onKeyDown}
       style={{
         flex: 1,
-        fontSize: hero ? 17 : 15,
+        fontSize: hero ? 17 : dropdown ? 14 : 15,
         color: theme.textPrimary,
         paddingVertical: 0,
       }}
@@ -315,7 +323,7 @@ export function Omnibox({
   );
 
   const suggestionList = items.length > 0 && (
-    <View style={{ paddingHorizontal: 9, paddingBottom: 2 }}>
+    <View style={{ paddingHorizontal: dropdown ? 6 : 9, paddingBottom: dropdown ? 6 : 2 }}>
       {items.map((s, i) => (
         <SuggestionRow
           key={`${s.kind}-${"url" in s ? s.url : s.id}-${i}`}
@@ -353,6 +361,37 @@ export function Omnibox({
       )}
     </View>
   );
+
+  if (dropdown) {
+    // Arc's dropdown in Dia's materials: the input row where the field was (44 pt, the site's icon
+    // 12 pt in, the site-info button at its trailing end), then the rows. No chip row or Go pill.
+    return (
+      <View ref={root}>
+        <ContextMenuArea captureDescendants onContextMenu={() => void onContextMenu()}>
+          <View style={{ flexDirection: "row", alignItems: "center", height: 44, paddingLeft: 13, paddingRight: 9, gap: 9 }}>
+            <View style={{ width: 18, alignItems: "center" }}>{leadingIcon}</View>
+            {scope && <ScopeChip scope={scope} large={false} />}
+            {field}
+            {currentUrl ? (
+              <IconButton
+                icon="info.circle"
+                size={15}
+                box={26}
+                radius={13}
+                color={theme.textSecondary}
+                tooltip="Site Controls"
+                onPress={() => {
+                  onCancel?.();
+                  setPopover(tabId, "siteControls");
+                }}
+              />
+            ) : null}
+          </View>
+        </ContextMenuArea>
+        {suggestionList}
+      </View>
+    );
+  }
 
   return (
     <View ref={root}>
