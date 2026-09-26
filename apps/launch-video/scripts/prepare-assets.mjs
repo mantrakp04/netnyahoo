@@ -15,7 +15,7 @@ const copy = (from, to) => {
 
 copy(join(root, "assets/web"), "web");
 copy(join(root, "assets/footage"), "footage");
-copy(join(root, "assets/sound"), "sound/parts");
+// (the sound parts stay in assets/sound: scripts/make-sound.mjs reads them there)
 copy(join(repo, "apps/site/public/models/big-yahu.glb"), "models/big-yahu.glb");
 copy(join(repo, "apps/site/src/assets/app-icon.png"), "web/app-icon.png");
 const fonts = join(root, "node_modules/@fontsource-variable");

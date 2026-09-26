@@ -2,13 +2,13 @@
   "name": "@netnyahoo/launch-video",
   "private": true,
   "type": "module",
-  "description": "The Netnyahoo launch video, \"Full Immunity\" (Remotion). Renders to output/launch-video/.",
+  "description": "The Netnyahoo launch film, \"The sidebar browser\" (Remotion). Renders to output/launch-video/.",
   "scripts": {
     "dev": "remotion studio",
     "prepare-assets": "node scripts/prepare-assets.mjs && node scripts/make-sound.mjs",
     "sound": "node scripts/make-sound.mjs",
-    "render": "remotion render Launch ../../output/launch-video/netnyahoo-launch.master.mp4 --codec=h264 --crf=16 --x264-preset=slow --pixel-format=yuv420p --muted && node scripts/mux-audio.mjs",
-    "cover": "remotion still Launch ../../output/launch-video/netnyahoo-launch-cover.png --frame=370",
+    "render": "node scripts/check-edit.mjs && remotion render Launch ../../output/launch-video/netnyahoo-launch.master.mp4 --codec=h264 --crf=14 --x264-preset=slow --pixel-format=yuv420p --muted && node scripts/mux-audio.mjs",
+    "cover": "remotion still Launch ../../output/launch-video/netnyahoo-launch-cover.png --frame=150",
     "lint": "tsc"
   },
   "dependencies": {

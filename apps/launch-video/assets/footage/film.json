@@ -1,0 +1,21 @@
+{
+ "addrOpen": 100,
+ "addrLetters": [
+  106,
+  110,
+  114,
+  118,
+  122,
+  126,
+  130,
+  134,
+  138
+ ],
+ "addrClose": 188,
+ "swipeStart": 203,
+ "swipeFlip": 275,
+ "storePress": 450,
+ "storeDialog": 475,
+ "storeDone": 500,
+ "repoClick": 525
+}
