@@ -169,7 +169,7 @@ export function startNativeSync() {
 }
 
 const PAGE_COMMANDS = [
-  "reload", "forceReload", "zoomIn", "zoomOut", "zoomReset", "print", "devTools", "findInPage", "findNext",
+  "reload", "forceReload", "zoomIn", "zoomOut", "zoomReset", "print", "devTools", "toggleDevTools", "findInPage", "findNext",
   "findPrevious", "useSelectionForFind", "copyUrl", "copyUrlAsMarkdown", "bookmarkPage", "addBookmarkToFolder", "toggleMute",
   "findAndReplace", "jumpToSelection", "viewSource", "javaScriptConsole", "inspectElements",
 ];

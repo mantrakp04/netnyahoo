@@ -320,6 +320,31 @@ its screenshot actions and the dock-side menu only under `Root.Runtime.condition
 | Docked back from the window: DevTools draw at the right size | PASS |
 | ⌥⌘I and ⌥⌘J close docked DevTools; ⌥⌘J opens on Console; ⌥⌘C opens Elements with the picker on | PASS |
 
+**The undocked DevTools window (after 0.2.2).** Undocked DevTools take one of two windows. DevTools of the
+tab that founded its Chrome window (the one our `CefBrowserView` hosts) are a Views-hosted CEF popup: until
+now CEF's default window, 800 × 600 at the screen's corner, untitled. DevTools of every other tab (tabs
+Chrome made) open in Chrome's own DevTools window (CEF's `ShouldCreateViewsHostedPopup`: the opener has no
+view), titled "DevTools - <url>" and placed where the profile's DevTools window was left
+(`browser.app_window_placement` › DevToolsApp, 640 × 640 at 100, 100 the first time).
+- `ChromeWindow::OnPopupBrowserViewCreated` gives the first kind a window of ours (`NNDevTools.mm`
+  `WindowDelegate`): it reads and writes Chrome's DevToolsApp record, so both kinds open where either was
+  left, and it's titled from the frontend's title. Dia titles its DevTools window "Developer Tools - %@"
+  (1.50.1 string) and autosaves its frame (`.devToolsWindowAutosaveFrame`).
+- F12 is Chrome's `IDC_DEV_TOOLS_TOGGLE` (the Developer menu's hidden F12 item; Dia has `developerToolsF12`
+  behind `devtools-f12-shortcut-enabled`): it opens DevTools, closes docked ones and brings an undocked
+  window forward. Pressed in an undocked window it closes that window, as `ToggleDevToolsWindow` does for a
+  DevTools Browser (the frontend client's `OnPreKeyEvent`, and the menu item when the window is key).
+
+| Check (hidden instance, locked screen: CDP, window list, profile prefs) | Result |
+|---|---|
+| First tab's DevTools undocked: our window, "Developer Tools - example.com/", 640 × 640 at Chrome's default | PASS |
+| Title follows the inspected page ("… - example.org/" after navigating) | PASS |
+| Resized to 900 × 700 at 300, 200: DevToolsApp saved; closed and opened again there | PASS |
+| After a relaunch, another tab's DevTools (Chrome's window) open at the frame our window saved; its resize is saved for ours | PASS |
+| F12 (CDP key event) in either window closes it; the frontend target goes | PASS |
+| F12 from the page: opens (dock side as last set), closes docked DevTools | PASS |
+| Window closing itself (window list) | needs an unlocked screen |
+
 ## Phase 2 (production, behind the flag), done
 
 `NETNYAHOO_CHROME_WINDOW=1` is now something to run daily. Every check below is headless, on hidden instances, on

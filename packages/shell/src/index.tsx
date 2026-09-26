@@ -45,6 +45,7 @@ export type BrowserCommand =
   | "zoomIn"
   | "zoomOut"
   | "devTools"
+  | "toggleDevTools"
   | "javaScriptConsole"
   | "inspectElements"
   | "viewSource"

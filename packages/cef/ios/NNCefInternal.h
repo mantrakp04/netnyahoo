@@ -114,6 +114,8 @@
 #define NN_POPUP_TABS 0
 #endif
 
+class CefBrowserView;
+
 namespace nn {
 
 constexpr bool kTabCaptureSupported = NN_TAB_CAPTURE;
@@ -231,5 +233,10 @@ void ShowDevTools(CefRefPtr<CefBrowser> browser, NSString *panel, CefPoint inspe
 /// A client for the DevTools window Chrome makes for `inspected` (undocking, or its own Developer
 /// commands): the DevTools' own, never the tab's (CefLifeSpanHandler::OnBeforeDevToolsPopup).
 CefRefPtr<CefClient> DevToolsFrontendClient(CefRefPtr<CefBrowser> inspected);
+/// Puts an undocked DevTools browser view in a window of its own: Dia's title, the frame it was
+/// last left at (CefBrowserViewDelegate::OnPopupBrowserViewCreated). False: CEF's default window.
+bool OpenDevToolsWindow(CefRefPtr<CefBrowserView> view);
+/// F12 with a DevTools window key: closes it. False when the key window isn't one.
+bool CloseKeyDevToolsWindow();
 
 }  // namespace nn

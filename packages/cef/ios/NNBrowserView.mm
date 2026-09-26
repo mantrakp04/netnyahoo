@@ -628,14 +628,22 @@ NSString *const kExitPictureInPictureScript =
   // active tab (made this one first). As in Chrome, Developer Tools and JavaScript Console
   // close docked DevTools again, and Inspect Elements starts the element picker.
   if (host::IsChromeTab(_browser)) {
+    // F12 ("toggle"), Chrome's IDC_DEV_TOOLS_TOGGLE: opens DevTools, closes docked ones, brings
+    // an undocked window forward, and closes that window when it's the one F12 was pressed in.
+    if ([panel isEqualToString:@"toggle"] && nn::CloseKeyDevToolsWindow()) return;
     int command = [panel isEqualToString:@"console"]   ? IDC_DEV_TOOLS_CONSOLE
                   : [panel isEqualToString:@"inspect"] ? IDC_DEV_TOOLS_INSPECT
+                  : [panel isEqualToString:@"toggle"]  ? IDC_DEV_TOOLS_TOGGLE
                                                        : IDC_DEV_TOOLS;
     _browser->GetHost()->ActivateTab();
     _browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
     return;
   }
 #endif
+  if ([panel isEqualToString:@"toggle"]) {
+    if (nn::CloseKeyDevToolsWindow()) return;
+    panel = nil;
+  }
   nn::ShowDevTools(_browser, [panel isEqualToString:@"inspect"] ? @"elements" : panel);
 }
 

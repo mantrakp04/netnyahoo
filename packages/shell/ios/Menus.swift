@@ -366,7 +366,7 @@ enum MainMenu {
         cmd("Developer Tools", "devTools", "i", [.command, .option]),
         cmd("Inspect Elements", "inspectElements", "c", [.command, .option]),
         cmd("JavaScript Console", "javaScriptConsole", "j", [.command, .option]),
-        cmd("Developer Tools", "devTools", String(Character(UnicodeScalar(NSF12FunctionKey)!)), []).hiddenShortcut(),
+        cmd("Developer Tools", "toggleDevTools", String(Character(UnicodeScalar(NSF12FunctionKey)!)), []).hiddenShortcut(),
       ]),
     ])
 

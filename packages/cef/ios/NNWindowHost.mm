@@ -658,6 +658,10 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
   // CefBrowserViewDelegate
   cef_runtime_style_t GetBrowserRuntimeStyle() override { return CEF_RUNTIME_STYLE_CHROME; }
   ChromeToolbarType GetChromeToolbarType(CefRefPtr<CefBrowserView>) override { return CEF_CTT_NONE; }
+  // Undocked DevTools get a window like Dia's (NNDevTools.mm); other popups, CEF's.
+  bool OnPopupBrowserViewCreated(CefRefPtr<CefBrowserView>, CefRefPtr<CefBrowserView> popup, bool is_devtools) override {
+    return is_devtools && OpenDevToolsWindow(popup);
+  }
 
  private:
   /// An app window's Chrome window that swaps out transparent (a popup never swaps).

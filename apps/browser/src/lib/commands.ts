@@ -167,6 +167,9 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return page ? setZoom(page.id, 0) : undefined;
     case "devTools":
       return void web?.showDevTools();
+    // F12, Chrome's DevTools toggle: also closes an undocked DevTools window it's pressed in.
+    case "toggleDevTools":
+      return void web?.showDevTools("toggle");
     case "inspectElements":
       return void web?.showDevTools("inspect");
     case "javaScriptConsole":
