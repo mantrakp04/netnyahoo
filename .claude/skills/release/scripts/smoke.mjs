@@ -157,6 +157,21 @@ await go(`${pages}/form.html`);
 await sleep(1500);
 checkUnlocked("…and closes when the page navigates", !windows().some((w) => /passkey/i.test(w.title)));
 
+// "Allow ads on this site", then off again: each takes effect on the next load of the page. The check
+// sends uBlock's own messages from one of its pages in the tab's profile, as NNContentBlocker does.
+const ubolPage = "chrome-extension://bnjeokpoejhioagiokhkhmdogkhbnbki/manifest.json";
+const adsOnPage = async () => (await go(`${pages}/ad.html`), await evaluate("window.ad"));
+async function allowAds(allowed) {
+  await go(ubolPage);
+  return evaluate(`chrome.runtime.sendMessage({ what: "setFilteringMode", hostname: "localhost", level: ${allowed ? 0 : 2} })`);
+}
+const adSteps = [await adsOnPage()];
+await allowAds(true);
+adSteps.push(await adsOnPage());
+await allowAds(false);
+adSteps.push(await adsOnPage());
+check("allowing ads on a site, then not, applies on the next load", adSteps.join(" → ") === "blocked → loaded → blocked", adSteps.join(" → "));
+
 await go("chrome://version");
 check("chrome://version", (await evaluate("document.body.innerText")).includes("154."));
 

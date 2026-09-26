@@ -479,10 +479,10 @@ void WhenProfileReady(NSString *profile, void (^ready)(CefRefPtr<CefRequestConte
         // load again once it has (loading replaces the earlier copy).
         NSString *prefs = [ProfileDirectory(profile) stringByAppendingPathComponent:@"Preferences"];
         bool fresh = ![NSFileManager.defaultManager fileExistsAtPath:prefs];
-        blocker::LoadIntoProfile(context);
+        blocker::LoadIntoProfile(profile, context);
         if (fresh)
           dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            blocker::LoadIntoProfile(context);
+            blocker::LoadIntoProfile(profile, context);
           });
       }
     }

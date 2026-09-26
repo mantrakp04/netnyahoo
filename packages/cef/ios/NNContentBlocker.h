@@ -15,7 +15,8 @@ NSString *_Nullable ExtensionPath();
 NSString *ExtensionId();
 /// Chrome tabs: loads it as a component (built-in) extension of the context's profile, which
 /// also covers the profile's incognito windows and can't be turned off in chrome://extensions.
-/// Stock CEF loads it unpacked with --load-extension instead (regular profiles only).
-void LoadIntoProfile(CefRefPtr<CefRequestContext> context);
+/// A profile other than the default then gets the default's settings. Stock CEF loads it
+/// unpacked with --load-extension instead (regular profiles only).
+void LoadIntoProfile(NSString *profile, CefRefPtr<CefRequestContext> context);
 
 }  // namespace nn::blocker
