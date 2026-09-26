@@ -78,9 +78,6 @@ public class ShellModule: Module {
 
     // MARK: Windows
 
-    /// False when running in an app build that predates multi-window support.
-    Function("hasWindowHost") { WindowManager.shared.hasHost }
-
     AsyncFunction("openWindow") { (id: String, options: [String: Any]) in
       WindowManager.shared.open(
         id: id,

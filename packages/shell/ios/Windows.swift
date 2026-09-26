@@ -32,8 +32,6 @@ final class WindowManager: NSObject, NSWindowDelegate {
     return auxKinds[id] == nil
   }
 
-  var hasHost: Bool { WindowHost.makeWindow != nil && WindowHost.makeContentView != nil }
-
   func id(of window: NSWindow?) -> String? {
     guard let window else { return nil }
     return windows.first { $0.value === window }?.key

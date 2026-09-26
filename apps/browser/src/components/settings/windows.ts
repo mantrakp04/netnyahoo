@@ -1,4 +1,4 @@
-import { hasWindowHost, openWindow } from "@netnyahoo/shell";
+import { openWindow } from "@netnyahoo/shell";
 import { create } from "zustand";
 import { TASK_MANAGER_WINDOW_ID } from "../taskManager/window";
 
@@ -64,10 +64,10 @@ export const useSettingsNav = create<Nav>((set, get) => ({
 /** ⌘, (optionally straight to a pane). */
 export function openSettings(pane?: SettingsPane, profileId?: string | null) {
   if (pane) useSettingsNav.getState().go(pane, profileId ?? null);
-  if (hasWindowHost) void openWindow(SETTINGS_WINDOW_ID, { kind: "settings", title: "Settings" });
+  void openWindow(SETTINGS_WINDOW_ID, { kind: "settings", title: "Settings" });
 }
 
 /** "Import from Another Browser…" (app menu, Settings, the empty bookmarks bar). */
 export function openImport() {
-  if (hasWindowHost) void openWindow(IMPORT_WINDOW_ID, { kind: "import", title: "Import from Another Browser" });
+  void openWindow(IMPORT_WINDOW_ID, { kind: "import", title: "Import from Another Browser" });
 }

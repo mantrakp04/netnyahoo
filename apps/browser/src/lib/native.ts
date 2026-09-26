@@ -1,7 +1,6 @@
 import { onDownload, releaseProfile } from "@netnyahoo/cef";
 import {
   closeWindow,
-  hasWindowHost,
   isDarkAppearance,
   onAppEvent,
   onCommand,
@@ -52,13 +51,6 @@ export function startNativeSync() {
   startExtensionsBridge();
   onOpenURLs((urls) => openUrls(urls));
   onDownload((d) => store.getState().upsertDownload(d));
-
-  if (!hasWindowHost) {
-    // An app build from before multi-window: it hosts one root (see index.js); follow the system appearance.
-    store.getState().setAppDark(Appearance.getColorScheme() === "dark");
-    Appearance.addChangeListener(({ colorScheme }) => store.getState().setAppDark(colorScheme === "dark"));
-    return;
-  }
 
   store.getState().setAppDark(Appearance.getColorScheme() === "dark");
   void setAppearance(store.getState().settings.appearance);

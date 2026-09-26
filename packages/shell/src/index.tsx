@@ -233,7 +233,6 @@ const Shell = requireNativeModule<{
   pickFiles(): Promise<string[]>;
   readDocument(name: string): string | null;
   writeDocument(name: string, contents: string): void;
-  hasWindowHost?(): boolean;
   openWindow(id: string, options: OpenWindowOptions): Promise<void>;
   closeWindow(id: string): Promise<void>;
   setWindowProfile?(id: string, profile: string, neighbours: string[]): Promise<void>;
@@ -267,10 +266,8 @@ export function showMenu(items: MenuItem[]): Promise<string | null> {
 
 /**
  * Native windows. Each is Chrome's Browser window of its profile with our own React root laid
- * over it, rendered with `initialProperties: { windowId }` on the shared bridge. False on app builds
- * that predate multi-window support: they host a single root with no windowId.
+ * over it, rendered with `initialProperties: { windowId }` on the shared bridge.
  */
-export const hasWindowHost = typeof Shell.hasWindowHost === "function" && Shell.hasWindowHost();
 export const openWindow = (id: string, options: OpenWindowOptions = {}) => Shell.openWindow(id, options);
 /**
  * The window shows another profile (engine profile names): it moves to that profile's Chrome
