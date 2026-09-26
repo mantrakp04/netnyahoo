@@ -278,13 +278,57 @@ because it needs the user present), add it to the **Test ledger** with the exact
     Mac has it off; before, the tracker ignored every swipe here); a wheel mouse's two notches page once, one notch
     doesn't, five in a burst page once, vertical wheel scrolls the list, Shift+wheel pages.
 
+- Headless verification of the 🧪 rows (2026-09-26; Debug `build-verify` with DEV hooks, the 0.2.3 engine and a
+  Release `build-release` check; hidden instances, the screen locked; scripts in the session scratchpad `verify/`:
+  `move.mjs`, `drag.mjs`, `swipe.mjs`, `fullscreen.mjs`, `filechooser.mjs`, `autofill.mjs`, `cardsave.mjs`,
+  `relcheck2.mjs`, `raycast.mjs`). Fixture pages on 127.0.0.1 over HTTP, and over HTTPS with a self-signed
+  certificate trusted through `--ignore-certificate-errors-spki-list` (Chrome fills cards on secure pages only).
+  Test data went in through the app's own APIs (`savePassword`, `saveAddress`, `saveCard`) in throwaway profiles;
+  the card numbers are the networks' published test numbers.
+  - **Moving tabs (ledger 10), 17 + 4 checks.** Tabs › Move to Window (the command), Move to New Window and Merge
+    All Windows: the same CDP target and document (`performance.timeOrigin`, a marker, typed text, scroll, history
+    length), visible in the new window, back and forward still right, and `Browser.getWindowForTarget` shows the
+    WebContents in the target window's Chrome window; the emptied windows close; incognito tabs stay. Dragging:
+    the DEV `drag:` action sends mouse down, dragged and up through `NSWindow sendEvent:` (points outside the
+    window too), so the drag runs through React Native's responder, `layout/tabDrag` and `windowDrop`: a sidebar row
+    dropped on the other window moves there with its page; one dropped on the desktop tears off. (A locked screen
+    held back AppKit's move notifications for programmatic moves, so the test tells the store the frames.)
+  - **Swipe, 15 checks.** `nnSwipe.pane(tab).devSimulate` (CGEvent trackpad events through the window; the renderer
+    acks them): one entry back and forward, Chrome's delegate still chained, short and vertical swipes pass, a
+    carousel keeps the swipe until its start, `overscroll-behavior-x: none` opts out, the destination list (hold,
+    then down: two back), a three-finger swipe, back to the New Tab page and forward from it. A layer snapshot shows
+    the circle and chevron mid-swipe.
+  - **Full screen (ledger 15), 22 checks.** Test instances now act the window's full screen out (NNChromeWindow's
+    `fakeFullScreen:`) instead of skipping it, so the whole path runs. **Two bugs found and fixed:** leaving window
+    full screen by hand (green button, ⌃⌘F) left the page full screen with our chrome hidden (Chrome's own
+    `FullscreenController` reads the state we keep for it), and a page in another profile's window over a
+    full-screen window asked its own window to toggle, which the forwarding sent to the full-screen one, taking it out
+    of full screen.
+  - **File chooser, 12 checks.** Test instances log open and save panels instead of showing them (NNActivation.mm) and
+    answer from `$NETNYAHOO_DATA_DIR/file-chooser.txt`: a sheet on the app window; single, multiple with the
+    `accept` types (Chrome's type menu: PNG image, JPEG image, Custom Files, All Files), folders; files reach the page;
+    Cancel fires `cancel`; `showOpenFilePicker` / `showSaveFilePicker`; DevTools' `setInterceptFileChooserDialog`.
+  - **Passwords and autofill (ledger 17–21).** Saved login in the dropdown (read from its window's accessibility
+    tree), ↓ ↵ fills; our save prompt with no Chrome bubble; addresses fill eight fields; "Save address?" and "Save
+    card?" bubbles, the address one inside the page rect; cards fill on HTTPS. **Two engine bugs found and fixed in
+    0.2.3:** focusing a card field with a saved card crashed the app (`WebTextfieldTouchBarController` with no
+    `BrowserNativeWidget`, `chromium-autofill-card-touchbar.patch`), and password generation was never offered (it
+    required password sync; `chromium-password-generation-local.patch`, which also words its popup for a local
+    store). Generated passwords fill both fields and are saved to the local store at once. Release build: 6/6.
+  - **AppleScript / Raycast, 20 checks.** `osascript` from another process (consent already granted; each call made
+    sure the test instance was the only app with the bundle id, so nothing could launch): the extension's scripts
+    and the dictionary. **Bug found and fixed:** `make new window with properties {URL:…}` failed with -1700 (windows
+    had no URL property).
+  - **Cast.** Only the picker and the toolbar button with a fake Chrome model; the live dialog wasn't opened, since
+    starting discovery can raise macOS's Local Network prompt over the user's screen.
+
 ## Still to run
 Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs the user present" has the script.
-- 15: fullscreen changes Spaces.
-- 19–21: autofill dropdowns need a key window.
+- 15: fullscreen's Space and animation, and a second display (the rest was verified headless, above).
+- 19–21: the dropdowns and bubbles by eye in a key window (filling, saving and generation were verified headless).
 - 27: Touch ID.
 - W2: the Remove sheets need a key window.
-- R2: dragging tabs between windows, and Cast with a real device (parity checklist steps 11–12).
+- R2: dragging tabs between windows with a real mouse (the drop logic ran headless), and Cast with a real device (parity checklist steps 11–12).
 - 28–31: visual QA against Dia 1.50.1 (needs the unlocked screen).
 - 39, 41: phone passkeys, Safe Storage; 40's Google sign-in in the shipped app (checklist step 6).
 - Polish: the PiP extras with a real pointer, and the Raycast extension installed in Raycast (parity checklist
