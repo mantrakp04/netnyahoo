@@ -1,14 +1,13 @@
 import { loadFont } from "@remotion/fonts";
 import { continueRender, delayRender, staticFile } from "remotion";
 
-// The site's palette and type (apps/site/src/styles/global.css).
+// The site's palette and type (apps/site/src/styles/global.css). Three colours, nothing else: paper, ink, campaign red.
 export const C = {
   paper: "#f1ece2",
   paperDeep: "#e6dfd1",
   ink: "#16130f",
   inkSoft: "#5a524a",
   stamp: "#c3371f",
-  tie: "#2150d9",
 };
 
 export const POSTER = "Archivo Poster";

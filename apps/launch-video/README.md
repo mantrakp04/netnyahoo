@@ -1,68 +1,86 @@
-# Netnyahoo launch video
+# Netnyahoo launch video: "Full Immunity"
 
-A 20.6-second, 4:5 (1080×1350) loop for X, made with Remotion: a deadpan campaign ad for a browser.
-It opens on a live Netnyahoo window ("Full immunity. Immune to ads, trackers and prosecution."), then
-five pledges (the address bar dissolving into the sidebar first, on real before/after captures), then the
-game comes in late ("And when the Wi-Fi dies, Chrome gives you a dinosaur" → "Find him."), Big Yahu comes
-up out of the crowd, and the ad ends on its call to action, "Impeach Chrome. Make Netnyahoo your default."
-The last frame is the first, so it loops. Type sizes are fixed per line (nothing is measured at render
-time) and every frame waits for the fonts, so no frame lays out differently from its neighbours.
+A 31-second, 4:5 (1080×1350) spot for X, made with Remotion. It's a political contrast ad for the office of
+default browser. The first 9 seconds are a grainy black-and-white attack ad on the web as Chrome serves it. The
+rest is a warm "morning" ad in which every claim on Netnyahoo's record is shown by a real capture of the app.
+It ends on Big Yahu's portrait, "Impeach Chrome.", and a "Paid for by nobody" card that loops back into frame 0.
+The treatment is in `output/launch-video/treatment.md` (gitignored); the research behind it is in
+`docs/research/launch-video-playbook.md`.
 
 Standalone package (excluded from the root workspace, like `apps/site`):
 
 ```bash
 cd apps/launch-video
 pnpm install
-pnpm prepare-assets   # window captures, the Big Yahu model, fonts, your clips/, and the soundtrack
-pnpm capture          # renders the game's rounds from apps/browser/assets/offline-game, frame by frame
+pnpm prepare-assets   # captures, sound parts, the Big Yahu model, fonts → public/; builds public/sound/track.wav
 pnpm dev              # Remotion Studio
-pnpm render           # → output/launch-video/netnyahoo-launch.mp4 (the soundtrack muxed on with ffmpeg)
-pnpm cover            # → the cover still and the answer still
+pnpm render           # → output/launch-video/netnyahoo-launch.mp4 (picture + soundtrack, encoded for upload)
+pnpm cover            # → output/launch-video/netnyahoo-launch-cover.png
 ```
 
-Where the pictures come from:
+`src/timeline.ts` holds every beat (frames) and sound cue (seconds). The picture is cut to the score: the
+morning cue's bars land on the feature cuts, and its last hit lands on the portrait.
 
-- The opener and pledge 1 are Netnyahoo (the sidebar-address-bar build) on earth.nullschool.net in a
-  hidden test instance, dark mode, 1440×900. The windows are ScreenCaptureKit captures with the address
-  bar in the sidebar (`assets/window-sidebar.webp`) and in the toolbar (`assets/window-toolbar.webp`);
-  the sidebar window's page area plays the page's own CDP screencast, retimed to 30 fps
-  (`assets/opener-page.mp4`). The toolbar outline is an annotation; the fold is a crossfade between the
-  two real states.
-- Pledges 2–5 are window captures of Netnyahoo 0.1.0 (`assets/shots`, from the site's shots), with
-  camera moves on them. They are stills.
-- The offline window is a window capture of Netnyahoo 0.1.2 on x.com while offline
-  (`assets/window-offline.webp`); its tab shows frames of the real offline game, captured at the tab's
-  exact size by `scripts/capture-game.mjs` in headless Chromium on a frame-exact clock (real motion).
-- Big Yahu is the site's model (`apps/site/public/models/big-yahu.glb`), rendered with three.js per frame.
+## Where the pictures come from
+
+Everything in `assets/` is a real capture of Netnyahoo 0.2.2 (a DEV build of the same source) or of a web
+page in it. The captures were taken in hidden test instances (`NETNYAHOO_BACKGROUND=1`, their own
+`NETNYAHOO_DATA_DIR`, CDP on ports 9601–9603) while the Mac's screen was locked, so without WindowServer capture:
+
+- **Our UI** comes from the app drawing its own window in-process (`nn.shell.devSnapshotWindow`, 2x), driven
+  by the DEV harness (`scripts/capture/harness/*.js`, run with `scripts/capture/dev.mjs`). Motion is
+  stepped: one snapshot per state change or per 1/30 s of a synthetic gesture, then retimed to real
+  cadence. The address bar gets one snapshot per typed letter (about 110 ms apart in the cut). The profile
+  swipe is a two-finger gesture fed through the real tracker (`nnSwipe.sidebar().devSimulate`).
+- **Pages** come from CDP (`Page.captureScreenshot` and the screencast). Animated pages (the WebGL
+  Aquarium, earth.nullschool.net, netnyahoo.com's Big Yahu) run on `scripts/clock.js`, stepped 1/30 s per
+  frame. `scripts/capture/composite.py` places each page at the WebContents rect (380, 12, 2486×1774 at 2x)
+  wherever our UI doesn't draw over it.
+- **The window's traffic lights and corner shape** come from a `screencapture -l` still of the same build.
+  While ScreenCaptureKit streams a window, macOS replaces the lights with its "being shared" pill.
+- **The attack half** uses two instances. One has the content blocker switched off (the cookie wall, the
+  ad-laden forecast page); the other is at the defaults, uBlock Origin Lite on (the same page, clean, at the
+  turn). The sites stay anonymous: the forecast page's logo is blurred in the source, and the grade's
+  softness takes the ads' small print and brands with it. The cookie wall is cropped to its heading because
+  the page above it showed an IP address.
+- **"22 ad companies"** was measured with `scripts/capture/netcount.mjs`, the third-party registrable domains
+  a weather.com forecast page requested over 25 s with blocking off. Two loads came to 43 and 45 domains.
+  Grouped by company, with CDNs and anything unidentified left out, that's 23 and 22 ad and tracking
+  companies, so 22 is true of both loads. With Netnyahoo's defaults the page made 180 requests instead of
+  362, and 23 were blocked by the client.
+- **The Web Store click** is a real CDP click on the store's own "Add to Netnyahoo" button. The cursor is
+  composited from macOS's own pointing-hand artwork (HIServices), and the install spinner is time-compressed.
+- **The court record** is the real `spctl -a -vv` verdict on `dist/0.2.2/export/Netnyahoo.app`, typeset
+  (the `origin=` line, with a personal name, is left out).
+- **Big Yahu** is the site's model (`apps/site/public/models/big-yahu.glb`), rendered with three.js per frame.
+
+To redo the captures: build a DEV app, keep Metro running on :8081, then
+`CAPTURE_DIR=… scripts/capture/launch.sh <name> <port>`. Then run the harness scripts (concatenated after
+`harness/common.js`) with `dev.mjs`, the CDP tools (`screencast.mjs`, `shotloop.mjs`, `clickloop.mjs`,
+`clockcap.mjs`), and finally `build-shots.py` and `prep-web.py`, which write `assets/`.
 
 ## Sound
 
-`scripts/make-sound.mjs` builds `public/sound/track.wav`, all generated locally:
+Everything is ElevenLabs, generated by `scripts/audio/` with the key in `ELEVENLABS_API_KEY` or `.env`
+(gitignored, never printed; errors are redacted). The chosen takes are committed in `assets/sound/`, and
+`scripts/make-sound.mjs` mixes them into `public/sound/track.wav`.
 
-- The score and effects (`scripts/sound/score.js`), synthesized with WebAudio in headless Chromium:
-  a campaign-ad march in B♭ at 120 bpm (detuned-saw brass, a trumpet lead, tuba, snare, timpani, a
-  convolution hall) under the opener and pledges, one bar per pledge; a record scratch and power-down
-  at "And when the Wi-Fi dies", then mains hum; a game-show clock and pulse under "Find him."; a sting
-  under "Impeach Chrome." with an orchestra hit on the INCUMBENT stamp; a snare roll in the bridge
-  that lands on frame 0's fanfare. The timeline is rendered twice and the second pass kept, so tails
-  wrap across the loop point.
-- The narrator (optional): `VO_VOICE="<voice>" SOUND_OUT=track-vo.wav node scripts/make-sound.mjs`
-  renders the lines with macOS `say`, shapes them with ffmpeg and ducks the music under them;
-  `pnpm render` then also writes `netnyahoo-launch-vo-preview.mp4`. The main cut has no narrator
-  until an Enhanced or Premium voice is installed (System Settings › Accessibility › Spoken Content ›
-  System Voice › Manage Voices); only compact voices are installed now.
-- The mix is set to -14 LUFS integrated with a limiter at about -1 dBTP.
+- **Narrator.** A voice designed for this spot ("Netnyahoo Narrator", `text-to-voice/design` on
+  eleven_ttv_v3): a late-fifties American baritone, grave, unhurried and sincere. It isn't a library voice,
+  and it doesn't imitate anyone. It was picked from six designs by measurement: median F0 88 Hz,
+  1.55 words/s, 5.4-semitone pitch spread, and a word-perfect Scribe transcript. Each line was generated on
+  eleven_v3 in four takes (`vo.mjs`), comped by timing and pitch fall, and placed by hand; the disclaimer is
+  read 1.12x faster. `transcribe.mjs` (Scribe v2) checks every take's words and word timings.
+- **Score.** Eleven Music `music_v2_5`, instrumental. The attack cue is tense low strings and a timpani pulse,
+  compressed so it survives a phone speaker. The morning cue is a 96 BPM campaign score: piano ostinato,
+  then snare, pizzicato and horn two bars in. Plan chunks' `text` is sung as lyrics, so the morning cue comes
+  from a prompt with `force_instrumental`. Every cue was transcribed to make sure it has no voice.
+- **Foley** (`sfx.mjs`, eleven_text_to_sound_v2): a projector bed under the black and white, one tally click
+  per counted company, rubber stamps, MacBook key taps per typed letter, a trackpad swipe and clicks, and
+  booth room tone under everything. No whooshes, no risers.
+- **Mix.** The score ducks under the voice (an envelope follower), drops out under "Investigated by Apple…
+  cleared of all charges" and comes back on the portrait's chord. The master is a static gain to -14 LUFS
+  integrated plus a 4x-oversampled limiter. The delivered file measures -14.0 LUFS, -1.2 dBTP, LRA 4.1 LU.
 
-## Shot list (real UI motion to replace the stills)
-
-Record each as a window-only clip of a Netnyahoo window at **1440×900 points** (dark mode, sidebar open,
-a wallpaper behind it so the sidebar's translucency shows), 30 fps, about **2.5 s**, H.264 `.mp4`,
-cropped to the window. Save it as `apps/launch-video/clips/<name>.mp4`, run `pnpm prepare-assets` and
-`pnpm render`; the clip plays in place of that pledge's still (`src/Launch.tsx`, `clip`).
-
-| File | Pledge | What to do on camera |
-|---|---|---|
-| `split.mp4` | Two pages. No coalition talks. | Start on one page, drag a sidebar tab onto the page's right half, let the split settle, scroll the right pane a little. |
-| `extensions.mp4` | Forms a coalition with any extension. | On a Chrome Web Store extension page, move to "Add to Netnyahoo", click it, confirm, and hold on the added state. |
-| `ublock.mp4` | Tracks nothing. | Open Settings › Privacy & Security, toggle "Block ads" off and on, then hover the rules-loaded count. |
-| `command-bar.mp4` | AI features: zero. | Press ⌘T or ⌘L, type a short query letter by letter so suggestions appear, press Return, and hold on the results. |
+Rights: all generations were made on a paid ElevenLabs plan (Creator), which includes a commercial license
+(ElevenLabs, "Can I publish the content I generate on the platform?").
