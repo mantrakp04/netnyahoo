@@ -1,0 +1,23 @@
+packages/cef/ios/NNExtensions.h
+  s_9c356f9574d31c::t_8505307c27cbf3 2
+packages/cef/src/native.ts
+  s_9c356f9574d31c::t_8505307c27cbf3 2
+packages/cef/ios/NNExtensionsInternal.h
+  s_9c356f9574d31c::t_8505307c27cbf3 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4bde9b633c4d1b619296703cc239ff0123fa0fa8",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
