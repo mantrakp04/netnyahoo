@@ -1,0 +1,25 @@
+package.json
+  s_9c356f9574d31c::t_7fdde92fada1bb 17-18
+LICENSE
+  s_9c356f9574d31c::t_b1d13830ff19f7 1-202
+NOTICE
+  s_9c356f9574d31c::t_7fdde92fada1bb 1-12
+README.md
+  s_9c356f9574d31c::t_c139fd050f8cca 122,124-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2bbe12a6eef968929ac989ed5895915df4452c5b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
