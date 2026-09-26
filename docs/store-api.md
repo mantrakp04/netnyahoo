@@ -18,6 +18,9 @@ modules before using them — this is a summary from the agent that built it.
   `mergeAllWindows`, `reopenClosed` / `reopenClosedTab` / `reopenClosedWindow`, `restoreClosed`.
 - Tabs: `newTab(windowId, { url, background, adoptId, openerId, profileId, pinned, index })`, `closeTab`,
   `closeTabs`, `activate`, `navigate`, `updateTab`, `updateLive`, `togglePin`, `moveTab`, `duplicateTab`.
+  Closing a pinned tab only unloads it (`unloadPinnedTabs`, like Dia): the tile stays with `unloaded: true`, back at its
+  pinned URL and without a web view until selected; the window selects its last-used regular tab, else a New Tab page,
+  and ⇧⌘T restores the page into the tile. Unpin removes a pinned tab.
   `duplicateTab` and Reopen Closed Tab set `adoptId` to `clone:<tab id>` / `restore:<tab id>` (`ClosedTab.tabId`):
   the engine copies or restores that tab's back/forward list, else the tab loads its URL.
 - Groups: `createGroup`, `addTabsToGroup`, …

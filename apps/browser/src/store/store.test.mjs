@@ -45,7 +45,8 @@ test("closeTabs keeps a New Tab page, pins sort first, moveTab within section", 
   S().moveTab(b, 0);
   assert.deepEqual(view(w), ["https://c.com", "https://b.com", "https://a.com"]);
   S().closeTabs(model.viewTabIds(S(), w));
-  assert.deepEqual(view(w), [""]);
+  // The pinned tab stays (its page unloads); a New Tab page takes the place of the rest.
+  assert.deepEqual(view(w), ["https://c.com", ""]);
 });
 
 test("profiles: switch, move tab, delete; isolation of views", () => {

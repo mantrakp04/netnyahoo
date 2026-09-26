@@ -35,13 +35,21 @@ export function startChromeTabs() {
   });
 }
 
-/** Tabs whose web view has a live browser (they're what the engine can hand over or place). */
-const liveTabs = () => new Set(Object.values(usePages.getState().browsers));
+/**
+ * Tabs whose web view has a browser, with its id (they're what the engine can hand over or place).
+ * An unloaded pinned tab keeps its old browser id in pageState but has no web view.
+ */
+const liveTabs = () =>
+  new Map(
+    Object.entries(usePages.getState().browsers)
+      .filter(([, tabId]) => webviews.has(tabId))
+      .map(([browserId, tabId]) => [tabId, browserId]),
+  );
 
 // MARK: Moves between windows
 
 function announceMoves(s: BrowserState, prev: BrowserState) {
-  let live: Set<string> | null = null;
+  let live: Map<string, string> | null = null;
   for (const [id, tab] of Object.entries(s.tabs)) {
     const before = prev.tabs[id];
     if (!before || before.windowId === tab.windowId) continue;
@@ -56,6 +64,13 @@ function announceMoves(s: BrowserState, prev: BrowserState) {
 
 /** Last place sent per tab, so unchanged tabs aren't touched. */
 const placed = new Map<string, string>();
+/**
+ * When the app last placed a tab. The engine applies places asynchronously (after the call
+ * returns) and Chrome reports every tab after each change, so for a moment reports carry the
+ * state from before: those aren't an extension's doing.
+ */
+let lastPlacedAt = 0;
+const ECHO_MS = 1000;
 let syncQueued = false;
 
 function scheduleStripSync() {
@@ -84,9 +99,11 @@ function syncStrips() {
       const index = indexes.get(profile) ?? 0;
       indexes.set(profile, index + 1);
       seen.add(id);
-      const key = `${index}|${tab.pinned ? 1 : 0}`;
+      // Per browser: a pinned tab's page that unloaded and loads again is a new Chrome tab to place.
+      const key = `${live.get(id)}|${index}|${tab.pinned ? 1 : 0}`;
       if (placed.get(id) === key) continue;
       placed.set(id, key);
+      lastPlacedAt = Date.now();
       void webviews.get(id)?.setTabStrip(index, !!tab.pinned);
     }
   }
@@ -103,6 +120,14 @@ export function onChromeTabStrip(tabId: string, place: TabStripPlace) {
   const w = tab && s.windows[tab.windowId];
   if (!tab || !w) return;
   if (!!tab.pinned !== place.pinned) {
+    // Chrome's state before our places apply: a Chrome tab not placed yet (a new pinned tab, or a
+    // pinned tab's page loading again or restored by ⇧⌘T, starts unpinned), or any tab right after
+    // a place. Following it flipped pins back and forth (each re-pin reset the pinned URL); the
+    // sidebar's state is sent again instead.
+    if (Date.now() - lastPlacedAt < ECHO_MS || !placed.get(tabId)?.startsWith(`${liveTabs().get(tabId)}|`)) {
+      placed.delete(tabId);
+      return scheduleStripSync();
+    }
     // Ours to follow, and remembered so the next sync doesn't undo it.
     placed.delete(tabId);
     s.togglePin(tabId);

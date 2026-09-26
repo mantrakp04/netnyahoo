@@ -13,9 +13,9 @@ import {
   viewTabIds,
   without,
 } from "./model";
-import { groupWithOpener, onUrlChange, pruneSelection } from "./organize";
+import { groupWithOpener, onUrlChange, pruneSelection, samePage } from "./organize";
 import { searchUrlPrefix } from "./settings";
-import { removeFromSplits } from "./splits";
+import { removeFromSplits, splitOf } from "./splits";
 import type { BrowserWindow, ClosedTab, Tab, TabLive, TabSnapshot } from "./types";
 
 export type NewTabOptions = {
@@ -54,9 +54,12 @@ export type TabsSlice = {
   closedTabs: ClosedTab[];
 
   newTab(windowId: string, options?: NewTabOptions): string;
-  /** ⌘W. Closing the last tab of the window's profile closes the window (ask first: lib/actions). */
+  /**
+   * ⌘W. Closing the last tab of the window's profile closes the window (ask first: lib/actions).
+   * A pinned tab isn't removed: its page unloads (`unloadPinnedTabs`); Unpin removes it.
+   */
   closeTab(id: string): void;
-  /** Bulk close (others/above/below/all); leaves a New Tab page if the view would be empty. */
+  /** Bulk close (others/above/below/all); leaves a New Tab page if the view would be empty. Pinned tabs unload. */
   closeTabs(ids: string[]): void;
   activate(id: string): void;
   /** Index into the window's view; -1 = last. */
@@ -106,7 +109,8 @@ export function activated(s: BrowserState, id: string): Partial<BrowserState> {
   const w = tab && s.windows[tab.windowId];
   if (!tab || !w) return {};
   const lazy = !!tab.url && !tab.navigation && !tab.adoptId;
-  const nextTab: Tab = { ...tab, lastActiveAt: Date.now(), ...(lazy ? { navigation: navigationTo(tab.url) } : {}) };
+  const { unloaded: _, ...rest } = tab;
+  const nextTab: Tab = { ...rest, lastActiveAt: Date.now(), ...(lazy ? { navigation: navigationTo(tab.url) } : {}) };
   const window: BrowserWindow = {
     ...w,
     profileId: w.incognito ? w.profileId : tab.profileId,
@@ -168,7 +172,10 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
     for (const [profileId, activeId] of Object.entries(w.activeTabIds)) {
       if (!gone.has(activeId)) continue;
       const before = w.tabIds.filter((id) => s.tabs[id]?.profileId === profileId);
-      const after = before.filter((id) => !gone.has(id));
+      const left = before.filter((id) => !gone.has(id));
+      // A pinned tab the user unloaded is only picked when nothing else is left.
+      const awake = left.filter((id) => !s.tabs[id]?.unloaded);
+      const after = awake.length ? awake : left;
       const index = before.indexOf(activeId);
       const next = after.find((id) => before.indexOf(id) > index) ?? after.at(-1);
       if (next) activeTabIds[profileId] = next;
@@ -198,6 +205,76 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
     if (t && t.url && !t.navigation && !t.adoptId) next = apply(next, activated(next, t.id));
   }
   return next;
+}
+
+/**
+ * ⌘W on a pinned tab, after Dia (`closeFocusedContent` closes with `.deselectPinnedIfActive`):
+ * the tile stays and only its page closes, so its browser and renderer go. The tile goes back
+ * to its pinned URL (with that page's title and icon from history) and loads it when selected
+ * again; ⇧⌘T instead brings back the page it showed, with its back/forward list. A window
+ * showing it selects the regular tab it showed last (Dia's
+ * `lastNonPinnedTabBeforePinnedSelection`), else a New Tab page. `ids` may include other tabs
+ * being closed with it: those aren't picked.
+ */
+export function unloadPinnedTabs(s: BrowserState, ids: string[]): BrowserState {
+  const closing = new Set(ids);
+  const pinned = ids.filter((id) => s.tabs[id]?.pinned);
+  if (!pinned.length) return s;
+  const gone = new Set(pinned);
+  const now = Date.now();
+  const tabs = { ...s.tabs };
+  const live = { ...s.live };
+  const closed: ClosedTab[] = [];
+  for (const id of pinned) {
+    const t = s.tabs[id]!;
+    const w = s.windows[t.windowId];
+    const loaded = !!(t.navigation || t.adoptId);
+    if (loaded && t.url) {
+      closed.push({ kind: "tab", id: newId("ct"), tab: snapshotTab(t), tabId: id, windowId: t.windowId, index: w?.tabIds.indexOf(id) ?? 0, group: null, closedAt: now, pinnedTile: true });
+    }
+    tabs[id] = { ...t, ...backToPin(s, t), navigation: null, adoptId: undefined, unloaded: true };
+    live[id] = IDLE_LIVE;
+  }
+  let next: BrowserState = {
+    ...s,
+    tabs,
+    live,
+    find: without(s.find, gone),
+    splits: removeFromSplits(s.splits, gone),
+    selection: pruneSelection(s.selection, gone),
+    closedTabs: closed.length ? [...s.closedTabs, ...closed].slice(-MAX_CLOSED_TABS) : s.closedTabs,
+  };
+  for (const w of Object.values(s.windows)) {
+    for (const [profileId, activeId] of Object.entries(w.activeTabIds)) {
+      if (!gone.has(activeId)) continue;
+      const shown = profileId === w.profileId;
+      let replacement = lastRegularTab(s, w, activeId, closing);
+      if (!replacement) [next, replacement] = withNewTab(next, w.id, { profileId, background: !shown });
+      if (shown) next = apply(next, activated(next, replacement));
+      else {
+        const win = next.windows[w.id]!;
+        next = { ...next, windows: { ...next.windows, [w.id]: { ...win, activeTabIds: { ...win.activeTabIds, [profileId]: replacement } } } };
+      }
+    }
+  }
+  return next;
+}
+
+/** A pinned tab's pinned URL, title and icon, if it navigated away (history knows the page's title and icon). */
+function backToPin(s: BrowserState, t: Tab): Partial<Tab> {
+  const home = t.pinnedUrl;
+  if (!home || !t.url || samePage(t.url, home)) return {};
+  const entry = s.history[t.profileId]?.find((h) => samePage(h.url, home));
+  return { ...onUrlChange(s, t, home), url: home, ...(entry ? { title: entry.title, favicon: entry.favicon ?? t.favicon } : {}) };
+}
+
+/** The regular tab a window selects when its pinned tab `id` unloads: a pane of its split, else the one used last. */
+function lastRegularTab(s: BrowserState, w: BrowserWindow, id: string, closing: Set<string>): string | undefined {
+  const profileId = s.tabs[id]!.profileId;
+  const candidates = w.tabIds.filter((t) => !closing.has(t) && s.tabs[t]?.profileId === profileId && !s.tabs[t]!.pinned);
+  const panes = splitOf(s, id)?.tabIds.filter((t) => candidates.includes(t)) ?? [];
+  const pool = panes.length ? panes : candidates;
+  return pool.reduce<string | undefined>((best, t) => (!best || s.tabs[t]!.lastActiveAt > s.tabs[best]!.lastActiveAt ? t : best), undefined);
 }
 
 /** Adds a tab to a window (see NewTabOptions) and returns the new state + tab id. */
@@ -254,19 +331,21 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     const tab = s.tabs[id];
     const w = tab && s.windows[tab.windowId];
     if (!tab || !w) return;
+    if (tab.pinned) return set(unloadPinnedTabs(s, [id]));
     // Last tab of the profile the window shows: the window closes (with all its profiles' tabs), like Dia.
     if (tab.profileId === w.profileId && viewTabIds(s, w.id).length === 1) return get().closeWindow(w.id);
     set(removeTabs(s, [id], true));
   },
 
   closeTabs(ids) {
-    let s = get();
+    let s = unloadPinnedTabs(get(), ids);
+    const closing = ids.filter((id) => !s.tabs[id]?.pinned);
     // Keep the window: if its view would empty, leave a New Tab page.
     for (const w of Object.values(s.windows)) {
       const view = viewTabIds(s, w.id);
-      if (view.length && view.every((id) => ids.includes(id))) s = withNewTab(s, w.id)[0];
+      if (view.length && view.every((id) => closing.includes(id))) s = withNewTab(s, w.id)[0];
     }
-    set(removeTabs(s, ids, true));
+    set(removeTabs(s, closing, true));
   },
 
   activate(id) {
@@ -296,7 +375,8 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
       return;
     }
     // Setting `url` right away hides the New Tab page while the page loads.
-    set(apply(s, { tabs: { ...s.tabs, [id]: { ...tab, navigation: navigationTo(url, userInitiated), url: tab.url || url } } }));
+    const { unloaded: _, ...rest } = tab;
+    set(apply(s, { tabs: { ...s.tabs, [id]: { ...rest, navigation: navigationTo(url, userInitiated), url: tab.url || url } } }));
     const ui = get().windowUi[tab.windowId];
     if (ui?.panel.open) get().closePanel(tab.windowId);
   },

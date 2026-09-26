@@ -1,4 +1,4 @@
-import { ActivitySpinner, ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
+import { ActivitySpinner, ContextMenuArea, FadeLabel, MouseArea, Surface, Symbol } from "@netnyahoo/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Pressable, TextInput, View, type GestureResponderEvent } from "react-native";
 import { closeTab, toggleMute } from "../../lib/actions";
@@ -58,63 +58,65 @@ export function TabRow({ tabId }: { tabId: string }) {
       {...hoverProps}
       onDoubleClick={() => void startRename(windowId, { kind: "tab", id: tabId })}
     >
-      <ContextMenuArea
-        onContextMenu={() => {
-          dismissHover();
-          void openTabMenu(windowId, tab);
-        }}
-      >
-        <Pressable
-          onPress={(e) => {
+      <MouseArea onMiddleClick={() => void closeTab(tabId)}>
+        <ContextMenuArea
+          onContextMenu={() => {
             dismissHover();
-            clickTab(windowId, tabId, clickMods(e));
+            void openTabMenu(windowId, tab);
           }}
         >
-          {({ pressed }) => (
-            // Selected: dark fill + TabOutline hairline + TabSelectedShadow glow (white in dark mode).
-            <Surface
-              fill={hex(!active && pressed ? theme.tabPressed : fill)}
-              cornerRadius={10}
-              borderWidth={border}
-              borderColor={selected && !active ? hex(tokens.multiSelectedStroke) : undefined}
-              borderColors={active ? theme.tabSelectedBorder.map(hex) : undefined}
-              shadowColor={active ? hex(theme.tabSelectedShadow) : undefined}
-              shadowOpacity={active ? 1 : 0}
-              shadowRadius={theme.tabSelectedShadowRadius}
-              shadowOffset={[0, 0.5]}
-              // TabContentView: favicon 16 at x 9, title 7 after it, close button 22 at 6 from the end.
-              // The border takes layout room, so the padding gives it back: nothing moves on selection.
-              style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 - border, paddingRight: 6 - border }}
-            >
-              <View>
-                <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
-                <TabBadges tabId={tab.id} />
-              </View>
-              {(playingAudio || tab.muted) && (
-                <Pressable onPress={() => toggleMute(tab.id)} style={{ marginLeft: 6 }} tooltip={tab.muted ? "Unmute Site" : "Mute Site"}>
-                  <Symbol name={tab.muted ? "speaker.slash" : "speaker.wave.2"} size={12} color={theme.textTab} style={{ width: 18, height: 16 }} />
-                </Pressable>
-              )}
-              {renaming ? (
-                <RenameField
-                  initial={tab.customTitle ?? tab.title}
-                  placeholder={tab.title || "Tab name"}
-                  color={active ? theme.tabSelectedText : theme.textPrimary}
-                  onDone={(text) => (text === null ? endRename({ kind: "tab", id: tabId }) : commitRename({ kind: "tab", id: tabId }, text))}
-                />
-              ) : (
-                <FadeLabel text={title} fontSize={13} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 18, marginLeft: 5 }} />
-              )}
-              {hovered && !renaming ? (
-                <IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => void closeTab(tab.id)} tooltip="Close Tab (⌘W)" />
-              ) : (
-                // TabContentView's trailing ActivitySpinnerView: 12pt, 8pt from the row's end.
-                loading && <ActivitySpinner style={{ width: 12, height: 12, marginLeft: 6, marginRight: 2 }} />
-              )}
-            </Surface>
-          )}
-        </Pressable>
-      </ContextMenuArea>
+          <Pressable
+            onPress={(e) => {
+              dismissHover();
+              clickTab(windowId, tabId, clickMods(e));
+            }}
+          >
+            {({ pressed }) => (
+              // Selected: dark fill + TabOutline hairline + TabSelectedShadow glow (white in dark mode).
+              <Surface
+                fill={hex(!active && pressed ? theme.tabPressed : fill)}
+                cornerRadius={10}
+                borderWidth={border}
+                borderColor={selected && !active ? hex(tokens.multiSelectedStroke) : undefined}
+                borderColors={active ? theme.tabSelectedBorder.map(hex) : undefined}
+                shadowColor={active ? hex(theme.tabSelectedShadow) : undefined}
+                shadowOpacity={active ? 1 : 0}
+                shadowRadius={theme.tabSelectedShadowRadius}
+                shadowOffset={[0, 0.5]}
+                // TabContentView: favicon 16 at x 9, title 7 after it, close button 22 at 6 from the end.
+                // The border takes layout room, so the padding gives it back: nothing moves on selection.
+                style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 - border, paddingRight: 6 - border }}
+              >
+                <View>
+                  <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
+                  <TabBadges tabId={tab.id} />
+                </View>
+                {(playingAudio || tab.muted) && (
+                  <Pressable onPress={() => toggleMute(tab.id)} style={{ marginLeft: 6 }} tooltip={tab.muted ? "Unmute Site" : "Mute Site"}>
+                    <Symbol name={tab.muted ? "speaker.slash" : "speaker.wave.2"} size={12} color={theme.textTab} style={{ width: 18, height: 16 }} />
+                  </Pressable>
+                )}
+                {renaming ? (
+                  <RenameField
+                    initial={tab.customTitle ?? tab.title}
+                    placeholder={tab.title || "Tab name"}
+                    color={active ? theme.tabSelectedText : theme.textPrimary}
+                    onDone={(text) => (text === null ? endRename({ kind: "tab", id: tabId }) : commitRename({ kind: "tab", id: tabId }, text))}
+                  />
+                ) : (
+                  <FadeLabel text={title} fontSize={13} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 18, marginLeft: 5 }} />
+                )}
+                {hovered && !renaming ? (
+                  <IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => void closeTab(tab.id)} tooltip="Close Tab (⌘W)" />
+                ) : (
+                  // TabContentView's trailing ActivitySpinnerView: 12pt, 8pt from the row's end.
+                  loading && <ActivitySpinner style={{ width: 12, height: 12, marginLeft: 6, marginRight: 2 }} />
+                )}
+              </Surface>
+            )}
+          </Pressable>
+        </ContextMenuArea>
+      </MouseArea>
     </View>
   );
 }

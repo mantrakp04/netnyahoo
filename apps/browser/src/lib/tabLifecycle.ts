@@ -401,7 +401,8 @@ export function reloadRecentTabs(sys: SystemState) {
   const shown = shownTabIds(s);
   const since = Date.now() - 24 * 60 * 60_000;
   const ids = Object.values(s.tabs)
-    .filter((t) => t.url && !t.navigation && !t.adoptId && !shown.has(t.id) && !isInternalTab(t) && t.lastActiveAt >= since)
+    // Not pinned tabs the user unloaded (⌘W): they stay unloaded until selected.
+    .filter((t) => t.url && !t.navigation && !t.adoptId && !t.unloaded && !shown.has(t.id) && !isInternalTab(t) && t.lastActiveAt >= since)
     // Tabs of the profile their window shows; others would only sleep again with their profile.
     .filter((t) => s.windows[t.windowId]?.profileId === t.profileId)
     .sort((a, b) => b.lastActiveAt - a.lastActiveAt)

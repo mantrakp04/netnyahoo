@@ -313,6 +313,16 @@ function canRestoreTabInto(s: BrowserState, c: ClosedTab, windowId: string | und
 
 function restoreTab(s: BrowserState, entry: ClosedTab, requested?: string | null): BrowserState {
   const closedTabs = s.closedTabs.filter((c) => c.id !== entry.id);
+  // A pinned tab's unloaded page goes back into its tile (Dia's restoreTabContentPane), with its back/forward list.
+  const tile = entry.pinnedTile && entry.tabId ? s.tabs[entry.tabId] : undefined;
+  if (tile) {
+    const unloaded = !tile.navigation && !tile.adoptId;
+    const tabs = unloaded
+      ? { ...s.tabs, [tile.id]: { ...tile, url: entry.tab.url, title: entry.tab.title, favicon: entry.tab.favicon, muted: entry.tab.muted, adoptId: `restore:${tile.id}` } }
+      : s.tabs;
+    const next: BrowserState = { ...s, closedTabs, tabs };
+    return apply(next, activated(next, tile.id));
+  }
   const original = s.windows[entry.windowId];
   let windowId = original && canRestoreTabInto(s, entry, original.id) ? original.id : resolveWindowId(s, requested);
   let next: BrowserState = { ...s, closedTabs };

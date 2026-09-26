@@ -33,13 +33,16 @@ export function switchToTab(tabId: string) {
   if (tab.windowId !== store().ui.focusedWindowId) focus(tab.windowId);
 }
 
-/** ⌘W. Closing the last tab closes the window; Dia asks first ("Warn before closing last tab in a Profile"). */
+/**
+ * ⌘W. Closing the last tab closes the window; Dia asks first ("Warn before closing last tab in a Profile").
+ * A pinned tab stays, its page unloaded (store/tabs `unloadPinnedTabs`).
+ */
 export async function closeTab(tabId: string) {
   const s = store();
   const tab = s.tabs[tabId];
   const w = tab && s.windows[tab.windowId];
   if (!tab || !w) return;
-  const last = tab.profileId === w.profileId && viewTabIds(s, w.id).length === 1;
+  const last = !tab.pinned && tab.profileId === w.profileId && viewTabIds(s, w.id).length === 1;
   if (last && s.settings.warnBeforeClosingLastTab && !w.incognito) {
     // Same Dia wording as closing the window itself (lib/windowClose).
     const { confirmed, suppressed } = await confirm({ ...closeWindowDialog(w.id), suppression: "Don’t ask me again", windowId: w.id });

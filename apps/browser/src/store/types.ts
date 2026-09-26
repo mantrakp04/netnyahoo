@@ -78,6 +78,11 @@ export type Tab = {
   openerId: string | null;
   /** Opened from a live folder item: the tab shows inside that folder (src/live). */
   liveItem?: { folderId: string; itemId: string };
+  /**
+   * A pinned tab closed with ⌘W (store/tabs `unloadPinnedTabs`): its tile stays and its page is
+   * closed until it's selected again, including after a relaunch.
+   */
+  unloaded?: boolean;
   createdAt: number;
   /** For MRU switching and cleaning up idle tabs. */
   lastActiveAt: number;
@@ -174,6 +179,8 @@ export type ClosedTab = {
   index: number;
   group: Pick<TabGroup, "id" | "name" | "icon" | "color"> | null;
   closedAt: number;
+  /** The page of a pinned tab that ⌘W unloaded: reopening loads it back into that tile. */
+  pinnedTile?: boolean;
 };
 
 export type ClosedWindow = {

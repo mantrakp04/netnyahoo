@@ -1,6 +1,7 @@
-import { ContextMenuArea, DockSelection, Surface, Symbol } from "@netnyahoo/shell";
+import { ContextMenuArea, DockSelection, MouseArea, Surface, Symbol } from "@netnyahoo/shell";
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, View } from "react-native";
+import { closeTab } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useTileTheme } from "../../lib/tileTheme";
 import { useBrowser } from "../../store/browser";
@@ -96,60 +97,81 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
         {...hoverProps}
         onDoubleClick={() => void startRename(windowId, { kind: "tab", id: tabId })}
       >
-        <ContextMenuArea
-          onContextMenu={() => {
-            dismissHover();
-            void openTabMenu(windowId, tab);
-          }}
-        >
-          <Pressable
-            onPress={(e) => {
+        {/* Middle-click closes like ⌘W: the page unloads and the tile stays. */}
+        <MouseArea onMiddleClick={() => void closeTab(tabId)}>
+          <ContextMenuArea
+            onContextMenu={() => {
               dismissHover();
-              clickTab(windowId, tabId, clickMods(e));
+              void openTabMenu(windowId, tab);
             }}
           >
-            {({ pressed }) =>
-              active && tileTheme ? (
-                // Selected, themed by its icon (lib/tileTheme): the icon's colours in the fill and ring.
-                <DockSelection
-                  image={tileTheme.image}
-                  emoji={tileTheme.emoji}
-                  theme={tileTheme.theme.kind}
-                  fill={tileTheme.theme.kind === "template" ? tileTheme.theme.fill : undefined}
-                  stroke={tileTheme.theme.kind === "template" ? tileTheme.theme.stroke : undefined}
-                  cornerRadius={radius}
-                  strokeWidth={SELECTION_STROKE}
-                  dark={theme.dark}
-                  style={{ width, height: layout.pinnedHeight, alignItems: "center", justifyContent: "center" }}
-                >
-                  <View>
-                    {tileTheme.theme.kind === "template" ? (
-                      // DockSelection draws a one-colour icon itself, white on its colour.
-                      <View style={{ width: 16, height: 16 }} />
-                    ) : (
-                      <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
-                    )}
-                    <TabBadges tabId={tabId} />
-                  </View>
-                </DockSelection>
-              ) : active ? (
-                // Selected, no icon theme: black rim (SelectedPrimary) → white fill (SelectedSecondary) → top bevel (TabOutline).
-                <Surface
-                  fill={hex(theme.pinnedSelectedRim)}
-                  cornerRadius={radius}
-                  shadowColor={theme.dark ? "#FFFFFF" : "#000000"}
-                  shadowOpacity={theme.dark ? 0.15 : 0.12}
-                  shadowRadius={1.5}
-                  shadowOffset={[0, 0.5]}
-                  style={{ width, height: layout.pinnedHeight, padding: 1 }}
-                >
+            <Pressable
+              onPress={(e) => {
+                dismissHover();
+                clickTab(windowId, tabId, clickMods(e));
+              }}
+            >
+              {({ pressed }) =>
+                active && tileTheme ? (
+                  // Selected, themed by its icon (lib/tileTheme): the icon's colours in the fill and ring.
+                  <DockSelection
+                    image={tileTheme.image}
+                    emoji={tileTheme.emoji}
+                    theme={tileTheme.theme.kind}
+                    fill={tileTheme.theme.kind === "template" ? tileTheme.theme.fill : undefined}
+                    stroke={tileTheme.theme.kind === "template" ? tileTheme.theme.stroke : undefined}
+                    cornerRadius={radius}
+                    strokeWidth={SELECTION_STROKE}
+                    dark={theme.dark}
+                    style={{ width, height: layout.pinnedHeight, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <View>
+                      {tileTheme.theme.kind === "template" ? (
+                        // DockSelection draws a one-colour icon itself, white on its colour.
+                        <View style={{ width: 16, height: 16 }} />
+                      ) : (
+                        <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
+                      )}
+                      <TabBadges tabId={tabId} />
+                    </View>
+                  </DockSelection>
+                ) : active ? (
+                  // Selected, no icon theme: black rim (SelectedPrimary) → white fill (SelectedSecondary) → top bevel (TabOutline).
+                  <Surface
+                    fill={hex(theme.pinnedSelectedRim)}
+                    cornerRadius={radius}
+                    shadowColor={theme.dark ? "#FFFFFF" : "#000000"}
+                    shadowOpacity={theme.dark ? 0.15 : 0.12}
+                    shadowRadius={1.5}
+                    shadowOffset={[0, 0.5]}
+                    style={{ width, height: layout.pinnedHeight, padding: 1 }}
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                        borderRadius: radius - 1,
+                        backgroundColor: theme.pinnedSelectedFill,
+                        borderTopWidth: 1,
+                        borderColor: theme.pinnedSelectedOutline,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <View>
+                        <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
+                        <TabBadges tabId={tabId} />
+                      </View>
+                    </View>
+                  </Surface>
+                ) : (
                   <View
                     style={{
-                      flex: 1,
-                      borderRadius: radius - 1,
-                      backgroundColor: theme.pinnedSelectedFill,
-                      borderTopWidth: 1,
-                      borderColor: theme.pinnedSelectedOutline,
+                      width,
+                      height: layout.pinnedHeight,
+                      borderRadius: radius,
+                      borderWidth: selected ? 1 : 0.5,
+                      borderColor: selected ? tokens.dragBorder : theme.pinnedRestingStroke,
+                      backgroundColor: pressed ? theme.tabPressed : hovered || selected ? theme.tabHover : theme.pinnedResting,
                       alignItems: "center",
                       justifyContent: "center",
                     }}
@@ -159,29 +181,11 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
                       <TabBadges tabId={tabId} />
                     </View>
                   </View>
-                </Surface>
-              ) : (
-                <View
-                  style={{
-                    width,
-                    height: layout.pinnedHeight,
-                    borderRadius: radius,
-                    borderWidth: selected ? 1 : 0.5,
-                    borderColor: selected ? tokens.dragBorder : theme.pinnedRestingStroke,
-                    backgroundColor: pressed ? theme.tabPressed : hovered || selected ? theme.tabHover : theme.pinnedResting,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <View>
-                    <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
-                    <TabBadges tabId={tabId} />
-                  </View>
-                </View>
-              )
-            }
-          </Pressable>
-        </ContextMenuArea>
+                )
+              }
+            </Pressable>
+          </ContextMenuArea>
+        </MouseArea>
         {/* Navigated away from the pinned page: click the badge to go back (⌘↩). */}
         <Animated.View
           pointerEvents={away ? "auto" : "none"}
