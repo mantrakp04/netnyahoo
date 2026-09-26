@@ -1,0 +1,24 @@
+apps/browser/src/components/CommandPanel.tsx
+  s_9c356f9574d31c::t_611a00c1e01ac0 15-22,39-64,66-67,80
+apps/browser/src/components/Omnibox.tsx
+  s_9c356f9574d31c::t_9719fe3b290197 17,20,23,45-47,67,70-71,73,89,98-99,318,326,365-394
+  s_9c356f9574d31c::t_f216a193a17824 395
+apps/browser/src/components/omnibox/dropdownStart.ts
+  s_9c356f9574d31c::t_450284720bedd7 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "94e4990eab9b714989094dafc63303a8dec57878",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
