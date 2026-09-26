@@ -13,7 +13,6 @@ packages/
   shaders/            Metal: New Tab effects + grained OKLab window backdrop
   import/             Import from other browsers (bookmarks, history, passwords, Arc spaces)
   core/               Pure TS: omnibox input → URL, suggestions, Dia-style breadcrumbs (tested)
-  tailwind-config/    Shared Tailwind preset (Dia tokens)
 ```
 
 ## Run it
@@ -111,9 +110,7 @@ Only math and colour values are reused. No Dia images, fonts or binaries are cop
 - **Metro, not `expo start`.** Metro runs through the react-native-macos CLI. `metro.config.js`
   redirects `react-native` → `react-native-macos` for `platform=macos`, because defining our own
   `resolveRequest` replaces the redirect the CLI would install.
-- **No Reanimated.** It has no macOS build for 0.81. NativeWind only needs it for `animate-*` and
-  `transition-*` classes (don't use those), so Babel uses css-interop's plugin directly and Metro
-  resolves `react-native-reanimated` to an empty module.
+- **No Reanimated.** It has no macOS build for 0.81; animations use RN's `Animated`.
 - **Monorepo paths.** pnpm is set to `nodeLinker: hoisted` because CocoaPods and Metro resolve
   `react-native-macos` by path. The Podfile rewrites `REACT_NATIVE_PATH` to the hoisted location and
   raises every pod's deployment target to 14.0, since Xcode 26+ rejects the 11.0 some Expo pods declare.

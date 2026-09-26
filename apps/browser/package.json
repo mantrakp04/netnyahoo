@@ -18,7 +18,6 @@
     "@netnyahoo/import": "workspace:*",
     "expo": "~54.0.37",
     "expo-modules-core": "~3.0.29",
-    "nativewind": "^4.2.1",
     "react": "19.1.4",
     "react-native": "0.81.6",
     "react-native-macos": "0.81.9",
@@ -26,7 +25,6 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@netnyahoo/tailwind-config": "workspace:*",
     "@react-native-community/cli": "^20.0.0",
     "@react-native-community/cli-platform-apple": "^20.0.0",
     "@react-native-community/cli-platform-ios": "^20.0.0",
@@ -34,7 +32,6 @@
     "@react-native/metro-config": "0.81.6",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.0",
-    "tailwindcss": "^3.4.17",
     "typescript": "~5.9.2"
   }
 }

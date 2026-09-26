@@ -1,11 +1,11 @@
-import "./global.css";
-import { AppRegistry, LogBox } from "react-native";
+import { AppRegistry, LogBox, unstable_batchedUpdates } from "react-native";
 import { WindowRoot } from "./src/App";
 import { DevErrorBoundary } from "./src/DevErrorBoundary";
 import { startAppIntegration } from "./src/lib/appIntegration";
 import { startNativeSync } from "./src/lib/native";
 import { startPersistence } from "./src/lib/persist";
 import { startTabLifecycle } from "./src/lib/tabLifecycle";
+import { setStoreBatching } from "./src/store/browser";
 
 // Intentional: react-native-macos 0.81's New Architecture is still experimental.
 LogBox.ignoreLogs(["The app is running using the Legacy Architecture"]);
@@ -14,6 +14,8 @@ LogBox.ignoreLogs(["The app is running using the Legacy Architecture"]);
 // written to $NETNYAHOO_DATA_DIR/dev-console.log instead (lib/devHarness).
 LogBox.ignoreAllLogs(true);
 
+// A store update renders everything it changes in one commit (store/browser).
+setStoreBatching(unstable_batchedUpdates);
 // One JS runtime serves every window: restore the session, then open its windows.
 startPersistence();
 startNativeSync();

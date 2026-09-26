@@ -9,7 +9,7 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
 ## Stack
 - Turborepo + pnpm (hoisted `node_modules` at the repo root).
 - `apps/browser`: Expo SDK 54 + react-native-macos 0.81 (Legacy architecture), zustand store,
-  inline styles (NativeWind is set up but unused — match the existing inline style idiom).
+  inline styles.
 - Native code lives in Expo modules under `packages/*/ios` (Swift / Objective-C++):
   - `packages/cef`: the web engine — **our own patched build of CEF 154** (154.0.28, Chrome style,
     `docs/cef-source-build.md`).

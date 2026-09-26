@@ -10,11 +10,6 @@ packages:
 # resolve react-native-macos by path), so hoist instead of pnpm's symlink store.
 nodeLinker: hoisted
 
-# NativeWind lists Reanimated as a peer, but only needs it for animation
-# classes. Reanimated 4 has no react-native-macos 0.81 build, so keep it out.
+# Peers are listed explicitly: an auto-installed one could be a package with no
+# react-native-macos build (Reanimated 4, say).
 autoInstallPeers: false
-peerDependencyRules:
-  ignoreMissing:
-    - react-native-reanimated
-    - react-native-safe-area-context
-    - react-native-svg
