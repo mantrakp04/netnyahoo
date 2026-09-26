@@ -8,8 +8,9 @@ import type { BrowserWindow, Profile, Tab, TabLive, TabSnapshot } from "./types"
  */
 
 // Ids stay unique across launches (persisted tabs keep theirs): a per-launch
-// prefix plus a counter.
-const launch = Date.now().toString(36);
+// prefix plus a counter. The prefix has a random part too, so two Macs launched in the
+// same millisecond still make different ids (sync keeps bookmarks and pinned tabs by id).
+const launch = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 let counter = 0;
 export const newId = (prefix: string) => `${prefix}-${launch}-${(++counter).toString(36)}`;
 
