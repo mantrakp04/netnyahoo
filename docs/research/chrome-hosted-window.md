@@ -62,6 +62,33 @@ frame like neither settled state):
 The transparent swap stays the default. Its transient isn't a white flash, but it is visible (`swap-transient.jpg`:
 before, a transient frame, after): the eye check is in the ledger.
 
+**Profile switch latency (after 0.2.1).** Users found switching slow, and blocking for a moment afterwards. Measured in
+hidden Release instances (3 profiles, ~20 tabs each; timestamps from the input through the pager, the store, the
+native swap and the page's `visibilitychange`, plus 120 fps captures of the window):
+
+| | Before | After |
+|---|---|---|
+| ⌃N / page dot: input → new profile's page on screen | 430–600 ms | 100–140 ms (swap done at 25–45 ms) |
+| Second switch right after the first: its page visible | 360–420 ms after its input | 35–110 ms |
+| Swipe: first gesture event → sidebar moving | 70–100 ms | 40–70 ms, main-thread stalls at the start gone |
+| Swipe: gesture start → new page on screen | 500–550 ms | 240–270 ms (fast flick) |
+| JS for the switch itself | 70–150 ms in ~140 commits | 20–45 ms in one |
+
+Where the time went:
+- Store updates from outside React event handlers weren't batched, so a switch committed once per subscribed
+  component. `store/browser.ts` now batches every update (`unstable_batchedUpdates`).
+- Clicks and keys only switched the window after the 0.3 s slide. `layout/profilePager.ts` now switches at
+  input and slides afterwards; a swipe switches once its settle is within ~6 pt of the page.
+- Neighbour sidebar pages mounted at swipe start, which cost 20–45 ms of JS and 30–80 ms of main thread. They now
+  stay mounted, hidden (`display: none`).
+
+What's left per switch:
+- `MoveRoot`: 15–25 ms of main thread (`_setWindow:` over the whole view tree, then a CA flush that redisplays layers).
+- Applying the switch's view updates: about 40 ms.
+- Chrome showing the tab: roughly 60 ms from the swap to its first frame on screen.
+- The pager animates from JS at 60 fps on a 120 Hz display. The native driver would give it 120 fps and keep it
+  moving through JS work.
+
 ## Summary
 
 Today every app window is a React Native `NSWindow`, and each profile shown in it has an invisible "ghost" Chrome
