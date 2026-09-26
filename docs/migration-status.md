@@ -303,16 +303,16 @@ NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
 **Tools.**
 - Drive the store with scratchpad `nneval.sh '<js>'` (devHarness `nn`).
 - Pages: `cdp-integration.mjs`.
-- Ghosts: `ghostWindows()` (from JS, or `NNCef.ghostWindows`: `anchorBrowserId`, `anyTabBrowserId`, `ready`,
-  `pageInsets`).
+- Chrome windows: `chromeWindows()` (`globalThis.nnChromeTabs`, or `NNCef.chromeWindows`: `anchorBrowserId`,
+  `anyTabBrowserId`, `ready`, `pageInsets`, `group`).
 - Test extension: an unpacked fixture that exposes `chrome.tabs` / `chrome.windows` results from its service worker
   (CDP target).
 
 ### Tabs (NNWindowHost, NNBrowserView, lib/chromeTabs.ts)
 
 1. **Hosting.** Open 2 tabs. Pass if all of these hold:
-   - CDP lists both pages and no `about:blank` ghost placeholder.
-   - `ghostWindows()` shows one ghost per window with `anchorBrowserId: 0`.
+   - CDP lists both pages and no `about:blank` placeholder.
+   - `chromeWindows()` shows one Chrome window per app window and profile, with `anchorBrowserId: 0`.
    - Each page is visible, and rAF runs at 120 fps under `RenderWidgetHostViewCocoa`.
 2. **Extensions see our tabs.** Run `chrome.tabs.query({})` and `chrome.windows.getAll({populate:true})` in the
    fixture. Pass if there is one Chrome window per app window and profile, its bounds equal the app window frame,
@@ -337,16 +337,17 @@ NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
 8. **Closing.**
    - `window.close()` in a page must close its tab in the app (OnBeforeClose → windowClose).
    - `chrome.tabs.remove(id)` must do the same.
-   - Closing a window's last tab must close its ghost; the next new tab must found a new ghost.
+   - Closing a window's last tab must leave its Chrome window and Browser with no `about:blank` target; the next
+     new tab must be a tab of the same Browser.
 9. **Closing the founder tab.** This is the riskiest item. Open 3 tabs and close the FIRST one: the CefBrowserView's
    own tab. Pass if the other two stay loaded and hosted, and `chrome.tabs` lists 2.
-   - If they close too, `Ghost::Start()` must keep a placeholder anchor again. Call `Start()` without a founder in
-     `CreateTab` and drop `DropAnchor()`, then fix how extensions see that anchor.
+   - If they close too, `ChromeWindow::StartBrowser()` must keep a placeholder anchor again: start it without a
+     founder in `CreateTab` and drop `DropAnchor()`, then fix how extensions see that anchor.
 10. **Moving to another window.**
     - Move to Window (new and existing), and drag a tab onto another window. `__marker` must survive, and
       `chrome.tabs.get(id).windowId` must become the target's Chrome window (`MoveToBrowser`).
-    - A target window that had no tabs of that profile must end with one ghost and no `about:blank` placeholder
-      left.
+    - A target window that had no tabs of that profile must end with one Chrome window for it and no
+      `about:blank` placeholder left.
 11. **Moving to another profile.** The page reloads in the new profile (expected). The tab must leave profile A's
     `chrome.tabs` and appear in B's.
 12. **Discard / freeze.** A tab slept by lib/tabLifecycle must stay in `chrome.tabs` as `discarded: true` with the
@@ -356,7 +357,7 @@ NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
 14. **Stray windows.** `chrome.windows.create({url})` from the fixture must open the page as our tab, with no
     visible Chrome window.
 15. **Fullscreen (`CEF_NN_TAB_FULLSCREEN`).** `requestFullscreen()` on a video page must put our window into
-    fullscreen while the ghost stays unfullscreened and aligned (`ghostWindows`). Esc must exit.
+    fullscreen (Chrome only tracks the state). Esc must exit.
 
 ### Content blocker (NNContentBlocker, NNChromePages)
 
@@ -381,7 +382,7 @@ NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
 19. **Filling.** Reload and focus the username field. Pass if Chrome's dropdown sits right under the field, picking
     a login fills both fields, and a new-password field offers Chrome's generated password.
 20. **Other password states.** Auto sign-in and the generated-password confirmation still use Chrome's bubble. It
-    must appear over the page (ghost layout), not at the window corner.
+    must appear over the page, not at the window corner.
 21. **Addresses and cards.** Submit an address form. Pass if Chrome's save-address bubble shows over the page and
     the dropdown fills a saved address.
 
@@ -403,7 +404,7 @@ NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
     download bubble window.
 26. **Tab-modal dialogs over the page.** Try `alert()`, HTTP basic auth (a local server), and a `beforeunload`
     prompt. Chrome's dialog must be centered over the page area, not over the sidebar; in split view, over the
-    focused pane. `ghostWindows().pageInsets` must match the page rect.
+    focused pane. `chromeWindows()`' `pageInsets` must match the page rect.
 
 ### Settings
 

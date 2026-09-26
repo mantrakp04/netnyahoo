@@ -3,8 +3,9 @@
 Dia = installed build **1.49.1 (87398), Chromium 153** plus the public changelog up to **v1.50.0 (2026‑09‑24)**;
 visual rows re-checked against **1.50.1 (87750)** (`docs/dia-spec.md` › "1.50 Sunglow").
 Netnyahoo = this working tree on **2026‑09‑25, after the Chrome migration**: our patched Chrome-style CEF
-(154.0.28, `NN_CHROME_TABS 1`, `docs/cef-source-build.md`), where every tab is a real Chrome tab of an invisible
-"ghost" Chrome window, hosted in our React Native views.
+(154.0.28, `NN_CHROME_TABS 1`, `docs/cef-source-build.md`), where every app window is Chrome's own Browser window
+(since 0.2.0, `docs/research/chrome-hosted-window.md`) and every tab a real Chrome tab of it, hosted in our React
+Native views.
 
 How this audit was done: every non-AI row re-read against the code (packages/cef, apps/browser/src, packages/shell,
 packages/core, the Xcode project), not against earlier claims. Runtime evidence comes from the migration ledger,
@@ -145,7 +146,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 
 1. **Fullscreen and Spaces** (ledger 15). Open any YouTube video and press **f** (or its fullscreen button).
    Pass: the window moves to its own Space with the video filling the screen and no sidebar or toolbar; Mission
-   Control shows a single Netnyahoo window (the ghost stays invisible); **Esc** brings the window back to its
+   Control shows a single Netnyahoo window; **Esc** brings the window back to its
    Space and layout, and clicks land where you click. With a second display, repeat there.
 2. **Save and fill a login** (ledger 19). Open `http://127.0.0.1:8765/login.html`, enter `me@example.com` /
    `Test-pass-123`, Sign in. Pass: our "Save password for 127.0.0.1?" prompt under the toolbar, and no Chrome
@@ -214,7 +215,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 |---|---|---|---|
 | Transparent titlebar, traffic lights in sidebar header | ✓ | ✅ | |
 | Window frame autosave | ✓ | ✅ | frame kept per window in session.json |
-| Multiple windows (⌘N) | ✓ | ✅ | one NSWindow + React root per store window, each with its own invisible ghost Chrome window per profile; closing the last window keeps the app running |
+| Multiple windows (⌘N) | ✓ | ✅ | each store window is Chrome's own Browser window with our React root over its views (one Chrome window per profile it shows, the root moving to the profile shown); closing the last window keeps the app running |
 | Incognito window (⇧⌘N), dark by default, excluded from AI | ✓ | ✅ | in-memory `incognito:<window>` profile, released on close; always dark; no history; closed-tab records only while the window is open, never on disk |
 | Close Window ⇧⌘W | ✓ | ✅ | |
 | Reopen closed **window** / recently closed groups | ✓ | ✅ | File › Reopen Closed Window, History › Recently Closed (+ Recently Closed Groups) |
@@ -388,7 +389,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Clean link copy (trackers stripped), Copy URL as Markdown ⌥⇧⌘C | ✓ | ✅ | every Copy URL / Copy Link (as Markdown) strips trackers |
 | Quote link / "Super Copy" (text fragment link) | ✓ | ✅ | ⇧⌘C with a selection: Dia's toast with Copy Quote Link; page menu "Copy Link to Highlight" (Chrome's item, run by core/textFragment.ts for Dia's toast and clean link) |
 | JS alert / confirm / prompt dialogs | ✓ | ✅ | Chrome's tab-modal dialogs, centred over the page area (or the focused split pane); `alert()` and HTTP auth verified (ledger 26); `beforeunload` untested. Chrome's styling, not Dia's |
-| `<input type=file>` open panel | ✓ | 🧪 | now Chrome's file picker, whose owner window is the ghost's Browser; untested whether it shows attached to our window (checklist step 9) |
+| `<input type=file>` open panel | ✓ | 🧪 | Chrome's file picker, owned by the app window (Chrome's own since 0.2.0); untested whether it shows attached to it (checklist step 9) |
 | Pop‑up blocker (always allow/deny) | ✓ | ✅ | ours (`disable-popup-blocking` turns Chrome's off): toolbar badge + Dia's dialog, Only Once opens a tab with `opener` (ledger 24) |
 | Site settings menu (security, pop‑ups, cookies, clear cache) | ✓ | ✅ | Site Controls: connection + certificate, zoom, PiP (when there's video), ad blocking, 6 permissions, clear cookies & site data, clean link, full URL |
 | Insecure‑site warning | ✓ | ✅ | lock-warning glyph in the URL field; Chrome's interstitial for certificate errors |
@@ -501,7 +502,7 @@ actions, commands and the Web Store are Chrome's (ledger items 1–14, 22, W1–
 | Manage Extensions (`dia://extensions`) | ✓ | ✅ | Settings › Extensions (on/off, details, site access, incognito, pin, reload, remove, add by link, load unpacked); `netnyahoo://extensions` is Chrome's own page (developer mode, errors, shortcuts) |
 | Install/uninstall permission dialogs | ✓ | ✅ | install, re-enable and new-permission prompts through our dialog (verified, W1); removal asks with our "Remove “…”?" sheet from Settings, the toolbar menu and the store page, then Chrome uninstalls (engine verified, W2). The sheet itself needs a key window: checklist step 8 |
 | chrome.tabs / chrome.windows | ✓ | ✅ | Chrome's real tabs and windows: one Chrome window per app window and profile, sidebar order, active/pinned both ways, `tabs.create` / `windows.create` / popups adopted as our tabs, moves between windows and profiles (ledger 1–14); sleeping tabs are `discarded: true`, and `tabs.discard` / `tabs.reload` sleep and wake them in the app. Known gap: an extension's `tabs.move` doesn't reorder the sidebar |
-| action.onClicked (no popup), keyboard `commands`, extension context-menu items | ✓ | ✅ | onClicked + activeTab + `scripting.executeScript` verified (22); `chrome.commands` shortcuts forwarded to the key window's ghost Browser (13, NNWindowHost `ForwardKeyEvent`); `chrome.contextMenus` items show in the page menu and their `onClicked` runs (R1) |
+| action.onClicked (no popup), keyboard `commands`, extension context-menu items | ✓ | ✅ | onClicked + activeTab + `scripting.executeScript` verified (22); `chrome.commands` shortcuts run on Chrome's own dispatcher in the key Browser window (13; `docs/research/chrome-hosted-window.md`); `chrome.contextMenus` items show in the page menu and their `onClicked` runs (R1) |
 | Side‑panel API | ✓ | ✅ | Dia's extension side panel: a card to the right of the page (header with the extension's icon, name, ⋯ menu and close; resizable 320–600 pt, width saved) showing the panel page outside the tab strip. Opens from the toolbar button (`openPanelOnActionClick`), the extension's menu and `chrome.sidePanel.open()`, closes with `close()` or `window.close()`; follows per-tab `setOptions` paths and closes where it's disabled. `chrome.tabs.query({active, currentWindow})` from the panel (and from popups) returns the page |
 | Per‑profile extensions | ✓ | ✅ | lists, pins and installs per engine profile; incognito windows run the default profile's extensions that are allowed in incognito; sync ⛔ |
 
@@ -514,7 +515,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Save / update passwords, never for this site | ✓ | ✅ | Chrome captures; Chrome's bubble is replaced by our Dia-style prompt (`CEF_NN_PASSWORD_BUBBLE`), with Save / Update (username picker) / Never / Not Now; verified (17, 18, and 19's revisit fill on a fresh profile). Settings › Passwords per profile: list, search, reveal/edit/delete, "Never saved" list, CSV import, the Offer-to-save toggle, unlock through Chrome's own device check |
 | Filling saved logins in pages | ✓ | 🧪 | Chrome's dropdown under the focused field (ledger 19); needs a key window: checklist step 2 |
 | Suggest strong password on sign-up | ✓ (Chromium) | 🧪 | Chrome's generation in the same dropdown on new-password fields; the generated-password confirmation stays Chrome's bubble (ledger 20). Checklist step 3 |
-| Passkeys / WebAuthn (iCloud Keychain) | ✓ | 🟡 | Chrome's WebAuthn stack and dialogs, centred over the page and in front of it (the ghost window lifts while Chrome shows one; before that fix, 0.1.1 drew them behind the window, so passkey sign-in looked stuck). Verified in a Developer ID build: security keys and phone (QR sheet) ✅, a real phone scan is checklist step 7; Touch ID "Chrome profile" passkeys ✅ (register and sign-in on webauthn.io with Touch ID), Google sign-in is checklist step 6; Cancel rejects the request so sites fall back. iCloud Keychain ⛔: waits on Apple granting `com.apple.developer.web-browser.public-key-credential` (entitlements file ready) |
+| Passkeys / WebAuthn (iCloud Keychain) | ✓ | 🟡 | Chrome's WebAuthn stack and dialogs, centred over the page and in front of it (they are child windows of the app window, which is Chrome's own; 0.1.1 drew them behind the window, so passkey sign-in looked stuck). Verified in a Developer ID build: security keys and phone (QR sheet) ✅, a real phone scan is checklist step 7; Touch ID "Chrome profile" passkeys ✅ (register and sign-in on webauthn.io with Touch ID), Google sign-in is checklist step 6; Cancel rejects the request so sites fall back. iCloud Keychain ⛔: waits on Apple granting `com.apple.developer.web-browser.public-key-credential` (entitlements file ready) |
 | Address & credit‑card autofill | ✓ | 🧪 | Chrome's autofill (save bubble + dropdown, ledger 21); Settings › Autofill lists, adds, edits and deletes addresses and cards (card number behind Touch ID). Dropdown and save bubble: checklist step 4 |
 | Edit › AutoFill menu (Contact, Passwords, Credit Card) | ✓ | ✅ | like Chrome's field menu, each item opens Chrome's dropdown at the page's focused form field (engine hook `CefShowAutofillSuggestions`, `CEF_NN_AUTOFILL_TRIGGER`): Passwords… lists the saved passwords on any text field (Chrome's "Select password" fallback), Contact… and Credit Card… the field's own suggestions (addresses or cards). With no form field focused, they open Settings on the window's profile (Passwords, or Autofill). Verified: a focused address field got Chrome's dropdown window right under it, a blurred page opened Settings; picking an entry is Chrome's own (checklist step 4) |
 | Password reveal button | ✓ | ✅ | eye button in the page's password field once the user types (never for a filled saved password; sites with their own toggle keep theirs) in `helper/page_script.js`, and reveal in Settings › Passwords. Not visually re-checked on Chrome tabs |
@@ -544,7 +545,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Notifications permission | ✓ | ✅ | our prompt, then macOS permission; the page script shows web notifications natively with click-through |
 | Location permission | ✓ | ✅ | our prompt verified (Don't Allow → denied); Allow (which raises macOS's own prompt) not run yet |
 | Bluetooth permission | ✓ | ✅ | Chrome's device chooser drawn as our prompt under the address ("example.com wants to pair", devices with signal and paired / connected state, Scanning…, Scan Again, Bluetooth off / no macOS access with a link to System Settings, Pair / Cancel); also WebUSB, WebHID and Web Serial choosers and requestLEScan's scanning prompt. Verified with the Mac's real Bluetooth devices listed and Cancel rejecting the page's request |
-| Fullscreen video (incl. other display) | ✓ | 🧪 | page fullscreen puts our window into fullscreen while the ghost stays put (`CEF_NN_TAB_FULLSCREEN`); Esc exits. Changes Spaces, so checklist step 1 |
+| Fullscreen video (incl. other display) | ✓ | 🧪 | page fullscreen puts our window into fullscreen, and Chrome only tracks the state (`CEF_NN_TAB_FULLSCREEN`); Esc exits. Changes Spaces, so checklist step 1 |
 | Proprietary codecs (H.264 / AAC / MP4) | ✓ | ✅ | our CEF build (`proprietary_codecs`, `ffmpeg_branding="Chrome"`, VideoToolbox decode) |
 | Protected video (Widevine DRM: Netflix, Spotify…) | ✓ | ⛔ | Widevine is compiled in, but the CDM arrives through the component updater, whose Google host domain substitution removed, and a shipping app also needs Google's VMP signing. Settings › Advanced's Widevine row says it isn't available in this build (no update button) |
 
