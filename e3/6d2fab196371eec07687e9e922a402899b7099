@@ -1,0 +1,67 @@
+apps/browser/src/sync/test-loader.mjs
+  s_9c356f9574d31c::t_f38a1bdb9bbd80 1-24
+apps/browser/src/sync/menu.ts
+  s_9c356f9574d31c::t_1b849fe8b9bc24 1-40
+apps/browser/src/components/settings/SettingsWindow.tsx
+  s_9c356f9574d31c::t_11d5e7e202f767 20,29,90-91
+apps/browser/src/sync/test-native-stub.mjs
+  s_9c356f9574d31c::t_f38a1bdb9bbd80 3-5
+  s_9c356f9574d31c::t_5bd2aa34dea663 1-2,6-15
+packages/sync/scripts/e2e.mjs
+  s_9c356f9574d31c::t_1e52c5e032b298 306
+  s_9c356f9574d31c::t_231eb882a2ccee 1-305,307-347
+apps/browser/src/sync/adapters.ts
+  s_9c356f9574d31c::t_4dbccccade83cc 50,56,62-63
+  s_9c356f9574d31c::t_1b529cba511358 484-487,489-490,492
+  s_9c356f9574d31c::t_981da9297034a2 278-286,299,331,417-418,457,465,472-473
+  s_9c356f9574d31c::t_c443a391dc0bd0 1-49,51-55,57-61,64-262,265-277,287-298,300-330,332-416,419-432,438-443,445-456,458-464,466-471,475-483,488,491,493-502
+  s_9c356f9574d31c::t_8f117b761c9e58 474
+  s_9c356f9574d31c::t_d259888c01e2f6 263-264
+  s_9c356f9574d31c::t_5bd2aa34dea663 433-437,444
+apps/browser/src/components/settings/panes/Sync.tsx
+  s_9c356f9574d31c::t_f2e973d234979c 101,209
+  s_9c356f9574d31c::t_b8459aea85e191 1-100,102-208,210-288
+apps/browser/src/sync/engine.ts
+  s_9c356f9574d31c::t_5d483638274f61 1-74,77-79,82-150,152-157,180,208-309,315-447,449-520,526-528,530-531,533,549
+  s_9c356f9574d31c::t_46054aed60c5a6 75-76,80-81,151,158-179,181-207,448,521-525
+  s_9c356f9574d31c::t_c742514da4dd2d 310-314,529,532
+  s_9c356f9574d31c::t_0ba4e81f355701 534-542,547-548
+  s_9c356f9574d31c::t_f2e973d234979c 543-546
+apps/browser/index.js
+  s_9c356f9574d31c::t_11d5e7e202f767 9,27
+apps/browser/src/components/settings/windows.ts
+  s_9c356f9574d31c::t_11d5e7e202f767 18
+apps/browser/src/components/sidebar/menus.ts
+  s_9c356f9574d31c::t_1b849fe8b9bc24 23,316,327,353
+apps/browser/src/sync/adapters.test.mjs
+  s_9c356f9574d31c::t_965b7597c3f9b8 1-9,11-40,43-45,47-54,56-66,68-208,221-284,303
+  s_9c356f9574d31c::t_7f51a015101ccb 209-220
+  s_9c356f9574d31c::t_5bd2aa34dea663 10,41-42,46,55,67,285-302
+apps/browser/src/components/settings/panes/SyncSheets.tsx
+  s_9c356f9574d31c::t_efad4cbfd5839d 3-4,24,29,159
+  s_9c356f9574d31c::t_1a6c400967120d 1-2,5-23,25-28,30-158,160-311
+apps/browser/src/components/pages/appUrls.ts
+  s_9c356f9574d31c::t_11d5e7e202f767 17-18
+apps/browser/package.json
+  s_9c356f9574d31c::t_21f0c4d545631a 19
+apps/browser/macos/Podfile.lock
+  s_9c356f9574d31c::t_6256350292b0cf 90-92,2334,2445-2446,2595
+pnpm-lock.yaml
+  s_9c356f9574d31c::t_def9a41ec392b8 35-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e36d2fab196371eec07687e9e922a402899b7099",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
