@@ -1,0 +1,33 @@
+apps/browser/src/components/onboarding/index.ts
+  s_9c356f9574d31c::t_60045f8a079d28 2
+apps/browser/src/components/pages/index.ts
+  s_9c356f9574d31c::t_60045f8a079d28 4
+docs/store-api.md
+  s_9c356f9574d31c::t_2aef9f0dd897f9 41
+apps/browser/src/components/Toolbar.tsx
+  s_9c356f9574d31c::t_8d53964ef6b016 12
+apps/browser/src/components/ntp/Personalize.tsx
+  s_9c356f9574d31c::t_489625818d3701 3
+apps/browser/src/components/pages/BookmarksPage.tsx
+  s_9c356f9574d31c::t_e254a6468f7bf7 10
+apps/browser/src/live/meetingGroups.ts
+  s_9c356f9574d31c::t_732b9028d9a17e 7
+apps/browser/src/store/hooks.ts
+  s_9c356f9574d31c::t_acafaa1d3114d6 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bec06d0ae316c43785359fc56a31f15f39954e0b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
