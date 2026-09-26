@@ -116,7 +116,9 @@ Measured materials (our own non-activating panels over solid backdrops; sRGB; ac
 ## Sidebar
 
 - Header 46: traffic lights, and a downloads button (`arrow.down.circle`) centered at x 166, y 26.
-- Pinned tabs: tiles inset 7 (x 7…183), 40 tall, top at 54.5, radius ~10, favicon centered.
+- Pinned tabs: tiles inset 6 (x 6…184 in a 190 sidebar), 41 tall, 6 apart, top at 54, radius ~10, favicon centered
+  (1.50.1 binary and 2× capture; 1.49 measured inset 7, 40 tall at 54.5). Resting hairline 0.5 pt white 0.14
+  (`TabDockItemRestingStroke`).
   - Selected (TabUI `TabDockItemView` + `SelectionOutlineView`, from the 1.50.1 binary): themed by
     the icon (`TabIconProcessorImpl._generateTheme`, a `TabIconTheme`). The icon is drawn at most
     32 px on its long side; its pixels with alpha ≥ 0.975 are averaged (RGB 0…1) and their mean
@@ -137,7 +139,9 @@ Measured materials (our own non-activating panels over solid backdrops; sRGB; ac
       or `TabSelectedShadow` of its own.
     Emoji custom icons are drawn at 16pt and themed the same way.
   - Unselected: white ~8% (`TabDockItemRestingBackground` white 10%, stroke 14%).
-- Tab rows: 33 tall on a ~37 pitch, inset 7. Favicon 16 at x 16, title at x 38.5, 13–14pt.
+- Tab rows: 34 tall on a 37 pitch, inset 6 (1.50.1; 1.49 measured 33 and 7). Favicon 16 at x 15 (9 into the row),
+  title at x 39, 13–14pt. The selected row has a 0.5 pt hairline inside its frame, white 0.15 over the fill, the same
+  on all four sides.
   Title color: `TabTitleUnselected` white 78% (dark) or black 68% (light); selected white 100%.
   Titles fade out at the trailing edge instead of using an ellipsis.
   - Hover: `TabBackgroundHovered` white 16% (dark) or white 55% (light). An `xmark` close button
@@ -511,7 +515,15 @@ than ours at the same cap height.
 ### Sidebar rows (1.50.1, from the binary)
 - `TabListCollectionViewLayout` (`0x105383360`): items full width, 37 tall, no gap; the list has a symmetric horizontal
   inset of 6 (`0x105391ac4`; 20 in another mode), so rows and pinned tiles span x 6 … 184 in a 190 sidebar (1.49
-  measured 7).
+  measured 7). The pinned dock layout (`0x10538ea78`): tiles 41 tall, 6 apart, the same 6 / 20 inset.
+- The sidebar width defaults to **190** (`PlatformWindowViewController`, `0x1055fef34`: 190 when no width is stored,
+  else the stored one) and the page card starts at the sidebar's width. A 2× capture of the user's Dia (2026-09-26,
+  inactive, dark) has its card at x 191 and rows at 6 … 185: that window's sidebar is 191 wide (resized), with the
+  same 6 pt insets. Rows 34 tall (hairline at y 212.0 and 245.5), tiles 54 … 95, favicon, title and colours identical
+  to Netnyahoo's to the pixel.
+- Header: Dia shows the profile name as text right of the traffic lights ("Personal", x 94 … 147, cap height 9.5 pt
+  ≈ 13 pt semibold, the profile colour lightened: (236, 209, 215) for pink), and no Downloads button while there are
+  no downloads. Its traffic lights are centred at x 24.75 / 47.75 / 70.75, y 26.75.
 - `TabView` (`0x103dbd2f4`): the background is the row inset (1.5, 0, 1.5, 0), i.e. 34 tall; `TabShapeView` radius
   `min(h/3, 10)`, continuous corners. `TabContentView` (`0x103da24c4`): favicon 16 × 16 at x 9, centred; title at
   favicon.maxX + 7 (+ 4 with a badge slot); trailing affordance at W − 8 − size.
