@@ -521,9 +521,20 @@ than ours at the same cap height.
   inactive, dark) has its card at x 191 and rows at 6 … 185: that window's sidebar is 191 wide (resized), with the
   same 6 pt insets. Rows 34 tall (hairline at y 212.0 and 245.5), tiles 54 … 95, favicon, title and colours identical
   to Netnyahoo's to the pixel.
-- Header: Dia shows the profile name as text right of the traffic lights ("Personal", x 94 … 147, cap height 9.5 pt
-  ≈ 13 pt semibold, the profile colour lightened: (236, 209, 215) for pink), and no Downloads button while there are
-  no downloads. Its traffic lights are centred at x 24.75 / 47.75 / 70.75, y 26.75.
+- Header (a horizontal stack, spacing 2, 6 after the window controls; items 34 tall): Dia's traffic lights are centred
+  at x 24.75 / 47.75 / 70.75, y 26.75.
+  - `SidebarProfileIndicatorButton` (`0x10542e234` …): the profile name, 13 pt semibold (NSFontWeightSemibold), single
+    line, truncating the tail; contentInsets 9 either side (`0x10542e760`), background radius 10 on hover/press. It
+    shows the name whole, or cut short when at least 52 pt fit, else `person.fill` 14 pt semibold in a 32 pt button
+    (`0x10542eea8`). Colour (`0x104d7a538`): the palette's action colour mixed 0.6 toward white (dark) / 0.4 toward
+    black (light); `labelColor` in incognito; no key-window or hover change. Capture: "Personal" ink at x 94 … 147,
+    y 22 … 32, Display P3 (236, 209, 215) for the pink profile. Tooltip "Switch between profiles"; the click opens a
+    menu of the profiles (checkmark, swatch, shortcuts), New Profile, Edit Profiles…; none in incognito.
+    Visibility: no profile-count check in the button or header code, but the user's 1.50.1 window showed no name
+    with one profile (25 Sep, footer "Chats") and "Personal" with two (26 Sep, footer dots), so it's gated upstream.
+  - Downloads (`DownloadsButtonController`, `0x1046e1900`): shown while the downloads list is non-empty (in progress
+    or finished; no timeout), removed from the stack when it empties (Clear Downloads). No show/hide animation; the
+    0.1 s / 1.3 constants are the new-download "magnet" fly-in.
 - `TabView` (`0x103dbd2f4`): the background is the row inset (1.5, 0, 1.5, 0), i.e. 34 tall; `TabShapeView` radius
   `min(h/3, 10)`, continuous corners. `TabContentView` (`0x103da24c4`): favicon 16 × 16 at x 9, centred; title at
   favicon.maxX + 7 (+ 4 with a badge slot); trailing affordance at W − 8 − size.
