@@ -7,7 +7,8 @@
 # appcast.xml, signed with the Sparkle EdDSA key in the login keychain, and release-notes.md (the
 # GitHub release's notes). The notes come from docs/release-notes/<version>.md, which must exist.
 #
-# NOTARY_PROFILE   notarytool keychain profile (default netnyahoo); missing → unnotarized
+# NOTARY_PROFILE   notarytool keychain profile (default netnyahoo); missing → error
+# ALLOW_UNNOTARIZED=1  build anyway without notarizing
 # SPARKLE_ACCOUNT  keychain account of the Sparkle key (default netnyahoo)
 set -euo pipefail
 
@@ -48,8 +49,14 @@ identity="Developer ID Application"
 notarize=0
 if xcrun notarytool history --keychain-profile "$notary_profile" >/dev/null 2>&1; then
   notarize=1
-else
+elif [ "${ALLOW_UNNOTARIZED:-0}" = 1 ]; then
   echo "warning: no notarytool profile '$notary_profile'; the release won't be notarized" >&2
+else
+  # Releases are notarized since 0.2.1: an unnotarized one makes every new user go through
+  # System Settings › Open Anyway again. Store the profile (docs/releasing.md) or set ALLOW_UNNOTARIZED=1.
+  echo "error: notarytool profile '$notary_profile' is missing or invalid:" >&2
+  xcrun notarytool history --keychain-profile "$notary_profile" 2>&1 | head -2 >&2
+  exit 1
 fi
 
 rm -rf "$dist"
