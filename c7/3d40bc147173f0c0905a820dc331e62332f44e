@@ -1,0 +1,32 @@
+packages/cef/ios/NNChromePages.mm
+  s_9c356f9574d31c::t_a3e033f427746a 482,485
+packages/cef/ios/NNContentBlocker.h
+  s_9c356f9574d31c::t_a3e033f427746a 18-20
+packages/cef/ios/NNContentBlocker.mm
+  s_9c356f9574d31c::t_07cec82d058369 73,98
+  s_9c356f9574d31c::t_3b6a81bc278a8e 31,34-39,41-44,48,50,61,63-64,66,69-70,74,82-84,88-95
+  s_9c356f9574d31c::t_773befb032e921 27-30,32-33,40,49,55,85-87,343
+  s_9c356f9574d31c::t_f8314b7a69e398 45,51-54,58-60,65,67
+  s_9c356f9574d31c::t_ea44c2a783aec1 46-47,56-57,62,68
+  s_9c356f9574d31c::t_a3e033f427746a 17-18,21-26,71-72,75-81,96-97,99-146,225-231,336,341-342,344,360,370,384,386
+.claude/skills/release/scripts/smoke.mjs
+  s_9c356f9574d31c::t_fbf30e48bdd7de 160-174
+.claude/skills/release/scripts/pages/ad.html
+  s_9c356f9574d31c::t_fbf30e48bdd7de 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c73d40bc147173f0c0905a820dc331e62332f44e",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
