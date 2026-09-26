@@ -97,6 +97,7 @@ export function Sidebar() {
                 slot={page.slot}
                 width={width}
                 current={page.id === current}
+                resting={!!page.resting}
                 docked={docked}
                 glowRoom={glowRoom}
                 ghost={ghost}
@@ -173,6 +174,8 @@ type PageProps = {
   width: number;
   /** The window's profile: the page you use. The others are drawn beside it during a swipe. */
   current: boolean;
+  /** Mounted ahead of a swipe, not shown (layout/profilePager). */
+  resting: boolean;
   docked: boolean;
   /** Room above the list's first row for the selected row's glow. */
   glowRoom: number;
@@ -185,7 +188,7 @@ type PageProps = {
 };
 
 /** A profile's pinned tiles, groups, live folders and tabs: the scrolling part of the sidebar. */
-function SidebarPage({ profileId, slot, width, current, docked, glowRoom, ghost, rows, onListHeight, onScrollView, onScrollY }: PageProps) {
+function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoom, ghost, rows, onListHeight, onScrollView, onScrollY }: PageProps) {
   const windowId = useWindowId();
   const { tiles, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
   const list = rows === undefined ? all : all.slice(0, rows);
@@ -202,7 +205,7 @@ function SidebarPage({ profileId, slot, width, current, docked, glowRoom, ghost,
   return (
     <Animated.View
       pointerEvents={current ? "auto" : "none"}
-      style={{ position: "absolute", top: 0, bottom: 0, left: 0, width, transform: [{ translateX }] }}
+      style={{ position: "absolute", top: 0, bottom: 0, left: 0, width, display: resting ? "none" : "flex", transform: [{ translateX }] }}
     >
       <PageProfileContext.Provider value={profileId}>
         <DragScope enabled={current}>

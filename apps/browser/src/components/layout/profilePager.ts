@@ -1,6 +1,6 @@
 import { swipeHaptic, type SwipeEvent } from "@netnyahoo/cef";
 import { useEffect, useLayoutEffect, useMemo } from "react";
-import { Animated } from "react-native";
+import { Animated, unstable_batchedUpdates } from "react-native";
 import { create } from "zustand";
 import { useBrowser } from "../../store/browser";
 import { pagingPosition, pagingTarget, PAGING_SETTLE_RESPONSE, PAGING_TRACKING_SCALE, springParams } from "./swipeMotion";
@@ -9,19 +9,37 @@ import { pagingPosition, pagingTarget, PAGING_SETTLE_RESPONSE, PAGING_TRACKING_S
  * Paging between a window's profiles, like Dia's PagingContainerViewController: the sidebar (or
  * the top tab strip) shows each profile as a page, and a swipe, a page dot, ⌃1–9 or Next/Previous
  * Profile slides from one page to another while the window tint cross-fades between their theme
- * colours. Only the window's own page is mounted at rest; the pages beside it mount when a swipe
- * begins (or a switch animates) and unmount once it has settled.
+ * colours. At rest the window's page shows, and the pages beside it in profile order stay mounted
+ * out of sight (`resting`), so a swipe moves them from its first event rather than after they have
+ * rendered; a page further away mounts when a switch animates to it and unmounts once it has settled.
  *
- * `pos` is where the view is, in pages: page k is drawn at (k.slot − pos) × width. The window's
- * profile only switches once the settle has finished (nothing else re-renders while the pages
- * move), then the session lingers briefly so the window's own tint has redrawn under the layers.
+ * `pos` is where the view is, in pages: page k is drawn at (k.slot − pos) × width. A swipe
+ * switches the window's profile as its settle lands (nothing else re-renders while the fingers or
+ * the settle move the pages); a dot, a key or a menu item switches it at once and the pages slide
+ * after it. Then the session lingers briefly so the window's own tint has redrawn under the layers.
  */
 
-export type PagerPage = { id: string; slot: number };
+/** `resting`: a page beside the window's while nothing moves, mounted but not shown. */
+export type PagerPage = { id: string; slot: number; resting?: boolean };
 
-// Landed (and the window switched) within about half a point of the page, ~0.3 s in; Animated's
-// default rest thresholds would hold the switch back another 0.2 s after the motion is over.
+/** The pages at rest: the window's profile at 0, and the profiles before and after it in `order`. */
+function restPages(current: string | null, order: string[]): PagerPage[] {
+  if (!current) return [];
+  const i = order.indexOf(current);
+  const before = i > 0 ? order[i - 1] : undefined;
+  const after = i >= 0 ? order[i + 1] : undefined;
+  return [...(before ? [{ id: before, slot: -1 }] : []), { id: current, slot: 0 }, ...(after ? [{ id: after, slot: 1 }] : [])];
+}
+
+// Landed within about half a point of the page, ~0.3 s in; Animated's default rest thresholds would
+// hold the session up another 0.2 s after the motion is over.
 const SETTLE = { ...springParams(PAGING_SETTLE_RESPONSE, 1), restDisplacementThreshold: 0.003, restSpeedThreshold: 0.1 };
+/**
+ * A swipe's settle switches the window once the pages are this close to their place (pages; ~6 pt
+ * of a sidebar), not when the spring comes to rest: the critically damped tail is another ~0.1 s of
+ * sub-point motion, and a frame the switch costs there can't be seen.
+ */
+const SWITCH_NEAR = 0.03;
 /** After the switch, the pages and tint layers stay up this long (the backdrop redraws meanwhile). */
 const LINGER_MS = 150;
 
@@ -43,8 +61,12 @@ class ProfilePager {
   private shiftedWrite: number | null = null;
   private afterShift: (() => void)[] = [];
   private drag: Drag | null = null;
-  /** The profile a settle is heading for (switched to when it finishes). */
+  /** The profile a settle is heading for (switched to as it lands). */
   private target: string | null = null;
+  /** The slot a settle is heading for, while it runs. */
+  private settling: number | null = null;
+  /** Bumped by anything that stops the pages, so a settle scheduled before it doesn't start. */
+  private generation = 0;
   private linger: ReturnType<typeof setTimeout> | undefined;
   private surfaces = 0;
   private switching = false;
@@ -55,6 +77,7 @@ class ProfilePager {
   constructor(readonly windowId: string) {
     this.pos.addListener(({ value }) => {
       this.value = value;
+      if (this.target && this.settling !== null && Math.abs(value - this.settling) < SWITCH_NEAR) this.finish();
     });
     // A switch from elsewhere (a tab of another profile, a new profile) while pages are up: start over.
     this.unsubscribe = useBrowser.subscribe((s, prev) => {
@@ -146,7 +169,7 @@ class ProfilePager {
 
   // MARK: Switching
 
-  /** Slides to `profileId` (placed beside the window's page) and switches the window when it lands. */
+  /** Switches the window to `profileId` now, and slides to its page (placed beside the window's). */
   switchTo(profileId: string) {
     const s = useBrowser.getState();
     if (!s.profiles[profileId] || !this.current()) return;
@@ -159,8 +182,17 @@ class ProfilePager {
     if (profileId === current) return this.later(() => this.settle(this.slotOf(current) ?? 0, 0));
     const order = s.profileOrder;
     const side = order.indexOf(profileId) < order.indexOf(current) ? -1 : 1;
-    this.arrange(current, [[profileId, side]]);
-    this.later(() => this.settle(this.slotOf(profileId) ?? 0, 0));
+    // The new page and the switch render in one commit: the window shows the profile at once
+    // (its Chrome window swaps in behind the sidebar), and the pages slide on from there.
+    unstable_batchedUpdates(() => {
+      this.arrange(current, [[profileId, side]]);
+      this.target = profileId;
+      this.finish();
+    });
+    // The slide starts on the next frame, once the swap and the switch's view updates have landed on
+    // the main thread: started with them, its first frames would be dropped.
+    const generation = this.generation;
+    this.later(() => requestAnimationFrame(() => generation === this.generation && this.settle(this.slotOf(profileId) ?? 0, 0)));
   }
 
   // MARK: Pages
@@ -183,8 +215,7 @@ class ProfilePager {
   }
 
   private pages(): PagerPage[] {
-    const current = this.current();
-    return this.state.getState().pages ?? (current ? [{ id: current, slot: 0 }] : []);
+    return this.state.getState().pages ?? restPages(this.current(), useBrowser.getState().profileOrder);
   }
 
   private slotOf(id: string) {
@@ -267,6 +298,7 @@ class ProfilePager {
     const from = this.logical();
     // The release speed carries into the spring when it points at the page it settles on.
     const v = Math.sign(slot - from) === Math.sign(velocity) ? velocity : 0;
+    this.settling = slot;
     this.later(() =>
       Animated.spring(this.pos, { toValue: slot, velocity: v, ...SETTLE, useNativeDriver: false }).start(({ finished }) => {
         if (finished) this.settled();
@@ -275,6 +307,7 @@ class ProfilePager {
   }
 
   private settled() {
+    this.settling = null;
     this.finish();
     clearTimeout(this.linger);
     this.linger = setTimeout(() => this.end(), LINGER_MS);
@@ -299,11 +332,13 @@ class ProfilePager {
     const current = this.current();
     const slot = current ? this.slotOf(current) : undefined;
     this.rebase(slot ?? this.logical());
-    this.state.setState({ pages: null });
+    unstable_batchedUpdates(() => this.state.setState({ pages: null }));
     if (!this.surfaces) this.applyShift();
   }
 
   private halt() {
+    this.generation++;
+    this.settling = null;
     clearTimeout(this.linger);
     this.pos.stopAnimation();
   }
@@ -352,17 +387,22 @@ export function usePagerSurface(windowId: string) {
 }
 
 /**
- * The pages to draw (the window's alone at rest), and whether a transition is up. Every view of
- * the pages must use this: it lands `pos` re-anchorings in the same commit as the new slots.
+ * The pages to draw, and whether a transition is up (at rest, the pages beside the window's are
+ * `resting`: views keep them mounted but hidden). Every view of the pages must use this: it lands
+ * `pos` re-anchorings in the same commit as the new slots.
  */
 export function usePagerPages(windowId: string): { pages: PagerPage[]; paging: boolean; pager: ProfilePager } {
   const pager = pagerFor(windowId);
   const session = pager.state((s) => s.pages);
   const current = useBrowser((s) => s.windows[windowId]?.profileId ?? null);
+  const order = useBrowser((s) => s.profileOrder);
   // After the commit's layout effects, when every page's new offset node is attached (a node
   // created in this render has its value from the old `pos`), still ahead of the next frame.
   useLayoutEffect(() => queueMicrotask(() => pager.applyShift()), [pager, session]);
-  const pages = useMemo(() => session ?? (current ? [{ id: current, slot: 0 }] : []), [session, current]);
+  const pages = useMemo(
+    () => session ?? restPages(current, order).map((p) => (p.id === current ? p : { ...p, resting: true })),
+    [session, current, order],
+  );
   return { pages, paging: !!session, pager };
 }
 

@@ -61,7 +61,7 @@ export function TopTabStrip({ floating }: { floating?: boolean }) {
       <WindowDragRegion style={StyleSheet.absoluteFill} />
       <View style={{ position: "absolute", left, right, top: 0, bottom: 0, overflow: "hidden" }}>
         {pages.map((page) => (
-          <StripPage key={page.id} profileId={page.id} slot={page.slot} pageWidth={pageWidth} current={page.id === current} />
+          <StripPage key={page.id} profileId={page.id} slot={page.slot} pageWidth={pageWidth} current={page.id === current} resting={!!page.resting} />
         ))}
       </View>
       <View
@@ -87,7 +87,7 @@ export function TopTabStrip({ floating }: { floating?: boolean }) {
 }
 
 /** A profile's tabs in the strip; the window's, or one beside it while a swipe pages between them. */
-function StripPage({ profileId, slot, pageWidth, current }: { profileId: string; slot: number; pageWidth: number; current: boolean }) {
+function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId: string; slot: number; pageWidth: number; current: boolean; resting: boolean }) {
   const windowId = useWindowId();
   const translateX = usePageOffset(windowId, slot, pageWidth);
   const entries = useBrowser(
@@ -130,7 +130,7 @@ function StripPage({ profileId, slot, pageWidth, current }: { profileId: string;
   return (
     <Animated.View
       pointerEvents={current ? "auto" : "none"}
-      style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pageWidth, transform: [{ translateX }] }}
+      style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pageWidth, display: resting ? "none" : "flex", transform: [{ translateX }] }}
     >
       <PageProfileContext.Provider value={profileId}>
         <ScrollView

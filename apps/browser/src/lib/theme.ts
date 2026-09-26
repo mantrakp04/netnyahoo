@@ -1,7 +1,7 @@
 import type { AreaLightPalette, LogoPaint } from "@netnyahoo/shaders";
 import { useContext } from "react";
 import { useBrowser } from "../store/browser";
-import { WindowContext } from "../store/hooks";
+import { PageProfileContext, WindowContext } from "../store/hooks";
 import type { ProfileColor } from "../store/types";
 import { backdropTint, opaqueTint, tintForHue, type BackdropTint } from "./windowTint";
 
@@ -256,13 +256,16 @@ export function themeFor(key: string): Theme {
   return theme;
 }
 
-/** The theme for the window this component renders in. */
+/** The theme for the window (or the sidebar or tab-strip page) this component renders in. */
 export function useTheme(): Theme {
   const windowId = useContext(WindowContext);
+  // A sidebar or tab-strip page wears its own profile's colours: a profile switch leaves the pages'
+  // rows as they are while they slide (layout/profilePager).
+  const page = useContext(PageProfileContext);
   const key = useBrowser((s) => {
     const w = s.windows[windowId ?? s.ui.focusedWindowId ?? ""];
     if (w?.incognito) return "incognito";
-    const color = s.profiles[w?.profileId ?? s.settings.defaultProfileId]?.color ?? "plum";
+    const color = s.profiles[page ?? w?.profileId ?? s.settings.defaultProfileId]?.color ?? "plum";
     return `${color}:${s.ui.appDark ? "dark" : "light"}`;
   });
   return themeFor(key);
