@@ -256,7 +256,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Multi‑select tabs (⌘‑click, ⇧‑click) + bulk actions | ✓ | ✅ | |
 | Tab context menu with shortcut hints | ✓ | ✅ | |
 | Search Tabs ⇧⌘A (all windows, recently closed, chats) | ✓ | ✅ | all windows of the profile + recently closed tabs/groups; chats ⏸ |
-| Tab Switcher ⌃Tab (MRU cycling with UI) | ✓ | ✅ | overlay after 140 ms, commits on ⌃ release |
+| Tab Switcher ⌃Tab (MRU cycling with UI) | ✓ | ✅ | overlay after 140 ms, commits on ⌃ release. As in Dia 1.50.1's RecentTabs event monitor: → / ← move, Esc or a click outside closes it without switching, a click on a row switches to it, the pointer highlights rows, leaving the app switches, other keys are swallowed while it's up |
 | ⌘1–⌘8 / ⌘9 select tab | ✓ (Chromium) | ✅ | |
 | Overflow menu (open + recently closed + synced devices) | ✓ | ⛔ | everything but synced devices is done (open, recently closed, recently cleaned, clean up, mute all); synced devices' tabs need Sync, which has no backend (⛔ table) |
 | Clean Up Tabs ⌥⌘K / auto‑archive untouched tabs → "Recently Cleaned" | ✓ | ✅ | + daily auto clean-up and the sidebar upsell |

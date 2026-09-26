@@ -2,13 +2,14 @@ import { onAppEvent } from "@netnyahoo/shell";
 import { webviews } from "../../lib/webviews";
 import { startLive } from "../../live";
 import { useBrowser } from "../../store/browser";
-import { commitSwitcher } from "./switcher";
+import { cancelSwitcher, commitSwitcher, moveSwitcher } from "./switcher";
 
 /**
  * App-wide side effects of sidebar features, started once:
  * - web views follow tabs' `muted` (Mute Site / Mute All Tabs change many tabs at once);
  * - abandoned New Tab pages close when you switch apps or lock the screen (Dia 1.38);
- * - releasing ⌃ commits the ⌃Tab switcher;
+ * - the ⌃Tab switcher: releasing ⌃ or leaving the app switches, Esc or a click outside cancels,
+ *   → and ← move;
  * - with Clean Up Daily on, untouched tabs are cleaned up in the background.
  */
 const AUTO_CLEAN_EVERY_MS = 30 * 60 * 1000;
@@ -30,7 +31,9 @@ export function startSidebarEffects() {
 
   onAppEvent((e) => {
     if (e.type === "resignActive" || e.type === "screenLocked") useBrowser.getState().closeAbandonedNewTabs();
-    if (e.type === "controlReleased") commitSwitcher();
+    if (e.type === "controlReleased" || e.type === "resignActive") commitSwitcher();
+    if (e.type === "switcherMouseUp" || (e.type === "switcherKey" && e.key === "escape")) cancelSwitcher();
+    if (e.type === "switcherKey" && e.key !== "escape") moveSwitcher(e.key === "next" ? 1 : -1);
   });
 
   setInterval(() => {

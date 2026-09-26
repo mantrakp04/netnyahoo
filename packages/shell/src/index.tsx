@@ -134,7 +134,10 @@ export type AppEvent =
   | { type: "resignActive" }
   | { type: "screenLocked" }
   /** ⌃ went up (the ⌃Tab switcher commits). */
-  | { type: "controlReleased" };
+  | { type: "controlReleased" }
+  /** While the ⌃Tab switcher captures input (setSwitcherCapture): Esc, → or ←, and a mouse-up. */
+  | { type: "switcherKey"; key: "escape" | "next" | "previous" }
+  | { type: "switcherMouseUp" };
 
 type ShellEvents = {
   onCommand: (e: CommandEvent) => void;
@@ -229,6 +232,7 @@ const Shell = requireNativeModule<{
   addListener<K extends keyof ShellEvents>(name: K, listener: ShellEvents[K]): EventSubscription;
   showMenu(items: MenuItem[]): Promise<string | null>;
   copyText(text: string): void;
+  setSwitcherCapture?(active: boolean): Promise<void>;
   startDictation(): void;
   pickFiles(): Promise<string[]>;
   readDocument(name: string): string | null;
@@ -253,6 +257,8 @@ export const readDocument = (name: string) => Shell.readDocument(name);
 export const writeDocument = (name: string, contents: string) => Shell.writeDocument(name, contents);
 
 export const startDictation = () => Shell.startDictation();
+/** The ⌃Tab switcher is up: Esc, arrows and clicks go to it (`switcherKey` / `switcherMouseUp` app events). */
+export const setSwitcherCapture = (active: boolean) => void Shell.setSwitcherCapture?.(active);
 export const pickFiles = () => Shell.pickFiles();
 
 export function copyText(text: string) {

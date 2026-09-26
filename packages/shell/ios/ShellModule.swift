@@ -31,6 +31,8 @@ public class ShellModule: Module {
   /// App-state observers for the sidebar (see `observeForSidebar`).
   private var sidebarObservers: [(NotificationCenter, NSObjectProtocol)] = []
   private var flagsMonitor: Any?
+  /// Keys and clicks while the ⌃Tab switcher is up (see `setSwitcherCapture`).
+  private var switcherMonitor: Any?
 
   public func definition() -> ModuleDefinition {
     Name("NetnyahooShell")
@@ -59,6 +61,8 @@ public class ShellModule: Module {
       self.sidebarObservers = []
       if let monitor = self.flagsMonitor { NSEvent.removeMonitor(monitor) }
       self.flagsMonitor = nil
+      if let monitor = self.switcherMonitor { NSEvent.removeMonitor(monitor) }
+      self.switcherMonitor = nil
     }
 
     OnStartObserving("onAppEvent") {
@@ -178,6 +182,31 @@ public class ShellModule: Module {
       let url = try ShellModule.documentURL(name)
       try contents.write(to: url, atomically: true, encoding: .utf8)
     }
+
+    /// While the ⌃Tab switcher is up, Dia's RecentTabs monitor: Esc dismisses it, → and ← move
+    /// the highlight, ⌃Tab / ⌃⇧Tab go on to the menu, and every other key is swallowed so it
+    /// doesn't reach the page. A mouse-up anywhere dismisses it (a row commits on mouse-down).
+    AsyncFunction("setSwitcherCapture") { [weak self] (active: Bool) in
+      guard let self else { return }
+      if let monitor = self.switcherMonitor { NSEvent.removeMonitor(monitor) }
+      self.switcherMonitor = nil
+      guard active else { return }
+      let emit: ([String: Any]) -> Void = { [weak self] body in self?.sendEvent("onAppEvent", body) }
+      self.switcherMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseUp, .rightMouseUp, .otherMouseUp]) { event in
+        guard event.type == .keyDown else {
+          emit(["type": "switcherMouseUp"])
+          return event
+        }
+        switch event.keyCode {
+        case 53: emit(["type": "switcherKey", "key": "escape"])
+        case 124: emit(["type": "switcherKey", "key": "next"])
+        case 123: emit(["type": "switcherKey", "key": "previous"])
+        case 48 where event.modifierFlags.contains(.control): return event
+        default: break
+        }
+        return nil
+      }
+    }.runOnQueue(.main)
 
     Function("copyText") { (text: String) in
       DispatchQueue.main.async {

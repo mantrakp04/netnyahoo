@@ -5,7 +5,7 @@ import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { tabTitle } from "./actions";
 import { useSidebarUi } from "./state";
-import { commitSwitcher } from "./switcher";
+import { commitSwitcher, focusSwitcherRow } from "./switcher";
 import { TabIcon } from "./TabIcon";
 import { useSidebarTokens } from "./tokens";
 
@@ -47,9 +47,12 @@ function SwitcherRow({ tabId, focused, index, focusFill, outline }: { tabId: str
   const theme = useTheme();
   const tab = useBrowser((s) => s.tabs[tabId]);
   if (!tab) return null;
+  // Dia's rows: the pointer highlights one, mouse-down switches to it (the mouse-up that follows
+  // would close the switcher without switching).
   return (
-    <Pressable onPress={() => commitSwitcher(index)}>
+    <Pressable onPressIn={() => commitSwitcher(index)}>
       <View
+        onMouseEnter={() => focusSwitcherRow(index)}
         style={{
           height: ROW,
           borderRadius: 10,
