@@ -1,22 +1,18 @@
 import AppKit
 
-/// Chrome-hosted windows (docs/research/chrome-hosted-window.md), behind
-/// NETNYAHOO_CHROME_WINDOW=1: browser windows are Chrome's own Browser windows with the
-/// React root laid over them (NNChromeWindowHost in packages/cef, found by name so the
-/// shell doesn't link the engine). Chrome owns such a window's delegate, so the
-/// WindowManager follows it through notifications instead.
-enum ChromeWindowSpike {
-  private static var host: NSObject.Type? {
-    guard ProcessInfo.processInfo.environment["NETNYAHOO_CHROME_WINDOW"] == "1",
-          let cls = NSClassFromString("NNChromeWindowHost") as? NSObject.Type,
-          cls.value(forKey: "enabled") as? Bool == true else { return nil }
-    return cls
-  }
+/// Chrome-hosted windows (docs/research/chrome-hosted-window.md): browser windows are Chrome's
+/// own Browser windows with the React root laid over them (NNChromeWindowHost in packages/cef,
+/// found by name so the shell doesn't link the engine). Chrome owns such a window's delegate, so
+/// the WindowManager follows it through notifications instead.
+enum ChromeWindows {
+  private static let host = NSClassFromString("NNChromeWindowHost") as? NSObject.Type
 
   /// A Chrome Browser window of `profile` (the engine's name for the window's profile, incognito
-  /// ones included) for a new browser window, or nil to make the usual one.
+  /// ones included; nil: the default one) for a new browser window. Nil only when the engine
+  /// can't make one: stock CEF without client windows (docs/cef-source-build.md › Using it).
   static func makeWindow(profile: String?) -> NSWindow? {
-    guard let profile, let host else { return nil }
+    guard let host else { return nil }
+    let profile = profile ?? ""
     installCloseHandler(host)
     let selector = NSSelectorFromString("makeWindowForProfile:")
     return host.perform(selector, with: profile)?.takeUnretainedValue() as? NSWindow

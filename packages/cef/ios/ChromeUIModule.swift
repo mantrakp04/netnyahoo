@@ -7,7 +7,7 @@ public class ChromeUIModule: Module {
     Events("onDeviceChooser", "onCastDialog", "onCastRoutes", "onSidePanel")
 
     // Once JS listens; again after a reload, which also brings back choosers and Cast dialogs
-    // still waiting for an answer (Chrome's own ones would sit in the hidden window).
+    // still waiting for an answer (Chrome's own ones would anchor to its toolbar, which is off).
     OnStartObserving {
       NNChromeSurfaces.eventHandler = { [weak self] name, payload in
         switch name {

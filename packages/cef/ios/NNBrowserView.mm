@@ -209,7 +209,6 @@ NSString *const kExitPictureInPictureScript =
 - (void)viewDidMoveToWindow {
   [super viewDidMoveToWindow];
   if (!self.window) return;
-  host::Attach(self);
   if (_browser) {
     // Moved to another window with its browser (a Chrome tab changes Browsers too).
     host::TabMoved(self);
@@ -399,7 +398,7 @@ NSString *const kExitPictureInPictureScript =
   host::LayoutChanged(self.window);
 }
 
-/// Chrome sizes a tab's view to its (hidden) Browser window's content area, e.g. when the
+/// Chrome sizes a tab's view to its Browser window's content area (the whole window), e.g. when the
 /// tab joins a Browser or becomes active: the page fills this view instead, whatever Chrome did.
 - (void)keepPageFrame:(NSView *)pageView {
   if (_frameObserver) [NSNotificationCenter.defaultCenter removeObserver:_frameObserver];

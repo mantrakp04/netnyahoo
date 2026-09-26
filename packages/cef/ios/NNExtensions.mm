@@ -23,7 +23,6 @@ void Emit(NSString *name, NSDictionary *payload) {
 }
 
 void Changed(NSString *profile, NSString *extensionId, NSString *event) {
-  host::InvalidateExtensionCommands(profile);
   Emit(@"changed", @{@"profile" : DataProfile(profile), @"id" : extensionId, @"event" : event});
 }
 

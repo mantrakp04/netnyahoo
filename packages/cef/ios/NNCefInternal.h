@@ -20,7 +20,8 @@
 #define NN_TAB_CAPTURE 0
 #endif
 
-// Tabs are Chrome tabs of each window's ghost Browser, hosted in our views
+// Tabs are Chrome tabs of each app window's own Browser (every app window is
+// Chrome's Browser window, NNChromeWindow.mm), hosted in our views
 // (patched CEF, docs/cef-source-build.md "Chrome-style hosting API"). Needs
 // vendor/cef to be our own build; 0 builds against the stock distribution
 // (the NN_CHROME_TABS build setting, passed through NetnyahooCEF.podspec).
@@ -203,7 +204,7 @@ bool TabTransfersPending();
 NSView *ParkingView();
 
 /// A window of ours or Chrome's that must never be seen, clicked, made key, or
-/// activate the app (hidden Chrome windows, ghosts). See NNWindowHost.mm.
+/// activate the app (Chrome's hidden WebUI helper and stray windows). See NNWindowHost.mm.
 void MakeWindowInert(NSWindow *window);
 
 /// Calls the page script's receive(kind, json) in `frame`.

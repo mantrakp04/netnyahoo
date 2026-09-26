@@ -138,7 +138,7 @@ class ContextReady : public CefRequestContextHandler {
     if (ready) dispatch_async(dispatch_get_main_queue(), ^{ ready(context); });
   }
 #if NN_INSTALL_PROMPT
-  // Our ghosts' tabs live in these contexts: their install prompts go to the app too.
+  // Our windows' tabs live in these contexts: their install prompts go to the app too.
   bool OnExtensionInstallPrompt(CefRefPtr<CefBrowser> browser, const CefString &extension_id,
                                 CefRefPtr<CefDictionaryValue> details,
                                 CefRefPtr<CefExtensionPromptCallback> callback) override {

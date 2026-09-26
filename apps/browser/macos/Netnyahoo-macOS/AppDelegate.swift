@@ -16,8 +16,9 @@ final class AppDelegate: ExpoAppDelegate {
     reactNativeFactory = factory
     bindReactNativeFactory(factory)
 
-    // Every window is a BrowserWindow hosting its own React root on the one shared
-    // bridge; JS opens them (restoring the last session) once the bundle has run.
+    // Every window hosts its own React root on the one shared bridge, in Chrome's own
+    // window of its profile (BrowserWindow only with stock CEF); JS opens them
+    // (restoring the last session) once the bundle has run.
     WindowHost.makeWindow = { BrowserWindow() }
     WindowHost.makeContentView = { [weak factory] windowId in
       // Straight to RCTRootViewFactory: Expo's override routes through recreateRootView, which

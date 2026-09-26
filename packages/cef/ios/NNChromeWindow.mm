@@ -24,9 +24,12 @@ bool TakesEmbeddedView(NSView *content) {
 
 BOOL (^gShouldClose)(NSWindow *);
 
-/// BrowserWindow's traffic lights: 18 pt in from the left, centred in the 53 pt titlebar (CEF centres
-/// them vertically in GetTitlebarHeight; its frame puts them further in).
+/// Dia 1.50.1's traffic lights (a 2x capture: button centres 24.75, 47.75 and 70.75 pt in, 26.75 pt
+/// down; ours measure the same): buttons 18 pt in from the window's left edge, centred in the 54 pt
+/// titlebar (CEF centres them vertically in GetTitlebarHeight; its frame puts them further in).
 constexpr CGFloat kTrafficLightInsetX = 18;
+
+const void *kFollowedKey = &kFollowedKey;
 
 void LayoutTrafficLights(NSWindow *window) {
   if (window.styleMask & NSWindowStyleMaskFullScreen) return;
@@ -34,6 +37,15 @@ void LayoutTrafficLights(NSWindow *window) {
   NSButton *mini = [window standardWindowButton:NSWindowMiniaturizeButton];
   NSButton *zoom = [window standardWindowButton:NSWindowZoomButton];
   if (!close || !mini || !zoom) return;
+  // CefThemeFrame centres the buttons again whenever it lays its titlebar out (showing the window,
+  // resizes, key changes, full screen): put them back each time it moves one.
+  if (!objc_getAssociatedObject(close, kFollowedKey)) {
+    objc_setAssociatedObject(close, kFollowedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    close.postsFrameChangedNotifications = YES;
+    __weak NSWindow *weakWindow = window;
+    [NSNotificationCenter.defaultCenter addObserverForName:NSViewFrameDidChangeNotification object:close queue:nil
+                                                usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
+  }
   const CGFloat spacing = NSMinX(mini.frame) - NSMinX(close.frame);
   // In window coordinates: CEF's titlebar container sits a little in from the window's edge.
   const CGFloat offset = [close.superview convertPoint:NSZeroPoint toView:nil].x;
@@ -44,7 +56,8 @@ void LayoutTrafficLights(NSWindow *window) {
     [buttons[i] setFrameOrigin:NSMakePoint(x + i * spacing, NSMinY(buttons[i].frame))];
 }
 
-/// CefThemeFrame lays the buttons out again on resizes, key changes and full-screen exits.
+/// CefThemeFrame lays the buttons out again on resizes, key changes and full-screen exits (and
+/// LayoutTrafficLights follows the close button's frame).
 void KeepTrafficLightsInset(NSWindow *window) {
   __weak NSWindow *weakWindow = window;
   for (NSNotificationName name in @[
@@ -60,11 +73,30 @@ void KeepTrafficLightsInset(NSWindow *window) {
 
 void (^gSwapped)(NSWindow *, NSWindow *);
 const void *kPendingProfileKey = &kPendingProfileKey;
+/// On a full-screen window while it leaves full screen.
+const void *kExitingFullScreenKey = &kExitingFullScreenKey;
+/// On a window shown over a full-screen one: its collection behaviour before.
+const void *kNestedBehaviorKey = &kNestedBehaviorKey;
 
+void ForwardFullScreenToggles(NSWindow *window);
+void ReturnRootBeforeFullScreenExit(NSWindow *window);
+
+/// An app window's Chrome window, once.
 void ConfigureHostingWindow(NSWindow *window) {
+  if (objc_getAssociatedObject(window, kConfiguredKey)) return;
+  objc_setAssociatedObject(window, kConfiguredKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   window.minSize = NSMakeSize(720, 460);
   window.title = @"Netnyahoo";
   KeepTrafficLightsInset(window);
+  ForwardFullScreenToggles(window);
+  __weak NSWindow *weakWindow = window;
+  NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+  [center addObserverForName:NSWindowWillExitFullScreenNotification object:window queue:nil usingBlock:^(NSNotification *) {
+    ReturnRootBeforeFullScreenExit(weakWindow);
+  }];
+  [center addObserverForName:NSWindowDidExitFullScreenNotification object:window queue:nil usingBlock:^(NSNotification *) {
+    objc_setAssociatedObject(weakWindow, kExitingFullScreenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  }];
 }
 
 /// BrowserWindow's colour (what a Chrome-hosted window shows before our views paint).
@@ -104,6 +136,14 @@ NSWindow *CoverWindow(NSWindow *window) {
   return cover;
 }
 
+/// Our root leaves `from` for `to` (both of one app window), committed.
+void MoveRoot(NSView *root, NSWindow *from, NSWindow *to) {
+  objc_setAssociatedObject(from, kRootKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  ((id<NNEmbeddingContentView>)from.contentView).netnyahooEmbeddedView = nil;
+  [NNChromeWindowHost embedRootView:root inWindow:to];
+  [CATransaction flush];
+}
+
 /// Moves our views from `from` to `to` (another window of the same app window) and puts `to` on
 /// screen in its place.
 void Swap(NSWindow *from, NSWindow *to) {
@@ -122,10 +162,7 @@ void Swap(NSWindow *from, NSWindow *to) {
   // Transparent: once our views leave, the window leaving shows nothing (its compositor clears to
   // transparent), so the window behind, already showing them, is what's on screen.
   if ([strategy isEqualToString:@"transparent"]) from.backgroundColor = NSColor.clearColor;
-  objc_setAssociatedObject(from, kRootKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  ((id<NNEmbeddingContentView>)from.contentView).netnyahooEmbeddedView = nil;
-  [NNChromeWindowHost embedRootView:root inWindow:to];
-  [CATransaction flush];
+  MoveRoot(root, from, to);
   [from orderOut:nil];
   from.backgroundColor = WindowColor();
   if (key) [to makeKeyWindow];
@@ -138,6 +175,128 @@ void Swap(NSWindow *from, NSWindow *to) {
     });
 }
 
+// MARK: Full screen
+//
+// Full screen gives each NSWindow a Space of its own, so another profile's window can't take the
+// full-screen window's place. While the window is in full screen, another profile's window of it
+// shows over it instead: a full-screen auxiliary child window at the same frame, without traffic
+// lights, our views in it. Its Chrome dialogs and bubbles are its children, so they show on the
+// full-screen Space as they would anywhere. When the window leaves full screen, our views go back
+// to it first, and the usual swap follows.
+
+/// DEV: a window that acts as if in full screen (the "fakeFullScreen:" action).
+const void *kDevFullScreenKey = &kDevFullScreenKey;
+
+bool IsFullScreen(NSWindow *window) {
+  return (window.styleMask & NSWindowStyleMaskFullScreen) || objc_getAssociatedObject(window, kDevFullScreenKey);
+}
+
+/// The full-screen window `window` is, or is shown over (nil: neither).
+NSWindow *FullScreenHost(NSWindow *window) {
+  if (!window) return nil;
+  if (IsFullScreen(window)) return window;
+  NSWindow *parent = window.parentWindow;
+  if (parent && IsFullScreen(parent) && objc_getAssociatedObject(window, kNestedBehaviorKey)) return parent;
+  return nil;
+}
+
+void SetTrafficLightsHidden(NSWindow *window, BOOL hidden) {
+  for (NSWindowButton b : {NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton})
+    [window standardWindowButton:b].hidden = hidden;
+}
+
+/// `window` shows over the full-screen `host`, on its Space.
+void Nest(NSWindow *window, NSWindow *host) {
+  if (!objc_getAssociatedObject(window, kNestedBehaviorKey))
+    objc_setAssociatedObject(window, kNestedBehaviorKey, @(window.collectionBehavior), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  window.collectionBehavior = (window.collectionBehavior & ~NSWindowCollectionBehaviorFullScreenPrimary) |
+                              NSWindowCollectionBehaviorFullScreenAuxiliary;
+  window.movable = NO;
+  window.hasShadow = NO;
+  SetTrafficLightsHidden(window, YES);
+  [window setFrame:host.frame display:NO];
+  [host addChildWindow:window ordered:NSWindowAbove];
+}
+
+/// `window` no longer shows over a full-screen window.
+void Unnest(NSWindow *window) {
+  NSNumber *behavior = objc_getAssociatedObject(window, kNestedBehaviorKey);
+  if (!behavior) return;
+  [window.parentWindow removeChildWindow:window];
+  [window orderOut:nil];
+  objc_setAssociatedObject(window, kNestedBehaviorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  window.collectionBehavior = behavior.unsignedIntegerValue;
+  window.movable = YES;
+  window.hasShadow = YES;
+  SetTrafficLightsHidden(window, NO);
+}
+
+/// Swap for a window in full screen (`host`): `to` shows over it (or, being `host`, alone again).
+void FullScreenSwap(NSWindow *from, NSWindow *to, NSWindow *host) {
+  NSView *root = [NNChromeWindowHost rootViewOfWindow:from];
+  if (!root || from == to) return;
+  const BOOL key = from.isKeyWindow;
+  to.appearance = host.appearance;
+  to.title = from.title;
+  from.animationBehavior = to.animationBehavior = NSWindowAnimationBehaviorNone;
+  if (to != host) Nest(to, host);
+  MoveRoot(root, from, to);
+  if (from != host) Unnest(from);
+  // The full-screen window shows nothing under the one over it (its corners are square, the
+  // other's round).
+  host.backgroundColor = to == host ? WindowColor() : NSColor.clearColor;
+  if (key) [to makeKeyWindow];
+  nn::host::WindowShown(to);
+  if (gSwapped) gSwapped(from, to);
+}
+
+/// Swaps the full-screen `window` to `profile`'s window once it has left full screen.
+void SwapAfterFullScreen(NSWindow *window, NSString *profile) {
+  const bool waiting = objc_getAssociatedObject(window, kPendingProfileKey) != nil;
+  objc_setAssociatedObject(window, kPendingProfileKey, profile ?: @"", OBJC_ASSOCIATION_COPY_NONATOMIC);
+  if (waiting) return;
+  __block id observer = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidExitFullScreenNotification
+                                                                        object:window
+                                                                         queue:nil
+                                                                    usingBlock:^(NSNotification *) {
+    [NSNotificationCenter.defaultCenter removeObserver:observer];
+    NSString *pending = objc_getAssociatedObject(window, kPendingProfileKey);
+    objc_setAssociatedObject(window, kPendingProfileKey, nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    dispatch_async(dispatch_get_main_queue(), ^{ [NNChromeWindowHost showProfile:pending inWindow:window]; });
+  }];
+}
+
+/// `window` starts leaving full screen: our views come back to it from the window shown over it
+/// (that one would stay screen-sized through the animation), and that profile's window takes over
+/// once it's out.
+void ReturnRootBeforeFullScreenExit(NSWindow *window) {
+  if (!window) return;
+  objc_setAssociatedObject(window, kExitingFullScreenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  for (NSWindow *child in window.childWindows) {
+    if (FullScreenHost(child) != window || ![NNChromeWindowHost rootViewOfWindow:child]) continue;
+    NSString *profile = nn::host::WindowProfile(child);
+    FullScreenSwap(child, window, window);
+    if (profile) SwapAfterFullScreen(window, profile);
+    return;
+  }
+}
+
+/// Toggle Full Screen (the View menu, ⌃⌘F) goes to the key window: shown over a full-screen
+/// window, that's the full-screen one's to toggle.
+void ForwardFullScreenToggles(NSWindow *window) {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    Class cls = window.class;
+    SEL sel = @selector(toggleFullScreen:);
+    IMP original = method_getImplementation(class_getInstanceMethod(cls, sel));
+    class_addMethod(cls, sel, imp_implementationWithBlock(^(NSWindow *target, id sender) {
+                      NSWindow *host = FullScreenHost(target);
+                      ((void (*)(id, SEL, id))original)(host ?: target, sel, sender);
+                    }),
+                    "v@:@");
+  });
+}
+
 }  // namespace
 
 NSView *NNWindowRootView(NSWindow *window) {
@@ -146,14 +305,8 @@ NSView *NNWindowRootView(NSWindow *window) {
 
 @implementation NNChromeWindowHost
 
-+ (BOOL)enabled {
-  static BOOL requested = [NSProcessInfo.processInfo.environment[@"NETNYAHOO_CHROME_WINDOW"] isEqualToString:@"1"];
-  return requested && NN_CLIENT_WINDOW && [NNCef isStarted];
-}
-
 + (NSWindow *)makeWindowForProfile:(NSString *)profile {
-  if (!self.enabled) return nil;
-  NSWindow *window = nn::host::MakeHostingWindow(profile ?: @"");
+  NSWindow *window = nn::host::MakeChromeWindow(profile ?: @"");
   if (!window) return nil;
   // An engine without the content view hook can't take our views.
   if (!TakesEmbeddedView(window.contentView)) {
@@ -164,42 +317,39 @@ NSView *NNWindowRootView(NSWindow *window) {
   return window;
 }
 
++ (NSWindow *)makePopupWindowForProfile:(NSString *)profile root:(NSView *)root {
+  NSWindow *window = nn::host::MakeChromeWindow(profile ?: @"", true);
+  if (!window) return nil;
+  if (!TakesEmbeddedView(window.contentView)) {
+    [window close];
+    return nil;
+  }
+  window.backgroundColor = WindowColor();
+  [self embedRootView:root inWindow:window];
+  return window;
+}
+
 + (void)showProfile:(NSString *)profile inWindow:(NSWindow *)window {
   if (![self rootViewOfWindow:window]) return;
-  // Full screen owns a Space per window: the swap waits until the window leaves it (meanwhile the
-  // profile's pages show in this window).
-  if (window.styleMask & NSWindowStyleMaskFullScreen) {
-    const bool waiting = objc_getAssociatedObject(window, kPendingProfileKey) != nil;
-    objc_setAssociatedObject(window, kPendingProfileKey, profile ?: @"", OBJC_ASSOCIATION_COPY_NONATOMIC);
-    if (waiting) return;
-    __block id observer = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidExitFullScreenNotification
-                                                                          object:window
-                                                                           queue:nil
-                                                                      usingBlock:^(NSNotification *) {
-      [NSNotificationCenter.defaultCenter removeObserver:observer];
-      NSString *pending = objc_getAssociatedObject(window, kPendingProfileKey);
-      objc_setAssociatedObject(window, kPendingProfileKey, nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
-      dispatch_async(dispatch_get_main_queue(), ^{ [NNChromeWindowHost showProfile:pending inWindow:window]; });
-    }];
+  NSWindow *host = FullScreenHost(window);
+  // Leaving full screen: the swap waits until it's out (meanwhile the profile's pages show in the
+  // window).
+  if (host && objc_getAssociatedObject(host, kExitingFullScreenKey)) {
+    if (host == window) SwapAfterFullScreen(host, profile);
     return;
   }
   NSWindow *to = nn::host::GroupWindowForProfile(window, profile);
   if (!to || to == window) return;
-  if (!objc_getAssociatedObject(to, kConfiguredKey)) {
-    ConfigureHostingWindow(to);
-    objc_setAssociatedObject(to, kConfiguredKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  }
-  Swap(window, to);
+  ConfigureHostingWindow(to);
+  if (host) FullScreenSwap(window, to, host);
+  else Swap(window, to);
 }
 
 + (void)prepareProfiles:(NSArray<NSString *> *)profiles forWindow:(NSWindow *)window {
   if (![self rootViewOfWindow:window]) return;
   for (NSString *profile in profiles) {
     NSWindow *made = nn::host::GroupWindowForProfile(window, profile);
-    if (made && !objc_getAssociatedObject(made, kConfiguredKey)) {
-      ConfigureHostingWindow(made);
-      objc_setAssociatedObject(made, kConfiguredKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
+    if (made) ConfigureHostingWindow(made);
   }
 }
 
@@ -212,7 +362,7 @@ NSView *NNWindowRootView(NSWindow *window) {
 }
 
 + (void)closeWindow:(NSWindow *)window {
-  if (!nn::host::CloseHostingWindow(window)) [window close];
+  if (!nn::host::CloseWindow(window)) [window close];
 }
 
 + (void)setShouldCloseHandler:(BOOL (^)(NSWindow *))handler {
@@ -424,7 +574,7 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     // tree commits, the first window orders out; <ms> later it swaps back and the probe window
     // closes. Both windows show the same root, so any frame unlike the settled state is the seam.
     NSView *root = [NNChromeWindowHost rootViewOfWindow:window];
-    NSWindow *probe = nn::host::MakeHostingWindow(@"");
+    NSWindow *probe = nn::host::MakeChromeWindow(@"");
     if (!root || !probe || !TakesEmbeddedView(probe.contentView)) return @"no probe window";
     const double ms = [action substringFromIndex:10].doubleValue;
     probe.appearance = window.appearance;
@@ -446,11 +596,11 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(ms * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
       swap(probe, window);
       window.animationBehavior = behavior;
-      nn::host::HostingWindowAction(probe, @"close");
+      nn::host::ChromeWindowAction(probe, @"close");
     });
     return [NSString stringWithFormat:@"swapped in %.2f ms, back in %.0f ms", (t1 - t0) * 1000, ms];
   }
-  if ([action hasPrefix:@"cef:"]) return nn::host::HostingWindowAction(window, [action substringFromIndex:4]);
+  if ([action hasPrefix:@"cef:"]) return nn::host::ChromeWindowAction(window, [action substringFromIndex:4]);
   if ([action hasPrefix:@"ns:"]) {
     // "ns:out" / "ns:front": AppKit ordering, to compare with CEF's.
     if ([action hasSuffix:@"out"]) [window orderOut:nil];
@@ -493,6 +643,20 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     if (parts.count > 1) [client insertText:parts[1] replacementRange:NSMakeRange(NSNotFound, 0)];
     return [NSString stringWithFormat:@"%@ marked=%d range=%@ after commit marked=%d", Describe((NSView *)client), marked,
                                       NSStringFromRange(range), client.hasMarkedText];
+  }
+  if ([action hasPrefix:@"fakeFullScreen:"]) {
+    // "fakeFullScreen:1|0": our full-screen handling without AppKit's (which a test instance
+    // mustn't run: it opens a Space on the user's screen, and AppKit owns the style bit). 0 posts
+    // will/did-exit around clearing it.
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    if ([action hasSuffix:@"1"]) {
+      objc_setAssociatedObject(window, kDevFullScreenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else {
+      [center postNotificationName:NSWindowWillExitFullScreenNotification object:window];
+      objc_setAssociatedObject(window, kDevFullScreenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+      [center postNotificationName:NSWindowDidExitFullScreenNotification object:window];
+    }
+    return [NSString stringWithFormat:@"fullScreen=%d", IsFullScreen(window)];
   }
   if ([action isEqualToString:@"responder"]) {
     id r = window.firstResponder;

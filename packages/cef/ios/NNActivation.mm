@@ -2,8 +2,8 @@
 //
 // - Chromium activates the app whenever it shows or focuses one of its windows
 //   (NativeWidgetNSWindowBridge::SetVisibilityState, CocoaMouseCapture, the
-//   AppController…). With Chrome-style tabs its windows are our ghosts and their
-//   dialogs and bubbles, so a page (an alert in a background tab, a password
+//   AppController…). With Chrome-style tabs its windows are our app windows and
+//   their dialogs and bubbles, so a page (an alert in a background tab, a password
 //   bubble) could pull the app in front of whatever the user is doing. Only the
 //   user (clicking our window, the Dock, a notification) activates the app:
 //   requests coming from Chromium while the app is inactive are dropped, unless

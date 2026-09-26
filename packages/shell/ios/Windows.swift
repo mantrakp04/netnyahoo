@@ -66,8 +66,8 @@ final class WindowManager: NSObject, NSWindowDelegate {
     window.level = window.level == .floating ? .normal : .floating
   }
 
-  /// `profile`: the engine profile the window shows first (only Chrome-hosted windows use it; they
-  /// are that profile's Chrome window).
+  /// `profile`: the engine profile the window shows first (the window is that profile's Chrome
+  /// window).
   func open(id: String, frame: [Double]?, incognito: Bool, title: String, focus: Bool, kind: String = "browser", profile: String? = nil) {
     if let existing = windows[id] {
       if focus { existing.makeKeyAndOrderFront(nil) }
@@ -75,15 +75,16 @@ final class WindowManager: NSObject, NSWindowDelegate {
     }
     if kind != "browser" { return openAux(id: id, kind: kind, title: title) }
     guard let makeWindow = WindowHost.makeWindow, let makeContentView = WindowHost.makeContentView else { return }
-    if let chromeWindow = ChromeWindowSpike.makeWindow(profile: profile) {
+    if let chromeWindow = ChromeWindows.makeWindow(profile: profile) {
       if incognito { chromeWindow.appearance = NSAppearance(named: .darkAqua) }
       // Chrome owns this window and its delegate: our root goes over Chrome's views, and the
       // delegate calls below come as notifications.
-      ChromeWindowSpike.embed(makeContentView(id), in: chromeWindow)
-      ChromeWindowSpike.onSwap { [weak self] from, to in self?.adopt(from: from, to: to) }
+      ChromeWindows.embed(makeContentView(id), in: chromeWindow)
+      ChromeWindows.onSwap { [weak self] from, to in self?.adopt(from: from, to: to) }
       observeDelegateNotifications(chromeWindow)
       return show(chromeWindow, id: id, frame: frame, title: title, focus: focus)
     }
+    // Stock CEF only (no client windows): the app's own window, its tabs Alloy browsers.
     let window = makeWindow()
     let controller = NSViewController()
     controller.view = makeContentView(id)
@@ -114,7 +115,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     NotificationCenter.default.addObserver(self, selector: #selector(sizeChanged(_:)), name: NSWindow.didResizeNotification, object: window)
   }
 
-  /// A Chrome-hosted window's delegate is Chrome's: the delegate calls come as notifications.
+  /// A Chrome window's delegate is Chrome's: the delegate calls come as notifications.
   private func observeDelegateNotifications(_ window: NSWindow) {
     for (name, selector) in [
       (NSWindow.didBecomeKeyNotification, #selector(windowDidBecomeKey(_:))),
@@ -125,16 +126,16 @@ final class WindowManager: NSObject, NSWindowDelegate {
     }
   }
 
-  /// The window shows another profile (Chrome-hosted windows): that profile's Chrome window takes
-  /// the app window over. `neighbours`: the profiles it can page to next, made ahead.
+  /// The window shows another profile: that profile's Chrome window takes the app window over.
+  /// `neighbours`: the profiles it can page to next, made ahead.
   func setProfile(id: String, profile: String, neighbours: [String]) {
     guard let window = windows[id] else { return }
-    ChromeWindowSpike.showProfile(profile, in: window)
+    ChromeWindows.showProfile(profile, in: window)
     // `adopt` has moved the registry to the profile's window if it swapped.
-    if let current = windows[id] { ChromeWindowSpike.prepare(neighbours, for: current) }
+    if let current = windows[id] { ChromeWindows.prepare(neighbours, for: current) }
   }
 
-  /// A Chrome-hosted app window moved to another of its windows (another profile's).
+  /// An app window moved to another of its Chrome windows (another profile's).
   private func adopt(from: NSWindow, to: NSWindow) {
     guard let id = id(of: from) else { return }
     NotificationCenter.default.removeObserver(self, name: nil, object: from)
@@ -197,14 +198,14 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
   func close(id: String) {
     guard let window = windows[id] else { return }
-    if ChromeWindowSpike.root(of: window) != nil {
+    if ChromeWindows.root(of: window) != nil {
       // A Chrome-hosted window's Browser must outlive a tab still moving out of it (dragged out
       // as the window's last): it hides now and closes a little later, so it's done with here.
       NotificationCenter.default.removeObserver(self, name: nil, object: window)
       windows[id] = nil
       auxKinds[id] = nil
-      ChromeWindowSpike.close(window)
-      DispatchQueue.main.async { ChromeWindowSpike.removeRoot(of: window) }
+      ChromeWindows.close(window)
+      DispatchQueue.main.async { ChromeWindows.removeRoot(of: window) }
       return
     }
     closingFromJS.insert(id)
@@ -255,7 +256,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     }
     // Releasing the root view unmounts its React tree; do it after AppKit is done closing.
     DispatchQueue.main.async {
-      if ChromeWindowSpike.root(of: window) != nil { return ChromeWindowSpike.removeRoot(of: window) }
+      if ChromeWindows.root(of: window) != nil { return ChromeWindows.removeRoot(of: window) }
       window.contentViewController = nil
     }
   }
@@ -271,7 +272,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
   /// window may not get: a window restored from the session at a new size kept the React layout
   /// of its old size until resized by hand. So lay out now.
   private func relayoutRoot(_ window: NSWindow) {
-    guard let root = ChromeWindowSpike.root(of: window) ?? window.contentView else { return }
+    guard let root = ChromeWindows.root(of: window) ?? window.contentView else { return }
     root.needsLayout = true
     for view in root.subviews { view.needsLayout = true } // RCTRootContentView re-measures in its own -layout
     root.layoutSubtreeIfNeeded()
@@ -283,7 +284,8 @@ final class WindowManager: NSObject, NSWindowDelegate {
   }
 
   private func reportFrame(_ window: NSWindow) {
-    guard let id = id(of: window), !window.styleMask.contains(.fullScreen) else { return }
+    // Not in full screen, nor another profile's window shown over a full-screen one (NNChromeWindow).
+    guard let id = id(of: window), !window.styleMask.contains(.fullScreen), window.parent == nil else { return }
     let f = window.frame
     emit?("onWindowEvent", ["type": "frame", "id": id, "frame": [f.minX, f.minY, f.width, f.height]])
   }

@@ -123,30 +123,6 @@ bool IsReservedShortcut(NSEvent *event) {
   return false;
 }
 
-/// Chrome's own shortcuts (outside its menus) for its hidden toolbar, side panels, profile menu and
-/// tab groups. A page key our menu doesn't take goes on to Chrome, which runs these in the ghost
-/// Browser: ⌥⌘L opened Chrome's downloads, ⌃⌘C a Chrome tab-group tab, ⌥⌘C docked DevTools where
-/// nobody sees them, ⌥⌘↑/↓ moved focus out of the page into the invisible toolbar. Chrome's tab
-/// switching (⌥⌘←/→, ⌃⇞/⇟) and ⌘←/→ (Back, Forward) stay Chrome's: the app follows them.
-bool IsChromeOnlyShortcut(NSEvent *event) {
-  NSEventModifierFlags mods = event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagShift |
-                                                     NSEventModifierFlagOption | NSEventModifierFlagControl);
-  const NSEventModifierFlags cmd = NSEventModifierFlagCommand, shift = NSEventModifierFlagShift,
-                             opt = NSEventModifierFlagOption, ctrl = NSEventModifierFlagControl;
-  // Chrome matches these by key code (global_keyboard_shortcuts_mac.mm).
-  switch (event.keyCode) {
-    case 0x2E: return mods == (cmd | shift);                           // ⇧⌘M: profile menu
-    case 0x25: return mods == (cmd | opt);                             // ⌥⌘L: downloads
-    case 0x08: return mods == (cmd | opt) || mods == (cmd | ctrl);     // ⌥⌘C: inspect; ⌃⌘C: new tab in group
-    case 0x7E: case 0x7D: return mods == (cmd | opt);                  // ⌥⌘↑/↓: focus the toolbar
-    case 0x00: return mods == (cmd | shift | opt);                     // ⇧⌥⌘A: focus a bubble
-    case 0x0F: return mods == (cmd | opt);                             // ⌥⌘R: reading mode
-    case 0x23: case 0x0D: case 0x07: case 0x06: return mods == (cmd | ctrl);  // ⌃⌘P/W/X/Z: tab groups
-    case 0x74: case 0x79: return mods == (shift | ctrl);               // ⌃⇧⇞/⇟: move Chrome's tab
-  }
-  return false;
-}
-
 /// netnyahoo://x is the app's name for Chrome's chrome://x pages (the JS WebView maps what the app
 /// loads). A page may open one only if it is a WebUI page itself, as Chrome keeps web pages from
 /// opening chrome:// URLs (chrome://quit, chrome://settings/reset…).
@@ -532,6 +508,7 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
   std::string adoptId = [[NSUUID UUID].UUIDString UTF8String];
   CefRefPtr<Client> popupClient = new Client(nil, profile_);
   popupClient->adoptId_ = adoptId;
+  popupClient->openerBrowserId_ = browser->GetIdentifier();
   NSRect bounds = view_ ? view_.bounds : NSMakeRect(0, 0, 1000, 700);
   if (popup) {
     bounds.size = NSMakeSize(features.widthSet ? features.width : 500, features.heightSet ? features.height : 600);
@@ -565,6 +542,7 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
 void Client::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   browser_ = browser;
   BrowserCreated(browser);
+  if (openerBrowserId_) host::TabOpenedFrom(browser, openerBrowserId_);
   if (!adoptId_.empty()) {
     auto it = Popups().find(adoptId_);
     if (it == Popups().end()) return;
@@ -1023,14 +1001,10 @@ bool Client::OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event,
       (ns.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) == NSEventModifierFlagCommand)
     return false;
   // The page didn't consume it: give the menu bar its turn (⌘L, ⌘F, ⌘R, Edit menu…).
-  if ([NSApp.mainMenu performKeyEquivalent:ns]) return true;
-  // In a Chrome-hosted window the Browser's window is the key window: Chrome's own handling
-  // runs extensions' chrome.commands, and its commands for its hidden UI are refused in
-  // OnChromeCommand (host::BlocksChromeCommand).
-  if (host::InClientWindow(browser)) return false;
-  // Else Chrome's hidden ghost window gets extension shortcuts, but not Chrome's shortcuts for
-  // its own hidden UI.
-  return host::ForwardKeyEvent(ns, profile_) || IsChromeOnlyShortcut(ns);
+  // Then Chrome's own handling, in its Browser window (the key window): extensions'
+  // chrome.commands run, and its commands for its hidden UI are refused in OnChromeCommand
+  // (host::BlocksChromeCommand).
+  return [NSApp.mainMenu performKeyEquivalent:ns];
 }
 
 // MARK: CefJSDialogHandler

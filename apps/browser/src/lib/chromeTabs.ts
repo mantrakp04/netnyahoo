@@ -1,4 +1,4 @@
-import { devWindowAction, engineInfo, ghostWindows, prepareTabTransfer, type TabStripPlace } from "@netnyahoo/cef";
+import { devWindowAction, engineInfo, chromeWindows, prepareTabTransfer, type TabStripPlace } from "@netnyahoo/cef";
 import { usePages } from "../components/layout/pageState";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile } from "../store/model";
@@ -16,8 +16,8 @@ import { webviews } from "./webviews";
 let started = false;
 let chromeTabs = false;
 
-/** DEV: the ghost windows and engine state, for lib/devHarness scripts (`globalThis.nnChromeTabs`). */
-if (__DEV__) (globalThis as { nnChromeTabs?: unknown }).nnChromeTabs = { ghostWindows, engineInfo, devWindowAction };
+/** DEV: the Chrome windows and engine state, for lib/devHarness scripts (`globalThis.nnChromeTabs`). */
+if (__DEV__) (globalThis as { nnChromeTabs?: unknown }).nnChromeTabs = { chromeWindows, engineInfo, devWindowAction };
 
 export function startChromeTabs() {
   if (started) return;

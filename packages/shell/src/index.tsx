@@ -265,16 +265,15 @@ export function showMenu(items: MenuItem[]): Promise<string | null> {
 }
 
 /**
- * Native windows. Each is a BrowserWindow with its own React root, rendered with
- * `initialProperties: { windowId }` on the shared bridge. False on app builds
+ * Native windows. Each is Chrome's Browser window of its profile with our own React root laid
+ * over it, rendered with `initialProperties: { windowId }` on the shared bridge. False on app builds
  * that predate multi-window support: they host a single root with no windowId.
  */
 export const hasWindowHost = typeof Shell.hasWindowHost === "function" && Shell.hasWindowHost();
 export const openWindow = (id: string, options: OpenWindowOptions = {}) => Shell.openWindow(id, options);
 /**
- * The window shows another profile (engine profile names). Chrome-hosted windows
- * (NETNYAHOO_CHROME_WINDOW) move to that profile's Chrome window and make `neighbours`' ahead;
- * other windows ignore it. Missing in builds that predate it.
+ * The window shows another profile (engine profile names): it moves to that profile's Chrome
+ * window and makes `neighbours`' ahead. Missing in builds that predate it.
  */
 export const setWindowProfile = (id: string, profile: string, neighbours: string[]) =>
   Shell.setWindowProfile?.(id, profile, neighbours) ?? Promise.resolve();

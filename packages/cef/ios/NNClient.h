@@ -183,6 +183,8 @@ class Client : public CefClient,
 
   /// Set for popup browsers created by OnBeforePopup until a view adopts them.
   std::string adoptId_;
+  /// A popup Chrome made from this browser id's tab: it joins that tab's Browser (host::TabOpenedFrom).
+  int openerBrowserId_ = 0;
   /// The engine closed this browser itself (no windowClose event).
   bool closingByEngine_ = false;
 

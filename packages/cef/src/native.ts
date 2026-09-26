@@ -2,7 +2,7 @@ import { requireNativeModule, type EventSubscription } from "expo-modules-core";
 import type { ContentBlockerState, ContentBlockerStats, BlockingCheck } from "./contentBlocker";
 import type { DisplayMediaSource } from "./WebView";
 import type { FaviconImage } from "./favicons";
-import type { BrowsingDataType, Download, EngineComponent, EngineInfo, EngineTask, GhostWindow, PermissionRequest, PermissionResult, SystemState } from "./module";
+import type { BrowsingDataType, Download, EngineComponent, EngineInfo, EngineTask, ChromeWindowState, PermissionRequest, PermissionResult, SystemState } from "./module";
 import type { SavedPassword } from "./passwords";
 import type { AddressInput, CardInput, SavedAddress, SavedCard } from "./autofill";
 import type { ClearSiteDataResult, SiteSettingType, SiteSettingValue, SiteSettings } from "./siteSettings";
@@ -28,7 +28,7 @@ export const Cef = requireNativeModule<{
   addListener(name: "onSystemState", listener: (s: SystemState) => void): EventSubscription;
 
   engineInfo(): Promise<EngineInfo>;
-  ghostWindows(): Promise<GhostWindow[]>;
+  chromeWindows(): Promise<ChromeWindowState[]>;
   /** Synchronous. */
   prepareTransfer(key: string): void;
   devWindow(windowNumber: number, action: string): Promise<string>;

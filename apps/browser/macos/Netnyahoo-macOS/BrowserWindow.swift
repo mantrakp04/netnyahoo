@@ -2,11 +2,14 @@ import AppKit
 
 /// Borderless-looking browser window: content runs under a transparent title
 /// bar and the traffic lights are nudged down into the sidebar header, like Dia.
-/// The shell's WindowManager creates these (one per browser window) and owns
-/// their lifecycle, delegate and frame.
+/// Only for an engine without Chrome-hosted windows (stock CEF, NN_CHROME_TABS=0):
+/// otherwise every browser window is Chrome's own (packages/cef NNChromeWindow).
+/// The shell's WindowManager creates these and owns their lifecycle, delegate and
+/// frame.
 final class BrowserWindow: NSWindow {
-  /// Traffic-light inset from the window's top-left corner, in points.
-  private let trafficLightInset = NSPoint(x: 18, y: 19.5)
+  /// Traffic-light inset from the window's top-left corner, in points (Dia 1.50.1's; the same as
+  /// Chrome-hosted windows, NNChromeWindow.mm).
+  private let trafficLightInset = NSPoint(x: 16, y: 20)
 
   init() {
     super.init(

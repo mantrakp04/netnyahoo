@@ -763,14 +763,14 @@ NSView *ParkingView() {
                                                     CHROME_VERSION_BUILD, CHROME_VERSION_PATCH],
     @"liveBrowsers" : @(gLiveBrowsers.size()),
     @"popupWindows" : @(PopupWindowCount()),
-    @"ghostWindows" : @(host::GhostCount()),
+    @"chromeWindows" : @(host::WindowCount()),
     @"chromeTabs" : @(host::ChromeTabs()),
     @"tabCapture" : @(kTabCaptureSupported),
   };
 }
 
-+ (NSArray<NSDictionary *> *)ghostWindows {
-  return host::GhostStates();
++ (NSArray<NSDictionary *> *)chromeWindows {
+  return host::WindowStates();
 }
 
 + (NSString *)devWindow:(NSInteger)windowNumber action:(NSString *)action {

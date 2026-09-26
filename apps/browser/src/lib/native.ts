@@ -122,8 +122,8 @@ export function startNativeSync() {
       if (prev?.windows[id]?.incognito) void releaseProfile(incognitoProfileId(id));
     }
     if (prev && s.tabs === prev.tabs && s.windows === prev.windows && s.profiles === prev.profiles) return;
-    // Chrome-hosted windows (NETNYAHOO_CHROME_WINDOW) are one Chrome window per profile: the one of the
-    // profile shown takes over, and its neighbours in profile order are made ahead. Others ignore it.
+    // An app window is one Chrome window per profile: the one of the profile shown takes over, and
+    // its neighbours in profile order are made ahead.
     for (const id of open) {
       const w = s.windows[id]!;
       const profile = engineProfile(w.profileId);

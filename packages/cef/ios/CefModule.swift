@@ -22,7 +22,7 @@ public class CefModule: Module {
 
     // Engine
     AsyncFunction("engineInfo") { NNCef.engineInfo }.runOnQueue(.main)
-    AsyncFunction("ghostWindows") { NNCef.ghostWindows }.runOnQueue(.main)
+    AsyncFunction("chromeWindows") { NNCef.chromeWindows }.runOnQueue(.main)
     AsyncFunction("devWindow") { (windowNumber: Int, action: String) in NNCef.devWindow(windowNumber, action: action) }
       .runOnQueue(.main)
     // Synchronous: it must land before the moved tab's views mount and unmount.

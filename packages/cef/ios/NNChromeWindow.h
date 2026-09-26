@@ -1,20 +1,21 @@
-// Chrome-hosted windows (docs/research/chrome-hosted-window.md), behind
-// NETNYAHOO_CHROME_WINDOW=1 and needing CEF_NN_CLIENT_WINDOW: the app window is
-// Chrome's own Browser window, with the React root laid over Chrome's views,
-// instead of an app NSWindow with a hidden "ghost" Browser window behind it.
-// The shell finds this class by name (NSClassFromString), so it needs no
-// import of this pod.
+// Chrome-hosted windows (docs/research/chrome-hosted-window.md; the engine's
+// CEF_NN_CLIENT_WINDOW): every app window is Chrome's own Browser window, with the
+// React root laid over Chrome's views. The shell finds this class by name
+// (NSClassFromString), so it needs no import of this pod.
 #import <AppKit/AppKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 @interface NNChromeWindowHost : NSObject
 
-/// NETNYAHOO_CHROME_WINDOW=1 and an engine with CEF_NN_CLIENT_WINDOW is running.
-@property(class, readonly) BOOL enabled;
-
-/// A new, not yet shown, Chrome Browser window for `profile` ("" = default), or nil.
+/// A new, not yet shown, Chrome Browser window for `profile` ("" = default), or nil when the engine
+/// can't make one (not running, or stock CEF without CEF_NN_CLIENT_WINDOW).
 + (nullable NSWindow *)makeWindowForProfile:(NSString *)profile;
+
+/// A new, not yet shown, Chrome Browser window for a sized popup (window.open with features) of
+/// `profile`: a plain titled window of its own, its root `root` (NNPopupWindow.mm). nil like
+/// makeWindowForProfile:.
++ (nullable NSWindow *)makePopupWindowForProfile:(NSString *)profile root:(NSView *)root;
 
 /// Lays `root` (the window's React root view) over Chrome's views, filling the window.
 + (void)embedRootView:(NSView *)root inWindow:(NSWindow *)window;

@@ -29,13 +29,13 @@ typedef void (^NNEventHandler)(NSString *name, NSDictionary<NSString *, id> *pay
 /// [{id, kind: "screen"|"window", name, app?, pid?, width, height}].
 @property (class, nonatomic, readonly) NSArray<NSDictionary<NSString *, id> *> *displayMediaSources;
 
-/// {pid, dataDirectory, cefVersion, chromiumVersion, liveBrowsers, popupWindows, ghostWindows,
+/// {pid, dataDirectory, cefVersion, chromiumVersion, liveBrowsers, popupWindows, chromeWindows,
 /// chromeTabs (tabs are Chrome's own, NNWindowHost.h), tabCapture (the engine can share a single
 /// tab: `mediaCaptureSourceId`)}.
 @property (class, nonatomic, readonly) NSDictionary<NSString *, id> *engineInfo;
-/// DEV: each ghost window's alignment and focus state (NNWindowHost.h).
-@property (class, nonatomic, readonly) NSArray<NSDictionary<NSString *, id> *> *ghostWindows;
-/// DEV: "frame:x,y,w,h" | "miniaturize" | "deminiaturize" | "key:<flags>:<char>" on an app window (NNWindowHost.h).
+/// DEV: each Chrome-hosted window's state (NNWindowHost.h).
+@property (class, nonatomic, readonly) NSArray<NSDictionary<NSString *, id> *> *chromeWindows;
+/// DEV: input and window actions on an app window: "click:x,y", "frame:x,y,w,h", "active:1|0"… (NNWindowHost.h).
 + (NSString *)devWindow:(NSInteger)windowNumber action:(NSString *)action NS_SWIFT_NAME(devWindow(_:action:));
 
 + (void)cancelDownload:(NSString *)downloadId;

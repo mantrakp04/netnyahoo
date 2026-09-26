@@ -2,7 +2,7 @@
 // docs/research/chromium-ui-layer.md): the password save/update prompt,
 // extension toolbar actions and side panels, device choosers, the Cast dialog
 // and "Share this tab instead" (the last ones through NNChromeSurfaces.h).
-// Chrome would anchor these to its toolbar, which the ghost window hides. Each
+// Chrome would anchor these to its toolbar, which is off in our windows. Each
 // needs a hook of our CEF build (NNCefInternal.h); without it Chrome's own
 // bubble shows, or the feature isn't available. Objective-C++ only.
 #pragma once

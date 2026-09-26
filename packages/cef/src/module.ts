@@ -41,8 +41,8 @@ export type EngineInfo = {
   liveBrowsers: number;
   /** Open little popup windows. */
   popupWindows: number;
-  /** Hidden Chrome windows behind app windows (one per window and profile shown in it). */
-  ghostWindows?: number;
+  /** Chrome-hosted windows (one per app window and profile shown in it). */
+  chromeWindows?: number;
   /** Tabs are Chrome's own tabs of those windows' Browsers (patched engine), not Alloy browsers. */
   chromeTabs?: boolean;
   /** The engine can share a single tab (WebView `mediaCaptureSourceId`); our own CEF build only. */
@@ -84,38 +84,41 @@ export const WIDEVINE_COMPONENT_ID = "oimompecagnajdejgnnjijobebaeigek";
 /** Engine versions and live-object counts (for About pages and leak checks). */
 export const engineInfo = () => Cef.engineInfo();
 
-/** DEV: a ghost window's alignment with its app window and focus state. */
-export type GhostWindow = {
+/** DEV: one Chrome-hosted window's state (an app window is one per profile it shows). */
+export type ChromeWindowState = {
   profile: string;
-  parentWindow: number;
   window: number;
   frame: string;
-  parentFrame: string;
-  aligned: boolean;
   alpha: number;
   key: boolean;
   canBecomeKey: boolean;
   visible: boolean;
-  ignoresMouse: boolean;
-  childOfParent: boolean;
-  belowParent: boolean;
-  /** In front of the app window, because Chrome shows a window of its own (a dialog, bubble, dropdown). */
-  lifted?: boolean;
-  /** The ghost's child windows (Chrome's dialogs, bubbles, dropdowns), shown or not. */
-  chromeWindows?: number;
+  /** The window it's a child of (0: none). */
+  parentWindow: number;
+  /** Its child windows (Chrome's dialogs, bubbles, dropdowns), shown or not. */
+  chromeWindows: number;
   anchorBrowserId: number;
-  /** A tab of the ghost's Browser (0 when it has none). */
-  anyTabBrowserId?: number;
-  ready?: boolean;
+  /** A tab of its Browser (0 when it has none). */
+  anyTabBrowserId: number;
+  ready: boolean;
+  /** Chrome's idea of whether this is the active window. */
   active: boolean;
   /** Where Chrome's tab dialogs go: the shown page's insets in the window (top, left, bottom, right). */
-  pageInsets?: [number, number, number, number];
+  pageInsets: [number, number, number, number];
+  /** Always true: every Chrome window is Chrome-hosted. */
+  hosting: boolean;
+  /** Its app window (the same for every profile's window of it). */
+  group: string;
+  /** Our React root is in this window (the one on screen). */
+  hasRoot: boolean;
+  translucent: boolean;
 };
-/** DEV: every ghost window's state (see packages/cef/ios/NNWindowHost.h). */
-export const ghostWindows = () => Cef.ghostWindows();
+/** DEV: every Chrome-hosted window's state (see packages/cef/ios/NNWindowHost.h). */
+export const chromeWindows = () => Cef.chromeWindows();
 /**
- * DEV: acts on an app window by number (`GhostWindow.parentWindow`): "frame:x,y,w,h", "miniaturize",
- * "deminiaturize", "active:1|0" (key state as Chrome sees it), "key:<modifier flags>:<character>".
+ * DEV: acts on an app window by number (`ChromeWindowState.window`): NNChromeWindowHost's input
+ * actions ("click:x,y", "keys:…", "winfo"…), "frame:x,y,w,h", "miniaturize", "deminiaturize",
+ * "active:1|0" (key state as Chrome sees it).
  */
 export const devWindowAction = (windowNumber: number, action: string) => Cef.devWindow(windowNumber, action);
 /**
