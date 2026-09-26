@@ -601,9 +601,14 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
 void Client::OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) {
   // Chrome reports every tab after each change; only what moved matters to the app.
   if (tabStripIndex_ == index && tabStripActive_ == active && tabStripPinned_ == pinned) return;
+  const bool first = tabStripIndex_ < 0;
   tabStripIndex_ = index;
   tabStripActive_ = active;
   tabStripPinned_ = pinned;
+  // Not the tab joining the strip: the app placed it (and a Browser's first tab is its active one,
+  // which a restored session's Browser reports only once it exists, after the app may have
+  // selected another tab: the release notes after an update showed behind the restored tab).
+  if (first) return;
   Emit(@"tabStrip", @{@"index" : @(index), @"active" : @(active), @"pinned" : @(pinned)});
 }
 #endif

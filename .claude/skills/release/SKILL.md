@@ -97,7 +97,9 @@ Everything must pass before publishing. One known exception: the two passkey win
 CGWindowList, which isn't reliable while the Mac's screen is locked (window animations freeze). smoke.sh
 detects the lock (`CGSSessionScreenIsLocked`) and prints them as SKIP; publish when the release doesn't
 touch window ordering, and say so in the report. Before 0.2.0 the builds had three such checks (the
-ghost's order), so a pre-0.2.0 export isn't a control for these. A failure is either a real regression (fix it, commit, rebuild —
+ghost's order), so a pre-0.2.0 export isn't a control for these. The window-list checks also fail, with an empty or
+shrunken list, when the user switches Spaces or opens Mission Control during the run (the hidden instance's
+windows leave the on-screen list): run it again. A failure is either a real regression (fix it, commit, rebuild —
 don't publish) or the check itself going stale after an intended change (fix the check in
 `scripts/smoke.mjs`, and say so). When a release fixes a new class of bug that can be observed over CDP or
 the window list, add a check for it to `smoke.mjs` so the next release guards it.
