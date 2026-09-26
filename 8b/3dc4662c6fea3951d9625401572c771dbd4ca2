@@ -1,0 +1,62 @@
+apps/browser/macos/Netnyahoo-macOS/Netnyahoo-ICloudPasskeys.entitlements
+  s_9c356f9574d31c::t_a022197c8c690c 13-16
+packages/import/ios/Core/Importer.swift
+  s_9c356f9574d31c::t_bedf1c9cf01dac 36
+packages/import/fixtures/dia/applescript-windows.json
+  s_9c356f9574d31c::t_7cffe30e7037cc 1-64
+apps/browser/src/components/import/apply.ts
+  s_9c356f9574d31c::t_a2c9d4213f4b0b 2,85-86,95-96,103,135-158
+  s_9c356f9574d31c::t_880d66ede6260d 159
+packages/import/src/index.ts
+  s_9c356f9574d31c::t_7ef6dca33f772b 19-20,208-238,268-272,371-392
+  s_9c356f9574d31c::t_9f37106fdd0707 393
+packages/import/ios/Core/DiaAppleEvents.swift
+  s_9c356f9574d31c::t_70ac2c01f07fe3 1-180,183-213
+  s_9c356f9574d31c::t_08bcc3ed10420d 181-182
+apps/browser/macos/Netnyahoo-macOS/Netnyahoo.entitlements
+  s_9c356f9574d31c::t_a022197c8c690c 6-9
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_09ea4d4c4a5add 24,26-28,140,241-248
+  s_9c356f9574d31c::t_5b34cb72724e2d 240
+  s_9c356f9574d31c::t_ec41533e1c41de 603
+packages/import/tests/DiaTabsTests.swift
+  s_9c356f9574d31c::t_8a7aa7129beb8c 1-123
+packages/import/ios/Core/DiaTabs.swift
+  s_9c356f9574d31c::t_331d56dadac495 1-163
+packages/import/ios/ImportModule.swift
+  s_9c356f9574d31c::t_4b6aaeace544e6 99-137
+  s_9c356f9574d31c::t_069c2158eb69f1 33-36
+apps/browser/src/components/import/ImportWindow.tsx
+  s_9c356f9574d31c::t_40320a960f393f 144
+  s_9c356f9574d31c::t_ad153271a878b3 418
+  s_9c356f9574d31c::t_99cf7c4a0d4fee 1,13,18,33-35,56-60,87-99,106-108,124-128,132,138,143,145-148,250-293,299-334,413-414,456-459,462,475-479,514-518,534,641-711,716,839-840,1003-1008,1011-1022,1027,1037
+  s_9c356f9574d31c::t_aca7604b889688 294,298,417
+  s_9c356f9574d31c::t_bfac72765527ff 295-297,415-416
+packages/import/src/index.test.ts
+  s_9c356f9574d31c::t_8e746a4d812030 61-79,140-148
+  s_9c356f9574d31c::t_452060d3a4097e 149
+packages/import/ios/Core/Model.swift
+  s_9c356f9574d31c::t_780c3788d54692 206,208-209,218,225
+packages/import/tests/ImporterTests.swift
+  s_9c356f9574d31c::t_6e906f2a63715c 9
+apps/browser/macos/Netnyahoo-macOS/Info.plist
+  s_9c356f9574d31c::t_a022197c8c690c 85-86
+packages/import/ios/Core/Discovery.swift
+  s_9c356f9574d31c::t_bedf1c9cf01dac 5-9,55-56,60-62,137-150,165-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8b3dc4662c6fea3951d9625401572c771dbd4ca2",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
