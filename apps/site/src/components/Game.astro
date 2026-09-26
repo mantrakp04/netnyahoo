@@ -25,6 +25,8 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
     </div>
 
     <figure class="board" data-board>
+      <div class="view">
+      <div class="pan" data-pan>
       <div class="board-img" style={`aspect-ratio: ${crowd.width} / ${crowd.height}`}>
         <Picture
           src={crowd}
@@ -32,7 +34,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
           formats={["avif"]}
           fallbackFormat="webp"
           widths={[640, 1024, 1440, 2248]}
-          sizes="(max-width: 1440px) 94vw, 1360px"
+          sizes="(max-width: 700px) 240vw, (max-width: 1440px) 94vw, 1360px"
           loading="lazy"
         />
         <button
@@ -42,10 +44,13 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
           aria-label="That’s him. Reveal Big Yahu."
           style={`left: ${(spot.x - spot.r) * 100}%; top: ${spot.y * 100}%; width: ${spot.r * 200}%`}
         ></button>
+      </div>
+      </div>
         <p class="toast label" role="status" aria-live="polite" data-toast></p>
       </div>
       <figcaption class="label">
         <span>Fig. 8 — Level 1, 83 suspects</span>
+        <span class="swipe">Swipe the crowd. He’s in there.</span>
         <span>Online too, at netnyahoo://yahu</span>
       </figcaption>
     </figure>
@@ -109,10 +114,16 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
     height: auto;
     border-radius: 4px;
   }
+  .view {
+    position: relative;
+  }
   .board-img {
     position: relative;
     overflow: hidden;
     border-radius: 4px;
+  }
+  .swipe {
+    display: none;
   }
   .found {
     position: absolute;
@@ -165,6 +176,30 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       grid-template-columns: 1fr auto;
       grid-template-areas: "title wanted" "copy copy";
     }
+    /* On a phone the whole ballroom is too small to search: show it big and let the crowd pan. */
+    .pan {
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+      border-radius: 6px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .pan::-webkit-scrollbar {
+      display: none;
+    }
+    .board-img {
+      width: 240%;
+      border-radius: 0;
+    }
+    .board :global(img) {
+      border-radius: 0;
+    }
+    .swipe {
+      display: inline;
+    }
+    figcaption span:last-child:not(.swipe) {
+      display: none;
+    }
   }
 </style>
 
@@ -172,6 +207,9 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
   const board = document.querySelector<HTMLElement>("[data-board]");
   const spot = board?.querySelector<HTMLButtonElement>("[data-found]");
   const toast = board?.querySelector<HTMLElement>("[data-toast]");
+  // Phones: start at the far end of the ballroom, so finding him takes a swipe.
+  const pan = board?.querySelector<HTMLElement>("[data-pan]");
+  if (pan && pan.scrollWidth > pan.clientWidth) pan.scrollLeft = pan.scrollWidth;
   if (board && spot && toast) {
     let started = 0;
     let misses = 0;

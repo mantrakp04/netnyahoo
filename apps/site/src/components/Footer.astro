@@ -73,5 +73,14 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     .col {
       grid-column: 1 / -1;
     }
+    /* Thumb-sized rows. */
+    .col a {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+    }
+    .col:has(a) {
+      gap: 0;
+    }
   }
 </style>

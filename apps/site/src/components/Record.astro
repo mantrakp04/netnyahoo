@@ -3,9 +3,12 @@
 type Vote = "yes" | "part" | "no";
 const rows: { item: string; detail: string; vote: Vote; label?: string }[] = [
   { item: "Engine", detail: "Chromium 154. Our own CEF build.", vote: "yes" },
+  { item: "Windows", detail: "Chrome’s own. Menus and autofill just work.", vote: "yes" },
   { item: "De-Googled", detail: "ungoogled-chromium underneath.", vote: "yes" },
   { item: "H.264 and AAC", detail: "The codecs Chromium leaves out.", vote: "yes" },
-  { item: "Passkeys", detail: "Touch ID yes. iCloud Keychain soon.", vote: "part" },
+  { item: "DevTools", detail: "Docked, like Chrome.", vote: "yes" },
+  { item: "Notarized", detail: "Cleared by Apple.", vote: "yes" },
+  { item: "Passkeys", detail: "Touch ID yes. iCloud Keychain waits on Apple.", vote: "part" },
   { item: "Sync", detail: "", vote: "no" },
   { item: "Translate", detail: "", vote: "no" },
   { item: "Widevine", detail: "So no Netflix.", vote: "no" },
@@ -20,7 +23,7 @@ const labels: Record<Vote, string> = { yes: "Yes", part: "Partly", no: "Not yet"
     <header class="record-head">
       <p class="label kicker">The record</p>
       <h2 class="poster" id="record-title" data-reveal>It’s actually Chromium.</h2>
-      <p class="lede" data-reveal style="--i: 1">Not WebKit. Not Electron. The patches are in the repo.</p>
+      <p class="lede" data-reveal style="--i: 1">Not WebKit. Not Electron. Every window is Chrome’s own.</p>
     </header>
 
     <div class="ballot" role="table" aria-label="What Netnyahoo does and doesn’t do yet">

@@ -54,7 +54,7 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   const small = matchMedia("(max-width: 700px)").matches;
 
   const renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.75 : 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.5 : 2));
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = NeutralToneMapping;
   renderer.toneMappingExposure = 1.05;

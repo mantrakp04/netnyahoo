@@ -17,7 +17,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       <Image src={icon} alt="" width={30} height={30} densities={[1, 2]} loading="eager" />
       <span>netnyahoo</span>
     </a>
-    <nav aria-label="Sections">
+    <nav class="links" aria-label="Sections">
       <a href={`${home}#platform`}>Platform</a>
       <a href={`${home}#record`}>Record</a>
       <a href={`${home}#game`}>Game</a>
@@ -25,8 +25,19 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       <a href={`${base}/release-notes`}>Notes</a>
       <a href={REPO} rel="noopener">GitHub</a>
     </nav>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="menu" data-menu-btn>Menu</button>
     <a class="bar-cta" href={DMG} data-download>Download</a>
   </div>
+  <nav class="menu" id="menu" aria-label="Sections" data-menu hidden>
+    <div class="wrap">
+      <a href={`${home}#platform`}>Platform</a>
+      <a href={`${home}#record`}>Record</a>
+      <a href={`${home}#game`}>Game</a>
+      <a href={`${home}#press`}>Press</a>
+      <a href={`${base}/release-notes`}>Release notes</a>
+      <a href={REPO} rel="noopener">GitHub</a>
+    </div>
+  </nav>
 </header>
 
 <style>
@@ -61,16 +72,17 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     letter-spacing: -0.035em;
     line-height: 1;
     margin-right: auto;
+    min-height: 44px;
   }
   .mark img {
     width: 30px;
     height: 30px;
   }
-  nav {
+  .links {
     display: flex;
     gap: 26px;
   }
-  nav a {
+  .links a {
     font-family: var(--mono);
     font-size: 0.72rem;
     font-stretch: 87.5%;
@@ -80,7 +92,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     color: var(--ink-2);
     transition: color 150ms;
   }
-  nav a:hover {
+  .links a:hover {
     color: var(--ink);
   }
   .bar-cta {
@@ -100,9 +112,73 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   .bar-cta:hover {
     background: var(--tie);
   }
+
+  /* Phones: the section links fold into a menu under the bar. */
+  .menu-btn,
+  .menu {
+    display: none;
+  }
   @media (max-width: 820px) {
-    nav {
+    .bar-inner {
+      gap: 8px;
+    }
+    .links {
       display: none;
+    }
+    .menu-btn {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 12px;
+      border: 0;
+      background: none;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-stretch: 87.5%;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .bar-cta {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 16px;
+    }
+    .menu:not([hidden]) {
+      display: block;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: var(--paper);
+      border-bottom: 1px solid var(--rule-strong);
+      padding: 4px 0 20px;
+      animation: drop 220ms var(--ease-out) both;
+    }
+    .menu a {
+      display: flex;
+      align-items: center;
+      min-height: 56px;
+      border-top: 1px solid var(--rule);
+      font-family: var(--poster);
+      font-weight: 860;
+      font-stretch: 62%;
+      text-transform: uppercase;
+      font-size: 2rem;
+      line-height: 1;
+      text-decoration: none;
+    }
+    .menu a:first-child {
+      border-top: 0;
+    }
+  }
+  @keyframes drop {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
     }
   }
 </style>
@@ -112,4 +188,16 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   const onScroll = () => bar.toggleAttribute("data-scrolled", scrollY > 8);
   addEventListener("scroll", onScroll, { passive: true });
   onScroll();
+
+  const btn = bar.querySelector<HTMLButtonElement>("[data-menu-btn]")!;
+  const menu = bar.querySelector<HTMLElement>("[data-menu]")!;
+  const setOpen = (open: boolean) => {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    btn.textContent = open ? "Close" : "Menu";
+  };
+  btn.addEventListener("click", () => setOpen(menu.hidden));
+  menu.addEventListener("click", (e) => (e.target as Element).closest("a") && setOpen(false));
+  addEventListener("keydown", (e) => e.key === "Escape" && !menu.hidden && (setOpen(false), btn.focus()));
+  matchMedia("(min-width: 821px)").addEventListener("change", (e) => e.matches && setOpen(false));
 </script>

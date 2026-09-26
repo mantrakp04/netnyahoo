@@ -26,7 +26,7 @@ const count = words[total] ?? String(total);
               <p class="body">{p.body}</p>
             </div>
             <figure class="pledge-figure" data-reveal style="--i: 1">
-              <Shot src={p.shots} alt={p.alt} panel={p.panel} sizes="(max-width: 900px) 100vw, 58vw" />
+              <Shot src={p.shots} alt={p.alt} panel={p.panel} focus={p.focus} sizes="(max-width: 900px) 100vw, 58vw" />
               <figcaption class="label">
                 Fig. {i + 3} — {p.caption}
               </figcaption>

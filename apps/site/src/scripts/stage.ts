@@ -19,7 +19,40 @@ function webgl() {
   }
 }
 
+// Phones keep the hero's poster (a render of the same model) and load the model only for the closing
+// dance, so the first screen stays light and scrolling past him never waits on WebGL.
+const phone = matchMedia("(max-width: 820px), (pointer: coarse)").matches;
+
+async function bootClosing() {
+  if (!closing || yahu || saveData || !webgl()) return;
+  const { createYahu } = await import("./yahu");
+  const url = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb`;
+  yahu = await createYahu(url, closing, "poster");
+  at = closing;
+  closing.addEventListener(
+    "yahu:ready",
+    () => {
+      closing.setAttribute("data-live", "");
+      if (!reduced.matches) yahu?.dance("default", true);
+    },
+    { once: true },
+  );
+}
+
+function watchClosing() {
+  if (!closing) return;
+  new IntersectionObserver(
+    ([e], io) => {
+      if (!e.isIntersecting) return;
+      io.disconnect();
+      void bootClosing();
+    },
+    { rootMargin: "600px 0px" },
+  ).observe(closing);
+}
+
 async function boot() {
+  if (phone) return watchClosing();
   if (!hero || yahu || saveData || !webgl()) return;
   const { createYahu } = await import("./yahu");
   const url = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb`;
