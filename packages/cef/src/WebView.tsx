@@ -272,7 +272,11 @@ export type WebViewHandle = {
   find(text: string, forward: boolean, findNext: boolean): Promise<void>;
   stopFinding(clearSelection: boolean): Promise<void>;
   print(): Promise<void>;
-  /** `panel` ("console", "elements"…) switches an open DevTools window to it too. */
+  /**
+   * Chrome's Developer menu commands: no panel = Developer Tools, "console" = JavaScript Console,
+   * "inspect" = Inspect Elements (the element picker). As in Chrome, the first two close docked
+   * DevTools again.
+   */
   showDevTools(panel?: string): Promise<void>;
   executeJavaScript(code: string): Promise<void>;
   /**

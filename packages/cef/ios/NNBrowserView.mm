@@ -5,6 +5,7 @@
 #import "NNWindowHost.h"
 #import "NNZoom.h"
 
+#include "include/cef_command_ids.h"
 #include "include/cef_parser.h"
 #if NN_TAB_CAPTURE
 #include "include/cef_media_capture.h"
@@ -621,7 +622,21 @@ NSString *const kExitPictureInPictureScript =
 }
 
 - (void)showDevToolsPanel:(NSString *)panel {
-  if (_browser) nn::ShowDevTools(_browser, panel);
+  if (!_browser) return;
+#if NN_CHROME_TABS
+  // A Chrome tab: Chrome's own Developer menu commands, which Chrome runs on its Browser's
+  // active tab (made this one first). As in Chrome, Developer Tools and JavaScript Console
+  // close docked DevTools again, and Inspect Elements starts the element picker.
+  if (host::IsChromeTab(_browser)) {
+    int command = [panel isEqualToString:@"console"]   ? IDC_DEV_TOOLS_CONSOLE
+                  : [panel isEqualToString:@"inspect"] ? IDC_DEV_TOOLS_INSPECT
+                                                       : IDC_DEV_TOOLS;
+    _browser->GetHost()->ActivateTab();
+    _browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
+    return;
+  }
+#endif
+  nn::ShowDevTools(_browser, [panel isEqualToString:@"inspect"] ? @"elements" : panel);
 }
 
 - (void)executeJavaScript:(NSString *)code {

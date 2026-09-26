@@ -124,6 +124,12 @@ class TabRouter : public CefClient,
 
   // Lifespan: the first browser is the founder's tab or the anchor; any other is a tab Chrome made.
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
+  // A DevTools window Chrome makes for one of these tabs gets a client of its own.
+  void OnBeforeDevToolsPopup(CefRefPtr<CefBrowser> browser, CefWindowInfo &windowInfo, CefRefPtr<CefClient> &client,
+                             CefBrowserSettings &settings, CefRefPtr<CefDictionaryValue> &extra_info,
+                             bool *use_default_window) override {
+    if (client.get() == this) client = DevToolsFrontendClient(browser);
+  }
   bool DoClose(CefRefPtr<CefBrowser> browser) override {
     if (Client *c = Tab(browser)) return c->DoClose(browser);
     return false;
@@ -757,7 +763,7 @@ bool HiddenChromeUICommand(int command_id) {
     case IDC_SHOW_AVATAR_MENU: case IDC_SHOW_APP_MENU: case IDC_FOCUS_TOOLBAR: case IDC_FOCUS_LOCATION:
     case IDC_FOCUS_SEARCH: case IDC_FOCUS_MENU_BAR: case IDC_FOCUS_NEXT_PANE: case IDC_FOCUS_PREVIOUS_PANE:
     case IDC_FOCUS_BOOKMARKS: case IDC_FOCUS_INACTIVE_POPUP_FOR_ACCESSIBILITY: case IDC_FOCUS_WEB_CONTENTS_PANE:
-    case IDC_SHOW_DOWNLOADS: case IDC_DEV_TOOLS_INSPECT: case IDC_ADD_NEW_TAB_TO_GROUP: case IDC_CREATE_NEW_TAB_GROUP:
+    case IDC_SHOW_DOWNLOADS: case IDC_ADD_NEW_TAB_TO_GROUP: case IDC_CREATE_NEW_TAB_GROUP:
     case IDC_FOCUS_NEXT_TAB_GROUP: case IDC_FOCUS_PREV_TAB_GROUP: case IDC_CLOSE_TAB_GROUP: case IDC_MOVE_TAB_NEXT:
     case IDC_MOVE_TAB_PREVIOUS: case IDC_SHOW_READING_MODE_SIDE_PANEL:
       return true;

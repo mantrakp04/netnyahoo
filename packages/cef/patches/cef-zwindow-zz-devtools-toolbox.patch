@@ -1,0 +1,32 @@
+--- a/libcef/browser/browser_info_manager.cc
++++ b/libcef/browser/browser_info_manager.cc
+@@ -18,6 +18,7 @@
+ #include "cef/libcef/common/cef_switches.h"
+ #include "cef/libcef/common/frame_util.h"
+ #include "cef/libcef/common/values_impl.h"
++#include "chrome/browser/devtools/devtools_window.h"
+ #include "chrome/browser/ui/webui/top_chrome/webui_contents_preload_state.h"
+ #include "content/public/browser/child_process_host.h"
+ #include "content/public/browser/render_frame_host.h"
+@@ -128,10 +129,20 @@
+   params.user_gesture = user_gesture;
+ 
+   CefRefPtr<CefBrowserHostBase> browser;
+-  if (!MaybeAllowNavigation(opener, params, browser) || !browser) {
++  if (!MaybeAllowNavigation(opener, params, browser)) {
+     // Cancel the popup.
+     return false;
+   }
++  if (!browser) {
++    // Netnyahoo: DevTools docked in a client window (or not yet in a window of
++    // their own) have no CEF browser. Their DevToolsWindow is the opener's
++    // delegate and opens device mode's toolbox itself
++    // (device_mode_emulation_frame.html, shown in the tab while undocked).
++    auto* opener_contents = content::WebContents::FromRenderFrameHost(opener);
++    return opener_contents &&
++           DevToolsWindow::IsDevToolsWindow(opener_contents) &&
++           target_url.SchemeIs(content::kChromeDevToolsScheme);
++  }
+ 
+   CefRefPtr<CefClient> client = browser->GetClient();
+   bool allow = true;

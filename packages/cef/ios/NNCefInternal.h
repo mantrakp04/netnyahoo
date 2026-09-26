@@ -228,5 +228,8 @@ void EvaluateWithGesture(CefRefPtr<CefBrowser> browser, NSString *expression,
 /// Opens (or focuses) `browser`'s DevTools window; `panel` ("console"…, nil = its
 /// last panel) is selected, `inspectAt` (view coordinates) inspects that element.
 void ShowDevTools(CefRefPtr<CefBrowser> browser, NSString *panel, CefPoint inspectAt = CefPoint());
+/// A client for the DevTools window Chrome makes for `inspected` (undocking, or its own Developer
+/// commands): the DevTools' own, never the tab's (CefLifeSpanHandler::OnBeforeDevToolsPopup).
+CefRefPtr<CefClient> DevToolsFrontendClient(CefRefPtr<CefBrowser> inspected);
 
 }  // namespace nn

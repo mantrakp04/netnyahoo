@@ -99,6 +99,10 @@ void ShowDevTools(CefRefPtr<CefBrowser> browser, NSString *panel, CefPoint inspe
   browser->GetHost()->ShowDevTools(info, new FrontendClient(browser->GetIdentifier(), panel), settings, inspectAt);
 }
 
+CefRefPtr<CefClient> DevToolsFrontendClient(CefRefPtr<CefBrowser> inspected) {
+  return new FrontendClient(inspected->GetIdentifier(), nil);
+}
+
 void DevToolsCall(CefRefPtr<CefBrowser> browser, NSString *method, NSDictionary *params,
                   void (^completion)(NSDictionary *result)) {
   if (!browser) {

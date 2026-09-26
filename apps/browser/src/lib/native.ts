@@ -179,7 +179,7 @@ export function startNativeSync() {
 const PAGE_COMMANDS = [
   "reload", "forceReload", "zoomIn", "zoomOut", "zoomReset", "print", "devTools", "findInPage", "findNext",
   "findPrevious", "useSelectionForFind", "copyUrl", "copyUrlAsMarkdown", "bookmarkPage", "addBookmarkToFolder", "toggleMute",
-  "findAndReplace", "jumpToSelection", "viewSource", "javaScriptConsole",
+  "findAndReplace", "jumpToSelection", "viewSource", "javaScriptConsole", "inspectElements",
 ];
 /** Page commands that still make sense on an internal page (netnyahoo://history…), which has no web view. */
 const INTERNAL_PAGE_COMMANDS = ["copyUrl", "copyUrlAsMarkdown", "bookmarkPage", "addBookmarkToFolder"];

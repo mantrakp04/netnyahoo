@@ -167,6 +167,8 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return page ? setZoom(page.id, 0) : undefined;
     case "devTools":
       return void web?.showDevTools();
+    case "inspectElements":
+      return void web?.showDevTools("inspect");
     case "javaScriptConsole":
       return void web?.showDevTools("console");
     // Like Chrome: the source in a new tab next to the page.

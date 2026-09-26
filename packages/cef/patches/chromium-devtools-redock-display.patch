@@ -1,0 +1,50 @@
+--- a/content/app_shim_remote_cocoa/render_widget_host_ns_view_bridge.h
++++ b/content/app_shim_remote_cocoa/render_widget_host_ns_view_bridge.h
+@@ -63,6 +63,9 @@
+                    uint64_t popup_parent_ns_view_id) override;
+   void SetParentWebContentsNSView(uint64_t parent_ns_view_id) override;
+   void DisableDisplay() override;
++  // Netnyahoo: undoes DisableDisplay() (RenderWidgetHostViewMac::SetParentUiLayer
++  // with no parent layer): the NSView shows its own compositor's frames again.
++  void EnableDisplay();
+   void MakeFirstResponder() override;
+   void SetBounds(const gfx::Rect& rect) override;
+   void SetCALayerParams(gfx::CALayerParams ca_layer_params) override;
+--- a/content/app_shim_remote_cocoa/render_widget_host_ns_view_bridge.mm
++++ b/content/app_shim_remote_cocoa/render_widget_host_ns_view_bridge.mm
+@@ -118,6 +118,18 @@
+   SetBackgroundColor(SK_ColorTRANSPARENT);
+   display_ca_layer_tree_.reset();
+   display_disabled_ = true;
++}
++
++void RenderWidgetHostNSViewBridge::EnableDisplay() {
++  if (!display_disabled_)
++    return;
++  display_disabled_ = false;
++  ScopedCAActionDisabler disabler;
++  display_ca_layer_tree_ =
++      std::make_unique<ui::DisplayCALayerTree>(background_layer_);
++  // The tree's (autoresizing) layer starts empty and only follows later
++  // resizes, unlike at construction, when this view had no size yet.
++  background_layer_.sublayers.lastObject.frame = background_layer_.bounds;
+ }
+ 
+ void RenderWidgetHostNSViewBridge::SetBounds(const gfx::Rect& rect) {
+--- a/content/browser/renderer_host/render_widget_host_view_mac.mm
++++ b/content/browser/renderer_host/render_widget_host_view_mac.mm
+@@ -458,6 +458,14 @@
+     // changes (e.g, due to MigrateNSViewBridge), see
+     // https://crbug.com/1222976#c49.
+     ns_view_->DisableDisplay();
++  } else if (in_process_ns_view_bridge_ &&
++             ns_view_ == in_process_ns_view_bridge_.get()) {
++    // Netnyahoo: detached from Views (a WebView gave it up, e.g. DevTools
++    // docking back into a client window that hosts their NSView itself). Draw
++    // with this view's own compositor into its own NSView again, as before it
++    // was first attached; the next attach switches back.
++    in_process_ns_view_bridge_->EnableDisplay();
++    ns_view_->SetBackgroundColor(background_layer_color_);
+   }
+   if (browser_compositor_)
+     browser_compositor_->SetParentUiLayer(parent_ui_layer);

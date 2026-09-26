@@ -602,7 +602,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 ## 23. Developer & scripting
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
-| DevTools ⌥⌘I / F12 | ✓ | ✅ | ⌥⌘I, F12 (hidden alias), context-menu Inspect; View › Developer › View Source ⌥⌘U (`view-source:` tab) and JavaScript Console ⌥⌘J |
+| DevTools ⌥⌘I / F12 | ✓ | ✅ | Docked on the right by default (Chrome's dock-side menu, remembered per profile), device toolbar (⇧⌘M in DevTools) docked and undocked. ⌥⌘I, F12 (hidden alias), context-menu Inspect; View › Developer › View Source ⌥⌘U (`view-source:` tab), Inspect Elements ⌥⌘C and JavaScript Console ⌥⌘J, run as Chrome's own commands (⌥⌘I / ⌥⌘J close docked DevTools) |
 | Task Manager | ✓ | ✅ | Chromium task rows, CPU/memory, End Process |
 | AppleScript dictionary (windows, tabs, profiles, execute JS) | ✓ | ✅ | Netnyahoo.sdef; execute runs through the renderer's `nn-eval`, which works on Chrome tabs |
 | Raycast extension support (via AppleScript) | ✓ | 🧪 | `extras/raycast-netnyahoo`: Search Tabs lists every window's tabs and switches to one (also Copy URL, Close Tab), through the AppleScript dictionary. Its scripts were run against a live instance with the app's DEV AppleScript runner; installing it in Raycast (`npm install`, `npm run dev`) is checklist step 14 |

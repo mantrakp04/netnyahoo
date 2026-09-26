@@ -547,6 +547,14 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
   return false;
 }
 
+void Client::OnBeforeDevToolsPopup(CefRefPtr<CefBrowser> browser, CefWindowInfo &windowInfo,
+                                   CefRefPtr<CefClient> &client, CefBrowserSettings &settings,
+                                   CefRefPtr<CefDictionaryValue> &extra_info, bool *use_default_window) {
+  // Chrome makes the DevTools window (undocking, its Developer commands) with this tab's client
+  // unless ShowDevTools gave it one: it would then act as this tab.
+  if (client.get() == this) client = DevToolsFrontendClient(browser);
+}
+
 void Client::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   browser_ = browser;
   BrowserCreated(browser);

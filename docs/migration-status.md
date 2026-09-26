@@ -660,7 +660,9 @@ animation frames with the field laid out, right-clicks once, and watches the win
 runs 15/15 on the 0.2.0 export.
 
 Docked DevTools (after 0.2.0; the design doc › Phase 3 › Docked DevTools): verified headless, `spike/p3.mjs dock
-dock2`, 14/14; the regression battery on the same build (spike, p2, p3) as for the flip.
+dock2`, 14/14; the regression battery on the same build (spike, p2, p3) as for the flip. Device mode docked and
+undocked, docking back from a DevTools window, and ⌥⌘I / ⌥⌘J / ⌥⌘C as Chrome's own commands (after 0.2.1):
+verified in hidden instances (the design doc's table).
 
 Still to run by a person (screen unlocked, the app in front):
 1. **VoiceOver.** Over a window showing a web page. Pass if VO reads the sidebar, the toolbar and the page's own
@@ -691,6 +693,7 @@ Still to run by a person (screen unlocked, the app in front):
 12. **Docked DevTools by hand.** ⌥⌘I and Inspect from the page's menu: DevTools dock on the right; drag the
     split; switch the dock side from DevTools' ⋮ menu; undock and dock back; Inspect an element (the page's
     highlight lines up with the element); type in DevTools' console (keys go to DevTools, not the page).
+    Toggle the device toolbar (⇧⌘M in DevTools) and pick a phone; with focus in DevTools, ⌥⌘I closes them.
 
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order

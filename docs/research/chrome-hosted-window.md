@@ -260,6 +260,39 @@ contents are natively hosted too, and the tab's `NNBrowserView` shows them.
 | To the other profile's window and back: still docked | PASS |
 | Closing the tab with DevTools docked: nothing left over | PASS |
 
+**Device mode and Chrome's Developer commands (after 0.2.1).** In 0.2.0 the device toolbar toggle was missing
+because CEF opened DevTools with `can_dock=false`: the frontend registers `emulation.toggle-device-mode` (⇧⌘M),
+its screenshot actions and the dock-side menu only under `Root.Runtime.conditions.canDock`. With docking allowed
+(0.2.1), device mode works docked. Three gaps remained:
+- Undocked, Chrome shows device mode's toolbox (`device_mode_emulation_frame.html`: the device toolbar, rulers and
+  the page's place) in the tab. The frontend opens it with `window.open` while still docked, and CEF cancelled
+  every popup from a WebContents without a CEF browser, so undocking dropped the emulated viewport.
+  `cef-zwindow-zz-devtools-toolbox.patch` lets a DevTools frontend open it. Its `DevToolsWindow` then hosts it,
+  and `GetDockedDevTools` hands it to the app like docked DevTools.
+- Docked back from their window, DevTools were blank. A `RenderWidgetHostViewMac` attached to a `views::WebView`
+  once draws only through the Views compositor from then on. `chromium-devtools-redock-display.patch` makes it
+  draw into its own NSView again when detached.
+- ⌥⌘I / ⌥⌘J / ⌥⌘C run Chrome's own `IDC_DEV_TOOLS`, `IDC_DEV_TOOLS_CONSOLE` and `IDC_DEV_TOOLS_INSPECT` on the
+  tab (`NNBrowserView showDevToolsPanel:`), so they behave as in Chrome and Dia:
+  - Developer Tools and JavaScript Console close docked DevTools and focus an undocked window.
+  - JavaScript Console opens on the Console panel.
+  - Inspect Elements (new in the Developer menu) starts the element picker.
+  - A DevTools window Chrome makes (undocking) gets a client of its own (`OnBeforeDevToolsPopup`), not the tab's.
+- Dia (static analysis of 1.50.1: ArcCore is Chromium 154.0.8037.58 with the stock frontend) does the same:
+  - it docks on the right by default and Chrome remembers the side per profile (`devtools.preferences`,
+    `currentDockState`);
+  - it hosts the toolbox in the tab while DevTools are undocked (`ArcWebContentsTypeDevToolsToolbox`);
+  - its frontend URL is Chrome's (`&can_dock=true&targetType=tab`).
+
+| Check (hidden instances, private engine, CDP + window captures) | Result |
+|---|---|
+| ⌥⌘I on a fresh profile: docked on the right, `can_dock=true`, device toolbar toggle and dock-side menu present | PASS |
+| Device mode docked: the page is laid out at the emulated size (Responsive 400×719, iPhone 14 Pro Max 430×932 at dpr 3) in the placeholder | PASS |
+| Device mode undocked: the toolbox fills the tab, the page is emulated inside it; DevTools in their own window | PASS |
+| Docked bottom with device mode: device toolbar over the page, DevTools below | PASS |
+| Docked back from the window: DevTools draw at the right size | PASS |
+| ⌥⌘I and ⌥⌘J close docked DevTools; ⌥⌘J opens on Console; ⌥⌘C opens Elements with the picker on | PASS |
+
 ## Phase 2 (production, behind the flag), done
 
 `NETNYAHOO_CHROME_WINDOW=1` is now something to run daily. Every check below is headless, on hidden instances, on
@@ -288,7 +321,7 @@ Scripts: `spike/p2.mjs` (steps), `spike/restore.sh`, fixtures in `spike/pages` a
 | Tabs into an empty window | done | ⇧⌘T (with its history), a tab dragged out to a new window and back as that window's last (same page: the leaving window's Browser now outlives the move), reopen closed window |
 | Split view | done | 2 and 3 panes, all visible at their widths. A pane's alert shows; its position matches the default path |
 | PiP | done | `requestPictureInPicture` opens Chrome's PiP window |
-| DevTools | done | Opens in its own window. Docking isn't offered: CEF sets `can_dock = false` for CEF-managed browsers (`devtools_window.cc`), on both paths |
+| DevTools | done | Docked on the right by default, with Chrome's dock-side menu and device mode (see Phase 3 › Docked DevTools). Until 0.2.1 it opened in its own window, with no docking and no device toolbar: CEF set `can_dock = false` for CEF-managed browsers (`devtools_window.cc`) |
 | window.open / sign-in popups | done | A sized popup opens in its own window; `window.close()` closes it |
 | Downloads | done / human | Download completes into our list; the fly-in animation is visual (human) |
 | Find in page | done | 3 matches counted |
@@ -305,7 +338,7 @@ Scripts: `spike/p2.mjs` (steps), `spike/restore.sh`, fixtures in `spike/pages` a
   - window geometry and z-order read from `CGWindowList` are unreliable while locked;
   - the smoke test's three z-order checks fail for every build, shipped ones included;
   - screen captures fail entirely.
-- **DevTools can't dock**, on either path: CEF passes `can_dock = false` for its browsers, so the dock-side menu never
+- **DevTools can't dock** (until 0.2.1; see Phase 3 › Docked DevTools), on either path: CEF passes `can_dock = false` for its browsers, so the dock-side menu never
   appears and DevTools always opens in its own window (checked live: the frontend URL has no `can_dock`).
   Docked DevTools inside our window would be a feature: a CEF API handing the app the DevTools view and its
   resize strategy, and a pane in our UI.

@@ -292,7 +292,8 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 - (void)stopFinding:(BOOL)clearSelection;
 - (void)print;
 - (void)showDevTools;
-/// Opens DevTools on a panel ("console"…), switching an open DevTools window to it.
+/// Chrome's Developer menu commands: nil = Developer Tools, "console" = JavaScript Console,
+/// "inspect" = Inspect Elements (the element picker).
 - (void)showDevToolsPanel:(nullable NSString *)panel NS_SWIFT_NAME(showDevTools(panel:));
 - (void)executeJavaScript:(NSString *)code;
 /// Runs `code` in the page with a private `post(kind, json)` in scope and resolves

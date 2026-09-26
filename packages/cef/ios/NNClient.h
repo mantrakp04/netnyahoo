@@ -112,6 +112,9 @@ class Client : public CefClient,
                      cef_window_open_disposition_t disposition, bool user_gesture, const CefPopupFeatures &features,
                      CefWindowInfo &windowInfo, CefRefPtr<CefClient> &client, CefBrowserSettings &settings,
                      CefRefPtr<CefDictionaryValue> &extra_info, bool *no_javascript_access) override;
+  void OnBeforeDevToolsPopup(CefRefPtr<CefBrowser> browser, CefWindowInfo &windowInfo, CefRefPtr<CefClient> &client,
+                             CefBrowserSettings &settings, CefRefPtr<CefDictionaryValue> &extra_info,
+                             bool *use_default_window) override;
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
   bool DoClose(CefRefPtr<CefBrowser> browser) override;
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
