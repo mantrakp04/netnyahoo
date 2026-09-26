@@ -1,0 +1,30 @@
+apps/browser/src/components/layout/profilePager.ts
+  s_9c356f9574d31c::t_68d5a56cf6c7dc 17-19,34-35,64
+  s_9c356f9574d31c::t_14b8e4001e1f92 37-42,66-69,80,192-195,301,310,340-341
+  s_9c356f9574d31c::t_72c84cbec21b15 12-14,22-23,25-32,218,390-392,398,402-405
+  s_9c356f9574d31c::t_9199b52465ab2e 3,16,172,185-191,335
+  s_9c356f9574d31c::t_25a35a4edae8bd 33
+apps/browser/src/components/Sidebar.tsx
+  s_9c356f9574d31c::t_5a4952e65d9a1d 100,177-178,191,208
+apps/browser/src/components/layout/TopTabStrip.tsx
+  s_9c356f9574d31c::t_5a4952e65d9a1d 64,90,133
+apps/browser/src/lib/theme.ts
+  s_9c356f9574d31c::t_863bdfb160587e 4,259,262-263,268
+  s_9c356f9574d31c::t_65319fc7688910 264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f38b0821522c5ffe89cec10c8d211828edcd7da6",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
