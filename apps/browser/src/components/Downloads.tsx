@@ -2,12 +2,13 @@ import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@n
 import { ContextMenuArea, copyText, fileExists, fileIcon, MouseArea, moveToTrash, openFile, revealFile, showMenu, Surface, Symbol, type MenuItem } from "@netnyahoo/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { hex, useTheme } from "../lib/theme";
+import { hex, layout, useTheme } from "../lib/theme";
 import { useShallow } from "zustand/react/shallow";
 import { useBrowser } from "../store/browser";
 import { useSidebarOpen, useWindowId, useWindowUi } from "../store/hooks";
 import { downloadsIn, downloadVisibleIn } from "../store/ui";
-import { SIDEBAR_FIELD, SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
+import { SIDEBAR_FOOTER_DOWNLOADS, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
+import { PROFILE_DOTS_HEIGHT } from "./profiles/ProfileDots";
 import { openInternalPage } from "./pages/urls";
 import { useSidebarWidth } from "./sidebar/tokens";
 import { IconButton, useHover } from "./primitives";
@@ -141,8 +142,8 @@ export function DownloadsPopover() {
   const windowId = useWindowId();
   const open = useWindowUi().downloadsOpen;
   const downloads = useBrowser(useShallow((s) => downloadsIn(s, windowId)));
-  // Under the downloads button: the sidebar header's (or the URL field row's, with the address
-  // bar in the sidebar), or the top strip's (right end).
+  // Under the downloads button: the sidebar header's, or the top strip's (right end). With the
+  // address bar in the sidebar the button is in the footer, so it opens upwards from there.
   const top = useTabLayout() === "top";
   const addressBar = useAddressBarInSidebar();
   const setOpen = (value: boolean) => useBrowser.getState().setDownloadsOpen(windowId, value);
@@ -161,10 +162,10 @@ export function DownloadsPopover() {
       <Animated.View
         style={{
           position: "absolute",
-          top: addressBar ? SIDEBAR_HEADER_WITH_FIELD : 44,
+          ...(addressBar ? { bottom: PROFILE_DOTS_HEIGHT + 2 } : { top: 44 }),
           ...(top ? { right: 8 } : { left: 10 }),
           opacity: appear,
-          transform: [{ translateY: appear.interpolate({ inputRange: [0, 1], outputRange: [-4, 0] }) }],
+          transform: [{ translateY: appear.interpolate({ inputRange: [0, 1], outputRange: addressBar ? [4, 0] : [-4, 0] }) }],
         }}
       >
         <Surface
@@ -331,10 +332,10 @@ export function DownloadMagnet() {
 
   // The downloads button: right end of the sidebar header (34pt button, 7 in), or of the top
   // strip (8 in); the top-left corner while the sidebar is auto-hidden. With the address bar in
-  // the sidebar it's at the end of the URL field row.
+  // the sidebar it's at the footer's leading end.
   const sidebar = !topStrip && sidebarOpen ? sidebarWidth : 0;
-  const field = { x: sidebarWidth - 7 - SIDEBAR_FIELD.height / 2, y: SIDEBAR_FIELD.top + SIDEBAR_FIELD.height / 2 };
-  const target = topStrip ? { x: size.width - 25, y: 27 } : addressBar ? field : sidebarOpen ? { x: sidebarWidth - 24, y: 27 } : { x: 24, y: 24 };
+  const footer = { x: layout.sidebarInset + SIDEBAR_FOOTER_DOWNLOADS.size / 2, y: size.height - SIDEBAR_FOOTER_DOWNLOADS.bottom - SIDEBAR_FOOTER_DOWNLOADS.size / 2 };
+  const target = topStrip ? { x: size.width - 25, y: 27 } : addressBar ? footer : sidebarOpen ? { x: sidebarWidth - 24, y: 27 } : { x: 24, y: 24 };
   const start = { x: sidebar + (size.width - sidebar) / 2, y: size.height * 0.45 };
   const icon = 44;
   const steps = [0, 0.25, 0.5, 0.75, 1];

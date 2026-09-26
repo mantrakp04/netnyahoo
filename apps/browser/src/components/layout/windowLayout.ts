@@ -24,8 +24,16 @@ export function useAddressBarInSidebar(): boolean {
   return useBrowser((s) => addressBarInSidebar(s, windowId));
 }
 
-/** The sidebar's URL field: under the traffic-light row, 33 pt tall (Arc's field; not a Dia row). */
-export const SIDEBAR_FIELD = { top: layout.sidebarHeader - 2, height: 33 } as const;
+/**
+ * The sidebar's URL field. Arc puts its top 21.5 pt under the traffic lights' centre (ours are at
+ * 26.75, Dia's), so 48; it's as tall as a Dia tab row. The dropdown (CommandPanel) opens from its top-left.
+ */
+export const SIDEBAR_FIELD = { top: 48, height: layout.rowHeight, radius: 10 } as const;
+/**
+ * Downloads in the sidebar footer (address bar in the sidebar): Dia's 34 pt button at the footer's
+ * leading end, centred on its space-switcher band (the footer is 41 pt, the band 28 above its bottom 3).
+ */
+export const SIDEBAR_FOOTER_DOWNLOADS = { bottom: 3 + (28 - 34) / 2, size: 34 } as const;
 /** The sidebar header with the URL field in it: the list starts under the field. */
 export const SIDEBAR_HEADER_WITH_FIELD = SIDEBAR_FIELD.top + SIDEBAR_FIELD.height;
 

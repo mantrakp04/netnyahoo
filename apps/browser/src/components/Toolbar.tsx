@@ -1,6 +1,6 @@
 import { breadcrumb, urlForDisplay } from "@netnyahoo/core";
 import { ContextMenuArea, FadeLabel, MouseArea, Symbol, WindowDragRegion } from "@netnyahoo/shell";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { layout, useTheme } from "../lib/theme";
 import { webviews } from "../lib/webviews";
@@ -15,6 +15,7 @@ import { closeHistoryMenu, goBack, goForward, historyItems, openHistoryMenu, use
 import { openModeFor, openUrl } from "./bookmarks/actions";
 import { closePane, openSplitPane, showSplitMenu } from "./layout/splitActions";
 import { toolbarPalette, useEasedColor, type ToolbarPalette } from "./layout/toolbarColors";
+import { SIDEBAR_FIELD } from "./layout/windowLayout";
 import { showUrlBarMenu } from "./omnibox/paste";
 import { useHover } from "./primitives";
 import { ToolbarExtensions, useToolbarExtensionsWidth } from "./extensions/ToolbarExtensions";
@@ -199,7 +200,8 @@ export function UrlField({
   inSplit: boolean;
   onFocus: () => void;
   style?: ViewStyle;
-  sidebar?: { height: number; progress: number | null };
+  /** `accessory`: the pinned extension buttons, at the field's trailing edge (Arc keeps them in its URL bar). */
+  sidebar?: { height: number; progress: number | null; accessory?: ReactNode };
 }) {
   const theme = useTheme();
   const showFullUrl = useSettings((s) => s.showFullUrl);
@@ -238,7 +240,7 @@ export function UrlField({
         sidebar
           ? {
               height: sidebar.height,
-              borderRadius: 10,
+              borderRadius: SIDEBAR_FIELD.radius,
               borderWidth: StyleSheet.hairlineWidth * 2,
               borderColor: theme.pinnedRestingStroke,
               backgroundColor: hovered ? theme.tabHover : theme.pinnedResting,
@@ -316,6 +318,7 @@ export function UrlField({
             <ToolbarButton palette={palette} icon="slider.horizontal.3" size={13} box={24} radius={6} onPress={toggleSiteControls} tooltip="Site Controls" />
           </>
         )}
+        {sidebar?.accessory}
       </View>
       {sidebar && sidebar.progress !== null ? <ProgressBar progress={sidebar.progress} color={theme.accent} /> : null}
     </View>

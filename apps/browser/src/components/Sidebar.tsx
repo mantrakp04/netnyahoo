@@ -8,13 +8,13 @@ import { activeTabId } from "../store/model";
 import { downloadsIn } from "../store/ui";
 import { cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
-import { SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
+import { SIDEBAR_FOOTER_DOWNLOADS, SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
 import { IconButton, useHover } from "./primitives";
 import { PROFILE_INDICATOR_X, ProfileIndicator } from "./ProfileIndicator";
 import { usePageOffset, usePagerPages } from "./layout/profilePager";
 import { PROFILE_DOTS_HEIGHT, ProfileDots, useProfileDotsShown } from "./profiles/ProfileDots";
-import { SIDEBAR_NAV_WIDTH, SidebarAddressRow, SidebarNavigation } from "./sidebar/AddressBar";
+import { SidebarAddressRow, SidebarHeaderTools } from "./sidebar/AddressBar";
 import { DragGhost } from "./sidebar/DragGhost";
 import { DragProvider, DragScope, useDragController, useDragItem, type Ghost } from "./sidebar/dnd";
 import { useSidebarEntries } from "./sidebar/entries";
@@ -52,8 +52,6 @@ export function Sidebar() {
   // Media playing in a background tab gets a player docked at the bottom (components/media).
   const playerTab = useSidebarPlayerTab(windowId);
   const playerHeight = playerTab ? SIDEBAR_PLAYER_HEIGHT : 0;
-  // Dia's footer with the space switcher: a dot per profile.
-  const footer = useProfileDotsShown() ? PROFILE_DOTS_HEIGHT : 0;
   // Settings › Appearance › Address Bar: the header also holds the URL field, and the list starts
   // under it. The field is translucent, so the list doesn't reach under it for the glow.
   const addressBar = useAddressBarInSidebar();
@@ -62,6 +60,11 @@ export function Sidebar() {
   // Dia's Downloads button is there only while the window lists downloads (in progress or done);
   // clearing the list hides it again.
   const hasDownloads = useBrowser((s) => downloadsIn(s, windowId).length > 0);
+  // Dia's footer with the space switcher: a dot per profile. With the address bar in the sidebar
+  // it also holds Downloads at its leading end, where Arc keeps it.
+  const dots = useProfileDotsShown();
+  const footerDownloads = addressBar && hasDownloads;
+  const footer = dots || footerDownloads ? PROFILE_DOTS_HEIGHT : 0;
 
   useRevealTabs(windowId, scroll, scrollY, glowRoom);
 
@@ -125,47 +128,35 @@ export function Sidebar() {
           ) : null}
 
           {footer ? (
-            <View style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}>
-              <ProfileDots windowId={windowId} />
+            <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: footer }}>
+              {dots ? <ProfileDots windowId={windowId} /> : null}
+              {footerDownloads ? (
+                <View style={{ position: "absolute", left: layout.sidebarInset, bottom: SIDEBAR_FOOTER_DOWNLOADS.bottom }}>
+                  <DownloadsButton windowId={windowId} />
+                </View>
+              ) : null}
             </View>
           ) : null}
 
           {/* Traffic lights sit in this header (positioned natively); the rest drags the window. */}
           <View style={{ height: header }}>
             <WindowDragRegion style={StyleSheet.absoluteFill} />
-            {/* Dia's header stack: window controls, 6 pt, the profile name, then (2 pt apart, 7 pt from the
-                edge) Downloads while any are listed. */}
-            <View style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", paddingLeft: PROFILE_INDICATOR_X, paddingRight: 7, paddingTop: 27 - 17 }}>
-              {addressBar ? (
-                <>
-                  {/* Back / forward / reload take Downloads' place (it moves beside the URL field). */}
-                  <ProfileIndicator room={width - PROFILE_INDICATOR_X - SIDEBAR_NAV_WIDTH - 7 - 2} />
-                  <View style={{ flex: 1 }} />
-                  <View style={{ marginTop: 2 }}>
-                    <SidebarNavigation />
-                  </View>
-                </>
-              ) : (
-                <>
-                  <ProfileIndicator room={width - PROFILE_INDICATOR_X - 7 - (hasDownloads ? 34 + 2 : 0)} />
-                  <View style={{ flex: 1 }} />
-                  {hasDownloads ? (
-                    <IconButton
-                      icon="arrow.down.circle"
-                      size={16}
-                      box={34}
-                      radius={10}
-                      tooltip="Downloads (⇧⌘J)"
-                      onPress={() => {
-                        const s = useBrowser.getState();
-                        s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
-                      }}
-                    />
-                  ) : null}
-                </>
-              )}
-            </View>
-            {addressBar ? <SidebarAddressRow /> : null}
+            {addressBar ? (
+              // Arc's header: the sidebar toggle and back / forward / reload, the URL field under them.
+              // The profile name gives way (the footer's dots switch profiles).
+              <>
+                <SidebarHeaderTools width={width} />
+                <SidebarAddressRow />
+              </>
+            ) : (
+              // Dia's header stack: window controls, 6 pt, the profile name, then (2 pt apart, 7 pt from
+              // the edge) Downloads while any are listed.
+              <View style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", paddingLeft: PROFILE_INDICATOR_X, paddingRight: 7, paddingTop: 27 - 17 }}>
+                <ProfileIndicator room={width - PROFILE_INDICATOR_X - 7 - (hasDownloads ? 34 + 2 : 0)} />
+                <View style={{ flex: 1 }} />
+                {hasDownloads ? <DownloadsButton windowId={windowId} /> : null}
+              </View>
+            )}
           </View>
 
           <ResizeHandle windowId={windowId} width={width} />
@@ -328,6 +319,23 @@ function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, s
       }
     });
   }, [windowId, glowRoom]);
+}
+
+/** Dia's Downloads button (34 pt, radius 10). */
+function DownloadsButton({ windowId }: { windowId: string }) {
+  return (
+    <IconButton
+      icon="arrow.down.circle"
+      size={16}
+      box={34}
+      radius={10}
+      tooltip="Downloads (⇧⌘J)"
+      onPress={() => {
+        const s = useBrowser.getState();
+        s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
+      }}
+    />
+  );
 }
 
 /** "+ New Tab", with the overflow menu's chevron at its trailing edge. */
