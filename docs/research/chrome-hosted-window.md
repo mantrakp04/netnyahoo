@@ -330,6 +330,8 @@ view), titled "DevTools - <url>" and placed where the profile's DevTools window 
   `WindowDelegate`): it reads and writes Chrome's DevToolsApp record, so both kinds open where either was
   left, and it's titled from the frontend's title. Dia titles its DevTools window "Developer Tools - %@"
   (1.50.1 string) and autosaves its frame (`.devToolsWindowAutosaveFrame`).
+- `chromium-devtools-window-title.patch` makes the frontend's own title "Developer Tools - <url>" (Chrome's
+  `DevToolsUIBindings::InspectedURLChanged` format), which Chrome's DevTools window shows as is.
 - F12 is Chrome's `IDC_DEV_TOOLS_TOGGLE` (the Developer menu's hidden F12 item; Dia has `developerToolsF12`
   behind `devtools-f12-shortcut-enabled`): it opens DevTools, closes docked ones and brings an undocked
   window forward. Pressed in an undocked window it closes that window, as `ToggleDevToolsWindow` does for a
@@ -341,6 +343,7 @@ view), titled "DevTools - <url>" and placed where the profile's DevTools window 
 | Title follows the inspected page ("… - example.org/" after navigating) | PASS |
 | Resized to 900 × 700 at 300, 200: DevToolsApp saved; closed and opened again there | PASS |
 | After a relaunch, another tab's DevTools (Chrome's window) open at the frame our window saved; its resize is saved for ours | PASS |
+| With the title patch, both windows say "Developer Tools - example.com/" | PASS |
 | F12 (CDP key event) in either window closes it; the frontend target goes | PASS |
 | F12 from the page: opens (dock side as last set), closes docked DevTools | PASS |
 | Window closing itself (window list) | needs an unlocked screen |

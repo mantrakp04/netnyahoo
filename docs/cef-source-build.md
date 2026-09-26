@@ -40,6 +40,7 @@ What the build adds:
 | `chromium-window-docked-devtools.patch` | DevTools may dock in a CEF client's own window (`BrowserDelegate::AllowsDockedDevTools`), and `DevtoolsUIController::UpdateDevtools` tells the CEF delegate of every change to a natively hosted tab's docked DevTools. `NativeHostedContents::Unmark` for DevTools that undock |
 | `chromium-devtools-redock-display.patch` | A `RenderWidgetHostViewMac` that a `views::WebView` gives up (`SetParentUiLayer(nullptr)`) draws into its own NSView again. Chrome switched it to the Views compositor for good the first time it was attached, so DevTools docked back from their own window stayed blank in the client's view |
 | `chromium-window-hosted.patch` | `BridgedContentView.netnyahooEmbeddedView`: hit testing and accessibility ask the embedder's subview of a Chrome window's content view first. A Browser whose CEF delegate says so (`client_window`) stays open when its last tab closes, unless the window is closing |
+| `chromium-devtools-window-title.patch` | DevTools' title is Dia's, "Developer Tools - <url>" (`DevToolsUIBindings` `kTitleFormat`), so Chrome's own undocked DevTools window says so too |
 | `chromium-neterror-yahu.patch` | "Where's Big Yahu?" replaces the dino: the offline page and chrome://yahu (below) |
 
 Removed in 0.2.0, with the hidden "ghost" Browser windows they served (every app window is now Chrome's own,

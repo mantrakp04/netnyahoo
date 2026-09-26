@@ -1,0 +1,12 @@
+--- a/chrome/browser/devtools/devtools_ui_bindings.cc
++++ b/chrome/browser/devtools/devtools_ui_bindings.cc
+@@ -160,7 +160,8 @@
+ const char kFrontendHostId[] = "id";
+ const char kFrontendHostMethod[] = "method";
+ const char kFrontendHostParams[] = "params";
+-const char kTitleFormat[] = "DevTools - %s";
++// Netnyahoo: Dia's title for the DevTools window (and its frontend page).
++const char kTitleFormat[] = "Developer Tools - %s";
+ 
+ const char kConfigDiscoverUsbDevices[] = "discoverUsbDevices";
+ const char kConfigPortForwardingEnabled[] = "portForwardingEnabled";
