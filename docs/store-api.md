@@ -54,6 +54,16 @@ don't re-render every tab.
 - Menu commands: lib/commands.ts (JS) + packages/shell/ios/Menus.swift (native menu bar).
 - Tests: `cd apps/browser && node --import ./src/store/test-loader.mjs --test src/store/store.test.mjs`.
 
+## Sync (apps/browser/src/sync, packages/sync)
+- End-to-end-encrypted sync through a folder the user picks; design in `docs/sync.md`. `sync/engine.ts` owns the
+  state (`useSync`: status, devices, other devices' tabs), the setup flows and the cycle; `sync/adapters.ts` maps the
+  store to synced records (bookmarks, history, open tabs, pinned tabs and pinned groups, settings, passwords).
+  Adapters rebuild or patch store state with `useBrowser.setState`, so store invariants they touch (group contiguity,
+  pinned-first order) are kept there.
+- Record keys use store ids (`bm:<id>`, `pin:t:<tab id>`), so ids must stay unique across Macs: `newId` has a random part.
+- Tests: `node --import ./src/sync/test-loader.mjs --test src/sync/adapters.test.mjs` (two devices swap the one store).
+  DEV: `nnSync` (`turnOnSync`, `enterRecoveryPhrase`, `syncNow`, `stopSync`, `useSync`, `menu`, `sheets`).
+
 ## Dev tooling (DEV builds)
 - LogBox is disabled (its shadows crash react-native-macos); console errors/warnings go to
   `$NETNYAHOO_DATA_DIR/dev-console.log`.
@@ -89,7 +99,7 @@ don't re-render every tab.
   | --- | --- |
   | `netnyahoo://history`, `bookmarks`, `downloads` | Our React pages in the tab (components/pages). They take precedence over Chrome's pages, and `chrome://history` typed or reported lands here too. |
   | `netnyahoo://settings` | Our Settings window (components/pages/appUrls.ts). The tab doesn't change. |
-  | `netnyahoo://settings/<pane>` | Our Settings window at that pane: general, profiles (also `people`, `manageProfile`), tabs, appearance, privacy, passwords, autofill (also `addresses`, `payments`), extensions, search (also `searchEngines`), shortcuts, liveFolders, calendar, advanced. |
+  | `netnyahoo://settings/<pane>` | Our Settings window at that pane: general, profiles (also `people`, `manageProfile`), sync (also `syncSetup`), tabs, appearance, privacy, passwords, autofill (also `addresses`, `payments`), extensions, search (also `searchEngines`), shortcuts, liveFolders, calendar, advanced. |
   | `netnyahoo://settings/<anything else>` | Chrome's settings page (e.g. `settings/languages`, `settings/content`). |
   | `netnyahoo://newtab` | A New Tab page (a new tab). |
   | `netnyahoo://extensions` | Chrome's extensions page (as dia://extensions is in Dia): developer mode, load unpacked, errors, shortcuts. Our Settings › Extensions stays at `netnyahoo://settings/extensions`. |

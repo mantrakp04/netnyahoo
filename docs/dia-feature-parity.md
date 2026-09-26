@@ -21,9 +21,9 @@ Legend: **✅** done · **🧪** built, but the deciding test needs the user pre
 
 | ✅ done | 🧪 needs the user | 🟡 partial | ❌ missing | ⛔ blocked | ⏸ deferred (AI) | — n/a |
 |---|---|---|---|---|---|---|
-| 225 | 1 | 1 | 0 | 7 | 59 | 14 |
+| 230 | 1 | 1 | 0 | 2 | 59 | 14 |
 
-Of the 234 rows that count (not ⏸ or —), 225 are done (96 %), 226 with the one 🧪 row (Cast). The one 🟡 row is
+Of the 234 rows that count (not ⏸ or —), 230 are done (98 %), 231 with the one 🧪 row (Cast). The one 🟡 row is
 passkeys (iCloud Keychain waits on Apple). Keyboard shortcuts: every Dia shortcut is bound except the Chat ones
 (⏸). Menus: all ten exist and match.
 
@@ -67,8 +67,13 @@ What changed since the last audit, in rows (mostly the migration):
   needed password sync), leaving window full screen leaving the page full screen, a full-screen page in another
   profile's window taking the window out of full screen, and AppleScript's `make new window with properties
   {URL:…}` failing. Cast stays 🧪: casting itself needs a device.
-- Still blocked: Sync (5 rows), Widevine DRM, Dia's sidebar import, and iCloud Keychain passkeys (inside the 🟡
-  passkeys row).
+- Since, from the sync pass (2026-09-26): Sync is built without a server (⛔ → ✅, 5 rows: E2E-encrypted sync,
+  per-profile sync, synced devices' tabs, the overflow menu's synced devices, the Sync pane). Every Mac reads and
+  writes sealed files in a folder the user picks, iCloud Drive by default, keyed by Dia's 24-word phrase
+  (`docs/sync.md`). Verified by unit tests and two- and three-instance end-to-end runs through a temporary folder;
+  the real two-Mac run over iCloud Drive is checklist step 15. The run found and fixed ids that two Macs launched
+  in the same millisecond made alike (store ids now have a random part).
+- Still blocked: Widevine DRM, Dia's sidebar import, and iCloud Keychain passkeys (inside the 🟡 passkeys row).
 
 ## Remaining work
 
@@ -129,12 +134,11 @@ The 🧪 row (Cast) needs no code until the user checklist below finds a problem
 ### ⛔ Blocked, and what would unblock it
 | Item | Blocked by | Unblocks when |
 |---|---|---|
-| Sync: E2E sync, per-profile sync, synced devices' tabs (§13 and the overflow menu), Sync pane (5 rows) | no sync server or account system: Dia's sync is its own service | we run a sync server with accounts (then it's a client package) |
 | Protected video, Widevine (§18) | Google licenses the CDM only to VMP-signed browsers; the CDM comes through its component updater, whose host is substituted | Google grants a Widevine licence and VMP signing; then we allow the component updater host (or bundle the CDM) |
 | iCloud Keychain passkeys (inside §16's passkeys row) | Apple hasn't granted `com.apple.developer.web-browser.public-key-credential`, which macOS requires before a browser may use iCloud Keychain passkeys for any site | the grant arrives: switch `CODE_SIGN_ENTITLEMENTS` to `Netnyahoo-ICloudPasskeys.entitlements` (ledger 42) |
 | Dia sidebar import (§20) | Dia's `tabs.db` is encrypted with a key from its team's keychain access group | Dia exports its sidebar, or keeps it readable |
 
-## Needs the user present: test script (about 25 minutes)
+## Needs the user present: test script (about 35 minutes)
 
 These need a key window, Touch ID, a phone, Spaces, or eyes on Dia, so no agent can run them. Run them in one
 sitting; note the step number and what you saw for anything that fails.
@@ -220,6 +224,18 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
     In Raycast, run "Search Tabs" (Netnyahoo). Pass: macOS asks once whether Raycast may control Netnyahoo; the
     list shows your tabs with favicons and hosts; typing filters; ↵ switches to the tab and brings Netnyahoo
     forward; ⌃X closes a tab.
+15. **Sync over iCloud Drive** (§13, §20, §22; needs two Macs signed in to the same iCloud account with iCloud Drive
+    on, each running this build without `NETNYAHOO_DATA_DIR`, so they use the real Keychain and iCloud Drive). On Mac
+    1: ⌘, › Sync › Turn On Sync. Pass: the Recovery Kit sheet; Save… writes "Netnyahoo Recovery Kit.pdf" with the 24
+    words and a QR code; Finder shows `iCloud Drive › Netnyahoo Sync` holding one folder of unreadable names. If macOS
+    asks whether Netnyahoo may use iCloud Drive, allow it and note it. On Mac 2: ⌘, › Sync. Pass: "This folder has
+    synced data already"; Enter Recovery Phrase…, paste the words (or scan the kit's QR code with your iPhone and
+    paste with Universal Clipboard), Connect. Within a minute, pass if on Mac 2: Mac 1's bookmarks, recent history,
+    pinned tabs, settings and a saved password (⌘, › Passwords) are there, and the overflow menu (the chevron at the
+    sidebar's bottom) shows "Your … Tabs" with Mac 1's open tabs. Change a bookmark and a setting on Mac 2. Pass: Mac
+    1 has them within a minute or two (as fast as iCloud Drive carries files). Put Mac 2 to sleep, make changes on Mac
+    1, wake Mac 2. Pass: it catches up. Finally ⌘, › Sync › Advanced… › Stop Syncing… on Mac 2, Keep Sync Data. Pass:
+    everything stays on Mac 2, and Mac 1's devices list drops it.
 
 ## 1. Windows & app shell
 | Feature | Dia | Netnyahoo | Gap |
@@ -269,7 +285,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Search Tabs ⇧⌘A (all windows, recently closed, chats) | ✓ | ✅ | all windows of the profile + recently closed tabs/groups; chats ⏸ |
 | Tab Switcher ⌃Tab (MRU cycling with UI) | ✓ | ✅ | overlay after 140 ms, commits on ⌃ release. As in Dia 1.50.1's RecentTabs event monitor: → / ← move, Esc or a click outside closes it without switching, a click on a row switches to it, the pointer highlights rows, leaving the app switches, other keys are swallowed while it's up |
 | ⌘1–⌘8 / ⌘9 select tab | ✓ (Chromium) | ✅ | |
-| Overflow menu (open + recently closed + synced devices) | ✓ | ⛔ | everything but synced devices is done (open, recently closed, recently cleaned, clean up, mute all). Synced devices' tabs come from Dia's sync server (its account's other devices); we have no sync server or account system to get them from (⛔ table) |
+| Overflow menu (open + recently closed + synced devices) | ✓ | ✅ | open, recently closed, recently cleaned, clean up, mute all, and synced devices as Dia's: one other device is "Your %@ Tabs" ("Your MacBook Pro Tabs"), several roll up into "Your Devices" (`macbook.and.iphone`), each with its "Recent Tabs" (sync/menu.ts; `docs/sync.md`). Verified with hidden instances (both forms, 2026-09-26). Left for a person: the NSMenu by eye |
 | Clean Up Tabs ⌥⌘K / auto‑archive untouched tabs → "Recently Cleaned" | ✓ | ✅ | + daily auto clean-up and the sidebar upsell |
 | Auto‑clear abandoned New Tab Pages | ✓ | ✅ | on app resign-active / screen lock |
 | Links `_blank` / ⌘‑click open new tab | ✓ | ✅ | Chrome makes the tab in the opener's Browser (`window.opener` kept) and the app adopts it; ⌘-click → background tab next to its opener (ledger 7) |
@@ -331,7 +347,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Dock menu: New Window per profile | ✓ | ✅ | |
 | Unload unused profiles | ✓ | ✅ | a profile no window has shown for 10 min: its tabs' browsers close (unlike sleeping, their history is lost), then its engine context is released (checked every 15 s). Whether Chrome then unloads the profile itself (ghost, hidden WebUI pages) hasn't been measured on the new engine |
 | Per‑profile extensions | ✓ | ✅ | every extension call takes the profile; Settings › Extensions has a profile picker ("Each profile has its own"); uBOL runs in every profile (ledger 11) |
-| Per‑profile sync | ✓ | ⛔ | Dia syncs each profile through its own server, end-to-end encrypted; we have no sync server or account system (⛔ table) |
+| Per‑profile sync | ✓ | ✅ | each profile syncs on its own (its own scope in the sync folder), turned on or off per profile in Settings › Sync. Joining pairs Personal with the synced default and other profiles by name; a synced profile this Mac lacks is offered as "Add to This Mac"; profiles that share data sync their tabs, the data with its owner (`docs/sync.md`) |
 | Per‑profile Morning Brief | ✓ | ⏸ | |
 | Spaces (colour, rename) | flag-gated; changelog says Dia has no Spaces | — | Dia ships without Spaces |
 | Warn before closing last tab in a profile | ✓ | ✅ | with "Don't ask again" |
@@ -486,7 +502,7 @@ own sign-ins instead.
 | History page (⌘Y, `dia://history`) | ✓ | ✅ | `netnyahoo://history` (our page, also when Chrome opens chrome://history): by day, search, bulk delete |
 | History menu | ✓ | ✅ | Show History, Clear Browsing Data, Recently Closed, Recently Closed Groups |
 | Clear browsing data | ✓ | ✅ | our history by visit time and its favicons, plus Chrome's BrowsingDataRemover for the same range: Chrome's history database (what `chrome.history` shows), cookies and every kind of site storage, cached files, live. Form data and passwords stay, as in the dialog's two options |
-| Synced devices' tabs | ✓ | ⛔ | the tabs of your other devices come from the sync server, which we don't have (⛔ table) |
+| Synced devices' tabs | ✓ | ✅ | each device publishes its 30 most recent open tabs per profile (not pinned tabs, which sync as pinned tabs); the others list them in the overflow menu, and a device that stops syncing takes its record away (`docs/sync.md`). Verified with two and three hidden instances (2026-09-26) |
 
 ## 14. Downloads
 | Feature | Dia | Netnyahoo | Gap |
@@ -515,7 +531,7 @@ actions, commands and the Web Store are Chrome's (ledger items 1–14, 22, W1–
 | chrome.tabs / chrome.windows | ✓ | ✅ | Chrome's real tabs and windows: one Chrome window per app window and profile, sidebar order, active/pinned both ways, `tabs.create` / `windows.create` / popups adopted as our tabs, moves between windows and profiles (ledger 1–14); sleeping tabs are `discarded: true`, and `tabs.discard` / `tabs.reload` sleep and wake them in the app. Known gap: an extension's `tabs.move` doesn't reorder the sidebar |
 | action.onClicked (no popup), keyboard `commands`, extension context-menu items | ✓ | ✅ | onClicked + activeTab + `scripting.executeScript` verified (22); `chrome.commands` shortcuts run on Chrome's own dispatcher in the key Browser window (13; `docs/research/chrome-hosted-window.md`); `chrome.contextMenus` items show in the page menu and their `onClicked` runs (R1) |
 | Side‑panel API | ✓ | ✅ | Dia's extension side panel: a card to the right of the page (header with the extension's icon, name, ⋯ menu and close; resizable 320–600 pt, width saved) showing the panel page outside the tab strip. Opens from the toolbar button (`openPanelOnActionClick`), the extension's menu and `chrome.sidePanel.open()`, closes with `close()` or `window.close()`; follows per-tab `setOptions` paths and closes where it's disabled. `chrome.tabs.query({active, currentWindow})` from the panel (and from popups) returns the page |
-| Per‑profile extensions | ✓ | ✅ | lists, pins and installs per engine profile; incognito windows run the default profile's extensions that are allowed in incognito; sync ⛔ |
+| Per‑profile extensions | ✓ | ✅ | lists, pins and installs per engine profile; incognito windows run the default profile's extensions that are allowed in incognito. Extensions don't sync (Dia's sync does); each Mac installs its own from the Web Store |
 
 ## 16. Passwords & autofill
 Chrome's password manager and autofill fill pages themselves; our Settings panes drive Chrome's own
@@ -576,7 +592,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Arc import (spaces, pinned tabs, custom names) | ✓ | ✅ | |
 | Dia sidebar import (spaces, pinned tiles, custom names/colours) | ✓ | ⛔ | Dia moved its sidebar out of Arc's `StorableSidebar.json` into a SQLCipher-encrypted `tabs.db` (GRDB; tables `nodes`/`tabs`/`tab_groups`/`spaces`/`windows`/`content_panes`, columns `space_id`/`custom_title`/`custom_icon`/`title_source`/`pinned_container`/`favorites`). Its key is derived (HKDF-SHA256) from a root key Dia shares with its sync escrow (`RootEncryptionKeyProvider`, which the sync client uses too), and Dia keeps its secrets in keychain access groups of its own team (`S6N382Y83G.company.thebrowser.browser.auth`, from its entitlements), which macOS lets only that team's apps read. So another browser can't open `tabs.db` (the root key's storage is inferred from the binary; nothing was decrypted). Dia's open tabs still import from its plaintext SNSS `Sessions/` |
 | Account (Atlassian identity, OTP, delete account) | ✓ | — | |
-| E2E‑encrypted sync (24‑word phrase, recovery kit, device transfer) | ✓ | ⛔ | the phrase, recovery kit and device transfer protect data on a sync server; we have no sync server or account system (⛔ table) |
+| E2E‑encrypted sync (24‑word phrase, recovery kit, device transfer) | ✓ | ✅ | no server: every Mac reads and writes sealed files in a folder the user picks (iCloud Drive › Netnyahoo Sync by default, no entitlement; Dropbox, a NAS or a USB drive work too). 24 BIP-39 words from the CSPRNG, as Dia's; HKDF-SHA256 keys, AES-256-GCM per file bound to its name, keyed or random names, 1 KiB padding; the key in the login Keychain, this Mac only. Per-device append-only logs, last writer wins per record by hybrid logical clock, snapshots with safe pruning; iCloud placeholders and half-copied files wait. Syncs bookmarks, 90 days of history, open tabs, pinned tabs and groups, settings and saved passwords (Chrome's, read from its store on disk, written through its API; turning sync off never removes one). Recovery Kit PDF / text with a QR code; device transfer by entering the phrase (or scanning its QR code with an iPhone and pasting with Universal Clipboard). Design and threat model: `docs/sync.md`. Verified: 21 Swift and 21 JS unit tests, and 40 end-to-end checks with two and three hidden instances through a temporary folder (`packages/sync/scripts/e2e.mjs`, 2026-09-26). Left for a person: two real Macs over iCloud Drive (checklist step 15) |
 | Invite / referrals | ✓ | — | |
 
 ## 21. Appearance
@@ -605,7 +621,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Memory | ✓ (retired 1.50) | — | |
 | Privacy (content blocking, data sharing) | ✓ | ✅ | content blocking (uBOL rulesets; see §17 for the list-update gap), per-site permissions, zoom levels; data sharing — |
 | Passwords / Autofill / Extensions (Chrome's) | ✓ | ✅ | Passwords: Chrome's password manager per profile, unlock through Chrome's device check, CSV import. Autofill: addresses, cards and the two "offer to save" toggles per profile (the toggles are read once the profile has loaded: a profile without a window only initializes then). Extensions: per profile |
-| Sync | ✓ | ⛔ | a pane for the sync account and what syncs; there's no sync server or account behind it (⛔ table) |
+| Sync | ✓ | ✅ | Settings › Sync, with Dia's flows and words: Turn On Sync / Enter Recovery Phrase… / Other Options (Set Up Without Another Device), Save Your Recovery Kit, Connect with Recovery Phrase ("%d/%d words", "too many words", Dia's three phrase errors), the status line ("starting up", "updating", "updated just now", "not syncing · last synced %@", "offline"), Connect Another Device…, Advanced… (Save Recovery Kit…, Copy Recovery Code, Stop Syncing…), Stop Syncing This Device? and Delete Sync Data?, plus the sync folder, profiles, what syncs and devices. Dia keeps it in Account › Sync; there's no account here |
 | Keyboard Shortcuts (remap any action, F‑keys, conflict handling) | ✓ | ✅ | every menu command, recorder, conflicts filter, reset |
 | Usage / Billing | ✓ | — | |
 | Advanced | ✓ | ✅ | Battery Saver, the engine version, Widevine ("not available in this build"); also our Search Engine, Live Folders and Calendar panes |
