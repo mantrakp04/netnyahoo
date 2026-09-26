@@ -4,6 +4,7 @@ import type { BrowserState } from "./browser";
 import { leaveGroups, syncGroupOrder } from "./groups";
 import {
   IDLE_LIVE,
+  inPinnedContainer,
   makeTab,
   merge,
   navigationTo,
@@ -56,10 +57,11 @@ export type TabsSlice = {
   newTab(windowId: string, options?: NewTabOptions): string;
   /**
    * ⌘W. Closing the last tab of the window's profile closes the window (ask first: lib/actions).
-   * A pinned tab isn't removed: its page unloads (`unloadPinnedTabs`); Unpin removes it.
+   * A pinned tab, or a tab of a pinned group, isn't removed: its page unloads (`unloadPinnedTabs`);
+   * Unpin (or Remove from Group) and then Close removes it.
    */
   closeTab(id: string): void;
-  /** Bulk close (others/above/below/all); leaves a New Tab page if the view would be empty. Pinned tabs unload. */
+  /** Bulk close (others/above/below/all); leaves a New Tab page if the view would be empty. Pinned tabs and pinned groups' tabs unload. */
   closeTabs(ids: string[]): void;
   activate(id: string): void;
   /** Index into the window's view; -1 = last. */
@@ -211,14 +213,16 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
  * ⌘W on a pinned tab, after Dia (`closeFocusedContent` closes with `.deselectPinnedIfActive`):
  * the tile stays and only its page closes, so its browser and renderer go. The tile goes back
  * to its pinned URL (with that page's title and icon from history) and loads it when selected
- * again; ⇧⌘T instead brings back the page it showed, with its back/forward list. A window
+ * again; ⇧⌘T instead brings back the page it showed, with its back/forward list. A tab of a
+ * pinned group is in Dia's pinned container too: its row stays, unloaded on the page it showed
+ * (it has no pinned URL). A window
  * showing it selects the regular tab it showed last (Dia's
  * `lastNonPinnedTabBeforePinnedSelection`), else a New Tab page. `ids` may include other tabs
  * being closed with it: those aren't picked.
  */
 export function unloadPinnedTabs(s: BrowserState, ids: string[]): BrowserState {
   const closing = new Set(ids);
-  const pinned = ids.filter((id) => s.tabs[id]?.pinned);
+  const pinned = ids.filter((id) => inPinnedContainer(s, id));
   if (!pinned.length) return s;
   const gone = new Set(pinned);
   const now = Date.now();
@@ -271,7 +275,7 @@ function backToPin(s: BrowserState, t: Tab): Partial<Tab> {
 /** The regular tab a window selects when its pinned tab `id` unloads: a pane of its split, else the one used last. */
 function lastRegularTab(s: BrowserState, w: BrowserWindow, id: string, closing: Set<string>): string | undefined {
   const profileId = s.tabs[id]!.profileId;
-  const candidates = w.tabIds.filter((t) => !closing.has(t) && s.tabs[t]?.profileId === profileId && !s.tabs[t]!.pinned);
+  const candidates = w.tabIds.filter((t) => !closing.has(t) && s.tabs[t]?.profileId === profileId && !inPinnedContainer(s, t));
   const panes = splitOf(s, id)?.tabIds.filter((t) => candidates.includes(t)) ?? [];
   const pool = panes.length ? panes : candidates;
   return pool.reduce<string | undefined>((best, t) => (!best || s.tabs[t]!.lastActiveAt > s.tabs[best]!.lastActiveAt ? t : best), undefined);
@@ -331,7 +335,7 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     const tab = s.tabs[id];
     const w = tab && s.windows[tab.windowId];
     if (!tab || !w) return;
-    if (tab.pinned) return set(unloadPinnedTabs(s, [id]));
+    if (inPinnedContainer(s, id)) return set(unloadPinnedTabs(s, [id]));
     // Last tab of the profile the window shows: the window closes (with all its profiles' tabs), like Dia.
     if (tab.profileId === w.profileId && viewTabIds(s, w.id).length === 1) return get().closeWindow(w.id);
     set(removeTabs(s, [id], true));
@@ -339,7 +343,7 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
 
   closeTabs(ids) {
     let s = unloadPinnedTabs(get(), ids);
-    const closing = ids.filter((id) => !s.tabs[id]?.pinned);
+    const closing = ids.filter((id) => !inPinnedContainer(s, id));
     // Keep the window: if its view would empty, leave a New Tab page.
     for (const w of Object.values(s.windows)) {
       const view = viewTabIds(s, w.id);

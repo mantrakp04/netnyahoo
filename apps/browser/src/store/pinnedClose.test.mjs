@@ -181,6 +181,56 @@ test("an unloaded pinned tab has nothing more to unload: ⌘W isn't recorded twi
   assert.equal(S().tabs[p].pinned, true);
 });
 
+test("⌘W on a tab of a pinned group unloads it where it is; its row stays in the group", () => {
+  reset();
+  const { w, ids: [g1, g2, a] } = windowWith("g1", "g2", "a");
+  const groupId = S().groupTabs([g1, g2], { pinned: true });
+  S().updateTab(g1, { url: "https://g1.com/deep", title: "Deep" });
+  select(a);
+  select(g1);
+  S().closeTab(g1);
+  assert.ok(S().tabs[g1], "the tab still exists");
+  assert.deepEqual(S().groups[groupId].tabIds, [g1, g2], "still in its group");
+  assert.equal(S().tabs[g1].url, "https://g1.com/deep", "no pinned URL: it stays on its page");
+  assert.equal(S().tabs[g1].title, "Deep");
+  assert.equal(S().tabs[g1].navigation, null);
+  assert.equal(S().tabs[g1].unloaded, true);
+  assert.equal(active(w), a, "back to the regular tab used last, not the group's other tab");
+  assert.ok(S().tabs[g2].navigation, "the group's other tab isn't touched");
+  assert.equal(S().closedTabs.at(-1).pinnedTile, true);
+  // ⇧⌘T loads it back into its row.
+  S().reopenClosed(w);
+  assert.equal(active(w), g1);
+  assert.deepEqual(S().groups[groupId].tabIds, [g1, g2]);
+});
+
+test("a tab of an unpinned group still closes", () => {
+  reset();
+  const { w, ids: [g1, g2] } = windowWith("g1", "g2", "a");
+  const groupId = S().groupTabs([g1, g2], { pinned: false });
+  select(g1);
+  S().closeTab(g1);
+  assert.equal(S().tabs[g1], undefined);
+  assert.deepEqual(S().groups[groupId].tabIds, [g2]);
+  void w;
+});
+
+test("bulk close unloads a pinned group's tabs and closes the rest; the only tab left unloaded doesn't close the window", () => {
+  reset();
+  const { w, ids: [g1, g2, a] } = windowWith("g1", "g2", "a");
+  const groupId = S().groupTabs([g1, g2], { pinned: true });
+  select(g1);
+  S().closeTabs([g1, g2, a]);
+  assert.deepEqual(S().groups[groupId].tabIds, [g1, g2]);
+  assert.equal(S().tabs[g1].unloaded, true);
+  assert.equal(S().tabs[a], undefined);
+  assert.equal(S().tabs[active(w)].url, "", "a New Tab page is selected");
+  select(g2);
+  S().closeTab(g2);
+  assert.ok(S().windows[w], "closing a pinned group's tab never closes the window");
+  assert.equal(S().tabs[g2].unloaded, true);
+});
+
 // Last: persistence stays subscribed to the store.
 test("session restore keeps unloaded pinned tabs unloaded", () => {
   stub.docs.clear();

@@ -102,8 +102,8 @@ test("⌘-click groups the link with its opener; the group ungroups at one tab",
   S().updateSettings({ cmdClickCreatesTabGroup: false });
   S().newTab(w, { url: "a.com/3", openerId: a, background: true });
   assert.equal(organize.groupOf(S(), a), undefined);
-  // Explicit groups survive with one tab.
-  const g2 = S().groupTabs([a, b]);
+  // Explicit groups survive with one tab (unpinned: a pinned group's tabs unload instead of closing).
+  const g2 = S().groupTabs([a, b], { pinned: false });
   S().closeTab(b);
   assert.deepEqual(S().groups[g2].tabIds, [a]);
 });

@@ -237,7 +237,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
 | New tab ⌘T | ✓ | ✅ | |
-| Close tab ⌘W (+ hover ✕) | ✓ | ✅ | |
+| Close tab ⌘W (+ hover ✕) | ✓ | ✅ | a pinned tab, or a tab of a pinned group, keeps its row and unloads its page (Dia 1.50.1: ⌘W closes with `deselectPinnedIfActive`, and a tab whose container is pinned gets the `dismiss` close button) |
 | Close other tabs | ✓ | ✅ | |
 | Close tabs above/below/left/right | ✓ | ✅ | sidebar: Above / Below; top strip: Close Tabs to the Left / Right (sidebar/menus.ts) |
 | Close All Tabs ⇧⌘K | ✓ | ✅ | keeps pinned tabs and pinned groups |

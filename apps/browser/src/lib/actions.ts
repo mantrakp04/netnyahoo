@@ -3,7 +3,7 @@ import { confirm, focusWindow, prompt } from "@netnyahoo/shell";
 import { pageToProfile } from "../components/layout/profilePager";
 import { profileNames, requestCreateProfile, type CreateProfilePreset } from "../components/profiles/CreateProfile";
 import { useBrowser, type CreateWindowOptions } from "../store/browser";
-import { activeTabId, engineProfile, isIncognitoProfile, resolveWindowId, viewTabIds } from "../store/model";
+import { activeTabId, engineProfile, inPinnedContainer, isIncognitoProfile, resolveWindowId, viewTabIds } from "../store/model";
 import { sharingProfiles } from "../store/profiles";
 import { webviews } from "./webviews";
 import { closeWindowDialog } from "./windowClose";
@@ -35,14 +35,14 @@ export function switchToTab(tabId: string) {
 
 /**
  * ⌘W. Closing the last tab closes the window; Dia asks first ("Warn before closing last tab in a Profile").
- * A pinned tab stays, its page unloaded (store/tabs `unloadPinnedTabs`).
+ * A pinned tab, or a tab of a pinned group, stays, its page unloaded (store/tabs `unloadPinnedTabs`).
  */
 export async function closeTab(tabId: string) {
   const s = store();
   const tab = s.tabs[tabId];
   const w = tab && s.windows[tab.windowId];
   if (!tab || !w) return;
-  const last = !tab.pinned && tab.profileId === w.profileId && viewTabIds(s, w.id).length === 1;
+  const last = !inPinnedContainer(s, tabId) && tab.profileId === w.profileId && viewTabIds(s, w.id).length === 1;
   if (last && s.settings.warnBeforeClosingLastTab && !w.incognito) {
     // Same Dia wording as closing the window itself (lib/windowClose).
     const { confirmed, suppressed } = await confirm({ ...closeWindowDialog(w.id), suppression: "Don’t ask me again", windowId: w.id });

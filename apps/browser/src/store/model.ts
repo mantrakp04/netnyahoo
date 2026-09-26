@@ -90,6 +90,18 @@ export function pinnedFirst(ids: string[], tabs: Record<string, Tab>): string[] 
  * Tabs the window shows: its current profile's, in sidebar order. `profileId` asks for
  * another profile's (the page beside it during a profile swipe).
  */
+/**
+ * Pinned tabs and the tabs of pinned groups: Dia's pinned container. Closing one (⌘W, its ×,
+ * a middle-click) unloads its page and keeps its row (store/tabs `unloadPinnedTabs`).
+ */
+export function inPinnedContainer(s: Pick<BrowserState, "tabs" | "groups">, id: string): boolean {
+  const tab = s.tabs[id];
+  if (!tab) return false;
+  if (tab.pinned) return true;
+  for (const g of Object.values(s.groups)) if (g.pinned && g.tabIds.includes(id)) return true;
+  return false;
+}
+
 export function viewTabIds(s: BrowserState, windowId: string, profileId?: string): string[] {
   const w = s.windows[windowId];
   if (!w) return [];
