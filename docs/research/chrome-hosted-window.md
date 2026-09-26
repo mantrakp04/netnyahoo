@@ -1,10 +1,66 @@
 # Chrome-hosted windows: Chrome's Browser window is the app window
 
-Status: design, spike, phases 1, 2 and 3a (per-profile Chrome windows) done, 2026-09-26. Chrome-hosted windows are behind
-`NETNYAHOO_CHROME_WINDOW=1` and need the engine's `CEF_NN_CLIENT_WINDOW` (in the shared `vendor/cef` since
-2026-09-26); the default path is unchanged. Screenshots and the test scripts are in
+Status: **shipped as the default in 0.2.0** (2026-09-26). Every app window is a Chrome-hosted window; the
+`NETNYAHOO_CHROME_WINDOW` flag and the hidden "ghost" Browser windows are gone. Design, spike and phases 1–3a
+below; the flip itself in [Shipped as default](#shipped-as-default-020). Screenshots and the test scripts are in
 `docs/research/chrome-hosted-window/`. Results: [Phase 1](#phase-1-engine-done),
 [Phase 2](#phase-2-production-behind-the-flag-done), [Phase 3](#phase-3-per-profile-windows-and-the-rest-in-progress).
+
+## Shipped as default (0.2.0)
+
+Phases 4 and 5 in one step (there were no users to dogfood with): the flag went and the ghost path with it.
+
+**Deleted:**
+- App side (about 650 lines; `NNWindowHost.mm` went from 1,521 to 1,140 lines, and the whole change is 854 lines
+  out, 631 in, the popup windows and full-screen paging included): `NNWindowHost.mm`'s ghost (`Ghost::Start`, `Align`, the lift in
+  `ShowsChromeWindows` / `WatchChromeWindows`, `NNWindowVisibilityWatcher`, `MakeWindowInert` for app ghosts,
+  parent-window observers, the stock-CEF anchor ghost in `Attach`), the keybinding forwarding for extension
+  commands (`ForwardKeyEvent`, `LoadKeybindings`, `ParseKeybinding`, `InvalidateExtensionCommands`), the
+  `IsChromeOnlyShortcut` keycode table (`NNClient.mm`), the flag in `NNChromeWindow.mm` and `ChromeWindowSpike.swift`
+  (now `ChromeWindows.swift`), and the DEV `key:` action. `Ghost` is `ChromeWindow` now: one profile's Chrome
+  window of an app window.
+- Engine: `chromium-context-menu-hosted.patch` (a tab's view is always in a Chrome window now, so Chrome's own
+  widget lookup finds it).
+- Kept, with the reason: `chromium-browser-view-hosted-fullscreen.patch` (the app still shows tab full screen
+  itself; Chrome only tracks the state), `chromium-webview-native-hosted.patch` (we still host each tab's view),
+  `cef-chrome-tabs`' `SetWindowActive` (test instances are never key, and JS dialogs follow Chrome's active
+  window; a real key window reports itself too).
+
+**Found and fixed in the flip:**
+- **Sized popups** (`window.open` with features: OAuth sign-ins) had used a ghost of their own on both paths: the
+  popup window got one as soon as its view adopted the tab. They are Chrome windows of their own now
+  (`NNPopupWindow`, `makePopupWindowForProfile:`, a titled, opaque `ChromeWindow`), and the tab moves into that
+  Browser, so the passkey sheet, autofill dropdown and context menu of a sign-in page show over the popup.
+  A popup's tab is recorded as its opener's Browser's when Chrome makes it (`TabOpenedFrom`): CEF's window handle
+  for a tab is wherever we host its view, so it can't say which Browser holds it.
+- **Full screen with two profiles** (phase 3a's known gap): paging to another profile in full screen showed its
+  pages in the full-screen window, with their Chrome dialogs on an off-screen window. Now the other profile's
+  window shows over the full-screen one, as a full-screen auxiliary child window at its frame, without traffic
+  lights and not movable. Its dialogs are its children, so they show on the full-screen Space. Leaving full
+  screen, our views go back to the full-screen window first (the child would stay screen-sized through the
+  animation), and the usual swap follows once it's out. Toggle Full Screen from the child goes to the full-screen
+  window (`toggleFullScreen:` on Chrome's window class forwards). Checked headless with DEV `fakeFullScreen:`
+  (`spike/p3.mjs fullscreen`); AppKit's Spaces themselves need a person.
+- The traffic lights sometimes stayed where CEF centres them (x 20 in the window, 2 pt right of Dia): CEF lays
+  its titlebar out again after our one-off fix-up. They follow the close button's frame now. Dia 1.50.1 puts
+  the button centres at 24.75 / 47.75 / 70.75 pt and 26.75 pt down; ours measure 24.78 / 47.74 / 70.75 and 26.73
+  (a 54 pt titlebar, up from 53).
+
+**Checks** (hidden instances, the 0.2.0 engine; `spike/spike.mjs`, `p2.mjs`, `p3.mjs`, `restore3.sh`, the release
+smoke test): see `docs/migration-status.md` › Chrome-hosted windows.
+
+**Profile swap, measured** (screen unlocked, `spike/swapmeasure.sh`, 10 store switches each; a transient is a
+frame like neither settled state):
+
+| Path | Transient frames | What they are |
+|---|---|---|
+| transparent (default) | 9, then 17 (1–6 per swap, in half the swaps) | Our views redrawing in the incoming window for 2–6 frames: the sidebar and toolbar partly drawn over the window colour |
+| naive | 69 | |
+| snapshot | 148 | The picture of the window differs from the window (vibrancy) while it covers the swap |
+| ghost (0.1.6's default path, `build-cw` unflagged) | 158 in 8 swaps | The page area blank for 2+ frames while the page switches; one swap 67 |
+
+The transparent swap stays the default. Its transient isn't a white flash, but it is visible (`swap-transient.jpg`:
+before, a transient frame, after): the eye check is in the ledger.
 
 ## Summary
 
@@ -579,8 +635,8 @@ Every phase ships; the flag keeps the ghost path as the default until phase 4.
 | 2. One window type behind the flag, production quality (done 2026-09-26, see [Phase 2](#phase-2-production-behind-the-flag-done)) | `NNChromeWindow` without dynamic lookups. `WindowManager`: close warning through `CanClose`, frame autosave, traffic-light x inset, incognito windows. `rootView(of:)` for every `contentView` user (§4). Command policy reviewed against Chrome's full shortcut table. Keep the ghost for secondary profiles | A browser window with the flag passes the release smoke test (`smoke.mjs` hosted variant) and the spike checks | 1–1.5 weeks |
 | 3a. Profiles: hosted per-profile windows (done 2026-09-26 but for the measurement) | See [Phase 3 item](#phase-3-item-profiles-hosted-per-profile-windows): the transparent-window CEF patch, pre-made neighbour windows, the cut, full screen; measured with `spike/swapmeasure.sh` | 0 transient frames in 20 swaps; paging looks unchanged; secondary-profile ghosts gone | 1.5–2 weeks |
 | 3. Parity checklist | Each item tested in a flagged build, with fixes. Surfaces: save card/address, permission prompts, extension popups and install, device chooser, Cast, find, downloads, status. Window: full screen (window and HTML5; decide on `chromium-browser-view-hosted-fullscreen.patch`), Spaces, minimise, multiple displays, split view, popups, PiP, DevTools docked and undocked, drag and drop, swipes, IME, VoiceOver, extension `chrome.commands`, multi-profile windows, session restore, quitting with dialogs open | `docs/migration-status.md` ledger entries for each, user-run checks listed | 2 weeks |
-| 4. Switch the default | Flag inverted (`NETNYAHOO_CHROME_WINDOW=0` = ghost), one or two releases of dogfooding | No seam regressions reported | 3 days + a dogfood week |
-| 5. Delete the ghost | Remove the lift machinery, keycode tables, `ForwardKeyEvent`, the context-menu patch, the flag. Keep ghosts only if secondary-profile windows still need them | Smaller `NNWindowHost.mm`; release smoke test green | 2–3 days |
+| 4. Switch the default | Done with 5 in 0.2.0 ([Shipped as default](#shipped-as-default-020)); no dogfood releases (no users yet) | No seam regressions | done |
+| 5. Delete the ghost | Done in 0.2.0: the lift machinery, keycode tables, `ForwardKeyEvent`, the context-menu patch, the flag. No ghosts left, secondary profiles included (phase 3a) | Release smoke test green | done |
 
 Total: about 5–7 weeks calendar, most of it phase 3's long tail.
 
@@ -602,7 +658,7 @@ Total: about 5–7 weeks calendar, most of it phase 3's long tail.
 
 ## 7. The spike
 
-Code (default path unchanged: every new branch needs `NETNYAHOO_CHROME_WINDOW=1`):
+Code as the spike left it (the flag and `ChromeWindowSpike.swift` are gone since 0.2.0: see [Shipped as default](#shipped-as-default-020)):
 
 - `packages/cef/ios/NNChromeWindow.{h,mm}`: `NNChromeWindowHost` makes the window and embeds the root in Chrome's
   content view (since phase 1 through `netnyahooEmbeddedView`; the spike overrode `BridgedContentView` at runtime).
@@ -621,7 +677,7 @@ Code (default path unchanged: every new branch needs `NETNYAHOO_CHROME_WINDOW=1`
   and unmounts the root on close.
 - (Spike only, removed in phase 1: `NETNYAHOO_CHROME_WINDOW_ROOT=frame`, the failed frame-view placement.)
 
-Running it (with an engine that has `CEF_NN_CLIENT_WINDOW`):
+Running the checks (the default since 0.2.0; pages served on 8795, or pass another origin):
 
 ```bash
 cd apps/browser && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \
@@ -629,7 +685,7 @@ cd apps/browser && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Net
 export SPIKE_DIR=/some/scratch/dir   # data dirs, pids, outputs
 swiftc -O .claude/skills/release/scripts/windows.swift -o $SPIKE_DIR/windows
 python3 -m http.server 8795 --bind 127.0.0.1 --directory docs/research/chrome-hosted-window/spike/pages &
-docs/research/chrome-hosted-window/spike/launch.sh hosted 9512 --env NETNYAHOO_CHROME_WINDOW=1
+docs/research/chrome-hosted-window/spike/launch.sh hosted 9512
 node docs/research/chrome-hosted-window/spike/spike.mjs hosted 9512 $(cat $SPIKE_DIR/hosted.pid) \
   http://localhost:8795 $SPIKE_DIR/out interact autofill passkey alert zoom overlay select menu
 node docs/research/chrome-hosted-window/spike/keys.mjs hosted 9512 $(cat $SPIKE_DIR/hosted.pid) http://localhost:8795

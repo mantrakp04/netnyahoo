@@ -1,6 +1,6 @@
 // Phase 3a checks: per-profile Chrome-hosted windows.
 // usage: SPIKE_DIR=<scratch> [EXT_CMD_DIR=spike/ext-cmd] node p3.mjs <dataDirName> <cdpPort> <pid> <pagesOrigin> <step...>
-// steps: group paging ctrl ime extcmd features (run "features" last: its context menu blocks the app)
+// steps: group paging ctrl fullscreen ime extcmd features (run "features" last: its context menu blocks the app)
 import { harness, sleep } from "./h.mjs";
 
 const [dataName, port, pid, pages, ...steps] = process.argv.slice(2);
@@ -63,6 +63,58 @@ for (const step of steps) {
     }
     const after = await current();
     check("…back where it started, same window", after?.window === before?.window, `${before?.window} → ${after?.window}`);
+  }
+  if (step === "fullscreen") {
+    // Full screen with two profiles (fakeFullScreen: AppKit's state without its Space). Paging shows
+    // the other profile's window over the full-screen one, as a child; its dialogs show there; back
+    // home it goes; leaving full screen ends on the profile shown, as its own window.
+    const w = await firstWindowId();
+    const work = await ensureWork();
+    await dev(`nn.store.getState().switchProfile(${JSON.stringify(w)}, "default"); return 1`);
+    await sleep(1500);
+    const home = await current();
+    await win(home.window, "fakeFullScreen:1");
+    await dev(`nn.store.getState().switchProfile(${JSON.stringify(w)}, ${JSON.stringify(work)}); return 1`);
+    await sleep(2000);
+    let gs = await ghosts();
+    let cur = gs.find((g) => g.hasRoot);
+    check("full screen, paging to Work: its window shows over the full-screen one (a child)", cur?.profile === engine(work) && cur.parentWindow === home.window && cur.visible && gs.find((g) => g.window === home.window)?.visible,
+      JSON.stringify(gs.map((g) => [g.profile.slice(0, 6) || "default", g.window, g.hasRoot, g.visible, g.parentWindow])));
+    const info = JSON.parse(await win(cur.window, "winfo"));
+    const hostFrame = JSON.parse(await win(home.window, "winfo")).frame;
+    check("…at the full-screen window's frame", hostFrame === info.frame, `${info.frame} vs ${hostFrame}`);
+    await dev(`nn.actions.openUrls(["${pages}/passkey.html?fs"]); return 1`);
+    await sleep(2500);
+    const page = await cdp("passkey.html?fs");
+    const before = h.windows().map((x) => x.id);
+    await page.click("#b");
+    await sleep(2500);
+    const list = h.windows();
+    const sheet = list.find((x) => /passkey/i.test(x.title));
+    const order = (id) => list.findIndex((x) => x.id === id);
+    check("…a passkey sheet in its tab shows in front of both", !!sheet && order(sheet.id) < order(cur.window) && order(cur.window) < order(home.window),
+      sheet ? `${sheet.title.slice(0, 20)} order ${order(sheet.id)} < ${order(cur.window)} < ${order(home.window)}` : JSON.stringify(list.filter((x) => !before.includes(x.id))));
+    await page.evaluate(`location.href = "${pages}/page.html?fs"`);
+    page.close();
+    await sleep(1000);
+    await dev(`nn.store.getState().switchProfile(${JSON.stringify(w)}, "default"); return 1`);
+    await sleep(1500);
+    gs = await ghosts();
+    cur = gs.find((g) => g.hasRoot);
+    const workWin = gs.find((g) => g.profile === engine(work));
+    check("…back home: the full-screen window has our views again, Work's window gone from it", cur?.window === home.window && !workWin?.visible && !workWin?.parentWindow,
+      JSON.stringify(gs.map((g) => [g.profile.slice(0, 6) || "default", g.window, g.hasRoot, g.visible, g.parentWindow])));
+    await dev(`nn.store.getState().switchProfile(${JSON.stringify(w)}, ${JSON.stringify(work)}); return 1`);
+    await sleep(1500);
+    await win(home.window, "fakeFullScreen:0");
+    await sleep(1500);
+    gs = await ghosts();
+    cur = gs.find((g) => g.hasRoot);
+    const p = await state(`s.windows[${JSON.stringify(w)}].profileId`);
+    check("…leaving full screen on Work: Work's own window, alone and on screen", p === work && cur?.profile === engine(work) && !cur.parentWindow && gs.filter((g) => g.visible).length === 1,
+      JSON.stringify(gs.map((g) => [g.profile.slice(0, 6) || "default", g.window, g.hasRoot, g.visible, g.parentWindow])));
+    await dev(`nn.store.getState().switchProfile(${JSON.stringify(w)}, "default"); return 1`);
+    await sleep(1500);
   }
   if (step === "ctrl") {
     const w = await firstWindowId();

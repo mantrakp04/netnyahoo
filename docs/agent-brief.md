@@ -12,13 +12,23 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   inline styles (NativeWind is set up but unused — match the existing inline style idiom).
 - Native code lives in Expo modules under `packages/*/ios` (Swift / Objective-C++):
   - `packages/cef`: the web engine — **our own patched build of CEF 154** (154.0.28, Chrome style,
-    `docs/cef-source-build.md`). Every tab is a real Chrome tab of an invisible "ghost" Chrome window
-    per app window and profile, and its view is hosted in our React Native views (`NNWindowHost`,
-    `NNBrowserView`). Alloy is used only for hidden helper pages (Chrome's WebUI settings pages that
-    `NNPasswords`, `NNAutofill`, `NNExtensions`… drive, in `NNChromePages`). JS API in
-    `packages/cef/src` (`WebView`, downloads, permissions, profiles, extensions, Chrome UI).
-    `NN_CHROME_TABS` (`NNCefInternal.h`, default 1) selects this; `NN_CHROME_TABS=0` is the build
-    against stock CEF (below).
+    `docs/cef-source-build.md`).
+    - **Every app window is Chrome's own Browser window** (a Chrome-style `CefWindow` with
+      `CefBrowserSettings.client_window`), with our React root laid over Chrome's views inside its
+      content view (`NNChromeWindow`, `NNWindowHost`; `docs/research/chrome-hosted-window.md`). Chrome's
+      tab strip and toolbar are off; its dialogs, bubbles, menus and autofill dropdowns are child windows
+      of the app window, so they show over it with no special cases.
+    - **One Chrome window per profile**: a window that pages between profiles is a group of Chrome
+      windows, and our root moves to the one of the profile shown (`NETNYAHOO_PROFILE_SWAP`, default
+      "transparent"). In full screen, another profile's window shows over the full-screen one.
+    - Every tab is a real Chrome tab of its window's Browser; its view is hosted in our React Native
+      views (`NNBrowserView`). Sized popups get a Chrome window of their own (`NNPopupWindow`).
+    - Alloy is used only for extension popups and side panels, PiP windows, and hidden helper pages
+      (Chrome's WebUI settings pages that `NNPasswords`, `NNAutofill`, `NNExtensions`… drive, in
+      `NNChromePages`).
+    - JS API in `packages/cef/src` (`WebView`, downloads, permissions, profiles, extensions, Chrome UI).
+      `NN_CHROME_TABS` (`NNCefInternal.h`, default 1) selects all this; `NN_CHROME_TABS=0` is the build
+      against stock CEF (below), with plain app windows and Alloy tabs.
   - `packages/shell`: menus, shortcuts, windows, native primitives (Surface, Symbol, FadeLabel,
     VisualEffect, WindowDragRegion, ContextMenuArea, ActivitySpinner…).
   - `packages/shaders`: Metal views (window backdrop, New Tab effects). Don't touch unless assigned.

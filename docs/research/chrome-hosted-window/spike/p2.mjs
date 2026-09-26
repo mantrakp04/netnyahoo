@@ -1,6 +1,7 @@
 // Phase 2 checks for Chrome-hosted windows (docs/research/chrome-hosted-window.md).
 // usage: SPIKE_DIR=<scratch> node p2.mjs <dataDirName> <cdpPort> <pid> <pagesOrigin> <step...>
 // steps: empty split pip devtools popup download find extpopup swipe keys profiles close incognito lights fullscreen
+// popupmenu (last: its context menu blocks the app)
 // (run "empty" and "split" in a fresh session; steps that leave dialogs open block later CDP calls).
 import { harness, sleep } from "./h.mjs";
 
@@ -129,6 +130,19 @@ for (const step of steps) {
     const fresh = h.windows().filter((x) => !before.includes(x.id) && x.alpha > 0 && x.w > 300);
     const opener = await page.evaluate("!!window.__w && !window.__w.closed");
     check("a sized window.open popup (sign-in style) opens in a window of its own", fresh.length > 0 && opener, JSON.stringify(fresh.map((x) => [x.title, x.w, x.h])));
+    // The popup is a Chrome window of its own: Chrome's menus and dialogs for its page show over it.
+    const pop = fresh[0];
+    const inPopup = (x) => pop && x.x >= pop.x && x.x + x.w <= pop.x + pop.w && x.y >= pop.y && x.y + x.h <= pop.y + pop.h;
+    const popPage = await cdp((t) => t.type === "page" && t.url.endsWith("/page.html"));
+    if (popPage) {
+      await popPage.evaluate(`location.href = "${pages}/passkey.html"`);
+      await sleep(1500);
+      await popPage.click("#b");
+      await sleep(2500);
+      const sheet = h.windows().find((x) => /passkey/i.test(x.title));
+      check("…a passkey sheet in the popup shows over the popup", !!sheet && inPopup(sheet), sheet ? `${sheet.x},${sheet.y} ${sheet.w}x${sheet.h} in ${pop.x},${pop.y} ${pop.w}x${pop.h}` : "none");
+      popPage.close();
+    }
     await page.evaluate("window.__w && window.__w.close(), 1");
     await sleep(1500);
     // (The window list keeps a closed window while the screen is locked: its order-out animation never runs.)
@@ -136,6 +150,20 @@ for (const step of steps) {
     const gone = !(await targets()).some((t) => /page\.html$/.test(t.url) && t.id !== undefined && fresh.length && false);
     check("…and window.close() closes it", closed && gone, `closed ${closed}`);
     page.close();
+  }
+  if (step === "popupmenu") {
+    // Last in a session: the context menu blocks the app until it closes.
+    await dev(`nn.actions.openUrls(["${pages}/popup.html?menu"]); return 1`);
+    await sleep(2500);
+    const page = await cdp("popup.html?menu");
+    await page.click("#b");
+    await sleep(3000);
+    // A real right-click through the popup window (a CDP-synthesized one shows no menu there).
+    const pop = (await ghosts()).find((g) => /\{480, 592\}/.test(g.frame));
+    await win(pop.window, "click:60,80,right");
+    await sleep(1500);
+    const menu = h.windows().find((x) => x.layer === 101);
+    check("right-click in a sized popup shows Chrome's context menu", !!menu, menu ? `@${menu.x},${menu.y}` : "no menu");
   }
   if (step === "download") {
     await dev(`nn.actions.openUrls(["${pages}/download.html"]); return 1`);
@@ -301,7 +329,7 @@ for (const step of steps) {
     await sleep(3000);
     const gs = await ghosts();
     const inc = gs.find((g) => g.profile.startsWith("incognito"));
-    check("an incognito window is Chrome-hosted too", !!inc?.hosting && inc.window === inc.parentWindow, JSON.stringify(gs.map((g) => [g.profile, g.hosting, g.window])));
+    check("an incognito window is Chrome-hosted too", !!inc?.hosting && inc.hasRoot && h.appWindows().some((w) => w.id === inc.window), JSON.stringify(gs.map((g) => [g.profile, g.hosting, g.window])));
     const info = inc ? await winfo(inc.window) : {};
     check("…and dark", /Dark/.test(info.appearance ?? ""), info.appearance);
   }
@@ -312,7 +340,7 @@ for (const step of steps) {
     const [x, y, , hgt] = m ? m.slice(1).map(Number) : [];
     const frameH = Number(/\{([\d.]+), ([\d.]+)\}\}$/.exec(info.frame)[2]);
     const fromTop = frameH - (y + hgt);
-    check("traffic lights inset like BrowserWindow (x 18, 19.5 from the top)", Math.abs(x - 18) < 0.6 && Math.abs(fromTop - 19.5) < 1, `x ${x}, from top ${fromTop}`);
+    check("traffic lights where Dia 1.50.1 has them (x 18, 20 from the top)", Math.abs(x - 18) < 0.6 && Math.abs(fromTop - 20) < 0.3, `x ${x}, from top ${fromTop}`);
   }
   if (step === "fullscreen") {
     // HTML5 full screen (a test instance keeps the window itself out of full screen, see NNClient).

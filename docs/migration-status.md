@@ -1,7 +1,9 @@
 # Chrome-layer migration — status & test ledger
 
-Architecture: patched CEF (Chrome style). One hidden "ghost" Chrome `Browser` per app window/profile owns the tabs;
-each tab's WebContents NSView is hosted in our RN views. See `docs/research/chromium-ui-layer.md`.
+Architecture: patched CEF (Chrome style). Since 0.2.0 every app window is Chrome's own Browser window, one per profile
+it shows, with our React root laid over Chrome's views (`docs/research/chrome-hosted-window.md`); each tab's
+WebContents NSView is hosted in our RN views. Before 0.2.0 a hidden "ghost" Browser per app window and profile owned
+the tabs (`docs/research/chromium-ui-layer.md`); entries below from that time say "ghost".
 
 The patched CEF (154.0.28, `NN_CHROME_TABS 1`) has been in since 2026-09-25; `docs/dia-feature-parity.md` holds the
 current feature status and the remaining work. Rule: when you finish something that can't be verified yet (usually
@@ -289,7 +291,7 @@ Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs 
   steps 13–14).
 - 43: the offline game after a DNS probe (needs a network with no route to the internet).
 - 44: profile paging with a real trackpad, Magic Mouse and wheel mouse.
-- Chrome-hosted windows (phase 1): the checks that need the unlocked screen or VoiceOver (ledger below).
+- Chrome-hosted windows: the checks for a person at an unlocked screen (ledger below, items 1–11).
 
 ## Test ledger
 
@@ -616,75 +618,62 @@ Still to run (needs the user at the screen, with Dia key):
 5. **Profile swipe.** Page between two profiles with the window key: the blur must stay steady while the tints
    cross-fade (each page layer carries its own blur).
 
-### Chrome-hosted windows (`NETNYAHOO_CHROME_WINDOW=1`, `CEF_NN_CLIENT_WINDOW`; docs/research/chrome-hosted-window.md)
-Verified 2026-09-26 (phase 1, instances `c1`–`c6`, screen locked).
-- Flag on, headless: page, typing and sidebar input, autofill, `<select>`, the context menu, the passkey sheet in
-  front with no lift, no zoom bubble, the command bar over the page, and the Chrome shortcut blocklist.
-- Keep-alive: every web tab closed leaves the window and its Browser, with no `about:blank` target; the next page
-  joins the same Browser.
-- Accessibility: in-process walk, identical to the default window.
-- Default path on the new engine: release smoke test 9/12, the same as the shipped 0.1.5 and 0.1.6 on the locked
-  screen.
+### Chrome-hosted windows (the only path since 0.2.0; `CEF_NN_CLIENT_WINDOW`; docs/research/chrome-hosted-window.md)
+Phases 1–3a verified headless behind the flag (2026-09-26; the design doc has the tables). The flip to the only path
+(0.2.0) was verified on hidden instances of the 0.2.0 engine (no `chromium-context-menu-hosted.patch`):
+- `spike/spike.mjs`: page click and typing, sidebar click, autofill ↓ + Enter, passkey sheet in front and gone on
+  navigation, JS alert, no zoom bubble, command bar over the page, `<select>` popup, context menu (12 + 2 of 14; the
+  last two need a warm session: in a fresh one they click before the page's insets are laid out).
+- `spike/p2.mjs`: keep-alive and ⇧⌘T into an empty window, drag out and back, split view (2–3 panes, alert centred
+  on its pane), PiP, DevTools (undocked), sized popups in Chrome windows of their own (passkey sheet over the popup,
+  context menu with a real right-click; a CDP-synthesized one shows none there), downloads, find, extension popups,
+  swipe paging, traffic lights, HTML5 full screen with Chrome's Esc hint, incognito (dark, Chrome-hosted), the close
+  warning sheet. Keys: typed keys reach the page; ⌃PgDn doesn't reach it, as on the flagged build before the flip.
+- `spike/p3.mjs`: neighbour window made ahead, paging and ⌃1/⌃2 (store and window agree), full screen with two
+  profiles (DEV `fakeFullScreen:`: the other profile's window over the full-screen one, its passkey sheet in front,
+  back home, and leaving full screen on the other profile), IME both ways, an extension's ⇧⌘Y command, and
+  autofill, passkey and context menu in the second profile's own window.
+- `spike/restore3.sh`: a window left on its second profile restores as that profile's window.
+- Release smoke test (`SMOKE_APP=<Debug build>`, screen unlocked): 15/15, including the new checks (no hidden
+  full-size window; a two-profile session restores on Work alone on screen, its pages in the Work context; the
+  passkey sheet directly over the visible window it belongs to, and gone when the page navigates).
 
-Still to run, with the screen unlocked:
-1. **Z-order smoke checks.** `SMOKE_APP=<Release build> .claude/skills/release/scripts/smoke.sh <version>
-   <previous>`. Pass if 12/12; the three ghost z-order checks fail for every build while the screen is locked.
-2. **Dialogs, flag on.** `spike.mjs … passkey alert` (docs/research/chrome-hosted-window/spike). Pass if the
-   passkey sheet goes when the page navigates and the alert shows in front. Both failed only on the locked screen,
-   for the old engine's default path as well.
-3. **VoiceOver, flag on.** Turn VoiceOver on over a flagged window showing a web page. Pass if VO reads the sidebar,
-   the toolbar and the page's own content (headings, links), and never Chrome's toolbar or tab strip.
-4. **A real key window, flag on.** Click into the window. Pass if:
-   - ⌘-keys a page handles (e.g. ⌘B in a rich-text editor) stay the page's;
-   - ⇧⌘W asks before closing a window with several tabs (warn setting on);
-   - the command bar keeps focus after the window becomes key again.
+Run with the screen unlocked on 2026-09-26 (hidden instances):
+- Smoke test z-order checks: pass (see above).
+- `swapmeasure.sh`, 10 swaps each: transparent 9 and 17 transient frames, naive 69, snapshot 148; the 0.1.6
+  default path (ghost) 158 in 8 swaps. Transparent stays the default. Its transients are our views redrawing in the
+  incoming window for 2–6 frames (the design doc › Shipped as default).
+- Translucency, inactive, light and dark (`docs/research/chrome-hosted-window/translucent-inactive-light-dark.jpg`): vibrancy material 13 / 29 behind-window,
+  tints right. Active can't be captured from a background instance.
+- Traffic lights, 2x capture: centres 24.78 / 47.74 / 70.75 pt, 26.73 pt down (Dia 1.50.1: 24.75 / 47.75 / 70.75,
+  26.75).
 
-Phase 2 (verified 2026-09-26, headless, screen locked; docs/research/chrome-hosted-window.md › Phase 2 has the
-checklist). All of these pass headless:
-- home and companion profiles, and swipe paging;
-- incognito windows;
-- the close warning sheet;
-- traffic lights;
-- HTML5 full screen with Chrome's Esc hint;
-- ⇧⌘T, drag out and back, reopen window;
-- split (2–3 panes), PiP, DevTools (undocked), popups, downloads, find;
-- extension popups;
-- session restore.
-
-Still to run with the screen unlocked, flag on (`NETNYAHOO_CHROME_WINDOW=1`):
-5. **Window full screen.** ⌃⌘F, the green button and a page's full screen, in and out, with two windows and on a
-   second display. Pass if the page fills the screen, the traffic lights and sidebar come back on exit, and
-   Chrome's Esc hint is centred over the page.
-6. **Translucency.** Put a bright wallpaper behind a flagged and an unflagged window, dark and light, key and not.
-   Pass if the sidebar gutter and New Tab card read the same in both (Dia's treatment: blur while key, opaque
-   while inactive).
-7. **Swap measurement.** `docs/research/chrome-hosted-window/spike/swapmeasure.sh <app> <port>` (Screen Recording
-   permission for the terminal). Record the transient-frame count; it sizes phase 3a.
-8. **Profile swipe, by hand.** Two profiles; swipe the sidebar both ways, and ⌃1 / ⌃2. Pass if paging looks as it
-   does unflagged, and a passkey sheet or alert in the second profile's tab shows in front.
-9. **Download fly-in and extension popup.** A download's fly-in lands on the downloads button. An extension's
+Still to run by a person (screen unlocked, the app in front):
+1. **VoiceOver.** Over a window showing a web page. Pass if VO reads the sidebar, the toolbar and the page's own
+   content (headings, links), and never Chrome's toolbar or tab strip.
+2. **A real key window.** Pass if ⌘-keys a page handles (⌘B in a rich-text editor) stay the page's; ⇧⌘W asks
+   before closing a window with several tabs (warn setting on); the command bar keeps focus after the window becomes
+   key again.
+3. **Window full screen.** ⌃⌘F, the green button and a page's full screen, in and out, with two windows. Pass if
+   the page fills the screen, the traffic lights and sidebar come back on exit, and Chrome's Esc hint is centred
+   over the page.
+4. **Full screen with two profiles.** Enter full screen, page to the other profile (swipe and ⌃2): pass if it shows
+   on the full-screen Space with no traffic lights and no gap; open a passkey sheet or alert in one of its tabs (in
+   front); ⌃⌘F while on it leaves full screen and ends on that profile's window at the old frame; page back and
+   forth in full screen a few times.
+5. **Profile swipe by eye**, both ways, fast and slow, ⌃1–9 across three profiles. Pass if it looks as smooth as
+   0.1.6 (the measured transient: our views partly drawn for 2–6 frames at the cut).
+6. **Window identity with a window paged to its second profile.** Mission Control, ⌘\`, the Window menu, Stage
+   Manager, Keep on Top, minimise and restore, moving to another Space. Pass if it behaves as one window.
+7. **Translucency, key.** Bright wallpaper behind, dark and light: the blur while key, opaque while inactive, the
+   window shadow and corners.
+8. **Sign-in popups.** A real OAuth popup (Google, GitHub): saved password autofill and a passkey in the popup show
+   over it; the popup closes itself when done.
+9. **Download fly-in and extension popups.** A download's fly-in lands on the downloads button; an extension's
    popup opens under its toolbar button, sized to its content.
-10. **Drag and drop.** Drag a link or file from the page into the sidebar and back, and a file from Finder into the
-    page.
-
-Phase 3a (per-profile Chrome windows, verified headless 2026-09-26: paging, ⌃1–9, restore, each profile's autofill,
-passkey and context menu in its own window; see the design doc › Phase 3). Still to run, screen unlocked, flag on:
-11. **Swap measurement per strategy.** `swapmeasure.sh <app> <port> transparent 20`, then `snapshot`, `naive` and
-    `ghost` (the unflagged baseline). Pass if transparent (or snapshot) shows 0 transient frames; keep the better one
-    as the default (`NNWindowHost SwapStrategy`).
-12. **Swipe paging by eye**, both ways, fast and slow, and ⌃1–9 across three profiles. Pass if it looks exactly
-    like the unflagged app (no blink, the tint cross-fade intact).
-13. **Full screen with two profiles.** Enter full screen, page to the other profile, open a passkey sheet or alert in
-    one of its tabs, then leave full screen. Pass if the page shows in full screen and the window switches to the
-    profile's own window on exit. Note what the dialog does in full screen (the known gap: it belongs to the
-    off-screen window).
-14. **Window identity.** With a window paged to its second profile: Mission Control, ⌘\`, the Window menu, Stage
-    Manager, Keep on Top, minimise and restore, moving to another Space. Pass if the app window behaves as one
-    window throughout.
-15. **Translucent windows' look.** Items 6 and 14 in Chrome-hosted windows (now non-opaque): window shadow,
-    rounded corners, vibrancy active and inactive, dark and light.
-16. **Multiple displays.** A flagged window on a second display: paging, full screen, dialogs placement, moving the
-    window across displays mid-page.
+10. **Drag and drop.** A link or file from the page into the sidebar and back; a file from Finder into the page.
+11. **Multiple displays.** Paging, full screen and dialog placement on a second display, and moving a window
+    across displays mid-page.
 
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order

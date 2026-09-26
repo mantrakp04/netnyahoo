@@ -26,8 +26,8 @@ What the build adds:
 | `cef-zwindow-client.patch` (after `cef-zidle-pump.patch`) | `CefBrowserSettings.client_window` and `CefBrowserView::CreateTab`: Chrome's Browser window is the app's visible window (below) |
 | `cef-zwindow-keys.patch` (after `cef-zwindow-client.patch`) | In a `client_window`, Chrome's key equivalents wait for the client's first responder and menus: its dispatcher no longer runs reserved commands (new/close tab or window, tab switching) before them. Chrome's shortcuts still run after them, through `CefCommandHandler::OnChromeCommand` |
 | `cef-zwindow-translucent.patch` (after `cef-zwindow-keys.patch`) | `CefWindowDelegate::IsTranslucent`: the window's widget is `kTranslucent` (a non-opaque `NSWindow`, compositor cleared to the window view's background, transparent if that is). A Chrome-hosted window swaps out without a frame of its own drawing (`CEF_NN_TRANSLUCENT_WINDOW`) |
-| `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs |
-| `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the ghost window alone |
+| `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs (we host each tab's view in our own views) |
+| `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the Browser window to the app: Chrome only tracks the state, and the app shows the page full screen itself (`CefDisplayHandler::OnFullscreenModeChange`) |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
 | `chromium-extension-window-hidden.patch` | `hidden_from_extensions` windows are invisible to chrome.windows/tabs |
 | `chromium-password-bubble-hook.patch` | The client may replace Chrome's password bubble |
@@ -35,9 +35,14 @@ What the build adds:
 | `chromium-passkeys.patch` | Netnyahoo bundle/team id branding, iCloud Keychain window fallback, "Netnyahoo Safe Storage" |
 | `chromium-chrome-ui-hooks.patch` | `chrome::ShowDeviceChooserDialog`, the Media Router's Cast dialog (and Presentation API requests) and `side_panel_util` ask the client first; extension pages in hidden windows take the last active window as their current window |
 | `chromium-extension-updates.patch` | Undoes ungoogled's early `return` in `UpdateCheckerImpl::CheckForUpdates`, which left every update check pending: Web Store extensions never updated |
-| `chromium-context-menu-hosted.patch` | Chrome's page context menu shows for hosted tabs. Its Mac menu took the widget above the tab's view, which our window isn't, and silently showed nothing; it falls back to the tab's Browser window widget and still pops up at the click |
 | `chromium-window-hosted.patch` | `BridgedContentView.netnyahooEmbeddedView`: hit testing and accessibility ask the embedder's subview of a Chrome window's content view first. A Browser whose CEF delegate says so (`client_window`) stays open when its last tab closes, unless the window is closing |
 | `chromium-neterror-yahu.patch` | "Where's Big Yahu?" replaces the dino: the offline page and chrome://yahu (below) |
+
+Removed in 0.2.0, with the hidden "ghost" Browser windows they served (every app window is now Chrome's own,
+`docs/research/chrome-hosted-window.md`): `chromium-context-menu-hosted.patch` (the context menu's widget lookup
+fell back to the tab's Browser window; a tab's view is now always in a Chrome window, so the stock lookup finds
+it). The docked-DevTools work in progress (`cef-zwindow-z-devtools.patch`, `chromium-window-docked-devtools.patch`)
+is not in the tree either; it's kept outside it until it ships.
 
 The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
 substitution). Step 2 applies the `cef-*.patch` files in name order, which is the order they were
@@ -99,7 +104,7 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
   - `CefBrowserHost::ExecuteExtensionAction(id)`: returns 0 for onClicked, 1 to show the popup,
     2 for the side panel, -1 on error.
 - **`CEF_NN_TAB_FULLSCREEN`**
-  - No API. `BrowserView` tracks tab fullscreen without touching the ghost window. The client gets
+  - No API. `BrowserView` tracks tab fullscreen without taking the Browser window full screen. The client gets
     `CefDisplayHandler::OnFullscreenModeChange`.
 - **`CEF_NN_PASSWORD_PROMPT`**
   - `CefBrowserHost::GetPasswordPrompt()`

@@ -30,7 +30,7 @@ export function harness(dataName, port, pid) {
   const appWindows = () => windows().filter((w) => w.layer === 0 && w.w > 600 && w.alpha > 0);
   const win = (W, action) => dev(`return globalThis.expo.modules.NetnyahooCEF.devWindow(${W}, ${JSON.stringify(action)})`);
   const winfo = async (W) => JSON.parse(await win(W, "winfo"));
-  const ghosts = () => dev("return globalThis.expo.modules.NetnyahooCEF.ghostWindows()");
+  const ghosts = () => dev("return globalThis.expo.modules.NetnyahooCEF.chromeWindows()");
   const state = (expr) => dev(`const s = nn.store.getState(); return JSON.stringify(${expr})`).then((r) => (typeof r === "string" ? JSON.parse(r) : r));
   const targets = async () => (await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => t.type === "page");
 

@@ -43,7 +43,7 @@ async function dev(body) {
 const appWindow = () => windows().find((w) => w.layer === 0 && w.w > 600 && w.alpha > 0);
 const W = appWindow().id;
 const win = (action) => dev(`return globalThis.expo.modules.NetnyahooCEF.devWindow(${W}, ${JSON.stringify(action)})`);
-const ghosts = () => dev("return globalThis.expo.modules.NetnyahooCEF.ghostWindows()");
+const ghosts = () => dev("return globalThis.expo.modules.NetnyahooCEF.chromeWindows()");
 
 // A CDP session on the tab we drive.
 let targets = (await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => t.type === "page");

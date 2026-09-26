@@ -35,7 +35,7 @@ const chromeTabs = async () =>
 
 await dev(`nn.actions.openUrls(["${pages}/page.html"]); return 1`);
 await sleep(2500);
-const [g] = await dev("return globalThis.expo.modules.NetnyahooCEF.ghostWindows()");
+const [g] = await dev("return globalThis.expo.modules.NetnyahooCEF.chromeWindows()");
 await win(`click:${g.pageInsets[1] + 300},${g.pageInsets[0] + 300}`); // focus the page
 await sleep(500);
 

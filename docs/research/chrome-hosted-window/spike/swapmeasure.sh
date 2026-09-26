@@ -5,7 +5,8 @@
 #
 # usage: SPIKE_DIR=<scratch> swapmeasure.sh <app> <port> [strategy] [swaps] [pages origin]
 #   strategy: transparent (the default in the app) | snapshot | naive  (NETNYAHOO_PROFILE_SWAP),
-#             or ghost: the same switches without NETNYAHOO_CHROME_WINDOW, as a baseline.
+#             or ghost: the same switches in a build from before 0.2.0 (its default path, the hidden
+#             "ghost" Chrome windows), as a baseline.
 #   swaps: how many profile switches to record (default 10), alternating between two profiles.
 # Each switch is a store switch (no pager animation), so a clean one goes from the first profile's
 # window straight to the second's; swapscan.py flags anything in between. Serve spike/pages at
@@ -19,8 +20,8 @@ rm -rf "$SP/$name" "$SP/$name-frames"
 [ -x "$SP/swapcap" ] || swiftc -O "$here/swapcap.swift" -o "$SP/swapcap"
 [ -x "$SP/windows" ] || swiftc -O "$here/../../../../.claude/skills/release/scripts/windows.swift" -o "$SP/windows"
 
-flags=(--env NETNYAHOO_CHROME_WINDOW=1 --env NETNYAHOO_PROFILE_SWAP="$strategy")
-[ "$strategy" = ghost ] && flags=()
+flags=(--env NETNYAHOO_PROFILE_SWAP="$strategy")
+[ "$strategy" = ghost ] && flags=(--env NETNYAHOO_PROFILE_SWAP=)
 APP="$app" SPIKE_DIR="$SP" "$here/launch.sh" "$name" "$port" "${flags[@]}" >/dev/null
 pid="$(cat "$SP/$name.pid")"
 dev() { SPIKE_DIR="$SP" "$here/dev.sh" "$name" "$1" >/dev/null; }
