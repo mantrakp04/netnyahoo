@@ -248,3 +248,34 @@ test("MRU order for the tab switcher skips tabs untouched for a while", () => {
   S().updateTab(d, { lastActiveAt: now - 20 * 3600_000 });
   assert.deepEqual(organize.recentTabIds(S(), w, now), [a, c, b]);
 });
+
+test("Delete Group: its tabs go, not to Recently Closed, and it's kept a week under Recently Deleted Groups", () => {
+  reset();
+  const { w, ids: [a, b, c] } = windowWith("a", "b", "c");
+  const g = S().groupTabs([a, b], { pinned: false, name: "Work" });
+  S().deleteGroup(g);
+  assert.equal(S().groups[g], undefined);
+  assert.equal(S().tabs[a], undefined);
+  assert.equal(S().closedGroups.length, 0, "not in Recently Closed Groups");
+  assert.equal(S().closedTabs.length, 0, "nor in Reopen Closed Tab");
+  assert.equal(S().deletedGroups.length, 1);
+  S().reopenClosed(w);
+  assert.equal(S().deletedGroups.length, 1, "⇧⌘T doesn't bring a deleted group back");
+  // Restoring it (the overflow menu's Recently Deleted Groups).
+  S().restoreClosed(S().deletedGroups[0].id, w);
+  assert.equal(S().deletedGroups.length, 0);
+  const restored = Object.values(S().groups).find((x) => x.name === "Work");
+  assert.ok(restored);
+  assert.deepEqual(restored.tabIds.map((id) => S().tabs[id].url), ["https://a.com", "https://b.com"]);
+  void c;
+});
+
+test("deleted groups older than a week are gone after a relaunch", () => {
+  reset();
+  const { ids: [a] } = windowWith("a", "b");
+  const g = S().groupTabs([a], { pinned: false });
+  S().deleteGroup(g);
+  const entry = S().deletedGroups[0];
+  S().hydrate({ deletedGroups: [{ ...entry, closedAt: Date.now() - organize.DELETED_GROUP_MS - 1000 }, { ...entry, id: "fresh" }] });
+  assert.deepEqual(S().deletedGroups.map((c) => c.id), ["fresh"]);
+});

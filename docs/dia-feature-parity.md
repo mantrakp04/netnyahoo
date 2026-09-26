@@ -278,7 +278,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 ## 3. Tab groups & live folders
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
-| Tab groups (create, rename, icon, pin, duplicate, ungroup, delete) | ✓ | ✅ | + collapse, colour, Move to Group, Remove from Group |
+| Tab groups (create, rename, icon, pin, duplicate, ungroup, delete) | ✓ | ✅ | + collapse, colour, Move to Group, Remove from Group. Dia's two ways to end a group (1.50.1: `unparentGroup` / `softDeleteGroup`): Close Group (Recently Closed Groups, ⇧⌘T) and Delete Group (not in Recently Closed; the overflow menu's Recently Deleted Groups keeps it 7 days, Dia's purge interval). Closing a tab of a pinned group unloads it and keeps its row, as for pinned tabs |
 | New Tab in Group ⌥⌘T / New Group with Tab(s) ⌃⌘N | ✓ | ✅ | ⌃⌘N titles itself "New Group with N Tabs" for a selection |
 | AI auto‑naming + emoji, shimmer on rename | ✓ | ⏸ | unnamed groups show the first tab's host |
 | Group colour from favicon/theme | ✓ until 1.28 | ✅ | neutral by default like Dia since 1.28; colour menu with "Match Site Color" |

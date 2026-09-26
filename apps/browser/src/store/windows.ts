@@ -299,7 +299,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     if (closedTab) return set(restoreTab(s, closedTab, windowId));
     const closedWindow = s.closedWindows.find((c) => c.id === entryId);
     if (closedWindow) return set(restoreWindow(s, closedWindow));
-    const closedGroup = s.closedGroups.find((c) => c.id === entryId);
+    const closedGroup = s.closedGroups.find((c) => c.id === entryId) ?? s.deletedGroups.find((c) => c.id === entryId);
     if (closedGroup) set(restoringGroup(s, closedGroup, windowId));
   },
 });

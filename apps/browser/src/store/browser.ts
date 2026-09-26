@@ -3,7 +3,7 @@ import { createBookmarksSlice, ensureRoots, type BookmarksSlice } from "./bookma
 import { createGroupsSlice, type GroupsSlice } from "./groups";
 import { createHistorySlice, type HistorySlice } from "./history";
 import { IDLE_LIVE, isIncognitoProfile, pinnedFirst } from "./model";
-import { createOrganizeSlice, type OrganizeSlice } from "./organize";
+import { createOrganizeSlice, keptDeletedGroups, type OrganizeSlice } from "./organize";
 import { createProfilesSlice, DEFAULT_PROFILE, type ProfilesSlice } from "./profiles";
 import { createSettingsSlice, DEFAULT_SETTINGS, type SettingsSlice } from "./settings";
 import { createSplitsSlice, sanitizeSplits, type SplitsSlice } from "./splits";
@@ -44,6 +44,7 @@ export type HydrateData = Partial<
     | "closedTabs"
     | "closedWindows"
     | "closedGroups"
+    | "deletedGroups"
     | "cleanedTabs"
     | "history"
     | "bookmarks"
@@ -142,6 +143,7 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
       closedTabs: data.closedTabs ?? [],
       closedWindows: data.closedWindows ?? [],
       closedGroups: data.closedGroups ?? [],
+      deletedGroups: keptDeletedGroups(data.deletedGroups ?? []),
       cleanedTabs: data.cleanedTabs ?? [],
       selection: {},
       history: Object.fromEntries(Object.entries(data.history ?? {}).filter(([p]) => profiles[p])),

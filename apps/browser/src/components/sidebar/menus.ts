@@ -3,7 +3,7 @@ import { closeTab, moveTabToProfile, moveTabToWindow, switchToTab, toggleMute } 
 import { folderChildren } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";
 import { bookmarkProfileId, isIncognitoProfile, plural, tabLabel, viewTabIds, windowTitle } from "../../store/model";
-import { awayFromPin, groupLabel, groupOf, selectedTabIds } from "../../store/organize";
+import { awayFromPin, groupLabel, groupOf, keptDeletedGroups, selectedTabIds } from "../../store/organize";
 import { splitOf } from "../../store/splits";
 import type { GroupColor, Tab } from "../../store/types";
 import {
@@ -239,6 +239,8 @@ export async function openGroupMenu(windowId: string, groupId: string) {
     { id: "ungroup", title: "Ungroup", symbol: "folder.badge.minus" },
     { id: "bookmarkBar", title: "Move to Bookmark Bar", symbol: "bookmark" },
     { id: "close", title: "Close Group", symbol: "xmark" },
+    // Dia's Delete: gone from Recently Closed, kept a week under Recently Deleted Groups.
+    { id: "delete", title: "Delete Group", symbol: "trash" },
   ]);
   if (!choice) return;
   const target = { kind: "group" as const, id: groupId };
@@ -257,6 +259,7 @@ export async function openGroupMenu(windowId: string, groupId: string) {
   else if (choice === "ungroup") s.ungroup(groupId);
   else if (choice === "bookmarkBar") s.moveGroupToBookmarksBar(groupId);
   else if (choice === "close") s.closeGroup(groupId);
+  else if (choice === "delete") s.deleteGroup(groupId);
 }
 
 /** Right-click on empty sidebar space. */
@@ -305,6 +308,9 @@ export async function openOverflowMenu(windowId: string) {
     .slice(0, 15)
     .map(({ at: _, ...item }) => item);
   const cleaned = [...s.cleanedTabs].reverse().slice(0, 20);
+  const deleted = keptDeletedGroups(s.deletedGroups)
+    .reverse()
+    .map((c) => ({ id: `restore:${c.id}`, title: `${c.group.name} (${plural(c.tabs.length, "Tab")})`, symbol: "trash" }));
   const daily = s.settings.cleanUpInactiveTabsAfterHours !== null;
   const choice = await showMenu([
     { id: "search", title: "Search Tabs…", symbol: "magnifyingglass", ...hint("a", "shift", "command") },
@@ -330,6 +336,7 @@ export async function openOverflowMenu(windowId: string) {
           ]
         : [{ id: "none", title: "Empty", enabled: false }],
     },
+    ...(deleted.length ? [{ id: "deleted", title: "Recently Deleted Groups", symbol: "trash", children: deleted }] : []),
     sep,
     { id: "clean", title: "Clean Up Tabs", symbol: "wand.and.stars", ...hint("k", "option", "command") },
     { id: "daily", title: "Clean Up Daily", checked: daily },

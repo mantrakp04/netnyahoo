@@ -29,6 +29,8 @@ export type OrganizeSlice = {
   cleanedTabs: ClosedTab[];
   /** History › Recently Closed Groups (oldest first). */
   closedGroups: ClosedGroup[];
+  /** Groups deleted with Delete Group (Dia's soft delete): restorable for a week, oldest first. */
+  deletedGroups: ClosedGroup[];
 
   setSelection(windowId: string, ids: string[]): void;
   /** Drag-and-drop / Move: pins or unpins, reorders and (un)groups tabs of one window. */
@@ -63,6 +65,10 @@ export type OrganizeSlice = {
 export const CLEAN_UP_AFTER_MS = 12 * 60 * 60 * 1000;
 const MAX_CLEANED = 100;
 const MAX_CLOSED_GROUPS = 20;
+/** Dia keeps deleted groups for 7 days (`cleanupSoftDeletedGroupsOlderThan`, run as its tab store loads). */
+export const DELETED_GROUP_MS = 7 * 86_400_000;
+/** Deleted groups still within their week. */
+export const keptDeletedGroups = (list: ClosedGroup[], now = Date.now()) => list.filter((c) => now - c.closedAt < DELETED_GROUP_MS);
 
 export const groupOf = (s: Pick<BrowserState, "groups">, tabId: string | undefined): TabGroup | undefined =>
   tabId ? Object.values(s.groups).find((g) => g.tabIds.includes(tabId)) : undefined;
@@ -202,8 +208,12 @@ function closeQuietly(s: BrowserState, ids: string[]): BrowserState {
   return removeTabs(s, ids, false);
 }
 
-/** A group closed with its tabs, recorded for History › Recently Closed Groups. */
-export function closingGroup(s: BrowserState, groupId: string): BrowserState {
+/**
+ * A group closed with its tabs, recorded for History › Recently Closed Groups; or, with `deleted`,
+ * Dia's Delete: the tabs go without a Reopen Closed Tab record, and the group is kept for a week
+ * under Recently Deleted Groups.
+ */
+export function closingGroup(s: BrowserState, groupId: string, deleted = false): BrowserState {
   const g = s.groups[groupId];
   const w = g && s.windows[g.windowId];
   if (!g || !w) return s;
@@ -218,7 +228,9 @@ export function closingGroup(s: BrowserState, groupId: string): BrowserState {
   };
   const recordable = !w.incognito && entry.tabs.some((t) => t.url);
   const next = closeQuietly(s, g.tabIds);
-  return recordable ? { ...next, closedGroups: [...next.closedGroups, entry].slice(-MAX_CLOSED_GROUPS) } : next;
+  if (!recordable) return next;
+  if (deleted) return { ...next, deletedGroups: [...keptDeletedGroups(next.deletedGroups), entry] };
+  return { ...next, closedGroups: [...next.closedGroups, entry].slice(-MAX_CLOSED_GROUPS) };
 }
 
 /** Puts tabs back from snapshots (loading), optionally as a group. Returns the new tab ids. */
@@ -256,7 +268,11 @@ function restoreTarget(s: BrowserState, original: string, requested?: string | n
 export function restoringGroup(s: BrowserState, entry: ClosedGroup, requested?: string | null): BrowserState {
   const windowId = restoreTarget(s, entry.windowId, requested);
   if (!windowId) return s;
-  let next: BrowserState = { ...s, closedGroups: s.closedGroups.filter((c) => c.id !== entry.id) };
+  let next: BrowserState = {
+    ...s,
+    closedGroups: s.closedGroups.filter((c) => c.id !== entry.id),
+    deletedGroups: s.deletedGroups.filter((c) => c.id !== entry.id),
+  };
   const index = windowId === entry.windowId ? entry.index : undefined;
   const [restored, ids] = restoreSnapshots(
     next,
@@ -372,6 +388,7 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
   selection: {},
   cleanedTabs: [],
   closedGroups: [],
+  deletedGroups: [],
 
   setSelection(windowId, ids) {
     set((s) => {

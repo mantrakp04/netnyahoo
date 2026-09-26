@@ -20,6 +20,8 @@ export type GroupsSlice = {
   ungroup(groupId: string): void;
   /** Closes the group's tabs (History › Recently Closed Groups can bring it back). */
   closeGroup(groupId: string): void;
+  /** Dia's Delete Group: its tabs go, and Recently Deleted Groups keeps it for a week. */
+  deleteGroup(groupId: string): void;
 };
 
 /** Re-derives each group's order from its window's tab order. */
@@ -163,5 +165,9 @@ export const createGroupsSlice: StateCreator<BrowserState, [], [], GroupsSlice> 
 
   closeGroup(groupId) {
     set(closingGroup(get(), groupId));
+  },
+
+  deleteGroup(groupId) {
+    set(closingGroup(get(), groupId, true));
   },
 });

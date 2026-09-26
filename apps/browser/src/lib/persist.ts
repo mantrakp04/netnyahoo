@@ -37,7 +37,7 @@ const DOCS: Doc[] = [
   // Last: after a v1 migration, history and bookmarks must be on disk before the v1 file is replaced.
   {
     name: "session.json",
-    sources: (s) => [s.profiles, s.profileOrder, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.settings, s.ui.focusedWindowId, s.closedGroups, s.cleanedTabs],
+    sources: (s) => [s.profiles, s.profileOrder, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.settings, s.ui.focusedWindowId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
     serialize: (s) => {
       const windows = Object.values(s.windows).filter((w) => !w.incognito);
       const kept = new Set(windows.map((w) => w.id));
@@ -55,6 +55,7 @@ const DOCS: Doc[] = [
         closedTabs: s.closedTabs.filter((c) => !isIncognitoProfile(c.tab.profileId)),
         closedWindows: s.closedWindows,
         closedGroups: s.closedGroups,
+        deletedGroups: s.deletedGroups,
         cleanedTabs: s.cleanedTabs,
       };
     },
@@ -95,6 +96,7 @@ type SessionV2 = {
   closedTabs: ClosedTab[];
   closedWindows: BrowserState["closedWindows"];
   closedGroups?: BrowserState["closedGroups"];
+  deletedGroups?: BrowserState["deletedGroups"];
   cleanedTabs?: BrowserState["cleanedTabs"];
 };
 
@@ -190,6 +192,7 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
     closedTabs: session.closedTabs,
     closedWindows: session.closedWindows,
     closedGroups: session.closedGroups ?? [],
+    deletedGroups: session.deletedGroups ?? [],
     cleanedTabs: session.cleanedTabs ?? [],
     history: history?.history ?? {},
     bookmarks: bookmarks?.bookmarks ?? EMPTY_BOOKMARKS,
