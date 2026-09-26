@@ -70,8 +70,12 @@ scripts/release.sh <version>     # ~5–10 min; run it in the background and wai
 
 `CURRENT_PROJECT_VERSION` is the build number Sparkle compares — it must go up every release (read the
 current value with `grep CURRENT_PROJECT_VERSION …project.pbxproj | sort -u`). release.sh refuses to run
-if `MARKETING_VERSION` doesn't match or the notes file is missing. It ends with "NOT notarized." until the
-user stores notarytool credentials; that's expected, say so in the report.
+if `MARKETING_VERSION` doesn't match or the notes file is missing. It notarizes the app and the DMG with the
+`netnyahoo` notarytool profile (an App Store Connect API key in the login keychain, set up 2026-09-26) and
+ends with "Notarized and stapled." If it says "NOT notarized.", the profile is gone or invalid
+(`xcrun notarytool history --keychain-profile netnyahoo` shows why): stop and tell the user rather than
+shipping an unnotarized build. Never store or re-create the credential yourself; that's the user's step.
+Notarization adds a few minutes per submission.
 
 ## 4. Smoke test the build
 

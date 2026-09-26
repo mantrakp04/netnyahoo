@@ -78,5 +78,7 @@ list one `…/release-notes#<version>` page; a second launch opens none.
 
 ## Unnotarized builds
 
-Gatekeeper refuses to open an unnotarized download. Either open it once from System Settings › Privacy &
+Releases are notarized since 0.2.1 (the `netnyahoo` profile holds an App Store Connect API key; with an
+Apple ID it's `--apple-id … --team-id …` and an app-specific password, which also works but locks the
+Apple ID after repeated failures). If a build ever ships unnotarized, Gatekeeper refuses to open the download. Either open it once from System Settings › Privacy &
 Security › Open Anyway, or run `xattr -dr com.apple.quarantine /Applications/Netnyahoo.app`.

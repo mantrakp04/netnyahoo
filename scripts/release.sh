@@ -136,13 +136,18 @@ fi
 
 echo "==> Release notes"
 # GitHub: the notes, then how to install (the same for every release).
+if [ "$notarize" = 1 ]; then
+  install_line="Apple Silicon, macOS 14 or later. Signed with Developer ID and notarized by Apple: download, drag it to Applications, open it."
+else
+  install_line="Apple Silicon, macOS 14 or later. Signed with Developer ID but not notarized: on first launch macOS refuses to open it. Click Done, then System Settings › Privacy & Security › Open Anyway. Or run \`xattr -dr com.apple.quarantine /Applications/Netnyahoo.app\`."
+fi
 {
   notes_body
   cat <<EOF
 
 ## Install
 
-Apple Silicon, macOS 14 or later. Signed with Developer ID but not notarized yet: on first launch macOS refuses to open it. Click Done, then System Settings › Privacy & Security › Open Anyway. Or run \`xattr -dr com.apple.quarantine /Applications/Netnyahoo.app\`.
+$install_line
 
 Earlier versions update automatically (Netnyahoo › Check for Updates…). Every release's notes: $notes_page
 EOF
