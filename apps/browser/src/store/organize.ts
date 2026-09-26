@@ -48,7 +48,6 @@ export type OrganizeSlice = {
   duplicateGroup(groupId: string): string;
   /** ⌥⌘T: a New Tab page at the end of the group. */
   newTabInGroup(groupId: string): string;
-  restoreClosedGroup(entryId: string, windowId?: string | null): void;
   /** Closes the group into a Bookmarks Bar folder. */
   moveGroupToBookmarksBar(groupId: string): void;
 
@@ -503,12 +502,6 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     const groups = { ...next.groups, [groupId]: { ...g, collapsed: false, tabIds: [...g.tabIds, id] } };
     set({ ...next, groups: syncGroupOrder(groups, window) });
     return id;
-  },
-
-  restoreClosedGroup(entryId, windowId) {
-    const s = get();
-    const entry = s.closedGroups.find((c) => c.id === entryId);
-    if (entry) set(restoringGroup(s, entry, windowId));
   },
 
   moveGroupToBookmarksBar(groupId) {

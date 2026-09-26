@@ -22,7 +22,6 @@ export type SplitsSlice = {
    * pane unless `background`.
    */
   openSplitPane(windowId: string, options?: OpenPaneOptions): OpenPaneResult;
-  addTabToSplit(splitId: string, tabId: string, index?: number): void;
   /** Shows `tabId` in `paneTabId`'s place and closes that pane's tab (an empty pane picking a tab). */
   replaceSplitPane(paneTabId: string, tabId: string): void;
   /** The tab stays open as a regular tab. */
@@ -215,20 +214,6 @@ export const createSplitsSlice: StateCreator<BrowserState, [], [], SplitsSlice> 
     if (!o.background) s = apply(s, activated(s, tabId));
     set(s);
     return { ok: true, tabId, splitId: split.id };
-  },
-
-  addTabToSplit(splitId, tabId, index) {
-    const s = get();
-    const split = s.splits[splitId];
-    const tab = s.tabs[tabId];
-    const first = split && s.tabs[split.tabIds[0]!];
-    if (!split || !tab || !first || tab.windowId !== split.windowId || tab.profileId !== first.profileId) return;
-    if (split.tabIds.includes(tabId) || split.tabIds.length >= MAX_SPLIT_PANES) return;
-    const splits = removeFromSplits(s.splits, new Set([tabId]));
-    const slots = slotsOf(split);
-    slots.splice(Math.min(index ?? slots.length, slots.length), 0, [tabId]);
-    const next = fromSlots(split, slots);
-    set(gather({ ...s, splits: { ...splits, [splitId]: next } }, next.tabIds[0]!, next.tabIds));
   },
 
   replaceSplitPane(paneTabId, tabId) {
