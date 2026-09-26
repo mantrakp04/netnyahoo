@@ -16,6 +16,7 @@
     "@netnyahoo/shell": "workspace:*",
     "@netnyahoo/cef": "workspace:*",
     "@netnyahoo/import": "workspace:*",
+    "@netnyahoo/sync": "workspace:*",
     "expo": "~54.0.37",
     "expo-modules-core": "~3.0.29",
     "react": "19.1.4",

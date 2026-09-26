@@ -6,6 +6,7 @@ import { startAppIntegration } from "./src/lib/appIntegration";
 import { startNativeSync } from "./src/lib/native";
 import { startPersistence } from "./src/lib/persist";
 import { startTabLifecycle } from "./src/lib/tabLifecycle";
+import { startSync } from "./src/sync/engine";
 import { setStoreBatching } from "./src/store/browser";
 
 // Intentional: react-native-macos 0.81's New Architecture is still experimental.
@@ -23,6 +24,7 @@ startNativeSync();
 startAppIntegration();
 startTabLifecycle();
 startTranslate();
+startSync();
 if (__DEV__) require("./src/lib/devHarness").startDevHarness();
 
 // The native side renders "main" once per window, with `initialProperties: { windowId }`.

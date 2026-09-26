@@ -20,6 +20,7 @@ import {
 import { isCalendarUrl } from "../../live/meetings";
 import { bookmarkTab } from "../bookmarks/actions";
 import { calendarMenuItem, newLiveFolderMenuItem, runCalendarMenu, runNewLiveFolder } from "./liveMenus";
+import { openSyncedTab, syncedDevicesMenuItem } from "../../sync/menu";
 import { setSidebarUi } from "./state";
 import { GROUP_COLORS, nearestGroupColor } from "./tokens";
 
@@ -312,6 +313,7 @@ export async function openOverflowMenu(windowId: string) {
     .reverse()
     .map((c) => ({ id: `restore:${c.id}`, title: `${c.group.name} (${plural(c.tabs.length, "Tab")})`, symbol: "trash" }));
   const daily = s.settings.cleanUpInactiveTabsAfterHours !== null;
+  const synced = syncedDevicesMenuItem(w.profileId);
   const choice = await showMenu([
     { id: "search", title: "Search Tabs…", symbol: "magnifyingglass", ...hint("a", "shift", "command") },
     sep,
@@ -322,6 +324,7 @@ export async function openOverflowMenu(windowId: string) {
       enabled: open.length > 0,
       children: open.map((t) => ({ id: `tab:${t.id}`, title: tabTitle(t), checked: w.activeTabIds[w.profileId] === t.id })),
     },
+    ...(synced ? [synced] : []),
     { id: "closed", title: "Recently Closed", symbol: "clock.arrow.circlepath", enabled: closed.length > 0, children: closed.length ? closed : [{ id: "none", title: "Empty", enabled: false }] },
     {
       id: "cleaned",
@@ -347,6 +350,7 @@ export async function openOverflowMenu(windowId: string) {
   if (!choice) return;
   if (choice === "search") setSidebarUi({ searchTabs: windowId });
   else if (choice.startsWith("tab:")) switchToTab(choice.slice(4));
+  else if (openSyncedTab(choice, windowId, w.profileId)) return;
   else if (choice.startsWith("restore:")) s.restoreClosed(choice.slice(8), windowId);
   else if (choice.startsWith("cleaned:")) s.restoreCleaned(choice.slice(8));
   else if (choice === "restoreAll") s.restoreCleaned();

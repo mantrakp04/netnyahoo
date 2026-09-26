@@ -17,6 +17,7 @@ import { PrivacyPane } from "./panes/Privacy";
 import { ProfileDetailsPane, ProfilesPane } from "./panes/Profiles";
 import { SearchPane } from "./panes/Search";
 import { ShortcutsPane } from "./panes/Shortcuts";
+import { SyncPane } from "./panes/Sync";
 import { TabsPane } from "./panes/Tabs";
 import { useSettingsSheet } from "./sheet";
 import { useSettingsNav, type SettingsPane } from "./windows";
@@ -25,6 +26,7 @@ import { useSettingsNav, type SettingsPane } from "./windows";
 const PANES: { id: SettingsPane; title: string; icon: string }[] = [
   { id: "general", title: "General", icon: "gearshape" },
   { id: "profiles", title: "Profiles", icon: "person.2" },
+  { id: "sync", title: "Sync", icon: "arrow.triangle.2.circlepath" },
   { id: "tabs", title: "Tabs", icon: "square.on.square" },
   { id: "appearance", title: "Appearance", icon: "circle.lefthalf.filled" },
   { id: "privacy", title: "Privacy & Security", icon: "hand.raised" },
@@ -85,6 +87,8 @@ function Pane({ pane, profileId }: { pane: SettingsPane; profileId: string | nul
       return <GeneralPane />;
     case "profiles":
       return profileId ? <ProfileDetailsPane profileId={profileId} /> : <ProfilesPane />;
+    case "sync":
+      return <SyncPane />;
     case "tabs":
       return <TabsPane />;
     case "appearance":

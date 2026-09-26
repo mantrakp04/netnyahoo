@@ -14,6 +14,8 @@ const PANES: Record<string, SettingsPane> = {
   profiles: "profiles",
   people: "profiles",
   manageprofile: "profiles",
+  sync: "sync",
+  syncsetup: "sync",
   tabs: "tabs",
   appearance: "appearance",
   privacy: "privacy",
