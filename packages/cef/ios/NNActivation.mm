@@ -11,7 +11,8 @@
 // - NETNYAHOO_BACKGROUND=1 (test instances next to someone's work): nothing
 //   activates the app at all. Its activation policy is "prohibited", every
 //   activation API is blocked, and should it become active anyway it
-//   deactivates at once.
+//   deactivates at once. Context menus and open / save panels, which would show over
+//   everyone's work anyway, are logged instead of shown.
 //
 // Blocked attempts and unexpected activations are logged with their call stack
 // to $NETNYAHOO_DATA_DIR/activation.log.
@@ -66,6 +67,102 @@ void ObserveActivation() {
                                                 Log(@"became active (deactivating)", NSThread.callStackSymbols);
                                                 [NSApp deactivate];
                                               }];
+}
+
+// Open and save panels (a page's <input type=file>, Save As…) show above every app as well, so
+// test instances log what the panel would have been and answer it at once: with the files
+// listed in $NETNYAHOO_DATA_DIR/file-chooser.txt (one path per line, used once), or Cancel.
+const void *kPicksKey = &kPicksKey;
+
+NSArray<NSURL *> *TakePicks() {
+  const char *dir = getenv("NETNYAHOO_DATA_DIR");
+  if (!dir) return nil;
+  NSString *path = [@(dir) stringByAppendingPathComponent:@"file-chooser.txt"];
+  NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+  if (!text) return nil;
+  [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+  NSMutableArray<NSURL *> *urls = [NSMutableArray array];
+  for (NSString *line in [text componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet])
+    if (line.length) [urls addObject:[NSURL fileURLWithPath:line]];
+  return urls.count ? urls : nil;
+}
+
+/// The panel's URL / URLs answer with the picked files (the panel never ran, so it has none).
+void ReturnPicks(NSSavePanel *panel, NSArray<NSURL *> *picks) {
+  objc_setAssociatedObject(panel, kPicksKey, picks, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  static NSMutableSet<NSValue *> *patched = [NSMutableSet set];
+  for (SEL selector : {@selector(URLs), @selector(URL)}) {
+    Method method = class_getInstanceMethod(object_getClass(panel), selector);
+    if (!method || [patched containsObject:[NSValue valueWithPointer:method]]) continue;
+    [patched addObject:[NSValue valueWithPointer:method]];
+    auto original = (id (*)(id, SEL))method_getImplementation(method);
+    const bool many = selector == @selector(URLs);
+    method_setImplementation(method, imp_implementationWithBlock(^id(id self) {
+      NSArray<NSURL *> *urls = objc_getAssociatedObject(self, kPicksKey);
+      if (urls) return many ? urls : urls.firstObject;
+      return original(self, selector);
+    }));
+  }
+}
+
+NSString *DescribePanel(NSSavePanel *panel, NSWindow *parent, NSString *how) {
+  NSMutableArray<NSString *> *parts = [NSMutableArray array];
+  const bool open = [panel isKindOfClass:NSOpenPanel.class];
+  [parts addObject:[NSString stringWithFormat:@"%@ panel (not shown): %@", open ? @"open" : @"save", how]];
+  if (parent)
+    [parts addObject:[NSString stringWithFormat:@"parent %@ #%ld \"%@\"%@", parent.className, (long)parent.windowNumber,
+                                                parent.title, parent.isVisible ? @"" : @" (hidden)"]];
+  if (open) {
+    NSOpenPanel *o = (NSOpenPanel *)panel;
+    [parts addObject:[NSString stringWithFormat:@"multiple=%d files=%d directories=%d", o.allowsMultipleSelection,
+                                                o.canChooseFiles, o.canChooseDirectories]];
+  } else {
+    [parts addObject:[NSString stringWithFormat:@"name=\"%@\"", panel.nameFieldStringValue]];
+  }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  [parts addObject:[NSString stringWithFormat:@"types=%@ others=%d",
+                                              panel.allowedFileTypes ? [panel.allowedFileTypes componentsJoinedByString:@","] : @"*",
+                                              panel.allowsOtherFileTypes]];
+#pragma clang diagnostic pop
+  // Chrome's accept list is a popup in the accessory view ("Custom Files", "All Files").
+  NSMutableArray<NSView *> *views = panel.accessoryView ? [NSMutableArray arrayWithObject:panel.accessoryView] : [NSMutableArray array];
+  while (views.count) {
+    NSView *v = views.lastObject;
+    [views removeLastObject];
+    if ([v isKindOfClass:NSPopUpButton.class])
+      [parts addObject:[NSString stringWithFormat:@"popup=[%@] selected=%ld", [((NSPopUpButton *)v).itemTitles componentsJoinedByString:@"|"],
+                                                  (long)((NSPopUpButton *)v).indexOfSelectedItem]];
+    [views addObjectsFromArray:v.subviews];
+  }
+  if (panel.directoryURL) [parts addObject:[NSString stringWithFormat:@"directory=%@", panel.directoryURL.path]];
+  return [parts componentsJoinedByString:@" | "];
+}
+
+/// Logs the panel and answers it (on the next turn of the run loop, as a real panel would).
+NSModalResponse AnswerPanel(NSSavePanel *panel, NSWindow *parent, NSString *how) {
+  NSArray<NSURL *> *picks = TakePicks();
+  NSString *answer = picks ? [NSString stringWithFormat:@"chose %@", [[picks valueForKey:@"path"] componentsJoinedByString:@", "]]
+                           : @"cancelled";
+  Log([NSString stringWithFormat:@"%@ | %@", DescribePanel(panel, parent, how), answer], @[]);
+  if (picks) ReturnPicks(panel, picks);
+  return picks ? NSModalResponseOK : NSModalResponseCancel;
+}
+
+void InterceptFilePanels() {
+  // NSOpenPanel may implement these itself.
+  for (Class cls : {NSSavePanel.class, NSOpenPanel.class}) {
+    Swizzle(cls, @selector(beginSheetModalForWindow:completionHandler:),
+            ^(NSSavePanel *panel, NSWindow *window, void (^handler)(NSModalResponse)) {
+              NSModalResponse response = AnswerPanel(panel, window, @"sheet");
+              if (handler) dispatch_async(dispatch_get_main_queue(), ^{ handler(response); });
+            });
+    Swizzle(cls, @selector(beginWithCompletionHandler:), ^(NSSavePanel *panel, void (^handler)(NSModalResponse)) {
+      NSModalResponse response = AnswerPanel(panel, nil, [NSString stringWithFormat:@"free-standing, level %ld", (long)panel.level]);
+      if (handler) dispatch_async(dispatch_get_main_queue(), ^{ handler(response); });
+    });
+    Swizzle(cls, @selector(runModal), ^NSModalResponse(NSSavePanel *panel) { return AnswerPanel(panel, nil, @"app-modal"); });
+  }
 }
 
 }  // namespace
@@ -166,6 +263,7 @@ void Install() {
     if ([delegate respondsToSelector:@selector(menuWillOpen:)]) [delegate menuWillOpen:menu];
     if ([delegate respondsToSelector:@selector(menuDidClose:)]) [delegate menuDidClose:menu];
   }));
+  InterceptFilePanels();
 }
 
 }  // namespace nn::activation

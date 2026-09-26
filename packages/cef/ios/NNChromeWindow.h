@@ -54,7 +54,7 @@ NSView *_Nullable NNWindowRootView(NSWindow *_Nullable window);
 
 /// DEV: input for test instances (they get no OS events and are never active), in window points
 /// from the top left: "hit:x,y" (the view AppKit's hit test picks), "click:x,y[,right]" (to that
-/// view), "type:<text>" (to the first responder), "keys:<modifier flags>:<character>" (NSApp's key
+/// view), "drag:x1,y1;x2,y2;…" (a left-button drag through the window, points may be outside it), "type:<text>" (to the first responder), "keys:<modifier flags>:<character>" (NSApp's key
 /// equivalent path: menus, Chrome's command dispatcher), "responder", "ax" (the window's
 /// accessibility tree). nil if not one of these.
 + (nullable NSString *)devAction:(NSString *)action window:(NSWindow *)window;

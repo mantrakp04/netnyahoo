@@ -475,6 +475,30 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     });
     return hit;
   }
+  if ([action hasPrefix:@"drag:"]) {
+    // "drag:x1,y1;x2,y2;…": a left-button drag through the window (mouse down at the first
+    // point, dragged along the rest in 12 steps per leg 16 ms apart, up at the last), as for
+    // "click:". Points may lie outside the window: AppKit keeps sending a drag to the window
+    // it started in, which is how a tab dragged onto another window reports where it is.
+    NSMutableArray<NSValue *> *points = [NSMutableArray array];
+    for (NSString *spec in [[action substringFromIndex:5] componentsSeparatedByString:@";"])
+      [points addObject:[NSValue valueWithPoint:WindowPoint(window, spec)]];
+    if (points.count < 2) return @"drag needs two points";
+    NSMutableArray<NSEvent *> *events = [NSMutableArray arrayWithObject:Mouse(window, NSEventTypeLeftMouseDown, points[0].pointValue)];
+    for (NSUInteger i = 1; i < points.count; i++) {
+      NSPoint a = points[i - 1].pointValue, b = points[i].pointValue;
+      for (int k = 1; k <= 12; k++)
+        [events addObject:Mouse(window, NSEventTypeLeftMouseDragged, NSMakePoint(a.x + (b.x - a.x) * k / 12, a.y + (b.y - a.y) * k / 12))];
+    }
+    [events addObject:Mouse(window, NSEventTypeLeftMouseUp, points.lastObject.pointValue)];
+    NSString *hit = Describe([frameView hitTest:points[0].pointValue]);
+    // A hold before moving, as a hand does (RN's responder takes the drag on its first move).
+    for (NSUInteger i = 0; i < events.count; i++)
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((i ? 150 + i * 16 : 0) * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+        [window sendEvent:events[i]];
+      });
+    return [NSString stringWithFormat:@"%@ (%lu events)", hit, (unsigned long)events.count];
+  }
   if ([action hasPrefix:@"type:"]) {
     NSString *text = [action substringFromIndex:5];
     for (NSUInteger i = 0; i < text.length; i++) {
