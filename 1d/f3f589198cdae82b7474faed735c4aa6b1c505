@@ -1,0 +1,23 @@
+packages/cef/ios/NNActivation.mm
+  s_9c356f9574d31c::t_0fce45b6ff65bf 155-168
+.claude/skills/release/scripts/smoke.sh
+  s_9c356f9574d31c::t_1f32b92a1276c9 69
+.claude/skills/release/scripts/smoke.mjs
+  s_9c356f9574d31c::t_1f32b92a1276c9 8,170-173,179-195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1df3f589198cdae82b7474faed735c4aa6b1c505",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
