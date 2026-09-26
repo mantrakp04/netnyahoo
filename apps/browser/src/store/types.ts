@@ -1,6 +1,3 @@
-import type { Download } from "@netnyahoo/cef";
-import type { Settings } from "./settings";
-
 /**
  * Data model, after Dia: the app has **profiles** (separate cookies/history/
  * bookmarks — Dia's replacement for Spaces) and **windows**. A window shows one
