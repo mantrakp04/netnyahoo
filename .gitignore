@@ -61,3 +61,7 @@ coverage/
 
 # Release builds (scripts/release.sh)
 dist/
+
+# Notarization API key settings (scripts/release.sh)
+scripts/.notary.env
+*.p8

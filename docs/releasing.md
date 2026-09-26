@@ -24,7 +24,11 @@ deployed with the new entry by the time the update reaches people.
   Every update must be signed with it, so keep a backup:
   `apps/browser/macos/Pods/Sparkle/bin/generate_keys --account netnyahoo -x <file>` exports it, and `-f <file>`
   imports it on another machine.
-- For notarization, a notarytool profile named `netnyahoo`:
+- For notarization, an App Store Connect API key (Team Keys, Developer role). Keep `AuthKey_<id>.p8`
+  outside the repo (e.g. `~/.private_keys/`, mode 600) and point `scripts/.notary.env` (untracked) at it:
+  `NOTARY_KEY=<path>`, `NOTARY_KEY_ID=<id>`, `NOTARY_ISSUER=<issuer id>`. release.sh prefers it to the
+  keychain profile below, which notarytool keeps in the data-protection keychain: that reads as
+  missing while the screen is locked. Otherwise, a notarytool profile named `netnyahoo`:
   `xcrun notarytool store-credentials netnyahoo --apple-id <id> --team-id U5L5T3NGVV` (it asks for an
   app-specific password). Without it, the script still builds and signs, but the release is unnotarized and
   Gatekeeper blocks the first launch.

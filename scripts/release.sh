@@ -19,6 +19,16 @@ macos="$app_dir/macos"
 repo="mantrakp04/netnyahoo"
 notes_page="https://netnyahoo.com/release-notes"
 notary_profile="${NOTARY_PROFILE:-netnyahoo}"
+# App Store Connect API key for notarytool, when scripts/.notary.env (untracked) sets
+# NOTARY_KEY (path to AuthKey_<id>.p8), NOTARY_KEY_ID and NOTARY_ISSUER. Preferred over the keychain
+# profile: notarytool keeps that profile in the data-protection keychain, which reads as missing while
+# the Mac's screen is locked.
+[ -f "$root/scripts/.notary.env" ] && . "$root/scripts/.notary.env"
+if [ -n "${NOTARY_KEY:-}" ]; then
+  notary_auth=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
+else
+  notary_auth=(--keychain-profile "$notary_profile")
+fi
 sparkle_account="${SPARKLE_ACCOUNT:-netnyahoo}"
 sparkle="$macos/Pods/Sparkle/bin"
 dist="$root/dist/$version"
@@ -47,15 +57,15 @@ grep -Eq '^date: *[0-9]{4}-[0-9]{2}-[0-9]{2} *$' <<< "$meta" && [ -n "$headline"
 identity="Developer ID Application"
 [[ "$(security find-identity -v -p codesigning)" == *"$identity"* ]] || { echo "error: no $identity identity" >&2; exit 1; }
 notarize=0
-if xcrun notarytool history --keychain-profile "$notary_profile" >/dev/null 2>&1; then
+if xcrun notarytool history "${notary_auth[@]}" >/dev/null 2>&1; then
   notarize=1
 elif [ "${ALLOW_UNNOTARIZED:-0}" = 1 ]; then
   echo "warning: no notarytool profile '$notary_profile'; the release won't be notarized" >&2
 else
   # Releases are notarized since 0.2.1: an unnotarized one makes every new user go through
   # System Settings › Open Anyway again. Store the profile (docs/releasing.md) or set ALLOW_UNNOTARIZED=1.
-  echo "error: notarytool profile '$notary_profile' is missing or invalid:" >&2
-  xcrun notarytool history --keychain-profile "$notary_profile" 2>&1 | head -2 >&2
+  echo "error: notarytool credentials are missing or invalid (scripts/.notary.env or the '$notary_profile' profile):" >&2
+  xcrun notarytool history "${notary_auth[@]}" 2>&1 | head -2 >&2
   exit 1
 fi
 
@@ -115,7 +125,7 @@ rm -rf "$check_data"
 
 notarize_file() {
   echo "Notarizing $(basename "$1")"
-  xcrun notarytool submit "$1" --keychain-profile "$notary_profile" --wait --timeout 1h \
+  xcrun notarytool submit "$1" "${notary_auth[@]}" --wait --timeout 1h \
     | tee "$dist/notary-$(basename "$1").log"
   grep -q "status: Accepted" "$dist/notary-$(basename "$1").log" || { echo "error: notarization failed" >&2; exit 1; }
 }
