@@ -1,0 +1,21 @@
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_17cbb9d25aab4e 303,307
+docs/dia-spec.md
+  s_9c356f9574d31c::t_a43bf822e43b3f 524-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "22f247ff5ed0a1ad32506bbb740062a364b00d47",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
