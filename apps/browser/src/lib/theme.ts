@@ -49,12 +49,13 @@ const dark = {
   // Dia 1.50 (TabShapeView, rebrand): #121212 at 0.5; 1.49 was black ~0.4.
   tabSelected: "rgba(18,18,18,0.5)",
   tabSelectedText: "#FFFFFF",
-  // TabShapeView: 1pt gradient border, TabSelectedShadow glow (radius 15 dark / 12.5 light).
-  tabSelectedBorder: ["rgba(255,255,255,0.2)", "rgba(255,255,255,0.05)"] as [string, string],
+  // TabShapeView: a 0.5pt hairline inside the row's frame, the same all round (Dia 1.50.1 2× capture:
+  // white 0.15 over the fill), TabSelectedShadow glow (radius 15 dark / 12.5 light).
+  tabSelectedBorder: ["rgba(255,255,255,0.15)", "rgba(255,255,255,0.15)"] as [string, string],
   tabSelectedShadow: "rgba(255,255,255,0.15)",
   tabSelectedShadowRadius: 15,
   pinnedResting: "rgba(255,255,255,0.1)",
-  pinnedRestingStroke: "rgba(255,255,255,0.06)",
+  pinnedRestingStroke: "rgba(255,255,255,0.14)", // TabDockItemRestingStroke
   pinnedSelectedFill: "rgba(255,255,255,0.25)",
   pinnedSelectedRim: "rgba(0,0,0,0.85)",
   pinnedSelectedOutline: "rgba(255,255,255,0.2)",
@@ -107,7 +108,7 @@ const light: typeof dark = {
   tabSelectedShadow: "rgba(0,0,0,0.12)",
   tabSelectedShadowRadius: 12.5,
   pinnedResting: "rgba(0,0,0,0.05)",
-  pinnedRestingStroke: "rgba(0,0,0,0.1)",
+  pinnedRestingStroke: "rgba(0,0,0,0.18)", // TabDockItemRestingStroke
   pinnedSelectedFill: "rgba(255,255,255,0.7)",
   pinnedSelectedRim: "rgba(0,0,0,0.12)",
   pinnedSelectedOutline: "rgba(255,255,255,0.98)",
@@ -259,10 +260,12 @@ export const layout = {
   sidebarHeader: 46,
   // TabList's horizontal inset (Dia 1.50.1, 0x105391ac4); tiles and rows span x 6 … 184 at 190.
   sidebarInset: 6,
-  pinnedTop: 54.5,
-  pinnedHeight: 40,
-  rowHeight: 33,
-  rowGap: 4,
+  // Dia 1.50.1: pinned tiles 41 tall, 6 apart (TabList's dock layout, 0x10538ea78), from y 54; tab rows
+  // on a 37 pitch with a 34 pt background (TabView insets it 1.5 top and bottom).
+  pinnedTop: 54,
+  pinnedHeight: 41,
+  rowHeight: 34,
+  rowGap: 3,
   cardTop: 6,
   cardInset: 7,
   cardRadius: 10,

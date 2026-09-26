@@ -24,8 +24,8 @@ export function useAddressBarInSidebar(): boolean {
   return useBrowser((s) => addressBarInSidebar(s, windowId));
 }
 
-/** The sidebar's URL field: under the traffic-light row, as tall as a tab row. */
-export const SIDEBAR_FIELD = { top: layout.sidebarHeader - 2, height: layout.rowHeight } as const;
+/** The sidebar's URL field: under the traffic-light row, 33 pt tall (Arc's field; not a Dia row). */
+export const SIDEBAR_FIELD = { top: layout.sidebarHeader - 2, height: 33 } as const;
 /** The sidebar header with the URL field in it: the list starts under the field. */
 export const SIDEBAR_HEADER_WITH_FIELD = SIDEBAR_FIELD.top + SIDEBAR_FIELD.height;
 

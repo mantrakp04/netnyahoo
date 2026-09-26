@@ -231,7 +231,8 @@ function SidebarPage({ profileId, slot, width, current, docked, glowRoom, ghost,
                     ref={(v) => {
                       controller?.regions.set("pinnedGroups", v);
                     }}
-                    style={{ marginTop: tiles.length || (current && ghost) ? 7 : layout.pinnedTop - layout.sidebarHeader, gap: layout.rowGap }}
+                    // The tiles' 6 pt spacing (Dia's dock layout) down to the first row.
+                    style={{ marginTop: tiles.length || (current && ghost) ? 6 : layout.pinnedTop - layout.sidebarHeader, gap: layout.rowGap }}
                   >
                     {pinnedGroups.map((id) => (
                       <GroupBlock key={id} groupId={id} section="pinnedGroups" />

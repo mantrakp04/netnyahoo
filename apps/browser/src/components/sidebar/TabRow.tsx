@@ -50,7 +50,7 @@ export function TabRow({ tabId }: { tabId: string }) {
   if (!tab) return null;
   const title = tabTitle(tab);
   const fill = active ? theme.tabSelected : selected ? tokens.multiSelected : hovered ? theme.tabHover : "rgba(0,0,0,0)";
-  const border = active ? 1 : selected ? 0.5 : 0;
+  const border = active || selected ? 0.5 : 0;
 
   return (
     <View
