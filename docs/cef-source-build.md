@@ -42,6 +42,8 @@ What the build adds:
 | `chromium-window-hosted.patch` | `BridgedContentView.netnyahooEmbeddedView`: hit testing and accessibility ask the embedder's subview of a Chrome window's content view first. A Browser whose CEF delegate says so (`client_window`) stays open when its last tab closes, unless the window is closing |
 | `chromium-devtools-window-title.patch` | DevTools' title is Dia's, "Developer Tools - <url>" (`DevToolsUIBindings` `kTitleFormat`), so Chrome's own undocked DevTools window says so too |
 | `chromium-neterror-yahu.patch` | "Where's Big Yahu?" replaces the dino: the offline page and chrome://yahu (below) |
+| `chromium-autofill-card-touchbar.patch` | `WebTextfieldTouchBarController` gets no touch bar for a Browser window without a `BrowserNativeWidget` (CEF's views-hosted windows): showing the card autofill dropdown crashed the app there, on any secure page with a saved card |
+| `chromium-password-generation-local.patch` | Chrome offers "Suggest strong password" without password sync (`PasswordFeatureManagerImpl::IsGenerationEnabled`); generated passwords save to the profile's local store like any other. With no account, its popup says "Passwords are saved to Password Manager on this device." instead of "…saved to Google Password Manager for ." |
 
 Removed in 0.2.0, with the hidden "ghost" Browser windows they served (every app window is now Chrome's own,
 `docs/research/chrome-hosted-window.md`): `chromium-context-menu-hosted.patch` (the context menu's widget lookup

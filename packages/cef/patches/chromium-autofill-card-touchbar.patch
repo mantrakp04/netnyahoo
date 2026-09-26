@@ -1,0 +1,21 @@
+--- a/chrome/browser/ui/cocoa/touchbar/web_textfield_touch_bar_controller.mm
++++ b/chrome/browser/ui/cocoa/touchbar/web_textfield_touch_bar_controller.mm
+@@ -24,8 +24,16 @@ + (WebTextfieldTouchBarController*)controllerForWindow:(NSWindow*)window {
+     return nil;
+   }
+ 
+-  BrowserNativeWidgetMac* native_widget = static_cast<BrowserNativeWidgetMac*>(
+-      browser_view->browser_widget()->browser_native_widget());
++  // An embedder's Browser window (CEF's views-hosted Chrome windows) has no
++  // BrowserNativeWidget, so no touch bar: its credit card popup crashed here.
++  BrowserWidget* widget = browser_view->browser_widget();
++  BrowserNativeWidgetMac* native_widget =
++      widget ? static_cast<BrowserNativeWidgetMac*>(
++                   widget->browser_native_widget())
++             : nullptr;
++  if (!native_widget) {
++    return nil;
++  }
+   return [native_widget->GetTouchBarController() webTextfieldTouchBar];
+ }
+ 
