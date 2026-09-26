@@ -1,0 +1,33 @@
+apps/browser/src/components/sidebar/effects.ts
+  s_9c356f9574d31c::t_152c52219000a6 5,36
+  s_9c356f9574d31c::t_c0cf8f1cc19236 11-12,34-35
+apps/browser/src/components/sidebar/switcher.ts
+  s_9c356f9574d31c::t_c0cf8f1cc19236 1,7-12,23,38-45,49,53-63
+  s_9c356f9574d31c::t_152c52219000a6 19,31-37
+packages/shell/ios/ShellModule.swift
+  s_9c356f9574d31c::t_1a6f2d0fb07f8a 34-35,64-65,186-188,190-209
+  s_9c356f9574d31c::t_0c31443f3ed5c5 189,210
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_1a6f2d0fb07f8a 137-140,260
+  s_9c356f9574d31c::t_40c8e5ce48c48b 235,261
+apps/browser/src/components/sidebar/TabSwitcher.tsx
+  s_9c356f9574d31c::t_152c52219000a6 8,50-51,53,55
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_4fd7b24803ab53 259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "10f91d4ba5bd173cdf7418b8139901e1185193ac",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
