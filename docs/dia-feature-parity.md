@@ -21,11 +21,11 @@ Legend: **✅** done · **🧪** built, but the deciding test needs the user pre
 
 | ✅ done | 🧪 needs the user | 🟡 partial | ❌ missing | ⛔ blocked | ⏸ deferred (AI) | — n/a |
 |---|---|---|---|---|---|---|
-| 214 | 9 | 2 | 0 | 9 | 59 | 14 |
+| 216 | 9 | 1 | 0 | 8 | 59 | 14 |
 
-Of the 234 rows that count (not ⏸ or —), 214 are done (91 %), 223 with the nine 🧪 rows. The two 🟡 rows are
-passkeys (iCloud Keychain waits on Apple) and the block lists' freshness (§17). Keyboard shortcuts: every Dia
-shortcut is bound except the Chat ones (⏸). Menus: all ten exist and match.
+Of the 234 rows that count (not ⏸ or —), 216 are done (92 %), 225 with the nine 🧪 rows. The one 🟡 row is
+passkeys (iCloud Keychain waits on Apple). Keyboard shortcuts: every Dia shortcut is bound except the Chat ones
+(⏸). Menus: all ten exist and match.
 
 The summary before this recount (304 rows, 207 ✅, 9 🟡, 7 ⛔) didn't match its tables, which held 307 rows: 211 ✅,
 7 🟡, 8 ⛔ (its 🟡 count included the View and Help menu rows, which sit outside §1–§25).
@@ -55,8 +55,12 @@ What changed since the last audit, in rows (mostly the migration):
   the host-only URL bar (Dia's rule, from its binary), the Help menu (Send Feedback opens a GitHub issue) and the
   onboarding row (Dia's Trial Guide is —) (🟡 → ✅); the overflow menu and the mic button have nothing left but
   Sync and AI (🟡 → ⛔ / ⏸); regional block lists now follow the system languages (§17 stays 🟡 for list freshness).
-- Still blocked: Sync (5 rows), Translate, auto-updates, Widevine DRM, and iCloud Keychain passkeys (inside the 🟡
-  passkeys row).
+- Since, from the loose-ends pass (2026-09-26, after 0.2.2): done, the block lists' freshness (every release moves
+  to uBlock Origin Lite's latest, `scripts/update-ubol.sh`) and auto-updates (notarized, signed releases through
+  the GitHub appcast since 0.2.1) (🟡 / ⛔ → ✅). Every ⛔ row now names what blocks it; Dia's sidebar import is
+  blocked by Dia's keychain access group, not by missing code.
+- Still blocked: Sync (5 rows), Translate, Widevine DRM, Dia's sidebar import, and iCloud Keychain passkeys
+  (inside the 🟡 passkeys row).
 
 ## Remaining work
 
@@ -117,11 +121,11 @@ The 🧪 rows need no code until the user checklist below finds a problem.
 ### ⛔ Blocked, and what would unblock it
 | Item | Blocked by | Unblocks when |
 |---|---|---|
-| Sync: E2E sync, per-profile sync, synced devices' tabs (§13 and the overflow menu), Sync pane (5 rows) | no backend | a sync server + account system exists (then it's a client package) |
-| Auto-updates (§24) | no update feed | an appcast is hosted and `SUFeedURL` points at it, the EdDSA private key (public half already in Info.plist) is in a release pipeline, and releases are notarized (the Developer ID export already works) |
+| Sync: E2E sync, per-profile sync, synced devices' tabs (§13 and the overflow menu), Sync pane (5 rows) | no sync server or account system: Dia's sync is its own service | we run a sync server with accounts (then it's a client package) |
 | Translate page (§8) | Chrome's Translate is in the engine, but ungoogled's domain substitution removed its Google servers | we pick a translation provider (API key, billing) or an on-device model, point Chrome's translate at it or build our own UI |
-| Protected video, Widevine (§18) | the CDM comes through the component updater, whose Google host is substituted; shipping also needs Google's VMP signing | Google grants VMP signing and we allow the component updater host (or bundle the CDM) |
-| iCloud Keychain passkeys (inside §16's passkeys row) | Apple hasn't granted `com.apple.developer.web-browser.public-key-credential` | the grant arrives: switch `CODE_SIGN_ENTITLEMENTS` to `Netnyahoo-ICloudPasskeys.entitlements` (ledger 42) |
+| Protected video, Widevine (§18) | Google licenses the CDM only to VMP-signed browsers; the CDM comes through its component updater, whose host is substituted | Google grants a Widevine licence and VMP signing; then we allow the component updater host (or bundle the CDM) |
+| iCloud Keychain passkeys (inside §16's passkeys row) | Apple hasn't granted `com.apple.developer.web-browser.public-key-credential`, which macOS requires before a browser may use iCloud Keychain passkeys for any site | the grant arrives: switch `CODE_SIGN_ENTITLEMENTS` to `Netnyahoo-ICloudPasskeys.entitlements` (ledger 42) |
+| Dia sidebar import (§20) | Dia's `tabs.db` is encrypted with a key from its team's keychain access group | Dia exports its sidebar, or keeps it readable |
 
 ## Needs the user present: test script (about 25 minutes)
 
@@ -258,7 +262,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Search Tabs ⇧⌘A (all windows, recently closed, chats) | ✓ | ✅ | all windows of the profile + recently closed tabs/groups; chats ⏸ |
 | Tab Switcher ⌃Tab (MRU cycling with UI) | ✓ | ✅ | overlay after 140 ms, commits on ⌃ release. As in Dia 1.50.1's RecentTabs event monitor: → / ← move, Esc or a click outside closes it without switching, a click on a row switches to it, the pointer highlights rows, leaving the app switches, other keys are swallowed while it's up |
 | ⌘1–⌘8 / ⌘9 select tab | ✓ (Chromium) | ✅ | |
-| Overflow menu (open + recently closed + synced devices) | ✓ | ⛔ | everything but synced devices is done (open, recently closed, recently cleaned, clean up, mute all); synced devices' tabs need Sync, which has no backend (⛔ table) |
+| Overflow menu (open + recently closed + synced devices) | ✓ | ⛔ | everything but synced devices is done (open, recently closed, recently cleaned, clean up, mute all). Synced devices' tabs come from Dia's sync server (its account's other devices); we have no sync server or account system to get them from (⛔ table) |
 | Clean Up Tabs ⌥⌘K / auto‑archive untouched tabs → "Recently Cleaned" | ✓ | ✅ | + daily auto clean-up and the sidebar upsell |
 | Auto‑clear abandoned New Tab Pages | ✓ | ✅ | on app resign-active / screen lock |
 | Links `_blank` / ⌘‑click open new tab | ✓ | ✅ | Chrome makes the tab in the opener's Browser (`window.opener` kept) and the app adopts it; ⌘-click → background tab next to its opener (ledger 7) |
@@ -320,7 +324,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Dock menu: New Window per profile | ✓ | ✅ | |
 | Unload unused profiles | ✓ | ✅ | a profile no window has shown for 10 min: its tabs' browsers close (unlike sleeping, their history is lost), then its engine context is released (checked every 15 s). Whether Chrome then unloads the profile itself (ghost, hidden WebUI pages) hasn't been measured on the new engine |
 | Per‑profile extensions | ✓ | ✅ | every extension call takes the profile; Settings › Extensions has a profile picker ("Each profile has its own"); uBOL runs in every profile (ledger 11) |
-| Per‑profile sync | ✓ | ⛔ | needs the Sync server (see §20) |
+| Per‑profile sync | ✓ | ⛔ | Dia syncs each profile through its own server, end-to-end encrypted; we have no sync server or account system (⛔ table) |
 | Per‑profile Morning Brief | ✓ | ⏸ | |
 | Spaces (colour, rename) | flag-gated; changelog says Dia has no Spaces | — | Dia ships without Spaces |
 | Warn before closing last tab in a profile | ✓ | ✅ | with "Don't ask again" |
@@ -475,7 +479,7 @@ own sign-ins instead.
 | History page (⌘Y, `dia://history`) | ✓ | ✅ | `netnyahoo://history` (our page, also when Chrome opens chrome://history): by day, search, bulk delete |
 | History menu | ✓ | ✅ | Show History, Clear Browsing Data, Recently Closed, Recently Closed Groups |
 | Clear browsing data | ✓ | ✅ | our history by visit time and its favicons, plus Chrome's BrowsingDataRemover for the same range: Chrome's history database (what `chrome.history` shows), cookies and every kind of site storage, cached files, live. Form data and passwords stay, as in the dialog's two options |
-| Synced devices' tabs | ✓ | ⛔ | needs Sync (§20) |
+| Synced devices' tabs | ✓ | ⛔ | the tabs of your other devices come from the sync server, which we don't have (⛔ table) |
 
 ## 14. Downloads
 | Feature | Dia | Netnyahoo | Gap |
@@ -547,7 +551,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Bluetooth permission | ✓ | ✅ | Chrome's device chooser drawn as our prompt under the address ("example.com wants to pair", devices with signal and paired / connected state, Scanning…, Scan Again, Bluetooth off / no macOS access with a link to System Settings, Pair / Cancel); also WebUSB, WebHID and Web Serial choosers and requestLEScan's scanning prompt. Verified with the Mac's real Bluetooth devices listed and Cancel rejecting the page's request |
 | Fullscreen video (incl. other display) | ✓ | 🧪 | page fullscreen puts our window into fullscreen, and Chrome only tracks the state (`CEF_NN_TAB_FULLSCREEN`); Esc exits. Changes Spaces, so checklist step 1 |
 | Proprietary codecs (H.264 / AAC / MP4) | ✓ | ✅ | our CEF build (`proprietary_codecs`, `ffmpeg_branding="Chrome"`, VideoToolbox decode) |
-| Protected video (Widevine DRM: Netflix, Spotify…) | ✓ | ⛔ | Widevine is compiled in, but the CDM arrives through the component updater, whose Google host domain substitution removed, and a shipping app also needs Google's VMP signing. Settings › Advanced's Widevine row says it isn't available in this build (no update button) |
+| Protected video (Widevine DRM: Netflix, Spotify…) | ✓ | ⛔ | Widevine is compiled in, but Google licenses the CDM only to browsers it signs for VMP (Verified Media Path), and the CDM itself arrives from Google's component updater, which domain substitution removed. Without VMP signing, streaming services refuse the CDM even if it's installed. Settings › Advanced's Widevine row says it isn't available in this build (no update button) |
 
 ## 19. Sharing & printing
 | Feature | Dia | Netnyahoo | Gap |
@@ -563,9 +567,9 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Import from Chrome, Safari, Firefox, Edge, Brave, Opera, Vivaldi, Arc, Dia, Helium | ✓ | ✅ | + Opera GX, Island, Chrome channels, Chromium; bookmarks, history, open tabs, passwords (into Chrome's password manager). Dia and Helium (imput's ungoogled-chromium) import as ordinary Chromium — Dia's tabs are plaintext SNSS, secrets under "Dia Safe Storage"; Helium's Keychain item is "Helium Storage Key" / "Helium". Chrome and Brave protect their data from other apps on current macOS, so they're listed as "Needs Full Disk Access" and go through the same FDA step as Safari |
 | Safari direct import (no export .zip) | — | ✅ | Reads `~/Library/Safari` directly (bookmarks, history, Reading List, open tabs) when Netnyahoo has Full Disk Access; the import UI detects FDA, links to System Settings and re-checks on return. The export `.zip` stays as the fallback and the only path for Safari passwords/cards |
 | Arc import (spaces, pinned tabs, custom names) | ✓ | ✅ | |
-| Dia sidebar import (spaces, pinned tiles, custom names/colours) | ✓ | ⛔ | Dia moved its sidebar out of Arc's `StorableSidebar.json` into a SQLCipher-encrypted `tabs.db` (GRDB; tables `nodes`/`tabs`/`tab_groups`/`spaces`/`windows`/`content_panes`, columns `space_id`/`custom_title`/`custom_icon`/`title_source`/`pinned_container`/`favorites`). Its key is derived by CryptoKit HKDF-SHA256, so decrypting it isn't implemented — and verifying against the real profile would mean decrypting real browsing data, which the data rules forbid. Dia's open tabs still import from its plaintext SNSS `Sessions/` |
+| Dia sidebar import (spaces, pinned tiles, custom names/colours) | ✓ | ⛔ | Dia moved its sidebar out of Arc's `StorableSidebar.json` into a SQLCipher-encrypted `tabs.db` (GRDB; tables `nodes`/`tabs`/`tab_groups`/`spaces`/`windows`/`content_panes`, columns `space_id`/`custom_title`/`custom_icon`/`title_source`/`pinned_container`/`favorites`). Its key is derived (HKDF-SHA256) from a root key Dia shares with its sync escrow (`RootEncryptionKeyProvider`, which the sync client uses too), and Dia keeps its secrets in keychain access groups of its own team (`S6N382Y83G.company.thebrowser.browser.auth`, from its entitlements), which macOS lets only that team's apps read. So another browser can't open `tabs.db` (the root key's storage is inferred from the binary; nothing was decrypted). Dia's open tabs still import from its plaintext SNSS `Sessions/` |
 | Account (Atlassian identity, OTP, delete account) | ✓ | — | |
-| E2E‑encrypted sync (24‑word phrase, recovery kit, device transfer) | ✓ | ⛔ | needs a sync server and account system we don't have |
+| E2E‑encrypted sync (24‑word phrase, recovery kit, device transfer) | ✓ | ⛔ | the phrase, recovery kit and device transfer protect data on a sync server; we have no sync server or account system (⛔ table) |
 | Invite / referrals | ✓ | — | |
 
 ## 21. Appearance
@@ -594,7 +598,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Memory | ✓ (retired 1.50) | — | |
 | Privacy (content blocking, data sharing) | ✓ | ✅ | content blocking (uBOL rulesets; see §17 for the list-update gap), per-site permissions, zoom levels; data sharing — |
 | Passwords / Autofill / Extensions (Chrome's) | ✓ | ✅ | Passwords: Chrome's password manager per profile, unlock through Chrome's device check, CSV import. Autofill: addresses, cards and the two "offer to save" toggles per profile (the toggles are read once the profile has loaded: a profile without a window only initializes then). Extensions: per profile |
-| Sync | ✓ | ⛔ | needs the Sync server |
+| Sync | ✓ | ⛔ | a pane for the sync account and what syncs; there's no sync server or account behind it (⛔ table) |
 | Keyboard Shortcuts (remap any action, F‑keys, conflict handling) | ✓ | ✅ | every menu command, recorder, conflicts filter, reset |
 | Usage / Billing | ✓ | — | |
 | Advanced | ✓ | ✅ | Battery Saver, the engine version, Widevine ("not available in this build"); also our Search Engine, Live Folders and Calendar panes |
@@ -617,7 +621,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Notifications (web + app) | ✓ | ✅ | web notifications and meeting alerts via UserNotifications |
 | Services menu, spelling, substitutions, speech, transformations | ✓ | ✅ | in page text fields, spelling/speech menu validation may be affected by Findings 3 |
 | Start Dictation / Emoji & Symbols | ✓ | ✅ | AppKit adds them to our Edit menu; not visually re-verified |
-| Auto‑updates (Sparkle, deferrable) | ✓ | ⛔ | Sparkle 2 wired (Check for Updates…, full-screen deferral, Settings › General › Updates). The public EdDSA key (`SUPublicEDKey`) and a Developer ID export are in place; still missing: a hosted appcast in `SUFeedURL`, the private key in a release pipeline, and notarization |
+| Auto‑updates (Sparkle, deferrable) | ✓ | ✅ | Sparkle 2: Check for Updates…, automatic checks every 8 hours, an install that waits until no window is full screen, Settings › General › Updates. The feed is the latest GitHub release's `appcast.xml` (`SUFeedURL`); `scripts/release.sh` signs each update with the EdDSA key and notarizes the app and DMG (since 0.2.1; 0.2.2 shipped this way). The first launch after an update opens its release notes |
 
 ## 25. Onboarding, help, plans
 | Feature | Dia | Netnyahoo | Gap |
