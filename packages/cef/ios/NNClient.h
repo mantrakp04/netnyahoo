@@ -210,6 +210,10 @@ class Client : public CefClient,
   bool siteMuted_ = false;
   bool fullscreen_ = false;
   bool enteredFullscreen_ = false;
+  /// While the page is full screen: the full-screen window leaving full screen takes the page
+  /// out of it too (Chrome would, but only tracks the state of our tabs; see OnFullscreenModeChange).
+  id fullscreenExitObserver_ = nil;
+  void WatchFullscreenExit(NSWindow *window);
   bool unresponsive_ = false;
   double lastZoom_ = -1;
   double pinchScale_ = 1;

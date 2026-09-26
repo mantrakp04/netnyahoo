@@ -402,6 +402,14 @@ NSView *NNWindowRootView(NSWindow *window) {
 
 @end
 
+namespace nn::host {
+
+NSWindow *FullScreenWindow(NSWindow *window) {
+  return FullScreenHost(window);
+}
+
+}  // namespace nn::host
+
 // MARK: - DEV input
 
 namespace {

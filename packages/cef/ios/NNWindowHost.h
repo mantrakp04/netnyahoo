@@ -107,5 +107,8 @@ NSArray<NSDictionary *> *WindowStates();
 NSString *DevWindowAction(NSInteger windowNumber, NSString *action);
 /// Forgets every Chrome window (shutdown).
 void CloseAll();
+/// The full-screen window `window` is, or is shown over (another profile's window of a full-screen
+/// app window, NNChromeWindow.mm); nil when neither.
+NSWindow *FullScreenWindow(NSWindow *window);
 
 }  // namespace nn::host

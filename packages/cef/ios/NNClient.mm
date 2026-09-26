@@ -36,6 +36,17 @@ constexpr bool kChatEnabled = false;
 
 NSString *gSearchEngineName = @"Google";
 
+/// A page's full screen takes its window full screen. Test instances (NETNYAHOO_BACKGROUND) never
+/// do: that opens a Space on the screen of whoever is working next to them. They act it out
+/// instead (NNChromeWindow's DEV "fakeFullScreen:", which the app's own full-screen handling
+/// takes for the real thing), logged to activation.log.
+void ToggleWindowFullScreen(NSWindow *window) {
+  if (!activation::Background()) return [window toggleFullScreen:nil];
+  const bool leaving = host::FullScreenWindow(window) != nil;
+  activation::Allow(leaving ? @"toggleFullScreen: (page left full screen; acted out)" : @"toggleFullScreen: (page full screen; acted out)");
+  host::DevWindowAction(window.windowNumber, leaving ? @"fakeFullScreen:0" : @"fakeFullScreen:1");
+}
+
 /// Chrome's label text for a selection: whitespace collapsed, cut at a word
 /// boundary after 50 characters.
 NSString *SelectionLabel(NSString *text) {
@@ -401,19 +412,37 @@ void Client::OnFaviconURLChange(CefRefPtr<CefBrowser> browser, const std::vector
 void Client::OnFullscreenModeChange(CefRefPtr<CefBrowser> browser, bool fullscreen) {
   fullscreen_ = fullscreen;
   NSWindow *window = view_.window;
-  BOOL windowFullscreen = (window.styleMask & NSWindowStyleMaskFullScreen) != 0;
-  // A test instance (NETNYAHOO_BACKGROUND) never takes the window full screen: that opens a new
-  // Space on the screen of whoever is working next to it. The page still goes full screen in the
-  // window (logged to activation.log).
-  const bool mayToggle = !activation::Background() || activation::Allow(@"toggleFullScreen: (page full screen)");
-  if (fullscreen && !windowFullscreen && mayToggle) {
+  // The full-screen window this tab shows in: the window itself, or the one it's shown over (another
+  // profile's window in a full-screen app window, whose toggle is the full-screen window's).
+  NSWindow *fullScreenWindow = host::FullScreenWindow(window);
+  if (fullscreen && !fullScreenWindow && window) {
     enteredFullscreen_ = true;
-    [window toggleFullScreen:nil];
-  } else if (!fullscreen && windowFullscreen && enteredFullscreen_) {
-    [window toggleFullScreen:nil];
+    ToggleWindowFullScreen(window);
+  } else if (!fullscreen && fullScreenWindow && enteredFullscreen_) {
+    ToggleWindowFullScreen(fullScreenWindow);
   }
   if (!fullscreen) enteredFullscreen_ = false;
+  WatchFullscreenExit(fullscreen ? (fullScreenWindow ?: window) : nil);
   Emit(@"fullscreen", @{@"fullscreen" : @(fullscreen)});
+}
+
+void Client::WatchFullscreenExit(NSWindow *window) {
+  if (fullscreenExitObserver_) [NSNotificationCenter.defaultCenter removeObserver:fullscreenExitObserver_];
+  fullscreenExitObserver_ = nil;
+  if (!window) return;
+  // The user left full screen (green button, ⌃⌘F) with the page still full screen: Chrome hears of
+  // it, but its state for our tabs is ours (chromium-browser-view-hosted-fullscreen.patch), so the
+  // page would stay full screen, the sidebar and toolbar hidden, in a normal window.
+  CefRefPtr<Client> self(this);
+  fullscreenExitObserver_ = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidExitFullScreenNotification
+                                                                            object:window
+                                                                             queue:nil
+                                                                        usingBlock:^(NSNotification *) {
+                                                                          CefRefPtr<Client> client = self;  // outlives the block it removes
+                                                                          client->WatchFullscreenExit(nil);
+                                                                          if (client->fullscreen_ && client->browser_)
+                                                                            client->browser_->GetHost()->ExitFullscreen(true);
+                                                                        }];
 }
 
 #if NN_DOCKED_DEVTOOLS
@@ -606,6 +635,7 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
     if (view_ && !view_.closingByRequest && !ShuttingDown() && !closingByEngine_) Emit(@"windowClose", @{});
   }
   FlushEvals();
+  WatchFullscreenExit(nil);
   BrowserClosed(browser);
   site::BrowserClosed(browser->GetIdentifier());
   if (!adoptId_.empty()) Popups().erase(adoptId_);
