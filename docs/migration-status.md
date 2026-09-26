@@ -648,6 +648,16 @@ Run with the screen unlocked on 2026-09-26 (hidden instances):
 - Traffic lights, 2x capture: centres 24.78 / 47.74 / 70.75 pt, 26.73 pt down (Dia 1.50.1: 24.75 / 47.75 / 70.75,
   26.75).
 
+Right-click after 0.2.0 (smoke failed its menu check once in three runs on the 0.2.0 export): not a user bug.
+Fresh launches of the export (page loaded and visible, then N ms, one CDP right-click; unlocked screen): the page
+gets its `contextmenu` every time and a menu shows in 32 of 34 runs, but seen late (1.0–1.3 s) in 2 and not within
+2 s in 1. A trace (a local build: `OnBeforeContextMenu`, `NSMenu popUpContextMenu`, menu tracking, activation)
+explains it: Chrome calls `popUpContextMenu` within 1 ms and AppKit tracks the menu 5–8 ms later, every time; in
+this never-active test instance the menu then ends by itself after 1.4–6 s while the user works in another app
+(it stays open on a locked screen), and the window list can drop it sooner. The smoke test now waits for two
+animation frames with the field laid out, right-clicks once, and watches the window list from the click: 5/5
+runs 15/15 on the 0.2.0 export.
+
 Docked DevTools (after 0.2.0; the design doc › Phase 3 › Docked DevTools): verified headless, `spike/p3.mjs dock
 dock2`, 14/14; the regression battery on the same build (spike, p2, p3) as for the flip.
 

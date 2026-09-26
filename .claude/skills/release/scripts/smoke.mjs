@@ -167,9 +167,17 @@ await send("Network.emulateNetworkConditions", { offline: false, latency: 0, dow
 await go(`${pages}/form.html`);
 
 // Last: right-click shows a native menu (NSPopUpMenuWindowLevel, 101; autofill popups are 999).
+// Once the page has drawn with the field laid out (two animation frames), one right-click, and the
+// window list watched from that moment. The menu opens within milliseconds, but in this never-active
+// test instance AppKit ends it on its own when the user works in another app (after 1.5–6 s, and it
+// can leave the window list sooner), so a single look later misses it.
+await evaluate(`new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => {
+  const b = document.querySelector("#c").getBoundingClientRect();
+  r(b.width > 0 && b.height > 0);
+})))`);
 await click("#c", "right");
-await sleep(1500);
-const menu = windows().find((w) => w.layer === 101);
+let menu;
+for (const start = Date.now(); !menu && Date.now() - start < 3000; ) menu = windows().find((w) => w.layer === 101);
 check("right-click shows the context menu", !!menu, menu ? `layer ${menu.layer}` : "no menu window");
 
 const failed = results.filter((r) => !r.ok).length;
