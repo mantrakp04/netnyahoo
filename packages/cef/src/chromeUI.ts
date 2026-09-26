@@ -87,7 +87,6 @@ type NativeChromeUI = {
   actionStates(browserId: number, ids: string[]): Promise<Record<string, NativeActionState>>;
   sidePanelURL(browserId: number, extensionId: string): Promise<string | null>;
   changeCaptureSource(capturer: number, target: number): Promise<boolean>;
-  captureTarget(capturer: number, candidates: number[]): Promise<number>;
   stopCapture(capturer: number): Promise<boolean>;
   /** Missing in app builds from before it existed. */
   showAutofillSuggestions?(browserId: number, passwords: boolean): Promise<boolean>;
@@ -105,7 +104,7 @@ type NativeActionState = {
 
 /** App builds from before the module existed: nothing is taken over from Chrome. */
 function unavailable(): NativeChromeUI {
-  const fallbacks: Record<string, unknown> = { available: false, showCastDialog: false, actionStates: {}, sidePanelURL: null, changeCaptureSource: false, captureTarget: 0, stopCapture: false };
+  const fallbacks: Record<string, unknown> = { available: false, showCastDialog: false, actionStates: {}, sidePanelURL: null, changeCaptureSource: false, stopCapture: false };
   return new Proxy({} as NativeChromeUI, {
     get: (_, name: string) => (name === "addListener" ? () => ({ remove() {} }) : async () => fallbacks[name]),
   });
@@ -154,8 +153,6 @@ export const extensionSidePanelUrl = (browserId: number, extensionId: string) =>
 export const changeCaptureSource = (capturer: number, target: number) => ChromeUI.changeCaptureSource(capturer, target);
 /** "Stop Sharing": ends the screen / window / tab sharing `capturer` runs (false if it can't). */
 export const stopCapture = (capturer: number) => ChromeUI.stopCapture(capturer);
-/** Which of `candidates` the tab capture of `capturer` shows (0 if it isn't capturing a tab). */
-export const captureTarget = (capturer: number, candidates: number[]) => ChromeUI.captureTarget(capturer, candidates);
 
 // MARK: Autofill
 

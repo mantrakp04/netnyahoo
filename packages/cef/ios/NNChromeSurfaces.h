@@ -56,8 +56,6 @@ NS_ASSUME_NONNULL_BEGIN
 + (BOOL)changeCaptureSource:(NSInteger)capturerId toTab:(NSInteger)targetId NS_SWIFT_NAME(changeCaptureSource(_:toTab:));
 /// Stops the screen / window / tab sharing `capturerId` runs ("Stop Sharing"). NO if none (or this engine can't).
 + (BOOL)stopCapture:(NSInteger)capturerId NS_SWIFT_NAME(stopCapture(_:));
-/// Which of `browserIds` the tab capture of `capturerId` shows now (0 if none).
-+ (NSInteger)captureTargetOf:(NSInteger)capturerId among:(NSArray<NSNumber *> *)browserIds NS_SWIFT_NAME(captureTarget(of:among:));
 
 /// Opens Chrome's autofill dropdown at the form field focused in the tab, as its field menu does:
 /// the saved `passwords` (manual fallback, any text field), or the field's own suggestions

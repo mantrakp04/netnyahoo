@@ -37,8 +37,6 @@ export type ExtensionSearchEngine = {
   isDefault: boolean;
 };
 
-export const DEFAULT_ENGINE_ID = "google";
-
 /**
  * Dia's search engine choices (plus common ones Chrome offers). ChatGPT and Perplexity are
  * plain search URLs here; nothing is routed to an assistant.

@@ -104,8 +104,6 @@ function fixup(raw: string): string | null {
   return `${isLocalHost(name) ? "http" : "https"}://${input}`;
 }
 
-export const looksLikeUrl = (input: string) => fixupUrl(input) !== null;
-
 /** `%s` in `template` → the URL-encoded query; a template without `%s` is a prefix. */
 export function searchUrlFor(template: string, query: string): string {
   const q = encodeURIComponent(query.trim());

@@ -92,9 +92,6 @@ public class CefModule: Module {
     }.runOnQueue(.main)
 
     // Site settings
-    AsyncFunction("getSiteSetting") { (profile: String, origin: String, type: String) in
-      NNSiteSettings.setting(profile: profile, origin: origin, type: type)
-    }.runOnQueue(.main)
     AsyncFunction("setSiteSetting") { (profile: String, origin: String, type: String, value: String) in
       NNSiteSettings.setSetting(value, profile: profile, origin: origin, type: type)
     }.runOnQueue(.main)

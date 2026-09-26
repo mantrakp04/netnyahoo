@@ -425,17 +425,4 @@ CefRefPtr<CefBrowser> BrowserById(NSInteger browserId) {
 #endif
 }
 
-+ (NSInteger)captureTargetOf:(NSInteger)capturerId among:(NSArray<NSNumber *> *)browserIds {
-#if NN_CHROME_UI && NN_TAB_CAPTURE
-  CefRefPtr<CefBrowser> capturer = BrowserById(capturerId);
-  NSString *target = capturer ? ToNS(CefGetMediaCaptureTarget(capturer)) : @"";
-  if (!target.length) return 0;
-  for (NSNumber *browserId in browserIds) {
-    CefRefPtr<CefBrowser> browser = BrowserById(browserId.integerValue);
-    if (browser && [ToNS(CefGetMediaCaptureSourceId(browser)) isEqualToString:target]) return browserId.integerValue;
-  }
-#endif
-  return 0;
-}
-
 @end

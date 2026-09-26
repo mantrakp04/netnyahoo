@@ -18,8 +18,6 @@ export type ClearSiteDataResult = { cookies: number | false; storage: boolean };
  * (incognito: in memory). "sound: block" mutes the site's tabs; "popups: allow"
  * lets it open windows without a click.
  */
-export const getSiteSetting = (profile: string, origin: string, type: SiteSettingType) =>
-  Cef.getSiteSetting(profile, origin, type);
 export const setSiteSetting = (profile: string, origin: string, type: SiteSettingType, value: SiteSettingValue) =>
   Cef.setSiteSetting(profile, origin, type, value);
 /** Every setting's effective value for an origin (for a site-controls popover). */

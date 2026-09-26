@@ -250,9 +250,6 @@ export async function extensionActionStates(browserId: number, ids: string[]): P
   return ChromeUI.actionStates(browserId, ids);
 }
 
-/** chrome-extension://<id>/<path> */
-export const extensionUrl = (id: string, path: string) => `chrome-extension://${id}/${path.replace(/^\//, "")}`;
-
 export const onExtensionsChanged = (listener: (e: ExtensionsChange) => void) => Native.addListener("onChanged", listener);
 export const onExtensionInstallPrompt = (listener: (e: ExtensionInstallPrompt) => void) => Native.addListener("onInstallPrompt", listener);
 export const resolveExtensionInstallPrompt = (requestId: string, accepted: boolean) => Native.resolveInstallPrompt(requestId, accepted);
