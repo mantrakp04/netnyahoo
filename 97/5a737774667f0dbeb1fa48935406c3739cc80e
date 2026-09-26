@@ -1,0 +1,21 @@
+apps/browser/macos/Netnyahoo.xcodeproj/project.pbxproj
+  s_9c356f9574d31c::t_334a9b0b39a505 392,400,424,432
+docs/release-notes/0.2.2.md
+  s_9c356f9574d31c::t_00060f9719c038 1-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "975a737774667f0dbeb1fa48935406c3739cc80e",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
