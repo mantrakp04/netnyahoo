@@ -36,6 +36,9 @@
       <property name="active tab" code="acTa" type="tab" access="r" description="The selected tab.">
         <cocoa key="activeTab"/>
       </property>
+      <property name="URL" code="URL " type="text" access="r" description="The address of the selected tab (a new window can be made with one).">
+        <cocoa key="URL"/>
+      </property>
       <property name="active tab index" code="acTI" type="integer" access="rw" description="The index of the selected tab (setting it selects that tab).">
         <cocoa key="activeTabIndex"/>
       </property>

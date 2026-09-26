@@ -153,6 +153,9 @@ final class ScriptWindow: NSObject {
   @objc var incognito: Bool { info?.incognito ?? false }
   @objc var appleScriptTabs: [ScriptTab] { info?.tabs.map { ScriptTab(id: $0.id) } ?? [] }
   @objc var activeTab: ScriptTab? { info?.activeTabId.map(ScriptTab.init(id:)) }
+  /// The active tab's address. A window property so `make new window with properties {URL:…}`
+  /// passes AppleScript's record check (the create command opens it).
+  @objc var URL: String { info.flatMap { i in i.tabs.first { $0.id == i.activeTabId }?.url } ?? "" }
   @objc var activeProfile: ScriptProfile? {
     guard let info, !info.incognito else { return nil }
     return ScriptProfile(id: info.profileId)
