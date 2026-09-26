@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { create, type StateCreator } from "zustand";
 import { createBookmarksSlice, ensureRoots, type BookmarksSlice } from "./bookmarks";
 import { createGroupsSlice, type GroupsSlice } from "./groups";
 import { createHistorySlice, type HistorySlice } from "./history";
@@ -52,7 +52,26 @@ export type HydrateData = Partial<
   >
 > & { focusedWindowId?: string | null };
 
-export const useBrowser = create<BrowserState>()((...a) => ({
+/**
+ * How an update reaches React. The app passes React Native's unstable_batchedUpdates (index.js), so
+ * one update re-renders every component it changes in a single commit. Without it, an update from
+ * outside a React event handler (a native event, a timer, an animation ending) commits once per
+ * subscribed component: a profile switch made over a hundred commits.
+ */
+let batch = (update: () => void) => update();
+export function setStoreBatching(batchedUpdates: (update: () => void) => void) {
+  batch = batchedUpdates;
+}
+
+const batched =
+  <T,>(creator: StateCreator<T>): StateCreator<T> =>
+  (set, get, api) => {
+    const batchedSet = ((...args: Parameters<typeof set>) => batch(() => (set as (...a: typeof args) => void)(...args))) as typeof set;
+    api.setState = batchedSet;
+    return creator(batchedSet, get, api);
+  };
+
+export const useBrowser = create<BrowserState>()(batched((...a) => ({
   ...createProfilesSlice(...a),
   ...createWindowsSlice(...a),
   ...createTabsSlice(...a),
@@ -136,6 +155,6 @@ export const useBrowser = create<BrowserState>()((...a) => ({
     for (const w of Object.values(windows)) next = apply(next, activated(next, w.activeTabIds[w.profileId]!));
     set(next);
   },
-}));
+})));
 
 export type { CreateWindowOptions } from "./windows";
