@@ -45,10 +45,6 @@ export type ContentBlockerState = {
   stats: ContentBlockerStats;
 };
 
-
-/** How a request would be treated (the engine's `checkContentBlocking`, for debugging). */
-export type BlockingCheck = { blocked: boolean; filter: string | null; thirdParty: boolean; allowedSite: boolean };
-
 /**
  * The built-in ad/tracker blocker is uBlock Origin Lite (declarativeNetRequest),
  * bundled with the app and loaded in every profile; these drive the default

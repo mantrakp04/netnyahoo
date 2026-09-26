@@ -260,31 +260,4 @@ void LoadIntoProfile(CefRefPtr<CefRequestContext> context) {
   });
 }
 
-+ (void)checkURL:(NSString *)url
-       sourceURL:(NSString *)sourceURL
-            type:(NSString *)type
-      completion:(void (^)(NSDictionary<NSString *, id> *))completion {
-  static NSDictionary *types = @{@"xhr" : @"xmlhttprequest", @"subdocument" : @"sub_frame", @"document" : @"main_frame",
-                                 @"popup" : @"main_frame", @"fetch" : @"xmlhttprequest"};
-  NSString *resourceType = types[type] ?: type;
-  NSString *origin = OriginOf(sourceURL);
-  // testMatchOutcome: DNR's own dry run (unpacked extensions only, which ours is).
-  NSString *js = pages::Script(
-      @"chrome.declarativeNetRequest.testMatchOutcome({ url: %@, initiator: %@ || undefined, type: %@, tabId: -1 })"
-       ".then((o) => o.matchedRules.map((r) => r.rulesetId + '#' + r.ruleId))",
-      @[ url, origin ?: [NSNull null], resourceType ]);
-  pages::ExtensionEval(kProfile, blocker::ExtensionId(), js, ^(id value, NSString *error) {
-    NSArray *matched = [value isKindOfClass:NSArray.class] ? value : @[];
-    NSString *host = HostOf(sourceURL);
-    [self isAllowedOnHost:host completion:^(BOOL allowedSite) {
-      completion(@{
-        @"blocked" : @(matched.count > 0 && !allowedSite),
-        @"filter" : matched.firstObject ?: (error ? (id)error : [NSNull null]),
-        @"thirdParty" : @(![HostOf(url) hasSuffix:host] || !host.length),
-        @"allowedSite" : @(allowedSite),
-      });
-    }];
-  });
-}
-
 @end

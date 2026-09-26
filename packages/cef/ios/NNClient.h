@@ -69,7 +69,6 @@ class Client : public CefClient,
   void NotificationAction(NSString *notificationId, NSString *action);
 
   bool Fullscreen() const { return fullscreen_; }
-  int BlockedCount() const { return blockedCount_; }
   /// Called on the UI thread for each request the content blocker blocked.
   void NoteBlocked(NSString *url);
 

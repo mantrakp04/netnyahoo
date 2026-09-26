@@ -1073,14 +1073,6 @@ NSString *WindowProfile(NSWindow *window) {
   return w ? w->Profile() : nil;
 }
 
-NSArray<NSWindow *> *GroupWindows(NSWindow *window) {
-  NSMutableArray *windows = [NSMutableArray array];
-  ChromeWindow *shown = ChromeWindowOf(window);
-  for (auto &w : gWindows)
-    if (shown && w->Group() == shown->Group() && !w->Closed() && w->Window()) [windows addObject:w->Window()];
-  return windows;
-}
-
 void WindowShown(NSWindow *window) {
   // Its pages now in their own profile's window: Chrome's active tab, dialogs' placement.
   for (NNBrowserView *view in ViewsIn(window))

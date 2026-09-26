@@ -8,7 +8,7 @@
 namespace nn::ext {
 
 /// A page Chrome opened outside our windows (a stray Chrome window, an extension's
-/// tabs.create while no ghost Browser takes it): the app opens it as a tab
+/// tabs.create that no app window's Browser takes): the app opens it as a tab
 /// ("tabs" event, action "open").
 void EmitOpenTab(NSString *url, NSString *profile);
 

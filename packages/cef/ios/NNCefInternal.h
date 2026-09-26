@@ -197,7 +197,6 @@ void DismissPermissions(CefRefPtr<CefBrowser> browser);
 // Live browser bookkeeping (for shutdown and leak checks).
 void BrowserCreated(CefRefPtr<CefBrowser> browser);
 void BrowserClosed(CefRefPtr<CefBrowser> browser);
-size_t LiveBrowserCount();
 
 /// Every NNBrowserView that currently has a browser.
 NSArray<NNBrowserView *> *LiveViews();

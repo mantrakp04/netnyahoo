@@ -1,5 +1,5 @@
 import { requireNativeModule, type EventSubscription } from "expo-modules-core";
-import type { ContentBlockerState, ContentBlockerStats, BlockingCheck } from "./contentBlocker";
+import type { ContentBlockerState, ContentBlockerStats } from "./contentBlocker";
 import type { DisplayMediaSource } from "./WebView";
 import type { FaviconImage } from "./favicons";
 import type { BrowsingDataType, Download, EngineComponent, EngineInfo, EngineTask, ChromeWindowState, PermissionRequest, PermissionResult, SystemState } from "./module";
@@ -58,7 +58,6 @@ export const Cef = requireNativeModule<{
   setFilterListEnabled(id: string, enabled: boolean): Promise<void>;
   isContentBlockerAllowed(host: string): Promise<boolean>;
   setContentBlockerAllowed(host: string, allowed: boolean): Promise<void>;
-  checkContentBlocking(url: string, sourceURL: string, type: string): Promise<BlockingCheck>;
 
   getSiteSetting(profile: string, origin: string, type: SiteSettingType): Promise<SiteSettingValue>;
   setSiteSetting(profile: string, origin: string, type: SiteSettingType, value: SiteSettingValue): Promise<void>;

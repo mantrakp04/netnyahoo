@@ -77,8 +77,6 @@ NSWindow *MakeChromeWindow(NSString *profile, bool popup = false);
 NSWindow *GroupWindowForProfile(NSWindow *window, NSString *profile);
 /// The profile of the Chrome window `window` (nil: not one).
 NSString *WindowProfile(NSWindow *window);
-/// Every Chrome-hosted window of `window`'s app window.
-NSArray<NSWindow *> *GroupWindows(NSWindow *window);
 /// `window` just took our views over from another window of its group.
 void WindowShown(NSWindow *window);
 /// How a Chrome-hosted app window changes profile windows: "transparent" (the window leaving is

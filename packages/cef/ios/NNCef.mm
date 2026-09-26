@@ -623,8 +623,6 @@ void DismissPermissions(CefRefPtr<CefBrowser> browser) {
 
 void BrowserCreated(CefRefPtr<CefBrowser> browser) { gLiveBrowsers.insert(browser->GetIdentifier()); }
 
-size_t LiveBrowserCount() { return gLiveBrowsers.size(); }
-
 void RegisterView(NNBrowserView *view) {
   if (!gViews) gViews = [NSHashTable weakObjectsHashTable];
   [gViews addObject:view];

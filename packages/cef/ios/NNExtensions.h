@@ -1,5 +1,5 @@
 // Chrome Web Store (MV3) extensions: Chrome's own extension system, per profile.
-// Tabs are Chrome's (a ghost Browser per window, NNWindowHost.h), so
+// Tabs are Chrome's (each app window is a Chrome Browser, NNWindowHost.h), so
 // extensions' tabs/windows APIs, popups and commands are Chrome's real ones.
 // Management drives chrome://extensions (developerPrivate / management) in a
 // hidden page (NNChromePages.h). Web Store installs are Chrome's own (the store's

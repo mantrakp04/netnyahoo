@@ -90,9 +90,6 @@ public class CefModule: Module {
     AsyncFunction("setContentBlockerAllowed") { (host: String, allowed: Bool, promise: Promise) in
       NNContentBlocker.setAllowed(allowed, host: host) { promise.resolve(nil) }
     }.runOnQueue(.main)
-    AsyncFunction("checkContentBlocking") { (url: String, sourceURL: String, type: String, promise: Promise) in
-      NNContentBlocker.check(url: url, sourceURL: sourceURL, type: type) { promise.resolve($0) }
-    }.runOnQueue(.main)
 
     // Site settings
     AsyncFunction("getSiteSetting") { (profile: String, origin: String, type: String) in

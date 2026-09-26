@@ -104,9 +104,6 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
     NS_SWIFT_NAME(isAllowed(host:completion:));
 + (void)setAllowed:(BOOL)allowed onHost:(NSString *)host completion:(void (^)(void))completion
     NS_SWIFT_NAME(setAllowed(_:host:completion:));
-/// Debugging: how a request would be treated. type: "script", "image", "xhr"…
-+ (void)checkURL:(NSString *)url sourceURL:(NSString *)sourceURL type:(NSString *)type completion:(NNResultCompletion)completion
-    NS_SWIFT_NAME(check(url:sourceURL:type:completion:));
 @end
 
 /// Per-origin content settings for a profile ("" = default).
