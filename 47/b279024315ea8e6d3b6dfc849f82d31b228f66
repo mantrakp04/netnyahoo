@@ -1,0 +1,30 @@
+apps/browser/src/components/Downloads.tsx
+  s_9c356f9574d31c::t_65faf52ee34145 10-11,145-146,165,168,335,338
+  s_9c356f9574d31c::t_93f31d22d5ece0 5,337
+apps/browser/src/components/sidebar/AddressBar.tsx
+  s_9c356f9574d31c::t_61dc5aec0cbec8 11-12,15,18-32,35-39,42-43,45-62,68,72,76,80,85,93-95,97,106,114-123,141
+apps/browser/src/components/Toolbar.tsx
+  s_9c356f9574d31c::t_ecf36990f2a128 3,203-204,321
+  s_9c356f9574d31c::t_c7383e597cca6f 18,243
+apps/browser/src/components/layout/windowLayout.ts
+  s_9c356f9574d31c::t_57b59738cdf807 27-32,35
+  s_9c356f9574d31c::t_677cd0768f2c8d 33-34,36
+apps/browser/src/components/Sidebar.tsx
+  s_9c356f9574d31c::t_ea6ac883c44cf6 11,17,63-67,131-137,144-159,324-340
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "47b279024315ea8e6d3b6dfc849f82d31b228f66",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
