@@ -2,6 +2,8 @@
 // usage: node smoke.mjs <cdpPort> <version> <windowsTool> <pid> <pagesOrigin>
 // Each check prints PASS/FAIL; exits 1 if any failed. The right-click check runs last: a native
 // context menu blocks the app's main thread until it closes, and smoke.sh kills the app after.
+// SMOKE_LOCKED=1 (smoke.sh: the screen is locked): the checks that read window order or wait for a
+// window to go print SKIP, as a locked screen freezes window animations and CGWindowList's order.
 import { execFileSync } from "node:child_process";
 
 const [port, version, windowsTool, pid, pages] = process.argv.slice(2);
@@ -11,6 +13,10 @@ const check = (name, ok, detail = "") => {
   results.push({ name, ok });
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
 };
+const locked = process.env.SMOKE_LOCKED === "1";
+/** A check that needs an unlocked screen. */
+const checkUnlocked = (name, ok, detail = "") =>
+  locked ? console.log(`SKIP  ${name}  (screen locked; ${ok ? "would pass" : "would fail"}${detail ? `: ${detail}` : ""})`) : check(name, ok, detail);
 const windows = () =>
   execFileSync(windowsTool, [pid], { encoding: "utf8" }).trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
 
@@ -83,14 +89,34 @@ const media = JSON.parse(
 );
 check("H.264, AAC and WebGL2", media.every(Boolean), JSON.stringify(media));
 
-// The ghost Browser window (alpha 0, the app window's size) must stay behind the app window.
-const ghostBehind = () => {
-  const list = windows();
-  const app = list.findIndex((w) => w.alpha > 0 && w.layer === 0 && w.w > 400);
-  const ghost = list.findIndex((w) => w.alpha === 0 && list[app] && w.w === list[app].w && w.h === list[app].h);
-  return app >= 0 && ghost > app;
-};
-check("Chrome's hidden window stays behind the app window", ghostBehind());
+// The app window is Chrome's own Browser window of its profile: no hidden Chrome window of the app
+// window's size (the old "ghost", alpha 0) anywhere, and one full-size window on screen although the
+// window has two profiles, each with a Chrome window (smoke.sh's session: left on Work).
+const appWindows = () => windows().filter((w) => w.layer === 0 && w.w > 400 && w.h > 300);
+const [appWindow] = appWindows().filter((w) => w.alpha > 0);
+const hidden = appWindows().filter((w) => w.alpha === 0);
+check("no hidden full-size Chrome window (the app window is Chrome's own)", !!appWindow && hidden.length === 0,
+  JSON.stringify(appWindows().map((w) => [w.w, w.h, w.alpha])));
+check("a window left on its second profile reopens as that profile's window, alone on screen",
+  appWindows().filter((w) => w.alpha > 0).length === 1, JSON.stringify(appWindows().map((w) => [w.title, w.alpha])));
+// The page on screen (the after-update tab, opened in the window) is the Work profile's: the same
+// browser context as the restored Work tab, and visible.
+const browserWs = new WebSocket(browserInfo.webSocketDebuggerUrl);
+await new Promise((r) => (browserWs.onopen = r));
+let browserId = 1;
+const browserSend = (method) =>
+  new Promise((r) => {
+    const id = browserId++;
+    browserWs.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id === id) r(m.result ?? {}); };
+    browserWs.send(JSON.stringify({ id, method }));
+  });
+const { targetInfos = [] } = await browserSend("Target.getTargets");
+browserWs.close();
+const workContext = targetInfos.find((t) => t.type === "page" && t.url.endsWith("?work"))?.browserContextId;
+const shownContext = targetInfos.find((t) => t.targetId === page.id)?.browserContextId;
+const shownVisible = await evaluate("document.visibilityState");
+check("…showing the Work profile's pages", !!workContext && shownContext === workContext && shownVisible === "visible",
+  `work ${workContext}, shown ${shownContext} (${shownVisible})`);
 
 // Autofill: save an entry, then pick it from Chrome's dropdown with the keyboard (0.1.3's fix).
 await go(`${pages}/form.html`);
@@ -104,15 +130,31 @@ await key("Enter");
 await sleep(800);
 check("autofill dropdown accepts a suggestion", (await evaluate(`document.getElementById("c").value`)) === "Springfield");
 
-// Passkey dialog comes in front of the app window, and goes when the page moves on.
+// Passkey dialog: a child window of the visible app window (in front of it, over its page), and
+// it goes when the page moves on.
 await go(`${pages}/passkey.html`);
 await click("#b");
-await sleep(2500);
-const dialog = windows().find((w) => /passkey/i.test(w.title));
-check("passkey dialog shows in front", !!dialog && windows()[0]?.id === dialog.id, dialog?.title ?? "no passkey window");
+await sleep(1500);
+// Until the sheet has finished appearing (the window server scales it in), 6 s at most.
+let list = windows();
+for (let i = 0, last = ""; i < 12; i++) {
+  const now = JSON.stringify(list.map((w) => [w.id, w.x, w.y, w.w, w.h]));
+  if (now === last && list.some((w) => /passkey/i.test(w.title))) break;
+  last = now;
+  await sleep(500);
+  list = windows();
+}
+const dialog = list.find((w) => /passkey/i.test(w.title));
+check("passkey dialog shows", !!dialog, dialog?.title ?? "no passkey window");
+if (dialog) {
+  const owner = list.slice(list.indexOf(dialog) + 1).find((w) => w.layer === 0 && w.w > 400 && w.h > 300);
+  const inside = owner && dialog.x >= owner.x && dialog.x + dialog.w <= owner.x + owner.w && dialog.y >= owner.y && dialog.y + dialog.h <= owner.y + owner.h;
+  checkUnlocked("…in front, directly over the visible app window it belongs to", list[0]?.id === dialog.id && owner?.alpha > 0 && !!inside,
+    `dialog @${dialog.x},${dialog.y} ${dialog.w}x${dialog.h}; window under it ${owner ? `@${owner.x},${owner.y} ${owner.w}x${owner.h} alpha ${owner.alpha}` : "none"}`);
+}
 await go(`${pages}/form.html`);
-await sleep(1000);
-check("hidden window drops back after the dialog", ghostBehind());
+await sleep(1500);
+checkUnlocked("…and closes when the page navigates", !windows().some((w) => /passkey/i.test(w.title)));
 
 await go("chrome://version");
 check("chrome://version", (await evaluate("document.body.innerText")).includes("154."));

@@ -1,8 +1,14 @@
 // usage: windows <pid> — that process's on-screen windows, front to back, as JSON lines:
 // {"id", "x", "y", "w", "h", "layer", "alpha", "title"}. Compiled on demand by smoke.sh.
+// windows --locked — "1" if the screen is locked (window order and animations are then unreliable).
 import CoreGraphics
 import Foundation
 
+if CommandLine.arguments[1] == "--locked" {
+  let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+  print((session?["CGSSessionScreenIsLocked"] as? Bool) == true ? "1" : "0")
+  exit(0)
+}
 let pid = Int(CommandLine.arguments[1])!
 let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]]
 for w in list where (w[kCGWindowOwnerPID as String] as? Int) == pid {

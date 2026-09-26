@@ -79,23 +79,25 @@ user stores notarytool credentials; that's expected, say so in the report.
 .claude/skills/release/scripts/smoke.sh <version> <previous>
 ```
 
-It launches `dist/<version>/export/Netnyahoo.app` hidden with a data dir that says `<previous>` ran last
-and checks, over CDP and the window list:
+It launches `dist/<version>/export/Netnyahoo.app` hidden with a data dir that says `<previous>` ran last,
+and a session whose window was left on its second profile, and checks, over CDP and the window list:
 
 - engine is Chromium 154, the after-update release-notes tab opened exactly once;
 - pages load, uBlock blocks an ad script, H.264/AAC/WebGL2;
-- Chrome's hidden "ghost" window stays behind the app window, and a passkey dialog comes in front of it
-  and drops back after (the 0.1.2–0.1.4 regressions);
+- no hidden full-size Chrome window (since 0.2.0 the app window is Chrome's own; before, a hidden "ghost"
+  sat behind it), and the window restores as the Work profile's Chrome window, alone on screen, its pages
+  in the Work context;
+- a passkey dialog comes in front, directly over the visible window it belongs to, and closes when the
+  page navigates (the 0.1.2–0.1.4 regressions);
 - the autofill dropdown accepts a suggestion (0.1.3), the offline page is Where's Big Yahu?, chrome://version;
 - right-click shows the native context menu (0.1.5);
 - the bundle's signature is still valid after running (0.1.0 wrote into its own bundle).
 
-Everything must pass before publishing. One known exception: the three window-order checks read
-CGWindowList, which isn't reliable while the Mac's screen is locked (check with
-`CGSessionCopyCurrentDictionary()["CGSSessionScreenIsLocked"]`). If they fail with the screen locked,
-run the same script on the previous release's export (`dist/<previous>`, still on disk) as a control: if
-it fails the same three, it's the lock, and you can publish when the release doesn't touch window
-ordering. Say so in the report. A failure is either a real regression (fix it, commit, rebuild —
+Everything must pass before publishing. One known exception: the two passkey window-order checks read
+CGWindowList, which isn't reliable while the Mac's screen is locked (window animations freeze). smoke.sh
+detects the lock (`CGSSessionScreenIsLocked`) and prints them as SKIP; publish when the release doesn't
+touch window ordering, and say so in the report. Before 0.2.0 the builds had three such checks (the
+ghost's order), so a pre-0.2.0 export isn't a control for these. A failure is either a real regression (fix it, commit, rebuild —
 don't publish) or the check itself going stale after an intended change (fix the check in
 `scripts/smoke.mjs`, and say so). When a release fixes a new class of bug that can be observed over CDP or
 the window list, add a check for it to `smoke.mjs` so the next release guards it.
