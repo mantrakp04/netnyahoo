@@ -119,8 +119,14 @@ Only math and colour values are reused. No Dia images, fonts or binaries are cop
 - **Shaders** are Metal source embedded in Swift and compiled at runtime (once per class, cached). This
   keeps the pods free of a metallib build phase.
 
-## Not done yet
+## Status
 
-History and bookmarks persistence, downloads UI (the button is a placeholder), find-in-page, a real
-favicon cache (it uses Google's s2 endpoint), per-site theme tinting, the Dia-style edge light, and
-session restore across launches. Light mode is implemented but I have only looked at it in dark mode.
+Feature parity with Dia (everything but its AI) is tracked row by row in
+[docs/dia-feature-parity.md](docs/dia-feature-parity.md); releases and their notes are at
+[netnyahoo.com/release-notes](https://netnyahoo.com/release-notes).
+
+## License
+
+Netnyahoo is licensed under the [Apache License 2.0](LICENSE). It builds on Chromium, the Chromium
+Embedded Framework and ungoogled-chromium, and bundles uBlock Origin Lite, each under its own license;
+see [NOTICE](NOTICE).

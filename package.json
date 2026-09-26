@@ -14,5 +14,6 @@
   "devDependencies": {
     "turbo": "^2.11.3",
     "typescript": "~5.9.2"
-  }
+  },
+  "license": "Apache-2.0"
 }

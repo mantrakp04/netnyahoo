@@ -1,0 +1,12 @@
+Netnyahoo
+Copyright 2026 Mantra Patel
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Netnyahoo builds on and ships third-party software under its own licenses, including:
+- Chromium (BSD-3-Clause and others; see chrome://credits in the app)
+- Chromium Embedded Framework (BSD-3-Clause)
+- ungoogled-chromium (BSD-3-Clause)
+- uBlock Origin Lite (GPL-3.0), bundled unmodified as a separate extension
+- Sparkle (MIT)
+- React Native and React Native macOS (MIT)
