@@ -2,7 +2,7 @@ import { displayHost } from "@netnyahoo/core";
 import { Symbol, type SymbolProps } from "@netnyahoo/shell";
 import { useState } from "react";
 import { Image, Pressable, Text, View, type ViewStyle } from "react-native";
-import { faviconFailed, useFavicon } from "../lib/favicons";
+import { faviconFailed, useFavicon, useFaviconTheme } from "../lib/favicons";
 import { useTheme } from "../lib/theme";
 
 /**
@@ -77,7 +77,9 @@ export function IconButton({
  * the icon colour) with the site's initial, or a globe for pages without a host.
  * Pass `profileId` for tabs so incognito ones find their in-memory icons.
  * `direct`: `favicon` isn't a page's icon but an image a connected app's API
- * handed us (a Notion page icon), loaded as is.
+ * handed us (a Notion page icon), loaded as is. An icon that is one near-white
+ * colour (a mark made for dark tab strips, which is all some sites have) is drawn
+ * in the text colour in light appearance, so it doesn't vanish into the surface.
  */
 export function Favicon({
   url,
@@ -92,20 +94,25 @@ export function Favicon({
   profileId?: string;
   direct?: boolean;
 }) {
+  const theme = useTheme();
   const cached = useFavicon(url, direct ? null : favicon, profileId);
   const resolved = direct && favicon ? { uri: favicon, profileId: "" } : cached;
+  // IconTheme gives one-colour icons above 0.88 luminance a stroke (Dia's rule for its tiles).
+  const shape = useFaviconTheme(theme.dark || direct ? "" : url, favicon, profileId);
+  const white = shape?.kind === "template" && !!shape.stroke;
   const [broken, setBroken] = useState<string | null>(null);
   if (!url && !resolved) return <NewTabIcon size={size} />;
   if (!resolved || broken === resolved.uri) return <FaviconFallback url={url} size={size} />;
   return (
     <Image
-      key={resolved.uri}
+      // RN macOS applies a tint only when the image loads: a new tint remounts it.
+      key={white ? `${resolved.uri} tinted` : resolved.uri}
       source={{ uri: resolved.uri }}
       onError={() => {
         setBroken(resolved.uri);
         if (resolved.profileId) faviconFailed(resolved.profileId, resolved.uri);
       }}
-      style={{ width: size, height: size, borderRadius: size > 18 ? 4 : 3 }}
+      style={{ width: size, height: size, borderRadius: size > 18 ? 4 : 3, tintColor: white ? theme.textPrimary : undefined }}
     />
   );
 }

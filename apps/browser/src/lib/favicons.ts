@@ -19,6 +19,12 @@ import { webviews } from "./webviews";
  * in `favicons-<profile>.json`. Incognito profiles live in memory only (data:
  * URIs) and are forgotten with their window; they're never consulted for
  * lookups that don't name them.
+ *
+ * Pages see the app's appearance (prefers-color-scheme), and some swap their
+ * icon with it: GitHub's is a black mark in light and a white one in dark. A page
+ * that changes its icon right after the appearance does makes the two a pair, and
+ * lookups answer with the pair's icon for the current appearance, so a history
+ * entry recorded in dark doesn't show GitHub's white mark on a light surface.
  */
 
 type Icon = {
@@ -37,9 +43,14 @@ type ProfileIcons = {
   pages: Record<string, string>;
   /** Host → icon name of its most recently seen page ("fallback to host"). */
   hosts: Record<string, string>;
+  /** Icon name → its page's [light, dark] icons, for icons that come in such a pair. */
+  appearances?: Record<string, [string, string]>;
 };
 
 const EMPTY: ProfileIcons = { icons: {}, pages: {}, hosts: {} };
+/** A page that changes its icon this soon after the appearance changed did it for the appearance. */
+const APPEARANCE_SWAP_MS = 5000;
+let appearanceChangedAt = -Infinity;
 /** Icons older than this are downloaded again when their page shows them. */
 const REFRESH_MS = 7 * 86_400_000;
 const MAX_PAGES = 5000;
@@ -59,7 +70,7 @@ function indexFor(profileId: string): ProfileIcons {
   try {
     const json = readDocument(docName(profileId));
     const saved = json ? (JSON.parse(json) as Partial<ProfileIcons>) : null;
-    if (saved?.icons) index = { icons: saved.icons, pages: saved.pages ?? {}, hosts: saved.hosts ?? {} };
+    if (saved?.icons) index = { icons: saved.icons, pages: saved.pages ?? {}, hosts: saved.hosts ?? {}, appearances: saved.appearances };
   } catch (error) {
     console.warn(`Couldn't read ${docName(profileId)}`, error);
   }
@@ -119,17 +130,27 @@ export function iconName(src: string): string {
 function remember(profileId: string, pageUrl: string, name: string, icon?: Icon) {
   const page = pageKey(pageUrl);
   const host = hostKey(pageUrl);
+  const dark = useBrowser.getState().ui.appDark;
+  const swapped = Date.now() - appearanceChangedAt < APPEARANCE_SWAP_MS;
   update(profileId, (index) => {
     const pages = { ...index.pages };
+    const previous = pages[page];
     // Re-inserting keeps the most recent pages last, so the oldest go first.
     delete pages[page];
     pages[page] = name;
     const keys = Object.keys(pages);
     for (const old of keys.slice(0, Math.max(0, keys.length - MAX_PAGES))) delete pages[old];
+    // (A page may report its old icon again first: that's no change.)
+    let appearances = index.appearances;
+    if (swapped && previous && previous !== name) {
+      const pair: [string, string] = dark ? [previous, name] : [name, previous];
+      appearances = { ...appearances, [previous]: pair, [name]: pair };
+    }
     return {
       icons: icon ? { ...index.icons, [name]: icon } : index.icons,
       pages,
       hosts: host ? { ...index.hosts, [host]: name } : index.hosts,
+      appearances,
     };
   });
 }
@@ -204,10 +225,17 @@ function lookupIn(profileId: string, url: string, src: string | null | undefined
   const index = indexFor(profileId);
   const byPage = index.pages[pageKey(url)];
   const name = src ? iconName(src) : undefined;
-  if (name && index.icons[name]) return name;
-  if (byPage && index.icons[byPage]) return byPage;
+  if (name && index.icons[name]) return inScheme(index, name);
+  if (byPage && index.icons[byPage]) return inScheme(index, byPage);
   const byHost = index.hosts[hostKey(url)];
-  return byHost && index.icons[byHost] ? byHost : undefined;
+  return byHost && index.icons[byHost] ? inScheme(index, byHost) : undefined;
+}
+
+/** `name`, or the icon of its appearance pair for the current appearance. */
+function inScheme(index: ProfileIcons, name: string): string {
+  const pair = index.appearances?.[name];
+  const shown = pair?.[useBrowser.getState().ui.appDark ? 1 : 0];
+  return shown && index.icons[shown] ? shown : name;
 }
 
 /**
@@ -241,6 +269,8 @@ export function resolveFavicon(url: string, src?: string | null, profileId?: str
  * nothing is fetched, since the page's profile isn't known).
  */
 export function useFavicon(url: string, src?: string | null, profileId?: string): ResolvedFavicon | null {
+  // Resolved again when the appearance changes: a page's icon may differ between the two.
+  useBrowser((s) => s.ui.appDark);
   // A string snapshot: zustand compares selections by identity.
   const key = useFavicons(() => {
     const found = resolveFavicon(url, src, profileId);
@@ -265,6 +295,7 @@ const theming = new Set<string>();
  * refreshed icon starts over). Undefined until it's known.
  */
 export function useFaviconTheme(url: string, src?: string | null, profileId?: string): IconTheme | null | undefined {
+  useBrowser((s) => s.ui.appDark);
   // The icon record itself: it only changes when the icon (or its theme) does.
   const icon = useFavicons(() => resolveIcon(url, src, profileId)?.icon ?? null);
   const pending = !!icon && icon.theme === undefined && hasDockSelection;
@@ -310,8 +341,10 @@ export function pruneProfileFavicons(profileId: string) {
     const liveHosts = new Set(Object.keys(pages).map(hostKey));
     const hosts = Object.fromEntries(Object.entries(index.hosts).filter(([host]) => liveHosts.has(host)));
     const used = new Set([...Object.values(pages), ...Object.values(hosts)]);
+    for (const name of [...used]) for (const other of index.appearances?.[name] ?? []) used.add(other);
     const icons = Object.fromEntries(Object.entries(index.icons).filter(([name]) => used.has(name)));
-    return { icons, pages, hosts };
+    const appearances = Object.fromEntries(Object.entries(index.appearances ?? {}).filter(([name]) => icons[name]));
+    return { icons, pages, hosts, appearances };
   });
   flushFavicons();
   void pruneFavicons(engineProfile(profileId), Object.keys(indexFor(profileId).icons));
@@ -323,6 +356,7 @@ export function pruneProfileFavicons(profileId: string) {
  */
 export function startFavicons() {
   const check = (s: BrowserState, prev: BrowserState) => {
+    if (s.ui.appDark !== prev.ui.appDark) appearanceChangedAt = Date.now();
     if (s.windows !== prev.windows) {
       const open = new Set(Object.values(s.windows).map((w) => w.profileId));
       for (const t of Object.values(s.tabs)) open.add(t.profileId);

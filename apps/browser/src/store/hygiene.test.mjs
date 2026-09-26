@@ -171,3 +171,45 @@ test("favicons: incognito icons stay in memory and in their own profile", async 
   webviews.clear();
   stop();
 });
+
+test("favicons: a page that swaps its icon with the appearance shows the one for the current appearance", async () => {
+  const { noteFavicon, resolveFavicon } = await import("../lib/favicons.ts");
+  const { webviews } = await import("../lib/webviews.ts");
+  stub.docs.clear();
+  const stop = startPersistence();
+  const w = S().createWindow({ url: "https://github.example/" });
+  const [tab] = S().windows[w].tabIds;
+  webviews.set(tab, { downloadFavicon: (url) => Promise.resolve({ uri: `file:///tmp/${url.split("/").pop()}.png`, width: 32, height: 32 }) });
+  const note = async (src) => (noteFavicon(tab, src), await new Promise((r) => setTimeout(r, 0)));
+  const light = "https://assets.example/favicon.svg";
+  const dark = "https://assets.example/favicon-dark.svg";
+
+  S().setAppDark(false);
+  await note(light);
+  S().setAppDark(true);
+  // Chrome reports the page's old icon again before the page swaps it: no change.
+  await note(light);
+  await note(dark);
+  // History recorded the dark icon; back in light, its page's light icon shows instead.
+  assert.equal(resolveFavicon("https://github.example/", dark)?.uri, "file:///tmp/favicon-dark.svg.png");
+  S().setAppDark(false);
+  assert.equal(resolveFavicon("https://github.example/", dark)?.uri, "file:///tmp/favicon.svg.png");
+  assert.equal(resolveFavicon("https://github.example/other")?.uri, "file:///tmp/favicon.svg.png", "the host's too");
+  S().setAppDark(true);
+  assert.equal(resolveFavicon("https://github.example/", light)?.uri, "file:///tmp/favicon-dark.svg.png");
+
+  // A page changing its icon later (a badge, a new logo) isn't an appearance pair.
+  const now = Date.now;
+  Date.now = () => now() + 60_000;
+  try {
+    await note("https://assets.example/badge.png");
+  } finally {
+    Date.now = now;
+  }
+  assert.equal(resolveFavicon("https://github.example/", "https://assets.example/badge.png")?.uri, "file:///tmp/badge.png.png");
+  S().setAppDark(false);
+  assert.equal(resolveFavicon("https://github.example/", "https://assets.example/badge.png")?.uri, "file:///tmp/badge.png.png");
+  webviews.clear();
+  S().closeWindow(w);
+  stop();
+});
