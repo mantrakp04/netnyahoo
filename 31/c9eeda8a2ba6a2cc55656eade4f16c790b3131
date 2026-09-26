@@ -1,0 +1,49 @@
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_a8a770310b0546 48
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_392afac9d38517 605
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_9c6ee5ae879652 236-240
+  s_9c356f9574d31c::t_812a554ef3e1de 117-118
+apps/browser/src/lib/commands.ts
+  s_9c356f9574d31c::t_872b38fdd36227 170-172
+packages/cef/ios/NNDevTools.mm
+  s_9c356f9574d31c::t_4e49fac2cfbf80 192-195
+  s_9c356f9574d31c::t_9b546e40332ee9 15
+  s_9c356f9574d31c::t_af63c397c97efd 60-65,68-72,124,128,252
+  s_9c356f9574d31c::t_24b70da39776f8 202
+  s_9c356f9574d31c::t_4370710f140414 158
+  s_9c356f9574d31c::t_4c0c4546b3ada3 203
+  s_9c356f9574d31c::t_396e5b371b0346 159
+  s_9c356f9574d31c::t_4807c9e45c7188 6,211-212,214
+  s_9c356f9574d31c::t_9c6ee5ae879652 9,12-13,17-19,48-49,58-59,73-77,101-107,112-117,121-123,125-126,129,186-191,196-201,204-206,209-210,215-219,223-228,234-237,240-251,253-256
+  s_9c356f9574d31c::t_d05b294cac053d 8,51-57,66-67,127,143-157,160-185,207-208,213,220-222,229-233
+  s_9c356f9574d31c::t_af108020e42574 50,257
+docs/research/chrome-hosted-window.md
+  s_9c356f9574d31c::t_86320cef2cd328 323-347
+packages/cef/ios/NNBrowserView.mm
+  s_9c356f9574d31c::t_ecd8a9ba94278f 643-646
+  s_9c356f9574d31c::t_74cdde08636587 631-633,636
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_74cdde08636587 661-664
+packages/shell/ios/Menus.swift
+  s_9c356f9574d31c::t_872b38fdd36227 369
+apps/browser/src/lib/native.ts
+  s_9c356f9574d31c::t_872b38fdd36227 172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "31c9eeda8a2ba6a2cc55656eade4f16c790b3131",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
