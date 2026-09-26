@@ -291,7 +291,7 @@ Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs 
   steps 13–14).
 - 43: the offline game after a DNS probe (needs a network with no route to the internet).
 - 44: profile paging with a real trackpad, Magic Mouse and wheel mouse.
-- Chrome-hosted windows: the checks for a person at an unlocked screen (ledger below, items 1–11).
+- Chrome-hosted windows: the checks for a person at an unlocked screen (ledger below, items 1–12).
 
 ## Test ledger
 
@@ -648,6 +648,9 @@ Run with the screen unlocked on 2026-09-26 (hidden instances):
 - Traffic lights, 2x capture: centres 24.78 / 47.74 / 70.75 pt, 26.73 pt down (Dia 1.50.1: 24.75 / 47.75 / 70.75,
   26.75).
 
+Docked DevTools (after 0.2.0; the design doc › Phase 3 › Docked DevTools): verified headless, `spike/p3.mjs dock
+dock2`, 14/14; the regression battery on the same build (spike, p2, p3) as for the flip.
+
 Still to run by a person (screen unlocked, the app in front):
 1. **VoiceOver.** Over a window showing a web page. Pass if VO reads the sidebar, the toolbar and the page's own
    content (headings, links), and never Chrome's toolbar or tab strip.
@@ -674,6 +677,9 @@ Still to run by a person (screen unlocked, the app in front):
 10. **Drag and drop.** A link or file from the page into the sidebar and back; a file from Finder into the page.
 11. **Multiple displays.** Paging, full screen and dialog placement on a second display, and moving a window
     across displays mid-page.
+12. **Docked DevTools by hand.** ⌥⌘I and Inspect from the page's menu: DevTools dock on the right; drag the
+    split; switch the dock side from DevTools' ⋮ menu; undock and dock back; Inspect an element (the page's
+    highlight lines up with the element); type in DevTools' console (keys go to DevTools, not the page).
 
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order

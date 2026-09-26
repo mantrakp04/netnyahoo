@@ -100,6 +100,13 @@
 #else
 #define NN_TRANSLUCENT_WINDOW 0
 #endif
+// Docked DevTools in Chrome-hosted windows: CefBrowserHost::GetDockedDevTools,
+// CefDisplayHandler::OnDevToolsDockChanged (NNBrowserView shows them next to the page).
+#if NN_CLIENT_WINDOW && defined(CEF_NN_DOCKED_DEVTOOLS)
+#define NN_DOCKED_DEVTOOLS 1
+#else
+#define NN_DOCKED_DEVTOOLS 0
+#endif
 // Allowed popups of a hosted tab join its Browser as tabs (not new Chrome windows).
 #if NN_CHROME_TABS && defined(CEF_NN_POPUP_TABS)
 #define NN_POPUP_TABS 1

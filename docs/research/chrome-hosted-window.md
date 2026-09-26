@@ -236,6 +236,30 @@ strategy from its numbers.
 - So docked DevTools is the "API + pane" item: a CEF hook handing the app the DevTools contents view and its
   strategy, plus a pane in our layout. 2–3 days, after the rest of phase 3.
 
+**Docked DevTools, done (after 0.2.0).** Not a hole in our layout but the same trick as the page: DevTools'
+contents are natively hosted too, and the tab's `NNBrowserView` shows them.
+- Engine (`cef-zwindow-z-devtools.patch`, `chromium-window-docked-devtools.patch`, `CEF_NN_DOCKED_DEVTOOLS`): a
+  `client_window` Browser may dock; `DevtoolsUIController::UpdateDevtools` hands each change of a tab's docked
+  DevTools to the CEF delegate, which marks the DevTools contents natively hosted (no `views::WebView` takes
+  them) and calls `CefDisplayHandler::OnDevToolsDockChanged`. `CefBrowserHost::GetDockedDevTools` gives the
+  DevTools view and, from Chrome's resizing strategy, where the page goes.
+- App (`NNBrowserView layoutDockedDevTools`): the DevTools view fills the tab's view, behind the page; the page
+  takes the strategy's rectangle. It follows resizes, the tab being shown or hidden, moves and closing.
+- Chrome's own DevTools UI does the rest: the dock-side menu (right, bottom, left, undocked), dragging the split,
+  undocking into a window and docking back.
+
+| Check (`spike/p3.mjs dock dock2`, hidden instances, private engine) | Result |
+|---|---|
+| ⌥⌘I docks DevTools in the tab's view, no window of their own; the page gets the rest at DevTools' split | PASS |
+| Clicks in the page and in DevTools go to each | PASS |
+| Dock to bottom; dragging the split moves the page edge | PASS |
+| Undock to a window of their own, and dock back from it | PASS |
+| Closing DevTools gives the page the whole view back | PASS |
+| Another tab shown: the DevTools go with their tab; back to it: there again | PASS |
+| In a split pane: DevTools fill that pane only | PASS |
+| To the other profile's window and back: still docked | PASS |
+| Closing the tab with DevTools docked: nothing left over | PASS |
+
 ## Phase 2 (production, behind the flag), done
 
 `NETNYAHOO_CHROME_WINDOW=1` is now something to run daily. Every check below is headless, on hidden instances, on

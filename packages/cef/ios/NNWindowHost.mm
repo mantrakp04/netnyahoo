@@ -175,6 +175,9 @@ class TabRouter : public CefClient,
   void OnStatusMessage(CefRefPtr<CefBrowser> browser, const CefString &value) override {
     NN_FORWARD(OnStatusMessage(browser, value))
   }
+#if NN_DOCKED_DEVTOOLS
+  void OnDevToolsDockChanged(CefRefPtr<CefBrowser> browser) override { NN_FORWARD(OnDevToolsDockChanged(browser)) }
+#endif
   void OnLoadingProgressChange(CefRefPtr<CefBrowser> browser, double progress) override {
     NN_FORWARD(OnLoadingProgressChange(browser, progress))
   }

@@ -26,6 +26,7 @@ What the build adds:
 | `cef-zwindow-client.patch` (after `cef-zidle-pump.patch`) | `CefBrowserSettings.client_window` and `CefBrowserView::CreateTab`: Chrome's Browser window is the app's visible window (below) |
 | `cef-zwindow-keys.patch` (after `cef-zwindow-client.patch`) | In a `client_window`, Chrome's key equivalents wait for the client's first responder and menus: its dispatcher no longer runs reserved commands (new/close tab or window, tab switching) before them. Chrome's shortcuts still run after them, through `CefCommandHandler::OnChromeCommand` |
 | `cef-zwindow-translucent.patch` (after `cef-zwindow-keys.patch`) | `CefWindowDelegate::IsTranslucent`: the window's widget is `kTranslucent` (a non-opaque `NSWindow`, compositor cleared to the window view's background, transparent if that is). A Chrome-hosted window swaps out without a frame of its own drawing (`CEF_NN_TRANSLUCENT_WINDOW`) |
+| `cef-zwindow-z-devtools.patch` (after `cef-zwindow-translucent.patch`) | Docked DevTools in client windows: `CefBrowserHost::GetDockedDevTools` and `CefDisplayHandler::OnDevToolsDockChanged` (below). The client shows DevTools' contents next to the page, as it shows the page |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs (we host each tab's view in our own views) |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the Browser window to the app: Chrome only tracks the state, and the app shows the page full screen itself (`CefDisplayHandler::OnFullscreenModeChange`) |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
@@ -35,19 +36,19 @@ What the build adds:
 | `chromium-passkeys.patch` | Netnyahoo bundle/team id branding, iCloud Keychain window fallback, "Netnyahoo Safe Storage" |
 | `chromium-chrome-ui-hooks.patch` | `chrome::ShowDeviceChooserDialog`, the Media Router's Cast dialog (and Presentation API requests) and `side_panel_util` ask the client first; extension pages in hidden windows take the last active window as their current window |
 | `chromium-extension-updates.patch` | Undoes ungoogled's early `return` in `UpdateCheckerImpl::CheckForUpdates`, which left every update check pending: Web Store extensions never updated |
+| `chromium-window-docked-devtools.patch` | DevTools may dock in a CEF client's own window (`BrowserDelegate::AllowsDockedDevTools`), and `DevtoolsUIController::UpdateDevtools` tells the CEF delegate of every change to a natively hosted tab's docked DevTools. `NativeHostedContents::Unmark` for DevTools that undock |
 | `chromium-window-hosted.patch` | `BridgedContentView.netnyahooEmbeddedView`: hit testing and accessibility ask the embedder's subview of a Chrome window's content view first. A Browser whose CEF delegate says so (`client_window`) stays open when its last tab closes, unless the window is closing |
 | `chromium-neterror-yahu.patch` | "Where's Big Yahu?" replaces the dino: the offline page and chrome://yahu (below) |
 
 Removed in 0.2.0, with the hidden "ghost" Browser windows they served (every app window is now Chrome's own,
 `docs/research/chrome-hosted-window.md`): `chromium-context-menu-hosted.patch` (the context menu's widget lookup
 fell back to the tab's Browser window; a tab's view is now always in a Chrome window, so the stock lookup finds
-it). The docked-DevTools work in progress (`cef-zwindow-z-devtools.patch`, `chromium-window-docked-devtools.patch`)
-is not in the tree either; it's kept outside it until it ships.
+it).
 
 The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
 substitution). Step 2 applies the `cef-*.patch` files in name order, which is the order they were
 made in: `cef-chrome-tabs`, `cef-tab-capture`, `cef-tab-state`, `cef-ui-surfaces`, `cef-ui-triggers`,
-`cef-zidle-pump`, `cef-zwindow-client`, `cef-zwindow-keys`, `cef-zwindow-translucent` (checked on a clean worktree of the CEF checkout on 2026-09-25: the
+`cef-zidle-pump`, `cef-zwindow-client`, `cef-zwindow-keys`, `cef-zwindow-translucent`, `cef-zwindow-z-devtools` (checked on a clean worktree of the CEF checkout on 2026-09-25: the
 first four reproduce the built tree exactly; `cef-ui-triggers` reverse-applies cleanly to it;
 `cef-zwindow-client` and `chromium-window-hosted` were made as diffs of their files against the fully patched
 tree). A new patch needs a name that sorts last.
@@ -199,6 +200,15 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
     (Chrome's views cover the window, and `-hitTest:` would claim every point), and so do
     `-accessibilityChildren` / `-accessibilityHitTest:`. The page must stay under the content view:
     `RenderWidgetHostViewCocoa -shouldIgnoreMouseEvent:` hit-tests from it, and the occlusion checker only walks it.
+
+- **`CEF_NN_DOCKED_DEVTOOLS`** (docked DevTools in client windows)
+  - A `client_window` Browser may dock DevTools (CEF passes `can_dock = false` for every other browser). Chrome's
+    dock-side menu, split resizing and undocking work as in Chrome; the DevTools contents are marked natively
+    hosted, so no `views::WebView` attaches them.
+  - `CefBrowserHost::GetDockedDevTools(container_size, inspected_bounds)`: the DevTools contents' native view
+    while docked (nullptr otherwise), to fill the area the page fills, and in `inspected_bounds` where the page
+    goes in that area at `container_size` (DevTools' resizing strategy; empty while DevTools hide the page).
+  - `CefDisplayHandler::OnDevToolsDockChanged(browser)`: they appeared, went or changed their layout.
 
 ## The offline page
 

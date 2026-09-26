@@ -1,0 +1,212 @@
+--- a/include/cef_browser.h
++++ b/include/cef_browser.h
+@@ -1120,6 +1120,18 @@
+   ///
+   /*--cef(added=experimental)--*/
+   virtual CefWindowHandle GetContentsView() = 0;
++
++  ///
++  /// Chrome style with CefBrowserSettings.client_window only: DevTools docked
++  /// next to this browser's page (the client shows both). Returns the native
++  /// view of the DevTools contents, to fill the area the page normally fills
++  /// (nullptr when none are docked), and sets |inspected_bounds| to where the
++  /// page goes in that area when it is |container_size| (empty while DevTools
++  /// hide the page). Must be called on the browser process UI thread.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual CefWindowHandle GetDockedDevTools(const CefSize& container_size,
++                                            CefRect& inspected_bounds) = 0;
+ 
+   ///
+   /// Chrome style only: tells Chrome whether the window that hosts this
+--- a/include/cef_display_handler.h
++++ b/include/cef_display_handler.h
+@@ -88,6 +88,15 @@
+                                       bool fullscreen) {}
+ 
+   ///
++  /// Chrome style with CefBrowserSettings.client_window only: DevTools docked
++  /// next to |browser|'s page appeared, went away or changed their layout (see
++  /// CefBrowserHost::GetDockedDevTools). Called on the UI thread, while Chrome
++  /// updates the docked DevTools.
++  ///
++  /*--cef(added=experimental)--*/
++  virtual void OnDevToolsDockChanged(CefRefPtr<CefBrowser> browser) {}
++
++  ///
+   /// Called when the browser is about to display a tooltip. |text| contains the
+   /// text that will be displayed in the tooltip. To handle the display of the
+   /// tooltip yourself return true. Otherwise, you can optionally modify |text|
+--- a/include/cef_netnyahoo.h
++++ b/include/cef_netnyahoo.h
+@@ -105,4 +105,10 @@
+ // frame of its own drawing).
+ #define CEF_NN_TRANSLUCENT_WINDOW 1
+ 
++// Docked DevTools in client windows: CefBrowserHost::GetDockedDevTools,
++// CefDisplayHandler::OnDevToolsDockChanged (Chrome's dock-side menu, resize
++// and undock work as in Chrome; the client shows the DevTools view and moves
++// the page).
++#define CEF_NN_DOCKED_DEVTOOLS 1
++
+ #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
+--- a/libcef/browser/browser_host_base.h
++++ b/libcef/browser/browser_host_base.h
+@@ -281,6 +281,8 @@
+   cef_runtime_style_t GetRuntimeStyle() override;
+   void SetAxViewportCollapse(bool enabled) override;
+   CefWindowHandle GetContentsView() override;
++  CefWindowHandle GetDockedDevTools(const CefSize& container_size,
++                                    CefRect& inspected_bounds) override;
+ 
+   // CefBrowser methods:
+   bool IsValid() override;
+--- a/libcef/browser/browser_host_base.cc
++++ b/libcef/browser/browser_host_base.cc
+@@ -19,6 +19,8 @@
+ #include "cef/libcef/browser/views/view_util.h"
+ #include "cef/libcef/common/frame_util.h"
+ #include "cef/libcef/common/net/url_util.h"
++#include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
++#include "chrome/browser/devtools/devtools_window.h"
+ #include "chrome/browser/platform_util.h"
+ #include "chrome/browser/spellchecker/spellcheck_factory.h"
+ #include "chrome/browser/spellchecker/spellcheck_service.h"
+@@ -39,6 +41,7 @@
+ #include "content/public/browser/render_widget_host.h"
+ #include "ui/base/resource/resource_scale_factor.h"
+ #include "ui/gfx/image/image_skia.h"
++#include "ui/views/controls/webview/native_hosted_contents.h"
+ #include "ui/shell_dialogs/select_file_policy.h"
+ 
+ #if BUILDFLAG(IS_MAC)
+@@ -1003,6 +1006,36 @@
+   return view_util::GetViewHandle(web_contents->GetNativeView());
+ }
+ 
++CefWindowHandle CefBrowserHostBase::GetDockedDevTools(
++    const CefSize& container_size,
++    CefRect& inspected_bounds) {
++  inspected_bounds = CefRect();
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    DCHECK(false) << "called on invalid thread";
++    return kNullWindowHandle;
++  }
++  auto* web_contents = GetWebContents();
++  if (!web_contents || IsWindowless()) {
++    return kNullWindowHandle;
++  }
++  DevToolsContentsResizingStrategy strategy;
++  auto* devtools = DevToolsWindow::GetInTabWebContents(web_contents, &strategy);
++  // Only DevTools the client shows (a client window's; see
++  // ChromeBrowserDelegate::DevToolsDockChanged).
++  if (!devtools || !views::NativeHostedContents::IsMarked(devtools)) {
++    return kNullWindowHandle;
++  }
++  gfx::Rect devtools_bounds, contents_bounds;
++  ApplyDevToolsContentsResizingStrategy(
++      strategy, gfx::Rect(container_size.width, container_size.height),
++      &devtools_bounds, &contents_bounds);
++  if (!strategy.hide_inspected_contents()) {
++    inspected_bounds = CefRect(contents_bounds.x(), contents_bounds.y(),
++                               contents_bounds.width(), contents_bounds.height());
++  }
++  return view_util::GetViewHandle(devtools->GetNativeView());
++}
++
+ void CefBrowserHostBase::ReplaceMisspelling(const CefString& word) {
+   if (!CEF_CURRENTLY_ON_UIT()) {
+     CEF_POST_TASK(
+--- a/libcef/browser/chrome/browser_delegate.h
++++ b/libcef/browser/chrome/browser_delegate.h
+@@ -201,6 +201,15 @@
+   // Returns true if the Browser window stays open when its last tab closes
+   // (CefBrowserSettings.client_window).
+   virtual bool KeepsWindowWithoutTabs() const { return false; }
++
++  // Returns true if DevTools may dock in this browser's window, which the
++  // client shows them in itself (CefBrowserSettings.client_window).
++  virtual bool AllowsDockedDevTools() const { return false; }
++
++  // The DevTools docked for |inspected| are now |devtools| (nullptr: none), or
++  // their layout changed. Called before Chrome shows them in the window.
++  virtual void DevToolsDockChanged(content::WebContents* inspected,
++                                   content::WebContents* devtools) {}
+ };
+ 
+ }  // namespace cef
+--- a/libcef/browser/chrome/chrome_browser_delegate.h
++++ b/libcef/browser/chrome/chrome_browser_delegate.h
+@@ -6,11 +6,13 @@
+ #define CEF_LIBCEF_BROWSER_CHROME_CHROME_BROWSER_DELEGATE_H_
+ #pragma once
+ 
++#include <map>
+ #include <memory>
+ #include <optional>
+ #include <vector>
+ 
+ #include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
+ #include "cef/libcef/browser/browser_host_base.h"
+ #include "cef/libcef/browser/browser_info.h"
+ #include "cef/libcef/browser/chrome/browser_delegate.h"
+@@ -87,6 +89,9 @@
+   void UpdateDialogTopInset(int* dialog_top_y) override;
+   std::optional<bool> SupportsWindowFeature(int feature) const override;
+   bool KeepsWindowWithoutTabs() const override { return client_window_; }
++  bool AllowsDockedDevTools() const override { return client_window_; }
++  void DevToolsDockChanged(content::WebContents* inspected,
++                           content::WebContents* devtools) override;
+   bool SupportsDraggableRegion() const override;
+   void UpdateDraggableRegions(
+       const std::vector<blink::mojom::DraggableRegionPtr>& regions,
+@@ -189,6 +194,9 @@
+   const bool native_contents_hosting_;
+   const bool hidden_from_extensions_;
+   const bool client_window_;
++  // Docked DevTools of the tabs (client_window_), natively hosted.
++  std::map<const content::WebContents*, base::WeakPtr<content::WebContents>>
++      docked_devtools_;
+   // With native_contents_hosting_, only the first tab is associated with the
+   // CefBrowserView; later tabs get a plain Chrome platform delegate.
+   bool views_tab_created_ = false;
+--- a/libcef/browser/chrome/chrome_browser_delegate.cc
++++ b/libcef/browser/chrome/chrome_browser_delegate.cc
+@@ -385,6 +385,36 @@
+   return web_contents
+              ? ChromeBrowserHostImpl::GetBrowserForContents(web_contents)
+              : nullptr;
++}
++
++void ChromeBrowserDelegate::DevToolsDockChanged(
++    content::WebContents* inspected,
++    content::WebContents* devtools) {
++  if (!client_window_) {
++    return;
++  }
++  // The client hosts docked DevTools like the tab itself: no views::WebView
++  // attaches them (views::NativeHostedContents). Undocked, they show in their
++  // own DevTools window again.
++  auto it = docked_devtools_.find(inspected);
++  content::WebContents* previous =
++      it == docked_devtools_.end() ? nullptr : it->second.get();
++  if (previous && previous != devtools) {
++    views::NativeHostedContents::Unmark(previous);
++  }
++  if (devtools && devtools != previous) {
++    views::NativeHostedContents::Mark(devtools);
++  }
++  if (devtools) {
++    docked_devtools_[inspected] = devtools->GetWeakPtr();
++  } else if (it != docked_devtools_.end()) {
++    docked_devtools_.erase(it);
++  }
++  auto host = ChromeBrowserHostImpl::GetBrowserForContents(inspected);
++  auto client = host ? host->GetClient() : nullptr;
++  if (auto handler = client ? client->GetDisplayHandler() : nullptr) {
++    handler->OnDevToolsDockChanged(host.get());
++  }
+ }
+ 
+ void ChromeBrowserDelegate::MarkNativeHosted(

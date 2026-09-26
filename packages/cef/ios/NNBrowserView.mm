@@ -158,6 +158,10 @@ NSString *const kExitPictureInPictureScript =
   BOOL _muted;
   /// Watches the hosted page view's frame (see -keepPageFrame:).
   id _frameObserver;
+  /// DevTools docked next to the page (Chrome-hosted windows): their view fills this one, and
+  /// the page sits at `_inspectedBounds` inside it, where DevTools' own split puts it.
+  NSView *_devtoolsView;
+  NSRect _inspectedBounds;
 }
 
 + (void)prepareTransfer:(NSString *)transferKey {
@@ -221,7 +225,50 @@ NSString *const kExitPictureInPictureScript =
 - (void)setFrameSize:(NSSize)newSize {
   [super setFrameSize:newSize];
   for (NSView *sub in self.subviews) sub.frame = self.bounds;
+  if (_devtoolsView) [self layoutDockedDevTools];
   if (self.window) host::LayoutChanged(self.window);
+}
+
+/// Where the page goes: all of this view, or DevTools' place for it while they're docked.
+- (NSRect)pageFrame {
+  return _devtoolsView ? _inspectedBounds : self.bounds;
+}
+
+- (void)layoutDockedDevTools {
+#if NN_DOCKED_DEVTOOLS
+  NSView *page = _browser ? host::ContentsView(_browser) : nil;
+  CefRect bounds;
+  NSView *devtools =
+      _browser && host::IsChromeTab(_browser)
+          ? (__bridge NSView *)_browser->GetHost()->GetDockedDevTools(
+                CefSize((int)NSWidth(self.bounds), (int)NSHeight(self.bounds)), bounds)
+          : nil;
+  if (!devtools && !_devtoolsView) return;  // not docked, nor before: nothing to lay out
+  if (_devtoolsView && _devtoolsView != devtools && _devtoolsView.superview == self) [_devtoolsView removeFromSuperview];
+  _devtoolsView = devtools;
+  if (devtools) {
+    // Behind the page, filling this view (DevTools lay their panel out around the page's place).
+    if (devtools.superview != self || (page && [self.subviews indexOfObject:devtools] > [self.subviews indexOfObject:page])) {
+      [devtools removeFromSuperview];
+      if (page.superview == self) [self addSubview:devtools positioned:NSWindowBelow relativeTo:page];
+      else [self addSubview:devtools];
+    }
+    devtools.frame = self.bounds;
+    devtools.hidden = !_visible;
+    _inspectedBounds = NSMakeRect(bounds.x, bounds.y, bounds.width, bounds.height);  // this view is flipped
+  }
+  if (page.superview == self) {
+    page.frame = self.pageFrame;
+    // DevTools may leave the page no room ("hide inspected contents").
+    page.hidden = !_visible || (devtools && NSIsEmptyRect(page.frame));
+  }
+#endif
+}
+
+/// Docked DevTools belong to the tab's browser, not this view: let go of their view.
+- (void)dropDockedDevTools {
+  if (_devtoolsView.superview == self) [_devtoolsView removeFromSuperview];
+  _devtoolsView = nil;
 }
 
 - (void)setFrameOrigin:(NSPoint)newOrigin {
@@ -334,6 +381,7 @@ NSString *const kExitPictureInPictureScript =
 - (void)relinquishBrowser {
   if (!_browser) return;
   [self keepPageFrame:nil];
+  [self dropDockedDevTools];
   NSView *browserView = host::ContentsView(_browser);
   if (browserView.superview == self) [browserView removeFromSuperview];
   if (_client && _client->View() == self) _client->SetView(nil);
@@ -345,6 +393,7 @@ NSString *const kExitPictureInPictureScript =
 /// The view goes away while its tab moves: keeps the browser for the tab's new view.
 - (void)parkBrowserForTransfer {
   [self keepPageFrame:nil];
+  [self dropDockedDevTools];
   std::string key = _transferKey.UTF8String;
   CefRefPtr<Client> client = _client;
   CefRefPtr<CefBrowser> browser = _browser;
@@ -396,6 +445,8 @@ NSString *const kExitPictureInPictureScript =
   host::TabMoved(self);
   if (_visible) host::TabShown(self);
   host::LayoutChanged(self.window);
+  // A tab that had DevTools docked next to it (moved in from another view).
+  [self layoutDockedDevTools];
 }
 
 /// Chrome sizes a tab's view to its Browser window's content area (the whole window), e.g. when the
@@ -413,16 +464,17 @@ NSString *const kExitPictureInPictureScript =
                                                                usingBlock:^(NSNotification *) {
     NNBrowserView *view = weakSelf;
     NSView *page = weakPage;
-    if (!view || page.superview != view || NSEqualRects(page.frame, view.bounds)) return;
+    if (!view || page.superview != view || NSEqualRects(page.frame, view.pageFrame)) return;
     // Not from inside Chrome's own layout pass.
     dispatch_async(dispatch_get_main_queue(), ^{
-      if (page.superview == view && !NSEqualRects(page.frame, view.bounds)) page.frame = view.bounds;
+      if (page.superview == view && !NSEqualRects(page.frame, view.pageFrame)) page.frame = view.pageFrame;
     });
   }];
 }
 
 - (void)browserClosed {
   [self keepPageFrame:nil];
+  [self dropDockedDevTools];
   _chromeDiscarded = NO;
   _browser = nullptr;
   _creating = NO;
@@ -437,6 +489,7 @@ NSString *const kExitPictureInPictureScript =
   _visible = visible;
   if (visible && _frozen) self.frozen = NO;
   for (NSView *sub in self.subviews) sub.hidden = !visible;
+  if (_devtoolsView) [self layoutDockedDevTools];
   if (visible) host::TabShown(self);
   if (self.window) host::LayoutChanged(self.window);
   if (visible && _discardedURL && self.window) {

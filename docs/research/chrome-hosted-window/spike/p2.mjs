@@ -118,7 +118,11 @@ for (const step of steps) {
     await sleep(4000);
     const fresh = h.windows().filter((x) => !before.includes(x.id) && x.w > 300);
     const tools = (await targets()).concat(await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => /devtools/.test(t.url));
-    check("DevTools opens in a window of its own (undocked)", fresh.length > 0, `${JSON.stringify(fresh.map((x) => [x.title, x.w, x.h, x.alpha]))}; devtools targets ${tools.length}`);
+    // Chrome-hosted windows dock them (CEF_NN_DOCKED_DEVTOOLS; p3.mjs "dock"); ghosts keep a window.
+    const hosting = (await ghosts()).find((g) => g.hasRoot)?.hosting;
+    const docked = hosting && JSON.parse(await win((await ghosts()).find((g) => g.hasRoot).window, "tabviews")).some((v) => v.subviews.filter((x) => !/hidden/.test(x)).length === 2);
+    if (hosting) check("DevTools open docked next to the page (Chrome-hosted window)", docked && fresh.length === 0, `${JSON.stringify(fresh.map((x) => [x.w, x.h]))}; devtools targets ${tools.length}`);
+    else check("DevTools opens in a window of its own (undocked)", fresh.length > 0, `${JSON.stringify(fresh.map((x) => [x.title, x.w, x.h, x.alpha]))}; devtools targets ${tools.length}`);
   }
   if (step === "popup") {
     await dev(`nn.actions.openUrls(["${pages}/popup.html"]); return 1`);

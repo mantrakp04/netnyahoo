@@ -1,6 +1,6 @@
 // Phase 3a checks: per-profile Chrome-hosted windows.
 // usage: SPIKE_DIR=<scratch> [EXT_CMD_DIR=spike/ext-cmd] node p3.mjs <dataDirName> <cdpPort> <pid> <pagesOrigin> <step...>
-// steps: group paging ctrl fullscreen ime extcmd features (run "features" last: its context menu blocks the app)
+// steps: group paging ctrl fullscreen ime extcmd dock dock2 features (run "features" last: its context menu blocks the app)
 import { harness, sleep } from "./h.mjs";
 
 const [dataName, port, pid, pages, ...steps] = process.argv.slice(2);
@@ -180,6 +180,118 @@ for (const step of steps) {
     await sleep(1500);
     const after = await hits();
     check("an extension's keyboard command (⇧⌘Y) runs", String(after).startsWith("1:"), `${before} → ${after}; ${handled}`);
+  }
+  if (step === "dock") {
+    // Docked DevTools (CEF_NN_DOCKED_DEVTOOLS): next to the page in the tab's view, following
+    // DevTools' own dock menu (right / bottom / left / undocked) and split size.
+    const W = (await current()).window;
+    const views = async () => JSON.parse(await win(W, "tabviews")).find((v) => v.subviews.some((s) => !/hidden/.test(s)))?.subviews ?? [];
+    const size = (s) => s.match(/\{\{([\d.]+), ([\d.]+)\}, \{([\d.]+), ([\d.]+)\}\}/).slice(1).map(Number);
+    await dev(`nn.actions.openUrls(["${pages}/page.html?dock"]); return 1`);
+    await sleep(2500);
+    const frontends = async () => (await (await fetch(`http://localhost:${h.port}/json`)).json()).filter((t) => t.url.startsWith("devtools://")).map((t) => t.id);
+    const others = await frontends();
+    await dev(`nn.runCommand({ command: "devTools" }); return 1`);
+    await sleep(3000);
+    const toolsId = (await frontends()).find((id) => !others.includes(id));
+    const page = await cdp("page.html?dock");
+    const tools = await cdp((t) => t.id === toolsId);
+    const dock = (side) =>
+      tools.evaluate(`(async () => { const d = (await import('./ui/legacy/legacy.js')).DockController.DockController.instance(); ${side ? `d.setDockSide('${side}');` : ""} return d.dockSide(); })()`);
+    const inner = async () => JSON.parse(await page.evaluate("JSON.stringify([innerWidth, innerHeight])"));
+    await dock("right");
+    await sleep(1500);
+    let v = await views();
+    const side0 = await dock();
+    check("DevTools open docked in the tab's view (no window of their own)", v.length === 2 && side0 !== "undocked", `${side0}; ${JSON.stringify(v)}`);
+    const [, , fw, fh] = size(v[0]);
+    let [px, py, pw, ph] = size(v[1]);
+    let [iw, ih] = await inner();
+    check("…the page gets the rest, at DevTools' split", (pw < fw || ph < fh) && iw === pw && ih === ph, `page ${[px, py, pw, ph]} inner ${[iw, ih]} of ${[fw, fh]}`);
+    // Clicks reach whichever of the two is under them.
+    const [top, left] = (await current()).pageInsets;
+    const mark = "window.__down = []; addEventListener('mousedown', (e) => __down.push(e.clientX), true); 1";
+    await page.evaluate(mark);
+    await tools.evaluate(mark);
+    await win(W, `click:${left + pw + 100},${top + 200}`);
+    await win(W, `click:${left + 50},${top + 200}`);
+    await sleep(500);
+    const downs = [await page.evaluate("JSON.stringify(__down)"), await tools.evaluate("JSON.stringify(__down)")];
+    check("Clicks in the page and in DevTools go to each", downs[0] === "[50]" && downs[1] === `[${pw + 100}]`, downs.join(" "));
+    await dock("bottom");
+    await sleep(1500);
+    [px, py, pw, ph] = size((await views())[1]);
+    check("Dock to bottom: the page on top, full width", px === 0 && py === 0 && pw === fw && ph < fh, `page ${[px, py, pw, ph]}`);
+    const want = fh - ph === 250 ? 200 : 250;
+    await tools.evaluate(`(async () => { (await import('./ui/legacy/legacy.js')).InspectorView.InspectorView.instance().ownerSplit().setSidebarSize(${want}); return 1 })()`);
+    await sleep(1500);
+    [px, py, pw, ph] = size((await views())[1]);
+    [iw, ih] = await inner();
+    check("Resizing the split moves the page edge", ph === fh - want && ih === ph, `page ${[px, py, pw, ph]} inner ${[iw, ih]}`);
+    const before = h.windows().map((x) => x.id);
+    await dock("undocked");
+    await sleep(3000);
+    v = await views();
+    [iw, ih] = await inner();
+    const fresh = h.windows().filter((x) => !before.includes(x.id) && x.w > 300);
+    check("Undock: DevTools move to a window of their own, the page fills the view", v.length === 1 && iw === fw && fresh.length > 0, `${JSON.stringify(v)}; new ${fresh.length}`);
+    tools.close();
+    const again = await cdp((t) => t.id === toolsId);
+    await again.evaluate("(async () => { (await import('./ui/legacy/legacy.js')).DockController.DockController.instance().setDockSide('right'); return 1 })()");
+    again.close();
+    await sleep(3000);
+    v = await views();
+    check("…and dock back from the undocked window", v.length === 2, JSON.stringify(v));
+    const docked = await cdp((t) => t.id === toolsId);
+    await docked.evaluate("(async () => { (await import('./core/host/host.js')).InspectorFrontendHost.InspectorFrontendHostInstance.closeWindow(); return 1 })()");
+    docked.close();
+    await sleep(2000);
+    v = await views();
+    [iw, ih] = await inner();
+    check("Closing docked DevTools gives the page the whole view back", v.length === 1 && iw === fw && ih === fh, `${JSON.stringify(v)} inner ${[iw, ih]}`);
+    page.close();
+  }
+  if (step === "dock2") {
+    // Docked DevTools through the tab's life: another tab shown, split view, a profile swap, the
+    // tab closed while they're docked.
+    const w = await firstWindowId();
+    // Tab views showing something (the others' subviews are hidden with their tab).
+    const tabviews = async () =>
+      JSON.parse(await win((await current()).window, "tabviews"))
+        .map((v) => ({ ...v, subviews: v.subviews.filter((x) => !/hidden/.test(x)) }))
+        .filter((v) => v.subviews.length);
+    const docked = async () => (await tabviews()).filter((v) => v.subviews.filter((x) => !/hidden/.test(x)).length === 2);
+    await dev(`nn.actions.openUrls(["${pages}/page.html?dockA"]); return 1`);
+    await sleep(2500);
+    const tabA = await state(`Object.values(s.tabs).find((t) => (t.url || "").endsWith("?dockA")).id`);
+    await dev(`nn.runCommand({ command: "devTools" }); return 1`);
+    await sleep(3000);
+    check("DevTools docked in tab A", (await docked()).length === 1, JSON.stringify(await tabviews()));
+    await dev(`nn.actions.openUrls(["${pages}/find.html?dockB"]); return 1`);
+    await sleep(2500);
+    const shown = await tabviews();
+    check("…tab B shown: A's DevTools go with A (B alone, full size)", shown.length === 1 && shown[0].subviews.length === 1, JSON.stringify(shown));
+    await dev(`nn.store.getState().activate(${JSON.stringify(tabA)}); return 1`);
+    await sleep(1500);
+    check("…back to A: its DevTools again", (await docked()).length === 1, JSON.stringify(await tabviews()));
+    await dev(`nn.store.getState().openSplitPane(${JSON.stringify(w)}, { url: "${pages}/page.html?dockC", side: "right", anchorTabId: ${JSON.stringify(tabA)} }); return 1`);
+    await sleep(3000);
+    const split = await tabviews();
+    const pane = (await docked())[0];
+    const paneW = pane && Number(pane.frame.match(/\{\{[\d.]+, [\d.]+\}, \{([\d.]+)/)[1]);
+    const devW = pane && Number(pane.subviews[0].match(/\{\{[\d.]+, [\d.]+\}, \{([\d.]+)/)[1]);
+    check("…in a split: A's pane keeps its DevTools, filling that pane only", split.length === 2 && !!pane && devW === paneW, JSON.stringify(split));
+    const work = await ensureWork();
+    await dev(`nn.store.getState().switchProfile(${JSON.stringify(w)}, ${JSON.stringify(work)}); return 1`);
+    await sleep(2000);
+    await dev(`nn.store.getState().switchProfile(${JSON.stringify(w)}, "default"); return 1`);
+    await sleep(2000);
+    check("…to the other profile's window and back: still docked", (await docked()).length === 1, JSON.stringify(await tabviews()));
+    await dev(`nn.store.getState().closeTab(${JSON.stringify(tabA)}); return 1`);
+    await sleep(2500);
+    const after = await tabviews();
+    const alive = await state("Object.keys(s.windows).length");
+    check("…closing A with DevTools docked: no DevTools left over, the window fine", alive >= 1 && after.every((v) => v.subviews.length === 1), JSON.stringify(after));
   }
   if (step === "features") {
     // In the Work profile's own window: autofill, passkey (no lift: the window is the Browser's), context menu.

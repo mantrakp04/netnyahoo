@@ -93,5 +93,5 @@ export function harness(dataName, port, pid) {
     console.log(`\n${results.length - failed}/${results.length} passed`);
     return failed;
   };
-  return { check, windows, appWindows, dev, win, winfo, ghosts, state, targets, cdp, shot, summary, results };
+  return { port, check, windows, appWindows, dev, win, winfo, ghosts, state, targets, cdp, shot, summary, results };
 }

@@ -1,0 +1,92 @@
+--- a/ui/views/controls/webview/native_hosted_contents.h
++++ b/ui/views/controls/webview/native_hosted_contents.h
+@@ -28,6 +28,8 @@
+   // already attached it detaches it the next time it changes contents.
+   static void Mark(content::WebContents* web_contents);
+   static bool IsMarked(const content::WebContents* web_contents);
++  // Takes the mark off again (a WebView shows |web_contents| from then on).
++  static void Unmark(content::WebContents* web_contents);
+ 
+  private:
+   friend class content::WebContentsUserData<NativeHostedContents>;
+--- a/ui/views/controls/webview/native_hosted_contents.cc
++++ b/ui/views/controls/webview/native_hosted_contents.cc
+@@ -23,6 +23,11 @@
+   return web_contents && FromWebContents(web_contents);
+ }
+ 
++// static
++void NativeHostedContents::Unmark(content::WebContents* web_contents) {
++  web_contents->RemoveUserData(UserDataKey());
++}
++
+ WEB_CONTENTS_USER_DATA_KEY_IMPL(NativeHostedContents);
+ 
+ }  // namespace views
+--- a/chrome/browser/devtools/devtools_window.cc
++++ b/chrome/browser/devtools/devtools_window.cc
+@@ -121,6 +121,9 @@
+ #include "chrome/browser/ui/browser_window.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"  // nogncheck crbug.com/40147906
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"  // nogncheck crbug.com/40147906
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/browser_delegate.h"
++#endif
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.h"  // nogncheck crbug.com/40147906
+ #include "components/keep_alive_registry/keep_alive_types.h"
+@@ -1410,7 +1413,10 @@
+     }
+ 
+ #if BUILDFLAG(ENABLE_CEF)
+-    if (can_dock && browser && browser->cef_delegate()) {
++    // Netnyahoo: except in a CEF client's own window, which shows docked
++    // DevTools itself (BrowserDelegate::AllowsDockedDevTools).
++    if (can_dock && browser && browser->cef_delegate() &&
++        !browser->cef_delegate()->AllowsDockedDevTools()) {
+       // Don't dock DevTools for CEF-managed browsers.
+       can_dock = false;
+     }
+--- a/chrome/browser/devtools/devtools_ui_controller.cc
++++ b/chrome/browser/devtools/devtools_ui_controller.cc
+@@ -8,11 +8,17 @@
+ #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
+ #include "chrome/browser/devtools/devtools_window.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"  // nogncheck crbug.com/40147906
+ #include "chrome/browser/ui/views/frame/contents_container_view.h"
+ #include "chrome/browser/ui/views/frame/contents_web_view.h"
+ #include "chrome/browser/ui/views/frame/scrim_view.h"
+ #include "ui/views/focus/external_focus_tracker.h"
+ 
++#include "cef/libcef/features/features.h"
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/browser_delegate.h"
++#endif
++
+ DEFINE_USER_DATA(DevtoolsUIController);
+ 
+ DevtoolsUIController::DevtoolsUIController(
+@@ -43,6 +49,22 @@
+ bool DevtoolsUIController::UpdateDevtools(
+     content::WebContents* web_contents,
+     bool update_devtools_web_contents) {
++#if BUILDFLAG(ENABLE_CEF)
++  // Netnyahoo: a CEF client that shows its tabs itself shows their docked
++  // DevTools too (BrowserDelegate::DevToolsDockChanged), whether or not the
++  // tab is the one Chrome's contents view shows.
++  if (web_contents && update_devtools_web_contents) {
++    BrowserWindowInterface* browser =
++        GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
++            web_contents);
++    if (browser && browser->cef_delegate()) {
++      DevToolsContentsResizingStrategy strategy;
++      browser->cef_delegate()->DevToolsDockChanged(
++          web_contents,
++          DevToolsWindow::GetInTabWebContents(web_contents, &strategy));
++    }
++  }
++#endif
+   auto it = std::ranges::find_if(
+       devtools_web_view_controllers_, [&web_contents](const auto& entry) {
+         return entry.first->contents_view()->web_contents() == web_contents;

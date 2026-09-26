@@ -95,6 +95,9 @@ class Client : public CefClient,
   void OnFaviconURLChange(CefRefPtr<CefBrowser> browser, const std::vector<CefString> &icon_urls) override;
   void OnFullscreenModeChange(CefRefPtr<CefBrowser> browser, bool fullscreen) override;
   void OnStatusMessage(CefRefPtr<CefBrowser> browser, const CefString &value) override;
+#if NN_DOCKED_DEVTOOLS
+  void OnDevToolsDockChanged(CefRefPtr<CefBrowser> browser) override;
+#endif
   void OnLoadingProgressChange(CefRefPtr<CefBrowser> browser, double progress) override;
   void OnMediaAccessChange(CefRefPtr<CefBrowser> browser, bool has_video_access, bool has_audio_access) override;
 
@@ -242,6 +245,8 @@ std::map<std::string, PendingPopup> &Popups();
 - (void)emit:(NSString *)name payload:(NSDictionary *)payload;
 - (void)browserCreated:(CefRefPtr<CefBrowser>)browser;
 - (void)browserClosed;
+/// DevTools docked next to the page appeared, went or changed their layout (Chrome-hosted windows).
+- (void)layoutDockedDevTools;
 /// Chrome discarded the tab, or it's loading again after that.
 - (void)tabDiscardedChanged:(BOOL)discarded;
 @property (nonatomic, readonly) BOOL closingByRequest;

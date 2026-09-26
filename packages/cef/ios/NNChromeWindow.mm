@@ -658,6 +658,28 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     }
     return [NSString stringWithFormat:@"fullScreen=%d", IsFullScreen(window)];
   }
+  if ([action isEqualToString:@"tabviews"]) {
+    // Each shown tab view's subviews (the page, and DevTools docked next to it): class, frame, hidden.
+    NSMutableArray *out = [NSMutableArray array];
+    Class tabClass = NSClassFromString(@"NNBrowserView");
+    NSMutableArray<NSView *> *queue = [NSMutableArray arrayWithObject:window.contentView];
+    while (queue.count) {
+      NSView *v = queue.lastObject;
+      [queue removeLastObject];
+      if ([v isKindOfClass:tabClass]) {
+        if (v.hiddenOrHasHiddenAncestor) continue;
+        NSMutableArray *subs = [NSMutableArray array];
+        for (NSView *sub in v.subviews)
+          [subs addObject:[NSString stringWithFormat:@"%@ %@%@", NSStringFromClass(sub.class), NSStringFromRect(sub.frame),
+                                                     sub.hidden ? @" hidden" : @""]];
+        [out addObject:@{@"frame" : NSStringFromRect(v.frame), @"subviews" : subs}];
+        continue;
+      }
+      [queue addObjectsFromArray:v.subviews];
+    }
+    NSData *json = [NSJSONSerialization dataWithJSONObject:out options:0 error:nil];
+    return [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
+  }
   if ([action isEqualToString:@"responder"]) {
     id r = window.firstResponder;
     return [r isKindOfClass:NSView.class] ? Describe(r) : NSStringFromClass([r class]);

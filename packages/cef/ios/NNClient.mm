@@ -416,6 +416,14 @@ void Client::OnFullscreenModeChange(CefRefPtr<CefBrowser> browser, bool fullscre
   Emit(@"fullscreen", @{@"fullscreen" : @(fullscreen)});
 }
 
+#if NN_DOCKED_DEVTOOLS
+void Client::OnDevToolsDockChanged(CefRefPtr<CefBrowser> browser) {
+  // After Chrome's update of the docked DevTools (this runs inside it).
+  __weak NNBrowserView *view = view_;
+  dispatch_async(dispatch_get_main_queue(), ^{ [view layoutDockedDevTools]; });
+}
+#endif
+
 void Client::OnStatusMessage(CefRefPtr<CefBrowser> browser, const CefString &value) {
   Emit(@"status", @{@"text" : ToNS(value)});
 }
