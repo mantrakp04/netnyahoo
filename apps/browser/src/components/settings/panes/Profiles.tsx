@@ -17,8 +17,6 @@ import { Button, Group, PopUp, Row, SectionHeader, TextField, useFormColors } fr
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 import { useSettingsNav } from "../windows";
 
-export { ProfileBadge };
-
 /** "Personal and Work", "A, B, and C". */
 const listOf = (names: string[]) => (names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`);
 

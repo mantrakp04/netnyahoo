@@ -58,13 +58,6 @@ export async function openFolder(folderId: string, windowId: string | null | und
   links.forEach((link, i) => useBrowser.getState().newTab(id, { url: link.url, background: i > 0 }));
 }
 
-/** The profile whose bookmarks a window shows (incognito windows use the default profile's). */
-export function windowBookmarkProfile(windowId: string | null | undefined): string {
-  const s = useBrowser.getState();
-  const id = resolveWindowId(s, windowId);
-  return bookmarkProfileId(s, id ? s.windows[id] : undefined);
-}
-
 /** The save dialog (⌘D, Bookmark All Tabs…) — one per window at a time. */
 export type BookmarkDialogState =
   | { kind: "page"; windowId: string; bookmarkId: string }

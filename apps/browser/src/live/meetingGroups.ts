@@ -4,7 +4,7 @@ import { activeTabId } from "../store/model";
 import { groupOf } from "../store/organize";
 import { connectCalendar, useCalendar } from "./calendar";
 import { eventForCall, isCalendarUrl, meetingOf, relatedLinks, type CalendarEvent } from "./meetings";
-import { live, setMeetingGroup, updateCalendarSettings, type MeetingGroup } from "./store";
+import { live, setMeetingGroup, updateCalendarSettings } from "./store";
 
 /**
  * Tab Groups for Meetings (Dia 1.14): joining a call — opening a Meet, Zoom or
@@ -18,8 +18,6 @@ export const MEETING_FALLBACK_TITLE = "Meeting";
 const CLEANUP_IDLE_MS = 30 * 60_000;
 
 const store = () => useBrowser.getState();
-
-export const meetingGroupOf = (groupId: string | undefined): MeetingGroup | undefined => (groupId ? live().meetingGroups[groupId] : undefined);
 
 /** Makes (or finds) the meeting group for a call tab. Returns the group id, or "". */
 export function groupCall(tabId: string, event?: CalendarEvent | null): string {

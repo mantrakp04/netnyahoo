@@ -71,12 +71,6 @@ export function timeLabel(ms: number): string {
   return `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
-/** "Sep 25, 2026". */
-export function shortDate(ms: number): string {
-  const d = new Date(ms);
-  return `${MONTHS[d.getMonth()]!.slice(0, 3)} ${d.getDate()}, ${d.getFullYear()}`;
-}
-
 /** "youtube.com" (no www., IDNs in Unicode when safe), "netnyahoo://version", or the URL itself when it has no host. */
 export function hostLabel(url: string): string {
   const app = appUrlOrigin(url);

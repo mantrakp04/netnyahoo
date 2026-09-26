@@ -138,5 +138,4 @@ export const useBrowser = create<BrowserState>()((...a) => ({
   },
 }));
 
-export type { NewTabOptions } from "./tabs";
 export type { CreateWindowOptions } from "./windows";

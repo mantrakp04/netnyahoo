@@ -78,8 +78,6 @@ export function onboardingColors(dark: boolean) {
       };
 }
 
-export type OnboardingColors = ReturnType<typeof onboardingColors>;
-
 export const useOnboardingColors = () => onboardingColors(useTheme().dark);
 
 /** Fades and lifts its children in on mount (each step's content, staggered by `delay`). */

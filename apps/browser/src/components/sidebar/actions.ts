@@ -59,8 +59,6 @@ function openInCurrentGroup(windowId: string, tabId: string) {
   store().activate(tabId);
 }
 
-export const isSelected = (windowId: string, tabId: string) => (store().selection[windowId] ?? []).includes(tabId);
-
 /** Rename… — inline in the list; pinned tiles (no visible title) ask in a sheet. */
 export async function startRename(windowId: string, target: Target) {
   const s = store();

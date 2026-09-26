@@ -147,12 +147,6 @@ export function openLiveItem(windowId: string, folderId: string, item: LiveItem,
   return id;
 }
 
-/** Tabs a folder has open in a window. */
-export function folderTabIds(windowId: string, folderId: string): string[] {
-  const s = useBrowser.getState();
-  return viewTabIds(s, windowId).filter((id) => s.tabs[id]?.liveItem?.folderId === folderId);
-}
-
 /** Delete Live Folder: its tabs close too (Reopen Closed Tab brings them back as ordinary tabs). */
 export function deleteLiveFolder(folderId: string) {
   const s = useBrowser.getState();

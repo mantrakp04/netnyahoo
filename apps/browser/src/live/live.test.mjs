@@ -135,7 +135,6 @@ test("Meetings: next meeting, badge, countdown and alerts", () => {
     event({ occurrence: "c", start: at(5), end: at(20), declined: true }),
     event({ occurrence: "d", start: at(-600), end: at(800), allDay: true }),
   ];
-  assert.equal(meetings.nextMeeting(events, at(0)).occurrence, "b");
   assert.equal(meetings.badgeText(events, at(0)), "10m");
   assert.equal(meetings.badgeText(events, at(12)), "Now");
   assert.equal(meetings.badgeText(events, at(-200)), null, "nothing within the hour");

@@ -5,9 +5,7 @@ import { createProfile, switchProfile } from "../lib/actions";
 import { PROFILE_COLORS, profileNameColor, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
 import { useIsIncognito, useProfiles, useWindowId, useWindowProfile } from "../store/hooks";
-import type { Profile } from "../store/types";
 import { useHover } from "./primitives";
-import { ProfileBadge, profileSymbol } from "./profiles/icons";
 import { openSettings } from "./settings/windows";
 
 /** Dia's SidebarProfileIndicatorButton: 9 pt either side of the name (contentInsets), 34 pt tall, radius 10. */
@@ -83,22 +81,6 @@ export function ProfileIndicator({ room }: { room: number }) {
           </View>
         )}
       </Pressable>
-    </View>
-  );
-}
-
-/** The profile's emoji, or its symbol / initial on its theme colour. */
-export function ProfileIcon({ profile, size = 16 }: { profile: Profile; size?: number }) {
-  if (profile.icon && !profileSymbol(profile.icon)) {
-    return (
-      <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ fontSize: size - 3 }}>{profile.icon}</Text>
-      </View>
-    );
-  }
-  return (
-    <View style={{ margin: 1 }}>
-      <ProfileBadge profile={profile} size={size - 2} />
     </View>
   );
 }

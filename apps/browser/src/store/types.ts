@@ -212,5 +212,3 @@ export type FindState = {
 export type PanelState = { open: boolean; initialText: string };
 
 export type WindowUi = { panel: PanelState; downloadsOpen: boolean };
-
-export type { Download, Settings };

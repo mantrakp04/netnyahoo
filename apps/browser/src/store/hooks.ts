@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { isBookmarked } from "./bookmarks";
 import { useBrowser } from "./browser";
-import { activeTabId, bookmarkProfileId, IDLE_LIVE, profileFor, viewTabIds } from "./model";
+import { activeTabId, bookmarkProfileId, IDLE_LIVE, profileFor } from "./model";
 import type { Settings } from "./settings";
 import type { BrowserWindow, FindState, Profile, Tab, TabLive } from "./types";
 import { CLOSED_FIND, DEFAULT_WINDOW_UI } from "./ui";
@@ -52,22 +52,6 @@ export function useWindowProfile(): Profile {
 }
 
 export const useProfiles = (): Profile[] => useBrowser(useShallow((s) => s.profileOrder.map((id) => s.profiles[id]!)));
-
-/** The window's tabs for its current profile, in sidebar order. */
-export function useViewTabIds(): string[] {
-  const id = useWindowId();
-  return useBrowser(useShallow((s) => viewTabIds(s, id)));
-}
-
-export function usePinnedTabIds(): string[] {
-  const id = useWindowId();
-  return useBrowser(useShallow((s) => viewTabIds(s, id).filter((t) => s.tabs[t]!.pinned)));
-}
-
-export function useRegularTabIds(): string[] {
-  const id = useWindowId();
-  return useBrowser(useShallow((s) => viewTabIds(s, id).filter((t) => !s.tabs[t]!.pinned)));
-}
 
 export function useActiveTabId(): string | undefined {
   const id = useWindowId();

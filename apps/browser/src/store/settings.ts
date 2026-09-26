@@ -1,6 +1,5 @@
 import {
   allEngines,
-  BUILT_IN_ENGINES,
   controllingExtensionEngine,
   engineById,
   extensionEngineId,
@@ -13,11 +12,6 @@ import {
 } from "@netnyahoo/core";
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
-
-/** The built-in search engines by id (`%s` = query). The full list with custom ones: `searchEngines()`. */
-export const SEARCH_ENGINES: Record<string, { name: string; url: string }> = Object.fromEntries(
-  BUILT_IN_ENGINES.map((e) => [e.id, { name: e.name, url: e.url }]),
-);
 
 /** A built-in engine id ("google", "duckduckgo"…), a custom engine's id, or legacy "custom" (customSearchUrl). */
 export type SearchEngineId = string;

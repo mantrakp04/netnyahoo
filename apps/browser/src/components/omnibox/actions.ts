@@ -122,8 +122,5 @@ export function runBarAction(id: string, windowId: string) {
   runCommand({ command, arg, windowId });
 }
 
-/** For dev tooling / tests: every action id the bar knows. */
-export const allBarActionIds = () => DEFS.map(actionId);
-
 /** Current state snapshot for the bar (actions are cheap to rebuild per query). */
 export const currentBarActions = (windowId: string) => barActions(useBrowser.getState(), windowId);

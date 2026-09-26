@@ -38,7 +38,7 @@ modules before using them — this is a summary from the agent that built it.
   (`bookmarksBar`, `shortcuts` = remapped menu keys read by Menus.swift, …).
 
 ## Hooks (store/hooks.ts, window-scoped)
-`useWindowId`, `usePinnedTabIds`, `useRegularTabIds`, `useActiveTab(Id)`, `useTab(id)`,
+`useWindowId`, `useActiveTab(Id)`, `useTab(id)`,
 `useTabLive(id, select?)`, `useWindowProfile`, `useProfiles`, `useSettings(select)`, `useFind(tabId)`,
 `useWindowUi`, `useIsBookmarked(url)`. Subscribe rows by id with narrow selectors so progress events
 don't re-render every tab.

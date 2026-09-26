@@ -47,7 +47,6 @@ export function downloadStatus(d: Download, exists = true) {
 
 /** Downloads flagged "Open When Done" (this session only: a download can't outlive a relaunch). */
 const openWhenDone = new Set<string>();
-export const isOpenWhenDone = (id: string) => openWhenDone.has(id);
 
 // Finished downloads flagged "Open When Done" open themselves. Guarded against re-subscribing on reload.
 const g = globalThis as { __nnDownloadsWatch?: () => void };

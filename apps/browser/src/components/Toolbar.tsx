@@ -9,7 +9,7 @@ import { useIsBookmarked, useSettings, useTab, useTabLive } from "../store/hooks
 import { bookmarkProfileId } from "../store/model";
 import type { Tab } from "../store/types";
 import { ToolbarButton, type ClickModifiers } from "./layout/controls";
-import { TRAFFIC_LIGHTS_OFFSET, type ToolbarGeometry } from "./layout/geometry";
+import { type ToolbarGeometry } from "./layout/geometry";
 import { setPopover, usePage, usePages } from "./layout/pageState";
 import { closeHistoryMenu, goBack, goForward, historyItems, openHistoryMenu, useHistoryAvailability, useHistoryMenu } from "./layout/history";
 import { openModeFor, openUrl } from "./bookmarks/actions";
@@ -18,10 +18,6 @@ import { toolbarPalette, useEasedColor, type ToolbarPalette } from "./layout/too
 import { showUrlBarMenu } from "./omnibox/paste";
 import { useHover } from "./primitives";
 import { ToolbarExtensions, useToolbarExtensionsWidth } from "./extensions/ToolbarExtensions";
-
-/** Where the URL text starts, relative to the card (sidebar layout, single pane); the command panel anchors to it. */
-export const URL_PILL_LEFT = layout.breadcrumbX - 8;
-export const SIDEBAR_HIDDEN_OFFSET = TRAFFIC_LIGHTS_OFFSET;
 
 /**
  * A pane's navigation bar: sidebar toggle (leading pane only), back / forward /

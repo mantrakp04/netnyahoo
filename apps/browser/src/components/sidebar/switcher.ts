@@ -42,9 +42,3 @@ export function commitSwitcher(index?: number) {
   const id = s.ids[index ?? s.index];
   if (id && useBrowser.getState().tabs[id]) useBrowser.getState().activate(id);
 }
-
-export function cancelSwitcher() {
-  clearTimeout(showTimer);
-  clearTimeout(giveUpTimer);
-  setSidebarUi({ switcher: null });
-}

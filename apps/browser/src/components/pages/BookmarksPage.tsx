@@ -7,7 +7,7 @@ import { bookmarkAncestors, folderChildren, folderLinks, type RemovedBookmarks }
 import { useBrowser } from "../../store/browser";
 import { plural } from "../../store/model";
 import type { BookmarkNode } from "../../store/types";
-import { openFolder, openModeFor, openUrl } from "../bookmarks/actions";
+import { openFolder, openUrl } from "../bookmarks/actions";
 import { editBookmark } from "../bookmarks/edit";
 import { FolderTree } from "../bookmarks/FolderTree";
 import { Favicon, IconButton, useHover } from "../primitives";

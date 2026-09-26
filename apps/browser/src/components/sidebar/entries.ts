@@ -76,11 +76,3 @@ export function useSidebarEntries(windowId: string, profileId?: string): Sidebar
 }
 
 export const useGroupEntries = (groupId: string) => useBrowser(useShallow((s) => groupEntries(s, groupId)));
-
-/** The tabs an entry stands for. */
-export function entryTabIds(s: BrowserState, entry: string): string[] {
-  const id = entry.slice(2);
-  if (entry.startsWith("g:")) return s.groups[id]?.tabIds ?? [];
-  if (entry.startsWith("s:")) return (s.splits[id]?.tabIds ?? []).filter((t) => s.tabs[t] && !s.tabs[t]!.pinned);
-  return [id];
-}

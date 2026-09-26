@@ -109,10 +109,6 @@ export function currentOrNext(events: CalendarEvent[], now: number): CalendarEve
   return current ?? meetings.sort((a, b) => a.start - b.start)[0] ?? null;
 }
 
-export function nextMeeting(events: CalendarEvent[], now: number): CalendarEvent | null {
-  return events.filter(isMeeting).filter((e) => e.start > now).sort((a, b) => a.start - b.start)[0] ?? null;
-}
-
 /** The event whose join link is this call, preferring one happening around now. */
 export function eventForCall(events: CalendarEvent[], url: string, now: number): CalendarEvent | null {
   const key = meetingOf(url)?.key;
