@@ -17,7 +17,8 @@
       "CalendarModule",
       "KeychainModule",
       "DockSelectionModule",
-      "InlineCompletionModule"
+      "InlineCompletionModule",
+      "TranslateModule"
     ]
   }
 }

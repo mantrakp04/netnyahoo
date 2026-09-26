@@ -62,6 +62,8 @@ export type Settings = {
   cleanUpInactiveTabsAfterHours: number | null;
   /** Hosts muted with Mute Site (their tabs stay muted, including new ones). */
   mutedSites: string[];
+  /** Never Translate This Site: hosts per profile id (components/site/translate). */
+  neverTranslateSites: Record<string, string[]>;
   /** A playing video pops out into Picture in Picture when you switch away from it (Dia's auto-PiP). */
   autoPictureInPicture: boolean;
   /** The sidebar's width, dragged at its edge. */
@@ -114,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoGroupMeetingTabs: true,
   cleanUpInactiveTabsAfterHours: null,
   mutedSites: [],
+  neverTranslateSites: {},
   autoPictureInPicture: true,
   sidebarWidth: 190,
   batterySaver: true,

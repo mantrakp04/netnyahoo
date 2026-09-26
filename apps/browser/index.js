@@ -1,6 +1,7 @@
 import { AppRegistry, LogBox, unstable_batchedUpdates } from "react-native";
 import { WindowRoot } from "./src/App";
 import { DevErrorBoundary } from "./src/DevErrorBoundary";
+import { startTranslate } from "./src/components/site/translate";
 import { startAppIntegration } from "./src/lib/appIntegration";
 import { startNativeSync } from "./src/lib/native";
 import { startPersistence } from "./src/lib/persist";
@@ -21,6 +22,7 @@ startPersistence();
 startNativeSync();
 startAppIntegration();
 startTabLifecycle();
+startTranslate();
 if (__DEV__) require("./src/lib/devHarness").startDevHarness();
 
 // The native side renders "main" once per window, with `initialProperties: { windowId }`.

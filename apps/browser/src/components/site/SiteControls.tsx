@@ -24,6 +24,7 @@ import { Popover, PopoverRow, PopoverSeparator, Toggle } from "../layout/control
 import { patchPage, setPopover, usePage } from "../layout/pageState";
 import { toggleCastPicker } from "../media/cast";
 import { useMedia, usePictureInPicture } from "../media/state";
+import { TranslateRows } from "./TranslateControls";
 
 /** The permissions Dia lists in its site menu, with their choices. */
 const PERMISSIONS: { type: SiteSettingType; title: string; icon: string; choices: SiteSettingValue[] }[] = [
@@ -103,7 +104,9 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
   };
   const toggleBlocker = async (on: boolean) => {
     await setContentBlockerAllowed(host, !on);
-    setBlocker((b) => (b ? { ...b, allowed: !on } : b));
+    // What the blocker now says, not what was asked: a change that didn't apply shows as such.
+    const allowed = await isContentBlockerAllowed(host).catch(() => !on);
+    setBlocker((b) => (b ? { ...b, allowed } : b));
     // Blocking changes apply to new requests: reload so the page shows the difference.
     void webviews.get(tabId)?.reload();
   };
@@ -173,6 +176,7 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
           />
         ) : null}
         {video || origin ? <PopoverSeparator /> : null}
+        {origin ? <TranslateRows tabId={tabId} onClose={close} /> : null}
 
         {origin && (
           <>

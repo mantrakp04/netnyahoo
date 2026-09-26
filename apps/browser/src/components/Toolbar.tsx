@@ -19,6 +19,7 @@ import { SIDEBAR_FIELD } from "./layout/windowLayout";
 import { showUrlBarMenu } from "./omnibox/paste";
 import { useHover } from "./primitives";
 import { ToolbarExtensions, useToolbarExtensionsWidth } from "./extensions/ToolbarExtensions";
+import { TranslateButton } from "./site/TranslateControls";
 
 /**
  * A pane's navigation bar: sidebar toggle (leading pane only), back / forward /
@@ -287,6 +288,7 @@ export function UrlField({
       </ContextMenuArea>
       <View style={{ flexDirection: "row", alignItems: "center", paddingRight: 3 }}>
         {capture && <CaptureIndicator camera={capture.camera} microphone={capture.microphone} screen={capture.screen} onPress={toggleSiteControls} />}
+        <TranslateButton tabId={tab.id} palette={palette} onFocus={onFocus} />
         {popups > 0 && (
           <ToolbarButton
             palette={palette}

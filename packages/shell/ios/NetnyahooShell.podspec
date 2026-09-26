@@ -11,7 +11,9 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
   # Auto-updates (Updater.swift).
   s.dependency 'Sparkle', '~> 2.9'
-  s.frameworks     = 'AppKit', 'LocalAuthentication', 'ServiceManagement', 'UniformTypeIdentifiers', 'UserNotifications', 'CoreImage', 'EventKit', 'Security'
+  s.frameworks     = 'AppKit', 'LocalAuthentication', 'ServiceManagement', 'UniformTypeIdentifiers', 'UserNotifications', 'CoreImage', 'EventKit', 'Security', 'NaturalLanguage', 'SwiftUI'
+  # Page translation (TranslateModule.swift): new in macOS 15, weakly linked for 14.
+  s.weak_frameworks = 'Translation'
   s.source_files   = '**/*.{h,m,swift}'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end

@@ -463,3 +463,24 @@ export type InlineWrite = 0 | 1 | 2;
 export const completeInline = InlineCompletionModule
   ? (tag: number, typed: string, completion: string) => InlineCompletionModule.complete(tag, typed, completion)
   : null;
+
+type TranslationModule = {
+  readonly available: boolean;
+  userLanguages(): string[];
+  languageName(identifier: string): string;
+  detect(text: string): Promise<string | null>;
+  status(source: string, target: string): Promise<"installed" | "supported" | "unsupported">;
+  supportedLanguages(): Promise<string[]>;
+  prepare(source: string, target: string): Promise<void>;
+  translate(source: string, target: string, texts: string[]): Promise<string[]>;
+  /** Each block's pieces translated as one text, each piece getting its part back; null where it can't (before macOS 26.4). */
+  translateBlocks(source: string, target: string, blocks: string[][]): Promise<(string[] | null)[]>;
+};
+const TranslationNative = requireOptionalNativeModule<TranslationModule>("NetnyahooTranslate");
+
+/**
+ * Page translation on the Mac's own models (Apple's Translation framework): null before macOS 26,
+ * and on builds from before it. Language identifiers are BCP 47 ("de", "zh-Hans"). `status` says
+ * whether a pair is installed, needs downloading first (`prepare` shows macOS's sheet), or can't be done.
+ */
+export const translation: Omit<TranslationModule, "available"> | null = TranslationNative?.available ? TranslationNative : null;

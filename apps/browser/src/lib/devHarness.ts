@@ -50,6 +50,14 @@ export function startDevHarness() {
     get permissions(): typeof import("../components/site/permissions") {
       return require("../components/site/permissions");
     },
+    /** Page translation: `nn.translate.translatePage(tabId)`, `nn.translate.useTranslate.getState()`. */
+    get translate(): typeof import("../components/site/translate") {
+      return require("../components/site/translate");
+    },
+    /** Toasts per window: `nn.toasts.getState().toasts`. */
+    get toasts(): typeof import("../components/layout/splitActions").useToasts {
+      return require("../components/layout/splitActions").useToasts;
+    },
     /** Extensions (install, toolbar actions, popups): `nn.extensions.activateExtension(windowId, ext, anchor)`. */
     get extensions(): typeof import("../components/extensions/state") {
       return require("../components/extensions/state");

@@ -21,9 +21,9 @@ Legend: **✅** done · **🧪** built, but the deciding test needs the user pre
 
 | ✅ done | 🧪 needs the user | 🟡 partial | ❌ missing | ⛔ blocked | ⏸ deferred (AI) | — n/a |
 |---|---|---|---|---|---|---|
-| 216 | 9 | 1 | 0 | 8 | 59 | 14 |
+| 217 | 9 | 1 | 0 | 7 | 59 | 14 |
 
-Of the 234 rows that count (not ⏸ or —), 216 are done (92 %), 225 with the nine 🧪 rows. The one 🟡 row is
+Of the 234 rows that count (not ⏸ or —), 217 are done (93 %), 226 with the nine 🧪 rows. The one 🟡 row is
 passkeys (iCloud Keychain waits on Apple). Keyboard shortcuts: every Dia shortcut is bound except the Chat ones
 (⏸). Menus: all ten exist and match.
 
@@ -57,10 +57,11 @@ What changed since the last audit, in rows (mostly the migration):
   Sync and AI (🟡 → ⛔ / ⏸); regional block lists now follow the system languages (§17 stays 🟡 for list freshness).
 - Since, from the loose-ends pass (2026-09-26, after 0.2.2): done, the block lists' freshness (every release moves
   to uBlock Origin Lite's latest, `scripts/update-ubol.sh`) and auto-updates (notarized, signed releases through
-  the GitHub appcast since 0.2.1) (🟡 / ⛔ → ✅). Every ⛔ row now names what blocks it; Dia's sidebar import is
-  blocked by Dia's keychain access group, not by missing code.
-- Still blocked: Sync (5 rows), Translate, Widevine DRM, Dia's sidebar import, and iCloud Keychain passkeys
-  (inside the 🟡 passkeys row).
+  the GitHub appcast since 0.2.1) and Translate, on Apple's on-device Translation framework (macOS 26)
+  (🟡 / ⛔ → ✅). Every ⛔ row now names what blocks it; Dia's sidebar import is blocked by Dia's keychain access
+  group, not by missing code.
+- Still blocked: Sync (5 rows), Widevine DRM, Dia's sidebar import, and iCloud Keychain passkeys (inside the 🟡
+  passkeys row).
 
 ## Remaining work
 
@@ -122,7 +123,6 @@ The 🧪 rows need no code until the user checklist below finds a problem.
 | Item | Blocked by | Unblocks when |
 |---|---|---|
 | Sync: E2E sync, per-profile sync, synced devices' tabs (§13 and the overflow menu), Sync pane (5 rows) | no sync server or account system: Dia's sync is its own service | we run a sync server with accounts (then it's a client package) |
-| Translate page (§8) | Chrome's Translate is in the engine, but ungoogled's domain substitution removed its Google servers | we pick a translation provider (API key, billing) or an on-device model, point Chrome's translate at it or build our own UI |
 | Protected video, Widevine (§18) | Google licenses the CDM only to VMP-signed browsers; the CDM comes through its component updater, whose host is substituted | Google grants a Widevine licence and VMP signing; then we allow the component updater host (or bundle the CDM) |
 | iCloud Keychain passkeys (inside §16's passkeys row) | Apple hasn't granted `com.apple.developer.web-browser.public-key-credential`, which macOS requires before a browser may use iCloud Keychain passkeys for any site | the grant arrives: switch `CODE_SIGN_ENTITLEMENTS` to `Netnyahoo-ICloudPasskeys.entitlements` (ledger 42) |
 | Dia sidebar import (§20) | Dia's `tabs.db` is encrypted with a key from its team's keychain access group | Dia exports its sidebar, or keeps it readable |
@@ -387,7 +387,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Use Selection for Find | ✓ | ✅ | |
 | Jump to Selection, Find & Replace | ✓ | ✅ | ⌘J, ⌥⌘F with Replace / All for the focused input, textarea or contenteditable. One ⌘Z undoes a Replace All in text fields; in a contenteditable each replacement is its own undo step |
 | Zoom ⌘+ / ⌘- / ⌘0 | ✓ | ✅ | Chrome's per-host zoom per profile (`HostZoomMap`, Chrome's steps); Settings › Privacy lists and resets levels. Pinch zoom is reported by the page script but unused |
-| Translate page / Never translate this site | ✓ | ⛔ | Chrome's Translate is compiled into the engine now, but its Google servers are removed by ungoogled's domain substitution and there's no UI; needs a translation provider (see ⛔ table) |
+| Translate page / Never translate this site | ✓ | ✅ | on the Mac's own models (Apple's Translation framework, macOS 26; nothing leaves the Mac), not Chrome's Translate, whose Google servers domain substitution removed. Dia's UX from its 1.50.1 binary: a translate button by the address when the page isn't in one of your languages (click: translate / back to the original); Site Controls' "Translate to <language>", "Choose Another Language…" and "Never Translate This Site" (per profile); toasts "Translated to %@", "Translated back to %@", "Translation error (%@)", with progress while a long first pass runs. A paragraph translates as one text and each text node gets its part back, so links and styles stay (a language with another word order is cut in proportion); what's near the viewport first, the rest as you scroll; text the page adds later too; Show Original restores the text exactly. Checked on German and Japanese Wikipedia. macOS 14–15: no Translation framework, so no button |
 | Selected‑text popover (Search) | ✓ | ✅ | Search bar over a mouse selection (default engine, new tab next to the page); page menu "Search <engine> for “…”" |
 | Selected‑text popover / context menu (Ask) | ✓ | ⏸ | hidden until Chat exists (`kChatEnabled` in NNClient.mm) |
 | Clean link copy (trackers stripped), Copy URL as Markdown ⌥⇧⌘C | ✓ | ✅ | every Copy URL / Copy Link (as Markdown) strips trackers |

@@ -173,11 +173,21 @@ export function SplitToast({ windowId }: { windowId: string }) {
   const toast = useToasts((s) => s.toasts[windowId] ?? null);
   const appear = useRef(new Animated.Value(0)).current;
   const [shown, setShown] = useState(toast);
+  // A keyed toast updated in place (progress) keeps its id: new text, no new entrance. A sticky
+  // one hidden from outside fades out here (it has no timer of its own).
+  useEffect(() => {
+    if (toast) return setShown(toast);
+    if (!shown?.sticky) return;
+    Animated.timing(appear, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(({ finished }) => {
+      if (finished) setShown(null);
+    });
+  }, [toast]);
   useEffect(() => {
     if (!toast) return;
     setShown(toast);
     appear.setValue(0);
     Animated.spring(appear, { toValue: 1, useNativeDriver: false, speed: 18, bounciness: 6 }).start();
+    if (toast.sticky) return;
     const timer = setTimeout(() => {
       Animated.timing(appear, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(({ finished }) => {
         if (!finished) return;

@@ -16,15 +16,26 @@ const store = () => useBrowser.getState();
 
 /** Transient toasts per window ("Cannot Add New Pane"). */
 type Toast = { id: number; title: string; message?: string } & ToastOptions;
-/** `icon`: SF Symbol (default: the split view glyph). `action`: an accessory button (Dia's "Settings"). */
-export type ToastOptions = { icon?: string; action?: { title: string; run(): void } };
+/**
+ * `icon`: SF Symbol (default: the split view glyph). `action`: an accessory button (Dia's "Settings").
+ * `key`: a toast showing with the same key is updated in place (progress). `sticky`: stays until replaced.
+ */
+export type ToastOptions = { icon?: string; action?: { title: string; run(): void }; key?: string; sticky?: boolean };
 export const useToasts = create<{ toasts: Record<string, Toast | null> }>()(() => ({ toasts: {} }));
 let toastSeq = 0;
 export function showToast(windowId: string, title: string, message?: string, options?: ToastOptions) {
-  useToasts.setState((s) => ({ toasts: { ...s.toasts, [windowId]: { id: ++toastSeq, title, message, ...options } } }));
+  useToasts.setState((s) => {
+    const current = s.toasts[windowId];
+    const id = options?.key && current?.key === options.key ? current.id : ++toastSeq;
+    return { toasts: { ...s.toasts, [windowId]: { id, title, message, ...options } } };
+  });
 }
 export function hideToast(windowId: string, id: number) {
   useToasts.setState((s) => (s.toasts[windowId]?.id === id ? { toasts: { ...s.toasts, [windowId]: null } } : s));
+}
+/** Hides the toast with this `key`, if it's the one showing. */
+export function hideKeyedToast(windowId: string, key: string) {
+  useToasts.setState((s) => (s.toasts[windowId]?.key === key ? { toasts: { ...s.toasts, [windowId]: null } } : s));
 }
 
 const maxedOut = (windowId: string) =>
