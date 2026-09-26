@@ -1,0 +1,28 @@
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_2cd9f063d3926e 39-49,415-418,420-422,425,429-440,445-446
+  s_9c356f9574d31c::t_ffb4277701ac42 441-444
+  s_9c356f9574d31c::t_b447740a9599d5 638
+  s_9c356f9574d31c::t_f12064f58ea5cb 447
+packages/cef/ios/NNClient.h
+  s_9c356f9574d31c::t_2cd9f063d3926e 213-216
+packages/cef/ios/NNWindowHost.h
+  s_9c356f9574d31c::t_2cd9f063d3926e 110-112
+packages/cef/ios/NNChromeWindow.mm
+  s_9c356f9574d31c::t_2cd9f063d3926e 405-412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "34c7f3172a5d6516a9c7616b86f4a405df9eb9ed",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
