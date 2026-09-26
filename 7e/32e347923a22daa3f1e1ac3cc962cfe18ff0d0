@@ -1,0 +1,21 @@
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_e88d81617f2092 6-8,149,218,392,505,518,548
+docs/migration-status.md
+  s_9c356f9574d31c::t_e88d81617f2092 306-307,314-315,340-341,344-345,349-350,360,385,407
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7e32e347923a22daa3f1e1ac3cc962cfe18ff0d0",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
