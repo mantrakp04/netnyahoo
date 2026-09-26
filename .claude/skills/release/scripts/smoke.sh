@@ -66,7 +66,7 @@ pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | 
 status=0
 locked="$("$work/windows" --locked)"
 [ "$locked" = 1 ] && echo "note: the screen is locked; checks of window order and closing are skipped (they need an unlocked screen)"
-SMOKE_LOCKED="$locked" node "$here/smoke.mjs" "$port" "$version" "$work/windows" "$pid" "$pages" || status=1
+SMOKE_LOCKED="$locked" SMOKE_DATA="$work/data" node "$here/smoke.mjs" "$port" "$version" "$work/windows" "$pid" "$pages" || status=1
 
 kill -TERM "$pid" 2>/dev/null || true
 for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done

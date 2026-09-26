@@ -152,6 +152,20 @@ void Install() {
     return originalPolicy(app, @selector(setActivationPolicy:), NSApplicationActivationPolicyProhibited);
   });
   ObserveActivation();
+  // A context menu is drawn above every app, even from a process that can never be active:
+  // the release smoke test's right-click popped a menu up over the user's work. Test
+  // instances log the menu (its items, for the smoke test) instead of showing it, and tell
+  // its delegate it opened and closed, as if dismissed at once.
+  Method popUp = class_getClassMethod(NSMenu.class, @selector(popUpContextMenu:withEvent:forView:));
+  method_setImplementation(popUp, imp_implementationWithBlock(^(id, NSMenu *menu, NSEvent *, NSView *) {
+    NSMutableArray<NSString *> *titles = [NSMutableArray array];
+    for (NSMenuItem *item in menu.itemArray)
+      if (!item.isSeparatorItem && item.title.length) [titles addObject:item.title];
+    Log([NSString stringWithFormat:@"context menu (not shown): %@", [titles componentsJoinedByString:@" | "]], @[]);
+    id<NSMenuDelegate> delegate = menu.delegate;
+    if ([delegate respondsToSelector:@selector(menuWillOpen:)]) [delegate menuWillOpen:menu];
+    if ([delegate respondsToSelector:@selector(menuDidClose:)]) [delegate menuDidClose:menu];
+  }));
 }
 
 }  // namespace nn::activation

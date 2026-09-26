@@ -5,6 +5,7 @@
 // SMOKE_LOCKED=1 (smoke.sh: the screen is locked): the checks that read window order or wait for a
 // window to go print SKIP, as a locked screen freezes window animations and CGWindowList's order.
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 const [port, version, windowsTool, pid, pages] = process.argv.slice(2);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -166,19 +167,32 @@ check("offline page is Where's Big Yahu?", /No internet/.test(await evaluate("do
 await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 await go(`${pages}/form.html`);
 
-// Last: right-click shows a native menu (NSPopUpMenuWindowLevel, 101; autofill popups are 999).
-// Once the page has drawn with the field laid out (two animation frames), one right-click, and the
-// window list watched from that moment. The menu opens within milliseconds, but in this never-active
-// test instance AppKit ends it on its own when the user works in another app (after 1.5–6 s, and it
-// can leave the window list sooner), so a single look later misses it.
+// Last: right-click shows Chrome's context menu. Test instances (NETNYAHOO_BACKGROUND) don't draw it,
+// since a context menu shows above every app, even over the user's work: they log its items to
+// activation.log instead (NNActivation.mm). Builds from before that still draw it, a layer-101 window.
+// Once the page has drawn with the field laid out (two animation frames), one right-click.
 await evaluate(`new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => {
   const b = document.querySelector("#c").getBoundingClientRect();
   r(b.width > 0 && b.height > 0);
 })))`);
 await click("#c", "right");
-let menu;
-for (const start = Date.now(); !menu && Date.now() - start < 3000; ) menu = windows().find((w) => w.layer === 101);
-check("right-click shows the context menu", !!menu, menu ? `layer ${menu.layer}` : "no menu window");
+const menuLog = () => {
+  try {
+    return readFileSync(`${process.env.SMOKE_DATA}/activation.log`, "utf8").match(/context menu \(not shown\): (.*)/)?.[1];
+  } catch {
+    return undefined;
+  }
+};
+let logged, menu;
+for (const start = Date.now(); !logged && !menu && Date.now() - start < 3000; ) {
+  logged = menuLog();
+  menu = logged ? undefined : windows().find((w) => w.layer === 101);
+}
+check(
+  "right-click shows the context menu",
+  (logged && /Paste/.test(logged)) || !!menu,
+  logged ? `logged: ${logged.slice(0, 80)}` : menu ? `layer ${menu.layer}` : "no menu",
+);
 
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);
