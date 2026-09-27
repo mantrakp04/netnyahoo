@@ -1,0 +1,85 @@
+apps/launch-video/scripts/capture/harness/pour-repo.js
+  s_9c356f9574d31c::t_cab5fbb5c7d5a6 1-7
+apps/launch-video/src/pour/theme.ts
+  s_9c356f9574d31c::t_73a688fbe6044d 1-15,17-35
+  s_9c356f9574d31c::t_2648ad61653ee9 16
+apps/launch-video/scripts/check-pour.mjs
+  s_9c356f9574d31c::t_153954b31fd04c 1-43
+apps/launch-video/assets/pour/pour.json
+  s_9c356f9574d31c::t_73527905199c00 1-2,5,7-9
+  s_9c356f9574d31c::t_f4e614ad51c451 6
+  s_9c356f9574d31c::t_04dde6ffda0003 3-4
+apps/launch-video/scripts/audio/music.mjs
+  s_9c356f9574d31c::t_db3336c6f6e261 27-44
+apps/launch-video/scripts/capture/harness/pour-incog.js
+  s_9c356f9574d31c::t_7349bb8df6bf17 1-2,6-13
+  s_9c356f9574d31c::t_cab5fbb5c7d5a6 3-5,14-16
+apps/launch-video/scripts/capture/build-pour.py
+  s_9c356f9574d31c::t_73527905199c00 78-80,127
+  s_9c356f9574d31c::t_2a28523e4639bb 1-48,51-55,57-77,81-111,118,120-126,128-130,132-133
+  s_9c356f9574d31c::t_f4e614ad51c451 114-117,119
+  s_9c356f9574d31c::t_04dde6ffda0003 112-113,131
+  s_9c356f9574d31c::t_874577baeaf223 49-50,56
+apps/launch-video/scripts/mux-audio.mjs
+  s_9c356f9574d31c::t_a76ce1b6da43a8 1,4,12-15
+apps/launch-video/src/pour/Flacon.tsx
+  s_9c356f9574d31c::t_58326ce4f36b28 43-48,55-60,63-70,94,96-97,104,107,111-112,121,128-129,142,148,150-152,166,185-186
+  s_9c356f9574d31c::t_33c1e5535971db 134,204
+  s_9c356f9574d31c::t_92cb5bf3a8cd3f 1-42,49-54,71-93,95,98-103,106,108-110,113-120,122-127,130-133,135-141,143-147,149,153-165,167-169,183-184,187-203,205-207
+  s_9c356f9574d31c::t_0f47d809eeb44b 61-62,105,170-182
+apps/launch-video/scripts/audio/voice.mjs
+  s_9c356f9574d31c::t_4f9dda476795af 1-43
+apps/launch-video/scripts/capture/harness/pour-block.js
+  s_9c356f9574d31c::t_cab5fbb5c7d5a6 1-12
+apps/launch-video/src/pour/timeline.ts
+  s_9c356f9574d31c::t_0f47d809eeb44b 102
+  s_9c356f9574d31c::t_a577284ac75f8e 1-19,21-29,31-33,35,37,40-43,45-53,56,59,62-63,67,69,71-78,93-99,103-126
+  s_9c356f9574d31c::t_4df7acb4bd1899 20,36,57-58,60-61
+  s_9c356f9574d31c::t_04dde6ffda0003 30,34,38-39,68,70,79-85,87,90-92
+  s_9c356f9574d31c::t_564a094acae6bf 54-55,64-66,100-101
+  s_9c356f9574d31c::t_833d793d4a581b 44,86,88-89
+apps/launch-video/src/pour/Pour.tsx
+  s_9c356f9574d31c::t_04dde6ffda0003 64,81-82,175
+  s_9c356f9574d31c::t_1286e024c2b6dc 179
+  s_9c356f9574d31c::t_4df7acb4bd1899 133-134,169-171,173-174,176-178,192,194-197,211-212,217,222-223,237-238,240,243
+  s_9c356f9574d31c::t_433292a0e7d63b 1-26,28-63,65-80,83-132,135-168,172,182-191,198-210,213-216,218-221,224-236,239,241-242,244-267
+  s_9c356f9574d31c::t_0f47d809eeb44b 193
+  s_9c356f9574d31c::t_87372465f0ff0f 27,180-181
+apps/launch-video/src/Root.tsx
+  s_9c356f9574d31c::t_509db7b8819892 3-4,10-12
+apps/launch-video/package.json
+  s_9c356f9574d31c::t_a76ce1b6da43a8 5,8,12-14
+apps/launch-video/scripts/prepare-assets.mjs
+  s_9c356f9574d31c::t_509db7b8819892 1,18
+apps/launch-video/scripts/capture/harness/pour-peek.js
+  s_9c356f9574d31c::t_1256e16b45790a 7
+  s_9c356f9574d31c::t_d43cbc4a29e52c 8-9
+  s_9c356f9574d31c::t_cab5fbb5c7d5a6 1-6,10-24
+apps/launch-video/README.md
+  s_9c356f9574d31c::t_e3b5f06b5a4359 87-154
+apps/launch-video/scripts/capture/harness/pour-bar.js
+  s_9c356f9574d31c::t_6b22fb9fc002ff 3-6,9-11,16,18,23
+  s_9c356f9574d31c::t_1463390c9d640a 12-15
+  s_9c356f9574d31c::t_cab5fbb5c7d5a6 1-2,7-8,17,19-22
+apps/launch-video/scripts/make-pour-sound.mjs
+  s_9c356f9574d31c::t_3109be0f29a471 1-107
+apps/launch-video/src/pour/Smoke.tsx
+  s_9c356f9574d31c::t_72948479d745ff 1-49,51-75,80-83
+  s_9c356f9574d31c::t_97c451bdd1ab14 50,76-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d0d3b5aa2cb81d6efa3144282679f0d0f76a9ea3",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
