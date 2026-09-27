@@ -83,6 +83,8 @@ export type Settings = {
   appearance: "auto" | "light" | "dark";
   /** Where the address bar and back / forward / reload sit: the page's toolbar, or the sidebar's top (Arc). */
   addressBar: "toolbar" | "sidebar";
+  /** The sidebar's material: Dia's tinted window (default), or Liquid Glass with Arc's layout and the page flush beside it. */
+  sidebarStyle: "dia" | "glass";
 
   // Profiles
   defaultProfileId: string;
@@ -126,6 +128,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideBookmarksBarImport: false,
   appearance: "auto",
   addressBar: "toolbar",
+  sidebarStyle: "dia",
   defaultProfileId: DEFAULT_PROFILE_ID,
   shortcuts: {},
 };

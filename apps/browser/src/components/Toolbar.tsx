@@ -27,7 +27,22 @@ import { TranslateButton } from "./site/TranslateControls";
  * close buttons. The page's colour tints it when "Extend website color" is on;
  * unfocused split panes dim theirs.
  */
-export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId: string; geometry: ToolbarGeometry; windowId: string; inSplit: boolean; focused: boolean }) {
+export function Toolbar({
+  tabId,
+  geometry,
+  windowId,
+  inSplit,
+  focused,
+  inset = 0,
+}: {
+  tabId: string;
+  geometry: ToolbarGeometry;
+  windowId: string;
+  inSplit: boolean;
+  focused: boolean;
+  /** Extra band above the buttons: a flush page (Liquid Glass) keeps them on the traffic lights' line. */
+  inset?: number;
+}) {
   const theme = useTheme();
   const tab = useTab(tabId);
   const live = useTabLive(tabId);
@@ -41,7 +56,7 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
   useEffect(() => {
     Animated.timing(dim, { toValue: focused ? 1 : 0.5, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [focused]);
-  if (!tab) return <View style={{ height: layout.toolbarHeight }} />;
+  if (!tab) return <View style={{ height: layout.toolbarHeight + inset }} />;
 
   // Acting on an unfocused pane focuses it first, like clicking into its page.
   const focus = () => {
@@ -52,10 +67,10 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
   const right = (inSplit ? 12 + 2 * 28 : 12) + extensionsWidth;
 
   return (
-    <View style={{ height: layout.toolbarHeight }}>
+    <View style={{ height: layout.toolbarHeight + inset }}>
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: band }]} />
       <WindowDragRegion style={StyleSheet.absoluteFill} />
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: dim }]} pointerEvents="box-none">
+      <Animated.View style={[StyleSheet.absoluteFill, { top: inset, opacity: dim }]} pointerEvents="box-none">
         {geometry.sidebarButton !== null && (
           <ToolbarButton
             style={at(geometry.sidebarButton)}
@@ -140,6 +155,7 @@ export function HistoryButton({
   palette,
   style,
   onFocus,
+  compact,
 }: {
   tab: Tab;
   direction: -1 | 1;
@@ -147,6 +163,8 @@ export function HistoryButton({
   palette: ToolbarPalette;
   style?: object;
   onFocus: () => void;
+  /** The Liquid Glass sidebar's header (Arc's): arrows in a 26 pt box. */
+  compact?: boolean;
 }) {
   const openMenu = () => {
     onFocus();
@@ -167,8 +185,10 @@ export function HistoryButton({
     <MouseArea style={style} onMiddleClick={(e) => !disabled && void onPress({ ...e, middle: true })}>
       <ToolbarButton
         palette={palette}
-        icon={direction < 0 ? "chevron.left" : "chevron.right"}
-        size={14}
+        icon={compact ? (direction < 0 ? "arrow.left" : "arrow.right") : direction < 0 ? "chevron.left" : "chevron.right"}
+        size={compact ? 13 : 14}
+        box={compact ? 26 : undefined}
+        radius={compact ? 6 : undefined}
         disabled={disabled}
         onPress={onPress}
         onLongPress={openMenu}

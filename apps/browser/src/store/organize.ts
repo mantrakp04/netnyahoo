@@ -55,8 +55,13 @@ export type OrganizeSlice = {
 
   /** ⌥⌘K: closes duplicate and unused tabs into Recently Cleaned. Returns how many. */
   cleanUpTabs(windowId: string, options?: { inactiveForMs?: number }): number;
-  /** Restores one cleaned tab, or all of them. */
-  restoreCleaned(entryId?: string): void;
+  /**
+   * Arc's Clear (the Liquid Glass sidebar's divider): closes the window's unpinned tabs (pinned tabs
+   * and pinned groups stay) into Recently Cleaned. Returns the entries, for Undo.
+   */
+  clearTabs(windowId: string): string[];
+  /** Restores one cleaned tab (and selects it), the given ones, or all of them. */
+  restoreCleaned(entryId?: string | string[]): void;
   /** New Tab pages you've moved away from (Dia clears them when you switch apps or lock the screen). */
   closeAbandonedNewTabs(): void;
 };
@@ -289,6 +294,12 @@ export function restoringGroup(s: BrowserState, entry: ClosedGroup, requested?: 
 }
 
 /** Tabs Clean Up Tabs would close in a window: duplicates, and untouched tabs outside groups. */
+/** What Clear closes: the window's tabs that aren't pinned or in a pinned group. */
+export function clearableTabs(s: BrowserState, windowId: string): string[] {
+  const pinnedGroup = new Set(Object.values(s.groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
+  return viewTabIds(s, windowId).filter((id) => !s.tabs[id]!.pinned && !pinnedGroup.has(id));
+}
+
 export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveForMs = CLEAN_UP_AFTER_MS, now = Date.now()): string[] {
   const view = viewTabIds(s, windowId);
   const active = activeTabId(s, windowId);
@@ -545,9 +556,20 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     return ids.length;
   },
 
+  clearTabs(windowId) {
+    const s = get();
+    const ids = clearableTabs(s, windowId);
+    if (!ids.length) return [];
+    const entries = closedEntries(s, ids);
+    const next = closeQuietly(s, ids);
+    set({ ...next, cleanedTabs: [...next.cleanedTabs, ...entries].slice(-MAX_CLEANED) });
+    return entries.map((e) => e.id);
+  },
+
   restoreCleaned(entryId) {
     const s = get();
-    const entries = s.cleanedTabs.filter((c) => !entryId || c.id === entryId);
+    const wanted = entryId === undefined ? null : new Set([entryId].flat());
+    const entries = s.cleanedTabs.filter((c) => !wanted || wanted.has(c.id));
     if (!entries.length) return;
     let next: BrowserState = { ...s, cleanedTabs: s.cleanedTabs.filter((c) => !entries.includes(c)) };
     for (const e of entries) {
@@ -562,7 +584,7 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
         const window = { ...w, tabIds: placeBlock(w.tabIds, w.tabIds.filter((t) => members.includes(t))) };
         next = { ...next, windows: { ...next.windows, [windowId]: window }, groups: syncGroupOrder({ ...next.groups, [g.id]: { ...g, tabIds: members } }, window) };
       }
-      if (id && entryId) next = apply(next, activated(next, id));
+      if (id && typeof entryId === "string") next = apply(next, activated(next, id));
     }
     set(next);
   },

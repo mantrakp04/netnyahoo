@@ -23,7 +23,7 @@ import { SadTab, StatusBubble } from "./layout/PaneOverlays";
 import { DropTargets, SplitDividers, SplitToast } from "./layout/SplitChrome";
 import { SplitEmptyState } from "./layout/SplitEmptyState";
 import { openLinkInSplit } from "./layout/splitActions";
-import { setUrlAnchor, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
+import { setUrlAnchor, useAddressBarInSidebar, useGlassSidebar, useTabLayout } from "./layout/windowLayout";
 import { NewTabPage } from "./NewTabPage";
 import { InternalPage, isInternalTab } from "./pages";
 import { BlockedPopupsPrompt, PasswordPrompt, PermissionPrompt, shouldPromptForPopups, showPasswordPrompt } from "./site/Prompts";
@@ -55,6 +55,10 @@ export function ContentCard() {
   const tabLayout = useTabLayout();
   // Settings › Appearance › Address Bar: in the sidebar, panes have no toolbar.
   const addressInSidebar = useAddressBarInSidebar();
+  // Liquid Glass: the page is flush with the window's edges, so the toolbar gets the card's top inset
+  // as a band above its buttons (they stay on the traffic lights' line), and panes lose their corners.
+  const flush = useGlassSidebar() && !fullscreenTab;
+  const toolbarInset = flush ? layout.cardTop : 0;
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const container = useRef<View>(null);
@@ -113,8 +117,8 @@ export function ContentCard() {
   useEffect(() => {
     if (!origin || !focusedRect || addressInSidebar) return;
     const g = geometryFor(focusedRect);
-    setUrlAnchor(windowId, { left: origin.x + focusedRect.x + g.urlLeft, top: origin.y + focusedRect.y, width: focusedRect.width - g.urlLeft - 12 });
-  }, [origin, focusedRect?.x, focusedRect?.y, focusedRect?.width, tabLayout, sidebarOpen, addressInSidebar]);
+    setUrlAnchor(windowId, { left: origin.x + focusedRect.x + g.urlLeft, top: origin.y + focusedRect.y + toolbarInset, width: focusedRect.width - g.urlLeft - 12 });
+  }, [origin, focusedRect?.x, focusedRect?.y, focusedRect?.width, tabLayout, sidebarOpen, addressInSidebar, toolbarInset]);
 
   return (
     <View
@@ -142,6 +146,8 @@ export function ContentCard() {
               fullscreen={tabId === fullscreenTab}
               geometry={geometryFor(rect)}
               toolbar={!addressInSidebar}
+              toolbarInset={toolbarInset}
+              flush={flush}
               mounted={mounted.includes(tabId)}
             />
           );
@@ -168,6 +174,8 @@ function TabPane({
   fullscreen,
   geometry,
   toolbar,
+  toolbarInset,
+  flush,
   mounted,
 }: {
   tabId: string;
@@ -180,6 +188,9 @@ function TabPane({
   geometry: ToolbarGeometry;
   /** False when the address bar is in the sidebar: the page starts at the card's top. */
   toolbar: boolean;
+  toolbarInset: number;
+  /** Liquid Glass: square corners, the window's own round the page. */
+  flush: boolean;
   mounted: boolean;
 }) {
   const theme = useTheme();
@@ -207,15 +218,15 @@ function TabPane({
         top: frame.y,
         width: frame.width,
         height: frame.height,
-        borderRadius: fullscreen ? 0 : layout.cardRadius,
+        borderRadius: fullscreen || flush ? 0 : layout.cardRadius,
         overflow: "hidden",
         backgroundColor: visible && !fullscreen ? theme.card : undefined,
       }}
     >
       {!toolbar || fullscreen ? null : visible ? (
-        <Toolbar tabId={tabId} geometry={geometry} windowId={windowId} inSplit={inSplit} focused={focused || !inSplit} />
+        <Toolbar tabId={tabId} geometry={geometry} windowId={windowId} inSplit={inSplit} focused={focused || !inSplit} inset={toolbarInset} />
       ) : (
-        <View style={{ height: layout.toolbarHeight }} />
+        <View style={{ height: layout.toolbarHeight + toolbarInset }} />
       )}
       {!fullscreen && !inSplit && <BookmarksBar tabId={tabId} placeholder={!visible} />}
       {visible && !fullscreen && <ShareBar tabId={tabId} />}

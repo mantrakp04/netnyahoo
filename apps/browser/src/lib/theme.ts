@@ -1,5 +1,5 @@
 import type { AreaLightPalette, LogoPaint } from "@netnyahoo/shaders";
-import { useContext } from "react";
+import { createContext, useContext } from "react";
 import { useBrowser } from "../store/browser";
 import { PageProfileContext, WindowContext } from "../store/hooks";
 import type { ProfileColor } from "../store/types";
@@ -23,6 +23,8 @@ export type Theme = typeof dark & ProfileTheme & {
   logoPaint: LogoPaint;
   /** Dia 1.50 power-up band: one theme colour instead of the per-hue palette; null = none. */
   powerUpColor: string | null;
+  /** Drawn on the Liquid Glass sidebar (SidebarGlassContext): its rows and tiles wear GLASS. */
+  glass: boolean;
 };
 
 const dark = {
@@ -137,6 +139,44 @@ const light: typeof dark = {
   accent: "#6395FC",
 };
 
+/**
+ * Settings › Appearance › Sidebar Style "Liquid Glass": the sidebar's rows and tiles over the glass.
+ * Measured from the reference (light glass ≈ #D2D5D9 over a dark wallpaper): resting tiles are the
+ * glass 5% darker with no ring; the selected tile is raised, a thin rim with a white top edge over a
+ * barely lighter fill, and a soft shadow; rows select to a white glass pill.
+ */
+const GLASS = {
+  dark: {
+    tabHover: "rgba(255,255,255,0.08)",
+    tabPressed: "rgba(255,255,255,0.14)",
+    tabSelected: "rgba(255,255,255,0.14)",
+    tabSelectedBorder: ["rgba(255,255,255,0.24)", "rgba(255,255,255,0.06)"] as [string, string],
+    tabSelectedShadow: "rgba(0,0,0,0.28)",
+    tabSelectedShadowRadius: 5,
+    pinnedResting: "rgba(255,255,255,0.06)",
+    pinnedRestingStroke: "rgba(255,255,255,0)",
+    pinnedSelectedRim: "rgba(255,255,255,0.16)",
+    pinnedSelectedFill: "rgba(255,255,255,0.07)",
+    pinnedSelectedOutline: "rgba(255,255,255,0.3)",
+  },
+  light: {
+    tabHover: "rgba(255,255,255,0.38)",
+    tabPressed: "rgba(255,255,255,0.55)",
+    tabSelected: "rgba(255,255,255,0.72)",
+    tabSelectedBorder: ["rgba(255,255,255,0.95)", "rgba(255,255,255,0.4)"] as [string, string],
+    tabSelectedShadow: "rgba(0,0,0,0.1)",
+    tabSelectedShadowRadius: 5,
+    pinnedResting: "rgba(0,0,0,0.045)",
+    pinnedRestingStroke: "rgba(0,0,0,0)",
+    pinnedSelectedRim: "rgba(0,0,0,0.12)",
+    pinnedSelectedFill: "rgba(255,255,255,0.3)",
+    pinnedSelectedOutline: "rgba(255,255,255,0.9)",
+  },
+} satisfies Record<"dark" | "light", Partial<typeof dark>>;
+
+/** Set by the sidebar in the Liquid Glass style: useTheme under it returns the glass variant. */
+export const SidebarGlassContext = createContext(false);
+
 /** "rgba(r,g,b,a)" or "#RRGGBB[AA]" → "#RRGGBBAA", for native views. */
 export function hex(color: string): string {
   const m = color.match(/rgba?\(([^)]+)\)/);
@@ -238,7 +278,8 @@ const cache = new Map<string, Theme>();
 export function themeFor(key: string): Theme {
   let theme = cache.get(key);
   if (!theme) {
-    const [color, mode] = key.split(":") as [ProfileColor | "incognito", string];
+    const glass = key.endsWith(":glass");
+    const [color, mode] = (glass ? key.slice(0, -":glass".length) : key).split(":") as [ProfileColor | "incognito", string];
     const base = color === "incognito" ? { ...dark, ...INCOGNITO } : { ...(mode === "dark" ? dark : light), ...profileTheme(color, mode === "dark") };
     const spec = color === "incognito" ? null : (PROFILE_COLORS[color] ?? PROFILE_COLORS.plum);
     // NewTabPageViewController (rebrand): neutral's band is grey (0.502) at 0.65, others the theme colour.
@@ -246,10 +287,12 @@ export function themeFor(key: string): Theme {
     const backdrop = backdropTint(spec ? (spec.tint ?? tintForHue(spec.swatch, !spec.palette)) : INCOGNITO_TINT, !spec?.palette);
     theme = {
       ...base,
+      ...(glass ? GLASS[base.dark ? "dark" : "light"] : null),
       backdrop,
       windowTint: opaqueTint(backdrop, base.dark),
       logoPaint: spec?.palette ?? "neutral",
       powerUpColor,
+      glass,
     };
     cache.set(key, theme);
   }
@@ -262,13 +305,14 @@ export function useTheme(): Theme {
   // A sidebar or tab-strip page wears its own profile's colours: a profile switch leaves the pages'
   // rows as they are while they slide (layout/profilePager).
   const page = useContext(PageProfileContext);
+  const glass = useContext(SidebarGlassContext);
   const key = useBrowser((s) => {
     const w = s.windows[windowId ?? s.ui.focusedWindowId ?? ""];
     if (w?.incognito) return "incognito";
     const color = s.profiles[page ?? w?.profileId ?? s.settings.defaultProfileId]?.color ?? "plum";
     return `${color}:${s.ui.appDark ? "dark" : "light"}`;
   });
-  return themeFor(key);
+  return themeFor(glass ? `${key}:glass` : key);
 }
 
 /** Layout constants measured from Dia (points). */

@@ -704,6 +704,81 @@ final class VisualEffect: ExpoView {
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+/// Liquid Glass sized to the RN view: AppKit's NSGlassEffectView on macOS 26+ (its backdrop is
+/// window-server aware, so over a clear part of the window it frosts the desktop), with `tint` as the
+/// glass's tintColor. Before macOS 26 it's an NSVisualEffectView with the sidebar material, blending
+/// behind the window, under the tint. Nothing goes in the glass: RN content sits over it as siblings.
+/// Ignores mouse events.
+public class GlassEffectModule: Module {
+  public func definition() -> ModuleDefinition {
+    Name("NetnyahooGlassEffect")
+
+    /// Real Liquid Glass (macOS 26+); false means the sidebar-material fallback.
+    Function("isLiquidGlass") { () -> Bool in
+      if #available(macOS 26.0, *) { return true }
+      return false
+    }
+
+    View(GlassEffect.self) {
+      Prop("cornerRadius") { (view: GlassEffect, v: Double) in view.cornerRadius = v }
+      Prop("tint") { (view: GlassEffect, hex: String?) in view.tint = hex.flatMap(NSColor.init(hex:)) }
+      Prop("glassStyle") { (view: GlassEffect, style: String?) in view.clear = style == "clear" }
+      // The RN theme's appearance (an incognito window is dark whatever the app's appearance).
+      Prop("dark") { (view: GlassEffect, dark: Bool?) in view.appearance = dark.map { NSAppearance(named: $0 ? .darkAqua : .aqua) } ?? nil }
+    }
+  }
+}
+
+final class GlassEffect: ExpoView {
+  private let effect: NSView
+  /// The fallback's tint, over the material.
+  private let tintLayer = CALayer()
+  var cornerRadius: Double = 0 { didSet { apply() } }
+  var tint: NSColor? { didSet { apply() } }
+  var clear = false { didSet { apply() } }
+
+  required init(appContext: AppContext? = nil) {
+    if #available(macOS 26.0, *) {
+      effect = NSGlassEffectView()
+    } else {
+      let material = NSVisualEffectView()
+      material.material = .sidebar
+      material.blendingMode = .behindWindow
+      material.state = .followsWindowActiveState
+      material.wantsLayer = true
+      tintLayer.actions = ["backgroundColor": NSNull(), "bounds": NSNull(), "position": NSNull()]
+      material.layer?.addSublayer(tintLayer)
+      effect = material
+    }
+    super.init(appContext: appContext)
+    addSubview(effect)
+    apply()
+  }
+
+  private func apply() {
+    if #available(macOS 26.0, *), let glass = effect as? NSGlassEffectView {
+      glass.cornerRadius = cornerRadius
+      glass.tintColor = tint
+      glass.style = clear ? .clear : .regular
+      return
+    }
+    effect.layer?.cornerRadius = cornerRadius
+    effect.layer?.cornerCurve = .continuous
+    effect.layer?.masksToBounds = cornerRadius > 0
+    tintLayer.frame = effect.bounds
+    tintLayer.backgroundColor = tint?.cgColor
+  }
+
+  // RN macOS doesn't autoresize subviews.
+  override func setFrameSize(_ newSize: NSSize) {
+    super.setFrameSize(newSize)
+    effect.frame = bounds
+    apply()
+  }
+
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 public class SurfaceModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooSurface")

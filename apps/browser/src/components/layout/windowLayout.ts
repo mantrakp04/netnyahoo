@@ -25,6 +25,21 @@ export function useAddressBarInSidebar(): boolean {
 }
 
 /**
+ * Settings › Appearance › Sidebar Style "Liquid Glass" (Arc's look): the sidebar is Liquid Glass over
+ * the desktop, the page sits flush beside it, and the sidebar's header and divider are Arc's. It's a
+ * sidebar style: with tabs along the top the window keeps Dia's look.
+ */
+export function glassSidebar(s: BrowserState, windowId: string): boolean {
+  const w = s.windows[windowId];
+  return !!w && s.settings.sidebarStyle === "glass" && (w.tabLayout ?? s.settings.tabLayout) === "sidebar";
+}
+
+export function useGlassSidebar(): boolean {
+  const windowId = useWindowId();
+  return useBrowser((s) => glassSidebar(s, windowId));
+}
+
+/**
  * The sidebar's URL field. Arc puts its top 21.5 pt under the traffic lights' centre (ours are at
  * 26.75, Dia's), so 48; it's as tall as a Dia tab row. The dropdown (CommandPanel) opens from its top-left.
  */

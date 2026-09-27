@@ -112,7 +112,7 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
               }}
             >
               {({ pressed }) =>
-                active && tileTheme ? (
+                active && tileTheme && !theme.glass ? (
                   // Selected, themed by its icon (lib/tileTheme): the icon's colours in the fill and ring.
                   <DockSelection
                     image={tileTheme.image}
@@ -137,13 +137,14 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
                   </DockSelection>
                 ) : active ? (
                   // Selected, no icon theme: black rim (SelectedPrimary) → white fill (SelectedSecondary) → top bevel (TabOutline).
+                  // Liquid Glass: the reference's raised glass tile, the same layers in its colours over a soft drop shadow.
                   <Surface
                     fill={hex(theme.pinnedSelectedRim)}
                     cornerRadius={radius}
-                    shadowColor={theme.dark ? "#FFFFFF" : "#000000"}
-                    shadowOpacity={theme.dark ? 0.15 : 0.12}
-                    shadowRadius={1.5}
-                    shadowOffset={[0, 0.5]}
+                    shadowColor={theme.dark && !theme.glass ? "#FFFFFF" : "#000000"}
+                    shadowOpacity={theme.glass ? (theme.dark ? 0.35 : 0.14) : theme.dark ? 0.15 : 0.12}
+                    shadowRadius={theme.glass ? 4 : 1.5}
+                    shadowOffset={[0, theme.glass ? 1.5 : 0.5]}
                     style={{ width, height: layout.pinnedHeight, padding: 1 }}
                   >
                     <View

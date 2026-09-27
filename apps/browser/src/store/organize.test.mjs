@@ -188,6 +188,28 @@ test("clean up closes duplicates and stale tabs into Recently Cleaned, and resto
   assert.ok(S().tabs[e]);
 });
 
+test("clear closes unpinned tabs into Recently Cleaned, and Undo restores just those", () => {
+  reset();
+  const { w, ids: [a, b, c, d] } = windowWith("a", "b", "c", "d");
+  S().pinTabs([a], true);
+  S().groupTabs([b], { pinned: true, name: "Kept" });
+  S().updateTab(d, { lastActiveAt: Date.now() - 13 * 3600_000 });
+  S().activate(c);
+  S().cleanUpTabs(w);
+  assert.equal(S().cleanedTabs.length, 1);
+  S().newTab(w, { url: "e.com" });
+  const cleared = S().clearTabs(w);
+  assert.equal(cleared.length, 2);
+  assert.deepEqual(view(w).sort(), ["https://a.com", "https://b.com"]);
+  assert.equal(S().tabs[c], undefined);
+  S().restoreCleaned(cleared);
+  assert.deepEqual(view(w).sort(), ["https://a.com", "https://b.com", "https://c.com", "https://e.com"]);
+  // The earlier clean-up stays in Recently Cleaned.
+  assert.equal(S().cleanedTabs.length, 1);
+  assert.deepEqual(S().clearTabs(w).length, 2);
+  assert.deepEqual(S().clearTabs(w), []);
+});
+
 test("abandoned New Tab pages close; the selected one stays", () => {
   reset();
   const { w } = windowWith("a");

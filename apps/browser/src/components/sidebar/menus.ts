@@ -3,7 +3,7 @@ import { closeTab, moveTabToProfile, moveTabToWindow, switchToTab, toggleMute } 
 import { folderChildren } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";
 import { bookmarkProfileId, isIncognitoProfile, plural, tabLabel, viewTabIds, windowTitle } from "../../store/model";
-import { awayFromPin, groupLabel, groupOf, keptDeletedGroups, selectedTabIds } from "../../store/organize";
+import { awayFromPin, clearableTabs, groupLabel, groupOf, keptDeletedGroups, selectedTabIds } from "../../store/organize";
 import { splitOf } from "../../store/splits";
 import type { GroupColor, Tab } from "../../store/types";
 import {
@@ -288,8 +288,7 @@ export async function openSidebarMenu(windowId: string) {
 /** ⇧⌘K: every regular tab of the window's profile (pinned tabs and pinned groups stay). */
 export function closeAllTabs(windowId: string) {
   const s = store();
-  const pinnedGroup = new Set(Object.values(s.groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
-  s.closeTabs(viewTabIds(s, windowId).filter((id) => !s.tabs[id]!.pinned && !pinnedGroup.has(id)));
+  s.closeTabs(clearableTabs(s, windowId));
 }
 
 /** The chevron at the bottom of the sidebar: open tabs, recently closed / cleaned, clean up. */

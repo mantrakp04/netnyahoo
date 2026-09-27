@@ -11,6 +11,7 @@
       "ContextMenuAreaModule",
       "SurfaceModule",
       "VisualEffectModule",
+      "GlassEffectModule",
       "SystemModule",
       "FileDragModule",
       "AppModule",
