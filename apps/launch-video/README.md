@@ -84,3 +84,71 @@ Everything is ElevenLabs (`scripts/audio/`). The key comes from `ELEVENLABS_API_
   The delivered file measures -14.0 LUFS and -1.6 dBTP.
 
 Rights: everything was generated on a paid ElevenLabs plan (Creator), which includes a commercial license.
+
+# The second film: "Pour"
+
+"Netnyahoo — Eau de Chromium": a 32-second fragrance-commercial parody, 4:5 (1080×1350) with a 9:16 cut
+(1080×1920). The browser is the object of desire, shot like a perfume bottle: extreme macro slides with a
+shallow depth of field, a warm light gliding over the glass, slow motion, dissolves instead of cuts, a sultry
+score and a whispered voice. Every line is a double entendre that is literally true of a feature. Big Yahu, the
+app icon (his face) and netnyahoo.com (his portrait) stay out of it. The treatment is in
+`output/launch-video/pour-treatment.md` (gitignored).
+
+```bash
+pnpm prepare-assets     # also copies assets/pour → public/pour and builds public/sound/pour.wav
+pnpm render:pour        # edit check (scripts/check-pour.mjs), then → output/launch-video/netnyahoo-pour.mp4
+pnpm render:pour-phone  # → output/launch-video/netnyahoo-pour-phone.mp4
+```
+
+`src/pour/timeline.ts` is the whole edit:
+- **The grid.** 66.67 BPM: a beat is 27 frames, a bar 108, nine bars.
+- **The plates.** Each picture is the same window at the same size, so a dissolve under the one continuous
+  camera is a match; a change that would double-expose text dips through the dark instead.
+- **The camera** (a monotone spline, never past 1.45x the 2x capture) and **the focus**, drawn as three
+  screen-space layers of the window (sharp, soft, very soft and darker), masked around the focus point.
+- **The lines, subtitles and supers.** `scripts/check-pour.mjs` fails the render if any of them, or any picture
+  change, leaves the grid, if anything shows for under 12 frames, or if a line is still speaking when the next
+  starts.
+
+The dark behind the window is procedural smoke (`src/pour/Smoke.tsx`, a shader). The flacon at the end
+(`src/pour/Flacon.tsx`) is the window made into a perfume bottle in three.js: glass in the window's proportions,
+amber inside, a lacquer cap, the traffic lights as three engraved dots (one in the brand red), lit by a procedural
+studio of softboxes. Palette: warm near-black, champagne, and the red once. Type: Archivo, wide-tracked caps for
+the name and the supers, light sentence case for the subtitles.
+
+## Where its pictures come from
+
+Every UI pixel is Netnyahoo drawing its own window in-process (`devSnapshotWindow`, 2x), in a hidden DEV
+instance (`NETNYAHOO_BACKGROUND=1`, a throwaway `NETNYAHOO_DATA_DIR`, CDP on its own port), with each page's
+CDP capture placed in the page's area by `scripts/capture/build-pour.py`. The layout is the default one (the
+address in the toolbar), the profile is Orange, and the appearance dark. The harness scripts are
+`scripts/capture/harness/pour-*.js`, run with `shot.sh`:
+
+- **Command bar** (`pour-bar`): "n" and "net" typed into ⌘T's bar, completed inline from history to
+  netnyahoo.com. A hidden instance gets no keystrokes, so each letter is put into the native field first and then
+  reported through the bar's DEV driver; the bar's own completion request then finds the field showing what it
+  typed, as with real typing. Search suggestions are off. "ne" never completes this way and isn't used.
+- **Focus mode** (`pour-peek`): ⌘S hides the sidebar; the sidebar's peek then slides in and away again. Its own
+  180 ms eased slide is slowed 40 times for the run (React Native's `Animated.timing` is wrapped, then restored)
+  and snapshotted about 8 times a second; the peek is driven through its own mouse handlers, found in the fiber
+  tree. `build-pour.py` speed-ramps the slide to ease in and out by picking, for each frame, the snapshot nearest
+  the moment the peek reached that position. Nothing is interpolated.
+- **The ad blocker** (`pour-block`): Site Controls open on Merriam-Webster's "protection" page ("Block Ads &
+  Trackers", on, "3 blocked on this page"). The page stays out of focus.
+- **Incognito** (`pour-incog`): ⌘⇧N, on the same silk; **the source** (`pour-repo`): the repository's page.
+- **The page** is a photograph of black silk from Unsplash (photo-1705674337411, Unsplash License), opened
+  directly, its tab renamed "Silk" with the app's own Rename.
+
+Not captured: the sidebar's translucency (the snapshot draws the window's backdrop opaque, even with
+`transparent`); the light that sweeps the glass stands in for it.
+
+## Its sound
+
+- **Score:** Eleven Music `music_v2_5`, instrumental (`music.mjs pour`): sultry trip-hop / slow R&B at 67 BPM,
+  bars 3–4 sparse and nearly silent at the end of bar 4 for the Focus reveal, the groove back on bar 5, a last
+  low hit on bar 9. Take 3 of four, picked by beat tracking: it fits 66.43 BPM with its downbeat at 0.034 s, and
+  it's the only take with the bar-4 drop. `make-pour-sound.mjs` stretches it 0.36% onto the 66.67 BPM grid.
+- **Voice:** eleven_v3, "Casanova" from the voice library (deep, hushed, breathy), `[whispers]`, four takes a
+  line (`voice.mjs`), checked with Scribe. Each line's first sound lands on its beat; the score dips 4 dB under it.
+- **No sound effects**: the subtractive pass left only the score and the voice.
+- **Mix:** -14 LUFS integrated, under -1 dBTP, like the first film.

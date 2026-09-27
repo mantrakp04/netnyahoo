@@ -24,6 +24,24 @@ export const CUES = {
     music_length_ms: 30000,
     force_instrumental: true,
   },
+  // "Pour", the fragrance-ad parody: 66.7 BPM (a beat is 27 frames at 30 fps, a bar 108), nine bars, 32.4 s.
+  // Asked for at 67 and stretched onto the grid (scripts/make-pour-sound.mjs).
+  pour: {
+    prompt:
+      "Instrumental score for a luxury perfume commercial, exactly 67 BPM in 4/4, minor key, sultry, slow and intimate, " +
+      "trip-hop and slow R&B, played by real musicians, lots of space. " +
+      "Bars 1-2 (0-7 s): a deep warm sub-bass note swells in under a breathy analog pad; a soft brushed kick on beat 1 and a " +
+      "dry rimshot on beat 3; nothing else. " +
+      "Bar 3 (7-11 s): a slow Rhodes electric piano chord on each downbeat and a tremolo guitar note, the pulse continues. " +
+      "Bar 4 (11-14 s): one deep low hit on the downbeat, then everything drops out except the pad, near silence. " +
+      "Bars 5-7 (14-25 s): the groove returns, a slow heavy trip-hop beat, a round deep bass line, muted guitar, the Rhodes, " +
+      "sensual and restrained. " +
+      "Bar 8 (25-29 s): the drums stop; bass and pad only, holding. " +
+      "Bar 9 (29-32 s): a single deep final hit on the downbeat, then the chord rings and decays to silence. " +
+      "Sensual, expensive, minimal, no risers, no cymbal crashes, no vocals.",
+    music_length_ms: 32500,
+    force_instrumental: true,
+  },
 };
 
 const [name, cue = "film"] = process.argv.slice(2);

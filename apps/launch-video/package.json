@@ -2,13 +2,16 @@
   "name": "@netnyahoo/launch-video",
   "private": true,
   "type": "module",
-  "description": "The Netnyahoo launch film, \"The sidebar browser\" (Remotion). Renders to output/launch-video/.",
+  "description": "The Netnyahoo launch films, \"The sidebar browser\" and \"Pour\" (Remotion). Render to output/launch-video/.",
   "scripts": {
     "dev": "remotion studio",
-    "prepare-assets": "node scripts/prepare-assets.mjs && node scripts/make-sound.mjs",
+    "prepare-assets": "node scripts/prepare-assets.mjs && node scripts/make-sound.mjs && node scripts/make-pour-sound.mjs",
     "sound": "node scripts/make-sound.mjs",
     "render": "node scripts/check-edit.mjs && remotion render Launch ../../output/launch-video/netnyahoo-launch.master.mp4 --codec=h264 --crf=14 --x264-preset=slow --pixel-format=yuv420p --muted && node scripts/mux-audio.mjs",
     "cover": "remotion still Launch ../../output/launch-video/netnyahoo-launch-cover.png --frame=150",
+    "sound:pour": "node scripts/make-pour-sound.mjs",
+    "render:pour": "node scripts/check-pour.mjs && remotion render Pour ../../output/launch-video/netnyahoo-pour.master.mp4 --codec=h264 --crf=14 --x264-preset=slow --pixel-format=yuv420p --muted && node scripts/mux-audio.mjs netnyahoo-pour pour.wav",
+    "render:pour-phone": "node scripts/check-pour.mjs && remotion render PourPhone ../../output/launch-video/netnyahoo-pour-phone.master.mp4 --codec=h264 --crf=14 --x264-preset=slow --pixel-format=yuv420p --muted && node scripts/mux-audio.mjs netnyahoo-pour-phone pour.wav",
     "lint": "tsc"
   },
   "dependencies": {

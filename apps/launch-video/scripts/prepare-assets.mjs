@@ -1,4 +1,4 @@
-// Copies what the video uses into public/ (gitignored): the captures (assets/web, assets/footage), the
+// Copies what the videos use into public/ (gitignored): the captures (assets/web, assets/footage, assets/pour), the
 // soundtrack's parts (assets/sound), the site's Big Yahu model and app icon, and the fonts.
 // Run before `pnpm dev` / `pnpm render`; `pnpm sound` then builds public/sound/track.wav.
 import { cpSync, mkdirSync } from "node:fs";
@@ -15,6 +15,7 @@ const copy = (from, to) => {
 
 copy(join(root, "assets/web"), "web");
 copy(join(root, "assets/footage"), "footage");
+copy(join(root, "assets/pour"), "pour");
 // (the sound parts stay in assets/sound: scripts/make-sound.mjs reads them there)
 copy(join(repo, "apps/site/public/models/big-yahu.glb"), "models/big-yahu.glb");
 copy(join(repo, "apps/site/src/assets/app-icon.png"), "web/app-icon.png");
