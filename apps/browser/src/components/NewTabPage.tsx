@@ -2,7 +2,7 @@ import { AreaLight, EdgeLight, PowerUp } from "@netnyahoo/shaders";
 import { useEffect, useState } from "react";
 import { Surface, VisualEffect } from "@netnyahoo/shell";
 import { AccessibilityInfo, Animated, StyleSheet, View } from "react-native";
-import { hex, useTheme } from "../lib/theme";
+import { hex, layout, useTheme } from "../lib/theme";
 import { springParams } from "./layout/swipeMotion";
 import { NewTabExtras } from "./ntp";
 import { Omnibox } from "./Omnibox";
@@ -52,7 +52,7 @@ function barWidth(viewWidth: number) {
   return Math.min(content, viewWidth - 28);
 }
 
-export function NewTabPage({ tabId }: { tabId: string }) {
+export function NewTabPage({ tabId, toolbar = true }: { tabId: string; toolbar?: boolean }) {
   const theme = useTheme();
   const [size, setSizeState] = useState<Size | null>(lastSize);
   const setSize = (next: Size) => {
@@ -75,7 +75,9 @@ export function NewTabPage({ tabId }: { tabId: string }) {
 
   const width = barWidth(size.width);
   const x = Math.max(size.width / 2 - width / 2, 14) + DIA_OFFSET;
-  const top = Math.max(size.height / 2 - 158, 100) + 38 + DIA_OFFSET;
+  // Dia's rule is from the page under the toolbar; without one (address bar in the sidebar) the bar keeps the same place in the card.
+  const under = toolbar ? 0 : layout.toolbarHeight;
+  const top = Math.max((size.height - under) / 2 - 158, 100) + 38 + DIA_OFFSET + under;
 
   const r = (panelHeight - 112) / 240;
   const lift = r < 1 ? 10 - 4 * Math.max(r, 0) : 6;

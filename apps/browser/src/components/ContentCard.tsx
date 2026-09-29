@@ -225,7 +225,7 @@ function TabPane({
       {visible && !fullscreen && <ShareBar tabId={tabId} />}
       <View style={{ flex: 1 }}>
         {mounted && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={!!warm && !newTabShown && !isNewTab} />}
-        {visible && isNewTab && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} />)}
+        {visible && isNewTab && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} toolbar={toolbar} />)}
         {visible && <InternalPage tabId={tabId} />}
         {visible && (
           <>
