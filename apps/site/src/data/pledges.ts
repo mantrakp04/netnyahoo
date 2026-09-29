@@ -65,8 +65,8 @@ export const pledges: Pledge[] = [
   },
   {
     id: "privacy",
-    title: "Tracks nothing. Unusual, for a man in his position.",
-    body: "uBlock Origin Lite is built in. Google’s pings are compiled out.",
+    title: "Tracks nothing you didn’t sign for. Unusual, for a man in his position.",
+    body: "uBlock Origin Lite is built in. Google’s pings are compiled out. Crash reports are opt-in: no sites, no searches.",
     shots: [privacy],
     panel: true,
     alt: "Netnyahoo’s Privacy & Security settings: switches to block ads, trackers and cookie banners, and the number of filter rules loaded.",
