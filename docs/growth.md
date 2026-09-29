@@ -79,3 +79,19 @@ Result: _pending._
   - **Shipped:** after a dismissed share sheet (or no share sheet and no clipboard), the link now appears in place:
     a select-all field, a Copy button (fresh tap), and "Email it to me" (mailto). Header taps show it under the
     hero's button. Event: `send_to_mac_fallback { location, action: copied|selected|email }`.
+- **2026-09-29 ~22:30 UTC check:** ~2,900 visitors (350-470 an hour, still steady; t.co 2,107 of the last 6h).
+  - Download clickers 55 all time; since 19:36 UTC, 22 (all desktop: header 11, hero 10, closing 1).
+    Mac desktop since 19:36: 15/318 = 4.7%.
+  - Phones since 19:36: 42 tapped Send to my Mac, 16 got the link out (5 shared, 11 copied), 26 dismissed the share
+    sheet. The in-place fallback shows (one visitor tapped its link field) but no one used Copy or Email; most
+    people who dismiss the sheet leave. No change: it's their choice, and the panel costs nothing.
+  - Windows 182, Linux 51 visitors since 19:36; 4 clicked "Follow the case on GitHub".
+  - Experiment (SQL, since launch): control 16/322 (5.0%), band 16/287 (5.6%). PostHog's cached result (19:35) is
+    stale. Band still under 300 exposures, day 1 of 7: keep running. The band's own button: still 0 clicks.
+  - New site errors are not ours: `Can't find variable: CONFIG` in `updateFooterPositions` (X's in-app browser
+    injects it, iOS 16, Twitter UA) and `window.ethereum.selectedAddress` (a wallet extension). Ignore.
+  - Dead clicks: the "In office" screenshot draws 14 (12 people): people expect it to open bigger. Candidate next
+    change if it keeps up. Rage clicks 3.
+  - App: "Calling the … function has failed" (0.2.11, 2 people) is an unhandled promise rejection from a native
+    module call (CodedError). The frames are minified: upload the JS bundle's source map to PostHog to name it.
+  - Decision: nothing shipped this round.
