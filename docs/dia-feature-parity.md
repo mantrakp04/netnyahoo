@@ -25,8 +25,8 @@ Legend: **✅** done · **🧪** built, but the deciding test needs the user pre
 
 Of the 234 rows that count (not ⏸ or —), 230 are done (98 %), 231 with the one 🧪 row (Cast). The two 🟡 rows are
 passkeys (iCloud Keychain waits on Apple) and the Dia sidebar import (profiles, open and pinned tabs come through
-Dia's AppleScript; custom names, colours, spaces and folders don't). Keyboard shortcuts: every Dia shortcut is bound except the Chat ones
-(⏸). Menus: all ten exist and match.
+Dia's AppleScript; custom names, colours, spaces and folders don't). Keyboard shortcuts: every Dia and Chrome
+shortcut is bound (Dia's where they clash) except Chat (⏸) and a few for Chrome's own hidden UI. Menus: all ten exist and match.
 
 The summary before this recount (304 rows, 207 ✅, 9 🟡, 7 ⛔) didn't match its tables, which held 307 rows: 211 ✅,
 7 🟡, 8 ⛔ (its 🟡 count included the View and Help menu rows, which sit outside §1–§25).
@@ -294,7 +294,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Tab context menu with shortcut hints | ✓ | ✅ | |
 | Search Tabs ⇧⌘A (all windows, recently closed, chats) | ✓ | ✅ | all windows of the profile + recently closed tabs/groups; chats ⏸ |
 | Tab Switcher ⌃Tab (MRU cycling with UI) | ✓ | ✅ | overlay after 140 ms, commits on ⌃ release. As in Dia 1.50.1's RecentTabs event monitor: → / ← move, Esc or a click outside closes it without switching, a click on a row switches to it, the pointer highlights rows, leaving the app switches, other keys are swallowed while it's up |
-| ⌘1–⌘8 / ⌘9 select tab | ✓ (Chromium) | ✅ | |
+| ⌘1–⌘8 / ⌘9 select tab | ✓ (Chromium) | ✅ | the sidebar's rows (pinned tiles first), wherever the focus is; 0.2.7 lost them to Chrome's disabled ⌘1–⌘9 outside a page |
 | Overflow menu (open + recently closed + synced devices) | ✓ | ✅ | open, recently closed, recently cleaned, clean up, mute all, and synced devices as Dia's: one other device is "Your %@ Tabs" ("Your MacBook Pro Tabs"), several roll up into "Your Devices" (`macbook.and.iphone`), each with its "Recent Tabs" (sync/menu.ts; `docs/sync.md`). Verified with hidden instances (both forms, 2026-09-26). Left for a person: the NSMenu by eye |
 | Clean Up Tabs ⌥⌘K / auto‑archive untouched tabs → "Recently Cleaned" | ✓ | ✅ | + daily auto clean-up and the sidebar upsell |
 | Auto‑clear abandoned New Tab Pages | ✓ | ✅ | on app resign-active / screen lock |
@@ -667,57 +667,77 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Help menu (Chat with Support, Status, Feedback) | ✓ | ✅ | Send Feedback… opens a new GitHub issue (github.com/mantrakp04/netnyahoo) with Copy Diagnostics' report as its body (Info.plist `NNFeedbackURL`, `%s` = the report; a build can point it elsewhere, or clear it for `NNFeedbackEmail` or a mail draft; checked: signed out, GitHub's sign-in page keeps the prefilled issue as its return URL). Keyboard Shortcuts, Tool Tour, Video Tour (hidden until there's a video), Release Notes, Copy Diagnostics, Record Performance Issue…. Dia's Chat with Support (its help centre) and Status (status.diabrowser.com) are pages about Dia's own service: — for us, with no support desk or online service (feedback goes to GitHub issues) |
 | Plans / trial / usage credits | ✓ | — | |
 
-## Keyboard shortcuts — Dia vs Netnyahoo
-Checked against `packages/shell/ios/Menus.swift`.
+## Keyboard shortcuts — Dia, Chrome and Netnyahoo
+The union of Dia 1.50.1's shortcuts (its menus and keyboard-shortcut actions) and Chrome's for the Mac (its main
+menu, `accelerators_cocoa.mm`, `global_keyboard_shortcuts_mac.mm` and Google's shortcut page). Where they clash,
+Dia's wins and Chrome's key stays as a hidden alternate when it's free. Bindings: `packages/shell/ios/Menus.swift`
+(hidden items are "(hidden)"), commands: `lib/commands.ts`.
 
-| Action | Dia | Netnyahoo | Status |
-|---|---|---|---|
-| Settings | ⌘, | ⌘, | ✅ |
-| New Tab | ⌘T | ⌘T | ✅ |
-| New Tab in Group | ⌥⌘T | ⌥⌘T | ✅ |
-| New Window | ⌘N | ⌘N | ✅ |
-| New Incognito Window | ⇧⌘N | ⇧⌘N | ✅ |
-| Reopen Closed Tab | ⇧⌘T | ⇧⌘T | ✅ |
-| Chat | ⌘E | — (left free on purpose) | ⏸ |
-| Focus Chat | ⌃⌘E | — | ⏸ |
-| Open Command Bar | ⌘L | ⌘L | ✅ |
-| Close Window | ⇧⌘W | ⇧⌘W | ✅ |
-| Close Tab | ⌘W | ⌘W | ✅ |
-| Close All Tabs | ⇧⌘K | ⇧⌘K | ✅ |
-| Clean Up Tabs | ⌥⌘K | ⌥⌘K | ✅ |
-| Print | ⌘P | ⌘P | ✅ |
-| Copy URL | ⇧⌘C | ⇧⌘C | ✅ |
-| Copy URL as Markdown | ⌥⇧⌘C | ⌥⇧⌘C | ✅ |
-| Paste and Match Style | ⇧⌘V | ⇧⌘V | ✅ |
-| Find / Next / Previous | ⌘F / ⌘G / ⇧⌘G | ⌘F / ⌘G / ⇧⌘G | ✅ |
-| Jump to Selection / Find and Replace | ✓ (keys not recovered from the binary; macOS standard is ⌘J / ⌥⌘F) | ⌘J / ⌥⌘F | ✅ |
-| Show Spelling / Check Now | ⌘: / ⌘; | ⌘: / ⌘; | ✅ |
-| Refresh / Force Refresh | ⌘R / ⇧⌘R | ⌘R / ⇧⌘R | ✅ |
-| Show Tabs in Sidebar (layout switch) | ⇧⌘S | ⇧⌘S | ✅ |
-| Auto‑Hide Tabs (Focus Mode) | ⌘S | ⌘S | ✅ |
-| Open Split Pane / Next / Prev pane | ⌃⇧= / ⌃⇧] / ⌃⇧[ | ⌃⇧= / ⌃⇧] / ⌃⇧[ (+ hidden ⌃+ / ⌃} / ⌃{) | ✅ |
-| Toggle Bookmarks Bar | ⇧⌘B | ⇧⌘B | ✅ |
-| Actual Size / Zoom In / Out | ⌘0 / ⌘+ / ⌘- | ⌘0 / ⌘+ (+ hidden ⌘=) / ⌘- | ✅ |
-| Enter Full Screen | 🌐F | 🌐F | ✅ |
-| Developer Tools / View Source / JavaScript Console | ⌥⌘I (+F12) / ⌥⌘U / ⌥⌘J | ⌥⌘I (+ hidden F12) / ⌥⌘U / ⌥⌘J | ✅ |
-| Back / Forward | ⌘[ / ⌘] | ⌘[ / ⌘] | ✅ |
-| Next / Previous Tab | ⇧⌘] / ⇧⌘[ (+⌃Tab switcher) | ⇧⌘] / ⇧⌘[ (+ hidden ⌘} / ⌘{) + ⌃Tab / ⌃⇧Tab switcher | ✅ |
-| Search Tabs | ⇧⌘A | ⇧⌘A | ✅ |
-| New Group with Tab | ⌃⌘N | ⌃⌘N | ✅ |
-| Add to Bookmarks | ⌘D | ⌘D (on two items: Tabs › Add to Bookmarks… and Bookmarks › Bookmark This Page) | ✅ |
-| Manage Bookmarks | ⌥⌘B | ⌥⌘B | ✅ |
-| Show History | ⌘Y | ⌘Y | ✅ |
-| Clear Browsing Data | ⇧⌘⌫ | ⇧⌘⌫ | ✅ |
-| Pin tab | — (none) | — | ✅ |
-| Mute Site | — (none) | — | ✅ (the old ⌥⌘M clash is gone) |
-| Minimize / Minimize All | ⌘M / ⌥⌘M | ⌘M / ⌥⌘M | ✅ |
-| Downloads | ⇧⌘J | ⇧⌘J | ✅ |
-| Window Fill / Center / Previous Size | 🌐⌃F / 🌐⌃C / 🌐⌃R | AppKit's, from `windowsMenu` | ✅ |
-| Switch to Profile 1–9 | ⌃1–⌃9 | ⌃1–⌃9 (Window › Profiles, shown once there are 2+ profiles) | ✅ |
-| Command bar → Chat | ⌃⌘↩ | — | ⏸ |
-| Command bar → Google (force search) | ⇧⌘↩ | ⇧⌘↩ (default engine) | ✅ |
-| Pinned tab → base URL | ⌘↩ | ⌘↩ (hidden item; off while a native text field has focus) | ✅ |
-| Rename tab | double‑click | double‑click | ✅ |
+Verified by `apps/browser/scripts/shortcuts-test.mjs` (a hidden Debug instance; each key is dispatched as AppKit
+does, through Chrome's window and then the menu bar) with the focus in a page, in our UI (the sidebar), in a page's
+text field (field) and in the command bar (bar); DevTools too. ✓ = the key reached its command; ○ = it reached its
+item, disabled in that state (Back with no history, Stop with nothing loading); – = the field keeps the key, as in
+Chrome; n/t = not pressed there by the test (clipboard and window-level AppKit items, looked up from the sidebar only).
+
+| Action | Dia | Chrome | Netnyahoo | Page / sidebar / field / bar | Status |
+|---|---|---|---|---|---|
+| Settings | ⌘, | ⌘, | ⌘, | ✓ ✓ ✓ ✓ | ✅ |
+| Hide / Hide Others / Quit | ⌘H / ⌥⌘H / ⌘Q | same | same | n/t ✓ n/t n/t (⌘Q quits: checked) | ✅ |
+| New Tab / New Window / New Incognito Window | ⌘T / ⌘N / ⇧⌘N | same | same | ✓ ✓ ✓ ✓ | ✅ |
+| New Tab in Group | ⌥⌘T | ⌃⌘C (add tab to group) | ⌥⌘T (+ hidden ⌃⌘C) | ✓ ✓ ✓ ✓ | ✅ |
+| Reopen Closed Tab | ⇧⌘T | ⇧⌘T | ⇧⌘T | ○ ○ ○ ○ (nothing closed); reopens: checked | ✅ |
+| Open File… | — | ⌘O | ⌘O (File menu) | ✓ ✓ ✓ ✓ | ✅ new |
+| Open Command Bar / address bar | ⌘L | ⌘L, ⌃F5 | ⌘L (+ hidden ⌃F5) | ✓ ✓ ✓ ✓ | ✅ |
+| Close Window / Close Tab | ⇧⌘W / ⌘W | same | same | n/t ✓ n/t n/t / ✓ ✓ ✓ ✓ | ✅ |
+| Close All Tabs / Clean Up Tabs | ⇧⌘K / ⌥⌘K | — | same as Dia | ✓ ✓ ✓ ✓ | ✅ |
+| Save Page As… | — | ⌘S | menu item, no key (⌘S is Dia's Auto-Hide Tabs) | — | ✅ new |
+| Email Page Location | — | ⇧⌘I | ⇧⌘I (File menu) | ✓ ✓ ✓ ✓ | ✅ new |
+| Print / Print Using System Dialog | ⌘P / — | ⌘P / ⌥⌘P | ⌘P / ⌥⌘P (File menu) | ✓ ✓ ✓ ✓ | ✅ ⌥⌘P new |
+| Undo / Redo / Select All | ⌘Z / ⇧⌘Z / ⌘A | same | same | ✓ ✓ ✓ ✓ (⌘A selects a page field's text: checked) | ✅ |
+| Cut / Copy / Paste / Paste and Match Style | ⌘X / ⌘C / ⌘V / ⇧⌘V | same | same | n/t ✓ n/t n/t (the Edit menu's, untouched) | ✅ |
+| Copy URL / as Markdown | ⇧⌘C / ⌥⇧⌘C | ⇧⌘C inspects | Dia's | ✓ ✓ ✓ ✓ | ✅ |
+| Find / Next / Previous | ⌘F / ⌘G / ⇧⌘G | same | same | ✓ ✓ ✓ ✓ | ✅ |
+| Use Selection for Find | — (⌘E is Chat) | ⌘E | ⌘E (no Chat here) | ✓ ✓ ✓ ✓ | ✅ new |
+| Jump to Selection / Find and Replace | ⌘J / ⌥⌘F | ⌘J / ⌥⌘F searches the web | Dia's | ✓ ✓ ✓ ✓ | ✅ |
+| Spelling / Check Now | ⌘: / ⌘; | same | same | n/t ✓ n/t n/t (they'd open AppKit panels) | ✅ |
+| Stop | — | ⌘. (and Esc) | ⌘. (View menu), Esc on a loading page | ○ ○ ○ ○ (nothing loading) | ✅ new |
+| Refresh / Force Refresh | ⌘R / ⇧⌘R | same | same | ✓ ✓ ✓ ✓ | ✅ |
+| Show Tabs in Sidebar / Auto-Hide Tabs | ⇧⌘S / ⌘S | ⇧⌘L collapses vertical tabs, ⇧⌘F toolbar in full screen | Dia's (+ hidden ⇧⌘L, ⇧⌘F for Auto-Hide) | ✓ ✓ ✓ ✓ | ✅ |
+| Open Split Pane / Focus Next / Previous | ⌃⇧= / ⌃⇧] / ⌃⇧[ | ⌥⌘N new split view | Dia's (+ hidden ⌃+ ⌃} ⌃{, ⌥⌘N) | ✓ ✓ ✓ ✓ / ○ (no split) | ✅ |
+| Toggle Bookmarks Bar / Manage Bookmarks | ⇧⌘B / ⌥⌘B | same | same | ✓ ✓ ✓ ✓ | ✅ |
+| Actual Size / Zoom In / Out | ⌘0 / ⌘+ / ⌘- | same (+ ⌘=) | same (+ hidden ⌘=) | ✓ ✓ ✓ ✓ | ✅ |
+| Enter Full Screen | 🌐F | 🌐F, ⌃⌘F | 🌐F (+ hidden ⌃⌘F) | n/t ✓ n/t n/t | ✅ |
+| Developer Tools / F12 / View Source / Console / Inspect | ⌥⌘I, F12 / ⌥⌘U / ⌥⌘J / ⌥⌘C | same | same | ✓ ✓ ✓ ✓ (and in DevTools) | ✅ |
+| Caret browsing | — | F7 | F7 (hidden) | ✓ ✓ ✓ ✓ | ✅ new |
+| Back / Forward | ⌘[ / ⌘], ⌘← / ⌘→ | same | same (⌘← / ⌘→ hidden; a text field keeps them) | ○ ○ ○/– ○/– (no history) | ✅ ⌘←/→ new |
+| Next / Previous Tab | ⇧⌘] / ⇧⌘[, ⌥⌘→ / ⌥⌘←, ⌥⌘↓ / ⌥⌘↑ | ⇧⌘] / ⇧⌘[, ⌥⌘→ / ⌥⌘←, ⌃⇟ / ⌃⇞ | all of them (alternates hidden) | ✓ ✓ ✓ ✓; selects: checked | ✅ |
+| Tab Switcher | ⌃Tab / ⌃⇧Tab | ⌃Tab / ⌃⇧Tab = next / previous tab | Dia's switcher | ✓ ✓ ✓ ✓ | ✅ |
+| Move Tab Down / Up | — | ⌃⇧⇟ / ⌃⇧⇞ | same (hidden) | ✓ ✓ ✓ ✓ | ✅ new |
+| Select Tab 1–8 / Last Tab | ⌘1–⌘8 / ⌘9 (sidebar order) | same (tab strip) | the sidebar's rows: pinned tiles, pinned groups, then the list (a split view is one row) | ✓ ✓ ✓ ✓; selects: checked in each focus | ✅ fixed |
+| Search Tabs | ⇧⌘A | ⇧⌘A | ⇧⌘A | ✓ ✓ ✓ ✓ | ✅ |
+| Back to Pinned URL | ⌘↩ | — | ⌘↩ (hidden) | ○ ○ – – | ✅ |
+| New Group with Tab / Close Group | ⌃⌘N / — | ⌃⌘P / ⌃⌘W | ⌃⌘N (+ hidden ⌃⌘P), ⌃⌘W (hidden) | ✓ ✓ ✓ ✓ | ✅ ⌃⌘W new |
+| Add to Bookmarks / Bookmark All Tabs | ⌘D / — | ⌘D / ⇧⌘D | ⌘D / ⇧⌘D | ✓ ✓ ✓ ✓ | ✅ ⇧⌘D new |
+| Show History / Clear Browsing Data | ⌘Y / ⇧⌘⌫ | same | same | ✓ ✓ –/✓ ✓ (a page's field keeps ⇧⌘⌫, as in Chrome) | ✅ |
+| Minimize / Minimize All | ⌘M / ⌥⌘M | ⌘M | same | n/t ✓ n/t n/t | ✅ |
+| Downloads | ⇧⌘J | ⇧⌘J, ⌥⌘L | ⇧⌘J (+ hidden ⌥⌘L) | ✓ ✓ ✓ ✓ | ✅ |
+| Switch to Profile 1–9 / profile menu | ⌃1–⌃9 / profile switcher | ⇧⌘M profile menu | ⌃1–⌃9, ⇧⌘M (hidden) | ✓ ✓ ✓ ✓; switches: checked | ✅ ⇧⌘M new |
+| Send Feedback | — | ⌥⇧⌘I | ⌥⇧⌘I (Help menu) | ✓ ✓ ✓ ✓ | ✅ new |
+| Chat / Focus Chat / bar → Chat | ⌘E / ⌃⌘E / ⌃⌘↩ | — | — (no AI; ⌘E is Use Selection for Find) | — | ⏸ |
+| Home | — | ⇧⌘H | — (no home page: a New Tab is ⌘T) | — | — |
+| Focus toolbars / inactive dialogs, reading mode | — | ⌥⌘↑/↓ (Dia's are tab alternates), ⌥⇧⌘A, ⌥⌘R | — (Chrome's hidden UI; ⌥⌘↑/↓ go to Dia's) | — | — |
+| Focus next / previous tab group | — | ⌃⌘X / ⌃⌘Z | — (groups aren't focusable rows) | — | — |
+| Window Fill / Center / Previous Size, cycle windows | 🌐⌃F / 🌐⌃C / 🌐⌃R, ⌘` | same | AppKit's | — | ✅ |
+| Rename tab | double-click | — | double-click | — | ✅ |
+
+**Command bar** (like Chrome's address bar): ↩ this tab, ⌘↩ / ⌥↩ new tab, ⇧↩ new window, ⇧⌘↩ search what was
+typed (Dia), ⌃↩ adds www. and .com, ⌃⇧↩ the same in a new window (new), Tab / ⇧Tab, ↑↓, ⌃N / ⌃P, Esc.
+
+**In a page** (the page's own, unchanged): Esc stops loading, Space / ⇧Space and ⌘↑ / ⌘↓ scroll, Tab / ⇧Tab move
+between links, and in text fields ⌥← / ⌥→, ⌥⌫, ⌘← / ⌘→ and ⌘A / ⌘C / ⌘V / ⌘X / ⌘Z stay the field's.
+
+**Mouse** (checked with CDP clicks on a link): ⌘-click → background tab, ⇧⌘-click → foreground tab, ⇧-click →
+new window, middle-click → background tab, ⌥-click → download. ⌘-click Back / Forward → a new tab (§ Navigation).
 
 ## Menus
 Checked against `packages/shell/ios/Menus.swift`; every item has a handler (lib/commands.ts, sidebar/commands.ts,

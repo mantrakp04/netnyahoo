@@ -35,6 +35,7 @@ trap cleanup EXIT
 
 swiftc -O "$here/windows.swift" -o "$work/windows" 2>/dev/null
 swiftc -O "$here/quit.swift" -o "$work/quit" 2>/dev/null
+swiftc -O "$here/keys.swift" -o "$work/keys" 2>/dev/null
 python3 -m http.server "$pages_port" --bind 127.0.0.1 --directory "$here/pages" >/dev/null 2>&1 &
 server=$!
 
@@ -73,7 +74,7 @@ pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | 
 status=0
 locked="$("$work/windows" --locked)"
 [ "$locked" = 1 ] && echo "note: the screen is locked; checks of window order and closing are skipped (they need an unlocked screen)"
-SMOKE_LOCKED="$locked" SMOKE_DATA="$work/data" node "$here/smoke.mjs" "$port" "$version" "$work/windows" "$pid" "$pages" || status=1
+SMOKE_LOCKED="$locked" SMOKE_DATA="$work/data" SMOKE_KEYS="$work/keys" node "$here/smoke.mjs" "$port" "$version" "$work/windows" "$pid" "$pages" || status=1
 
 # Quit it as ⌘Q and Sparkle's update do (the quit Apple event, to this instance only; SIGTERM skips
 # the app's own shutdown): it must be gone within 15 s, exit 0 and leave no crash report. 0.2.6 and

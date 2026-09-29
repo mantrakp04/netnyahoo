@@ -1,6 +1,6 @@
 import { useShallow } from "zustand/react/shallow";
 import { useBrowser, type BrowserState } from "../../store/browser";
-import { viewTabIds } from "../../store/model";
+import { activeTabId, viewTabIds } from "../../store/model";
 
 /**
  * What the sidebar shows, in order: pinned tiles, pinned groups, then the list.
@@ -46,6 +46,26 @@ function computeEntries(s: BrowserState, windowId: string, profileId?: string): 
     else list.push(entry);
   }
   return { tiles, pinnedGroups, list };
+}
+
+/**
+ * The tab of each sidebar row, top to bottom (⌘1–⌘8, ⌘9 for the last): the pinned tiles, the pinned
+ * groups' rows, then the list's, a group's rows in place (collapsed or not). A split view's row is
+ * its focused pane (the one used last).
+ */
+export function numberedTabs(s: BrowserState, windowId: string): string[] {
+  const { tiles, pinnedGroups, list } = sidebarEntries(s, windowId);
+  const active = activeTabId(s, windowId);
+  const rowTab = (entry: string): string[] => {
+    const id = entry.slice(2);
+    if (entry.startsWith("g:")) return groupEntries(s, id).flatMap(rowTab);
+    if (!entry.startsWith("s:")) return [id];
+    const panes = (s.splits[id]?.tabIds ?? []).filter((tabId) => s.tabs[tabId] && !s.tabs[tabId]!.pinned);
+    if (active && panes.includes(active)) return [active];
+    const last = panes.reduce<string | undefined>((a, b) => (!a || s.tabs[b]!.lastActiveAt > s.tabs[a]!.lastActiveAt ? b : a), undefined);
+    return last ? [last] : [];
+  };
+  return [...tiles, ...pinnedGroups.flatMap((id) => rowTab(`g:${id}`)), ...list.flatMap(rowTab)];
 }
 
 /** A group's rows: tabs, and its splits as one row each. */

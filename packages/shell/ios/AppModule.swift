@@ -250,6 +250,16 @@ public class AppModule: Module {
       #endif
     }
 
+    /// DEV: presses a key equivalent in a window as AppKit dispatches one (`KeyEquivalents` below);
+    /// a test instance is never the key window, so real keys can't reach it.
+    AsyncFunction("devKeyEquivalent") { (windowId: String, press: [String: Any], promise: Promise) in
+      #if DEBUG
+      KeyEquivalents.press(windowId: windowId, press) { promise.resolve($0) }
+      #else
+      promise.resolve(["error": "DEV builds only"])
+      #endif
+    }.runOnQueue(.main)
+
     AsyncFunction("devRunAppleScript") { (source: String, promise: Promise) in
       #if DEBUG
       // One at a time: the AppleScript component isn't safe to run on several threads at once.
@@ -444,3 +454,210 @@ fileprivate enum CrashReports {
   }
   #endif
 }
+
+#if DEBUG
+/// DEV: a key equivalent pressed in a window the way AppKit dispatches one (`devKeyEquivalent`):
+/// the window's `performKeyEquivalent:` (in a Chrome window its CommandDispatcher: Chrome's
+/// reserved commands, the views — a focused page takes the key there —, then Chrome's other
+/// shortcuts), then the menu bar. The event goes through the event queue first so that it is
+/// `NSApp.currentEvent` while it's handled, as a real key is.
+///
+/// AppKit's menu bar reads a key it didn't get from the keyboard loosely (an NSEvent made from parts:
+/// ⌘S fired ⇧⌘S's item, and ⇧⌘T nothing), so while a press is handled the main menu matches keys
+/// as it does the keyboard's: exact modifiers, shift in the character for printable keys.
+enum KeyEquivalents {
+  private static let modifierNames: [String: NSEvent.ModifierFlags] = [
+    "command": .command, "shift": .shift, "option": .option, "control": .control, "function": .function,
+  ]
+  /// Menu items that sent their action since the press began, and the ones the menu bar found for it
+  /// (with whether they were enabled).
+  private static var fired: [[String: Any]] = []
+  private static var matched: [[String: Any]] = []
+  private static var watching = false
+  /// Presses under way (the menu bar's matching and the dry handler stay swapped until the last ends).
+  private static var pressing = 0, dryPressing = 0
+  private static var handler: ((String, String?, String?) -> Void)?
+  private static var menuKeyIMP: IMP?
+
+  /// `press`: key (charactersIgnoringModifiers, shifted for ⇧: "T", "}"), characters (default: key),
+  /// keyCode, modifiers, focus ("window": no view, as when our React Native UI has it; "page": the shown
+  /// page; "devtools": docked DevTools; else as it is), asKey (the window stands in as the key window:
+  /// a page takes keys, Chrome hands keys back to AppKit, and the Edit and Window menus find their
+  /// target only there), wait (ms to collect what the key did: a page hands keys it doesn't use back
+  /// later), settle (ms between the focus and the key), dry (the app's commands are recorded, not
+  /// run, and AppKit's own items, such as Quit or Full Screen, are only looked up). Resolves with how it was handled and the menu items it fired.
+  static func press(windowId: String, _ press: [String: Any], _ done: @escaping ([String: Any]) -> Void) {
+    guard let window = WindowManager.shared.windows[windowId] else { return done(["error": "no window \(windowId)"]) }
+    watch()
+    let key = press["key"] as? String ?? ""
+    let mods = NSEvent.ModifierFlags((press["modifiers"] as? [String] ?? []).compactMap { modifierNames[$0] })
+    switch press["focus"] as? String {
+    case "window": window.makeFirstResponder(nil)
+    case "page": if let page = pageViews(in: window).first { window.makeFirstResponder(page) }
+    case "devtools": if let devTools = pageViews(in: window).dropFirst().first { window.makeFirstResponder(devTools) }
+    default: break
+    }
+    // Focus first, then the key, as a click and a key are: the page that took focus reports it.
+    if let settle = press["settle"] as? Int, settle > 0 {
+      var next = press
+      next["settle"] = 0
+      next["focus"] = nil
+      return DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(settle)) {
+        Self.press(windowId: windowId, next, done)
+      }
+    }
+    guard let event = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
+      windowNumber: window.windowNumber, context: nil, characters: press["characters"] as? String ?? key,
+      charactersIgnoringModifiers: key, isARepeat: false, keyCode: UInt16(press["keyCode"] as? Int ?? 0))
+    else { return done(["error": "no event for \(key)"]) }
+    let restoreKeyWindow = press["asKey"] as? Bool == true ? standInKeyWindow(window) : nil
+    let dry = press["dry"] as? Bool == true
+    begin(dry: dry)
+    fired = []
+    matched = []
+    NSApp.postEvent(event, atStart: true)
+    let current = NSApp.nextEvent(matching: .keyDown, until: .distantPast, inMode: .default, dequeue: true) ?? event
+    var result: [String: Any] = ["firstResponder": window.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"]
+    if !window.isKeyWindow, let page = window.firstResponder, String(describing: type(of: page)) == "RenderWidgetHostViewCocoa" {
+      // A page takes key equivalents only in the key window (RenderWidgetHostViewCocoa
+      // performKeyEquivalent:); past that check it sends the key on to the page like this. Keys the
+      // page leaves come back to the app (CEF's keyboard handler, packages/cef NNClient) later.
+      let selector = NSSelectorFromString("keyEvent:wasKeyEquivalent:")
+      typealias KeyEvent = @convention(c) (AnyObject, Selector, NSEvent, ObjCBool) -> Void
+      unsafeBitCast(page.method(for: selector), to: KeyEvent.self)(page, selector, current, true)
+      result["handledBy"] = "page"
+    } else if window.performKeyEquivalent(with: current) {
+      result["handledBy"] = "window"
+    } else if dry, let (item, _) = menuItem(for: current), !(item is CommandItem) {
+      // The menu bar would get it: AppKit's own items (Quit, Minimize, Full Screen, Copy…) aren't run.
+      result["handledBy"] = "menu"
+      fired = [describe(item).merging(["dry": true]) { a, _ in a }]
+    } else if NSApp.mainMenu?.performKeyEquivalent(with: current) == true {
+      result["handledBy"] = "menu"
+    } else {
+      result["handledBy"] = "none"
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(press["wait"] as? Int ?? 250)) {
+      restoreKeyWindow?()
+      end(dry: dry)
+      result["fired"] = fired
+      result["matched"] = matched
+      done(result)
+    }
+  }
+
+  private static func begin(dry: Bool) {
+    if pressing == 0, let method = class_getInstanceMethod(NSMenu.self, #selector(NSMenu.performKeyEquivalent(with:))) {
+      let original = method_getImplementation(method)
+      menuKeyIMP = original
+      typealias PerformKey = @convention(c) (NSMenu, Selector, NSEvent) -> Bool
+      let block: @convention(block) (NSMenu, NSEvent) -> Bool = { menu, event in
+        guard menu === NSApp.mainMenu else {
+          return unsafeBitCast(original, to: PerformKey.self)(menu, #selector(NSMenu.performKeyEquivalent(with:)), event)
+        }
+        guard let (item, parent) = menuItem(for: event) else { return false }
+        parent.update()
+        matched.append(describe(item).merging(["enabled": item.isEnabled]) { a, _ in a })
+        guard item.isEnabled else { return false }
+        parent.performActionForItem(at: parent.index(of: item))
+        return true
+      }
+      method_setImplementation(method, imp_implementationWithBlock(block))
+    }
+    pressing += 1
+    if dry {
+      if dryPressing == 0 { handler = MenuTarget.shared.handler }
+      dryPressing += 1
+      MenuTarget.shared.handler = { _, _, _ in }
+    }
+  }
+
+  private static func end(dry: Bool) {
+    if dry {
+      dryPressing -= 1
+      if dryPressing == 0 { MenuTarget.shared.handler = handler }
+    }
+    pressing -= 1
+    if pressing == 0, let imp = menuKeyIMP, let method = class_getInstanceMethod(NSMenu.self, #selector(NSMenu.performKeyEquivalent(with:))) {
+      method_setImplementation(method, imp)
+    }
+  }
+
+  /// The menu item (and its menu) a keyboard's key fires, first in menu order: its character and
+  /// exact modifiers (shift in the character for printable keys, as "}" for ⇧⌘], or in the modifiers
+  /// for letters and function keys).
+  private static func menuItem(for event: NSEvent, in menu: NSMenu? = NSApp.mainMenu) -> (NSMenuItem, NSMenu)? {
+    guard let menu else { return nil }
+    let relevant: NSEvent.ModifierFlags = [.command, .shift, .option, .control, .function]
+    var key = event.charactersIgnoringModifiers ?? ""
+    if key == "\u{7f}" { key = "\u{8}" }  // ⌫, a menu's NSBackspaceCharacter
+    if key == "\u{19}" { key = "\t" }  // ⇧⇥
+    let functionKey = key.unicodeScalars.first.map { (0xF700...0xF8FF).contains($0.value) } ?? false
+    var mods = event.modifierFlags.intersection(relevant)
+    if functionKey { mods.remove(.function) }
+    for item in menu.items {
+      if let submenu = item.submenu, submenu !== NSApp.servicesMenu, let found = menuItem(for: event, in: submenu) { return found }
+      guard !item.keyEquivalent.isEmpty, !item.isHidden || item.allowsKeyEquivalentWhenHidden,
+            item.keyEquivalent.lowercased() == key.lowercased() else { continue }
+      let itemMods = item.keyEquivalentModifierMask.intersection(relevant)
+        .union(item.keyEquivalent != item.keyEquivalent.lowercased() ? .shift : [])
+      let printable = key.unicodeScalars.first.map { $0.value >= 0x20 && $0.value != 0x7f } ?? false
+      let shiftedSymbol = printable && key.lowercased() == key.uppercased() && !functionKey
+      if itemMods == mods || (shiftedSymbol && itemMods.union(.shift) == mods) { return (item, menu) }
+    }
+    return nil
+  }
+
+  private static func watch() {
+    guard !watching else { return }
+    watching = true
+    NotificationCenter.default.addObserver(forName: NSMenu.willSendActionNotification, object: nil, queue: nil) { note in
+      guard let item = note.userInfo?["MenuItem"] as? NSMenuItem else { return }
+      fired.append(describe(item))
+    }
+  }
+
+  private static func describe(_ item: NSMenuItem) -> [String: Any] {
+    var entry: [String: Any] = ["title": item.title, "action": item.action.map(NSStringFromSelector) ?? ""]
+    if let command = item as? CommandItem {
+      entry["command"] = command.command
+      if let arg = command.arg { entry["arg"] = arg }
+    }
+    return entry
+  }
+
+  /// `window` is the key window (NSApp.keyWindow, isKeyWindow) until the returned function runs: a
+  /// background app has none, and a page takes keys, and Chrome passes keys back, only in the key window.
+  private static func standInKeyWindow(_ window: NSWindow) -> () -> Void {
+    guard let appKey = class_getInstanceMethod(NSApplication.self, #selector(getter: NSApplication.keyWindow)),
+          let isKey = class_getInstanceMethod(NSWindow.self, #selector(getter: NSWindow.isKeyWindow))
+    else { return {} }
+    let appKeyIMP = method_getImplementation(appKey), isKeyIMP = method_getImplementation(isKey)
+    typealias IsKey = @convention(c) (NSWindow, Selector) -> Bool
+    let originalIsKey = unsafeBitCast(isKeyIMP, to: IsKey.self)
+    let appKeyBlock: @convention(block) (NSApplication) -> NSWindow? = { _ in window }
+    let isKeyBlock: @convention(block) (NSWindow) -> Bool = { $0 === window || originalIsKey($0, #selector(getter: NSWindow.isKeyWindow)) }
+    method_setImplementation(appKey, imp_implementationWithBlock(appKeyBlock))
+    method_setImplementation(isKey, imp_implementationWithBlock(isKeyBlock))
+    return {
+      method_setImplementation(appKey, appKeyIMP)
+      method_setImplementation(isKey, isKeyIMP)
+    }
+  }
+
+  /// The window's shown web contents, largest first (the page, then docked DevTools).
+  private static func pageViews(in window: NSWindow) -> [NSView] {
+    var views: [NSView] = []
+    func walk(_ view: NSView) {
+      // Tabs kept warm behind the shown one are transparent, not hidden.
+      guard !view.isHidden, view.alphaValue > 0 else { return }
+      if String(describing: type(of: view)) == "RenderWidgetHostViewCocoa", !view.visibleRect.isEmpty { views.append(view) }
+      view.subviews.forEach(walk)
+    }
+    window.contentView.map(walk)
+    let area = { (v: NSView) in v.visibleRect.width * v.visibleRect.height }
+    return views.sorted { area($0) > area($1) }
+  }
+}
+#endif

@@ -134,6 +134,51 @@ bool IsReservedShortcut(NSEvent *event) {
   return false;
 }
 
+/// When the menu bar last had a key (the event's timestamp): each key gets one turn there.
+NSTimeInterval gMenuKeyTime = -1;
+
+/// Gives a key to the menu bar: our commands, with the user's shortcuts, and the Edit menu.
+bool PerformMenuKey(NSEvent *event) {
+  gMenuKeyTime = event.timestamp;
+  return [NSApp.mainMenu performKeyEquivalent:event];
+}
+
+/// Keys AppKit gave the menu bar itself count as its turn too.
+void WatchMenuKeys() {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    [NSNotificationCenter.defaultCenter addObserverForName:NSMenuWillSendActionNotification
+                                                    object:nil
+                                                     queue:nil
+                                                usingBlock:^(NSNotification *) {
+                                                  NSEvent *event = NSApp.currentEvent;
+                                                  if (event.type == NSEventTypeKeyDown) gMenuKeyTime = event.timestamp;
+                                                }];
+  });
+}
+
+/// Chrome's tab switching (⌘1–⌘9, Next / Previous Tab) picks a tab of Chrome's own tab strip, which
+/// holds only the pages loaded now, in no order the user sees: ⌘2 after a relaunch went nowhere.
+bool IsChromeTabSwitch(int command_id) {
+  return (command_id >= IDC_SELECT_NEXT_TAB && command_id <= IDC_SELECT_LAST_TAB) ||
+         command_id == IDC_CYCLE_TO_NEXT_TAB || command_id == IDC_CYCLE_TO_PREV_TAB;
+}
+
+/// The commands of the shortcuts Chrome keeps outside its main menu (global_keyboard_shortcuts_mac.mm):
+/// ⌘1–⌘9, ⇧⌘[ / ⇧⌘], ⌥⌘← / ⌥⌘→, ⌃⇞ / ⌃⇟, ⇧⌘C and ⌥⌘C, ⌥⌘L, ⇧⌘M, ⌥⌘↑ / ⌥⌘↓, ⌥⌘R, ⌃⌘C / P / W / X / Z.
+bool IsChromeShortcutCommand(int command_id) {
+  if (IsChromeTabSwitch(command_id)) return true;
+  switch (command_id) {
+    case IDC_MOVE_TAB_NEXT: case IDC_MOVE_TAB_PREVIOUS: case IDC_SHOW_AVATAR_MENU: case IDC_SHOW_DOWNLOADS:
+    case IDC_DEV_TOOLS_INSPECT: case IDC_FOCUS_NEXT_PANE: case IDC_FOCUS_PREVIOUS_PANE:
+    case IDC_FOCUS_INACTIVE_POPUP_FOR_ACCESSIBILITY: case IDC_SHOW_READING_MODE_KEYBOARD: case IDC_ADD_NEW_TAB_TO_GROUP:
+    case IDC_CREATE_NEW_TAB_GROUP: case IDC_CLOSE_TAB_GROUP: case IDC_FOCUS_NEXT_TAB_GROUP: case IDC_FOCUS_PREV_TAB_GROUP:
+      return true;
+    default:
+      return false;
+  }
+}
+
 /// netnyahoo://x is the app's name for Chrome's chrome://x pages (the JS WebView maps what the app
 /// loads). A page may open one only if it is a WebUI page itself, as Chrome keeps web pages from
 /// opening chrome:// URLs (chrome://quit, chrome://settings/reset…).
@@ -154,7 +199,7 @@ std::map<std::string, PendingPopup> &Popups() {
   return popups;
 }
 
-Client::Client(NNBrowserView *view, NSString *profile) : view_(view), profile_([profile copy] ?: @"") {}
+Client::Client(NNBrowserView *view, NSString *profile) : view_(view), profile_([profile copy] ?: @"") { WatchMenuKeys(); }
 
 NSString *Client::URL() const {
   if (!browser_) return @"";
@@ -1029,7 +1074,7 @@ bool Client::OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &eve
   }
   NSEvent *ns = (__bridge NSEvent *)os_event;
   if (!ns || ns.type != NSEventTypeKeyDown) return false;
-  if (IsReservedShortcut(ns)) return [NSApp.mainMenu performKeyEquivalent:ns];
+  if (IsReservedShortcut(ns)) return PerformMenuKey(ns);
   // Other ⌘ shortcuts go to the page first; unhandled ones come back through OnKeyEvent.
   if (ns.modifierFlags & NSEventModifierFlagCommand) *is_keyboard_shortcut = true;
   return false;
@@ -1055,7 +1100,7 @@ bool Client::OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event,
   // Then Chrome's own handling, in its Browser window (the key window): extensions'
   // chrome.commands run, and its commands for its hidden UI are refused in OnChromeCommand
   // (host::BlocksChromeCommand).
-  return [NSApp.mainMenu performKeyEquivalent:ns];
+  return PerformMenuKey(ns);
 }
 
 // MARK: CefJSDialogHandler
@@ -1090,7 +1135,24 @@ bool Client::OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString
 bool Client::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) {
   // Chrome's password bubble would hang off its (hidden) toolbar: ours shows instead.
   if (command_id == IDC_MANAGE_PASSWORDS_FOR_PAGE) return chromeui::ShowPasswordPrompt(this, browser);
-  return host::BlocksChromeCommand(browser, command_id);
+  return MenuBarTakesChromeShortcut(command_id) || host::BlocksChromeCommand(browser, command_id);
+}
+
+bool MenuBarTakesChromeShortcut(int command_id) {
+  // Chrome runs these in its window's performKeyEquivalent:, after the focused view (a page takes its
+  // keys there) and before AppKit asks the menu bar, and running one swallows the key. The menu
+  // bar's command items keep their keys from Chrome (packages/shell CommandItem.chromeMenuTag); a key
+  // they don't take (its item disabled here, or unbound) doesn't run Chrome's shortcut either, as
+  // those are for Chrome's own UI: ⇧⌘C is Copy URL here, not Chrome's element picker. A command for
+  // a key the menu bar already had is the app's own (Inspect Elements runs Chrome's) or a page's key
+  // passed on (then Chrome's rules apply, host::BlocksChromeCommand).
+  // Any other Chrome command for a key the menu bar has (F12, whose item Chrome's matching misses) is
+  // the menu bar's too.
+  NSEvent *event = NSApp.currentEvent;
+  if (event.type == NSEventTypeKeyDown && event.timestamp != gMenuKeyTime &&
+      (PerformMenuKey(event) || IsChromeShortcutCommand(command_id)))
+    return true;
+  return IsChromeTabSwitch(command_id);
 }
 
 }  // namespace nn

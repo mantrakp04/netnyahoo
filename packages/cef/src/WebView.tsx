@@ -277,6 +277,8 @@ export type WebViewHandle = {
   find(text: string, forward: boolean, findNext: boolean): Promise<void>;
   stopFinding(clearSelection: boolean): Promise<void>;
   print(): Promise<void>;
+  /** Chrome's own command for the page: Save Page As…, Print Using System Dialog…, caret browsing (F7). */
+  runPageCommand?(name: "savePage" | "systemPrint" | "caretBrowsing"): Promise<void>;
   /**
    * Chrome's Developer menu commands: no panel = Developer Tools, "console" = JavaScript Console,
    * "inspect" = Inspect Elements (the element picker). As in Chrome, the first two close docked
@@ -464,6 +466,8 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
       find: (text, forward, findNext) => n().find(text, forward, findNext),
       stopFinding: (clear) => n().stopFinding(clear),
       print: () => n().print(),
+      // Builds from before it (Metro serves this JS to every build) have no such view method.
+      runPageCommand: async (name) => void (typeof n().runPageCommand === "function" && (await n().runPageCommand!(name))),
       showDevTools: (panel) => n().showDevTools(panel),
       executeJavaScript: (code) => n().executeJavaScript(code),
       evaluate: async <T,>(code: string) => {

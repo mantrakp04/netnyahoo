@@ -103,7 +103,16 @@ final class CommandItem: NSMenuItem {
     super.init(title: title, action: #selector(MenuTarget.performCommand(_:)), keyEquivalent: key)
     keyEquivalentModifierMask = mods
     target = MenuTarget.shared
+    tag = Self.chromeMenuTag
   }
+
+  /// Every app window is Chrome's, whose command dispatcher runs Chrome's own shortcuts for keys
+  /// not in its main menu (⌘1–⌘9, ⇧⌘] / ⇧⌘[, ⇧⌘C, ⌥⌘C…) before AppKit asks the menu bar. It
+  /// leaves a key to the menu bar when a `commandDispatch:` item with a tag has it, as its own menu
+  /// items do: ours answer to that selector and carry this tag, which is no command of Chrome's, so
+  /// Chrome never runs it (global_keyboard_shortcuts_mac.mm, chrome_command_dispatcher_delegate.mm).
+  /// Chrome's ⌘1–⌘9 are disabled in our windows: they swallowed the key, with nothing selected.
+  static let chromeMenuTag = 1
 
   required init(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -129,7 +138,8 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
   /// Not `perform(_:)`: `#selector(MenuTarget.perform(_:))` resolves to NSObject's
   /// `perform(_:)` (`performSelector:`), which then took the menu item for a selector and
   /// every command item's action (⌘T, ⌘W…) died with "unrecognized selector".
-  @objc func performCommand(_ sender: NSMenuItem) {
+  /// `commandDispatch:` to Chrome, which leaves the menu bar the keys of such items (CommandItem).
+  @objc(commandDispatch:) func performCommand(_ sender: NSMenuItem) {
     guard let item = sender as? CommandItem else { return }
     handler?(item.command, item.arg, item.windowless ? nil : WindowManager.shared.keyWindowId)
   }
@@ -149,6 +159,10 @@ final class MenuTarget: NSObject, NSMenuItemValidation {
     // A menu gets ⌘↩ before a text field's keyDown: the command bar's "open in new tab" (and
     // any field's own ⌘↩) wins over a command bound to it, e.g. the hidden Back to Pinned URL.
     if item.keyEquivalent == "\r", NSApp.keyWindow?.firstResponder is NSText { return false }
+    // Likewise ⌘← / ⌘→ (Back / Forward) move the caret in our own fields (a page's fields get keys
+    // before the menu bar anyway).
+    if item.keyEquivalent == MainMenu.leftArrow || item.keyEquivalent == MainMenu.rightArrow,
+       item.keyEquivalentModifierMask == .command, NSApp.keyWindow?.firstResponder is NSText { return false }
     return !state.disabled.contains(item.stateKey) && !state.disabled.contains(item.command)
   }
 
@@ -246,16 +260,22 @@ enum MainMenu {
       cmd("New Incognito Window", "newIncognitoWindow", "n", [.command, .shift]),
       cmd("Reopen Closed Tab", "reopenClosedTab", "t", [.command, .shift]),
       cmd("Reopen Closed Window", "reopenClosedWindow"),
+      cmd("Open File…", "openFile", "o"),
       .separator(),
       cmd("Open Command Bar", "focusCommandBar", "l"),
+      // Chrome's ⌃F5 (Move to the address bar).
+      cmd("Open Command Bar", "focusCommandBar", functionKey(NSF5FunctionKey), .control).hiddenShortcut(),
       .separator(),
       closeWindow,
       cmd("Close Tab", "closeTab", "w"),
       cmd("Close All Tabs", "closeAllTabs", "k", [.command, .shift]),
       cmd("Clean Up Tabs", "cleanUpTabs", "k", [.command, .option]),
       .separator(),
+      cmd("Save Page As…", "savePage"),
       cmd("Share…", "share"),
+      cmd("Email Page Location", "emailPageLocation", "i", [.command, .shift]),
       cmd("Print…", "print", "p"),
+      cmd("Print Using System Dialog…", "printWithSystemDialog", "p", [.command, .option]),
     ])
 
     let paste = NSMenuItem(title: "Paste and Match Style", action: #selector(MenuTarget.pasteAndMatchStyle(_:)), keyEquivalent: "v")
@@ -279,8 +299,8 @@ enum MainMenu {
         cmd("Find and Replace…", "findAndReplace", "f", [.command, .option]),
         cmd("Find Next", "findNext", "g"),
         cmd("Find Previous", "findPrevious", "g", [.command, .shift]),
-        // No ⌘E: that's Chat in Dia.
-        cmd("Use Selection for Find", "useSelectionForFind"),
+        // ⌘E is Chat in Dia; without AI it's Chrome's (and macOS's) Use Selection for Find.
+        cmd("Use Selection for Find", "useSelectionForFind", "e"),
         cmd("Jump to Selection", "jumpToSelection", "j"),
       ]),
       sub("Spelling and Grammar", [
@@ -318,8 +338,11 @@ enum MainMenu {
       ]),
     ])
 
-    // The system's own "Enter Full Screen" shortcut is 🌐F.
+    // The system's own "Enter Full Screen" shortcut is 🌐F; ⌃⌘F is the older one, Chrome's.
     let fullScreen = std("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", .function)
+    let fullScreenAlias = std("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
+    fullScreenAlias.isHidden = true
+    fullScreenAlias.allowsKeyEquivalentWhenHidden = true
     _ = top("View", [
       sub("Appearance", [
         cmd("Automatic", "setAppearance", arg: "auto"),
@@ -328,11 +351,16 @@ enum MainMenu {
       ]),
       // Dia 1.50.1's grouping (its menu builder): no separator after Appearance, and Force Refresh
       // is Refresh's ⇧ alternate.
+      cmd("Stop", "stop", "."),
       cmd("Refresh", "reload", "r"),
       cmd("Force Refresh the Page", "forceReload", "r", [.command, .shift]).alternate(),
       .separator(),
       cmd("Show Tabs in Sidebar", "toggleTabLayout", "s", [.command, .shift]),
       cmd("Auto-Hide Tabs", "toggleSidebar", "s"),
+      // Chrome's keys for its tab strip and toolbar: ⇧⌘L (collapse vertical tabs), ⇧⌘F (toolbar in
+      // full screen). The sidebar is both here.
+      cmd("Auto-Hide Tabs", "toggleSidebar", "l", [.command, .shift]).hiddenShortcut(),
+      cmd("Auto-Hide Tabs", "toggleSidebar", "f", [.command, .shift]).hiddenShortcut(),
       .separator(),
       cmd("Open Split Pane", "openSplitPane", "=", [.control, .shift]),
       cmd("Focus Next Split Pane", "focusNextPane", "]", [.control, .shift]),
@@ -341,6 +369,8 @@ enum MainMenu {
       cmd("Open Split Pane", "openSplitPane", "+", .control).hiddenShortcut(),
       cmd("Focus Next Split Pane", "focusNextPane", "}", .control).hiddenShortcut(),
       cmd("Focus Previous Split Pane", "focusPreviousPane", "{", .control).hiddenShortcut(),
+      // Chrome's ⌥⌘N (New Split View).
+      cmd("Open Split Pane", "openSplitPane", "n", [.command, .option]).hiddenShortcut(),
       .separator(),
       sub("Show Bookmarks Bar", [
         cmd("Always", "setBookmarksBar", arg: "always"),
@@ -360,13 +390,16 @@ enum MainMenu {
       cmd("Zoom Out", "zoomOut", "-"),
       .separator(),
       fullScreen,
+      fullScreenAlias,
       .separator(),
       sub("Developer", [
         cmd("View Source", "viewSource", "u", [.command, .option]),
         cmd("Developer Tools", "devTools", "i", [.command, .option]),
         cmd("Inspect Elements", "inspectElements", "c", [.command, .option]),
         cmd("JavaScript Console", "javaScriptConsole", "j", [.command, .option]),
-        cmd("Developer Tools", "toggleDevTools", String(Character(UnicodeScalar(NSF12FunctionKey)!)), []).hiddenShortcut(),
+        cmd("Developer Tools", "toggleDevTools", functionKey(NSF12FunctionKey), []).hiddenShortcut(),
+        // F7, Chrome's caret browsing.
+        cmd("Caret Browsing", "caretBrowsing", functionKey(NSF7FunctionKey), []).hiddenShortcut(),
       ]),
     ])
 
@@ -374,12 +407,26 @@ enum MainMenu {
     _ = top("Tabs", [
       cmd("Go Back", "back", "["),
       cmd("Go Forward", "forward", "]"),
+      // ⌘← / ⌘→, Dia's and Chrome's other Back / Forward keys (a text field keeps them).
+      cmd("Go Back", "back", leftArrow).hiddenShortcut(),
+      cmd("Go Forward", "forward", rightArrow).hiddenShortcut(),
       .separator(),
       cmd("Next Tab", "nextTab", "]", [.command, .shift]),
       cmd("Previous Tab", "previousTab", "[", [.command, .shift]),
       // Same shortcuts as typed on layouts where ⇧] produces "}".
       cmd("Next Tab", "nextTab", "}").hiddenShortcut(),
       cmd("Previous Tab", "previousTab", "{").hiddenShortcut(),
+      // Chrome's other Next / Previous Tab keys: ⌥⌘→ / ⌥⌘←, ⌃⇟ / ⌃⇞.
+      cmd("Next Tab", "nextTab", functionKey(NSRightArrowFunctionKey), [.command, .option]).hiddenShortcut(),
+      cmd("Previous Tab", "previousTab", functionKey(NSLeftArrowFunctionKey), [.command, .option]).hiddenShortcut(),
+      cmd("Next Tab", "nextTab", functionKey(NSPageDownFunctionKey), .control).hiddenShortcut(),
+      cmd("Previous Tab", "previousTab", functionKey(NSPageUpFunctionKey), .control).hiddenShortcut(),
+      // Dia's alternates for a vertical tab list: ⌥⌘↓ / ⌥⌘↑.
+      cmd("Next Tab", "nextTab", functionKey(NSDownArrowFunctionKey), [.command, .option]).hiddenShortcut(),
+      cmd("Previous Tab", "previousTab", functionKey(NSUpArrowFunctionKey), [.command, .option]).hiddenShortcut(),
+      // Chrome's ⌃⇧⇟ / ⌃⇧⇞: the tab down / up the list.
+      cmd("Move Tab Down", "moveTabDown", functionKey(NSPageDownFunctionKey), [.control, .shift]).hiddenShortcut(),
+      cmd("Move Tab Up", "moveTabUp", functionKey(NSPageUpFunctionKey), [.control, .shift]).hiddenShortcut(),
       cmd("Search Tabs…", "searchTabs", "a", [.command, .shift]),
       // ⌃Tab: the recent-tabs switcher (most recently used first; release ⌃ to switch).
       cmd("Tab Switcher (forward)", "tabSwitcher", arg: "forward", "\t", .control).hiddenShortcut(),
@@ -391,6 +438,10 @@ enum MainMenu {
       cmd("Pin", "togglePin"),
       cmd("Duplicate", "duplicateTab"),
       cmd("New Group with Tab", "newGroupWithTabs", "n", [.command, .control]),
+      // Chrome's tab-group keys: ⌃⌘P (new group), ⌃⌘C (new tab in the group), ⌃⌘W (close the group).
+      cmd("New Group with Tab", "newGroupWithTabs", "p", [.command, .control]).hiddenShortcut(),
+      cmd("New Tab in Group", "newTabInGroup", "c", [.command, .control]).hiddenShortcut(),
+      cmd("Close Group", "closeTabGroup", "w", [.command, .control]).hiddenShortcut(),
       .separator(),
       sub("Move to Profile", [], menu: moveToProfile),
       sub("Move to Window", [], menu: moveToWindow),
@@ -405,7 +456,7 @@ enum MainMenu {
 
     bookmarks = top("Bookmarks", [
       cmd("Bookmark This Page", "bookmarkPage", "d"),
-      cmd("Bookmark All Tabs…", "bookmarkAllTabs"),
+      cmd("Bookmark All Tabs…", "bookmarkAllTabs", "d", [.command, .shift]),
       cmd("Manage Bookmarks", "manageBookmarks", "b", [.command, .option]),
     ])
     bookmarksFixedCount = bookmarks.items.count
@@ -429,10 +480,13 @@ enum MainMenu {
       keepOnTop,
       .separator(),
       cmd("Downloads", "downloads", "j", [.command, .shift]),
+      cmd("Downloads", "downloads", "l", [.command, .option]).hiddenShortcut(),
       CommandItem("Task Manager", "taskManager", key: ""),
       cmd("Merge All Windows", "mergeAllWindows"),
       profilesSeparator,
       profilesItem,
+      // Chrome's ⇧⌘M: the profile menu (Dia's profile switcher).
+      cmd("Profiles", "openProfileMenu", "m", [.command, .shift]).hiddenShortcut(),
     ])
     // AppKit appends the window list (and Move & Resize / Fill / Center) to this menu.
     NSApp.windowsMenu = windowMenu
@@ -443,6 +497,10 @@ enum MainMenu {
     refresh()
     return main
   }
+
+  /// A key equivalent for a function key (arrows, page up / down, F-keys).
+  private static func functionKey(_ key: Int) -> String { String(Character(UnicodeScalar(UInt16(key))!)) }
+  static let leftArrow = functionKey(NSLeftArrowFunctionKey), rightArrow = functionKey(NSRightArrowFunctionKey)
 
   /// App menu › Check for Updates… (Sparkle; hidden in builds without it).
   private static func updatesItem() -> NSMenuItem {
@@ -470,7 +528,7 @@ enum MainMenu {
 
   private static func helpItems() -> [NSMenuItem] {
     var items: [NSMenuItem] = [
-      CommandItem("Send Feedback…", "sendFeedback", key: ""),
+      CommandItem("Send Feedback…", "sendFeedback", key: "i", [.command, .option, .shift]),
       CommandItem("Keyboard Shortcuts", "keyboardShortcuts", key: ""),
       CommandItem("Tool Tour", "toolTour", key: ""),
       videoTourItem(),

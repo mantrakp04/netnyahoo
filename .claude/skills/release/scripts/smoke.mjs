@@ -231,6 +231,29 @@ for (let i = 0; pinA && i < 5; i++) {
 check("a pinned tab's page, shown again after a tab over it closed (5 times), is the same page, loaded once",
   !!pinA && pinA.loads === 1 && rounds.every((a) => a?.id === pinA.id && a.loads === 1 && a.visibility === "visible"),
   JSON.stringify({ first: pinA && [pinA.loads, pinA.visibility], rounds: rounds.map((a) => a && [a.id === pinA.id ? "same page" : "new page", a.loads, a.visibility]) }));
+// ⌘1 / ⌘2 / ⌘9 pick the sidebar's rows (pinned first, ⌘9 the last): Work's pinned tab A, then its
+// two other tabs (the Work tab and the release notes). 0.2.7 lost them to Chrome's own ⌘1–⌘9. The keys
+// go to this instance alone (keys.swift, CGEventPostToPid); with no key window AppKit hands them to
+// the menu bar, so this checks the shortcuts and their order, not a focused page's path (the Debug
+// harness test, apps/browser/scripts/shortcuts-test.mjs, covers those).
+/** The Work page on screen (Personal's window, made ahead off screen, has the ?home page). */
+async function shownPage() {
+  for (const t of (await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => t.type === "page" && t.url.startsWith("http") && !t.url.endsWith("?home"))) {
+    const { result } = await onPage(t, "Runtime.evaluate", { expression: "document.visibilityState", returnByValue: true });
+    if (result?.value === "visible") return t.url;
+  }
+}
+const numbered = [];
+for (const [key, code] of [["⌘2", 19], ["⌘9", 25], ["⌘1", 18]]) {
+  execFileSync(process.env.SMOKE_KEYS, [pid, String(code), "c"]);
+  await sleep(1500);
+  numbered.push([key, await shownPage()]);
+}
+const [two, nine, one] = numbered.map(([, url]) => url);
+check("⌘2, ⌘9 and ⌘1 select the sidebar's second, last and first (pinned) tab",
+  /\?pin-a$/.test(one ?? "") && !!two && !!nine && new Set([one, two, nine]).size === 3 && !/\?pin-a$/.test(two),
+  numbered.map(([key, url]) => `${key} ${url?.replace(/^.*\//, "") ?? "nothing shown"}`).join(", "));
+
 // Back to the page the checks drive; the right-click needs it on screen.
 await send("Page.bringToFront");
 await sleep(800);

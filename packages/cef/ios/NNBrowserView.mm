@@ -686,6 +686,19 @@ NSString *const kExitPictureInPictureScript =
   nn::ShowDevTools(_browser, [panel isEqualToString:@"inspect"] ? @"elements" : panel);
 }
 
+- (void)runPageCommand:(NSString *)name {
+#if NN_CHROME_TABS
+  int command = [name isEqualToString:@"savePage"]        ? IDC_SAVE_PAGE
+                : [name isEqualToString:@"systemPrint"]   ? IDC_BASIC_PRINT
+                : [name isEqualToString:@"caretBrowsing"] ? IDC_CARET_BROWSING_TOGGLE
+                                                          : 0;
+  // Chrome runs these on its Browser's active tab: this one, first (as showDevToolsPanel:).
+  if (!command || !_browser || !host::IsChromeTab(_browser)) return;
+  _browser->GetHost()->ActivateTab();
+  _browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
+#endif
+}
+
 - (void)executeJavaScript:(NSString *)code {
   if (_browser) _browser->GetMainFrame()->ExecuteJavaScript(ToCef(code), "", 0);
 }

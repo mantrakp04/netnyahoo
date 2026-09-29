@@ -245,6 +245,11 @@ struct PendingPopup {
 };
 std::map<std::string, PendingPopup> &Popups();
 
+/// CefCommandHandler::OnChromeCommand: true (Chrome's command doesn't run) for one of Chrome's
+/// shortcuts outside its main menu (⌘1–⌘9, ⇧⌘], ⇧⌘C…) pressed as a key, which goes to the menu bar
+/// instead, and for Chrome's tab switching (its tab strip isn't the sidebar).
+bool MenuBarTakesChromeShortcut(int command_id);
+
 }  // namespace nn
 
 @interface NNBrowserView ()

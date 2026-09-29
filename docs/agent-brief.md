@@ -109,6 +109,9 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
     (first line `// <id>`, body returns a value or promise; no top-level `await`) and read
     `dev-eval-result.json`. `nn` = store, actions, runCommand, webviews, shell, … (`lib/devHarness.ts`);
     Expo modules are on `globalThis.expo.modules` (e.g. `NetnyahooCEF`).
+  - Keyboard shortcuts: `nn.shell.devKeyEquivalent(windowId, { key, keyCode, modifiers, focus, asKey })` presses a
+    key as AppKit dispatches it (Chrome's window, then the menu bar; a test instance never has the key window), and
+    `node apps/browser/scripts/shortcuts-test.mjs <Debug app>` checks every shortcut in every focus.
   - Page content: CDP (`--env NETNYAHOO_REMOTE_DEBUGGING_PORT`, then `http://localhost:<port>/json`,
     `Runtime.evaluate`, `Page.captureScreenshot`). Chromium doesn't paint fully occluded windows.
   - Native UI: the ScreenCaptureKit recorder in the scratchpad folder (`sckrec <windowID> <secs>

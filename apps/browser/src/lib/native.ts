@@ -173,14 +173,16 @@ export function startNativeSync() {
 const PAGE_COMMANDS = [
   "reload", "forceReload", "zoomIn", "zoomOut", "zoomReset", "print", "devTools", "toggleDevTools", "findInPage", "findNext",
   "findPrevious", "useSelectionForFind", "copyUrl", "copyUrlAsMarkdown", "bookmarkPage", "addBookmarkToFolder", "toggleMute",
-  "findAndReplace", "jumpToSelection", "viewSource", "javaScriptConsole", "inspectElements",
+  "findAndReplace", "jumpToSelection", "viewSource", "javaScriptConsole", "inspectElements", "savePage", "emailPageLocation",
+  "printWithSystemDialog", "stop", "caretBrowsing",
 ];
 /** Page commands that still make sense on an internal page (netnyahoo://history…), which has no web view. */
 const INTERNAL_PAGE_COMMANDS = ["copyUrl", "copyUrlAsMarkdown", "bookmarkPage", "addBookmarkToFolder"];
 const WINDOW_COMMANDS = [
   ...PAGE_COMMANDS, "focusCommandBar", "closeTab", "closeAllTabs", "back", "forward", "nextTab", "previousTab", "togglePin",
   "duplicateTab", "moveTabToProfile", "moveTabToWindow", "toggleSidebar", "downloads", "mergeAllWindows", "switchProfile",
-  "nextProfile", "previousProfile", "openBookmark", "selectTab", "selectLastTab",
+  "nextProfile", "previousProfile", "openBookmark", "selectTab", "selectLastTab", "moveTabDown", "moveTabUp", "closeTabGroup",
+  "openProfileMenu",
 ];
 
 function menuBookmarks(b: Bookmarks, folderId: string, depth = 0): MenuBookmark[] {
@@ -242,6 +244,7 @@ export function menuState(s: BrowserState): MenuState {
     else if (isInternalTab(tab)) disabled.push(...PAGE_COMMANDS.filter((c) => !INTERNAL_PAGE_COMMANDS.includes(c)));
     if (!tab || !canGoBack(tab.id, live ?? IDLE_LIVE)) disabled.push("back");
     if (!tab || !canGoForward(tab.id, live ?? IDLE_LIVE)) disabled.push("forward");
+    if (!live?.isLoading) disabled.push("stop");
     if (w.incognito) disabled.push("moveTabToProfile", "moveTabToWindow", "switchProfile", "nextProfile", "previousProfile");
     else if (tab) disabled.push(`moveTabToProfile:${tab.profileId}`);
     if (regularWindows.length < 2) disabled.push("mergeAllWindows");

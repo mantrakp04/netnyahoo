@@ -33,11 +33,12 @@ const BASE_KEYS = [
   // ⌃N / ⌃P move through the rows, as in every macOS text field.
   { key: "n", ctrlKey: true },
   { key: "p", ctrlKey: true },
-  // ⌘↩ / ⌥↩ new tab, ⇧⌘↩ force search, ⇧↩ new window, ⌃↩ www.….com. Plain ↩ submits.
+  // ⌘↩ / ⌥↩ new tab, ⇧⌘↩ force search, ⇧↩ new window, ⌃↩ www.….com (⌃⇧↩ in a new window). Plain ↩ submits.
   { key: "Enter", metaKey: true },
   { key: "Enter", altKey: true },
   { key: "Enter", shiftKey: true },
   { key: "Enter", ctrlKey: true },
+  { key: "Enter", ctrlKey: true, shiftKey: true },
 ];
 const SCOPE_KEYS = [...BASE_KEYS, { key: "Backspace" }];
 
@@ -237,8 +238,9 @@ export function Omnibox({
     if (key === "Backspace" && scope && !typed) return leaveScope(true);
     if (key === "Enter") {
       if (metaKey && shiftKey) return forceSearch();
-      // ⌃↩: "apple" → www.apple.com, like Chrome.
-      if (ctrlKey && !/[\s./:]/.test(typed.trim()) && typed.trim()) return go(`https://www.${typed.trim()}.com`);
+      // ⌃↩: "apple" → www.apple.com, like Chrome (⌃⇧↩: in a new window).
+      if (ctrlKey && !/[\s./:]/.test(typed.trim()) && typed.trim())
+        return go(`https://www.${typed.trim()}.com`, shiftKey ? "newWindow" : "current");
       if (metaKey || altKey || shiftKey) return choose(current, dispositionFor({ metaKey, altKey, shiftKey }));
     }
   };

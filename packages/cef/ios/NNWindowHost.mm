@@ -780,7 +780,7 @@ bool HiddenChromeUICommand(int command_id) {
 
 bool TabRouter::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) {
   if (Client *c = Tab(browser)) return c->OnChromeCommand(browser, command_id, disposition);
-  return HiddenChromeUICommand(command_id);
+  return MenuBarTakesChromeShortcut(command_id) || HiddenChromeUICommand(command_id);
 }
 
 void TabRouter::OnAfterCreated(CefRefPtr<CefBrowser> browser) {

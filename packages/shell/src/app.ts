@@ -155,6 +155,7 @@ type AppModule = {
   devSnapshotWindow(windowId: string, path: string, transparent?: boolean): Promise<boolean>;
   devMenuCommand(command: string, arg: string | null): Promise<void>;
   devTypeKeys?(windowId: string, text: string, interval: number): Promise<KeyTiming[]>;
+  devKeyEquivalent?(windowId: string, press: KeyPress): Promise<KeyPressResult>;
   crashReports?(since: number): Promise<CrashReport[]>;
   devCrash?(): Promise<void>;
 };
@@ -278,5 +279,45 @@ export const devSnapshotWindow = (windowId: string, path: string, transparent = 
 export type KeyTiming = { due: number; handled: number; drawn: number };
 /** DEV builds only: types into a window's focused field, a key every `interval` ms, and times each key. */
 export const devTypeKeys = async (windowId: string, text: string, interval: number) => (await App.devTypeKeys?.(windowId, text, interval)) ?? [];
+/**
+ * A key equivalent for `devKeyEquivalent`: `key` is the event's charactersIgnoringModifiers (with ⇧:
+ * the shifted character, e.g. "}" for ⇧⌘]), `keyCode` its virtual key code (kVK_*).
+ */
+export type KeyPress = {
+  key: string;
+  keyCode: number;
+  modifiers?: ("command" | "shift" | "option" | "control" | "function")[];
+  characters?: string;
+  /** "window": no view has focus (our React Native UI); "page": the page shown; "devtools": docked DevTools. Default: as it is. */
+  focus?: "window" | "page" | "devtools";
+  /**
+   * The window stands in as the key window, as for a real key: a page takes keys, Chrome passes keys
+   * back to AppKit, and the Edit and Window menus' actions find their target only in the key window.
+   */
+  asKey?: boolean;
+  /** ms between focusing and the key (the focused page reports its focus first, as after a click). */
+  settle?: number;
+  /** How long to collect what the key did, in ms (default 250). */
+  wait?: number;
+  /** Record the app's commands instead of running them; only look up AppKit's own items (Quit…). */
+  dry?: boolean;
+};
+export type KeyPressResult = {
+  /** "page": sent to the focused page, which hands keys it doesn't use back to the app later. */
+  handledBy?: "page" | "window" | "menu" | "none";
+  firstResponder?: string;
+  /** Menu items whose action the key sent (`command` / `arg` for the app's own commands). */
+  fired?: { title: string; action: string; command?: string; arg?: string; dry?: boolean }[];
+  /** The items the menu bar found for the key (a disabled one doesn't fire). */
+  matched?: { title: string; action: string; command?: string; arg?: string; enabled: boolean }[];
+  error?: string;
+};
+/**
+ * DEV builds only: presses a key equivalent in a window as AppKit dispatches it (the window's
+ * performKeyEquivalent:, where Chrome's command dispatcher runs, then the main menu); a test instance
+ * is never the key window, so real keys can't reach it.
+ */
+export const devKeyEquivalent = async (windowId: string, press: KeyPress): Promise<KeyPressResult> =>
+  (await App.devKeyEquivalent?.(windowId, press)) ?? { error: "not available in this build" };
 /** DEV builds only: fires a menu-bar command through the native menu path. */
 export const devMenuCommand = (command: string, arg: string | null = null) => App.devMenuCommand(command, arg);

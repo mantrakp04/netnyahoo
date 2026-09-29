@@ -86,7 +86,7 @@ export function ProfileIndicator({ room }: { room: number }) {
 }
 
 /** Dia's profile menu: each profile (checkmark, colour swatch, ⌃1…⌃9), New Profile, Edit Profiles…. */
-async function openProfileMenu(windowId: string) {
+export async function openProfileMenu(windowId: string) {
   const s = useBrowser.getState();
   const current = s.windows[windowId]?.profileId;
   const items: MenuItem[] = [

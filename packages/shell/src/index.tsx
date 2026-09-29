@@ -107,7 +107,19 @@ export type BrowserCommand =
   | "manageExtensions"
   | "pinExtensions"
   /** Edit › AutoFill; arg "contact" | "passwords" | "creditCard". */
-  | "autofill";
+  | "autofill"
+  // Chrome's shortcuts the app shares (File › Open File…, Save Page As…, Email Page Location, Print
+  // Using System Dialog…, View › Stop, F7 caret browsing, ⌃⇧⇟ / ⌃⇞, ⌃⌘W, ⇧⌘M).
+  | "openFile"
+  | "savePage"
+  | "emailPageLocation"
+  | "printWithSystemDialog"
+  | "stop"
+  | "caretBrowsing"
+  | "moveTabDown"
+  | "moveTabUp"
+  | "closeTabGroup"
+  | "openProfileMenu";
 
 export type CommandEvent = {
   command: BrowserCommand;

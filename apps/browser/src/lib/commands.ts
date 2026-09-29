@@ -1,4 +1,13 @@
-import { closeWindow as closeNativeWindow, copyText, prompt, setAppearance, sharePage, type CommandEvent } from "@netnyahoo/shell";
+import {
+  closeWindow as closeNativeWindow,
+  copyText,
+  openExternalURL,
+  pickFiles,
+  prompt,
+  setAppearance,
+  sharePage,
+  type CommandEvent,
+} from "@netnyahoo/shell";
 import { markdownLink } from "@netnyahoo/core";
 import { useBrowser } from "../store/browser";
 import { activeTabId, bookmarkProfileId, resolveWindowId } from "../store/model";
@@ -21,12 +30,15 @@ import { webviews } from "./webviews";
 import { goBack, goForward } from "../components/layout/history";
 import { openSplitPane } from "../components/layout/splitActions";
 import { runSidebarCommand } from "../components/sidebar/commands";
+import { numberedTabs } from "../components/sidebar/entries";
 import { setZoom } from "./zoom";
 import { openExtensionFromMenu } from "../components/extensions/bridge";
 import { toggleCastPicker } from "../components/media/cast";
 import { openManageExtensions, openPinDialog, openWebStore } from "../components/extensions/state";
 import { requestAutofill } from "../components/site/Autofill";
 import { copyPageUrl, jumpToSelection } from "../components/site/selection";
+import { openProfileMenu } from "../components/ProfileIndicator";
+import { groupOf } from "../store/organize";
 
 /**
  * Menu-bar, shortcut and Dock commands. `windowId` is the key browser window
@@ -66,6 +78,9 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return openSettings("shortcuts");
     case "importBrowserData":
       return openImport();
+    // File › Open File… (⌘O): each file in a new tab of the window (a new window with none open).
+    case "openFile":
+      return void openFiles(requested);
     case "manageExtensions":
       return openManageExtensions();
     case "setBookmarksBar":
@@ -120,6 +135,20 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return tabId ? void closeTab(tabId) : undefined;
     case "print":
       return void web?.print();
+    case "printWithSystemDialog":
+      return void web?.runPageCommand?.("systemPrint");
+    case "savePage":
+      return void web?.runPageCommand?.("savePage");
+    case "caretBrowsing":
+      return void web?.runPageCommand?.("caretBrowsing");
+    // Chrome's ⇧⌘I: a new mail with the page's link.
+    case "emailPageLocation":
+      if (!page || !/^https?:/i.test(page.url)) return;
+      return void openExternalURL(
+        `mailto:?subject=${encodeURIComponent(page.customTitle || page.title || page.url)}&body=${encodeURIComponent(page.url)}`,
+      );
+    case "stop":
+      return void web?.stopLoading();
     // File › Share… and the command bar's Share: the macOS share picker, for web pages.
     case "share":
       return page && /^https?:/i.test(page.url) ? void sharePage(page.url, page.customTitle || page.title, windowId) : undefined;
@@ -187,12 +216,30 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return s.cycle(windowId, 1);
     case "previousTab":
       return s.cycle(windowId, -1);
+    // ⌘1–⌘8 / ⌘9: the sidebar's rows, pinned tiles first.
     case "selectTab":
-      return s.activateIndex(windowId, Number(arg) - 1);
-    case "selectLastTab":
-      return s.activateIndex(windowId, -1);
+    case "selectLastTab": {
+      const rows = numberedTabs(s, windowId);
+      const id = command === "selectLastTab" ? rows.at(-1) : rows[Number(arg) - 1];
+      return id ? s.activate(id) : undefined;
+    }
     case "togglePin":
       return tab ? s.togglePin(tab.id) : undefined;
+    // Chrome's ⌃⇧⇟ / ⌃⇧⇞: the tab one place down / up (among its pinned or unpinned neighbours).
+    case "moveTabDown":
+    case "moveTabUp": {
+      if (!tab) return;
+      const section = s.windows[windowId]!.tabIds.filter((id) => s.tabs[id]?.profileId === tab.profileId && !!s.tabs[id]?.pinned === tab.pinned);
+      const at = section.indexOf(tab.id) + (command === "moveTabDown" ? 1 : -1);
+      return at >= 0 && at < section.length ? s.moveTab(tab.id, at) : undefined;
+    }
+    // Chrome's ⌃⌘W: closes the selected tab's group (Recently Closed Groups keeps it).
+    case "closeTabGroup": {
+      const group = groupOf(s, tabId);
+      return group ? s.closeGroup(group.id) : undefined;
+    }
+    case "openProfileMenu":
+      return s.windows[windowId]?.incognito ? undefined : void openProfileMenu(windowId);
     case "duplicateTab":
       return tab ? void s.duplicateTab(tab.id) : undefined;
     case "moveTabToProfile":
@@ -265,4 +312,15 @@ async function addBookmarkToFolder(windowId: string, folder: string) {
     parentId = useBrowser.getState().addBookmarkFolder({ profileId, title });
   }
   useBrowser.getState().addBookmark({ profileId, url: tab.url, title: tab.title, favicon: tab.favicon, parentId });
+}
+
+async function openFiles(windowId: string | null) {
+  const urls = await pickFiles();
+  if (!urls.length) return;
+  const s = useBrowser.getState();
+  const target = resolveWindowId(s, windowId);
+  if (!target) return void openWindow({ url: urls[0] });
+  let last: string | undefined;
+  for (const url of urls) last = useBrowser.getState().newTab(target, { url });
+  if (last) useBrowser.getState().activate(last);
 }

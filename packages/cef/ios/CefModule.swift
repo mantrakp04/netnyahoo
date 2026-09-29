@@ -203,6 +203,7 @@ public class CefModule: Module {
       }.runOnQueue(.main)
       AsyncFunction("stopFinding") { (view: CefWebView, clear: Bool) in view.browser.stopFinding(clear) }.runOnQueue(.main)
       AsyncFunction("print") { (view: CefWebView) in view.browser.print() }.runOnQueue(.main)
+      AsyncFunction("runPageCommand") { (view: CefWebView, name: String) in view.browser.runPageCommand(name) }.runOnQueue(.main)
       AsyncFunction("showDevTools") { (view: CefWebView, panel: String?) in view.browser.showDevTools(panel: panel) }
         .runOnQueue(.main)
       AsyncFunction("executeJavaScript") { (view: CefWebView, code: String) in
