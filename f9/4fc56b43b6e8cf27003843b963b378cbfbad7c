@@ -1,0 +1,37 @@
+packages/cef/ios/NNExtensions.mm
+  s_9c356f9574d31c::t_8b1b0e2d5050e6 179-180
+  s_9c356f9574d31c::t_7e7c912aad14df 29-36,178,181-182
+  s_9c356f9574d31c::t_019d4d05aa8c6d 229,232-233
+apps/browser/src/components/extensions/ToolbarExtensions.tsx
+  s_9c356f9574d31c::t_fc8f8f03f6e4a8 19-20,27-28,195
+apps/browser/src/components/extensions/ExtensionOverlays.tsx
+  s_9c356f9574d31c::t_fc8f8f03f6e4a8 70,133,227
+  s_9c356f9574d31c::t_2a89eaca830a94 17
+apps/browser/src/components/extensions/bridge.ts
+  s_9c356f9574d31c::t_ee2b87f6bf197b 22,31,89,91-92,146-151
+apps/browser/src/components/extensions/SidePanel.tsx
+  s_9c356f9574d31c::t_ee2b87f6bf197b 8,77,88-89,117
+apps/browser/src/components/extensions/state.ts
+  s_9c356f9574d31c::t_2abb046262bd9d 19,43-44,52,54-55,63,69-96,266,275,289-291,293-301,365
+packages/cef/src/extensions.ts
+  s_9c356f9574d31c::t_ce40b077a68f71 20-21
+packages/cef/ios/NNExtensionPackage.mm
+  s_9c356f9574d31c::t_64d9d6cbe5a282 34-35,40-41,45-57,70-73,125-127,140-142
+  s_9c356f9574d31c::t_90b4f43e327760 163,176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f94fc56b43b6e8cf27003843b963b378cbfbad7c",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
