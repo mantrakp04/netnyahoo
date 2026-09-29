@@ -181,6 +181,59 @@ public class AppModule: Module {
       #endif
     }.runOnQueue(.main)
 
+    /// DEV: types `text` into the window's first responder, one key every `interval` ms, as a
+    /// keyboard would (a test instance is never the key window, so real keys can't reach it).
+    /// Resolves with each key's times (epoch ms): when it was due, when the main thread handled it,
+    /// and when the frame showing it was committed.
+    AsyncFunction("devTypeKeys") { (windowId: String, text: String, interval: Double, promise: Promise) in
+      #if DEBUG
+      guard let window = WindowManager.shared.windows[windowId], !text.isEmpty else { return promise.resolve([]) }
+      let keys = text.map(String.init)
+      let now = { Date().timeIntervalSince1970 * 1000 }
+      // A test instance runs in the background: keep App Nap from stretching the timer.
+      let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "devTypeKeys")
+      let timer = DispatchSource.makeTimerSource(flags: .strict, queue: .main)
+      var times = [[String: Double]](repeating: [:], count: keys.count)
+      var next = 0, drawn = 0
+      var t0 = 0.0
+      let press = { (i: Int) in
+        let handled = now()
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+          guard let event = NSEvent.keyEvent(
+            with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, characters: keys[i], charactersIgnoringModifiers: keys[i],
+            isARepeat: false, keyCode: 0) else { continue }
+          if type == .keyDown { window.firstResponder?.keyDown(with: event) } else { window.firstResponder?.keyUp(with: event) }
+        }
+        // Core Animation commits the frame when the run loop is about to wait (order 2000000).
+        let observer = CFRunLoopObserverCreateWithHandler(
+          nil, CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.exit.rawValue, false, 2_000_001
+        ) { _, _ in
+          times[i] = ["due": t0 + interval * Double(i), "handled": handled, "drawn": now()]
+          drawn += 1
+          if drawn == keys.count {
+            ProcessInfo.processInfo.endActivity(activity)
+            promise.resolve(times)
+          }
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+      }
+      timer.setEventHandler {
+        if next == 0 { t0 = now() }
+        // Keys that came due while the main thread was busy wait in line, as a keyboard's do.
+        repeat {
+          press(next)
+          next += 1
+        } while next < keys.count && t0 + interval * Double(next) <= now()
+        if next == keys.count { timer.cancel() }
+      }
+      timer.schedule(deadline: .now(), repeating: .microseconds(Int(interval * 1000)), leeway: .nanoseconds(0))
+      timer.resume()
+      #else
+      promise.resolve([])
+      #endif
+    }
+
     AsyncFunction("devRunAppleScript") { (source: String, promise: Promise) in
       #if DEBUG
       // One at a time: the AppleScript component isn't safe to run on several threads at once.

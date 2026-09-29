@@ -37,6 +37,7 @@ public class DockSelectionModule: Module {
       Prop("strokeWidth") { (view: DockSelection, v: Double) in view.strokeWidth = v }
       Prop("dark") { (view: DockSelection, v: Bool) in view.dark = v }
       Prop("iconSize") { (view: DockSelection, v: Double) in view.iconSize = v }
+      Prop("glass") { (view: DockSelection, v: Bool?) in view.glass = v ?? false }
     }
   }
 }
@@ -231,6 +232,9 @@ final class DockSelection: ExpoView {
   var strokeWidth: Double = 3 { didSet { apply() } }
   var dark = true { didSet { apply() } }
   var iconSize: Double = 16 { didSet { apply() } }
+  /// Over Liquid Glass (the tile's GlassEffect, tinted like the fill): no fill of its own, so the
+  /// glass shows through the icon's wash and inside the ring.
+  var glass = false { didSet { if glass != oldValue { apply() } } }
 
   /// Sublayers under the RN content (the badges; the icon too for `blur`), bottom → top: the
   /// tile (fill, then the blurred icon at 22%) clipped to its shape, the ring, and a `template`
@@ -313,7 +317,7 @@ final class DockSelection: ExpoView {
 
     let blurred = kind == "blur" ? source.flatMap(BlurredIcon.of) : nil
     if let blurred {
-      background.backgroundColor = NSColor.white.withAlphaComponent(dark ? 0.2 : 1).cgColor
+      background.backgroundColor = glass ? nil : NSColor.white.withAlphaComponent(dark ? 0.2 : 1).cgColor
       tint.contents = blurred.plain
       tint.isHidden = false
       ring.mask = ringMask
@@ -324,7 +328,7 @@ final class DockSelection: ExpoView {
       ringImage.opacity = dark ? 0.75 : 1
       ringImage.isHidden = false
     } else {
-      background.backgroundColor = fill?.cgColor
+      background.backgroundColor = glass ? nil : fill?.cgColor
       tint.contents = nil
       tint.isHidden = true
       ring.mask = nil

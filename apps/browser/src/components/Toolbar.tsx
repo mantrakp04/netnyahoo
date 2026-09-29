@@ -19,6 +19,7 @@ import { SIDEBAR_FIELD } from "./layout/windowLayout";
 import { showUrlBarMenu } from "./omnibox/paste";
 import { useHover } from "./primitives";
 import { ToolbarExtensions, useToolbarExtensionsWidth } from "./extensions/ToolbarExtensions";
+import { GlassFill, liquidGlass } from "./glass";
 import { TranslateButton } from "./site/TranslateControls";
 
 /**
@@ -243,13 +244,25 @@ export function UrlField({
               height: sidebar.height,
               borderRadius: SIDEBAR_FIELD.radius,
               borderWidth: StyleSheet.hairlineWidth * 2,
-              borderColor: theme.pinnedRestingStroke,
-              backgroundColor: hovered ? theme.tabHover : theme.pinnedResting,
+              // Liquid Glass: the glass's own edge instead of the stroke (the border keeps its room).
+              borderColor: liquidGlass ? "transparent" : theme.pinnedRestingStroke,
+              backgroundColor: liquidGlass ? undefined : hovered ? theme.tabHover : theme.pinnedResting,
               overflow: "hidden",
             }
-          : { height: 30, borderRadius: 8, backgroundColor: hovered ? palette.pill : undefined },
+          : { height: 30, borderRadius: 8, backgroundColor: hovered && !liquidGlass ? palette.pill : undefined },
       ]}
     >
+      {/* Liquid Glass (components/glass): the field is glass, tinted by the state Dia fills it for; in the
+          toolbar, a pill of glass at rest too, over the band. */}
+      {liquidGlass ? (
+        sidebar ? (
+          <GlassFill radius={SIDEBAR_FIELD.radius} border={StyleSheet.hairlineWidth * 2} fill={hovered ? theme.tabHover : theme.pinnedResting} />
+        ) : (
+          // Dia's hover fill is the pill, and the glass is already there: hovered, it deepens to the pressed
+          // shade. Over a website colour's band, the glass is light or dark as the band is (its text the other).
+          <GlassFill radius={8} fill={hovered ? palette.pressed : palette.pill} dark={palette.background ? palette.text.startsWith("#FFFFFF") : undefined} />
+        )
+      ) : null}
       {insecure && (
         <Pressable onPress={toggleSiteControls} style={{ paddingLeft: 7 }} tooltip="Connection is not secure">
           <Symbol

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BUILT_IN_ENGINES, engineById } from "./engines.ts";
 import { findScope } from "./siteSearch.ts";
-import { buildSuggestions, displayUrl, type Suggestion } from "./suggest.ts";
+import { buildSuggestions, displayUrl, prepareSuggestions, type Suggestion } from "./suggest.ts";
 
 const now = Date.UTC(2026, 8, 24);
 const DAY = 86_400_000;
@@ -210,4 +210,66 @@ test("scoped (Tab-to-search) queries search the site and show its pages", () => 
 test("displayUrl shows safe IDN hosts in Unicode", () => {
   assert.equal(displayUrl("https://www.xn--mnchen-3ya.de/"), "münchen.de");
   assert.equal(displayUrl("https://xn--80ak6aa92e.com/login"), "xn--80ak6aa92e.com/login");
+});
+
+// Typing reuses work: pages are indexed once per history entry, and a query that extends the last
+// one only searches the pages that one matched. None of it may change what's suggested.
+
+/** The same pages in a new list: nothing indexed for the list, so nothing narrowed. */
+const fresh = <T,>(list: readonly T[]) => [...list];
+
+const vocabulary = ["react", "native", "banana", "nano", "layout", "github", "news", "notion", "an", "na"];
+const bigHistory = Array.from({ length: 400 }, (_, i) => ({
+  url: `https://${["github.com", "news.ycombinator.com", "notion.so", "example.org"][i % 4]}/${vocabulary[i % 10]}/${i}`,
+  title: `${vocabulary[(i * 3) % 10]} ${vocabulary[(i * 7) % 10]}${i % 5 ? "" : "ish"} page`,
+  favicon: null,
+  visits: 1 + (i % 13),
+  lastVisit: now - (i % 40) * DAY,
+}));
+
+test("typing on, back and over words suggests what a fresh search would", () => {
+  const source = { tabs: [{ id: "t1", url: "https://linear.app/team", title: "Linear", favicon: null }], history: bigHistory };
+  const typed: string[] = [];
+  for (const text of ["react native layout", "react n", "react na", "react nan", "banana", "ba", "b", "bana", "github.com/re", "an nano", "news.y"]) {
+    for (let i = 1; i <= text.length; i++) typed.push(text.slice(0, i));
+    for (let i = text.length - 1; i > 0; i--) typed.push(text.slice(0, i));
+  }
+  for (const text of typed) {
+    assert.deepEqual(buildSuggestions(text, source, { now, limit: 12 }), buildSuggestions(text, { ...source, history: fresh(bigHistory) }, { now, limit: 12 }), text);
+  }
+});
+
+test("a last word of two letters typed on can match inside a word ('react na' → 'react nan')", () => {
+  const source = { tabs: [], history: [{ url: "https://a.com/", title: "React banana", favicon: null, visits: 1, lastVisit: now }] };
+  assert.equal(rows(buildSuggestions("react na", source, { now, preference: "search" }).items).length, 1);
+  assert.deepEqual(rows(buildSuggestions("react nan", source, { now, preference: "search" }).items), ["search:react nan", "https://a.com/"]);
+  // One letter only matches the start of a word; two match anywhere.
+  const one = { tabs: [], history: [{ url: "https://a.com/", title: "Cabbage", favicon: null, visits: 1, lastVisit: now }] };
+  assert.equal(buildSuggestions("b", one, { now }).items.length, 1);
+  assert.deepEqual(rows(buildSuggestions("bb", one, { now }).items), ["search:bb", "https://a.com/"]);
+});
+
+test("new history and changed entries show up while typing", () => {
+  const first = [{ url: "https://github.com/", title: "GitHub", favicon: null, visits: 1, lastVisit: now }];
+  assert.deepEqual(rows(buildSuggestions("gi", { tabs: [], history: first }, { now }).items), ["https://github.com/", "search:gi"]);
+  const visited = [{ url: "https://gitlab.com/", title: "GitLab", favicon: null, visits: 90, lastVisit: now }, ...first];
+  assert.deepEqual(rows(buildSuggestions("git", { tabs: [], history: visited }, { now }).items), ["https://gitlab.com/", "search:git", "https://github.com/"]);
+  // The store replaces an entry whose title changes.
+  const renamed = [{ ...visited[0]!, title: "GitLab: sign in" }, visited[1]!];
+  const top = buildSuggestions("gitl", { tabs: [], history: renamed }, { now }).items[0];
+  assert.equal(top?.kind === "page" && top.title, "GitLab: sign in");
+});
+
+test("prepareSuggestions indexes in slices and doesn't change the results", () => {
+  // New entry objects: nothing about them is known yet.
+  const history = bigHistory.map((h) => ({ ...h }));
+  const bookmarks = [{ url: "https://notion.so/b", title: "Notion board", favicon: null }];
+  const source = { tabs: [], history, bookmarks };
+  const expected = buildSuggestions("no", { tabs: [], history: fresh(bigHistory), bookmarks: fresh(bookmarks) }, { now });
+  // A deadline already past still makes progress, one slice per call.
+  let calls = 0;
+  while (!prepareSuggestions(source, 0)) calls++;
+  assert.ok(calls > 0);
+  assert.equal(prepareSuggestions(source, 0), true);
+  assert.deepEqual(buildSuggestions("no", source, { now }), expected);
 });

@@ -4,6 +4,7 @@ import {
   engineById,
   findScope,
   hostOf,
+  prepareSuggestions,
   type SearchEngine,
   type SearchScope,
   type SuggestionResult,
@@ -19,6 +20,8 @@ import { currentBarActions } from "./actions";
 const NO_HISTORY: HistoryEntry[] = [];
 const NO_REMOTE: string[] = [];
 const EMPTY: SuggestionResult = { items: [], completion: "" };
+/** JS time per frame the bar spends indexing before you type. */
+const WARM_SLICE_MS = 4;
 
 type BookmarkRow = { url: string; title: string; favicon: string | null };
 const bookmarkCache = new WeakMap<Bookmarks, Map<string, BookmarkRow[]>>();
@@ -39,13 +42,25 @@ function profileBookmarks(b: Bookmarks, profileId: string): BookmarkRow[] {
   return rows;
 }
 
+const historyHostCache = new WeakMap<HistoryEntry[], string[]>();
+
+/** The hosts in a history list, worked out once per list (history is immutable store state). */
+function historyHosts(history: HistoryEntry[]): string[] {
+  let hosts = historyHostCache.get(history);
+  if (!hosts) {
+    const set = new Set<string>();
+    for (const h of history) set.add(hostOf(h.url));
+    set.delete("");
+    historyHostCache.set(history, (hosts = [...set]));
+  }
+  return hosts;
+}
+
 /** Hosts from history and open tabs, for Tab-to-search on sites without a known search page. */
 function knownHosts(s: BrowserState, profileId: string): string[] {
-  const hosts = new Set<string>();
-  for (const t of Object.values(s.tabs)) if (t.profileId === profileId && t.url) hosts.add(hostOf(t.url));
-  for (const h of s.history[profileId] ?? []) hosts.add(hostOf(h.url));
-  hosts.delete("");
-  return [...hosts];
+  const hosts: string[] = [];
+  for (const t of Object.values(s.tabs)) if (t.profileId === profileId && t.url) hosts.push(hostOf(t.url));
+  return hosts.concat(historyHosts(s.history[profileId] ?? NO_HISTORY));
 }
 
 /** The Tab-to-search scope for what's in the bar, if any. */
@@ -94,6 +109,19 @@ export function useSuggestions({
 
   const tabs = useMemo(() => Object.values(allTabs).filter((t) => t.profileId === profileId), [allTabs, profileId]);
   const bookmarkRows = useMemo(() => profileBookmarks(bookmarks, bookmarkProfile), [bookmarks, bookmarkProfile]);
+  const source = useMemo(() => ({ tabs, history, bookmarks: bookmarkRows }), [tabs, history, bookmarkRows]);
+
+  // Index history and bookmarks a few ms per frame while the bar waits for keys (again when they
+  // change), so a keystroke only matches.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const step = () => {
+      timer = prepareSuggestions(source, Date.now() + WARM_SLICE_MS) ? undefined : setTimeout(step, 16);
+      if (!timer) historyHosts(source.history);
+    };
+    timer = setTimeout(step, 0);
+    return () => clearTimeout(timer);
+  }, [source]);
 
   // The engine's own suggestions, for the text they were fetched for.
   const [remote, setRemote] = useState<{ text: string; list: string[] }>({ text: "", list: [] });
@@ -122,7 +150,7 @@ export function useSuggestions({
 
   return useMemo(() => {
     if (!active || !query) return EMPTY;
-    return buildSuggestions(text, { tabs, history, bookmarks: bookmarkRows }, {
+    return buildSuggestions(text, source, {
       engine,
       preference,
       remote: remoteList,
@@ -131,5 +159,5 @@ export function useSuggestions({
       currentUrl,
       scope,
     });
-  }, [active, text, query, tabs, history, bookmarkRows, engine, preference, remoteList, windowId, currentTabId, currentUrl, scope]);
+  }, [active, text, query, source, engine, preference, remoteList, windowId, currentTabId, currentUrl, scope]);
 }

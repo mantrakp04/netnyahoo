@@ -8,12 +8,12 @@ import { useWindowId, useWindowProfileId } from "../store/hooks";
 import { activeTabId, viewTabIds } from "../store/model";
 import { defaultSearchEngine } from "../store/settings";
 import { runBarAction } from "./omnibox/actions";
-import { useOmniboxDriver } from "./omnibox/devDriver";
+import { traceOmnibox, useOmniboxDriver } from "./omnibox/devDriver";
 import { registerHeroBar, savedNtpQuery, saveNtpQuery, type BarSnapshot } from "./omnibox/barState";
 import { dispositionFor, openFromBar, switchFromBar, type Disposition } from "./omnibox/open";
 import { clipboardPasteAction, pasteMenuItem, pasteTarget, readClipboard } from "./omnibox/paste";
 import { ScopeChip } from "./omnibox/ScopeChip";
-import { SuggestionIcon, SuggestionRow } from "./omnibox/SuggestionRow";
+import { SuggestionIcon, SuggestionList, type RowActions } from "./omnibox/SuggestionRow";
 import { useDropdownStart } from "./omnibox/dropdownStart";
 import { useInlineCompletion } from "./omnibox/useInlineCompletion";
 import { scopeFor, useSuggestions } from "./omnibox/useSuggestions";
@@ -268,7 +268,14 @@ export function Omnibox({
     input.current?.focus();
   };
 
+  /** DEV: when the field's last change reached JS (typing traces). */
+  const heardAt = useRef(0);
+  useLayoutEffect(() => {
+    if (__DEV__) traceOmnibox({ bar: `${windowId}:${variant}`, typed, heard: heardAt.current, committed: Date.now() });
+  });
+
   const onChangeText = (next: string) => {
+    if (__DEV__) heardAt.current = Date.now();
     const change = inline.read(next);
     if (change.echo) {
       if (!change.stale) selection.current = { start: change.inline.typed.length, end: next.length };
@@ -322,20 +329,22 @@ export function Omnibox({
     />
   );
 
-  const suggestionList = items.length > 0 && (
-    <View style={{ paddingHorizontal: dropdown ? 6 : 9, paddingBottom: dropdown ? 6 : 2 }}>
-      {items.map((s, i) => (
-        <SuggestionRow
-          key={`${s.kind}-${"url" in s ? s.url : s.id}-${i}`}
-          suggestion={s}
-          selected={i === selectedIndex}
-          trailing={i === 0 && tabScope ? `Search ${tabScope.name}  ⇥` : null}
-          onPress={() => choose(s)}
-          onHover={() => setSelected(i)}
-          onRemove={s.kind === "page" && s.visited && !s.tabId ? () => useBrowser.getState().removeHistory(profileId, [s.url]) : undefined}
-        />
-      ))}
-    </View>
+  // One object for the rows' lifetime, calling this render's handlers.
+  const latest = useRef({ choose, profileId });
+  latest.current = { choose, profileId };
+  const [rowActions] = useState<RowActions>(() => ({
+    choose: (s) => latest.current.choose(s),
+    hover: setSelected,
+    remove: (url) => useBrowser.getState().removeHistory(latest.current.profileId, [url]),
+  }));
+  const suggestionList = (
+    <SuggestionList
+      items={items}
+      selectedIndex={selectedIndex}
+      trailing={tabScope ? `Search ${tabScope.name}  ⇥` : null}
+      dropdown={dropdown}
+      actions={rowActions}
+    />
   );
 
   const bottomRow = (

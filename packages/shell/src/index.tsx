@@ -464,6 +464,8 @@ export type DockSelectionProps = ViewProps & {
   /** template: the white icon it draws itself, centred (RN's Image can't tint a template). */
   iconSize?: number;
   dark: boolean;
+  /** Over a GlassEffect tinted like the fill: no fill of its own (the ring and the icon's wash stay). */
+  glass?: boolean;
 };
 
 /** A selected pinned tile drawn from its icon's theme (see IconTheme); children go on top. */

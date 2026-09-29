@@ -12,6 +12,7 @@ import { toolbarPalette, type ToolbarPalette } from "../layout/toolbarColors";
 import { ToolbarButton } from "../layout/controls";
 import { addressBarInSidebar, setUrlAnchor, SIDEBAR_FIELD } from "../layout/windowLayout";
 import { focusHeroBar } from "../omnibox/barState";
+import { GlassFill, liquidGlass } from "../glass";
 import { useHover } from "../primitives";
 import { HistoryButton, ReloadButton, UrlField } from "../Toolbar";
 
@@ -140,12 +141,14 @@ function EmptyField({ windowId }: { windowId: string }) {
             height: SIDEBAR_FIELD.height,
             borderRadius: SIDEBAR_FIELD.radius,
             borderWidth: StyleSheet.hairlineWidth * 2,
-            borderColor: theme.pinnedRestingStroke,
-            backgroundColor: hovered ? theme.tabHover : theme.pinnedResting,
+            // Liquid Glass: the glass's own edge instead of the stroke (the border keeps its room).
+            borderColor: liquidGlass ? "transparent" : theme.pinnedRestingStroke,
+            backgroundColor: liquidGlass ? undefined : hovered ? theme.tabHover : theme.pinnedResting,
             justifyContent: "center",
             paddingLeft: 10,
           }}
         >
+          {liquidGlass ? <GlassFill radius={SIDEBAR_FIELD.radius} border={StyleSheet.hairlineWidth * 2} fill={hovered ? theme.tabHover : theme.pinnedResting} /> : null}
           {/* FadeLabel pads its text 2pt on each side. */}
           <FadeLabel text="Search or enter address" fontSize={13} color={theme.placeholder} fadeWidth={14} style={{ height: 18, marginLeft: -2 }} />
         </View>

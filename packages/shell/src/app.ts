@@ -134,6 +134,7 @@ type AppModule = {
   devRunAppleScript(source: string): Promise<{ ok: boolean; result?: unknown; error?: string; number?: number }>;
   devSnapshotWindow(windowId: string, path: string, transparent?: boolean): Promise<boolean>;
   devMenuCommand(command: string, arg: string | null): Promise<void>;
+  devTypeKeys?(windowId: string, text: string, interval: number): Promise<KeyTiming[]>;
 };
 
 /** App builds from before this module existed get inert stand-ins (JS is served to every build). */
@@ -246,5 +247,9 @@ export const devRunAppleScript = (source: string) => App.devRunAppleScript(sourc
 export const devSnapshotWindow = (windowId: string, path: string, transparent = false) =>
   // Two arguments unless asked: builds from before `transparent` reject a third.
   transparent ? App.devSnapshotWindow(windowId, path, true) : App.devSnapshotWindow(windowId, path);
+/** When a typed key was due, handled by the main thread, and drawn (epoch ms). */
+export type KeyTiming = { due: number; handled: number; drawn: number };
+/** DEV builds only: types into a window's focused field, a key every `interval` ms, and times each key. */
+export const devTypeKeys = async (windowId: string, text: string, interval: number) => (await App.devTypeKeys?.(windowId, text, interval)) ?? [];
 /** DEV builds only: fires a menu-bar command through the native menu path. */
 export const devMenuCommand = (command: string, arg: string | null = null) => App.devMenuCommand(command, arg);

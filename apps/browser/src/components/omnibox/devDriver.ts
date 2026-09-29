@@ -17,8 +17,31 @@ export type OmniboxDriver = {
 
 const drivers = new Map<string, OmniboxDriver>();
 
+/**
+ * A command bar render, for timing typing (epoch ms): `heard` is when the field's last change
+ * reached JS, `committed` when React committed the render showing rows for `typed`.
+ */
+export type OmniboxTrace = { bar: string; typed: string; heard: number; committed: number };
+let trace: OmniboxTrace[] | null = null;
+
+/** Records a render while tooling traces (`nn.omnibox.trace.start()` / `.stop()`). */
+export function traceOmnibox(entry: OmniboxTrace) {
+  if (__DEV__ && trace) trace.push(entry);
+}
+
 /** `nn.omnibox.get("<windowId>:hero" | "<windowId>:panel")`. */
-export const omniboxDrivers = { get: (id: string) => drivers.get(id), ids: () => [...drivers.keys()] };
+export const omniboxDrivers = {
+  get: (id: string) => drivers.get(id),
+  ids: () => [...drivers.keys()],
+  trace: {
+    start: () => void (trace = []),
+    stop: () => {
+      const out = trace ?? [];
+      trace = null;
+      return out;
+    },
+  },
+};
 
 export function useOmniboxDriver(id: string, driver: OmniboxDriver) {
   const latest = useRef(driver);
