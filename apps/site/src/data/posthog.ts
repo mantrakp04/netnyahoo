@@ -3,4 +3,9 @@ export const POSTHOG_KEY: string =
 
 export const POSTHOG_HOST = "https://eu.i.posthog.com";
 
+/** On netnyahoo.com PostHog goes through nginx's relay (nginx.conf), which ad blockers leave alone. */
+export const POSTHOG_RELAY = "/relay";
+
+export const POSTHOG_UI_HOST = "https://eu.posthog.com";
+
 export const PRODUCTION_HOSTS = ["netnyahoo.com", "www.netnyahoo.com"];
