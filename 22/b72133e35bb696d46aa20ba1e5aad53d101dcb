@@ -1,0 +1,54 @@
+apps/site/src/components/Closing.astro
+  s_9c356f9574d31c::t_43b5758ea47802 16
+apps/site/src/components/Game.astro
+  s_9c356f9574d31c::t_7f03b852a52c46 207-208,236
+apps/site/src/pages/release-notes.astro
+  s_9c356f9574d31c::t_7f03b852a52c46 513-521
+  s_9c356f9574d31c::t_43b5758ea47802 109
+apps/site/src/layouts/Base.astro
+  s_9c356f9574d31c::t_43b5758ea47802 9,45,49-51
+apps/site/src/scripts/yahu.ts
+  s_9c356f9574d31c::t_7f03b852a52c46 3,194,197,199-206
+apps/site/src/components/Footer.astro
+  s_9c356f9574d31c::t_9c6da43f7af852 42-43
+  s_9c356f9574d31c::t_0e5a306a286e31 12-14,16-33,41,44,91-92,95-105,111-112
+apps/site/src/components/Press.astro
+  s_9c356f9574d31c::t_0e5a306a286e31 23,25
+  s_9c356f9574d31c::t_f21385fb0727ff 24
+  s_9c356f9574d31c::t_63d5b2dac0a8fe 22
+apps/site/src/scripts/track.ts
+  s_9c356f9574d31c::t_7f03b852a52c46 1-20
+apps/site/src/components/Header.astro
+  s_9c356f9574d31c::t_105b209c7cfbde 4,26-28,31-38,47-49
+apps/site/src/scripts/analytics.ts
+  s_9c356f9574d31c::t_0f20222e11eefb 4-5,8-14,16-69
+  s_9c356f9574d31c::t_7f03b852a52c46 1-3,15
+  s_9c356f9574d31c::t_105b209c7cfbde 6-7
+apps/site/src/components/Hero.astro
+  s_9c356f9574d31c::t_43b5758ea47802 19-27
+apps/site/src/data/posthog.ts
+  s_9c356f9574d31c::t_b89f2aa04cbb45 1-16
+apps/site/README.md
+  s_9c356f9574d31c::t_239b3a54af05c0 39-52
+apps/site/src/components/DownloadButton.astro
+  s_9c356f9574d31c::t_43b5758ea47802 2,8-9,11,14-21
+apps/site/src/components/PostHog.astro
+  s_9c356f9574d31c::t_03b9d92b7cb934 1-44,46-51
+  s_9c356f9574d31c::t_09eaae7e7c48db 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "22b72133e35bb696d46aa20ba1e5aad53d101dcb",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
