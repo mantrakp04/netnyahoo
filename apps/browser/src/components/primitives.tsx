@@ -162,6 +162,8 @@ export function NewTabIcon({ size = 16 }: { size?: number }) {
   const theme = useTheme();
   return (
     <Image
+      // react-native-macos doesn't re-tint a loaded image when tintColor changes: remount on a theme flip.
+      key={theme.dark ? "dark" : "light"}
       source={NEW_TAB_MARK}
       style={{ width: size, height: size, tintColor: theme.dark ? "#FFFFFF" : "#000000", opacity: theme.dark ? 0.28 : 0.3 }}
     />
