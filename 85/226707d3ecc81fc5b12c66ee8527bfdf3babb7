@@ -1,0 +1,38 @@
+packages/cef/ios/NNCef.mm
+  s_9c356f9574d31c::t_df9c70bcfe86c9 420-433,435-440,442-456,459-465,467-468,471-472,478-479,481,498-515,518,520-527,529,537-540
+  s_9c356f9574d31c::t_d58e4761fe7ffb 239-240
+  s_9c356f9574d31c::t_60bfb4d2f9a2a1 12,230-232,234-238
+  s_9c356f9574d31c::t_d7efb0d8cc9905 434,441,457-458
+  s_9c356f9574d31c::t_a913cdc94bb47b 406,558-563,570-574,576-577,580,590
+  s_9c356f9574d31c::t_92d8556daf33c0 469
+  s_9c356f9574d31c::t_42fafb8a61a1b3 849,924-925
+  s_9c356f9574d31c::t_c5ff16990f42dc 790
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_92d8556daf33c0 133,136-137
+packages/cef/src/module.ts
+  s_9c356f9574d31c::t_9405cc4e234742 6
+apps/browser/src/store/hygiene.test.mjs
+  s_9c356f9574d31c::t_96227c310d0806 117-118
+apps/browser/src/store/ui.ts
+  s_9c356f9574d31c::t_eab549fcb53d40 82-85
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_16afa64843ecfa 666,747,750-751
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_087c3f692a9c58 208-209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "85226707d3ecc81fc5b12c66ee8527bfdf3babb7",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
