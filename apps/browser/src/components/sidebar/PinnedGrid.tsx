@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { Animated, Pressable, View } from "react-native";
 import { closeTab } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
+import { listTopGap, useAddressBarInSidebar } from "../layout/windowLayout";
 import { useTileTheme } from "../../lib/tileTheme";
 import { useBrowser } from "../../store/browser";
 import { useIsActiveTab, useTab, useTabLive, useWindowId } from "../../store/hooks";
@@ -30,6 +31,7 @@ export function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; inn
   const columns = Math.max(1, Math.min(tabs.length || 1, Math.floor((innerWidth + GAP) / (MIN_TILE + GAP))));
   const width = Math.floor(((innerWidth - GAP * (columns - 1)) / columns) * 2) / 2;
   const tail = useDragItem("tail:tiles", { kind: "tail", tabIds: [], section: "tiles" });
+  const topGap = listTopGap(useAddressBarInSidebar());
   const empty = tabs.length === 0;
   // With no pinned tabs, a drop zone shows while dragging so tabs can still be pinned.
   if (empty && !dragging) return null;
@@ -38,7 +40,7 @@ export function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; inn
       ref={(v) => {
         controller?.regions.set("tiles", v);
       }}
-      style={{ marginTop: layout.pinnedTop - layout.sidebarHeader, flexDirection: "row", flexWrap: "wrap", rowGap: GAP, columnGap: GAP }}
+      style={{ marginTop: topGap, flexDirection: "row", flexWrap: "wrap", rowGap: GAP, columnGap: GAP }}
     >
       {tabs.map((id) => (
         <PinnedTile key={id} tabId={id} width={width} />

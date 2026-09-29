@@ -8,7 +8,7 @@ import { activeTabId } from "../store/model";
 import { downloadsIn } from "../store/ui";
 import { cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
-import { SIDEBAR_FOOTER_DOWNLOADS, useAddressBarInSidebar, useGlassSidebar, useSidebarHeader } from "./layout/windowLayout";
+import { listTopGap, SIDEBAR_FOOTER_DOWNLOADS, useAddressBarInSidebar, useGlassSidebar, useSidebarHeader } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
 import { IconButton, useHover } from "./primitives";
 import { PROFILE_INDICATOR_X, ProfileIndicator } from "./ProfileIndicator";
@@ -214,6 +214,7 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glass, 
   const windowId = useWindowId();
   const { tiles, pinnedRows, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
   const rowGap = glass ? GLASS_ROW_GAP : layout.rowGap;
+  const topGap = listTopGap(useAddressBarInSidebar());
   const pinnedSection = pinnedRows.length + pinnedGroups.length > 0;
   const list = rows === undefined ? all : all.slice(0, rows);
   const newTabsAtTop = useSettings((s) => s.newTabPosition === "top");
@@ -259,7 +260,7 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glass, 
                       ref={(v) => {
                         controller?.regions.set("pinnedRows", v);
                       }}
-                      style={{ marginTop: tiles.length || (current && ghost) ? 11 : layout.pinnedTop - layout.sidebarHeader, gap: rowGap }}
+                      style={{ marginTop: tiles.length || (current && ghost) ? 11 : topGap, gap: rowGap }}
                     >
                       {pinnedRows.map((id) => (
                         <TabRowItem key={id} tabId={id} section="pinnedRows" />
@@ -274,7 +275,7 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glass, 
                     // The tiles' 6 pt spacing (Dia's dock layout) down to the first row.
                     style={{
                       // Liquid Glass: on the pinned rows' 39 pt pitch (a folder's box is a point taller than a row's).
-                      marginTop: glass ? (pinnedRows.length ? rowGap - 1 : 0) : tiles.length || (current && ghost) ? 6 : layout.pinnedTop - layout.sidebarHeader,
+                      marginTop: glass ? (pinnedRows.length ? rowGap - 1 : 0) : tiles.length || (current && ghost) ? 6 : topGap,
                       gap: rowGap,
                     }}
                   >

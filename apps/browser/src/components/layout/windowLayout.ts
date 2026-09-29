@@ -49,6 +49,14 @@ export const SIDEBAR_FIELD = { top: 48, height: layout.rowHeight, radius: 10 } a
  * leading end, centred on its space-switcher band (the footer is 41 pt, the band 28 above its bottom 3).
  */
 export const SIDEBAR_FOOTER_DOWNLOADS = { bottom: 3 + (28 - 34) / 2, size: 34 } as const;
+/**
+ * The gap over the sidebar's first tile or row: Dia's 8 under its header; under the URL field, the tiles'
+ * own 6, so the field, the tiles and the rows sit evenly apart.
+ */
+export function listTopGap(addressBar: boolean): number {
+  return addressBar ? 6 : layout.pinnedTop - layout.sidebarHeader;
+}
+
 /** The sidebar header with the URL field in it: the list starts under the field. */
 export const SIDEBAR_HEADER_WITH_FIELD = SIDEBAR_FIELD.top + SIDEBAR_FIELD.height;
 
