@@ -1,0 +1,39 @@
+apps/browser/src/components/glass.tsx
+  s_9c356f9574d31c::t_4b92fef583e84c 25-26
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_f05ce5dcaa224c 616
+packages/shell/ios/DockSelection.swift
+  s_9c356f9574d31c::t_8762ccb13bcdb9 447-448,450-452
+  s_9c356f9574d31c::t_3b5f53882fb881 368-371,373-374
+  s_9c356f9574d31c::t_bffc93285d99a1 20-22
+  s_9c356f9574d31c::t_0bce6f66b22a55 23,300,422-424
+  s_9c356f9574d31c::t_898229f9517150 301-307
+  s_9c356f9574d31c::t_4973eedae89aa0 286-287
+  s_9c356f9574d31c::t_24e2279111b9f9 381
+  s_9c356f9574d31c::t_8813b3941b593d 208-254,467
+  s_9c356f9574d31c::t_000d79cc0ae265 419-421,425-438,440-446,449,453-466
+  s_9c356f9574d31c::t_f672e3bdc855f2 324-333
+  s_9c356f9574d31c::t_05787266ad8ccc 439
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_e2545175786fde 110-122
+  s_9c356f9574d31c::t_f05146231bf86b 486-487,496,500
+  s_9c356f9574d31c::t_d288e927731bcb 497-499
+apps/browser/src/components/sidebar/PinnedGrid.tsx
+  s_9c356f9574d31c::t_2e39288b66f583 27-28,222-223,249-251,253-256,258,267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "89c0b7f4a80b504e05502cdffac9b628d6823c7c",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
