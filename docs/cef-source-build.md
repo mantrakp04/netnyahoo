@@ -385,5 +385,8 @@ In the app:
   source (`CefGetMediaAccessDesktopSource`), with desktop audio only for a tab the page asked audio of.
   Anything else is refused: the page script runs in the page's world, so the page decides what
   getUserMedia asks for.
+- Desktop getUserMedia without a picked source is refused outright, with no prompt (as in Chrome, where
+  only `getDisplayMedia` and its picker capture the screen). Only camera and microphone get a permission
+  prompt.
 
 Verified in the app: a "Tab" track at 1558×1080 delivering frames, plus a "Tab Audio" track.

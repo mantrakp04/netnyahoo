@@ -620,16 +620,17 @@ bool RequestPermission(CefRefPtr<CefBrowser> browser, const CefString &origin, u
 bool RequestMediaAccess(CefRefPtr<CefBrowser> browser, const CefString &origin, uint32_t permissions,
                         CefRefPtr<CefMediaAccessCallback> callback) {
   if (!gEventHandler) return false;
+  // Camera and microphone only: the tab's client answered screen sharing (Client::OnRequestMediaAccessPermission).
+  if (permissions & (CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE)) {
+    callback->Cancel();
+    return true;
+  }
   NSMutableArray *names = [NSMutableArray array];
   if (permissions & CEF_MEDIA_PERMISSION_DEVICE_AUDIO_CAPTURE) [names addObject:@"microphone"];
   if (permissions & CEF_MEDIA_PERMISSION_DEVICE_VIDEO_CAPTURE) [names addObject:@"camera"];
-  if (permissions & (CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE))
-    [names addObject:@"screen"];
   NSString *profile = ProfileForContext(browser->GetHost()->GetRequestContext()) ?: @"";
   auto types = site::TypesForMedia(permissions);
-  // Share picker approvals were checked by the tab's client (Client::OnRequestMediaAccessPermission).
-  bool desktop = permissions & (CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE);
-  if (!desktop && !types.empty()) {
+  if (!types.empty()) {
     cef_content_setting_values_t decision = site::Decision(profile, ToNS(origin), types);
     if (decision == CEF_CONTENT_SETTING_VALUE_ALLOW) {
       site::NoteGrantedMedia(browser->GetIdentifier(), permissions);
@@ -642,8 +643,7 @@ bool RequestMediaAccess(CefRefPtr<CefBrowser> browser, const CefString &origin, 
     }
   }
   std::string id = "m" + std::to_string(++gPermissionSeq);
-  gPermissions[id] = {browser->GetIdentifier(), nullptr, callback, permissions, profile, ToNS(origin),
-                      desktop ? std::vector<cef_content_setting_types_t>() : types};
+  gPermissions[id] = {browser->GetIdentifier(), nullptr, callback, permissions, profile, ToNS(origin), types};
   EmitGlobal(@"permission", @{
     @"id" : @(id.c_str()),
     @"browserId" : @(browser->GetIdentifier()),

@@ -364,21 +364,24 @@ void AllowDesktopCapture(int browserId, const std::string &frameId, NSString *or
   gDesktopCapture[browserId] = {frameId, [origin copy], [source copy], media, CACurrentMediaTime()};
 }
 
-DesktopCaptureGrant ConsumeDesktopCapture(int browserId, const std::string &frameId, NSString *origin,
-                                          NSString *source, uint32_t permissions) {
+bool ConsumeDesktopCapture(int browserId, const std::string &frameId, NSString *origin, NSString *source,
+                           uint32_t permissions) {
   auto it = gDesktopCapture.find(browserId);
-  if (it == gDesktopCapture.end()) return DesktopCaptureGrant::kNone;
+  if (it == gDesktopCapture.end()) {
+    NSLog(@"[cef] refused screen capture of %@ without a picked source for browser %d", source ?: @"?", browserId);
+    return false;
+  }
   DesktopCapture grant = it->second;
   // One request per approval, whether or not it matches.
   gDesktopCapture.erase(it);
-  if (CACurrentMediaTime() - grant.time >= 15) return DesktopCaptureGrant::kNone;
   bool sameDocument = grant.frameId.empty() ||
                       (grant.frameId == frameId && (grant.origin == origin || [grant.origin isEqualToString:origin]));
-  bool allowed = sameDocument && (permissions & CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE) &&
+  bool allowed = CACurrentMediaTime() - grant.time < 15 && sameDocument &&
+                 (permissions & CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE) &&
                  !(permissions & ~grant.media) && (!source || [source isEqualToString:grant.source]);
   if (!allowed)
     NSLog(@"[cef] refused screen capture of %@ (approved %@) for browser %d", source ?: @"?", grant.source, browserId);
-  return allowed ? DesktopCaptureGrant::kAllowed : DesktopCaptureGrant::kRefused;
+  return allowed;
 }
 
 NSArray<NSDictionary *> *DesktopCaptureSources() {

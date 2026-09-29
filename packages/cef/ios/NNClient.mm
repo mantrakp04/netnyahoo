@@ -859,25 +859,22 @@ bool Client::OnRequestMediaAccessPermission(CefRefPtr<CefBrowser> browser, CefRe
                                             const CefString &origin, uint32_t permissions,
                                             CefRefPtr<CefMediaAccessCallback> callback) {
   if (permissions & (CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE)) {
-    // A share picker approval covers only the frame, source and media it was
-    // given for: the page chooses what getUserMedia asks for.
+    // Screen sharing needs the share picker, and its approval covers only the
+    // frame, source and media it was given for: the page chooses what
+    // getUserMedia asks for. Like Chrome, nothing else captures the desktop.
     NSString *source = nil;
 #if defined(CEF_NN_MEDIA_REQUEST_SOURCE)
     source = ToNS(CefGetMediaAccessDesktopSource(callback));
 #endif
     int bid = browser->GetIdentifier();
-    switch (site::ConsumeDesktopCapture(bid, frame ? frame->GetIdentifier().ToString() : "", OriginOf(ToNS(origin)),
-                                        source, permissions)) {
-      case site::DesktopCaptureGrant::kAllowed:
-        site::NoteGrantedMedia(bid, permissions);
-        callback->Continue(permissions);
-        return true;
-      case site::DesktopCaptureGrant::kRefused:
-        callback->Cancel();
-        return true;
-      case site::DesktopCaptureGrant::kNone:
-        break;
+    if (site::ConsumeDesktopCapture(bid, frame ? frame->GetIdentifier().ToString() : "", OriginOf(ToNS(origin)), source,
+                                    permissions)) {
+      site::NoteGrantedMedia(bid, permissions);
+      callback->Continue(permissions);
+    } else {
+      callback->Cancel();
     }
+    return true;
   }
   return RequestMediaAccess(browser, origin, permissions, callback);
 }

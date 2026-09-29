@@ -33,11 +33,12 @@ void NoteGrantedMedia(int browserId, uint32_t mediaPermissions);
 // than |media| (CEF_MEDIA_PERMISSION_DESKTOP_*), within 15 seconds.
 void AllowDesktopCapture(int browserId, const std::string &frameId, NSString *origin, NSString *source,
                          uint32_t media);
-enum class DesktopCaptureGrant { kNone, kAllowed, kRefused };
-// Uses up the browser's approval. A nil |source| (an engine that can't tell)
+// Uses up the browser's approval; whether it covers this request. Without
+// one, desktop capture is refused: as in Chrome, only a source picked in the
+// share picker can be captured. A nil |source| (an engine that can't tell)
 // skips the source check.
-DesktopCaptureGrant ConsumeDesktopCapture(int browserId, const std::string &frameId, NSString *origin,
-                                          NSString *source, uint32_t permissions);
+bool ConsumeDesktopCapture(int browserId, const std::string &frameId, NSString *origin, NSString *source,
+                           uint32_t permissions);
 NSArray<NSDictionary *> *DesktopCaptureSources();
 uint32_t GrantedMedia(int browserId);
 void ClearGrantedMedia(int browserId);
