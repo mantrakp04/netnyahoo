@@ -21,9 +21,12 @@ import { ProfileSwipeArea } from "./ProfileSwipe";
 import { openNewTabInSplit } from "./splitActions";
 import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag } from "./tabDrag";
 
-export const TOP_STRIP_HEIGHT = layout.sidebarHeader;
 const CHIP_HEIGHT = 32;
+// Chips centre on the traffic lights (y 27); the strip leaves the same room under them as above.
 const CHIP_TOP = 27 - CHIP_HEIGHT / 2;
+export const TOP_STRIP_HEIGHT = CHIP_TOP * 2 + CHIP_HEIGHT;
+const PEEK_PAD = 7;
+const PEEK_HEIGHT = CHIP_HEIGHT + PEEK_PAD * 2;
 const PINNED_WIDTH = 40;
 // Dia: tab groups 96–232pt.
 const MIN_CHIP = 96;
@@ -438,9 +441,9 @@ export function TopStripPeek() {
             left: 6,
             right: 6,
             top: 4,
-            height: TOP_STRIP_HEIGHT,
+            height: PEEK_HEIGHT,
             opacity: slide,
-            transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [-TOP_STRIP_HEIGHT - 8, 0] }) }],
+            transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [-PEEK_HEIGHT - 8, 0] }) }],
           }}
         >
           <Surface
@@ -454,7 +457,7 @@ export function TopStripPeek() {
             shadowOffset={[0, 6]}
             style={{ flex: 1 }}
           >
-            <View style={{ position: "absolute", left: 0, right: 0, top: -3, height: TOP_STRIP_HEIGHT }}>
+            <View style={{ position: "absolute", left: 0, right: 0, top: PEEK_PAD - CHIP_TOP, height: TOP_STRIP_HEIGHT }}>
               <TopTabStrip floating />
             </View>
           </Surface>
