@@ -24,6 +24,8 @@ const GAP = 6;
 const MIN_TILE = 50;
 /** TabDockView's itemStrokeWidth: the selected tile's ring. */
 const SELECTION_STROKE = 3;
+/** The selected glass tile's rim: a hairline of light, not Dia's ring. */
+const GLASS_RIM = 1;
 
 /** Pinned tabs as tiles (Dia's tab dock), as many per row as fit. */
 export function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; innerWidth: number; dragging: boolean }) {
@@ -217,8 +219,8 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
  * A tile on Liquid Glass (components/glass): Dia's states as the glass's tint (resting, hover or
  * multi-selected, pressed, selected), in the same box as the flat tile. The glass stays mounted
  * across states (it's the first child whatever the state), so hovering only retints it. Selected,
- * Dia's selection draws over it without its own fill: the icon's wash and ring (DockSelection
- * `glass`; a one-colour icon tints the glass its colour), or the black rim and white bevel.
+ * the glass is raised rather than ringed (DockSelection `glass`): brighter, with a shadow, a sheen,
+ * a thin light rim and a hint of the icon's hue; pressed, it sinks back a little.
  */
 function GlassTile({
   tabId,
@@ -242,40 +244,27 @@ function GlassTile({
   const tab = useTab(tabId);
   if (!tab) return null;
   const radius = 10;
-  const template = active && tileTheme?.theme.kind === "template" ? tileTheme.theme : null;
   const fill = active ? theme.pinnedSelectedFill : pressed ? theme.tabPressed : hovered || selected ? theme.tabHover : theme.pinnedResting;
   return (
-    // Dia's selected tile centres its icon under the rim and bevel, half a point low.
-    <View style={{ width, height: layout.pinnedHeight, paddingTop: active && !tileTheme ? 1 : 0, alignItems: "center", justifyContent: "center" }}>
-      <GlassFill radius={radius} fill={fill} raised={active} tint={template ? `${template.fill.slice(0, 7)}D9` : undefined} />
-      {active && tileTheme ? (
+    <View style={{ width, height: layout.pinnedHeight, alignItems: "center", justifyContent: "center" }}>
+      <GlassFill radius={radius} fill={fill} raised={active && !pressed} />
+      {active ? (
         <DockSelection
-          image={tileTheme.image}
-          emoji={tileTheme.emoji}
-          theme={tileTheme.theme.kind}
-          fill={template?.fill}
-          stroke={template?.stroke}
+          image={tileTheme?.image}
+          emoji={tileTheme?.emoji}
+          theme={tileTheme?.theme.kind}
+          fill={tileTheme?.theme.kind === "template" ? tileTheme.theme.fill : undefined}
           cornerRadius={radius}
-          strokeWidth={SELECTION_STROKE}
+          strokeWidth={GLASS_RIM}
           dark={theme.dark}
           glass
           style={StyleSheet.absoluteFill}
         />
-      ) : active ? (
-        // Dia's rim (SelectedPrimary) and top bevel (TabOutline) round the glass.
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 1, borderColor: theme.pinnedSelectedRim }]}>
-          <View style={{ flex: 1, borderRadius: radius - 1, borderTopWidth: 1, borderColor: theme.pinnedSelectedOutline }} />
-        </View>
       ) : selected ? (
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 1, borderColor: tokens.dragBorder }]} />
       ) : null}
       <View>
-        {template ? (
-          // DockSelection draws a one-colour icon itself, white on its colour.
-          <View style={{ width: 16, height: 16 }} />
-        ) : (
-          <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
-        )}
+        <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
         <TabBadges tabId={tabId} />
       </View>
     </View>

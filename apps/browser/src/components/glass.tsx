@@ -22,8 +22,8 @@ export function glassTint(theme: Theme, fill: string, raised = false, dark = the
   const [r, g, b, a] = rgba(fill);
   const [pr, pg, pb] = rgba(theme.backdrop.tintColor);
   const lightening = r + g + b > 3 * 127;
-  // A selected tile is Dia's raised white bubble: its glass takes more of the white (0.8 in light).
-  const alpha = a * (!lightening ? 1 : dark ? 0.6 : raised ? 0.8 : 0.55);
+  // A selected tile is raised glass: brighter, taking more of the white than a flat fill would.
+  const alpha = a * (!lightening ? 1 : dark ? (raised ? 0.9 : 0.6) : raised ? 0.8 : 0.55);
   const mix = (c: number, p: number) => c + (p - c) * PROFILE_SHARE;
   return toHex([mix(r, pr), mix(g, pg), mix(b, pb), alpha * 255]);
 }

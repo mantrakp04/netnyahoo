@@ -17,6 +17,10 @@ import ExpoModulesCore
 ///   a 3pt ring over black (dark: at 75%, saturation 2, brightness −0.1) / white (light).
 /// - template: the tile is filled with the colour, the icon drawn white (here), the ring is the
 ///   stroke colour, or white in soft-light when there's none.
+///
+/// Over Liquid Glass (`glass`, macOS 26) none of that: the tile is selected the way a glass control
+/// is, raised off the sidebar (a soft shadow), lit from above (a sheen and a thin light rim, brighter
+/// at the top) and faintly the icon's colour (see `applyGlass`).
 public class DockSelectionModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooDockSelection")
@@ -201,6 +205,53 @@ private final class BlurredIcon {
   }
 }
 
+/// The icon's colour for a selected glass tile: each colour at full brightness, softened toward
+/// white, as opaque as it is saturated. Black, white and greys drop out, so a dark icon (X, GitHub)
+/// adds nothing and none of it is darker than a pastel. (Compositing filters don't reach the
+/// glass under the tile: a screen or colour blend over it composites as a normal one.)
+private enum GlassGlow {
+  private static let cache = NSCache<NSString, CGImage>()
+
+  /// A `blur` icon's blurred colours, at most 64 px on the long side.
+  static func of(_ source: IconSource, blurred: CGImage) -> CGImage? {
+    if let cached = cache.object(forKey: source.key as NSString) { return cached }
+    let scale = min(1, 64 / Double(max(blurred.width, blurred.height, 1)))
+    let w = max(1, Int(Double(blurred.width) * scale)), h = max(1, Int(Double(blurred.height) * scale))
+    guard let context = CGContext(
+      data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+      let data = context.data
+    else { return nil }
+    context.draw(blurred, in: CGRect(x: 0, y: 0, width: w, height: h))
+    let bytes = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+    for i in stride(from: 0, to: w * h * 4, by: 4) {
+      let a = Double(bytes[i + 3]) / 255
+      guard a > 0 else { continue }
+      let (rgb, strength) = glow(SIMD3(Double(bytes[i]), Double(bytes[i + 1]), Double(bytes[i + 2])) / 255 / a)
+      let alpha = a * strength
+      for k in 0..<3 { bytes[i + k] = UInt8((rgb[k] * alpha * 255).rounded()) }
+      bytes[i + 3] = UInt8((alpha * 255).rounded())
+    }
+    guard let image = context.makeImage() else { return nil }
+    cache.setObject(image, forKey: source.key as NSString)
+    return image
+  }
+
+  /// A `template` icon's colour.
+  static func of(_ color: NSColor) -> CGColor? {
+    guard let c = color.usingColorSpace(.sRGB) else { return nil }
+    let (rgb, strength) = glow(SIMD3(Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent)))
+    return strength > 0 ? CGColor(srgbRed: rgb.x, green: rgb.y, blue: rgb.z, alpha: strength) : nil
+  }
+
+  private static func glow(_ rgb: SIMD3<Double>) -> (SIMD3<Double>, Double) {
+    let top = rgb.max(), chroma = top - rgb.min()
+    guard top > 0 else { return (.zero, 0) }
+    let bright = rgb / top
+    return (bright + (SIMD3(repeating: 1) - bright) * 0.35, min(1, chroma * 1.5))
+  }
+}
+
 /// A one-colour icon as a white template (TabDockItemView's icon view, tinted white).
 private enum TemplateIcon {
   private static let cache = NSCache<NSString, CGImage>()
@@ -232,8 +283,8 @@ final class DockSelection: ExpoView {
   var strokeWidth: Double = 3 { didSet { apply() } }
   var dark = true { didSet { apply() } }
   var iconSize: Double = 16 { didSet { apply() } }
-  /// Over Liquid Glass (the tile's GlassEffect, tinted like the fill): no fill of its own, so the
-  /// glass shows through the icon's wash and inside the ring.
+  /// Over Liquid Glass (the tile's GlassEffect, tinted brighter): the glass selection instead of
+  /// Dia's; `strokeWidth` is its rim's width, and the icon is the RN content's, as it is.
   var glass = false { didSet { if glass != oldValue { apply() } } }
 
   /// Sublayers under the RN content (the badges; the icon too for `blur`), bottom → top: the
@@ -246,6 +297,14 @@ final class DockSelection: ExpoView {
   private let ringImage = CALayer()
   private let ringMask = CALayer()
   private let icon = CALayer()
+  /// `glass`, bottom → top: the shadow (outside the tile only), the icon's glow, the sheen, the rim.
+  private let lift = CALayer()
+  private let liftMask = CAShapeLayer()
+  private let hue = CALayer()
+  private let hueImage = CALayer()
+  private let sheen = CAGradientLayer()
+  private let rim = CAGradientLayer()
+  private let rimMask = CALayer()
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -262,6 +321,16 @@ final class DockSelection: ExpoView {
     }
     ring.addSublayer(ringImage)
     ringMask.borderColor = NSColor.white.cgColor
+    liftMask.fillRule = .evenOdd
+    lift.mask = liftMask
+    lift.shadowColor = NSColor.black.cgColor
+    lift.shadowRadius = 3
+    hue.masksToBounds = true
+    hue.addSublayer(hueImage)
+    hueImage.contentsGravity = .resizeAspectFill
+    sheen.masksToBounds = true
+    rimMask.borderColor = NSColor.white.cgColor
+    rim.mask = rimMask
   }
 
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -296,13 +365,20 @@ final class DockSelection: ExpoView {
       layer.insertSublayer(tile, at: 0)
       layer.insertSublayer(ring, above: tile)
       layer.insertSublayer(icon, above: ring)
+      layer.insertSublayer(lift, below: tile)
+      layer.insertSublayer(hue, above: icon)
+      layer.insertSublayer(sheen, above: hue)
+      layer.insertSublayer(rim, above: sheen)
     }
+    for dia in [tile, ring, icon] { dia.isHidden = glass }
+    for glassLayer in [lift, hue, sheen, rim] { glassLayer.isHidden = !glass }
     let radius = min(cornerRadius, bounds.width / 2)
     let scale = window?.backingScaleFactor ?? 2
     let width = (strokeWidth * scale).rounded() / scale
     // SelectionOutlineView and the background layer share the tile's frame; the image views
     // are 2.5× it, centred.
     let big = bounds.insetBy(dx: -bounds.width * 0.75, dy: -bounds.height * 0.75)
+    if glass { return applyGlass(radius: radius, rimWidth: width, big: big) }
     for shape in [tile, ring, ringMask] {
       shape.frame = bounds
       shape.cornerRadius = radius
@@ -339,5 +415,54 @@ final class DockSelection: ExpoView {
       ringImage.contents = nil
       ringImage.isHidden = true
     }
+  }
+
+  /// The selection over Liquid Glass, the way macOS 26 raises a selected glass control: a soft
+  /// shadow under the tile, a sheen down from its top edge and a thin light rim (brightest at the
+  /// top, where the light catches it), and a glow of the icon's colour (GlassGlow: a colourful
+  /// icon's blurred colours, a one-colour icon's colour; nothing for a black or white one). Nothing
+  /// here is darker than the glass, whatever the icon: the shadow falls outside the tile.
+  private func applyGlass(radius: CGFloat, rimWidth: CGFloat, big: CGRect) {
+    // RN views are flipped: y = 0 is the top.
+    let flipped = layer?.isGeometryFlipped == true || isFlipped
+    let top = CGPoint(x: 0.5, y: flipped ? 0 : 1)
+    let bottom = CGPoint(x: 0.5, y: flipped ? 1 : 0)
+    for shape in [hue, sheen, rim, rimMask] {
+      shape.frame = bounds
+      shape.cornerRadius = radius
+      shape.cornerCurve = .continuous
+    }
+
+    let shape = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+    lift.frame = bounds
+    lift.shadowPath = shape
+    lift.shadowOpacity = dark ? 0.5 : 0.2
+    lift.shadowOffset = CGSize(width: 0, height: flipped ? 1 : -1)
+    let outside = CGMutablePath()
+    outside.addRect(bounds.insetBy(dx: -12, dy: -12))
+    outside.addPath(shape)
+    liftMask.frame = bounds
+    liftMask.path = outside
+
+    let glow = kind == "blur" ? source.flatMap { source in BlurredIcon.of(source).flatMap { GlassGlow.of(source, blurred: $0.plain) } } : nil
+    let color = kind == "template" ? fill.flatMap(GlassGlow.of) : nil
+    hueImage.frame = big.offsetBy(dx: -bounds.minX, dy: -bounds.minY)
+    hueImage.contents = glow
+    hue.backgroundColor = color
+    hue.isHidden = glow == nil && color == nil
+    hue.opacity = dark ? 0.35 : 0.3
+
+    sheen.colors = [NSColor.white.withAlphaComponent(dark ? 0.12 : 0.4).cgColor, NSColor.white.withAlphaComponent(0).cgColor]
+    sheen.locations = [0, 0.6]
+    sheen.startPoint = top
+    sheen.endPoint = bottom
+
+    rimMask.borderWidth = rimWidth
+    rim.colors = [
+      NSColor.white.withAlphaComponent(dark ? 0.5 : 1).cgColor,
+      NSColor.white.withAlphaComponent(dark ? 0.14 : 0.55).cgColor,
+    ]
+    rim.startPoint = top
+    rim.endPoint = bottom
   }
 }

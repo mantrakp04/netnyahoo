@@ -471,7 +471,8 @@ export type DockSelectionProps = ViewProps & {
   /** The icon the theme came from: a favicon URI, or `emoji`. */
   image?: string;
   emoji?: string;
-  theme: IconTheme["kind"];
+  /** None: an icon without a theme (only `glass` draws a selection then). */
+  theme?: IconTheme["kind"];
   /** template: the tile's fill and ring (hex); no stroke = white soft-light. */
   fill?: string;
   stroke?: string;
@@ -480,7 +481,11 @@ export type DockSelectionProps = ViewProps & {
   /** template: the white icon it draws itself, centred (RN's Image can't tint a template). */
   iconSize?: number;
   dark: boolean;
-  /** Over a GlassEffect tinted like the fill: no fill of its own (the ring and the icon's wash stay). */
+  /**
+   * Over a GlassEffect (tinted brighter): a glass control's selection instead of Dia's, a soft
+   * shadow, a sheen, a thin light rim (`strokeWidth` wide) and a glow of the icon's colour; the RN
+   * content draws the icon.
+   */
   glass?: boolean;
 };
 
