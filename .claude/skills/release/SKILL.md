@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut and ship a Netnyahoo release end to end — write the Dia-style release notes from git log, bump the version, build/sign/package with scripts/release.sh, smoke-test the build in a hidden instance, publish the GitHub release + Sparkle appcast, and deploy netnyahoo.com with the release-notes entry, the new download link and the landing page's claims brought up to date. Use this whenever the user asks to ship, release, cut/push a new version or update, publish a build, "get this to me", bump the version, or write release notes for Netnyahoo — even if they only say "ship it" or "new release" after a batch of fixes.
+description: Cut and ship a Netnyahoo release end to end — write the Dia-style release notes from git log, bump the version, build/sign/package with scripts/release.sh, smoke-test the build in a hidden instance, publish the GitHub release + Sparkle appcast, and deploy netnyahoo.com with the release-notes entry, the new download link and the landing page's claims and screenshots brought up to date. Use this whenever the user asks to ship, release, cut/push a new version or update, publish a build, "get this to me", bump the version, or write release notes for Netnyahoo — even if they only say "ship it" or "new release" after a batch of fixes.
 ---
 
 # Releasing Netnyahoo
@@ -164,8 +164,37 @@ Then:
 - **Bug fixes and small changes:** leave the page alone.
 - **Never claim anything the release doesn't do.** Anything unverified or behind a setting says so.
 
+**Bring the landing page's pictures up to date too.** Every screenshot on the site claims "a screenshot,
+not a mockup", so it has to look like the app people download today. Here is what shows which part of the
+app (listed in `apps/site/README.md` › Screenshots):
+
+| Asset | Shows |
+|---|---|
+| `src/assets/shots/office.webp` | the whole window: sidebar, pinned tiles, tabs, a page ("Fig. 2 — In office") |
+| `shots/address-{toolbar,sidebar}.webp` | the address bar pledge's before and after |
+| `shots/profile-*.webp` | the profiles pledge, one window per profile |
+| `shots/split.webp`, `extensions.webp`, `privacy.webp` | split view, the Web Store, Settings › Privacy & Security |
+| `src/assets/app-icon.png` | the header, the favicon source |
+| `src/assets/game/crowd.webp` | the offline game; its hotspot is in `Game.astro` |
+| `public/og.png` | the share card |
+
+- **When:** if the release visibly changes something a shot shows (the sidebar, the tiles, the New Tab page,
+  the logo or mark, the icon, a Settings pane, the window chrome), retake the affected shots from **this
+  release's export** (`dist/<version>/export/Netnyahoo.app`). A new page or feature that earned a pledge
+  may also need a new shot.
+- **How:** use a hidden instance with the smoke test's rules (`NETNYAHOO_BACKGROUND=1`, a throwaway
+  `NETNYAHOO_DATA_DIR`, never plain `open`, never `/Applications`).
+  - Set up the same state as the old shot (the same sites, profiles, light or dark).
+  - Take a real window capture at 2× with a transparent outside: `screencapture -l <windowID> -o`.
+- **Screen locked:** WindowServer captures fail. Leave the old shot, and tell the user which shots are stale.
+  An in-process snapshot is not a substitute: it drops glass and Metal views.
+- **Replace in place:** save the new capture over the file with the same name, since Astro makes the sizes.
+  Update the shot's `alt` text if what it shows changed, and check its phone crop (`focus` in `data/pledges.ts`).
+- **Don't touch the rest:** leave the mascot poster (`yahu-poster.webp`) and the 3D model alone unless the
+  brand changed.
+
 Keep to the site's bar: few words, witty over wordy (see the existing lines). Build with `pnpm -C apps/site build`
-and check the changed sections render, on a phone width too (the "site" launch config, port 4321).
+and check the changed sections and shots render, on a phone width too (the "site" launch config, port 4321).
 
 ```bash
 pnpm -C apps/site run deploy   # the upload can drop on a weak connection: rerun it until it succeeds
