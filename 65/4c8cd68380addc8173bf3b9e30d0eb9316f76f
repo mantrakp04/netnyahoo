@@ -1,0 +1,42 @@
+packages/sync/scripts/e2e.mjs
+  s_9c356f9574d31c::t_c86a1f34ca6cbb 283
+packages/sync/src/scope.test.ts
+  s_9c356f9574d31c::t_005520cca73767 5,110,117-118,120-123,127,129,133
+  s_9c356f9574d31c::t_3930e38c5f8407 119,126,132,401,416-417,419
+  s_9c356f9574d31c::t_c36d5c42218059 52,88-95,503-520
+  s_9c356f9574d31c::t_48b0623a145256 124-125,128,130-131,134,441-502
+apps/browser/src/sync/engine.ts
+  s_9c356f9574d31c::t_da3a4653bccfdb 165-166,168,387,440,499
+  s_9c356f9574d31c::t_c726831fde606a 6,10,13,71,150-151,154,156-164,172-194,200,212,219,304-312,329
+  s_9c356f9574d31c::t_d495b421d4d4f3 144-149
+apps/browser/src/sync/test-native-stub.mjs
+  s_9c356f9574d31c::t_88a31473c4fedf 2
+packages/sync/src/scope.ts
+  s_9c356f9574d31c::t_85e9316fba9b92 30,33,90-95,98,215-222,225-254,257-259,333,376,391
+  s_9c356f9574d31c::t_005520cca73767 223-224
+  s_9c356f9574d31c::t_5b51e338c8d720 148-150
+apps/browser/src/sync/adapters.test.mjs
+  s_9c356f9574d31c::t_f134ae4bd28668 6,41-53,67-69,71-79,376-397
+  s_9c356f9574d31c::t_45b507d3f230f1 398
+docs/sync.md
+  s_9c356f9574d31c::t_3c347ab65dace6 52-53,124-130,184-189,302-303,320,326-329,331,336
+  s_9c356f9574d31c::t_a9de55ac0aaac3 337-339
+apps/browser/src/sync/engine.test.mjs
+  s_9c356f9574d31c::t_88a31473c4fedf 1-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "654c8cd68380addc8173bf3b9e30d0eb9316f76f",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
