@@ -1,0 +1,55 @@
+apps/browser/src/components/sidebar/TabRow.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 27
+apps/browser/src/components/Toolbar.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 30,44,55,58,170-171
+apps/browser/src/store/tabs.ts
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 422-423
+apps/browser/src/components/sidebar/dnd.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 20,279-280,287
+apps/browser/src/sync/adapters.test.mjs
+  s_9c356f9574d31c::t_b6d0b244eae4eb 270-289
+apps/browser/src/components/sidebar/GroupBlock.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 1,69-70,89,146,161,168
+apps/browser/src/store/organize.ts
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 38,58-59,407,415,550,565
+apps/browser/src/components/bookmarks/BookmarkDialog.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 10,84
+apps/browser/src/components/sidebar/AddressBar.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 13,95
+apps/browser/src/App.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 2-3,19,63-65,75-83,149-152,154
+apps/browser/src/components/sidebar/PinnedGrid.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 117,128,145-149,172
+apps/browser/src/components/Sidebar.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 4,11,50-51,58,64,66,145,191,193,195,200,237,250,287
+apps/browser/src/store/types.ts
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 166
+apps/browser/src/sync/adapters.ts
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 275,318,353,372
+apps/browser/src/lib/theme.ts
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 2,241,271
+apps/browser/src/components/sidebar/entries.ts
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 6-8,10,17,38,48,75
+apps/browser/src/components/sidebar/menus.ts
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 6,192,291-292
+apps/browser/src/components/ContentCard.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 26,116-117,210,216,218
+apps/browser/src/components/settings/panes/Appearance.tsx
+  s_9c356f9574d31c::t_0ccc76dd4ef8ee 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "722c3f52f03a643abd442dbfaeb5149c2caf96db",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
