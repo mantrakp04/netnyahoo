@@ -2,6 +2,7 @@
 import { Image } from "astro:assets";
 import poster from "../assets/yahu-poster.webp";
 import DownloadButton from "./DownloadButton.astro";
+import MacOnlyNote from "./MacOnlyNote.astro";
 import { REPO, VERSION } from "../data/release";
 ---
 
@@ -26,8 +27,9 @@ import { REPO, VERSION } from "../data/release";
           data-track-location="hero">Read the source</a
         >
       </div>
+      <MacOnlyNote location="hero" />
       <p class="label fine" data-reveal style="--i: 4">
-        <span>v{VERSION}</span><span>Free</span><span>macOS 14+</span><span>Apple Silicon</span><span>Notarized</span>
+        <span class="phone-only">Mac only</span><span>v{VERSION}</span><span>Free</span><span>macOS 14+</span><span>Apple Silicon</span><span>Notarized</span>
       </p>
     </div>
 
@@ -130,6 +132,10 @@ import { REPO, VERSION } from "../data/release";
     content: "/";
     margin: 0 10px;
     color: var(--rule);
+  }
+  /* "Mac only" leads the list on phones; elsewhere it's hidden, so the version starts it. */
+  :global(:root:not([data-device="phone"])) .fine .phone-only + span::before {
+    content: none;
   }
 
   .hero-figure {

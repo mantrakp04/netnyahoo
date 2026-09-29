@@ -1,5 +1,6 @@
 ---
 import Shot from "./Shot.astro";
+import DownloadButton from "./DownloadButton.astro";
 import office from "../assets/shots/office.webp";
 ---
 
@@ -19,8 +20,36 @@ import office from "../assets/shots/office.webp";
         <span>A screenshot, not a mockup.</span>
       </figcaption>
     </figure>
+    {/* Experiment "download-band" (docs/growth.md): shown only to Macs in the "band" variant. */}
+    <aside class="band" aria-label="Download" data-download-band hidden>
+      <p class="band-line poster">That was a screenshot. <span>This is the app.</span></p>
+      <DownloadButton location="office-band" />
+    </aside>
   </div>
 </section>
+
+<script>
+  // The download-band experiment. Only Mac desktops evaluate the flag, so only they count as exposures
+  // (getFeatureFlag records $feature_flag_called). No flag, an error or a blocked PostHog: control, no band.
+  // On localhost, ?nnflag=band (or control) stands in for PostHog.
+  import { ph } from "../scripts/track";
+
+  const FLAG = "download-band";
+  const band = document.querySelector<HTMLElement>("[data-download-band]");
+  const show = (variant: unknown) => {
+    if (band) band.hidden = variant !== "band";
+  };
+
+  if (band && document.documentElement.dataset.device === "mac") {
+    const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+    const forced = local ? new URLSearchParams(location.search).get("nnflag") : null;
+    if (forced) show(forced);
+    else
+      ph()?.onFeatureFlags?.((_flags, _variants, context) => {
+        if (!context?.errorsLoading) show(ph()?.getFeatureFlag?.(FLAG));
+      });
+  }
+</script>
 
 <style>
   .office {
@@ -50,6 +79,46 @@ import office from "../assets/shots/office.webp";
     to {
       transform: none;
       opacity: 1;
+    }
+  }
+  .band {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px 32px;
+    margin-top: clamp(40px, 5vw, 72px);
+    padding: 22px 0;
+    border-top: 2px solid var(--ink);
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  .band[hidden] {
+    display: none;
+  }
+  .band-line {
+    font-size: clamp(2rem, 1.2rem + 2.6vw, 3.6rem);
+    line-height: 0.9;
+  }
+  .band-line span {
+    color: var(--tie);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .band {
+      animation: band-in 600ms var(--ease-out) both;
+    }
+  }
+  @keyframes band-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+  @media (max-width: 640px) {
+    .band {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .band :global(.btn) {
+      justify-content: center;
     }
   }
   figcaption {

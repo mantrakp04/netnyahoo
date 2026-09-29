@@ -1,0 +1,24 @@
+---
+// Under the main download buttons, for Windows and Linux visitors only (data-device="other", Visitor.astro).
+import { REPO } from "../data/release";
+
+interface Props {
+  location: "hero" | "closing";
+}
+const { location } = Astro.props;
+---
+
+<p class="note other-only">
+  Mac only for now.{" "}
+  <a class="link" href={REPO} rel="noopener" data-track="github_clicked" data-track-link="notify" data-track-location={location}
+    >Follow the case on GitHub</a
+  >.
+</p>
+
+<style>
+  .note {
+    margin-top: 12px;
+    font-size: var(--t-small);
+    color: var(--ink-2);
+  }
+</style>

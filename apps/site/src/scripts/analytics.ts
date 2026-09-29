@@ -1,4 +1,12 @@
 
+// Named events (beyond PostHog's pageviews, autocapture and dead clicks):
+//   download_clicked { location, version }       a Download button (data-track)
+//   github_clicked { link, location }            a GitHub link (data-track)
+//   send_to_mac_clicked { location, method, outcome, share? }   phones: scripts/send-to-mac.ts
+//   non_mac_visit { os }                         Windows/Linux desktops, once per session
+//   section_viewed { section }                   a [data-shot] section scrolled into view
+//   support_opened { location }                  the footer's support widget
+// Experiment: flag "download-band", Macs only (components/InOffice.astro, docs/growth.md).
 import { ph, track, type Props } from "./track";
 
 function onTrackedClick(e: MouseEvent) {
@@ -48,4 +56,15 @@ if (support.length) {
       track("support_opened", { location: b.dataset.support ?? null });
     });
   }
+}
+
+// Windows and Linux can't run it yet (components/Visitor.astro sorts visitors); count them once per session.
+const { device, os } = document.documentElement.dataset;
+if (device === "other") {
+  let seen = false;
+  try {
+    seen = sessionStorage.getItem("nn:non_mac_visit") === "1";
+    sessionStorage.setItem("nn:non_mac_visit", "1");
+  } catch {}
+  if (!seen) track("non_mac_visit", { os: os ?? null });
 }

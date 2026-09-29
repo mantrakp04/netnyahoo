@@ -9,6 +9,7 @@ import newsreaderLatin from "@fontsource-variable/newsreader/files/newsreader-la
 import martianLatin from "@fontsource-variable/martian-mono/files/martian-mono-latin-wdth-normal.woff2?url";
 import "../styles/global.css";
 import PostHog from "../components/PostHog.astro";
+import Visitor from "../components/Visitor.astro";
 
 interface Props {
   title: string;
@@ -57,12 +58,14 @@ const OG_ALT = "Full immunity. Big Yahu, the Netnyahoo mascot, next to the words
     <link rel="preload" href={newsreaderLatin} as="font" type="font/woff2" crossorigin />
     <link rel="preload" href={martianLatin} as="font" type="font/woff2" crossorigin />
     <script is:inline>document.documentElement.classList.add("js");</script>
+    <Visitor />
     <PostHog />
   </head>
   <body>
     <slot />
     <script>
       import "../scripts/analytics";
+      import "../scripts/send-to-mac";
     </script>
   </body>
 </html>

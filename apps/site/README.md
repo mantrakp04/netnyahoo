@@ -47,6 +47,11 @@ overrides the key, and an empty value builds without PostHog). The named events 
 `src/scripts/analytics.ts`; tag a link with `data-track="event"` and `data-track-<prop>="value"`, or call
 `track()` from `src/scripts/track.ts`.
 
+Visitors are sorted before the first paint (`src/components/Visitor.astro`): phones and tablets get
+"Send to my Mac" instead of Download (`src/scripts/send-to-mac.ts`), Windows and Linux get a "Mac only for now"
+line, and only Macs evaluate the `download-band` experiment (`src/components/InOffice.astro`). On localhost,
+`?nndevice=phone|mac|other` and `?nnflag=band|control` force them. The experiment log is `docs/growth.md`.
+
 Only netnyahoo.com reports. `pnpm dev`, `pnpm preview` and any other host stay silent unless you opt in from
 the console with `localStorage.setItem("nn:posthog", "dev")`, and then every event carries
 `environment: development` (on localhost the person is also marked `$internal_or_test_user`). Remove the item

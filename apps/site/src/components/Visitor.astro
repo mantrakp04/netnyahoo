@@ -1,0 +1,42 @@
+---
+// Sorts the visitor before the body is parsed, so the right CTA paints first (no flash):
+//   <html data-device="phone|mac|other" data-os="ios|android|mac|windows|linux|chromeos|other">
+// - phone: phones and tablets (mobile UA, iPadOS, or touch plus a narrow screen). Download CTAs become
+//   "Send to my Mac" (scripts/send-to-mac.ts).
+// - mac: a Mac desktop, the only visitor who can install it and the only one the download-band experiment
+//   evaluates (InOffice.astro).
+// - other: Windows, Linux and the rest. They keep Download, plus a "Mac only for now." line (MacOnly.astro).
+// CSS shows and hides by class: .phone-only, .not-phone, .other-only (styles/global.css).
+// On localhost, ?nndevice=phone|mac|other forces a class, for screenshots.
+---
+
+<script is:inline>
+  (function () {
+    var root = document.documentElement;
+    var nav = navigator;
+    var ua = nav.userAgent;
+    var ipad = /Macintosh/.test(ua) && nav.maxTouchPoints > 1;
+    var os = /iPhone|iPad|iPod/.test(ua) || ipad
+      ? "ios"
+      : /Android/.test(ua)
+        ? "android"
+        : /Windows/.test(ua)
+          ? "windows"
+          : /CrOS/.test(ua)
+            ? "chromeos"
+            : /Macintosh|Mac OS X/.test(ua)
+              ? "mac"
+              : /Linux|X11/.test(ua)
+                ? "linux"
+                : "other";
+    var mobileUA = /Mobi|Android|iPhone|iPad|iPod|Silk|Kindle/i.test(ua) || ipad || !!(nav.userAgentData && nav.userAgentData.mobile);
+    var touchNarrow = nav.maxTouchPoints > 0 && matchMedia("(pointer: coarse) and (max-width: 1024px)").matches;
+    var device = mobileUA || touchNarrow ? "phone" : os === "mac" ? "mac" : "other";
+    if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+      var forced = new URLSearchParams(location.search).get("nndevice");
+      if (forced === "phone" || forced === "mac" || forced === "other") device = forced;
+    }
+    root.dataset.device = device;
+    root.dataset.os = os;
+  })();
+</script>

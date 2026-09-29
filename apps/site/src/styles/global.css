@@ -149,6 +149,14 @@ h3 {
   white-space: nowrap;
 }
 
+/* Who sees what: components/Visitor.astro sets <html data-device> before the first paint.
+   Without JS there's no data-device, so everyone gets the plain Mac download. */
+:root:not([data-device="phone"]) .phone-only,
+:root:not([data-device="other"]) .other-only,
+:root[data-device="phone"] .not-phone {
+  display: none !important;
+}
+
 /* Buttons: printed, square-shouldered. */
 .btn {
   --h: 56px;

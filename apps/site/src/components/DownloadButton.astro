@@ -5,12 +5,13 @@ interface Props {
   label?: string;
   meta?: string;
   class?: string;
-  /** Where on the site it is, for analytics (download_clicked). */
-  location: "hero" | "closing" | "release_notes";
+  /** Where on the site it is, for analytics (download_clicked, send_to_mac_clicked). */
+  location: "hero" | "closing" | "release_notes" | "menu" | "office-band";
 }
 const { label = "Download for Mac", meta = "Apple Silicon", class: className, location } = Astro.props;
 ---
 
+{/* On phones and tablets it's "Send to my Mac": scripts/send-to-mac.ts shares or copies the link instead. */}
 <a
   class:list={["btn", className]}
   href={DMG}
@@ -19,9 +20,13 @@ const { label = "Download for Mac", meta = "Apple Silicon", class: className, lo
   data-track-version={VERSION}
   data-track-location={location}
 >
-  <svg width="16" height="18" viewBox="0 0 16 18" fill="none" aria-hidden="true">
+  <svg class="not-phone" width="16" height="18" viewBox="0 0 16 18" fill="none" aria-hidden="true">
     <path d="M8 1v11.5M2.5 7.5 8 13l5.5-5.5M1.5 17h13" stroke="currentColor" stroke-width="2" stroke-linecap="square"></path>
   </svg>
-  <span>{label}</span>
-  {meta && <span class="btn-meta">{meta}</span>}
+  <svg class="phone-only" width="16" height="18" viewBox="0 0 16 18" fill="none" aria-hidden="true">
+    <path d="M8 11.5V2M3.5 6 8 1.5 12.5 6M5 8.5H1.5V17h13V8.5H11" stroke="currentColor" stroke-width="2" stroke-linecap="square"></path>
+  </svg>
+  <span class="not-phone">{label}</span>
+  <span class="phone-only" data-send-label aria-live="polite">Send to my Mac</span>
+  {meta && <span class="btn-meta not-phone">{meta}</span>}
 </a>

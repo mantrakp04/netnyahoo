@@ -25,9 +25,10 @@ import { VERSION } from "../data/release";
           api_host: production ? relay : host,
           ui_host: uiHost,
           defaults: "2026-08-30",
-          // Pageviews, pageleaves, autocapture and dead clicks are on by default.
+          // Pageviews, pageleaves, autocapture, and dead clicks (clicks that change nothing).
           capture_pageleave: true,
           autocapture: true,
+          capture_dead_clicks: true,
           // Error tracking: uncaught errors and unhandled rejections.
           capture_exceptions: true,
           // Web vitals (LCP, CLS, FCP, INP) and network timing.
