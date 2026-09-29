@@ -1,0 +1,32 @@
+apps/site/src/pages/robots.txt.ts
+  s_9c356f9574d31c::t_556af37dde14bf 1-6
+apps/site/src/layouts/Base.astro
+  s_9c356f9574d31c::t_556af37dde14bf 16-18,20,26,41,43-45,51,53-54
+apps/site/astro.config.mjs
+  s_9c356f9574d31c::t_556af37dde14bf 4
+apps/site/src/pages/404.astro
+  s_9c356f9574d31c::t_099c3a9993c181 1-33
+apps/site/src/pages/index.astro
+  s_9c356f9574d31c::t_556af37dde14bf 12-37,41-43
+apps/site/src/pages/sitemap.xml.ts
+  s_9c356f9574d31c::t_556af37dde14bf 1-7,9-16
+  s_9c356f9574d31c::t_099c3a9993c181 8
+.claude/skills/release/SKILL.md
+  s_9c356f9574d31c::t_42b29603d2565c 207-213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "77a407763a7d35425dfdc5640a13864ceccc8cd2",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
