@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut and ship a Netnyahoo release end to end — write the Dia-style release notes from git log, bump the version, build/sign/package with scripts/release.sh, smoke-test the build in a hidden instance, publish the GitHub release + Sparkle appcast, and deploy netnyahoo.com so the after-update release-notes tab has its entry. Use this whenever the user asks to ship, release, cut/push a new version or update, publish a build, "get this to me", bump the version, or write release notes for Netnyahoo — even if they only say "ship it" or "new release" after a batch of fixes.
+description: Cut and ship a Netnyahoo release end to end — write the Dia-style release notes from git log, bump the version, build/sign/package with scripts/release.sh, smoke-test the build in a hidden instance, publish the GitHub release + Sparkle appcast, and deploy netnyahoo.com with the release-notes entry, the new download link and the landing page's claims brought up to date. Use this whenever the user asks to ship, release, cut/push a new version or update, publish a build, "get this to me", bump the version, or write release notes for Netnyahoo — even if they only say "ship it" or "new release" after a batch of fixes.
 ---
 
 # Releasing Netnyahoo
@@ -144,17 +144,39 @@ so it 404s the moment a newer release is published until this is bumped:
 ```bash
 size=$(gh release view v<version> -R mantrakp04/netnyahoo --json assets -q '.assets[] | select(.name|endswith(".dmg")) | .size' | awk '{printf "%.0f MB", $1/1000000}')
 # set VERSION = "<version>" and DMG_SIZE = "$size" in apps/site/src/data/release.ts
-pnpm -C apps/site run deploy
+```
+
+**Bring the landing page's claims up to date.** The home page makes specific promises; a release can make
+one of them stale or earn a new one. Read the new notes against:
+- `apps/site/src/data/pledges.ts`: the pledges with screenshots, and "Also passed" (one line each);
+- `apps/site/src/components/Record.astro`: the ballot of what's in and what isn't yet;
+- `Press.astro` (Q&A), `Hero.astro` and `Closing.astro` (the fine print: macOS version, Apple Silicon,
+  Notarized), and `Footer.astro`.
+
+Then:
+- **Something the page says "not yet" or "partly" to is now done:** flip the ballot row.
+- **Something the page claims changed** (a new import source, a new requirement): fix the line.
+- **A headline feature isn't on the page:** add an "Also passed" line in the page's voice. It should be
+  short, dry, political theatre, and literally true. The pledge count updates itself.
+- **Bug fixes and small changes:** leave the page alone.
+- **Never claim anything the release doesn't do.** Anything unverified or behind a setting says so.
+
+Keep to the site's bar: few words, witty over wordy (see the existing lines). Build with `pnpm -C apps/site build`
+and check the changed sections render, on a phone width too (the "site" launch config, port 4321).
+
+```bash
+pnpm -C apps/site run deploy   # the upload can drop on a weak connection: rerun it until it succeeds
 ```
 
 Then verify live: `https://netnyahoo.com/release-notes/` contains the new headline, the home page links
-`Netnyahoo-<version>.dmg`, and that URL returns 200. Commit `release.ts` ("Site: download <version>") and push.
+`Netnyahoo-<version>.dmg`, that URL returns 200, and any claim you changed shows. Commit `release.ts`
+and the claim changes ("Site: download <version>", plus what changed) and push.
 
 Deploying makes things public. The user has asked for releases to go all the way through, so deploy as
 part of a release; for site changes outside a release, ask first.
 
 ## 7. Report
 
-Tell the user, briefly: the version and headline, what's in it (from the notes), the smoke result
+Tell the user, briefly: the version and headline, what's in it (from the notes), any landing-page claims changed, the smoke result
 (N/N), that it's live (release URL, appcast, site), how to get it (Check for Updates…), anything not
 verified (real trackpad/mouse input, notarization), and what they need to try by hand.
