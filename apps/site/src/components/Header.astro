@@ -1,7 +1,7 @@
 ---
 import { Image } from "astro:assets";
 import icon from "../assets/app-icon.png";
-import { DMG, REPO } from "../data/release";
+import { DMG, REPO, VERSION } from "../data/release";
 
 interface Props {
   /** Where the section links point: "" on the home page itself, the home page's URL elsewhere. */
@@ -23,10 +23,19 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       <a href={`${home}#game`}>Game</a>
       <a href={`${home}#press`}>Press</a>
       <a href={`${base}/release-notes`}>Notes</a>
-      <a href={REPO} rel="noopener">GitHub</a>
+      <a href={REPO} rel="noopener" data-track="github_clicked" data-track-link="source" data-track-location="header"
+        >GitHub</a
+      >
     </nav>
     <button class="menu-btn" type="button" aria-expanded="false" aria-controls="menu" data-menu-btn>Menu</button>
-    <a class="bar-cta" href={DMG} data-download>Download</a>
+    <a
+      class="bar-cta"
+      href={DMG}
+      data-download
+      data-track="download_clicked"
+      data-track-version={VERSION}
+      data-track-location="header">Download</a
+    >
   </div>
   <nav class="menu" id="menu" aria-label="Sections" data-menu hidden>
     <div class="wrap">
@@ -35,7 +44,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       <a href={`${home}#game`}>Game</a>
       <a href={`${home}#press`}>Press</a>
       <a href={`${base}/release-notes`}>Release notes</a>
-      <a href={REPO} rel="noopener">GitHub</a>
+      <a href={REPO} rel="noopener" data-track="github_clicked" data-track-link="source" data-track-location="menu"
+        >GitHub</a
+      >
     </div>
   </nav>
 </header>

@@ -106,7 +106,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         <footer class="end">
           <p class="poster end-title">End of record.</p>
           <p class="end-line">Nothing before 0.1.0 was ever written down. Reading this in another browser? That can be arranged.</p>
-          <DownloadButton />
+          <DownloadButton location="release_notes" />
         </footer>
       </div>
     </div>
@@ -510,6 +510,15 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 </style>
 
 <script>
+  import { track } from "../scripts/track";
+
+  // Which release people read, and which version the app sent them to (/release-notes#<version>).
+  const latest = document.querySelector<HTMLElement>(".entry")?.id ?? null;
+  const viewed = (trigger: "load" | "hashchange") =>
+    track("release_notes_viewed", { version: decodeURIComponent(location.hash.slice(1)) || null, latest, trigger });
+  viewed("load");
+  addEventListener("hashchange", () => viewed("hashchange"));
+
   // The index follows the entry being read.
   const links = new Map(
     [...document.querySelectorAll<HTMLAnchorElement>("[data-index]")].map((a) => [a.dataset.index!, a] as const),

@@ -204,6 +204,8 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
 </style>
 
 <script>
+  import { track } from "../scripts/track";
+
   const board = document.querySelector<HTMLElement>("[data-board]");
   const spot = board?.querySelector<HTMLButtonElement>("[data-found]");
   const toast = board?.querySelector<HTMLElement>("[data-toast]");
@@ -231,6 +233,7 @@ const spot = { x: 0.312, y: 0.335, r: 0.045 };
       board.setAttribute("data-solved", "");
       const s = started ? ((performance.now() - started) / 1000).toFixed(1) : null;
       say(s ? `Found him in ${s} s. He hides better offline.` : "Found him. He hides better offline.");
+      track("yahu_found", { seconds: s ? Number(s) : null, misses });
     });
     const lines = ["That’s a donor.", "That’s a lobbyist.", "Close. That’s his friend with the envelope.", "Not him. Keep looking."];
     board.addEventListener("click", () => {

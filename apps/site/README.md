@@ -36,3 +36,17 @@ Pages without a custom domain).
   from the brand sources in the main checkout's `output/` (simplify, WebP textures, meshopt). The hero's
   poster (`src/assets/yahu-poster.webp`, shown until WebGL is ready or when it isn't available) is a render of
   the same scene: in `pnpm dev`, `__yahu.snapshot()` in the console returns it as a PNG data URL.
+
+## Analytics
+
+netnyahoo.com reports to PostHog (EU cloud): pageviews and pageleaves, autocapture, session replay (inputs
+masked, console included), exceptions, console logs into PostHog Logs, and web vitals. The snippet is
+`src/components/PostHog.astro`; the project key and host are in `src/data/posthog.ts` (`PUBLIC_POSTHOG_KEY`
+overrides the key, and an empty value builds without PostHog). The named events are listed at the top of
+`src/scripts/analytics.ts`; tag a link with `data-track="event"` and `data-track-<prop>="value"`, or call
+`track()` from `src/scripts/track.ts`.
+
+Only netnyahoo.com reports. `pnpm dev`, `pnpm preview` and any other host stay silent unless you opt in from
+the console with `localStorage.setItem("nn:posthog", "dev")`, and then every event carries
+`environment: development` (on localhost the person is also marked `$internal_or_test_user`). Remove the item
+when you're done.

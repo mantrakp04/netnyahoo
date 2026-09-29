@@ -1,15 +1,24 @@
 ---
-import { DMG } from "../data/release";
+import { DMG, VERSION } from "../data/release";
 
 interface Props {
   label?: string;
   meta?: string;
   class?: string;
+  /** Where on the site it is, for analytics (download_clicked). */
+  location: "hero" | "closing" | "release_notes";
 }
-const { label = "Download for Mac", meta = "Apple Silicon", class: className } = Astro.props;
+const { label = "Download for Mac", meta = "Apple Silicon", class: className, location } = Astro.props;
 ---
 
-<a class:list={["btn", className]} href={DMG} data-download>
+<a
+  class:list={["btn", className]}
+  href={DMG}
+  data-download
+  data-track="download_clicked"
+  data-track-version={VERSION}
+  data-track-location={location}
+>
   <svg width="16" height="18" viewBox="0 0 16 18" fill="none" aria-hidden="true">
     <path d="M8 1v11.5M2.5 7.5 8 13l5.5-5.5M1.5 17h13" stroke="currentColor" stroke-width="2" stroke-linecap="square"></path>
   </svg>

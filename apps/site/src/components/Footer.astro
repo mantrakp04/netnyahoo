@@ -9,16 +9,38 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     <div class="cols">
       <nav class="col" aria-label="Project">
         <p class="label h">Project</p>
-        <a class="link" href={REPO} rel="noopener">Source on GitHub</a>
+        <a class="link" href={REPO} rel="noopener" data-track="github_clicked" data-track-link="source" data-track-location="footer"
+          >Source on GitHub</a
+        >
         <a class="link" href={`${base}/release-notes`}>Release notes</a>
-        <a class="link" href={RELEASES} rel="noopener">Downloads</a>
-        <a class="link" href={`${REPO}/issues`} rel="noopener">Report a bug</a>
+        <a
+          class="link"
+          href={RELEASES}
+          rel="noopener"
+          data-track="github_clicked"
+          data-track-link="releases"
+          data-track-location="footer">Downloads</a
+        >
+        <a
+          class="link"
+          href={`${REPO}/issues`}
+          rel="noopener"
+          data-track="github_clicked"
+          data-track-link="issues"
+          data-track-location="footer">Report a bug</a
+        >
+        {/* Shown once PostHog's support widget is switched on (scripts/analytics.ts). */}
+        <button class="link" type="button" data-support="footer" hidden>Write to the office</button>
       </nav>
       <div class="col">
         <p class="label h">Disclaimer</p>
         <p>
           Political satire of Benjamin Netanyahu and his government. Not affiliated with Google, The Browser Company,
           or any government, lobby or donor.
+        </p>
+        <p>
+          This website counts its visitors with PostHog: page views, clicks and session replays, with typing
+          masked.
         </p>
       </div>
       <div class="col">
@@ -66,15 +88,28 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     color: var(--night-ink);
     margin-bottom: 6px;
   }
-  .col a {
+  .col a,
+  .col button {
     color: var(--night-ink);
+  }
+  .col button {
+    font: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+  }
+  .col button[hidden] {
+    display: none;
   }
   @media (max-width: 800px) {
     .col {
       grid-column: 1 / -1;
     }
     /* Thumb-sized rows. */
-    .col a {
+    .col a,
+    .col button {
       min-height: 44px;
       display: inline-flex;
       align-items: center;

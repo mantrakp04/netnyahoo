@@ -16,8 +16,15 @@ import { REPO, VERSION } from "../data/release";
         Real Chromium for the Mac. Immune to ads, trackers and prosecution.
       </p>
       <div class="cta-row" data-reveal style="--i: 3">
-        <DownloadButton />
-        <a class="link source" href={REPO} rel="noopener">Read the source</a>
+        <DownloadButton location="hero" />
+        <a
+          class="link source"
+          href={REPO}
+          rel="noopener"
+          data-track="github_clicked"
+          data-track-link="read_the_source"
+          data-track-location="hero">Read the source</a
+        >
       </div>
       <p class="label fine" data-reveal style="--i: 4">
         <span>v{VERSION}</span><span>Free</span><span>macOS 14+</span><span>Apple Silicon</span><span>Notarized</span>

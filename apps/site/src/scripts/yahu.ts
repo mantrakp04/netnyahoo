@@ -1,5 +1,6 @@
 // Big Yahu, live: one WebGL renderer that can move between stages (the hero, the closing poster).
 // Loaded lazily by stage.ts; nothing here runs until the hero is near the viewport.
+import { track } from "./track";
 import {
   AnimationMixer,
   Box3,
@@ -190,10 +191,19 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   const release = () => {
     dragging = false;
   };
+  let spun = false;
   canvas.addEventListener("pointerup", (e) => {
     release();
+    const stage = canvas.parentElement?.dataset.stage ?? null;
     // A tap (not a spin) makes him dance.
-    if (moved < 4) api.dance(e.pointerType === "mouse" && e.shiftKey ? "griddy" : "default");
+    if (moved < 4) {
+      const dance = e.pointerType === "mouse" && e.shiftKey ? "griddy" : "default";
+      api.dance(dance);
+      track("yahu_danced", { stage, dance });
+    } else if (!spun && moved > 40) {
+      spun = true;
+      track("yahu_spun", { stage });
+    }
   });
   canvas.addEventListener("pointercancel", release);
 
