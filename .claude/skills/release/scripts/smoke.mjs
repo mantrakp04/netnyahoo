@@ -28,7 +28,7 @@ check("engine is Chromium 154", /Chrome\/154\./.test(browserInfo.Browser), brows
 let targets = (await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => t.type === "page");
 const notes = targets.filter((t) => new RegExp(`/release-notes/?#${version.replace(/\./g, "\\.")}$`).test(t.url));
 check("release notes opened once after the update", notes.length === 1, targets.map((t) => t.url).join(", "));
-const page = notes[0] ?? targets.find((t) => t.url.startsWith("http"));
+const page = notes[0] ?? targets.find((t) => t.url.startsWith("http") && !t.url.includes("/count.html"));
 if (!page) {
   console.log("no web page to drive; stopping");
   process.exit(1);
@@ -101,7 +101,7 @@ check("no hidden full-size Chrome window (the app window is Chrome's own)", !!ap
 check("a window left on its second profile reopens as that profile's window, alone on screen",
   appWindows().filter((w) => w.alpha > 0).length === 1, JSON.stringify(appWindows().map((w) => [w.title, w.alpha])));
 // The page on screen (the after-update tab, opened in the window) is the Work profile's: the same
-// browser context as the restored Work tab, and visible.
+// browser context as the restored Work tab (its pinned tab), and visible.
 const browserWs = new WebSocket(browserInfo.webSocketDebuggerUrl);
 await new Promise((r) => (browserWs.onopen = r));
 let browserId = 1;
@@ -113,7 +113,7 @@ const browserSend = (method) =>
   });
 const { targetInfos = [] } = await browserSend("Target.getTargets");
 browserWs.close();
-const workContext = targetInfos.find((t) => t.type === "page" && t.url.endsWith("?work"))?.browserContextId;
+const workContext = targetInfos.find((t) => t.type === "page" && t.url.endsWith("?pin-a"))?.browserContextId;
 const shownContext = targetInfos.find((t) => t.targetId === page.id)?.browserContextId;
 const shownVisible = await evaluate("document.visibilityState");
 check("…showing the Work profile's pages", !!workContext && shownContext === workContext && shownVisible === "visible",
@@ -181,6 +181,59 @@ await go("https://example.org/");
 check("offline page is Where's Big Yahu?", /No internet/.test(await evaluate("document.title")));
 await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 await go(`${pages}/form.html`);
+
+// A pinned tab's page stays as it was while tabs over it open and close: never reloaded, never
+// freed. 0.2.7 reloaded pinned x.com on every other ⌘W (unit tests: store/pinnedClose.test.mjs).
+// Work's pinned tab A (smoke.sh) is the tab it showed, so it loaded at launch. Tabs open and close
+// here the way Chrome's own do (CDP), as test instances never get the key window for ⌘T / ⌘W.
+async function browserCall(method, params = {}) {
+  const bws = new WebSocket(browserInfo.webSocketDebuggerUrl);
+  await new Promise((r) => (bws.onopen = r));
+  const result = await new Promise((r) => {
+    bws.onmessage = (e) => r(JSON.parse(e.data).result ?? {});
+    bws.send(JSON.stringify({ id: 1, method, params }));
+  });
+  bws.close();
+  return result;
+}
+async function onPage(target, method, params = {}) {
+  const pws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((r) => (pws.onopen = r));
+  const result = await new Promise((r) => {
+    pws.onmessage = (e) => r(JSON.parse(e.data).result ?? {});
+    pws.send(JSON.stringify({ id: 1, method, params }));
+  });
+  pws.close();
+  return result;
+}
+async function pinnedPage() {
+  const target = (await (await fetch(`http://localhost:${port}/json`)).json()).find((t) => t.type === "page" && t.url.endsWith("?pin-a"));
+  if (!target) return undefined;
+  const { result } = await onPage(target, "Runtime.evaluate", { expression: "[window.loadNo, document.visibilityState]", returnByValue: true });
+  return { target, id: target.id, loads: result?.value?.[0], visibility: result?.value?.[1] };
+}
+const pinA = await pinnedPage();
+const rounds = [];
+for (let i = 0; pinA && i < 5; i++) {
+  const { targetId } = await browserCall("Target.createTarget", { url: `${pages}/form.html?over-${i}` });
+  await sleep(1200);
+  await browserCall("Target.closeTarget", { targetId });
+  await sleep(800);
+  // Shown again (Chrome's own close picks a tab too, and the app follows it; 3 s at most).
+  let shown;
+  for (let t = 0; t < 6 && shown?.visibility !== "visible"; t++) {
+    await onPage(pinA.target, "Page.bringToFront");
+    await sleep(500);
+    shown = await pinnedPage();
+  }
+  rounds.push(shown);
+}
+check("a pinned tab's page, shown again after a tab over it closed (5 times), is the same page, loaded once",
+  !!pinA && pinA.loads === 1 && rounds.every((a) => a?.id === pinA.id && a.loads === 1 && a.visibility === "visible"),
+  JSON.stringify({ first: pinA && [pinA.loads, pinA.visibility], rounds: rounds.map((a) => a && [a.id === pinA.id ? "same page" : "new page", a.loads, a.visibility]) }));
+// Back to the page the checks drive; the right-click needs it on screen.
+await send("Page.bringToFront");
+await sleep(800);
 
 // Last: right-click shows Chrome's context menu. Test instances (NETNYAHOO_BACKGROUND) don't draw it,
 // since a context menu shows above every app, even over the user's work: they log its items to

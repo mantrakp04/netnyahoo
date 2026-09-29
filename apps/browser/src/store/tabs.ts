@@ -3,6 +3,7 @@ import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 import { leaveGroups, syncGroupOrder } from "./groups";
 import {
+  closesWindow,
   IDLE_LIVE,
   inPinnedContainer,
   makeTab,
@@ -217,8 +218,9 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
  * pinned group is in Dia's pinned container too: its row stays, unloaded on the page it showed
  * (it has no pinned URL). A window
  * showing it selects the regular tab it showed last (Dia's
- * `lastNonPinnedTabBeforePinnedSelection`), else a New Tab page. `ids` may include other tabs
- * being closed with it: those aren't picked.
+ * `lastNonPinnedTabBeforePinnedSelection`), else the pinned tab with a live page it showed last (as
+ * Dia does: its page is on screen at once, and no unloaded page wakes), else a New Tab page. `ids`
+ * may include other tabs being closed with it: those aren't picked.
  */
 export function unloadPinnedTabs(s: BrowserState, ids: string[]): BrowserState {
   const closing = new Set(ids);
@@ -252,7 +254,7 @@ export function unloadPinnedTabs(s: BrowserState, ids: string[]): BrowserState {
     for (const [profileId, activeId] of Object.entries(w.activeTabIds)) {
       if (!gone.has(activeId)) continue;
       const shown = profileId === w.profileId;
-      let replacement = lastRegularTab(s, w, activeId, closing);
+      let replacement = lastRegularTab(s, w, activeId, closing) ?? lastLivePinnedTab(s, w, activeId, closing);
       if (!replacement) [next, replacement] = withNewTab(next, w.id, { profileId, background: !shown });
       if (shown) next = apply(next, activated(next, replacement));
       else {
@@ -279,6 +281,16 @@ function lastRegularTab(s: BrowserState, w: BrowserWindow, id: string, closing: 
   const panes = splitOf(s, id)?.tabIds.filter((t) => candidates.includes(t)) ?? [];
   const pool = panes.length ? panes : candidates;
   return pool.reduce<string | undefined>((best, t) => (!best || s.tabs[t]!.lastActiveAt > s.tabs[best]!.lastActiveAt ? t : best), undefined);
+}
+
+/** The pinned tab (or pinned group's tab) with a live page that the window showed last, other than `id`. */
+function lastLivePinnedTab(s: BrowserState, w: BrowserWindow, id: string, closing: Set<string>): string | undefined {
+  const profileId = s.tabs[id]!.profileId;
+  const live = w.tabIds.filter((t) => {
+    const tab = s.tabs[t];
+    return !closing.has(t) && tab?.profileId === profileId && inPinnedContainer(s, t) && !!(tab.navigation || tab.adoptId);
+  });
+  return live.reduce<string | undefined>((best, t) => (!best || s.tabs[t]!.lastActiveAt > s.tabs[best]!.lastActiveAt ? t : best), undefined);
 }
 
 /** Adds a tab to a window (see NewTabOptions) and returns the new state + tab id. */
@@ -336,18 +348,22 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     const w = tab && s.windows[tab.windowId];
     if (!tab || !w) return;
     if (inPinnedContainer(s, id)) return set(unloadPinnedTabs(s, [id]));
-    // Last tab of the profile the window shows: the window closes (with all its profiles' tabs), like Dia.
-    if (tab.profileId === w.profileId && viewTabIds(s, w.id).length === 1) return get().closeWindow(w.id);
+    // Last tab of the profile the window shows, unloaded pinned tiles aside: the window closes (with all
+    // its profiles' tabs), like Dia.
+    if (closesWindow(s, id)) return get().closeWindow(w.id);
     set(removeTabs(s, [id], true));
   },
 
   closeTabs(ids) {
     let s = unloadPinnedTabs(get(), ids);
     const closing = ids.filter((id) => !inPinnedContainer(s, id));
-    // Keep the window: if its view would empty, leave a New Tab page.
+    // Keep the window: if its view would empty, or keep only pinned tiles ⌘W unloaded (which it would
+    // then wake), leave a New Tab page.
     for (const w of Object.values(s.windows)) {
       const view = viewTabIds(s, w.id);
-      if (view.length && view.every((id) => closing.includes(id))) s = withNewTab(s, w.id)[0];
+      if (view.some((id) => closing.includes(id)) && view.every((id) => closing.includes(id) || s.tabs[id]!.unloaded)) {
+        s = withNewTab(s, w.id)[0];
+      }
     }
     set(removeTabs(s, closing, true));
   },

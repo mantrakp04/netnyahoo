@@ -1,0 +1,9 @@
+<!doctype html>
+<title>count</title>
+<script>
+  // Counts its own loads per URL (smoke.mjs: a pinned tab isn't reloaded when a tab over it closes).
+  const key = "loads:" + location.search;
+  window.loadNo = +(localStorage.getItem(key) || 0) + 1;
+  localStorage.setItem(key, window.loadNo);
+  document.title = "count " + window.loadNo;
+</script>

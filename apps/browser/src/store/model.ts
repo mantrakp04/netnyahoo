@@ -110,6 +110,18 @@ export function viewTabIds(s: BrowserState, windowId: string, profileId?: string
   return w.tabIds.filter((id) => s.tabs[id]?.profileId === profile);
 }
 
+/**
+ * Whether closing tab `id` closes its window, as Dia does: it's the last tab of the profile the window
+ * shows, not counting pinned tiles whose page ⌘W unloaded. So holding ⌘W ends there, rather than
+ * waking those pages one after another.
+ */
+export function closesWindow(s: BrowserState, id: string): boolean {
+  const tab = s.tabs[id];
+  const w = tab && s.windows[tab.windowId];
+  if (!tab || !w || tab.profileId !== w.profileId || inPinnedContainer(s, id)) return false;
+  return viewTabIds(s, w.id).every((t) => t === id || s.tabs[t]!.unloaded);
+}
+
 /** The window's selected tab (for `profileId`: the one that profile comes back to). */
 export function activeTabId(s: BrowserState, windowId: string, profileId?: string): string | undefined {
   const w = s.windows[windowId];

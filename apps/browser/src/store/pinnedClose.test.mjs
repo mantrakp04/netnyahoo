@@ -102,18 +102,70 @@ test("a pinned tab in a split: the other pane is selected", () => {
   assert.equal(Object.values(S().splits).length, 0, "a split left with one pane dissolves");
 });
 
-test("with only pinned tabs, ⌘W unloads and shows a New Tab page; the window stays", () => {
+test("with only pinned tabs, ⌘W selects the loaded pinned tab used last, then a New Tab page", () => {
   reset();
-  const { w, ids: [p, q] } = windowWith("p", "q");
+  const { w, ids: [p, q, r] } = windowWith("p", "q", "r");
   S().togglePin(p);
   S().togglePin(q);
+  S().togglePin(r);
+  select(q);
+  select(r);
+  select(p);
+  // Dia: ⌘W on pinned YouTube shows pinned x.com, whose page is still loaded, rather than a New Tab page.
+  S().closeTab(p);
+  assert.equal(active(w), r, "the loaded pinned tab used last");
+  assert.ok(S().tabs[r].navigation, "its page is the one it had");
+  assert.deepEqual(view(w), ["https://p.com", "https://q.com", "https://r.com"], "no New Tab page");
+  S().closeTab(r);
+  assert.equal(active(w), q);
+  S().closeTab(q);
+  assert.ok(S().windows[w], "the window stays");
+  assert.deepEqual(view(w), ["https://p.com", "https://q.com", "https://r.com", ""]);
+  assert.equal(S().tabs[active(w)].url, "", "no loaded page left: a New Tab page is selected");
+  assert.deepEqual([p, q, r].map((id) => S().tabs[id].navigation), [null, null, null], "no unloaded page woke");
+});
+
+test("holding ⌘W over pinned tiles ends by closing the window: no unloaded page wakes", () => {
+  reset();
+  const { w, ids: [x, a] } = windowWith("x", "a");
+  S().togglePin(x);
+  select(x);
+  // 0.2.7 looped here: ⌘W unloaded x.com and showed a New Tab page, the next ⌘W closed that page and
+  // loaded x.com again, and so on, a cold load of x.com on every other ⌘W.
+  const wakes = [];
+  for (let i = 0; i < 10 && S().windows[w]; i++) {
+    const before = S().tabs[x].navigation;
+    S().closeTab(active(w));
+    if (S().windows[w] && !before && S().tabs[x].navigation) wakes.push(i);
+  }
+  assert.deepEqual(wakes, [], "x.com never loads again");
+  assert.equal(S().windows[w], undefined, "the window closed, as in Dia");
+  assert.equal(S().closedWindows.at(-1).tabs.find((t) => t.url === "https://x.com").pinned, true, "⇧⌘T brings it back, tile and all");
+  void a;
+});
+
+test("closing the last regular tab when only unloaded pinned tiles are left closes the window", () => {
+  reset();
+  const { w, ids: [p, a] } = windowWith("p", "a");
+  S().togglePin(p);
   select(p);
   S().closeTab(p);
-  assert.ok(S().windows[w], "the window stays");
-  assert.deepEqual(view(w), ["https://p.com", "https://q.com", ""]);
+  assert.equal(active(w), a);
+  assert.equal(model.closesWindow(S(), a), true);
+  S().closeTab(a);
+  assert.equal(S().windows[w], undefined);
+});
+
+test("closing every regular tab at once over unloaded pinned tiles leaves a New Tab page, not a woken tile", () => {
+  reset();
+  const { w, ids: [p, a, b] } = windowWith("p", "a", "b");
+  S().togglePin(p);
+  select(p);
+  S().closeTab(p);
+  S().closeTabs([a, b]);
+  assert.ok(S().windows[w]);
   assert.equal(S().tabs[active(w)].url, "", "a New Tab page is selected");
-  assert.equal(S().tabs[p].unloaded, true);
-  assert.equal(S().tabs[q].unloaded, undefined, "the other pinned tab isn't touched");
+  assert.equal(S().tabs[p].navigation, null, "the unloaded tile stays unloaded");
 });
 
 test("closing the last regular tab doesn't wake an unloaded pinned tab when a loaded one is left", () => {

@@ -274,7 +274,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
 | New tab ⌘T | ✓ | ✅ | |
-| Close tab ⌘W (+ hover ✕) | ✓ | ✅ | a pinned tab, or a tab of a pinned group, keeps its row and unloads its page (Dia 1.50.1: ⌘W closes with `deselectPinnedIfActive`, and a tab whose container is pinned gets the `dismiss` close button) |
+| Close tab ⌘W (+ hover ✕) | ✓ | ✅ | a pinned tab, or a tab of a pinned group, keeps its row and unloads its page (Dia 1.50.1: ⌘W closes with `deselectPinnedIfActive`, and a tab whose container is pinned gets the `dismiss` close button). As in Dia (screen recording, 2026-09-29): with no regular tab left, ⌘W on a pinned tab shows another pinned tab whose page is still loaded, and closing the last tab closes the window even with unloaded pinned tiles left, so holding ⌘W never reloads them (0.2.7 alternated between a New Tab page and a cold load of the pinned page) |
 | Close other tabs | ✓ | ✅ | |
 | Close tabs above/below/left/right | ✓ | ✅ | sidebar: Above / Below; top strip: Close Tabs to the Left / Right (sidebar/menus.ts) |
 | Close All Tabs ⇧⌘K | ✓ | ✅ | keeps pinned tabs and pinned groups |

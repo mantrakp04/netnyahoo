@@ -8,8 +8,8 @@
 # throwaway data dir that says <previous-version> ran last, so the after-update release-notes tab
 # opens (NETNYAHOO_RELEASE_NOTES=1), and whose session has a window left on its second profile (each
 # profile a Chrome window of its own: the window restores as the Work profile's, Personal's made
-# ahead off screen). Runs smoke.mjs over CDP, quits the app as ⌘Q and updates do and checks it exits
-# cleanly, then that the bundle is still sealed.
+# ahead off screen; Work shows its pinned tab). Runs smoke.mjs over CDP, quits the app as ⌘Q and
+# updates do and checks it exits cleanly, then that the bundle is still sealed.
 # Never touches /Applications or the user's own data.
 set -euo pipefail
 
@@ -41,18 +41,21 @@ server=$!
 mkdir -p "$work/data"
 printf '{"version":1,"lastVersion":"%s","pending":null}' "$previous" > "$work/data/release-notes.json"
 pages="http://localhost:$pages_port"
-tab() { # id profile url
-  printf '{"id":"%s","windowId":"w-smoke","profileId":"%s","url":"%s","title":"","favicon":null,"pinned":false,"muted":false,"zoom":1,"customTitle":null,"customIcon":null,"pinnedUrl":null,"openerId":null,"createdAt":1,"lastActiveAt":1}' "$1" "$2" "$3"
+tab() { # id profile url [pinned]
+  local pinned="${4:-false}" home=null
+  [ "$pinned" = true ] && home="\"$3\""
+  printf '{"id":"%s","windowId":"w-smoke","profileId":"%s","url":"%s","title":"","favicon":null,"pinned":%s,"muted":false,"zoom":1,"customTitle":null,"customIcon":null,"pinnedUrl":%s,"openerId":null,"createdAt":1,"lastActiveAt":1}' "$1" "$2" "$3" "$pinned" "$home"
 }
 cat > "$work/data/session.json" <<JSON
 {"version":2,
  "profiles":{"default":{"id":"default","name":"Personal","color":"plum","icon":null,"createdAt":0},
              "p-work":{"id":"p-work","name":"Work","color":"blue","icon":null,"createdAt":1}},
  "profileOrder":["default","p-work"],
- "windows":[{"id":"w-smoke","profileId":"p-work","incognito":false,"tabIds":["t-home","t-work"],
-             "activeTabIds":{"default":"t-home","p-work":"t-work"},"sidebarOpen":true,"frame":[80,80,1280,800],"createdAt":1}],
+ "windows":[{"id":"w-smoke","profileId":"p-work","incognito":false,"tabIds":["t-pin-a","t-home","t-work"],
+             "activeTabIds":{"default":"t-home","p-work":"t-pin-a"},"sidebarOpen":true,"frame":[80,80,1280,800],"createdAt":1}],
  "windowOrder":["w-smoke"],"focusedWindowId":"w-smoke",
- "tabs":[$(tab t-home default "$pages/form.html?home"),$(tab t-work p-work "$pages/form.html?work")],
+ "tabs":[$(tab t-pin-a p-work "$pages/count.html?pin-a" true),$(tab t-home default "$pages/form.html?home"),
+         $(tab t-work p-work "$pages/form.html?work")],
  "groups":[],"splits":[],"closedTabs":[],"closedWindows":[],"closedGroups":[],"cleanedTabs":[]}
 JSON
 
