@@ -8,6 +8,8 @@ import { useHover } from "../primitives";
 
 const INSET = 16;
 const BUTTON = 30;
+// The palette glyph is wider than tall: drop the button so its visible gaps to the right and bottom edges match.
+const GLYPH_DROP = 1.5;
 
 const usePanel = create<{ windowId: string | null }>(() => ({ windowId: null }));
 const setOpen = (windowId: string | null) => usePanel.setState({ windowId });
@@ -22,7 +24,7 @@ export function PersonalizeButton({ windowId }: { windowId: string }) {
   return (
     <>
       {open ? <PersonalizePanel windowId={windowId} onClose={() => setOpen(null)} /> : null}
-      <View {...hoverProps} tooltip="Personalize" style={{ position: "absolute", right: INSET, bottom: INSET }}>
+      <View {...hoverProps} tooltip="Personalize" style={{ position: "absolute", right: INSET, bottom: INSET - GLYPH_DROP }}>
         <Pressable onPress={() => setOpen(open ? null : windowId)} accessibilityRole="button" accessibilityLabel="Personalize" accessibilityState={{ expanded: open }}>
           {({ pressed }) => (
             <View
