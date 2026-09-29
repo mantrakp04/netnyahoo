@@ -1,0 +1,94 @@
+apps/browser/src/telemetry/client.ts
+  s_9c356f9574d31c::t_a49459978916c4 247,250,253-254,264,273,401-402
+  s_9c356f9574d31c::t_54945ac54a8465 294
+  s_9c356f9574d31c::t_3d942b4cef189d 384-389,392-395,406-407
+  s_9c356f9574d31c::t_1b88b125c82c8c 313-315
+  s_9c356f9574d31c::t_76ffc61822920c 219-220,224,228,334-339,355
+  s_9c356f9574d31c::t_d98a6279ee47f4 431-437
+  s_9c356f9574d31c::t_c6648362cb7b53 89
+  s_9c356f9574d31c::t_f4517272da6fa0 1-88,90-218,221-223,225-227,229-246,248-249,251-252,255-263,265-272,274-293,295-312,316-333,340-354,356-383,390-391,396-400,403-405,408-430,438-449
+apps/browser/src/telemetry/usage.ts
+  s_9c356f9574d31c::t_248344c5099ed9 157-167
+  s_9c356f9574d31c::t_2e865ce8e72a79 1-156,168-175
+apps/browser/src/components/onboarding/state.ts
+  s_9c356f9574d31c::t_097b059ba61a7f 92-94
+  s_9c356f9574d31c::t_cb1e3574d4bb79 11,13,15
+apps/browser/src/components/Omnibox.tsx
+  s_9c356f9574d31c::t_5d29dd2a6b3ec6 6,158-159,276-277,280-283
+  s_9c356f9574d31c::t_e6d74c8ae1df52 293
+apps/browser/src/components/onboarding/steps.tsx
+  s_9c356f9574d31c::t_cb1e3574d4bb79 26
+apps/browser/src/components/settings/panes/ShareDiagnostics.tsx
+  s_9c356f9574d31c::t_3c833f5c2215b4 3
+  s_9c356f9574d31c::t_307425c049e36e 1-2,4-53
+apps/browser/src/telemetry/sanitize.ts
+  s_9c356f9574d31c::t_b89f2aa04cbb45 34,94-95
+  s_9c356f9574d31c::t_63516b70629c97 83,87,149-153
+  s_9c356f9574d31c::t_202f31d05635f5 1-19,21-33,35-82,84-86,88-93,96-148,154-185
+  s_9c356f9574d31c::t_a713186dacc557 20
+apps/browser/src/components/settings/SettingsWindow.tsx
+  s_9c356f9574d31c::t_eecb83fe2f7a21 2,6,54-55
+packages/shell/src/app.ts
+  s_9c356f9574d31c::t_1c0ad968d6bf63 79-98,158-159,223-227
+apps/browser/src/components/onboarding/OnboardingOverlay.tsx
+  s_9c356f9574d31c::t_cb1e3574d4bb79 9,101
+apps/browser/src/telemetry/track.ts
+  s_9c356f9574d31c::t_dbb485a94284f0 63-65
+  s_9c356f9574d31c::t_1b88b125c82c8c 60
+  s_9c356f9574d31c::t_e21a7373f3e5f3 1-59,61-62
+apps/browser/src/telemetry/errors.ts
+  s_9c356f9574d31c::t_3d942b4cef189d 2,67
+  s_9c356f9574d31c::t_3a7c252448f3b4 1,3-66,68-134
+apps/browser/src/telemetry/logs.ts
+  s_9c356f9574d31c::t_355524884a1717 1-23
+apps/browser/src/components/onboarding/privacyStep.tsx
+  s_9c356f9574d31c::t_1a13a505cfde2f 27,82-85,89,92
+  s_9c356f9574d31c::t_9a2402c1073946 1-26,28-42,47-81,86-88,90-91,93-98
+  s_9c356f9574d31c::t_bc734766ada575 43-46
+apps/browser/src/telemetry/copy.ts
+  s_9c356f9574d31c::t_1a13a505cfde2f 19
+  s_9c356f9574d31c::t_da0e02da0fbd16 1-18,20-36,39-70
+  s_9c356f9574d31c::t_3172ec86bf957a 37-38
+apps/browser/src/components/settings/panes/Privacy.tsx
+  s_9c356f9574d31c::t_3c833f5c2215b4 31
+  s_9c356f9574d31c::t_e1a1d8cffd6231 122
+apps/browser/index.js
+  s_9c356f9574d31c::t_25582d8dbdfaa6 1,12-13,22-23,33,38
+apps/browser/src/components/ntp/TelemetryAsk.tsx
+  s_9c356f9574d31c::t_8dc755c0a55a1c 1-152
+apps/browser/src/telemetry/sanitize.test.mjs
+  s_9c356f9574d31c::t_b89f2aa04cbb45 14-15
+  s_9c356f9574d31c::t_135724fef7c3de 1-13,16-111
+apps/browser/src/telemetry/index.ts
+  s_9c356f9574d31c::t_2aeef45956e2e9 35-45
+  s_9c356f9574d31c::t_248344c5099ed9 6,31-32
+  s_9c356f9574d31c::t_7b4b4175cbb435 2,47-52
+  s_9c356f9574d31c::t_dbb485a94284f0 5,30
+  s_9c356f9574d31c::t_70c0ebb6fd491d 1,3-4,7-29,33-34,46,53-57
+packages/shell/ios/AppModule.swift
+  s_9c356f9574d31c::t_b8c1d30760266e 149,344-357,360-378,403-408,410-446
+  s_9c356f9574d31c::t_e29aa7e9cb5411 133-134,138-148
+  s_9c356f9574d31c::t_48b208ad911a63 358-359
+  s_9c356f9574d31c::t_a84cc587d95ff2 2,379-402,409
+  s_9c356f9574d31c::t_b99503b9706203 150
+apps/browser/src/telemetry/config.ts
+  s_9c356f9574d31c::t_34794dbfe09eb8 1-19
+apps/browser/src/components/ntp/index.tsx
+  s_9c356f9574d31c::t_500c4eaf6642bf 8,15-16,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "65c7ebf7e53ca5d5c67d29f4912b564418356190",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
