@@ -267,6 +267,47 @@ test("pinned tabs and pinned groups: tiles arrive unloaded, in order, and unpinn
   assert.equal(a.with(() => Object.values(S().tabs).some((t) => t.url === "https://cal.example/")), false);
 });
 
+test("pinned tabs parked by a closed window still sync: not deleted elsewhere, and changes elsewhere reach them", async () => {
+  const folder = new Folder();
+  const a = new Device("devA", folder);
+  const b = new Device("devB", folder);
+  let aHome, aWork;
+  a.with(() => {
+    aHome = S().createWindow({ url: "https://mail.example/" });
+    const mail = model.viewTabIds(S(), aHome)[0];
+    const cal = S().newTab(aHome, { url: "https://cal.example/" });
+    S().pinTabs([mail, cal], true);
+    aWork = S().createWindow({ url: "https://work.example/" });
+  });
+  b.with(() => S().createWindow({ url: "https://b-home.example/" }));
+  await syncAll([a, b]);
+  const pins = (d) => d.with(() => Object.values(S().tabs).filter((t) => t.pinned).map((t) => t.pinnedUrl).sort());
+  assert.deepEqual(pins(b), ["https://cal.example/", "https://mail.example/"]);
+
+  // A closes the window with the pins (another window stays open): they're parked, not deleted.
+  a.with(() => S().closeWindow(aHome));
+  assert.equal(a.with(() => S().parkedPins.default.tabs.length), 2);
+  await syncAll([a, b]);
+  assert.deepEqual(pins(b), ["https://cal.example/", "https://mail.example/"], "still pinned on B");
+
+  // B renames Mail and unpins Calendar: A's parked pins follow, and stay parked.
+  b.with(() => {
+    const [mail, cal] = ["https://mail.example/", "https://cal.example/"].map((u) => Object.values(S().tabs).find((t) => t.pinnedUrl === u).id);
+    S().updateTab(mail, { customTitle: "Inbox" });
+    S().pinTabs([cal], false);
+  });
+  await syncAll([b, a]);
+  const parked = a.with(() => S().parkedPins.default.tabs.map((t) => `${t.pinnedUrl} ${t.customTitle}`));
+  assert.deepEqual(parked, ["https://mail.example/ Inbox"]);
+  assert.equal(a.with(() => S().windows[aWork].tabIds.some((id) => S().tabs[id].pinned)), false, "nothing moved into A's other window");
+  assert.equal((await a.sync()).published, 0, "settled");
+
+  // A's next window gets the pin as synced.
+  const n = a.with(() => S().createWindow());
+  assert.deepEqual(a.with(() => model.viewTabIds(S(), n).filter((id) => S().tabs[id].pinned).map((id) => S().tabs[id].customTitle)), ["Inbox"]);
+  assert.equal((await a.sync()).published, 0, "adopting them publishes nothing new");
+});
+
 test("0.2.7's Liquid Glass leftovers: tabs pinned as rows show and sync as tiles; its setting is ignored", async () => {
   const { sidebarEntries } = await import("../components/sidebar/entries.ts");
   const folder = new Folder();

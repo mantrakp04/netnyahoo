@@ -1,0 +1,104 @@
+import type { BrowserState } from "./browser";
+import { orderSections, syncGroupOrder } from "./groups";
+import { IDLE_LIVE, makeTab, newId, pinnedFirst, snapshotTab, without } from "./model";
+import { samePage } from "./organize";
+import type { BrowserWindow, HistoryEntry, ParkedPins, Tab, TabGroup } from "./types";
+
+/**
+ * Pinned tabs belong to the profile's sidebar, as in Dia: closing a window (⌘W on its last tab, its
+ * close button, ⇧⌘W) parks its pinned tiles and pinned groups, and the next window that shows the
+ * profile (⌘N, the Dock, a link from another app, the first window after a relaunch, a profile
+ * switch) gets them back, unloaded. With several windows of a profile open, each keeps the pins
+ * it has.
+ */
+
+type PinSource = Pick<BrowserState, "tabs" | "groups" | "history">;
+
+/** A tile's page when parked: its pinned URL, with that page's title and icon from history. */
+function atPin(t: Tab, history: HistoryEntry[]): Partial<Pick<Tab, "url" | "title" | "favicon">> {
+  const home = t.pinnedUrl;
+  if (!home || !t.url || samePage(t.url, home)) return {};
+  const entry = history.find((h) => samePage(h.url, home));
+  return { url: home, title: entry?.title ?? t.title, favicon: entry?.favicon ?? t.favicon };
+}
+
+const homeOf = (t: { url: string; pinnedUrl?: string | null }) => t.pinnedUrl || t.url;
+
+/**
+ * `parked` with window `w`'s pinned tiles and pinned groups added, per profile (the window is
+ * closing). A tile already parked (the same tab, or the same pinned URL) isn't added twice.
+ */
+export function parkWindowPins(parked: Record<string, ParkedPins>, w: BrowserWindow, s: PinSource): Record<string, ParkedPins> {
+  if (w.incognito) return parked;
+  const groupOf = new Map<string, TabGroup>();
+  for (const g of Object.values(s.groups)) if (g.pinned && g.windowId === w.id) for (const id of g.tabIds) groupOf.set(id, g);
+  let next = parked;
+  const profiles = new Set(w.tabIds.map((id) => s.tabs[id]?.profileId).filter((p): p is string => !!p));
+  for (const profileId of profiles) {
+    const own = w.tabIds.map((id) => s.tabs[id]).filter((t): t is Tab => !!t && t.profileId === profileId);
+    if (!own.some((t) => t.pinned || groupOf.has(t.id))) continue;
+    const old = next[profileId] ?? { tabs: [], groups: [] };
+    const ids = new Set(old.tabs.map((p) => p.id));
+    const homes = old.tabs.filter((p) => !p.groupId).map(homeOf);
+    const groups = [...old.groups];
+    const tiles: ParkedPins["tabs"] = [];
+    const members: ParkedPins["tabs"] = [];
+    for (const t of own) {
+      if (ids.has(t.id)) continue;
+      const g = t.pinned ? undefined : groupOf.get(t.id);
+      if (t.pinned) {
+        const tile = { ...snapshotTab(t), ...atPin(t, s.history[profileId] ?? []), id: t.id, groupId: null };
+        if (homes.some((h) => samePage(h, homeOf(tile)))) continue;
+        homes.push(homeOf(tile));
+        tiles.push(tile);
+      } else if (g) {
+        if (!groups.some((x) => x.id === g.id)) groups.push({ id: g.id, name: g.name, icon: g.icon, color: g.color, collapsed: g.collapsed });
+        members.push({ ...snapshotTab(t), id: t.id, groupId: g.id });
+      }
+    }
+    const oldTiles = old.tabs.filter((p) => !p.groupId);
+    const oldMembers = old.tabs.filter((p) => p.groupId);
+    next = { ...next, [profileId]: { tabs: [...oldTiles, ...tiles, ...oldMembers, ...members], groups } };
+  }
+  return next;
+}
+
+/**
+ * Window `windowId` with `profileId`'s parked pins back in it (unloaded: each loads when selected)
+ * and the park emptied. A tile the window already has (the same pinned URL) isn't added twice.
+ */
+export function adoptParkedPins(s: BrowserState, windowId: string, profileId: string): BrowserState {
+  const park = s.parkedPins[profileId];
+  const w = s.windows[windowId];
+  if (!park || !w || w.incognito || !s.profiles[profileId]) return s;
+  const tabs = { ...s.tabs };
+  const live = { ...s.live };
+  const homes = w.tabIds.map((id) => tabs[id]).filter((t): t is Tab => !!t?.pinned && t.profileId === profileId).map(homeOf);
+  const members = new Map<string, string[]>();
+  const added: string[] = [];
+  for (const { id, groupId, ...snap } of park.tabs) {
+    const home = homeOf(snap);
+    if (!groupId && homes.some((h) => samePage(h, home))) continue;
+    const tab: Tab = {
+      ...makeTab(windowId, profileId, snap.url, { ...snap, profileId, pinned: !groupId, pinnedUrl: groupId ? null : home || null }),
+      // Its id is its key in sync.
+      id: tabs[id] ? newId("tab") : id,
+      navigation: null,
+      unloaded: true,
+    };
+    tabs[tab.id] = tab;
+    live[tab.id] = IDLE_LIVE;
+    added.push(tab.id);
+    if (groupId) members.set(groupId, [...(members.get(groupId) ?? []), tab.id]);
+  }
+  let groups = { ...s.groups };
+  for (const g of park.groups) {
+    const tabIds = members.get(g.id);
+    if (!tabIds?.length) continue;
+    const id = groups[g.id] ? newId("g") : g.id;
+    groups[id] = { ...g, id, windowId, profileId, pinned: true, tabIds, createdAt: Date.now() };
+  }
+  const window = { ...w, tabIds: orderSections(pinnedFirst([...added, ...w.tabIds], tabs), tabs, groups) };
+  groups = syncGroupOrder(groups, window);
+  return { ...s, tabs, live, groups, windows: { ...s.windows, [windowId]: window }, parkedPins: without(s.parkedPins, [profileId]) };
+}

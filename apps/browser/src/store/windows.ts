@@ -4,6 +4,7 @@ import {
   findLast,
   IDLE_LIVE,
   incognitoProfileId,
+  inPinnedContainer,
   isIncognitoProfile,
   makeTab,
   navigationTo,
@@ -15,8 +16,9 @@ import {
   without,
 } from "./model";
 import { restoringGroup } from "./organize";
+import { adoptParkedPins, parkWindowPins } from "./parkedPins";
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
-import type { BrowserWindow, ClosedTab, ClosedWindow, Frame, Tab, TabGroup } from "./types";
+import type { BrowserWindow, ClosedTab, ClosedWindow, Frame, ParkedPins, Tab, TabGroup } from "./types";
 
 export type CreateWindowOptions = {
   /** Defaults to Settings › default profile. Ignored for incognito windows. */
@@ -36,10 +38,15 @@ export type WindowsSlice = {
   /** Creation order (the order of Window › Move to Window). */
   windowOrder: string[];
   closedWindows: ClosedWindow[];
+  /** Per profile: pinned tiles and pinned groups whose window closed, until a window shows the profile (store/parkedPins). */
+  parkedPins: Record<string, ParkedPins>;
 
-  /** Adds a window to the store; lib/nativeWindows opens the NSWindow for it. */
+  /** Adds a window to the store (with its profile's parked pins); lib/nativeWindows opens the NSWindow for it. */
   createWindow(options?: CreateWindowOptions): string;
-  /** Removes a window and its tabs (recorded for Reopen Closed Window unless incognito). */
+  /**
+   * Removes a window and its tabs: its pinned tabs and pinned groups are parked for the profile's next
+   * window, the rest recorded for Reopen Closed Window (unless incognito).
+   */
   closeWindow(id: string): void;
   setWindowFrame(id: string, frame: Frame): void;
   /** ⌘S Auto-Hide Tabs. */
@@ -128,6 +135,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
   windows: {},
   windowOrder: [],
   closedWindows: [],
+  parkedPins: {},
 
   createWindow(o = {}) {
     const s = get();
@@ -140,9 +148,11 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     let next = withWindow(s, emptyWindow(id, profileId, !!o.incognito, o.frame ?? null));
     if (o.tabIds?.length) next = moveTabsInto(next, o.tabIds, id);
     if (!next.windows[id]!.tabIds.length) next = withNewTab(next, id, { url: o.url, adoptId: o.adoptId })[0];
-    // Show the moved-in tabs' profile.
+    // Show the moved-in tabs' profile, with its pinned tabs if its last window closed.
     const first = next.windows[id]!.tabIds[0]!;
-    next = apply(next, activated(next, next.windows[id]!.activeTabIds[next.tabs[first]!.profileId] ?? first));
+    const shown = next.windows[id]!.activeTabIds[next.tabs[first]!.profileId] ?? first;
+    next = adoptParkedPins(next, id, next.tabs[shown]!.profileId);
+    next = apply(next, activated(next, shown));
     set(next);
     return id;
   },
@@ -151,7 +161,9 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     const s = get();
     const w = s.windows[id];
     if (!w) return;
-    const tabs = w.tabIds.map((t) => s.tabs[t]).filter((t): t is Tab => !!t);
+    // Pinned tabs and pinned groups are parked for the profile's next window, not reopened with this one.
+    const tabs = w.tabIds.map((t) => s.tabs[t]).filter((t): t is Tab => !!t && !inPinnedContainer(s, t.id));
+    const tabIds = tabs.map((t) => t.id);
     let closedWindows = s.closedWindows;
     if (!w.incognito && tabs.some((t) => t.url)) {
       const active = new Set(Object.values(w.activeTabIds));
@@ -161,8 +173,8 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
         window: { profileId: w.profileId, sidebarOpen: w.sidebarOpen, frame: w.frame },
         tabs: tabs.map((t) => ({ ...snapshotTab(t), active: active.has(t.id) })),
         groups: Object.values(s.groups)
-          .filter((g) => g.windowId === id)
-          .map(({ tabIds, windowId: _, ...g }) => ({ ...g, tabIndexes: tabIds.map((t) => w.tabIds.indexOf(t)) })),
+          .filter((g) => g.windowId === id && !g.pinned)
+          .map(({ tabIds: members, windowId: _, ...g }) => ({ ...g, tabIndexes: members.map((t) => tabIds.indexOf(t)) })),
         closedAt: Date.now(),
       };
       closedWindows = [...closedWindows, entry].slice(-MAX_CLOSED_WINDOWS);
@@ -175,6 +187,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
       windowOrder: next.windowOrder.filter((w) => w !== id),
       windowUi: without(next.windowUi, [id]),
       closedWindows,
+      parkedPins: parkWindowPins(s.parkedPins, w, s),
       // An incognito window's closed tabs go with it.
       closedTabs: w.incognito ? next.closedTabs.filter((c) => c.windowId !== id) : next.closedTabs,
       ui: {
@@ -204,9 +217,12 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     let s = get();
     const w = s.windows[windowId];
     if (!w || w.incognito || !s.profiles[profileId] || w.profileId === profileId) return;
+    // Its pinned tabs, if the profile's last window closed.
+    s = adoptParkedPins(s, windowId, profileId);
     const remembered = w.activeTabIds[profileId];
     let target = remembered && s.tabs[remembered]?.windowId === windowId ? remembered : undefined;
-    target ??= w.tabIds.find((id) => s.tabs[id]?.profileId === profileId);
+    // Not a pinned tab whose page is unloaded: it would load (a New Tab page instead).
+    target ??= s.windows[windowId]!.tabIds.find((id) => s.tabs[id]?.profileId === profileId && !s.tabs[id]!.unloaded);
     if (!target) [s, target] = withNewTab(s, windowId, { profileId, background: true });
     set(apply(s, activated(s, target)));
   },
@@ -312,6 +328,20 @@ function canRestoreTabInto(s: BrowserState, c: ClosedTab, windowId: string | und
 }
 
 function restoreTab(s: BrowserState, entry: ClosedTab, requested?: string | null): BrowserState {
+  // A pinned tab's page whose window has closed since: its tile is parked. It goes back into a window
+  // showing its profile (a new one if needed), with the profile's other pins, and the page into it.
+  const owner = entry.tab.profileId;
+  if (entry.pinnedTile && entry.tabId && !s.tabs[entry.tabId] && s.parkedPins[owner]?.tabs.some((p) => p.id === entry.tabId)) {
+    const target = resolveWindowId(s, requested);
+    let windowId = target && !s.windows[target]!.incognito && s.windows[target]!.profileId === owner ? target : undefined;
+    let next = s;
+    if (!windowId) {
+      windowId = newId("w");
+      next = withWindow(next, emptyWindow(windowId, owner, false));
+    }
+    next = adoptParkedPins(next, windowId, owner);
+    if (next.tabs[entry.tabId]) return restoreTab(next, entry, windowId);
+  }
   const closedTabs = s.closedTabs.filter((c) => c.id !== entry.id);
   // A pinned tab's unloaded page goes back into its tile (Dia's restoreTabContentPane), with its back/forward list.
   const tile = entry.pinnedTile && entry.tabId ? s.tabs[entry.tabId] : undefined;
@@ -378,7 +408,9 @@ function restoreWindow(s: BrowserState, entry: ClosedWindow): BrowserState {
     if (members.length) groups = restoreGroup(groups, { ...g, windowId: id }, members);
   }
   let next = withWindow({ ...s, tabs, live, groups, closedWindows: s.closedWindows.filter((c) => c.id !== entry.id) }, w);
-  if (!w.activeTabIds[w.profileId]) w.activeTabIds[w.profileId] = w.tabIds[0]!;
-  next = apply(next, activated(next, w.activeTabIds[w.profileId]!));
+  const shown = w.activeTabIds[w.profileId] ?? w.tabIds[0]!;
+  // Its pinned tabs were parked when it closed: back, unless another window took them since.
+  next = adoptParkedPins(next, id, w.profileId);
+  next = apply(next, activated(next, shown));
   return next;
 }

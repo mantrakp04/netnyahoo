@@ -43,6 +43,7 @@ export type HydrateData = Partial<
     | "splits"
     | "closedTabs"
     | "closedWindows"
+    | "parkedPins"
     | "closedGroups"
     | "deletedGroups"
     | "cleanedTabs"
@@ -142,6 +143,7 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
       splits,
       closedTabs: data.closedTabs ?? [],
       closedWindows: data.closedWindows ?? [],
+      parkedPins: Object.fromEntries(Object.entries(data.parkedPins ?? {}).filter(([p]) => profiles[p])),
       closedGroups: data.closedGroups ?? [],
       deletedGroups: keptDeletedGroups(data.deletedGroups ?? []),
       cleanedTabs: data.cleanedTabs ?? [],

@@ -10,7 +10,15 @@ modules before using them — this is a summary from the agent that built it.
 - `groups`: `{ windowId, profileId, name, icon, color, collapsed, pinned, tabIds }` (members contiguous).
 - `splits` (store/splits.ts): `{ windowId, tabIds (2–3, pane order), orientation, sizes, stack? }` — `stack` = two panes sharing a slot the other way (Add Bottom Split). Members are contiguous in `window.tabIds`; the window's active tab is the focused pane. `window.tabLayout` ("sidebar" | "top", unset = Settings).
 - `history[profileId]`; `bookmarks`: `{ nodes, roots[profileId]: { bar, other } }`.
-- `closedTabs` / `closedWindows` (full state); `downloads`; `settings` (typed, store/settings.ts).
+- `closedTabs` / `closedWindows` (full state; a closed window's entry leaves out its pinned tabs and pinned groups);
+  `downloads`; `settings` (typed, store/settings.ts).
+- `parkedPins[profileId]` (store/parkedPins.ts): pinned tabs belong to the profile's sidebar, as in Dia. Closing a
+  window (⌘W on its last tab, the close button, ⇧⌘W, "Start fresh" on launch) parks its pinned tiles (at their pinned
+  URL) and pinned groups, with their order and tab/group ids; the next window that shows the profile takes them back,
+  unloaded (`createWindow` — ⌘N, the Dock, a link from another app, the first window after a relaunch —,
+  `switchProfile`, Reopen Closed Window, ⇧⌘T of a tile's page), and the park empties, so nothing comes back twice.
+  With several windows of a profile open, each keeps the pins it has; a closing one's pins go to the next new window.
+  Sync publishes parked pins as the profile's pins and applies changes to them in place (sync/adapters `pinnedAdapter`).
 - UI: `ui.focusedWindowId`, `ui.appDark`, `windowUi[windowId]` (command panel, downloads popover), `find[tabId]`.
 
 ## Actions

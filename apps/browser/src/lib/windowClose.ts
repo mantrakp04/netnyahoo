@@ -1,6 +1,6 @@
 import { confirm, onWindowEvent } from "@netnyahoo/shell";
 import { useBrowser } from "../store/browser";
-import { plural, profileFor } from "../store/model";
+import { inPinnedContainer, plural, profileFor } from "../store/model";
 
 /** ⇧⌘W / the close button on a window with at least this many tabs asks first. */
 const MIN_TABS = 2;
@@ -23,7 +23,7 @@ async function requestClose(windowId: string) {
   const s = useBrowser.getState();
   const w = s.windows[windowId];
   if (!w) return;
-  const count = w.tabIds.length;
+  const count = closingTabs(windowId).length;
   if (s.settings.warnBeforeClosingWindow && count >= MIN_TABS) {
     const { confirmed, suppressed } = await confirm({ ...closeWindowDialog(windowId), suppression: "Don’t ask me again", windowId });
     if (suppressed) useBrowser.getState().updateSettings({ warnBeforeClosingWindow: false });
@@ -33,17 +33,24 @@ async function requestClose(windowId: string) {
   if (useBrowser.getState().windows[windowId]) useBrowser.getState().closeWindow(windowId);
 }
 
+/** The tabs closing the window closes: not its pinned tabs, which the profile's next window gets (store/parkedPins). */
+const closingTabs = (windowId: string) => {
+  const s = useBrowser.getState();
+  return (s.windows[windowId]?.tabIds ?? []).filter((id) => !inPinnedContainer(s, id));
+};
+
 /** Dia's wording: "Close 3 tabs?" / "This window has 3 tabs open in your Work profile." */
 export function closeWindowDialog(windowId: string) {
   const s = useBrowser.getState();
   const w = s.windows[windowId]!;
   const tabs = (n: number) => plural(n, "tab");
   const byProfile = new Map<string, number>();
-  for (const id of w.tabIds) {
+  const closing = closingTabs(windowId);
+  for (const id of closing) {
     const profileId = s.tabs[id]?.profileId ?? w.profileId;
     byProfile.set(profileId, (byProfile.get(profileId) ?? 0) + 1);
   }
-  const count = w.tabIds.length;
+  const count = closing.length;
   const message =
     byProfile.size > 1
       ? ["Closing this window closes all tabs open across profiles:", ...[...byProfile].map(([id, n]) => `  • ${tabs(n)} in ${profileFor(s, id).name}`)].join("\n")

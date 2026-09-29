@@ -189,6 +189,17 @@ export type ClosedWindow = {
   closedAt: number;
 };
 
+/**
+ * A profile's pinned tiles and pinned groups whose window closed, kept for the next window that shows
+ * the profile (store/parkedPins): pinned tabs belong to the profile's sidebar, as in Dia, not to a
+ * window. Each keeps its tab (or group) id, which is its key in sync.
+ */
+export type ParkedPins = {
+  /** In sidebar order: the tiles (`groupId` null, at their pinned URL), then the pinned groups' tabs. */
+  tabs: (TabSnapshot & { id: string; groupId: string | null })[];
+  groups: Pick<TabGroup, "id" | "name" | "icon" | "color" | "collapsed">[];
+};
+
 /** A closed tab group (History › Recently Closed Groups). */
 export type ClosedGroup = {
   kind: "group";

@@ -140,8 +140,129 @@ test("holding ⌘W over pinned tiles ends by closing the window: no unloaded pag
   }
   assert.deepEqual(wakes, [], "x.com never loads again");
   assert.equal(S().windows[w], undefined, "the window closed, as in Dia");
-  assert.equal(S().closedWindows.at(-1).tabs.find((t) => t.url === "https://x.com").pinned, true, "⇧⌘T brings it back, tile and all");
+  assert.deepEqual(S().parkedPins.default.tabs.map((t) => t.id), [x], "the tile waits for the profile's next window");
   void a;
+});
+
+// Pinned tabs belong to the profile's sidebar (store/parkedPins): a window closing never takes them.
+const sidebar = (w) =>
+  model.viewTabIds(S(), w).filter((id) => model.inPinnedContainer(S(), id)).map((id) => {
+    const t = S().tabs[id];
+    const g = Object.values(S().groups).find((g) => g.tabIds.includes(id));
+    return `${g ? `${g.name}/` : ""}${t.url}${t.navigation || t.adoptId ? " (loaded)" : ""}`;
+  });
+
+/** A window with tiles mail, docs, a pinned group "Work" (jira, wiki), and a regular tab; mail loaded. */
+function pinnedWindow() {
+  const { w, ids: [mail, docs, jira, wiki, a] } = windowWith("mail", "docs", "jira", "wiki", "a");
+  S().togglePin(mail);
+  S().togglePin(docs);
+  const work = S().groupTabs([jira, wiki], { pinned: true });
+  S().updateGroup(work, { name: "Work" });
+  select(a);
+  select(mail);
+  return { w, mail, docs, jira, wiki, a, work };
+}
+const PINS = ["https://mail.com", "https://docs.com", "Work/https://jira.com", "Work/https://wiki.com"];
+
+test("⌘W until the window closes, then ⌘N: the pinned tabs and pinned groups are back, in order, unloaded", () => {
+  reset();
+  const { w, mail, work } = pinnedWindow();
+  assert.deepEqual(sidebar(w), ["https://mail.com (loaded)", "https://docs.com (loaded)", "Work/https://jira.com (loaded)", "Work/https://wiki.com (loaded)"]);
+  for (let i = 0; i < 12 && S().windows[w]; i++) S().closeTab(model.activeTabId(S(), w));
+  assert.equal(S().windows[w], undefined, "the window closed");
+  const n = S().createWindow();
+  assert.deepEqual(sidebar(n), PINS, "same tiles, same order, the group still pinned, nothing loaded");
+  assert.equal(S().tabs[model.activeTabId(S(), n)].url, "", "the new window shows a New Tab page");
+  assert.equal(S().tabs[mail].windowId, n, "same tab id (its key in sync)");
+  assert.equal(S().groups[work].pinned, true);
+  assert.deepEqual(S().parkedPins, {}, "the park is empty");
+  // A second ⌘N: the pins stay with the window that has them.
+  const n2 = S().createWindow();
+  assert.deepEqual(sidebar(n2), []);
+});
+
+test("the close button (closeWindow) parks them too; a Dock click or a link from another app gets them back", () => {
+  reset();
+  const { w } = pinnedWindow();
+  S().closeWindow(w);
+  const linked = S().createWindow({ url: "https://news.com" });
+  assert.deepEqual(sidebar(linked), PINS);
+  assert.equal(S().tabs[model.activeTabId(S(), linked)].url, "https://news.com", "the link is the tab shown");
+});
+
+test("⇧⌘T after the close, then ⌘N: no second set of pinned tabs", () => {
+  reset();
+  const { w } = pinnedWindow();
+  S().closeWindow(w);
+  S().reopenClosed(null);
+  const restored = S().ui.focusedWindowId;
+  assert.notEqual(restored, w);
+  assert.deepEqual(sidebar(restored), PINS, "the reopened window has them");
+  assert.deepEqual(model.viewTabIds(S(), restored).filter((id) => !model.inPinnedContainer(S(), id)).map((id) => S().tabs[id].url), ["https://a.com"]);
+  const n = S().createWindow();
+  assert.deepEqual(sidebar(n), [], "⌘N: none again");
+  assert.equal(Object.values(S().tabs).filter((t) => t.url === "https://mail.com").length, 1);
+});
+
+test("⌘N, then ⇧⌘T: the reopened window doesn't bring them a second time", () => {
+  reset();
+  const { w } = pinnedWindow();
+  S().closeWindow(w);
+  const n = S().createWindow();
+  S().reopenClosedWindow();
+  const restored = S().ui.focusedWindowId;
+  assert.notEqual(restored, n);
+  assert.deepEqual(sidebar(n), PINS);
+  assert.deepEqual(sidebar(restored), [], "they're in the ⌘N window already");
+  assert.equal(Object.values(S().tabs).filter((t) => t.url === "https://mail.com").length, 1);
+});
+
+test("⇧⌘T of a pinned tab's page after its window closed: its tile comes back with the page, and the others", () => {
+  reset();
+  const { w, mail } = pinnedWindow();
+  S().updateTab(mail, { url: "https://mail.com/inbox/7" });
+  S().closeTab(mail); // unloads mail (recorded for ⇧⌘T), shows a
+  S().closeWindow(w);
+  S().reopenClosedTab(null);
+  const back = S().tabs[mail];
+  assert.ok(back, "the tile, same id");
+  assert.equal(back.adoptId, `restore:${mail}`, "with its page");
+  assert.deepEqual(sidebar(back.windowId).length, 4);
+  assert.equal(model.activeTabId(S(), back.windowId), mail);
+});
+
+test("switching a window to a profile whose window closed brings its pinned tabs, without loading them", () => {
+  reset();
+  const { w } = pinnedWindow();
+  const other = S().createProfile({ name: "Work" });
+  const o = S().createWindow({ profileId: other });
+  S().closeWindow(w);
+  S().switchProfile(o, "default");
+  assert.deepEqual(sidebar(o), PINS);
+  assert.equal(S().tabs[model.activeTabId(S(), o)].url, "", "a New Tab page, not a tile");
+});
+
+test("with two windows of a profile, each keeps its pins; closing one parks its pins for the next window", () => {
+  reset();
+  const { w } = pinnedWindow();
+  const b = S().createWindow({ url: "https://b.com" });
+  const bTile = S().newTab(b, { url: "https://tools.com" });
+  S().togglePin(bTile);
+  assert.deepEqual(sidebar(b), ["https://tools.com (loaded)"], "B has only its own pin");
+  S().closeWindow(w);
+  assert.deepEqual(sidebar(b), ["https://tools.com (loaded)"], "B doesn't change");
+  const n = S().createWindow();
+  assert.deepEqual(sidebar(n), PINS);
+});
+
+test("an incognito window has no pins to park and takes none", () => {
+  reset();
+  const { w } = pinnedWindow();
+  S().closeWindow(w);
+  const i = S().createWindow({ incognito: true });
+  assert.deepEqual(sidebar(i), []);
+  assert.ok(S().parkedPins.default, "still parked");
 });
 
 test("closing the last regular tab when only unloaded pinned tiles are left closes the window", () => {
@@ -299,4 +420,15 @@ test("session restore keeps unloaded pinned tabs unloaded", () => {
   assert.equal(S().tabs[p].navigation, null, "no page after a relaunch");
   assert.equal(active(w), a);
   assert.ok(S().tabs[a].navigation, "the selected tab loads");
+});
+
+test("quit and relaunch after the window closed: the next window has the pinned tabs", () => {
+  reset();
+  const { w } = pinnedWindow();
+  S().closeWindow(w);
+  flushPersistence();
+  S().hydrate(loadSession().data);
+  assert.equal(S().windowOrder.length, 0, "no window restored");
+  const n = S().createWindow(); // lib/native: the first window when none is restored
+  assert.deepEqual(sidebar(n), PINS);
 });

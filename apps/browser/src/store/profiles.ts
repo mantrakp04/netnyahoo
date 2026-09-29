@@ -172,6 +172,7 @@ export const createProfilesSlice: StateCreator<BrowserState, [], [], ProfilesSli
         closedWindows: s.closedWindows
           .map((c) => ({ ...c, tabs: c.tabs.filter((t) => t.profileId !== id) }))
           .filter((c) => c.tabs.length > 0),
+        parkedPins: without(s.parkedPins, [id]),
       });
       // Every window must still show something.
       for (const w of Object.values(get().windows)) {

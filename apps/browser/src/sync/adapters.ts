@@ -3,7 +3,8 @@ import { assignPositions, SyncNative, type Adapter, type Extraction, type SavedL
 import { ensureRoots } from "../store/bookmarks";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { orderSections, syncGroupOrder } from "../store/groups";
-import { engineProfile, makeTab, pinnedFirst } from "../store/model";
+import { engineProfile, makeTab, pinnedFirst, without } from "../store/model";
+import { adoptParkedPins, parkWindowPins } from "../store/parkedPins";
 import { removeTabs } from "../store/tabs";
 import { DEFAULT_PROFILE_ID, type Settings } from "../store/settings";
 import type { BookmarkNode, HistoryEntry, Profile, Tab, TabGroup } from "../store/types";
@@ -291,9 +292,10 @@ export function pinnedAdapter(profileId: string): Adapter {
     prefix: "pin:",
     extract: (base) => {
       const s = store();
-      const tiles: Tab[] = [];
-      const groups: TabGroup[] = [];
-      const members = new Map<string, Tab[]>();
+      type Pin = Pick<Tab, "id" | "url" | "title" | "customTitle" | "customIcon"> & { pinnedUrl?: string | null };
+      const tiles: Pin[] = [];
+      const groups: Pick<TabGroup, "id" | "name" | "icon" | "color">[] = [];
+      const members = new Map<string, Pin[]>();
       const pinnedGroupOf = new Map<string, TabGroup>();
       for (const g of Object.values(s.groups)) if (g.pinned && g.profileId === profileId) g.tabIds.forEach((id) => pinnedGroupOf.set(id, g));
       for (const w of openWindows(s)) {
@@ -311,8 +313,12 @@ export function pinnedAdapter(profileId: string): Adapter {
           }
         }
       }
+      // Parked since their window closed (store/parkedPins): still the profile's pins.
+      const park = s.parkedPins[profileId];
+      for (const g of park?.groups ?? []) if (!members.has(g.id)) (members.set(g.id, []), groups.push(g));
+      for (const p of park?.tabs ?? []) (p.groupId ? members.get(p.groupId) : tiles)?.push(p);
       const values = new Map<string, unknown>();
-      const place = (tabs: Tab[], group: string | null) => {
+      const place = (tabs: Pin[], group: string | null) => {
         const positions = assignPositions(tabs.map((t) => ((base(`pin:t:${t.id}`) as PinValue | undefined)?.g ?? null) === group ? (base(`pin:t:${t.id}`) as PinValue | undefined)?.pos : undefined));
         tabs.forEach((t, i) =>
           values.set(`pin:t:${t.id}`, { g: group, u: (group ? t.url : t.pinnedUrl || t.url) || "", t: t.customTitle, i: t.customIcon, ti: t.title, pos: positions[i]! } satisfies PinValue),
@@ -330,6 +336,12 @@ export function pinnedAdapter(profileId: string): Adapter {
       let s = store();
       const home = homeWindow(s, profileId);
       if (!home) return false;
+      // Parked pins (store/parkedPins) take the changes in a stand-in window, and are parked again after.
+      const PARK = `park:${profileId}`;
+      if (s.parkedPins[profileId]) {
+        const stand: Window = { id: PARK, profileId, incognito: false, tabIds: [], activeTabIds: {}, sidebarOpen: true, frame: null, createdAt: 0 };
+        s = adoptParkedPins({ ...s, windows: { ...s.windows, [PARK]: stand } }, PARK, profileId);
+      }
       const pins = new Map<string, PinValue>();
       const groupValues = new Map<string, PinGroupValue>();
       for (const [k, v] of visible) {
@@ -414,8 +426,17 @@ export function pinnedAdapter(profileId: string): Adapter {
         windows[w.id] = window;
         groups = syncGroupOrder(groups, window);
       }
-      const { live, find, splits, selection, windowOrder, windowUi } = s;
-      useBrowser.setState({ tabs, windows, groups, live, find, splits, selection, windowOrder, windowUi });
+      let { live, parkedPins } = s;
+      const parkWindow = windows[PARK];
+      if (parkWindow) {
+        parkedPins = parkWindowPins(parkedPins, parkWindow, { tabs, groups, history: s.history });
+        for (const id of parkWindow.tabIds) delete tabs[id];
+        live = without(live, parkWindow.tabIds);
+        groups = Object.fromEntries(Object.entries(groups).filter(([, g]) => g.windowId !== PARK));
+        delete windows[PARK];
+      }
+      const { find, splits, selection, windowOrder, windowUi } = s;
+      useBrowser.setState({ tabs, windows, groups, live, find, splits, selection, windowOrder, windowUi, parkedPins });
     },
   };
 }

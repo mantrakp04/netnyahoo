@@ -2,7 +2,8 @@ import { cancelDownload, setZoom as setHostZoom, type Download } from "@netnyaho
 import { readDocument, writeDocument } from "@netnyahoo/shell";
 import { EMPTY_BOOKMARKS, ensureRoots } from "../store/bookmarks";
 import { useBrowser, type BrowserState, type HydrateData } from "../store/browser";
-import { engineProfile, isIncognitoProfile, makeTab, newId, snapshotTab } from "../store/model";
+import { engineProfile, inPinnedContainer, isIncognitoProfile, makeTab, newId, snapshotTab } from "../store/model";
+import { parkWindowPins } from "../store/parkedPins";
 import { DEFAULT_PROFILE } from "../store/profiles";
 import { DEFAULT_SETTINGS } from "../store/settings";
 import type { Bookmarks, BrowserWindow, ClosedTab, HistoryEntry, Tab } from "../store/types";
@@ -37,7 +38,7 @@ const DOCS: Doc[] = [
   // Last: after a v1 migration, history and bookmarks must be on disk before the v1 file is replaced.
   {
     name: "session.json",
-    sources: (s) => [s.profiles, s.profileOrder, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.settings, s.ui.focusedWindowId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
+    sources: (s) => [s.profiles, s.profileOrder, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.parkedPins, s.settings, s.ui.focusedWindowId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
     serialize: (s) => {
       const windows = Object.values(s.windows).filter((w) => !w.incognito);
       const kept = new Set(windows.map((w) => w.id));
@@ -54,6 +55,7 @@ const DOCS: Doc[] = [
         splits: Object.values(s.splits).filter((v) => kept.has(v.windowId)),
         closedTabs: s.closedTabs.filter((c) => !isIncognitoProfile(c.tab.profileId)),
         closedWindows: s.closedWindows,
+        parkedPins: s.parkedPins,
         closedGroups: s.closedGroups,
         deletedGroups: s.deletedGroups,
         cleanedTabs: s.cleanedTabs,
@@ -95,6 +97,7 @@ type SessionV2 = {
   splits: BrowserState["splits"][string][];
   closedTabs: ClosedTab[];
   closedWindows: BrowserState["closedWindows"];
+  parkedPins?: BrowserState["parkedPins"];
   closedGroups?: BrowserState["closedGroups"];
   deletedGroups?: BrowserState["deletedGroups"];
   cleanedTabs?: BrowserState["cleanedTabs"];
@@ -191,6 +194,7 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
     splits: byId(session.splits),
     closedTabs: session.closedTabs,
     closedWindows: session.closedWindows,
+    parkedPins: session.parkedPins ?? {},
     closedGroups: session.closedGroups ?? [],
     deletedGroups: session.deletedGroups ?? [],
     cleanedTabs: session.cleanedTabs ?? [],
@@ -199,9 +203,12 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
     // The engine numbers downloads from 1 on every launch: saved ones get ids of their own.
     downloads: (downloads?.downloads ?? []).map((d, i) => ({ ...d, id: `saved-${i}` })),
   };
-  // "Start fresh" on launch: the last windows go to Reopen Closed Window instead.
+  // "Start fresh" on launch: the last windows go to Reopen Closed Window instead, their pinned tabs
+  // to the profiles' next windows (store/parkedPins).
   if (session.settings && session.settings.restoreSession === false) {
     const now = Date.now();
+    const pinSource = { tabs: data.tabs ?? {}, groups: data.groups ?? {}, history: data.history ?? {} };
+    for (const w of session.windows) data.parkedPins = parkWindowPins(data.parkedPins ?? {}, w, pinSource);
     data.closedWindows = [
       ...(data.closedWindows ?? []),
       ...session.windows.map((w) => ({
@@ -210,11 +217,11 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
         window: { profileId: w.profileId, sidebarOpen: w.sidebarOpen, frame: w.frame },
         tabs: w.tabIds
           .map((id) => data.tabs?.[id])
-          .filter((t): t is Tab => !!t)
+          .filter((t): t is Tab => !!t && !inPinnedContainer(pinSource, t.id))
           .map((t) => ({ ...snapshotTab(t), active: Object.values(w.activeTabIds).includes(t.id) })),
         groups: [],
         closedAt: now,
-      })),
+      })).filter((c) => c.tabs.some((t) => t.url)),
     ].slice(-10);
     data.windows = {};
     data.windowOrder = [];
