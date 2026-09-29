@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Clock, formatHLC, hlcWall, parseHLC } from "./hlc.ts";
 import { assignPositions, positionBetween } from "./order.ts";
-import { compact, emptyScope, syncScope, type Adapter, type Listing, type ScopeOptions, type ScopeState, type Transport } from "./scope.ts";
+import { compact, emptyScope, restoreJournal, syncScope, type Adapter, type Listing, type LogFile, type ScopeOptions, type ScopeState, type Transport } from "./scope.ts";
 
 type Entry = { payload: string; hiddenFrom: Set<string>; partialFor: Set<string>; at: number };
 class Folder {
@@ -49,6 +49,7 @@ class Device {
   clock: Clock;
   offset = 0;
   onRead?: () => void;
+  failWrite?: "before" | "after";
   readonly id: string;
   readonly folder: Folder;
   readonly options: ScopeOptions;
@@ -84,6 +85,14 @@ class Device {
     const base = this.folder.transport(this.id);
     const transport: Transport = {
       ...base,
+      write: async (scope, payload) => {
+        const fail = this.failWrite;
+        delete this.failWrite;
+        if (fail === "before") throw new Error("offline");
+        const id = await base.write(scope, payload);
+        if (fail === "after") throw new Error("timed out");
+        return id;
+      },
       read: async (scope, known) => {
         const listing = await base.read(scope, known);
         this.onRead?.();
@@ -98,12 +107,30 @@ class Device {
       clock: this.clock,
       device: this.id,
       now: () => this.time(),
-      options: { pruneGrace: 0, ...this.options },
+      options: { pruneGrace: 0, persist: async (batches) => this.persist(batches), ...this.options },
     });
   }
   relaunch() {
     this.state = JSON.parse(JSON.stringify(this.state)) as ScopeState;
     this.clock = new Clock(this.id, this.clock.last, () => this.time());
+  }
+  // What's on disk: the state as last saved, and the batches persisted since.
+  saved = JSON.stringify(emptyScope());
+  savedClock: string | null = null;
+  journal = new Map<number, LogFile>();
+  persist(batches: LogFile[]) {
+    for (const f of batches) this.journal.set(f.seq, JSON.parse(JSON.stringify(f)) as LogFile);
+  }
+  save() {
+    this.saved = JSON.stringify(this.state);
+    this.savedClock = this.clock.last;
+    for (const seq of this.journal.keys()) if (seq <= this.state.seq) this.journal.delete(seq);
+  }
+  // Quit without saving: back to what's on disk; the store keeps its edits.
+  crash() {
+    this.state = JSON.parse(this.saved) as ScopeState;
+    this.clock = new Clock(this.id, this.savedClock, () => this.time());
+    restoreJournal(this.state, [...this.journal.values()], this.clock);
   }
 }
 
@@ -371,7 +398,7 @@ test("expired records leave snapshots without deleting anything a device still k
   assert.ok(snap?.records && !("x:old" in snap.records) && "x:new" in snap.records);
 });
 
-test("three devices, random edits and sync orders, converge", async () => {
+test("three devices, random edits, sync orders and crashes, converge", async () => {
   let seed = 7;
   const random = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
   let compactions = 0;
@@ -386,8 +413,10 @@ test("three devices, random edits and sync orders, converge", async () => {
       const r = random();
       if (r < 0.5) d.store.set(key, `${d.id}-${step}`);
       else if (r < 0.7) d.store.delete(key);
-      else if (r < 0.8) d.relaunch();
+      else if (r < 0.75) d.relaunch();
+      else if (r < 0.8) d.crash();
       else await d.sync();
+      if (random() < 0.4) d.save();
       if (random() < 0.3) await devices[Math.floor(random() * 3)]!.sync();
       for (const e of folder.scope("s").values()) {
         if (random() < 0.15) e.hiddenFrom.add(devices[Math.floor(random() * 3)]!.id);
@@ -408,4 +437,84 @@ test("three devices, random edits and sync orders, converge", async () => {
     assert.deepEqual(a!.state.records, b!.state.records, `run ${run}`);
   }
   assert.ok(compactions > 0);
+});
+
+test("an old snapshot put back after its tombstones were collected doesn't bring deleted records back", async () => {
+  const folder = new Folder();
+  const day = 86_400_000;
+  const opts: ScopeOptions = { compactAfterFiles: 1000, compactInterval: 0, tombstoneTTL: 7 * day };
+  const a = new Device("devA", folder, opts);
+  const b = new Device("devB", folder, opts);
+  a.store.set("x:keep", 1);
+  a.store.set("x:secret", "hunter2");
+  await syncAll([a, b]);
+  await compact(a.state, folder.transport("devA"), "s", "devA", folder.now, { ...opts, pruneGrace: 0 }, true);
+  const [oldId, old] = [...folder.scope("s")].find(([, e]) => e.payload.includes('"snapshot"'))!;
+  assert.ok(old.payload.includes("hunter2"));
+  folder.now += day;
+  a.store.delete("x:secret");
+  await syncAll([a, b]);
+  assert.equal(b.store.has("x:secret"), false);
+  folder.now += 30 * day;
+  a.store.set("x:later", 3);
+  await syncAll([a, b]);
+  for (const d of [a, b]) await compact(d.state, folder.transport(d.id), "s", d.id, folder.now, { ...opts, pruneGrace: 0 }, true);
+  for (const d of [a, b]) assert.equal(d.state.records["x:secret"], undefined, `${d.id} collected the tombstone`);
+  assert.equal(folder.scope("s").has(oldId), false);
+
+  folder.scope("s").set(oldId, { ...old, hiddenFrom: new Set(), partialFor: new Set() });
+  await syncAll([a, b]);
+  assert.equal(a.store.has("x:secret"), false, "A");
+  assert.equal(b.store.has("x:secret"), false, "B");
+  // A new device reading the old snapshot after the current ones.
+  const c = new Device("devC", folder, opts);
+  const entries = [...folder.scope("s")];
+  folder.scopes.set("s", new Map([...entries.filter(([id]) => id !== oldId), [oldId, folder.scope("s").get(oldId)!]]));
+  await c.sync();
+  assert.equal(c.store.has("x:secret"), false, "C");
+  assert.deepEqual(snapshot(c), snapshot(a));
+});
+
+test("a crash after publishing a batch doesn't reuse its sequence number", async () => {
+  const folder = new Folder();
+  const a = new Device("devA", folder);
+  const b = new Device("devB", folder);
+  a.store.set("x:1", "one");
+  await syncAll([a, b]);
+  a.save();
+  a.store.set("x:2", "two");
+  await a.sync();
+  await b.sync();
+  assert.equal(b.store.get("x:2"), "two");
+  a.crash();
+  a.store.set("x:3", "three");
+  await syncAll([a, b]);
+  assert.equal(b.store.get("x:3"), "three", "B got the batch published after the crash");
+  a.store.set("x:2", "two, edited");
+  await syncAll([a, b]);
+  assert.deepEqual(snapshot(b), snapshot(a));
+  const seqs = [...folder.scope("s").values()].map((e) => JSON.parse(e.payload) as { device: string; seq: number; ops: unknown[] });
+  const mine = new Map<number, string>();
+  for (const f of seqs.filter((f) => f.device === "devA")) {
+    const ops = JSON.stringify(f.ops);
+    assert.equal(mine.get(f.seq) ?? ops, ops, `seq ${f.seq} was published twice with different changes`);
+    mine.set(f.seq, ops);
+  }
+});
+
+test("a failed write is retried as the same batch, even when the file did land", async () => {
+  const folder = new Folder();
+  const a = new Device("devA", folder);
+  const b = new Device("devB", folder);
+  for (const fail of ["after", "before"] as const) {
+    a.store.set(`x:${fail}`, 1);
+    a.failWrite = fail;
+    await assert.rejects(a.sync());
+    a.store.set(`x:${fail}-next`, 2);
+    await syncAll([a, b]);
+    assert.deepEqual(snapshot(b), snapshot(a), fail);
+  }
+  assert.equal(b.store.get("x:after-next"), 2);
+  const files = [...folder.scope("s").values()].map((e) => e.payload);
+  assert.equal(files.length, new Set(files).size + 1, "only the batch whose write threw after landing is there twice");
 });

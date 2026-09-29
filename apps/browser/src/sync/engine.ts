@@ -3,11 +3,14 @@ import {
   Clock,
   emptyScope,
   folderTransport,
+  restoreJournal,
   syncScope,
   SyncNative,
   visible,
+  writtenSeq,
   type Adapter,
   type FolderInfo,
+  type LogFile,
   type PhraseResult,
   type ScopeState,
 } from "@netnyahoo/sync";
@@ -65,6 +68,7 @@ type SyncDoc = {
 
 const DOC = "sync.json";
 const STATE = "sync-state.nns";
+const JOURNAL = "sync-journal.nns";
 const APP_SCOPE = "app";
 const CYCLE_MS = 15_000;
 const AFTER_EDIT_MS = 3_000;
@@ -137,18 +141,55 @@ function load() {
   }
 }
 
-async function loadState() {
-  const sealed = readDocument(STATE);
+// Batches numbered since the sealed state was last saved, kept until a saved state has them: a batch is
+// in here, on disk, before it's written to the folder (`persist`), so a crash can't reuse its seq.
+type Journal = Record<string, LogFile[]>;
+let journal: Journal = {};
+let journalOnDisk = false;
+
+async function openSealed<T>(name: string, fallback: T): Promise<T> {
+  const sealed = readDocument(name);
   const json = sealed ? await SyncNative?.openLocal(sealed) : null;
-  let scopes: SyncDoc["scopes"] = {};
   try {
-    if (json) scopes = JSON.parse(json) as SyncDoc["scopes"];
+    if (json) return JSON.parse(json) as T;
   } catch {}
-  for (const [scope, seq] of Object.entries(doc.seqs ?? {})) {
-    scopes[scope] ??= emptyScope();
-    scopes[scope]!.seq = Math.max(scopes[scope]!.seq, seq);
+  return fallback;
+}
+
+async function loadState() {
+  const scopes = await openSealed<SyncDoc["scopes"]>(STATE, {});
+  journal = (await openSealed<{ journal?: Journal }>(JOURNAL, {})).journal ?? {};
+  journalOnDisk = Object.keys(journal).length > 0;
+  const clock = new Clock(doc.deviceId ?? "", doc.clock);
+  for (const scope of new Set([...Object.keys(doc.seqs ?? {}), ...Object.keys(journal)])) {
+    const mine = (journal[scope] ?? []).filter((f) => f.device === doc.deviceId);
+    restoreJournal((scopes[scope] ??= emptyScope()), mine, clock, doc.seqs?.[scope]);
   }
+  if (doc.deviceId && Object.keys(journal).length) doc.clock = clock.last;
   doc.scopes = scopes;
+}
+
+const persistJournal = (scope: string) => async (batches: LogFile[]) => {
+  const list = (journal[scope] ??= []);
+  for (const file of batches) if (!list.some((f) => f.seq === file.seq)) list.push(file);
+  const sealed = await SyncNative!.sealLocal(JSON.stringify({ journal }));
+  writeDocument(JOURNAL, sealed);
+  journalOnDisk = true;
+};
+
+function pruneJournal(saved: Record<string, number>) {
+  for (const [scope, list] of Object.entries(journal)) {
+    const left = list.filter((f) => f.seq > (saved[scope] ?? 0));
+    if (left.length) journal[scope] = left;
+    else delete journal[scope];
+  }
+  if (journalOnDisk && !Object.keys(journal).length) clearJournal();
+}
+
+function clearJournal() {
+  journal = {};
+  journalOnDisk = false;
+  writeDocument(JOURNAL, "");
 }
 
 let savedState = "";
@@ -156,7 +197,7 @@ let sealing: Promise<void> | null = null;
 
 function save() {
   const { scopes, ...meta } = doc;
-  const json = JSON.stringify({ ...meta, seqs: Object.fromEntries(Object.entries(scopes).map(([k, s]) => [k, s.seq])) });
+  const json = JSON.stringify({ ...meta, seqs: Object.fromEntries(Object.entries(scopes).map(([k, s]) => [k, writtenSeq(s)])) });
   if (json !== savedJson) {
     savedJson = json;
     writeDocument(DOC, json);
@@ -168,12 +209,14 @@ function save() {
     writeDocument(STATE, "");
     return;
   }
+  const seqs = Object.fromEntries(Object.entries(scopes).map(([k, s]) => [k, s.seq]));
   sealing = (async () => {
     try {
       const sealed = await SyncNative?.sealLocal(state);
       if (sealed) {
         writeDocument(STATE, sealed);
         savedState = state;
+        pruneJournal(seqs);
       }
     } catch (error) {
       console.warn("[sync] couldn't save the sync state", error);
@@ -258,7 +301,15 @@ async function runCycle({ retiring = false } = {}) {
     const clock = new Clock(doc.deviceId, doc.clock);
     const device = doc.deviceId;
     const app = (doc.scopes[APP_SCOPE] ??= { ...emptyScope(), awaitRemote: doc.joining });
-    await syncScope({ scope: APP_SCOPE, state: app, transport, adapters: appAdapters(retiring), clock, device });
+    await syncScope({
+      scope: APP_SCOPE,
+      state: app,
+      transport,
+      adapters: appAdapters(retiring),
+      clock,
+      device,
+      options: { persist: persistJournal(APP_SCOPE) },
+    });
     if (app.joined) linkProfiles(app);
     let pending = app.pending;
     const s = useBrowser.getState();
@@ -275,7 +326,7 @@ async function runCycle({ retiring = false } = {}) {
         adapters: profileAdapters(profileId, retire),
         clock,
         device,
-        options: { expired: historyExpired },
+        options: { expired: historyExpired, persist: persistJournal(scope) },
       });
       pending += state.pending;
       if (retire) {
@@ -333,6 +384,7 @@ function linkProfiles(app: ScopeState) {
 async function resetFromElsewhere() {
   await SyncNative?.forget(doc.deviceId!);
   doc = { ...emptyDoc(), folder: doc.folder, types: doc.types };
+  clearJournal();
   save();
   publishUi({ status: "reset", error: "This device is out of sync. Sync may have been reset from another device." });
 }
@@ -385,6 +437,7 @@ export async function chooseSyncFolder(): Promise<string | null> {
 
 function begin(folder: string, deviceId: string, joining: boolean) {
   doc = { ...emptyDoc(), types: doc.types, enabled: true, folder, deviceId, setupAt: Date.now(), joining };
+  clearJournal();
   save();
   publishUi({ status: "starting", error: null });
   scheduleSync(0);
@@ -443,6 +496,7 @@ export async function stopSync({ deleteData = false } = {}) {
   if (doc.deviceId) await native.forget(doc.deviceId);
   doc = { ...emptyDoc(), folder, types: doc.types };
   passwordAdapters.clear();
+  clearJournal();
   save();
   publishUi({ status: "off", error: null });
 }

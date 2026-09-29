@@ -27,8 +27,10 @@ export type ScopeState = {
   extra: Record<string, number[]>;
   files: Record<string, FileMeta>;
   damaged: Record<string, number>;
+  /** The last seq given to a batch. Batches in `journal` have their seq but may not be in the folder yet. */
   seq: number;
   outbox: Op[];
+  journal?: LogFile[];
   seen: Record<string, number>;
   joined: boolean;
   awaitRemote?: boolean;
@@ -85,9 +87,15 @@ export type ScopeOptions = {
   compactInterval?: number;
   pruneGrace?: number;
   damagedGiveUp?: number;
+  /**
+   * Saves the batches about to be written so they survive a crash; they're written only once it resolves.
+   * After a restart, `restoreJournal` puts them back and they're written again as they were: a device
+   * never publishes two different batches under one seq.
+   */
+  persist?: (batches: LogFile[]) => Promise<void>;
 };
 
-const DEFAULTS: Required<ScopeOptions> = {
+const DEFAULTS: Required<Omit<ScopeOptions, "persist">> = {
   expired: () => false,
   tombstoneTTL: 45 * 86_400_000,
   compactAfterFiles: 40,
@@ -137,6 +145,9 @@ export function ingestSnapshot(state: ScopeState, file: SnapshotFile, clock: Clo
   for (const [device, at] of Object.entries(file.seen)) see(state, device, at);
   see(state, file.device, file.at);
   for (const [key, record] of Object.entries(file.records)) {
+    // This replica already applied the change that wrote this record and no longer has the key: it was
+    // deleted and the tombstone collected (or it expired). An older snapshot mustn't bring it back.
+    if (!(key in state.records) && isApplied(state, record.o)) continue;
     if (mergeRecord(state, key, record, clock)) changed.add(key);
   }
   for (const [key, record] of Object.entries(state.records)) {
@@ -201,16 +212,50 @@ export async function publish(state: ScopeState, adapters: Adapter[], clock: Clo
   return published;
 }
 
-export async function flush(state: ScopeState, transport: Transport, scope: string, device: string, now: number) {
-  if (!state.outbox.length) return;
-  const file: LogFile = { v: 1, kind: "log", device, seq: state.seq + 1, at: now, ops: state.outbox };
-  const id = await transport.write(scope, JSON.stringify(file));
-  state.files[id] = { d: device, k: "log", s: file.seq, at: now };
-  state.seq = file.seq;
-  state.outbox = [];
-  markApplied(state, device, file.seq);
-  see(state, device, now);
+export async function flush(state: ScopeState, transport: Transport, scope: string, device: string, now: number, options: ScopeOptions = {}) {
+  if (state.outbox.length) {
+    state.seq++;
+    (state.journal ??= []).push({ v: 1, kind: "log", device, seq: state.seq, at: now, ops: state.outbox });
+    state.outbox = [];
+  }
+  if (!state.journal?.length) return;
+  await options.persist?.(state.journal);
+  while (state.journal.length) {
+    const file = state.journal[0]!;
+    const id = await transport.write(scope, JSON.stringify(file));
+    state.files[id] = { d: file.device, k: "log", s: file.seq, at: file.at };
+    state.journal.shift();
+    markApplied(state, file.device, file.seq);
+    see(state, file.device, now);
+  }
+  delete state.journal;
 }
+
+/**
+ * After a restart, puts back the batches `persist` saved that `state` (as last saved) doesn't have yet.
+ * Batches above `written` may not have reached the folder and are sent again by the next flush; if one
+ * did, the folder holds the same batch twice, which merges as a no-op.
+ */
+export function restoreJournal(state: ScopeState, batches: LogFile[], clock: Clock, written = 0) {
+  const saved = state.seq;
+  for (const file of [...batches].sort((a, b) => a.seq - b.seq)) {
+    if (file.seq <= state.seq) continue;
+    // The saved outbox went out in the batch after the saved seq.
+    if (file.seq === saved + 1) state.outbox = [];
+    for (const op of file.ops) {
+      mergeRecord(state, op.k, { h: op.h, v: op.v, o: [file.device, file.seq] }, clock);
+      if (op.v === null) delete state.base[op.k];
+      else state.base[op.k] = canonical(op.v);
+    }
+    state.seq = file.seq;
+    if (file.seq <= written) markApplied(state, file.device, file.seq);
+    else (state.journal ??= []).push(file);
+  }
+  state.seq = Math.max(state.seq, written);
+}
+
+/** The last seq known to be in the folder. */
+export const writtenSeq = (state: ScopeState) => state.seq - (state.journal?.length ?? 0);
 
 export async function pull(state: ScopeState, transport: Transport, scope: string, clock: Clock, now: number, options: ScopeOptions = {}) {
   const { damagedGiveUp } = { ...DEFAULTS, ...options };
@@ -285,7 +330,7 @@ export async function compact(state: ScopeState, transport: Transport, scope: st
   const count = Object.keys(state.files).length;
   const newestSnapshot = Math.max(state.snapshotAt, ...Object.values(state.files).filter((f) => f.k === "snapshot").map((f) => f.at));
   if (!force && (count <= o.compactAfterFiles || now - newestSnapshot < o.compactInterval)) return false;
-  await flush(state, transport, scope, device, now);
+  await flush(state, transport, scope, device, now, options);
   const records: Record<string, SyncRecord> = {};
   for (const [key, record] of Object.entries(state.records)) {
     const drop = record.v === null ? now - hlcWall(record.h) > o.tombstoneTTL : o.expired(key, record.v, now);
@@ -328,7 +373,7 @@ export async function syncScope(args: {
   const { scope, state, transport, adapters, clock, device, options } = args;
   const now = args.now ?? Date.now;
   let published = (await publish(state, adapters, clock, device)).size;
-  await flush(state, transport, scope, device, now());
+  await flush(state, transport, scope, device, now(), options);
   const changed = await pull(state, transport, scope, clock, now(), options);
   const keys = new Set([...state.unapplied, ...changed]);
   const unapplied: string[] = [];
@@ -343,7 +388,7 @@ export async function syncScope(args: {
     state.joined = true;
     delete state.awaitRemote;
   }
-  await flush(state, transport, scope, device, now());
+  await flush(state, transport, scope, device, now(), options);
   const compacted = await compact(state, transport, scope, device, now(), options);
   return { published, changed: changed.size, pending: state.pending, compacted };
 }

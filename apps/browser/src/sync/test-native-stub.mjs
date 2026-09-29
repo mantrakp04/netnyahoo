@@ -1,5 +1,5 @@
 export * from "../store/test-native-stub.mjs";
-export const requireOptionalNativeModule = () => null;
+export const requireOptionalNativeModule = (name) => globalThis.nnTestNativeModules?.[name] ?? null;
 export const requireNativeModule = () => ({});
 export const passwordStores = new Map();
 export const current = { device: null };

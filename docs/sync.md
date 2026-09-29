@@ -49,7 +49,8 @@ and how much each writes (file count, times, sizes to 1 KiB); and that it's Netn
 
 What they can do: delete or withhold files (denial of service). Withheld files show as
 "waiting for N files to download". They can also replay an old file under its own name, which is
-harmless: files are immutable, and a replayed op merges as a no-op. They can't forge, reorder
+harmless: files are immutable, a replayed op merges as a no-op, and an old snapshot can't bring back
+a record whose deletion was already applied (see Compaction). They can't forge, reorder
 within a file, or move data between profiles.
 
 Not protected against:
@@ -120,6 +121,13 @@ Writing:
 - A file is written whole in a same-volume temporary folder, then moved in inside a coordinated
   write (`NSFileCoordinator`, `.forReplacing`). The sync client never sees half a file under a
   real name.
+- A log's seq is never reused. A batch gets its seq and is saved, sealed, to `sync-journal.nns` in
+  the app's data folder before it's written (`persist`); a batch whose write fails stays queued
+  with its seq. After a crash, `restoreJournal` puts the journalled batches back into the last
+  saved state and the next cycle writes them again, byte for byte, before anything new. If the
+  first write did land, the folder has the same batch twice, which reads as a no-op on every
+  version. The journal is local only (no format change) and is emptied once the saved state
+  has its batches.
 
 Reading (`SyncVault.read`) handles files that aren't there in full yet:
 - iCloud placeholders (`.<id>.nns.icloud` stubs, or dataless files whose
@@ -173,6 +181,12 @@ Each scope holds a replica: `key → { h: HLC, v: value | null, o: [device, seq]
   collected still learns of it. Applying a snapshot drops every local record whose origin file
   the snapshot covers but which the snapshot doesn't contain (`ingestSnapshot`). A log a snapshot
   covers is never replayed after it, so a collected deletion can't come back.
+- **Old snapshots.** The same holds the other way round. A snapshot record whose origin this
+  replica has already applied (its version vector, which is never collected), for a key the
+  replica no longer has, is a deletion already applied and is skipped. So a snapshot put back in
+  the folder after its tombstones were collected (a replay, a late backup restore) brings nothing
+  back (tested). There's no format change. A 0.2.10 Mac still takes such records in, but the
+  next snapshot from a newer Mac covers them and leaves them out, which removes them there again.
 - **A device offline for weeks.** It reads the newest snapshot and whatever logs came after,
   applies them, and publishes its offline edits (tested). The one gap: an edit made offline to a
   record that was deleted elsewhere, whose tombstone was collected more than 45 days ago, comes
@@ -285,8 +299,8 @@ bookmark, settings, profile or group edit, and on Sync Now. A cycle:
 3. Syncs each synced profile's scope, publishing, flushing, pulling, and then publishing and
    applying per adapter.
 4. Compacts when due.
-5. Saves `sync.json` (in the app's data folder): the replica, base, version vectors, known
-   files, links and settings of sync.
+5. Saves `sync.json` (in the app's data folder): links, settings of sync and the last seq written
+   per scope; and `sync-state.nns`, sealed: the replica, base, version vectors and known files.
 
 ## Tests
 
@@ -303,20 +317,26 @@ bookmark, settings, profile or group edit, and on Sync Now. A cycle:
     - Key stores: file and Keychain.
     - The Recovery Kit: every word in the PDF, the text sheet parses back, the QR code decodes
       back.
-  - `node --test`: 13 tests.
+  - `node --test`: 16 tests.
     - HLC, positions.
     - Both-way sync; concurrent edits in both orders; deletes, re-adds and edit-after-delete;
       clock skew (slow, and days ahead).
     - Late, out-of-order and half-copied files; an edit during a read.
     - Joining; compaction and a new device from a snapshot; offline for weeks with collected
-      tombstones; expiry.
-    - 40 randomized three-device runs with flaky delivery and compaction.
+      tombstones; expiry; an old snapshot put back after its tombstones were collected.
+    - A crash after publishing, and a write that fails before or after the file lands: no seq
+      carries two different batches.
+    - 40 randomized three-device runs with flaky delivery, compaction and crashes.
 - `apps/browser`: `node --import ./src/sync/test-loader.mjs --test src/sync/adapters.test.mjs`
-  runs 8 tests against the real store.
+  runs 11 tests against the real store.
   - Bookmarks, both ways; delete versus add; concurrent moves that would make a cycle.
   - History and its 90-day window; settings adopted on join; pinned tabs and pinned groups
     (order, unloaded, unpin); open tabs; passwords both ways.
   - Steady state publishes nothing.
+  - A crash after publishing: the next batch gets a new seq and sends only what's new.
+- `apps/browser`: `node --import ./src/sync/test-loader.mjs --test src/sync/engine.test.mjs` runs the
+  engine against a fake native module: a crash the moment a batch lands, then a restart from what
+  was on disk, re-sends the journalled batches byte for byte and numbers the next one after them.
 - End to end: `node packages/sync/scripts/e2e.mjs [Debug app] [work dir]` drives two hidden
   instances (then a third) with their own data folders through a temporary sync folder, never
   iCloud Drive, over the dev harness. It checks 40 things, and all 40 passed on 2026-09-26 (Debug

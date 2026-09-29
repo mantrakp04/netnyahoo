@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../store/browser.ts");
 const model = await import("../store/model.ts");
-const { Clock, emptyScope, syncScope } = await import("@netnyahoo/sync");
+const { Clock, emptyScope, restoreJournal, syncScope } = await import("@netnyahoo/sync");
 const adapters = await import("./adapters.ts");
 const stub = await import("./test-native-stub.mjs");
 
@@ -38,6 +38,19 @@ class Device {
     this.clock = new Clock(id);
     stub.passwordStores.set(id, new Map());
     this.passwords = adapters.passwordsAdapter("default", () => true, stub.readLogins);
+    this.journal = { app: new Map(), p: new Map() };
+    this.save();
+  }
+  // What the engine keeps on disk: the state and clock as last saved, and the batches persisted since.
+  save() {
+    this.saved = { scopes: structuredClone(this.scopes), clock: this.clock.last };
+    for (const [scope, list] of Object.entries(this.journal)) for (const seq of list.keys()) if (seq <= this.scopes[scope].seq) list.delete(seq);
+  }
+  // Quit without saving; the browser's own data is saved separately and keeps its edits.
+  crash() {
+    this.scopes = structuredClone(this.saved.scopes);
+    this.clock = new Clock(this.id, this.saved.clock);
+    for (const scope of Object.keys(this.scopes)) restoreJournal(this.scopes[scope], [...this.journal[scope].values()], this.clock);
   }
   with(fn) {
     stub.current.device = this.id;
@@ -51,8 +64,19 @@ class Device {
   async sync(profileId = "default") {
     stub.current.device = this.id;
     useBrowser.setState(this.browser, true);
+    const persist = (scope) => async (batches) => {
+      for (const f of batches) this.journal[scope].set(f.seq, structuredClone(f));
+    };
     const run = (scope, list, options) =>
-      syncScope({ scope, state: this.scopes[scope], transport: this.folder.transport(), adapters: list, clock: this.clock, device: this.id, options });
+      syncScope({
+        scope,
+        state: this.scopes[scope],
+        transport: this.folder.transport(),
+        adapters: list,
+        clock: this.clock,
+        device: this.id,
+        options: { ...options, persist: persist(scope) },
+      });
     const app = await run("app", [adapters.settingsAdapter]);
     const p = await run(
       "p",
@@ -348,4 +372,27 @@ test("passwords: saved on one Mac, changed or deleted on another; the newer edit
   await syncAll([b, a]);
   assert.deepEqual(list(a), ["https://bank.example alice=correct horse", "https://shop.example bob=sh0p"]);
   assert.equal((await a.sync()).published, 0);
+});
+
+test("a crash after publishing: the next batch doesn't reuse its seq, and what went out isn't sent again", async () => {
+  const folder = new Folder();
+  const a = new Device("devA", folder);
+  const b = new Device("devB", folder);
+  const find = (d, title) => d.with(() => Object.values(S().bookmarks.nodes).find((n) => n.title === title));
+  a.with(() => S().addBookmark({ profileId: "default", url: "https://one.example/", title: "One" }));
+  await syncAll([a, b]);
+  a.save();
+  a.with(() => {
+    S().updateBookmark(find(a, "One").id, { title: "Uno" });
+    S().addBookmark({ profileId: "default", url: "https://two.example/", title: "Two" });
+  });
+  await a.sync();
+  await b.sync();
+  assert.ok(find(b, "Uno") && find(b, "Two"));
+  a.crash();
+  a.with(() => S().addBookmark({ profileId: "default", url: "https://three.example/", title: "Three" }));
+  assert.equal((await a.sync()).published, 1, "only the new bookmark");
+  await syncAll([b, a]);
+  assert.ok(find(b, "Three"), "B got the batch published after the crash");
+  assert.deepEqual(tree(b), tree(a));
 });
