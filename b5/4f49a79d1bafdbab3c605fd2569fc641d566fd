@@ -1,0 +1,28 @@
+apps/browser/scripts/profile-swipe-test.mjs
+  s_631b13a766b697::t_20ead7ed18d1dc 70,185-186,193
+  s_631b13a766b697::t_6417fefadb3770 1-3,5-23,28-69,71-94,116,118-121,123-184,187-189,203-220,248-252,263-266
+  s_631b13a766b697::t_10a2854e5f2469 122
+  s_631b13a766b697::t_898da780f5fd46 190-192,194,196-202
+  s_631b13a766b697::t_0f3bf640d4f62b 4,24-27,95-115,117,195,221-247,253-262
+docs/dia-feature-parity.md
+  s_631b13a766b697::t_b00070d36fb660 352
+packages/cef/ios/NNSwipe.mm
+  s_631b13a766b697::t_e9be927d13ce57 2,117-133,135-137,284-287,368,379-381,402-405,519,536-538,541-544,575
+  s_631b13a766b697::t_93200e070fcb2e 134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b54f49a79d1bafdbab3c605fd2569fc641d566fd",
+  "prompts": {},
+  "sessions": {
+    "s_631b13a766b697": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ef88-d29f-71c0-bccb-8ac6c46b7bc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
