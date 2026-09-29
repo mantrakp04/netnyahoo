@@ -13,13 +13,17 @@ import PostHog from "../components/PostHog.astro";
 interface Props {
   title: string;
   description: string;
+  /** schema.org objects for this page, as JSON-LD. */
+  jsonLd?: object[];
+  noindex?: boolean;
 }
-const { title, description } = Astro.props;
+const { title, description, jsonLd = [], noindex = false } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 const canonical = new URL(Astro.url.pathname, Astro.site);
 // Versioned by content: X and others cache a card image by its URL for days.
 const ogVersion = createHash("sha256").update(readFileSync(`${process.cwd()}/public/og.png`)).digest("hex").slice(0, 10);
 const og = new URL(`${base}/og.png?v=${ogVersion}`, Astro.site);
+const OG_ALT = "Full immunity. Big Yahu, the Netnyahoo mascot, next to the words; netnyahoo, a free Chromium browser for the Mac.";
 ---
 
 <!doctype html>
@@ -34,13 +38,20 @@ const og = new URL(`${base}/og.png?v=${ogVersion}`, Astro.site);
     <meta name="color-scheme" content="light" />
     <link rel="icon" href={`${base}/favicon.png`} type="image/png" sizes="64x64" />
     <link rel="apple-touch-icon" href={`${base}/apple-touch-icon.png`} />
+    {noindex && <meta name="robots" content="noindex" />}
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Netnyahoo" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content={canonical} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={og} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={OG_ALT} />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image:alt" content={OG_ALT} />
+    {jsonLd.map((data) => <script type="application/ld+json" set:html={JSON.stringify(data)} />)}
     {/* All three are on the first screen; preloading them keeps the hero from reflowing on swap. */}
     <link rel="preload" href={archivoLatin} as="font" type="font/woff2" crossorigin />
     <link rel="preload" href={newsreaderLatin} as="font" type="font/woff2" crossorigin />

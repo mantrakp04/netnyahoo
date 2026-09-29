@@ -1,7 +1,7 @@
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
-  site: process.env.SITE_URL ?? "https://netnyahoo.example",
+  site: process.env.SITE_URL ?? "https://netnyahoo.com",
   base: process.env.SITE_BASE ?? "/",
   output: "static",
   trailingSlash: "ignore",

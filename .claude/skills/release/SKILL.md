@@ -204,6 +204,13 @@ Then verify live: `https://netnyahoo.com/release-notes/` contains the new headli
 `Netnyahoo-<version>.dmg`, that URL returns 200, and any claim you changed shows. Commit `release.ts`
 and the claim changes ("Site: download <version>", plus what changed) and push.
 
+The SEO data follows `release.ts` and the notes by itself; check that it did:
+- The home page's JSON-LD `softwareVersion` is the new version.
+- `https://netnyahoo.com/sitemap.xml` has today's `lastmod`.
+- If the release changed what Netnyahoo is (a new headline feature, a new platform), update the home page's
+  `description` in `src/pages/index.astro`: ~150 characters, and it is also the share text.
+- If `og.png` changes, its URL's `?v=` hash changes with it, so X and others fetch the new card.
+
 Deploying makes things public. The user has asked for releases to go all the way through, so deploy as
 part of a release; for site changes outside a release, ask first.
 

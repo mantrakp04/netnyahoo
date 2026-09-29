@@ -1,0 +1,33 @@
+---
+import Base from "../layouts/Base.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<Base title="Not found — Netnyahoo" description="This page was never on the record." noindex>
+  <Header home={`${base}/`} />
+  <main class="missing">
+    <div class="wrap">
+      <p class="label">Error 404</p>
+      <h1 class="poster">No record<br />of this page.</h1>
+      <p class="body">The office has no comment. <a href={`${base}/`}>Back to the front page</a>.</p>
+    </div>
+  </main>
+  <Footer />
+</Base>
+
+<style>
+  .missing {
+    padding: clamp(140px, 20vw, 240px) 0 var(--section);
+  }
+  .missing h1 {
+    margin: 20px 0 28px;
+    font-size: var(--t-h2);
+  }
+  .missing .body a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+</style>

@@ -9,11 +9,38 @@ import Game from "../components/Game.astro";
 import Press from "../components/Press.astro";
 import Closing from "../components/Closing.astro";
 import Footer from "../components/Footer.astro";
+import { DMG, DMG_SIZE, MIN_MACOS, REPO, VERSION } from "../data/release";
+
+const home = new URL(import.meta.env.BASE_URL, Astro.site).href;
+const description =
+  "Real Chromium for the Mac, free and open source: Arc's sidebar and Dia's polish, with no account and no AI. Immune to ads, trackers and prosecution.";
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Netnyahoo",
+    description,
+    url: home,
+    image: new URL("og.png", home).href,
+    applicationCategory: "BrowserApplication",
+    operatingSystem: `${MIN_MACOS} or later, Apple Silicon`,
+    softwareVersion: VERSION,
+    downloadUrl: DMG,
+    fileSize: DMG_SIZE,
+    releaseNotes: new URL("release-notes/", home).href,
+    license: "https://www.apache.org/licenses/LICENSE-2.0",
+    isAccessibleForFree: true,
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    sameAs: [REPO],
+  },
+  { "@context": "https://schema.org", "@type": "WebSite", name: "Netnyahoo", url: home },
+];
 ---
 
 <Base
-  title="Netnyahoo — full immunity"
-  description="Real Chromium for the Mac, free and open source. Immune to ads, trackers and prosecution."
+  title="Netnyahoo — full immunity · Free Chromium browser for Mac"
+  description={description}
+  jsonLd={jsonLd}
 >
   <Header />
   <main>
