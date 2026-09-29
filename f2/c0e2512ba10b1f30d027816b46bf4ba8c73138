@@ -1,0 +1,377 @@
+apps/browser/src/sync/adapters.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 419,470
+apps/browser/src/components/extensions/bridge.ts
+  s_eef1712ddf5b16::t_0677beb66bd275 75
+apps/browser/src/store/tabs.ts
+  s_0a03b218311732::t_c92e3f37488a1c 251
+packages/core/src/idn.ts
+  s_b32d7286dba602::t_1cadde967b55d7 113-114,116-119
+packages/cef/helper/helper_main.mm
+  s_4e50a522916579::t_8c26c75a109bcd 95,117
+packages/cef/ios/NNAutofill.mm
+  s_4e50a522916579::t_8c26c75a109bcd 48,89,136
+packages/cef/ios/NNExtensionPackage.h
+  s_4e50a522916579::t_8c26c75a109bcd 15
+apps/browser/src/store/organize.test.mjs
+  s_0a03b218311732::t_c92e3f37488a1c 170
+packages/cef/ios/NNPictureInPicture.h
+  s_7377bed565ad11::t_3529d866b3a3b6 1,10
+packages/cef/ios/NNActivation.mm
+  s_4e50a522916579::t_8c26c75a109bcd 1,143,231
+apps/browser/src/components/site/translate.ts
+  s_8788d68add0e8c::t_94bbf51e947f0e 89,149
+apps/browser/src/telemetry/sanitize.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 5,72
+packages/cef/ios/NNSiteSettings.h
+  s_7377bed565ad11::t_3529d866b3a3b6 45
+apps/browser/src/store/appUrls.test.mjs
+  s_9c356f9574d31c::t_1bc04aa77a94f2 1
+packages/shaders/ios/MetalSurface.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 79
+packages/shell/ios/Keychain.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 16
+packages/shell/ios/System.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 139
+apps/browser/src/store/types.ts
+  s_0a03b218311732::t_93558e1cd14f4f 1
+packages/cef/ios/NNPasswords.mm
+  s_7377bed565ad11::t_3529d866b3a3b6 37
+packages/cef/src/chromeUI.ts
+  s_7377bed565ad11::t_11cde3f4cba962 18
+apps/browser/src/live/calendar.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 100
+packages/shaders/ios/WindowBackdropView.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 55
+apps/browser/src/components/sidebar/dnd.tsx
+  s_8788d68add0e8c::t_94bbf51e947f0e 155,163
+apps/browser/src/lib/theme.ts
+  s_0568d36964cb5b::t_27dc6a628b4841 18,24,27,32,35,55,72
+  s_0568d36964cb5b::t_255c12d65f26f8 130,149,205,234,236
+  s_0568d36964cb5b::t_493ccbd5172afe 16,40,64,66,77,85,91
+apps/launch-video/scripts/make-pour-sound.mjs
+  s_07603221892069::t_f6ffb55578894f 15
+packages/cef/ios/NNContentBlocker.h
+  s_4e50a522916579::t_8c26c75a109bcd 11
+apps/browser/src/store/store.test.mjs
+  s_0a03b218311732::t_c92e3f37488a1c 119,134,140
+packages/import/ios/Core/DiaAppleEvents.swift
+  s_b32d7286dba602::t_1cadde967b55d7 102,174
+  s_b32d7286dba602::t_38bd7a1d5ae320 29
+packages/import/ios/Core/ChromiumSessions.swift
+  s_b32d7286dba602::t_22d071addd39e1 69
+apps/browser/src/components/layout/TopTabStrip.tsx
+  s_eef1712ddf5b16::t_8f134133d33acc 28
+packages/shell/src/app.ts
+  s_632ff7c0d60b14::t_177aaf36340bd2 17
+packages/cef/ios/NNChromePages.mm
+  s_4e50a522916579::t_8c26c75a109bcd 158,186,383,447,471
+packages/shell/ios/AppModule.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 128,233,517-518
+apps/browser/src/lib/windowTint.ts
+  s_0568d36964cb5b::t_493ccbd5172afe 1,8,12,27
+packages/import/ios/Core/ChromiumCrypto.swift
+  s_b32d7286dba602::t_22d071addd39e1 88
+apps/browser/src/store/browser.ts
+  s_0a03b218311732::t_4bbd8d410af924 51
+packages/sync/ios/Core/SyncVault.swift
+  s_b32d7286dba602::t_57c444a5be0e83 37
+packages/cef/ios/NNClient.h
+  s_4e50a522916579::t_8c26c75a109bcd 195,201,216
+apps/browser/src/components/sidebar/HoverCard.tsx
+  s_8788d68add0e8c::t_94bbf51e947f0e 61
+packages/shell/ios/Windows.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 165,225,229
+apps/browser/src/lib/appIntegration.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 194
+apps/browser/src/store/splits.test.mjs
+  s_9c356f9574d31c::t_1bc04aa77a94f2 1
+apps/browser/scripts/shortcuts-test.mjs
+  s_07603221892069::t_caad67cb9de7ee 280
+  s_07603221892069::t_2ee28cb348f4a8 327,344,365
+  s_07603221892069::t_65e32d8414f9aa 99
+apps/browser/src/components/sidebar/PinnedGrid.tsx
+  s_8788d68add0e8c::t_94bbf51e947f0e 25
+apps/browser/src/components/media/SharePicker.tsx
+  s_eef1712ddf5b16::t_0c65e5874bcd6a 109
+packages/cef/ios/NNZoom.mm
+  s_7377bed565ad11::t_3529d866b3a3b6 20,55,60,84
+  s_7377bed565ad11::t_6faa7dd2d9bf14 56
+apps/browser/src/components/settings/panes/Autofill.tsx
+  s_8788d68add0e8c::t_8f4241ab29e104 43
+apps/browser/src/components/omnibox/inline.test.mjs
+  s_eef1712ddf5b16::t_0677beb66bd275 30-32
+apps/browser/src/store/pinnedClose.test.mjs
+  s_0a03b218311732::t_c92e3f37488a1c 216,420
+apps/browser/macos/Netnyahoo-macOS/BrowserWindow.swift
+  s_07603221892069::t_7ebe5a22056e70 4,43
+packages/sync/ios/Core/RecoveryKit.swift
+  s_b32d7286dba602::t_57c444a5be0e83 40
+apps/browser/src/lib/webNotifications.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 23,54,87
+apps/browser/src/components/site/permissions.ts
+  s_8788d68add0e8c::t_b2897e585367ef 24
+apps/browser/src/lib/chromeTabs.ts
+  s_0568d36964cb5b::t_27dc6a628b4841 51
+  s_0568d36964cb5b::t_255c12d65f26f8 94
+apps/browser/src/lib/defaultBrowserCheckIn.ts
+  s_0568d36964cb5b::t_27dc6a628b4841 27
+apps/browser/src/components/sidebar/numberedTabs.test.mjs
+  s_9c356f9574d31c::t_1bc04aa77a94f2 1
+packages/shaders/ios/AreaLightView.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 54,162
+apps/browser/src/components/media/pip.ts
+  s_eef1712ddf5b16::t_c1a6671f759308 62
+apps/browser/src/components/media/artwork.ts
+  s_eef1712ddf5b16::t_876d37bb8117cb 9
+apps/site/src/scripts/yahu.ts
+  s_07603221892069::t_c6cc9462102bb7 250
+packages/cef/helper/page_script.js
+  s_4e50a522916579::t_8c26c75a109bcd 1,123,154,186,244,365
+apps/browser/assets/offline-game/game.js
+  s_07603221892069::t_5d1d0bf76ef32d 49,60,715,769
+  s_07603221892069::t_1a3eb004ad036b 243,245,334,366-368,719-720,791
+apps/browser/index.js
+  s_07603221892069::t_7ebe5a22056e70 16,19
+apps/browser/src/components/layout/profilePager.ts
+  s_eef1712ddf5b16::t_438edd3495c040 165
+  s_eef1712ddf5b16::t_0677beb66bd275 8,240
+  s_eef1712ddf5b16::t_8f134133d33acc 30
+packages/cef/ios/NNPopupWindow.mm
+  s_7377bed565ad11::t_3529d866b3a3b6 30,88,115
+packages/cef/ios/CefModule.swift
+  s_4e50a522916579::t_8c26c75a109bcd 27
+packages/cef/ios/NNPopupWindow.h
+  s_7377bed565ad11::t_3529d866b3a3b6 11,13,20
+apps/browser/src/telemetry/config.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 9
+packages/cef/ios/NNChromeUI.mm
+  s_4e50a522916579::t_8c26c75a109bcd 23-26,71,121,221,250
+apps/browser/src/components/site/DeviceChooser.tsx
+  s_8788d68add0e8c::t_94bbf51e947f0e 39
+packages/import/tests/FileImportTests.swift
+  s_b32d7286dba602::t_1cadde967b55d7 31,96,160
+packages/core/src/omnibox.test.ts
+  s_b32d7286dba602::t_1cadde967b55d7 36-37
+packages/cef/ios/NNExtensions.mm
+  s_4e50a522916579::t_8c26c75a109bcd 43,58,60,105
+packages/cef/ios/NNZoom.h
+  s_7377bed565ad11::t_3529d866b3a3b6 18
+apps/browser/src/sync/engine.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 327
+packages/cef/ios/NNPictureInPicture.mm
+  s_7377bed565ad11::t_6faa7dd2d9bf14 213,232,598
+  s_7377bed565ad11::t_3529d866b3a3b6 50,118,123,251,445,611,614,629
+packages/cef/ios/NNChromeWindow.mm
+  s_4e50a522916579::t_8c26c75a109bcd 177,278,391,421,630
+packages/shell/ios/AppIcon.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 140
+apps/browser/src/components/sidebar/TabSwitcher.tsx
+  s_8788d68add0e8c::t_94bbf51e947f0e 48
+packages/shell/ios/ShellModule.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 368,548,634,701
+apps/browser/src/components/layout/swipeMotion.ts
+  s_eef1712ddf5b16::t_8f134133d33acc 2,38
+packages/shell/ios/DockSelection.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 320
+packages/cef/ios/NNSwipe.mm
+  s_7377bed565ad11::t_3529d866b3a3b6 9,14,24,26,81,119,121-122,144,279,306,346,372,482
+  s_7377bed565ad11::t_6faa7dd2d9bf14 87
+packages/core/src/calculator.ts
+  s_b32d7286dba602::t_1cadde967b55d7 116
+packages/import/ios/ImportModule.swift
+  s_b32d7286dba602::t_1cadde967b55d7 123
+  s_9c356f9574d31c::t_dd9de22f7708f6 5
+packages/import/tests/ImporterTests.swift
+  s_b32d7286dba602::t_1cadde967b55d7 18,110,194,222
+packages/cef/ios/NNClient.mm
+  s_4e50a522916579::t_8c26c75a109bcd 109,111,116,168,383,446,494,610,708,824,1045
+packages/shell/ios/InlineCompletion.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 4
+apps/browser/src/components/site/SiteControls.tsx
+  s_8788d68add0e8c::t_94bbf51e947f0e 66,102
+  s_8788d68add0e8c::t_b2897e585367ef 75
+packages/cef/ios/NNCef.mm
+  s_4e50a522916579::t_8c26c75a109bcd 342,419-420,436,539,624,677
+packages/cef/ios/NNExtensionsInternal.h
+  s_7377bed565ad11::t_3529d866b3a3b6 17
+packages/cef/ios/NNBrowsingData.mm
+  s_4e50a522916579::t_8c26c75a109bcd 1,49,170,185,196
+packages/cef/ios/NNDevTools.mm
+  s_4e50a522916579::t_8c26c75a109bcd 22-23,64,161,215,282
+apps/browser/src/telemetry/errors.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 32
+packages/cef/ios/NNContentBlocker.mm
+  s_4e50a522916579::t_8c26c75a109bcd 282,311,347
+packages/cef/ios/ExtensionsModule.swift
+  s_4e50a522916579::t_8c26c75a109bcd 8
+packages/cef/ios/NNCefInternal.h
+  s_4e50a522916579::t_8c26c75a109bcd 124,149,174
+apps/browser/src/lib/persist.ts
+  s_0568d36964cb5b::t_27dc6a628b4841 32
+apps/browser/src/live/meetings.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 143
+apps/browser/src/components/FindBar.tsx
+  s_eef1712ddf5b16::t_0677beb66bd275 62-63
+apps/browser/src/telemetry/client.ts
+  s_0568d36964cb5b::t_83603a8312b3c8 7
+apps/browser/src/components/ContentCard.tsx
+  s_eef1712ddf5b16::t_74317ffe289694 86,308
+  s_eef1712ddf5b16::t_a68052d0f7e5ba 107,372,400
+packages/cef/ios/NNExtensionPackage.mm
+  s_4e50a522916579::t_8c26c75a109bcd 93,165
+apps/browser/src/components/CommandPanel.tsx
+  s_eef1712ddf5b16::t_8f134133d33acc 8
+packages/cef/ios/NNChromeUI.h
+  s_4e50a522916579::t_8c26c75a109bcd 28
+.claude/skills/release/scripts/smoke.mjs
+  s_07603221892069::t_c0fd024d61f9bb 235
+apps/browser/src/components/sidebar/AddressBar.tsx
+  s_8788d68add0e8c::t_b2897e585367ef 22
+packages/shell/ios/Scripting.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 118
+packages/cef/ios/NNSiteSettings.mm
+  s_7377bed565ad11::t_3529d866b3a3b6 128,216,224,392,457
+packages/shell/ios/Calendar.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 29
+packages/cef/ios/NNSearchEngines.mm
+  s_7377bed565ad11::t_3529d866b3a3b6 17
+packages/cef/ios/NNComponents.mm
+  s_4e50a522916579::t_8c26c75a109bcd 15
+packages/shell/ios/ChromeWindows.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 58
+packages/shell/ios/Menus.swift
+  s_632ff7c0d60b14::t_af2605a1b3022c 96
+apps/browser/src/components/layout/windowLayout.ts
+  s_eef1712ddf5b16::t_8f134133d33acc 22
+packages/sync/ios/Core/Wordlist.swift
+  s_b32d7286dba602::t_56931079bf6d77 1
+apps/browser/src/lib/actions.ts
+  s_0568d36964cb5b::t_255c12d65f26f8 78
+apps/browser/macos/Netnyahoo-macOS/AppDelegate.swift
+  s_07603221892069::t_7ebe5a22056e70 41
+packages/shaders/ios/PowerUpView.swift
+  s_632ff7c0d60b14::t_177aaf36340bd2 5,32,137
+apps/browser/src/components/Omnibox.tsx
+  s_eef1712ddf5b16::t_ca7d3c5fdb416a 136
+  s_eef1712ddf5b16::t_006033d610d096 110
+packages/cef/ios/NNWindowHost.mm
+  s_7377bed565ad11::t_3529d866b3a3b6 34,40,128,281,299,382,490,568,576,769,789,1032
+apps/browser/src/components/layout/SwipeOverlay.tsx
+  s_eef1712ddf5b16::t_0677beb66bd275 62,65,77
+packages/cef/ios/NNDiagnostics.mm
+  s_4e50a522916579::t_8c26c75a109bcd 74
+packages/cef/ios/NNBrowserView.mm
+  s_4e50a522916579::t_8c26c75a109bcd 43,49,65,82,134,230,241,435,458,513
+apps/browser/src/components/profiles/ProfileDots.tsx
+  s_8788d68add0e8c::t_8247c95d75aa1f 10
+packages/sync/src/scope.test.ts
+  s_b32d7286dba602::t_1cadde967b55d7 122,225,254-255,260,265,299
+apps/browser/src/lib/native.ts
+  s_0568d36964cb5b::t_27dc6a628b4841 87
+packages/import/ios/Core/FirefoxLogins.swift
+  s_b32d7286dba602::t_57c444a5be0e83 115
+apps/browser/src/components/layout/swipeMotion.test.mjs
+  s_9c356f9574d31c::t_1bc04aa77a94f2 1
+packages/cef/ios/NNWindowHost.h
+  s_7377bed565ad11::t_3529d866b3a3b6 48
+apps/browser/macos/Netnyahoo-macOS/DisableFusebox.mm
+  s_07603221892069::t_7ebe5a22056e70 1
+packages/import/tests/DiaTabsTests.swift
+  s_b32d7286dba602::t_1cadde967b55d7 73-75
+packages/cef/ios/NNChromePages.h
+  s_4e50a522916579::t_8c26c75a109bcd 23
+packages/core/src/omnibox.ts
+  s_9c356f9574d31c::t_b1c46c8d5a79f2 7
+packages/import/ios/Core/SQLiteSnapshot.swift
+  s_9c356f9574d31c::t_bc6ebbcaa4d26c 9
+packages/sync/ios/Core/SyncKeyStore.swift
+  s_9c356f9574d31c::t_adbcbf319b87b3 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f2c0e2512ba10b1f30d027816b46bf4ba8c73138",
+  "prompts": {},
+  "sessions": {
+    "s_0568d36964cb5b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed1f-51e8-7d10-b796-70360ec742cf",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_07603221892069": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed1f-523d-7ec0-a8dc-2a0783514464",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_0a03b218311732": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed1f-51ea-7860-a500-473b13e52c85",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_4e50a522916579": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed1f-51f9-7b01-a90a-0cc94fc870da",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_632ff7c0d60b14": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed1f-5265-7741-86ad-f5bf647eea59",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_7377bed565ad11": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed1f-5208-7752-968e-f6db408c963c",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_8788d68add0e8c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed1f-522e-72f1-85e8-bbc00c49106c",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_b32d7286dba602": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed1f-5265-7f60-86bd-bb7c8e3b71c5",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_eef1712ddf5b16": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed1f-5231-73d0-a147-2f9fd743f51f",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
