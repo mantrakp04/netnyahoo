@@ -1,0 +1,78 @@
+apps/browser/src/lib/theme.ts
+  s_9c356f9574d31c::t_4d5e28f0260c53 144-147,151,160-162,165,172-173,175-177
+packages/shell/ios/Windows.swift
+  s_9c356f9574d31c::t_885650e629e5ac 222-227
+packages/shell/ios/ChromeWindows.swift
+  s_9c356f9574d31c::t_885650e629e5ac 51-58
+apps/browser/src/components/sidebar/Glass.tsx
+  s_9c356f9574d31c::t_ba452e3085c29e 41-43,47,50-51
+  s_9c356f9574d31c::t_45ff0735a9781c 2,11,25,28-29,32-39,45,48-49,52-53,60-61,68,78-81,104-105,137,147
+  s_9c356f9574d31c::t_7fa52e38f93720 30-31
+apps/browser/src/components/sidebar/menus.ts
+  s_9c356f9574d31c::t_ba7e387ac501a9 24
+  s_9c356f9574d31c::t_5e0e7f79c4b6bc 95-101,120,157-158,203
+apps/browser/src/components/bookmarks/BookmarkDialog.tsx
+  s_9c356f9574d31c::t_5abee521c7f9c0 29
+  s_9c356f9574d31c::t_2b4121817b4262 10,85
+apps/browser/src/components/sidebar/TabRow.tsx
+  s_9c356f9574d31c::t_02c956bba0a852 27
+apps/browser/src/components/layout/windowLayout.ts
+  s_9c356f9574d31c::t_beaf1d05f73e03 55-77
+packages/cef/ios/NNChromeWindow.h
+  s_9c356f9574d31c::t_375696e8947b6c 29-33
+apps/browser/src/store/organize.test.mjs
+  s_9c356f9574d31c::t_a2d33fc5569ab0 304-334
+apps/browser/src/store/types.ts
+  s_9c356f9574d31c::t_62a6b152e4af2b 67-70,171
+  s_9c356f9574d31c::t_e99e6bb2d1ac4f 66
+apps/browser/src/components/sidebar/dnd.tsx
+  s_9c356f9574d31c::t_02c956bba0a852 20,279-283,290
+apps/browser/src/components/sidebar/AddressBar.tsx
+  s_9c356f9574d31c::t_2b4121817b4262 13,85,96
+apps/browser/src/sync/adapters.ts
+  s_9c356f9574d31c::t_3ad2344cee1fa7 276-277,320-328,385,387,390,404
+  s_9c356f9574d31c::t_fccf0c44f67e79 363-367
+apps/browser/src/components/sidebar/GroupBlock.tsx
+  s_9c356f9574d31c::t_0f5babc53dd5c2 92
+  s_9c356f9574d31c::t_8c182193e776df 15
+  s_9c356f9574d31c::t_92bb085549024d 151,167
+apps/browser/src/components/sidebar/entries.ts
+  s_9c356f9574d31c::t_a6a90d73ba148e 4,7-10,12,19,30,32,42,52,77,80
+packages/cef/ios/NNChromeWindow.mm
+  s_9c356f9574d31c::t_375696e8947b6c 33-36,55-73,161-163,376-380
+  s_9c356f9574d31c::t_a4d0b188f1e528 381-382
+apps/browser/src/store/organize.ts
+  s_9c356f9574d31c::t_62a6b152e4af2b 17-18,40-41,374,378-381,426,434
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_db5685fb55499c 246,289-294
+apps/browser/src/App.tsx
+  s_9c356f9574d31c::t_ba452e3085c29e 74
+  s_9c356f9574d31c::t_5b05b784785704 2-3,19,62-68,75,84
+apps/browser/src/components/Sidebar.tsx
+  s_9c356f9574d31c::t_71d75097983028 276-277,288-289,291
+  s_9c356f9574d31c::t_1ff05e12ff3fd5 11,20,70,76,78,158-160,162-169,215-217,255-269,275,278-279,299,336
+packages/shell/ios/ShellModule.swift
+  s_9c356f9574d31c::t_885650e629e5ac 105-108
+apps/browser/src/store/tabs.ts
+  s_9c356f9574d31c::t_62a6b152e4af2b 422-425
+apps/browser/src/components/sidebar/PinnedGrid.tsx
+  s_9c356f9574d31c::t_7fa52e38f93720 13,93,128,150,157,159,175
+apps/browser/src/store/model.ts
+  s_9c356f9574d31c::t_62a6b152e4af2b 82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0e80888a703e0be43c0c705a2ad9708833eff69a",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
