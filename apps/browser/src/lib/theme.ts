@@ -141,12 +141,14 @@ const light: typeof dark = {
 
 /**
  * Settings › Appearance › Sidebar Style "Liquid Glass": the sidebar's rows and tiles over the glass.
- * Measured from the reference (light glass ≈ #D2D5D9 over a dark wallpaper): resting tiles are the
- * glass 5% darker with no ring; the selected tile is raised, a thin rim with a white top edge over a
- * barely lighter fill, and a soft shadow; rows select to a white glass pill.
+ * Measured from the reference (light glass ≈ #D2D4D8, sidebar/Glass): resting tiles are the glass 5%
+ * darker with no ring; the selected tile is a raised bubble, lighter than the resting ones: a thin dark
+ * rim, a white inner edge, a fill a little under the glass and a soft shadow. Titles are black (white
+ * in dark); rows select to a white glass pill.
  */
 const GLASS = {
   dark: {
+    textTab: "#FFFFFF",
     tabHover: "rgba(255,255,255,0.08)",
     tabPressed: "rgba(255,255,255,0.14)",
     tabSelected: "rgba(255,255,255,0.14)",
@@ -155,22 +157,24 @@ const GLASS = {
     tabSelectedShadowRadius: 5,
     pinnedResting: "rgba(255,255,255,0.06)",
     pinnedRestingStroke: "rgba(255,255,255,0)",
-    pinnedSelectedRim: "rgba(255,255,255,0.16)",
-    pinnedSelectedFill: "rgba(255,255,255,0.07)",
-    pinnedSelectedOutline: "rgba(255,255,255,0.3)",
+    pinnedSelectedRim: "rgba(0,0,0,0.3)",
+    pinnedSelectedFill: "rgba(255,255,255,0.14)",
+    pinnedSelectedOutline: "rgba(255,255,255,0.22)",
   },
   light: {
+    textTab: "#000000",
     tabHover: "rgba(255,255,255,0.38)",
     tabPressed: "rgba(255,255,255,0.55)",
     tabSelected: "rgba(255,255,255,0.72)",
     tabSelectedBorder: ["rgba(255,255,255,0.95)", "rgba(255,255,255,0.4)"] as [string, string],
     tabSelectedShadow: "rgba(0,0,0,0.1)",
     tabSelectedShadowRadius: 5,
-    pinnedResting: "rgba(0,0,0,0.045)",
+    // The reference: resting 198 on the 209 glass, the selected tile's fill 204 inside a 1 pt rim ≈ 165.
+    pinnedResting: "rgba(0,0,0,0.053)",
     pinnedRestingStroke: "rgba(0,0,0,0)",
-    pinnedSelectedRim: "rgba(0,0,0,0.12)",
-    pinnedSelectedFill: "rgba(255,255,255,0.3)",
-    pinnedSelectedOutline: "rgba(255,255,255,0.9)",
+    pinnedSelectedRim: "rgba(0,0,0,0.16)",
+    pinnedSelectedFill: "rgba(255,255,255,0.35)",
+    pinnedSelectedOutline: "rgba(255,255,255,0.75)",
   },
 } satisfies Record<"dark" | "light", Partial<typeof dark>>;
 

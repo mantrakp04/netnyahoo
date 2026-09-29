@@ -301,3 +301,34 @@ test("deleted groups older than a week are gone after a relaunch", () => {
   S().hydrate({ deletedGroups: [{ ...entry, closedAt: Date.now() - organize.DELETED_GROUP_MS - 1000 }, { ...entry, id: "fresh" }] });
   assert.deepEqual(S().deletedGroups.map((c) => c.id), ["fresh"]);
 });
+
+test("pinned rows (Liquid Glass): pin as a row, move to Top Apps, unpin, restore", () => {
+  reset();
+  const { w, ids: [a, b, c] } = windowWith("a", "b", "c");
+  S().pinTabs([a], true);
+  S().pinTabs([b], true, true);
+  assert.equal(S().tabs[a].pinnedRow, undefined, "a Top Apps tile by default");
+  assert.equal(S().tabs[b].pinned, true);
+  assert.equal(S().tabs[b].pinnedRow, true);
+  assert.equal(S().tabs[b].pinnedUrl, "https://b.com");
+  // Dropped among the tiles: a Top App.
+  S().placeTabs([b], { pinned: true, beforeId: a });
+  assert.equal(S().tabs[b].pinnedRow, undefined);
+  assert.deepEqual(view(w).slice(0, 2), ["https://b.com", "https://a.com"]);
+  // Back to a row, then unpinned: the flag goes with the pin.
+  S().placeTabs([b], { pinned: true, row: true });
+  assert.equal(S().tabs[b].pinnedRow, true);
+  S().pinTabs([b], false);
+  assert.equal(S().tabs[b].pinned, false);
+  assert.equal(S().tabs[b].pinnedRow, undefined);
+  // The Liquid Glass style pins rows; Dia's pins tiles.
+  S().updateSettings({ sidebarStyle: "glass" });
+  S().togglePin(c);
+  assert.equal(S().tabs[c].pinnedRow, true);
+  S().updateSettings({ sidebarStyle: "dia" });
+  S().togglePin(b);
+  assert.equal(S().tabs[b].pinnedRow, undefined);
+  // Closed and reopened, a pinned row comes back as one.
+  assert.equal(model.snapshotTab(S().tabs[c]).pinnedRow, true);
+  assert.equal(model.snapshotTab(S().tabs[b]).pinnedRow, undefined);
+});

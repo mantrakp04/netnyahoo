@@ -24,7 +24,7 @@ export const clickMods = (e: GestureResponderEvent) => {
 const useSelection = (windowId: string) => () => useBrowser.getState().selection[windowId] ?? [];
 
 /** A tab in the list (or a group): draggable, with its context menu and hover card. */
-export function TabRowItem({ tabId, section, parentGroup }: { tabId: string; section: "list" | "pinnedGroups"; parentGroup?: string }) {
+export function TabRowItem({ tabId, section, parentGroup }: { tabId: string; section: "list" | "pinnedRows" | "pinnedGroups"; parentGroup?: string }) {
   const windowId = useWindowId();
   const selection = useSelection(windowId);
   const { wrapper, handle } = useDragItem(`t:${tabId}`, { kind: "row", tabIds: [tabId], section, parentGroup }, selection);

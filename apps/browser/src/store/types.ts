@@ -64,6 +64,11 @@ export type Tab = {
   /** A pinned tab's base URL (⌘↩ returns to it); null when unpinned. */
   pinnedUrl: string | null;
   /**
+   * Pinned as a row, not a Top Apps tile: the Liquid Glass sidebar shows it among the pinned rows
+   * above the divider (Arc's pinned tabs). Dia's style shows every pinned tab as a tile.
+   */
+  pinnedRow?: true;
+  /**
    * Explicit navigation request; `seq` changes on every request, even to the same URL.
    * `userInitiated`: the user typed or picked it (the engine then loads a URL that was a
    * download before; restores and remounts leave it off).
@@ -163,7 +168,7 @@ export type TabSnapshot = Pick<
   Tab,
   "url" | "title" | "favicon" | "pinned" | "muted" | "zoom" | "customTitle" | "customIcon" | "profileId"
 > &
-  Partial<Pick<Tab, "pinnedUrl">>;
+  Partial<Pick<Tab, "pinnedUrl" | "pinnedRow">>;
 
 export type ClosedTab = {
   kind: "tab";

@@ -419,8 +419,10 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
 
   togglePin(id) {
     // Pinning appends to the pinned tiles (out of any group); unpinning puts it at the top of the list.
-    const tab = get().tabs[id];
-    if (tab) get().pinTabs([id], !tab.pinned);
+    // The Liquid Glass sidebar pins rows, Arc's pinned tabs (Top Apps take a drag or "Add to Top Apps").
+    const s = get();
+    const tab = s.tabs[id];
+    if (tab) s.pinTabs([id], !tab.pinned, s.settings.sidebarStyle === "glass");
   },
 
   moveTab(id, toIndex) {

@@ -243,6 +243,7 @@ const Shell = requireNativeModule<{
   setWindowProfile?(id: string, profile: string, neighbours: string[]): Promise<void>;
   focusWindow(id: string): Promise<void>;
   setWindowTitle(id: string, title: string): Promise<void>;
+  setTrafficLights?(id: string, center: [number, number] | null): Promise<void>;
   windowIds(): Promise<string[]>;
   keyWindowId(): Promise<string | null>;
   setAppearance(mode: "auto" | "light" | "dark"): Promise<void>;
@@ -285,6 +286,12 @@ export const setWindowProfile = (id: string, profile: string, neighbours: string
 export const closeWindow = (id: string) => Shell.closeWindow(id);
 export const focusWindow = (id: string) => Shell.focusWindow(id);
 export const setWindowTitle = (id: string, title: string) => Shell.setWindowTitle(id, title);
+/**
+ * Where the window's traffic lights go: the close button's centre in window points from the top
+ * left, or null for Dia's spot. Missing in builds that predate it.
+ */
+export const setTrafficLights = (id: string, center: [number, number] | null) =>
+  Shell.setTrafficLights?.(id, center) ?? Promise.resolve();
 export const windowIds = () => Shell.windowIds();
 export const keyWindowId = () => Shell.keyWindowId();
 

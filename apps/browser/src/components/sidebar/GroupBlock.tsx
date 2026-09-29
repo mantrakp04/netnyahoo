@@ -12,6 +12,7 @@ import { commitRename, endRename, startRename } from "./actions";
 import { useDragItem, useDropInto } from "./dnd";
 import { useGroupEntries } from "./entries";
 import { dismissHover, useRowHover } from "./hover";
+import { GLASS_ROW_GAP } from "./Glass";
 import { openGroupMenu } from "./menus";
 import { registerRow, useSidebarUi } from "./state";
 import { TabIcon } from "./TabIcon";
@@ -88,7 +89,7 @@ export function GroupBlock({ groupId, section }: { groupId: string; section: "li
           </View>
         ) : null}
         <Animated.View style={membersStyle} pointerEvents={collapsed ? "none" : "auto"}>
-          <View onLayout={(e) => setContentHeight(e.nativeEvent.layout.height)} style={{ gap: layout.rowGap, paddingBottom: PAD }}>
+          <View onLayout={(e) => setContentHeight(e.nativeEvent.layout.height)} style={{ gap: glass ? GLASS_ROW_GAP : layout.rowGap, paddingBottom: PAD }}>
             {entries.map((entry) =>
               collapsed && entry === shownWhileCollapsed && !moving ? null : <Entry key={entry} entry={entry} section={section} groupId={groupId} />,
             )}
@@ -147,7 +148,7 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
             >
               {theme.glass && !group.icon ? (
                 // Arc's folder glyph.
-                <Symbol name="folder" size={13} color={theme.textTab} style={{ width: 16, height: 16 }} />
+                <Symbol name="folder" size={14} weight="medium" color={theme.textTab} style={{ width: 16, height: 16 }} />
               ) : group.icon || firstTab ? (
                 <TabIcon url={firstTab?.url ?? ""} favicon={firstTab?.favicon} icon={group.icon ?? firstTab?.customIcon} profileId={firstTab?.profileId} />
               ) : (
@@ -163,7 +164,7 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
                 />
               ) : (
                 <Animated.View style={{ flex: 1, height: 18, marginLeft: 5, transform: [{ rotate: countdown.rotate }] }}>
-                  <FadeLabel text={label} fontSize={13} weight={theme.glass ? "semibold" : "medium"} color={tokens.groupTitle} style={{ flex: 1, height: 18 }} />
+                  <FadeLabel text={label} fontSize={13} weight={theme.glass ? "semibold" : "medium"} color={theme.glass ? theme.textTab : tokens.groupTitle} style={{ flex: 1, height: 18 }} />
                 </Animated.View>
               )}
               {hovered && !renaming ? (

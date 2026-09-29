@@ -17,7 +17,7 @@ import { suppressHover } from "./hover";
  * trackpad haptics marks each new drop position.
  */
 type Frame = { x: number; y: number; w: number; h: number };
-type Section = "tiles" | "pinnedGroups" | "list";
+type Section = "tiles" | "pinnedRows" | "pinnedGroups" | "list";
 
 export type ItemSpec = {
   kind: "tile" | "row" | "group" | "split" | "tail";
@@ -276,15 +276,18 @@ class DragController {
         gapKey = before?.key ?? `tail:group:${box.groupId}`;
       } else {
         const list = this.at(this.regionFrames.get("list") ?? null);
-        const pinned = source.kind === "group" && !!list && y < list.y;
-        const section: Section = pinned ? "pinnedGroups" : "list";
+        const above = !!list && y < list.y;
+        const pinned = source.kind === "group" && above;
+        // The Liquid Glass sidebar's pinned rows (Arc's pinned tabs): tabs dropped above the list pin as rows.
+        const rows = tabsDrag && above && !!this.regionFrames.get("pinnedRows");
+        const section: Section = pinned ? "pinnedGroups" : rows ? "pinnedRows" : "list";
         const blocks = live.filter((i) => i.section === section && !i.parentGroup && i.kind !== "tail" && i.kind !== "tile").sort(byY);
         const before = blocks.find((b) => cy(b) > y);
         gapKey = before?.key ?? `tail:${section}`;
         drop =
           source.kind === "group"
             ? { type: "group", placement: { pinned, beforeId: firstTab(before) } }
-            : { type: "tabs", placement: { pinned: false, beforeId: firstTab(before) } };
+            : { type: "tabs", placement: rows ? { pinned: true, row: true, beforeId: firstTab(before) } : { pinned: false, beforeId: firstTab(before) } };
       }
     }
     if (source.kind === "split" && drop.type === "tabs" && (drop.placement.pinned || drop.placement.groupId)) {

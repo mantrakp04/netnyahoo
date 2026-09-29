@@ -273,7 +273,8 @@ export function deviceTabsAdapter(profileId: string, deviceId: string, name: () 
 }
 
 // Pinned tabs and pinned groups (Dia's pinned container): `pin:t:<tab id>` and `pin:g:<group id>`.
-type PinValue = { g: string | null; u: string; t: string | null; i: string | null; ti: string; pos: string };
+// `r`: pinned as a row (the Liquid Glass sidebar's pinned tabs), not a Top Apps tile; older clients ignore it.
+type PinValue = { g: string | null; u: string; t: string | null; i: string | null; ti: string; pos: string; r?: 1 };
 type PinGroupValue = { n: string; i: string | null; c: TabGroup["color"]; pos: string };
 
 type Window = BrowserState["windows"][string];
@@ -316,7 +317,15 @@ export function pinnedAdapter(profileId: string): Adapter {
       const place = (tabs: Tab[], group: string | null) => {
         const positions = assignPositions(tabs.map((t) => ((base(`pin:t:${t.id}`) as PinValue | undefined)?.g ?? null) === group ? (base(`pin:t:${t.id}`) as PinValue | undefined)?.pos : undefined));
         tabs.forEach((t, i) =>
-          values.set(`pin:t:${t.id}`, { g: group, u: (group ? t.url : t.pinnedUrl || t.url) || "", t: t.customTitle, i: t.customIcon, ti: t.title, pos: positions[i]! } satisfies PinValue),
+          values.set(`pin:t:${t.id}`, {
+            g: group,
+            u: (group ? t.url : t.pinnedUrl || t.url) || "",
+            t: t.customTitle,
+            i: t.customIcon,
+            ti: t.title,
+            pos: positions[i]!,
+            ...(!group && t.pinnedRow ? { r: 1 as const } : {}),
+          } satisfies PinValue),
         );
       };
       place(tiles, null);
@@ -351,7 +360,11 @@ export function pinnedAdapter(profileId: string): Adapter {
       });
       s = removeTabs(s, removable, false);
       const tabs = { ...s.tabs };
-      for (const id of goneTabs) if (tabs[id]) tabs[id] = { ...tabs[id]!, pinned: false, pinnedUrl: null };
+      for (const id of goneTabs) {
+        if (!tabs[id]) continue;
+        const { pinnedRow: _, ...rest } = tabs[id]!;
+        tabs[id] = { ...rest, pinned: false, pinnedUrl: null };
+      }
       let groups = { ...s.groups };
       for (const k of changed) if (k.startsWith("pin:g:") && !visible.has(k)) delete groups[k.slice(6)];
       const windows = { ...s.windows };
@@ -369,10 +382,12 @@ export function pinnedAdapter(profileId: string): Adapter {
         const group = v.g && groups[v.g] ? groups[v.g]! : null;
         const old = tabs[id];
         if (old) {
+          const { pinnedRow: _, ...rest } = old;
           tabs[id] = {
-            ...old,
+            ...rest,
             pinned: !group,
             pinnedUrl: group ? null : v.u,
+            ...(!group && v.r ? { pinnedRow: true as const } : {}),
             customTitle: v.t,
             customIcon: v.i,
             ...(old.unloaded ? { url: v.u, title: v.ti } : {}),
@@ -386,6 +401,7 @@ export function pinnedAdapter(profileId: string): Adapter {
           ...makeTab(windowId, profileId, v.u, { title: v.ti, pinned: !group, customTitle: v.t, customIcon: v.i }),
           id,
           pinnedUrl: group ? null : v.u,
+          ...(!group && v.r ? { pinnedRow: true as const } : {}),
           navigation: null,
           unloaded: true,
         };

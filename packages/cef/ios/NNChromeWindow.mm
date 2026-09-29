@@ -30,6 +30,10 @@ BOOL (^gShouldClose)(NSWindow *);
 constexpr CGFloat kTrafficLightInsetX = 18;
 
 const void *kFollowedKey = &kFollowedKey;
+/// The close button's centre the app asked for (NSValue, window points from the top left), if any.
+const void *kLightsCenterKey = &kLightsCenterKey;
+/// The buttons' y (in their superview) as CEF put them, while they sit at an asked-for centre.
+const void *kLightsCefYKey = &kLightsCefYKey;
 
 void LayoutTrafficLights(NSWindow *window) {
   if (window.styleMask & NSWindowStyleMaskFullScreen) return;
@@ -47,13 +51,26 @@ void LayoutTrafficLights(NSWindow *window) {
                                                 usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
   }
   const CGFloat spacing = NSMinX(mini.frame) - NSMinX(close.frame);
-  // In window coordinates: CEF's titlebar container sits a little in from the window's edge.
-  const CGFloat offset = [close.superview convertPoint:NSZeroPoint toView:nil].x;
-  const CGFloat x = kTrafficLightInsetX - offset;
-  if (fabs(NSMinX(close.frame) - x) < 0.5) return;
   NSArray<NSButton *> *buttons = @[ close, mini, zoom ];
-  for (NSUInteger i = 0; i < buttons.count; i++)
-    [buttons[i] setFrameOrigin:NSMakePoint(x + i * spacing, NSMinY(buttons[i].frame))];
+  NSValue *center = objc_getAssociatedObject(window, kLightsCenterKey);
+  NSNumber *cefY = objc_getAssociatedObject(window, kLightsCefYKey);
+  CGFloat x, y;
+  if (center) {
+    // The asked-for centre, in the buttons' superview (window coordinates start at the bottom left).
+    const NSPoint c = [close.superview convertPoint:NSMakePoint(center.pointValue.x, NSHeight(window.frame) - center.pointValue.y)
+                                           fromView:nil];
+    x = c.x - NSWidth(close.frame) / 2;
+    y = c.y - NSHeight(close.frame) / 2;
+    if (!cefY) objc_setAssociatedObject(window, kLightsCefYKey, @(NSMinY(close.frame)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  } else {
+    // In window coordinates: CEF's titlebar container sits a little in from the window's edge.
+    x = kTrafficLightInsetX - [close.superview convertPoint:NSZeroPoint toView:nil].x;
+    // Back from an asked-for centre: CEF's own height.
+    y = cefY ? cefY.doubleValue : NSMinY(close.frame);
+    objc_setAssociatedObject(window, kLightsCefYKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  }
+  if (fabs(NSMinX(close.frame) - x) < 0.5 && fabs(NSMinY(close.frame) - y) < 0.5) return;
+  for (NSUInteger i = 0; i < buttons.count; i++) [buttons[i] setFrameOrigin:NSMakePoint(x + i * spacing, y)];
 }
 
 /// CefThemeFrame lays the buttons out again on resizes, key changes and full-screen exits (and
@@ -141,6 +158,9 @@ void MoveRoot(NSView *root, NSWindow *from, NSWindow *to) {
   objc_setAssociatedObject(from, kRootKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   ((id<NNEmbeddingContentView>)from.contentView).netnyahooEmbeddedView = nil;
   [NNChromeWindowHost embedRootView:root inWindow:to];
+  // The traffic lights' spot is the app window's: it follows our views.
+  objc_setAssociatedObject(to, kLightsCenterKey, objc_getAssociatedObject(from, kLightsCenterKey), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  LayoutTrafficLights(to);
   [CATransaction flush];
 }
 
@@ -351,6 +371,13 @@ NSView *NNWindowRootView(NSWindow *window) {
     NSWindow *made = nn::host::GroupWindowForProfile(window, profile);
     if (made) ConfigureHostingWindow(made);
   }
+}
+
++ (void)setTrafficLightsCenter:(NSValue *)center inWindow:(NSWindow *)window {
+  NSValue *current = objc_getAssociatedObject(window, kLightsCenterKey);
+  if (current == center || [current isEqual:center]) return;
+  objc_setAssociatedObject(window, kLightsCenterKey, center, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  LayoutTrafficLights(window);
 }
 
 + (void)setSwappedHandler:(void (^)(NSWindow *, NSWindow *))handler {

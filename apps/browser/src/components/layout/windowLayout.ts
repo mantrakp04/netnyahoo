@@ -53,6 +53,29 @@ export const SIDEBAR_FOOTER_DOWNLOADS = { bottom: 3 + (28 - 34) / 2, size: 34 } 
 export const SIDEBAR_HEADER_WITH_FIELD = SIDEBAR_FIELD.top + SIDEBAR_FIELD.height;
 
 /**
+ * Liquid Glass: the traffic lights' centre in the reference (Arc's spot: 17.5 pt in, 17.8 down; Dia's
+ * is 26.75 both ways), set natively per window (shell setTrafficLights). The header's buttons share
+ * its line.
+ */
+export const GLASS_LIGHTS = { x: 17.5, y: 17.8 } as const;
+/** Liquid Glass: the reference's header, 8 pt (the tiles' margin) over its tiles' top, 42 pt down. */
+const GLASS_HEADER = 34;
+
+/**
+ * The sidebar's header: its height (the list starts under it) and, with the URL field in it, the
+ * field's top, 21.25 pt under the traffic lights' centre in either style.
+ */
+export function sidebarHeader(glass: boolean, addressBar: boolean): { height: number; fieldTop: number } {
+  if (!glass) return { height: addressBar ? SIDEBAR_HEADER_WITH_FIELD : layout.sidebarHeader, fieldTop: SIDEBAR_FIELD.top };
+  const fieldTop = SIDEBAR_FIELD.top - 26.75 + GLASS_LIGHTS.y;
+  return { height: addressBar ? fieldTop + SIDEBAR_FIELD.height : GLASS_HEADER, fieldTop };
+}
+
+export function useSidebarHeader(): { height: number; fieldTop: number } {
+  return sidebarHeader(useGlassSidebar(), useAddressBarInSidebar());
+}
+
+/**
  * Where the focused pane's URL field is, in window coordinates, so the command
  * panel (⌘L / URL click) can open over it in any layout or split. `left` is
  * where the URL pill starts; `width` the pill's width. `sidebar`: it's the

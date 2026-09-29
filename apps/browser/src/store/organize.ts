@@ -14,6 +14,8 @@ import type { BrowserWindow, ClosedGroup, ClosedTab, Tab, TabGroup } from "./typ
 export type TabPlacement = {
   /** Pinned tiles, or the list. */
   pinned: boolean;
+  /** Pinned as rows (the Liquid Glass sidebar's pinned tabs), not Top Apps tiles. */
+  row?: boolean;
   /** Insert before this tab (window order); omitted/null = end of the section, or of `groupId`. */
   beforeId?: string | null;
   /** Join this group (list only); omitted/null = out of any group. */
@@ -35,7 +37,8 @@ export type OrganizeSlice = {
   setSelection(windowId: string, ids: string[]): void;
   /** Drag-and-drop / Move: pins or unpins, reorders and (un)groups tabs of one window. */
   placeTabs(ids: string[], placement: TabPlacement): void;
-  pinTabs(ids: string[], pinned: boolean): void;
+  /** `row`: pinned as rows (the Liquid Glass sidebar's pinned tabs), not Top Apps tiles. */
+  pinTabs(ids: string[], pinned: boolean, row?: boolean): void;
   /** ⌘↩ / Back to Pinned URL / Reset Pinned Tab. */
   returnToPinnedUrl(tabId: string): void;
   /** Replace Pin with Current Page (no `url`) / Edit Pinned Page… */
@@ -368,9 +371,14 @@ export function placing(s: BrowserState, ids: string[], p: TabPlacement): Browse
   const movingSet = new Set(moving);
 
   const tabs = { ...s.tabs };
+  const row = p.pinned && !!p.row;
   for (const id of moving) {
     const t = tabs[id]!;
     if (t.pinned !== p.pinned) tabs[id] = { ...t, pinned: p.pinned, pinnedUrl: p.pinned ? t.url || null : null };
+    if (!!tabs[id]!.pinnedRow !== row) {
+      const { pinnedRow: _, ...rest } = tabs[id]!;
+      tabs[id] = row ? { ...rest, pinnedRow: true } : rest;
+    }
   }
   const rest = w.tabIds.filter((id) => !movingSet.has(id));
   let at: number;
@@ -415,7 +423,7 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     set((s) => placing(s, ids, placement));
   },
 
-  pinTabs(ids, pinned) {
+  pinTabs(ids, pinned, row) {
     const s = get();
     const first = s.tabs[ids[0] ?? ""];
     const w = first && s.windows[first.windowId];
@@ -423,7 +431,7 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     // Unpinned tabs go to the top of the list (below pinned groups), like Dia.
     const pinnedGroupMembers = new Set(Object.values(s.groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
     const beforeId = pinned ? null : w.tabIds.find((id) => !s.tabs[id]?.pinned && !pinnedGroupMembers.has(id) && !ids.includes(id));
-    set(placing(s, ids, { pinned, beforeId }));
+    set(placing(s, ids, { pinned, row, beforeId }));
   },
 
   returnToPinnedUrl(tabId) {

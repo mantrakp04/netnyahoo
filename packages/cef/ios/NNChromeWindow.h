@@ -26,6 +26,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// Unmounts `window`'s root view (it's closing).
 + (void)removeRootViewOfWindow:(NSWindow *)window;
 
+/// Where `window`'s traffic lights go: the close button's centre, in window points from the top left
+/// (the Liquid Glass sidebar's header: Arc's spot), or nil for Dia's (the default). It follows the
+/// app window's views to another profile's Chrome window, and holds across resizes and full screen.
++ (void)setTrafficLightsCenter:(nullable NSValue *)center inWindow:(NSWindow *)window;
+
 /// The app closes a Chrome-hosted window: it hides now and closes once no tab is moving out of it.
 + (void)closeWindow:(NSWindow *)window;
 

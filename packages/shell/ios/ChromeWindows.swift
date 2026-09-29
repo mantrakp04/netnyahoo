@@ -48,6 +48,14 @@ enum ChromeWindows {
     host?.perform(NSSelectorFromString("showProfile:inWindow:"), with: profile, with: window)
   }
 
+  /// The window's traffic lights centred at `center` (window points from the top left), or nil for
+  /// Dia's spot (NNChromeWindowHost setTrafficLightsCenter:inWindow:).
+  static func setTrafficLights(_ center: NSPoint?, in window: NSWindow) {
+    let selector = NSSelectorFromString("setTrafficLightsCenter:inWindow:")
+    guard let host, host.responds(to: selector) else { return }
+    host.perform(selector, with: center.map { NSValue(point: $0) }, with: window)
+  }
+
   /// Makes the app window's Chrome windows for `profiles` ahead of a swap.
   static func prepare(_ profiles: [String], for window: NSWindow) {
     guard !profiles.isEmpty else { return }
