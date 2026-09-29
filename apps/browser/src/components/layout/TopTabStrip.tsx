@@ -29,6 +29,8 @@ const PINNED_WIDTH = 40;
 const MIN_CHIP = 96;
 const MAX_CHIP = 232;
 const GAP = 4;
+// Room after the zoom button (≈ the lights' own spacing); without it the first tile touches it.
+const LIGHTS_GAP = 8;
 
 type Entry =
   | { kind: "pinned"; id: string }
@@ -42,7 +44,7 @@ export function TopTabStrip({ floating }: { floating?: boolean }) {
   const current = useWindowProfileId();
   const { pages } = usePagerPages(windowId);
   const [controls, setControls] = useState(76);
-  const left = floating ? 8 : layout.trafficLightsWidth;
+  const left = floating ? 8 : layout.trafficLightsWidth + LIGHTS_GAP;
   const right = Math.max(84, controls + 8 + 6);
   const pageWidth = Math.max(0, width - left - right);
 
