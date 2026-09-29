@@ -76,18 +76,6 @@ public class WindowBackdropModule: Module {
   }
 }
 
-public class OrbModule: Module {
-  public func definition() -> ModuleDefinition {
-    Name("NetnyahooOrb")
-
-    View(OrbView.self) {
-      Prop("tint") { (view: OrbView, hex: String) in view.setTint(hex) }
-      Prop("variant") { (view: OrbView, variant: String) in view.setVariant(variant) }
-      Prop("paint") { (view: OrbView, name: String) in view.setPaint(name) }
-    }
-  }
-}
-
 public class EdgeLightModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooEdgeLight")

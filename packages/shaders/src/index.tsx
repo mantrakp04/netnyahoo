@@ -71,25 +71,6 @@ export function WindowBackdrop({ angle = 180, grainOpacity = 0.09, grainScale = 
   return <NativeBackdrop pointerEvents="none" angle={angle} grainOpacity={grainOpacity} grainScale={grainScale} {...props} />;
 }
 
-/** Dia 1.50's New Tab paintings, one per profile colour family (plus a dark version of each). */
-export type LogoPaint = AreaLightPalette | "neutral";
-
-export type OrbProps = ViewProps & {
-  /** Theme accent (hex); unused by the glass shading for now. */
-  tint?: string;
-  /** "glass" = Dia 1.49's glass orb; "painted" = Dia 1.50's hand-painted mark. */
-  variant?: "glass" | "painted";
-  /** Which painting the painted mark uses; its dark version follows the view's appearance. */
-  paint?: LogoPaint;
-};
-
-const NativeOrb = requireNativeViewManager<OrbProps>("NetnyahooOrb");
-
-/** Dia's logo shown above the New Tab command bar. */
-export function Orb(props: OrbProps) {
-  return <NativeOrb pointerEvents="none" {...props} />;
-}
-
 export type EdgeLightProps = ViewProps & {
   /** The rect whose border lights up, in this view's coordinates. */
   rectFrame: Rect;

@@ -6,7 +6,6 @@
     "modules": [
       "AreaLightModule",
       "WindowBackdropModule",
-      "OrbModule",
       "EdgeLightModule",
       "PowerUpModule"
     ]

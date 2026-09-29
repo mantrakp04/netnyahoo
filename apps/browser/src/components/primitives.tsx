@@ -152,12 +152,11 @@ function hostInitial(url: string): string {
 }
 
 /**
- * Dia marks New Tab rows with its mark: a dome with a concave bottom (a circle of diameter s minus
- * a circle of radius s centred 1.25·s below, smooth-subtracted with k = 0.05·s, as OrbView draws
- * it), drawn the full 16pt wide. Dark: white at 0.28 (measured on Dia 1.50.1 over selected,
- * hovered and resting rows alike); light is unmeasured.
+ * New Tab rows carry our mark where Dia puts its dome: Big Yahu's head, a white glyph
+ * (docs/brand/yahu-mark) drawn the full 16pt wide and tinted as Dia tints its mark. Dark: white at
+ * 0.28 (measured on Dia 1.50.1 over selected, hovered and resting rows alike); light is unmeasured.
  */
-const NEW_TAB_MARK = require("../../assets/new-tab-mark.png");
+const NEW_TAB_MARK = require("../../assets/new-tab-yahu.png");
 
 export function NewTabIcon({ size = 16 }: { size?: number }) {
   const theme = useTheme();

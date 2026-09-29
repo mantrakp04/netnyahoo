@@ -1,4 +1,4 @@
-import type { AreaLightPalette, LogoPaint } from "@netnyahoo/shaders";
+import type { AreaLightPalette } from "@netnyahoo/shaders";
 import { useContext } from "react";
 import { useBrowser } from "../store/browser";
 import { PageProfileContext, WindowContext } from "../store/hooks";
@@ -19,8 +19,6 @@ export type Theme = typeof dark & ProfileTheme & {
    * surfaces that need a solid fill, and the backdrop where the blur isn't built in yet.
    */
   windowTint: [string, string];
-  /** Dia 1.50's hand-painted New Tab mark: the painting for the profile colour. */
-  logoPaint: LogoPaint;
   /** Dia 1.50 power-up band: one theme colour instead of the per-hue palette; null = none. */
   powerUpColor: string | null;
 };
@@ -149,7 +147,6 @@ export function hex(color: string): string {
 type ProfileTheme = {
   /** Area light / power-up palette; null = no light (Dia's neutral theme). */
   lightPalette: AreaLightPalette | null;
-  orbTint: string;
   /** Edge-light sweep: theme colour at 0.5 (dark) / 0.4 (light), per NewTabPageViewController. */
   edgeLight: string;
 };
@@ -184,8 +181,8 @@ export const PROFILE_COLORS: Record<ProfileColor, ProfileColorSpec> = {
     // Dia 1.50.1's header name reads Display P3 (236, 209, 215) in dark (a 2× capture): this, 60% toward white.
     action: "#DD899B",
     palette: "pink",
-    dark: { lightPalette: "pink", orbTint: "#E9A9C4", edgeLight: "#EBB3CB80" },
-    light: { lightPalette: "pink", orbTint: "#E59CC0", edgeLight: "#D37B8B66" },
+    dark: { lightPalette: "pink", edgeLight: "#EBB3CB80" },
+    light: { lightPalette: "pink", edgeLight: "#D37B8B66" },
   },
   blue: { name: "Blue", swatch: "#4691C3", palette: "blue" },
   purple: { name: "Purple", swatch: "#7873AF", palette: "purple" },
@@ -198,14 +195,14 @@ export const PROFILE_COLORS: Record<ProfileColor, ProfileColorSpec> = {
     name: "Neutral",
     swatch: "#8E8E93",
     palette: null,
-    dark: { lightPalette: null, orbTint: "#C8C8CC", edgeLight: "#FFFFFF40" },
-    light: { lightPalette: null, orbTint: "#B8B8BC", edgeLight: "#00000026" },
+    dark: { lightPalette: null, edgeLight: "#FFFFFF40" },
+    light: { lightPalette: null, edgeLight: "#00000026" },
   },
 };
 
 /** Incognito: a darker neutral, whatever the app appearance. */
 const INCOGNITO_TINT = "#3A3A3C";
-const INCOGNITO: ProfileTheme = { lightPalette: null, orbTint: "#C8C8CC", edgeLight: "#FFFFFF33" };
+const INCOGNITO: ProfileTheme = { lightPalette: null, edgeLight: "#FFFFFF33" };
 
 /**
  * The sidebar header's profile name (Dia's SidebarProfileIndicatorButton): the palette's action
@@ -228,8 +225,8 @@ function profileTheme(color: ProfileColor, isDark: boolean): ProfileTheme {
   const explicit = isDark ? spec.dark : spec.light;
   if (explicit) return explicit;
   return isDark
-    ? { lightPalette: spec.palette, orbTint: mix(spec.swatch, "#FFFFFF", 0.45), edgeLight: `${mix(spec.swatch, "#FFFFFF", 0.5)}80` }
-    : { lightPalette: spec.palette, orbTint: mix(spec.swatch, "#FFFFFF", 0.35), edgeLight: `${spec.swatch}66` };
+    ? { lightPalette: spec.palette, edgeLight: `${mix(spec.swatch, "#FFFFFF", 0.5)}80` }
+    : { lightPalette: spec.palette, edgeLight: `${spec.swatch}66` };
 }
 
 const cache = new Map<string, Theme>();
@@ -248,7 +245,6 @@ export function themeFor(key: string): Theme {
       ...base,
       backdrop,
       windowTint: opaqueTint(backdrop, base.dark),
-      logoPaint: spec?.palette ?? "neutral",
       powerUpColor,
     };
     cache.set(key, theme);
