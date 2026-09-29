@@ -88,6 +88,7 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 @interface NNZoom : NSObject
 + (void)setZoom:(double)zoom profile:(NSString *)profile host:(NSString *)host NS_SWIFT_NAME(setZoom(_:profile:host:));
 + (NSDictionary<NSString *, NSNumber *> *)zoomLevelsForProfile:(NSString *)profile NS_SWIFT_NAME(zoomLevels(profile:));
++ (NSArray<NSNumber *> *)devScroll:(NSArray<NSDictionary<NSString *, id> *> *)steps NS_SWIFT_NAME(devScroll(_:));
 @end
 
 @interface NNPasswords : NSObject

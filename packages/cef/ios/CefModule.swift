@@ -99,6 +99,7 @@ public class CefModule: Module {
       NNZoom.setZoom(zoom, profile: profile, host: host)
     }.runOnQueue(.main)
     AsyncFunction("getZoomLevels") { (profile: String) in NNZoom.zoomLevels(profile: profile) }.runOnQueue(.main)
+    AsyncFunction("devScrollZoom") { (steps: [[String: Any]]) in NNZoom.devScroll(steps) }.runOnQueue(.main)
 
     AsyncFunction("listPasswords") { (profile: String, promise: Promise) in
       NNPasswords.list(profile: profile) { promise.resolve($0) }
