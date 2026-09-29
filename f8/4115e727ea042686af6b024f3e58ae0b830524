@@ -1,0 +1,25 @@
+apps/site/src/components/Press.astro
+  s_9c356f9574d31c::t_48e53be96c8e1f 24
+apps/site/src/data/pledges.ts
+  s_9c356f9574d31c::t_48e53be96c8e1f 81-83
+apps/site/src/components/Record.astro
+  s_9c356f9574d31c::t_48e53be96c8e1f 9
+apps/site/src/components/Footer.astro
+  s_9c356f9574d31c::t_48e53be96c8e1f 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f84115e727ea042686af6b024f3e58ae0b830524",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
