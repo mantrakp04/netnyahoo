@@ -223,17 +223,24 @@ function logRequest(entry: RequestLogEntry, body: string) {
   if (__DEV__) console.log(`[telemetry] ${entry.dryRun ? "dry run" : "POST"} ${entry.url} ${entry.kind}×${entry.count} → ${entry.status}`);
 }
 
+// Uploads in flight, so turning sharing off can stop them mid-request.
+const inflight = new Set<AbortController>();
+
 async function post(kind: RequestLogEntry["kind"], url: string, body: string, count: number, headers: Record<string, string>) {
   const entry: RequestLogEntry = { at: new Date().toISOString(), kind, url, count, bytes: body.length, status: null };
   if (!canSend()) {
     logRequest({ ...entry, dryRun: true }, body);
     return 200;
   }
+  const abort = new AbortController();
+  inflight.add(abort);
   try {
-    const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body });
+    const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body, signal: abort.signal });
     entry.status = response.status;
   } catch {
     entry.status = 0;
+  } finally {
+    inflight.delete(abort);
   }
   logRequest(entry, body);
   return entry.status;
@@ -312,6 +319,8 @@ export function setSharing(on: boolean, source: SharingSource) {
   failures = 0;
   retryAt = 0;
   if (!on) {
+    for (const abort of inflight) abort.abort();
+    inflight.clear();
     save({ sharing: false, installId: null, sessionOpen: false, decidedAt: now, askDoneAt: saved.askDoneAt ?? now });
     clearQueue();
     return;
