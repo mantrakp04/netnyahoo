@@ -1,0 +1,21 @@
+.claude/skills/release/SKILL.md
+  s_9c356f9574d31c::t_cef2bf6fa63e7f 149-168,172-173
+  s_9c356f9574d31c::t_a8e6f8b2d134bf 180
+  s_9c356f9574d31c::t_f7db40ff5f8b4c 3,147-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "82fe00b4d917b9c70520fa16e83d934678dfce54",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
