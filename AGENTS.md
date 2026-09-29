@@ -30,10 +30,6 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   Keep test data in a scratch dir, not in `~/Documents`.
 - **Dia is a read-only reference.** You may take screenshots and read its app bundle; never click or type
   in it, and never read its user data or any browser's real profile.
-- **Secrets.** Never type, print, log or commit keys or passwords. The owner stores credentials
-  themselves:
-  - `scripts/.notary.env` and the `.p8` notary key;
-  - `apps/launch-video/.env` for ElevenLabs.
 - **No AI features.** This is the owner's decision. Dia's AI rows in `docs/dia-feature-parity.md`
   stay ⏸.
 - **Satire guardrails.** Netanyahu appears only as a public figure (the mascot is Big Yahu). No ethnic,
