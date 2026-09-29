@@ -11,25 +11,21 @@ import { useHover } from "../primitives";
 import { toolbarAnchors } from "./bridge";
 import {
   activateExtension,
-  extensionProfile,
   openManageExtensions,
   openPinDialog,
   openWebStore,
   showExtensionMenu,
-  useExtensionList,
   useExtensions,
+  useWindowExtensions,
+  windowExtensions,
   type Anchor,
 } from "./state";
 
 const BUTTON = 28;
 
 function useToolbarExtensions(windowId: string) {
-  const profile = useBrowser((s) => extensionProfile(s, windowId));
-  const list = useExtensionList(profile);
-  return useMemo(() => {
-    const enabled = list.filter((x) => x.enabled);
-    return { pinned: enabled.filter((x) => x.pinned), overflow: enabled.some((x) => !x.pinned) };
-  }, [list]);
+  const shown = useWindowExtensions(windowId);
+  return useMemo(() => ({ pinned: shown.filter((x) => x.pinned), overflow: shown.some((x) => !x.pinned) }), [shown]);
 }
 
 export function useToolbarExtensionsWidth(windowId: string): number {
@@ -196,9 +192,7 @@ function OverflowButton({ windowId, palette }: { windowId: string; palette: Tool
   const { ref, measure } = useAnchor(`${windowId}|*`);
   const onPress = async () => {
     const anchor = await measure();
-    const s = useBrowser.getState();
-    const list = useExtensions.getState().lists[extensionProfile(s, windowId)] ?? [];
-    const enabled = list.filter((x) => x.enabled);
+    const enabled = windowExtensions(useBrowser.getState(), windowId);
     const choice = await showMenu([
       ...enabled.map((x) => ({ id: `open:${x.id}`, title: x.name, symbol: x.pinned ? "pin.fill" : undefined })),
       ...(enabled.length ? [{ separator: true as const }] : []),

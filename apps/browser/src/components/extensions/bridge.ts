@@ -19,6 +19,7 @@ import * as state from "./state";
 import {
   activateExtension,
   browserIdOf,
+  closeExtensionPopup,
   closeSidePanel,
   extensionProfile,
   findExtension,
@@ -27,6 +28,7 @@ import {
   showInstallPrompt,
   syncSidePanel,
   useExtensions,
+  windowExtensions,
 } from "./state";
 
 export function startExtensionsBridge() {
@@ -84,10 +86,10 @@ function startActionPolling() {
     running = true;
     try {
       const s = useBrowser.getState();
-      const { lists, popup } = useExtensions.getState();
+      const { popup } = useExtensions.getState();
       for (const windowId of s.windowOrder) {
-        const ids = (lists[extensionProfile(s, windowId)] ?? [])
-          .filter((x) => x.enabled && x.hasAction !== false && (x.pinned || popup?.extensionId === x.id))
+        const ids = windowExtensions(s, windowId)
+          .filter((x) => x.hasAction !== false && (x.pinned || popup?.extensionId === x.id))
           .map((x) => x.id);
         const browserId = browserIdOf(activeTabId(s, windowId));
         if (!ids.length || !browserId) continue;
@@ -141,8 +143,12 @@ function startSidePanels() {
   });
   useExtensions.subscribe((e, prev) => {
     if (e.lists === prev.lists) return;
-    for (const [windowId, panel] of Object.entries(e.sidePanels))
-      if (!(e.lists[panel.profile] ?? []).some((x) => x.id === panel.extensionId && x.enabled)) closeSidePanel(windowId);
+    const s = useBrowser.getState();
+    for (const windowId of Object.keys(e.sidePanels)) {
+      const panel = e.sidePanels[windowId]!;
+      if (!windowExtensions(s, windowId).some((x) => x.id === panel.extensionId)) closeSidePanel(windowId);
+    }
+    if (e.popup && !windowExtensions(s, e.popup.windowId).some((x) => x.id === e.popup!.extensionId)) closeExtensionPopup();
   });
 }
 

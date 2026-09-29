@@ -16,6 +16,7 @@ import {
   type InstalledExtension,
 } from "@netnyahoo/cef";
 import { confirm, showMenu } from "@netnyahoo/shell";
+import { useMemo } from "react";
 import { create } from "zustand";
 import { openWindow } from "../../lib/actions";
 import { webviews } from "../../lib/webviews";
@@ -39,7 +40,8 @@ export type InstallRequest = {
 type ExtensionsStore = {
   lists: Record<string, InstalledExtension[]>;
   actions: Record<number, Record<string, ActionState>>;
-  popup: { windowId: string; profile: string; extensionId: string; url: string; anchor: Anchor } | null;
+  /** `pageProfile`: the engine profile its page runs in. */
+  popup: { windowId: string; pageProfile: string; extensionId: string; url: string; anchor: Anchor } | null;
   install: InstallRequest | null;
   pinDialog: { windowId: string } | null;
   sidePanels: Record<string, SidePanel>;
@@ -47,7 +49,10 @@ type ExtensionsStore = {
 
 export type SidePanel = {
   extensionId: string;
+  /** The profile whose extension list it's from. */
   profile: string;
+  /** The engine profile its page runs in: a private window's own. */
+  pageProfile: string;
   url: string;
 };
 
@@ -55,10 +60,39 @@ export const useExtensions = create<ExtensionsStore>()(() => ({ lists: {}, actio
 
 const EMPTY: InstalledExtension[] = [];
 
+/** The profile whose extensions a window lists. Private windows are the default profile's, off the record. */
 export function extensionProfile(s: BrowserState, windowId: string | null | undefined): string {
   const w = windowId ? s.windows[windowId] : undefined;
   return !w || w.incognito ? "" : engineProfile(w.profileId);
 }
+
+const isPrivate = (s: BrowserState, windowId: string) => !!s.windows[windowId]?.incognito;
+
+/** The engine profile an extension's popup or side panel runs in: a private window's own. */
+const pageProfile = (s: BrowserState, windowId: string) =>
+  isPrivate(s, windowId) ? engineProfile(s.windows[windowId]!.profileId) : extensionProfile(s, windowId);
+
+/**
+ * Whether a window shows an extension. A private window shows only extensions allowed in incognito whose pages
+ * Chrome runs in the private profile (split mode); a spanning one's popup and side panel would use the regular
+ * profile's storage and sign-ins.
+ */
+const showsExtension = (priv: boolean, ext: InstalledExtension) => ext.enabled && (!priv || (ext.incognito && !!ext.incognitoSplit));
+
+export function useWindowExtensions(windowId: string): InstalledExtension[] {
+  const profile = useBrowser((s) => extensionProfile(s, windowId));
+  const priv = useBrowser((s) => isPrivate(s, windowId));
+  const list = useExtensionList(profile);
+  return useMemo(() => list.filter((x) => showsExtension(priv, x)), [list, priv]);
+}
+
+export function windowExtensions(s: BrowserState, windowId: string | undefined): InstalledExtension[] {
+  if (!windowId) return EMPTY;
+  const priv = isPrivate(s, windowId);
+  return (useExtensions.getState().lists[extensionProfile(s, windowId)] ?? EMPTY).filter((x) => showsExtension(priv, x));
+}
+
+const shownIn = (windowId: string, extensionId: string) => windowExtensions(useBrowser.getState(), windowId).find((x) => x.id === extensionId);
 
 export function useExtensionList(profile: string): InstalledExtension[] {
   return useExtensions((e) => e.lists[profile] ?? EMPTY);
@@ -229,6 +263,7 @@ export async function activateExtension(windowId: string, ext: InstalledExtensio
   const current = useExtensions.getState().popup;
   if (current?.windowId === windowId && current.extensionId === ext.id) return closeExtensionPopup();
   if (!ext.enabled) return void showExtensionMenu(windowId, ext);
+  if (!shownIn(windowId, ext.id)) return;
   const s = useBrowser.getState();
   const tabId = activeTabId(s, windowId);
   const web = tabId ? webviews.get(tabId) : undefined;
@@ -237,8 +272,7 @@ export async function activateExtension(windowId: string, ext: InstalledExtensio
   if (result === "none") return;
   if (result === "sidePanel") return void toggleSidePanel(windowId, ext.id);
   if (!url) return void (result === null && showExtensionMenu(windowId, ext));
-  const profile = extensionProfile(useBrowser.getState(), windowId);
-  useExtensions.setState({ popup: { windowId, profile, extensionId: ext.id, url, anchor } });
+  useExtensions.setState({ popup: { windowId, pageProfile: pageProfile(useBrowser.getState(), windowId), extensionId: ext.id, url, anchor } });
 }
 
 // MARK: Side panels
@@ -252,12 +286,19 @@ export function browserIdOf(tabId: string | undefined): number {
 const activeBrowserId = (windowId: string) => browserIdOf(activeTabId(useBrowser.getState(), windowId));
 
 export async function openSidePanel(windowId: string, extensionId: string) {
-  const profile = extensionProfile(useBrowser.getState(), windowId);
+  const ext = shownIn(windowId, extensionId);
+  if (!ext) return;
+  const s = useBrowser.getState();
   const browserId = activeBrowserId(windowId);
-  const ext = findExtension(profile, extensionId);
-  const url = (browserId ? await extensionSidePanelUrl(browserId, extensionId) : null) ?? (ext?.sidePanel ? `chrome-extension://${extensionId}/${ext.sidePanel.replace(/^\//, "")}` : null);
-  if (!url) return;
-  useExtensions.setState((e) => ({ sidePanels: { ...e.sidePanels, [windowId]: { extensionId, profile, url } } }));
+  // Chrome's answer for the tab is final; the manifest's path is only for a window without a tab.
+  const url = browserId
+    ? await extensionSidePanelUrl(browserId, extensionId)
+    : !isPrivate(s, windowId) && ext.sidePanel
+      ? `chrome-extension://${extensionId}/${ext.sidePanel.replace(/^\//, "")}`
+      : null;
+  if (!url || !shownIn(windowId, extensionId)) return;
+  const panel = { extensionId, profile: extensionProfile(s, windowId), pageProfile: pageProfile(s, windowId), url };
+  useExtensions.setState((e) => ({ sidePanels: { ...e.sidePanels, [windowId]: panel } }));
 }
 
 export function closeSidePanel(windowId: string, extensionId?: string) {
@@ -321,8 +362,7 @@ function message(error: unknown): string {
 }
 
 export function extensionMenu(s: BrowserState, windowId: string | undefined) {
-  const list = useExtensions.getState().lists[extensionProfile(s, windowId)] ?? EMPTY;
-  return list.filter((x) => x.enabled).map((x) => ({ id: x.id, title: x.name, icon: x.actionIcon || x.icon, enabled: true }));
+  return windowExtensions(s, windowId).map((x) => ({ id: x.id, title: x.name, icon: x.actionIcon || x.icon, enabled: true }));
 }
 
 if (__DEV__) (globalThis as { nnExtensionsUi?: unknown }).nnExtensionsUi = { useExtensions, confirmInstall, cancelInstall, activateExtension };

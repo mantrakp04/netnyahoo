@@ -26,9 +26,14 @@ void Changed(NSString *profile, NSString *extensionId, NSString *event) {
   Emit(@"changed", @{@"profile" : DataProfile(profile), @"id" : extensionId, @"event" : event});
 }
 
-NSString *ManagedRoot(NSString *profile) {
-  NSString *key = DataProfile(profile);
-  return [[DataRoot() stringByAppendingPathComponent:@"Netnyahoo Extensions"] stringByAppendingPathComponent:key.length ? key : @"Default"];
+// Where Chrome unpacked a store extension: <profile>/Extensions/<id>/<version>_<n>.
+NSString *StoreFolder(NSString *profile, NSString *extensionId, NSString *version) {
+  if (!ext::IsExtensionId(extensionId) || ![version isKindOfClass:NSString.class] || !version.length) return nil;
+  NSString *dir = [[ProfileDirectory(DataProfile(profile)) stringByAppendingPathComponent:@"Extensions"] stringByAppendingPathComponent:extensionId];
+  NSString *prefix = [version stringByAppendingString:@"_"];
+  for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil])
+    if ([name hasPrefix:prefix]) return [dir stringByAppendingPathComponent:name];
+  return nil;
 }
 
 void HostEval(NSString *profile, NSString *expression, pages::EvalCompletion completion) {
@@ -161,7 +166,6 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
     if (error) return completion(@{@"error" : error});
     NSArray *infos = [value isKindOfClass:NSDictionary.class] ? value[@"extensions"] : nil;
     if (![infos isKindOfClass:NSArray.class]) return completion(@{@"error" : @"Unexpected extension list"});
-    NSString *managed = ManagedRoot(@"").stringByDeletingLastPathComponent;
     NSMutableArray *list = [NSMutableArray array];
     for (NSDictionary *info in infos) {
       if (![info isKindOfClass:NSDictionary.class]) continue;
@@ -171,7 +175,11 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
       NSDictionary *manifest = path ? ext::ReadManifest(path) : nil;
       for (NSString *key in @[ @"popup", @"actionTitle", @"actionIcon", @"sidePanel", @"hasAction" ])
         if (manifest[key]) item[key] = manifest[key];
-      BOOL fromStore = [info[@"location"] isEqual:@"FROM_STORE"] || (path && [path hasPrefix:managed]);
+      // Whether its pages can run in a private window's own profile (Chrome loads only split-mode ones there).
+      NSString *store = path ? nil : StoreFolder(profile, info[@"id"], info[@"version"]);
+      if (store) manifest = ext::ReadManifest(store);
+      item[@"incognitoSplit"] = @([manifest[@"incognitoSplit"] boolValue]);
+      BOOL fromStore = [info[@"location"] isEqual:@"FROM_STORE"];
       item[@"fromWebStore"] = @(fromStore);
       item[@"webStoreUrl"] = fromStore ? [@"https://chromewebstore.google.com/detail/" stringByAppendingString:info[@"id"]] : [NSNull null];
       [list addObject:item];
@@ -218,14 +226,12 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
 }
 
 + (void)uninstall:(NSString *)extensionId profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
-  NSString *info = Script(@"chrome.developerPrivate.getExtensionInfo(%@).then((i) => ({ path: i.path || null, enabled: i.state === 'ENABLED' }))",
-                          @[ extensionId ]);
+  NSString *info = Script(@"chrome.developerPrivate.getExtensionInfo(%@).then((i) => ({ enabled: i.state === 'ENABLED' }))", @[ extensionId ]);
   NSString *gone = Script(@"chrome.developerPrivate.getExtensionInfo(%@).then(() => false, () => true)", @[ extensionId ]);
   NSString *enable = Script(@"chrome.management.setEnabled(%@, true).then(() => true)", @[ extensionId ]);
+  // Removing deletes nothing itself: Chrome deletes its own copy of a store extension, and an unpacked
+  // extension's folder is the user's.
   void (^finish)(NSDictionary *, NSString *) = ^(NSDictionary *details, NSString *error) {
-    NSString *path = [details[@"path"] isKindOfClass:NSString.class] ? details[@"path"] : nil;
-    if (!error && path && [path hasPrefix:ManagedRoot(profile)])
-      [NSFileManager.defaultManager removeItemAtPath:path.stringByDeletingLastPathComponent error:nil];
     if (!error) Changed(profile, extensionId, @"uninstalled");
     completion(error ? @{@"error" : error} : @{@"ok" : @YES});
   };

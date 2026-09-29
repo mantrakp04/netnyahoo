@@ -13,8 +13,8 @@ import {
   confirmInstall,
   extensionProfile,
   setPinned,
-  useExtensionList,
   useExtensions,
+  useWindowExtensions,
   type InstallRequest,
 } from "./state";
 
@@ -67,7 +67,7 @@ if (!last || last.w !== now.w || last.h !== now.h) {
   if (document.body) ro.observe(document.body);
 }`;
 
-function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; profile: string; extensionId: string; url: string; anchor: { x: number; y: number; width: number; height: number } }) {
+function ActionPopup({ windowId, pageProfile, url, anchor }: { windowId: string; pageProfile: string; extensionId: string; url: string; anchor: { x: number; y: number; width: number; height: number } }) {
   const theme = useTheme();
   const web = useRef<WebViewHandle>(null);
   const window = useWindowDimensions();
@@ -130,7 +130,7 @@ function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; pro
               ref={web}
               style={StyleSheet.absoluteFill}
               url={url}
-              profile={profile}
+              profile={pageProfile}
               standalone
               pageBackgroundColor="#FFFFFF"
               onNavigationChange={({ isLoading }) => {
@@ -224,7 +224,7 @@ function InstallDialog({ request }: { request: InstallRequest }) {
 function PinDialog({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const profile = useBrowser((s) => extensionProfile(s, windowId));
-  const list = useExtensionList(profile).filter((x) => x.enabled);
+  const list = useWindowExtensions(windowId);
   const close = () => useExtensions.setState({ pinDialog: null });
   return (
     <Dialog onDismiss={close}>

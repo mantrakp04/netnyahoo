@@ -5,7 +5,7 @@ import { layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
 import { IconButton } from "../primitives";
-import { closeSidePanel, findExtension, showExtensionMenu, useExtensions } from "./state";
+import { closeSidePanel, findExtension, showExtensionMenu, useExtensions, type SidePanel } from "./state";
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 600;
@@ -74,7 +74,7 @@ export function ExtensionSidePanel() {
   return (
     <Animated.View style={{ width: appear.interpolate({ inputRange: [0, 1], outputRange: [0, room] }), overflow: "hidden" }}>
       <Animated.View style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: width, opacity: appear }}>
-        <PanelCard key={`${shown.extensionId}|${shown.url}`} windowId={windowId} extensionId={shown.extensionId} profile={shown.profile} url={shown.url} />
+        <PanelCard key={`${shown.extensionId}|${shown.pageProfile}|${shown.url}`} windowId={windowId} panel={shown} />
         <View
           {...responder.panHandlers}
           onDoubleClick={() => useBrowser.getState().updateSettings({ extensionSidePanelWidth: 360 })}
@@ -85,7 +85,8 @@ export function ExtensionSidePanel() {
   );
 }
 
-function PanelCard({ windowId, extensionId, profile, url }: { windowId: string; extensionId: string; profile: string; url: string }) {
+function PanelCard({ windowId, panel }: { windowId: string; panel: SidePanel }) {
+  const { extensionId, profile, pageProfile, url } = panel;
   const theme = useTheme();
   const ext = useExtensions((e) => e.lists[profile]?.find((x) => x.id === extensionId));
   const title = ext?.actionTitle || ext?.name || "Extension";
@@ -113,7 +114,7 @@ function PanelCard({ windowId, extensionId, profile, url }: { windowId: string; 
         <WebView
           style={StyleSheet.absoluteFill}
           url={url}
-          profile={profile}
+          profile={pageProfile}
           standalone
           pageBackgroundColor="#FFFFFF"
           onWindowClose={() => closeSidePanel(windowId, extensionId)}

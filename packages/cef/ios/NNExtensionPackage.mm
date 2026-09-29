@@ -31,21 +31,30 @@ NSDictionary *LoadJSON(NSString *path) {
   return [object isKindOfClass:NSDictionary.class] ? object : nil;
 }
 
-NSString *Localize(id value, NSDictionary *messages) {
+// Messages() has checked that every entry is { "message": "…" }.
+NSString *Localize(id value, NSDictionary<NSString *, NSDictionary *> *messages) {
   if (![value isKindOfClass:NSString.class]) return nil;
   NSString *s = value;
   if (![s hasPrefix:@"__MSG_"] || ![s hasSuffix:@"__"] || s.length <= 8) return s;
   NSString *key = [[s substringWithRange:NSMakeRange(6, s.length - 8)] lowercaseString];
-  for (NSString *k in messages) {
-    if ([k.lowercaseString isEqualToString:key]) {
-      NSString *message = messages[k][@"message"];
-      if ([message isKindOfClass:NSString.class]) return message;
-    }
-  }
+  for (NSString *k in messages)
+    if ([k.lowercaseString isEqualToString:key]) return messages[k][@"message"];
   return s;
 }
 
-NSDictionary *Messages(NSString *folder, NSDictionary *manifest) {
+// Chromium refuses a messages file with any entry that isn't { "message": string }, and so do we.
+bool ValidMessages(NSDictionary *messages) {
+  for (id key in messages) {
+    NSDictionary *entry = messages[key];
+    if (![key isKindOfClass:NSString.class] || ![entry isKindOfClass:NSDictionary.class] ||
+        ![entry[@"message"] isKindOfClass:NSString.class])
+      return false;
+  }
+  return true;
+}
+
+// The messages of the first locale that has any, or nil with |error| set if that file is malformed.
+NSDictionary *Messages(NSString *folder, NSDictionary *manifest, NSString **error) {
   NSString *locales = [folder stringByAppendingPathComponent:@"_locales"];
   NSMutableArray<NSString *> *candidates = [NSMutableArray array];
   for (NSString *lang in NSLocale.preferredLanguages) {
@@ -58,7 +67,10 @@ NSDictionary *Messages(NSString *folder, NSDictionary *manifest) {
   [candidates addObjectsFromArray:@[ @"en", @"en_US" ]];
   for (NSString *locale in candidates) {
     NSDictionary *messages = LoadJSON([[locales stringByAppendingPathComponent:locale] stringByAppendingPathComponent:@"messages.json"]);
-    if (messages) return messages;
+    if (!messages) continue;
+    if (ValidMessages(messages)) return messages;
+    *error = [NSString stringWithFormat:@"The localization file _locales/%@/messages.json is invalid", locale];
+    return nil;
   }
   return @{};
 }
@@ -110,7 +122,9 @@ NSString *DataURL(NSString *folder, NSString *relativePath) {
   if (!relativePath.length) return nil;
   NSString *rel = [relativePath hasPrefix:@"/"] ? [relativePath substringFromIndex:1] : relativePath;
   NSString *path = [[folder stringByAppendingPathComponent:rel] stringByStandardizingPath];
-  if (![path hasPrefix:folder.stringByStandardizingPath]) return nil;
+  NSArray *root = folder.stringByStandardizingPath.pathComponents;
+  NSArray *parts = path.pathComponents;
+  if (parts.count <= root.count || ![[parts subarrayWithRange:NSMakeRange(0, root.count)] isEqualToArray:root]) return nil;
   NSData *data = [NSData dataWithContentsOfFile:path];
   if (!data.length) return nil;
   NSDictionary *types = @{@"png" : @"image/png", @"jpg" : @"image/jpeg", @"jpeg" : @"image/jpeg", @"gif" : @"image/gif",
@@ -123,7 +137,9 @@ NSString *DataURL(NSString *folder, NSString *relativePath) {
 NSDictionary *ReadManifest(NSString *folder) {
   NSDictionary *m = LoadJSON([folder stringByAppendingPathComponent:@"manifest.json"]);
   if (!m) return @{@"error" : @"Manifest file is missing or unreadable"};
-  NSDictionary *messages = Messages(folder, m);
+  NSString *localeError = nil;
+  NSDictionary *messages = Messages(folder, m, &localeError);
+  if (!messages) return @{@"error" : localeError};
   NSDictionary *action = [m[@"action"] isKindOfClass:NSDictionary.class]           ? m[@"action"]
                          : [m[@"browser_action"] isKindOfClass:NSDictionary.class] ? m[@"browser_action"]
                          : [m[@"page_action"] isKindOfClass:NSDictionary.class]    ? m[@"page_action"]
@@ -144,7 +160,7 @@ NSDictionary *ReadManifest(NSString *folder) {
   out[@"shortName"] = Localize(m[@"short_name"], messages);
   out[@"version"] = [m[@"version"] isKindOfClass:NSString.class] ? m[@"version"] : @"";
   out[@"description"] = Localize(m[@"description"], messages) ?: @"";
-  out[@"manifestVersion"] = m[@"manifest_version"] ?: @2;
+  out[@"manifestVersion"] = [m[@"manifest_version"] isKindOfClass:NSNumber.class] ? m[@"manifest_version"] : @2;
   out[@"icon"] = DataURL(folder, IconPath(m[@"icons"], 128));
   out[@"permissions"] = permissions;
   out[@"optionalPermissions"] = Strings(m[@"optional_permissions"]);
@@ -157,6 +173,7 @@ NSDictionary *ReadManifest(NSString *folder) {
   out[@"optionsPage"] = [options isKindOfClass:NSString.class] ? options : nil;
   NSString *panel = [m[@"side_panel"] isKindOfClass:NSDictionary.class] ? m[@"side_panel"][@"default_path"] : nil;
   out[@"sidePanel"] = [panel isKindOfClass:NSString.class] ? panel : nil;
+  out[@"incognitoSplit"] = @([m[@"incognito"] isEqual:@"split"]);
   out[@"homepageUrl"] = [m[@"homepage_url"] isKindOfClass:NSString.class] ? m[@"homepage_url"] : nil;
   out[@"id"] = [m[@"key"] isKindOfClass:NSString.class] ? IdForKey(m[@"key"]) : nil;
   return out;

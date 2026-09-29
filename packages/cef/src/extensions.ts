@@ -17,6 +17,8 @@ export type InstalledExtension = {
   optionsUrl: string | null;
   pinned: boolean;
   incognito: boolean;
+  /** "incognito": "split": its pages can run in a private window's own profile. */
+  incognitoSplit?: boolean;
   fileAccess: boolean;
   mayModify: boolean;
   errors: string[];
