@@ -1,0 +1,64 @@
+apps/browser/src/components/Sidebar.tsx
+  s_9c356f9574d31c::t_aeeb44d554a22a 9,306
+apps/browser/src/lib/profileData.ts
+  s_9c356f9574d31c::t_a040a589325d8f 33
+  s_9c356f9574d31c::t_a93b915c0572e3 1-32,34-38
+apps/browser/src/components/sidebar/menus.ts
+  s_9c356f9574d31c::t_aeeb44d554a22a 6,296-297,324,341-342
+apps/browser/src/store/profileData.test.mjs
+  s_9c356f9574d31c::t_a01116cad7f009 1-58
+packages/cef/ios/CefModule.swift
+  s_9c356f9574d31c::t_a24ef43b346446 469-471,476-477,485,488,491-492,538,550,553,567-568,570,574
+  s_9c356f9574d31c::t_e68d55c9db5224 57-58,457-468,472-475,478-482,484,486-487,489-490,493-527,529-537,539-549,551-552,554-566,569,571-573,575-583
+  s_9c356f9574d31c::t_19398e23c1a1dd 483,528
+  s_9c356f9574d31c::t_a1d68052920799 584
+apps/browser/src/store/profiles.ts
+  s_9c356f9574d31c::t_6c73fd4fbd82f4 12-13,20,81,124-125,151,180-182
+  s_9c356f9574d31c::t_503a8b90b05032 33-34,122-123
+  s_9c356f9574d31c::t_cc600331a91fb3 116-120,157-159
+  s_9c356f9574d31c::t_b6aac8263361f5 183
+docs/store-api.md
+  s_9c356f9574d31c::t_79b96117c0e3b0 41,43-44,47-48
+apps/browser/src/store/privateWindows.test.mjs
+  s_9c356f9574d31c::t_4ce9e90807d324 1-173
+  s_9c356f9574d31c::t_79585b86588901 174
+apps/browser/src/store/organize.ts
+  s_9c356f9574d31c::t_1130f516df56ad 339,350-351,420-426,507-512,520-522,524-527,529-531
+  s_9c356f9574d31c::t_858b6d6e57ff54 340-346
+  s_9c356f9574d31c::t_5f3839d40fc754 516,518-519
+  s_9c356f9574d31c::t_b5c22a0b42e129 4,19-21,40,83-91,97-98
+packages/cef/src/native.ts
+  s_9c356f9574d31c::t_e1714734df699f 50
+apps/browser/src/store/test-native-stub.mjs
+  s_9c356f9574d31c::t_62f1cc55c87e14 26-28
+apps/browser/src/store/browser.ts
+  s_9c356f9574d31c::t_503a8b90b05032 7,33,120,125
+  s_9c356f9574d31c::t_6532b1ca29795a 6,138-141,155-158
+  s_9c356f9574d31c::t_dd512ffb0763ea 159
+packages/cef/src/module.ts
+  s_9c356f9574d31c::t_e1714734df699f 129-130
+apps/browser/src/lib/actions.ts
+  s_9c356f9574d31c::t_4729520da24f95 1,7,70,78-79,82-88
+  s_9c356f9574d31c::t_62f1cc55c87e14 76
+  s_9c356f9574d31c::t_f4a9f4ad351117 80-81
+apps/browser/src/lib/persist.ts
+  s_9c356f9574d31c::t_1fdacab98d093b 19,53-59
+  s_9c356f9574d31c::t_28e6744effd2bb 11,283,290
+  s_9c356f9574d31c::t_503a8b90b05032 37,45,89,182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f9d84d42f0b2660e42d96b211da8f551ecf7924a",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
