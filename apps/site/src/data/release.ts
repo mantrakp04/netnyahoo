@@ -1,5 +1,5 @@
 // Bump VERSION (and DMG_SIZE) with each release; the DMG name follows scripts/release.sh (`Netnyahoo-<version>.dmg`).
-export const VERSION = "0.2.6";
+export const VERSION = "0.2.7";
 export const DMG_SIZE = "213 MB";
 export const REPO = "https://github.com/mantrakp04/netnyahoo";
 export const RELEASES = `${REPO}/releases/latest`;
