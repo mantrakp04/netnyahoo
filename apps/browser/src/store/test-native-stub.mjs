@@ -23,3 +23,6 @@ export const pruneFavicons = () => Promise.resolve();
 export const hasDockSelection = false;
 export const iconTheme = () => Promise.resolve(null);
 export const cancelDownload = () => Promise.resolve();
+export const deletedProfileData = [];
+export const profileDataLeft = new Map();
+export const deleteProfileData = (profile) => (deletedProfileData.push(profile), Promise.resolve(profileDataLeft.get(profile) ?? []));

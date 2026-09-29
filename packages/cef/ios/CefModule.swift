@@ -54,11 +54,8 @@ public class CefModule: Module {
       NNCef.clearBrowsingData(profile: profile, types: types, since: since ?? 0) { promise.resolve(nil) }
     }.runOnQueue(.main)
     AsyncFunction("releaseProfile") { (profile: String) in NNCef.releaseProfile(profile) }.runOnQueue(.main)
-    AsyncFunction("deleteProfileData") { (profile: String) in
-      guard !profile.isEmpty, !profile.hasPrefix("incognito") else { return }
-      NNCef.releaseProfile(profile)
-      let path = (NNCef.rootCachePath as NSString).appendingPathComponent("Profile \(profile)")
-      try? FileManager.default.removeItem(atPath: path)
+    AsyncFunction("deleteProfileData") { (profile: String, promise: Promise) in
+      ProfileData.delete(profile) { promise.resolve(["remaining": $0]) }
     }.runOnQueue(.main)
 
     AsyncFunction("fetchFavicon") { (url: String, profile: String, name: String?, promise: Promise) in
@@ -455,5 +452,133 @@ final class SystemState {
       level = current / max
     }
     return (providing == kIOPMBatteryPowerKey, level)
+  }
+}
+
+// MARK: - Deleting a profile's data
+
+/// Deletes an engine profile's data and reports the kinds of data still there.
+enum ProfileData {
+  typealias Done = (_ remaining: [String]) -> Void
+  private typealias Step = (label: String, run: (@escaping (Bool) -> Void) -> Void)
+
+  static func delete(_ profile: String, done: @escaping Done) {
+    if profile.hasPrefix("incognito") { return done([]) }
+    if profile.isEmpty { return deleteDefault(done) }
+    NNCef.releaseProfile(profile)
+    let path = (NNCef.rootCachePath as NSString).appendingPathComponent("Profile \(profile)")
+    try? FileManager.default.removeItem(atPath: path)
+    done(FileManager.default.fileExists(atPath: path) ? ["files"] : [])
+  }
+
+  // The original profile is Chrome's default profile, which stays loaded as the global context (it also
+  // backs incognito and the content blocker), so its folder can't go. Its data goes through Chrome's own
+  // stores instead, each checked afterwards. Extensions are turned off, not removed: Chrome asks the user
+  // to confirm every removal that doesn't come from a click in its own UI.
+  private static func deleteDefault(_ done: @escaping Done) {
+    let steps: [Step] = [
+      ("history, cookies and cache", { ok in
+        NNCef.clearBrowsingData(profile: "", types: ["history", "siteData", "cache", "downloads"], since: 0) { ok(true) }
+      }),
+      ("autocomplete entries", clearFormDataAndSiteSettings),
+      ("passwords", deletePasswords),
+      ("addresses", { ok in clearEach(list: { NNAutofill.addresses(profile: "", completion: $0) }, key: "addresses", done: ok) {
+        item, next in NNAutofill.deleteEntry(item["id"] as? String ?? "", profile: "") { _ in next() }
+      } }),
+      ("cards", { ok in clearEach(list: { NNAutofill.cards(profile: "", completion: $0) }, key: "cards", done: ok) {
+        item, next in NNAutofill.deleteEntry(item["id"] as? String ?? "", profile: "") { _ in next() }
+      } }),
+      ("extensions", { ok in clearEach(list: runningExtensions, key: "extensions", done: ok) {
+        item, next in NNExtensions.setEnabled(false, extension: item["id"] as? String ?? "", profile: "") { _ in next() }
+      } }),
+      ("site settings", { ok in
+        for origin in NNSiteSettings.origins(profile: "") { NNSiteSettings.reset(origin: origin, profile: "") }
+        ok(NNSiteSettings.origins(profile: "").isEmpty)
+      }),
+      ("zoom levels", resetZoom),
+    ]
+    var remaining: [String] = []
+    func run(_ i: Int) {
+      guard i < steps.count else {
+        NNFavicons.prune(profile: "", keeping: [])
+        return done(remaining)
+      }
+      steps[i].run { ok in
+        if !ok { remaining.append(steps[i].label) }
+        run(i + 1)
+      }
+    }
+    run(0)
+  }
+
+  // Chrome's Delete Browsing Data handler: form data is autofill plus autocomplete entries, which have no other
+  // API. It CHECK-fails on a malformed call, so the call matches Chrome 154's settings page exactly.
+  private static func clearFormDataAndSiteSettings(_ ok: @escaping (Bool) -> Void) {
+    let js = """
+      (async () => {
+        const call = (name, ...args) => new Promise((resolve) => {
+          const id = `nn-${name}-${Date.now()}`;
+          const previous = window.cr.webUIResponse;
+          window.cr.webUIResponse = (callbackId, success, result) => {
+            if (callbackId !== id) return previous(callbackId, success, result);
+            window.cr.webUIResponse = previous;
+            resolve(success);
+          };
+          chrome.send(name, [id, ...args]);
+          setTimeout(() => resolve(false), 30000);
+        });
+        if (!(await call('initializeClearBrowsingData'))) return false;
+        return call('clearBrowsingData', ['browser.clear_data.form_data', 'browser.clear_data.site_settings'], 4);
+      })()
+      """
+    NNExtensions.evaluateInHost(js, profile: "", page: "chrome://settings/clearBrowserData") { ok(($0 as? Bool) == true) }
+  }
+
+  private static func deletePasswords(_ ok: @escaping (Bool) -> Void) {
+    clearEach(list: { NNPasswords.list(profile: "", completion: $0) }, key: "passwords", done: { deleted in
+      NNPasswords.neverSaveOrigins(profile: "") { result in
+        let origins = result["origins"] as? [String] ?? []
+        forEach(origins, { origin, next in NNPasswords.allowSaving(profile: "", origin: origin) { _ in next() } }) {
+          NNPasswords.neverSaveOrigins(profile: "") { again in ok(deleted && (again["origins"] as? [String])?.isEmpty == true) }
+        }
+      }
+    }) { item, next in
+      NNPasswords.delete(profile: "", origin: item["origin"] as? String ?? "", username: item["username"] as? String ?? "") { _ in next() }
+    }
+  }
+
+  private static func runningExtensions(_ completion: @escaping ([String: Any]) -> Void) {
+    NNExtensions.list(profile: "") { result in
+      guard let all = result["extensions"] as? [[String: Any]] else { return completion(result) }
+      completion(["extensions": all.filter { $0["mayModify"] as? Bool != false && $0["enabled"] as? Bool == true }])
+    }
+  }
+
+  private static func resetZoom(_ ok: @escaping (Bool) -> Void) {
+    for host in NNZoom.zoomLevels(profile: "").keys { NNZoom.setZoom(1, profile: "", host: host) }
+    // Resetting goes through the settings page; give it a moment to land.
+    func check(_ attempt: Int) {
+      if NNZoom.zoomLevels(profile: "").isEmpty || attempt >= 20 { return ok(NNZoom.zoomLevels(profile: "").isEmpty) }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { check(attempt + 1) }
+    }
+    check(0)
+  }
+
+  /// Lists the items under `key`, clears each, and lists again: done(true) when none are left.
+  private static func clearEach(
+    list: @escaping (@escaping ([String: Any]) -> Void) -> Void, key: String, done: @escaping (Bool) -> Void,
+    clear: @escaping ([String: Any], @escaping () -> Void) -> Void
+  ) {
+    list { result in
+      guard let items = result[key] as? [[String: Any]] else { return done(false) }
+      forEach(items, clear) {
+        list { again in done((again[key] as? [Any])?.isEmpty == true) }
+      }
+    }
+  }
+
+  private static func forEach<T>(_ items: [T], _ body: @escaping (T, @escaping () -> Void) -> Void, then: @escaping () -> Void) {
+    guard let first = items.first else { return then() }
+    body(first) { forEach(Array(items.dropFirst()), body, then: then) }
   }
 }

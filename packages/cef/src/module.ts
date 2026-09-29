@@ -126,4 +126,5 @@ export type BrowsingDataType = "history" | "siteData" | "cache" | "downloads";
 export const clearBrowsingData = (profile: string, types: BrowsingDataType[], since?: number) =>
   Cef.clearBrowsingData(profile, types, since ?? null);
 export const releaseProfile = (profile: string) => Cef.releaseProfile(profile);
-export const deleteProfileData = (profile: string) => Cef.deleteProfileData(profile);
+// Resolves with the kinds of data that couldn't be deleted (none when it all went).
+export const deleteProfileData = async (profile: string): Promise<string[]> => (await Cef.deleteProfileData(profile))?.remaining ?? ["data"];

@@ -38,11 +38,14 @@ modules before using them — this is a summary from the agent that built it.
 - Splits: `createSplit`, `openSplitPane(windowId, { tabId | url, anchorTabId, side, background })`, `replaceSplitPane`, `removeTabFromSplit`, `separateSplit`, `flipSplit`, `toggleSplitOrientation`, `movePane`, `focusPane`, `updateSplit`; `toggleTabLayout`. UI entry points with Dia's feedback (max-panes toast, menus): components/layout/splitActions.ts (`openSplitPane`, `openNewTabInSplit`, `openInSplit`, `openLinkInSplit`, `showSplitMenu`). Drag a tab onto the page to split: components/layout/tabDrag.ts.
 - Sidebar organisation (store/organize.ts): `selection[windowId]` (⌘/⇧-click multi-select), `placeTabs(ids, { pinned, beforeId, groupId })`
   (drag and drop), `pinTabs`, pinned base URLs (`tab.pinnedUrl`, `returnToPinnedUrl` ⌘↩, `setPinnedUrl`), `setSiteMuted` (Mute Site,
-  `settings.mutedSites`), `groupTabs` (pinned by default, like Dia), `moveGroup`, `duplicateGroup`, `newTabInGroup`,
+  `settings.mutedSites`; a private window's mutes stay in `privateSiteMutes[windowId]`, in memory), `groupTabs` (pinned by default, like Dia), `moveGroup`, `duplicateGroup`, `newTabInGroup`,
   `closeGroup` → `closedGroups` (History › Recently Closed Groups; `restoreClosed` takes their ids), `moveGroupToBookmarksBar`,
-  `cleanUpTabs` → `cleanedTabs` / `restoreCleaned`, `closeAbandonedNewTabs`. `newTab` with `openerId` + `background` (⌘-click)
+  `cleanUpTabs` → `cleanedTabs` / `restoreCleaned(entryId?, windowId?)` (a private window's go to `privateCleanedTabs[windowId]`,
+  in memory, and only back into that window; read either with `cleanedTabsFor(s, windowId)`), `closeAbandonedNewTabs`. `newTab` with `openerId` + `background` (⌘-click)
   joins the opener's group (`settings.cmdClickCreatesTabGroup`). Sidebar UI lives in components/sidebar/.
 - Profiles: `createProfile` (`shareWith`: share another profile's data), `updateProfile`, `deleteProfile`, `reorderProfiles`, `setDefaultProfile`.
+  `deleteProfile` queues engine data no profile uses any more in `orphanedProfileData` (saved); lib/profileData.ts deletes it
+  (`deleteProfileData`, which erases the original profile's data through Chrome's own stores) and retries at launch until it's gone.
   Shared data: `profile.dataId` names the data a profile uses; `engineProfile(id)` resolves it, bookmark roots are the same
   folders, and store/profiles keeps history lists identical (`dataGroups`, `sharingProfiles`). The Create Profile dialog is
   components/profiles/CreateProfile.tsx (`lib/actions.createProfile`).

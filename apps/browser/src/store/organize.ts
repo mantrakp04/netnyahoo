@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 import { leaveGroups, orderSections, placeBlock, syncGroupOrder } from "./groups";
-import { activeTabId, bookmarkProfileId, newId, snapshotTab, viewTabIds } from "./model";
+import { activeTabId, bookmarkProfileId, isIncognitoProfile, newId, snapshotTab, viewTabIds, without } from "./model";
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
 import type { BrowserWindow, ClosedGroup, ClosedTab, Tab, TabGroup } from "./types";
 
@@ -16,6 +16,9 @@ export type GroupPlacement = { pinned: boolean; beforeId?: string | null };
 export type OrganizeSlice = {
   selection: Record<string, string[]>;
   cleanedTabs: ClosedTab[];
+  // Private windows' cleanup records and site mutes, by window id: memory only, gone with the window.
+  privateCleanedTabs: Record<string, ClosedTab[]>;
+  privateSiteMutes: Record<string, Record<string, boolean>>;
   closedGroups: ClosedGroup[];
   deletedGroups: ClosedGroup[];
 
@@ -34,7 +37,7 @@ export type OrganizeSlice = {
   moveGroupToBookmarksBar(groupId: string): void;
 
   cleanUpTabs(windowId: string, options?: { inactiveForMs?: number }): number;
-  restoreCleaned(entryId?: string): void;
+  restoreCleaned(entryId?: string, windowId?: string): void;
   closeAbandonedNewTabs(): void;
 };
 
@@ -77,14 +80,22 @@ export function groupLabel(s: Pick<BrowserState, "tabs">, g: TabGroup): string {
   return (first && hostOf(first.url)) || "New Group";
 }
 
+export function isSiteMuted(s: Pick<BrowserState, "settings" | "privateSiteMutes">, tab: Pick<Tab, "windowId" | "profileId">, host: string): boolean {
+  const own = isIncognitoProfile(tab.profileId) ? s.privateSiteMutes[tab.windowId]?.[host] : undefined;
+  return own ?? (s.settings.mutedSites ?? []).includes(host);
+}
+
+export const cleanedTabsFor = (s: Pick<BrowserState, "windows" | "cleanedTabs" | "privateCleanedTabs">, windowId: string): ClosedTab[] =>
+  s.windows[windowId]?.incognito ? (s.privateCleanedTabs[windowId] ?? NO_CLEANED) : s.cleanedTabs;
+const NO_CLEANED: ClosedTab[] = [];
+
 export function onUrlChange(s: BrowserState, tab: Tab, url: string): Partial<Tab> {
   const patch: Partial<Tab> = {};
-  const muted = s.settings.mutedSites ?? [];
   const before = hostOf(tab.url);
   const after = hostOf(url);
   if (before !== after) {
-    if (muted.includes(after)) patch.muted = true;
-    else if (muted.includes(before)) patch.muted = false;
+    if (isSiteMuted(s, tab, after)) patch.muted = true;
+    else if (isSiteMuted(s, tab, before)) patch.muted = false;
   }
   if (tab.pinned && !tab.pinnedUrl && url) patch.pinnedUrl = url;
   return patch;
@@ -325,9 +336,19 @@ export function placing(s: BrowserState, ids: string[], p: TabPlacement): Browse
   return { ...s, tabs, groups: syncGroupOrder(groups, window), windows: { ...s.windows, [w.id]: window } };
 }
 
+export function forgetClosedPrivateWindows(s: BrowserState): Partial<BrowserState> | null {
+  const gone = (map: Record<string, unknown>) => Object.keys(map).filter((id) => !s.windows[id]);
+  const cleaned = gone(s.privateCleanedTabs);
+  const mutes = gone(s.privateSiteMutes);
+  if (!cleaned.length && !mutes.length) return null;
+  return { privateCleanedTabs: without(s.privateCleanedTabs, cleaned), privateSiteMutes: without(s.privateSiteMutes, mutes) };
+}
+
 export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSlice> = (set, get) => ({
   selection: {},
   cleanedTabs: [],
+  privateCleanedTabs: {},
+  privateSiteMutes: {},
   closedGroups: [],
   deletedGroups: [],
 
@@ -390,15 +411,19 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     if (!tab) return;
     const host = hostOf(tab.url);
     if (!host) return get().setMuted([tabId], muted);
-    const sites = new Set(s.settings.mutedSites ?? []);
-    if (muted) sites.add(host);
-    else sites.delete(host);
     get().setMuted(
       Object.values(s.tabs)
         .filter((t) => t.profileId === tab.profileId && hostOf(t.url) === host)
         .map((t) => t.id),
       muted,
     );
+    if (isIncognitoProfile(tab.profileId)) {
+      const own = { ...s.privateSiteMutes[tab.windowId], [host]: muted };
+      return set({ privateSiteMutes: { ...get().privateSiteMutes, [tab.windowId]: own } });
+    }
+    const sites = new Set(s.settings.mutedSites ?? []);
+    if (muted) sites.add(host);
+    else sites.delete(host);
     get().updateSettings({ mutedSites: [...sites] });
   },
 
@@ -479,18 +504,31 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     if (!ids.length) return 0;
     const entries = closedEntries(s, ids);
     const next = closeQuietly(s, ids);
-    set({ ...next, cleanedTabs: [...next.cleanedTabs, ...entries].slice(-MAX_CLEANED) });
+    if (s.windows[windowId]?.incognito) {
+      const own = [...(next.privateCleanedTabs[windowId] ?? []), ...entries].slice(-MAX_CLEANED);
+      set({ ...next, privateCleanedTabs: { ...next.privateCleanedTabs, [windowId]: own } });
+    } else {
+      set({ ...next, cleanedTabs: [...next.cleanedTabs, ...entries].slice(-MAX_CLEANED) });
+    }
     return ids.length;
   },
 
-  restoreCleaned(entryId) {
+  restoreCleaned(entryId, fromWindowId) {
     const s = get();
-    const entries = s.cleanedTabs.filter((c) => !entryId || c.id === entryId);
+    const privateId = fromWindowId && s.windows[fromWindowId]?.incognito
+      ? fromWindowId
+      : Object.keys(s.privateCleanedTabs).find((id) => !!entryId && s.privateCleanedTabs[id]!.some((c) => c.id === entryId));
+    const list = privateId ? (s.privateCleanedTabs[privateId] ?? []) : s.cleanedTabs;
+    const entries = list.filter((c) => !entryId || c.id === entryId);
     if (!entries.length) return;
-    let next: BrowserState = { ...s, cleanedTabs: s.cleanedTabs.filter((c) => !entries.includes(c)) };
+    const left = list.filter((c) => !entries.includes(c));
+    let next: BrowserState = privateId
+      ? { ...s, privateCleanedTabs: { ...s.privateCleanedTabs, [privateId]: left } }
+      : { ...s, cleanedTabs: left };
     for (const e of entries) {
-      const windowId = restoreTarget(next, e.windowId);
-      if (!windowId) continue;
+      // A private tab only ever goes back to its own private window.
+      const windowId = privateId ? (next.windows[privateId]?.incognito ? privateId : undefined) : restoreTarget(next, e.windowId);
+      if (!windowId || (isIncognitoProfile(e.tab.profileId) && e.windowId !== windowId)) continue;
       const [restored, [id]] = restoreSnapshots(next, windowId, [{ tab: e.tab, index: windowId === e.windowId ? e.index : undefined }]);
       next = restored;
       const g = e.group && next.groups[e.group.id];

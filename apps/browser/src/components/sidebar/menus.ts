@@ -3,7 +3,7 @@ import { closeTab, moveTabToProfile, moveTabToWindow, switchToTab, toggleMute } 
 import { folderChildren } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";
 import { bookmarkProfileId, isIncognitoProfile, plural, tabLabel, viewTabIds, windowTitle } from "../../store/model";
-import { awayFromPin, groupLabel, groupOf, keptDeletedGroups, selectedTabIds } from "../../store/organize";
+import { awayFromPin, cleanedTabsFor, groupLabel, groupOf, keptDeletedGroups, selectedTabIds } from "../../store/organize";
 import { splitOf } from "../../store/splits";
 import type { GroupColor, Tab } from "../../store/types";
 import {
@@ -293,7 +293,8 @@ export async function openOverflowMenu(windowId: string) {
     .sort((a, b) => b.at - a.at)
     .slice(0, 15)
     .map(({ at: _, ...item }) => item);
-  const cleaned = [...s.cleanedTabs].reverse().slice(0, 20);
+  const allCleaned = cleanedTabsFor(s, windowId);
+  const cleaned = [...allCleaned].reverse().slice(0, 20);
   const deleted = keptDeletedGroups(s.deletedGroups)
     .reverse()
     .map((c) => ({ id: `restore:${c.id}`, title: `${c.group.name} (${plural(c.tabs.length, "Tab")})`, symbol: "trash" }));
@@ -320,7 +321,7 @@ export async function openOverflowMenu(windowId: string) {
         ? [
             ...cleaned.map((c) => ({ id: `cleaned:${c.id}`, title: c.tab.customTitle || c.tab.title || tabLabel(c.tab) })),
             sep,
-            { id: "restoreAll", title: `Restore ${plural(s.cleanedTabs.length, "Tab")}` },
+            { id: "restoreAll", title: `Restore ${plural(allCleaned.length, "Tab")}` },
           ]
         : [{ id: "none", title: "Empty", enabled: false }],
     },
@@ -337,8 +338,8 @@ export async function openOverflowMenu(windowId: string) {
   else if (choice.startsWith("tab:")) switchToTab(choice.slice(4));
   else if (openSyncedTab(choice, windowId, w.profileId)) return;
   else if (choice.startsWith("restore:")) s.restoreClosed(choice.slice(8), windowId);
-  else if (choice.startsWith("cleaned:")) s.restoreCleaned(choice.slice(8));
-  else if (choice === "restoreAll") s.restoreCleaned();
+  else if (choice.startsWith("cleaned:")) s.restoreCleaned(choice.slice(8), windowId);
+  else if (choice === "restoreAll") s.restoreCleaned(undefined, windowId);
   else if (choice === "clean") s.cleanUpTabs(windowId);
   else if (choice === "daily") s.updateSettings({ cleanUpInactiveTabsAfterHours: daily ? null : 24 });
   else if (choice === "mute") muteAll(windowId, !muted);

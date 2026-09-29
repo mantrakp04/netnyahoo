@@ -1,10 +1,10 @@
-import { deleteProfileData } from "@netnyahoo/cef";
+import { listExtensions } from "@netnyahoo/cef";
 import { confirm, focusWindow, prompt } from "@netnyahoo/shell";
 import { pageToProfile } from "../components/layout/profilePager";
 import { profileNames, requestCreateProfile, type CreateProfilePreset } from "../components/profiles/CreateProfile";
 import { useBrowser, type CreateWindowOptions } from "../store/browser";
 import { activeTabId, closesWindow, engineProfile, isIncognitoProfile, resolveWindowId } from "../store/model";
-import { sharingProfiles } from "../store/profiles";
+import { engineIdOf, sharingProfiles } from "../store/profiles";
 import { webviews } from "./webviews";
 import { closeWindowDialog } from "./windowClose";
 
@@ -67,17 +67,25 @@ export async function deleteProfile(profileId: string, windowId?: string) {
     title: `Delete “${profile.name}”?`,
     message: sharing.length
       ? `Its tabs will be closed. Its cookies, passwords, extensions, bookmarks and history stay with ${profileNames(sharing)}, which share them.`
-      : "All data associated with this Profile will be removed. This action cannot be undone.",
+      : `All data associated with this Profile will be removed. This action cannot be undone.${engineIdOf(profile) === "" ? await keptExtensionsNote() : ""}`,
     confirmTitle: "Delete Profile",
     destructive: true,
     windowId,
   });
   if (!confirmed) return;
-  const engine = engineProfile(profileId);
+  // The store queues its engine data for deletion (lib/profileData.ts).
   store().deleteProfile(profileId);
-  // Delete profile data only after its web views close.
-  if (store().profileOrder.some((id) => engineProfile(id) === engine)) return;
-  setTimeout(() => void deleteProfileData(engine), 1500);
+}
+
+// Chrome won't remove the original profile's extensions without asking, so they're only turned off
+// (ProfileData in packages/cef/ios/CefModule.swift); say so.
+async function keptExtensionsNote(): Promise<string> {
+  const names = await listExtensions("").then(
+    (list) => list.filter((e) => e.mayModify).map((e) => e.name),
+    () => null,
+  );
+  if (names && !names.length) return "";
+  return names ? ` Its extensions (${profileNames(names)}) stay installed on this Mac, turned off.` : " Its extensions stay installed on this Mac, turned off.";
 }
 
 export async function moveTabToProfile(tabId: string, target: string) {

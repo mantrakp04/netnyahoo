@@ -47,7 +47,7 @@ export const Cef = requireNativeModule<{
   fetchFavicon(url: string, profile: string, name: string | null): Promise<FaviconImage | null>;
   pruneFavicons(profile: string, keep: string[]): Promise<void>;
   releaseProfile(profile: string): Promise<void>;
-  deleteProfileData(profile: string): Promise<void>;
+  deleteProfileData(profile: string): Promise<{ remaining: string[] }>;
 
   getContentBlocker(): Promise<ContentBlockerState>;
   setContentBlockerEnabled(enabled: boolean): Promise<void>;

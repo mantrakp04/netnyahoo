@@ -6,7 +6,7 @@ import { useBrowser } from "../store/browser";
 import { PageProfileContext, useSettings, useWindowId, useWindowProfileId } from "../store/hooks";
 import { activeTabId } from "../store/model";
 import { downloadsIn } from "../store/ui";
-import { cleanUpCandidates } from "../store/organize";
+import { cleanedTabsFor, cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
 import { listTopGap, SIDEBAR_FOOTER_DOWNLOADS, SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
@@ -303,7 +303,7 @@ function DownloadsButton({ windowId }: { windowId: string }) {
 
 function NewTabRow({ windowId }: { windowId: string }) {
   const theme = useTheme();
-  const cleaned = useBrowser((s) => s.cleanedTabs.length);
+  const cleaned = useBrowser((s) => cleanedTabsFor(s, windowId).length);
   const { hovered, hoverProps } = useHover();
   return (
     <View {...hoverProps} style={{ flexDirection: "row", alignItems: "center" }}>

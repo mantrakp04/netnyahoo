@@ -3,8 +3,8 @@ import { createBookmarksSlice, ensureRoots, type BookmarksSlice } from "./bookma
 import { createGroupsSlice, type GroupsSlice } from "./groups";
 import { createHistorySlice, type HistorySlice } from "./history";
 import { IDLE_LIVE, isIncognitoProfile, pinnedFirst } from "./model";
-import { createOrganizeSlice, keptDeletedGroups, type OrganizeSlice } from "./organize";
-import { createProfilesSlice, DEFAULT_PROFILE, type ProfilesSlice } from "./profiles";
+import { createOrganizeSlice, forgetClosedPrivateWindows, keptDeletedGroups, type OrganizeSlice } from "./organize";
+import { createProfilesSlice, DEFAULT_PROFILE, engineIdOf, type ProfilesSlice } from "./profiles";
 import { createSettingsSlice, DEFAULT_SETTINGS, type SettingsSlice } from "./settings";
 import { createSplitsSlice, sanitizeSplits, type SplitsSlice } from "./splits";
 import { activated, apply, createTabsSlice, type TabsSlice } from "./tabs";
@@ -30,6 +30,7 @@ export type HydrateData = Partial<
     BrowserState,
     | "profiles"
     | "profileOrder"
+    | "orphanedProfileData"
     | "windows"
     | "windowOrder"
     | "tabs"
@@ -116,10 +117,12 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
     for (const id of profileOrder) bookmarks = ensureRoots(bookmarks, id)[0];
     const focused = data.focusedWindowId && windows[data.focusedWindowId] ? data.focusedWindowId : (windowOrder.at(-1) ?? null);
 
+    const engines = new Set(Object.values(profiles).map(engineIdOf));
     let next: BrowserState = {
       ...s,
       profiles,
       profileOrder,
+      orphanedProfileData: (data.orphanedProfileData ?? []).filter((e) => !engines.has(e)),
       settings,
       windows,
       windowOrder,
@@ -132,7 +135,10 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
       parkedPins: Object.fromEntries(Object.entries(data.parkedPins ?? {}).filter(([p]) => profiles[p])),
       closedGroups: data.closedGroups ?? [],
       deletedGroups: keptDeletedGroups(data.deletedGroups ?? []),
-      cleanedTabs: data.cleanedTabs ?? [],
+      // Older builds saved private windows' cleaned tabs; drop them.
+      cleanedTabs: (data.cleanedTabs ?? []).filter((c) => !isIncognitoProfile(c.tab.profileId)),
+      privateCleanedTabs: {},
+      privateSiteMutes: {},
       selection: {},
       history: Object.fromEntries(Object.entries(data.history ?? {}).filter(([p]) => profiles[p])),
       bookmarks,
@@ -145,5 +151,10 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
     set(next);
   },
 })));
+
+useBrowser.subscribe((s, prev) => {
+  const patch = s.windows !== prev.windows && forgetClosedPrivateWindows(s);
+  if (patch) useBrowser.setState(patch);
+});
 
 export type { CreateWindowOptions } from "./windows";

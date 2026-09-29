@@ -9,12 +9,15 @@ import type { Profile, ProfileColor } from "./types";
 export type ProfilesSlice = {
   profiles: Record<string, Profile>;
   profileOrder: string[];
+  // Engine profiles whose data a deleted profile left behind, until it's gone (lib/profileData.ts).
+  orphanedProfileData: string[];
 
   createProfile(options: { name: string; color?: ProfileColor; icon?: string | null; shareWith?: string | null }): string;
   updateProfile(id: string, patch: Partial<Pick<Profile, "name" | "color" | "icon">>): void;
   deleteProfile(id: string): void;
   reorderProfiles(ids: string[]): void;
   setDefaultProfile(id: string): void;
+  profileDataDeleted(engineId: string): void;
 };
 
 export const DEFAULT_PROFILE: Profile = { id: DEFAULT_PROFILE_ID, name: "Personal", color: "plum", icon: null, createdAt: 0 };
@@ -27,6 +30,8 @@ export const unusedProfileColor = (profiles: Record<string, Profile>): ProfileCo
 // MARK: Shared data
 
 export const dataIdOf = (profile: Profile) => profile.dataId ?? profile.id;
+// The engine's profile id, as model.engineProfile maps it: the original profile's data is Chrome's default profile.
+export const engineIdOf = (profile: Profile) => (dataIdOf(profile) === DEFAULT_PROFILE_ID ? "" : dataIdOf(profile));
 
 export function dataGroups(s: Pick<BrowserState, "profiles" | "profileOrder">): { dataId: string; profileIds: string[] }[] {
   const groups = new Map<string, string[]>();
@@ -73,6 +78,7 @@ export const createProfilesSlice: StateCreator<BrowserState, [], [], ProfilesSli
   return {
     profiles: { [DEFAULT_PROFILE.id]: DEFAULT_PROFILE },
     profileOrder: [DEFAULT_PROFILE.id],
+    orphanedProfileData: [],
 
     createProfile({ name, color, icon = null, shareWith }) {
       const s = get();
@@ -107,8 +113,16 @@ export const createProfilesSlice: StateCreator<BrowserState, [], [], ProfilesSli
       if (!s.profiles[id] || s.profileOrder.length <= 1) return;
       const profileOrder = s.profileOrder.filter((p) => p !== id);
       const fallback = s.settings.defaultProfileId === id ? profileOrder[0]! : s.settings.defaultProfileId;
-      const settings = s.settings.defaultProfileId === id ? { ...s.settings, defaultProfileId: fallback } : s.settings;
+      const settings = {
+        ...s.settings,
+        defaultProfileId: s.settings.defaultProfileId === id ? fallback : s.settings.defaultProfileId,
+        neverTranslateSites: without(s.settings.neverTranslateSites ?? {}, [id]),
+      };
       const shared = sharingProfiles(s, id).length > 0;
+      const engine = engineIdOf(s.profiles[id]!);
+      const orphaned = profileOrder.some((p) => engineIdOf(s.profiles[p]!) === engine) || s.orphanedProfileData.includes(engine)
+        ? s.orphanedProfileData
+        : [...s.orphanedProfileData, engine];
 
       for (const w of Object.values(s.windows)) {
         if (w.profileId !== id) continue;
@@ -134,11 +148,15 @@ export const createProfilesSlice: StateCreator<BrowserState, [], [], ProfilesSli
         windows,
         profiles: without(s.profiles, [id]),
         profileOrder,
+        orphanedProfileData: orphaned,
         settings,
         history: without(s.history, [id]),
         bookmarks: roots && !shared ? removeBookmarkTree(s.bookmarks, [roots.bar, roots.other], id) : { ...s.bookmarks, roots: without(s.bookmarks.roots, [id]) },
         groups: Object.fromEntries(Object.entries(s.groups).filter(([, g]) => g.profileId !== id)),
         closedTabs: s.closedTabs.filter((c) => c.tab.profileId !== id),
+        cleanedTabs: s.cleanedTabs.filter((c) => c.tab.profileId !== id),
+        closedGroups: s.closedGroups.filter((c) => c.tabs.every((t) => t.profileId !== id)),
+        deletedGroups: s.deletedGroups.filter((c) => c.tabs.every((t) => t.profileId !== id)),
         closedWindows: s.closedWindows
           .map((c) => ({ ...c, tabs: c.tabs.filter((t) => t.profileId !== id) }))
           .filter((c) => c.tabs.length > 0),
@@ -158,6 +176,10 @@ export const createProfilesSlice: StateCreator<BrowserState, [], [], ProfilesSli
 
     setDefaultProfile(id) {
       set((s) => (s.profiles[id] ? { settings: { ...s.settings, defaultProfileId: id } } : {}));
+    },
+
+    profileDataDeleted(engineId) {
+      set((s) => (s.orphanedProfileData.includes(engineId) ? { orphanedProfileData: s.orphanedProfileData.filter((e) => e !== engineId) } : {}));
     },
   };
 };

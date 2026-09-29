@@ -8,6 +8,7 @@ import { DEFAULT_PROFILE } from "../store/profiles";
 import { DEFAULT_SETTINGS } from "../store/settings";
 import type { Bookmarks, BrowserWindow, ClosedTab, HistoryEntry, Tab } from "../store/types";
 import { flushFavicons, startFavicons } from "./favicons";
+import { startProfileDataCleanup } from "./profileData";
 
 const SAVE_DELAY_MS = 800;
 const VERSION = 2;
@@ -15,6 +16,7 @@ const VERSION = 2;
 type Doc = { name: string; sources: (s: BrowserState) => unknown[]; serialize: (s: BrowserState) => unknown };
 
 const persistedTab = ({ navigation: _n, adoptId: _a, ...t }: Tab) => t;
+const publicTab = (t: { profileId: string }) => !isIncognitoProfile(t.profileId);
 
 const DOCS: Doc[] = [
   { name: "history.json", sources: (s) => [s.history], serialize: (s) => ({ version: VERSION, history: s.history }) },
@@ -32,7 +34,7 @@ const DOCS: Doc[] = [
 // Save history and bookmarks before replacing the v1 file.
   {
     name: "session.json",
-    sources: (s) => [s.profiles, s.profileOrder, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.parkedPins, s.settings, s.ui.focusedWindowId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
+    sources: (s) => [s.profiles, s.profileOrder, s.orphanedProfileData, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.parkedPins, s.settings, s.ui.focusedWindowId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
     serialize: (s) => {
       const windows = Object.values(s.windows).filter((w) => !w.incognito);
       const kept = new Set(windows.map((w) => w.id));
@@ -40,6 +42,7 @@ const DOCS: Doc[] = [
         version: VERSION,
         profiles: s.profiles,
         profileOrder: s.profileOrder,
+        orphanedProfileData: s.orphanedProfileData,
         settings: s.settings,
         windows,
         windowOrder: s.windowOrder.filter((id) => kept.has(id)),
@@ -47,12 +50,13 @@ const DOCS: Doc[] = [
         tabs: Object.values(s.tabs).filter((t) => kept.has(t.windowId)).map(persistedTab),
         groups: Object.values(s.groups).filter((g) => kept.has(g.windowId)),
         splits: Object.values(s.splits).filter((v) => kept.has(v.windowId)),
-        closedTabs: s.closedTabs.filter((c) => !isIncognitoProfile(c.tab.profileId)),
-        closedWindows: s.closedWindows,
-        parkedPins: s.parkedPins,
-        closedGroups: s.closedGroups,
-        deletedGroups: s.deletedGroups,
-        cleanedTabs: s.cleanedTabs,
+        // The store keeps private windows out of these lists; filter again so nothing private is ever written.
+        closedTabs: s.closedTabs.filter((c) => publicTab(c.tab)),
+        closedWindows: s.closedWindows.filter((c) => c.tabs.every(publicTab)),
+        parkedPins: Object.fromEntries(Object.entries(s.parkedPins).filter(([profileId]) => publicTab({ profileId }))),
+        closedGroups: s.closedGroups.filter((c) => c.tabs.every(publicTab)),
+        deletedGroups: s.deletedGroups.filter((c) => c.tabs.every(publicTab)),
+        cleanedTabs: s.cleanedTabs.filter((c) => publicTab(c.tab)),
       };
     },
   },
@@ -82,6 +86,7 @@ type SessionV2 = {
   version: 2;
   profiles: HydrateData["profiles"];
   profileOrder: string[];
+  orphanedProfileData?: string[];
   settings: HydrateData["settings"];
   windows: BrowserWindow[];
   windowOrder: string[];
@@ -174,6 +179,7 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
   const data: HydrateData = {
     profiles: session.profiles,
     profileOrder: session.profileOrder,
+    orphanedProfileData: session.orphanedProfileData ?? [],
     settings: session.settings,
     windows: byId(session.windows),
     windowOrder: session.windowOrder,
@@ -274,12 +280,14 @@ export function startPersistence() {
   check(useBrowser.getState(), true);
   if (migrated) save();
   const stopFavicons = startFavicons();
+  const stopProfileData = startProfileDataCleanup();
   const stopSession = useBrowser.subscribe((s, prev) => {
     check(s);
     if (s.windows !== prev.windows) forgetClosedIncognito(s, prev);
   });
   return () => {
     stopFavicons();
+    stopProfileData();
     stopSession();
   };
 }
