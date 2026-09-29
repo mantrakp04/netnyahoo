@@ -1,6 +1,6 @@
 import { WindowBackdrop } from "@netnyahoo/shaders";
-import { setTrafficLights, Surface } from "@netnyahoo/shell";
-import { useEffect, useRef, useState } from "react";
+import { Surface } from "@netnyahoo/shell";
+import { useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
 import { CommandPanel } from "./components/CommandPanel";
 import { ContentCard } from "./components/ContentCard";
@@ -16,8 +16,7 @@ import { CreateProfileHost } from "./components/profiles/CreateProfile";
 import { useFullscreenTab } from "./components/layout/pageState";
 import { ProfileSwipe, ProfileTint } from "./components/layout/ProfileSwipe";
 import { TOP_STRIP_HEIGHT, TopStripPeek, TopTabStrip } from "./components/layout/TopTabStrip";
-import { GLASS_LIGHTS, useGlassSidebar, useTabLayout } from "./components/layout/windowLayout";
-import { SidebarGlass } from "./components/sidebar/Glass";
+import { useTabLayout } from "./components/layout/windowLayout";
 import { Sidebar } from "./components/Sidebar";
 import { SidebarOverlays } from "./components/sidebar/Overlays";
 import { useSidebarWidth } from "./components/sidebar/tokens";
@@ -56,33 +55,14 @@ function BrowserWindow() {
   const fullscreen = !!useFullscreenTab(useWindowId());
   const showSidebar = sidebarOpen && !topTabs && !fullscreen;
   const showStrip = sidebarOpen && topTabs && !fullscreen;
-  // Settings › Appearance › Sidebar Style "Liquid Glass": the sidebar is glass over the desktop (Dia's
-  // backdrop only behind the page) and the page is flush with the window's edges.
-  const glass = useGlassSidebar() && !fullscreen;
-  const windowId = useWindowId();
-  const sidebarWidth = useSidebarWidth(windowId);
-  // Its header puts the traffic lights at Arc's spot (the page's toolbar keeps Dia's, with the sidebar hidden).
-  const glassLights = glass && showSidebar;
-  useEffect(() => {
-    void setTrafficLights(windowId, glassLights ? [GLASS_LIGHTS.x, GLASS_LIGHTS.y] : null);
-  }, [windowId, glassLights]);
   // The command panel is sized against the window (useWindowDimensions is the key window's).
   const [width, setWidth] = useState(0);
 
   return (
     <View style={{ flex: 1, flexDirection: "row" }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      {/* Its bleed past the window's edges hides the glass's edge shading there. */}
-      {glass && showSidebar ? <SidebarGlass bleed={24} style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: sidebarWidth }} /> : null}
-      <WindowBackdrop
-        vibrancy
-        {...theme.backdrop}
-        colors={theme.windowTint}
-        grainOpacity={theme.grain}
-        style={glass && showSidebar ? { position: "absolute", top: 0, right: 0, bottom: 0, left: sidebarWidth } : StyleSheet.absoluteFill}
-      />
-      {/* While the sidebar pages between profiles, the tint cross-fades between their colours (the glass
-          has none). */}
-      {glass ? null : <ProfileTint />}
+      <WindowBackdrop vibrancy {...theme.backdrop} colors={theme.windowTint} grainOpacity={theme.grain} style={StyleSheet.absoluteFill} />
+      {/* While the sidebar pages between profiles, the tint cross-fades between their colours. */}
+      <ProfileTint />
       {showSidebar && (
         <ProfileSwipe>
           <Sidebar />
@@ -92,17 +72,15 @@ function BrowserWindow() {
         style={
           fullscreen
             ? { flex: 1 }
-            : glass
-              ? { flex: 1, flexDirection: "row" }
-              : {
-                  flex: 1,
-                  // An extension's side panel sits beside the page (components/extensions/SidePanel).
-                  flexDirection: "row",
-                  paddingTop: showStrip ? TOP_STRIP_HEIGHT : layout.cardTop,
-                  paddingRight: layout.cardInset,
-                  paddingBottom: layout.cardInset,
-                  paddingLeft: showSidebar ? 0 : layout.cardInset,
-                }
+            : {
+                flex: 1,
+                // An extension's side panel sits beside the page (components/extensions/SidePanel).
+                flexDirection: "row",
+                paddingTop: showStrip ? TOP_STRIP_HEIGHT : layout.cardTop,
+                paddingRight: layout.cardInset,
+                paddingBottom: layout.cardInset,
+                paddingLeft: showSidebar ? 0 : layout.cardInset,
+              }
         }
       >
         <ContentCard />
@@ -134,7 +112,6 @@ function BrowserWindow() {
 function SidebarPeek() {
   const theme = useTheme();
   const sidebarWidth = useSidebarWidth(useWindowId());
-  const glass = useGlassSidebar();
   const [visible, setVisible] = useState(false);
   const slide = useRef(new Animated.Value(0)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -169,18 +146,16 @@ function SidebarPeek() {
           }}
         >
           <Surface
-            // Liquid Glass: a floating glass panel over the page.
-            fill={glass ? undefined : hex(theme.windowTint[0])}
-            cornerRadius={glass ? 16 : 12}
-            borderColor={glass ? undefined : hex(theme.panelBorder)}
-            borderWidth={glass ? 0 : 0.5}
+            fill={hex(theme.windowTint[0])}
+            cornerRadius={12}
+            borderColor={hex(theme.panelBorder)}
+            borderWidth={0.5}
             shadowColor="#000000"
-            shadowOpacity={glass ? theme.panelShadowOpacity * 0.6 : theme.panelShadowOpacity}
+            shadowOpacity={theme.panelShadowOpacity}
             shadowRadius={20}
             shadowOffset={[0, 6]}
             style={{ flex: 1, overflow: "hidden" }}
           >
-            {glass ? <SidebarGlass cornerRadius={16} style={StyleSheet.absoluteFill} /> : null}
             <Sidebar />
           </Surface>
         </Animated.View>

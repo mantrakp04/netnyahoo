@@ -1,14 +1,14 @@
 import { ContextMenuArea, FadeLabel, Symbol, WindowDragRegion } from "@netnyahoo/shell";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { layout, SidebarGlassContext, useTheme } from "../lib/theme";
+import { layout, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
 import { PageProfileContext, useSettings, useWindowId, useWindowProfileId } from "../store/hooks";
 import { activeTabId } from "../store/model";
 import { downloadsIn } from "../store/ui";
 import { cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
-import { listTopGap, SIDEBAR_FOOTER_DOWNLOADS, useAddressBarInSidebar, useGlassSidebar, useSidebarHeader } from "./layout/windowLayout";
+import { listTopGap, SIDEBAR_FOOTER_DOWNLOADS, SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
 import { IconButton, useHover } from "./primitives";
 import { PROFILE_INDICATOR_X, ProfileIndicator } from "./ProfileIndicator";
@@ -17,7 +17,6 @@ import { PROFILE_DOTS_HEIGHT, ProfileDots, useProfileDotsShown } from "./profile
 import { SidebarAddressRow, SidebarHeaderTools } from "./sidebar/AddressBar";
 import { DragGhost } from "./sidebar/DragGhost";
 import { DragProvider, DragScope, useDragController, useDragItem, type Ghost } from "./sidebar/dnd";
-import { GLASS_ROW_GAP, GlassDivider, GlassHeaderTools } from "./sidebar/Glass";
 import { useSidebarEntries } from "./sidebar/entries";
 import { GroupBlock } from "./sidebar/GroupBlock";
 import { LiveFolders } from "./sidebar/LiveFolderBlock";
@@ -39,17 +38,6 @@ const ROW_PITCH = layout.rowHeight + layout.rowGap;
  * ./sidebar (rows, tiles, groups, drag and drop, menus, overlays).
  */
 export function Sidebar() {
-  // Settings › Appearance › Sidebar Style "Liquid Glass" (sidebar/Glass): Arc's header and divider, and
-  // the rows and tiles in the theme's glass variant.
-  const glass = useGlassSidebar();
-  return (
-    <SidebarGlassContext.Provider value={glass}>
-      <SidebarContent glass={glass} />
-    </SidebarGlassContext.Provider>
-  );
-}
-
-function SidebarContent({ glass }: { glass: boolean }) {
   const windowId = useWindowId();
   const width = useSidebarWidth(windowId);
   const current = useWindowProfileId();
@@ -59,23 +47,23 @@ function SidebarContent({ glass }: { glass: boolean }) {
   const [listHeight, setListHeight] = useState(0);
   const scroll = useRef<ScrollView>(null);
   const scrollY = useRef(0);
-  // Dia 1.17: when tabs overflow, the New Tab button pins to the bottom. (Liquid Glass: the divider's +.)
-  const docked = !glass && available > 0 && listHeight + ROW_PITCH + 12 > available;
+  // Dia 1.17: when tabs overflow, the New Tab button pins to the bottom.
+  const docked = available > 0 && listHeight + ROW_PITCH + 12 > available;
   // Media playing in a background tab gets a player docked at the bottom (components/media).
   const playerTab = useSidebarPlayerTab(windowId);
   const playerHeight = playerTab ? SIDEBAR_PLAYER_HEIGHT : 0;
   // Settings › Appearance › Address Bar: the header also holds the URL field, and the list starts
   // under it. The field is translucent, so the list doesn't reach under it for the glow.
   const addressBar = useAddressBarInSidebar();
-  const header = useSidebarHeader().height;
+  const header = addressBar ? SIDEBAR_HEADER_WITH_FIELD : layout.sidebarHeader;
   const glowRoom = addressBar ? 0 : GLOW_ROOM;
   // Dia's Downloads button is there only while the window lists downloads (in progress or done);
   // clearing the list hides it again.
   const hasDownloads = useBrowser((s) => downloadsIn(s, windowId).length > 0);
   // Dia's footer with the space switcher: a dot per profile. With the address bar in the sidebar
-  // (or Arc's header, Liquid Glass) it also holds Downloads at its leading end, where Arc keeps it.
+  // it also holds Downloads at its leading end, where Arc keeps it.
   const dots = useProfileDotsShown();
-  const footerDownloads = (addressBar || glass) && hasDownloads;
+  const footerDownloads = addressBar && hasDownloads;
   const footer = dots || footerDownloads ? PROFILE_DOTS_HEIGHT : 0;
 
   useRevealTabs(windowId, scroll, scrollY, glowRoom);
@@ -111,7 +99,6 @@ function SidebarContent({ glass }: { glass: boolean }) {
                 current={page.id === current}
                 resting={!!page.resting}
                 docked={docked}
-                glass={glass}
                 glowRoom={glowRoom}
                 ghost={ghost}
                 // The pages beside the window's only draw the rows that fit.
@@ -155,14 +142,7 @@ function SidebarContent({ glass }: { glass: boolean }) {
           {/* Traffic lights sit in this header (positioned natively); the rest drags the window. */}
           <View style={{ height: header }}>
             <WindowDragRegion style={StyleSheet.absoluteFill} />
-            {glass ? (
-              // Liquid Glass: Arc's header, back / forward / Copy URL beside the traffic lights (the URL
-              // field under them if it's in the sidebar). The profile shows in the footer's dots.
-              <>
-                <GlassHeaderTools />
-                {addressBar ? <SidebarAddressRow /> : null}
-              </>
-            ) : addressBar ? (
+            {addressBar ? (
               // Arc's header: the sidebar toggle and back / forward / reload, the URL field under them.
               // The profile name gives way (the footer's dots switch profiles).
               <>
@@ -197,8 +177,6 @@ type PageProps = {
   /** Mounted ahead of a swipe, not shown (layout/profilePager). */
   resting: boolean;
   docked: boolean;
-  /** Liquid Glass: Arc's divider (with + and Clear) instead of the New Tab row. */
-  glass: boolean;
   /** Room above the list's first row for the selected row's glow. */
   glowRoom: number;
   ghost: Ghost | null;
@@ -210,18 +188,16 @@ type PageProps = {
 };
 
 /** A profile's pinned tiles, groups, live folders and tabs: the scrolling part of the sidebar. */
-function SidebarPage({ profileId, slot, width, current, resting, docked, glass, glowRoom, ghost, rows, onListHeight, onScrollView, onScrollY }: PageProps) {
+function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoom, ghost, rows, onListHeight, onScrollView, onScrollY }: PageProps) {
   const windowId = useWindowId();
-  const { tiles, pinnedRows, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
-  const rowGap = glass ? GLASS_ROW_GAP : layout.rowGap;
-  const topGap = listTopGap(useAddressBarInSidebar());
-  const pinnedSection = pinnedRows.length + pinnedGroups.length > 0;
+  const { tiles, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
   const list = rows === undefined ? all : all.slice(0, rows);
+  const topGap = listTopGap(useAddressBarInSidebar());
   const newTabsAtTop = useSettings((s) => s.newTabPosition === "top");
   const innerWidth = width - layout.sidebarInset * 2;
   const translateX = usePageOffset(windowId, slot, width);
   // Docking follows the window's page; one beside it keeps its New Tab row inline.
-  const inlineNewTab = !glass && (!current || !docked);
+  const inlineNewTab = !current || !docked;
   const measured = useRef(0);
   useEffect(() => {
     if (current && measured.current) onListHeight(measured.current);
@@ -253,31 +229,12 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glass, 
                   style={{ paddingBottom: inlineNewTab ? 0 : 8 }}
                 >
                   <PinnedGrid tabs={tiles} innerWidth={innerWidth} dragging={current && !!ghost} />
-                  {glass ? (
-                    // Liquid Glass: Arc's pinned tabs, rows over the pinned groups (its folders). The reference's
-                    // first row is centred 28 pt under the tiles.
-                    <View
-                      ref={(v) => {
-                        controller?.regions.set("pinnedRows", v);
-                      }}
-                      style={{ marginTop: tiles.length || (current && ghost) ? 11 : topGap, gap: rowGap }}
-                    >
-                      {pinnedRows.map((id) => (
-                        <TabRowItem key={id} tabId={id} section="pinnedRows" />
-                      ))}
-                      {pinnedRows.length ? <Tail id="tail:pinnedRows" section="pinnedRows" /> : null}
-                    </View>
-                  ) : null}
                   <View
                     ref={(v) => {
                       controller?.regions.set("pinnedGroups", v);
                     }}
                     // The tiles' 6 pt spacing (Dia's dock layout) down to the first row.
-                    style={{
-                      // Liquid Glass: on the pinned rows' 39 pt pitch (a folder's box is a point taller than a row's).
-                      marginTop: glass ? (pinnedRows.length ? rowGap - 1 : 0) : tiles.length || (current && ghost) ? 6 : topGap,
-                      gap: rowGap,
-                    }}
+                    style={{ marginTop: tiles.length || (current && ghost) ? 6 : topGap, gap: layout.rowGap }}
                   >
                     {pinnedGroups.map((id) => (
                       <GroupBlock key={id} groupId={id} section="pinnedGroups" />
@@ -286,18 +243,11 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glass, 
                   </View>
                   {/* Live folders (src/live) sit between the pinned groups and the tabs; they aren't drop targets. */}
                   <LiveFolders windowId={windowId} spaced={pinnedGroups.length > 0} />
-                  {/* The reference's divider line: 27.8 pt under the last pinned row's centre and 28.3 pt over the
-                      first of today's. */}
-                  {glass ? (
-                    <View style={{ marginTop: pinnedSection ? -0.5 : 0, marginBottom: 1 }}>
-                      <GlassDivider />
-                    </View>
-                  ) : null}
                   <View
                     ref={(v) => {
                       controller?.regions.set("list", v);
                     }}
-                    style={{ marginTop: pinnedGroups.length && !glass ? 7 : 0, gap: rowGap }}
+                    style={{ marginTop: pinnedGroups.length ? 7 : 0, gap: layout.rowGap }}
                   >
                     {newTabsAtTop && inlineNewTab ? <NewTabRow windowId={windowId} /> : null}
                     {list.map((entry) => (
@@ -334,7 +284,7 @@ function ListEntry({ entry }: { entry: string }) {
 }
 
 /** Marks the end of a section for drops ("after the last one"). */
-function Tail({ id, section }: { id: string; section: "list" | "pinnedRows" | "pinnedGroups" }) {
+function Tail({ id, section }: { id: string; section: "list" | "pinnedGroups" }) {
   const { wrapper } = useDragItem(id, { kind: "tail", tabIds: [], section });
   return <Animated.View ref={wrapper.ref} style={wrapper.style} />;
 }

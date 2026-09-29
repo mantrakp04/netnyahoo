@@ -14,8 +14,6 @@ import type { BrowserWindow, ClosedGroup, ClosedTab, Tab, TabGroup } from "./typ
 export type TabPlacement = {
   /** Pinned tiles, or the list. */
   pinned: boolean;
-  /** Pinned as rows (the Liquid Glass sidebar's pinned tabs), not Top Apps tiles. */
-  row?: boolean;
   /** Insert before this tab (window order); omitted/null = end of the section, or of `groupId`. */
   beforeId?: string | null;
   /** Join this group (list only); omitted/null = out of any group. */
@@ -37,8 +35,7 @@ export type OrganizeSlice = {
   setSelection(windowId: string, ids: string[]): void;
   /** Drag-and-drop / Move: pins or unpins, reorders and (un)groups tabs of one window. */
   placeTabs(ids: string[], placement: TabPlacement): void;
-  /** `row`: pinned as rows (the Liquid Glass sidebar's pinned tabs), not Top Apps tiles. */
-  pinTabs(ids: string[], pinned: boolean, row?: boolean): void;
+  pinTabs(ids: string[], pinned: boolean): void;
   /** ⌘↩ / Back to Pinned URL / Reset Pinned Tab. */
   returnToPinnedUrl(tabId: string): void;
   /** Replace Pin with Current Page (no `url`) / Edit Pinned Page… */
@@ -58,13 +55,8 @@ export type OrganizeSlice = {
 
   /** ⌥⌘K: closes duplicate and unused tabs into Recently Cleaned. Returns how many. */
   cleanUpTabs(windowId: string, options?: { inactiveForMs?: number }): number;
-  /**
-   * Arc's Clear (the Liquid Glass sidebar's divider): closes the window's unpinned tabs (pinned tabs
-   * and pinned groups stay) into Recently Cleaned. Returns the entries, for Undo.
-   */
-  clearTabs(windowId: string): string[];
-  /** Restores one cleaned tab (and selects it), the given ones, or all of them. */
-  restoreCleaned(entryId?: string | string[]): void;
+  /** Restores one cleaned tab, or all of them. */
+  restoreCleaned(entryId?: string): void;
   /** New Tab pages you've moved away from (Dia clears them when you switch apps or lock the screen). */
   closeAbandonedNewTabs(): void;
 };
@@ -297,12 +289,6 @@ export function restoringGroup(s: BrowserState, entry: ClosedGroup, requested?: 
 }
 
 /** Tabs Clean Up Tabs would close in a window: duplicates, and untouched tabs outside groups. */
-/** What Clear closes: the window's tabs that aren't pinned or in a pinned group. */
-export function clearableTabs(s: BrowserState, windowId: string): string[] {
-  const pinnedGroup = new Set(Object.values(s.groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
-  return viewTabIds(s, windowId).filter((id) => !s.tabs[id]!.pinned && !pinnedGroup.has(id));
-}
-
 export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveForMs = CLEAN_UP_AFTER_MS, now = Date.now()): string[] {
   const view = viewTabIds(s, windowId);
   const active = activeTabId(s, windowId);
@@ -371,14 +357,9 @@ export function placing(s: BrowserState, ids: string[], p: TabPlacement): Browse
   const movingSet = new Set(moving);
 
   const tabs = { ...s.tabs };
-  const row = p.pinned && !!p.row;
   for (const id of moving) {
     const t = tabs[id]!;
     if (t.pinned !== p.pinned) tabs[id] = { ...t, pinned: p.pinned, pinnedUrl: p.pinned ? t.url || null : null };
-    if (!!tabs[id]!.pinnedRow !== row) {
-      const { pinnedRow: _, ...rest } = tabs[id]!;
-      tabs[id] = row ? { ...rest, pinnedRow: true } : rest;
-    }
   }
   const rest = w.tabIds.filter((id) => !movingSet.has(id));
   let at: number;
@@ -423,7 +404,7 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     set((s) => placing(s, ids, placement));
   },
 
-  pinTabs(ids, pinned, row) {
+  pinTabs(ids, pinned) {
     const s = get();
     const first = s.tabs[ids[0] ?? ""];
     const w = first && s.windows[first.windowId];
@@ -431,7 +412,7 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     // Unpinned tabs go to the top of the list (below pinned groups), like Dia.
     const pinnedGroupMembers = new Set(Object.values(s.groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
     const beforeId = pinned ? null : w.tabIds.find((id) => !s.tabs[id]?.pinned && !pinnedGroupMembers.has(id) && !ids.includes(id));
-    set(placing(s, ids, { pinned, row, beforeId }));
+    set(placing(s, ids, { pinned, beforeId }));
   },
 
   returnToPinnedUrl(tabId) {
@@ -564,20 +545,9 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     return ids.length;
   },
 
-  clearTabs(windowId) {
-    const s = get();
-    const ids = clearableTabs(s, windowId);
-    if (!ids.length) return [];
-    const entries = closedEntries(s, ids);
-    const next = closeQuietly(s, ids);
-    set({ ...next, cleanedTabs: [...next.cleanedTabs, ...entries].slice(-MAX_CLEANED) });
-    return entries.map((e) => e.id);
-  },
-
   restoreCleaned(entryId) {
     const s = get();
-    const wanted = entryId === undefined ? null : new Set([entryId].flat());
-    const entries = s.cleanedTabs.filter((c) => !wanted || wanted.has(c.id));
+    const entries = s.cleanedTabs.filter((c) => !entryId || c.id === entryId);
     if (!entries.length) return;
     let next: BrowserState = { ...s, cleanedTabs: s.cleanedTabs.filter((c) => !entries.includes(c)) };
     for (const e of entries) {
@@ -592,7 +562,7 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
         const window = { ...w, tabIds: placeBlock(w.tabIds, w.tabIds.filter((t) => members.includes(t))) };
         next = { ...next, windows: { ...next.windows, [windowId]: window }, groups: syncGroupOrder({ ...next.groups, [g.id]: { ...g, tabIds: members } }, window) };
       }
-      if (id && typeof entryId === "string") next = apply(next, activated(next, id));
+      if (id && entryId) next = apply(next, activated(next, id));
     }
     set(next);
   },

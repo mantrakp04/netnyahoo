@@ -102,10 +102,6 @@ public class ShellModule: Module {
     AsyncFunction("setWindowTitle") { (id: String, title: String) in
       WindowManager.shared.setTitle(id: id, title: title)
     }.runOnQueue(.main)
-    /// [x, y]: the close button's centre, window points from the top left; nil: Dia's spot.
-    AsyncFunction("setTrafficLights") { (id: String, center: [Double]?) in
-      WindowManager.shared.setTrafficLights(id: id, center: center)
-    }.runOnQueue(.main)
     AsyncFunction("windowIds") { () -> [String] in Array(WindowManager.shared.windows.keys) }.runOnQueue(.main)
     AsyncFunction("keyWindowId") { () -> String? in WindowManager.shared.keyWindowId }.runOnQueue(.main)
 

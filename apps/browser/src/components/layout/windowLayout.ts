@@ -25,21 +25,6 @@ export function useAddressBarInSidebar(): boolean {
 }
 
 /**
- * Settings › Appearance › Sidebar Style "Liquid Glass" (Arc's look): the sidebar is Liquid Glass over
- * the desktop, the page sits flush beside it, and the sidebar's header and divider are Arc's. It's a
- * sidebar style: with tabs along the top the window keeps Dia's look.
- */
-export function glassSidebar(s: BrowserState, windowId: string): boolean {
-  const w = s.windows[windowId];
-  return !!w && s.settings.sidebarStyle === "glass" && (w.tabLayout ?? s.settings.tabLayout) === "sidebar";
-}
-
-export function useGlassSidebar(): boolean {
-  const windowId = useWindowId();
-  return useBrowser((s) => glassSidebar(s, windowId));
-}
-
-/**
  * The sidebar's URL field. Arc puts its top 21.5 pt under the traffic lights' centre (ours are at
  * 26.75, Dia's), so 48; it's as tall as a Dia tab row. The dropdown (CommandPanel) opens from its top-left.
  */
@@ -59,29 +44,6 @@ export function listTopGap(addressBar: boolean): number {
 
 /** The sidebar header with the URL field in it: the list starts under the field. */
 export const SIDEBAR_HEADER_WITH_FIELD = SIDEBAR_FIELD.top + SIDEBAR_FIELD.height;
-
-/**
- * Liquid Glass: the traffic lights' centre in the reference (Arc's spot: 17.5 pt in, 17.8 down; Dia's
- * is 26.75 both ways), set natively per window (shell setTrafficLights). The header's buttons share
- * its line.
- */
-export const GLASS_LIGHTS = { x: 17.5, y: 17.8 } as const;
-/** Liquid Glass: the reference's header, 8 pt (the tiles' margin) over its tiles' top, 42 pt down. */
-const GLASS_HEADER = 34;
-
-/**
- * The sidebar's header: its height (the list starts under it) and, with the URL field in it, the
- * field's top, 21.25 pt under the traffic lights' centre in either style.
- */
-export function sidebarHeader(glass: boolean, addressBar: boolean): { height: number; fieldTop: number } {
-  if (!glass) return { height: addressBar ? SIDEBAR_HEADER_WITH_FIELD : layout.sidebarHeader, fieldTop: SIDEBAR_FIELD.top };
-  const fieldTop = SIDEBAR_FIELD.top - 26.75 + GLASS_LIGHTS.y;
-  return { height: addressBar ? fieldTop + SIDEBAR_FIELD.height : GLASS_HEADER, fieldTop };
-}
-
-export function useSidebarHeader(): { height: number; fieldTop: number } {
-  return sidebarHeader(useGlassSidebar(), useAddressBarInSidebar());
-}
 
 /**
  * Where the focused pane's URL field is, in window coordinates, so the command

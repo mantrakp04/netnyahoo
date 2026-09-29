@@ -79,7 +79,6 @@ export const snapshotTab = (t: Tab): TabSnapshot => ({
   customTitle: t.customTitle,
   customIcon: t.customIcon,
   pinnedUrl: t.pinnedUrl,
-  ...(t.pinnedRow ? { pinnedRow: true as const } : {}),
   profileId: t.profileId,
 });
 

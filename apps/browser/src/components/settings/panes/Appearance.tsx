@@ -1,4 +1,4 @@
-import { appIcons, currentAppIcon, isLiquidGlass, setAppearance, setAppIcon, Symbol, type AppIcon } from "@netnyahoo/shell";
+import { appIcons, currentAppIcon, setAppearance, setAppIcon, Symbol, type AppIcon } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
@@ -27,95 +27,9 @@ export function AppearancePane() {
           <ModeChoice key={m.value} mode={m.value} title={m.title} description={m.description} selected={appearance === m.value} onPress={() => choose(m.value)} />
         ))}
       </View>
-      <SidebarStylePicker />
       <AddressBarPicker />
       <AppIconPicker />
     </View>
-  );
-}
-
-/** The sidebar's material: Dia's tinted window, or Arc's layout on Liquid Glass (components/sidebar/Glass). */
-function SidebarStylePicker() {
-  const style = useBrowser((s) => s.settings.sidebarStyle);
-  const topTabs = useBrowser((s) => s.settings.tabLayout === "top");
-  const glass = isLiquidGlass();
-  const choose = (value: Settings["sidebarStyle"]) => useBrowser.getState().updateSettings({ sidebarStyle: value });
-  return (
-    <>
-      <SectionHeader
-        title="Sidebar Style"
-        description={[
-          "Liquid Glass puts the sidebar on glass over your desktop, with Arc’s header and divider, and the page edge to edge.",
-          glass ? null : "It needs macOS 26; on this Mac the sidebar uses the system’s sidebar material.",
-          topTabs ? "With tabs across the top of the window, the window keeps Dia’s look." : null,
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      />
-      <View style={{ flexDirection: "row", gap: 14 }}>
-        <SidebarStyleChoice value="dia" title="Dia" selected={style !== "glass"} onPress={() => choose("dia")} />
-        <SidebarStyleChoice value="glass" title={glass ? "Liquid Glass" : "Liquid Glass (macOS 26)"} selected={style === "glass"} onPress={() => choose("glass")} />
-      </View>
-    </>
-  );
-}
-
-/** A miniature window: Dia's tinted sidebar beside an inset page, or a glass sidebar beside a flush one. */
-function SidebarStyleChoice({ value, title, selected, onPress }: { value: Settings["sidebarStyle"]; title: string; selected: boolean; onPress: () => void }) {
-  const theme = useTheme();
-  const colors = useFormColors();
-  const glass = value === "glass";
-  const row = theme.dark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)";
-  const tile = glass ? (theme.dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)") : row;
-  const page = theme.dark ? "#1A1618" : "#FFFFFF";
-  return (
-    <Pressable onPress={onPress} style={{ flex: 1, alignItems: "center", gap: 7 }}>
-      <View
-        style={{
-          width: "100%",
-          height: 84,
-          borderRadius: 9,
-          overflow: "hidden",
-          flexDirection: "row",
-          borderWidth: selected ? 2.5 : 1,
-          borderColor: selected ? colors.accent : colors.groupBorder,
-          backgroundColor: glass ? (theme.dark ? "#3A3C42" : "#D3D6DB") : theme.dark ? "#2B2226" : "#EDE6EA",
-        }}
-      >
-        <View style={{ width: "30%", padding: 5, gap: 3 }}>
-          <View style={{ flexDirection: "row", gap: 2, marginBottom: 2 }}>
-            {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
-              <View key={c} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: c }} />
-            ))}
-          </View>
-          <View style={{ flexDirection: "row", gap: 2 }}>
-            {[0, 1, 2].map((i) => (
-              <View
-                key={i}
-                style={{
-                  flex: 1,
-                  height: 8,
-                  borderRadius: 2.5,
-                  backgroundColor: glass && i === 0 ? (theme.dark ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.55)") : tile,
-                  borderWidth: glass && i === 0 ? 0.5 : 0,
-                  borderColor: theme.dark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.12)",
-                }}
-              />
-            ))}
-          </View>
-          {[0, 1].map((i) => (
-            <View key={i} style={{ height: 4, borderRadius: 2, backgroundColor: row }} />
-          ))}
-          {glass ? <View style={{ height: 1, marginVertical: 1, backgroundColor: row }} /> : null}
-          <View style={{ height: 4, borderRadius: 2, backgroundColor: row }} />
-        </View>
-        <View style={{ flex: 1, backgroundColor: page, ...(glass ? null : { margin: 5, marginLeft: 0, borderRadius: 4 }) }} />
-      </View>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-        {selected && <Symbol name="checkmark.circle.fill" size={12} color={colors.accent} style={{ width: 14, height: 14 }} />}
-        <Text style={{ fontSize: 12, color: selected ? theme.textPrimary : theme.textSecondary }}>{title}</Text>
-      </View>
-    </Pressable>
   );
 }
 

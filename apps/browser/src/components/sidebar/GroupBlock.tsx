@@ -1,4 +1,4 @@
-import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
+import { ContextMenuArea, FadeLabel, Surface } from "@netnyahoo/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { hex, layout, useTheme } from "../../lib/theme";
@@ -12,7 +12,6 @@ import { commitRename, endRename, startRename } from "./actions";
 import { useDragItem, useDropInto } from "./dnd";
 import { useGroupEntries } from "./entries";
 import { dismissHover, useRowHover } from "./hover";
-import { GLASS_ROW_GAP } from "./Glass";
 import { openGroupMenu } from "./menus";
 import { registerRow, useSidebarUi } from "./state";
 import { TabIcon } from "./TabIcon";
@@ -29,7 +28,6 @@ const PAD = 2;
 export function GroupBlock({ groupId, section }: { groupId: string; section: "list" | "pinnedGroups" }) {
   const windowId = useWindowId();
   const tokens = useSidebarTokens();
-  const glass = useTheme().glass;
   const collapsed = useBrowser((s) => !!s.groups[groupId]?.collapsed);
   const color = useBrowser((s) => s.groups[groupId]?.color ?? null);
   const tabIds = useBrowser((s) => s.groups[groupId]?.tabIds.join(",") ?? "");
@@ -68,9 +66,8 @@ export function GroupBlock({ groupId, section }: { groupId: string; section: "li
   }, [collapsed]);
 
   const spec = color ? GROUP_COLORS[color] : null;
-  // Liquid Glass: an uncoloured group is Arc's folder, a row on the glass with no container.
-  const fill = spec ? withAlpha(spec.hex, 0.16) : glass ? "transparent" : tokens.groupFill;
-  const stroke = spec ? withAlpha(spec.hex, 0.3) : glass ? "transparent" : tokens.groupStroke;
+  const fill = spec ? withAlpha(spec.hex, 0.16) : tokens.groupFill;
+  const stroke = spec ? withAlpha(spec.hex, 0.3) : tokens.groupStroke;
   const membersStyle = moving
     ? { height: open.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }), opacity: open, overflow: "hidden" as const }
     : collapsed
@@ -89,7 +86,7 @@ export function GroupBlock({ groupId, section }: { groupId: string; section: "li
           </View>
         ) : null}
         <Animated.View style={membersStyle} pointerEvents={collapsed ? "none" : "auto"}>
-          <View onLayout={(e) => setContentHeight(e.nativeEvent.layout.height)} style={{ gap: glass ? GLASS_ROW_GAP : layout.rowGap, paddingBottom: PAD }}>
+          <View onLayout={(e) => setContentHeight(e.nativeEvent.layout.height)} style={{ gap: layout.rowGap, paddingBottom: PAD }}>
             {entries.map((entry) =>
               collapsed && entry === shownWhileCollapsed && !moving ? null : <Entry key={entry} entry={entry} section={section} groupId={groupId} />,
             )}
@@ -146,10 +143,7 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
               // Icon and title line up with the member rows' favicons and titles.
               style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9, paddingRight: 6 - PAD }}
             >
-              {theme.glass && !group.icon ? (
-                // Arc's folder glyph.
-                <Symbol name="folder" size={14} weight="medium" color={theme.textTab} style={{ width: 16, height: 16 }} />
-              ) : group.icon || firstTab ? (
+              {group.icon || firstTab ? (
                 <TabIcon url={firstTab?.url ?? ""} favicon={firstTab?.favicon} icon={group.icon ?? firstTab?.customIcon} profileId={firstTab?.profileId} />
               ) : (
                 <View style={{ width: 16 }} />
@@ -164,14 +158,14 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
                 />
               ) : (
                 <Animated.View style={{ flex: 1, height: 18, marginLeft: 5, transform: [{ rotate: countdown.rotate }] }}>
-                  <FadeLabel text={label} fontSize={13} weight={theme.glass ? "semibold" : "medium"} color={theme.glass ? theme.textTab : tokens.groupTitle} style={{ flex: 1, height: 18 }} />
+                  <FadeLabel text={label} fontSize={13} weight="medium" color={tokens.groupTitle} style={{ flex: 1, height: 18 }} />
                 </Animated.View>
               )}
               {hovered && !renaming ? (
                 <IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => useBrowser.getState().closeGroup(groupId)} tooltip="Close Group" />
               ) : countdown.label && !renaming ? (
                 <MeetingTimeLabel label={countdown.label} urgent={countdown.urgent} />
-              ) : collapsed && !renaming && !theme.glass ? (
+              ) : collapsed && !renaming ? (
                 <View style={{ minWidth: 20, height: 18, borderRadius: 9, paddingHorizontal: 6, backgroundColor: tokens.countPill, alignItems: "center", justifyContent: "center", marginRight: 2 }}>
                   <Text style={{ fontSize: 11, fontWeight: "600", color: theme.textTab, fontVariant: ["tabular-nums"] }}>{count}</Text>
                 </View>

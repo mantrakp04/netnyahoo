@@ -3,7 +3,7 @@ import { closeTab, moveTabToProfile, moveTabToWindow, switchToTab, toggleMute } 
 import { folderChildren } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";
 import { bookmarkProfileId, isIncognitoProfile, plural, tabLabel, viewTabIds, windowTitle } from "../../store/model";
-import { awayFromPin, clearableTabs, groupLabel, groupOf, keptDeletedGroups, selectedTabIds } from "../../store/organize";
+import { awayFromPin, groupLabel, groupOf, keptDeletedGroups, selectedTabIds } from "../../store/organize";
 import { splitOf } from "../../store/splits";
 import type { GroupColor, Tab } from "../../store/types";
 import {
@@ -21,7 +21,6 @@ import { isCalendarUrl } from "../../live/meetings";
 import { bookmarkTab } from "../bookmarks/actions";
 import { calendarMenuItem, newLiveFolderMenuItem, runCalendarMenu, runNewLiveFolder } from "./liveMenus";
 import { openSyncedTab, syncedDevicesMenuItem } from "../../sync/menu";
-import { glassSidebar } from "../layout/windowLayout";
 import { setSidebarUi } from "./state";
 import { GROUP_COLORS, nearestGroupColor } from "./tokens";
 
@@ -92,13 +91,6 @@ export async function openTabMenu(windowId: string, tab: Tab) {
     { id: "profile:new", title: "New Profile…" },
   ];
   const groups = moveToGroupItems(windowId, group?.id);
-  // The Liquid Glass sidebar pins rows (Arc's pinned tabs) and keeps the tiles for Top Apps.
-  const glass = glassSidebar(s, windowId);
-  const topApps: MenuItem[] = !glass
-    ? []
-    : tab.pinned && !tab.pinnedRow
-      ? [{ id: "pinRow", title: "Move to Pinned Tabs", symbol: "list.bullet" }]
-      : [{ id: "topApps", title: tab.pinned ? "Move to Top Apps" : "Add to Top Apps", symbol: "square.grid.2x2" }];
 
   const choice = await showMenu([
     ...(tab.pinned
@@ -117,7 +109,6 @@ export async function openTabMenu(windowId: string, tab: Tab) {
     ...(tab.customIcon ? [{ id: "resetIcon", title: "Reset Icon", symbol: "arrow.counterclockwise" }] : []),
     sep,
     { id: "pin", title: tab.pinned ? "Unpin" : "Pin", symbol: tab.pinned ? "pin.slash" : "pin" },
-    ...topApps,
     { id: "duplicate", title: "Duplicate", symbol: "plus.square.on.square" },
     ...(tab.pinned
       ? []
@@ -154,8 +145,6 @@ export async function openTabMenu(windowId: string, tab: Tab) {
   else if (choice === "icon") void openIconPicker(windowId, t);
   else if (choice === "resetIcon") s.updateTab(tab.id, { customIcon: null });
   else if (choice === "pin") s.togglePin(tab.id);
-  else if (choice === "topApps") s.placeTabs([tab.id], { pinned: true });
-  else if (choice === "pinRow") s.placeTabs([tab.id], { pinned: true, row: true });
   else if (choice === "duplicate") s.duplicateTab(tab.id);
   else if (choice === "ungroupTab") s.removeTabsFromGroup([tab.id]);
   else if (choice === "newGroup") newGroupWithSelection(windowId, [tab.id]);
@@ -200,7 +189,7 @@ async function openMultiMenu(windowId: string, ids: string[]) {
     { id: "close", title: `Close ${n} Tabs`, symbol: "xmark", ...hint("w", "command") },
   ]);
   if (!choice) return;
-  if (choice === "pin") s.pinTabs(ids, !allPinned, glassSidebar(s, windowId));
+  if (choice === "pin") s.pinTabs(ids, !allPinned);
   else if (choice === "duplicate") ids.forEach((id) => store().duplicateTab(id));
   else if (choice === "newGroup") newGroupWithSelection(windowId, ids);
   else if (choice.startsWith("group:")) s.placeTabs(ids, { pinned: false, groupId: choice.slice(6) });
@@ -299,7 +288,8 @@ export async function openSidebarMenu(windowId: string) {
 /** ⇧⌘K: every regular tab of the window's profile (pinned tabs and pinned groups stay). */
 export function closeAllTabs(windowId: string) {
   const s = store();
-  s.closeTabs(clearableTabs(s, windowId));
+  const pinnedGroup = new Set(Object.values(s.groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
+  s.closeTabs(viewTabIds(s, windowId).filter((id) => !s.tabs[id]!.pinned && !pinnedGroup.has(id)));
 }
 
 /** The chevron at the bottom of the sidebar: open tabs, recently closed / cleaned, clean up. */

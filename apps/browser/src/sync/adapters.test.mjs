@@ -267,6 +267,26 @@ test("pinned tabs and pinned groups: tiles arrive unloaded, in order, and unpinn
   assert.equal(a.with(() => Object.values(S().tabs).some((t) => t.url === "https://cal.example/")), false);
 });
 
+test("0.2.7's Liquid Glass leftovers: tabs pinned as rows show and sync as tiles; its setting is ignored", async () => {
+  const { sidebarEntries } = await import("../components/sidebar/entries.ts");
+  const folder = new Folder();
+  const a = new Device("devA", folder);
+  const b = new Device("devB", folder);
+  // Stored by 0.2.7: a tab pinned as a row (tab.pinnedRow) and Sidebar Style "Liquid Glass".
+  const w = a.with(() => {
+    const w = S().createWindow({ url: "https://mail.example/" });
+    const row = S().newTab(w, { url: "https://row.example/" });
+    S().pinTabs([row], true);
+    useBrowser.setState((s) => ({ tabs: { ...s.tabs, [row]: { ...s.tabs[row], pinnedRow: true } }, settings: { ...s.settings, sidebarStyle: "glass" } }));
+    return w;
+  });
+  const tiles = (d, window) => d.with(() => sidebarEntries(S(), window ?? S().windowOrder[0]).tiles.map((id) => S().tabs[id].pinnedUrl));
+  assert.deepEqual(tiles(a, w), ["https://row.example/"]);
+  b.with(() => S().createWindow({ url: "https://b-home.example/" }));
+  await syncAll([a, b]);
+  assert.deepEqual(tiles(b), ["https://row.example/"]);
+});
+
 test("open tabs: each device publishes its own tabs record only", async () => {
   const folder = new Folder();
   const a = new Device("devA", folder);

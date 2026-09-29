@@ -1,22 +1,20 @@
 import { useShallow } from "zustand/react/shallow";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { viewTabIds } from "../../store/model";
-import { glassSidebar } from "../layout/windowLayout";
 
 /**
- * What the sidebar shows, in order: pinned tiles, pinned rows (Liquid Glass only: Arc's pinned tabs,
- * the tabs pinned as rows; Dia's style shows every pinned tab as a tile), pinned groups, then the
- * list. `pinnedRows` are tab ids; list and group entries are `t:<tabId>`, `g:<groupId>` or
- * `s:<splitId>` (a split view shows as one row) — strings, so selectors compare shallowly.
+ * What the sidebar shows, in order: pinned tiles, pinned groups, then the list.
+ * List and group entries are `t:<tabId>`, `g:<groupId>` or `s:<splitId>` (a
+ * split view shows as one row) — strings, so selectors compare shallowly.
  */
-export type SidebarEntries = { tiles: string[]; pinnedRows: string[]; pinnedGroups: string[]; list: string[] };
+export type SidebarEntries = { tiles: string[]; pinnedGroups: string[]; list: string[] };
 
 const memo = new Map<string, { inputs: unknown[]; result: SidebarEntries }>();
 
 /** `profileId`: another profile's page (a profile swipe draws it beside the window's). */
 export function sidebarEntries(s: BrowserState, windowId: string, profileId?: string): SidebarEntries {
   // Selectors run on every store change (progress events too); recompute only when the inputs do.
-  const inputs = [s.tabs, s.windows, s.groups, s.splits, s.settings.sidebarStyle, s.settings.tabLayout];
+  const inputs = [s.tabs, s.windows, s.groups, s.splits];
   const key = profileId ? `${windowId}|${profileId}` : windowId;
   const cached = memo.get(key);
   if (cached && cached.inputs.every((v, i) => v === inputs[i])) return cached.result;
@@ -27,9 +25,7 @@ export function sidebarEntries(s: BrowserState, windowId: string, profileId?: st
 
 function computeEntries(s: BrowserState, windowId: string, profileId?: string): SidebarEntries {
   const tiles: string[] = [];
-  const pinnedRows: string[] = [];
   const pinnedGroups: string[] = [];
-  const rows = glassSidebar(s, windowId);
   const list: string[] = [];
   const groupOf = new Map<string, string>();
   for (const g of Object.values(s.groups)) if (g.windowId === windowId) g.tabIds.forEach((id) => groupOf.set(id, g.id));
@@ -39,7 +35,7 @@ function computeEntries(s: BrowserState, windowId: string, profileId?: string): 
     // Opened from a live folder: the folder shows it (LiveFolderBlock).
     if (tab.liveItem && !tab.pinned) continue;
     if (tab.pinned) {
-      (rows && tab.pinnedRow ? pinnedRows : tiles).push(id);
+      tiles.push(id);
       continue;
     }
     const groupId = groupOf.get(id);
@@ -49,7 +45,7 @@ function computeEntries(s: BrowserState, windowId: string, profileId?: string): 
     if (groupId && s.groups[groupId]!.pinned) pinnedGroups.push(groupId);
     else list.push(entry);
   }
-  return { tiles, pinnedRows, pinnedGroups, list };
+  return { tiles, pinnedGroups, list };
 }
 
 /** A group's rows: tabs, and its splits as one row each. */
@@ -74,10 +70,9 @@ function splitEntry(s: BrowserState, tabId: string): string {
 
 export function useSidebarEntries(windowId: string, profileId?: string): SidebarEntries {
   const tiles = useBrowser(useShallow((s) => sidebarEntries(s, windowId, profileId).tiles));
-  const pinnedRows = useBrowser(useShallow((s) => sidebarEntries(s, windowId, profileId).pinnedRows));
   const pinnedGroups = useBrowser(useShallow((s) => sidebarEntries(s, windowId, profileId).pinnedGroups));
   const list = useBrowser(useShallow((s) => sidebarEntries(s, windowId, profileId).list));
-  return { tiles, pinnedRows, pinnedGroups, list };
+  return { tiles, pinnedGroups, list };
 }
 
 export const useGroupEntries = (groupId: string) => useBrowser(useShallow((s) => groupEntries(s, groupId)));

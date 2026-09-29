@@ -11,7 +11,6 @@ import { awayFromPin } from "../../store/organize";
 import { NextMeetingBadge } from "../live/NextMeetingBadge";
 import { clickTab, startRename } from "./actions";
 import { useDragController, useDragItem } from "./dnd";
-import { GLASS_TILE_HEIGHT } from "./Glass";
 import { dismissHover, useRowHover } from "./hover";
 import { openTabMenu } from "./menus";
 import { registerRow } from "./state";
@@ -92,7 +91,6 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
   }, [away]);
   if (!tab) return null;
   const radius = 10;
-  const height = theme.glass ? GLASS_TILE_HEIGHT : layout.pinnedHeight;
 
   return (
     <Animated.View ref={wrapper.ref} style={wrapper.style} {...handle}>
@@ -116,7 +114,7 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
               }}
             >
               {({ pressed }) =>
-                active && tileTheme && !theme.glass ? (
+                active && tileTheme ? (
                   // Selected, themed by its icon (lib/tileTheme): the icon's colours in the fill and ring.
                   <DockSelection
                     image={tileTheme.image}
@@ -127,7 +125,7 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
                     cornerRadius={radius}
                     strokeWidth={SELECTION_STROKE}
                     dark={theme.dark}
-                    style={{ width, height, alignItems: "center", justifyContent: "center" }}
+                    style={{ width, height: layout.pinnedHeight, alignItems: "center", justifyContent: "center" }}
                   >
                     <View>
                       {tileTheme.theme.kind === "template" ? (
@@ -141,24 +139,21 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
                   </DockSelection>
                 ) : active ? (
                   // Selected, no icon theme: black rim (SelectedPrimary) → white fill (SelectedSecondary) → top bevel (TabOutline).
-                  // Liquid Glass: the reference's raised glass tile, the same layers in its colours over a soft drop shadow.
                   <Surface
                     fill={hex(theme.pinnedSelectedRim)}
                     cornerRadius={radius}
-                    shadowColor={theme.dark && !theme.glass ? "#FFFFFF" : "#000000"}
-                    shadowOpacity={theme.glass ? (theme.dark ? 0.35 : 0.14) : theme.dark ? 0.15 : 0.12}
-                    shadowRadius={theme.glass ? 4 : 1.5}
-                    shadowOffset={[0, theme.glass ? 1.5 : 0.5]}
-                    style={{ width, height, padding: 1 }}
+                    shadowColor={theme.dark ? "#FFFFFF" : "#000000"}
+                    shadowOpacity={theme.dark ? 0.15 : 0.12}
+                    shadowRadius={1.5}
+                    shadowOffset={[0, 0.5]}
+                    style={{ width, height: layout.pinnedHeight, padding: 1 }}
                   >
                     <View
                       style={{
                         flex: 1,
                         borderRadius: radius - 1,
                         backgroundColor: theme.pinnedSelectedFill,
-                        // Liquid Glass: the bubble's light edge all round.
                         borderTopWidth: 1,
-                        borderWidth: theme.glass ? 1 : undefined,
                         borderColor: theme.pinnedSelectedOutline,
                         alignItems: "center",
                         justifyContent: "center",
@@ -174,7 +169,7 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
                   <View
                     style={{
                       width,
-                      height,
+                      height: layout.pinnedHeight,
                       borderRadius: radius,
                       borderWidth: selected ? 1 : 0.5,
                       borderColor: selected ? tokens.dragBorder : theme.pinnedRestingStroke,

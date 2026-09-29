@@ -219,12 +219,6 @@ final class WindowManager: NSObject, NSWindowDelegate {
     window.title = title
   }
 
-  /// The Liquid Glass sidebar's traffic lights (Arc's spot), or Dia's with nil.
-  func setTrafficLights(id: String, center: [Double]?) {
-    guard let window = windows[id] else { return }
-    ChromeWindows.setTrafficLights(center.flatMap { $0.count == 2 ? NSPoint(x: $0[0], y: $0[1]) : nil }, in: window)
-  }
-
   // MARK: NSWindowDelegate
 
   /// ⇧⌘W and the close button (`performClose:`): with "Warn before closing a window" on, JS

@@ -10,7 +10,7 @@ import { ToolbarExtensions, useToolbarExtensionsWidth } from "../extensions/Tool
 import { useHistoryAvailability } from "../layout/history";
 import { toolbarPalette, type ToolbarPalette } from "../layout/toolbarColors";
 import { ToolbarButton } from "../layout/controls";
-import { addressBarInSidebar, setUrlAnchor, SIDEBAR_FIELD, useSidebarHeader } from "../layout/windowLayout";
+import { addressBarInSidebar, setUrlAnchor, SIDEBAR_FIELD } from "../layout/windowLayout";
 import { focusHeroBar } from "../omnibox/barState";
 import { useHover } from "../primitives";
 import { HistoryButton, ReloadButton, UrlField } from "../Toolbar";
@@ -82,7 +82,6 @@ export function SidebarAddressRow() {
   const windowId = useWindowId();
   const tab = useActiveTab();
   const field = useRef<View>(null);
-  const { fieldTop } = useSidebarHeader();
   // The dropdown (field click, ⌘L) opens from the field's top-left corner.
   const anchor = () =>
     field.current?.measureInWindow((x, y, width, height) => {
@@ -93,7 +92,7 @@ export function SidebarAddressRow() {
     <View
       ref={field}
       onLayout={anchor}
-      style={{ position: "absolute", left: layout.sidebarInset, right: layout.sidebarInset, top: fieldTop, height: SIDEBAR_FIELD.height }}
+      style={{ position: "absolute", left: layout.sidebarInset, right: layout.sidebarInset, top: SIDEBAR_FIELD.top, height: SIDEBAR_FIELD.height }}
     >
       {tab?.url ? <PageField tab={tab} windowId={windowId} /> : <EmptyField windowId={windowId} />}
     </View>
