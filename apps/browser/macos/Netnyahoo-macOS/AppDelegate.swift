@@ -42,6 +42,18 @@ final class AppDelegate: ExpoAppDelegate {
     ShellApp.shouldTerminate()
   }
 
+  override func applicationWillTerminate(_ notification: Notification) {
+    super.applicationWillTerminate(notification)
+    // exit() comes once every observer of this notification has run (the session is saved before
+    // it, CEF shuts down in it). End the process there, as Chrome does, without C++ static
+    // destructors: React Native's LongLivedObjectCollection releases JS callbacks from the main
+    // thread into a runtime that's no longer valid, which crashed some quits.
+    atexit {
+      fflush(nil)
+      _exit(0)
+    }
+  }
+
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
     ShellApp.reopen(hasVisibleWindows: flag)
   }
