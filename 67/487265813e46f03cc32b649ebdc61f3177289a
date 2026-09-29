@@ -1,0 +1,26 @@
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_a34810bb5e162e 33,50,60,213-215
+  s_9c356f9574d31c::t_a3b1c9d58c80f0 216
+packages/cef/patches/cef-zz-quiet-uninstall.patch
+  s_9c356f9574d31c::t_8c0c99cbee99fd 1-13
+packages/cef/patches/chromium-zz-extensions-page-uninstall.patch
+  s_9c356f9574d31c::t_8c0c99cbee99fd 1-20
+packages/cef/ios/NNExtensions.mm
+  s_9c356f9574d31c::t_7c1924e4541a2e 229-242,276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "67487265813e46f03cc32b649ebdc61f3177289a",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
