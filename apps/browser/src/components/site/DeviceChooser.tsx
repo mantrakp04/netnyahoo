@@ -16,26 +16,16 @@ import { Popover, PromptButton } from "../layout/controls";
 import { tabForBrowser } from "../layout/pageState";
 import { useHover } from "../primitives";
 
-/**
- * Chrome's device chooser, drawn here: a site asked for a Bluetooth device
- * (navigator.bluetooth.requestDevice, or requestLEScan's scanning prompt), a USB,
- * HID or serial device. Chrome's model drives it (engine: CefChromeUIHandler): the
- * options, scanning, the adapter being off or the app lacking macOS Bluetooth access.
- * Hangs under the address like the permission prompt; Cancel / Esc denies.
- */
 const useChoosers = create<{ byTab: Record<string, Chooser> }>()(() => ({ byTab: {} }));
-/** DEV: the open choosers, for lib/devHarness scripts (`globalThis.nnDeviceChoosers`). */
 if (__DEV__) (globalThis as { nnDeviceChoosers?: unknown }).nnDeviceChoosers = { useChoosers, selectDevice, cancelDeviceChooser };
 
 let started = false;
-/** Routes Chrome's choosers to their tabs. Call once. */
 export function startDeviceChoosers() {
   if (started) return;
   started = true;
   onDeviceChooser((chooser) => {
     const tabId = tabForBrowser(chooser.browserId);
     if (!tabId) {
-      // Not one of our tabs (a popup's page): nobody could answer it.
       if (chooser.open) void cancelDeviceChooser(chooser.id);
       return;
     }
@@ -46,7 +36,7 @@ export function startDeviceChoosers() {
       return { byTab };
     });
   });
-  // A closed tab's chooser goes with it (Chrome closes it too).
+  // Chrome closes chooser requests with their tab.
   useBrowser.subscribe((s, prev) => {
     if (s.tabs === prev.tabs) return;
     const { byTab } = useChoosers.getState();
@@ -58,7 +48,6 @@ export function startDeviceChoosers() {
   });
 }
 
-/** Signal strength bars (Chrome shows them for Bluetooth devices). */
 function Signal({ level, color }: { level: number; color: string }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 1.5, height: 11 }}>

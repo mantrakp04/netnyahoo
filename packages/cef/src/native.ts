@@ -7,10 +7,8 @@ import type { SavedPassword } from "./passwords";
 import type { AddressInput, CardInput, SavedAddress, SavedCard } from "./autofill";
 import type { ClearSiteDataResult, SiteSettingType, SiteSettingValue, SiteSettings } from "./siteSettings";
 
-/** Chrome-store calls answer `{ error }` instead of throwing. */
 export type Result<T> = T | { error: string };
 
-/** The value of a Chrome-store call, or `fallback` (logged) when it failed. */
 export function valueOr<T extends object, F>(result: Result<T>, fallback: F): T | F {
   if (result && typeof result === "object" && "error" in result) {
     console.warn(`[cef] ${result.error}`);
@@ -19,7 +17,6 @@ export function valueOr<T extends object, F>(result: Result<T>, fallback: F): T 
   return result as T;
 }
 
-/** The NetnyahooCEF native module (internal; use the typed wrappers). */
 export const Cef = requireNativeModule<{
   addListener(name: "onDownload", listener: (d: Download) => void): EventSubscription;
   addListener(name: "onPermission", listener: (p: PermissionRequest) => void): EventSubscription;
@@ -29,7 +26,6 @@ export const Cef = requireNativeModule<{
 
   engineInfo(): Promise<EngineInfo>;
   chromeWindows(): Promise<ChromeWindowState[]>;
-  /** Synchronous. */
   prepareTransfer(key: string): void;
   devWindow(windowNumber: number, action: string): Promise<string>;
   components(): Promise<EngineComponent[]>;
@@ -69,7 +65,6 @@ export const Cef = requireNativeModule<{
   getZoomLevels(profile: string): Promise<Record<string, number>>;
 
   listPasswords(profile: string): Promise<Result<{ passwords: SavedPassword[] }>>;
-  /** Missing in app builds from before it existed. */
   unlockPasswords(profile: string): Promise<Result<{ unlocked: boolean }>>;
   getPassword(profile: string, origin: string, username: string): Promise<Result<{ password: string | null }>>;
   savePassword(profile: string, origin: string, username: string, password: string): Promise<Result<{ ok: true }>>;

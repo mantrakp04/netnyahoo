@@ -68,13 +68,9 @@ test("custom engines: validation and normalisation", () => {
   assert.match(validateEngine({ ...ok, url: "https://x.com/search" }, engines)!, /%s/);
   assert.match(validateEngine({ ...ok, keyword: "W" }, engines)!, /already used/);
   assert.match(validateEngine({ ...ok, keyword: "google.com" }, engines)!, /already used/);
-  // Editing an engine may keep its own keyword.
   assert.equal(validateEngine({ ...ok, keyword: "w" }, engines, "c1"), null);
 });
 
-// Chrome's getSearchEnginesList for a profile with two fixture extensions (one asking to be the
-// default search engine), trimmed to the fields we read; the Bing entry shows a leftover
-// template parameter, the omnibox keyword an extension's chrome.omnibox.
 const CHROME_LIST = {
   defaults: [
     {

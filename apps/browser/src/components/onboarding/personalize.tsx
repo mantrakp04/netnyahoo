@@ -6,10 +6,6 @@ import type { ProfileColor } from "../../store/types";
 import { useHover } from "../primitives";
 import { useOnboardingColors } from "./ui";
 
-/**
- * Dia's Personalization (onboarding's PersonalizationView, and the New Tab page's Personalize):
- * the theme colour of the window's profile and the tab layout, applied as they're picked.
- */
 export const PERSONALIZE_COPY = {
   title: "Make it yours",
   subtitle: "Pick the theme color and layout that feel right for you.",
@@ -32,7 +28,6 @@ export function ThemeColorPicker({ windowId, size = 30 }: { windowId: string; si
   );
 }
 
-/** PersonalizationColorButton: an inner swatch, and an outer ring in its colour once picked. */
 function ColorButton({ color, size, selected, onPress }: { color: ProfileColor; size: number; selected: boolean; onPress: () => void }) {
   const { swatch, name } = PROFILE_COLORS[color];
   const { hovered, hoverProps } = useHover();
@@ -56,7 +51,6 @@ function ColorButton({ color, size, selected, onPress }: { color: ProfileColor; 
                 opacity: t,
               }}
             />
-            {/* Sized rather than scaled: the swatch shrinks inside the ring once picked. */}
             <Animated.View
               style={{
                 width: t.interpolate({ inputRange: [0, 1], outputRange: [size - (hovered ? 6 : 8), size - 12] }),
@@ -86,7 +80,6 @@ export function TabLayoutPicker({ windowId }: { windowId: string }) {
   );
 }
 
-/** PersonalizationTabLayoutButton: a little window drawn in that layout, with a radio button. */
 function LayoutButton({ kind, title, subtitle, selected, onPress }: { kind: "sidebar" | "top"; title: string; subtitle: string; selected: boolean; onPress: () => void }) {
   const colors = useOnboardingColors();
   const { hovered, hoverProps } = useHover();

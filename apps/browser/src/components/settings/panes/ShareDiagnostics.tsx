@@ -5,10 +5,6 @@ import { SHARING_COPY, WHATS_SENT } from "../../../telemetry/copy";
 import { Button, Group, Row, SectionHeader, Sheet, Toggle } from "../controls";
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 
-/**
- * Settings › Privacy & Security › "Share anonymous crash reports and usage stats": off by
- * default, this Mac only. What's Sent lists every field (telemetry/copy.ts).
- */
 export function ShareDiagnosticsSection() {
   const sharing = useTelemetry((s) => s.sharing);
   return (

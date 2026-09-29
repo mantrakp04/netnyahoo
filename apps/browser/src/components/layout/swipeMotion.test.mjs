@@ -1,5 +1,4 @@
-// Swipe gesture motion (Dia's numbers). Run from apps/browser:
-//   node --import ./src/store/test-loader.mjs --test src/components/layout/swipeMotion.test.mjs
+// Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/components/layout/swipeMotion.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const m = await import("./swipeMotion.ts");
@@ -12,7 +11,6 @@ test("rubber band: linear up to the limit, then approaches limit + dimension", (
   const a = m.rubberBand(100, 86, 86);
   const b = m.rubberBand(200, 86, 86);
   assert.ok(a > 86 && b > a && b < 86 + 86);
-  // Apple's formula: (1 − 1/(x·c/d + 1))·d past the limit.
   close(m.rubberBand(186, 86, 86), 86 + (1 - 1 / ((100 * 0.15) / 86 + 1)) * 86);
 });
 
@@ -21,7 +19,6 @@ test("capsule: hidden at rest, 14 pt in at the threshold, whatever its size", ()
   close(m.capsuleOffset(1, m.CAPSULE_SIZE), m.CAPSULE_INSET);
   close(m.capsuleOffset(1, m.CAPSULE_SIZE_CONFIRMED), m.CAPSULE_INSET);
   close(m.capsuleOffset(1, 200), m.CAPSULE_INSET);
-  // Past the threshold it keeps moving, ever slower.
   const d1 = m.capsuleOffset(1.5, 82) - m.capsuleOffset(1, 82);
   const d2 = m.capsuleOffset(2, 82) - m.capsuleOffset(1.5, 82);
   assert.ok(d1 > 0 && d2 > 0 && d2 < d1);
@@ -55,9 +52,7 @@ test("destination list: a row per 75 pt, rubber band past the ends", () => {
 test("profile paging: half speed, rubber band past the ends", () => {
   close(m.pagingPosition(0, 100, "forward", 250, -1, 1), 0.2);
   close(m.pagingPosition(0, 100, "back", 250, -1, 1), -0.2);
-  // Mid-settle starts carry on from where the page is.
   close(m.pagingPosition(0.5, 100, "back", 250, -1, 1), 0.3);
-  // No page before the first: rubber band from the start, 255 pt at most.
   const end = m.pagingPosition(0, 100, "back", 250, 0, 1);
   assert.ok(end < 0 && end > -0.2);
   assert.ok(m.pagingPosition(0, 1e6, "back", 250, 0, 1) > -255 / 250);
@@ -67,12 +62,10 @@ test("profile paging: half speed, rubber band past the ends", () => {
 test("profile paging: the release picks the nearest page, or the way a flick goes", () => {
   assert.equal(m.pagingTarget(0.6, 0, 250, -1, 1, 0), 1);
   assert.equal(m.pagingTarget(0.4, 0, 250, -1, 1, 0), 0);
-  // 5 pt/s either way decides it (Dia's threshold).
   assert.equal(m.pagingTarget(0.2, 5 / 250, 250, -1, 1, 0), 1);
   assert.equal(m.pagingTarget(0.2, 4 / 250, 250, -1, 1, 0), 0);
   assert.equal(m.pagingTarget(0.8, -1, 250, -1, 1, 0), 0);
   assert.equal(m.pagingTarget(-0.3, -1, 250, -1, 1, 0), -1);
-  // Never past the last page, nor more than one page from home.
   assert.equal(m.pagingTarget(0.2, 1, 250, -1, 0, 0), 0);
   assert.equal(m.pagingTarget(1.4, 3, 250, -1, 2, 0), 1);
 });

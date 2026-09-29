@@ -11,14 +11,6 @@ import { pageOf, usePages } from "../layout/pageState";
 import { useMedia, type TabShare } from "./state";
 import { CAPTURE_RED } from "./tokens";
 
-/**
- * Dia's screen-share info bar, above a tab's page while a site shares a tab:
- * - on the shared tab: "Sharing this tab with meet.google.com" and Stop Sharing;
- * - on the profile's other web pages: "Sharing another tab with meet.google.com" and
- *   Share This Tab Instead, which moves the running share to this tab (Chrome's
- *   "share this tab instead": the site keeps its stream, the picture changes).
- * Dismiss hides it on that tab for the rest of the share.
- */
 export const SHARE_BAR_HEIGHT = 38;
 
 const hostOf = (origin: string) => {
@@ -29,7 +21,6 @@ const hostOf = (origin: string) => {
   }
 };
 
-/** The share `tabId` gets a bar for, if any: [sharing tab, its share]. */
 function useShareFor(tabId: string): [string, TabShare] | null {
   const shares = useMedia((m) => m.tabShares);
   const profile = useBrowser((s) => {
@@ -37,7 +28,6 @@ function useShareFor(tabId: string): [string, TabShare] | null {
     return tab && /^https?:|^file:/.test(tab.url) ? engineProfile(tab.profileId) : null;
   });
   const capturing = usePages((p) => Object.keys(shares).filter((id) => p.pages[id]?.mediaAccess?.screen).join(","));
-  // The default profile's engine profile is "".
   if (profile === null) return null;
   for (const capturer of capturing ? capturing.split(",") : []) {
     const share = shares[capturer];
@@ -48,12 +38,10 @@ function useShareFor(tabId: string): [string, TabShare] | null {
   return null;
 }
 
-/** Records the tab a page started sharing from the picker. */
 export function noteTabShare(capturerTabId: string, capturedTabId: string, origin: string) {
   useMedia.setState((m) => ({ tabShares: { ...m.tabShares, [capturerTabId]: { capturedTabId, origin, dismissed: {} } } }));
 }
 
-/** The page stopped capturing: forget its share (the bars go). */
 export function startTabShareCleanup() {
   return usePages.subscribe((p, prev) => {
     if (p.pages === prev.pages) return;

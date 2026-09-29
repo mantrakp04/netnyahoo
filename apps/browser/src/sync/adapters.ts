@@ -9,18 +9,10 @@ import { removeTabs } from "../store/tabs";
 import { DEFAULT_PROFILE_ID, type Settings } from "../store/settings";
 import type { BookmarkNode, HistoryEntry, Profile, Tab, TabGroup } from "../store/types";
 
-/**
- * What syncs, as records the sync core merges (packages/sync). Each adapter turns part of the
- * store into `key → value` and back. Values carry only what's worth syncing (no favicons, no
- * per-Mac state) and must read back exactly as they were applied, or the next cycle would
- * publish the difference again.
- */
-
 const store = () => useBrowser.getState();
 
 // MARK: App scope: settings, profiles, devices
 
-/** The settings that follow the user (not this Mac's window sizes, battery or extensions). */
 export const SYNCED_SETTINGS = [
   "warnBeforeQuitting",
   "warnBeforeClosingWindow",
@@ -48,7 +40,6 @@ export const SYNCED_SETTINGS = [
   "shortcuts",
 ] as const satisfies readonly (keyof Settings)[];
 
-/** `set:<name>`: `{ v: value }` (a setting can be null, and a null record is a deletion). */
 export const settingsAdapter: Adapter = {
   prefix: "set:",
   adoptRemoteOnJoin: true,
@@ -69,7 +60,6 @@ export const settingsAdapter: Adapter = {
 
 export type ProfileRecord = { n: string; c: Profile["color"]; i: string | null; d?: true };
 
-/** `prof:<sync id>`: a synced profile's name, colour and icon. Deleting a profile on one Mac doesn't delete it on others. */
 export function profilesAdapter(links: () => Record<string, { syncId: string }>): Adapter {
   const linked = () => Object.entries(links()).filter(([id]) => store().profiles[id]);
   return {
@@ -96,7 +86,6 @@ export function profilesAdapter(links: () => Record<string, { syncId: string }>)
 
 export type DeviceRecord = { n: string };
 
-/** `dev:<device id>`: this Mac's name, for the devices list and Synced devices' tabs. */
 export function deviceAdapter(deviceId: string, name: () => string, retired = false): Adapter {
   return {
     prefix: "dev:",
@@ -112,7 +101,6 @@ export function deviceAdapter(deviceId: string, name: () => string, retired = fa
 
 type BookmarkValue = { k: "u" | "f"; p: string; t: string; u?: string; a: number; pos: string };
 
-/** `bm:<node id>`: a profile's bookmark tree; parents by id ("bar" and "other" for the roots), order by position. */
 export function bookmarksAdapter(profileId: string): Adapter {
   return {
     prefix: "bm:",
@@ -155,9 +143,6 @@ export function bookmarksAdapter(profileId: string): Adapter {
       const [b, roots] = ensureRoots(s.bookmarks, profileId);
       const values = new Map([...visible].map(([k, v]) => [k.slice(3), v as BookmarkValue]));
       const rootOf = (key: string) => (key === "bar" ? roots.bar : key === "other" ? roots.other : null);
-      // Where each node goes: its parent if that's a synced folder, else Other Bookmarks (its
-      // folder was deleted elsewhere). A cycle (two Macs moved folders into each other) is
-      // broken at the node that closes it, the same way on every Mac.
       const parentOf = new Map<string, string>();
       for (const [id, v] of values) {
         const root = rootOf(v.p);
@@ -180,7 +165,6 @@ export function bookmarksAdapter(profileId: string): Adapter {
         const pz = values.get(z)!.pos;
         return pa < pz ? -1 : pa > pz ? 1 : a < z ? -1 : 1;
       };
-      // Everything under this profile's roots is replaced; other profiles' trees stay.
       const nodes: Record<string, BookmarkNode> = { ...b.nodes };
       const drop = (id: string) => {
         const node = nodes[id];
@@ -205,7 +189,6 @@ export function bookmarksAdapter(profileId: string): Adapter {
   };
 }
 
-/** History syncs for this long; older pages stay on the Mac that has them. */
 export const HISTORY_WINDOW_MS = 90 * 86_400_000;
 const MAX_HISTORY = 5000;
 
@@ -215,7 +198,6 @@ const lastVisitOf = (v: HistoryValue) => Math.max(0, ...v.vt);
 export const historyExpired = (key: string, value: unknown, now: number) =>
   key.startsWith("h:") && lastVisitOf(value as HistoryValue) < now - HISTORY_WINDOW_MS;
 
-/** `h:<url>`: a page's title, visit count and recent visit times, for the last 90 days. */
 export function historyAdapter(profileId: string): Adapter {
   return {
     prefix: "h:",
@@ -252,7 +234,6 @@ export function historyAdapter(profileId: string): Adapter {
 export type DeviceTabs = { n: string; tabs: { u: string; t: string }[] };
 const MAX_DEVICE_TABS = 30;
 
-/** `tabs:<device id>`: this Mac's open tabs in the profile (Synced devices' tabs on the others). */
 export function deviceTabsAdapter(profileId: string, deviceId: string, name: () => string, retired = false): Adapter {
   const key = `tabs:${deviceId}`;
   return {
@@ -272,16 +253,13 @@ export function deviceTabsAdapter(profileId: string, deviceId: string, name: () 
   };
 }
 
-// Pinned tabs and pinned groups (Dia's pinned container): `pin:t:<tab id>` and `pin:g:<group id>`.
 type PinValue = { g: string | null; u: string; t: string | null; i: string | null; ti: string; pos: string };
 type PinGroupValue = { n: string; i: string | null; c: TabGroup["color"]; pos: string };
 
 type Window = BrowserState["windows"][string];
 
-/** Windows in the order they were opened (a stable order to read pinned tabs in). */
 const openWindows = (s: BrowserState) => s.windowOrder.map((id) => s.windows[id]).filter((w): w is Window => !!w && !w.incognito);
 
-/** Where synced pinned tabs are added: the last used window showing the profile, else the last used window. */
 function homeWindow(s: BrowserState, profileId: string): Window | undefined {
   const order = [...s.ui.focusOrder, ...s.windowOrder].map((id) => s.windows[id]).filter((w): w is Window => !!w && !w.incognito);
   return order.find((w) => w.profileId === profileId) ?? order[0];
@@ -313,7 +291,6 @@ export function pinnedAdapter(profileId: string): Adapter {
           }
         }
       }
-      // Parked since their window closed (store/parkedPins): still the profile's pins.
       const park = s.parkedPins[profileId];
       for (const g of park?.groups ?? []) if (!members.has(g.id)) (members.set(g.id, []), groups.push(g));
       for (const p of park?.tabs ?? []) (p.groupId ? members.get(p.groupId) : tiles)?.push(p);
@@ -336,7 +313,6 @@ export function pinnedAdapter(profileId: string): Adapter {
       let s = store();
       const home = homeWindow(s, profileId);
       if (!home) return false;
-      // Parked pins (store/parkedPins) take the changes in a stand-in window, and are parked again after.
       const PARK = `park:${profileId}`;
       if (s.parkedPins[profileId]) {
         const stand: Window = { id: PARK, profileId, incognito: false, tabIds: [], activeTabIds: {}, sidebarOpen: true, frame: null, createdAt: 0 };
@@ -354,7 +330,6 @@ export function pinnedAdapter(profileId: string): Adapter {
       const tileOrder = [...pins.keys()].filter((id) => { const g = pins.get(id)!.g; return !g || !groupValues.has(g); }).sort(byPos(pins));
       const memberOrder = new Map(groupOrder.map((g) => [g, [...pins.keys()].filter((id) => pins.get(id)!.g === g).sort(byPos(pins))]));
 
-      // Deleted elsewhere: tabs go (unpinned instead if one is all its window has left), groups dissolve.
       const goneTabs = [...changed].filter((k) => k.startsWith("pin:t:") && !visible.has(k)).map((k) => k.slice(6)).filter((id) => s.tabs[id]);
       const removable = goneTabs.filter((id) => {
         const w = s.windows[s.tabs[id]!.windowId];
@@ -367,7 +342,6 @@ export function pinnedAdapter(profileId: string): Adapter {
       for (const k of changed) if (k.startsWith("pin:g:") && !visible.has(k)) delete groups[k.slice(6)];
       const windows = { ...s.windows };
 
-      // Groups: update or create (in the window that shows this profile).
       for (const id of groupOrder) {
         const v = groupValues.get(id)!;
         const old = groups[id];
@@ -375,7 +349,6 @@ export function pinnedAdapter(profileId: string): Adapter {
           ? { ...old, name: v.n, icon: v.i, color: v.c, pinned: true }
           : { id, windowId: home.id, profileId, name: v.n, icon: v.i, color: v.c, collapsed: false, pinned: true, tabIds: [], createdAt: Date.now() };
       }
-      // Tabs: update in place, or add as unloaded tiles (they load when selected).
       for (const [id, v] of pins) {
         const group = v.g && groups[v.g] ? groups[v.g]! : null;
         const old = tabs[id];
@@ -403,7 +376,6 @@ export function pinnedAdapter(profileId: string): Adapter {
         tabs[id] = tab;
         windows[windowId] = { ...w, tabIds: [...w.tabIds, id] };
       }
-      // Group membership as synced (a tab is in one group at most).
       const inGroup = new Set([...memberOrder.values()].flat().filter((id) => tabs[id]));
       for (const g of Object.values(groups)) {
         if (g.profileId !== profileId) continue;
@@ -412,8 +384,6 @@ export function pinnedAdapter(profileId: string): Adapter {
       }
       for (const g of Object.values(groups)) if (g.profileId === profileId && !g.tabIds.length) delete groups[g.id];
 
-      // Order: the profile's tiles, then its pinned groups, in synced order, in the slots
-      // they already hold in each window (other profiles' tabs don't move).
       const sequence = [...tileOrder, ...groupOrder.flatMap((g) => memberOrder.get(g) ?? [])];
       const rank = new Map(sequence.map((id, i) => [id, i]));
       for (const w of Object.values(windows)) {
@@ -446,11 +416,7 @@ export function pinnedAdapter(profileId: string): Adapter {
 type PasswordValue = { o: string; u: string; p: string };
 const PASSWORD_READ_INTERVAL = 30_000;
 
-/**
- * `pw:<origin>\n<username>`: saved logins. Read from Chrome's store on disk (no Touch ID each
- * time), written through Chrome's password manager. Removing sync never removes a password;
- * only a password deleted on another Mac is deleted here.
- */
+// Sync passwords through Chrome; disabling sync never deletes local passwords.
 export function passwordsAdapter(
   profileId: string,
   forced: () => boolean,
@@ -490,7 +456,6 @@ export function passwordsAdapter(
       for (const key of changed) {
         const v = visible.get(key) as PasswordValue | undefined;
         const have = local.get(key);
-        // Changed here too, and not read yet (reads are spaced out): this Mac's edit publishes next.
         const known = base(key) as PasswordValue | undefined;
         if (have && known?.p !== have.p) continue;
         const [origin, username] = [key.slice(3, key.indexOf("\n")), key.slice(key.indexOf("\n") + 1)];
@@ -502,8 +467,7 @@ export function passwordsAdapter(
           ok = (await deletePassword(profile(), origin, username)) && ok;
         }
       }
-      // Chrome writes its store on disk a moment after a save: wait for it to show the changes,
-      // so the next read isn't taken for edits (a stale copy would undo them).
+      // Wait for Chrome to write password changes before reading them.
       let settled = false;
       for (let i = 0; i < 20 && !settled; i++) {
         const now = await read();
@@ -516,7 +480,6 @@ export function passwordsAdapter(
   };
 }
 
-/** Chrome's signon realm as our password API names logins ("https://example.com"); null for other kinds. */
 function originOf(login: SavedLogin): string | null {
   const realm = login.origin.replace(/\/$/, "");
   return /^https?:\/\/[^/\s]+$/.test(realm) ? realm : null;

@@ -6,9 +6,6 @@
 
 #import "NNWindowHost.h"
 
-/// Chromium's BridgedContentView with chromium-window-hosted.patch: hit testing and accessibility
-/// ask this view first. Chrome's views cover the whole window, so without it no click would reach
-/// our views and assistive technologies would see only Chrome's hidden ones.
 @protocol NNEmbeddingContentView
 @property(nonatomic, weak) NSView *netnyahooEmbeddedView;
 @end
@@ -24,15 +21,10 @@ bool TakesEmbeddedView(NSView *content) {
 
 BOOL (^gShouldClose)(NSWindow *);
 
-/// Dia 1.50.1's traffic lights (a 2x capture: button centres 24.75, 47.75 and 70.75 pt in, 26.75 pt
-/// down; ours measure the same): buttons 18 pt in from the window's left edge, centred in the 54 pt
-/// titlebar (CEF centres them vertically in GetTitlebarHeight; its frame puts them further in).
 constexpr CGFloat kTrafficLightInsetX = 18;
 
 const void *kFollowedKey = &kFollowedKey;
-/// The close button's centre the app asked for (NSValue, window points from the top left), if any.
 const void *kLightsCenterKey = &kLightsCenterKey;
-/// The buttons' y (in their superview) as CEF put them, while they sit at an asked-for centre.
 const void *kLightsCefYKey = &kLightsCefYKey;
 
 void LayoutTrafficLights(NSWindow *window) {
@@ -41,8 +33,6 @@ void LayoutTrafficLights(NSWindow *window) {
   NSButton *mini = [window standardWindowButton:NSWindowMiniaturizeButton];
   NSButton *zoom = [window standardWindowButton:NSWindowZoomButton];
   if (!close || !mini || !zoom) return;
-  // CefThemeFrame centres the buttons again whenever it lays its titlebar out (showing the window,
-  // resizes, key changes, full screen): put them back each time it moves one.
   if (!objc_getAssociatedObject(close, kFollowedKey)) {
     objc_setAssociatedObject(close, kFollowedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     close.postsFrameChangedNotifications = YES;
@@ -56,16 +46,13 @@ void LayoutTrafficLights(NSWindow *window) {
   NSNumber *cefY = objc_getAssociatedObject(window, kLightsCefYKey);
   CGFloat x, y;
   if (center) {
-    // The asked-for centre, in the buttons' superview (window coordinates start at the bottom left).
     const NSPoint c = [close.superview convertPoint:NSMakePoint(center.pointValue.x, NSHeight(window.frame) - center.pointValue.y)
                                            fromView:nil];
     x = c.x - NSWidth(close.frame) / 2;
     y = c.y - NSHeight(close.frame) / 2;
     if (!cefY) objc_setAssociatedObject(window, kLightsCefYKey, @(NSMinY(close.frame)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   } else {
-    // In window coordinates: CEF's titlebar container sits a little in from the window's edge.
     x = kTrafficLightInsetX - [close.superview convertPoint:NSZeroPoint toView:nil].x;
-    // Back from an asked-for centre: CEF's own height.
     y = cefY ? cefY.doubleValue : NSMinY(close.frame);
     objc_setAssociatedObject(window, kLightsCefYKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   }
@@ -73,8 +60,6 @@ void LayoutTrafficLights(NSWindow *window) {
   for (NSUInteger i = 0; i < buttons.count; i++) [buttons[i] setFrameOrigin:NSMakePoint(x + i * spacing, y)];
 }
 
-/// CefThemeFrame lays the buttons out again on resizes, key changes and full-screen exits (and
-/// LayoutTrafficLights follows the close button's frame).
 void KeepTrafficLightsInset(NSWindow *window) {
   __weak NSWindow *weakWindow = window;
   for (NSNotificationName name in @[
@@ -90,15 +75,12 @@ void KeepTrafficLightsInset(NSWindow *window) {
 
 void (^gSwapped)(NSWindow *, NSWindow *);
 const void *kPendingProfileKey = &kPendingProfileKey;
-/// On a full-screen window while it leaves full screen.
 const void *kExitingFullScreenKey = &kExitingFullScreenKey;
-/// On a window shown over a full-screen one: its collection behaviour before.
 const void *kNestedBehaviorKey = &kNestedBehaviorKey;
 
 void ForwardFullScreenToggles(NSWindow *window);
 void ReturnRootBeforeFullScreenExit(NSWindow *window);
 
-/// An app window's Chrome window, once.
 void ConfigureHostingWindow(NSWindow *window) {
   if (objc_getAssociatedObject(window, kConfiguredKey)) return;
   objc_setAssociatedObject(window, kConfiguredKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -116,7 +98,6 @@ void ConfigureHostingWindow(NSWindow *window) {
   }];
 }
 
-/// BrowserWindow's colour (what a Chrome-hosted window shows before our views paint).
 NSColor *WindowColor() {
   return [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
     const bool dark = [[appearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameDarkAqua, NSAppearanceNameAqua ]]
@@ -125,13 +106,10 @@ NSColor *WindowColor() {
   }];
 }
 
-/// "snapshot": a picture of `window` as it is now, in a borderless window over it (nil if it can't
-/// be taken). CGWindowListCreateImage is looked up at run time: the SDK marks it obsolete.
 NSWindow *CoverWindow(NSWindow *window) {
   using CreateImage = CGImageRef (*)(CGRect, uint32_t, uint32_t, uint32_t);
   static auto create = (CreateImage)dlsym(RTLD_DEFAULT, "CGWindowListCreateImage");
   if (!create) return nil;
-  // kCGWindowListOptionIncludingWindow, kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution
   CGImageRef image = create(CGRectNull, 1 << 3, (uint32_t)window.windowNumber, (1 << 0) | (1 << 3));
   if (!image) return nil;
   NSWindow *cover = [[NSWindow alloc] initWithContentRect:window.frame styleMask:NSWindowStyleMaskBorderless
@@ -153,8 +131,6 @@ NSWindow *CoverWindow(NSWindow *window) {
   return cover;
 }
 
-/// Whether a Chrome window shows its own views. They're opaque (a grey frame and a few buttons), so a
-/// window without our root shows them unless they're hidden.
 void SetChromeViewsShown(NSWindow *window, BOOL shown) {
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
@@ -162,23 +138,16 @@ void SetChromeViewsShown(NSWindow *window, BOOL shown) {
   [CATransaction commit];
 }
 
-/// Our root leaves `from` for `to` (both of one app window), committed.
 void MoveRoot(NSView *root, NSWindow *from, NSWindow *to) {
   objc_setAssociatedObject(from, kRootKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   ((id<NNEmbeddingContentView>)from.contentView).netnyahooEmbeddedView = nil;
-  // In the commit that takes our views out, `from` stops showing anything: ordering it out reaches
-  // the window server a few frames after the commit, and meanwhile it showed Chrome's grey frame
-  // and toolbar buttons over the whole window.
   SetChromeViewsShown(from, NO);
   [NNChromeWindowHost embedRootView:root inWindow:to];
-  // The traffic lights' spot is the app window's: it follows our views.
   objc_setAssociatedObject(to, kLightsCenterKey, objc_getAssociatedObject(from, kLightsCenterKey), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   LayoutTrafficLights(to);
   [CATransaction flush];
 }
 
-/// Moves our views from `from` to `to` (another window of the same app window) and puts `to` on
-/// screen in its place.
 void Swap(NSWindow *from, NSWindow *to) {
   NSView *root = [NNChromeWindowHost rootViewOfWindow:from];
   if (!root || from == to) return;
@@ -187,13 +156,10 @@ void Swap(NSWindow *from, NSWindow *to) {
   to.appearance = from.appearance;
   to.level = from.level;
   to.title = from.title;
-  // A cut: AppKit fades document windows in and out.
   from.animationBehavior = to.animationBehavior = NSWindowAnimationBehaviorNone;
   [to setFrame:from.frame display:NO];
   NSWindow *cover = [strategy isEqualToString:@"snapshot"] ? CoverWindow(from) : nil;
   [to orderWindow:NSWindowBelow relativeTo:from.windowNumber];
-  // Transparent: once our views leave, the window leaving shows nothing (MoveRoot hides its Chrome
-  // views), so the window behind, already showing them, is what's on screen.
   if ([strategy isEqualToString:@"transparent"]) from.backgroundColor = NSColor.clearColor;
   MoveRoot(root, from, to);
   [from orderOut:nil];
@@ -201,7 +167,6 @@ void Swap(NSWindow *from, NSWindow *to) {
   if (key) [to makeKeyWindow];
   nn::host::WindowShown(to);
   if (gSwapped) gSwapped(from, to);
-  // The picture goes once the window under it has drawn a frame or two.
   if (cover)
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
       [cover orderOut:nil];
@@ -209,22 +174,13 @@ void Swap(NSWindow *from, NSWindow *to) {
 }
 
 // MARK: Full screen
-//
-// Full screen gives each NSWindow a Space of its own, so another profile's window can't take the
-// full-screen window's place. While the window is in full screen, another profile's window of it
-// shows over it instead: a full-screen auxiliary child window at the same frame, without traffic
-// lights, our views in it. Its Chrome dialogs and bubbles are its children, so they show on the
-// full-screen Space as they would anywhere. When the window leaves full screen, our views go back
-// to it first, and the usual swap follows.
 
-/// DEV: a window that acts as if in full screen (the "fakeFullScreen:" action).
 const void *kDevFullScreenKey = &kDevFullScreenKey;
 
 bool IsFullScreen(NSWindow *window) {
   return (window.styleMask & NSWindowStyleMaskFullScreen) || objc_getAssociatedObject(window, kDevFullScreenKey);
 }
 
-/// The full-screen window `window` is, or is shown over (nil: neither).
 NSWindow *FullScreenHost(NSWindow *window) {
   if (!window) return nil;
   if (IsFullScreen(window)) return window;
@@ -238,7 +194,6 @@ void SetTrafficLightsHidden(NSWindow *window, BOOL hidden) {
     [window standardWindowButton:b].hidden = hidden;
 }
 
-/// `window` shows over the full-screen `host`, on its Space.
 void Nest(NSWindow *window, NSWindow *host) {
   if (!objc_getAssociatedObject(window, kNestedBehaviorKey))
     objc_setAssociatedObject(window, kNestedBehaviorKey, @(window.collectionBehavior), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -251,7 +206,6 @@ void Nest(NSWindow *window, NSWindow *host) {
   [host addChildWindow:window ordered:NSWindowAbove];
 }
 
-/// `window` no longer shows over a full-screen window.
 void Unnest(NSWindow *window) {
   NSNumber *behavior = objc_getAssociatedObject(window, kNestedBehaviorKey);
   if (!behavior) return;
@@ -264,7 +218,6 @@ void Unnest(NSWindow *window) {
   SetTrafficLightsHidden(window, NO);
 }
 
-/// Swap for a window in full screen (`host`): `to` shows over it (or, being `host`, alone again).
 void FullScreenSwap(NSWindow *from, NSWindow *to, NSWindow *host) {
   NSView *root = [NNChromeWindowHost rootViewOfWindow:from];
   if (!root || from == to) return;
@@ -275,15 +228,12 @@ void FullScreenSwap(NSWindow *from, NSWindow *to, NSWindow *host) {
   if (to != host) Nest(to, host);
   MoveRoot(root, from, to);
   if (from != host) Unnest(from);
-  // The full-screen window shows nothing under the one over it (its corners are square, the
-  // other's round).
   host.backgroundColor = to == host ? WindowColor() : NSColor.clearColor;
   if (key) [to makeKeyWindow];
   nn::host::WindowShown(to);
   if (gSwapped) gSwapped(from, to);
 }
 
-/// Swaps the full-screen `window` to `profile`'s window once it has left full screen.
 void SwapAfterFullScreen(NSWindow *window, NSString *profile) {
   const bool waiting = objc_getAssociatedObject(window, kPendingProfileKey) != nil;
   objc_setAssociatedObject(window, kPendingProfileKey, profile ?: @"", OBJC_ASSOCIATION_COPY_NONATOMIC);
@@ -299,9 +249,6 @@ void SwapAfterFullScreen(NSWindow *window, NSString *profile) {
   }];
 }
 
-/// `window` starts leaving full screen: our views come back to it from the window shown over it
-/// (that one would stay screen-sized through the animation), and that profile's window takes over
-/// once it's out.
 void ReturnRootBeforeFullScreenExit(NSWindow *window) {
   if (!window) return;
   objc_setAssociatedObject(window, kExitingFullScreenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -314,8 +261,6 @@ void ReturnRootBeforeFullScreenExit(NSWindow *window) {
   }
 }
 
-/// Toggle Full Screen (the View menu, ⌃⌘F) goes to the key window: shown over a full-screen
-/// window, that's the full-screen one's to toggle.
 void ForwardFullScreenToggles(NSWindow *window) {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
@@ -330,7 +275,7 @@ void ForwardFullScreenToggles(NSWindow *window) {
   });
 }
 
-}  // namespace
+}
 
 NSView *NNWindowRootView(NSWindow *window) {
   return [NNChromeWindowHost rootViewOfWindow:window] ?: window.contentView;
@@ -341,7 +286,6 @@ NSView *NNWindowRootView(NSWindow *window) {
 + (NSWindow *)makeWindowForProfile:(NSString *)profile {
   NSWindow *window = nn::host::MakeChromeWindow(profile ?: @"");
   if (!window) return nil;
-  // An engine without the content view hook can't take our views.
   if (!TakesEmbeddedView(window.contentView)) {
     [window close];
     return nil;
@@ -365,8 +309,6 @@ NSView *NNWindowRootView(NSWindow *window) {
 + (void)showProfile:(NSString *)profile inWindow:(NSWindow *)window {
   if (![self rootViewOfWindow:window]) return;
   NSWindow *host = FullScreenHost(window);
-  // Leaving full screen: the swap waits until it's out (meanwhile the profile's pages show in the
-  // window).
   if (host && objc_getAssociatedObject(host, kExitingFullScreenKey)) {
     if (host == window) SwapAfterFullScreen(host, profile);
     return;
@@ -418,9 +360,6 @@ NSView *NNWindowRootView(NSWindow *window) {
 }
 
 + (void)embedRootView:(NSView *)root inWindow:(NSWindow *)window {
-  // Inside Chrome's BridgedContentView, over its views: Chromium keeps the widget's geometry
-  // through that view, and looks for the page under it (RenderWidgetHostViewCocoa's
-  // -shouldIgnoreMouseEvent:, the occlusion checker).
   NSView *content = window.contentView;
   if (!TakesEmbeddedView(content)) return;
   root.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -449,14 +388,13 @@ NSWindow *FullScreenWindow(NSWindow *window) {
   return FullScreenHost(window);
 }
 
-}  // namespace nn::host
+}
 
 // MARK: - DEV input
 
 namespace {
 
 NSString *Describe(NSView *view) {
-  // A window's first responder may be the window itself.
   if (view && ![view isKindOfClass:NSView.class]) return NSStringFromClass([(id)view class]);
   NSMutableArray *chain = [NSMutableArray array];
   for (NSView *v = view; v && chain.count < 6; v = v.superview) [chain addObject:NSStringFromClass(v.class)];
@@ -480,7 +418,7 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
                          isARepeat:NO keyCode:code];
 }
 
-}  // namespace
+}
 
 @implementation NNChromeWindowHost (Dev)
 
@@ -497,10 +435,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     NSPoint p = WindowPoint(window, spec);
     NSView *target = [frameView hitTest:p];
     NSString *hit = Describe(target);
-    // Through the window (React Native's touch handler is a gesture recognizer NSWindow drives),
-    // but straight to a page's view: a test instance is never active, and NSWindow turns an
-    // inactive window's first click on it into activation only. After this call returns: a
-    // context menu runs a nested loop until it closes.
     bool page = [target isKindOfClass:NSClassFromString(@"RenderWidgetHostViewCocoa")];
     dispatch_async(dispatch_get_main_queue(), ^{
       if (!page) {
@@ -517,10 +451,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     return hit;
   }
   if ([action hasPrefix:@"drag:"]) {
-    // "drag:x1,y1;x2,y2;…": a left-button drag through the window (mouse down at the first
-    // point, dragged along the rest in 12 steps per leg 16 ms apart, up at the last), as for
-    // "click:". Points may lie outside the window: AppKit keeps sending a drag to the window
-    // it started in, which is how a tab dragged onto another window reports where it is.
     NSMutableArray<NSValue *> *points = [NSMutableArray array];
     for (NSString *spec in [[action substringFromIndex:5] componentsSeparatedByString:@";"])
       [points addObject:[NSValue valueWithPoint:WindowPoint(window, spec)]];
@@ -533,7 +463,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     }
     [events addObject:Mouse(window, NSEventTypeLeftMouseUp, points.lastObject.pointValue)];
     NSString *hit = Describe([frameView hitTest:points[0].pointValue]);
-    // A hold before moving, as a hand does (RN's responder takes the drag on its first move).
     for (NSUInteger i = 0; i < events.count; i++)
       dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((i ? 150 + i * 16 : 0) * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
         [window sendEvent:events[i]];
@@ -550,9 +479,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     return Describe((NSView *)window.firstResponder);
   }
   if ([action hasPrefix:@"keys:"]) {
-    // "keys:<flags>:<char>[:<keyCode>]", in NSApplication's order for a key window (a test
-    // instance never has one): the window's key equivalents (for Chrome's window, its command
-    // dispatcher), then the main menu, then the first responder.
     NSArray<NSString *> *parts = [action componentsSeparatedByString:@":"];
     NSEventModifierFlags flags = (NSEventModifierFlags)parts[1].longLongValue;
     unsigned short code = parts.count > 3 ? (unsigned short)parts[3].intValue : 0;
@@ -567,9 +493,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     return [NSString stringWithFormat:@"%@ (first responder %@)", handler, Describe((NSView *)window.firstResponder)];
   }
   if ([action isEqualToString:@"ax"]) {
-    // The window's accessibility tree as assistive technologies walk it (NSAccessibility),
-    // roles and labels, depth-first. For screen-locked test machines, where the AX server
-    // answers nothing.
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
     __block void (^walk)(id, NSUInteger);
     __block __weak void (^weakWalk)(id, NSUInteger);
@@ -591,7 +514,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     return [lines componentsJoinedByString:@"\n"];
   }
   if ([action isEqualToString:@"winfo"]) {
-    // The window as AppKit and the window server see it.
     NSMutableDictionary *info = [NSMutableDictionary dictionary];
     info[@"frame"] = NSStringFromRect(window.frame);
     info[@"contentView"] = [NSString stringWithFormat:@"%@ %@", window.contentView.className, NSStringFromRect(window.contentView.frame)];
@@ -620,7 +542,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
       }
       info[@"sheetText"] = texts;
     }
-    // The window treatment (WindowBackdrop's behind-window vibrancy) as configured.
     NSMutableArray *effects = [NSMutableArray array];
     NSMutableArray *walk = [NSMutableArray arrayWithObject:NNWindowRootView(window) ?: window.contentView];
     while (walk.count) {
@@ -641,17 +562,11 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     return [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
   }
   if ([action hasPrefix:@"swapProbe:"]) {
-    // "swapProbe:<ms>": the naive per-profile window swap (docs/research/chrome-hosted-window.md ›
-    // phase 3 "Profiles: hosted per-profile windows"), for swapcap/swapscan to measure. A second
-    // Chrome window at the same frame is ordered in behind, our root moves into it, the layer
-    // tree commits, the first window orders out; <ms> later it swaps back and the probe window
-    // closes. Both windows show the same root, so any frame unlike the settled state is the seam.
     NSView *root = [NNChromeWindowHost rootViewOfWindow:window];
     NSWindow *probe = nn::host::MakeChromeWindow(@"");
     if (!root || !probe || !TakesEmbeddedView(probe.contentView)) return @"no probe window";
     const double ms = [action substringFromIndex:10].doubleValue;
     probe.appearance = window.appearance;
-    // A cut, not AppKit's fade in/out of document windows.
     const NSWindowAnimationBehavior behavior = window.animationBehavior;
     window.animationBehavior = probe.animationBehavior = NSWindowAnimationBehaviorNone;
     auto swap = ^(NSWindow *from, NSWindow *to) {
@@ -675,18 +590,15 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
   }
   if ([action hasPrefix:@"cef:"]) return nn::host::ChromeWindowAction(window, [action substringFromIndex:4]);
   if ([action hasPrefix:@"ns:"]) {
-    // "ns:out" / "ns:front": AppKit ordering, to compare with CEF's.
     if ([action hasSuffix:@"out"]) [window orderOut:nil];
     else [window orderFront:nil];
     return [NSString stringWithFormat:@"visible=%d", window.visible];
   }
   if ([action isEqualToString:@"performClose"]) {
-    // The close button's path (windowShouldClose → the app's close warning).
     dispatch_async(dispatch_get_main_queue(), ^{ [window performClose:nil]; });
     return @"ok";
   }
   if ([action hasPrefix:@"style:"]) {
-    // "style:<styleMask>" / "shadow:0|1" (DEV experiments on the window server's view of the window).
     window.styleMask = (NSWindowStyleMask)[action substringFromIndex:6].longLongValue;
     return @"ok";
   }
@@ -695,7 +607,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     return @"ok";
   }
   if ([action hasPrefix:@"root:"]) {
-    // "root:hide|show": what the window shows without our views (Chrome's own drawing).
     [NNChromeWindowHost rootViewOfWindow:window].hidden = [action hasSuffix:@"hide"];
     return @"ok";
   }
@@ -705,8 +616,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     return [NSString stringWithFormat:@"opaque=%d", window.opaque];
   }
   if ([action hasPrefix:@"ime:"]) {
-    // "ime:<marked>|<committed>": an input method composing in the first responder through
-    // NSTextInputClient (as the system's IMEs do), then committing.
     NSArray<NSString *> *parts = [[action substringFromIndex:4] componentsSeparatedByString:@"|"];
     id<NSTextInputClient> client = (id<NSTextInputClient>)window.firstResponder;
     if (![(id)client conformsToProtocol:@protocol(NSTextInputClient)]) return @"first responder isn't a text input client";
@@ -718,9 +627,7 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
                                       NSStringFromRange(range), client.hasMarkedText];
   }
   if ([action hasPrefix:@"fakeFullScreen:"]) {
-    // "fakeFullScreen:1|0": our full-screen handling without AppKit's (which a test instance
-    // mustn't run: it opens a Space on the user's screen, and AppKit owns the style bit). 0 posts
-    // will/did-exit around clearing it.
+// Do not change full-screen style bits; AppKit opens a Space.
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     if ([action hasSuffix:@"1"]) {
       objc_setAssociatedObject(window, kDevFullScreenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -732,7 +639,6 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     return [NSString stringWithFormat:@"fullScreen=%d", IsFullScreen(window)];
   }
   if ([action isEqualToString:@"tabviews"]) {
-    // Each shown tab view's subviews (the page, and DevTools docked next to it): class, frame, hidden.
     NSMutableArray *out = [NSMutableArray array];
     Class tabClass = NSClassFromString(@"NNBrowserView");
     NSMutableArray<NSView *> *queue = [NSMutableArray arrayWithObject:window.contentView];

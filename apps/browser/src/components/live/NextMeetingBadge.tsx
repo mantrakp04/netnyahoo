@@ -8,11 +8,6 @@ import { useBrowser } from "../../store/browser";
 import { useSidebarTokens } from "../sidebar/tokens";
 import { useLiveColors } from "./colors";
 
-/**
- * Live Calendar's badge on a pinned calendar tile: minutes to the next meeting
- * within the hour, "Now" during one ("Show Time to Next Meeting"). It springs
- * in and out (Dia's calendar badge animations). Hovering the tile shows the day.
- */
 export function NextMeetingBadge({ tabId }: { tabId: string }) {
   const calendar = useBrowser((s) => {
     const t = s.tabs[tabId];

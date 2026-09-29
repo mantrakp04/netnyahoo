@@ -16,13 +16,8 @@ final class AppDelegate: ExpoAppDelegate {
     reactNativeFactory = factory
     bindReactNativeFactory(factory)
 
-    // Every window hosts its own React root on the one shared bridge, in Chrome's own
-    // window of its profile (BrowserWindow only with stock CEF); JS opens them
-    // (restoring the last session) once the bundle has run.
     WindowHost.makeWindow = { BrowserWindow() }
     WindowHost.makeContentView = { [weak factory] windowId in
-      // Straight to RCTRootViewFactory: Expo's override routes through recreateRootView, which
-      // asserts that no bridge exists yet — but every window after the first shares it.
       (factory?.rootViewFactory as? ExpoReactRootViewFactory)?.superView(
         withModuleName: "main", initialProperties: ["windowId": windowId], launchOptions: nil) ?? NSView()
     }
@@ -35,7 +30,6 @@ final class AppDelegate: ExpoAppDelegate {
     OpenURLInbox.receive(urls)
   }
 
-  // Like Dia (and Chrome), closing the last window leaves the app running.
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -44,10 +38,7 @@ final class AppDelegate: ExpoAppDelegate {
 
   override func applicationWillTerminate(_ notification: Notification) {
     super.applicationWillTerminate(notification)
-    // exit() comes once every observer of this notification has run (the session is saved before
-    // it, CEF shuts down in it). End the process there, as Chrome does, without C++ static
-    // destructors: React Native's LongLivedObjectCollection releases JS callbacks from the main
-    // thread into a runtime that's no longer valid, which crashed some quits.
+    // Exit after observers; C++ static destructors can crash on stale React Native callbacks.
     atexit {
       fflush(nil)
       _exit(0)

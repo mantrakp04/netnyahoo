@@ -9,14 +9,8 @@ import { searchSelection, setPageSelection, usePageSelection, type PageSelection
 
 const HEIGHT = 32;
 const GAP = 6;
-/** Dia waits a beat before offering it, so a click-drag-click doesn't flash it. */
 const SHOW_DELAY = 150;
 
-/**
- * Dia's selected-text popover: a small bar over a mouse selection of page text
- * with Search (the default engine, in a new tab). Ask stays hidden until Chat
- * exists. The page hides it on click, typing and scrolling (page_script.js).
- */
 export function SelectionPopover({ tabId, zoom }: { tabId: string; zoom: number }) {
   const selection = usePageSelection((s) => s[tabId] ?? null);
   const [shown, setShown] = useState<PageSelection | null>(null);
@@ -27,7 +21,6 @@ export function SelectionPopover({ tabId, zoom }: { tabId: string; zoom: number 
     return () => clearTimeout(timer);
   }, [selection]);
   useEffect(() => () => setPageSelection(tabId, null), [tabId]);
-  // Only while there's something to show: the full-size layer sits over the page.
   if (!selection && !shown) return null;
 
   return (
@@ -47,9 +40,7 @@ function Bar({ tabId, selection, zoom, area }: { tabId: string; selection: PageS
   const r = selection.rect;
   const top = r.y * zoom;
   const bottom = (r.y + r.height) * zoom;
-  // Off screen (the page scrolled without telling us, e.g. an inner scroller): nothing to point at.
   if (bottom < 0 || top > area.height) return null;
-  // Above the selection, or under it when there's no room above.
   const above = top - GAP - HEIGHT >= 4;
   const y = above ? top - GAP - HEIGHT : Math.min(bottom + GAP, area.height - HEIGHT - 4);
   const center = (r.x + r.width / 2) * zoom;

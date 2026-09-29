@@ -17,10 +17,8 @@ import { Button, Group, PopUp, Row, SectionHeader, TextField, useFormColors } fr
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 import { useSettingsNav } from "../windows";
 
-/** "Personal and Work", "A, B, and C". */
 const listOf = (names: string[]) => (names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`);
 
-/** Everyone in a profile's shared-data set, itself included, in profile order (just itself when it shares nothing). */
 function useSharedWith(profileId: string): string[] {
   const order = useBrowser((s) => s.profileOrder);
   const profiles = useBrowser((s) => s.profiles);
@@ -68,10 +66,6 @@ const ROW_HEIGHT = 46;
 const settle = (value: Animated.Value, toValue: number) =>
   Animated.timing(value, { toValue, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: false });
 
-/**
- * The profile list, reordered by dragging a row (Dia's Profiles pane has a grabber on
- * each row). The dragged row follows the pointer; the others slide aside.
- */
 function ProfileList() {
   const colors = useFormColors();
   const order = useBrowser((s) => s.profileOrder);
@@ -84,7 +78,6 @@ function ProfileList() {
   const [dragging, setDragging] = useState<string | null>(null);
   const drag = useRef({ id: "", from: 0, to: 0, reorderPending: false });
 
-  // After a reorder lands, rows snap back from their offsets in the same frame as the new order.
   useLayoutEffect(() => {
     if (!drag.current.reorderPending) return;
     drag.current.reorderPending = false;
@@ -228,14 +221,12 @@ function ProfileRow({
   );
 }
 
-/** What the icon row shows for the current icon. */
 function iconTitle(icon: string | null): string {
   const symbol = profileSymbol(icon);
   if (symbol) return PROFILE_SYMBOLS.find((s) => s.name === symbol)?.title ?? "Symbol";
   return icon ?? "Initial";
 }
 
-/** Profiles › a profile: name, colour, icon, shared data, default, clear browsing data, delete. */
 export function ProfileDetailsPane({ profileId }: { profileId: string }) {
   const theme = useTheme();
   const profile = useBrowser((s) => s.profiles[profileId]);

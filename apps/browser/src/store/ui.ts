@@ -4,23 +4,14 @@ import type { BrowserState } from "./browser";
 import { isIncognitoProfile } from "./model";
 import type { FindState, WindowUi } from "./types";
 
-/** Transient UI state (never persisted, except downloads). */
 export type UiSlice = {
   ui: {
-    /** The key browser window, or the last one that was. */
     focusedWindowId: string | null;
-    /** Most recently focused first. */
     focusOrder: string[];
-    /** The app's effective appearance (View › Appearance, else the system's). */
     appDark: boolean;
   };
   windowUi: Record<string, WindowUi>;
-  /** Find-in-page per tab (⌘F state stays with its tab). */
   find: Record<string, FindState>;
-  /**
-   * Newest first. Finished ones persist across launches, except incognito ones:
-   * those only show in their own window and are forgotten when it closes.
-   */
   downloads: Download[];
 
   setFocusedWindow(id: string): void;
@@ -31,20 +22,16 @@ export type UiSlice = {
   setFind(tabId: string, patch: Partial<FindState>): void;
   upsertDownload(d: Download): void;
   removeDownload(id: string): void;
-  /** Clears everything that isn't in progress (only what `windowId` shows, when given). */
   clearDownloads(windowId?: string): void;
-  /** Drops an engine profile's downloads (an incognito window closed). */
   forgetDownloads(profile: string): void;
 };
 
-/** Incognito downloads belong to their window; everything else shows in every other window. */
 export function downloadVisibleIn(d: Pick<Download, "profile">, window: { incognito: boolean; profileId: string } | undefined): boolean {
   if (!window) return false;
   const incognito = !!d.profile && isIncognitoProfile(d.profile);
   return window.incognito ? d.profile === window.profileId : !incognito;
 }
 
-/** The downloads a window lists. */
 export const downloadsIn = (s: Pick<BrowserState, "downloads" | "windows">, windowId: string) =>
   s.downloads.filter((d) => downloadVisibleIn(d, s.windows[windowId]));
 
@@ -93,7 +80,6 @@ export const createUiSlice: StateCreator<BrowserState, [], [], UiSlice> = (set, 
     set((s) => {
       const exists = s.downloads.some((x) => x.id === d.id);
       const downloads = exists ? s.downloads.map((x) => (x.id === d.id ? d : x)) : [d, ...s.downloads].slice(0, MAX_DOWNLOADS);
-      // A new download opens the list in the focused window, like Dia (if it's one that lists it).
       const focused = s.ui.focusedWindowId;
       const open = !exists && focused && downloadVisibleIn(d, s.windows[focused]);
       return { downloads, ...(open ? patchWindowUi(s, focused, { downloadsOpen: true }) : {}) };

@@ -8,14 +8,8 @@ import { sharingProfiles } from "../store/profiles";
 import { webviews } from "./webviews";
 import { closeWindowDialog } from "./windowClose";
 
-/**
- * User-facing operations that need more than a store update: confirmation
- * dialogs, focusing native windows, engine calls. Menus, shortcuts and UI all
- * go through these so they behave the same everywhere.
- */
 const store = () => useBrowser.getState();
 
-/** Brings a window to the front (its NSWindow opens on its own when created). */
 export function focus(windowId: string) {
   store().setFocusedWindow(windowId);
   void focusWindow(windowId);
@@ -25,7 +19,6 @@ export function openWindow(options?: CreateWindowOptions): string {
   return store().createWindow(options);
 }
 
-/** Selects a tab, bringing its window forward if it's another one (e.g. "Switch to Tab"). */
 export function switchToTab(tabId: string) {
   const tab = store().tabs[tabId];
   if (!tab) return;
@@ -33,11 +26,6 @@ export function switchToTab(tabId: string) {
   if (tab.windowId !== store().ui.focusedWindowId) focus(tab.windowId);
 }
 
-/**
- * ⌘W. Closing the last tab (unloaded pinned tiles aside: `closesWindow`) closes the window; Dia asks
- * first ("Warn before closing last tab in a Profile").
- * A pinned tab, or a tab of a pinned group, stays, its page unloaded (store/tabs `unloadPinnedTabs`).
- */
 export async function closeTab(tabId: string) {
   const s = store();
   const tab = s.tabs[tabId];
@@ -45,7 +33,6 @@ export async function closeTab(tabId: string) {
   if (!tab || !w) return;
   const last = closesWindow(s, tabId);
   if (last && s.settings.warnBeforeClosingLastTab && !w.incognito) {
-    // Same Dia wording as closing the window itself (lib/windowClose).
     const { confirmed, suppressed } = await confirm({ ...closeWindowDialog(w.id), suppression: "Don’t ask me again", windowId: w.id });
     if (suppressed) store().updateSettings({ warnBeforeClosingLastTab: false });
     if (!confirmed) return;
@@ -53,7 +40,6 @@ export async function closeTab(tabId: string) {
   store().closeTab(tabId);
 }
 
-/** Mute Site: every tab of the site in the tab's profile (their web views follow via sidebar/effects). */
 export function toggleMute(tabId: string) {
   const tab = store().tabs[tabId];
   if (!tab) return;
@@ -61,10 +47,6 @@ export function toggleMute(tabId: string) {
   void webviews.get(tabId)?.setMuted(!tab.muted);
 }
 
-/**
- * Dia's Create Profile dialog (name, colour, share data with another profile), over the
- * window or in Settings. Resolves with the new profile's id, or null if cancelled.
- */
 export function createProfile(windowId?: string, preset?: CreateProfilePreset): Promise<string | null> {
   return requestCreateProfile(windowId, preset);
 }
@@ -93,19 +75,16 @@ export async function deleteProfile(profileId: string, windowId?: string) {
   if (!confirmed) return;
   const engine = engineProfile(profileId);
   store().deleteProfile(profileId);
-  // Data other profiles share stays. Its web views close as their tabs unmount; give
-  // them a moment before deleting the data directory.
+  // Delete profile data only after its web views close.
   if (store().profileOrder.some((id) => engineProfile(id) === engine)) return;
   setTimeout(() => void deleteProfileData(engine), 1500);
 }
 
-/** Tabs › Move to Profile. Dia warns once that some site data doesn't come along. */
 export async function moveTabToProfile(tabId: string, target: string) {
   const tab = store().tabs[tabId];
   if (!tab || isIncognitoProfile(tab.profileId)) return;
   const profileId = target === "new" ? await createProfile(tab.windowId) : target;
   if (!profileId || profileId === tab.profileId) return;
-  // Profiles that share data lose nothing in the move.
   const shared = engineProfile(profileId) === engineProfile(tab.profileId);
   if (store().settings.warnBeforeMovingTabsToProfile && !shared) {
     const { confirmed, suppressed } = await confirm({
@@ -121,14 +100,11 @@ export async function moveTabToProfile(tabId: string, target: string) {
   store().moveTabToProfile(tabId, profileId);
 }
 
-/** Tabs › Move to Window ("new" opens one). The page keeps its state in the new window (lib/chromeTabs). */
 export function moveTabToWindow(tabId: string, target: string) {
   const windowId = store().moveTabsToWindow([tabId], target === "new" ? null : target);
   if (windowId) focus(windowId);
 }
 
-/** ⌃1–⌃9 / next / previous profile. */
-/** `animated`: the sidebar (or tab strip) pages to it first, like a swipe (layout/profilePager). */
 export function switchProfile(windowId: string, profileId: string, animated = false) {
   if (animated) pageToProfile(windowId, profileId);
   else store().switchProfile(windowId, profileId);
@@ -142,11 +118,6 @@ export function cycleProfile(windowId: string, delta: 1 | -1) {
   switchProfile(windowId, s.profileOrder[(i + delta + s.profileOrder.length) % s.profileOrder.length]!, true);
 }
 
-/**
- * The profile next to the window's in Settings order, without wrapping (swiping between
- * profiles pages through them and rubber-bands at the ends). Null at an end, in incognito
- * windows and with a single profile.
- */
 export function adjacentProfile(windowId: string, delta: 1 | -1): string | null {
   const s = store();
   const w = s.windows[windowId];
@@ -155,7 +126,6 @@ export function adjacentProfile(windowId: string, delta: 1 | -1): string | null 
   return i < 0 ? null : (s.profileOrder[i + delta] ?? null);
 }
 
-/** URLs handed to the app (default browser, Dock drops): new tabs in the front window. */
 export function openUrls(urls: string[], windowId?: string | null) {
   let target = resolveWindowId(store(), windowId);
   for (const url of urls) {
@@ -164,7 +134,6 @@ export function openUrls(urls: string[], windowId?: string | null) {
   }
 }
 
-/** The active tab of a window (or the focused one). */
 export function activeTabOf(windowId?: string | null) {
   const s = store();
   const id = resolveWindowId(s, windowId);

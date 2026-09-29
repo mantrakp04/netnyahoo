@@ -18,9 +18,6 @@ export function AdvancedPane() {
       .then((list) => setWidevine(list.find((c) => c.id === WIDEVINE_COMPONENT_ID) ?? null))
       .catch(() => setWidevine(null));
   }, []);
-  // The CDM only arrives through Chrome's component updater, whose Google host this build's
-  // domain substitution replaced, so it can't be downloaded (and "Check for Update" never
-  // finished). Say so instead of offering it; a version shows if one is ever installed.
   const widevineVersion = widevine && widevine.version !== "0.0.0.0" ? widevine.version : null;
 
   return (

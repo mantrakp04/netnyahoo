@@ -4,12 +4,6 @@ import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, View, type St
 import { hex, useTheme, type Theme } from "../../lib/theme";
 import { useHover } from "../primitives";
 
-/**
- * Form controls for Settings and the internal pages, drawn to match AppKit's
- * (Dia's panes are plain AppKit forms: switches, pop-up buttons, push buttons).
- */
-
-/** Colours the forms share; derived from the window theme so both appearances work. */
 export function formColors(theme: Theme) {
   return theme.dark
     ? {
@@ -48,7 +42,6 @@ export function useFormColors() {
   return formColors(useTheme());
 }
 
-/** macOS-style switch (NSSwitch, mini size). */
 export function Toggle({ value, onChange, disabled }: { value: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
   const colors = useFormColors();
   const t = useRef(new Animated.Value(value ? 1 : 0)).current;
@@ -82,7 +75,6 @@ export function Toggle({ value, onChange, disabled }: { value: boolean; onChange
   );
 }
 
-/** NSButton checkbox with its title. */
 export function Checkbox({
   value,
   onChange,
@@ -122,7 +114,6 @@ export function Checkbox({
 
 export type Option<T extends string> = { value: T; title: string; separatorBefore?: boolean };
 
-/** NSPopUpButton: shows the current choice; the menu opens at the pointer. */
 export function PopUp<T extends string>({
   value,
   options,
@@ -180,7 +171,6 @@ export function PopUp<T extends string>({
   );
 }
 
-/** Push button. `primary` = the default (accent) button, `destructive` = red text. */
 export function Button({
   title,
   onPress,
@@ -239,7 +229,6 @@ export function Button({
   );
 }
 
-/** Rounded search field with a magnifier and a clear button (NSSearchField). */
 export function SearchField({
   value,
   onChangeText,
@@ -303,7 +292,6 @@ export function SearchField({
   );
 }
 
-/** Single-line text field. */
 export function TextField({
   value,
   onChangeText,
@@ -364,7 +352,6 @@ export function TextField({
   );
 }
 
-/** A section title above a group (System Settings style). */
 export function SectionHeader({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
   const theme = useTheme();
   return (
@@ -378,7 +365,6 @@ export function SectionHeader({ title, description, action }: { title: string; d
   );
 }
 
-/** Rounded group of rows with hairline separators between them. */
 export function Group({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const colors = useFormColors();
   const rows = (Array.isArray(children) ? children.flat() : [children]).filter(Boolean);
@@ -399,7 +385,6 @@ export function Group({ children, style }: { children: ReactNode; style?: StyleP
   );
 }
 
-/** A form row: title (+ description) on the left, a control on the right. */
 export function Row({
   title,
   description,
@@ -451,7 +436,6 @@ export function Row({
   );
 }
 
-/** A modal sheet: dimmed backdrop (click to dismiss) and a centred panel. */
 export function Sheet({ width = 440, onClose, children }: { width?: number; onClose: () => void; children: ReactNode }) {
   const theme = useTheme();
   return (

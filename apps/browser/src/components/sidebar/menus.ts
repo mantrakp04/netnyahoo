@@ -24,10 +24,6 @@ import { openSyncedTab, syncedDevicesMenuItem } from "../../sync/menu";
 import { setSidebarUi } from "./state";
 import { GROUP_COLORS, nearestGroupColor } from "./tokens";
 
-/**
- * The sidebar's context menus, after Dia's (tab, multi-selection, group, empty
- * space) and its overflow menu. Shortcut hints match the menu bar.
- */
 const store = () => useBrowser.getState();
 const sep = { separator: true } as const;
 type Mods = NonNullable<Extract<MenuItem, { id: string }>["modifiers"]>;
@@ -65,11 +61,9 @@ function moveToGroupItems(windowId: string, exclude: string | undefined): MenuIt
   return groups.map((g) => ({ id: `group:${g.id}`, title: groupLabel(s, g), symbol: g.pinned ? "pin" : "square.on.square" }));
 }
 
-/** Right-click on a tab (or on one of several selected tabs). */
 export async function openTabMenu(windowId: string, tab: Tab) {
   const s = store();
   const selected = selectedTabIds(s, windowId);
-  // Right-clicking outside the selection resets it (Dia 1.2x).
   if (selected.length > 1 && selected.includes(tab.id)) return openMultiMenu(windowId, selected);
   if (s.selection[windowId]?.length) s.setSelection(windowId, []);
 
@@ -82,7 +76,6 @@ export async function openTabMenu(windowId: string, tab: Tab) {
   const group = groupOf(s, tab.id);
   const split = splitOf(s, tab.id);
   const incognito = isIncognitoProfile(tab.profileId);
-  // The top strip runs left to right (Dia: Close Tabs to the Left / Right).
   const across = (s.windows[windowId]?.tabLayout ?? s.settings.tabLayout) === "top";
   const away = awayFromPin(tab);
   const moveToProfile: MenuItem[] = [
@@ -98,7 +91,6 @@ export async function openTabMenu(windowId: string, tab: Tab) {
           { id: "backToPin", title: "Back to Pinned URL", symbol: "arrow.uturn.backward", enabled: away, ...hint("\r", "command") },
           { id: "replacePin", title: "Replace Pin with Current Page", symbol: "pin", enabled: away },
           { id: "editPin", title: "Edit Pinned Page…", symbol: "pencil" },
-          // Live Calendar on a pinned calendar (src/live).
           ...(isCalendarUrl(tab.pinnedUrl ?? tab.url) ? [calendarMenuItem()] : []),
           sep,
         ]
@@ -164,7 +156,6 @@ export async function openTabMenu(windowId: string, tab: Tab) {
   else if (choice === "closeBelow") s.closeTabs(below);
 }
 
-/** Right-click on a multi-selection: bulk actions. */
 async function openMultiMenu(windowId: string, ids: string[]) {
   const s = store();
   const n = ids.length;
@@ -205,13 +196,11 @@ async function openMultiMenu(windowId: string, ids: string[]) {
   if (choice !== "copy" && choice !== "copyMd") store().setSelection(windowId, []);
 }
 
-/** Right-click on a group's header. */
 export async function openGroupMenu(windowId: string, groupId: string) {
   const s = store();
   const g = s.groups[groupId];
   if (!g) return;
   const colors: GroupColor[] = ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"];
-  // Dia takes a group's colour from its site (favicon / theme colour); we use the page's theme colour.
   const siteColor = g.tabIds.map((id) => s.live[id]?.themeColor).find(Boolean);
   const matched = siteColor ? nearestGroupColor(siteColor) : null;
   const choice = await showMenu([
@@ -240,7 +229,6 @@ export async function openGroupMenu(windowId: string, groupId: string) {
     { id: "ungroup", title: "Ungroup", symbol: "folder.badge.minus" },
     { id: "bookmarkBar", title: "Move to Bookmark Bar", symbol: "bookmark" },
     { id: "close", title: "Close Group", symbol: "xmark" },
-    // Dia's Delete: gone from Recently Closed, kept a week under Recently Deleted Groups.
     { id: "delete", title: "Delete Group", symbol: "trash" },
   ]);
   if (!choice) return;
@@ -263,7 +251,6 @@ export async function openGroupMenu(windowId: string, groupId: string) {
   else if (choice === "delete") s.deleteGroup(groupId);
 }
 
-/** Right-click on empty sidebar space. */
 export async function openSidebarMenu(windowId: string) {
   const s = store();
   const muted = allMuted(windowId);
@@ -285,14 +272,12 @@ export async function openSidebarMenu(windowId: string) {
   else if (choice === "closeAll") closeAllTabs(windowId);
 }
 
-/** ⇧⌘K: every regular tab of the window's profile (pinned tabs and pinned groups stay). */
 export function closeAllTabs(windowId: string) {
   const s = store();
   const pinnedGroup = new Set(Object.values(s.groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
   s.closeTabs(viewTabIds(s, windowId).filter((id) => !s.tabs[id]!.pinned && !pinnedGroup.has(id)));
 }
 
-/** The chevron at the bottom of the sidebar: open tabs, recently closed / cleaned, clean up. */
 export async function openOverflowMenu(windowId: string) {
   const s = store();
   const w = s.windows[windowId];

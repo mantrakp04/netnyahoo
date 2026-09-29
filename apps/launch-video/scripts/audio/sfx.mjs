@@ -1,4 +1,3 @@
-// Foley for the spot (ElevenLabs sound effects, eleven_text_to_sound_v2). No whooshes, no risers.
 // usage: node scripts/audio/sfx.mjs [ids…] → work/sfx/<id>-<n>.mp3
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

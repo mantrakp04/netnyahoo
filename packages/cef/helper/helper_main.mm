@@ -1,5 +1,3 @@
-// Entry point for every CEF child process (renderer, GPU, utility…).
-// Built by scripts/embed.sh into "<App> Helper*.app" bundles.
 #include <map>
 #include <string>
 
@@ -13,7 +11,6 @@
 
 namespace {
 
-/// Native `post(kind, json[, id])` that forwards to the browser process.
 class PostHandler : public CefV8Handler {
  public:
   explicit PostHandler(int evalId = 0) : eval_id_(evalId) {}
@@ -35,8 +32,6 @@ class PostHandler : public CefV8Handler {
   IMPLEMENT_REFCOUNTING(PostHandler);
 };
 
-/// The page script's `receive(kind, json)` for each frame's current context,
-/// so the browser can call into it ("nn-call" messages).
 struct Receiver {
   CefRefPtr<CefV8Context> context;
   CefRefPtr<CefV8Value> receive;
@@ -48,11 +43,8 @@ class RendererApp : public CefApp, public CefRenderProcessHandler {
 
   void OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                         CefRefPtr<CefV8Context> context) override {
-    // The page's own world only: extensions' content scripts (uBlock Origin Lite…) get
-    // isolated worlds of their own, whose script instance would take over `receive`.
     CefRefPtr<CefV8Context> main = frame->GetV8Context();
     if (main && !main->IsSame(context)) return;
-    // The page script receives `post` as an argument, so pages can't reach it.
     CefRefPtr<CefV8Value> retval;
     CefRefPtr<CefV8Exception> exception;
     if (!context->Eval(kPageScript, "netnyahoo://page-script", 0, retval, exception) || !retval || !retval->IsFunction())
@@ -100,8 +92,7 @@ class RendererApp : public CefApp, public CefRenderProcessHandler {
       fail("no context");
       return true;
     }
-    // Values must be created and called inside the context (unlike in
-    // OnContextCreated, it isn't entered for us here).
+// Create and call V8 values inside their context.
     context->Enter();
     CefRefPtr<CefV8Value> fn;
     CefRefPtr<CefV8Exception> exception;
@@ -113,7 +104,6 @@ class RendererApp : public CefApp, public CefRenderProcessHandler {
     }
     CefRefPtr<CefV8Value> post = CefV8Value::CreateFunction("post", new PostHandler(id));
     CefRefPtr<CefV8Value> result = fn->ExecuteFunctionWithContext(context, nullptr, {post});
-    // A synchronous throw would otherwise leave the caller waiting forever.
     if (!result && fn->HasException()) fail(fn->GetException()->GetMessage().ToString());
     context->Exit();
     return true;
@@ -124,7 +114,7 @@ class RendererApp : public CefApp, public CefRenderProcessHandler {
   IMPLEMENT_REFCOUNTING(RendererApp);
 };
 
-}  // namespace
+}
 
 int main(int argc, char *argv[]) {
   CefScopedSandboxContext sandbox_context;

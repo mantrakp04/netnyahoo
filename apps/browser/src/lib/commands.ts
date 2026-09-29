@@ -40,21 +40,14 @@ import { copyPageUrl, jumpToSelection } from "../components/site/selection";
 import { openProfileMenu } from "../components/ProfileIndicator";
 import { groupOf } from "../store/organize";
 
-/**
- * Menu-bar, shortcut and Dock commands. `windowId` is the key browser window
- * (null from the Dock or with no window open); commands fall back to the last
- * focused window.
- */
 export function runCommand({ command, arg, windowId: requested }: CommandEvent) {
   const s = useBrowser.getState();
 
-  // Settings / Import windows: ⌘W closes them; tab commands go to the last browser window.
   if (isUtilityWindowId(requested)) {
     if (command === "closeTab") return void closeNativeWindow(requested!);
     requested = null;
   }
 
-  // Commands that don't need a window.
   switch (command) {
     case "newWindow":
       return void openWindow({ profileId: arg ?? undefined });
@@ -78,7 +71,6 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return openSettings("shortcuts");
     case "importBrowserData":
       return openImport();
-    // File › Open File… (⌘O): each file in a new tab of the window (a new window with none open).
     case "openFile":
       return void openFiles(requested);
     case "manageExtensions":
@@ -87,8 +79,6 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       if (arg === "always" || arg === "newTab" || arg === "never") s.updateSettings({ bookmarksBar: arg });
       return;
     case "toggleBookmarksBar": {
-      // Like Chrome: shown (in any mode) → Never; hidden → Always. "On New Tab Only" shows it on the
-      // New Tab page alone, so on a web page ⇧⌘B shows it rather than setting Never (no change).
       const mode = s.settings.bookmarksBar;
       const target = resolveWindowId(s, requested);
       const active = target ? activeTabId(s, target) : undefined;
@@ -99,7 +89,6 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
 
   const windowId = resolveWindowId(s, requested);
   if (!windowId) {
-    // No window open: ⌘T / ⇧⌘T still work, in a new window.
     if (command === "newTab") openWindow();
     if (command === "reopenClosedTab" || command === "restoreClosed") {
       if (arg) s.restoreClosed(arg);
@@ -113,7 +102,6 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
   const web = tabId ? webviews.get(tabId) : undefined;
   const ui = s.windowUi[windowId];
   const find = tabId ? s.find[tabId] : undefined;
-  // Tabs & sidebar: groups, Search Tabs, ⌃Tab switcher, Clean Up Tabs, pinned tabs…
   if (runSidebarCommand(command, arg, windowId)) return;
 
   switch (command) {
@@ -124,12 +112,9 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "restoreClosed":
       return arg ? s.restoreClosed(arg, windowId) : undefined;
     case "focusCommandBar":
-      // On the New Tab page ⌘L focuses (and selects) the page's own bar; an empty split pane
-      // has none, so it gets the command panel.
       if (page) return s.openPanel(windowId, page.url);
       return focusHeroBar(windowId) ? undefined : tab ? s.openPanel(windowId, "") : undefined;
     case "closeTab":
-      // ⌘W dismisses the command panel / find bar before closing the tab.
       if (ui?.panel.open) return s.closePanel(windowId);
       if (tabId && find?.open) return closeFind(tabId);
       return tabId ? void closeTab(tabId) : undefined;
@@ -141,7 +126,6 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return void web?.runPageCommand?.("savePage");
     case "caretBrowsing":
       return void web?.runPageCommand?.("caretBrowsing");
-    // Chrome's ⇧⌘I: a new mail with the page's link.
     case "emailPageLocation":
       if (!page || !/^https?:/i.test(page.url)) return;
       return void openExternalURL(
@@ -149,17 +133,14 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       );
     case "stop":
       return void web?.stopLoading();
-    // File › Share… and the command bar's Share: the macOS share picker, for web pages.
     case "share":
       return page && /^https?:/i.test(page.url) ? void sharePage(page.url, page.customTitle || page.title, windowId) : undefined;
-    // Dia copies links "without any trackers" (and offers a quote link for selected text).
     case "copyUrl":
       return page ? void copyPageUrl(page.id) : undefined;
     case "copyUrlAsMarkdown":
       return page ? copyText(markdownLink(page.customTitle || page.title, page.url)) : undefined;
     case "findInPage":
       return page ? s.setFind(page.id, { open: true, replace: false, focusRequest: Date.now() }) : undefined;
-    // Replaces in the page's focused text field (components/FindBar).
     case "findAndReplace":
       return page ? s.setFind(page.id, { open: true, replace: true, focusRequest: Date.now() }) : undefined;
     case "jumpToSelection":
@@ -196,18 +177,15 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return page ? setZoom(page.id, 0) : undefined;
     case "devTools":
       return void web?.showDevTools();
-    // F12, Chrome's DevTools toggle: also closes an undocked DevTools window it's pressed in.
     case "toggleDevTools":
       return void web?.showDevTools("toggle");
     case "inspectElements":
       return void web?.showDevTools("inspect");
     case "javaScriptConsole":
       return void web?.showDevTools("console");
-    // Like Chrome: the source in a new tab next to the page.
     case "viewSource":
       if (!page || !web || !/^(https?|file):/.test(page.url)) return;
       return void s.newTab(windowId, { url: `view-source:${page.url}`, openerId: page.id, profileId: page.profileId });
-    // Through layout/history: the New Tab page a tab started on is its first back entry.
     case "back":
       return tabId ? goBack(tabId) : undefined;
     case "forward":
@@ -216,7 +194,6 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return s.cycle(windowId, 1);
     case "previousTab":
       return s.cycle(windowId, -1);
-    // ⌘1–⌘8 / ⌘9: the sidebar's rows, pinned tiles first.
     case "selectTab":
     case "selectLastTab": {
       const rows = numberedTabs(s, windowId);
@@ -225,7 +202,6 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     }
     case "togglePin":
       return tab ? s.togglePin(tab.id) : undefined;
-    // Chrome's ⌃⇧⇟ / ⌃⇧⇞: the tab one place down / up (among its pinned or unpinned neighbours).
     case "moveTabDown":
     case "moveTabUp": {
       if (!tab) return;
@@ -233,7 +209,6 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       const at = section.indexOf(tab.id) + (command === "moveTabDown" ? 1 : -1);
       return at >= 0 && at < section.length ? s.moveTab(tab.id, at) : undefined;
     }
-    // Chrome's ⌃⌘W: closes the selected tab's group (Recently Closed Groups keeps it).
     case "closeTabGroup": {
       const group = groupOf(s, tabId);
       return group ? s.closeGroup(group.id) : undefined;
@@ -247,7 +222,6 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "moveTabToWindow":
       return tab && arg ? moveTabToWindow(tab.id, arg) : undefined;
     case "bookmarkPage":
-      // ⌘D bookmarks the page and opens the save dialog (name + folder tree), like Dia.
       return page ? bookmarkActivePage(windowId) : undefined;
     case "addBookmarkToFolder":
       return page && arg ? void addBookmarkToFolder(windowId, arg) : undefined;
@@ -297,7 +271,6 @@ function closeFind(tabId: string) {
   void webviews.get(tabId)?.focus();
 }
 
-/** Tabs › Add Bookmark to Folder (`new` asks for a folder name, on the Bookmarks Bar). */
 async function addBookmarkToFolder(windowId: string, folder: string) {
   const s = useBrowser.getState();
   const tabId = activeTabId(s, windowId);
@@ -308,7 +281,6 @@ async function addBookmarkToFolder(windowId: string, folder: string) {
   if (folder === "new") {
     const title = await prompt({ title: "New Folder", placeholder: "Folder name", confirmTitle: "Create", windowId });
     if (!title) return;
-    // New folders go on the Bookmarks Bar.
     parentId = useBrowser.getState().addBookmarkFolder({ profileId, title });
   }
   useBrowser.getState().addBookmark({ profileId, url: tab.url, title: tab.title, favicon: tab.favicon, parentId });

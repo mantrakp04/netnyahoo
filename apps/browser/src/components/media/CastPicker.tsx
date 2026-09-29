@@ -7,21 +7,13 @@ import { Popover, PromptButton } from "../layout/controls";
 import { useHover } from "../primitives";
 import { closeCastPicker, useCast } from "./cast";
 
-/**
- * Chrome's Cast dialog, drawn here: the devices Chrome's Media Router finds and what
- * each is doing. Clicking a device casts the site's own media when it offers it
- * (YouTube, the Presentation API), else the tab; "Screen" in the source menu mirrors
- * the whole screen. A device that's casting from here offers Stop.
- */
 const WIDTH = 340;
 
-/** SF Symbol per media_router::SinkIconType. */
 const SINK_ICON: Record<number, string> = { 0: "tv", 1: "hifispeaker.2", 2: "hifispeaker", 6: "display", 7: "tv" };
 
 export function CastPicker({ tabId, paneWidth }: { tabId: string; paneWidth: number }) {
   const theme = useTheme();
   const dialog = useCast((c) => c.dialogs[tabId]);
-  // "Source": the page (the site's cast or the tab), or the whole screen.
   const [screen, setScreen] = useState(false);
   useEffect(() => setScreen(false), [dialog?.id]);
   if (!dialog) return null;

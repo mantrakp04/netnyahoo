@@ -26,7 +26,6 @@ import { toggleCastPicker } from "../media/cast";
 import { useMedia, usePictureInPicture } from "../media/state";
 import { TranslateRows } from "./TranslateControls";
 
-/** The permissions Dia lists in its site menu, with their choices. */
 const PERMISSIONS: { type: SiteSettingType; title: string; icon: string; choices: SiteSettingValue[] }[] = [
   { type: "popups", title: "Pop-ups and Redirects", icon: "macwindow.on.rectangle", choices: ["allow", "block"] },
   { type: "camera", title: "Camera", icon: "video", choices: ["ask", "allow", "block"] },
@@ -48,11 +47,6 @@ function originOf(url: string): string | null {
   }
 }
 
-/**
- * Dia's site settings menu, as a popover under the toolbar: connection
- * security (with certificate details), zoom, the ad blocker for this site,
- * permissions, clearing cookies & site data, a clean link copy, Show Full URL.
- */
 export function SiteControls({ tabId, right, left, top }: { tabId: string; right?: number; left?: number; top: number }) {
   const theme = useTheme();
   const tab = useTab(tabId);
@@ -69,7 +63,7 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
   const host = origin ? new URL(origin).hostname : "";
   const profile = engineProfile(tab?.profileId ?? "");
   const close = () => setPopover(tabId, null);
-  // A PiP window can be open without a session (Meet's Document PiP).
+  // Document PiP may have a window without a tab session.
   const video = useMedia((m) => !!m.sessions[tabId]?.hasVideo || !!m.pipOpen[tabId]);
   const [pip, togglePip] = usePictureInPicture(tabId);
 
@@ -78,7 +72,7 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
     let live = true;
     void getSiteSettings(profile, origin).then((s) => live && setSettings(s));
     void Promise.all([getContentBlocker(), isContentBlockerAllowed(host)]).then(([state, allowed]) => live && setBlocker({ enabled: state.enabled, allowed }));
-    // The page may have loaded before the popover subscribed to security updates.
+    // Navigation may finish before the popover subscribes to security updates.
     void webviews.get(tabId)?.getSecurityInfo().then((info) => live && patchPage(tabId, { security: info }));
     return () => {
       live = false;
@@ -91,7 +85,6 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
     if (!origin) return;
     await setSiteSetting(profile, origin, type, value);
     setSettings(await getSiteSettings(profile, origin));
-    // Sound follows the tab's mute toggle too.
     if (type === "sound") {
       useBrowser.getState().updateTab(tabId, { muted: value === "block" });
       void webviews.get(tabId)?.setMuted(value === "block");
@@ -104,10 +97,9 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
   };
   const toggleBlocker = async (on: boolean) => {
     await setContentBlockerAllowed(host, !on);
-    // What the blocker now says, not what was asked: a change that didn't apply shows as such.
     const allowed = await isContentBlockerAllowed(host).catch(() => !on);
     setBlocker((b) => (b ? { ...b, allowed } : b));
-    // Blocking changes apply to new requests: reload so the page shows the difference.
+    // Reload: blocking changes affect new requests only.
     void webviews.get(tabId)?.reload();
   };
   const clearData = async () => {
@@ -275,7 +267,6 @@ function CertificateDetails({ security }: { security: SecurityInfo }) {
   );
 }
 
-/** Zoom − 100% + (the percentage resets); per site, like Chrome. */
 function ZoomRow({ tabId, zoom }: { tabId: string; zoom: number }) {
   const theme = useTheme();
   return (

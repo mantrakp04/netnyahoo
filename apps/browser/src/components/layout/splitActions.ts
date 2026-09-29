@@ -5,21 +5,9 @@ import { useBrowser } from "../../store/browser";
 import { activeTabId } from "../../store/model";
 import { MAX_SPLIT_PANES, slotsOf, splitOf, type OpenPaneOptions, type SplitSide } from "../../store/splits";
 
-/**
- * Split view operations for menus, shortcuts, the toolbar and the sidebar.
- * They wrap the store's split actions with Dia's feedback (the "Cannot Add New
- * Pane" toast) and native menus. Other areas call these, e.g. the sidebar's
- * ⌥-click on + → `openNewTabInSplit(windowId)`, a tab's "Open in Split View"
- * → `openInSplit(tabId)`.
- */
 const store = () => useBrowser.getState();
 
-/** Transient toasts per window ("Cannot Add New Pane"). */
 type Toast = { id: number; title: string; message?: string } & ToastOptions;
-/**
- * `icon`: SF Symbol (default: the split view glyph). `action`: an accessory button (Dia's "Settings").
- * `key`: a toast showing with the same key is updated in place (progress). `sticky`: stays until replaced.
- */
 export type ToastOptions = { icon?: string; action?: { title: string; run(): void }; key?: string; sticky?: boolean };
 export const useToasts = create<{ toasts: Record<string, Toast | null> }>()(() => ({ toasts: {} }));
 let toastSeq = 0;
@@ -33,7 +21,6 @@ export function showToast(windowId: string, title: string, message?: string, opt
 export function hideToast(windowId: string, id: number) {
   useToasts.setState((s) => (s.toasts[windowId]?.id === id ? { toasts: { ...s.toasts, [windowId]: null } } : s));
 }
-/** Hides the toast with this `key`, if it's the one showing. */
 export function hideKeyedToast(windowId: string, key: string) {
   useToasts.setState((s) => (s.toasts[windowId]?.key === key ? { toasts: { ...s.toasts, [windowId]: null } } : s));
 }
@@ -41,7 +28,6 @@ export function hideKeyedToast(windowId: string, key: string) {
 const maxedOut = (windowId: string) =>
   showToast(windowId, "Cannot Add New Pane", `Split View can show up to ${MAX_SPLIT_PANES} tabs at once.`);
 
-/** ⌃⇧= / the toolbar's split button: a New Tab page (or `url`) next to the focused pane. */
 export function openSplitPane(windowId: string, options: OpenPaneOptions = {}): string | null {
   const result = store().openSplitPane(windowId, options);
   if (!result.ok) {
@@ -51,10 +37,8 @@ export function openSplitPane(windowId: string, options: OpenPaneOptions = {}): 
   return result.tabId;
 }
 
-/** Sidebar ⌥-click on "+ New Tab": a New Tab page in a split with the current tab. */
 export const openNewTabInSplit = (windowId: string) => openSplitPane(windowId);
 
-/** "Open in Split View": shows an existing tab next to the window's current one. */
 export function openInSplit(tabId: string, side: SplitSide = "right") {
   const tab = store().tabs[tabId];
   if (!tab) return;
@@ -63,7 +47,6 @@ export function openInSplit(tabId: string, side: SplitSide = "right") {
   openSplitPane(tab.windowId, { tabId, anchorTabId: active, side });
 }
 
-/** ⇧⌥-click on a link: the link opens in the pane to the right (a new one if there's none). */
 export function openLinkInSplit(sourceTabId: string, url: string) {
   const s = store();
   const source = s.tabs[sourceTabId];
@@ -77,19 +60,16 @@ export function openLinkInSplit(sourceTabId: string, url: string) {
   openSplitPane(source.windowId, { anchorTabId: sourceTabId, url, side: "right", background: true });
 }
 
-/** A tab dropped on a pane's edge. */
 export function dropTabIntoSplit(tabId: string, targetTabId: string, side: SplitSide) {
   const target = store().tabs[targetTabId];
   if (!target || tabId === targetTabId) return;
   openSplitPane(target.windowId, { tabId, anchorTabId: targetTabId, side });
 }
 
-/** A pane's ✕: closes that tab (the rest of the split stays). */
 export function closePane(tabId: string) {
   void closeTab(tabId);
 }
 
-/** The per-pane split menu (Dia's content-toolbar split button). */
 export async function showSplitMenu(tabId: string) {
   const s = store();
   const split = splitOf(s, tabId);

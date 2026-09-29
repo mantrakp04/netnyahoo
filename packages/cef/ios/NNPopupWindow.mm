@@ -6,10 +6,6 @@
 
 using namespace nn;
 
-/// A little window hosting one popup browser: the title bar shows the page's
-/// title and host, and it closes with the page (window.close()). It's a Chrome
-/// window of its own (NNChromeWindowHost), so Chrome's dialogs, autofill and menus
-/// for the page show over it; with stock CEF, a plain window.
 @interface NNPopupWindowController : NSObject <NSWindowDelegate, NNBrowserViewDelegate>
 @property (nonatomic, strong) NSWindow *window;
 @property (nonatomic, strong) NNBrowserView *browserView;
@@ -31,8 +27,7 @@ NSMutableSet<NNPopupWindowController *> *gControllers;
   _browserView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   _browserView.profile = request.profile;
   _browserView.delegate = self;
-  _browserView.adoptId = request.adoptId;  // adopted once it joins the window
-  // Chrome's window delegate stays Chrome's: its close comes as a notification.
+  _browserView.adoptId = request.adoptId;
   _window = [NNChromeWindowHost makePopupWindowForProfile:request.profile ?: @"" root:_browserView];
   if (_window) {
     [_window setContentSize:size];
@@ -63,8 +58,6 @@ NSMutableSet<NNPopupWindowController *> *gControllers;
   return self;
 }
 
-/// window.open(…, "left=…,top=…") positions are screen pixels from the top-left;
-/// otherwise cascade from the opener's window like Chrome.
 - (void)placeWithRequest:(const PopupRequest &)request {
   NSWindow *parent = request.opener.window;
   NSScreen *screen = parent.screen ?: NSScreen.mainScreen;
@@ -79,7 +72,6 @@ NSMutableSet<NNPopupWindowController *> *gControllers;
     [_window center];
     frame = _window.frame;
   }
-  // Keep it on screen.
   NSRect visible = screen.visibleFrame;
   frame.origin.x = MAX(NSMinX(visible), MIN(frame.origin.x, NSMaxX(visible) - frame.size.width));
   frame.origin.y = MAX(NSMinY(visible), MIN(frame.origin.y, NSMaxY(visible) - frame.size.height));
@@ -93,11 +85,10 @@ NSMutableSet<NNPopupWindowController *> *gControllers;
     _window.title = title.length && ![title isEqualToString:payload[@"url"]] ? title : host;
     _window.subtitle = [_window.title isEqualToString:host] ? @"" : host;
   } else if ([name isEqualToString:@"windowClose"]) {
-    // A Chrome window closes through the engine (its Browser mustn't go from under a tab).
+    // Close Chrome windows through CEF so tabs outlive the close.
     if (!host::CloseWindow(_window)) [_window close];
   } else if ([name isEqualToString:@"openWindow"] || [name isEqualToString:@"popupBlocked"] ||
              [name isEqualToString:@"command"]) {
-    // Links the popup opens in tabs belong to the window it came from.
     [_opener emit:name payload:payload];
   }
 }
@@ -121,4 +112,4 @@ void OpenPopupWindow(const PopupRequest &request) {
 
 NSUInteger PopupWindowCount() { return gControllers.count; }
 
-}  // namespace nn
+}

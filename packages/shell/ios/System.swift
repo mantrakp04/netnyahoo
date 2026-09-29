@@ -3,24 +3,18 @@ import ExpoModulesCore
 import UniformTypeIdentifiers
 import ServiceManagement
 
-/// System integration used by Settings, Downloads and the internal pages:
-/// default browser, login item, Touch ID / password checks, files.
 public class SystemModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooSystem")
 
     // MARK: Default browser
 
-    /// Whether this app opens http(s) links.
     AsyncFunction("isDefaultBrowser") { () -> Bool in
       guard let probe = URL(string: "https://example.com"),
             let handler = NSWorkspace.shared.urlForApplication(toOpen: probe) else { return false }
       return handler.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL
     }.runOnQueue(.main)
 
-    /// Asks macOS to make this app the default browser. The system shows its own
-    /// confirmation ("Do you want to change your default web browser?"); resolves
-    /// with whether it's the default afterwards.
     AsyncFunction("setAsDefaultBrowser") { (promise: Promise) in
       let app = Bundle.main.bundleURL
       NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http") { error in
@@ -36,7 +30,6 @@ public class SystemModule: Module {
 
     // MARK: Login item
 
-    /// "enabled" | "requiresApproval" | "notRegistered" | "notFound".
     AsyncFunction("launchAtLoginStatus") { () -> String in
       switch SMAppService.mainApp.status {
       case .enabled: return "enabled"
@@ -69,7 +62,6 @@ public class SystemModule: Module {
       return true
     }.runOnQueue(.main)
 
-    /// Moves a file to the Trash (recoverable). Resolves with whether it moved.
     AsyncFunction("moveToTrash") { (path: String) -> Bool in
       guard FileManager.default.fileExists(atPath: path) else { return false }
       do {
@@ -80,7 +72,6 @@ public class SystemModule: Module {
       }
     }.runOnQueue(.main)
 
-    /// The Finder icon for a file (or, when it's gone, for its extension) as a PNG data URL.
     AsyncFunction("fileIcon") { (path: String, size: Double) -> String? in
       let icon = FileManager.default.fileExists(atPath: path)
         ? NSWorkspace.shared.icon(forFile: path)
@@ -99,7 +90,6 @@ public class SystemModule: Module {
       return "data:image/png;base64,\(png.base64EncodedString())"
     }.runOnQueue(.main)
 
-    /// A running app's icon by process id (the screen-share picker's windows), as a PNG data URL.
     AsyncFunction("appIcon") { (pid: Int, size: Double) -> String? in
       guard let icon = NSRunningApplication(processIdentifier: pid_t(pid))?.icon else { return nil }
       let points = CGFloat(size)
@@ -118,25 +108,19 @@ public class SystemModule: Module {
 
     // MARK: Feedback
 
-    /// A light haptic tick (tab / bookmark reordering), if the trackpad supports it.
     Function("hapticTick") {
       DispatchQueue.main.async { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
     }
 
     // MARK: Menus
 
-    /// Every menu-bar action with its current and default shortcut (Keyboard Shortcuts settings).
     AsyncFunction("menuShortcuts") { () -> [[String: Any]] in MainMenu.shortcutList() }.runOnQueue(.main)
 
-    /// Captures the next key press (before menus see it) for the shortcut recorder:
-    /// { key, modifiers } in menu key-equivalent form; null for Escape, a click, or `cancelRecording`.
     AsyncFunction("recordShortcut") { (promise: Promise) in ShortcutRecorder.shared.record(promise) }.runOnQueue(.main)
     AsyncFunction("cancelRecording") { ShortcutRecorder.shared.finish(nil) }.runOnQueue(.main)
   }
 }
 
-/// A local event monitor sees key-downs before AppKit matches menu key equivalents,
-/// so ⌘T can be recorded instead of opening a tab.
 final class ShortcutRecorder {
   static let shared = ShortcutRecorder()
   private var monitor: Any?
@@ -152,11 +136,10 @@ final class ShortcutRecorder {
         return event
       }
       let flags = event.modifierFlags.intersection([.command, .option, .control, .shift, .function])
-      if event.keyCode == 53, flags.subtracting(.function).isEmpty {  // Escape
+      if event.keyCode == 53, flags.subtracting(.function).isEmpty {
         self.finish(nil)
         return nil
       }
-      // The unshifted character, the way menus store key equivalents ("]" for ⇧⌘]).
       let key = (event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers ?? "").lowercased()
       guard !key.isEmpty else { return nil }
       var mods: [String] = []
@@ -164,7 +147,6 @@ final class ShortcutRecorder {
       if flags.contains(.option) { mods.append("option") }
       if flags.contains(.shift) { mods.append("shift") }
       if flags.contains(.command) { mods.append("command") }
-      // Arrow and F-keys always carry .function; only keep it for plain letters (🌐 shortcuts).
       if flags.contains(.function), let scalar = key.unicodeScalars.first, scalar.value < 0xF700 { mods.append("function") }
       self.finish(["key": key, "modifiers": mods])
       return nil
@@ -180,9 +162,6 @@ final class ShortcutRecorder {
   }
 }
 
-/// Mouse behaviour React Native doesn't have: dragging a file out to Finder
-/// (Downloads rows) and middle-clicks (bookmarks open in the background). Clicks
-/// still reach the React views inside; a drag past a few points starts the session.
 public class FileDragModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooFileDrag")

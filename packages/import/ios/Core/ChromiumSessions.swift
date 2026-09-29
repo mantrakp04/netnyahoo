@@ -1,18 +1,5 @@
 import Foundation
 
-/// Open tabs from a Chromium profile's session file (SNSS).
-///
-/// Layout (components/sessions/core/command_storage_backend.cc):
-///   header  int32 signature "SNSS" (0x53534E53 LE), int32 version
-///   v1/v3   repeated { uint16 size; uint8 command id; size-1 bytes of payload }
-///   v5      repeated { uint32 size; size bytes of OSCrypt-encrypted (id + payload) }
-/// Files live in `Sessions/Session_<µs since 1601>` (plain) or `Sessions_Encrypted/…` (v5,
-/// Chrome 2026+); older Chromium used `Current Session` / `Last Session` at the profile root.
-///
-/// Commands are replayed the way `CreateTabsAndWindows` does (session_service_commands.cc):
-/// tab→window, visual index, navigations (with pruning), selected navigation, pinned state,
-/// tab group membership + group title/colour, closed tabs/windows, window type. Windows that
-/// never got a "normal" window type (popups, apps, devtools) are dropped, as Chrome does.
 public enum ChromiumSessions {
   enum Command: UInt8 {
     case setTabWindow = 0
@@ -36,7 +23,6 @@ public enum ChromiumSessions {
   static let markerCommand: UInt8 = 255
   static let groupColors = ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"]
 
-  /// The newest session file of a profile, or nil.
   public static func latestFile(profile: URL) -> URL? {
     let fm = FileManager.default
     var candidates: [(stamp: Int64, url: URL)] = []
@@ -56,7 +42,6 @@ public enum ChromiumSessions {
     return nil
   }
 
-  /// `key` is the derived Safe Storage key; only needed for v5 (encrypted) files.
   public static func load(profile: URL, key: Data?) throws -> OpenTabs {
     guard let file = latestFile(profile: profile) else { throw ImportError.notFound("No session file in this profile") }
     return try parse(Data(contentsOf: file), key: key)
@@ -75,14 +60,13 @@ public enum ChromiumSessions {
       }
     case 5:
       guard let key else { throw ImportError.locked("This session file is encrypted; unlock the browser first") }
-      // CBC with a wrong key usually still "decrypts"; the initial-state marker every valid
-      // file contains is the one plaintext we can recognise.
       var sawMarker = false
       while let size = reader.u32(), let blob = reader.bytes(Int(size)) {
         guard let plain = ChromiumCrypto.decryptData(Data(blob), key: key), let id = plain.first else { break }
         if id == markerCommand, plain.count == 1 { sawMarker = true }
         state.apply(id: id, payload: plain.dropFirst())
       }
+      // CBC can decrypt with the wrong key; the initial-state marker detects it.
       guard sawMarker else { throw ImportError.locked("Couldn't decrypt the session file with this key") }
     default:
       throw ImportError.unsupported("Unsupported session file version \(version)")
@@ -107,7 +91,6 @@ public enum ChromiumSessions {
     var group: String?
     var lastActive: Double?
 
-    /// First navigation whose index is ≥ `index` (FindClosestNavigationWithIndex).
     func closest(_ index: Int32) -> Int {
       navigations.firstIndex { $0.index >= index } ?? navigations.endIndex
     }
@@ -195,7 +178,6 @@ public enum ChromiumSessions {
     }
 
     func session() -> OpenTabs {
-      // Windows Chrome would restore: a known normal type (0). Sorted by id = creation order.
       let windowIds = windows.filter { $0.value.type == 0 }.keys.sorted()
       var out: [ImportedTab] = []
       var usedGroups = Set<String>()
@@ -224,7 +206,6 @@ public enum ChromiumSessions {
   }
 }
 
-/// Little-endian cursor over raw bytes.
 struct ByteReader {
   let data: Data
   var offset: Int
@@ -259,7 +240,6 @@ struct ByteReader {
   mutating func i64() -> Int64? { integer(Int64.self) }
 }
 
-/// `base::Pickle`: a uint32 payload-size header, then fields each padded to 4 bytes.
 struct Pickle {
   var reader: ByteReader
 

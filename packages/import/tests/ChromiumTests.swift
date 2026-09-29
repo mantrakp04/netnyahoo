@@ -17,7 +17,6 @@ final class ChromiumTests: XCTestCase {
       Mobile bookmarks{mobile}[Phone link<https://phone.example/>]]
       """)
     XCTAssertEqual(root.linkCount, 7)
-    // date_added "13…" µs since 1601 → Unix ms.
     let first = root.children![0].children![0]
     XCTAssertEqual(first.dateAdded, Double(1788220800 - 86400 * 100) * 1000)
   }
@@ -30,7 +29,6 @@ final class ChromiumTests: XCTestCase {
 
   func testHistoryNewestFirstWebOnly() throws {
     let (entries, count) = try HistoryReader.read(chrome.appendingPathComponent("History"), flavor: .chromium)
-    // 2,500 pages + "Newest" + the untitled one; hidden, chrome:// and file:// rows are dropped.
     XCTAssertEqual(count, 2502)
     XCTAssertEqual(entries.count, 2502)
     XCTAssertEqual(entries.first, HistoryEntry(url: "https://newest.example/", title: "Newest", visits: 42,
@@ -47,7 +45,6 @@ final class ChromiumTests: XCTestCase {
     let limited = try HistoryReader.read(file, flavor: .chromium, options: ImportOptions(historyLimit: 10))
     XCTAssertEqual(limited.entries.count, 10)
 
-    // Visited within the last 30 minutes before BASE: "Newest" + pages 0…29.
     let since = Double(1788220800 - 30 * 60) * 1000
     let recent = try HistoryReader.read(file, flavor: .chromium, options: ImportOptions(historySince: since))
     XCTAssertEqual(recent.count, 31)
@@ -87,7 +84,6 @@ final class ChromiumTests: XCTestCase {
   // MARK: Crypto
 
   func testKeyDerivationMatchesIndependentImplementation() {
-    // secrets.json's key was derived by Python's hashlib, not by the code under test.
     XCTAssertEqual(Fixtures.chromiumKey.map { String(format: "%02x", $0) }.joined(), Fixtures.secrets["chromiumKeyHex"])
   }
 

@@ -1,10 +1,5 @@
 import type { CheckState, LiveItem, PullRequestCheck, PullRequestInfo, PullRequestSection } from "./types";
 
-/**
- * GitHub pull requests for the Pull Requests live folder: the GraphQL query, the
- * mapping to live items, stacks, and the CI summary lines Dia's hover preview
- * shows. Pure (no network) so it runs under node tests; ./sources does the I/O.
- */
 const PR_FIELDS = `
   ... on PullRequest {
     id number title url isDraft updatedAt createdAt
@@ -32,12 +27,10 @@ export const GITHUB_QUERY = `query LiveFolder($authored: String!, $review: Strin
 
 export const GITHUB_VARIABLES = {
   authored: "is:pr is:open author:@me archived:false sort:updated-desc",
-  // review-requested includes requests to teams you're on; user-review-requested is just you.
   review: "is:pr is:open review-requested:@me archived:false sort:updated-desc",
   direct: "is:pr is:open user-review-requested:@me archived:false",
 };
 
-/** For PRs that left the results: were they merged or closed? */
 export const GITHUB_STATE_QUERY = `query LiveFolderGone($ids: [ID!]!) {
   nodes(ids: $ids) { ... on PullRequest { id state } }
 }`;
@@ -137,7 +130,6 @@ function mapPR(raw: RawPR, section: PullRequestSection): LiveItem {
 
 const isPR = (n: object): n is RawPR => "number" in n;
 
-/** Live items from one response: your PRs, then review requests (direct, then via a team). */
 export function mapGithub(json: GithubResponse, filters: { authored: boolean; reviewRequests: boolean }): LiveItem[] {
   const data = json.data;
   if (!data) return [];
@@ -153,11 +145,6 @@ export function mapGithub(json: GithubResponse, filters: { authored: boolean; re
   return withStacks(out);
 }
 
-/**
- * Stacked PRs: in one repo, a PR based on another open PR's head branch sits on
- * top of it. Each stack (2+ PRs) gets an id and every member its position,
- * counted from the bottom, like Dia 1.2x's "Stack Positions".
- */
 export function withStacks(items: LiveItem[]): LiveItem[] {
   const byHead = new Map<string, LiveItem>();
   for (const it of items) if (it.pr) byHead.set(`${it.pr.repo}:${it.pr.headRef}`, it);
@@ -192,13 +179,11 @@ export function withStacks(items: LiveItem[]): LiveItem[] {
 }
 
 export type CheckSummary = {
-  /** Dia's line under the CI bar. */
   text: string;
   tone: "success" | "failure" | "pending" | "neutral";
   counts: { success: number; failure: number; pending: number };
 };
 
-/** "All checks have passed", "Some checks haven't completed yet", "2 checks are failing"… (null: no CI). */
 export function summarizeChecks(checks: PullRequestCheck[]): CheckSummary | null {
   if (!checks.length) return null;
   const failure = checks.filter((c) => c.state === "failure").length;
@@ -212,7 +197,6 @@ export function summarizeChecks(checks: PullRequestCheck[]): CheckSummary | null
   return { text: "All checks have passed", tone: "success", counts };
 }
 
-/** The one glyph a folder row shows for a PR, most urgent first. */
 export function prBadge(pr: PullRequestInfo): "conflict" | "failing" | "changesRequested" | "pending" | "approved" | "passed" | null {
   if (pr.mergeable === "conflicting") return "conflict";
   const summary = summarizeChecks(pr.checks);

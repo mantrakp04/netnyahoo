@@ -9,19 +9,13 @@ import { useHover } from "../primitives";
 const INSET = 16;
 const BUTTON = 30;
 
-/** Which window has the panel open (one at a time, like a popover). */
 const usePanel = create<{ windowId: string | null }>(() => ({ windowId: null }));
 const setOpen = (windowId: string | null) => usePanel.setState({ windowId });
 
-/**
- * The New Tab page's Personalize button (bottom right) and its panel: the profile's theme colour
- * and the tab layout, the same controls as onboarding's Personalization step.
- */
 export function PersonalizeButton({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
   const open = usePanel((s) => s.windowId === windowId);
-  // Leaving the New Tab page closes it.
   useEffect(() => () => {
     if (usePanel.getState().windowId === windowId) setOpen(null);
   }, [windowId]);
@@ -58,7 +52,6 @@ function PersonalizePanel({ windowId, onClose }: { windowId: string; onClose: ()
   }, []);
   return (
     <>
-      {/* Clicking anywhere else closes it. */}
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close Personalize" />
       <Animated.View
         style={{
@@ -97,5 +90,4 @@ function PersonalizePanel({ windowId, onClose }: { windowId: string; onClose: ()
   );
 }
 
-// DEV: tooling opens it through the dev harness (`globalThis.nnPersonalize`).
 if (__DEV__) (globalThis as { nnPersonalize?: unknown }).nnPersonalize = { open: setOpen };

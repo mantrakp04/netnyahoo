@@ -2,9 +2,7 @@ import { useEffect, useRef } from "react";
 import { Animated, Easing } from "react-native";
 import type { Theme } from "../../lib/theme";
 
-/** Colours for toolbar content; with a website colour they're picked for contrast against it. */
 export type ToolbarPalette = {
-  /** The band's fill (#RRGGBB), or null for the plain translucent card. */
   background: string | null;
   text: string;
   secondary: string;
@@ -23,7 +21,6 @@ function channels(color: string): [number, number, number] | null {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/** WCAG relative luminance (0 black … 1 white). */
 export function luminance(color: string): number {
   const c = channels(color);
   if (!c) return 0;
@@ -36,11 +33,6 @@ export function luminance(color: string): number {
 
 const cache = new Map<string, ToolbarPalette>();
 
-/**
- * Dia's "Extend website color into tab bar": the toolbar band takes the page's
- * theme / header colour, and its text and icons flip to whichever of black or
- * white reads better on it.
- */
 export function toolbarPalette(theme: Theme, websiteColor: string | null): ToolbarPalette {
   const key = `${theme.dark}|${theme.textPrimary}|${websiteColor ?? ""}`;
   let palette = cache.get(key);
@@ -58,7 +50,6 @@ export function toolbarPalette(theme: Theme, websiteColor: string | null): Toolb
       divider: theme.divider,
     };
   } else {
-    // Contrast against white vs. black text: (L1 + .05) / (L2 + .05).
     const l = luminance(websiteColor);
     const light = (1.05 / (l + 0.05)) < ((l + 0.05) / 0.05);
     palette = light
@@ -89,18 +80,12 @@ export function toolbarPalette(theme: Theme, websiteColor: string | null): Toolb
   return palette;
 }
 
-/**
- * A background colour that eases between values (sticky headers change it while
- * the page scrolls). Returns an animated colour, transparent when `color` is null.
- */
 export function useEasedColor(color: string | null, duration = 180) {
   const progress = useRef(new Animated.Value(1)).current;
   const from = useRef<string>(color ?? "#00000000");
   const to = useRef<string>(color ?? "#00000000");
-  // Fading out keeps the hue, so the band doesn't flash grey on the way.
   const target = color ? color.slice(0, 7) : `${to.current.slice(0, 7)}00`;
   if (target !== to.current) {
-    // Start from wherever the last transition was heading.
     from.current = to.current;
     to.current = target;
   }

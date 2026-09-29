@@ -22,7 +22,6 @@ import { CheckMark, CheckRow, PrimaryButton, Reveal, SecondaryButton, StepProgre
 
 const ICON = require("../../../assets/app-icon.png");
 
-/** A step's card: content and actions on the left, an illustration on the right. */
 export function StepLayout({ children, actions, preview }: { children: ReactNode; actions: ReactNode; preview: ReactNode }) {
   const colors = useOnboardingColors();
   return (
@@ -70,7 +69,6 @@ export function DefaultBrowserStep() {
   const [setDefault, setSetDefault] = useState(true);
   const [trial, setTrial] = useState(false);
   const [dock, setDock] = useState(true);
-  // Off unless it already is: opening at login is a bigger ask than the others.
   const [login, setLogin] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -85,10 +83,8 @@ export function DefaultBrowserStep() {
     if (!system) return;
     setBusy(true);
     try {
-      // macOS asks the user to confirm the default browser itself.
       if (setDefault && !system.isDefault && (await setAsDefaultBrowser()) && trial) recordDefaultBrowserTrial();
       if (login !== system.loginEnabled) await setLaunchAtLogin(login).catch(() => {});
-      // Last: the Dock restarts to show the new tile.
       if (dock && !system.inDock) await addToDock();
     } finally {
       setBusy(false);
@@ -190,7 +186,6 @@ export function PersonalizeStep() {
   );
 }
 
-/** A small window in the picked colour and layout. */
 function WindowPreview({ windowId }: { windowId: string }) {
   const colors = useOnboardingColors();
   const dark = useTheme().dark;
@@ -247,7 +242,6 @@ function WindowPreview({ windowId }: { windowId: string }) {
 
 // MARK: Import
 
-/** Browsers the import flow understands, if installed (icons are the apps' own). */
 const BROWSERS = [
   { name: "Chrome", path: "/Applications/Google Chrome.app" },
   { name: "Safari", path: "/Applications/Safari.app" },
@@ -268,7 +262,6 @@ export function ImportStep() {
   const [icons, setIcons] = useState<{ name: string; uri: string }[]>([]);
 
   useEffect(() => {
-    // Safari lives in /System/Cryptexes on recent macOS, but /Applications/Safari.app still resolves.
     const installed = BROWSERS.filter((b) => fileExists(b.path)).slice(0, 6);
     void Promise.all(installed.map(async (b) => ({ name: b.name, uri: (await fileIcon(b.path, 56)) ?? "" }))).then((list) =>
       setIcons(list.filter((i) => i.uri)),
@@ -396,7 +389,6 @@ function SiteTile({ title, url, selected, onPress }: { title: string; url: strin
   );
 }
 
-/** A miniature sidebar: the chosen sites as pinned tabs above a couple of tab rows. */
 function PinnedPreview({ selected }: { selected: string[] }) {
   const colors = useOnboardingColors();
   const sites = PINNABLE_SITES.filter((s) => selected.includes(s.id));
@@ -477,7 +469,6 @@ export function OutroStep() {
   );
 }
 
-/** The welcome postcard: stamp, postmark and a short note. */
 function Postcard() {
   const colors = useOnboardingColors();
   return (
@@ -511,7 +502,6 @@ function Postcard() {
           ))}
         </View>
       </View>
-      {/* Postmark, franking the stamp's corner. */}
       <View
         style={{
           position: "absolute",

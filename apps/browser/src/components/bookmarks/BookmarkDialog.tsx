@@ -9,11 +9,6 @@ import { useBookmarkDialog, type BookmarkDialogState } from "./actions";
 import { FolderTree } from "./FolderTree";
 import { SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "../layout/windowLayout";
 
-/**
- * Dia's bookmark save dialog: the page is bookmarked as soon as ⌘D is pressed;
- * this panel (under the toolbar, at the bookmark button's end) renames it and
- * moves it within the full folder tree. Also used for Bookmark All Tabs….
- */
 export function BookmarkDialog() {
   const windowId = useWindowId();
   const open = useBookmarkDialog((d) => (d.open?.windowId === windowId ? d.open : null));
@@ -24,7 +19,6 @@ export function BookmarkDialog() {
 function DialogPanel({ state }: { state: BookmarkDialogState }) {
   const theme = useTheme();
   const colors = useFormColors();
-  // Under the URL field's bookmark button: the toolbar's (top right) or the sidebar's.
   const addressBar = useAddressBarInSidebar();
   const bookmark = useBrowser((s) => (state.kind === "page" ? s.bookmarks.nodes[state.bookmarkId] : undefined));
   const profileId = state.kind === "page" ? profileOfNode(state.bookmarkId) : state.profileId;
@@ -34,7 +28,6 @@ function DialogPanel({ state }: { state: BookmarkDialogState }) {
   );
   const close = () => useBookmarkDialog.getState().set(null);
 
-  // The bookmark was deleted elsewhere (e.g. ⌘D again from the menu): nothing to edit.
   useEffect(() => {
     if (state.kind === "page" && !bookmark) close();
   }, [bookmark]);
@@ -68,7 +61,6 @@ function DialogPanel({ state }: { state: BookmarkDialogState }) {
 
   return (
     <View style={StyleSheet.absoluteFill}>
-      {/* Clicking anywhere else keeps the edits and closes, like Chrome's bubble. */}
       <Pressable style={StyleSheet.absoluteFill} onPress={done} />
       <Surface
         fill={hex(theme.panel)}
@@ -115,7 +107,6 @@ function DialogPanel({ state }: { state: BookmarkDialogState }) {
   );
 }
 
-/** The profile whose tree holds a node (walks up to a root). */
 function profileOfNode(id: string): string | null {
   const b = useBrowser.getState().bookmarks;
   let node = b.nodes[id];

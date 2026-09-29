@@ -1,5 +1,3 @@
-// Generates the film's score with Eleven Music (music_v2_5, instrumental). A composition plan's chunk `text` is
-// sung as lyrics by v2.5, so the structure goes in a prompt with force_instrumental; check takes with transcribe.mjs.
 // usage: node scripts/audio/music.mjs <name> → work/music/<name>.mp3 (+ .json with the request)
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -11,7 +9,6 @@ const out = join(root, "work/music");
 mkdirSync(out, { recursive: true });
 
 export const CUES = {
-  // v2, the product film: 72 BPM (a beat is 25 frames at 30 fps, a bar 100), nine bars, 30 s.
   film: {
     prompt:
       "Instrumental cinematic score for a premium Apple-style product film, exactly 72 BPM in 4/4, major key, warm and understated, " +
@@ -24,8 +21,6 @@ export const CUES = {
     music_length_ms: 30000,
     force_instrumental: true,
   },
-  // "Pour", the fragrance-ad parody: 66.7 BPM (a beat is 27 frames at 30 fps, a bar 108), nine bars, 32.4 s.
-  // Asked for at 67 and stretched onto the grid (scripts/make-pour-sound.mjs).
   pour: {
     prompt:
       "Instrumental score for a luxury perfume commercial, exactly 67 BPM in 4/4, minor key, sultry, slow and intimate, " +

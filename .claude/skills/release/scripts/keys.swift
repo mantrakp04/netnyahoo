@@ -1,6 +1,3 @@
-// usage: keys <pid> <keyCode> [c][s][o][t] — presses a key with ⌘ (c), ⇧ (s), ⌥ (o), ⌃ (t) in that one
-// process (CGEventPostToPid, never the session: the user is typing elsewhere). A hidden test instance
-// has no key window, so AppKit hands the key straight to the menu bar. Compiled on demand by smoke.sh.
 import CoreGraphics
 import Foundation
 

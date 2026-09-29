@@ -3,10 +3,6 @@ import { Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { Favicon } from "../primitives";
 
-/**
- * Tab-to-search: the site or engine the query is scoped to, as a token before the text
- * ("youtube.com ⇥" → [▶ YouTube] cats). Backspace on an empty query or Esc removes it.
- */
 export function ScopeChip({ scope, large }: { scope: SearchScope; large: boolean }) {
   const theme = useTheme();
   return (

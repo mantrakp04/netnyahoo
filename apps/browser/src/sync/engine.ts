@@ -31,14 +31,6 @@ import {
   type ProfileRecord,
 } from "./adapters";
 
-/**
- * Sync, after Dia's (Settings › Sync), without a server: every Mac reads and writes sealed
- * files in a folder the user picks (iCloud Drive › Netnyahoo Sync unless they pick another),
- * and the key comes from a 24-word recovery phrase that never leaves their Macs. Design:
- * docs/sync.md. Here: the state this Mac keeps (sync.json), the setup flows, and the cycle
- * that runs every few seconds.
- */
-
 export type DataType = "bookmarks" | "history" | "tabs" | "pinned" | "passwords" | "settings";
 
 export const DATA_TYPES: { id: DataType; title: string; description: string }[] = [
@@ -53,7 +45,6 @@ export const DATA_TYPES: { id: DataType; title: string; description: string }[] 
 type ProfileLink = {
   syncId: string;
   enabled: boolean;
-  /** Turned off (or its profile deleted): its open tabs leave the other devices on the next cycle. */
   retire?: boolean;
 };
 
@@ -61,23 +52,18 @@ type SyncDoc = {
   v: 1;
   enabled: boolean;
   folder: string | null;
-  /** A new id every time sync is turned on here, so a device's file numbers never restart. */
   deviceId: string | null;
   clock: string | null;
   types: Record<DataType, boolean>;
-  /** Local profile id → the profile's id in the sync data. */
   profiles: Record<string, ProfileLink>;
   scopes: Record<string, ScopeState>;
   lastSyncedAt: number | null;
   setupAt: number | null;
-  /** Entered a phrase: match profiles to the synced ones (Personal to Personal) on the first cycle. */
   joining: boolean;
-  /** Each scope's last written file number, kept outside the sealed state. */
   seqs?: Record<string, number>;
 };
 
 const DOC = "sync.json";
-/** The replica, sealed (loadState). */
 const STATE = "sync-state.nns";
 const APP_SCOPE = "app";
 const CYCLE_MS = 15_000;
@@ -99,7 +85,6 @@ const emptyDoc = (): SyncDoc => ({
   joining: false,
 });
 
-/** Dia's status words: "starting up", "updating", "updated just now", "not syncing", "offline". */
 export type SyncStatus = "off" | "starting" | "updating" | "updated" | "stalled" | "offline" | "locked" | "reset" | "unavailable";
 
 export type SyncedDevice = { id: string; name: string; lastSeen: number | null; current: boolean };
@@ -113,13 +98,10 @@ type SyncUi = {
   types: Record<DataType, boolean>;
   profiles: Record<string, ProfileLink>;
   lastSyncedAt: number | null;
-  /** Why the last cycle failed. */
   error: string | null;
   pending: number;
   devices: SyncedDevice[];
-  /** Per local profile: the other devices' open tabs. */
   remoteTabs: Record<string, RemoteTabs[]>;
-  /** Synced profiles this Mac doesn't have. */
   remoteProfiles: RemoteProfile[];
 };
 
@@ -155,11 +137,6 @@ function load() {
   }
 }
 
-/**
- * The replica (saved passwords included) is written sealed with the sync key, so it's only
- * readable once the key is unlocked. If it can't be read, the folder is read again from the
- * start; the file numbers this Mac used carry on from `seqs`, so none is reused.
- */
 async function loadState() {
   const sealed = readDocument(STATE);
   const json = sealed ? await SyncNative?.openLocal(sealed) : null;
@@ -237,7 +214,6 @@ function profileAdapters(profileId: string, retiring: boolean): Adapter[] {
   const id = doc.deviceId!;
   if (retiring) return [deviceTabsAdapter(profileId, id, deviceName, true)];
   const s = useBrowser.getState();
-  // Profiles that share another's data sync their tabs; the data syncs with its owner.
   const ownsData = !s.profiles[profileId]?.dataId;
   const t = doc.types;
   let passwords = passwordAdapters.get(profileId);
@@ -247,21 +223,18 @@ function profileAdapters(profileId: string, retiring: boolean): Adapter[] {
     ...(t.bookmarks && ownsData ? [bookmarksAdapter(profileId)] : []),
     ...(t.history && ownsData ? [historyAdapter(profileId)] : []),
     deviceTabsAdapter(profileId, id, deviceName, !t.tabs),
-    // Last: it waits on Chrome, and nothing else should wait with it.
     ...(t.passwords && ownsData ? [passwords] : []),
   ];
 }
 
 // MARK: The cycle
 
-/** Runs a cycle soon (after local edits settle), or now. */
 export function scheduleSync(delay = AFTER_EDIT_MS) {
   if (!doc.enabled) return;
   clearTimeout(timer);
   timer = setTimeout(() => void runCycle(), delay);
 }
 
-/** Settings' "Sync Now" (and the dev harness): a cycle now, passwords included. */
 export async function syncNow() {
   forcePasswords = true;
   await runCycle();
@@ -307,7 +280,6 @@ async function runCycle({ retiring = false } = {}) {
       pending += state.pending;
       if (retire) {
         delete link.retire;
-        // Kept while the profile exists: turning it back on picks up where it left off.
         if (!exists) {
           delete doc.scopes[scope];
           delete doc.profiles[profileId];
@@ -339,7 +311,6 @@ async function runCycle({ retiring = false } = {}) {
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Matches local profiles to synced ones: on joining, Personal to the synced default and others by name; new ones get ids. */
 function linkProfiles(app: ScopeState) {
   const s = useBrowser.getState();
   const remote = [...visible(app, "prof:")].map(([k, v]) => [k.slice(5), v as ProfileRecord] as const);
@@ -353,13 +324,12 @@ function linkProfiles(app: ScopeState) {
     const syncId = match ?? SyncNative!.newDeviceId();
     doc.profiles[id] = { syncId, enabled: true };
     taken.add(syncId);
-    // Its data is elsewhere already: don't let this Mac's copy count as newer until it's read.
+    // Read the existing chain before publishing local sync data.
     if (match) doc.scopes[`p:${syncId}`] = { ...emptyScope(), awaitRemote: true };
   }
   for (const [id, link] of Object.entries(doc.profiles)) if (!s.profiles[id] && !link.retire) link.retire = true;
 }
 
-/** The chain folder is gone: another device chose Delete My Sync Data. Stop here, keep everything local. */
 async function resetFromElsewhere() {
   await SyncNative?.forget(doc.deviceId!);
   doc = { ...emptyDoc(), folder: doc.folder, types: doc.types };
@@ -400,7 +370,6 @@ export async function folderInfo(path?: string | null): Promise<FolderInfo | nul
   return (await SyncNative?.folderInfo(path ?? doc.folder ?? null)) ?? null;
 }
 
-/** Picks the folder sync uses (only while sync is off). */
 export function setSyncFolder(path: string) {
   if (doc.enabled) return;
   doc.folder = path;
@@ -421,7 +390,6 @@ function begin(folder: string, deviceId: string, joining: boolean) {
   scheduleSync(0);
 }
 
-/** Turn On Sync / Set Up Without Another Device: a new phrase and new sync data in the folder. */
 export async function turnOnSync(folder: string): Promise<{ ok: true } | { error: string }> {
   const native = SyncNative;
   if (!native) return { error: "Sync isn’t available in this build." };
@@ -437,11 +405,9 @@ export async function turnOnSync(folder: string): Promise<{ ok: true } | { error
   return { ok: true };
 }
 
-/** Enter Recovery Phrase: join the sync data another device made (or unlock this one again). */
 export async function enterRecoveryPhrase(folder: string, text: string): Promise<PhraseResult | { error: "unavailable" }> {
   const native = SyncNative;
   if (!native) return { error: "unavailable" };
-  // Locked (this Mac lost its key, e.g. a Keychain reset): the same device picks up where it was.
   if (doc.enabled && doc.deviceId && useSync.getState().status === "locked") {
     const result = await native.enterPhrase(doc.deviceId, text, doc.folder ?? folder);
     if ("ok" in result) {
@@ -457,7 +423,6 @@ export async function enterRecoveryPhrase(folder: string, text: string): Promise
   return result;
 }
 
-/** Stop Syncing: this Mac leaves (its tabs and name leave the other devices); everything local stays. */
 export async function stopSync({ deleteData = false } = {}) {
   const native = SyncNative;
   if (!native || !doc.enabled) return;
@@ -498,7 +463,6 @@ export function setProfileSynced(profileId: string, enabled: boolean) {
   scheduleSync(0);
 }
 
-/** Add to This Mac: a synced profile this Mac doesn't have becomes a local profile, synced. */
 export function addRemoteProfile(syncId: string): string | null {
   const record = doc.scopes[APP_SCOPE]?.records[`prof:${syncId}`]?.v as ProfileRecord | undefined;
   if (!record) return null;
@@ -525,14 +489,11 @@ export function startSync() {
       scheduleSync(500);
     });
   }
-  // Local edits sync a few seconds after they settle.
-  // (Tabs and history change all the time and go with the regular cycle.)
   useBrowser.subscribe((s, prev) => {
     if (!doc.enabled || running) return;
     if (s.bookmarks !== prev.bookmarks || s.settings !== prev.settings || s.profiles !== prev.profiles || s.groups !== prev.groups) scheduleSync();
   });
   if (__DEV__) {
-    // Test hooks: `nnSync.turnOnSync(folder)`, `nnSync.syncNow()`, `nnSync.menu.syncedDevicesMenuItem(profileId)`…
     (globalThis as { nnSync?: object }).nnSync = {
       useSync, syncNow, turnOnSync, enterRecoveryPhrase, stopSync, setTypeSynced, setProfileSynced, addRemoteProfile, setSyncFolder, folderInfo,
       doc: () => doc,
@@ -540,7 +501,6 @@ export function startSync() {
       get menu(): typeof import("./menu") {
         return require("./menu");
       },
-      /** Settings › Sync's sheets: `nnSync.sheets.showRecoveryKit()`. */
       get sheets(): typeof import("../components/settings/panes/SyncSheets") {
         return require("../components/settings/panes/SyncSheets");
       },

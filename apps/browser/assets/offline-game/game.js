@@ -1,20 +1,3 @@
-/*
- * Where's Big Yahu? — Netnyahoo's no-internet game.
- *
- * Static, dependency-free, zero network: everything it needs ships in this folder.
- * URL parameters:
- *   code=ERR_…      net error name shown in the header (enables offline framing)
- *   url=https://…   the page that failed; Retry navigates back to it
- *   theme=dark|light  force a colour scheme (default: follow the system)
- *   seed=123        deterministic levels (testing)
- *   debug=1         exposes window.__yahu for automated checks
- * An embedder that can't use the query string (e.g. a patched Chrome net-error
- * page, whose URL is the failed URL) may set window.YAHU_ERROR = {code, url}
- * before this script runs. The single-file build (offline-game-pipeline/
- * inline.py) also sets window.YAHU_ASSETS, asset path → data: URL.
- * Retry, in order: window.netnyahoo.retry(), Chrome's error-page
- * errorPageController.reloadButtonClick(), navigate to `url`, reload.
- */
 (() => {
   "use strict";
 
@@ -23,7 +6,6 @@
   const MANIFEST = window.YAHU_MANIFEST;
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // ---------------------------------------------------------------- framing
   const theme = params.get("theme");
   if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
 
@@ -60,13 +42,11 @@
   addEventListener("online", () => { if (errorCode || failedUrl) $("online").hidden = false; });
   addEventListener("offline", () => { $("online").hidden = true; });
 
-  // ---------------------------------------------------------------- storage
   const BEST_KEY = "netnyahoo.yahu.best";
   function loadBest() {
     try { return Math.max(0, parseInt(localStorage.getItem(BEST_KEY) || "0", 10) || 0); } catch (_) { return 0; }
   }
-  // On Chrome's net-error page (opaque origin, no localStorage) the browser
-  // keeps the dino high score for us; reuse that channel when it exists.
+  // Chrome net-error pages are opaque; use the browser's high-score store.
   function saveBest(v) {
     try { localStorage.setItem(BEST_KEY, String(v)); } catch (_) {}
     try {
@@ -77,8 +57,7 @@
   window.initializeEasterEggHighScore = (v) => {
     if (v > best) { best = v; updateHud(); }
   };
-  // Asks the browser for the stored score (answered through the hook above). Chrome
-  // installs errorPageController and answers only once the page has finished loading.
+  // Query after load; Chrome installs the high-score hook then.
   function requestStoredBest() {
     const ask = () => setTimeout(() => {
       try {
@@ -90,7 +69,6 @@
     else addEventListener("load", ask, { once: true });
   }
 
-  // ---------------------------------------------------------------- random
   function mulberry32(a) {
     return () => {
       a |= 0; a = (a + 0x6d2b79f5) | 0;
@@ -113,7 +91,6 @@
     return a;
   }
 
-  // ---------------------------------------------------------------- copy
   const CAPTIONS = [
     "Found him. Now try finding the donor list.",
     "Hiding in a crowd of lobbyists. Bold camouflage.",
@@ -155,7 +132,6 @@
   const nextTimeout = makeBag(TIMEOUT_LINES);
   const nextMiss = { crowd: makeBag(MISS.crowd), hair: makeBag(MISS.hair), tie: makeBag(MISS.tie) };
 
-  // ---------------------------------------------------------------- assets
   const sprites = { crowd: [], decoy: [], yahu: [] };
   const backgrounds = [];
   function parseMask(rows) {
@@ -186,9 +162,6 @@
     backgrounds.sort((a, b) => (a.id < b.id ? -1 : 1));
   }
 
-  // ---------------------------------------------------------------- geometry
-  // A person is a bust anchored at its bottom-centre (x, y) in world units,
-  // drawn h tall, rotated by rot and mirrored by flip.
   function toLocal(p, wx, wy) {
     const dx = wx - p.x, dy = wy - p.y;
     const c = Math.cos(-p.rot), s = Math.sin(-p.rot);
@@ -213,10 +186,8 @@
     const { u, v } = toLocal(p, wx, wy);
     return maskAt(p.sprite, u, v);
   }
-  // Centre of the face, roughly: sprites are head-and-shoulders, head on top.
   const headCenter = (p) => toWorld(p, 0.5, 0.36);
 
-  // ---------------------------------------------------------------- levels
   let bgOrder = [];
   function buildLevel(n) {
     const t = clamp((n - 1) / 9, 0, 1);
@@ -251,7 +222,6 @@
       y += h * rowK;
     }
 
-    // Decoys share one Big Yahu trait. Blue ties first; silver hair from level 3.
     const decoyPool = sprites.decoy.filter((s) => n >= 3 || s.trait === "tie");
     const decoyCount = Math.round(lerp(2, 16, t));
     const nextDecoy = makeBag(decoyPool.length ? decoyPool : sprites.decoy);
@@ -262,8 +232,6 @@
 
     people.sort((a, b) => a.y - b.y);
 
-    // Hide Big Yahu: a slot fully inside the frame, not too close to the camera
-    // on later levels, with a level-dependent amount of his face occluded.
     const minVis = lerp(0.95, 0.55, t);
     const wantOccluded = n >= 3;
     const pose = pick(sprites.yahu);
@@ -272,9 +240,9 @@
       return p.x > W * 0.07 && p.x < W * 0.93 && top > H * 0.03 && p.y - p.h * 0.45 < H * 0.95 &&
         (t < 0.15 || p.depth < lerp(1, 0.7, t));
     });
-    for (const p of candidates) p.rot *= 0.5; // whoever he replaces: a gentle tilt at most
+    for (const p of candidates) p.rot *= 0.5;
     let yahu = null;
-    let fallback = null; // most visible slot seen, in case nothing qualifies
+    let fallback = null;
     for (let i = 0; i < 80 && candidates.length; i++) {
       const p = pick(candidates);
       const prev = { sprite: p.sprite, kind: p.kind };
@@ -287,7 +255,6 @@
     if (!yahu) {
       yahu = fallback ? fallback.p : pick(people);
       yahu.sprite = pose; yahu.kind = "yahu";
-      // Last resort: clear whoever blocks his face.
       for (let guard = 0; guard < 24 && visibility(yahu, people) < minVis; guard++) {
         const idx = people.indexOf(yahu);
         const blocker = people.slice(idx + 1).find((q) => blocksFace(yahu, q));
@@ -296,7 +263,6 @@
       }
     }
 
-    // Later levels: seat look-alikes right next to him.
     if (n >= 4) {
       const near = people
         .filter((p) => p !== yahu && p.kind === "crowd" && Math.abs(p.y - yahu.y) < yahu.h * 0.6)
@@ -304,7 +270,6 @@
         .slice(0, n >= 7 ? 2 : 1);
       const saved = near.map((p) => ({ p, sprite: p.sprite, kind: p.kind }));
       for (const p of near) { p.sprite = nextDecoy(); p.kind = p.sprite.trait; }
-      // A new silhouette in front of him must not eat into his visible face.
       if (visibility(yahu, people) < minVis) for (const r of saved) { r.p.sprite = r.sprite; r.p.kind = r.kind; }
     }
 
@@ -333,7 +298,6 @@
     return faceSamples(p).some((pt) => hits(q, pt.x, pt.y));
   }
 
-  // ---------------------------------------------------------------- canvas + camera
   const stage = $("stage");
   const canvas = $("canvas");
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -367,7 +331,7 @@
   function fitCam() {
     cam.k = minK();
     cam.x = (vw - level.W * cam.k) / 2;
-    cam.y = vh - level.H * cam.k; // favour the crowd (bottom) when cropping
+    cam.y = vh - level.H * cam.k;
     clampCam();
     dirty = true;
   }
@@ -399,10 +363,9 @@
   const toScreen = (wx, wy) => ({ x: wx * cam.k + cam.x, y: wy * cam.k + cam.y });
   const toWorldPt = (sx, sy) => ({ x: (sx - cam.x) / cam.k, y: (sy - cam.y) / cam.k });
 
-  // ---------------------------------------------------------------- effects
-  const effects = []; // {type, start, ms, ...}
-  let hint = null; // {cx, cy, r0, r1, start, ms}
-  let reveal = null; // {start}
+  const effects = [];
+  let hint = null;
+  let reveal = null;
   let confetti = [];
 
   const ease = {
@@ -412,7 +375,6 @@
     outElastic: (t) => (t === 0 || t === 1 ? t : Math.pow(2, -9 * t) * Math.sin((t * 10 - 0.75) * (2 * Math.PI) / 3.2) + 1),
   };
 
-  // ---------------------------------------------------------------- render
   function drawPerson(p, scale = 1, lift = 0) {
     const img = p.sprite.img;
     const s = (p.h / img.height) * scale;
@@ -436,7 +398,6 @@
     ctx.setTransform(cam.k * dpr, 0, 0, cam.k * dpr, cam.x * dpr, cam.y * dpr);
     ctx.drawImage(L.bg.img, 0, 0, L.W, L.H);
 
-    // Depth haze: fade the far rows toward the room's light a touch.
     const view = { x0: -cam.x / cam.k, y0: -cam.y / cam.k, x1: (vw - cam.x) / cam.k, y1: (vh - cam.y) / cam.k };
     const revealing = reveal && state !== "over";
     for (const p of L.people) {
@@ -448,7 +409,6 @@
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Hint spotlight.
     if (hint && (state === "playing" || state === "paused")) {
       const k = ease.outCubic(clamp((now - hint.start) / hint.ms, 0, 1));
       const r = lerp(hint.r0, hint.r1, k) * cam.k;
@@ -466,7 +426,6 @@
       ctx.stroke();
     }
 
-    // Wrong-click rings.
     for (let i = effects.length - 1; i >= 0; i--) {
       const e = effects[i];
       const k = (now - e.start) / e.ms;
@@ -484,7 +443,6 @@
       ctx.stroke();
     }
 
-    // Found: dim the crowd, pop Big Yahu out with a bounce.
     if (reveal) {
       const t = (now - reveal.start) / 1000;
       const Y = L.yahu;
@@ -521,7 +479,6 @@
       }
     }
 
-    // Banknote confetti on a find.
     if (confetti.length) {
       const dt = 1 / 60;
       for (let i = confetti.length - 1; i >= 0; i--) {
@@ -553,8 +510,6 @@
     }
   }
 
-  // ---------------------------------------------------------------- game state
-  // loading → title → playing ⇄ paused → found → playing … → over → playing
   let state = "loading";
   let score = 0;
   let best = loadBest();
@@ -754,18 +709,15 @@
       toast(`−5s · ${nextMiss[p.kind === "hair" || p.kind === "tie" ? p.kind : "crowd"]()}`, true);
       return;
     }
-    // Clicked scenery: free, but say so.
     effects.push({ wx: w.x, wy: w.y, start: performance.now(), ms: 400 });
   }
 
-  // ---------------------------------------------------------------- input
-  // Canvas-local coordinates from client coordinates (offsetX is unreliable
-  // for synthesized events and under ancestor transforms).
+  // Use client coordinates; offsetX fails for synthetic events and transforms.
   const lx = (e) => e.clientX - canvas.getBoundingClientRect().left;
   const ly = (e) => e.clientY - canvas.getBoundingClientRect().top;
   const pointers = new Map();
-  let drag = null; // {x, y, moved}
-  let pinch = null; // {dist, cx, cy}
+  let drag = null;
+  let pinch = null;
   canvas.addEventListener("pointerdown", (e) => {
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
     pointers.set(e.pointerId, { x: lx(e), y: ly(e) });
@@ -814,14 +766,12 @@
     if (state === "paused" || state === "loading") return;
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? vh : 1;
     const dx = e.deltaX * unit, dy = e.deltaY * unit;
-    // Trackpad pinch arrives as ctrl+wheel. A notched mouse wheel zooms too;
-    // two-finger scrolling pans.
+    // Trackpad pinch uses ctrl+wheel; two-finger scroll pans.
     const notched = e.deltaMode === 1 || (dx === 0 && Math.abs(dy) >= 50 && Number.isInteger(dy) && Math.abs(dy) % 50 === 0);
     if (e.ctrlKey || e.metaKey) zoomAt(lx(e), ly(e), Math.exp(-dy * 0.012));
     else if (notched) zoomAt(lx(e), ly(e), dy > 0 ? 1 / 1.2 : 1.2);
     else panBy(-dx, -dy);
   }, { passive: false });
-  // Safari pinch.
   let gestureBase = 1;
   canvas.addEventListener("gesturestart", (e) => { e.preventDefault(); gestureBase = 1; });
   canvas.addEventListener("gesturechange", (e) => {
@@ -838,7 +788,7 @@
     switch (e.key) {
       case " ":
       case "Enter":
-        if (onButton && e.key === "Enter") return; // native button activation
+        if (onButton && e.key === "Enter") return;
         e.preventDefault();
         onPrimary();
         break;
@@ -870,9 +820,7 @@
   document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
   new ResizeObserver(resize).observe(stage);
 
-  // ---------------------------------------------------------------- loop
   function frame(now) {
-    // Wall-clock timer; long gaps only happen when hidden, and hiding pauses.
     const dt = Math.min(1, Math.max(0, (now - last) / 1000));
     last = now;
     if (state === "playing") {
@@ -897,7 +845,6 @@
     requestAnimationFrame(frame);
   }
 
-  // ---------------------------------------------------------------- boot
   async function boot() {
     requestStoredBest();
     resize();
@@ -940,7 +887,6 @@
         const c = headCenter(level.yahu);
         return toScreen(c.x, c.y);
       },
-      // A point on Big Yahu's face that no one stands in front of, in page coordinates.
       yahuVisiblePage() {
         const Y = level.yahu;
         const r = canvas.getBoundingClientRect();
@@ -956,7 +902,6 @@
       fit: () => fitCam(),
       timeout: () => gameOver(),
       zoomAt,
-      // A screen point whose topmost person is not Big Yahu (for wrong-click tests).
       wrongScreen(kind) {
         const ps = level.people;
         for (let i = ps.length - 1; i >= 0; i--) {
@@ -970,7 +915,6 @@
         return null;
       },
       visibility: () => visibility(level.yahu, level.people),
-      // Average ms per full-scene render (the frame budget at 60fps is 16.7ms).
       renderCost(frames = 60) {
         const t0 = performance.now();
         for (let i = 0; i < frames; i++) render(performance.now());

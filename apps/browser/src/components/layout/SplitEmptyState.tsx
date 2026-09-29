@@ -7,10 +7,6 @@ import { useBrowser } from "../../store/browser";
 import { tabLabel } from "../../store/model";
 import { Favicon, useHover } from "../primitives";
 
-/**
- * A new, empty split pane (Dia's split view empty state): "Add a tab to this
- * Split View", a search row, and the window's recent tabs to put here instead.
- */
 export function SplitEmptyState({ tabId, focused }: { tabId: string; focused: boolean }) {
   const theme = useTheme();
   const [typing, setTyping] = useState(focused);

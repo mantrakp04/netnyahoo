@@ -12,11 +12,6 @@ import type { BrowserWindow, Tab } from "./types";
 import { createUiSlice, type UiSlice } from "./ui";
 import { createWindowsSlice, type WindowsSlice } from "./windows";
 
-/**
- * The whole app's state, in one zustand store shared by every window (all
- * windows run in one JS runtime). Slices live in their own files; actions take
- * explicit ids — per-window convenience hooks are in ./hooks.
- */
 export type BrowserState = ProfilesSlice &
   WindowsSlice &
   TabsSlice &
@@ -27,7 +22,6 @@ export type BrowserState = ProfilesSlice &
   BookmarksSlice &
   SettingsSlice &
   UiSlice & {
-    /** Loads a saved session (lib/persist) and repairs anything inconsistent. */
     hydrate(data: HydrateData): void;
   };
 
@@ -54,12 +48,7 @@ export type HydrateData = Partial<
   >
 > & { focusedWindowId?: string | null };
 
-/**
- * How an update reaches React. The app passes React Native's unstable_batchedUpdates (index.js), so
- * one update re-renders every component it changes in a single commit. Without it, an update from
- * outside a React event handler (a native event, a timer, an animation ending) commits once per
- * subscribed component: a profile switch made over a hundred commits.
- */
+// Batch external updates; React Native otherwise commits once per subscriber.
 let batch = (update: () => void) => update();
 export function setStoreBatching(batchedUpdates: (update: () => void) => void) {
   batch = batchedUpdates;
@@ -98,12 +87,10 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
 
     const rawWindows = data.windows ?? {};
     const profileOk = (p: string) => !!profiles[p] || isIncognitoProfile(p);
-    // Restored tabs load when first selected; adopted popups don't survive a relaunch.
     const tabs: Record<string, Tab> = {};
     for (const t of Object.values(data.tabs ?? {})) {
       if (!rawWindows[t.windowId] || !profileOk(t.profileId)) continue;
       const { adoptId: _, ...rest } = t;
-      // Pinned tabs from before base URLs existed pin their current page.
       tabs[t.id] = { ...rest, navigation: null, pinnedUrl: rest.pinnedUrl ?? (rest.pinned ? rest.url || null : null) };
     }
     const windows: Record<string, BrowserWindow> = {};
@@ -125,7 +112,6 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
         .map((g) => [g.id, g]),
     );
     const splits = sanitizeSplits(data.splits ?? {}, tabs);
-    // Every profile has its Bookmarks Bar / Other Bookmarks roots (the menus list them).
     let bookmarks = data.bookmarks ?? s.bookmarks;
     for (const id of profileOrder) bookmarks = ensureRoots(bookmarks, id)[0];
     const focused = data.focusedWindowId && windows[data.focusedWindowId] ? data.focusedWindowId : (windowOrder.at(-1) ?? null);
@@ -155,7 +141,6 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
       find: {},
       ui: { ...s.ui, focusedWindowId: focused, focusOrder: focused ? [focused, ...windowOrder.filter((id) => id !== focused).reverse()] : [] },
     };
-    // Each window's selected tab loads right away; the rest wait until selected.
     for (const w of Object.values(windows)) next = apply(next, activated(next, w.activeTabIds[w.profileId]!));
     set(next);
   },

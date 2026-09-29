@@ -9,21 +9,13 @@ import type { FindState } from "../store/types";
 import { IconButton, useHover } from "./primitives";
 import { replaceInField } from "./site/selection";
 
-/**
- * ⌘F: Dia's find bar, floating at the top-right of the page. Magnifier, field,
- * "active | total" counter (or "No results"), previous / next, close. Enter and
- * ⌘G go forward, ⇧Enter and ⇧⌘G back, Esc closes. Each tab keeps its own state.
- * ⌥⌘F adds a replace row for the page's focused text field.
- */
 export function FindBar({ tabId }: { tabId: string }) {
   const hasPage = useBrowser((s) => !!s.tabs[tabId]?.url);
   const find = useFind(tabId);
   if (!find.open || !hasPage) return null;
-  // Remount per tab so the field's focus and text follow the tab.
   return <FindBarPanel key={tabId} tabId={tabId} find={find} />;
 }
 
-/** The last ⌘F each tab's bar answered. */
 const handledFocus = new Map<string, number>();
 
 function FindBarPanel({ tabId, find }: { tabId: string; find: FindState }) {
@@ -33,8 +25,6 @@ function FindBarPanel({ tabId, find }: { tabId: string; find: FindState }) {
   useEffect(() => {
     Animated.timing(appear, { toValue: 1, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
   }, []);
-  // Each ⌘F: to the field with its text selected; a kept query finds again (like Chrome).
-  // Showing the tab again (the pane remounts) isn't a new request.
   useEffect(() => {
     const request = find.focusRequest;
     if (!request || handledFocus.get(tabId) === request) return;
@@ -45,7 +35,6 @@ function FindBarPanel({ tabId, find }: { tabId: string; find: FindState }) {
   }, [find.focusRequest]);
 
   const setFind = (patch: Partial<FindState>) => useBrowser.getState().setFind(tabId, patch);
-  // Chromium reports matches asynchronously through onFindResult (ContentCard).
   const run = (backwards: boolean, query = find.query, findNext = true) => {
     if (!query) setFind({ count: null, active: 0 });
     void webviews.get(tabId)?.find(query, !backwards, findNext);
@@ -67,12 +56,11 @@ function FindBarPanel({ tabId, find }: { tabId: string; find: FindState }) {
     const { field, count } = await replaceInField(tabId, find.query, replacement, all);
     if (!field) return setNote({ text: "Not in a text field", error: true });
     if (all || !count) setNote({ text: count ? `${count} replaced` : "No matches", error: !count });
-    // Recount what's left on the page.
     run(false, find.query, false);
   };
   const none = find.count === 0 && !!find.query;
-  const separator = theme.dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)"; // FindInPageSeparator
-  const error = theme.dark ? "#FF6B63" : "#C93333"; // FindInPageError
+  const separator = theme.dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)";
+  const error = theme.dark ? "#FF6B63" : "#C93333";
 
   return (
     <Animated.View
@@ -157,7 +145,6 @@ function FindBarPanel({ tabId, find }: { tabId: string; find: FindState }) {
   );
 }
 
-/** The replace row's buttons: text in a toolbar-style hover fill. */
 function TextButton({ title, disabled, onPress }: { title: string; disabled: boolean; onPress: () => void }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();

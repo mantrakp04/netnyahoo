@@ -1,6 +1,5 @@
 import { openWindow } from "@netnyahoo/shell";
 
-/** Window › Task Manager: a utility window (Windows.swift kind "taskManager") with its own React root. */
 export const TASK_MANAGER_WINDOW_ID = "task-manager";
 
 export function openTaskManager() {

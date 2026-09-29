@@ -1,7 +1,5 @@
 import AppKit
 
-/// Locates installed browser apps and renders their icons to PNGs the JS side can show with
-/// a plain `<Image source={{ uri: "file://…" }}>`.
 public enum AppIcons {
   public static func locate(_ bundleIds: [String]) -> URL? {
     for id in bundleIds {
@@ -10,8 +8,6 @@ public enum AppIcons {
     return nil
   }
 
-  /// Writes a 64pt @2x PNG of the app's icon into `directory` (cached by browser id + app
-  /// modification date) and returns its path.
   public static func png(for app: URL, id: String, directory: URL) -> String? {
     let stamp = (try? app.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
       .map { Int($0.timeIntervalSince1970) } ?? 0
@@ -31,7 +27,6 @@ public enum AppIcons {
     guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
     do {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-      // Drop icons cached for an older version of the same app.
       for old in (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [] where old.hasPrefix("\(id)-") {
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(old))
       }

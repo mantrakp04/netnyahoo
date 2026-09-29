@@ -1,6 +1,3 @@
-// Builds public/sound/track.wav for the film: the score (Eleven Music v2.5, instrumental, 72 BPM; assets/sound/
-// music-film.mp3) under sparse foley on the real interactions (ElevenLabs sound effects), timed to src/timeline.ts.
-// No narrator. Master: a static gain to -14 LUFS integrated, then a 4x-oversampled limiter under -1 dBTP.
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -38,10 +35,8 @@ function place(src, at, gain = 1, { fadeIn = 0.003, fadeOut = 0.003 } = {}) {
 }
 const sec = (frame) => frame / FPS;
 
-// The score: its bar hits sound 30 ms after the bar line; placed 30 ms early so they land on the frames.
 place(load("music-film.mp3"), -0.03, 1, { fadeIn: 0.001, fadeOut: 0.05 });
 
-// Foley, quiet, only where something is touched.
 const keysAll = load("sfx-keys.mp3");
 const KEY_ONSETS = [0.17, 0.369, 0.429, 0.708, 0.778, 1.242, 1.522, 1.776, 1.886];
 const click = load("sfx-click.mp3");
@@ -52,7 +47,6 @@ place(swipe, sec(EV.swipeStart) - 0.046, db(-8));
 place(click, sec(EV.storePress) - 0.07, db(-9));
 place(click, sec(EV.repoClick) - 0.07, db(-12));
 
-// write, master, measure
 writeFileSync(join(work, "mix.wav"), wav(mix));
 const loud = (file) => {
   const o = spawnSync("/opt/homebrew/bin/ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8" }).stderr;

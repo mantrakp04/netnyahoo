@@ -18,19 +18,13 @@ export const BOOKMARKS_BAR_HEIGHT = 30;
 const ITEM_HEIGHT = 24;
 const OVERFLOW_WIDTH = 28;
 
-/**
- * The bookmarks bar under the toolbar (View › Show Bookmarks Bar: Always / On
- * New Tab Only / Never, ⇧⌘B). Items that don't fit move into the » menu.
- */
 export function BookmarksBar({ tabId, placeholder }: { tabId: string; placeholder?: boolean }) {
   const windowId = useWindowId();
   const shown = useBookmarksBarShown(tabId);
   if (!shown) return null;
-  // Hidden tabs keep the bar's height so switching to them doesn't resize the page.
   return placeholder ? <View style={{ height: BOOKMARKS_BAR_HEIGHT }} /> : <Bar windowId={windowId} />;
 }
 
-/** Whether the bar shows above this tab (Always / On New Tab Only / Never; never in incognito). */
 export function useBookmarksBarShown(tabId: string): boolean {
   return useBrowser((s) => {
     const tab = s.tabs[tabId];
@@ -59,7 +53,6 @@ function Bar({ windowId }: { windowId: string }) {
   const [frames, setFrames] = useState<Record<string, LayoutRectangle>>({});
   const [drop, setDrop] = useState<{ index: number; into: string | null } | null>(null);
 
-  // Everything that ends past the available width goes into the overflow menu.
   const reserved = hasOther ? 150 : 0;
   const available = width - reserved;
   const fits = (id: string) => {
@@ -82,7 +75,6 @@ function Bar({ windowId }: { windowId: string }) {
       const c = visible[i]!;
       const r = frames[c]!;
       const node = useBrowser.getState().bookmarks.nodes[c];
-      // The middle of a folder drops into it.
       if (c !== id && node?.kind === "folder" && x > r.x + r.width * 0.25 && x < r.x + r.width * 0.75) return { index: -1, into: c };
       if (x < r.x + r.width / 2) return { index: children.indexOf(c), into: null };
     }
@@ -95,7 +87,6 @@ function Bar({ windowId }: { windowId: string }) {
     const s = useBrowser.getState();
     if (target.into) return s.moveBookmark(id, target.into);
     const from = children.indexOf(id);
-    // Removing it first shifts later indexes down by one.
     s.moveBookmark(id, barId, target.index > from ? target.index - 1 : target.index);
   };
 
@@ -259,7 +250,6 @@ function BarButton({
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
   const windowId = useWindowId();
-  // Icons of pages without a tab are fetched through the bookmarks' own profile.
   const profileId = useBrowser((s) => bookmarkProfileId(s, s.windows[windowId]));
   return (
     <View {...hoverProps} tooltip={tooltip}>
@@ -296,7 +286,6 @@ function BarButton({
   );
 }
 
-/** Dia's empty-bar button: "Import bookmarks" (right-click to hide it). */
 function ImportButton() {
   return (
     <ContextMenuArea
@@ -310,7 +299,6 @@ function ImportButton() {
   );
 }
 
-/** A folder (or the overflow) as a native menu; submenus for nested folders. */
 async function openFolderMenu(windowId: string, ids: string[], _e?: ClickMods, folderId?: string) {
   const b = useBrowser.getState().bookmarks;
   const build = (list: string[], parent?: string, depth = 0): MenuItem[] => {
@@ -349,7 +337,6 @@ const splitChoice = (choice: string): [string, string] => {
   return i < 0 ? [choice, ""] : [choice.slice(0, i), choice.slice(i + 1)];
 };
 
-/** Right-click on the bar or an item (Chrome/Dia's bookmark context menu). */
 async function openBarMenu(windowId: string, profileId: string, node: BookmarkNode | null) {
   const s = useBrowser.getState();
   const barMode = s.settings.bookmarksBar;
@@ -411,7 +398,6 @@ async function openBarMenu(windowId: string, profileId: string, node: BookmarkNo
     if (choice === "rename") void editBookmark(node.id, windowId);
   }
   if (choice === "delete" && node) useBrowser.getState().removeBookmark(node.id);
-  // New items go after the one right-clicked, or at the end of the bar.
   const parentId = node?.parentId ?? bar;
   const index = node && parentId ? (folderChildren(useBrowser.getState().bookmarks, parentId).findIndex((n) => n.id === node.id) + 1) : undefined;
   if (choice === "addPage") void editBookmark(null, windowId, { profileId, parentId: parentId ?? undefined, index });

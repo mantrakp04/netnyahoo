@@ -1,27 +1,15 @@
-/**
- * "Copy clean link": drops tracking parameters from a URL, like Dia's Copy URL
- * ("without any trackers"). Only the query is touched; the rest of the URL,
- * the order of the remaining parameters and their encoding stay as they were.
- */
 
-/** Parameters that only ever carry click/campaign tracking, on any site. */
 const GLOBAL_PARAMS = new Set([
-  // Google Ads / Analytics
   "gclid", "gclsrc", "dclid", "gbraid", "wbraid", "gad_source", "gad_campaignid", "_ga", "_gl", "srsltid",
-  // Meta, Microsoft, Twitter, TikTok, LinkedIn, Yandex, Reddit, Pinterest
   "fbclid", "igshid", "msclkid", "twclid", "ttclid", "li_fat_id", "yclid", "ysclid", "rdt_cid", "epik",
-  // Mailchimp, HubSpot, Marketo, Oracle Eloqua, Vero, Klaviyo, Drip
   "mc_cid", "mc_eid", "_hsenc", "_hsmi", "__hssc", "__hstc", "__hsfp", "hsctatracking", "mkt_tok", "elqtrackid",
   "elqtrack", "vero_id", "vero_conv", "_kx", "__s",
-  // Assorted ad networks and newsletters
   "oly_anon_id", "oly_enc_id", "_openstat", "wickedid", "rb_clickid", "s_cid", "irclickid", "cjevent", "sscid",
   "zanpid", "ranmid", "raneaid", "ransiteid", "trk_contact", "trk_msg", "trk_module", "trk_sid",
 ]);
 
-/** Parameter-name prefixes that are always tracking (utm_source, utm_medium…). */
 const GLOBAL_PREFIXES = ["utm_", "pk_", "mtm_", "piwik_", "matomo_", "hsa_", "stm_"];
 
-/** Tracking parameters that are only safe to drop on specific sites. */
 const SITE_PARAMS: { hosts: string[]; params: string[]; prefixes?: string[] }[] = [
   { hosts: ["youtube.com", "youtu.be", "music.youtube.com"], params: ["si", "pp", "feature"] },
   { hosts: ["open.spotify.com"], params: ["si", "nd", "context"] },
@@ -53,14 +41,12 @@ function decodeName(raw: string): string {
   }
 }
 
-/** Whether a query parameter name is tracking on this host. */
 export function isTrackingParam(name: string, hostname = ""): boolean {
   const key = name.toLowerCase();
   if (GLOBAL_PARAMS.has(key) || GLOBAL_PREFIXES.some((p) => key.startsWith(p))) return true;
   return siteRules(hostname).some((r) => r.params.includes(key) || r.prefixes?.some((p) => key.startsWith(p)));
 }
 
-/** `url` without its tracking parameters (unchanged if it has none or doesn't parse). */
 export function cleanUrl(url: string): string {
   const match = /^([^?#]*)(\?[^#]*)?(#.*)?$/.exec(url);
   if (!match?.[2]) return url;
@@ -79,13 +65,8 @@ export function cleanUrl(url: string): string {
   return `${base}${kept.length ? `?${kept.join("&")}` : ""}${hash}`;
 }
 
-/** True when `cleanUrl` would change the URL. */
 export const hasTrackingParams = (url: string) => cleanUrl(url) !== url;
 
-/**
- * `[title](url)` for Copy Link as Markdown, with the URL cleaned like every Copy URL
- * (brackets in the title escaped).
- */
 export function markdownLink(title: string, url: string): string {
   return `[${(title || url).replace(/([[\]])/g, "\\$1")}](${cleanUrl(url)})`;
 }

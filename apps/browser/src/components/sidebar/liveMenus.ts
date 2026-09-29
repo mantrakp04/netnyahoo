@@ -10,14 +10,8 @@ import type { LiveItem, LiveSourceId } from "../../live/types";
 import { openSettings } from "../settings/windows";
 import { openIconPicker } from "./actions";
 
-/**
- * Context menus for live folders (Dia's LiveFolderContextMenuModel: status,
- * refresh, filters and sources), their items, the sidebar's "New Live Folder"
- * submenu, and the Calendar submenu of a pinned calendar tab.
- */
 const sep = { separator: true } as const;
 
-/** Items for the empty-sidebar menu (ids prefixed "live:"). */
 export function newLiveFolderMenuItem(): MenuItem {
   return {
     id: "live",
@@ -126,7 +120,6 @@ export async function openLiveItemMenu(windowId: string, folderId: string, item:
   } else if (choice === "close" && tabId) void closeTab(tabId);
 }
 
-/** The Calendar submenu on a pinned calendar tab (Dia's "Calendar context menu"). */
 export function calendarMenuItem(): MenuItem {
   const settings = live().calendar;
   const { calendars } = useCalendar.getState();

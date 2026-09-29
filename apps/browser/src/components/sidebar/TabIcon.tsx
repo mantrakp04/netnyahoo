@@ -5,13 +5,8 @@ import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { Favicon } from "../primitives";
 
-/** Custom icons are an emoji or `symbol:<SF Symbol name>` (Change Icon…). */
 export const SYMBOL_PREFIX = "symbol:";
 
-/**
- * A custom icon (emoji or SF Symbol) if there is one, else the page's favicon.
- * With `tabId`, a sleeping tab's icon fades (lib/tabLifecycle).
- */
 export function TabIcon({
   tabId,
   url,
@@ -28,13 +23,10 @@ export function TabIcon({
   icon?: string | null;
   size?: number;
   color?: string;
-  /** The page's profile (defaults to `tabId`'s): incognito icons are only found in theirs. */
   profileId?: string;
-  /** `favicon` is an image from a connected app's API, loaded as is (see Favicon). */
   direct?: boolean;
 }) {
   const sleeping = useIsSleeping(tabId ?? "");
-  // The tab's profile: incognito icons live only in that profile's memory cache.
   const tabProfile = useBrowser((s) => (tabId ? s.tabs[tabId]?.profileId : undefined));
   return (
     <View style={{ opacity: sleeping ? SLEEPING_OPACITY : 1 }}>

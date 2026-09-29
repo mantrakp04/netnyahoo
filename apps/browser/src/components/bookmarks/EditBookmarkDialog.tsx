@@ -10,7 +10,6 @@ import { Button, TextField, useFormColors } from "../settings/controls";
 import { useBookmarkEditor, type EditorState } from "./edit";
 import { FolderTree } from "./FolderTree";
 
-/** Chrome's Edit bookmark / Add page / Rename folder sheet, over the window. */
 export function EditBookmarkDialog() {
   const windowId = useWindowId();
   const open = useBookmarkEditor((e) => (e.open?.windowId === windowId ? e.open : null));

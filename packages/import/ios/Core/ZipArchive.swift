@@ -1,9 +1,6 @@
 import Compression
 import Foundation
 
-/// Minimal ZIP reader for Safari's export archive: central directory, stored and deflated
-/// entries (Apple's `COMPRESSION_ZLIB` is raw DEFLATE, which is exactly ZIP method 8).
-/// ZIP64 and encryption aren't needed for Safari exports and are reported as unsupported.
 struct ZipArchive {
   struct Entry {
     var name: String
@@ -18,7 +15,6 @@ struct ZipArchive {
 
   init(_ data: Data) throws {
     self.data = data
-    // End of central directory: signature 0x06054b50 within the last 64 KiB + 22 bytes.
     let minEOCD = 22
     guard data.count >= minEOCD else { throw ImportError.unreadable("Not a zip file") }
     var eocd: Int?
@@ -53,7 +49,6 @@ struct ZipArchive {
       let local = Int(h.u32() ?? 0)
       guard offset + 46 + nameLength <= data.count else { throw ImportError.unreadable("Damaged zip directory") }
       let nameData = data.subdata(in: offset + 46..<offset + 46 + nameLength)
-      // Bit 11: UTF-8 names. Otherwise CP437, which is ASCII for the names Safari writes.
       let name = String(data: nameData, encoding: flags & 0x800 != 0 ? .utf8 : .isoLatin1) ?? ""
       if flags & 0x1 == 0 {
         list.append(Entry(name: name, method: method, compressedSize: csize, size: usize, localHeaderOffset: local))

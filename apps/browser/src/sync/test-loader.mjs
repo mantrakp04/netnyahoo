@@ -1,6 +1,3 @@
-// Node test hooks for the sync adapter tests (adapters.test.mjs): the store tests' hooks, plus
-// stand-ins for expo-modules-core and the password API.
-// Run from apps/browser:  node --import ./src/sync/test-loader.mjs --test src/sync/adapters.test.mjs
 import { registerHooks } from "node:module";
 
 const stub = new URL("./test-native-stub.mjs", import.meta.url).href;

@@ -1,14 +1,8 @@
-/**
- * Dia's "new …" commands: type "new doc", "new sheet", "new jira"… to create a document or
- * ticket. Each opens the service's `.new` shortcut URL (the list Dia's NewDocumentSuggestionProvider uses).
- */
 export type QuickCreate = {
   id: string;
   title: string;
   url: string;
-  /** Words that follow "new" / "create", best first. */
   aliases: readonly string[];
-  /** The service's own site (the `.new` domains have no favicons). */
   site: string;
 };
 
@@ -32,16 +26,11 @@ export const QUICK_CREATE: readonly QuickCreate[] = [
   { id: "powerpoint", title: "New PowerPoint Presentation", url: "https://powerpoint.new", aliases: ["powerpoint", "ppt"], site: "powerpoint.cloud.microsoft" },
 ];
 
-/**
- * Commands for "new …" / "create …" input. "new " alone lists the first few; otherwise every
- * command with an alias starting with what follows, exact aliases first.
- */
 export function matchQuickCreate(query: string, limit = 3): QuickCreate[] {
   const m = /^(?:new|create)(\s+(.*))?$/i.exec(query.trimStart());
   if (!m || !m[1]) return [];
   const rest = (m[2] ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   if (!rest) return QUICK_CREATE.slice(0, limit);
-  // Exact aliases first, then prefixes; ties keep the list order.
   const rank = (c: QuickCreate) => (c.aliases.includes(rest) ? 0 : c.aliases.some((a) => a.startsWith(rest)) ? 1 : Infinity);
   return QUICK_CREATE.map((c, order) => ({ c, r: rank(c), order }))
     .filter((x) => x.r !== Infinity)

@@ -4,17 +4,9 @@ import { IDLE_LIVE, makeTab, newId, pinnedFirst, snapshotTab, without } from "./
 import { samePage } from "./organize";
 import type { BrowserWindow, HistoryEntry, ParkedPins, Tab, TabGroup } from "./types";
 
-/**
- * Pinned tabs belong to the profile's sidebar, as in Dia: closing a window (⌘W on its last tab, its
- * close button, ⇧⌘W) parks its pinned tiles and pinned groups, and the next window that shows the
- * profile (⌘N, the Dock, a link from another app, the first window after a relaunch, a profile
- * switch) gets them back, unloaded. With several windows of a profile open, each keeps the pins
- * it has.
- */
 
 type PinSource = Pick<BrowserState, "tabs" | "groups" | "history">;
 
-/** A tile's page when parked: its pinned URL, with that page's title and icon from history. */
 function atPin(t: Tab, history: HistoryEntry[]): Partial<Pick<Tab, "url" | "title" | "favicon">> {
   const home = t.pinnedUrl;
   if (!home || !t.url || samePage(t.url, home)) return {};
@@ -24,10 +16,6 @@ function atPin(t: Tab, history: HistoryEntry[]): Partial<Pick<Tab, "url" | "titl
 
 const homeOf = (t: { url: string; pinnedUrl?: string | null }) => t.pinnedUrl || t.url;
 
-/**
- * `parked` with window `w`'s pinned tiles and pinned groups added, per profile (the window is
- * closing). A tile already parked (the same tab, or the same pinned URL) isn't added twice.
- */
 export function parkWindowPins(parked: Record<string, ParkedPins>, w: BrowserWindow, s: PinSource): Record<string, ParkedPins> {
   if (w.incognito) return parked;
   const groupOf = new Map<string, TabGroup>();
@@ -63,10 +51,6 @@ export function parkWindowPins(parked: Record<string, ParkedPins>, w: BrowserWin
   return next;
 }
 
-/**
- * Window `windowId` with `profileId`'s parked pins back in it (unloaded: each loads when selected)
- * and the park emptied. A tile the window already has (the same pinned URL) isn't added twice.
- */
 export function adoptParkedPins(s: BrowserState, windowId: string, profileId: string): BrowserState {
   const park = s.parkedPins[profileId];
   const w = s.windows[windowId];
@@ -81,7 +65,6 @@ export function adoptParkedPins(s: BrowserState, windowId: string, profileId: st
     if (!groupId && homes.some((h) => samePage(h, home))) continue;
     const tab: Tab = {
       ...makeTab(windowId, profileId, snap.url, { ...snap, profileId, pinned: !groupId, pinnedUrl: groupId ? null : home || null }),
-      // Its id is its key in sync.
       id: tabs[id] ? newId("tab") : id,
       navigation: null,
       unloaded: true,

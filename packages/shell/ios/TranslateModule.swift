@@ -2,31 +2,23 @@ import AppKit
 import ExpoModulesCore
 import NaturalLanguage
 import SwiftUI
-// Weak: the framework is new in macOS 15 and the app still starts on 14.
 @_weakLinked import Translation
 
-/// Page translation on the Mac's own models (Apple's Translation framework, macOS 26): no
-/// service, and nothing leaves the Mac. Walking and replacing a page's text is the app's
-/// (components/site/translate.ts).
 public class TranslateModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooTranslate")
 
-    /// Whether this Mac translates at all (macOS 26 and later).
     Constant("available") { () -> Bool in
       if #available(macOS 26.0, *) { return true }
       return false
     }
 
-    /// macOS's preferred languages, most preferred first ("en-US", "de-DE"…).
     Function("userLanguages") { () -> [String] in Locale.preferredLanguages }
 
-    /// A language's name in the user's language ("de" → "German").
     Function("languageName") { (identifier: String) -> String in
       Locale.current.localizedString(forIdentifier: identifier) ?? identifier
     }
 
-    /// The dominant language of `text` (BCP 47: "de", "zh-Hans"…), or nil when unsure.
     AsyncFunction("detect") { (text: String) -> String? in
       let recognizer = NLLanguageRecognizer()
       recognizer.processString(text)
@@ -34,7 +26,6 @@ public class TranslateModule: Module {
       return language.rawValue
     }
 
-    /// "installed", "supported" (macOS must download the languages first) or "unsupported".
     AsyncFunction("status") { (source: String, target: String) async -> String in
       guard #available(macOS 26.0, *) else { return "unsupported" }
       switch await LanguageAvailability().status(from: Locale.Language(identifier: source), to: Locale.Language(identifier: target)) {
@@ -44,22 +35,16 @@ public class TranslateModule: Module {
       }
     }
 
-    /// The languages this Mac can translate between (BCP 47), for "Choose Another Language".
     AsyncFunction("supportedLanguages") { () async -> [String] in
       guard #available(macOS 26.0, *) else { return [] }
       return await LanguageAvailability().supportedLanguages.map { $0.minimalIdentifier }
     }
 
-    /// Asks macOS to download the language pair, in its own sheet over the key window.
     AsyncFunction("prepare") { (source: String, target: String) async throws in
       guard #available(macOS 26.0, *) else { throw TranslateError.unavailable }
       try await DownloadPrompt.run(source: Locale.Language(identifier: source), target: Locale.Language(identifier: target))
     }
 
-    /// Blocks of text, each translated as one passage (a paragraph whose text is split across
-    /// links and inline styles), handing each piece back its part of the translation. Each piece
-    /// is a run of an attributed string, marked with a link to its index, which translation keeps
-    /// on the words it came from (macOS 26.4). Nil where a block couldn't be split back.
     AsyncFunction("translateBlocks") { (source: String, target: String, blocks: [[String]]) async -> [[String]?] in
       guard #available(macOS 26.4, *) else { return blocks.map { _ in nil } }
       let session = await Self.session(source: source, target: target)
@@ -71,7 +56,6 @@ public class TranslateModule: Module {
           run.link = URL(string: "nn-piece:\(i)")
           text += run
         }
-        // A passage that fails is translated piece by piece instead (nil).
         guard let translated = try? await session.translate(text).attributedTargetText else { continue }
         var parts = Array(repeating: "", count: pieces.count)
         var order: [Int] = []
@@ -83,14 +67,10 @@ public class TranslateModule: Module {
             last = i
             parts[i] += words
           } else {
-            // Words the translation put between pieces go with the piece before them.
             parts[last] += words
           }
         }
         guard !order.isEmpty else { continue }
-        // A language with another word order (Japanese to English) moves words across pieces, and
-        // the pieces can't move: the passage then reads in order, cut where the source's pieces
-        // were cut, in proportion.
         if zip(order, order.dropFirst()).contains(where: { $0 > $1 }) {
           parts = Self.distribute(String(translated.characters), over: pieces)
         }
@@ -99,7 +79,6 @@ public class TranslateModule: Module {
       return out
     }
 
-    /// Each string translated, in order (an installed pair; see `status`).
     AsyncFunction("translate") { (source: String, target: String, texts: [String]) async throws -> [String] in
       guard #available(macOS 26.0, *) else { throw TranslateError.unavailable }
       let session = await Self.session(source: source, target: target)
@@ -114,8 +93,6 @@ public class TranslateModule: Module {
 }
 
 extension TranslateModule {
-  /// Pages want speed over polish: macOS 26.4's low-latency models when they're installed, else
-  /// the default (high-fidelity) ones.
   @available(macOS 26.0, *)
   static func session(source: String, target: String) async -> TranslationSession {
     let from = Locale.Language(identifier: source), to = Locale.Language(identifier: target)
@@ -127,8 +104,6 @@ extension TranslateModule {
 }
 
 extension TranslateModule {
-  /// `text` split into as many parts as `pieces`, each about as long (relative to the whole) as
-  /// its piece, cut at a space when one is near.
   static func distribute(_ text: String, over pieces: [String]) -> [String] {
     let chars = Array(text)
     let total = max(1, pieces.reduce(0) { $0 + $1.count })
@@ -139,7 +114,6 @@ extension TranslateModule {
       seen += piece.count
       var end = i == pieces.count - 1 ? chars.count : min(chars.count, Int((Double(seen) / Double(total) * Double(chars.count)).rounded()))
       if end < chars.count, end > start {
-        // The nearest space within a few characters, so words stay whole.
         let window = 12
         if let space = (0...window).lazy.flatMap({ [end + $0, end - $0] }).first(where: { $0 > start && $0 < chars.count && chars[$0] == " " }) {
           end = space + 1
@@ -163,8 +137,6 @@ enum TranslateError: LocalizedError {
   }
 }
 
-/// macOS only offers to download translation languages through SwiftUI's `translationTask`: a
-/// 1-pt hidden view in the key window runs one, and goes once it's answered.
 @available(macOS 26.0, *)
 @MainActor
 enum DownloadPrompt {

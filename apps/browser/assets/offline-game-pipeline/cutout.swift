@@ -1,6 +1,3 @@
-// Lifts every foreground subject out of an image with macOS Vision
-// (VNGenerateForegroundInstanceMaskRequest) and writes an RGBA PNG.
-// Usage: swift cutout.swift <in.png> <out.png>
 import AppKit
 import CoreImage
 import Vision

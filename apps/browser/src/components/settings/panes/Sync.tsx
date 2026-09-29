@@ -21,12 +21,6 @@ import { ProfileBadge } from "../../profiles/icons";
 import { Button, Group, Row, SectionHeader, Toggle, useFormColors } from "../controls";
 import { folderLabel, showConnectDevice, showPhraseEntry, showRecoveryKit, showStopSync } from "./SyncSheets";
 
-/**
- * Settings › Sync (Dia keeps it as the Sync section of Settings › Account; there's no account
- * here). Off: turn it on, or enter the phrase of another device, and pick the folder. On: the
- * status line in Dia's words, Connect Another Device…, Advanced… (Recovery Kit, Stop Syncing…),
- * which profiles and what data sync, and the devices.
- */
 export function SyncPane() {
   const theme = useTheme();
   const enabled = useSync((s) => s.enabled);
@@ -179,7 +173,6 @@ function SyncOn({ info }: { info: FolderInfo | null }) {
   const remoteProfiles = useSync((s) => s.remoteProfiles);
   const profiles = useProfiles();
   const allProfiles = useBrowser((s) => s.profiles);
-  // Re-render each minute so "last synced 3 minutes ago" stays true.
   const [, tick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 30_000);
@@ -275,7 +268,6 @@ function SyncOn({ info }: { info: FolderInfo | null }) {
   );
 }
 
-/** "just now", "5 minutes ago", "3 hours ago", "yesterday", "12 days ago". */
 export function ago(at: number, now = Date.now()): string {
   const s = Math.max(0, (now - at) / 1000);
   if (s < 60) return "just now";

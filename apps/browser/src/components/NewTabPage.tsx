@@ -7,61 +7,27 @@ import { springParams } from "./layout/swipeMotion";
 import { NewTabExtras } from "./ntp";
 import { Omnibox } from "./Omnibox";
 
-/**
- * Dia 1.50's rebrand (`ntp-rebrand-enabled`, rolled out remotely): the bar gets a shadow, and
- * the page's light configuration turns off both the area light and the edge light
- * (NewTabPageController: rebrand without the daylight effect = no lights). The power-up
- * band then takes one theme colour at speed 1, a halo runs around the bar, and the bar is the
- * opaque AssistantPanel background instead of a translucent panel over the light.
- */
 const REBRAND = true;
-/** The bar's height before its first layout, so the halo is placed right from the first frame. */
 const BAR_HEIGHT = 112;
-/**
- * Our mark where Dia paints its dome: Big Yahu's bust (docs/brand/yahu-mark). His 100pt frame is
- * centred on the bar like Dia's mark, its top 84.1pt above the bar, and he's cut at the bar's top
- * edge, so head, collar and tie knot show (about Dia's 76pt footprint).
- */
 const YAHU = require("../../assets/ntp-yahu.png");
 const YAHU_SIZE = 100;
 const YAHU_ABOVE_BAR = 84.1;
-/**
- * The intro: he rises from fully behind the bar on a spring that overshoots about 4pt at 0.24s,
- * tipping 3° with it, and settles by 0.5s; 80ms after the page appears, as in the mock.
- */
 const YAHU_HIDDEN = 86;
 const YAHU_SPRING = springParams(0.34, 0.7);
 const YAHU_DELAY_MS = 80;
-/**
- * Measured on Dia 1.50.1 (rec150 intro, edges fitted to 0.5pt through the capture's resampling):
- * its bar, and the mark above it, sit 1pt right of and 1pt below where NewTabPageViewController's
- * formulas put them for our card size, as if its New Tab view were 2pt larger than the card's
- * content area. The bar is 112pt tall (the hero Omnibox's rows).
- */
 const DIA_OFFSET = 1;
-/**
- * NewTabAreaLightView.negateAngle (= showDiaIcon, true with a mark shown): flips and halves the
- * tilt. It would also halve the intensity, but Dia computes intensity before the flag is set.
- */
 const NEGATE_ANGLE = true;
 
 type Frame = { x: number; y: number; width: number; height: number };
 type Size = { width: number; height: number };
 let lastSize: Size | null = null;
-/** Tabs whose New Tab page already played the entrance; switching back to one doesn't replay it. */
 const introPlayed = new Set<string>();
 const frameStyle = (f: Frame) => ({ left: f.x, top: f.y, width: f.width, height: f.height });
 
-/** Reduce Motion, kept current so the intro's first frame is decided synchronously. */
 let reduceMotion = false;
 AccessibilityInfo.isReduceMotionEnabled().then((on) => (reduceMotion = on), () => {});
 AccessibilityInfo.addEventListener("reduceMotionChanged", (on) => (reduceMotion = on));
 
-/**
- * EdgeLightView: sits above the bar in a container covering the panel outset by 10pt (at least
- * 480 tall). The light rises from 300pt below the bar to its top edge over 1s (easeOutExpo),
- * tracing the border. Dia also rim-lights its logo; Big Yahu gets none.
- */
 function EdgeLightLayer({ bar, color }: { bar: Frame; color: string }) {
   const container = { x: bar.x - 10, y: bar.y - 10, width: bar.width + 20, height: Math.max(bar.height + 20, 480) };
   const local = (f: Frame) => ({ x: f.x - container.x, y: f.y - container.y, width: f.width, height: f.height });
@@ -81,32 +47,20 @@ function EdgeLightLayer({ bar, color }: { bar: Frame; color: string }) {
   );
 }
 
-/** Command-bar width, from Dia's NewTabPageViewController. */
 function barWidth(viewWidth: number) {
   const content = viewWidth < 708 ? (viewWidth <= 636 ? viewWidth - 20 : 616) : viewWidth < 1700 ? 652 : 774;
   return Math.min(content, viewWidth - 28);
 }
 
-/**
- * Dia's New Tab page: the command bar floats over the translucent card, with Big Yahu peeking
- * over it where Dia shows its mark. A power-up band rises from the bottom as the page opens and
- * he pops up from behind the bar; with the rebrand a halo then wraps the bar, otherwise the bar
- * doubles as an area light (a soft glow that rises in, then slowly breathes) and an edge light
- * traces its border.
- */
 export function NewTabPage({ tabId }: { tabId: string }) {
   const theme = useTheme();
-  // Every New Tab page is card-sized, so reuse the last measurement: waiting for onLayout would
-  // flash an empty page for a frame before the bar appears (Dia shows it on the first frame).
   const [size, setSizeState] = useState<Size | null>(lastSize);
   const setSize = (next: Size) => {
     lastSize = next;
     setSizeState((prev) => (prev && prev.width === next.width && prev.height === next.height ? prev : next));
   };
   const [panelHeight, setPanelHeight] = useState(BAR_HEIGHT);
-  // The band and halo fade out completely, so a page that has played them just leaves them out.
   const [playIntro] = useState(() => !introPlayed.has(tabId));
-  // Big Yahu's rise: how far below his rest he is (pt). At rest when there's no intro to play.
   const [rise] = useState(() => new Animated.Value(playIntro && !reduceMotion ? YAHU_HIDDEN : 0));
   useEffect(() => {
     introPlayed.add(tabId);
@@ -123,24 +77,18 @@ export function NewTabPage({ tabId }: { tabId: string }) {
   const x = Math.max(size.width / 2 - width / 2, 14) + DIA_OFFSET;
   const top = Math.max(size.height / 2 - 158, 100) + 38 + DIA_OFFSET;
 
-  // NewTabAreaLightView: the emitter is the panel inset by 8; taller panels sit lower and flatter.
   const r = (panelHeight - 112) / 240;
   const lift = r < 1 ? 10 - 4 * Math.max(r, 0) : 6;
-  // Same convention as Dia's shader (verified line by line against the binary).
   const tilt = (r < 1 ? 5 - 4 * Math.max(r, 0) : 1) * (NEGATE_ANGLE ? -0.5 : 1);
   const source = { x: x + 8, y: top + 8, width: width - 16, height: panelHeight - 16 };
   const lightHeight = Math.max(0.85 * size.height, 720);
   const bar = { x, y: top, width, height: panelHeight };
-  // NewTabPageViewController's light configuration; the daylight effect (and with it the bar's
-  // elevation spring) is off, so the bar sits at its resting elevation (scale 1) from the start.
   const lightPalette = REBRAND ? null : theme.lightPalette;
   const areaLight = lightPalette !== null;
   const edgeLight = !REBRAND;
 
   return (
     <View style={{ flex: 1 }} onLayout={(e) => setSize(e.nativeEvent.layout)}>
-      {/* CommandBarPowerUpView: full-page band rising from the bottom, behind everything, and the
-          halo (shown while the area light is off). Incognito has neither. */}
       {playIntro && theme.powerUpColor && (
         <PowerUp
           style={StyleSheet.absoluteFill}
@@ -160,13 +108,9 @@ export function NewTabPage({ tabId }: { tabId: string }) {
           lift={lift}
           tilt={[tilt, 0]}
           falloff={1}
-          // Dia computes intensity before negateAngle is set, so it keeps the un-halved value.
           intensity={theme.lightIntensity}
         />
       )}
-      {/* Big Yahu, clipped at the bar's top edge by a box that ends there (the bar is translucent
-          without the rebrand, so it can't be what hides him). He tips about his bottom centre as
-          he overshoots. */}
       <View
         pointerEvents="none"
         style={{
@@ -193,10 +137,6 @@ export function NewTabPage({ tabId }: { tabId: string }) {
         />
       </View>
       <View onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)} style={{ position: "absolute", left: x, top, width }}>
-        {/* AssistantPanelRootView, radius 20, 1 device-pixel border. Over the area light: a .hudWindow
-            material (blended within the window) under the TransparentBackground fill, so the light
-            shows through; without it, the opaque Background. The rebrand adds two shadows: black
-            0.08 r2 (0, 0.5) and black 0.04 r1 (0, 2). */}
         {REBRAND && (
           <>
             <Surface style={StyleSheet.absoluteFill} fill="#00000000" cornerRadius={20} shadowColor="#000000" shadowOpacity={0.08} shadowRadius={2} shadowOffset={[0, 0.5]} />
@@ -214,7 +154,6 @@ export function NewTabPage({ tabId }: { tabId: string }) {
         </Surface>
       </View>
       {edgeLight && <EdgeLightLayer bar={bar} color={theme.edgeLight} />}
-      {/* Postcard slot (components/ntp): release notes, check-in, Personalize. */}
       <NewTabExtras size={size} bar={bar} />
     </View>
   );

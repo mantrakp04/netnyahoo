@@ -10,10 +10,6 @@ import { SecondaryButton, useOnboardingColors } from "./ui";
 const WORDMARK = "Netnyahoo";
 const ICON = require("../../../assets/app-icon.png");
 
-/**
- * The beats of the title sequence, in seconds. The animation runs on these fixed times (not
- * chained on the icon's spring settling) so the music, synthesized to the same cues, lands with it.
- */
 const LETTER = 0.52;
 const TAGLINE = 0.6;
 const EXIT = 0.65;
@@ -29,12 +25,6 @@ const CUES: IntroMusicCues = (() => {
 
 const ms = (s: number) => Math.round(s * 1000);
 
-/**
- * The opening title sequence (Dia's OnboardingIntro2): the icon settles in, the wordmark writes
- * itself letter by letter over a rising spectrum wash, the tagline follows, then the stage opens
- * from the centre into the first step. Our own music plays under it (mutable, remembered);
- * skippable throughout.
- */
 export function Intro({ onDone }: { onDone: () => void }) {
   const colors = useOnboardingColors();
   const dark = useTheme().dark;
@@ -63,7 +53,6 @@ export function Intro({ onDone }: { onDone: () => void }) {
       Animated.timing(exit, { toValue: 1, duration: ms(EXIT), easing: Easing.inOut(Easing.cubic), ...at(CUES.exit) }),
     ]);
     playIntroMusic(CUES, introMusicMuted());
-    // Its last chord rings on into the first step, then the music stops by itself.
     sequence.start(({ finished }) => finished && finish());
     return () => sequence.stop();
   }, []);
@@ -139,7 +128,6 @@ export function Intro({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** Dia's intro mute toggle (bottom left, as tall as Skip): speaker.wave.3.fill / speaker.slash.fill. */
 function MuteButton({ muted, onPress }: { muted: boolean; onPress: () => void }) {
   const colors = useOnboardingColors();
   const { hovered, hoverProps } = useHover();

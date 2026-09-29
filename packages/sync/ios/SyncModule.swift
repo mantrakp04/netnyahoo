@@ -3,9 +3,6 @@ import ExpoModulesCore
 import NetnyahooImport
 import Security
 
-/// Expo glue over the sync core (ios/Core): the phrase and its key, sealed files in the sync
-/// folder, the Recovery Kit, and reading this app's own saved passwords. The key never crosses
-/// to JS; the words do only for the Recovery Kit sheets. File contents cross as JSON strings.
 public class SyncModule: Module {
   private let state = KeyState()
   private static let work = DispatchQueue(label: "netnyahoo.sync", qos: .utility)
@@ -13,7 +10,6 @@ public class SyncModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooSync")
 
-    /// The folder sync uses unless the user picks another, and what's there.
     AsyncFunction("folderInfo") { (path: String?) -> [String: Any] in
       let url = path.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? Self.defaultFolder
       var isDirectory: ObjCBool = false
@@ -45,8 +41,6 @@ public class SyncModule: Module {
 
     Function("deviceName") { Host.current().localizedName ?? "This Mac" }
 
-    /// A new phrase for this device (sync turned on without another device). Saved to the
-    /// Keychain under `account` and held for this launch.
     AsyncFunction("createPhrase") { (account: String) -> Bool in
       let entropy = RecoveryPhrase.generateEntropy()
       guard Self.keyStore.save(entropy, account: account) else { return false }
@@ -54,7 +48,6 @@ public class SyncModule: Module {
       return true
     }.runOnQueue(Self.work)
 
-    /// Checks a typed phrase, then that the folder holds its data; keeps it if both hold.
     AsyncFunction("enterPhrase") { (account: String, text: String, folder: String) -> [String: Any] in
       let entropy: Data
       do {
@@ -75,7 +68,6 @@ public class SyncModule: Module {
       return ["ok": true]
     }.runOnQueue(Self.work)
 
-    /// Loads this device's key at launch. False if it's gone (another build's Keychain item).
     AsyncFunction("unlock") { (account: String) -> Bool in
       guard let entropy = Self.keyStore.load(account: account), entropy.count == 32 else { return false }
       self.state.set(entropy)
@@ -87,8 +79,6 @@ public class SyncModule: Module {
       self.state.set(nil)
     }.runOnQueue(Self.work)
 
-    /// "ok", "missing" (the folder is there but this phrase's data isn't: deleted from another
-    /// device) or "unavailable" (the folder isn't there: an unplugged drive, iCloud Drive off).
     AsyncFunction("chainStatus") { (folder: String) throws -> String in
       let vault = try self.vault(folder)
       var isDirectory: ObjCBool = false
@@ -119,19 +109,15 @@ public class SyncModule: Module {
       try self.vault(folder).remove(scope: scope, ids: ids)
     }.runOnQueue(Self.work)
 
-    /// Deletes this phrase's data from the folder (Delete My Sync Data).
     AsyncFunction("deleteChain") { (folder: String) throws in
       try self.vault(folder).deleteChain()
     }.runOnQueue(Self.work)
 
-    /// This Mac's sync state (the replica holds saved passwords), sealed with the sync key for
-    /// writing to the app's data folder. Base64.
     AsyncFunction("sealLocal") { (text: String) throws -> String in
       guard let keys = self.state.keys else { throw Exception(name: "locked", description: "Sync isn't set up on this Mac.") }
       return try keys.seal(Data(text.utf8), scopeTag: "local", fileId: "state").base64EncodedString()
     }.runOnQueue(Self.work)
 
-    /// The state `sealLocal` wrote, or null if it doesn't open (another key).
     AsyncFunction("openLocal") { (sealed: String) -> String? in
       guard let keys = self.state.keys, let data = Data(base64Encoded: sealed),
             let plain = try? keys.open(data, scopeTag: "local", fileId: "state") else { return nil }
@@ -142,18 +128,15 @@ public class SyncModule: Module {
 
     AsyncFunction("recoveryWords") { () throws -> [String] in try self.words() }.runOnQueue(Self.work)
 
-    /// The phrase as a QR code (PNG data URL), for the Connect Another Device sheet.
     AsyncFunction("qrCode") { () throws -> String? in
       guard let image = RecoveryKit.qrCode(words: try self.words()), let png = RecoveryKit.png(image) else { return nil }
       return "data:image/png;base64," + png.base64EncodedString()
     }.runOnQueue(Self.work)
 
-    /// The kit's page as a PNG data URL, for the Save Your Recovery Kit sheet.
     AsyncFunction("recoveryKitPreview") { (width: Double) throws -> String? in
       try self.preview(width: CGFloat(width))
     }.runOnQueue(.main)
 
-    /// Save…: the PDF (or, `format` "text", a text sheet) where the user picks.
     AsyncFunction("saveRecoveryKit") { (format: String, promise: Promise) in
       do {
         let words = try self.words()
@@ -176,14 +159,12 @@ public class SyncModule: Module {
       }
     }.runOnQueue(.main)
 
-    /// Other Options › Copy: the PDF on the pasteboard, as a file.
     AsyncFunction("copyRecoveryKit") { () throws in
       let url = try self.temporaryKit()
       NSPasteboard.general.clearContents()
       NSPasteboard.general.writeObjects([url as NSURL])
     }.runOnQueue(.main)
 
-    /// Other Options › Share…: the share menu at the mouse, in the key window.
     AsyncFunction("shareRecoveryKit") { () throws in
       let url = try self.temporaryKit()
       guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible), let view = window.contentView else { return }
@@ -191,8 +172,6 @@ public class SyncModule: Module {
       NSSharingServicePicker(items: [url]).show(relativeTo: NSRect(origin: point, size: .zero), of: view, preferredEdge: .minY)
     }.runOnQueue(.main)
 
-    /// Copy Recovery Code (⌥ in the Advanced menu): the words, marked concealed so clipboard
-    /// managers skip them, as Dia does.
     AsyncFunction("copyRecoveryPhrase") { () throws in
       let words = try self.words().joined(separator: " ")
       let pasteboard = NSPasteboard.general
@@ -208,14 +187,10 @@ public class SyncModule: Module {
 
     // MARK: Passwords
 
-    /// A profile's saved logins, read from Chrome's own store in its profile folder (the
-    /// importer's reader), so sync can see them without asking for Touch ID every cycle.
-    /// null if they can't be read now.
     AsyncFunction("readPasswords") { (engineProfile: String) -> [[String: Any]]? in
       do {
         let key = ChromiumCrypto.deriveKey(secret: try Self.safeStorageSecret())
         let result = try ChromiumSecrets.logins(profile: Self.profileDirectory(engineProfile), key: key)
-        // A partial list would read as deletions: skip this round instead.
         if result.undecryptable > 0 {
           NSLog("[sync] \(result.undecryptable) saved passwords didn't decrypt; not syncing passwords now")
           return nil
@@ -250,7 +225,6 @@ public class SyncModule: Module {
       : RecoveryKit.pdf(words: words, created: Date(), device: device)
   }
 
-  /// The PDF in a private temporary folder, for Copy and Share.
   private func temporaryKit() throws -> URL {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("Netnyahoo Recovery Kit", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -282,22 +256,16 @@ public class SyncModule: Module {
 
   private static let environment = ProcessInfo.processInfo.environment
   private static let dataDirectory = environment["NETNYAHOO_DATA_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
-  /// Tests point every instance at one throwaway folder.
   private static let testFolder = environment["NETNYAHOO_SYNC_DEFAULT_FOLDER"].map { URL(fileURLWithPath: $0, isDirectory: true) }
 
-  /// `~/Library/Mobile Documents/com~apple~CloudDocs/Netnyahoo Sync`. Test instances
-  /// (NETNYAHOO_DATA_DIR) never default to iCloud Drive.
   static var defaultFolder: URL {
     if let testFolder { return testFolder }
     if let dataDirectory { return dataDirectory.appendingPathComponent("Netnyahoo Sync", isDirectory: true) }
     return SyncFolder.iCloudDrive.appendingPathComponent("Netnyahoo Sync", isDirectory: true)
   }
 
-  /// Test instances keep the key in their data folder, off the login Keychain (as Chrome's
-  /// mock keychain does for them).
   static let keyStore: SyncKeyStore = dataDirectory.map { FileKeyStore(directory: $0) } ?? KeychainKeyStore()
 
-  /// Chrome's user data folder and a profile's folder in it (NNCef.mm ProfilePath).
   static func profileDirectory(_ engineProfile: String) -> URL {
     let root = dataDirectory?.appendingPathComponent("Chromium", isDirectory: true)
       ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -306,8 +274,6 @@ public class SyncModule: Module {
     return root.appendingPathComponent(engineProfile.isEmpty ? "Default" : "Profile \(engineProfile)", isDirectory: true)
   }
 
-  /// The secret Chrome encrypts saved passwords with: its "Netnyahoo Safe Storage" item, or
-  /// the mock keychain's fixed one where NNCef turns that on (test instances, ad-hoc builds).
   static func safeStorageSecret() throws -> Data {
     if dataDirectory != nil || !isTeamSigned { return Data("mock_password".utf8) }
     return try SafeStorageKeychain.secret(service: "Netnyahoo Safe Storage", account: "Netnyahoo")
@@ -325,7 +291,6 @@ public class SyncModule: Module {
   }()
 }
 
-/// The key for this launch, shared by the module's queues.
 private final class KeyState {
   private let lock = NSLock()
   private var _entropy: Data?

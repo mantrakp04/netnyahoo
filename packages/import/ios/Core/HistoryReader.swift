@@ -1,11 +1,5 @@
 import Foundation
 
-/// Chromium `History` and Firefox `places.sqlite` history, newest first, delivered in chunks.
-///
-/// Chromium: `urls(url, title, visit_count, typed_count, last_visit_time µs-since-1601, hidden)`.
-/// Firefox:  `moz_places(url, title, visit_count, last_visit_date µs-since-1970, hidden)`.
-/// Only http(s) rows are kept: `chrome://`, `about:` and `file:` pages aren't history a new
-/// browser can do anything with.
 public enum HistoryReader {
   public enum Flavor { case chromium, firefox }
 

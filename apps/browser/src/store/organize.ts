@@ -5,75 +5,48 @@ import { activeTabId, bookmarkProfileId, newId, snapshotTab, viewTabIds } from "
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
 import type { BrowserWindow, ClosedGroup, ClosedTab, Tab, TabGroup } from "./types";
 
-/**
- * Organising tabs in the sidebar, after Dia: multi-selection, drag-and-drop
- * placement, pinned tabs' base URLs, site muting, group operations (pin,
- * duplicate, close to Recently Closed Groups, Move to Bookmark Bar), ⌘-click
- * groups, and Clean Up Tabs. Pure helpers are exported for the other slices.
- */
 export type TabPlacement = {
-  /** Pinned tiles, or the list. */
   pinned: boolean;
-  /** Insert before this tab (window order); omitted/null = end of the section, or of `groupId`. */
   beforeId?: string | null;
-  /** Join this group (list only); omitted/null = out of any group. */
   groupId?: string | null;
 };
 
 export type GroupPlacement = { pinned: boolean; beforeId?: string | null };
 
 export type OrganizeSlice = {
-  /** Sidebar multi-selection per window (⌘-click / ⇧-click); empty = just the active tab. */
   selection: Record<string, string[]>;
-  /** Clean Up Tabs' "Recently Cleaned" (oldest first); restorable. */
   cleanedTabs: ClosedTab[];
-  /** History › Recently Closed Groups (oldest first). */
   closedGroups: ClosedGroup[];
-  /** Groups deleted with Delete Group (Dia's soft delete): restorable for a week, oldest first. */
   deletedGroups: ClosedGroup[];
 
   setSelection(windowId: string, ids: string[]): void;
-  /** Drag-and-drop / Move: pins or unpins, reorders and (un)groups tabs of one window. */
   placeTabs(ids: string[], placement: TabPlacement): void;
   pinTabs(ids: string[], pinned: boolean): void;
-  /** ⌘↩ / Back to Pinned URL / Reset Pinned Tab. */
   returnToPinnedUrl(tabId: string): void;
-  /** Replace Pin with Current Page (no `url`) / Edit Pinned Page… */
   setPinnedUrl(tabId: string, url?: string): void;
   setMuted(ids: string[], muted: boolean): void;
-  /** Mute Site: every tab of the site in that profile, now and when they navigate there later. */
   setSiteMuted(tabId: string, muted: boolean): void;
 
-  /** New Group with Tab(s) (⌃⌘N). Dia pins groups made on purpose. Returns the group id or "". */
   groupTabs(ids: string[], options?: { pinned?: boolean; name?: string }): string;
   moveGroup(groupId: string, placement: GroupPlacement): void;
   duplicateGroup(groupId: string): string;
-  /** ⌥⌘T: a New Tab page at the end of the group. */
   newTabInGroup(groupId: string): string;
-  /** Closes the group into a Bookmarks Bar folder. */
   moveGroupToBookmarksBar(groupId: string): void;
 
-  /** ⌥⌘K: closes duplicate and unused tabs into Recently Cleaned. Returns how many. */
   cleanUpTabs(windowId: string, options?: { inactiveForMs?: number }): number;
-  /** Restores one cleaned tab, or all of them. */
   restoreCleaned(entryId?: string): void;
-  /** New Tab pages you've moved away from (Dia clears them when you switch apps or lock the screen). */
   closeAbandonedNewTabs(): void;
 };
 
-/** Clean Up Tabs' default "haven't been touched in a while". */
 export const CLEAN_UP_AFTER_MS = 12 * 60 * 60 * 1000;
 const MAX_CLEANED = 100;
 const MAX_CLOSED_GROUPS = 20;
-/** Dia keeps deleted groups for 7 days (`cleanupSoftDeletedGroupsOlderThan`, run as its tab store loads). */
 export const DELETED_GROUP_MS = 7 * 86_400_000;
-/** Deleted groups still within their week. */
 export const keptDeletedGroups = (list: ClosedGroup[], now = Date.now()) => list.filter((c) => now - c.closedAt < DELETED_GROUP_MS);
 
 export const groupOf = (s: Pick<BrowserState, "groups">, tabId: string | undefined): TabGroup | undefined =>
   tabId ? Object.values(s.groups).find((g) => g.tabIds.includes(tabId)) : undefined;
 
-/** The tabs a sidebar action applies to: the selection, else the active tab. */
 export function selectedTabIds(s: BrowserState, windowId: string): string[] {
   const view = viewTabIds(s, windowId);
   const selected = (s.selection[windowId] ?? []).filter((id) => view.includes(id));
@@ -90,24 +63,20 @@ function hostOf(url: string): string {
   }
 }
 
-/** Same page, ignoring the fragment and a trailing slash. */
 export function samePage(a: string, b: string): boolean {
   const norm = (u: string) => u.replace(/#.*$/, "").replace(/\/$/, "");
   return norm(a) === norm(b);
 }
 
-/** A pinned tab that has navigated away from its base URL (Dia's pinned-tab badge). */
 export const awayFromPin = (t: Pick<Tab, "pinned" | "url" | "pinnedUrl">) =>
   t.pinned && !!t.pinnedUrl && !!t.url && !samePage(t.url, t.pinnedUrl);
 
-/** Shown for groups without a name: the first tab's site. */
 export function groupLabel(s: Pick<BrowserState, "tabs">, g: TabGroup): string {
   if (g.name) return g.name;
   const first = s.tabs[g.tabIds[0] ?? ""];
   return (first && hostOf(first.url)) || "New Group";
 }
 
-/** What changes on a tab when its URL does: site mute follows it, and a new pin adopts its first URL. */
 export function onUrlChange(s: BrowserState, tab: Tab, url: string): Partial<Tab> {
   const patch: Partial<Tab> = {};
   const muted = s.settings.mutedSites ?? [];
@@ -121,17 +90,11 @@ export function onUrlChange(s: BrowserState, tab: Tab, url: string): Partial<Tab
   return patch;
 }
 
-/** Drops closed tabs from the multi-selection. */
 export function pruneSelection(selection: Record<string, string[]>, gone: Set<string>): Record<string, string[]> {
   if (!Object.values(selection).some((ids) => ids.some((id) => gone.has(id)))) return selection;
   return Object.fromEntries(Object.entries(selection).map(([w, ids]) => [w, ids.filter((id) => !gone.has(id))]));
 }
 
-/**
- * ⌘-click (Dia 1.16): a link opened in the background from a tab lands in a
- * group with its opener — the opener's group, or a new one that ungroups itself
- * when only one tab is left. Pinned openers just get a background tab.
- */
 export function groupWithOpener(s: BrowserState, tabId: string, openerId: string): BrowserState {
   const tab = s.tabs[tabId];
   const opener = s.tabs[openerId];
@@ -148,7 +111,6 @@ export function groupWithOpener(s: BrowserState, tabId: string, openerId: string
   return withGroup(s, [openerId, tabId], { autoUngroup: true })[0];
 }
 
-/** Makes a group of tabs of one window (gathered at the first one's position). */
 export function withGroup(
   s: BrowserState,
   ids: string[],
@@ -179,7 +141,6 @@ export function withGroup(
   return [{ ...s, groups: syncGroupOrder(groups, window), windows: { ...s.windows, [w.id]: window } }, group.id];
 }
 
-/** Recently-closed records for tabs about to be removed (like removeTabs' own). */
 function closedEntries(s: BrowserState, ids: string[]): ClosedTab[] {
   const now = Date.now();
   return ids
@@ -199,7 +160,6 @@ function closedEntries(s: BrowserState, ids: string[]): ClosedTab[] {
     });
 }
 
-/** Removes tabs without touching Reopen Closed Tab, keeping a New Tab page where a view would empty. */
 function closeQuietly(s: BrowserState, ids: string[]): BrowserState {
   for (const w of Object.values(s.windows)) {
     const view = viewTabIds(s, w.id);
@@ -208,11 +168,6 @@ function closeQuietly(s: BrowserState, ids: string[]): BrowserState {
   return removeTabs(s, ids, false);
 }
 
-/**
- * A group closed with its tabs, recorded for History › Recently Closed Groups; or, with `deleted`,
- * Dia's Delete: the tabs go without a Reopen Closed Tab record, and the group is kept for a week
- * under Recently Deleted Groups.
- */
 export function closingGroup(s: BrowserState, groupId: string, deleted = false): BrowserState {
   const g = s.groups[groupId];
   const w = g && s.windows[g.windowId];
@@ -233,7 +188,6 @@ export function closingGroup(s: BrowserState, groupId: string, deleted = false):
   return { ...next, closedGroups: [...next.closedGroups, entry].slice(-MAX_CLOSED_GROUPS) };
 }
 
-/** Puts tabs back from snapshots (loading), optionally as a group. Returns the new tab ids. */
 function restoreSnapshots(
   s: BrowserState,
   windowId: string,
@@ -256,7 +210,6 @@ function restoreSnapshots(
   return [s, ids];
 }
 
-/** The window to restore into: the original if it's still open (and compatible), else the focused one. */
 function restoreTarget(s: BrowserState, original: string, requested?: string | null): string | undefined {
   const ok = (id: string | null | undefined) => !!id && !!s.windows[id] && !s.windows[id]!.incognito;
   if (ok(original)) return original;
@@ -264,7 +217,6 @@ function restoreTarget(s: BrowserState, original: string, requested?: string | n
   return s.ui.focusOrder.find((id) => ok(id)) ?? s.windowOrder.find((id) => ok(id));
 }
 
-/** Restores a closed group (History › Recently Closed Groups) and selects its first tab. */
 export function restoringGroup(s: BrowserState, entry: ClosedGroup, requested?: string | null): BrowserState {
   const windowId = restoreTarget(s, entry.windowId, requested);
   if (!windowId) return s;
@@ -288,7 +240,6 @@ export function restoringGroup(s: BrowserState, entry: ClosedGroup, requested?: 
   return ids[0] ? apply(next, activated(next, ids[0])) : next;
 }
 
-/** Tabs Clean Up Tabs would close in a window: duplicates, and untouched tabs outside groups. */
 export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveForMs = CLEAN_UP_AFTER_MS, now = Date.now()): string[] {
   const view = viewTabIds(s, windowId);
   const active = activeTabId(s, windowId);
@@ -296,7 +247,6 @@ export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveFor
   const inSplit = new Set(Object.values(s.splits).flatMap((v) => v.tabIds));
   const keep = (t: Tab) => t.id === active || t.pinned || s.live[t.id]?.playingAudio;
   const out = new Set<string>();
-  // Duplicates: keep pinned ones, the active one, else the most recently used.
   const byPage = new Map<string, Tab[]>();
   for (const id of view) {
     const t = s.tabs[id]!;
@@ -309,7 +259,6 @@ export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveFor
     const keeper = same.find((t) => t.pinned) ?? same.find((t) => t.id === active) ?? [...same].sort((a, b) => b.lastActiveAt - a.lastActiveAt)[0]!;
     for (const t of same) if (t !== keeper && !keep(t) && !inSplit.has(t.id)) out.add(t.id);
   }
-  // Unused: untouched for a while, not in a group or split.
   for (const id of view) {
     const t = s.tabs[id]!;
     if (keep(t) || grouped.has(id) || inSplit.has(id)) continue;
@@ -318,11 +267,6 @@ export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveFor
   return view.filter((id) => out.has(id));
 }
 
-/**
- * New Tab pages in a window that the user has moved away from: not the one the
- * window shows, nor any profile's selected tab there. Never all of a window's
- * tabs (the window must survive), and pinned New Tab pages stay.
- */
 export function abandonedNewTabs(s: BrowserState, windowId: string): string[] {
   const w = s.windows[windowId];
   if (!w) return [];
@@ -335,14 +279,12 @@ export function abandonedNewTabs(s: BrowserState, windowId: string): string[] {
   return out.length >= w.tabIds.length ? out.slice(0, w.tabIds.length - 1) : out;
 }
 
-/** Most recently used first, for the ⌃Tab switcher; tabs untouched for a while are left out. */
 export function recentTabIds(s: BrowserState, windowId: string, now = Date.now(), staleAfterMs = CLEAN_UP_AFTER_MS): string[] {
   const view = viewTabIds(s, windowId).map((id) => s.tabs[id]!);
   const sorted = view.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
   return sorted.filter((t, i) => i < 2 || now - t.lastActiveAt < staleAfterMs).map((t) => t.id);
 }
 
-/** Moves tabs of one window per `p` (see placeTabs). */
 export function placing(s: BrowserState, ids: string[], p: TabPlacement): BrowserState {
   const first = s.tabs[ids[0] ?? ""];
   const w = first && s.windows[first.windowId];
@@ -376,7 +318,6 @@ export function placing(s: BrowserState, ids: string[], p: TabPlacement): Browse
     const members = new Set([...target.tabIds, ...moving]);
     groups = { ...groups, [target.id]: { ...target, tabIds: rest.filter((id) => members.has(id)) } };
   }
-  // Every group stays in one piece (a drop between two members of another group lands after it).
   let tabIds = rest;
   for (const g of Object.values(groups)) if (g.windowId === w.id) tabIds = placeBlock(tabIds, tabIds.filter((id) => g.tabIds.includes(id)));
   tabIds = orderSections(tabIds, tabs, groups);
@@ -409,7 +350,6 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     const first = s.tabs[ids[0] ?? ""];
     const w = first && s.windows[first.windowId];
     if (!w) return;
-    // Unpinned tabs go to the top of the list (below pinned groups), like Dia.
     const pinnedGroupMembers = new Set(Object.values(s.groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
     const beforeId = pinned ? null : w.tabIds.find((id) => !s.tabs[id]?.pinned && !pinnedGroupMembers.has(id) && !ids.includes(id));
     set(placing(s, ids, { pinned, beforeId }));
@@ -426,7 +366,6 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
     const next = url ?? t?.url;
     if (!t?.pinned || !next) return;
     get().updateTab(tabId, { pinnedUrl: next });
-    // Editing the pinned page takes you there.
     if (url && !samePage(t.url, url)) get().navigate(tabId, url);
   },
 
@@ -478,7 +417,6 @@ export const createOrganizeSlice: StateCreator<BrowserState, [], [], OrganizeSli
       const rest = w.tabIds.filter((id) => !g.tabIds.includes(id));
       let at: number;
       if (p.beforeId && rest.includes(p.beforeId)) {
-        // Before another group's member: before that whole group.
         const other = groupOf({ groups }, p.beforeId);
         at = rest.indexOf(other ? other.tabIds.find((id) => rest.includes(id))! : p.beforeId);
       } else if (p.pinned) {

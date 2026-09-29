@@ -1,6 +1,3 @@
-// DevTools protocol calls on our own browsers (Runtime.evaluate with a user
-// gesture, Storage.clearDataForOrigin…). An observer is attached lazily, the
-// first time a browser needs one.
 #import "NNCefInternal.h"
 
 #include <algorithm>
@@ -22,8 +19,8 @@ namespace nn {
 
 namespace {
 
-std::map<int, void (^)(NSDictionary *)> gCalls;  // by message id
-std::map<int, CefRefPtr<CefRegistration>> gRegistrations;  // by browser id
+std::map<int, void (^)(NSDictionary *)> gCalls;
+std::map<int, CefRefPtr<CefRegistration>> gRegistrations;
 
 class Observer : public CefDevToolsMessageObserver {
  public:
@@ -42,14 +39,9 @@ class Observer : public CefDevToolsMessageObserver {
   IMPLEMENT_REFCOUNTING(Observer);
 };
 
-// The DevTools window of each inspected browser (by its id), to switch panels
-// in a window that's already open.
 std::map<int, CefRefPtr<CefBrowser>> gFrontends;
-// Every DevTools window open (F12 in one closes it).
 std::vector<CefRefPtr<CefBrowser>> gWindows;
 
-/// Dia's title for its DevTools window, "Developer Tools - <url>": the frontend's own title, which
-/// follows the inspected page (our engine's; stock Chrome's says "DevTools - <url>").
 CefString WindowTitle(const CefString &frontendTitle) {
   NSString *title = ToNS(frontendTitle);
   NSString *stock = @"DevTools - ";
@@ -57,33 +49,25 @@ CefString WindowTitle(const CefString &frontendTitle) {
   return [title hasPrefix:@"Developer Tools"] ? frontendTitle : ToCef(@"Developer Tools");
 }
 
-/// The window of an undocked DevTools browser (ours, OpenDevToolsWindow), if it has one.
 CefRefPtr<CefWindow> WindowOf(CefRefPtr<CefBrowser> browser) {
   CefRefPtr<CefBrowserView> view = CefBrowserView::GetForBrowser(browser);
   return view ? view->GetWindow() : nullptr;
 }
 
-/// Closes a DevTools window: through our window when it has one (which closes the browser first),
-/// else its browser (Chrome's own DevTools window closes with it).
 void CloseFrontend(CefRefPtr<CefBrowser> browser) {
   if (CefRefPtr<CefWindow> window = WindowOf(browser)) window->Close();
   else browser->GetHost()->CloseBrowser(false);
 }
 
-/// F12 (no modifiers), Chrome's DevTools toggle key.
 bool IsF12(const CefKeyEvent &event) {
   const int modifiers = EVENTFLAG_SHIFT_DOWN | EVENTFLAG_CONTROL_DOWN | EVENTFLAG_ALT_DOWN | EVENTFLAG_COMMAND_DOWN;
-  return event.type == KEYEVENT_RAWKEYDOWN && event.windows_key_code == 0x7B /* VKEY_F12 */ && !(event.modifiers & modifiers);
+  return event.type == KEYEVENT_RAWKEYDOWN && event.windows_key_code == 0x7B  && !(event.modifiers & modifiers);
 }
 
-/// Shows `panel` ("console", "elements"…) in a DevTools frontend. Its inspector
-/// view comes up a while after the page loads (and picks its last panel), so
-/// this retries until the panel is the selected one, for up to five seconds.
 void ShowPanel(CefRefPtr<CefBrowser> frontend, NSString *panel) {
   NSString *js = [NSString stringWithFormat:
       @"(async function show(panel, n) {"
        "  let view = null;"
-       // Absolute: this script has no URL of its own to resolve a relative import against.
        "  const legacy = new URL('ui/legacy/legacy.js', location.href).href;"
        "  try { view = (await import(legacy)).InspectorView.InspectorView.maybeGetInspectorViewInstance(); } catch (e) {}"
        "  try {"
@@ -98,8 +82,6 @@ void ShowPanel(CefRefPtr<CefBrowser> frontend, NSString *panel) {
   frame->ExecuteJavaScript(ToCef(js), frame->GetURL(), 0);
 }
 
-/// Client of a DevTools window: remembers it, opens a panel once loaded, titles its window
-/// like Dia's and closes it on F12, as Chrome's DevTools window does (IDC_DEV_TOOLS_TOGGLE).
 class FrontendClient : public CefClient,
                        public CefLifeSpanHandler,
                        public CefLoadHandler,
@@ -140,10 +122,6 @@ class FrontendClient : public CefClient,
   IMPLEMENT_REFCOUNTING(FrontendClient);
 };
 
-/// Where the profile's undocked DevTools window was left: Chrome's own record
-/// (`browser.app_window_placement` › DevToolsApp: left, top, right, bottom in screen points), which
-/// Chrome's DevTools window reads and writes too (DevTools of a tab Chrome made, rather than the
-/// window's first one, open in Chrome's window).
 constexpr char kPlacementPref[] = "browser.app_window_placement";
 constexpr char kDevToolsApp[] = "DevToolsApp";
 
@@ -180,9 +158,7 @@ void SavePlacement(CefRefPtr<CefRequestContext> context, const CefRect &bounds, 
   if (!context->SetPreference(kPlacementPref, value, error)) NSLog(@"[devtools] placement: %@", ToNS(error));
 }
 
-/// The undocked DevTools window of a tab the window's own browser view hosts: Dia's title, and
-/// the frame the profile's DevTools window was left at (Chrome's default the first time: 640 ×
-/// 640, 100 pt in from the work area's corner; and again after a window under 400 pt either way).
+// Dia: 640×640; 100pt inset; reset below 400pt.
 class WindowDelegate : public CefWindowDelegate {
  public:
   explicit WindowDelegate(CefRefPtr<CefBrowserView> view) : view_(view) {}
@@ -190,7 +166,6 @@ class WindowDelegate : public CefWindowDelegate {
   void OnWindowCreated(CefRefPtr<CefWindow> window) override {
     WindowCreated(window);
     window->AddChildView(view_);
-    // Undocking moves a loaded frontend here: its title (OnTitleChange) came before the window.
     CefRefPtr<CefBrowser> browser = view_->GetBrowser();
     CefRefPtr<CefNavigationEntry> entry = browser ? browser->GetHost()->GetVisibleNavigationEntry() : nullptr;
     window->SetTitle(WindowTitle(entry ? entry->GetTitle() : CefString()));
@@ -203,7 +178,6 @@ class WindowDelegate : public CefWindowDelegate {
   }
   bool CanClose(CefRefPtr<CefWindow>) override {
     CefRefPtr<CefBrowser> browser = view_ ? view_->GetBrowser() : nullptr;
-    // The browser closes first (beforeunload); CEF closes the window again once it's gone.
     return browser && browser->IsValid() ? browser->GetHost()->TryCloseBrowser() : true;
   }
   cef_runtime_style_t GetWindowRuntimeStyle() override { return view_->GetRuntimeStyle(); }
@@ -214,7 +188,6 @@ class WindowDelegate : public CefWindowDelegate {
       CefRect area = display ? display->GetWorkArea() : CefRect();
       const int shownWidth = std::min(rect.x + rect.width, area.x + area.width) - std::max(rect.x, area.x);
       const int shownHeight = std::min(rect.y + rect.height, area.y + area.height) - std::max(rect.y, area.y);
-      // Also back to the default: a window left mostly off screen (a display since unplugged).
       if (rect.width >= 400 && rect.height >= 400 && shownWidth >= 100 && shownHeight >= 100) return rect;
     }
     CefRect area = CefDisplay::GetPrimaryDisplay()->GetWorkArea();
@@ -239,7 +212,7 @@ class WindowDelegate : public CefWindowDelegate {
   IMPLEMENT_REFCOUNTING(WindowDelegate);
 };
 
-}  // namespace
+}
 
 bool OpenDevToolsWindow(CefRefPtr<CefBrowserView> view) {
   if (!view) return false;
@@ -270,7 +243,6 @@ void ShowDevTools(CefRefPtr<CefBrowser> browser, NSString *panel, CefPoint inspe
   if (open != gFrontends.end() && panel.length) ShowPanel(open->second, panel);
   CefWindowInfo info;
   CefBrowserSettings settings;
-  // Ignored (the window is just focused) when it's already open.
   browser->GetHost()->ShowDevTools(info, new FrontendClient(browser->GetIdentifier(), panel), settings, inspectAt);
 }
 
@@ -307,4 +279,4 @@ void EvaluateWithGesture(CefRefPtr<CefBrowser> browser, NSString *expression, vo
   });
 }
 
-}  // namespace nn
+}

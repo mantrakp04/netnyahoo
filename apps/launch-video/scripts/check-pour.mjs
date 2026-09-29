@@ -1,6 +1,3 @@
-// Fails "Pour"'s render when the edit breaks its own rules (src/pour/timeline.ts): every picture change, line,
-// subtitle and super on the beat grid; nothing on screen for under 12 frames (supers and subtitles at least
-// 1.5 s); each line's voice finished before the next line starts; the camera never past 1.45x the 2x capture.
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";

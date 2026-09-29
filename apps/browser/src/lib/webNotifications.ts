@@ -12,22 +12,15 @@ import { useBrowser } from "../store/browser";
 import { focus, switchToTab } from "./actions";
 import { webviews } from "./webviews";
 
-/**
- * Web notifications (`new Notification()` / `showNotification()`) → Notification Center.
- * The engine has already checked the site's permission. Clicking one brings its tab forward
- * and runs the page's click handler; closing it runs the close handler.
- */
-/** macOS notification id → the engine's id of the page notification it shows. */
 const shown = new Map<string, string>();
 
-/** A tag names a notification per site: showing one with the same tag replaces it. */
 const macId = (n: WebNotification) => (n.tag ? `web:${n.origin}#${n.tag}` : `web:${n.id}`);
 
 export function showWebNotification(tabId: string, n: WebNotification) {
   const s = useBrowser.getState();
   const tab = s.tabs[tabId];
   const window = tab ? s.windows[tab.windowId] : undefined;
-  // Like Chrome (and Dia), incognito pages don't get to notify: dismiss it so the page's handlers settle.
+  // Dismiss incognito notifications.
   if (!tab || !window || window.incognito) return void webviews.get(tabId)?.notificationAction(n.id, "close");
   const id = macId(n);
   shown.set(id, n.id);
@@ -58,11 +51,7 @@ export function showWebNotification(tabId: string, n: WebNotification) {
 const ICON_PIXELS = 128;
 const ICON_TIMEOUT_MS = 3000;
 
-/**
- * The notification's icon as a data: URI, downloaded by the page's own tab (its request
- * context, no cookies) so neither the UI nor Notification Center fetches it from the network.
- * No icon if that fails or takes too long.
- */
+// Load icons through the page tab's request context.
 async function iconFor(tabId: string, url: string): Promise<string | undefined> {
   const view = webviews.get(tabId);
   if (!view) return undefined;
@@ -71,7 +60,6 @@ async function iconFor(tabId: string, url: string): Promise<string | undefined> 
   return image?.uri ?? undefined;
 }
 
-/** The page called notification.close(). */
 export function closeWebNotification(engineId: string) {
   for (const [id, shownId] of shown) {
     if (shownId !== engineId) continue;
@@ -80,10 +68,8 @@ export function closeWebNotification(engineId: string) {
   }
 }
 
-/** Notification Center click / close. Returns false for notifications that aren't web ones. */
 export function handleWebNotificationResponse({ id, action, tabId, data }: NotificationResponse): boolean {
   if (!id.startsWith("web:")) return false;
-  // The page notification rides along in `data`, so this also works after a JS reload.
   const engineId = (data as { engineId?: string } | null)?.engineId;
   if (engineId && shown.get(id) === engineId) shown.delete(id);
   const tab = tabId ? useBrowser.getState().tabs[tabId] : undefined;
@@ -98,11 +84,7 @@ export function handleWebNotificationResponse({ id, action, tabId, data }: Notif
 
 let asked = false;
 
-/**
- * macOS's own permission, the first time a site may notify: the system asks once; if the user
- * has turned Netnyahoo's notifications off, explain where to turn them on (Dia does the same),
- * at most once per launch.
- */
+// Ask once before opening Notification Settings.
 export async function ensureNotificationPermission(windowId?: string): Promise<boolean> {
   const status = await notificationPermission();
   if (status === "granted" || status === "provisional") return true;
@@ -120,5 +102,4 @@ export async function ensureNotificationPermission(windowId?: string): Promise<b
   return false;
 }
 
-// DEV: tooling can see which page notifications are showing (`globalThis.nnNotifications`).
 if (__DEV__) (globalThis as { nnNotifications?: unknown }).nnNotifications = { shown };

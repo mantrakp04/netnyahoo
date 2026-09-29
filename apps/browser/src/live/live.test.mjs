@@ -1,4 +1,3 @@
-// Live folders and Live Calendar: mappers, stacks, CI copy, unread / completion, meetings.
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/live/live.test.mjs
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -73,19 +72,16 @@ test("Store: first fetch fills quietly, new items are unread, merges animate out
   const added = { ...items[4], id: "github:PR_900", title: "New" };
   liveStore.applyFetch(id, [added, ...items], {}, 2000);
   assert.deepEqual(liveStore.live().unread[id], ["github:PR_900"]);
-  // Items of a source just added to the folder aren't unread.
   const bb = { ...items[0], id: "bitbucket:acme/x#1", source: "bitbucket" };
   liveStore.applyFetch(id, [added, bb, ...items], {}, 2500, new Set([bb.id]));
   assert.deepEqual(liveStore.live().unread[id], ["github:PR_900"]);
   liveStore.markRead(id, ["github:PR_900"]);
   assert.deepEqual(liveStore.live().unread[id], []);
-  // PR 101 merged: it stays (animating) in place, and is recorded as completed.
   const rest = [added, ...items.filter((i) => i.pr.number !== 101)];
   liveStore.applyFetch(id, rest, { "github:PR_101": "merged" }, 3000);
   assert.ok(liveStore.live().items[id].some((i) => i.id === "github:PR_101"));
   assert.deepEqual(liveStore.live().completing[id], ["github:PR_101"]);
   assert.equal(liveStore.live().completed[id][0].state, "merged");
-  // A refresh during the animation keeps it; then it leaves.
   liveStore.applyFetch(id, rest, {}, 3500);
   assert.ok(liveStore.live().items[id].some((i) => i.id === "github:PR_101"));
   liveStore.finishCompleting(id, ["github:PR_101"]);
@@ -95,7 +91,6 @@ test("Store: first fetch fills quietly, new items are unread, merges animate out
   assert.equal(liveStore.live().folders[id], undefined);
 });
 
-// Meetings
 
 const at = (min) => Date.UTC(2026, 8, 25, 15, 0) + min * 60_000;
 const event = (over) => ({
@@ -161,7 +156,6 @@ test("Meeting groups: joining a call groups it with its links; it ends, then cle
   const S = () => useBrowser.getState();
   S().hydrate({});
   const w = S().createWindow({ url: "https://example.com" });
-  // Its 20 s ticker would keep node alive; the test calls tick() itself.
   const setIntervalBefore = globalThis.setInterval;
   globalThis.setInterval = () => 0;
   meetingGroups.startMeetingGroups();
@@ -174,19 +168,15 @@ test("Meeting groups: joining a call groups it with its links; it ends, then cle
   assert.equal(group.name, "Design review");
   const m = liveStore.live().meetingGroups[group.id];
   assert.equal(m.occurrence, "design@1");
-  // A link opened from the call joins the group.
   const doc = S().newTab(w, { url: "https://docs.google.com/document/d/1", openerId: call });
   assert.ok(S().groups[group.id].tabIds.includes(doc));
-  // The meeting ends: a normal group.
   meetingGroups.tick(S(), ev.end + 1000);
   assert.ok(liveStore.live().meetingGroups[group.id].endedAt);
-  // Unused for half an hour after: it closes to Recently Closed Groups.
   S().activate(S().newTab(w, { url: "https://example.org" }));
   meetingGroups.tick(S(), ev.end + 31 * 60_000);
   assert.equal(S().groups[group.id], undefined);
   assert.equal(liveStore.live().meetingGroups[group.id], undefined);
   assert.equal(S().closedGroups.at(-1).group.name, "Design review");
-  // An unscheduled call is named "Meeting" and ends when you leave it.
   const adhoc = S().newTab(w, { url: "https://acme.zoom.us/j/999" });
   const g2 = Object.values(S().groups).find((g) => g.tabIds.includes(adhoc));
   assert.equal(g2.name, "Meeting");

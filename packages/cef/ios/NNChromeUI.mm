@@ -18,14 +18,12 @@ NSDictionary *PasswordPrompt(CefRefPtr<CefBrowser> browser) {
 #if NN_PASSWORD_PROMPT
   CefRefPtr<CefDictionaryValue> prompt = browser->GetHost()->GetPasswordPrompt();
   if (!prompt) return nil;
-  // password_manager::ui::State. Other states (auto sign-in, generated-password and
-  // Keychain notices…) keep Chrome's bubble.
   NSString *state = nil;
   switch (prompt->GetInt("state")) {
-    case 1: state = @"save"; break;     // PENDING_PASSWORD_STATE
-    case 7: state = @"update"; break;   // PENDING_PASSWORD_UPDATE_STATE
-    case 2:                             // SAVE_CONFIRMATION_STATE
-    case 3: state = @"saved"; break;    // UPDATE_CONFIRMATION_STATE
+    case 1: state = @"save"; break;
+    case 7: state = @"update"; break;
+    case 2:
+    case 3: state = @"saved"; break;
     default: return nil;
   }
   NSMutableArray *usernames = [NSMutableArray array];
@@ -70,7 +68,7 @@ NSString *ExecuteExtensionAction(CefRefPtr<CefBrowser> browser, NSString *extens
 #endif
 }
 
-}  // namespace nn::chromeui
+}
 
 // MARK: - Chrome surfaces the app draws (NNChromeSurfaces)
 
@@ -112,7 +110,6 @@ id FromValue(CefRefPtr<CefValue> value) {
   }
 }
 
-/// "#rrggbb" for an ARGB color, nil when unset (transparent).
 id HexColor(int argb) {
   uint32_t c = (uint32_t)argb;
   if (!(c >> 24)) return [NSNull null];
@@ -121,7 +118,7 @@ id HexColor(int argb) {
 
 std::map<int, CefRefPtr<CefDeviceChooser>> gChoosers;
 std::map<int, CefRefPtr<CefCastDialog>> gCastDialogs;
-std::map<int, int> gChooserBrowsers, gCastBrowsers;  // chooser / dialog id → browser id
+std::map<int, int> gChooserBrowsers, gCastBrowsers;
 
 NSDictionary *ChooserPayload(CefRefPtr<CefDeviceChooser> chooser, int browserId) {
   NSMutableDictionary *payload = [FromDictionary(chooser->GetState()) mutableCopy];
@@ -139,7 +136,6 @@ NSDictionary *CastPayload(CefRefPtr<CefCastDialog> dialog, int browserId) {
   return payload;
 }
 
-/// Chrome's device choosers, Cast dialog and extension side panels come to the app.
 class SurfaceHandler : public CefChromeUIHandler {
  public:
   bool OnDeviceChooser(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDeviceChooser> chooser) override {
@@ -187,7 +183,6 @@ class SurfaceHandler : public CefChromeUIHandler {
   IMPLEMENT_REFCOUNTING(SurfaceHandler);
 };
 
-/// The profile's local Cast routes ("castRoutes").
 class RouteObserver : public CefMediaObserver {
  public:
   explicit RouteObserver(NSString *profile) : profile_([profile copy]) {}
@@ -223,9 +218,8 @@ class RouteObserver : public CefMediaObserver {
   IMPLEMENT_REFCOUNTING(RouteObserver);
 };
 
-std::map<std::string, CefRefPtr<CefRegistration>> gRouteWatches;  // by profile
+std::map<std::string, CefRefPtr<CefRegistration>> gRouteWatches;
 
-/// A chooser the app answered: it hides it (Chrome reports only its own closes).
 void ChooserAnswered(int chooserId) {
   auto it = gChoosers.find(chooserId);
   if (it == gChoosers.end() || it->second->IsOpen()) return;
@@ -234,7 +228,6 @@ void ChooserAnswered(int chooserId) {
   gChooserBrowsers.erase(chooserId);
 }
 
-/// The module can load before the engine: take over once it runs.
 void InstallSurfaceHandler() {
   if (!gSurfaceHandler) return;
   if (!NNCef.isStarted) {
@@ -242,7 +235,6 @@ void InstallSurfaceHandler() {
     return;
   }
   CefSetChromeUIHandler(new SurfaceHandler());
-  // A reloaded app gets what's still waiting for an answer.
   for (auto &[id, chooser] : gChoosers)
     if (chooser->IsOpen()) EmitSurface(@"deviceChooser", ChooserPayload(chooser, gChooserBrowsers[id]));
   for (auto &[id, dialog] : gCastDialogs)
@@ -255,7 +247,7 @@ CefRefPtr<CefBrowser> BrowserById(NSInteger browserId) {
 
 #endif
 
-}  // namespace
+}
 
 void nn::chromeui::ReleaseRouteWatches() {
 #if NN_CHROME_UI
@@ -354,7 +346,6 @@ void nn::chromeui::ReleaseRouteWatches() {
   CefRefPtr<CefRequestContext> context = ContextForProfile(profile);
   CefRefPtr<CefMediaRouter> router = context ? context->GetMediaRouter(nullptr) : nullptr;
   if (!router) return;
-  // Already watching: the current list comes again.
   if (!gRouteWatches.count(key)) gRouteWatches[key] = router->AddObserver(new RouteObserver(profile));
   router->NotifyCurrentRoutes();
 #endif
@@ -378,7 +369,6 @@ void nn::chromeui::ReleaseRouteWatches() {
     if (!state) continue;
     states[extensionId] = @{
       @"title" : ToNS(state->GetString("title")),
-      // Placeholders like <<declarativeNetRequestActionCount>> are for Chrome to fill.
       @"badgeText" : [ToNS(state->GetString("badgeText")) hasPrefix:@"<<"] ? @"" : ToNS(state->GetString("badgeText")),
       @"badgeColor" : HexColor(state->GetInt("badgeColor")),
       @"badgeTextColor" : HexColor(state->GetInt("badgeTextColor")),
@@ -406,7 +396,6 @@ void nn::chromeui::ReleaseRouteWatches() {
   CefRefPtr<CefBrowser> capturer = BrowserById(capturerId), target = BrowserById(targetId);
   CefString source = target ? CefGetMediaCaptureSourceId(target) : CefString();
   if (!capturer || source.empty()) return NO;
-  // Chrome asks for the new source's permission again: the user just picked it.
   site::AllowDesktopCapture((int)capturerId);
   return CefChangeMediaCaptureSource(capturer, source);
 #else

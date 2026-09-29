@@ -1,4 +1,3 @@
-// Telemetry's content filter: nothing the user browses, types or names gets through.
 // Run from apps/browser:  node --test src/telemetry/sanitize.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -11,7 +10,6 @@ test("web addresses, hosts and app URLs are stripped", () => {
     "Failed to load https://mail.example.com/inbox?q=secret#frag, then netnyahoo://settings/passwords and chrome://version from bank.co.uk:8443",
   );
   assert.deepEqual(leaks(out, "example", "inbox", "secret", "passwords", "settings", "version", "bank"), []);
-  // A URL runs to the next space (commas can be part of it).
   assert.match(out, /^Failed to load <url> then <url> and <url> from <host>$/);
   assert.equal(scrubText("blob:https://x.test/abc data:text/html,<h1>hi</h1> about:blank"), "<url> <url> <url>");
   assert.equal(scrubText("visit www.secret-site.io now"), "visit <host> now");
@@ -34,7 +32,6 @@ test("quoted text, emails, ids and long numbers are stripped", () => {
   assert.equal(scrubText("mail alice.smith+x@corp.example.org"), "mail <email>");
   assert.equal(scrubText("tab 3f2c1a9e-1b2c-4d5e-8f90-123456789abc gone"), "tab <id> gone");
   assert.equal(scrubText("card 4111111111111111 declined"), "card <n> declined");
-  // Ordinary words with apostrophes survive.
   assert.equal(scrubText("Couldn't save the sync state; can't retry"), "Couldn't save the sync state; can't retry");
 });
 
@@ -62,7 +59,6 @@ test("Hermes stacks keep function and bundle names, not the dev host, query or d
   const frames = parseStack(stack);
   const json = JSON.stringify(frames);
   assert.deepEqual(leaks(json, "localhost", "8081", "platform=macos", "alice", "DerivedData", "Users"), []);
-  // Outermost first: the throwing frame is last.
   assert.equal(frames.at(-1).function, "choose");
   assert.equal(frames.at(-1).filename, "index.bundle");
   assert.equal(frames.at(-1).lineno, 123);

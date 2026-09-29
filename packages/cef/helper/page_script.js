@@ -1,7 +1,4 @@
-// Runs in every frame at context creation, before page scripts.
-// `post(kind, json)` reaches the tab's native client; the returned
-// `receive(kind, json)` is how the native side calls back in. Neither is
-// reachable from the page.
+// Install before page scripts.
 (function (post) {
   "use strict";
   if (!/^(https?|file):$/.test(location.protocol)) return () => {};
@@ -41,7 +38,6 @@
     send("media", { frame, playing });
   };
 
-  // Media Session: record metadata/handlers as the page sets them.
   const session = navigator.mediaSession;
   const actions = new Map();
   let positionState = null;
@@ -91,7 +87,6 @@
     lastNowPlaying = json;
     send("nowPlaying", state && { ...state, timestamp: Date.now() });
   }, 100);
-  // "autoplay: block" site setting: media may only start after the user interacted.
   let blockAutoplay = false;
   const onMediaEvent = (e) => {
     const m = e.target;
@@ -104,8 +99,6 @@
     reportAudible();
     if (e.type !== "volumechange") reportNowPlaying();
   };
-  // Video PiP. Leaving it while the video keeps playing is Chromium's "back to
-  // tab" button (its close button pauses the video).
   document.addEventListener("enterpictureinpicture", (e) => send("pip", { active: true, kind: "video" }), true);
   document.addEventListener(
     "leavepictureinpicture",
@@ -117,7 +110,6 @@
   );
   const mediaEvents = ["play", "playing", "pause", "ended", "volumechange", "emptied", "seeked", "ratechange", "loadedmetadata"];
   for (const e of mediaEvents) document.addEventListener(e, onMediaEvent, true);
-  // Media elements that never join the DOM (new Audio()) only show up through play().
   const play = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function () {
     if (!tracked.has(this) && !this.isConnected) {
@@ -126,12 +118,9 @@
     }
     return play.apply(this, arguments);
   };
-  // WebAudio (games, synths, some players): a context counts while a tap on what
-  // reaches its destination hears something, and for a few seconds after it goes
-  // quiet or is suspended.
   const QUIET_MS = 3000;
   const audioContexts = new Set();
-  const taps = new WeakMap(); // context → AnalyserNode fed what goes to the speakers
+  const taps = new WeakMap();
   const samples = new Float32Array(256);
   let webAudioUntil = 0;
   let audioPoll = 0;
@@ -162,7 +151,7 @@
       const result = connect.apply(this, arguments);
       guard(() => {
         const ctx = target instanceof AudioDestinationNode ? target.context : null;
-        if (!(ctx instanceof AudioContext)) return; // not OfflineAudioContext
+        if (!(ctx instanceof AudioContext)) return;
         if (!taps.has(ctx)) {
           const tap = ctx.createAnalyser();
           tap.fftSize = samples.length;
@@ -177,7 +166,6 @@
     };
   }
 
-  // (The MediaSession global isn't reliably exposed this early; the instance is.)
   const proto = session && Object.getPrototypeOf(session);
   if (proto) {
     const wrapSetter = (name) => {
@@ -195,7 +183,7 @@
     wrapSetter("playbackState");
     const setActionHandler = proto.setActionHandler;
     proto.setActionHandler = function (action, handler) {
-      const result = setActionHandler.apply(this, arguments);  // throws for unsupported actions
+      const result = setActionHandler.apply(this, arguments);
       if (handler) actions.set(action, handler);
       else actions.delete(action);
       reportNowPlaying();
@@ -253,9 +241,7 @@
   };
 
   // MARK: Password reveal — an eye button in a focused password field the user
-  // typed into (Edge's rule: never for a filled-in saved password, which would
-  // show it without the Keychain unlock). Revealed fields go back to dots on blur
-  // and before anything submits.
+// Reveal only user-typed passwords; never expose saved passwords.
   const typedByUser = new WeakSet();
   let revealedField = null;
   let eyeField = null;
@@ -266,8 +252,6 @@
     '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8Z"/><circle cx="8" cy="8" r="2.1"/></svg>';
   const EYE_SLASH =
     '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 3.8A6.6 6.6 0 0 1 8 3.5c4.1 0 6.5 4.5 6.5 4.5a11 11 0 0 1-1.7 2.2M4.3 4.9C2.5 6.1 1.5 8 1.5 8s2.4 4.5 6.5 4.5c1.2 0 2.3-.4 3.2-.9"/><path d="M6.6 6.6a2.1 2.1 0 0 0 2.8 2.8"/><path d="M2 2l12 12"/></svg>';
-  // Sites that draw their own show/hide toggle next to the field keep theirs
-  // (looked for in the field's own wrapper, up to where other inputs start).
   const hasOwnToggle = (el) => {
     for (let n = el.parentElement, depth = 0; n && depth < 3 && n.querySelectorAll("input").length === 1; n = n.parentElement, depth++)
       for (const c of n.querySelectorAll('button, [role="button"], [aria-label], [title], [class*="eye" i], [class*="toggle" i]'))
@@ -308,7 +292,6 @@
       '<button type="button" tabindex="-1"></button>';
     eyeButton = root.querySelector("button");
     eyeButton.innerHTML = EYE;
-    // Keep the focus (and caret) in the field.
     eyeButton.addEventListener("mousedown", (e) => e.preventDefault());
     eyeButton.addEventListener("click", (e) => {
       e.preventDefault();
@@ -356,7 +339,6 @@
   document.addEventListener(
     "focusout",
     guard((e) => {
-      // The eye's own click refocuses the field; anything else hides it.
       setTimeout(() => {
         if (document.activeElement === e.target) return;
         if (revealedField === e.target) conceal();
@@ -365,7 +347,6 @@
     }),
     true,
   );
-  // Early (capture phase), so the password manager sees a password field on submit.
   document.addEventListener("submit", conceal, true);
   document.addEventListener("keydown", (e) => e.key === "Enter" && conceal(), true);
   document.addEventListener(
@@ -381,11 +362,7 @@
   addEventListener("pagehide", conceal);
 
   // MARK: Notifications — shown by the app (macOS notifications that open the
-  // tab), not by Chromium. Permission stays Chromium's (the site's
-  // "notifications" setting), so Notification.permission/requestPermission are
-  // untouched.
-  // Blink installs Notification (like MediaSession) just after this script runs,
-  // so the override waits for a microtask — still before any page script.
+// Wait a microtask so Blink installs Notification before page scripts.
   const installNotifications = () => {
     const NativeNotification = window.Notification;
     if (!NativeNotification || NativeNotification.__nn) return !!NativeNotification;
@@ -454,8 +431,6 @@
     Object.defineProperty(PageNotification, "name", { value: "Notification" });
     Object.defineProperty(PageNotification, "__nn", { value: true });
     window.Notification = PageNotification;
-    // registration.showNotification() called from pages (not from inside the
-    // service worker, where the page script doesn't run).
     const Registration = window.ServiceWorkerRegistration;
     if (Registration && Registration.prototype.showNotification) {
       Registration.prototype.showNotification = function (title, options) {
@@ -480,10 +455,7 @@
   };
   if (!installNotifications()) queueMicrotask(() => installNotifications() || setTimeout(installNotifications, 0));
 
-  // Native answers "hello" with which features to run in this frame.
   // MARK: Screen sharing — getDisplayMedia() through the app's source picker
-  // (screen / window / tab) instead of Chromium's; the picked source goes back in
-  // through Chromium's desktop-capture constraints.
   const displayRequests = new Map();
   let displaySeq = 0;
   const installDisplayMedia = () => {
@@ -511,7 +483,6 @@
       }
       const video = request.constraints.video;
       const frameRate = (video && video.frameRate && (video.frameRate.max || video.frameRate.ideal || video.frameRate)) || 30;
-      // A shared tab brings its own audio (system audio would need macOS permission).
       const tabAudio = !!request.constraints.audio && sourceId.startsWith("web-contents-media-stream://");
       getUserMedia
         .call(request.self, {
@@ -535,7 +506,6 @@
   if (!isTop) return receive;
 
   // MARK: Theme color — <meta name="theme-color">, else the colour at the top of
-  // the page: a fixed/sticky header (also while scrolled) or the page background.
   const parse = (css) => {
     const m = css && css.match(/[\d.]+/g);
     if (!m || m.length < 3) return null;
@@ -570,7 +540,6 @@
     const dark = /dark/.test(getComputedStyle(document.documentElement).colorScheme) && matchMedia("(prefers-color-scheme: dark)").matches;
     return dark ? { r: 18, g: 18, b: 18, a: 1 } : { r: 255, g: 255, b: 255, a: 1 };
   };
-  // Translucent headers are composited over the page background.
   const blend = (c, under) =>
     c.a >= 1 ? c : { r: c.r * c.a + under.r * (1 - c.a), g: c.g * c.a + under.g * (1 - c.a), b: c.b * c.a + under.b * (1 - c.a), a: 1 };
   const headerColor = (page) => {
@@ -627,7 +596,6 @@
     });
     for (const el of [document.documentElement, document.body])
       if (el) observer.observe(el, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
-    // Stylesheets and hydration can repaint the header after DOMContentLoaded.
     for (const ms of [300, 1000, 3000]) setTimeout(scheduleTheme, ms);
   };
   onReady(startTheme);
@@ -648,8 +616,6 @@
   }
 
   // MARK: Selected text — a mouse selection of page text (not in a text field)
-  // reports { text, rect } in viewport coordinates for the app's Search popover;
-  // null takes it away again (click, typing, scrolling, selection gone).
   let selectionShown = false;
   let selecting = false;
   const hideSelection = () => {
@@ -687,13 +653,11 @@
     (e) => {
       if (e.button !== 0 || !selecting) return;
       selecting = false;
-      // After the page's own handlers (and the double-click word selection) settle.
       setTimeout(reportSelection, 0);
     },
     true,
   );
   document.addEventListener("selectionchange", () => selectionShown && !selecting && getSelection().isCollapsed && hideSelection());
-  // ⌘C and bare modifiers keep it.
   document.addEventListener("keydown", (e) => e.metaKey || /^(Shift|Meta|Alt|Control)$/.test(e.key) || hideSelection(), true);
   addEventListener("scroll", hideSelection, { passive: true, capture: true });
   addEventListener("resize", hideSelection);

@@ -31,19 +31,16 @@ const KEY_NAMES: Record<string, string> = {
   "": "⇟",
 };
 
-/** "⇧⌘B" for a menu key equivalent. */
 export function formatShortcut({ key, modifiers }: Combo): string {
   if (!key) return "";
   const mods = MOD_ORDER.filter((m) => modifiers.includes(m)).map((m) => MOD_GLYPH[m]).join("");
   const code = key.charCodeAt(0);
-  // F1–F20 are U+F704…
   const name = KEY_NAMES[key] ?? (code >= 0xf704 && code <= 0xf717 ? `F${code - 0xf703}` : key.toUpperCase());
   return mods + name;
 }
 
 const comboId = (c: Combo) => (c.key ? `${[...c.modifiers].sort().join("+")}+${c.key.toLowerCase()}` : "");
 
-/** Keyboard Shortcuts: every menu action, remappable with conflict detection (Dia's pane). */
 export function ShortcutsPane() {
   const theme = useTheme();
   const overrides = useBrowser((s) => s.settings.shortcuts);
@@ -62,7 +59,6 @@ export function ShortcutsPane() {
     return o ? { key: o[0] ?? "", modifiers: o.slice(1) } : { key: item.defaultKey, modifiers: item.defaultModifiers };
   };
 
-  // Every combo used by more than one action.
   const conflicts = useMemo(() => {
     const byCombo = new Map<string, MenuShortcut[]>();
     for (const item of items ?? []) {

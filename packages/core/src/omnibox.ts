@@ -4,10 +4,7 @@ import { displayHost } from "./idn.ts";
 
 export const SEARCH_URL = "https://www.google.com/search?q=";
 
-/**
- * Parsing here is regex-based on purpose: React Native's `URL` polyfill never throws and only
- * understands http(s), so `new URL` would behave differently in the app than under node tests.
- */
+// RN's URL polyfill never throws; keep parsing regex-based.
 export type ParsedUrl = { scheme: string; host: string; port: string; path: string; query: string; hash: string };
 
 const URL_PARTS = /^([a-z][a-z0-9+.-]*):\/\/(?:[^@/?#]*@)?(\[[^\]]*\]|[^:/?#]*)(?::(\d+))?([^?#]*)(\?[^#]*)?(#.*)?$/i;
@@ -18,22 +15,16 @@ export function parseUrl(url: string): ParsedUrl | null {
   return { scheme: m[1]!.toLowerCase(), host: m[2]!.toLowerCase(), port: m[3] ?? "", path: m[4] ?? "", query: m[5] ?? "", hash: m[6] ?? "" };
 }
 
-/** `https://www.Example.com/a` → `example.com` ("" when the URL has no host). */
 export function hostOf(url: string): string {
   return (parseUrl(url)?.host ?? "").replace(/^www\./, "");
 }
 
-/** Schemes the bar navigates to as typed. `javascript:` is deliberately missing (paste attacks). */
 const KNOWN_SCHEMES = new Set([
   "http", "https", "file", "about", "data", "blob", "mailto", "tel", "sms", "facetime", "ftp", "view-source",
   "netnyahoo", "chrome", "chrome-extension", "devtools", "x-apple.systempreferences", "itms-apps", "slack", "zoommtg", "vscode",
   "cursor", "notion", "figma", "spotify", "linear", "obsidian", "raycast",
 ]);
 
-/**
- * Top-level domains we recognise (common generic ones and every country code). Anything else
- * ("index.html", "node.js") is a search, unless it has a scheme, port or path.
- */
 const KNOWN_TLDS = new Set(
   (
     "com net org edu gov mil int info biz name pro mobi app dev io ai co me tv cc gg sh fm ly so to xyz online site tech store " +
@@ -46,7 +37,6 @@ const KNOWN_TLDS = new Set(
     "fashion style shoes clothing jewelry watch camera computer phone mobile download security domains hosting " +
     "google youtube gmail android chrome amazon apple microsoft windows office azure aws netflix meta search " +
     "local localhost test internal lan arpa onion " +
-    // Country codes.
     "ac ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bm bn bo br bs bt bw by bz ca cc " +
     "cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg er es et eu fi fj fk fm fo fr ga " +
     "gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp " +
@@ -57,7 +47,6 @@ const KNOWN_TLDS = new Set(
   ).split(" "),
 );
 
-/** Hosts that don't do HTTPS by convention: loopback, private IPs, mDNS and reserved names. */
 function isLocalHost(host: string): boolean {
   return (
     host === "localhost" ||
@@ -69,11 +58,6 @@ function isLocalHost(host: string): boolean {
 
 const HOST = /^(localhost|\[[0-9a-f:.]+\]|(\d{1,3}\.){3}\d{1,3}|([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z][a-z0-9-]*[a-z0-9]|xn--[a-z0-9-]+))\.?(:\d{1,5})?(?=[/?#]|$)/i;
 
-/**
- * The URL a typed or pasted string means, or null when it should be searched instead.
- * `apple.com` → https, `localhost:3000` / `192.168.1.1` → http, `/Users/me/a.html` → file,
- * `chrome://version` / `about:version` → `netnyahoo://version` (appUrls.ts).
- */
 export function fixupUrl(raw: string): string | null {
   const url = fixup(raw);
   return url && toAppUrl(url);
@@ -81,13 +65,11 @@ export function fixupUrl(raw: string): string | null {
 
 function fixup(raw: string): string | null {
   const input = raw.trim();
-  // Spaces make it a search, except in explicit URLs and absolute file paths.
   if (!input || (/\s/.test(input) && !/^([a-z][a-z0-9+.-]*:\/\/|\/[^\s/])/i.test(input))) return null;
   if (/^(about|data|mailto|tel|sms|facetime|view-source):/i.test(input)) return input;
 
   const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(input)?.[1]?.toLowerCase();
   if (scheme && KNOWN_SCHEMES.has(scheme) && (input.slice(scheme.length + 1).startsWith("//") || !/^\d/.test(input.slice(scheme.length + 1)))) {
-    // "HTTPS://X.com" → keep the path's case, lower the scheme.
     return scheme + input.slice(scheme.length).replace(/\s/g, "%20");
   }
   if (scheme && !KNOWN_SCHEMES.has(scheme) && input.slice(scheme.length + 1).startsWith("//")) return input;
@@ -99,22 +81,15 @@ function fixup(raw: string): string | null {
   const tld = name.includes(".") && !/^[\d.]+$/.test(name) && !name.startsWith("[") ? name.slice(name.lastIndexOf(".") + 1) : "";
   const rest = input.slice(host[0].length);
   const explicit = !!host[5] || rest.length > 0;
-  // "index.html" and "node.js" are searches; "site.photography/about" is not.
   if (tld && !KNOWN_TLDS.has(tld) && !tld.startsWith("xn--") && !explicit) return null;
   return `${isLocalHost(name) ? "http" : "https"}://${input}`;
 }
 
-/** `%s` in `template` → the URL-encoded query; a template without `%s` is a prefix. */
 export function searchUrlFor(template: string, query: string): string {
   const q = encodeURIComponent(query.trim());
   return template.includes("%s") ? template.replace(/%s/g, q) : template + q;
 }
 
-/**
- * Turn whatever the user typed into the command bar into a URL to load. `search` is the
- * engine's URL template (`…?q=%s`) or a prefix the query is appended to. A leading `?`
- * forces a search, as in Chrome.
- */
 export function resolveInput(raw: string, search = SEARCH_URL): string {
   const input = raw.trim();
   if (!input) return "";
@@ -124,10 +99,6 @@ export function resolveInput(raw: string, search = SEARCH_URL): string {
 
 export type PasteAction = { kind: "go"; url: string } | { kind: "search"; query: string };
 
-/**
- * Dia's "Paste and Go" / "Paste and Search": a single URL-looking token goes there (trackers
- * stripped); any other text is searched (whitespace collapsed). Empty clipboards offer nothing.
- */
 export function classifyPaste(text: string): PasteAction | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -136,12 +107,10 @@ export function classifyPaste(text: string): PasteAction | null {
   return { kind: "search", query: trimmed.replace(/\s+/g, " ").slice(0, 2000) };
 }
 
-/** Dia-style breadcrumb: `x.com / Home / X` (host, then title fragments). */
 export function breadcrumb(url: string, title?: string): { host: string; trail: string[] } {
   const parsed = parseUrl(url);
   const app = appUrlOrigin(url);
   const host = app ?? (parsed ? displayHost(parsed.host).replace(/^www\./, "") : url);
-  // "netnyahoo://history / History" says the same thing twice.
   const seen = new Set([host.toLowerCase(), ...(app && parsed ? [parsed.host] : [])]);
   const trail = (title ?? "")
     .split(/\s[|/·–—-]\s/)
@@ -155,11 +124,6 @@ export function breadcrumb(url: string, title?: string): { host: string; trail: 
   return { host, trail };
 }
 
-/**
- * The URL as the navigation bar shows it: no scheme, no `www.`, and an IDN host in
- * Unicode when it's safe to (see idn.ts). Display only; copy and navigate the real URL.
- * Internal pages keep their scheme, branded: `chrome://version/` → `netnyahoo://version`.
- */
 export function urlForDisplay(url: string): string {
   if (appUrlOrigin(url)) return toAppUrl(url).replace(/^([^/]*\/\/[^/?#]*)\/(?=[?#]|$)/, "$1");
   const rest = url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");

@@ -2,10 +2,6 @@ import AppKit
 import EventKit
 import ExpoModulesCore
 
-/// macOS Calendar (EventKit) for Live Calendar: the calendar preview on pinned calendar tabs,
-/// the time-to-next-meeting badge, meeting alerts and meeting tab groups. Reading the
-/// authorization status never prompts; only `requestAccess` does, and JS calls it solely
-/// from an explicit user action (Settings › Calendar, or the pin-a-calendar dialog).
 public class CalendarModule: Module {
   private var store = EKEventStore()
   private var observer: NSObjectProtocol?
@@ -23,23 +19,20 @@ public class CalendarModule: Module {
       self.observer = nil
     }
 
-    /// "fullAccess" | "writeOnly" | "denied" | "restricted" | "notDetermined".
     Function("authorizationStatus") { () -> String in
       Self.status()
     }
 
-    /// Shows macOS's permission prompt the first time; resolves with whether events can be read.
     AsyncFunction("requestAccess") { (promise: Promise) in
       self.store.requestFullAccessToEvents { granted, _ in
         DispatchQueue.main.async {
-          // A store created before access was granted doesn't see any calendars.
+          // Refresh EventKit after access is granted.
           if granted { self.store = EKEventStore(); self.observe() }
           promise.resolve(granted)
         }
       }
     }.runOnQueue(.main)
 
-    /// [{ id, title, color, account, accountType, owned }]
     AsyncFunction("calendars") { () -> [[String: Any]] in
       guard Self.status() == "fullAccess" else { return [] }
       return self.store.calendars(for: .event).map { cal in
@@ -49,13 +42,11 @@ public class CalendarModule: Module {
           "color": Self.hex(cal.color),
           "account": cal.source?.title ?? "",
           "accountType": Self.sourceType(cal.source?.sourceType),
-          // Subscribed and birthday calendars are "not owned by the user" (Dia's second header).
           "owned": cal.allowsContentModifications && cal.type != .subscription && cal.type != .birthday,
         ]
       }
     }.runOnQueue(.main)
 
-    /// Events overlapping [start, end] (ms since the epoch), in the given calendars (all when empty).
     AsyncFunction("events") { (start: Double, end: Double, calendarIds: [String]) -> [[String: Any]] in
       guard Self.status() == "fullAccess" else { return [] }
       let all = self.store.calendars(for: .event)
@@ -91,7 +82,6 @@ public class CalendarModule: Module {
     let me = event.attendees?.first(where: { $0.isCurrentUser })
     return [
       "id": event.calendarItemIdentifier,
-      // Recurring events share an identifier; the start makes each occurrence unique.
       "occurrence": "\(event.calendarItemIdentifier)@\(Int(event.startDate.timeIntervalSince1970))",
       "calendarId": event.calendar?.calendarIdentifier ?? "",
       "color": hex(event.calendar?.color),

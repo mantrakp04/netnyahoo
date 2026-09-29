@@ -1,4 +1,3 @@
-// JS wrapper tests against a fake native module (the native side has its own Swift tests).
 import assert from "node:assert/strict";
 import { register } from "node:module";
 import { test } from "node:test";
@@ -79,7 +78,6 @@ const native = {
   },
 };
 
-// Swap expo-modules-core for the fake before loading the wrapper.
 (globalThis as { __importNative?: unknown }).__importNative = native;
 const hook = `export async function resolve(specifier, context, next) {
   if (specifier === "expo-modules-core") {

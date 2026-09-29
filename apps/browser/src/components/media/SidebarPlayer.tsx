@@ -13,24 +13,13 @@ import { seekTo, SeekBar, skip } from "./MiniPlayer";
 import { hasTrackControls, hostOf, isPlaying, isTabShown, mediaCommand, playerTabFor, SKIP_SECONDS, useMedia, useSession, useTicker } from "./state";
 import { useMediaTokens } from "./tokens";
 
-/** Height the sidebar reserves for the player (card + gap above it). */
 export const SIDEBAR_PLAYER_HEIGHT = 74 + 8;
 
-/**
- * The tab whose media the sidebar player controls: one of the window's tabs
- * that isn't on screen, playing now (the one that started last) or else the
- * last one paused. Closing the player hides it until that tab plays again.
- */
 export function useSidebarPlayerTab(windowId: string): string | undefined {
   const hidden = useBrowser(useShallow((s) => viewTabIds(s, windowId).filter((id) => !isTabShown(s, id))));
   return useMedia((m) => playerTabFor(m, hidden));
 }
 
-/**
- * The now-playing card at the bottom of the sidebar for media playing in a
- * background tab: art and titles (click to go to the tab), then transport and
- * a thin seek bar. Hover for its close button.
- */
 export function SidebarPlayer({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();

@@ -4,20 +4,10 @@ import { create } from "zustand";
 import { BATCH_URL, DEV_SEND_ENV, LOGS_URL, POSTHOG } from "./config";
 import { cleanProperties } from "./sanitize";
 
-/**
- * Opt-in telemetry's core: the user's choice, the install id, the queue and the only code that
- * talks to PostHog. Nothing is captured, queued or sent unless the user turned sharing on
- * (Settings › Privacy & Security, onboarding, or the one-time ask); turning it off drops the
- * queue on the spot. The choice is this Mac's alone: it lives in its own document, which sync
- * never reads.
- *
- * Events carry no person: a random install id (replaced whenever sharing is turned back on),
- * `$process_person_profile: false`, and `$geoip_disable`.
- */
+// Send only with opt-in; never sync the choice.
 
 const STATE_DOC = "telemetry.json";
 const QUEUE_DOC = "telemetry-queue.json";
-/** DEV: every request this module makes, one JSON line each. */
 const REQUEST_LOG_DOC = "telemetry-requests.log";
 
 const MAX_EVENTS = 1000;
@@ -30,17 +20,11 @@ const MAX_BACKOFF_MS = 30 * 60_000;
 type Saved = {
   version: 1;
   sharing: boolean;
-  /** When the user last made a choice (null: never asked or answered). */
   decidedAt: number | null;
-  /** The one-time ask for existing users was answered or dismissed. */
   askDoneAt: number | null;
-  /** Random, made when sharing turns on and forgotten when it turns off. */
   installId: string | null;
-  /** Crash reports written after this (epoch ms) are still to be looked at. */
   crashCursor: number;
-  /** The version that last ran with sharing on (to tell an update). */
   lastVersion: string | null;
-  /** Set while a session runs with sharing on; still set at launch means it didn't end cleanly. */
   sessionOpen: boolean;
 };
 
@@ -74,7 +58,6 @@ function save(patch: Partial<Saved>) {
   useTelemetry.setState({ sharing: saved.sharing, decided: saved.decidedAt !== null, askDone: saved.askDoneAt !== null });
 }
 
-/** What the UI needs: the switch, and whether the user has ever answered. */
 export const useTelemetry = create<{ sharing: boolean; decided: boolean; askDone: boolean }>(() => ({
   sharing: false,
   decided: false,
@@ -88,14 +71,11 @@ export const isSharing = () => saved.sharing;
 let app: SystemInfo | null = null;
 export const appInfo = () => (app ??= systemInfo());
 let engineVersion: string | null = null;
-/** A new id per launch (UUIDv7, as PostHog wants for `$session_id`). */
 export const sessionId = uuidv7();
 
-/** "dev" (Debug builds), "test" (a hidden test instance of a release build) or "production". */
 export const environment = (): "dev" | "test" | "production" =>
   __DEV__ ? "dev" : appInfo().isolatedInstance ? "test" : "production";
 
-/** DEV builds only send with NETNYAHOO_TELEMETRY=1; otherwise their requests are dry runs. */
 const devSendAllowed = () => launchEnvironment(DEV_SEND_ENV) === "1";
 const canSend = () => !__DEV__ || devSendAllowed();
 
@@ -132,7 +112,6 @@ type QueuedLog = {
 type Queue = { version: 1; events: QueuedEvent[]; logs: QueuedLog[] };
 
 let queue: Queue = { version: 1, events: [], logs: [] };
-/** Bumped whenever sharing turns off (or on): replies to older requests are ignored. */
 let generation = 0;
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -155,22 +134,14 @@ function clearQueue() {
   persistQueue(true);
 }
 
-/** Captures that arrived while sharing was off (DEV: shows they were dropped, not sent). */
 let droppedWhileOff = 0;
 
 export type CaptureOptions = {
-  /** Structured, already-sanitized properties (an exception's `$exception_list`). */
   raw?: Record<string, unknown>;
-  /** Send within seconds (exceptions). */
   urgent?: boolean;
-  /** Write the queue to disk before returning (a fatal error is about to end the process). */
   persist?: boolean;
 };
 
-/**
- * Queues an event. A no-op unless sharing is on. `props` must be flat and content-free; they're
- * cleaned all the same (numbers, booleans and short scrubbed strings only).
- */
 export function capture(event: string, props: Record<string, unknown> = {}, options: CaptureOptions = {}) {
   if (!saved.sharing || !saved.installId) {
     droppedWhileOff++;
@@ -190,7 +161,6 @@ export function capture(event: string, props: Record<string, unknown> = {}, opti
   } catch {}
 }
 
-/** Queues one log line (already scrubbed by logs.ts). A no-op unless sharing is on. */
 export function queueLog(level: "warn" | "error", message: string, attributes: Record<string, string | number | boolean>) {
   if (!saved.sharing) return;
   try {
@@ -216,7 +186,6 @@ let flushTimer: ReturnType<typeof setTimeout> | undefined;
 let flushDueAt = 0;
 let flushing = false;
 let failures = 0;
-/** After a failed send (offline, server trouble): nothing goes before this. */
 let retryAt = 0;
 
 function scheduleFlush(delay: number) {
@@ -234,20 +203,17 @@ export type RequestLogEntry = {
   url: string;
   count: number;
   bytes: number;
-  /** HTTP status; 0 = network error (offline); null = not sent (DEV dry run). */
   status: number | null;
   dryRun?: boolean;
 };
 
 const requests: RequestLogEntry[] = [];
 
-/** Every request this module made (or would have, in a DEV dry run) this launch. */
 export const requestLog = (): readonly RequestLogEntry[] => requests;
 
 function logRequest(entry: RequestLogEntry, body: string) {
   requests.push(entry);
   if (requests.length > 200) requests.shift();
-  // DEV: the file has the bodies too, to check exactly what went out.
   if (__DEV__) {
     try {
       const line = JSON.stringify({ ...entry, body: JSON.parse(body) });
@@ -257,7 +223,6 @@ function logRequest(entry: RequestLogEntry, body: string) {
   if (__DEV__) console.log(`[telemetry] ${entry.dryRun ? "dry run" : "POST"} ${entry.url} ${entry.kind}×${entry.count} → ${entry.status}`);
 }
 
-/** The one place requests leave the app. */
 async function post(kind: RequestLogEntry["kind"], url: string, body: string, count: number, headers: Record<string, string>) {
   const entry: RequestLogEntry = { at: new Date().toISOString(), kind, url, count, bytes: body.length, status: null };
   if (!canSend()) {
@@ -274,7 +239,6 @@ async function post(kind: RequestLogEntry["kind"], url: string, body: string, co
   return entry.status;
 }
 
-/** Whether a batch is done with: sent, or refused for good (malformed or too large). */
 const settled = (status: number) => (status >= 200 && status < 300) || (status >= 400 && status < 500 && status !== 429);
 
 function otlpBody(logs: QueuedLog[]) {
@@ -300,7 +264,6 @@ function otlpBody(logs: QueuedLog[]) {
   });
 }
 
-/** Sends what's queued, in batches, in the background. Offline or failing: backs off and keeps it. */
 export async function flush() {
   flushTimer = undefined;
   if (!saved.sharing || flushing) return;
@@ -310,7 +273,6 @@ export async function flush() {
   try {
     while (queue.events.length && !failed) {
       const batch = queue.events.slice(0, BATCH_SIZE);
-      // The engine's version arrives just after launch; events captured before it get it here.
       const body = batch.map((e) => (e.properties.engine_version == null && engineVersion ? { ...e, properties: { ...e.properties, engine_version: engineVersion } } : e));
       const status = await post("events", BATCH_URL, JSON.stringify({ api_key: POSTHOG.key, batch: body }), batch.length, {});
       if (gen !== generation) return;
@@ -343,10 +305,6 @@ export async function flush() {
 
 export type SharingSource = "settings" | "onboarding" | "ask";
 
-/**
- * Turns sharing on or off. On: a fresh install id, and crash reports from now on. Off: stops at
- * once, drops everything queued (memory and disk) and forgets the install id.
- */
 export function setSharing(on: boolean, source: SharingSource) {
   const now = Date.now();
   if (on === saved.sharing) return save({ decidedAt: now, askDoneAt: saved.askDoneAt ?? now });
@@ -370,20 +328,14 @@ export function setSharing(on: boolean, source: SharingSource) {
   capture("sharing_turned_on", { source });
 }
 
-/** The one-time ask was dismissed with "Not now" (or its close button): it doesn't come back. */
 export const dismissAsk = () => save({ askDoneAt: Date.now() });
 
 // MARK: Lifecycle
 
 export type PreviousSession = "clean" | "unclean" | "none";
 
-/**
- * Loads the saved choice and queue. With sharing on, starts this session and reports how the
- * last one ended and whether the app was updated since.
- */
 let loaded = false;
 
-/** Reads the user's choice (once). Error reporting calls it first thing, before startClient. */
 export function loadChoice() {
   if (loaded) return;
   loaded = true;
@@ -397,13 +349,11 @@ export function startClient(): { previous: PreviousSession; updatedFrom: string 
     .then((e) => (engineVersion = `CEF ${e.cefVersion} / Chromium ${e.chromiumVersion}`))
     .catch(() => {});
   if (!saved.sharing) {
-    // Nothing may linger from a session that turned sharing off.
     const stale = readJson<Queue>(QUEUE_DOC);
     if (stale?.events?.length || stale?.logs?.length) clearQueue();
     return null;
   }
   const stored = readJson<Queue>(QUEUE_DOC);
-  // Before what this launch captured already (errors while starting up).
   if (stored?.version === 1) queue = { version: 1, events: [...(stored.events ?? []), ...queue.events], logs: [...(stored.logs ?? []), ...queue.logs] };
   const previous: PreviousSession = saved.lastVersion === null ? "none" : saved.sessionOpen ? "unclean" : "clean";
   const version = appInfo().appVersion;
@@ -413,7 +363,6 @@ export function startClient(): { previous: PreviousSession; updatedFrom: string 
   return { previous, updatedFrom };
 }
 
-/** The app is quitting: the session ended cleanly, and what's queued waits on disk for next time. */
 export function endSession() {
   if (!saved.sharing) return;
   save({ sessionOpen: false });
@@ -423,12 +372,10 @@ export function endSession() {
 export const crashCursor = () => saved.crashCursor;
 export const advanceCrashCursor = (to: number) => to > saved.crashCursor && save({ crashCursor: to });
 
-// DEV: `nnTelemetry.client` in the dev harness.
 export const devState = () => ({ saved, queued: { events: queue.events.length, logs: queue.logs.length }, droppedWhileOff, canSend: canSend() });
 
 // MARK: Ids
 
-// Function declarations: `sessionId` is made while this module loads.
 function hex(n: number) {
   return Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 }
@@ -441,7 +388,6 @@ export function uuidv4() {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(12, 15)}-${variant()}${h.slice(15, 18)}-${h.slice(18, 29)}${hex(1)}`;
 }
 
-/** Time-ordered (PostHog's `$session_id` must be a UUIDv7). */
 export function uuidv7() {
   const ms = Date.now().toString(16).padStart(12, "0");
   const h = hex(18);

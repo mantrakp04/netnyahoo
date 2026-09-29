@@ -23,7 +23,6 @@ import { TabsPane } from "./panes/Tabs";
 import { useSettingsSheet } from "./sheet";
 import { useSettingsNav, type SettingsPane } from "./windows";
 
-/** Sidebar entries, in Dia's order (its AI, account and billing panes aren't part of Netnyahoo). */
 const PANES: { id: SettingsPane; title: string; icon: string }[] = [
   { id: "general", title: "General", icon: "gearshape" },
   { id: "profiles", title: "Profiles", icon: "person.2" },
@@ -44,14 +43,12 @@ const PANES: { id: SettingsPane; title: string; icon: string }[] = [
 const SIDEBAR = 214;
 const TOOLBAR = 52;
 
-/** Settings (⌘,): Dia's sidebar-navigated window, with back/forward and the pane title in the toolbar. */
 export function SettingsWindow() {
   const theme = useTheme();
   const nav = useSettingsNav();
   const profileName = useBrowser((s) => (nav.profileId ? s.profiles[nav.profileId]?.name : undefined));
   const title = nav.pane === "profiles" && profileName ? profileName : PANES.find((p) => p.id === nav.pane)!.title;
   const sheet = useSettingsSheet((s) => s.sheet);
-  // Telemetry (opt-in): which section was shown, by its fixed id.
   useEffect(() => trackSettingsSection(nav.pane), [nav.pane]);
 
   return (

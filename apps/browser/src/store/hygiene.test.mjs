@@ -1,5 +1,3 @@
-// Data hygiene: per-visit history clearing, and incognito downloads and favicons staying in
-// their window and off disk. See test-loader.mjs for how to run.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("./browser.ts");
@@ -44,11 +42,9 @@ test("clearing a time range removes visits, not pages", () => {
 
 test("withoutVisitsSince handles old entries and capped visit lists", () => {
   const since = 1000;
-  // Saved before visit times: only its last visit is known.
   assert.equal(withoutVisitsSince({ url: "u", title: "", favicon: null, visits: 7, lastVisit: 2000 }, since), null);
   const old = { url: "u", title: "", favicon: null, visits: 7, lastVisit: 500 };
   assert.equal(withoutVisitsSince(old, since), old);
-  // 60 visits, 50 times recorded: the 10 untracked ones predate the recorded ones and survive.
   const times = Array.from({ length: MAX_VISIT_TIMES }, (_, i) => 900 + i * 10);
   const kept = withoutVisitsSince({ url: "u", title: "", favicon: null, visits: 60, lastVisit: times.at(-1), visitTimes: times }, since);
   assert.equal(kept.visitTimes.length, 10);
@@ -90,16 +86,13 @@ test("incognito downloads show only in their own window", () => {
   S().upsertDownload(download("1", ""));
   S().setFocusedWindow(incognito);
   S().upsertDownload(download("2", privateProfile));
-  // A download without a profile (saved before profiles were recorded) counts as a normal one.
   S().upsertDownload(download("3", undefined));
 
   assert.deepEqual(downloadsIn(S(), normal).map((d) => d.id), ["3", "1"]);
   assert.deepEqual(downloadsIn(S(), incognito).map((d) => d.id), ["2"]);
-  // A new download only pops the list open in a window that lists it.
   assert.equal(S().windowUi[incognito]?.downloadsOpen, true);
   assert.equal(downloadVisibleIn(download("x", privateProfile), S().windows[normal]), false);
 
-  // Clear in the normal window leaves the incognito list alone.
   S().clearDownloads(normal);
   assert.deepEqual(S().downloads.map((d) => d.id), ["2"]);
   S().forgetDownloads(privateProfile);
@@ -122,7 +115,6 @@ test("incognito downloads never reach downloads.json and leave with their window
   assert.deepEqual(S().downloads.map((d) => d.id), ["1"]);
   assert.ok(S().windows[normal]);
 
-  // The engine numbers downloads from 1 again after a relaunch: saved ones get their own ids.
   const { data } = loadSession();
   assert.deepEqual(data.downloads.map((d) => d.id), ["saved-0"]);
   stop();
@@ -147,17 +139,14 @@ test("favicons: incognito icons stay in memory and in their own profile", async 
   noteFavicon(privateTab, "https://secret.example/favicon.ico");
   await new Promise((r) => setTimeout(r, 0));
 
-  // Only the persistent profile's icon gets a file name (the engine writes nothing for incognito).
   assert.ok(asked.find((a) => a.url.includes("site.example")).name);
   assert.equal(asked.find((a) => a.url.includes("secret.example")).name, undefined);
 
   assert.equal(resolveFavicon("https://site.example/a")?.uri, "file:///tmp/site.png");
   assert.equal(resolveFavicon("https://site.example/other")?.uri, "file:///tmp/site.png", "falls back to the host");
-  // Lookups that don't name the incognito profile never see its icons.
   assert.equal(resolveFavicon("https://secret.example/x"), null);
   assert.equal(resolveFavicon("https://secret.example/x", null, "default"), null);
   assert.equal(resolveFavicon("https://secret.example/x", null, privateProfile)?.uri, "data:image/png;base64,AAAA");
-  // …while the incognito window can still read the persistent cache.
   assert.equal(resolveFavicon("https://site.example/a", null, privateProfile)?.uri, "file:///tmp/site.png");
 
   flushFavicons();
@@ -165,7 +154,6 @@ test("favicons: incognito icons stay in memory and in their own profile", async 
   assert.ok(![...stub.docs.keys()].some((k) => k.includes("incognito")));
   assert.ok(![...stub.docs.values()].some((v) => String(v).includes("secret.example")));
 
-  // Closing the incognito window forgets its icons.
   S().closeWindow(incognito);
   assert.equal(useFavicons.getState().profiles[privateProfile], undefined);
   webviews.clear();
@@ -187,10 +175,8 @@ test("favicons: a page that swaps its icon with the appearance shows the one for
   S().setAppDark(false);
   await note(light);
   S().setAppDark(true);
-  // Chrome reports the page's old icon again before the page swaps it: no change.
   await note(light);
   await note(dark);
-  // History recorded the dark icon; back in light, its page's light icon shows instead.
   assert.equal(resolveFavicon("https://github.example/", dark)?.uri, "file:///tmp/favicon-dark.svg.png");
   S().setAppDark(false);
   assert.equal(resolveFavicon("https://github.example/", dark)?.uri, "file:///tmp/favicon.svg.png");
@@ -198,7 +184,6 @@ test("favicons: a page that swaps its icon with the appearance shows the one for
   S().setAppDark(true);
   assert.equal(resolveFavicon("https://github.example/", light)?.uri, "file:///tmp/favicon-dark.svg.png");
 
-  // A page changing its icon later (a badge, a new logo) isn't an appearance pair.
   const now = Date.now;
   Date.now = () => now() + 60_000;
   try {

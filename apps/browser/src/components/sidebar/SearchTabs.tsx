@@ -18,7 +18,6 @@ const WIDTH = 560;
 const ROW = 36;
 const MAX_ROWS = 10;
 
-/** Open tabs of the window's profile in every window, most recent first, then recently closed. */
 function candidates(s: BrowserState, windowId: string): { open: Row[]; closed: Row[] } {
   const w = s.windows[windowId];
   if (!w) return { open: [], closed: [] };
@@ -65,7 +64,6 @@ const host = (url: string) => {
   }
 };
 
-/** Search Tabs (⇧⌘A): find an open tab in any window of this profile, or a recently closed one. */
 export function SearchTabs({ windowId, windowWidth }: { windowId: string; windowWidth: number }) {
   const open = useSidebarUi((u) => u.searchTabs === windowId);
   return open ? <Panel windowId={windowId} windowWidth={windowWidth} /> : null;
@@ -180,7 +178,6 @@ function ResultRow({ row, selected, onHover, onPress }: { row: Row; selected: bo
       >
         <TabIcon url={row.url} favicon={row.favicon} icon={row.icon} />
         <View style={{ flex: 1, flexDirection: "row", alignItems: "center", minWidth: 0 }}>
-          {/* FadeLabel has no intrinsic width: split the row between title and URL. */}
           <FadeLabel text={row.title} fontSize={14} color={theme.textPrimary} style={{ flex: 3, height: 19 }} />
           {row.url ? <FadeLabel text={`— ${displayUrl(row.url)}`} fontSize={14} color={theme.textSecondary} style={{ flex: 2, height: 19, marginLeft: 5 }} /> : null}
         </View>

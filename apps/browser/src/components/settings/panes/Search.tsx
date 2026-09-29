@@ -11,11 +11,6 @@ import { Button, Group, Row, SectionHeader, Sheet, TextField, Toggle, useFormCol
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 import { openSettings } from "../windows";
 
-/**
- * Default search engine (built-ins, custom engines with Tab-to-search shortcuts, and the ones
- * extensions add). Like Chrome, an extension that made itself the default controls the choice
- * until it's disabled.
- */
 export function SearchPane() {
   const settings = useBrowser((s) => s.settings);
   const colors = useFormColors();
@@ -105,7 +100,6 @@ function EngineRow({ engine, selected, locked, editable }: { engine: SearchEngin
   );
 }
 
-/** Add / edit a custom engine (name, shortcut, URL with %s). */
 function EngineSheet({ engine }: { engine?: SearchEngine }) {
   const theme = useTheme();
   const [name, setName] = useState(engine?.name ?? "");

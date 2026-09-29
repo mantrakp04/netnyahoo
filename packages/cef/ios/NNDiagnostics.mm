@@ -1,5 +1,3 @@
-// Engine diagnostics: performance traces (Help › Record Performance Issue) and
-// Chromium's task manager (Window › Task Manager).
 #import "NNCefInternal.h"
 
 #include "include/cef_task_manager.h"
@@ -58,9 +56,6 @@ NSString *TaskTypeName(cef_task_type_t type) {
   }
 }
 
-// Each CefTaskManager handle observes Chromium's task manager while it lives:
-// dropping it resets task ids and samples. Keep one while someone polls, and
-// let it go (sampling costs CPU) after a quiet period.
 CefRefPtr<CefTaskManager> gTaskManager;
 NSTimer *gTaskManagerIdle;
 
@@ -76,7 +71,7 @@ CefRefPtr<CefTaskManager> TaskManager() {
   return gTaskManager;
 }
 
-}  // namespace
+}
 
 void nn::ReleaseDiagnostics() {
   [gTaskManagerIdle invalidate];
@@ -91,7 +86,6 @@ void nn::ReleaseDiagnostics() {
     completion(NO);
     return;
   }
-  // Chrome's default categories (what chrome://tracing records) plus our own.
   bool ok = CefBeginTracing("", new TracingStarted(^{
                               dispatch_async(dispatch_get_main_queue(), ^{ completion(YES); });
                             }));
@@ -112,7 +106,6 @@ void nn::ReleaseDiagnostics() {
   [NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
   NSString *path = [folder stringByAppendingPathComponent:[NSString stringWithFormat:@"Netnyahoo Trace %@.json",
                                                                                      [f stringFromDate:NSDate.date]]];
-  // Tracing can't be stopped without writing: discarding writes to a temp file and deletes it.
   bool ok = CefEndTracing(ToCef(path), new TracingEnded(^(NSString *written) {
                             if (keep) {
                               completion(written.length ? written : nil);
@@ -131,8 +124,6 @@ void nn::ReleaseDiagnostics() {
 + (NSArray<NSDictionary *> *)tasks {
   CefRefPtr<CefTaskManager> manager = TaskManager();
   if (!manager) return @[];
-  // Browser id for each task that hosts one of our browsers (a renderer shared
-  // by several tabs lists them all).
   NSMutableDictionary<NSNumber *, NSMutableArray *> *browsersByTask = [NSMutableDictionary dictionary];
   for (NNBrowserView *view in LiveViews()) {
     int bid = view.browserId;
@@ -152,7 +143,6 @@ void nn::ReleaseDiagnostics() {
       @"type" : TaskTypeName(info.type),
       @"title" : ToNS(CefString(&info.title)),
       @"killable" : @(info.is_killable != 0),
-      // Percent of one core (Chrome's task manager column), or -1 before the first sample.
       @"cpu" : @(info.cpu_usage),
       @"processors" : @(info.number_of_processors),
       @"memory" : @(info.memory),

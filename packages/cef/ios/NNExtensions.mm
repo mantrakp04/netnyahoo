@@ -26,8 +26,6 @@ void Changed(NSString *profile, NSString *extensionId, NSString *event) {
   Emit(@"changed", @{@"profile" : DataProfile(profile), @"id" : extensionId, @"event" : event});
 }
 
-/// Where our own download-and-load path put store extensions before Chrome installed them
-/// itself (existing installs still load from there).
 NSString *ManagedRoot(NSString *profile) {
   NSString *key = DataProfile(profile);
   return [[DataRoot() stringByAppendingPathComponent:@"Netnyahoo Extensions"] stringByAppendingPathComponent:key.length ? key : @"Default"];
@@ -42,7 +40,7 @@ void Respond(NNExtensionsCompletion completion, id value, NSString *error) {
   completion([value isKindOfClass:NSDictionary.class] ? value : @{@"ok" : @YES});
 }
 
-}  // namespace
+}
 
 namespace nn::ext {
 
@@ -57,9 +55,9 @@ struct InstallPrompt {
   CefRefPtr<CefExtensionPromptCallback> callback;
   NSDictionary *payload;
 };
-std::map<std::string, InstallPrompt> gInstallPrompts;  // request id → Chrome's callback
+std::map<std::string, InstallPrompt> gInstallPrompts;
 int gInstallPromptSeq = 0;
-}  // namespace
+}
 
 bool OnInstallPrompt(NSString *profile, CefRefPtr<CefBrowser> browser, const CefString &extensionId,
                      CefRefPtr<CefDictionaryValue> details, CefRefPtr<CefExtensionPromptCallback> callback) {
@@ -104,7 +102,7 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
   return new Handler(profile ?: @"");
 }
 
-}  // namespace nn::ext
+}
 
 // MARK: - Public API
 
@@ -117,7 +115,6 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
 + (void)setEventHandler:(NNEventHandler)eventHandler {
   gHandler = [eventHandler copy];
 #if NN_INSTALL_PROMPT
-  // A reloaded app asks again for installs Chrome is still waiting on.
   if (gHandler)
     for (auto &[requestId, prompt] : nn::ext::gInstallPrompts) Emit(@"installPrompt", prompt.payload);
 #endif
@@ -165,14 +162,12 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
     NSString *managed = ManagedRoot(@"").stringByDeletingLastPathComponent;
     NSMutableArray *list = [NSMutableArray array];
     for (NSDictionary *info in value[@"extensions"]) {
-      // The content blocker is built in, not one of the user's extensions.
       if ([info[@"id"] isEqual:blocker::ExtensionId()]) continue;
       NSMutableDictionary *item = [info mutableCopy];
       NSString *path = [info[@"path"] isKindOfClass:NSString.class] ? info[@"path"] : nil;
       NSDictionary *manifest = path ? ext::ReadManifest(path) : nil;
       for (NSString *key in @[ @"popup", @"actionTitle", @"actionIcon", @"sidePanel", @"hasAction" ])
         if (manifest[key]) item[key] = manifest[key];
-      // Chrome's own store installs (they auto-update), or our earlier download-and-load ones.
       BOOL fromStore = [info[@"location"] isEqual:@"FROM_STORE"] || (path && [path hasPrefix:managed]);
       item[@"fromWebStore"] = @(fromStore);
       item[@"webStoreUrl"] = fromStore ? [@"https://chromewebstore.google.com/detail/" stringByAppendingString:info[@"id"]] : [NSNull null];
@@ -189,8 +184,6 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
 }
 
 + (void)installPath:(NSString *)folder profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
-  // developerPrivate.loadUnpacked asks for the folder with a file dialog, which
-  // the host answers with `folder`. (Developer mode is how Chrome allows it.)
   pages::SetWebUIDialogPath(profile, kExtensionsPage, folder);
   NSString *js = Script(@"(async () => {"
                          "  const dp = chrome.developerPrivate;"
@@ -222,23 +215,17 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
 }
 
 + (void)uninstall:(NSString *)extensionId profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
-  // management.uninstall of another extension always brings up Chrome's own
-  // confirmation (on the hidden host, where nobody can answer it; the user
-  // already confirmed in ours). uninstallSelf from the extension's own context
-  // doesn't ask. A disabled extension has no context: enable it first.
   NSString *info = Script(@"chrome.developerPrivate.getExtensionInfo(%@).then((i) => ({ path: i.path || null, enabled: i.state === 'ENABLED' }))",
                           @[ extensionId ]);
   NSString *gone = Script(@"chrome.developerPrivate.getExtensionInfo(%@).then(() => false, () => true)", @[ extensionId ]);
   NSString *enable = Script(@"chrome.management.setEnabled(%@, true).then(() => true)", @[ extensionId ]);
   void (^finish)(NSDictionary *, NSString *) = ^(NSDictionary *details, NSString *error) {
     NSString *path = [details[@"path"] isKindOfClass:NSString.class] ? details[@"path"] : nil;
-    // Our copy of a store extension goes with it; a developer's folder stays.
     if (!error && path && [path hasPrefix:ManagedRoot(profile)])
       [NSFileManager.defaultManager removeItemAtPath:path.stringByDeletingLastPathComponent error:nil];
     if (!error) Changed(profile, extensionId, @"uninstalled");
     completion(error ? @{@"error" : error} : @{@"ok" : @YES});
   };
-  // Polls until Chrome has unloaded it (uninstallSelf resolves in a page that's going away).
   __block void (^waitGone)(NSDictionary *, int);
   void (^wait)(NSDictionary *, int) = ^(NSDictionary *details, int attempt) {
     HostEval(profile, gone, ^(id removed, NSString *) {

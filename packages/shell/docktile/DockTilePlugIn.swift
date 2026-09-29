@@ -1,18 +1,10 @@
 import AppKit
 
-/// The Dock tile plug-in (`Contents/PlugIns/NetnyahooDockTile.plugin`, named by the app's
-/// `NSDockTilePlugIn`). The Dock loads it for the app's tile, so the icon picked in Settings ›
-/// Appearance stays in the Dock after the app quits, like Dia's DiaDockTilePlugIn.
-///
-/// It runs in the Dock's process: the choice comes from the app's preferences when they can be
-/// read from here, else from the app's `AppIconChanged` notification (cached in our own
-/// defaults). The variants are drawn by the app's own AppIcon.swift, compiled into this bundle.
 @objc(NNDockTilePlugIn)
 final class NNDockTilePlugIn: NSObject, NSDockTilePlugIn {
   private var dockTile: NSDockTile?
   private var observer: NSObjectProtocol?
 
-  /// …/Netnyahoo.app/Contents/PlugIns/NetnyahooDockTile.plugin → …/Netnyahoo.app
   private lazy var app: Bundle? = {
     let url = Bundle(for: NNDockTilePlugIn.self).bundleURL
       .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -42,7 +34,6 @@ final class NNDockTilePlugIn: NSObject, NSDockTilePlugIn {
   private func show(_ id: String) {
     guard let dockTile else { return }
     if id == "default" || !AppIcons.variants.contains(where: { $0.id == id }) {
-      // No content view: the Dock draws the bundle's own icon.
       dockTile.contentView = nil
     } else if let image = AppIcons.image(id, size: 512) {
       let view = NSImageView(frame: NSRect(origin: .zero, size: dockTile.size))

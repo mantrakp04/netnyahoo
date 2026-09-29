@@ -15,7 +15,6 @@ import { TabIcon } from "./TabIcon";
 import { TabBadges } from "../media/TabBadges";
 import { useSidebarTokens } from "./tokens";
 
-/** Modifier keys of a click (react-native-macos reports them on the press event). */
 export const clickMods = (e: GestureResponderEvent) => {
   const n = e.nativeEvent as unknown as { metaKey?: boolean; shiftKey?: boolean; altKey?: boolean };
   return { metaKey: !!n.metaKey, shiftKey: !!n.shiftKey, altKey: !!n.altKey };
@@ -23,7 +22,6 @@ export const clickMods = (e: GestureResponderEvent) => {
 
 const useSelection = (windowId: string) => () => useBrowser.getState().selection[windowId] ?? [];
 
-/** A tab in the list (or a group): draggable, with its context menu and hover card. */
 export function TabRowItem({ tabId, section, parentGroup }: { tabId: string; section: "list" | "pinnedGroups"; parentGroup?: string }) {
   const windowId = useWindowId();
   const selection = useSelection(windowId);
@@ -35,7 +33,6 @@ export function TabRowItem({ tabId, section, parentGroup }: { tabId: string; sec
   );
 }
 
-/** Dia's tab row: favicon, audio glyph, fading title, loading spinner, close button on hover. */
 export function TabRow({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
@@ -72,7 +69,6 @@ export function TabRow({ tabId }: { tabId: string }) {
             }}
           >
             {({ pressed }) => (
-              // Selected: dark fill + TabOutline hairline + TabSelectedShadow glow (white in dark mode).
               <Surface
                 fill={hex(!active && pressed ? theme.tabPressed : fill)}
                 cornerRadius={10}
@@ -83,8 +79,6 @@ export function TabRow({ tabId }: { tabId: string }) {
                 shadowOpacity={active ? 1 : 0}
                 shadowRadius={theme.tabSelectedShadowRadius}
                 shadowOffset={[0, 0.5]}
-                // TabContentView: favicon 16 at x 9, title 7 after it, close button 22 at 6 from the end.
-                // The border takes layout room, so the padding gives it back: nothing moves on selection.
                 style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 - border, paddingRight: 6 - border }}
               >
                 <View>
@@ -109,7 +103,6 @@ export function TabRow({ tabId }: { tabId: string }) {
                 {hovered && !renaming ? (
                   <IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => void closeTab(tab.id)} tooltip="Close Tab (⌘W)" />
                 ) : (
-                  // TabContentView's trailing ActivitySpinnerView: 12pt, 8pt from the row's end.
                   loading && <ActivitySpinner style={{ width: 12, height: 12, marginLeft: 6, marginRight: 2 }} />
                 )}
               </Surface>
@@ -121,7 +114,6 @@ export function TabRow({ tabId }: { tabId: string }) {
   );
 }
 
-/** Inline rename: ↩ saves, ⎋ cancels, clicking away saves. `onDone(null)` = cancelled. */
 export function RenameField({
   initial,
   placeholder,
@@ -146,7 +138,6 @@ export function RenameField({
     done.current = true;
     onDone(value);
   };
-  // Focus after mount: the row's own click may still be in flight.
   useEffect(() => {
     const t = setTimeout(() => input.current?.focus(), 0);
     return () => clearTimeout(t);
@@ -170,7 +161,6 @@ export function RenameField({
   );
 }
 
-/** A split view in the list: one row, a segment per pane. */
 export function SplitRowItem({ splitId, section, parentGroup }: { splitId: string; section: "list" | "pinnedGroups"; parentGroup?: string }) {
   const windowId = useWindowId();
   const tabIds = useBrowser((s) => s.splits[splitId]?.tabIds.filter((id) => s.tabs[id] && !s.tabs[id]!.pinned).join(",") ?? "").split(",").filter(Boolean);

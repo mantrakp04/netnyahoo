@@ -17,7 +17,6 @@ import {
   useTranslateState,
 } from "./translate";
 
-/** Dia's translate button by the address: when the page isn't in your language, or is translated. */
 export function TranslateButton({ tabId, palette, onFocus }: { tabId: string; palette: ToolbarPalette; onFocus: () => void }) {
   const theme = useTheme();
   const state = useTranslateState(tabId);
@@ -41,7 +40,6 @@ export function TranslateButton({ tabId, palette, onFocus }: { tabId: string; pa
   );
 }
 
-/** "Choose Another Language": every language this Mac translates into, by name. */
 async function chooseLanguage(tabId: string) {
   const languages = await otherLanguages();
   const current = translateStateOf(tabId).target;
@@ -50,7 +48,6 @@ async function chooseLanguage(tabId: string) {
   if (choice) void translatePage(tabId, choice);
 }
 
-/** The translate button's right-click menu: the site menu's translate items. */
 async function showTranslateMenu(tabId: string) {
   const tab = useBrowser.getState().tabs[tabId];
   if (!tab) return;
@@ -69,11 +66,9 @@ async function showTranslateMenu(tabId: string) {
   else if (choice === "never") setNeverTranslate(tabId, !isNeverTranslated(tab.profileId, tab.url));
 }
 
-/** Site Controls' translate rows (Dia's site menu: Translate to…, Choose Another Language, Never Translate This Site). */
 export function TranslateRows({ tabId, onClose }: { tabId: string; onClose: () => void }) {
   const state = useTranslateState(tabId);
   const tab = useBrowser((s) => s.tabs[tabId]);
-  // Re-rendered when the list changes (isNeverTranslated reads it from the store).
   useBrowser((s) => s.settings.neverTranslateSites);
   const never = tab ? isNeverTranslated(tab.profileId, tab.url) : false;
   if (!translation || !tab || (!state.source && state.status === "idle" && !never)) return null;

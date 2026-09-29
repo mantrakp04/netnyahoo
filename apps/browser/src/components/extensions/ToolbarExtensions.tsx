@@ -23,7 +23,6 @@ import {
 
 const BUTTON = 28;
 
-/** Pinned extensions (enabled ones, in Chrome's pin order = name order here) and whether any aren't pinned. */
 function useToolbarExtensions(windowId: string) {
   const profile = useBrowser((s) => extensionProfile(s, windowId));
   const list = useExtensionList(profile);
@@ -33,7 +32,6 @@ function useToolbarExtensions(windowId: string) {
   }, [list]);
 }
 
-/** Width the toolbar reserves at its right end for the extension (and cast) buttons. */
 export function useToolbarExtensionsWidth(windowId: string): number {
   const { pinned, overflow } = useToolbarExtensions(windowId);
   const casting = useCastRoutes(windowId).length > 0;
@@ -41,10 +39,6 @@ export function useToolbarExtensionsWidth(windowId: string): number {
   return count ? count * BUTTON + 6 : 0;
 }
 
-/**
- * The toolbar's extension buttons: each pinned extension's action (icon, badge,
- * popup) and, when some aren't pinned, the Extensions button listing them all.
- */
 export function ToolbarExtensions({
   tabId,
   windowId,
@@ -99,7 +93,6 @@ function ExtensionButton({ ext, windowId, browserId, palette }: { ext: Installed
   const badge = state?.badgeText ?? "";
   const dimmed = state ? !state.enabled : false;
   const title = state?.title || ext.actionTitle || ext.name;
-  // action.setIcon's image for this tab, else the manifest's.
   const icon = state?.icon || ext.actionIcon || ext.icon;
   return (
     <View ref={ref} tooltip={title} {...hoverProps} onLayout={() => void measure()}>
@@ -130,7 +123,6 @@ function ExtensionButton({ ext, windowId, browserId, palette }: { ext: Installed
   );
 }
 
-/** Chrome's badge: a small rounded label over the icon's bottom-right corner (max 4 characters). */
 function Badge({ text, color, textColor }: { text: string; color?: string | null; textColor?: string | null }) {
   const fill = color && color !== "#000000" ? color : "#5F6368";
   return (
@@ -162,10 +154,6 @@ function contrastText(hex: string) {
   return 0.299 * r + 0.587 * g + 0.114 * b > 160 ? "#000000" : "#FFFFFF";
 }
 
-/**
- * Chrome's cast toolbar state: while something casts from this profile, a highlighted cast
- * button. Click: the Cast picker for the page; the menu (right-click) stops a cast.
- */
 function CastButton({ windowId, routes, palette }: { windowId: string; routes: CastRoute[]; palette: ToolbarPalette }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
@@ -203,7 +191,6 @@ function CastButton({ windowId, routes, palette }: { windowId: string; routes: C
   );
 }
 
-/** Lists every extension (open its popup), then Pin / Manage Extensions. */
 function OverflowButton({ windowId, palette }: { windowId: string; palette: ToolbarPalette }) {
   const { hovered, hoverProps } = useHover();
   const { ref, measure } = useAnchor(`${windowId}|*`);
@@ -212,7 +199,6 @@ function OverflowButton({ windowId, palette }: { windowId: string; palette: Tool
     const s = useBrowser.getState();
     const list = useExtensions.getState().lists[extensionProfile(s, windowId)] ?? [];
     const enabled = list.filter((x) => x.enabled);
-    // Dia's extensions menu: the extensions, then Pin / Manage / Add.
     const choice = await showMenu([
       ...enabled.map((x) => ({ id: `open:${x.id}`, title: x.name, symbol: x.pinned ? "pin.fill" : undefined })),
       ...(enabled.length ? [{ separator: true as const }] : []),

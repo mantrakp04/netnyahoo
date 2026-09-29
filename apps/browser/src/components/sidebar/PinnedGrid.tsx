@@ -22,12 +22,10 @@ import { useSidebarTokens } from "./tokens";
 
 const GAP = 6;
 const MIN_TILE = 50;
-/** TabDockView's itemStrokeWidth: the selected tile's ring. */
+// Dia: 3pt stroke.
 const SELECTION_STROKE = 3;
-/** The selected glass tile's rim: a hairline of light, not Dia's ring. */
 const GLASS_RIM = 1;
 
-/** Pinned tabs as tiles (Dia's tab dock), as many per row as fit. */
 export function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; innerWidth: number; dragging: boolean }) {
   const controller = useDragController();
   const columns = Math.max(1, Math.min(tabs.length || 1, Math.floor((innerWidth + GAP) / (MIN_TILE + GAP))));
@@ -35,7 +33,6 @@ export function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; inn
   const tail = useDragItem("tail:tiles", { kind: "tail", tabIds: [], section: "tiles" });
   const topGap = listTopGap(useAddressBarInSidebar());
   const empty = tabs.length === 0;
-  // With no pinned tabs, a drop zone shows while dragging so tabs can still be pinned.
   if (empty && !dragging) return null;
   return (
     <View
@@ -48,7 +45,6 @@ export function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; inn
         <PinnedTile key={id} tabId={id} width={width} />
       ))}
       {empty ? <PinDropZone width={innerWidth} /> : null}
-      {/* Appending needs no gap; the tail only marks "after the last tile". */}
       <Animated.View ref={tail.wrapper.ref} style={{ position: "absolute", right: 0, bottom: 0, width: 0, height: 0 }} />
     </View>
   );
@@ -87,7 +83,6 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
   const { wrapper, handle } = useDragItem(`t:${tabId}`, { kind: "tile", tabIds: [tabId], section: "tiles" }, () => useBrowser.getState().selection[windowId] ?? []);
   const away = !!tab && awayFromPin(tab);
   const tileTheme = useTileTheme(tab?.url ?? "", tab?.favicon, tab?.customIcon, tab?.profileId ?? "");
-  // Dia animates its pinned-tab badge in and out.
   const badge = useRef(new Animated.Value(away ? 1 : 0)).current;
   useEffect(() => {
     Animated.spring(badge, { toValue: away ? 1 : 0, speed: 18, bounciness: 8, useNativeDriver: false }).start();
@@ -102,7 +97,6 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
         {...hoverProps}
         onDoubleClick={() => void startRename(windowId, { kind: "tab", id: tabId })}
       >
-        {/* Middle-click closes like ⌘W: the page unloads and the tile stays. */}
         <MouseArea onMiddleClick={() => void closeTab(tabId)}>
           <ContextMenuArea
             onContextMenu={() => {
@@ -120,7 +114,6 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
                 liquidGlass ? (
                   <GlassTile tabId={tabId} width={width} active={active} selected={selected} hovered={hovered} pressed={pressed} tileTheme={tileTheme} />
                 ) : active && tileTheme ? (
-                  // Selected, themed by its icon (lib/tileTheme): the icon's colours in the fill and ring.
                   <DockSelection
                     image={tileTheme.image}
                     emoji={tileTheme.emoji}
@@ -134,7 +127,6 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
                   >
                     <View>
                       {tileTheme.theme.kind === "template" ? (
-                        // DockSelection draws a one-colour icon itself, white on its colour.
                         <View style={{ width: 16, height: 16 }} />
                       ) : (
                         <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
@@ -143,7 +135,6 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
                     </View>
                   </DockSelection>
                 ) : active ? (
-                  // Selected, no icon theme: black rim (SelectedPrimary) → white fill (SelectedSecondary) → top bevel (TabOutline).
                   <Surface
                     fill={hex(theme.pinnedSelectedRim)}
                     cornerRadius={radius}
@@ -193,7 +184,6 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
             </Pressable>
           </ContextMenuArea>
         </MouseArea>
-        {/* Navigated away from the pinned page: click the badge to go back (⌘↩). */}
         <Animated.View
           pointerEvents={away ? "auto" : "none"}
           style={{ position: "absolute", top: 3, right: 3, opacity: badge, transform: [{ scale: badge.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }] }}
@@ -215,13 +205,6 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
   );
 }
 
-/**
- * A tile on Liquid Glass (components/glass): Dia's states as the glass's tint (resting, hover or
- * multi-selected, pressed, selected), in the same box as the flat tile. The glass stays mounted
- * across states (it's the first child whatever the state), so hovering only retints it. Selected,
- * the glass is raised rather than ringed (DockSelection `glass`): brighter, with a shadow, a sheen,
- * a thin light rim and a hint of the icon's hue; pressed, it sinks back a little.
- */
 function GlassTile({
   tabId,
   width,

@@ -1,4 +1,3 @@
-// Scroll reveals. CSS does the motion (and skips it under reduced motion); this only flips `.in`.
 const reveal = new IntersectionObserver(
   (entries) => {
     for (const e of entries) {

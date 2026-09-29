@@ -9,7 +9,6 @@ import { setSidebarUi, useSidebarUi } from "./state";
 import { SYMBOL_PREFIX } from "./TabIcon";
 import { useSidebarTokens } from "./tokens";
 
-/** Emoji with search words (Dia's picker has emoji and icons). */
 const EMOJI: [string, string][] = [
   ["⭐️", "star favorite"], ["🔥", "fire hot"], ["❤️", "heart love"], ["✅", "check done"], ["📌", "pin"], ["🚀", "rocket launch ship"],
   ["💡", "idea bulb"], ["📝", "note memo write"], ["📚", "books read study"], ["📖", "book read"], ["🎓", "school graduate"], ["💼", "work briefcase"],
@@ -45,7 +44,6 @@ const COLUMNS = 8;
 const CELL = 30;
 const WIDTH = COLUMNS * CELL + 16;
 
-/** Change Icon…: emoji or SF Symbol for a tab or group, next to its row. */
 export function IconPicker({ windowId, sidebarWidth }: { windowId: string; sidebarWidth: number }) {
   const picker = useSidebarUi((u) => (u.iconPicker?.windowId === windowId ? u.iconPicker : null));
   return picker ? <PickerPanel key={picker.id} picker={picker} sidebarWidth={sidebarWidth} /> : null;
@@ -76,7 +74,6 @@ function PickerPanel({ picker, sidebarWidth }: { picker: Picker; sidebarWidth: n
 
   return (
     <>
-      {/* Clicking anywhere else dismisses it. */}
       <Pressable onPress={close} style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 }} />
       <Surface
         fill={hex(theme.panel)}

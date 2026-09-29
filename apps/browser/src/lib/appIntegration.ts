@@ -26,11 +26,6 @@ import { openReleaseNotesAfterUpdate, openReleaseNotesPage } from "./releaseNote
 import { webviews } from "./webviews";
 import { handleWebNotificationResponse } from "./webNotifications";
 
-/**
- * App-level integration with macOS: the Help menu, Handoff, AppleScript, notification clicks,
- * first-launch onboarding and the release notes after an update. Call once at startup, after the
- * session has been restored and the native sync started.
- */
 export function startAppIntegration() {
   onCommand(runAppCommand);
   onNotificationResponse((response) => {
@@ -42,7 +37,6 @@ export function startAppIntegration() {
   });
   startHandoff();
   startScripting();
-  // Before the first session save, like onboarding's checks: tells an update from a fresh install.
   const updated = trackAppVersion();
   maybeStartOnboarding();
   if (updated) openReleaseNotesAfterUpdate();
@@ -71,12 +65,6 @@ function runAppCommand({ command, windowId }: CommandEvent) {
 
 // MARK: Feedback and diagnostics
 
-/**
- * Help › Send Feedback… (and the default-browser check-in's "Leave us feedback"). Where it goes
- * is set per build in Info.plist: NNFeedbackURL (a page; "%s" becomes the report), else
- * NNFeedbackEmail, else a mail draft with the report and no recipient. This repo's NNFeedbackURL
- * is a new GitHub issue with the report as its body.
- */
 export async function sendFeedback(windowId?: string | null) {
   const app = systemInfo();
   const report = await diagnostics();
@@ -85,11 +73,9 @@ export async function sendFeedback(windowId?: string | null) {
   if (page) return openUrls([page.replace("%s", encodeURIComponent(body))], windowId);
   const to = app.feedbackEmail && !/[\s?&]/.test(app.feedbackEmail) ? app.feedbackEmail : "";
   const draft = `mailto:${to}?subject=${encodeURIComponent(`${app.appName} Feedback`)}&body=${encodeURIComponent(body)}`;
-  // Nothing opened it (an app build without openExternalURL): the report goes to the clipboard.
   if (!(await openExternalURL(draft))) copyText(body);
 }
 
-/** Help › Copy Diagnostics: versions and a few counts, nothing about what's browsed. */
 export async function diagnostics(): Promise<string> {
   const app = systemInfo();
   const [engine, updates] = await Promise.all([cef.engineInfo().catch(() => null), updaterState().catch(() => null)]);
@@ -109,7 +95,6 @@ export async function diagnostics(): Promise<string> {
   ].join("\n");
 }
 
-/** Help › Record Performance Issue…: an engine trace, recorded while the user reproduces the problem. */
 async function recordPerformanceIssue() {
   if (await cef.isTracing()) return;
   const start = await confirm({
@@ -125,7 +110,6 @@ async function recordPerformanceIssue() {
 
 // MARK: Handoff
 
-/** Each window advertises its selected tab's page (never incognito ones). */
 function startHandoff() {
   const last = new Map<string, string>();
   const sync = (s: BrowserState) => {
@@ -150,7 +134,6 @@ function startHandoff() {
       sync(useBrowser.getState());
     }, 250);
   });
-  // Windows open asynchronously at launch.
   setTimeout(() => sync(useBrowser.getState()), 1000);
 }
 
@@ -208,14 +191,13 @@ function startScripting() {
         result = (await runScriptCommand(request)) ?? {};
       })
       .then(
-        // The script's next line must see the change: push the new state before replying.
+        // Push state before replying so the script sees the change.
         () => push().then(() => replyToScript(request.id, result)),
         (error: unknown) => push().then(() => replyToScript(request.id, null, error instanceof Error ? error.message : String(error))),
       );
   });
 }
 
-/** Runs one AppleScript request against the store; throws with a message the script shows. */
 async function runScriptCommand(request: ScriptCommand): Promise<Record<string, unknown> | void> {
   const s = useBrowser.getState();
   const tabOf = (tabId: string) => {
@@ -240,7 +222,6 @@ async function runScriptCommand(request: ScriptCommand): Promise<Record<string, 
         return { windowId: created, tabId: activeTabId(useBrowser.getState(), created) };
       }
       const view = viewTabIds(s, windowId);
-      // Script indexes count the window's visible tabs; the store's count every profile's.
       const w = s.windows[windowId]!;
       let index: number | undefined;
       if (request.index !== undefined) {
@@ -297,10 +278,6 @@ async function runScriptCommand(request: ScriptCommand): Promise<Record<string, 
   }
 }
 
-/**
- * Runs AppleScript's JavaScript in the page's main world like Chrome's `execute`: the value
- * of the last expression (awaited if it's a promise), as text.
- */
 function executeWrapper(code: string) {
   return `
 const text = (v) => {

@@ -21,8 +21,6 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
-// Big Yahu, the site's model (apps/site/public/models/big-yahu.glb) lit like the site's hero,
-// with no floor (he stands in the game's crowd), posed by the current frame: `clip` at `time` seconds, `yaw` radians of turn.
 type Rig = { renderer: WebGLRenderer; scene: Scene; camera: PerspectiveCamera; mixer: AnimationMixer; actions: Map<string, AnimationAction>; root: Object3D };
 
 export const Yahu3D: React.FC<{ width: number; height: number; clip: "Griddy" | "Default Dance"; time: number; yaw?: number }> = ({ width, height, clip, time, yaw = 0.12 }) => {
@@ -68,7 +66,6 @@ export const Yahu3D: React.FC<{ width: number; height: number; clip: "Griddy" | 
         const mixer = new AnimationMixer(gltf.scene);
         const actions = new Map<string, AnimationAction>();
         for (const c of gltf.animations) actions.set(c.name, mixer.clipAction(c));
-        // Normalise from the Default Dance's opening stance: feet on the floor, 1 unit tall, centred.
         const idle = actions.get("Default Dance");
         idle?.play();
         mixer.setTime(0);
@@ -83,7 +80,6 @@ export const Yahu3D: React.FC<{ width: number; height: number; clip: "Griddy" | 
         turn.add(gltf.scene);
         scene.add(turn);
 
-        // A campaign poster's low angle: knee height, looking up at him.
         const camera = new PerspectiveCamera(26, width / height, 0.1, 20);
         camera.position.set(0, 0.3, 3.3);
         camera.lookAt(0, 0.56, 0);

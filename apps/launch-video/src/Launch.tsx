@@ -9,7 +9,6 @@ const out = Easing.bezier(0.22, 1, 0.36, 1);
 const inOut = Easing.bezier(0.45, 0, 0.2, 1);
 const ease = (f: number, a: number, b: number, e = inOut) => interpolate(f, [a, b], [0, 1], { ...clamp, easing: e });
 
-// The window, as captured: 1440×900 pt at 2x.
 const WIN = { w: 2880, h: 1800 };
 
 export const Launch: React.FC = () => {
@@ -25,12 +24,10 @@ export const Launch: React.FC = () => {
   );
 };
 
-// ---- The camera
 
 type Pose = Omit<Key, "f">;
 const CH = ["x", "y", "s", "rx", "ry"] as const;
 
-/** Cubic Hermite through the keys (scale in log space), monotone tangents; zero at the path's ends. */
 function camera(f: number): Pose {
   const starts = [0, ...CAMERA_BREAKS];
   const seg = starts.filter((b) => b <= f).at(-1)!;
@@ -43,8 +40,6 @@ function camera(f: number): Pose {
   const [k0, k1] = [keys[i], keys[i + 1]];
   const dt = k1.f - k0.f;
   const t = (f - k0.f) / dt;
-  // Monotone tangents (Fritsch-Carlson): a move never overshoots a key, so a framing that keeps something out
-  // of shot stays that way.
   const tan = (j: number, c: (typeof CH)[number]) => {
     const a = keys[j - 1], k = keys[j], b = keys[j + 1];
     if (!a || !b) return 0;
@@ -63,11 +58,9 @@ function camera(f: number): Pose {
 }
 const pose = (k: Key, val: (k: Key, c: (typeof CH)[number]) => number): Pose => ({ x: k.x, y: k.y, s: Math.exp(val(k, "s")), rx: k.rx, ry: k.ry });
 
-// ---- The window in space
 
 const Stage: React.FC<{ f: number }> = ({ f }) => {
   const cam = camera(f);
-  // Into black at the end of the push through the repository's page.
   const fade = 1 - ease(f, at(8, 1, 14), at(8, 1, 28));
   return (
     <AbsoluteFill style={{ perspective: 2600, perspectiveOrigin: "50% 50%", opacity: fade }}>
@@ -84,7 +77,6 @@ const Stage: React.FC<{ f: number }> = ({ f }) => {
           transformStyle: "preserve-3d",
         }}
       >
-        {/* its shadow on the void */}
         <div style={{ position: "absolute", inset: 0, borderRadius: 22, boxShadow: "0 60px 140px rgba(0,0,0,0.65), 0 18px 40px rgba(0,0,0,0.5)" }} />
         {CLIPS.map((c) => (
           <Sequence key={c.src} from={c.from} durationInFrames={c.to - c.from} layout="none">
@@ -96,7 +88,6 @@ const Stage: React.FC<{ f: number }> = ({ f }) => {
                 inset: 0,
                 width: WIN.w,
                 height: WIN.h,
-                // the window's corners (20 px at 2x); a clip-path, not an image mask, so no frame waits on a load
                 clipPath: "inset(0 round 20px)",
               }}
             />
@@ -108,8 +99,6 @@ const Stage: React.FC<{ f: number }> = ({ f }) => {
   );
 };
 
-// macOS's pointing hand (HIServices' own artwork; hot spot 13, 8 of 32 pt), drawn in window px so it lives on
-// the window: it comes in from below, presses the store's "Add to Netnyahoo" on the recorded frame, and leaves.
 const BUTTON = { x: 2534, y: 332 };
 const StoreCursor: React.FC<{ f: number }> = ({ f }) => {
   const p = EV.storePress;
@@ -128,7 +117,6 @@ const StoreCursor: React.FC<{ f: number }> = ({ f }) => {
   );
 };
 
-// ---- Type
 
 const Super: React.FC<{ f: number; len: number; text: string }> = ({ f, len, text }) => {
   const o = ease(f, 0, 8, out) * (1 - ease(f, len - 8, len));
@@ -145,7 +133,6 @@ const Super: React.FC<{ f: number; len: number; text: string }> = ({ f, len, tex
 
 const Title: React.FC<{ f: number }> = ({ f }) => {
   const line = (a: number) => ({ opacity: ease(f, a, a + 10, out), transform: `translateY(${interpolate(ease(f, a, a + 16, out), [0, 1], [16, 0])}px)` });
-  // The punch-in: "acquisitions" steps forward on the bar's last beat.
   const punch = ease(f, 75, 83, out);
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", textAlign: "center" }}>

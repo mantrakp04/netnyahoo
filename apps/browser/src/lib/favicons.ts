@@ -7,51 +7,22 @@ import { engineProfile, isIncognitoProfile } from "../store/model";
 import { DEFAULT_PROFILE_ID } from "../store/settings";
 import { webviews } from "./webviews";
 
-/**
- * Favicons for the app's own UI, cached per profile and keyed by page URL and
- * host (Dia's favicon store). Icons only ever come through the engine: a tab's
- * icon is downloaded by its own browser in its own request context, and a page
- * without a live tab (history, bookmarks after a relaunch) goes through its
- * profile's context. Nothing is fetched from the UI process or a third-party
- * service.
- *
- * Persistent profiles keep PNGs in the engine profile's directory and an index
- * in `favicons-<profile>.json`. Incognito profiles live in memory only (data:
- * URIs) and are forgotten with their window; they're never consulted for
- * lookups that don't name them.
- *
- * Pages see the app's appearance (prefers-color-scheme), and some swap their
- * icon with it: GitHub's is a black mark in light and a white one in dark. A page
- * that changes its icon right after the appearance does makes the two a pair, and
- * lookups answer with the pair's icon for the current appearance, so a history
- * entry recorded in dark doesn't show GitHub's white mark on a light surface.
- */
-
 type Icon = {
   uri: string;
-  /** The page's icon URL it came from. */
   src: string;
-  /** ms epoch */
   at: number;
-  /** Dia's selected-pinned-tile theme, worked out once per icon; null: none, absent: not yet. */
   theme?: IconTheme | null;
 };
 type ProfileIcons = {
-  /** By name (a hash of `src`). */
   icons: Record<string, Icon>;
-  /** Page key → icon name; most recent last. */
   pages: Record<string, string>;
-  /** Host → icon name of its most recently seen page ("fallback to host"). */
   hosts: Record<string, string>;
-  /** Icon name → its page's [light, dark] icons, for icons that come in such a pair. */
   appearances?: Record<string, [string, string]>;
 };
 
 const EMPTY: ProfileIcons = { icons: {}, pages: {}, hosts: {} };
-/** A page that changes its icon this soon after the appearance changed did it for the appearance. */
 const APPEARANCE_SWAP_MS = 5000;
 let appearanceChangedAt = -Infinity;
-/** Icons older than this are downloaded again when their page shows them. */
 const REFRESH_MS = 7 * 86_400_000;
 const MAX_PAGES = 5000;
 const SAVE_DELAY_MS = 1000;
@@ -60,11 +31,9 @@ export const useFavicons = create<{ profiles: Record<string, ProfileIcons> }>(()
 
 const docName = (profileId: string) => `favicons-${profileId}.json`;
 
-/** The profile's index, read from disk the first time it's needed. */
 function indexFor(profileId: string): ProfileIcons {
   const loaded = useFavicons.getState().profiles[profileId];
   if (loaded) return loaded;
-  // Incognito profiles only get an entry once they have an icon (and lose it with their window).
   if (isIncognitoProfile(profileId)) return EMPTY;
   let index = EMPTY;
   try {
@@ -74,7 +43,6 @@ function indexFor(profileId: string): ProfileIcons {
   } catch (error) {
     console.warn(`Couldn't read ${docName(profileId)}`, error);
   }
-  // Reading happens during render (selectors): store it without notifying.
   useFavicons.getState().profiles[profileId] = index;
   return index;
 }
@@ -90,7 +58,6 @@ function update(profileId: string, change: (index: ProfileIcons) => ProfileIcons
   saveTimer ??= setTimeout(flushFavicons, SAVE_DELAY_MS);
 }
 
-/** Writes pending index changes now. */
 export function flushFavicons() {
   clearTimeout(saveTimer);
   saveTimer = undefined;
@@ -103,12 +70,10 @@ export function flushFavicons() {
 
 // MARK: Keys
 
-/** Same page for icons: the fragment doesn't matter. */
 export const pageKey = (url: string) => url.replace(/#.*$/, "");
 const hostKey = (url: string) => /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?([^/?#:]+)/i.exec(url)?.[1]?.toLowerCase().replace(/^www\./, "") ?? "";
 
 const names = new Map<string, string>();
-/** File name for an icon URL: 64 bits of FNV-1a, which is plenty for one profile's icons. */
 export function iconName(src: string): string {
   let name = names.get(src);
   if (name) return name;
@@ -135,12 +100,10 @@ function remember(profileId: string, pageUrl: string, name: string, icon?: Icon)
   update(profileId, (index) => {
     const pages = { ...index.pages };
     const previous = pages[page];
-    // Re-inserting keeps the most recent pages last, so the oldest go first.
     delete pages[page];
     pages[page] = name;
     const keys = Object.keys(pages);
     for (const old of keys.slice(0, Math.max(0, keys.length - MAX_PAGES))) delete pages[old];
-    // (A page may report its old icon again first: that's no change.)
     let appearances = index.appearances;
     if (swapped && previous && previous !== name) {
       const pair: [string, string] = dark ? [previous, name] : [name, previous];
@@ -157,10 +120,6 @@ function remember(profileId: string, pageUrl: string, name: string, icon?: Icon)
 
 const inflight = new Map<string, Promise<FaviconImage | null>>();
 
-/**
- * A tab reported its page's icon (`onFavicon`): remember it for the page and its
- * host, downloading it through the tab's own browser when it's new or stale.
- */
 export function noteFavicon(tabId: string, src: string) {
   const tab = useBrowser.getState().tabs[tabId];
   if (!tab?.url || !src) return;
@@ -173,7 +132,6 @@ export function noteFavicon(tabId: string, src: string) {
   const key = `${profileId}|${name}`;
   let pending = inflight.get(key);
   if (!pending) {
-    // Incognito icons come back as data: URIs and never touch the disk.
     pending = handle.downloadFavicon(src, isIncognitoProfile(profileId) ? undefined : name).catch(() => null);
     inflight.set(key, pending);
     void pending.finally(() => inflight.delete(key));
@@ -186,11 +144,6 @@ export function noteFavicon(tabId: string, src: string) {
 
 const failedFetches = new Set<string>();
 
-/**
- * Fetches a known icon URL through its persistent profile's context, for pages
- * without a live tab (history, bookmarks, restored tabs). Never for incognito:
- * those icons only come from their own tabs.
- */
 function fetchMissing(profileId: string, pageUrl: string, src: string) {
   if (isIncognitoProfile(profileId) || !/^https?:/i.test(src)) return;
   const name = iconName(src);
@@ -205,7 +158,6 @@ function fetchMissing(profileId: string, pageUrl: string, src: string) {
   });
 }
 
-/** The cached icon file broke (deleted, data directory moved): forget it so it's fetched again. */
 export function faviconFailed(profileId: string, uri: string) {
   const index = useFavicons.getState().profiles[profileId];
   const name = index && Object.keys(index.icons).find((n) => index.icons[n]!.uri === uri);
@@ -220,7 +172,6 @@ export function faviconFailed(profileId: string, uri: string) {
 
 export type ResolvedFavicon = { uri: string; profileId: string };
 
-/** The icon's name in `profileId`'s index. */
 function lookupIn(profileId: string, url: string, src: string | null | undefined): string | undefined {
   const index = indexFor(profileId);
   const byPage = index.pages[pageKey(url)];
@@ -231,19 +182,12 @@ function lookupIn(profileId: string, url: string, src: string | null | undefined
   return byHost && index.icons[byHost] ? inScheme(index, byHost) : undefined;
 }
 
-/** `name`, or the icon of its appearance pair for the current appearance. */
 function inScheme(index: ProfileIcons, name: string): string {
   const pair = index.appearances?.[name];
   const shown = pair?.[useBrowser.getState().ui.appDark ? 1 : 0];
   return shown && index.icons[shown] ? shown : name;
 }
 
-/**
- * The icon to show for `url` (`src`: the page's icon URL, when known). With a
- * persistent profile, that profile's cache. With an incognito one, its memory,
- * then the persistent profiles' caches (reading them leaks nothing; the reverse
- * never happens). Without one, the persistent profiles', default first.
- */
 function resolveIcon(url: string, src?: string | null, profileId?: string): { profileId: string; name: string; icon: Icon } | null {
   if (!url) return null;
   const order =
@@ -257,21 +201,13 @@ function resolveIcon(url: string, src?: string | null, profileId?: string): { pr
   return null;
 }
 
-/** `resolveIcon`'s file: or data: URI. */
 export function resolveFavicon(url: string, src?: string | null, profileId?: string): ResolvedFavicon | null {
   const found = resolveIcon(url, src, profileId);
   return found ? { uri: found.icon.uri, profileId: found.profileId } : null;
 }
 
-/**
- * Hook form of `resolveFavicon`. A missing icon whose URL is known is fetched
- * through `profileId`'s context (persistent profiles only; without a profile
- * nothing is fetched, since the page's profile isn't known).
- */
 export function useFavicon(url: string, src?: string | null, profileId?: string): ResolvedFavicon | null {
-  // Resolved again when the appearance changes: a page's icon may differ between the two.
   useBrowser((s) => s.ui.appDark);
-  // A string snapshot: zustand compares selections by identity.
   const key = useFavicons(() => {
     const found = resolveFavicon(url, src, profileId);
     return found ? `${found.profileId} ${found.uri}` : null;
@@ -289,14 +225,8 @@ export function useFavicon(url: string, src?: string | null, profileId?: string)
 
 const theming = new Set<string>();
 
-/**
- * The theme Dia gives a selected pinned tile for `url`'s icon (see `IconTheme`),
- * worked out natively the first time it's asked for and kept with the icon (a
- * refreshed icon starts over). Undefined until it's known.
- */
 export function useFaviconTheme(url: string, src?: string | null, profileId?: string): IconTheme | null | undefined {
   useBrowser((s) => s.ui.appDark);
-  // The icon record itself: it only changes when the icon (or its theme) does.
   const icon = useFavicons(() => resolveIcon(url, src, profileId)?.icon ?? null);
   const pending = !!icon && icon.theme === undefined && hasDockSelection;
   useEffect(() => {
@@ -312,7 +242,6 @@ export function useFaviconTheme(url: string, src?: string | null, profileId?: st
       .then((theme) =>
         update(id, (index) => {
           const now = index.icons[name];
-          // Replaced meanwhile: the new icon gets its own.
           if (!now || now.uri !== current.uri) return index;
           return { ...index, icons: { ...index.icons, [name]: { ...now, theme } } };
         }),
@@ -323,11 +252,6 @@ export function useFaviconTheme(url: string, src?: string | null, profileId?: st
 
 // MARK: Housekeeping
 
-/**
- * Drops page icons that nothing refers to any more (after history is cleared:
- * Chrome forgets those favicons too, except for bookmarks and open tabs), then
- * deletes their files.
- */
 export function pruneProfileFavicons(profileId: string) {
   if (isIncognitoProfile(profileId)) return;
   const s = useBrowser.getState();
@@ -350,10 +274,6 @@ export function pruneProfileFavicons(profileId: string) {
   void pruneFavicons(engineProfile(profileId), Object.keys(indexFor(profileId).icons));
 }
 
-/**
- * Forgets closed incognito windows' icons and deleted profiles' indexes (their
- * files go with the profile's directory).
- */
 export function startFavicons() {
   const check = (s: BrowserState, prev: BrowserState) => {
     if (s.ui.appDark !== prev.ui.appDark) appearanceChangedAt = Date.now();

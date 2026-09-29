@@ -20,16 +20,14 @@ public class CefModule: Module {
       SystemState.shared.start()
     }
 
-    // Engine
     AsyncFunction("engineInfo") { NNCef.engineInfo }.runOnQueue(.main)
     AsyncFunction("chromeWindows") { NNCef.chromeWindows }.runOnQueue(.main)
     AsyncFunction("devWindow") { (windowNumber: Int, action: String) in NNCef.devWindow(windowNumber, action: action) }
       .runOnQueue(.main)
-    // Synchronous: it must land before the moved tab's views mount and unmount.
+// Apply tab transfers synchronously before either view mounts or unmounts.
     Function("prepareTransfer") { (key: String) in NNBrowserView.prepareTransfer(key) }
     AsyncFunction("components") { NNCef.components }.runOnQueue(.main)
 
-    // Diagnostics
     AsyncFunction("beginTracing") { (promise: Promise) in
       NNCef.beginTracing { promise.resolve($0) }
     }.runOnQueue(.main)
@@ -44,17 +42,14 @@ public class CefModule: Module {
     AsyncFunction("killTask") { (id: Int64) in NNCef.killTask(id) }.runOnQueue(.main)
     AsyncFunction("systemState") { SystemState.shared.snapshot }.runOnQueue(.main)
 
-    // Downloads
     AsyncFunction("cancelDownload") { (id: String) in NNCef.cancelDownload(id) }.runOnQueue(.main)
     AsyncFunction("pauseDownload") { (id: String) in NNCef.pauseDownload(id) }.runOnQueue(.main)
     AsyncFunction("resumeDownload") { (id: String) in NNCef.resumeDownload(id) }.runOnQueue(.main)
 
-    // Permissions
     AsyncFunction("resolvePermission") { (id: String, result: String, remember: Bool?) in
       NNCef.resolvePermission(id, result: result, remember: remember ?? false)
     }.runOnQueue(.main)
 
-    // Profiles
     AsyncFunction("clearBrowsingData") { (profile: String, types: [String], since: Double?, promise: Promise) in
       NNCef.clearBrowsingData(profile: profile, types: types, since: since ?? 0) { promise.resolve(nil) }
     }.runOnQueue(.main)
@@ -66,7 +61,6 @@ public class CefModule: Module {
       try? FileManager.default.removeItem(atPath: path)
     }.runOnQueue(.main)
 
-    // Favicons
     AsyncFunction("fetchFavicon") { (url: String, profile: String, name: String?, promise: Promise) in
       NNFavicons.fetch(url, profile: profile, name: name) { promise.resolve($0) }
     }.runOnQueue(.main)
@@ -74,7 +68,6 @@ public class CefModule: Module {
       NNFavicons.prune(profile: profile, keeping: keep)
     }.runOnQueue(.main)
 
-    // Content blocking (uBlock Origin Lite)
     AsyncFunction("getContentBlocker") { (promise: Promise) in
       NNContentBlocker.state { promise.resolve($0) }
     }.runOnQueue(.main)
@@ -91,7 +84,6 @@ public class CefModule: Module {
       NNContentBlocker.setAllowed(allowed, host: host) { promise.resolve(nil) }
     }.runOnQueue(.main)
 
-    // Site settings
     AsyncFunction("setSiteSetting") { (profile: String, origin: String, type: String, value: String) in
       NNSiteSettings.setSetting(value, profile: profile, origin: origin, type: type)
     }.runOnQueue(.main)
@@ -106,13 +98,11 @@ public class CefModule: Module {
       NNSiteSettings.clearSiteData(profile: profile, origin: origin) { promise.resolve($0) }
     }.runOnQueue(.main)
 
-    // Zoom
     AsyncFunction("setZoom") { (profile: String, host: String, zoom: Double) in
       NNZoom.setZoom(zoom, profile: profile, host: host)
     }.runOnQueue(.main)
     AsyncFunction("getZoomLevels") { (profile: String) in NNZoom.zoomLevels(profile: profile) }.runOnQueue(.main)
 
-    // Passwords (Chrome's password manager)
     AsyncFunction("listPasswords") { (profile: String, promise: Promise) in
       NNPasswords.list(profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)
@@ -144,7 +134,6 @@ public class CefModule: Module {
       NNPasswords.setAutofillEnabled(enabled, profile: profile)
     }.runOnQueue(.main)
 
-    // Autofill (Chrome's addresses and cards)
     AsyncFunction("getAutofillSettings") { (profile: String) in NNAutofill.settings(profile: profile) }.runOnQueue(.main)
     AsyncFunction("setAutofillSettings") { (profile: String, addresses: Bool?, cards: Bool?) in
       var settings: [String: NSNumber] = [:]
@@ -222,7 +211,6 @@ public class CefModule: Module {
         view.browser.downloadImage(url, maxPixels: maxPixels) { promise.resolve($0) }
       }.runOnQueue(.main)
 
-      // Media
       AsyncFunction("mediaCommand") { (view: CefWebView, action: String, seconds: Double?) in
         view.browser.mediaCommand(action, seconds: seconds ?? 0)
       }.runOnQueue(.main)
@@ -231,7 +219,6 @@ public class CefModule: Module {
       }.runOnQueue(.main)
       AsyncFunction("exitPictureInPicture") { (view: CefWebView) in view.browser.exitPictureInPicture() }.runOnQueue(.main)
 
-      // Site controls
       AsyncFunction("getSecurityInfo") { (view: CefWebView, promise: Promise) in
         view.browser.securityInfo { promise.resolve($0) }
       }.runOnQueue(.main)
@@ -260,7 +247,6 @@ public class CefModule: Module {
         view.browser.notificationAction(id, action: action)
       }.runOnQueue(.main)
 
-      // Robustness
       AsyncFunction("resolveUnresponsive") { (view: CefWebView, terminate: Bool) in
         view.browser.resolveUnresponsive(terminate: terminate)
       }.runOnQueue(.main)
@@ -273,7 +259,6 @@ public class CefModule: Module {
   }
 }
 
-/// Hosts one NNBrowserView and forwards its events as Expo view events.
 final class CefWebView: ExpoView, NNBrowserViewDelegate {
   static let events = [
     "onNavigationChange",
@@ -312,7 +297,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
 
   let browser = NNBrowserView(frame: .zero)
 
-  // Expo finds dispatchers by property name, so each event needs one.
   let onNavigationChange = EventDispatcher()
   let onProgress = EventDispatcher()
   let onFavicon = EventDispatcher()
@@ -354,14 +338,11 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
     wantsLayer = true
   }
 
-  // RN macOS assigns frames directly and doesn't autoresize subviews.
   override func setFrameSize(_ newSize: NSSize) {
     super.setFrameSize(newSize)
     browser.frame = bounds
   }
 
-  /// The browser is created when NNBrowserView joins a window, so it's only
-  /// added once the initial props (profile, url, adoptId) have arrived.
   func propsDidUpdate() {
     guard !propsReady else { return }
     propsReady = true
@@ -412,8 +393,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
   }
 }
 
-/// Power source, Low Power Mode, memory pressure and RAM: what the app's tab
-/// lifecycle policy (sleeping tabs, Battery Saver) decides by.
 final class SystemState {
   static let shared = SystemState()
   var onChange: (([String: Any]) -> Void)?
@@ -462,7 +441,6 @@ final class SystemState {
     if Thread.isMainThread { onChange?(state) } else { DispatchQueue.main.async { self.onChange?(state) } }
   }
 
-  /// Whether the Mac runs on its battery now, and the charge (0–1) if it has one.
   private static func battery() -> (onBattery: Bool, level: Double?) {
     guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else { return (false, nil) }
     let providing = IOPSGetProvidingPowerSourceType(info)?.takeUnretainedValue() as String?

@@ -1,5 +1,3 @@
-// Compiles the Metal sources embedded in ios/*.swift so shader errors show up
-// without launching the app.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

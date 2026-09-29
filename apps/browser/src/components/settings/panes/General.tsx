@@ -92,16 +92,11 @@ export function GeneralPane() {
   );
 }
 
-/**
- * Sparkle's settings (Dia: "Automatically update Dia"). A build without an update feed
- * (Info.plist `SUFeedURL` emptied) shows them off and says so.
- */
 function UpdatesSection() {
   const [state, setState] = useState<UpdaterState | null>(null);
   const refresh = () => void updaterState().then(setState, () => setState({ available: false }));
   useEffect(() => {
     refresh();
-    // A check started here finishes in Sparkle's own window.
     const sub = AppState.addEventListener("change", refresh);
     return () => sub.remove();
   }, []);
@@ -137,7 +132,6 @@ function UpdatesSection() {
   );
 }
 
-/** "Netnyahoo works best as your default browser" (Dia's banner at the top of General). */
 function DefaultBrowserBanner() {
   const theme = useTheme();
   const colors = useFormColors();
@@ -145,7 +139,6 @@ function DefaultBrowserBanner() {
   const refresh = () => void isDefaultBrowser().then(setIsDefault);
   useEffect(() => {
     refresh();
-    // The user may change it in System Settings meanwhile.
     const sub = AppState.addEventListener("change", refresh);
     return () => sub.remove();
   }, []);

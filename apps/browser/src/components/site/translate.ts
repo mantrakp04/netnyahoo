@@ -6,24 +6,10 @@ import { isIncognitoProfile } from "../../store/model";
 import { hideKeyedToast, showToast } from "../layout/splitActions";
 import { translatorCall, type Passage } from "./pageTranslator";
 
-/**
- * Translate this page, on the Mac's own translation models (Apple's Translation framework,
- * macOS 26), so nothing leaves the Mac. Dia's UX, from its 1.50.1 binary: a translate button
- * ("Translate this page") by the address when the page isn't in one of your languages; "Translate
- * to <language>", "Choose Another Language" and "Never Translate This Site" in the site menu; the
- * toasts "Translated to %@", "Translated back to %@" and "Translation error (%@)".
- *
- * The page side (pageTranslator.ts) swaps text nodes' text and keeps the originals, so markup
- * stays as it is and reverting is exact, and it queues text the page adds later. The app pulls
- * bounded batches from the page, translates them natively and puts them back, so a huge page
- * never stalls; a long first pass shows its progress in the toast.
- */
 export type TranslateState = {
-  /** The page's language (BCP 47) when it isn't one of the user's; null: nothing to offer. */
   source: string | null;
   status: "idle" | "translating" | "translated";
   target: string | null;
-  /** Names this translation in the page (a new document has none, so it's never translated unasked). */
   token: string | null;
 };
 
@@ -34,16 +20,12 @@ export const translateStateOf = stateOf;
 const patch = (tabId: string, p: Partial<TranslateState>) => useTranslate.setState((s) => ({ [tabId]: { ...(s[tabId] ?? IDLE), ...p } }));
 export const useTranslateState = (tabId: string) => useTranslate((s) => s[tabId] ?? IDLE);
 
-/** Passages per round trip, and characters: each round's translation shows on the page soon. */
 const BATCH = 8;
 const BATCH_CHARS = 2000;
-/** How often a translated page is checked for text it added or scrolled into view since. */
 const FOLLOW_MS = 600;
-/** A first pass longer than this shows its progress. */
 const PROGRESS_AFTER_MS = 1200;
 const PROGRESS_TOAST = "translate-progress";
 
-/** "de-DE" → "de"; Chinese keeps its script ("zh-Hans" and "zh-Hant" read differently). */
 export function baseLanguage(language: string): string {
   const [lang = "", second] = language.split(/[-_]/);
   if (lang.toLowerCase() === "zh") return second && /^(hant|tw|hk|mo)$/i.test(second) ? "zh-Hant" : "zh-Hans";
@@ -51,12 +33,10 @@ export function baseLanguage(language: string): string {
 }
 
 let userLanguages: string[] | null = null;
-/** The user's languages (macOS's preferred languages), most preferred first. */
 function languages(): string[] {
   userLanguages ??= translation?.userLanguages() ?? [];
   return userLanguages;
 }
-/** Pages are translated into the user's first language unless they choose another. */
 export const defaultTarget = () => baseLanguage(languages()[0] ?? "en");
 export const languageName = (language: string) => translation?.languageName(language) ?? language;
 
@@ -94,7 +74,6 @@ export function setNeverTranslate(tabId: string, never: boolean) {
 
 type Sample = { lang: string; text: string; active: boolean };
 
-/** The page's language: from a sample of its text, else its `lang`. */
 async function pageLanguage(tabId: string): Promise<{ language: string | null; active: boolean } | null> {
   const sample = await webviews.get(tabId)?.evaluate<Sample>(translatorCall("sample"));
   if (!sample || !translation) return null;
@@ -102,22 +81,17 @@ async function pageLanguage(tabId: string): Promise<{ language: string | null; a
   return { language: detected ?? (sample.lang ? String(sample.lang).slice(0, 20) : null), active: !!sample.active };
 }
 
-/**
- * After a page loads: offer translation when its language isn't one of the user's, the site
- * isn't on the never list and this Mac can translate it.
- */
 async function detect(tabId: string) {
   const tab = useBrowser.getState().tabs[tabId];
   if (!translation || !tab || !hostOf(tab.url)) return patch(tabId, { source: null, status: "idle", target: null, token: null });
   const page = await pageLanguage(tabId);
   if (!page) return;
-  // A new document took the translation with it.
+  // Navigation replaces the document and clears its translation.
   if (!page.active && stateOf(tabId).status === "translated") patch(tabId, { status: "idle", target: null, token: null });
   if (isNeverTranslated(tab.profileId, tab.url)) return patch(tabId, { source: null });
   const mine = new Set(languages().map(baseLanguage));
   const source = page.language && !mine.has(baseLanguage(page.language)) ? page.language : null;
   if (source && (await translation.status(source, defaultTarget())) === "unsupported") return patch(tabId, { source: null });
-  // Keep a translated page's language even if the sample now reads as the target.
   if (stateOf(tabId).status === "idle") patch(tabId, { source });
 }
 
@@ -125,10 +99,6 @@ async function detect(tabId: string) {
 
 type Batch = { passages: Passage[]; more: boolean; gone: boolean; done: number; total: number };
 
-/**
- * Each passage translated as one text, its pieces (text nodes) getting their part back (macOS
- * 26.4); a passage that can't be split back has its pieces translated one by one.
- */
 async function translatePassages(source: string, target: string, passages: Passage[]): Promise<[number, string][]> {
   const texts = passages.map(([, pieces]) => pieces.map(([, text]) => text));
   const whole = await translation!.translateBlocks(source, target, texts);
@@ -146,7 +116,6 @@ async function translatePassages(source: string, target: string, passages: Passa
   return out;
 }
 
-/** Pulls the page's untranslated text, translates it and puts it back, until none is left. */
 async function drain(tabId: string, token: string, onProgress?: (done: number, total: number) => void): Promise<boolean> {
   for (;;) {
     const current = stateOf(tabId);
@@ -155,7 +124,6 @@ async function drain(tabId: string, token: string, onProgress?: (done: number, t
     if (current.status === "idle" || current.token !== token || !web || !source || !target) return false;
     const batch = await web.evaluate<Batch>(translatorCall("next", token, BATCH, BATCH_CHARS));
     if (!batch || batch.gone || !Array.isArray(batch.passages)) return false;
-    // The page's answer is data: at most one batch of well-formed strings goes to the translator.
     const passages = batch.passages
       .slice(0, BATCH * 4)
       .filter((p): p is Passage => Array.isArray(p) && Array.isArray(p[1]))
@@ -170,7 +138,6 @@ async function drain(tabId: string, token: string, onProgress?: (done: number, t
   }
 }
 
-/** Keeps a translated page translated as it adds text (a feed, a chat, an app's next view). */
 async function follow(tabId: string, token: string) {
   for (;;) {
     await new Promise((r) => setTimeout(r, FOLLOW_MS));
@@ -179,8 +146,7 @@ async function follow(tabId: string, token: string) {
     try {
       if (await drain(tabId, token)) continue;
     } catch {}
-    // A round that didn't go through: carry on while the page is still translated. The document
-    // went (navigation, crash): the new one is in its own language.
+    // Drop a failed round if navigation replaced the document.
     if (stateOf(tabId).token !== token) return;
     if ((await pageLanguage(tabId).catch(() => null))?.active) continue;
     if (stateOf(tabId).token === token) patch(tabId, { status: "idle", target: null, token: null });
@@ -195,11 +161,9 @@ function toast(tabId: string, title: string, message?: string, progress = false)
   else showToast(windowId, title, message, { icon: "translate" });
 }
 
-/** "Translate to <language>": the user's first language unless another is chosen. */
 export async function translatePage(tabId: string, target = defaultTarget()) {
   const tab = useBrowser.getState().tabs[tabId];
   if (!translation || !tab || !webviews.get(tabId)) return;
-  // Also clears a translation the page still has but the app lost track of.
   await revertPage(tabId, { quiet: true });
   const source = stateOf(tabId).source ?? (await pageLanguage(tabId))?.language ?? null;
   if (!source) return toast(tabId, "Translation error (can't tell the page's language)");
@@ -208,7 +172,6 @@ export async function translatePage(tabId: string, target = defaultTarget()) {
   try {
     const status = await translation.status(source, target);
     if (status === "unsupported") return toast(tabId, `Translation error (${languageName(source)} to ${languageName(target)} isn't available)`);
-    // macOS downloads the languages first, in its own sheet.
     if (status === "supported") await translation.prepare(source, target);
     const token = Math.random().toString(36).slice(2);
     patch(tabId, { status: "translating", source, target, token });
@@ -234,7 +197,6 @@ export async function translatePage(tabId: string, target = defaultTarget()) {
   }
 }
 
-/** Puts the page's own text back: "Translated back to <language>". */
 export async function revertPage(tabId: string, { quiet = false } = {}) {
   const { source, status } = stateOf(tabId);
   patch(tabId, { status: "idle", target: null, token: null });
@@ -242,16 +204,13 @@ export async function revertPage(tabId: string, { quiet = false } = {}) {
   if (!quiet && source && status !== "idle") toast(tabId, `Translated back to ${languageName(source)}`);
 }
 
-/** The translate button: translate, or back to the original. */
 export function toggleTranslation(tabId: string) {
   if (stateOf(tabId).status === "idle") void translatePage(tabId);
   else void revertPage(tabId);
 }
 
-/** The languages to offer under "Choose Another Language", by name. */
 export async function otherLanguages(): Promise<{ id: string; name: string }[]> {
   if (!translation) return [];
-  // One entry per language: its plainest variant ("en" over "en-IN").
   const best = new Map<string, string>();
   for (const id of await translation.supportedLanguages()) {
     const key = baseLanguage(id);
@@ -263,7 +222,6 @@ export async function otherLanguages(): Promise<{ id: string; name: string }[]> 
 
 // MARK: Wiring
 
-/** Detects each page's language once it has loaded, and forgets closed tabs. */
 export function startTranslate() {
   if (!translation) return () => {};
   return useBrowser.subscribe((s, prev) => {

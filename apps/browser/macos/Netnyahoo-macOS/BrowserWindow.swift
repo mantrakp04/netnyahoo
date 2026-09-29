@@ -1,14 +1,7 @@
 import AppKit
 
-/// Borderless-looking browser window: content runs under a transparent title
-/// bar and the traffic lights are nudged down into the sidebar header, like Dia.
-/// Only for an engine without Chrome-hosted windows (stock CEF, NN_CHROME_TABS=0):
-/// otherwise every browser window is Chrome's own (packages/cef NNChromeWindow).
-/// The shell's WindowManager creates these and owns their lifecycle, delegate and
-/// frame.
 final class BrowserWindow: NSWindow {
-  /// Traffic-light inset from the window's top-left corner, in points (Dia 1.50.1's; the same as
-  /// Chrome-hosted windows, NNChromeWindow.mm).
+  // Dia: traffic-light inset 16 × 20 pt.
   private let trafficLightInset = NSPoint(x: 16, y: 20)
 
   init() {
@@ -23,7 +16,6 @@ final class BrowserWindow: NSWindow {
     title = "Netnyahoo"
     minSize = NSSize(width: 720, height: 460)
     isReleasedWhenClosed = false
-    // Shown for a frame before JS paints the grained backdrop.
     backgroundColor = NSColor(name: nil) { appearance in
       appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         ? NSColor(srgbRed: 0.17, green: 0.12, blue: 0.14, alpha: 1)
@@ -48,7 +40,7 @@ final class BrowserWindow: NSWindow {
           let zoom = standardWindowButton(.zoomButton),
           let container = close.superview?.superview else { return }
 
-    // Grow the title bar container so the lowered buttons aren't clipped.
+    // Keep lowered traffic lights inside the title bar.
     let height = close.frame.height + trafficLightInset.y * 2
     var frame = container.frame
     frame.size.height = height

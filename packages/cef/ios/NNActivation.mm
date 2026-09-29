@@ -1,21 +1,4 @@
-// Keeps the app from taking focus on its own.
-//
-// - Chromium activates the app whenever it shows or focuses one of its windows
-//   (NativeWidgetNSWindowBridge::SetVisibilityState, CocoaMouseCapture, the
-//   AppController…). With Chrome-style tabs its windows are our app windows and
-//   their dialogs and bubbles, so a page (an alert in a background tab, a password
-//   bubble) could pull the app in front of whatever the user is doing. Only the
-//   user (clicking our window, the Dock, a notification) activates the app:
-//   requests coming from Chromium while the app is inactive are dropped, unless
-//   they're handling the user's own click or key press.
-// - NETNYAHOO_BACKGROUND=1 (test instances next to someone's work): nothing
-//   activates the app at all. Its activation policy is "prohibited", every
-//   activation API is blocked, and should it become active anyway it
-//   deactivates at once. Context menus and open / save panels, which would show over
-//   everyone's work anyway, are logged instead of shown.
-//
-// Blocked attempts and unexpected activations are logged with their call stack
-// to $NETNYAHOO_DATA_DIR/activation.log.
+// Test instances must never activate or show menus and panels.
 #import "NNCefInternal.h"
 
 #import <objc/runtime.h>
@@ -58,7 +41,6 @@ void Swizzle(Class cls, SEL selector, Block block) {
   method_setImplementation(method, imp_implementationWithBlock(block));
 }
 
-/// Background instances that become active anyway give it straight back.
 void ObserveActivation() {
   [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidBecomeActiveNotification
                                                   object:nil
@@ -69,9 +51,6 @@ void ObserveActivation() {
                                               }];
 }
 
-// Open and save panels (a page's <input type=file>, Save As…) show above every app as well, so
-// test instances log what the panel would have been and answer it at once: with the files
-// listed in $NETNYAHOO_DATA_DIR/file-chooser.txt (one path per line, used once), or Cancel.
 const void *kPicksKey = &kPicksKey;
 
 NSArray<NSURL *> *TakePicks() {
@@ -87,7 +66,6 @@ NSArray<NSURL *> *TakePicks() {
   return urls.count ? urls : nil;
 }
 
-/// The panel's URL / URLs answer with the picked files (the panel never ran, so it has none).
 void ReturnPicks(NSSavePanel *panel, NSArray<NSURL *> *picks) {
   objc_setAssociatedObject(panel, kPicksKey, picks, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   static NSMutableSet<NSValue *> *patched = [NSMutableSet set];
@@ -125,7 +103,6 @@ NSString *DescribePanel(NSSavePanel *panel, NSWindow *parent, NSString *how) {
                                               panel.allowedFileTypes ? [panel.allowedFileTypes componentsJoinedByString:@","] : @"*",
                                               panel.allowsOtherFileTypes]];
 #pragma clang diagnostic pop
-  // Chrome's accept list is a popup in the accessory view ("Custom Files", "All Files").
   NSMutableArray<NSView *> *views = panel.accessoryView ? [NSMutableArray arrayWithObject:panel.accessoryView] : [NSMutableArray array];
   while (views.count) {
     NSView *v = views.lastObject;
@@ -139,7 +116,6 @@ NSString *DescribePanel(NSSavePanel *panel, NSWindow *parent, NSString *how) {
   return [parts componentsJoinedByString:@" | "];
 }
 
-/// Logs the panel and answers it (on the next turn of the run loop, as a real panel would).
 NSModalResponse AnswerPanel(NSSavePanel *panel, NSWindow *parent, NSString *how) {
   NSArray<NSURL *> *picks = TakePicks();
   NSString *answer = picks ? [NSString stringWithFormat:@"chose %@", [[picks valueForKey:@"path"] componentsJoinedByString:@", "]]
@@ -150,7 +126,6 @@ NSModalResponse AnswerPanel(NSSavePanel *panel, NSWindow *parent, NSString *how)
 }
 
 void InterceptFilePanels() {
-  // NSOpenPanel may implement these itself.
   for (Class cls : {NSSavePanel.class, NSOpenPanel.class}) {
     Swizzle(cls, @selector(beginSheetModalForWindow:completionHandler:),
             ^(NSSavePanel *panel, NSWindow *window, void (^handler)(NSModalResponse)) {
@@ -165,14 +140,13 @@ void InterceptFilePanels() {
   }
 }
 
-}  // namespace
+}
 
 bool Background() {
   static bool background = getenv("NETNYAHOO_BACKGROUND") != nullptr;
   return background;
 }
 
-/// The event being handled is the user's own click or key press.
 bool UserEvent() {
   switch (NSApp.currentEvent.type) {
     case NSEventTypeLeftMouseDown:
@@ -200,7 +174,6 @@ void Install() {
   if (installed) return;
   installed = true;
 
-  // Activation that doesn't go through NSApp (NNApplication guards those).
   Method activate = class_getInstanceMethod(NSRunningApplication.class, @selector(activateWithOptions:));
   auto originalActivate = (BOOL (*)(id, SEL, NSApplicationActivationOptions))method_getImplementation(activate);
   Swizzle(NSRunningApplication.class, @selector(activateWithOptions:), ^BOOL(NSRunningApplication *app, NSApplicationActivationOptions options) {
@@ -209,15 +182,12 @@ void Install() {
   });
 
   if (!Background()) return;
-  // Windows ordered front or made key while the app is inactive: logged, to find what
-  // tries to bring a test instance forward.
   auto note = [](NSString *name, NSWindow *window) {
     if (!NSApp.isActive)
       Log([NSString stringWithFormat:@"%@ on %@ \"%@\" (inactive app)", name, window.className, window.title],
           NSThread.callStackSymbols);
   };
   {
-    // - (void)makeKeyAndOrderFront:(id)sender
     SEL selector = @selector(makeKeyAndOrderFront:);
     auto original = (void (*)(id, SEL, id))method_getImplementation(class_getInstanceMethod(NSWindow.class, selector));
     Swizzle(NSWindow.class, selector, ^(NSWindow *window, id sender) {
@@ -225,7 +195,6 @@ void Install() {
       original(window, selector, sender);
     });
   }
-  // - (void)makeKeyWindow, - (void)orderFrontRegardless: no arguments.
   for (NSString *name in @[ @"makeKeyWindow", @"orderFrontRegardless" ]) {
     SEL selector = NSSelectorFromString(name);
     auto original = (void (*)(id, SEL))method_getImplementation(class_getInstanceMethod(NSWindow.class, selector));
@@ -238,9 +207,6 @@ void Install() {
     Log(@"unhide: (unhiding without activation)", NSThread.callStackSymbols);
     [app unhideWithoutActivation];
   });
-  // Never a regular app: no Dock icon, no menu bar, and the window server won't make
-  // it the front process. (An `open -g` launch still asks LaunchServices to bring the
-  // app forward once it shows a window; seen on test instances at 09:16 and 09:20.)
   [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
   Method policy = class_getInstanceMethod(NSApplication.class, @selector(setActivationPolicy:));
   auto originalPolicy = (BOOL (*)(id, SEL, NSApplicationActivationPolicy))method_getImplementation(policy);
@@ -249,10 +215,6 @@ void Install() {
     return originalPolicy(app, @selector(setActivationPolicy:), NSApplicationActivationPolicyProhibited);
   });
   ObserveActivation();
-  // A context menu is drawn above every app, even from a process that can never be active:
-  // the release smoke test's right-click popped a menu up over the user's work. Test
-  // instances log the menu (its items, for the smoke test) instead of showing it, and tell
-  // its delegate it opened and closed, as if dismissed at once.
   Method popUp = class_getClassMethod(NSMenu.class, @selector(popUpContextMenu:withEvent:forView:));
   method_setImplementation(popUp, imp_implementationWithBlock(^(id, NSMenu *menu, NSEvent *, NSView *) {
     NSMutableArray<NSString *> *titles = [NSMutableArray array];
@@ -266,4 +228,4 @@ void Install() {
   InterceptFilePanels();
 }
 
-}  // namespace nn::activation
+}

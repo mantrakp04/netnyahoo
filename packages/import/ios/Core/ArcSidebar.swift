@@ -1,26 +1,7 @@
 import Foundation
 
-/// Arc's `~/Library/Application Support/Arc/StorableSidebar.json`.
-///
-///     { "sidebar": { "containers": [ {"global": {}},
-///         { "spaces": [id, {space}, …], "items": [id, {item}, …], "topAppsContainerIDs": [profile, id, …] } ] } }
-///
-/// `spaces`, `items` and `topAppsContainerIDs` are flat alternating arrays (Swift
-/// dictionaries encoded by Arc); every object repeats its own `id`, so objects are read and
-/// the keys beside them ignored.
-///
-/// - space: `id`, `title`, `profile` (`{"default": true}` or
-///   `{"custom": {"_0": {"directoryBasename": "Profile 1"}}}`), `containerIDs`
-///   (`["pinned", id, "unpinned", id]`) and/or `newContainerIDs`
-///   (`[{"pinned": {}}, id, {"unpinned": {…}}, id]`), `customInfo.iconType`
-///   (`emoji_v2` / `emoji` / `icon`), `customInfo.windowTheme` (colours).
-/// - item: `id`, `parentID`, `childrenIds`, `title` (the user's rename, often null), `data`:
-///   `{"tab": {"savedURL", "savedTitle", "timeLastActiveAt"}}`, `{"list": {}}` (folder),
-///   `{"splitView": {…}}`, `{"itemContainer": {…}}` (a root), or others we skip.
-/// - `topAppsContainerIDs`: profile descriptor, then the favourites container of that profile.
 public struct ArcSidebar: Equatable {
   public var spaces: [SpaceSuggestion] = []
-  /// Favourites by Arc profile directory ("Default", "Profile 1").
   public var favorites: [String: [ImportedTab]] = [:]
 
   public static func parse(_ data: Data) throws -> ArcSidebar {
@@ -97,7 +78,6 @@ public struct ArcSidebar: Equatable {
     return dir
   }
 
-  /// "pinned"/"unpinned" → container id, from either spelling Arc has used.
   static func containerIDs(_ space: [String: Any]) -> [String: String] {
     var out: [String: String] = [:]
     for (label, value) in pairs(space["newContainerIDs"]) {
@@ -110,7 +90,6 @@ public struct ArcSidebar: Equatable {
     return out
   }
 
-  /// Arc's rename, when the user gave the row one.
   static func customTitle(_ item: [String: Any]) -> String? {
     (item["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
   }
@@ -118,14 +97,11 @@ public struct ArcSidebar: Equatable {
   static func tab(_ item: [String: Any], pinned: Bool) -> ImportedTab? {
     guard let tab = (item["data"] as? [String: Any])?["tab"] as? [String: Any],
           let url = tab["savedURL"] as? String, !url.isEmpty else { return nil }
-    // `timeLastActiveAt` is an NSDate reference time (seconds since 2001-01-01).
     let last = (tab["timeLastActiveAt"] as? NSNumber).map { ($0.doubleValue + 978_307_200) * 1000 }
     return ImportedTab(url: url, title: tab["savedTitle"] as? String ?? "", pinned: pinned,
                        customTitle: customTitle(item), lastActive: last)
   }
 
-  /// Pinned section as a tree: tabs become links titled with the rename (or saved title),
-  /// folders keep their structure. A split view's two tabs are kept side by side in order.
   static func tree(of containerID: String, items: [String: [String: Any]], seen: inout Set<String>, depth: Int = 0) -> [BookmarkNode] {
     guard depth < 64, let container = items[containerID], seen.insert(containerID).inserted else { return [] }
     var out: [BookmarkNode] = []
@@ -147,7 +123,6 @@ public struct ArcSidebar: Equatable {
     return out
   }
 
-  /// Every tab under a container in drawing order, folders flattened.
   static func flatTabs(of containerID: String, items: [String: [String: Any]], seen: inout Set<String>, pinned: Bool, depth: Int = 0) -> [ImportedTab] {
     guard depth < 64, let container = items[containerID], seen.insert(containerID).inserted else { return [] }
     var out: [ImportedTab] = []
@@ -165,7 +140,6 @@ public struct ArcSidebar: Equatable {
   static func emoji(_ icon: [String: Any]?) -> String? {
     if let e = icon?["emoji_v2"] as? String, !e.isEmpty { return e }
     if let e = icon?["emoji"] as? String, !e.isEmpty { return e }
-    // Older files store the emoji as a Unicode scalar value.
     if let n = icon?["emoji"] as? Int, let scalar = Unicode.Scalar(n) { return String(Character(scalar)) }
     return nil
   }
@@ -176,8 +150,6 @@ public struct ArcSidebar: Equatable {
     return Hex.color(red: r, green: g, blue: b)
   }
 
-  /// `windowTheme.primaryColorPalette.midTone`: the one colour Arc tints the space dot with.
-  /// Falls back to the first colour found anywhere in the theme.
   static func midTone(_ theme: Any?) -> String? {
     if let palette = (theme as? [String: Any])?["primaryColorPalette"] as? [String: Any], let c = color(palette["midTone"]) {
       return c
@@ -196,7 +168,6 @@ public struct ArcSidebar: Equatable {
     return nil
   }
 
-  /// A gradient theme's `baseColors`, wherever the theme style nests them.
   static func gradient(_ theme: Any?) -> [String]? {
     func find(_ any: Any?, _ depth: Int) -> [Any]? {
       guard depth < 12 else { return nil }

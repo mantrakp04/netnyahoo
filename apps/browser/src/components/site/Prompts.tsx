@@ -19,7 +19,6 @@ const hostOf = (origin: string) => {
   }
 };
 
-/** Title + message (+ detail) + a row of buttons: the shared body of Dia's prompt popovers. */
 function PromptBody({
   icons,
   title,
@@ -53,11 +52,6 @@ function PromptBody({
   );
 }
 
-/**
- * A site asking for a permission: "Allow example.com to access your camera?"
- * with Don't Allow / Allow. Both answers stick for the site; closing it with ✕
- * leaves the site free to ask again.
- */
 export function PermissionPrompt({ tabId, left, top }: { tabId: string; left: number; top: number }) {
   const theme = useTheme();
   const request = usePage(tabId, (p) => p.permission);
@@ -90,10 +84,6 @@ function CloseButton({ onPress, color }: { onPress: () => void; color: string })
   );
 }
 
-/**
- * Pop-ups the blocker stopped: Dia's "Always allow pop-ups from example.com?"
- * with Always Allow / Only Once / Always Deny, plus the blocked addresses.
- */
 export function BlockedPopupsPrompt({ tabId, right, left, top }: { tabId: string; right?: number; left?: number; top: number }) {
   const theme = useTheme();
   const popups = usePage(tabId, (p) => p.popups);
@@ -158,7 +148,6 @@ export function BlockedPopupsPrompt({ tabId, right, left, top }: { tabId: string
   );
 }
 
-/** Whether a blocked pop-up should open the prompt on its own (not when the user chose "Always Deny"). */
 export async function shouldPromptForPopups(profile: string, origin: string): Promise<boolean> {
   try {
     const settings = await getSiteSettings(profile, origin);
@@ -168,20 +157,10 @@ export async function shouldPromptForPopups(profile: string, origin: string): Pr
   }
 }
 
-/**
- * Chrome's password manager has a login to save (its own bubble would hang off
- * the hidden toolbar). A confirmation ("saved") needs no answer.
- */
 export function showPasswordPrompt(tabId: string, prompt: ChromePasswordPrompt) {
   patchPage(tabId, { passwordPrompt: prompt.state === "saved" ? null : prompt });
 }
 
-/**
- * Dia's "Save password for example.com?" / "Update saved password?" after a
- * login form was submitted: the login it would save, then Never on This Site /
- * Not Now / Save (or Not Now / Update). With several logins saved for the site,
- * an update picks which one gets the new password.
- */
 export function PasswordPrompt({ tabId, right, top }: { tabId: string; right: number; top: number }) {
   const theme = useTheme();
   const prompt = usePage(tabId, (p) => p.passwordPrompt);
@@ -235,7 +214,6 @@ export function PasswordPrompt({ tabId, right, top }: { tabId: string; right: nu
   );
 }
 
-/** One of the site's saved logins, for an update to go to. */
 function UsernameChoice({ name, selected, onPress }: { name: string; selected: boolean; onPress: () => void }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();

@@ -3,13 +3,11 @@ import type { Listing, Transport } from "./scope.ts";
 
 export type FolderInfo = {
   path: string;
-  /** iCloud Drive › Netnyahoo Sync (a throwaway folder in test instances). */
   defaultPath: string;
   iCloudAvailable: boolean;
   inICloud: boolean;
   exists: boolean;
   writable: boolean;
-  /** Someone's sync data is there already (maybe this phrase's, maybe another). */
   hasSyncData: boolean;
 };
 
@@ -52,13 +50,8 @@ type SyncNative = {
   readPasswords(engineProfile: string): Promise<SavedLogin[] | null>;
 };
 
-/**
- * The native side, or null in a build without it (Metro serves this JS to instances built
- * before the module existed).
- */
 export const SyncNative = requireOptionalNativeModule<SyncNative>("NetnyahooSync");
 
-/** The sync folder as a Transport for syncScope. */
 export const folderTransport = (native: SyncNative, folder: string): Transport => ({
   write: (scope, payload) => native.write(folder, scope, payload),
   read: (scope, known) => native.read(folder, scope, known),

@@ -1,7 +1,6 @@
 const P = nn.store.getState().profileOrder[1];
 const sw = globalThis.nnSwipe.sidebar(W);
 const step = (steps) => sw.devSimulate(steps, { ignorePreference: true });
-// An eased two-finger drag: 28 steps, total ≈ 230 pt, fastest in the middle.
 const N = 100; const total = 240;
 const ease = (x) => 0.5 - 0.5 * Math.cos(Math.PI * x);
 const dxs = Array.from({ length: N }, (_, i) => -(ease((i + 1) / N) - ease(i / N)) * total);

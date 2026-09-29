@@ -15,7 +15,6 @@ namespace nn {
 
 namespace {
 
-// Custom context-menu command ids (MENU_ID_USER_FIRST .. MENU_ID_USER_LAST).
 enum MenuId : int {
   kOpenLinkNewTab = MENU_ID_USER_FIRST,
   kOpenLinkNewWindow,
@@ -31,15 +30,10 @@ enum MenuId : int {
   kInspect,
 };
 
-// "Ask About Selection" comes back with Chat (AI is deferred).
 constexpr bool kChatEnabled = false;
 
 NSString *gSearchEngineName = @"Google";
 
-/// A page's full screen takes its window full screen. Test instances (NETNYAHOO_BACKGROUND) never
-/// do: that opens a Space on the screen of whoever is working next to them. They act it out
-/// instead (NNChromeWindow's DEV "fakeFullScreen:", which the app's own full-screen handling
-/// takes for the real thing), logged to activation.log.
 void ToggleWindowFullScreen(NSWindow *window) {
   if (!activation::Background()) return [window toggleFullScreen:nil];
   const bool leaving = host::FullScreenWindow(window) != nil;
@@ -47,8 +41,6 @@ void ToggleWindowFullScreen(NSWindow *window) {
   host::DevWindowAction(window.windowNumber, leaving ? @"fakeFullScreen:0" : @"fakeFullScreen:1");
 }
 
-/// Chrome's label text for a selection: whitespace collapsed, cut at a word
-/// boundary after 50 characters.
 NSString *SelectionLabel(NSString *text) {
   NSArray *words = [text componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
   NSString *collapsed = [[words filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]]
@@ -60,8 +52,6 @@ NSString *SelectionLabel(NSString *text) {
   return [[collapsed substringToIndex:end] stringByAppendingString:@"…"];
 }
 
-/// Dia's ⇧⌥-click opens the link in a split pane. Blink reports it as a new window
-/// (⇧ wins), so look at the modifier keys held right now.
 bool IsSplitClick(cef_window_open_disposition_t d) {
   NSEventModifierFlags held = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
   return d == CEF_WOD_NEW_WINDOW && (held & NSEventModifierFlagShift) && (held & NSEventModifierFlagOption) &&
@@ -79,13 +69,10 @@ NSString *DispositionName(cef_window_open_disposition_t d) {
   }
 }
 
-/// Counts the page's requests an extension blocked (the content blocker is
-/// uBlock Origin Lite's declarativeNetRequest rules: ERR_BLOCKED_BY_CLIENT).
 class BlockedCounter : public CefResourceRequestHandler {
  public:
   void OnResourceLoadComplete(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request,
                               CefRefPtr<CefResponse> response, URLRequestStatus status, int64_t) override {
-    // IO thread.
     if (!browser || !response || response->GetError() != ERR_BLOCKED_BY_CLIENT) return;
     NSString *url = ToNS(request->GetURL());
     int browserId = browser->GetIdentifier();
@@ -99,8 +86,6 @@ class BlockedCounter : public CefResourceRequestHandler {
   IMPLEMENT_REFCOUNTING(BlockedCounter);
 };
 
-/// A Document Picture-in-Picture window (documentPictureInPicture.requestWindow):
-/// the engine's own window; the opener's tab reports it closing.
 class PictureInPictureClient : public CefClient, public CefLifeSpanHandler {
  public:
   explicit PictureInPictureClient(NNBrowserView *opener) : opener_(opener) {}
@@ -116,34 +101,29 @@ class PictureInPictureClient : public CefClient, public CefLifeSpanHandler {
   IMPLEMENT_REFCOUNTING(PictureInPictureClient);
 };
 
-/// Browser shortcuts a page can't intercept (Chrome's "reserved" commands):
-/// new/close tab or window, reopen tab, tab switching, quit.
 bool IsReservedShortcut(NSEvent *event) {
   NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
   NSString *key = event.charactersIgnoringModifiers.lowercaseString;
   bool cmd = mods & NSEventModifierFlagCommand, shift = mods & NSEventModifierFlagShift,
        opt = mods & NSEventModifierFlagOption, ctrl = mods & NSEventModifierFlagControl;
-  if (ctrl && event.keyCode == 48) return true;  // ⌃Tab / ⌃⇧Tab
+  if (ctrl && event.keyCode == 48) return true;
   if (!cmd || ctrl) return false;
-  if (!opt && [@[ @"t", @"n", @"w", @"q" ] containsObject:key]) return true;  // with or without ⇧
+  if (!opt && [@[ @"t", @"n", @"w", @"q" ] containsObject:key]) return true;
   if (!opt && !shift && key.length == 1 && [key characterAtIndex:0] >= '1' && [key characterAtIndex:0] <= '9') return true;
   if (shift && ([key isEqualToString:@"["] || [key isEqualToString:@"]"] || [key isEqualToString:@"{"] ||
                 [key isEqualToString:@"}"]))
     return true;
-  if (opt && (event.keyCode == 123 || event.keyCode == 124)) return true;  // ⌥⌘← / ⌥⌘→
+  if (opt && (event.keyCode == 123 || event.keyCode == 124)) return true;
   return false;
 }
 
-/// When the menu bar last had a key (the event's timestamp): each key gets one turn there.
 NSTimeInterval gMenuKeyTime = -1;
 
-/// Gives a key to the menu bar: our commands, with the user's shortcuts, and the Edit menu.
 bool PerformMenuKey(NSEvent *event) {
   gMenuKeyTime = event.timestamp;
   return [NSApp.mainMenu performKeyEquivalent:event];
 }
 
-/// Keys AppKit gave the menu bar itself count as its turn too.
 void WatchMenuKeys() {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
@@ -157,15 +137,11 @@ void WatchMenuKeys() {
   });
 }
 
-/// Chrome's tab switching (⌘1–⌘9, Next / Previous Tab) picks a tab of Chrome's own tab strip, which
-/// holds only the pages loaded now, in no order the user sees: ⌘2 after a relaunch went nowhere.
 bool IsChromeTabSwitch(int command_id) {
   return (command_id >= IDC_SELECT_NEXT_TAB && command_id <= IDC_SELECT_LAST_TAB) ||
          command_id == IDC_CYCLE_TO_NEXT_TAB || command_id == IDC_CYCLE_TO_PREV_TAB;
 }
 
-/// The commands of the shortcuts Chrome keeps outside its main menu (global_keyboard_shortcuts_mac.mm):
-/// ⌘1–⌘9, ⇧⌘[ / ⇧⌘], ⌥⌘← / ⌥⌘→, ⌃⇞ / ⌃⇟, ⇧⌘C and ⌥⌘C, ⌥⌘L, ⇧⌘M, ⌥⌘↑ / ⌥⌘↓, ⌥⌘R, ⌃⌘C / P / W / X / Z.
 bool IsChromeShortcutCommand(int command_id) {
   if (IsChromeTabSwitch(command_id)) return true;
   switch (command_id) {
@@ -179,9 +155,6 @@ bool IsChromeShortcutCommand(int command_id) {
   }
 }
 
-/// netnyahoo://x is the app's name for Chrome's chrome://x pages (the JS WebView maps what the app
-/// loads). A page may open one only if it is a WebUI page itself, as Chrome keeps web pages from
-/// opening chrome:// URLs (chrome://quit, chrome://settings/reset…).
 bool IsAppURL(NSString *url) { return [url.lowercaseString hasPrefix:@"netnyahoo:"]; }
 bool IsWebUIPage(NSString *url) {
   NSString *u = url.lowercaseString;
@@ -192,7 +165,7 @@ NSString *EngineURL(NSString *appURL) {
   return [@"chrome:" stringByAppendingString:[rest hasPrefix:@"//"] ? rest : [@"//" stringByAppendingString:rest]];
 }
 
-}  // namespace
+}
 
 std::map<std::string, PendingPopup> &Popups() {
   static std::map<std::string, PendingPopup> popups;
@@ -211,8 +184,6 @@ void Client::Emit(NSString *name, NSDictionary *payload) { [view_ emit:name payl
 
 void Client::EmitNavigation() {
   if (!browser_) return;
-  // A view-source: tab's frame shows the page's own URL; Chrome's address bar (and a restored or
-  // reloaded tab) keep the view-source: one.
   NSString *url = URL();
   if (CefRefPtr<CefNavigationEntry> entry = browser_->GetHost()->GetVisibleNavigationEntry()) {
     NSString *display = ToNS(entry->GetDisplayURL());
@@ -280,7 +251,6 @@ void Client::NoteBlocked(NSString *url) {
   lastBlocked_ = url;
   if (blockedEmitQueued_) return;
   blockedEmitQueued_ = true;
-  // Pages can block hundreds of requests; coalesce into a few events per second.
   CefRefPtr<Client> self(this);
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
     self->blockedEmitQueued_ = false;
@@ -358,7 +328,6 @@ void Client::OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, i
   NSDictionary *dict = [data isKindOfClass:NSDictionary.class] ? data : nil;
   std::string frameId = frame->GetIdentifier().ToString();
   if (kind == "hello") {
-    // Which page-script features run in this frame.
     NSMutableDictionary *config = [NSMutableDictionary dictionary];
     NSString *frameURL = [dict[@"url"] isKindOfClass:NSString.class] ? dict[@"url"] : ToNS(frame->GetURL());
     NSString *topURL = frame->IsMain() ? frameURL : URL();
@@ -371,7 +340,6 @@ void Client::OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, i
   } else if (kind == "nowPlaying") {
     if (dict) nowPlaying_[frameId] = dict;
     else nowPlaying_.erase(frameId);
-    // The playing frame wins; otherwise the one that reported last.
     nowPlayingFrame_ = dict ? frameId : (nowPlaying_.empty() ? "" : nowPlaying_.begin()->first);
     for (const auto &[fid, np] : nowPlaying_)
       if ([np[@"playbackState"] isEqual:@"playing"]) nowPlayingFrame_ = fid;
@@ -402,10 +370,7 @@ void Client::OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, i
   } else if (kind == "pip" && dict) {
     bool active = [dict[@"active"] boolValue];
     Emit(@"pictureInPicture", @{@"kind" : dict[@"kind"] ?: @"video", @"active" : @(active)});
-    // Dia's host pill, menu and edge stash on Chrome's video PiP window.
     if (![dict[@"kind"] isEqual:@"document"]) pip::VideoChanged(view_, HostOf(URL()), frame, active);
-    // "Back to tab" from Chromium's PiP window reaches no delegate; the video
-    // still playing after PiP closed is the tell.
     if (!active && [dict[@"playing"] boolValue] && (!view_.visible || !NSApp.isActive))
       Emit(@"activateRequest", @{@"reason" : @"pictureInPicture"});
   } else if (kind == "notification" && dict) {
@@ -415,7 +380,7 @@ void Client::OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, i
     if (notificationFrames_.size() > 500) notificationFrames_.clear();
     notificationFrames_[nid.UTF8String] = frameId;
     NSMutableDictionary *payload = [dict mutableCopy];
-    payload[@"origin"] = origin;  // from the frame, not the page
+    payload[@"origin"] = origin;
     payload[@"browserId"] = @(browser_ ? browser_->GetIdentifier() : 0);
     payload[@"isMainFrame"] = @(frame->IsMain());
     Emit(@"notification", payload);
@@ -457,8 +422,6 @@ void Client::OnFaviconURLChange(CefRefPtr<CefBrowser> browser, const std::vector
 void Client::OnFullscreenModeChange(CefRefPtr<CefBrowser> browser, bool fullscreen) {
   fullscreen_ = fullscreen;
   NSWindow *window = view_.window;
-  // The full-screen window this tab shows in: the window itself, or the one it's shown over (another
-  // profile's window in a full-screen app window, whose toggle is the full-screen window's).
   NSWindow *fullScreenWindow = host::FullScreenWindow(window);
   if (fullscreen && !fullScreenWindow && window) {
     enteredFullscreen_ = true;
@@ -475,15 +438,12 @@ void Client::WatchFullscreenExit(NSWindow *window) {
   if (fullscreenExitObserver_) [NSNotificationCenter.defaultCenter removeObserver:fullscreenExitObserver_];
   fullscreenExitObserver_ = nil;
   if (!window) return;
-  // The user left full screen (green button, ⌃⌘F) with the page still full screen: Chrome hears of
-  // it, but its state for our tabs is ours (chromium-browser-view-hosted-fullscreen.patch), so the
-  // page would stay full screen, the sidebar and toolbar hidden, in a normal window.
   CefRefPtr<Client> self(this);
   fullscreenExitObserver_ = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidExitFullScreenNotification
                                                                             object:window
                                                                              queue:nil
                                                                         usingBlock:^(NSNotification *) {
-                                                                          CefRefPtr<Client> client = self;  // outlives the block it removes
+                                                                          CefRefPtr<Client> client = self;
                                                                           client->WatchFullscreenExit(nil);
                                                                           if (client->fullscreen_ && client->browser_)
                                                                             client->browser_->GetHost()->ExitFullscreen(true);
@@ -492,7 +452,6 @@ void Client::WatchFullscreenExit(NSWindow *window) {
 
 #if NN_DOCKED_DEVTOOLS
 void Client::OnDevToolsDockChanged(CefRefPtr<CefBrowser> browser) {
-  // After Chrome's update of the docked DevTools (this runs inside it).
   __weak NNBrowserView *view = view_;
   dispatch_async(dispatch_get_main_queue(), ^{ [view layoutDockedDevTools]; });
 }
@@ -515,7 +474,6 @@ void Client::OnMediaAccessChange(CefRefPtr<CefBrowser> browser, bool has_video_a
     @"screen" : @(screen),
   });
   capturing_ = has_video_access || has_audio_access;
-  // Capture ended: the next grant says what the next capture is.
   if (!has_video_access && !has_audio_access) site::ClearGrantedMedia(browser->GetIdentifier());
 }
 
@@ -533,7 +491,7 @@ void Client::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fram
   std::string committed = frame->GetURL().ToString();
   if (!committed.empty() && committed != "about:blank") committedPage_ = true;
   mediaFrames_.clear();
-  ApplyMute();  // also emits media
+  ApplyMute();
   if (!nowPlaying_.empty()) {
     nowPlaying_.clear();
     nowPlayingFrame_.clear();
@@ -559,33 +517,25 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
   NSString *openerURL = frame ? ToNS(frame->GetURL()) : URL();
   if (IsAppURL(url) && !IsWebUIPage(openerURL)) return true;
 
-  // Document Picture-in-Picture (documentPictureInPicture.requestWindow; Blink
-  // already required a user activation): the engine's own floating window.
   if (disposition == CEF_WOD_NEW_PICTURE_IN_PICTURE) {
     client = new PictureInPictureClient(view_);
     Emit(@"pictureInPicture", @{@"kind" : @"document", @"active" : @YES});
     return false;
   }
-  // Pop-up blocker: window.open without a user gesture needs the site's permission.
   if (!user_gesture && !site::PopupsAllowed(profile_, openerURL)) {
     NSString *blockedId = site::RecordBlockedPopup(browser->GetIdentifier(), url, ToNS(target_frame_name), features);
     Emit(@"popupBlocked", @{@"id" : blockedId, @"url" : url, @"origin" : OriginOf(openerURL) ?: @""});
     return true;
   }
-  // ⇧⌥-click on a target=_blank link: a split pane (it loads fresh, without an opener).
   if (user_gesture && IsSplitClick(disposition)) {
     Emit(@"openWindow", @{@"url" : url, @"disposition" : @"split", @"userGesture" : @YES});
     return true;
   }
-  // A private window can't share this browser's context (or its opener).
   if (disposition == CEF_WOD_OFF_THE_RECORD) {
     Emit(@"openWindow", @{@"url" : url, @"disposition" : @"incognito", @"userGesture" : @(user_gesture)});
     return true;
   }
 
-  // Everything else becomes a browser now (so window.opener works) parked
-  // until a view adopts it: a little native window for popups, otherwise
-  // whatever view the UI creates for the openWindow event.
   bool popup = disposition == CEF_WOD_NEW_POPUP;
   std::string adoptId = [[NSUUID UUID].UUIDString UTF8String];
   CefRefPtr<Client> popupClient = new Client(nil, profile_);
@@ -624,8 +574,6 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
 void Client::OnBeforeDevToolsPopup(CefRefPtr<CefBrowser> browser, CefWindowInfo &windowInfo,
                                    CefRefPtr<CefClient> &client, CefBrowserSettings &settings,
                                    CefRefPtr<CefDictionaryValue> &extra_info, bool *use_default_window) {
-  // Chrome makes the DevTools window (undocking, its Developer commands) with this tab's client
-  // unless ShowDevTools gave it one: it would then act as this tab.
   if (client.get() == this) client = DevToolsFrontendClient(browser);
 }
 
@@ -643,7 +591,6 @@ void Client::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
       [adopter browserCreated:browser];
       return;
     }
-    // Nobody adopted it (the UI ignored the openWindow event): don't leak it.
     std::string adoptId = adoptId_;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
       auto pending = Popups().find(adoptId);
@@ -660,21 +607,14 @@ void Client::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
 }
 
 bool Client::DoClose(CefRefPtr<CefBrowser> browser) {
-  // Returning false would make CEF send performClose: to the hosting NSWindow
-  // (the whole browser window). Tear down just this browser's view instead.
-  // (A run-loop block, not GCD: it must also run inside the nested run loop
-  // +[NNCef shutdown] spins, which may itself be inside a main-queue block.)
+// Use a run-loop block so shutdown’s nested loop can drain it.
   NSView *hostView = host::ContentsView(browser);
   [NSRunLoop.mainRunLoop performBlock:^{ [hostView removeFromSuperview]; }];
-  // window.close() from the page: let the UI close the tab. Closes we started
-  // (closeBrowser, discard, orphaned popups, app shutdown) aren't reported.
   if (view_ && !view_.closingByRequest && !ShuttingDown() && !closingByEngine_) Emit(@"windowClose", @{});
   return true;
 }
 
 void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
-  // Chrome closes its tabs without DoClose (window.close(), chrome.tabs.remove, the
-  // Browser closing): same as there.
   if (host::IsChromeTab(browser)) {
     [host::ContentsView(browser) removeFromSuperview];
     if (view_ && !view_.closingByRequest && !ShuttingDown() && !closingByEngine_) Emit(@"windowClose", @{});
@@ -690,15 +630,11 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
 
 #if NN_TAB_STRIP
 void Client::OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) {
-  // Chrome reports every tab after each change; only what moved matters to the app.
   if (tabStripIndex_ == index && tabStripActive_ == active && tabStripPinned_ == pinned) return;
   const bool first = tabStripIndex_ < 0;
   tabStripIndex_ = index;
   tabStripActive_ = active;
   tabStripPinned_ = pinned;
-  // Not the tab joining the strip: the app placed it (and a Browser's first tab is its active one,
-  // which a restored session's Browser reports only once it exists, after the app may have
-  // selected another tab: the release notes after an update showed behind the restored tab).
   if (first) return;
   Emit(@"tabStrip", @{@"index" : @(index), @"active" : @(active), @"pinned" : @(pinned)});
 }
@@ -726,9 +662,6 @@ bool Client::OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
   if (!frame->IsMain()) return false;
   if (!is_redirect) pendingNavigation_.clear();
   pendingNavigation_.push_back(url.UTF8String);
-  // A URL that already turned into a download isn't downloaded again by a
-  // load nobody asked for: restoring the tab, recreating a discarded or
-  // remounted view. (A click, or loadUrl(url, {userInitiated}), still works.)
   bool userInitiated = ConsumeUserNavigation(url) || user_gesture;
   if (!is_redirect && !userInitiated && !committedPage_ && WasNavigationDownload(url)) {
     pendingNavigation_.clear();
@@ -740,7 +673,6 @@ bool Client::OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
 
 bool Client::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString &target_url,
                               cef_window_open_disposition_t disposition, bool user_gesture) {
-  // ⌘/middle/⇧-clicks on links: background tab / tab / window, like Chrome.
   if (disposition == CEF_WOD_CURRENT_TAB) return false;
   if (IsAppURL(ToNS(target_url)) && !IsWebUIPage(frame ? ToNS(frame->GetURL()) : URL())) return true;
   if (user_gesture) AllowUserNavigation(ToNS(target_url));
@@ -755,11 +687,8 @@ bool Client::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 CefRefPtr<CefResourceRequestHandler> Client::GetResourceRequestHandler(
     CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool is_navigation,
     bool is_download, const CefString &request_initiator, bool &disable_default_handling) {
-  // IO thread.
   CefRefPtr<Client> self(this);
   if (is_navigation && frame && frame->IsMain()) {
-    // A new page: restart the blocked counter (posted, so it's ordered before
-    // any of the new page's blocked subresources).
     dispatch_async(dispatch_get_main_queue(), ^{
       self->blockedCount_ = 0;
       self->lastBlocked_ = nil;
@@ -776,7 +705,7 @@ bool Client::OnRenderProcessUnresponsive(CefRefPtr<CefBrowser> browser,
   unresponsive_ = true;
   site::SetUnresponsiveCallback(browser->GetIdentifier(), callback);
   Emit(@"unresponsive", @{});
-  return true;  // keep waiting until the UI decides (see NNBrowserView -terminateUnresponsive)
+  return true;
 }
 
 void Client::OnRenderProcessResponsive(CefRefPtr<CefBrowser> browser) {
@@ -808,8 +737,6 @@ bool Client::OnCertificateError(CefRefPtr<CefBrowser> browser, cef_errorcode_t c
 
 bool Client::OnBeforeDownload(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDownloadItem> item,
                               const CefString &suggested_name, CefRefPtr<CefBeforeDownloadCallback> callback) {
-  // The tab's navigation became this download: like Chrome, the tab keeps its
-  // page (nothing is committed); tell the UI so it doesn't keep the URL either.
   std::string original = item->GetOriginalUrl().ToString(), final = item->GetURL().ToString();
   bool fromNavigation = false;
   for (const std::string &u : pendingNavigation_) fromNavigation |= u == original || u == final;
@@ -852,8 +779,6 @@ bool Client::OnShowPermissionPrompt(CefRefPtr<CefBrowser> browser, uint64_t prom
 
 namespace {
 
-/// Chrome's page menu items that open Chrome UI this app doesn't show (Chrome's own split view,
-/// profile windows, side panels, bubbles anchored to its hidden toolbar) or need Google services.
 constexpr int kUnavailableChromeItems[] = {
     IDC_CONTENT_CONTEXT_OPENLINKINPROFILE, IDC_CONTENT_CONTEXT_OPENLINKBOOKMARKAPP, IDC_CONTENT_CONTEXT_OPENLINKWITH,
     IDC_CONTENT_CONTEXT_OPENLINK_ISOLATED, IDC_CONTENT_CONTEXT_TRANSLATE, IDC_CONTENT_CONTEXT_PARTIAL_TRANSLATE,
@@ -863,7 +788,6 @@ constexpr int kUnavailableChromeItems[] = {
     IDC_SEND_TAB_TO_SELF,
 };
 
-/// No separator first, last or twice in a row.
 void TidySeparators(CefRefPtr<CefMenuModel> model) {
   for (int i = (int)model->GetCount() - 1; i >= 0; i--) {
     bool separator = model->GetTypeAt(i) == MENUITEMTYPE_SEPARATOR;
@@ -872,9 +796,6 @@ void TidySeparators(CefRefPtr<CefMenuModel> model) {
   }
 }
 
-/// DEV (NETNYAHOO_CONTEXT_MENU_LOG=<file>): each page menu is written to <file> as JSON instead of
-/// shown; if <file>.pick holds an item's label, that item runs (its extension, Chrome's handler or
-/// ours), then the pick file is removed. Test instances can't show a menu nobody closes.
 NSArray *DescribeMenu(CefRefPtr<CefMenuModel> model) {
   NSMutableArray *items = [NSMutableArray array];
   for (size_t i = 0; i < model->GetCount(); i++) {
@@ -900,7 +821,7 @@ int FindMenuItem(CefRefPtr<CefMenuModel> model, NSString *label) {
   return 0;
 }
 
-}  // namespace
+}
 
 void Client::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                                  CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model) {
@@ -924,7 +845,6 @@ void Client::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFra
     separator();
   }
   if (!params->GetSelectionText().empty() && !params->IsEditable()) {
-    // Chrome's order: Copy, Copy Link to Highlight, Search … for “…”.
     int copy = model->GetIndexOf(MENU_ID_COPY);
     bool afterCopy = copy >= index;
     if (afterCopy) index = copy + 1;
@@ -937,17 +857,11 @@ void Client::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFra
   if (model->GetCount() > 0 && model->GetTypeAt(model->GetCount() - 1) != MENUITEMTYPE_SEPARATOR)
     model->AddSeparator();
   model->AddItem(kInspect, "Inspect");
-  // Drop a leading/trailing/double separator left by the defaults.
   while (model->GetCount() > 0 && model->GetTypeAt(0) == MENUITEMTYPE_SEPARATOR) model->RemoveAt(0);
 }
 
-/// Chrome's own page menu (links, images, media, spelling, extensions' items, Print, Save As…,
-/// View Page Source) with what differs in this app: the search engine and Inspect are ours, Copy
-/// Link to Highlight makes Dia's clean quote link, Open Link in Split View opens our split, and
-/// items for Chrome UI we don't show are gone.
 void Client::ChromeTabContextMenu(CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params,
                                   CefRefPtr<CefMenuModel> model) {
-  // Chrome adds some twice (Open in Reading Mode on editable fields); Remove takes one at a time.
   for (int id : kUnavailableChromeItems)
     while (model->Remove(id)) {
     }
@@ -959,7 +873,6 @@ void Client::ChromeTabContextMenu(CefRefPtr<CefFrame> frame, CefRefPtr<CefContex
     } else if (model->GetIndexOf(IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB) >= 0) {
       model->SetLabel(IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB, ToCef(label));
     } else if (!params->IsEditable() && model->GetIndexOf(MENU_ID_COPY) >= 0) {
-      // Chrome only offers it with a default search engine of its own.
       model->InsertItemAt(model->GetIndexOf(MENU_ID_COPY) + 1, kSearchSelection, ToCef(label));
     }
     if (kChatEnabled && !params->IsEditable() && model->GetIndexOf(MENU_ID_COPY) >= 0)
@@ -990,7 +903,6 @@ bool Client::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFr
   NSString *link = ToNS(params->GetLinkUrl());
   NSString *src = ToNS(params->GetSourceUrl());
   switch (command_id) {
-    // Chrome's items that are ours to run.
     case IDC_CONTENT_CONTEXT_SEARCHWEBFOR:
     case IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB:
       command_id = kSearchSelection;
@@ -1055,8 +967,6 @@ bool Client::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFr
 // MARK: CefFocusHandler
 
 void Client::OnGotFocus(CefRefPtr<CefBrowser> browser) {
-  // Chrome focuses a tab it activates (host::TabShown): not the user's doing, and reporting it
-  // made two split panes activate each other forever.
   if (host::ActivatingTab()) return;
   if (view_) host::TabShown(view_);
   Emit(@"focus", @{});
@@ -1067,7 +977,6 @@ void Client::OnGotFocus(CefRefPtr<CefBrowser> browser) {
 bool Client::OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event, CefEventHandle os_event,
                            bool *is_keyboard_shortcut) {
   if (event.type != KEYEVENT_RAWKEYDOWN) return false;
-  // Esc leaves page fullscreen (in Chrome the browser, not the page, owns this key).
   if (event.windows_key_code == 0x1B && fullscreen_) {
     browser->GetHost()->ExitFullscreen(true);
     return true;
@@ -1075,7 +984,6 @@ bool Client::OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &eve
   NSEvent *ns = (__bridge NSEvent *)os_event;
   if (!ns || ns.type != NSEventTypeKeyDown) return false;
   if (IsReservedShortcut(ns)) return PerformMenuKey(ns);
-  // Other ⌘ shortcuts go to the page first; unhandled ones come back through OnKeyEvent.
   if (ns.modifierFlags & NSEventModifierFlagCommand) *is_keyboard_shortcut = true;
   return false;
 }
@@ -1083,7 +991,6 @@ bool Client::OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &eve
 bool Client::OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event, CefEventHandle os_event) {
   NSEvent *ns = (__bridge NSEvent *)os_event;
   if (event.type != KEYEVENT_RAWKEYDOWN || !ns || ns.type != NSEventTypeKeyDown) return false;
-  // Esc the page didn't use stops a loading page (Chrome's Stop accelerator).
   if (event.windows_key_code == 0x1B && !(ns.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagFunction) &&
       browser->IsLoading()) {
     browser->StopLoad();
@@ -1091,15 +998,9 @@ bool Client::OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event,
   }
   if (!(ns.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagFunction)))
     return false;
-  // ⌘↩ a text field didn't use isn't Back to Pinned URL (the menu keeps it from our own fields the
-  // same way): on a pinned tab it could navigate away from a half-written form.
   if (event.focus_on_editable_field && event.windows_key_code == 0x0D &&
       (ns.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) == NSEventModifierFlagCommand)
     return false;
-  // The page didn't consume it: give the menu bar its turn (⌘L, ⌘F, ⌘R, Edit menu…).
-  // Then Chrome's own handling, in its Browser window (the key window): extensions'
-  // chrome.commands run, and its commands for its hidden UI are refused in OnChromeCommand
-  // (host::BlocksChromeCommand).
   return PerformMenuKey(ns);
 }
 
@@ -1107,11 +1008,7 @@ bool Client::OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event,
 
 bool Client::OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString &message_text, bool is_reload,
                                   CefRefPtr<CefJSDialogCallback> callback) {
-  // A page still in the app (reload, navigation, window.close()): Chrome's dialog, as before.
   if (view_ || is_reload || ShuttingDown()) return false;
-  // The app already closed the tab (⌘W, the close button): Chrome keeps it open while it asks,
-  // and a "Cancel" kept a page with no tab showing it, loaded and playing, until quit. The same
-  // question here, and a cancelled close brings the page back as a tab of its window.
   NSWindow *window = host::OpenWindowOf(browser);
   if (!window) return false;
   NSAlert *alert = [[NSAlert alloc] init];
@@ -1133,21 +1030,11 @@ bool Client::OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString
 // MARK: CefCommandHandler
 
 bool Client::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition) {
-  // Chrome's password bubble would hang off its (hidden) toolbar: ours shows instead.
   if (command_id == IDC_MANAGE_PASSWORDS_FOR_PAGE) return chromeui::ShowPasswordPrompt(this, browser);
   return MenuBarTakesChromeShortcut(command_id) || host::BlocksChromeCommand(browser, command_id);
 }
 
 bool MenuBarTakesChromeShortcut(int command_id) {
-  // Chrome runs these in its window's performKeyEquivalent:, after the focused view (a page takes its
-  // keys there) and before AppKit asks the menu bar, and running one swallows the key. The menu
-  // bar's command items keep their keys from Chrome (packages/shell CommandItem.chromeMenuTag); a key
-  // they don't take (its item disabled here, or unbound) doesn't run Chrome's shortcut either, as
-  // those are for Chrome's own UI: ⇧⌘C is Copy URL here, not Chrome's element picker. A command for
-  // a key the menu bar already had is the app's own (Inspect Elements runs Chrome's) or a page's key
-  // passed on (then Chrome's rules apply, host::BlocksChromeCommand).
-  // Any other Chrome command for a key the menu bar has (F12, whose item Chrome's matching misses) is
-  // the menu bar's too.
   NSEvent *event = NSApp.currentEvent;
   if (event.type == NSEventTypeKeyDown && event.timestamp != gMenuKeyTime &&
       (PerformMenuKey(event) || IsChromeShortcutCommand(command_id)))
@@ -1155,7 +1042,7 @@ bool MenuBarTakesChromeShortcut(int command_id) {
   return IsChromeTabSwitch(command_id);
 }
 
-}  // namespace nn
+}
 
 @implementation NNCef (ContextMenu)
 

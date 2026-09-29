@@ -14,7 +14,6 @@ NSData *SHA256(NSData *data) {
   return out;
 }
 
-/// Chrome's id alphabet: each hex digit of the first 16 bytes of SHA-256(key) as a–p.
 NSString *IdForKeyData(NSData *key) {
   NSData *hash = SHA256(key);
   const uint8_t *b = (const uint8_t *)hash.bytes;
@@ -28,12 +27,10 @@ NSString *IdForKeyData(NSData *key) {
 NSDictionary *LoadJSON(NSString *path) {
   NSData *data = [NSData dataWithContentsOfFile:path];
   if (!data) return nil;
-  // Manifests and message catalogs may carry comments / trailing commas.
   id object = [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingJSON5Allowed error:nil];
   return [object isKindOfClass:NSDictionary.class] ? object : nil;
 }
 
-/// __MSG_name__ strings, resolved against the best locale's messages.json.
 NSString *Localize(id value, NSDictionary *messages) {
   if (![value isKindOfClass:NSString.class]) return nil;
   NSString *s = value;
@@ -66,7 +63,6 @@ NSDictionary *Messages(NSString *folder, NSDictionary *manifest) {
   return @{};
 }
 
-/// The icon path closest to `size` (preferring larger) from {"16": path, …} or a plain path.
 NSString *IconPath(id icons, int size) {
   if ([icons isKindOfClass:NSString.class]) return icons;
   if (![icons isKindOfClass:NSDictionary.class]) return nil;
@@ -94,7 +90,7 @@ NSArray<NSString *> *Strings(id list) {
 
 bool IsHostPattern(NSString *s) { return [s isEqualToString:@"<all_urls>"] || [s containsString:@"://"]; }
 
-}  // namespace
+}
 
 bool IsExtensionId(NSString *s) {
   if (s.length != 32) return false;
@@ -166,4 +162,4 @@ NSDictionary *ReadManifest(NSString *folder) {
   return out;
 }
 
-}  // namespace nn::ext
+}

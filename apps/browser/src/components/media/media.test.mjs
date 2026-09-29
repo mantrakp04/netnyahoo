@@ -1,4 +1,3 @@
-// Media sessions: bookkeeping behind the mini players (components/media/state.ts).
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/components/media/media.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -34,16 +33,13 @@ test("sessions remember when a tab started playing; closing the player lasts unt
   media.setNowPlaying(b, report());
   const playedB = M().sessions[b].playedAt;
   assert.ok(playedB > 0);
-  // Progress reports while playing keep the start time.
   media.setNowPlaying(b, report({ position: 20 }));
   assert.equal(M().sessions[b].playedAt, playedB);
 
-  // A page that only ever paused doesn't count as played.
   media.setNowPlaying(c, report({ playbackState: "paused" }));
   assert.equal(M().sessions[c].playedAt, 0);
   assert.equal(media.playerTabFor(M(), [a, b, c]), b);
 
-  // Paused sessions lose to playing ones; among paused ones the latest wins.
   media.setNowPlaying(b, report({ playbackState: "paused" }));
   await tick();
   media.setNowPlaying(c, report());
@@ -57,7 +53,6 @@ test("sessions remember when a tab started playing; closing the player lasts unt
   assert.equal(M().dismissed[c], undefined);
   assert.equal(media.playerTabFor(M(), [a, b, c]), c);
 
-  // Nothing playing any more / tab closed.
   media.setNowPlaying(c, null);
   assert.equal(M().sessions[c], undefined);
   S().closeTab(b);

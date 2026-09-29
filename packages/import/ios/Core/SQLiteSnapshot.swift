@@ -1,18 +1,12 @@
 import Foundation
 import SQLite3
 
-/// Read-only access to another browser's SQLite database.
-///
-/// The browser may be running and holding the file (Chrome keeps `History` open, Firefox
-/// keeps `places.sqlite` in WAL mode), so the database and its `-wal`/`-journal` siblings are
-/// copied to a private temp directory first and the copy is opened. That also means a row
-/// the browser is writing mid-import can never corrupt what we read, and nothing we do can
-/// touch the original.
 final class SQLiteSnapshot {
   private var db: OpaquePointer?
   private let tempDir: URL
 
   init(copying source: URL) throws {
+    // Copy the database with its WAL before opening; never read the live profile directly.
     let fm = FileManager.default
     guard fm.fileExists(atPath: source.path) else {
       throw ImportError.notFound("\(source.lastPathComponent) not found")
@@ -33,8 +27,6 @@ final class SQLiteSnapshot {
       throw ImportError.unreadable("Couldn't copy \(source.lastPathComponent): \(error.localizedDescription)")
     }
 
-    // Read-write on the private copy so SQLite can replay the copied WAL; fall back to an
-    // immutable open when the copy is somehow not writable.
     if sqlite3_open_v2(copy.path, &db, SQLITE_OPEN_READWRITE, nil) != SQLITE_OK {
       sqlite3_close(db)
       db = nil
@@ -73,7 +65,6 @@ final class SQLiteSnapshot {
     case text(String)
   }
 
-  /// Runs `sql`, calling `body` per row until it returns false.
   func query(_ sql: String, _ bindings: [Value] = [], _ body: (Row) throws -> Bool) throws {
     var stmt: OpaquePointer?
     guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
@@ -96,8 +87,6 @@ final class SQLiteSnapshot {
     }
   }
 
-  /// A cursor positioned on the current row. Columns can be read by index or by name, so
-  /// callers can `SELECT *` and survive a browser adding or dropping columns between versions.
   struct Row {
     let stmt: OpaquePointer
 

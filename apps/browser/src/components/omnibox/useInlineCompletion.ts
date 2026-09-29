@@ -3,19 +3,9 @@ import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { findNodeHandle, type TextInput } from "react-native";
 import { completionToWrite, fieldChange, withoutFirst, type FieldChange, type Inline, type PendingInline } from "./inline";
 
-/**
- * The completion `wanted` for `typed`, shown selected in the field (see inline.ts). Returns the
- * completion the field shows now and `read`, which turns the field's `onChangeText` into typing
- * or the echo of a completion.
- *
- * Builds from before the native side put the completion in the field's value and select it
- * afterwards, which can still lose a key typed in between.
- */
 export function useInlineCompletion(input: RefObject<TextInput | null>, typed: string, wanted: string) {
   const [inline, setInline] = useState<Inline | null>(null);
-  /** Completions asked of the field that haven't come back yet, oldest first. */
   const pending = useRef<PendingInline[]>([]);
-  /** The text the field last reported; `typed` differs when the bar set its text itself. */
   const heard = useRef(typed);
   const shown = !completeInline ? wanted : inline?.typed === typed ? inline.completion : "";
 
@@ -33,8 +23,6 @@ export function useInlineCompletion(input: RefObject<TextInput | null>, typed: s
     if (!write || tag == null) return;
     pending.current = [...pending.current, write];
     const settle = (result: number) => {
-      // 2: the echo settles it. 0: refused, the field has moved on (its change computes a new
-      // completion). 1: the field already showed it.
       if (result === 2) return;
       pending.current = withoutFirst(pending.current, write);
       if (result === 1) setInline(write);

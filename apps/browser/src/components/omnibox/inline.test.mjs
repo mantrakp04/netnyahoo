@@ -1,6 +1,3 @@
-// Inline autocompletion in the command bar's field (inline.ts + core's buildSuggestions), run
-// against a model of the native field: keys, the field's `completeInline`, React Native's own
-// controlled-value writes and JS's handling all interleave, as they do across the bridge.
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/components/omnibox/inline.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -21,11 +18,6 @@ const history = [
 ];
 const suggest = (text) => (text.trim() ? buildSuggestions(text, { tabs: [], history }, { now }).completion : "");
 
-/**
- * The field's side of `completeInline` (packages/shell/ios/InlineCompletion.swift): shows `inline`
- * if the field shows `inline.typed` with the caret after it or the rest of its text (an earlier
- * completion) selected; null (nothing changes) otherwise.
- */
 function applyInline({ text, selection }, inline) {
   const n = inline.typed.length;
   if (!text.startsWith(inline.typed) || selection.start !== n || selection.end !== text.length) return null;
@@ -33,15 +25,11 @@ function applyInline({ text, selection }, inline) {
   return { text: next, selection: { start: n, end: next.length } };
 }
 
-/**
- * The field (main thread), JS (the bar: Omnibox + useInlineCompletion) and the queues between
- * them. `step(pick)` runs one of the runnable things; `pick(n)` chooses which (the schedule).
- */
 function world() {
   const field = { text: "", selection: { start: 0, end: 0 }, count: 0 };
-  const main = []; // field-side work queued by JS: completeInline calls, RN text writes, RN's selection hop
-  const events = []; // onChange events on their way to JS
-  const results = []; // completeInline promises resolving in JS
+  const main = [];
+  const events = [];
+  const results = [];
   const js = { typed: "", suppress: true, inline: null, pending: [], heard: "", lastNativeText: "", mostRecentEventCount: 0 };
   const shown = () => (js.inline?.typed === js.typed ? js.inline.completion : "");
 
@@ -62,7 +50,6 @@ function world() {
     }
   };
 
-  /** After every JS render: the hook's layout effect, then TextInput's controlled-value sync. */
   const rendered = () => {
     if (js.typed !== js.heard) {
       js.heard = js.typed;
@@ -98,7 +85,6 @@ function world() {
   const onResult = ({ write, result }) => {
     if (result === 2) return;
     js.pending = withoutFirst(js.pending, write);
-    // Only a completion already showing re-renders (useInlineCompletion's setInline).
     if (result === 1) {
       js.inline = write;
       rendered();
@@ -117,8 +103,6 @@ function world() {
         change(next.text, next.selection);
         return results.push({ write: op.write, result: 2 });
       }
-      // setTextAndSelection: checked against the event count here, then the text is mounted
-      // (checked again) and the selection set to (-1, -1), i.e. the end, a hop later, unchecked.
       case "rnCommand":
         if (op.count !== field.count) return;
         main.push({ kind: "rnMount", text: op.text, count: op.count }, { kind: "rnCaretToEnd" });
@@ -137,7 +121,6 @@ function world() {
     }
   };
 
-  /** The bar sets its own text (Esc, a scope, a reset). */
   const setText = (text) => {
     js.inline = null;
     js.typed = text;
@@ -148,10 +131,6 @@ function world() {
   return { field, js, shown, main, events, results, key, setText, onMain, onEvent, onResult, steps: 0 };
 }
 
-/**
- * Types `keys` with the given schedule: `pick(n)` returns which of the n runnable steps runs next
- * (the next key, the next field-side op, the next event or promise to reach JS).
- */
 function run(keys, pick) {
   const w = world();
   const queue = [...keys];
@@ -167,7 +146,6 @@ function run(keys, pick) {
   }
 }
 
-/** A seeded PRNG (mulberry32), so a failing schedule can be replayed. */
 function random(seed) {
   return () => {
     seed |= 0;
@@ -178,7 +156,6 @@ function random(seed) {
   };
 }
 
-/** Once everything has settled: the field shows what was typed, JS agrees, any completion is selected. */
 function assertSettled(w, typed, label) {
   const { field, js } = w;
   const completion = w.shown();
@@ -188,10 +165,7 @@ function assertSettled(w, typed, label) {
   if (!js.suppress) assert.equal(completion, suggest(typed), `${label}: completion`);
 }
 
-/** Runs `keys` under every schedule; returns how many there were. */
 function everySchedule(keys, check) {
-  // Each run takes the first choice past its prefix; the alternatives at each later step are
-  // explored from there.
   let schedules = 0;
   const explore = (prefix) => {
     const options = [];
@@ -241,7 +215,6 @@ test("typed slowly (JS catches up after every key), 'm' completes to the host, s
 });
 
 test("a completion computed for older text is never applied", () => {
-  // "m" reaches JS, which asks for "ail.google.com"; "f" is typed before the field gets the request.
   const w = world();
   w.key("m");
   w.onEvent(w.events.shift());
@@ -256,7 +229,6 @@ test("a completion computed for older text is never applied", () => {
   assert.deepEqual(w.js.pending, []);
 });
 
-/** Runs everything queued, field first. */
 function settle(w) {
   while (w.main.length || w.events.length || w.results.length) {
     if (w.main.length) w.onMain(w.main.shift());
@@ -281,7 +253,6 @@ test("⌫ over a completion removes just the completion, and doesn't complete ag
   settle(w);
   assert.equal(w.field.text, "m");
   assert.equal(w.shown(), "");
-  // Typing again completes again.
   w.key("a");
   settle(w);
   assert.equal(w.field.text, "mail.google.com");
@@ -293,8 +264,6 @@ test("the bar clearing itself while a completion is on its way stays cleared", (
   w.key("m");
   w.onEvent(w.events.shift());
   w.setText("");
-  // The completion lands first (the field still shows "m"); the bar's own write, made for the
-  // event count before it, is then dropped by the field, and written again after the echo.
   w.onMain(w.main.shift());
   assert.equal(w.field.text, "mail.google.com");
   settle(w);
@@ -309,9 +278,7 @@ test("fieldChange: typing, deleting, echoes", () => {
   assert.deepEqual(fieldChange("ma", "", "m", []), { echo: false, typed: "m", suppress: true });
   const pending = [{ typed: "m", completion: "ail.google.com" }];
   assert.deepEqual(fieldChange("m", "", "mail.google.com", pending), { echo: true, settled: 1, inline: pending[0], stale: false });
-  // JS cleared the bar (Esc) while the completion was on its way: the echo is stale.
   assert.equal(fieldChange("", "", "mail.google.com", [{ ...pending[0], orphaned: true }]).stale, true);
-  // Every prefix of the host completes to the same text: a key producing it isn't an older echo.
   const older = [{ typed: "mail.googl", completion: "e.com" }];
   assert.deepEqual(fieldChange("mail.google.co", "", "mail.google.com", older), { echo: false, typed: "mail.google.com", suppress: false });
 });
@@ -320,6 +287,5 @@ test("completionToWrite: only what the field doesn't show or isn't about to", ()
   assert.equal(completionToWrite("m", "ail.google.com", "ail.google.com", []), null);
   assert.deepEqual(completionToWrite("m", "ail.google.com", "", []), { typed: "m", completion: "ail.google.com" });
   assert.equal(completionToWrite("m", "ail.google.com", "", [{ typed: "m", completion: "ail.google.com" }]), null);
-  // Esc while a completion is on its way: take it back.
   assert.deepEqual(completionToWrite("m", "", "", [{ typed: "m", completion: "ail.google.com" }]), { typed: "m", completion: "" });
 });

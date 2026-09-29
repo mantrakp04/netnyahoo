@@ -10,20 +10,12 @@ import type { ProfileColor } from "../../store/types";
 import { Button, Sheet, TextField, Toggle, useFormColors } from "../settings/controls";
 import { closeSettingsSheet, showSettingsSheet } from "../settings/sheet";
 
-/**
- * Dia's Create Profile dialog: name, theme colour, and "Share data with another
- * profile" — a toggle that, when on, lists the sets of profiles whose data the new
- * one can share (each row: a radio, the members' colours, "Work, Home, & 2 more").
- * Browser windows show it over the window (CreateProfileHost); Settings as a sheet.
- */
-/** Starting values: a name, and a profile to share data with (turns the toggle on). */
 export type CreateProfilePreset = { name?: string; shareWith?: string };
 
 type Request = { windowId: string; preset: CreateProfilePreset; resolve: (id: string | null) => void };
 
 const useRequest = create<{ request: Request | null }>(() => ({ request: null }));
 
-/** Asks for the new profile's details; resolves with its id, or null if cancelled. */
 export function requestCreateProfile(windowId?: string, preset: CreateProfilePreset = {}): Promise<string | null> {
   return new Promise((resolve) => {
     if (windowId && useBrowser.getState().windows[windowId]) {
@@ -39,7 +31,6 @@ export function requestCreateProfile(windowId?: string, preset: CreateProfilePre
   });
 }
 
-/** Mounted in each browser window (App.tsx). */
 export function CreateProfileHost() {
   const windowId = useWindowId();
   const request = useRequest((r) => (r.request?.windowId === windowId ? r.request : null));
@@ -51,7 +42,6 @@ export function CreateProfileHost() {
   return <CreateProfileSheet windowId={windowId} preset={request.preset} onDone={done} />;
 }
 
-/** "Work, Home, & 2 more" (Dia's truncated list of profile names). */
 export function profileNames(names: string[]): string {
   if (names.length <= 2) return names.join(" & ");
   return `${names.slice(0, 2).join(", ")}, & ${names.length - 2} more`;
@@ -63,7 +53,6 @@ function CreateProfileSheet({ windowId, preset, onDone }: { windowId: string | n
   const profiles = useBrowser((s) => s.profiles);
   const profileOrder = useBrowser((s) => s.profileOrder);
   const groups = useMemo(() => dataGroups({ profiles, profileOrder }), [profiles, profileOrder]);
-  // The window's profile comes first to mind when sharing.
   const current = useBrowser((s) => (windowId && !s.windows[windowId]?.incognito ? s.windows[windowId]!.profileId : s.settings.defaultProfileId));
   const [name, setName] = useState(preset.name ?? "");
   const [color, setColor] = useState<ProfileColor>(() => unusedProfileColor(useBrowser.getState().profiles));
@@ -153,7 +142,6 @@ function RadioDot({ on }: { on: boolean }) {
   );
 }
 
-/** Overlapping colour dots, one per profile in the set. */
 export function ColorStack({ colors: swatches, size = 12 }: { colors: string[]; size?: number }) {
   const theme = useTheme();
   const shown = swatches.slice(0, 4);

@@ -1,5 +1,3 @@
-// `pnpm run deploy` builds dist/ locally, then `hexclave deploy` ships it in the nginx image (Dockerfile);
-// netnyahoo.com is attached to the `site` service as its custom domain.
 export const deploymentGroupId = "site";
 
 export const deploy = () => ({

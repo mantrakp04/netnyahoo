@@ -1,4 +1,3 @@
-// Word-level transcription (Scribe v2) of an audio file: checks a take's words and gives their timing.
 // usage: node scripts/audio/transcribe.mjs <file> [out.json]
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";

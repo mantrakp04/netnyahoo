@@ -1,7 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { ScrollView, Text } from "react-native";
 
-/** Dev-only: shows render errors in place instead of an empty window. */
 export class DevErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
 

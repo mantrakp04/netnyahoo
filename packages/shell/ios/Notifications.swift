@@ -1,16 +1,10 @@
 import AppKit
 import UserNotifications
 
-/// App and web notifications through the Notification Center. Whoever posts one (the engine's
-/// web notifications, downloads, JS) can attach the tab it came from. Clicking it brings the app
-/// forward and reports "click"; dismissing a `dismissible` one (web notifications, whose pages
-/// have close handlers) reports "close".
 final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
   static let shared = NotificationHub()
 
-  /// (id, "click" | "close", userInfo); set by the app module.
   var onResponse: ((String, String, [String: Any]) -> Void)?
-  /// Responses that arrived before JS was listening (e.g. a click that relaunched the app).
   private var pending: [(String, String, [String: Any])] = []
   private static let dismissibleCategory = "netnyahoo.dismissible"
 
@@ -18,7 +12,6 @@ final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
 
   func install() {
     center.delegate = self
-    // Only a category with customDismissAction reports the user closing a notification.
     center.setNotificationCategories([
       UNNotificationCategory(identifier: Self.dismissibleCategory, actions: [], intentIdentifiers: [], options: [.customDismissAction]),
     ])
@@ -30,7 +23,6 @@ final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
     pending = []
   }
 
-  /// "granted" | "denied" | "notDetermined" | "provisional".
   func permission(_ completion: @escaping (String) -> Void) {
     center.getNotificationSettings { settings in
       let status: String
@@ -50,8 +42,6 @@ final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
     }
   }
 
-  /// options: { id, title, body?, subtitle?, silent?, icon? (http(s)/data/file URL), tabId?, windowId?, origin?,
-  /// dismissible?, data? }
   func post(_ options: [String: Any], completion: @escaping (String?) -> Void) {
     let id = options["id"] as? String ?? UUID().uuidString
     let content = UNMutableNotificationContent()
@@ -59,7 +49,6 @@ final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
     content.body = options["body"] as? String ?? ""
     if let subtitle = options["subtitle"] as? String { content.subtitle = subtitle }
     if options["silent"] as? Bool != true { content.sound = .default }
-    // Group by site, like Chrome's per-origin notification threads.
     if let origin = options["origin"] as? String { content.threadIdentifier = origin }
     if options["dismissible"] as? Bool == true { content.categoryIdentifier = Self.dismissibleCategory }
     var info: [String: Any] = [:]
@@ -83,7 +72,6 @@ final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
     center.removePendingNotificationRequests(withIdentifiers: ids)
   }
 
-  /// Attachments must be local files; fetch remote/data icons into the temporary directory.
   private func attachment(from url: URL, id: String, completion: @escaping (UNNotificationAttachment?) -> Void) {
     let make = { (file: URL) in completion(try? UNNotificationAttachment(identifier: "icon", url: file)) }
     if url.isFileURL { return make(url) }
@@ -103,7 +91,6 @@ final class NotificationHub: NSObject, UNUserNotificationCenterDelegate {
 
   // MARK: UNUserNotificationCenterDelegate
 
-  /// Show banners even while the app is frontmost (the page may be in another tab or window).
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
     completionHandler([.banner, .list, .sound])
   }

@@ -6,7 +6,6 @@ import { useBookmarkEditor } from "../bookmarks/edit";
 import { useClearDataRequest } from "./ClearDataDialog";
 import { openInternalPage } from "./urls";
 
-/** DEV: the internal pages / settings / import pieces, for lib/devHarness (`nn.pages`). */
 export const pagesDrivers = {
   openInternalPage,
   openSettings,

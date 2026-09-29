@@ -20,7 +20,6 @@ final class ArcTests: XCTestCase {
     ])
     XCTAssertEqual(personal.pinned[0].pageTitle, "Calendar – Week of Sep 1")
     XCTAssertNil(personal.pinned[2].pageTitle)
-    // The easel row is skipped; the rename is kept alongside the page title.
     XCTAssertEqual(personal.tabs.map(\.url), ["https://today.example/", "https://today2.example/"])
     XCTAssertEqual(personal.tabs[1].customTitle, "Renamed today")
     XCTAssertEqual(personal.tabs[1].title, "Another today")
@@ -29,7 +28,7 @@ final class ArcTests: XCTestCase {
 
     let work = sidebar.spaces[1]
     XCTAssertEqual(work.icon, "briefcase")
-    XCTAssertEqual(work.colors, ["#FF8000", "#FF0080"])  // extended-sRGB channels clamped
+    XCTAssertEqual(work.colors, ["#FF8000", "#FF0080"])
     XCTAssertEqual(work.color, "#FF8000")
     XCTAssertEqual(work.pinned.map(\.outline), ["Board<https://jira.example/>"])
     XCTAssertEqual(work.tabs, [])
@@ -94,7 +93,7 @@ final class PasswordsCSVTests: XCTestCase {
 
   func testSafariWithBOMQuotesAndNewlines() throws {
     let rows = try PasswordsCSV.load(Fixtures.url("safari/Safari Export/Passwords.csv"))
-    XCTAssertEqual(rows.count, 2)  // the row without a password is skipped
+    XCTAssertEqual(rows.count, 2)
     XCTAssertEqual(rows[0].password, "pa,ss\"word")
     XCTAssertEqual(rows[0].note, "line one\nline two")
     XCTAssertEqual(rows[0].otpAuth, "otpauth://totp/Example?secret=JBSWY3DPEHPK3PXP")
@@ -119,7 +118,6 @@ final class SafariExportTests: XCTestCase {
     XCTAssertEqual(zip.credentials.count, 2)
     XCTAssertEqual(zip.profiles.map(\.name), [nil, "Work"])
     let history = zip.profiles[0].history
-    // The redirecting hop and the file:// entry are dropped; newest first; either visit-count spelling.
     XCTAssertEqual(history.map(\.url), ["https://newest.safari.example/", "https://www.apple.example/maps/"])
     XCTAssertEqual(history.map(\.visits), [9, 3])
     XCTAssertEqual(history[1].lastVisit, Double((1788220800 - 100) * 1_000_000 + 97) / 1000)
@@ -142,29 +140,24 @@ final class SafariDirectTests: XCTestCase {
     XCTAssertTrue(SafariDirect.hasAccess(home: Fixtures.home))
     let out = try SafariDirect.load(home: Fixtures.home)
 
-    // Bookmarks Bar tagged toolbar (with a nested folder), Reading List tagged readingList,
-    // and Safari's synthetic empty "History" list dropped.
     XCTAssertEqual(out.bookmarks?.outline,
       "Bookmarks[Bookmarks Bar{toolbar}[Apple<https://apple.example/>, Travel[京都 guide<https://kyoto.example/>]], " +
       "Reading List{readingList}[A long read<https://longread.example/article>]]")
-    // ReadingList DateAdded surfaces on the leaf.
     let readingList = out.bookmarks?.children?.first { $0.role == "readingList" }
     XCTAssertNotNil(readingList?.children?.first?.dateAdded)
 
-    // History: newest first, web-only (the file:// row is dropped), CFAbsoluteTime → Unix ms.
     let history = out.profiles.first?.history ?? []
     XCTAssertEqual(history.map(\.url), ["https://news.example/", "https://apple.example/"])
     XCTAssertEqual(history[0].title, "News Today")
     XCTAssertEqual(history[0].lastVisit, Double(1788220800) * 1000)
     XCTAssertEqual(history.first(where: { $0.url == "https://apple.example/" })?.visits, 3)
 
-    // Open tabs from LastSession.plist, non-web dropped, second selected.
     XCTAssertEqual(out.tabs.map(\.url), ["https://apple.example/", "https://news.example/"])
     XCTAssertEqual(out.tabs.first(where: { $0.active })?.url, "https://news.example/")
   }
 
   func testMissingLibraryReportsNoAccess() {
-    let empty = Fixtures.url("misc")  // has no Library/Safari
+    let empty = Fixtures.url("misc")
     XCTAssertFalse(SafariDirect.hasAccess(home: empty))
     XCTAssertThrowsError(try SafariDirect.load(home: empty)) { error in
       XCTAssertEqual((error as? ImportError)?.code, "locked")

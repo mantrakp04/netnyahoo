@@ -4,21 +4,12 @@ import { startLive } from "../../live";
 import { useBrowser } from "../../store/browser";
 import { cancelSwitcher, commitSwitcher, moveSwitcher } from "./switcher";
 
-/**
- * App-wide side effects of sidebar features, started once:
- * - web views follow tabs' `muted` (Mute Site / Mute All Tabs change many tabs at once);
- * - abandoned New Tab pages close when you switch apps or lock the screen (Dia 1.38);
- * - the ⌃Tab switcher: releasing ⌃ or leaving the app switches, Esc or a click outside cancels,
- *   → and ← move;
- * - with Clean Up Daily on, untouched tabs are cleaned up in the background.
- */
 const AUTO_CLEAN_EVERY_MS = 30 * 60 * 1000;
 let started = false;
 
 export function startSidebarEffects() {
   if (started) return;
   started = true;
-  // Live folders and Live Calendar refresh, alert and group meetings in the background (src/live).
   startLive();
 
   useBrowser.subscribe((s, prev) => {

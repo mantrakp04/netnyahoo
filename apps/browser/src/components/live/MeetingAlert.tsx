@@ -15,12 +15,6 @@ import { SmallButton } from "./LiveItemCard";
 
 const WIDTH = 300;
 
-/**
- * Just-in-time meeting alert (Dia's CalendarEventReminder): the meeting, who's
- * in it and a one-click Join — plus "Open All and Join" when the invitation has
- * links. It attaches to the pinned calendar tab when the sidebar shows one,
- * else sits at the window's top right. Shown in the front window only.
- */
 export function MeetingAlert({ windowId, windowWidth }: { windowId: string; windowWidth: number }) {
   const event = useMeetingAlert((s) => s.event);
   const front = useBrowser((s) => s.ui.focusedWindowId === windowId);

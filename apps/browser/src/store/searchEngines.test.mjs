@@ -1,4 +1,3 @@
-// Extension search engines in settings (components/extensions/searchEngines keeps them in sync).
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/store/searchEngines.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -25,13 +24,11 @@ test("an extension that took the default search engine controls it until it goes
   assert.equal(searchUrlPrefix(settings), ddg.url);
   assert.equal(searchEngines(settings), searchEngines(settings), "memoised");
 
-  // Disabled: Chrome drops its engine, and the user's own choice is back.
   s.updateSettings({ extensionSearchEngines: [wiki] });
   settings = useBrowser.getState().settings;
   assert.equal(controllingSearchExtension(settings), undefined);
   assert.equal(defaultSearchEngine(settings).id, "bing");
 
-  // A non-controlling extension engine can be picked like any other.
   s.setSearchEngine(`extension:${wiki.extensionId}`);
   assert.equal(defaultSearchEngine(useBrowser.getState().settings).name, "Wikipedia Fixture");
   s.updateSettings({ extensionSearchEngines: [] });

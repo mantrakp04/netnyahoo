@@ -1,18 +1,5 @@
 import Foundation
 
-/// One phrase's data in a sync folder, which any file-syncing service carries between Macs
-/// (iCloud Drive by default; Dropbox, a NAS or a USB drive work too):
-///
-///     <sync folder>/<chain tag>/<scope tag>/<file id>.nns
-///
-/// Every name is random or keyed, and every file is sealed (SyncKeys). A device only ever
-/// creates new files, each with a fresh random name, so two Macs never write the same file;
-/// files are removed only once a snapshot covers them (the engine decides, in JS).
-///
-/// Files can be incomplete when they're read: iCloud Drive lists items it hasn't downloaded
-/// (as `.<name>.icloud` stubs, or dataless files), and Dropbox or a network share can show a
-/// file mid-copy. Those come back as `pending` or `damaged`, never as data, and are tried again.
-/// Reads and writes go through NSFileCoordinator, so the sync client sees them.
 public final class SyncVault {
   public static let fileExtension = "nns"
 
@@ -39,7 +26,6 @@ public final class SyncVault {
 
   // MARK: Writing
 
-  /// Seals `payload` into a new file of `scope`; returns its id.
   @discardableResult
   public func write(scope: String, payload: Data) throws -> String {
     let id = SyncKeys.newFileId()
@@ -48,8 +34,7 @@ public final class SyncVault {
     let directory = scopeURL(scope)
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     let destination = directory.appendingPathComponent("\(id).\(Self.fileExtension)")
-    // Written whole beside the folder (same volume), then renamed in: the sync client never
-    // sees a half-written file under a real name.
+    // Stage then rename so sync clients never see a partial file.
     let staging = try fileManager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: directory, create: true)
     defer { try? fileManager.removeItem(at: staging) }
     let temporary = staging.appendingPathComponent(id)
@@ -65,12 +50,10 @@ public final class SyncVault {
     for id in ids {
       let url = directory.appendingPathComponent("\(id).\(Self.fileExtension)")
       try? coordinate(writing: url, options: .forDeleting) { url in try self.fileManager.removeItem(at: url) }
-      // A stub of a file this Mac never downloaded goes with it.
       try? fileManager.removeItem(at: directory.appendingPathComponent(".\(id).\(Self.fileExtension).icloud"))
     }
   }
 
-  /// Deletes this phrase's data from the folder (every device's). Other phrases' stay.
   public func deleteChain() throws {
     guard chainExists() else { return }
     try coordinate(writing: chainURL, options: .forDeleting) { url in try self.fileManager.removeItem(at: url) }
@@ -84,18 +67,12 @@ public final class SyncVault {
   }
 
   public struct Listing {
-    /// New files that opened.
     public var files: [File] = []
-    /// Files not here in full yet (iCloud hasn't downloaded them); asked to download.
     public var pending: [String] = []
-    /// Files that are here but don't open (still being copied, cut short, or tampered with),
-    /// with their age in seconds. The engine keeps retrying young ones.
     public var damaged: [(id: String, age: TimeInterval)] = []
-    /// Every file id in the scope, read or not (so the engine can forget removed ones).
     public var present: [String] = []
   }
 
-  /// Opens the files of `scope` that aren't in `known`.
   public func read(scope: String, skipping known: Set<String>) -> Listing {
     var listing = Listing()
     let directory = scopeURL(scope)
@@ -104,7 +81,6 @@ public final class SyncVault {
     let suffix = ".\(Self.fileExtension)"
     let scopeTag = keys.scopeTag(scope)
     for name in names.sorted() {
-      // iCloud Drive's placeholder for a file it hasn't downloaded: ".<id>.nns.icloud".
       if name.hasPrefix("."), name.hasSuffix("\(suffix).icloud") {
         let id = String(name.dropFirst().dropLast(suffix.count + ".icloud".count))
         guard Base32.isTag(id), !listing.present.contains(id) else { continue }
@@ -160,9 +136,7 @@ public final class SyncVault {
   }
 }
 
-/// What's at a sync folder, before any phrase is known.
 public enum SyncFolder {
-  /// iCloud Drive's root on this Mac; it exists when iCloud Drive is turned on.
   public static var iCloudDrive: URL {
     FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
   }
@@ -176,7 +150,6 @@ public enum SyncFolder {
     url.standardizedFileURL.path.hasPrefix(iCloudDrive.standardizedFileURL.path)
   }
 
-  /// Whether the folder holds anyone's sync data (a chain folder).
   public static func hasSyncData(_ folder: URL) -> Bool {
     let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
     return names.contains { Base32.isTag($0) }

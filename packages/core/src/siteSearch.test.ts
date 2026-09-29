@@ -26,7 +26,6 @@ test("Tab-to-search: engine hosts and custom keywords", () => {
   });
   assert.equal(findScope("bing", { engines })?.engineId, "bing");
   assert.equal(findScope("W", { engines })?.engineId, "c1");
-  // A custom keyword beats a site with the same text.
   assert.equal(findScope("w", { engines })?.kind, "engine");
 });
 

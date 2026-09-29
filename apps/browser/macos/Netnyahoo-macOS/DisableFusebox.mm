@@ -1,7 +1,4 @@
-// React Native 0.81's modern inspector ("Fusebox") asserts in
-// HostTarget::registerInstance when the legacy-architecture bridge reloads
-// (the old instance hasn't unregistered yet), which kills the app on every full
-// JS reload in debug builds. Fall back to the legacy Hermes inspector instead.
+// RN legacy bridge reload races Fusebox registration; disable Fusebox.
 #if DEBUG
 #import <Foundation/Foundation.h>
 #include <jsinspector-modern/InspectorFlags.h>

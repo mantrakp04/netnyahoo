@@ -33,8 +33,8 @@ test("fixupUrl: ports, IPv6, local names, schemes and file paths", () => {
   assert.equal(fixupUrl("file:///Users/me/a.html"), "file:///Users/me/a.html");
   assert.equal(fixupUrl("/Users/me/My File.html"), "file:///Users/me/My%20File.html");
   assert.equal(fixupUrl("mailto:hi@example.com"), "mailto:hi@example.com");
-  assert.equal(fixupUrl("xn--bcher-kva.example"), null); // unknown TLD, no path
-  assert.equal(fixupUrl("bücher.de"), null); // not ASCII: search it
+  assert.equal(fixupUrl("xn--bcher-kva.example"), null);
+  assert.equal(fixupUrl("bücher.de"), null);
   assert.equal(fixupUrl("en.wikipedia.org/wiki/Cat"), "https://en.wikipedia.org/wiki/Cat");
   assert.equal(fixupUrl("github.io"), "https://github.io");
   assert.equal(fixupUrl("example.co.uk"), "https://example.co.uk");
@@ -44,7 +44,6 @@ test("fixupUrl leaves searches alone: file names, emails, prose, unknown schemes
   for (const text of ["index.html", "node.js", "hi@example.com", "what is apple.com", "note: buy milk", "c++", "javascript:alert(1)", "1.5", "e.g."]) {
     assert.equal(fixupUrl(text), null, text);
   }
-  // …unless a path or port makes the intent clear.
   assert.equal(fixupUrl("docs.internal/setup"), "http://docs.internal/setup");
   assert.equal(fixupUrl("site.photography/about"), "https://site.photography/about");
 });

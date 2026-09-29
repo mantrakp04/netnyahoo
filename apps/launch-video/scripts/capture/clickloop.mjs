@@ -1,4 +1,3 @@
-// screenshot loop of the store page with a real CDP click on the Add button at +2.0 s
 import { mkdirSync, writeFileSync } from "node:fs";
 const [port, match, secs, out, cx, cy] = process.argv.slice(2);
 mkdirSync(out, { recursive: true });

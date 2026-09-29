@@ -24,7 +24,6 @@ import { NetworkBadge } from "../../site/Autofill";
 import { Button, Group, PopUp, Row, SectionHeader, Sheet, TextField, Toggle, type Option } from "../controls";
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 
-/** Settings › Autofill: saved addresses and credit cards, per profile (Chrome's Addresses / Payment methods). */
 export function AutofillPane({ profileId: initial }: { profileId?: string | null }) {
   const theme = useTheme();
   const profiles = useProfiles();
@@ -41,9 +40,7 @@ export function AutofillPane({ profileId: initial }: { profileId?: string | null
   };
   useEffect(() => {
     setEnabled(null);
-    // The toggles are Chrome prefs of the picked profile. A profile with no window open yet only
-    // starts loading with the list call (its request context isn't initialized before that, and
-    // its prefs read as defaults and don't take writes), so read them once the list is back.
+    // Load prefs after the profile list initializes its request context.
     let current = true;
     void load().then(() =>
       getAutofillSettings(profile)
@@ -138,7 +135,6 @@ function cardSummary(c: SavedCard) {
   return [expiry, c.name].filter(Boolean).join(" · ");
 }
 
-/** "4242 4242 4242 4242"; American Express as 4-6-5. */
 function formatCardNumber(digits: string) {
   const groups = /^3[47]/.test(digits) ? [4, 6, 5] : [4, 4, 4, 4, 3];
   const out: string[] = [];
@@ -244,7 +240,6 @@ function yearOptions(current?: number): Option<string>[] {
 
 function CardSheet({ profile, saved, onChanged }: { profile: string; saved?: SavedCard; onChanged: () => void }) {
   const theme = useTheme();
-  // A saved card's number stays hidden until Touch ID; typing a new one replaces it.
   const [number, setNumber] = useState(saved ? null : "");
   const [name, setName] = useState(saved?.name ?? "");
   const [month, setMonth] = useState(saved?.expMonth ? String(saved.expMonth) : "");

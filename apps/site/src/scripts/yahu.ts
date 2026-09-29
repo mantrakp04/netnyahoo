@@ -1,5 +1,3 @@
-// Big Yahu, live: one WebGL renderer that can move between stages (the hero, the closing poster).
-// Loaded lazily by stage.ts; nothing here runs until the hero is near the viewport.
 import { track } from "./track";
 import {
   AnimationMixer,
@@ -38,12 +36,9 @@ export type Dance = "griddy" | "default";
 export type Framing = "hero" | "poster";
 
 export interface Yahu {
-  /** Moves the canvas into another stage element and reframes the camera. */
   attach(host: HTMLElement, framing: Framing): void;
-  /** Plays a dance once (or on a loop), then settles back to the idle pose. */
   dance(which: Dance, loop?: boolean): void;
   stop(): void;
-  /** Where he should look, in viewport pixels (null: straight ahead). */
   lookAt(x: number | null, y: number | null): void;
   readonly canvas: HTMLCanvasElement;
 }
@@ -72,7 +67,6 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   pmrem.dispose();
 
   scene.add(new HemisphereLight(0xfff6ea, 0x4a4036, 1.1));
-  // Warm key from high left (the podium light), cool rim from behind right (the tie's blue).
   const key = new DirectionalLight(0xfff0dc, 2.4);
   key.position.set(-1.1, 3.6, 3.2);
   key.castShadow = true;
@@ -107,16 +101,12 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
 
   const mixer = new AnimationMixer(gltf.scene);
   const clips = new Map(gltf.animations.map((c: AnimationClip) => [c.name, c]));
-  // Idle is the Default Dance's opening stance, held (the rig's bind pose is a stiff T-pose).
-  // A one-frame subclip has zero duration, which the mixer can't play, so it's a paused copy instead.
-  // (A replacement model without that clip just stands in its bind pose.)
   const idleClip = clips.get(CLIP_NAMES.default);
   const idle = idleClip ? mixer.clipAction(idleClip.clone()) : null;
   if (idle) idle.play().paused = true;
   mixer.update(0);
   let current: AnimationAction | null = null;
 
-  // Normalise the posed figure (the clips scale the rig): feet on the floor, 1 unit tall, centred.
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse((o: Object3D) => o instanceof SkinnedMesh && o.skeleton.update());
   const box = new Box3().setFromObject(gltf.scene, true);
@@ -132,8 +122,6 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   const target = new Vector3();
   let baseFov = 23;
   function frame(kind: Framing) {
-    // Low angle, a campaign poster's: the camera sits at knee height and looks up at him.
-    // He's 1 unit tall; the hero frames him head to toe with a little air, the poster leaves room to dance.
     baseFov = kind === "hero" ? 22 : 24;
     camera.position.set(0, 0.26, kind === "hero" ? 3.45 : 3.35);
     target.set(0, 0.55, 0);
@@ -146,7 +134,6 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
     if (!width || !height) return;
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
-    // Narrower than 4:5, widen the lens so his elbows stay in frame.
     camera.fov = baseFov / Math.min(1, camera.aspect / 0.8);
     camera.updateProjectionMatrix();
     invalidate();
@@ -159,9 +146,6 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
     if (visible) invalidate();
   });
 
-  // Turntable: drag to turn him, with inertia; he drifts back to facing you when left alone.
-  // Kept to front and three-quarter views (a caricature reads worst in profile): past ±MAX_YAW the
-  // drag rubber-bands and springs back.
   const REST_YAW = 0.12;
   const MAX_YAW = 0.62;
   let yaw = REST_YAW;
@@ -195,7 +179,6 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   canvas.addEventListener("pointerup", (e) => {
     release();
     const stage = canvas.parentElement?.dataset.stage ?? null;
-    // A tap (not a spin) makes him dance.
     if (moved < 4) {
       const dance = e.pointerType === "mouse" && e.shiftKey ? "griddy" : "default";
       api.dance(dance);
@@ -207,7 +190,6 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   });
   canvas.addEventListener("pointercancel", release);
 
-  // Head tracking.
   let look: { x: number; y: number } | null = null;
   const headYaw = { v: 0, t: 0 };
   const headPitch = { v: 0, t: 0 };
@@ -216,8 +198,6 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   const head = bones.get("head");
   const neck = bones.get("neck");
   const chest = bones.get("chest");
-  // Offsets below are applied on top of whatever the mixer wrote this frame; channels a clip doesn't
-  // key keep their last value, so restore the idle values first or the offsets would accumulate.
   const rest = [head, neck, chest].filter((b): b is Bone => !!b).map((b) => ({ b, q: b.quaternion.clone(), s: b.scale.clone() }));
 
   const clock = new Timer();
@@ -256,8 +236,6 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
       turntable.rotation.z = Math.sin(t * 0.6) * 0.01;
     }
 
-    // Look toward the pointer: head yaw up to ~30°, pitch ~15°; the head does most, the neck the rest.
-    // The body's own turn counts against it, so his face never goes past three-quarter view.
     if (look) {
       const r = canvas.getBoundingClientRect();
       const cx = r.left + r.width / 2;
@@ -269,7 +247,7 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
       headYaw.t = 0;
       headPitch.t = 0;
     }
-    const k = current ? 0.35 : 1; // mostly let the dance lead
+    const k = current ? 0.35 : 1;
     headYaw.v = MathUtils.damp(headYaw.v, headYaw.t * k, 6, dt);
     headPitch.v = MathUtils.damp(headPitch.v, headPitch.t * k, 6, dt);
     if (head) head.quaternion.multiply(q.setFromEuler(euler.set(headPitch.v * 0.7, headYaw.v * 0.7, 0)));
@@ -334,11 +312,9 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
 
   document.addEventListener("visibilitychange", () => !document.hidden && invalidate());
   if (import.meta.env.DEV) {
-    // Posing for screenshots: __yahu.pose("Default Dance", 3.2) freezes that frame.
     Object.assign(window, {
       __yahu: {
         api,
-        // The hero's poster image: the idle pose, straight on, rendered with a transparent background.
         snapshot() {
           renderer.render(scene, camera);
           return canvas.toDataURL("image/png");

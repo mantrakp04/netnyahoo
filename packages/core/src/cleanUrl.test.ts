@@ -29,7 +29,6 @@ test("site-specific parameters are only stripped on their site", () => {
   assert.equal(cleanUrl("https://open.spotify.com/track/1?si=zz"), "https://open.spotify.com/track/1");
   assert.equal(cleanUrl("https://x.com/user/status/1?s=20&t=abc"), "https://x.com/user/status/1");
   assert.equal(cleanUrl("https://www.instagram.com/p/xyz/?igsh=MWQ1"), "https://www.instagram.com/p/xyz/");
-  // `si`, `s` and `t` mean something else elsewhere.
   assert.equal(cleanUrl("https://example.com/?si=1&s=2&t=3"), "https://example.com/?si=1&s=2&t=3");
   assert.equal(
     cleanUrl("https://www.amazon.com/dp/B00X?pd_rd_w=a&pf_rd_p=b&th=1&psc=1"),

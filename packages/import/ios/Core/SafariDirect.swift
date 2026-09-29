@@ -1,33 +1,12 @@
 import Foundation
 
-/// Reads Safari's live data straight from `~/Library/Safari`, the way the Chromium importers
-/// read another browser's profile — no File › Export Browsing Data archive needed.
-///
-/// Everything here is behind Full Disk Access: `~/Library/Safari` is TCC-protected, so a read
-/// throws `EPERM` until the user grants Netnyahoo access in System Settings › Privacy &
-/// Security › Full Disk Access. `hasAccess` probes that without prompting; the UI uses it to
-/// decide whether to offer the direct path or fall back to the export `.zip`.
-///
-/// What it brings:
-/// - `Bookmarks.plist` (binary plist): the bookmark tree, with the Bookmarks Bar tagged
-///   `toolbar` and the Reading List (the list whose identifier/title is
-///   `com.apple.ReadingList`) tagged `readingList`.
-/// - `History.db` (SQLite): `history_items(url, visit_count)` joined to `history_visits(title,
-///   visit_time)` — `visit_time` is CFAbsoluteTime (seconds since 2001-01-01).
-/// - `LastSession.plist` (binary plist): the open tabs (`SessionWindows[].TabStates[]`).
-///
-/// Passwords and payment cards can't be read from disk (Keychain/AutoFill), so those still
-/// come from the export archive (`SafariExport`).
 public enum SafariDirect {
-  /// Seconds between 2001-01-01 (CFAbsoluteTime / Cocoa epoch) and 1970-01-01 (Unix).
   static let cocoaEpoch = 978_307_200.0
 
   static func directory(home: URL) -> URL {
     home.appendingPathComponent("Library/Safari", isDirectory: true)
   }
 
-  /// True when this process can read Safari's data (i.e. it has Full Disk Access). Probes by
-  /// opening `Bookmarks.plist`/`History.db` for reading; never prompts.
   public static func hasAccess(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
     let dir = directory(home: home)
     for name in ["Bookmarks.plist", "History.db"] {
@@ -52,7 +31,6 @@ public enum SafariDirect {
 
     func step(_ code: String, _ body: () throws -> Void) {
       do { try body() } catch let error as ImportError where error == .cancelled {
-        // rethrown below
       } catch let error as ImportError {
         out.warnings.append(ImportWarning(nil, code, error.description))
       } catch {
@@ -92,7 +70,6 @@ public enum SafariDirect {
     return .folder("Bookmarks", children)
   }
 
-  /// Tags the special top-level lists so they land in the right place on our side.
   private static func role(_ node: BookmarkNode, _ json: [String: Any]) -> BookmarkNode {
     var node = node
     let id = (json["WebBookmarkIdentifier"] as? String) ?? (json["Title"] as? String) ?? ""
@@ -114,12 +91,9 @@ public enum SafariDirect {
       return .link(title, url, dateAdded: added.map { $0.timeIntervalSince1970 * 1000 })
     case "WebBookmarkTypeList":
       let kids = (json["Children"] as? [[String: Any]] ?? []).compactMap(parse)
-      // Skip Safari's empty synthetic lists (History proxy etc.), but keep real empty folders
-      // the user made.
       if kids.isEmpty, json["WebBookmarkIdentifier"] != nil { return nil }
       return .folder(json["Title"] as? String ?? "", kids)
     default:
-      // WebBookmarkTypeProxy (History, etc.) has nothing to import.
       return nil
     }
   }
@@ -132,7 +106,6 @@ public enum SafariDirect {
     guard db.tableExists("history_items"), db.tableExists("history_visits") else {
       throw ImportError.unreadable("History.db isn't a Safari history database")
     }
-    // Newest visit and its title per URL; only pages that actually loaded.
     let sql = """
       SELECT i.url AS url, i.visit_count AS visit_count, MAX(v.visit_time) AS visit_time,
              (SELECT title FROM history_visits WHERE history_item = i.id AND title IS NOT NULL
@@ -146,7 +119,6 @@ public enum SafariDirect {
       if count % 256 == 0 { try cancellation.check() }
       count += 1
       guard let url = row.text("url"), URL.isWebURL(url) else { return true }
-      // visit_time is CFAbsoluteTime; read as int seconds (sub-second precision is irrelevant).
       let seconds = row.int("visit_time") ?? 0
       entries.append(HistoryEntry(url: url, title: row.text("title") ?? "",
                                   visits: max(1, Int(row.int("visit_count") ?? 1)),

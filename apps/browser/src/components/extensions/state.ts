@@ -24,7 +24,6 @@ import { activeTabId, engineProfile } from "../../store/model";
 import { usePages } from "../layout/pageState";
 import { openSettings } from "../settings/windows";
 
-/** Window coordinates of the control a popover hangs from. */
 export type Anchor = { x: number; y: number; width: number; height: number };
 
 export type InstallRequest = {
@@ -34,29 +33,21 @@ export type InstallRequest = {
   status: "ready" | "installing" | "error";
   pkg?: ExtensionPackage;
   error?: string;
-  /** Chrome's own install flow is asking (the store's button, a re-enable…): it installs on accept. */
   prompt?: ExtensionInstallPrompt;
 };
 
 type ExtensionsStore = {
-  /** Installed extensions per extension profile ("" = default; see `extensionProfile`). */
   lists: Record<string, InstalledExtension[]>;
-  /** Toolbar action state by tab (browser id), then extension id. */
   actions: Record<number, Record<string, ActionState>>;
-  /** The action popup that's open (one at a time, like Chrome). */
   popup: { windowId: string; profile: string; extensionId: string; url: string; anchor: Anchor } | null;
   install: InstallRequest | null;
-  /** Extensions › Pin Extensions… */
   pinDialog: { windowId: string } | null;
-  /** The extension side panel open in each window (Chrome keeps one per window, like this). */
   sidePanels: Record<string, SidePanel>;
 };
 
-/** An extension's side panel next to the page (components/extensions/SidePanel.tsx). */
 export type SidePanel = {
   extensionId: string;
   profile: string;
-  /** The panel page for the window's active tab. */
   url: string;
 };
 
@@ -64,10 +55,6 @@ export const useExtensions = create<ExtensionsStore>()(() => ({ lists: {}, actio
 
 const EMPTY: InstalledExtension[] = [];
 
-/**
- * The profile whose extensions a window uses. Incognito windows run the default
- * profile's extensions (the ones allowed in incognito), like Chrome.
- */
 export function extensionProfile(s: BrowserState, windowId: string | null | undefined): string {
   const w = windowId ? s.windows[windowId] : undefined;
   return !w || w.incognito ? "" : engineProfile(w.profileId);
@@ -79,7 +66,6 @@ export function useExtensionList(profile: string): InstalledExtension[] {
 
 const loading = new Map<string, Promise<InstalledExtension[]>>();
 
-/** Reloads a profile's list from the engine (coalesced). */
 export function refreshExtensions(profile: string): Promise<InstalledExtension[]> {
   const running = loading.get(profile);
   if (running) return running;
@@ -102,11 +88,6 @@ export const findExtension = (profile: string, id: string) => useExtensions.getS
 
 // MARK: Installing
 
-/**
- * Web Store link or id → its store page, whose own Add button installs through Chrome (its
- * dialog asks through ours, see `showInstallPrompt`), so store extensions auto-update.
- * Opens in the most recent window of `profile` (the Settings window has no tabs).
- */
 export function addFromWebStore(windowId: string, urlOrId: string, profile = extensionProfile(useBrowser.getState(), windowId)) {
   const id = webStoreExtensionId(urlOrId);
   if (!id) {
@@ -121,7 +102,6 @@ export function addFromWebStore(windowId: string, urlOrId: string, profile = ext
   else openWindow({ profileId: s.profileOrder.find((p) => engineProfile(p) === profile), url });
 }
 
-/** Developer install: pick an unpacked extension folder. */
 export async function loadUnpacked(windowId: string, profile = extensionProfile(useBrowser.getState(), windowId)) {
   const path = await chooseExtensionFolder();
   if (!path) return;
@@ -133,7 +113,6 @@ export async function loadUnpacked(windowId: string, profile = extensionProfile(
   }
 }
 
-/** Chrome's install flow asks (see `ExtensionInstallPrompt`): our dialog answers. */
 export function showInstallPrompt(windowId: string, prompt: ExtensionInstallPrompt) {
   const current = useExtensions.getState().install;
   if (current?.prompt) void resolveExtensionInstallPrompt(current.prompt.requestId, false);
@@ -161,7 +140,6 @@ export async function confirmInstall() {
   const request = useExtensions.getState().install;
   if (!request?.pkg || request.status !== "ready") return;
   if (request.prompt) {
-    // Chrome downloads and installs it (a store install: it auto-updates); the list catches up.
     useExtensions.setState({ install: null });
     await resolveExtensionInstallPrompt(request.prompt.requestId, true);
     for (const ms of [1500, 5000]) setTimeout(() => void refreshExtensions(request.profile), ms);
@@ -186,7 +164,6 @@ export function cancelInstall() {
 
 // MARK: Managing
 
-/** Asks first (Dia's "Remove …?" dialog), then uninstalls. */
 export async function removeExtension(profile: string, ext: InstalledExtension, windowId?: string) {
   const { confirmed } = await confirm({
     title: `Remove “${ext.name}”?`,
@@ -237,25 +214,17 @@ function patchExtension(profile: string, id: string, patch: Partial<InstalledExt
   }));
 }
 
-/** Opens the extension's options page in a tab. */
 export function openOptions(windowId: string, ext: InstalledExtension) {
   if (ext.optionsUrl) useBrowser.getState().newTab(windowId, { url: ext.optionsUrl });
 }
 
 export const openManageExtensions = () => openSettings("extensions");
 export const openPinDialog = (windowId: string) => useExtensions.setState({ pinDialog: { windowId } });
-/** Extensions › Add Extension…: the Chrome Web Store, where the Add button installs here. */
 export const openWebStore = (windowId: string) =>
   useBrowser.getState().newTab(windowId, { url: "https://chromewebstore.google.com/category/extensions" });
 
 // MARK: Action popups
 
-/**
- * Clicking an extension's toolbar button, as in Chrome: the engine runs the action on
- * the window's page (granting activeTab; action.onClicked for extensions without a
- * popup), then its popup shows or its side panel toggles. Without Chrome tabs the engine
- * can't run actions: the popup shows, or the extension's menu when it has none.
- */
 export async function activateExtension(windowId: string, ext: InstalledExtension, anchor: Anchor, state?: ActionState | null) {
   const current = useExtensions.getState().popup;
   if (current?.windowId === windowId && current.extensionId === ext.id) return closeExtensionPopup();
@@ -267,7 +236,6 @@ export async function activateExtension(windowId: string, ext: InstalledExtensio
   const url = state ? state.popup : ext.popup ? `chrome-extension://${ext.id}/${ext.popup.replace(/^\//, "")}` : "";
   if (result === "none") return;
   if (result === "sidePanel") return void toggleSidePanel(windowId, ext.id);
-  // The click can't reach the extension here; offer its menu instead.
   if (!url) return void (result === null && showExtensionMenu(windowId, ext));
   const profile = extensionProfile(useBrowser.getState(), windowId);
   useExtensions.setState({ popup: { windowId, profile, extensionId: ext.id, url, anchor } });
@@ -275,20 +243,14 @@ export async function activateExtension(windowId: string, ext: InstalledExtensio
 
 // MARK: Side panels
 
-/** A tab's engine browser id (0 while it has none). */
 export function browserIdOf(tabId: string | undefined): number {
   if (!tabId) return 0;
   for (const [browserId, tab] of Object.entries(usePages.getState().browsers)) if (tab === tabId) return Number(browserId);
   return 0;
 }
 
-/** The window's active tab's engine browser id (0 while it has none). */
 const activeBrowserId = (windowId: string) => browserIdOf(activeTabId(useBrowser.getState(), windowId));
 
-/**
- * Opens the extension's side panel next to the window's page (Chrome's side panel options
- * for the active tab decide the page). Replaces another extension's panel, like Chrome.
- */
 export async function openSidePanel(windowId: string, extensionId: string) {
   const profile = extensionProfile(useBrowser.getState(), windowId);
   const browserId = activeBrowserId(windowId);
@@ -317,10 +279,6 @@ function closeSidePanelsOf(extensionId: string) {
   for (const [windowId, panel] of Object.entries(useExtensions.getState().sidePanels)) if (panel.extensionId === extensionId) closeSidePanel(windowId);
 }
 
-/**
- * The window's tab changed: the panel shows that tab's page (an extension can give tabs their
- * own panel, or turn it off for some), or closes when the tab has none.
- */
 export async function syncSidePanel(windowId: string) {
   const panel = useExtensions.getState().sidePanels[windowId];
   const browserId = activeBrowserId(windowId);
@@ -334,7 +292,6 @@ export async function syncSidePanel(windowId: string) {
 
 export const closeExtensionPopup = () => useExtensions.setState({ popup: null });
 
-/** Right-click on a toolbar button (Chrome's context menu). */
 export async function showExtensionMenu(windowId: string, ext: InstalledExtension) {
   const profile = extensionProfile(useBrowser.getState(), windowId);
   const choice = await showMenu([
@@ -363,11 +320,9 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Extensions menu: the key window's extensions (see Menus.swift). */
 export function extensionMenu(s: BrowserState, windowId: string | undefined) {
   const list = useExtensions.getState().lists[extensionProfile(s, windowId)] ?? EMPTY;
   return list.filter((x) => x.enabled).map((x) => ({ id: x.id, title: x.name, icon: x.actionIcon || x.icon, enabled: true }));
 }
 
-/** DEV: the extensions UI state and install flow, for lib/devHarness scripts (`globalThis.nnExtensionsUi`). */
 if (__DEV__) (globalThis as { nnExtensionsUi?: unknown }).nnExtensionsUi = { useExtensions, confirmInstall, cancelInstall, activateExtension };

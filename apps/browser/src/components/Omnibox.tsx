@@ -24,16 +24,13 @@ import { IconButton, useHover } from "./primitives";
 type Variant = "panel" | "hero" | "sidebar";
 type Selection = { start: number; end: number };
 
-/** Keys the bar handles itself (the text field never sees them). */
 const BASE_KEYS = [
   { key: "Escape" },
   { key: "ArrowUp" },
   { key: "ArrowDown" },
   { key: "Tab" },
-  // ⌃N / ⌃P move through the rows, as in every macOS text field.
   { key: "n", ctrlKey: true },
   { key: "p", ctrlKey: true },
-  // ⌘↩ / ⌥↩ new tab, ⇧⌘↩ force search, ⇧↩ new window, ⌃↩ www.….com (⌃⇧↩ in a new window). Plain ↩ submits.
   { key: "Enter", metaKey: true },
   { key: "Enter", altKey: true },
   { key: "Enter", shiftKey: true },
@@ -42,12 +39,6 @@ const BASE_KEYS = [
 ];
 const SCOPE_KEYS = [...BASE_KEYS, { key: "Backspace" }];
 
-/**
- * Dia's command bar. `panel` is the one anchored over the toolbar (URL click, ⌘L); `hero` is
- * the New Tab page bar; `sidebar` is Arc's dropdown from the sidebar's URL field (Settings ›
- * Appearance › Address Bar): the full URL, a site-info button, and rows from the start. All
- * share suggestions, inline completion and keyboard handling, and open things in `tabId`.
- */
 export function Omnibox({
   variant,
   tabId,
@@ -55,7 +46,6 @@ export function Omnibox({
   onCancel,
 }: {
   variant: Variant;
-  /** The tab the bar navigates (the active tab for the panel, the New Tab page's tab). */
   tabId: string;
   initialText?: string;
   onCancel?(): void;
@@ -68,9 +58,6 @@ export function Omnibox({
   const hero = variant === "hero";
   const dropdown = variant === "sidebar";
 
-  // The New Tab page restores its last query (Dia 1.28); the panel opens on the page URL,
-  // shown without its scheme, fully selected, with no suggestions until you type. Arc's dropdown
-  // shows the whole URL, selected, over the page you're on and the pages you visited last.
   const [restored] = useState(() => (hero ? savedNtpQuery(tabId) : null));
   const initial = !initialText ? "" : dropdown ? initialText : initialText.replace(/^https?:\/\//, "");
   const [typed, setTyped] = useState(restored?.typed ?? initial);
@@ -78,9 +65,7 @@ export function Omnibox({
   const [suppressCompletion, setSuppressCompletion] = useState(true);
   const [selected, setSelected] = useState(restored?.selected ?? 0);
   const [scope, setScope] = useState<SearchScope | null>(restored?.scope ?? null);
-  /** What was typed before entering a scope, put back when it's removed. */
   const scopeFrom = useRef("");
-  /** A selection to apply once (restore, Select All, the panel's preselected URL), then leave to the user. */
   const [pendingSelection, setPendingSelection] = useState<Selection | null>(
     restored?.selection ?? (initial ? { start: 0, end: initial.length } : null),
   );
@@ -102,14 +87,11 @@ export function Omnibox({
   const inline = useInlineCompletion(input, typed, suppressCompletion || scope ? "" : completion);
   const shownCompletion = inline.shown;
   const value = typed + shownCompletion;
-  // The highlighted row (the list can shrink under the selection as you type).
   const selectedIndex = Math.min(selected, items.length - 1);
   const current = items[selectedIndex];
-  // Tab would scope the query to this site / engine ("youtube.com ⇥").
   const canScope = !scope && edited && !!typed.trim() && !/\s/.test(typed.trim());
   const tabScope = useMemo(() => (canScope ? scopeFor(value, windowId) : null), [canScope, value, windowId]);
 
-  // Remember the New Tab page's query for when it comes back.
   const snapshot = useRef<BarSnapshot | null>(null);
   snapshot.current = { typed, edited, selection: selection.current, selected, scope };
   useEffect(() => {
@@ -125,10 +107,7 @@ export function Omnibox({
     };
   }, [hero, windowId, tabId]);
 
-  // Selections are applied once, imperatively, after the text they belong to. Never through
-  // TextInput's `selection` prop: react-native-macos puts the caret back where it was when the prop
-  // was first set whenever the prop goes away, so typing over a completion ("m" + "ail.google.com",
-  // then "f") left the caret after the "m" and the next keys landed before the "f".
+  // Apply selection imperatively; RN macOS can restore a stale caret when its selection prop clears.
   useLayoutEffect(() => {
     if (!pendingSelection) return;
     input.current?.setSelection(pendingSelection.start, pendingSelection.end);
@@ -145,18 +124,16 @@ export function Omnibox({
     selection.current = { start: 0, end: 0 };
   };
 
-  /** Closes the panel; the New Tab page's bar just clears. */
   const dismiss = () => (hero ? reset() : onCancel?.());
 
   const go = (url: string, disposition: Disposition = "current") => {
     if (!url) return;
     openFromBar(url, tabId, disposition);
-    // A new tab / window leaves this bar behind: clear it.
     if (disposition !== "current") dismiss();
   };
 
   const choose = (s: Suggestion | undefined, disposition: Disposition = "current") => {
-    // Telemetry (opt-in): only the kind of row, never the row.
+    // Opt-in telemetry records the suggestion kind only, never its text.
     if (s || !scope) trackSuggestionChosen(s);
     if (!s) {
       if (scope) return;
@@ -175,7 +152,6 @@ export function Omnibox({
       case "create":
         return go(s.url, disposition);
       case "calc":
-        // ↩ copies the answer (and puts it in the bar); with a modifier, search the expression.
         if (disposition !== "current") return go(s.url, disposition);
         copyText(s.value);
         setTyped(s.value);
@@ -188,7 +164,6 @@ export function Omnibox({
     }
   };
 
-  /** ⇧⌘↩: search exactly what was typed (no completion, no top hit). */
   const forceSearch = () => {
     const text = typed.trim();
     if (!text) return;
@@ -218,7 +193,6 @@ export function Omnibox({
     if (key === "Escape") {
       if (scope) return leaveScope(false);
       if (!hero) return onCancel?.();
-      // The New Tab page's bar: Esc first drops the completion / suggestions, then the text.
       if (shownCompletion) return setSuppressCompletion(true);
       return reset();
     }
@@ -238,7 +212,6 @@ export function Omnibox({
     if (key === "Backspace" && scope && !typed) return leaveScope(true);
     if (key === "Enter") {
       if (metaKey && shiftKey) return forceSearch();
-      // ⌃↩: "apple" → www.apple.com, like Chrome (⌃⇧↩: in a new window).
       if (ctrlKey && !/[\s./:]/.test(typed.trim()) && typed.trim())
         return go(`https://www.${typed.trim()}.com`, shiftKey ? "newWindow" : "current");
       if (metaKey || altKey || shiftKey) return choose(current, dispositionFor({ metaKey, altKey, shiftKey }));
@@ -273,9 +246,7 @@ export function Omnibox({
     input.current?.focus();
   };
 
-  /** DEV: when the field's last change reached JS (typing traces). */
   const heardAt = useRef(0);
-  /** A keystroke waiting for the commit that shows its suggestions (telemetry's sampled latency). */
   const keyAt = useRef(0);
   useLayoutEffect(() => {
     if (__DEV__) traceOmnibox({ bar: `${windowId}:${variant}`, typed, heard: heardAt.current, committed: Date.now() });
@@ -341,7 +312,6 @@ export function Omnibox({
     />
   );
 
-  // One object for the rows' lifetime, calling this render's handlers.
   const latest = useRef({ choose, profileId });
   latest.current = { choose, profileId };
   const [rowActions] = useState<RowActions>(() => ({
@@ -360,8 +330,6 @@ export function Omnibox({
   );
 
   const bottomRow = (
-    // Hero: measured on Dia 1.50.1's New Tab bar, the chip row's centre is 30.5pt above the bar's bottom edge
-    // (the input row's is 30pt below its top), so the row is 43 tall with 8 below it.
     <View
       style={{
         flexDirection: "row",
@@ -384,8 +352,6 @@ export function Omnibox({
   );
 
   if (dropdown) {
-    // Arc's dropdown in Dia's materials: the input row where the field was (44 pt, the site's icon
-    // 12 pt in, the site-info button at its trailing end), then the rows. No chip row or Go pill.
     return (
       <View ref={root}>
         <ContextMenuArea captureDescendants onContextMenu={() => void onContextMenu()}>
@@ -429,7 +395,6 @@ export function Omnibox({
   );
 }
 
-/** The Go pill names where ↩ goes: the search engine for searches (Dia shows the matched engine). */
 function destinationLabel(s: Suggestion | undefined): string {
   if (s?.kind === "search") return s.engine;
   if (s?.kind === "calc") return "Copy";

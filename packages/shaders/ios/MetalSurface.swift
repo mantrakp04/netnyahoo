@@ -1,8 +1,6 @@
 import ExpoModulesCore
 import MetalKit
 
-/// Base for shader-backed views: a transparent MTKView that draws a single
-/// full-screen triangle strip. Subclasses encode uniforms in `encode(_:size:)`.
 class MetalSurface: ExpoView, MTKViewDelegate {
   static let device = MTLCreateSystemDefaultDevice()!
   static let queue = device.makeCommandQueue()!
@@ -10,11 +8,8 @@ class MetalSurface: ExpoView, MTKViewDelegate {
   let metalView = MTKView(frame: .zero, device: MetalSurface.device)
   private var pipeline: MTLRenderPipelineState?
 
-  /// Metal source compiled at runtime (kept as Swift strings so the pod needs no
-  /// metallib build phase; `pnpm shaders:check` compiles them offline).
   class var shaderSource: String { fatalError("override") }
   class var fragmentName: String { fatalError("override") }
-  /// True when the fragment already outputs premultiplied alpha.
   class var premultipliedOutput: Bool { false }
 
   required init(appContext: AppContext? = nil) {
@@ -35,15 +30,11 @@ class MetalSurface: ExpoView, MTKViewDelegate {
   private struct Weak { weak var view: MetalSurface?; init(_ v: MetalSurface) { view = v } }
   private static var live: [Weak] = []
 
-  /// Every shader view in a window, for `debugSnapshot`.
   static var instances: [MetalSurface] {
     live.removeAll { $0.view == nil }
     return live.compactMap(\.view)
   }
 
-  /// Renders the current frame offscreen and writes a straight-alpha PNG (the window
-  /// snapshot can't read CAMetalLayer contents). Uses the same pipeline and uniforms as a
-  /// real frame; `encode` may advance a running clock to now, like any frame would.
   func writeSnapshot(to path: String) -> Bool {
     guard let pipeline, bounds.width > 0, bounds.height > 0 else { return false }
     let scale = window?.backingScaleFactor ?? 2
@@ -66,7 +57,6 @@ class MetalSurface: ExpoView, MTKViewDelegate {
     buffer.waitUntilCompleted()
     var bytes = [UInt8](repeating: 0, count: width * height * 4)
     texture.getBytes(&bytes, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
-    // BGRA premultiplied → RGBA straight.
     for i in stride(from: 0, to: bytes.count, by: 4) {
       let a = bytes[i + 3]
       let unpremultiply = { (c: UInt8) -> UInt8 in a == 0 ? 0 : UInt8(min(255, (Int(c) * 255 + Int(a) / 2) / Int(a))) }
@@ -84,10 +74,9 @@ class MetalSurface: ExpoView, MTKViewDelegate {
     return (try? png.write(to: URL(fileURLWithPath: path))) != nil
   }
 
-  // Shader views are decoration: let clicks fall through to what's behind.
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-  // RN macOS assigns frames directly and doesn't autoresize subviews.
+  // RN macOS sets subview frames directly; size them in setFrameSize.
   override func setFrameSize(_ newSize: NSSize) {
     super.setFrameSize(newSize)
     metalView.frame = bounds
@@ -104,8 +93,6 @@ class MetalSurface: ExpoView, MTKViewDelegate {
       desc.fragmentFunction = library.makeFunction(name: fragmentName)
       let attachment = desc.colorAttachments[0]!
       attachment.pixelFormat = .bgra8Unorm
-      // Shaders output straight alpha; blending onto a cleared target yields the
-      // premultiplied result Core Animation expects.
       attachment.isBlendingEnabled = true
       attachment.sourceRGBBlendFactor = premultipliedOutput ? .one : .sourceAlpha
       attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
@@ -160,7 +147,6 @@ vertex FullscreenOut fullscreenVertex(uint vid [[vertex_id]]) {
 """
 
 extension SIMD4 where Scalar == Float {
-  /// `#RRGGBB` / `#RRGGBBAA` → sRGB components.
   init?(hex: String) {
     var s = hex.trimmingCharacters(in: .whitespaces)
     if s.hasPrefix("#") { s.removeFirst() }
@@ -172,20 +158,10 @@ extension SIMD4 where Scalar == Float {
   }
 }
 
-/// The host window's state as Dia's shader views read it (docs/dia-spec.md):
-/// - `isKey`: NewTabAreaLightView scales lift and tilt by `isKeyWindow ? 1 : 0.5`, and pauses
-///   its clock on resign-key / resumes it on become-key.
-/// - `isActive`: WindowThemeBackgroundViewMetal treats a window as active when it, or any of its
-///   parent windows, is key or main (it re-checks on every key/main notification).
-/// - `isVisible`: false while the window is minimised, fully covered or on another Space.
 final class WindowActivity {
-  /// DEV: forces key/active (and visible) so key vs non-key renders can be compared while the
-  /// app can't take focus. nil = the real state. `NETNYAHOO_SHADERS_FORCE_KEY=1` sets it at
-  /// launch (recordings of an `open -g` instance, whose windows are never key).
   static var override: Bool? = ProcessInfo.processInfo.environment["NETNYAHOO_SHADERS_FORCE_KEY"] == "1" ? true : nil {
     didSet { NotificationCenter.default.post(name: changed, object: nil) }
   }
-  /// DEV: forces Reduce Motion on or off; nil = the system setting.
   static var reduceMotionOverride: Bool?
   static let changed = Notification.Name("NetnyahooShadersWindowActivityChanged")
 
@@ -227,7 +203,6 @@ final class WindowActivity {
     guard let window else { return }
     let center = NotificationCenter.default
     let handler: (Notification) -> Void = { [weak self] _ in self?.onChange() }
-    // Any window's key/main change can flip a parent chain's state (sheets, child panels).
     for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
                  NSWindow.didBecomeMainNotification, NSWindow.didResignMainNotification] {
       tokens.append(center.addObserver(forName: name, object: nil, queue: .main, using: handler))

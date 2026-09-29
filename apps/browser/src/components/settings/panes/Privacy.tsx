@@ -30,7 +30,6 @@ import { Button, Checkbox, Group, PopUp, Row, SectionHeader, Sheet, Toggle } fro
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 import { ShareDiagnosticsSection } from "./ShareDiagnostics";
 
-/** Dia's three toggles, then every list uBlock Origin Lite ships, by category (the sheet). */
 const CATEGORIES: { id: FilterListCategory; toggle: string; section: string }[] = [
   { id: "ads", toggle: "Block ads", section: "Ad blockers" },
   { id: "trackers", toggle: "Block trackers", section: "Trackers" },
@@ -55,7 +54,6 @@ function useContentBlocker() {
 
 const categoryOn = (s: ContentBlockerState, c: FilterListCategory) => s.enabled && s.lists.some((l) => l.category === c && l.enabled);
 
-/** Turns a category's lists on (the bundled ones) or off, and the blocker with it. */
 async function setCategory(s: ContentBlockerState, c: FilterListCategory, on: boolean) {
   const lists = s.lists.filter((l) => l.category === c);
   for (const l of on ? lists.filter((l) => l.defaultOn || l.enabled) : lists.filter((l) => l.enabled)) await setFilterListEnabled(l.id, on);
@@ -69,7 +67,6 @@ export function PrivacyPane() {
 
   const toggleCategory = async (c: FilterListCategory, on: boolean) => {
     if (!blocker) return;
-    // Dia confirms before the ad blocker goes off.
     if (!on && c === "ads") {
       const { confirmed } = await confirm({
         title: "Turn Off Ad Blocker?",
@@ -124,11 +121,6 @@ export function PrivacyPane() {
   );
 }
 
-/**
- * Dia's "Advanced Ad Block Settings" dialog: every list uBlock Origin Lite ships, by category,
- * including its annoyance and malware lists. The lists come with the app's copy of uBOL (they
- * change when the app ships a newer one), so there's nothing to download or update here.
- */
 function FilterListsSheet() {
   const theme = useTheme();
   const [blocker, refresh] = useContentBlocker();
@@ -173,7 +165,6 @@ function FilterListsSheet() {
 
 // MARK: Zoom levels
 
-/** Sites with their own zoom (⌘+ / ⌘- remember it per site and profile). */
 function ZoomLevels() {
   const profileId = useBrowser((s) => s.settings.defaultProfileId);
   const profiles = useProfiles();

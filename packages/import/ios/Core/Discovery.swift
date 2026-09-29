@@ -1,10 +1,8 @@
 import Foundation
 
-/// A browser Netnyahoo knows how to import from.
 public struct BrowserDefinition: Sendable {
   public enum Family: String, Codable, Sendable {
     case chromium, firefox, safari, arc
-    /// Read from the running app through its AppleScript interface (Dia's open and pinned tabs).
     case automation
   }
 
@@ -12,16 +10,11 @@ public struct BrowserDefinition: Sendable {
   public var name: String
   public var family: Family
   public var bundleIds: [String]
-  /// Data directory relative to `~/Library/Application Support`.
   public var dataPath: String?
-  /// Keychain generic-password service/account holding the Safe Storage secret.
   public var keychainService: String?
   public var keychainAccount: String?
-  /// Opera keeps its main profile in the data directory itself rather than in `Default/`.
   public var rootIsProfile = false
 
-  /// Dia's list (Arc, Brave, Chrome, Edge, Firefox, Opera, Opera GX, Safari, Vivaldi) plus
-  /// Chrome's other channels, Chromium and Island. Order is the order the picker shows.
   public static let all: [BrowserDefinition] = [
     chromium("chrome", "Google Chrome", ["com.google.Chrome"], "Google/Chrome", "Chrome"),
     arc,
@@ -30,8 +23,6 @@ public struct BrowserDefinition: Sendable {
     .init(id: "firefox", name: "Firefox", family: .firefox, bundleIds: ["org.mozilla.firefox"], dataPath: "Firefox"),
     chromium("edge", "Microsoft Edge", ["com.microsoft.edgemac"], "Microsoft Edge", "Microsoft Edge"),
     chromium("brave", "Brave", ["com.brave.Browser"], "BraveSoftware/Brave-Browser", "Brave"),
-    // Helium (imput's ungoogled-chromium fork) names its Keychain item "Helium Storage Key",
-    // account "Helium" — not the usual "<Browser> Safe Storage". Otherwise standard Chromium.
     BrowserDefinition(id: "helium", name: "Helium", family: .chromium, bundleIds: ["net.imput.helium"],
                       dataPath: "net.imput.helium", keychainService: "Helium Storage Key", keychainAccount: "Helium"),
     chromium("opera", "Opera", ["com.operasoftware.Opera"], "com.operasoftware.Opera", "Opera", rootIsProfile: true),
@@ -47,17 +38,9 @@ public struct BrowserDefinition: Sendable {
   static let arc = BrowserDefinition(id: "arc", name: "Arc", family: .arc, bundleIds: ["company.thebrowser.Browser"],
                                      dataPath: "Arc/User Data", keychainService: "Arc Safe Storage", keychainAccount: "Arc")
 
-  /// Dia (The Browser Company's second browser). Its bookmarks, history and open tabs live in
-  /// the ordinary Chromium files (`Bookmarks`, `History`, plaintext SNSS `Sessions/`), and its
-  /// passwords/cookies under "Dia Safe Storage" / "Dia" — so it imports as a normal Chromium
-  /// browser. Dia's own sidebar (spaces, pinned tiles, folders, custom names/colours) is *not*
-  /// in `StorableSidebar.json` like Arc's; it moved into a SQLCipher-encrypted `tabs.db`
-  /// (GRDB), which we can't decrypt without its key. Its profiles, open and pinned tabs come
-  /// from Dia itself instead, through AppleScript (`DiaTabsImport`, the "diaTabs" source).
   static let dia = BrowserDefinition(id: "dia", name: "Dia", family: .chromium, bundleIds: ["company.thebrowser.dia"],
                                      dataPath: "Dia/User Data", keychainService: "Dia Safe Storage", keychainAccount: "Dia")
 
-  /// The source id of Dia's tabs read through its AppleScript interface (not in `all`: it has no files).
   public static let diaTabsId = "diaTabs"
 
   static func chromium(_ id: String, _ name: String, _ bundleIds: [String], _ path: String, _ keychain: String,
@@ -82,8 +65,6 @@ public struct SpaceSummary: Codable, Equatable, Sendable {
 }
 
 public struct BrowserProfile: Codable, Equatable, Sendable {
-  /// Stable id to pass back to `importData`: the directory name under the browser's data
-  /// directory ("Default", "Profile 1", Firefox's "Profiles/abcd.default-release", "." for Opera).
   public var id: String
   public var name: String
   public var path: String
@@ -91,9 +72,7 @@ public struct BrowserProfile: Codable, Equatable, Sendable {
   public var avatarPath: String?
   public var color: String?
   public var isDefault: Bool
-  /// Kinds this profile has data files for.
   public var available: [ImportKind]
-  /// Arc: the spaces that browse with this profile.
   public var spaces: [SpaceSummary]?
 }
 
@@ -102,25 +81,13 @@ public struct BrowserSource: Codable, Equatable, Sendable {
   public var name: String
   public var family: BrowserDefinition.Family
   public var appPath: String?
-  /// PNG of the app icon, when the app is installed.
   public var iconPath: String?
-  /// Safari: data comes from a File › Export Browsing Data archive, not from disk.
   public var requiresExport: Bool
-  /// Chromium family: passwords/cookies need a Keychain unlock (macOS will prompt).
   public var needsKeychain: Bool
-  /// The browser's data folder exists but macOS won't let us list it: Chrome and Brave protect
-  /// their data from other apps, so reading it needs Full Disk Access. `profiles` is empty
-  /// until the user grants it; the UI shows the Full Disk Access step.
   public var needsFullDiskAccess = false
   public var profiles: [BrowserProfile]
 }
 
-/// Finds installed browsers and their profiles.
-///
-/// `applicationSupport` is `~/Library/Application Support` in the app and a fixture
-/// directory in tests; `locateApp` maps bundle ids to an installed .app (NSWorkspace in the
-/// app). Nothing here reads browsing data or touches the Keychain — only `Local State`,
-/// `profiles.ini`, `StorableSidebar.json` and file existence checks.
 public struct BrowserDiscovery {
   public var applicationSupport: URL
   public var locateApp: ([String]) -> URL?
@@ -141,8 +108,6 @@ public struct BrowserDiscovery {
     return out
   }
 
-  /// "Dia: open and pinned tabs (via Dia)": listed whenever Dia is installed. Its profiles and
-  /// tabs are only known once Dia answers (`DiaTabsImport`), after the user has allowed Automation.
   func diaTabsSource() -> BrowserSource? {
     guard let app = locateApp(BrowserDefinition.dia.bundleIds) else { return nil }
     return BrowserSource(id: BrowserDefinition.diaTabsId, name: "Dia: open and pinned tabs (via Dia)", family: .automation,
@@ -155,7 +120,6 @@ public struct BrowserDiscovery {
     var profiles: [BrowserProfile] = []
     switch def.family {
     case .safari:
-      // Listed whenever Safari is installed; its data only comes in through an export.
       guard app != nil else { return nil }
     case .firefox:
       profiles = firefoxProfiles(def)
@@ -165,8 +129,6 @@ public struct BrowserDiscovery {
     case .automation:
       return nil
     }
-    // A protected folder can't be listed, but its well-known entries can still be stat'ed: only
-    // offer it when there's evidently a profile there (an empty leftover folder isn't a browser).
     let denied = def.family != .safari && profiles.isEmpty && dataDirectory(def).map { root in
       Self.isAccessDenied(root) && ["Local State", "Default", "profiles.ini"].contains {
         FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path)
@@ -181,8 +143,6 @@ public struct BrowserDiscovery {
     )
   }
 
-  /// True when `dir` exists but listing it fails with a permission error (macOS's app-data
-  /// protection, lifted by Full Disk Access). A missing folder isn't "denied".
   static func isAccessDenied(_ dir: URL) -> Bool {
     guard FileManager.default.fileExists(atPath: dir.path) else { return false }
     do {
@@ -199,8 +159,6 @@ public struct BrowserDiscovery {
     def.dataPath.map { applicationSupport.appendingPathComponent($0, isDirectory: true) }
   }
 
-  /// Resolves a profile id from JS to a directory, refusing anything that escapes the
-  /// browser's data directory.
   public func profileDirectory(_ def: BrowserDefinition, _ profileId: String) throws -> URL {
     guard let root = dataDirectory(def) else { throw ImportError.unsupported("\(def.name) has no profiles on disk") }
     let dir = root.appendingPathComponent(profileId, isDirectory: true).standardizedFileURL
@@ -229,7 +187,6 @@ public struct BrowserDiscovery {
     var dirs: [String] = []
     if def.rootIsProfile, isProfile(root) { dirs.append(".") }
     for dir in order + infoCache.keys.sorted() where !dirs.contains(dir) { dirs.append(dir) }
-    // Profiles Local State forgot about still hold data: scan for them too.
     for name in ((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).sorted()
     where (name == "Default" || name.hasPrefix("Profile ")) && !dirs.contains(name) {
       dirs.append(name)
@@ -253,7 +210,6 @@ public struct BrowserDiscovery {
         name = dir == "Default" || dir == "." ? "Default" : "Profile \(fallbackIndex)"
       }
       let picture = path.appendingPathComponent("Google Profile Picture.png")
-      // Opaque black (0xFF000000) is "unset": Dia leaves it so and keeps its own profile colours elsewhere.
       let color = (info["profile_highlight_color"] as? Int ?? info["default_avatar_fill_color"] as? Int)
         .flatMap { UInt32(truncatingIfNeeded: $0) == 0xFF00_0000 ? nil : Hex.color(skColor: $0) }
       out.append(BrowserProfile(
@@ -318,7 +274,6 @@ public struct BrowserDiscovery {
           let ini = try? String(contentsOf: root.appendingPathComponent("profiles.ini"), encoding: .utf8) else { return [] }
     let fm = FileManager.default
     return Firefox.profiles(ini: ini).compactMap { p in
-      // Absolute paths (IsRelative=0) outside the data directory aren't importable by id.
       guard !p.path.hasPrefix("/") else { return nil }
       let dir = root.appendingPathComponent(p.path, isDirectory: true)
       guard fm.fileExists(atPath: dir.path) else { return nil }

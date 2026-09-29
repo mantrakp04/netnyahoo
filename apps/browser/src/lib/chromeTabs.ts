@@ -4,19 +4,9 @@ import { useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile } from "../store/model";
 import { webviews } from "./webviews";
 
-/**
- * Keeps the engine's tabs in step with the app's:
- * - A tab moving to another window keeps its page (history, form state, the Chrome
- *   tab) instead of reloading: the move is announced before its views re-render.
- * - With Chrome tabs (packages/cef NN_CHROME_TABS) each window's tabs of a profile are
- *   a real Chrome tab strip: its order and pins follow the sidebar, so extensions'
- *   chrome.tabs sees what the user sees; tabs an extension activates or pins come back
- *   here (`onChromeTabStrip`).
- */
 let started = false;
 let chromeTabs = false;
 
-/** DEV: the Chrome windows and engine state, for lib/devHarness scripts (`globalThis.nnChromeTabs`). */
 if (__DEV__) (globalThis as { nnChromeTabs?: unknown }).nnChromeTabs = { chromeWindows, engineInfo, devWindowAction };
 
 export function startChromeTabs() {
@@ -35,10 +25,6 @@ export function startChromeTabs() {
   });
 }
 
-/**
- * Tabs whose web view has a browser, with its id (they're what the engine can hand over or place).
- * An unloaded pinned tab keeps its old browser id in pageState but has no web view.
- */
 const liveTabs = () =>
   new Map(
     Object.entries(usePages.getState().browsers)
@@ -53,7 +39,6 @@ function announceMoves(s: BrowserState, prev: BrowserState) {
   for (const [id, tab] of Object.entries(s.tabs)) {
     const before = prev.tabs[id];
     if (!before || before.windowId === tab.windowId) continue;
-    // Another profile's engine data can't take the page along.
     if (engineProfile(before.profileId) !== engineProfile(tab.profileId)) continue;
     live ??= liveTabs();
     if (live.has(id)) prepareTabTransfer(id);
@@ -62,13 +47,8 @@ function announceMoves(s: BrowserState, prev: BrowserState) {
 
 // MARK: Chrome's tab strip
 
-/** Last place sent per tab, so unchanged tabs aren't touched. */
 const placed = new Map<string, string>();
-/**
- * When the app last placed a tab. The engine applies places asynchronously (after the call
- * returns) and Chrome reports every tab after each change, so for a moment reports carry the
- * state from before: those aren't an extension's doing.
- */
+// Ignore Chrome reports until asynchronous placement settles.
 let lastPlacedAt = 0;
 const ECHO_MS = 1000;
 let syncQueued = false;
@@ -82,10 +62,6 @@ function scheduleStripSync() {
   }, 0);
 }
 
-/**
- * Each window's tabs of a profile, in sidebar order (pinned first), are one Chrome
- * window's tab strip: index among those with a browser (Chrome only has those).
- */
 function syncStrips() {
   const s = useBrowser.getState();
   const live = liveTabs();
@@ -99,7 +75,6 @@ function syncStrips() {
       const index = indexes.get(profile) ?? 0;
       indexes.set(profile, index + 1);
       seen.add(id);
-      // Per browser: a pinned tab's page that unloaded and loads again is a new Chrome tab to place.
       const key = `${live.get(id)}|${index}|${tab.pinned ? 1 : 0}`;
       if (placed.get(id) === key) continue;
       placed.set(id, key);
@@ -110,25 +85,17 @@ function syncStrips() {
   for (const id of placed.keys()) if (!seen.has(id)) placed.delete(id);
 }
 
-/**
- * Chrome's tab strip changed under the app: an extension activated or pinned the tab
- * (chrome.tabs.update). Echoes of our own changes match the app already.
- */
 export function onChromeTabStrip(tabId: string, place: TabStripPlace) {
   const s = useBrowser.getState();
   const tab = s.tabs[tabId];
   const w = tab && s.windows[tab.windowId];
   if (!tab || !w) return;
   if (!!tab.pinned !== place.pinned) {
-    // Chrome's state before our places apply: a Chrome tab not placed yet (a new pinned tab, or a
-    // pinned tab's page loading again or restored by ⇧⌘T, starts unpinned), or any tab right after
-    // a place. Following it flipped pins back and forth (each re-pin reset the pinned URL); the
-    // sidebar's state is sent again instead.
+    // Reapply sidebar pin state after Chrome reports a stale placement.
     if (Date.now() - lastPlacedAt < ECHO_MS || !placed.get(tabId)?.startsWith(`${liveTabs().get(tabId)}|`)) {
       placed.delete(tabId);
       return scheduleStripSync();
     }
-    // Ours to follow, and remembered so the next sync doesn't undo it.
     placed.delete(tabId);
     s.togglePin(tabId);
   }

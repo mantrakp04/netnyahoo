@@ -21,36 +21,26 @@ import { ProfileSwipeArea } from "./ProfileSwipe";
 import { openNewTabInSplit } from "./splitActions";
 import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag } from "./tabDrag";
 
-/** Height of the strip; the traffic lights sit in it, centred on its tabs. */
 export const TOP_STRIP_HEIGHT = layout.sidebarHeader;
 const CHIP_HEIGHT = 32;
 const CHIP_TOP = 27 - CHIP_HEIGHT / 2;
 const PINNED_WIDTH = 40;
+// Dia: tab groups 96–232pt.
 const MIN_CHIP = 96;
 const MAX_CHIP = 232;
 const GAP = 4;
 
-/** An entry in the strip: a pinned tile, a group's label, a tab, or a split (one chip for all its panes). */
 type Entry =
   | { kind: "pinned"; id: string }
   | { kind: "group"; id: string }
   | { kind: "tab"; id: string; group: string | null }
   | { kind: "split"; id: string; tabIds: string[]; group: string | null };
 
-/**
- * ⇧⌘S "Show Tabs in Sidebar" off: Dia's horizontal tab bar across the top of
- * the window. Pinned tabs come first as icon tiles, then tabs (groups get a
- * coloured label and underline, splits one combined chip), then the + button.
- * Tabs share the width between 96 and 232pt and scroll past that; drag to
- * reorder, or onto the page to split.
- */
 export function TopTabStrip({ floating }: { floating?: boolean }) {
   const windowId = useWindowId();
   const [width, setWidth] = useState(0);
   const current = useWindowProfileId();
-  // Swiping between profiles pages the tabs (layout/profilePager), as in the sidebar.
   const { pages } = usePagerPages(windowId);
-  // The tabs end where the profile indicator and Downloads begin.
   const [controls, setControls] = useState(76);
   const left = floating ? 8 : layout.trafficLightsWidth;
   const right = Math.max(84, controls + 8 + 6);
@@ -86,7 +76,6 @@ export function TopTabStrip({ floating }: { floating?: boolean }) {
   );
 }
 
-/** A profile's tabs in the strip; the window's, or one beside it while a swipe pages between them. */
 function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId: string; slot: number; pageWidth: number; current: boolean; resting: boolean }) {
   const windowId = useWindowId();
   const translateX = usePageOffset(windowId, slot, pageWidth);
@@ -122,7 +111,6 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
   const tabCount = parsed.filter((e) => e.kind === "tab" || e.kind === "split").length;
   const pinnedCount = parsed.filter((e) => e.kind === "pinned").length;
   const groupCount = parsed.filter((e) => e.kind === "group").length;
-  // Room for tabs: the page less its pinned tiles, group labels and the + button.
   const room = pageWidth - pinnedCount * (PINNED_WIDTH + GAP) - groupCount * (110 + GAP) - 46;
   const chip = Math.max(MIN_CHIP, Math.min(MAX_CHIP, tabCount ? room / tabCount - GAP : MAX_CHIP));
   const regular = parsed.filter((e) => e.kind === "tab").map((e) => e.id);
@@ -160,7 +148,6 @@ function parseEntry(key: string): Entry {
   return { kind: "tab", id: id!, group: a || null };
 }
 
-/** Horizontal drag to reorder; dragging onto the page offers Dia's split targets. */
 function DraggableChip({ tabId, width, index, count, group }: { tabId: string; width: number; index: number; count: number; group: string | null }) {
   const dx = useRef(new Animated.Value(0)).current;
   const [dragging, setDragging] = useState(false);
@@ -180,7 +167,6 @@ function DraggableChip({ tabId, width, index, count, group }: { tabId: string; w
         onPanResponderRelease: (_, g) => {
           dx.setValue(0);
           setDragging(false);
-          // Dropped on a split target: that's handled; otherwise it's a reorder.
           if (endTabDrag()) return;
           const to = Math.min(Math.max(index + Math.round(g.dx / pitch), 0), count - 1);
           if (to !== index) useBrowser.getState().moveTab(tabId, sectionIndex(tabId, to));
@@ -200,13 +186,11 @@ function DraggableChip({ tabId, width, index, count, group }: { tabId: string; w
   );
 }
 
-/** Index among the tab's section (regular tabs of its profile), which moveTab expects. */
 function sectionIndex(tabId: string, visibleIndex: number) {
   const s = useBrowser.getState();
   const tab = s.tabs[tabId]!;
   const w = s.windows[tab.windowId]!;
   const section = w.tabIds.filter((id) => s.tabs[id]?.profileId === tab.profileId && !s.tabs[id]?.pinned);
-  // Collapsed groups hide tabs from the strip; map through the visible ones.
   const visible = section.filter((id) => !Object.values(s.groups).some((g) => g.collapsed && g.tabIds.includes(id) && id !== tabId));
   const target = visible[visibleIndex];
   return target ? section.indexOf(target) : section.length - 1;
@@ -252,7 +236,6 @@ function TabChip({ tabId, width, group }: { tabId: string; width: number; group:
   );
 }
 
-/** The sidebar's row treatment, as a chip: selected dark fill + hairline + glow; hover / press fills. */
 function ChipSurface({ active, hovered, pressed, width, children }: { active: boolean; hovered: boolean; pressed: boolean; width: number; children: React.ReactNode }) {
   const theme = useTheme();
   return (
@@ -333,7 +316,6 @@ function PinnedChip({ tabId }: { tabId: string }) {
   );
 }
 
-/** A group's label chip: colour dot or icon + name; click collapses / expands the group. */
 function GroupLabel({ groupId }: { groupId: string }) {
   const theme = useTheme();
   const group = useBrowser((s) => s.groups[groupId]);
@@ -368,7 +350,6 @@ function GroupLabel({ groupId }: { groupId: string }) {
   );
 }
 
-/** A split as one chip: each pane's icon and title, split by hairlines; the focused pane reads brightest. */
 function SplitChip({ tabIds, width, group }: { tabIds: string[]; width: number; group: string | null }) {
   const theme = useTheme();
   const windowId = useWindowId();
@@ -427,10 +408,6 @@ function NewTabButton({ windowId }: { windowId: string }) {
   );
 }
 
-/**
- * Focus Mode (⌘S) with tabs on top: hovering the window's top edge slides the
- * strip down over the page as a floating bar; it slides away when the pointer leaves.
- */
 export function TopStripPeek() {
   const theme = useTheme();
   const [visible, setVisible] = useState(false);
@@ -449,7 +426,6 @@ export function TopStripPeek() {
   };
   return (
     <>
-      {/* The traffic lights keep their corner. */}
       <View onMouseEnter={show} style={{ position: "absolute", left: layout.trafficLightsWidth, right: 0, top: 0, height: 6 }} />
       {visible && (
         <Animated.View

@@ -27,7 +27,6 @@ test("toEngineUrl: what the engine loads", () => {
   assert.equal(toEngineUrl("view-source:netnyahoo://version/"), "view-source:chrome://version/");
   assert.equal(toEngineUrl("https://netnyahoo.com/"), "https://netnyahoo.com/");
   assert.equal(toEngineUrl("chrome://version/"), "chrome://version/");
-  // Round trip.
   assert.equal(toAppUrl(toEngineUrl("netnyahoo://settings/languages")), "netnyahoo://settings/languages");
 });
 

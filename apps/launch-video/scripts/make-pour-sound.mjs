@@ -1,8 +1,3 @@
-// Builds public/sound/pour.wav for "Pour": the score (Eleven Music v2.5, instrumental; assets/sound/pour-music.mp3)
-// stretched from its measured 66.43 BPM onto the film's 66.67 BPM grid, and the whispered lines (eleven_v3,
-// assets/sound/pour-vo-*.mp3), each placed so its first sound lands on its frame (src/pour/timeline.ts).
-// No sound effects: the subtractive pass took out everything that wasn't the score or the voice.
-// The score dips under each line; master: a static gain to -14 LUFS integrated, then a 4x-oversampled limiter.
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +12,7 @@ mkdirSync(work, { recursive: true });
 const FFMPEG = "/opt/homebrew/bin/ffmpeg";
 const ffmpeg = (...args) => execFileSync(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", ...args], { maxBuffer: 1 << 30 });
 const SR = 48000;
-const TAIL = 0; // the film ends on the score's ringing chord; the loop restarts on frame 0
+const TAIL = 0;
 const N = Math.round((TOTAL / FPS + TAIL) * SR);
 const db = (x) => Math.pow(10, x / 20);
 const sec = (frame) => frame / FPS;
@@ -41,11 +36,8 @@ function place(src, at, gain = 1, { fadeIn = 0.003, fadeOut = 0.003, env } = {})
   }
 }
 
-// ---- The voice: each line gently compressed and brought to the same speech level; its onset (first sample
-// within 30 dB of its peak) is what lands on the frame.
 const LINE_RMS_DB = -20;
 const voice = LINES.map((line) => {
-  // a high-pass for the breath's rumble, a little air, then 4:1 so the whisper sits forward of the score
   const src = load(`pour-vo-${line.id}.mp3`, "highpass=f=75,equalizer=f=9000:t=q:w=1:g=2,acompressor=threshold=-26dB:ratio=4:attack=8:release=120:makeup=1");
   const mono = src[0];
   const hop = 48, win = 480;
@@ -63,10 +55,8 @@ const voice = LINES.map((line) => {
   return { ...line, src, onset, end, gain: db(LINE_RMS_DB - rms) };
 });
 
-// ---- The score: stretched onto the grid; its bar 1 downbeat (0.034 s into the take, 66.43 BPM) lands on frame 0.
 const STRETCH = 66.6667 / 66.43;
 const score = load("pour-music.mp3", `atempo=${STRETCH.toFixed(6)}`);
-// under each line the score dips 4 dB (150 ms ramps), so the whisper never has to be loud
 const duck = new Float32Array(N).fill(1);
 for (const v of voice) {
   const a = sec(v.at) - 0.15, b = sec(v.at) + (v.end - v.onset) + 0.25;
@@ -79,7 +69,6 @@ for (const v of voice) {
 place(score, -0.034 / STRETCH, db(-4), { fadeIn: 0.001, fadeOut: 0.05, env: duck });
 for (const v of voice) place(v.src, sec(v.at) - v.onset, v.gain, { fadeIn: 0.002, fadeOut: 0.02 });
 
-// ---- write, master, measure
 writeFileSync(join(work, "pour-mix.wav"), wav(mix));
 const loud = (file) => {
   const o = spawnSync(FFMPEG, ["-hide_banner", "-nostats", "-i", file, "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8" }).stderr;

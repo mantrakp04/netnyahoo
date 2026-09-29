@@ -20,11 +20,6 @@ import { GROUP_COLORS, useSidebarTokens, withAlpha } from "./tokens";
 
 const PAD = 2;
 
-/**
- * A tab group in the sidebar (Dia ≥ 1.28: neutral container unless coloured):
- * a header (icon, name, count when collapsed, ✕ on hover) over its tabs, which
- * collapse with an animation. A collapsed group still shows its selected tab.
- */
 export function GroupBlock({ groupId, section }: { groupId: string; section: "list" | "pinnedGroups" }) {
   const windowId = useWindowId();
   const tokens = useSidebarTokens();
@@ -33,7 +28,6 @@ export function GroupBlock({ groupId, section }: { groupId: string; section: "li
   const tabIds = useBrowser((s) => s.groups[groupId]?.tabIds.join(",") ?? "");
   const entries = useGroupEntries(groupId);
   const profileId = usePageProfileId();
-  // Collapsed, the selected tab (and so a split it's in) stays visible — Dia's peek at the active tab.
   const shownWhileCollapsed = useBrowser((s) => {
     if (!s.groups[groupId]?.collapsed) return null;
     const active = activeTabId(s, windowId, profileId);
@@ -44,7 +38,6 @@ export function GroupBlock({ groupId, section }: { groupId: string; section: "li
 
   const open = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
   const [contentHeight, setContentHeight] = useState(0);
-  // The state the last collapse/expand animation ended in; until it catches up, heights animate.
   const settled = useRef(collapsed);
   const [animating, setAnimating] = useState(false);
   const moving = animating || settled.current !== collapsed;
@@ -54,7 +47,6 @@ export function GroupBlock({ groupId, section }: { groupId: string; section: "li
       mounted.current = true;
       return;
     }
-    // A toggle mid-animation interrupts it (finished: false); the last one settles.
     setAnimating(true);
     Animated.timing(open, { toValue: collapsed ? 0 : 1, duration: 240, easing: Easing.bezier(0.2, 0.9, 0.3, 1), useNativeDriver: false }).start(
       ({ finished }) => {
@@ -114,9 +106,7 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
   const firstTab = useBrowser((s) => s.tabs[s.groups[groupId]?.tabIds[0] ?? ""]);
   const renaming = useSidebarUi((u) => u.renaming?.kind === "group" && u.renaming.id === groupId);
   const dropInto = useDropInto() === groupId;
-  // Hovering a collapsed group peeks at its tabs.
   const { hovered, hoverProps } = useRowHover(windowId, collapsed && !renaming ? { kind: "group", id: groupId } : null);
-  // Meeting groups (src/live): "5 min left" near the end, and the title wiggles at 5 and 2 minutes.
   const countdown = useMeetingCountdown(groupId);
   if (!group) return null;
   const count = group.tabIds.length;
@@ -140,7 +130,6 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
             <Surface
               fill={hex(dropInto || pressed ? theme.tabPressed : hovered ? tokens.groupHeaderHover : "rgba(0,0,0,0)")}
               cornerRadius={10}
-              // Icon and title line up with the member rows' favicons and titles.
               style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9, paddingRight: 6 - PAD }}
             >
               {group.icon || firstTab ? (

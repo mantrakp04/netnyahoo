@@ -1,26 +1,7 @@
 import ExpoModulesCore
 import MetalKit
 
-/// The window background behind the tabs and content card.
-///
-/// With `vibrancy` (the browser window's own backdrop) it is Dia 1.50's window treatment
-/// (`PlatformWindowViewController.backgroundBaseView` + `.backgroundOverlayTintView`, WindowTreatment
-/// module; docs/dia-spec.md › Window translucency), built from plain AppKit views:
-/// - an NSVisualEffectView blending the desktop behind the window (`WindowBackgroundBaseView`):
-///   `.behindWindow`, `isEmphasized`, the default `.followsWindowActiveState`, material 29 (dark, a
-///   private material) or `.hudWindow` (light). AppKit swaps it for an opaque fill while the window
-///   is inactive or Reduce Transparency is on, so the window goes opaque exactly when Dia's does.
-/// - over it (`WindowBackgroundOverlayTintView`): the
-///   `WindowBackground/BaseTint` fill (black 0.4 / white 0.8), then, in a view at alpha 0.5 (dark) /
-///   0.75 (light), a vertical gradient of the profile tint at `tintAlpha`: the tint at the top, the
-///   tint with its HSL lightness raised by `tintLightness` at the bottom.
-/// Nothing redraws per frame: the layers only change with the props and the appearance.
-///
-/// Without it (New Tab postcards) it's the older Metal backdrop: a two-stop gradient interpolated
-/// in OKLab with film grain multiply-blended on top (Dia's ARC_WindowThemeUI `gradientFragment` +
-/// `renderFragment`), redrawn only on resize and prop changes.
 final class WindowBackdropView: MetalSurface {
-  /// Must match `BackdropUniforms` in the shader.
   struct Uniforms {
     var labA = SIMD4<Float>(0.27, 0.02, 0.0, 1)
     var labB = SIMD4<Float>(0.23, 0.02, 0.0, 1)
@@ -60,7 +41,6 @@ final class WindowBackdropView: MetalSurface {
       treatment?.removeFromSuperview()
       treatment = nil
     }
-    // The Metal gradient is the non-vibrant backdrop; the treatment replaces it.
     metalView.isHidden = on
     if !on { metalView.needsDisplay = true }
   }
@@ -72,7 +52,7 @@ final class WindowBackdropView: MetalSurface {
 
   func setAngle(_ degrees: Double) {
     let r = Float(degrees) * .pi / 180
-    uniforms.direction = SIMD2(sin(r), -cos(r)) // 0° = bottom→top, like CSS
+    uniforms.direction = SIMD2(sin(r), -cos(r))
     metalView.needsDisplay = true
   }
 
@@ -94,7 +74,6 @@ final class WindowBackdropView: MetalSurface {
     encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
   }
 
-  /// sRGB → OKLab (Björn Ottosson), alpha passed through.
   static func oklab(_ c: SIMD4<Float>) -> SIMD4<Float> {
     func lin(_ x: Float) -> Float { x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4) }
     let r = lin(c.x), g = lin(c.y), b = lin(c.z)
@@ -156,15 +135,10 @@ fragment float4 backdropFragment(FullscreenOut in [[stage_in]],
 }
 """
 
-/// Dia 1.50's window background (see WindowBackdropView): a behind-window blur under a translucent
-/// profile tint. Plain AppKit views and layers; nothing draws per frame.
 final class WindowTreatmentView: NSView {
   struct Tint: Equatable {
-    /// `BackgroundTintInfo.color`: the profile colour, a Display P3 colour (Dia lightens it in P3).
     var color = NSColor(displayP3Red: 0.5, green: 0.5, blue: 0.5, alpha: 1)
-    /// `BackgroundTintInfo.gradientAlpha` ?? (isNeutralTheme ? 0.12 : 0.36).
     var alpha: CGFloat = 0.36
-    /// `gradientLightnessDelta`: 0.25 with the New Tab rebrand, 0.4 without.
     var lightness: CGFloat = 0.25
   }
 
@@ -184,7 +158,6 @@ final class WindowTreatmentView: NSView {
     overlay.wantsLayer = true
     overlay.layer?.addSublayer(baseTint)
     overlay.layer?.addSublayer(gradient)
-    // Bottom (y 0 in the unflipped overlay) → top: the lightened tint, then the tint.
     gradient.startPoint = CGPoint(x: 0.5, y: 0)
     gradient.endPoint = CGPoint(x: 0.5, y: 1)
     for layer in [baseTint, gradient] as [CALayer] {
@@ -218,15 +191,12 @@ final class WindowTreatmentView: NSView {
     updateAppearance()
   }
 
-  /// DEV: `WindowActivity.override` (NETNYAHOO_SHADERS_FORCE_KEY) shows the key look in a
-  /// background instance, whose windows are never key.
   @objc private func updateState() {
     blur.state = WindowActivity.override == true ? .active : .followsWindowActiveState
   }
 
   private var isDark: Bool { effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
 
-  /// `WindowBackgroundBaseView.updateLayer` and `WindowBackgroundOverlayTintView.updateLayer`.
   private func updateAppearance() {
     let dark = isDark
     blur.material = NSVisualEffectView.Material(rawValue: dark ? 29 : 13) ?? .hudWindow
@@ -240,8 +210,6 @@ final class WindowTreatmentView: NSView {
     gradient.colors = [lighter, color].map { $0.withAlphaComponent(tint.alpha).cgColor }
   }
 
-  /// The colour with its HSL lightness raised by `delta` (clamped to 0…1), as Dia's colour helper
-  /// does it: HSL in the colour's own (Display P3) space.
   static func adjustingLightness(_ c: NSColor, by delta: CGFloat) -> NSColor {
     let r = c.redComponent, g = c.greenComponent, b = c.blueComponent
     let maxC = max(r, g, b), minC = min(r, g, b)

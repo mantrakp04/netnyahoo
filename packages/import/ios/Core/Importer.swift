@@ -1,12 +1,5 @@
 import Foundation
 
-/// Runs an import for one browser profile: each requested kind is read independently, so one
-/// unreadable file (a locked `History`, a denied Keychain) fails that kind alone and the rest
-/// still come through — the UI then lists what failed ("Some import steps failed:").
-///
-/// Secrets are gated: passwords and cookies are only read for a browser the user has
-/// unlocked with `unlock(browserId:)`, which for the Chromium family is the step that makes
-/// macOS show its Keychain prompt. Keys stay in memory until `forgetKeys()`.
 public final class Importer: @unchecked Sendable {
   public let discovery: BrowserDiscovery
   private let lock = NSLock()
@@ -21,8 +14,6 @@ public final class Importer: @unchecked Sendable {
 
   public typealias SecretProvider = (_ service: String, _ account: String) throws -> Data
 
-  /// Chromium family: reads "<Browser> Safe Storage" (macOS prompts) and keeps the derived
-  /// key. Firefox: records consent and the primary password ("" when none is set).
   public func unlock(browserId: String, primaryPassword: String = "",
                      secret: SecretProvider = SafeStorageKeychain.secret) throws {
     guard let def = BrowserDefinition.find(browserId) else { throw ImportError.notFound("Unknown browser \(browserId)") }
@@ -38,7 +29,6 @@ public final class Importer: @unchecked Sendable {
     }
   }
 
-  /// Installs an already-derived key (tests, or a key the app obtained another way).
   public func setKey(_ key: Data, for browserId: String) { lock.withLock { keys[browserId] = key } }
 
   public func isUnlocked(_ browserId: String) -> Bool {
@@ -67,7 +57,6 @@ public final class Importer: @unchecked Sendable {
       result.profile = ProfileSuggestion(name: info.name, color: info.color, avatarPath: info.avatarPath)
     }
 
-    // Arc's sidebar is shared by spaces, pinned tabs, today tabs and favourites.
     var arc: ArcSidebar?
     func arcSidebar() throws -> ArcSidebar {
       if let arc { return arc }
@@ -167,7 +156,6 @@ public final class Importer: @unchecked Sendable {
       } catch ImportError.cancelled {
         throw ImportError.cancelled
       } catch ImportError.notFound(let message) {
-        // Nothing of this kind in the profile: not a failure, just nothing to bring.
         result.warnings.append(ImportWarning(kind, "empty", message))
       } catch let error as ImportError {
         result.failed.append(kind)
@@ -176,7 +164,6 @@ public final class Importer: @unchecked Sendable {
         result.failed.append(kind)
         result.warnings.append(ImportWarning(kind, "unreadable", error.localizedDescription))
       }
-      // The history reader reports its own start/progress/end when it runs to completion.
       if kind != .history || !succeeded { observer.progress(ImportProgress(kind: kind, phase: .end, processed: count, total: count)) }
     }
     return result

@@ -6,21 +6,6 @@ import { activeTabId } from "../../store/model";
 import { browserIdOf } from "../extensions/state";
 import { openSettings } from "../settings/windows";
 
-/**
- * Chrome's password manager and autofill fill pages themselves: its dropdown
- * under a focused field (saved logins, strong passwords, addresses, cards) and
- * its save prompts for addresses and cards. The password save prompt is ours
- * (./Prompts.tsx); this file keeps Edit › AutoFill and the card badge.
- */
-
-/**
- * Edit › AutoFill › Contact… / Passwords… / Credit Card…: like Chrome's field menu, Chrome's
- * dropdown opens at the page's focused form field (Passwords… lists every saved password
- * there; Contact… and Credit Card… show what the field takes: addresses or cards). With no
- * form field focused it opens where they're managed: Passwords, or Autofill (addresses and
- * cards), on the window's profile. Incognito windows use the default profile's, which the
- * pane starts on.
- */
 export async function requestAutofill(windowId: string, arg: string | null) {
   const passwords = arg === "passwords";
   const browserId = browserIdOf(activeTabId(useBrowser.getState(), windowId));
@@ -42,7 +27,6 @@ const BADGES: Record<CardNetwork, { label: string; fill: string; text: string }>
   card: { label: "", fill: "#8E8E93", text: "#FFFFFF" },
 };
 
-/** A small card-shaped network mark (Chrome shows card art in the same slot). */
 export function NetworkBadge({ network }: { network: CardNetwork }) {
   const badge = BADGES[network] ?? BADGES.card;
   return (

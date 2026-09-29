@@ -6,13 +6,6 @@ import { joinMeeting } from "./meetingGroups";
 import { ALERT_LEADS, dueAlerts, joinLink, joinTitle, relativeTime, type CalendarEvent } from "./meetings";
 import { dismissAlert, live } from "./store";
 
-/**
- * Just-in-time meeting alerts ("Show Next Meeting Alert"): a card with the
- * meeting, its attendees and a one-click Join, shown in the front window a set
- * time before the start (components/live/MeetingAlert). With "Always", the
- * alert also goes to Notification Center while Netnyahoo isn't the active app
- * (clicking it brings the app forward to the card).
- */
 export const useMeetingAlert = create<{ event: CalendarEvent | null }>()(() => ({ event: null }));
 
 let appActive = true;
@@ -32,7 +25,6 @@ function check() {
   notified.add(event.occurrence);
   const link = joinLink(event);
   const when = relativeTime(event.start, Date.now());
-  // Clicking it brings Netnyahoo forward, where the alert card has Join.
   void postNotification({
     id: `meeting:${event.occurrence}`,
     title: event.title || "Untitled event",
@@ -41,7 +33,6 @@ function check() {
   });
 }
 
-/** Join (or Open All and Join) from the alert, the calendar preview or a notification. */
 export function joinEvent(event: CalendarEvent, openAll = false, windowId = frontWindow()) {
   const link = joinLink(event);
   if (!link || !windowId) return;

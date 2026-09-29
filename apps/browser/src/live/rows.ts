@@ -1,10 +1,5 @@
 import type { LiveFolder, LiveItem, PullRequestSection } from "./types";
 
-/**
- * What a live folder shows, in order: your PRs (stacks as one collapsible
- * entry), then "Review Requests" and "Team Review Requests"; documents in one
- * list. Long sections end in "Show N More" (Dia's reveal-more cell).
- */
 export type FolderRow =
   | { kind: "item"; key: string; item: LiveItem }
   | { kind: "stack"; key: string; id: string; repo: string; items: LiveItem[] }

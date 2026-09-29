@@ -4,19 +4,10 @@ type FetchResponse = { ok: boolean; text(): Promise<string> };
 export type FetchLike = (url: string, init: { signal: AbortSignal }) => Promise<FetchResponse>;
 
 export type SuggestFetcher = {
-  /**
-   * Asks for `engine`'s suggestions for `query`. Only the latest request answers: each call
-   * cancels the previous one (its timer, or its in-flight fetch). Cached answers come back on
-   * the next microtask, without waiting for the debounce.
-   */
   request(engine: SearchEngine, query: string, onResult: (suggestions: string[]) => void): void;
   cancel(): void;
 };
 
-/**
- * Debounced, cancellable fetching of search suggestions, with a small LRU cache so typing
- * back over the same prefix doesn't refetch. Failures (offline, bad JSON) answer nothing.
- */
 export function createSuggestFetcher({
   fetch,
   delay = 120,

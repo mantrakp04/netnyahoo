@@ -1,5 +1,4 @@
-// Split view transitions. Run from apps/browser:
-//   node --import ./src/store/test-loader.mjs --test src/store/splits.test.mjs
+// Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/store/splits.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("./browser.ts");

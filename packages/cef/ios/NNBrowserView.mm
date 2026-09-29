@@ -38,19 +38,15 @@ int gEvalSeq = 0;
 
 
 // MARK: Tabs moving between windows
-//
-// The app announces a move (+prepareTransfer:) when its state changes; then the
-// tab's new view (another React root) mounts and the old one unmounts, in either
-// order. The browser goes from one to the other instead of closing and reloading.
 
 constexpr CFTimeInterval kTransferWindow = 3;
-NSMutableDictionary<NSString *, NSNumber *> *gTransferRequests;  // key → time; any thread (locked)
+NSMutableDictionary<NSString *, NSNumber *> *gTransferRequests;  // Lock transfer history; Chrome callbacks can arrive on any thread.
 
 struct ParkedBrowser {
   CefRefPtr<Client> client;
   CefRefPtr<CefBrowser> browser;
 };
-std::map<std::string, ParkedBrowser> gParked;  // main thread
+std::map<std::string, ParkedBrowser> gParked;
 
 bool TransferRequested(NSString *key) {
   if (!key.length) return false;
@@ -66,7 +62,7 @@ void TransferDone(NSString *key) {
   }
 }
 
-}  // namespace
+}
 
 bool nn::TabTransfersPending() {
   if (!gParked.empty()) return true;
@@ -80,14 +76,10 @@ bool nn::TabTransfersPending() {
 namespace {
 
 // MARK: Closed tabs' history
-//
-// A Chrome tab's back/forward list as it closed, by its view's transferKey (the app's tab id),
-// for Reopen Closed Tab ("restore:<key>" adoptIds). Kept for this session only, like the
-// rest of the app's history of open tabs.
 
 constexpr NSUInteger kClosedTabStates = 50;
 constexpr NSUInteger kClosedTabStateBytes = 32 * 1024 * 1024;
-NSMutableArray<NSString *> *gClosedTabOrder;                       // oldest first
+NSMutableArray<NSString *> *gClosedTabOrder;
 NSMutableDictionary<NSString *, NSString *> *gClosedTabStates;
 
 void NoteClosedTabState(NSString *key, NSString *state) {
@@ -118,7 +110,6 @@ NSString *TakeClosedTabState(NSString *key) {
   return state;
 }
 
-/// The same document (a fragment doesn't count).
 bool SamePage(NSString *a, NSString *b) {
   auto strip = [](NSString *url) {
     NSRange hash = [url rangeOfString:@"#"];
@@ -127,7 +118,6 @@ bool SamePage(NSString *a, NSString *b) {
   return a && b && [strip(a) isEqualToString:strip(b)];
 }
 
-// The largest video that has started, for PiP.
 NSString *const kPictureInPictureScript =
     @"(async () => {"
      "  const videos = [...document.querySelectorAll('video')].filter(v => v.readyState > 0 && !v.disablePictureInPicture);"
@@ -137,12 +127,11 @@ NSString *const kPictureInPictureScript =
      "  try { await videos[0].requestPictureInPicture(); return true; } catch (e) { return false; }"
      "})()";
 
-// Leaves video PiP and closes the page's Document PiP window.
 NSString *const kExitPictureInPictureScript =
     @"document.pictureInPictureElement && document.exitPictureInPicture();"
      "window.documentPictureInPicture && documentPictureInPicture.window && documentPictureInPicture.window.close()";
 
-}  // namespace
+}
 
 @implementation NNBrowserView {
   CefRefPtr<Client> _client;
@@ -151,18 +140,12 @@ NSString *const kExitPictureInPictureScript =
   BOOL _closingByRequest;
   NSString *_pendingURL;
   NSString *_discardedURL;
-  /// The page a transferred browser showed: the app asks this view to load it again.
   NSString *_transferredURL;
-  /// Chrome discarded the tab (NN_TAB_DISCARD): it reloads by itself when shown.
   BOOL _chromeDiscarded;
   BOOL _autoPictureInPictureActive;
   BOOL _muted;
-  /// The page hides at the end of this turn (applyPainting).
   BOOL _hidePending;
-  /// Watches the hosted page view's frame (see -keepPageFrame:).
   id _frameObserver;
-  /// DevTools docked next to the page (Chrome-hosted windows): their view fills this one, and
-  /// the page sits at `_inspectedBounds` inside it, where DevTools' own split puts it.
   NSView *_devtoolsView;
   NSRect _inspectedBounds;
 }
@@ -217,7 +200,6 @@ NSString *const kExitPictureInPictureScript =
   [super viewDidMoveToWindow];
   if (!self.window) return;
   if (_browser) {
-    // Moved to another window with its browser (a Chrome tab changes Browsers too).
     host::TabMoved(self);
     host::LayoutChanged(self.window);
   } else if (!_discardedURL) {
@@ -232,7 +214,6 @@ NSString *const kExitPictureInPictureScript =
   if (self.window) host::LayoutChanged(self.window);
 }
 
-/// Where the page goes: all of this view, or DevTools' place for it while they're docked.
 - (NSRect)pageFrame {
   return _devtoolsView ? _inspectedBounds : self.bounds;
 }
@@ -246,11 +227,10 @@ NSString *const kExitPictureInPictureScript =
           ? (__bridge NSView *)_browser->GetHost()->GetDockedDevTools(
                 CefSize((int)NSWidth(self.bounds), (int)NSHeight(self.bounds)), bounds)
           : nil;
-  if (!devtools && !_devtoolsView) return;  // not docked, nor before: nothing to lay out
+  if (!devtools && !_devtoolsView) return;
   if (_devtoolsView && _devtoolsView != devtools && _devtoolsView.superview == self) [_devtoolsView removeFromSuperview];
   _devtoolsView = devtools;
   if (devtools) {
-    // Behind the page, filling this view (DevTools lay their panel out around the page's place).
     if (devtools.superview != self || (page && [self.subviews indexOfObject:devtools] > [self.subviews indexOfObject:page])) {
       [devtools removeFromSuperview];
       if (page.superview == self) [self addSubview:devtools positioned:NSWindowBelow relativeTo:page];
@@ -258,17 +238,15 @@ NSString *const kExitPictureInPictureScript =
     }
     devtools.frame = self.bounds;
     devtools.hidden = !self.paints;
-    _inspectedBounds = NSMakeRect(bounds.x, bounds.y, bounds.width, bounds.height);  // this view is flipped
+    _inspectedBounds = NSMakeRect(bounds.x, bounds.y, bounds.width, bounds.height);
   }
   if (page.superview == self) {
     page.frame = self.pageFrame;
-    // DevTools may leave the page no room ("hide inspected contents").
     page.hidden = !self.paints || (devtools && NSIsEmptyRect(page.frame));
   }
 #endif
 }
 
-/// Docked DevTools belong to the tab's browser, not this view: let go of their view.
 - (void)dropDockedDevTools {
   if (_devtoolsView.superview == self) [_devtoolsView removeFromSuperview];
   _devtoolsView = nil;
@@ -302,7 +280,6 @@ NSString *const kExitPictureInPictureScript =
       return;
     }
     if ([self createTabWithHistory]) return;
-    // Unknown/expired popup: fall back to loading the URL normally.
   }
 
   _client = new Client(self, _profile);
@@ -321,8 +298,6 @@ NSString *const kExitPictureInPictureScript =
   return settings;
 }
 
-/// adoptId "clone:<key>" (Duplicate) or "restore:<key>" (Reopen Closed Tab): the tab starts with
-/// the back/forward list of the tab whose view has that transferKey, or had it when it closed.
 - (BOOL)createTabWithHistory {
   NSRange colon = [_adoptId rangeOfString:@":"];
   if (colon.location == NSNotFound) return NO;
@@ -337,7 +312,6 @@ NSString *const kExitPictureInPictureScript =
   } else {
     return NO;
   }
-  // Set first: the tab may be created (and -browserCreated: run) right away.
   _client = new Client(self, _profile);
   NSString *url = _pendingURL ?: _initialURL;
   _pendingURL = nil;
@@ -350,7 +324,6 @@ NSString *const kExitPictureInPictureScript =
   return YES;
 }
 
-/// Takes the browser of this tab's old view (parked, or still in the other window).
 - (BOOL)takeTransferredBrowser {
   CefRefPtr<Client> client;
   CefRefPtr<CefBrowser> browser;
@@ -380,7 +353,6 @@ NSString *const kExitPictureInPictureScript =
   return YES;
 }
 
-/// Lets go of the browser without closing it (another view took it).
 - (void)relinquishBrowser {
   if (!_browser) return;
   [self keepPageFrame:nil];
@@ -393,7 +365,6 @@ NSString *const kExitPictureInPictureScript =
   _creating = NO;
 }
 
-/// The view goes away while its tab moves: keeps the browser for the tab's new view.
 - (void)parkBrowserForTransfer {
   [self keepPageFrame:nil];
   [self dropDockedDevTools];
@@ -407,7 +378,6 @@ NSString *const kExitPictureInPictureScript =
   _client = nullptr;
   _creating = NO;
   gParked[key] = {client, browser};
-  // Nobody took it: close it after all.
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kTransferWindow * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     auto it = gParked.find(key);
     if (it == gParked.end() || !it->second.browser->IsSame(browser)) return;
@@ -427,8 +397,6 @@ NSString *const kExitPictureInPictureScript =
     [browserView removeFromSuperview];
     [self addSubview:browserView];
   }
-  // Set a different size first: an unchanged frame is a no-op in AppKit, and
-  // Chromium may have sized the page differently (Document PiP opens at 400×300).
   browserView.frame = NSInsetRect(self.bounds, 0, 1);
   browserView.frame = self.bounds;
   browserView.hidden = !self.paints;
@@ -444,16 +412,12 @@ NSString *const kExitPictureInPictureScript =
   }
   _client->EmitNavigation();
   [self emit:@"ready" payload:@{@"browserId" : @(browser->GetIdentifier()), @"tabId" : @(host::TabId(browser))}];
-  // A tab Chrome made, or one that came from another window: into this window's Browser.
   host::TabMoved(self);
   if (_visible) host::TabShown(self);
   host::LayoutChanged(self.window);
-  // A tab that had DevTools docked next to it (moved in from another view).
   [self layoutDockedDevTools];
 }
 
-/// Chrome sizes a tab's view to its Browser window's content area (the whole window), e.g. when the
-/// tab joins a Browser or becomes active: the page fills this view instead, whatever Chrome did.
 - (void)keepPageFrame:(NSView *)pageView {
   if (_frameObserver) [NSNotificationCenter.defaultCenter removeObserver:_frameObserver];
   _frameObserver = nil;
@@ -468,7 +432,7 @@ NSString *const kExitPictureInPictureScript =
     NNBrowserView *view = weakSelf;
     NSView *page = weakPage;
     if (!view || page.superview != view || NSEqualRects(page.frame, view.pageFrame)) return;
-    // Not from inside Chrome's own layout pass.
+// Run after Chrome finishes laying out the hosted page.
     dispatch_async(dispatch_get_main_queue(), ^{
       if (page.superview == view && !NSEqualRects(page.frame, view.pageFrame)) page.frame = view.pageFrame;
     });
@@ -487,15 +451,11 @@ NSString *const kExitPictureInPictureScript =
   [self.delegate browserView:self event:name payload:payload];
 }
 
-/// The page is drawn: shown, or warm.
 - (BOOL)paints {
   return _visible || _warm;
 }
 
-/// A hidden view hides its page (Chrome stops painting it); a warm one only turns transparent.
-/// Hiding waits for the end of this turn: a page going from warm to shown (or back) gets its two
-/// props one after the other, and hidden in between Chrome dropped its frame (the page then showed
-/// its background alone until the renderer had drawn again).
+// Delay hiding until painting updates settle to avoid a blank frame.
 - (void)applyPainting {
   self.alphaValue = _visible || !_warm ? 1 : 0;
   if (!self.paints) {
@@ -545,16 +505,12 @@ NSString *const kExitPictureInPictureScript =
   [self updateAutoPictureInPicture];
 }
 
-/// Dia-style auto PiP: a playing video (or a Meet-style page that handles the
-/// Media Session "enterpictureinpicture" action) follows the user out of a
-/// hidden tab, and comes back when the tab is shown again.
 - (void)updateAutoPictureInPicture {
   if (!_browser) return;
   if (!_visible && _autoPictureInPicture) {
     if (_client->WantsDocumentPictureInPicture()) {
       _autoPictureInPictureActive = YES;
-      // The handler calls documentPictureInPicture.requestWindow(), which needs
-      // a user activation: grant one (DevTools user gesture), then invoke it.
+// Grant a user gesture before requesting Document PiP.
       CefRefPtr<Client> client = _client;
       EvaluateWithGesture(_browser, @"0", ^(id) { client->MediaCommand(@"enterpictureinpicture", 0); });
     } else if (_client->PlayingVideo()) {
@@ -581,7 +537,6 @@ NSString *const kExitPictureInPictureScript =
 
 - (void)loadURL:(NSString *)url {
   if (!url.length) return;
-  // The app replays the tab's address after a move; the page is already there.
   NSString *transferred = _transferredURL;
   _transferredURL = nil;
   if (_browser && SamePage(url, transferred)) return;
@@ -626,7 +581,6 @@ NSString *const kExitPictureInPictureScript =
   if (_client) _client->SetUserMuted(muted);
 }
 
-// Chrome's zoom: one level per host, persisted by Chrome; every tab on the host follows.
 - (void)setZoomFactor:(double)factor {
   if (!_browser || factor <= 0) return;
   _browser->GetHost()->SetZoomLevel(fabs(factor - 1) < 0.001 ? 0 : zoom::LevelForFactor(factor));
@@ -663,12 +617,7 @@ NSString *const kExitPictureInPictureScript =
 - (void)showDevToolsPanel:(NSString *)panel {
   if (!_browser) return;
 #if NN_CHROME_TABS
-  // A Chrome tab: Chrome's own Developer menu commands, which Chrome runs on its Browser's
-  // active tab (made this one first). As in Chrome, Developer Tools and JavaScript Console
-  // close docked DevTools again, and Inspect Elements starts the element picker.
   if (host::IsChromeTab(_browser)) {
-    // F12 ("toggle"), Chrome's IDC_DEV_TOOLS_TOGGLE: opens DevTools, closes docked ones, brings
-    // an undocked window forward, and closes that window when it's the one F12 was pressed in.
     if ([panel isEqualToString:@"toggle"] && nn::CloseKeyDevToolsWindow()) return;
     int command = [panel isEqualToString:@"console"]   ? IDC_DEV_TOOLS_CONSOLE
                   : [panel isEqualToString:@"inspect"] ? IDC_DEV_TOOLS_INSPECT
@@ -692,7 +641,6 @@ NSString *const kExitPictureInPictureScript =
                 : [name isEqualToString:@"systemPrint"]   ? IDC_BASIC_PRINT
                 : [name isEqualToString:@"caretBrowsing"] ? IDC_CARET_BROWSING_TOGGLE
                                                           : 0;
-  // Chrome runs these on its Browser's active tab: this one, first (as showDevToolsPanel:).
   if (!command || !_browser || !host::IsChromeTab(_browser)) return;
   _browser->GetHost()->ActivateTab();
   _browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
@@ -826,15 +774,12 @@ NSString *const kExitPictureInPictureScript =
 - (void)setFrozen:(BOOL)frozen {
   if (frozen == _frozen || (frozen && self.paints)) return;
   _frozen = frozen;
-  // Freezing also marks the page hidden; it's shown again by the view unhiding.
   if (_browser) DevToolsCall(_browser, @"Page.setWebLifecycleState", @{@"state" : frozen ? @"frozen" : @"active"}, nil);
 }
 
 - (BOOL)discard:(BOOL)unload {
   if (!_browser || _discardedURL) return _discardedURL != nil;
 #if NN_TAB_DISCARD
-  // Chrome's own discard: the tab stays (history, chrome.tabs) and reports it through
-  // -tabDiscardedChanged:.
   if (!unload && host::IsChromeTab(_browser)) {
     if (!_chromeDiscarded) _browser->GetHost()->DiscardTab();
     return NO;
@@ -851,15 +796,12 @@ NSString *const kExitPictureInPictureScript =
   if (_chromeDiscarded == discarded) return;
   _chromeDiscarded = discarded;
   _frozen = NO;
-  // Whoever discarded it (us, Chrome under memory pressure, an extension); back to life when it
-  // loads again, as if its browser had just been created.
   if (discarded) [self emit:@"discarded" payload:@{@"url" : _client ? _client->URL() : @""}];
   else if (_browser) [self emit:@"ready" payload:@{@"browserId" : @(_browser->GetIdentifier()), @"tabId" : @(host::TabId(_browser))}];
 }
 
 - (void)closeBrowser {
   if (_adoptId.length && !_browser) {
-    // Popup never adopted/created yet: close it once it exists.
     auto it = Popups().find(_adoptId.UTF8String);
     if (it != Popups().end()) {
       if (it->second.browser) it->second.browser->GetHost()->CloseBrowser(true);
@@ -869,7 +811,6 @@ NSString *const kExitPictureInPictureScript =
   _adoptId = nil;
   if (_browser && TransferRequested(_transferKey)) return [self parkBrowserForTransfer];
 #if NN_TAB_HISTORY
-  // For Reopen Closed Tab.
   if (_browser && host::IsChromeTab(_browser) && !ShuttingDown())
     NoteClosedTabState(_transferKey, ToNS(_browser->GetHost()->GetNavigationState()));
 #endif

@@ -2,9 +2,6 @@ import AppKit
 import CoreImage
 import Foundation
 
-/// The Recovery Kit the user saves when sync is turned on: a one-page PDF (as Dia's
-/// "Dia Recovery Kit.pdf", US Letter) or a plain text sheet, with the 24 words and a QR code
-/// of them for moving them to another Mac.
 public enum RecoveryKit {
   public static let pdfName = "Netnyahoo Recovery Kit.pdf"
   public static let textName = "Netnyahoo Recovery Kit.txt"
@@ -27,7 +24,6 @@ public enum RecoveryKit {
     return lines.joined(separator: "\n")
   }
 
-  /// A QR code of the phrase (space-separated words), `scale` points per module.
   public static func qrCode(words: [String], scale: CGFloat = 8) -> CGImage? {
     guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
     filter.setValue(Data(words.joined(separator: " ").utf8), forKey: "inputMessage")
@@ -41,6 +37,7 @@ public enum RecoveryKit {
   }
 
   public static func pdf(words: [String], created: Date, device: String) -> Data {
+    // Dia: US Letter (612 × 792 pt).
     let data = NSMutableData()
     var box = CGRect(x: 0, y: 0, width: 612, height: 792)
     guard let consumer = CGDataConsumer(data: data as CFMutableData),
@@ -49,7 +46,6 @@ public enum RecoveryKit {
     context.beginPDFPage(nil)
     let previous = NSGraphicsContext.current
     NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-    // Flipped: y grows downwards from the top of the page.
     context.translateBy(x: 0, y: box.height)
     context.scaleBy(x: 1, y: -1)
     draw(words: words, created: created, device: device, in: box.size)
@@ -84,7 +80,6 @@ public enum RecoveryKit {
     }
     y += 18
 
-    // The words: four columns of six, in a rounded box.
     let boxRect = CGRect(x: margin, y: y, width: width, height: 6 * 26 + 30)
     let path = NSBezierPath(roundedRect: boxRect, xRadius: 12, yRadius: 12)
     NSColor(white: 0.96, alpha: 1).setFill()
@@ -104,7 +99,6 @@ public enum RecoveryKit {
     }
     y = boxRect.maxY + 22
 
-    // The QR code of the words, with what it's for.
     let qrSide: CGFloat = 112
     if let qr = qrCode(words: words, scale: 4) {
       NSGraphicsContext.current?.imageInterpolation = .none

@@ -1,17 +1,3 @@
-// Keyboard shortcuts, end to end, in a hidden Debug instance. Every menu-bar shortcut is pressed the
-// way AppKit dispatches a key (the shell's devKeyEquivalent: the Chrome window's
-// performKeyEquivalent:, where Chrome's command dispatcher and a focused page get it first, then the
-// menu bar) with the focus in our own UI (the sidebar), in a page, in a page's text field, in the
-// command bar and in docked DevTools, and must reach its menu item. That pass records commands
-// instead of running them. Then ⌘1 / ⌘2 / ⌘9, Next / Previous Tab, ⌘T / ⌘W / ⇧⌘T, ⌃1 / ⌃2, ⌘L and
-// ⌘A in a text field run for real and are checked in the store and the page, and ⌘Q quits the app.
-//
-// usage (Metro on :8081 serves the JS):
-//   node apps/browser/scripts/shortcuts-test.mjs <Debug Netnyahoo.app> [cdpPort]
-// Never touches the user's apps or clipboard: the instance runs with NETNYAHOO_BACKGROUND=1 and a
-// throwaway data dir, and keys go to it alone (it stands in for the key window only inside itself).
-// Clipboard keys (⌘C, ⌘X, ⌘V, ⇧⌘V) and window-level AppKit items (Quit, Close Window, Minimize, Hide,
-// Full Screen) are only looked up, in our UI's focus. Exits 1 if anything failed.
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -27,7 +13,6 @@ if (!app) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const data = mkdtempSync(join(tmpdir(), "nn-shortcuts-"));
 
-// A page with a text field, one URL per tab (?name).
 const server = createServer((req, res) => {
   const name = new URL(req.url, "http://x").search.slice(1) || "page";
   res.writeHead(200, { "content-type": "text/html" });
@@ -36,7 +21,6 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const pages = `http://127.0.0.1:${server.address().port}`;
 
-// One window: two pinned tiles, then nine tabs (the third active); a second profile for ⌃1 / ⌃2.
 const tab = (id, pinned) =>
   ({ id, windowId: "w1", profileId: "default", url: `${pages}/?${id}`, title: id, favicon: null, pinned, muted: false, zoom: 1,
      customTitle: null, customIcon: null, pinnedUrl: pinned ? `${pages}/?${id}` : null, openerId: null, createdAt: 1, lastActiveAt: 1 });
@@ -82,8 +66,6 @@ process.on("unhandledRejection", (error) => {
   finish(1);
 });
 
-// The dev harness (lib/devHarness): a script in dev-eval.js, its value in dev-eval-result.json. A JS
-// reload (Metro reloads every instance when a file changes) skips the script it finds: sent again.
 let evalId = 0;
 async function nn(body, timeout = 60000) {
   let id;
@@ -114,9 +96,8 @@ for (let i = 0; ; i++) {
     finish(1);
   }
 }
-await sleep(3000); // session restore
+await sleep(3000);
 
-// CDP, for the pages' own state.
 async function cdp(urlPart, expression) {
   const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
   const target = targets.find((t) => t.type === "page" && t.url.includes(urlPart));
@@ -140,13 +121,10 @@ const state = () => nn(`const s = nn.store.getState(), w = s.windows.w1;
 const activeUrl = async () => (await nn(`const s = nn.store.getState(), w = s.windows.w1; return w ? s.tabs[w.activeTabIds[w.profileId]]?.url ?? "" : "no window w1";`));
 const press = (key, options) => nn(`return nn.shell.devKeyEquivalent("w1", ${JSON.stringify({ ...key, ...options })});`);
 
-// kVK codes and AppKit's function-key characters.
 const F = (code) => String.fromCharCode(code);
 const K = (key, keyCode, ...modifiers) => ({ key, keyCode, modifiers });
 const cmd = (key, keyCode, ...more) => K(key, keyCode, "command", ...more);
 
-// Shortcut → what it must fire: { command, arg } for the app's commands, { title } for AppKit's own
-// items. dia: Dia 1.50.1's key for it (docs/dia-feature-parity.md › Keyboard shortcuts).
 const shortcuts = [
   ["⌘,", cmd(",", 43), { command: "openSettings" }, "⌘,"],
   ["⌘Q", cmd("q", 12), { title: /^Quit/ }, "⌘Q", "window-only"],
@@ -250,7 +228,6 @@ const same = (f, expect) =>
   expect.command
     ? f.command === expect.command && (expect.arg === undefined || f.arg === expect.arg)
     : expect.title instanceof RegExp ? expect.title.test(f.title) : f.title === expect.title;
-// "ok": the item ran; "off": the key reached its item, disabled here (Back with no history…).
 function verdict(r, expect) {
   if (r.error) return "FAIL";
   const fired = r.fired ?? [], matched = r.matched ?? [];
@@ -264,7 +241,6 @@ const describe = (r) =>
   `${r.handledBy}${r.fired?.length ? ` → ${r.fired.map((f) => (f.command ? `${f.command}${f.arg ? `:${f.arg}` : ""}` : f.title)).join(", ")}` : ""}` +
     (r.matched?.length ? ` (matched ${r.matched.map((m) => `${m.command ?? m.title}${m.enabled ? "" : " disabled"}`).join(", ")})` : "");
 
-// Focus set-ups: in our UI (sidebar), a page, a page's text field, the command bar, docked DevTools.
 async function showPage(name) {
   await nn(`nn.store.getState().activate("${name}");`);
   for (let i = 0; i < 40; i++) {
@@ -295,15 +271,13 @@ const focuses = {
 };
 
 const results = new Map(shortcuts.map(([name]) => [name, {}]));
-// "off" results (a disabled item) are listed after the table, with why.
 let failures = 0;
 await showPage("t3");
 for (const [focusName, focus] of Object.entries(focuses)) {
   await focus.setup?.();
   for (const [name, key, expect, , only] of shortcuts) {
     if (focusName !== "sidebar" && (only === "window-only" || only === "clipboard")) continue;
-    // In a text field ⌘↩ and ⌘← / ⌘→ are the field's, and a page's field keeps ⇧⌘⌫ (delete to the
-    // line's start), as in Chrome: nothing may fire.
+    // Text fields consume ⌘↩, ⌘←/→, and ⇧⌘⌫.
     const inField =
       (only === "not-field" && (focusName === "field" || focusName === "commandBar")) || (only === "page-field" && focusName === "field");
     await focus.before?.();
@@ -315,7 +289,6 @@ for (const [focusName, focus] of Object.entries(focuses)) {
   await focus.teardown?.();
 }
 
-// The table.
 const cols = Object.keys(focuses);
 console.log(`\n${"shortcut".padEnd(8)} ${"Dia".padEnd(26)} ${cols.map((c) => c.padEnd(10)).join(" ")}`);
 for (const [name, , , dia] of shortcuts) {
@@ -328,13 +301,11 @@ for (const [name] of shortcuts)
     if (r && r.result !== "ok") console.log(`${r.result.padEnd(4)}  ${name} with the focus in ${c}: ${r.detail} (first responder ${r.responder})`);
   }
 
-// The same keys for real.
 const checks = [];
 const check = (name, ok, detail) => {
   checks.push({ name, ok, detail });
   if (!ok) failures++;
 };
-// Which tabs got selected meanwhile (for a failure's detail).
 await nn(`globalThis.selections = []; nn.store.subscribe((s, p) => { const w = s.windows.w1, a = w?.activeTabIds[w.profileId];
   if (a !== p.windows.w1?.activeTabIds[p.windows.w1.profileId]) globalThis.selections.push(a); }); return 1;`);
 const real = async (label, key, focus, expectUrl) => {
@@ -353,7 +324,7 @@ await real("⌘2 in the sidebar", cmd("2", 19), sidebar, "pin2");
 await real("⌘9 in the sidebar", cmd("9", 25), sidebar, "t9");
 await real("⌘5 in the sidebar", cmd("5", 23), sidebar, "t3");
 await showPage("t3");
-await sleep(2000); // the page shown before fades out
+await sleep(2000);
 await real("⌘1 in a page", cmd("1", 18), page, "pin1");
 await showPage("t3");
 await cdp("?t3", "document.getElementById('f').focus(), true");
@@ -370,9 +341,8 @@ await real("⇧⌘[ (Previous Tab)", cmd("{", 33, "shift"), sidebar, "pin2");
 await real("⌥⌘→ (Next Tab)", cmd(F(0xf703), 124, "option", "function"), sidebar, "t1");
 await real("⌃⇟ (Next Tab)", K(F(0xf72d), 121, "control", "function"), sidebar, "t2");
 await showPage("t3");
-await sleep(2000); // the page shown before fades out
+await sleep(2000);
 {
-  // The tab after t3 (a New Tab page the launch opened next to it may be there).
   const next = await nn(`const s = nn.store.getState(), w = s.windows.w1, ids = w.tabIds.filter((id) => s.tabs[id].profileId === w.profileId);
     return ids[ids.indexOf("t3") + 1];`);
   const before = await activeUrl();
@@ -387,13 +357,12 @@ await press(cmd("t", 17), sidebar);
 await sleep(400);
 let after = await state();
 check("⌘T opens a tab and selects it", after.tabs === s.tabs + 1 && (await activeUrl()) === "", `${s.tabs} → ${after.tabs} tabs`);
-// A page in it, so closing it is recorded (a blank New Tab page isn't).
 await nn(`const s = nn.store.getState(), w = s.windows.w1; s.navigate(w.activeTabIds[w.profileId], "${pages}/?closed");`);
 await sleep(1500);
 await press(cmd("w", 13), sidebar);
 await sleep(400);
 check("⌘W closes it", (await state()).tabs === s.tabs, `${(await state()).tabs} tabs`);
-await sleep(1000); // the menu bar learns there's a closed tab
+await sleep(1000);
 await press(cmd("T", 17, "shift"), sidebar);
 await sleep(400);
 check("⇧⌘T reopens it", (await state()).tabs === s.tabs + 1, `${(await state()).tabs} tabs`);
@@ -409,14 +378,12 @@ await sleep(400);
 check("⌘L opens the command bar", (await state()).panel, "");
 await nn(`nn.store.getState().closePanel("w1");`);
 await showPage("t3");
-// The field as the page made it (the keys above edited it: ⇧⌘⌫ deletes to the line's start).
 await sleep(2000);
 await cdp("?t3", "(f => (f.value = 'hello field', f.focus(), f.setSelectionRange(0, 0), true))(document.getElementById('f'))");
 await press(cmd("a", 0), page);
 const selection = await cdp("?t3", "(f => [f.selectionStart, f.selectionEnd, f.value.length].join())(document.getElementById('f'))");
 check("⌘A selects all of a page's text field", selection === "0,11,11", selection);
 
-// ⌘Q: the app quits.
 await press(cmd("q", 12), { focus: "window", wait: 0 });
 let quit = false;
 for (let i = 0; i < 150 && !quit; i++) {

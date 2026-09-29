@@ -1,6 +1,3 @@
-// Addresses and cards are Chrome autofill's (it offers, fills and saves them in
-// pages). For the settings pane this drives Chrome's settings page API
-// (autofillPrivate) in a hidden chrome://settings.
 #import "NNChromePages.h"
 
 #import <LocalAuthentication/LocalAuthentication.h>
@@ -11,13 +8,11 @@ namespace {
 
 NSString *const kPage = @"chrome://settings/";
 
-// Our address keys ⇄ Chrome's autofill field types.
 NSString *const kAddressFields =
     @"{ name: 'NAME_FULL', organization: 'COMPANY_NAME', street: 'ADDRESS_HOME_STREET_ADDRESS',"
      "  city: 'ADDRESS_HOME_CITY', state: 'ADDRESS_HOME_STATE', postalCode: 'ADDRESS_HOME_ZIP',"
      "  country: 'ADDRESS_HOME_COUNTRY', phone: 'PHONE_HOME_WHOLE_NUMBER', email: 'EMAIL_ADDRESS' }";
 
-/// Our card network from Chrome's card icon ("chrome://theme/IDR_AUTOFILL_METADATA_CC_MASTERCARD").
 NSString *const kCardNetwork =
     @"((c) => ({ VISA: 'visa', MASTERCARD: 'mastercard', AMEX: 'amex', DISCOVER: 'discover', DINERS: 'diners', JCB: 'jcb',"
      "  UNIONPAY: 'unionpay' })[((c.imageSrc || '').match(/_CC_([A-Z]+)/) || [])[1]] || 'card')";
@@ -43,7 +38,6 @@ void SetBoolPreference(NSString *profile, const char *name, bool on) {
   if (!Context(profile)->SetPreference(name, value, error)) NSLog(@"[autofill] %s: %@", name, ToNS(error));
 }
 
-/// Touch ID, or the login password.
 void Authenticate(NSString *reason, void (^completion)(BOOL ok)) {
   LAContext *context = [[LAContext alloc] init];
   [context evaluatePolicy:LAPolicyDeviceOwnerAuthentication
@@ -51,7 +45,7 @@ void Authenticate(NSString *reason, void (^completion)(BOOL ok)) {
                     reply:^(BOOL success, NSError *) { dispatch_async(dispatch_get_main_queue(), ^{ completion(success); }); }];
 }
 
-}  // namespace
+}
 
 @implementation NNAutofill
 
@@ -89,11 +83,10 @@ void Authenticate(NSString *reason, void (^completion)(BOOL ok)) {
       @"(async () => {"
        "  const keys = %@, address = %%@;"
        "  const before = new Set((await chrome.autofillPrivate.getAddressList()).map((a) => a.guid));"
-       // Every field, so a replaced address loses the ones it no longer has.
        "  const fields = Object.entries(keys).map(([key, type]) => ({ type, value: address[key] ? String(address[key]) : '' }));"
        "  await chrome.autofillPrivate.saveAddress({ guid: address.id || undefined, fields });"
        "  const name = (a) => (a.fields.find((f) => f.type === 'NAME_FULL') || {}).value || '';"
-       "  for (let i = 0; i < 20; i++) {"  // Chrome's store writes asynchronously
+       "  for (let i = 0; i < 20; i++) {"
        "    const list = await chrome.autofillPrivate.getAddressList();"
        "    const saved = address.id ? list.find((a) => a.guid === address.id && name(a) === (address.name || ''))"
        "                             : list.find((a) => !before.has(a.guid));"
@@ -134,14 +127,13 @@ void Authenticate(NSString *reason, void (^completion)(BOOL ok)) {
        "  if (!current && !/^\\d{12,19}$/.test(digits)) return { error: 'invalid number' };"
        "  const before = new Set(list.map((c) => c.guid));"
        "  const pad = (n) => (n ? String(n).padStart(2, '0') : undefined);"
-       // The listed number is masked: an update without a new one leaves Chrome's alone.
        "  await chrome.autofillPrivate.saveCreditCard({ guid: card.id || undefined,"
        "    name: card.name ?? (current && current.name), cardNumber: digits || undefined,"
        "    expirationMonth: pad(card.expMonth) ?? (current && current.expirationMonth),"
        "    expirationYear: card.expYear ? String(card.expYear) : current && current.expirationYear,"
        "    nickname: current ? current.nickname : undefined });"
        "  if (card.id) return { id: card.id };"
-       "  for (let i = 0; i < 20; i++) {"  // Chrome's store writes asynchronously
+       "  for (let i = 0; i < 20; i++) {"
        "    const added = (await chrome.autofillPrivate.getCreditCardList()).find((c) => !before.has(c.guid));"
        "    if (added) return { id: added.guid };"
        "    await new Promise((r) => setTimeout(r, 50));"
@@ -171,7 +163,6 @@ void Authenticate(NSString *reason, void (^completion)(BOOL ok)) {
   Authenticate(@"show a saved card number", ^(BOOL ok) {
     if (!ok) return completion(@{});
     Run(profile,
-        // Chrome's settings list masks numbers; its edit dialog's call has the whole one.
         pages::Script(@"new Promise((resolve) => chrome.autofillPrivate.getLocalCard(%@, resolve)).then((card) =>"
                        "  card ? { number: (card.cardNumber || '').replace(/\\D/g, '') || null } : {})",
                       @[ cardId ]),

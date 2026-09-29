@@ -6,11 +6,6 @@ import { useBrowser, type BrowserState } from "../../store/browser";
 import { activeTab, bookmarkProfileId } from "../../store/model";
 import type { Tab } from "../../store/types";
 
-/**
- * Browser actions the command bar offers ("close tab", "new window", "settings"…): an index
- * over the menu commands in lib/commands.ts. Titles follow the menus; `needs` hides actions
- * that can't run right now (page actions on the New Tab page, profile actions in incognito).
- */
 type Context = { s: BrowserState; windowId: string; tab: Tab | undefined };
 
 type ActionDef = {
@@ -32,7 +27,6 @@ const DEFS: ActionDef[] = [
   { command: "closeTab", title: "Close Tab", icon: "xmark", hint: "⌘W", needs: "tab" },
   { command: "closeAllTabs", title: "Close All Tabs", icon: "xmark.square", hint: "⇧⌘K" },
   { command: "reopenClosedTab", title: "Reopen Closed Tab", icon: "arrow.uturn.backward", hint: "⇧⌘T", keywords: ["undo close", "restore tab"] },
-  // Dia's command bar names the pinned-tab dock "Top Apps" (its favorites).
   {
     command: "togglePin",
     title: ({ tab }) => (tab?.pinned ? "Unpin from Top Apps" : "Move to Top Apps"),
@@ -85,7 +79,6 @@ const DEFS: ActionDef[] = [
 
 const actionId = (d: Pick<ActionDef, "command" | "arg">) => (d.arg ? `${d.command}:${d.arg}` : d.command);
 
-/** The actions available in `windowId` right now, with their current titles. */
 export function barActions(s: BrowserState, windowId: string): CommandAction[] {
   const w = s.windows[windowId];
   const tab = activeTab(s, windowId);
@@ -103,7 +96,6 @@ export function barActions(s: BrowserState, windowId: string): CommandAction[] {
       ...(d.keywords ? { keywords: d.keywords } : {}),
     });
   }
-  // "Switch to <Profile>": Dia's profiles replace Spaces, so switching is a common command.
   if (w && !w.incognito) {
     s.profileOrder.forEach((id, i) => {
       if (id === w.profileId) return;
@@ -114,7 +106,6 @@ export function barActions(s: BrowserState, windowId: string): CommandAction[] {
   return out;
 }
 
-/** Runs an action picked in the bar (after the bar has closed, so ⌘W-style commands hit the page). */
 export function runBarAction(id: string, windowId: string) {
   const i = id.indexOf(":");
   const command = (i < 0 ? id : id.slice(0, i)) as BrowserCommand;
@@ -122,5 +113,4 @@ export function runBarAction(id: string, windowId: string) {
   runCommand({ command, arg, windowId });
 }
 
-/** Current state snapshot for the bar (actions are cheap to rebuild per query). */
 export const currentBarActions = (windowId: string) => barActions(useBrowser.getState(), windowId);

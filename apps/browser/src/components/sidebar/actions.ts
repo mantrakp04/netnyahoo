@@ -7,18 +7,10 @@ import { groupOf, selectedTabIds } from "../../store/organize";
 import type { Tab } from "../../store/types";
 import { measureRow, setSidebarUi, sidebarUi, type Target } from "./state";
 
-/**
- * Sidebar operations shared by rows, context menus and menu-bar commands.
- */
 const store = () => useBrowser.getState();
 
-/** Where ⇧-click ranges start: the last plainly- or ⌘-clicked tab per window. */
 const anchors = new Map<string, string>();
 
-/**
- * Click on a tab: select it, ⌘ toggles it in the selection, ⇧ selects a range, ⌥⇧ opens it in
- * the current tab's group (Settings › Tabs "⌥⇧-click opens tab in group").
- */
 export function clickTab(windowId: string, tabId: string, mods: { metaKey?: boolean; shiftKey?: boolean; altKey?: boolean } = {}) {
   const s = store();
   if (mods.altKey && mods.shiftKey && !mods.metaKey && s.settings.optShiftClickOpensInGroup) return openInCurrentGroup(windowId, tabId);
@@ -26,7 +18,6 @@ export function clickTab(windowId: string, tabId: string, mods: { metaKey?: bool
   const active = activeTabId(s, windowId);
   const current = s.selection[windowId] ?? [];
   if (mods.metaKey) {
-    // The active tab counts as selected when a multi-selection starts.
     const base = current.length ? current : active ? [active] : [];
     const next = base.includes(tabId) ? base.filter((id) => id !== tabId) : [...base, tabId];
     anchors.set(windowId, tabId);
@@ -45,7 +36,6 @@ export function clickTab(windowId: string, tabId: string, mods: { metaKey?: bool
   s.activate(tabId);
 }
 
-/** ⌥⇧-click: the tab joins the selected tab's group (or they start one, pinned like ⌃⌘N's) and is selected. */
 function openInCurrentGroup(windowId: string, tabId: string) {
   const s = store();
   const active = activeTabId(s, windowId);
@@ -59,7 +49,6 @@ function openInCurrentGroup(windowId: string, tabId: string) {
   store().activate(tabId);
 }
 
-/** Rename… — inline in the list; pinned tiles (no visible title) ask in a sheet. */
 export async function startRename(windowId: string, target: Target) {
   const s = store();
   if (target.kind === "tab") {
@@ -76,14 +65,12 @@ export async function startRename(windowId: string, target: Target) {
       if (name !== null) store().updateTab(tab.id, { customTitle: name });
       return;
     }
-    // A collapsed group opens so the row can be edited.
     const group = groupOf(s, tab.id);
     if (group?.collapsed && activeTabId(s, windowId) !== tab.id) s.updateGroup(group.id, { collapsed: false });
   }
   setSidebarUi({ renaming: { windowId, ...target } });
 }
 
-/** Empty text resets the name (the page title / derived group name shows again). */
 export function commitRename(target: Target, text: string) {
   const name = text.trim();
   if (target.kind === "tab") {
@@ -98,7 +85,6 @@ export function endRename(target: Target) {
   if (r && r.id === target.id) setSidebarUi({ renaming: null });
 }
 
-/** Change Icon… — opens the picker next to the row (or the window's top left if it's not shown). */
 export async function openIconPicker(windowId: string, target: Target) {
   const anchor = await measureRow(windowId, target.id);
   setSidebarUi({ iconPicker: { windowId, ...target, anchor }, hover: null });
@@ -111,7 +97,6 @@ export function setIcon(target: Target, icon: string | null) {
   else store().updateGroup(target.id, { icon });
 }
 
-/** New Group with Tab(s) ⌃⌘N: groups the selection and drops you into naming it, like Dia. */
 export function newGroupWithSelection(windowId: string, ids = selectedTabIds(store(), windowId)) {
   const groupId = store().groupTabs(ids.filter((id) => !store().tabs[id]?.pinned));
   if (groupId) void startRename(windowId, { kind: "group", id: groupId });
@@ -120,16 +105,13 @@ export function newGroupWithSelection(windowId: string, ids = selectedTabIds(sto
 
 export const tabTitle = (t: Pick<Tab, "customTitle" | "title" | "url">) => t.customTitle || t.title || t.url || "New Tab";
 
-/** Copy URLs (one per line), or as Markdown links. */
 export function copyUrls(ids: string[], markdown: boolean) {
   const tabs = ids.map((id) => store().tabs[id]).filter((t): t is Tab => !!t?.url);
   if (!tabs.length) return;
-  // Every Copy URL drops trackers, like ⇧⌘C (Dia's "without any trackers").
   const lines = tabs.map((t) => (markdown ? markdownLink(tabTitle(t), t.url) : cleanUrl(t.url)));
   copyText(markdown && lines.length > 1 ? lines.map((l) => `- ${l}`).join("\n") : lines.join("\n"));
 }
 
-/** Add Tabs to Bookmarks Bar / Folder (`"new"` asks for a folder name, made on the Bookmarks Bar). */
 export async function bookmarkTabs(windowId: string, ids: string[], folder: string | "bar" | "new") {
   const s = store();
   const profileId = bookmarkProfileId(s, s.windows[windowId]);
@@ -145,7 +127,6 @@ export async function bookmarkTabs(windowId: string, ids: string[], folder: stri
   }
 }
 
-/** Edit Pinned Page… */
 export async function editPinnedPage(windowId: string, tabId: string) {
   const tab = store().tabs[tabId];
   if (!tab?.pinned) return;
@@ -159,7 +140,6 @@ export async function editPinnedPage(windowId: string, tabId: string) {
   if (url) store().setPinnedUrl(tabId, url.includes("://") ? url : `https://${url}`);
 }
 
-/** Mute All Tabs / Unmute All Tabs in the window's current profile. */
 export function muteAll(windowId: string, muted: boolean) {
   store().setMuted(viewTabIds(store(), windowId), muted);
 }

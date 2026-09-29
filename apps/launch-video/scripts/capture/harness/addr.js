@@ -1,4 +1,3 @@
-// The sidebar's address field opens Arc's dropdown; "netnyahoo" is typed a letter at a time; Escape closes it.
 const DIR = "addr";
 const q = "netnyahoo";
 const typeStep = (text) => () => { nn.omnibox.get(W + ":sidebar").type(text); return sleep(250).then(() => snap(DIR, "type:" + text)); };

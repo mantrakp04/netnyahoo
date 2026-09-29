@@ -1,6 +1,3 @@
-// Puts a soundtrack (default public/sound/track.wav, scripts/make-sound.mjs) on the rendered picture and encodes
-// the upload: H.264 High (x264 tuned for grain, CRF 18, capped at 16 Mb/s; the black-and-white half's grain
-// is new every frame), AAC 256 kb/s from frame 0 so the loop doesn't click.
 // usage: node scripts/mux-audio.mjs [name=netnyahoo-launch] [track=track.wav] → output/launch-video/<name>.mp4
 import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";

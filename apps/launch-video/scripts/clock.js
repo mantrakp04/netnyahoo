@@ -1,5 +1,3 @@
-// Injected before the game loads: a clock the capture script steps by hand (rAF, performance.now,
-// setTimeout and CSS animations all follow it), so each captured frame is exactly 1/30 s apart.
 (() => {
   let manual = false, vt = 0, rafs = [], tid = 1e6;
   const timers = new Map(), anims = new Map();
@@ -18,7 +16,6 @@
   };
   window.clearTimeout = (id) => { if (timers.has(id)) timers.delete(id); else rCT(id); };
   window.__clock = {
-    /** Freezes real time; resolves once the page's pending animation frame has moved onto this clock. */
     enter() {
       vt = rN();
       manual = true;

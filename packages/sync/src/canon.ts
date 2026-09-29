@@ -1,4 +1,3 @@
-/** JSON with object keys sorted and undefined dropped: equal values give equal strings. */
 export function canonical(value: unknown): string {
   return JSON.stringify(sortKeys(value));
 }

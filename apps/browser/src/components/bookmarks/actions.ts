@@ -5,10 +5,8 @@ import { folderLinks } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";
 import { activeTabId, bookmarkProfileId, resolveWindowId, viewTabIds } from "../../store/model";
 
-/** How a click on a bookmark opens it (Dia/Chrome modifier conventions). */
 export type OpenMode = "current" | "background" | "foreground" | "window" | "incognito" | "split";
 
-/** ⌘ / middle-click: background tab (⇧⌘: foreground) · ⇧: new window · ⌥: split pane. */
 export function openModeFor(e: { metaKey?: boolean; shiftKey?: boolean; altKey?: boolean; middle?: boolean }): OpenMode {
   if (e.metaKey || e.middle) return e.shiftKey ? "foreground" : "background";
   if (e.altKey) return "split";
@@ -35,7 +33,6 @@ export function openUrl(url: string, windowId: string | null | undefined, mode: 
   s.newTab(id, { url, background: mode === "background", openerId: mode === "background" ? tabId : undefined });
 }
 
-/** Open All: every link in a folder, in new tabs (Chrome asks first past 15). */
 export async function openFolder(folderId: string, windowId: string | null | undefined, mode: "tabs" | "window" | "incognito" = "tabs") {
   const s = useBrowser.getState();
   const links = folderLinks(s.bookmarks, folderId);
@@ -58,7 +55,6 @@ export async function openFolder(folderId: string, windowId: string | null | und
   links.forEach((link, i) => useBrowser.getState().newTab(id, { url: link.url, background: i > 0 }));
 }
 
-/** The save dialog (⌘D, Bookmark All Tabs…) — one per window at a time. */
 export type BookmarkDialogState =
   | { kind: "page"; windowId: string; bookmarkId: string }
   | { kind: "allTabs"; windowId: string; profileId: string; tabs: { url: string; title: string }[] };
@@ -68,11 +64,6 @@ export const useBookmarkDialog = create<{ open: BookmarkDialogState | null; set(
   set: (open) => set({ open }),
 }));
 
-/**
- * ⌘D (Tabs › Add to Bookmarks…): bookmarks the page right away, like Dia and
- * Chrome, then shows the dialog to rename it or pick a folder. An already
- * bookmarked page opens the dialog on its existing bookmark.
- */
 export function bookmarkActivePage(windowId: string | null | undefined) {
   const s = useBrowser.getState();
   const id = resolveWindowId(s, windowId);
@@ -80,7 +71,6 @@ export function bookmarkActivePage(windowId: string | null | undefined) {
   if (id && tabId) bookmarkTab(id, tabId);
 }
 
-/** ⌘D for any tab (the tab menu's Add to Bookmarks…): bookmark it, then the dialog. */
 export function bookmarkTab(windowId: string, tabId: string) {
   const s = useBrowser.getState();
   const id = windowId;
@@ -96,7 +86,6 @@ export function bookmarkTab(windowId: string, tabId: string) {
   useBookmarkDialog.getState().set({ kind: "page", windowId: id, bookmarkId });
 }
 
-/** Bookmarks › Bookmark All Tabs…: a new folder with the window's tabs. */
 export function bookmarkAllTabs(windowId: string | null | undefined) {
   const s = useBrowser.getState();
   const id = resolveWindowId(s, windowId);

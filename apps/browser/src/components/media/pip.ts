@@ -11,22 +11,8 @@ import { startTabShareCleanup } from "./ShareBar";
 import { cancelDisplayMediaOnNavigation } from "./SharePicker";
 import { exitPictureInPicture, inPictureInPicture, isPlaying, isTabShown, setPip, useMedia } from "./state";
 
-/**
- * Dia's automatic Picture in Picture: a video you're watching (or a meeting)
- * pops out when you switch away from its tab or its window gets hidden, and
- * goes back when you return. Settings › Tabs can turn it off.
- *
- * Only videos you'd miss count: ones playing sound, or pages using the camera,
- * microphone or screen. A muted background loop (hero videos) doesn't pop out.
- */
 const eligible = (tabId: string) => !!useBrowser.getState().live[tabId]?.playingAudio || !!pageOf(tabId).mediaAccess;
 
-/**
- * The web view's `autoPictureInPicture` prop. The engine acts when the tab is
- * hidden (and on a prop change while hidden), so the value is decided while
- * the tab shows and kept while it's hidden: audio starting in a background tab
- * (or the setting turned on) doesn't pop its video out.
- */
 export function useAutoPictureInPicture(tabId: string, visible: boolean): boolean {
   const enabled = useSettings((s) => s.autoPictureInPicture ?? true);
   const audible = useBrowser((s) => !!s.live[tabId]?.playingAudio);
@@ -39,10 +25,6 @@ export function useAutoPictureInPicture(tabId: string, visible: boolean): boolea
 const LOCK_GRACE_MS = 3000;
 let started = false;
 
-/**
- * App-wide media effects, started once: window hidden → PiP, tab or window
- * back → leave PiP; getDisplayMedia() goes through our share picker.
- */
 export function startMedia() {
   if (started) return;
   started = true;
@@ -51,8 +33,6 @@ export function startMedia() {
   startTabShareCleanup();
   startCast();
 
-  // Returning to a tab closes its PiP window, whoever opened it (the engine's
-  // own tab-switch PiP closes itself).
   useBrowser.subscribe((s, prev) => {
     if (s.windows === prev.windows && s.splits === prev.splits) return;
     const { pip } = useMedia.getState();
@@ -63,7 +43,6 @@ export function startMedia() {
     }
   });
 
-  // Locking the screen hides every window: that's not "leaving" the video.
   let lockedAt = 0;
   onAppEvent((e) => {
     if (e.type === "screenLocked") lockedAt = Date.now();
@@ -80,12 +59,12 @@ export function startMedia() {
       }
       return;
     }
+    // Screen lock hides every window; it does not mean the user left the video.
     if (!(s.settings.autoPictureInPicture ?? true) || Date.now() - lockedAt < LOCK_GRACE_MS) return;
     for (const tabId of tabs) {
       const session = useMedia.getState().sessions[tabId];
       if (!session?.hasVideo || !isPlaying(session) || !eligible(tabId)) continue;
       void (async () => {
-        // Already popped out by hand: leave it to the user.
         if (await inPictureInPicture(tabId)) return;
         if (await webviews.get(tabId)?.requestPictureInPicture()) setPip(tabId, "auto");
       })();

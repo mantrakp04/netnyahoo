@@ -1,11 +1,5 @@
 import Foundation
 
-/// Password exports as CSV, recognised by header:
-///
-/// - Chrome/Edge/Brave/Arc: `name,url,username,password,note`
-/// - Safari: `Title,URL,Username,Password,Notes,OTPAuth`
-/// - Firefox: `"url","username","password","httpRealm","formActionOrigin","guid","timeCreated","timeLastUsed","timePasswordChanged"`
-/// - 1Password / Bitwarden style variants (`login_uri`, `login_username`, `login_password`, `website`, …)
 public enum PasswordsCSV {
   static let urlKeys = ["url", "login_uri", "website", "web site", "origin", "hostname", "login url"]
   static let userKeys = ["username", "login_username", "login", "user", "email", "user name"]
@@ -63,8 +57,6 @@ public enum PasswordsCSV {
   }
 }
 
-/// RFC 4180 CSV: quoted fields with doubled quotes, embedded commas and newlines, CRLF or LF,
-/// optional UTF-8 BOM.
 enum CSV {
   static func parse(_ text: String) -> [[String]] {
     var rows: [[String]] = []

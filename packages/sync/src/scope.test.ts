@@ -4,8 +4,6 @@ import { Clock, formatHLC, hlcWall, parseHLC } from "./hlc.ts";
 import { assignPositions, positionBetween } from "./order.ts";
 import { compact, emptyScope, syncScope, type Adapter, type Listing, type ScopeOptions, type ScopeState, type Transport } from "./scope.ts";
 
-// A shared folder in memory. A file can be hidden (not synced to this Mac yet) or cut short
-// (still being copied): readers see it as pending or damaged, as the native layer reports.
 type Entry = { payload: string; hiddenFrom: Set<string>; partialFor: Set<string>; at: number };
 class Folder {
   scopes = new Map<string, Map<string, Entry>>();
@@ -44,7 +42,6 @@ class Folder {
   }
 }
 
-/** A device with a key-value store synced under "x:" (and settings-like "set:" keys). */
 class Device {
   store = new Map<string, unknown>();
   settings = new Map<string, unknown>();
@@ -104,7 +101,6 @@ class Device {
       options: { pruneGrace: 0, ...this.options },
     });
   }
-  /** The state survives a relaunch as JSON. */
   relaunch() {
     this.state = JSON.parse(JSON.stringify(this.state)) as ScopeState;
     this.clock = new Clock(this.id, this.clock.last, () => this.time());
@@ -123,13 +119,12 @@ test("hybrid logical clocks order by wall time, then counter, then device", () =
   const second = clock.tick();
   assert.ok(second > first);
   assert.deepEqual(parseHLC(second), { wall: 1000, counter: 1, device: "a" });
-  t = 900; // the wall clock went back
+  t = 900;
   assert.ok(clock.tick() > second);
   clock.observe(formatHLC(5000, 3, "b"));
   const after = clock.tick();
   assert.ok(after > formatHLC(5000, 3, "b"));
   assert.equal(hlcWall(after), 5000);
-  // Backdated for data made earlier; doesn't move the clock.
   assert.equal(hlcWall(clock.at(200)), 200);
   assert.ok(clock.tick() > after);
 });
@@ -149,7 +144,6 @@ test("positions sort in list order and keep what they can", () => {
     assert.ok(m > a && (b === null || m < b), `${a} < ${m} < ${b}`);
     assert.ok(!m.endsWith("0"));
   }
-  // Squeezing repeatedly into the same gap stays ordered.
   let lo = "a";
   const hi = "b";
   for (let i = 0; i < 100; i++) {
@@ -158,12 +152,10 @@ test("positions sort in list order and keep what they can", () => {
   }
   keys = assignPositions([undefined, undefined, undefined]);
   assert.ok(keys[0]! < keys[1]! && keys[1]! < keys[2]!);
-  // Move the last item first: only it gets a new position.
   const moved = assignPositions([keys[2], keys[0], keys[1]]);
   assert.equal(moved[1], keys[0]);
   assert.equal(moved[2], keys[1]);
   assert.ok(moved[0]! < moved[1]!);
-  // Duplicate positions (two Macs inserted at the same place) get separated.
   const dup = assignPositions([keys[0], keys[0], keys[1]]);
   assert.ok(dup[0]! < dup[1]! && dup[1]! < dup[2]!);
 });
@@ -216,7 +208,6 @@ test("deletes propagate; a re-add after a delete wins; an edit after a delete wi
   a.store.set("x:1", "one again");
   await syncAll([a, b]);
   assert.equal(b.store.get("x:1"), "one again");
-  // Delete on A, then a later edit on B before B saw the delete: the edit is newer.
   folder.now += 5;
   a.store.delete("x:2");
   folder.now += 5;
@@ -231,7 +222,7 @@ test("clock skew: an edit made after seeing another device's wins even with a sl
   folder.now = 10_000_000;
   const a = new Device("devA", folder);
   const b = new Device("devB", folder);
-  b.offset = -3_600_000; // an hour behind
+  b.offset = -3_600_000;
   a.store.set("x:k", "A");
   await syncAll([a, b]);
   assert.equal(b.store.get("x:k"), "A");
@@ -239,7 +230,6 @@ test("clock skew: an edit made after seeing another device's wins even with a sl
   b.store.set("x:k", "B, after seeing A");
   await syncAll([b, a]);
   assert.equal(a.store.get("x:k"), "B, after seeing A");
-  // A clock days ahead only wins edits concurrent with it; later edits elsewhere still win.
   const c = new Device("devC", folder);
   c.offset = 3 * 86_400_000;
   c.store.set("x:k", "C from the future");
@@ -261,18 +251,18 @@ test("files arriving late, out of order or cut short are read when they're whole
   a.store.set("x:2", "second");
   await a.sync();
   const [first, second] = [...folder.scope("s").values()];
-  first!.hiddenFrom.add("devB"); // iCloud hasn't downloaded it
-  second!.partialFor.add("devB"); // mid-copy
+  first!.hiddenFrom.add("devB");
+  second!.partialFor.add("devB");
   const r = await b.sync();
   assert.equal(r.pending, 1);
   assert.equal(b.store.size, 0);
   assert.equal(Object.keys(b.state.damaged).length, 1);
-  second!.partialFor.clear(); // the second arrives first
+  second!.partialFor.clear();
   await b.sync();
   assert.deepEqual(snapshot(b), { "x:1": "v2", "x:2": "second" });
   assert.equal(b.state.vv.devA ?? 0, 0);
   assert.deepEqual(b.state.extra.devA, [2]);
-  first!.hiddenFrom.clear(); // the older one lands: it must not win
+  first!.hiddenFrom.clear();
   await b.sync();
   assert.deepEqual(snapshot(b), { "x:1": "v2", "x:2": "second" });
   assert.equal(b.state.vv.devA, 2);
@@ -289,7 +279,6 @@ test("a local edit made while files are read isn't overwritten", async () => {
   a.store.set("x:k", "A remote");
   await a.sync();
   folder.now += 10;
-  // While B reads, the user edits the same key on B.
   b.onRead = () => {
     b.store.set("x:k", "B, typed during the read");
     b.onRead = undefined;
@@ -307,9 +296,8 @@ test("a joining device adopts synced settings, then its own new ones sync", asyn
   await syncAll([a]);
   const b = new Device("devB", folder);
   b.state.awaitRemote = true;
-  b.settings.set("set:appearance", "light"); // B's default
+  b.settings.set("set:appearance", "light");
   b.settings.set("set:onlyB", true);
-  // The folder hasn't shown B any file yet: B stays unjoined.
   for (const e of folder.scope("s").values()) e.hiddenFrom.add("devB");
   await b.sync();
   assert.equal(b.state.joined, false);
@@ -352,8 +340,6 @@ test("a device offline for weeks catches up, keeps its offline edits, and learns
   a.store.set("x:doomed", 2);
   await syncAll([a, b]);
   assert.equal(b.store.get("x:doomed"), 2);
-  // B goes offline. While away it edits something; meanwhile A deletes x:doomed and, weeks
-  // later, compacts: the tombstone is collected and the logs are pruned.
   b.store.set("x:offline", "made offline");
   folder.now += day;
   a.store.delete("x:doomed");
@@ -403,7 +389,6 @@ test("three devices, random edits and sync orders, converge", async () => {
       else if (r < 0.8) d.relaunch();
       else await d.sync();
       if (random() < 0.3) await devices[Math.floor(random() * 3)]!.sync();
-      // The sync client is slow and uneven: new files reach some Macs late, some half-copied.
       for (const e of folder.scope("s").values()) {
         if (random() < 0.15) e.hiddenFrom.add(devices[Math.floor(random() * 3)]!.id);
         if (random() < 0.1) e.partialFor.add(devices[Math.floor(random() * 3)]!.id);

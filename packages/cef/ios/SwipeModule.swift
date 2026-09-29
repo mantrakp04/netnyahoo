@@ -1,17 +1,13 @@
 import ExpoModulesCore
 
-/// Two-finger swipe navigation (NNSwipe): an invisible `SwipeArea` laid over a pane's
-/// content or the sidebar receives the horizontal swipes that start over its parent.
 public class SwipeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooSwipe")
 
-    /// Haptic feedback: "levelChange" (threshold reached), "alignment" (detents), "generic".
     Function("haptic") { (pattern: String) in
       DispatchQueue.main.async { NNSwipe.performHaptic(pattern) }
     }
 
-    /// DEV: a synthetic trackpad gesture over the area's window (see NNSwipe.h).
     AsyncFunction("devSimulate") { (x: Double, y: Double, windowNumber: Int, steps: [[String: Any]], ignorePreference: Bool, promise: Promise) in
       #if DEBUG
       guard let window = NSApp.window(withWindowNumber: windowNumber) else {
@@ -33,7 +29,6 @@ public class SwipeModule: Module {
       Prop("tracksUnavailableDirections") { (view: SwipeArea, value: Bool?) in view.tracksUnavailableDirections = value ?? false }
       Prop("allowsVerticalMotion") { (view: SwipeArea, value: Bool?) in view.allowsVerticalMotion = value ?? false }
       Prop("isPager") { (view: SwipeArea, value: Bool?) in view.isPager = value ?? false }
-      /// DEV: where the area is, for devSimulate (window number + its frame, top-left origin).
       AsyncFunction("devLocate") { (view: SwipeArea) -> [String: Any]? in
         guard let window = view.window, let content = window.contentView else { return nil }
         let frame = view.convert(view.bounds, to: content)
@@ -44,7 +39,6 @@ public class SwipeModule: Module {
   }
 }
 
-/// Invisible and never hit: the swipe tracker finds it by geometry and its parent.
 final class SwipeArea: ExpoView, NNSwipeTarget {
   let onSwipe = EventDispatcher()
   var canSwipeBack = false

@@ -29,11 +29,6 @@ const SITE_ACCESS: { value: SiteAccess; title: string }[] = [
 const siteAccessOf = (ext: InstalledExtension): SiteAccess =>
   ext.siteAccess === "ON_CLICK" ? "onClick" : ext.siteAccess === "ON_SPECIFIC_SITES" ? "specificSites" : "allSites";
 
-/**
- * Settings › Extensions (Extensions › Manage Extensions…): the profile's
- * extensions with on/off switches, details (permissions, site access, pinning,
- * incognito), removal, and adding from the Chrome Web Store or a folder.
- */
 export function ExtensionsPane() {
   const theme = useTheme();
   const profiles = useProfiles();

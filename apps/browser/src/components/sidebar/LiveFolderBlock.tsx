@@ -27,10 +27,8 @@ const PAD = 2;
 const EMPTY: LiveItem[] = [];
 const NONE: string[] = [];
 
-/** A live item row's key for hover cards and anchoring ("live|<folder>|<item>"). */
 export const liveRowKey = (folderId: string, itemId: string) => `live|${folderId}|${itemId}`;
 
-/** The window profile's live folders, between the pinned groups and the tab list. */
 export function LiveFolders({ windowId, spaced }: { windowId: string; spaced: boolean }) {
   const page = usePageProfileId();
   const profileId = useBrowser((s) => (s.windows[windowId]?.incognito ? "" : page));
@@ -45,7 +43,6 @@ export function LiveFolders({ windowId, spaced }: { windowId: string; spaced: bo
   );
 }
 
-/** Height/opacity animation for a folder or stack opening and closing (GroupBlock's curve). */
 function useDisclosure(collapsed: boolean) {
   const open = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
   const [height, setHeight] = useState(0);
@@ -73,11 +70,6 @@ function useDisclosure(collapsed: boolean) {
   return { style, moving, onLayout: (h: number) => setHeight(h) };
 }
 
-/**
- * Dia's live folder: a group-like box whose rows come from a service (pull
- * requests, documents). Rows open as tabs that stay in the folder; a closed
- * folder shows an unread pip when new items arrive.
- */
 function LiveFolderBlock({ folderId, windowId }: { folderId: string; windowId: string }) {
   const tokens = useSidebarTokens();
   const folder = useLive((s) => s.folders[folderId]);
@@ -87,11 +79,9 @@ function LiveFolderBlock({ folderId, windowId }: { folderId: string; windowId: s
   const rows = useMemo(() => (folder ? folderRows(folder, items, showAll) : []), [folder, items, showAll]);
   const itemIds = useMemo(() => new Set(items.map((i) => i.id)), [items]);
   const profileId = usePageProfileId();
-  // Tabs from this folder whose item has left it (merged PR, filter change): shown as plain tabs at the end.
   const strays = useBrowser(
     useShallow((s) => viewTabIds(s, windowId, profileId).filter((id) => s.tabs[id]?.liveItem?.folderId === folderId && !itemIds.has(s.tabs[id]!.liveItem!.itemId))),
   );
-  // Closed, the folder still shows the selected tab's row.
   const activeItem = useBrowser((s) => {
     const t = s.tabs[activeTabId(s, windowId, profileId) ?? ""];
     return t?.liveItem?.folderId === folderId ? t.liveItem.itemId : null;
@@ -162,7 +152,6 @@ function FolderHeader({ folderId, windowId, collapsed }: { folderId: string; win
   if (!folder) return null;
   const updating = status?.state === "updating" || status?.state === "initializing";
   const sourceSite = SOURCES[folder.sources[0] ?? "github"].site;
-  // A folder fed by several services gets a neutral glyph instead of one service's icon.
   const icon = folder.icon ?? (folder.sources.length > 1 && folder.kind === "documents" ? "symbol:doc.text" : null);
 
   return (
@@ -210,7 +199,6 @@ function FolderHeader({ folderId, windowId, collapsed }: { folderId: string; win
   );
 }
 
-/** Refresh ↻ (Dia's "Button to refresh this live folder"); spins while fetching. */
 function RefreshButton({ spinning, tooltip, onPress }: { spinning: boolean; tooltip: string; onPress(): void }) {
   const theme = useTheme();
   const turn = useRef(new Animated.Value(0)).current;
@@ -276,7 +264,6 @@ function Spinner() {
   );
 }
 
-/** "Show N More" (Dia's cell that reveals more items in a live folder). */
 function MoreRow({ folderId, section, count }: { folderId: string; section: string; count: number }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
@@ -292,7 +279,6 @@ function MoreRow({ folderId, section, count }: { folderId: string; section: stri
   );
 }
 
-/** Stacked PRs (Dia's "Pull request stack"): a disclosure row over its members, each with its position. */
 function StackRow({ folderId, windowId, stack }: { folderId: string; windowId: string; stack: Extract<FolderRow, { kind: "stack" }> }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
@@ -330,11 +316,6 @@ function StackRow({ folderId, windowId, stack }: { folderId: string; windowId: s
   );
 }
 
-/**
- * One item: its tab when open (selected like a tab row), else a row that opens
- * it. PRs show their most urgent state at the trailing edge; the hover card has
- * the details. A merged / reviewed PR pops a check, then folds away.
- */
 function LiveItemRow({ folderId, item, windowId, indent = 0 }: { folderId: string; item: LiveItem; windowId: string; indent?: number }) {
   const theme = useTheme();
   const colors = useLiveColors();
@@ -349,7 +330,6 @@ function LiveItemRow({ folderId, item, windowId, indent = 0 }: { folderId: strin
   useEffect(() => {
     if (!completion) return;
     fold.setValue(1);
-    // Hold on the check, then fold the row away just before it leaves the list.
     Animated.sequence([
       Animated.delay(COMPLETION_MS - 420),
       Animated.timing(fold, { toValue: 0, duration: 360, easing: Easing.bezier(0.2, 0.9, 0.3, 1), useNativeDriver: false }),
@@ -443,7 +423,6 @@ function ItemIcon({ item, completion, colors }: { item: LiveItem; completion: Co
     return <Symbol name="arrow.triangle.pull" size={12} weight="semibold" color={item.pr.draft ? colors.draft : colors.success} style={{ width: 16, height: 16 }} />;
   }
   if (item.icon && /^https?:/.test(item.icon)) return <TabIcon url={item.url} favicon={item.icon} direct />;
-  // Confluence sites are custom domains without a favicon the service knows: use Atlassian's.
   return <TabIcon url={item.source === "confluence" && !item.icon ? SOURCES.confluence.site : item.url} icon={item.icon} />;
 }
 
@@ -475,10 +454,6 @@ function Trailing({ item, completion, colors }: { item: LiveItem; completion: Co
   );
 }
 
-/**
- * "N Completed": PRs that were merged, closed or reviewed recently. Hovering
- * pulls them back into view (Dia 1.23) — click one to open it.
- */
 function CompletedFooter({ folderId, windowId }: { folderId: string; windowId: string }) {
   const theme = useTheme();
   const colors = useLiveColors();

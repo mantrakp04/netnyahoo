@@ -10,18 +10,12 @@ import type { ReleaseNotes } from "./releaseNotes";
 
 const ICON = require("../../../assets/app-icon.png");
 
-/**
- * Dia's ReleaseNotesPostcardView, measured from its binary: a 320×200 card tilted 2° clockwise,
- * hanging off the New Tab page's top-right corner (40pt past the right edge, 30pt above the top).
- */
 const CARD = { width: 320, height: 200, overhangRight: 40, overhangTop: 30, tilt: 2, radius: 10 };
-/** Hovering anywhere this close to the card shows its tooltip. */
 const HOVER_SLOP = 24;
 const TOOLTIP = { height: 28, gap: 4 };
 const PAPER = "#FCFCFA";
 const INK = "#1D1B1A";
 
-/** Where the card sits in the page (unrotated), for the full-page view to grow out of. */
 const cardFrame = (size: { width: number }) => ({
   x: size.width + CARD.overhangRight - CARD.width,
   y: -CARD.overhangTop,
@@ -29,7 +23,6 @@ const cardFrame = (size: { width: number }) => ({
   height: CARD.height,
 });
 
-/** The release's artwork colours: the window profile's theme, lightened and deepened. */
 function useArtworkColors(): [string, string] {
   const windowId = useWindowId();
   const color = useBrowser((s) => s.profiles[s.windows[windowId]?.profileId ?? ""]?.color ?? "plum");
@@ -42,11 +35,6 @@ function mix(a: string, b: string, t: number) {
   return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t).toString(16).padStart(2, "0")).join("")}`;
 }
 
-/**
- * The release notes postcard on the New Tab page. It drops in from above (a critically damped
- * spring, 0.65s, with a 0.3s fade; none under Reduce Motion); hovering scales it to 1.05 and
- * shows "Latest Release Notes" under it with a close button; clicking opens the notes.
- */
 export function ReleaseNotesPostcard({ notes, size, onOpen, onDismiss }: { notes: ReleaseNotes; size: { width: number; height: number }; onOpen: () => void; onDismiss: () => void }) {
   const { hovered, hoverProps } = useHover();
   const drop = useRef(new Animated.Value(1)).current;
@@ -60,7 +48,6 @@ export function ReleaseNotesPostcard({ notes, size, onOpen, onDismiss }: { notes
     AccessibilityInfo.isReduceMotionEnabled().then((reduce) => {
       if (cancelled) return;
       if (reduce) return drop.setValue(0), opacity.setValue(1);
-      // CASpringAnimation(perceptualDuration: 0.65, bounce: 0).
       const stiffness = (2 * Math.PI / 0.65) ** 2;
       Animated.parallel([
         Animated.spring(drop, { toValue: 0, stiffness, damping: 2 * Math.sqrt(stiffness), mass: 1, useNativeDriver: false }),
@@ -84,7 +71,6 @@ export function ReleaseNotesPostcard({ notes, size, onOpen, onDismiss }: { notes
       Animated.timing(scale, { toValue: 0.96, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: false }),
     ]).start(onDismiss);
   };
-  // Too small a page: it would crowd the command bar.
   if (size.height < 420 || size.width < 560) return null;
 
   const card = cardFrame(size);
@@ -120,7 +106,6 @@ export function ReleaseNotesPostcard({ notes, size, onOpen, onDismiss }: { notes
               shadowColor="#000000"
               shadowOpacity={0.3}
               shadowRadius={20}
-              // Dia's offset is (0, 6) in unflipped coordinates: the shadow rises above the card.
               shadowOffset={[0, -6]}
             />
             <Artwork notes={notes} radius={CARD.radius} titleSize={40} hidden={{ top: CARD.overhangTop, right: CARD.overhangRight }} />
@@ -137,7 +122,6 @@ export function ReleaseNotesPostcard({ notes, size, onOpen, onDismiss }: { notes
   );
 }
 
-/** ReleaseNotesPostcardTooltipView: a small blurred pill (opens the notes) with a close button. */
 function Tooltip({ text, onOpen, onClose }: { text: string; onOpen: () => void; onClose: () => void }) {
   const theme = useTheme();
   return (
@@ -154,7 +138,6 @@ function Tooltip({ text, onOpen, onClose }: { text: string; onOpen: () => void; 
   );
 }
 
-/** PostcardCloseButton: an xmark on a faint square that deepens on hover and press. */
 function CloseButton({ onPress, label, size, radius }: { onPress: () => void; label: string; size: number; radius: number }) {
   const { hovered, hoverProps } = useHover();
   return (
@@ -179,7 +162,6 @@ function CloseButton({ onPress, label, size, radius }: { onPress: () => void; la
   );
 }
 
-/** The release's picture side: a grained gradient in the profile's colours, titled. */
 function Artwork({ notes, radius, titleSize, hidden }: { notes: ReleaseNotes; radius: number; titleSize: number; hidden?: { top: number; right: number } }) {
   const colors = useArtworkColors();
   const k = titleSize / 44;
@@ -187,7 +169,6 @@ function Artwork({ notes, radius, titleSize, hidden }: { notes: ReleaseNotes; ra
   return (
     <View style={{ flex: 1, borderRadius: radius, overflow: "hidden", backgroundColor: mix(colors[0], colors[1], 0.5) }}>
       <WindowBackdrop colors={colors} angle={150} grainOpacity={0.1} style={StyleSheet.absoluteFill} />
-      {/* Kept clear of the edges that hang off the page. */}
       <View style={{ flex: 1, padding: pad, paddingTop: pad + (hidden?.top ?? 0), paddingRight: pad + (hidden?.right ?? 0), justifyContent: "space-between" }}>
         <Text style={{ fontSize: 11.5 * k, fontWeight: "700", letterSpacing: 1.4 * k, color: "#FFFFFFCC" }}>{`NETNYAHOO ${notes.version}`}</Text>
         <Text style={{ fontSize: titleSize, fontWeight: "300", fontStyle: "italic", letterSpacing: -1.1 * k, color: "#FFFFFF" }}>{"What's new"}</Text>
@@ -196,17 +177,12 @@ function Artwork({ notes, radius, titleSize, hidden }: { notes: ReleaseNotes; ra
   );
 }
 
-/**
- * The notes as a full-page postcard over the New Tab page (Dia 1.46's release notes): the picture
- * on the left, the message on the right under a stamp and postmark.
- */
 export function ReleaseNotesPage({ notes, size, onClose }: { notes: ReleaseNotes; size: { width: number; height: number }; onClose: () => void }) {
   const theme = useTheme();
   const t = useRef(new Animated.Value(0)).current;
   const [closing, setClosing] = useState(false);
   useEffect(() => {
     Animated.spring(t, { toValue: 1, friction: 9, tension: 55, useNativeDriver: false }).start();
-    // Leaving the New Tab page closes it.
     return onClose;
   }, []);
   const close = () => {
@@ -217,13 +193,11 @@ export function ReleaseNotesPage({ notes, size, onClose }: { notes: ReleaseNotes
   const width = Math.min(860, size.width - 64);
   const height = Math.min(520, size.height - 64, width * 0.62);
   const split = width >= 640;
-  // It grows out of the corner the postcard hung in.
   const card = cardFrame(size);
   const from = { x: card.x + card.width / 2 - size.width / 2, y: card.y + card.height / 2 - size.height / 2 };
 
   return (
     <Animated.View style={StyleSheet.absoluteFill} pointerEvents={closing ? "none" : "auto"}>
-      {/* The New Tab page's own backdrop, washed over so the card stands alone. */}
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: t.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }) }]}>
         <VisualEffect material="hudWindow" blendingMode="withinWindow" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.dark ? "rgba(10,10,10,0.35)" : "rgba(255,255,255,0.35)" }]} />
@@ -309,7 +283,6 @@ function PageCloseButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-/** The app icon as a perforated stamp, franked by a round postmark. */
 function Stamp() {
   return (
     <View style={{ position: "absolute", right: 0, top: 0, width: 110, height: 86 }} pointerEvents="none">

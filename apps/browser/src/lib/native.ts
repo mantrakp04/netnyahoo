@@ -35,14 +35,8 @@ import { startExtensionsBridge } from "../components/extensions/bridge";
 import { extensionMenu, useExtensions } from "../components/extensions/state";
 
 let quitting = false;
-/** True once the app has started quitting (the session is saved and frozen). */
 export const isQuitting = () => quitting;
 
-/**
- * Keeps the native shell in step with the store: one NSWindow per store window
- * (opened/closed as windows come and go), window titles, the menu bar's dynamic
- * state, and app lifecycle events. Call once, after persistence has hydrated.
- */
 export function startNativeSync() {
   const store = useBrowser;
   if (!store.getState().windowOrder.length) store.getState().createWindow();
@@ -63,7 +57,6 @@ export function startNativeSync() {
     if (e.type === "reopen") createWindow();
     if (e.type === "quitWarningSuppressed") s.updateSettings({ warnBeforeQuitting: false });
     if (e.type === "willQuit") {
-      // Browsers close as the engine shuts down; those closes mustn't reach the saved session.
       quitting = true;
       flushPersistence({ final: true });
       void replyToTerminate(true);
@@ -86,13 +79,12 @@ export function startNativeSync() {
   const titles = new Map<string, string>();
 
   const releaseIfIncognito = (id: string, s: BrowserState) => {
-    // Its in-memory cookies/cache go away with the window.
     if (s.windows[id]?.incognito) void releaseProfile(incognitoProfileId(id));
   };
 
   const windowProfiles = new Map<string, string>();
   const syncWindows = (s: BrowserState, prev?: BrowserState) => {
-    // The focused window opens last so it ends up in front.
+// Open the focused window last so it comes to front.
     const focused = s.ui.focusedWindowId;
     const order = s.windowOrder.filter((id) => id !== focused);
     if (focused && s.windows[focused]) order.push(focused);
@@ -101,7 +93,6 @@ export function startNativeSync() {
       if (!open.has(id)) {
         open.add(id);
         titles.set(id, windowTitle(s, id));
-        // An incognito window's profile is its own ("incognito:<id>").
         const profile = engineProfile(w.profileId);
         void openWindow(id, { frame: w.frame, incognito: w.incognito, title: titles.get(id), focus: id === s.ui.focusedWindowId, profile });
       }
@@ -115,9 +106,6 @@ export function startNativeSync() {
       if (prev?.windows[id]?.incognito) void releaseProfile(incognitoProfileId(id));
     }
     if (prev && s.tabs === prev.tabs && s.windows === prev.windows && s.profiles === prev.profiles) return;
-    // An app window is one Chrome window per profile: the one of the profile shown takes over, and
-    // its neighbours in profile order are made ahead. Builds with the WindowProfile view do it from the
-    // commit that shows the profile (components/layout/WindowProfile).
     for (const id of WindowProfile ? [] : open) {
       const w = s.windows[id]!;
       const profile = engineProfile(w.profileId);
@@ -148,7 +136,6 @@ export function startNativeSync() {
     void setMenuState(state);
   };
 
-  // Windows left over from before a JS reload: keep the ones the store knows, close the rest.
   void windowIds().then((ids) => {
     for (const id of ids) {
       if (store.getState().windows[id]) open.add(id);
@@ -158,7 +145,6 @@ export function startNativeSync() {
     syncMenu();
     store.subscribe((s, prev) => {
       syncWindows(s, prev);
-      // The menu only needs to be current when it's opened; batch bursts (progress, typing).
       menuTimer ??= setTimeout(syncMenu, 120);
     });
     store.subscribe((s, prev) => {
@@ -176,7 +162,6 @@ const PAGE_COMMANDS = [
   "findAndReplace", "jumpToSelection", "viewSource", "javaScriptConsole", "inspectElements", "savePage", "emailPageLocation",
   "printWithSystemDialog", "stop", "caretBrowsing",
 ];
-/** Page commands that still make sense on an internal page (netnyahoo://history…), which has no web view. */
 const INTERNAL_PAGE_COMMANDS = ["copyUrl", "copyUrlAsMarkdown", "bookmarkPage", "addBookmarkToFolder"];
 const WINDOW_COMMANDS = [
   ...PAGE_COMMANDS, "focusCommandBar", "closeTab", "closeAllTabs", "back", "forward", "nextTab", "previousTab", "togglePin",
@@ -196,7 +181,6 @@ function menuBookmarks(b: Bookmarks, folderId: string, depth = 0): MenuBookmark[
 type BookmarkMenus = Pick<MenuState, "bookmarkFolders" | "recentBookmarks" | "bookmarksBar" | "otherBookmarks">;
 const bookmarkMenuCache = new WeakMap<Bookmarks, Map<string, BookmarkMenus>>();
 
-/** The bookmark parts of the menu for a profile, memoised per bookmarks object. */
 function bookmarkMenus(b: Bookmarks, profileId: string): BookmarkMenus {
   let perProfile = bookmarkMenuCache.get(b);
   if (!perProfile) bookmarkMenuCache.set(b, (perProfile = new Map()));
@@ -225,7 +209,6 @@ function bookmarkMenus(b: Bookmarks, profileId: string): BookmarkMenus {
   return menus;
 }
 
-/** The menu bar's view of the focused window (see Menus.swift). */
 export function menuState(s: BrowserState): MenuState {
   const windowId = s.ui.focusedWindowId && s.windows[s.ui.focusedWindowId] ? s.ui.focusedWindowId : undefined;
   const w = windowId ? s.windows[windowId] : undefined;
@@ -236,7 +219,6 @@ export function menuState(s: BrowserState): MenuState {
 
   const disabled: string[] = [];
   if (!tab || !splitOf(s, tab.id)) disabled.push("focusNextPane", "focusPreviousPane");
-  // Tabs along the top leave no sidebar to hold the address bar.
   if (w && (w.tabLayout ?? s.settings.tabLayout) === "top") disabled.push("toggleAddressBar");
   if (!w) disabled.push(...WINDOW_COMMANDS, "toggleTabLayout", "openSplitPane");
   else {

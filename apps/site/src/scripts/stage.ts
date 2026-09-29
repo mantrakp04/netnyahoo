@@ -1,6 +1,3 @@
-// Wires Big Yahu to the page: loads the 3D model after the page is idle (the poster image holds his
-// place, same box, so nothing shifts), follows the pointer, dances on download, and walks down to the
-// closing poster when you get there.
 import type { Yahu } from "./yahu";
 
 const hero = document.querySelector<HTMLElement>('[data-stage="hero"]');
@@ -19,8 +16,6 @@ function webgl() {
   }
 }
 
-// Phones keep the hero's poster (a render of the same model) and load the model only for the closing
-// dance, so the first screen stays light and scrolling past him never waits on WebGL.
 const phone = matchMedia("(max-width: 820px), (pointer: coarse)").matches;
 
 async function bootClosing() {
@@ -89,7 +84,6 @@ function watchStages() {
   io.observe(closing);
 }
 
-// He watches the pointer, and the download button when you're about to press it.
 let pending = 0;
 addEventListener(
   "pointermove",

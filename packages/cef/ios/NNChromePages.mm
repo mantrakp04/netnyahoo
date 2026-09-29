@@ -19,9 +19,6 @@ using namespace nn::pages;
 namespace {
 
 // MARK: - A page we script
-//
-// Loads one page and runs DevTools Runtime.evaluate in it; work queues until
-// the page has loaded.
 
 class Page {
  public:
@@ -35,8 +32,6 @@ class Page {
     }
     NSDictionary *params =
         @{@"expression" : expression, @"userGesture" : @YES, @"awaitPromise" : @YES, @"returnByValue" : @YES};
-    // Every job answers exactly once: when DevTools does, when the page goes away, or on timeout
-    // (a promise that never settles, e.g. an extension worker that restarted mid-message).
     uint64_t jobId = ++jobSeq_;
     inflight_[jobId] = job;
     auto finish = [this, jobId](id value, NSString *error) {
@@ -111,7 +106,6 @@ class Page {
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 
-/// Runs `expired` after `seconds` without another Touch().
 class IdleTimer {
  public:
   void Touch(double seconds, void (^expired)(void)) {
@@ -134,11 +128,9 @@ class ContextReady : public CefRequestContextHandler {
   void OnRequestContextInitialized(CefRefPtr<CefRequestContext> context) override {
     auto ready = ready_;
     ready_ = nil;
-    // Not re-entrantly inside CreateContext.
     if (ready) dispatch_async(dispatch_get_main_queue(), ^{ ready(context); });
   }
 #if NN_INSTALL_PROMPT
-  // Our windows' tabs live in these contexts: their install prompts go to the app too.
   bool OnExtensionInstallPrompt(CefRefPtr<CefBrowser> browser, const CefString &extension_id,
                                 CefRefPtr<CefDictionaryValue> details,
                                 CefRefPtr<CefExtensionPromptCallback> callback) override {
@@ -153,10 +145,6 @@ class ContextReady : public CefRequestContextHandler {
 };
 
 // MARK: - chrome:// WebUI hosts
-//
-// WebUI pages with private APIs only load in a Chrome-style browser, which on
-// macOS lives in a CEF Views window. One per profile and page, created on
-// demand, never shown, closed after a minute without work.
 
 constexpr double kHostIdleSeconds = 60;
 
@@ -167,7 +155,7 @@ class HostWindowDelegate : public CefWindowDelegate {
   void OnWindowCreated(CefRefPtr<CefWindow> window) override {
     WindowCreated(window);
     window->AddChildView(view_);
-    // Belt and braces: never visible, clickable, activating or in the Window menu.
+// Keep WebUI helper windows hidden and nonactivating.
     MakeWindowInert(((__bridge NSView *)window->GetWindowHandle()).window);
   }
   void OnWindowDestroyed(CefRefPtr<CefWindow> window) override {
@@ -195,7 +183,7 @@ class HostViewDelegate : public CefBrowserViewDelegate {
 };
 
 class Host;
-std::map<std::string, CefRefPtr<Host>> gHosts;  // "<profile>|<url>"
+std::map<std::string, CefRefPtr<Host>> gHosts;
 
 class Host : public CefClient, public CefLifeSpanHandler, public CefLoadHandler, public CefDialogHandler {
  public:
@@ -235,8 +223,6 @@ class Host : public CefClient, public CefLifeSpanHandler, public CefLoadHandler,
   bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int, const CefString &target_url, const CefString &,
                      cef_window_open_disposition_t, bool, const CefPopupFeatures &, CefWindowInfo &,
                      CefRefPtr<CefClient> &, CefBrowserSettings &, CefRefPtr<CefDictionaryValue> &, bool *) override {
-    // Pages extensions open (tabs.create, openOptionsPage…) while this is the
-    // profile's only Chrome window arrive here: make them our tabs.
     ext::EmitOpenTab(ToNS(target_url), profile_);
     return true;
   }
@@ -262,12 +248,9 @@ class Host : public CefClient, public CefLifeSpanHandler, public CefLoadHandler,
     if (closed_) return;
     CefBrowserSettings settings;
 #if NN_HIDDEN_BROWSER
-    // Not one of the user's windows: extensions' chrome.windows / chrome.tabs don't list it.
     settings.hidden_from_extensions = STATE_ENABLED;
 #endif
     view_ = CefBrowserView::CreateBrowserView(this, ToCef(url_), settings, nullptr, context, new HostViewDelegate());
-    // The browser is created without the window ever being shown (Show() would
-    // put a window on screen, and Chrome may activate it).
     window_ = CefWindow::CreateTopLevelWindow(new HostWindowDelegate(view_));
   }
 
@@ -351,7 +334,6 @@ class ExtensionContext : public CefClient, public CefLifeSpanHandler, public Cef
     if (closeWhenCreated_) browser->GetHost()->CloseBrowser(true);
   }
   bool DoClose(CefRefPtr<CefBrowser> browser) override {
-    // Returning false would make CEF close the parking window that hosts us.
     NSView *view = (__bridge NSView *)browser->GetHost()->GetWindowHandle();
     [NSRunLoop.mainRunLoop performBlock:^{ [view removeFromSuperview]; }];
     return true;
@@ -365,7 +347,6 @@ class ExtensionContext : public CefClient, public CefLifeSpanHandler, public Cef
   }
   void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, ErrorCode code, const CefString &text,
                    const CefString &) override {
-    // A disabled or removed extension's pages don't load.
     if (!frame->IsMain() || code == ERR_ABORTED) return;
     page_.Fail([NSString stringWithFormat:@"%@ (%d)", ToNS(text), code]);
     Forget();
@@ -399,7 +380,7 @@ NSString *ContextKey(NSString *profile, NSString *extensionId) {
   return [NSString stringWithFormat:@"%@|%@", DataProfile(profile), extensionId];
 }
 
-}  // namespace
+}
 
 // MARK: - nn::pages
 
@@ -457,30 +438,23 @@ void CloseAll() {
 }
 
 void WhenProfileReady(NSString *profile, void (^ready)(CefRefPtr<CefRequestContext> context)) {
-  // A context sharing the profile's storage is created just to get the callback.
   ready = [ready copy];
   CefRequestContext::CreateContext(ContextForProfile(profile), new ContextReady(profile, ^(CefRefPtr<CefRequestContext> context) {
-    // Our hidden Chrome windows are normal windows to Chrome's session service:
-    // "continue where you left off" would reopen every one of them, visibly.
     static NSMutableSet<NSString *> *prepared = [NSMutableSet set];
     if (![prepared containsObject:profile]) {
       [prepared addObject:profile];
       CefRefPtr<CefValue> startup = CefValue::Create();
-      startup->SetInt(5);  // the New Tab page
+      startup->SetInt(5);
       CefString error;
       if (!context->SetPreference("session.restore_on_startup", startup, error))
         NSLog(@"[cef] session.restore_on_startup: %@", ToNS(error));
-      // Downloads show in our popover: Chrome's own bubble would pop up over the page.
       CefRefPtr<CefValue> off = CefValue::Create();
       off->SetBool(false);
       if (!IsIncognito(profile) && !context->SetPreference("download_bubble.partial_view_enabled", off, error))
         NSLog(@"[cef] download_bubble.partial_view_enabled: %@", ToNS(error));
-      // The content blocker, before the profile's first tab (incognito uses its original profile's).
       if (IsIncognito(profile)) {
         WhenProfileReady(DataProfile(profile), ^(CefRefPtr<CefRequestContext>) {});
       } else {
-        // A profile created just now finishes setting up its extension system after this:
-        // load again once it has (loading replaces the earlier copy).
         NSString *prefs = [ProfileDirectory(profile) stringByAppendingPathComponent:@"Preferences"];
         bool fresh = ![NSFileManager.defaultManager fileExistsAtPath:prefs];
         blocker::LoadIntoProfile(profile, context);
@@ -494,4 +468,4 @@ void WhenProfileReady(NSString *profile, void (^ready)(CefRefPtr<CefRequestConte
   }));
 }
 
-}  // namespace nn::pages
+}

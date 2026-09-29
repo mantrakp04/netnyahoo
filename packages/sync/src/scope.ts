@@ -1,21 +1,6 @@
 import { canonical } from "./canon.ts";
 import { hlcWall, type Clock, type HLC } from "./hlc.ts";
 
-/**
- * One scope's replica (the app's settings and profiles, or one profile's data) and how it
- * merges. Each device writes only files of its own, never changes one, and every device
- * reads everyone's:
- *
- * - a **log** is a batch of this device's changes: `{ kind: "log", device, seq, ops }`, one
- *   file per batch, `seq` counting up per device and scope;
- * - a **snapshot** is a device's whole merged replica with the per-device `seq`s it covers
- *   (`vv`, a version vector). Files a snapshot covers can be deleted.
- *
- * The replica maps a key ("bm:<id>", "h:<url>", "set:appearance"…) to its newest record,
- * last writer wins by hybrid logical clock (hlc.ts); a deletion is a record with value null (a
- * tombstone). Merging is a join (commutative, associative, idempotent), so every device ends up
- * with the same replica whatever order files arrive in.
- */
 export type Origin = [device: string, seq: number];
 export type SyncRecord = { h: HLC; v: unknown; o: Origin };
 export type Op = { k: string; h: HLC; v: unknown };
@@ -36,34 +21,18 @@ type FileMeta = { d: string; k: "log" | "snapshot" | "bad"; s?: number; vv?: Rec
 
 export type ScopeState = {
   records: Record<string, SyncRecord>;
-  /** The value of each key as the local store had it after the last publish or apply (canonical JSON). */
   base: Record<string, string>;
-  /** Keys that changed remotely but couldn't be applied yet (their adapter was unavailable). */
   unapplied: string[];
-  /** Per device, every seq up to this one is in `records`. */
   vv: Record<string, number>;
-  /** Per device, seqs above `vv` that are in `records` too (files that arrived out of order). */
   extra: Record<string, number[]>;
-  /** Files read or written (by id), so they're read once and can be pruned later. */
   files: Record<string, FileMeta>;
-  /** Files that didn't open, and when that was first seen (ms). */
   damaged: Record<string, number>;
-  /** This device's last written seq. */
   seq: number;
-  /** Changes waiting to be written, as log seq + 1. */
   outbox: Op[];
-  /** Per device, the time of its newest file (ms): when it last synced. */
   seen: Record<string, number>;
-  /** False until the first cycle finishes: adapters that adopt remote values skip publishing. */
   joined: boolean;
-  /**
-   * Joining data another device made: stay unjoined until a file of another device has been
-   * read (the sync client may not have listed any yet), so this device's defaults can't win.
-   */
   awaitRemote?: boolean;
-  /** When this device last wrote a snapshot. */
   snapshotAt: number;
-  /** Files waiting to download (the last read), for the status line. */
   pending: number;
 };
 
@@ -83,7 +52,6 @@ export const emptyScope = (): ScopeState => ({
   pending: 0,
 });
 
-/** How a scope's files move: the folder (native) in the app, memory in tests. */
 export interface Transport {
   write(scope: string, payload: string): Promise<string>;
   read(scope: string, known: string[]): Promise<Listing>;
@@ -97,42 +65,25 @@ export type Listing = {
   present: string[];
 };
 
-/** What the local store holds for one kind of data (every key starting with `prefix`). */
 export type Extraction = {
-  /** Never null: a null record is a deletion (wrap values that can be null). */
   values: Map<string, unknown>;
-  /** Keys this device keeps but doesn't sync right now (history older than the window): not deletions. */
   ignore?: (key: string) => boolean;
 };
 
 export interface Adapter {
   prefix: string;
-  /** The local values, or null if they can't be read now (skips this adapter's publishing and applying). */
   extract(base: (key: string) => unknown): Extraction | null | Promise<Extraction | null>;
-  /**
-   * Makes the local store match `visible` (every live record with this prefix) for the
-   * `changed` keys. Returns false if it couldn't (tried again next cycle). `base` is what the
-   * store held after the last cycle, for adapters whose extraction can lag (passwords).
-   */
   apply(visible: Map<string, unknown>, changed: Set<string>, base: (key: string) => unknown): boolean | void | Promise<boolean | void>;
-  /** When a value was first made, for publishing existing data without beating later edits elsewhere. */
   editedAt?(value: unknown): number | undefined;
-  /** Settings-like data: a device that joins takes the synced values instead of publishing its own first. */
   adoptRemoteOnJoin?: boolean;
 }
 
 export type ScopeOptions = {
-  /** Records dropped from snapshots when too old (history outside its window). */
   expired?: (key: string, value: unknown, now: number) => boolean;
-  /** Tombstones older than this are dropped from snapshots. */
   tombstoneTTL?: number;
-  /** Write a snapshot when the scope has more files than this… */
   compactAfterFiles?: number;
-  /** …and nobody wrote one for this long. */
   compactInterval?: number;
-  /** Files covered by a snapshot are removed once they're this old, so peers read small logs first. */
   pruneGrace?: number;
-  /** A file that still doesn't open after this long is given up on. */
   damagedGiveUp?: number;
 };
 
@@ -165,7 +116,6 @@ function see(state: ScopeState, device: string, at: number) {
   if (!(device in state.seen) || at > state.seen[device]!) state.seen[device] = at;
 }
 
-/** Merges a record; returns whether it won. */
 function mergeRecord(state: ScopeState, key: string, record: SyncRecord, clock: Clock): boolean {
   clock.observe(record.h);
   const current = state.records[key];
@@ -176,8 +126,6 @@ function mergeRecord(state: ScopeState, key: string, record: SyncRecord, clock: 
 
 export function ingestLog(state: ScopeState, file: LogFile, clock: Clock, changed: Set<string>) {
   see(state, file.device, file.at);
-  // Covered by a snapshot already applied: its changes are in there (or were superseded, and
-  // replaying it could bring back a record whose tombstone the snapshot dropped).
   if (isApplied(state, [file.device, file.seq])) return;
   for (const op of file.ops) {
     if (mergeRecord(state, op.k, { h: op.h, v: op.v, o: [file.device, file.seq] }, clock)) changed.add(op.k);
@@ -191,8 +139,6 @@ export function ingestSnapshot(state: ScopeState, file: SnapshotFile, clock: Clo
   for (const [key, record] of Object.entries(file.records)) {
     if (mergeRecord(state, key, record, clock)) changed.add(key);
   }
-  // A record the snapshot's author had (its file is covered) but the snapshot lacks was
-  // deleted and its tombstone collected (or it expired): drop it here too.
   for (const [key, record] of Object.entries(state.records)) {
     if (!(key in file.records) && covered(file.vv, record.o)) {
       delete state.records[key];
@@ -210,7 +156,6 @@ export function ingestSnapshot(state: ScopeState, file: SnapshotFile, clock: Clo
   }
 }
 
-/** Live values of every key with `prefix`. */
 export function visible(state: ScopeState, prefix: string): Map<string, unknown> {
   const out = new Map<string, unknown>();
   for (const [key, record] of Object.entries(state.records)) {
@@ -221,7 +166,6 @@ export function visible(state: ScopeState, prefix: string): Map<string, unknown>
 
 const parseBase = (json: string | undefined) => (json === undefined ? undefined : (JSON.parse(json) as unknown));
 
-/** One adapter's local edits since the last publish or apply become ops (in the replica and the outbox). */
 export async function publishAdapter(state: ScopeState, adapter: Adapter, clock: Clock, device: string): Promise<Set<string>> {
   const published = new Set<string>();
   if (adapter.adoptRemoteOnJoin && !state.joined) return published;
@@ -231,7 +175,6 @@ export async function publishAdapter(state: ScopeState, adapter: Adapter, clock:
     const known = state.records[key];
     const editedAt = !known && value !== null ? adapter.editedAt?.(value) : undefined;
     const h = editedAt !== undefined ? clock.at(editedAt) : clock.tick();
-    // A backdated timestamp can't win over what's in the replica already.
     if (known && known.h >= h) return;
     state.records[key] = { h, v: value, o: [device, state.seq + 1] };
     state.outbox.push({ k: key, h, v: value });
@@ -258,7 +201,6 @@ export async function publish(state: ScopeState, adapters: Adapter[], clock: Clo
   return published;
 }
 
-/** Writes the outbox as the next log file. */
 export async function flush(state: ScopeState, transport: Transport, scope: string, device: string, now: number) {
   if (!state.outbox.length) return;
   const file: LogFile = { v: 1, kind: "log", device, seq: state.seq + 1, at: now, ops: state.outbox };
@@ -270,7 +212,6 @@ export async function flush(state: ScopeState, transport: Transport, scope: stri
   see(state, device, now);
 }
 
-/** Reads new files; returns the keys whose records changed. */
 export async function pull(state: ScopeState, transport: Transport, scope: string, clock: Clock, now: number, options: ScopeOptions = {}) {
   const { damagedGiveUp } = { ...DEFAULTS, ...options };
   const listing = await transport.read(scope, Object.keys(state.files));
@@ -293,7 +234,6 @@ export async function pull(state: ScopeState, transport: Transport, scope: strin
     }
   }
   for (const { id } of listing.damaged) bad(id);
-  // Snapshots first: logs they cover are then skipped.
   parsed.sort((a, b) => (a.file.kind === b.file.kind ? 0 : a.file.kind === "snapshot" ? -1 : 1));
   for (const { id, file } of parsed) {
     if (file.kind === "snapshot") {
@@ -305,7 +245,6 @@ export async function pull(state: ScopeState, transport: Transport, scope: strin
     }
     delete state.damaged[id];
   }
-  // Forget files that are gone (pruned by whoever wrote a snapshot).
   const present = new Set(listing.present);
   for (const id of Object.keys(state.files)) if (!present.has(id)) delete state.files[id];
   for (const id of Object.keys(state.damaged)) if (!present.has(id)) delete state.damaged[id];
@@ -313,7 +252,6 @@ export async function pull(state: ScopeState, transport: Transport, scope: strin
   return changed;
 }
 
-/** Brings one adapter's part of the local store up to date; returns false if it couldn't. */
 export async function applyAdapter(state: ScopeState, adapter: Adapter, keys: Set<string>): Promise<boolean> {
   const mine = new Set([...keys].filter((k) => k.startsWith(adapter.prefix)));
   if (!mine.size) return true;
@@ -332,28 +270,21 @@ export async function applyAdapter(state: ScopeState, adapter: Adapter, keys: Se
   return true;
 }
 
-/** Brings the local store up to date with remote changes (and ones that couldn't be applied before). */
 export async function applyRemote(state: ScopeState, adapters: Adapter[], changed: Set<string>) {
   const keys = new Set([...state.unapplied, ...changed]);
   const unapplied: string[] = [];
   for (const adapter of adapters) {
     if (!(await applyAdapter(state, adapter, keys))) unapplied.push(...[...keys].filter((k) => k.startsWith(adapter.prefix)));
   }
-  // Keys no adapter here handles (a kind of data turned off) wait for one.
   const handled = (k: string) => adapters.some((a) => k.startsWith(a.prefix));
   state.unapplied = [...unapplied, ...[...keys].filter((k) => !handled(k))];
 }
 
-/**
- * Writes a snapshot of the whole replica when the scope has gathered enough files, then
- * removes the files it covers. Tombstones and expired records are left out (and dropped here).
- */
 export async function compact(state: ScopeState, transport: Transport, scope: string, device: string, now: number, options: ScopeOptions = {}, force = false) {
   const o = { ...DEFAULTS, ...options };
   const count = Object.keys(state.files).length;
   const newestSnapshot = Math.max(state.snapshotAt, ...Object.values(state.files).filter((f) => f.k === "snapshot").map((f) => f.at));
   if (!force && (count <= o.compactAfterFiles || now - newestSnapshot < o.compactInterval)) return false;
-  // Unwritten changes go first, so the snapshot's vv covers them.
   await flush(state, transport, scope, device, now);
   const records: Record<string, SyncRecord> = {};
   for (const [key, record] of Object.entries(state.records)) {
@@ -384,11 +315,6 @@ export async function compact(state: ScopeState, transport: Transport, scope: st
 
 export type CycleResult = { published: number; changed: number; pending: number; compacted: boolean };
 
-/**
- * One round for a scope: publish local edits, write them, read everyone's new files, publish
- * again whatever changed locally while that ran (so it isn't overwritten), apply remote
- * changes, and compact when due.
- */
 export async function syncScope(args: {
   scope: string;
   state: ScopeState;
@@ -404,9 +330,6 @@ export async function syncScope(args: {
   let published = (await publish(state, adapters, clock, device)).size;
   await flush(state, transport, scope, device, now());
   const changed = await pull(state, transport, scope, clock, now(), options);
-  // Per adapter, with no wait between the two steps: edits made while files were read are
-  // published (so they win), then remote changes are applied over a store that has no
-  // unpublished edits of this kind.
   const keys = new Set([...state.unapplied, ...changed]);
   const unapplied: string[] = [];
   for (const adapter of adapters) {

@@ -3,10 +3,6 @@ import { useBrowser } from "../../store/browser";
 import type { GroupColor } from "../../store/types";
 import { useSidebarUi } from "./state";
 
-/**
- * Sidebar colours from Dia's asset catalogs (BoostBrowser_TabUI, _RecentTabs,
- * _DragDrop, _CustomIconUI, ARCClients_BaseAssets), light / dark.
- */
 const DARK = {
   groupFill: "rgba(255,255,255,0.1)", // TabGroupNeutralBackground
   groupFillEmphasized: "rgba(255,255,255,0.12)",
@@ -55,7 +51,6 @@ export function useSidebarTokens(): SidebarTokens {
   return useTheme().dark ? DARK : LIGHT;
 }
 
-/** Group colours (Dia groups are neutral unless coloured). */
 export const GROUP_COLORS: Record<GroupColor, { name: string; hex: string }> = {
   grey: { name: "Grey", hex: "#8E8E93" },
   blue: { name: "Blue", hex: "#4C8DF6" },
@@ -68,7 +63,6 @@ export const GROUP_COLORS: Record<GroupColor, { name: string; hex: string }> = {
   orange: { name: "Orange", hex: "#EE8434" },
 };
 
-/** The group colour closest in hue to a site's theme colour (Dia derives group colours from the site). */
 export function nearestGroupColor(color: string): GroupColor | null {
   const m = color.trim().match(/^#?([0-9a-f]{6})/i) ?? color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
   if (!m) return null;
@@ -84,7 +78,6 @@ export function nearestGroupColor(color: string): GroupColor | null {
     return { h: h * 60, s, l };
   };
   const target = hsl(rgb[0]!, rgb[1]!, rgb[2]!);
-  // Greys, near-black and near-white sites stay neutral.
   if (target.s < 0.18 || target.l < 0.12 || target.l > 0.92) return null;
   let best: GroupColor | null = null;
   let bestDistance = Infinity;
@@ -98,7 +91,6 @@ export function nearestGroupColor(color: string): GroupColor | null {
   return best;
 }
 
-/** "#RRGGBB" at `alpha` → rgba(). */
 export function withAlpha(hex: string, alpha: number): string {
   const n = parseInt(hex.slice(1, 7), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
@@ -107,7 +99,6 @@ export function withAlpha(hex: string, alpha: number): string {
 export const SIDEBAR_MIN_WIDTH = 160;
 export const SIDEBAR_MAX_WIDTH = 400;
 
-/** The window's sidebar width: live while its edge is dragged, else the saved setting. */
 export function useSidebarWidth(windowId: string): number {
   const saved = useBrowser((s) => s.settings.sidebarWidth ?? layout.sidebarWidth);
   const dragging = useSidebarUi((u) => u.dragWidth[windowId]);

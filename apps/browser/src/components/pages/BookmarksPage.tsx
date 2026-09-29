@@ -21,7 +21,6 @@ const ROW = 36;
 type Target = { kind: "folder"; id: string } | { kind: "row"; id: string; index: number; folder: boolean };
 type Drop = { into: string } | { parentId: string; index: number };
 
-/** The Bookmarks manager (⌥⌘B): folder tree, contents, search, drag and drop, bulk delete with undo. */
 export function BookmarksPage({ tabId, profileId }: { tabId: string; profileId: string }) {
   const theme = useTheme();
   const colors = useFormColors();
@@ -35,7 +34,6 @@ export function BookmarksPage({ tabId, profileId }: { tabId: string; profileId: 
   const anchor = useRef<string | null>(null);
   const targets = useMemo(() => new DropTargets<Target>(), []);
 
-  // The selected folder may be deleted (here or from the bar).
   const folderExists = useBrowser((s) => !!folderId && s.bookmarks.nodes[folderId]?.kind === "folder");
   useEffect(() => {
     if (!folderExists && roots) setFolderId(roots.bar);
@@ -43,7 +41,6 @@ export function BookmarksPage({ tabId, profileId }: { tabId: string; profileId: 
   useEffect(() => setSelected([]), [folderId, query]);
 
   const folderTitle = useBrowser((s) => (folderId ? (s.bookmarks.nodes[folderId]?.title ?? "") : ""));
-  // Search covers the whole profile tree; otherwise the selected folder's children.
   const listKey = useBrowser((s) => {
     if (query.trim() && roots) {
       const all = [...folderLinksAndFolders(s.bookmarks, roots.bar), ...folderLinksAndFolders(s.bookmarks, roots.other)];
@@ -108,7 +105,6 @@ export function BookmarksPage({ tabId, profileId }: { tabId: string; profileId: 
     const s = useBrowser.getState();
     const moving = dragging.current;
     if ("into" in target) return moving.forEach((id) => s.moveBookmark(id, target.into));
-    // Indexes before the drop point shift down as the dragged rows leave.
     let index = target.index;
     for (const id of moving) {
       const from = ids.indexOf(id);
@@ -243,7 +239,6 @@ export function BookmarksPage({ tabId, profileId }: { tabId: string; profileId: 
   );
 }
 
-/** Every link and folder under a folder, depth-first. */
 function folderLinksAndFolders(b: ReturnType<typeof useBrowser.getState>["bookmarks"], folderId: string): BookmarkNode[] {
   return folderChildren(b, folderId).flatMap((n) => (n.kind === "folder" ? [n, ...folderLinksAndFolders(b, n.id)] : [n]));
 }
@@ -277,7 +272,6 @@ function BookmarkRow({
   highlighted: boolean;
   targetRef: (v: View | null) => void;
   onSelect: (e: { metaKey?: boolean; shiftKey?: boolean }) => void;
-  /** Shows a folder's contents (this row's, or `folder`). */
   onOpenFolder: (folder?: string) => void;
   onDelete: () => void;
   onDragStart: () => void;

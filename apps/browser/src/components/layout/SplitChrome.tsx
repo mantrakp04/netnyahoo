@@ -10,10 +10,6 @@ import { hideToast, useToasts } from "./splitActions";
 import { useWindowId } from "../../store/hooks";
 import { setDropTarget, useTabDrag, type DropTarget } from "./tabDrag";
 
-/**
- * Drag handles in the gaps between panes. Hovering shows Dia's small rounded
- * handle; dragging resizes the neighbours (each keeps a minimum size).
- */
 export function SplitDividers({ split, dividers, width, height }: { split: SplitView; dividers: Divider[]; width: number; height: number }) {
   return (
     <>
@@ -47,7 +43,6 @@ function DividerHandle({ split, divider, width, height }: { split: SplitView; di
           if (d.kind === "root") {
             useBrowser.getState().updateSplit(v.id, { sizes: resize(start.current.sizes, d.index, delta, d.vertical ? w : h) });
           } else if (start.current.stack) {
-            // The stacked slot runs the full width / height across the split.
             const next = resize(start.current.stack, 0, delta, d.vertical ? w : h) as [number, number];
             useBrowser.getState().updateSplit(v.id, { stackSizes: next });
           }
@@ -67,7 +62,6 @@ function DividerHandle({ split, divider, width, height }: { split: SplitView; di
       onMouseLeave={() => setHovered(false)}
       style={{
         position: "absolute",
-        // A little wider than the gap so it's easy to grab.
         left: rect.x - (vertical ? 2 : 0),
         top: rect.y - (vertical ? 0 : 2),
         width: rect.width + (vertical ? 4 : 0),
@@ -90,22 +84,15 @@ function DividerHandle({ split, divider, width, height }: { split: SplitView; di
   );
 }
 
-/**
- * While a tab is dragged over the page: Dia's left / right split targets on the
- * pane under the pointer. The hovered one lights up; dropping splits there.
- */
 export function DropTargets({ panes, origin }: { panes: Record<string, Rect>; origin: { x: number; y: number } | null }) {
   const theme = useTheme();
   const windowId = useWindowId();
-  // Only the window the drag is in: other windows' coordinates differ.
   const dragging = useTabDrag((s) => (s.windowId === windowId ? s.tabId : null));
   const x = useTabDrag((s) => s.x);
   const y = useTabDrag((s) => s.y);
   const target = useTabDrag((s) => s.target);
-  // A full split takes no more panes (dropping onto it would show the "Cannot Add" toast).
   const full = Object.keys(panes).length >= 3;
 
-  // Which pane (and which half) the pointer is over, in content coordinates.
   const hit = useMemo((): DropTarget | null => {
     if (!dragging || !origin || x < 0 || full) return null;
     const px = x - origin.x;
@@ -167,14 +154,11 @@ function DropZone({ rect, side, active, dark }: { rect: Rect; side: "left" | "ri
   );
 }
 
-/** Dia's toast ("Cannot Add New Pane"), at the bottom of the page; fades out on its own. */
 export function SplitToast({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const toast = useToasts((s) => s.toasts[windowId] ?? null);
   const appear = useRef(new Animated.Value(0)).current;
   const [shown, setShown] = useState(toast);
-  // A keyed toast updated in place (progress) keeps its id: new text, no new entrance. A sticky
-  // one hidden from outside fades out here (it has no timer of its own).
   useEffect(() => {
     if (toast) return setShown(toast);
     if (!shown?.sticky) return;

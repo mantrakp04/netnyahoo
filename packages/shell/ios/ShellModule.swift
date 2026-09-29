@@ -1,8 +1,6 @@
 import AppKit
 import ExpoModulesCore
 
-/// URLs handed to the app (default browser, `open -a`, dock drops) before JS is
-/// listening are buffered here; ShellModule drains them to "onOpenURLs".
 public enum OpenURLInbox {
   static var pending: [String] = []
   static var deliver: (([String]) -> Void)?
@@ -17,7 +15,6 @@ public class ShellModule: Module {
   static func documentURL(_ name: String) throws -> URL {
     let dir: URL
     if let custom = ProcessInfo.processInfo.environment["NETNYAHOO_DATA_DIR"] {
-      // Dev override so several instances can run side by side.
       dir = URL(fileURLWithPath: custom, isDirectory: true)
     } else {
       let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -28,10 +25,8 @@ public class ShellModule: Module {
   }
 
   private var appearanceObservation: NSKeyValueObservation?
-  /// App-state observers for the sidebar (see `observeForSidebar`).
   private var sidebarObservers: [(NotificationCenter, NSObjectProtocol)] = []
   private var flagsMonitor: Any?
-  /// Keys and clicks while the ⌃Tab switcher is up (see `setSwitcherCapture`).
   private var switcherMonitor: Any?
 
   public func definition() -> ModuleDefinition {
@@ -94,7 +89,6 @@ public class ShellModule: Module {
     }.runOnQueue(.main)
 
     AsyncFunction("closeWindow") { (id: String) in WindowManager.shared.close(id: id) }.runOnQueue(.main)
-    /// The window's profile changed: that profile's Chrome window takes it over.
     AsyncFunction("setWindowProfile") { (id: String, profile: String, neighbours: [String]) in
       WindowManager.shared.setProfile(id: id, profile: profile, neighbours: neighbours)
     }.runOnQueue(.main)
@@ -107,7 +101,6 @@ public class ShellModule: Module {
 
     // MARK: App
 
-    /// "auto" | "light" | "dark" (View › Appearance).
     AsyncFunction("setAppearance") { (mode: String) in
       NSApp.appearance = mode == "light" ? NSAppearance(named: .aqua) : mode == "dark" ? NSAppearance(named: .darkAqua) : nil
     }.runOnQueue(.main)
@@ -119,11 +112,8 @@ public class ShellModule: Module {
       MainMenu.refresh()
     }.runOnQueue(.main)
 
-    /// Answers a `willQuit` app event once the session is saved.
     AsyncFunction("replyToTerminate") { (ok: Bool) in WindowManager.shared.replyToTerminate(ok) }.runOnQueue(.main)
 
-    /// A sheet on the window (or an app-modal alert): { title, message, confirmTitle,
-    /// cancelTitle, destructive, suppression, windowId } → { confirmed, suppressed }.
     AsyncFunction("confirm") { (options: [String: Any], promise: Promise) in
       let alert = ShellModule.alert(options)
       alert.addButton(withTitle: options["confirmTitle"] as? String ?? "OK")
@@ -141,7 +131,6 @@ public class ShellModule: Module {
       }
     }.runOnQueue(.main)
 
-    /// Text prompt: { title, message, value, placeholder, confirmTitle, windowId } → string | null.
     AsyncFunction("prompt") { (options: [String: Any], promise: Promise) in
       let alert = ShellModule.alert(options)
       alert.addButton(withTitle: options["confirmTitle"] as? String ?? "OK")
@@ -157,12 +146,10 @@ public class ShellModule: Module {
       }
     }.runOnQueue(.main)
 
-    /// Starts macOS dictation into the focused text field.
     Function("startDictation") {
       DispatchQueue.main.async { NSApp.sendAction(Selector(("startDictation:")), to: nil, from: nil) }
     }
 
-    /// Open panel for local files; resolves with file:// URLs.
     AsyncFunction("pickFiles") { (promise: Promise) in
       let panel = NSOpenPanel()
       panel.allowsMultipleSelection = true
@@ -172,7 +159,6 @@ public class ShellModule: Module {
       }
     }.runOnQueue(.main)
 
-    /// Small JSON documents (session, settings) in Application Support/<bundle id>/.
     Function("readDocument") { (name: String) -> String? in
       guard let url = try? ShellModule.documentURL(name) else { return nil }
       return try? String(contentsOf: url, encoding: .utf8)
@@ -183,9 +169,6 @@ public class ShellModule: Module {
       try contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
-    /// While the ⌃Tab switcher is up, Dia's RecentTabs monitor: Esc dismisses it, → and ← move
-    /// the highlight, ⌃Tab / ⌃⇧Tab go on to the menu, and every other key is swallowed so it
-    /// doesn't reach the page. A mouse-up anywhere dismisses it (a row commits on mouse-down).
     AsyncFunction("setSwitcherCapture") { [weak self] (active: Bool) in
       guard let self else { return }
       if let monitor = self.switcherMonitor { NSEvent.removeMonitor(monitor) }
@@ -215,24 +198,18 @@ public class ShellModule: Module {
       }
     }
 
-    /// Native context menu at the pointer. Resolves with the chosen item's id, or nil.
-    /// Items: { id, title, symbol?, swatch?, key?, modifiers?, enabled?, checked?, children? } | { separator }.
     AsyncFunction("showMenu") { (items: [[String: Any]], promise: Promise) in
       let target = MenuChoice()
       let menu = ShellModule.contextMenu(items, target: target)
       menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-      // The action is delivered before popUp returns; resolve on the next turn to be safe.
       DispatchQueue.main.async { promise.resolve(target.chosen) }
     }.runOnQueue(.main)
 
     View(WindowDragRegion.self) {}
   }
 
-  /// Dia clears abandoned New Tab pages when you switch apps or lock the screen,
-  /// and its ⌃Tab switcher commits when ⌃ is released.
   private func observeForSidebar() {
     let emit: (String) -> Void = { [weak self] type in self?.sendEvent("onAppEvent", ["type": type]) }
-    // Not while a sheet or alert is up: the user is in the middle of something (e.g. a close warning).
     let quiet = { NSApp.modalWindow == nil && !NSApp.windows.contains { $0.attachedSheet != nil || $0.isSheet && $0.isVisible } }
     let workspace = NotificationCenter.default
     sidebarObservers.append((workspace, workspace.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
@@ -304,7 +281,6 @@ public class ShellModule: Module {
     return menu
   }
 
-  /// A small filled circle, for colour choices in menus.
   static func swatch(_ color: NSColor) -> NSImage {
     NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
       color.setFill()
@@ -321,10 +297,8 @@ final class MenuChoice: NSObject {
   @objc func choose(_ sender: NSMenuItem) { chosen = sender.representedObject as? String }
 }
 
-/// What the app delegate forwards to the shell.
 public enum ShellApp {
   public static func shouldTerminate() -> NSApplication.TerminateReply { WindowManager.shared.shouldTerminate() }
-  /// Dock icon clicked; `hasVisibleWindows` as AppKit reports it.
   public static func reopen(hasVisibleWindows: Bool) -> Bool {
     if !hasVisibleWindows { WindowManager.shared.reopen() }
     return true
@@ -332,8 +306,6 @@ public enum ShellApp {
   public static func dockMenu() -> NSMenu { MainMenu.dockMenu() }
 }
 
-/// Single-line label that fades out at the trailing edge when it overflows,
-/// like Dia's tab titles (no ellipsis).
 public class FadeLabelModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooFadeLabel")
@@ -361,8 +333,6 @@ final class FadeLabel: ExpoView {
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     wantsLayer = true
-    // macOS 14+ no longer clips subviews by default; the text field is wider
-    // than the label when it overflows, so clip to our bounds.
     clipsToBounds = true
     field.lineBreakMode = .byClipping
     field.maximumNumberOfLines = 1
@@ -386,7 +356,6 @@ final class FadeLabel: ExpoView {
     let weights: [String: NSFont.Weight] = [
       "light": .light, "regular": .regular, "medium": .medium, "semibold": .semibold, "bold": .bold,
     ]
-    // Dia's TabContentView title uses the monospaced-digit system font.
     field.font = .monospacedDigitSystemFont(ofSize: fontSize, weight: weights[weight] ?? .regular)
     field.stringValue = text
     field.textColor = color
@@ -396,8 +365,7 @@ final class FadeLabel: ExpoView {
   private func relayout() {
     let fitting = field.fittingSize
     field.frame = NSRect(x: 0, y: (bounds.height - fitting.height) / 2, width: max(bounds.width, fitting.width), height: fitting.height)
-    // The mask lives on the text field's layer: RCTView resets `mask` on its own
-    // backing layer during updates.
+    // RCTView resets its backing-layer mask; keep the mask on the text field layer.
     field.wantsLayer = true
     guard bounds.width > 0, fitting.width > bounds.width + 0.5 else {
       field.layer?.mask = nil
@@ -413,11 +381,6 @@ final class FadeLabel: ExpoView {
   }
 }
 
-/// Dia's tab loading spinner (TabUI `ActivitySpinnerView`, in a tab row's trailing slot):
-/// a faint track ring and a 72% arc, both 1.5pt wide on an ellipse inset 1.25pt, in
-/// secondaryLabelColor (the track at alpha 0.18), turning once per 1.88 s. Dia 1.50 animates
-/// `transform.rotation.z` 0 → −2π in its unflipped (y-up) view, which is clockwise on screen;
-/// 1.49 used +2π, counter-clockwise.
 public class ActivitySpinnerModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooActivitySpinner")
@@ -460,7 +423,6 @@ final class ActivitySpinner: ExpoView {
     recolor()
   }
 
-  /// Sublayers, not the backing layer: RCTView resets its own layer's properties on updates.
   private func relayout() {
     guard let layer else { return }
     CATransaction.begin()
@@ -482,13 +444,10 @@ final class ActivitySpinner: ExpoView {
     }
   }
 
-  /// Removed when the view leaves its window, so re-added on every move.
   private func spin() {
     guard window != nil, ring.animation(forKey: "activityRotation") == nil else { return }
     let turn = CABasicAnimation(keyPath: "transform.rotation.z")
     turn.fromValue = 0
-    // Dia's −2π is in y-up coordinates; this view is flipped (y-down), where the same on-screen
-    // turn is +2π.
     turn.toValue = isFlipped ? 2 * Double.pi : -2 * Double.pi
     turn.duration = 1.88
     turn.repeatCount = .infinity
@@ -498,8 +457,6 @@ final class ActivitySpinner: ExpoView {
   }
 }
 
-// One view per module: on the legacy architecture Expo's view-manager adapter
-// instantiates a module's first view class for every view it declares.
 public class SymbolModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooSymbol")
@@ -513,8 +470,6 @@ public class SymbolModule: Module {
   }
 }
 
-/// Transparent area that drags the window (and zooms on double-click),
-/// used for the sidebar header and empty toolbar space.
 final class WindowDragRegion: ExpoView {
   override var mouseDownCanMoveWindow: Bool {
     get { true }
@@ -531,7 +486,6 @@ final class WindowDragRegion: ExpoView {
   }
 }
 
-/// SF Symbol glyph, tinted. Used for all toolbar/sidebar icons.
 final class SymbolView: ExpoView {
   private let imageView = NSImageView()
   var name = "questionmark" { didSet { update() } }
@@ -549,7 +503,6 @@ final class SymbolView: ExpoView {
 
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-  // RN macOS assigns frames directly and doesn't autoresize subviews.
   override func setFrameSize(_ newSize: NSSize) {
     super.setFrameSize(newSize)
     imageView.frame = bounds
@@ -565,7 +518,6 @@ final class SymbolView: ExpoView {
 }
 
 extension NSColor {
-  /// `#RRGGBB` or `#RRGGBBAA`.
   convenience init?(hex: String) {
     var s = hex.trimmingCharacters(in: .whitespaces)
     if s.hasPrefix("#") { s.removeFirst() }
@@ -577,17 +529,11 @@ extension NSColor {
   }
 }
 
-/// react-native-macos implements TextInput's `selectTextOnFocus` by sending
-/// `-selectAll:` to its NSTextField subclass, which only answers `-selectText:`
-/// (Swift sees `selectAll(_:)` as an unimplemented optional NSResponder method).
 let installTextFieldSelectAll: Void = {
   let block: @convention(block) (NSTextField, Any?) -> Void = { field, sender in field.selectText(sender) }
   class_addMethod(NSTextField.self, #selector(NSText.selectAll(_:)), imp_implementationWithBlock(block), "v@:@")
 }()
 
-/// Legacy-arch RCTScrollView leaves NSScrollView's automaticallyAdjustsContentInsets on, so a
-/// scroll view that reaches under the (full-size-content) titlebar silently gains a top inset
-/// that React Native doesn't know about. The Fabric scroll view turns it off; do the same here.
 let installScrollViewInsetFix: Void = {
   guard let cls = NSClassFromString("RCTCustomScrollView"),
         let method = class_getInstanceMethod(cls, #selector(NSView.init(frame:))) else { return }
@@ -599,14 +545,12 @@ let installScrollViewInsetFix: Void = {
     return view
   }
   let imp = imp_implementationWithBlock(block)
-  // Only ever patch RCTCustomScrollView itself, never an inherited NSScrollView implementation.
+  // Patch only RCTCustomScrollView, not inherited NSScrollView implementations.
   if !class_addMethod(cls, #selector(NSView.init(frame:)), imp, method_getTypeEncoding(method)) {
     method_setImplementation(method, imp)
   }
 }()
 
-/// Wrapper that reports secondary clicks (right-click / ctrl-click) to JS.
-/// react-native-macos has no context-menu event of its own.
 public class ContextMenuAreaModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooContextMenuArea")
@@ -620,8 +564,6 @@ public class ContextMenuAreaModule: Module {
 
 final class ContextMenuArea: ExpoView {
   let onContextMenu = EventDispatcher()
-  /// Also take right-clicks aimed at descendants that have their own menu (a text field's
-  /// Cut/Copy/Paste), so the area's menu replaces it. Left clicks still reach them.
   var captureDescendants = false
 
   override func hitTest(_ point: NSPoint) -> NSView? {
@@ -646,11 +588,6 @@ final class ContextMenuArea: ExpoView {
   override func menu(for event: NSEvent) -> NSMenu? { nil }
 }
 
-/// A rounded surface with fill, hairline border and a layer shadow, drawn natively.
-/// react-native-macos's own shadow support (`-[RCTView didUpdateShadow]`) crashes
-/// when shadow props are re-applied, so every shadowed surface in the UI uses this.
-/// An NSVisualEffectView (blur + material tint) sized to the RN view, with rounded corners.
-/// Dia's New Tab command bar sits on `.hudWindow` blended `.withinWindow`.
 public class VisualEffectModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooVisualEffect")
@@ -694,7 +631,7 @@ final class VisualEffect: ExpoView {
     effect.layer?.masksToBounds = cornerRadius > 0
   }
 
-  // RN macOS doesn't autoresize subviews.
+  // RN macOS sets subview frames directly; size them in setFrameSize.
   override func setFrameSize(_ newSize: NSSize) {
     super.setFrameSize(newSize)
     effect.frame = bounds
@@ -704,16 +641,10 @@ final class VisualEffect: ExpoView {
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// Liquid Glass sized to the RN view: AppKit's NSGlassEffectView on macOS 26+ (its backdrop is
-/// window-server aware, so over a clear part of the window it frosts the desktop), with `tint` as the
-/// glass's tintColor. Before macOS 26 it's an NSVisualEffectView with the sidebar material, blending
-/// behind the window, under the tint. Nothing goes in the glass: RN content sits over it as siblings.
-/// Ignores mouse events.
 public class GlassEffectModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooGlassEffect")
 
-    /// Real Liquid Glass (macOS 26+); false means the sidebar-material fallback.
     Function("isLiquidGlass") { () -> Bool in
       if #available(macOS 26.0, *) { return true }
       return false
@@ -723,7 +654,6 @@ public class GlassEffectModule: Module {
       Prop("cornerRadius") { (view: GlassEffect, v: Double) in view.cornerRadius = v }
       Prop("tint") { (view: GlassEffect, hex: String?) in view.tint = hex.flatMap(NSColor.init(hex:)) }
       Prop("glassStyle") { (view: GlassEffect, style: String?) in view.clear = style == "clear" }
-      // The RN theme's appearance (an incognito window is dark whatever the app's appearance).
       Prop("dark") { (view: GlassEffect, dark: Bool?) in view.appearance = dark.map { NSAppearance(named: $0 ? .darkAqua : .aqua) } ?? nil }
     }
   }
@@ -731,7 +661,6 @@ public class GlassEffectModule: Module {
 
 final class GlassEffect: ExpoView {
   private let effect: NSView
-  /// The fallback's tint, over the material.
   private let tintLayer = CALayer()
   var cornerRadius: Double = 0 { didSet { apply() } }
   var tint: NSColor? { didSet { apply() } }
@@ -769,7 +698,7 @@ final class GlassEffect: ExpoView {
     tintLayer.backgroundColor = tint?.cgColor
   }
 
-  // RN macOS doesn't autoresize subviews.
+  // RN macOS sets subview frames directly; size them in setFrameSize.
   override func setFrameSize(_ newSize: NSSize) {
     super.setFrameSize(newSize)
     effect.frame = bounds
@@ -789,8 +718,6 @@ public class SurfaceModule: Module {
       Prop("borderColor") { (view: Surface, hex: String?) in view.surfaceBorderColor = hex.flatMap(NSColor.init(hex:)) }
       Prop("borderWidth") { (view: Surface, v: Double) in view.surfaceBorderWidth = v }
       Prop("borderColors") { (view: Surface, hexes: [String]?) in view.surfaceBorderColors = (hexes ?? []).compactMap(NSColor.init(hex:)) }
-      // Not `shadow*`: Surface is an RCTView, and RN's view manager would also hand those to
-      // -[RCTView setShadow…:], whose didUpdateShadow crashes when they're re-applied.
       Prop("surfaceShadowColor") { (view: Surface, hex: String?) in view.surfaceShadowColor = hex.flatMap(NSColor.init(hex:)) }
       Prop("surfaceShadowOpacity") { (view: Surface, v: Double) in view.surfaceShadowOpacity = v }
       Prop("surfaceShadowRadius") { (view: Surface, v: Double) in view.surfaceShadowRadius = v }
@@ -804,18 +731,13 @@ final class Surface: ExpoView {
   var surfaceRadius: Double = 0 { didSet { apply() } }
   var surfaceBorderColor: NSColor? { didSet { apply() } }
   var surfaceBorderWidth: Double = 0 { didSet { apply() } }
-  /// Top → bottom gradient for the border (Dia's selected tab uses a 1pt gradient stroke).
   var surfaceBorderColors: [NSColor] = [] { didSet { apply() } }
   var surfaceShadowColor: NSColor? { didSet { apply() } }
   var surfaceShadowOpacity: Double = 0 { didSet { apply() } }
   var surfaceShadowRadius: Double = 0 { didSet { apply() } }
   var surfaceShadowOffset: CGSize = .zero { didSet { apply() } }
 
-  /// Drawn on its own sublayer: RCTView re-applies background/border/radius to
-  /// its backing layer in updateLayer, which would overwrite ours.
   private let plate = CALayer()
-  /// The shadow lives on its own layer, masked to the outside of the shape, so a
-  /// translucent fill doesn't show the shadow through it.
   private let shadowLayer = CALayer()
   private let shadowMask = CAShapeLayer()
   private let borderGradient = CAGradientLayer()
@@ -850,7 +772,6 @@ final class Surface: ExpoView {
     guard let layer else { return }
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    // Sublayer order (bottom → top): shadow, plate (fill), gradient border, RN content.
     if borderGradient.superlayer !== layer {
       layer.insertSublayer(borderGradient, at: 0)
       borderStroke.fillColor = nil
@@ -871,12 +792,10 @@ final class Surface: ExpoView {
     plate.borderColor = surfaceBorderColor?.cgColor
     plate.borderWidth = surfaceBorderWidth
 
-    // Gradient border: a stroked path masking a vertical gradient, above the plate.
     if surfaceBorderColors.count >= 2, surfaceBorderWidth > 0 {
       borderGradient.isHidden = false
       borderGradient.frame = bounds
       borderGradient.colors = surfaceBorderColors.map(\.cgColor)
-      // RN views are flipped: y=0 is the top.
       let flipped = layer.isGeometryFlipped || isFlipped
       borderGradient.startPoint = CGPoint(x: 0.5, y: flipped ? 0 : 1)
       borderGradient.endPoint = CGPoint(x: 0.5, y: flipped ? 1 : 0)
@@ -897,7 +816,6 @@ final class Surface: ExpoView {
       shadowLayer.shadowColor = shadowColor.cgColor
       shadowLayer.shadowOpacity = Float(surfaceShadowOpacity)
       shadowLayer.shadowRadius = surfaceShadowRadius
-      // RN views are flipped; positive y should move the shadow down on screen.
       shadowLayer.shadowOffset = CGSize(width: surfaceShadowOffset.width, height: layer.isGeometryFlipped || isFlipped ? surfaceShadowOffset.height : -surfaceShadowOffset.height)
       shadowLayer.shadowPath = shape
       let outset = surfaceShadowRadius * 3 + abs(surfaceShadowOffset.height) + abs(surfaceShadowOffset.width) + 4

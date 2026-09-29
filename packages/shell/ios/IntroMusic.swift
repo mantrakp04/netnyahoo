@@ -1,16 +1,9 @@
 import AVFoundation
 import QuartzCore
 
-/// The onboarding intro's music (Dia plays a recorded piece under OnboardingIntro2; we can't ship
-/// that). An original few bars, synthesized when the intro starts: open fifths swell in, a bell
-/// rings as the icon lands, a rising pentatonic sparkle follows the wordmark letter by letter, the
-/// harmony moves to Gmaj7 under the tagline, and it resolves on Dmaj9 with a breath of air as the
-/// stage opens. The cue times come from the intro animation (components/onboarding/Intro.tsx), so
-/// picture and sound stay in step.
 final class IntroMusic {
   static let shared = IntroMusic()
 
-  /// Seconds from the start of the intro.
   struct Cues {
     var icon = 0.25
     var letters = 1.2
@@ -32,7 +25,6 @@ final class IntroMusic {
   }
 
   private static let sampleRate = 44_100.0
-  /// Overall level: it sits under the picture, never over it.
   private static let volume: Float = 0.55
 
   private var engine: AVAudioEngine?
@@ -40,8 +32,6 @@ final class IntroMusic {
   private var muted = false
   private var ramp: Timer?
 
-  /// Starts the piece as if it had begun at `requestedAt` (synthesis takes a moment; the
-  /// animation doesn't wait for it). Muted still plays, silently, so unmuting joins in time.
   func play(cues: [String: Double], muted: Bool) {
     let requestedAt = CACurrentMediaTime()
     stopNow()
@@ -63,7 +53,6 @@ final class IntroMusic {
     fade(to: muted ? 0 : Self.volume, duration: 0.25)
   }
 
-  /// Fades out and releases the audio device.
   func stop(fade duration: Double) {
     guard engine != nil else { return }
     let current = session
@@ -87,7 +76,6 @@ final class IntroMusic {
       return
     }
     player.scheduleBuffer(Self.slice(buffer, from: frames), at: nil) { [weak self] in
-      // Let the reverb tail ring out before letting go of the device.
       DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
         if self?.session == current { self?.stopNow() }
       }
@@ -110,7 +98,6 @@ final class IntroMusic {
     let start = CACurrentMediaTime()
     ramp = Timer.scheduledTimer(withTimeInterval: 1 / 60, repeats: true) { [weak self] timer in
       let t = duration > 0 ? min(1, (CACurrentMediaTime() - start) / duration) : 1
-      // Equal-power-ish: ease the gain so the fade sounds even.
       let eased = Float(t * t * (3 - 2 * t))
       mixer.outputVolume = from + (target - from) * eased
       if t >= 1 {
@@ -140,7 +127,6 @@ final class IntroMusic {
     let count = AVAudioFrameCount(AVAudioFramePosition(buffer.frameLength) - frame)
     let out = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: count)!
     out.frameLength = count
-    // Joining late: a few milliseconds of fade-in so it doesn't start with a click.
     let fadeIn = min(Int(count), Int(0.06 * sampleRate))
     for ch in 0..<Int(buffer.format.channelCount) {
       let data = out.floatChannelData![ch]
@@ -152,8 +138,6 @@ final class IntroMusic {
 
   // MARK: DEV
 
-  /// DEV: renders the piece (through the same reverb) to an audio file, for checking it without
-  /// playing anything out loud. Returns the duration in seconds, or nil on failure.
   static func render(cues: [String: Double], to path: String) -> Double? {
     guard let buffer = synthesize(Cues(cues)) else { return nil }
     let engine = AVAudioEngine()
@@ -195,8 +179,6 @@ final class IntroMusic {
     right.initialize(repeating: 0, count: n)
     var mix = Mix(left: left, right: right, count: n, sr: sr)
 
-    // Harmony: open fifths (D sus2) → Gmaj7 under the tagline → Dmaj9 as the stage opens.
-    // Voiced from D3 up so laptop speakers carry it; the sub adds weight where there's a woofer.
     let d2 = 73.416, g2 = 97.999, d3 = 146.832, g3 = 195.998, a3 = 220.0, b3 = 246.942, d4 = 293.665
     let e4 = 329.628, fs4 = 369.994, a4 = 440.0, cs5 = 554.365, e5 = 659.255
     let first = c.tagline + 0.35, second = c.exit + 0.25
@@ -207,12 +189,10 @@ final class IntroMusic {
     mix.sine(g2, from: c.tagline - 0.2, to: second, attack: 1.0, release: 1.0, gain: 0.07)
     mix.sine(d2, from: c.exit - 0.1, to: c.end + 1.2, attack: 0.6, release: 2.8, gain: 0.08)
 
-    // The icon lands: a bell (A5 over D5).
     let land = c.icon + 0.35
     mix.bell(587.33, at: land, gain: 0.10, pan: -0.15)
     mix.bell(880.0, at: land + 0.012, gain: 0.07, pan: 0.2)
 
-    // The wordmark writes itself: one pluck per letter, rising through D major pentatonic from A4.
     var midi = 69
     let pentatonic: Set<Int> = [2, 4, 6, 9, 11]
     for i in 0..<max(0, c.letterCount) {
@@ -222,7 +202,6 @@ final class IntroMusic {
       repeat { midi += 1 } while !pentatonic.contains(midi % 12)
     }
 
-    // The stage opens: a swell of air, then a closing chime on the resolution.
     mix.air(from: c.exit - 0.35, peak: c.end, to: c.end + 1.4, gain: 0.035)
     mix.bell(739.99, at: c.end - 0.05, gain: 0.06, pan: 0.25)
     mix.bell(1174.66, at: c.end + 0.03, gain: 0.04, pan: -0.25)
@@ -233,15 +212,12 @@ final class IntroMusic {
   }
 }
 
-/// A stereo sum the voices write into. Voices loop over their own sample ranges with phase
-/// accumulators and a wavetable, so this stays quick even in unoptimized (Debug) builds.
 private struct Mix {
   let left: UnsafeMutablePointer<Float>
   let right: UnsafeMutablePointer<Float>
   let count: Int
   let sr: Double
 
-  /// One cycle of a soft, warm tone (partials 1…8 at 1/n^1.7): a gentle saw without the buzz.
   static let table: [Float] = {
     let size = 4096
     var t = [Float](repeating: 0, count: size + 1)
@@ -259,7 +235,6 @@ private struct Mix {
     return a..<max(a, b)
   }
 
-  /// 0 → 1 over `attack`, holds, 1 → 0 over `release` after `to`; raised-cosine edges.
   private static func envelope(_ t: Double, length: Double, attack: Double, release: Double) -> Float {
     let s = { (x: Double) in Float(0.5 - 0.5 * cos(Double.pi * min(max(x, 0), 1))) }
     if t < attack { return s(t / attack) }
@@ -267,13 +242,10 @@ private struct Mix {
     return 1
   }
 
-  /// A pad note: two slightly detuned wavetable voices (left / right) through a one-pole lowpass,
-  /// with a slow shimmer.
   mutating func pad(_ freq: Double, from: Double, to: Double, attack: Double, release: Double, gain: Float) {
     let detune = pow(2, 4.0 / 1200)
     var phase = (Double.random(in: 0..<1), Double.random(in: 0..<1))
     let inc = (freq / detune / sr, freq * detune / sr)
-    // Lowpass around 5× the fundamental, capped: warm, not dull.
     let cutoff = min(1600, freq * 5)
     let a = Float(1 - exp(-2 * Double.pi * cutoff / sr))
     var lp: (Float, Float) = (0, 0)
@@ -309,7 +281,6 @@ private struct Mix {
     }
   }
 
-  /// FM bell: an inharmonic modulator (×1.4) whose index decays faster than the tone.
   mutating func bell(_ freq: Double, at start: Double, gain: Float, pan: Float) {
     let (gl, gr) = Mix.pan(pan)
     for i in range(start, start + 4.5) {
@@ -322,7 +293,6 @@ private struct Mix {
     }
   }
 
-  /// A short, round pluck (sine with a touch of 2nd and 3rd harmonic).
   mutating func pluck(_ freq: Double, at start: Double, gain: Float, pan: Float) {
     let (gl, gr) = Mix.pan(pan)
     for i in range(start, start + 2.0) {
@@ -335,7 +305,6 @@ private struct Mix {
     }
   }
 
-  /// Filtered noise that swells to `peak` while its filter opens, then dies away.
   mutating func air(from: Double, peak: Double, to: Double, gain: Float) {
     var seed: UInt32 = 0x9E37_79B9
     var lp: (Float, Float) = (0, 0)
@@ -377,7 +346,6 @@ private struct Mix {
     }
   }
 
-  /// Constant-power pan, -1 (left) … 1 (right).
   private static func pan(_ p: Float) -> (Float, Float) {
     let angle = Double(p + 1) * Double.pi / 4
     return (Float(cos(angle)), Float(sin(angle)))

@@ -1,14 +1,6 @@
 import ExpoModulesCore
 import MetalKit
 
-/// Dia's New Tab light: the command bar is treated as a rounded-rect area light
-/// floating `lift` points above the page, and every pixel gets the analytic
-/// irradiance of that emitter, tinted by a slowly scrolling, noise-warped
-/// palette gradient.
-///
-/// Shader reconstructed from `breathingAreaLightFragment` (PowerUp metallib);
-/// the per-frame animation below follows `BreathingAreaLightView.draw(in:)` and
-/// `NewTabAreaLightView` recovered from the Dia binary (docs/dia-spec.md).
 final class AreaLightView: MetalSurface {
   struct Params {
     var shapeFrame = SIMD4<Float>(0, 0, 0, 0)
@@ -16,16 +8,13 @@ final class AreaLightView: MetalSurface {
     var lift: Float = 10
     var intensity: Float = 4
     var falloff: Float = 1
-    /// Emitter tilt in radians about [x, y].
     var tilt = SIMD2<Float>(5 * .pi / 180, 0)
     var noiseSeed = Float.random(in: 0..<1000)
     var introDelay: Double = 0.05
     var introDuration: Double = 0.4
-    /// After this many seconds the scroll freezes and breathing has faded out.
     var animationDuration: Double = 60
   }
 
-  /// Must match `AreaLightUniforms` in the shader (Metal alignment rules).
   private struct Uniforms {
     var shapeFrame: SIMD4<Float>
     var rotationTrig: SIMD4<Float>
@@ -41,17 +30,14 @@ final class AreaLightView: MetalSurface {
   }
 
   var params = Params()
-  /// Last encoded state, for debugging from JS (`AreaLightModule.debugState`).
   static var lastState: [String: Any] = [:]
   private var colors: [SIMD4<Float>] = AreaLightView.pink
   private var time: Double = 0
   private var lastTimestamp: CFTimeInterval?
-  /// Dia's display link: created paused, run by `restart()` / `resume()`.
   private var clockEnabled = false
   private var driving = false
   private lazy var activity = WindowActivity { [weak self] in self?.windowStateChanged() }
 
-  /// Dia picks one of seven fixed 5-color tables by the theme's hue family.
   static let palettes: [String: [SIMD4<Float>]] = [
     "blue": ["#4691C3", "#4BA5B9", "#418CBE", "#48B6DA", "#55A2E4"],
     "red": ["#C1575C", "#C35F4B", "#B95058", "#DB463C", "#E16070"],
@@ -65,14 +51,13 @@ final class AreaLightView: MetalSurface {
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
-    // Dia drives this light from a 30 fps display link.
+    // Dia: 30 fps
     metalView.preferredFramesPerSecond = 30
     metalView.isPaused = true
     metalView.enableSetNeedsDisplay = true
     alphaValue = 0.75
   }
 
-  /// Either a palette name ("pink", "blue", …) or explicit hex stops.
   func setPalette(_ value: [String]) {
     if value.count == 1, let named = Self.palettes[value[0]] {
       colors = named
@@ -83,14 +68,10 @@ final class AreaLightView: MetalSurface {
     redraw()
   }
 
-  /// Prop changes redraw a paused light, like Dia's property setters (`setNeedsDisplay`).
   func redraw() {
     if !driving { metalView.needsDisplay = true }
   }
 
-  /// The New Tab entrance (NewTabPageViewController): loadView skips the light 5s ahead, to its
-  /// settled look; the entrance then restarts it from 0, but only when the window is key and
-  /// Reduce Motion is off. Otherwise it waits, settled, for the window to become key.
   func replayIntro() {
     time = 5
     lastTimestamp = nil
@@ -103,9 +84,6 @@ final class AreaLightView: MetalSurface {
     updateDriving()
   }
 
-  /// windowDidBecomeKey / windowDidResignKey: the clock resumes / pauses and the light is
-  /// redrawn with the key scale `k`. Dia resumes even under Reduce Motion (the breathing then
-  /// runs); we keep the light still there.
   private func windowStateChanged() {
     let key = activity.isKey
     if key != lastKey {
@@ -116,8 +94,6 @@ final class AreaLightView: MetalSurface {
   }
   private var lastKey: Bool?
 
-  /// Runs the MTKView at 30 fps while the clock runs and the window can be seen; otherwise it
-  /// draws on demand, so a paused light still repaints when `k` or a prop changes.
   private func updateDriving() {
     let run = clockEnabled && window != nil && !isHidden && activity.isVisible && time < params.animationDuration
     if run && !driving { lastTimestamp = nil }
@@ -159,10 +135,8 @@ final class AreaLightView: MetalSurface {
     let p = params
     let T = time
     let A = p.animationDuration
-    // NewTabAreaLightView.layout: lift and tilt are halved while the window isn't key.
     let k: Float = activity.isKey ? 1 : 0.5
 
-    // Intro: lift rises from 3pt to its resting height with a slight early dip.
     let e = max(T - p.introDelay, 0)
     let progress: Double
     let introFade: Double
@@ -177,7 +151,6 @@ final class AreaLightView: MetalSurface {
     }
     let lift = 3 + (Double(k * p.lift) - 3) * progress
 
-    // Colour scroll eases to a stop over the last quarter of the animation.
     let effectiveTime: Double
     if T <= 0.75 * A {
       effectiveTime = T
@@ -186,7 +159,7 @@ final class AreaLightView: MetalSurface {
       effectiveTime = 0.75 * A + 0.25 * A * (x - x * x * x + 0.5 * x * x * x * x)
     }
 
-    // Breathing: an asymmetric Gaussian bump every 6s, peaking at 2.19s.
+    // Dia: 6s cycle, 2.19s peak
     let phase = fmod(T, 6) / 6
     let sigma = phase < 0.365 ? 0.15 : 0.30
     let breath = exp(-pow(phase - 0.365, 2) / (2 * sigma * sigma))
@@ -220,14 +193,12 @@ final class AreaLightView: MetalSurface {
       "opaque": metalView.layer?.isOpaque ?? false, "frames": (Self.lastState["frames"] as? Int ?? 0) + 1,
     ]
 
-    // Dia stops its display link once the animation has fully settled.
     if T >= A { DispatchQueue.main.async { [weak self] in self?.updateDriving() } }
   }
 
   override class var shaderSource: String { areaLightSource }
 }
 
-// Straight-alpha output: rgb = light colour, a = strength (blended sourceAlpha, like Dia's pipeline).
 let areaLightSource = """
 struct AreaLightUniforms {
   float4 shapeFrame;    // emitter rect (x, y, w, h) in points, top-left origin

@@ -22,12 +22,6 @@ import { ToolbarExtensions, useToolbarExtensionsWidth } from "./extensions/Toolb
 import { GlassFill, liquidGlass } from "./glass";
 import { TranslateButton } from "./site/TranslateControls";
 
-/**
- * A pane's navigation bar: sidebar toggle (leading pane only), back / forward /
- * reload, the host / title breadcrumb, and — in a split — the split menu and
- * close buttons. The page's colour tints it when "Extend website color" is on;
- * unfocused split panes dim theirs.
- */
 export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId: string; geometry: ToolbarGeometry; windowId: string; inSplit: boolean; focused: boolean }) {
   const theme = useTheme();
   const tab = useTab(tabId);
@@ -44,7 +38,6 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
   }, [focused]);
   if (!tab) return <View style={{ height: layout.toolbarHeight }} />;
 
-  // Acting on an unfocused pane focuses it first, like clicking into its page.
   const focus = () => {
     if (!focused) useBrowser.getState().activate(tab.id);
   };
@@ -87,7 +80,6 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
   );
 }
 
-/** Reload (⇧: ignoring the cache, ⌘: in a background tab); Stop while the page loads. */
 export function ReloadButton({ tab, loading, palette, style, onFocus }: { tab: Tab; loading: boolean; palette: ToolbarPalette; style?: ViewStyle; onFocus: () => void }) {
   const web = () => webviews.get(tab.id);
   return (
@@ -108,7 +100,6 @@ export function ReloadButton({ tab, loading, palette, style, onFocus }: { tab: T
   );
 }
 
-/** Thin load-progress line along the toolbar's (or the sidebar field's) bottom edge; it glides between reports. */
 function ProgressBar({ progress, color }: { progress: number; color: string }) {
   const width = useRef(new Animated.Value(Math.max(progress, 0.08))).current;
   useEffect(() => {
@@ -129,11 +120,6 @@ function ProgressBar({ progress, color }: { progress: number; color: string }) {
   );
 }
 
-/**
- * Back / forward. Click navigates; ⌘-click or middle-click opens that page in a
- * background tab (⇧ a new window); press-and-hold or right-click lists the history in
- * that direction (layout/HistoryPopover).
- */
 export function HistoryButton({
   tab,
   direction,
@@ -160,7 +146,6 @@ export function HistoryButton({
     closeHistoryMenu();
     const mode = openModeFor(m);
     if (mode === "current" || mode === "split") return direction < 0 ? goBack(tab.id) : goForward(tab.id);
-    // The previous / next page in a background tab (⇧⌘: foreground, ⇧: new window).
     const [target] = await historyItems(tab.id, direction, 1);
     if (target?.url) openUrl(target.url, tab.windowId, mode);
   };
@@ -180,13 +165,6 @@ export function HistoryButton({
   );
 }
 
-/**
- * The breadcrumb: a web page's host alone, like Dia 1.50 (its URL bar has no page title for web
- * pages; View › Show Full URL adds the path, without a trailing "/"). The app's own pages and
- * local files keep `host / title`. Hovering shows the full URL and the page actions, clicking opens
- * the command bar. `sidebar`: the sidebar's field (Settings › Appearance › Address Bar), filled
- * like a resting pinned tile, with the load progress along its bottom edge.
- */
 export function UrlField({
   tab,
   palette,
@@ -202,7 +180,6 @@ export function UrlField({
   inSplit: boolean;
   onFocus: () => void;
   style?: ViewStyle;
-  /** `accessory`: the pinned extension buttons, at the field's trailing edge (Arc keeps them in its URL bar). */
   sidebar?: { height: number; progress: number | null; accessory?: ReactNode };
 }) {
   const theme = useTheme();
@@ -224,10 +201,8 @@ export function UrlField({
     setPopover(tab.id, currentPopover(tab.id) === "siteControls" ? null : "siteControls");
   };
   const { hovered, hoverProps } = useHover();
-  // Local files have no host: show "File" and the decoded path.
   const isFile = tab.url.startsWith("file:");
   const host = isFile ? "File" : breadcrumb(tab.url).host;
-  // The host as `breadcrumb` shows it: an IDN in Unicode only when it passes the spoof checks.
   const full = isFile ? ` ${safeDecode(tab.url.slice("file://".length))}` : urlForDisplay(tab.url);
   const path = !isFile && full.startsWith(host) ? full.slice(host.length) : full;
   const web = /^https?:/i.test(tab.url);
@@ -244,7 +219,6 @@ export function UrlField({
               height: sidebar.height,
               borderRadius: SIDEBAR_FIELD.radius,
               borderWidth: StyleSheet.hairlineWidth * 2,
-              // Liquid Glass: the glass's own edge instead of the stroke (the border keeps its room).
               borderColor: liquidGlass ? "transparent" : theme.pinnedRestingStroke,
               backgroundColor: liquidGlass ? undefined : hovered ? theme.tabHover : theme.pinnedResting,
               overflow: "hidden",
@@ -252,14 +226,10 @@ export function UrlField({
           : { height: 30, borderRadius: 8, backgroundColor: hovered && !liquidGlass ? palette.pill : undefined },
       ]}
     >
-      {/* Liquid Glass (components/glass): the field is glass, tinted by the state Dia fills it for; in the
-          toolbar, a pill of glass at rest too, over the band. */}
       {liquidGlass ? (
         sidebar ? (
           <GlassFill radius={SIDEBAR_FIELD.radius} border={StyleSheet.hairlineWidth * 2} fill={hovered ? theme.tabHover : theme.pinnedResting} />
         ) : (
-          // Dia's hover fill is the pill, and the glass is already there: hovered, it deepens to the pressed
-          // shade. Over a website colour's band, the glass is light or dark as the band is (its text the other).
           <GlassFill radius={8} fill={hovered ? palette.pressed : palette.pill} dark={palette.background ? palette.text.startsWith("#FFFFFF") : undefined} />
         )
       ) : null}
@@ -273,16 +243,13 @@ export function UrlField({
           />
         </Pressable>
       )}
-      {/* Right-click: Paste and Go / Paste and Search, Copy URL (Dia). */}
       <ContextMenuArea style={{ flex: 1 }} onContextMenu={() => void showUrlBarMenu(tab)}>
       <Pressable onPress={() => openPanel(tab.url)} style={{ flex: 1, height: sidebar?.height ?? 30, justifyContent: "center", paddingLeft: insecure ? 3 : sidebar ? 10 : 8 }}>
         {sidebar ? (
-          // The sidebar's narrow field fades the title / path out, like the tab titles under it.
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 13, fontWeight: "500", color: palette.text }}>
               {host}
             </Text>
-            {/* FadeLabel pads its text 2pt on each side. */}
             <FadeLabel
               text={trail}
               fontSize={13}
@@ -340,7 +307,6 @@ export function UrlField({
   );
 }
 
-/** The page is using the camera / microphone / screen: a red glyph that opens Site Controls. */
 function CaptureIndicator({ camera, microphone, screen, onPress }: { camera: boolean; microphone: boolean; screen: boolean; onPress: () => void }) {
   const icon = screen ? "rectangle.inset.filled.on.rectangle" : camera ? "video.fill" : "mic.fill";
   const what = [camera && "camera", microphone && "microphone", screen && "screen"].filter(Boolean).join(" and ");
@@ -351,7 +317,6 @@ function CaptureIndicator({ camera, microphone, screen, onPress }: { camera: boo
   );
 }
 
-/** Read at click time, so the toolbar doesn't re-render with the popover. */
 const currentPopover = (tabId: string) => usePages.getState().popover[tabId] ?? null;
 
 function safeDecode(s: string) {

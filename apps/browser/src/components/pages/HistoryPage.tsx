@@ -19,7 +19,6 @@ type Item =
   | { type: "day"; key: string; label: string; offset: number }
   | { type: "row"; key: string; entry: HistoryEntry; first: boolean; last: boolean; offset: number };
 
-/** History (⌘Y): the profile's visits grouped by day, searchable, with bulk delete. */
 export function HistoryPage({ tabId, profileId, initialQuery }: { tabId: string; profileId: string; initialQuery: string }) {
   const theme = useTheme();
   const windowId = useBrowser((s) => s.tabs[tabId]?.windowId ?? "");
@@ -29,7 +28,6 @@ export function HistoryPage({ tabId, profileId, initialQuery }: { tabId: string;
   const [clearOpen, setClearOpen] = useState(false);
   const lastClicked = useRef<string | null>(null);
 
-  // History › Clear Browsing Data… opens the dialog here.
   const clearRequest = useClearDataRequest((r) => r.windowId);
   const activeHere = useBrowser((s) => s.windows[windowId]?.activeTabIds[s.windows[windowId]!.profileId] === tabId);
   useEffect(() => {
@@ -72,7 +70,6 @@ export function HistoryPage({ tabId, profileId, initialQuery }: { tabId: string;
   const toggle = (url: string, shift: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      // ⇧-click selects the range from the last clicked row, like Chrome.
       if (shift && lastClicked.current && rowUrls.includes(lastClicked.current)) {
         const [a, b] = [rowUrls.indexOf(lastClicked.current), rowUrls.indexOf(url)].sort((x, y) => x - y);
         rowUrls.slice(a!, b! + 1).forEach((u) => next.add(u));

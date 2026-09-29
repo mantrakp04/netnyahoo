@@ -8,7 +8,6 @@ import type { Ghost } from "./dnd";
 import { TabIcon } from "./TabIcon";
 import { useSidebarTokens } from "./tokens";
 
-/** What follows the pointer while dragging: Dia's tab silhouette, with a count for several tabs. */
 export function DragGhost({ ghost }: { ghost: Ghost }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();

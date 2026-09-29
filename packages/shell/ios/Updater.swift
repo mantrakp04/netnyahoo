@@ -3,12 +3,6 @@ import AppKit
 import Sparkle
 #endif
 
-/// Sparkle 2 auto-updates. The feed comes from Info.plist `SUFeedURL` (the GitHub releases appcast; the
-/// EdDSA public key, `SUPublicEDKey`, is set), overridable with the `NETNYAHOO_UPDATE_FEED_URL`
-/// environment variable (or the `NNUpdateFeedURL` default) so a build can be pointed at a staging
-/// appcast. A build without a feed never starts Sparkle, and Check for Updates… says updates
-/// aren't set up. Like Dia, an update found while a window is in full screen (usually a video)
-/// waits until full screen ends before it's shown or installed.
 public final class AppUpdater: NSObject {
   public static let shared = AppUpdater()
 
@@ -18,9 +12,7 @@ public final class AppUpdater: NSObject {
 
   #if canImport(Sparkle)
   private lazy var controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: self)
-  /// A scheduled update found during full screen, waiting to be shown.
   private var deferredUpdate = false
-  /// Sparkle's "relaunch now" continuation, held while in full screen.
   private var deferredRelaunch: (() -> Void)?
   #endif
   private var started = false
@@ -33,8 +25,6 @@ public final class AppUpdater: NSObject {
     #endif
   }
 
-  /// Whether this build has somewhere to update from: an http(s) appcast and the public key
-  /// updates are verified with.
   public var isConfigured: Bool {
     guard isAvailable else { return false }
     let info = Bundle.main.infoDictionary ?? [:]
@@ -44,7 +34,6 @@ public final class AppUpdater: NSObject {
     return (scheme == "https" || scheme == "http") && !key.isEmpty
   }
 
-  /// Starts background checks. Safe to call more than once.
   public func start() {
     #if canImport(Sparkle)
     guard !started, isConfigured else { return }
@@ -58,7 +47,6 @@ public final class AppUpdater: NSObject {
     #endif
   }
 
-  /// App menu › Check for Updates…
   @objc public func checkForUpdates(_ sender: Any?) {
     #if canImport(Sparkle)
     guard isConfigured else { return showNotSetUp() }
@@ -98,7 +86,6 @@ public final class AppUpdater: NSObject {
     #endif
   }
 
-  /// Check for Updates… in a build without an update feed: say so rather than let Sparkle fail.
   private func showNotSetUp() {
     let alert = NSAlert()
     let name = ProcessInfo.processInfo.processName
@@ -112,14 +99,12 @@ public final class AppUpdater: NSObject {
     }
   }
 
-  /// Whether a window is in full screen right now (a video, a presentation…).
   static var isPresentingFullScreen: Bool {
     NSApp.windows.contains { $0.isVisible && $0.styleMask.contains(.fullScreen) }
   }
 
   #if canImport(Sparkle)
   @objc private func fullScreenChanged() {
-    // Other windows may still be full screen; wait for the last one.
     DispatchQueue.main.async { [self] in
       guard !Self.isPresentingFullScreen else { return }
       if let relaunch = deferredRelaunch {
@@ -127,7 +112,6 @@ public final class AppUpdater: NSObject {
         relaunch()
       } else if deferredUpdate {
         deferredUpdate = false
-        // Brings the already-found update back up.
         controller.checkForUpdates(nil)
       }
     }
@@ -161,8 +145,6 @@ extension AppUpdater: SPUStandardUserDriverDelegate {
     deferredUpdate = false
   }
 
-  /// "You're up to date" › Version History (the appcast's fullReleaseNotesLink, scripts/release.sh):
-  /// the running version's entry, in a tab here rather than in the default browser.
   @objc(standardUserDriverShowVersionHistoryForAppcastItem:)
   public func standardUserDriverShowVersionHistory(for item: SUAppcastItem) {
     guard let page = item.fullReleaseNotesURL else { return }

@@ -1,20 +1,4 @@
-/**
- * The page side of Translate (components/site/translate.ts), run through `WebViewHandle.evaluate`
- * in the page's main frame. It installs itself once per document and keeps:
- * - passages: a block's text (a paragraph, a list item, a cell…) goes to the translator as one
- *   piece of text, so sentences split by links and inline styles translate as sentences, and each
- *   text node gets back its own part of the translation (markup stays as it is);
- * - every text node it translated, with its original text, so Show Original puts back exactly
- *   what was there (a node the page changed since is left alone);
- * - a MutationObserver that queues text the page adds (or rewrites) while translation is on;
- * - what's on screen first: text near the viewport is queued at once, the rest when it scrolls
- *   into view (an IntersectionObserver), so a long page costs what you read of it. `next` hands
- *   out bounded batches, so the page never blocks.
- * Only text nodes change. Skipped: scripts, styles, code and preformatted text, form fields,
- * editable content, `translate="no"` and `.notranslate` (Chrome's opt-outs).
- */
 
-/** A passage to translate: its id and its text nodes' [id, text], in reading order. */
 export type Passage = [number, [number, string][]];
 
 const INSTALL = String.raw`
@@ -191,7 +175,6 @@ if (!window[KEY]) {
 }
 `;
 
-/** Code for `evaluate` that runs `op(...args)` on the page's translator and posts its result. */
 export function translatorCall(op: "sample" | "start" | "next" | "apply" | "revert", ...args: unknown[]): string {
   return `${INSTALL}\npost("result", JSON.stringify(window[Symbol.for("netnyahoo.translator")].${op}(...${JSON.stringify(args)})));`;
 }

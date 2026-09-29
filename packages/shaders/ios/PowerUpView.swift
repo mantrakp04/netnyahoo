@@ -1,13 +1,8 @@
 import ExpoModulesCore
 import MetalKit
 
-/// Dia's CommandBarPowerUpView: the power-up band (PowerUpBackgroundView), a faint, slightly
-/// sheared wash of the theme palette that enters from the bottom of the New Tab page and
-/// sweeps up past the command bar, plus, when the area light is off, the halo (HaloView) that
-/// wraps the bar. Shaders reconstructed from `powerUpFragment` / `haloFragment` (docs/dia-spec.md).
 final class PowerUpView: MetalSurface {
-  var direction: Int32 = 0          // 0 = up (enters from the bottom)
-  /// CommandBarPowerUpView.speed also sets the halo's.
+  var direction: Int32 = 0
   var speed: Float = 1.25 {
     didSet { halo?.speed = speed }
   }
@@ -15,20 +10,14 @@ final class PowerUpView: MetalSurface {
   var fadeOutStart: Float = 1.0
   var fadeOutDuration: Float = 2.0
   var origin: Float = 0.5
-  /// The command bar's corner radius; the halo traces it at +2.
   var cornerRadius: Float = 20 {
     didSet { halo?.cornerRadius = cornerRadius + 2 }
   }
-  /// Palette stops in OKLab (L, a, b, alpha), as the shader expects.
   private var colors: [SIMD4<Float>] = PowerUpView.oklab(PowerUpView.palettes["pink"]!)
-  /// sRGB palette, for the halo.
   private var srgbColors: [SIMD4<Float>] = PowerUpView.palettes["pink"]!
   private var halo: HaloView?
-  /// The rect the halo wraps (the command bar), in this view's coordinates.
   private var haloFrame: CGRect?
 
-  /// CommandBarPowerUpView's per-hue tables (sRGB, converted to OKLab on upload). These are
-  /// brighter than the area light's; `default` is used when there's no theme.
   static let palettes: [String: [SIMD4<Float>]] = [
     "pink": ["#FF6AFF", "#FE8097", "#FF9966", "#FCE0FF", "#FA62B1"],
     "purple": ["#7293FF", "#7D5DFF", "#E263FF", "#FF81EE", "#A585FF"],
@@ -40,15 +29,13 @@ final class PowerUpView: MetalSurface {
     "default": ["#7E1731", "#334CB4", "#2D81FF", "#2D81FF", "#FFF268", "#F70305", "#FE64CD"],
   ].mapValues { $0.compactMap { SIMD4<Float>(hex: $0) } }
 
-  /// Frame-counted clock (Dia adds 1/fps per frame); the band finishes at 3.75.
+  /// Dia: 3.75s
   private var time: Float = 0
   private let finishTime: Float = 3.75
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     metalView.preferredFramesPerSecond = 60
-    // PowerUpBackgroundView puts a Core Animation gaussianBlur (inputRadius 24) on the
-    // MTKView's layer; it's what turns the shader's hard stagger steps into soft wings.
     if let filterClass = NSClassFromString("CAFilter") as? NSObject.Type,
        let blur = filterClass.perform(NSSelectorFromString("filterWithType:"), with: "gaussianBlur")?
          .takeUnretainedValue() as? NSObject {
@@ -71,8 +58,6 @@ final class PowerUpView: MetalSurface {
     }
   }
 
-  /// CommandBarPowerUpView(showHalo:): the halo view spans `frame` outset by its 50pt inset.
-  /// nil removes it (Dia shows it only while the area light is off).
   func setHaloFrame(_ frame: CGRect?) {
     haloFrame = frame
     if frame != nil, halo == nil {
@@ -99,10 +84,8 @@ final class PowerUpView: MetalSurface {
     layoutHalo()
   }
 
-  // RN lays out top-down; the halo frame arrives in those coordinates.
   override var isFlipped: Bool { true }
 
-  /// Under Reduce Motion Dia never creates the band (the New Tab entrance is skipped).
   func replay() {
     time = 0
     metalView.isPaused = window == nil || WindowActivity.reduceMotion
@@ -147,23 +130,16 @@ final class PowerUpView: MetalSurface {
   override class var shaderSource: String { powerUpSource }
 }
 
-/// Dia's HaloView: a light that runs around the command bar's outline, from the bottom centre
-/// up both sides to the top (easeOutExpo), with a noisy glow that tightens onto the edge.
-/// CommandBarPowerUpView sets inset 50, delay 0.18 and cornerRadius +2; the rest are
-/// HaloView's defaults. Shader reconstructed from `haloFragment` (docs/dia-spec.md).
 final class HaloView: MetalSurface {
   var speed: Float = 1
   var delay: Float = 0.18
-  /// The outline sits this far inside the view on every side.
   var inset: Float = 50
-  var direction: Int32 = 0          // 0 = starts at the bottom centre
+  var direction: Int32 = 0
   var cornerRadius: Float = 18
   var fadeOutStart: Float = 1.0
   var fadeOutDuration: Float = 0.2
-  /// Two sRGB stops, mixed by noise. Dia's default is #FF844F → #F773A5.
   private var colors: [SIMD4<Float>] = [SIMD4(1, 0.5176, 0.3098, 1), SIMD4(0.9686, 0.4510, 0.6471, 1)]
 
-  /// Frame-counted clock (1/fps per frame); Dia pauses the view once it passes 2.
   private var time: Float = 0
   private let finishTime: Float = 2
 
@@ -173,7 +149,6 @@ final class HaloView: MetalSurface {
     metalView.isPaused = true
   }
 
-  /// One colour is used for both stops (Dia 1.50 passes the single theme colour).
   func setColors(_ srgb: [SIMD4<Float>]) {
     guard let first = srgb.first else { return }
     colors = [first, srgb.count > 1 ? srgb[1] : first]

@@ -5,18 +5,11 @@ import { SOURCES } from "./sources";
 import { applyFetch, createFolder, finishCompleting, live, markRead, removeFolder, setStatus, useLive } from "./store";
 import { LiveError, type CompletionState, type LiveFolderKind, type LiveItem, type LiveSourceId, type PullRequestSection } from "./types";
 
-/**
- * Keeps live folders fresh: on creation, every few minutes, when a window comes
- * back into focus, shortly after you leave one of a folder's tabs (you may
- * have merged or reviewed something there), and on demand (the refresh button).
- */
 const INTERVAL_MS: Record<LiveFolderKind, number> = { pullRequests: 3 * 60_000, documents: 10 * 60_000 };
 const STALE_ON_FOCUS_MS = 60_000;
-/** Dia's completion moment: the check pops, then the row folds away. */
 export const COMPLETION_MS = 2600;
 
 const inflight = new Map<string, Promise<void>>();
-/** Sources each folder last fetched from (this session). */
 const fetchedSources = new Map<string, Set<LiveSourceId>>();
 
 const SECTION_ORDER: Record<PullRequestSection, number> = { authored: 0, review: 1, team: 2 };
@@ -51,13 +44,11 @@ async function run(folderId: string) {
     if (r.status === "fulfilled") next.push(...r.value);
     else {
       failed.push({ source, error: r.reason });
-      // Keep what the failing source showed last time.
       next.push(...prev.filter((it) => it.source === source && !animating.has(it.id)));
     }
   });
   if (!live().folders[folderId]) return;
 
-  // PRs that left: merged, closed, or reviewed? (Only asked of sources that answered.)
   const ids = new Set(next.map((it) => it.id));
   const missing = prev.filter((it) => !ids.has(it.id) && !animating.has(it.id) && !failed.some((f) => f.source === it.source));
   const gone: Record<string, CompletionState> = {};
@@ -69,11 +60,9 @@ async function run(folderId: string) {
 
   const firstFailure = failed[0];
   if (firstFailure && failed.length === folder.sources.length && !prev.length && !before.status[folderId]?.lastFetch) {
-    // Nothing to show yet: stay empty with the error (the header offers to sign in).
     setStatus(folderId, { state: "error", error: describe(firstFailure.source, firstFailure.error) });
     return;
   }
-  // A source newly added to the folder isn't "new items".
   const lastSources = fetchedSources.get(folderId);
   const quiet = new Set(lastSources ? next.filter((it) => !lastSources.has(it.source)).map((it) => it.id) : []);
   fetchedSources.set(folderId, new Set(folder.sources.filter((id) => !failed.some((f) => f.source === id))));
@@ -88,7 +77,6 @@ function describe(source: LiveSourceId, error: unknown) {
   return { kind: "other" as const, message: String((error as Error)?.message ?? error), source };
 }
 
-/** Tooltip / menu copy for a folder's status (Dia's live folder menu). */
 export function statusText(folderId: string, now = Date.now()): string {
   const st = live().status[folderId];
   if (!st || st.state === "initializing") return "Loading…";
@@ -119,7 +107,6 @@ export function errorText(kind: LiveError["kind"], source: LiveSourceId): string
 
 // MARK: Folder actions
 
-/** Right-click › New Live Folder › …: makes the folder and fills it. */
 export function newLiveFolder(windowId: string, kind: LiveFolderKind): string | null {
   const w = useBrowser.getState().windows[windowId];
   if (!w || w.incognito) return null;
@@ -133,7 +120,6 @@ export function newLiveFolder(windowId: string, kind: LiveFolderKind): string | 
   return id;
 }
 
-/** Opens an item as a tab inside its folder (or selects the tab it's already open in). */
 export function openLiveItem(windowId: string, folderId: string, item: LiveItem, options: { background?: boolean } = {}) {
   const s = useBrowser.getState();
   markRead(folderId, [item.id]);
@@ -147,7 +133,6 @@ export function openLiveItem(windowId: string, folderId: string, item: LiveItem,
   return id;
 }
 
-/** Delete Live Folder: its tabs close too (Reopen Closed Tab brings them back as ordinary tabs). */
 export function deleteLiveFolder(folderId: string) {
   const s = useBrowser.getState();
   const tabs = Object.values(s.tabs).filter((t) => t.liveItem?.folderId === folderId).map((t) => t.id);
@@ -164,7 +149,6 @@ export function startLiveEngine() {
   if (started) return;
   started = true;
 
-  // Tabs that point at folders that no longer exist go back to the ordinary list.
   const orphans = () => {
     const s = useBrowser.getState();
     const folders = live().folders;
@@ -175,7 +159,6 @@ export function startLiveEngine() {
     if (s.folders !== prev.folders) orphans();
   });
 
-  // Folders of deleted profiles go with them.
   useBrowser.subscribe((s, prev) => {
     if (s.profiles === prev.profiles) return;
     for (const f of Object.values(live().folders)) if (!s.profiles[f.profileId]) removeFolder(f.id);
@@ -194,7 +177,6 @@ export function startLiveEngine() {
     if (e.type === "focus") for (const id of live().folderOrder) if (due(id, STALE_ON_FOCUS_MS)) void refreshFolder(id);
   });
 
-  // A folder's tab that gets pinned becomes an ordinary pinned tab.
   useBrowser.subscribe((s, prev) => {
     if (s.tabs === prev.tabs) return;
     for (const id in s.tabs) {
@@ -203,7 +185,6 @@ export function startLiveEngine() {
     }
   });
 
-  // Leaving a folder's tab: you may have merged or reviewed it there.
   useBrowser.subscribe((s, prev) => {
     if (s.windows === prev.windows) return;
     for (const windowId of s.windowOrder) {

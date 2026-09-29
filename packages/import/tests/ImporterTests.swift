@@ -5,11 +5,9 @@ import XCTest
 final class DiscoveryTests: XCTestCase {
   func testListsInstalledBrowsersWithProfiles() throws {
     let list = Fixtures.discovery().list()
-    // Edge etc. have no data; Safari is listed because its app is "installed".
     XCTAssertEqual(list.map(\.id), ["chrome", "arc", "dia", "diaTabs", "safari", "firefox", "brave", "helium", "opera"])
     let byId = Dictionary(uniqueKeysWithValues: list.map { ($0.id, $0) })
 
-    // Dia: a plain Chromium source (its encrypted sidebar isn't advertised).
     let dia = byId["dia"]!
     XCTAssertTrue(dia.needsKeychain)
     XCTAssertEqual(dia.family, .chromium)
@@ -17,9 +15,8 @@ final class DiscoveryTests: XCTestCase {
     XCTAssertEqual(dia.profiles[0].available, [.bookmarks, .history, .tabs, .passwords])
     XCTAssertTrue(dia.profiles[0].isDefault)
     XCTAssertEqual(dia.profiles[0].color, "#3F51B5")
-    XCTAssertNil(dia.profiles[1].color)  // opaque black = unset
+    XCTAssertNil(dia.profiles[1].color)
 
-    // Helium: ungoogled-chromium fork; ordinary Chromium profile.
     let helium = byId["helium"]!
     XCTAssertTrue(helium.needsKeychain)
     XCTAssertEqual(helium.profiles.map(\.id), ["Default"])
@@ -63,8 +60,6 @@ final class DiscoveryTests: XCTestCase {
   }
 
   func testProtectedDataFolderIsListedAsNeedingFullDiskAccess() throws {
-    // Chrome and Brave protect their data from other apps: entries can be stat'ed but the folder can't be
-    // listed without Full Disk Access. Such a browser is still offered, flagged, with no profiles.
     let support = FileManager.default.temporaryDirectory.appendingPathComponent("nn-fda-\(UUID().uuidString)")
     let chrome = support.appendingPathComponent("Google/Chrome")
     try FileManager.default.createDirectory(at: chrome.appendingPathComponent("Default"), withIntermediateDirectories: true)
@@ -78,13 +73,11 @@ final class DiscoveryTests: XCTestCase {
     XCTAssertEqual(list.map(\.id), ["chrome"])
     XCTAssertTrue(list[0].needsFullDiskAccess)
     XCTAssertTrue(list[0].profiles.isEmpty)
-    // An unreadable folder with no profile markers (a leftover NativeMessagingHosts dir) isn't offered.
     let edge = support.appendingPathComponent("Microsoft Edge")
     try FileManager.default.createDirectory(at: edge.appendingPathComponent("NativeMessagingHosts"), withIntermediateDirectories: true)
     try FileManager.default.setAttributes([.posixPermissions: 0o100], ofItemAtPath: edge.path)
     defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: edge.path) }
     XCTAssertEqual(BrowserDiscovery(applicationSupport: support).list().map(\.id), ["chrome"])
-    // Readable folders aren't flagged.
     XCTAssertFalse(Fixtures.discovery().list().contains { $0.needsFullDiskAccess })
   }
 
@@ -114,9 +107,8 @@ final class ImporterTests: XCTestCase {
     XCTAssertEqual(locked.bookmarks?.linkCount, 2)
     XCTAssertEqual(locked.historyCount, 2)
     XCTAssertEqual(locked.tabs.map(\.url), ["https://helium.example/"])
-    XCTAssertEqual(locked.failed, [.passwords])  // locked until unlocked
+    XCTAssertEqual(locked.failed, [.passwords])
 
-    // Helium's Keychain item is "Helium Storage Key" / "Helium".
     var asked = ""
     try importer.unlock(browserId: "helium") { service, account in
       asked = "\(service)/\(account)"
@@ -133,7 +125,6 @@ final class ImporterTests: XCTestCase {
     XCTAssertEqual(r.profile?.name, "Personal")
     XCTAssertEqual(r.bookmarks?.linkCount, 3)
     XCTAssertEqual(r.historyCount, 2)
-    // Plaintext SNSS session: pinned tab first, "Long read" selected.
     XCTAssertEqual(r.tabs.map(\.url), ["https://dia.example/", "https://read.example/"])
     XCTAssertEqual(r.tabs[0].pinned, true)
     XCTAssertEqual(r.tabs.first(where: { $0.active })?.url, "https://read.example/")
@@ -144,7 +135,6 @@ final class ImporterTests: XCTestCase {
     XCTAssertEqual(try importer.importData(browserId: "dia", profileId: "Default", kinds: [.passwords])
       .credentials.map(\.password), ["dia-pass"])
 
-    // Second Dia profile imports on its own.
     XCTAssertEqual(try importer.importData(browserId: "dia", profileId: "Profile 2", kinds: [.bookmarks]).bookmarks?.linkCount, 1)
   }
 
@@ -194,7 +184,6 @@ final class ImporterTests: XCTestCase {
     let importer = importer()
     try importer.unlock(browserId: "chrome") { _, _ in Data("not the secret".utf8) }
     let result = try importer.importData(browserId: "chrome", profileId: "Default", kinds: [.passwords])
-    // Only the pre-encryption row reads; the rest are reported.
     XCTAssertEqual(result.credentials.map(\.password), ["plain-legacy"])
     XCTAssertEqual(result.warnings.first?.code, "undecryptable")
   }
@@ -202,7 +191,7 @@ final class ImporterTests: XCTestCase {
   func testMissingDataIsEmptyNotFailed() throws {
     let result = try importer().importData(browserId: "chrome", profileId: "Profile 1", kinds: [.bookmarks, .tabs, .passwords])
     XCTAssertEqual(result.bookmarks?.linkCount, 1)
-    XCTAssertEqual(result.failed, [.passwords])  // locked, even though there's also nothing there
+    XCTAssertEqual(result.failed, [.passwords])
     XCTAssertEqual(result.warnings.first { $0.kind == .tabs }?.code, "empty")
   }
 
@@ -230,7 +219,7 @@ final class ImporterTests: XCTestCase {
     XCTAssertEqual(result.failed, [])
     XCTAssertEqual(result.spaces.map(\.name), ["Personal"])
     XCTAssertEqual(result.spaces[0].pinned.count, 4)
-    XCTAssertEqual(result.spaces[0].tabs, [])  // `.tabs` wasn't asked for
+    XCTAssertEqual(result.spaces[0].tabs, [])
     XCTAssertEqual(result.favorites.map(\.title), ["Mail", "Music", "Maps"])
     XCTAssertEqual(result.history.map(\.url), ["https://arc-history.example/"])
     XCTAssertEqual(result.profile?.name, "Your Chromium")

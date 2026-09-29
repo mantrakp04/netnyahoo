@@ -4,27 +4,18 @@ import { newId } from "./model";
 import { closingGroup } from "./organize";
 import type { BrowserWindow, GroupColor, Tab, TabGroup } from "./types";
 
-/**
- * Tab groups: data model and transitions. Invariants: a group's tabs share a
- * window and profile, are unpinned, and sit next to each other in
- * window.tabIds; `group.tabIds` follows that order. (Split views: ./splits.)
- */
 export type GroupsSlice = {
   groups: Record<string, TabGroup>;
 
-  /** Groups tabs (gathered at the first one's position). Returns the group id, or "" if invalid. */
   createGroup(tabIds: string[], options?: { name?: string; icon?: string | null; color?: GroupColor | null }): string;
   updateGroup(id: string, patch: Partial<Pick<TabGroup, "name" | "icon" | "color" | "collapsed" | "pinned">>): void;
   addTabsToGroup(groupId: string, tabIds: string[]): void;
   removeTabsFromGroup(tabIds: string[]): void;
   ungroup(groupId: string): void;
-  /** Closes the group's tabs (History › Recently Closed Groups can bring it back). */
   closeGroup(groupId: string): void;
-  /** Dia's Delete Group: its tabs go, and Recently Deleted Groups keeps it for a week. */
   deleteGroup(groupId: string): void;
 };
 
-/** Re-derives each group's order from its window's tab order. */
 export function syncGroupOrder(groups: Record<string, TabGroup>, window: BrowserWindow): Record<string, TabGroup> {
   let changed = false;
   const next = { ...groups };
@@ -40,10 +31,6 @@ export function syncGroupOrder(groups: Record<string, TabGroup>, window: Browser
   return changed ? next : groups;
 }
 
-/**
- * Sidebar order: pinned tabs, then pinned groups' tabs, then the rest (a stable
- * partition, so ⌘1–⌘9 and cycling follow what the sidebar shows).
- */
 export function orderSections(ids: string[], tabs: Record<string, Tab>, groups: Record<string, TabGroup>): string[] {
   const pinnedGroup = new Set(Object.values(groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
   const rank = (id: string) => (tabs[id]?.pinned ? 0 : pinnedGroup.has(id) ? 1 : 2);
@@ -51,7 +38,6 @@ export function orderSections(ids: string[], tabs: Record<string, Tab>, groups: 
   return out.every((id, i) => id === ids[i]) ? ids : out;
 }
 
-/** Puts `block` (in that order) where its first member currently is. */
 export function placeBlock(tabIds: string[], block: string[]): string[] {
   const members = new Set(block);
   const at = tabIds.findIndex((id) => members.has(id));
@@ -61,7 +47,6 @@ export function placeBlock(tabIds: string[], block: string[]): string[] {
   return rest;
 }
 
-/** Drops `ids` from every group (deleting emptied groups, and ⌘-click groups down to one tab). */
 export function leaveGroups(groups: Record<string, TabGroup>, ids: Set<string>): Record<string, TabGroup> {
   if (!Object.values(groups).some((g) => g.tabIds.some((id) => ids.has(id)))) return groups;
   const next: Record<string, TabGroup> = {};
@@ -106,7 +91,6 @@ export const createGroupsSlice: StateCreator<BrowserState, [], [], GroupsSlice> 
       if (!g) return {};
       const groups = { ...s.groups, [id]: { ...g, ...patch } };
       const w = s.windows[g.windowId];
-      // Pinned groups sit at the top of the sidebar.
       if (patch.pinned === undefined || patch.pinned === g.pinned || !w) return { groups };
       const window = { ...w, tabIds: orderSections(w.tabIds, s.tabs, groups) };
       return { groups: syncGroupOrder(groups, window), windows: { ...s.windows, [w.id]: window } };
@@ -123,7 +107,6 @@ export const createGroupsSlice: StateCreator<BrowserState, [], [], GroupsSlice> 
       });
       if (!adding.length) return {};
       const w = s.windows[group.windowId]!;
-      // New members join at the end of the group.
       const window = { ...w, tabIds: placeBlock(w.tabIds, [...group.tabIds, ...adding]) };
       const groups = leaveGroups(s.groups, new Set(adding));
       groups[groupId] = { ...group, tabIds: [...group.tabIds, ...adding] };
@@ -142,9 +125,7 @@ export const createGroupsSlice: StateCreator<BrowserState, [], [], GroupsSlice> 
           groups[g.id] = g;
           continue;
         }
-        // Everyone left: the tabs stay where they are.
         if (!kept.length) continue;
-        // Leaving tabs go right after the group so the members stay contiguous.
         const w = windows[g.windowId]!;
         const out = g.tabIds.filter((id) => leaving.has(id));
         const tabIds = w.tabIds.filter((id) => !out.includes(id));

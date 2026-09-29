@@ -1,6 +1,3 @@
-// Saved passwords are Chrome's (its password manager fills, saves and generates
-// them in pages). For the settings pane and imports, this drives Chrome's own
-// passwords page API (passwordsPrivate) in a hidden chrome://password-manager.
 #import "NNChromePages.h"
 
 using namespace nn;
@@ -9,7 +6,6 @@ namespace {
 
 NSString *const kPage = @"chrome://password-manager/";
 
-/// Our shape of Chrome's PasswordUiEntry list: {id, origin, username, storedIn, created}.
 NSString *const kEntries =
     @"chrome.passwordsPrivate.getSavedPasswordList().then((list) => list.filter((p) => !p.isPasskey).map((p) => {"
      "  const realm = (p.affiliatedDomains && p.affiliatedDomains[0] && p.affiliatedDomains[0].signonRealm) || '';"
@@ -17,7 +13,6 @@ NSString *const kEntries =
      "           created: p.creationTime || 0 };"
      "}))";
 
-/// Chrome's store writes asynchronously: `settle(check)` waits (≤1 s) until a fresh list agrees.
 NSString *const kSettle = @"const settle = async (check) => { for (let i = 0; i < 20 && !check(await list()); i++)"
                            " await new Promise((r) => setTimeout(r, 50)); };";
 
@@ -28,8 +23,6 @@ void Run(NSString *profile, NSString *expression, NNResultCompletion completion)
   });
 }
 
-/// `body` (a pages::Script format, filled from `args`) runs with `entry` (Chrome's
-/// list item for origin + username, or null) in scope.
 NSString *WithEntry(NSString *origin, NSString *username, NSString *body, NSArray *args = @[]) {
   NSString *format = [@[
     @"(async () => { const want = %@, user = %@; const list = () => ", kEntries, @"; ", kSettle,
@@ -41,7 +34,7 @@ NSString *WithEntry(NSString *origin, NSString *username, NSString *body, NSArra
 
 CefRefPtr<CefRequestContext> Context(NSString *profile) { return ContextForProfile(pages::DataProfile(profile)); }
 
-}  // namespace
+}
 
 @implementation NNPasswords
 
@@ -66,7 +59,6 @@ CefRefPtr<CefRequestContext> Context(NSString *profile) { return ContextForProfi
 }
 
 + (void)unlockForProfile:(NSString *)profile completion:(NNResultCompletion)completion {
-  // requestPlaintextPassword runs Chrome's device authentication; it rejects when the user cancels.
   Run(profile, @"(async () => {"
                 "  const [first] = await chrome.passwordsPrivate.getSavedPasswordList();"
                 "  if (!first) return { unlocked: true };"

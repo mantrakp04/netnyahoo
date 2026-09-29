@@ -1,6 +1,3 @@
-// A small ElevenLabs REST client for the launch video's audio scripts.
-// The key comes from ELEVENLABS_API_KEY or apps/launch-video/.env (gitignored); it is never printed:
-// every error message has it redacted.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +16,6 @@ const KEY = loadKey();
 export const hasKey = () => !!KEY;
 const redact = (s) => (KEY ? String(s).split(KEY).join("[redacted]") : String(s));
 
-/** fetch against api.elevenlabs.io; returns the Response, or throws with a redacted message. */
 export async function eleven(path, { method = "GET", json, form, query, accept } = {}) {
   if (!KEY) throw new Error("No ELEVENLABS_API_KEY (environment or apps/launch-video/.env)");
   const url = new URL(`https://api.elevenlabs.io${path}`);

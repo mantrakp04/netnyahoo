@@ -47,8 +47,6 @@ using namespace nn;
   [super sendEvent:event];
 }
 
-// Only the user activates the app: never a test instance (NETNYAHOO_BACKGROUND),
-// never Chromium on its own (NNActivation.mm).
 - (void)activateIgnoringOtherApps:(BOOL)flag {
   if (nn::activation::Allow(@"activateIgnoringOtherApps:")) [super activateIgnoringOtherApps:flag];
 }
@@ -60,10 +58,6 @@ using namespace nn;
 @end
 
 // MARK: - External message pump
-//
-// CEF runs inside AppKit's run loop: CEF asks for work via
-// OnScheduleMessagePumpWork and we call CefDoMessageLoopWork on the main thread,
-// with a ~30 Hz fallback timer (same scheme as cefclient's external pump).
 
 namespace {
 
@@ -125,7 +119,6 @@ class MessagePump {
                                         this->timer_ = nil;
                                         this->DoWork();
                                       }];
-    // Common modes so pages keep running during menu tracking and live resize.
     [[NSRunLoop mainRunLoop] addTimer:timer_ forMode:NSRunLoopCommonModes];
   }
 
@@ -141,8 +134,6 @@ class MessagePump {
 };
 
 #if defined(CEF_NN_SAFE_STORAGE)
-/// Signed by a team (Apple Development / Developer ID), not ad hoc: the
-/// signature, and so Keychain access, stays the same across rebuilds.
 bool IsTeamSigned() {
   SecCodeRef code = nullptr;
   if (SecCodeCopySelf(kSecCSDefaultFlags, &code) != errSecSuccess) return false;
@@ -165,52 +156,31 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
   void OnBeforeCommandLineProcessing(const CefString &process_type,
                                      CefRefPtr<CefCommandLine> command_line) override {
     if (!process_type.empty()) return;
-    // Smooth scrolling and overlay scrollbars like Chrome on macOS.
     command_line->AppendSwitch("enable-smooth-scrolling");
-    // Built-in extensions (the content blocker, uBlock Origin Lite), in every profile.
-    // With Chrome tabs it's a component extension instead (blocker::LoadIntoProfile).
     if (NSString *builtIn = NN_CHROME_TABS ? nil : nn::blocker::ExtensionPath()) {
       std::string load = command_line->GetSwitchValue("load-extension").ToString();
       command_line->AppendSwitchWithValue("load-extension", (load.empty() ? "" : load + ",") + builtIn.UTF8String);
     }
-    // Our pop-up blocker (OnBeforePopup + the POPUPS content setting) replaces
-    // Chromium's, which drops popups silently where the UI can't offer "allow".
     command_line->AppendSwitch("disable-popup-blocking");
-    // Chrome clones the whole app bundle at launch (to survive in-place updates)
-    // and quitting waits for that copy to finish: with our bundle that held quit
-    // up for ~10 s until Chrome's teardown watchdog killed the process.
     std::string disabled = command_line->GetSwitchValue("disable-features").ToString();
     command_line->AppendSwitchWithValue("disable-features",
                                         (disabled.empty() ? "" : disabled + ",") + "MacAppCodeSignClone");
 #if NN_CHROME_TABS
-    // Chrome discards a tab (ours through DiscardTab, its own under memory pressure, extensions'
-    // chrome.tabs.discard) in place: without this it swaps in a new WebContents, and so a new
-    // browser, behind the view hosting the tab.
     std::string enabled = command_line->GetSwitchValue("enable-features").ToString();
     command_line->AppendSwitchWithValue("enable-features",
                                         (enabled.empty() ? "" : enabled + ",") + "WebContentsDiscard");
 #endif
-    // NETNYAHOO_REMOTE_DEBUGGING_PORT=9222 exposes DevTools/CDP for local testing.
     if (const char *port = getenv("NETNYAHOO_REMOTE_DEBUGGING_PORT")) {
       command_line->AppendSwitchWithValue("remote-debugging-port", port);
       command_line->AppendSwitchWithValue("remote-allow-origins", "*");
     }
-    // Isolated dev/test instances (NETNYAHOO_DATA_DIR) don't touch the login
-    // Keychain: every ad-hoc-signed rebuild would otherwise raise a Keychain
-    // prompt for the Safe Storage item (the cookie encryption key) and block
-    // cookie loading until someone answers it.
 #if defined(CEF_NN_SAFE_STORAGE)
-    // Our CEF keeps that key in its own "Netnyahoo Safe Storage" item, whose
-    // access follows our Team ID: team-signed builds, Debug included, use the
-    // real Keychain without prompts. Only ad-hoc builds need the mock.
     if (getenv("NETNYAHOO_DATA_DIR") || !IsTeamSigned()) command_line->AppendSwitch("use-mock-keychain");
 #elif defined(DEBUG) || defined(POD_CONFIGURATION_DEBUG)
     command_line->AppendSwitch("use-mock-keychain");
 #else
     if (getenv("NETNYAHOO_DATA_DIR")) command_line->AppendSwitch("use-mock-keychain");
 #endif
-    // NETNYAHOO_CHROMIUM_SWITCHES="--use-fake-device-for-media-stream --host-resolver-rules=MAP *.test 127.0.0.1"
-    // for local testing.
     if (const char *extra = getenv("NETNYAHOO_CHROMIUM_SWITCHES")) {
       NSString *all = [@" " stringByAppendingString:@(extra)];
       for (NSString *item in [all componentsSeparatedByString:@" --"]) {
@@ -229,12 +199,10 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
 
   bool OnAlreadyRunningAppRelaunch(CefRefPtr<CefCommandLine> command_line,
                                    const CefString &current_directory) override {
-    // A second launch just focuses us (the default would open a Chrome-style window).
     dispatch_async(dispatch_get_main_queue(), ^{ [NSApp activateIgnoringOtherApps:YES]; });
     return true;
   }
 
-  // Windows Chrome opens by itself (extension pages, uninstall surveys) become our tabs.
   CefRefPtr<CefClient> GetDefaultClient() override { return nn::host::DefaultClient(); }
   CefRefPtr<CefRequestContextHandler> GetDefaultRequestContextHandler() override { return nn::ext::ContextHandler(@""); }
 
@@ -257,7 +225,6 @@ NSHashTable<NNBrowserView *> *gViews = nil;
 struct DownloadEntry {
   CefRefPtr<CefDownloadItemCallback> callback;
   std::string path;
-  /// The profile that started it, so incognito downloads stay with their window.
   NSString *profile;
 };
 std::map<uint32_t, DownloadEntry> gDownloads;
@@ -276,8 +243,6 @@ std::map<std::string, PendingPermission> gPermissions;
 uint64_t gPermissionSeq = 0;
 
 NSString *AppSupportRoot() {
-  // NETNYAHOO_DATA_DIR lets several dev instances run side by side (CEF allows
-  // one process per root_cache_path).
   if (const char *dir = getenv("NETNYAHOO_DATA_DIR"))
     return [[NSString stringWithUTF8String:dir] stringByAppendingPathComponent:@"Chromium"];
   NSURL *base = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
@@ -286,17 +251,12 @@ NSString *AppSupportRoot() {
   return [[base.path stringByAppendingPathComponent:bundleId] stringByAppendingPathComponent:@"Chromium"];
 }
 
-/// The system's preferred languages as Chrome writes its language list ("de-DE,de,en-US,en"),
-/// for Accept-Language and `navigator.languages`. Chrome takes its locale from the app bundle's
-/// localizations, and ours only has English, so without this every page (and uBlock Origin
-/// Lite, which turns on the regional lists for these languages) sees "en-US,en".
 std::string AcceptLanguages() {
   NSMutableOrderedSet<NSString *> *list = [NSMutableOrderedSet orderedSet];
   for (NSString *identifier in NSLocale.preferredLanguages) {
     NSLocale *locale = [NSLocale localeWithLocaleIdentifier:identifier];
     NSString *language = locale.languageCode, *region = locale.regionCode, *script = locale.scriptCode;
     if (!language.length) continue;
-    // Chrome names Chinese by region: zh-CN (Simplified), zh-TW / zh-HK (Traditional).
     if ([language isEqualToString:@"zh"] && !region.length) region = [script isEqualToString:@"Hant"] ? @"TW" : @"CN";
     if (region.length) [list addObject:[NSString stringWithFormat:@"%@-%@", language, region]];
     [list addObject:language];
@@ -307,8 +267,6 @@ std::string AcceptLanguages() {
 NSString *ProfilePath(NSString *profile) {
   NSString *root = AppSupportRoot();
   if (profile.length == 0) return [root stringByAppendingPathComponent:@"Default"];
-  // Chrome only creates profiles that are direct children of the user data dir
-  // (root_cache_path); anything deeper silently becomes an in-memory profile.
   return [root stringByAppendingPathComponent:[@"Profile " stringByAppendingString:profile]];
 }
 
@@ -351,7 +309,6 @@ NSArray<NSString *> *PermissionNames(uint32_t permissions) {
 }
 
 NSString *UniqueDownloadPath(NSString *suggested) {
-  // NETNYAHOO_DOWNLOADS_DIR keeps test instances out of the user's Downloads folder.
   const char *override = getenv("NETNYAHOO_DOWNLOADS_DIR");
   NSString *folder = override ? @(override)
                               : [[NSFileManager defaultManager] URLsForDirectory:NSDownloadsDirectory
@@ -361,7 +318,6 @@ NSString *UniqueDownloadPath(NSString *suggested) {
   NSString *base = name.stringByDeletingPathExtension;
   NSString *ext = name.pathExtension;
   NSString *candidate = [folder stringByAppendingPathComponent:name];
-  // Also avoid names Chromium is still writing (".crdownload" is renamed at the end).
   for (int n = 1; [[NSFileManager defaultManager] fileExistsAtPath:candidate] ||
                   [[NSFileManager defaultManager] fileExistsAtPath:[candidate stringByAppendingString:@".crdownload"]];
        n++) {
@@ -383,7 +339,7 @@ class DoneCallback : public CefCompletionCallback, public CefDeleteCookiesCallba
   IMPLEMENT_REFCOUNTING(DoneCallback);
 };
 
-}  // namespace
+}
 
 // MARK: - nn:: internals
 
@@ -446,7 +402,6 @@ CefRefPtr<CefRequestContext> ContextForProfile(NSString *profile) {
     CefString(&settings.cache_path) = path.UTF8String;
     settings.persist_session_cookies = true;
   }
-  // Empty cache_path = in-memory ("off the record") context.
   CefRefPtr<CefRequestContext> context = CefRequestContext::CreateContext(settings, ext::ContextHandler(profile));
   gContexts[key] = context;
   return context;
@@ -461,8 +416,8 @@ bool OnBeforeDownload(CefRefPtr<CefDownloadItem> item, const CefString &suggeste
 }
 
 namespace {
-NSMutableDictionary<NSString *, NSNumber *> *gNavigationDownloads;  // url → seconds since 1970
-NSMutableDictionary<NSString *, NSNumber *> *gUserNavigations;      // url → CACurrentMediaTime()
+NSMutableDictionary<NSString *, NSNumber *> *gNavigationDownloads;
+NSMutableDictionary<NSString *, NSNumber *> *gUserNavigations;
 constexpr NSTimeInterval kNavigationDownloadTTL = 7 * 86400;
 
 NSString *NavigationDownloadsPath() { return [AppSupportRoot() stringByAppendingPathComponent:@"NavigationDownloads.json"]; }
@@ -478,14 +433,13 @@ NSMutableDictionary *NavigationDownloads() {
   }
   return gNavigationDownloads;
 }
-}  // namespace
+}
 
 void NoteNavigationDownload(NSString *url, bool persist) {
   if (!url.length) return;
   NavigationDownloads()[url] = @(NSDate.date.timeIntervalSince1970);
   if (!persist) return;
   NSMutableDictionary *entries = NavigationDownloads();
-  // Keep the file small: newest 200.
   if (entries.count > 200) {
     NSArray *oldest = [entries keysSortedByValueUsingSelector:@selector(compare:)];
     [entries removeObjectsForKeys:[oldest subarrayWithRange:NSMakeRange(0, entries.count - 200)]];
@@ -523,7 +477,6 @@ void OnDownloadUpdated(CefRefPtr<CefDownloadItem> item, CefRefPtr<CefDownloadIte
   else if (item->IsCanceled()) state = @"cancelled";
   else if (item->IsInterrupted()) state = @"failed";
 
-  // Progress ticks are throttled to 10/s; state changes always go through.
   CFTimeInterval now = CACurrentMediaTime();
   if ([state isEqualToString:@"downloading"] && now - gDownloadLastEmit[id] < 0.1) return;
   gDownloadLastEmit[id] = now;
@@ -578,13 +531,12 @@ bool RequestMediaAccess(CefRefPtr<CefBrowser> browser, const CefString &origin, 
   if (permissions & CEF_MEDIA_PERMISSION_DEVICE_VIDEO_CAPTURE) [names addObject:@"camera"];
   if (permissions & (CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE))
     [names addObject:@"screen"];
-  // Camera/microphone decisions can be remembered; screen capture always asks.
   NSString *profile = ProfileForContext(browser->GetHost()->GetRequestContext()) ?: @"";
   auto types = site::TypesForMedia(permissions);
   bool desktop = permissions & (CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE);
   if (desktop && site::ConsumeDesktopCapture(browser->GetIdentifier())) {
     site::NoteGrantedMedia(browser->GetIdentifier(), permissions);
-    callback->Continue(permissions);  // the user picked the source in the app's picker
+    callback->Continue(permissions);
     return true;
   }
   if (!desktop && !types.empty()) {
@@ -628,7 +580,6 @@ void BrowserCreated(CefRefPtr<CefBrowser> browser) { gLiveBrowsers.insert(browse
 void WindowCreated(CefRefPtr<CefWindow> window) { gLiveWindows.push_back(window); }
 
 void WindowDestroyed(CefRefPtr<CefWindow> window) {
-  // Each callback gets a new wrapper of the same window.
   std::erase_if(gLiveWindows, [&](const CefRefPtr<CefWindow> &w) { return w->IsSame(window); });
 }
 
@@ -670,7 +621,7 @@ NSView *ParkingView() {
   return gParkingWindow.contentView;
 }
 
-}  // namespace nn
+}
 
 // MARK: - Public API
 
@@ -710,8 +661,6 @@ NSView *ParkingView() {
   }
   gStarted = YES;
   zoom::InstallScrollMonitor();
-  // Shut down once termination is certain (after the delegate agreed), not in
-  // -terminate: where a delegate could still cancel it.
   [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillTerminateNotification
                                                   object:nil
                                                    queue:nil
@@ -725,10 +674,7 @@ NSView *ParkingView() {
   gShuttingDown = true;
   pages::CloseAll();
   host::CloseAll();
-  // Force-close every browser (tabs, parked popups, little windows), then every window, pumping
-  // until they're gone (bounded). An app window's Browser outlives its last tab, and a Chrome
-  // Browser still open when CefShutdown destroys its profile closes into torn-down services (the
-  // crash on quit of 0.2.6 and 0.2.7).
+// Close Chrome browsers before CefShutdown or profile teardown crashes.
   for (int bid : std::set<int>(gLiveBrowsers)) {
     if (CefRefPtr<CefBrowser> b = CefBrowserHost::GetBrowserByIdentifier(bid)) b->GetHost()->CloseBrowser(true);
   }
@@ -838,8 +784,6 @@ static DownloadEntry *FindDownload(NSString *downloadId) {
       p.media->Cancel();
     }
   }
-  // Chromium stores accept/deny for the origin; "this time only" is undone when
-  // the tab leaves the origin.
   if ((accept || deny) && !p.types.empty() && p.origin.length && !IsIncognito(p.profile)) {
     site::Remember(p.profile, p.origin, p.types, accept ? CEF_CONTENT_SETTING_VALUE_ALLOW : CEF_CONTENT_SETTING_VALUE_BLOCK,
                    remember ? 0 : p.browserId);
@@ -852,8 +796,6 @@ static DownloadEntry *FindDownload(NSString *downloadId) {
                          completion:(void (^)(void))completion {
   CefRefPtr<CefRequestContext> context = ContextForProfile(profile);
 #if NN_BROWSING_DATA
-  // Chrome's BrowsingDataRemover, as its "Delete browsing data" does it: history is Chrome's
-  // history database (what chrome.history shows), site data every kind of site storage, live.
   static NSDictionary<NSString *, NSNumber *> *kTypes = @{
     @"history" : @(CEF_NN_BROWSING_DATA_HISTORY),
     @"siteData" : @(CEF_NN_BROWSING_DATA_SITE_DATA),
@@ -866,7 +808,6 @@ static DownloadEntry *FindDownload(NSString *downloadId) {
   if (sinceMs > 0) begin = CefBaseTime(cef_basetime_t{(int64_t)((sinceMs / 1000 + 11644473600.0) * 1000000)});
   context->ClearBrowsingData(mask, begin, CefBaseTime(), new DoneCallback(completion ?: ^{}));
 #else
-  // Stock CEF: all cookies (for a range too) and the whole HTTP cache; site storage stays.
   __block int pending = 1;
   void (^done)(void) = ^{
     if (--pending == 0 && completion) completion();

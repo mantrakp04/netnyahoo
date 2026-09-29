@@ -1,4 +1,3 @@
-// Sidebar organisation: placement, pinned base URLs, groups, ⌘-click groups, clean up.
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/store/organize.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -27,19 +26,16 @@ test("placeTabs: reorder, pin at a slot, drop into and out of groups", () => {
   assert.equal(S().tabs[c].pinned, true);
   assert.equal(S().tabs[c].pinnedUrl, "https://c.com");
   assert.equal(view(w)[0], "https://c.com");
-  // Unpin by dropping into the list before a.
   S().placeTabs([c], { pinned: false, beforeId: a });
   assert.equal(S().tabs[c].pinned, false);
   assert.equal(S().tabs[c].pinnedUrl, null);
   const g = S().groupTabs([a, b], { pinned: false });
   S().placeTabs([d], { pinned: false, groupId: g });
   assert.deepEqual(S().groups[g].tabIds, [a, b, d]);
-  // A drop between two members of a group (without joining) lands after it.
   S().placeTabs([c], { pinned: false, beforeId: b });
   assert.deepEqual(S().groups[g].tabIds, [a, b, d]);
   const order = S().windows[w].tabIds;
   assert.ok(order.indexOf(c) > order.indexOf(d), "group stays contiguous");
-  // Out of the group, to the end of the list.
   S().placeTabs([a], { pinned: false });
   assert.deepEqual(S().groups[g].tabIds, [b, d]);
   assert.equal(S().windows[w].tabIds.at(-1), a);
@@ -74,12 +70,10 @@ test("pinned tabs keep a base URL: badge, ⌘↩, replace, edit", () => {
   S().setPinnedUrl(a, "https://edited.com/");
   assert.equal(S().tabs[a].pinnedUrl, "https://edited.com/");
   assert.equal(S().tabs[a].navigation.url, "https://edited.com/");
-  // A pinned New Tab page adopts the first page it loads.
   const n = S().newTab(w, { pinned: true });
   assert.equal(S().tabs[n].pinnedUrl, null);
   S().updateTab(n, { url: "https://first.com/" });
   assert.equal(S().tabs[n].pinnedUrl, "https://first.com/");
-  // Duplicating a pinned tab makes a regular one.
   const copy = S().duplicateTab(a);
   assert.equal(S().tabs[copy].pinned, false);
   assert.equal(S().tabs[copy].pinnedUrl, null);
@@ -98,11 +92,9 @@ test("⌘-click groups the link with its opener; the group ungroups at one tab",
   S().closeTab(c1);
   S().closeTab(c2);
   assert.equal(organize.groupOf(S(), a), undefined, "single-tab ⌘-click group ungrouped");
-  // Setting off: a plain background tab.
   S().updateSettings({ cmdClickCreatesTabGroup: false });
   S().newTab(w, { url: "a.com/3", openerId: a, background: true });
   assert.equal(organize.groupOf(S(), a), undefined);
-  // Explicit groups survive with one tab (unpinned: a pinned group's tabs unload instead of closing).
   const g2 = S().groupTabs([a, b], { pinned: false });
   S().closeTab(b);
   assert.deepEqual(S().groups[g2].tabIds, [a]);
@@ -117,7 +109,6 @@ test("pinned groups sit above the list; new tabs at top go below them", () => {
   S().updateSettings({ newTabPosition: "top" });
   const t = S().newTab(w, { url: "top.com" });
   assert.equal(S().windows[w].tabIds.indexOf(t), 1);
-  // Unpinned, it heads the list.
   S().updateGroup(g, { pinned: false });
   assert.deepEqual(view(w).slice(0, 2), ["https://c.com", "https://top.com"]);
   S().moveGroup(g, { pinned: true });
@@ -176,7 +167,7 @@ test("clean up closes duplicates and stale tabs into Recently Cleaned, and resto
   S().pinTabs([d], true);
   const old = Date.now() - 13 * 3600_000;
   S().updateTab(b, { lastActiveAt: old });
-  S().updateTab(d, { lastActiveAt: old }); // pinned: kept
+  S().updateTab(d, { lastActiveAt: old });
   S().activate(a);
   assert.deepEqual(organize.cleanUpCandidates(S(), w), [b, c]);
   assert.equal(S().cleanUpTabs(w), 2);
@@ -201,20 +192,17 @@ test("abandoned New Tab pages close; the selected one stays", () => {
 
 test("abandoned New Tab cleanup never closes a window or the tab it shows", () => {
   reset();
-  // A window of nothing but New Tab pages keeps the one it shows.
   const w = S().createWindow();
   S().newTab(w, { background: true });
   const shown = S().newTab(w);
   S().closeAbandonedNewTabs();
   assert.deepEqual(S().windows[w].tabIds, [shown]);
-  // Another profile's selected tab in the same window stays too.
   const p = S().createProfile({ name: "Work" });
   S().switchProfile(w, p);
   const work = model.activeTabId(S(), w);
   S().switchProfile(w, "default");
   S().closeAbandonedNewTabs();
   assert.ok(S().tabs[work] && S().tabs[shown]);
-  // Even with a stale selection (nothing in the window selected), the window survives.
   const w2 = S().createWindow();
   S().newTab(w2);
   useBrowser.setState((s) => ({ windows: { ...s.windows, [w2]: { ...s.windows[w2], activeTabIds: {} } } }));
@@ -261,7 +249,6 @@ test("Delete Group: its tabs go, not to Recently Closed, and it's kept a week un
   assert.equal(S().deletedGroups.length, 1);
   S().reopenClosed(w);
   assert.equal(S().deletedGroups.length, 1, "⇧⌘T doesn't bring a deleted group back");
-  // Restoring it (the overflow menu's Recently Deleted Groups).
   S().restoreClosed(S().deletedGroups[0].id, w);
   assert.equal(S().deletedGroups.length, 0);
   const restored = Object.values(S().groups).find((x) => x.name === "Work");

@@ -2,20 +2,6 @@ import CommonCrypto
 import CryptoKit
 import Foundation
 
-/// Firefox saved logins: `logins.json` entries are NSS-encrypted with a key kept in
-/// `key4.db`, which is itself protected by the primary password (empty unless the user set
-/// one). This is a small, self-contained re-implementation of the NSS soft-token paths that
-/// Firefox actually writes — no NSS library needed:
-///
-/// - `key4.db` `metaData` row `password`: global salt + a PBE blob that decrypts to
-///   "password-check" when the primary password is right.
-/// - `nssPrivate.a11`: the PBE-encrypted login key (3DES-EDE 24 bytes, or AES-256 32 bytes).
-/// - PBE flavours: PKCS#5 PBES2 (PBKDF2-HMAC-SHA256 + AES-256-CBC, Firefox ≥ 75) and the
-///   legacy pbeWithSha1AndTripleDES-CBC.
-/// - Each login field: DER `SEQUENCE { keyId, SEQUENCE { des-ede3-cbc | aes256-cbc, iv }, ciphertext }`.
-///
-/// Not supported: `key3.db` (Firefox < 58) and profiles whose logins are stored in the OS
-/// keystore instead of key4.db.
 public enum FirefoxLogins {
   static let oidPBES2 = "1.2.840.113549.1.5.13"
   static let oidPBKDF2 = "1.2.840.113549.1.5.12"
@@ -24,7 +10,6 @@ public enum FirefoxLogins {
   static let oid3DESCBC = "1.2.840.113549.3.7"
   static let ckaId = Data([0xF8] + [UInt8](repeating: 0, count: 14) + [0x01])
 
-  /// The login-encryption key from `key4.db`. Throws `.locked` for a wrong primary password.
   public static func masterKey(key4: URL, primaryPassword: String = "") throws -> Data {
     let db = try SQLiteSnapshot(copying: key4)
     guard db.tableExists("metaData"), db.tableExists("nssPrivate") else {
@@ -107,7 +92,6 @@ public enum FirefoxLogins {
     return plain.flatMap { String(data: $0, encoding: .utf8) }
   }
 
-  /// `SEQUENCE { SEQUENCE { algorithm OID, params }, OCTET STRING ciphertext }`.
   static func decryptPBE(_ node: DER.Node, globalSalt: Data, password: Data) throws -> Data {
     guard node.children.count >= 2, node.children[0].children.count >= 2, let algo = node.children[0].children[0].oid else {
       throw ImportError.unreadable("Unexpected PBE structure")
@@ -116,8 +100,6 @@ public enum FirefoxLogins {
     let cipher = node.children[1].content
     switch algo {
     case oidPBES2:
-      // params: SEQUENCE { SEQUENCE { pbkdf2, SEQUENCE { salt, iterations, keyLength, SEQUENCE { prf } } },
-      //                    SEQUENCE { aes256-cbc, OCTET STRING iv(14) } }
       guard params.children.count >= 2,
             params.children[0].children.count >= 2, params.children[0].children[0].oid == oidPBKDF2,
             params.children[0].children[1].children.count >= 3,
@@ -130,8 +112,7 @@ public enum FirefoxLogins {
       guard iterations > 0, keyLength == 32 else { throw ImportError.unsupported("Unsupported PBES2 key size") }
       let k = Data(Insecure.SHA1.hash(data: globalSalt + password))
       let key = pbkdf2SHA256(password: k, salt: salt, rounds: iterations, length: keyLength)
-      // NSS stores only 14 bytes of IV; the DER header of an OCTET STRING of length 14
-      // (04 0E) is the missing prefix, a quirk every NSS reader reproduces.
+      // NSS stores 14 IV bytes; the DER length prefix supplies the missing two.
       let iv = Data([0x04, 0x0E]) + ivTail
       guard let clear = AES.cbc(.decrypt, cipher, key: key, iv: iv, padding: false) else { throw ImportError.locked("PBES2 decryption failed") }
       return AES.unpadLeniently(clear, blockSize: kCCBlockSizeAES128)
@@ -148,7 +129,6 @@ public enum FirefoxLogins {
     }
   }
 
-  /// NSS's pbeWithSha1AndTripleDES-CBC key schedule.
   static func legacy3DESKey(globalSalt: Data, password: Data, entrySalt: Data) -> (key: Data, iv: Data) {
     let hp = Data(Insecure.SHA1.hash(data: globalSalt + password))
     let pes = entrySalt + Data(count: max(0, 20 - entrySalt.count))
@@ -177,8 +157,6 @@ public enum FirefoxLogins {
   }
 }
 
-/// Just enough DER to walk NSS's structures: definite lengths, SEQUENCE/SET nesting,
-/// OCTET STRING, INTEGER and OBJECT IDENTIFIER.
 enum DER {
   struct Node {
     var tag: UInt8

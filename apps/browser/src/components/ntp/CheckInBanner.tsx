@@ -7,22 +7,12 @@ import { useHover } from "../primitives";
 
 const ICON = require("../../../assets/app-icon.png");
 
-/**
- * Dia's NewTabPageTryForAWeek frame is 242×69 in the New Tab page's top-left corner; ours is wider
- * by what "Netnyahoo" takes over "Dia" in the title, so it fits on one line.
- */
 const FRAME = { width: 282, height: 69 };
 
-/**
- * The follow-up to onboarding's "Try it for a week": seven days on, the New Tab page asks "How are
- * you liking Netnyahoo?" (Dia's TryForAWeekView). The card opens Help › Send Feedback…; it and the
- * close button both retire it. When it's due is lib/defaultBrowserCheckIn's call.
- */
 export function CheckInBanner({ windowId }: { windowId: string }) {
   const checkIn = useDefaultBrowserCheckIn(windowId);
   const [leaving, setLeaving] = useState<null | (() => void)>(null);
   if (!checkIn.visible && !leaving) return null;
-  // Removal: scale 0.98 and fade, then retire it (which unmounts this).
   const retire = (action: () => void) =>
     setLeaving(() => () => {
       action();
@@ -45,7 +35,6 @@ function Card({ leaving, onFeedback, onClose }: { leaving: null | (() => void); 
   useEffect(() => {
     Animated.timing(opacity, { toValue: 1, duration: 300, delay: 300, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, []);
-  // spring(response: 0.2, dampingFraction: 0.5): hover 1.02, press 0.98.
   useEffect(() => {
     if (leaving) return;
     const stiffness = (2 * Math.PI / 0.2) ** 2;
@@ -102,7 +91,6 @@ function Card({ leaving, onFeedback, onClose }: { leaving: null | (() => void); 
   );
 }
 
-/** A small round xmark over a thin material, at the card's top-trailing corner. */
 function CloseButton({ onPress }: { onPress: () => void }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();

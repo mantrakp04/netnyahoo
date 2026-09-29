@@ -11,12 +11,6 @@ import { closeHistoryMenu, goToHistoryItem, useHistoryMenu, type HistoryItem } f
 
 const WIDTH = 300;
 
-/**
- * The back / forward list (press-and-hold or right-click on the toolbar's arrows), as
- * our own popover rather than an NSMenu so entries open like links: click goes there,
- * ⌘-click or middle-click opens a background tab (the list stays open for more),
- * ⇧⌘ a foreground tab, ⇧ a new window. "Show Full History" closes it, like Chrome's.
- */
 export function HistoryPopover({ tabId, windowId, anchors }: { tabId: string; windowId: string; anchors: { back: number; forward: number } }) {
   const menu = useHistoryMenu((s) => (s.menu?.tabId === tabId ? s.menu : null));
   const profileId = useBrowser((s) => s.tabs[tabId]?.profileId ?? "");
@@ -26,7 +20,6 @@ export function HistoryPopover({ tabId, windowId, anchors }: { tabId: string; wi
     const urls = new Set(menu.items.map((i) => i.url));
     return new Map(history.filter((h) => urls.has(h.url)).map((h) => [h.url, h.favicon]));
   }, [menu, profileId]);
-  // Leaving the tab (or closing it) closes its list.
   useEffect(() => () => void (useHistoryMenu.getState().menu?.tabId === tabId && closeHistoryMenu()), [tabId]);
   if (!menu) return null;
 

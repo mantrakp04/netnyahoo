@@ -5,13 +5,8 @@ import type { HistoryEntry } from "../../store/types";
 
 const NO_HISTORY: HistoryEntry[] = [];
 const RECENT = 4;
-/** Scheme + host + path: a visit to another fragment of the page is the same page. */
 const pageKey = (url: string) => url.replace(/#.*$/, "");
 
-/**
- * The sidebar dropdown's rows before you type (Arc's): the page you're on, highlighted, then the
- * pages you visited last. Choosing the first one loads the page again, like ↩ on its URL.
- */
 export function useDropdownStart(enabled: boolean, tabId: string, profileId: string): Suggestion[] {
   const url = useBrowser((s) => (enabled ? (s.tabs[tabId]?.url ?? "") : ""));
   const title = useBrowser((s) => (enabled ? (s.tabs[tabId]?.title ?? "") : ""));

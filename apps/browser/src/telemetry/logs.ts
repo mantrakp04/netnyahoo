@@ -1,13 +1,6 @@
 import { isSharing, queueLog } from "./client";
 import { errorType, scrubText } from "./sanitize";
 
-/**
- * Warning and error log lines for PostHog Logs (OTLP), while sharing is on. Only a line's fixed
- * message goes: the first argument when it's a string, scrubbed (addresses, paths, file names,
- * quoted text and ids become placeholders), plus the type of an Error passed with it. Other
- * arguments (the error's message, objects) stay here. Each distinct message goes once a session.
- */
-
 const MAX_DISTINCT = 40;
 const seen = new Set<string>();
 

@@ -22,21 +22,13 @@ import {
 } from "./state";
 import { useMediaTokens, type MediaTokens } from "./tokens";
 
-/** AudioMiniPlayerView's size (AudioMiniPlayerLayout). */
 export const MINI_PLAYER_WIDTH = 320;
 export const MINI_PLAYER_HEIGHT = 76;
 const INSET = 10;
 const ART = 56;
-/** Text starts 12 after the art (x 78); controls take the last 88 + 8. */
 const TEXT_X = INSET + ART + 12;
 const CONTROLS_WIDTH = 88;
 
-/**
- * Dia's audio mini player (the pinned-tab hover preview): album art, marquee
- * title and artist, previous / play-pause / next, and a seekable progress bar
- * with elapsed and remaining time. Pages without track handlers get ±15 s
- * skips instead of previous/next. Frames follow AudioMiniPlayerView.layout.
- */
 export function MiniPlayer({ tabId, onBackToTab }: { tabId: string; onBackToTab: () => void }) {
   const tokens = useMediaTokens();
   const session = useSession(tabId);
@@ -97,7 +89,6 @@ export function MiniPlayer({ tabId, onBackToTab }: { tabId: string; onBackToTab:
   );
 }
 
-/** ±15 s through the page's seek handlers (or the element), shown right away. */
 export function skip(tabId: string, session: Session, seconds: number) {
   const now = Date.now();
   const position = Math.max(0, Math.min(session.duration ?? Infinity, positionOf(session, now) + seconds));
@@ -110,7 +101,6 @@ export function seekTo(tabId: string, session: Session, seconds: number) {
   mediaCommand(tabId, "seekTo", seconds);
 }
 
-/** Resting controls are 60% opaque (Dia sets alphaValue 0.6); hovered ones are opaque. */
 function TransportButton({
   left,
   width,
@@ -129,7 +119,6 @@ function TransportButton({
   onPress: () => void;
 }) {
   const { hovered, hoverProps } = useHover();
-  // Symbols wider than the slot (the ±15 s arrows) stay centred on it.
   const box = Math.max(width, size + 4);
   return (
     <View {...hoverProps} tooltip={tooltip} style={{ position: "absolute", left: left - (box - width) / 2, top: 9, width: box, height: 38 }}>
@@ -144,11 +133,6 @@ function TransportButton({
   );
 }
 
-/**
- * Album art (radius 6): fades in when it arrives; the tab's favicon at half
- * opacity when the page has none. Hovering darkens it with an arrow: click goes
- * back to the tab. A mute badge shows when the tab (or its site) is muted.
- */
 function AlbumArt({
   tabId,
   profileId,
@@ -173,7 +157,6 @@ function AlbumArt({
   const { hovered, hoverProps } = useHover();
   const [failed, setFailed] = useState<string | null>(null);
   const fade = useRef(new Animated.Value(0)).current;
-  // Downloaded by the tab itself (never fetched by the UI); a data: URI.
   const downloaded = useArtwork(tabId, session.artwork);
   const art = downloaded && downloaded !== failed ? downloaded : null;
   useEffect(() => fade.setValue(0), [art]);
@@ -215,7 +198,6 @@ function AlbumArt({
   );
 }
 
-/** Elapsed · progress bar · remaining (Dia: 10pt monospaced digits, 6 pt gaps). */
 function TimeBar({ tabId, session, tokens }: { tabId: string; session: Session; tokens: MediaTokens }) {
   const [drag, setDrag] = useState<number | null>(null);
   const duration = session.duration;
@@ -248,10 +230,6 @@ function TimeBar({ tabId, session, tokens }: { tabId: string; session: Session; 
 
 const HOVER_SEGMENTS = 40;
 
-/**
- * Track, fill and hover fill (to the pointer). Click or drag to seek. RN has
- * no mouse-move events, so thin hover strips report where the pointer is.
- */
 export function SeekBar({
   session,
   tokens,

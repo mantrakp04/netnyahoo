@@ -13,13 +13,11 @@ const WIDTH = 400;
 const ROW = 40;
 const MAX_ROWS = 9;
 
-/** The ⌃Tab overlay: recent tabs, the highlighted one (RecentTabs/ItemFocusBackground) is where ⌃'s release goes. */
 export function TabSwitcher({ windowId, windowWidth, windowHeight }: { windowId: string; windowWidth: number; windowHeight: number }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const switcher = useSidebarUi((u) => (u.switcher?.windowId === windowId && u.switcher.visible ? u.switcher : null));
   if (!switcher) return null;
-  // Keep the highlighted row in view.
   const start = Math.max(0, Math.min(switcher.index - Math.floor(MAX_ROWS / 2), switcher.ids.length - MAX_ROWS));
   const shown = switcher.ids.slice(start, start + MAX_ROWS);
   const height = shown.length * ROW + 16 + 26;
@@ -47,8 +45,7 @@ function SwitcherRow({ tabId, focused, index, focusFill, outline }: { tabId: str
   const theme = useTheme();
   const tab = useBrowser((s) => s.tabs[tabId]);
   if (!tab) return null;
-  // Dia's rows: the pointer highlights one, mouse-down switches to it (the mouse-up that follows
-  // would close the switcher without switching).
+  // Switch on mouse-down; the following mouse-up would close the switcher.
   return (
     <Pressable onPressIn={() => commitSwitcher(index)}>
       <View

@@ -1,9 +1,4 @@
-// Smoke test of a release build over CDP; smoke.sh launches the app and calls it.
 // usage: node smoke.mjs <cdpPort> <version> <windowsTool> <pid> <pagesOrigin>
-// Each check prints PASS/FAIL; exits 1 if any failed. The right-click check runs last: builds that
-// still draw the native context menu block their main thread until it closes. smoke.sh quits the app after.
-// SMOKE_LOCKED=1 (smoke.sh: the screen is locked): the checks that read window order or wait for a
-// window to go print SKIP, as a locked screen freezes window animations and CGWindowList's order.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -15,7 +10,6 @@ const check = (name, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
 };
 const locked = process.env.SMOKE_LOCKED === "1";
-/** A check that needs an unlocked screen. */
 const checkUnlocked = (name, ok, detail = "") =>
   locked ? console.log(`SKIP  ${name}  (screen locked; ${ok ? "would pass" : "would fail"}${detail ? `: ${detail}` : ""})`) : check(name, ok, detail);
 const windows = () =>
@@ -24,7 +18,6 @@ const windows = () =>
 const browserInfo = await (await fetch(`http://localhost:${port}/json/version`)).json();
 check("engine is Chromium 154", /Chrome\/154\./.test(browserInfo.Browser), browserInfo.Browser);
 
-// The after-update tab (smoke.sh recorded an older version and launched with NETNYAHOO_RELEASE_NOTES=1).
 let targets = (await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => t.type === "page");
 const notes = targets.filter((t) => new RegExp(`/release-notes/?#${version.replace(/\./g, "\\.")}$`).test(t.url));
 check("release notes opened once after the update", notes.length === 1, targets.map((t) => t.url).join(", "));
@@ -90,9 +83,6 @@ const media = JSON.parse(
 );
 check("H.264, AAC and WebGL2", media.every(Boolean), JSON.stringify(media));
 
-// The app window is Chrome's own Browser window of its profile: no hidden Chrome window of the app
-// window's size (the old "ghost", alpha 0) anywhere, and one full-size window on screen although the
-// window has two profiles, each with a Chrome window (smoke.sh's session: left on Work).
 const appWindows = () => windows().filter((w) => w.layer === 0 && w.w > 400 && w.h > 300);
 const [appWindow] = appWindows().filter((w) => w.alpha > 0);
 const hidden = appWindows().filter((w) => w.alpha === 0);
@@ -100,8 +90,6 @@ check("no hidden full-size Chrome window (the app window is Chrome's own)", !!ap
   JSON.stringify(appWindows().map((w) => [w.w, w.h, w.alpha])));
 check("a window left on its second profile reopens as that profile's window, alone on screen",
   appWindows().filter((w) => w.alpha > 0).length === 1, JSON.stringify(appWindows().map((w) => [w.title, w.alpha])));
-// The page on screen (the after-update tab, opened in the window) is the Work profile's: the same
-// browser context as the restored Work tab (its pinned tab), and visible.
 const browserWs = new WebSocket(browserInfo.webSocketDebuggerUrl);
 await new Promise((r) => (browserWs.onopen = r));
 let browserId = 1;
@@ -119,7 +107,6 @@ const shownVisible = await evaluate("document.visibilityState");
 check("…showing the Work profile's pages", !!workContext && shownContext === workContext && shownVisible === "visible",
   `work ${workContext}, shown ${shownContext} (${shownVisible})`);
 
-// Autofill: save an entry, then pick it from Chrome's dropdown with the keyboard (0.1.3's fix).
 await go(`${pages}/form.html`);
 await evaluate(`document.getElementById("c").value="Springfield"; document.getElementById("b").click(); 1`);
 await sleep(2500);
@@ -131,12 +118,9 @@ await key("Enter");
 await sleep(800);
 check("autofill dropdown accepts a suggestion", (await evaluate(`document.getElementById("c").value`)) === "Springfield");
 
-// Passkey dialog: a child window of the visible app window (in front of it, over its page), and
-// it goes when the page moves on.
 await go(`${pages}/passkey.html`);
 await click("#b");
 await sleep(1500);
-// Until the sheet has finished appearing (the window server scales it in), 6 s at most.
 let list = windows();
 for (let i = 0, last = ""; i < 12; i++) {
   const now = JSON.stringify(list.map((w) => [w.id, w.x, w.y, w.w, w.h]));
@@ -157,8 +141,6 @@ await go(`${pages}/form.html`);
 await sleep(1500);
 checkUnlocked("…and closes when the page navigates", !windows().some((w) => /passkey/i.test(w.title)));
 
-// "Allow ads on this site", then off again: each takes effect on the next load of the page. The check
-// sends uBlock's own messages from one of its pages in the tab's profile, as NNContentBlocker does.
 const ubolPage = "chrome-extension://bnjeokpoejhioagiokhkhmdogkhbnbki/manifest.json";
 const adsOnPage = async () => (await go(`${pages}/ad.html`), await evaluate("window.ad"));
 async function allowAds(allowed) {
@@ -182,10 +164,6 @@ check("offline page is Where's Big Yahu?", /No internet/.test(await evaluate("do
 await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 await go(`${pages}/form.html`);
 
-// A pinned tab's page stays as it was while tabs over it open and close: never reloaded, never
-// freed. 0.2.7 reloaded pinned x.com on every other ⌘W (unit tests: store/pinnedClose.test.mjs).
-// Work's pinned tab A (smoke.sh) is the tab it showed, so it loaded at launch. Tabs open and close
-// here the way Chrome's own do (CDP), as test instances never get the key window for ⌘T / ⌘W.
 async function browserCall(method, params = {}) {
   const bws = new WebSocket(browserInfo.webSocketDebuggerUrl);
   await new Promise((r) => (bws.onopen = r));
@@ -219,7 +197,6 @@ for (let i = 0; pinA && i < 5; i++) {
   await sleep(1200);
   await browserCall("Target.closeTarget", { targetId });
   await sleep(800);
-  // Shown again (Chrome's own close picks a tab too, and the app follows it; 3 s at most).
   let shown;
   for (let t = 0; t < 6 && shown?.visibility !== "visible"; t++) {
     await onPage(pinA.target, "Page.bringToFront");
@@ -231,12 +208,6 @@ for (let i = 0; pinA && i < 5; i++) {
 check("a pinned tab's page, shown again after a tab over it closed (5 times), is the same page, loaded once",
   !!pinA && pinA.loads === 1 && rounds.every((a) => a?.id === pinA.id && a.loads === 1 && a.visibility === "visible"),
   JSON.stringify({ first: pinA && [pinA.loads, pinA.visibility], rounds: rounds.map((a) => a && [a.id === pinA.id ? "same page" : "new page", a.loads, a.visibility]) }));
-// ⌘1 / ⌘2 / ⌘9 pick the sidebar's rows (pinned first, ⌘9 the last): Work's pinned tab A, then its
-// two other tabs (the Work tab and the release notes). 0.2.7 lost them to Chrome's own ⌘1–⌘9. The keys
-// go to this instance alone (keys.swift, CGEventPostToPid); with no key window AppKit hands them to
-// the menu bar, so this checks the shortcuts and their order, not a focused page's path (the Debug
-// harness test, apps/browser/scripts/shortcuts-test.mjs, covers those).
-/** The Work page on screen (Personal's window, made ahead off screen, has the ?home page). */
 async function shownPage() {
   for (const t of (await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => t.type === "page" && t.url.startsWith("http") && !t.url.endsWith("?home"))) {
     const { result } = await onPage(t, "Runtime.evaluate", { expression: "document.visibilityState", returnByValue: true });
@@ -254,18 +225,14 @@ check("⌘2, ⌘9 and ⌘1 select the sidebar's second, last and first (pinned) 
   /\?pin-a$/.test(one ?? "") && !!two && !!nine && new Set([one, two, nine]).size === 3 && !/\?pin-a$/.test(two),
   numbered.map(([key, url]) => `${key} ${url?.replace(/^.*\//, "") ?? "nothing shown"}`).join(", "));
 
-// Back to the page the checks drive; the right-click needs it on screen.
 await send("Page.bringToFront");
 await sleep(800);
 
-// Last: right-click shows Chrome's context menu. Test instances (NETNYAHOO_BACKGROUND) don't draw it,
-// since a context menu shows above every app, even over the user's work: they log its items to
-// activation.log instead (NNActivation.mm). Builds from before that still draw it, a layer-101 window.
-// Once the page has drawn with the field laid out (two animation frames), one right-click.
 await evaluate(`new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => {
   const b = document.querySelector("#c").getBoundingClientRect();
   r(b.width > 0 && b.height > 0);
 })))`);
+// Hidden test instances log context menus instead of displaying them over other apps.
 await click("#c", "right");
 const menuLog = () => {
   try {

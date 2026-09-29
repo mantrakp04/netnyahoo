@@ -13,7 +13,6 @@ final class RecoveryPhraseTests: XCTestCase {
     XCTAssertEqual(Set(Wordlist.english).count, 2048)
   }
 
-  /// Trezor's reference vectors for 256-bit entropy.
   func testReferenceVectors() throws {
     let vectors: [(UInt8, String)] = [
       (0x00, Array(repeating: "abandon", count: 23).joined(separator: " ") + " art"),
@@ -43,10 +42,8 @@ final class RecoveryPhraseTests: XCTestCase {
   func testLenientInput() throws {
     let entropy = RecoveryPhrase.generateEntropy()
     let words = RecoveryPhrase.words(for: entropy)
-    // The kit's numbered lines, upper case, commas, extra spaces.
     let numbered = words.enumerated().map { "\($0 + 1). \($1.uppercased())," }.joined(separator: "\n  ")
     XCTAssertEqual(try RecoveryPhrase.entropy(from: numbered), entropy)
-    // Words cut to their first four letters (unique in BIP-39).
     let short = words.map { String($0.prefix(4)) }.joined(separator: " ")
     XCTAssertEqual(try RecoveryPhrase.entropy(from: short), entropy)
   }
@@ -64,7 +61,6 @@ final class RecoveryPhraseTests: XCTestCase {
     XCTAssertThrowsError(try RecoveryPhrase.entropy(from: typo.joined(separator: " "))) {
       XCTAssertEqual($0 as? RecoveryPhrase.Problem, .unknownWord("netnyahoo"))
     }
-    // A wrong word that is on the list fails the checksum (255 times in 256).
     var failures = 0
     for i in 0..<24 {
       var wrong = words
@@ -82,7 +78,6 @@ final class SyncCryptoTests: XCTestCase {
     for size in [0, 1, 1019, 1020, 1021, 100_000] {
       let payload = Data((0..<size).map { UInt8($0 % 251) })
       let sealed = try keys.seal(payload, scopeTag: "s", fileId: "f")
-      // Padded to 1 KiB, plus magic, nonce and tag.
       XCTAssertEqual((sealed.count - 4 - 12 - 16) % 1024, 0)
       XCTAssertEqual(try keys.open(sealed, scopeTag: "s", fileId: "f"), payload)
     }
@@ -105,11 +100,9 @@ final class SyncCryptoTests: XCTestCase {
       bad[index] ^= 0x01
       XCTAssertThrowsError(try keys.open(bad, scopeTag: "s", fileId: "f")) { XCTAssertEqual($0 as? SyncKeys.Failure, .authentication) }
     }
-    // Cut short, as a file still being copied.
     XCTAssertThrowsError(try keys.open(sealed.prefix(sealed.count / 2), scopeTag: "s", fileId: "f"))
     XCTAssertThrowsError(try keys.open(sealed.prefix(10), scopeTag: "s", fileId: "f")) { XCTAssertEqual($0 as? SyncKeys.Failure, .format) }
     XCTAssertThrowsError(try keys.open(Data(), scopeTag: "s", fileId: "f")) { XCTAssertEqual($0 as? SyncKeys.Failure, .format) }
-    // Moved to another name or scope.
     XCTAssertThrowsError(try keys.open(sealed, scopeTag: "s", fileId: "g")) { XCTAssertEqual($0 as? SyncKeys.Failure, .authentication) }
     XCTAssertThrowsError(try keys.open(sealed, scopeTag: "t", fileId: "f")) { XCTAssertEqual($0 as? SyncKeys.Failure, .authentication) }
   }
@@ -133,7 +126,6 @@ final class SyncCryptoTests: XCTestCase {
   }
 
   func testBase32() {
-    // RFC 4648 test vectors, lowercased and unpadded.
     for (input, output) in [("", ""), ("f", "my"), ("fo", "mzxq"), ("foo", "mzxw6"), ("foob", "mzxw6yq"), ("fooba", "mzxw6ytb"), ("foobar", "mzxw6ytboi")] {
       XCTAssertEqual(Base32.encode(Data(input.utf8)), output)
     }
@@ -174,7 +166,6 @@ final class SyncVaultTests: XCTestCase {
     XCTAssertEqual(listing.files.map(\.id), [b])
     XCTAssertEqual(Set(listing.present), [a, b])
 
-    // Another Mac with the same phrase reads the same files.
     let other = SyncVault(folder: folder, keys: SyncKeys(entropy: entropy))
     XCTAssertEqual(other.read(scope: "app", skipping: []).files.count, 2)
 
@@ -198,16 +189,13 @@ final class SyncVaultTests: XCTestCase {
     let whole = try vault.write(scope: "app", payload: Data(repeating: 7, count: 5000))
     let cut = try vault.write(scope: "app", payload: Data(repeating: 8, count: 5000))
     let dir = scopeDirectory("app")
-    // Cut short (a copy in progress), and an empty file (just created by the sync client).
     let cutURL = dir.appendingPathComponent("\(cut).nns")
     let full = try Data(contentsOf: cutURL)
     try full.prefix(full.count / 3).write(to: cutURL)
     let empty = SyncKeys.newFileId()
     try Data().write(to: dir.appendingPathComponent("\(empty).nns"))
-    // iCloud Drive's placeholder for a file it hasn't downloaded yet.
     let remote = SyncKeys.newFileId()
     try Data("placeholder".utf8).write(to: dir.appendingPathComponent(".\(remote).nns.icloud"))
-    // Not ours: ignored.
     try Data("x".utf8).write(to: dir.appendingPathComponent("notes.txt"))
     try Data("x".utf8).write(to: dir.appendingPathComponent(".DS_Store"))
 
@@ -217,7 +205,6 @@ final class SyncVaultTests: XCTestCase {
     XCTAssertEqual(listing.pending, [remote])
     XCTAssertEqual(Set(listing.present), [whole, cut, empty, remote])
 
-    // The copy finishes: the file opens on the next read.
     try full.write(to: cutURL)
     listing = vault.read(scope: "app", skipping: [whole])
     XCTAssertEqual(listing.files.map(\.id), [cut])
@@ -231,7 +218,6 @@ final class SyncVaultTests: XCTestCase {
     let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: nil)!.compactMap { $0 as? URL }
     XCTAssertFalse(files.isEmpty)
     for url in files {
-      // Names: base32 tags and ids only.
       let name = url.deletingPathExtension().lastPathComponent
       XCTAssertTrue(Base32.isTag(name), name)
       for secret in secrets + ["default", "app"] {
@@ -270,7 +256,6 @@ final class KeyStoreTests: XCTestCase {
   }
 
   func testKeychainKeyStore() throws {
-    // A throwaway item, removed again.
     let store = KeychainKeyStore(service: "Netnyahoo Sync Key (tests)")
     let account = UUID().uuidString
     defer { store.delete(account: account) }

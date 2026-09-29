@@ -13,7 +13,6 @@ const ease = (f: number, a: number, b: number, e = inOut) => interpolate(f, [a, 
 export const Pour: React.FC = () => {
   const f = useCurrentFrame();
   const { width, height } = useVideoConfig();
-  // the window fades into the dark at the end of bar 7; the smoke's light moves with the story
   const windowOn = 1 - ease(f, WINDOW_OUT.from, WINDOW_OUT.to);
   return (
     <AbsoluteFill style={{ backgroundColor: P.black, overflow: "hidden" }}>
@@ -34,11 +33,9 @@ export const Pour: React.FC = () => {
   );
 };
 
-// ---- The camera
 
 type Pose = Omit<Key, "f">;
 const CH = ["x", "y", "s", "rx", "ry"] as const;
-/** Monotone cubic Hermite through keys (Fritsch-Carlson tangents, zero at the ends), so no move overshoots. */
 function spline<K extends { f: number }>(keys: K[], f: number, ch: readonly (keyof K & string)[], log: (keyof K)[] = []): Record<string, number> {
   const val = (k: K, c: keyof K) => (log.includes(c) ? Math.log(k[c] as number) : (k[c] as number));
   const outv = (c: keyof K, v: number) => (log.includes(c) ? Math.exp(v) : v);
@@ -63,14 +60,11 @@ function spline<K extends { f: number }>(keys: K[], f: number, ch: readonly (key
 const camera = (f: number) => spline(CAMERA, f, CH, ["s"]) as Pose;
 const focus = (f: number) => spline(FOCUS_POINT, f, ["x", "y", "r", "dim"] as const) as { x: number; y: number; r: number; dim: number };
 
-// ---- The window in the dark, with a shallow depth of field: the same window three times, sharp inside the
-// focus, a little soft around it, very soft beyond (screen-space layers, masked).
 
 const Stage: React.FC<{ f: number }> = ({ f }) => {
   const { width, height } = useVideoConfig();
   const cam = camera(f);
   const fp = focus(f);
-  // phone frames are taller; the focus is placed by the frame's centre
   const fx = fp.x + (width - 1080) / 2, fy = fp.y + (height - 1350) / 2;
   const deep = interpolate(fp.r, [400, 900], [1, 0.18], clamp);
   const mask = (r0: number, r1: number) =>
@@ -85,7 +79,6 @@ const Stage: React.FC<{ f: number }> = ({ f }) => {
   );
 };
 
-/** The light that glides over the glass: when each pass starts and how long it takes (frames). */
 const SWEEPS = [
   { from: -20, len: 110 },
   { from: at(3, 1, 10), len: 90 },
@@ -130,19 +123,15 @@ const Window: React.FC<{ f: number; cam: Pose }> = ({ f, cam }) => {
             <Img key={p.id} src={staticFile(p.src)} style={{ position: "absolute", inset: 0, width: WIN.w, height: WIN.h, opacity: o }} />
           ),
         )}
-        {/* a change that would double-expose text goes down through the dark instead (a plate's `dip`) */}
         {shown.map(({ p }) => (p.dip && f >= p.from - p.fade && f < p.from + 2 ? <div key={`dip-${p.id}`} style={{ position: "absolute", inset: 0, background: P.black, opacity: Math.sin(Math.PI * ease(f, p.from - p.fade, p.from, Easing.linear)) }} /> : null))}
-        {/* the key light, soft and warm from the upper left */}
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 70% 60% at 18% 8%, rgba(255,226,184,0.10), transparent 70%)", mixBlendMode: "screen" }} />
         {SWEEPS.map((s) => (f >= s.from && f < s.from + s.len ? <Sweep key={s.from} k={ease(f, s.from, s.from + s.len, Easing.inOut(Easing.quad))} /> : null))}
       </div>
-      {/* the glass's edge catching the light */}
       <div style={{ position: "absolute", inset: 0, borderRadius: 20, boxShadow: "inset 0 0 0 2px rgba(220,196,154,0.16)" }} />
     </div>
   );
 };
 
-/** A specular band crossing the glass, `k` 0 → 1. */
 const Sweep: React.FC<{ k: number }> = ({ k }) => {
   const x = interpolate(k, [0, 1], [-60, 160]);
   const a = Math.sin(Math.PI * k);
@@ -159,12 +148,10 @@ const Sweep: React.FC<{ k: number }> = ({ k }) => {
   );
 };
 
-// ---- The flacon, and the name set under it
 
 const FlaconShot: React.FC<{ f: number }> = ({ f }) => {
   const { width, height } = useVideoConfig();
   const k = f - FLACON.from;
-  // on the last card it steps back and up, making room for the words
   const back = ease(f, CARD - 6, CARD + 30);
   const size = 1000;
   const top = (height - 1350) / 2 + interpolate(back, [0, 1], [-10, -120]);
@@ -177,13 +164,11 @@ const FlaconShot: React.FC<{ f: number }> = ({ f }) => {
       }}
     >
       <Flacon width={size} height={size} yaw={interpolate(k, [-4, 216], [-0.57, -0.18])} exposure={1} />
-      {/* it comes up out of the dark (a WebGL canvas under CSS opacity composites pale, so the dark covers it instead) */}
       <div style={{ position: "absolute", inset: 0, background: P.black, opacity: 1 - ease(k, -4, 22, Easing.inOut(Easing.quad)) }} />
     </div>
   );
 };
 
-// ---- Type
 
 const Subtitle: React.FC<{ f: number; len: number; text: string }> = ({ f, len, text }) => {
   const { height } = useVideoConfig();
@@ -247,7 +232,6 @@ const Card: React.FC<{ f: number }> = ({ f }) => {
   );
 };
 
-// ---- The grade's last layers: a vignette and a fine, moving film grain over everything
 
 const Vignette: React.FC = () => (
   <AbsoluteFill style={{ background: "radial-gradient(ellipse 85% 75% at 50% 48%, transparent 55%, rgba(4,3,2,0.55) 100%)", pointerEvents: "none" }} />

@@ -1,20 +1,13 @@
 import ExpoModulesCore
 
-// One view per module: on the legacy architecture Expo's view-manager adapter
-// instantiates a module's first view class for every view it declares.
 public class AreaLightModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooAreaLight")
 
     Function("debugState") { AreaLightView.lastState }
 
-    /// DEV: force every shader view's window to read as key/active (true), inactive (false),
-    /// or its real state (nil), so key vs non-key renders can be compared without focus.
     AsyncFunction("debugSetWindowActive") { (value: Bool?) in WindowActivity.override = value }.runOnQueue(.main)
-    /// DEV: force Reduce Motion for views mounted from now on (nil = the system setting).
     AsyncFunction("debugSetReduceMotion") { (value: Bool?) in WindowActivity.reduceMotionOverride = value }.runOnQueue(.main)
-    /// DEV: renders every shader view offscreen into `<dir>/<n>-<Class>.png` (straight alpha, 2x)
-    /// and describes each one: its frame in window points (top-left origin) and window state.
     AsyncFunction("debugSnapshot") { (dir: String) -> [[String: Any]] in
       try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
       return MetalSurface.instances.enumerated().compactMap { index, view in

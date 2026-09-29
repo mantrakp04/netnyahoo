@@ -1,14 +1,8 @@
 import Foundation
 
-/// Saved logins (`Login Data`, `Login Data For Account`) and cookies (`Cookies`) of a
-/// Chromium profile, decrypted with the key from `ChromiumCrypto.deriveKey`.
-///
-/// Columns are read by name (`SELECT *`): both tables have grown columns across versions
-/// and a fixed column list would break on the next one.
 public enum ChromiumSecrets {
   public struct Outcome<T> {
     public var items: [T]
-    /// Rows that didn't decrypt — almost always a key from the wrong Keychain item.
     public var undecryptable: Int
   }
 
@@ -34,7 +28,6 @@ public enum ChromiumSecrets {
     var bad = 0
     try db.query("SELECT * FROM logins") { row in
       if items.count % 128 == 0 { try cancellation.check() }
-      // "Never save" entries carry no credential.
       if row.int("blacklisted_by_user") ?? 0 != 0 { return true }
       guard let blob = row.blob("password_value"), !blob.isEmpty else { return true }
       guard let password = ChromiumCrypto.decrypt(blob, key: key) else {
@@ -59,7 +52,6 @@ public enum ChromiumSecrets {
   }
 
   public static func cookies(profile: URL, key: Data, cancellation: Cancellation = .init()) throws -> Outcome<Cookie> {
-    // Chrome ≥ 96 moved `Cookies` under `Network/`; older profiles and some forks keep it at the root.
     let candidates = [profile.appendingPathComponent("Network/Cookies"), profile.appendingPathComponent("Cookies")]
     guard let file = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
       throw ImportError.notFound("No cookies in this profile")
@@ -103,7 +95,6 @@ public enum ChromiumSecrets {
     return Outcome(items: items, undecryptable: bad)
   }
 
-  /// `net::CookieSameSite` as persisted: -1 unspecified, 0 none, 1 lax, 2 strict.
   static func sameSite(_ v: Int64?) -> String {
     switch v {
     case 0: "none"

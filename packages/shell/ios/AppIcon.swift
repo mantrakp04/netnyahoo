@@ -1,21 +1,15 @@
 import AppKit
 import CoreImage
 
-/// Alternate app icons (Settings › Appearance). The choice is applied to the Dock tile while
-/// the app runs (`NSApp.applicationIconImage`) and remembered across launches; while it isn't
-/// running, the Dock tile plug-in (packages/shell/docktile, which also compiles this file) draws
-/// it. Variants are drawn from the bundle's icon: on a squircle plate in a few colours, and monochrome.
 enum AppIcons {
   struct Variant {
     let id: String
     let name: String
-    /// Plate colour behind the artwork; nil = the bare icon.
     let plate: (top: NSColor, bottom: NSColor)?
     let mono: Bool
   }
 
   static let defaultsKey = "NNAppIcon"
-  /// Distributed notification the Dock tile plug-in listens for (`<bundle id>.AppIconChanged`, userInfo `icon`).
   static func changedNotification(bundleId: String) -> Notification.Name { .init("\(bundleId).AppIconChanged") }
 
   static let variants: [Variant] = [
@@ -33,7 +27,6 @@ enum AppIcons {
     return variants.contains { $0.id == id } ? id : "default"
   }
 
-  /// Re-applies the remembered icon; call once at launch.
   static func restore() {
     if current != "default" { apply(current) }
   }
@@ -42,7 +35,6 @@ enum AppIcons {
     guard variants.contains(where: { $0.id == id }) else { return }
     UserDefaults.standard.set(id, forKey: defaultsKey)
     apply(id)
-    // The plug-in runs in the Dock's process and keeps the icon after we quit.
     if let bundleId = Bundle.main.bundleIdentifier {
       DistributedNotificationCenter.default().postNotificationName(
         changedNotification(bundleId: bundleId), object: nil, userInfo: ["icon": id], deliverImmediately: true)
@@ -50,14 +42,11 @@ enum AppIcons {
   }
 
   private static func apply(_ id: String) {
-    // nil restores the bundle icon (and its proper Dock rendering).
     NSApp.applicationIconImage = id == "default" ? nil : image(id, size: 512)
   }
 
   private static var cache: [String: NSImage] = [:]
 
-  /// The artwork every variant starts from (the plug-in sets the app bundle's).
-  /// (Not `applicationIconName`: that's whatever variant is showing.)
   static var base: NSImage = NSImage(named: "AppIcon") ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath) {
     didSet { cache.removeAll() }
   }
@@ -72,7 +61,6 @@ enum AppIcons {
         artwork.draw(in: rect)
         return true
       }
-      // macOS icon grid: an 824/1024 squircle, centred, with a soft drop shadow.
       let inset = rect.width * 100 / 1024
       let body = rect.insetBy(dx: inset, dy: inset)
       let path = NSBezierPath(roundedRect: body, xRadius: body.width * 0.225, yRadius: body.width * 0.225)
@@ -89,7 +77,6 @@ enum AppIcons {
       NSColor.white.withAlphaComponent(0.12).setStroke()
       path.lineWidth = max(1, rect.width / 512)
       path.stroke()
-      // The artwork sits inside the plate, a little smaller than the bare icon.
       path.addClip()
       artwork.draw(in: body.insetBy(dx: body.width * 0.06, dy: body.width * 0.06))
       return true
@@ -109,7 +96,6 @@ enum AppIcons {
     return result
   }
 
-  /// PNG data URL for the Appearance pane's picker.
   static func preview(_ id: String, size: CGFloat) -> String? {
     guard let image = image(id, size: size * 2),
           let tiff = image.tiffRepresentation,
@@ -118,8 +104,6 @@ enum AppIcons {
   }
 }
 
-/// "Add to Dock" (onboarding). There's no API for it: the Dock's own preferences get a new
-/// tile and the Dock restarts to pick it up, as other apps do.
 enum DockTile {
   private static let domain = "com.apple.dock" as CFString
   private static let key = "persistent-apps" as CFString
@@ -153,7 +137,7 @@ enum DockTile {
     ]
     CFPreferencesSetAppValue(key, (tiles + [tile]) as CFArray, domain)
     guard CFPreferencesAppSynchronize(domain) else { return false }
-    // The Dock only reads persistent-apps when it starts.
+    // Dock reads persistent-apps only at startup.
     let restart = Process()
     restart.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
     restart.arguments = ["Dock"]

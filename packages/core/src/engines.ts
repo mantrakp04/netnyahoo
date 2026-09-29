@@ -1,31 +1,18 @@
 import { hostOf, searchUrlFor } from "./omnibox.ts";
 
-/**
- * A search engine the command bar can use. `url` and `suggestUrl` are templates where `%s` is
- * the URL-encoded query. `keyword` triggers Tab-to-search (for built-ins it's the site's host,
- * like Chrome; custom engines choose their own, e.g. "w").
- */
 export type SearchEngine = {
   id: string;
   name: string;
   keyword: string;
   url: string;
-  /** Returns OpenSearch suggestion JSON: `[query, [suggestion, …], …]`. */
   suggestUrl?: string;
   custom?: boolean;
-  /** Added by this extension (`chrome_settings_overrides.search_provider`). */
   extension?: { id: string; name: string };
 };
 
-/** A user-added engine, as stored in settings. */
 export type CustomSearchEngine = { id: string; name: string; keyword: string; url: string };
 
-/**
- * An engine an extension adds (its manifest's `chrome_settings_overrides.search_provider`), as
- * Chrome's search engine list reports it for one engine profile.
- */
 export type ExtensionSearchEngine = {
-  /** The engine profile ("" = default) whose extension it is. */
   profile: string;
   extensionId: string;
   extensionName: string;
@@ -33,14 +20,9 @@ export type ExtensionSearchEngine = {
   keyword: string;
   url: string;
   suggestUrl?: string;
-  /** Chrome made it the default search engine: the extension asked to be (`is_default`), and it's the newest one that did. */
   isDefault: boolean;
 };
 
-/**
- * Dia's search engine choices (plus common ones Chrome offers). ChatGPT and Perplexity are
- * plain search URLs here; nothing is routed to an assistant.
- */
 export const BUILT_IN_ENGINES: readonly SearchEngine[] = [
   {
     id: "google",
@@ -104,7 +86,6 @@ export const BUILT_IN_ENGINES: readonly SearchEngine[] = [
   },
 ];
 
-/** Built-ins first, then the user's own, then the extensions' (one per extension, whichever profiles have it). */
 export function allEngines(custom: readonly CustomSearchEngine[] = [], extension: readonly ExtensionSearchEngine[] = []): SearchEngine[] {
   const engines: SearchEngine[] = [...BUILT_IN_ENGINES, ...custom.map((e) => ({ ...e, custom: true }))];
   const seen = new Set<string>();
@@ -125,19 +106,12 @@ export function allEngines(custom: readonly CustomSearchEngine[] = [], extension
 
 export const extensionEngineId = (extensionId: string) => `extension:${extensionId}`;
 
-/** The extension engine Chrome made the default (the extension controls the setting), if any. */
 export function controllingExtensionEngine(extension: readonly ExtensionSearchEngine[]): ExtensionSearchEngine | undefined {
   return extension.find((e) => e.isDefault);
 }
 
-/** Chrome's display URLs keep the template's other parameters ("{language}"); we have no values for them. */
 const withoutPlaceholders = (url: string) => url.replace(/\{[^{}%]*\}/g, "");
 
-/**
- * Chrome's search engine list (its settings page's `getSearchEnginesList`) → the extensions'
- * engines. Chrome's display URLs already have `%s` for the query; omnibox keywords
- * (`chrome.omnibox`) aren't search engines.
- */
 export function extensionEnginesFromChrome(profile: string, list: unknown): ExtensionSearchEngine[] {
   const groups = list && typeof list === "object" ? Object.values(list as Record<string, unknown>) : [];
   const out: ExtensionSearchEngine[] = [];
@@ -163,7 +137,6 @@ export function extensionEnginesFromChrome(profile: string, list: unknown): Exte
   return out;
 }
 
-/** The engine with `id`, falling back to Google (e.g. a deleted custom default). */
 export function engineById(engines: readonly SearchEngine[], id: string | undefined): SearchEngine {
   return engines.find((e) => e.id === id) ?? BUILT_IN_ENGINES[0]!;
 }
@@ -173,10 +146,8 @@ export const searchUrl = (engine: Pick<SearchEngine, "url">, query: string) => s
 export const suggestRequestUrl = (engine: SearchEngine, query: string) =>
   engine.suggestUrl && query.trim() ? searchUrlFor(engine.suggestUrl, query) : null;
 
-/** The engine's site, for its favicon and for matching Tab-to-search. */
 export const engineHost = (engine: Pick<SearchEngine, "url">) => hostOf(engine.url.replace(/%s/g, "q"));
 
-/** OpenSearch suggestion JSON → suggestions (anything malformed → none). */
 export function parseSuggestions(body: unknown): string[] {
   if (!Array.isArray(body) || !Array.isArray(body[1])) return [];
   return (body[1] as unknown[]).filter((s): s is string => typeof s === "string" && s.trim() !== "").map((s) => s.trim());
@@ -184,10 +155,6 @@ export function parseSuggestions(body: unknown): string[] {
 
 export type EngineInput = { name: string; keyword: string; url: string };
 
-/**
- * Checks a custom engine before it's saved. `url` must be http(s) and contain `%s`; the
- * keyword must be one word and not clash with another engine's (`ignoreId`: the one being edited).
- */
 export function validateEngine(input: EngineInput, engines: readonly SearchEngine[], ignoreId?: string): string | null {
   const name = input.name.trim();
   const keyword = input.keyword.trim().toLowerCase();
@@ -201,7 +168,6 @@ export function validateEngine(input: EngineInput, engines: readonly SearchEngin
   return null;
 }
 
-/** Normalises user input into a stored engine (trimmed, keyword lower-cased). */
 export function makeCustomEngine(input: EngineInput, id: string): CustomSearchEngine {
   return { id, name: input.name.trim(), keyword: input.keyword.trim().toLowerCase(), url: input.url.trim() };
 }

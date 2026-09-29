@@ -6,12 +6,6 @@ import { engineProfile } from "../../store/model";
 import { withNewTab } from "../../store/tabs";
 import type { ProfileColor } from "../../store/types";
 
-/**
- * Maps import results into Netnyahoo: bookmark trees (the source's toolbar onto
- * the Bookmarks Bar), history, open tabs (lazily loaded, unpinned ones in an
- * "Imported" group), Arc spaces and favourites, and passwords (Chrome's password manager).
- * Cookies aren't imported: the engine has no API to set them.
- */
 export type ImportCounts = { bookmarks: number; history: number; tabs: number; passwords: number };
 
 export const emptyCounts = (): ImportCounts => ({ bookmarks: 0, history: 0, tabs: 0, passwords: 0 });
@@ -23,19 +17,12 @@ const toDraft = (n: ImportedNode): BookmarkDraft =>
 
 const linkCount = (nodes: ImportedNode[]): number => nodes.reduce((n, c) => n + (c.type === "url" ? 1 : linkCount(c.children ?? [])), 0);
 
-/**
- * The source's toolbar goes onto the Bookmarks Bar (straight in when the bar is
- * empty, else in an "Imported from X" folder, like Chrome); everything else into
- * Other Bookmarks.
- */
 export function importBookmarks(profileId: string, root: ImportedNode | undefined, browserName: string): number {
   if (!root?.children?.length) return 0;
-  // Adding nothing creates the profile's roots if it has none yet.
   if (!useBrowser.getState().bookmarks.roots[profileId]) useBrowser.getState().addBookmarkTree(profileId, []);
   const roots = useBrowser.getState().bookmarks.roots[profileId]!;
   const toolbar = root.children.filter((c) => c.role === "toolbar").flatMap((c) => c.children ?? []);
   const rest = root.children.filter((c) => c.role !== "toolbar");
-  // "Other" folders' contents go in directly; mobile / menu / reading list keep their folder.
   const other = rest.flatMap((c) => (c.role === "other" || !c.role ? (c.type === "folder" ? (c.children ?? []) : [c]) : [c]));
   const title = `Imported from ${browserName}`;
   const place = (nodes: ImportedNode[], parentId: string) => {
@@ -50,19 +37,16 @@ export function importBookmarks(profileId: string, root: ImportedNode | undefine
   return linkCount([...toolbar, ...other]);
 }
 
-/** Safari's export has one tree for every profile. */
 export function importSafariBookmarks(profileId: string, root: ImportedNode | undefined): number {
   return importBookmarks(profileId, root, "Safari");
 }
 
-/** Returns how many entries the profile's history actually gained (it keeps the newest 5,000). */
 export function importHistory(profileId: string, entries: { url: string; title: string; visits: number; lastVisit: number }[]): number {
   const before = useBrowser.getState().history[profileId]?.length ?? 0;
   useBrowser.getState().importHistory(profileId, entries);
   return (useBrowser.getState().history[profileId]?.length ?? 0) - before;
 }
 
-/** Saves logins in the profile's Chrome password manager; returns how many were saved. */
 export async function importPasswords(profileId: string, credentials: Credential[]): Promise<number> {
   let saved = 0;
   for (const c of credentials) {
@@ -73,18 +57,12 @@ export async function importPasswords(profileId: string, credentials: Credential
   return saved;
 }
 
-/** A regular window to add a profile's imported tabs to (the most recently focused), or a new one. */
 function windowFor(profileId: string): string {
   const s = useBrowser.getState();
   const regular = s.ui.focusOrder.find((id) => s.windows[id] && !s.windows[id]!.incognito) ?? s.windowOrder.find((id) => !s.windows[id]!.incognito);
   return regular ?? s.createWindow({ profileId });
 }
 
-/**
- * Adds tabs to a profile without loading them (they load when first selected, like a
- * restored session). Pinned ones are pinned; the rest go into one group named `group`. Both keep
- * the source's order.
- */
 export function importTabs(profileId: string, tabs: Pick<ImportedTab, "url" | "title" | "pinned" | "customTitle">[], group: string | null): number {
   const usable = tabs.filter((t) => /^(https?|file):/.test(t.url));
   if (!usable.length) return 0;
@@ -92,7 +70,6 @@ export function importTabs(profileId: string, tabs: Pick<ImportedTab, "url" | "t
   let s = useBrowser.getState();
   const unpinned: string[] = [];
   for (const t of usable) {
-    // Each unpinned tab right after the previous one (new tabs may otherwise open at the top).
     const after = t.pinned ? undefined : unpinned.at(-1);
     const [next, id] = withNewTab(s, windowId, {
       url: t.url,
@@ -111,7 +88,6 @@ export function importTabs(profileId: string, tabs: Pick<ImportedTab, "url" | "t
   return usable.length;
 }
 
-/** Arc: a space's pinned tree → pinned tabs (top-level links) and bookmark folders; its Today tabs → "Imported". */
 export function importArcSpace(profileId: string, space: SpaceSuggestion, spaceName: string): { tabs: number; bookmarks: number } {
   const links = space.pinned.filter((n) => n.type === "url" && n.url);
   const folders = space.pinned.filter((n) => n.type === "folder");
@@ -132,7 +108,6 @@ export function importArcSpace(profileId: string, space: SpaceSuggestion, spaceN
   return { tabs, bookmarks };
 }
 
-/** Same page, spelled differently ("https://A.com" / "https://a.com/", a bare "#"), as the native Dia import dedupes. */
 function pageKey(url: string): string {
   const m = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)(.*)$/i.exec(url.trim());
   if (!m) return url;
@@ -140,11 +115,6 @@ function pageKey(url: string): string {
   return `${m[1]!.toLowerCase()}${m[2]!.toLowerCase()}${rest.replace(/#$/, "")}`;
 }
 
-/**
- * A Dia profile's tabs, read through Dia's AppleScript: its favourites and pinned tabs become
- * pinned tabs in Dia's order, its open tabs go into "Imported". Pages the profile already has
- * (open, or a pinned tab's base URL) aren't added again, so importing twice adds nothing.
- */
 export function importDiaProfile(profileId: string, profile: DiaTabsProfile, what: { pinned: boolean; open: boolean }): number {
   const have = new Set(
     Object.values(useBrowser.getState().tabs)
@@ -161,7 +131,6 @@ export async function applyResult(profileId: string, result: ImportResult, brows
   const counts = emptyCounts();
   counts.bookmarks += importBookmarks(profileId, result.bookmarks, browserName);
   if (result.history.length) counts.history += importHistory(profileId, result.history);
-  // Arc's open tabs arrive per space (importArcSpace); its flat list repeats them.
   if (result.tabs.length && !result.spaces.length) counts.tabs += importTabs(profileId, result.tabs, "Imported");
   if (result.favorites.length) counts.tabs += importTabs(profileId, result.favorites.map((t) => ({ ...t, pinned: true })), null);
   if (result.credentials.length) counts.passwords += await importPasswords(profileId, result.credentials);
@@ -171,16 +140,13 @@ export async function applyResult(profileId: string, result: ImportResult, brows
 export async function applySafari(profileId: string, data: SafariExport): Promise<ImportCounts> {
   const counts = emptyCounts();
   counts.bookmarks = importSafariBookmarks(profileId, data.bookmarks);
-  // The default Safari profile's history (named profiles' history could become Netnyahoo profiles later).
   const history = data.profiles.find((p) => !p.name)?.history ?? data.profiles[0]?.history ?? [];
   counts.history = importHistory(profileId, history);
-  // Open tabs only come from a direct import (the export archive has none).
   if (data.tabs.length) counts.tabs += importTabs(profileId, data.tabs, "Imported");
   counts.passwords = await importPasswords(profileId, data.credentials);
   return counts;
 }
 
-/** The profile colour closest in hue to a source colour ("#RRGGBB"). */
 export function profileColorFor(hex: string | undefined): ProfileColor | undefined {
   const m = hex && /^#?([0-9a-f]{6})/i.exec(hex);
   if (!m) return undefined;

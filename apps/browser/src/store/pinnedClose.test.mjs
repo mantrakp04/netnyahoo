@@ -1,4 +1,3 @@
-// ⌘W on a pinned tab unloads its page and keeps the tile (Dia's `.deselectPinnedIfActive`).
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/store/pinnedClose.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -12,7 +11,6 @@ const reset = () => S().hydrate({});
 const view = (w) => model.viewTabIds(S(), w).map((id) => S().tabs[id].url);
 const active = (w) => model.activeTabId(S(), w);
 
-// Selections a few ms apart, so "used last" doesn't depend on the test's speed.
 let clock = Date.now();
 function at(fn) {
   const now = Date.now;
@@ -66,7 +64,6 @@ test("an unloaded pinned tab goes back to its pinned URL, with that page's title
   assert.equal(tile.title, "Inbox");
   assert.equal(tile.favicon, "data:inbox");
   assert.equal(tile.pinnedUrl, "https://mail.com");
-  // Clicking the tile loads the pinned page.
   select(p);
   assert.equal(active(w), p);
   assert.equal(S().tabs[p].navigation.url, "https://mail.com");
@@ -111,7 +108,6 @@ test("with only pinned tabs, ⌘W selects the loaded pinned tab used last, then 
   select(q);
   select(r);
   select(p);
-  // Dia: ⌘W on pinned YouTube shows pinned x.com, whose page is still loaded, rather than a New Tab page.
   S().closeTab(p);
   assert.equal(active(w), r, "the loaded pinned tab used last");
   assert.ok(S().tabs[r].navigation, "its page is the one it had");
@@ -130,8 +126,6 @@ test("holding ⌘W over pinned tiles ends by closing the window: no unloaded pag
   const { w, ids: [x, a] } = windowWith("x", "a");
   S().togglePin(x);
   select(x);
-  // 0.2.7 looped here: ⌘W unloaded x.com and showed a New Tab page, the next ⌘W closed that page and
-  // loaded x.com again, and so on, a cold load of x.com on every other ⌘W.
   const wakes = [];
   for (let i = 0; i < 10 && S().windows[w]; i++) {
     const before = S().tabs[x].navigation;
@@ -144,7 +138,6 @@ test("holding ⌘W over pinned tiles ends by closing the window: no unloaded pag
   void a;
 });
 
-// Pinned tabs belong to the profile's sidebar (store/parkedPins): a window closing never takes them.
 const sidebar = (w) =>
   model.viewTabIds(S(), w).filter((id) => model.inPinnedContainer(S(), id)).map((id) => {
     const t = S().tabs[id];
@@ -152,7 +145,6 @@ const sidebar = (w) =>
     return `${g ? `${g.name}/` : ""}${t.url}${t.navigation || t.adoptId ? " (loaded)" : ""}`;
   });
 
-/** A window with tiles mail, docs, a pinned group "Work" (jira, wiki), and a regular tab; mail loaded. */
 function pinnedWindow() {
   const { w, ids: [mail, docs, jira, wiki, a] } = windowWith("mail", "docs", "jira", "wiki", "a");
   S().togglePin(mail);
@@ -177,7 +169,6 @@ test("⌘W until the window closes, then ⌘N: the pinned tabs and pinned groups
   assert.equal(S().tabs[mail].windowId, n, "same tab id (its key in sync)");
   assert.equal(S().groups[work].pinned, true);
   assert.deepEqual(S().parkedPins, {}, "the park is empty");
-  // A second ⌘N: the pins stay with the window that has them.
   const n2 = S().createWindow();
   assert.deepEqual(sidebar(n2), []);
 });
@@ -222,7 +213,7 @@ test("⇧⌘T of a pinned tab's page after its window closed: its tile comes bac
   reset();
   const { w, mail } = pinnedWindow();
   S().updateTab(mail, { url: "https://mail.com/inbox/7" });
-  S().closeTab(mail); // unloads mail (recorded for ⇧⌘T), shows a
+  S().closeTab(mail);
   S().closeWindow(w);
   S().reopenClosedTab(null);
   const back = S().tabs[mail];
@@ -292,7 +283,6 @@ test("closing every regular tab at once over unloaded pinned tiles leaves a New 
 test("closing the last regular tab doesn't wake an unloaded pinned tab when a loaded one is left", () => {
   reset();
   const { w, ids: [p, q, a] } = windowWith("p", "q", "a");
-  // Tiles q, p: p is the neighbour above a.
   S().togglePin(q);
   S().togglePin(p);
   select(p);
@@ -371,7 +361,6 @@ test("⌘W on a tab of a pinned group unloads it where it is; its row stays in t
   assert.equal(active(w), a, "back to the regular tab used last, not the group's other tab");
   assert.ok(S().tabs[g2].navigation, "the group's other tab isn't touched");
   assert.equal(S().closedTabs.at(-1).pinnedTile, true);
-  // ⇧⌘T loads it back into its row.
   S().reopenClosed(w);
   assert.equal(active(w), g1);
   assert.deepEqual(S().groups[groupId].tabIds, [g1, g2]);
@@ -404,7 +393,6 @@ test("bulk close unloads a pinned group's tabs and closes the rest; the only tab
   assert.equal(S().tabs[g2].unloaded, true);
 });
 
-// Last: persistence stays subscribed to the store.
 test("session restore keeps unloaded pinned tabs unloaded", () => {
   stub.docs.clear();
   startPersistence();
@@ -429,6 +417,6 @@ test("quit and relaunch after the window closed: the next window has the pinned 
   flushPersistence();
   S().hydrate(loadSession().data);
   assert.equal(S().windowOrder.length, 0, "no window restored");
-  const n = S().createWindow(); // lib/native: the first window when none is restored
+  const n = S().createWindow();
   assert.deepEqual(sidebar(n), PINS);
 });

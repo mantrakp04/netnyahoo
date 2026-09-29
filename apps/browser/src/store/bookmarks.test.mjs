@@ -1,4 +1,3 @@
-// Bookmark trees (import, Bookmark All Tabs, bulk delete + undo) and history import.
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/store/bookmarks.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -6,7 +5,6 @@ const { useBrowser } = await import("./browser.ts");
 const { folderChildren, folderLinks, bookmarkAncestors } = await import("./bookmarks.ts");
 
 const S = () => useBrowser.getState();
-// hydrate({}) keeps the current bookmarks; start each test from an empty tree.
 const reset = () => {
   useBrowser.setState({ bookmarks: { nodes: {}, roots: {} }, history: {} });
   S().hydrate({});
@@ -36,7 +34,6 @@ test("removeBookmarks + restoreBookmarks put everything back in place", () => {
   const ids = ["A", "B", "C", "D"].map((t) => S().addBookmark({ profileId: "default", url: `https://${t}.com/`, title: t }));
   const [folder] = S().addBookmarkTree("default", [{ title: "F", children: [{ title: "E", url: "https://e.com/" }] }]);
   const inner = folderChildren(S().bookmarks, folder)[0].id;
-  // The folder's child goes with the folder; roots can't be removed.
   const removed = S().removeBookmarks([ids[1], ids[3], folder, inner, bar]);
   assert.equal(removed.places.length, 3);
   assert.deepEqual(titles(bar), ["A", "C"]);

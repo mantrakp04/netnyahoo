@@ -12,18 +12,13 @@ import { setStoreBatching } from "./src/store/browser";
 import { installErrorReporting, startTelemetry } from "./src/telemetry";
 import { markFirstWindow } from "./src/telemetry/track";
 
-// Intentional: react-native-macos 0.81's New Architecture is still experimental.
 LogBox.ignoreLogs(["The app is running using the Legacy Architecture"]);
-// LogBox's own views use RN shadow props, which crash react-native-macos (RCTView
-// didUpdateShadow), so any console.error/warn would take the app down. In DEV they're
-// written to $NETNYAHOO_DATA_DIR/dev-console.log instead (lib/devHarness).
+// LogBox views crash react-native-macos; suppress console errors and warnings.
 LogBox.ignoreAllLogs(true);
 
-// Opt-in crash and error reports (src/telemetry): hooked first, silent unless the user shares.
+// Reports stay silent until the user shares them.
 installErrorReporting();
-// A store update renders everything it changes in one commit (store/browser).
 setStoreBatching(unstable_batchedUpdates);
-// One JS runtime serves every window: restore the session, then open its windows.
 startPersistence();
 startNativeSync();
 startAppIntegration();
@@ -33,7 +28,6 @@ startSync();
 startTelemetry();
 if (__DEV__) require("./src/lib/devHarness").startDevHarness();
 
-// The native side renders "main" once per window, with `initialProperties: { windowId }`.
 function Root({ windowId }) {
   useEffect(markFirstWindow, []);
   return __DEV__ ? (

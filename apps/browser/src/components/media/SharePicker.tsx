@@ -12,23 +12,13 @@ import { Favicon, useHover } from "../primitives";
 import { noteTabShare } from "./ShareBar";
 import { useMedia } from "./state";
 
-/**
- * The screen-share picker (the page called getDisplayMedia()): which tab, screen
- * or window to share with the site, named prominently. Tabs (the site's profile's
- * open pages, with their audio) as rows with favicons, screens as tiles, windows as
- * rows with their app's icon. Tabs need an engine that can capture one
- * (`engineInfo().tabCapture`); there are no live thumbnails without Screen
- * Recording permission. Esc / Cancel denies, ↩ or a double-click shares.
- */
 const WIDTH = 460;
 const REFRESH_MS = 2500;
-/** A tab's row id in the picker (its capture id is asked for when it's shared). */
 const TAB = "tab:";
 
 let tabCapture: boolean | null = null;
 void engineInfo().then((info) => (tabCapture = !!info.tabCapture));
 
-/** Open pages of the requesting tab's profile that can be captured, most recently used first. */
 function shareableTabs(tabId: string) {
   const s = useBrowser.getState();
   const tab = s.tabs[tabId];
@@ -44,7 +34,6 @@ type Pending = DisplayMediaRequest & { pageUrl: string };
 
 export function requestDisplayMedia(tabId: string, request: DisplayMediaRequest) {
   const pending = useMedia.getState().displayRequests[tabId];
-  // A second request replaces the first (the page gave up on it).
   if (pending) void webviews.get(tabId)?.resolveDisplayMedia(pending.id, null);
   const pageUrl = useBrowser.getState().tabs[tabId]?.url ?? "";
   useMedia.setState((m) => ({ displayRequests: { ...m.displayRequests, [tabId]: { ...request, pageUrl } as Pending } }));
@@ -61,7 +50,6 @@ export function answerDisplayMedia(tabId: string, sourceId: string | null) {
   });
 }
 
-/** Leaving the page cancels its request. */
 export function cancelDisplayMediaOnNavigation() {
   const page = (url: string) => url.replace(/#.*$/, "");
   return useBrowser.subscribe((s, prev) => {
@@ -94,9 +82,7 @@ export function SharePicker({ tabId, paneWidth }: { tabId: string; paneWidth: nu
     setSources(request.sources);
     setSelected(null);
     let live = true;
-    // Windows come and go while the picker is open.
     const t = setInterval(() => void getDisplayMediaSources().then((next) => live && setSources(next)), REFRESH_MS);
-    // Keys (Esc, ↩) go to the picker, not the page.
     setTimeout(() => (list.current as unknown as { focus?: () => void } | null)?.focus?.(), 50);
     return () => {
       live = false;
@@ -120,14 +106,13 @@ export function SharePicker({ tabId, paneWidth }: { tabId: string; paneWidth: nu
   const valid = !!selected && (isTab(selected) || sources.some((s) => s.id === selected));
   const share = (id: string | null = selected) => {
     if (!id) return;
-    // A tab's capture id changes when its page moves to another renderer: ask right before sharing.
+    // Renderer changes replace capture IDs; read the ID immediately before sharing.
     if (isTab(id)) {
       const shared = id.slice(TAB.length);
       void webviews
         .get(shared)
         ?.mediaCaptureSourceId()
         .then((source) => {
-          // The info bars offer "Share this tab instead" while it runs (ShareBar.tsx).
           if (source) noteTabShare(tabId, shared, request.origin);
           answerDisplayMedia(tabId, source);
         });

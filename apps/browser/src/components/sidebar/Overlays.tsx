@@ -9,11 +9,6 @@ import { SearchTabs } from "./SearchTabs";
 import { TabSwitcher } from "./TabSwitcher";
 import { useSidebarWidth } from "./tokens";
 
-/**
- * The sidebar's window-level layers, above the page: hover cards, the icon
- * picker, Search Tabs (⇧⌘A) and the ⌃Tab switcher. Mounted once per window
- * (App.tsx), after the content so they draw over web views.
- */
 export function SidebarOverlays({ windowWidth }: { windowWidth: number }) {
   const windowId = useWindowId();
   const sidebarWidth = useSidebarWidth(windowId);

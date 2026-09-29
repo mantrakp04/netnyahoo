@@ -1,5 +1,4 @@
-// ⌘1–⌘8 / ⌘9 follow the sidebar's rows. Run from apps/browser:
-//   node --import ./src/store/test-loader.mjs --test src/components/sidebar/numberedTabs.test.mjs
+// Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/components/sidebar/numberedTabs.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../../store/browser.ts");
@@ -25,7 +24,6 @@ test("pinned tiles first, then pinned groups, then the list with groups in place
   const pinnedGroup = S().createGroup([id("f")]);
   S().updateGroup(pinnedGroup, { pinned: true });
   assert.deepEqual(urls(numberedTabs(S(), w)), ["e.com", "f.com", "a.com", "b.com", "c.com", "d.com"]);
-  // A collapsed group's tabs still count, as in Chrome.
   S().updateGroup(group, { collapsed: true });
   assert.deepEqual(urls(numberedTabs(S(), w)), ["e.com", "f.com", "a.com", "b.com", "c.com", "d.com"]);
 });

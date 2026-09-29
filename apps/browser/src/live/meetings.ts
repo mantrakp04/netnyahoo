@@ -1,10 +1,5 @@
 import type { CalendarParticipant, SystemCalendarEvent } from "@netnyahoo/shell";
 
-/**
- * Live Calendar's pure logic: which pages are calendars and calls, an event's
- * join link and related links, the next meeting, and Dia's copy for times and
- * attendees. Kept free of runtime imports (types only) for node tests.
- */
 export type CalendarEvent = SystemCalendarEvent;
 export type MeetingProvider = "meet" | "zoom" | "teams" | "webex" | "other";
 
@@ -23,7 +18,6 @@ const path = (url: string) => {
   }
 };
 
-/** Pages that get Live Calendar when pinned (Google Calendar, Outlook, Teams, iCloud, Notion Calendar…). */
 export function isCalendarUrl(url: string): boolean {
   const h = host(url);
   const p = path(url);
@@ -34,7 +28,6 @@ export function isCalendarUrl(url: string): boolean {
   return false;
 }
 
-/** A video call's provider and a key identifying the call (the same call opened twice has the same key). */
 export function meetingOf(url: string): { provider: MeetingProvider; key: string } | null {
   const h = host(url);
   const p = path(url);
@@ -59,7 +52,6 @@ export function meetingOf(url: string): { provider: MeetingProvider; key: string
 export const isMeetingUrl = (url: string) => !!meetingOf(url);
 
 const URL_RE = /https?:\/\/[^\s<>"'`)\]]+/g;
-/** Links in invitations that aren't material for the meeting. */
 const NOISE = [
   /(^|\.)support\.google\.com$/,
   /(^|\.)accounts\.google\.com$/,
@@ -78,7 +70,6 @@ function links(text: string): string[] {
   return [...new Set((text.match(URL_RE) ?? []).map((u) => u.replace(/[.,;:]+$/, "")))];
 }
 
-/** The link to join an event's call: its URL, location or notes, whichever has one. */
 export function joinLink(event: Pick<CalendarEvent, "url" | "location" | "notes">): { url: string; provider: MeetingProvider } | null {
   for (const text of [event.url, event.location, event.notes]) {
     for (const url of links(text ?? "")) {
@@ -89,7 +80,6 @@ export function joinLink(event: Pick<CalendarEvent, "url" | "location" | "notes"
   return null;
 }
 
-/** Docs, boards and other links in the invitation ("Open All and Join" opens them). */
 export function relatedLinks(event: Pick<CalendarEvent, "url" | "location" | "notes">): string[] {
   const join = joinLink(event)?.url;
   return links(`${event.url ?? ""} ${event.location ?? ""} ${event.notes ?? ""}`).filter((u) => {
@@ -99,17 +89,14 @@ export function relatedLinks(event: Pick<CalendarEvent, "url" | "location" | "no
   });
 }
 
-/** Timed events you haven't declined (all-day events don't count as meetings). */
 export const isMeeting = (e: CalendarEvent) => !e.allDay && !e.cancelled && !e.declined;
 
-/** The meeting in progress (the latest-started one) or else the next one, if any. */
 export function currentOrNext(events: CalendarEvent[], now: number): CalendarEvent | null {
   const meetings = events.filter(isMeeting).filter((e) => e.end > now);
   const current = meetings.filter((e) => e.start <= now).sort((a, b) => b.start - a.start)[0];
   return current ?? meetings.sort((a, b) => a.start - b.start)[0] ?? null;
 }
 
-/** The event whose join link is this call, preferring one happening around now. */
 export function eventForCall(events: CalendarEvent[], url: string, now: number): CalendarEvent | null {
   const key = meetingOf(url)?.key;
   if (!key) return null;
@@ -119,7 +106,6 @@ export function eventForCall(events: CalendarEvent[], url: string, now: number):
 
 const MINUTE = 60_000;
 
-/** The pinned calendar's badge: "Now" during a meeting, "12m" / "1h" before the next one (null: nothing within `withinMs`). */
 export function badgeText(events: CalendarEvent[], now: number, withinMs = 60 * MINUTE): string | null {
   const e = currentOrNext(events, now);
   if (!e) return null;
@@ -130,7 +116,6 @@ export function badgeText(events: CalendarEvent[], now: number, withinMs = 60 * 
   return min >= 60 ? `${Math.floor(min / 60)}h` : `${min}m`;
 }
 
-/** "in 5 min", "in 1 hr 10 min", "Now", "5 min ago" (Dia's "Time occurring in X minutes"). */
 export function relativeTime(at: number, now: number): string {
   const min = Math.round((at - now) / MINUTE);
   if (min === 0) return "Now";
@@ -139,7 +124,6 @@ export function relativeTime(at: number, now: number): string {
   return min > 0 ? `in ${text}` : `${text} ago`;
 }
 
-/** "just now", "5 min ago", "3 hr ago", "2 days ago" (future times count as now). */
 export function ago(at: number, now: number): string {
   const min = Math.floor(Math.max(0, now - at) / MINUTE);
   if (min < 1) return "just now";
@@ -150,19 +134,17 @@ export function ago(at: number, now: number): string {
   return days === 1 ? "yesterday" : `${days} days ago`;
 }
 
-/** A meeting group's countdown ("5 min left"), shown as the meeting nears its end. */
 export function timeRemaining(end: number, now: number): string {
   const min = Math.ceil((end - now) / MINUTE);
   if (min <= 0) return "Ending now";
   return min >= 60 ? `${Math.floor(min / 60)} hr ${min % 60} min left` : `${min} min left`;
 }
 
-/** The group title wiggles as these marks pass (Dia 1.2x: 5 and 2 minutes before the end). */
+// Dia: 5 / 2 min.
 export const WIGGLE_MARKS_MIN = [5, 2];
 
 const displayName = (p: CalendarParticipant) => p.name || p.email.split("@")[0] || "Guest";
 
-/** "Alice, Bob and 3 more", "Alice and Bob", "Alice" — the other attendees. */
 export function attendeesLabel(event: Pick<CalendarEvent, "attendees">): string {
   const others = event.attendees.filter((p) => !p.me);
   const names = others.map(displayName);
@@ -172,13 +154,11 @@ export function attendeesLabel(event: Pick<CalendarEvent, "attendees">): string 
   return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }
 
-/** "5 guests" / "1 guest" (everyone invited, you included). */
 export function guestsLabel(event: Pick<CalendarEvent, "attendees">): string {
   const n = event.attendees.length;
   return n === 1 ? "1 guest" : `${n} guests`;
 }
 
-/** "10:00 – 10:30 AM" in the user's locale. */
 export function timeRange(event: Pick<CalendarEvent, "start" | "end">): string {
   const fmt = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return `${fmt(event.start)} – ${fmt(event.end)}`;
@@ -191,7 +171,6 @@ export function joinTitle(provider: MeetingProvider | undefined): string {
   return "Join";
 }
 
-/** Alert lead times (Dia's "Show Next Meeting Alert" menu), minutes before the start; null = never. */
 export const ALERT_LEADS: { value: string; title: string; minutes: number | null }[] = [
   { value: "never", title: "Never", minutes: null },
   { value: "start", title: "At Meeting Start", minutes: 0 },
@@ -202,7 +181,6 @@ export const ALERT_LEADS: { value: string; title: string; minutes: number | null
   { value: "10", title: "Ten Minutes Before", minutes: 10 },
 ];
 
-/** Events whose alert is due at `now` (lead minutes before start, until 5 minutes in). */
 export function dueAlerts(events: CalendarEvent[], now: number, leadMinutes: number, dismissed: Set<string>): CalendarEvent[] {
   return events
     .filter(isMeeting)

@@ -9,11 +9,6 @@ import { DEFAULT_SETTINGS } from "../store/settings";
 import type { Bookmarks, BrowserWindow, ClosedTab, HistoryEntry, Tab } from "../store/types";
 import { flushFavicons, startFavicons } from "./favicons";
 
-/**
- * Session persistence, v2. State is split across documents so a title change
- * doesn't rewrite 5 000 history entries: each document is saved (debounced) only
- * when the slices it covers change. Incognito windows and tabs never persist.
- */
 const SAVE_DELAY_MS = 800;
 const VERSION = 2;
 
@@ -27,7 +22,6 @@ const DOCS: Doc[] = [
   {
     name: "downloads.json",
     sources: (s) => [s.downloads],
-    // In-progress downloads can't resume after a relaunch; incognito ones are never written.
     serialize: (s) => ({
       version: VERSION,
       downloads: s.downloads
@@ -35,7 +29,7 @@ const DOCS: Doc[] = [
         .map((d) => (d.state === "downloading" ? { ...d, state: "failed" } : d)),
     }),
   },
-  // Last: after a v1 migration, history and bookmarks must be on disk before the v1 file is replaced.
+// Save history and bookmarks before replacing the v1 file.
   {
     name: "session.json",
     sources: (s) => [s.profiles, s.profileOrder, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.parkedPins, s.settings, s.ui.focusedWindowId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
@@ -103,7 +97,6 @@ type SessionV2 = {
   cleanedTabs?: BrowserState["cleanedTabs"];
 };
 
-/** v1 (single window, flat bookmarks) → v2 documents. */
 type SessionV1 = {
   version: 1;
   tabs: Pick<Tab, "url" | "title" | "favicon" | "pinned" | "muted" | "zoom">[];
@@ -127,7 +120,6 @@ export function migrateV1(v1: SessionV1): HydrateData {
     tabIds: tabs.map((t) => t.id),
     activeTabIds: active ? { [profileId]: active.id } : {},
     sidebarOpen: v1.sidebarOpen,
-    // The native side falls back to the frame the v1 window autosaved.
     frame: null,
     createdAt: Date.now(),
   };
@@ -141,7 +133,6 @@ export function migrateV1(v1: SessionV1): HydrateData {
     group: null,
     closedAt: now - (v1.closedUrls.length - i),
   }));
-  // Flat bookmarks land on the Bookmarks Bar, oldest first.
   let [bookmarks, roots] = ensureRoots(EMPTY_BOOKMARKS, profileId);
   for (const b of v1.bookmarks) {
     const id = newId("bm");
@@ -170,11 +161,9 @@ export function migrateV1(v1: SessionV1): HydrateData {
   };
 }
 
-/** Reads the saved documents (migrating a v1 session) into hydrate data; null data on a first launch. */
 export function loadSession(): { data: HydrateData | null; migrated: boolean } {
   const session = read<SessionV2 | SessionV1>("session.json");
   if (session?.version === 1) {
-    // Keep the original around in case the migration ever needs redoing.
     write("session.v1.backup.json", JSON.stringify(session));
     return { data: migrateV1(session), migrated: true };
   }
@@ -200,11 +189,8 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
     cleanedTabs: session.cleanedTabs ?? [],
     history: history?.history ?? {},
     bookmarks: bookmarks?.bookmarks ?? EMPTY_BOOKMARKS,
-    // The engine numbers downloads from 1 on every launch: saved ones get ids of their own.
     downloads: (downloads?.downloads ?? []).map((d, i) => ({ ...d, id: `saved-${i}` })),
   };
-  // "Start fresh" on launch: the last windows go to Reopen Closed Window instead, their pinned tabs
-  // to the profiles' next windows (store/parkedPins).
   if (session.settings && session.settings.restoreSession === false) {
     const now = Date.now();
     const pinSource = { tabs: data.tabs ?? {}, groups: data.groups ?? {}, history: data.history ?? {} };
@@ -230,10 +216,6 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
   return { data, migrated: false };
 }
 
-/**
- * v1 kept zoom per tab; the engine now keeps it per host (like Chrome/Dia) and
- * restores it itself. Hand the migrated tabs' zoom levels over once.
- */
 function seedHostZoom() {
   for (const t of Object.values(useBrowser.getState().tabs)) {
     if (t.zoom === 1 || !t.url) continue;
@@ -246,17 +228,14 @@ function seedHostZoom() {
 let flush: () => void = () => {};
 let frozen = false;
 
-/** Writes pending changes now. `final` (quitting): nothing after this is saved. */
 export function flushPersistence({ final = false } = {}) {
   flush();
   flushFavicons();
   if (final) frozen = true;
 }
 
-/** Restores the last session, then saves each document (debounced) when its slices change. */
 export function startPersistence() {
   const { data, migrated } = loadSession();
-  // Hydrating even without data sets up the default profile's bookmark roots.
   useBrowser.getState().hydrate(data ?? {});
   if (migrated) seedHostZoom();
 
@@ -305,7 +284,6 @@ export function startPersistence() {
   };
 }
 
-/** An incognito window closed: its downloads leave the list (and stop, if they hadn't finished). */
 function forgetClosedIncognito(s: BrowserState, prev: BrowserState) {
   for (const w of Object.values(prev.windows)) {
     if (!w.incognito || s.windows[w.id]) continue;

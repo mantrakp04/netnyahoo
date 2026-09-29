@@ -1,42 +1,20 @@
-/**
- * Dia 1.50's window background (docs/dia-spec.md › Window translucency), `PlatformWindowViewController`
- * `backgroundBaseView` + `backgroundOverlayTintView`:
- * - the desktop behind the window, blurred: an NSVisualEffectView (material 29 dark / `.hudWindow`
- *   light) that AppKit turns into an opaque fill while the window is inactive or Reduce
- *   Transparency is on;
- * - `WindowBackground/BaseTint` over it: black 0.4 (dark) / white 0.8 (light);
- * - a vertical gradient of the profile colour at `gradientAlpha`, in a view at alpha 0.5 (dark) /
- *   0.75 (light): the colour at the top, the colour with its HSL lightness raised by
- *   `gradientLightnessDelta` at the bottom (HSL of the P3 components).
- * The native side (WindowBackdrop `vibrancy`) has the fixed parts; these are the per-window inputs,
- * from `WindowViewModel.State.BackgroundTintInfo`.
- */
+// AppKit makes the visual-effect fill opaque when inactive or Reduce Transparency is on.
 export type BackdropTint = {
-  /** The profile colour as Display P3 hex: Dia's is a P3 colour, lightened in P3. */
   tintColor: string;
   tintAlpha: number;
   tintLightness: number;
 };
 
-/** `gradientLightnessDelta`: 0.25 with the New Tab rebrand (on in 1.50), 0.4 without. */
+// Dia: 0.25.
 const LIGHTNESS = 0.25;
 
 export function backdropTint(color: string, neutral: boolean): BackdropTint {
-  // `gradientAlpha ?? (isNeutralTheme ? 0.12 : 0.36)`.
+  // Dia: 0.12 / 0.36.
   return { tintColor: color, tintAlpha: neutral ? 0.12 : 0.36, tintLightness: LIGHTNESS };
 }
 
-/**
- * The blur's opaque fill while the window is inactive (Display P3, measured over this Mac's
- * wallpaper, which AppKit tints it with): material 29 (dark) and `.hudWindow` (light).
- */
 const INACTIVE_FILL = { dark: [40.7, 33.1, 31.8], light: [235, 231, 230] };
 
-/**
- * What the backdrop looks like with the blur opaque (inactive window, Reduce Transparency), top →
- * bottom: for surfaces that need the window colour as a solid fill (P3 values written as sRGB hex,
- * a close enough approximation for these dark and light greys).
- */
 export function opaqueTint(tint: BackdropTint, dark: boolean): [string, string] {
   const a = tint.tintAlpha * (dark ? 0.5 : 0.75);
   const under = dark ? INACTIVE_FILL.dark.map((f) => 0.6 * f) : INACTIVE_FILL.light.map((f) => 0.8 * 255 + 0.2 * f);
@@ -46,10 +24,7 @@ export function opaqueTint(tint: BackdropTint, dark: boolean): [string, string] 
   return [over(top), over(bottom)];
 }
 
-/**
- * The profile colour for a swatch's hue, at the saturation and lightness of the one measured from
- * Dia (pink profile, P3 #B25B6B: HSL 349°, 0.36, 0.53). Other colours are unmeasured.
- */
+// Dia: 349°, 0.36, 0.53.
 export function tintForHue(swatch: string, grey = false): string {
   const [h] = hsl(rgb(swatch));
   return hex(fromHsl(h, grey ? 0 : 0.36, 0.527));
@@ -78,7 +53,6 @@ function fromHsl(h: number, s: number, l: number): number[] {
   return [ch(h + 1 / 3), ch(h), ch(h - 1 / 3)].map((v) => v * 255);
 }
 
-/** HSL lightness + `delta`, clamped: Dia's colour helper (and WindowBackdropView's). */
 function lighten(c: number[], delta: number): number[] {
   const [h, s, l] = hsl(c);
   return fromHsl(h, s, Math.min(1, Math.max(0, l + delta)));

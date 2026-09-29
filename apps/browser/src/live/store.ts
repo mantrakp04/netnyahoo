@@ -2,47 +2,30 @@ import { readDocument, writeDocument } from "@netnyahoo/shell";
 import { create } from "zustand";
 import type { CompletedItem, CompletionState, FolderStatus, LiveAccount, LiveFolder, LiveFolderKind, LiveItem, LiveSourceId } from "./types";
 
-/**
- * Live folders, connected accounts, Live Calendar settings and meeting groups.
- * Its own store and document (live.json) so fetches don't rewrite the session;
- * secrets are in the keychain (./auth). Tabs opened from a folder carry
- * `tab.liveItem` in the app store.
- */
 export type LiveConfig = {
-  /** A GitHub OAuth app's client id for the device flow (a personal access token works without one). */
   githubClientId: string;
-  /** Bitbucket Cloud: the account's email (API tokens) or username (app passwords). */
   bitbucketUser: string;
-  /** "https://acme.atlassian.net" + the account email for its API token. */
   confluenceSite: string;
   confluenceEmail: string;
-  /** Google Drive: a "Desktop app" OAuth client from the user's Google Cloud project. */
   googleClientId: string;
 };
 
 export type CalendarSettings = {
-  /** ALERT_LEADS value: "never", "start", or minutes before. */
   alertLead: string;
-  /** Alerts only while Netnyahoo is the active app, or also as a system notification. */
   alertCondition: "always" | "activeOnly";
   showPreview: boolean;
   showTimeToNext: boolean;
-  /** Calendars left out of Live Calendar ("Active Calendars" unchecked). */
   hiddenCalendarIds: string[];
-  /** Asked when a calendar is first pinned ("Would you like to see meeting alerts for this calendar?"). */
   prompted: boolean;
 };
 
-/** A tab group made when you joined a call. */
 export type MeetingGroup = {
   groupId: string;
   callTabId: string;
-  /** The calendar event's occurrence, when the call matched one. */
   occurrence: string | null;
   title: string;
   start: number | null;
   end: number | null;
-  /** Set once the meeting is over: the group is then a normal group, cleaned up when idle. */
   endedAt: number | null;
 };
 
@@ -50,17 +33,12 @@ type LiveState = {
   folders: Record<string, LiveFolder>;
   folderOrder: string[];
   items: Record<string, LiveItem[]>;
-  /** Item ids a folder has ever shown (new ones are unread). */
   known: Record<string, string[]>;
   unread: Record<string, string[]>;
-  /** Merged / closed PRs, newest first ("Hover to pull a recently completed PR back into view"). */
   completed: Record<string, CompletedItem[]>;
-  /** Items playing the completion animation before they leave. Not persisted. */
   completing: Record<string, string[]>;
   status: Record<string, FolderStatus>;
-  /** Pull request stacks the user expanded. */
   expandedStacks: Record<string, boolean>;
-  /** Sections ("Show N More") the user expanded, by `${folderId}:${section}`. Not persisted. */
   showAll: Record<string, boolean>;
   accounts: Partial<Record<LiveSourceId, LiveAccount>>;
   config: LiveConfig;
@@ -115,7 +93,6 @@ export const useLive = create<LiveState>()(() => ({
 export const live = () => useLive.getState();
 export const setLive = (patch: Partial<LiveState> | ((s: LiveState) => Partial<LiveState>)) => useLive.setState(patch);
 
-// Debounced save of the persisted slices.
 let timer: ReturnType<typeof setTimeout> | undefined;
 useLive.subscribe((s, prev) => {
   if (PERSISTED.every((k) => s[k] === prev[k])) return;
@@ -195,24 +172,17 @@ export function moveFolder(id: string, delta: -1 | 1) {
 const MAX_KNOWN = 600;
 const MAX_COMPLETED = 20;
 
-/**
- * A fetch's result. New items (never seen before) are unread — except on a
- * folder's first fetch, which just fills it. Items that left because they were
- * merged or closed (`gone`) stay a moment to play the completion animation.
- */
 export function applyFetch(folderId: string, next: LiveItem[], gone: Record<string, CompletionState>, now = Date.now(), quiet: Set<string> = new Set()) {
   setLive((s) => {
     if (!s.folders[folderId]) return {};
     const known = new Set(s.known[folderId] ?? []);
     const first = known.size === 0 && !s.status[folderId]?.lastFetch;
     const fresh = next.filter((it) => !known.has(it.id)).map((it) => it.id);
-    // Items of a source just added to the folder fill it quietly too.
     const unreadFresh = fresh.filter((id) => !quiet.has(id));
     const ids = new Set(next.map((it) => it.id));
     const prev = s.items[folderId] ?? [];
     const animating = new Set(s.completing[folderId] ?? []);
     const leaving = prev.filter((it) => !ids.has(it.id) && gone[it.id] && !animating.has(it.id));
-    // Keep leaving (and still animating) items where they were while they animate out.
     const merged = [...next];
     for (const it of prev) if (!ids.has(it.id) && (animating.has(it.id) || leaving.includes(it))) merged.splice(Math.min(prev.indexOf(it), merged.length), 0, it);
     const completed = [
@@ -231,7 +201,6 @@ export function applyFetch(folderId: string, next: LiveItem[], gone: Record<stri
   });
 }
 
-/** The completion animation finished: the items leave the list. */
 export function finishCompleting(folderId: string, ids: string[]) {
   setLive((s) => ({
     items: { ...s.items, [folderId]: (s.items[folderId] ?? []).filter((it) => !ids.includes(it.id)) },
@@ -278,5 +247,4 @@ export function setMeetingGroup(group: MeetingGroup | null, groupId?: string) {
   });
 }
 
-/** Folders shown for a profile, in sidebar order. */
 export const profileFolders = (s: LiveState, profileId: string) => s.folderOrder.filter((id) => s.folders[id]?.profileId === profileId);

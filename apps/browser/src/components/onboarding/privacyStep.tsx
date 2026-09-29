@@ -6,10 +6,6 @@ import { StepLayout } from "./steps";
 import { useOnboarding } from "./state";
 import { CheckRow, PrimaryButton, Reveal, StepTitle, useOnboardingColors } from "./ui";
 
-/**
- * Onboarding's telemetry step: one checkbox, off unless the user ticks it (or already shared on
- * this Mac). The preview is an itemised receipt of what would go, and what never does.
- */
 export function PrivacyStep() {
   const next = useOnboarding((s) => s.next);
   const [share, setShare] = useState(() => useTelemetry.getState().sharing);
@@ -40,7 +36,6 @@ function Receipt({ on }: { on: boolean }) {
   const line = (label: string, mark: string, dim: boolean) => (
     <View key={label} style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: dim ? 0.35 : 1 }}>
       <Text style={{ fontFamily: MONO, fontSize: 11, color: colors.title }}>{label}</Text>
-      {/* Dot leaders as text: a dotted border on a 1pt line draws solid in some rows. */}
       <Text numberOfLines={1} ellipsizeMode="clip" style={{ flex: 1, fontFamily: MONO, fontSize: 11, color: colors.steps }}>
         {".".repeat(40)}
       </Text>
@@ -76,7 +71,6 @@ function Receipt({ on }: { on: boolean }) {
         <Text style={{ fontFamily: MONO, fontSize: 11, fontWeight: "700", color: colors.title }}>PERSONAL DATA</Text>
         <Text style={{ fontFamily: MONO, fontSize: 11, fontWeight: "700", color: colors.title }}>0.00</Text>
       </View>
-      {/* Stamp: whether this Mac shares. */}
       <View
         style={{
           alignSelf: "center",

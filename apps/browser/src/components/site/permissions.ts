@@ -4,21 +4,13 @@ import { useBrowser } from "../../store/browser";
 import { patchPage, pageOf, tabForBrowser, usePages } from "../layout/pageState";
 import { startDeviceChoosers } from "./DeviceChooser";
 
-/**
- * Web permission requests (camera, location, notifications…) → a prompt on the
- * requesting tab. One shows at a time per tab; later ones wait their turn.
- * Answers are remembered per site ("Always" semantics: the engine stores them,
- * and the site controls popover can change them later).
- */
 const queues = new Map<string, PermissionRequest[]>();
-/** Requests that arrived before their tab's browser id was known. */
 const orphans: PermissionRequest[] = [];
 let started = false;
 
 export function startPermissionPrompts() {
   if (started) return;
   started = true;
-  // Chrome's device choosers (Bluetooth, USB, HID, serial) ask the same way.
   startDeviceChoosers();
   onPermission((request) => {
     const tabId = tabForBrowser(request.browserId);
@@ -28,9 +20,8 @@ export function startPermissionPrompts() {
     }
     enqueue(tabId, request);
   });
-  // Chromium withdrew the request (navigation, tab closed, page cancelled it).
   onPermissionDismissed(({ id }) => drop(id));
-  // A browser id learned later may own a waiting request.
+  // Attach queued requests once their tab browser ids arrive.
   usePages.subscribe((s, prev) => {
     if (s.browsers === prev.browsers || !orphans.length) return;
     for (const request of orphans.splice(0)) {
@@ -59,19 +50,16 @@ function drop(id: string) {
   for (const [tabId, queue] of queues) queues.set(tabId, queue.filter((r) => r.id !== id));
 }
 
-/** Allow / Don't Allow (remembered for the site) or dismiss (asks again next time). */
 export function answerPermission(tabId: string, result: PermissionResult) {
   const request = pageOf(tabId).permission;
   if (!request) return;
   void resolvePermission(request.id, result, result !== "dismiss");
-  // The first site allowed to notify triggers macOS's own permission prompt.
   if (result === "accept" && request.permissions.includes("notifications")) {
     void ensureNotificationPermission(useBrowser.getState().tabs[tabId]?.windowId);
   }
   next(tabId);
 }
 
-/** Leaving the page dismisses whatever it was asking for. */
 export function dismissPermissions(tabId: string) {
   for (const r of queues.get(tabId) ?? []) void resolvePermission(r.id, "dismiss");
   queues.delete(tabId);
@@ -84,7 +72,6 @@ export function dismissPermissions(tabId: string) {
 
 type Describe = { icon: string; noun?: string; question?: (site: string) => string };
 
-/** Dia's wording: "Allow %@ to access your %@?", with its own lines for some kinds. */
 const KINDS: Record<PermissionKind, Describe> = {
   camera: { icon: "video", noun: "camera" },
   microphone: { icon: "mic", noun: "microphone" },
@@ -128,6 +115,5 @@ export function describePermission(request: PermissionRequest): { icons: string[
   if (single) return { icons, question: single(site) };
   const nouns = kinds.map((k) => k.noun).filter((n): n is string => !!n);
   if (nouns.length === kinds.length) return { icons, question: `Allow ${site} to access your ${list(nouns)}?` };
-  // Mixed kinds with their own sentences: fall back to a generic line.
   return { icons, question: `Allow ${site} to use ${list(request.permissions.map((k) => KINDS[k]?.noun ?? k))}?` };
 }

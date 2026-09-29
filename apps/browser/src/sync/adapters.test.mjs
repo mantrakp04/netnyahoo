@@ -1,5 +1,3 @@
-// The sync adapters against the real store: two "devices" take turns with the one store
-// (each keeps its own state and swaps it in to sync), through an in-memory sync folder.
 // Run from apps/browser:  node --import ./src/sync/test-loader.mjs --test src/sync/adapters.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -41,7 +39,6 @@ class Device {
     stub.passwordStores.set(id, new Map());
     this.passwords = adapters.passwordsAdapter("default", () => true, stub.readLogins);
   }
-  /** Runs `fn` with this device's state in the store. */
   with(fn) {
     stub.current.device = this.id;
     useBrowser.setState(this.browser, true);
@@ -77,7 +74,6 @@ async function syncAll(devices, rounds = 2) {
   for (let i = 0; i < rounds; i++) for (const d of devices) await d.sync();
 }
 
-/** A profile's bookmark tree as nested titles (url after "="). */
 function tree(device, profileId = "default") {
   return device.with(() => {
     const b = S().bookmarks;
@@ -90,7 +86,6 @@ function tree(device, profileId = "default") {
   });
 }
 
-/** Every folder's children exist, every node's parent lists it: the tree is whole. */
 function assertTreeWhole(device) {
   device.with(() => {
     const b = S().bookmarks;
@@ -114,7 +109,6 @@ test("bookmarks: a tree made on one Mac appears on the other, then edits flow ba
   });
   await syncAll([a, b]);
   assert.deepEqual(tree(b), tree(a));
-  // Steady state: nothing more to publish on either side.
   assert.equal((await a.sync()).published, 0);
   assert.equal((await b.sync()).published, 0);
 
@@ -206,7 +200,6 @@ test("settings: a Mac that joins takes the synced settings; a change later syncs
   await syncAll([b, a]);
   assert.equal(a.with(() => S().settings.showFullUrl), true);
   assert.equal(a.with(() => S().settings.sidebarWidth), 300, "window sizes stay per Mac");
-  // Settings whose value is null (Clean Up Daily off) settle too: nothing bounces between Macs.
   assert.equal(a.with(() => S().settings.cleanUpInactiveTabsAfterHours), null);
   for (let i = 0; i < 2; i++) {
     assert.equal((await a.sync()).published, 0);
@@ -257,7 +250,6 @@ test("pinned tabs and pinned groups: tiles arrive unloaded, in order, and unpinn
   assert.equal((await b.sync()).published, 0);
   assert.equal((await a.sync()).published, 0);
 
-  // B unpins Calendar and moves Mail after it... (unpinned = gone from the pinned container)
   b.with(() => {
     const cal = Object.values(S().tabs).find((t) => t.url === "https://cal.example/");
     S().pinTabs([cal.id], false);
@@ -284,13 +276,11 @@ test("pinned tabs parked by a closed window still sync: not deleted elsewhere, a
   const pins = (d) => d.with(() => Object.values(S().tabs).filter((t) => t.pinned).map((t) => t.pinnedUrl).sort());
   assert.deepEqual(pins(b), ["https://cal.example/", "https://mail.example/"]);
 
-  // A closes the window with the pins (another window stays open): they're parked, not deleted.
   a.with(() => S().closeWindow(aHome));
   assert.equal(a.with(() => S().parkedPins.default.tabs.length), 2);
   await syncAll([a, b]);
   assert.deepEqual(pins(b), ["https://cal.example/", "https://mail.example/"], "still pinned on B");
 
-  // B renames Mail and unpins Calendar: A's parked pins follow, and stay parked.
   b.with(() => {
     const [mail, cal] = ["https://mail.example/", "https://cal.example/"].map((u) => Object.values(S().tabs).find((t) => t.pinnedUrl === u).id);
     S().updateTab(mail, { customTitle: "Inbox" });
@@ -302,7 +292,6 @@ test("pinned tabs parked by a closed window still sync: not deleted elsewhere, a
   assert.equal(a.with(() => S().windows[aWork].tabIds.some((id) => S().tabs[id].pinned)), false, "nothing moved into A's other window");
   assert.equal((await a.sync()).published, 0, "settled");
 
-  // A's next window gets the pin as synced.
   const n = a.with(() => S().createWindow());
   assert.deepEqual(a.with(() => model.viewTabIds(S(), n).filter((id) => S().tabs[id].pinned).map((id) => S().tabs[id].customTitle)), ["Inbox"]);
   assert.equal((await a.sync()).published, 0, "adopting them publishes nothing new");
@@ -313,7 +302,6 @@ test("0.2.7's Liquid Glass leftovers: tabs pinned as rows show and sync as tiles
   const folder = new Folder();
   const a = new Device("devA", folder);
   const b = new Device("devB", folder);
-  // Stored by 0.2.7: a tab pinned as a row (tab.pinnedRow) and Sidebar Style "Liquid Glass".
   const w = a.with(() => {
     const w = S().createWindow({ url: "https://mail.example/" });
     const row = S().newTab(w, { url: "https://row.example/" });
@@ -339,7 +327,6 @@ test("open tabs: each device publishes its own tabs record only", async () => {
   assert.deepEqual(records["tabs:devA"].v.tabs.map((t) => t.u), ["https://a-open.example/"]);
   assert.equal(records["tabs:devA"].v.n, "devA's MacBook Pro");
   assert.deepEqual(records["tabs:devB"].v.tabs.map((t) => t.u), ["https://b-open.example/"]);
-  // B's own window is untouched by A's tabs.
   assert.deepEqual(b.with(() => Object.values(S().tabs).map((t) => t.url)), ["https://b-open.example/"]);
 });
 

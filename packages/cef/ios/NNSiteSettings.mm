@@ -23,14 +23,9 @@ namespace {
 struct SettingType {
   const char *name;
   cef_content_setting_types_t type;
-  /// Chrome's content settings registry name: its exceptions are the pref
-  /// "profile.content_settings.exceptions.<pref>".
   const char *pref;
 };
 
-// Only types Chromium registers on macOS (querying others CHECK-fails).
-// Chrome stores "autoplay" but only enforces it on Android; the page script
-// enforces it here.
 const SettingType kTypes[] = {
     {"popups", CEF_CONTENT_SETTING_TYPE_POPUPS, "popups"},
     {"camera", CEF_CONTENT_SETTING_TYPE_MEDIASTREAM_CAMERA, "media_stream_camera"},
@@ -80,11 +75,7 @@ cef_content_setting_values_t ValueNamed(NSString *name) {
 }
 
 // MARK: - Site-specific values
-//
-// CEF can read a value but not enumerate them: Chrome's exceptions are read
-// from its prefs, {"https://example.com:443,*": {setting, last_modified…}}.
 
-/// "https://example.com" for an exception's primary pattern (nil for wildcards and non-web schemes).
 NSString *OriginOfPattern(NSString *pattern) {
   NSString *primary = [pattern componentsSeparatedByString:@","].firstObject;
   if ([primary containsString:@"*"]) return nil;
@@ -97,7 +88,6 @@ NSString *OriginOfPattern(NSString *pattern) {
   return defaultPort ? origin : [origin stringByAppendingFormat:@":%@", c.port];
 }
 
-/// Origins with an exception for `type` in the profile.
 NSSet<NSString *> *ExceptionOrigins(NSString *profile, const SettingType &type) {
   NSMutableSet *origins = [NSMutableSet set];
   std::string pref = std::string("profile.content_settings.exceptions.") + type.pref;
@@ -135,7 +125,7 @@ class CookiesDeleted : public CefDeleteCookiesCallback {
  public:
   explicit CookiesDeleted(void (^block)(int)) : block_([block copy]) {}
   void OnComplete(int num_deleted) override {
-    auto block = block_;  // not `this`: we may be released before the block runs
+    auto block = block_;
     dispatch_async(dispatch_get_main_queue(), ^{ block(num_deleted); });
   }
 
@@ -221,10 +211,9 @@ NSString *TLSVersion(cef_ssl_version_t v) {
   }
 }
 
-// Minor statuses Chromium doesn't treat as errors.
 constexpr uint32_t kCertErrorMask = 0xFF00FFFF & ~(CERT_STATUS_NO_REVOCATION_MECHANISM | CERT_STATUS_UNABLE_TO_CHECK_REVOCATION);
 
-}  // namespace
+}
 
 // MARK: - nn::site
 
@@ -232,7 +221,7 @@ namespace nn::site {
 
 bool PopupsAllowed(NSString *profile, NSString *openerURL) {
   NSString *origin = OriginOf(openerURL);
-  if (!origin) return true;  // file:, about:, extensions…
+  if (!origin) return true;
   return ContextForProfile(profile)->GetContentSetting(ToCef(origin), ToCef(origin), CEF_CONTENT_SETTING_TYPE_POPUPS) ==
          CEF_CONTENT_SETTING_VALUE_ALLOW;
 }
@@ -258,7 +247,6 @@ bool OpenBlockedPopup(CefRefPtr<CefBrowser> browser, NSString *popupId, bool alw
     if (NSString *origin = OriginOf(ToNS(browser->GetMainFrame()->GetURL())))
       SetValue(profile, origin, CEF_CONTENT_SETTING_TYPE_POPUPS, CEF_CONTENT_SETTING_VALUE_ALLOW);
   }
-  // Replaying window.open() with a user gesture keeps window.opener and the features.
   NSString *call = [NSString stringWithFormat:@"void window.open(%@, %@, %@)", ToJSON(popup.url), ToJSON(popup.name ?: @""),
                                               ToJSON(popup.features ?: @"")];
   EvaluateWithGesture(browser, call, nil);
@@ -298,8 +286,6 @@ NSDictionary *SecurityInfo(CefRefPtr<CefBrowser> browser) {
 }
 
 bool OnCertificateError(Client *, cef_errorcode_t, NSString *, CefRefPtr<CefSSLInfo>, CefRefPtr<CefCallback>) {
-  // Chrome shows its SSL interstitial (with "Proceed" for overridable errors); Site Controls
-  // read the page's certificate state from its security info.
   return false;
 }
 
@@ -370,7 +356,6 @@ void AllowDesktopCapture(int browserId) { gDesktopCaptureAllowed[browserId] = CA
 
 bool ConsumeDesktopCapture(int browserId) {
   auto it = gDesktopCaptureAllowed.find(browserId);
-  // Sharing a tab: Chrome asks on behalf of the captured tab, not the page that asked.
   if (it == gDesktopCaptureAllowed.end() && host::ChromeTabs()) {
     it = std::max_element(gDesktopCaptureAllowed.begin(), gDesktopCaptureAllowed.end(),
                           [](auto &a, auto &b) { return a.second < b.second; });
@@ -383,7 +368,6 @@ bool ConsumeDesktopCapture(int browserId) {
 
 NSArray<NSDictionary *> *DesktopCaptureSources() {
   NSMutableArray *sources = [NSMutableArray array];
-  // Chromium's desktop-capture ids: "screen:<CGDirectDisplayID>:0", "window:<CGWindowID>:0".
   NSUInteger index = 0;
   for (NSScreen *screen in NSScreen.screens) {
     NSNumber *display = screen.deviceDescription[@"NSScreenNumber"];
@@ -405,7 +389,7 @@ NSArray<NSDictionary *> *DesktopCaptureSources() {
     CGFloat width = [bounds[@"Width"] doubleValue], height = [bounds[@"Height"] doubleValue];
     if (width < 50 || height < 50) continue;
     NSString *app = w[(id)kCGWindowOwnerName] ?: @"";
-    NSString *title = w[(id)kCGWindowName];  // empty without Screen Recording permission
+    NSString *title = w[(id)kCGWindowName];
     [sources addObject:@{
       @"id" : [NSString stringWithFormat:@"window:%u:0", [w[(id)kCGWindowNumber] unsignedIntValue]],
       @"kind" : @"window",
@@ -446,7 +430,6 @@ void OriginChanged(Client *client) {
   NSString *origin = OriginOf(client->URL());
   ExpireGrants(bid, origin);
   gGrantedMedia.erase(bid);
-  // Sound: a site set to "block" is muted while the tab shows it.
   client->SetSiteMuted(origin && ContextForProfile(client->Profile())->GetContentSetting(
                                      ToCef(origin), ToCef(origin), CEF_CONTENT_SETTING_TYPE_SOUND) ==
                                      CEF_CONTENT_SETTING_VALUE_BLOCK);
@@ -471,7 +454,7 @@ CefRefPtr<CefUnresponsiveProcessCallback> UnresponsiveCallback(int browserId) {
   return it == gUnresponsive.end() ? nullptr : it->second;
 }
 
-}  // namespace nn::site
+}
 
 // MARK: - Public API
 
@@ -495,7 +478,6 @@ CefRefPtr<CefUnresponsiveProcessCallback> UnresponsiveCallback(int browserId) {
   origin = OriginOf(origin);
   if (!t || !origin) return;
   SetValue(profile, origin, t->type, ValueNamed(value));
-  // Sound applies to open tabs right away.
   if (t->type == CEF_CONTENT_SETTING_TYPE_SOUND) {
     for (NNBrowserView *view in LiveViews()) {
       CefRefPtr<Client> client = view.client;
@@ -539,8 +521,6 @@ CefRefPtr<CefUnresponsiveProcessCallback> UnresponsiveCallback(int browserId) {
     completion(@{@"cookies" : @NO, @"storage" : @NO});
     return;
   }
-  // Storage goes through DevTools (Storage.clearDataForOrigin) on any browser
-  // of the profile; cookies through the cookie manager.
   CefRefPtr<CefBrowser> browser;
   for (NNBrowserView *view in LiveViews()) {
     if (![view.profile isEqualToString:profile]) continue;

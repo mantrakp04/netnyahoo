@@ -12,11 +12,6 @@ import { useOnboardingColors } from "./ui";
 
 const CARD = { width: 880, height: 560, margin: 40 };
 
-/**
- * Onboarding, drawn over the whole browser window it was started in: the intro first, then
- * each step in a card over the dimmed, blurred window. Finishing fades it away to reveal the
- * New Tab page underneath (and, if asked for, the tool tour over it).
- */
 export function OnboardingOverlay() {
   const windowId = useWindowId();
   const active = useOnboarding((s) => s.windowId === windowId);
@@ -24,7 +19,6 @@ export function OnboardingOverlay() {
   return (
     <>
       {active ? <Overlay key={session} session={session} /> : null}
-      {/* The tool tour that can follow it (and Help › Tool Tour). */}
       <ToolTour />
     </>
   );
@@ -42,7 +36,6 @@ function Overlay({ session }: { session: number }) {
     Animated.timing(presence, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, []);
 
-  // The card rises in once the intro hands over.
   useEffect(() => {
     if (step === "intro") return card.setValue(0);
     Animated.spring(card, { toValue: 1, friction: 9, tension: 60, useNativeDriver: false }).start();
@@ -64,7 +57,6 @@ function Overlay({ session }: { session: number }) {
       style={[StyleSheet.absoluteFill, { opacity: presence }]}
       onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
     >
-      {/* The window underneath, blurred and washed out; dragging it moves the window. */}
       <VisualEffect material="fullScreenUI" blendingMode="withinWindow" style={StyleSheet.absoluteFill} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]} />
       <WindowDragRegion style={StyleSheet.absoluteFill} />
@@ -92,7 +84,6 @@ function Overlay({ session }: { session: number }) {
               shadowOffset={[0, 18]}
               style={{ flex: 1, overflow: "hidden" }}
             >
-              {/* Keyed so each step's content reveals itself afresh. */}
               <View key={step} style={{ flex: 1 }}>
                 {step === "defaultBrowser" && <DefaultBrowserStep />}
                 {step === "personalize" && <PersonalizeStep />}

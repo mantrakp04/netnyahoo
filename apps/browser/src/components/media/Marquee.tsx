@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Text, View, type TextStyle } from "react-native";
 
-/**
- * Dia's MarqueeCoordinator: the mini player's title and artist scroll together.
- * One progress value drives every label (each moves by its own overflow), at
- * 30 pt/s for the longest one, pausing 1.5 s at either end, back and forth.
- */
 const SPEED = 30;
 const PAUSE_MS = 1500;
 const FADE = 12;
@@ -38,10 +33,6 @@ export function useMarqueeGroup(resetKey: string): MarqueeGroup {
   );
 }
 
-/**
- * One line of text that scrolls when it doesn't fit (MarqueeLabel). The edge
- * fades are painted in `background`, so it must sit on an opaque fill.
- */
 export function Marquee({
   id,
   text,
@@ -66,7 +57,6 @@ export function Marquee({
   const trailing = overflow ? group.progress.interpolate({ inputRange: [0.97, 1], outputRange: [1, 0], extrapolate: "clamp" }) : 0;
   return (
     <View style={{ height, overflow: "hidden" }} onLayout={(e) => setBox(e.nativeEvent.layout.width)}>
-      {/* Laid out wide so the text keeps its natural width. */}
       <Animated.View style={{ position: "absolute", left: 0, top: 0, height, width: 4000, flexDirection: "row", alignItems: "center", transform: [{ translateX: x }] }}>
         <Text numberOfLines={1} onLayout={(e) => setNatural(e.nativeEvent.layout.width)} style={style}>
           {text}

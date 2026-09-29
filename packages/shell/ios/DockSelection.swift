@@ -2,30 +2,10 @@ import AppKit
 import CoreImage
 import ExpoModulesCore
 
-/// Dia's selected pinned tile, themed by its icon (Dia 1.50.1, TabUI: `TabIconProcessorImpl`
-/// makes a `TabIconTheme`, `TabDockItemView` and its `SelectionOutlineView` draw it).
-///
-/// The theme (`IconTheme.generate`): the icon is drawn at most 32 px on its long side and its
-/// opaque pixels (alpha ≥ 0.975) averaged. When they sit on average ≥ 0.055 (RGB distance)
-/// from that mean the icon is colourful and gets `blur`; otherwise it's one colour and gets
-/// `template` with that colour (black, with a white 30% stroke, when its relative luminance is
-/// above 0.88). Non-RGB images and icons without opaque pixels get none.
-///
-/// Drawing (`DockSelection`):
-/// - blur: the icon blurred (CIGaussianBlur, radius 5), aspect-filled into 2.5× the tile and
-///   centred, shows through the tile at 22% over white 20% (dark) / white (light), and through
-///   a 3pt ring over black (dark: at 75%, saturation 2, brightness −0.1) / white (light).
-/// - template: the tile is filled with the colour, the icon drawn white (here), the ring is the
-///   stroke colour, or white in soft-light when there's none.
-///
-/// Over Liquid Glass (`glass`, macOS 26) none of that: the tile is selected the way a glass control
-/// is, raised off the sidebar (a soft shadow), lit from above (a sheen and a thin light rim, brighter
-/// at the top) and faintly the icon's colour (see `applyGlass`).
 public class DockSelectionModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooDockSelection")
 
-    /// The icon's theme: {kind: "blur"}, {kind: "template", fill, stroke?} or null.
     AsyncFunction("iconTheme") { (uri: String?, emoji: String?) -> [String: Any]? in
       guard let image = IconSource(uri: uri, emoji: emoji)?.load() else { return nil }
       return IconTheme.generate(image)?.json
@@ -46,7 +26,6 @@ public class DockSelectionModule: Module {
   }
 }
 
-/// A tile's icon: a favicon (file: or data: URI) or a custom emoji.
 struct IconSource: Equatable {
   let uri: String?
   let emoji: String?
@@ -59,7 +38,6 @@ struct IconSource: Equatable {
 
   var key: String { emoji.map { "e:\($0)" } ?? "u:\(uri ?? "")" }
 
-  /// The icon as the processor sees it. An emoji is drawn at 16pt, as Dia's icon font cache does.
   func load() -> CGImage? {
     if let emoji, !emoji.isEmpty {
       let bitmap = NSBitmapImageRep(
@@ -82,7 +60,6 @@ struct IconSource: Equatable {
       let base64 = uri.split(separator: ",", maxSplits: 1).last.map(String.init) ?? ""
       image = Data(base64Encoded: base64).flatMap(NSImage.init(data:))
     } else if let url = URL(string: uri), url.isFileURL {
-      // Favicon URIs carry a cache-busting query.
       image = NSImage(contentsOfFile: url.path)
     } else {
       image = nil
@@ -93,7 +70,6 @@ struct IconSource: Equatable {
 
 enum IconTheme {
   case blur
-  /// `stroke` nil: a white soft-light ring.
   case template(fill: CGColor, stroke: CGColor?)
 
   var json: [String: Any] {
@@ -121,7 +97,6 @@ enum IconTheme {
     return .template(fill: fill, stroke: nil)
   }
 
-  /// RGB (0…1) of the pixels with alpha ≥ 0.975, from the image drawn at most 32 px on its long side.
   private static func opaquePixels(_ image: CGImage, space: CGColorSpace) -> [SIMD3<Double>] {
     var width = Double(image.width), height = Double(image.height)
     let longest = max(width, height)
@@ -148,7 +123,6 @@ enum IconTheme {
     return colors
   }
 
-  /// WCAG relative luminance of the colour's own components.
   private static func luminance(_ color: CGColor) -> Double {
     let c = (color.components ?? []).map(Double.init)
     guard c.count >= 3 else { return 0 }
@@ -164,7 +138,6 @@ enum IconTheme {
   }
 }
 
-/// The blurred icon for `blur` tiles, plain and with the dark ring's colour controls.
 private final class BlurredIcon {
   let plain: CGImage
   let darkRing: CGImage
@@ -185,7 +158,6 @@ private final class BlurredIcon {
     return icon
   }
 
-  /// CIGaussianBlur (radius 5) over the whole output extent, which the blur grows.
   private static func blur(_ image: CGImage) -> CGImage? {
     guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
     filter.setValue(CIImage(cgImage: image), forKey: kCIInputImageKey)
@@ -194,7 +166,6 @@ private final class BlurredIcon {
     return context.createCGImage(output, from: output.extent)
   }
 
-  /// SelectionOutlineView's dark-mode filter on the ring image.
   private static func colorControls(_ image: CGImage) -> CGImage? {
     guard let filter = CIFilter(name: "CIColorControls") else { return nil }
     filter.setValue(CIImage(cgImage: image), forKey: kCIInputImageKey)
@@ -205,14 +176,9 @@ private final class BlurredIcon {
   }
 }
 
-/// The icon's colour for a selected glass tile: each colour at full brightness, softened toward
-/// white, as opaque as it is saturated. Black, white and greys drop out, so a dark icon (X, GitHub)
-/// adds nothing and none of it is darker than a pastel. (Compositing filters don't reach the
-/// glass under the tile: a screen or colour blend over it composites as a normal one.)
 private enum GlassGlow {
   private static let cache = NSCache<NSString, CGImage>()
 
-  /// A `blur` icon's blurred colours, at most 64 px on the long side.
   static func of(_ source: IconSource, blurred: CGImage) -> CGImage? {
     if let cached = cache.object(forKey: source.key as NSString) { return cached }
     let scale = min(1, 64 / Double(max(blurred.width, blurred.height, 1)))
@@ -237,7 +203,6 @@ private enum GlassGlow {
     return image
   }
 
-  /// A `template` icon's colour.
   static func of(_ color: NSColor) -> CGColor? {
     guard let c = color.usingColorSpace(.sRGB) else { return nil }
     let (rgb, strength) = glow(SIMD3(Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent)))
@@ -252,7 +217,6 @@ private enum GlassGlow {
   }
 }
 
-/// A one-colour icon as a white template (TabDockItemView's icon view, tinted white).
 private enum TemplateIcon {
   private static let cache = NSCache<NSString, CGImage>()
 
@@ -283,13 +247,8 @@ final class DockSelection: ExpoView {
   var strokeWidth: Double = 3 { didSet { apply() } }
   var dark = true { didSet { apply() } }
   var iconSize: Double = 16 { didSet { apply() } }
-  /// Over Liquid Glass (the tile's GlassEffect, tinted brighter): the glass selection instead of
-  /// Dia's; `strokeWidth` is its rim's width, and the icon is the RN content's, as it is.
   var glass = false { didSet { if glass != oldValue { apply() } } }
 
-  /// Sublayers under the RN content (the badges; the icon too for `blur`), bottom → top: the
-  /// tile (fill, then the blurred icon at 22%) clipped to its shape, the ring, and a `template`
-  /// tile's white icon (RN's Image can't tint a template).
   private let tile = CALayer()
   private let background = CALayer()
   private let tint = CALayer()
@@ -297,7 +256,6 @@ final class DockSelection: ExpoView {
   private let ringImage = CALayer()
   private let ringMask = CALayer()
   private let icon = CALayer()
-  /// `glass`, bottom → top: the shadow (outside the tile only), the icon's glow, the sheen, the rim.
   private let lift = CALayer()
   private let liftMask = CAShapeLayer()
   private let hue = CALayer()
@@ -309,7 +267,6 @@ final class DockSelection: ExpoView {
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     wantsLayer = true
-    // The soft-light ring is a Core Image compositing filter.
     layerUsesCoreImageFilters = true
     tile.masksToBounds = true
     tile.addSublayer(background)
@@ -360,7 +317,7 @@ final class DockSelection: ExpoView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     defer { CATransaction.commit() }
-    // RCTView re-applies its own background/border to the backing layer: draw in sublayers.
+    // RCTView resets backing-layer styles; draw in sublayers.
     if tile.superlayer !== layer {
       layer.insertSublayer(tile, at: 0)
       layer.insertSublayer(ring, above: tile)
@@ -375,8 +332,6 @@ final class DockSelection: ExpoView {
     let radius = min(cornerRadius, bounds.width / 2)
     let scale = window?.backingScaleFactor ?? 2
     let width = (strokeWidth * scale).rounded() / scale
-    // SelectionOutlineView and the background layer share the tile's frame; the image views
-    // are 2.5× it, centred.
     let big = bounds.insetBy(dx: -bounds.width * 0.75, dy: -bounds.height * 0.75)
     if glass { return applyGlass(radius: radius, rimWidth: width, big: big) }
     for shape in [tile, ring, ringMask] {
@@ -417,11 +372,6 @@ final class DockSelection: ExpoView {
     }
   }
 
-  /// The selection over Liquid Glass, the way macOS 26 raises a selected glass control: a soft
-  /// shadow under the tile, a sheen down from its top edge and a thin light rim (brightest at the
-  /// top, where the light catches it), and a glow of the icon's colour (GlassGlow: a colourful
-  /// icon's blurred colours, a one-colour icon's colour; nothing for a black or white one). Nothing
-  /// here is darker than the glass, whatever the icon: the shadow falls outside the tile.
   private func applyGlass(radius: CGFloat, rimWidth: CGFloat, big: CGRect) {
     // RN views are flipped: y = 0 is the top.
     let flipped = layer?.isGeometryFlipped == true || isFlipped

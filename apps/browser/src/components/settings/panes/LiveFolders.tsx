@@ -14,12 +14,6 @@ import { Favicon } from "../../primitives";
 import { Button, Group, Row, SectionHeader, Sheet, TextField } from "../controls";
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 
-/**
- * Settings › Live Folders: connect the services live folders read from, and
- * manage the folders. Netnyahoo has no OAuth apps of its own, so each service
- * takes credentials the user creates (tokens, or their own OAuth client).
- * Secrets go to the keychain.
- */
 const DESCRIPTIONS: Record<LiveSourceId, string> = {
   github: "Your open pull requests and the ones waiting for your review, with checks and conflicts.",
   bitbucket: "Your open pull requests on Bitbucket Cloud, with build status.",
@@ -68,7 +62,6 @@ export function LiveFoldersPane() {
   );
 }
 
-/** Bitbucket and Confluence logins are opaque account ids: show only the name there. */
 function connectedAs(id: LiveSourceId, account: LiveAccount): string {
   if (!account.name || account.name === account.login) return account.login;
   return id === "github" || id === "gdrive" ? `${account.name} (${account.login})` : account.name;
@@ -92,7 +85,6 @@ function SourceRow({ id }: { id: LiveSourceId }) {
   );
 }
 
-/** The browser window to open sign-in pages in (Settings is its own window). */
 function browserWindow(): string | null {
   const s = useBrowser.getState();
   return s.ui.focusOrder.find((id) => s.windows[id] && !s.windows[id]!.incognito) ?? s.windowOrder.find((id) => !s.windows[id]!.incognito) ?? null;

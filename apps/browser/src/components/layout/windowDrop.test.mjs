@@ -1,4 +1,3 @@
-// Dragging tabs out of a window (layout/windowDrop.ts, used by layout/tabDrag.ts): onto another window, or torn off into a new one.
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/components/layout/windowDrop.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -8,7 +7,6 @@ const drop = await import("./windowDrop.ts");
 
 const S = () => useBrowser.getState();
 
-/** Two side-by-side windows (Cocoa frames: bottom-left origin), the first with two tabs. */
 function setup() {
   S().hydrate({});
   const a = S().createWindow({ url: "a.com" });
@@ -22,7 +20,6 @@ function setup() {
 
 test("a tab dropped on another window moves there", () => {
   const { a, b, t2 } = setup();
-  // 1200 pt right of window a's left edge, 300 pt below its top: inside window b.
   assert.deepEqual(drop.windowUnder(S(), a, 1200, 300), { outside: true, overWindow: b });
   assert.equal(drop.dropTabsOutside([t2], a, 1200, 300), b);
   assert.equal(S().tabs[t2].windowId, b);
@@ -35,7 +32,6 @@ test("a tab dropped outside every window tears off into a new window under the p
   const w = drop.dropTabsOutside([t1], a, 900, 300);
   assert.equal(S().tabs[t1].windowId, w);
   assert.ok(w !== a && w !== b);
-  // Screen point (900, 100 + 600 - 300 = 400): the new window's top-left sits just above-left of it.
   assert.deepEqual(S().windows[w].frame, [810, 400 - 600 + 70, 800, 600]);
 });
 

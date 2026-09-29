@@ -14,7 +14,6 @@ const history = [
 ];
 const none = { tabs: [], history: [] };
 
-/** Compact row labels for assertions. */
 function rows(items: Suggestion[]): string[] {
   return items.map((i) => {
     switch (i.kind) {
@@ -57,11 +56,9 @@ test("inline completion never takes a long query URL: 'm' completes to the host"
   const m = buildSuggestions("m", { tabs: [], history: hist }, { now });
   assert.equal(m.completion, "ail.google.com");
   assert.deepEqual(m.items[0], { kind: "page", url: "https://mail.google.com/", title: "", favicon: "gmail.ico" });
-  // The Inbox is still listed, just not inlined.
   assert.ok(rows(m.items).includes(hist[0]!.url));
   const a = buildSuggestions("a", { tabs: [], history: hist }, { now });
   assert.equal(a.completion, "ccounts.google.com");
-  // Past the host, only a clean address completes; a query URL doesn't.
   assert.equal(buildSuggestions("mail.google.com/m", { tabs: [], history: hist }, { now }).completion, "");
   assert.equal(buildSuggestions("x.com/h", { tabs: [], history }, { now }).completion, "ome");
 });
@@ -110,7 +107,6 @@ test("bookmarks are suggested and outrank equally-matching history", () => {
   const { items } = buildSuggestions("news", { tabs: [], history: hist, bookmarks }, { now });
   assert.equal(items[0]?.kind === "page" && items[0].url, "https://news.ycombinator.com/");
   assert.equal(items[0]?.kind === "page" && items[0].bookmarked, true);
-  // A bookmark that's also in history is one row.
   const both = buildSuggestions("x", { tabs: [], history, bookmarks: [{ url: "https://x.com/home", title: "X", favicon: null }] }, { now });
   assert.equal(both.items.filter((i) => i.kind === "page" && i.url === "https://x.com/home").length, 1);
 });
@@ -212,10 +208,6 @@ test("displayUrl shows safe IDN hosts in Unicode", () => {
   assert.equal(displayUrl("https://xn--80ak6aa92e.com/login"), "xn--80ak6aa92e.com/login");
 });
 
-// Typing reuses work: pages are indexed once per history entry, and a query that extends the last
-// one only searches the pages that one matched. None of it may change what's suggested.
-
-/** The same pages in a new list: nothing indexed for the list, so nothing narrowed. */
 const fresh = <T,>(list: readonly T[]) => [...list];
 
 const vocabulary = ["react", "native", "banana", "nano", "layout", "github", "news", "notion", "an", "na"];
@@ -243,7 +235,6 @@ test("a last word of two letters typed on can match inside a word ('react na' â†
   const source = { tabs: [], history: [{ url: "https://a.com/", title: "React banana", favicon: null, visits: 1, lastVisit: now }] };
   assert.equal(rows(buildSuggestions("react na", source, { now, preference: "search" }).items).length, 1);
   assert.deepEqual(rows(buildSuggestions("react nan", source, { now, preference: "search" }).items), ["search:react nan", "https://a.com/"]);
-  // One letter only matches the start of a word; two match anywhere.
   const one = { tabs: [], history: [{ url: "https://a.com/", title: "Cabbage", favicon: null, visits: 1, lastVisit: now }] };
   assert.equal(buildSuggestions("b", one, { now }).items.length, 1);
   assert.deepEqual(rows(buildSuggestions("bb", one, { now }).items), ["search:bb", "https://a.com/"]);
@@ -254,19 +245,16 @@ test("new history and changed entries show up while typing", () => {
   assert.deepEqual(rows(buildSuggestions("gi", { tabs: [], history: first }, { now }).items), ["https://github.com/", "search:gi"]);
   const visited = [{ url: "https://gitlab.com/", title: "GitLab", favicon: null, visits: 90, lastVisit: now }, ...first];
   assert.deepEqual(rows(buildSuggestions("git", { tabs: [], history: visited }, { now }).items), ["https://gitlab.com/", "search:git", "https://github.com/"]);
-  // The store replaces an entry whose title changes.
   const renamed = [{ ...visited[0]!, title: "GitLab: sign in" }, visited[1]!];
   const top = buildSuggestions("gitl", { tabs: [], history: renamed }, { now }).items[0];
   assert.equal(top?.kind === "page" && top.title, "GitLab: sign in");
 });
 
 test("prepareSuggestions indexes in slices and doesn't change the results", () => {
-  // New entry objects: nothing about them is known yet.
   const history = bigHistory.map((h) => ({ ...h }));
   const bookmarks = [{ url: "https://notion.so/b", title: "Notion board", favicon: null }];
   const source = { tabs: [], history, bookmarks };
   const expected = buildSuggestions("no", { tabs: [], history: fresh(bigHistory), bookmarks: fresh(bookmarks) }, { now });
-  // A deadline already past still makes progress, one slice per call.
   let calls = 0;
   while (!prepareSuggestions(source, 0)) calls++;
   assert.ok(calls > 0);

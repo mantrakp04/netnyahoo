@@ -3,12 +3,6 @@ import { advanceCrashCursor, capture, crashCursor, isSharing, loadChoice } from 
 import { recordLog } from "./logs";
 import { errorMessage, errorType, nativeFrames, parseStack, type ExceptionFrame } from "./sanitize";
 
-/**
- * Error tracking: uncaught JS errors, unhandled promise rejections and React render errors
- * become PostHog `$exception` events (type, scrubbed message, function and bundle names); on
- * the next launch, this install's own crash reports do too. Only while sharing is on.
- */
-
 type Mechanism = "onerror" | "onunhandledrejection" | "react" | "console" | "native_crash";
 
 const MAX_PER_SESSION = 25;
@@ -19,7 +13,6 @@ function exceptionList(type: string, value: string, mechanism: Mechanism, handle
   return [{ type, value, mechanism: { type: mechanism, handled, synthetic: false }, stacktrace: { type: "raw", frames } }];
 }
 
-/** Reports an error once per session (the same type, message and top frame count as one). */
 export function captureException(error: unknown, mechanism: Mechanism, { fatal = false, handled = false } = {}) {
   if (!isSharing()) return;
   try {
@@ -36,7 +29,7 @@ export function captureException(error: unknown, mechanism: Mechanism, { fatal =
     capture(
       "$exception",
       { $exception_level: fatal ? "fatal" : "error", source: mechanism },
-      // A fatal error ends the process right after this: the queue goes to disk first.
+      // Persist the telemetry queue before a fatal process exit.
       { urgent: true, persist: fatal, raw: { $exception_list: exceptionList(type, value, mechanism, handled, frames) } },
     );
   } catch {}
@@ -56,11 +49,6 @@ type HermesInternalType = {
 
 let installed = false;
 
-/**
- * Hooks the JS runtime's error paths. Call first thing at startup (it only reports while
- * sharing is on, so it's cheap to install unconditionally). Each hook passes the error on to
- * what was there before (React Native's handler, the console).
- */
 export function installErrorReporting() {
   if (installed) return;
   installed = true;
@@ -73,7 +61,6 @@ export function installErrorReporting() {
     previous?.(error, isFatal);
   });
 
-  // React Native only turns Hermes' rejection tracker on in DEV (to warn); this keeps the warning.
   g.HermesInternal?.enablePromiseRejectionTracker?.({
     allRejections: true,
     onUnhandled: (id, rejection) => {
@@ -83,8 +70,6 @@ export function installErrorReporting() {
     onHandled: () => {},
   });
 
-  // React render errors reach the console as the Error itself (React Native's handleException);
-  // other warnings and errors are log lines (logs.ts).
   for (const level of ["error", "warn"] as const) {
     const original = console[level];
     let busy = false;
@@ -106,10 +91,6 @@ export function installErrorReporting() {
 
 const SYSTEM_NAME = /^[A-Z][A-Z0-9_ ()]{1,40}$/;
 
-/**
- * This install's crash reports since the last look (only ones from this version), as fatal
- * `$exception`s: the exception type and the crashing thread's frames, nothing else.
- */
 export async function reportNativeCrashes() {
   if (!isSharing()) return;
   const since = crashCursor();

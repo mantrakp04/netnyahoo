@@ -7,12 +7,10 @@ import { useWindowId } from "../../store/hooks";
 import { IconButton } from "../primitives";
 import { closeSidePanel, findExtension, showExtensionMenu, useExtensions } from "./state";
 
-// Chrome's side panel limits.
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 600;
 const HEADER = 40;
 
-/** Past a limit the edge follows the pointer less and less, like the sidebar's. */
 function rubberBand(width: number): number {
   const band = (over: number) => 36 * (1 - Math.exp(-over / 90));
   if (width > MAX_WIDTH) return MAX_WIDTH + band(width - MAX_WIDTH);
@@ -21,12 +19,6 @@ function rubberBand(width: number): number {
 }
 const clamp = (w: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w));
 
-/**
- * An extension's side panel (Dia's ExtensionSidePanel): a card to the right of the page with
- * the extension's name and a close button over its page. The page is an extension page
- * outside the tab strip (like action popups), so chrome.tabs sees the window's real tabs.
- * Drag the leading edge to resize (saved); double-click it for the default width.
- */
 export function ExtensionSidePanel() {
   const windowId = useWindowId();
   const panel = useExtensions((e) => e.sidePanels[windowId]);
@@ -35,7 +27,6 @@ export function ExtensionSidePanel() {
   const appear = useRef(new Animated.Value(0)).current;
   const [shown, setShown] = useState(panel);
 
-  // Slides in when it opens and out when it closes (the page takes the room back).
   useEffect(() => {
     if (panel) setShown(panel);
     Animated.timing(appear, { toValue: panel ? 1 : 0, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start(({ finished }) => {
@@ -56,7 +47,6 @@ export function ExtensionSidePanel() {
           start.current = useBrowser.getState().settings.extensionSidePanelWidth ?? 360;
           setDragWidth(start.current);
         },
-        // The edge is on the left: dragging left widens.
         onPanResponderMove: (_, g) => setDragWidth(rubberBand(start.current - g.dx)),
         onPanResponderRelease: (_, g) => {
           const raw = rubberBand(start.current - g.dx);
@@ -84,7 +74,6 @@ export function ExtensionSidePanel() {
   return (
     <Animated.View style={{ width: appear.interpolate({ inputRange: [0, 1], outputRange: [0, room] }), overflow: "hidden" }}>
       <Animated.View style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: width, opacity: appear }}>
-        {/* A new page for the tab (its own panel path) is a new panel. */}
         <PanelCard key={`${shown.extensionId}|${shown.url}`} windowId={windowId} extensionId={shown.extensionId} profile={shown.profile} url={shown.url} />
         <View
           {...responder.panHandlers}
@@ -125,7 +114,6 @@ function PanelCard({ windowId, extensionId, profile, url }: { windowId: string; 
           style={StyleSheet.absoluteFill}
           url={url}
           profile={profile}
-          // A panel, not a tab: outside the window's Chrome tab strip.
           standalone
           pageBackgroundColor="#FFFFFF"
           onWindowClose={() => closeSidePanel(windowId, extensionId)}

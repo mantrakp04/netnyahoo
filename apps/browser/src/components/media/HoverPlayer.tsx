@@ -9,10 +9,6 @@ import { MINI_PLAYER_HEIGHT, MINI_PLAYER_WIDTH, MiniPlayer } from "./MiniPlayer"
 import { useMedia } from "./state";
 import { useMediaTokens } from "./tokens";
 
-/**
- * Hovering a pinned tab that plays media (Dia: Spotify and other pinned media
- * tabs) shows the mini player instead of the usual hover card.
- */
 export function useShowsMiniPlayer(tabId: string | undefined): boolean {
   const pinned = useBrowser((s) => !!tabId && !!s.tabs[tabId]?.pinned);
   const hasSession = useMedia((s) => {
@@ -25,7 +21,6 @@ export function useShowsMiniPlayer(tabId: string | undefined): boolean {
 export function HoverPlayer({ tabId, windowId, anchor }: { tabId: string; windowId: string; anchor: Anchor }) {
   const theme = useTheme();
   const tokens = useMediaTokens();
-  // Pinned tiles share rows: open past the sidebar's edge, not over the next tile.
   const edge = Math.max(anchor.x + anchor.width, useSidebarWidth(windowId) - layout.sidebarInset);
   return (
     <Surface
@@ -52,7 +47,6 @@ export function HoverPlayer({ tabId, windowId, anchor }: { tabId: string; window
   );
 }
 
-/** DEV: open a tab's hover card / mini player without a pointer (`globalThis.nnMediaHover`). */
 if (__DEV__) {
   (globalThis as { nnMediaHover?: unknown }).nnMediaHover = async (windowId: string, tabId: string | null) => {
     if (!tabId) return setSidebarUi({ hover: null });

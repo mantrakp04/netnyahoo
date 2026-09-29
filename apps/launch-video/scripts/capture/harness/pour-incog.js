@@ -1,5 +1,3 @@
-// "Pour": an incognito window (⌘⇧N) on the same silk, the tab renamed "Silk" as in the main window, snapshotted
-// once the image has loaded.
 const DIR = "pour-incog";
 const before = new Set(nn.store.getState().windowOrder);
 nn.runCommand({ command: "newIncognitoWindow" });

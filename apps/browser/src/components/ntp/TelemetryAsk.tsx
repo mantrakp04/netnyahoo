@@ -11,22 +11,14 @@ import { useHover } from "../primitives";
 import { openSettings } from "../settings/windows";
 import { usePendingReleaseNotes } from "./releaseNotes";
 
-/** The card sizes to its copy (three lines of body at 300 wide), so its padding holds all round. */
 const FRAME = { width: 300 };
 
-/**
- * The one-time ask for people who installed Netnyahoo before it could share crash reports (new
- * installs answer in onboarding). It waits its turn in the New Tab page's corner (after the
- * default-browser check-in and the release notes postcard) and never comes back once answered
- * or dismissed. "Not now" and "Share" weigh the same.
- */
 export function TelemetryAsk({ windowId }: { windowId: string }) {
   const due = useTelemetry((s) => !s.decided && !s.askDone);
   const incognito = useBrowser((s) => !!s.windows[windowId]?.incognito);
   const onboarding = useOnboarding((s) => s.windowId !== null);
   const checkIn = useDefaultBrowserCheckIn(windowId).visible;
   const releaseNotes = usePendingReleaseNotes() !== null;
-  // Existing installs only: onboarding done before this ask existed (or counted as done).
   const [existing] = useState(() => onboardingCompletedAt() !== null);
   const [leaving, setLeaving] = useState<null | (() => void)>(null);
   if (!leaving && !(due && existing && !incognito && !onboarding && !checkIn && !releaseNotes)) return null;
@@ -117,7 +109,6 @@ function Card({ leaving, onShare, onNotNow, onClose }: { leaving: null | (() => 
   );
 }
 
-/** Both answers use this: the same size, fill and weight. */
 function AskButton({ title, onPress }: { title: string; onPress: () => void }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
@@ -134,7 +125,6 @@ function AskButton({ title, onPress }: { title: string; onPress: () => void }) {
   );
 }
 
-/** The check-in card's close button: a small round xmark over a thin material. */
 function CloseButton({ onPress }: { onPress: () => void }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();

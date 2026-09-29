@@ -1,15 +1,6 @@
 import Foundation
 
-/// Dia's open and pinned tabs, read through Dia's AppleScript dictionary (`sdef /Applications/Dia.app`).
-///
-/// Dia's own sidebar store (`tabs.db`) is SQLCipher-encrypted with a key only its team's apps can
-/// read, but its scripting interface answers any app the user allows (System Settings › Privacy &
-/// Security › Automation). It exposes, per window, the profiles that window shows and each
-/// profile's tabs ("favorite tabs, pinned tabs, and window tabs, in that order"), with `id`,
-/// `title`, `URL`, `isPinned` and `isFocused`. It doesn't expose custom tab names, colours, spaces
-/// or folders, so those stay in Dia.
 public enum DiaScript {
-  /// Classes of the dictionary, as far as the import reads them.
   public struct Tab: Codable, Equatable, Sendable {
     public var id: String
     public var title: String
@@ -28,7 +19,6 @@ public enum DiaScript {
 
   public struct Profile: Codable, Equatable, Sendable {
     public var name: String
-    /// Dia's one-based profile index (its user-visible order).
     public var index: Int
     public var tabs: [Tab]
 
@@ -42,7 +32,6 @@ public enum DiaScript {
   public struct Window: Codable, Equatable, Sendable {
     public var id: String
     public var name: String
-    /// Front to back.
     public var index: Int
     public var profiles: [Profile]
 
@@ -55,30 +44,22 @@ public enum DiaScript {
   }
 }
 
-/// Reads Dia's windows → profiles → tabs. `DiaAppleEvents` asks Dia itself; tests pass fixtures.
 public protocol DiaScriptingSource {
   func windows() throws -> [DiaScript.Window]
 }
 
-/// A Dia profile's tabs, proposed as a Netnyahoo profile.
 public struct DiaTabsProfile: Codable, Equatable, Sendable {
-  /// "<index>:<name>": Dia's profiles have no id in its dictionary.
   public var id: String
   public var name: String
   public var index: Int
-  /// Favourites and pinned tabs, in Dia's order, deduplicated.
   public var pinned: [ImportedTab]
-  /// Open (unpinned) tabs, windows front to back, deduplicated and without any that are pinned.
   public var tabs: [ImportedTab]
 }
 
 public struct DiaTabsResult: Codable, Equatable, Sendable {
-  /// Profiles with at least one tab to bring, in Dia's profile order.
   public var profiles: [DiaTabsProfile]
   public var windowCount: Int
-  /// Internal pages left out (`chrome://`, `dia://`, `about:`, …).
   public var skipped: Int
-  /// Tabs dropped because the profile already had the same page (another window, or pinned).
   public var duplicates: Int
 }
 
@@ -87,9 +68,6 @@ public enum DiaTabsImport {
     build(try source.windows())
   }
 
-  /// Merges every window's view of each profile. Pinned tabs come first and win over an open
-  /// tab of the same page; a page open in several windows comes once. Only http(s) pages are
-  /// kept: Dia's own pages (`dia://`, `chrome://`) have nowhere to go in Netnyahoo.
   public static func build(_ windows: [DiaScript.Window]) -> DiaTabsResult {
     struct Accumulator {
       var name: String
@@ -150,8 +128,6 @@ public enum DiaTabsImport {
                          skipped: skipped, duplicates: duplicates)
   }
 
-  /// Same page, spelled differently: scheme and host are case-insensitive, an empty path is "/",
-  /// and an empty fragment ("#") is dropped. Query and fragment otherwise count.
   static func dedupeKey(_ url: String) -> String? {
     guard var c = URLComponents(string: url), let scheme = c.scheme, let host = c.host, !host.isEmpty else { return nil }
     c.scheme = scheme.lowercased()

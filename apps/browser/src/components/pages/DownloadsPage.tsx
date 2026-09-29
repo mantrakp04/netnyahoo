@@ -12,7 +12,6 @@ import { IconButton, useHover } from "../primitives";
 import { Button, useFormColors } from "../settings/controls";
 import { EmptyState, hostLabel, matchesQuery, PAGE_WIDTH, PageHeader } from "./PageLayout";
 
-/** Every download (Chrome's chrome://downloads): search, open, show in Finder, drag out, clear. */
 export function DownloadsPage({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const windowId = useBrowser((s) => s.tabs[tabId]?.windowId ?? "");

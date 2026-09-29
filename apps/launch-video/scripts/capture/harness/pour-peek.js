@@ -1,8 +1,3 @@
-// "Pour": Focus mode. ⌘S hides the sidebar (the page takes the window); the sidebar's peek then slides in over
-// the page and away again, in slow motion: React Native's Animated.timing is slowed SLOW times for this run only
-// (the peek's own 180 ms eased slide, sampled as fast as the snapshot hook allows), then restored.
-// The peek is driven through its own onMouseEnter / onMouseLeave handlers (found in the fiber tree), since a
-// hidden test instance has no pointer.
 const DIR = "pour-peek";
 const SLOW = 40;
 const mods = __r.getModules();

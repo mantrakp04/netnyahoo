@@ -1,14 +1,8 @@
-/**
- * Fuzzy matching for the command bar's browser actions ("close tab", "pin", "dl" → Downloads).
- * Every query word has to match a word of the title or a keyword: as a prefix (best), inside
- * a word, or as an in-order subsequence of the whole title ("nwin" → New Window).
- */
 export type ActionCandidate = { id: string; title: string; keywords?: readonly string[] };
 
 export type ActionMatch<T extends ActionCandidate> = {
   action: T;
   score: number;
-  /** The query is the action's name (or one of its keywords): it can be the top hit. */
   exact: boolean;
 };
 
@@ -20,7 +14,6 @@ function isSubsequence(needle: string, haystack: string): boolean {
   return i === needle.length;
 }
 
-/** 0 when `query` doesn't match `text`; higher is better. */
 export function fuzzyScore(query: string, text: string): number {
   const q = query.trim().toLowerCase();
   const t = text.toLowerCase();
@@ -35,11 +28,9 @@ export function fuzzyScore(query: string, text: string): number {
     else if (token.length >= 2 && isSubsequence(token, t.replace(/[^a-z0-9]/g, ""))) score += 8;
     else return 0;
   }
-  // Shorter titles win ties ("Pin Tab" over "Pin Tab to Group").
   return score - tw.length;
 }
 
-/** Actions matching `query`, best first. Queries shorter than two characters match nothing. */
 export function matchActions<T extends ActionCandidate>(query: string, actions: readonly T[], limit = 3): ActionMatch<T>[] {
   const q = query.trim().toLowerCase().replace(/\s+/g, " ");
   if (q.length < 2) return [];

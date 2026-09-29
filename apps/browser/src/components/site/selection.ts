@@ -7,13 +7,6 @@ import { useBrowser } from "../../store/browser";
 import { defaultSearchEngine } from "../../store/settings";
 import { showToast } from "../layout/splitActions";
 
-/**
- * What the page's selection is used for: the selected-text popover (Search),
- * the page menu's "Search … for" and "Copy Link to Highlight", Dia's quote link
- * (⇧⌘C with text selected), Edit › Find › Jump to Selection and Find and Replace.
- */
-
-/** A mouse selection of page text, in CSS pixels from the page's top-left (page_script.js). */
 export type PageSelection = { text: string; rect: { x: number; y: number; width: number; height: number } };
 
 export const usePageSelection = create<Record<string, PageSelection | null>>()(() => ({}));
@@ -25,7 +18,6 @@ export function setPageSelection(tabId: string, selection: PageSelection | null)
 
 const store = () => useBrowser.getState();
 
-/** Keeps the engine's page menu naming the default search engine. */
 export function startSelectionTools() {
   let name = "";
   const sync = () => {
@@ -36,7 +28,6 @@ export function startSelectionTools() {
   return useBrowser.subscribe((s, prev) => s.settings !== prev.settings && sync());
 }
 
-/** Searches the default engine for `text` in a new tab next to `tabId`, like Chrome's page menu. */
 export function searchSelection(tabId: string, text: string) {
   const tab = store().tabs[tabId];
   const query = text.replace(/\s+/g, " ").trim();
@@ -46,7 +37,6 @@ export function searchSelection(tabId: string, text: string) {
   store().newTab(tab.windowId, { url, openerId: tabId, profileId: tab.profileId });
 }
 
-// Runs in the page: the selection with its surroundings in the same block, for a text fragment.
 const SELECTION_CONTEXT = `(() => {
   const sel = getSelection();
   if (!sel || sel.isCollapsed || !sel.rangeCount) return post("result", "null");
@@ -70,7 +60,6 @@ const SELECTION_CONTEXT = `(() => {
   }));
 })()`;
 
-/** A link to `tabId`'s page that scrolls to and highlights the selected text; null without a selection. */
 export async function linkToSelection(tabId: string): Promise<string | null> {
   const url = store().tabs[tabId]?.url;
   const web = webviews.get(tabId);
@@ -80,22 +69,16 @@ export async function linkToSelection(tabId: string): Promise<string | null> {
   return fragment ? withTextFragment(cleanUrl(url), fragment) : null;
 }
 
-/** Copies the link to the selection (page menu's Copy Link to Highlight, the quote-link toast button). */
 export async function copyLinkToSelection(tabId: string) {
   const link = await linkToSelection(tabId);
   const windowId = store().tabs[tabId]?.windowId;
   if (!link || !windowId) return;
   copyText(link);
-  // Dia's quote-link toast (its exact copy isn't recoverable from the binary).
   showToast(windowId, "Copied Quote Link", "Links directly to the selected text.", { icon: "quote.bubble.fill" });
 }
 
 const HAS_SELECTION = `post("result", JSON.stringify(!!String(getSelection() || "").trim()))`;
 
-/**
- * ⇧⌘C: the page's clean URL, like Dia. With text selected, the toast offers a link
- * straight to it instead (Dia's quote link).
- */
 export async function copyPageUrl(tabId: string) {
   const tab = store().tabs[tabId];
   if (!tab?.url) return;
@@ -111,7 +94,6 @@ export async function copyPageUrl(tabId: string) {
   });
 }
 
-// Runs in the page: the focused element, through open shadow roots and same-origin frames.
 const FOCUSED = `const focused = () => {
   let el = document.activeElement;
   for (;;) {
@@ -152,7 +134,6 @@ const JUMP_TO_SELECTION = `(() => {
   post("result", "true");
 })()`;
 
-/** Edit › Find › Jump to Selection (⌘J): scrolls the page to its selection (or a text field's). */
 export function jumpToSelection(tabId: string): Promise<boolean | { error: string } | null> {
   return webviews.get(tabId)?.evaluate<boolean>(JUMP_TO_SELECTION) ?? Promise.resolve(null);
 }
@@ -244,11 +225,6 @@ const REPLACE = `(query, replacement, all) => {
   done(true, 1);
 }`;
 
-/**
- * Edit › Find and Replace in the page's focused text field (input, textarea or
- * contenteditable): the current or next match, or every match with `all`.
- * Case-insensitive, like find in page.
- */
 export async function replaceInField(tabId: string, query: string, replacement: string, all: boolean): Promise<ReplaceResult> {
   const web = webviews.get(tabId);
   const args = [query, replacement, all].map((v) => JSON.stringify(v)).join(", ");
@@ -256,7 +232,6 @@ export async function replaceInField(tabId: string, query: string, replacement: 
   return result && "field" in result ? result : { field: false, count: 0 };
 }
 
-/** DEV: for lib/devHarness scripts (`globalThis.nnSelection`). */
 if (__DEV__) {
   (globalThis as { nnSelection?: unknown }).nnSelection = { usePageSelection, searchSelection, linkToSelection, copyPageUrl, replaceInField, jumpToSelection };
 }

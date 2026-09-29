@@ -24,10 +24,6 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 import { SANS } from "../theme";
 import { P } from "./theme";
 
-// The flacon: the browser window made into a perfume bottle. A thick glass block in the window's proportions
-// (1360:860), amber liquid inside, a black lacquered cap, three engraved dots where the traffic lights are (the
-// first in the brand's red enamel) and the name printed on the glass. Lit only by a studio of warm softboxes
-// (a procedural environment, no image files), on a black lacquer floor that reflects it.
 type Rig = { renderer: WebGLRenderer; scene: Scene; camera: PerspectiveCamera; turn: Group };
 
 function studio(renderer: WebGLRenderer) {
@@ -40,8 +36,6 @@ function studio(renderer: WebGLRenderer) {
     m.rotation.z += ry;
     env.add(m);
   };
-  // perfume photography's light: two tall thin strips either side (the glass's long edge highlights), a small
-  // soft top, a warm kicker behind; nothing in front, so the face stays dark and clear
   box(0.5, 10, -5.5, 1.5, 1.5, 0, 0xffe6c4, 7);
   box(0.35, 10, 5.5, 1.5, 0.5, 0, 0xffd6a0, 5);
   box(2.5, 1.2, 0, 7, 0.5, 0, 0xfff0dc, 1.2);
@@ -52,7 +46,6 @@ function studio(renderer: WebGLRenderer) {
   return tex;
 }
 
-/** The halo behind the flacon (and what its glass refracts): a warm glow on black. */
 function halo() {
   const c = document.createElement("canvas");
   c.width = c.height = 512;
@@ -99,14 +92,12 @@ function bottle(): Group {
   const body = new Mesh(new RoundedBoxGeometry(W, H, D, 8, 0.075), glass);
   body.position.y = H / 2;
   g.add(body);
-  // the liquid: opaque, so the glass's transmission sees it; a flat meniscus two-thirds up
   const juice = new Mesh(
     new RoundedBoxGeometry(W - 0.16, H * 0.74, D - 0.16, 6, 0.035),
     new MeshPhysicalMaterial({ color: 0x9a5518, roughness: 0.05, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.03, emissive: new Color(0x5c2c09), emissiveIntensity: 1 }),
   );
   juice.position.y = 0.08 + (H * 0.74) / 2;
   g.add(juice);
-  // the cap: black lacquer, square, centred on the top
   const lacquer = new MeshPhysicalMaterial({ color: 0x050505, roughness: 0.12, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.04 });
   const cap = new Mesh(new RoundedBoxGeometry(0.36, 0.3, 0.3, 6, 0.025), lacquer);
   cap.position.y = H + 0.15 + 0.03;
@@ -114,7 +105,6 @@ function bottle(): Group {
   const collar = new Mesh(new CylinderGeometry(0.09, 0.09, 0.06, 32), new MeshPhysicalMaterial({ color: 0xcfb07a, metalness: 1, roughness: 0.22 }));
   collar.position.y = H + 0.02;
   g.add(collar);
-  // the three dots, top left of the face: red enamel, then smoked glass
   const dot = (i: number, color: number, metal: number) => {
     const m = new Mesh(new CylinderGeometry(0.028, 0.028, 0.01, 32), new MeshPhysicalMaterial({ color, metalness: metal, roughness: 0.2, clearcoat: 1 }));
     m.rotation.x = Math.PI / 2;
@@ -124,7 +114,6 @@ function bottle(): Group {
   dot(0, new Color(P.red).getHex(), 0);
   dot(1, 0x1a1512, 0.4);
   dot(2, 0x1a1512, 0.4);
-  // the name, printed on the face
   const print = new Mesh(new PlaneGeometry(0.96, 0.24), new MeshBasicMaterial({ map: label(), transparent: true, toneMapped: false, opacity: 0.9 }));
   print.position.set(0, H * 0.42, D / 2 + 0.003);
   g.add(print);
@@ -154,12 +143,10 @@ export const Flacon: React.FC<{ width: number; height: number; yaw: number; expo
     key.position.set(-3, 5, 4);
     scene.add(key);
     const turn = new Group();
-    // the name's face waits for Archivo
     document.fonts.ready.then(() => {
       if (!live) return;
       const b = bottle();
       turn.add(b);
-      // its reflection in the lacquer: the same flacon mirrored under the floor, seen through the dark floor
       const mirror = bottle();
       mirror.scale.y = -1;
       turn.add(mirror);
@@ -167,7 +154,6 @@ export const Flacon: React.FC<{ width: number; height: number; yaw: number; expo
       floor.rotation.x = -Math.PI / 2;
       floor.position.y = 0.0005;
       scene.add(floor);
-      // the liquid's glow spilling on the lacquer in front of the flacon
       const spill = document.createElement("canvas");
       spill.width = spill.height = 256;
       const sg = spill.getContext("2d")!;

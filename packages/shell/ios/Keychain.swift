@@ -2,22 +2,18 @@ import ExpoModulesCore
 import Foundation
 import Security
 
-/// Secrets for connected services (live folders' GitHub / Bitbucket / Notion / Confluence /
-/// Google tokens) as generic passwords in the login keychain, never in the session files.
 public class KeychainModule: Module {
   private static let service = "Netnyahoo Connected Accounts"
 
   public func definition() -> ModuleDefinition {
     Name("NetnyahooKeychain")
 
-    /// The secret stored for `account`, or null.
     AsyncFunction("get") { (account: String) -> String? in
       var query = Self.query(account)
       query[kSecReturnData as String] = true
       query[kSecMatchLimit as String] = kSecMatchLimitOne
       #if DEBUG
-      // Every Debug build is signed differently, so reading an item an earlier build saved
-      // would show a keychain prompt (and take focus); treat it as missing instead.
+      // Skip cross-build keychain reads to avoid access prompts.
       query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
       #endif
       var item: CFTypeRef?
@@ -35,7 +31,6 @@ public class KeychainModule: Module {
         add[kSecAttrLabel as String] = "Netnyahoo: \(account)"
         status = SecItemAdd(add as CFDictionary, nil)
       } else if status != errSecSuccess {
-        // An item this build can't update (saved by an older Debug build): replace it.
         SecItemDelete(Self.query(account) as CFDictionary)
         var add = Self.query(account)
         add[kSecValueData as String] = data

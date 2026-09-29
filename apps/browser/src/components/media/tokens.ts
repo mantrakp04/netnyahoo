@@ -1,11 +1,5 @@
 import { useTheme } from "../../lib/theme";
 
-/**
- * AudioMiniPlayer colours, recovered from Dia's binary: the background is
- * white 0.956 (light) / white 0.15 (dark); the progress bar is black 10/35/60%
- * (track / fill / hover fill) in light mode and white 20/50/80% in dark mode.
- * Text uses labelColor / secondaryLabelColor.
- */
 const light = {
   background: "#F4F4F4",
   backgroundRgb: [244, 244, 244] as [number, number, number],
@@ -36,5 +30,4 @@ export function useMediaTokens(): MediaTokens {
   return useTheme().dark ? dark : light;
 }
 
-/** Red of the recording indicators (the toolbar's capture button uses it too). */
 export const CAPTURE_RED = "#FF453A";

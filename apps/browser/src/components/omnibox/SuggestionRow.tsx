@@ -5,7 +5,6 @@ import { Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { Favicon, IconButton, useHover } from "../primitives";
 
-/** The row's leading icon; the bar's own leading icon shows the selected row's too. */
 export function SuggestionIcon({ suggestion: s, color }: { suggestion: Suggestion; color?: string }) {
   const theme = useTheme();
   const tint = color ?? theme.textSecondary;
@@ -23,7 +22,6 @@ export function SuggestionIcon({ suggestion: s, color }: { suggestion: Suggestio
   }
 }
 
-/** Primary text and the dimmed " — …" accessory, per kind. */
 function labels(s: Suggestion): [string, string | null] {
   switch (s.kind) {
     case "page":
@@ -39,18 +37,12 @@ function labels(s: Suggestion): [string, string | null] {
   }
 }
 
-/** What the rows do, through one object that stays the same while typing (so rows can skip renders). */
 export type RowActions = {
   choose(s: Suggestion): void;
   hover(index: number): void;
-  /** Forgets a visited page (the row's hover ×). */
   remove(url: string): void;
 };
 
-/**
- * The bar's rows. Typing re-renders the bar on every key (and again when the field echoes a
- * completion); rows whose suggestion didn't change skip it.
- */
 export const SuggestionList = memo(function SuggestionList({
   items,
   selectedIndex,
@@ -60,7 +52,6 @@ export const SuggestionList = memo(function SuggestionList({
 }: {
   items: Suggestion[];
   selectedIndex: number;
-  /** The top row's "Search <site> ⇥" hint. */
   trailing: string | null;
   dropdown: boolean;
   actions: RowActions;
@@ -70,8 +61,6 @@ export const SuggestionList = memo(function SuggestionList({
     <View style={{ paddingHorizontal: dropdown ? 6 : 9, paddingBottom: dropdown ? 6 : 2 }}>
       {items.map((s, i) => (
         <SuggestionRow
-          // By position: the rows change on every key, and updating a row's views costs the main
-          // thread much less than creating new ones.
           key={i}
           index={i}
           suggestion={s}
@@ -84,18 +73,12 @@ export const SuggestionList = memo(function SuggestionList({
   );
 });
 
-/** Suggestions are flat objects of strings and flags. */
 function sameSuggestion(a: Suggestion, b: Suggestion): boolean {
   if (a === b) return true;
   const ka = Object.keys(a) as (keyof Suggestion)[];
   return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
 }
 
-/**
- * A suggestion row: 35pt, 11pt radius, favicon/icon, title with a dimmed accessory. History
- * rows get Dia's hover × to forget the page; action rows show their shortcut on the right;
- * `trailing` is the top row's "Tab to search" hint.
- */
 const SuggestionRow = memo(
   function SuggestionRow({
     suggestion: s,

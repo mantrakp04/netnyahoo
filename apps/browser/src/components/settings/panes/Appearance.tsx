@@ -33,7 +33,6 @@ export function AppearancePane() {
   );
 }
 
-/** Where the address bar and back / forward / reload go: the page's toolbar, or the top of the sidebar (Arc). */
 function AddressBarPicker() {
   const addressBar = useBrowser((s) => s.settings.addressBar);
   const topTabs = useBrowser((s) => s.settings.tabLayout === "top");
@@ -56,7 +55,6 @@ function AddressBarPicker() {
   );
 }
 
-/** A miniature window with the address bar over the page, or at the top of the sidebar. */
 function AddressBarChoice({ value, title, selected, onPress }: { value: Settings["addressBar"]; title: string; selected: boolean; onPress: () => void }) {
   const theme = useTheme();
   const colors = useFormColors();
@@ -102,7 +100,6 @@ function AddressBarChoice({ value, title, selected, onPress }: { value: Settings
   );
 }
 
-/** Dia's App Icon section: the icon in the Dock and the app switcher (kept in the Dock after quitting). */
 function AppIconPicker() {
   const [icons, setIcons] = useState<AppIcon[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
@@ -161,7 +158,6 @@ function IconChoice({ icon, selected, onPress }: { icon: AppIcon; selected: bool
   );
 }
 
-/** A miniature window in each appearance (Automatic is half light, half dark). */
 function ModeChoice({
   mode,
   title,

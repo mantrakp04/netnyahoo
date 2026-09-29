@@ -2,9 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { continueRender, delayRender } from "remotion";
 import { Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial, Vector2, WebGLRenderer } from "three";
 
-// The dark behind the window: slow smoke, drawn procedurally (domain-warped noise), lit from one side by the
-// film's champagne light. It stays under the window and never competes with it: its brightest folds are a few
-// percent. Deterministic in `t` (seconds), so a frame always renders the same.
 const frag = /* glsl */ `
 precision highp float;
 uniform vec2 res;
@@ -48,7 +45,6 @@ export const Smoke: React.FC<{ width: number; height: number; t: number; light?:
   const [rig, setRig] = useState<Rig | null>(null);
   const [handle] = useState(() => delayRender("Smoke"));
   const released = useRef(false);
-  // drawn at half size and scaled up: it's all soft
   const w = Math.round(width / 2), h = Math.round(height / 2);
 
   useEffect(() => {

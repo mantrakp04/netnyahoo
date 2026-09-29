@@ -1,7 +1,6 @@
 import { requireNativeModule, requireNativeViewManager } from "expo-modules-core";
 import type { ViewProps } from "react-native";
 
-/** Dia's brand spectrum (asset catalog ProgressBarColor2–7). */
 export const DIA_SPECTRUM = ["#0358F7", "#5092C7", "#E1E1FE", "#FFD400", "#FA3D1D", "#FD02F5"];
 
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -9,22 +8,16 @@ export type Rect = { x: number; y: number; width: number; height: number };
 export type AreaLightPalette = "blue" | "red" | "pink" | "orange" | "yellow" | "green" | "purple";
 
 export type AreaLightProps = ViewProps & {
-  /** The emitter in this view's coordinates (Dia uses the command-bar panel inset by 8). */
   source: Rect | null;
   cornerRadius?: number;
-  /** One of Dia's seven fixed palettes (picked by theme hue), or explicit hex stops. */
   palette?: AreaLightPalette | string[];
-  /** Resting height of the emitter above the page, in points. */
   lift?: number;
   intensity?: number;
-  /** 2 = physical inverse-square; Dia's New Tab uses 1 (a broad, soft glow). */
   falloff?: number;
-  /** Emitter tilt in degrees about [x, y]. */
   tilt?: [number, number];
   noiseSeed?: number;
   introDelay?: number;
   introDuration?: number;
-  /** Change to replay the intro. */
   replayKey?: number;
 };
 
@@ -45,21 +38,11 @@ export function AreaLight({ source, palette = "pink", ...props }: AreaLightProps
 }
 
 export type WindowBackdropProps = ViewProps & {
-  /** Gradient stops as hex; interpolated in OKLab. Drawn without `vibrancy`. */
   colors: [string, string];
-  /**
-   * The browser window's own backdrop, as Dia 1.50 draws it: the desktop behind the window, blurred,
-   * under a translucent `tintColor` gradient (opaque while the window is inactive or Reduce
-   * Transparency is on). Replaces the `colors` gradient.
-   */
   vibrancy?: boolean;
-  /** The profile colour the vibrant backdrop is tinted with (Display P3 hex). */
   tintColor?: string;
-  /** Alpha of the tint gradient: 0.36, or 0.12 for the neutral theme. */
   tintAlpha?: number;
-  /** HSL lightness added to the tint at the bottom of the gradient. */
   tintLightness?: number;
-  /** CSS-style gradient angle in degrees (180 = top→bottom). */
   angle?: number;
   grainOpacity?: number;
   grainScale?: number;
@@ -72,14 +55,11 @@ export function WindowBackdrop({ angle = 180, grainOpacity = 0.09, grainScale = 
 }
 
 export type EdgeLightProps = ViewProps & {
-  /** The rect whose border lights up, in this view's coordinates. */
   rectFrame: Rect;
   cornerRadius?: number;
   lightStart: { x: number; y: number };
   lightEnd: { x: number; y: number };
-  /** #RRGGBBAA; alpha scales the overall strength. */
   lightColor?: string;
-  /** Logo that gets a back-lit rim (optional). */
   logoFrame?: Rect | null;
   animationDuration?: number;
   animationDelay?: number;
@@ -99,7 +79,6 @@ type NativeEdgeLightProps = ViewProps & {
 const NativeEdgeLight = requireNativeViewManager<NativeEdgeLightProps>("NetnyahooEdgeLight");
 const rect = (r: Rect) => [r.x, r.y, r.width, r.height];
 
-/** Dia's New Tab "wrap": a light sweeping up from below that traces the bar's border. */
 export function EdgeLight({ rectFrame, lightStart, lightEnd, logoFrame, ...props }: EdgeLightProps) {
   return (
     <NativeEdgeLight
@@ -115,13 +94,9 @@ export function EdgeLight({ rectFrame, lightStart, lightEnd, logoFrame, ...props
 
 export type PowerUpProps = ViewProps & {
   palette?: AreaLightPalette | string[];
-  /** Dia's New Tab: 1.25 with the area light on, 1 without; 1.5 for skill chips. Also the halo's. */
   speed?: number;
-  /** Horizontal start of the band's centre (0–1), sliding to 0.5. */
   origin?: number;
-  /** The command bar's corner radius; the halo traces the bar at +2. */
   cornerRadius?: number;
-  /** The rect the halo wraps (the command bar), in this view's coordinates; null = no halo. */
   halo?: Rect | null;
 };
 
@@ -129,10 +104,6 @@ type NativePowerUpProps = Omit<PowerUpProps, "palette" | "halo"> & { palette?: s
 
 const NativePowerUp = requireNativeViewManager<NativePowerUpProps>("NetnyahooPowerUp");
 
-/**
- * Dia's CommandBarPowerUpView: a faint palette wash rising from the bottom of the page and,
- * with `halo`, a light that runs around the command bar's outline.
- */
 export function PowerUp({ palette = "pink", halo = null, ...props }: PowerUpProps) {
   return (
     <NativePowerUp
@@ -151,9 +122,4 @@ type AreaLightDebugModule = {
   debugSnapshot(dir: string): Promise<Array<{ file: string; class: string; ok: boolean; window: number; frame: number[]; key: boolean; main: boolean; hidden: boolean; alpha: number }>>;
 };
 
-/**
- * DEV tooling for the shader views: force windows to read as key/active or not, force Reduce
- * Motion for views mounted afterwards, and render every shader view offscreen to PNGs (window
- * snapshots can't read Metal layers).
- */
 export const shaderDebug = () => requireNativeModule<AreaLightDebugModule>("NetnyahooAreaLight");

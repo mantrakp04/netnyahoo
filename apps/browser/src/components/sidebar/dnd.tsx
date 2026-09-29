@@ -8,25 +8,14 @@ import type { TabPlacement } from "../../store/organize";
 import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag, useTabDrag } from "../layout/tabDrag";
 import { suppressHover } from "./hover";
 
-/**
- * Sidebar drag and drop, after Dia: rows, pinned tiles, groups and splits can
- * be dragged; the list parts to show where the drop lands (items get animated
- * margins, so group boxes grow and shrink with them), the dragged items
- * collapse out of their old place, and a floating ghost follows the pointer.
- * Drops can pin/unpin, reorder, and move tabs into or out of groups. A tick of
- * trackpad haptics marks each new drop position.
- */
 type Frame = { x: number; y: number; w: number; h: number };
 type Section = "tiles" | "pinnedGroups" | "list";
 
 export type ItemSpec = {
   kind: "tile" | "row" | "group" | "split" | "tail";
-  /** The tabs this item moves (a group's members, a split's panes). */
   tabIds: string[];
   section: Section;
-  /** Group boxes: their group. Group tails: the group they end. */
   groupId?: string;
-  /** Rows inside a group box. */
   parentGroup?: string;
   collapsed?: boolean;
 };
@@ -35,9 +24,7 @@ type Item = ItemSpec & {
   key: string;
   view: View | null;
   header: View | null;
-  /** Space opened before the item (the drop gap). */
   gap: Animated.Value;
-  /** The item's own size while it collapses out of its old place (sources only). */
   size: Animated.Value;
   frame: Frame | null;
   headerFrame: Frame | null;
@@ -68,7 +55,6 @@ class DragController {
   root: View | null = null;
   scroll: ScrollView | null = null;
   scrollY = 0;
-  /** Set by the provider: re-renders items when a drag starts/ends, and shows the ghost. */
   setSources: (keys: Set<string>) => void = () => {};
   setGhost: (ghost: Ghost | null) => void = () => {};
   setDropInto: (groupId: string | null) => void = () => {};
@@ -86,10 +72,8 @@ class DragController {
   private drop: Drop = { type: "none" };
   private scrollTimer: ReturnType<typeof setInterval> | undefined;
   private measured = false;
-  /** The drag in progress (a quick drag can end before `begin` has measured everything). */
   private token: object | null = null;
 
-  /** A new item record; `useDragItem` registers it while its component is mounted. */
   create(key: string): Item {
     return { key, kind: "row", tabIds: [], section: "list", view: null, header: null, gap: new Animated.Value(0), size: new Animated.Value(0), frame: null, headerFrame: null };
   }
@@ -98,11 +82,9 @@ class DragController {
     return this.sources.length > 0;
   }
 
-  /** Starts dragging `key` (plus the rest of the multi-selection it belongs to). */
   async begin(key: string, x: number, y: number, selection: string[]) {
     const item = this.items.get(key);
     if (!item || item.kind === "tail") return;
-    // Dragging one of several selected tabs drags them all.
     const selected = item.kind === "row" || item.kind === "tile" ? selection : [];
     const multi = selected.length > 1 && item.tabIds.some((id) => selected.includes(id));
     this.sources = multi
@@ -110,8 +92,6 @@ class DragController {
       : [item];
     const token = (this.token = {});
     suppressHover(true);
-    // Tabs can also go onto another window or out into a new one, and a single tab onto
-    // the page to split (layout/tabDrag).
     if (item.kind === "row" || item.kind === "tile") {
       const single = this.sources.length === 1 ? (item.tabIds[0] ?? null) : null;
       beginTabDrag(single, [...new Set(this.sources.flatMap((i) => i.tabIds))]);
@@ -136,12 +116,10 @@ class DragController {
     this.setSources(new Set(this.sources.map((s) => s.key)));
     this.setGhost(this.ghost);
     if (!this.regionFrames.get("tiles") && (item.kind === "row" || item.kind === "tile")) {
-      // No pinned tabs: a pin drop zone just appeared above the list and moved everything down.
       await new Promise((resolve) => setTimeout(resolve, 60));
       await this.measureAll();
       if (this.token !== token) return;
     }
-    // The old places close up as the ghost lifts off.
     Animated.parallel(this.sources.map((s) => spring(s.size, 0))).start();
     this.measured = true;
     this.move(this.pointer.x, this.pointer.y);
@@ -169,13 +147,12 @@ class DragController {
     this.retarget();
   }
 
-  /** Commits the drop. */
   end(commit: boolean) {
     clearInterval(this.scrollTimer);
     this.scrollTimer = undefined;
     const sources = this.sources;
     const drop = this.drop;
-    // Dropped on a split target over the page: that wins over the sidebar's own drop.
+    // Page split drop takes precedence over sidebar drop.
     const splitDrop = commit ? endTabDrag() : (cancelTabDrag(), false);
     if (commit && !splitDrop && this.measured && sources.length) {
       const s = useBrowser.getState();
@@ -183,7 +160,7 @@ class DragController {
       if (drop.type === "tabs") s.placeTabs(ids, drop.placement);
       else if (drop.type === "group" && sources[0]!.groupId) s.moveGroup(sources[0]!.groupId, drop.placement);
     }
-    // The store's new order already has the gap filled and the old place gone: reset in the same frame.
+    // Reset the gap immediately; the store has already moved the item.
     for (const i of this.items.values()) {
       i.gap.stopAnimation();
       i.gap.setValue(0);
@@ -217,7 +194,6 @@ class DragController {
     }, 16);
   }
 
-  /** Content-space frame (frames were measured at drag start; the content has scrolled since). */
   private at(f: Frame | null): Frame | null {
     return f && { ...f, y: f.y - (this.scrollY - this.startScrollY) };
   }
@@ -229,7 +205,6 @@ class DragController {
     const live = [...this.items.values()].filter((i) => !sourceKeys.has(i.key) && i.frame);
     const cy = (i: Item) => {
       const f = this.at(i.frame)!;
-      // Groups: the header decides (dropping below a group's header is "into" it).
       return f.y + Math.min(f.h, i.headerFrame?.h ?? f.h) / 2;
     };
     const byY = (a: Item, b: Item) => this.at(a.frame)!.y - this.at(b.frame)!.y || a.frame!.x - b.frame!.x;
@@ -246,7 +221,6 @@ class DragController {
     if (x > sidebar.x + sidebar.w + 40 || x < sidebar.x - 40 || useTabDrag.getState().outside) {
       drop = { type: "none" };
     } else if (tabsDrag && tiles && inside(tiles, x, y, 6)) {
-      // Pinned tiles, row by row.
       const cells = live.filter((i) => i.kind === "tile").sort(byY);
       const before = cells.find((t) => {
         const f = this.at(t.frame)!;
@@ -288,7 +262,6 @@ class DragController {
       }
     }
     if (source.kind === "split" && drop.type === "tabs" && (drop.placement.pinned || drop.placement.groupId)) {
-      // Splits stay whole, in the list.
       drop = { type: "none" };
       gapKey = null;
       into = null;
@@ -315,7 +288,6 @@ const DragContext = createContext<DragState | null>(null);
 
 export function DragProvider({ children }: { children: (ghost: Ghost | null, controller: DragController) => ReactNode }) {
   const controller = useMemo(() => new DragController(), []);
-  // DEV: lets tooling (lib/devHarness scripts) drive a drag.
   if (__DEV__) (globalThis as { sidebarDrag?: DragController }).sidebarDrag = controller;
   const [sources, setSources] = useState<Set<string>>(() => new Set());
   const [ghost, setGhost] = useState<Ghost | null>(null);
@@ -332,7 +304,6 @@ export function DragProvider({ children }: { children: (ghost: Ghost | null, con
   );
 }
 
-/** Tabs dragged from another window hover this one: its tab list lights up (dropping moves them here). */
 function WindowDropHighlight() {
   const windowId = useWindowId();
   const theme = useTheme();
@@ -360,31 +331,19 @@ function WindowDropHighlight() {
   );
 }
 
-/**
- * Drag and drop for a subtree, or none: a profile page drawn beside the window's during a swipe
- * (layout/profilePager) keeps its items and drop regions out of the sidebar's drag controller.
- */
 export function DragScope({ enabled, children }: { enabled: boolean; children: ReactNode }) {
   const ctx = useContext(DragContext);
   return <DragContext.Provider value={enabled ? ctx : null}>{children}</DragContext.Provider>;
 }
 
 export const useDragController = () => useContext(DragContext)?.controller;
-/** The group a dragged tab would drop into (its collapsed header highlights). */
 export const useDropInto = () => useContext(DragContext)?.dropInto ?? null;
 
-/**
- * Makes a sidebar item draggable / a drop reference. Spread `wrapper` on the
- * item's outer Animated.View and `handle` on what starts the drag (the whole
- * row, or a group's header — which also takes `headerRef`).
- */
 export function useDragItem(key: string, spec: ItemSpec, selection: () => string[] = () => []) {
   const ctx = useContext(DragContext);
   const controller = ctx?.controller;
   const item = useMemo(() => controller?.create(key), [controller, key]);
   if (item) Object.assign(item, spec);
-  // A tab moving between sections remounts under the same key (row → tile): the old
-  // component's cleanup runs after the new one registered, so only remove our own record.
   useEffect(() => {
     if (!controller || !item) return;
     controller.items.set(key, item);
@@ -420,7 +379,6 @@ export function useDragItem(key: string, spec: ItemSpec, selection: () => string
 
   const source = !!ctx?.sources.has(key);
   const horizontal = spec.kind === "tile";
-  // A tail is a zero-height marker in a column with `gap`: cancel the gap it adds.
   const tailOffset = useMemo(() => item && Animated.add(item.gap, -ROW_GAP), [item]);
   const style = item
     ? {

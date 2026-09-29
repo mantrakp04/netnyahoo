@@ -2,10 +2,6 @@ import { openWindow } from "@netnyahoo/shell";
 import { create } from "zustand";
 import { TASK_MANAGER_WINDOW_ID } from "../taskManager/window";
 
-/**
- * The Settings (⌘,) and Import windows. Each is a utility NSWindow with its own
- * React root (Windows.swift, `kind`), rendered by WindowRoot for these ids.
- */
 export const SETTINGS_WINDOW_ID = "settings";
 export const IMPORT_WINDOW_ID = "import";
 
@@ -30,9 +26,7 @@ export type SettingsPane =
 
 type Nav = {
   pane: SettingsPane;
-  /** Profiles › Profile Details; for Passwords and Autofill, the profile they start on. */
   profileId: string | null;
-  /** Back / forward history, like Dia's toolbar arrows. */
   back: { pane: SettingsPane; profileId: string | null }[];
   forward: { pane: SettingsPane; profileId: string | null }[];
   go(pane: SettingsPane, profileId?: string | null): void;
@@ -62,13 +56,11 @@ export const useSettingsNav = create<Nav>((set, get) => ({
   },
 }));
 
-/** ⌘, (optionally straight to a pane). */
 export function openSettings(pane?: SettingsPane, profileId?: string | null) {
   if (pane) useSettingsNav.getState().go(pane, profileId ?? null);
   void openWindow(SETTINGS_WINDOW_ID, { kind: "settings", title: "Settings" });
 }
 
-/** "Import from Another Browser…" (app menu, Settings, the empty bookmarks bar). */
 export function openImport() {
   void openWindow(IMPORT_WINDOW_ID, { kind: "import", title: "Import from Another Browser" });
 }

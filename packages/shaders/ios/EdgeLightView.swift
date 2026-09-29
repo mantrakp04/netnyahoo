@@ -1,10 +1,6 @@
 import ExpoModulesCore
 import MetalKit
 
-/// Dia's New Tab "wrap": a point light sweeps from below the command bar up to
-/// its top edge (easeOutExpo), tracing the bar's border with a 1pt hairline and
-/// a ~10pt halo, and rim-lighting the logo. Shader reconstructed from
-/// `edgeLightFragment`; parameters from NewTabPageViewController (docs/dia-spec.md).
 final class EdgeLightView: MetalSurface {
   var rectFrame = SIMD4<Float>(0, 0, 0, 0)
   var cornerRadius: Float = 20
@@ -22,8 +18,6 @@ final class EdgeLightView: MetalSurface {
     metalView.preferredFramesPerSecond = 60
   }
 
-  /// NewTabPageViewController.loadView skips the sweep to its end (time += 5, paused); the
-  /// entrance then restarts it, except under Reduce Motion, which keeps the settled glow.
   func replay() {
     if WindowActivity.reduceMotion {
       startTime = CACurrentMediaTime() - Double(animationDelay + animationDuration + 5)
@@ -37,7 +31,6 @@ final class EdgeLightView: MetalSurface {
     }
   }
 
-  /// Props changed: a settled (paused) glow repaints at its new geometry.
   func redraw() {
     if metalView.isPaused { metalView.needsDisplay = true }
   }
@@ -71,7 +64,6 @@ final class EdgeLightView: MetalSurface {
     encoder.setFragmentBytes(&end, length: 8, index: 7)
     encoder.setFragmentBytes(&color, length: 16, index: 8)
     encoder.setFragmentBytes(&logo, length: 16, index: 9)
-    // After the sweep the glow is static: one more frame, then draw only on demand.
     if time > animationDelay + animationDuration + 0.1, !metalView.isPaused {
       DispatchQueue.main.async { [weak self] in
         self?.metalView.isPaused = true

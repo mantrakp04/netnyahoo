@@ -16,29 +16,14 @@ import { GlassFill, liquidGlass } from "../glass";
 import { useHover } from "../primitives";
 import { HistoryButton, ReloadButton, UrlField } from "../Toolbar";
 
-/**
- * Arc's header, measured in a 2× capture of Arc 1.x (a 228 pt sidebar): the sidebar toggle 27 pt
- * past the last traffic light's centre, then back / forward / reload on a 34 pt pitch with reload's
- * centre 22 pt in from the sidebar's edge. Ours keep Dia's traffic lights and the toolbar's 30 pt
- * buttons 5 pt apart (a 35 pt pitch), 7 pt in from the edge.
- */
 const BUTTON = layout.toolbarButton;
 const GAP = 5;
 const NAV_WIDTH = 3 * BUTTON + 2 * GAP;
-/** Dia's traffic lights are centred 26.75 pt down, the last at x 70.75. */
+// Dia: lights y26.75pt, x70.75pt; 5pt gap, 7pt inset.
 const LIGHTS_Y = 26.75;
 const TOGGLE_X = 70.75 + 27;
 const EDGE = 7;
-/** The toggle needs this much sidebar; narrower, it goes first (⌘S still hides the sidebar). */
 const TOGGLE_MIN_WIDTH = TOGGLE_X + BUTTON / 2 + GAP + NAV_WIDTH + EDGE;
-
-/*
- * Settings › Appearance › Address Bar "In the sidebar", laid out like Arc's sidebar in Dia's
- * materials: the header row has the sidebar toggle and back / forward / reload, the URL field
- * under it holds the pinned extension buttons, and Downloads sits in the footer (Sidebar.tsx).
- * Clicking the field (or ⌘L) opens the dropdown from its top-left corner (CommandPanel).
- * Everything acts on the active tab (the focused pane in a split), like the toolbar did.
- */
 
 export function SidebarHeaderTools({ width }: { width: number }) {
   const windowId = useWindowId();
@@ -63,7 +48,6 @@ export function SidebarHeaderTools({ width }: { width: number }) {
   );
 }
 
-// The buttons act on the active tab, so there's no pane to focus first.
 const alreadyFocused = () => {};
 
 function NavigationButtons({ tab, palette }: { tab: Tab; palette: ToolbarPalette }) {
@@ -78,12 +62,10 @@ function NavigationButtons({ tab, palette }: { tab: Tab; palette: ToolbarPalette
   );
 }
 
-/** The URL field under the header, the sidebar's width less its inset. */
 export function SidebarAddressRow() {
   const windowId = useWindowId();
   const tab = useActiveTab();
   const field = useRef<View>(null);
-  // The dropdown (field click, ⌘L) opens from the field's top-left corner.
   const anchor = () =>
     field.current?.measureInWindow((x, y, width, height) => {
       if (width && addressBarInSidebar(useBrowser.getState(), windowId)) setUrlAnchor(windowId, { left: x, top: y, width, sidebar: { height } });
@@ -116,7 +98,6 @@ function PageField({ tab, windowId }: { tab: Tab; windowId: string }) {
         height: SIDEBAR_FIELD.height,
         progress: live.isLoading ? live.progress : null,
         accessory: extensionsWidth ? (
-          // The toolbar reserves 6 pt after its buttons; the field's own padding does that here.
           <View style={{ width: extensionsWidth - 6, height: 28 }}>
             <ToolbarExtensions tabId={tab.id} windowId={windowId} palette={palette} top={0} right={0} />
           </View>
@@ -126,7 +107,6 @@ function PageField({ tab, windowId }: { tab: Tab; windowId: string }) {
   );
 }
 
-/** The New Tab page (or an empty split pane): ⌘L's behaviour, its own bar or the command panel. */
 function EmptyField({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
@@ -141,7 +121,6 @@ function EmptyField({ windowId }: { windowId: string }) {
             height: SIDEBAR_FIELD.height,
             borderRadius: SIDEBAR_FIELD.radius,
             borderWidth: StyleSheet.hairlineWidth * 2,
-            // Liquid Glass: the glass's own edge instead of the stroke (the border keeps its room).
             borderColor: liquidGlass ? "transparent" : theme.pinnedRestingStroke,
             backgroundColor: liquidGlass ? undefined : hovered ? theme.tabHover : theme.pinnedResting,
             justifyContent: "center",
@@ -149,7 +128,6 @@ function EmptyField({ windowId }: { windowId: string }) {
           }}
         >
           {liquidGlass ? <GlassFill radius={SIDEBAR_FIELD.radius} border={StyleSheet.hairlineWidth * 2} fill={hovered ? theme.tabHover : theme.pinnedResting} /> : null}
-          {/* FadeLabel pads its text 2pt on each side. */}
           <FadeLabel text="Search or enter address" fontSize={13} color={theme.placeholder} fadeWidth={14} style={{ height: 18, marginLeft: -2 }} />
         </View>
       </Pressable>

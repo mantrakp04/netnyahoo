@@ -25,13 +25,7 @@ import { hex, layout, useTheme } from "./lib/theme";
 import { useBrowser } from "./store/browser";
 import { useSidebarOpen, useWindowId, WindowContext } from "./store/hooks";
 
-/**
- * One browser window's React root. `windowId` comes from the native window's
- * initial properties; app builds from before multi-window support host a single
- * root without one, which shows the focused window.
- */
 export function WindowRoot({ windowId }: { windowId?: string }) {
-  // The Settings and Import windows share the "main" root component (components/settings).
   if (isUtilityWindowId(windowId)) return <UtilityWindow id={windowId!} />;
   return <BrowserWindowRoot windowId={windowId} />;
 }
@@ -39,7 +33,6 @@ export function WindowRoot({ windowId }: { windowId?: string }) {
 function BrowserWindowRoot({ windowId }: { windowId?: string }) {
   const id = useBrowser((s) => windowId ?? s.ui.focusedWindowId ?? s.windowOrder[0] ?? null);
   const exists = useBrowser((s) => !!id && !!s.windows[id]);
-  // A closed window's root unmounts right after; render nothing meanwhile.
   if (!id || !exists) return null;
   return (
     <WindowContext.Provider value={id}>
@@ -51,19 +44,16 @@ function BrowserWindowRoot({ windowId }: { windowId?: string }) {
 function BrowserWindow() {
   const theme = useTheme();
   const sidebarOpen = useSidebarOpen();
-  // ⇧⌘S: tabs along the top instead of the sidebar. A page in fullscreen hides all chrome.
   const topTabs = useTabLayout() === "top";
   const fullscreen = !!useFullscreenTab(useWindowId());
   const showSidebar = sidebarOpen && !topTabs && !fullscreen;
   const showStrip = sidebarOpen && topTabs && !fullscreen;
-  // The command panel is sized against the window (useWindowDimensions is the key window's).
   const [width, setWidth] = useState(0);
 
   return (
     <View style={{ flex: 1, flexDirection: "row" }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       <WindowBackdrop vibrancy {...theme.backdrop} colors={theme.windowTint} grainOpacity={theme.grain} style={StyleSheet.absoluteFill} />
       <WindowProfile />
-      {/* While the sidebar pages between profiles, the tint cross-fades between their colours. */}
       <ProfileTint />
       {showSidebar && (
         <ProfileSwipe>
@@ -76,7 +66,6 @@ function BrowserWindow() {
             ? { flex: 1 }
             : {
                 flex: 1,
-                // An extension's side panel sits beside the page (components/extensions/SidePanel).
                 flexDirection: "row",
                 paddingTop: showStrip ? TOP_STRIP_HEIGHT : layout.cardTop,
                 paddingRight: layout.cardInset,
@@ -107,10 +96,6 @@ function BrowserWindow() {
   );
 }
 
-/**
- * With the sidebar hidden, hovering the window's left edge slides it in as a
- * floating panel over the page; it slides away when the pointer leaves.
- */
 function SidebarPeek() {
   const theme = useTheme();
   const sidebarWidth = useSidebarWidth(useWindowId());

@@ -1,9 +1,5 @@
 import { useTheme } from "../../lib/theme";
 
-/**
- * Status colours for live folders and Live Calendar (GitHub's Primer palette
- * for PR / CI states, so they read the same as on github.com), light / dark.
- */
 const DARK = {
   success: "#3FB950",
   failure: "#F85149",
@@ -11,7 +7,6 @@ const DARK = {
   merged: "#A371F7",
   draft: "#8B949E",
   conflict: "#DB6D28",
-  /** Unread pip / dots (Dia's unreadPipColor follows the accent). */
   pip: "#4C8DF6",
   now: "#E5534B",
   ciTrack: "rgba(255,255,255,0.1)",

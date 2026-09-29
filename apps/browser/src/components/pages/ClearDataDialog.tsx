@@ -9,7 +9,6 @@ import { useBrowser } from "../../store/browser";
 import { engineProfile, isIncognitoProfile, profileFor } from "../../store/model";
 import { Button, Checkbox, PopUp } from "../settings/controls";
 
-/** Chrome's "Delete browsing data" time ranges. */
 const RANGES = [
   { value: "hour", title: "Last hour", ms: 3_600_000 },
   { value: "day", title: "Last 24 hours", ms: 86_400_000 },
@@ -19,18 +18,11 @@ const RANGES = [
 ] as const;
 type Range = (typeof RANGES)[number]["value"];
 
-/** History › Clear Browsing Data… asks the History page of a window to show the dialog. */
 export const useClearDataRequest = create<{ windowId: string | null; request(windowId: string | null): void }>((set) => ({
   windowId: null,
   request: (windowId) => set({ windowId }),
 }));
 
-/**
- * Clears a profile's history for a time range (visit by visit, with the icons
- * of pages that are gone, and the engine's own history that extensions read) and,
- * optionally, its cookies, site data and cache for that range, through Chrome's
- * BrowsingDataRemover.
- */
 export function ClearDataDialog({ profileId, onClose }: { profileId: string; onClose: () => void }) {
   const theme = useTheme();
   const profileName = useBrowser((s) => profileFor(s, profileId).name);

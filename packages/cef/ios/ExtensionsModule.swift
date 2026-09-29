@@ -1,13 +1,11 @@
 import ExpoModulesCore
 
-/// Chrome extensions (NNExtensions) for JS: `requireNativeModule("NetnyahooExtensions")`.
 public class ExtensionsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooExtensions")
     Events("onChanged", "onTabs", "onInstallPrompt")
 
-    // Set as soon as the module exists (Chrome's install prompts come here, never to its hidden
-    // dialog) and again once JS listens: prompts Chrome still waits on are asked again then.
+// Replay pending install prompts after JS listeners attach or reload.
     OnCreate { self.attach() }
     OnStartObserving { self.attach() }
 
@@ -39,11 +37,9 @@ public class ExtensionsModule: Module {
     AsyncFunction("evaluateInHost") { (expression: String, profile: String, promise: Promise) in
       NNExtensions.evaluateInHost(expression, profile: profile, page: nil) { promise.resolve($0) }
     }.runOnQueue(.main)
-    /// DEV: like evaluateInHost, in the profile's hidden `page` (chrome://settings/, chrome-extension://…).
     AsyncFunction("evaluateInPage") { (expression: String, profile: String, page: String, promise: Promise) in
       NNExtensions.evaluateInHost(expression, profile: profile, page: page) { promise.resolve($0) }
     }.runOnQueue(.main)
-    /// Asks for a folder (developer "Load Unpacked").
     AsyncFunction("chooseFolder") { (promise: Promise) in
       let panel = NSOpenPanel()
       panel.canChooseFiles = false

@@ -6,14 +6,6 @@ import { useSidebarTokens } from "../sidebar/tokens";
 import { useMedia } from "./state";
 import { CAPTURE_RED } from "./tokens";
 
-/**
- * Badges over a tab's favicon (sidebar row, pinned tile, top strip). Place it
- * inside a relatively positioned box the size of the favicon.
- * - Bottom right, recording: a red dot while the page uses the camera or
- *   microphone, a red screen badge while it shares the screen (the toolbar
- *   shows the same state as a red glyph).
- * - Top right, Picture in Picture: the tab's video or meeting is in a PiP window.
- */
 export function TabBadges({ tabId, size = 16 }: { tabId: string; size?: number }) {
   return (
     <>

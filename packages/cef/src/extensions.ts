@@ -1,17 +1,6 @@
 import { requireOptionalNativeModule, type EventSubscription } from "expo-modules-core";
 import { ChromeUI } from "./chromeUI";
 
-/**
- * Chrome Web Store (MV3) extensions, per profile: Chrome's own extension system.
- * Each window's tabs belong to a real Chrome Browser (packages/cef/ios/NNWindowHost.h),
- * so extensions' tabs/windows APIs see real tabs and windows, and the store's own
- * button installs through Chrome (its dialog asks the app: `onExtensionInstallPrompt`).
- * Their popups / options / side panels are extension pages you render in a `WebView`
- * with the same `profile`. `profile` is the WebView profile string ("" = default);
- * incognito profiles use the default profile's extensions.
- */
-
-/** "allSites" | "specificSites" | "onClick" (Chrome's site access). */
 export type SiteAccess = "ON_ALL_SITES" | "ON_SPECIFIC_SITES" | "ON_CLICK";
 
 export type InstalledExtension = {
@@ -21,36 +10,28 @@ export type InstalledExtension = {
   description: string;
   enabled: boolean;
   state: "ENABLED" | "DISABLED" | "TERMINATED" | "BLOCKLISTED";
-  /** Data URL. */
   icon: string;
-  /** Chrome's permission warnings ("Read and change all your data on all websites"). */
   permissions: string[];
   siteAccess: SiteAccess | null;
   sites: string[];
   optionsUrl: string | null;
-  /** Pinned to the toolbar (Chrome's own per-profile pin state). */
   pinned: boolean;
   incognito: boolean;
   fileAccess: boolean;
   mayModify: boolean;
   errors: string[];
   location: string;
-  /** Where Chrome keeps it (the developer's folder for unpacked ones). */
   path: string | null;
   fromWebStore: boolean;
   webStoreUrl: string | null;
   homepageUrl: string | null;
-  // From the manifest:
   hasAction?: boolean;
-  /** Default popup page, relative to the extension root. */
   popup?: string | null;
   actionTitle?: string | null;
-  /** Toolbar icon (data URL). */
   actionIcon?: string | null;
   sidePanel?: string | null;
 };
 
-/** An unpacked extension folder (Load Unpacked) waiting for the install confirmation. */
 export type ExtensionPackage = {
   id?: string;
   name: string;
@@ -61,26 +42,21 @@ export type ExtensionPackage = {
   icon: string | null;
   permissions: string[];
   optionalPermissions: string[];
-  /** Host permissions and content-script matches. */
   hostPermissions: string[];
   hasAction: boolean;
   popup: string | null;
   optionsPage: string | null;
   sidePanel: string | null;
-  /** Folder to pass to `installExtension`. */
   path: string;
 };
 
 export type ActionState = {
   badgeText: string;
-  /** #rrggbb, or null for Chrome's default. */
   badgeColor: string | null;
   badgeTextColor: string | null;
   title: string;
-  /** Full popup URL ("" = none: the extension handles clicks itself). */
   popup: string;
   enabled: boolean;
-  /** action.setIcon's image for this tab (PNG data URL at 2x), "" for the manifest icon. */
   icon: string;
 };
 
@@ -90,25 +66,15 @@ export type ExtensionsChange = {
   event: "installed" | "uninstalled" | "enabled" | "disabled" | "configured" | "reloaded";
 };
 
-/**
- * A page Chrome opened outside our windows (a new Chrome window from an extension,
- * an uninstall survey): open it as a tab.
- */
 export type TabsRequest = {
   action: "open";
   profile: string;
   extensionId: string;
-  /** App window id, or null. */
   window: string | null;
   url: string;
   active?: boolean;
 };
 
-/**
- * Chrome's own install flow (the Web Store's "Add" button, re-enabling an extension whose
- * permissions grew, extensions installed from outside) asks the app instead of showing
- * its dialog. Answer with `resolveExtensionInstallPrompt`.
- */
 export type ExtensionInstallPrompt = {
   requestId: string;
   profile: string;
@@ -116,11 +82,8 @@ export type ExtensionInstallPrompt = {
   name: string;
   version: string;
   type: "install" | "re-enable" | "permissions" | "external" | "remote" | "repair" | "other";
-  /** PNG data: URL, or "". */
   icon: string;
-  /** The warnings Chrome would list, in order. */
   permissions: string[];
-  /** The tab that asked (the store page), 0 if none. */
   browserId: number;
 };
 
@@ -138,18 +101,12 @@ type NativeExtensions = {
   uninstall(id: string, profile: string): Promise<Result<{ ok: true }>>;
   reload(id: string, profile: string): Promise<Result<{ ok: true }>>;
   configure(id: string, profile: string, options: Record<string, unknown>): Promise<Result<{ ok: true }>>;
-  /** Missing in app builds from before it existed. */
   searchEngineList?(profile: string): Promise<Result<{ list: unknown }>>;
-  /** DEV: runs in the profile's hidden chrome://extensions/ (evaluateInPage: any hidden page). */
   evaluateInHost(expression: string, profile: string): Promise<unknown>;
   evaluateInPage(expression: string, profile: string, page: string): Promise<unknown>;
   chooseFolder(): Promise<string | null>;
 };
 
-/**
- * App builds from before the module existed still run this JS (Metro serves the
- * working tree): they get an engine without extensions instead of a crash.
- */
 function unavailable(): NativeExtensions {
   const error = { error: "Extensions aren't available in this build" };
   const fallbacks: Record<string, unknown> = { list: { extensions: [] }, chooseFolder: null };
@@ -170,14 +127,8 @@ function unwrap<T>(result: Result<T>): T {
   return result as T;
 }
 
-/** 32 letters a–p. */
 export const isExtensionId = (s: string) => /^[a-p]{32}$/.test(s);
 
-/**
- * The extension id in a Chrome Web Store link
- * (chromewebstore.google.com/detail/<slug>/<id>, the old chrome.google.com/webstore/detail/…),
- * or a bare id.
- */
 export function webStoreExtensionId(urlOrId: string): string | null {
   const s = urlOrId.trim();
   if (isExtensionId(s)) return s;
@@ -194,12 +145,6 @@ export function webStoreExtensionId(urlOrId: string): string | null {
   }
 }
 
-/**
- * Chrome's search engine list for the profile, as its settings page gets it
- * (`getSearchEnginesList`: `{defaults, actives, others, extensions}`). Engines that
- * extensions add (`chrome_settings_overrides.search_provider`) carry `extension: {id, name}`;
- * core's `extensionEnginesFromChrome` picks them out. Null if the engine can't tell.
- */
 export async function searchEngineList(profile: string): Promise<unknown> {
   if (!Native.searchEngineList) return null;
   return unwrap(await Native.searchEngineList(profile)).list;
@@ -209,12 +154,10 @@ export async function listExtensions(profile: string): Promise<InstalledExtensio
   return unwrap(await Native.list(profile)).extensions;
 }
 
-/** Reads a developer's unpacked extension folder (Load Unpacked). */
 export async function inspectUnpackedExtension(path: string): Promise<ExtensionPackage> {
   return unwrap(await Native.inspectUnpacked(path));
 }
 
-/** Loads a developer's unpacked folder into the profile. */
 export async function installExtension(pkg: Pick<ExtensionPackage, "path">, profile: string): Promise<string> {
   return unwrap(await Native.install(pkg.path, profile)).id;
 }
@@ -244,7 +187,6 @@ export async function configureExtension(
   unwrap(await Native.configure(id, profile, options));
 }
 
-/** Badge / title / popup / icon of each extension's toolbar action for a tab (its browser id), from Chrome. */
 export async function extensionActionStates(browserId: number, ids: string[]): Promise<Record<string, ActionState>> {
   if (!ids.length || !browserId) return {};
   return ChromeUI.actionStates(browserId, ids);
@@ -255,13 +197,8 @@ export const onExtensionInstallPrompt = (listener: (e: ExtensionInstallPrompt) =
 export const resolveExtensionInstallPrompt = (requestId: string, accepted: boolean) => Native.resolveInstallPrompt(requestId, accepted);
 export const onExtensionTabsRequest = (listener: (e: TabsRequest) => void) => Native.addListener("onTabs", listener);
 
-/** Folder picker for Load Unpacked. */
 export const chooseExtensionFolder = () => Native.chooseFolder();
 
-/**
- * Chrome's install-prompt warnings for a manifest (before it's installed; installed
- * extensions carry Chrome's own list in `permissions`). Empty = "no special permissions".
- */
 export function permissionWarnings(pkg: Pick<ExtensionPackage, "permissions" | "hostPermissions">): string[] {
   const warnings: string[] = [];
   const perms = new Set(pkg.permissions);
@@ -284,7 +221,6 @@ export function permissionWarnings(pkg: Pick<ExtensionPackage, "permissions" | "
   }
   if (perms.has("declarativeNetRequest") && !allHosts && !perms.has("declarativeNetRequestWithHostAccess"))
     warnings.push("Block content on any page");
-  // "tabs", "webNavigation" and "history" read the same data: Chrome shows one line.
   const browsing = perms.has("history") ? "Read and change your browsing history on all your signed-in devices" : null;
   if (!browsing && (perms.has("tabs") || perms.has("webNavigation")) && !allHosts) warnings.push("Read your browsing history");
   if (browsing) warnings.push(browsing);

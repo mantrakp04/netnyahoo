@@ -1,4 +1,3 @@
-// Chromium's component updater (Widevine CDM and friends): their status, for Settings › Advanced.
 #import "NNCefInternal.h"
 
 #include "include/cef_component_updater.h"
@@ -13,7 +12,7 @@ NSString *StateName(cef_component_state_t state) {
   return state >= 0 && state <= CEF_COMPONENT_STATE_RUN ? kNames[state] : @"unknown";
 }
 
-}  // namespace
+}
 
 @implementation NNCef (Components)
 

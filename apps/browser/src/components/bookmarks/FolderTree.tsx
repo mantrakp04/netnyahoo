@@ -9,9 +9,7 @@ import { useFormColors } from "../settings/controls";
 
 type FolderRow = { id: string; title: string; depth: number; hasChildren: boolean };
 
-/** A profile's folders in display order (Bookmarks Bar, Other Bookmarks, then nested), skipping collapsed ones. */
 function useFolderRows(profileId: string, expanded: Set<string>): FolderRow[] {
-  // Selected as one string so the store subscription compares by value.
   const key = useBrowser((s) => {
     const roots = s.bookmarks.roots[profileId];
     if (!roots) return "";
@@ -39,10 +37,6 @@ function useFolderRows(profileId: string, expanded: Set<string>): FolderRow[] {
   );
 }
 
-/**
- * The folder tree used by the bookmark save dialog and the Bookmarks manager.
- * Roots start expanded, and so does the path to the selected folder.
- */
 export function FolderTree({
   profileId,
   selectedId,
@@ -54,7 +48,6 @@ export function FolderTree({
   selectedId: string | null;
   onSelect: (id: string) => void;
   rowHeight?: number;
-  /** Lets the manager make rows drop targets. */
   wrapRow?: (id: string, row: ReactNode) => ReactNode;
 }) {
   const [expanded, setExpanded] = useState(() => {
@@ -64,7 +57,6 @@ export function FolderTree({
     if (selectedId) for (const a of bookmarkAncestors(s.bookmarks, selectedId)) open.add(a.id);
     return open;
   });
-  // A folder selected from elsewhere (just created, picked in the list) is revealed.
   useEffect(() => {
     if (!selectedId) return;
     const hidden = bookmarkAncestors(useBrowser.getState().bookmarks, selectedId).filter((a) => !expanded.has(a.id));

@@ -4,10 +4,8 @@ import { Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { SearchField } from "../settings/controls";
 
-/** Content column width of the internal pages (Chrome's WebUI cards are ~680–960). */
 export const PAGE_WIDTH = 880;
 
-/** Header shared by History, Bookmarks and Downloads: title, search, actions. */
 export function PageHeader({
   title,
   query,
@@ -33,7 +31,6 @@ export function PageHeader({
   );
 }
 
-/** Centered empty-state message. */
 export function EmptyState({ icon, title, subtitle }: { icon?: ReactNode; title: string; subtitle?: string }) {
   const theme = useTheme();
   return (
@@ -48,13 +45,11 @@ export function EmptyState({ icon, title, subtitle }: { icon?: ReactNode; title:
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-/** Start of the local day, as a key for grouping. */
 export const dayStart = (ms: number) => {
   const d = new Date(ms);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 };
 
-/** "Today – Friday, September 25, 2026" (Chrome's history day headers). */
 export function dayLabel(start: number, now = Date.now()): string {
   const d = new Date(start);
   const full = `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
@@ -64,14 +59,12 @@ export function dayLabel(start: number, now = Date.now()): string {
   return full;
 }
 
-/** "2:05 PM". */
 export function timeLabel(ms: number): string {
   const d = new Date(ms);
   const h = d.getHours();
   return `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
-/** "youtube.com" (no www., IDNs in Unicode when safe), "netnyahoo://version", or the URL itself when it has no host. */
 export function hostLabel(url: string): string {
   const app = appUrlOrigin(url);
   if (app) return app;
@@ -82,7 +75,6 @@ export function hostLabel(url: string): string {
 export function matchesQuery(query: string, ...fields: string[]): boolean {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  // URLs with IDN hosts match in both forms (what's shown, and punycode).
   const hay = fields.map((f) => (/xn--/i.test(f) ? `${f} ${urlForDisplay(f)}` : f)).join(" ").toLowerCase();
   return words.every((w) => hay.includes(w));
 }

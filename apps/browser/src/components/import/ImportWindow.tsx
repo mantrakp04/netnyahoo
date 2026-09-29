@@ -18,7 +18,6 @@ const APP = "Netnyahoo";
 type Step = "loading" | "choose" | "profiles" | "safari" | "access" | "unlock" | "dia" | "progress" | "done";
 type Status = "pending" | "active" | "done" | "failed";
 
-/** Category names, in the order the progress list shows them (Dia's "Import category … title"). */
 const KINDS: { kind: ImportKind; title: string; icon: string }[] = [
   { kind: "bookmarks", title: "Bookmarks", icon: "bookmark" },
   { kind: "history", title: "History", icon: "clock" },
@@ -30,10 +29,8 @@ const KINDS: { kind: ImportKind; title: string; icon: string }[] = [
 ];
 const kindTitle = (k: ImportKind) => KINDS.find((x) => x.kind === k)?.title ?? k;
 
-/** What Dia's AppleScript can't give, said wherever the Dia tab import is offered. */
 const DIA_NOT_SHARED = "Custom tab names, colours, spaces and folders stay in Dia: its AppleScript doesn't share them.";
 
-/** "Import from Another Browser…": pick a browser, its profiles / Arc spaces, unlock, import. */
 export function ImportWindow() {
   const theme = useTheme();
   const api = importModule();
@@ -51,17 +48,13 @@ export function ImportWindow() {
   const [preparing, setPreparing] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
-  // Safari: whether we have Full Disk Access to read ~/Library/Safari directly.
   const [fullDiskAccess, setFullDiskAccess] = useState(false);
-  // Dia's tabs through AppleScript: Automation consent, then what Dia answered.
   const [diaStatus, setDiaStatus] = useState<DiaAutomationStatus | "checking" | "reading">("checking");
   const [dia, setDia] = useState<DiaTabsResult | null>(null);
   const [asking, setAsking] = useState(false);
   const diaLaunched = useRef(0);
   const abort = useRef<AbortController | null>(null);
 
-  // While waiting on Full Disk Access, re-check whenever the app regains focus (the user just
-  // came back from System Settings) so the Safari step advances on its own.
   useEffect(() => {
     if (!api || !((step === "safari" && !fullDiskAccess) || step === "access")) return;
     const sub = AppState.addEventListener("change", (s) => {
@@ -70,7 +63,6 @@ export function ImportWindow() {
     return () => sub.remove();
   }, [step, fullDiskAccess, api, source?.id]);
 
-  /** After the user visits System Settings: Safari re-probes; a protected browser is listed again. */
   const recheckAccess = async () => {
     if (!api) return;
     if (step === "safari") return setFullDiskAccess(api.safariHasFullDiskAccess());
@@ -84,7 +76,6 @@ export function ImportWindow() {
     }
   };
 
-  // Dia tabs: wait for Dia to start, and re-check Automation when the user comes back from System Settings.
   useEffect(() => {
     if (!api || step !== "dia") return;
     const timer = diaStatus === "notRunning" ? setInterval(() => void refreshDia(), 1500) : null;
@@ -103,8 +94,6 @@ export function ImportWindow() {
       .listBrowsers()
       .then((list) => {
         setBrowsers(list);
-        // Preselect one we can read right away (not Safari, not a browser behind Full Disk Access,
-        // not Dia's AppleScript tabs, which ask macOS for consent).
         const first = list.find((b) => !b.needsFullDiskAccess && !b.requiresExport && b.family !== "automation") ?? list[0];
         if (first) choose(first);
         setStep("choose");
@@ -126,7 +115,6 @@ export function ImportWindow() {
       : b.family === "automation"
         ? ["tabs", "pinnedTabs"]
         : [...new Set(b.profiles.flatMap((p) => p.available))];
-    // Cookies can't be set in the engine; spaces/pinned tabs/favourites are Arc's part of "Tabs".
     setKinds(new Set(available.filter((k) => k !== "cookies")));
     if (b.family === "safari" && api) setFullDiskAccess(api.safariHasFullDiskAccess());
     setDia(null);
@@ -170,7 +158,6 @@ export function ImportWindow() {
     }
   };
 
-  /** Where a source profile / Arc space goes: the chosen profile first, new profiles for the rest (asking on a name clash). */
   const destination = async (index: number, name: string, color?: string, emoji?: string): Promise<string> => {
     if (index === 0) return target;
     const s = useBrowser.getState();
@@ -222,7 +209,6 @@ export function ImportWindow() {
       for (const k of result.failed) failed.set(k, [...(failed.get(k) ?? []), profile.name]);
 
       if (isArc) {
-        // Each Arc space becomes a profile; the Arc profile's own data goes with its first space.
         const profileSpaces = result.spaces;
         let first: string | null = null;
         for (const space of profileSpaces) {
@@ -239,7 +225,6 @@ export function ImportWindow() {
         add(await applyResult(dest, result, source.name));
       }
     }
-    // A category with no progress events (nothing to read) still finishes.
     setStatus((st) => Object.fromEntries(Object.entries(st).map(([k, v]) => [k, failed.has(k as ImportKind) ? "failed" : v === "failed" ? v : "done"])));
     setFailures([...failed].map(([kind, names]) => ({ kind, profiles: selected.length > 1 ? names : [] })));
     setCounts(total);
@@ -247,7 +232,6 @@ export function ImportWindow() {
     setTimeout(() => setStep("done"), 700);
   };
 
-  /** Where Dia stands (running? allowed?); reads its tabs as soon as it's allowed. Never prompts. */
   const refreshDia = async () => {
     if (!api) return;
     const status = await api.diaAutomationStatus().catch((): DiaAutomationStatus => "denied");
@@ -255,7 +239,6 @@ export function ImportWindow() {
     if (status === "granted") await readDia();
   };
 
-  /** The user read the explanation and chose Continue: now macOS may show its Automation prompt. */
   const allowDia = async () => {
     if (!api) return;
     setAsking(true);
@@ -279,7 +262,6 @@ export function ImportWindow() {
     let result: DiaTabsResult;
     try {
       result = await api.readDiaTabs();
-      // A Dia we just opened may still be restoring its windows.
       for (let i = 0; !result.windowCount && Date.now() - diaLaunched.current < 15_000 && i < 8; i++) {
         await new Promise((r) => setTimeout(r, 1500));
         result = await api.readDiaTabs();
@@ -294,7 +276,6 @@ export function ImportWindow() {
     takeDiaResult(result);
   };
 
-  /** What Dia answered: its profiles go through the profile step (when there are several), then import. */
   const takeDiaResult = (result: DiaTabsResult) => {
     setDia(result);
     if (!result.profiles.length) {
@@ -314,7 +295,6 @@ export function ImportWindow() {
     else void runDia(result, first, kinds);
   };
 
-  /** Each chosen Dia profile into a Netnyahoo profile: the first into the selected one, the rest new (or the same-named one). */
   const runDia = async (result: DiaTabsResult, ids: string[], wanted: Set<ImportKind>) => {
     const selected = result.profiles.filter((p) => ids.includes(p.id));
     const order = KINDS.map((k) => k.kind).filter((k) => (k === "tabs" || k === "pinnedTabs") && wanted.has(k));
@@ -396,8 +376,6 @@ export function ImportWindow() {
 
   const close = () => void closeWindow(IMPORT_WINDOW_ID);
 
-  // DEV: lets lib/devHarness step through the flow (`globalThis.nnImport.select("dia")`, `.next()`,
-  // `.back()`) for snapshots, since the utility window isn't reachable through accessibility.
   useEffect(() => {
     if (!__DEV__) return;
     const g = globalThis as { nnImport?: object };
@@ -412,7 +390,6 @@ export function ImportWindow() {
       step,
       diaStatus,
       dia,
-      // Drive the Dia tab steps without Apple Events (a status to render, or what Dia would answer).
       setDiaStatus,
       takeDiaResult,
       setSourceProfiles,
@@ -684,7 +661,6 @@ export function ImportWindow() {
         </>
       );
     } else {
-      // Allowed, but Dia had nothing to give or didn't answer.
       body = (
         <>
           <Title title="Import tabs from Dia" subtitle={DIA_NOT_SHARED} />
@@ -828,7 +804,6 @@ function ErrorText({ text }: { text: string }) {
   return <Text style={{ fontSize: 12, marginTop: 12, color: "#FF9F0A" }}>{text}</Text>;
 }
 
-/** A browser in the picker: radio, app icon, name, and how many profiles / spaces it has. */
 function BrowserRow({ browser, selected, onPress }: { browser: BrowserSource; selected: boolean; onPress: () => void }) {
   const theme = useTheme();
   const colors = useFormColors();
@@ -941,7 +916,6 @@ function SpaceIcon({ space }: { space: SpaceSummary }) {
   );
 }
 
-/** A category in the progress list: slides in, spins while active, checks off when done. */
 function CategoryRow({ title, icon, status, index }: { title: string; icon: string; status: Status; index: number }) {
   const theme = useTheme();
   const colors = useFormColors();
@@ -1000,13 +974,11 @@ function SuccessMark() {
   );
 }
 
-/** "Pinned: 3 · Open: 5" for a Dia profile in the profile list. */
 function diaProfileSummary(dia: DiaTabsResult | null, id: string): string | undefined {
   const p = dia?.profiles.find((x) => x.id === id);
   return p ? `${plural(p.pinned.length, "pinned tab")} · ${plural(p.tabs.length, "open tab")}` : undefined;
 }
 
-/** The Full Disk Access instructions, with the System Settings link and a manual re-check. */
 function FullDiskAccessSteps({ onOpen, onRecheck }: { onOpen: () => void; onRecheck: () => void }) {
   return (
     <SettingsSteps
@@ -1018,7 +990,6 @@ function FullDiskAccessSteps({ onOpen, onRecheck }: { onOpen: () => void; onRech
   );
 }
 
-/** Numbered steps to grant something in System Settings, its link, and a manual re-check. */
 function SettingsSteps({ steps, openTitle, onOpen, onRecheck }: { steps: string[]; openTitle: string; onOpen: () => void; onRecheck: () => void }) {
   const theme = useTheme();
   return (
@@ -1041,7 +1012,6 @@ function SettingsSteps({ steps, openTitle, onOpen, onRecheck }: { steps: string[
   );
 }
 
-/** Dia's "Choose .zip file or drag it here" drop area. */
 function FileDrop({ onFile, onChoose }: { onFile: (path: string) => void; onChoose: () => Promise<string | null> }) {
   const theme = useTheme();
   const colors = useFormColors();

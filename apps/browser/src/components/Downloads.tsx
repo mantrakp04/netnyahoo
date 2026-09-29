@@ -32,10 +32,8 @@ function formatDuration(seconds: number) {
   return `${Math.round(seconds / 3600)} hr left`;
 }
 
-/** Chrome-style status line: "1.2 MB of 5.0 MB, 2 MB/s — 3 sec left", "Paused", "Deleted"… */
 export function downloadStatus(d: Download, exists = true) {
   if (d.state === "finished") return exists ? formatBytes(d.total > 0 ? d.total : d.received) : "Deleted";
-  // Dia's wording.
   if (d.state === "failed") return "Failed to Download";
   if (d.state === "cancelled") return "Cancelled";
   const progress = d.total > 0 ? `${formatBytes(d.received)} of ${formatBytes(d.total)}` : formatBytes(d.received);
@@ -46,10 +44,8 @@ export function downloadStatus(d: Download, exists = true) {
 
 // MARK: Actions
 
-/** Downloads flagged "Open When Done" (this session only: a download can't outlive a relaunch). */
 const openWhenDone = new Set<string>();
 
-// Finished downloads flagged "Open When Done" open themselves. Guarded against re-subscribing on reload.
 const g = globalThis as { __nnDownloadsWatch?: () => void };
 g.__nnDownloadsWatch?.();
 g.__nnDownloadsWatch = useBrowser.subscribe((s, prev) => {
@@ -98,12 +94,10 @@ export async function downloadMenu(d: Download, windowId: string) {
   if (choice === "remove") useBrowser.getState().removeDownload(d.id);
 }
 
-/** Move to Trash: the file goes, and so does its row. */
 export async function trashDownload(d: Download) {
   if (await moveToTrash(d.path)) useBrowser.getState().removeDownload(d.id);
 }
 
-/** The file's Finder icon (cached per path/extension). */
 const iconCache = new Map<string, string | null>();
 export function FileIcon({ path, size = 28 }: { path: string; size?: number }) {
   const theme = useTheme();
@@ -129,21 +123,13 @@ export function FileIcon({ path, size = 28 }: { path: string; size?: number }) {
 
 // MARK: Popover
 
-/** Dia's Downloads/DownloadProgressBarBackground. */
 const progressTrack = (dark: boolean) => (dark ? "#717782" : "#CED7E7");
 
-/**
- * Dia's recent-downloads popover under the sidebar's downloads button (⇧⌘J):
- * "RECENT DOWNLOADS" with Clear, the rows (drag a finished file out, click to
- * open), then "View all downloads".
- */
 export function DownloadsPopover() {
   const theme = useTheme();
   const windowId = useWindowId();
   const open = useWindowUi().downloadsOpen;
   const downloads = useBrowser(useShallow((s) => downloadsIn(s, windowId)));
-  // Under the downloads button: the sidebar header's, or the top strip's (right end). With the
-  // address bar in the sidebar the button is in the footer, so it opens upwards from there.
   const top = useTabLayout() === "top";
   const addressBar = useAddressBarInSidebar();
   const setOpen = (value: boolean) => useBrowser.getState().setDownloadsOpen(windowId, value);
@@ -157,7 +143,6 @@ export function DownloadsPopover() {
 
   return (
     <View style={StyleSheet.absoluteFill}>
-      {/* A click anywhere else dismisses it. */}
       <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
       <Animated.View
         style={{
@@ -302,10 +287,6 @@ function DownloadRow({ d, windowId }: { d: Download; windowId: string }) {
 
 // MARK: Magnet
 
-/**
- * Dia's "magnet": a new download's icon flies from the page into the sidebar's
- * downloads button. Runs in the window that was focused when it started.
- */
 export function DownloadMagnet() {
   const windowId = useWindowId();
   const sidebarOpen = useSidebarOpen();
@@ -330,16 +311,12 @@ export function DownloadMagnet() {
     });
   }, [windowId]);
 
-  // The downloads button: right end of the sidebar header (34pt button, 7 in), or of the top
-  // strip (8 in); the top-left corner while the sidebar is auto-hidden. With the address bar in
-  // the sidebar it's at the footer's leading end.
   const sidebar = !topStrip && sidebarOpen ? sidebarWidth : 0;
   const footer = { x: layout.sidebarInset + SIDEBAR_FOOTER_DOWNLOADS.size / 2, y: size.height - SIDEBAR_FOOTER_DOWNLOADS.bottom - SIDEBAR_FOOTER_DOWNLOADS.size / 2 };
   const target = topStrip ? { x: size.width - 25, y: 27 } : addressBar ? footer : sidebarOpen ? { x: sidebarWidth - 24, y: 27 } : { x: 24, y: 24 };
   const start = { x: sidebar + (size.width - sidebar) / 2, y: size.height * 0.45 };
   const icon = 44;
   const steps = [0, 0.25, 0.5, 0.75, 1];
-  // A shallow arc: rises a little before dropping into the button.
   const x = t.interpolate({ inputRange: steps, outputRange: steps.map((p) => start.x + (target.x - start.x) * p - icon / 2) });
   const y = t.interpolate({ inputRange: steps, outputRange: steps.map((p) => start.y + (target.y - start.y) * p - Math.sin(Math.PI * p) * 90 - icon / 2) });
 

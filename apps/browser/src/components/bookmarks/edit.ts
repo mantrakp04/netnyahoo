@@ -2,10 +2,8 @@ import { create } from "zustand";
 import { useBrowser } from "../../store/browser";
 import { resolveWindowId } from "../../store/model";
 
-/** The Edit / Add Bookmark sheet (bookmarks bar, Bookmarks manager). */
 export type EditorState = {
   windowId: string;
-  /** null = a new bookmark (or folder, with `folder`). */
   bookmarkId: string | null;
   folder: boolean;
   profileId: string;
@@ -18,7 +16,6 @@ export const useBookmarkEditor = create<{ open: EditorState | null; set(open: Ed
   set: (open) => set({ open }),
 }));
 
-/** Opens the editor on a bookmark or folder, or (id null) to add one. */
 export function editBookmark(
   id: string | null,
   windowId: string | null | undefined,

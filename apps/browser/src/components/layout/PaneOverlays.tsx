@@ -7,10 +7,6 @@ import { webviews } from "../../lib/webviews";
 import { PromptButton } from "./controls";
 import { patchPage, usePage } from "./pageState";
 
-/**
- * The hovered link's URL at the bottom-left of the page (Chrome's status
- * bubble): appears right away, lingers briefly, then fades out.
- */
 export function StatusBubble({ tabId, maxWidth }: { tabId: string; maxWidth: number }) {
   const theme = useTheme();
   const status = usePage(tabId, (p) => p.status);
@@ -22,7 +18,6 @@ export function StatusBubble({ tabId, maxWidth }: { tabId: string; maxWidth: num
       Animated.timing(opacity, { toValue: 1, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
       return;
     }
-    // Chrome keeps the bubble up a moment so moving between links doesn't flicker it.
     const timer = setTimeout(() => {
       Animated.timing(opacity, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(({ finished }) => {
         if (finished) setShown("");
@@ -52,10 +47,6 @@ export function StatusBubble({ tabId, maxWidth }: { tabId: string; maxWidth: num
   );
 }
 
-/**
- * Chrome elides the scheme of http(s) links, shows safe IDNs in Unicode and decodes percent-escapes.
- * Links between Chrome's pages read netnyahoo://.
- */
 function displayUrl(url: string) {
   let out = /^https?:\/\//i.test(url) ? urlForDisplay(url) : toAppUrl(url);
   try {
@@ -64,10 +55,6 @@ function displayUrl(url: string) {
   return out;
 }
 
-/**
- * Dia's native error view for a crashed renderer: "This tab needs to reload"
- * with a Reload button. Also shows the Page Unresponsive prompt.
- */
 export function SadTab({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const crashed = usePage(tabId, (p) => !!p.crashed);

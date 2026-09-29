@@ -2,12 +2,6 @@ import { useBrowser } from "../store/browser";
 import { endpoints, form } from "./net";
 import { connectGoogle } from "./sources";
 
-/**
- * Google Drive sign-in with the user's own "Desktop app" OAuth client: the
- * consent page opens in a tab, Google redirects it to a loopback address, and
- * we read the code off that tab's URL (no local server needed — the page just
- * fails to load) and close it. PKCE "plain": Hermes has no SHA-256.
- */
 const REDIRECT = "http://127.0.0.1:53682/netnyahoo-oauth";
 const SCOPE = "https://www.googleapis.com/auth/drive.metadata.readonly";
 const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";

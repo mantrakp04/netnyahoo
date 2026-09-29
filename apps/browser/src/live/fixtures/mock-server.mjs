@@ -1,8 +1,3 @@
-// Fixture server for live folders (DEV). Run: node src/live/fixtures/mock-server.mjs [port]
-// then launch a DEV build with NETNYAHOO_LIVE_MOCK=http://127.0.0.1:<port>.
-// Tokens it accepts: GitHub "mock-token", Notion "mock-notion", anything for Basic auth.
-// Test hooks: GET /mock/merge?id=PR_101, /mock/close?id=…, /mock/review?id=PR_88 (review done),
-// /mock/add (a new review request), /mock/reset, /mock/log (requests seen).
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 
@@ -42,7 +37,6 @@ createServer(async (req, res) => {
   log.push(`${req.method} ${url.pathname}`);
   const p = url.pathname;
 
-  // Test hooks
   if (p === "/mock/reset") return reset(), send(res, 200, { ok: true });
   if (p === "/mock/log") return send(res, 200, log.slice(-100));
   if (p === "/mock/merge" || p === "/mock/close") {
@@ -66,7 +60,6 @@ createServer(async (req, res) => {
     return send(res, 200, { ok: true, id: template.id });
   }
 
-  // GitHub
   if (p === "/github/login/device/code") return send(res, 200, { device_code: "mock-device", user_code: "WDJB-MJHT", verification_uri: `http://127.0.0.1:${port}/github/login/device`, expires_in: 900, interval: 1 });
   if (p === "/github/login/device") {
     if (url.searchParams.get("approve")) approved = true;
@@ -81,7 +74,6 @@ createServer(async (req, res) => {
     return send(res, 200, github);
   }
 
-  // Notion
   if (p.startsWith("/notion/")) {
     if (auth !== "Bearer mock-notion") return send(res, 401, { object: "error", code: "unauthorized" });
     if (p === "/notion/v1/users/me") return send(res, 200, load("notion-me.json"));
@@ -89,14 +81,12 @@ createServer(async (req, res) => {
     if (p === "/notion/v1/search") return send(res, 200, load("notion-search.json"));
   }
 
-  // Confluence
   if (p.startsWith("/confluence/")) {
     if (!auth.startsWith("Basic ")) return send(res, 401, {});
     if (p === "/confluence/wiki/rest/api/user/current") return send(res, 200, { accountId: "acc-1", displayName: "Octo Dev" });
     if (p === "/confluence/wiki/rest/api/content/search") return send(res, 200, load("confluence-search.json"));
   }
 
-  // Bitbucket
   if (p.startsWith("/bitbucket/")) {
     if (!auth.startsWith("Basic ")) return send(res, 401, {});
     if (p === "/bitbucket/2.0/user") return send(res, 200, { account_id: "bb-1", display_name: "Octo Dev" });
@@ -106,7 +96,6 @@ createServer(async (req, res) => {
     if (p.endsWith("/statuses")) return send(res, 200, { values: [{ state: "SUCCESSFUL", name: "Pipeline #12", url: "https://bitbucket.org/acme/pipelines/pipelines/12" }] });
   }
 
-  // Google
   if (p === "/google/auth") {
     const redirect = `${url.searchParams.get("redirect_uri")}?code=mock-google-code&state=${encodeURIComponent(url.searchParams.get("state"))}`;
     return send(res, 200, `<!doctype html><title>Sign in - Google Accounts</title><body style="font:15px -apple-system;padding:40px"><h2>Mock Google consent</h2><a id=allow href="${redirect}">Allow</a></body>`, "text/html");

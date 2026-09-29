@@ -1,17 +1,5 @@
 import Foundation
 
-/// The Netscape bookmark file every browser exports (`<!DOCTYPE NETSCAPE-Bookmark-file-1>`),
-/// including Safari's `Bookmarks.html`.
-///
-///     <DL><p>
-///       <DT><H3 ADD_DATE="…" PERSONAL_TOOLBAR_FOLDER="true">Folder</H3>
-///       <DL><p> … </DL><p>
-///       <DT><A HREF="…" ADD_DATE="…">Title</A>
-///     </DL><p>
-///
-/// The format is loose HTML (unclosed `<DT>`/`<p>`, any case, optional quotes), so this is
-/// a tolerant tag scanner rather than an HTML parser: an `<H3>` names the next `<DL>`, an
-/// `<A>` is a link in the current `<DL>`. `ADD_DATE` is Unix seconds.
 public enum NetscapeBookmarks {
   public static func parse(_ html: String) -> BookmarkNode {
     var stack: [BookmarkNode] = [.folder("Bookmarks", [])]
@@ -40,7 +28,6 @@ public enum NetscapeBookmarks {
         } else if !sawRootList {
           sawRootList = true
         } else {
-          // A <DL> with no heading: keep its links in an untitled folder rather than lose them.
           stack.append(.folder("", []))
         }
       case .close("dl"):
@@ -56,7 +43,6 @@ public enum NetscapeBookmarks {
         let title = decodeEntities(scanner.text(until: "a")).trimmingCharacters(in: .whitespacesAndNewlines)
         guard let href = attrs["href"].map(decodeEntities), !href.isEmpty else { continue }
         if let pending = pendingFolder {
-          // A heading that never got a list is an empty folder.
           stack[stack.count - 1].children?.append(pending)
           pendingFolder = nil
         }
@@ -124,7 +110,6 @@ public enum NetscapeBookmarks {
   }
 }
 
-/// Yields opening/closing tags (lower-cased names, lower-cased attribute keys).
 struct TagScanner {
   enum Token: Equatable {
     case open(String, [String: String])
@@ -140,7 +125,6 @@ struct TagScanner {
     while i < s.count {
       guard s[i] == "<" else { i += 1; continue }
       if i + 3 < s.count, s[i + 1] == "!", s[i + 2] == "-", s[i + 3] == "-" {
-        // Comment: skip to -->
         i += 4
         while i + 2 < s.count, !(s[i] == "-" && s[i + 1] == "-" && s[i + 2] == ">") { i += 1 }
         i += 3
@@ -177,7 +161,6 @@ struct TagScanner {
     return nil
   }
 
-  /// Raw text up to `</name>` (tags inside are dropped), consuming the closing tag.
   mutating func text(until name: String) -> String {
     var out = ""
     while i < s.count {
@@ -186,7 +169,6 @@ struct TagScanner {
         if let token = next() {
           if token == .close(name) { return out }
           if case .open(let n, _) = token, ["dt", "dl", "h3", "a"].contains(n) {
-            // Unterminated element: give the tag back to the caller.
             i = start
             return out
           }

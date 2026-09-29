@@ -4,20 +4,12 @@ import { basic, deleteSecret, endpoints, form, getSecret, request, setSecret } f
 import { live, setAccount, updateConfig } from "./store";
 import { LiveError, type CompletionState, type LiveAccount, type LiveFolder, type LiveItem, type LiveSourceId } from "./types";
 
-/**
- * Where live items come from. Each source signs in with credentials the user
- * supplies (Netnyahoo has no OAuth apps of its own): a GitHub token or the
- * device flow with the user's OAuth app, a Bitbucket API token, a Notion
- * internal integration token, a Confluence API token, or a Google OAuth client.
- */
 export type LiveSource = {
   id: LiveSourceId;
   name: string;
   kind: LiveFolder["kind"];
-  /** The site whose favicon stands for the source. */
   site: string;
   fetch(folder: LiveFolder): Promise<LiveItem[]>;
-  /** For items that left the results: merged / closed / reviewed (missing = just gone). */
   resolveGone?(items: LiveItem[]): Promise<Record<string, CompletionState>>;
 };
 
@@ -79,7 +71,6 @@ const bitbucket: LiveSource = {
   kind: "pullRequests",
   site: "https://bitbucket.org",
   async fetch(folder) {
-    // Bitbucket has no "review requested from me" search across repositories, so only your PRs are listed.
     if (!folder.filters.authored) return [];
     const auth = await bitbucketAuth();
     const me = live().accounts.bitbucket;
@@ -112,7 +103,6 @@ const notion: LiveSource = {
     const token = await secret("notion");
     const [pages, users] = await Promise.all([
       request<NotionSearch>(`${endpoints.notion}/search`, { method: "POST", headers: notionHeaders(token), body: JSON.stringify(NOTION_SEARCH_BODY) }),
-      // Needs the integration's "Read user information" capability; names are optional.
       request<NotionUsers>(`${endpoints.notion}/users?page_size=100`, { headers: notionHeaders(token) }).catch(() => null),
     ]);
     return mapNotion(pages, users, live().accounts.notion?.name ?? null);
@@ -171,7 +161,6 @@ export const SOURCES: Record<LiveSourceId, LiveSource> = { github, bitbucket, no
 
 const account = (login: string, name: string | null, avatar: string | null): LiveAccount => ({ login, name, avatar, connectedAt: Date.now() });
 
-/** Checks a GitHub token (personal access token or one from the device flow) and saves it. */
 export async function connectGithub(token: string) {
   const json = await githubGraphql<{ data?: { viewer: { login: string; name: string | null; avatarUrl: string } } }>(token.trim(), VIEWER_QUERY);
   const viewer = json.data?.viewer;
@@ -182,11 +171,6 @@ export async function connectGithub(token: string) {
 
 export type DeviceFlow = { userCode: string; verificationUri: string; expiresAt: number; done: Promise<void>; cancel(): void };
 
-/**
- * GitHub's OAuth device flow with the user's own OAuth app (Device Flow
- * enabled): show `userCode`, open `verificationUri`, and `done` resolves once
- * they approve it.
- */
 export async function startGithubDeviceFlow(clientId: string): Promise<DeviceFlow> {
   const code = await request<{ device_code: string; user_code: string; verification_uri: string; expires_in: number; interval: number }>(
     `${endpoints.githubWeb}/login/device/code`,
@@ -213,7 +197,6 @@ export async function startGithubDeviceFlow(clientId: string): Promise<DeviceFlo
   return { userCode: code.user_code, verificationUri: code.verification_uri, expiresAt, done, cancel: () => (cancelled = true) };
 }
 
-/** Bitbucket Cloud: account email (or username) + API token / app password. */
 export async function connectBitbucket(user: string, token: string) {
   const me = await request<{ account_id: string; display_name: string; links?: { avatar?: { href: string } } }>(`${endpoints.bitbucket}/user`, {
     headers: { Authorization: basic(user.trim(), token.trim()) },
@@ -223,14 +206,12 @@ export async function connectBitbucket(user: string, token: string) {
   setAccount("bitbucket", account(me.account_id, me.display_name, me.links?.avatar?.href ?? null));
 }
 
-/** A Notion internal integration token ("secret_…" / "ntn_…"); pages must be shared with the integration. */
 export async function connectNotion(token: string) {
   const me = await request<{ name?: string; bot?: { workspace_name?: string } }>(`${endpoints.notion}/users/me`, { headers: notionHeaders(token.trim()) });
   await setSecret("notion", token.trim());
   setAccount("notion", account(me.bot?.workspace_name ?? me.name ?? "Notion", me.bot?.workspace_name ?? null, null));
 }
 
-/** Confluence Cloud: site URL + account email + API token. */
 export async function connectConfluence(site: string, email: string, token: string) {
   const base = site.trim().replace(/\/+$/, "").replace(/^(?!https?:\/\/)/, "https://");
   const me = await request<{ accountId: string; displayName: string }>(`${endpoints.confluence(base)}/wiki/rest/api/user/current`, {
@@ -241,7 +222,6 @@ export async function connectConfluence(site: string, email: string, token: stri
   setAccount("confluence", account(me.accountId, me.displayName, null));
 }
 
-/** Google: exchanges the code from the consent page's loopback redirect (see ./googleAuth). */
 export async function connectGoogle(clientId: string, clientSecret: string, code: string, verifier: string, redirectUri: string) {
   const json = await request<{ access_token: string; refresh_token?: string; expires_in: number }>(endpoints.googleToken, {
     method: "POST",

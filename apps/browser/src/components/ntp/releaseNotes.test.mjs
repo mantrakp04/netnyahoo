@@ -1,4 +1,3 @@
-// When the New Tab page's release notes postcard shows: updates, fresh installs, expiry, retiring.
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/components/ntp/releaseNotes.test.mjs
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
@@ -23,13 +22,10 @@ test("a fresh install records its version and shows nothing", () => {
 
 test("an update to a version with notes queues the postcard, once", () => {
   shell.docs.set("release-notes.json", JSON.stringify({ version: 1, lastVersion: "0.9", pending: null }));
-  // The launch that updated says so (lib/releaseNotesPage opens the notes page), once.
   assert.equal(notes.trackAppVersion(), true);
   assert.equal(pendingVersion(), "1.0");
-  // Relaunching the same version keeps it until it's opened or dismissed…
   assert.equal(notes.trackAppVersion(), false);
   assert.equal(pendingVersion(), "1.0");
-  // …and retiring it is remembered.
   notes.retireReleaseNotes();
   notes.trackAppVersion();
   assert.equal(pendingVersion(), null);

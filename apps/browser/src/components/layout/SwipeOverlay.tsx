@@ -20,14 +20,6 @@ import {
   swipeProgress,
 } from "./swipeMotion";
 
-/*
- * Dia 1.29's two-finger swipe back/forward (GesturalNavigation), numbers recovered from its
- * binary: a 72 pt frosted circle with a bold chevron slides in from the pane's edge as the
- * fingers move and rubber-bands past the point where it sits 14 pt in. There it grows to
- * 82 pt, the chevron brightens and grows, a white wash fills it (light mode) and the trackpad
- * clicks; letting go there navigates. Holding still past it for 0.3 s turns the circle into
- * the list of pages in that direction, picked by moving up and down.
- */
 
 const SIZE = CAPSULE_SIZE;
 const SIZE_CONFIRMED = CAPSULE_SIZE_CONFIRMED;
@@ -40,12 +32,10 @@ const LIST_RADIUS = 18;
 const LIST_IDLE_MS = 300;
 const EASE = Easing.bezier(0.25, 0.46, 0.45, 0.94);
 
-/** An Animated spring given as response (s) and damping ratio, like CASpringAnimation / SwiftUI. */
 export function spring(value: Animated.Value, toValue: number, response: number, dampingRatio: number) {
   return Animated.spring(value, { toValue, ...springParams(response, dampingRatio), useNativeDriver: false });
 }
 
-/** The pane-level navigation overlays: the swipe indicator and the back / forward list. */
 export function NavigationOverlays({ tabId, windowId, geometry }: { tabId: string; windowId: string; geometry: ToolbarGeometry }) {
   return (
     <>
@@ -65,15 +55,14 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
   const [shown, setShown] = useState<Shown | null>(null);
   const area = useRef<SwipeAreaHandle>(null);
 
-  // Everything the per-event handler needs, without re-rendering on every event.
   const g = useRef({
     active: false,
     direction: "back" as "back" | "forward",
     confirmed: false,
-    width: SIZE, // the capsule's target width (its position is computed from it)
+    width: SIZE,
     items: null as Promise<HistoryItem[]> | null,
     list: null as HistoryItem[] | null,
-    listY: 0, // dy when the list appeared
+    listY: 0,
     selected: 0,
     idle: undefined as ReturnType<typeof setTimeout> | undefined,
   }).current;
@@ -85,7 +74,7 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     nudge: new Animated.Value(0),
     radius: new Animated.Value(SIZE / 2),
     confirm: new Animated.Value(0),
-    icon: new Animated.Value(1), // icon scale (28 → 34 pt)
+    icon: new Animated.Value(1),
     list: new Animated.Value(0),
     pill: new Animated.Value(0),
     fade: new Animated.Value(1),
@@ -112,7 +101,6 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     Object.assign(g, { active: true, direction, confirmed: false, width: SIZE, list: null, listY: 0, selected: 0 });
   };
 
-  /** Resizes the capsule (threshold, list) with Dia's relayout spring. */
   const layoutTo = (width: number, height: number, top: number, radius: number, response: number, ratio: number) => {
     g.width = width;
     Animated.parallel([
@@ -141,7 +129,6 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     const items = (await g.items) ?? [];
     if (!g.active || g.list || !g.confirmed || items.length < 2) return;
     const { height } = sizeRef.current;
-    // The first row's centre sits at the pane's middle; rows that wouldn't fit below are left out.
     const fit = Math.max(2, Math.floor((height / 2 + ROW / 2 - LIST_PAD - 8) / ROW));
     const list = items.slice(0, fit);
     g.list = list;
@@ -182,7 +169,6 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     }
     if (!g.active) return;
     if (e.phase === "swipe") {
-      // A three-finger swipe arrives whole: show the confirmed circle, go, dismiss.
       v.x.setValue(CAPSULE_INSET);
       setConfirmed(true);
       navigate(e.direction, null);
@@ -201,7 +187,6 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     else setConfirmed(progress >= 1);
     v.x.setValue(capsuleOffset(progress, g.width));
 
-    // Holding still past the threshold opens the list of destinations.
     clearTimeout(g.idle);
     if (g.confirmed && !g.list) g.idle = setTimeout(() => void presentList(), LIST_IDLE_MS);
   };
@@ -252,7 +237,6 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
           />
           <Animated.View style={{ ...StyleSheet.absoluteFillObject, borderRadius: v.radius, overflow: "hidden" }}>
             <VisualEffect material="popover" style={StyleSheet.absoluteFill} />
-            {/* ConfirmationWash: white 40% in light mode, clear in dark. */}
             {!theme.dark && <Animated.View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.4)", opacity: v.confirm }} />}
             <Animated.View style={{ ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", opacity: iconOpacity }}>
               <Animated.View style={{ transform: [{ scale: v.icon }] }}>
@@ -275,7 +259,6 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
   );
 }
 
-/** The pages in the swipe's direction, nearest first; the selected one gets a pill. */
 function DestinationList({ tabId, items, selected, appear, pill }: { tabId: string; items: HistoryItem[]; selected: number; appear: Animated.Value; pill: Animated.Value }) {
   const theme = useTheme();
   const profileId = useBrowser((s) => s.tabs[tabId]?.profileId ?? "");
@@ -321,7 +304,6 @@ function DestinationList({ tabId, items, selected, appear, pill }: { tabId: stri
   );
 }
 
-// DEV: lib/devHarness scripts drive swipes with `globalThis.nnSwipe.pane(tabId).devSimulate(steps)`.
 const devPanes = new Map<string, React.RefObject<SwipeAreaHandle | null>>();
 function useSwipeDevHandle(tabId: string, area: React.RefObject<SwipeAreaHandle | null>) {
   useEffect(() => {

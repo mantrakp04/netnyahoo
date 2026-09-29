@@ -10,11 +10,6 @@ import { closeReleaseNotes, openReleaseNotes, retireReleaseNotes, usePendingRele
 
 export type Frame = { x: number; y: number; width: number; height: number };
 
-/**
- * What the New Tab page shows around its command bar (NewTabPage's postcard slot): the release
- * notes postcard and its full-page view, the default-browser week check-in, the one-time ask to
- * share crash reports and the Personalize button. It also marks the bar and the page for the tool tour.
- */
 export function NewTabExtras({ size, bar }: { size: { width: number; height: number }; bar: Frame }) {
   const windowId = useWindowId();
   const incognito = useBrowser((s) => !!s.windows[windowId]?.incognito);

@@ -1,7 +1,3 @@
-/**
- * The words for opt-in telemetry, shared by Settings, onboarding and the one-time ask. WHATS_SENT
- * must match what the code sends (client.ts context, errors.ts, usage.ts, track.ts, logs.ts).
- */
 export const SHARING_COPY = {
   toggle: "Share anonymous crash reports and usage stats",
   summary: "Crashes, errors, rough feature counts and speed. Never the sites you visit, anything you type or search, or what's in your tabs.",
@@ -21,7 +17,6 @@ export const SHARING_COPY = {
   },
 } as const;
 
-/** The exact fields, grouped the way Settings › What's Sent lists them. */
 export const WHATS_SENT: { title: string; items: string[] }[] = [
   {
     title: "With everything",

@@ -1,6 +1,3 @@
-// Fails the render when the edit breaks its own rules (src/timeline.ts): every clip boundary and super on the
-// beat grid, no clip or super shorter than 12 frames (no flash frames), supers on screen at least 1.5 s,
-// and camera breaks only where the frame is a flat colour (listed by hand in CAMERA_BREAKS).
 import { BEAT, CAMERA, CAMERA_BREAKS, CLIPS, EV, SUPERS, TOTAL } from "../src/timeline.ts";
 
 const errors = [];
@@ -9,7 +6,6 @@ let prev = 0;
 for (const c of CLIPS) {
   if (c.from !== prev) errors.push(`${c.src} starts at ${c.from}, the previous clip ended at ${prev}`);
   if (c.to - c.from < 12) errors.push(`${c.src} is ${c.to - c.from} frames`);
-  // a clip may start off the beat only inside a zoom-through (a camera break)
   if (!onBeat(c.from) && !CAMERA_BREAKS.includes(c.from)) errors.push(`${c.src} starts off the beat at ${c.from}`);
   prev = c.to;
 }

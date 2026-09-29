@@ -2,18 +2,11 @@ import { useShallow } from "zustand/react/shallow";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { activeTabId, viewTabIds } from "../../store/model";
 
-/**
- * What the sidebar shows, in order: pinned tiles, pinned groups, then the list.
- * List and group entries are `t:<tabId>`, `g:<groupId>` or `s:<splitId>` (a
- * split view shows as one row) — strings, so selectors compare shallowly.
- */
 export type SidebarEntries = { tiles: string[]; pinnedGroups: string[]; list: string[] };
 
 const memo = new Map<string, { inputs: unknown[]; result: SidebarEntries }>();
 
-/** `profileId`: another profile's page (a profile swipe draws it beside the window's). */
 export function sidebarEntries(s: BrowserState, windowId: string, profileId?: string): SidebarEntries {
-  // Selectors run on every store change (progress events too); recompute only when the inputs do.
   const inputs = [s.tabs, s.windows, s.groups, s.splits];
   const key = profileId ? `${windowId}|${profileId}` : windowId;
   const cached = memo.get(key);
@@ -32,7 +25,6 @@ function computeEntries(s: BrowserState, windowId: string, profileId?: string): 
   const seen = new Set<string>();
   for (const id of viewTabIds(s, windowId, profileId)) {
     const tab = s.tabs[id]!;
-    // Opened from a live folder: the folder shows it (LiveFolderBlock).
     if (tab.liveItem && !tab.pinned) continue;
     if (tab.pinned) {
       tiles.push(id);
@@ -48,11 +40,6 @@ function computeEntries(s: BrowserState, windowId: string, profileId?: string): 
   return { tiles, pinnedGroups, list };
 }
 
-/**
- * The tab of each sidebar row, top to bottom (⌘1–⌘8, ⌘9 for the last): the pinned tiles, the pinned
- * groups' rows, then the list's, a group's rows in place (collapsed or not). A split view's row is
- * its focused pane (the one used last).
- */
 export function numberedTabs(s: BrowserState, windowId: string): string[] {
   const { tiles, pinnedGroups, list } = sidebarEntries(s, windowId);
   const active = activeTabId(s, windowId);
@@ -68,7 +55,6 @@ export function numberedTabs(s: BrowserState, windowId: string): string[] {
   return [...tiles, ...pinnedGroups.flatMap((id) => rowTab(`g:${id}`)), ...list.flatMap(rowTab)];
 }
 
-/** A group's rows: tabs, and its splits as one row each. */
 export function groupEntries(s: BrowserState, groupId: string): string[] {
   const g = s.groups[groupId];
   if (!g) return [];
@@ -80,7 +66,6 @@ export function groupEntries(s: BrowserState, groupId: string): string[] {
   return out;
 }
 
-/** `s:<splitId>` for a tab in a split with another unpinned tab, else `t:<tabId>`. */
 function splitEntry(s: BrowserState, tabId: string): string {
   for (const v of Object.values(s.splits)) {
     if (v.tabIds.includes(tabId) && v.tabIds.filter((id) => s.tabs[id] && !s.tabs[id]!.pinned).length >= 2) return `s:${v.id}`;

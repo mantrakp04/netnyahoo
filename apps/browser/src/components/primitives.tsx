@@ -5,10 +5,6 @@ import { Image, Pressable, Text, View, type ViewStyle } from "react-native";
 import { faviconFailed, useFavicon, useFaviconTheme } from "../lib/favicons";
 import { useTheme } from "../lib/theme";
 
-/**
- * macOS pointer hover via react-native-macos' onMouseEnter/Leave. Spread
- * `hoverProps` on a plain View: Pressable doesn't forward mouse-enter events.
- */
 export function useHover() {
   const [hovered, setHovered] = useState(false);
   return {
@@ -17,7 +13,6 @@ export function useHover() {
   };
 }
 
-/** Toolbar-style button: 30pt rounded square, fill on hover/press (Dia's toolbar). */
 export function IconButton({
   icon,
   onPress,
@@ -71,16 +66,6 @@ export function IconButton({
   );
 }
 
-/**
- * A page's favicon from the engine's per-profile cache (lib/favicons), never
- * fetched from here. Without one: Dia's empty-favicon tile (a squircle at 28% of
- * the icon colour) with the site's initial, or a globe for pages without a host.
- * Pass `profileId` for tabs so incognito ones find their in-memory icons.
- * `direct`: `favicon` isn't a page's icon but an image a connected app's API
- * handed us (a Notion page icon), loaded as is. An icon that is one near-white
- * colour (a mark made for dark tab strips, which is all some sites have) is drawn
- * in the text colour in light appearance, so it doesn't vanish into the surface.
- */
 export function Favicon({
   url,
   favicon,
@@ -97,7 +82,6 @@ export function Favicon({
   const theme = useTheme();
   const cached = useFavicon(url, direct ? null : favicon, profileId);
   const resolved = direct && favicon ? { uri: favicon, profileId: "" } : cached;
-  // IconTheme gives one-colour icons above 0.88 luminance a stroke (Dia's rule for its tiles).
   const shape = useFaviconTheme(theme.dark || direct ? "" : url, favicon, profileId);
   const white = shape?.kind === "template" && !!shape.stroke;
   const [broken, setBroken] = useState<string | null>(null);
@@ -105,7 +89,6 @@ export function Favicon({
   if (!resolved || broken === resolved.uri) return <FaviconFallback url={url} size={size} />;
   return (
     <Image
-      // RN macOS applies a tint only when the image loads: a new tint remounts it.
       key={white ? `${resolved.uri} tinted` : resolved.uri}
       source={{ uri: resolved.uri }}
       onError={() => {
@@ -117,7 +100,6 @@ export function Favicon({
   );
 }
 
-/** Dia's EmptyFavicon (a 14pt continuous-corner tile at 16pt) with the host's initial in it. */
 export function FaviconFallback({ url, size = 16 }: { url: string; size?: number }) {
   const theme = useTheme();
   const initial = hostInitial(url);
@@ -131,7 +113,6 @@ export function FaviconFallback({ url, size = 16 }: { url: string; size?: number
           height: tile,
           borderRadius: tile * 0.32,
           borderCurve: "continuous",
-          // Dia tints its 28%-alpha template with the (translucent) icon colour.
           backgroundColor: theme.dark ? "rgba(247,245,255,0.2)" : "rgba(0,0,0,0.13)",
           alignItems: "center",
           justifyContent: "center",
@@ -143,7 +124,6 @@ export function FaviconFallback({ url, size = 16 }: { url: string; size?: number
   );
 }
 
-/** "G" for https://www.github.com (the displayed host's first letter); "" for URLs without a host. */
 function hostInitial(url: string): string {
   const host = /^(?:https?|ftp):\/\/(?:[^@/?#]*@)?([^/?#:]+)/i.exec(url)?.[1];
   if (!host || /^[\d.]+$|^\[/.test(host)) return "";
@@ -151,18 +131,12 @@ function hostInitial(url: string): string {
   return Array.from(shown)[0]?.toLocaleUpperCase() ?? "";
 }
 
-/**
- * New Tab rows carry our mark where Dia puts its dome: Big Yahu's head, a white glyph
- * (docs/brand/yahu-mark) drawn the full 16pt wide and tinted as Dia tints its mark. Dark: white at
- * 0.28 (measured on Dia 1.50.1 over selected, hovered and resting rows alike); light is unmeasured.
- */
 const NEW_TAB_MARK = require("../../assets/new-tab-yahu.png");
 
 export function NewTabIcon({ size = 16 }: { size?: number }) {
   const theme = useTheme();
   return (
     <Image
-      // react-native-macos doesn't re-tint a loaded image when tintColor changes: remount on a theme flip.
       key={theme.dark ? "dark" : "light"}
       source={NEW_TAB_MARK}
       style={{ width: size, height: size, tintColor: theme.dark ? "#FFFFFF" : "#000000", opacity: theme.dark ? 0.28 : 0.3 }}

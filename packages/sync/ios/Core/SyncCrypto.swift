@@ -1,14 +1,6 @@
 import CryptoKit
 import Foundation
 
-/// Keys derived from the recovery phrase's entropy, and the sealed file format.
-///
-/// - HKDF-SHA256 over the 256-bit entropy (salt "netnyahoo-sync/v1") gives two keys: one for
-///   AES-256-GCM on every file, one (HMAC-SHA256) for the folder and scope names.
-/// - A file is `"NNS1" | nonce (12) | ciphertext | tag (16)`. The associated data binds it to
-///   its place (chain tag, scope tag, file id), so a file copied or renamed elsewhere won't open.
-/// - The plaintext is `length (u32, big endian) | payload | zeros` to the next 1 KiB, so a
-///   file's size says little about what's in it.
 public struct SyncKeys {
   static let magic = Data("NNS1".utf8)
   static let salt = Data("netnyahoo-sync/v1".utf8)
@@ -18,9 +10,7 @@ public struct SyncKeys {
   let nameKey: SymmetricKey
 
   public enum Failure: Error, Equatable {
-    /// Too short or not ours: still arriving, or not a sync file.
     case format
-    /// The tag doesn't match: damaged, cut short, tampered with, or another phrase's.
     case authentication
   }
 
@@ -30,11 +20,8 @@ public struct SyncKeys {
     nameKey = HKDF<SHA256>.deriveKey(inputKeyMaterial: ikm, salt: Self.salt, info: Data("name-key".utf8), outputByteCount: 32)
   }
 
-  /// The folder of this phrase's data inside the sync folder: 26 base32 letters that don't
-  /// reveal the phrase, so several phrases (people) can share one sync folder.
   public var chainTag: String { tag("chain") }
 
-  /// The folder of one scope (the app, or one profile) inside the chain.
   public func scopeTag(_ scope: String) -> String { tag("scope/" + scope) }
 
   func tag(_ label: String) -> String {
@@ -68,13 +55,11 @@ public struct SyncKeys {
     return Data(plain.dropFirst(4).prefix(length))
   }
 
-  /// A new random file id (128 bits, base32), so names say nothing about what's inside.
   public static func newFileId() -> String {
     Base32.encode(RecoveryPhrase.generateEntropy().prefix(16))
   }
 }
 
-/// RFC 4648 base32, lowercase, unpadded: file-system and case-insensitive safe.
 enum Base32 {
   static let alphabet = Array("abcdefghijklmnopqrstuvwxyz234567")
 

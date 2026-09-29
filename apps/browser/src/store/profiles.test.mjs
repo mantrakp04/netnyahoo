@@ -1,4 +1,3 @@
-// Profiles: shared data (Dia's "Share data with another profile") and ordering.
 // Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/store/profiles.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -21,14 +20,12 @@ test("a profile created to share data uses the other's engine context, bookmarks
   assert.ok(isBookmarked(S().bookmarks, work, "https://b.com/"));
   assert.deepEqual(S().history[work].map((h) => h.url), ["https://a.com/"]);
 
-  // Either side's visits show in both.
   S().recordVisit(work, "https://c.com/", "C", null, true);
   assert.deepEqual(S().history.default.map((h) => h.url), ["https://c.com/", "https://a.com/"]);
   assert.equal(S().history.default, S().history[work]);
   S().clearHistory("default");
   assert.deepEqual(S().history[work], []);
 
-  // A profile of its own stays separate.
   const school = S().createProfile({ name: "School" });
   assert.equal(model.engineProfile(school), school);
   assert.notDeepEqual(S().bookmarks.roots[school], S().bookmarks.roots.default);
@@ -38,7 +35,6 @@ test("a profile created to share data uses the other's engine context, bookmarks
     { dataId: school, profileIds: [school] },
   ]);
 
-  // Sharing with a sharer joins the same data.
   const home = S().createProfile({ name: "Home", shareWith: work });
   assert.equal(S().profiles[home].dataId, "default");
 });
@@ -54,10 +50,8 @@ test("deleting a profile keeps the data others share", () => {
   assert.equal(model.engineProfile(b), a, "still on A's engine context");
   assert.ok(S().bookmarks.nodes[bookmark], "shared bookmarks stay");
   assert.deepEqual(S().history[b].map((h) => h.url), ["https://a.com/"]);
-  // B's visits keep working once it's alone.
   S().recordVisit(b, "https://c.com/", "C", null, true);
   assert.equal(S().history[b].length, 2);
-  // The last one removes them.
   S().deleteProfile(b);
   assert.equal(S().bookmarks.nodes[bookmark], undefined);
 });

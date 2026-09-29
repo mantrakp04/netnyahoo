@@ -66,14 +66,12 @@ export function TabsPane() {
   );
 }
 
-/** A picture-button for the tab layout (Dia's TabLayout/Sidebar… / TopOfWindow… images). */
 function LayoutChoice({ layout, title, selected }: { layout: "sidebar" | "top"; title: string; selected: boolean }) {
   const theme = useTheme();
   const colors = useFormColors();
   const choose = () => {
     const s = useBrowser.getState();
     s.updateSettings({ tabLayout: layout });
-    // Every open window follows (⇧⌘S still switches one window at a time).
     for (const w of Object.values(s.windows)) {
       if ((w.tabLayout ?? s.settings.tabLayout) !== layout) useBrowser.getState().toggleTabLayout(w.id);
     }

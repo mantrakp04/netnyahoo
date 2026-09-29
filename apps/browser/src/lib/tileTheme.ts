@@ -4,14 +4,8 @@ import { useFavicon, useFaviconTheme } from "./favicons";
 
 export type TileTheme = { theme: IconTheme; image?: string; emoji?: string };
 
-/** Emoji themes, per process: they're cheap and there are few. */
 const emojiThemes = new Map<string, Promise<IconTheme | null>>();
 
-/**
- * The theme Dia gives a selected pinned tile (DockSelection): from its custom
- * emoji, else its favicon (kept with the icon in lib/favicons). Null when the
- * icon has none (an SF Symbol, no favicon) or it isn't known yet.
- */
 export function useTileTheme(url: string, favicon: string | null | undefined, customIcon: string | null | undefined, profileId: string): TileTheme | null {
   const emoji = customIcon && !customIcon.startsWith("symbol:") ? customIcon : null;
   const resolved = useFavicon(customIcon ? "" : url, favicon, profileId);

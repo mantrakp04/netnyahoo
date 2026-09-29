@@ -1,16 +1,10 @@
 import { useState } from "react";
 import { measureRow, setSidebarUi, sidebarUi, type Target } from "./state";
 
-/**
- * Hover cards (a tab's title, URL and actions; a collapsed group's peek) appear
- * after a short rest on a row and follow the pointer between rows once shown,
- * like tooltips. Moving onto the card keeps it open.
- */
 const SHOW_DELAY_MS = 650;
 const HIDE_DELAY_MS = 160;
 let showTimer: ReturnType<typeof setTimeout> | undefined;
 let hideTimer: ReturnType<typeof setTimeout> | undefined;
-/** No cards while dragging. */
 let suppressed = false;
 
 export function suppressHover(value: boolean) {
@@ -39,7 +33,6 @@ export function hoverLeave() {
   hideTimer = setTimeout(() => setSidebarUi({ hover: null }), HIDE_DELAY_MS);
 }
 
-/** The card itself: entering it cancels the pending hide. */
 export const keepHover = () => clearTimeout(hideTimer);
 
 export function dismissHover() {
@@ -48,7 +41,6 @@ export function dismissHover() {
   if (sidebarUi().hover) setSidebarUi({ hover: null });
 }
 
-/** Local hover state for a row, plus its hover card. `target` null = no card. */
 export function useRowHover(windowId: string, target: Target | null) {
   const [hovered, setHovered] = useState(false);
   return {

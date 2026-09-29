@@ -1,5 +1,4 @@
 // usage: node clockcap.mjs <port> <urlSubstring> <frames> <outDir> [warmupSec]
-// Injects apps/launch-video/scripts/clock.js, reloads, then steps the page's clock 1/30 s per captured frame.
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 const [port, match, frames, out, warm = "5", mode = "reload"] = process.argv.slice(2);
 mkdirSync(out, { recursive: true });
@@ -15,7 +14,6 @@ const shot = () => send("Page.captureScreenshot", { format: "jpeg", quality: 95 
 await send("Page.enable");
 if (mode === "reload") { await send("Page.addScriptToEvaluateOnNewDocument", { source: clock }); await send("Page.reload", {}); }
 else await ev(clock);
-// keep frames flowing while it loads (no vsync on a locked screen)
 const t0 = Date.now(); while (Date.now() - t0 < +warm * 1000) await shot();
 const entering = ev("window.__clock ? window.__clock.enter().then(() => 'in') : 'no clock'");
 let r; for (let i = 0; i < 20; i++) { await shot(); r = await Promise.race([entering, new Promise((res) => setTimeout(() => res(null), 50))]); if (r) break; }

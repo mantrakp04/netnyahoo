@@ -5,9 +5,6 @@ import { useTheme } from "../../lib/theme";
 import { useHover } from "../primitives";
 import { STEPS, useOnboarding, type OnboardingStep } from "./state";
 
-/**
- * Onboarding colours: Dia's UnboxingUI / Unboxing asset-catalog tokens, per appearance.
- */
 export function onboardingColors(dark: boolean) {
   return dark
     ? {
@@ -80,7 +77,6 @@ export function onboardingColors(dark: boolean) {
 
 export const useOnboardingColors = () => onboardingColors(useTheme().dark);
 
-/** Fades and lifts its children in on mount (each step's content, staggered by `delay`). */
 export function Reveal({ delay = 0, children, style }: { delay?: number; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -93,7 +89,6 @@ export function Reveal({ delay = 0, children, style }: { delay?: number; childre
   );
 }
 
-/** "Step 2 of 4" and a segmented progress bar (the intro isn't counted). */
 export function StepProgress() {
   const colors = useOnboardingColors();
   const step = useOnboarding((s) => s.step);
@@ -123,7 +118,6 @@ export function StepTitle({ title, subtitle }: { title: string; subtitle?: strin
   );
 }
 
-/** Dia's primary unboxing button: a near-opaque pill in the text colour. */
 export function PrimaryButton({ title, onPress, disabled, icon }: { title: string; onPress: () => void; disabled?: boolean; icon?: string }) {
   const colors = useOnboardingColors();
   const { hovered, hoverProps } = useHover();
@@ -153,7 +147,6 @@ export function PrimaryButton({ title, onPress, disabled, icon }: { title: strin
   );
 }
 
-/** Secondary pill ("Skip", "Not now"): outlined, fills faintly on hover. */
 export function SecondaryButton({ title, onPress, filled }: { title: string; onPress: () => void; filled?: boolean }) {
   const colors = useOnboardingColors();
   const { hovered, hoverProps } = useHover();
@@ -223,7 +216,6 @@ export function CheckMark({ on, size = 18 }: { on: boolean; size?: number }) {
   );
 }
 
-/** Dia's unboxing checkbox row: title, subtitle, round check on the right. */
 export function CheckRow({
   title,
   subtitle,
@@ -237,7 +229,6 @@ export function CheckRow({
   value: boolean;
   onChange: (value: boolean) => void;
   disabled?: boolean;
-  /** SF Symbol in a small tile before the text. */
   icon?: string;
 }) {
   const colors = useOnboardingColors();

@@ -7,12 +7,6 @@ import { updateCalendarSettings, useLive } from "../../../live/store";
 import { useBrowser } from "../../../store/browser";
 import { Button, Checkbox, Group, PopUp, Row, SectionHeader, Toggle } from "../controls";
 
-/**
- * Settings › Calendar: Live Calendar reads macOS Calendar (whatever accounts
- * the Mac syncs), so there's nothing to sign in to — just permission. Alerts,
- * the pinned-calendar preview and badge, meeting groups and which calendars
- * count mirror Dia's calendar menu.
- */
 export function CalendarPane() {
   const theme = useTheme();
   const settings = useLive((s) => s.calendar);

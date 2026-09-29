@@ -1,11 +1,3 @@
-// Builds public/models/big-yahu.glb from the brand sources (gitignored, in the main checkout's output/).
-//
-// The Griddy export is the base: its mesh carries the finger/shoulder morphs Griddy needs, and it shares
-// the Default Dance rig exactly (same joints, rest pose and inverse binds), so the Default Dance clip is
-// copied in by joint name. Floss is left out: its rig was bound in a different rest pose.
-// Then: simplify 291k → ~47k triangles, 4096px texture → 2048px WebP, quantize, meshopt. ~1.4 MB.
-//
-//   node scripts/build-model.mjs [ratio=0.16] [texture=2048] [webpQuality=76]
 import { NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { dedup, meshopt, prune, quantize, reorder, resample, simplify, sparse, textureCompress, weld } from "@gltf-transform/functions";
@@ -39,7 +31,6 @@ for (const clip of dance.getRoot().listAnimations()) {
   }
 }
 
-// Glossy vinyl: the export leaves glTF's metallic default (1), which renders the toy as dark chrome.
 for (const material of root.listMaterials()) material.setMetallicFactor(0).setRoughnessFactor(0.42);
 
 await doc.transform(

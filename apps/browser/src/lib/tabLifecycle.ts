@@ -11,34 +11,12 @@ import { activeTabId, engineProfile, isIncognitoProfile, navigationTo } from "..
 import { splitOf } from "../store/splits";
 import { webviews } from "./webviews";
 
-/**
- * Tab lifecycle, after Dia (changelog 1.5, 1.8, 1.40) and Chrome's Memory and
- * Energy Saver:
- * - Idle background tabs sleep: Chrome discards them (the page reloads when
- *   shown, with its back/forward list; extensions see `discarded: true`). The 10
- *   most recently used tabs are protected, idle time only counts while the app is
- *   active, and memory pressure makes it eager. Chrome's own discarding (memory
- *   pressure, chrome.tabs.discard) lands in the same state (`onDiscarded`).
- * - Tabs that play audio, capture, sit in a split, show PiP or hold unsaved
- *   form input never sleep.
- * - Profiles no window shows unload: their tabs' browsers close (history is lost), then
- *   the engine context goes.
- * - Battery Saver: on battery or in Low Power Mode, CPU-heavy background tabs freeze.
- * - On launch a few recent background tabs reload, depending on the Mac.
- */
-
 export const POLICY = {
-  /** Most recently used tabs that never sleep proactively (Dia 1.5). */
   protectedRecent: 10,
-  /** App-active time a background tab stays loaded. */
   idleMs: 30 * 60_000,
-  /** App-active time before a profile no window shows unloads. */
   profileIdleMs: 10 * 60_000,
-  /** Tabs put to sleep per sweep, so a sweep never stalls the engine. */
   perSweep: 6,
-  /** Battery Saver: % of one core that counts as busy, on two samples in a row. */
   busyCpu: 10,
-  /** Battery Saver: a tab must be hidden this long before it freezes. */
   freezeAfterMs: 60_000,
 };
 
@@ -47,21 +25,17 @@ const FREEZE_SWEEP_MS = 30_000;
 const EVAL_TIMEOUT_MS = 2_000;
 
 type Lifecycle = {
-  /** Tabs whose browser was discarded; they reload when shown. */
   discarded: Record<string, true>;
-  /** Tabs Battery Saver froze. */
   frozen: Record<string, true>;
   batterySaver: boolean;
 };
 
 export const useLifecycle = create<Lifecycle>()(() => ({ discarded: {}, frozen: {}, batterySaver: false }));
 
-/** The sidebar's sleeping state ("This tab needs to reload"). */
 export const useIsSleeping = (tabId: string) => useLifecycle((l) => !!l.discarded[tabId]);
 
 const store = () => useBrowser.getState();
 
-// App-active clock: idle time only runs while the app is frontmost (Dia 1.8).
 let appActive = true;
 let activeSince = Date.now();
 let activeTotal = 0;
@@ -73,22 +47,16 @@ function setAppActive(active: boolean) {
   appActive = active;
 }
 
-/** activeClock() when each loaded tab was last hidden. */
 const hiddenAt = new Map<string, number>();
-/** activeClock() since each profile has been shown in no window. */
 const unusedSince = new Map<string, number>();
-/** Engine profiles with a browser this session (released ones leave). */
 const loadedProfiles = new Set<string>();
-/** Unsaved input found when a tab froze (a frozen page can't answer). */
 const dirtyWhenFrozen = new Map<string, boolean>();
-/** Battery Saver samples in a row a tab was busy. */
 const busyStreak = new Map<string, number>();
 
 let system: SystemState | null = null;
 let systemOverride: Partial<SystemState> | null = null;
 const currentSystem = () => (system ? { ...system, ...systemOverride } : null);
 
-/** Tabs on screen: each window's active tab and the rest of its split. */
 function shownTabIds(s: BrowserState): Set<string> {
   const shown = new Set<string>();
   for (const w of Object.values(s.windows)) {
@@ -100,12 +68,9 @@ function shownTabIds(s: BrowserState): Set<string> {
   return shown;
 }
 
-/** Tabs with a web view whose page is loaded (mounted and not asleep). */
 const loadedTabIds = () => [...webviews.keys()].filter((id) => !useLifecycle.getState().discarded[id]);
-/** Asleep tabs whose browser closed (their profile unloading); the others are Chrome's discarded tabs. */
 const unloaded = new Set<string>();
 
-/** Why a background tab must keep its page as is, or null if it may sleep or freeze. */
 export function keepAliveReason(s: BrowserState, id: string): string | null {
   const tab = s.tabs[id];
   if (!tab?.url || isInternalTab(tab)) return "no page";
@@ -120,19 +85,11 @@ export function keepAliveReason(s: BrowserState, id: string): string | null {
   if (media.pipOpen[id]) return "picture in picture";
   if (media.displayRequests[id]) return "choosing a screen to share";
   const session = media.sessions[id];
-  // A pinned tab's mini player keeps working while paused.
   if (session?.playbackState === "playing" || (tab.pinned && session)) return "media";
   if (splitOf(s, id)) return "in a split";
   return null;
 }
 
-/**
- * Unsaved input: typed text in a field or focused editor, a chosen file, or an
- * `onbeforeunload` handler (same-origin frames too). Checkboxes, radios and
- * selects don't count: sites set those from script all the time (Wikipedia's
- * appearance radios), which would keep every such tab awake. Runs in the main
- * world; anything but a clean answer counts as unsaved.
- */
 const UNSAVED_INPUT_CHECK = `
 const notText = new Set(["hidden", "submit", "button", "reset", "image", "search", "checkbox", "radio", "range", "color"]);
 const dirty = (doc) => {
@@ -156,49 +113,38 @@ post("result", JSON.stringify(unsaved));`;
 const withTimeout = <T,>(promise: Promise<T>, ms: number, fallback: T) =>
   Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
 
-/** true / false, or null when the page couldn't answer (treated as unsaved). */
 async function hasUnsavedInput(handle: WebViewHandle): Promise<boolean | null> {
   const result = await withTimeout(handle.evaluate<boolean>(UNSAVED_INPUT_CHECK).catch(() => null), EVAL_TIMEOUT_MS, null);
   return typeof result === "boolean" ? result : null;
 }
 
-/**
- * Puts a background tab to sleep if it's still safe to; true when it went to sleep. `unload`
- * closes its browser instead of discarding the page, so its profile can unload too.
- */
 export async function sleepTab(id: string, unload = false): Promise<boolean> {
   const handle = webviews.get(id);
   const asleep = !!useLifecycle.getState().discarded[id];
   if (!handle || unloaded.has(id) || (asleep && !unload)) return false;
-  // A discarded page has no input left to lose.
   const l = useLifecycle.getState();
   const unsaved = asleep ? false : l.frozen[id] ? (dirtyWhenFrozen.get(id) ?? null) : await hasUnsavedInput(handle);
   if (unsaved !== false) return false;
-  // The check took a moment: the tab may have been shown, started playing…
   const s = store();
   if (shownTabIds(s).has(id) || keepAliveReason(s, id) || webviews.get(id) !== handle) return false;
   if (await handle.discard({ unload })) unloaded.add(id);
-  // Counted as asleep now (onDiscarded follows), so this sweep can release its profile.
   noteDiscarded(id);
   return true;
 }
 
 // MARK: Web view events (ContentCard)
 
-/** A tab's browser was created, or its discarded page is loading again (`onReady`). */
 export function noteReady(tabId: string) {
   const tab = store().tabs[tabId];
   if (tab) loadedProfiles.add(engineProfile(tab.profileId));
   forget(tabId, false);
 }
 
-/** The engine discarded the tab: we did, or Chrome (memory pressure, an extension) did (`onDiscarded`). */
 export function noteDiscarded(tabId: string) {
   dirtyWhenFrozen.delete(tabId);
   useLifecycle.setState((l) => ({ discarded: { ...l.discarded, [tabId]: true }, frozen: omit(l.frozen, tabId) }));
 }
 
-/** The tab's web view unmounted (closed, moved, internal page). */
 export function noteGone(tabId: string) {
   forget(tabId, true);
 }
@@ -223,10 +169,6 @@ function omit<T>(map: Record<string, T>, key: string): Record<string, T> {
 
 let sweeping = false;
 
-/**
- * Puts idle background tabs to sleep and unloads unused profiles. `overrides`
- * tweak the policy for one run (dev tooling: `nnLifecycle.sweep({ idleMs: 0 })`).
- */
 export async function sweep(overrides: Partial<typeof POLICY> = {}): Promise<string[]> {
   if (sweeping) return [];
   sweeping = true;
@@ -237,7 +179,6 @@ export async function sweep(overrides: Partial<typeof POLICY> = {}): Promise<str
     const shown = shownTabIds(s);
     const now = activeClock();
     const pressure = currentSystem()?.memoryPressure ?? "normal";
-    // Under critical pressure even recent tabs go (Dia: "closed under heavy memory pressure").
     const recent = new Set(
       Object.values(s.tabs)
         .filter((t) => t.url)
@@ -246,7 +187,6 @@ export async function sweep(overrides: Partial<typeof POLICY> = {}): Promise<str
         .map((t) => t.id),
     );
     const unused = unusedProfiles(s, now, policy.profileIdleMs);
-    // A discarded tab still holds its profile in the engine: an unused profile's close too.
     const candidates = [...webviews.keys()].filter((id) => {
       const tab = s.tabs[id];
       if (!tab || shown.has(id) || unloaded.has(id)) return false;
@@ -255,7 +195,6 @@ export async function sweep(overrides: Partial<typeof POLICY> = {}): Promise<str
       if (!unused.has(tab.profileId) && (recent.has(id) || (pressure === "normal" && idle < policy.idleMs))) return false;
       return !keepAliveReason(s, id);
     });
-    // Longest hidden first.
     candidates.sort((a, b) => (hiddenAt.get(a) ?? now) - (hiddenAt.get(b) ?? now));
     for (const id of candidates) {
       if (slept.length >= policy.perSweep) break;
@@ -268,7 +207,6 @@ export async function sweep(overrides: Partial<typeof POLICY> = {}): Promise<str
   return slept;
 }
 
-/** Profiles (not incognito) that no window has shown for `idleMs` of app-active time. */
 function unusedProfiles(s: BrowserState, now: number, idleMs: number): Set<string> {
   const shownProfiles = new Set(Object.values(s.windows).map((w) => w.profileId));
   const unused = new Set<string>();
@@ -284,12 +222,6 @@ function unusedProfiles(s: BrowserState, now: number, idleMs: number): Set<strin
   return unused;
 }
 
-/**
- * Drops the engine context of every profile with no live browser and no window
- * showing it (its last tab closed, or all its tabs unloaded). A discarded tab's
- * browser is alive. The default profile uses the global context, which stays;
- * incognito ones go with their window.
- */
 function releaseUnusedProfiles() {
   const s = store();
   const inUse = new Set(Object.values(s.windows).map((w) => engineProfile(w.profileId)));
@@ -334,17 +266,12 @@ function thawAll() {
 
 let freezing = false;
 
-/**
- * Samples the engine's task manager and freezes hidden tabs that were busy
- * two samples in a row. A renderer shared with a shown tab is left alone.
- */
 export async function freezeBusyTabs(overrides: Partial<typeof POLICY> = {}): Promise<string[]> {
   if (freezing) return [];
   freezing = true;
   const frozen: string[] = [];
   try {
     const policy = { ...POLICY, ...overrides };
-    // The first call starts sampling (CPU reads -1 until then); the second reads it.
     await listTasks();
     await new Promise((resolve) => setTimeout(resolve, 2500));
     const tasks = await listTasks();
@@ -387,12 +314,6 @@ export async function freezeTab(id: string): Promise<boolean> {
 
 // MARK: Launch
 
-/**
- * Dia 1.8: "On launch, Dia automatically reloads select recent background tabs
- * based on your device and tab activity." The shown tabs load anyway; this adds
- * the most recently used ones from the last day, more on Macs with more memory
- * and none on battery or under memory pressure.
- */
 export function reloadRecentTabs(sys: SystemState) {
   const gb = sys.physicalMemory / 2 ** 30;
   const busy = sys.onBattery || sys.lowPowerMode || sys.memoryPressure !== "normal";
@@ -401,14 +322,11 @@ export function reloadRecentTabs(sys: SystemState) {
   const shown = shownTabIds(s);
   const since = Date.now() - 24 * 60 * 60_000;
   const ids = Object.values(s.tabs)
-    // Not pinned tabs the user unloaded (⌘W): they stay unloaded until selected.
     .filter((t) => t.url && !t.navigation && !t.adoptId && !t.unloaded && !shown.has(t.id) && !isInternalTab(t) && t.lastActiveAt >= since)
-    // Tabs of the profile their window shows; others would only sleep again with their profile.
     .filter((t) => s.windows[t.windowId]?.profileId === t.profileId)
     .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
     .slice(0, count)
     .map((t) => t.id);
-  // Staggered so they don't compete with the shown tabs.
   ids.forEach((id, i) =>
     setTimeout(() => {
       const t = store().tabs[id];
@@ -422,7 +340,6 @@ export function reloadRecentTabs(sys: SystemState) {
 
 let started = false;
 
-/** Call once, after the session is restored. */
 export function startTabLifecycle() {
   if (started) return;
   started = true;
@@ -430,7 +347,6 @@ export function startTabLifecycle() {
   onWindowEvent((e) => e.type === "focus" && setAppActive(true));
   onAppEvent((e) => (e.type === "resignActive" || e.type === "screenLocked") && setAppActive(false));
 
-  // Hidden-since bookkeeping; a shown tab is thawed by the engine.
   let lastShown = new Set<string>();
   const track = (s: BrowserState) => {
     const shown = shownTabIds(s);
@@ -459,7 +375,6 @@ export function startTabLifecycle() {
     updateBatterySaver(true);
     if (pressureRose) void sweep();
   };
-  // An app binary older than this JS (Metro serves every build) has no system state: skip those parts.
   void Promise.resolve()
     .then(systemState)
     .then(
@@ -498,7 +413,6 @@ export function startTabLifecycle() {
         loaded: loadedTabIds(),
       }),
       keepAliveReason: (id: string) => keepAliveReason(store(), id),
-      /** Engine memory by task type (MB, task manager footprint; tabs sharing a renderer count once). */
       memory: () =>
         listTasks()
           .then(() => new Promise((resolve) => setTimeout(resolve, 2500)))
@@ -507,7 +421,6 @@ export function startTabLifecycle() {
             const byType: Record<string, number> = {};
             const seen = new Set<string>();
             for (const t of tasks) {
-              // Rows of one renderer repeat its footprint; count each renderer once.
               const key = t.browserIds.length ? `${t.type}:${t.memory}` : `${t.id}`;
               if (t.memory < 0 || seen.has(key)) continue;
               seen.add(key);
@@ -516,7 +429,6 @@ export function startTabLifecycle() {
             const total = Object.values(byType).reduce((a, b) => a + b, 0);
             return { totalMB: Math.round(total), byTypeMB: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, Math.round(v)])), tasks: tasks.length };
           }),
-      /** Pretend to be on battery etc.: `simulate({ onBattery: true })`, `simulate(null)`. */
       simulate: (patch: Partial<SystemState> | null) => {
         systemOverride = patch;
         updateBatterySaver(true);

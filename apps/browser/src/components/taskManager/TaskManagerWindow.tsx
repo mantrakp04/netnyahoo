@@ -24,7 +24,6 @@ const COLUMNS: Column[] = [
   { key: "gpu", title: "GPU Memory", width: 110 },
 ];
 
-/** A task as shown: its tabs (renderers host one or more) resolved through the store. */
 type Row = EngineTask & { label: string; tabIds: string[]; favicon: { url: string; favicon: string | null; profileId: string } | null };
 
 const TYPE_ICONS: Partial<Record<EngineTask["type"], string>> = {
@@ -42,7 +41,6 @@ const TYPE_ICONS: Partial<Record<EngineTask["type"], string>> = {
 const bytes = (n: number) =>
   n < 0 ? "–" : n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`;
 
-/** Window › Task Manager: every engine process with live memory / CPU, like Chrome's and Dia's. */
 export function TaskManagerWindow() {
   const theme = useTheme();
   const colors = useFormColors();
@@ -50,7 +48,6 @@ export function TaskManagerWindow() {
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: "memory", descending: true });
   const [selected, setSelected] = useState<number | null>(null);
   const tabs = useBrowser((s) => s.tabs);
-  // Re-resolve rows when a tab's browser id becomes known.
   const browsers = usePages((s) => s.browsers);
 
   useEffect(() => {
@@ -208,7 +205,6 @@ function TaskRow({ row, stripe, selected, onSelect, onOpen }: { row: Row; stripe
   const detail = selected ? "rgba(255,255,255,0.85)" : theme.textSecondary;
   const icon = TYPE_ICONS[row.type] ?? "app.dashed";
   const press = () => {
-    // Double-click a tab's task to go to the tab, like Chrome.
     const now = Date.now();
     if (now - lastPress.current < 350) onOpen();
     lastPress.current = now;

@@ -1,4 +1,3 @@
-// "Pour": the source. The repository's page is active in the sidebar.
 const DIR = "pour-repo";
 const s = nn.store.getState();
 if (!s.windows[W].sidebarOpen) s.toggleSidebar(W);

@@ -7,15 +7,8 @@ import { capture, endSession, flush, isSharing, startClient } from "./client";
 import { reportNativeCrashes } from "./errors";
 import { takeOmniboxLatency } from "./track";
 
-/**
- * Coarse feature usage and performance, watched from the store: counts and kinds only, never
- * which page, tab, profile or extension. Every watcher checks `isSharing()` first, so with
- * sharing off they do nothing (turning it on mid-session starts them reporting at once).
- */
-
 const HOUR_MS = 60 * 60_000;
 const FIRST_MEMORY_SAMPLE_MS = 10 * 60_000;
-/** Chrome reports the extensions it loads at launch as installs; ignore those. */
 const EXTENSION_SETTLE_MS = 20_000;
 
 const startedAt = Date.now();
@@ -57,14 +50,12 @@ function watchStore() {
   });
 }
 
-/** Time from the store switching the window's profile to the second frame after (the new profile drawn). */
 function profileSwitched(profiles: number) {
   const start = Date.now();
   requestAnimationFrame(() => requestAnimationFrame(() => capture("profile_switched", { switch_ms: Date.now() - start, profiles })));
 }
 
 function watchSync() {
-  // Called after startSync: the status it starts in isn't a change.
   let last = useSync.getState().status;
   useSync.subscribe(({ status }) => {
     const was = last;
@@ -92,11 +83,9 @@ function watchExtensions() {
 
 const mb = (bytes: number) => Math.round(bytes / 1_048_576);
 
-/** Memory across the engine's processes (Chromium's task manager numbers), plus how many tabs. */
 async function sampleMemory() {
   if (!isSharing()) return;
   try {
-    // The task manager's first refresh has no numbers yet.
     await listTasks();
     await new Promise((resolve) => setTimeout(resolve, 2000));
     const tasks = await listTasks();
@@ -136,16 +125,11 @@ function hourly() {
   void sampleMemory();
 }
 
-/**
- * Loads the user's choice and starts the watchers. Call once at startup, after the session is
- * restored and sync has started.
- */
 export function startUsage() {
   const session = startClient();
   if (session) {
     capture("app_launched", { previous_session: session.previous });
     if (session.updatedFrom) capture("app_updated", { from_version: session.updatedFrom });
-    // Let the launch settle before reading the crash report folder.
     setTimeout(() => void reportNativeCrashes(), 5000);
   }
   watchStore();
@@ -157,17 +141,14 @@ export function startUsage() {
   onAppEvent((e) => e.type === "willQuit" && sessionEnding());
 }
 
-/** The app is quitting (also DEV's `nnTelemetry.quit()`, as test instances are killed, not quit). */
 export function sessionEnding() {
   if (!isSharing()) return;
   emitCounts();
   emitOmniboxLatency();
   capture("app_session_ended", { duration_minutes: Math.round((Date.now() - startedAt) / 60_000) });
-  // Queued events wait on disk for the next launch (quitting can't wait on the network).
   endSession();
 }
 
-/** DEV: runs the hourly report now and sends it. */
 export async function devHourly() {
   hourly();
   await new Promise((resolve) => setTimeout(resolve, 2500));

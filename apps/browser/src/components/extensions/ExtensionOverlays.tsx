@@ -18,7 +18,6 @@ import {
   type InstallRequest,
 } from "./state";
 
-/** The extension popup, install dialog and Pin Extensions dialog of this window. */
 export function ExtensionOverlays() {
   const windowId = useWindowId();
   const popup = useExtensions((e) => (e.popup?.windowId === windowId ? e.popup : null));
@@ -33,7 +32,6 @@ export function ExtensionOverlays() {
   );
 }
 
-/** The install dialog for another host (the Settings window). */
 export function InstallDialogHost({ windowId, onClosed }: { windowId: string; onClosed: () => void }) {
   const install = useExtensions((e) => (e.install?.windowId === windowId ? e.install : null));
   useEffect(() => {
@@ -44,14 +42,9 @@ export function InstallDialogHost({ windowId, onClosed }: { windowId: string; on
 
 // MARK: Action popup
 
-// Chrome's limits for extension popups.
 const MIN = { width: 25, height: 25 };
 const MAX = { width: 800, height: 600 };
 
-/**
- * Reports the page's content size whenever it changes (resolves once per change;
- * call again to keep watching).
- */
 const MEASURE = `
 const measure = () => {
   const d = document.documentElement, b = document.body;
@@ -74,11 +67,6 @@ if (!last || last.w !== now.w || last.h !== now.h) {
   if (document.body) ro.observe(document.body);
 }`;
 
-/**
- * An extension's action popup: its page in a bubble hanging from the toolbar
- * button, sized to the page like Chrome (25×25 up to 800×600). Clicking
- * elsewhere or the page's window.close() dismisses it.
- */
 function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; profile: string; extensionId: string; url: string; anchor: { x: number; y: number; width: number; height: number } }) {
   const theme = useTheme();
   const web = useRef<WebViewHandle>(null);
@@ -109,8 +97,6 @@ function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; pro
     });
   };
 
-  // Right edge on the button's right edge, clamped to the window.
-  // The bubble's hairline border sits inside it: one more point keeps the page from scrolling.
   const width = (size?.width ?? MIN.width) + 1;
   const height = (size?.height ?? MIN.height) + 1;
   const left = Math.max(8, Math.min(anchor.x + anchor.width - width, window.width - width - 8));
@@ -124,7 +110,6 @@ function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; pro
           position: "absolute",
           left,
           top,
-          // Measured off-screen-sized first: invisible until the page reports its size.
           opacity: appear,
           transform: [{ translateY: appear.interpolate({ inputRange: [0, 1], outputRange: [-4, 0] }) }],
         }}
@@ -146,7 +131,6 @@ function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; pro
               style={StyleSheet.absoluteFill}
               url={url}
               profile={profile}
-              // A popup, not a tab: outside the window's Chrome tab strip.
               standalone
               pageBackgroundColor="#FFFFFF"
               onNavigationChange={({ isLoading }) => {
@@ -169,15 +153,10 @@ function ActionPopup({ windowId, profile, url, anchor }: { windowId: string; pro
 
 // MARK: Install dialog
 
-/**
- * Dia's "Add “…”?" confirmation: the extension's icon and name, what it will
- * be able to do (Chrome's permission warnings), Cancel / Add Extension.
- */
 function InstallDialog({ request }: { request: InstallRequest }) {
   const theme = useTheme();
   const pkg = request.pkg;
   const name = pkg?.name ?? "Extension";
-  // Chrome's own flow brings its warnings; an unpacked folder's are read off its manifest.
   const warnings = request.prompt ? request.prompt.permissions : pkg ? permissionWarnings(pkg) : [];
   const kind = request.prompt?.type;
   const title = kind === "re-enable" ? `Turn “${name}” back on?` : kind === "permissions" ? `“${name}” needs new permissions` : `Add “${name}”?`;
@@ -242,7 +221,6 @@ function InstallDialog({ request }: { request: InstallRequest }) {
 
 // MARK: Pin Extensions
 
-/** Extensions › Pin Extensions…: which extensions show in the toolbar. */
 function PinDialog({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const profile = useBrowser((s) => extensionProfile(s, windowId));
@@ -283,7 +261,6 @@ function PinRow({ ext, onChange }: { ext: InstalledExtension; onChange: (pinned:
   );
 }
 
-/** A centred modal panel over the window (dimmed backdrop). */
 function Dialog({ onDismiss, children }: { onDismiss?: () => void; children: ReactNode }) {
   const theme = useTheme();
   const appear = useRef(new Animated.Value(0)).current;

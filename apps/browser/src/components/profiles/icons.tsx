@@ -3,11 +3,6 @@ import { Text, View } from "react-native";
 import { PROFILE_COLORS } from "../../lib/theme";
 import type { Profile } from "../../store/types";
 
-/**
- * Profile icons. Dia identifies profiles by name and theme colour only (its asset
- * catalogs hold no profile artwork); ours can also carry an emoji or one of these
- * SF Symbols, drawn white on the profile's colour.
- */
 export const PROFILE_SYMBOLS: { name: string; title: string }[] = [
   { name: "house.fill", title: "Home" },
   { name: "briefcase.fill", title: "Work" },
@@ -34,10 +29,8 @@ export const PROFILE_SYMBOLS: { name: string; title: string }[] = [
 const EMOJI = ["😀", "😎", "🤓", "🧑‍💻", "💼", "🏠", "🎓", "🎨", "🎮", "🎵", "📚", "✈️", "🌱", "🔥", "⭐️", "🚀", "🐶", "🐱", "🦊", "🍀"];
 
 const SYMBOL_PREFIX = "symbol:";
-/** The SF Symbol of a `symbol:<name>` icon. */
 export const profileSymbol = (icon: string | null) => (icon?.startsWith(SYMBOL_PREFIX) ? icon.slice(SYMBOL_PREFIX.length) : null);
 
-/** Menu items to pick a profile icon; the chosen id is `icon:` + the new icon ("" = the initial). */
 export function iconMenuItems(current: string | null): MenuItem[] {
   return [
     { id: "icon:", title: "Initial", checked: !current },
@@ -53,10 +46,6 @@ export function iconMenuItems(current: string | null): MenuItem[] {
   ];
 }
 
-/**
- * A round badge on the profile's colour with its symbol or initial (an emoji sits on
- * the colour too). Bigger badges get a hairline rim.
- */
 export function ProfileBadge({ profile, size = 26 }: { profile: Pick<Profile, "name" | "color" | "icon">; size?: number }) {
   const swatch = PROFILE_COLORS[profile.color]?.swatch ?? PROFILE_COLORS.plum.swatch;
   const symbol = profileSymbol(profile.icon);

@@ -1,4 +1,3 @@
-// Store transitions and the v1 → v2 session migration. See test-loader.mjs for how to run.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("./browser.ts");
@@ -20,11 +19,9 @@ test("window lifecycle: new tabs, last tab closes window, reopen", () => {
   assert.equal(model.activeTabId(S(), w), t2);
   assert.deepEqual(view(w), ["https://a.com", "https://b.com", "https://c.com"]);
   S().closeTab(t2);
-  // neighbour below becomes active
   assert.equal(S().tabs[model.activeTabId(S(), w)].url, "https://c.com");
   S().reopenClosed(w);
   assert.deepEqual(view(w), ["https://a.com", "https://b.com", "https://c.com"]);
-  // close all tabs one by one: last closes the window
   for (const id of model.viewTabIds(S(), w).slice(1)) S().closeTab(id);
   S().closeTab(model.viewTabIds(S(), w)[0]);
   assert.equal(S().windows[w], undefined);
@@ -45,7 +42,6 @@ test("closeTabs keeps a New Tab page, pins sort first, moveTab within section", 
   S().moveTab(b, 0);
   assert.deepEqual(view(w), ["https://c.com", "https://b.com", "https://a.com"]);
   S().closeTabs(model.viewTabIds(S(), w));
-  // The pinned tab stays (its page unloads); a New Tab page takes the place of the rest.
   assert.deepEqual(view(w), ["https://c.com", ""]);
 });
 
@@ -120,7 +116,7 @@ test("groups stay contiguous; splits need two panes", () => {
   const sp = S().createSplit([a, b]);
   S().closeTab(b);
   assert.equal(S().splits[sp], undefined);
-  S().closeTab(a); // last tab: window closes, group record kept in closed window
+  S().closeTab(a);
   assert.equal(S().closedWindows.at(-1).groups.length, 1);
 });
 
@@ -135,13 +131,13 @@ test("bookmarks tree: toggle, folders, move, remove", async () => {
   const id = bm.bookmarksByUrl(S().bookmarks, "default").get(page.url)[0];
   S().moveBookmark(id, folder);
   assert.deepEqual(S().bookmarks.nodes[folder].children, [id]);
-  S().moveBookmark(folder, folder); // into itself: ignored
+  S().moveBookmark(folder, folder);
   assert.equal(S().bookmarks.nodes[folder].parentId, roots.bar);
   assert.equal(S().toggleBookmark("default", page), false);
   assert.ok(!bm.isBookmarked(S().bookmarks, "default", page.url));
   S().removeBookmark(folder);
   assert.deepEqual(S().bookmarks.nodes[roots.bar].children, []);
-  S().removeBookmark(roots.bar); // roots can't be removed
+  S().removeBookmark(roots.bar);
   assert.ok(S().bookmarks.nodes[roots.bar]);
 });
 

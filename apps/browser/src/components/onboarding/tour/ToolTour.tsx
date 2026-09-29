@@ -12,14 +12,8 @@ import { endToolTour, openVideoTour, stepToolTour, useTour, videoTourUrl, type T
 const CARD_WIDTH = 296;
 const GAP = 14;
 const MARGIN = 12;
-/** The scrim is a border this wide around the spotlight, so the hole keeps its rounded corners. */
 const SCRIM_REACH = 6000;
 
-/**
- * The tool tour's layer over a browser window: a scrim with a spotlight on the feature, and a
- * coach mark beside it. Everything outside the spotlight is blocked; the spotlight itself stays
- * live, so the feature can be tried right there.
- */
 export function ToolTour() {
   const windowId = useWindowId();
   const active = useTour((s) => s.windowId === windowId && s.stops.length > 0);
@@ -60,7 +54,6 @@ function Tour({ windowId }: { windowId: string }) {
   const card = useRef({ x: new Animated.Value(0), y: new Animated.Value(0) }).current;
   const placed = useRef(false);
 
-  // Follow the anchor: it can move while the tour is up (the window resizes, the sidebar hides…).
   useEffect(() => {
     if (!stop?.anchor) return setTarget(null);
     let cancelled = false;
@@ -105,9 +98,6 @@ function Tour({ windowId }: { windowId: string }) {
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none" onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
-      {/* The scrim: a border around the spotlight, whose inner corners have the spotlight's radius
-          (radius − border). Clipping keeps RN on CALayer's own border (circular corners) rather
-          than a drawn border image, which would be enormous. */}
       <Animated.View
         pointerEvents="none"
         style={{
@@ -122,7 +112,6 @@ function Tour({ windowId }: { windowId: string }) {
           overflow: "hidden",
         }}
       />
-      {/* Blockers on the four sides of the spotlight; the spotlight itself stays clickable. */}
       <Animated.View style={{ position: "absolute", left: 0, right: 0, top: 0, height: hole.y }} />
       <Animated.View style={{ position: "absolute", left: 0, right: 0, top: holeBottom, bottom: 0 }} />
       <Animated.View style={{ position: "absolute", left: 0, width: hole.x, top: hole.y, height: hole.h }} />
@@ -140,7 +129,6 @@ function Tour({ windowId }: { windowId: string }) {
 
 const valueOf = (v: Animated.Value) => (v as unknown as { __getValue(): number }).__getValue();
 
-/** A soft pulsing ring around the spotlight. */
 function Ring({ hole }: { hole: { x: Animated.Value; y: Animated.Value; w: Animated.Value; h: Animated.Value; r: Animated.Value } }) {
   const pulse = useRef(new Animated.Value(0)).current;
   const [r, setR] = useState(() => valueOf(hole.r));
@@ -251,7 +239,6 @@ function TextButton({ title, onPress }: { title: string; onPress: () => void }) 
 const sameRect = (a: Rect | null, b: Rect | null) =>
   a === b || (!!a && !!b && Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.width - b.width) < 0.5 && Math.abs(a.height - b.height) < 0.5);
 
-/** The spotlight: the anchor grown by the stop's padding, or an empty point mid-window. */
 function spotlight(stop: TourStop | undefined, target: Rect | null, size: { width: number; height: number }): Hole {
   if (!stop?.anchor || !target) return { x: size.width / 2, y: size.height / 2, width: 0, height: 0, radius: 0 };
   const pad = stop.pad ?? 4;
@@ -261,23 +248,19 @@ function spotlight(stop: TourStop | undefined, target: Rect | null, size: { widt
 function placeCard(stop: TourStop | undefined, spot: Hole, size: { width: number; height: number }, height: number) {
   const clampX = (x: number) => Math.min(Math.max(x, MARGIN), Math.max(MARGIN, size.width - CARD_WIDTH - MARGIN));
   const clampY = (y: number) => Math.min(Math.max(y, MARGIN), Math.max(MARGIN, size.height - height - MARGIN));
-  // Below the middle, clear of the New Tab page's command bar.
   const centre = { x: clampX(size.width / 2 - CARD_WIDTH / 2), y: clampY(size.height * 0.62 - height / 2) };
   if (!stop?.anchor || !spot.width) return centre;
   switch (stop.placement) {
     case "right": {
       const x = spot.x + spot.width + GAP;
-      // No room on the right: below instead.
       if (x + CARD_WIDTH > size.width - MARGIN) return { x: clampX(spot.x), y: clampY(spot.y + spot.height + GAP) };
       return { x, y: clampY(spot.y + spot.height / 2 - 36) };
     }
     case "inside":
-      // In the lower part of the area, clear of what's usually in its middle (the command bar).
       return { x: clampX(spot.x + spot.width / 2 - CARD_WIDTH / 2), y: clampY(spot.y + spot.height * 0.7 - height / 2) };
     default: {
       const below = spot.y + spot.height + GAP;
       const y = below + height > size.height - MARGIN ? spot.y - GAP - height : below;
-      // Aligned with small anchors' leading edge, centred under wide ones.
       const x = spot.width < CARD_WIDTH / 2 ? spot.x - 10 : spot.x + spot.width / 2 - CARD_WIDTH / 2;
       return { x: clampX(x), y: clampY(y) };
     }

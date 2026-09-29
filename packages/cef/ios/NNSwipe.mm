@@ -4,28 +4,14 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-// Two-finger swipe back/forward, modelled on Chrome's HistorySwiper and Dia's
-// WebContentGesturalNavigationEventDriver: an app-wide scroll-wheel monitor sees every
-// trackpad gesture before the view under the pointer does. A gesture over a registered
-// target stays with the content until it's clear the content won't use it; from then on
-// the monitor swallows it and reports it to the target, which draws the overlay and
-// navigates. Web pages decide through their RenderWidgetHostViewCocoa's responder
-// delegate (the renderer acks each scroll); native content (New Tab page, internal pages,
-// the sidebar) through the NSScrollViews under the pointer.
-
 namespace {
 
-// Dia's native-page driver (GesturalNavigationEventInterceptorView): a swipe starts once
-// |ΣdX| ≥ 4 pt with 1.5·|ΣdX| ≥ |ΣdY|, and vertical motion (2·|ΣdX| < |ΣdY|) cancels it
-// unless the target lets the gesture move vertically (its destination list is open).
+// Dia threshold: 4pt start, 1.5× horizontal, 2× vertical cancel.
 constexpr CGFloat kStartDistance = 4;
 constexpr CGFloat kStartDominance = 1.5;
 constexpr CGFloat kCancelDominance = 2;
 
-// Chromium 154 layouts, verified against live renderer acks (DEV trace in simulateInWindow):
-// blink::WebGestureEvent keeps its WebInputEvent::Type at byte 40 (kGestureScrollBegin 11,
-// kGestureScrollUpdate 13); ui::DidOverscrollParams has three gfx::Vector2dF and a
-// gfx::PointF, then cc::OverscrollBehavior {Type x, y} with Type { kNone, kAuto, kContain }.
+// Chromium 154 event layout: keep the ack decoder offsets in sync.
 constexpr size_t kInputEventTypeOffset = 40;
 constexpr int kGestureScrollBegin = 11;
 constexpr int kGestureScrollUpdate = 13;
@@ -35,29 +21,19 @@ constexpr int kOverscrollBehaviorAuto = 1;
 enum class RendererScroll { Idle, AwaitingBegin, AwaitingFirstUpdate, FirstUpdateUnconsumed, FirstUpdateConsumed };
 enum class State { Idle, Pending, Tracking, Ignored };
 
-NSMutableArray *gTrace;  // DEV: renderer acks while simulating
+NSMutableArray *gTrace;
 
-}  // namespace
+}
 
-/// RenderWidgetHostViewCocoa's responder delegate (content's RenderWidgetHostViewMacDelegate
-/// protocol), in front of the one the page view had. On Chrome tabs that's Chrome's
-/// ChromeRenderWidgetHostViewMacDelegate: spelling and speech menu items, dialog focus,
-/// mouse acceptance, and its HistorySwiper. Everything goes on to it except the scroll events
-/// its history swiper would act on: this file is the swiper (Dia's overlay), and two would
-/// navigate twice. Alloy views have none. Chromium passes C++ references, which are pointers at
-/// the ABI level.
 @interface NNRendererScrollObserver : NSObject
 - (instancetype)initWithOriginal:(nullable NSObject *)original;
 @property (nonatomic) RendererScroll scroll;
-/// The renderer reported an overscroll this gesture; `overscrollAllowed`: its
-/// overscroll-behavior-x is auto (none/contain opt the page out of swipe navigation).
 @property (nonatomic) BOOL overscrolled;
 @property (nonatomic) BOOL overscrollAllowed;
 @end
 
 @implementation NNRendererScrollObserver {
  @public
-  /// The page view's own delegate (the view held the only strong reference to it).
   NSObject *_original;
 }
 
@@ -102,13 +78,13 @@ NSMutableArray *gTrace;  // DEV: renderer acks while simulating
   _overscrollAllowed = behaviorX == kOverscrollBehaviorAuto;
 }
 
-/// Every key and mouse event: scroll events stay away from Chrome's history swiper.
+// Suppress Chrome history-swiper scrolls or a gesture navigates twice.
 - (BOOL)handleEvent:(NSEvent *)event {
   if (event.type == NSEventTypeScrollWheel || ![_original respondsToSelector:_cmd]) return NO;
   return ((BOOL (*)(id, SEL, NSEvent *))objc_msgSend)(_original, _cmd, event);
 }
 
-// The protocol's required methods, which Chromium calls without asking respondsToSelector:.
+// Chromium may call required responder methods without a selector check.
 - (void)touchesBeganWithEvent:(NSEvent *)event {
   if ([_original respondsToSelector:_cmd]) [(id)_original touchesBeganWithEvent:event];
 }
@@ -122,7 +98,6 @@ NSMutableArray *gTrace;  // DEV: renderer acks while simulating
   if ([_original respondsToSelector:_cmd]) [(id)_original touchesEndedWithEvent:event];
 }
 
-/// DEV trace: the struct as 32-bit words (floats show up as their bit patterns).
 - (NSArray *)words:(const void *)p count:(int)count {
   NSMutableArray *out = [NSMutableArray array];
   for (int i = 0; i < count; i++) [out addObject:@(reinterpret_cast<const int32_t *>(p)[i])];
@@ -141,12 +116,11 @@ NSHashTable<NSView<NNSwipeTarget> *> *Targets() {
 struct Gesture {
   State state = State::Idle;
   __weak NSView<NNSwipeTarget> *target;
-  __weak NNRendererScrollObserver *renderer;  // nil over native content
+  __weak NNRendererScrollObserver *renderer;
   __weak NSView *hit;
-  CGFloat dx = 0, dy = 0;  // accumulated scrolling deltas; +dx is "back"
-  int direction = 0;       // +1 back, -1 forward
+  CGFloat dx = 0, dy = 0;
+  int direction = 0;
   BOOL available = NO;
-  // Recent motion along x, for the release velocity.
   NSTimeInterval times[6] = {};
   CGFloat deltas[6] = {};
   int samples = 0;
@@ -160,9 +134,6 @@ BOOL IsRenderWidgetView(NSView *view) {
   return cls && [view isKindOfClass:cls];
 }
 
-/// The page's scroll acks come to us: attach to the page view the gesture starts on, in front of
-/// its own responder delegate. A page gets a new RenderWidgetHostViewCocoa on cross-site
-/// navigations, so this runs for every gesture (before the view sees its first event).
 NNRendererScrollObserver *ObserverFor(NSView *hit) {
   static Ivar ivar = class_getInstanceVariable(NSClassFromString(@"RenderWidgetHostViewCocoa"), "_responderDelegate");
   for (NSView *v = hit; v; v = v.superview) {
@@ -170,12 +141,11 @@ NNRendererScrollObserver *ObserverFor(NSView *hit) {
     static const void *kKey = &kKey;
     NNRendererScrollObserver *observer = objc_getAssociatedObject(v, kKey);
     if (!observer) {
-      // Without the ivar (another Chromium layout) Chrome's delegate can't be kept: leave it be.
+      // Without the delegate ivar, leave Chrome's delegate untouched.
       if (!ivar) return nil;
       NSObject *original = object_getIvar(v, ivar);
       observer = [[NNRendererScrollObserver alloc] initWithOriginal:original];
       objc_setAssociatedObject(v, kKey, observer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-      // A strong ivar (content is ARC): the view now owns the observer, the observer the original.
       object_setIvar(v, ivar, observer);
     }
     return observer;
@@ -188,7 +158,6 @@ NSView *HitView(NSWindow *window, NSPoint locationInWindow) {
   return [frame hitTest:locationInWindow];
 }
 
-/// The innermost registered target whose container (superview) holds the view under the pointer.
 NSView<NNSwipeTarget> *TargetAt(NSWindow *window, NSPoint locationInWindow, NSView *hit) {
   if (!hit) return nil;
   NSView<NNSwipeTarget> *best = nil;
@@ -202,8 +171,6 @@ NSView<NNSwipeTarget> *TargetAt(NSWindow *window, NSPoint locationInWindow, NSVi
   return best;
 }
 
-/// A native scroll view between the pointer and the target that can still scroll that way
-/// keeps the gesture (Chrome's rule for pages, applied to native content).
 BOOL NativeContentScrolls(NSView *hit, NSView *container, int direction) {
   for (NSView *v = hit; v && v != container; v = v.superview) {
     if (![v isKindOfClass:NSScrollView.class]) continue;
@@ -237,7 +204,6 @@ void Sample(NSEvent *event) {
   gGesture.deltas[i] = event.scrollingDeltaX;
 }
 
-/// Points per second along x over the last ~100 ms of motion.
 CGFloat ReleaseVelocity(NSTimeInterval now) {
   int n = MIN(gGesture.samples, 6);
   CGFloat sum = 0;
@@ -254,16 +220,12 @@ BOOL IsPager(NSView<NNSwipeTarget> *target) {
   return [target respondsToSelector:@selector(isPager)] && target.isPager;
 }
 
-/// Wheel mice (no phases; Shift-scroll turns vertical into horizontal): a horizontal scroll
-/// over a pager goes to it as a "wheel" event (Dia's PageSwipeController pages once the burst
-/// adds up to 1 pt, layout/profilePager). Everything else passes through.
 NSEvent *HandleWheel(NSEvent *event) {
   CGFloat dx = event.scrollingDeltaX;
   if (fabs(dx) <= fabs(event.scrollingDeltaY)) return event;
   NSView *hit = HitView(event.window, event.locationInWindow);
   NSView<NNSwipeTarget> *target = TargetAt(event.window, event.locationInWindow, hit);
   if (!target || !IsPager(target)) return event;
-  // The content moves the way the device says: + is "back" with natural scrolling.
   BOOL back = (dx > 0) == event.isDirectionInvertedFromDevice;
   if (NativeContentScrolls(hit, target.superview, back ? 1 : -1)) return event;
   [target swipeEvent:@{
@@ -295,8 +257,6 @@ void Begin(NSEvent *event, BOOL ignoreSystemPreference) {
   gGesture.renderer = renderer;
 }
 
-/// Pending: is it time to take the gesture from the content? Returns NO to keep waiting;
-/// sets `state` to Ignored when the content keeps it.
 BOOL ShouldTrack() {
   CGFloat dx = gGesture.dx, dy = gGesture.dy;
   if (fabs(dy) >= kStartDistance && kCancelDominance * fabs(dx) < fabs(dy)) {
@@ -316,7 +276,7 @@ BOOL ShouldTrack() {
       case RendererScroll::FirstUpdateUnconsumed:
         break;
       default:
-        return NO;  // the renderer hasn't answered yet
+        return NO;
     }
     if (!renderer.overscrolled) return NO;
     if (!renderer.overscrollAllowed) {
@@ -338,15 +298,12 @@ BOOL ShouldTrack() {
   return YES;
 }
 
-/// Returns the event to let it through to the view under the pointer, or nil to swallow it.
 NSEvent *HandleScroll(NSEvent *event, BOOL ignoreSystemPreference) {
   NSEventPhase phase = event.phase;
   if (phase == NSEventPhaseNone && event.momentumPhase == NSEventPhaseNone) return HandleWheel(event);
   if (!event.hasPreciseScrollingDeltas) return event;
 
-  // Like Chrome's history swiper, only the Changed events of a swipe are taken: the view
-  // still sees each gesture begin and end (and its momentum), which keeps Chromium's
-  // wheel-phase handling in step (a page that never sees the end stops scrolling).
+  // Leave begin/end events to Chromium or wheel-phase scrolling stalls.
   if (phase == NSEventPhaseNone) return event;
   if (phase & NSEventPhaseMayBegin) return event;
   if (phase & NSEventPhaseBegan) Begin(event, ignoreSystemPreference);
@@ -386,15 +343,13 @@ NSEvent *HandleScroll(NSEvent *event, BOOL ignoreSystemPreference) {
   }
   if (!gGesture.target.allowsVerticalMotion && kCancelDominance * fabs(gGesture.dx) < fabs(gGesture.dy)) {
     Emit(@"cancelled", 0);
-    gGesture.state = State::Ignored;  // the rest of the gesture scrolls the content
+    gGesture.state = State::Ignored;
     return event;
   }
   Emit(@"changed", ReleaseVelocity(event.timestamp));
   return nil;
 }
 
-/// Three-finger swipes (Swipe between pages › Swipe with three fingers) arrive whole.
-/// Returns YES when a target took it.
 BOOL HandleDiscreteSwipe(NSWindow *window, NSPoint location, CGFloat deltaX) {
   if (fabs(deltaX) < 0.5) return NO;
   NSView *hit = HitView(window, location);
@@ -414,16 +369,11 @@ BOOL HandleDiscreteSwipe(NSWindow *window, NSPoint location, CGFloat deltaX) {
   return YES;
 }
 
-/// The window server keeps a scroll gesture's events on the window it began in, and so the events of
-/// gestures that start before the last one's momentum has run out ("latching"). A profile swap orders
-/// that window out: a user swiping back and forth kept swiping into a window off screen, whose views
-/// had left it, for as long as they kept going (seconds), and nothing moved. Such an event goes to our
-/// window under the pointer instead: nil to use it as it is.
+// Retarget latched gestures after profile swaps or swipes target the hidden window.
 NSEvent *Unlatched(NSEvent *event) {
   NSWindow *window = event.window;
   if (window.isVisible) return nil;
   const NSPoint screen = window ? [window convertPointToScreen:event.locationInWindow] : event.locationInWindow;
-  // Our frontmost window there (the window server's own answer may be another app's window over ours).
   NSWindow *under = nil;
   for (NSWindow *w in NSApp.orderedWindows)
     if (w != window && w.isVisible && !w.ignoresMouseEvents && w.alphaValue > 0 && NSPointInRect(screen, w.frame)) {
@@ -433,7 +383,6 @@ NSEvent *Unlatched(NSEvent *event) {
   if (!under) return nil;
   CGEventRef cg = CGEventCreateCopy(event.CGEvent);
   if (!cg) return nil;
-  // Field 51 is the event's window; CGEventSetWindowLocation its point, top-left in the window's frame.
   CGEventSetIntegerValueField(cg, (CGEventField)51, under.windowNumber);
   static auto setWindowLocation = (void (*)(CGEventRef, CGPoint))dlsym(RTLD_DEFAULT, "CGEventSetWindowLocation");
   const NSPoint inWindow = [under convertPointFromScreen:screen];
@@ -443,8 +392,6 @@ NSEvent *Unlatched(NSEvent *event) {
   return moved.window == under ? moved : nil;
 }
 
-/// A scroll event through the tracker, retargeted first if it was latched to a window off screen.
-/// Returns the event for AppKit to deliver, or nil when it was swallowed or delivered here.
 NSEvent *HandleScrollEvent(NSEvent *event, BOOL ignoreSystemPreference) {
   NSEvent *moved = Unlatched(event);
   if (!moved) return HandleScroll(event, ignoreSystemPreference);
@@ -464,8 +411,6 @@ void InstallMonitor() {
 
 // MARK: DEV simulation
 
-/// DEV: the page view's responder delegate chain and what it validates (Edit › Spelling and
-/// Grammar, Speech), to check Chrome's delegate still answers behind ours.
 NSDictionary *ResponderReport(NSView *hit) {
   static Ivar ivar = class_getInstanceVariable(NSClassFromString(@"RenderWidgetHostViewCocoa"), "_responderDelegate");
   NSView *page = hit;
@@ -486,7 +431,6 @@ NSDictionary *ResponderReport(NSView *hit) {
   };
 }
 
-/// `point` (top-left origin, as devLocate reports it) in the content view's coordinates.
 NSPoint LocalPoint(NSWindow *window, NSPoint point) {
   NSView *content = window.contentView;
   return content.isFlipped ? point : NSMakePoint(point.x, NSHeight(content.bounds) - point.y);
@@ -501,17 +445,14 @@ CGScrollPhase ScrollPhaseOf(NSString *phase) {
   return (CGScrollPhase)0;
 }
 
-/// A trackpad scroll event like the ones AppKit makes from the multitouch driver.
 NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   NSString *phase = step[@"phase"];
   double dx = [step[@"dx"] doubleValue], dy = [step[@"dy"] doubleValue];
-  // "wheel": a wheel mouse's notch (lines, not continuous, no phase).
   BOOL wheel = [phase isEqualToString:@"wheel"];
   CGEventRef cg = CGEventCreateScrollWheelEvent2(NULL, wheel ? kCGScrollEventUnitLine : kCGScrollEventUnitPixel, 2, (int32_t)lround(dy), (int32_t)lround(dx), 0);
   if (!cg) return nil;
   CGEventSetIntegerValueField(cg, kCGScrollWheelEventIsContinuous, wheel ? 0 : 1);
   if ([step[@"shift"] boolValue]) CGEventSetFlags(cg, kCGEventFlagMaskShift);
-  // Real events carry the time they happened; the release velocity is measured from it.
   CGEventSetTimestamp(cg, clock_gettime_nsec_np(CLOCK_UPTIME_RAW));
   if (!wheel) {
     CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis1, dy);
@@ -525,13 +466,10 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   } else if (!wheel) {
     CGEventSetIntegerValueField(cg, kCGScrollWheelEventScrollPhase, ScrollPhaseOf(phase));
   }
-  // Global display coordinates (origin top-left of the main screen).
   NSPoint local = LocalPoint(window, point);
   NSPoint screen = [window convertPointToScreen:[window.contentView convertPoint:local toView:nil]];
   CGFloat mainHeight = NSHeight(NSScreen.screens.firstObject.frame);
   CGEventSetLocation(cg, CGPointMake(screen.x, mainHeight - screen.y));
-  // Field 51 is the event's target window (what NSEvent.window comes from); the private
-  // CGEventSetWindowLocation sets locationInWindow (top-left origin in the window's frame).
   CGEventSetIntegerValueField(cg, (CGEventField)51, window.windowNumber);
   static auto setWindowLocation = (void (*)(CGEventRef, CGPoint))dlsym(RTLD_DEFAULT, "CGEventSetWindowLocation");
   NSPoint inWindow = [window.contentView convertPoint:local toView:nil];
@@ -541,7 +479,7 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   return event;
 }
 
-}  // namespace
+}
 
 @implementation NNSwipe
 
@@ -549,7 +487,6 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   NSHapticFeedbackPattern p = [pattern isEqualToString:@"levelChange"] ? NSHapticFeedbackPatternLevelChange
                               : [pattern isEqualToString:@"alignment"]  ? NSHapticFeedbackPatternAlignment
                                                                          : NSHapticFeedbackPatternGeneric;
-  // Dia: the threshold uses the default time, list haptics fire now.
   NSHapticFeedbackPerformanceTime time = p == NSHapticFeedbackPatternLevelChange ? NSHapticFeedbackPerformanceTimeDefault
                                                                                   : NSHapticFeedbackPerformanceTimeNow;
   [NSHapticFeedbackManager.defaultPerformer performFeedbackPattern:p performanceTime:time];

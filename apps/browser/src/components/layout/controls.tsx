@@ -5,18 +5,12 @@ import { hex, useTheme } from "../../lib/theme";
 import { useHover } from "../primitives";
 import type { ToolbarPalette } from "./toolbarColors";
 
-/** Modifier keys of a click (react-native-macos puts them on the press event). */
 export type ClickModifiers = { metaKey: boolean; altKey: boolean; shiftKey: boolean };
 export function modifiersOf(e: GestureResponderEvent | undefined): ClickModifiers {
   const n = (e?.nativeEvent ?? {}) as Partial<ClickModifiers>;
   return { metaKey: !!n.metaKey, altKey: !!n.altKey, shiftKey: !!n.shiftKey };
 }
 
-/**
- * Toolbar button: Dia's 30pt rounded square with a hover / press fill. Unlike
- * primitives' IconButton it passes the click's modifiers on, and supports
- * press-and-hold and right-click (the back / forward history menus).
- */
 export function ToolbarButton({
   icon,
   onPress,
@@ -77,11 +71,6 @@ export function ToolbarButton({
   );
 }
 
-/**
- * A popover over the page, anchored under the toolbar (Dia's site menu and
- * permission prompts): menu material, hairline border, soft shadow, and a quick
- * scale-in from its anchor corner. `onDismiss` fires for clicks outside it.
- */
 export function Popover({
   width,
   top,
@@ -97,7 +86,6 @@ export function Popover({
   left?: number;
   onDismiss?: () => void;
   children: ReactNode;
-  /** Catch clicks elsewhere in the pane to dismiss (off for prompts the page keeps waiting on). */
   modal?: boolean;
 }) {
   const theme = useTheme();
@@ -143,7 +131,6 @@ export function Popover({
   );
 }
 
-/** A row in a popover: icon, title, optional detail / accessory; Dia's 7% hover fill. */
 export function PopoverRow({
   icon,
   iconColor,
@@ -209,7 +196,6 @@ export function PopoverSeparator() {
   return <View style={{ height: StyleSheet.hairlineWidth, marginVertical: 5, marginHorizontal: 13, backgroundColor: theme.dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)" }} />;
 }
 
-/** macOS-style pill button for prompts (primary = accent fill). */
 export function PromptButton({ title, onPress, primary, flex }: { title: string; onPress: () => void; primary?: boolean; flex?: boolean }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
@@ -243,7 +229,6 @@ export function PromptButton({ title, onPress, primary, flex }: { title: string;
   );
 }
 
-/** A small on/off switch (macOS mini switch proportions). */
 export function Toggle({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {
   const theme = useTheme();
   const x = useRef(new Animated.Value(value ? 1 : 0)).current;

@@ -1,14 +1,3 @@
-/**
- * The command bar's calculator ("Perform mathematical calculations"). A small recursive-descent
- * parser: no `eval`, no variables, nothing but arithmetic, a few functions and unit conversions.
- *
- *   expr    := term (("+" | "-") term)*
- *   term    := unary (("*" | "/" | "mod" | "%" | implicit) unary)*
- *   unary   := ("-" | "+") unary | power
- *   power   := postfix ("^" unary)?          (right-associative, so -2^2 = -4)
- *   postfix := primary ("!" | "%" | "°")*
- *   primary := number | constant | function "(" expr ("," expr)* ")" | "(" expr ")"
- */
 
 type Token = { type: "num"; value: number } | { type: "op"; value: string } | { type: "id"; value: string };
 
@@ -124,12 +113,11 @@ class Parser {
         const rhs = this.unary();
         if (t.value === "/") value /= rhs;
         else if (t.value === "mod") value %= rhs;
-        else value *= rhs; // "*", "of" (20% of 50), "x" (3 x 4)
+        else value *= rhs;
       } else if (this.isOp("%") && this.startsPrimary(1)) {
         this.i++;
         value %= this.unary();
       } else if (this.peek()?.type !== "num" && this.startsPrimary()) {
-        // Implicit multiplication: 2pi, 3(4+1), (1+2)(3+4). Never between two plain numbers.
         value *= this.unary();
       } else {
         return value;
@@ -212,9 +200,7 @@ function factorial(n: number): number {
   return out;
 }
 
-/** Evaluates an arithmetic expression; null when it isn't one (or has no finite value). */
 export function evaluate(expression: string): number | null {
-  // "1,234,567" is a number, unless commas separate function arguments.
   const source = /[a-z]\s*\(/i.test(expression) ? expression : expression.replace(/(\d),(?=\d{3}(?!\d))/g, "$1");
   const tokens = tokenize(source);
   if (!tokens?.length) return null;
@@ -226,7 +212,6 @@ export function evaluate(expression: string): number | null {
   }
 }
 
-/** 12 significant digits, so 0.1 + 0.2 shows as 0.3; exponents for very large/small values. */
 export function formatNumber(value: number, digits = 12): string {
   if (value === 0) return "0";
   const rounded = Number(value.toPrecision(digits));
@@ -237,7 +222,6 @@ export function formatNumber(value: number, digits = 12): string {
 
 type Unit = { dim: string; factor: number; label: string };
 
-/** Conversion factors to each dimension's base unit (m, kg, l, s, byte, m/s). */
 const UNITS: Record<string, Unit> = {};
 function units(dim: string, factor: number, label: string, ...names: string[]) {
   for (const name of [label, ...names]) UNITS[name.toLowerCase()] = { dim, factor, label };
@@ -319,10 +303,6 @@ function convert(input: string): { value: number; unit: string } | null {
 
 export type Calculation = { expression: string; value: number; display: string };
 
-/**
- * A calculator answer for command-bar input, or null when the input isn't a calculation:
- * plain numbers, dates, IP addresses and lone constants ("e") stay searches.
- */
 export function calculate(raw: string): Calculation | null {
   const expression = raw.trim().replace(/^=\s*/, "").replace(/\s*=\s*\??$/, "");
   if (!expression || expression.length > 200 || !/[\dπτ]|\b(pi|e|tau)\b/i.test(expression)) return null;
@@ -333,7 +313,6 @@ export function calculate(raw: string): Calculation | null {
     const display = `${formatNumber(converted.value, 9)} ${converted.unit}`;
     return { expression, value: converted.value, display };
   }
-  // Something has to be computed: an operator between operands, a function, or a postfix op.
   const hasOperator = /[\w).πτ]\s*(\*\*|[-+*/^%×·÷−–]|mod|of|x)\s*[\d(.a-zπτ]/i.test(expression) || /[!%°]\s*$/.test(expression);
   const hasFunction = new RegExp(`\\b(${Object.keys(FUNCTIONS).join("|")})\\s*\\(`, "i").test(expression);
   if (!hasOperator && !hasFunction) return null;

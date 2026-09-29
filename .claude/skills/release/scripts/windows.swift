@@ -1,6 +1,3 @@
-// usage: windows <pid> — that process's on-screen windows, front to back, as JSON lines:
-// {"id", "x", "y", "w", "h", "layer", "alpha", "title"}. Compiled on demand by smoke.sh.
-// windows --locked — "1" if the screen is locked (window order and animations are then unreliable).
 import CoreGraphics
 import Foundation
 

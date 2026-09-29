@@ -1,9 +1,5 @@
 import AppKit
 
-/// AppleScript support (Netnyahoo.sdef). Windows, tabs and profiles live in the JS store, so
-/// JS pushes a snapshot of them (`setScriptState`) that property reads are answered from, and
-/// every change is a request to JS: the Apple event is suspended until JS replies (after
-/// pushing a fresh snapshot), so `make new tab` followed by `URL of active tab` sees the tab.
 public enum ShellScripting {
   struct TabInfo {
     let id: String
@@ -31,7 +27,6 @@ public enum ShellScripting {
   static var windowInfos: [WindowInfo] = []
   static var profileInfos: [ProfileInfo] = []
 
-  /// Emits a request to JS ("onScriptCommand"); set by the app module.
   static var send: (([String: Any]) -> Void)?
   private static var pending: [String: (Any?, String?) -> Void] = [:]
   private static var seq = 0
@@ -58,7 +53,6 @@ public enum ShellScripting {
 
   // MARK: Lookups
 
-  /// Front to back, like `window 1` in every other app.
   static var orderedWindowInfos: [WindowInfo] {
     let byId = Dictionary(windowInfos.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     let front = NSApp.orderedWindows.compactMap { WindowManager.shared.id(of: $0) }.compactMap { byId[$0] }
@@ -73,7 +67,6 @@ public enum ShellScripting {
     return nil
   }
 
-  /// For the app delegate: `application(_:delegateHandlesKey:)`.
   public static func handles(_ key: String) -> Bool {
     ["appleScriptWindows", "appleScriptProfiles", "version"].contains(key)
   }
@@ -88,8 +81,6 @@ public enum ShellScripting {
     pending.removeValue(forKey: id)?(result, error)
   }
 
-  /// Suspends the running Apple event until JS answers `body`, then resumes it with
-  /// `transform(result)` (or the error JS reported).
   static func perform(_ body: [String: Any], transform: @escaping ([String: Any]) -> Any? = { _ in nil }) -> Any? {
     #if DEBUG
     if !Thread.isMainThread { NSLog("Netnyahoo: an Apple event is being handled off the main thread") }
@@ -108,7 +99,6 @@ public enum ShellScripting {
       finished = true
       if let error { command?.setError(error) }
       let value = error == nil ? transform(result as? [String: Any] ?? [:]) : nil
-      // A reply AppKit can't convert throws; fail the script, not the app.
       if let failure = NNTryCatch({ command?.resumeExecution(withResult: value) }) {
         NSLog("Netnyahoo: AppleScript reply failed: \(failure)")
       }
@@ -116,7 +106,6 @@ public enum ShellScripting {
     var request = body
     request["id"] = id
     send(request)
-    // Scripts shouldn't hang forever on a stuck page.
     DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
       reply(id, result: nil, error: "Netnyahoo didn't respond in time.")
     }
@@ -126,7 +115,7 @@ public enum ShellScripting {
 
 extension NSScriptCommand {
   func setError(_ message: String) {
-    scriptErrorNumber = -10000 // errAEEventFailed
+    scriptErrorNumber = -10000
     scriptErrorString = message
   }
 }
@@ -153,8 +142,6 @@ final class ScriptWindow: NSObject {
   @objc var incognito: Bool { info?.incognito ?? false }
   @objc var appleScriptTabs: [ScriptTab] { info?.tabs.map { ScriptTab(id: $0.id) } ?? [] }
   @objc var activeTab: ScriptTab? { info?.activeTabId.map(ScriptTab.init(id:)) }
-  /// The active tab's address. A window property so `make new window with properties {URL:…}`
-  /// passes AppleScript's record check (the create command opens it).
   @objc var URL: String { info.flatMap { i in i.tabs.first { $0.id == i.activeTabId }?.url } ?? "" }
   @objc var activeProfile: ScriptProfile? {
     guard let info, !info.incognito else { return nil }
@@ -165,7 +152,6 @@ final class ScriptWindow: NSObject {
     info?.tabs.contains { $0.id == id } == true ? ScriptTab(id: id) : nil
   }
 
-  /// 1-based, like Chrome's `active tab index`; setting it selects that tab.
   @objc var activeTabIndex: Int {
     get { (info?.tabs.firstIndex { $0.id == info?.activeTabId } ?? -1) + 1 }
     set { _ = ShellScripting.perform(["command": "setActiveTabIndex", "windowId": uniqueID, "index": newValue]) }
@@ -212,7 +198,6 @@ final class ScriptTab: NSObject {
     return ShellScripting.window(info.windowId)?.activeTabId == uniqueID
   }
 
-  /// "" for the New Tab page. Setting it navigates the tab.
   @objc(URL) var scriptURL: String {
     get { info?.url ?? "" }
     set { _ = ShellScripting.perform(["command": "setURL", "tabId": uniqueID, "url": newValue]) }
@@ -238,7 +223,6 @@ final class ScriptTab: NSObject {
     ShellScripting.perform(["command": "focusTab", "tabId": uniqueID])
   }
 
-  /// `execute tab … javascript "…"` → the value of the last expression, as text.
   @objc func handleExecuteScriptCommand(_ command: NSScriptCommand) -> Any? {
     guard let code = command.evaluatedArguments?["javascript"] as? String else {
       command.setError("Missing the “javascript” parameter.")
@@ -263,18 +247,15 @@ final class ScriptProfile: NSObject {
   @objc var name: String { ShellScripting.profileInfos.first { $0.id == uniqueID }?.name ?? "" }
   @objc var orderedIndex: Int { (ShellScripting.profileInfos.firstIndex { $0.id == uniqueID } ?? -1) + 1 }
 
-  /// Every open tab in this profile, window by window (front to back).
   @objc var appleScriptTabs: [ScriptTab] {
     ShellScripting.orderedWindowInfos.filter { $0.profileId == uniqueID }.flatMap { $0.tabs.map { ScriptTab(id: $0.id) } }
   }
 
-  /// Shows this profile in the front window.
   @objc func handleFocusScriptCommand(_ command: NSScriptCommand) -> Any? {
     ShellScripting.perform(["command": "focusProfile", "profileId": uniqueID])
   }
 }
 
-/// `make new window` / `make new tab [at …] [with properties {URL: …}]`.
 @objc(NNScriptCreateCommand)
 final class ScriptCreateCommand: NSCreateCommand {
   override func performDefaultImplementation() -> Any? {
@@ -285,7 +266,6 @@ final class ScriptCreateCommand: NSCreateCommand {
       var body: [String: Any] = ["command": "newWindow", "incognito": properties["incognito"] as? Bool ?? false]
       if let url { body["url"] = url }
       if let profile = properties["activeProfile"] as? ScriptProfile { body["profileId"] = profile.uniqueID }
-      // Replies must be specifiers, not the objects: a resumed command doesn't convert them.
       return ShellScripting.perform(body) { ($0["windowId"] as? String).flatMap { ScriptWindow(id: $0).objectSpecifier } }
     case "tab":
       var body: [String: Any] = ["command": "newTab"]
@@ -293,7 +273,6 @@ final class ScriptCreateCommand: NSCreateCommand {
       let location = arguments?["Location"] as? NSPositionalSpecifier
       if let window = (location?.insertionContainer as? ScriptWindow) ?? ShellScripting.orderedWindowInfos.first.map({ ScriptWindow(id: $0.id) }) {
         body["windowId"] = window.uniqueID
-        // `at end of tabs` → -1; `at beginning` → 0; `at after tab 2` → 2.
         if let index = location?.insertionIndex, index >= 0 { body["index"] = index }
       }
       return ShellScripting.perform(body) { ($0["tabId"] as? String).flatMap { ScriptTab(id: $0).objectSpecifier } }

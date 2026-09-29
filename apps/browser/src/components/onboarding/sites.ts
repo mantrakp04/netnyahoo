@@ -2,7 +2,6 @@ import { useBrowser } from "../../store/browser";
 import { activeTabId, viewTabIds } from "../../store/model";
 import type { HistoryEntry } from "../../store/types";
 
-/** Popular web apps offered as pinned tabs (Dia's onboarding suggests the same kinds of sites). */
 export type PinnableSite = { id: string; title: string; url: string };
 
 export const PINNABLE_SITES: PinnableSite[] = [
@@ -28,10 +27,6 @@ const hostOf = (url: string) => {
   }
 };
 
-/**
- * Sites to pre-select: the suggestions the user already visits most (e.g. from an import
- * just now), like Dia's ranked top sites. At most four, busiest first.
- */
 export function preselectedSites(history: HistoryEntry[]): string[] {
   const visits = new Map<string, number>();
   for (const entry of history) {
@@ -45,7 +40,6 @@ export function preselectedSites(history: HistoryEntry[]): string[] {
     .map((s) => s.id);
 }
 
-/** Pins the chosen suggestions in a window (skipping ones already pinned), in the order shown. */
 export function pinSites(windowId: string, ids: string[]) {
   const s = useBrowser.getState();
   const w = s.windows[windowId];
@@ -53,11 +47,9 @@ export function pinSites(windowId: string, ids: string[]) {
   const pinned = new Set(viewTabIds(s, w.id).map((id) => s.tabs[id]!).filter((t) => t.pinned).map((t) => t.url));
   const selectedTab = activeTabId(s, w.id);
   for (const site of PINNABLE_SITES) {
-    // They load when first selected, like restored tabs.
     if (ids.includes(site.id) && !pinned.has(site.url)) {
       useBrowser.getState().newTab(w.id, { url: site.url, pinned: true, background: true, snapshot: { title: site.title } });
     }
   }
-  // Keep the New Tab page selected underneath.
   if (selectedTab) useBrowser.getState().activate(selectedTab);
 }

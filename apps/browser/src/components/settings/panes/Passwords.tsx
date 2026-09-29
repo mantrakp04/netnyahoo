@@ -24,10 +24,6 @@ import { Favicon, IconButton } from "../../primitives";
 import { Button, Group, PopUp, Row, SearchField, SectionHeader, Sheet, TextField, Toggle } from "../controls";
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 
-/**
- * Unlocked for this many ms after Touch ID / the password, like Safari's Passwords. It's
- * Chrome's own check (revealing needs it anyway), which lasts as long for that profile.
- */
 const UNLOCK_MS = 5 * 60_000;
 const unlockedUntil = new Map<string, number>();
 const isUnlocked = (profile: string) => Date.now() < (unlockedUntil.get(profile) ?? 0);
@@ -55,7 +51,6 @@ export function PasswordsPane({ profileId: initial }: { profileId?: string | nul
   useEffect(() => void getPasswordAutofill(profile).then(setAutofill).catch(() => {}), [profile]);
 
   const unlock = async () => {
-    // One prompt: Chrome's own, which revealing a password needs anyway.
     if (!(await unlockPasswords(profile))) return;
     unlockedUntil.set(profile, Date.now() + UNLOCK_MS);
     setUnlockedAt(Date.now());
@@ -147,7 +142,6 @@ function originOf(url: string) {
   return m ? m[1]! : url;
 }
 
-/** One saved login: reveal / copy / edit / delete. */
 function PasswordSheet({ profile, saved, onChanged }: { profile: string; saved: SavedPassword; onChanged: () => void }) {
   const theme = useTheme();
   const [username, setUsername] = useState(saved.username);

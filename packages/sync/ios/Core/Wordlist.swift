@@ -1,5 +1,4 @@
-// The BIP-39 English wordlist (2048 words), from github.com/bitcoin/bips (bip-0039/english.txt,
-// public domain). Its SHA-256 as a newline-terminated file is checked by the tests.
+// BIP-39 English wordlist (2048 words), github.com/bitcoin/bips/bip-0039/english.txt, public domain.
 enum Wordlist {
   static let english: [String] = [
     "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "absurd", "abuse", "access", "accident",

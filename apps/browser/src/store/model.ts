@@ -3,38 +3,27 @@ import type { BrowserState } from "./browser";
 import { DEFAULT_PROFILE_ID } from "./settings";
 import type { BrowserWindow, Profile, Tab, TabLive, TabSnapshot } from "./types";
 
-/**
- * Pure helpers shared by the slices and selectors. Nothing here calls `set`.
- */
 
-// Ids stay unique across launches (persisted tabs keep theirs): a per-launch
-// prefix plus a counter. The prefix has a random part too, so two Macs launched in the
-// same millisecond still make different ids (sync keeps bookmarks and pinned tabs by id).
 const launch = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 let counter = 0;
 export const newId = (prefix: string) => `${prefix}-${launch}-${(++counter).toString(36)}`;
 
 let navSeq = 0;
-/** A navigation request; a fresh `seq` makes the same URL load again. */
 export const navigationTo = (url: string, userInitiated = false) => ({ url, seq: ++navSeq, ...(userInitiated ? { userInitiated } : {}) });
 
 export const incognitoProfileId = (windowId: string) => `incognito:${windowId}`;
 export const isIncognitoProfile = (profileId: string) => profileId.startsWith("incognito:");
 
-// Profiles that share another's data (Profile.dataId) → that id. store/profiles keeps it
-// current, so the many engineProfile(id) callers need no state.
 let sharedDataIds: Record<string, string> = {};
 export const setSharedDataIds = (map: Record<string, string>) => {
   sharedDataIds = map;
 };
 
-/** The WebView `profile` prop: the engine's default context is "". Profiles sharing data use the other's context. */
 export const engineProfile = (profileId: string) => {
   const id = sharedDataIds[profileId] ?? profileId;
   return id === DEFAULT_PROFILE_ID ? "" : id;
 };
 
-/** Stand-in shown for incognito windows (they have no real profile). */
 export const INCOGNITO_PROFILE: Profile = { id: "incognito", name: "Incognito", color: "neutral", icon: null, createdAt: 0 };
 
 export const IDLE_LIVE: TabLive = {
@@ -82,19 +71,10 @@ export const snapshotTab = (t: Tab): TabSnapshot => ({
   profileId: t.profileId,
 });
 
-/** Pinned tabs sort before regular ones, keeping relative order. */
 export function pinnedFirst(ids: string[], tabs: Record<string, Tab>): string[] {
   return [...ids.filter((id) => tabs[id]?.pinned), ...ids.filter((id) => !tabs[id]?.pinned)];
 }
 
-/**
- * Tabs the window shows: its current profile's, in sidebar order. `profileId` asks for
- * another profile's (the page beside it during a profile swipe).
- */
-/**
- * Pinned tabs and the tabs of pinned groups: Dia's pinned container. Closing one (⌘W, its ×,
- * a middle-click) unloads its page and keeps its row (store/tabs `unloadPinnedTabs`).
- */
 export function inPinnedContainer(s: Pick<BrowserState, "tabs" | "groups">, id: string): boolean {
   const tab = s.tabs[id];
   if (!tab) return false;
@@ -110,11 +90,6 @@ export function viewTabIds(s: BrowserState, windowId: string, profileId?: string
   return w.tabIds.filter((id) => s.tabs[id]?.profileId === profile);
 }
 
-/**
- * Whether closing tab `id` closes its window, as Dia does: it's the last tab of the profile the window
- * shows, not counting pinned tiles whose page ⌘W unloaded. So holding ⌘W ends there, rather than
- * waking those pages one after another.
- */
 export function closesWindow(s: BrowserState, id: string): boolean {
   const tab = s.tabs[id];
   const w = tab && s.windows[tab.windowId];
@@ -122,7 +97,6 @@ export function closesWindow(s: BrowserState, id: string): boolean {
   return viewTabIds(s, w.id).every((t) => t === id || s.tabs[t]!.unloaded);
 }
 
-/** The window's selected tab (for `profileId`: the one that profile comes back to). */
 export function activeTabId(s: BrowserState, windowId: string, profileId?: string): string | undefined {
   const w = s.windows[windowId];
   if (!w) return undefined;
@@ -139,18 +113,15 @@ export function profileFor(s: BrowserState, profileId: string): Profile {
   return isIncognitoProfile(profileId) ? INCOGNITO_PROFILE : (s.profiles[profileId] ?? s.profiles[s.settings.defaultProfileId] ?? INCOGNITO_PROFILE);
 }
 
-/** Incognito windows bookmark into the default profile. */
 export function bookmarkProfileId(s: BrowserState, window: BrowserWindow | undefined): string {
   return !window || window.incognito ? s.settings.defaultProfileId : window.profileId;
 }
 
-/** The window to act on: `id` if it exists, else the last focused one. */
 export function resolveWindowId(s: BrowserState, id?: string | null): string | undefined {
   if (id && s.windows[id]) return id;
   return s.ui.focusOrder.find((w) => s.windows[w]) ?? s.windowOrder.find((w) => s.windows[w]);
 }
 
-/** Returns `obj` itself when `patch` changes nothing, so subscribers don't re-render. */
 export function merge<T extends object>(obj: T, patch: Partial<T>): T {
   for (const key in patch) {
     if (!Object.is(obj[key], patch[key])) return { ...obj, ...patch };
@@ -164,7 +135,6 @@ export function without<T>(map: Record<string, T>, ids: Iterable<string>): Recor
   return next;
 }
 
-/** "youtube.com" for the window title / menus; falls back to the title or New Tab. */
 export function tabLabel(t: Pick<Tab, "url" | "title" | "customTitle">): string {
   if (t.customTitle) return t.customTitle;
   if (!t.url) return "New Tab";
@@ -188,7 +158,6 @@ export function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
-/** Dia: "Personal — youtube.com & 1 Tab" (profile — current site & the window's other tabs). */
 export function windowTitle(s: BrowserState, windowId: string): string {
   const w = s.windows[windowId];
   if (!w) return "";

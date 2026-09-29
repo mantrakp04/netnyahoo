@@ -1,12 +1,5 @@
 import Foundation
 
-/// Chromium's `Bookmarks` JSON (and `AccountBookmarks`, the account-storage twin newer
-/// Chrome writes next to it):
-///
-///     { "roots": { "bookmark_bar": {…}, "other": {…}, "synced": {…} }, "version": 1 }
-///
-/// Each node is `{"type": "folder"|"url", "name", "url"?, "date_added": "<µs since 1601>",
-/// "children"?}`.
 public enum ChromiumBookmarks {
   static let roots: [(key: String, role: String, title: String)] = [
     ("bookmark_bar", "toolbar", "Bookmarks Bar"),
@@ -14,8 +7,6 @@ public enum ChromiumBookmarks {
     ("synced", "mobile", "Mobile Bookmarks"),
   ]
 
-  /// Returns a root folder whose children are the non-empty top-level folders, each tagged
-  /// with its `role`.
   public static func parse(_ data: Data) throws -> BookmarkNode {
     guard let top = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let rootsJSON = top["roots"] as? [String: Any] else {
@@ -32,8 +23,6 @@ public enum ChromiumBookmarks {
     return .folder("Bookmarks", children)
   }
 
-  /// Parses `Bookmarks` and, when present, `AccountBookmarks` in a profile directory and
-  /// merges the account copy's roots into the local ones.
   public static func load(profile: URL) throws -> BookmarkNode {
     let local = profile.appendingPathComponent("Bookmarks")
     let account = profile.appendingPathComponent("AccountBookmarks")

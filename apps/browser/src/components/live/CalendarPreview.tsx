@@ -13,7 +13,6 @@ import type { Anchor } from "../sidebar/state";
 import { Avatar, HoverSurface, SmallButton } from "./LiveItemCard";
 import { useLiveColors } from "./colors";
 
-/** Whether hovering this tab shows Live Calendar's preview (a pinned calendar, preview on). */
 export function useIsCalendarTab(tabId: string | null): boolean {
   const pinnedCalendar = useBrowser((s) => {
     const t = tabId ? s.tabs[tabId] : undefined;
@@ -23,13 +22,8 @@ export function useIsCalendarTab(tabId: string | null): boolean {
   return pinnedCalendar && on;
 }
 
-/** Joinable from a few minutes before the start until the end (Dia's currentJoinableEvents). */
 const JOINABLE_BEFORE_MS = 10 * 60_000;
 
-/**
- * Live Calendar's preview on a pinned calendar tab: the rest of today, with a
- * Join button on meetings that are about to start or running.
- */
 export function CalendarPreview({ tabId, windowId, anchor }: { tabId: string; windowId: string; anchor: Anchor }) {
   const theme = useTheme();
   const now = useNow(15_000);
@@ -95,7 +89,6 @@ function Empty({ text }: { text: string }) {
   return <Text style={{ fontSize: 12.5, color: theme.textSecondary, paddingVertical: 6 }}>{text}</Text>;
 }
 
-/** Dia's logged-out preview: a sign-in link plus a suffix. Ours asks for macOS Calendar access. */
 function SignIn({ denied }: { denied: boolean }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
@@ -142,7 +135,6 @@ function EventRow({ event, now, windowId, tabId }: { event: CalendarEvent; now: 
     <View {...hoverProps}>
       <Pressable
         onPress={() => {
-          // View the day in the pinned calendar.
           dismissHover();
           useBrowser.getState().activate(tabId);
         }}
@@ -156,7 +148,6 @@ function EventRow({ event, now, windowId, tabId }: { event: CalendarEvent; now: 
               <Text style={{ fontWeight: "500", color: running ? colors.now : theme.textSecondary }}> · {running ? "Now" : relativeTime(event.start, now)}</Text>
             </Text>
           </View>
-          {/* With a Join button there's no room for faces; the alert shows them. */}
           {others.length && !joinable ? <OverlappingAvatars people={others} /> : null}
           {joinable ? (
             <View tooltip={joinTitle(link!.provider)}>
@@ -169,7 +160,6 @@ function EventRow({ event, now, windowId, tabId }: { event: CalendarEvent; now: 
   );
 }
 
-/** Dia's OverlappingAvatarView: up to three attendees, overlapped, then "+N". */
 export function OverlappingAvatars({ people, size = 18 }: { people: CalendarEvent["attendees"]; size?: number }) {
   const theme = useTheme();
   const shown = people.slice(0, 3);

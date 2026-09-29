@@ -7,13 +7,6 @@ import { enterRecoveryPhrase, stopSync } from "../../../sync/engine";
 import { Button, Checkbox, Sheet, useFormColors } from "../controls";
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
 
-/**
- * Sync's dialogs, with Dia's wording where Dia has the same dialog (its strings, from its
- * binary): Save Your Recovery Kit, Connect with Recovery Phrase, Connect Another Device, Stop
- * Syncing This Device?, Delete Sync Data?. Dia keeps the data on its servers; here it's the
- * sync folder, so the copy says so.
- */
-
 const WORDS = 24;
 
 function Title({ children }: { children: string }) {
@@ -301,7 +294,6 @@ function DeleteDataSheet() {
 
 // MARK: Helpers
 
-/** "iCloud Drive › Netnyahoo Sync", or the path from ~. */
 export function folderLabel(folder: Pick<FolderInfo, "path" | "inICloud">): string {
   if (folder.inICloud) {
     const rest = folder.path.split("com~apple~CloudDocs")[1]?.split("/").filter(Boolean) ?? [];

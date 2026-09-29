@@ -17,7 +17,6 @@ final class FirefoxTests: XCTestCase {
 
   func testBookmarksTreeIncludingUncheckpointedWAL() throws {
     let root = try Firefox.bookmarks(places: profile.appendingPathComponent("places.sqlite"))
-    // Separator, `place:` query and tag folders are dropped; "WAL bookmark" only exists in -wal.
     XCTAssertEqual(root.outline, """
       Bookmarks[Bookmarks Toolbar{toolbar}[Mozilla<https://www.mozilla.example/>, Dev & Docs[MDN<https://developer.mozilla.example/docs>]], \
       Bookmarks Menu{menu}[Never visited<https://bookmarked-never-visited.example/>], \

@@ -2,14 +2,8 @@ import { confirm, onWindowEvent } from "@netnyahoo/shell";
 import { useBrowser } from "../store/browser";
 import { inPinnedContainer, plural, profileFor } from "../store/model";
 
-/** ⇧⌘W / the close button on a window with at least this many tabs asks first. */
 const MIN_TABS = 2;
 
-/**
- * "Warn before closing a window with multiple tabs": with the setting on, the native close
- * (⇧⌘W, the close button) comes here as `closeRequest` instead of closing. The dialog uses
- * Dia's close-window confirmation (`confirmCloseWindowOnLastTab`), strings from its binary.
- */
 export function startWindowCloseGuard() {
   const pending = new Set<string>();
   onWindowEvent((e) => {
@@ -29,17 +23,14 @@ async function requestClose(windowId: string) {
     if (suppressed) useBrowser.getState().updateSettings({ warnBeforeClosingWindow: false });
     if (!confirmed) return;
   }
-  // The store closes the native window (lib/native syncWindows).
   if (useBrowser.getState().windows[windowId]) useBrowser.getState().closeWindow(windowId);
 }
 
-/** The tabs closing the window closes: not its pinned tabs, which the profile's next window gets (store/parkedPins). */
 const closingTabs = (windowId: string) => {
   const s = useBrowser.getState();
   return (s.windows[windowId]?.tabIds ?? []).filter((id) => !inPinnedContainer(s, id));
 };
 
-/** Dia's wording: "Close 3 tabs?" / "This window has 3 tabs open in your Work profile." */
 export function closeWindowDialog(windowId: string) {
   const s = useBrowser.getState();
   const w = s.windows[windowId]!;

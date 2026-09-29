@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// Sync end to end: two hidden instances (A and B, then a third, C) with their own data folders
-// sync through a temporary folder (never iCloud Drive), driven through the dev harness.
-//
-//   node packages/sync/scripts/e2e.mjs [path/to/Debug/Netnyahoo.app] [work dir]
-//
-// Needs a Debug build (the dev harness) and Metro on :8081. Instances are background-only
-// (NETNYAHOO_BACKGROUND=1), on CDP ports 9511-9513, and are quit at the end.
 import { execSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -85,7 +78,6 @@ const sync = async (...names) => {
   for (const n of names) await ev(n, "return nnSync.syncNow()");
 };
 
-/** What the checks compare: the profile's bookmarks, history, settings, pinned tabs, passwords. */
 async function state(name) {
   return ev(
     name,
@@ -129,7 +121,6 @@ const savePassword = (origin, user, password) =>
 
 fs.rmSync(WORK, { recursive: true, force: true });
 fs.mkdirSync(FOLDER, { recursive: true });
-// The BIP-39 list, from the Swift source (for making a valid but different phrase).
 const swift = fs.readFileSync(`${repo}/packages/sync/ios/Core/Wordlist.swift`, "utf8");
 fs.writeFileSync(`${WORK}/english.txt`, [...swift.matchAll(/"([a-z]+)"/g)].map((m) => m[1]).join("\n"));
 
@@ -147,7 +138,6 @@ try {
   await ready("A");
   await ready("B");
 
-  // 1. A turns sync on and has data of every kind.
   check("A turns on sync", text(await ev("A", `return nnSync.turnOnSync(${JSON.stringify(FOLDER)})`)) === '{"ok":true}');
   const phrase = (await ev("A", "return nnSync.native.recoveryWords()")).join(" ");
   check("the phrase is 24 words", phrase.split(" ").length === 24);
@@ -168,7 +158,6 @@ try {
   await ev("A", savePassword("https://nne2e-bank.example", "nne2e-alice", "NNE2E-hunter2-secret"));
   await sync("A");
 
-  // 2. B rejects wrong phrases, then joins with the right one (typed as the kit prints it).
   const words = phrase.split(" ");
   const swapped = [...words];
   [swapped[0], swapped[1]] = [swapped[1], swapped[0]];
@@ -208,7 +197,6 @@ try {
   check("A sees B's open tabs (not its pinned tabs)", a.remoteTabs.length === 1 && text(a.remoteTabs).includes("tabB") && !text(a.remoteTabs).includes("pin1"), text(a.remoteTabs));
   check("B's overflow menu: \"Your MacBook Pro Tabs\"-style item with Recent Tabs", /^Your .+ Tabs$/.test(b.menu?.title ?? "") && b.menu.children[0].title === "Recent Tabs" && text(b.menu).includes("NNE2E open page"), text(b.menu));
 
-  // 3. Edits on B reach A: rename, delete, add; history delete and visit; a setting; a password changed and one deleted.
   await ev(
     "B",
     `
@@ -230,7 +218,6 @@ try {
   check("B's settings reach A", a.settings.showFullUrl === true && a.settings.cleanUp === 24);
   check("B's password change and deletion reach A", text(a.passwords) === text(["https://nne2e-bank.example/ nne2e-alice=NNE2E-changed-on-B"]), text(a.passwords));
 
-  // 4. Edits on A reach B: move out of a folder, delete the folder, add to Other Bookmarks, a pinned tab, a password.
   await ev(
     "A",
     `
@@ -251,7 +238,6 @@ try {
   check("A's new pinned tab and settings reach B", b.pinned.some((u) => u.includes("pin2")) && b.settings.appearance === "light" && b.settings.cleanUp === null, text(b.settings));
   check("A's new password reaches B", b.passwords.some((p) => p.includes("NNE2E-mail-from-A")));
 
-  // 5. Concurrent edits: the same bookmark, setting and password changed on both, B second.
   await ev("A", `const s = nn.store.getState(); s.updateBookmark(Object.values(s.bookmarks.nodes).find((n) => n.title === "NNE2E Beta Renamed on B").id, { title: "NNE2E Concurrent A" }); s.updateSettings({ searchEngine: "bing" }); return true;`);
   await ev("A", savePassword("https://nne2e-bank.example", "nne2e-alice", "NNE2E-concurrent-A"));
   await sleep(20);
@@ -262,13 +248,11 @@ try {
   check("concurrent edits converge on both Macs", same(a, b), text({ a: data(a), b: data(b) }));
   check("the later edit wins (bookmark, setting, password)", text(a.bookmarks).includes("NNE2E Concurrent B") && a.settings.searchEngine === "google" && a.passwords.some((p) => p.includes("NNE2E-concurrent-B")));
 
-  // 6. Idle: nothing bounces between the Macs.
   const seqs = async () => text(await Promise.all(["A", "B"].map((n) => ev(n, "return Object.values(nnSync.doc().scopes).map((s) => s.seq)"))));
   const before = await seqs();
   await sync("A", "B", "A", "B", "A", "B");
   check("steady state: no files written while nothing changes", (await seqs()) === before);
 
-  // 7. Files that aren't whole yet: one cut short (mid-copy), one an iCloud placeholder.
   const list = () => execSync(`find ${FOLDER} -name '*.nns' -type f`).toString().trim().split("\n");
   const known = new Set(list());
   await ev("A", `nn.store.getState().addBookmark({ profileId: "default", url: "${W}/alpha.html?nne2e=partial1", title: "NNE2E Partial One" }); return nnSync.syncNow()`);
@@ -291,7 +275,6 @@ try {
   b = await state("B");
   check("once they arrive whole, both apply", text(b.bookmarks).includes("Partial One") && text(b.bookmarks).includes("Partial Two") && b.pending === 0);
 
-  // 8. The folder holds nothing readable: names or contents.
   const files = execSync(`find ${FOLDER} -mindepth 1`).toString().trim().split("\n");
   const needles = ["NNE2E", "nne2e", "hunter2", "127.0.0.1", "alpha.html", "Bookmark", "duckduckgo", "appearance", "MacBook", "https", "default", "pw:", "bm:"];
   const leaks = needles.filter((n) => files.some((f) => f.slice(FOLDER.length).includes(n) || (fs.statSync(f).isFile() && fs.readFileSync(f).includes(n))));
@@ -300,7 +283,6 @@ try {
   const local = ["A", "B"].flatMap((n) => ["sync.json", "sync-state.nns"].map((f) => `${DEV[n].dir}/${f}`));
   check("this Mac's own sync state holds no plaintext password", local.every((f) => !fs.readFileSync(f).includes("NNE2E-concurrent-B")));
 
-  // 9. A third Mac joins from the folder as it is (logs and snapshots).
   launch("C");
   await ready("C");
   await ev("C", `nn.store.getState().newTab(nn.store.getState().windowOrder[0], { url: "${W}/openc.html?nne2e=tabC" }); return true`);
@@ -311,7 +293,6 @@ try {
   check("C converges with A", same(a, c), text({ a: data(a), c: data(c) }));
   check("A lists three devices, and two other devices' tabs roll up into \"Your Devices\"", a.devices.length === 3 && (await ev("A", "return nnSync.menu.syncedDevicesMenuItem('default')")).title === "Your Devices");
 
-  // 10. Turning sync off on B leaves everything on B.
   b = await state("B");
   await ev("B", "return nnSync.stopSync({ deleteData: false })");
   const off = await state("B");
@@ -324,7 +305,6 @@ try {
   await sync("A");
   check("what B does while off stays on B", !text((await state("A")).bookmarks).includes("Made While Off"));
 
-  // 11. Delete My Sync Data on A: the folder's data goes, every Mac keeps its own.
   a = await state("A");
   const cBefore = await state("C");
   await ev("A", "return nnSync.stopSync({ deleteData: true })");

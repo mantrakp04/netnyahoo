@@ -1,10 +1,5 @@
 import type { LiveItem } from "./types";
 
-/**
- * Response mappers for the Documents live folder (Notion, Confluence, Google
- * Drive) and Bitbucket pull requests. Pure, like ./github; ./sources fetches.
- */
-
 // MARK: Notion (POST /v1/search, GET /v1/users)
 
 type NotionRichText = { plain_text: string }[];
@@ -64,7 +59,6 @@ export type ConfluenceSearch = {
   _links?: { base?: string };
 };
 
-/** Pages you created, edited or watch, most recently changed first. */
 export const CONFLUENCE_CQL = "type=page AND (contributor=currentUser() OR creator=currentUser() OR watcher=currentUser()) ORDER BY lastmodified DESC";
 
 export function mapConfluence(json: ConfluenceSearch, site: string): LiveItem[] {
@@ -162,7 +156,6 @@ export function mapBitbucket(pr: BitbucketPR, statuses: BitbucketStatuses | null
       headRef: pr.source.branch.name,
       baseRef: pr.destination.branch.name,
       review: reviewers.some((p) => p.state === "changes_requested") ? "changesRequested" : reviewers.some((p) => p.state === "approved") ? "approved" : reviewers.length ? "required" : null,
-      // Bitbucket's API doesn't report conflicts without fetching the diff.
       mergeable: "unknown",
       checks: (statuses?.values ?? []).map((s) => ({
         name: s.name,

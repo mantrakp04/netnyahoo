@@ -1,22 +1,7 @@
 import Foundation
 
-/// Safari's File › Export Browsing Data archive (Safari 18.2+), as a .zip or an unzipped
-/// folder. With Full Disk Access, `SafariDirect` reads Safari's live data instead; the archive
-/// stays the fallback and the only way to bring Safari's passwords.
-///
-/// Contents (en_US names; other locales translate them, so files are recognised by type and
-/// by the JSON `metadata.data_type`, not by name):
-/// - `Bookmarks.html`: Netscape format; the Reading List is the folder with
-///   `id="com.apple.ReadingList"`.
-/// - `Passwords.csv`: `Title,URL,Username,Password,Notes,OTPAuth`.
-/// - `History.json` (one per Safari profile, suffixed with the profile name):
-///   `{"metadata": {"data_type": "history", …}, "history": [{"url", "title"?, "time_usec",
-///   "visit_count", "destination_url"?, "source_url"?, …}]}`.
-/// - `Extensions.json`: `{"extensions": [{"display_name", "developer_name", …}]}`.
-/// - `PaymentCards.json`: not imported (Netnyahoo has no card storage).
 public struct SafariExport: Codable, Equatable, Sendable {
   public struct Profile: Codable, Equatable, Sendable {
-    /// nil for the default profile.
     public var name: String?
     public var history: [HistoryEntry]
     public var extensions: [String]
@@ -25,7 +10,6 @@ public struct SafariExport: Codable, Equatable, Sendable {
   public var bookmarks: BookmarkNode?
   public var credentials: [Credential] = []
   public var profiles: [Profile] = []
-  /// Open tabs, only from a direct import (`SafariDirect`); the export archive has none.
   public var tabs: [ImportedTab] = []
   public var warnings: [ImportWarning] = []
 
@@ -113,7 +97,6 @@ public struct SafariExport: Codable, Equatable, Sendable {
     }
   }
 
-  /// "History.json" → nil (default profile); "History_Work.json" / "History - Work.json" → "Work".
   static func profileName(_ file: String) -> String? {
     let stem = (file as NSString).deletingPathExtension
     for separator in [" - ", "_"] {
@@ -125,8 +108,6 @@ public struct SafariExport: Codable, Equatable, Sendable {
     return nil
   }
 
-  /// Newest first. Hops that redirected elsewhere (`destination_url`) are dropped: the page
-  /// the user actually landed on is its own entry.
   static func entries(_ rows: [[String: Any]]) -> [HistoryEntry] {
     rows.compactMap { row -> HistoryEntry? in
       guard let url = row["url"] as? String, URL.isWebURL(url), row["destination_url"] == nil else { return nil }

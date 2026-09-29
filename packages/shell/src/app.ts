@@ -4,45 +4,34 @@ export type UpdaterState =
   | { available: false }
   | {
       available: true;
-      /**
-       * Whether the build has an update feed (Info.plist `SUFeedURL`). Without one, Sparkle
-       * never starts and checkForUpdates() says updates aren't set up.
-       */
       configured: boolean;
       automaticChecks: boolean;
       automaticDownloads: boolean;
       canCheck: boolean;
       sessionInProgress: boolean;
       feedURL: string | null;
-      /** ms since the epoch. */
       lastCheck: number | null;
       version: string;
     };
 
-export type AppIcon = { id: string; name: string; /** PNG data URL. */ preview: string | null };
+export type AppIcon = { id: string; name: string; preview: string | null };
 
 export type NotificationPermission = "granted" | "denied" | "notDetermined" | "provisional";
 
 export type NotificationOptions = {
-  /** Reusing an id replaces that notification. */
   id?: string;
   title: string;
   body?: string;
   subtitle?: string;
   silent?: boolean;
-  /** Image shown with it: http(s), data: or file: URL. */
   icon?: string;
-  /** Clicking it switches to this tab. */
   tabId?: string;
   windowId?: string;
-  /** Groups a site's notifications together. */
   origin?: string;
-  /** Report the user closing it too (`action: "close"`), e.g. for a page's onclose handler. */
   dismissible?: boolean;
   data?: Record<string, unknown>;
 };
 
-/** The user clicked a notification (the app comes forward) or closed a `dismissible` one. */
 export type NotificationResponse = {
   id: string;
   action: "click" | "close";
@@ -63,42 +52,26 @@ export type SystemInfo = {
   model: string;
   memoryGB: number;
   locale: string;
-  /** Whether this build can update itself (Sparkle linked). */
   updates: boolean;
-  /** Help › Send Feedback… destinations from Info.plist (NNFeedbackURL, NNFeedbackEmail); null = not set up. */
   feedbackURL?: string | null;
   feedbackEmail?: string | null;
-  /** Help › Video Tour's page (Info.plist NNVideoTourURL); null = hidden. */
   videoTourURL?: string | null;
-  /** The release notes page (Info.plist NNReleaseNotesURL; versions are its #anchors); null = none. */
   releaseNotesURL?: string | null;
-  /** Launched as a hidden test instance (NETNYAHOO_BACKGROUND=1 or NETNYAHOO_DATA_DIR). */
   isolatedInstance?: boolean;
-  /** NETNYAHOO_RELEASE_NOTES=1: open the release notes after an update even in a test instance. */
   forceReleaseNotes?: boolean;
-  /** When this process started (epoch ms); missing in older builds. */
   processStart?: number | null;
 };
 
-/**
- * One of this install's crash reports (~/Library/Logs/DiagnosticReports), as the native side
- * trims it for telemetry: the exception and the crashing thread's frames, nothing else.
- */
 export type CrashReport = {
   incidentId?: string;
-  /** When it was written (epoch ms). */
   time: number;
   appVersion?: string;
   build?: string;
-  /** e.g. "EXC_BAD_ACCESS". */
   exceptionType?: string;
-  /** e.g. "SIGSEGV". */
   signal?: string;
-  /** Crashing thread, innermost first: image name (no path), symbol when known, offset in the image. */
   frames: { image: string; symbol?: string; offset?: number }[];
 };
 
-/** What AppleScript reads (see Netnyahoo.sdef). Windows in any order; tabs in sidebar order. */
 export type ScriptState = {
   windows: {
     id: string;
@@ -111,7 +84,6 @@ export type ScriptState = {
   profiles: { id: string; name: string }[];
 };
 
-/** A change AppleScript asks for; answer with `replyToScript(id, …)`. */
 export type ScriptCommand = { id: string } & (
   | { command: "newWindow"; url?: string; incognito: boolean; profileId?: string }
   | { command: "newTab"; windowId?: string; url?: string; index?: number }
@@ -160,7 +132,6 @@ type AppModule = {
   devCrash?(): Promise<void>;
 };
 
-/** App builds from before this module existed get inert stand-ins (JS is served to every build). */
 const missing: AppModule = {
   addListener: () => ({ remove() {} }),
   updaterState: async () => ({ available: false }),
@@ -192,46 +163,33 @@ const missing: AppModule = {
 };
 
 const App = requireOptionalNativeModule<AppModule>("NetnyahooApp") ?? missing;
-/** False in app builds that predate the NetnyahooApp native module. */
 export const hasAppModule = App !== missing;
 
-// Updates (Sparkle). The app menu has Check for Updates…; these are for Settings › General.
 export const updaterState = () => App.updaterState();
-/** Shows Sparkle's own progress / result UI. */
 export const checkForUpdates = () => App.checkForUpdates();
 export const setAutomaticUpdateChecks = (on: boolean) => App.setAutomaticUpdateChecks(on);
 export const setAutomaticUpdateDownloads = (on: boolean) => App.setAutomaticUpdateDownloads(on);
 
-/** Handoff: advertise a window's page (null stops). Only http(s) pages are advertised. */
 export const setWindowActivity = (windowId: string, url: string | null, title: string | null) =>
   App.setWindowActivity(windowId, url, title);
 
-/** The system share picker for a page, shown at the top of its window. */
 export const sharePage = (url: string, title?: string | null, windowId?: string | null) =>
   App.share(url, title ?? null, windowId ?? null);
 
 export const isInDock = () => App.isInDock();
-/** Pins the app in the Dock (the Dock restarts to show it). */
 export const addToDock = () => App.addToDock();
 
-/** Alternate app icons for Settings › Appearance; `size` is the preview size in points. */
 export const appIcons = (size = 64) => App.appIcons(size);
 export const currentAppIcon = () => App.appIcon();
-/** Applies to the Dock tile right away and on every launch. */
 export const setAppIcon = (id: string) => App.setAppIcon(id);
 
 export const notificationPermission = () => App.notificationPermission();
 
-/** This install's crash reports written after `since` (epoch ms); empty in builds without the reader. */
 export const crashReports = (since: number): Promise<CrashReport[]> => App.crashReports?.(since) ?? Promise.resolve([]);
-/** DEV: crashes the app on purpose (tests crash reporting). */
 export const devCrash = () => App.devCrash?.() ?? Promise.resolve();
-/** macOS asks the user once; resolves with whether notifications are allowed. */
 export const requestNotificationPermission = () => App.requestNotificationPermission();
-/** Resolves with the notification's id, or null if macOS didn't accept it. */
 export const postNotification = (options: NotificationOptions) => App.postNotification(options);
 export const removeNotifications = (ids: string[]) => App.removeNotifications(ids);
-/** System Settings › Notifications for this app. */
 export const openNotificationSettings = () => App.openNotificationSettings();
 export const onNotificationResponse = (listener: (e: NotificationResponse) => void) => App.addListener("onNotificationResponse", listener);
 
@@ -241,9 +199,7 @@ export const replyToScript = (id: string, result: Record<string, unknown> | null
 export const onScriptCommand = (listener: (e: ScriptCommand) => void) => App.addListener("onScriptCommand", listener);
 
 export const systemInfo = () => App.systemInfo();
-/** Opens a URL with its default app (e.g. a mailto: draft); false if nothing did (or an older build). */
 export const openExternalURL = async (url: string) => (typeof App.openExternalURL === "function" ? await App.openExternalURL(url) : false);
-/** When the onboarding intro's beats land, in seconds from its start (the music follows them). */
 export type IntroMusicCues = {
   icon: number;
   letters: number;
@@ -253,71 +209,34 @@ export type IntroMusicCues = {
   exit: number;
   end: number;
 };
-/**
- * The onboarding intro's music, synthesized natively (IntroMusic.swift). Starting it muted still
- * runs it silently, so unmuting joins in time. No-ops in builds without it.
- */
 export const playIntroMusic = (cues: IntroMusicCues, muted: boolean) => void App.playIntroMusic?.(cues, muted);
 export const setIntroMusicMuted = (muted: boolean) => void App.setIntroMusicMuted?.(muted);
-/** Fades out over `fade` seconds, then releases the audio device. */
 export const stopIntroMusic = (fade = 0.4) => void App.stopIntroMusic?.(fade);
-/** DEV builds only: renders the music to an audio file (nothing plays); resolves with its duration. */
 export const devRenderIntroMusic = async (cues: IntroMusicCues, path: string) => (await App.devRenderIntroMusic?.(cues, path)) ?? null;
-/** DEV builds only (null otherwise). */
 export const launchEnvironment = (name: string) => App.launchEnvironment(name);
-/** DEV builds only: runs AppleScript inside the app (scripts aimed at its own bundle id need no Automation consent). */
 export const devRunAppleScript = (source: string) => App.devRunAppleScript(source);
-/** DEV builds only: renders a window's layers to a PNG (works while the screen is locked). */
-/**
- * DEV: the window's layers as a 2x PNG (Metal views render blank). `transparent` leaves out the window
- * background, to composite over the shader views' own snapshots (shaders `debugSnapshot`).
- */
 export const devSnapshotWindow = (windowId: string, path: string, transparent = false) =>
-  // Two arguments unless asked: builds from before `transparent` reject a third.
   transparent ? App.devSnapshotWindow(windowId, path, true) : App.devSnapshotWindow(windowId, path);
-/** When a typed key was due, handled by the main thread, and drawn (epoch ms). */
 export type KeyTiming = { due: number; handled: number; drawn: number };
-/** DEV builds only: types into a window's focused field, a key every `interval` ms, and times each key. */
 export const devTypeKeys = async (windowId: string, text: string, interval: number) => (await App.devTypeKeys?.(windowId, text, interval)) ?? [];
-/**
- * A key equivalent for `devKeyEquivalent`: `key` is the event's charactersIgnoringModifiers (with ⇧:
- * the shifted character, e.g. "}" for ⇧⌘]), `keyCode` its virtual key code (kVK_*).
- */
 export type KeyPress = {
   key: string;
   keyCode: number;
   modifiers?: ("command" | "shift" | "option" | "control" | "function")[];
   characters?: string;
-  /** "window": no view has focus (our React Native UI); "page": the page shown; "devtools": docked DevTools. Default: as it is. */
   focus?: "window" | "page" | "devtools";
-  /**
-   * The window stands in as the key window, as for a real key: a page takes keys, Chrome passes keys
-   * back to AppKit, and the Edit and Window menus' actions find their target only in the key window.
-   */
   asKey?: boolean;
-  /** ms between focusing and the key (the focused page reports its focus first, as after a click). */
   settle?: number;
-  /** How long to collect what the key did, in ms (default 250). */
   wait?: number;
-  /** Record the app's commands instead of running them; only look up AppKit's own items (Quit…). */
   dry?: boolean;
 };
 export type KeyPressResult = {
-  /** "page": sent to the focused page, which hands keys it doesn't use back to the app later. */
   handledBy?: "page" | "window" | "menu" | "none";
   firstResponder?: string;
-  /** Menu items whose action the key sent (`command` / `arg` for the app's own commands). */
   fired?: { title: string; action: string; command?: string; arg?: string; dry?: boolean }[];
-  /** The items the menu bar found for the key (a disabled one doesn't fire). */
   matched?: { title: string; action: string; command?: string; arg?: string; enabled: boolean }[];
   error?: string;
 };
-/**
- * DEV builds only: presses a key equivalent in a window as AppKit dispatches it (the window's
- * performKeyEquivalent:, where Chrome's command dispatcher runs, then the main menu); a test instance
- * is never the key window, so real keys can't reach it.
- */
 export const devKeyEquivalent = async (windowId: string, press: KeyPress): Promise<KeyPressResult> =>
   (await App.devKeyEquivalent?.(windowId, press)) ?? { error: "not available in this build" };
-/** DEV builds only: fires a menu-bar command through the native menu path. */
 export const devMenuCommand = (command: string, arg: string | null = null) => App.devMenuCommand(command, arg);

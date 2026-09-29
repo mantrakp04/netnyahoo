@@ -21,16 +21,9 @@ import { useMedia, usePictureInPicture } from "../media/state";
 
 const WIDTH = 264;
 
-/**
- * Dia's tab hover card: title, URL and quick actions (pin, bookmark, split
- * with the current tab, back to the pinned page) — or, over a collapsed
- * group, a peek at its tabs.
- */
 export function HoverCard({ windowId }: { windowId: string }) {
   const hover = useSidebarUi((u) => (u.hover?.windowId === windowId ? u.hover : null));
-  // Pinned tabs playing media get the mini player (components/media).
   const player = useShowsMiniPlayer(hover?.kind === "tab" ? hover.id : undefined);
-  // Live Calendar: a pinned calendar tab previews the day (src/live).
   const calendar = useIsCalendarTab(hover?.kind === "tab" ? hover.id : null);
   if (!hover) return null;
   if (hover.kind === "live") return <LiveItemCard id={hover.id} windowId={windowId} anchor={hover.anchor} />;
@@ -65,7 +58,7 @@ function TabCard({ tabId, windowId, anchor }: { tabId: string; windowId: string;
   const tab = useBrowser((s) => s.tabs[tabId]);
   const isActive = useBrowser((s) => activeTabId(s, windowId) === tabId);
   const bookmarked = useIsBookmarked(tab?.url ?? "");
-  // A PiP window can be open without a session (Meet's Document PiP).
+  // Document PiP may have a window without a tab session.
   const video = useMedia((m) => !!m.sessions[tabId]?.hasVideo || !!m.pipOpen[tabId]);
   const [pip, togglePip] = usePictureInPicture(tabId);
   const sleeping = useIsSleeping(tabId);
@@ -84,7 +77,6 @@ function TabCard({ tabId, windowId, anchor }: { tabId: string; windowId: string;
         </Text>
       ) : null}
       {sleeping ? (
-        // Put to sleep to save memory (lib/tabLifecycle); Dia's wording.
         <View accessible accessibilityLabel="Web content has been discarded" style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
           <Symbol name="moon.zzz" size={10} color={theme.textTertiary} style={{ width: 14, height: 14 }} />
           <Text style={{ fontSize: 11.5, color: theme.textTertiary }}>This tab needs to reload</Text>

@@ -7,10 +7,6 @@ import { closeAllTabs } from "./menus";
 import { setSidebarUi } from "./state";
 import { switcherStep } from "./switcher";
 
-/**
- * Menu-bar / shortcut commands for tabs and the sidebar (lib/commands forwards
- * them). Returns false for commands that aren't ours.
- */
 export function runSidebarCommand(command: BrowserCommand, arg: string | null, windowId: string): boolean {
   const s = useBrowser.getState();
   const tabId = activeTabId(s, windowId);
@@ -49,12 +45,10 @@ export function runSidebarCommand(command: BrowserCommand, arg: string | null, w
   return false;
 }
 
-/** Commands above that need a window. */
 export const SIDEBAR_WINDOW_COMMANDS = [
   "newTabInGroup", "newGroupWithTabs", "cleanUpTabs", "searchTabs", "renameTab", "changeTabIcon", "returnToPinnedUrl", "tabSwitcher",
 ];
 
-/** The menu bar's view of these commands for the focused window (see lib/native menuState). */
 export function sidebarMenuState(s: BrowserState, windowId: string | undefined) {
   const disabled: string[] = [];
   const titles: Record<string, string> = {};

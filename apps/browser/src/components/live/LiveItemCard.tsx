@@ -14,7 +14,6 @@ import type { Anchor } from "../sidebar/state";
 import { TabIcon } from "../sidebar/TabIcon";
 import { useLiveColors, type LiveColors } from "./colors";
 
-/** The hover card's frame, beside the row (the sidebar's other hover cards use the same). */
 export function HoverSurface({ anchor, width, children }: { anchor: Anchor; width: number; children: ReactNode }) {
   const theme = useTheme();
   const appear = useRef(new Animated.Value(0)).current;
@@ -51,7 +50,6 @@ export function HoverSurface({ anchor, width, children }: { anchor: Anchor; widt
   );
 }
 
-/** Hover card for a live folder row: Dia's GitHubPRHoverPreview for PRs, a summary for documents. */
 export function LiveItemCard({ id, windowId, anchor }: { id: string; windowId: string; anchor: Anchor }) {
   const [, folderId = "", itemId = ""] = id.split("|");
   const item = useLive((s) => s.items[folderId]?.find((i) => i.id === itemId));
@@ -63,7 +61,6 @@ export function LiveItemCard({ id, windowId, anchor }: { id: string; windowId: s
   );
 }
 
-/** A small avatar: the image, or initials when it can't load. */
 export function Avatar({ uri, name, size = 20 }: { uri: string | null; name: string; size?: number }) {
   const theme = useTheme();
   const [failed, setFailed] = useState(false);
@@ -165,7 +162,6 @@ function PullRequestPreview({ item, folderId, windowId }: { item: LiveItem; fold
   );
 }
 
-/** CI as one bar: passed, running (pulsing) and failing segments, proportional to their counts. */
 function CIProgressBar({ checks, colors }: { checks: PullRequestCheck[]; colors: LiveColors }) {
   const success = checks.filter((c) => c.state === "success" || c.state === "neutral").length;
   const pending = checks.filter((c) => c.state === "pending" || c.state === "queued").length;
