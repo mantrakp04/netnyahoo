@@ -1,0 +1,20 @@
+diff --git a/extensions/browser/api/management/management_api.cc b/extensions/browser/api/management/management_api.cc
+--- a/extensions/browser/api/management/management_api.cc
++++ b/extensions/browser/api/management/management_api.cc
+@@ -737,8 +737,15 @@
+          extension_urls::IsWebstoreDomain(source_url()));
+ 
+   bool self_uninstall = extension() && extension_id() == target_extension_id_;
++  // Netnyahoo: chrome://extensions itself may uninstall without Chrome's
++  // dialog when it asks for none, as the embedder that drives it confirms with
++  // the user first. No web page or extension can run script there, and
++  // Chrome's own page always asks for the dialog.
++  const bool extensions_page =
++      !extension() && source_context_type() == mojom::ContextType::kWebUi &&
++      source_url().SchemeIs("chrome") && source_url().host() == "extensions";
+   // We need to show a dialog for any extension uninstalling another extension.
+-  show_confirm_dialog |= !self_uninstall;
++  show_confirm_dialog |= !self_uninstall && !extensions_page;
+ 
+   if (show_confirm_dialog && !user_gesture()) {
+     return RespondNow(Error(keys::kGestureNeededForUninstallError));

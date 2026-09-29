@@ -1,0 +1,13 @@
+diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
+--- a/include/cef_netnyahoo.h
++++ b/include/cef_netnyahoo.h
+@@ -116,4 +116,9 @@
+ // frame's own browser, not its Chrome window's active tab.
+ #define CEF_NN_MEDIA_REQUEST_SOURCE 1
+ 
++// chrome.management.uninstall(id, { showConfirmDialog: false }) from
++// chrome://extensions uninstalls without Chrome's dialog (the client confirms
++// first), enabled or not. Everywhere else Chrome's rules are unchanged.
++#define CEF_NN_QUIET_UNINSTALL 1
++
+ #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_

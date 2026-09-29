@@ -226,11 +226,23 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
 }
 
 + (void)uninstall:(NSString *)extensionId profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
+  // Removing deletes nothing itself: Chrome deletes its own copy of a store extension, and an unpacked
+  // extension's folder is the user's.
+#if defined(CEF_NN_QUIET_UNINSTALL)
+  // The app asked the user already. chrome://extensions may skip Chrome's dialog (which would never show
+  // from the hidden page), and a disabled extension stays disabled until it's gone.
+  NSString *js = Script(@"chrome.management.uninstall(%@, { showConfirmDialog: false }).then(() => ({ ok: true }))",
+                        @[ extensionId ]);
+  pages::CloseExtensionContext(profile, extensionId);
+  HostEval(profile, js, ^(id value, NSString *error) {
+    if (!error) Changed(profile, extensionId, @"uninstalled");
+    Respond(completion, value, error);
+  });
+#else
+  // Without the engine hook only the extension itself can skip the dialog, and only while enabled.
   NSString *info = Script(@"chrome.developerPrivate.getExtensionInfo(%@).then((i) => ({ enabled: i.state === 'ENABLED' }))", @[ extensionId ]);
   NSString *gone = Script(@"chrome.developerPrivate.getExtensionInfo(%@).then(() => false, () => true)", @[ extensionId ]);
   NSString *enable = Script(@"chrome.management.setEnabled(%@, true).then(() => true)", @[ extensionId ]);
-  // Removing deletes nothing itself: Chrome deletes its own copy of a store extension, and an unpacked
-  // extension's folder is the user's.
   void (^finish)(NSDictionary *, NSString *) = ^(NSDictionary *details, NSString *error) {
     if (!error) Changed(profile, extensionId, @"uninstalled");
     completion(error ? @{@"error" : error} : @{@"ok" : @YES});
@@ -261,6 +273,7 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
       remove();
     });
   });
+#endif
 }
 
 + (void)reload:(NSString *)extensionId profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
