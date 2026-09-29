@@ -76,6 +76,26 @@ export type SystemInfo = {
   isolatedInstance?: boolean;
   /** NETNYAHOO_RELEASE_NOTES=1: open the release notes after an update even in a test instance. */
   forceReleaseNotes?: boolean;
+  /** When this process started (epoch ms); missing in older builds. */
+  processStart?: number | null;
+};
+
+/**
+ * One of this install's crash reports (~/Library/Logs/DiagnosticReports), as the native side
+ * trims it for telemetry: the exception and the crashing thread's frames, nothing else.
+ */
+export type CrashReport = {
+  incidentId?: string;
+  /** When it was written (epoch ms). */
+  time: number;
+  appVersion?: string;
+  build?: string;
+  /** e.g. "EXC_BAD_ACCESS". */
+  exceptionType?: string;
+  /** e.g. "SIGSEGV". */
+  signal?: string;
+  /** Crashing thread, innermost first: image name (no path), symbol when known, offset in the image. */
+  frames: { image: string; symbol?: string; offset?: number }[];
 };
 
 /** What AppleScript reads (see Netnyahoo.sdef). Windows in any order; tabs in sidebar order. */
@@ -135,6 +155,8 @@ type AppModule = {
   devSnapshotWindow(windowId: string, path: string, transparent?: boolean): Promise<boolean>;
   devMenuCommand(command: string, arg: string | null): Promise<void>;
   devTypeKeys?(windowId: string, text: string, interval: number): Promise<KeyTiming[]>;
+  crashReports?(since: number): Promise<CrashReport[]>;
+  devCrash?(): Promise<void>;
 };
 
 /** App builds from before this module existed get inert stand-ins (JS is served to every build). */
@@ -198,6 +220,11 @@ export const currentAppIcon = () => App.appIcon();
 export const setAppIcon = (id: string) => App.setAppIcon(id);
 
 export const notificationPermission = () => App.notificationPermission();
+
+/** This install's crash reports written after `since` (epoch ms); empty in builds without the reader. */
+export const crashReports = (since: number): Promise<CrashReport[]> => App.crashReports?.(since) ?? Promise.resolve([]);
+/** DEV: crashes the app on purpose (tests crash reporting). */
+export const devCrash = () => App.devCrash?.() ?? Promise.resolve();
 /** macOS asks the user once; resolves with whether notifications are allowed. */
 export const requestNotificationPermission = () => App.requestNotificationPermission();
 /** Resolves with the notification's id, or null if macOS didn't accept it. */

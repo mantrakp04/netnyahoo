@@ -5,14 +5,15 @@ import { tourAnchorRef } from "../onboarding/tour/anchors";
 import { CheckInBanner } from "./CheckInBanner";
 import { PersonalizeButton } from "./Personalize";
 import { ReleaseNotesPage, ReleaseNotesPostcard } from "./Postcard";
+import { TelemetryAsk } from "./TelemetryAsk";
 import { closeReleaseNotes, openReleaseNotes, retireReleaseNotes, usePendingReleaseNotes, useReleaseNotesPage } from "./releaseNotes";
 
 export type Frame = { x: number; y: number; width: number; height: number };
 
 /**
  * What the New Tab page shows around its command bar (NewTabPage's postcard slot): the release
- * notes postcard and its full-page view, the default-browser week check-in and the Personalize
- * button. It also marks the bar and the page for the tool tour.
+ * notes postcard and its full-page view, the default-browser week check-in, the one-time ask to
+ * share crash reports and the Personalize button. It also marks the bar and the page for the tool tour.
  */
 export function NewTabExtras({ size, bar }: { size: { width: number; height: number }; bar: Frame }) {
   const windowId = useWindowId();
@@ -25,6 +26,7 @@ export function NewTabExtras({ size, bar }: { size: { width: number; height: num
       <View ref={tourAnchorRef(windowId, "page")} style={StyleSheet.absoluteFill} pointerEvents="none" />
       <View ref={tourAnchorRef(windowId, "commandBar")} style={{ position: "absolute", left: bar.x, top: bar.y, width: bar.width, height: bar.height }} pointerEvents="none" />
       <CheckInBanner windowId={windowId} />
+      <TelemetryAsk windowId={windowId} />
       {incognito ? null : <PersonalizeButton windowId={windowId} />}
       {pending && !incognito && !page ? (
         <ReleaseNotesPostcard notes={pending} size={size} onOpen={() => openReleaseNotes(windowId)} onDismiss={retireReleaseNotes} />

@@ -8,11 +8,11 @@ import { endToolTour, startToolTour } from "./tour/state";
 /**
  * First-launch onboarding (Dia's "unboxing", minus its account and AI steps): the intro
  * animation, then default browser / Dock / login item, theme colour and tab layout, import,
- * pinned-tab suggestions and a welcome. It covers the first browser window and ends on its New Tab page.
+ * pinned-tab suggestions, opt-in crash reports and usage stats, and a welcome. It covers the first browser window and ends on its New Tab page.
  */
-export type OnboardingStep = "intro" | "defaultBrowser" | "personalize" | "import" | "pinnedTabs" | "outro";
+export type OnboardingStep = "intro" | "defaultBrowser" | "personalize" | "import" | "pinnedTabs" | "privacy" | "outro";
 
-export const STEPS: OnboardingStep[] = ["intro", "defaultBrowser", "personalize", "import", "pinnedTabs", "outro"];
+export const STEPS: OnboardingStep[] = ["intro", "defaultBrowser", "personalize", "import", "pinnedTabs", "privacy", "outro"];
 
 type OnboardingState = {
   /** The window it covers; null when onboarding isn't showing. */
@@ -88,6 +88,9 @@ export const defaultBrowserTrialStartedAt = () => readSaved()?.defaultBrowserTri
 /** The follow-up banner was answered or dismissed; it doesn't come back. */
 export const defaultBrowserCheckInDoneAt = () => readSaved()?.defaultBrowserCheckInDoneAt ?? null;
 export const recordDefaultBrowserCheckInDone = () => save({ defaultBrowserCheckInDoneAt: Date.now() });
+
+/** When onboarding was completed (or an existing install was counted as done); null if never. */
+export const onboardingCompletedAt = () => readSaved()?.completedAt ?? null;
 
 export const introMusicMuted = () => readSaved()?.introMusicMuted ?? false;
 export const saveIntroMusicMuted = (muted: boolean) => save({ introMusicMuted: muted });

@@ -28,6 +28,7 @@ import { engineProfile } from "../../../store/model";
 import { Favicon } from "../../primitives";
 import { Button, Checkbox, Group, PopUp, Row, SectionHeader, Sheet, Toggle } from "../controls";
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
+import { ShareDiagnosticsSection } from "./ShareDiagnostics";
 
 /** Dia's three toggles, then every list uBlock Origin Lite ships, by category (the sheet). */
 const CATEGORIES: { id: FilterListCategory; toggle: string; section: string }[] = [
@@ -118,6 +119,7 @@ export function PrivacyPane() {
           {`${(blocker.stats.networkFilters ?? 0).toLocaleString()} network and ${(blocker.stats.cosmeticFilters ?? 0).toLocaleString()} cosmetic rules loaded.`}
         </Text>
       )}
+      <ShareDiagnosticsSection />
     </View>
   );
 }

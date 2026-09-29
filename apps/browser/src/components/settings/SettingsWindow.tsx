@@ -1,8 +1,9 @@
 import { Symbol, VisualEffect, WindowDragRegion } from "@netnyahoo/shell";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
+import { trackSettingsSection } from "../../telemetry/track";
 import { IconButton, useHover } from "../primitives";
 import { useFormColors } from "./controls";
 import { AdvancedPane } from "./panes/Advanced";
@@ -50,6 +51,8 @@ export function SettingsWindow() {
   const profileName = useBrowser((s) => (nav.profileId ? s.profiles[nav.profileId]?.name : undefined));
   const title = nav.pane === "profiles" && profileName ? profileName : PANES.find((p) => p.id === nav.pane)!.title;
   const sheet = useSettingsSheet((s) => s.sheet);
+  // Telemetry (opt-in): which section was shown, by its fixed id.
+  useEffect(() => trackSettingsSection(nav.pane), [nav.pane]);
 
   return (
     <View style={{ flex: 1, flexDirection: "row", backgroundColor: theme.dark ? "#1E1E1E" : "#F2F2F2" }}>

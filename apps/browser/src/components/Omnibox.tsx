@@ -3,6 +3,7 @@ import { ContextMenuArea, Symbol, copyText, pickFiles, showMenu, startDictation 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useTheme } from "../lib/theme";
+import { sampleOmniboxLatency, trackSuggestionChosen } from "../telemetry/track";
 import { useBrowser } from "../store/browser";
 import { useWindowId, useWindowProfileId } from "../store/hooks";
 import { activeTabId, viewTabIds } from "../store/model";
@@ -154,6 +155,8 @@ export function Omnibox({
   };
 
   const choose = (s: Suggestion | undefined, disposition: Disposition = "current") => {
+    // Telemetry (opt-in): only the kind of row, never the row.
+    if (s || !scope) trackSuggestionChosen(s);
     if (!s) {
       if (scope) return;
       const text = edited ? value : initialText || value;
@@ -270,8 +273,14 @@ export function Omnibox({
 
   /** DEV: when the field's last change reached JS (typing traces). */
   const heardAt = useRef(0);
+  /** A keystroke waiting for the commit that shows its suggestions (telemetry's sampled latency). */
+  const keyAt = useRef(0);
   useLayoutEffect(() => {
     if (__DEV__) traceOmnibox({ bar: `${windowId}:${variant}`, typed, heard: heardAt.current, committed: Date.now() });
+    if (keyAt.current) {
+      sampleOmniboxLatency(Date.now() - keyAt.current);
+      keyAt.current = 0;
+    }
   });
 
   const onChangeText = (next: string) => {
@@ -281,6 +290,7 @@ export function Omnibox({
       if (!change.stale) selection.current = { start: change.inline.typed.length, end: next.length };
       return;
     }
+    keyAt.current = Date.now();
     setEdited(true);
     setTyped(change.typed);
     setSuppressCompletion(change.suppress);

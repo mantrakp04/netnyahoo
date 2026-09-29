@@ -1,4 +1,5 @@
 import AppKit
+import MachO
 import ExpoModulesCore
 
 /// App-level system integration: updates, Handoff, sharing, Dock, app icons, notifications,
@@ -129,7 +130,22 @@ public class AppModule: Module {
         "isolatedInstance": env["NETNYAHOO_BACKGROUND"] == "1" || env["NETNYAHOO_DATA_DIR"] != nil,
         // …unless the test asks for it (NETNYAHOO_RELEASE_NOTES=1; apps/browser/src/lib/releaseNotesPage.ts).
         "forceReleaseNotes": env["NETNYAHOO_RELEASE_NOTES"] == "1",
+        // When this process started (epoch ms), for the launch-to-first-window metric (telemetry).
+        "processStart": Self.processStart as Any,
       ]
+    }
+
+    // MARK: Telemetry (apps/browser/src/telemetry; only asked while the user shares diagnostics)
+
+    /// This install's own crash reports newer than `since` (epoch ms): the exception and the
+    /// crashing thread's frames (image name, symbol, offset). No paths, no other threads.
+    AsyncFunction("crashReports") { (since: Double) -> [[String: Any]] in CrashReports.since(since) }
+
+    /// DEV: crashes the app on purpose, to test crash reporting.
+    AsyncFunction("devCrash") {
+      #if DEBUG
+      DispatchQueue.main.async { CrashReports.crashForTesting() }
+      #endif
     }
 
     /// Opens a URL with its default app (a mailto: draft in Mail…). False if nothing opened it.
@@ -324,4 +340,107 @@ public class AppModule: Module {
     "x86_64"
     #endif
   }
+}
+
+extension AppModule {
+  /// When this process started (epoch ms), from the kernel's process table.
+  fileprivate static let processStart: Double? = {
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+    guard sysctl(&mib, 4, &info, &size, nil, 0) == 0 else { return nil }
+    let start = info.kp_proc.p_starttime
+    return Double(start.tv_sec) * 1000 + Double(start.tv_usec) / 1000
+  }()
+}
+
+/// Reads this app's crash reports (~/Library/Logs/DiagnosticReports/<name>-*.ips) for telemetry.
+/// A report is kept only when its process was this build at this path (another copy of the app,
+/// like one in /Applications, reports its own), and only the facts a crash needs leave here:
+/// the exception type and signal, and the crashing thread's image names, symbols and offsets.
+/// Paths, other threads, the app-specific information and the registers stay in the file.
+fileprivate enum CrashReports {
+  static func since(_ since: Double) -> [[String: Any]] {
+    guard let executable = Bundle.main.executableURL else { return [] }
+    let exe = executable.resolvingSymlinksInPath().path
+    let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DiagnosticReports")
+    let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+    var reports: [[String: Any]] = []
+    for url in files where url.pathExtension == "ips" && url.lastPathComponent.hasPrefix("\(executable.lastPathComponent)-") {
+      guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+        modified.timeIntervalSince1970 * 1000 > since,
+        let report = parse(url, executable: exe, time: modified) else { continue }
+      reports.append(report)
+    }
+    // A crash loop shouldn't turn into a flood: the latest few are enough.
+    return Array(reports.sorted { ($0["time"] as? Double ?? 0) < ($1["time"] as? Double ?? 0) }.suffix(5))
+  }
+
+  /// Whether a report's process was this build at this path. macOS anonymizes the path in the
+  /// report (`/Users/USER/…`, `*` for folders it hides), so the path is matched as a pattern, and
+  /// the binary's UUID tells this build from another copy that matches it.
+  private static func isThisExecutable(procPath: String, sliceUUID: String?, executable: String) -> Bool {
+    if let sliceUUID, let ours = executableUUID, sliceUUID.lowercased() != ours { return false }
+    if procPath == executable { return true }
+    let pattern = procPath.replacingOccurrences(of: "?", with: "\\?").replacingOccurrences(of: "/Users/USER/", with: "/Users/*/")
+    return NSPredicate(format: "SELF LIKE %@", pattern).evaluate(with: executable)
+  }
+
+  /// The main executable's Mach-O UUID (a report's `slice_uuid`).
+  private static let executableUUID: String? = {
+    guard let header = _dyld_get_image_header(0) else { return nil }
+    var command = UnsafeRawPointer(header).advanced(by: MemoryLayout<mach_header_64>.size)
+    for _ in 0..<header.pointee.ncmds {
+      let load = command.assumingMemoryBound(to: load_command.self).pointee
+      if load.cmd == UInt32(LC_UUID) {
+        return UUID(uuid: command.assumingMemoryBound(to: uuid_command.self).pointee.uuid).uuidString.lowercased()
+      }
+      command = command.advanced(by: Int(load.cmdsize))
+    }
+    return nil
+  }()
+
+  private static func parse(_ url: URL, executable: String, time: Date) -> [String: Any]? {
+    // An .ips file is a JSON header line, then the JSON report.
+    guard let data = try? Data(contentsOf: url), let newline = data.firstIndex(of: 0x0A),
+      let header = (try? JSONSerialization.jsonObject(with: data[..<newline])) as? [String: Any],
+      let body = (try? JSONSerialization.jsonObject(with: data[data.index(after: newline)...])) as? [String: Any],
+      let procPath = body["procPath"] as? String,
+      isThisExecutable(procPath: procPath, sliceUUID: header["slice_uuid"] as? String, executable: executable)
+    else { return nil }
+    let exception = body["exception"] as? [String: Any] ?? [:]
+    // Image names only (never their paths, which can hold the user's name).
+    let images = (body["usedImages"] as? [[String: Any]] ?? []).map { image -> String in
+      if let name = image["name"] as? String, !name.isEmpty { return name }
+      return (image["path"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent } ?? "???"
+    }
+    let threads = body["threads"] as? [[String: Any]] ?? []
+    let faulting = body["faultingThread"] as? Int ?? threads.firstIndex { $0["triggered"] as? Bool == true } ?? 0
+    let frames = threads.indices.contains(faulting) ? threads[faulting]["frames"] as? [[String: Any]] ?? [] : []
+    var report: [String: Any] = [
+      "time": time.timeIntervalSince1970 * 1000,
+      "frames": frames.prefix(64).map { frame -> [String: Any] in
+        let index = frame["imageIndex"] as? Int ?? -1
+        var out: [String: Any] = ["image": images.indices.contains(index) ? images[index] : "???"]
+        if let symbol = frame["symbol"] as? String { out["symbol"] = symbol }
+        if let offset = frame["imageOffset"] as? Int { out["offset"] = offset }
+        return out
+      },
+    ]
+    for (key, value) in [
+      ("incidentId", header["incident_id"]), ("appVersion", header["app_version"]), ("build", header["build_version"]),
+      ("exceptionType", exception["type"]), ("signal", exception["signal"]),
+    ] {
+      if let value = value as? String { report[key] = value }
+    }
+    return report
+  }
+
+  #if DEBUG
+  /// DEV: a real crash with our own frame on top, for testing the reporter end to end.
+  @inline(never) static func crashForTesting() {
+    let pointer = UnsafeMutablePointer<Int>(bitPattern: 0x10)!
+    pointer.pointee = 1
+  }
+  #endif
 }

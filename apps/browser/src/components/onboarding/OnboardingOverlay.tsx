@@ -6,6 +6,7 @@ import { useWindowId } from "../../store/hooks";
 import { Intro } from "./Intro";
 import { dismissOnboarding, useOnboarding } from "./state";
 import { DefaultBrowserStep, ImportStep, OutroStep, PersonalizeStep, PinnedTabsStep } from "./steps";
+import { PrivacyStep } from "./privacyStep";
 import { ToolTour } from "./tour/ToolTour";
 import { useOnboardingColors } from "./ui";
 
@@ -97,6 +98,7 @@ function Overlay({ session }: { session: number }) {
                 {step === "personalize" && <PersonalizeStep />}
                 {step === "import" && <ImportStep />}
                 {step === "pinnedTabs" && <PinnedTabsStep />}
+                {step === "privacy" && <PrivacyStep />}
                 {step === "outro" && <OutroStep />}
               </View>
             </Surface>

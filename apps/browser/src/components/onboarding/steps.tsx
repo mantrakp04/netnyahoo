@@ -23,7 +23,7 @@ import { CheckMark, CheckRow, PrimaryButton, Reveal, SecondaryButton, StepProgre
 const ICON = require("../../../assets/app-icon.png");
 
 /** A step's card: content and actions on the left, an illustration on the right. */
-function StepLayout({ children, actions, preview }: { children: ReactNode; actions: ReactNode; preview: ReactNode }) {
+export function StepLayout({ children, actions, preview }: { children: ReactNode; actions: ReactNode; preview: ReactNode }) {
   const colors = useOnboardingColors();
   return (
     <View style={{ flex: 1, flexDirection: "row" }}>

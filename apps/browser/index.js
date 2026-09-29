@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { AppRegistry, LogBox, unstable_batchedUpdates } from "react-native";
 import { WindowRoot } from "./src/App";
 import { DevErrorBoundary } from "./src/DevErrorBoundary";
@@ -8,6 +9,8 @@ import { startPersistence } from "./src/lib/persist";
 import { startTabLifecycle } from "./src/lib/tabLifecycle";
 import { startSync } from "./src/sync/engine";
 import { setStoreBatching } from "./src/store/browser";
+import { installErrorReporting, startTelemetry } from "./src/telemetry";
+import { markFirstWindow } from "./src/telemetry/track";
 
 // Intentional: react-native-macos 0.81's New Architecture is still experimental.
 LogBox.ignoreLogs(["The app is running using the Legacy Architecture"]);
@@ -16,6 +19,8 @@ LogBox.ignoreLogs(["The app is running using the Legacy Architecture"]);
 // written to $NETNYAHOO_DATA_DIR/dev-console.log instead (lib/devHarness).
 LogBox.ignoreAllLogs(true);
 
+// Opt-in crash and error reports (src/telemetry): hooked first, silent unless the user shares.
+installErrorReporting();
 // A store update renders everything it changes in one commit (store/browser).
 setStoreBatching(unstable_batchedUpdates);
 // One JS runtime serves every window: restore the session, then open its windows.
@@ -25,10 +30,12 @@ startAppIntegration();
 startTabLifecycle();
 startTranslate();
 startSync();
+startTelemetry();
 if (__DEV__) require("./src/lib/devHarness").startDevHarness();
 
 // The native side renders "main" once per window, with `initialProperties: { windowId }`.
 function Root({ windowId }) {
+  useEffect(markFirstWindow, []);
   return __DEV__ ? (
     <DevErrorBoundary>
       <WindowRoot windowId={windowId} />
