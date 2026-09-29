@@ -1,0 +1,31 @@
+apps/site/src/data/posthog.ts
+  s_9c356f9574d31c::t_3e4fd948e85694 1-2,4,9
+apps/site/.gitignore
+  s_88a717ccd092e2::t_a3bfb1e49af228 4
+apps/site/nginx.conf
+  s_9c356f9574d31c::t_dbde586a4b262b 37-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "78455342b83cbc368a1b7c30185f989f1b1f58be",
+  "prompts": {},
+  "sessions": {
+    "s_88a717ccd092e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "93c8454b-aa9f-4ce4-bac6-02b004954179",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
