@@ -1,4 +1,4 @@
-export const VERSION = "0.2.9";
+export const VERSION = "0.2.10";
 export const DMG_SIZE = "215 MB";
 export const REPO = "https://github.com/mantrakp04/netnyahoo";
 export const RELEASES = `${REPO}/releases/latest`;
