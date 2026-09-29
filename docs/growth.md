@@ -95,3 +95,9 @@ Result: _pending._
   - App: "Calling the … function has failed" (0.2.11, 2 people) is an unhandled promise rejection from a native
     module call (CodedError). The frames are minified: upload the JS bundle's source map to PostHog to name it.
   - Decision: nothing shipped this round.
+- **2026-09-29 ~23:10 UTC, owner's call:** screenshots open full size. The "In office" shot drew 14 dead clicks
+  from 12 people. Every screenshot (office and the five pledges) now opens in a lightbox on click or tap:
+  - desktop: the whole window, fitted to the screen;
+  - phones: 900 px wide, panned to the middle, so it's readable;
+  - it closes on tap, click or Escape.
+  Event: `screenshot_opened { shot }`. Watch it next to the dead clicks on `img`.
