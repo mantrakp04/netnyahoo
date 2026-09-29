@@ -96,7 +96,9 @@ class RendererApp : public CefApp, public CefRenderProcessHandler {
     context->Enter();
     CefRefPtr<CefV8Value> fn;
     CefRefPtr<CefV8Exception> exception;
-    std::string wrapped = "(function(post){\n" + code + "\n})";
+    // Strict, so a page function it calls can't walk up to it (`arguments.callee.caller` is null
+    // for a strict caller) and take `post` to answer for it.
+    std::string wrapped = "(function(post){'use strict';\n" + code + "\n})";
     if (!context->Eval(wrapped, "netnyahoo://eval", 0, fn, exception) || !fn || !fn->IsFunction()) {
       context->Exit();
       fail(exception ? exception->GetMessage().ToString() : "eval failed");
