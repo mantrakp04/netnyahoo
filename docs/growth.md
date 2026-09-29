@@ -68,3 +68,14 @@ Result: _pending._
 
 - **2026-09-29 17:25 UTC:** shipped the above (site deploy). Checks every 30 min (:13 and :43 local) from the
   owner's session: traffic, conversion by device, `send_to_mac_clicked`, experiment exposures, errors.
+- **2026-09-29 19:35 UTC check:** 1,576 visitors so far (473 in the last hour; 91% from t.co), 51% phones.
+  - Macs since the deploy: 21/291 clicked Download (7.2%, was 3.35%). Phones: `send_to_mac_clicked` 28 people:
+    5 shared, 6 copied, **18 dismissed the share sheet and then the clipboard was refused**; only 1 of them tapped
+    the "Copy link" retry, and none got the link.
+  - Experiment: control 12/147 (8.2%), band 7/142 (4.9%), P(band wins) 7.7%. Nowhere near the stopping rule;
+    no one has clicked the band's own button yet. Checked live: the band shows for `band` and is tagged.
+  - Dead clicks: 139 of 236 are on the Big Yahu canvas (WebGL, which PostHog can't see; `yahu_danced` tracks the
+    real reaction). Not a bug.
+  - **Shipped:** after a dismissed share sheet (or no share sheet and no clipboard), the link now appears in place:
+    a select-all field, a Copy button (fresh tap), and "Email it to me" (mailto). Header taps show it under the
+    hero's button. Event: `send_to_mac_fallback { location, action: copied|selected|email }`.
