@@ -1,6 +1,7 @@
 #import "NNCefInternal.h"
 
 #include <algorithm>
+#include <climits>
 #include <map>
 #include <optional>
 #include <utility>
@@ -237,6 +238,13 @@ bool CloseKeyDevToolsWindow() {
 void DevToolsForget(int browserId) {
   gRegistrations.erase(browserId);
   gFrontends.erase(browserId);
+  // Its replies will never come: fail the calls still waiting, once.
+  std::vector<void (^)(NSDictionary *)> pending;
+  for (auto it = gCalls.lower_bound({browserId, INT_MIN}); it != gCalls.end() && it->first.first == browserId;) {
+    pending.push_back(it->second);
+    it = gCalls.erase(it);
+  }
+  for (auto completion : pending) completion(nil);
 }
 
 void ShowDevTools(CefRefPtr<CefBrowser> browser, NSString *panel, CefPoint inspectAt) {
