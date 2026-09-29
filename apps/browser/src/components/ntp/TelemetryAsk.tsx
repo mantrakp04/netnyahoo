@@ -11,7 +11,8 @@ import { useHover } from "../primitives";
 import { openSettings } from "../settings/windows";
 import { usePendingReleaseNotes } from "./releaseNotes";
 
-const FRAME = { width: 300, height: 128 };
+/** The card sizes to its copy (three lines of body at 300 wide), so its padding holds all round. */
+const FRAME = { width: 300 };
 
 /**
  * The one-time ask for people who installed Netnyahoo before it could share crash reports (new
@@ -35,7 +36,7 @@ export function TelemetryAsk({ windowId }: { windowId: string }) {
       setLeaving(null);
     });
   return (
-    <View style={{ position: "absolute", left: 0, top: 0, width: FRAME.width, height: FRAME.height, padding: 8 }} pointerEvents="box-none">
+    <View style={{ position: "absolute", left: 0, top: 0, width: FRAME.width, padding: 8 }} pointerEvents="box-none">
       <Card
         leaving={leaving}
         onShare={() => retire(() => setSharing(true, "ask"))}
@@ -66,7 +67,7 @@ function Card({ leaving, onShare, onNotNow, onClose }: { leaving: null | (() => 
   const primary = theme.dark ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.8)";
   const secondary = theme.dark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.53)";
   return (
-    <Animated.View {...hoverProps} style={{ flex: 1, opacity, transform: [{ scale }] }} pointerEvents={leaving ? "none" : "auto"}>
+    <Animated.View {...hoverProps} style={{ opacity, transform: [{ scale }] }} pointerEvents={leaving ? "none" : "auto"}>
       <Surface
         style={StyleSheet.absoluteFill}
         fill={theme.dark ? "#FFFFFF17" : "#FFFFFF80"}
@@ -78,7 +79,7 @@ function Card({ leaving, onShare, onNotNow, onClose }: { leaving: null | (() => 
         shadowRadius={24}
         shadowOffset={[0, 8]}
       />
-      <View style={{ flex: 1, padding: 12, gap: 10 }}>
+      <View style={{ padding: 12, gap: 12 }}>
         <View style={{ flexDirection: "row", gap: 10 }}>
           <View
             style={{
