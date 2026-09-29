@@ -11,6 +11,7 @@
 #include "include/cef_download_handler.h"
 #include "include/cef_permission_handler.h"
 #include "include/cef_request_context.h"
+#include "include/views/cef_window.h"
 
 // Tab capture (CefGetMediaCaptureSourceId) exists only in our own CEF build
 // (docs/cef-source-build.md), not in the prebuilt distribution.
@@ -199,6 +200,11 @@ void DismissPermissions(CefRefPtr<CefBrowser> browser);
 // Live browser bookkeeping (for shutdown and leak checks).
 void BrowserCreated(CefRefPtr<CefBrowser> browser);
 void BrowserClosed(CefRefPtr<CefBrowser> browser);
+/// Every CefWindow we make (app windows, popups, undocked DevTools, helper pages), from its
+/// delegate's OnWindowCreated to OnWindowDestroyed. Each holds a Chrome Browser, which shutdown
+/// closes before CefShutdown: one still open then closes as its profile is torn down, and crashes.
+void WindowCreated(CefRefPtr<CefWindow> window);
+void WindowDestroyed(CefRefPtr<CefWindow> window);
 
 /// Every NNBrowserView that currently has a browser.
 NSArray<NNBrowserView *> *LiveViews();

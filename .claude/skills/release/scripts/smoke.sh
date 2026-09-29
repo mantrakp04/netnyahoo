@@ -8,7 +8,8 @@
 # throwaway data dir that says <previous-version> ran last, so the after-update release-notes tab
 # opens (NETNYAHOO_RELEASE_NOTES=1), and whose session has a window left on its second profile (each
 # profile a Chrome window of its own: the window restores as the Work profile's, Personal's made
-# ahead off screen). Runs smoke.mjs over CDP, quits the app and checks the bundle is still sealed.
+# ahead off screen). Runs smoke.mjs over CDP, quits the app as ⌘Q and updates do and checks it exits
+# cleanly, then that the bundle is still sealed.
 # Never touches /Applications or the user's own data.
 set -euo pipefail
 
@@ -23,14 +24,17 @@ pages_port="${SMOKE_PAGES_PORT:-8798}"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/nn-smoke.XXXXXX")"
 server=""
+logger=""
 cleanup() {
   [ -n "${pid:-}" ] && kill -KILL "$pid" 2>/dev/null || true
+  [ -n "$logger" ] && { kill "$logger"; wait "$logger"; } 2>/dev/null || true
   [ -n "$server" ] && { kill "$server"; wait "$server"; } 2>/dev/null || true
   rm -rf "$work"
 }
 trap cleanup EXIT
 
 swiftc -O "$here/windows.swift" -o "$work/windows" 2>/dev/null
+swiftc -O "$here/quit.swift" -o "$work/quit" 2>/dev/null
 python3 -m http.server "$pages_port" --bind 127.0.0.1 --directory "$here/pages" >/dev/null 2>&1 &
 server=$!
 
@@ -68,8 +72,40 @@ locked="$("$work/windows" --locked)"
 [ "$locked" = 1 ] && echo "note: the screen is locked; checks of window order and closing are skipped (they need an unlocked screen)"
 SMOKE_LOCKED="$locked" SMOKE_DATA="$work/data" node "$here/smoke.mjs" "$port" "$version" "$work/windows" "$pid" "$pages" || status=1
 
-kill -TERM "$pid" 2>/dev/null || true
-for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+# Quit it as ⌘Q and Sparkle's update do (the quit Apple event, to this instance only; SIGTERM skips
+# the app's own shutdown): it must be gone within 15 s, exit 0 and leave no crash report. 0.2.6 and
+# 0.2.7 crashed on every quit, so every update ended in "Netnyahoo quit unexpectedly".
+log stream --style compact --predicate "process == \"runningboardd\" AND eventMessage CONTAINS \":$pid]\" AND eventMessage CONTAINS \"termination reported\"" \
+  > "$work/exit.log" 2>/dev/null &
+logger=$!
+sleep 1
+"$work/quit" "$pid" >/dev/null || true
+tenths=0
+while kill -0 "$pid" 2>/dev/null && [ $tenths -lt 150 ]; do sleep 0.1; tenths=$((tenths + 1)); done
+if kill -0 "$pid" 2>/dev/null; then
+  echo "FAIL  quits cleanly on the quit Apple event  (still running after 15 s)"
+  status=1
+else
+  # runningboardd's record of the exit ("(0, 0, 0)": status 0, no signal), and ReportCrash's report.
+  exited="" report=""
+  for _ in $(seq 1 10); do
+    sleep 1
+    exited="$(grep -o 'termination reported by launchd ([0-9, ]*)' "$work/exit.log" | head -1 | sed 's/.*launchd //' || true)"
+    report="$(grep -l "\"pid\" : $pid," ~/Library/Logs/DiagnosticReports/Netnyahoo-*.ips \
+      ~/Library/Logs/DiagnosticReports/Retired/Netnyahoo-*.ips 2>/dev/null | head -1 || true)"
+    [ -n "$report" ] && break
+    [ "$exited" = "(0, 0, 0)" ] && break
+  done
+  detail="exited in $((tenths / 10)).$((tenths % 10)) s, ${exited:-exit status not logged}"
+  if [ -z "$report" ] && [ "${exited:-(0, 0, 0)}" = "(0, 0, 0)" ]; then
+    echo "PASS  quits cleanly on the quit Apple event  ($detail)"
+  else
+    echo "FAIL  quits cleanly on the quit Apple event  ($detail${report:+; crash report $report})"
+    status=1
+  fi
+fi
+{ kill "$logger"; wait "$logger"; } 2>/dev/null || true
+logger=""
 kill -KILL "$pid" 2>/dev/null || true
 pid=""
 codesign --verify --deep --strict "$app" && echo "PASS  bundle still sealed after running" || { echo "FAIL  running the app changed its bundle"; status=1; }

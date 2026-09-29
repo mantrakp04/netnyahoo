@@ -1,7 +1,7 @@
 // Smoke test of a release build over CDP; smoke.sh launches the app and calls it.
 // usage: node smoke.mjs <cdpPort> <version> <windowsTool> <pid> <pagesOrigin>
-// Each check prints PASS/FAIL; exits 1 if any failed. The right-click check runs last: a native
-// context menu blocks the app's main thread until it closes, and smoke.sh kills the app after.
+// Each check prints PASS/FAIL; exits 1 if any failed. The right-click check runs last: builds that
+// still draw the native context menu block their main thread until it closes. smoke.sh quits the app after.
 // SMOKE_LOCKED=1 (smoke.sh: the screen is locked): the checks that read window order or wait for a
 // window to go print SKIP, as a locked screen freezes window animations and CGWindowList's order.
 import { execFileSync } from "node:child_process";

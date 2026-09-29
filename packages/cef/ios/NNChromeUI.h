@@ -41,4 +41,7 @@ void ResolvePasswordPrompt(CefRefPtr<CefBrowser> browser, NSString *action, NSSt
 /// the app should show: "none", "popup" or "sidePanel"; nil if this engine can't.
 NSString *ExecuteExtensionAction(CefRefPtr<CefBrowser> browser, NSString *extensionId);
 
+/// Drops the Cast route watches (before CefShutdown).
+void ReleaseRouteWatches();
+
 }  // namespace nn::chromeui

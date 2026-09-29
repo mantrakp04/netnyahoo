@@ -188,6 +188,7 @@ class WindowDelegate : public CefWindowDelegate {
   explicit WindowDelegate(CefRefPtr<CefBrowserView> view) : view_(view) {}
 
   void OnWindowCreated(CefRefPtr<CefWindow> window) override {
+    WindowCreated(window);
     window->AddChildView(view_);
     // Undocking moves a loaded frontend here: its title (OnTitleChange) came before the window.
     CefRefPtr<CefBrowser> browser = view_->GetBrowser();
@@ -196,7 +197,10 @@ class WindowDelegate : public CefWindowDelegate {
     window->Show();
     view_->RequestFocus();
   }
-  void OnWindowDestroyed(CefRefPtr<CefWindow>) override { view_ = nullptr; }
+  void OnWindowDestroyed(CefRefPtr<CefWindow> window) override {
+    WindowDestroyed(window);
+    view_ = nullptr;
+  }
   bool CanClose(CefRefPtr<CefWindow>) override {
     CefRefPtr<CefBrowser> browser = view_ ? view_->GetBrowser() : nullptr;
     // The browser closes first (beforeunload); CEF closes the window again once it's gone.

@@ -1,6 +1,7 @@
 #import "NNCefInternal.h"
 
 #import "NNChromePages.h"
+#import "NNChromeUI.h"
 #import "NNContentBlocker.h"
 #import "NNExtensionsInternal.h"
 #import "NNPopupWindow.h"
@@ -249,6 +250,7 @@ bool gShuttingDown = false;
 NNEventHandler gEventHandler = nil;
 std::map<std::string, CefRefPtr<CefRequestContext>> gContexts;
 std::set<int> gLiveBrowsers;
+std::vector<CefRefPtr<CefWindow>> gLiveWindows;
 NSWindow *gParkingWindow = nil;
 NSHashTable<NNBrowserView *> *gViews = nil;
 
@@ -623,6 +625,13 @@ void DismissPermissions(CefRefPtr<CefBrowser> browser) {
 
 void BrowserCreated(CefRefPtr<CefBrowser> browser) { gLiveBrowsers.insert(browser->GetIdentifier()); }
 
+void WindowCreated(CefRefPtr<CefWindow> window) { gLiveWindows.push_back(window); }
+
+void WindowDestroyed(CefRefPtr<CefWindow> window) {
+  // Each callback gets a new wrapper of the same window.
+  std::erase_if(gLiveWindows, [&](const CefRefPtr<CefWindow> &w) { return w->IsSame(window); });
+}
+
 void RegisterView(NNBrowserView *view) {
   if (!gViews) gViews = [NSHashTable weakObjectsHashTable];
   [gViews addObject:view];
@@ -716,17 +725,25 @@ NSView *ParkingView() {
   gShuttingDown = true;
   pages::CloseAll();
   host::CloseAll();
-  // Force-close every browser (tabs, parked popups, little windows), then pump
-  // until they're gone (bounded).
+  // Force-close every browser (tabs, parked popups, little windows), then every window, pumping
+  // until they're gone (bounded). An app window's Browser outlives its last tab, and a Chrome
+  // Browser still open when CefShutdown destroys its profile closes into torn-down services (the
+  // crash on quit of 0.2.6 and 0.2.7).
   for (int bid : std::set<int>(gLiveBrowsers)) {
     if (CefRefPtr<CefBrowser> b = CefBrowserHost::GetBrowserByIdentifier(bid)) b->GetHost()->CloseBrowser(true);
   }
-  CFTimeInterval deadline = CACurrentMediaTime() + 3;
-  while (!gLiveBrowsers.empty() && CACurrentMediaTime() < deadline) {
-    CefDoMessageLoopWork();
-    [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
-  }
+  auto pumpWhile = [](CFTimeInterval seconds, bool (^busy)(void)) {
+    CFTimeInterval deadline = CACurrentMediaTime() + seconds;
+    while (busy() && CACurrentMediaTime() < deadline) {
+      CefDoMessageLoopWork();
+      [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+    }
+  };
+  pumpWhile(3, ^{ return !gLiveBrowsers.empty(); });
+  for (CefRefPtr<CefWindow> window : std::vector(gLiveWindows)) window->Close();
+  pumpWhile(3, ^{ return !gLiveWindows.empty(); });
   ReleaseDiagnostics();
+  chromeui::ReleaseRouteWatches();
   MessagePump::Get().Stop();
   gContexts.clear();
   gDownloads.clear();

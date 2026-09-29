@@ -165,11 +165,15 @@ class HostWindowDelegate : public CefWindowDelegate {
   explicit HostWindowDelegate(CefRefPtr<CefBrowserView> view) : view_(view) {}
 
   void OnWindowCreated(CefRefPtr<CefWindow> window) override {
+    WindowCreated(window);
     window->AddChildView(view_);
     // Belt and braces: never visible, clickable, activating or in the Window menu.
     MakeWindowInert(((__bridge NSView *)window->GetWindowHandle()).window);
   }
-  void OnWindowDestroyed(CefRefPtr<CefWindow> window) override { view_ = nullptr; }
+  void OnWindowDestroyed(CefRefPtr<CefWindow> window) override {
+    WindowDestroyed(window);
+    view_ = nullptr;
+  }
   cef_runtime_style_t GetWindowRuntimeStyle() override { return CEF_RUNTIME_STYLE_CHROME; }
   cef_show_state_t GetInitialShowState(CefRefPtr<CefWindow> window) override { return CEF_SHOW_STATE_HIDDEN; }
   CefRect GetInitialBounds(CefRefPtr<CefWindow> window) override { return CefRect(-30000, -30000, 900, 700); }

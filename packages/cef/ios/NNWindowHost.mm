@@ -615,8 +615,10 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
     // Called from inside CreateTopLevelWindow.
     window_ = window;
     nswindow_ = ((__bridge NSView *)window->GetWindowHandle()).window;
+    WindowCreated(window);
   }
   void OnWindowDestroyed(CefRefPtr<CefWindow> window) override {
+    WindowDestroyed(window);
     view_ = nullptr;
     window_ = nullptr;
     if (router_) router_->Detach();
