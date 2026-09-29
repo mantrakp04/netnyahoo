@@ -130,11 +130,11 @@ void ReleaseDiagnostics();
 void EmitGlobal(NSString *name, NSDictionary *payload);
 
 bool OnBeforeDownload(CefRefPtr<CefDownloadItem> item, const CefString &suggested_name,
-                      CefRefPtr<CefBeforeDownloadCallback> callback);
+                      CefRefPtr<CefBeforeDownloadCallback> callback, NSString *profile, NSString *origin);
 void OnDownloadUpdated(CefRefPtr<CefDownloadItem> item, CefRefPtr<CefDownloadItemCallback> callback, NSString *profile);
 
-void NoteNavigationDownload(NSString *url, bool persist);
-bool WasNavigationDownload(NSString *url);
+void NoteNavigationDownload(NSString *url, NSString *profile);
+bool WasNavigationDownload(NSString *url, NSString *profile);
 void AllowUserNavigation(NSString *url);
 bool ConsumeUserNavigation(NSString *url);
 

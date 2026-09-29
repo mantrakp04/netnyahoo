@@ -663,7 +663,7 @@ bool Client::OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
   if (!is_redirect) pendingNavigation_.clear();
   pendingNavigation_.push_back(url.UTF8String);
   bool userInitiated = ConsumeUserNavigation(url) || user_gesture;
-  if (!is_redirect && !userInitiated && !committedPage_ && WasNavigationDownload(url)) {
+  if (!is_redirect && !userInitiated && !committedPage_ && WasNavigationDownload(url, profile_)) {
     pendingNavigation_.clear();
     Emit(@"downloadNavigation", @{@"url" : url, @"committedUrl" : URL(), @"skipped" : @YES});
     return true;
@@ -744,10 +744,11 @@ bool Client::OnBeforeDownload(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDownlo
     NSString *requested = @(pendingNavigation_.front().c_str());
     pendingNavigation_.clear();
     for (NSString *url in @[ requested, ToNS(item->GetOriginalUrl()), ToNS(item->GetURL()) ])
-      NoteNavigationDownload(url, !Incognito());
+      NoteNavigationDownload(url, profile_);
     Emit(@"downloadNavigation", @{@"url" : requested, @"committedUrl" : committedPage_ ? URL() : @"", @"skipped" : @NO});
   }
-  return nn::OnBeforeDownload(item, suggested_name, callback);
+  CefRefPtr<CefFrame> page = browser->GetMainFrame();
+  return nn::OnBeforeDownload(item, suggested_name, callback, profile_, page ? ToNS(page->GetURL()) : nil);
 }
 
 void Client::OnDownloadUpdated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDownloadItem> item,

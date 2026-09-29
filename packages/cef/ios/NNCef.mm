@@ -9,6 +9,7 @@
 #import "NNWindowHost.h"
 #import "NNZoom.h"
 
+#import <CoreServices/CoreServices.h>
 #import <Security/Security.h>
 
 #include <map>
@@ -226,9 +227,17 @@ struct DownloadEntry {
   CefRefPtr<CefDownloadItemCallback> callback;
   std::string path;
   NSString *profile;
+  NSString *origin;
+  CFTimeInterval lastEmit = 0;
+  bool quarantined = false;
 };
-std::map<uint32_t, DownloadEntry> gDownloads;
-std::map<uint32_t, CFTimeInterval> gDownloadLastEmit;
+// Chromium numbers downloads per profile, so two profiles can both have a download 1. Controls, events
+// and the JS records use an app-wide id instead, allocated the first time a (profile, engine id) shows up.
+std::map<std::pair<std::string, uint32_t>, uint64_t> gDownloadIds;
+std::map<uint64_t, DownloadEntry> gDownloads;
+uint64_t gNextDownloadId = 1;
+// Private profiles already released: late updates from their downloads are dropped.
+std::set<std::string> gReleasedDownloadProfiles;
 
 struct PendingPermission {
   int browserId;
@@ -394,6 +403,7 @@ CefRefPtr<CefRequestContext> ContextForProfile(NSString *profile) {
   std::string key = profile.UTF8String;
   auto it = gContexts.find(key);
   if (it != gContexts.end()) return it->second;
+  gReleasedDownloadProfiles.erase(key);
 
   CefRequestContextSettings settings;
   if (![profile hasPrefix:@"incognito"]) {
@@ -407,16 +417,68 @@ CefRefPtr<CefRequestContext> ContextForProfile(NSString *profile) {
   return context;
 }
 
+namespace {
+DownloadEntry *EntryFor(NSString *profile, uint32_t engineId, uint64_t *outId = nullptr) {
+  std::string key = (profile ?: @"").UTF8String;
+  if (gReleasedDownloadProfiles.count(key)) return nullptr;
+  auto [it, added] = gDownloadIds.try_emplace({key, engineId}, gNextDownloadId);
+  if (added) {
+    gNextDownloadId++;
+    gDownloads[it->second].profile = [profile copy] ?: @"";
+  }
+  if (outId) *outId = it->second;
+  return &gDownloads[it->second];
+}
+
+// Credentials never go into the quarantine record, and only web URLs do (a data: URL can be megabytes).
+NSURL *QuarantineURL(NSString *url) {
+  NSURLComponents *c = url.length ? [NSURLComponents componentsWithString:url] : nil;
+  NSString *scheme = c.scheme.lowercaseString;
+  if (!([scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"] || [scheme isEqualToString:@"ftp"]))
+    return nil;
+  c.user = nil;
+  c.password = nil;
+  return c.URL;
+}
+
+// The ungoogled patch set makes Chromium's own quarantine a no-op, so a finished download gets
+// com.apple.quarantine here, before the "finished" event reaches JS (Open When Done): opening a downloaded
+// app then goes through Gatekeeper. Private downloads are quarantined without their URLs, which the xattr
+// and LaunchServices' quarantine events database would otherwise keep.
+void Quarantine(NSString *path, NSString *dataURL, NSString *originURL, bool incognito) {
+  NSURL *file = [NSURL fileURLWithPath:path];
+  NSDictionary *existing = nil;
+  if ([file getResourceValue:&existing forKey:NSURLQuarantinePropertiesKey error:nil] && existing) return;
+  NSMutableDictionary *props = [NSMutableDictionary dictionary];
+  props[(__bridge NSString *)kLSQuarantineAgentNameKey] =
+      NSBundle.mainBundle.infoDictionary[@"CFBundleName"] ?: @"Netnyahoo";
+  props[(__bridge NSString *)kLSQuarantineTypeKey] = (__bridge NSString *)kLSQuarantineTypeWebDownload;
+  if (!incognito) {
+    if (NSURL *data = QuarantineURL(dataURL)) props[(__bridge NSString *)kLSQuarantineDataURLKey] = data;
+    if (NSURL *origin = QuarantineURL(originURL)) props[(__bridge NSString *)kLSQuarantineOriginURLKey] = origin;
+  }
+  NSError *error = nil;
+  if (![file setResourceValue:props forKey:NSURLQuarantinePropertiesKey error:&error])
+    NSLog(@"[cef] quarantine %@: %@", path.lastPathComponent, error.localizedDescription);
+}
+}
+
 bool OnBeforeDownload(CefRefPtr<CefDownloadItem> item, const CefString &suggested_name,
-                      CefRefPtr<CefBeforeDownloadCallback> callback) {
+                      CefRefPtr<CefBeforeDownloadCallback> callback, NSString *profile, NSString *origin) {
+  DownloadEntry *entry = EntryFor(profile, item->GetId());
+  if (!entry) return true;  // Its private context is gone; dropping the callback cancels the download.
   NSString *path = UniqueDownloadPath(ToNS(suggested_name));
-  gDownloads[item->GetId()].path = path.UTF8String;
+  entry->path = path.UTF8String;
+  entry->origin = [origin copy];
   callback->Continue(ToCef(path), false);
   return true;
 }
 
 namespace {
+// Download URLs remembered so a restored or re-opened tab doesn't download again. Normal profiles' entries
+// persist in NavigationDownloads.json; private ones live in memory, per private profile, and go with it.
 NSMutableDictionary<NSString *, NSNumber *> *gNavigationDownloads;
+NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, NSNumber *> *> *gPrivateNavigationDownloads;
 NSMutableDictionary<NSString *, NSNumber *> *gUserNavigations;
 constexpr NSTimeInterval kNavigationDownloadTTL = 7 * 86400;
 
@@ -433,13 +495,38 @@ NSMutableDictionary *NavigationDownloads() {
   }
   return gNavigationDownloads;
 }
+
+void ForgetPrivateDownloads(NSString *profile) {
+  [gPrivateNavigationDownloads removeObjectForKey:profile];
+  std::string key = profile.UTF8String;
+  for (auto it = gDownloadIds.begin(); it != gDownloadIds.end();) {
+    if (it->first.first != key) {
+      ++it;
+      continue;
+    }
+    auto entry = gDownloads.find(it->second);
+    if (entry != gDownloads.end()) {
+      if (entry->second.callback) entry->second.callback->Cancel();
+      gDownloads.erase(entry);
+    }
+    it = gDownloadIds.erase(it);
+  }
+  gReleasedDownloadProfiles.insert(key);
+}
 }
 
-void NoteNavigationDownload(NSString *url, bool persist) {
+void NoteNavigationDownload(NSString *url, NSString *profile) {
   if (!url.length) return;
-  NavigationDownloads()[url] = @(NSDate.date.timeIntervalSince1970);
-  if (!persist) return;
+  NSNumber *now = @(NSDate.date.timeIntervalSince1970);
+  if (IsIncognito(profile)) {
+    if (!gPrivateNavigationDownloads) gPrivateNavigationDownloads = [NSMutableDictionary dictionary];
+    NSMutableDictionary *entries = gPrivateNavigationDownloads[profile];
+    if (!entries) gPrivateNavigationDownloads[profile] = entries = [NSMutableDictionary dictionary];
+    entries[url] = now;
+    return;
+  }
   NSMutableDictionary *entries = NavigationDownloads();
+  entries[url] = now;
   if (entries.count > 200) {
     NSArray *oldest = [entries keysSortedByValueUsingSelector:@selector(compare:)];
     [entries removeObjectsForKeys:[oldest subarrayWithRange:NSMakeRange(0, entries.count - 200)]];
@@ -447,8 +534,10 @@ void NoteNavigationDownload(NSString *url, bool persist) {
   [[NSJSONSerialization dataWithJSONObject:entries options:0 error:nil] writeToFile:NavigationDownloadsPath() atomically:YES];
 }
 
-bool WasNavigationDownload(NSString *url) {
-  NSNumber *when = url.length ? NavigationDownloads()[url] : nil;
+bool WasNavigationDownload(NSString *url, NSString *profile) {
+  if (!url.length) return false;
+  NSNumber *when = NavigationDownloads()[url];
+  if (!when && IsIncognito(profile)) when = gPrivateNavigationDownloads[profile][url];
   return when && NSDate.date.timeIntervalSince1970 - when.doubleValue < kNavigationDownloadTTL;
 }
 
@@ -466,24 +555,29 @@ bool ConsumeUserNavigation(NSString *url) {
 }
 
 void OnDownloadUpdated(CefRefPtr<CefDownloadItem> item, CefRefPtr<CefDownloadItemCallback> callback, NSString *profile) {
-  uint32_t id = item->GetId();
-  DownloadEntry &entry = gDownloads[id];
-  entry.callback = callback;
-  if (profile && !entry.profile) entry.profile = [profile copy];
-  if (!item->GetFullPath().empty()) entry.path = item->GetFullPath().ToString();
+  uint64_t id = 0;
+  DownloadEntry *entry = EntryFor(profile, item->GetId(), &id);
+  if (!entry) return;
+  entry->callback = callback;
+  if (!item->GetFullPath().empty()) entry->path = item->GetFullPath().ToString();
+  NSString *path = [NSString stringWithUTF8String:entry->path.c_str()];
 
   NSString *state = @"downloading";
   if (item->IsComplete()) state = @"finished";
   else if (item->IsCanceled()) state = @"cancelled";
   else if (item->IsInterrupted()) state = @"failed";
 
-  CFTimeInterval now = CACurrentMediaTime();
-  if ([state isEqualToString:@"downloading"] && now - gDownloadLastEmit[id] < 0.1) return;
-  gDownloadLastEmit[id] = now;
+  if (item->IsComplete() && !entry->quarantined && path.length) {
+    entry->quarantined = true;
+    Quarantine(path, ToNS(item->GetURL()), entry->origin, IsIncognito(entry->profile));
+  }
 
-  NSString *path = [NSString stringWithUTF8String:entry.path.c_str()];
+  CFTimeInterval now = CACurrentMediaTime();
+  if ([state isEqualToString:@"downloading"] && now - entry->lastEmit < 0.1) return;
+  entry->lastEmit = now;
+
   EmitGlobal(@"download", @{
-    @"id" : [NSString stringWithFormat:@"%u", id],
+    @"id" : [NSString stringWithFormat:@"%llu", id],
     @"url" : ToNS(item->GetOriginalUrl()),
     @"filename" : path.lastPathComponent ?: @"",
     @"path" : path ?: @"",
@@ -493,7 +587,7 @@ void OnDownloadUpdated(CefRefPtr<CefDownloadItem> item, CefRefPtr<CefDownloadIte
     @"total" : @(item->GetTotalBytes() > 0 ? item->GetTotalBytes() : -1),
     @"speed" : @(item->GetCurrentSpeed()),
     @"mimeType" : ToNS(item->GetMimeType()),
-    @"profile" : entry.profile ?: @"",
+    @"profile" : entry->profile ?: @"",
   });
 }
 
@@ -693,6 +787,7 @@ NSView *ParkingView() {
   MessagePump::Get().Stop();
   gContexts.clear();
   gDownloads.clear();
+  gDownloadIds.clear();
   gPermissions.clear();
   CefShutdown();
   delete gLoader;
@@ -751,7 +846,7 @@ NSView *ParkingView() {
 }
 
 static DownloadEntry *FindDownload(NSString *downloadId) {
-  auto it = gDownloads.find((uint32_t)downloadId.longLongValue);
+  auto it = gDownloads.find(strtoull(downloadId.UTF8String ?: "", nullptr, 10));
   return it == gDownloads.end() ? nullptr : &it->second;
 }
 
@@ -826,6 +921,8 @@ static DownloadEntry *FindDownload(NSString *downloadId) {
 
 + (void)releaseProfile:(NSString *)profile {
   gContexts.erase(profile.UTF8String);
+  // A private context goes for good: its downloads stop and nothing it downloaded stays in memory.
+  if (IsIncognito(profile)) ForgetPrivateDownloads(profile);
 }
 
 + (NSString *)rootCachePath {

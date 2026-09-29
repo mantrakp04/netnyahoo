@@ -114,6 +114,8 @@ test("incognito downloads never reach downloads.json and leave with their window
   S().closeWindow(incognito);
   assert.deepEqual(S().downloads.map((d) => d.id), ["1"]);
   assert.ok(S().windows[normal]);
+  S().upsertDownload(download("2", privateProfile, "cancelled"));
+  assert.deepEqual(S().downloads.map((d) => d.id), ["1"]);
 
   const { data } = loadSession();
   assert.deepEqual(data.downloads.map((d) => d.id), ["saved-0"]);

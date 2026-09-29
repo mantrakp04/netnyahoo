@@ -205,7 +205,8 @@ class TabRouter : public CefClient,
   bool OnBeforeDownload(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDownloadItem> item, const CefString &name,
                         CefRefPtr<CefBeforeDownloadCallback> callback) override {
     if (Client *c = Tab(browser)) return c->OnBeforeDownload(browser, item, name, callback);
-    return nn::OnBeforeDownload(item, name, callback);
+    CefRefPtr<CefFrame> page = browser->GetMainFrame();
+    return nn::OnBeforeDownload(item, name, callback, profile_, page ? ToNS(page->GetURL()) : nil);
   }
   void OnDownloadUpdated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDownloadItem> item,
                          CefRefPtr<CefDownloadItemCallback> callback) override {

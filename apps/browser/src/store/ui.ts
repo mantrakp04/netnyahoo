@@ -79,6 +79,10 @@ export const createUiSlice: StateCreator<BrowserState, [], [], UiSlice> = (set, 
   upsertDownload(d) {
     set((s) => {
       const exists = s.downloads.some((x) => x.id === d.id);
+      // A private window's downloads leave with it; the engine's late "cancelled" update mustn't bring one back.
+      if (!exists && d.profile && isIncognitoProfile(d.profile) && !Object.values(s.windows).some((w) => w.profileId === d.profile)) {
+        return {};
+      }
       const downloads = exists ? s.downloads.map((x) => (x.id === d.id ? d : x)) : [d, ...s.downloads].slice(0, MAX_DOWNLOADS);
       const focused = s.ui.focusedWindowId;
       const open = !exists && focused && downloadVisibleIn(d, s.windows[focused]);

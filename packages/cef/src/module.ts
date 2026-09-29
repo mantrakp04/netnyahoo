@@ -3,6 +3,7 @@ import { Cef } from "./native";
 export type DownloadState = "downloading" | "finished" | "failed" | "cancelled";
 
 export type Download = {
+  /** Unique across profiles for the app's lifetime (Chromium numbers downloads per profile). */
   id: string;
   url: string;
   filename: string;
