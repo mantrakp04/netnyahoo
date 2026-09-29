@@ -78,7 +78,9 @@ export const pledges: Pledge[] = [
 /** Passed without a screenshot. */
 export const alsoPassed: { title: string; body: string }[] = [
   { title: "Annexation, but consensual", body: "Imports from Chrome, Brave, Helium, Safari, Dia and Arc." },
-  { title: "Keeps secrets", body: "Passwords and passkeys, per profile. Better than his cabinet." },
+  { title: "Keeps secrets", body: "Passwords, passkeys and strong new ones, per profile. Better than his cabinet." },
+  { title: "Records travel under diplomatic seal", body: "Sync, end to end encrypted, through your own iCloud Drive. No account." },
+  { title: "Now in bulletproof glass", body: "An optional Liquid Glass sidebar in Arc’s layout, on macOS 26." },
   { title: "Updates itself", body: "Quietly, in the background. No press conference." },
   { title: "No AI, on purpose", body: "Nothing in here wants to chat." },
 ];
