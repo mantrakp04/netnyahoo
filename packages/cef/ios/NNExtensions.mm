@@ -159,9 +159,12 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
                   "})()";
   HostEval(profile, js, ^(id value, NSString *error) {
     if (error) return completion(@{@"error" : error});
+    NSArray *infos = [value isKindOfClass:NSDictionary.class] ? value[@"extensions"] : nil;
+    if (![infos isKindOfClass:NSArray.class]) return completion(@{@"error" : @"Unexpected extension list"});
     NSString *managed = ManagedRoot(@"").stringByDeletingLastPathComponent;
     NSMutableArray *list = [NSMutableArray array];
-    for (NSDictionary *info in value[@"extensions"]) {
+    for (NSDictionary *info in infos) {
+      if (![info isKindOfClass:NSDictionary.class]) continue;
       if ([info[@"id"] isEqual:blocker::ExtensionId()]) continue;
       NSMutableDictionary *item = [info mutableCopy];
       NSString *path = [info[@"path"] isKindOfClass:NSString.class] ? info[@"path"] : nil;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <map>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "include/cef_devtools_message_observer.h"
@@ -19,14 +20,15 @@ namespace nn {
 
 namespace {
 
-std::map<int, void (^)(NSDictionary *)> gCalls;
+// Keyed by browser and message id: each browser numbers its DevTools calls from 1, so ids alone collide.
+std::map<std::pair<int, int>, void (^)(NSDictionary *)> gCalls;
 std::map<int, CefRefPtr<CefRegistration>> gRegistrations;
 
 class Observer : public CefDevToolsMessageObserver {
  public:
   void OnDevToolsMethodResult(CefRefPtr<CefBrowser> browser, int message_id, bool success, const void *result,
                               size_t result_size) override {
-    auto it = gCalls.find(message_id);
+    auto it = gCalls.find({browser ? browser->GetIdentifier() : 0, message_id});
     if (it == gCalls.end()) return;
     auto completion = it->second;
     gCalls.erase(it);
@@ -268,7 +270,7 @@ void DevToolsCall(CefRefPtr<CefBrowser> browser, NSString *method, NSDictionary 
     if (completion) completion(nil);
     return;
   }
-  gCalls[id] = completion ? (void (^)(NSDictionary *))[completion copy] : ^(NSDictionary *) {};
+  gCalls[{bid, id}] = completion ? (void (^)(NSDictionary *))[completion copy] : ^(NSDictionary *) {};
 }
 
 void EvaluateWithGesture(CefRefPtr<CefBrowser> browser, NSString *expression, void (^completion)(id value)) {
