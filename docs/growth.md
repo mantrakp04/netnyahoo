@@ -57,4 +57,14 @@ or narrower.
 - **Local check:** `http://localhost:4321/?nnflag=band` (or `control`) forces a variant on localhost only;
   `?nndevice=phone|mac|other` forces the visitor class.
 
+- **PostHog:** experiment 98483 (https://eu.posthog.com/project/287835/experiments/98483), flag 293364,
+  launched 2026-09-29 17:23 UTC. Primary metric: funnel on `download_clicked` after exposure (PostHog uses
+  `$experiment_exposure`, sent with the flag call). Secondary: `download_clicked` with `location = office-band`.
+  Bayesian, test accounts filtered.
+
 Result: _pending._
+
+## Log
+
+- **2026-09-29 17:25 UTC:** shipped the above (site deploy). Checks every 30 min (:13 and :43 local) from the
+  owner's session: traffic, conversion by device, `send_to_mac_clicked`, experiment exposures, errors.
