@@ -1,0 +1,39 @@
+.claude/skills/release/SKILL.md
+  s_9c356f9574d31c::t_5135de44309556 114-116
+.claude/skills/release/scripts/quit.swift
+  s_9c356f9574d31c::t_2e85e5aef89db3 1-11
+.claude/skills/release/scripts/smoke.mjs
+  s_9c356f9574d31c::t_9c4eb6158181b6 3-4
+.claude/skills/release/scripts/smoke.sh
+  s_9c356f9574d31c::t_a9bc1ca3f75d98 11-12,27,30,37,75-108
+packages/cef/ios/NNCef.mm
+  s_9c356f9574d31c::t_bfb7af1097ef3a 4,253,628-634,728-731,735-744,746
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_fc748eb5b81ef7 14,203-207
+packages/cef/ios/NNChromePages.mm
+  s_9c356f9574d31c::t_36184812fa2e48 168,173-176
+packages/cef/ios/NNChromeUI.h
+  s_9c356f9574d31c::t_3209a352111a8d 44-46
+packages/cef/ios/NNChromeUI.mm
+  s_9c356f9574d31c::t_294368b985694f 142-148,171-175,240-250,283-289,376-380
+packages/cef/ios/NNDevTools.mm
+  s_9c356f9574d31c::t_9f72ca364d517b 191,200-203
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_53f88faad78ea0 618,621
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a620351741f417c2c55e9d473c10460ae2d5b6a3",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
