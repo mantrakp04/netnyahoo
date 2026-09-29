@@ -1,4 +1,5 @@
 import AppKit
+import ExpoModulesCore
 
 /// Chrome-hosted windows (docs/research/chrome-hosted-window.md): browser windows are Chrome's
 /// own Browser windows with the React root laid over them (NNChromeWindowHost in packages/cef,
@@ -65,5 +66,58 @@ enum ChromeWindows {
 
   static func removeRoot(of window: NSWindow) {
     host?.perform(NSSelectorFromString("removeRootViewOfWindow:"), with: window)
+  }
+}
+
+/// The window's profile, from the React commit that lays the profile out (`WindowProfile` in JS): an
+/// invisible view whose props arrive in the same batch of view updates as the profile's page, URL and
+/// sidebar. The Chrome window swap waits for that batch: swapping when the store changed, ahead of
+/// those views, put the old profile's page (blank while Chrome moved it) and URL in the new window for
+/// the 100 ms or so the commit took to arrive.
+public class WindowProfileModule: Module {
+  public func definition() -> ModuleDefinition {
+    Name("NetnyahooWindowProfile")
+
+    View(WindowProfileView.self) {
+      Prop("profile") { (view: WindowProfileView, value: String?) in view.profile = value ?? "" }
+      Prop("neighbours") { (view: WindowProfileView, value: [String]?) in view.neighbours = value ?? [] }
+      OnViewDidUpdateProps { view in view.scheduleSwap() }
+    }
+  }
+}
+
+final class WindowProfileView: ExpoView {
+  /// The engine's name for it ("" is the default profile).
+  var profile = ""
+  var neighbours: [String] = []
+  private var applied: (profile: String, neighbours: [String])?
+  private var observer: CFRunLoopObserver?
+
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    // Mounted with the root: the window was made for its profile, but its neighbours are made ahead.
+    if window != nil { scheduleSwap() }
+  }
+
+  /// Once this batch of view updates is in (React Native applies it in one main-queue block): when the
+  /// main run loop next goes idle.
+  func scheduleSwap() {
+    guard observer == nil else { return }
+    let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 0) { [weak self] _, _ in
+      self?.observer = nil
+      self?.apply()
+    }
+    self.observer = observer
+    CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+  }
+
+  private func apply() {
+    guard let window else { return }
+    if applied?.profile != profile { ChromeWindows.showProfile(profile, in: window) }
+    // The root may be in the profile's window now.
+    if applied?.neighbours != neighbours, let current = self.window { ChromeWindows.prepare(neighbours, for: current) }
+    applied = (profile, neighbours)
   }
 }

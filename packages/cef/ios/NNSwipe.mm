@@ -414,13 +414,51 @@ BOOL HandleDiscreteSwipe(NSWindow *window, NSPoint location, CGFloat deltaX) {
   return YES;
 }
 
+/// The window server keeps a scroll gesture's events on the window it began in, and so the events of
+/// gestures that start before the last one's momentum has run out ("latching"). A profile swap orders
+/// that window out: a user swiping back and forth kept swiping into a window off screen, whose views
+/// had left it, for as long as they kept going (seconds), and nothing moved. Such an event goes to our
+/// window under the pointer instead: nil to use it as it is.
+NSEvent *Unlatched(NSEvent *event) {
+  NSWindow *window = event.window;
+  if (window.isVisible) return nil;
+  const NSPoint screen = window ? [window convertPointToScreen:event.locationInWindow] : event.locationInWindow;
+  // Our frontmost window there (the window server's own answer may be another app's window over ours).
+  NSWindow *under = nil;
+  for (NSWindow *w in NSApp.orderedWindows)
+    if (w != window && w.isVisible && !w.ignoresMouseEvents && w.alphaValue > 0 && NSPointInRect(screen, w.frame)) {
+      under = w;
+      break;
+    }
+  if (!under) return nil;
+  CGEventRef cg = CGEventCreateCopy(event.CGEvent);
+  if (!cg) return nil;
+  // Field 51 is the event's window; CGEventSetWindowLocation its point, top-left in the window's frame.
+  CGEventSetIntegerValueField(cg, (CGEventField)51, under.windowNumber);
+  static auto setWindowLocation = (void (*)(CGEventRef, CGPoint))dlsym(RTLD_DEFAULT, "CGEventSetWindowLocation");
+  const NSPoint inWindow = [under convertPointFromScreen:screen];
+  if (setWindowLocation) setWindowLocation(cg, CGPointMake(inWindow.x, NSHeight(under.frame) - inWindow.y));
+  NSEvent *moved = [NSEvent eventWithCGEvent:cg];
+  CFRelease(cg);
+  return moved.window == under ? moved : nil;
+}
+
+/// A scroll event through the tracker, retargeted first if it was latched to a window off screen.
+/// Returns the event for AppKit to deliver, or nil when it was swallowed or delivered here.
+NSEvent *HandleScrollEvent(NSEvent *event, BOOL ignoreSystemPreference) {
+  NSEvent *moved = Unlatched(event);
+  if (!moved) return HandleScroll(event, ignoreSystemPreference);
+  if (NSEvent *out = HandleScroll(moved, ignoreSystemPreference)) [moved.window sendEvent:out];
+  return nil;
+}
+
 void InstallMonitor() {
   if (gMonitor) return;
   gMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel | NSEventMaskSwipe
                                                    handler:^NSEvent *(NSEvent *event) {
                                                      if (event.type == NSEventTypeSwipe)
                                                        return HandleDiscreteSwipe(event.window, event.locationInWindow, event.deltaX) ? nil : event;
-                                                     return HandleScroll(event, NO);
+                                                     return HandleScrollEvent(event, NO);
                                                    }];
 }
 
@@ -562,7 +600,7 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
         [log addObject:@{@"phase" : phase, @"error" : [NSString stringWithFormat:@"event window %@ at %@, expected %@",
                                                                   event.window, NSStringFromPoint(event.locationInWindow), NSStringFromPoint(inWindow)]}];
       }
-      NSEvent *out = HandleScroll(event, ignoreSystemPreference);
+      NSEvent *out = HandleScrollEvent(event, ignoreSystemPreference);
       [log addObject:@{
         @"phase" : phase,
         @"time" : @(event.timestamp),

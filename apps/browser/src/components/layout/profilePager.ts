@@ -42,6 +42,18 @@ const SETTLE = { ...springParams(PAGING_SETTLE_RESPONSE, 1), restDisplacementThr
 const SWITCH_NEAR = 0.03;
 /** After the switch, the pages and tint layers stay up this long (the backdrop redraws meanwhile). */
 const LINGER_MS = 150;
+/** How long Chrome takes to paint a page it had hidden again (measured 40–60 ms). */
+const WEB_PAGE_WARMUP_MS = 60;
+
+/**
+ * The page `profileId` shows in the window is a web page (ContentCard's web views), not the New Tab
+ * page or one of ours (netnyahoo://, components/pages).
+ */
+function showsWebPage(s: ReturnType<typeof useBrowser.getState>, windowId: string, profileId: string) {
+  const tab = s.tabs[s.windows[windowId]?.activeTabIds[profileId] ?? ""];
+  const url = tab?.navigation?.url ?? tab?.url;
+  return !!url && !!(tab!.navigation || tab!.adoptId) && !url.startsWith("netnyahoo://");
+}
 
 /** PageSwipeController's wheel paging (0x1005983c4): 1 pt, bursts 50 ms apart, 0.25 s between pages. */
 const WHEEL_THRESHOLD = 1;
@@ -182,16 +194,25 @@ class ProfilePager {
     if (profileId === current) return this.later(() => this.settle(this.slotOf(current) ?? 0, 0));
     const order = s.profileOrder;
     const side = order.indexOf(profileId) < order.indexOf(current) ? -1 : 1;
-    // The new page and the switch render in one commit: the window shows the profile at once
-    // (its Chrome window swaps in behind the sidebar), and the pages slide on from there.
-    unstable_batchedUpdates(() => {
-      this.arrange(current, [[profileId, side]]);
+    const generation = this.generation;
+    if (showsWebPage(s, this.windowId, profileId)) {
+      // The profile's page is a web page Chrome stopped painting while it was hidden: the new page
+      // keeps it painting (ContentCard's warm pages) and the switch waits until it has drawn, so it
+      // shows whole instead of its background alone for 40–60 ms. The pages slide meanwhile.
+      unstable_batchedUpdates(() => this.arrange(current, [[profileId, side]]));
       this.target = profileId;
-      this.finish();
-    });
+      setTimeout(() => this.target === profileId && this.finish(), WEB_PAGE_WARMUP_MS);
+    } else {
+      // The new page and the switch render in one commit: the window shows the profile at once
+      // (its Chrome window swaps in behind the sidebar), and the pages slide on from there.
+      unstable_batchedUpdates(() => {
+        this.arrange(current, [[profileId, side]]);
+        this.target = profileId;
+        this.finish();
+      });
+    }
     // The slide starts on the next frame, once the swap and the switch's view updates have landed on
     // the main thread: started with them, its first frames would be dropped.
-    const generation = this.generation;
     this.later(() => requestAnimationFrame(() => generation === this.generation && this.settle(this.slotOf(profileId) ?? 0, 0)));
   }
 

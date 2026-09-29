@@ -256,6 +256,10 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 @property (nonatomic, strong, nullable) NSColor *pageBackgroundColor;
 /// Hidden browsers keep their state but stop painting and throttle timers.
 @property (nonatomic) BOOL visible;
+/// Hidden but still painting, so that showing it shows the page at once rather than its background
+/// until the renderer has drawn again (the page a profile swipe may land on). The page counts as
+/// shown to Chrome and the page itself; the view is transparent.
+@property (nonatomic) BOOL warm;
 /// Picture-in-picture the playing video when the tab is hidden (and leave it when shown).
 @property (nonatomic) BOOL autoPictureInPicture;
 /// YES while the tab sleeps (-discard:, or Chrome discarded it) until it loads again.

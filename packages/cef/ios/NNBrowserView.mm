@@ -157,6 +157,8 @@ NSString *const kExitPictureInPictureScript =
   BOOL _chromeDiscarded;
   BOOL _autoPictureInPictureActive;
   BOOL _muted;
+  /// The page hides at the end of this turn (applyPainting).
+  BOOL _hidePending;
   /// Watches the hosted page view's frame (see -keepPageFrame:).
   id _frameObserver;
   /// DevTools docked next to the page (Chrome-hosted windows): their view fills this one, and
@@ -255,13 +257,13 @@ NSString *const kExitPictureInPictureScript =
       else [self addSubview:devtools];
     }
     devtools.frame = self.bounds;
-    devtools.hidden = !_visible;
+    devtools.hidden = !self.paints;
     _inspectedBounds = NSMakeRect(bounds.x, bounds.y, bounds.width, bounds.height);  // this view is flipped
   }
   if (page.superview == self) {
     page.frame = self.pageFrame;
     // DevTools may leave the page no room ("hide inspected contents").
-    page.hidden = !_visible || (devtools && NSIsEmptyRect(page.frame));
+    page.hidden = !self.paints || (devtools && NSIsEmptyRect(page.frame));
   }
 #endif
 }
@@ -429,7 +431,7 @@ NSString *const kExitPictureInPictureScript =
   // Chromium may have sized the page differently (Document PiP opens at 400×300).
   browserView.frame = NSInsetRect(self.bounds, 0, 1);
   browserView.frame = self.bounds;
-  browserView.hidden = !_visible;
+  browserView.hidden = !self.paints;
   [self keepPageFrame:browserView];
   if (_muted) _client->SetUserMuted(true);
 #if NN_TAB_DISCARD
@@ -485,12 +487,49 @@ NSString *const kExitPictureInPictureScript =
   [self.delegate browserView:self event:name payload:payload];
 }
 
+/// The page is drawn: shown, or warm.
+- (BOOL)paints {
+  return _visible || _warm;
+}
+
+/// A hidden view hides its page (Chrome stops painting it); a warm one only turns transparent.
+/// Hiding waits for the end of this turn: a page going from warm to shown (or back) gets its two
+/// props one after the other, and hidden in between Chrome dropped its frame (the page then showed
+/// its background alone until the renderer had drawn again).
+- (void)applyPainting {
+  self.alphaValue = _visible || !_warm ? 1 : 0;
+  if (!self.paints) {
+    if (_hidePending) return;
+    _hidePending = YES;
+    __weak NNBrowserView *weakSelf = self;
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+      NNBrowserView *view = weakSelf;
+      if (!view) return;
+      view->_hidePending = NO;
+      if (!view.paints) [view showPage:NO];
+    });
+    CFRunLoopWakeUp(CFRunLoopGetMain());
+    return;
+  }
+  if (_frozen) self.frozen = NO;
+  [self showPage:YES];
+}
+
+- (void)showPage:(BOOL)shown {
+  for (NSView *sub in self.subviews) sub.hidden = !shown;
+  if (_devtoolsView) [self layoutDockedDevTools];
+}
+
+- (void)setWarm:(BOOL)warm {
+  if (_warm == warm) return;
+  _warm = warm;
+  [self applyPainting];
+}
+
 - (void)setVisible:(BOOL)visible {
   if (_visible == visible) return;
   _visible = visible;
-  if (visible && _frozen) self.frozen = NO;
-  for (NSView *sub in self.subviews) sub.hidden = !visible;
-  if (_devtoolsView) [self layoutDockedDevTools];
+  [self applyPainting];
   if (visible) host::TabShown(self);
   if (self.window) host::LayoutChanged(self.window);
   if (visible && _discardedURL && self.window) {
@@ -772,7 +811,7 @@ NSString *const kExitPictureInPictureScript =
 }
 
 - (void)setFrozen:(BOOL)frozen {
-  if (frozen == _frozen || (frozen && _visible)) return;
+  if (frozen == _frozen || (frozen && self.paints)) return;
   _frozen = frozen;
   // Freezing also marks the page hidden; it's shown again by the view unhiding.
   if (_browser) DevToolsCall(_browser, @"Page.setWebLifecycleState", @{@"state" : frozen ? @"frozen" : @"active"}, nil);

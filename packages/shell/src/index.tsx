@@ -282,6 +282,22 @@ export const openWindow = (id: string, options: OpenWindowOptions = {}) => Shell
  */
 export const setWindowProfile = (id: string, profile: string, neighbours: string[]) =>
   Shell.setWindowProfile?.(id, profile, neighbours) ?? Promise.resolve();
+
+export type WindowProfileProps = ViewProps & {
+  /** The engine profile the window shows. */
+  profile: string;
+  /** The profiles it can page to next, whose Chrome windows are made ahead. */
+  neighbours: string[];
+};
+/**
+ * The window's profile, set in the same commit as the views that show it: its Chrome window takes the
+ * app window over once those views are in (ChromeWindows.swift › WindowProfileView), instead of ahead
+ * of them. Null in builds that predate it (setWindowProfile does the swap there).
+ */
+export const WindowProfile: ComponentType<WindowProfileProps> | null = requireOptionalNativeModule("NetnyahooWindowProfile")
+  ? requireNativeViewManager<WindowProfileProps>("NetnyahooWindowProfile")
+  : null;
+
 export const closeWindow = (id: string) => Shell.closeWindow(id);
 export const focusWindow = (id: string) => Shell.focusWindow(id);
 export const setWindowTitle = (id: string, title: string) => Shell.setWindowTitle(id, title);

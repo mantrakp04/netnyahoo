@@ -13,6 +13,7 @@ import {
   setWindowProfile,
   setWindowTitle,
   windowIds,
+  WindowProfile,
   type MenuBookmark,
   type MenuState,
 } from "@netnyahoo/shell";
@@ -115,8 +116,9 @@ export function startNativeSync() {
     }
     if (prev && s.tabs === prev.tabs && s.windows === prev.windows && s.profiles === prev.profiles) return;
     // An app window is one Chrome window per profile: the one of the profile shown takes over, and
-    // its neighbours in profile order are made ahead.
-    for (const id of open) {
+    // its neighbours in profile order are made ahead. Builds with the WindowProfile view do it from the
+    // commit that shows the profile (components/layout/WindowProfile).
+    for (const id of WindowProfile ? [] : open) {
       const w = s.windows[id]!;
       const profile = engineProfile(w.profileId);
       const key = w.incognito ? profile : `${profile}|${s.profileOrder.join(",")}`;

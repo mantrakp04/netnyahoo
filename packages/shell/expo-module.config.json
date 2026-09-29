@@ -19,7 +19,8 @@
       "KeychainModule",
       "DockSelectionModule",
       "InlineCompletionModule",
-      "TranslateModule"
+      "TranslateModule",
+      "WindowProfileModule"
     ]
   }
 }

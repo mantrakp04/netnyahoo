@@ -17,6 +17,7 @@ import { useFullscreenTab } from "./components/layout/pageState";
 import { ProfileSwipe, ProfileTint } from "./components/layout/ProfileSwipe";
 import { TOP_STRIP_HEIGHT, TopStripPeek, TopTabStrip } from "./components/layout/TopTabStrip";
 import { useTabLayout } from "./components/layout/windowLayout";
+import { WindowProfile } from "./components/layout/WindowProfile";
 import { Sidebar } from "./components/Sidebar";
 import { SidebarOverlays } from "./components/sidebar/Overlays";
 import { useSidebarWidth } from "./components/sidebar/tokens";
@@ -61,6 +62,7 @@ function BrowserWindow() {
   return (
     <View style={{ flex: 1, flexDirection: "row" }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       <WindowBackdrop vibrancy {...theme.backdrop} colors={theme.windowTint} grainOpacity={theme.grain} style={StyleSheet.absoluteFill} />
+      <WindowProfile />
       {/* While the sidebar pages between profiles, the tint cross-fades between their colours. */}
       <ProfileTint />
       {showSidebar && (

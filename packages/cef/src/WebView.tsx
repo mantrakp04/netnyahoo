@@ -195,6 +195,11 @@ export type WebViewProps = ViewProps & {
    */
   standalone?: boolean;
   visible?: boolean;
+  /**
+   * Hidden but still painting (transparent), so showing it shows the page at once: the page a
+   * profile swipe may land on. Ignored while `visible`.
+   */
+  warm?: boolean;
   pageBackgroundColor?: string;
   /**
    * Picture-in-picture while the tab is hidden (Dia's auto-PiP): a page that

@@ -153,10 +153,23 @@ NSWindow *CoverWindow(NSWindow *window) {
   return cover;
 }
 
+/// Whether a Chrome window shows its own views. They're opaque (a grey frame and a few buttons), so a
+/// window without our root shows them unless they're hidden.
+void SetChromeViewsShown(NSWindow *window, BOOL shown) {
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  window.contentView.layer.hidden = !shown;
+  [CATransaction commit];
+}
+
 /// Our root leaves `from` for `to` (both of one app window), committed.
 void MoveRoot(NSView *root, NSWindow *from, NSWindow *to) {
   objc_setAssociatedObject(from, kRootKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   ((id<NNEmbeddingContentView>)from.contentView).netnyahooEmbeddedView = nil;
+  // In the commit that takes our views out, `from` stops showing anything: ordering it out reaches
+  // the window server a few frames after the commit, and meanwhile it showed Chrome's grey frame
+  // and toolbar buttons over the whole window.
+  SetChromeViewsShown(from, NO);
   [NNChromeWindowHost embedRootView:root inWindow:to];
   // The traffic lights' spot is the app window's: it follows our views.
   objc_setAssociatedObject(to, kLightsCenterKey, objc_getAssociatedObject(from, kLightsCenterKey), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -179,8 +192,8 @@ void Swap(NSWindow *from, NSWindow *to) {
   [to setFrame:from.frame display:NO];
   NSWindow *cover = [strategy isEqualToString:@"snapshot"] ? CoverWindow(from) : nil;
   [to orderWindow:NSWindowBelow relativeTo:from.windowNumber];
-  // Transparent: once our views leave, the window leaving shows nothing (its compositor clears to
-  // transparent), so the window behind, already showing them, is what's on screen.
+  // Transparent: once our views leave, the window leaving shows nothing (MoveRoot hides its Chrome
+  // views), so the window behind, already showing them, is what's on screen.
   if ([strategy isEqualToString:@"transparent"]) from.backgroundColor = NSColor.clearColor;
   MoveRoot(root, from, to);
   [from orderOut:nil];
@@ -412,6 +425,7 @@ NSView *NNWindowRootView(NSWindow *window) {
   if (!TakesEmbeddedView(content)) return;
   root.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   root.frame = content.bounds;
+  SetChromeViewsShown(window, YES);
   [content addSubview:root];
   ((id<NNEmbeddingContentView>)content).netnyahooEmbeddedView = root;
   objc_setAssociatedObject(window, kRootKey, root, OBJC_ASSOCIATION_RETAIN_NONATOMIC);

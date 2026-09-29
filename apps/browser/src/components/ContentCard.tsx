@@ -22,6 +22,7 @@ import { patchPage, pageOf, setBrowserId, setPopover, useFullscreenTab, usePage,
 import { SadTab, StatusBubble } from "./layout/PaneOverlays";
 import { DropTargets, SplitDividers, SplitToast } from "./layout/SplitChrome";
 import { SplitEmptyState } from "./layout/SplitEmptyState";
+import { pagerFor } from "./layout/profilePager";
 import { openLinkInSplit } from "./layout/splitActions";
 import { setUrlAnchor, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { NewTabPage } from "./NewTabPage";
@@ -90,6 +91,25 @@ export function ContentCard() {
     }
   }, [panes]);
 
+  // While the sidebar pages between profiles, the pages it may land on keep painting (hidden), so a
+  // switch shows them drawn rather than their background until the renderer catches up.
+  const pagerPages = pagerFor(windowId).state((st) => st.pages);
+  const warm = useBrowser(
+    useShallow((s) => {
+      const w = s.windows[windowId];
+      if (!w || !pagerPages) return [];
+      return pagerPages.map((p) => (p.id === w.profileId ? undefined : w.activeTabIds[p.id])).filter((id): id is string => !!id);
+    }),
+  );
+  // A split shows all its panes: they paint at their places in it, so showing them doesn't resize them.
+  const warmSplits = useBrowser(useShallow((s) => warm.map((id) => splitOf(s, id)).filter((v): v is SplitView => !!v)));
+  const warmPanes = useMemo(() => {
+    const out: Record<string, Rect> = {};
+    for (const id of warm) out[id] = { x: 0, y: 0, width: size.width, height: size.height };
+    for (const v of warmSplits) Object.assign(out, splitGeometry(v, size.width, size.height).panes);
+    return out;
+  }, [warm, warmSplits, size.width, size.height]);
+
   const shown = useBrowser(
     useShallow((s) =>
       [...new Set([...mounted, ...Object.keys(panes)])]
@@ -143,6 +163,7 @@ export function ContentCard() {
               geometry={geometryFor(rect)}
               toolbar={!addressInSidebar}
               mounted={mounted.includes(tabId)}
+              warm={warmPanes[tabId]}
             />
           );
         })}
@@ -169,6 +190,7 @@ function TabPane({
   geometry,
   toolbar,
   mounted,
+  warm,
 }: {
   tabId: string;
   windowId: string;
@@ -181,6 +203,8 @@ function TabPane({
   /** False when the address bar is in the sidebar: the page starts at the card's top. */
   toolbar: boolean;
   mounted: boolean;
+  /** Hidden, but its page keeps painting at this place (a profile swipe may land on it). */
+  warm: Rect | undefined;
 }) {
   const theme = useTheme();
   const visible = !!rect;
@@ -188,8 +212,10 @@ function TabPane({
   const zoom = useBrowser((s) => s.tabs[tabId]?.zoom ?? 1);
   const popover = usePopover(tabId);
   const newTabShown = usePage(tabId, (p) => !!p.newTabShown);
-  const inSplit = visible && !!split?.tabIds.includes(tabId);
-  const frame = rect ?? { x: 0, y: 0, ...full };
+  // A warm pane of a split is laid out as in it (no bookmarks bar), so showing it doesn't resize it.
+  const inSomeSplit = useBrowser((s) => !!warm && !!splitOf(s, tabId));
+  const inSplit = visible ? !!split?.tabIds.includes(tabId) : inSomeSplit;
+  const frame = rect ?? warm ?? { x: 0, y: 0, ...full };
   // A web view created from here keeps the New Tab page as its first history entry.
   useEffect(() => {
     if (visible && isNewTab && !mounted) patchPage(tabId, { wasNewTab: true });
@@ -220,7 +246,7 @@ function TabPane({
       {!fullscreen && !inSplit && <BookmarksBar tabId={tabId} placeholder={!visible} />}
       {visible && !fullscreen && <ShareBar tabId={tabId} />}
       <View style={{ flex: 1 }}>
-        {mounted && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} />}
+        {mounted && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={!!warm && !newTabShown && !isNewTab} />}
         {visible && isNewTab && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} />)}
         {/* netnyahoo://history, bookmarks, downloads (components/pages): no web view. */}
         {visible && <InternalPage tabId={tabId} />}
@@ -250,7 +276,7 @@ const isBlank = (url: string) => !url || url === "about:blank";
 /** Scheme + host + path: a hash change or title update isn't a new page. */
 const pageKey = (url: string) => url.replace(/#.*$/, "");
 
-function TabWebView({ tabId, visible }: { tabId: string; visible: boolean }) {
+function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean; warm: boolean }) {
   const theme = useTheme();
   const navigation = useBrowser((s) => s.tabs[tabId]?.navigation);
   const adoptId = useBrowser((s) => s.tabs[tabId]?.adoptId);
@@ -305,6 +331,7 @@ function TabWebView({ tabId, visible }: { tabId: string; visible: boolean }) {
       adoptId={adoptId}
       transferKey={tabId}
       visible={visible}
+      warm={warm}
       autoPictureInPicture={autoPictureInPicture}
       pageBackgroundColor={theme.card}
       onReady={(browserId) => {
