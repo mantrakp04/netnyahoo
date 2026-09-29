@@ -101,3 +101,8 @@ Result: _pending._
   - phones: 900 px wide, panned to the middle, so it's readable;
   - it closes on tap, click or Escape.
   Event: `screenshot_opened { shot }`. Watch it next to the dead clicks on `img`.
+- **2026-09-29 23:17 UTC check:** 2,905 visitors all time. Traffic is tapering: 468/h at 20:00, 347 at 21:00,
+  279 at 22:00. The lightbox has only been live ~8 min (26 visitors, no downloads or `screenshot_opened` yet).
+  Experiment: band 16/294 (5.4%), control 17/330 (5.2%), even. The band's own button still has no clicks;
+  more band-arm downloads came from the hero (14 vs 9). Keep running (under 300 per arm, day 1 of 7).
+  No new errors or rage clicks. Nothing shipped.
