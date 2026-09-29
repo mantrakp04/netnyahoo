@@ -94,7 +94,10 @@ else
   exited="" report=""
   for _ in $(seq 1 10); do
     sleep 1
-    exited="$(grep -o 'termination reported by launchd ([0-9, ]*)' "$work/exit.log" | head -1 | sed 's/.*launchd //' || true)"
+    # The app's own line ("[app<…>:<pid>] termination reported"). Lines for XPC services it used also
+    # carry its pid ("[xpcservice<…([app<…>:<pid>])…>:<their pid>]"), and launchd SIGKILLs those
+    # (2, 9, 9) as their client exits, sometimes logging them first.
+    exited="$(grep -o ">:$pid\] termination reported by launchd ([0-9, ]*)" "$work/exit.log" | head -1 | sed 's/.*launchd //' || true)"
     report="$(grep -l "\"pid\" : $pid," ~/Library/Logs/DiagnosticReports/Netnyahoo-*.ips \
       ~/Library/Logs/DiagnosticReports/Retired/Netnyahoo-*.ips 2>/dev/null | head -1 || true)"
     [ -n "$report" ] && break
