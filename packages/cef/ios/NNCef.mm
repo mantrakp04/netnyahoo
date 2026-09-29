@@ -627,12 +627,8 @@ bool RequestMediaAccess(CefRefPtr<CefBrowser> browser, const CefString &origin, 
     [names addObject:@"screen"];
   NSString *profile = ProfileForContext(browser->GetHost()->GetRequestContext()) ?: @"";
   auto types = site::TypesForMedia(permissions);
+  // Share picker approvals were checked by the tab's client (Client::OnRequestMediaAccessPermission).
   bool desktop = permissions & (CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE);
-  if (desktop && site::ConsumeDesktopCapture(browser->GetIdentifier())) {
-    site::NoteGrantedMedia(browser->GetIdentifier(), permissions);
-    callback->Continue(permissions);
-    return true;
-  }
   if (!desktop && !types.empty()) {
     cef_content_setting_values_t decision = site::Decision(profile, ToNS(origin), types);
     if (decision == CEF_CONTENT_SETTING_VALUE_ALLOW) {

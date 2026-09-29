@@ -29,6 +29,7 @@ What the build adds:
 | `cef-zwindow-z-devtools.patch` (after `cef-zwindow-translucent.patch`) | Docked DevTools in client windows: `CefBrowserHost::GetDockedDevTools` and `CefDisplayHandler::OnDevToolsDockChanged` (below). The client shows DevTools' contents next to the page, as it shows the page |
 | `cef-zwindow-zz-devtools-toolbox.patch` (after `cef-zwindow-z-devtools.patch`) | Device mode's toolbox (`device_mode_emulation_frame.html`, the device toolbar and rulers shown in the tab while DevTools are undocked) may open from DevTools that have no CEF browser of their own (docked, or not yet in their window). Stock CEF cancelled that `window.open`, so undocked DevTools lost device mode and the page its emulated viewport |
 | `cef-zz-media-router-shutdown.patch` | A context that outlives its Profile (the global one, until CEF shuts down) drops its media router objects when the Profile goes, while the Profile's MediaRouter still exists. Stock CEF dropped them only with the context, after the router was gone, so an app that had used `CefMediaRouter` on the default profile failed a `MediaRoutesObserver` check on every quit |
+| `cef-zz-media-source.patch` (after `cef-zz-media-router-shutdown.patch`) | `CefGetMediaAccessDesktopSource`: the desktop source a media access request would capture, so the app can hold a screen-sharing approval to the source the user picked (`CEF_NN_MEDIA_REQUEST_SOURCE`). `OnRequestMediaAccessPermission` goes to the requesting frame's own browser; Chrome's window delegate used to pass its active tab |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs (we host each tab's view in our own views) |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the Browser window to the app: Chrome only tracks the state, and the app shows the page full screen itself (`CefDisplayHandler::OnFullscreenModeChange`) |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
@@ -54,7 +55,7 @@ it).
 The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
 substitution). Step 2 applies the `cef-*.patch` files in name order, which is the order they were
 made in: `cef-chrome-tabs`, `cef-tab-capture`, `cef-tab-state`, `cef-ui-surfaces`, `cef-ui-triggers`,
-`cef-zidle-pump`, `cef-zwindow-client`, `cef-zwindow-keys`, `cef-zwindow-translucent`, `cef-zwindow-z-devtools`, `cef-zwindow-zz-devtools-toolbox`, `cef-zz-media-router-shutdown` (checked on a clean worktree of the CEF checkout on 2026-09-25: the
+`cef-zidle-pump`, `cef-zwindow-client`, `cef-zwindow-keys`, `cef-zwindow-translucent`, `cef-zwindow-z-devtools`, `cef-zwindow-zz-devtools-toolbox`, `cef-zz-media-router-shutdown`, `cef-zz-media-source` (checked on a clean worktree of the CEF checkout on 2026-09-25: the
 first four reproduce the built tree exactly; `cef-ui-triggers` reverse-applies cleanly to it;
 `cef-zwindow-client` and `chromium-window-hosted` were made as diffs of their files against the fully patched
 tree). A new patch needs a name that sorts last.
@@ -374,5 +375,9 @@ In the app:
   whether tab capture is available.
 - The share picker answers a `displayMediaRequest` with that id, and the page script adds tab audio
   when the page asked for audio.
+- The answer lets one getUserMedia request of the asking frame, within 15 s, capture exactly the picked
+  source (`CefGetMediaAccessDesktopSource`), with desktop audio only for a tab the page asked audio of.
+  Anything else is refused: the page script runs in the page's world, so the page decides what
+  getUserMedia asks for.
 
 Verified in the app: a "Tab" track at 1558×1080 delivering frames, plus a "Tab Audio" track.

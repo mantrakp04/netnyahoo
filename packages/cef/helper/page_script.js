@@ -4,13 +4,35 @@
   if (!/^(https?|file):$/.test(location.protocol)) return () => {};
   const isTop = window === window.top;
   const handlers = Object.create(null);
-  const send = (kind, data) => post(kind, JSON.stringify(data));
+  // Page code runs after this and can replace any global or prototype method:
+  // keep the originals, and send plain copies (a page's Object.prototype.toJSON
+  // can't reach them). The browser still checks every message.
+  const { stringify: toJSON, parse: fromJSON } = JSON;
+  const apply = Reflect.apply;
+  const { keys, setPrototypeOf } = Object;
+  const { isArray } = Array;
+  const { isFinite } = Number;
+  const startsWith = String.prototype.startsWith;
+  const plain = (value, depth) => {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (typeof value === "number") return isFinite(value) ? value : null;
+    if (typeof value !== "object" || depth > 4) return null;
+    const out = setPrototypeOf(isArray(value) ? [] : {}, null);
+    const names = keys(value);
+    for (let i = 0; i < names.length; i++) {
+      const v = value[names[i]];
+      if (v !== undefined && typeof v !== "function") out[names[i]] = plain(v, depth + 1);
+    }
+    return out;
+  };
+  const serialize = (data) => toJSON(plain(data, 0));
+  const send = (kind, data) => post(kind, serialize(data));
   const onReady = (fn) =>
     document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", fn, { once: true }) : fn();
   const guard = (fn) =>
     function () {
       try {
-        return fn.apply(this, arguments);
+        return apply(fn, this, arguments);
       } catch (e) {}
     };
   const later = (fn, ms) => {
@@ -82,7 +104,7 @@
       };
       if (!state.title && !el) state = null;
     }
-    const json = JSON.stringify(state && { ...state, position: Math.round(state.position) });
+    const json = serialize(state && { ...state, position: Math.round(state.position) });
     if (json === lastNowPlaying) return;
     lastNowPlaying = json;
     send("nowPlaying", state && { ...state, timestamp: Date.now() });
@@ -483,13 +505,14 @@
       }
       const video = request.constraints.video;
       const frameRate = (video && video.frameRate && (video.frameRate.max || video.frameRate.ideal || video.frameRate)) || 30;
-      const tabAudio = !!request.constraints.audio && sourceId.startsWith("web-contents-media-stream://");
-      getUserMedia
-        .call(request.self, {
+      const tabAudio = !!request.constraints.audio && apply(startsWith, sourceId, ["web-contents-media-stream://"]);
+      // The browser allows only the approved source, whatever reaches getUserMedia.
+      apply(getUserMedia, request.self, [
+        {
           audio: tabAudio ? { mandatory: { chromeMediaSource: "desktop" } } : false,
           video: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId, maxWidth: 3840, maxHeight: 2160, maxFrameRate: +frameRate || 30 } },
-        })
-        .then(request.resolve, request.reject);
+        },
+      ]).then(request.resolve, request.reject);
     };
   };
 
@@ -501,7 +524,7 @@
 
   const receive = (kind, json) => {
     const handler = handlers[kind];
-    if (handler) guard(handler)(JSON.parse(json));
+    if (handler) guard(handler)(fromJSON(json));
   };
   if (!isTop) return receive;
 

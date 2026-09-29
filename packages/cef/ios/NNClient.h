@@ -192,7 +192,12 @@ class Client : public CefClient,
   NSString *lastBlocked_ = nil;
   std::vector<std::string> pendingNavigation_;
   std::map<std::string, std::string> notificationFrames_;
-  std::map<std::string, std::pair<std::string, int>> displayRequests_;
+  struct DisplayRequest {
+    std::string frameId;
+    int pageId;
+    bool audio;
+  };
+  std::map<std::string, DisplayRequest> displayRequests_;
   bool committedPage_ = false;
   int tabStripIndex_ = -1;
   bool tabStripActive_ = false;

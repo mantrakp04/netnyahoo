@@ -28,8 +28,16 @@ cef_content_setting_values_t Decision(NSString *profile, NSString *origin,
 void Remember(NSString *profile, NSString *origin, const std::vector<cef_content_setting_types_t> &types,
               cef_content_setting_values_t value, int temporaryForBrowser);
 void NoteGrantedMedia(int browserId, uint32_t mediaPermissions);
-void AllowDesktopCapture(int browserId);
-bool ConsumeDesktopCapture(int browserId);
+// A screen-sharing approval: the next desktop capture request of |frameId|
+// (of any frame when empty) showing |origin| may capture |source| with no more
+// than |media| (CEF_MEDIA_PERMISSION_DESKTOP_*), within 15 seconds.
+void AllowDesktopCapture(int browserId, const std::string &frameId, NSString *origin, NSString *source,
+                         uint32_t media);
+enum class DesktopCaptureGrant { kNone, kAllowed, kRefused };
+// Uses up the browser's approval. A nil |source| (an engine that can't tell)
+// skips the source check.
+DesktopCaptureGrant ConsumeDesktopCapture(int browserId, const std::string &frameId, NSString *origin,
+                                          NSString *source, uint32_t permissions);
 NSArray<NSDictionary *> *DesktopCaptureSources();
 uint32_t GrantedMedia(int browserId);
 void ClearGrantedMedia(int browserId);

@@ -1,0 +1,150 @@
+diff --git a/include/cef_media_capture.h b/include/cef_media_capture.h
+--- a/include/cef_media_capture.h
++++ b/include/cef_media_capture.h
+@@ -41,6 +41,7 @@
+ 
+ #include "include/cef_base.h"
+ #include "include/cef_browser.h"
++#include "include/cef_permission_handler.h"
+ 
+ #if CEF_API_ADDED(CEF_EXPERIMENTAL)
+ ///
+@@ -61,6 +62,19 @@
+ ///
+ /*--cef(added=experimental)--*/
+ CefString CefGetMediaCaptureSourceId(CefRefPtr<CefBrowser> browser);
++
++///
++/// Returns the desktop media source that the media access request behind
++/// |callback| captures if it is allowed, as a DesktopMediaID string
++/// ("screen:<id>:0", "window:<id>:0" or a CefGetMediaCaptureSourceId id). A
++/// request without a `chromeMediaSourceId` captures the full desktop
++/// ("screen:-1:0"). Returns an empty string if the request asks for no desktop
++/// video, or for a source that can't be parsed. Pass the callback of
++/// CefPermissionHandler::OnRequestMediaAccessPermission before continuing it.
++///
++/*--cef(added=experimental)--*/
++CefString CefGetMediaAccessDesktopSource(
++    CefRefPtr<CefMediaAccessCallback> callback);
+ #endif
+ 
+ #endif  // CEF_INCLUDE_CEF_MEDIA_CAPTURE_H_
+diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
+--- a/include/cef_netnyahoo.h
++++ b/include/cef_netnyahoo.h
+@@ -111,4 +111,9 @@
+ // the page).
+ #define CEF_NN_DOCKED_DEVTOOLS 1
+ 
++// CefGetMediaAccessDesktopSource (include/cef_media_capture.h).
++// CefPermissionHandler::OnRequestMediaAccessPermission goes to the requesting
++// frame's own browser, not its Chrome window's active tab.
++#define CEF_NN_MEDIA_REQUEST_SOURCE 1
++
+ #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
+diff --git a/libcef/browser/media_access_query.cc b/libcef/browser/media_access_query.cc
+--- a/libcef/browser/media_access_query.cc
++++ b/libcef/browser/media_access_query.cc
+@@ -13,6 +13,7 @@
+ #include "cef/libcef/browser/thread_util.h"
+ #include "cef/libcef/common/cef_switches.h"
+ #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
++#include "content/public/browser/global_routing_id.h"
+ #include "content/public/browser/render_frame_host.h"
+ #include "content/public/browser/render_process_host.h"
+ #include "content/public/browser/web_contents.h"
+@@ -114,6 +115,17 @@
+     return requested_permissions;
+   }
+ 
++  // The desktop source this request captures if allowed, or empty.
++  std::string desktop_source() const {
++    if (!desktop_video_requested()) {
++      return std::string();
++    }
++    const auto media_id = RequestedDesktopMediaId();
++    return media_id.type == content::DesktopMediaID::TYPE_NONE
++               ? std::string()
++               : media_id.ToString();
++  }
++
+   [[nodiscard]] CallbackType DisconnectCallback() {
+     return std::move(callback_);
+   }
+@@ -179,6 +191,16 @@
+             blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE);
+   }
+ 
++  content::DesktopMediaID RequestedDesktopMediaId() const {
++    if (!request_.requested_video_device_ids.empty() &&
++        !request_.requested_video_device_ids.front().empty()) {
++      return content::DesktopMediaID::Parse(
++          request_.requested_video_device_ids.front());
++    }
++    return content::DesktopMediaID(content::DesktopMediaID::TYPE_SCREEN,
++                                   -1 /* webrtc::kFullDesktopScreenId */);
++  }
++
+   blink::mojom::StreamDevicesSetPtr GetRequestedMediaDevices() const {
+     CEF_REQUIRE_UIT();
+ 
+@@ -205,15 +227,7 @@
+ 
+     content::DesktopMediaID media_id;
+     if (desktop_video_requested()) {
+-      if (!request_.requested_video_device_ids.empty() &&
+-          !request_.requested_video_device_ids.front().empty()) {
+-        media_id = content::DesktopMediaID::Parse(
+-            request_.requested_video_device_ids.front());
+-      } else {
+-        media_id =
+-            content::DesktopMediaID(content::DesktopMediaID::TYPE_SCREEN,
+-                                    -1 /* webrtc::kFullDesktopScreenId */);
+-      }
++      media_id = RequestedDesktopMediaId();
+       if (media_id.type != content::DesktopMediaID::TYPE_NONE) {
+         video_devices.emplace_back(
+             request_.video_type, media_id.ToString(),
+@@ -345,6 +359,7 @@
+   void Cancel() override { Continue(CEF_MEDIA_PERMISSION_NONE); }
+ 
+   [[nodiscard]] CallbackType Disconnect() { return std::move(callback_); }
++  std::string DesktopSource() const { return callback_.desktop_source(); }
+   bool IsDisconnected() const { return callback_.is_null(); }
+ 
+  private:
+@@ -380,6 +395,15 @@
+     bool default_disallow) {
+   CEF_REQUIRE_UIT();
+ 
++  // Ask the requesting frame's own browser. A Chrome window's delegate passes
++  // its active tab, which may not be the tab that asked.
++  CefRefPtr<CefBrowserHostBase> requester =
++      CefBrowserHostBase::GetBrowserForGlobalId(content::GlobalRenderFrameHostId(
++          request.render_process_id, request.render_frame_id));
++  if (requester) {
++    browser = requester.get();
++  }
++
+   CefMediaAccessQuery query(browser, request, std::move(callback));
+ 
+   if (CheckCommandLinePermission()) {
+@@ -429,6 +453,18 @@
+ 
+ }  // namespace media_access_query
+ 
++CefString CefGetMediaAccessDesktopSource(
++    CefRefPtr<CefMediaAccessCallback> callback) {
++  if (!callback) {
++    return CefString();
++  }
++  // CefMediaAccessCallbackImpl is the only implementation of this
++  // library-side class.
++  return static_cast<media_access_query::CefMediaAccessCallbackImpl*>(
++             callback.get())
++      ->DesktopSource();
++}
++
+ CefString CefGetMediaCaptureSourceId(CefRefPtr<CefBrowser> browser) {
+   if (!CEF_CURRENTLY_ON_UIT()) {
+     DCHECK(false) << "called on invalid thread";

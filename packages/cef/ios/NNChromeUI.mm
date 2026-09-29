@@ -396,7 +396,9 @@ void nn::chromeui::ReleaseRouteWatches() {
   CefRefPtr<CefBrowser> capturer = BrowserById(capturerId), target = BrowserById(targetId);
   CefString source = target ? CefGetMediaCaptureSourceId(target) : CefString();
   if (!capturer || source.empty()) return NO;
-  site::AllowDesktopCapture((int)capturerId);
+  // The engine asks again for the capturer's streams, from their own frames.
+  site::AllowDesktopCapture((int)capturerId, "", nil, ToNS(source),
+                            CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE);
   return CefChangeMediaCaptureSource(capturer, source);
 #else
   return NO;

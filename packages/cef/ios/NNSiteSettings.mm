@@ -350,20 +350,35 @@ bool AutoplayBlocked(NSString *profile, NSString *topURL) {
                        CEF_CONTENT_SETTING_VALUE_BLOCK;
 }
 
-static std::map<int, CFTimeInterval> gDesktopCaptureAllowed;
+struct DesktopCapture {
+  std::string frameId;
+  NSString *origin;
+  NSString *source;
+  uint32_t media;
+  CFTimeInterval time;
+};
+static std::map<int, DesktopCapture> gDesktopCapture;
 
-void AllowDesktopCapture(int browserId) { gDesktopCaptureAllowed[browserId] = CACurrentMediaTime(); }
+void AllowDesktopCapture(int browserId, const std::string &frameId, NSString *origin, NSString *source,
+                         uint32_t media) {
+  gDesktopCapture[browserId] = {frameId, [origin copy], [source copy], media, CACurrentMediaTime()};
+}
 
-bool ConsumeDesktopCapture(int browserId) {
-  auto it = gDesktopCaptureAllowed.find(browserId);
-  if (it == gDesktopCaptureAllowed.end() && host::ChromeTabs()) {
-    it = std::max_element(gDesktopCaptureAllowed.begin(), gDesktopCaptureAllowed.end(),
-                          [](auto &a, auto &b) { return a.second < b.second; });
-  }
-  if (it == gDesktopCaptureAllowed.end()) return false;
-  bool fresh = CACurrentMediaTime() - it->second < 15;
-  gDesktopCaptureAllowed.erase(it);
-  return fresh;
+DesktopCaptureGrant ConsumeDesktopCapture(int browserId, const std::string &frameId, NSString *origin,
+                                          NSString *source, uint32_t permissions) {
+  auto it = gDesktopCapture.find(browserId);
+  if (it == gDesktopCapture.end()) return DesktopCaptureGrant::kNone;
+  DesktopCapture grant = it->second;
+  // One request per approval, whether or not it matches.
+  gDesktopCapture.erase(it);
+  if (CACurrentMediaTime() - grant.time >= 15) return DesktopCaptureGrant::kNone;
+  bool sameDocument = grant.frameId.empty() ||
+                      (grant.frameId == frameId && (grant.origin == origin || [grant.origin isEqualToString:origin]));
+  bool allowed = sameDocument && (permissions & CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE) &&
+                 !(permissions & ~grant.media) && (!source || [source isEqualToString:grant.source]);
+  if (!allowed)
+    NSLog(@"[cef] refused screen capture of %@ (approved %@) for browser %d", source ?: @"?", grant.source, browserId);
+  return allowed ? DesktopCaptureGrant::kAllowed : DesktopCaptureGrant::kRefused;
 }
 
 NSArray<NSDictionary *> *DesktopCaptureSources() {
@@ -430,6 +445,7 @@ void OriginChanged(Client *client) {
   NSString *origin = OriginOf(client->URL());
   ExpireGrants(bid, origin);
   gGrantedMedia.erase(bid);
+  gDesktopCapture.erase(bid);
   client->SetSiteMuted(origin && ContextForProfile(client->Profile())->GetContentSetting(
                                      ToCef(origin), ToCef(origin), CEF_CONTENT_SETTING_TYPE_SOUND) ==
                                      CEF_CONTENT_SETTING_VALUE_BLOCK);
@@ -438,7 +454,7 @@ void OriginChanged(Client *client) {
 void BrowserClosed(int browserId) {
   ExpireGrants(browserId, nil);
   gGrantedMedia.erase(browserId);
-  gDesktopCaptureAllowed.erase(browserId);
+  gDesktopCapture.erase(browserId);
   gUnresponsive.erase(browserId);
   for (auto it = gBlockedPopups.begin(); it != gBlockedPopups.end();)
     it = it->second.browserId == browserId ? gBlockedPopups.erase(it) : std::next(it);

@@ -10,6 +10,9 @@
 #include "include/cef_command_ids.h"
 #include "include/cef_process_message.h"
 #include "include/cef_values.h"
+#if defined(CEF_NN_MEDIA_REQUEST_SOURCE)
+#include "include/cef_media_capture.h"
+#endif
 
 namespace nn {
 
@@ -165,6 +168,67 @@ NSString *EngineURL(NSString *appURL) {
   return [@"chrome:" stringByAppendingString:[rest hasPrefix:@"//"] ? rest : [@"//" stringByAppendingString:rest]];
 }
 
+// MARK: Page message fields
+// The page script runs in the page's own world, where the page can replace
+// JSON.stringify or the prototypes it serializes: every field is untrusted.
+
+template <typename T> T *Field(NSDictionary *d, NSString *key) {
+  id value = d[key];
+  return [value isKindOfClass:[T class]] ? value : nil;
+}
+
+NSString *Text(NSDictionary *d, NSString *key, NSUInteger max) {
+  NSString *s = Field<NSString>(d, key);
+  if (s.length <= max) return s;
+  return [s substringToIndex:[s rangeOfComposedCharacterSequenceAtIndex:max].location];
+}
+
+bool Flag(NSDictionary *d, NSString *key) { return Field<NSNumber>(d, key).boolValue; }
+
+bool Finite(NSDictionary *d, NSString *key, double *out) {
+  NSNumber *n = Field<NSNumber>(d, key);
+  if (!n || !isfinite(n.doubleValue)) return false;
+  *out = n.doubleValue;
+  return true;
+}
+
+NSDictionary *NowPlayingState(NSDictionary *d) {
+  NSString *state = Field<NSString>(d, @"playbackState");
+  if (![@[ @"none", @"paused", @"playing" ] containsObject:state]) state = @"none";
+  NSMutableArray *actions = [NSMutableArray array];
+  for (id action in Field<NSArray>(d, @"actions"))
+    if ([action isKindOfClass:NSString.class] && [action length] <= 64 && actions.count < 32) [actions addObject:action];
+  double position = 0, duration = 0, rate = 1, timestamp = 0;
+  Finite(d, @"position", &position);
+  bool hasDuration = Finite(d, @"duration", &duration) && duration >= 0;
+  Finite(d, @"playbackRate", &rate);
+  Finite(d, @"timestamp", &timestamp);
+  return @{
+    @"frame" : Text(d, @"frame", 64) ?: @"",
+    @"title" : Text(d, @"title", 1024) ?: @"",
+    @"artist" : Text(d, @"artist", 1024) ?: @"",
+    @"album" : Text(d, @"album", 1024) ?: @"",
+    @"artwork" : Text(d, @"artwork", 1 << 20) ?: [NSNull null],
+    @"playbackState" : state,
+    @"position" : @(MAX(position, 0)),
+    @"duration" : hasDuration ? @(duration) : [NSNull null],
+    @"playbackRate" : @(rate),
+    @"timestamp" : @(timestamp),
+    @"hasVideo" : @(Flag(d, @"hasVideo")),
+    @"actions" : actions,
+  };
+}
+
+NSDictionary *SelectionState(NSDictionary *d) {
+  NSString *text = Text(d, @"text", 4000);
+  NSDictionary *rect = Field<NSDictionary>(d, @"rect");
+  double x, y, width, height;
+  if (!text || !Finite(rect, @"x", &x) || !Finite(rect, @"y", &y) || !Finite(rect, @"width", &width) ||
+      !Finite(rect, @"height", &height))
+    return nil;
+  return @{@"text" : text, @"rect" : @{@"x" : @(x), @"y" : @(y), @"width" : @(width), @"height" : @(height)}};
+}
+
 }
 
 std::map<std::string, PendingPopup> &Popups() {
@@ -286,12 +350,19 @@ void Client::MediaCommand(NSString *action, double seconds) {
 void Client::ResolveDisplayMedia(NSString *requestId, NSString *sourceId) {
   auto it = displayRequests_.find(requestId.UTF8String ?: "");
   if (it == displayRequests_.end() || !browser_) return;
-  auto [frameId, pageId] = it->second;
+  DisplayRequest request = it->second;
   displayRequests_.erase(it);
-  CefRefPtr<CefFrame> frame = browser_->GetFrameByIdentifier(frameId);
+  CefRefPtr<CefFrame> frame = browser_->GetFrameByIdentifier(request.frameId);
   if (!frame) return;
-  if (sourceId.length) site::AllowDesktopCapture(browser_->GetIdentifier());
-  CallPage(frame, @"displayMedia", @{@"id" : @(pageId), @"sourceId" : sourceId.length ? sourceId : [NSNull null]});
+  if (sourceId.length) {
+    // Only what the picker showed: this source, and a shared tab's own audio.
+    bool tab = [sourceId hasPrefix:@"web-contents-media-stream://"];
+    uint32_t media = CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE |
+                     (request.audio && tab ? CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE : 0);
+    site::AllowDesktopCapture(browser_->GetIdentifier(), request.frameId, OriginOf(ToNS(frame->GetURL())), sourceId,
+                              media);
+  }
+  CallPage(frame, @"displayMedia", @{@"id" : @(request.pageId), @"sourceId" : sourceId.length ? sourceId : [NSNull null]});
 }
 
 void Client::NotificationAction(NSString *notificationId, NSString *action) {
@@ -335,10 +406,13 @@ void Client::OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, i
     if (DisplayMediaPickerEnabled()) config[@"displayMediaPicker"] = @YES;
     CallPage(frame, @"config", config);
   } else if (kind == "media" && dict) {
-    mediaFrames_[frameId + ":" + [dict[@"frame"] description].UTF8String] = [dict[@"playing"] boolValue];
+    NSString *mediaFrame = Text(dict, @"frame", 64);
+    std::string key = frameId + ":" + (mediaFrame.UTF8String ?: "");
+    if (!mediaFrame || (mediaFrames_.size() >= 256 && !mediaFrames_.count(key))) return;
+    mediaFrames_[key] = Flag(dict, @"playing");
     EmitMedia();
   } else if (kind == "nowPlaying") {
-    if (dict) nowPlaying_[frameId] = dict;
+    if (dict) nowPlaying_[frameId] = NowPlayingState(dict);
     else nowPlaying_.erase(frameId);
     nowPlayingFrame_ = dict ? frameId : (nowPlaying_.empty() ? "" : nowPlaying_.begin()->first);
     for (const auto &[fid, np] : nowPlaying_)
@@ -355,42 +429,58 @@ void Client::OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, i
       EmitNavigation();
     }
   } else if (kind == "pinch" && frame->IsMain() && dict) {
-    pinchScale_ = [dict[@"scale"] doubleValue] ?: 1;
+    double scale;
+    if (!Finite(dict, @"scale", &scale) || scale <= 0) return;
+    pinchScale_ = MIN(scale, 100);
     EmitZoom(true);
   } else if (kind == "displayMedia" && dict) {
+    double pageId;
+    if (!Finite(dict, @"id", &pageId) || pageId < 1 || pageId > INT_MAX || pageId != floor(pageId) ||
+        displayRequests_.size() >= 16)
+      return;
     NSString *origin = OriginOf(ToNS(frame->GetURL()));
     NSString *requestId = NSUUID.UUID.UUIDString;
-    displayRequests_[requestId.UTF8String] = {frameId, [dict[@"id"] intValue]};
+    displayRequests_[requestId.UTF8String] = {frameId, (int)pageId, Flag(dict, @"audio")};
     Emit(@"displayMediaRequest", @{
       @"id" : requestId,
       @"origin" : origin ?: @"",
-      @"audio" : @([dict[@"audio"] boolValue]),
+      @"audio" : @(Flag(dict, @"audio")),
       @"sources" : site::DesktopCaptureSources(),
     });
   } else if (kind == "pip" && dict) {
-    bool active = [dict[@"active"] boolValue];
-    Emit(@"pictureInPicture", @{@"kind" : dict[@"kind"] ?: @"video", @"active" : @(active)});
-    if (![dict[@"kind"] isEqual:@"document"]) pip::VideoChanged(view_, HostOf(URL()), frame, active);
-    if (!active && [dict[@"playing"] boolValue] && (!view_.visible || !NSApp.isActive))
+    NSNumber *active = Field<NSNumber>(dict, @"active");
+    NSString *pipKind = dict[@"kind"] ? Field<NSString>(dict, @"kind") : @"video";
+    if (!active || ![@[ @"video", @"document" ] containsObject:pipKind]) return;
+    Emit(@"pictureInPicture", @{@"kind" : pipKind, @"active" : @(active.boolValue)});
+    if (![pipKind isEqualToString:@"document"]) pip::VideoChanged(view_, HostOf(URL()), frame, active.boolValue);
+    if (!active.boolValue && Flag(dict, @"playing") && (!view_.visible || !NSApp.isActive))
       Emit(@"activateRequest", @{@"reason" : @"pictureInPicture"});
   } else if (kind == "notification" && dict) {
-    NSString *nid = [dict[@"id"] isKindOfClass:NSString.class] ? dict[@"id"] : nil;
+    NSString *nid = Field<NSString>(dict, @"id");
     NSString *origin = OriginOf(ToNS(frame->GetURL()));
-    if (!nid || !origin) return;
+    if (!nid.length || nid.length > 128 || !Field<NSString>(dict, @"title") || !origin) return;
     if (notificationFrames_.size() > 500) notificationFrames_.clear();
     notificationFrames_[nid.UTF8String] = frameId;
-    NSMutableDictionary *payload = [dict mutableCopy];
-    payload[@"origin"] = origin;
-    payload[@"browserId"] = @(browser_ ? browser_->GetIdentifier() : 0);
-    payload[@"isMainFrame"] = @(frame->IsMain());
-    Emit(@"notification", payload);
+    Emit(@"notification", @{
+      @"id" : nid,
+      @"title" : Text(dict, @"title", 1024),
+      @"body" : Text(dict, @"body", 4096) ?: @"",
+      @"icon" : Text(dict, @"icon", 1 << 20) ?: [NSNull null],
+      @"tag" : Text(dict, @"tag", 1024) ?: @"",
+      @"silent" : @(Flag(dict, @"silent")),
+      @"requireInteraction" : @(Flag(dict, @"requireInteraction")),
+      @"origin" : origin,
+      @"browserId" : @(browser_ ? browser_->GetIdentifier() : 0),
+      @"isMainFrame" : @(frame->IsMain()),
+    });
   } else if (kind == "notificationClose" && dict) {
-    if ([dict[@"id"] isKindOfClass:NSString.class]) {
-      notificationFrames_.erase([dict[@"id"] UTF8String]);
-      Emit(@"notificationClose", @{@"id" : dict[@"id"]});
+    NSString *nid = Field<NSString>(dict, @"id");
+    if (nid.length && nid.length <= 128) {
+      notificationFrames_.erase(nid.UTF8String);
+      Emit(@"notificationClose", @{@"id" : nid});
     }
-  } else {
-    Emit(@"pageMessage", @{@"kind" : @(kind.c_str()), @"data" : data ?: [NSNull null]});
+  } else if (kind == "selection") {
+    Emit(@"pageMessage", @{@"kind" : @"selection", @"data" : SelectionState(dict) ?: [NSNull null]});
   }
 }
 
@@ -768,6 +858,27 @@ void Client::OnFindResult(CefRefPtr<CefBrowser> browser, int identifier, int cou
 bool Client::OnRequestMediaAccessPermission(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                                             const CefString &origin, uint32_t permissions,
                                             CefRefPtr<CefMediaAccessCallback> callback) {
+  if (permissions & (CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE)) {
+    // A share picker approval covers only the frame, source and media it was
+    // given for: the page chooses what getUserMedia asks for.
+    NSString *source = nil;
+#if defined(CEF_NN_MEDIA_REQUEST_SOURCE)
+    source = ToNS(CefGetMediaAccessDesktopSource(callback));
+#endif
+    int bid = browser->GetIdentifier();
+    switch (site::ConsumeDesktopCapture(bid, frame ? frame->GetIdentifier().ToString() : "", OriginOf(ToNS(origin)),
+                                        source, permissions)) {
+      case site::DesktopCaptureGrant::kAllowed:
+        site::NoteGrantedMedia(bid, permissions);
+        callback->Continue(permissions);
+        return true;
+      case site::DesktopCaptureGrant::kRefused:
+        callback->Cancel();
+        return true;
+      case site::DesktopCaptureGrant::kNone:
+        break;
+    }
+  }
   return RequestMediaAccess(browser, origin, permissions, callback);
 }
 
