@@ -24,8 +24,9 @@ Pages without a custom domain).
   `src/content.config.ts`), newest first, each at `/release-notes#<version>`. The app opens that anchor after it
   updates, so rebuild and redeploy the site when a release ships (`docs/releasing.md`).
 - **Screenshots:** `src/assets/shots/*.webp` are real window captures of Netnyahoo (2×, transparent outside
-  the window). `office.webp` and `profile-*.webp` are from 0.2.1 (`screencapture -l <windowID> -o` of a hidden
-  test instance), `address-*.webp` from the address-bar-in-sidebar build, and `split`, `extensions` and
+  the window). `office.webp`, `address-*.webp` and `profile-*.webp` are 0.2.9 captures on macOS 26+, with the
+  Liquid Glass pinned tiles and address field (`screencapture -l <windowID> -o` of a hidden test instance drawn
+  as the active window), and `split`, `extensions` and
   `privacy` from 0.1.0 (`privacy.webp` is the app's own offscreen render of that Settings pane, no window
   frame). `game/crowd.webp` is a work-in-progress capture of the offline game; its hotspot coordinates are in
   `Game.astro`. Replace a file with a new capture of the same name; Astro makes the AVIF/WebP sizes. On phones
