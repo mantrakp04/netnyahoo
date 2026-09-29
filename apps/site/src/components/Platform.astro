@@ -2,18 +2,10 @@
 import Shot from "./Shot.astro";
 import { alsoPassed, pledges } from "../data/pledges";
 const pad = (n: number) => String(n).padStart(2, "0");
-const words = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
-const total = pledges.length + alsoPassed.length;
-const count = words[total] ?? String(total);
 ---
 
-<section class="platform" id="platform" aria-labelledby="platform-title">
+<section class="platform" id="platform" aria-label="Pledges">
   <div class="wrap">
-    <header class="platform-head" data-shot="platform">
-      <p class="label kicker">The platform</p>
-      <h2 class="poster" id="platform-title" data-reveal>{count} pledges.<br />All of them kept.</h2>
-    </header>
-
     <ol class="pledges">
       {
         pledges.map((p, i) => (
@@ -58,22 +50,6 @@ const count = words[total] ?? String(total);
 <style>
   .platform {
     padding-top: var(--section);
-  }
-  .platform-head {
-    display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    column-gap: var(--gutter);
-    row-gap: 20px;
-    padding-bottom: clamp(56px, 8vw, 120px);
-    border-bottom: 1px solid var(--rule-strong);
-  }
-  .kicker {
-    grid-column: 1 / -1;
-    color: var(--ink-2);
-  }
-  .platform-head h2 {
-    grid-column: 1 / span 8;
-    font-size: var(--t-h2);
   }
 
   .pledges {
@@ -179,9 +155,6 @@ const count = words[total] ?? String(total);
   }
 
   @media (max-width: 900px) {
-    .platform-head h2 {
-      grid-column: 1 / -1;
-    }
     .pledge {
       display: block;
       min-height: 0;
