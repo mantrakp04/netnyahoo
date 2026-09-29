@@ -1,0 +1,57 @@
+diff --git a/libcef/browser/browser_context.cc b/libcef/browser/browser_context.cc
+index 456c6c2d4..e2110e167 100644
+--- a/libcef/browser/browser_context.cc
++++ b/libcef/browser/browser_context.cc
+@@ -223,8 +223,7 @@ void CefBrowserContext::Shutdown() {
+   // Unregister the context first to avoid re-entrancy during shutdown.
+   g_manager.Get().RemoveImpl(this, cache_path_);
+ 
+-  // Destroy objects that may hold references to the MediaRouter.
+-  media_router_manager_.reset();
++  DestroyMediaRouterManager();
+ 
+   // Invalidate any Getter references to this object.
+   weak_ptr_factory_.InvalidateWeakPtrs();
+@@ -390,6 +389,11 @@ network::mojom::NetworkContext* CefBrowserContext::GetNetworkContext() {
+   return browser_context->GetDefaultStoragePartition()->GetNetworkContext();
+ }
+ 
++void CefBrowserContext::DestroyMediaRouterManager() {
++  CEF_REQUIRE_UIT();
++  media_router_manager_.reset();
++}
++
+ CefMediaRouterManager* CefBrowserContext::GetMediaRouterManager() {
+   CEF_REQUIRE_UIT();
+   if (!media_router_manager_) {
+diff --git a/libcef/browser/browser_context.h b/libcef/browser/browser_context.h
+index 4565128ee..3ad87251e 100644
+--- a/libcef/browser/browser_context.h
++++ b/libcef/browser/browser_context.h
+@@ -202,6 +202,10 @@ class CefBrowserContext {
+   // Will be called immediately before this object is deleted.
+   virtual void Shutdown();
+ 
++  // Destroys objects that may hold references to the MediaRouter. Call before
++  // the Profile's keyed services shut down.
++  void DestroyMediaRouterManager();
++
+   // Members initialized during construction or Initialize() are safe to access
+   // from any thread.
+   const CefRequestContextSettings settings_;
+diff --git a/libcef/browser/chrome/chrome_browser_context.cc b/libcef/browser/chrome/chrome_browser_context.cc
+index 93653ac1f..0720dd3a9 100644
+--- a/libcef/browser/chrome/chrome_browser_context.cc
++++ b/libcef/browser/chrome/chrome_browser_context.cc
+@@ -224,6 +224,11 @@ void ChromeBrowserContext::OnProfileWillBeDestroyed(Profile* profile) {
+   CHECK_EQ(profile_, profile);
+   profile_->RemoveObserver(this);
+ 
++  // The global context outlives its Profile until CEF shuts down: its
++  // MediaRouter goes with the Profile's keyed services, so its observers must
++  // go first.
++  DestroyMediaRouterManager();
++
+   net_service::ProxyURLLoaderFactory::ClearProxiesForBrowserContextAsync(
+       profile_);
+ 

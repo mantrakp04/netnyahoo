@@ -139,13 +139,6 @@ NSDictionary *CastPayload(CefRefPtr<CefCastDialog> dialog, int browserId) {
   return payload;
 }
 
-void WatchRoutes(NSString *profile);
-// The default profile's context is CEF's global one, which CEF shuts down only after the profile's
-// media router is gone: once watched (CEF then observes that router), quitting fails a check in
-// CEF. So its watch waits for its first Cast dialog: no local route starts without one.
-bool gDefaultRoutesWanted = false;
-bool gDefaultCastDialogShown = false;
-
 /// Chrome's device choosers, Cast dialog and extension side panels come to the app.
 class SurfaceHandler : public CefChromeUIHandler {
  public:
@@ -168,11 +161,6 @@ class SurfaceHandler : public CefChromeUIHandler {
   }
 
   bool OnCastDialog(CefRefPtr<CefBrowser> browser, CefRefPtr<CefCastDialog> dialog) override {
-    CefRefPtr<CefRequestContext> context = browser->GetHost()->GetRequestContext();
-    if (!gDefaultCastDialogShown && context->IsSharingWith(CefRequestContext::GetGlobalContext())) {
-      gDefaultCastDialogShown = true;
-      if (gDefaultRoutesWanted) WatchRoutes(@"");
-    }
     if (!gSurfaceHandler) return false;
     int browserId = browser->GetIdentifier();
     gCastDialogs[dialog->GetIdentifier()] = dialog;
@@ -236,17 +224,6 @@ class RouteObserver : public CefMediaObserver {
 };
 
 std::map<std::string, CefRefPtr<CefRegistration>> gRouteWatches;  // by profile
-
-/// Watches `profile`'s local Cast routes ("castRoutes").
-void WatchRoutes(NSString *profile) {
-  std::string key = profile.UTF8String ?: "";
-  CefRefPtr<CefRequestContext> context = ContextForProfile(profile);
-  CefRefPtr<CefMediaRouter> router = context ? context->GetMediaRouter(nullptr) : nullptr;
-  if (!router) return;
-  // Already watching: the current list comes again.
-  if (!gRouteWatches.count(key)) gRouteWatches[key] = router->AddObserver(new RouteObserver(profile));
-  router->NotifyCurrentRoutes();
-}
 
 /// A chooser the app answered: it hides it (Chrome reports only its own closes).
 void ChooserAnswered(int chooserId) {
@@ -373,11 +350,13 @@ void nn::chromeui::ReleaseRouteWatches() {
 
 + (void)watchCastRoutes:(NSString *)profile {
 #if NN_CHROME_UI
-  if (!profile.length && !gDefaultCastDialogShown) {
-    gDefaultRoutesWanted = true;
-    return;
-  }
-  WatchRoutes(profile);
+  std::string key = profile.UTF8String ?: "";
+  CefRefPtr<CefRequestContext> context = ContextForProfile(profile);
+  CefRefPtr<CefMediaRouter> router = context ? context->GetMediaRouter(nullptr) : nullptr;
+  if (!router) return;
+  // Already watching: the current list comes again.
+  if (!gRouteWatches.count(key)) gRouteWatches[key] = router->AddObserver(new RouteObserver(profile));
+  router->NotifyCurrentRoutes();
 #endif
 }
 
