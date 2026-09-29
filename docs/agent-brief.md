@@ -58,8 +58,8 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
 - **Stay inside the files you own** (listed in your task). If you need a change elsewhere,
   make the smallest possible change, or describe it in your report instead. Other agents
   are editing other files right now; never revert or reformat code you don't own.
-- **No git commits.** The repo has history (GitHub `origin`), but agents leave all changes
-  uncommitted for the user to review.
+- **Commit your own work to `main`** (`git add -p` or explicit paths, only your hunks; trailer in
+  `AGENTS.md`). Never commit another agent's work in progress.
 - **Never steal focus from the user.** They are working in other apps.
   - Launch the app only with `open -g` (never plain `open`, never `activate`) **and** with
     `NETNYAHOO_BACKGROUND=1`: `open -g` alone does not stop LaunchServices from making the app
