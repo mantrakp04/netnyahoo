@@ -1,4 +1,5 @@
 #import "NNSwipe.h"
+#import "NNChromeWindow.h"
 
 #import <dlfcn.h>
 #import <objc/message.h>
@@ -111,6 +112,27 @@ namespace {
 NSHashTable<NSView<NNSwipeTarget> *> *Targets() {
   static NSHashTable *targets = [NSHashTable weakObjectsHashTable];
   return targets;
+}
+
+NSMapTable<NSWindow *, NSView *> *WindowRoots() {
+  static NSMapTable *roots = [NSMapTable weakToWeakObjectsMapTable];
+  return roots;
+}
+
+void RememberRoot(NSView<NNSwipeTarget> *target) {
+  NSWindow *window = target.window;
+  NSView *root = [NNChromeWindowHost rootViewOfWindow:window];
+  // Registration can run inside addSubview, before the host records the root.
+  if (!root) {
+    root = target;
+    while (root.superview && root.superview != window.contentView) root = root.superview;
+  }
+  if (root && root != window.contentView) [WindowRoots() setObject:root forKey:window];
+}
+
+NSWindow *CurrentWindow(NSWindow *window) {
+  if (!window) return nil;
+  return [WindowRoots() objectForKey:window].window ?: window;
 }
 
 struct Gesture {
@@ -259,14 +281,16 @@ void Begin(NSEvent *event, BOOL ignoreSystemPreference) {
 
 BOOL ShouldTrack() {
   CGFloat dx = gGesture.dx, dy = gGesture.dy;
-  if (fabs(dy) >= kStartDistance && kCancelDominance * fabs(dx) < fabs(dy)) {
+  NSView<NNSwipeTarget> *target = gGesture.target;
+  // Let a pager's small initial vertical wobble resolve before locking its axis.
+  const CGFloat verticalIntent = IsPager(target) ? 3 * kStartDistance : kStartDistance;
+  if (fabs(dy) >= verticalIntent && kCancelDominance * fabs(dx) < fabs(dy)) {
     gGesture.state = State::Ignored;
     return NO;
   }
   if (fabs(dx) < kStartDistance || kStartDominance * fabs(dx) < fabs(dy)) return NO;
   int direction = dx > 0 ? 1 : -1;
 
-  NSView<NNSwipeTarget> *target = gGesture.target;
   NNRendererScrollObserver *renderer = gGesture.renderer;
   if (renderer) {
     switch (renderer.scroll) {
@@ -341,7 +365,7 @@ NSEvent *HandleScroll(NSEvent *event, BOOL ignoreSystemPreference) {
     Emit(@"began", 0);
     return nil;
   }
-  if (!gGesture.target.allowsVerticalMotion && kCancelDominance * fabs(gGesture.dx) < fabs(gGesture.dy)) {
+  if (!IsPager(gGesture.target) && !gGesture.target.allowsVerticalMotion && kCancelDominance * fabs(gGesture.dx) < fabs(gGesture.dy)) {
     Emit(@"cancelled", 0);
     gGesture.state = State::Ignored;
     return event;
@@ -352,6 +376,9 @@ NSEvent *HandleScroll(NSEvent *event, BOOL ignoreSystemPreference) {
 
 BOOL HandleDiscreteSwipe(NSWindow *window, NSPoint location, CGFloat deltaX) {
   if (fabs(deltaX) < 0.5) return NO;
+  NSWindow *current = CurrentWindow(window);
+  if (current != window) location = [current convertPointFromScreen:[window convertPointToScreen:location]];
+  window = current;
   NSView *hit = HitView(window, location);
   NSView<NNSwipeTarget> *target = TargetAt(window, location, hit);
   if (!target) return NO;
@@ -372,15 +399,10 @@ BOOL HandleDiscreteSwipe(NSWindow *window, NSPoint location, CGFloat deltaX) {
 // Retarget latched gestures after profile swaps or swipes target the hidden window.
 NSEvent *Unlatched(NSEvent *event) {
   NSWindow *window = event.window;
-  if (window.isVisible) return nil;
-  const NSPoint screen = window ? [window convertPointToScreen:event.locationInWindow] : event.locationInWindow;
-  NSWindow *under = nil;
-  for (NSWindow *w in NSApp.orderedWindows)
-    if (w != window && w.isVisible && !w.ignoresMouseEvents && w.alphaValue > 0 && NSPointInRect(screen, w.frame)) {
-      under = w;
-      break;
-    }
-  if (!under) return nil;
+  NSWindow *under = CurrentWindow(window);
+  // AppKit can keep targeting an old profile window, including a visible full-screen host.
+  if (!window || under == window || !under.isVisible || under.ignoresMouseEvents) return nil;
+  const NSPoint screen = [window convertPointToScreen:event.locationInWindow];
   CGEventRef cg = CGEventCreateCopy(event.CGEvent);
   if (!cg) return nil;
   CGEventSetIntegerValueField(cg, (CGEventField)51, under.windowNumber);
@@ -494,6 +516,7 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
 
 + (void)addTarget:(NSView<NNSwipeTarget> *)target {
   [Targets() addObject:target];
+  RememberRoot(target);
   InstallMonitor();
 }
 
@@ -510,10 +533,15 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   NSMutableArray *log = [NSMutableArray array];
   NSPoint local = LocalPoint(window, point);
   NSPoint inWindow = [window.contentView convertPoint:local toView:nil];
-  NSView *hit = HitView(window, inWindow);
+  NSWindow *current = CurrentWindow(window);
+  NSPoint currentPoint = current == window ? inWindow : [current convertPointFromScreen:[window convertPointToScreen:inWindow]];
+  NSView *hit = HitView(current, currentPoint);
   NSDictionary *where = @{
     @"hit" : hit ? NSStringFromClass(hit.class) : @"",
-    @"target" : TargetAt(window, inWindow, hit) ? @YES : @NO,
+    @"target" : TargetAt(current, currentPoint, hit) ? @YES : @NO,
+    @"sourceWindow" : @(window.windowNumber),
+    @"targetWindow" : @(current.windowNumber),
+    @"sourceVisible" : @(window.isVisible),
     @"systemSwipeEnabled" : @(NSEvent.isSwipeTrackingFromScrollEventsEnabled),
   };
   __block NSUInteger index = 0;
@@ -544,6 +572,7 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
         @"state" : @((int)gGesture.state),
         @"swallowed" : @(out == nil),
         @"renderer" : gGesture.renderer ? @((int)gGesture.renderer.scroll) : @(-1),
+        @"targetWindow" : @(gGesture.target.window.windowNumber),
       }];
       if (out) [window sendEvent:out];
     }
