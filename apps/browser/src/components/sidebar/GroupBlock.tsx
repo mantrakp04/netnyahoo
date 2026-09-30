@@ -30,6 +30,10 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
   const color = useBrowser((s) => s.groups[groupId]?.color ?? null);
   const tabIds = useBrowser((s) => s.groups[groupId]?.tabIds.join(",") ?? "");
   const entries = useGroupEntries(groupId);
+  const selectedInside = useBrowser((s) => {
+    const selection = s.selection[windowId];
+    return !!selection?.length && !!s.groups[groupId]?.tabIds.some((id) => selection.includes(id));
+  });
   const profileId = usePageProfileId();
   const shownWhileCollapsed = useBrowser((s) => {
     if (!s.groups[groupId]?.collapsed) return null;
@@ -40,7 +44,7 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
   const tail = useDragItem(`tail:group:${groupId}`, { kind: "tail", tabIds: [], section, parentGroup: groupId });
 
   const open = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
-  const [contentHeight, setContentHeight] = useState(0);
+  const [measured, setMeasured] = useState({ height: 0, count: -1 });
   const settled = useRef(collapsed);
   const [animating, setAnimating] = useState(false);
   const moving = animating || settled.current !== collapsed;
@@ -63,6 +67,12 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
   const spec = color ? GROUP_COLORS[color] : null;
   const fill = spec ? withAlpha(spec.hex, 0.16) : tokens.groupFill;
   const stroke = spec ? withAlpha(spec.hex, 0.3) : tokens.groupStroke;
+  // A collapsed group's members aren't mounted (a big group would otherwise cost as much as if it were open); they
+  // mount for the animation. Rows are fixed-height, so their height is known before they're measured.
+  // Selected members stay mounted: a multi-tab drag gathers its rows from the mounted ones (sidebar/dnd.tsx).
+  const membersShown = !collapsed || moving || selectedInside;
+  const contentHeight =
+    measured.count === entries.length ? measured.height : entries.length * layout.rowHeight + Math.max(0, entries.length - 1) * layout.rowGap + PAD;
   const membersStyle = moving
     ? { height: open.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }), opacity: open, overflow: "hidden" as const }
     : collapsed
@@ -81,10 +91,15 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
           </View>
         ) : null}
         <Animated.View style={membersStyle} pointerEvents={collapsed ? "none" : "auto"}>
-          <View onLayout={(e) => setContentHeight(e.nativeEvent.layout.height)} style={{ gap: layout.rowGap, paddingBottom: PAD }}>
-            {entries.map((entry) =>
-              collapsed && entry === shownWhileCollapsed && !moving ? null : <Entry key={entry} entry={entry} section={section} groupId={groupId} />,
-            )}
+          <View
+            onLayout={(e) => (!collapsed || moving) && setMeasured({ height: e.nativeEvent.layout.height, count: entries.length })}
+            style={{ gap: layout.rowGap, paddingBottom: PAD }}
+          >
+            {membersShown
+              ? entries.map((entry) =>
+                  collapsed && entry === shownWhileCollapsed && !moving ? null : <Entry key={entry} entry={entry} section={section} groupId={groupId} />,
+                )
+              : null}
             <Animated.View ref={tail.wrapper.ref} style={tail.wrapper.style} />
           </View>
         </Animated.View>

@@ -34,6 +34,7 @@ const DOCKED_BOTTOM = 6;
 const DOCK = DOCKED_BOTTOM + ROW_PITCH;
 // Rows in 2400 pt, more than the tallest sidebar.
 const FIRST_PAINT_ROWS = 64;
+const ROWS_PER_FRAME = 32;
 
 export function Sidebar() {
   const windowId = useWindowId();
@@ -167,14 +168,17 @@ type PageProps = {
 function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoom, ghost, rows, onListHeight, onScrollView, onScrollY }: PageProps) {
   const windowId = useWindowId();
   const { tiles, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
-  // A page's first render mounts only the rows a screen can show; the rest follow right after, so a long
-  // sidebar doesn't hold up the window's first frame.
-  const [allRows, setAllRows] = useState(false);
+  // A page's first render mounts only the rows a screen can show; the rest follow in chunks, one per frame, so a
+  // long sidebar neither holds up the window's first frame nor mounts in one long task after it.
+  const [mountedRows, setMountedRows] = useState(FIRST_PAINT_ROWS);
+  const growing = rows === undefined && mountedRows < all.length;
   useEffect(() => {
-    const t = setTimeout(() => setAllRows(true), 0);
-    return () => clearTimeout(t);
-  }, []);
-  const limit = rows ?? (allRows ? undefined : FIRST_PAINT_ROWS);
+    if (!growing) return;
+    // Once caught up, every row mounts with the list (a tab opened later never waits for a chunk).
+    const frame = requestAnimationFrame(() => setMountedRows((n) => (n + ROWS_PER_FRAME >= all.length ? Infinity : n + ROWS_PER_FRAME)));
+    return () => cancelAnimationFrame(frame);
+  }, [growing, mountedRows, all.length]);
+  const limit = rows ?? (growing ? mountedRows : undefined);
   const list = limit === undefined ? all : all.slice(0, limit);
   const topGap = listTopGap(useAddressBarInSidebar());
   const newTabsAtTop = useSettings((s) => s.newTabPosition === "top");
@@ -286,27 +290,38 @@ const Tail = memo(function Tail({ id, section }: { id: string; section: "list" |
 
 function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, scrollY: RefObject<number>, glowRoom: number) {
   useEffect(() => {
-    const reveal = (tabId: string) =>
+    // A row not mounted yet (long lists mount a chunk per frame) is looked for again every 60 ms, for up to 3 s,
+    // until the user switches tabs again: every reveal belongs to the switch it followed.
+    let switches = 0;
+    let stopped = false;
+    const reveal = (tabId: string, tries = 50, switch_ = switches): ReturnType<typeof setTimeout> =>
       setTimeout(async () => {
+        const current = () => !stopped && switch_ === switches;
+        if (!current()) return;
+        const row = await measureRow(windowId, tabId);
+        if (!current()) return;
+        if (!row) {
+          if (tries > 1 && useBrowser.getState().tabs[tabId]?.windowId === windowId) reveal(tabId, tries - 1, switch_);
+          return;
+        }
         const view = scroll.current as unknown as View | null;
-        const [row, viewport] = await Promise.all([
-          measureRow(windowId, tabId),
-          new Promise<{ y: number; h: number } | null>((resolve) =>
-            view ? view.measureInWindow((_x, y, _w, h) => resolve(h ? { y, h } : null)) : resolve(null),
-          ),
-        ]);
-        if (!row || !viewport || !scroll.current) return;
+        const viewport = await new Promise<{ y: number; h: number } | null>((resolve) =>
+          view ? view.measureInWindow((_x, y, _w, h) => resolve(h ? { y, h } : null)) : resolve(null),
+        );
+        if (!current() || !viewport || !scroll.current) return;
         const top = viewport.y + glowRoom;
         const bottom = viewport.y + viewport.h - 8;
         const y = scrollY.current ?? 0;
         if (row.y < top) scroll.current.scrollTo({ y: Math.max(0, y - (top - row.y)), animated: true });
         else if (row.y + row.height > bottom) scroll.current.scrollTo({ y: y + (row.y + row.height - bottom), animated: true });
       }, 60);
-    return useBrowser.subscribe((s, prev) => {
+    const unsubscribe = useBrowser.subscribe((s, prev) => {
       if (s.windows === prev.windows && s.tabs === prev.tabs) return;
       const active = activeTabId(s, windowId);
-      // Revealed after a delay, when a row that isn't mounted yet (deferred past the first paint) has its view.
-      if (active && active !== activeTabId(prev, windowId)) reveal(active);
+      if (active && active !== activeTabId(prev, windowId)) {
+        switches++;
+        reveal(active);
+      }
       const w = s.windows[windowId];
       const before = prev.windows[windowId];
       if (!w || !before || w.tabIds === before.tabIds) return;
@@ -314,6 +329,10 @@ function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, s
         if (!before.tabIds.includes(id) && s.tabs[id]?.openerId && id !== active) reveal(id);
       }
     });
+    return () => {
+      stopped = true;
+      unsubscribe();
+    };
   }, [windowId, glowRoom]);
 }
 
