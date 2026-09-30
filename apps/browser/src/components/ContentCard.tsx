@@ -1,5 +1,5 @@
 import { WebView, type OpenWindowRequest } from "@netnyahoo/cef";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { focus, switchToTab } from "../lib/actions";
@@ -148,7 +148,8 @@ export function ContentCard() {
               tabId={tabId}
               windowId={windowId}
               rect={rect}
-              full={{ width: size.width, height: size.height }}
+              fullWidth={size.width}
+              fullHeight={size.height}
               focused={tabId === activeId}
               split={split}
               fullscreen={tabId === fullscreenTab}
@@ -167,11 +168,13 @@ export function ContentCard() {
   );
 }
 
-function TabPane({
+// Memoized: the card re-renders on every switch, and a pane only needs to when its own props change.
+const TabPane = memo(function TabPane({
   tabId,
   windowId,
   rect,
-  full,
+  fullWidth,
+  fullHeight,
   focused,
   split,
   fullscreen,
@@ -184,7 +187,8 @@ function TabPane({
   tabId: string;
   windowId: string;
   rect: Rect | undefined;
-  full: { width: number; height: number };
+  fullWidth: number;
+  fullHeight: number;
   focused: boolean;
   split: SplitView | undefined;
   fullscreen: boolean;
@@ -202,7 +206,7 @@ function TabPane({
   const newTabShown = usePage(tabId, (p) => !!p.newTabShown);
   const inSomeSplit = useBrowser((s) => !!warm && !!splitOf(s, tabId));
   const inSplit = visible ? !!split?.tabIds.includes(tabId) : inSomeSplit;
-  const frame = rect ?? warm ?? { x: 0, y: 0, ...full };
+  const frame = rect ?? warm ?? { x: 0, y: 0, width: fullWidth, height: fullHeight };
   useEffect(() => {
     if (visible && isNewTab && !mounted) patchPage(tabId, { wasNewTab: true });
   }, [visible, isNewTab, mounted]);
@@ -256,7 +260,7 @@ function TabPane({
       </View>
     </View>
   );
-}
+});
 
 const isBlank = (url: string) => !url || url === "about:blank";
 const pageKey = (url: string) => url.replace(/#.*$/, "");
