@@ -64,7 +64,7 @@ codesign --verify --deep --strict "$app"
 before="$(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true)"
 open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR="$work/data" \
   --env NETNYAHOO_REMOTE_DEBUGGING_PORT="$port" --env NETNYAHOO_RELEASE_NOTES=1 \
-  --env NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows "$app"
+  --env NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows --env NETNYAHOO_PIP_SELFTEST=close "$app"
 for _ in $(seq 1 60); do curl -fs "localhost:$port/json/version" >/dev/null 2>&1 && break; sleep 1; done
 sleep 8  # session restore, then the release-notes tab
 # The instance this launched (another of the same build may be running).

@@ -1,0 +1,31 @@
+diff --git a/chrome/browser/ui/views/overlay/video_overlay_window_views.cc b/chrome/browser/ui/views/overlay/video_overlay_window_views.cc
+--- a/chrome/browser/ui/views/overlay/video_overlay_window_views.cc
++++ b/chrome/browser/ui/views/overlay/video_overlay_window_views.cc
+@@ -2008,8 +2008,8 @@
+ 
+ void VideoOverlayWindowViews::OnNativeWidgetDestroyed() {
+   views::Widget::OnNativeWidgetDestroyed();
+-  controller_->OnWindowDestroyed(
+-      /*should_pause_video=*/show_play_pause_button_);
++  // Netnyahoo: a closed mini player leaves its video playing in the tab.
++  controller_->OnWindowDestroyed(/*should_pause_video=*/false);
+ }
+ 
+ // When the PiP window is moved to different displays on Chrome OS, we need to
+@@ -2193,12 +2193,11 @@
+ }
+ 
+ void VideoOverlayWindowViews::CloseAndPauseIfAvailable() {
+-  // Only pause the video if play/pause is available.
+-  const bool should_pause_video = !!show_play_pause_button_;
++  // Netnyahoo: closing the mini player never pauses its video, which keeps
++  // playing in its tab (as in Arc and Dia). Chrome paused it whenever the
++  // window had a play/pause button.
+   PictureInPictureWindowManager::GetInstance()->ExitPictureInPictureViaWindowUi(
+-      should_pause_video
+-          ? PictureInPictureWindowManager::UiBehavior::kCloseWindowAndPauseVideo
+-          : PictureInPictureWindowManager::UiBehavior::kCloseWindowOnly);
++      PictureInPictureWindowManager::UiBehavior::kCloseWindowOnly);
+ }
+ 
+ PlaybackImageButton*

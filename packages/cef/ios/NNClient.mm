@@ -457,8 +457,8 @@ void Client::OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, i
     if (!active || ![@[ @"video", @"document" ] containsObject:pipKind]) return;
     Emit(@"pictureInPicture", @{@"kind" : pipKind, @"active" : @(active.boolValue)});
     if (![pipKind isEqualToString:@"document"]) pip::VideoChanged(view_, HostOf(URL()), frame, active.boolValue);
-    if (!active.boolValue && Flag(dict, @"playing") && (!view_.visible || !NSApp.isActive))
-      Emit(@"activateRequest", @{@"reason" : @"pictureInPicture"});
+    // Leaving Picture in Picture never shows the tab by itself: closing the window leaves the video playing where it
+    // is. Back to Tab shows it (our pill asks, Chrome's button activates the tab in Chrome's tab strip).
   } else if (kind == "notification" && dict) {
     NSString *nid = Field<NSString>(dict, @"id");
     NSString *origin = OriginOf(ToNS(frame->GetURL()));

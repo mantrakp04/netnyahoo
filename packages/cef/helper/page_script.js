@@ -122,14 +122,7 @@
     if (e.type !== "volumechange") reportNowPlaying();
   };
   document.addEventListener("enterpictureinpicture", (e) => send("pip", { active: true, kind: "video" }), true);
-  document.addEventListener(
-    "leavepictureinpicture",
-    (e) => {
-      const video = e.target;
-      setTimeout(() => send("pip", { active: false, kind: "video", playing: !!video && !video.paused && !video.ended }), 50);
-    },
-    true,
-  );
+  document.addEventListener("leavepictureinpicture", (e) => send("pip", { active: false, kind: "video" }), true);
   const mediaEvents = ["play", "playing", "pause", "ended", "volumechange", "emptied", "seeked", "ratechange", "loadedmetadata"];
   for (const e of mediaEvents) document.addEventListener(e, onMediaEvent, true);
   const play = HTMLMediaElement.prototype.play;

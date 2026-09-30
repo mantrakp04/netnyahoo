@@ -572,8 +572,8 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 ## 18. Media & PiP
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
-| Picture‑in‑Picture | ✓ | ✅ | Chrome's video PiP; hover card and Site Controls toggle it |
-| Auto‑PiP on tab switch / window occluded (Meet, YouTube) | ✓ | ✅ | ours (NNBrowserView `autoPictureInPicture`): audible or capturing pages only; setting in Tabs |
+| Picture‑in‑Picture | ✓ | ✅ | Chrome's video PiP; hover card and Site Controls toggle it. Its close button (X) only closes the window, as in Dia and Arc: the video keeps playing in its tab, which stays in the background (`chromium-zz-pip-close-keeps-playing.patch`; Chrome paused it). Only Back to Tab (our pill, Chrome's button, the right-click menu) shows the tab. Smoke-tested (`NETNYAHOO_PIP_SELFTEST=close`) |
+| Auto‑PiP on tab switch / window occluded (Meet, YouTube) | ✓ | ✅ | ours (NNBrowserView `autoPictureInPicture`): audible or capturing pages only; setting in Tabs. After the user closes it, a tab doesn't pop out again until it has been shown and left again |
 | Document PiP | ✓ | ✅ | Chrome's own Document PiP window (its frame shows the origin and Back to tab) |
 | PiP stash, return to tab, hostname bar | ✓ | ✅ | on Chrome's own video PiP window, in-process (`NNPictureInPicture.mm`): the host pill on hover over Chrome's origin row (click: back to the tab, the video keeps playing there); right-click anywhere: Back to Tab / Keep Window on Top (remembered); dragged mostly past a screen's left or right edge it tucks in with a 28 pt peek and a chevron handle (click: back on screen), and stays tucked if Chrome moves it. Chrome's own controls unchanged. Verified with the DEV self-test (`NETNYAHOO_PIP_SELFTEST`, all 10 steps) and layer snapshots, not a real pointer drag (checklist step 13) |
 | Mini player for pinned media tabs (skip ±15 s, art, marquee) | ✓ | ✅ | hover mini player + sidebar player |

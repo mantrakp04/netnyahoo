@@ -570,6 +570,38 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
   });
 }
 
+// NETNYAHOO_PIP_SELFTEST=close / backToTab: clicks Chrome's own close button (its X, top right) or its back-to-tab
+// button next to it as AppKit delivers a click, then records whether the window closed. What happens to the video and
+// the tab is for the caller to check (CDP, the store): closing leaves the video playing where it is.
+- (void)runButtonSelfTest:(NSString *)button {
+  NSWindow *window = _window;
+  NSString *dir = [NSString stringWithUTF8String:getenv("NETNYAHOO_DATA_DIR") ?: "/tmp"];
+  // Chrome's 24 pt buttons, 5 pt from the top: close 4 pt from the right edge, back to tab 28 pt.
+  CGFloat right = [button isEqual:@"close"] ? 4 : 28;
+  NSPoint point = NSMakePoint(NSWidth(window.frame) - right - 12, NSHeight(window.frame) - 17);
+  auto event = [=](NSEventType type) {
+    return [NSEvent mouseEventWithType:type location:point modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+                          windowNumber:window.windowNumber context:nil eventNumber:0 clickCount:1 pressure:type == NSEventTypeLeftMouseDown];
+  };
+  auto after = [](double seconds, dispatch_block_t block) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), block);
+  };
+  // The pointer's arrival shows Chrome's controls (its tracking area calls the content view); a click where they're
+  // hidden would drag the window instead.
+  after(1.5, ^{ [window.contentView mouseMoved:event(NSEventTypeMouseMoved)]; });
+  after(2.1, ^{
+    [window sendEvent:event(NSEventTypeLeftMouseDown)];
+    [window sendEvent:event(NSEventTypeLeftMouseUp)];
+    after(1, ^{
+      NSDictionary *result = @{@"button" : button, @"closed" : @(!window.visible), @"point" : NSStringFromPoint(point)};
+      NSLog(@"[pip-selftest] %@", result);
+      [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil]
+          writeToFile:[dir stringByAppendingPathComponent:@"pip-button-selftest.json"]
+           atomically:YES];
+    });
+  });
+}
+
 @end
 
 // MARK: - Glue
@@ -602,7 +634,9 @@ bool Attach(NNBrowserView *view, NSString *host, CefRefPtr<CefFrame> frame) {
     controller.host = host;
     [controller setVideoFrame:frame];
     InstallMenuMonitor();
-    if (fresh && getenv("NETNYAHOO_PIP_SELFTEST")) [controller runSelfTest];
+    NSString *selfTest = NSProcessInfo.processInfo.environment[@"NETNYAHOO_PIP_SELFTEST"];
+    if (fresh && [@[ @"close", @"backToTab" ] containsObject:selfTest]) [controller runButtonSelfTest:selfTest];
+    else if (fresh && selfTest) [controller runSelfTest];
     return true;
   }
   return false;
