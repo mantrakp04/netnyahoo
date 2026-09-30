@@ -1,0 +1,32 @@
+apps/browser/src/components/sidebar/GroupBlock.tsx
+  s_9c356f9574d31c::t_47ec2a8d0573d2 1,22-24,54,114-118,156-164,166-169,171-177
+  s_9c356f9574d31c::t_faf9e39d4f9e20 165,170
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_4660f2b996044c 302-303,315,317,432
+apps/browser/src/store/groupNames.test.mjs
+  s_9c356f9574d31c::t_54aff9b762005f 1-45
+apps/browser/src/store/groupNames.ts
+  s_9c356f9574d31c::t_8ebffd4813ebb2 1-88
+apps/browser/src/store/openers.test.mjs
+  s_9c356f9574d31c::t_5a58ab0fb6d083 168-199
+apps/browser/src/store/openers.ts
+  s_9c356f9574d31c::t_c5e33e34f682a3 3,24-29,32,38,43-45
+apps/browser/src/store/organize.ts
+  s_9c356f9574d31c::t_427d2459576a12 3,78,81,111-113,117,120-125,128,134-143,147,167,202-216,231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3947d551d944da7314ee2db29605584f320a4aff",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
