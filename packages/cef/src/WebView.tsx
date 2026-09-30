@@ -184,7 +184,7 @@ export type WebViewHandle = {
   requestPictureInPicture(): Promise<boolean>;
   exitPictureInPicture(): Promise<void>;
 
-  getSecurityInfo(): Promise<SecurityInfo>;
+  getSecurityInfo(): Promise<SecurityInfo | null>;
   openBlockedPopup(id: string, always?: boolean): Promise<void>;
   clearSiteData(): Promise<{ cookies: number | false; storage: boolean }>;
 
@@ -292,29 +292,50 @@ type NativeHandle = Omit<
 
 const NativeWebView = requireNativeViewManager<NativeProps>("NetnyahooCEF");
 
+const VIEW_RETRIES = 3;
+// Expo's view functions reject with this cause when the view tag has no registered view.
+const isViewMissing = (error: unknown) =>
+  (error as { code?: unknown } | null)?.code === "ERR_ARGUMENT_CAST" &&
+  /Unable to find the '\w+' view with tag/.test(String((error as { message?: unknown }).message));
+
 export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(props, ref) {
   const native = useRef<NativeHandle>(null);
   useImperativeHandle(ref, () => {
-    const n = () => native.current!;
+    // Expo can't find the view just after mount (legacy architecture registers it later) or once the tab
+    // is gone; retry the first briefly and settle the second with the fallback instead of rejecting.
+    const call = async <T,>(fallback: T, fn: (view: NativeHandle) => Promise<T>): Promise<T> => {
+      for (let attempt = 0; ; attempt++) {
+        const view = native.current;
+        if (!view) return fallback;
+        try {
+          return await fn(view);
+        } catch (error) {
+          if (!isViewMissing(error)) throw error;
+          if (attempt >= VIEW_RETRIES || native.current !== view) return fallback;
+          await new Promise((resolve) => setTimeout(resolve, 16 * (attempt + 1)));
+        }
+      }
+    };
     return {
-      loadUrl: (url, options) => n().loadUrl(toEngine(url), options?.userInitiated ?? false),
-      goBack: () => n().goBack(),
-      goForward: () => n().goForward(),
-      goToOffset: (offset) => n().goToOffset(offset),
-      reload: () => n().reload(),
-      forceReload: () => n().forceReload(),
-      stopLoading: () => n().stopLoading(),
-      focus: () => n().focus(),
-      setMuted: (muted) => n().setMuted(muted),
-      zoomStep: (direction) => n().zoomStep(direction),
-      find: (text, forward, findNext) => n().find(text, forward, findNext),
-      stopFinding: (clear) => n().stopFinding(clear),
-      print: () => n().print(),
-      runPageCommand: async (name) => void (typeof n().runPageCommand === "function" && (await n().runPageCommand!(name))),
-      showDevTools: (panel) => n().showDevTools(panel),
-      executeJavaScript: (code) => n().executeJavaScript(code),
+      loadUrl: (url, options) => call(undefined, (n) => n.loadUrl(toEngine(url), options?.userInitiated ?? false)),
+      goBack: () => call(undefined, (n) => n.goBack()),
+      goForward: () => call(undefined, (n) => n.goForward()),
+      goToOffset: (offset) => call(undefined, (n) => n.goToOffset(offset)),
+      reload: () => call(undefined, (n) => n.reload()),
+      forceReload: () => call(undefined, (n) => n.forceReload()),
+      stopLoading: () => call(undefined, (n) => n.stopLoading()),
+      focus: () => call(undefined, (n) => n.focus()),
+      setMuted: (muted) => call(undefined, (n) => n.setMuted(muted)),
+      zoomStep: (direction) => call(undefined, (n) => n.zoomStep(direction)),
+      find: (text, forward, findNext) => call(undefined, (n) => n.find(text, forward, findNext)),
+      stopFinding: (clear) => call(undefined, (n) => n.stopFinding(clear)),
+      print: () => call(undefined, (n) => n.print()),
+      runPageCommand: (name) =>
+        call(undefined, async (n) => void (typeof n.runPageCommand === "function" && (await n.runPageCommand(name)))),
+      showDevTools: (panel) => call(undefined, (n) => n.showDevTools(panel)),
+      executeJavaScript: (code) => call(undefined, (n) => n.executeJavaScript(code)),
       evaluate: async <T,>(code: string) => {
-        const json = await n().evaluate(code);
+        const json = await call(null, (n) => n.evaluate(code));
         if (json == null) return null;
         try {
           return JSON.parse(json) as T;
@@ -322,24 +343,25 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
           return null;
         }
       },
-      navigationEntries: async () => (await n().navigationEntries()).map((e) => ({ ...e, url: fromEngine(e.url) })),
-      downloadImage: (url, maxPixels) => n().downloadImage(url, maxPixels),
-      downloadFavicon: (url, name) => n().downloadFavicon(url, name ?? null),
-      mediaCommand: (action, seconds) => n().mediaCommand(action, seconds),
-      requestPictureInPicture: () => n().requestPictureInPicture(),
-      exitPictureInPicture: () => n().exitPictureInPicture(),
-      getSecurityInfo: () => n().getSecurityInfo(),
-      openBlockedPopup: (id, always) => n().openBlockedPopup(id, always),
-      clearSiteData: () => n().clearSiteData(),
-      resolvePasswordPrompt: (answer, edits) => n().resolvePasswordPrompt(answer, edits?.username ?? null, edits?.password ?? null),
-      executeExtensionAction: (extensionId) => n().executeExtensionAction(extensionId),
-      setTabStrip: (index, pinned) => n().setTabStrip(index, pinned),
-      resolveDisplayMedia: (id, sourceId) => n().resolveDisplayMedia(id, sourceId),
-      mediaCaptureSourceId: () => n().mediaCaptureSourceId(),
-      notificationAction: (id, action) => n().notificationAction(id, action),
-      resolveUnresponsive: (terminate) => n().resolveUnresponsive(terminate),
-      discard: (options) => n().discard(options?.unload ?? false),
-      setFrozen: (frozen) => n().setFrozen(frozen),
+      navigationEntries: async () => (await call([], (n) => n.navigationEntries())).map((e) => ({ ...e, url: fromEngine(e.url) })),
+      downloadImage: (url, maxPixels) => call(null, (n) => n.downloadImage(url, maxPixels)),
+      downloadFavicon: (url, name) => call(null, (n) => n.downloadFavicon(url, name ?? null)),
+      mediaCommand: (action, seconds) => call(undefined, (n) => n.mediaCommand(action, seconds)),
+      requestPictureInPicture: () => call(false, (n) => n.requestPictureInPicture()),
+      exitPictureInPicture: () => call(undefined, (n) => n.exitPictureInPicture()),
+      getSecurityInfo: () => call(null, (n) => n.getSecurityInfo()),
+      openBlockedPopup: (id, always) => call(undefined, (n) => n.openBlockedPopup(id, always)),
+      clearSiteData: () => call({ cookies: false, storage: false }, (n) => n.clearSiteData()),
+      resolvePasswordPrompt: (answer, edits) =>
+        call(undefined, (n) => n.resolvePasswordPrompt(answer, edits?.username ?? null, edits?.password ?? null)),
+      executeExtensionAction: (extensionId) => call(null, (n) => n.executeExtensionAction(extensionId)),
+      setTabStrip: (index, pinned) => call(undefined, (n) => n.setTabStrip(index, pinned)),
+      resolveDisplayMedia: (id, sourceId) => call(undefined, (n) => n.resolveDisplayMedia(id, sourceId)),
+      mediaCaptureSourceId: () => call(null, (n) => n.mediaCaptureSourceId()),
+      notificationAction: (id, action) => call(undefined, (n) => n.notificationAction(id, action)),
+      resolveUnresponsive: (terminate) => call(undefined, (n) => n.resolveUnresponsive(terminate)),
+      discard: (options) => call(false, (n) => n.discard(options?.unload ?? false)),
+      setFrozen: (frozen) => call(undefined, (n) => n.setFrozen(frozen)),
     };
   });
 

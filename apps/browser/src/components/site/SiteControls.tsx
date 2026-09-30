@@ -73,7 +73,7 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
     void getSiteSettings(profile, origin).then((s) => live && setSettings(s));
     void Promise.all([getContentBlocker(), isContentBlockerAllowed(host)]).then(([state, allowed]) => live && setBlocker({ enabled: state.enabled, allowed }));
     // Navigation may finish before the popover subscribes to security updates.
-    void webviews.get(tabId)?.getSecurityInfo().then((info) => live && patchPage(tabId, { security: info }));
+    void webviews.get(tabId)?.getSecurityInfo().then((info) => live && info && patchPage(tabId, { security: info }));
     return () => {
       live = false;
     };
