@@ -1,0 +1,25 @@
+packages/cef/ios/NNContentBlocker.mm
+  s_9c356f9574d31c::t_496003eefad024 209,211-215,292-300,303-307,309-314
+packages/cef/ios/NNContentBlocker.h
+  s_9c356f9574d31c::t_496003eefad024 7-9
+packages/cef/ios/NNCef.mm
+  s_9c356f9574d31c::t_496003eefad024 830
+packages/cef/scripts/embed.sh
+  s_9c356f9574d31c::t_496003eefad024 109-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3b3a95441a7245db9e4de21671127687292381c3",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
