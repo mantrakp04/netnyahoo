@@ -23,7 +23,7 @@ import { LiveFolders } from "./sidebar/LiveFolderBlock";
 import { openOverflowMenu, openSidebarMenu } from "./sidebar/menus";
 import { PinnedGrid } from "./sidebar/PinnedGrid";
 import { ResizeHandle } from "./sidebar/ResizeHandle";
-import { measureRow, rowView } from "./sidebar/state";
+import { measureRow } from "./sidebar/state";
 import { SplitRowItem, TabRowItem } from "./sidebar/TabRow";
 import { useSidebarTokens, useSidebarWidth } from "./sidebar/tokens";
 
@@ -32,6 +32,8 @@ const ROW_PITCH = layout.rowHeight + layout.rowGap;
 const DOCKED_BOTTOM = 6;
 // Room the docked New Tab row takes from the list: the row plus one row gap above it.
 const DOCK = DOCKED_BOTTOM + ROW_PITCH;
+// Rows in 2400 pt, more than the tallest sidebar.
+const FIRST_PAINT_ROWS = 64;
 
 export function Sidebar() {
   const windowId = useWindowId();
@@ -165,7 +167,15 @@ type PageProps = {
 function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoom, ghost, rows, onListHeight, onScrollView, onScrollY }: PageProps) {
   const windowId = useWindowId();
   const { tiles, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
-  const list = rows === undefined ? all : all.slice(0, rows);
+  // A page's first render mounts only the rows a screen can show; the rest follow right after, so a long
+  // sidebar doesn't hold up the window's first frame.
+  const [allRows, setAllRows] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setAllRows(true), 0);
+    return () => clearTimeout(t);
+  }, []);
+  const limit = rows ?? (allRows ? undefined : FIRST_PAINT_ROWS);
+  const list = limit === undefined ? all : all.slice(0, limit);
   const topGap = listTopGap(useAddressBarInSidebar());
   const newTabsAtTop = useSettings((s) => s.newTabPosition === "top");
   const innerWidth = width - layout.sidebarInset * 2;
@@ -295,7 +305,8 @@ function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, s
     return useBrowser.subscribe((s, prev) => {
       if (s.windows === prev.windows && s.tabs === prev.tabs) return;
       const active = activeTabId(s, windowId);
-      if (active && active !== activeTabId(prev, windowId) && rowView(windowId, active) !== undefined) reveal(active);
+      // Revealed after a delay, when a row that isn't mounted yet (deferred past the first paint) has its view.
+      if (active && active !== activeTabId(prev, windowId)) reveal(active);
       const w = s.windows[windowId];
       const before = prev.windows[windowId];
       if (!w || !before || w.tabIds === before.tabIds) return;
