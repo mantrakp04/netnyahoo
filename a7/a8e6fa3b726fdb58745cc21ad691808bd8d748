@@ -1,0 +1,26 @@
+packages/cef/ios/NNCef.mm
+  s_9c356f9574d31c::t_4eff0fdf255b58 180-181,184,186-190,194
+  s_9c356f9574d31c::t_9c84e795b4c345 25-27,155-179,182-183,185,191-193,195-207,213,269
+packages/cef/patches/chromium-zz-extension-installed-bubble.patch
+  s_9c356f9574d31c::t_6b1d7727975795 1-83
+packages/cef/ios/NNActivation.mm
+  s_9c356f9574d31c::t_914b5446bac002 190-197,203-204,210,213
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_a91ca2415d787f 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a7a8e6fa3b726fdb58745cc21ad691808bd8d748",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
