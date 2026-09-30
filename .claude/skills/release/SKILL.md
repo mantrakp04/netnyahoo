@@ -214,7 +214,15 @@ The SEO data follows `release.ts` and the notes by itself; check that it did:
 Deploying makes things public. The user has asked for releases to go all the way through, so deploy as
 part of a release; for site changes outside a release, ask first.
 
-## 7. Report
+## 7. Tweet draft
+
+Draft the announcement for the owner to post (never post it yourself): `Netnyahoo <version>`, 4–5 short,
+witty, simple bullets from the notes, then "Still free. Still no AI." and netnyahoo.com, under 280
+characters. Make `output/tweets/<version>.png` (1600×1000, the site's paper background and fonts) from
+real captures of a hidden instance on neutral pages you control; see `output/tweets/0.2.12.png`. Send both
+to the owner.
+
+## 8. Report
 
 Tell the user, briefly: the version and headline, what's in it (from the notes), any landing-page claims changed, the smoke result
 (N/N), that it's live (release URL, appcast, site), how to get it (Check for Updates…), anything not
