@@ -1,0 +1,23 @@
+apps/browser/src/lib/persist.ts
+  s_9c356f9574d31c::t_2b77fa83d08923 9,17,19-24,28-29,33,38,44,68,266
+apps/browser/src/store/history.test.mjs
+  s_9c356f9574d31c::t_7bafa2cdc3ea01 1-39
+apps/browser/src/store/history.ts
+  s_9c356f9574d31c::t_00aa063ed213c3 28-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b494d56c1097c1c88c62e8a796da9d062f77cc36",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
