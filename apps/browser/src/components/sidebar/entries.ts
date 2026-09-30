@@ -22,6 +22,8 @@ export function sidebarEntries(s: BrowserState, windowId: string, profileId?: st
     result = tiles === was.tiles && pinnedGroups === was.pinnedGroups && list === was.list ? was : { tiles, pinnedGroups, list };
   }
   memo.set(key, { inputs, result });
+  // Entries of closed windows would keep their store snapshot alive.
+  if (memo.size > 8) for (const k of memo.keys()) if (!s.windows[k.split("|")[0]!]) memo.delete(k);
   return result;
 }
 
