@@ -129,13 +129,19 @@ export function startNativeSync() {
   };
 
   let lastMenu = "";
+  let lastBookmarkMenus: unknown[] = [];
   let menuTimer: ReturnType<typeof setTimeout> | undefined;
   const syncMenu = () => {
     menuTimer = undefined;
     const state = menuState(store.getState());
-    const json = JSON.stringify(state);
-    if (json === lastMenu) return;
+    // The bookmark menus are cached per bookmarks tree (bookmarkMenus), so they compare by identity;
+    // stringifying them (thousands of bookmarks) on every store change is what this sync used to spend.
+    const { bookmarkFolders, recentBookmarks, bookmarksBar, otherBookmarks, ...rest } = state;
+    const bookmarkMenus = [bookmarkFolders, recentBookmarks, bookmarksBar, otherBookmarks];
+    const json = JSON.stringify(rest);
+    if (json === lastMenu && bookmarkMenus.every((menu, i) => menu === lastBookmarkMenus[i])) return;
     lastMenu = json;
+    lastBookmarkMenus = bookmarkMenus;
     void setMenuState(state);
   };
 
