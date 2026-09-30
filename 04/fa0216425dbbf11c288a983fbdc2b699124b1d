@@ -1,0 +1,59 @@
+packages/cef/ios/NNExternalApps.mm
+  s_9c356f9574d31c::t_53506ed4600635 389
+  s_9c356f9574d31c::t_8782c9e79cd91a 252-253,299-300
+  s_9c356f9574d31c::t_f9b52d6133dd28 1-251,254-263,267-298,301-388,390-404
+  s_9c356f9574d31c::t_5c0f5f56a952af 264-266
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_f919d2fac1bb2d 4,240-243,842
+  s_9c356f9574d31c::t_178d3aa0d6b4d6 659-663,763,800-804,821-824,834-841,843,848-859,1168
+apps/browser/src/components/ContentCard.tsx
+  s_9c356f9574d31c::t_bffbe3c554f9c0 256
+  s_9c356f9574d31c::t_cd24bf6a3c9e0d 30,238,331-332,402
+packages/cef/ios/CefModule.swift
+  s_9c356f9574d31c::t_8e022247f2d82d 52-59,302,339,399
+packages/cef/ios/NNPopupWindow.mm
+  s_9c356f9574d31c::t_8e022247f2d82d 5,88-89
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_699d34bc28f23e 431
+packages/cef/ios/NNCef.h
+  s_9c356f9574d31c::t_b385c396c380f0 88-95
+packages/cef/src/index.ts
+  s_9c356f9574d31c::t_28c08b72219f16 5
+apps/browser/src/components/layout/pageState.ts
+  s_9c356f9574d31c::t_cd24bf6a3c9e0d 1
+  s_9c356f9574d31c::t_97654a7f233025 19,37
+packages/cef/ios/NNExternalApps.h
+  s_9c356f9574d31c::t_bc3f41690c3610 1-29,32-40,42-44,47-48
+  s_9c356f9574d31c::t_b385c396c380f0 30-31
+  s_9c356f9574d31c::t_700e96d136873f 41,45-46
+apps/browser/src/components/site/Prompts.tsx
+  s_9c356f9574d31c::t_6483395d95fae2 1,4,11,25,32,34,42,221-270
+  s_9c356f9574d31c::t_312f1ae449753b 271
+packages/cef/src/externalApps.ts
+  s_9c356f9574d31c::t_28c08b72219f16 1-28
+packages/cef/src/WebView.tsx
+  s_9c356f9574d31c::t_28c08b72219f16 4,158,238,279
+packages/cef/ios/NNClient.h
+  s_9c356f9574d31c::t_f919d2fac1bb2d 61
+  s_9c356f9574d31c::t_8f38a5810e9df5 171
+packages/cef/src/native.ts
+  s_9c356f9574d31c::t_28c08b72219f16 4,47-50
+apps/browser/src/components/settings/panes/Privacy.tsx
+  s_9c356f9574d31c::t_31e982682f8391 4,9,17,26,116,265-305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "04fa0216425dbbf11c288a983fbdc2b699124b1d",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
