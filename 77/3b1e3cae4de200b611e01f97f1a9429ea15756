@@ -1,0 +1,27 @@
+apps/browser/src/telemetry/copy.ts
+  s_9c356f9574d31c::t_474ae8a7965cd1 6,28
+apps/browser/src/telemetry/config.ts
+  s_9c356f9574d31c::t_b0fa028b155d1c 1-2,4-5
+apps/browser/src/telemetry/otlp.ts
+  s_9c356f9574d31c::t_3bd6e4a2c52b3d 1-83
+apps/browser/src/telemetry/client.ts
+  s_9c356f9574d31c::t_7be5dc31deddad 4-5,102,157,210,219,230,232-276,284,286-287,291,293
+apps/browser/src/telemetry/otlp.test.mjs
+  s_9c356f9574d31c::t_c2b169cde2b76c 1-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "773b1e3cae4de200b611e01f97f1a9429ea15756",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
