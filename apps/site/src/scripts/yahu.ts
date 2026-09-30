@@ -56,6 +56,8 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFShadowMap;
+  // Redrawn only when he moves (tick()), not every frame.
+  renderer.shadowMap.autoUpdate = false;
   const canvas = renderer.domElement;
   canvas.className = "yahu-canvas";
   canvas.setAttribute("aria-hidden", "true");
@@ -142,6 +144,7 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
     camera.aspect = width / height;
     camera.fov = baseFov / Math.min(1, camera.aspect / 0.8);
     camera.updateProjectionMatrix();
+    dirty = true;
     invalidate();
   };
   const ro = new ResizeObserver(resize);
@@ -149,7 +152,10 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   let visible = false;
   const io = new IntersectionObserver(([e]) => {
     visible = e.isIntersecting;
-    if (visible) invalidate();
+    if (visible) {
+      dirty = true;
+      invalidate();
+    }
   });
 
   const REST_YAW = 0.12;
@@ -206,21 +212,57 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   const chest = bones.get("chest");
   const rest = [head, neck, chest].filter((b): b is Bone => !!b).map((b) => ({ b, q: b.quaternion.clone(), s: b.scale.clone() }));
 
+  // Frames: at the display's rate while something moves (a dance, a drag, the head following the pointer, the
+  // turn back to rest); otherwise only his breathing, at AMBIENT_FPS, and only until the visitor has been still
+  // for AMBIENT_IDLE_MS (any move starts it again). Never offscreen or in a hidden tab. A frame that would
+  // draw the same picture isn't drawn, and the shadow is redrawn only when he has moved enough to change it.
+  const AMBIENT_FPS = 15;
+  const AMBIENT_IDLE_MS = 8000;
   const clock = new Timer();
   let raf = 0;
+  let timer = 0;
   let settleFrames = 0;
+  let fresh = true;
+  let dirty = true;
+  let breath = 0;
+  let mixerUntil = 0;
+  let lastActivity = performance.now();
+  const drawn: number[] = [];
+  const shadowed: number[] = [];
+
+  function schedule() {
+    if (raf) return;
+    if (timer) {
+      clearTimeout(timer);
+      timer = 0;
+    } else fresh = true;
+    raf = requestAnimationFrame(tick);
+  }
   function invalidate() {
     settleFrames = 90;
-    if (!raf) raf = requestAnimationFrame(tick);
+    schedule();
   }
+  const onActivity = () => {
+    lastActivity = performance.now();
+    if (!reduced && !raf && !timer) schedule();
+  };
+  for (const type of ["pointermove", "pointerdown", "keydown", "wheel", "scroll", "touchstart"])
+    addEventListener(type, onActivity, { capture: true, passive: true });
 
   function tick() {
     raf = 0;
     clock.update();
-    const dt = Math.min(clock.getDelta(), 1 / 20);
-    const t = clock.getElapsed();
-    const animating = !!current || !reduced;
-    if (!visible || document.hidden) return;
+    // After a pause the clock's delta is the pause: the first frame back starts from where he stopped.
+    const elapsed = fresh ? 0 : clock.getDelta();
+    fresh = false;
+    const dt = Math.min(elapsed, 1 / 20);
+    if (!visible || document.hidden) {
+      fresh = true;
+      return;
+    }
+    const now = performance.now();
+    const breathing = !reduced && now - lastActivity < AMBIENT_IDLE_MS;
+    if (breathing) breath += Math.min(elapsed, 0.25);
 
     for (const r of rest) {
       r.b.quaternion.copy(r.q);
@@ -233,13 +275,16 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
       yawVel *= 0.92;
       const over = Math.abs(yaw) - MAX_YAW;
       if (over > 0) yaw = MathUtils.damp(yaw, Math.sign(yaw) * MAX_YAW, 10, dt);
-      if (performance.now() - lastInput > 2500) yaw = MathUtils.damp(yaw, REST_YAW, 1.2, dt);
+      if (now - lastInput > 2500) {
+        yaw = MathUtils.damp(yaw, REST_YAW, 1.2, dt);
+        if (Math.abs(yaw - REST_YAW) < 1e-3) yaw = REST_YAW;
+      }
     }
     turntable.rotation.y = yaw;
 
     if (!reduced && chest) {
-      chest.scale.y *= 1 + Math.sin(t * 1.7) * 0.012;
-      turntable.rotation.z = Math.sin(t * 0.6) * 0.01;
+      chest.scale.y *= 1 + Math.sin(breath * 1.7) * 0.012;
+      turntable.rotation.z = Math.sin(breath * 0.6) * 0.01;
     }
 
     if (look) {
@@ -259,14 +304,45 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
     if (head) head.quaternion.multiply(q.setFromEuler(euler.set(headPitch.v * 0.7, headYaw.v * 0.7, 0)));
     if (neck) neck.quaternion.multiply(q.setFromEuler(euler.set(headPitch.v * 0.3, headYaw.v * 0.3, 0)));
 
-    renderer.render(scene, camera);
+    const mixing = !!current || now < mixerUntil;
+    const pose = [yaw, turntable.rotation.z, chest?.scale.y ?? 1, headYaw.v, headPitch.v, mixing ? mixer.time : -1];
+    if (dirty || pose.some((v, i) => v !== drawn[i])) {
+      // Breathing alone moves the shadow by well under a pixel a frame: it's redrawn once that adds up.
+      const shadowMoved =
+        !shadowed.length ||
+        pose.some((v, i) => (i === 1 ? Math.abs(v - shadowed[i]) > 0.002 : i === 2 ? Math.abs(v - shadowed[i]) > 0.003 : v !== shadowed[i]));
+      if (shadowMoved) {
+        renderer.shadowMap.needsUpdate = true;
+        shadowed.splice(0, pose.length, ...pose);
+      }
+      renderer.render(scene, camera);
+      drawn.splice(0, pose.length, ...pose);
+      dirty = false;
+    }
     if (!ready) {
       ready = true;
       stage.dispatchEvent(new CustomEvent("yahu:ready", { bubbles: true }));
     }
 
-    const moving = animating || dragging || Math.abs(yawVel) > 1e-4 || Math.abs(headYaw.v - headYaw.t) > 1e-3;
-    if (moving || --settleFrames > 0) raf = requestAnimationFrame(tick);
+    const waitYaw = !dragging && yaw !== REST_YAW ? Math.max(0, lastInput + 2500 - now) : Infinity;
+    const moving =
+      mixing ||
+      dragging ||
+      waitYaw === 0 ||
+      Math.abs(yawVel) > 1e-4 ||
+      Math.abs(headYaw.v - headYaw.t) > 1e-3 ||
+      Math.abs(headPitch.v - headPitch.t) > 1e-3;
+    if (settleFrames > 0) settleFrames--;
+    if (moving || settleFrames > 0) {
+      raf = requestAnimationFrame(tick);
+      return;
+    }
+    const wait = Math.min(breathing ? 1000 / AMBIENT_FPS - 8 : Infinity, waitYaw);
+    if (wait < Infinity)
+      timer = window.setTimeout(() => {
+        timer = 0;
+        raf = requestAnimationFrame(tick);
+      }, wait);
   }
   let ready = false;
 
@@ -277,6 +353,7 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
       current.crossFadeTo(idle, 0.45, false);
     } else current.fadeOut(0.45);
     current = null;
+    mixerUntil = performance.now() + 600;
     invalidate();
   }
   mixer.addEventListener("finished", (e) => e.action === current && settle());
@@ -316,7 +393,11 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
     },
   };
 
-  document.addEventListener("visibilitychange", () => !document.hidden && invalidate());
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    dirty = true;
+    invalidate();
+  });
   if (import.meta.env.DEV) {
     Object.assign(window, {
       __yahu: {
