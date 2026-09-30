@@ -286,10 +286,22 @@ export function Omnibox({
       <Symbol name="magnifyingglass" size={15} weight="medium" color={hero ? theme.textSecondary : theme.textPrimary} style={{ width: 18, height: 18 }} />
     );
 
+  // Focus once the field has its frame: autoFocus hands the window's shared field editor a
+  // zero-width field, and the editor then stays wider than the field (its text draws past the
+  // edge and never scrolls).
+  const focused = useRef(false);
+  const focusOnce = () => {
+    if (focused.current) return;
+    focused.current = true;
+    input.current?.focus();
+    const { start, end } = selection.current;
+    input.current?.setSelection(start, end);
+  };
+
   const field = (
     <TextInput
       ref={input}
-      autoFocus
+      onLayout={focusOnce}
       value={value}
       onSelectionChange={(e) => {
         selection.current = e.nativeEvent.selection;
