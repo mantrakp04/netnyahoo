@@ -1,0 +1,25 @@
+apps/browser/src/store/groupNames.ts
+  s_9c356f9574d31c::t_3836eb1f6e3f27 69-77,90
+apps/browser/src/store/groupLabel.test.mjs
+  s_9c356f9574d31c::t_f006bbc875c6c8 1-26,29-39
+  s_9c356f9574d31c::t_95f17249fa3c73 40-56
+  s_9c356f9574d31c::t_ad5894d6361410 27-28
+apps/browser/src/store/organize.ts
+  s_9c356f9574d31c::t_3836eb1f6e3f27 79-81,84-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "228b19542167d43869d9f17c81a52f8c905ad737",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
