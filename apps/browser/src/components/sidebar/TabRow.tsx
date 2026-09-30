@@ -1,5 +1,5 @@
 import { ActivitySpinner, ContextMenuArea, FadeLabel, MouseArea, Surface, Symbol } from "@netnyahoo/shell";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Pressable, TextInput, View, type GestureResponderEvent } from "react-native";
 import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
@@ -22,7 +22,15 @@ export const clickMods = (e: GestureResponderEvent) => {
 
 const useSelection = (windowId: string) => () => useBrowser.getState().selection[windowId] ?? [];
 
-export function TabRowItem({ tabId, section, parentGroup }: { tabId: string; section: "list" | "pinnedGroups"; parentGroup?: string }) {
+export const TabRowItem = memo(function TabRowItem({
+  tabId,
+  section,
+  parentGroup,
+}: {
+  tabId: string;
+  section: "list" | "pinnedGroups";
+  parentGroup?: string;
+}) {
   const windowId = useWindowId();
   const selection = useSelection(windowId);
   const { wrapper, handle } = useDragItem(`t:${tabId}`, { kind: "row", tabIds: [tabId], section, parentGroup }, selection);
@@ -31,7 +39,7 @@ export function TabRowItem({ tabId, section, parentGroup }: { tabId: string; sec
       <TabRow tabId={tabId} />
     </Animated.View>
   );
-}
+});
 
 export function TabRow({ tabId }: { tabId: string }) {
   const theme = useTheme();
@@ -161,7 +169,15 @@ export function RenameField({
   );
 }
 
-export function SplitRowItem({ splitId, section, parentGroup }: { splitId: string; section: "list" | "pinnedGroups"; parentGroup?: string }) {
+export const SplitRowItem = memo(function SplitRowItem({
+  splitId,
+  section,
+  parentGroup,
+}: {
+  splitId: string;
+  section: "list" | "pinnedGroups";
+  parentGroup?: string;
+}) {
   const windowId = useWindowId();
   const tabIds = useBrowser((s) => s.splits[splitId]?.tabIds.filter((id) => s.tabs[id] && !s.tabs[id]!.pinned).join(",") ?? "").split(",").filter(Boolean);
   const { wrapper, handle } = useDragItem(`s:${splitId}`, { kind: "split", tabIds, section, parentGroup });
@@ -194,7 +210,7 @@ export function SplitRowItem({ splitId, section, parentGroup }: { splitId: strin
       </View>
     </Animated.View>
   );
-}
+});
 
 function SplitPane({ tabId, windowId }: { tabId: string; windowId: string }) {
   const theme = useTheme();

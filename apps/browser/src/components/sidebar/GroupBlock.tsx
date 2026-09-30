@@ -1,5 +1,5 @@
 import { ContextMenuArea, FadeLabel, Surface } from "@netnyahoo/shell";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
@@ -20,7 +20,7 @@ import { GROUP_COLORS, useSidebarTokens, withAlpha } from "./tokens";
 
 const PAD = 2;
 
-export function GroupBlock({ groupId, section }: { groupId: string; section: "list" | "pinnedGroups" }) {
+export const GroupBlock = memo(function GroupBlock({ groupId, section }: { groupId: string; section: "list" | "pinnedGroups" }) {
   const windowId = useWindowId();
   const tokens = useSidebarTokens();
   const collapsed = useBrowser((s) => !!s.groups[groupId]?.collapsed);
@@ -88,7 +88,7 @@ export function GroupBlock({ groupId, section }: { groupId: string; section: "li
       </View>
     </Animated.View>
   );
-}
+});
 
 function Entry({ entry, section, groupId }: { entry: string; section: "list" | "pinnedGroups"; groupId: string }) {
   return entry.startsWith("s:") ? (

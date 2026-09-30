@@ -1,5 +1,5 @@
 import { ContextMenuArea, DockSelection, MouseArea, Surface, Symbol } from "@netnyahoo/shell";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
 import { closeTab } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
@@ -26,7 +26,7 @@ const MIN_TILE = 50;
 const SELECTION_STROKE = 3;
 const GLASS_RIM = 1;
 
-export function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; innerWidth: number; dragging: boolean }) {
+export const PinnedGrid = memo(function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; innerWidth: number; dragging: boolean }) {
   const controller = useDragController();
   const columns = Math.max(1, Math.min(tabs.length || 1, Math.floor((innerWidth + GAP) / (MIN_TILE + GAP))));
   const width = Math.floor(((innerWidth - GAP * (columns - 1)) / columns) * 2) / 2;
@@ -48,7 +48,7 @@ export function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; inn
       <Animated.View ref={tail.wrapper.ref} style={{ position: "absolute", right: 0, bottom: 0, width: 0, height: 0 }} />
     </View>
   );
-}
+});
 
 function PinDropZone({ width }: { width: number }) {
   const tokens = useSidebarTokens();
@@ -71,7 +71,7 @@ function PinDropZone({ width }: { width: number }) {
   );
 }
 
-function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
+const PinnedTile = memo(function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const windowId = useWindowId();
@@ -203,7 +203,7 @@ function PinnedTile({ tabId, width }: { tabId: string; width: number }) {
       </View>
     </Animated.View>
   );
-}
+});
 
 function GlassTile({
   tabId,

@@ -1,6 +1,5 @@
 import type { BlockedPopup, CrashInfo, ExternalAppRequest, MediaAccess, NavigationState, PasswordPrompt, PermissionRequest, SecurityInfo } from "@netnyahoo/cef";
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 import { useBrowser } from "../../store/browser";
 import { activeTabId } from "../../store/model";
 import { splitOf } from "../../store/splits";
@@ -87,13 +86,18 @@ export const usePopover = (tabId: string | undefined) => usePages((s) => (tabId 
 // Page (element) fullscreen: only a tab on screen counts, so switching tabs leaves it (the hidden
 // web view exits fullscreen natively).
 export function useFullscreenTab(windowId: string): string | undefined {
-  const shown = useBrowser(
-    useShallow((s) => {
-      const active = activeTabId(s, windowId);
-      return active ? (splitOf(s, active)?.tabIds ?? [active]) : [];
-    }),
-  );
-  return usePages((s) => shown.find((id) => s.pages[id]?.fullscreen));
+  // Both selectors return strings, so switching tabs doesn't re-render the callers (the window root).
+  const fullscreen = usePages((s) => {
+    let ids = "";
+    for (const id in s.pages) if (s.pages[id]!.fullscreen) ids += `${id}\n`;
+    return ids;
+  });
+  return useBrowser((s) => {
+    if (!fullscreen) return undefined;
+    const active = activeTabId(s, windowId);
+    const shown = active ? (splitOf(s, active)?.tabIds ?? [active]) : [];
+    return shown.find((id) => fullscreen.split("\n").includes(id));
+  });
 }
 
 useBrowser.subscribe((s, prev) => {

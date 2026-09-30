@@ -1,4 +1,5 @@
 import { Symbol } from "@netnyahoo/shell";
+import { memo } from "react";
 import { View } from "react-native";
 import { hex } from "../../lib/theme";
 import { usePage } from "../layout/pageState";
@@ -7,14 +8,14 @@ import { useMedia } from "./state";
 import { CAPTURE_RED } from "./tokens";
 
 // `pip: false` where Dia shows no picture-in-picture badge (the top tab strip).
-export function TabBadges({ tabId, size = 16, pip = true }: { tabId: string; size?: number; pip?: boolean }) {
+export const TabBadges = memo(function TabBadges({ tabId, size = 16, pip = true }: { tabId: string; size?: number; pip?: boolean }) {
   return (
     <>
       {pip && <PipBadge tabId={tabId} size={size} />}
       <CaptureBadge tabId={tabId} size={size} />
     </>
   );
-}
+});
 
 function PipBadge({ tabId, size }: { tabId: string; size: number }) {
   const tokens = useSidebarTokens();

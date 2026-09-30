@@ -1,4 +1,5 @@
 import { Symbol } from "@netnyahoo/shell";
+import { memo } from "react";
 import { Text, View } from "react-native";
 import { useIsSleeping } from "../../lib/tabLifecycle";
 import { useTheme } from "../../lib/theme";
@@ -7,7 +8,8 @@ import { Favicon } from "../primitives";
 
 export const SYMBOL_PREFIX = "symbol:";
 
-export function TabIcon({
+// Memoized: rows re-render on hover and selection, and the icon's props rarely change.
+export const TabIcon = memo(function TabIcon({
   tabId,
   url,
   favicon,
@@ -33,7 +35,7 @@ export function TabIcon({
       <Icon url={url} favicon={favicon} icon={icon} size={size} color={color} profileId={profile ?? tabProfile} direct={direct} />
     </View>
   );
-}
+});
 
 const SLEEPING_OPACITY = 0.45;
 

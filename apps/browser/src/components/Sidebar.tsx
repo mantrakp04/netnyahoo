@@ -1,5 +1,5 @@
 import { ContextMenuArea, FadeLabel, Symbol, WindowDragRegion } from "@netnyahoo/shell";
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { layout, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
@@ -243,17 +243,19 @@ function PageContent({ children }: { children: (controller: ReturnType<typeof us
   return <>{children(useDragController())}</>;
 }
 
-function ListEntry({ entry }: { entry: string }) {
+// Rows are memoized by id: the sidebar re-renders on layout and profile changes, and each row
+// subscribes to its own tab.
+const ListEntry = memo(function ListEntry({ entry }: { entry: string }) {
   const id = entry.slice(2);
   if (entry.startsWith("g:")) return <GroupBlock groupId={id} section="list" />;
   if (entry.startsWith("s:")) return <SplitRowItem splitId={id} section="list" />;
   return <TabRowItem tabId={id} section="list" />;
-}
+});
 
-function Tail({ id, section }: { id: string; section: "list" | "pinnedGroups" }) {
+const Tail = memo(function Tail({ id, section }: { id: string; section: "list" | "pinnedGroups" }) {
   const { wrapper } = useDragItem(id, { kind: "tail", tabIds: [], section });
   return <Animated.View ref={wrapper.ref} style={wrapper.style} />;
-}
+});
 
 function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, scrollY: RefObject<number>, glowRoom: number) {
   useEffect(() => {
@@ -303,7 +305,7 @@ function DownloadsButton({ windowId }: { windowId: string }) {
   );
 }
 
-function NewTabRow({ windowId }: { windowId: string }) {
+const NewTabRow = memo(function NewTabRow({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const cleaned = useBrowser((s) => cleanedTabsFor(s, windowId).length);
@@ -349,7 +351,7 @@ function NewTabRow({ windowId }: { windowId: string }) {
       </View>
     </View>
   );
-}
+});
 
 const UPSELL_MIN = 10;
 let upsellDeclined = false;
