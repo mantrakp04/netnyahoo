@@ -297,7 +297,7 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
     if (!navigation) return;
     pending.current = navigation.url;
     if (pageOf(tabId).newTabShown) patchPage(tabId, { newTabShown: null });
-    void webviews.get(tabId)?.loadUrl(navigation.url, { userInitiated: !!navigation.userInitiated });
+    void webviews.get(tabId)?.loadUrl(navigation.url, { userInitiated: !!navigation.userInitiated, opened: navigation.opened });
   }, [seq]);
   const fromNewTab = useRef(pageOf(tabId).wasNewTab && !adoptId);
   useEffect(() => () => noteGone(tabId), []);

@@ -185,6 +185,9 @@ public class CefModule: Module {
       AsyncFunction("loadUrl") { (view: CefWebView, url: String, userInitiated: Bool?) in
         view.browser.loadURL(url, userInitiated: userInitiated ?? false)
       }.runOnQueue(.main)
+      AsyncFunction("loadOpenedUrl") { (view: CefWebView, openedId: Int, url: String) in
+        view.browser.loadOpenedURL(openedId, url: url)
+      }.runOnQueue(.main)
       AsyncFunction("goBack") { (view: CefWebView) in view.browser.goBack() }.runOnQueue(.main)
       AsyncFunction("goForward") { (view: CefWebView) in view.browser.goForward() }.runOnQueue(.main)
       AsyncFunction("goToOffset") { (view: CefWebView, offset: Int) in view.browser.go(toHistoryOffset: offset) }.runOnQueue(.main)

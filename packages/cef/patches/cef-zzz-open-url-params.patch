@@ -1,20 +1,20 @@
 diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
-index db46768..09f7b04 100644
+index db46768..da33f68 100644
 --- a/include/cef_netnyahoo.h
 +++ b/include/cef_netnyahoo.h
-@@ -121,4 +121,27 @@
+@@ -121,4 +121,33 @@
  // first), enabled or not. Everywhere else Chrome's rules are unchanged.
  #define CEF_NN_QUIET_UNINSTALL 1
  
 +// A navigation Chrome asks to open in a new tab or window
 +// (CefRequestHandler::OnOpenURLFromTab with NEW_FOREGROUND_TAB,
-+// NEW_BACKGROUND_TAB or NEW_WINDOW) keeps its full parameters: a POST body,
++// NEW_BACKGROUND_TAB, NEW_WINDOW or NEW_SPLIT_VIEW) keeps its full parameters: a POST body,
 +// referrer and initiator. C functions exported by the framework, outside
 +// the translated API (look them up with dlsym), on the UI thread:
 +//   int cef_nn_open_url_id(void): inside OnOpenURLFromTab, that navigation's
 +//     id, or 0.
 +//   int cef_nn_load_open_url(int browser_id, int id): loads it in the browser
-+//     (replacing its current entry, the new browser's about:blank) and
++//     (a new browser's about:blank entry is replaced, a page's isn't) and
 +//     forgets it; 0 if the id is unknown.
 +//   void cef_nn_forget_open_url(int id): drops it unused (its tab closed).
 +// Entries wait until used or forgotten (a tab opened behind may load only
@@ -29,9 +29,15 @@ index db46768..09f7b04 100644
 +// noreferrer, and "nn_no_referrer" when it sent no referrer.
 +#define CEF_NN_POPUP_OPENER_SUPPRESSED 1
 +
++// With CefSettings.external_message_pump, CefDoMessageLoopWork() ends by
++// calling CefBrowserProcessHandler::OnScheduleMessagePumpWork() for its next
++// call: 0 when work is left over from its time slice, or the delay until the
++// next delayed task. A client needs no poll of its own to run delayed tasks.
++#define CEF_NN_PUMP_SCHEDULE 1
++
  #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
 diff --git a/libcef/browser/browser_contents_delegate.cc b/libcef/browser/browser_contents_delegate.cc
-index b1591e9..ddc913c 100644
+index b1591e9..1ab1d8d 100644
 --- a/libcef/browser/browser_contents_delegate.cc
 +++ b/libcef/browser/browser_contents_delegate.cc
 @@ -4,6 +4,15 @@
@@ -50,7 +56,7 @@ index b1591e9..ddc913c 100644
  #include "base/memory/raw_ptr.h"
  #include "cef/libcef/browser/browser_event_util.h"
  #include "cef/libcef/browser/browser_host_base.h"
-@@ -111,6 +120,80 @@ void CefBrowserContentsDelegate::RemoveObserver(Observer* observer) {
+@@ -111,6 +120,88 @@ void CefBrowserContentsDelegate::RemoveObserver(Observer* observer) {
    observers_.RemoveObserver(observer);
  }
  
@@ -84,7 +90,8 @@ index b1591e9..ddc913c 100644
 +bool KeepsOpenedURL(WindowOpenDisposition disposition) {
 +  return disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB ||
 +         disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB ||
-+         disposition == WindowOpenDisposition::NEW_WINDOW;
++         disposition == WindowOpenDisposition::NEW_WINDOW ||
++         disposition == WindowOpenDisposition::NEW_SPLIT_VIEW;
 +}
 +
 +}  // namespace
@@ -111,6 +118,7 @@ index b1591e9..ddc913c 100644
 +  content::WebContents* web_contents =
 +      browser ? browser->GetWebContents() : nullptr;
 +  if (!web_contents) {
++    OpenedURLs().erase(it);
 +    return 0;
 +  }
 +  // Only into the profile the navigation came from: its source SiteInstance
@@ -122,8 +130,14 @@ index b1591e9..ddc913c 100644
 +  }
 +  content::NavigationController::LoadURLParams load(it->second.params);
 +  OpenedURLs().erase(it);
-+  // The new browser starts on about:blank; the page takes its entry.
-+  load.should_replace_current_entry = true;
++  // A new browser starts on about:blank: the page takes that entry. In a
++  // browser with a page (a split's pane), it's a new entry.
++  const content::NavigationEntry* current =
++      web_contents->GetController().GetLastCommittedEntry();
++  load.should_replace_current_entry =
++      web_contents->GetController().GetEntryCount() <= 1 &&
++      (!current || current->GetURL().IsAboutBlank() ||
++       current->GetURL().is_empty());
 +  web_contents->GetController().LoadURLWithParams(load);
 +  return 1;
 +}
@@ -131,7 +145,7 @@ index b1591e9..ddc913c 100644
  // |source| may be NULL for navigations in the current tab, or if the
  // navigation originates from a guest view via MaybeAllowNavigation.
  content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
-@@ -120,6 +203,15 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
+@@ -120,6 +211,15 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
          navigation_handle_callback) {
    bool cancel = false;
  
@@ -147,7 +161,7 @@ index b1591e9..ddc913c 100644
    if (auto c = client()) {
      if (auto handler = c->GetRequestHandler()) {
        // May return nullptr for omnibox navigations.
-@@ -135,6 +227,10 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
+@@ -135,6 +235,10 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
            params.user_gesture);
      }
    }

@@ -173,7 +173,8 @@ export type WebViewProps = ViewProps & {
 };
 
 export type WebViewHandle = {
-  loadUrl(url: string, options?: { userInitiated?: boolean }): Promise<void>;
+  /** `opened`: an "open:<id>" navigation the engine kept (POST body, referrer) to load instead, if it still can. */
+  loadUrl(url: string, options?: { userInitiated?: boolean; opened?: number }): Promise<void>;
   goBack(): Promise<void>;
   goForward(): Promise<void>;
   goToOffset(offset: number): Promise<void>;
@@ -300,6 +301,7 @@ type NativeHandle = Omit<
   evaluate(code: string): Promise<string | null>;
   downloadFavicon(url: string, name: string | null): Promise<FaviconImage | null>;
   loadUrl(url: string, userInitiated?: boolean): Promise<void>;
+  loadOpenedUrl?(openedId: number, url: string): Promise<void>;
   resolvePasswordPrompt(answer: string, username: string | null, password: string | null): Promise<void>;
   discard(unload: boolean): Promise<boolean>;
 };
@@ -331,7 +333,12 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
       }
     };
     return {
-      loadUrl: (url, options) => call(undefined, (n) => n.loadUrl(toEngine(url), options?.userInitiated ?? false)),
+      loadUrl: (url, options) =>
+        call(undefined, (n) =>
+          options?.opened && typeof n.loadOpenedUrl === "function"
+            ? n.loadOpenedUrl(options.opened, toEngine(url))
+            : n.loadUrl(toEngine(url), options?.userInitiated ?? false),
+        ),
       goBack: () => call(undefined, (n) => n.goBack()),
       goForward: () => call(undefined, (n) => n.goForward()),
       goToOffset: (offset) => call(undefined, (n) => n.goToOffset(offset)),

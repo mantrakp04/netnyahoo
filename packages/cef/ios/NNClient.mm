@@ -923,7 +923,7 @@ bool Client::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
     @"userGesture" : @(user_gesture),
   } mutableCopy];
   // The tab that opens it loads the navigation itself: its POST body, referrer and initiator (NNBrowserView).
-  if (int opened = split ? 0 : OpenedURLId()) request[@"adoptId"] = [NSString stringWithFormat:@"open:%d", opened];
+  if (int opened = OpenedURLId()) request[@"adoptId"] = [NSString stringWithFormat:@"open:%d", opened];
   Emit(@"openWindow", request);
   return true;
 }

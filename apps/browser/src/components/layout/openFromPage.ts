@@ -22,7 +22,7 @@ export function openFromPage({ url, adoptId, disposition }: OpenWindowRequest, f
   if (isSmall(s, w.id) && disposition !== "window" && disposition !== "incognito") {
     return void s.newTab(w.id, { url, ...deferred, openerId: from.tabId, profileId: from.profileId, background: true });
   }
-  if (disposition === "split") return from.tabId ? openLinkInSplit(from.tabId, url) : void openSplitPane(w.id, { url });
+  if (disposition === "split") return from.tabId ? openLinkInSplit(from.tabId, url, adoptId) : void openSplitPane(w.id, { url, adoptId });
   if (disposition === "incognito") return void openWindow({ incognito: true, url });
   // A private window's new window is private too: a session of its own, so the page loads afresh there.
   if (disposition === "window") return void openWindow(w.incognito ? { incognito: true, url } : { profileId: from.profileId, url, adoptId });

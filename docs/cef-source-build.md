@@ -222,9 +222,10 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
 - **`CEF_NN_OPEN_URL_PARAMS`** (outside the translated API: plain C exports, looked up with `dlsym` on the framework,
   so no API hash change)
   - `CefBrowserContentsDelegate::OpenURLFromTabEx` keeps the `content::OpenURLParams` of every NEW_FOREGROUND_TAB,
-    NEW_BACKGROUND_TAB and NEW_WINDOW navigation the client takes over in `OnOpenURLFromTab`: POST body, referrer,
-    initiator. `int cef_nn_open_url_id()` (inside `OnOpenURLFromTab`) is its id; `int cef_nn_load_open_url(browser_id,
-    id)` loads it in another browser, replacing that browser's current entry; `void cef_nn_forget_open_url(id)` drops it.
+    NEW_BACKGROUND_TAB, NEW_WINDOW and NEW_SPLIT_VIEW navigation the client takes over in `OnOpenURLFromTab`: POST
+    body, referrer, initiator. `int cef_nn_open_url_id()` (inside `OnOpenURLFromTab`) is its id; `int
+    cef_nn_load_open_url(browser_id, id)` loads it in a browser (a new one's about:blank entry is replaced, a page's
+    isn't); `void cef_nn_forget_open_url(id)` drops it.
     Entries wait until used (a tab opened behind loads when first shown); past 200 the oldest go.
 - **`CEF_NN_POPUP_OPENER_SUPPRESSED`**
   - `OnBeforePopup`'s `extra_info` has `nn_opener_suppressed` (and `nn_no_referrer`) for a noopener / noreferrer popup,

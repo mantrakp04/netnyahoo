@@ -1,3 +1,4 @@
+import { forgetOpenedURL } from "@netnyahoo/cef";
 import { showMenu, type MenuItem } from "@netnyahoo/shell";
 import { create } from "zustand";
 import { closeTab } from "../../lib/actions";
@@ -47,7 +48,8 @@ export function openInSplit(tabId: string, side: SplitSide = "right") {
   openSplitPane(tab.windowId, { tabId, anchorTabId: active, side });
 }
 
-export function openLinkInSplit(sourceTabId: string, url: string) {
+// `adoptId`: the navigation the engine kept for the link ("open:<id>": a POST form keeps its body).
+export function openLinkInSplit(sourceTabId: string, url: string, adoptId?: string) {
   const s = store();
   const source = s.tabs[sourceTabId];
   if (!source) return;
@@ -55,9 +57,11 @@ export function openLinkInSplit(sourceTabId: string, url: string) {
   const next = split?.tabIds[split.tabIds.indexOf(sourceTabId) + 1];
   if (split && (next || split.tabIds.length >= MAX_SPLIT_PANES)) {
     const target = next ?? split.tabIds.at(-1)!;
-    if (target !== sourceTabId) return s.navigate(target, url);
+    const opened = Number(adoptId?.match(/^open:(\d+)$/)?.[1]) || undefined;
+    if (target !== sourceTabId) return s.navigate(target, url, { opened });
   }
-  openSplitPane(source.windowId, { anchorTabId: sourceTabId, url, side: "right", background: true });
+  if (!openSplitPane(source.windowId, { anchorTabId: sourceTabId, url, side: "right", background: true, adoptId }) && adoptId?.startsWith("open:"))
+    forgetOpenedURL(Number(adoptId.slice(5)));
 }
 
 export function dropTabIntoSplit(tabId: string, targetTabId: string, side: SplitSide) {

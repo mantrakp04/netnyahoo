@@ -446,8 +446,10 @@ NSString *const kExitPictureInPictureScript =
       NNBrowserView *view = weakSelf;
       NSString *url = view ? (view->_openedURL ?: view->_initialURL) : nil;
       if (view) view->_openedURL = nil;
-      if (!view || view->_loadRequests != requests) return [NNCef forgetOpenedURL:opened];
-      if (!LoadOpenedURL(target, opened) && url.length && target->IsValid()) target->GetMainFrame()->LoadURL(ToCef(url));
+      if (!view || view->_loadRequests != requests || !target->IsValid()) return [NNCef forgetOpenedURL:opened];
+      if (LoadOpenedURL(target, opened)) return;
+      [NNCef forgetOpenedURL:opened];
+      if (url.length) target->GetMainFrame()->LoadURL(ToCef(url));
     });
   }
   if (_pendingURL) {
@@ -589,6 +591,16 @@ NSString *const kExitPictureInPictureScript =
 - (void)loadURL:(NSString *)url userInitiated:(BOOL)userInitiated {
   if (userInitiated) AllowUserNavigation(url);
   [self loadURL:url];
+}
+
+// A link opened in an existing pane (a split): Chrome's kept navigation (POST body, referrer), else its URL.
+- (void)loadOpenedURL:(NSInteger)openedId url:(NSString *)url {
+  if (_browser && LoadOpenedURL(_browser, (int)openedId)) {
+    _loadRequests++;
+    return;
+  }
+  [NNCef forgetOpenedURL:openedId];
+  [self loadURL:url userInitiated:NO];
 }
 
 - (void)loadURL:(NSString *)url {
@@ -862,6 +874,10 @@ NSString *const kExitPictureInPictureScript =
 }
 
 - (void)closeBrowser {
+  // Closed before it loaded its kept navigation: the engine can drop it.
+  if ([_adoptId hasPrefix:@"open:"]) [NNCef forgetOpenedURL:[_adoptId substringFromIndex:5].intValue];
+  if (_openedId) [NNCef forgetOpenedURL:_openedId];
+  _openedId = 0;
   if (_adoptId.length && !_browser) {
     auto it = Popups().find(_adoptId.UTF8String);
     if (it != Popups().end()) {

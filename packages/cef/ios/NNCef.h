@@ -180,6 +180,7 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 
 - (void)loadURL:(NSString *)url;
 - (void)loadURL:(NSString *)url userInitiated:(BOOL)userInitiated NS_SWIFT_NAME(loadURL(_:userInitiated:));
+- (void)loadOpenedURL:(NSInteger)openedId url:(NSString *)url NS_SWIFT_NAME(loadOpenedURL(_:url:));
 - (void)goBack;
 - (void)goForward;
 - (void)goToHistoryOffset:(NSInteger)offset;
