@@ -1,0 +1,32 @@
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_1c787868cf782f 546
+  s_9c356f9574d31c::t_88584f6b811060 540
+packages/cef/ios/NNNativeMessaging.mm
+  s_9c356f9574d31c::t_3f29de80145cfa 12
+  s_9c356f9574d31c::t_6a9982bd634a00 83-86,91-97
+  s_9c356f9574d31c::t_2c0c635f01d112 13-14
+  s_9c356f9574d31c::t_2743a6219d80a2 1-11,15-82,87-90,98-133
+packages/cef/ios/NNNativeMessaging.h
+  s_9c356f9574d31c::t_794e6ccdb50b06 5-6,9-12
+  s_9c356f9574d31c::t_af8c5f0473acb7 1-4,7-8,13-19
+apps/browser/src/components/settings/panes/Passwords.tsx
+  s_9c356f9574d31c::t_25bd098f06db32 95-98
+packages/cef/ios/NNCef.mm
+  s_9c356f9574d31c::t_427e9ff3db4886 7,739,760-767
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4edcab8d42c7360c177ebfedb713375782bc6d49",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
