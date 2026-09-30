@@ -22,6 +22,9 @@
 #include "include/cef_browser_process_handler.h"
 #include "include/cef_command_line.h"
 #include "include/cef_cookie.h"
+#include "include/cef_pack_strings.h"
+#include "include/cef_resource_bundle.h"
+#include "include/cef_resource_bundle_handler.h"
 #include "include/cef_version.h"
 #include "include/wrapper/cef_library_loader.h"
 
@@ -149,11 +152,65 @@ bool IsTeamSigned() {
 }
 #endif
 
+// MARK: - Strings
+
+// Chrome's own UI (bubbles, dialogs, its WebUI pages) names the product "Chromium", literally in every
+// locale's strings, not through the branding file. Say Netnyahoo instead, as Chrome says Chrome.
+class Strings : public CefResourceBundleHandler {
+ public:
+  bool GetLocalizedString(int string_id, CefString &string) override {
+    // Chrome's post-install bubble points at a Window > Extensions item; ours is a menu of its own.
+    if (string_id == IDS_EXTENSION_INSTALLED_MANAGE_INFO) {
+      string = "Manage your extensions from the Extensions menu.";
+      return true;
+    }
+    thread_local bool reading = false;
+    if (reading) return false;
+    reading = true;
+    std::u16string text = CefResourceBundle::GetGlobal()->GetLocalizedString(string_id).ToString16();
+    reading = false;
+    if (!Rename(text)) return false;
+    string = text;
+    return true;
+  }
+  bool GetDataResource(int, void *&, size_t &) override { return false; }
+  bool GetDataResourceForScale(int, ScaleFactor, void *&, size_t &) override { return false; }
+
+ private:
+  // Whole words only: "Chromium's" becomes "Netnyahoo's", "ChromiumOS" stays. Credits stay too: "The
+  // Chromium Authors" in the copyright line, and "made possible by the Chromium open source project".
+  static bool Rename(std::u16string &text) {
+    static const std::u16string from = u"Chromium", to = u"Netnyahoo";
+    static const std::u16string credits[] = {u" Authors", u" open source", u"</a> open source"};
+    auto letter = [](char16_t c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
+    auto credit = [&](size_t end) {
+      for (const auto &after : credits)
+        if (text.compare(end, after.size(), after) == 0) return true;
+      return false;
+    };
+    bool renamed = false;
+    for (size_t at = text.find(from); at != std::u16string::npos; at = text.find(from, at)) {
+      const size_t end = at + from.size();
+      if ((at > 0 && letter(text[at - 1])) || (end < text.size() && letter(text[end])) || credit(end)) {
+        at = end;
+        continue;
+      }
+      text.replace(at, from.size(), to);
+      at += to.size();
+      renamed = true;
+    }
+    return renamed;
+  }
+
+  IMPLEMENT_REFCOUNTING(Strings);
+};
+
 // MARK: - CefApp (browser process)
 
 class BrowserApp : public CefApp, public CefBrowserProcessHandler {
  public:
   CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override { return this; }
+  CefRefPtr<CefResourceBundleHandler> GetResourceBundleHandler() override { return strings_; }
 
   void OnBeforeCommandLineProcessing(const CefString &process_type,
                                      CefRefPtr<CefCommandLine> command_line) override {
@@ -209,6 +266,7 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
   CefRefPtr<CefRequestContextHandler> GetDefaultRequestContextHandler() override { return nn::ext::ContextHandler(@""); }
 
  private:
+  CefRefPtr<Strings> strings_ = new Strings();
   IMPLEMENT_REFCOUNTING(BrowserApp);
 };
 

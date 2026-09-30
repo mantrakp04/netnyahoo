@@ -187,20 +187,30 @@ void Install() {
       Log([NSString stringWithFormat:@"%@ on %@ \"%@\" (inactive app)", name, window.className, window.title],
           NSThread.callStackSymbols);
   };
+  // A child window ordered to the front (Chrome's bubbles: "extension added", save card…) would come up
+  // over the user's other apps while its window stays behind them. Keep it just above its parent.
+  auto aboveParent = [](NSWindow *window) {
+    NSWindow *parent = window.parentWindow;
+    if (!parent) return false;
+    [window orderWindow:NSWindowAbove relativeTo:parent.windowNumber];
+    return true;
+  };
   {
     SEL selector = @selector(makeKeyAndOrderFront:);
     auto original = (void (*)(id, SEL, id))method_getImplementation(class_getInstanceMethod(NSWindow.class, selector));
     Swizzle(NSWindow.class, selector, ^(NSWindow *window, id sender) {
       note(@"makeKeyAndOrderFront:", window);
-      original(window, selector, sender);
+      if (aboveParent(window)) [window makeKeyWindow];
+      else original(window, selector, sender);
     });
   }
   for (NSString *name in @[ @"makeKeyWindow", @"orderFrontRegardless" ]) {
     SEL selector = NSSelectorFromString(name);
     auto original = (void (*)(id, SEL))method_getImplementation(class_getInstanceMethod(NSWindow.class, selector));
+    const bool ordersFront = [name isEqualToString:@"orderFrontRegardless"];
     Swizzle(NSWindow.class, selector, ^(NSWindow *window) {
       note(name, window);
-      original(window, selector);
+      if (!ordersFront || !aboveParent(window)) original(window, selector);
     });
   }
   Swizzle(NSApplication.class, @selector(unhide:), ^(NSApplication *app, id sender) {

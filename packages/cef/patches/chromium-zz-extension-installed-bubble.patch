@@ -1,0 +1,83 @@
+--- a/chrome/browser/ui/extensions/extension_dialog_utils.h
++++ b/chrome/browser/ui/extensions/extension_dialog_utils.h
+@@ -9,6 +9,7 @@
+ #include <vector>
+ 
+ #include "build/build_config.h"
++#include "cef/libcef/features/features.h"
+ #include "extensions/buildflags/buildflags.h"
+ #include "extensions/common/extension_id.h"
+ #include "ui/gfx/native_ui_types.h"
+@@ -41,6 +42,17 @@
+                 const std::vector<extensions::ExtensionId>& extension_ids,
+                 std::unique_ptr<ui::DialogModel> dialog_model);
+ 
++#if BUILDFLAG(ENABLE_CEF) && defined(TOOLKIT_VIEWS)
++// Like ShowDialog(), for a dialog that only informs (no buttons). A window
++// without the extensions toolbar (a CEF client window, which hides Chrome's
++// toolbar) gets a bubble at the top-right corner of its client area instead of
++// a browser-modal sheet: the bubble has a close button and closes on Escape or
++// when the window is clicked, where the sheet had none of those.
++void ShowInfoDialog(gfx::NativeWindow parent,
++                    const extensions::ExtensionId& extension_id,
++                    std::unique_ptr<ui::DialogModel> dialog_model);
++#endif
++
+ // Shows a modal dialog constructed from `dialog_model` on the `parent` window.
+ void ShowModalDialog(gfx::NativeWindow parent,
+                      std::unique_ptr<ui::DialogModel> dialog_model);
+--- a/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
++++ b/chrome/browser/ui/extensions/extension_dialog_utils_views.cc
+@@ -60,6 +60,36 @@
+   }
+ }
+ 
++#if BUILDFLAG(ENABLE_CEF)
++void ShowInfoDialog(gfx::NativeWindow parent,
++                    const extensions::ExtensionId& extension_id,
++                    std::unique_ptr<ui::DialogModel> dialog_model) {
++  ExtensionsContainerViews* const container =
++      parent ? GetExtensionsContainerViews(parent) : nullptr;
++  views::Widget* const parent_widget =
++      parent ? views::Widget::GetWidgetForNativeWindow(parent) : nullptr;
++  if ((container && container->IsVisible()) || !parent_widget) {
++    ShowDialog(parent, extension_id, std::move(dialog_model));
++    return;
++  }
++
++  // Where Chrome's toolbar would put it, under the window's top-right corner.
++  // The anchor doesn't follow the window, but moving or resizing the window
++  // clicks it, which closes the bubble.
++  constexpr int kInset = 12;
++  const gfx::Rect client = parent_widget->GetClientAreaBoundsInScreen();
++  auto bubble = std::make_unique<views::BubbleDialogModelHost>(
++      std::move(dialog_model), views::BubbleAnchor(),
++      views::BubbleBorder::TOP_RIGHT);
++  bubble->set_parent_window(parent_widget->GetNativeView());
++  bubble->SetAnchorRect(
++      gfx::Rect(client.right() - kInset, client.y() + kInset, 0, 0));
++  views::BubbleDialogDelegate::CreateBubbleDeprecated(
++      std::move(bubble), views::Widget::InitParams::NATIVE_WIDGET_OWNS_WIDGET)
++      ->Show();
++}
++#endif  // BUILDFLAG(ENABLE_CEF)
++
+ void ShowDialog(ExtensionsContainerViews* container,
+                 const std::vector<extensions::ExtensionId>& extension_ids,
+                 std::unique_ptr<ui::DialogModel> dialog_model) {
+--- a/chrome/browser/ui/extensions/extension_post_install_dialog.cc
++++ b/chrome/browser/ui/extensions/extension_post_install_dialog.cc
+@@ -180,8 +180,13 @@
+ #endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
+ 
+   std::unique_ptr<ui::DialogModel> dialog_model = dialog_model_builder.Build();
++#if BUILDFLAG(ENABLE_CEF) && defined(TOOLKIT_VIEWS)
++  ShowInfoDialog(native_window, weak_delegate->model()->extension_id(),
++                 std::move(dialog_model));
++#else
+   ShowDialog(native_window, weak_delegate->model()->extension_id(),
+              std::move(dialog_model));
++#endif
+ }
+ 
+ }  // namespace
