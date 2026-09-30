@@ -1,0 +1,19 @@
+docs/growth.md
+  s_f7aae000065a2a::t_91944822188b82 280-298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5b991ca0655d4e26fecc6210538463571eb9de7d",
+  "prompts": {},
+  "sessions": {
+    "s_f7aae000065a2a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e358827-291e-45c1-a344-9aa0e5727e2b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
