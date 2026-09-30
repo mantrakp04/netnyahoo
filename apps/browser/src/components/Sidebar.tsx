@@ -29,6 +29,9 @@ import { useSidebarTokens, useSidebarWidth } from "./sidebar/tokens";
 
 const GLOW_ROOM = 24;
 const ROW_PITCH = layout.rowHeight + layout.rowGap;
+const DOCKED_BOTTOM = 6;
+// Room the docked New Tab row takes from the list: the row plus one row gap above it.
+const DOCK = DOCKED_BOTTOM + ROW_PITCH;
 
 export function Sidebar() {
   const windowId = useWindowId();
@@ -67,10 +70,10 @@ export function Sidebar() {
               left: 0,
               right: 0,
               top: header - glowRoom,
-              bottom: (docked ? ROW_PITCH + 10 : 0) + playerHeight + footer,
+              bottom: (docked ? DOCK : 0) + playerHeight + footer,
               overflow: paging ? "hidden" : "visible",
             }}
-            onLayout={(e) => setAvailable(e.nativeEvent.layout.height + (docked ? ROW_PITCH + 10 : 0))}
+            onLayout={(e) => setAvailable(e.nativeEvent.layout.height + (docked ? DOCK : 0))}
           >
             {pages.map((page) => (
               <SidebarPage
@@ -98,13 +101,13 @@ export function Sidebar() {
           </View>
 
           {playerTab ? (
-            <View style={{ position: "absolute", left: layout.sidebarInset, right: layout.sidebarInset, bottom: (docked ? ROW_PITCH + 10 : 8) + footer }}>
+            <View style={{ position: "absolute", left: layout.sidebarInset, right: layout.sidebarInset, bottom: (docked ? DOCK : 8) + footer }}>
               <SidebarPlayer tabId={playerTab} />
             </View>
           ) : null}
 
           {docked ? (
-            <View style={{ position: "absolute", left: layout.sidebarInset, right: layout.sidebarInset, bottom: 6 + footer }}>
+            <View style={{ position: "absolute", left: layout.sidebarInset, right: layout.sidebarInset, bottom: DOCKED_BOTTOM + footer }}>
               <NewTabRow windowId={windowId} />
             </View>
           ) : null}
@@ -195,7 +198,6 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
                     measured.current = e.nativeEvent.layout.height + glowRoom - (inlineNewTab ? ROW_PITCH : 0);
                     if (current) onListHeight(measured.current);
                   }}
-                  style={{ paddingBottom: inlineNewTab ? 0 : 8 }}
                 >
                   <PinnedGrid tabs={tiles} innerWidth={innerWidth} dragging={current && !!ghost} />
                   <View
@@ -225,7 +227,7 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
                   </View>
                   {current ? <CleanUpUpsell windowId={windowId} /> : null}
                 </View>
-                <ContextMenuArea style={{ flexGrow: 1, minHeight: 24 }} onContextMenu={() => void openSidebarMenu(windowId)}>
+                <ContextMenuArea style={{ flexGrow: 1, minHeight: inlineNewTab ? 24 : 0 }} onContextMenu={() => void openSidebarMenu(windowId)}>
                   <View style={{ flex: 1 }} onDoubleClick={() => useBrowser.getState().newTab(windowId)} />
                 </ContextMenuArea>
               </ScrollView>
@@ -303,6 +305,7 @@ function DownloadsButton({ windowId }: { windowId: string }) {
 
 function NewTabRow({ windowId }: { windowId: string }) {
   const theme = useTheme();
+  const tokens = useSidebarTokens();
   const cleaned = useBrowser((s) => cleanedTabsFor(s, windowId).length);
   const { hovered, hoverProps } = useHover();
   return (
@@ -326,8 +329,8 @@ function NewTabRow({ windowId }: { windowId: string }) {
               backgroundColor: pressed ? theme.tabPressed : hovered ? theme.tabHover : undefined,
             }}
           >
-            <Symbol name="plus" size={13} weight="medium" color={theme.textSecondary} style={{ width: 16, height: 16 }} />
-            <FadeLabel text="New Tab" fontSize={13} color={theme.textSecondary} style={{ flex: 1, height: 18, marginLeft: 5 }} />
+            <Symbol name="plus" size={13} weight="medium" color={tokens.newTabIcon} style={{ width: 16, height: 16 }} />
+            <FadeLabel text="New Tab" fontSize={13} color={tokens.newTabLabel} style={{ flex: 1, height: 18, marginLeft: 5 }} />
           </View>
         )}
       </Pressable>

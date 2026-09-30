@@ -1,7 +1,7 @@
 import { hapticTick } from "@netnyahoo/shell";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Animated, Easing, PanResponder, type ScrollView, type View } from "react-native";
-import { useTheme } from "../../lib/theme";
+import { layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
 import type { TabPlacement } from "../../store/organize";
@@ -37,7 +37,8 @@ type Drop =
 
 export type Ghost = { item: Item; count: number; width: number; height: number; position: Animated.ValueXY };
 
-const ROW_GAP = 4;
+// The list stacks rows with `gap`; a zero-height tail cancels its gap with this negative margin.
+const ROW_GAP = layout.rowGap;
 const TILE_GAP = 6;
 const EDGE = 28;
 const spring = (value: Animated.Value, toValue: number) =>
@@ -210,7 +211,7 @@ class DragController {
     const byY = (a: Item, b: Item) => this.at(a.frame)!.y - this.at(b.frame)!.y || a.frame!.x - b.frame!.x;
     const firstTab = (i: Item | undefined) => i?.tabIds[0] ?? null;
     const tabsDrag = source.kind === "row" || source.kind === "tile";
-    const rowPitch = (source.kind === "group" ? (source.frame?.h ?? 33) : 33 * Math.max(1, this.ghost?.count ?? 1)) + ROW_GAP;
+    const rowPitch = (source.kind === "group" ? (source.frame?.h ?? layout.rowHeight) : layout.rowHeight * Math.max(1, this.ghost?.count ?? 1)) + ROW_GAP;
     let drop: Drop = { type: "none" };
     let gapKey: string | null = null;
     let pitch = rowPitch;

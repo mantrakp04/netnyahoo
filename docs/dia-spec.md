@@ -149,7 +149,9 @@ Measured materials (our own non-activating panels over solid backdrops; sRGB; ac
   - Pressed: white 31% (dark) or 70% (light).
   - Selected (regular): dark fill ≈ black 40% (sample `#1B1618` on `#2A1E23`), white title.
   - Audio: a `speaker.wave.2` glyph after the favicon.
-- "+ New Tab" row: plus glyph and label at 50% alpha; hover as above.
+- "+ New Tab" row: label in `secondaryLabelColor` (white 0.55 dark), the `plus` in `tertiaryLabelColor` (white 0.25
+  dark); hover as above. Measured on a 2× capture of 1.50.1 (2026-09-30, dark, hovered): label peak α 0.547, plus 0.24,
+  over a 0.16 hover fill. It sits one row gap (3 pt) under the tab above it, background to background.
 - Pinned tile hover: a custom tooltip showing the title and URL.
 
 ## New Tab page
@@ -538,8 +540,8 @@ than ours at the same cap height.
 - `TabView` (`0x103dbd2f4`): the background is the row inset (1.5, 0, 1.5, 0), i.e. 34 tall; `TabShapeView` radius
   `min(h/3, 10)`, continuous corners. `TabContentView` (`0x103da24c4`): favicon 16 × 16 at x 9, centred; title at
   favicon.maxX + 7 (+ 4 with a badge slot); trailing affordance at W − 8 − size.
-- The New Tab row's icon is the Dia mark (the NTP logo's shape), 16 pt wide, white 0.28 in dark over any row state
-  (measured; which asset draws it wasn't traced).
+- A New Tab tab's icon (the favicon of a tab showing the NTP, not the "+ New Tab" row) is the Dia mark (the NTP logo's
+  shape), 16 pt wide, white 0.28 in dark over any row state (measured; which asset draws it wasn't traced).
 - The clean-tabs upsell is a borderless child window (not a popover), 316 wide: title at (24, 24), a 21 × 26
   illustration, body 16 below, then one row of 32 pt buttons 21 below: Not Now (or Don't Ask Again) at the left,
   Clean Up Once and Clean Up Daily (8 apart) at the right (`0x103bca7d0`). Netnyahoo's card lives in the 160–400 pt

@@ -22,6 +22,8 @@ const DARK = {
   badgeGlyph: "#1B1618",
   upsellButton: "rgba(255,255,255,0.08)", // CleanTabs/SecondaryButton
   upsellButtonHover: "rgba(255,255,255,0.11)",
+  newTabLabel: "#FFFFFF8C", // secondaryLabelColor
+  newTabIcon: "#FFFFFF40", // tertiaryLabelColor
 };
 
 const LIGHT: typeof DARK = {
@@ -43,6 +45,8 @@ const LIGHT: typeof DARK = {
   badgeGlyph: "#FFFFFF",
   upsellButton: "rgba(0,0,0,0.08)",
   upsellButtonHover: "rgba(0,0,0,0.11)",
+  newTabLabel: "#00000080",
+  newTabIcon: "#00000042",
 };
 
 export type SidebarTokens = typeof DARK;
