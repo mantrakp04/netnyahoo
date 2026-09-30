@@ -1,0 +1,21 @@
+apps/browser/scripts/perf/js-bench.mjs
+  s_9c356f9574d31c::t_5f2dd1cd70027f 237,266,268-269
+apps/browser/scripts/perf/seed.mjs
+  s_9c356f9574d31c::t_e9f18628009a33 27-38,155-176,178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1777ce186a55d00a42c3548630f79f4732d323a5",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
