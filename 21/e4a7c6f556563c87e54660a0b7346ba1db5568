@@ -1,0 +1,30 @@
+apps/browser/src/store/favicons.test.mjs
+  s_9c356f9574d31c::t_a9241594230fe1 52-56,60,67-70,72,79
+  s_9c356f9574d31c::t_739757dcfb726c 57-59,73,78
+  s_9c356f9574d31c::t_973452b4579915 82
+  s_9c356f9574d31c::t_d6b31694359c6a 6-7,42-51,61-66,71,74-77,80-81
+apps/browser/src/lib/favicons.ts
+  s_9c356f9574d31c::t_a4d311a40cf36f 54-57,63-64,72-74,76,100-104,115-118,120,125,130-131,138-140,202-205
+  s_9c356f9574d31c::t_d3cb84b48dc796 95-99,106,141
+  s_9c356f9574d31c::t_44131c7ce0204f 8
+  s_9c356f9574d31c::t_4e66c5d7be833c 81-94,107-114,132,142
+  s_9c356f9574d31c::t_831a9fc70c553e 119,121-124,126-129,134-137
+  s_9c356f9574d31c::t_f5856dd8914052 105
+  s_9c356f9574d31c::t_faa2c1d5ff7d1c 133,143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "21e4a7c6f556563c87e54660a0b7346ba1db5568",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
