@@ -1,7 +1,7 @@
 // Run from apps/browser:  node --test src/telemetry/sanitize.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleanProperties, errorCode, errorMessage, errorType, nativeFrames, parseStack, scrubText } from "./sanitize.ts";
+import { cleanProperties, errorCode, errorMessage, errorType, nativeException, nativeFrames, parseStack, scrubText } from "./sanitize.ts";
 
 const leaks = (text, ...secrets) => secrets.filter((s) => text.includes(s));
 
@@ -106,6 +106,30 @@ test("native crash frames keep image and symbol names only", () => {
   assert.equal(frames.at(-2).function, "Chromium Embedded Framework + 0xff");
   assert.equal(frames.at(-2).resolved, false);
   assert.equal(frames[0].filename, "Something.dylib");
+});
+
+test("an uncaught NSException reports its name and scrubbed reason", () => {
+  const out = nativeException({
+    exceptionType: "EXC_BREAKPOINT",
+    signal: "SIGTRAP",
+    exceptionName: "NSInvalidArgumentException",
+    exceptionReason: "-[NSView liveFolder]: unrecognized selector sent to instance 0x600003a1c2d0 for /Users/alice/Desktop",
+  });
+  assert.equal(out.type, "NSInvalidArgumentException");
+  assert.equal(out.kind, "EXC_BREAKPOINT");
+  assert.equal(out.signal, "SIGTRAP");
+  assert.match(out.value, /^-\[NSView liveFolder\]: unrecognized selector sent to instance <hex> for <path>$/);
+  assert.deepEqual(leaks(out.value, "alice", "600003a1c2d0"), []);
+});
+
+test("a crash without an exception keeps the Mach type and signal", () => {
+  assert.deepEqual(nativeException({ exceptionType: "EXC_BAD_ACCESS", signal: "SIGSEGV" }), {
+    kind: "EXC_BAD_ACCESS",
+    signal: "SIGSEGV",
+    type: "EXC_BAD_ACCESS",
+    value: "EXC_BAD_ACCESS (SIGSEGV)",
+  });
+  assert.equal(nativeException({ exceptionType: "bad type", exceptionName: "not a name!" }).type, "Crash");
 });
 
 test("event properties are flat, plain and scrubbed", () => {

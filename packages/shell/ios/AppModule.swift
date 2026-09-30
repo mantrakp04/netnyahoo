@@ -377,9 +377,13 @@ fileprivate enum CrashReports {
     }
     let threads = body["threads"] as? [[String: Any]] ?? []
     let faulting = body["faultingThread"] as? Int ?? threads.firstIndex { $0["triggered"] as? Bool == true } ?? 0
-    let frames = threads.indices.contains(faulting) ? threads[faulting]["frames"] as? [[String: Any]] ?? [] : []
+    let threadFrames = threads.indices.contains(faulting) ? threads[faulting]["frames"] as? [[String: Any]] ?? [] : []
+    // An uncaught NSException's faulting thread stops in AppKit's crash handler; the throw site is only here.
+    let exceptionFrames = body["lastExceptionBacktrace"] as? [[String: Any]] ?? []
+    let frames = exceptionFrames.isEmpty ? threadFrames : exceptionFrames
     var report: [String: Any] = [
       "time": time.timeIntervalSince1970 * 1000,
+      "frameSource": exceptionFrames.isEmpty ? "thread" : "exception",
       "frames": frames.prefix(64).map { frame -> [String: Any] in
         let index = frame["imageIndex"] as? Int ?? -1
         var out: [String: Any] = ["image": images.indices.contains(index) ? images[index] : "???"]
@@ -394,7 +398,28 @@ fileprivate enum CrashReports {
     ] {
       if let value = value as? String { report[key] = value }
     }
+    let thrown = thrownException(body)
+    report["exceptionName"] = thrown.name
+    report["exceptionReason"] = thrown.reason
     return report
+  }
+
+  private static let uncaught = try! NSRegularExpression(pattern: "uncaught exception '([^']+)', reason: '(.*)'")
+
+  private static func thrownException(_ body: [String: Any]) -> (name: String?, reason: String?) {
+    if let info = body["exceptionReason"] as? [String: Any] {
+      return (info["name"] as? String, info["composed_message"] as? String ?? info["format_string"] as? String)
+    }
+    let asi = body["asi"] as? [String: Any] ?? [:]
+    let messages = asi.keys.sorted().flatMap { asi[$0] as? [String] ?? [] }
+    for message in messages {
+      let range = NSRange(message.startIndex..., in: message)
+      guard let match = uncaught.firstMatch(in: message, range: range),
+        let name = Range(match.range(at: 1), in: message), let reason = Range(match.range(at: 2), in: message)
+      else { continue }
+      return (String(message[name]), String(message[reason]))
+    }
+    return (nil, messages.first)
   }
 
   #if DEBUG

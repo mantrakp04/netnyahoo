@@ -69,6 +69,9 @@ export type CrashReport = {
   build?: string;
   exceptionType?: string;
   signal?: string;
+  exceptionName?: string;
+  exceptionReason?: string;
+  frameSource?: "exception" | "thread";
   frames: { image: string; symbol?: string; offset?: number }[];
 };
 

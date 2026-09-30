@@ -148,6 +148,24 @@ export function nativeFrames(frames: NativeFrame[], limit = 64): ExceptionFrame[
   }).reverse();
 }
 
+export type NativeCrash = {
+  exceptionType?: string;
+  signal?: string;
+  exceptionName?: string;
+  exceptionReason?: string;
+};
+
+const SYSTEM_NAME = /^[A-Z][A-Z0-9_ ()]{1,40}$/;
+
+// An uncaught NSException groups by its class name (NSRangeException), with the scrubbed reason as the message.
+export function nativeException(report: NativeCrash) {
+  const kind = report.exceptionType && SYSTEM_NAME.test(report.exceptionType) ? report.exceptionType : "Crash";
+  const signal = report.signal && SYSTEM_NAME.test(report.signal) ? report.signal : null;
+  const name = report.exceptionName && IDENTIFIER.test(report.exceptionName) ? report.exceptionName : null;
+  const reason = scrubText(report.exceptionReason, 300);
+  return { kind, signal, type: name ?? kind, value: reason || (signal ? `${kind} (${signal})` : kind) };
+}
+
 export type PropertyValue = string | number | boolean | null;
 
 export function cleanProperties(props: Record<string, unknown>): Record<string, PropertyValue> {

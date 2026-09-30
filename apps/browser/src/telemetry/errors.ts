@@ -1,7 +1,7 @@
 import { crashReports, systemInfo } from "@netnyahoo/shell";
 import { advanceCrashCursor, capture, crashCursor, isSharing, loadChoice } from "./client";
 import { recordLog } from "./logs";
-import { errorCode, errorMessage, errorType, nativeFrames, parseStack, type ExceptionFrame } from "./sanitize";
+import { errorCode, errorMessage, errorType, nativeException, nativeFrames, parseStack, type ExceptionFrame } from "./sanitize";
 
 type Mechanism = "onerror" | "onunhandledrejection" | "react" | "console" | "native_crash";
 
@@ -90,8 +90,6 @@ export function installErrorReporting() {
   }
 }
 
-const SYSTEM_NAME = /^[A-Z][A-Z0-9_ ()]{1,40}$/;
-
 export async function reportNativeCrashes() {
   if (!isSharing()) return;
   const since = crashCursor();
@@ -101,15 +99,18 @@ export async function reportNativeCrashes() {
   for (const report of reports) {
     latest = Math.max(latest, report.time);
     if (report.appVersion && report.appVersion !== version) continue;
-    const type = report.exceptionType && SYSTEM_NAME.test(report.exceptionType) ? report.exceptionType : "Crash";
-    const signal = report.signal && SYSTEM_NAME.test(report.signal) ? report.signal : null;
+    const { kind, signal, type, value } = nativeException(report);
     capture(
       "$exception",
-      { $exception_level: "fatal", source: "native_crash", crash_signal: signal, crashed_minutes_ago: Math.round((Date.now() - report.time) / 60_000) },
       {
-        urgent: true,
-        raw: { $exception_list: exceptionList(type, signal ? `${type} (${signal})` : type, "native_crash", false, nativeFrames(report.frames)) },
+        $exception_level: "fatal",
+        source: "native_crash",
+        crash_type: kind,
+        crash_signal: signal,
+        crash_frames: report.frameSource === "exception" ? "exception" : "thread",
+        crashed_minutes_ago: Math.round((Date.now() - report.time) / 60_000),
       },
+      { urgent: true, raw: { $exception_list: exceptionList(type, value, "native_crash", false, nativeFrames(report.frames)) } },
     );
   }
   advanceCrashCursor(latest);
