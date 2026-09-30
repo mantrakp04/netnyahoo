@@ -1,0 +1,47 @@
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_fe6639bd65a244 898-917
+  s_9c356f9574d31c::t_d9dfda6a8914f2 130-132
+  s_9c356f9574d31c::t_730a81b219bee3 244-246
+  s_9c356f9574d31c::t_0dcc931d446203 859-860
+  s_9c356f9574d31c::t_68e929d4d6dae1 918
+packages/cef/ios/NNBrowserView.mm
+  s_9c356f9574d31c::t_af63aeb7ffe3bf 448-456
+  s_9c356f9574d31c::t_fe6639bd65a244 841
+  s_9c356f9574d31c::t_43f7bec4f1baab 144,292
+  s_9c356f9574d31c::t_ba5e851e130a21 145,293,563-564
+  s_9c356f9574d31c::t_9c77d8b622bd91 142-143,463,560-561
+packages/cef/ios/NNWindowHost.h
+  s_9c356f9574d31c::t_0dcc931d446203 17-20
+  s_9c356f9574d31c::t_fe6639bd65a244 24-28
+packages/cef/ios/NNClient.h
+  s_9c356f9574d31c::t_6e275f733d558e 220
+  s_9c356f9574d31c::t_d9dfda6a8914f2 103,221
+  s_9c356f9574d31c::t_af63aeb7ffe3bf 240
+  s_9c356f9574d31c::t_43f7bec4f1baab 152
+packages/cef/ios/NNPopupWindow.mm
+  s_9c356f9574d31c::t_ba5e851e130a21 33-34,97-99
+  s_9c356f9574d31c::t_599cf28a123d8f 5,96
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_43f7bec4f1baab 1191-1196
+  s_9c356f9574d31c::t_fe6639bd65a244 775,794,810
+  s_9c356f9574d31c::t_0dcc931d446203 693
+  s_9c356f9574d31c::t_d9dfda6a8914f2 697,727-739,746-751
+  s_9c356f9574d31c::t_ba5e851e130a21 678-680,696
+  s_9c356f9574d31c::t_d7d08171f2c0c2 61,63-65,681-682,1197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "23b9a24de58a14105b91857bc33642f5861ee497",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
