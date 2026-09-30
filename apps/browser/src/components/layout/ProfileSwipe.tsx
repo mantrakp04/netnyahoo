@@ -32,6 +32,10 @@ export function ProfileSwipeArea({ surface, style, pageWidth }: { surface: "side
 
   const onSwipe = (event: SwipeEvent) => {
     const pager = pagerFor(windowId);
+    if (__DEV__) {
+      if (received.length >= 4096) received.shift();
+      received.push({ at: performance.now(), surface, profile: useBrowser.getState().windows[windowId]?.profileId, ...event });
+    }
     const e = pageWidth ? { ...event, width: pageWidth } : event;
     if (e.phase === "swipe") return pager.step(e.direction === "back" ? -1 : 1);
     if (e.phase === "wheel") return pager.wheel(e);
@@ -72,10 +76,13 @@ export function ProfileTint() {
 }
 
 const devAreas = new Map<string, React.RefObject<SwipeAreaHandle | null>>();
+// DEV: every onSwipe JS received, to compare with the native emits.
+const received: object[] = [];
 if (__DEV__) {
   const g = globalThis as { nnSwipe?: Record<string, unknown> };
   g.nnSwipe = {
     ...g.nnSwipe,
+    received: () => received.splice(0),
     sidebar: (windowId: string) => devAreas.get(`sidebar:${windowId}`)?.current ?? null,
     strip: (windowId: string) => devAreas.get(`strip:${windowId}`)?.current ?? null,
   };

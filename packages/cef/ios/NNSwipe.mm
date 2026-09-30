@@ -24,6 +24,16 @@ enum class State { Idle, Pending, Tracking, Ignored };
 
 NSMutableArray *gTrace;
 
+// DEV simulation trace: every tracker decision, in event order. Builds nothing outside a simulation.
+#define Diag(...)                                   \
+  do {                                              \
+    if (gTrace) [gTrace addObject:(__VA_ARGS__)];   \
+  } while (0)
+
+NSArray *RectValue(NSRect r) {
+  return @[ @(r.origin.x), @(r.origin.y), @(r.size.width), @(r.size.height) ];
+}
+
 }
 
 @interface NNRendererScrollObserver : NSObject
@@ -147,8 +157,11 @@ struct Gesture {
   CGFloat deltas[6] = {};
   int samples = 0;
   BOOL ignoreSystemPreference = NO;
+  int seq = 0;
+  int emitted = 0;
 };
 Gesture gGesture;
+int gGestureSeq;
 id gMonitor;
 
 BOOL IsRenderWidgetView(NSView *view) {
@@ -180,17 +193,41 @@ NSView *HitView(NSWindow *window, NSPoint locationInWindow) {
   return [frame hitTest:locationInWindow];
 }
 
-NSView<NNSwipeTarget> *TargetAt(NSWindow *window, NSPoint locationInWindow, NSView *hit) {
+NSView<NNSwipeTarget> *TargetAt(NSWindow *window, NSPoint locationInWindow, NSView *hit, NSMutableArray *why = nil) {
   if (!hit) return nil;
   NSView<NNSwipeTarget> *best = nil;
   for (NSView<NNSwipeTarget> *target in Targets()) {
     NSView *container = target.superview;
-    if (target.window != window || !container || target.isHiddenOrHasHiddenAncestor) continue;
-    if (![hit isDescendantOf:container]) continue;
-    if (!NSPointInRect([target convertPoint:locationInWindow fromView:nil], target.bounds)) continue;
+    NSString *miss = target.window != window                    ? @"otherWindow"
+                     : !container                                ? @"noSuperview"
+                     : target.isHiddenOrHasHiddenAncestor        ? @"hidden"
+                     : ![hit isDescendantOf:container]           ? @"hitOutsideContainer"
+                     : !NSPointInRect([target convertPoint:locationInWindow fromView:nil], target.bounds) ? @"pointOutside"
+                                                                 : nil;
+    if (why) [why addObject:@{
+      @"target" : [NSString stringWithFormat:@"%p", target],
+      @"window" : @(target.window.windowNumber),
+      @"inWindow" : RectValue([target convertRect:target.bounds toView:nil]),
+      @"pager" : @([target respondsToSelector:@selector(isPager)] && target.isPager),
+      @"miss" : miss ?: @"",
+    }];
+    if (miss) continue;
     if (!best || [container isDescendantOf:best.superview]) best = target;
   }
   return best;
+}
+
+NSArray *HitChain(NSView *hit) {
+  NSMutableArray *chain = [NSMutableArray array];
+  for (NSView *v = hit; v; v = v.superview) {
+    [chain addObject:@{
+      @"class" : NSStringFromClass(v.class),
+      @"frame" : RectValue(v.frame),
+      @"inWindow" : RectValue([v convertRect:v.bounds toView:nil]),
+      @"hidden" : @(v.isHidden),
+    }];
+  }
+  return chain;
 }
 
 BOOL NativeContentScrolls(NSView *hit, NSView *container, int direction) {
@@ -205,10 +242,59 @@ BOOL NativeContentScrolls(NSView *hit, NSView *container, int direction) {
   return NO;
 }
 
+// Mirrors NativeContentScrolls with every input it reads, for both directions.
+NSArray *NativeScrollReport(NSView *hit, NSView *container) {
+  NSMutableArray *out = [NSMutableArray array];
+  for (NSView *v = hit; v && v != container; v = v.superview) {
+    if (![v isKindOfClass:NSScrollView.class]) continue;
+    NSScrollView *scroll = (NSScrollView *)v;
+    NSRect visible = scroll.contentView.bounds;
+    CGFloat width = NSWidth(scroll.documentView.frame);
+    BOOL fits = width <= NSWidth(visible) + 0.5;
+    NSView *wrapper = scroll.superview;
+    [out addObject:@{
+      @"class" : NSStringFromClass(scroll.class),
+      @"frame" : RectValue(scroll.frame),
+      @"inWindow" : RectValue([scroll convertRect:scroll.bounds toView:nil]),
+      @"clipBounds" : RectValue(visible),
+      @"clipFrame" : RectValue(scroll.contentView.frame),
+      @"document" : RectValue(scroll.documentView.frame),
+      @"documentClass" : scroll.documentView ? NSStringFromClass(scroll.documentView.class) : @"",
+      @"wrapper" : wrapper ? NSStringFromClass(wrapper.class) : @"",
+      @"wrapperFrame" : RectValue(wrapper.frame),
+      // RCTScrollView isHorizontal: compares against the wrapper frame, not the clip.
+      @"wrapperHorizontal" : @(width > NSWidth(wrapper.frame)),
+      @"hasHorizontalScroller" : @(scroll.hasHorizontalScroller),
+      @"hasVerticalScroller" : @(scroll.hasVerticalScroller),
+      @"scrollerStyle" : @(scroll.scrollerStyle),
+      @"horizontalElasticity" : @(scroll.horizontalScrollElasticity),
+      @"verticalElasticity" : @(scroll.verticalScrollElasticity),
+      @"fits" : @(fits),
+      @"blocksBack" : @(!fits && NSMinX(visible) > 0.5),
+      @"blocksForward" : @(!fits && NSMaxX(visible) < width - 0.5),
+    }];
+  }
+  return out;
+}
+
 void Emit(NSString *phase, CGFloat velocity) {
   NSView<NNSwipeTarget> *target = gGesture.target;
   if (!target) return;
   CGFloat distance = gGesture.dx * gGesture.direction;
+  Diag(@{
+    @"diag" : @"emit",
+    @"seq" : @(gGesture.seq),
+    @"n" : @(++gGesture.emitted),
+    @"phase" : phase,
+    @"direction" : gGesture.direction > 0 ? @"back" : @"forward",
+    @"distance" : @(distance),
+    @"dx" : @(gGesture.dx),
+    @"dy" : @(gGesture.dy),
+    @"velocity" : @(velocity * gGesture.direction),
+    @"available" : @(gGesture.available),
+    @"width" : @(NSWidth(target.bounds)),
+    @"target" : [NSString stringWithFormat:@"%p", target],
+  });
   [target swipeEvent:@{
     @"phase" : phase,
     @"direction" : gGesture.direction > 0 ? @"back" : @"forward",
@@ -247,9 +333,15 @@ NSEvent *HandleWheel(NSEvent *event) {
   if (fabs(dx) <= fabs(event.scrollingDeltaY)) return event;
   NSView *hit = HitView(event.window, event.locationInWindow);
   NSView<NNSwipeTarget> *target = TargetAt(event.window, event.locationInWindow, hit);
-  if (!target || !IsPager(target)) return event;
+  if (!target || !IsPager(target)) {
+    Diag(@{@"diag" : @"wheel", @"reject" : target ? @"notPager" : @"noTarget", @"hit" : HitChain(hit)});
+    return event;
+  }
   BOOL back = (dx > 0) == event.isDirectionInvertedFromDevice;
-  if (NativeContentScrolls(hit, target.superview, back ? 1 : -1)) return event;
+  if (NativeContentScrolls(hit, target.superview, back ? 1 : -1)) {
+    Diag(@{@"diag" : @"wheel", @"reject" : @"nativeContentScrolls", @"scrollers" : NativeScrollReport(hit, target.superview)});
+    return event;
+  }
   [target swipeEvent:@{
     @"phase" : @"wheel",
     @"direction" : back ? @"back" : @"forward",
@@ -265,9 +357,29 @@ NSEvent *HandleWheel(NSEvent *event) {
 void Begin(NSEvent *event, BOOL ignoreSystemPreference) {
   gGesture = Gesture();
   gGesture.ignoreSystemPreference = ignoreSystemPreference;
+  gGesture.seq = ++gGestureSeq;
   NSView *hit = HitView(event.window, event.locationInWindow);
   NSView<NNSwipeTarget> *target = TargetAt(event.window, event.locationInWindow, hit);
+  if (gTrace) {
+    NSMutableArray *why = [NSMutableArray array];
+    TargetAt(event.window, event.locationInWindow, hit, why);
+    Diag(@{
+      @"diag" : @"begin",
+      @"seq" : @(gGesture.seq),
+      @"window" : @(event.window.windowNumber),
+      @"location" : @[ @(event.locationInWindow.x), @(event.locationInWindow.y) ],
+      @"hit" : HitChain(hit),
+      @"targets" : why,
+      @"target" : target ? [NSString stringWithFormat:@"%p", target] : @"",
+      @"canSwipeBack" : @(target.canSwipeBack),
+      @"canSwipeForward" : @(target.canSwipeForward),
+      @"scrollers" : NativeScrollReport(hit, target.superview),
+      @"systemSwipe" : @(NSEvent.isSwipeTrackingFromScrollEventsEnabled),
+      @"ignorePreference" : @(ignoreSystemPreference),
+    });
+  }
   if (!target || (!NSEvent.isSwipeTrackingFromScrollEventsEnabled && !ignoreSystemPreference && !IsPager(target))) {
+    Diag(@{@"diag" : @"reject", @"seq" : @(gGesture.seq), @"reason" : target ? @"systemPreferenceOff" : (hit ? @"noTarget" : @"noHit")});
     gGesture.state = State::Ignored;
     return;
   }
@@ -279,53 +391,62 @@ void Begin(NSEvent *event, BOOL ignoreSystemPreference) {
   gGesture.renderer = renderer;
 }
 
+BOOL Reject(NSString *reason, NSDictionary *extra = nil) {
+  if (gTrace) {
+    NSMutableDictionary *entry = [@{@"diag" : @"reject", @"seq" : @(gGesture.seq), @"reason" : reason, @"dx" : @(gGesture.dx), @"dy" : @(gGesture.dy)} mutableCopy];
+    if (extra) [entry addEntriesFromDictionary:extra];
+    [gTrace addObject:entry];
+  }
+  gGesture.state = State::Ignored;
+  return NO;
+}
+
+BOOL Wait(NSString *reason) {
+  Diag(@{@"diag" : @"wait", @"seq" : @(gGesture.seq), @"reason" : reason, @"dx" : @(gGesture.dx), @"dy" : @(gGesture.dy)});
+  return NO;
+}
+
 BOOL ShouldTrack() {
   CGFloat dx = gGesture.dx, dy = gGesture.dy;
   NSView<NNSwipeTarget> *target = gGesture.target;
   // Let a pager's small initial vertical wobble resolve before locking its axis.
   const CGFloat verticalIntent = IsPager(target) ? 3 * kStartDistance : kStartDistance;
-  if (fabs(dy) >= verticalIntent && kCancelDominance * fabs(dx) < fabs(dy)) {
-    gGesture.state = State::Ignored;
-    return NO;
-  }
-  if (fabs(dx) < kStartDistance || kStartDominance * fabs(dx) < fabs(dy)) return NO;
+  if (fabs(dy) >= verticalIntent && kCancelDominance * fabs(dx) < fabs(dy)) return Reject(@"verticalIntent");
+  if (fabs(dx) < kStartDistance || kStartDominance * fabs(dx) < fabs(dy)) return Wait(@"belowStart");
   int direction = dx > 0 ? 1 : -1;
 
   NNRendererScrollObserver *renderer = gGesture.renderer;
   if (renderer) {
     switch (renderer.scroll) {
       case RendererScroll::FirstUpdateConsumed:
-        gGesture.state = State::Ignored;
-        return NO;
+        return Reject(@"rendererConsumed");
       case RendererScroll::FirstUpdateUnconsumed:
         break;
       default:
-        return NO;
+        return Wait(gTrace ? [NSString stringWithFormat:@"renderer%d", (int)renderer.scroll] : @"rendererAck");
     }
-    if (!renderer.overscrolled) return NO;
-    if (!renderer.overscrollAllowed) {
-      gGesture.state = State::Ignored;
-      return NO;
-    }
+    if (!renderer.overscrolled) return Wait(@"rendererNoOverscroll");
+    if (!renderer.overscrollAllowed) return Reject(@"overscrollBehavior");
   } else if (NativeContentScrolls(gGesture.hit, target.superview, direction)) {
-    gGesture.state = State::Ignored;
-    return NO;
+    return Reject(@"nativeContentScrolls", gTrace ? @{@"direction" : @(direction), @"scrollers" : NativeScrollReport(gGesture.hit, target.superview)} : nil);
   }
 
   BOOL available = direction > 0 ? target.canSwipeBack : target.canSwipeForward;
-  if (!available && !target.tracksUnavailableDirections) {
-    gGesture.state = State::Ignored;
-    return NO;
-  }
+  if (!available && !target.tracksUnavailableDirections) return Reject(@"unavailable", gTrace ? @{@"direction" : @(direction)} : nil);
   gGesture.direction = direction;
   gGesture.available = available;
+  Diag(@{@"diag" : @"track", @"seq" : @(gGesture.seq), @"direction" : @(direction), @"available" : @(available), @"dx" : @(dx), @"dy" : @(dy),
+         @"scrollers" : NativeScrollReport(gGesture.hit, target.superview)});
   return YES;
 }
 
 NSEvent *HandleScroll(NSEvent *event, BOOL ignoreSystemPreference) {
   NSEventPhase phase = event.phase;
   if (phase == NSEventPhaseNone && event.momentumPhase == NSEventPhaseNone) return HandleWheel(event);
-  if (!event.hasPreciseScrollingDeltas) return event;
+  if (!event.hasPreciseScrollingDeltas) {
+    Diag(@{@"diag" : @"pass", @"reason" : @"notPrecise"});
+    return event;
+  }
 
   // Leave begin/end events to Chromium or wheel-phase scrolling stalls.
   if (phase == NSEventPhaseNone) return event;
@@ -341,7 +462,7 @@ NSEvent *HandleScroll(NSEvent *event, BOOL ignoreSystemPreference) {
       break;
   }
   if (!gGesture.target) {
-    gGesture.state = State::Ignored;
+    Reject(@"targetGone");
     return event;
   }
 
@@ -351,6 +472,7 @@ NSEvent *HandleScroll(NSEvent *event, BOOL ignoreSystemPreference) {
 
   if (phase & (NSEventPhaseEnded | NSEventPhaseCancelled)) {
     if (gGesture.state != State::Tracking) {
+      Diag(@{@"diag" : @"endUntracked", @"seq" : @(gGesture.seq), @"dx" : @(gGesture.dx), @"dy" : @(gGesture.dy)});
       gGesture.state = State::Idle;
       return event;
     }
@@ -417,6 +539,7 @@ NSEvent *Unlatched(NSEvent *event) {
 NSEvent *HandleScrollEvent(NSEvent *event, BOOL ignoreSystemPreference) {
   NSEvent *moved = Unlatched(event);
   if (!moved) return HandleScroll(event, ignoreSystemPreference);
+  Diag(@{@"diag" : @"unlatched", @"from" : @(event.window.windowNumber), @"to" : @(moved.window.windowNumber)});
   if (NSEvent *out = HandleScroll(moved, ignoreSystemPreference)) [moved.window sendEvent:out];
   return nil;
 }
@@ -425,9 +548,19 @@ void InstallMonitor() {
   if (gMonitor) return;
   gMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel | NSEventMaskSwipe
                                                    handler:^NSEvent *(NSEvent *event) {
-                                                     if (event.type == NSEventTypeSwipe)
-                                                       return HandleDiscreteSwipe(event.window, event.locationInWindow, event.deltaX) ? nil : event;
-                                                     return HandleScrollEvent(event, NO);
+                                                     Diag(@{
+                                                       @"diag" : @"monitorEntry",
+                                                       @"type" : @(event.type),
+                                                       @"window" : @(event.window.windowNumber),
+                                                       @"phase" : @(event.phase),
+                                                       @"momentum" : event.type == NSEventTypeScrollWheel ? @(event.momentumPhase) : @(-1),
+                                                       @"timestamp" : @(event.timestamp),
+                                                     });
+                                                     NSEvent *out = event.type == NSEventTypeSwipe
+                                                                        ? (HandleDiscreteSwipe(event.window, event.locationInWindow, event.deltaX) ? nil : event)
+                                                                        : HandleScrollEvent(event, NO);
+                                                     Diag(@{@"diag" : @"monitorExit", @"resultWindow" : out ? @(out.window.windowNumber) : @(-1), @"swallowed" : @(out == nil)});
+                                                     return out;
                                                    }];
 }
 
@@ -467,7 +600,9 @@ CGScrollPhase ScrollPhaseOf(NSString *phase) {
   return (CGScrollPhase)0;
 }
 
-NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
+// Optional captured fields: timestampMs (from the simulation start), dxPoint/dyPoint,
+// dxFixed/dyFixed, dxLine/dyLine, rawPhase and rawMomentumPhase (CGScrollPhase values).
+NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step, uint64_t startNs) {
   NSString *phase = step[@"phase"];
   double dx = [step[@"dx"] doubleValue], dy = [step[@"dy"] doubleValue];
   BOOL wheel = [phase isEqualToString:@"wheel"];
@@ -475,11 +610,19 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   if (!cg) return nil;
   CGEventSetIntegerValueField(cg, kCGScrollWheelEventIsContinuous, wheel ? 0 : 1);
   if ([step[@"shift"] boolValue]) CGEventSetFlags(cg, kCGEventFlagMaskShift);
-  CGEventSetTimestamp(cg, clock_gettime_nsec_np(CLOCK_UPTIME_RAW));
+  // CGEvent timestamps are uptime nanoseconds, the clock NSEvent.timestamp reports.
+  CGEventSetTimestamp(cg, step[@"timestampMs"] ? startNs + (uint64_t)llround([step[@"timestampMs"] doubleValue] * 1e6)
+                                               : clock_gettime_nsec_np(CLOCK_UPTIME_RAW));
+  // CG's delta setters rewrite each other's fields (fixed then point then line turned point -13 into
+  // scrollingDeltaX -8), so set line, then fixed, then point, which scrollingDeltaX/Y read, last.
+  if (step[@"dyLine"]) CGEventSetIntegerValueField(cg, kCGScrollWheelEventDeltaAxis1, [step[@"dyLine"] longLongValue]);
+  if (step[@"dxLine"]) CGEventSetIntegerValueField(cg, kCGScrollWheelEventDeltaAxis2, [step[@"dxLine"] longLongValue]);
   if (!wheel) {
-    CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis1, dy);
-    CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis2, dx);
+    CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis1, step[@"dyFixed"] ? [step[@"dyFixed"] doubleValue] : dy);
+    CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis2, step[@"dxFixed"] ? [step[@"dxFixed"] doubleValue] : dx);
   }
+  if (step[@"dyPoint"]) CGEventSetIntegerValueField(cg, kCGScrollWheelEventPointDeltaAxis1, [step[@"dyPoint"] longLongValue]);
+  if (step[@"dxPoint"]) CGEventSetIntegerValueField(cg, kCGScrollWheelEventPointDeltaAxis2, [step[@"dxPoint"] longLongValue]);
   if ([phase hasPrefix:@"momentum"]) {
     CGMomentumScrollPhase momentum = [phase isEqualToString:@"momentumBegan"] ? kCGMomentumScrollPhaseBegin
                                      : [phase isEqualToString:@"momentumEnded"] ? kCGMomentumScrollPhaseEnd
@@ -488,6 +631,8 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   } else if (!wheel) {
     CGEventSetIntegerValueField(cg, kCGScrollWheelEventScrollPhase, ScrollPhaseOf(phase));
   }
+  if (step[@"rawPhase"]) CGEventSetIntegerValueField(cg, kCGScrollWheelEventScrollPhase, [step[@"rawPhase"] longLongValue]);
+  if (step[@"rawMomentumPhase"]) CGEventSetIntegerValueField(cg, kCGScrollWheelEventMomentumPhase, [step[@"rawMomentumPhase"] longLongValue]);
   NSPoint local = LocalPoint(window, point);
   NSPoint screen = [window convertPointToScreen:[window.contentView convertPoint:local toView:nil]];
   CGFloat mainHeight = NSHeight(NSScreen.screens.firstObject.frame);
@@ -531,6 +676,8 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
               completion:(void (^)(NSDictionary<NSString *, id> *))completion {
   gTrace = [NSMutableArray array];
   NSMutableArray *log = [NSMutableArray array];
+  // Steps with atMs run at that offset from this start, so timing does not drift.
+  const uint64_t startNs = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
   NSPoint local = LocalPoint(window, point);
   NSPoint inWindow = [window.contentView convertPoint:local toView:nil];
   NSWindow *current = CurrentWindow(window);
@@ -548,7 +695,7 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
   __block void (^next)(void);
   void (^step)(void) = ^{
     if (index >= steps.count) {
-      NSDictionary *result = @{@"where" : where, @"events" : log, @"acks" : gTrace ?: @[], @"responder" : ResponderReport(hit)};
+      NSDictionary *result = @{@"where" : where, @"startNs" : @(startNs), @"events" : log, @"acks" : gTrace ?: @[], @"responder" : ResponderReport(hit)};
       gTrace = nil;
       next = nil;
       completion(result);
@@ -556,28 +703,69 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step) {
     }
     NSDictionary *s = steps[index++];
     NSString *phase = s[@"phase"];
+    const double atMs = (clock_gettime_nsec_np(CLOCK_UPTIME_RAW) - startNs) / 1e6;
     if ([phase isEqualToString:@"swipe"]) {
       BOOL handled = HandleDiscreteSwipe(window, inWindow, [s[@"dx"] doubleValue]);
       [log addObject:@{@"phase" : phase, @"swallowed" : @(handled)}];
     } else {
-      NSEvent *event = SyntheticScroll(window, point, s);
+      NSEvent *event = SyntheticScroll(window, point, s, startNs);
       if (event.window != window || fabs(event.locationInWindow.x - inWindow.x) > 1 || fabs(event.locationInWindow.y - inWindow.y) > 1) {
         [log addObject:@{@"phase" : phase, @"error" : [NSString stringWithFormat:@"event window %@ at %@, expected %@",
                                                                   event.window, NSStringFromPoint(event.locationInWindow), NSStringFromPoint(inWindow)]}];
       }
-      NSEvent *out = HandleScrollEvent(event, ignoreSystemPreference);
-      [log addObject:@{
-        @"phase" : phase,
-        @"time" : @(event.timestamp),
-        @"state" : @((int)gGesture.state),
-        @"swallowed" : @(out == nil),
-        @"renderer" : gGesture.renderer ? @((int)gGesture.renderer.scroll) : @(-1),
-        @"targetWindow" : @(gGesture.target.window.windowNumber),
-      }];
-      if (out) [window sendEvent:out];
+      if ([s[@"dispatch"] isEqualToString:@"app"]) {
+        // Through NSApp as AppKit delivers it; the monitor trace shows whether the tracker saw it.
+        const NSUInteger mark = gTrace.count;
+        [NSApp sendEvent:event];
+        NSArray *during = [gTrace subarrayWithRange:NSMakeRange(mark, gTrace.count - mark)];
+        NSDictionary *exit = nil;
+        BOOL entered = NO;
+        for (NSDictionary *entry in during) {
+          if ([entry[@"diag"] isEqual:@"monitorEntry"]) entered = YES;
+          if ([entry[@"diag"] isEqual:@"monitorExit"]) exit = entry;
+        }
+        [log addObject:@{
+          @"phase" : phase,
+          @"dispatch" : @"app",
+          @"time" : @(event.timestamp),
+          @"atMs" : @(atMs),
+          @"lateMs" : s[@"atMs"] ? @(atMs - [s[@"atMs"] doubleValue]) : @0,
+          @"nsPhase" : @(event.phase),
+          @"nsMomentumPhase" : @(event.momentumPhase),
+          @"scrollingDeltaX" : @(event.scrollingDeltaX),
+          @"scrollingDeltaY" : @(event.scrollingDeltaY),
+          @"monitorEntered" : @(entered),
+          // Unknown unless the monitor ran.
+          @"monitorSwallowed" : exit ? exit[@"swallowed"] : NSNull.null,
+          @"seq" : @(gGesture.seq),
+          @"state" : @((int)gGesture.state),
+          @"targetWindow" : @(gGesture.target.window.windowNumber),
+        }];
+      } else {
+        NSEvent *out = HandleScrollEvent(event, ignoreSystemPreference);
+        [log addObject:@{
+          @"phase" : phase,
+          @"time" : @(event.timestamp),
+          @"atMs" : @(atMs),
+          @"lateMs" : s[@"atMs"] ? @(atMs - [s[@"atMs"] doubleValue]) : @0,
+          @"nsPhase" : @(event.phase),
+          @"nsMomentumPhase" : @(event.momentumPhase),
+          @"scrollingDeltaX" : @(event.scrollingDeltaX),
+          @"scrollingDeltaY" : @(event.scrollingDeltaY),
+          @"seq" : @(gGesture.seq),
+          @"state" : @((int)gGesture.state),
+          @"swallowed" : @(out == nil),
+          @"renderer" : gGesture.renderer ? @((int)gGesture.renderer.scroll) : @(-1),
+          @"targetWindow" : @(gGesture.target.window.windowNumber),
+        }];
+        if (out) [window sendEvent:out];
+      }
     }
-    NSTimeInterval delay = (s[@"delayMs"] ? [s[@"delayMs"] doubleValue] : 16) / 1000;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), next);
+    NSDictionary *following = index < steps.count ? steps[index] : nil;
+    int64_t delayNs = following[@"atMs"]
+                          ? (int64_t)(startNs + llround([following[@"atMs"] doubleValue] * 1e6)) - (int64_t)clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+                          : (int64_t)llround((s[@"delayMs"] ? [s[@"delayMs"] doubleValue] : 16) * 1e6);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, MAX(delayNs, (int64_t)0)), dispatch_get_main_queue(), next);
   };
   next = step;
   step();
