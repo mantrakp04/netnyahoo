@@ -1,0 +1,75 @@
+.claude/skills/integration-astro-static/SKILL.md
+  s_9c356f9574d31c::t_4b8bfb634b1781 1-69
+.claude/skills/integration-astro-static/references/1-begin.md
+  s_9c356f9574d31c::t_cc3344f452bff7 1-56
+.claude/skills/integration-astro-static/references/2-edit.md
+  s_9c356f9574d31c::t_dc9fafa61cd98d 1-83
+.claude/skills/integration-astro-static/references/3-revise.md
+  s_9c356f9574d31c::t_fb53f4be64e74a 1-34
+.claude/skills/integration-astro-static/references/4-conclude.md
+  s_9c356f9574d31c::t_c8007999189a42 1-159
+.claude/skills/integration-astro-static/references/COMMANDMENTS.md
+  s_9c356f9574d31c::t_923c320658c92e 1-23
+.claude/skills/integration-astro-static/references/EXAMPLE.md
+  s_9c356f9574d31c::t_74db261ead824f 1-722
+.claude/skills/integration-astro-static/references/astro.md
+  s_9c356f9574d31c::t_c5c40d066ea43a 1-194
+.claude/skills/integration-astro-static/references/identify-users.md
+  s_9c356f9574d31c::t_7587b365bf2820 1-307
+.claude/skills/logs-javascript/SKILL.md
+  s_9c356f9574d31c::t_4ae04f5169bf25 1-50
+.claude/skills/logs-javascript/references/COMMANDMENTS.md
+  s_9c356f9574d31c::t_2b7085540d5da2 1-19
+.claude/skills/logs-javascript/references/best-practices.md
+  s_9c356f9574d31c::t_62149ee38a8ec6 1-432
+.claude/skills/logs-javascript/references/javascript.md
+  s_9c356f9574d31c::t_279272a60e09a6 1-231
+.claude/skills/logs-javascript/references/link-session-replay.md
+  s_9c356f9574d31c::t_67116eb3c33e26 1-169
+.claude/skills/logs-javascript/references/mcp.md
+  s_9c356f9574d31c::t_36cccd9eb1999e 1-62
+.claude/skills/logs-javascript/references/search.md
+  s_9c356f9574d31c::t_dfc051aa7f99c9 1-127
+.claude/skills/logs-javascript/references/start-here.md
+  s_9c356f9574d31c::t_c93257a8eb7e25 1-177
+.claude/skills/logs-javascript/references/troubleshooting.md
+  s_9c356f9574d31c::t_ea90b068b01bd1 1-123
+.claude/skills/replay-vision-scanner-broken-experiences/SKILL.md
+  s_9c356f9574d31c::t_0a0c292035527c 1-50
+.claude/skills/replay-vision-scanner-broken-experiences/references/COMMANDMENTS.md
+  s_9c356f9574d31c::t_ccec3ec4b7f4d2 1-5
+.claude/skills/replay-vision-scanner-user-frustration/SKILL.md
+  s_9c356f9574d31c::t_62138b46703989 1-42
+.claude/skills/replay-vision-scanner-user-frustration/references/COMMANDMENTS.md
+  s_9c356f9574d31c::t_5b3b7bb68d6607 1-5
+.claude/skills/replay-vision-scanners-core/SKILL.md
+  s_9c356f9574d31c::t_e38d53794f7ca9 1-114
+.claude/skills/replay-vision-scanners-core/references/COMMANDMENTS.md
+  s_9c356f9574d31c::t_b0e29564c12a8e 1-5
+.claude/skills/replay-vision-scanners-core/references/replay-vision.md
+  s_9c356f9574d31c::t_542d701e53495b 1-67
+.claude/skills/replay-vision-setup/SKILL.md
+  s_9c356f9574d31c::t_1080810a30a66a 1-93
+.claude/skills/replay-vision-setup/references/COMMANDMENTS.md
+  s_9c356f9574d31c::t_01d6800a2479af 1-5
+.claude/skills/replay-vision-setup/references/installation.md
+  s_9c356f9574d31c::t_343329ce684e7d 1-27
+.claude/skills/replay-vision-setup/references/replay-vision.md
+  s_9c356f9574d31c::t_b513730c9999a9 1-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1d102c229ac243cda1ddf97a66633e8eab0c1d57",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
