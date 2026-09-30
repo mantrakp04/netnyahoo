@@ -1,0 +1,28 @@
+apps/browser/src/components/layout/TopTabStrip.tsx
+  s_9c356f9574d31c::t_d05306d7f845fb 160
+  s_9c356f9574d31c::t_0a195b4053acce 6,159
+  s_9c356f9574d31c::t_547a94b8e46206 161-174
+apps/browser/src/components/Sidebar.tsx
+  s_9c356f9574d31c::t_d05306d7f845fb 4,196,253
+  s_9c356f9574d31c::t_0a195b4053acce 197-208,211-213,216-242,244-248,250-252
+apps/browser/src/App.tsx
+  s_9c356f9574d31c::t_d05306d7f845fb 25,30-35,44-48
+apps/browser/src/lib/theme.ts
+  s_9c356f9574d31c::t_d05306d7f845fb 2-3,219-231,234-243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4e3977c37f337ebbe8170e0e5123e77cfd889949",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
