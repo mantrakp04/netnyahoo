@@ -126,3 +126,6 @@ Result: _pending._
     (the loadUrl race, fixed in 7591eae2, not yet released).
   - "Write to the office" drew 4 dead clicks and 1 rage click, plus 5 rage clicks on an unlabelled button:
     worth a look next.
+  - **Shipped (03:20 UTC):** "Write to the office" now opens the chat. `conversations.show()` only revealed
+    PostHog's blue bubble in the corner, so the button looked dead (the dead and rage clicks above). Checked live:
+    one click opens the message box. Watch `support_opened` and the dead clicks on that button.
