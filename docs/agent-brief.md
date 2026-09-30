@@ -42,8 +42,10 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   `packages/cef/patches/` (`docs/cef-source-build.md` › "Rebuilding"; first build about 2 h,
   incremental 20 s–2 min). `packages/cef/scripts/setup.sh` copies it into `packages/cef/vendor/cef`,
   which every agent's build uses.
-- One agent at a time edits or builds `~/chromium-build`: hold `/tmp/nn-chromium.lock` (same
-  `mkdir` pattern as the pod lock below) for the whole edit → build → `setup.sh` cycle. A new
+- One agent at a time edits or builds `~/chromium-build`: hold the chromium lock for the whole
+  edit → build → `setup.sh` cycle (`scripts/agent/locked chromium --take <you>`, then each command as
+  `scripts/agent/locked chromium --as <you> -- …`, and `--release <you>` at the end; an unreleased take
+  expires after 60 min, so renew it by running commands with `--as`). A new
   distribution changes every agent's next build, so say so in your report. To try an engine
   change privately, install it elsewhere (`CEF_DIST=<dist> CEF_ROOT=<dir> setup.sh`) and build with
   `xcodebuild … NN_CEF_ROOT=<dir>`.
@@ -74,7 +76,7 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
     (`~/Library/Application Support/Dia`), nor any other browser's real profile data;
     use fixtures you create. Dia's app bundle (binary, assets) may be read.
 - **Isolated builds/instances** (several agents build and run at once). Use your agent name `<you>`:
-  - Build: `cd apps/browser && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build-<you> -destination 'platform=macOS,arch=arm64' -configuration Debug build 2>&1 | grep -E "error:|\*\* BUILD"`
+  - Build (in the background, `run_in_background`): `cd apps/browser && ../../scripts/agent/locked xcodebuild -- xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build-<you> -destination 'platform=macOS,arch=arm64' -configuration Debug build 2>&1 | grep -E "error:|\*\* BUILD"`
   - Run: `open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR=/tmp/nn-<you> --env NETNYAHOO_REMOTE_DEBUGGING_PORT=<port> apps/browser/build-<you>/Build/Products/Debug/Netnyahoo.app`
     (`NETNYAHOO_DATA_DIR` isolates CEF + session data; each instance needs its own).
     Kill only your own instance (by PID), never `pkill Netnyahoo`.
@@ -91,8 +93,8 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
     - Fast Refresh doesn't always apply (and has crashed Hermes' debugger). Relaunch your instance
       before judging a change.
   - `pod install` (after adding/removing native source files, changing a podspec, or adding native
-    packages) must hold the shared lock: `until mkdir /tmp/nn-pod.lock 2>/dev/null; do sleep 5; done;
-    (cd apps/browser/macos && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install); rmdir /tmp/nn-pod.lock`.
+    packages) must hold the shared lock: `scripts/agent/locked pod -- sh -c 'cd apps/browser/macos &&
+    LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install'`.
     Same lock for `pnpm install` and edits to apps/browser/package.json. A new Expo module in an
     existing source file only needs its `expo-module.config.json` entry (the build regenerates
     the module provider).
@@ -107,7 +109,8 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   instance.
   - Drive the app through the dev harness: write a script to `$NETNYAHOO_DATA_DIR/dev-eval.js`
     (first line `// <id>`, body returns a value or promise; no top-level `await`) and read
-    `dev-eval-result.json`. `nn` = store, actions, runCommand, webviews, shell, … (`lib/devHarness.ts`);
+    `dev-eval-result.json`, waiting with `scripts/agent/await --timeout 60 --pid <app pid> -- grep -q
+    '"id":"<id>"' "$NETNYAHOO_DATA_DIR/dev-eval-result.json"` so a crashed instance fails at once. `nn` = store, actions, runCommand, webviews, shell, … (`lib/devHarness.ts`);
     Expo modules are on `globalThis.expo.modules` (e.g. `NetnyahooCEF`).
   - Keyboard shortcuts: `nn.shell.devKeyEquivalent(windowId, { key, keyCode, modifiers, focus, asKey })` presses a
     key as AppKit dispatches it (Chrome's window, then the menu bar; a test instance never has the key window), and
@@ -116,7 +119,8 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
     `Runtime.evaluate`, `Page.captureScreenshot`). Chromium doesn't paint fully occluded windows.
   - Native UI: the ScreenCaptureKit recorder in the scratchpad folder (`sckrec <windowID> <secs>
     <outDir> x y w h scale`) records one window even when it's covered; find the window id with
-    CGWindowList by owner PID. `screencapture -l <windowID>` works too while nothing covers it.
+    CGWindowList by owner PID. `screencapture -l <windowID>` works too while nothing covers it. Wrap
+    every capture in `timeout 20`: with the screen locked they can hang instead of failing.
     For the New Tab intro, launch with `NETNYAHOO_SHADERS_FORCE_KEY=1` (it only plays in a key window).
   - The user's screen may be locked: screen captures then fail or deliver no frames. Fall back to
     `nn.shell.devSnapshotWindow(windowId, path)` (the window's layers at 2x; Metal views render

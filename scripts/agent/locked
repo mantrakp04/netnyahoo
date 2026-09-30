@@ -1,0 +1,155 @@
+#!/bin/bash
+# The shared locks agents take in this checkout (xcodebuild, pod install, the Chromium build).
+#
+#   scripts/agent/locked <name> [--wait SECS] [--as WHO] -- <command> [args…]   run one command holding it
+#   scripts/agent/locked <name> --take WHO [--ttl MIN] [--wait SECS]              hold it across several calls
+#   scripts/agent/locked <name> --release WHO                                   give back a --take
+#
+# <name> is xcodebuild, pod or chromium. The old pattern (`until mkdir /tmp/nn-<name>.lock; …; rmdir`)
+# left the lock behind whenever the shell was killed before its rmdir (a tool timeout, ⌃C), and every
+# other agent then waited forever. Here:
+#   - everything runs under a kernel lock (lockf) that dies with its holder, and a command's pid is
+#     recorded, so a holder that died is noticed and its lock removed;
+#   - --take records WHO and an expiry (default 60 min); --as WHO runs the taker's own commands (one
+#     at a time) and pushes the expiry back. An expired take counts as abandoned;
+#   - the old /tmp/nn-<name>.lock directory is still created while held, so agents on the mkdir
+#     pattern keep waiting for us. One of theirs is never removed: we wait and say so.
+# Waiting gives up after --wait seconds (default 500, under the Bash tool's 600 s limit) with exit 75
+# and names the holder. Run long builds with the Bash tool's run_in_background instead of waiting on
+# them in the foreground.
+set -uo pipefail
+
+usage() {
+  sed -n '4,6p' "$0" | sed 's/^# *//' >&2
+  exit 64
+}
+
+name="${1:-}"
+case "$name" in xcodebuild | pod | chromium) ;; *) usage ;; esac
+shift
+wait=500 as="" take="" release="" ttl=60
+while [[ $# -gt 0 && "$1" != "--" ]]; do
+  [[ $# -ge 2 ]] || { echo "locked: $1 needs a value" >&2; usage; }
+  case "$1" in
+    --wait) wait="$2" ;;
+    --as) as="$2" ;;
+    --take) take="$2" ;;
+    --release) release="$2" ;;
+    --ttl) ttl="$2" ;;
+    *) echo "locked: unknown option $1" >&2; usage ;;
+  esac
+  shift 2
+done
+[[ "${1:-}" == "--" ]] && shift
+[[ -n "$take$release" || $# -gt 0 ]] || usage
+[[ "$wait$ttl" =~ ^[0-9]+$ ]] || { echo "locked: --wait and --ttl take whole numbers" >&2; usage; }
+
+root=${NN_LOCK_ROOT:-/tmp}
+kernel=$root/nn-$name.lockf
+legacy=$root/nn-$name.lock
+holder=$root/nn-$name.holder
+now() { date +%s; }
+
+# Holder file: "pid <pid> <description>" or "take <expiry epoch> <who> <description>".
+field() { awk -v n="$1" '{print $n; exit}' "$holder" 2>/dev/null; }
+taken_by() { [[ "$(field 1)" == take && "$(field 3)" == "$1" ]]; }
+renew() { sed -i '' "1s/^take [0-9]*/take $(($(now) + ttl * 60))/" "$holder"; }
+
+describe() {
+  if [[ "$(field 1)" == take ]]; then
+    echo "taken by $(cut -d' ' -f3- "$holder"), until $(date -r "$(field 2)" '+%H:%M:%S')"
+  elif [[ -s "$holder" ]]; then
+    echo "held by pid $(cut -d' ' -f2- "$holder")"
+  elif [[ -d "$legacy" ]]; then
+    echo "held since $(stat -f %Sm "$legacy") by an agent using the old mkdir lock; if nothing is building, the owner can rmdir $legacy"
+  fi
+}
+
+# Runs the command as a child so its pid can be recorded, and passes signals on to it.
+run() {
+  "$@" &
+  child=$!
+  trap 'kill -INT "$child" 2>/dev/null; wait "$child"; exit 130' INT
+  trap 'kill -TERM "$child" 2>/dev/null; wait "$child"; exit 143' TERM
+  trap 'kill -HUP "$child" 2>/dev/null; wait "$child"; exit 129' HUP
+  "${on_start:-true}" "$child"
+  wait "$child"
+}
+
+if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
+  start=$(now)
+  opts=(--wait "$wait" --ttl "$ttl")
+  [[ -n "$take" ]] && opts+=(--take "$take")
+  [[ -n "$as" ]] && opts+=(--as "$as")
+  [[ -n "$release" ]] && opts+=(--release "$release")
+  NN_LOCKED_INNER=1 NN_LOCKED_DEADLINE=$((start + wait)) lockf -s -k -t "$wait" "$kernel" "$0" "$name" "${opts[@]}" -- "$@"
+  status=$?
+  # 76: the inner run gave up and already said why; 75 from lockf itself: its own wait ran out.
+  [[ $status -eq 76 ]] && exit 75
+  if [[ $status -eq 75 && $(($(now) - start)) -ge $wait ]]; then
+    echo "locked: $name lock still busy after ${wait}s; $(describe)" >&2
+  fi
+  exit $status
+fi
+
+# Inside the kernel lock: no other caller of this script is in this part at the same time, so the
+# holder file can't change under us.
+if [[ -n "$release" ]]; then
+  if taken_by "$release"; then
+    rm -f "$holder"
+    rmdir "$legacy" 2>/dev/null
+    echo "locked: released $name" >&2
+    exit 0
+  fi
+  echo "locked: $name isn't taken by $release; $(describe)" >&2
+  exit 1
+fi
+
+if [[ -n "$as" ]] && taken_by "$as"; then
+  renew
+  run "$@"
+  status=$?
+  taken_by "$as" && renew
+  exit $status
+fi
+
+deadline=${NN_LOCKED_DEADLINE:-$(($(now) + wait))}
+while ! mkdir "$legacy" 2>/dev/null; do
+  stale=""
+  case "$(field 1)" in
+    pid)
+      pid=$(field 2)
+      kill -0 "$pid" 2>/dev/null || stale="its holder (pid $pid) has exited"
+      ;;
+    take)
+      [[ $(now) -gt $(field 2) ]] && stale="$(field 3)'s take expired"
+      ;;
+  esac
+  if [[ -n "$stale" ]]; then
+    echo "locked: removing stale $legacy: $stale" >&2
+    rm -f "$holder"
+    rm -rf "$legacy"
+    continue
+  fi
+  if [[ $(now) -ge $deadline ]]; then
+    echo "locked: $name lock still busy after ${wait}s; $(describe)" >&2
+    exit 76
+  fi
+  sleep 3
+done
+# A holder file left beside a directory we just created belongs to nobody.
+rm -f "$holder"
+
+if [[ -n "$take" ]]; then
+  echo "take $(($(now) + ttl * 60)) $take since $(date '+%H:%M:%S')" >"$holder"
+  echo "locked: $name taken by $take for ${ttl} min; run its commands with --as $take, then --release $take" >&2
+  exit 0
+fi
+
+cleanup() {
+  rm -f "$holder"
+  rmdir "$legacy" 2>/dev/null
+}
+trap cleanup EXIT
+record() { echo "pid $1 since $(date '+%H:%M:%S') in $PWD: ${cmd}" >"$holder"; }
+cmd="$*" on_start=record run "$@"

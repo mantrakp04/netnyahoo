@@ -45,8 +45,15 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   (dev harness, CDP, window snapshots).
   - The screen is often locked, and then WindowServer captures fail. Use the in-process snapshots
     (`docs/agent-brief.md`) and say exactly what still needs a visual check.
-- **Build safely.** Serialize xcodebuilds that share Pods. A "resources-to-copy" error means a collision;
-  retry once nothing else is building.
+- **Build safely.** Run xcodebuild, `pod install`/`pnpm install` and Chromium builds through
+  `scripts/agent/locked <xcodebuild|pod|chromium> -- <command>` (usage in the script). Its lock dies with
+  its holder; the old `until mkdir /tmp/nn-*.lock` pattern left locks behind that stalled every agent.
+  A "resources-to-copy" error means a collision; retry once nothing else is building.
+- **Never wait open-ended.** Every wait has a deadline under the Bash tool's 10-minute limit and fails
+  fast when the thing it waits on dies: `scripts/agent/await --pid <pid> -- <test>` instead of
+  `until …; do sleep; done`. Run builds with `run_in_background` and act on the notification. Wrap
+  screen captures in `timeout 20` (they hang while the screen is locked). Never wait for another agent's
+  edit to appear; report the dependency instead.
 
 ## Shipping
 - **Use the `release` skill** (`.claude/skills/release/SKILL.md`). The flow is:

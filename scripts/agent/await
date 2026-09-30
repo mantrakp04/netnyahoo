@@ -1,0 +1,49 @@
+#!/bin/bash
+# Wait for a condition with a deadline, instead of an open-ended `until …; do sleep; done` loop.
+#
+#   scripts/agent/await [--timeout SECS] [--every SECS] [--pid PID]… [--quiet] -- <test command…>
+#
+# Runs the test command until it succeeds (exit 0), then exits 0. Exits 3 as soon as a --pid it
+# watches has exited (the build or app you're waiting on died, so it will never succeed), and 124 at
+# the deadline (default 300 s, keep it under the Bash tool's 600 s limit), which also bounds a probe that hangs. Either way it prints why,
+# so the caller can look at the log rather than wait again.
+#
+#   scripts/agent/await --pid "$(cat pid)" -- test -s "$DATA/dev-eval-result.json"
+#   scripts/agent/await --timeout 500 -- grep -q '\*\* BUILD' build.log
+set -uo pipefail
+
+timeout=300 every=2 quiet="" pids=()
+while [[ $# -gt 0 && "$1" != "--" ]]; do
+  [[ "$1" == --quiet || $# -ge 2 ]] || { echo "await: $1 needs a value" >&2; exit 64; }
+  case "$1" in
+    --timeout) timeout="$2"; shift 2 ;;
+    --every) every="$2"; shift 2 ;;
+    --pid) pids+=("$2"); shift 2 ;;
+    --quiet) quiet=1; shift ;;
+    *) echo "await: unknown option $1" >&2; exit 64 ;;
+  esac
+done
+[[ "${1:-}" == "--" ]] && shift
+[[ $# -gt 0 ]] || { echo "usage: $0 [--timeout S] [--every S] [--pid PID]… -- <test command…>" >&2; exit 64; }
+
+start=$(date +%s)
+# Each probe gets what's left of the deadline (at least 1 s), so a probe that hangs can't outlast it.
+probe() { timeout -k 2 "$((timeout - ($(date +%s) - start) > 0 ? timeout - ($(date +%s) - start) : 1))" "$@" >/dev/null 2>&1; }
+while true; do
+  if probe "$@"; then
+    [[ -n "$quiet" ]] || echo "await: ok after $(($(date +%s) - start))s" >&2
+    exit 0
+  fi
+  for pid in ${pids[@]+"${pids[@]}"}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      probe "$@" && exit 0
+      echo "await: pid $pid exited after $(($(date +%s) - start))s before: $*" >&2
+      exit 3
+    fi
+  done
+  if [[ $(($(date +%s) - start)) -ge $timeout ]]; then
+    echo "await: timed out after ${timeout}s waiting for: $*" >&2
+    exit 124
+  fi
+  sleep "$every"
+done
