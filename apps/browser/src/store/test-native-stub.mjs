@@ -1,6 +1,14 @@
 export const docs = new Map();
 export const readDocument = (name) => docs.get(name) ?? null;
 export const writeDocument = (name, contents) => docs.set(name, contents);
+// saveDocument lands at once, or, while heldSaves.on, when a test runs the queued releases.
+export const heldSaves = { on: false, queue: [] };
+export const saveDocument = (name, contents) =>
+  new Promise((resolve) => {
+    const land = () => (docs.set(name, contents), resolve());
+    if (heldSaves.on) heldSaves.queue.push(land);
+    else land();
+  });
 export const setZoom = () => Promise.resolve();
 export const launchEnvironment = () => null;
 export const appInfo = { appVersion: "1.0" };

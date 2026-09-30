@@ -215,6 +215,7 @@ const Shell = requireNativeModule<{
   pickFiles(): Promise<string[]>;
   readDocument(name: string): string | null;
   writeDocument(name: string, contents: string): void;
+  saveDocument?(name: string, contents: string): Promise<void>;
   openWindow(id: string, options: OpenWindowOptions): Promise<void>;
   closeWindow(id: string): Promise<void>;
   setWindowProfile?(id: string, profile: string, neighbours: string[]): Promise<void>;
@@ -233,6 +234,9 @@ const Shell = requireNativeModule<{
 
 export const readDocument = (name: string) => Shell.readDocument(name);
 export const writeDocument = (name: string, contents: string) => Shell.writeDocument(name, contents);
+/** Resolves once the document is on disk (writeDocument returns before), rejects if it can't be written. */
+export const saveDocument = async (name: string, contents: string) =>
+  Shell.saveDocument ? Shell.saveDocument(name, contents) : Shell.writeDocument(name, contents);
 
 export const startDictation = () => Shell.startDictation();
 export const setSwitcherCapture = (active: boolean) => void Shell.setSwitcherCapture?.(active);

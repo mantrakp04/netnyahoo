@@ -79,3 +79,24 @@ test("a crash after a batch lands: after the restart it's sent again as it was, 
   assert.deepEqual(three.ops.map((op) => op.v?.t), ["Three"], "only what's new");
   assert.equal(shell.docs.get("sync-journal.nns"), "", "the journal is emptied once the saved state has its batches");
 });
+
+test("a batch is published only once the journal holding it is on disk", async () => {
+  S().hydrate({});
+  const engine = await import("./engine.ts?held");
+  engine.startSync();
+  assert.ok("ok" in (await engine.turnOnSync("/sync")));
+  await engine.syncNow();
+  const published = () => [...folder.values()].map((f) => JSON.parse(f.payload)).filter((f) => f.ops?.some((op) => op.v?.t === "Held"));
+
+  shell.heldSaves.on = true;
+  S().addBookmark({ profileId: "default", url: "https://held.example/", title: "Held" });
+  const syncing = engine.syncNow();
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(published().length, 0, "nothing goes out while the journal save is still pending");
+  assert.ok(shell.heldSaves.queue.length > 0, "the journal save is waiting");
+
+  shell.heldSaves.on = false;
+  for (const land of shell.heldSaves.queue.splice(0)) land();
+  await syncing;
+  assert.equal(published().length, 1, "published once the journal landed");
+});

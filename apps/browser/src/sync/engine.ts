@@ -1,4 +1,4 @@
-import { readDocument, writeDocument } from "@netnyahoo/shell";
+import { readDocument, saveDocument, writeDocument } from "@netnyahoo/shell";
 import {
   Clock,
   emptyScope,
@@ -173,7 +173,9 @@ const persistJournal = (scope: string) => async (batches: LogFile[]) => {
   const list = (journal[scope] ??= []);
   for (const file of batches) if (!list.some((f) => f.seq === file.seq)) list.push(file);
   const sealed = await SyncNative!.sealLocal(JSON.stringify({ journal }));
-  writeDocument(JOURNAL, sealed);
+  // The journal must be on disk before the batches are published: after a crash, it's how this device knows
+  // which sequence numbers it already used.
+  await saveDocument(JOURNAL, sealed);
   journalOnDisk = true;
 };
 
@@ -214,7 +216,8 @@ function save() {
     try {
       const sealed = await SyncNative?.sealLocal(state);
       if (sealed) {
-        writeDocument(STATE, sealed);
+        // Only once the state is on disk may the journal entries it covers go.
+        await saveDocument(STATE, sealed);
         savedState = state;
         pruneJournal(seqs);
       }

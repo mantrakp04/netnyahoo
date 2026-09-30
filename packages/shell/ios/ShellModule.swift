@@ -13,15 +13,25 @@ public enum OpenURLInbox {
 
 /// JS saves (the session and history run to megabytes) land on a background queue instead of blocking the JS
 /// thread for the write. A read sees the newest save of a document even before it's on disk, a save never lands
-/// after a newer one of the same document, and quitting waits for the queue.
+/// after a newer one of the same document, and quitting waits for the queue. A save that fails stays staged (reads
+/// still see it) and is retried; `done` hears when a save (or a newer one of the same document) is on disk, or why
+/// it couldn't be written.
 enum DocumentStore {
+  typealias Done = (Error?) -> Void
+  private struct Staged {
+    let url: URL
+    let generation: UInt64
+    let contents: String
+    var waiters: [Done]
+  }
+
   private static let queue = DispatchQueue(label: "netnyahoo.documents", qos: .utility)
   private static let lock = NSLock()
-  private static var staged: [String: (generation: UInt64, contents: String)] = [:]
+  private static var staged: [String: Staged] = [:]
   private static var generation: UInt64 = 0
   private static let flushOnQuit = NotificationCenter.default.addObserver(
     forName: NSApplication.willTerminateNotification, object: nil, queue: nil
-  ) { _ in queue.sync {} }
+  ) { _ in flush() }
 
   static func read(_ name: String) -> String? {
     guard let url = try? ShellModule.documentURL(name) else { return nil }
@@ -31,29 +41,57 @@ enum DocumentStore {
     return pending ?? (try? String(contentsOf: url, encoding: .utf8))
   }
 
-  static func write(_ name: String, _ contents: String) throws {
+  static func write(_ name: String, _ contents: String, done: Done? = nil) throws {
     _ = flushOnQuit
     let url = try ShellModule.documentURL(name)
     let key = url.lastPathComponent
     lock.lock()
     generation += 1
     let mine = generation
-    staged[key] = (mine, contents)
+    // Callers still waiting on an older save of this document wait for this one, which supersedes it.
+    staged[key] = Staged(url: url, generation: mine, contents: contents, waiters: (staged[key]?.waiters ?? []) + (done.map { [$0] } ?? []))
     lock.unlock()
-    queue.async {
+    queue.async { land(key, mine, attempt: 0) }
+  }
+
+  // On the queue. Writes the document if `generation` is still its newest save.
+  private static func land(_ key: String, _ generation: UInt64, attempt: Int) {
+    lock.lock()
+    guard let save = staged[key], save.generation == generation else { return lock.unlock() }
+    lock.unlock()
+    var failure: Error?
+    do {
+      try save.contents.write(to: save.url, atomically: true, encoding: .utf8)
+    } catch {
+      failure = error
+    }
+    lock.lock()
+    var waiters: [Done] = []
+    if staged[key]?.generation == generation {
+      waiters = staged[key]!.waiters
+      if failure == nil { staged[key] = nil } else { staged[key]!.waiters = [] }
+    }
+    lock.unlock()
+    for waiter in waiters { waiter(failure) }
+    guard let failure else { return }
+    NSLog("Netnyahoo: saving \(key) failed (try \(attempt + 1)): \(failure.localizedDescription)")
+    // Kept staged and tried again, backing off to a minute; a newer save of the document takes over instead.
+    let delay = min(60.0, 2.0 * pow(2.0, Double(min(attempt, 5))))
+    queue.asyncAfter(deadline: .now() + delay) { land(key, generation, attempt: attempt + 1) }
+  }
+
+  // Blocks until everything staged has been written once more (on quit).
+  static func flush() {
+    queue.sync {
       lock.lock()
-      let newest = staged[key]
+      let keys = Array(staged.keys)
       lock.unlock()
-      // A newer save of this document is queued behind this one; it writes instead.
-      guard let newest, newest.generation == mine else { return }
-      do {
-        try newest.contents.write(to: url, atomically: true, encoding: .utf8)
-      } catch {
-        NSLog("Netnyahoo: saving \(key) failed: \(error.localizedDescription)")
+      for key in keys {
+        lock.lock()
+        let generation = staged[key]?.generation
+        lock.unlock()
+        if let generation { land(key, generation, attempt: 99) }
       }
-      lock.lock()
-      if staged[key]?.generation == mine { staged[key] = nil }
-      lock.unlock()
     }
   }
 }
@@ -214,6 +252,14 @@ public class ShellModule: Module {
     Function("readDocument") { (name: String) -> String? in DocumentStore.read(name) }
 
     Function("writeDocument") { (name: String, contents: String) in try DocumentStore.write(name, contents) }
+
+    // The same save, resolved once it's on disk (or a newer save of the document is), rejected if it can't be
+    // written: for writes that must land before something else happens (sync's journal).
+    AsyncFunction("saveDocument") { (name: String, contents: String, promise: Promise) in
+      try DocumentStore.write(name, contents) { error in
+        if let error { promise.reject("ERR_SAVE_DOCUMENT", error.localizedDescription) } else { promise.resolve(nil) }
+      }
+    }
 
     AsyncFunction("setSwitcherCapture") { [weak self] (active: Bool) in
       guard let self else { return }
