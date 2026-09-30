@@ -1,0 +1,37 @@
+apps/browser/src/components/ContentCard.tsx
+  s_9c356f9574d31c::t_0ff7e664ce8728 66-67,69-73,76-79
+apps/browser/src/components/sidebar/entries.ts
+  s_631b13a766b697::t_2b7c86577e2d41 14-23,91
+  s_9c356f9574d31c::t_0ff7e664ce8728 67-68,72-73,79
+apps/browser/src/components/sidebar/TabRow.tsx
+  s_631b13a766b697::t_3e8721871fd891 8
+  s_631b13a766b697::t_2b7c86577e2d41 6-7,45-60,66-71
+apps/browser/src/components/media/SidebarPlayer.tsx
+  s_631b13a766b697::t_2b7c86577e2d41 17-18,20-31
+apps/browser/src/components/live/NextMeetingBadge.tsx
+  s_631b13a766b697::t_2b7c86577e2d41 12-13,15,17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d95e49322bb0e7f92c9ec1e600cd9fa5747456ca",
+  "prompts": {},
+  "sessions": {
+    "s_631b13a766b697": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ef88-d29f-71c0-bccb-8ac6c46b7bc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
