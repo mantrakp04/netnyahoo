@@ -31,7 +31,8 @@ What the build adds:
 | `cef-zz-media-router-shutdown.patch` | A context that outlives its Profile (the global one, until CEF shuts down) drops its media router objects when the Profile goes, while the Profile's MediaRouter still exists. Stock CEF dropped them only with the context, after the router was gone, so an app that had used `CefMediaRouter` on the default profile failed a `MediaRoutesObserver` check on every quit |
 | `cef-zz-media-source.patch` (after `cef-zz-media-router-shutdown.patch`) | `CefGetMediaAccessDesktopSource`: the desktop source a media access request would capture, so the app can hold a screen-sharing approval to the source the user picked (`CEF_NN_MEDIA_REQUEST_SOURCE`). `OnRequestMediaAccessPermission` goes to the requesting frame's own browser; Chrome's window delegate used to pass its active tab |
 | `cef-zz-quiet-uninstall.patch` (after `cef-zz-media-source.patch`) | The `CEF_NN_QUIET_UNINSTALL` marker for `chromium-zz-extensions-page-uninstall.patch` |
-| `cef-zzz-open-url-params.patch` (last) | `CEF_NN_OPEN_URL_PARAMS` (a new tab or window's full navigation) and `CEF_NN_POPUP_OPENER_SUPPRESSED` |
+| `cef-zzz-open-url-params.patch` | `CEF_NN_OPEN_URL_PARAMS` (a new tab or window's full navigation) and `CEF_NN_POPUP_OPENER_SUPPRESSED` |
+| `cef-zzz-pump-wake.patch` (last) | The external message pump asks for its next call itself (`CEF_NN_PUMP_SCHEDULE`): at once when its 10 ms slice ends with work left, else when the next delayed task is due. Stock CEF dropped both, so delayed tasks ran only at the client's poll (30 Hz, idle or not), leftover work waited up to 33 ms, and it spun in `Run` while a delayed task was due within the slice. `NNCef.mm` keeps a 1 s safety poll with it. Idle browser-process wakeups went from ~42/s to ~15/s |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs (we host each tab's view in our own views) |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the Browser window to the app: Chrome only tracks the state, and the app shows the page full screen itself (`CefDisplayHandler::OnFullscreenModeChange`) |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
@@ -228,6 +229,10 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
 - **`CEF_NN_POPUP_OPENER_SUPPRESSED`**
   - `OnBeforePopup`'s `extra_info` has `nn_opener_suppressed` (and `nn_no_referrer`) for a noopener / noreferrer popup,
     so the client can replay a popup it blocked the same way.
+- **`CEF_NN_PUMP_SCHEDULE`**
+  - No API. With `external_message_pump`, every `CefDoMessageLoopWork()` ends with an
+    `OnScheduleMessagePumpWork()` for the next call: 0 when work is left from its time slice, otherwise the delay
+    (rounded up) until the next delayed task, asked before idle work runs. The client needs no poll to run delayed tasks.
 
 - **`CEF_NN_DOCKED_DEVTOOLS`** (docked DevTools in client windows)
   - A `client_window` Browser may dock DevTools (CEF passes `can_dock = false` for every other browser). Chrome's

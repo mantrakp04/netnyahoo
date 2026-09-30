@@ -66,7 +66,14 @@ using namespace nn;
 
 namespace {
 
+#if defined(CEF_NN_PUMP_SCHEDULE)
+// The engine asks for its next call itself (when its next delayed task is due, or at once when a time slice ran out
+// with work left), so this poll is only a safety net.
+constexpr double kMaxTimerDelay = 1;
+#else
+// Stock CEF drops its next delayed task's time, so delayed tasks only run at this poll (cefclient's 30 Hz).
 constexpr double kMaxTimerDelay = 1.0 / 30.0;
+#endif
 
 class MessagePump {
  public:
@@ -75,8 +82,10 @@ class MessagePump {
     return pump;
   }
 
+  // Any thread. The deadline is taken now: the main queue may be busy for a while before it runs the request.
   void Schedule(int64_t delay_ms) {
-    dispatch_async(dispatch_get_main_queue(), ^{ this->OnSchedule(delay_ms); });
+    const CFTimeInterval deadline = delay_ms > 0 ? CACurrentMediaTime() + delay_ms / 1000.0 : 0;
+    dispatch_async(dispatch_get_main_queue(), ^{ this->OnSchedule(deadline); });
   }
 
   void Stop() {
@@ -85,22 +94,24 @@ class MessagePump {
   }
 
  private:
-  void OnSchedule(int64_t delay_ms) {
+  void OnSchedule(CFTimeInterval deadline) {
     if (stopped_) return;
-    if (delay_ms <= 0) {
-      DoWork();
-    } else {
-      SetTimer(std::min(delay_ms / 1000.0, kMaxTimerDelay));
-    }
+    if (deadline <= 0) return DoWork();
+    // Keep an earlier wake that's still pending: requests from different threads can arrive out of order, and
+    // an early call costs one pass that finds nothing due, while a late one delays every task behind it.
+    const CFTimeInterval at = std::min(deadline, CACurrentMediaTime() + kMaxTimerDelay);
+    if (!timer_ || at < timerAt_) SetTimer(at);
   }
 
   void DoWork() {
+    if (stopped_) return;
     KillTimer();
     bool reentrant = PerformWork();
+    if (stopped_) return;
     if (reentrant) {
       Schedule(0);
     } else if (!timer_) {
-      SetTimer(kMaxTimerDelay);
+      SetTimer(CACurrentMediaTime() + kMaxTimerDelay);
     }
   }
 
@@ -116,9 +127,10 @@ class MessagePump {
     return reentrancy_;
   }
 
-  void SetTimer(double seconds) {
+  void SetTimer(CFTimeInterval at) {
     KillTimer();
-    timer_ = [NSTimer timerWithTimeInterval:seconds
+    timerAt_ = at;
+    timer_ = [NSTimer timerWithTimeInterval:std::max(at - CACurrentMediaTime(), 0.0)
                                     repeats:NO
                                       block:^(NSTimer *) {
                                         this->timer_ = nil;
@@ -133,6 +145,7 @@ class MessagePump {
   }
 
   NSTimer *timer_ = nil;
+  CFTimeInterval timerAt_ = 0;
   bool active_ = false;
   bool reentrancy_ = false;
   bool stopped_ = false;
