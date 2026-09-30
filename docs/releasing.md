@@ -8,7 +8,7 @@ Releases are GitHub releases of `mantrakp04/netnyahoo`, tagged `v<version>`. Eac
   `https://netnyahoo.com/appcast.xml` (`SUFeedURL`), which counts the check by version and day (and whether
   it's the copy's first) and redirects to
   `https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml`, the URL 0.2.13 and
-  earlier poll directly. The count can't block an update: see `apps/site/nginx.conf` and `docs/growth.md`
+  earlier poll directly. The count can't block an update: see `infra/site/nginx.conf` and `docs/growth.md`
   › Installs.
 
 Each version's notes are a file in the repo, `docs/release-notes/<version>.md` (how to write one:
@@ -70,7 +70,7 @@ deployed with the new entry by the time the update reaches people.
    ```
 5. Deploy the site so `/release-notes` shows the new version (the updated app opens it on its first launch):
    `pnpm -C apps/site run deploy` builds `apps/site` with `SITE_URL=https://netnyahoo.com` and ships it
-   (`apps/site/hexclave.deploy.ts`). Also bump `VERSION` and `DMG_SIZE` in `apps/site/src/data/release.ts`
+   (`infra/site/hexclave.deploy.ts`). Also bump `VERSION` and `DMG_SIZE` in `apps/site/src/data/release.ts`
    first so the download button points at the new DMG. Deploying is the maintainer's call: an agent cutting
    a release stops before this step unless told to do it.
 

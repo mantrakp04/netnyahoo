@@ -117,7 +117,7 @@ and a session whose window was left on its second profile, and checks, over CDP 
 - the bundle's signature is still valid after running (0.1.0 wrote into its own bundle);
 - the feed in the build's Info.plist (`SUFeedURL`, `https://netnyahoo.com/appcast.xml` in builds after 0.2.13) answers
   with an appcast (`scripts/feed.sh --before-publish`). A 404 means netnyahoo.com is running a deploy without
-  the feed endpoint (`apps/site/nginx.conf`): deploy the site first, or copies of this build never update.
+  the feed endpoint (`infra/site/nginx.conf`): deploy the site first, or copies of this build never update.
 
 Everything must pass before publishing. One known exception: the two passkey window-order checks read
 CGWindowList, which isn't reliable while the Mac's screen is locked (window animations freeze). smoke.sh

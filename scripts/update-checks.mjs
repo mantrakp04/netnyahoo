@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Downloads → first launches → copies still running, per version, from two counts we already have:
 //   - GitHub's download counts for each release's DMG (new downloads) and zip (Sparkle updates);
-//   - `update_check` events, one per request to netnyahoo.com/appcast.xml (apps/site/nginx.conf):
+//   - `update_check` events, one per request to netnyahoo.com/appcast.xml (infra/site/nginx.conf):
 //     version, day, and whether it's a copy's first check. No IP, no ID. Builds after 0.2.13 only;
 //     older copies poll GitHub directly and aren't counted.
 //
