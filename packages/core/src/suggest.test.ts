@@ -261,3 +261,22 @@ test("prepareSuggestions indexes in slices and doesn't change the results", () =
   assert.equal(prepareSuggestions(source, 0), true);
   assert.deepEqual(buildSuggestions("no", source, { now }), expected);
 });
+
+test("the candidate pool builds in slices within its deadline, and ranks as a pool built at once", () => {
+  const history = Array.from({ length: 3000 }, (_, i) => ({ url: `https://h${i % 50}.com/p/${i}`, title: `Page ${i}`, favicon: null, visits: 1 + (i % 5), lastVisit: 1_000_000 - i }));
+  const bookmarks = Array.from({ length: 20_000 }, (_, i) => ({ url: `https://b${i % 70}.com/b/${i % 15_000}`, title: `Mark ${i}`, favicon: null }));
+  bookmarks.push({ url: history[3]!.url, title: "Bookmarked history", favicon: null });
+  const sliced = { tabs: [], history, bookmarks };
+  let slices = 0;
+  while (!prepareSuggestions(sliced, Date.now() - 1)) slices++;
+  assert.ok(slices > 10, `built in ${slices} slices`);
+  // The same rows, new arrays: a pool built in one go.
+  const whole = { tabs: [], history: [...history], bookmarks: [...bookmarks] };
+  for (const q of ["page 3", "h3.com", "mark 1", "b69", "bookmarked"]) {
+    assert.deepEqual(buildSuggestions(q, sliced, { now: 1_000_000 }), buildSuggestions(q, whole, { now: 1_000_000 }), q);
+  }
+  // A visit (a new history list) reuses the bookmarks and still finds them.
+  const visited = { tabs: [], history: [{ ...history[5]!, lastVisit: 2_000_000 }, ...history.slice(0, 5), ...history.slice(6)], bookmarks };
+  assert.equal(buildSuggestions("mark 14999", visited, { now: 2_000_000 }).items.some((s) => s.kind === "page" && s.title === "Mark 14999"), true);
+  assert.equal(buildSuggestions("page 3", visited, { now: 2_000_000 }).items.some((s) => s.kind === "page" && s.title === "Page 3" && s.bookmarked), true);
+});

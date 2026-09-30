@@ -92,50 +92,110 @@ type Candidate = {
   text: PageText;
 };
 
-type Pool = { list: Candidate[]; byKey: Map<string, Candidate> };
+type Lookup = { get(key: string): Candidate | undefined; has(key: string): boolean };
+type Pool = { list: Candidate[]; byKey: Lookup };
 
-const pools = new WeakMap<readonly HistoryRow[], WeakMap<readonly BookmarkRow[], Pool>>();
+// Bookmark candidates, deduplicated, built once per bookmarks list: a visit replaces the history list, not this.
+type BookmarkBase = { list: Candidate[]; byKey: Map<string, Candidate>; keys: Set<string>; cursor: number; done: boolean };
+// A pool under construction for one history list and one bookmarks list, resumed where the last slice stopped.
+type Builder = {
+  base: BookmarkBase;
+  history: readonly HistoryRow[];
+  list: Candidate[];
+  byKey: Map<string, Candidate>;
+  historyCursor: number;
+  bookmarkCursor: number;
+  pool: Pool | null;
+};
+
+const bases = new WeakMap<readonly BookmarkRow[], BookmarkBase>();
+const builders = new WeakMap<readonly HistoryRow[], WeakMap<readonly BookmarkRow[], Builder>>();
 const NO_BOOKMARKS: readonly BookmarkRow[] = [];
+// A history row's candidate, kept while its bookmark flag holds, so a new history list reuses them.
+const historyCandidates = new WeakMap<HistoryRow, Candidate>();
+const SLICE_CHECK = 64;
 
-function poolFor(history: readonly HistoryRow[], bookmarks: readonly BookmarkRow[]): Pool {
-  let byBookmarks = pools.get(history);
-  if (!byBookmarks) pools.set(history, (byBookmarks = new WeakMap()));
-  let pool = byBookmarks.get(bookmarks);
-  if (pool) return pool;
-  const bookmarked = new Set<string>();
-  for (const b of bookmarks) bookmarked.add(pageText(b).key);
-  pool = { list: [], byKey: new Map() };
-  for (const h of history) {
-    const text = pageText(h);
-    if (pool.byKey.has(text.key)) continue;
-    const c: Candidate = { url: h.url, title: h.title, favicon: h.favicon, visits: h.visits, lastVisit: h.lastVisit, bookmarked: bookmarked.has(text.key), text };
-    pool.list.push(c);
-    pool.byKey.set(text.key, c);
-  }
-  for (const b of bookmarks) {
-    const text = pageText(b);
-    if (pool.byKey.has(text.key)) continue;
-    const c: Candidate = { url: b.url, title: b.title, favicon: b.favicon, visits: 0, lastVisit: 0, bookmarked: true, text };
-    pool.list.push(c);
-    pool.byKey.set(text.key, c);
-  }
-  byBookmarks.set(bookmarks, pool);
-  return pool;
+function baseFor(bookmarks: readonly BookmarkRow[]): BookmarkBase {
+  let base = bases.get(bookmarks);
+  if (!base) bases.set(bookmarks, (base = { list: [], byKey: new Map(), keys: new Set(), cursor: 0, done: false }));
+  return base;
 }
 
+// Runs a builder until its pool is ready or `deadline` passes (checked every SLICE_CHECK rows); true when ready.
+function advance(b: Builder, bookmarks: readonly BookmarkRow[], deadline: number): boolean {
+  if (b.pool) return true;
+  let n = 0;
+  const late = () => ++n % SLICE_CHECK === 0 && Date.now() > deadline;
+  const base = b.base;
+  while (!base.done && base.cursor < bookmarks.length) {
+    const row = bookmarks[base.cursor++]!;
+    const text = pageText(row);
+    base.keys.add(text.key);
+    if (!base.byKey.has(text.key)) {
+      const c: Candidate = { url: row.url, title: row.title, favicon: row.favicon, visits: 0, lastVisit: 0, bookmarked: true, text };
+      base.list.push(c);
+      base.byKey.set(text.key, c);
+    }
+    if (late()) return false;
+  }
+  base.done = true;
+  while (b.historyCursor < b.history.length) {
+    const h = b.history[b.historyCursor++]!;
+    const text = pageText(h);
+    if (!b.byKey.has(text.key)) {
+      const bookmarked = base.keys.has(text.key);
+      let c = historyCandidates.get(h);
+      if (!c || c.bookmarked !== bookmarked) {
+        c = { url: h.url, title: h.title, favicon: h.favicon, visits: h.visits, lastVisit: h.lastVisit, bookmarked, text };
+        historyCandidates.set(h, c);
+      }
+      b.list.push(c);
+      b.byKey.set(text.key, c);
+    }
+    if (late()) return false;
+  }
+  while (b.bookmarkCursor < base.list.length) {
+    const c = base.list[b.bookmarkCursor++]!;
+    if (!b.byKey.has(c.text.key)) b.list.push(c);
+    if (late()) return false;
+  }
+  const history = b.byKey;
+  b.pool = {
+    list: b.list,
+    byKey: { get: (key) => history.get(key) ?? base.byKey.get(key), has: (key) => history.has(key) || base.byKey.has(key) },
+  };
+  return true;
+}
+
+function builderFor(history: readonly HistoryRow[], bookmarks: readonly BookmarkRow[]): Builder {
+  let byBookmarks = builders.get(history);
+  if (!byBookmarks) builders.set(history, (byBookmarks = new WeakMap()));
+  let b = byBookmarks.get(bookmarks);
+  if (!b) byBookmarks.set(bookmarks, (b = { base: baseFor(bookmarks), history, list: [], byKey: new Map(), historyCursor: 0, bookmarkCursor: 0, pool: null }));
+  return b;
+}
+
+function poolFor(history: readonly HistoryRow[], bookmarks: readonly BookmarkRow[]): Pool {
+  const b = builderFor(history, bookmarks);
+  advance(b, bookmarks, Infinity);
+  return b.pool!;
+}
+
+// Warms what the first keystroke would build (page text, then the candidate pool) in slices that end once
+// `deadline` passes, resuming where the previous call stopped. True when everything is ready.
 export function prepareSuggestions(source: SuggestionSource, deadline: number): boolean {
   const bookmarks = source.bookmarks ?? NO_BOOKMARKS;
-  if (pools.get(source.history)?.has(bookmarks)) return true;
+  const b = builderFor(source.history, bookmarks);
+  if (b.pool) return true;
   for (const rows of [source.history, bookmarks]) {
     let n = 0;
     for (const row of rows) {
       if (pageTexts.has(row)) continue;
       pageText(row);
-      if (++n % 64 === 0 && Date.now() > deadline) return false;
+      if (++n % SLICE_CHECK === 0 && Date.now() > deadline) return false;
     }
   }
-  poolFor(source.history, bookmarks);
-  return true;
+  return advance(b, bookmarks, deadline);
 }
 
 function tabsOver(pool: Pool, tabs: readonly TabRow[], now: number, currentTabId?: string) {
