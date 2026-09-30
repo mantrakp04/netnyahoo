@@ -34,7 +34,11 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
   const history = useHistoryAvailability(tabId, live);
   const extensionsWidth = useToolbarExtensionsWidth(windowId);
   const dim = useRef(new Animated.Value(focused ? 1 : 0.5)).current;
+  const dimmedFor = useRef(focused);
   useEffect(() => {
+    // Mounting starts at the right value; only a change of focus animates.
+    if (dimmedFor.current === focused) return;
+    dimmedFor.current = focused;
     Animated.timing(dim, { toValue: focused ? 1 : 0.5, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [focused]);
   if (!tab) return <View style={{ height: layout.toolbarHeight }} />;
@@ -103,8 +107,12 @@ export function ReloadButton({ tab, loading, palette, style, onFocus }: { tab: T
 
 function ProgressBar({ progress, color }: { progress: number; color: string }) {
   const width = useRef(new Animated.Value(Math.max(progress, 0.08))).current;
+  const shownFor = useRef(Math.max(progress, 0.08));
   useEffect(() => {
-    Animated.timing(width, { toValue: Math.max(progress, 0.08), duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    const to = Math.max(progress, 0.08);
+    if (shownFor.current === to) return;
+    shownFor.current = to;
+    Animated.timing(width, { toValue: to, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [progress]);
   return (
     <Animated.View
