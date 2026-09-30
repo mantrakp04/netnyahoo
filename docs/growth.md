@@ -106,3 +106,13 @@ Result: _pending._
   Experiment: band 16/294 (5.4%), control 17/330 (5.2%), even. The band's own button still has no clicks;
   more band-arm downloads came from the hero (14 vs 9). Keep running (under 300 per arm, day 1 of 7).
   No new errors or rage clicks. Nothing shipped.
+- **2026-09-30 01:52 UTC check:** 3,299 visitors all time (t.co 1,392 of the last 6h); traffic flat at ~155/h
+  since 23:00 (from 468/h at 20:00). 54% phones.
+  - Downloads: 66 people all time (50 Mac). Since 23:17 UTC, Mac desktop 7/89 = 7.9% (was 4.7%).
+  - Phones since 23:17: 17 tapped Send to my Mac; 6 copied, 1 shared, 11 were blocked (clipboard refused);
+    2 used the fallback's "Email it to me".
+  - Lightbox: 41 `screenshot_opened` (office 20, address-toolbar 10). It absorbed the office dead clicks.
+  - Experiment: control 21/369 (5.7%), band 20/336 (6.0%). Both arms past 300; day 1 of 7, so keep running.
+  - App telemetry: 9 opted-in users in 24h (0.2.11 7, 0.2.9 1, 0.2.7 2). One app EXC_BAD_ACCESS report to look at;
+    "Calling the <text> function has failed" 6 (needs the source map).
+  - Dead clicks: 230 of 267 have no element text (the Big Yahu canvas, as before). Rage clicks 7. Nothing shipped.
