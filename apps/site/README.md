@@ -41,8 +41,8 @@ Pages without a custom domain).
   `Default Dance` works; the page frames him from his bounding box. `node scripts/build-model.mjs` rebuilds it
   from the brand sources in the main checkout's `output/` (simplify, WebP textures, meshopt). The hero's
   poster (`src/assets/yahu-poster.webp`, shown until WebGL is ready or when it isn't available) is a render of
-  the same scene: in `pnpm dev`, `__yahu.snapshot()` in the console returns it as a PNG data URL. The page
-  asks for it as `big-yahu.glb?v=<content hash>`, which nginx caches for a year.
+  the same scene: in `pnpm dev`, `__yahu.snapshot()` in the console returns it as a PNG data URL. A build
+  also writes it as `big-yahu.<content hash>.glb`, the name the page asks for and nginx caches for a year.
 - **Fonts:** Fontsource's variable faces, with each Latin file split into the characters the site sets
   (preloaded) and the rest (`src/styles/fonts.css` and `src/assets/fonts/`, both from
   `node scripts/build-fonts.mjs`). Rerun it when new copy or a release note brings in a Latin character the
