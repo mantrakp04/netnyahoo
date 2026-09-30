@@ -56,8 +56,11 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   the name has a narrow no-break space: use a glob). Extract 30 fps frames with ffmpeg, find events by
   frame difference, and measure positions and timings from the pixels. A position or size in the owner's
   recording may be their saved preference rather than Dia's default.
-- **Crash reports.** When `crash.log` shows up in the repo root, check the binary UUID against the current
-  build (older builds are usually known-fixed), check PostHog's errors too, fix the cause, then delete it.
+- **Errors get fixed without asking.** When `crash.log` shows up in the repo root, a crash report appears, or
+  PostHog shows a new `$exception` from the site or the app, find the cause and fix it; don't wait for the
+  owner to ask. Check the binary UUID against the current build first (older builds are usually
+  known-fixed), and skip noise that isn't ours (X's in-app browser, wallet extensions, telemetry self-tests).
+  Site fixes deploy right away; app fixes ship in the next release. Delete `crash.log` once handled.
 - **Verify before you call it done.** Typecheck, build, and exercise the feature in a hidden instance
   (dev harness, CDP, window snapshots).
   - The screen is often locked, and then WindowServer captures fail. Use the in-process snapshots
