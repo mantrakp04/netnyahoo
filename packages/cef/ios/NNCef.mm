@@ -221,6 +221,10 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
       command_line->AppendSwitchWithValue("load-extension", (load.empty() ? "" : load + ",") + builtIn.UTF8String);
     }
     command_line->AppendSwitch("disable-popup-blocking");
+    // A non-official build counts as a developer build, so Chrome's UMA stack profiler samples the main and IO
+    // threads of every process at 10 Hz for its first 30 s (each new tab's renderer too), then 2 % of the time.
+    // Nothing reads the profiles; Chrome's stable channel runs it for a sliver of users.
+    command_line->AppendSwitch("disable-stack-profiler");
     std::string disabled = command_line->GetSwitchValue("disable-features").ToString();
     command_line->AppendSwitchWithValue("disable-features",
                                         (disabled.empty() ? "" : disabled + ",") + "MacAppCodeSignClone");
