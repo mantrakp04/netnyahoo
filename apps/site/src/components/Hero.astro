@@ -1,9 +1,17 @@
 ---
 import { Image } from "astro:assets";
 import poster from "../assets/yahu-poster.webp";
+import loopPoster from "../assets/loop/app-loop-poster.webp";
+import loopMp4 from "../assets/loop/app-loop.mp4";
 import DownloadButton from "./DownloadButton.astro";
 import MacOnlyNote from "./MacOnlyNote.astro";
-import { REPO, VERSION } from "../data/release";
+import SendToMac from "./SendToMac.astro";
+import { DMG_SIZE, REPO, VERSION } from "../data/release";
+import { STARS } from "../data/github";
+// Mac desktops see the app moving (an 8 s silent loop cut from the launch film, 3.2–11.8 s of
+// output/launch-video/netnyahoo-launch.mp4, the last 0.6 s crossfaded into the first) where everyone
+// else sees Big Yahu. Only Macs ever load it; with reduced motion or Save-Data they get the poster frame.
+const reel = { mp4: loopMp4, poster: loopPoster.src };
 ---
 
 <section class="hero" id="top" data-shot="hero">
@@ -16,24 +24,57 @@ import { REPO, VERSION } from "../data/release";
       <p class="lede" data-reveal style="--i: 2">
         Real Chromium for the Mac. Immune to ads, trackers and prosecution.
       </p>
+      {/* A visit from a link sent from a phone (?ref=mac|share|email): say so, on the computer only. */}
+      <p class="label welcome not-phone" data-welcome hidden>Sent from your phone. Here it is.</p>
+      <div data-reveal style="--i: 3">
+        <SendToMac location="hero" main />
+      </div>
       <div class="cta-row" data-reveal style="--i: 3">
-        <DownloadButton location="hero" />
+        <DownloadButton location="hero" class="not-phone" />
         <a
           class="link source"
           href={REPO}
           rel="noopener"
           data-track="github_clicked"
           data-track-link="read_the_source"
-          data-track-location="hero">Read the source</a
+          data-track-location="hero"
+          >Read the source{STARS && <span class="stars" aria-label={`${STARS} stars on GitHub`}>★ {STARS}</span>}</a
         >
       </div>
       <MacOnlyNote location="hero" />
-      <p class="label fine" data-reveal style="--i: 4">
-        <span class="phone-only">Mac only</span><span>v{VERSION}</span><span>Free</span><span>macOS 14+</span><span>Apple Silicon</span><span>Notarized</span>
+      <p class="label fine not-phone" data-reveal style="--i: 4">
+        <span>Free</span><span>Open source</span><span>Notarized by Apple</span><span>{DMG_SIZE}</span><span
+          >v{VERSION}</span
+        ><span>macOS 14+</span>
       </p>
     </div>
 
     <figure class="hero-figure">
+      <div class="reel" data-reel>
+        <video
+          muted
+          loop
+          playsinline
+          disablepictureinpicture
+          preload="none"
+          width="1080"
+          height="1350"
+          aria-label="The Netnyahoo window: typing in the sidebar's address field, swiping from the Personal to the Work sidebar, then a split view of GitHub and Chrome's extension docs."
+        ></video>
+        <script is:inline define:vars={{ reel }}>
+          (function (video) {
+            // Before first paint, Macs only: the poster, and the loop unless motion or data is unwelcome.
+            if (document.documentElement.dataset.device !== "mac") return;
+            video.poster = reel.poster;
+            if (navigator.connection && navigator.connection.saveData) return;
+            video.dataset.src = reel.mp4;
+            if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+            video.preload = "auto";
+            video.autoplay = true;
+            video.src = reel.mp4;
+          })(document.currentScript.previousElementSibling);
+        </script>
+      </div>
       <div class="stage" data-stage="hero">
         <Image
           class="stage-poster"
@@ -46,9 +87,13 @@ import { REPO, VERSION } from "../data/release";
         />
         <p class="stamp" aria-hidden="true"><span>Incumbent</span></p>
       </div>
-      <figcaption class="label stage-caption">
+      <figcaption class="label stage-caption yahu-caption">
         <span>Fig. 1 — Big Yahu, candidate</span>
         <span class="hint">Drag to turn · click to dance</span>
+      </figcaption>
+      <figcaption class="label stage-caption reel-caption">
+        <span>Fig. 1 — Caught on tape</span>
+        <span>Real app. No body double.</span>
       </figcaption>
     </figure>
   </div>
@@ -121,6 +166,21 @@ import { REPO, VERSION } from "../data/release";
     display: inline-flex;
     align-items: center;
   }
+  .stars {
+    margin-left: 10px;
+    font-family: var(--mono);
+    font-size: 0.78em;
+    color: var(--ink-2);
+    text-decoration: none;
+    display: inline-block;
+  }
+  .welcome {
+    margin-top: 18px;
+    color: var(--tie);
+  }
+  .welcome[hidden] {
+    display: none;
+  }
   .fine {
     display: flex;
     flex-wrap: wrap;
@@ -128,14 +188,14 @@ import { REPO, VERSION } from "../data/release";
     margin-top: 18px;
     color: var(--ink-3);
   }
+  /* The trust half (free, open source, notarized, size) reads darker than the specs. */
+  .fine span:nth-child(-n + 4) {
+    color: var(--ink-2);
+  }
   .fine span + span::before {
     content: "/";
     margin: 0 10px;
     color: var(--rule);
-  }
-  /* "Mac only" leads the list on phones; elsewhere it's hidden, so the version starts it. */
-  :global(:root:not([data-device="phone"])) .fine .phone-only + span::before {
-    content: none;
   }
 
   .hero-figure {
@@ -146,6 +206,35 @@ import { REPO, VERSION } from "../data/release";
     position: relative;
     z-index: 2;
     width: min(100%, 560px);
+  }
+  /* Macs: the loop instead of Big Yahu, same place, the film's 4:5. */
+  .hero-figure .reel,
+  .hero-figure .reel-caption {
+    display: none;
+  }
+  :global(:root[data-device="mac"]) .reel,
+  :global(:root[data-device="mac"]) .reel-caption {
+    display: flex;
+  }
+  :global(:root[data-device="mac"]) .stage,
+  :global(:root[data-device="mac"]) .yahu-caption {
+    display: none;
+  }
+  :global(:root[data-device="mac"]) .hero-figure {
+    width: min(100%, calc(max(400px, 66svh) * 0.8));
+    margin-left: auto;
+  }
+  .reel {
+    position: relative;
+    aspect-ratio: 4 / 5;
+    background: var(--night);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .reel video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
   .stage {
     position: relative;
@@ -256,6 +345,10 @@ import { REPO, VERSION } from "../data/release";
       margin-top: 10px;
       gap: 4px 18px;
     }
+    /* Phones: the panel is the call to action; "Read the source" follows it quietly. */
+    :global(:root[data-device="phone"]) .cta-row {
+      margin-top: 14px;
+    }
     /* Wrapped slashes read as typos on a phone; plain spacing wraps cleanly. */
     .fine span + span::before {
       content: none;
@@ -283,3 +376,38 @@ import { REPO, VERSION } from "../data/release";
     }
   }
 </style>
+
+<script>
+  // The loop (Macs only, set up inline above): play while it's on screen and motion is welcome.
+  const reel = document.querySelector<HTMLElement>("[data-reel]");
+  const video = reel?.querySelector("video");
+  if (video?.dataset.src) {
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    let visible = true;
+    const sync = () => {
+      if (reduced.matches) {
+        // Back to the poster frame.
+        if (video.getAttribute("src")) {
+          video.removeAttribute("src");
+          video.load();
+        }
+        return;
+      }
+      if (!video.getAttribute("src")) video.src = video.dataset.src!;
+      if (visible) void video.play().catch(() => {});
+      else video.pause();
+    };
+    reduced.addEventListener("change", sync);
+    new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      sync();
+    }).observe(video);
+  }
+
+  // Back from a link sent from a phone (send-to-mac.ts): point at the download.
+  const ref = new URLSearchParams(location.search).get("ref");
+  if (ref === "mac" || ref === "share" || ref === "email") {
+    const welcome = document.querySelector<HTMLElement>("[data-welcome]");
+    if (welcome && document.documentElement.dataset.device !== "phone") welcome.hidden = false;
+  }
+</script>

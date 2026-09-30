@@ -245,10 +245,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     btn.textContent = open ? "Close" : "Menu";
   };
   btn.addEventListener("click", () => setOpen(menu.hidden));
-  // On phones the menu's download button shares or copies the link; stay open so its "Link copied" shows.
+  // Any link closes the menu; on phones the download button scrolls to the "Send to my Mac" panel.
   menu.addEventListener("click", (e) => {
-    const link = (e.target as Element).closest("a");
-    if (link && !(link.hasAttribute("data-download") && document.documentElement.dataset.device === "phone")) setOpen(false);
+    if ((e.target as Element).closest("a")) setOpen(false);
   });
   addEventListener("keydown", (e) => e.key === "Escape" && !menu.hidden && (setOpen(false), btn.focus()));
   matchMedia("(min-width: 821px)").addEventListener("change", (e) => e.matches && setOpen(false));

@@ -1,5 +1,7 @@
 ---
 // Under the main download buttons, for Windows and Linux visitors only (data-device="other", Visitor.astro).
+// "Tell me when" without collecting an email: GitHub's own Watch › Custom › Releases notifies them.
+// Tracks notify_clicked { os, location } (os filled in below from <html data-os>).
 import { REPO } from "../data/release";
 
 interface Props {
@@ -8,17 +10,43 @@ interface Props {
 const { location } = Astro.props;
 ---
 
-<p class="note other-only">
-  Mac only for now.{" "}
-  <a class="link" href={REPO} rel="noopener" data-track="github_clicked" data-track-link="notify" data-track-location={location}
-    >Follow the case on GitHub</a
-  >.
-</p>
+<div class="note other-only">
+  <p>
+    Mac only for now.{" "}
+    <a class="link" href={REPO} rel="noopener" data-notify data-track="notify_clicked" data-track-location={location}
+      >Tell me when it's on <span class="os-windows">Windows</span><span class="os-linux">Linux</span><span
+        class="os-other">your computer</span
+      ></a
+    >.
+  </p>
+  <p class="how label">On GitHub: Watch › Custom › Releases. No email, no newsletter.</p>
+</div>
+
+<script>
+  const os = document.documentElement.dataset.os ?? "other";
+  for (const a of document.querySelectorAll<HTMLElement>("[data-notify]")) a.dataset.trackOs = os;
+</script>
 
 <style>
   .note {
     margin-top: 12px;
     font-size: var(--t-small);
     color: var(--ink-2);
+  }
+  .how {
+    margin-top: 4px;
+    color: var(--ink-3);
+  }
+  .os-linux,
+  .os-other {
+    display: none;
+  }
+  :global(:root[data-os="linux"]) .os-windows,
+  :global(:root:not([data-os="windows"]):not([data-os="linux"])) .os-windows {
+    display: none;
+  }
+  :global(:root[data-os="linux"]) .os-linux,
+  :global(:root:not([data-os="windows"]):not([data-os="linux"])) .os-other {
+    display: inline;
   }
 </style>

@@ -2,7 +2,13 @@
 // Named events (beyond PostHog's pageviews, autocapture and dead clicks):
 //   download_clicked { location, version }       a Download button (data-track)
 //   github_clicked { link, location }            a GitHub link (data-track)
-//   send_to_mac_clicked { location, method, outcome, share? }   phones: scripts/send-to-mac.ts
+//   send_to_mac_clicked { location, method: email|share|copy|panel, outcome?, inapp? }
+//                                                phones: scripts/send-to-mac.ts. outcome: share → shared|cancelled|error,
+//                                                copy → copied|blocked; none for email (mailto) or panel (the header
+//                                                or menu button scrolled to the panel). inapp: "x" in X's iOS browser.
+//   mac_link_visit { ref: mac|share|email, device }   a visit from a link sent from a phone (/mac redirects to ?ref=mac),
+//                                                once per session
+//   notify_clicked { os, location }              Windows/Linux: "Tell me when it's on …" (GitHub Watch › Releases)
 //   non_mac_visit { os }                         Windows/Linux desktops, once per session
 //   section_viewed { section }                   a [data-shot] section scrolled into view
 //   support_opened { location }                  the footer's support widget
@@ -64,6 +70,18 @@ if (support.length) {
       track("support_opened", { location: b.dataset.support ?? null });
     });
   }
+}
+
+// Links sent from a phone come back with ?ref=: typed netnyahoo.com/mac (pages/mac.astro), the share sheet or
+// copy (share), or the email to self (email).
+const sentRef = new URLSearchParams(location.search).get("ref");
+if (sentRef === "mac" || sentRef === "share" || sentRef === "email") {
+  let seen = false;
+  try {
+    seen = sessionStorage.getItem("nn:mac_link_visit") === "1";
+    sessionStorage.setItem("nn:mac_link_visit", "1");
+  } catch {}
+  if (!seen) track("mac_link_visit", { ref: sentRef, device: document.documentElement.dataset.device ?? null });
 }
 
 // Windows and Linux can't run it yet (components/Visitor.astro sorts visitors); count them once per session.

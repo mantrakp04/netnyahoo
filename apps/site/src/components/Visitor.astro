@@ -1,11 +1,14 @@
 ---
 // Sorts the visitor before the body is parsed, so the right CTA paints first (no flash):
 //   <html data-device="phone|mac|other" data-os="ios|android|mac|windows|linux|chromeos|other">
-// - phone: phones and tablets (mobile UA, iPadOS, or touch plus a narrow screen). Download CTAs become
-//   "Send to my Mac" (scripts/send-to-mac.ts).
+// - phone: phones and tablets (mobile UA, iPadOS, or touch plus a narrow screen). They get the "type
+//   netnyahoo.com/mac" panel (SendToMac.astro) instead of Download (scripts/send-to-mac.ts).
 // - mac: a Mac desktop, the only visitor who can install it and the only one the download-band experiment
 //   evaluates (InOffice.astro).
-// - other: Windows, Linux and the rest. They keep Download, plus a "Mac only for now." line (MacOnly.astro).
+// - other: Windows, Linux and the rest. They keep Download, plus a "Mac only for now." line (MacOnlyNote.astro).
+// - data-inapp="x": X's iOS in-app browser ("Twitter for iPhone/iPad" in the UA, per PostHog). It refuses the
+//   clipboard, so SendToMac.astro tells them how to open the page in Safari. X's Android browser
+//   ("TwitterAndroid") copies fine and isn't marked.
 // CSS shows and hides by class: .phone-only, .not-phone, .other-only (styles/global.css).
 // On localhost, ?nndevice=phone|mac|other forces a class, for screenshots.
 ---
@@ -38,5 +41,6 @@
     }
     root.dataset.device = device;
     root.dataset.os = os;
+    if (/Twitter for iP(hone|ad)/.test(ua)) root.dataset.inapp = "x";
   })();
 </script>

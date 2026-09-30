@@ -1,0 +1,125 @@
+---
+// Phones and tablets only (data-device="phone", Visitor.astro): the app is Mac-only, so instead of a Download
+// button they get a short address to type on the Mac later, "Email it to me" first, and Share / Copy link after.
+// The clipboard can't be the plan: X's iOS browser refuses it (docs/growth.md). Behaviour and events live in
+// scripts/send-to-mac.ts.
+interface Props {
+  /** Where on the site it is, for analytics (send_to_mac_clicked). */
+  location: "hero" | "closing" | "release_notes";
+  /** The page's main panel: the header's "Send to my Mac" scrolls here. */
+  main?: boolean;
+}
+const { location, main = false } = Astro.props;
+const email = `mailto:?subject=${encodeURIComponent("Netnyahoo, for my Mac")}&body=${encodeURIComponent(
+  "Open this on your Mac: https://netnyahoo.com/?ref=email",
+)}`;
+---
+
+<div class="send phone-only" id={main ? "send" : undefined} data-send-panel={main ? "main" : ""} data-location={location}>
+  <p class="label send-kicker">On your Mac, type</p>
+  <p class="send-addr" data-send-addr translate="no">netnyahoo.com/mac</p>
+  <div class="send-actions">
+    <a class="btn send-email" href={email} data-send="email">
+      <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
+        <path d="M1 1h16v12H1zM1.5 1.5 9 8l7.5-6.5" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>
+      </svg>
+      Email it to me
+    </a>
+    <div class="send-more">
+      <button type="button" class="send-link" data-send="share" hidden>Share</button>
+      <button type="button" class="send-link" data-send="copy"><span data-copy-label aria-live="polite">Copy link</span></button>
+    </div>
+  </div>
+  <p class="send-x">
+    X's browser confiscates the clipboard. Tap <b>⋯</b> or the compass, then <b>Open in Safari</b>, and copy
+    there.
+  </p>
+  <p class="label send-fine">Mac only · Apple Silicon · macOS 14+</p>
+</div>
+
+<style>
+  .send {
+    margin-top: 26px;
+    border-top: 2px solid var(--ink);
+    padding-top: 14px;
+    scroll-margin-top: 84px;
+  }
+  .send-kicker {
+    color: var(--ink-2);
+  }
+  /* Lowercase on purpose: it's what they'll type. Sized to fill the column: ~6.95em wide. */
+  .send-addr {
+    font-family: var(--poster);
+    font-weight: 860;
+    font-stretch: 62%;
+    font-size: min(calc((100vw - 2 * var(--gutter)) / 7.05), 5.2rem);
+    line-height: 1;
+    letter-spacing: -0.01em;
+    margin: 4px 0 18px;
+    white-space: nowrap;
+    -webkit-user-select: all;
+    user-select: all;
+  }
+  .send-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 22px;
+  }
+  .send-email {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .send-more {
+    display: flex;
+    gap: 22px;
+  }
+  .send-link {
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--t-small);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .send-link[hidden] {
+    display: none;
+  }
+  /* Only inside X's iOS browser (data-inapp="x", Visitor.astro), where copying fails and Safari's works. */
+  .send-x {
+    display: none;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: var(--paper-deep);
+    border-left: 3px solid var(--tie);
+    font-size: var(--t-small);
+    line-height: 1.4;
+    color: var(--ink-2);
+  }
+  .send-x b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  :global(:root[data-inapp="x"]) .send-x {
+    display: block;
+  }
+  .send-fine {
+    margin-top: 12px;
+    color: var(--ink-3);
+  }
+  .send[data-flash] .send-addr {
+    animation: flash 900ms var(--ease-out);
+  }
+  @keyframes flash {
+    30% {
+      color: var(--tie);
+    }
+  }
+</style>

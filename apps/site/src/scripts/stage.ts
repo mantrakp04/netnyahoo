@@ -17,6 +17,8 @@ function webgl() {
 }
 
 const phone = matchMedia("(max-width: 820px), (pointer: coarse)").matches;
+// Mac desktops get the app loop in the hero (Hero.astro); Big Yahu only dances at the closing for them.
+const heroless = phone || document.documentElement.dataset.device === "mac";
 
 async function bootClosing() {
   if (!closing || yahu || saveData || !webgl()) return;
@@ -47,7 +49,7 @@ function watchClosing() {
 }
 
 async function boot() {
-  if (phone) return watchClosing();
+  if (heroless) return watchClosing();
   if (!hero || yahu || saveData || !webgl()) return;
   const { createYahu } = await import("./yahu");
   const url = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb`;
