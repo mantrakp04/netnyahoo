@@ -20,7 +20,8 @@ export function openUrl(url: string, windowId: string | null | undefined, mode: 
   if (mode === "incognito") return void openWindow({ incognito: true, url });
   if (!id || mode === "window") {
     const w = id ? s.windows[id] : undefined;
-    const created = openWindow({ url, profileId: w && !w.incognito ? w.profileId : undefined });
+    // From a private window, a new window stays private.
+    const created = openWindow(w?.incognito ? { incognito: true, url } : { url, profileId: w?.profileId });
     return focus(created);
   }
   const tabId = activeTabId(s, id);
@@ -47,12 +48,24 @@ export async function openFolder(folderId: string, windowId: string | null | und
     if (!confirmed) return;
   }
   const id = resolveWindowId(s, windowId);
+  const source = id ? s.windows[id] : undefined;
   if (mode !== "tabs" || !id) {
-    const created = openWindow({ url: links[0]!.url, incognito: mode === "incognito" });
-    for (const link of links.slice(1)) useBrowser.getState().newTab(created, { url: link.url, background: true });
+    const incognito = mode === "incognito" || !!source?.incognito;
+    const created = openWindow({ url: links[0]!.url, incognito, profileId: incognito ? undefined : source?.profileId });
+    openInOrder(created, links.slice(1), activeTabId(useBrowser.getState(), created));
     return focus(created);
   }
-  links.forEach((link, i) => useBrowser.getState().newTab(id, { url: link.url, background: i > 0 }));
+  const first = useBrowser.getState().newTab(id, { url: links[0]!.url });
+  openInOrder(id, links.slice(1), first);
+}
+
+// The folder's order, whatever the new-tab position setting.
+function openInOrder(windowId: string, links: { url: string }[], after: string | undefined) {
+  for (const link of links) {
+    const tabIds = useBrowser.getState().windows[windowId]?.tabIds ?? [];
+    const index = after && tabIds.includes(after) ? tabIds.indexOf(after) + 1 : undefined;
+    after = useBrowser.getState().newTab(windowId, { url: link.url, background: true, index }) || after;
+  }
 }
 
 export type BookmarkDialogState =

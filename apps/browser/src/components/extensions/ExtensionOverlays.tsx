@@ -5,6 +5,7 @@ import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View,
 import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
+import { openFromPage, pageProfileId } from "../layout/openFromPage";
 import { PromptButton } from "../layout/controls";
 import { Checkbox } from "../settings/controls";
 import {
@@ -139,9 +140,9 @@ function ActionPopup({ windowId, pageProfile, url, anchor }: { windowId: string;
                 void web.current?.focus();
               }}
               onWindowClose={closeExtensionPopup}
-              onOpenWindow={({ url: target, disposition }) => {
-                useBrowser.getState().newTab(windowId, { url: target, background: disposition === "background" });
-                if (disposition !== "background") closeExtensionPopup();
+              onOpenWindow={(request) => {
+                openFromPage(request, { windowId, profileId: pageProfileId(windowId, pageProfile) });
+                if (request.disposition !== "background") closeExtensionPopup();
               }}
             />
           </View>

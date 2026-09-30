@@ -2,7 +2,7 @@ import { WebView, type OpenWindowRequest } from "@netnyahoo/cef";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
-import { focus, openWindow, switchToTab } from "../lib/actions";
+import { focus, switchToTab } from "../lib/actions";
 import { noteFavicon } from "../lib/favicons";
 import { isQuitting } from "../lib/native";
 import { layout, useTheme } from "../lib/theme";
@@ -23,7 +23,7 @@ import { SadTab, StatusBubble } from "./layout/PaneOverlays";
 import { DropTargets, SplitDividers, SplitToast } from "./layout/SplitChrome";
 import { SplitEmptyState } from "./layout/SplitEmptyState";
 import { pagerFor } from "./layout/profilePager";
-import { openLinkInSplit } from "./layout/splitActions";
+import { openFromPage } from "./layout/openFromPage";
 import { setUrlAnchor, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { NewTabPage } from "./NewTabPage";
 import { InternalPage, isInternalTab } from "./pages";
@@ -42,7 +42,7 @@ import { Toolbar } from "./Toolbar";
 import { NavigationOverlays } from "./layout/SwipeOverlay";
 import "./layout/devExpose";
 import { closeWebNotification, showWebNotification } from "../lib/webNotifications";
-import { isSmall, isSmallWindow } from "../store/small";
+import { isSmallWindow } from "../store/small";
 import { closeSmallYahuOnEscape } from "./smallYahu/actions";
 
 export function ContentCard() {
@@ -286,19 +286,9 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
   const fromNewTab = useRef(pageOf(tabId).wasNewTab && !adoptId);
   useEffect(() => () => noteGone(tabId), []);
 
-  const onOpenWindow = ({ url, adoptId, disposition }: OpenWindowRequest) => {
+  const onOpenWindow = (request: OpenWindowRequest) => {
     const t = tab();
-    if (!t) return;
-    const incognito = store().windows[t.windowId]?.incognito;
-    if (disposition === "current") return store().navigate(tabId, url, { userInitiated: false });
-    // Links stay in Small Yahu; new tabs (target=_blank, ⌘-click, split) open behind, in a main window.
-    if (isSmall(store(), t.windowId) && disposition !== "window" && disposition !== "incognito") {
-      return void store().newTab(t.windowId, { url, adoptId, profileId: t.profileId, background: true });
-    }
-    if (disposition === "split") return openLinkInSplit(tabId, url);
-    if (disposition === "incognito") return void openWindow({ incognito: true, url });
-    if (disposition === "window" && !incognito) return void openWindow({ profileId: t.profileId, url, adoptId });
-    store().newTab(t.windowId, { url, adoptId, openerId: tabId, profileId: t.profileId, background: disposition === "background" });
+    if (t) openFromPage(request, { windowId: t.windowId, profileId: t.profileId, tabId });
   };
 
   return (

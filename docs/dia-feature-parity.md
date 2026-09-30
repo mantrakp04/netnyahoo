@@ -299,8 +299,8 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Overflow menu (open + recently closed + synced devices) | ✓ | ✅ | open, recently closed, recently cleaned, clean up, mute all, and synced devices as Dia's: one other device is "Your %@ Tabs" ("Your MacBook Pro Tabs"), several roll up into "Your Devices" (`macbook.and.iphone`), each with its "Recent Tabs" (sync/menu.ts; `docs/sync.md`). Verified with hidden instances (both forms, 2026-09-26). Left for a person: the NSMenu by eye |
 | Clean Up Tabs ⌥⌘K / auto‑archive untouched tabs → "Recently Cleaned" | ✓ | ✅ | + daily auto clean-up and the sidebar upsell |
 | Auto‑clear abandoned New Tab Pages | ✓ | ✅ | on app resign-active / screen lock |
-| Links `_blank` / ⌘‑click open new tab | ✓ | ✅ | Chrome makes the tab in the opener's Browser (`window.opener` kept) and the app adopts it; ⌘-click → background tab next to its opener (ledger 7) |
-| ⌘‑click link creates a tab group with opener | ✓ | ✅ | setting in Tabs |
+| Links `_blank` / ⌘‑click open new tab | ✓ | ✅ | Chrome makes the tab in the opener's Browser (`window.opener` kept) and the app adopts it; ⌘-click → background tab next to its opener (ledger 7). Chrome's opener rules (store/openers.ts, from `TabStripModel`): links opened behind (⌘-click, middle-click, Open Link in New Tab, Open Image in New Tab) line up after the opener in the order opened, after the tabs those opened too; a link opened in front (⇧⌘-click, target=_blank) goes right after the opener; closing the page goes to a tab it opened, then a sibling, then the opener. Switching to a tab another page opened, typing an address or opening a link in front forgets the openers, as in Chrome (moving between an opener and its tabs keeps them). A link from a grouped tab joins the group; from a split, it goes after the split. Fixed 2026-09-30: a tab opened behind could come to the front (the owner's report: ⌘-click and Open Link in New Tab switched to the new tab). Its first LoadURL asks CEF for focus (FOCUS_SOURCE_NAVIGATION), CEF's ChromeBrowserHostImpl::OnSetFocus then makes it Chrome's active tab, and the app follows Chrome's active tab (onTabStrip); the page also loaded twice. Only the page on screen takes focus now (`Client::OnSetFocus`), and NNBrowserView drops the second load. Extension popups and side panels open links like tabs do (all dispositions, POST and `window.open` + `document.write` kept); their popups no longer leave an empty 750 × 782 window on screen each. Verified headless (CDP clicks, context menu through NETNYAHOO_CONTEXT_MENU_LOG, 25 checks): the active tab, the opener page's `document.hasFocus()`, the order, one load per page, `window.opener`, private windows, splits, groups, pinned, Small Yahu. Left for a person: a real ⌥⇧-click (split; read from the keys held) and ⌘-click with a trackpad in the key window |
+| ⌘‑click link creates a tab group with opener | ✓ | ✅ | setting in Tabs; links opened behind from an ungrouped tab (⌘-click, Open Link in New Tab). A link from a tab already in a group joins it whatever the setting (Chrome); from a split, the whole split joins; pinned tabs and pinned groups keep their links out |
 | Sidebar auto‑scrolls to background‑opened tab | ✓ | ✅ | |
 | Title fade at trailing edge | ✓ | ✅ | |
 | Favicons | ✓ | ✅ | per-profile cache on disk keyed by page URL and host, downloaded by the tab's own browser (no cookies); incognito icons in memory only; no third-party service; Dia's EmptyFavicon fallback (WP5) |
@@ -334,7 +334,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Peek sidebar on hover at left edge | ✓ | ✅ | top strip peeks too |
 | Sidebar toggle button in nav bar | ✓ | ✅ | |
 | Resize sidebar (rubber‑band at min/max) | ✓ | ✅ | persisted; double-click resets |
-| New tabs at top (setting) | ✓ | ✅ | |
+| New tabs at top (setting) | ✓ | ✅ | links from a pinned tab, a Small Yahu page or a bookmark folder keep their order at the top (they came out reversed) |
 | Sticky ➕ New Tab at bottom when overflowing | ✓ | ✅ | |
 | Double‑click empty sidebar space → new tab | ✓ | ✅ | |
 | Top Apps / Favorites dock | ✓ | ✅ | the pinned-tile dock; command bar "Move to Top Apps" / "Unpin from Top Apps" like Dia |
@@ -741,7 +741,8 @@ typed (Dia), ⌃↩ adds www. and .com, ⌃⇧↩ the same in a new window (new)
 between links, and in text fields ⌥← / ⌥→, ⌥⌫, ⌘← / ⌘→ and ⌘A / ⌘C / ⌘V / ⌘X / ⌘Z stay the field's.
 
 **Mouse** (checked with CDP clicks on a link): ⌘-click → background tab, ⇧⌘-click → foreground tab, ⇧-click →
-new window, middle-click → background tab, ⌥-click → download. ⌘-click Back / Forward → a new tab (§ Navigation).
+new window (a private one from a private window), middle-click → background tab, ⌥-click → download, ⌥⌘-click (Chrome's) and
+⌥⇧-click → split. ⌘-click Back / Forward → a new tab (§ Navigation).
 
 ## Menus
 Checked against `packages/shell/ios/Menus.swift`; every item has a handler (lib/commands.ts, sidebar/commands.ts,

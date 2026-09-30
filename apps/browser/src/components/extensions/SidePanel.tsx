@@ -4,6 +4,7 @@ import { Animated, Easing, Image, PanResponder, StyleSheet, Text, View } from "r
 import { layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
+import { openFromPage, pageProfileId } from "../layout/openFromPage";
 import { IconButton } from "../primitives";
 import { closeSidePanel, findExtension, showExtensionMenu, useExtensions, type SidePanel } from "./state";
 
@@ -118,7 +119,7 @@ function PanelCard({ windowId, panel }: { windowId: string; panel: SidePanel }) 
           standalone
           pageBackgroundColor="#FFFFFF"
           onWindowClose={() => closeSidePanel(windowId, extensionId)}
-          onOpenWindow={({ url: target, disposition }) => useBrowser.getState().newTab(windowId, { url: target, background: disposition === "background" })}
+          onOpenWindow={(request) => openFromPage(request, { windowId, profileId: pageProfileId(windowId, pageProfile) })}
         />
       </View>
     </View>
