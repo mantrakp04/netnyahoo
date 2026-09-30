@@ -13,8 +13,8 @@ namespace {
 
 constexpr CGFloat kPeek = 28;
 constexpr CGFloat kReturnMargin = 16;
-constexpr CGFloat kPillX = 6, kPillY = 5, kPillHeight = 24;
-constexpr CGFloat kChromeOriginX = 28, kChromeOriginRightMargin = 80;
+// Chrome's corner buttons, restyled as Dia's (chromium-zz-pip-dia-controls.patch): 28 pt squares 12 pt in.
+constexpr CGFloat kButtonMargin = 12, kButtonSize = 28;
 
 NSString *const kKeepOnTopDefault = @"NNPictureInPictureKeepOnTop";
 const void *const kControllerKey = &kControllerKey;
@@ -103,44 +103,6 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 
 @end
 
-@interface NNPiPPill : NNPiPControl
-@property (nonatomic, readonly) NSTextField *label;
-@end
-
-@implementation NNPiPPill
-
-- (instancetype)initWithFrame:(NSRect)frame {
-  if ((self = [super initWithFrame:frame])) {
-    self.wantsLayer = YES;
-    self.layer.cornerRadius = kPillHeight / 2;
-    self.layer.cornerCurve = kCACornerCurveContinuous;
-    self.layer.borderWidth = 0.5;
-    self.layer.borderColor = [NSColor colorWithWhite:1 alpha:0.2].CGColor;
-    _label = [NSTextField labelWithString:@""];
-    _label.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
-    _label.textColor = [NSColor colorWithWhite:1 alpha:0.95];
-    _label.alignment = NSTextAlignmentCenter;
-    _label.lineBreakMode = NSLineBreakByTruncatingHead;
-    [self addSubview:_label];
-    self.toolTip = @"Back to Tab";
-    [self setHovered:NO];
-  }
-  return self;
-}
-
-- (void)setHovered:(BOOL)hovered {
-  [super setHovered:hovered];
-  self.layer.backgroundColor = [NSColor colorWithWhite:0 alpha:hovered ? 0.78 : 0.58].CGColor;
-}
-
-- (void)layout {
-  [super layout];
-  CGFloat height = ceil(_label.intrinsicContentSize.height);
-  _label.frame = NSMakeRect(10, floor((NSHeight(self.bounds) - height) / 2), NSWidth(self.bounds) - 20, height);
-}
-
-@end
-
 @interface NNPiPHandle : NNPiPControl
 @property (nonatomic) NNPiPEdge edge;
 @end
@@ -183,9 +145,8 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 
 @end
 
+// Holds the stash handle over Chrome's views; the resting window shows nothing of ours.
 @interface NNPiPOverlay : NSView
-@property (nonatomic, weak) NNPiPController *controller;
-@property (nonatomic, readonly) NNPiPPill *pill;
 @property (nonatomic, readonly) NNPiPHandle *handle;
 @end
 
@@ -196,25 +157,19 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 @property (nonatomic, readonly) NNPiPOverlay *overlay;
 @property (nonatomic, readonly) NNPiPEdge stashedEdge;
 @property (nonatomic) BOOL keepOnTop;
-@property (nonatomic) BOOL pointerInside;
 - (void)setVideoFrame:(CefRefPtr<CefFrame>)frame;
 - (void)backToTab;
 - (void)unstash;
 - (NSMenu *)menu;
 @end
 
-@implementation NNPiPOverlay {
-  NSTrackingArea *_tracking;
-}
+@implementation NNPiPOverlay
 
 - (instancetype)initWithFrame:(NSRect)frame {
   if ((self = [super initWithFrame:frame])) {
     self.wantsLayer = YES;
     self.layer.zPosition = 100;  // Keep above Chrome’s compositor layers.
     self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    _pill = [[NNPiPPill alloc] initWithFrame:NSZeroRect];
-    _pill.alphaValue = 0;
-    [self addSubview:_pill];
     _handle = [[NNPiPHandle alloc] initWithFrame:NSZeroRect];
     _handle.hidden = YES;
     _handle.alphaValue = 0;
@@ -228,32 +183,12 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 - (NSView *)hitTest:(NSPoint)point {
   NSPoint local = [self convertPoint:point fromView:self.superview];
   if (!_handle.hidden && NSPointInRect(local, _handle.frame)) return _handle;
-  if (_pill.alphaValue > 0.5 && NSPointInRect(local, _pill.frame)) return _pill;
-  return nil;  // Let Chrome receive clicks outside the PiP controls.
+  return nil;  // Everything else is Chrome's.
 }
-
-- (void)updateTrackingAreas {
-  [super updateTrackingAreas];
-  if (_tracking) [self removeTrackingArea:_tracking];
-  _tracking = [[NSTrackingArea alloc] initWithRect:NSZeroRect
-                                           options:NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect
-                                             owner:self
-                                          userInfo:nil];
-  [self addTrackingArea:_tracking];
-}
-
-- (void)mouseEntered:(NSEvent *)event { self.controller.pointerInside = YES; }
-- (void)mouseExited:(NSEvent *)event { self.controller.pointerInside = NO; }
 
 - (void)layout {
   [super layout];
   NSSize size = self.bounds.size;
-  // Dia: 13pt origin-label coverage.
-  NSString *host = _pill.label.stringValue;
-  CGFloat own = ceil([host sizeWithAttributes:@{NSFontAttributeName : _pill.label.font}].width) + 20;
-  CGFloat chrome = kChromeOriginX - kPillX + ceil([host sizeWithAttributes:@{NSFontAttributeName : [NSFont systemFontOfSize:13]}].width) + 4;
-  CGFloat width = MIN(MAX(own, chrome), MAX(size.width - kPillX - kChromeOriginRightMargin + 4, 60));
-  _pill.frame = NSMakeRect(kPillX, kPillY, width, kPillHeight);
   _handle.frame = _handle.edge == NNPiPEdgeLeft ? NSMakeRect(size.width - kPeek, 0, kPeek, size.height)
                                                  : NSMakeRect(0, 0, kPeek, size.height);
 }
@@ -279,9 +214,7 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
     _window = window;
     NSView *root = NNWindowRootView(window);
     _overlay = [[NNPiPOverlay alloc] initWithFrame:root.bounds];
-    _overlay.controller = self;
     __weak NNPiPController *weakSelf = self;
-    _overlay.pill.onClick = ^{ [weakSelf backToTab]; };
     _overlay.handle.onClick = ^{ [weakSelf unstash]; };
     [root addSubview:_overlay];
     objc_setAssociatedObject(window, kControllerKey, self, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -313,26 +246,6 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 }
 
 - (void)setVideoFrame:(CefRefPtr<CefFrame>)frame { _frame = frame; }
-
-- (void)setHost:(NSString *)host {
-  _host = [host copy];
-  _overlay.pill.label.stringValue = host ?: @"";
-  _overlay.needsLayout = YES;
-}
-
-- (void)setPointerInside:(BOOL)inside {
-  _pointerInside = inside;
-  [self updatePill];
-}
-
-- (void)updatePill {
-  BOOL show = _pointerInside && _stashedEdge == NNPiPEdgeNone && _host.length > 0;
-  if (!show) _overlay.pill.hovered = NO;
-  [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-    context.duration = show ? 0.15 : 0.2;
-    self->_overlay.pill.animator.alphaValue = show ? 1 : 0;
-  }];
-}
 
 - (void)setKeepOnTop:(BOOL)keepOnTop {
   _keepOnTop = keepOnTop;
@@ -439,7 +352,6 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
       completionHandler:^{
         if (self->_stashedEdge == NNPiPEdgeNone) handle.hidden = YES;
       }];
-  [self updatePill];
 }
 
 // Dia: 0.25s ease-out.
@@ -510,16 +422,10 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
   };
 
   record(@"attached", self.overlay.superview == NNWindowRootView(window) && [NNWindowRootView(window).subviews.lastObject isEqual:self.overlay],
-         @{@"level" : @(window.level), @"keepOnTop" : @(self.keepOnTop)});
-  self.pointerInside = YES;
+         @{@"level" : @(window.level), @"keepOnTop" : @(self.keepOnTop), @"shadow" : @(window.hasShadow)});
   after(0.6, ^{
-    record(@"hover shows pill", self.overlay.pill.alphaValue > 0.99 && [self.overlay.pill.label.stringValue isEqual:self.host],
-           @{@"pill" : NSStringFromRect(self.overlay.pill.frame), @"text" : self.overlay.pill.label.stringValue});
-    snapshot(@"hover");
-    self.overlay.pill.hovered = YES;
-    snapshot(@"pill-hovered");
-    self.overlay.pill.hovered = NO;
-    self.pointerInside = NO;
+    record(@"nothing of ours at rest", self.overlay.handle.hidden && [self.overlay hitTest:NSMakePoint(20, 20)] == nil, nil);
+    snapshot(@"rest");
     dragTo(NSMaxX(visible) - NSWidth(window.frame) * 0.3);
   });
   after(2.2, ^{
@@ -550,6 +456,15 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
   });
   after(7.0, ^{
     record(@"drag out of the stash", self.stashedEdge == NNPiPEdgeNone && fabs(NSMinX(window.frame) - (NSMinX(visible) + 100)) < 0.5, nil);
+    // Chrome saves where the window was left in its user data dir, in screen DIPs from the top left of the primary
+    // display (chromium-zz-pip-dia-controls.patch).
+    NSArray *saved = [NSArray arrayWithContentsOfFile:[dir stringByAppendingPathComponent:@"Chromium/NetnyahooPictureInPicture.plist"]];
+    NSRect frame = window.frame;
+    CGFloat top = NSMaxY(NSScreen.screens.firstObject.frame) - NSMaxY(frame);
+    record(@"Chrome remembers where it was left",
+           saved.count == 4 && [saved[0] intValue] == (int)NSMinX(frame) && [saved[1] intValue] == (int)top &&
+               [saved[2] intValue] == (int)NSWidth(frame) && [saved[3] intValue] == (int)NSHeight(frame),
+           @{@"saved" : saved ?: @[]});
     NSMenu *menu = [self menu];
     BOOL onBefore = [menu itemWithTitle:@"Keep Window on Top"].state == NSControlStateValueOn;
     [self toggleKeepOnTop:nil];
@@ -558,11 +473,10 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
     record(@"Keep Window on Top toggles", onBefore && off && window.level == NSFloatingWindowLevel,
            @{@"menu" : [[self menu].itemArray valueForKey:@"title"]});
     [window setFrame:start display:YES];
-    self.pointerInside = YES;
   });
   after(8.2, ^{
-    record(@"pill click: Back to Tab", self.view != nil, nil);
-    self.overlay.pill.onClick();
+    record(@"menu: Back to Tab", self.view != nil, nil);
+    [self backToTab];
   });
   after(9.7, ^{
     record(@"PiP closed after Back to Tab", !window.visible, nil);
@@ -571,14 +485,13 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 }
 
 // NETNYAHOO_PIP_SELFTEST=close / backToTab: clicks Chrome's own close button (its X, top right) or its back-to-tab
-// button next to it as AppKit delivers a click, then records whether the window closed. What happens to the video and
+// button (top left) as AppKit delivers a click, then records whether the window closed. What happens to the video and
 // the tab is for the caller to check (CDP, the store): closing leaves the video playing where it is.
 - (void)runButtonSelfTest:(NSString *)button {
   NSWindow *window = _window;
   NSString *dir = [NSString stringWithUTF8String:getenv("NETNYAHOO_DATA_DIR") ?: "/tmp"];
-  // Chrome's 24 pt buttons, 5 pt from the top: close 4 pt from the right edge, back to tab 28 pt.
-  CGFloat right = [button isEqual:@"close"] ? 4 : 28;
-  NSPoint point = NSMakePoint(NSWidth(window.frame) - right - 12, NSHeight(window.frame) - 17);
+  CGFloat center = kButtonMargin + kButtonSize / 2;
+  NSPoint point = NSMakePoint([button isEqual:@"close"] ? NSWidth(window.frame) - center : center, NSHeight(window.frame) - center);
   auto event = [=](NSEventType type) {
     return [NSEvent mouseEventWithType:type location:point modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
                           windowNumber:window.windowNumber context:nil eventNumber:0 clickCount:1 pressure:type == NSEventTypeLeftMouseDown];
@@ -600,6 +513,33 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
            atomically:YES];
     });
   });
+}
+
+// NETNYAHOO_PIP_SELFTEST=hover: keeps Chrome's controls showing for screen captures, with the pointer over the close
+// button (NETNYAHOO_PIP_HOVER=close), back to tab (back) or the middle of the video (default), and writes the window
+// number and frame to pip-hover.json.
+- (void)runHoverSelfTest {
+  NSWindow *window = _window;
+  NSString *dir = [NSString stringWithUTF8String:getenv("NETNYAHOO_DATA_DIR") ?: "/tmp"];
+  NSString *where = NSProcessInfo.processInfo.environment[@"NETNYAHOO_PIP_HOVER"];
+  CGFloat center = kButtonMargin + kButtonSize / 2;
+  NSSize size = window.frame.size;
+  NSPoint point = [where isEqual:@"close"]  ? NSMakePoint(size.width - center, size.height - center)
+                  : [where isEqual:@"back"] ? NSMakePoint(center, size.height - center)
+                                            : NSMakePoint(size.width / 2, size.height * 0.7);
+  __weak NSWindow *weakWindow = window;
+  NSTimer *timer = [NSTimer timerWithTimeInterval:1 repeats:YES block:^(NSTimer *t) {
+    NSWindow *strongWindow = weakWindow;
+    if (!strongWindow.visible) return [t invalidate];
+    NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved location:point modifierFlags:0
+                                      timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:strongWindow.windowNumber
+                                        context:nil eventNumber:0 clickCount:0 pressure:0];
+    [strongWindow.contentView mouseMoved:move];
+  }];
+  [NSRunLoop.currentRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+  NSDictionary *result = @{@"windowNumber" : @(window.windowNumber), @"frame" : NSStringFromRect(window.frame), @"hover" : where ?: @"video"};
+  [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil] writeToFile:[dir stringByAppendingPathComponent:@"pip-hover.json"]
+                                                                       atomically:YES];
 }
 
 @end
@@ -636,6 +576,7 @@ bool Attach(NNBrowserView *view, NSString *host, CefRefPtr<CefFrame> frame) {
     InstallMenuMonitor();
     NSString *selfTest = NSProcessInfo.processInfo.environment[@"NETNYAHOO_PIP_SELFTEST"];
     if (fresh && [@[ @"close", @"backToTab" ] containsObject:selfTest]) [controller runButtonSelfTest:selfTest];
+    else if (fresh && [selfTest isEqual:@"hover"]) [controller runHoverSelfTest];
     else if (fresh && selfTest) [controller runSelfTest];
     return true;
   }

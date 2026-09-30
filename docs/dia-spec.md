@@ -607,6 +607,46 @@ classes are `TabStrip.TabStripViewController`, `TabStripDockView` (the pinned gr
   "BCNY Blocklists". The decoder has a `languages` key, but neither the bundled nor the live manifest sets it, so no
   regional list is turned on by locale.
 
+### Picture in Picture (1.50.1, 2× screen recording, 2026-09-30)
+
+Measured from a 13 s recording of the user's Dia (3024 × 1964, YouTube video, dark), frame by frame at 60 fps, the
+window 468 × 263 pt at (1034, 43), where the user had left it. Dia draws its own video PiP window (`PIP.VideoPIPContentController`,
+`PIPWindowController`) and keeps where it was last left (`LastVideoPIPPosition`); the first-ever default wasn't
+recovered (Netnyahoo keeps Chrome's: a fifth of the work area, bottom right). Netnyahoo restyles Chrome's own window
+to these numbers (`chromium-zz-pip-dia-controls.patch`); a same-crop comparison is in the table.
+- **At rest**: only the video, in the standard macOS window corner with its 1 px dark outline and light inner rim, and
+  a faint shadow (the backdrop is 3–4 levels darker next to the window). No title, no host label, no badge.
+- **Appears** about 125 ms after the tab switch, at full opacity (one black frame, then the video): no fade, no slide.
+- **Hover**: an even black scrim at **35 %** over the whole video (content × 0.645, same pixels before and after),
+  fading in over **200 ms**, ease-in-out (2, 7, 14, 24, 40, 55, 69, 80, 90, 96, 99 % at 60 fps).
+- **Corner buttons**: back to tab **28 × 28** and close **29 × 28**, both **12** from the top and their side, radius
+  ~**6**, white **9 %** (about 13 % under the pointer). Back to tab is a **↖** of 1 pt white lines: two 8 pt arms and the
+  diagonal, its corner 10.5 pt into the button. Close is a **×** of 1 pt lines in a 9.5 pt square, 9.5 pt in.
+- **Origin** (`www.youtube.com`): SF **13 pt regular**, white, centred on the window, no pill and no favicon; x-height
+  7 pt, baseline **30** from the top (level with the buttons' centre, 26).
+- **Play/pause**: no circle. Pause is two white capsules **7 × 42**, **10** apart (24 wide), centred (0.5 pt below
+  the middle). No skip ±10 s, time, volume, captions or minimize.
+- **Progress bar**: a **5 pt** capsule from x 12 to width − 12, its bottom **9** above the window's; played part white,
+  the rest white ~**27 %**.
+- **Close (×)**: the window fades out in ~**100 ms**, ease-out (70, 35, 20, 7, 4, 0 % at ~40 fps); the video keeps
+  playing in its tab, which stays in the background.
+- **Back to tab**: the tab shows at once, and the PiP window fades out over it in ~**70 ms** (84, 40, 11, 0 % at 60 fps)
+  while the page swaps YouTube's "Playing in picture-in-picture" placeholder for the video (YouTube's own ~220 ms fade).
+
+| Measured (pt) | Dia | Netnyahoo |
+|---|---|---|
+| Scrim (content ×) | 0.645 | 0.647 |
+| Back to tab button / glyph | 12, 12, 28 × 28 / ↖ 22.5–30.5 | same / same |
+| Close button / glyph | 427–456 × 12–40 / × 436.5–446, 21.5–31 | same / same |
+| Origin | 13 pt regular, centred, baseline 30 | same (Chrome's label, measured on digits) |
+| Pause | 222–246 × 111–153 | same |
+| Progress bar | 12 … w − 12, 249–254 | same |
+| Controls fade in | ~200 ms ease-in-out | ~190 ms ease-in-out |
+| Fade out: close / back to tab | ~100 / ~70 ms | 100 / 70 ms (Core Animation) |
+
+Netnyahoo differs in: the origin includes a port when the page has one (Chrome's formatting), and the play glyph
+(paused) and replay glyph weren't in the recording, so they're a rounded triangle of the same height and Chrome's icon.
+
 ### Still unknown (needs a capture of Dia 1.50.1)
 - The painted mark's exact outline and position inside the 84pt view (particle uniforms). The `shadeLayer` path
   (`0x102b69e28`) is computed, not fixed: 128 points around a 3D-rotated disc of radius `r·(1 − 0.45a)·(1 + 0.05b)`
