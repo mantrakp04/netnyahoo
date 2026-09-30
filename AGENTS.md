@@ -12,7 +12,8 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   `NETNYAHOO_DATA_DIR`.
 - **No git worktrees, ever.** Everyone works in this checkout.
 - **Commit straight to `main`.** Stage only your own hunks (`git add -p` or explicit paths), never
-  someone else's work in progress. End every message with
+  someone else's work in progress. Never stage with `git apply --unidiff-zero`: it drops hunks into the wrong
+  place (it once committed an `NNClient.mm` that didn't compile). Check `git diff --cached` reads as you meant. End every message with
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Progress reports.** Keep them short and plain: what shipped, what's left, what needs the owner.
 - **Clean up.** Quit your test instances, stop the servers and background jobs you started, and never
