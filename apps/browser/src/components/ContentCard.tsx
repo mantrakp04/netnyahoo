@@ -29,6 +29,7 @@ import { NewTabPage } from "./NewTabPage";
 import { InternalPage, isInternalTab } from "./pages";
 import { BlockedPopupsPrompt, PasswordPrompt, PermissionPrompt, shouldPromptForPopups, showPasswordPrompt } from "./site/Prompts";
 import { SiteControls } from "./site/SiteControls";
+import { ZoomPopover } from "./site/ZoomControls";
 import { SelectionPopover } from "./site/SelectionPopover";
 import { copyLinkToSelection, searchSelection, setPageSelection, startSelectionTools, type PageSelection } from "./site/selection";
 import { startMedia, useAutoPictureInPicture } from "./media/pip";
@@ -236,6 +237,7 @@ function TabPane({
             <PasswordPrompt tabId={tabId} right={8} top={4} />
             {popover === "siteControls" && <SiteControls tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
             {popover === "popups" && <BlockedPopupsPrompt tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
+            {popover === "zoom" && <ZoomPopover tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
             <SharePicker tabId={tabId} paneWidth={frame.width} />
             <DeviceChooser tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />
             <CastPicker tabId={tabId} paneWidth={frame.width} />

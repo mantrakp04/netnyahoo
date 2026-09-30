@@ -15,7 +15,6 @@ import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { webviews } from "../../lib/webviews";
-import { setZoom } from "../../lib/zoom";
 import { useBrowser } from "../../store/browser";
 import { useSettings, useTab } from "../../store/hooks";
 import { engineProfile, tabLabel } from "../../store/model";
@@ -25,6 +24,7 @@ import { patchPage, setPopover, usePage } from "../layout/pageState";
 import { toggleCastPicker } from "../media/cast";
 import { useMedia, usePictureInPicture } from "../media/state";
 import { TranslateRows } from "./TranslateControls";
+import { ZoomStepper } from "./ZoomControls";
 
 const PERMISSIONS: { type: SiteSettingType; title: string; icon: string; choices: SiteSettingValue[] }[] = [
   { type: "popups", title: "Pop-ups and Redirects", icon: "macwindow.on.rectangle", choices: ["allow", "block"] },
@@ -268,40 +268,7 @@ function CertificateDetails({ security }: { security: SecurityInfo }) {
 }
 
 function ZoomRow({ tabId, zoom }: { tabId: string; zoom: number }) {
-  const theme = useTheme();
-  return (
-    <PopoverRow
-      icon="plus.magnifyingglass"
-      title="Zoom"
-      accessory={
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-          <StepButton icon="minus" onPress={() => setZoom(tabId, -1)} />
-          <Pressable onPress={() => setZoom(tabId, 0)} tooltip="Reset to 100%">
-            <Text style={{ width: 44, textAlign: "center", fontSize: 12, fontVariant: ["tabular-nums"], color: zoom === 1 ? theme.textSecondary : theme.textPrimary }}>
-              {Math.round(zoom * 100)}%
-            </Text>
-          </Pressable>
-          <StepButton icon="plus" onPress={() => setZoom(tabId, 1)} />
-        </View>
-      }
-    />
-  );
-}
-
-function StepButton({ icon, onPress }: { icon: string; onPress: () => void }) {
-  const theme = useTheme();
-  const { hovered, hoverProps } = useHover();
-  return (
-    <View {...hoverProps}>
-      <Pressable onPress={onPress}>
-        {({ pressed }) => (
-          <View style={{ width: 24, height: 22, borderRadius: 6, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? theme.toolbarPressed : hovered ? theme.toolbarHover : theme.dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)" }}>
-            <Symbol name={icon} size={10} weight="semibold" color={theme.icon} style={{ width: 14, height: 14 }} />
-          </View>
-        )}
-      </Pressable>
-    </View>
-  );
+  return <PopoverRow icon="plus.magnifyingglass" title="Zoom" accessory={<ZoomStepper tabId={tabId} zoom={zoom} />} />;
 }
 
 function ValueButton({ title, onPress }: { title: string; onPress: () => void }) {

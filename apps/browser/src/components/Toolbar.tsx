@@ -21,6 +21,7 @@ import { useHover } from "./primitives";
 import { ToolbarExtensions, useToolbarExtensionsWidth } from "./extensions/ToolbarExtensions";
 import { GlassFill, liquidGlass } from "./glass";
 import { TranslateButton } from "./site/TranslateControls";
+import { ZoomIndicator } from "./site/ZoomControls";
 
 export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId: string; geometry: ToolbarGeometry; windowId: string; inSplit: boolean; focused: boolean }) {
   const theme = useTheme();
@@ -269,6 +270,7 @@ export function UrlField({
       <View style={{ flexDirection: "row", alignItems: "center", paddingRight: 3 }}>
         {capture && <CaptureIndicator camera={capture.camera} microphone={capture.microphone} screen={capture.screen} onPress={toggleSiteControls} />}
         <TranslateButton tabId={tab.id} palette={palette} onFocus={onFocus} />
+        <ZoomIndicator tabId={tab.id} zoom={tab.zoom} palette={palette} onFocus={onFocus} />
         {popups > 0 && (
           <ToolbarButton
             palette={palette}
