@@ -10,9 +10,11 @@ import type { BrowserState } from "../store/browser";
 // of the tab that already was isn't), `byApp` when the app's own request did it. Only an activation the app didn't
 // ask for is a switch (an extension's, say, or Chrome's own), even to a tab the app just left.
 export function isChromeSwitch(windowId: string, tabId: string, shownTabId: string | undefined, place: TabStripPlace, now = Date.now()) {
-  if (!place.active || tabId === shownTabId) return false;
-  if (place.activated !== undefined) return place.activated && !place.byApp;
-  return !isActivationEcho(windowId, tabId, shownTabId, now);
+  if (!place.active) return false;
+  if (place.activated !== undefined) return tabId !== shownTabId && place.activated && !place.byApp;
+  // The shown tab's report is Chrome catching up: isActivationEcho clears the pending echoes on it.
+  const echo = isActivationEcho(windowId, tabId, shownTabId, now);
+  return !echo && tabId !== shownTabId;
 }
 
 // Older native builds say neither, so reports that the tabs the app left are active count as echoes until Chrome

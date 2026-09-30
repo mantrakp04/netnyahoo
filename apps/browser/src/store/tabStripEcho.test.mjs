@@ -69,3 +69,11 @@ test("without the flags (older engines), the timed echo window decides", () => {
   assert.equal(isChromeSwitch(w, c, b, place, 1100), true);
   assert.equal(isChromeSwitch(w, b, b, place, 1100), false, "the shown tab");
 });
+
+test("without the flags, Chrome's ack of the app's switch ends the echo window at once", () => {
+  const { w, a, b } = setup();
+  activate(b, 1000);
+  const place = { index: 0, active: true, pinned: false };
+  assert.equal(isChromeSwitch(w, b, b, place, 1050), false, "Chrome reports b: the ack");
+  assert.equal(isChromeSwitch(w, a, b, place, 1100), true, "an extension activating a right after is a real switch");
+});
