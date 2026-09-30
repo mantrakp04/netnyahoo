@@ -16,6 +16,7 @@ import {
   viewTabIds,
   without,
 } from "./model";
+import { forgetOpeners, insertionIndex, openerSuccessor, switchKeepsOpeners } from "./openers";
 import { groupWithOpener, onUrlChange, pruneSelection, samePage } from "./organize";
 import { searchUrlPrefix } from "./settings";
 import { mainWindowFor } from "./small";
@@ -59,24 +60,10 @@ export type TabsSlice = {
 
 const MAX_CLOSED_TABS = 50;
 
-function insertionIndex(s: BrowserState, w: BrowserWindow, tab: Tab): number {
-  if (tab.pinned) {
-    let last = -1;
-    w.tabIds.forEach((id, i) => s.tabs[id]?.pinned && (last = i));
-    return last + 1;
-  }
-  const opener = tab.openerId ? s.tabs[tab.openerId] : undefined;
-  if (opener && opener.windowId === w.id && opener.profileId === tab.profileId && !opener.pinned) {
-    let i = w.tabIds.indexOf(opener.id);
-    while (i + 1 < w.tabIds.length && s.tabs[w.tabIds[i + 1]!]?.openerId === opener.id) i++;
-    return i + 1;
-  }
-  if (s.settings.newTabPosition === "top") {
-    const pinnedGroup = new Set(Object.values(s.groups).filter((g) => g.pinned).flatMap((g) => g.tabIds));
-    const first = w.tabIds.findIndex((id) => s.tabs[id]?.profileId === tab.profileId && !s.tabs[id]?.pinned && !pinnedGroup.has(id));
-    if (first >= 0) return first;
-  }
-  return w.tabIds.length;
+function pinnedInsertionIndex(s: BrowserState, w: BrowserWindow): number {
+  let last = -1;
+  w.tabIds.forEach((id, i) => s.tabs[id]?.pinned && (last = i));
+  return last + 1;
 }
 
 export function activated(s: BrowserState, id: string): Partial<BrowserState> {
@@ -144,13 +131,13 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
       const awake = left.filter((id) => !s.tabs[id]?.unloaded);
       const after = awake.length ? awake : left;
       const index = before.indexOf(activeId);
-      const next = after.find((id) => before.indexOf(id) > index) ?? after.at(-1);
+      const next = openerSuccessor(s, activeId, before, left) ?? after.find((id) => before.indexOf(id) > index) ?? after.at(-1);
       if (next) activeTabIds[profileId] = next;
       else delete activeTabIds[profileId];
     }
     windows[w.id] = { ...w, tabIds, activeTabIds };
   }
-  tabs = without(tabs, gone);
+  tabs = adoptOrphans(without(tabs, gone), s.tabs, gone);
 
   let next: BrowserState = {
     ...s,
@@ -169,6 +156,19 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
     const id = w.activeTabIds[w.profileId];
     const t = id ? next.tabs[id] : undefined;
     if (t && t.url && !t.navigation && !t.adoptId) next = apply(next, activated(next, t.id));
+  }
+  return next;
+}
+
+// A closed tab's tabs take its opener (TabStripModel::FixOpeners).
+function adoptOrphans(tabs: Record<string, Tab>, before: Record<string, Tab>, gone: Set<string>): Record<string, Tab> {
+  let next = tabs;
+  for (const t of Object.values(tabs)) {
+    let opener = t.openerId;
+    while (opener && gone.has(opener)) opener = before[opener]?.openerId ?? null;
+    if (opener === t.openerId) continue;
+    if (next === tabs) next = { ...tabs };
+    next[t.id] = { ...t, openerId: opener === t.id ? null : opener };
   }
   return next;
 }
@@ -242,6 +242,8 @@ function lastLivePinnedTab(s: BrowserState, w: BrowserWindow, id: string, closin
 }
 
 export function withNewTab(s: BrowserState, windowId: string, o: NewTabOptions = {}): [BrowserState, string] {
+  // A link opened in front starts a new task: Chrome forgets the window's other openers.
+  if (o.openerId && !o.background) s = forgetOpeners(s, windowId);
   const w = s.windows[windowId];
   if (!w) return [s, ""];
   const profileId = w.incognito ? w.profileId : o.profileId && s.profiles[o.profileId] ? o.profileId : w.profileId;
@@ -257,7 +259,8 @@ export function withNewTab(s: BrowserState, windowId: string, o: NewTabOptions =
   }
   const tabs = { ...s.tabs, [tab.id]: tab };
   const tabIds = [...w.tabIds];
-  tabIds.splice(Math.min(o.index ?? insertionIndex(s, w, tab), tabIds.length), 0, tab.id);
+  const at = o.index ?? (tab.pinned ? pinnedInsertionIndex(s, w) : insertionIndex(s, w, tab, !!o.background));
+  tabIds.splice(Math.min(at, tabIds.length), 0, tab.id);
   const window: BrowserWindow = {
     ...w,
     tabIds: pinnedFirst(tabIds, tabs),
@@ -285,14 +288,15 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
       const profileId = options?.profileId ?? small.profileId;
       const main = mainWindowFor(get(), profileId);
       if (!main) {
-        const created = get().createWindow({ profileId, url: options?.url, adoptId: options?.adoptId });
+        const created = get().createWindow({ profileId, url: options?.url, adoptId: options?.adoptId, background: options?.background });
         return activeTabId(get(), created) ?? "";
       }
-      return get().newTab(main, { ...options, profileId, openerId: undefined, index: undefined });
+      // The Small Yahu page stays the opener, so the tabs it sends keep their order.
+      return get().newTab(main, { ...options, profileId, index: undefined });
     }
     if (options?.url && !options.adoptId && openOutsideTab(resolveInput(options.url, searchUrlPrefix(get().settings)), windowId)) return "";
     let [next, id] = withNewTab(get(), windowId, options);
-    if (id && options?.openerId && options.background) next = groupWithOpener(next, id, options.openerId);
+    if (id && options?.openerId) next = groupWithOpener(next, id, options.openerId, !!options.background);
     set(next);
     return id;
   },
@@ -320,7 +324,13 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
   },
 
   activate(id) {
-    set((s) => activated(s, id));
+    const s = get();
+    const tab = s.tabs[id];
+    if (!tab) return;
+    const shown = activeTabId(s, tab.windowId);
+    let next = apply(s, activated(s, id));
+    if (shown && shown !== id && !switchKeepsOpeners(s, shown, id)) next = forgetOpeners(next, tab.windowId);
+    set(next);
   },
 
   activateIndex(windowId, index) {
@@ -346,7 +356,9 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
       return;
     }
     const { unloaded: _, ...rest } = tab;
-    set(apply(s, { tabs: { ...s.tabs, [id]: { ...rest, navigation: navigationTo(url, userInitiated), url: tab.url || url } } }));
+    // Typing an address starts a new task (a New Tab page gets one lookup first, as in Chrome).
+    const base = userInitiated && tab.url ? forgetOpeners(s, tab.windowId) : s;
+    set(apply(base, { tabs: { ...base.tabs, [id]: { ...rest, openerId: base.tabs[id]!.openerId, navigation: navigationTo(url, userInitiated), url: tab.url || url } } }));
     const ui = get().windowUi[tab.windowId];
     if (ui?.panel.open) get().closePanel(tab.windowId);
   },

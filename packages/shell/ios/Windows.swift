@@ -90,7 +90,15 @@ final class WindowManager: NSObject, NSWindowDelegate {
     windows[id] = window
     if let center = lightsCenters[id] { ChromeWindows.setTrafficLightsCenter(center, in: window) }
     if smallSize == nil { lastPlaced = window }
-    if focus { window.makeKeyAndOrderFront(nil) } else { window.orderFront(nil) }
+    // A window opened without focus (tabs Small Yahu sends behind with no main window open) goes behind the
+    // key window instead of over it.
+    if focus {
+      window.makeKeyAndOrderFront(nil)
+    } else if let key = NSApp.keyWindow, key !== window {
+      window.order(.below, relativeTo: key.windowNumber)
+    } else {
+      window.orderFront(nil)
+    }
     observeFrame(window)
     reportFrame(window)
   }

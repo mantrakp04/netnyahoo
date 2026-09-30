@@ -29,6 +29,8 @@ export type CreateWindowOptions = {
   tabIds?: string[];
   frame?: Frame | null;
   small?: boolean;
+  // Opened behind: the focused window keeps focus.
+  background?: boolean;
 };
 
 export type WindowsSlice = {
@@ -133,6 +135,10 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     const shown = next.windows[id]!.activeTabIds[next.tabs[first]!.profileId] ?? first;
     if (!small) next = adoptParkedPins(next, id, next.tabs[shown]!.profileId);
     next = apply(next, activated(next, shown));
+    const focused = s.ui.focusedWindowId;
+    if (o.background && focused && s.windows[focused]) {
+      next = { ...next, ui: { ...next.ui, focusedWindowId: focused, focusOrder: [focused, id, ...s.ui.focusOrder.filter((w) => w !== focused)] } };
+    }
     set(next);
     return id;
   },

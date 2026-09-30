@@ -31,6 +31,7 @@ test("a new tab from Small Yahu with no main window opens one", () => {
   const w = S().tabs[opened].windowId;
   assert.notEqual(w, small);
   assert.equal(S().windows[w].kind, undefined);
+  assert.equal(S().ui.focusedWindowId, small, "opened behind: Small Yahu keeps focus");
 });
 
 test("closing Small Yahu throws the page away; ⇧⌘T brings it back in Small Yahu", () => {

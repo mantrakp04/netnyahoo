@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 import { leaveGroups, orderSections, placeBlock, syncGroupOrder } from "./groups";
-import { activeTabId, bookmarkProfileId, isIncognitoProfile, newId, snapshotTab, viewTabIds, without } from "./model";
+import { activeTabId, bookmarkProfileId, inPinnedContainer, isIncognitoProfile, newId, snapshotTab, viewTabIds, without } from "./model";
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
 import type { BrowserWindow, ClosedGroup, ClosedTab, Tab, TabGroup } from "./types";
 
@@ -106,20 +106,26 @@ export function pruneSelection(selection: Record<string, string[]>, gone: Set<st
   return Object.fromEntries(Object.entries(selection).map(([w, ids]) => [w, ids.filter((id) => !gone.has(id))]));
 }
 
-export function groupWithOpener(s: BrowserState, tabId: string, openerId: string): BrowserState {
+// A tab opened from a link joins its opener's group, as in Chrome; opened behind from an ungrouped tab it
+// starts one with it when the setting is on (Dia's "⌘-clicking links creates tab groups"). Pinned tabs and
+// pinned groups keep their section: their links open as ordinary tabs.
+export function groupWithOpener(s: BrowserState, tabId: string, openerId: string, background: boolean): BrowserState {
   const tab = s.tabs[tabId];
   const opener = s.tabs[openerId];
-  if (!s.settings.cmdClickCreatesTabGroup || !tab || !opener || opener.pinned) return s;
+  if (!tab || !opener || inPinnedContainer(s, openerId)) return s;
   if (opener.windowId !== tab.windowId || opener.profileId !== tab.profileId) return s;
   const w = s.windows[tab.windowId]!;
   const existing = groupOf(s, openerId);
+  if (!existing && !(background && s.settings.cmdClickCreatesTabGroup)) return s;
   if (existing) {
     const members = [...existing.tabIds, tabId];
     const window = { ...w, tabIds: placeBlock(w.tabIds, w.tabIds.filter((id) => members.includes(id))) };
     const groups = { ...s.groups, [existing.id]: { ...existing, tabIds: window.tabIds.filter((id) => members.includes(id)) } };
     return { ...s, groups, windows: { ...s.windows, [w.id]: window } };
   }
-  return withGroup(s, [openerId, tabId], { autoUngroup: true })[0];
+  // A split opener brings its other panes: a split is one row, inside or outside the group.
+  const panes = Object.values(s.splits).find((v) => v.tabIds.includes(openerId))?.tabIds ?? [openerId];
+  return withGroup(s, [...panes, tabId], { autoUngroup: true })[0];
 }
 
 export function withGroup(
