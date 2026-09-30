@@ -1,0 +1,53 @@
+packages/cef/ios/NNSwipe.mm
+  s_631b13a766b697::t_7e50ae3e0c0667 426,435
+  s_7bd20e963adcd0::t_575d07a733d4de 27-31,207,395-399
+  s_7bd20e963adcd0::t_8b3d35c1f3b34c 551-563,716-762
+  s_7bd20e963adcd0::t_bae3f613a33a0a 616-619
+  s_7bd20e963adcd0::t_e757ac84a6abb1 33-36,160-161,164,196,201-206,208-214,220-232,245-279,284-297,336-339,341-344,360,363-380,382,394,400-408,414-415,422,428-429,438-439,446-449,465,475,542,603-605,613-615,621-622,624-625,634-635,679-680,698,706,711,764-768
+  s_7bd20e963adcd0::t_051f4cf8f3843f 431
+  s_7bd20e963adcd0::t_0eae1764694ca4 32
+docs/research/profile-swipe-replay.md
+  s_631b13a766b697::t_cf82cd240be9d2 11-12
+  s_631b13a766b697::t_2cc0fefe60b277 1-10,13-53
+docs/dia-feature-parity.md
+  s_631b13a766b697::t_a6e5648fc869ca 352
+apps/browser/scripts/profile-swipe-replay.mjs
+  s_7bd20e963adcd0::t_94707708cdf6e1 14,25-27,44,77
+  s_7bd20e963adcd0::t_bcdf1673dda4d5 29-31,130,223-226
+  s_7bd20e963adcd0::t_8faa3417c90763 76
+  s_631b13a766b697::t_98b7b14e975584 423-424,426,451-452,455
+  s_7bd20e963adcd0::t_b0a7ee78b738dc 1-4,6-13,15-20,24,28,32,34-43,45-67,69-75,78-129,131-137,195-222,227-311,322-324,326-350,352-371,379-382,384-386,389-405,410-422,425,427-450,453-454,456-478
+  s_7bd20e963adcd0::t_bae3f613a33a0a 138-194
+  s_631b13a766b697::t_07dd5387a1c609 5,21-23,33,312-321,351,372-378,383,387-388
+  s_631b13a766b697::t_96261d8c7daa6b 406-409
+  s_631b13a766b697::t_b127b66b321e50 68,325
+apps/browser/src/components/layout/ProfileSwipe.tsx
+  s_7bd20e963adcd0::t_b7bb0e22ddd843 79-80,85
+  s_631b13a766b697::t_502ab125049c78 35-38
+apps/browser/scripts/fixtures/owner-trackpad-take1.json
+  s_7bd20e963adcd0::t_80fc14064ea3bb 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cc1974aca3a946def1f5f855e203fbce89c3e4f4",
+  "prompts": {},
+  "sessions": {
+    "s_631b13a766b697": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ef88-d29f-71c0-bccb-8ac6c46b7bc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_7bd20e963adcd0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e0824603-02ab-4a63-94b4-ff756517786a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
