@@ -30,6 +30,10 @@ NSMutableArray *gTrace;
     if (gTrace) [gTrace addObject:(__VA_ARGS__)];   \
   } while (0)
 
+// DEV simulation only: hit an existing renderer wherever the pointer is, or route hits as before the fallback.
+BOOL gWrongRendererHit;
+BOOL gLegacyHitRouting;
+
 NSArray *RectValue(NSRect r) {
   return @[ @(r.origin.x), @(r.origin.y), @(r.size.width), @(r.size.height) ];
 }
@@ -230,6 +234,61 @@ NSArray *HitChain(NSView *hit) {
   return chain;
 }
 
+BOOL IsPager(NSView<NNSwipeTarget> *target) {
+  return [target respondsToSelector:@selector(isPager)] && target.isPager;
+}
+
+NSView *FirstRenderer(NSView *view) {
+  if (IsRenderWidgetView(view)) return view;
+  for (NSView *sub in view.subviews)
+    if (NSView *found = FirstRenderer(sub)) return found;
+  return nil;
+}
+
+NSView *ReactRoot(NSView *view, NSWindow *window) {
+  NSView *root = [NNChromeWindowHost rootViewOfWindow:window];
+  if (root && [view isDescendantOf:root]) return root;
+  while (view.superview && view.superview != window.contentView) view = view.superview;
+  return view;
+}
+
+// AppKit can return a page's renderer for a point outside that renderer's own frame (seen over the
+// sidebar). Only then, a visible pager of the same React root under the pointer takes the gesture.
+NSView<NNSwipeTarget> *MisroutedRendererTarget(NSWindow *window, NSPoint location, NSView *hit) {
+  if (!IsRenderWidgetView(hit) || NSPointInRect([hit convertPoint:location fromView:nil], hit.bounds)) return nil;
+  NSView *root = ReactRoot(hit, window);
+  NSView<NNSwipeTarget> *best = nil;
+  for (NSView<NNSwipeTarget> *target in Targets()) {
+    NSView *container = target.superview;
+    if (target.window != window || !container || target.isHiddenOrHasHiddenAncestor || !IsPager(target)) continue;
+    if (!NSPointInRect([target convertPoint:location fromView:nil], target.bounds)) continue;
+    if (ReactRoot(target, window) != root) continue;
+    if (!best || [container isDescendantOf:best.superview]) best = target;
+  }
+  return best;
+}
+
+// The view and target a gesture at this point belongs to. A misrouted renderer hit is replaced by the
+// pager container's own hit, so it never reaches the renderer observer or native scroll arbitration.
+NSView *ResolveHit(NSWindow *window, NSPoint location, NSView<NNSwipeTarget> *__strong *target, BOOL *fallback) {
+  NSView *hit = HitView(window, location);
+  if (gTrace && gWrongRendererHit) hit = FirstRenderer(window.contentView) ?: hit;
+  *target = TargetAt(window, location, hit);
+  *fallback = NO;
+  if (*target || (gTrace && gLegacyHitRouting)) return hit;
+  NSView<NNSwipeTarget> *pager = MisroutedRendererTarget(window, location, hit);
+  if (!pager) return hit;
+  // The pager's own content must own the point, as an ordinary hit would; otherwise keep the original hit.
+  NSView *container = pager.superview;
+  NSView *inner = [container hitTest:[container.superview convertPoint:location fromView:nil]];
+  if (!inner || IsRenderWidgetView(inner) || inner.window != window || ![inner isDescendantOf:container]) return hit;
+  if (!NSPointInRect([inner convertPoint:location fromView:nil], inner.bounds)) return hit;
+  if (TargetAt(window, location, inner) != pager) return hit;
+  *target = pager;
+  *fallback = YES;
+  return inner;
+}
+
 BOOL NativeContentScrolls(NSView *hit, NSView *container, int direction) {
   for (NSView *v = hit; v && v != container; v = v.superview) {
     if (![v isKindOfClass:NSScrollView.class]) continue;
@@ -324,15 +383,12 @@ CGFloat ReleaseVelocity(NSTimeInterval now) {
   return now - oldest > 0.004 ? sum / (now - oldest) : 0;
 }
 
-BOOL IsPager(NSView<NNSwipeTarget> *target) {
-  return [target respondsToSelector:@selector(isPager)] && target.isPager;
-}
-
 NSEvent *HandleWheel(NSEvent *event, NSWindow *window, NSPoint location) {
   CGFloat dx = event.scrollingDeltaX;
   if (fabs(dx) <= fabs(event.scrollingDeltaY)) return event;
-  NSView *hit = HitView(window, location);
-  NSView<NNSwipeTarget> *target = TargetAt(window, location, hit);
+  NSView<NNSwipeTarget> *target = nil;
+  BOOL fallback = NO;
+  NSView *hit = ResolveHit(window, location, &target, &fallback);
   if (!target || !IsPager(target)) {
     Diag(@{@"diag" : @"wheel", @"reject" : target ? @"notPager" : @"noTarget", @"hit" : HitChain(hit)});
     return event;
@@ -358,11 +414,16 @@ void Begin(NSWindow *window, NSPoint location, BOOL ignoreSystemPreference) {
   gGesture = Gesture();
   gGesture.ignoreSystemPreference = ignoreSystemPreference;
   gGesture.seq = ++gGestureSeq;
-  NSView *hit = HitView(window, location);
-  NSView<NNSwipeTarget> *target = TargetAt(window, location, hit);
+  NSView<NNSwipeTarget> *target = nil;
+  BOOL fallback = NO;
+  NSView *hit = ResolveHit(window, location, &target, &fallback);
   if (gTrace) {
     NSMutableArray *why = [NSMutableArray array];
-    TargetAt(window, location, hit, why);
+    NSView *raw = HitView(window, location);
+    if (gWrongRendererHit) raw = FirstRenderer(window.contentView) ?: raw;
+    TargetAt(window, location, raw, why);
+    Diag(@{@"diag" : @"hitRouting", @"seq" : @(gGesture.seq), @"raw" : HitChain(raw), @"fallback" : @(fallback),
+           @"wrongRendererHit" : @(gWrongRendererHit), @"legacyHitRouting" : @(gLegacyHitRouting)});
     Diag(@{
       @"diag" : @"begin",
       @"seq" : @(gGesture.seq),
@@ -745,6 +806,8 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step, ui
       }
       gRetargetCopyFailure = [s[@"retargetCopyFailure"] boolValue];
       gLegacyRecognition = [s[@"legacyRecognition"] boolValue];
+      gWrongRendererHit = [s[@"wrongRendererHit"] boolValue];
+      gLegacyHitRouting = [s[@"legacyHitRouting"] boolValue];
       if ([s[@"dispatch"] isEqualToString:@"app"]) {
         // Through NSApp as AppKit delivers it; the monitor trace shows whether the tracker saw it.
         const NSUInteger mark = gTrace.count;
@@ -796,6 +859,8 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step, ui
       }
       gRetargetCopyFailure = NO;
       gLegacyRecognition = NO;
+      gWrongRendererHit = NO;
+      gLegacyHitRouting = NO;
     }
     NSDictionary *following = index < steps.count ? steps[index] : nil;
     int64_t delayNs = following[@"atMs"]

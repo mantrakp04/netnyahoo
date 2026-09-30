@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 const args = process.argv.slice(2);
 const appArg = args.find((a) => !a.startsWith("--"));
 if (!appArg) {
-  console.error("usage: node profile-swipe-test.mjs <Debug Netnyahoo.app> [--port=9474] [--keep-data] [--stale-window]");
+  console.error("usage: node profile-swipe-test.mjs <Debug Netnyahoo.app> [--port=9474] [--keep-data] [--stale-window] [--only=<case name substring>]");
   process.exit(2);
 }
 const app = resolve(appArg);
@@ -16,6 +16,8 @@ assert.notEqual(app, "/Applications/Netnyahoo.app", "use an isolated Debug build
 const port = args.find((a) => a.startsWith("--port="))?.split("=")[1] ?? "9474";
 const keep = args.includes("--keep-data");
 const stale = args.includes("--stale-window");
+const only = args.find((a) => a.startsWith("--only="))?.slice("--only=".length).toLowerCase();
+let matched = 0;
 const data = mkdtempSync(join(tmpdir(), "nn-profile-swipe-"));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const evidence = { app, data, stale, cases: [] };
@@ -77,17 +79,38 @@ const gesture = (sign, wobble = false, drift = false) => [
   { phase: "changed", dx: 22 * sign, dy: 0 },
   { phase: "changed", dx: 22 * sign, dy: 0 },
   { phase: "ended", dx: 0, dy: 0 },
-];
+// Hardware-like 16ms event timestamps, whenever the main thread gets to each step.
+].map((step, index) => ({ ...step, atMs: index * 16, timestampMs: index * 16 }));
+// Decoded NSEvent timestamps against the requested ones, and the native release velocity.
+function fixtureFidelity(steps, result) {
+  const start = Number(result?.startNs) / 1e9;
+  const events = (result?.events ?? []).filter((e) => !e.error);
+  const decodedMs = events.map((e) => (e.time - start) * 1000);
+  const intendedMs = steps.map((s) => s.timestampMs);
+  const ended = (result?.acks ?? []).find((a) => a.diag === "emit" && a.phase === "ended");
+  const errors = [];
+  if (events.length !== steps.length) errors.push(`events ${events.length}, steps ${steps.length}`);
+  intendedMs.forEach((ms, i) => {
+    if (!(Math.abs((decodedMs[i] ?? NaN) - ms) <= 0.1)) errors.push(`step ${i} timestamp ${decodedMs[i]}ms, requested ${ms}ms`);
+  });
+  if (!ended) errors.push("no ended emit");
+  else if (!(Math.abs(ended.velocity) >= 5)) errors.push(`ended velocity ${ended.velocity}`);
+  return { intendedMs, decodedMs, endedVelocity: ended?.velocity ?? null,
+    maxLateMs: Math.max(0, ...events.map((e) => e.lateMs ?? 0)), errors };
+}
 const simulate = (steps, source) => nn(source
   ? `return globalThis.expo.modules.NetnyahooSwipe.devSimulate(120, 400, ${source}, ${JSON.stringify(steps)}, true);`
   : `return globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});`);
 async function test(name, fn) {
+  if (only && !name.toLowerCase().includes(only)) return;
+  matched++;
   try {
     const result = await fn();
     evidence.cases.push({ name, passed: true, result });
     console.log(`PASS ${name}`);
   } catch (error) {
-    evidence.cases.push({ name, passed: false, error: String(error), windows: await windows().catch(() => []) });
+    evidence.cases.push({ name, passed: false, error: String(error), ...(error.evidence ? { evidence: error.evidence } : {}),
+      windows: await windows().catch(() => []) });
     console.error(`FAIL ${name}: ${error.message}`);
   }
 }
@@ -133,11 +156,25 @@ try {
   await test("rapid forward/reverse profile swipes", async () => {
     await reset();
     const results = [];
+    const fidelity = [];
     for (let i = 0; i < 6; i++) {
-      results.push(await simulate(gesture(i % 2 ? 1 : -1)));
-      await waitProfile(i % 2 ? "default" : "work");
+      const expected = i % 2 ? "default" : "work";
+      try {
+        const steps = gesture(i % 2 ? 1 : -1);
+        const result = await simulate(steps);
+        results.push(result);
+        fidelity.push(fixtureFidelity(steps, result));
+        if (fidelity.at(-1).errors.length) throw new Error(`fixture fidelity: ${fidelity.at(-1).errors.join("; ")}`);
+        await waitProfile(expected);
+      } catch (error) {
+        // Keep every completed native trace and the state at the failure; a dead app yields null, not a new error.
+        error.evidence = { iteration: i, expected, results, fidelity,
+          profile: await profile().catch(() => null),
+          pager: await nn('return globalThis.nnPager("w1").debug();').catch(() => null) };
+        throw error;
+      }
     }
-    return results;
+    return { results, fidelity };
   });
   await test("small vertical start wobble keeps horizontal intent", async () => {
     await reset();
@@ -304,12 +341,55 @@ try {
     assert.equal(await profile(), "default");
     return { before, afterHorizontal, afterVertical, horizontal, vertical };
   });
+  // Needs the web page test's renderer: t1 shows the local scroll fixture.
+  const routing = (result) => result.acks.find((a) => a.diag === "hitRouting");
+  const flagged = (steps, flags) => steps.map((s) => ({ ...s, ...flags }));
+  await test("a renderer hit outside its own frame falls back to the sidebar pager", async () => {
+    await reset();
+    assert.ok(await pageEval("!!document.body"), "the web fixture renderer must exist");
+    const legacy = await simulate(flagged(gesture(-1), { wrongRendererHit: true, legacyHitRouting: true }));
+    await sleep(600);
+    const legacyProfile = await profile();
+    const legacyBegin = legacy.acks.find((a) => a.diag === "begin");
+    evidence.baselineRendererHit = { profile: legacyProfile, raw: routing(legacy)?.raw?.[0]?.class,
+      misses: legacyBegin?.targets?.map((t) => t.miss), reject: legacy.acks.find((a) => a.diag === "reject")?.reason };
+    assert.equal(routing(legacy)?.raw?.[0]?.class, "RenderWidgetHostViewCocoa", "injection should hit the real renderer");
+    assert.equal(legacyProfile, "default", "legacy hit routing should reject the misrouted renderer hit");
+    const fixed = await simulate(flagged(gesture(-1), { wrongRendererHit: true }));
+    await waitProfile("work");
+    assert.equal(routing(fixed)?.fallback, true, "the pager should take the gesture through the fallback");
+    const begin = fixed.acks.find((a) => a.diag === "begin");
+    assert.ok(begin.hit.every((h) => h.class !== "RenderWidgetHostViewCocoa"), "the effective hit must not be the renderer");
+    return { legacy, fixed };
+  });
+  await test("a real web hit inside the renderer keeps page ownership", async () => {
+    await reset();
+    const source = (await nativeWindow()).window;
+    const result = await nn(`return globalThis.expo.modules.NetnyahooSwipe.devSimulate(700, 400, ${source}, ${JSON.stringify(gesture(-1))}, true);`);
+    await sleep(600);
+    assert.equal(routing(result)?.raw?.[0]?.class, "RenderWidgetHostViewCocoa", "the point should hit the page renderer");
+    assert.equal(routing(result)?.fallback, false, "a hit inside the renderer must not fall back");
+    assert.equal(await profile(), "default", "a web-page swipe must not switch profiles");
+    return result;
+  });
+  await test("a native sidebar hit does not use the renderer fallback", async () => {
+    await reset();
+    const result = await simulate(gesture(-1));
+    await waitProfile("work");
+    assert.notEqual(routing(result)?.raw?.[0]?.class, "RenderWidgetHostViewCocoa");
+    assert.equal(routing(result)?.fallback, false, "an ordinary sidebar hit should match directly");
+    return result;
+  });
   evidence.snapshot = { path: join(data, "profile-swipe.png"),
     saved: await nn(`return nn.shell.devSnapshotWindow("w1", ${JSON.stringify(join(data, "profile-swipe.png"))});`) };
 } catch (error) {
   evidence.error = String(error);
   console.error(error);
 } finally {
+  if (only && !matched && !evidence.error) {
+    evidence.error = `--only=${only} matched no test`;
+    console.error(`FAIL ${evidence.error}`);
+  }
   writeFileSync(join(data, "profile-swipe-results.json"), JSON.stringify(evidence, null, 2));
   if (pid) {
     spawnSync("kill", ["-TERM", pid]);

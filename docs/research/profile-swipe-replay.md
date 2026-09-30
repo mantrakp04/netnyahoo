@@ -87,4 +87,22 @@ the fixed production class passes and the next drag releases and switches normal
 hidden-instance regressions pass, including real RN Animated remaining motionless for 120 ms
 after the new drag begins. Evidence: `output/profile-swipe/replay-audit/pager-race-*.{json,log}`.
 
-Both fixes are included in 0.2.14. A physical trackpad check requires updating the installed app.
+## Sidebar hit routing
+
+An exact replay then exposed another native miss: AppKit returned a page renderer for a sidebar
+point at (109.9, 465.1), outside that renderer's frame (190, 7, 1163, 806). The sidebar pager
+contained the point, but normal ancestor matching rejected it. This dropped a whole gesture.
+
+The tracker now recovers only an out-of-bounds renderer hit when the visible pager contains the
+point in the same React root, and the pager subtree's own hit contains the point and resolves to
+that pager. Real page hits and ordinary sidebar hits retain their routing. A same-build legacy
+control reproduces the miss; the guarded fallback switches profiles. The full replay passes all
+1,325 inputs, 24 releases and eight alternating profile commits, and all 14 hidden-instance checks
+pass. Evidence: `output/profile-swipe/replay-audit/renderer-{hit-failure,guard-native,guard-replay}.json`.
+
+A separate rapid test intermittently paused for 131 ms between the last motion and release. It
+therefore emitted zero release velocity and correctly returned a 62 pt drag to its starting
+profile. The fixture now preserves intended event timestamps independently of delivery delays,
+as the recorded replay already does. The failed trace is retained as `rapid-delayed-release.json`.
+
+These fixes are included in 0.2.14. A physical trackpad check requires updating the installed app.
