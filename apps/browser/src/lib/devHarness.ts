@@ -10,11 +10,14 @@ import * as actions from "./actions";
 import { runCommand } from "./commands";
 import * as favicons from "./favicons";
 import { probeStore } from "./perfProbe";
+import { useLifecycle } from "./tabLifecycle";
 import { webviews } from "./webviews";
 
 export function startDevHarness() {
   probeStore("pages", usePages);
   probeStore("sidebarUi", useSidebarUi);
+  probeStore("favicons", favicons.useFavicons);
+  probeStore("lifecycle", useLifecycle);
   for (const level of ["error", "warn"] as const) {
     const original = console[level].bind(console);
     console[level] = (...args: unknown[]) => {

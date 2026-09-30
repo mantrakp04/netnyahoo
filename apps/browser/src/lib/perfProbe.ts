@@ -28,14 +28,19 @@ type Counter = Record<string, number>;
 const modules = (globalThis as { expo?: { modules?: Record<string, Record<string, (...a: unknown[]) => unknown>> } }).expo?.modules;
 const shell = modules?.NetnyahooShell;
 
-export const perfProbeEnabled = (() => {
+// The file's contents name optional (slower) probes: "selectors" times every store selector by call site.
+const probeOptions = (() => {
   try {
     const info = modules?.NetnyahooApp?.systemInfo?.() as { isolatedInstance?: boolean } | undefined;
-    return !!info?.isolatedInstance && typeof shell?.readDocument === "function" && shell.readDocument("perf-probe") != null;
+    if (!info?.isolatedInstance || typeof shell?.readDocument !== "function") return null;
+    const file = shell.readDocument("perf-probe");
+    return typeof file === "string" ? file : null;
   } catch {
-    return false;
+    return null;
   }
 })();
+
+export const perfProbeEnabled = probeOptions !== null;
 
 const now = () => performance.now();
 const bump = (c: Counter, key: string, by = 1) => void (c[key] = (c[key] ?? 0) + by);
@@ -57,6 +62,8 @@ function fresh() {
     taskMs: {} as Counter,
     timers: {} as Counter,
     timerMs: {} as Counter,
+    selectorCalls: {} as Counter,
+    selectorMs: {} as Counter,
     writes: {} as Counter,
     writeBytes: {} as Counter,
     writeMs: {} as Counter,
@@ -124,10 +131,10 @@ function installReactHook() {
 
 let traceTimers = false;
 
-const callers = (stack: string | undefined) =>
+const callers = (stack: string | undefined, depth = 4) =>
   (stack ?? "")
     .split("\n")
-    .slice(2, 6)
+    .slice(2, 2 + depth)
     .map((line) => /at (\S+)/.exec(line)?.[1] ?? "?")
     .join(" < ");
 
@@ -156,6 +163,27 @@ function wrapTimers() {
       );
     };
   }
+}
+
+// Times each useSyncExternalStore snapshot (a zustand selector), keyed by the hooks and component that
+// called it. Stack capture on every render makes this slow; use it to find costly selectors, not to time.
+function wrapSelectors() {
+  const react = require("react") as { useSyncExternalStore: (...a: unknown[]) => unknown };
+  const original = react.useSyncExternalStore;
+  react.useSyncExternalStore = (subscribe: unknown, getSnapshot: unknown, getServerSnapshot: unknown) => {
+    const label = callers(new Error().stack, 4);
+    const get = getSnapshot as () => unknown;
+    const timed = () => {
+      const t = now();
+      try {
+        return get();
+      } finally {
+        bump(stats.selectorCalls, label);
+        bump(stats.selectorMs, label, now() - t);
+      }
+    };
+    return original(subscribe, timed, getServerSnapshot);
+  };
 }
 
 // Every native→JS call (events, timers, callbacks) goes through the bridge queue; time each one.
@@ -246,6 +274,7 @@ if (perfProbeEnabled) {
   wrapTimers();
   wrapBridge();
   wrapWrites();
+  if (probeOptions?.includes("selectors")) wrapSelectors();
   (globalThis as { nnPerf?: unknown }).nnPerf = {
     marks,
     get firstCommit() {

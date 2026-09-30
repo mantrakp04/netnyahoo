@@ -217,6 +217,58 @@ const scenarios = {
     return { runs: out };
   },
 
+  // What one store update costs when nothing on screen depends on it (a background tab's progress):
+  // every subscribed selector runs, React bails out.
+  async storeUpdate({ count = 60 } = {}) {
+    await quiet();
+    const s = S();
+    const w = windowId();
+    const bg = s.windows[w].tabIds.find((id) => id !== activeId() && s.live[id] && !s.tabs[id].pinned);
+    P.reset();
+    const steps = [];
+    for (let i = 0; i < count; i++) {
+      steps.push(timed(() => S().updateLive(bg, { progress: 0.05 + (i % 10) / 10 })));
+      await sleep(5);
+    }
+    timed(() => S().updateLive(bg, { progress: 0 }));
+    return { steps, stats: P.read() };
+  },
+
+  async idleLate({ waitSeconds = 20, seconds = 10 } = {}) {
+    await sleep(waitSeconds * 1000);
+    return scenarios.idle({ seconds });
+  },
+
+  // Which tab is active after each store update while tabs open (finds activation ping-pong).
+  async activeTrail({ count = 4, origin } = {}) {
+    const w = windowId();
+    await quiet();
+    const trail = [];
+    const t0 = Date.now();
+    let last = activeId();
+    const stop = store.subscribe((st, prev) => {
+      const now = activeId();
+      if (now !== last) trail.push({ t: Date.now() - t0, from: last, to: now });
+      last = now;
+      const a = st.windows[w];
+      const b = prev.windows[w];
+      if (a !== b && a && b) {
+        const fields = Object.keys(a).filter((k) => a[k] !== b[k]);
+        if (!fields.includes("activeTabIds") || now === activeId()) trail.push({ t: Date.now() - t0, window: fields.join(",") });
+      }
+    });
+    const opened = [];
+    for (let i = 0; i < count; i++) {
+      trail.push({ t: Date.now() - t0, open: i });
+      timed(() => opened.push(S().newTab(w, { url: `${origin}/p/trail-${i}-${Date.now()}` })));
+      await sleep(600);
+    }
+    await sleep(1000);
+    stop();
+    for (const id of opened) if (typeof id === "string") S().closeTab(id);
+    return { opened, trail };
+  },
+
   async persistence() {
     const s = S();
     const time = (value) => {

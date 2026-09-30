@@ -216,7 +216,7 @@ async function evaluate(dataDir, pid, body, timeoutMs = 120_000) {
 
 // MARK: Run
 
-const ALL = ["startup", "persistence", "idle", "typing", "switchTabs", "openClose", "scroll", "pageLoad", "hover", "profileSwipe"];
+const ALL = ["startup", "persistence", "idle", "typing", "switchTabs", "openClose", "scroll", "pageLoad", "hover", "profileSwipe", "storeUpdate", "idleLate"];
 
 async function run() {
   const { app, bundle: jsbundle, label, runs = "5", port = "47817", out = defaultOut } = flags;
@@ -237,6 +237,8 @@ async function run() {
       const dataDir = join(out, "data", `${label}-${r}`);
       rmSync(dataDir, { recursive: true, force: true });
       writeSeed(dataDir, origin, version);
+      // --probe selectors (etc.) turns on the probe's slower options (src/lib/perfProbe.ts).
+      if (flags.probe) writeFileSync(join(dataDir, "perf-probe"), flags.probe);
       const { pid, launchedAt } = await launch(clone, dataDir, 9500 + r + (label.length % 50) * 10);
       const result = { run: r, launchedAt };
       try {
@@ -353,6 +355,16 @@ function summarize(results, bundleSize) {
     add(`pageLoad.${k}`, (r) => median(r.pageLoad.runs.map((x) => statLine(x.stats)[k])));
   add("hover.medianMs", (r) => median(r.hover.steps));
   statKeys("hover24", (r) => r.hover.stats);
+  add("storeUpdate.medianMs", (r) => median(r.storeUpdate.steps));
+  add("storeUpdate.p95Ms", (r) => pct(r.storeUpdate.steps, 0.95));
+  statKeys("idleLate10s", (r) => r.idleLate.stats);
+  add("idleLate10s.timerCallbacks", (r) => sum(Object.fromEntries(Object.entries(r.idleLate.stats.timers).filter(([k]) => !k.includes("pollDevEval")))));
+  add("save.msPerCall", (r) => {
+    const all = [r.idle, r.switchTabs, r.pageLoad?.runs?.at(-1), r.typing].filter(Boolean).map((x) => x.stats);
+    const ms = all.reduce((a, st) => a + (st.timerMs["setTimeout:save"] ?? 0), 0);
+    const n = all.reduce((a, st) => a + (st.timers["setTimeout:save"] ?? 0), 0);
+    return n ? ms / n : null;
+  });
   add("profileSwipe.commandMs", (r) => median(r.profileSwipe.runs.map((x) => x.ms)));
   for (const k of ["commits", "renders", "hostUpdates", "taskMs"])
     add(`profileSwipe.${k}`, (r) => median(r.profileSwipe.runs.map((x) => statLine(x.stats)[k])));
@@ -371,6 +383,8 @@ function summarize(results, bundleSize) {
   put("hover", last.hover?.stats);
   put("profileSwipe", last.profileSwipe?.runs?.[0]?.stats);
   put("startup", last.startup?.stats);
+  put("storeUpdate", last.storeUpdate?.stats);
+  put("idleLate", last.idleLate?.stats);
   return { lines, detail };
 }
 
@@ -385,8 +399,12 @@ function printSummary(summary) {
 }
 
 function compare(a, b) {
-  const A = JSON.parse(readFileSync(a, "utf8")).summary.lines;
-  const B = JSON.parse(readFileSync(b, "utf8")).summary.lines;
+  const lines = (file) => {
+    const report = JSON.parse(readFileSync(file, "utf8"));
+    return summarize(report.results, report.bundleSize).lines;
+  };
+  const A = lines(a);
+  const B = lines(b);
   console.log(`| metric | before | after | change |\n|---|---:|---:|---:|`);
   for (const key of Object.keys(A)) {
     const x = A[key]?.median;
@@ -399,7 +417,13 @@ function compare(a, b) {
 if (command === "bundle") bundle(positional[0] ?? join(defaultOut, "bundle"));
 else if (command === "run") await run();
 else if (command === "compare") compare(positional[0], positional[1]);
-else if (command === "summary") printSummary(JSON.parse(readFileSync(positional[0], "utf8")).summary);
+else if (command === "summary") {
+  // Recomputes the summary from the raw results (so older reports pick up new summary lines).
+  const report = JSON.parse(readFileSync(positional[0], "utf8"));
+  report.summary = summarize(report.results, report.bundleSize);
+  writeFileSync(positional[0], JSON.stringify(report, null, 2));
+  printSummary(report.summary);
+}
 else {
   console.error("usage: js-bench.mjs bundle <outDir> | run --app … --bundle … --label … | compare <a.json> <b.json> | summary <a.json>");
   process.exit(64);
