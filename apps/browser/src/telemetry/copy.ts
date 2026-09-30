@@ -10,6 +10,8 @@ export const SHARING_COPY = {
     share: "Share",
     notNow: "Not now",
   },
+  // Not opt-in: the update feed (apps/site/nginx.conf) counts every check, the one thing any copy sends.
+  updateChecks: "netnyahoo.com counts update checks by version and day, and whether it's this copy's first. Nothing else.",
   onboarding: {
     title: "Help us fix what breaks",
     row: "Crashes, errors, feature counts and speed. Never your sites, typing or tabs.",

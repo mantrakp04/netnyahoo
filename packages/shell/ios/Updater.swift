@@ -7,13 +7,20 @@ public final class AppUpdater: NSObject {
   public static let shared = AppUpdater()
 
   static var feedOverride: String? {
-    ProcessInfo.processInfo.environment["NETNYAHOO_UPDATE_FEED_URL"] ?? UserDefaults.standard.string(forKey: "NNUpdateFeedURL")
+    let env = ProcessInfo.processInfo.environment
+    if let feed = env["NETNYAHOO_UPDATE_FEED_URL"] ?? UserDefaults.standard.string(forKey: "NNUpdateFeedURL") { return feed }
+    // SUFeedURL (netnyahoo.com) counts checks as copies in use; test instances go straight to the same file.
+    let isolated = env["NETNYAHOO_BACKGROUND"] == "1" || env["NETNYAHOO_DATA_DIR"] != nil
+    return isolated ? "https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml" : nil
   }
 
   #if canImport(Sparkle)
   private lazy var controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: self)
   private var deferredUpdate = false
   private var deferredRelaunch: (() -> Void)?
+  // The feed counts update checks by version and day; this one bit (no ID) tells a copy's first check
+  // from the ones after, so first launches can be told from copies still running.
+  private var firstCheckPending = false
   #endif
   private var started = false
 
@@ -38,6 +45,8 @@ public final class AppUpdater: NSObject {
     #if canImport(Sparkle)
     guard !started, isConfigured else { return }
     started = true
+    // Sparkle stamps the check date before it builds the feed URL, so read it before the first check.
+    firstCheckPending = controller.updater.lastUpdateCheckDate == nil
     do {
       try controller.updater.start()
     } catch {
@@ -122,6 +131,14 @@ public final class AppUpdater: NSObject {
 #if canImport(Sparkle)
 extension AppUpdater: SPUUpdaterDelegate {
   public func feedURLString(for updater: SPUUpdater) -> String? { Self.feedOverride }
+
+  // Sparkle calls this only when it's about to fetch the feed (the permission prompt, which also asks,
+  // never shows: SUEnableAutomaticChecks is in Info.plist). No system profile is ever sent.
+  public func feedParameters(for updater: SPUUpdater, sendingSystemProfile sendingProfile: Bool) -> [[String: String]] {
+    guard firstCheckPending else { return [] }
+    firstCheckPending = false
+    return [["key": "first", "value": "1"]]
+  }
 
   public func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
     guard Self.isPresentingFullScreen else { return false }

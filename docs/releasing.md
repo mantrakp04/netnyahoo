@@ -4,9 +4,12 @@ Releases are GitHub releases of `mantrakp04/netnyahoo`, tagged `v<version>`. Eac
 
 - `Netnyahoo-<version>.dmg`: what people download (the app and an `/Applications` link).
 - `Netnyahoo-<version>.zip`: the archive Sparkle installs updates from.
-- `appcast.xml`: the Sparkle feed. The app's `SUFeedURL` is
-  `https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml`, so the latest
-  release's appcast is the feed.
+- `appcast.xml`: the Sparkle feed. The latest release's appcast is the feed. Builds after 0.2.13 poll
+  `https://netnyahoo.com/appcast.xml` (`SUFeedURL`), which counts the check by version and day (and whether
+  it's the copy's first) and redirects to
+  `https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml`, the URL 0.2.13 and
+  earlier poll directly. The count can't block an update: see `apps/site/nginx.conf` and `docs/growth.md`
+  › Installs.
 
 Each version's notes are a file in the repo, `docs/release-notes/<version>.md` (how to write one:
 `docs/release-notes/README.md`). The GitHub release, the update dialog and the website's

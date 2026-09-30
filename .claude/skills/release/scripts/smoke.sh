@@ -116,4 +116,6 @@ logger=""
 kill -KILL "$pid" 2>/dev/null || true
 pid=""
 codesign --verify --deep --strict "$app" && echo "PASS  bundle still sealed after running" || { echo "FAIL  running the app changed its bundle"; status=1; }
+# The feed in this build's Info.plist answers (after publishing, feed.sh <version> checks it lists it).
+"$here/feed.sh" "$version" --before-publish "$app" || status=1
 exit $status

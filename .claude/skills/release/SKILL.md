@@ -114,7 +114,10 @@ and a session whose window was left on its second profile, and checks, over CDP 
 - quitting the way ⌘Q and Sparkle's update do (the quit Apple event, sent to this instance's pid only) exits
   within 15 s with status 0 and no crash report (0.2.6 and 0.2.7 crashed on every quit, so every update
   ended in "Netnyahoo quit unexpectedly");
-- the bundle's signature is still valid after running (0.1.0 wrote into its own bundle).
+- the bundle's signature is still valid after running (0.1.0 wrote into its own bundle);
+- the feed in the build's Info.plist (`SUFeedURL`, `https://netnyahoo.com/appcast.xml` in builds after 0.2.13) answers
+  with an appcast (`scripts/feed.sh --before-publish`). A 404 means netnyahoo.com is running a deploy without
+  the feed endpoint (`apps/site/nginx.conf`): deploy the site first, or copies of this build never update.
 
 Everything must pass before publishing. One known exception: the two passkey window-order checks read
 CGWindowList, which isn't reliable while the Mac's screen is locked (window animations freeze). smoke.sh
@@ -135,9 +138,12 @@ gh release create v<version> -R mantrakp04/netnyahoo --title "Netnyahoo <version
   --notes-file dist/<version>/release-notes.md \
   dist/<version>/Netnyahoo-<version>.dmg dist/<version>/Netnyahoo-<version>.zip dist/<version>/appcast.xml
 curl -fsL https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml | grep -o 'shortVersionString>[0-9.]*' | head -1
+.claude/skills/release/scripts/feed.sh <version>
 ```
 
-The appcast check must print the new version: that's what every installed copy polls.
+Both must show the new version. Copies from 0.2.13 and earlier poll GitHub's URL directly; newer ones poll
+netnyahoo.com/appcast.xml, which counts the check (version, day, first check or not) and redirects to the
+same GitHub file. feed.sh reads the URL from the built Info.plist, so it checks what this build will poll.
 
 ## 6. Deploy the site
 

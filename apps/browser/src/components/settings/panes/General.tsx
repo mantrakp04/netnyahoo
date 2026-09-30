@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { AppState, Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
 import { useBrowser } from "../../../store/browser";
+import { SHARING_COPY } from "../../../telemetry/copy";
 import { Button, Group, PopUp, Row, SectionHeader, Toggle, useFormColors } from "../controls";
 import { openImport } from "../windows";
 
@@ -114,7 +115,7 @@ function UpdatesSection() {
     <>
       <SectionHeader title="Updates" description={ready ? undefined : "Updates aren't set up for this build."} />
       <Group>
-        <Row title="Check for updates automatically">
+        <Row title="Check for updates automatically" description={SHARING_COPY.updateChecks}>
           <Toggle value={ready && state.automaticChecks} disabled={!ready} onChange={(v) => set({ automaticChecks: v })} />
         </Row>
         <Row title={`Automatically update ${APP}`} description="Downloads updates in the background and installs them the next time it restarts.">

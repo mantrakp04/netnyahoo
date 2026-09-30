@@ -64,6 +64,48 @@ or narrower.
 
 Result: _pending._
 
+## Installs: downloads → first launch → still running
+
+A download isn't an install. What we can count without breaking the privacy promise (added 2026-09-30,
+takes effect with the first release after 0.2.13):
+
+- **Downloads:** GitHub's `download_count` for each release's DMG. Sparkle updates are the zip's count.
+- **Update checks:** builds after 0.2.13 poll `https://netnyahoo.com/appcast.xml` (`SUFeedURL`). nginx
+  (`apps/site/nginx.conf`) answers every request with a 302 to
+  `https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml` and, beside it, mirrors a
+  PostHog event `update_check { version, first }` with the day as its timestamp. Only requests whose
+  User-Agent is the app's Sparkle (`Netnyahoo/<version> Sparkle/…`) count. Nothing else is passed on: no IP
+  (PostHog sees our server), no headers, no cookie, a fixed `distinct_id` (`update-check`) and no person
+  profile. The redirect never waits on PostHog; if PostHog is down or slow, the update still works.
+- **First launch:** the app adds `first=1` to its first check ever (`packages/shell/ios/Updater.swift`,
+  Sparkle's `feedParameters`). Sparkle checks at the first launch (automatic checks are on in Info.plist),
+  so `first` per version ≈ copies of that version that were installed and opened. A first check made while
+  offline isn't retried as first.
+- **Still running:** a running copy checks at launch (once 8 h have passed since the last check) and every
+  8 h, so 1 to 3 checks a day. Copies running on a day are between checks/3 and checks.
+- **Test instances** (`NETNYAHOO_BACKGROUND=1` or `NETNYAHOO_DATA_DIR` set: smoke tests, agents) poll GitHub
+  directly, so they aren't counted.
+- **Copies from 0.2.13 and earlier** still poll GitHub directly. They show up only as the latest release's
+  `appcast.xml` download count (all versions together, no days).
+
+Where it's disclosed: Settings › General › "Check for updates automatically", the What's Sent sheet in
+Settings › Privacy & Security, and the site's Q&A ("What does it collect?").
+
+**Read the counts:** `POSTHOG_PERSONAL_API_KEY=phx_… node scripts/update-checks.mjs [days]` (a personal key
+with `query:read` for project 287835). It prints, per version, DMG downloads, first launches, first/DMG,
+update downloads and GitHub feed fetches, then checks and first launches per day and version. Without the
+key it prints the GitHub columns. The same query in PostHog's SQL editor:
+
+```sql
+SELECT toDate(timestamp) AS day, toString(properties.version) AS version,
+       count() AS checks, countIf(toString(properties.first) = 'true') AS first_launches
+FROM events
+WHERE event = 'update_check' AND match(toString(properties.version), '^[0-9]+\\.[0-9]+\\.[0-9]+$')
+GROUP BY day, version ORDER BY day DESC, version
+```
+
+(The version filter drops `0.0.0-selftest`, from a local test of the endpoint on 2026-09-30.)
+
 ## Log
 
 - **2026-09-29 17:25 UTC:** shipped the above (site deploy). Checks every 30 min (:13 and :43 local) from the
