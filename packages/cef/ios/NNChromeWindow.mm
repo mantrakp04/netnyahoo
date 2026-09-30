@@ -10,6 +10,18 @@
 @property(nonatomic, weak) NSView *netnyahooEmbeddedView;
 @end
 
+// A title change makes AppKit lay the titlebar out again, which puts the window buttons back at their standard
+// place without telling the buttons' frame observers; this puts them back where we want them.
+@interface NNTitleFollower : NSObject
+@property(nonatomic, copy) void (^onChange)(void);
+@end
+
+@implementation NNTitleFollower
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+  if (self.onChange) self.onChange();
+}
+@end
+
 namespace {
 
 const void *kRootKey = &kRootKey;
@@ -60,8 +72,18 @@ void LayoutTrafficLights(NSWindow *window) {
   for (NSUInteger i = 0; i < buttons.count; i++) [buttons[i] setFrameOrigin:NSMakePoint(x + i * spacing, y)];
 }
 
+const void *kTitleFollowerKey = &kTitleFollowerKey;
+
 void KeepTrafficLightsInset(NSWindow *window) {
   __weak NSWindow *weakWindow = window;
+  NNTitleFollower *follower = [NNTitleFollower new];
+  follower.onChange = ^{
+    LayoutTrafficLights(weakWindow);
+    dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
+  };
+  // The window owns the follower, so it outlives the observation; removed when the window deallocates.
+  objc_setAssociatedObject(window, kTitleFollowerKey, follower, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  [window addObserver:follower forKeyPath:@"title" options:0 context:nil];
   for (NSNotificationName name in @[
          NSWindowDidResizeNotification, NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
          NSWindowDidExitFullScreenNotification, NSWindowDidBecomeMainNotification
