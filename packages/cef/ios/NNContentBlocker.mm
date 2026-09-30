@@ -308,6 +308,21 @@ void LoadIntoProfile(NSString *profile, CefRefPtr<CefRequestContext> context) {
 #endif
 }
 
+void LoadAgainIfNeeded(NSString *profile, CefRefPtr<CefRequestContext> context) {
+  // Loading a component extension that's running replaces it, and Chrome reports the replaced one as uninstalled:
+  // its app shortcut code then recreates ~/Applications/Chromium Apps.localized and sets that folder's icon (an
+  // IconServices fault report each time). So only when it isn't answering with its rules on.
+  __block bool settled = false;
+  void (^decide)(bool) = ^(bool running) {
+    if (settled) return;
+    settled = true;
+    if (!running) LoadIntoProfile(profile, context);
+  };
+  pages::ExtensionEval(profile, ExtensionId(), @"chrome.declarativeNetRequest.getEnabledRulesets().then((r) => r.length > 0)",
+                       ^(id value, NSString *) { decide([value isEqual:@YES]); });
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1500 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ decide(false); });
+}
+
 }
 
 // MARK: - Public API

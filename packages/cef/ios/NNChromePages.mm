@@ -460,7 +460,7 @@ void WhenProfileReady(NSString *profile, void (^ready)(CefRefPtr<CefRequestConte
         blocker::LoadIntoProfile(profile, context);
         if (fresh)
           dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            blocker::LoadIntoProfile(profile, context);
+            blocker::LoadAgainIfNeeded(profile, context);
           });
       }
     }
