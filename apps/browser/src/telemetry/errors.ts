@@ -107,7 +107,7 @@ export async function reportNativeCrashes() {
         source: "native_crash",
         crash_type: kind,
         crash_signal: signal,
-        crash_frames: report.frameSource === "exception" ? "exception" : "thread",
+        crash_frames: report.frameSource ?? "thread",
         crashed_minutes_ago: Math.round((Date.now() - report.time) / 60_000),
       },
       { urgent: true, raw: { $exception_list: exceptionList(type, value, "native_crash", false, nativeFrames(report.frames)) } },
