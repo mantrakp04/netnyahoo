@@ -1,0 +1,47 @@
+scripts/update-checks.mjs
+  s_631b13a766b697::t_2313c92c2d8cc5 4
+.claude/skills/release/scripts/feed.sh
+  s_631b13a766b697::t_2313c92c2d8cc5 6
+.claude/skills/release/SKILL.md
+  s_631b13a766b697::t_2313c92c2d8cc5 120
+infra/site/.dockerignore
+  s_631b13a766b697::t_2313c92c2d8cc5 1-6
+infra/site/.gitignore
+  s_631b13a766b697::t_2313c92c2d8cc5 1
+apps/site/package.json
+  s_631b13a766b697::t_2313c92c2d8cc5 10
+docs/growth.md
+  s_631b13a766b697::t_2313c92c2d8cc5 74
+infra/site/deploy.sh
+  s_9c356f9574d31c::t_bb7cfa3ca08835 1-14
+apps/browser/src/telemetry/copy.ts
+  s_631b13a766b697::t_2313c92c2d8cc5 13
+docs/releasing.md
+  s_631b13a766b697::t_2313c92c2d8cc5 11,73
+infra/site/Dockerfile
+  s_631b13a766b697::t_2313c92c2d8cc5 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2951613f3d990e8ac572426742843f52b330eb36",
+  "prompts": {},
+  "sessions": {
+    "s_631b13a766b697": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ef88-d29f-71c0-bccb-8ac6c46b7bc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
