@@ -1182,10 +1182,14 @@ bool Client::OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &eve
 bool Client::OnKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event, CefEventHandle os_event) {
   NSEvent *ns = (__bridge NSEvent *)os_event;
   if (event.type != KEYEVENT_RAWKEYDOWN || !ns || ns.type != NSEventTypeKeyDown) return false;
-  if (event.windows_key_code == 0x1B && !(ns.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagFunction) &&
-      browser->IsLoading()) {
-    browser->StopLoad();
-    return true;
+  if (event.windows_key_code == 0x1B && !(ns.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask & ~NSEventModifierFlagFunction)) {
+    if (browser->IsLoading()) {
+      browser->StopLoad();
+      return true;
+    }
+    // Only an Esc the page didn't handle reaches here; say so unless it was typed into a field.
+    if (!event.focus_on_editable_field && !fullscreen_) Emit(@"command", @{@"command" : @"escape", @"text" : @""});
+    return false;
   }
   if (!(ns.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagFunction)))
     return false;

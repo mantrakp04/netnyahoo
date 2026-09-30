@@ -223,6 +223,7 @@ enum MainMenu {
       cmd("New Tab in Group", "newTabInGroup", "t", [.command, .option]),
       cmd("New Window", "newWindow", "n"),
       cmd("New Incognito Window", "newIncognitoWindow", "n", [.command, .shift]),
+      cmd("New Small Yahu Window", "newSmallYahu", "n", [.command, .option]),
       cmd("Reopen Closed Tab", "reopenClosedTab", "t", [.command, .shift]),
       cmd("Reopen Closed Window", "reopenClosedWindow"),
       cmd("Open File…", "openFile", "o"),
@@ -325,7 +326,6 @@ enum MainMenu {
       cmd("Open Split Pane", "openSplitPane", "+", .control).hiddenShortcut(),
       cmd("Focus Next Split Pane", "focusNextPane", "}", .control).hiddenShortcut(),
       cmd("Focus Previous Split Pane", "focusPreviousPane", "{", .control).hiddenShortcut(),
-      cmd("Open Split Pane", "openSplitPane", "n", [.command, .option]).hiddenShortcut(),
       .separator(),
       sub("Show Bookmarks Bar", [
         cmd("Always", "setBookmarksBar", arg: "always"),
@@ -677,6 +677,9 @@ enum MainMenu {
     let incognito = CommandItem("New Incognito Window", "newIncognitoWindow")
     incognito.windowless = true
     menu.addItem(incognito)
+    let small = CommandItem("New Small Yahu Window", "newSmallYahu")
+    small.windowless = true
+    menu.addItem(small)
     return menu
   }
 }

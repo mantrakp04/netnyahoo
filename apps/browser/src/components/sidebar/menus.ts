@@ -46,7 +46,7 @@ function bookmarkFolderItems(windowId: string, prefix: string): MenuItem[] {
 
 function moveToWindowItems(windowId: string): MenuItem[] {
   const s = store();
-  const others = s.windowOrder.filter((id) => id !== windowId && !s.windows[id]!.incognito);
+  const others = s.windowOrder.filter((id) => id !== windowId && !s.windows[id]!.incognito && s.windows[id]!.kind !== "small");
   return [
     ...others.map((id) => ({ id: `window:${id}`, title: windowTitle(s, id) })),
     ...(others.length ? [sep] : []),

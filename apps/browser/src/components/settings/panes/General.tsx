@@ -49,6 +49,12 @@ export function GeneralPane() {
         <Row title="Warn before closing a window with multiple tabs" description="Asks before ⇧⌘W or the close button closes its tabs.">
           <Toggle value={settings.warnBeforeClosingWindow} onChange={(v) => update({ warnBeforeClosingWindow: v })} />
         </Row>
+        <Row
+          title="Open links from other apps in Small Yahu"
+          description={`A link from Mail, Slack or Notes opens in a small window of its own. ⌘O moves it into ${APP}; closing it throws it away.`}
+        >
+          <Toggle value={settings.openLinksInSmallYahu} onChange={(v) => update({ openLinksInSmallYahu: v })} />
+        </Row>
       </Group>
 
       <SectionHeader title={`When quitting ${APP}:`} />

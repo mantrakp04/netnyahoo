@@ -19,6 +19,7 @@ import { TOP_CARD_INSET, TOP_STRIP_HEIGHT, TopStripPeek, TopTabStrip } from "./c
 import { useTabLayout } from "./components/layout/windowLayout";
 import { WindowProfile } from "./components/layout/WindowProfile";
 import { Sidebar } from "./components/Sidebar";
+import { SmallYahuWindow } from "./components/smallYahu/SmallYahuWindow";
 import { SidebarOverlays } from "./components/sidebar/Overlays";
 import { useSidebarWidth } from "./components/sidebar/tokens";
 import { hex, layout, useTheme } from "./lib/theme";
@@ -33,12 +34,9 @@ export function WindowRoot({ windowId }: { windowId?: string }) {
 function BrowserWindowRoot({ windowId }: { windowId?: string }) {
   const id = useBrowser((s) => windowId ?? s.ui.focusedWindowId ?? s.windowOrder[0] ?? null);
   const exists = useBrowser((s) => !!id && !!s.windows[id]);
+  const small = useBrowser((s) => !!id && s.windows[id]?.kind === "small");
   if (!id || !exists) return null;
-  return (
-    <WindowContext.Provider value={id}>
-      <BrowserWindow />
-    </WindowContext.Provider>
-  );
+  return <WindowContext.Provider value={id}>{small ? <SmallYahuWindow /> : <BrowserWindow />}</WindowContext.Provider>;
 }
 
 function BrowserWindow() {

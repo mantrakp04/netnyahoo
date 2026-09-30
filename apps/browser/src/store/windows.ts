@@ -17,6 +17,7 @@ import {
 } from "./model";
 import { restoringGroup } from "./organize";
 import { adoptParkedPins, parkWindowPins } from "./parkedPins";
+import { isSmall, isSmallWindow, mainWindowFor, smallYahuProfile } from "./small";
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
 import type { BrowserWindow, ClosedTab, ClosedWindow, Frame, ParkedPins, Tab, TabGroup } from "./types";
 
@@ -27,6 +28,7 @@ export type CreateWindowOptions = {
   adoptId?: string;
   tabIds?: string[];
   frame?: Frame | null;
+  small?: boolean;
 };
 
 export type WindowsSlice = {
@@ -55,6 +57,9 @@ function emptyWindow(id: string, profileId: string, incognito: boolean, frame: F
   return { id, profileId, incognito, tabIds: [], activeTabIds: {}, sidebarOpen: true, frame, createdAt: Date.now() };
 }
 
+// Small Yahu opens centred at its remembered size (packages/shell Windows.swift), so it keeps no frame.
+const smallWindow = (id: string, profileId: string): BrowserWindow => ({ ...emptyWindow(id, profileId, false), sidebarOpen: false, kind: "small" });
+
 function withWindow(s: BrowserState, w: BrowserWindow): BrowserState {
   return {
     ...s,
@@ -66,7 +71,7 @@ function withWindow(s: BrowserState, w: BrowserWindow): BrowserState {
 
 export function moveTabsInto(s: BrowserState, ids: string[], targetId: string): BrowserState {
   const target = s.windows[targetId];
-  if (!target) return s;
+  if (!target || isSmallWindow(target)) return s;
   const moving = ids
     .map((id) => s.tabs[id])
     .filter((t): t is Tab => !!t && t.windowId !== targetId && !isIncognitoProfile(t.profileId) && !target.incognito);
@@ -113,17 +118,20 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
   createWindow(o = {}) {
     const s = get();
     const id = newId("w");
+    const small = !!o.small && !o.incognito;
     const profileId = o.incognito
       ? incognitoProfileId(id)
       : o.profileId && s.profiles[o.profileId]
         ? o.profileId
-        : s.settings.defaultProfileId;
-    let next = withWindow(s, emptyWindow(id, profileId, !!o.incognito, o.frame ?? null));
-    if (o.tabIds?.length) next = moveTabsInto(next, o.tabIds, id);
+        : small
+          ? smallYahuProfile(s)
+          : s.settings.defaultProfileId;
+    let next = withWindow(s, small ? smallWindow(id, profileId) : emptyWindow(id, profileId, !!o.incognito, o.frame ?? null));
+    if (o.tabIds?.length && !small) next = moveTabsInto(next, o.tabIds, id);
     if (!next.windows[id]!.tabIds.length) next = withNewTab(next, id, { url: o.url, adoptId: o.adoptId })[0];
     const first = next.windows[id]!.tabIds[0]!;
     const shown = next.windows[id]!.activeTabIds[next.tabs[first]!.profileId] ?? first;
-    next = adoptParkedPins(next, id, next.tabs[shown]!.profileId);
+    if (!small) next = adoptParkedPins(next, id, next.tabs[shown]!.profileId);
     next = apply(next, activated(next, shown));
     set(next);
     return id;
@@ -135,8 +143,9 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     if (!w) return;
     const tabs = w.tabIds.map((t) => s.tabs[t]).filter((t): t is Tab => !!t && !inPinnedContainer(s, t.id));
     const tabIds = tabs.map((t) => t.id);
+    const small = isSmallWindow(w);
     let closedWindows = s.closedWindows;
-    if (!w.incognito && tabs.some((t) => t.url)) {
+    if (!w.incognito && !small && tabs.some((t) => t.url)) {
       const active = new Set(Object.values(w.activeTabIds));
       const entry: ClosedWindow = {
         kind: "window",
@@ -150,14 +159,15 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
       };
       closedWindows = [...closedWindows, entry].slice(-MAX_CLOSED_WINDOWS);
     }
-    const next = removeTabs(s, w.tabIds, false);
+    // A Small Yahu page goes to Recently Closed as a tab, so ⇧⌘T brings it back in Small Yahu.
+    const next = removeTabs(s, w.tabIds, small);
     set({
       ...next,
       windows: without(next.windows, [id]),
       windowOrder: next.windowOrder.filter((w) => w !== id),
       windowUi: without(next.windowUi, [id]),
       closedWindows,
-      parkedPins: parkWindowPins(s.parkedPins, w, s),
+      parkedPins: small ? s.parkedPins : parkWindowPins(s.parkedPins, w, s),
       closedTabs: w.incognito ? next.closedTabs.filter((c) => c.windowId !== id) : next.closedTabs,
       ui: {
         ...next.ui,
@@ -171,7 +181,12 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     set((s) => {
       const w = s.windows[id];
       if (!w || (w.frame && w.frame.every((v, i) => v === frame[i]))) return {};
-      return { windows: { ...s.windows, [id]: { ...w, frame } } };
+      const windows = { ...s.windows, [id]: { ...w, frame } };
+      if (!isSmallWindow(w)) return { windows };
+      // Small Yahu remembers its size, not its position: it always opens centred.
+      const size: [number, number] = [Math.round(frame[2]), Math.round(frame[3])];
+      const [width, height] = s.settings.smallYahuSize ?? [];
+      return size[0] === width && size[1] === height ? { windows } : { windows, settings: { ...s.settings, smallYahuSize: size } };
     });
   },
 
@@ -185,7 +200,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
   switchProfile(windowId, profileId) {
     let s = get();
     const w = s.windows[windowId];
-    if (!w || w.incognito || !s.profiles[profileId] || w.profileId === profileId) return;
+    if (!w || w.incognito || isSmallWindow(w) || !s.profiles[profileId] || w.profileId === profileId) return;
     s = adoptParkedPins(s, windowId, profileId);
     const remembered = w.activeTabIds[profileId];
     let target = remembered && s.tabs[remembered]?.windowId === windowId ? remembered : undefined;
@@ -234,9 +249,9 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
 
   mergeAllWindows(windowId) {
     const s = get();
-    const target = s.windows[windowId]?.incognito ? s.ui.focusOrder.find((id) => s.windows[id] && !s.windows[id]!.incognito) : windowId;
+    const target = s.windows[windowId]?.incognito || isSmallWindow(s.windows[windowId]) ? mainWindowFor(s) : windowId;
     if (!target) return;
-    const others = s.windowOrder.filter((id) => id !== target && !s.windows[id]?.incognito);
+    const others = s.windowOrder.filter((id) => id !== target && !s.windows[id]?.incognito && !isSmallWindow(s.windows[id]));
     const tabIds = others.flatMap((id) => s.windows[id]!.tabIds);
     if (!tabIds.length) return;
     let next = moveTabsInto(s, tabIds, target);
@@ -273,6 +288,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
 
   restoreClosed(entryId, windowId) {
     const s = get();
+    if (isSmall(s, windowId)) windowId = mainWindowFor(s) ?? null;
     const closedTab = s.closedTabs.find((c) => c.id === entryId);
     if (closedTab) return set(restoreTab(s, closedTab, windowId));
     const closedWindow = s.closedWindows.find((c) => c.id === entryId);
@@ -302,6 +318,17 @@ function restoreTab(s: BrowserState, entry: ClosedTab, requested?: string | null
     if (next.tabs[entry.tabId]) return restoreTab(next, entry, windowId);
   }
   const closedTabs = s.closedTabs.filter((c) => c.id !== entry.id);
+  if (entry.small && !isIncognitoProfile(entry.tab.profileId)) {
+    const id = newId("w");
+    const profileId = s.profiles[entry.tab.profileId] ? entry.tab.profileId : smallYahuProfile(s);
+    const next = withWindow({ ...s, closedTabs }, smallWindow(id, profileId));
+    return withNewTab(next, id, {
+      url: entry.tab.url || undefined,
+      profileId,
+      snapshot: { ...entry.tab, pinned: false, profileId },
+      adoptId: entry.tabId && entry.tab.url ? `restore:${entry.tabId}` : undefined,
+    })[0];
+  }
   const tile = entry.pinnedTile && entry.tabId ? s.tabs[entry.tabId] : undefined;
   if (tile) {
     const unloaded = !tile.navigation && !tile.adoptId;

@@ -3,6 +3,7 @@ import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 import { leaveGroups, syncGroupOrder } from "./groups";
 import {
+  activeTabId,
   closesWindow,
   IDLE_LIVE,
   inPinnedContainer,
@@ -17,6 +18,7 @@ import {
 } from "./model";
 import { groupWithOpener, onUrlChange, pruneSelection, samePage } from "./organize";
 import { searchUrlPrefix } from "./settings";
+import { mainWindowFor } from "./small";
 import { removeFromSplits, splitOf } from "./splits";
 import type { BrowserWindow, ClosedTab, Tab, TabLive, TabSnapshot } from "./types";
 
@@ -124,6 +126,7 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
           index,
           group: group ? { id: group.id, name: group.name, icon: group.icon, color: group.color } : null,
           closedAt: now,
+          ...(w.kind === "small" ? { small: true } : {}),
         });
       });
     }
@@ -276,6 +279,17 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
   closedTabs: [],
 
   newTab(windowId, options) {
+    const small = get().windows[windowId];
+    if (small?.kind === "small" && small.tabIds.length) {
+      // Small Yahu keeps its one page; new tabs go to a main window of that profile.
+      const profileId = options?.profileId ?? small.profileId;
+      const main = mainWindowFor(get(), profileId);
+      if (!main) {
+        const created = get().createWindow({ profileId, url: options?.url, adoptId: options?.adoptId });
+        return activeTabId(get(), created) ?? "";
+      }
+      return get().newTab(main, { ...options, profileId, openerId: undefined, index: undefined });
+    }
     if (options?.url && !options.adoptId && openOutsideTab(resolveInput(options.url, searchUrlPrefix(get().settings)), windowId)) return "";
     let [next, id] = withNewTab(get(), windowId, options);
     if (id && options?.openerId && options.background) next = groupWithOpener(next, id, options.openerId);

@@ -24,6 +24,9 @@ modules before using them — this is a summary from the agent that built it.
 ## Actions
 - Windows: `createWindow`, `closeWindow`, `switchProfile`, `moveTabsToWindow`, `moveTabToProfile`,
   `mergeAllWindows`, `reopenClosed` / `reopenClosedTab` / `reopenClosedWindow`, `restoreClosed`.
+  Small Yahu (Little Arc): `createWindow({ small: true, url })` makes a `kind: "small"` window with one tab (store/small.ts).
+  `newTab` into it goes to `mainWindowFor(s, profileId)`; `resolveWindowId(s, null)` never picks it; closing it records a
+  `ClosedTab` with `small: true` that reopens in a new Small Yahu; it isn't saved with the session.
 - Tabs: `newTab(windowId, { url, background, adoptId, openerId, profileId, pinned, index })`, `closeTab`,
   `closeTabs`, `activate`, `navigate`, `updateTab`, `updateLive`, `togglePin`, `moveTab`, `duplicateTab`.
   Closing a pinned tab only unloads it (`unloadPinnedTabs`, like Dia): the tile stays with `unloaded: true`, back at its

@@ -119,7 +119,9 @@ export function bookmarkProfileId(s: BrowserState, window: BrowserWindow | undef
 
 export function resolveWindowId(s: BrowserState, id?: string | null): string | undefined {
   if (id && s.windows[id]) return id;
-  return s.ui.focusOrder.find((w) => s.windows[w]) ?? s.windowOrder.find((w) => s.windows[w]);
+  // Without a window named, never pick a Small Yahu: it holds one page (store/small.ts).
+  const main = (w: string) => !!s.windows[w] && s.windows[w]!.kind !== "small";
+  return s.ui.focusOrder.find(main) ?? s.windowOrder.find(main);
 }
 
 export function merge<T extends object>(obj: T, patch: Partial<T>): T {

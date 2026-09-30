@@ -18,7 +18,7 @@ export function windowUnder(s: BrowserState, source: string, x: number, y: numbe
   if (!point || !from || from.incognito) return { outside, overWindow: null };
   const overWindow = s.ui.focusOrder.find((id) => {
     const w = s.windows[id];
-    return !!w && id !== source && !w.incognito && !!w.frame && contains(w.frame, point);
+    return !!w && id !== source && !w.incognito && w.kind !== "small" && !!w.frame && contains(w.frame, point);
   });
   return { outside, overWindow: overWindow ?? null };
 }

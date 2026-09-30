@@ -10,6 +10,7 @@ export type BrowserCommand =
   | "newTab"
   | "newWindow"
   | "newIncognitoWindow"
+  | "newSmallYahu"
   | "reopenClosedTab"
   | "reopenClosedWindow"
   | "restoreClosed"
@@ -156,8 +157,10 @@ export type OpenWindowOptions = {
   incognito?: boolean;
   title?: string;
   focus?: boolean;
-  kind?: "browser" | "settings" | "import" | "taskManager";
+  kind?: "browser" | "small" | "settings" | "import" | "taskManager";
   profile?: string;
+  // Small Yahu: its remembered size; the window opens centred on the active screen.
+  size?: [number, number];
 };
 
 export type MenuEntry = { id: string; title: string; current?: boolean };

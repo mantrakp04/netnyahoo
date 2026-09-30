@@ -168,7 +168,7 @@ const shortcuts = [
   ["⌘S", cmd("s", 1), { command: "toggleSidebar" }, "⌘S"],
   ["⇧⌘L", cmd("L", 37, "shift"), { command: "toggleSidebar" }, "(Chrome's)"],
   ["⇧⌘F", cmd("F", 3, "shift"), { command: "toggleSidebar" }, "(Chrome's)"],
-  ["⌥⌘N", cmd("n", 45, "option"), { command: "openSplitPane" }, "(Chrome's)"],
+  ["⌥⌘N", cmd("n", 45, "option"), { command: "newSmallYahu" }, "Arc's Little Arc"],
   ["⌃⇧=", K("+", 24, "control", "shift"), { command: "openSplitPane" }, "⌃⇧="],
   ["⌃⇧]", K("}", 30, "control", "shift"), { command: "focusNextPane" }, "⌃⇧]"],
   ["⌃⇧[", K("{", 33, "control", "shift"), { command: "focusPreviousPane" }, "⌃⇧["],

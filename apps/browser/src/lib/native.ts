@@ -27,7 +27,9 @@ import type { Bookmarks, BookmarkNode } from "../store/types";
 import { isUtilityWindowId } from "../components/settings/windows";
 import { isInternalTab } from "../components/pages/urls";
 import { sidebarMenuState } from "../components/sidebar/commands";
-import { openUrls, openWindow as createWindow } from "./actions";
+import { openWindow as createWindow } from "./actions";
+import { openExternalUrls } from "../components/smallYahu/actions";
+import { SMALL_YAHU_DISABLED_COMMANDS } from "../components/smallYahu/menu";
 import { runCommand } from "./commands";
 import { flushPersistence } from "./persist";
 import { startWindowCloseGuard } from "./windowClose";
@@ -44,7 +46,7 @@ export function startNativeSync() {
   onCommand(runCommand);
   startWindowCloseGuard();
   startExtensionsBridge();
-  onOpenURLs((urls) => openUrls(urls));
+  onOpenURLs((urls) => openExternalUrls(urls));
   onDownload((d) => store.getState().upsertDownload(d));
 
   store.getState().setAppDark(Appearance.getColorScheme() === "dark");
@@ -94,7 +96,8 @@ export function startNativeSync() {
         open.add(id);
         titles.set(id, windowTitle(s, id));
         const profile = engineProfile(w.profileId);
-        void openWindow(id, { frame: w.frame, incognito: w.incognito, title: titles.get(id), focus: id === s.ui.focusedWindowId, profile });
+        const small = w.kind === "small" ? { kind: "small" as const, size: s.settings.smallYahuSize } : {};
+        void openWindow(id, { frame: w.frame, incognito: w.incognito, title: titles.get(id), focus: id === s.ui.focusedWindowId, profile, ...small });
       }
     }
     for (const id of [...open]) {
@@ -215,7 +218,7 @@ export function menuState(s: BrowserState): MenuState {
   const tab = windowId ? activeTab(s, windowId) : undefined;
   const live = tab ? s.live[tab.id] : undefined;
   const bookmarkProfile = bookmarkProfileId(s, w);
-  const regularWindows = s.windowOrder.filter((id) => !s.windows[id]!.incognito);
+  const regularWindows = s.windowOrder.filter((id) => !s.windows[id]!.incognito && s.windows[id]!.kind !== "small");
 
   const disabled: string[] = [];
   if (!tab || !splitOf(s, tab.id)) disabled.push("focusNextPane", "focusPreviousPane");
@@ -251,6 +254,11 @@ export function menuState(s: BrowserState): MenuState {
   const sidebar = sidebarMenuState(s, windowId);
   disabled.push(...sidebar.disabled);
   Object.assign(titles, sidebar.titles);
+  if (w?.kind === "small") {
+    disabled.push(...SMALL_YAHU_DISABLED_COMMANDS);
+    // ⌘O is Open File in a main window and Open in Netnyahoo in Small Yahu, as in Little Arc.
+    titles.openFile = "Open in Netnyahoo";
+  }
 
   const closed = [
     ...s.closedTabs.filter((c) => !c.tab.profileId.startsWith("incognito:")).map((c) => ({ id: c.id, title: c.tab.title || tabLabel(c.tab), at: c.closedAt })),

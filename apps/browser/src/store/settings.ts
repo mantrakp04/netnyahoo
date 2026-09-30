@@ -53,6 +53,9 @@ export type Settings = {
   defaultProfileId: string;
 
   shortcuts: Record<string, string[]>;
+
+  openLinksInSmallYahu: boolean;
+  smallYahuSize: [number, number];
 };
 
 export const DEFAULT_PROFILE_ID = "default";
@@ -90,6 +93,8 @@ export const DEFAULT_SETTINGS: Settings = {
   addressBar: "toolbar",
   defaultProfileId: DEFAULT_PROFILE_ID,
   shortcuts: {},
+  openLinksInSmallYahu: true,
+  smallYahuSize: [900, 640],
 };
 
 const NO_CUSTOM_ENGINES: CustomSearchEngine[] = [];

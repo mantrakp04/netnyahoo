@@ -42,6 +42,8 @@ import { Toolbar } from "./Toolbar";
 import { NavigationOverlays } from "./layout/SwipeOverlay";
 import "./layout/devExpose";
 import { closeWebNotification, showWebNotification } from "../lib/webNotifications";
+import { isSmall, isSmallWindow } from "../store/small";
+import { closeSmallYahuOnEscape } from "./smallYahu/actions";
 
 export function ContentCard() {
   const windowId = useWindowId();
@@ -51,6 +53,8 @@ export function ContentCard() {
   const sidebarOpen = useSidebarOpen();
   const tabLayout = useTabLayout();
   const addressInSidebar = useAddressBarInSidebar();
+  // Small Yahu draws its own bar above the card (components/smallYahu).
+  const small = useBrowser((s) => isSmallWindow(s.windows[windowId]));
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const container = useRef<View>(null);
@@ -112,14 +116,14 @@ export function ContentCard() {
   );
 
   const geometryFor = (rect: Rect | undefined): ToolbarGeometry => {
-    if (addressInSidebar) return NO_TOOLBAR;
+    if (addressInSidebar || small) return NO_TOOLBAR;
     const leading = !!rect && rect.x === 0 && rect.y === 0;
     return toolbarGeometry({ sidebarButton: leading && tabLayout === "sidebar", clearTrafficLights: leading && tabLayout === "sidebar" && !sidebarOpen });
   };
 
   const focusedRect = activeId ? panes[activeId] : undefined;
   useEffect(() => {
-    if (!origin || !focusedRect || addressInSidebar) return;
+    if (!origin || !focusedRect || addressInSidebar || small) return;
     const g = geometryFor(focusedRect);
     setUrlAnchor(windowId, { left: origin.x + focusedRect.x + g.urlLeft, top: origin.y + focusedRect.y, width: focusedRect.width - g.urlLeft - 12 });
   }, [origin, focusedRect?.x, focusedRect?.y, focusedRect?.width, tabLayout, sidebarOpen, addressInSidebar]);
@@ -149,7 +153,8 @@ export function ContentCard() {
               split={split}
               fullscreen={tabId === fullscreenTab}
               geometry={geometryFor(rect)}
-              toolbar={!addressInSidebar}
+              toolbar={!addressInSidebar && !small}
+              small={small}
               mounted={mounted.includes(tabId)}
               warm={warmPanes[tabId]}
             />
@@ -172,6 +177,7 @@ function TabPane({
   fullscreen,
   geometry,
   toolbar,
+  small,
   mounted,
   warm,
 }: {
@@ -184,6 +190,7 @@ function TabPane({
   fullscreen: boolean;
   geometry: ToolbarGeometry;
   toolbar: boolean;
+  small: boolean;
   mounted: boolean;
   warm: Rect | undefined;
 }) {
@@ -222,11 +229,11 @@ function TabPane({
       ) : (
         <View style={{ height: layout.toolbarHeight }} />
       )}
-      {!fullscreen && !inSplit && <BookmarksBar tabId={tabId} placeholder={!visible} />}
+      {!fullscreen && !inSplit && !small && <BookmarksBar tabId={tabId} placeholder={!visible} />}
       {visible && !fullscreen && <ShareBar tabId={tabId} />}
       <View style={{ flex: 1 }}>
         {mounted && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={!!warm && !newTabShown && !isNewTab} />}
-        {visible && isNewTab && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} toolbar={toolbar} />)}
+        {visible && isNewTab && !small && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} toolbar={toolbar} />)}
         {visible && <InternalPage tabId={tabId} />}
         {visible && (
           <>
@@ -284,6 +291,10 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
     if (!t) return;
     const incognito = store().windows[t.windowId]?.incognito;
     if (disposition === "current") return store().navigate(tabId, url, { userInitiated: false });
+    // Links stay in Small Yahu; new tabs (target=_blank, ⌘-click, split) open behind, in a main window.
+    if (isSmall(store(), t.windowId) && disposition !== "window" && disposition !== "incognito") {
+      return void store().newTab(t.windowId, { url, adoptId, profileId: t.profileId, background: true });
+    }
     if (disposition === "split") return openLinkInSplit(tabId, url);
     if (disposition === "incognito") return void openWindow({ incognito: true, url });
     if (disposition === "window" && !incognito) return void openWindow({ profileId: t.profileId, url, adoptId });
@@ -410,6 +421,7 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
       onCommand={({ command, text }) => {
         if (command === "search") searchSelection(tabId, text);
         else if (command === "copyLinkToHighlight") void copyLinkToSelection(tabId);
+        else if (command === "escape") closeSmallYahuOnEscape(tabId);
       }}
       onPageMessage={(kind, data) => {
         if (kind === "selection") setPageSelection(tabId, data as PageSelection | null);
