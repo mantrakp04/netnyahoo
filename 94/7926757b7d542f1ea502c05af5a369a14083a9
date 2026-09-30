@@ -1,0 +1,33 @@
+apps/browser/src/components/extensions/SidePanel.tsx
+  s_9c356f9574d31c::t_0ebb89aeacd9b5 122
+  s_9c356f9574d31c::t_ec254d40852dda 7
+apps/browser/src/components/extensions/ExtensionOverlays.tsx
+  s_9c356f9574d31c::t_0ebb89aeacd9b5 143-145
+  s_9c356f9574d31c::t_1c8485f7d6974e 8
+apps/browser/src/components/ContentCard.tsx
+  s_9c356f9574d31c::t_0ebb89aeacd9b5 5,45
+  s_9c356f9574d31c::t_bc3c9f6c93a243 26,289,291
+apps/browser/src/components/layout/openFromPage.ts
+  s_9c356f9574d31c::t_65e74ecb5c9ac3 1-27
+  s_9c356f9574d31c::t_4005bcd1327aa5 28-35
+apps/browser/src/components/bookmarks/actions.ts
+  s_9c356f9574d31c::t_167d3f8bbb5689 23-24,51,53-55,58-68
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_67588cd113ddb5 302-303,337,744-745
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "947926757b7d542f1ea502c05af5a369a14083a9",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
