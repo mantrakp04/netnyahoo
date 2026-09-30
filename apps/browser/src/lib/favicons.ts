@@ -92,18 +92,35 @@ export function iconName(src: string): string {
 
 // MARK: Recording
 
+// Each pages map's newest page (its last key) and size, so a report changes the index without walking or
+// copying its 5000 pages. Keyed by the map, so a closed private profile's index takes them with it.
+const newestPage = new WeakMap<Record<string, string>, string>();
+const pageCounts = new WeakMap<Record<string, string>, number>();
+
 function remember(profileId: string, pageUrl: string, name: string, icon?: Icon) {
   const page = pageKey(pageUrl);
   const host = hostKey(pageUrl);
   const dark = useBrowser.getState().ui.appDark;
   const swapped = Date.now() - appearanceChangedAt < APPEARANCE_SWAP_MS;
+  const known = indexFor(profileId);
+  // Pages report their icon on every load: nothing to record when this page is already the newest with it.
+  if (!icon && newestPage.get(known.pages) === page && known.pages[page] === name && (!host || known.hosts[host] === name)) return;
   update(profileId, (index) => {
-    const pages = { ...index.pages };
+    // The pages map is changed in place (copying it per report cost more than the rest of the report); the index
+    // object is new, so subscribers still see the change. EMPTY's map is shared, so it's never written.
+    const pages = index.pages === EMPTY.pages ? {} : index.pages;
     const previous = pages[page];
+    let count = pageCounts.get(pages) ?? Object.keys(pages).length;
+    if (previous === undefined) count++;
     delete pages[page];
     pages[page] = name;
-    const keys = Object.keys(pages);
-    for (const old of keys.slice(0, Math.max(0, keys.length - MAX_PAGES))) delete pages[old];
+    for (const old in pages) {
+      if (count <= MAX_PAGES) break;
+      delete pages[old];
+      count--;
+    }
+    pageCounts.set(pages, count);
+    newestPage.set(pages, page);
     let appearances = index.appearances;
     if (swapped && previous && previous !== name) {
       const pair: [string, string] = dark ? [previous, name] : [name, previous];
@@ -112,7 +129,7 @@ function remember(profileId: string, pageUrl: string, name: string, icon?: Icon)
     return {
       icons: icon ? { ...index.icons, [name]: icon } : index.icons,
       pages,
-      hosts: host ? { ...index.hosts, [host]: name } : index.hosts,
+      hosts: host && index.hosts[host] !== name ? { ...index.hosts, [host]: name } : index.hosts,
       appearances,
     };
   });

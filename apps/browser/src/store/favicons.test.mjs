@@ -1,0 +1,40 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+const { useBrowser } = await import("./browser.ts");
+const model = await import("./model.ts");
+const stub = await import("./test-native-stub.mjs");
+const { iconName, noteFavicon, pageKey, resolveFavicon, useFavicons, flushFavicons } = await import("../lib/favicons.ts");
+
+const S = () => useBrowser.getState();
+
+test("recording a page's icon keeps the newest 5000 pages in order and skips repeats", () => {
+  const src = "https://x.com/favicon.ico";
+  const name = iconName(src);
+  const pages = {};
+  for (let i = 0; i < 5000; i++) pages[`https://x.com/${i}`] = name;
+  stub.docs.set("favicons-default.json", JSON.stringify({ icons: { [name]: { uri: "file:///x.png", src, at: Date.now() } }, pages, hosts: {} }));
+  S().hydrate({});
+  const w = S().createWindow({ url: "https://x.com/new" });
+  const tab = model.activeTabId(S(), w);
+  let updates = 0;
+  const stop = useFavicons.subscribe(() => updates++);
+  noteFavicon(tab, src);
+  assert.equal(updates, 1);
+  let keys = Object.keys(useFavicons.getState().profiles.default.pages);
+  assert.equal(keys.length, 5000, "the oldest page makes room");
+  assert.equal(keys[0], "https://x.com/1");
+  assert.equal(keys.at(-1), pageKey(S().tabs[tab].url));
+  assert.equal(useFavicons.getState().profiles.default.hosts["x.com"], name);
+  noteFavicon(tab, src);
+  assert.equal(updates, 1, "the same page reporting the same icon again records nothing");
+  S().updateTab(tab, { url: "https://x.com/0" });
+  noteFavicon(tab, src);
+  assert.equal(updates, 2);
+  keys = Object.keys(useFavicons.getState().profiles.default.pages);
+  assert.equal(keys.length, 5000);
+  assert.equal(keys.at(-1), "https://x.com/0", "a page seen again moves to the newest end");
+  assert.equal(resolveFavicon("https://x.com/0", null, "default")?.uri, "file:///x.png");
+  flushFavicons();
+  assert.equal(Object.keys(JSON.parse(stub.docs.get("favicons-default.json")).pages).length, 5000);
+  stop();
+});
