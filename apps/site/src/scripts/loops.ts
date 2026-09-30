@@ -8,6 +8,8 @@ function load(video: HTMLVideoElement) {
   if (video.dataset.loaded) return;
   video.dataset.loaded = "1";
   video.muted = true;
+  // The poster waits too: until the clip plays, the still under it shows the same pixels.
+  if (video.dataset.poster) video.poster = video.dataset.poster;
   for (const source of video.querySelectorAll<HTMLSourceElement>("source[data-src]")) source.src = source.dataset.src ?? "";
   video.load();
 }

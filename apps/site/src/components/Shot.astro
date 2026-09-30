@@ -84,7 +84,7 @@ const widths = (s: ImageMetadata) => [640, 960, 1280, 1600, 2200, s.width].filte
   }
   {
     loop && loopBox && (
-      <video class="loop" style={loopBox} poster={loop.poster.src} muted playsinline loop preload="none" disablepictureinpicture aria-hidden="true" data-loop>
+      <video class="loop" style={loopBox} data-poster={loop.poster.src} muted playsinline loop preload="none" disablepictureinpicture aria-hidden="true" data-loop>
         <source data-src={loop.webm} type="video/webm" />
         <source data-src={loop.mp4} type="video/mp4" />
       </video>
