@@ -1,0 +1,82 @@
+apps/browser/src/store/windows.ts
+  s_9c356f9574d31c::t_8e5cecf3006131 20,31,60-62,74,121,126-130,134,146,148,162-163,170,184-189,203,252,254,291,321-331
+apps/browser/src/store/small.ts
+  s_9c356f9574d31c::t_74ee91edce86f7 1-25
+apps/browser/scripts/shortcuts-test.mjs
+  s_9c356f9574d31c::t_b5cefec6581170 171
+apps/browser/src/store/types.ts
+  s_9c356f9574d31c::t_fd296627050fc8 25-26,121
+apps/browser/src/components/smallYahu/menu.ts
+  s_9c356f9574d31c::t_2d583c17f47d11 1-8
+apps/browser/src/App.tsx
+  s_9c356f9574d31c::t_e20707ab9f5e53 22,37,39
+apps/browser/src/components/smallYahu/actions.ts
+  s_9c356f9574d31c::t_5dd3b845540935 1-53
+  s_9c356f9574d31c::t_86094407925f9f 54-57
+packages/shell/ios/ShellModule.swift
+  s_9c356f9574d31c::t_6618cc3158b1f6 88-89
+apps/browser/src/components/layout/windowDrop.ts
+  s_9c356f9574d31c::t_04b5ba6cd4219c 21
+packages/cef/src/WebView.tsx
+  s_9c356f9574d31c::t_0cb49bc33e5223 47-48
+apps/browser/src/store/tabs.ts
+  s_9c356f9574d31c::t_a4285d3c8a2552 6,21,129,282-292
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_915efc87f29141 258,691,708-709
+packages/shell/ios/Windows.swift
+  s_9c356f9574d31c::t_6618cc3158b1f6 17-18,25-29,55-58,63-64,66,72-73,82-83,86,88,92,171-186,189,197-198,218,239,247,292
+  s_9c356f9574d31c::t_106a0ede740847 187-188
+  s_9c356f9574d31c::t_6c9caaaaf076dc 190
+apps/browser/src/store/model.ts
+  s_9c356f9574d31c::t_9d7b8a836e8c33 122-124
+apps/browser/src/store/settings.ts
+  s_9c356f9574d31c::t_9d7b8a836e8c33 56-58,96-97
+apps/browser/src/lib/commands.ts
+  s_9c356f9574d31c::t_0444e4c50c6a68 18,43-44,60-61,100-101,280-286,288-295,297-308
+  s_9c356f9574d31c::t_73161b08a9c338 53,96-99
+  s_9c356f9574d31c::t_36748521edc6c9 287,296
+  s_9c356f9574d31c::t_4f9c2c6fc1aceb 309-310
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_0efbdfb2cf3326 13,160,162-163
+apps/browser/src/components/settings/panes/General.tsx
+  s_9c356f9574d31c::t_ebd52162effbcf 52-57
+docs/store-api.md
+  s_9c356f9574d31c::t_d326eaa925e529 27-29
+apps/browser/src/components/sidebar/menus.ts
+  s_9c356f9574d31c::t_04b5ba6cd4219c 49
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_0cb49bc33e5223 1185-1192
+apps/browser/src/store/small.test.mjs
+  s_9c356f9574d31c::t_1ffdae7d70441d 1-67,69,71,73-74,76-81,83-89,102-114
+  s_9c356f9574d31c::t_7f4f06e2b13bf2 68,70,72,75,82,90-101
+apps/browser/src/sync/adapters.ts
+  s_9c356f9574d31c::t_04b5ba6cd4219c 261-262,265
+apps/browser/src/lib/persist.ts
+  s_9c356f9574d31c::t_04b5ba6cd4219c 39-40
+apps/browser/src/components/ContentCard.tsx
+  s_9c356f9574d31c::t_8366440b4a3d11 45-46,56-57,119,126,156-157,180,193,232,236,294-297,424
+apps/browser/src/lib/native.ts
+  s_9c356f9574d31c::t_3642cba2144846 30-32,49,99-100,221,257-261
+apps/browser/src/components/smallYahu/SmallYahuWindow.tsx
+  s_9c356f9574d31c::t_8a00551d6e6300 1-5,7-158
+  s_9c356f9574d31c::t_e20707ab9f5e53 6
+packages/shell/ios/Menus.swift
+  s_9c356f9574d31c::t_1471b9f2a34613 680-682
+  s_9c356f9574d31c::t_0efbdfb2cf3326 226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c976ab88324f53cbbfbbeffbec906e0da83919d1",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
