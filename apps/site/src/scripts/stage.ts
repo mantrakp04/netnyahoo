@@ -1,5 +1,8 @@
 import type { Framing, Yahu } from "./yahu";
 
+/** The model's content hash (astro.config.mjs), so a new model is a new URL and the old one can be cached. */
+declare const __YAHU_MODEL_VERSION__: string;
+
 const hero = document.querySelector<HTMLElement>('[data-stage="hero"]');
 const closing = document.querySelector<HTMLElement>('[data-stage="closing"]');
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -23,7 +26,8 @@ const phone = matchMedia("(max-width: 820px), (pointer: coarse)").matches;
 async function startYahu(stage: HTMLElement, framing: Framing) {
   try {
     const { createYahu } = await import("./yahu");
-    return await createYahu(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb`, stage, framing);
+    const model = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb?v=${__YAHU_MODEL_VERSION__}`;
+    return await createYahu(model, stage, framing);
   } catch {
     return null;
   }
