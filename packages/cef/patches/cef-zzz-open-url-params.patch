@@ -31,10 +31,10 @@ index db46768..09f7b04 100644
 +
  #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
 diff --git a/libcef/browser/browser_contents_delegate.cc b/libcef/browser/browser_contents_delegate.cc
-index b1591e9..df3f439 100644
+index b1591e9..ddc913c 100644
 --- a/libcef/browser/browser_contents_delegate.cc
 +++ b/libcef/browser/browser_contents_delegate.cc
-@@ -4,6 +4,14 @@
+@@ -4,6 +4,15 @@
  
  #include "cef/libcef/browser/browser_contents_delegate.h"
  
@@ -45,11 +45,12 @@ index b1591e9..df3f439 100644
 +#include "cef/include/internal/cef_export.h"
 +#include "cef/libcef/browser/thread_util.h"
 +#include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/site_instance.h"
 +
  #include "base/memory/raw_ptr.h"
  #include "cef/libcef/browser/browser_event_util.h"
  #include "cef/libcef/browser/browser_host_base.h"
-@@ -111,6 +119,73 @@ void CefBrowserContentsDelegate::RemoveObserver(Observer* observer) {
+@@ -111,6 +120,80 @@ void CefBrowserContentsDelegate::RemoveObserver(Observer* observer) {
    observers_.RemoveObserver(observer);
  }
  
@@ -112,6 +113,13 @@ index b1591e9..df3f439 100644
 +  if (!web_contents) {
 +    return 0;
 +  }
++  // Only into the profile the navigation came from: its source SiteInstance
++  // belongs to that BrowserContext.
++  const auto& source = it->second.params.source_site_instance;
++  if (source && source->GetBrowserContext() != web_contents->GetBrowserContext()) {
++    OpenedURLs().erase(it);
++    return 0;
++  }
 +  content::NavigationController::LoadURLParams load(it->second.params);
 +  OpenedURLs().erase(it);
 +  // The new browser starts on about:blank; the page takes its entry.
@@ -123,7 +131,7 @@ index b1591e9..df3f439 100644
  // |source| may be NULL for navigations in the current tab, or if the
  // navigation originates from a guest view via MaybeAllowNavigation.
  content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
-@@ -120,6 +195,15 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
+@@ -120,6 +203,15 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
          navigation_handle_callback) {
    bool cancel = false;
  
@@ -139,7 +147,7 @@ index b1591e9..df3f439 100644
    if (auto c = client()) {
      if (auto handler = c->GetRequestHandler()) {
        // May return nullptr for omnibox navigations.
-@@ -135,6 +219,10 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
+@@ -135,6 +227,10 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
            params.user_gesture);
      }
    }

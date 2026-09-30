@@ -122,7 +122,7 @@ struct PopupReplay {
   NSString *url = nil;
   CFTimeInterval at = 0;
 };
-PopupReplay gPopupReplay;
+std::vector<PopupReplay> gPopupReplays;
 
 void SetValue(NSString *profile, NSString *origin, cef_content_setting_types_t type, cef_content_setting_values_t value) {
   ContextForProfile(profile)->SetContentSetting(ToCef(origin), ToCef(origin), type, value);
@@ -228,7 +228,9 @@ namespace nn::site {
 
 bool PopupsAllowed(NSString *profile, NSString *openerURL) {
   NSString *origin = OriginOf(openerURL);
-  if (!origin) return false;
+  // No web origin: local and app pages (file:, chrome-extension:, chrome:) may, as before; a page with no origin at
+  // all (about:blank, data:) may not.
+  if (!origin) return !([openerURL hasPrefix:@"about:"] || [openerURL hasPrefix:@"data:"] || !openerURL.length);
   return ContextForProfile(profile)->GetContentSetting(ToCef(origin), ToCef(origin), CEF_CONTENT_SETTING_TYPE_POPUPS) ==
          CEF_CONTENT_SETTING_VALUE_ALLOW;
 }
@@ -252,9 +254,12 @@ NSString *RecordBlockedPopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> 
 }
 
 bool ConsumePopupReplay(int browserId, NSString *url) {
-  PopupReplay replay = gPopupReplay;
-  if (replay.browserId != browserId || ![replay.url isEqualToString:url] || CACurrentMediaTime() - replay.at > 5) return false;
-  gPopupReplay = {};
+  const CFTimeInterval now = CACurrentMediaTime();
+  std::erase_if(gPopupReplays, [&](const PopupReplay &r) { return now - r.at > 5; });
+  auto it = std::find_if(gPopupReplays.begin(), gPopupReplays.end(),
+                         [&](const PopupReplay &r) { return r.browserId == browserId && [r.url isEqualToString:url]; });
+  if (it == gPopupReplays.end()) return false;
+  gPopupReplays.erase(it);
   return true;
 }
 
@@ -272,7 +277,7 @@ bool OpenBlockedPopup(CefRefPtr<CefBrowser> browser, NSString *popupId, bool alw
   if (!frame || !frame->IsValid()) return false;
   NSString *call = [NSString stringWithFormat:@"void window.open(%@, %@, %@)", ToJSON(popup.url), ToJSON(popup.name ?: @""),
                                               ToJSON(popup.features ?: @"")];
-  gPopupReplay = {popup.browserId, popup.url, CACurrentMediaTime()};
+  gPopupReplays.push_back({popup.browserId, popup.url, CACurrentMediaTime()});
   frame->ExecuteJavaScript(ToCef(call), "", 0);
   return true;
 }

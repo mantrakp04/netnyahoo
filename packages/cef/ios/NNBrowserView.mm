@@ -146,6 +146,7 @@ NSString *const kExitPictureInPictureScript =
   // "open:<id>" adoption: the navigation to load once the browser exists (LoadOpenedURL), else its URL.
   int _openedId;
   NSString *_openedURL;
+  NSUInteger _loadRequests;
   NSString *_discardedURL;
   NSString *_transferredURL;
   BOOL _chromeDiscarded;
@@ -429,9 +430,15 @@ NSString *const kExitPictureInPictureScript =
   _chromeDiscarded = host::IsChromeTab(browser) && browser->GetHost()->IsTabDiscarded();
 #endif
   browser->GetHost()->WasResized();
+  if (_openedId && _pendingURL) {
+    [NNCef forgetOpenedURL:_openedId];
+    _openedId = 0;
+  }
   if (_openedId) {
-    // After Chrome starts the new tab on about:blank (it does once this returns), so the page replaces it.
+    // After Chrome starts the new tab on about:blank (it does once this returns), so the page replaces it; unless
+    // something newer was asked for meanwhile (loadURL).
     const int opened = _openedId;
+    const NSUInteger requests = _loadRequests;
     _openedId = 0;
     __weak NNBrowserView *weakSelf = self;
     CefRefPtr<CefBrowser> target = browser;
@@ -439,6 +446,7 @@ NSString *const kExitPictureInPictureScript =
       NNBrowserView *view = weakSelf;
       NSString *url = view ? (view->_openedURL ?: view->_initialURL) : nil;
       if (view) view->_openedURL = nil;
+      if (!view || view->_loadRequests != requests) return [NNCef forgetOpenedURL:opened];
       if (!LoadOpenedURL(target, opened) && url.length && target->IsValid()) target->GetMainFrame()->LoadURL(ToCef(url));
     });
   }
@@ -585,6 +593,7 @@ NSString *const kExitPictureInPictureScript =
 
 - (void)loadURL:(NSString *)url {
   if (!url.length) return;
+  _loadRequests++;
   NSString *transferred = _transferredURL;
   _transferredURL = nil;
   NSString *creating = _creatingURL;
