@@ -1,7 +1,7 @@
 import { crashReports, systemInfo } from "@netnyahoo/shell";
 import { advanceCrashCursor, capture, crashCursor, isSharing, loadChoice } from "./client";
 import { recordLog } from "./logs";
-import { errorMessage, errorType, nativeFrames, parseStack, type ExceptionFrame } from "./sanitize";
+import { errorCode, errorMessage, errorType, nativeFrames, parseStack, type ExceptionFrame } from "./sanitize";
 
 type Mechanism = "onerror" | "onunhandledrejection" | "react" | "console" | "native_crash";
 
@@ -23,12 +23,13 @@ export function captureException(error: unknown, mechanism: Mechanism, { fatal =
     const type = errorType(error);
     const value = errorMessage(error) || type;
     const frames = parseStack(error && typeof error === "object" ? (error as { stack?: unknown }).stack : undefined);
-    const key = `${type}|${value}|${frames.at(-1)?.function ?? ""}`;
+    const code = errorCode(error);
+    const key = `${type}|${value}|${code ?? ""}|${frames.at(-1)?.function ?? ""}`;
     if (seen.has(key) || seen.size >= MAX_PER_SESSION) return;
     seen.add(key);
     capture(
       "$exception",
-      { $exception_level: fatal ? "fatal" : "error", source: mechanism },
+      { $exception_level: fatal ? "fatal" : "error", source: mechanism, error_code: code },
       // Persist the telemetry queue before a fatal process exit.
       { urgent: true, persist: fatal, raw: { $exception_list: exceptionList(type, value, mechanism, handled, frames) } },
     );

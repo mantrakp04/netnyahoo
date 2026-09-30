@@ -1,7 +1,7 @@
 // Run from apps/browser:  node --test src/telemetry/sanitize.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleanProperties, errorMessage, errorType, nativeFrames, parseStack, scrubText } from "./sanitize.ts";
+import { cleanProperties, errorCode, errorMessage, errorType, nativeFrames, parseStack, scrubText } from "./sanitize.ts";
 
 const leaks = (text, ...secrets) => secrets.filter((s) => text.includes(s));
 
@@ -46,6 +46,23 @@ test("errors keep their type, never a made-up one", () => {
   assert.equal(errorType("thrown string"), "Error");
   assert.equal(errorType({ name: "https://evil.test/" }), "Object");
   assert.equal(errorMessage(new Error("fetch https://secret.test/a failed")), "fetch <url> failed");
+});
+
+test("failed native calls keep the function name and code, and drop the cause", () => {
+  const coded = Object.assign(
+    new Error(
+      "Calling the 'loadUrl' function has failed\n→ Caused by: The 1st argument cannot be cast to type View<CefWebView>\n→ Caused by: Unable to find the 'CefWebView' view with tag '1234'",
+    ),
+    { code: "ERR_ARGUMENT_CAST" },
+  );
+  assert.equal(errorMessage(coded), "Calling the 'loadUrl' function has failed");
+  assert.equal(errorCode(coded), "ERR_ARGUMENT_CAST");
+  assert.equal(errorMessage(new Error("Calling the 'https://x.test/' function has failed")), "Calling the <text> function has failed");
+  assert.equal(errorMessage(new Error("Calling the 'a' function has failed for /Users/bob")), "Calling the <text> function has failed for <path>");
+  assert.equal(errorCode({ code: "ENOENT" }), "ENOENT");
+  assert.equal(errorCode({ code: "bob@example.com" }), null);
+  assert.equal(errorCode({ code: 42 }), null);
+  assert.equal(errorCode(new Error("x")), null);
 });
 
 test("Hermes stacks keep function and bundle names, not the dev host, query or directories", () => {

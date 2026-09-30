@@ -43,9 +43,21 @@ export function errorType(error: unknown): string {
   return typeof error === "undefined" ? "Undefined" : error === null ? "Null" : "NonError";
 }
 
+// Expo's failed native call names the Swift function, a code identifier; the cause lines are dropped with the rest.
+const NATIVE_CALL = /^Calling the '([A-Za-z_$][\w$]{0,60})' function has failed$/;
+
 export function errorMessage(error: unknown): string {
   const message = error && typeof error === "object" ? (error as { message?: unknown }).message : error;
-  return scrubText(typeof message === "string" ? message : "", 300);
+  if (typeof message !== "string") return "";
+  const call = NATIVE_CALL.exec(message.split(/\r?\n/, 1)[0]!.trim());
+  if (call) return `Calling the '${call[1]}' function has failed`;
+  return scrubText(message, 300);
+}
+
+// Expo's CodedError codes (ERR_…) and Node's (ENOENT) are constants, never user data.
+export function errorCode(error: unknown): string | null {
+  const code = error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
+  return typeof code === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(code) ? code : null;
 }
 
 export type ExceptionFrame = {
