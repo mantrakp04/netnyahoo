@@ -1,0 +1,20 @@
+apps/site/src/data/release.ts
+  s_631b13a766b697::t_779df9300975ee 1
+  s_631b13a766b697::t_d195e35a450ffb 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "718b789f1536329ea6244b3a1bb8f3c179324613",
+  "prompts": {},
+  "sessions": {
+    "s_631b13a766b697": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ef88-d29f-71c0-bccb-8ac6c46b7bc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
