@@ -234,7 +234,7 @@ async function run() {
   const results = [];
   try {
     for (let r = 0; r < Number(runs); r++) {
-      const dataDir = join(out, "data", `${label}-${r}`);
+      const dataDir = join(out, "data", `${label}-${flags.append ? `${Date.now()}-` : ""}${r}`);
       rmSync(dataDir, { recursive: true, force: true });
       writeSeed(dataDir, origin, version);
       // --probe selectors (etc.) turns on the probe's slower options (src/lib/perfProbe.ts).
@@ -263,8 +263,10 @@ async function run() {
     server.close();
   }
   const bundleSize = statSync(jsbundle).size;
-  const report = { label, version, bundle: jsbundle, bundleSize, when: new Date().toISOString(), results, summary: summarize(results, bundleSize) };
+  // --append 1 adds these runs to an existing report (to interleave two builds' runs under the same load).
   const file = join(out, `${label}.json`);
+  if (flags.append && existsSync(file)) results.unshift(...JSON.parse(readFileSync(file, "utf8")).results);
+  const report = { label, version, bundle: jsbundle, bundleSize, when: new Date().toISOString(), results, summary: summarize(results, bundleSize) };
   writeFileSync(file, JSON.stringify(report, null, 2));
   printSummary(report.summary);
   console.log(`\nwrote ${file}`);
