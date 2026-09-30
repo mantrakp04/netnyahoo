@@ -22,12 +22,17 @@ import { Sidebar } from "./components/Sidebar";
 import { SmallYahuWindow } from "./components/smallYahu/SmallYahuWindow";
 import { SidebarOverlays } from "./components/sidebar/Overlays";
 import { useSidebarWidth } from "./components/sidebar/tokens";
-import { hex, layout, useTheme } from "./lib/theme";
+import { hex, layout, ThemeScope, useTheme } from "./lib/theme";
 import { useBrowser } from "./store/browser";
 import { useSidebarOpen, useWindowId, WindowContext } from "./store/hooks";
 
 export function WindowRoot({ windowId }: { windowId?: string }) {
-  if (isUtilityWindowId(windowId)) return <UtilityWindow id={windowId!} />;
+  if (isUtilityWindowId(windowId))
+    return (
+      <ThemeScope>
+        <UtilityWindow id={windowId!} />
+      </ThemeScope>
+    );
   return <BrowserWindowRoot windowId={windowId} />;
 }
 
@@ -36,7 +41,11 @@ function BrowserWindowRoot({ windowId }: { windowId?: string }) {
   const exists = useBrowser((s) => !!id && !!s.windows[id]);
   const small = useBrowser((s) => !!id && s.windows[id]?.kind === "small");
   if (!id || !exists) return null;
-  return <WindowContext.Provider value={id}>{small ? <SmallYahuWindow /> : <BrowserWindow />}</WindowContext.Provider>;
+  return (
+    <WindowContext.Provider value={id}>
+      <ThemeScope>{small ? <SmallYahuWindow /> : <BrowserWindow />}</ThemeScope>
+    </WindowContext.Provider>
+  );
 }
 
 function BrowserWindow() {

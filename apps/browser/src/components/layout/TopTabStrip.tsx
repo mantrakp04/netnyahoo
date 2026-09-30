@@ -3,7 +3,7 @@ import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useSta
 import { Animated, Easing, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { closeTab, toggleMute } from "../../lib/actions";
-import { hex, layout, useTheme } from "../../lib/theme";
+import { hex, layout, ThemeScope, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { PageProfileContext, useIsActiveTab, usePageProfileId, useSettings, useTab, useTabLive, useWindowId, useWindowProfileId } from "../../store/hooks";
 import { viewTabIds } from "../../store/model";
@@ -156,20 +156,22 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
       style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pageWidth + flare * 2, display: resting ? "none" : "flex", transform: [{ translateX }] }}
     >
       <PageProfileContext.Provider value={profileId}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ alignItems: "flex-start", gap: GAP, paddingLeft: flare, paddingRight: flare }}
-        >
-          {parsed.map((e) => {
-            if (e.kind === "dock") return <PinnedDock key="dock" tabIds={e.ids} />;
-            if (e.kind === "group") return <GroupLabel key={e.id} groupId={e.id} />;
-            if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} group={e.group} />;
-            return <DraggableChip key={e.id} tabId={e.id} width={chip} index={regular.indexOf(e.id)} count={regular.length} group={e.group} />;
-          })}
-          <NewTabButton windowId={windowId} />
-        </ScrollView>
+        <ThemeScope>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ alignItems: "flex-start", gap: GAP, paddingLeft: flare, paddingRight: flare }}
+          >
+            {parsed.map((e) => {
+              if (e.kind === "dock") return <PinnedDock key="dock" tabIds={e.ids} />;
+              if (e.kind === "group") return <GroupLabel key={e.id} groupId={e.id} />;
+              if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} group={e.group} />;
+              return <DraggableChip key={e.id} tabId={e.id} width={chip} index={regular.indexOf(e.id)} count={regular.length} group={e.group} />;
+            })}
+            <NewTabButton windowId={windowId} />
+          </ScrollView>
+        </ThemeScope>
       </PageProfileContext.Provider>
     </Animated.View>
   );

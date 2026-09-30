@@ -1,6 +1,6 @@
 import type { AreaLightPalette } from "@netnyahoo/shaders";
-import { useContext } from "react";
-import { useBrowser } from "../store/browser";
+import { createContext, createElement, useContext, type ReactNode } from "react";
+import { useBrowser, type BrowserState } from "../store/browser";
 import { PageProfileContext, WindowContext } from "../store/hooks";
 import type { ProfileColor } from "../store/types";
 import { backdropTint, opaqueTint, tintForHue, type BackdropTint } from "./windowTint";
@@ -216,16 +216,31 @@ export function themeFor(key: string): Theme {
   return theme;
 }
 
-export function useTheme(): Theme {
+function themeKey(s: BrowserState, windowId: string | null, page: string | null): string {
+  const w = s.windows[windowId ?? s.ui.focusedWindowId ?? ""];
+  if (w?.incognito) return "incognito";
+  const color = s.profiles[page ?? w?.profileId ?? s.settings.defaultProfileId]?.color ?? "plum";
+  return `${color}:${s.ui.appDark ? "dark" : "light"}`;
+}
+
+const ThemeContext = createContext<Theme | null>(null);
+
+// Resolves the theme once for everything below it: every window root and every profile page (which
+// sets PageProfileContext) has one, so the hundreds of components that call useTheme read a context
+// instead of each subscribing to the store (each subscription runs on every store update).
+export function ThemeScope({ children }: { children: ReactNode }) {
   const windowId = useContext(WindowContext);
   const page = useContext(PageProfileContext);
-  const key = useBrowser((s) => {
-    const w = s.windows[windowId ?? s.ui.focusedWindowId ?? ""];
-    if (w?.incognito) return "incognito";
-    const color = s.profiles[page ?? w?.profileId ?? s.settings.defaultProfileId]?.color ?? "plum";
-    return `${color}:${s.ui.appDark ? "dark" : "light"}`;
-  });
-  return themeFor(key);
+  const key = useBrowser((s) => themeKey(s, windowId, page));
+  return createElement(ThemeContext.Provider, { value: themeFor(key) }, children);
+}
+
+export function useTheme(): Theme {
+  const scoped = useContext(ThemeContext);
+  if (scoped) return scoped;
+  // Outside a ThemeScope (nothing renders there today) the theme is read once, not followed.
+  if (__DEV__) console.warn("useTheme outside a ThemeScope");
+  return themeFor(themeKey(useBrowser.getState(), null, null));
 }
 
 export const layout = {
