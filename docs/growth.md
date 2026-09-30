@@ -277,3 +277,22 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
   events received from 2026-09-29 09:04 to 14:31 UTC today, was copied over; the numbers match Cloud's. The
   next import from Cloud (old app versions) starts at events Cloud received from 14:31:00. Returning visitors keep their id
   and their `download-band` variant, so the experiment carries on. Recordings made in PostHog stay in PostHog.
+- **2026-09-30 15:10 UTC check** (first on our own ClickHouse; old app versions read from PostHog Cloud
+  through the MCP, events after 14:31): 6,183 visitors all time, 390 since 12:50 (t.co 317, phones 55%).
+  Still tapering: 190/h at 12:00, 175 at 13:00, 148 at 14:00.
+  - Downloads: 133 people all time (104 Mac), +7. Since 12:50, Mac desktop 9/105 = 8.6%; Windows 0/64,
+    Linux 0/16. Last 24 h, Mac 105/1,636 = 6.4%.
+  - Phones since 12:50: header panel opened by 9; the hero's share sheet: 7 dismissed, 2 copied, 1 shared,
+    1 blocked; closing 2 dismissed. No fallback use. `mac_link_visit` still 3 all time.
+  - `github_clicked` 16, `screenshot_opened` 36 (32 people), `notify_clicked` 5, rage clicks 10 (8 people).
+  - Experiment: band 48/715 (6.7%), control 49/693 (7.1%). Even; keep running (day 2 of 7).
+  - Installs: DMG downloads 180 all time (+10: 0.2.17 7, 0.2.16 +3); Sparkle update zips 30 (+3). First
+    launches 21 (+7: 0.2.17 5, 0.2.16 +2). Checks today: 0.2.14 13, 0.2.17 7, 0.2.16 5, 0.2.15 2.
+  - Opted-in app users, 7 days: 0.2.11 7, 0.2.13 4, 0.2.12 3, 0.2.14 3, 0.2.7 2, and one each on 0.2.9,
+    0.2.15, 0.2.16 and 0.2.17. Since 14:31, Cloud has one 0.2.17 user and no exceptions.
+  - GitHub: 25 stars (+1; 14 today). Views on 09-29: 83 from 56 people, 50 of them via netnyahoo.com.
+  - Errors: the site's are noise (Brave `Script error.`, a wallet). The app had one real crash: 0.2.15,
+    `EXC_BREAKPOINT` from an uncaught NSException (`+[NSApplication _crashOnException:]`), one user, 12:53 UTC.
+    The event carries only the crashed thread, so the throw site is unknown; the crash telemetry now gets
+    the exception's own backtrace (next release). The local `ExcUserFault` reports are the known IconServices
+    faults from test builds.
