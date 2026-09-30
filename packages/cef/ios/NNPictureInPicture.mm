@@ -15,6 +15,10 @@ constexpr CGFloat kPeek = 28;
 constexpr CGFloat kReturnMargin = 16;
 // Chrome's corner buttons, restyled as Dia's (chromium-zz-pip-dia-controls.patch): 28 pt squares 12 pt in.
 constexpr CGFloat kButtonMargin = 12, kButtonSize = 28;
+// Dia's window corners: circular, 6 pt (fitted at 2x to 0.1 px), with the shadow following them, and a 1 pt rim of
+// white at 17 % just inside the edge.
+constexpr CGFloat kCornerRadius = 6;
+constexpr CGFloat kRimAlpha = 0.17;
 
 NSString *const kKeepOnTopDefault = @"NNPictureInPictureKeepOnTop";
 const void *const kControllerKey = &kControllerKey;
@@ -158,6 +162,7 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 @property (nonatomic, readonly) NNPiPEdge stashedEdge;
 @property (nonatomic) BOOL keepOnTop;
 - (void)setVideoFrame:(CefRefPtr<CefFrame>)frame;
+- (void)roundCorners;
 - (void)backToTab;
 - (void)unstash;
 - (NSMenu *)menu;
@@ -226,6 +231,10 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
                     [weakSelf windowMoved];
                   }]];
     }
+    [_observers addObject:[center addObserverForName:NSWindowDidResizeNotification
+                                              object:window
+                                               queue:nil
+                                          usingBlock:^(NSNotification *) { [weakSelf roundCorners]; }]];
     [_observers addObject:[center addObserverForName:NSWindowWillCloseNotification
                                               object:window
                                                queue:nil
@@ -246,6 +255,28 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 }
 
 - (void)setVideoFrame:(CefRefPtr<CefFrame>)frame { _frame = frame; }
+
+// Chrome's window is square and transparent: clipping its content view rounds everything it shows (video, controls,
+// the fades), and the shadow, which macOS takes from the window's alpha, follows once invalidated.
+- (void)roundCorners {
+  NSView *content = _window.contentView;
+  content.wantsLayer = YES;
+  CALayer *layer = content.layer;
+  if (layer.cornerRadius != kCornerRadius || !layer.masksToBounds) {
+    layer.cornerRadius = kCornerRadius;
+    layer.cornerCurve = kCACornerCurveCircular;
+    layer.masksToBounds = YES;
+  }
+  CALayer *rim = _overlay.layer;
+  rim.cornerRadius = kCornerRadius;
+  rim.cornerCurve = kCACornerCurveCircular;
+  rim.borderWidth = 1;
+  rim.borderColor = [NSColor colorWithWhite:1 alpha:kRimAlpha].CGColor;
+  _window.opaque = NO;
+  _window.backgroundColor = NSColor.clearColor;
+  // After Chrome has drawn the new size.
+  dispatch_async(dispatch_get_main_queue(), ^{ [self->_window invalidateShadow]; });
+}
 
 - (void)setKeepOnTop:(BOOL)keepOnTop {
   _keepOnTop = keepOnTop;
@@ -414,6 +445,11 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
   auto after = [](double seconds, dispatch_block_t block) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), block);
   };
+  auto rounded = [=] {
+    CALayer *layer = window.contentView.layer;
+    return layer.cornerRadius == kCornerRadius && layer.masksToBounds && !window.opaque && window.hasShadow &&
+           self.overlay.layer.borderWidth == 1;
+  };
   auto dragTo = [=](CGFloat x) {
     self->_sawDrag = YES;
     [window setFrameOrigin:NSMakePoint(x, NSMinY(window.frame))];
@@ -425,6 +461,7 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
          @{@"level" : @(window.level), @"keepOnTop" : @(self.keepOnTop), @"shadow" : @(window.hasShadow)});
   after(0.6, ^{
     record(@"nothing of ours at rest", self.overlay.handle.hidden && [self.overlay hitTest:NSMakePoint(20, 20)] == nil, nil);
+    record(@"rounded corners", rounded(), @{@"cornerRadius" : @(window.contentView.layer.cornerRadius)});
     snapshot(@"rest");
     dragTo(NSMaxX(visible) - NSWidth(window.frame) * 0.3);
   });
@@ -472,6 +509,10 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
     [self toggleKeepOnTop:nil];
     record(@"Keep Window on Top toggles", onBefore && off && window.level == NSFloatingWindowLevel,
            @{@"menu" : [[self menu].itemArray valueForKey:@"title"]});
+    [window setFrame:NSInsetRect(start, 40, 22.5) display:YES];
+  });
+  after(7.6, ^{
+    record(@"still rounded after a resize", rounded(), nil);
     [window setFrame:start display:YES];
   });
   after(8.2, ^{
@@ -537,7 +578,14 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
     [strongWindow.contentView mouseMoved:move];
   }];
   [NSRunLoop.currentRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
-  NSDictionary *result = @{@"windowNumber" : @(window.windowNumber), @"frame" : NSStringFromRect(window.frame), @"hover" : where ?: @"video"};
+  NSDictionary *result = @{
+    @"windowNumber" : @(window.windowNumber),
+    @"frame" : NSStringFromRect(window.frame),
+    @"hover" : where ?: @"video",
+    @"cornerRadius" : @(window.contentView.layer.cornerRadius),
+    @"masksToBounds" : @(window.contentView.layer.masksToBounds),
+    @"opaque" : @(window.opaque),
+  };
   [[NSJSONSerialization dataWithJSONObject:result options:0 error:nil] writeToFile:[dir stringByAppendingPathComponent:@"pip-hover.json"]
                                                                        atomically:YES];
 }
@@ -573,6 +621,7 @@ bool Attach(NNBrowserView *view, NSString *host, CefRefPtr<CefFrame> frame) {
     controller.view = view;
     controller.host = host;
     [controller setVideoFrame:frame];
+    [controller roundCorners];
     InstallMenuMonitor();
     NSString *selfTest = NSProcessInfo.processInfo.environment[@"NETNYAHOO_PIP_SELFTEST"];
     if (fresh && [@[ @"close", @"backToTab" ] containsObject:selfTest]) [controller runButtonSelfTest:selfTest];

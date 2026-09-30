@@ -614,8 +614,11 @@ window 468 × 263 pt at (1034, 43), where the user had left it. Dia draws its ow
 `PIPWindowController`) and keeps where it was last left (`LastVideoPIPPosition`); the first-ever default wasn't
 recovered (Netnyahoo keeps Chrome's: a fifth of the work area, bottom right). Netnyahoo restyles Chrome's own window
 to these numbers (`chromium-zz-pip-dia-controls.patch`); a same-crop comparison is in the table.
-- **At rest**: only the video, in the standard macOS window corner with its 1 px dark outline and light inner rim, and
-  a faint shadow (the backdrop is 3–4 levels darker next to the window). No title, no host label, no badge.
+- **At rest**: only the video. Corners circular, **6 pt** (the outline fits a circle to 0.1 px at 2×), with a 1 pt rim
+  of white **17 %** just inside the edge (content + 32…40 levels) and a faint shadow that follows the rounded corners
+  (the backdrop is 3–4 levels darker next to the window, with a 1 px dark contact line). No title, host label or badge.
+  Netnyahoo: Chrome's square, transparent window gets its content view clipped to 6 pt, the rim drawn over it and its
+  shadow invalidated (`NNPictureInPicture.mm`); measured on a window capture: 6.0 pt radius, rim + 32…36 levels.
 - **Appears** about 125 ms after the tab switch, at full opacity (one black frame, then the video): no fade, no slide.
 - **Hover**: an even black scrim at **35 %** over the whole video (content × 0.645, same pixels before and after),
   fading in over **200 ms**, ease-in-out (2, 7, 14, 24, 40, 55, 69, 80, 90, 96, 99 % at 60 fps).
