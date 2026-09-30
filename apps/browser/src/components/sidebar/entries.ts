@@ -1,6 +1,7 @@
 import { useShallow } from "zustand/react/shallow";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { activeTabId, viewTabIds } from "../../store/model";
+import { splitIndex, stableList } from "../../store/structure";
 
 export type SidebarEntries = { tiles: string[]; pinnedGroups: string[]; list: string[] };
 
@@ -33,6 +34,7 @@ function computeEntries(s: BrowserState, windowId: string, profileId?: string): 
   const list: string[] = [];
   const groupOf = new Map<string, string>();
   for (const g of Object.values(s.groups)) if (g.windowId === windowId) g.tabIds.forEach((id) => groupOf.set(id, g.id));
+  const splits = splitIndex(s.splits);
   const seen = new Set<string>();
   for (const id of viewTabIds(s, windowId, profileId)) {
     const tab = s.tabs[id]!;
@@ -42,7 +44,7 @@ function computeEntries(s: BrowserState, windowId: string, profileId?: string): 
       continue;
     }
     const groupId = groupOf.get(id);
-    const entry = groupId ? `g:${groupId}` : splitEntry(s, id);
+    const entry = groupId ? `g:${groupId}` : splitEntry(s, id, splits);
     if (seen.has(entry)) continue;
     seen.add(entry);
     if (groupId && s.groups[groupId]!.pinned) pinnedGroups.push(groupId);
@@ -73,18 +75,24 @@ export function groupEntries(s: BrowserState, groupId: string): string[] {
   if (!g) return [];
   const cached = groupMemo.get(g);
   if (cached && cached.tabs === s.tabs && cached.splits === s.splits) return cached.result;
+  const splits = splitIndex(s.splits);
+  const seen = new Set<string>();
   const out: string[] = [];
   for (const id of g.tabIds) {
-    const entry = splitEntry(s, id);
-    if (!out.includes(entry)) out.push(entry);
+    const entry = splitEntry(s, id, splits);
+    if (!seen.has(entry)) {
+      seen.add(entry);
+      out.push(entry);
+    }
   }
-  groupMemo.set(g, { tabs: s.tabs, splits: s.splits, result: out });
-  return out;
+  const result = stableList(cached?.result, out);
+  groupMemo.set(g, { tabs: s.tabs, splits: s.splits, result });
+  return result;
 }
 
-function splitEntry(s: BrowserState, tabId: string): string {
-  for (const v of Object.values(s.splits)) {
-    if (v.tabIds.includes(tabId) && v.tabIds.filter((id) => s.tabs[id] && !s.tabs[id]!.pinned).length >= 2) return `s:${v.id}`;
+function splitEntry(s: BrowserState, tabId: string, splits = splitIndex(s.splits)): string {
+  for (const v of splits.get(tabId) ?? []) {
+    if (v.tabIds.filter((id) => s.tabs[id] && !s.tabs[id]!.pinned).length >= 2) return `s:${v.id}`;
   }
   return `t:${tabId}`;
 }

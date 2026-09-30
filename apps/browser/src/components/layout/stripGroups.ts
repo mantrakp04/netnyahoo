@@ -1,5 +1,6 @@
 import type { BrowserState } from "../../store/browser";
 import { viewTabIds } from "../../store/model";
+import { groupIndex, splitIndex, stableList } from "../../store/structure";
 import { springParams } from "./swipeMotion";
 
 // Tab groups in the top strip, measured from a 2x recording of Dia 1.50.1 (dia-spec.md › Top tab strip › Groups).
@@ -123,4 +124,46 @@ export function moveIndex(section: string[], tabId: string, slots: DragSlot[], f
 /** A member takes clicks when it's the tab shown after a collapsed group's chip, or once an open group has settled. */
 export function memberInteractive(shown: boolean, expanded: boolean, moving: boolean): boolean {
   return shown || (expanded && !moving);
+}
+
+const stripMemo = new Map<string, { inputs: unknown[]; result: string[] }>();
+
+/**
+ * The strip's entries for a profile page, in order: `pinned:<tab>`, `group:<id>:<collapsed>`,
+ * `split:<id>:<tabs>:<group>` and `tab:<id>:<group>`. Every member stays listed, collapsed or not, so a group can
+ * slide them in and out. Recomputed only when tabs, windows, groups or splits change, and the same array comes
+ * back while the entries don't, so a progress update costs a lookup.
+ */
+export function stripEntries(s: BrowserState, windowId: string, profileId: string): string[] {
+  const key = `${windowId}|${profileId}`;
+  const inputs = [s.tabs, s.windows, s.groups, s.splits];
+  const cached = stripMemo.get(key);
+  if (cached && cached.inputs.every((v, i) => v === inputs[i])) return cached.result;
+  const groups = groupIndex(s.groups);
+  const splits = splitIndex(s.splits);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of viewTabIds(s, windowId, profileId)) {
+    const t = s.tabs[id]!;
+    if (t.pinned) {
+      out.push(`pinned:${id}`);
+      continue;
+    }
+    const group = groups.get(id);
+    if (group && !seen.has(group.id)) {
+      seen.add(group.id);
+      out.push(`group:${group.id}:${group.collapsed ? 1 : 0}`);
+    }
+    const split = splits.get(id)?.[0];
+    if (split) {
+      if (!seen.has(split.id)) out.push(`split:${split.id}:${split.tabIds.join(",")}:${group?.id ?? ""}`);
+      seen.add(split.id);
+      continue;
+    }
+    out.push(`tab:${id}:${group?.id ?? ""}`);
+  }
+  const result = stableList(cached?.result, out);
+  stripMemo.set(key, { inputs, result });
+  if (stripMemo.size > 8) for (const k of stripMemo.keys()) if (!s.windows[k.split("|")[0]!]) stripMemo.delete(k);
+  return result;
 }

@@ -1,12 +1,10 @@
 import { ContextMenuArea, FadeLabel, setTrafficLightsCenter, Surface, Symbol, WindowDragRegion } from "@netnyahoo/shell";
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useShallow } from "zustand/react/shallow";
 import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, ThemeScope, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { PageProfileContext, useIsActiveTab, usePageProfileId, useSettings, useTab, useTabLive, useWindowId, useWindowProfileId } from "../../store/hooks";
-import { viewTabIds } from "../../store/model";
 import { ProfileIndicator } from "../ProfileIndicator";
 import { IconButton, useHover } from "../primitives";
 import { clickTab } from "../sidebar/actions";
@@ -30,6 +28,7 @@ import {
   MEMBERS_INSET,
   memberInteractive,
   moveIndex,
+  stripEntries,
   stripTabWidth,
   TAIL_EXPANDED,
   TUCK_FADE_MS,
@@ -128,34 +127,7 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
   const windowId = useWindowId();
   const flare = useContext(FloatingStrip) ? 0 : FLARE;
   const translateX = usePageOffset(windowId, slot, pageWidth);
-  const entries = useBrowser(
-    useShallow((s): string[] => {
-      const view = viewTabIds(s, windowId, profileId);
-      const seen = new Set<string>();
-      const out: string[] = [];
-      for (const id of view) {
-        const t = s.tabs[id]!;
-        if (t.pinned) {
-          out.push(`pinned:${id}`);
-          continue;
-        }
-        const group = Object.values(s.groups).find((g) => g.tabIds.includes(id));
-        if (group && !seen.has(group.id)) {
-          seen.add(group.id);
-          out.push(`group:${group.id}:${group.collapsed ? 1 : 0}`);
-        }
-        // Every member stays mounted, collapsed or not, so the group can slide them in and out.
-        const split = Object.values(s.splits).find((v) => v.tabIds.includes(id));
-        if (split) {
-          if (!seen.has(split.id)) out.push(`split:${split.id}:${split.tabIds.join(",")}:${group?.id ?? ""}`);
-          seen.add(split.id);
-          continue;
-        }
-        out.push(`tab:${id}:${group?.id ?? ""}`);
-      }
-      return out;
-    }),
-  );
+  const entries = useBrowser((s) => stripEntries(s, windowId, profileId));
   const activeId = useBrowser((s) => s.windows[windowId]?.activeTabIds[profileId] ?? "");
   const parsed = useMemo(() => parseEntries(entries), [entries]);
   // Each group's chip as measured (its name's width), so the tabs' width leaves it room.

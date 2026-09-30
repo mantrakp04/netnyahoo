@@ -108,8 +108,8 @@ export const createGroupsSlice: StateCreator<BrowserState, [], [], GroupsSlice> 
       if (!adding.length) return {};
       const w = s.windows[group.windowId]!;
       const window = { ...w, tabIds: placeBlock(w.tabIds, [...group.tabIds, ...adding]) };
-      const groups = leaveGroups(s.groups, new Set(adding));
-      groups[groupId] = { ...group, tabIds: [...group.tabIds, ...adding] };
+      // A new map: leaveGroups returns the current one when no added tab was in a group.
+      const groups = { ...leaveGroups(s.groups, new Set(adding)), [groupId]: { ...group, tabIds: [...group.tabIds, ...adding] } };
       return { groups, windows: { ...s.windows, [w.id]: window } };
     });
   },
