@@ -116,3 +116,13 @@ Result: _pending._
   - App telemetry: 9 opted-in users in 24h (0.2.11 7, 0.2.9 1, 0.2.7 2). One app EXC_BAD_ACCESS report to look at;
     "Calling the <text> function has failed" 6 (needs the source map).
   - Dead clicks: 230 of 267 have no element text (the Big Yahu canvas, as before). Rage clicks 7. Nothing shipped.
+- **2026-09-30 03:05 UTC check:** 3,848 visitors all time, 558 since 01:52. Traffic is picking up again
+  (152/h at 00:00, 254 at 02:00, 278 in the partial 03:00 hour), still almost all t.co. 59% phones.
+  - Downloads: 79 people all time (60 Mac). Since 01:52, Mac desktop 10/131 = 7.6%.
+  - Phones since 01:52: Send to my Mac 22 people; blocked 16, copied 4, shared 2; 1 used the fallback's Copy.
+  - Screenshots opened 49 times since 01:52 (office 24).
+  - Experiment (flag-called persons): band 32/405 (7.9%), control 38/422 (9.0%). No clear winner; keep running.
+  - App: 10 opted-in users in 24h; 2 already on 0.2.12. One more "Calling the … function has failed" on 0.2.12
+    (the loadUrl race, fixed in 7591eae2, not yet released).
+  - "Write to the office" drew 4 dead clicks and 1 rage click, plus 5 rage clicks on an unlabelled button:
+    worth a look next.
