@@ -929,7 +929,10 @@ void TabMoved(NNBrowserView *view) {
     NNBrowserView *moved = weakView;
     if (!moved || moved.client != client || !client->Browser()) return;
     CefRefPtr<CefBrowser> into = target->AnyTabOrAnchor(browser);
-    if (!into || !browser->GetHost()->MoveToBrowser(into, -1, moved.visible)) return;
+    gActivatingTab = true;
+    const bool movedIn = into && browser->GetHost()->MoveToBrowser(into, -1, moved.visible);
+    gActivatingTab = false;
+    if (!movedIn) return;
     gTabWindow[browser->GetIdentifier()] = target;
     target->DropAnchor();
     if (moved.visible) TabShown(moved);

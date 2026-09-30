@@ -853,12 +853,21 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
 void Client::OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) {
   if (tabStripIndex_ == index && tabStripActive_ == active && tabStripPinned_ == pinned) return;
   const bool first = tabStripIndex_ < 0;
+  // Chrome made this tab its active one just now; a report for a tab that already was (its index changed) isn't.
+  const bool activated = active && !tabStripActive_;
   tabStripIndex_ = index;
   tabStripActive_ = active;
   tabStripPinned_ = pinned;
   if (first) return;
   if (active && !(view_ && view_.visible) && host::PickedByClose(browser)) return;
-  Emit(@"tabStrip", @{@"index" : @(index), @"active" : @(active), @"pinned" : @(pinned)});
+  Emit(@"tabStrip", @{
+    @"index" : @(index),
+    @"active" : @(active),
+    @"pinned" : @(pinned),
+    @"activated" : @(activated),
+    // The app's own request made the change (showing or moving a tab), so it echoes what the app already shows.
+    @"byApp" : @(host::ActivatingTab()),
+  });
 }
 #endif
 

@@ -115,7 +115,15 @@ export type PasswordPrompt = {
   federation: string;
   usernames: string[];
 };
-export type TabStripPlace = { index: number; active: boolean; pinned: boolean };
+export type TabStripPlace = {
+  index: number;
+  active: boolean;
+  pinned: boolean;
+  /** Chrome made the tab its active one with this report. Older native builds leave it (and `byApp`) out. */
+  activated?: boolean;
+  /** The app's own request (showing or moving a tab) caused the report. */
+  byApp?: boolean;
+};
 export type PasswordPromptAnswer = "save" | "update" | "never" | "nope" | "dismiss";
 export type ExtensionActionResult = "none" | "popup" | "sidePanel";
 

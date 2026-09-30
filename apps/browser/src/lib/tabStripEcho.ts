@@ -1,14 +1,22 @@
+import type { TabStripPlace } from "@netnyahoo/cef";
 import type { BrowserState } from "../store/browser";
 
 // Chrome reports which of a window's tabs is active (onTabStrip), and that includes echoes of the app's own
 // switches: showing a tab makes the engine activate it a moment later (NNWindowHost TabShown), and the tab that is
-// still Chrome's active one reports again when its index changes (a tab opened before it). A report for the tab the
-// app just left, arriving before Chrome has caught up with the switch, would switch back; the app would show that
-// tab again, Chrome would report the next one, and the two could trade switches for as long as the reports lag.
+// still Chrome's active one reports again when its index changes (a tab opened before it). Taking an echo for a
+// switch would switch back to a tab the app just left.
 //
-// So after the app switches a window's tab, reports that the tabs it left are active are echoes until Chrome
-// reports the new tab active (or ECHO_MS passes, for tabs Chrome never reports: internal pages). Once Chrome has
-// caught up, a tab it activates is a real switch (an extension's, say), even one the app just left.
+// The engine says which reports are which: `activated` when Chrome has just made the tab active (an index change
+// of the tab that already was isn't), `byApp` when the app's own request did it. Only an activation the app didn't
+// ask for is a switch (an extension's, say, or Chrome's own), even to a tab the app just left.
+export function isChromeSwitch(windowId: string, tabId: string, shownTabId: string | undefined, place: TabStripPlace, now = Date.now()) {
+  if (!place.active || tabId === shownTabId) return false;
+  if (place.activated !== undefined) return place.activated && !place.byApp;
+  return !isActivationEcho(windowId, tabId, shownTabId, now);
+}
+
+// Older native builds say neither, so reports that the tabs the app left are active count as echoes until Chrome
+// reports the new tab active, or ECHO_MS passes (for tabs Chrome never reports: internal pages).
 export const ECHO_MS = 1000;
 
 type Pending = { left: Set<string>; at: number };

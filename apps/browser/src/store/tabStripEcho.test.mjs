@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("./browser.ts");
 const model = await import("./model.ts");
-const { ECHO_MS, isActivationEcho, noteActivations } = await import("../lib/tabStripEcho.ts");
+const { ECHO_MS, isActivationEcho, isChromeSwitch, noteActivations } = await import("../lib/tabStripEcho.ts");
 
 const S = () => useBrowser.getState();
 
@@ -48,4 +48,24 @@ test("updates that don't switch tabs record nothing", () => {
   S().updateTab(c, { title: "C" });
   noteActivations(S(), prev, 1000);
   assert.equal(isActivationEcho(w, c, a, 1100), false);
+});
+
+test("with the engine's flags, only an activation the app didn't ask for is a switch", () => {
+  const { w, a, b, c } = setup();
+  activate(b, 1000);
+  const place = (active, activated, byApp) => ({ index: 0, pinned: false, active, activated, byApp });
+  assert.equal(isChromeSwitch(w, a, b, place(true, false, false), 1100), false, "a was already Chrome's active tab: its index moved");
+  assert.equal(isChromeSwitch(w, b, b, place(true, true, true), 1100), false, "the app's own switch echoing back");
+  assert.equal(isChromeSwitch(w, c, b, place(true, true, true), 1100), false, "activated by the app's request (a moved tab)");
+  assert.equal(isChromeSwitch(w, a, b, place(true, true, false), 1100), true, "Chrome activating a tab the app just left is real");
+  assert.equal(isChromeSwitch(w, c, b, place(false, false, false), 1100), false, "not active");
+});
+
+test("without the flags (older engines), the timed echo window decides", () => {
+  const { w, a, b, c } = setup();
+  activate(b, 1000);
+  const place = { index: 0, active: true, pinned: false };
+  assert.equal(isChromeSwitch(w, a, b, place, 1100), false, "a's report is still an echo");
+  assert.equal(isChromeSwitch(w, c, b, place, 1100), true);
+  assert.equal(isChromeSwitch(w, b, b, place, 1100), false, "the shown tab");
 });
