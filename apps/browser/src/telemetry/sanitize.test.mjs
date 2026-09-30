@@ -1,7 +1,7 @@
 // Run from apps/browser:  node --test src/telemetry/sanitize.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleanProperties, errorCode, errorMessage, errorType, nativeFrames, parseStack, scrubText } from "./sanitize.ts";
+import { cleanProperties, errorCode, errorMessage, errorType, nativeCrashExceptions, nativeFrames, parseStack, scrubText } from "./sanitize.ts";
 
 const leaks = (text, ...secrets) => secrets.filter((s) => text.includes(s));
 
@@ -121,4 +121,45 @@ test("event properties are flat, plain and scrubbed", () => {
     "bad key": 1,
   });
   assert.deepEqual(out, { kind: "history", count: 3, ok: true, none: null, url: "<url>" });
+});
+
+test("an uncaught NSException sends its name and throw site first, never its reason", () => {
+  const { name, signal, exceptions } = nativeCrashExceptions({
+    exceptionType: "EXC_BREAKPOINT",
+    signal: "SIGTRAP",
+    exceptionName: "NSRangeException",
+    frames: [{ image: "AppKit", symbol: "+[NSApplication _crashOnException:]" }, { image: "Netnyahoo", symbol: "main" }],
+    exceptionFrames: [
+      { image: "CoreFoundation", symbol: "__exceptionPreprocess" },
+      { image: "libobjc.A.dylib", symbol: "objc_exception_throw" },
+      { image: "NetnyahooShell", symbol: "TabStrip.select(_:)" },
+    ],
+  });
+  assert.equal(name, "NSRangeException");
+  assert.equal(signal, "SIGTRAP");
+  assert.deepEqual(exceptions.map((e) => [e.type, e.value]), [
+    ["NSRangeException", "Uncaught NSRangeException"],
+    ["EXC_BREAKPOINT", "EXC_BREAKPOINT (SIGTRAP)"],
+  ]);
+  assert.equal(exceptions[0].frames.at(-1).function, "__exceptionPreprocess");
+  assert.equal(exceptions[0].frames[0].function, "TabStrip.select(_:)");
+  assert.equal(exceptions[0].frames[0].in_app, true);
+  assert.equal(exceptions[1].frames.at(-1).function, "+[NSApplication _crashOnException:]");
+});
+
+test("exception names that aren't framework constants are dropped", () => {
+  for (const bad of ["reason: secret", "alice@example.com", "Name With Spaces", "NSRangeException: 5 beyond", "x"]) {
+    const { name, exceptions } = nativeCrashExceptions({ exceptionName: bad, frames: [], exceptionFrames: [{ image: "AppKit" }] });
+    assert.equal(name, null, bad);
+    assert.equal(exceptions[0].type, "NSException");
+  }
+  for (const good of ["NSInvalidArgumentException", "CALayerInvalidGeometry", "RCTFatalException", "NSInternalInconsistencyException"]) {
+    assert.equal(nativeCrashExceptions({ exceptionName: good, frames: [] }).name, good);
+  }
+});
+
+test("a crash without an exception backtrace sends the crashed thread only", () => {
+  const { exceptions } = nativeCrashExceptions({ exceptionType: "EXC_BAD_ACCESS", signal: "SIGSEGV", frames: [{ image: "Netnyahoo" }] });
+  assert.deepEqual(exceptions.map((e) => e.type), ["EXC_BAD_ACCESS"]);
+  assert.equal(nativeCrashExceptions({ exceptionType: "weird type", frames: [] }).exceptions[0].type, "Crash");
 });

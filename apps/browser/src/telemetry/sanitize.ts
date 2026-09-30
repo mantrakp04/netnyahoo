@@ -148,6 +148,30 @@ export function nativeFrames(frames: NativeFrame[], limit = 64): ExceptionFrame[
   }).reverse();
 }
 
+const SYSTEM_NAME = /^[A-Z][A-Z0-9_ ()]{1,40}$/;
+// Framework-prefixed constants only (NSRangeException, CALayerInvalidGeometry, RCTFatalException).
+const EXCEPTION_NAME = /^[A-Z]{2,4}[A-Z][a-z][A-Za-z0-9]{1,60}$/;
+
+export type NativeCrash = {
+  exceptionType?: string;
+  signal?: string;
+  exceptionName?: string;
+  frames: NativeFrame[];
+  exceptionFrames?: NativeFrame[];
+};
+
+/** A crash report as exceptions: the uncaught NSException's throw site first (when there is one),
+ *  then the Mach exception with the crashed thread. Names only; never reasons. */
+export function nativeCrashExceptions(report: NativeCrash) {
+  const machType = report.exceptionType && SYSTEM_NAME.test(report.exceptionType) ? report.exceptionType : "Crash";
+  const signal = report.signal && SYSTEM_NAME.test(report.signal) ? report.signal : null;
+  const name = report.exceptionName && EXCEPTION_NAME.test(report.exceptionName) ? report.exceptionName : null;
+  const crash = { type: machType, value: signal ? `${machType} (${signal})` : machType, frames: nativeFrames(report.frames) };
+  if (!report.exceptionFrames?.length) return { name, signal, exceptions: [crash] };
+  const thrown = { type: name ?? "NSException", value: `Uncaught ${name ?? "NSException"}`, frames: nativeFrames(report.exceptionFrames) };
+  return { name, signal, exceptions: [thrown, crash] };
+}
+
 export type PropertyValue = string | number | boolean | null;
 
 export function cleanProperties(props: Record<string, unknown>): Record<string, PropertyValue> {

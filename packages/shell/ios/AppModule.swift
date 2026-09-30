@@ -125,12 +125,13 @@ public class AppModule: Module {
 
     // MARK: Telemetry (apps/browser/src/telemetry; only asked while the user shares diagnostics)
 
-    /// Telemetry includes only the exception and crashing thread; never paths or unrelated threads.
+    /// Telemetry includes only the exception, the NSException's name and throw site, and the crashing thread;
+    /// never paths, reasons or unrelated threads.
     AsyncFunction("crashReports") { (since: Double) -> [[String: Any]] in CrashReports.since(since) }
 
-    AsyncFunction("devCrash") {
+    AsyncFunction("devCrash") { (kind: String?) in
       #if DEBUG
-      DispatchQueue.main.async { CrashReports.crashForTesting() }
+      DispatchQueue.main.async { CrashReports.crashForTesting(kind) }
       #endif
     }
 
@@ -378,16 +379,21 @@ fileprivate enum CrashReports {
     let threads = body["threads"] as? [[String: Any]] ?? []
     let faulting = body["faultingThread"] as? Int ?? threads.firstIndex { $0["triggered"] as? Bool == true } ?? 0
     let frames = threads.indices.contains(faulting) ? threads[faulting]["frames"] as? [[String: Any]] ?? [] : []
-    var report: [String: Any] = [
-      "time": time.timeIntervalSince1970 * 1000,
-      "frames": frames.prefix(64).map { frame -> [String: Any] in
+    func simplified(_ frames: [[String: Any]]) -> [[String: Any]] {
+      frames.prefix(64).map { frame -> [String: Any] in
         let index = frame["imageIndex"] as? Int ?? -1
         var out: [String: Any] = ["image": images.indices.contains(index) ? images[index] : "???"]
         if let symbol = frame["symbol"] as? String { out["symbol"] = symbol }
         if let offset = frame["imageOffset"] as? Int { out["offset"] = offset }
         return out
-      },
-    ]
+      }
+    }
+    var report: [String: Any] = ["time": time.timeIntervalSince1970 * 1000, "frames": simplified(frames)]
+    // An uncaught NSException crashes in AppKit's handler; the throw site is only in lastExceptionBacktrace.
+    if let thrown = body["lastExceptionBacktrace"] as? [[String: Any]], !thrown.isEmpty {
+      report["exceptionFrames"] = simplified(thrown)
+    }
+    if let name = exceptionName(body) { report["exceptionName"] = name }
     for (key, value) in [
       ("incidentId", header["incident_id"]), ("appVersion", header["app_version"]), ("build", header["build_version"]),
       ("exceptionType", exception["type"]), ("signal", exception["signal"]),
@@ -397,8 +403,35 @@ fileprivate enum CrashReports {
     return report
   }
 
+  /// The NSException's class-like name (NSRangeException, CALayerInvalidGeometry), never its reason.
+  private static func exceptionName(_ body: [String: Any]) -> String? {
+    let valid = try! NSRegularExpression(pattern: "^[A-Z][A-Za-z0-9_]{2,63}$")
+    func checked(_ full: String) -> String? {
+      // RCTFatal names its exception "RCTFatalException: <message>"; keep the constant only.
+      let name = String(full.prefix { $0 != ":" })
+      return valid.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) == nil ? nil : name
+    }
+    if let reason = body["exceptionReason"] as? [String: Any], let name = reason["name"] as? String {
+      return checked(name)
+    }
+    // Older reports only carry "*** Terminating app due to uncaught exception 'Name', reason: …" in asi.
+    let uncaught = try! NSRegularExpression(pattern: "uncaught exception '([^']{1,64})'")
+    for case let lines as [String] in (body["asi"] as? [String: Any] ?? [:]).values {
+      for line in lines {
+        guard let match = uncaught.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+          let range = Range(match.range(at: 1), in: line) else { continue }
+        return checked(String(line[range]))
+      }
+    }
+    return nil
+  }
+
   #if DEBUG
-  @inline(never) static func crashForTesting() {
+  @inline(never) static func crashForTesting(_ kind: String?) {
+    if kind == "exception" {
+      // Raised inside -[NSApplication run], like the 0.2.15 crash: AppKit reports it and crashes.
+      _ = NSArray().object(at: 3)
+    }
     let pointer = UnsafeMutablePointer<Int>(bitPattern: 0x10)!
     pointer.pointee = 1
   }

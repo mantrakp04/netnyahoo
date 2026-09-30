@@ -33,7 +33,7 @@ export const WHATS_SENT: { title: string; items: string[] }[] = [
     items: [
       "The error's type and message, with web addresses, paths, file names, quoted text and long numbers taken out",
       "Function names, script file names and line numbers from the stack trace",
-      "After a crash: the exception type and the crashing thread's function names from this app's crash report",
+      "After a crash: the exception type and name (never its message), and the function names where it was thrown and on the crashing thread, from this app's crash report",
       "Warning and error log lines, cleaned the same way",
     ],
   },

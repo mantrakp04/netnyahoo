@@ -69,8 +69,13 @@ export type CrashReport = {
   build?: string;
   exceptionType?: string;
   signal?: string;
-  frames: { image: string; symbol?: string; offset?: number }[];
+  frames: NativeFrame[];
+  /** An uncaught NSException's name (validated natively) and where it was thrown. */
+  exceptionName?: string;
+  exceptionFrames?: NativeFrame[];
 };
+
+type NativeFrame = { image: string; symbol?: string; offset?: number };
 
 export type ScriptState = {
   windows: {
@@ -129,7 +134,7 @@ type AppModule = {
   devTypeKeys?(windowId: string, text: string, interval: number): Promise<KeyTiming[]>;
   devKeyEquivalent?(windowId: string, press: KeyPress): Promise<KeyPressResult>;
   crashReports?(since: number): Promise<CrashReport[]>;
-  devCrash?(): Promise<void>;
+  devCrash?(kind?: "exception"): Promise<void>;
 };
 
 const missing: AppModule = {
@@ -186,7 +191,7 @@ export const setAppIcon = (id: string) => App.setAppIcon(id);
 export const notificationPermission = () => App.notificationPermission();
 
 export const crashReports = (since: number): Promise<CrashReport[]> => App.crashReports?.(since) ?? Promise.resolve([]);
-export const devCrash = () => App.devCrash?.() ?? Promise.resolve();
+export const devCrash = (kind?: "exception") => App.devCrash?.(kind) ?? Promise.resolve();
 export const requestNotificationPermission = () => App.requestNotificationPermission();
 export const postNotification = (options: NotificationOptions) => App.postNotification(options);
 export const removeNotifications = (ids: string[]) => App.removeNotifications(ids);
