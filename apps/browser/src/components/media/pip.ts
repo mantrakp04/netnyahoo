@@ -32,6 +32,14 @@ const windowVisible = new Map<string, boolean>();
 const inView = (s: BrowserState, tabId: string) =>
   isTabShown(s, tabId) && windowVisible.get(s.tabs[tabId]?.windowId ?? "") !== false;
 
+// A tab the user sees again takes its video back from Picture in Picture, however it got there (our auto PiP or
+// menus, or the page's own button): the page reports every window it opens (`pipOpen`), and `pip` covers our own
+// requests until it does.
+const inPictureInPictureTabs = () => {
+  const { pip, pipOpen } = useMedia.getState();
+  return new Set([...Object.keys(pip), ...Object.keys(pipOpen)]);
+};
+
 export function startMedia() {
   if (started) return;
   started = true;
@@ -45,11 +53,8 @@ export function startMedia() {
     for (const tabId of closedByUser) {
       if (!s.tabs[tabId] || (isTabShown(s, tabId) && !isTabShown(prev, tabId))) closedByUser.delete(tabId);
     }
-    const { pip } = useMedia.getState();
-    for (const tabId of Object.keys(pip)) {
-      if (isTabShown(s, tabId) && !isTabShown(prev, tabId)) {
-        exitPictureInPicture(tabId);
-      }
+    for (const tabId of inPictureInPictureTabs()) {
+      if (isTabShown(s, tabId) && !isTabShown(prev, tabId)) exitPictureInPicture(tabId);
     }
   });
 
@@ -70,10 +75,10 @@ export function startMedia() {
     const s = useBrowser.getState();
     const tabs = viewTabIds(s, e.id).filter((id) => isTabShown(s, id));
     if (e.visible) {
+      const pip = inPictureInPictureTabs();
       for (const tabId of tabs) {
         closedByUser.delete(tabId);
-        if (useMedia.getState().pip[tabId] !== "auto") continue;
-        exitPictureInPicture(tabId);
+        if (pip.has(tabId)) exitPictureInPicture(tabId);
       }
       return;
     }
