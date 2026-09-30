@@ -10,6 +10,12 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
 - **Orchestrate.** The main session plans, hands implementation to Opus subagents, and verifies what they
   return (build, run, capture). Give each agent its own files, its own derived-data dir and its own
   `NETNYAHOO_DATA_DIR`.
+- **Watch the agents.** Every ~30 minutes the main session checks any agent it hasn't heard from (last
+  transcript activity, a pending tool call, `/tmp/nn-*.holder`, its processes). A stuck agent means a root
+  cause to fix (a lock, a wait, a hang), not just a restart. Send new feedback to the agent that owns
+  that area (SendMessage) instead of starting a new one, and batch finished fixes into the next release.
+- **Ask Codex for a second opinion** on risky logic, races and reviews:
+  `codex exec -m gpt-6-luna -c model_reasoning_effort='"high"' -s read-only "<what to check>"`.
 - **No git worktrees, ever.** Everyone works in this checkout.
 - **Commit straight to `main`.** Stage only your own hunks (`git add -p` or explicit paths), never
   someone else's work in progress. Never stage with `git apply --unidiff-zero`: it drops hunks into the wrong
@@ -22,8 +28,8 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
 ## Hard rules
 - **The Chromium build cache is sacred.** Never touch `~/chromium-build/chromium_git/chromium/src/out`,
   and never run `gclient sync` or `gn clean`: a full rebuild costs about 5 hours. Engine changes are
-  incremental builds only, holding `/tmp/nn-chromium.lock`
-  (`docs/cef-source-build.md`). When freeing disk space, stay out of `~/chromium-build`.
+  incremental builds only, holding the chromium lock (`scripts/agent/locked chromium`,
+  `docs/cef-source-build.md`). When freeing disk space, stay out of `~/chromium-build`.
 - **Never launch or touch `/Applications/Netnyahoo.app`.** The owner is using it.
 - **Never steal focus.** Run builds only as hidden instances:
   `open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR=<throwaway dir> --env NETNYAHOO_REMOTE_DEBUGGING_PORT=<port> <app>`.
@@ -42,6 +48,16 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   `docs/dia-spec.md` has Dia's measured values.
 - **Match Dia with numbers.** Compare against a capture with the same crop and the same state; "looks
   close" isn't enough. When the owner asks for Arc's layout, keep Dia's styling unless told otherwise.
+- **Parity means UI and UX.** Match what Dia does, not only how it looks: what each click does, what it
+  remembers (positions, sizes), its animations and their timing in frames, and what keeps running.
+  Obvious UX holds everywhere: dismissing something never pauses playback or drags you to another tab;
+  going back to the source ends a temporary view (the mini player); nothing reopens right after you close it.
+- **Owner recordings and screenshots.** Copy a recording out of its temp folder at once (it vanishes, and
+  the name has a narrow no-break space: use a glob). Extract 30 fps frames with ffmpeg, find events by
+  frame difference, and measure positions and timings from the pixels. A position or size in the owner's
+  recording may be their saved preference rather than Dia's default.
+- **Crash reports.** When `crash.log` shows up in the repo root, check the binary UUID against the current
+  build (older builds are usually known-fixed), check PostHog's errors too, fix the cause, then delete it.
 - **Verify before you call it done.** Typecheck, build, and exercise the feature in a hidden instance
   (dev harness, CDP, window snapshots).
   - The screen is often locked, and then WindowServer captures fail. Use the in-process snapshots
@@ -68,6 +84,10 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
 
   The owner has authorized releases to go all the way through. After an update, the app opens the
   release notes on netnyahoo.com.
+- **Every release gets a tweet draft**: a version line, 4–5 short, witty, simple bullets, "Still free.
+  Still no AI." and the URL, under 280 characters. Add a 1600×1000 image in the site's style built from
+  real captures of neutral pages (no random user posts or personal data) at `output/tweets/<version>.png`.
+  Only the owner posts it.
 - **Other public actions** (a site deploy outside a release, posting anywhere) need the owner's OK first.
 
 ## Site and launch films
