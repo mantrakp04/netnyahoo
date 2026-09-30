@@ -10,6 +10,7 @@ import { readDocument, writeDocument } from "@netnyahoo/shell";
 import * as actions from "../../src/lib/actions";
 import { runCommand } from "../../src/lib/commands";
 import { webviews } from "../../src/lib/webviews";
+import { usePages } from "../../src/components/layout/pageState";
 import { useBrowser } from "../../src/store/browser";
 
 writeDocument("bench-boot.json", JSON.stringify({ jsStart: Date.now() }));
@@ -17,6 +18,7 @@ writeDocument("bench-boot.json", JSON.stringify({ jsStart: Date.now() }));
 let pausedUntil = 0;
 const nn = {
   store: useBrowser,
+  pages: usePages,
   actions,
   runCommand,
   webviews,
