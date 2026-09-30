@@ -1,0 +1,19 @@
+apps/site/src/scripts/telemetry/recorder.ts
+  s_9c356f9574d31c::t_3e71b6575e0201 66-67,71-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "27051ded8fefda99bde719cc99601a2343a52ab9",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
