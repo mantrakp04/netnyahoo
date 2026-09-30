@@ -172,12 +172,13 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
       if ([info[@"id"] isEqual:blocker::ExtensionId()]) continue;
       NSMutableDictionary *item = [info mutableCopy];
       NSString *path = [info[@"path"] isKindOfClass:NSString.class] ? info[@"path"] : nil;
-      NSDictionary *manifest = path ? ext::ReadManifest(path) : nil;
+      // Store extensions have no path: their manifest is in Chrome's copy. Without it their popup never opened
+      // from the extensions menu or a shortcut, which pass no action state.
+      NSString *folder = path ?: StoreFolder(profile, info[@"id"], info[@"version"]);
+      NSDictionary *manifest = folder ? ext::ReadManifest(folder) : nil;
       for (NSString *key in @[ @"popup", @"actionTitle", @"actionIcon", @"sidePanel", @"hasAction" ])
         if (manifest[key]) item[key] = manifest[key];
       // Whether its pages can run in a private window's own profile (Chrome loads only split-mode ones there).
-      NSString *store = path ? nil : StoreFolder(profile, info[@"id"], info[@"version"]);
-      if (store) manifest = ext::ReadManifest(store);
       item[@"incognitoSplit"] = @([manifest[@"incognitoSplit"] boolValue]);
       BOOL fromStore = [info[@"location"] isEqual:@"FROM_STORE"];
       item[@"fromWebStore"] = @(fromStore);

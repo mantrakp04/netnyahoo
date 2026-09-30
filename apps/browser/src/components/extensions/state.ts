@@ -2,6 +2,7 @@ import {
   chooseExtensionFolder,
   configureExtension,
   ExtensionError,
+  extensionActionStates,
   extensionSidePanelUrl,
   inspectUnpackedExtension,
   installExtension,
@@ -268,6 +269,9 @@ export async function activateExtension(windowId: string, ext: InstalledExtensio
   const tabId = activeTabId(s, windowId);
   const web = tabId ? webviews.get(tabId) : undefined;
   const result = web ? await web.executeExtensionAction(ext.id) : null;
+  // The extensions menu and shortcuts pass no state; the tab's popup may not be the manifest's.
+  const browserId = browserIdOf(tabId);
+  if (!state && result === "popup" && browserId) state = (await extensionActionStates(browserId, [ext.id]))[ext.id];
   const url = state ? state.popup : ext.popup ? `chrome-extension://${ext.id}/${ext.popup.replace(/^\//, "")}` : "";
   if (result === "none") return;
   if (result === "sidePanel") return void toggleSidePanel(windowId, ext.id);
