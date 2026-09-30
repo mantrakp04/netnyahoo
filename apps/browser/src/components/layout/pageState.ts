@@ -1,6 +1,9 @@
 import type { BlockedPopup, CrashInfo, ExternalAppRequest, MediaAccess, NavigationState, PasswordPrompt, PermissionRequest, SecurityInfo } from "@netnyahoo/cef";
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { useBrowser } from "../../store/browser";
+import { activeTabId } from "../../store/model";
+import { splitOf } from "../../store/splits";
 
 export type PageState = {
   status: string;
@@ -81,9 +84,16 @@ export function setPopover(tabId: string, popover: Store["popover"][string]) {
 
 export const usePopover = (tabId: string | undefined) => usePages((s) => (tabId ? (s.popover[tabId] ?? null) : null));
 
+// Page (element) fullscreen: only a tab on screen counts, so switching tabs leaves it (the hidden
+// web view exits fullscreen natively).
 export function useFullscreenTab(windowId: string): string | undefined {
-  const tabIds = useBrowser((s) => s.windows[windowId]?.tabIds);
-  return usePages((s) => tabIds?.find((id) => s.pages[id]?.fullscreen));
+  const shown = useBrowser(
+    useShallow((s) => {
+      const active = activeTabId(s, windowId);
+      return active ? (splitOf(s, active)?.tabIds ?? [active]) : [];
+    }),
+  );
+  return usePages((s) => shown.find((id) => s.pages[id]?.fullscreen));
 }
 
 useBrowser.subscribe((s, prev) => {

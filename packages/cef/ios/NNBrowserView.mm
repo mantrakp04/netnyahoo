@@ -489,6 +489,8 @@ NSString *const kExitPictureInPictureScript =
 - (void)setVisible:(BOOL)visible {
   if (_visible == visible) return;
   _visible = visible;
+  // Switching away from a full-screen page takes it out of full screen, as in Chrome.
+  if (!visible && _browser && _client->Fullscreen()) _browser->GetHost()->ExitFullscreen(true);
   [self applyPainting];
   if (visible) host::TabShown(self);
   if (self.window) host::LayoutChanged(self.window);

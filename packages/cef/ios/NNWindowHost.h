@@ -44,5 +44,7 @@ NSArray<NSDictionary *> *WindowStates();
 NSString *DevWindowAction(NSInteger windowNumber, NSString *action);
 void CloseAll();
 NSWindow *FullScreenWindow(NSWindow *window);
+// Between -windowWillEnter/ExitFullScreen: and the matching Did, when AppKit ignores -toggleFullScreen:.
+bool InFullScreenTransition(NSWindow *window);
 
 }

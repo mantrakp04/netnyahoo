@@ -42,7 +42,9 @@ void ToggleWindowFullScreen(NSWindow *window) {
   if (!activation::Background()) return [window toggleFullScreen:nil];
   const bool leaving = host::FullScreenWindow(window) != nil;
   activation::Allow(leaving ? @"toggleFullScreen: (page left full screen; acted out)" : @"toggleFullScreen: (page full screen; acted out)");
-  host::DevWindowAction(window.windowNumber, leaving ? @"fakeFullScreen:0" : @"fakeFullScreen:1");
+  // NETNYAHOO_FAKE_FULLSCREEN_MS gives the acted-out transition AppKit's duration.
+  NSString *ms = NSProcessInfo.processInfo.environment[@"NETNYAHOO_FAKE_FULLSCREEN_MS"] ?: @"0";
+  host::DevWindowAction(window.windowNumber, [NSString stringWithFormat:@"fakeFullScreen:%d:%@", !leaving, ms]);
 }
 
 NSString *SelectionLabel(NSString *text) {
@@ -513,35 +515,70 @@ void Client::OnFaviconURLChange(CefRefPtr<CefBrowser> browser, const std::vector
   Emit(@"favicon", @{@"url" : urls.firstObject ?: @"", @"urls" : urls});
 }
 
+// Page (element) full screen: the page fills the window, which enters macOS full screen for it unless it
+// already was, and leaves it afterwards only if it entered for the page.
 void Client::OnFullscreenModeChange(CefRefPtr<CefBrowser> browser, bool fullscreen) {
   fullscreen_ = fullscreen;
-  NSWindow *window = view_.window;
-  NSWindow *fullScreenWindow = host::FullScreenWindow(window);
-  if (fullscreen && !fullScreenWindow && window) {
-    enteredFullscreen_ = true;
-    ToggleWindowFullScreen(window);
-  } else if (!fullscreen && fullScreenWindow && enteredFullscreen_) {
-    ToggleWindowFullScreen(fullScreenWindow);
+  if (fullscreen && !fullscreenWindow_) {
+    NSWindow *window = view_.window;
+    fullscreenWindow_ = host::FullScreenWindow(window) ?: window;
   }
-  if (!fullscreen) enteredFullscreen_ = false;
-  WatchFullscreenExit(fullscreen ? (fullScreenWindow ?: window) : nil);
+  SyncWindowFullScreen();
   Emit(@"fullscreen", @{@"fullscreen" : @(fullscreen)});
 }
 
-void Client::WatchFullscreenExit(NSWindow *window) {
-  if (fullscreenExitObserver_) [NSNotificationCenter.defaultCenter removeObserver:fullscreenExitObserver_];
-  fullscreenExitObserver_ = nil;
+void Client::SyncWindowFullScreen() {
+  NSWindow *window = fullscreenWindow_;
+  if (!window) return WatchFullscreenWindow(nil);
+  WatchFullscreenWindow(window);
+  // AppKit ignores -toggleFullScreen: mid-transition; FullscreenWindowSettled() comes back here.
+  if (host::InFullScreenTransition(window)) return;
+  const bool full = host::FullScreenWindow(window) != nil;
+  if (fullscreen_ && !full && !enteredFullscreen_) {
+    enteredFullscreen_ = true;
+    ToggleWindowFullScreen(window);
+  } else if (!fullscreen_ && full && enteredFullscreen_) {
+    enteredFullscreen_ = false;
+    leavingFullscreen_ = true;
+    ToggleWindowFullScreen(window);
+  } else if (!fullscreen_ && !leavingFullscreen_) {
+    enteredFullscreen_ = false;
+    fullscreenWindow_ = nil;
+    WatchFullscreenWindow(nil);
+  }
+}
+
+void Client::WatchFullscreenWindow(NSWindow *window) {
+  if (fullscreenObservers_ && observedFullscreenWindow_ == window) return;
+  for (id observer in fullscreenObservers_) [NSNotificationCenter.defaultCenter removeObserver:observer];
+  fullscreenObservers_ = nil;
+  observedFullscreenWindow_ = window;
   if (!window) return;
   CefRefPtr<Client> self(this);
-  fullscreenExitObserver_ = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidExitFullScreenNotification
-                                                                            object:window
-                                                                             queue:nil
-                                                                        usingBlock:^(NSNotification *) {
-                                                                          CefRefPtr<Client> client = self;
-                                                                          client->WatchFullscreenExit(nil);
-                                                                          if (client->fullscreen_ && client->browser_)
-                                                                            client->browser_->GetHost()->ExitFullscreen(true);
-                                                                        }];
+  NSMutableArray *observers = [NSMutableArray array];
+  for (NSNotificationName name in @[ NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification ]) {
+    const bool entered = name == NSWindowDidEnterFullScreenNotification;
+    [observers addObject:[NSNotificationCenter.defaultCenter addObserverForName:name
+                                                                         object:window
+                                                                          queue:nil
+                                                                     usingBlock:^(NSNotification *) {
+                                                                       // After the window host clears its transition state.
+                                                                       dispatch_async(dispatch_get_main_queue(), ^{
+                                                                         self->FullscreenWindowSettled(entered);
+                                                                       });
+                                                                     }]];
+  }
+  fullscreenObservers_ = observers;
+}
+
+void Client::FullscreenWindowSettled(bool entered) {
+  if (!entered && !leavingFullscreen_) {
+    // Left by hand (the green button, ⌃⌘F): the page leaves full screen too.
+    enteredFullscreen_ = false;
+    if (fullscreen_ && browser_) return browser_->GetHost()->ExitFullscreen(true);
+  }
+  if (!entered) leavingFullscreen_ = false;
+  SyncWindowFullScreen();
 }
 
 #if NN_DOCKED_DEVTOOLS
@@ -719,7 +756,10 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
     if (view_ && !view_.closingByRequest && !ShuttingDown() && !closingByEngine_) Emit(@"windowClose", @{});
   }
   FlushEvals();
-  WatchFullscreenExit(nil);
+  if (fullscreen_) {
+    fullscreen_ = false;
+    SyncWindowFullScreen();
+  }
   BrowserClosed(browser);
   site::BrowserClosed(browser->GetIdentifier());
   if (!adoptId_.empty()) Popups().erase(adoptId_);

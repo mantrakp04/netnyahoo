@@ -2,6 +2,7 @@ import { devWindowAction, engineInfo, chromeWindows, prepareTabTransfer, type Ta
 import { usePages } from "../components/layout/pageState";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile } from "../store/model";
+import { splitOf } from "../store/splits";
 import { webviews } from "./webviews";
 
 let started = false;
@@ -99,5 +100,9 @@ export function onChromeTabStrip(tabId: string, place: TabStripPlace) {
     placed.delete(tabId);
     s.togglePin(tabId);
   }
-  if (place.active && w.activeTabIds[tab.profileId] !== tabId && w.profileId === tab.profileId) s.activate(tabId);
+  const active = w.activeTabIds[tab.profileId];
+  // A split pane that shows again (after another pane's page full screen, say) becomes Chrome's active tab; the
+  // focused pane only changes when the user focuses a page (onPageFocus).
+  if (active && active !== tabId && splitOf(s, active)?.tabIds.includes(tabId)) return;
+  if (place.active && active !== tabId && w.profileId === tab.profileId) s.activate(tabId);
 }

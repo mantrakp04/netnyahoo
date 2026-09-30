@@ -80,6 +80,8 @@ export function startMedia() {
     // Screen lock hides every window; it does not mean the user left the video.
     if (!(s.settings.autoPictureInPicture ?? true) || Date.now() - lockedAt < LOCK_GRACE_MS) return;
     for (const tabId of tabs) {
+      // Picture in Picture would take the video out of its element full screen.
+      if (pageOf(tabId).fullscreen) continue;
       const session = useMedia.getState().sessions[tabId];
       if (closedByUser.has(tabId) || !session?.hasVideo || !isPlaying(session) || !eligible(tabId)) continue;
       void (async () => {

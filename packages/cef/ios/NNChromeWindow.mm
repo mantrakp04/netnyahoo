@@ -77,6 +77,7 @@ void (^gSwapped)(NSWindow *, NSWindow *);
 const void *kPendingProfileKey = &kPendingProfileKey;
 const void *kExitingFullScreenKey = &kExitingFullScreenKey;
 const void *kNestedBehaviorKey = &kNestedBehaviorKey;
+const void *kTransitionKey = &kTransitionKey;
 
 void ForwardFullScreenToggles(NSWindow *window);
 void ReturnRootBeforeFullScreenExit(NSWindow *window);
@@ -96,6 +97,16 @@ void ConfigureHostingWindow(NSWindow *window) {
   [center addObserverForName:NSWindowDidExitFullScreenNotification object:window queue:nil usingBlock:^(NSNotification *) {
     objc_setAssociatedObject(weakWindow, kExitingFullScreenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   }];
+  for (NSNotificationName name in @[
+         NSWindowWillEnterFullScreenNotification, NSWindowWillExitFullScreenNotification,
+         NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification
+       ]) {
+    const BOOL begins = [name isEqualToString:NSWindowWillEnterFullScreenNotification] ||
+                        [name isEqualToString:NSWindowWillExitFullScreenNotification];
+    [center addObserverForName:name object:window queue:nil usingBlock:^(NSNotification *) {
+      objc_setAssociatedObject(weakWindow, kTransitionKey, begins ? NSDate.date : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }];
+  }
 }
 
 NSColor *WindowColor() {
@@ -388,6 +399,12 @@ NSWindow *FullScreenWindow(NSWindow *window) {
   return FullScreenHost(window);
 }
 
+bool InFullScreenTransition(NSWindow *window) {
+  // AppKit says nothing when a transition fails; don't wait on one forever.
+  NSDate *began = window ? objc_getAssociatedObject(window, kTransitionKey) : nil;
+  return began && -began.timeIntervalSinceNow < 3;
+}
+
 }
 
 // MARK: - DEV input
@@ -628,14 +645,22 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
   }
   if ([action hasPrefix:@"fakeFullScreen:"]) {
 // Do not change full-screen style bits; AppKit opens a Space.
+    // "fakeFullScreen:<1|0>[:<ms>]"; with a duration the transition ends that much later, as AppKit's does.
+    NSArray<NSString *> *parts = [action componentsSeparatedByString:@":"];
+    const bool enter = [parts[1] isEqualToString:@"1"];
+    const double seconds = parts.count > 2 ? parts[2].doubleValue / 1000 : 0;
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-    if ([action hasSuffix:@"1"]) {
-      objc_setAssociatedObject(window, kDevFullScreenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    } else {
-      [center postNotificationName:NSWindowWillExitFullScreenNotification object:window];
-      objc_setAssociatedObject(window, kDevFullScreenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-      [center postNotificationName:NSWindowDidExitFullScreenNotification object:window];
-    }
+    // Chrome's window delegate hears these as it would a real transition.
+    [center postNotificationName:enter ? NSWindowWillEnterFullScreenNotification : NSWindowWillExitFullScreenNotification
+                          object:window];
+    if (enter) objc_setAssociatedObject(window, kDevFullScreenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    void (^finish)(void) = ^{
+      if (!enter) objc_setAssociatedObject(window, kDevFullScreenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+      [center postNotificationName:enter ? NSWindowDidEnterFullScreenNotification : NSWindowDidExitFullScreenNotification
+                            object:window];
+    };
+    if (seconds > 0) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), finish);
+    else finish();
     return [NSString stringWithFormat:@"fullScreen=%d", IsFullScreen(window)];
   }
   if ([action isEqualToString:@"tabviews"]) {

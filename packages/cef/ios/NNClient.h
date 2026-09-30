@@ -183,9 +183,16 @@ class Client : public CefClient,
   bool userMuted_ = false;
   bool siteMuted_ = false;
   bool fullscreen_ = false;
+  // The window the page went full screen in, whether it entered macOS full screen for the page, and
+  // whether it is leaving it for the page.
+  __weak NSWindow *fullscreenWindow_ = nil;
   bool enteredFullscreen_ = false;
-  id fullscreenExitObserver_ = nil;
-  void WatchFullscreenExit(NSWindow *window);
+  bool leavingFullscreen_ = false;
+  NSArray *fullscreenObservers_ = nil;
+  __weak NSWindow *observedFullscreenWindow_ = nil;
+  void SyncWindowFullScreen();
+  void WatchFullscreenWindow(NSWindow *window);
+  void FullscreenWindowSettled(bool entered);
   bool unresponsive_ = false;
   double lastZoom_ = -1;
   double pinchScale_ = 1;
