@@ -1,7 +1,8 @@
 import { engineInfo } from "@netnyahoo/cef";
 import { launchEnvironment, readDocument, systemInfo, writeDocument, type SystemInfo } from "@netnyahoo/shell";
 import { create } from "zustand";
-import { BATCH_URL, DEV_SEND_ENV, LOGS_URL, POSTHOG } from "./config";
+import { DEV_SEND_ENV, LOGS_URL, MAX_BODY_BYTES } from "./config";
+import { EVENTS_SCOPE, eventRecord, LOGS_SCOPE, logRecord, logsRequest, outcome, type OtlpLogRecord, type QueuedEvent } from "./otlp";
 import { cleanProperties } from "./sanitize";
 
 // Send only with opt-in; never sync the choice.
@@ -71,7 +72,6 @@ export const isSharing = () => saved.sharing;
 let app: SystemInfo | null = null;
 export const appInfo = () => (app ??= systemInfo());
 let engineVersion: string | null = null;
-export const sessionId = uuidv7();
 
 export const environment = (): "dev" | "test" | "production" =>
   __DEV__ ? "dev" : appInfo().isolatedInstance ? "test" : "production";
@@ -92,7 +92,6 @@ function context(): Record<string, unknown> {
     arch: info.arch,
     engine_version: engineVersion,
     $environment: environment(),
-    $session_id: sessionId,
     $process_person_profile: false,
     $geoip_disable: true,
   };
@@ -100,16 +99,7 @@ function context(): Record<string, unknown> {
 
 // MARK: Queue
 
-type QueuedEvent = { uuid: string; event: string; distinct_id: string; timestamp: string; properties: Record<string, unknown> };
-type OtlpAttribute = { key: string; value: { stringValue?: string; intValue?: number; boolValue?: boolean } };
-type QueuedLog = {
-  timeUnixNano: string;
-  severityNumber: number;
-  severityText: string;
-  body: { stringValue: string };
-  attributes: OtlpAttribute[];
-};
-type Queue = { version: 1; events: QueuedEvent[]; logs: QueuedLog[] };
+type Queue = { version: 1; events: QueuedEvent[]; logs: OtlpLogRecord[] };
 
 let queue: Queue = { version: 1, events: [], logs: [] };
 let generation = 0;
@@ -164,16 +154,7 @@ export function capture(event: string, props: Record<string, unknown> = {}, opti
 export function queueLog(level: "warn" | "error", message: string, attributes: Record<string, string | number | boolean>) {
   if (!saved.sharing) return;
   try {
-    queue.logs.push({
-      timeUnixNano: `${Date.now()}000000`,
-      severityNumber: level === "error" ? 17 : 13,
-      severityText: level === "error" ? "ERROR" : "WARN",
-      body: { stringValue: message },
-      attributes: Object.entries(attributes).map(([key, v]) => ({
-        key,
-        value: typeof v === "number" ? { intValue: Math.round(v) } : typeof v === "boolean" ? { boolValue: v } : { stringValue: v },
-      })),
-    });
+    queue.logs.push(logRecord(level, message, attributes));
     if (queue.logs.length > MAX_LOGS) queue.logs.splice(0, queue.logs.length - MAX_LOGS);
     persistQueue();
     scheduleFlush(FLUSH_DELAY_MS);
@@ -226,7 +207,7 @@ function logRequest(entry: RequestLogEntry, body: string) {
 // Uploads in flight, so turning sharing off can stop them mid-request.
 const inflight = new Set<AbortController>();
 
-async function post(kind: RequestLogEntry["kind"], url: string, body: string, count: number, headers: Record<string, string>) {
+async function post(kind: RequestLogEntry["kind"], url: string, body: string, count: number) {
   const entry: RequestLogEntry = { at: new Date().toISOString(), kind, url, count, bytes: body.length, status: null };
   if (!canSend()) {
     logRequest({ ...entry, dryRun: true }, body);
@@ -235,7 +216,7 @@ async function post(kind: RequestLogEntry["kind"], url: string, body: string, co
   const abort = new AbortController();
   inflight.add(abort);
   try {
-    const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body, signal: abort.signal });
+    const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, signal: abort.signal });
     entry.status = response.status;
   } catch {
     entry.status = 0;
@@ -246,29 +227,53 @@ async function post(kind: RequestLogEntry["kind"], url: string, body: string, co
   return entry.status;
 }
 
-const settled = (status: number) => (status >= 200 && status < 300) || (status >= 400 && status < 500 && status !== 429);
-
-function otlpBody(logs: QueuedLog[]) {
+function resource(): Record<string, unknown> {
   const info = appInfo();
-  const attr = (key: string, value: string): OtlpAttribute => ({ key, value: { stringValue: value } });
-  return JSON.stringify({
-    resourceLogs: [
-      {
-        resource: {
-          attributes: [
-            attr("service.name", "netnyahoo"),
-            attr("service.version", info.appVersion),
-            attr("deployment.environment", environment()),
-            attr("os.type", "darwin"),
-            attr("os.version", info.osVersion),
-            attr("host.arch", info.arch),
-            ...(engineVersion ? [attr("engine.version", engineVersion)] : []),
-          ],
-        },
-        scopeLogs: [{ scope: { name: "netnyahoo.app" }, logRecords: logs }],
-      },
-    ],
-  });
+  return {
+    "service.name": "netnyahoo-app",
+    "service.version": info.appVersion,
+    "deployment.environment": environment() === "production" ? "production" : "development",
+    "os.type": "darwin",
+    "os.version": info.osVersion,
+    "host.arch": info.arch,
+    "engine.version": engineVersion,
+  };
+}
+
+const eventsBody = (batch: QueuedEvent[]) =>
+  logsRequest(
+    resource(),
+    EVENTS_SCOPE,
+    batch.map((e) => eventRecord(e.properties.engine_version == null && engineVersion ? { ...e, properties: { ...e.properties, engine_version: engineVersion } } : e)),
+  );
+
+const logsBody = (batch: OtlpLogRecord[]) => logsRequest(resource(), LOGS_SCOPE, batch);
+
+// Sends the head of a queue in batches until it's empty or the server says to retry later.
+type DrainResult = "done" | "failed" | "stale";
+
+async function drain<T>(
+  kind: RequestLogEntry["kind"],
+  take: () => T[],
+  encode: (batch: T[]) => string,
+  remove: (batch: T[]) => void,
+  gen: number,
+): Promise<DrainResult> {
+  let size = BATCH_SIZE;
+  for (let batch = take().slice(0, size); batch.length; batch = take().slice(0, size)) {
+    const body = encode(batch);
+    if (body.length > MAX_BODY_BYTES && batch.length > 1) {
+      size = Math.ceil(batch.length / 2);
+      continue;
+    }
+    const status = await post(kind, LOGS_URL, body, batch.length);
+    if (gen !== generation) return "stale";
+    const result = outcome(status, batch.length);
+    if (result === "retry") return "failed";
+    if (result === "split") size = Math.ceil(batch.length / 2);
+    else remove(batch);
+  }
+  return "done";
 }
 
 export async function flush() {
@@ -276,29 +281,16 @@ export async function flush() {
   if (!saved.sharing || flushing) return;
   flushing = true;
   const gen = generation;
-  let failed = false;
+  let result: DrainResult;
   try {
-    while (queue.events.length && !failed) {
-      const batch = queue.events.slice(0, BATCH_SIZE);
-      const body = batch.map((e) => (e.properties.engine_version == null && engineVersion ? { ...e, properties: { ...e.properties, engine_version: engineVersion } } : e));
-      const status = await post("events", BATCH_URL, JSON.stringify({ api_key: POSTHOG.key, batch: body }), batch.length, {});
-      if (gen !== generation) return;
-      if (settled(status)) queue.events = queue.events.filter((e) => !batch.includes(e));
-      else failed = true;
-    }
-    while (queue.logs.length && !failed) {
-      const batch = queue.logs.slice(0, BATCH_SIZE);
-      const status = await post("logs", LOGS_URL, otlpBody(batch), batch.length, { Authorization: `Bearer ${POSTHOG.key}` });
-      if (gen !== generation) return;
-      if (settled(status)) queue.logs = queue.logs.filter((l) => !batch.includes(l));
-      else failed = true;
-    }
+    result = await drain("events", () => queue.events, eventsBody, (batch) => (queue.events = queue.events.filter((e) => !batch.includes(e))), gen);
+    if (result === "done") result = await drain("logs", () => queue.logs, logsBody, (batch) => (queue.logs = queue.logs.filter((l) => !batch.includes(l))), gen);
   } finally {
     flushing = false;
   }
-  if (gen !== generation) return;
+  if (result === "stale") return;
   persistQueue(true);
-  if (failed) {
+  if (result === "failed") {
     failures++;
     retryAt = Date.now() + Math.min(MAX_BACKOFF_MS, 30_000 * 2 ** (failures - 1));
     scheduleFlush(0);

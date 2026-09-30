@@ -1,10 +1,8 @@
-export const POSTHOG = {
-  host: "https://eu.i.posthog.com",
-  key: "phc_qzH3gR3HsZEF8fUXnwEdugsZm6Yq5pUPiEUGMqjxL3QY",
-} as const;
+// Our own collector, behind netnyahoo.com: events and logs are both OTLP log records.
+export const LOGS_URL = "https://netnyahoo.com/otel/v1/logs";
 
-export const BATCH_URL = `${POSTHOG.host}/batch/`;
-export const LOGS_URL = `${POSTHOG.host}/i/v1/logs`;
+// nginx rejects bodies over 512 KB.
+export const MAX_BODY_BYTES = 500_000;
 
 // DEV telemetry sends only with NETNYAHOO_TELEMETRY=1.
 export const DEV_SEND_ENV = "NETNYAHOO_TELEMETRY";

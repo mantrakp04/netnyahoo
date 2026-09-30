@@ -3,7 +3,7 @@ export const SHARING_COPY = {
   summary: "Crashes, errors, rough feature counts and speed. Never the sites you visit, anything you type or search, or what's in your tabs.",
   whatsSent: "What's Sent",
   footnote:
-    "Sent to PostHog in the EU with a random ID made on this Mac. Turning this off stops it at once and deletes anything waiting to be sent. This setting doesn't sync.",
+    "Sent to netnyahoo.com with a random ID made on this Mac, and kept on our own servers. No third parties. Turning this off stops it at once and deletes anything waiting to be sent. This setting doesn't sync.",
   ask: {
     title: "Help fix Netnyahoo?",
     body: "Share anonymous crash reports and usage stats. No sites, searches or typing. Ever.",
@@ -25,7 +25,7 @@ export const WHATS_SENT: { title: string; items: string[] }[] = [
     items: [
       "A random install ID, made on this Mac (a new one each time sharing is turned back on)",
       "App version and build, macOS version, chip (arm64 or x86_64), engine version",
-      "A random ID for this launch, and whether it's a test build",
+      "Whether it's a test build",
     ],
   },
   {
