@@ -63,23 +63,22 @@ async function gzip(text: string): Promise<ArrayBuffer> {
   return new Response(stream).arrayBuffer();
 }
 
-/** A chunk, gzipped when the browser can, split in two while it's over nginx's limit. */
+/** A chunk, gzipped when the browser can: serialized and compressed once, and split in two only when that's
+ * over nginx's limit (a rare, huge snapshot; its number then goes unused, and readers sort what's there). */
 async function upload(sid: string, events: eventWithTime[]): Promise<void> {
   if (!events.length) return;
   const compress = typeof CompressionStream === "function";
-  const probe = document_(sid, 0, events);
-  const size = compress ? (await gzip(probe)).byteLength : probe.length;
-  if (size > MAX_CHUNK) {
+  const seq = nextSeq(sid);
+  const text = document_(sid, seq, events);
+  const body = compress ? await gzip(text) : text;
+  const bytes = typeof body === "string" ? body.length : body.byteLength;
+  if (bytes > MAX_CHUNK) {
     if (events.length === 1) return;
     const half = Math.ceil(events.length / 2);
     await upload(sid, events.slice(0, half));
     await upload(sid, events.slice(half));
     return;
   }
-  const seq = nextSeq(sid);
-  const text = document_(sid, seq, events);
-  const body = compress ? await gzip(text) : text;
-  const bytes = typeof body === "string" ? body.length : body.byteLength;
   report(sid, seq, events, bytes);
   await fetch(`${REPLAY_PATH}/${sid}/${seq}.json${compress ? ".gz" : ""}`, {
     method: "POST",
