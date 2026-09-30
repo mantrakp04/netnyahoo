@@ -18,7 +18,25 @@ import { modifiersOf } from "./controls";
 import { usePageOffset, usePagerPages } from "./profilePager";
 import { ProfileSwipeArea } from "./ProfileSwipe";
 import { openNewTabInSplit } from "./splitActions";
-import { CHIP_WIDTH_GUESS, GROUP_MARGIN_LEFT, GROUP_MARGIN_RIGHT, GROUP_SPRING, groupLayout, MEMBERS_INSET, TAIL_COLLAPSED, TAIL_EXPANDED, TUCK_FADE_MS, tuckTarget } from "./stripGroups";
+import {
+  CHIP_WIDTH_GUESS,
+  dragGeometry,
+  dragRange,
+  dropIndex,
+  GROUP_MARGIN_LEFT,
+  GROUP_MARGIN_RIGHT,
+  GROUP_SPRING,
+  groupLayout,
+  MEMBERS_INSET,
+  memberInteractive,
+  moveIndex,
+  stripTabWidth,
+  TAIL_EXPANDED,
+  TUCK_FADE_MS,
+  tuckTarget,
+  type DragGeometry,
+  type DragSlot,
+} from "./stripGroups";
 import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag } from "./tabDrag";
 import { toolbarPalette, useEasedColor, type ToolbarPalette } from "./toolbarColors";
 
@@ -140,19 +158,35 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
   );
   const activeId = useBrowser((s) => s.windows[windowId]?.activeTabIds[profileId] ?? "");
   const parsed = useMemo(() => parseEntries(entries), [entries]);
+  // Each group's chip as measured (its name's width), so the tabs' width leaves it room.
+  const [chipWidths, setChipWidths] = useState<Record<string, number>>({});
+  const chipOf = (groupId: string) => chipWidths[groupId] ?? CHIP_WIDTH_GUESS;
   // What's out in the strip: collapsed groups show only their active member.
   const visible = parsed.flatMap((e): Member[] => (e.kind === "group" ? (e.collapsed ? e.members.filter((m) => holds(m, activeId)) : e.members) : e.kind === "dock" ? [] : [e]));
-  const tabCount = visible.length;
   const pinnedCount = parsed.reduce((n, e) => n + (e.kind === "dock" ? e.ids.length : 0), 0);
-  const groupRoom = parsed.reduce(
-    (n, e) => n + (e.kind === "group" ? GROUP_MARGIN_LEFT + GROUP_MARGIN_RIGHT + CHIP_WIDTH_GUESS + MEMBERS_INSET + (e.collapsed ? TAIL_COLLAPSED : TAIL_EXPANDED) : 0),
-    0,
+  const chip = stripTabWidth({
+    pageWidth,
+    dockWidth: pinnedCount ? pinnedCount * (PINNED_CELL + PINNED_SPACING) - PINNED_SPACING + DOCK_GAP : 0,
+    groups: parsed.flatMap((e) => (e.kind === "group" ? [{ chip: chipOf(e.id), expanded: !e.collapsed, shown: e.members.some((m) => holds(m, activeId)) }] : [])),
+    tabUnits: visible.reduce((n, m) => n + units(m), 0),
+    gap: GAP,
+    plus: ITEM_HEIGHT,
+    min: MIN_CHIP,
+    max: MAX_CHIP,
+  });
+  // A tab dragged along the strip trades places with whole tabs, splits and groups.
+  const top = dragGeometry(
+    parsed.flatMap((e): DragSlot[] => {
+      if (e.kind === "dock") return [];
+      if (e.kind !== "group") return [{ tabIds: tabsOf(e), width: chip * units(e) }];
+      const widths = e.members.map((m) => chip * units(m));
+      const shown = e.members.findIndex((m) => holds(m, activeId));
+      const width = groupLayout(chipOf(e.id), widths, GAP, !e.collapsed, shown).width;
+      return [{ tabIds: e.members.flatMap(tabsOf), width, marginLeft: GROUP_MARGIN_LEFT, marginRight: GROUP_MARGIN_RIGHT }];
+    }),
+    GAP,
   );
-  const dockWidth = pinnedCount ? pinnedCount * (PINNED_CELL + PINNED_SPACING) - PINNED_SPACING + DOCK_GAP : 0;
-  const room = pageWidth - dockWidth - groupRoom - (ITEM_HEIGHT + GAP);
-  // Half-point widths keep every tab edge on the 2x pixel grid, so the attached tab shows no seam against the card.
-  const chip = Math.round(Math.max(MIN_CHIP, Math.min(MAX_CHIP, tabCount ? room / tabCount - GAP : MAX_CHIP)) * 2) / 2;
-  const regular = visible.filter((e) => e.kind === "tab").map((e) => e.id);
+  const slotOf = (id: string) => top.slots.findIndex((slot) => slot.tabIds[0] === id);
 
   return (
     <Animated.View
@@ -169,9 +203,19 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
           >
             {parsed.map((e) => {
               if (e.kind === "dock") return <PinnedDock key="dock" tabIds={e.ids} />;
-              if (e.kind === "group") return <StripGroup key={e.id} entry={e} chip={chip} activeId={activeId} regular={regular} />;
+              if (e.kind === "group")
+                return (
+                  <StripGroup
+                    key={e.id}
+                    entry={e}
+                    chip={chip}
+                    activeId={activeId}
+                    chipWidth={chipOf(e.id)}
+                    onChipWidth={(width) => setChipWidths((all) => (all[e.id] === width ? all : { ...all, [e.id]: width }))}
+                  />
+                );
               if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} />;
-              return <DraggableChip key={e.id} tabId={e.id} width={chip} index={regular.indexOf(e.id)} count={regular.length} />;
+              return <DraggableChip key={e.id} tabId={e.id} width={chip} geometry={top} from={slotOf(e.id)} />;
             })}
             <NewTabButton windowId={windowId} />
           </ScrollView>
@@ -207,12 +251,14 @@ function parseEntries(keys: string[]): Entry[] {
 }
 
 const holds = (m: Member, tabId: string) => (m.kind === "split" ? m.tabIds.includes(tabId) : m.id === tabId);
+const tabsOf = (m: Member) => (m.kind === "split" ? m.tabIds : [m.id]);
+// A split shows at most two panes' width.
+const units = (m: Member) => (m.kind === "split" ? Math.min(m.tabIds.length, 2) : 1);
 
-function DraggableChip({ tabId, width, index, count, tuck }: { tabId: string; width: number; index: number; count: number; tuck?: () => void }) {
+function DraggableChip({ tabId, width, geometry, from, tuck }: { tabId: string; width: number; geometry: DragGeometry; from: number; tuck?: () => void }) {
   const dx = useRef(new Animated.Value(0)).current;
   const [dragging, setDragging] = useState(false);
   const active = useIsActiveTab(tabId);
-  const pitch = width + GAP;
   const responder = useMemo(
     () =>
       PanResponder.create({
@@ -222,15 +268,20 @@ function DraggableChip({ tabId, width, index, count, tuck }: { tabId: string; wi
           beginTabDrag(tabId);
         },
         onPanResponderMove: (_, g) => {
-          dx.setValue(Math.max(-index * pitch, Math.min((count - 1 - index) * pitch, g.dx)));
+          const [min, max] = from < 0 ? [0, 0] : dragRange(geometry, from);
+          dx.setValue(Math.max(min, Math.min(max, g.dx)));
           updateTabDrag(g.moveX, g.moveY);
         },
         onPanResponderRelease: (_, g) => {
           dx.setValue(0);
           setDragging(false);
-          if (endTabDrag()) return;
-          const to = Math.min(Math.max(index + Math.round(g.dx / pitch), 0), count - 1);
-          if (to !== index) useBrowser.getState().moveTab(tabId, sectionIndex(tabId, to));
+          if (endTabDrag() || from < 0) return;
+          const s = useBrowser.getState();
+          const tab = s.tabs[tabId];
+          if (!tab) return;
+          const section = s.windows[tab.windowId]?.tabIds.filter((id) => s.tabs[id]?.profileId === tab.profileId && !s.tabs[id]?.pinned) ?? [];
+          const index = moveIndex(section, tabId, geometry.slots, from, dropIndex(geometry, from, g.dx));
+          if (index !== null) s.moveTab(tabId, index);
         },
         onPanResponderTerminate: () => {
           dx.setValue(0);
@@ -238,23 +289,13 @@ function DraggableChip({ tabId, width, index, count, tuck }: { tabId: string; wi
           cancelTabDrag();
         },
       }),
-    [index, count, tabId, pitch],
+    [tabId, geometry, from],
   );
   return (
     <Animated.View {...responder.panHandlers} style={{ zIndex: dragging ? 10 : active ? 1 : 0, opacity: dragging ? 0.92 : 1, transform: [{ translateX: dx }] }}>
       <TabChip tabId={tabId} width={width} tuck={tuck} />
     </Animated.View>
   );
-}
-
-function sectionIndex(tabId: string, visibleIndex: number) {
-  const s = useBrowser.getState();
-  const tab = s.tabs[tabId]!;
-  const w = s.windows[tab.windowId]!;
-  const section = w.tabIds.filter((id) => s.tabs[id]?.profileId === tab.profileId && !s.tabs[id]?.pinned);
-  const visible = section.filter((id) => !Object.values(s.groups).some((g) => g.collapsed && g.tabIds.includes(id) && id !== tabId));
-  const target = visible[visibleIndex];
-  return target ? section.indexOf(target) : section.length - 1;
 }
 
 // The toolbar's website colour, eased the same way, so the selected tab and the toolbar read as one surface.
@@ -495,29 +536,54 @@ function PinnedCell({ tabId }: { tabId: string }) {
 // A tab group (stripGroups.ts): one container with the chip and the members. Collapsed, the members wait under
 // the first slot, faded out, except the window's active tab; expanding slides them out to their places and
 // collapsing slides them back, on Dia's spring.
-function StripGroup({ entry, chip, activeId, regular }: { entry: GroupEntry; chip: number; activeId: string; regular: string[] }) {
+function StripGroup({
+  entry,
+  chip,
+  activeId,
+  chipWidth,
+  onChipWidth,
+}: {
+  entry: GroupEntry;
+  chip: number;
+  activeId: string;
+  chipWidth: number;
+  onChipWidth: (width: number) => void;
+}) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const windowId = useWindowId();
   const profileId = usePageProfileId();
   const group = useBrowser((s) => s.groups[entry.id]);
   const { hovered, hoverProps } = useHover();
-  const [chipWidth, setChipWidth] = useState(CHIP_WIDTH_GUESS);
   const expanded = !entry.collapsed;
-  const widths = entry.members.map((m) => (m.kind === "split" ? chip * Math.min(m.tabIds.length, 2) : chip));
+  const widths = entry.members.map((m) => chip * units(m));
   const shown = entry.members.findIndex((m) => holds(m, activeId));
   const { offsets, width } = groupLayout(chipWidth, widths, GAP, expanded, shown);
+  // Inside an open group, a member trades places with the other members only.
+  const members = useMemo(() => dragGeometry(entry.members.map((m, i) => ({ tabIds: tabsOf(m), width: widths[i]! })), GAP), [entry.members, chip]);
   const tuckable = useBrowser((s) => !expanded && shown >= 0 && !!tuckTarget(s, windowId, profileId, entry.id));
   const open = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const size = useRef(new Animated.Value(width)).current;
   const state = `${expanded}:${shown >= 0 ? entry.members[shown]!.id : ""}`;
   const settled = useRef(state);
+  // While the group springs, members that are still sliding (and fading) in take no clicks.
+  const [moving, setMoving] = useState(false);
+  const springs = useRef(0);
   useEffect(() => {
-    // Expanding, collapsing and a member coming out or going back spring; anything else (the tabs' width) follows.
-    if (settled.current === state) return size.setValue(width);
-    settled.current = state;
     const spring = (value: Animated.Value, toValue: number) => Animated.spring(value, { toValue, ...GROUP_SPRING, useNativeDriver: false });
-    Animated.parallel([spring(open, expanded ? 1 : 0), spring(size, width)]).start();
+    const run = (animation: Animated.CompositeAnimation) => {
+      const id = ++springs.current;
+      setMoving(true);
+      animation.start(() => id === springs.current && setMoving(false));
+    };
+    if (settled.current !== state) {
+      // Expanding, collapsing and a member coming out or going back spring.
+      settled.current = state;
+      run(Animated.parallel([spring(open, expanded ? 1 : 0), spring(size, width)]));
+    } else if (moving) {
+      // The width changed mid-spring (the chip measured, a member came or went): the spring takes the new target.
+      run(spring(size, width));
+    } else size.setValue(width);
   }, [state, width]);
   const fade = useMemo(() => open.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }), []);
   const tail = useMemo(() => Animated.add(size, -(TAIL_EXPANDED - 2.25)), []);
@@ -552,12 +618,14 @@ function StripGroup({ entry, chip, activeId, regular }: { entry: GroupEntry; chi
           key={m.id}
           member={m}
           width={widths[i]!}
-          from={chipWidth + MEMBERS_INSET}
+          start={chipWidth + MEMBERS_INSET}
           offset={offsets[i]!}
           open={open}
-          expanded={expanded}
+          interactive={memberInteractive(i === shown, expanded, moving)}
           shown={i === shown}
-          regular={regular}
+          geometry={members}
+          // A collapsed group's shown tab has no neighbours to trade places with.
+          from={expanded ? i : -1}
           tuck={tuckable && i === shown ? tuck : undefined}
         />
       ))}
@@ -568,7 +636,7 @@ function StripGroup({ entry, chip, activeId, regular }: { entry: GroupEntry; chi
       <View
         {...hoverProps}
         tooltip={expanded ? "Collapse Group" : "Expand Group"}
-        onLayout={(e) => setChipWidth(Math.ceil(e.nativeEvent.layout.width * 2) / 2)}
+        onLayout={(e) => onChipWidth(Math.ceil(e.nativeEvent.layout.width * 2) / 2)}
         style={{ position: "absolute", left: 0, top: ITEM_TOP, height: ITEM_HEIGHT }}
       >
         <ContextMenuArea onContextMenu={() => void openGroupMenu(windowId, entry.id)}>
@@ -590,22 +658,24 @@ function StripGroup({ entry, chip, activeId, regular }: { entry: GroupEntry; chi
 function GroupMember({
   member,
   width,
-  from,
+  start,
   offset,
   open,
-  expanded,
+  interactive,
   shown,
-  regular,
+  geometry,
+  from,
   tuck,
 }: {
   member: Member;
   width: number;
-  from: number;
+  start: number;
   offset: number;
   open: Animated.Value;
-  expanded: boolean;
+  interactive: boolean;
   shown: boolean;
-  regular: string[];
+  geometry: DragGeometry;
+  from: number;
   tuck?: () => void;
 }) {
   // The shown member (the window's active tab while collapsed) fades in and out on its own: Dia's "–" fades the
@@ -614,7 +684,7 @@ function GroupMember({
   useEffect(() => {
     Animated.timing(shownValue, { toValue: shown ? 1 : 0, duration: TUCK_FADE_MS, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [shown]);
-  const left = useMemo(() => open.interpolate({ inputRange: [0, 1], outputRange: [from, from + offset] }), [from, offset]);
+  const left = useMemo(() => open.interpolate({ inputRange: [0, 1], outputRange: [start, start + offset] }), [start, offset]);
   const opacity = useMemo(
     () =>
       Animated.add(shownValue, open.interpolate({ inputRange: [0, 0.5], outputRange: [0, 1], extrapolate: "clamp" })).interpolate({
@@ -625,11 +695,11 @@ function GroupMember({
     [],
   );
   return (
-    <Animated.View pointerEvents={expanded || shown ? "box-none" : "none"} style={{ position: "absolute", top: 0, left, width, height: TOP_STRIP_HEIGHT, opacity, zIndex: shown ? 2 : 1 }}>
+    <Animated.View pointerEvents={interactive ? "box-none" : "none"} style={{ position: "absolute", top: 0, left, width, height: TOP_STRIP_HEIGHT, opacity, zIndex: shown ? 2 : 1 }}>
       {member.kind === "split" ? (
         <SplitChip tabIds={member.tabIds} width={width} />
       ) : (
-        <DraggableChip tabId={member.id} width={width} index={regular.indexOf(member.id)} count={regular.length} tuck={tuck} />
+        <DraggableChip tabId={member.id} width={width} geometry={geometry} from={from} tuck={tuck} />
       )}
     </Animated.View>
   );

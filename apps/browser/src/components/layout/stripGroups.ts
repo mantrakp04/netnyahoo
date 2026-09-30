@@ -49,3 +49,78 @@ export function tuckTarget(s: BrowserState, windowId: string, profileId: string,
   }
   return best;
 }
+
+/** The tabs' width in the strip: what's left once the dock, the groups' own parts and the + button have their room. */
+export function stripTabWidth(o: {
+  pageWidth: number;
+  dockWidth: number;
+  groups: { chip: number; expanded: boolean; shown: boolean }[];
+  tabUnits: number;
+  gap: number;
+  plus: number;
+  min: number;
+  max: number;
+}): number {
+  let room = o.pageWidth - o.dockWidth - o.plus - o.gap;
+  for (const g of o.groups) {
+    const parts = g.expanded ? MEMBERS_INSET + TAIL_EXPANDED : g.shown ? MEMBERS_INSET + TAIL_COLLAPSED : 0;
+    room -= GROUP_MARGIN_LEFT + GROUP_MARGIN_RIGHT + g.chip + parts + o.gap;
+  }
+  const width = o.tabUnits ? room / o.tabUnits - o.gap : o.max;
+  // Half points keep every tab edge on the 2x pixel grid, so the attached tab shows no seam against the card.
+  return Math.round(Math.max(o.min, Math.min(o.max, width)) * 2) / 2;
+}
+
+/**
+ * Dragging a tab along the strip. The slots are what it can trade places with, in strip order: at the top level
+ * every tab, split and group (a group moves as one block, so a tab never lands between its members); inside an
+ * open group, its members. Each has its tabs (in window order), its width and its outer margins.
+ */
+export type DragSlot = { tabIds: string[]; width: number; marginLeft?: number; marginRight?: number };
+export type DragGeometry = { slots: DragSlot[]; lefts: number[] };
+
+export function dragGeometry(slots: DragSlot[], gap: number): DragGeometry {
+  const lefts: number[] = [];
+  let x = 0;
+  for (const slot of slots) {
+    x += slot.marginLeft ?? 0;
+    lefts.push(x);
+    x += slot.width + (slot.marginRight ?? 0) + gap;
+  }
+  return { slots, lefts };
+}
+
+/** How far the dragged slot may travel: from the first slot's left edge to the last slot's right edge. */
+export function dragRange({ slots, lefts }: DragGeometry, from: number): [number, number] {
+  const last = slots.length - 1;
+  return [lefts[0]! - lefts[from]!, lefts[last]! + slots[last]!.width - (lefts[from]! + slots[from]!.width)];
+}
+
+/** The slot index the dragged one lands on: past the centre of a neighbour, it takes that neighbour's place. */
+export function dropIndex({ slots, lefts }: DragGeometry, from: number, dx: number): number {
+  const centre = lefts[from]! + slots[from]!.width / 2 + dx;
+  let index = 0;
+  slots.forEach((slot, i) => {
+    if (i !== from && lefts[i]! + slot.width / 2 < centre) index++;
+  });
+  return index;
+}
+
+/**
+ * The index for store.moveTab (its section: the window's unpinned tabs of the profile, in order, without the tab)
+ * that puts the dragged tab at slot `to`: before the first tab of the slot it lands on, or after the last one.
+ */
+export function moveIndex(section: string[], tabId: string, slots: DragSlot[], from: number, to: number): number | null {
+  if (to === from) return null;
+  const moved = section.filter((id) => id !== tabId);
+  const others = slots.filter((_, i) => i !== from);
+  const anchor = to < others.length ? others[to]!.tabIds[0] : others[others.length - 1]?.tabIds.at(-1);
+  const at = anchor ? moved.indexOf(anchor) : -1;
+  if (at < 0) return null;
+  return to < others.length ? at : at + 1;
+}
+
+/** A member takes clicks when it's the tab shown after a collapsed group's chip, or once an open group has settled. */
+export function memberInteractive(shown: boolean, expanded: boolean, moving: boolean): boolean {
+  return shown || (expanded && !moving);
+}
