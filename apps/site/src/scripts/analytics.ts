@@ -52,7 +52,15 @@ if (support.length) {
   addEventListener("load", () => setTimeout(check, 1000), { once: true });
   for (const b of support) {
     b.addEventListener("click", () => {
+      // show() only puts PostHog's chat bubble in the corner; open the chat itself.
       ph()?.conversations?.show?.();
+      let waited = 0;
+      const open = () => {
+        const bubble = document.querySelector<HTMLButtonElement>('#ph-conversations-widget-container button[aria-label="Open chat"]');
+        if (bubble) bubble.click();
+        else if ((waited += 50) < 2000) setTimeout(open, 50);
+      };
+      open();
       track("support_opened", { location: b.dataset.support ?? null });
     });
   }
