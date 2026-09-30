@@ -1,0 +1,30 @@
+apps/site/src/components/Shot.astro
+  s_9c356f9574d31c::t_f4c723a48a1c17 5-6,19-26,35-36,38,55-59,85-92,105-108,110-116
+apps/site/src/data/pledges.ts
+  s_9c356f9574d31c::t_fe8af54c8e6aa9 2,11-14,31-32,54-59,61-63
+  s_9c356f9574d31c::t_d41ad6a4ae6601 60
+  s_9c356f9574d31c::t_cc3d6a83967f36 64
+apps/site/src/scripts/loops.ts
+  s_9c356f9574d31c::t_fe8af54c8e6aa9 10,31-36
+  s_9c356f9574d31c::t_f4c723a48a1c17 1-9,11-30,37-38
+apps/site/src/components/Platform.astro
+  s_9c356f9574d31c::t_fe8af54c8e6aa9 21
+apps/site/README.md
+  s_9c356f9574d31c::t_66f106558afeb0 31-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "19439ce4f80f778eb7edfcf7593cb86b8b58bb0e",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
