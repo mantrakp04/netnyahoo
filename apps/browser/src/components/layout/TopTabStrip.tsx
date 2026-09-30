@@ -7,18 +7,18 @@ import { hex, layout, ThemeScope, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { PageProfileContext, useIsActiveTab, usePageProfileId, useSettings, useTab, useTabLive, useWindowId, useWindowProfileId } from "../../store/hooks";
 import { viewTabIds } from "../../store/model";
-import type { TabGroup } from "../../store/types";
 import { ProfileIndicator } from "../ProfileIndicator";
 import { IconButton, useHover } from "../primitives";
 import { clickTab } from "../sidebar/actions";
-import { openTabMenu } from "../sidebar/menus";
+import { openGroupMenu, openTabMenu } from "../sidebar/menus";
 import { TabIcon } from "../sidebar/TabIcon";
 import { TabBadges } from "../media/TabBadges";
-import { GROUP_COLORS, withAlpha } from "../sidebar/tokens";
+import { GROUP_COLORS, useSidebarTokens, withAlpha } from "../sidebar/tokens";
 import { modifiersOf } from "./controls";
 import { usePageOffset, usePagerPages } from "./profilePager";
 import { ProfileSwipeArea } from "./ProfileSwipe";
 import { openNewTabInSplit } from "./splitActions";
+import { CHIP_WIDTH_GUESS, GROUP_MARGIN_LEFT, GROUP_MARGIN_RIGHT, GROUP_SPRING, groupLayout, MEMBERS_INSET, TAIL_COLLAPSED, TAIL_EXPANDED, TUCK_FADE_MS, tuckTarget } from "./stripGroups";
 import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag } from "./tabDrag";
 import { toolbarPalette, useEasedColor, type ToolbarPalette } from "./toolbarColors";
 
@@ -52,11 +52,9 @@ const LIGHTS_CENTER: [number, number] = [20.75, 20.75];
 // The drop-down strip (full screen, auto-hidden tabs) has no card to attach the selected tab to.
 const FloatingStrip = createContext(false);
 
-type Entry =
-  | { kind: "dock"; ids: string[] }
-  | { kind: "group"; id: string }
-  | { kind: "tab"; id: string; group: string | null }
-  | { kind: "split"; id: string; tabIds: string[]; group: string | null };
+type Member = { kind: "tab"; id: string; group: string | null } | { kind: "split"; id: string; tabIds: string[]; group: string | null };
+type GroupEntry = { kind: "group"; id: string; collapsed: boolean; members: Member[] };
+type Entry = { kind: "dock"; ids: string[] } | GroupEntry | Member;
 
 export function TopTabStrip({ floating = false }: { floating?: boolean }) {
   const windowId = useWindowId();
@@ -126,9 +124,9 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
         const group = Object.values(s.groups).find((g) => g.tabIds.includes(id));
         if (group && !seen.has(group.id)) {
           seen.add(group.id);
-          out.push(`group:${group.id}`);
+          out.push(`group:${group.id}:${group.collapsed ? 1 : 0}`);
         }
-        if (group?.collapsed && s.windows[windowId]?.activeTabIds[profileId] !== id) continue;
+        // Every member stays mounted, collapsed or not, so the group can slide them in and out.
         const split = Object.values(s.splits).find((v) => v.tabIds.includes(id));
         if (split) {
           if (!seen.has(split.id)) out.push(`split:${split.id}:${split.tabIds.join(",")}:${group?.id ?? ""}`);
@@ -140,15 +138,21 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
       return out;
     }),
   );
+  const activeId = useBrowser((s) => s.windows[windowId]?.activeTabIds[profileId] ?? "");
   const parsed = useMemo(() => parseEntries(entries), [entries]);
-  const tabCount = parsed.filter((e) => e.kind === "tab" || e.kind === "split").length;
+  // What's out in the strip: collapsed groups show only their active member.
+  const visible = parsed.flatMap((e): Member[] => (e.kind === "group" ? (e.collapsed ? e.members.filter((m) => holds(m, activeId)) : e.members) : e.kind === "dock" ? [] : [e]));
+  const tabCount = visible.length;
   const pinnedCount = parsed.reduce((n, e) => n + (e.kind === "dock" ? e.ids.length : 0), 0);
-  const groupCount = parsed.filter((e) => e.kind === "group").length;
+  const groupRoom = parsed.reduce(
+    (n, e) => n + (e.kind === "group" ? GROUP_MARGIN_LEFT + GROUP_MARGIN_RIGHT + CHIP_WIDTH_GUESS + MEMBERS_INSET + (e.collapsed ? TAIL_COLLAPSED : TAIL_EXPANDED) : 0),
+    0,
+  );
   const dockWidth = pinnedCount ? pinnedCount * (PINNED_CELL + PINNED_SPACING) - PINNED_SPACING + DOCK_GAP : 0;
-  const room = pageWidth - dockWidth - groupCount * (110 + GAP) - (ITEM_HEIGHT + GAP);
+  const room = pageWidth - dockWidth - groupRoom - (ITEM_HEIGHT + GAP);
   // Half-point widths keep every tab edge on the 2x pixel grid, so the attached tab shows no seam against the card.
   const chip = Math.round(Math.max(MIN_CHIP, Math.min(MAX_CHIP, tabCount ? room / tabCount - GAP : MAX_CHIP)) * 2) / 2;
-  const regular = parsed.filter((e) => e.kind === "tab").map((e) => e.id);
+  const regular = visible.filter((e) => e.kind === "tab").map((e) => e.id);
 
   return (
     <Animated.View
@@ -165,9 +169,9 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
           >
             {parsed.map((e) => {
               if (e.kind === "dock") return <PinnedDock key="dock" tabIds={e.ids} />;
-              if (e.kind === "group") return <GroupLabel key={e.id} groupId={e.id} />;
-              if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} group={e.group} />;
-              return <DraggableChip key={e.id} tabId={e.id} width={chip} index={regular.indexOf(e.id)} count={regular.length} group={e.group} />;
+              if (e.kind === "group") return <StripGroup key={e.id} entry={e} chip={chip} activeId={activeId} regular={regular} />;
+              if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} />;
+              return <DraggableChip key={e.id} tabId={e.id} width={chip} index={regular.indexOf(e.id)} count={regular.length} />;
             })}
             <NewTabButton windowId={windowId} />
           </ScrollView>
@@ -179,20 +183,32 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
 
 function parseEntries(keys: string[]): Entry[] {
   const out: Entry[] = [];
+  const groups = new Map<string, GroupEntry>();
   for (const key of keys) {
     const [kind, id, a, b] = key.split(":");
     if (kind === "pinned") {
       const last = out[out.length - 1];
       if (last?.kind === "dock") last.ids.push(id!);
       else out.push({ kind: "dock", ids: [id!] });
-    } else if (kind === "group") out.push({ kind, id: id! });
-    else if (kind === "split") out.push({ kind, id: id!, tabIds: a!.split(","), group: b || null });
-    else out.push({ kind: "tab", id: id!, group: a || null });
+      continue;
+    }
+    if (kind === "group") {
+      const group: GroupEntry = { kind, id: id!, collapsed: a === "1", members: [] };
+      groups.set(group.id, group);
+      out.push(group);
+      continue;
+    }
+    const member: Member = kind === "split" ? { kind, id: id!, tabIds: a!.split(","), group: b || null } : { kind: "tab", id: id!, group: a || null };
+    const group = member.group ? groups.get(member.group) : undefined;
+    if (group) group.members.push(member);
+    else out.push(member);
   }
   return out;
 }
 
-function DraggableChip({ tabId, width, index, count, group }: { tabId: string; width: number; index: number; count: number; group: string | null }) {
+const holds = (m: Member, tabId: string) => (m.kind === "split" ? m.tabIds.includes(tabId) : m.id === tabId);
+
+function DraggableChip({ tabId, width, index, count, tuck }: { tabId: string; width: number; index: number; count: number; tuck?: () => void }) {
   const dx = useRef(new Animated.Value(0)).current;
   const [dragging, setDragging] = useState(false);
   const active = useIsActiveTab(tabId);
@@ -226,7 +242,7 @@ function DraggableChip({ tabId, width, index, count, group }: { tabId: string; w
   );
   return (
     <Animated.View {...responder.panHandlers} style={{ zIndex: dragging ? 10 : active ? 1 : 0, opacity: dragging ? 0.92 : 1, transform: [{ translateX: dx }] }}>
-      <TabChip tabId={tabId} width={width} group={group} />
+      <TabChip tabId={tabId} width={width} tuck={tuck} />
     </Animated.View>
   );
 }
@@ -251,14 +267,14 @@ function useWebsiteBand(tabId: string) {
   return { palette, band: useEasedColor(palette.background) };
 }
 
-function TabChip({ tabId, width, group }: { tabId: string; width: number; group: string | null }) {
+// `tuck`: the active tab of a collapsed group shows Dia's "–" instead of ✕, tucking it back into the group.
+function TabChip({ tabId, width, tuck }: { tabId: string; width: number; tuck?: () => void }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const tab = useTab(tabId);
   const active = useIsActiveTab(tabId);
   const floating = useContext(FloatingStrip);
   const playing = useTabLive(tabId, (l) => l.playingAudio);
-  const groupColor = useBrowser((s) => (group ? s.groups[group]?.color : null));
   const { palette, band } = useWebsiteBand(tabId);
   const { hovered, hoverProps } = useHover();
   if (!tab) return null;
@@ -289,19 +305,18 @@ function TabChip({ tabId, width, group }: { tabId: string; width: number; group:
               />
               {hovered ? (
                 <IconButton
-                  icon="xmark"
+                  icon={tuck ? "minus" : "xmark"}
                   size={9}
                   weight="semibold"
                   box={20}
                   radius={5}
                   color={onBand ? palette.icon : undefined}
-                  onPress={() => void closeTab(tab.id)}
-                  tooltip="Close Tab"
+                  onPress={tuck ?? (() => void closeTab(tab.id))}
+                  tooltip={tuck ? "Hide in Group" : "Close Tab"}
                 />
               ) : (
                 <View style={{ width: 20 }} />
               )}
-              {groupColor !== undefined && group ? <GroupUnderline color={groupColor} /> : null}
             </ItemRow>
           )}
         </Pressable>
@@ -411,12 +426,6 @@ function Flare({ x, side, color }: { x: number; side: "left" | "right"; color: F
   );
 }
 
-function GroupUnderline({ color }: { color: TabGroup["color"] }) {
-  const theme = useTheme();
-  const tint = color ? GROUP_COLORS[color].hex : theme.dark ? "#FFFFFF66" : "#00000040";
-  return <View pointerEvents="none" style={{ position: "absolute", left: 10, right: 10, bottom: 1, height: 2, borderRadius: 1, backgroundColor: tint }} />;
-}
-
 // Dia keeps pinned tabs in one shared container (the TabDockItemResting fill and stroke), not a tile each.
 function PinnedDock({ tabIds }: { tabIds: string[] }) {
   const theme = useTheme();
@@ -483,47 +492,166 @@ function PinnedCell({ tabId }: { tabId: string }) {
   );
 }
 
-function GroupLabel({ groupId }: { groupId: string }) {
+// A tab group (stripGroups.ts): one container with the chip and the members. Collapsed, the members wait under
+// the first slot, faded out, except the window's active tab; expanding slides them out to their places and
+// collapsing slides them back, on Dia's spring.
+function StripGroup({ entry, chip, activeId, regular }: { entry: GroupEntry; chip: number; activeId: string; regular: string[] }) {
   const theme = useTheme();
-  const group = useBrowser((s) => s.groups[groupId]);
+  const tokens = useSidebarTokens();
+  const windowId = useWindowId();
+  const profileId = usePageProfileId();
+  const group = useBrowser((s) => s.groups[entry.id]);
   const { hovered, hoverProps } = useHover();
+  const [chipWidth, setChipWidth] = useState(CHIP_WIDTH_GUESS);
+  const expanded = !entry.collapsed;
+  const widths = entry.members.map((m) => (m.kind === "split" ? chip * Math.min(m.tabIds.length, 2) : chip));
+  const shown = entry.members.findIndex((m) => holds(m, activeId));
+  const { offsets, width } = groupLayout(chipWidth, widths, GAP, expanded, shown);
+  const tuckable = useBrowser((s) => !expanded && shown >= 0 && !!tuckTarget(s, windowId, profileId, entry.id));
+  const open = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+  const size = useRef(new Animated.Value(width)).current;
+  const state = `${expanded}:${shown >= 0 ? entry.members[shown]!.id : ""}`;
+  const settled = useRef(state);
+  useEffect(() => {
+    // Expanding, collapsing and a member coming out or going back spring; anything else (the tabs' width) follows.
+    if (settled.current === state) return size.setValue(width);
+    settled.current = state;
+    const spring = (value: Animated.Value, toValue: number) => Animated.spring(value, { toValue, ...GROUP_SPRING, useNativeDriver: false });
+    Animated.parallel([spring(open, expanded ? 1 : 0), spring(size, width)]).start();
+  }, [state, width]);
+  const fade = useMemo(() => open.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }), []);
+  const tail = useMemo(() => Animated.add(size, -(TAIL_EXPANDED - 2.25)), []);
   if (!group) return null;
   const tint = group.color ? GROUP_COLORS[group.color].hex : null;
+  const divider = theme.dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.12)";
+  const tuck = () => {
+    const s = useBrowser.getState();
+    const target = tuckTarget(s, windowId, profileId, entry.id);
+    if (target) s.activate(target);
+  };
   return (
-    <View {...hoverProps} tooltip={group.collapsed ? "Expand Group" : "Collapse Group"} style={{ marginTop: ITEM_TOP }}>
-      <Pressable onPress={() => useBrowser.getState().updateGroup(groupId, { collapsed: !group.collapsed })}>
-        {({ pressed }) => (
-          <View
-            style={{
-              height: ITEM_HEIGHT,
-              maxWidth: 140,
-              paddingHorizontal: 10,
-              borderRadius: TAB_RADIUS,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              backgroundColor: tint ? withAlpha(tint, pressed ? 0.34 : hovered ? 0.28 : 0.2) : pressed ? theme.tabPressed : hovered ? theme.tabHover : theme.dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)",
-            }}
+    <Animated.View style={{ width: size, height: TOP_STRIP_HEIGHT, marginLeft: GROUP_MARGIN_LEFT, marginRight: GROUP_MARGIN_RIGHT }}>
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          left: 0,
+          top: ITEM_TOP,
+          width: size,
+          height: ITEM_HEIGHT,
+          borderRadius: TAB_RADIUS,
+          borderWidth: 0.5,
+          borderColor: theme.pinnedRestingStroke,
+          // Dia lightens the whole container while the pointer is on the chip.
+          backgroundColor: tint ? withAlpha(tint, hovered ? 0.24 : 0.18) : hovered ? tokens.groupHeaderHover : tokens.groupFill,
+        }}
+      />
+      <Animated.View pointerEvents="none" style={{ position: "absolute", left: chipWidth + 0.75, top: MID - 7.5, width: 0.5, height: 15, backgroundColor: divider, opacity: fade }} />
+      {entry.members.map((m, i) => (
+        <GroupMember
+          key={m.id}
+          member={m}
+          width={widths[i]!}
+          from={chipWidth + MEMBERS_INSET}
+          offset={offsets[i]!}
+          open={open}
+          expanded={expanded}
+          shown={i === shown}
+          regular={regular}
+          tuck={tuckable && i === shown ? tuck : undefined}
+        />
+      ))}
+      <Animated.View pointerEvents={expanded ? "box-none" : "none"} style={{ position: "absolute", top: ITEM_TOP, height: ITEM_HEIGHT, left: tail, flexDirection: "row", alignItems: "center", opacity: fade }}>
+        <View style={{ width: 0.5, height: 15, backgroundColor: divider }} />
+        <IconButton icon="xmark" size={9} weight="semibold" box={24} radius={6} style={{ marginLeft: 1 }} onPress={() => useBrowser.getState().closeGroup(entry.id)} tooltip="Close Group" />
+      </Animated.View>
+      <View
+        {...hoverProps}
+        tooltip={expanded ? "Collapse Group" : "Expand Group"}
+        onLayout={(e) => setChipWidth(Math.ceil(e.nativeEvent.layout.width * 2) / 2)}
+        style={{ position: "absolute", left: 0, top: ITEM_TOP, height: ITEM_HEIGHT }}
+      >
+        <ContextMenuArea onContextMenu={() => void openGroupMenu(windowId, entry.id)}>
+          <Pressable
+            onPress={() => useBrowser.getState().updateGroup(entry.id, { collapsed: expanded })}
+            style={{ height: ITEM_HEIGHT, flexDirection: "row", alignItems: "center", paddingLeft: 8.5, paddingRight: 7 }}
           >
-            {group.icon ? <Text style={{ fontSize: 13 }}>{group.icon}</Text> : <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tint ?? theme.textSecondary }} />}
-            <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 12, fontWeight: "600", color: tint ?? theme.textPrimary }}>
-              {group.name || (group.collapsed ? `${group.tabIds.length} Tabs` : "Group")}
+            {group.icon ? <Text style={{ width: 13, fontSize: 12, textAlign: "center" }}>{group.icon}</Text> : <GroupGlyph color={tint ?? (theme.dark ? "#FFFFFF4D" : "#0000004D")} />}
+            <Text numberOfLines={1} style={{ marginLeft: 12.5, maxWidth: 120, fontSize: 12, fontWeight: "600", color: tint ?? (shown >= 0 ? theme.tabSelectedText : theme.textTab) }}>
+              {group.name || `${group.tabIds.length} Tabs`}
             </Text>
-            {group.collapsed && group.name ? <Text style={{ fontSize: 11, color: theme.textSecondary }}>{group.tabIds.length}</Text> : null}
-          </View>
-        )}
-      </Pressable>
+          </Pressable>
+        </ContextMenuArea>
+      </View>
+    </Animated.View>
+  );
+}
+
+function GroupMember({
+  member,
+  width,
+  from,
+  offset,
+  open,
+  expanded,
+  shown,
+  regular,
+  tuck,
+}: {
+  member: Member;
+  width: number;
+  from: number;
+  offset: number;
+  open: Animated.Value;
+  expanded: boolean;
+  shown: boolean;
+  regular: string[];
+  tuck?: () => void;
+}) {
+  // The shown member (the window's active tab while collapsed) fades in and out on its own: Dia's "–" fades the
+  // tab back into the group while the tabs after it close the gap.
+  const shownValue = useRef(new Animated.Value(shown ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(shownValue, { toValue: shown ? 1 : 0, duration: TUCK_FADE_MS, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+  }, [shown]);
+  const left = useMemo(() => open.interpolate({ inputRange: [0, 1], outputRange: [from, from + offset] }), [from, offset]);
+  const opacity = useMemo(
+    () =>
+      Animated.add(shownValue, open.interpolate({ inputRange: [0, 0.5], outputRange: [0, 1], extrapolate: "clamp" })).interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+        extrapolate: "clamp",
+      }),
+    [],
+  );
+  return (
+    <Animated.View pointerEvents={expanded || shown ? "box-none" : "none"} style={{ position: "absolute", top: 0, left, width, height: TOP_STRIP_HEIGHT, opacity, zIndex: shown ? 2 : 1 }}>
+      {member.kind === "split" ? (
+        <SplitChip tabIds={member.tabIds} width={width} />
+      ) : (
+        <DraggableChip tabId={member.id} width={width} index={regular.indexOf(member.id)} count={regular.length} tuck={tuck} />
+      )}
+    </Animated.View>
+  );
+}
+
+// Dia's group glyph: a tab seen edge-on with two more behind it.
+function GroupGlyph({ color }: { color: string }) {
+  return (
+    <View style={{ width: 13, height: 11, flexDirection: "row", alignItems: "center" }}>
+      <View style={{ width: 1.25, height: 7, borderRadius: 0.625, backgroundColor: color, opacity: 0.5 }} />
+      <View style={{ width: 1.25, height: 9, borderRadius: 0.625, marginLeft: 0.6, backgroundColor: color, opacity: 0.75 }} />
+      <View style={{ width: 9.4, height: 10.6, borderRadius: 2.5, marginLeft: 0.5, backgroundColor: color }} />
     </View>
   );
 }
 
-function SplitChip({ tabIds, width, group }: { tabIds: string[]; width: number; group: string | null }) {
+function SplitChip({ tabIds, width }: { tabIds: string[]; width: number }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const profileId = usePageProfileId();
   const focusedId = useBrowser((s) => s.windows[windowId]?.activeTabIds[profileId] ?? "");
   const active = tabIds.includes(focusedId);
-  const groupColor = useBrowser((s) => (group ? s.groups[group]?.color : null));
   // Each pane has its own card and toolbar; the tab takes the focused pane's colour.
   const { band, palette } = useWebsiteBand(active ? focusedId : tabIds[0]!);
   const floating = useContext(FloatingStrip);
@@ -537,7 +665,6 @@ function SplitChip({ tabIds, width, group }: { tabIds: string[]; width: number; 
         {tabIds.map((id, i) => (
           <SplitPart key={id} tabId={id} first={i === 0} ink={ink} />
         ))}
-        {groupColor !== undefined && group ? <GroupUnderline color={groupColor} /> : null}
       </ItemRow>
     </View>
   );

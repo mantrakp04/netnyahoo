@@ -573,9 +573,45 @@ classes are `TabStrip.TabStripViewController`, `TabStripDockView` (the pinned gr
   outside the fill: white **0.23** along the top, fading down the sides (0.15 at y 12, about 0.03 at y 28, gone where
   the flares start).
 - **"+"**: a plain `plus` glyph, 10 pt wide, centred at (530.5, 20.5): a 32 pt button 4 after the last tab, white ~0.55.
-- Not captured (it would take clicking in Dia): hover and pressed states in the strip, a selected pinned tab, split and
-  grouped tabs, and light mode. Netnyahoo uses the sidebar's tokens there (`TabBackgroundHovered` 0.16 / 0.55,
+- Not captured (it would take clicking in Dia): hover and pressed states in the strip, a selected pinned tab, split
+  tabs, and light mode (groups: below). Netnyahoo uses the sidebar's tokens there (`TabBackgroundHovered` 0.16 / 0.55,
   `TabBackgroundPressed` 0.31 / 0.70, in a 32 pt row with radius 10).
+
+#### Groups (1.50.1, owner's 2× screen recording, 2026-09-30)
+
+Measured from a 17.6 s recording (3024 × 1964, variable frame rate, ~42 fps: every frame's own timestamp), dark, plum
+theme, a group "X" of five tabs after the pinned dock. Positions in points from the window's left edge; the classes are
+`TabStrip.TabGroupDraggingContainerView` and `TabStrip.TabGroupCloseButton` (`TabStripGroupExpansionLayoutLock`,
+`TabGroupSizingAttributes`, `GroupContainerAttributes`).
+- **Container**: one rounded box, y 5 … 37 (32 tall, radius 10), 8 after the pinned dock (233.5 after the dock's 225.5) and
+  8 before the next tab. Fill and 0.5 pt stroke as the pinned dock's (white 0.10 / 0.14; measured (62, 48, 51) on
+  (40, 26, 29)). With the pointer on the chip the whole container brightens by ~5 levels (TabGroupNeutralBackgroundHovered,
+  0.12); hovering a member doesn't.
+- **Chip**: the group glyph (a tab seen edge-on, two slivers behind it: 13 × 10.6, white ~0.3) 8.5 in, then the name 12.5
+  after it, SF 12 semibold, white when the group holds the active tab, else the unselected title colour; 8 after the name.
+  "X" gives a 49 pt chip.
+- **Collapsed**: chip only (49 wide), or, when the window's active tab is a member, that tab alone right after the chip
+  (6.5 after it, x 289, attached to the card like any selected tab) and the container ends 4.5 after the tab. No divider.
+- **Expanded**: a 0.5 pt divider 1 after the chip (white ~0.16, 15 tall, centred on y 21), the members from x 289 at full
+  width on a 176–177 pitch (favicons 352–353 px apart), then a divider 2.25 after the last member and Close Group: a 7 pt ✕
+  (white ~0.42) centred 13.5 after that divider; the container ends 14.5 after its centre (30.25 after the last member).
+  Unselected members have no background; hovered, the usual hover fill and ✕.
+- **Expand / collapse** (chip click): the members slide out of the first member's slot to their places (every member moves
+  from x 289; the active one travels 528.5 pt to its slot) and fade in by half-way, while the container and the tabs after
+  it follow; collapsing runs it backwards, the members stacking into the first slot as they fade. One spring both ways,
+  fitted to the active tab's travel (rms 0.1–1 %): **response 0.30 s, damping ratio 0.82** (ω 20.6–21.4, ζ 0.80–0.83),
+  about 1 % overshoot, within 1 % of rest after ~0.3 s. Four expansions and four collapses in the recording
+  (1.61, 2.29, 2.82, 3.43, 9.56, 10.44, 12.59, 14.04 s).
+- **"–"** (8.35 s): hovering the active tab of a collapsed group shows a "–" where ✕ would be. Clicking it doesn't close
+  the tab: at once the tab loses its selected look and the previously active tab (the pinned X) is selected; the tab fades
+  out in place over ~0.12 s while the container closes up to the chip and the tabs after it slide left on the same spring
+  (a 2 pt undershoot, settled by ~0.3 s).
+- **Picking a member** of an expanded group (13.29 s) selects it and leaves the group open; the group closed at 14.04 s,
+  0.38 s after the pointer came to rest on the chip (the chip click, as at every other collapse in the recording), leaving
+  the picked tab out after the chip.
+- Netnyahoo (in-process snapshots, same state): dock 86 … 156, container from 164 (8 after the dock), chip 50, the active
+  tab 6.5 after the chip, container 4.5 after it, the next tab 8 after the container; spring sampled in the app: response
+  0.31 s / damping 0.81 expanding, 0.30 s / 0.82 collapsing, 1.1 % overshoot.
 
 ### Menus (1.50.1, menu builder `0x10000f000`–`0x10001c8f4`)
 - View: Appearance ▸ (Automatic, Light, Dark; still there although the Appearance pane is gone), Refresh ⌘R, Force

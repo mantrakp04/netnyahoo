@@ -319,6 +319,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Peek group | ✓ | ✅ | hover card over a collapsed group |
 | Single‑tab group auto‑ungroups | ✓ | ✅ | for ⌘-click groups (`autoUngroup`), like Dia |
 | Close group → Bookmarks Bar / Recently Closed Groups | ✓ | ✅ | |
+| Tab groups in the top tab strip | ✓ | ✅ | As Dia's (owner recording 2026-09-30, numbers in `dia-spec.md` › Top tab strip › Groups): a group is one container (the pinned dock's fill and stroke, lighter while the pointer is on the chip) holding the chip (group glyph + name) and its members. Collapsed, only the window's active tab stays out, attached after the chip. Clicking the chip slides the members out of it at full width, with a divider and Close Group (✕) at the end, and back in; the container and the tabs after it move on Dia's spring (response 0.30 s, damping 0.82; in the app 0.31 s / 0.81 expanding, 0.30 s / 0.82 collapsing, 1.1 % overshoot both ways, as Dia's). Hovering the active tab of a collapsed group shows "–" instead of ✕: it hides the tab in the group (it fades out in 0.12 s while the container closes up) and goes back to the most recent tab outside the group. Picking a member leaves the group open: in the recording it closed only when the chip was clicked. Right-click on the chip: the group menu. Left for a person: "–" and the hover states by eye |
 | Meeting tab groups (auto for calls, countdown wiggle, "Open All and Join") | ✓ | ✅ | calendar from macOS EventKit |
 | GitHub / Bitbucket PR live folder (checks, stacks, review requests, hover preview) | ✓ | ✅ | the user supplies a token or their own OAuth app |
 | Documents live folder (Drive, Notion, Confluence) | ✓ | ✅ | same: user-supplied Google OAuth client / Notion / Confluence tokens |
@@ -329,7 +330,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 ## 4. Sidebar & layout
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
-| Vertical sidebar vs top tab strip (⇧⌘S) | ✓ | ✅ | per window; new windows follow Settings › Tabs. The top strip matches a 2× Dia capture (`dia-spec.md` › Top tab strip): pinned tabs share one container, the selected tab is attached to the card (concave flares, the toolbar's website colour), the card starts at y 42 with 6 pt insets, and the window buttons centre on y 20.75 |
+| Vertical sidebar vs top tab strip (⇧⌘S) | ✓ | ✅ | per window; new windows follow Settings › Tabs. The top strip matches a 2× Dia capture (`dia-spec.md` › Top tab strip): pinned tabs share one container, the selected tab is attached to the card (concave flares, the toolbar's website colour), the card starts at y 42 with 6 pt insets, and the window buttons centre on y 20.75. Tab groups: see Tab groups in the top tab strip |
 | Auto‑hide tabs / Focus Mode (⌘S) | ✓ | ✅ | |
 | Peek sidebar on hover at left edge | ✓ | ✅ | top strip peeks too |
 | Sidebar toggle button in nav bar | ✓ | ✅ | |
