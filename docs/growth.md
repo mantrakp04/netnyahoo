@@ -146,7 +146,9 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
   leave those out.
 - **PostHog Cloud** (EU project 287835) is untouched. App versions released before the switch still send
   their opt-in events there. `infra/telemetry/import-posthog.py` loads a Cloud export into `posthog_events`
-  (safe to re-run; the export steps are in the export's `export-notes.md`). Recordings made in PostHog stay
+  (safe to re-run). Export by the time Cloud received events (`created_at`), not by their timestamp: update
+  checks carry the day as their timestamp and arrive later. Imported so far: everything received before
+  2026-09-30 14:31:00 UTC. Recordings made in PostHog stay
   there: the MCP can't export snapshots, and they expire from Cloud after 30 days.
 - **Leftover disks:** a trial self-hosted PostHog (30 Sep) left two detached Hexclave volumes in group
   "posthog": `pgdata` (10 GB, service ph-db) and `redpanda` (5 GB, ph-kafka). Hexclave has no API to delete
@@ -171,7 +173,7 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
 | Support chat ("Write to the office") | PostHog conversations | still PostHog's widget, posthog-js loaded on click only | local run |
 | App opt-in telemetry | PostHog `/batch/`, `/i/v1/logs` | OTLP to netnyahoo.com (ships with the next app release) | Node harness against the live endpoint |
 | Update checks | nginx → PostHog | nginx → collector | live |
-| History (2026-09-29 → switch) | PostHog Cloud | `telemetry.posthog_events`, 73,192 events, counts equal Cloud's | per-event counts and stats numbers vs Cloud |
+| History (2026-09-29 → switch) | PostHog Cloud | `telemetry.posthog_events`: 76,700 events received by Cloud until 2026-09-30 14:31 UTC, equal to Cloud's count | totals, per-event counts and stats numbers vs Cloud |
 | Stats | PostHog MCP / HogQL | ClickHouse SQL (`.claude/skills/stats/queries.md`) | same numbers as Cloud for the migrated window |
 
 ## Log
@@ -271,6 +273,7 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
     They're IconServices faults inside Chromium's `shortcuts::SetIconForFile`, not crashes.
 - **2026-09-30 14:28 UTC: analytics moved off PostHog** (owner's call). The site now sends its events and
   rrweb replays to netnyahoo.com, stored in our own ClickHouse and SeaweedFS ("Telemetry" above). The
-  update-check count goes there too; the app follows in its next release. PostHog Cloud's history, 73,192
-  events from 2026-09-29 09:04, was copied over; the numbers match Cloud's. Returning visitors keep their id
+  update-check count goes there too; the app follows in its next release. PostHog Cloud's history, 76,700
+  events received from 2026-09-29 09:04 to 14:31 UTC today, was copied over; the numbers match Cloud's. The
+  next import from Cloud (old app versions) starts at events Cloud received from 14:31:00. Returning visitors keep their id
   and their `download-band` variant, so the experiment carries on. Recordings made in PostHog stay in PostHog.
