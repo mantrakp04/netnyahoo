@@ -1,12 +1,12 @@
 ---
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import "@fontsource-variable/archivo/wdth.css";
-import "@fontsource-variable/newsreader/opsz.css";
-import "@fontsource-variable/martian-mono/wdth.css";
-import archivoLatin from "@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2?url";
-import newsreaderLatin from "@fontsource-variable/newsreader/files/newsreader-latin-opsz-normal.woff2?url";
-import martianLatin from "@fontsource-variable/martian-mono/files/martian-mono-latin-wdth-normal.woff2?url";
+// Fontsource's faces, with each Latin file split into the characters the site uses and the rest
+// (scripts/build-fonts.mjs); the page preloads the first.
+import "../styles/fonts.css";
+import archivoLatin from "../assets/fonts/archivo-core.woff2?url";
+import newsreaderLatin from "../assets/fonts/newsreader-core.woff2?url";
+import martianLatin from "../assets/fonts/martian-mono-core.woff2?url";
 import "../styles/global.css";
 import Visitor from "../components/Visitor.astro";
 
