@@ -250,7 +250,8 @@ async function run() {
         for (const name of scenarios) {
           process.stderr.write(`[${label} ${r}] ${name}\n`);
           // --trace 1 names anonymous timer callbacks by their call sites (slower; for finding, not timing).
-          const options = JSON.stringify({ origin, scenario: name });
+          // --options '{"slowMs":300}' passes scenario options.
+          const options = JSON.stringify({ ...(flags.options ? JSON.parse(flags.options) : {}), origin, scenario: name });
           const entry = flags.trace && name !== "startup" ? "traced" : name;
           result[name] = await evaluate(dataDir, pid, `return nnBench.run(${JSON.stringify(entry)}, ${options});`);
         }

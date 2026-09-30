@@ -269,6 +269,35 @@ const scenarios = {
     return { opened, trail };
   },
 
+  // Opening tabs while every switch costs `slowMs` of JS (as renders did with 200 tabs before the sidebar was
+  // memoized): counts activations, to catch Chrome's late reports switching back and forth.
+  async slowOpen({ count = 10, slowMs = 100, gapMs = 300, origin } = {}) {
+    const w = windowId();
+    await quiet();
+    const stop = store.subscribe((s, prev) => {
+      if (s.windows === prev.windows) return;
+      const end = P.now() + slowMs;
+      while (P.now() < end);
+    });
+    let switches = 0;
+    const count0 = store.subscribe((s, prev) => {
+      const a = s.windows[w]?.activeTabIds[s.windows[w].profileId];
+      const b = prev.windows[w]?.activeTabIds[prev.windows[w].profileId];
+      if (a !== b) switches++;
+    });
+    const opened = [];
+    for (let i = 0; i < count; i++) {
+      timed(() => opened.push(S().newTab(w, { url: `${origin}/p/slow-${i}-${Date.now()}` })));
+      await sleep(gapMs);
+    }
+    await sleep(3000);
+    stop();
+    count0();
+    const settledSwitches = switches;
+    for (const id of opened) if (typeof id === "string") S().closeTab(id);
+    return { opened: opened.length, switches: settledSwitches };
+  },
+
   async persistence() {
     const s = S();
     const time = (value) => {
