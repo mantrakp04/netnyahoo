@@ -1,0 +1,23 @@
+apps/browser/scripts/perf/micro-bench.mjs
+  s_9c356f9574d31c::t_bcf1ce317aa6f9 138-145,153
+  s_9c356f9574d31c::t_84533404934b2f 83,87
+  s_9c356f9574d31c::t_8020ed25eebe26 1-82,84-86,88-131,133-134,136-137,156,161-196,198-201,203-207
+  s_9c356f9574d31c::t_d129c1ebabe291 146-152
+  s_9c356f9574d31c::t_2efff307b2cd82 132,135,154-155,157-160,197,202,208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "53c1012bd7e47991160ad72c49cdb16453f604d1",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
