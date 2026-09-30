@@ -183,3 +183,21 @@ GROUP BY day, version ORDER BY day DESC, version
   - GitHub: 19 stars (8 today, 8 yesterday); repo page 5 views in 14 days.
   - Errors: one visitor failed to load the 3D chunk (`error loading dynamically imported module`), which made
     an unhandled rejection; fixed and deployed (abd489e8), the poster stays. The rest is known noise.
+- **2026-09-30 12:50 UTC check:** 5,805 visitors all time, 604 since 09:40 (t.co 502, phones 52%). Traffic is
+  tapering: 388/h at 08:00 was the peak, then 185, 211, 205, and ~175/h in the 12:00 hour.
+  - Downloads: 126 people all time (97 Mac). Since 09:40, Mac desktop 9/160 = 5.6%; Windows 2/94, Linux 2/36.
+    Last 24 h, Mac 96/1,544 = 6.2%.
+  - Phones since 09:40: the panel opened 12 times (header 10, menu 2); 17 people opened the hero's share sheet
+    and dismissed it; 2 emailed the link. No shares or copies recorded. `mac_link_visit` still 3 all time.
+  - `github_clicked` 36 (35 people) and `screenshot_opened` 89 (61 people) since 09:40.
+  - Installs: DMG downloads 170 all time (+20: 0.2.14 28, 0.2.16 6, 0.2.15 2); Sparkle update zips 27 (+4).
+    First launches (`update_check` with `first`): 14 (0.2.14 11, 0.2.15 1, 0.2.16 2); 16 checks today.
+  - Opted-in app users, 7 days: 0.2.11 7, 0.2.13 4, 0.2.14 3, 0.2.12 3, 0.2.7 2, 0.2.9 1, 0.2.15 1 (one person
+    can appear under several versions after updating).
+  - GitHub: 24 stars (13 today, +5 since 09:40). Traffic (GitHub is a day behind): 88 views from 60 people on
+    09-29, 50 of them from netnyahoo.com.
+  - Errors: 4 Windows visitors got an unhandled `Failed to fetch` when `big-yahu.glb` didn't download (the
+    09:40 fix only caught the chunk import). Fixed and deployed (99f6045f); Safari's 2 `Load failed` are
+    probably the same fetch. The rest is noise (cross-origin `Script error.`, a wallet). No app exceptions.
+    Three local `ExcUserFault` reports (18:14 to 18:19 IST) came from a 0.2.14 test build under `~/Documents`.
+    They're IconServices faults inside Chromium's `shortcuts::SetIconForFile`, not crashes.
