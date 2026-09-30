@@ -6,6 +6,7 @@
 
 #include "include/cef_ssl_info.h"
 #include "include/cef_unresponsive_process_callback.h"
+#include "include/cef_values.h"
 
 namespace nn {
 class Client;
@@ -14,7 +15,11 @@ class Client;
 namespace nn::site {
 
 bool PopupsAllowed(NSString *profile, NSString *openerURL);
-NSString *RecordBlockedPopup(int browserId, NSString *url, NSString *name, const CefPopupFeatures &features);
+// A popup the blocker stopped, to replay as asked: from its own frame, with noopener/noreferrer kept.
+NSString *RecordBlockedPopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, NSString *url, NSString *name,
+                             const CefPopupFeatures &features, CefRefPtr<CefDictionaryValue> extraInfo);
+// The replayed window.open has no user gesture: let that one through the blocker.
+bool ConsumePopupReplay(int browserId, NSString *url);
 bool OpenBlockedPopup(CefRefPtr<CefBrowser> browser, NSString *popupId, bool always, NSString *profile);
 
 NSDictionary *SecurityInfo(CefRefPtr<CefBrowser> browser);

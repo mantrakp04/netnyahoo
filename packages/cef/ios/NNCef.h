@@ -41,6 +41,8 @@ typedef void (^NNEventHandler)(NSString *name, NSDictionary<NSString *, id> *pay
 
 @interface NNCef (ContextMenu)
 @property (class, nonatomic, copy) NSString *searchEngineName;
+/// Drops the navigation a tab opened behind was to load (it closed before it was shown).
++ (void)forgetOpenedURL:(NSInteger)openedId;
 @end
 
 @interface NNCef (Components)

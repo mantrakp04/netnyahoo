@@ -143,6 +143,9 @@ NSString *const kExitPictureInPictureScript =
   // exists; loading it twice ran the page twice and, for a tab opened behind, focused it (Client::OnSetFocus).
   NSString *_creatingURL;
   CFTimeInterval _creatingAt;
+  // "open:<id>" adoption: the navigation to load once the browser exists (LoadOpenedURL), else its URL.
+  int _openedId;
+  NSString *_openedURL;
   NSString *_discardedURL;
   NSString *_transferredURL;
   BOOL _chromeDiscarded;
@@ -284,6 +287,7 @@ NSString *const kExitPictureInPictureScript =
       return;
     }
     if ([self createTabWithHistory]) return;
+    if ([self createOpenedTab]) return;
   }
 
   _client = new Client(self, _profile);
@@ -302,6 +306,19 @@ NSString *const kExitPictureInPictureScript =
                                                 (int)round(bg.blueComponent * 255));
   }
   return settings;
+}
+
+// A link Chrome asked to open in a new tab or window: an about:blank browser that then loads the navigation
+// itself (POST body, referrer, initiator), in browserCreated.
+- (BOOL)createOpenedTab {
+  if (![_adoptId hasPrefix:@"open:"]) return NO;
+  _openedId = [_adoptId substringFromIndex:5].intValue;
+  _openedURL = _pendingURL ?: _initialURL;
+  _pendingURL = nil;
+  _adoptId = nil;
+  _client = new Client(self, _profile);
+  host::CreateTab(self, _client, @"about:blank", [self browserSettings]);
+  return YES;
 }
 
 - (BOOL)createTabWithHistory {
@@ -412,6 +429,19 @@ NSString *const kExitPictureInPictureScript =
   _chromeDiscarded = host::IsChromeTab(browser) && browser->GetHost()->IsTabDiscarded();
 #endif
   browser->GetHost()->WasResized();
+  if (_openedId) {
+    // After Chrome starts the new tab on about:blank (it does once this returns), so the page replaces it.
+    const int opened = _openedId;
+    _openedId = 0;
+    __weak NNBrowserView *weakSelf = self;
+    CefRefPtr<CefBrowser> target = browser;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NNBrowserView *view = weakSelf;
+      NSString *url = view ? (view->_openedURL ?: view->_initialURL) : nil;
+      if (view) view->_openedURL = nil;
+      if (!LoadOpenedURL(target, opened) && url.length && target->IsValid()) target->GetMainFrame()->LoadURL(ToCef(url));
+    });
+  }
   if (_pendingURL) {
     browser->GetMainFrame()->LoadURL(ToCef(_pendingURL));
     _pendingURL = nil;

@@ -58,9 +58,9 @@ export function makeTab(windowId: string, profileId: string, url = "", snapshot?
   };
 }
 
-// What loads a tab that hasn't (a lazy or sleeping tab): its URL, or the page it had when its window closed.
+// What loads a tab that hasn't yet (lazy, opened behind, or sleeping): the browser it's to adopt, else its URL.
 export function wake(t: Tab): Partial<Tab> {
-  return t.restoreFrom ? { adoptId: `restore:${t.restoreFrom}`, restoreFrom: undefined } : { navigation: navigationTo(t.url) };
+  return t.wakeAdoptId ? { adoptId: t.wakeAdoptId, wakeAdoptId: undefined } : { navigation: navigationTo(t.url) };
 }
 
 export const snapshotTab = (t: Tab): TabSnapshot => ({

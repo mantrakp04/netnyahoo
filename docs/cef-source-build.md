@@ -31,6 +31,7 @@ What the build adds:
 | `cef-zz-media-router-shutdown.patch` | A context that outlives its Profile (the global one, until CEF shuts down) drops its media router objects when the Profile goes, while the Profile's MediaRouter still exists. Stock CEF dropped them only with the context, after the router was gone, so an app that had used `CefMediaRouter` on the default profile failed a `MediaRoutesObserver` check on every quit |
 | `cef-zz-media-source.patch` (after `cef-zz-media-router-shutdown.patch`) | `CefGetMediaAccessDesktopSource`: the desktop source a media access request would capture, so the app can hold a screen-sharing approval to the source the user picked (`CEF_NN_MEDIA_REQUEST_SOURCE`). `OnRequestMediaAccessPermission` goes to the requesting frame's own browser; Chrome's window delegate used to pass its active tab |
 | `cef-zz-quiet-uninstall.patch` (after `cef-zz-media-source.patch`) | The `CEF_NN_QUIET_UNINSTALL` marker for `chromium-zz-extensions-page-uninstall.patch` |
+| `cef-zzz-open-url-params.patch` (last) | `CEF_NN_OPEN_URL_PARAMS` (a new tab or window's full navigation) and `CEF_NN_POPUP_OPENER_SUPPRESSED` |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs (we host each tab's view in our own views) |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the Browser window to the app: Chrome only tracks the state, and the app shows the page full screen itself (`CefDisplayHandler::OnFullscreenModeChange`) |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
@@ -216,6 +217,17 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
 - **`CEF_NN_QUIET_UNINSTALL`**
   - No API. chrome://extensions may call `chrome.management.uninstall(id, { showConfirmDialog: false })`: the extension is
     removed without Chrome's dialog and without being enabled first. The client confirms with the user before it asks.
+
+- **`CEF_NN_OPEN_URL_PARAMS`** (outside the translated API: plain C exports, looked up with `dlsym` on the framework,
+  so no API hash change)
+  - `CefBrowserContentsDelegate::OpenURLFromTabEx` keeps the `content::OpenURLParams` of every NEW_FOREGROUND_TAB,
+    NEW_BACKGROUND_TAB and NEW_WINDOW navigation the client takes over in `OnOpenURLFromTab`: POST body, referrer,
+    initiator. `int cef_nn_open_url_id()` (inside `OnOpenURLFromTab`) is its id; `int cef_nn_load_open_url(browser_id,
+    id)` loads it in another browser, replacing that browser's current entry; `void cef_nn_forget_open_url(id)` drops it.
+    Entries wait until used (a tab opened behind loads when first shown); past 200 the oldest go.
+- **`CEF_NN_POPUP_OPENER_SUPPRESSED`**
+  - `OnBeforePopup`'s `extra_info` has `nn_opener_suppressed` (and `nn_no_referrer`) for a noopener / noreferrer popup,
+    so the client can replay a popup it blocked the same way.
 
 - **`CEF_NN_DOCKED_DEVTOOLS`** (docked DevTools in client windows)
   - A `client_window` Browser may dock DevTools (CEF passes `can_dock = false` for every other browser). Chrome's

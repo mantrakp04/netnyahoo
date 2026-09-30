@@ -109,6 +109,8 @@ export const onSystemState = (listener: (state: SystemState) => void) => Cef.add
 
 export const setDisplayMediaPicker = (enabled: boolean) => Cef.setDisplayMediaPicker(enabled);
 export const setSearchEngineName = (name: string) => Cef.setSearchEngineName(name);
+// A tab opened behind closed before it was shown: the engine can drop its navigation ("open:<id>").
+export const forgetOpenedURL = (id: number) => void Cef.forgetOpenedURL?.(id);
 export const getDisplayMediaSources = () => Cef.displayMediaSources();
 
 export const onDownload = (listener: (d: Download) => void) => Cef.addListener("onDownload", listener);

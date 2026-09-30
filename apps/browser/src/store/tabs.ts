@@ -33,6 +33,8 @@ export type NewTabOptions = {
   pinned?: boolean;
   snapshot?: Partial<TabSnapshot>;
   index?: number;
+  // Load only when first shown, adopting this (a link opened behind: "open:<id>").
+  wakeAdoptId?: string;
 };
 
 let openOutsideTab: (url: string, windowId: string) => boolean = () => false;
@@ -257,6 +259,9 @@ export function withNewTab(s: BrowserState, windowId: string, o: NewTabOptions =
     // The adopted browser is already loading `url`; reloading drops POST data and opener state.
     tab.adoptId = o.adoptId;
     tab.navigation = null;
+  } else if (o.wakeAdoptId) {
+    tab.wakeAdoptId = o.wakeAdoptId;
+    tab.navigation = null;
   }
   const tabs = { ...s.tabs, [tab.id]: tab };
   const tabIds = [...w.tabIds];
@@ -289,7 +294,7 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
       const profileId = options?.profileId ?? small.profileId;
       const main = mainWindowFor(get(), profileId);
       if (!main) {
-        const created = get().createWindow({ profileId, url: options?.url, adoptId: options?.adoptId, background: options?.background });
+        const created = get().createWindow({ profileId, url: options?.url, adoptId: options?.adoptId ?? options?.wakeAdoptId, background: options?.background });
         return activeTabId(get(), created) ?? "";
       }
       // The Small Yahu page stays the opener, so the tabs it sends keep their order.

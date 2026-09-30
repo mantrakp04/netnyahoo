@@ -112,10 +112,17 @@ std::map<int, CefRefPtr<CefUnresponsiveProcessCallback>> gUnresponsive;
 
 struct BlockedPopup {
   int browserId;
+  std::string frameId;
   NSString *url, *name, *features;
 };
 std::map<std::string, BlockedPopup> gBlockedPopups;
 uint64_t gBlockedPopupSeq = 0;
+struct PopupReplay {
+  int browserId = 0;
+  NSString *url = nil;
+  CFTimeInterval at = 0;
+};
+PopupReplay gPopupReplay;
 
 void SetValue(NSString *profile, NSString *origin, cef_content_setting_types_t type, cef_content_setting_values_t value) {
   ContextForProfile(profile)->SetContentSetting(ToCef(origin), ToCef(origin), type, value);
@@ -221,21 +228,34 @@ namespace nn::site {
 
 bool PopupsAllowed(NSString *profile, NSString *openerURL) {
   NSString *origin = OriginOf(openerURL);
-  if (!origin) return true;
+  if (!origin) return false;
   return ContextForProfile(profile)->GetContentSetting(ToCef(origin), ToCef(origin), CEF_CONTENT_SETTING_TYPE_POPUPS) ==
          CEF_CONTENT_SETTING_VALUE_ALLOW;
 }
 
-NSString *RecordBlockedPopup(int browserId, NSString *url, NSString *name, const CefPopupFeatures &features) {
+NSString *RecordBlockedPopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, NSString *url, NSString *name,
+                             const CefPopupFeatures &features, CefRefPtr<CefDictionaryValue> extraInfo) {
   NSMutableArray *parts = [NSMutableArray array];
+#if defined(CEF_NN_POPUP_OPENER_SUPPRESSED)
+  if (extraInfo && extraInfo->GetBool("nn_opener_suppressed"))
+    [parts addObject:extraInfo->GetBool("nn_no_referrer") ? @"noreferrer" : @"noopener"];
+#endif
   if (features.isPopup) [parts addObject:@"popup"];
   if (features.widthSet) [parts addObject:[NSString stringWithFormat:@"width=%d", features.width]];
   if (features.heightSet) [parts addObject:[NSString stringWithFormat:@"height=%d", features.height]];
   if (features.xSet) [parts addObject:[NSString stringWithFormat:@"left=%d", features.x]];
   if (features.ySet) [parts addObject:[NSString stringWithFormat:@"top=%d", features.y]];
   std::string id = "popup" + std::to_string(++gBlockedPopupSeq);
-  gBlockedPopups[id] = {browserId, url, name, [parts componentsJoinedByString:@","]};
+  gBlockedPopups[id] = {browser->GetIdentifier(), frame ? frame->GetIdentifier().ToString() : "", url, name,
+                        [parts componentsJoinedByString:@","]};
   return @(id.c_str());
+}
+
+bool ConsumePopupReplay(int browserId, NSString *url) {
+  PopupReplay replay = gPopupReplay;
+  if (replay.browserId != browserId || ![replay.url isEqualToString:url] || CACurrentMediaTime() - replay.at > 5) return false;
+  gPopupReplay = {};
+  return true;
 }
 
 bool OpenBlockedPopup(CefRefPtr<CefBrowser> browser, NSString *popupId, bool always, NSString *profile) {
@@ -247,9 +267,13 @@ bool OpenBlockedPopup(CefRefPtr<CefBrowser> browser, NSString *popupId, bool alw
     if (NSString *origin = OriginOf(ToNS(browser->GetMainFrame()->GetURL())))
       SetValue(profile, origin, CEF_CONTENT_SETTING_TYPE_POPUPS, CEF_CONTENT_SETTING_VALUE_ALLOW);
   }
+  // From the frame that asked (a sandboxed iframe's popup stays sandboxed); gone with its page, it isn't replayed.
+  CefRefPtr<CefFrame> frame = popup.frameId.empty() ? browser->GetMainFrame() : browser->GetFrameByIdentifier(popup.frameId);
+  if (!frame || !frame->IsValid()) return false;
   NSString *call = [NSString stringWithFormat:@"void window.open(%@, %@, %@)", ToJSON(popup.url), ToJSON(popup.name ?: @""),
                                               ToJSON(popup.features ?: @"")];
-  EvaluateWithGesture(browser, call, nil);
+  gPopupReplay = {popup.browserId, popup.url, CACurrentMediaTime()};
+  frame->ExecuteJavaScript(ToCef(call), "", 0);
   return true;
 }
 

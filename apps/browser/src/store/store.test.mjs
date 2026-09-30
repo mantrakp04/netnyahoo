@@ -249,10 +249,10 @@ test("a reopened window's tabs wake with their back/forward list", () => {
   const w2 = S().windowOrder.at(-1);
   const [ra, rb, rc] = S().windows[w2].tabIds.map((id) => S().tabs[id]);
   assert.equal(ra.adoptId, `restore:${a}`, "the shown tab loads with its history");
-  assert.equal(rb.restoreFrom, b, "the others keep it until they wake");
+  assert.equal(rb.wakeAdoptId, `restore:${b}`, "the others keep it until they wake");
   assert.equal(rb.navigation, null);
-  assert.equal(rc.restoreFrom, undefined, "a tab that never loaded has none");
+  assert.equal(rc.wakeAdoptId, undefined, "a tab that never loaded has none");
   S().activate(rb.id);
   assert.equal(S().tabs[rb.id].adoptId, `restore:${b}`);
-  assert.equal(S().tabs[rb.id].restoreFrom, undefined);
+  assert.equal(S().tabs[rb.id].wakeAdoptId, undefined);
 });

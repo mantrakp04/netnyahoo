@@ -1,0 +1,174 @@
+diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
+index db46768..09f7b04 100644
+--- a/include/cef_netnyahoo.h
++++ b/include/cef_netnyahoo.h
+@@ -121,4 +121,27 @@
+ // first), enabled or not. Everywhere else Chrome's rules are unchanged.
+ #define CEF_NN_QUIET_UNINSTALL 1
+ 
++// A navigation Chrome asks to open in a new tab or window
++// (CefRequestHandler::OnOpenURLFromTab with NEW_FOREGROUND_TAB,
++// NEW_BACKGROUND_TAB or NEW_WINDOW) keeps its full parameters: a POST body,
++// referrer and initiator. C functions exported by the framework, outside
++// the translated API (look them up with dlsym), on the UI thread:
++//   int cef_nn_open_url_id(void): inside OnOpenURLFromTab, that navigation's
++//     id, or 0.
++//   int cef_nn_load_open_url(int browser_id, int id): loads it in the browser
++//     (replacing its current entry, the new browser's about:blank) and
++//     forgets it; 0 if the id is unknown.
++//   void cef_nn_forget_open_url(int id): drops it unused (its tab closed).
++// Entries wait until used or forgotten (a tab opened behind may load only
++// when first shown); past 200 the oldest go.
++#define CEF_NN_OPEN_URL_PARAMS 1
++typedef int (*cef_nn_open_url_id_t)(void);
++typedef int (*cef_nn_load_open_url_t)(int browser_id, int id);
++typedef void (*cef_nn_forget_open_url_t)(int id);
++
++// CefLifeSpanHandler::OnBeforePopup's |extra_info| holds
++// "nn_opener_suppressed" (true) when the page asked for noopener or
++// noreferrer, and "nn_no_referrer" when it sent no referrer.
++#define CEF_NN_POPUP_OPENER_SUPPRESSED 1
++
+ #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
+diff --git a/libcef/browser/browser_contents_delegate.cc b/libcef/browser/browser_contents_delegate.cc
+index b1591e9..df3f439 100644
+--- a/libcef/browser/browser_contents_delegate.cc
++++ b/libcef/browser/browser_contents_delegate.cc
+@@ -4,6 +4,14 @@
+ 
+ #include "cef/libcef/browser/browser_contents_delegate.h"
+ 
++#include <map>
++
++#include "base/no_destructor.h"
++#include "cef/include/cef_netnyahoo.h"
++#include "cef/include/internal/cef_export.h"
++#include "cef/libcef/browser/thread_util.h"
++#include "content/public/browser/navigation_controller.h"
++
+ #include "base/memory/raw_ptr.h"
+ #include "cef/libcef/browser/browser_event_util.h"
+ #include "cef/libcef/browser/browser_host_base.h"
+@@ -111,6 +119,73 @@ void CefBrowserContentsDelegate::RemoveObserver(Observer* observer) {
+   observers_.RemoveObserver(observer);
+ }
+ 
++namespace {
++
++// CEF_NN_OPEN_URL_PARAMS: the full parameters (post body, referrer, initiator)
++// of navigations Chrome asks to open in a new tab or window, kept for the
++// client to load into the browser it opens for them. UI thread only.
++struct OpenedURL {
++  content::OpenURLParams params;
++};
++
++// A tab opened behind may load only when first shown, so entries stay until
++// used or forgotten; the oldest go past this many.
++constexpr size_t kMaxOpenedURLs = 200;
++
++std::map<int, OpenedURL>& OpenedURLs() {
++  static base::NoDestructor<std::map<int, OpenedURL>> urls;
++  return *urls;
++}
++
++int g_next_opened_url = 0;
++int g_current_opened_url = 0;
++
++void ForgetStaleOpenedURLs() {
++  while (OpenedURLs().size() >= kMaxOpenedURLs) {
++    OpenedURLs().erase(OpenedURLs().begin());
++  }
++}
++
++bool KeepsOpenedURL(WindowOpenDisposition disposition) {
++  return disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB ||
++         disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB ||
++         disposition == WindowOpenDisposition::NEW_WINDOW;
++}
++
++}  // namespace
++
++extern "C" CEF_EXPORT int cef_nn_open_url_id() {
++  return CEF_CURRENTLY_ON_UIT() ? g_current_opened_url : 0;
++}
++
++extern "C" CEF_EXPORT void cef_nn_forget_open_url(int id) {
++  if (CEF_CURRENTLY_ON_UIT()) {
++    OpenedURLs().erase(id);
++  }
++}
++
++extern "C" CEF_EXPORT int cef_nn_load_open_url(int browser_id, int id) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    return 0;
++  }
++  auto it = OpenedURLs().find(id);
++  if (it == OpenedURLs().end()) {
++    return 0;
++  }
++  auto browser = CefBrowserHostBase::GetBrowserForBrowserId(browser_id);
++  content::WebContents* web_contents =
++      browser ? browser->GetWebContents() : nullptr;
++  if (!web_contents) {
++    return 0;
++  }
++  content::NavigationController::LoadURLParams load(it->second.params);
++  OpenedURLs().erase(it);
++  // The new browser starts on about:blank; the page takes its entry.
++  load.should_replace_current_entry = true;
++  web_contents->GetController().LoadURLWithParams(load);
++  return 1;
++}
++
+ // |source| may be NULL for navigations in the current tab, or if the
+ // navigation originates from a guest view via MaybeAllowNavigation.
+ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
+@@ -120,6 +195,15 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
+         navigation_handle_callback) {
+   bool cancel = false;
+ 
++  int opened_url = 0;
++  if (KeepsOpenedURL(params.disposition)) {
++    ForgetStaleOpenedURLs();
++    opened_url = ++g_next_opened_url;
++    OpenedURLs().emplace(opened_url, OpenedURL{params});
++  }
++  const int outer_opened_url = g_current_opened_url;
++  g_current_opened_url = opened_url;
++
+   if (auto c = client()) {
+     if (auto handler = c->GetRequestHandler()) {
+       // May return nullptr for omnibox navigations.
+@@ -135,6 +219,10 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
+           params.user_gesture);
+     }
+   }
++  g_current_opened_url = outer_opened_url;
++  if (opened_url && !cancel) {
++    OpenedURLs().erase(opened_url);
++  }
+ 
+   if (!cancel) {
+     // TODO: Do something with |navigation_handle_callback|.
+diff --git a/libcef/browser/browser_info_manager.cc b/libcef/browser/browser_info_manager.cc
+index de45eec..394af86 100644
+--- a/libcef/browser/browser_info_manager.cc
++++ b/libcef/browser/browser_info_manager.cc
+@@ -191,6 +191,17 @@ bool CefBrowserInfoManager::CanCreateWindow(
+ 
+       const int popup_id = browser->GetNextPopupId();
+ 
++      // CEF_NN_POPUP_OPENER_SUPPRESSED: tell the client the page asked for
++      // noopener (or noreferrer), so it can replay a blocked popup the same.
++      if (opener_suppressed) {
++        if (!pending_popup->extra_info) {
++          pending_popup->extra_info = CefDictionaryValue::Create();
++        }
++        pending_popup->extra_info->SetBool("nn_opener_suppressed", true);
++        pending_popup->extra_info->SetBool("nn_no_referrer",
++                                           referrer.url.is_empty());
++      }
++
+       allow = !handler->OnBeforePopup(
+           browser.get(), opener_frame, popup_id,
+           pending_popup->target_url.spec(), pending_popup->target_frame_name,

@@ -1,5 +1,7 @@
 #import "NNClient.h"
 
+#include <dlfcn.h>
+
 #import "NNChromeUI.h"
 #import "NNExternalApps.h"
 #import "NNPictureInPicture.h"
@@ -702,9 +704,12 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
     Emit(@"pictureInPicture", @{@"kind" : @"document", @"active" : @YES});
     return false;
   }
-  if (!user_gesture && !site::PopupsAllowed(profile_, openerURL)) {
-    NSString *blockedId = site::RecordBlockedPopup(browser->GetIdentifier(), url, ToNS(target_frame_name), features);
-    Emit(@"popupBlocked", @{@"id" : blockedId, @"url" : url, @"origin" : OriginOf(openerURL) ?: @""});
+  // A frame with no origin of its own (about:srcdoc, about:blank, data:, a sandboxed iframe) asks as its page's site;
+  // it used to count as allowed, so any page could open popups through one.
+  NSString *siteURL = OriginOf(openerURL) ? openerURL : URL();
+  if (!user_gesture && !site::PopupsAllowed(profile_, siteURL) && !site::ConsumePopupReplay(browser->GetIdentifier(), url)) {
+    NSString *blockedId = site::RecordBlockedPopup(browser, frame, url, ToNS(target_frame_name), features, extra_info);
+    Emit(@"popupBlocked", @{@"id" : blockedId, @"url" : url, @"origin" : OriginOf(siteURL) ?: @""});
     return true;
   }
   // An app link opens no tab: ask in the opener, as the page that asked.
@@ -902,12 +907,37 @@ bool Client::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
     return true;
   }
   if (user_gesture) AllowUserNavigation(ToNS(target_url));
-  Emit(@"openWindow", @{
+  const bool split = IsSplitClick(disposition);
+  NSMutableDictionary *request = [@{
     @"url" : ToNS(target_url),
-    @"disposition" : IsSplitClick(disposition) ? @"split" : DispositionName(disposition),
+    @"disposition" : split ? @"split" : DispositionName(disposition),
     @"userGesture" : @(user_gesture),
-  });
+  } mutableCopy];
+  // The tab that opens it loads the navigation itself: its POST body, referrer and initiator (NNBrowserView).
+  if (int opened = split ? 0 : OpenedURLId()) request[@"adoptId"] = [NSString stringWithFormat:@"open:%d", opened];
+  Emit(@"openWindow", request);
   return true;
+}
+
+// CEF_NN_OPEN_URL_PARAMS: exported by our framework outside the translated API (cef_netnyahoo.h), so looked up
+// at run time; an older distribution has neither and links open from their URL.
+void *EngineSymbol(const char *name) {
+  static void *engine = [] {
+    NSString *path = [NSBundle.mainBundle.privateFrameworksPath
+        stringByAppendingPathComponent:@"Chromium Embedded Framework.framework/Chromium Embedded Framework"];
+    return dlopen(path.fileSystemRepresentation, RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD);
+  }();
+  return engine ? dlsym(engine, name) : nullptr;
+}
+
+int OpenedURLId() {
+  static auto openedURLId = (int (*)())EngineSymbol("cef_nn_open_url_id");
+  return openedURLId ? openedURLId() : 0;
+}
+
+bool LoadOpenedURL(CefRefPtr<CefBrowser> browser, int id) {
+  static auto load = (int (*)(int, int))EngineSymbol("cef_nn_load_open_url");
+  return load && browser && id && load(browser->GetIdentifier(), id);
 }
 
 // An app link from window.open, target=_blank or a modified click: no new tab, the opener asks.
@@ -1334,6 +1364,11 @@ bool MenuBarTakesChromeShortcut(int command_id) {
 
 + (NSString *)searchEngineName {
   return nn::gSearchEngineName;
+}
+
++ (void)forgetOpenedURL:(NSInteger)openedId {
+  static auto forget = (void (*)(int))nn::EngineSymbol("cef_nn_forget_open_url");
+  if (forget) forget((int)openedId);
 }
 
 + (void)setSearchEngineName:(NSString *)name {

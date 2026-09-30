@@ -230,6 +230,9 @@ struct PendingPopup {
 std::map<std::string, PendingPopup> &Popups();
 
 bool MenuBarTakesChromeShortcut(int command_id);
+// A navigation Chrome asked to open elsewhere (OnOpenURLFromTab), with its POST body and referrer.
+int OpenedURLId();
+bool LoadOpenedURL(CefRefPtr<CefBrowser> browser, int id);
 
 }
 

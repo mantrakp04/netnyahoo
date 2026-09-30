@@ -385,7 +385,7 @@ function restoreWindow(s: BrowserState, entry: ClosedWindow): BrowserState {
   const ids: string[] = [];
   for (const { active, tabId, ...snap } of entry.tabs) {
     const t = makeTab(id, profileOk(snap.profileId), "", { ...snap, profileId: profileOk(snap.profileId) });
-    if (tabId && snap.url) t.restoreFrom = tabId;
+    if (tabId && snap.url) t.wakeAdoptId = `restore:${tabId}`;
     tabs[t.id] = t;
     live[t.id] = IDLE_LIVE;
     ids.push(t.id);

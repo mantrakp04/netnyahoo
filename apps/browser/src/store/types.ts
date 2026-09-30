@@ -42,8 +42,9 @@ export type Tab = {
   navigation: { url: string; seq: number; userInitiated?: boolean } | null;
   adoptId?: string;
   openerId: string | null;
-  // A reopened window's tab that hasn't loaded yet: the closed tab whose back/forward list it wakes with.
-  restoreFrom?: string;
+  // What a tab that hasn't loaded adopts when first shown (store/model.ts wake): a reopened window's tab
+  // "restore:<closed tab>" (its back/forward list), a link opened behind "open:<id>" (its POST body, referrer).
+  wakeAdoptId?: string;
   liveItem?: { folderId: string; itemId: string };
   unloaded?: boolean;
   createdAt: number;
@@ -73,6 +74,8 @@ export type TabGroup = {
   tabIds: string[];
   createdAt: number;
   autoUngroup?: boolean;
+  // The pinned tab whose links, opened behind, this group collects (Dia: they gather below the pinned tabs).
+  pinnedOpenerId?: string;
 };
 
 export type SplitView = {

@@ -1,4 +1,4 @@
-import { devWindowAction, engineInfo, chromeWindows, prepareTabTransfer, type TabStripPlace } from "@netnyahoo/cef";
+import { devWindowAction, engineInfo, chromeWindows, forgetOpenedURL, prepareTabTransfer, type TabStripPlace } from "@netnyahoo/cef";
 import { usePages } from "../components/layout/pageState";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile } from "../store/model";
@@ -18,7 +18,10 @@ export function startChromeTabs() {
     if (chromeTabs) scheduleStripSync();
   });
   useBrowser.subscribe((s, prev) => {
-    if (s.tabs !== prev.tabs) announceMoves(s, prev);
+    if (s.tabs !== prev.tabs) {
+      announceMoves(s, prev);
+      forgetUnopened(s, prev);
+    }
     if (chromeTabs && (s.windows !== prev.windows || s.tabs !== prev.tabs)) scheduleStripSync();
   });
   usePages.subscribe((s, prev) => {
@@ -43,6 +46,15 @@ function announceMoves(s: BrowserState, prev: BrowserState) {
     if (engineProfile(before.profileId) !== engineProfile(tab.profileId)) continue;
     live ??= liveTabs();
     if (live.has(id)) prepareTabTransfer(id);
+  }
+}
+
+// A tab opened behind that closed before it was shown: the engine drops the navigation it kept for it.
+function forgetUnopened(s: BrowserState, prev: BrowserState) {
+  if (Object.keys(s.tabs).length >= Object.keys(prev.tabs).length) return;
+  for (const [id, tab] of Object.entries(prev.tabs)) {
+    const pending = tab.wakeAdoptId?.match(/^open:(\d+)$/);
+    if (pending && !s.tabs[id]) forgetOpenedURL(Number(pending[1]));
   }
 }
 

@@ -15,15 +15,19 @@ export function openFromPage({ url, adoptId, disposition }: OpenWindowRequest, f
     if (from.tabId) s.navigate(from.tabId, url, { userInitiated: false });
     return;
   }
+  // A link opened behind (⌘-click, middle-click, Open Link in New Tab) loads when first shown, as in Dia; the
+  // engine keeps its navigation (POST body, referrer) until then. A popup Chrome already made loads now.
+  const deferred = adoptId?.startsWith("open:") ? { wakeAdoptId: adoptId } : { adoptId };
   // Links stay in Small Yahu; new tabs (target=_blank, ⌘-click, split) open behind, in a main window.
   if (isSmall(s, w.id) && disposition !== "window" && disposition !== "incognito") {
-    return void s.newTab(w.id, { url, adoptId, openerId: from.tabId, profileId: from.profileId, background: true });
+    return void s.newTab(w.id, { url, ...deferred, openerId: from.tabId, profileId: from.profileId, background: true });
   }
   if (disposition === "split") return from.tabId ? openLinkInSplit(from.tabId, url) : void openSplitPane(w.id, { url });
   if (disposition === "incognito") return void openWindow({ incognito: true, url });
   // A private window's new window is private too: a session of its own, so the page loads afresh there.
   if (disposition === "window") return void openWindow(w.incognito ? { incognito: true, url } : { profileId: from.profileId, url, adoptId });
-  s.newTab(w.id, { url, adoptId, openerId: from.tabId, profileId: from.profileId, background: disposition === "background" });
+  const background = disposition === "background";
+  s.newTab(w.id, { url, ...(background ? deferred : { adoptId }), openerId: from.tabId, profileId: from.profileId, background });
 }
 
 // The store profile of a page outside tabs (an extension popup or side panel): its engine profile's.

@@ -35,6 +35,7 @@ export const Cef = requireNativeModule<{
   isTracing(): Promise<boolean>;
   setDisplayMediaPicker(enabled: boolean): Promise<void>;
   setSearchEngineName(name: string): Promise<void>;
+  forgetOpenedURL?(id: number): Promise<void>;
   displayMediaSources(): Promise<DisplayMediaSource[]>;
   listTasks(): Promise<EngineTask[]>;
   killTask(id: number): Promise<boolean>;

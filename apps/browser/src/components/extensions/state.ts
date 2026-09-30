@@ -331,8 +331,13 @@ export async function syncSidePanel(windowId: string) {
   const url = await extensionSidePanelUrl(browserId, panel.extensionId);
   const now = useExtensions.getState().sidePanels[windowId];
   if (now?.extensionId !== panel.extensionId) return;
-  if (!url) closeSidePanel(windowId);
-  else if (url !== now.url) useExtensions.setState((e) => ({ sidePanels: { ...e.sidePanels, [windowId]: { ...now, url } } }));
+  // The window now shows another profile: the panel's page runs in that profile's copy of the extension (a new
+  // page), so what it opens goes with it.
+  const s = useBrowser.getState();
+  const profiles = { profile: extensionProfile(s, windowId), pageProfile: pageProfile(s, windowId) };
+  if (!url || !shownIn(windowId, panel.extensionId)) closeSidePanel(windowId);
+  else if (url !== now.url || profiles.pageProfile !== now.pageProfile || profiles.profile !== now.profile)
+    useExtensions.setState((e) => ({ sidePanels: { ...e.sidePanels, [windowId]: { ...now, ...profiles, url } } }));
 }
 
 export const closeExtensionPopup = () => useExtensions.setState({ popup: null });

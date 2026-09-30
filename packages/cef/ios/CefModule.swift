@@ -36,6 +36,7 @@ public class CefModule: Module {
     }.runOnQueue(.main)
     AsyncFunction("isTracing") { NNCef.isTracing }.runOnQueue(.main)
     AsyncFunction("setSearchEngineName") { (name: String) in NNCef.searchEngineName = name }.runOnQueue(.main)
+    AsyncFunction("forgetOpenedURL") { (id: Int) in NNCef.forgetOpenedURL(id) }.runOnQueue(.main)
     AsyncFunction("setDisplayMediaPicker") { (enabled: Bool) in NNCef.displayMediaPicker = enabled }.runOnQueue(.main)
     AsyncFunction("displayMediaSources") { NNCef.displayMediaSources }.runOnQueue(.main)
     AsyncFunction("listTasks") { NNCef.tasks }.runOnQueue(.main)
