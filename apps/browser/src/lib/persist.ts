@@ -6,6 +6,7 @@ import { engineProfile, inPinnedContainer, isIncognitoProfile, makeTab, newId, s
 import { parkWindowPins } from "../store/parkedPins";
 import { DEFAULT_PROFILE } from "../store/profiles";
 import { DEFAULT_SETTINGS } from "../store/settings";
+import { historyDocument } from "../store/history";
 import type { Bookmarks, BrowserWindow, ClosedTab, HistoryEntry, Tab } from "../store/types";
 import { flushFavicons, startFavicons } from "./favicons";
 import { startProfileDataCleanup } from "./profileData";
@@ -13,29 +14,34 @@ import { startProfileDataCleanup } from "./profileData";
 const SAVE_DELAY_MS = 800;
 const VERSION = 2;
 
-type Doc = { name: string; sources: (s: BrowserState) => unknown[]; serialize: (s: BrowserState) => unknown };
+type Doc = { name: string; sources: (s: BrowserState) => unknown[]; json: (s: BrowserState) => string };
 
-const persistedTab = ({ navigation: _n, adoptId: _a, restoreFrom: _r, ...t }: Tab) => t;
+const serialized =
+  (serialize: (s: BrowserState) => unknown) =>
+  (s: BrowserState): string =>
+    JSON.stringify(serialize(s));
+
+const persistedTab = ({ navigation: _n, adoptId: _a, wakeAdoptId: _w, ...t }: Tab) => t;
 const publicTab = (t: { profileId: string }) => !isIncognitoProfile(t.profileId);
 
 const DOCS: Doc[] = [
-  { name: "history.json", sources: (s) => [s.history], serialize: (s) => ({ version: VERSION, history: s.history }) },
-  { name: "bookmarks.json", sources: (s) => [s.bookmarks], serialize: (s) => ({ version: VERSION, bookmarks: s.bookmarks }) },
+  { name: "history.json", sources: (s) => [s.history], json: (s) => historyDocument(VERSION, s.history) },
+  { name: "bookmarks.json", sources: (s) => [s.bookmarks], json: serialized((s) => ({ version: VERSION, bookmarks: s.bookmarks })) },
   {
     name: "downloads.json",
     sources: (s) => [s.downloads],
-    serialize: (s) => ({
+    json: serialized((s) => ({
       version: VERSION,
       downloads: s.downloads
         .filter((d) => !d.profile || !isIncognitoProfile(d.profile))
         .map((d) => (d.state === "downloading" ? { ...d, state: "failed" } : d)),
-    }),
+    })),
   },
 // Save history and bookmarks before replacing the v1 file.
   {
     name: "session.json",
     sources: (s) => [s.profiles, s.profileOrder, s.orphanedProfileData, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.parkedPins, s.settings, s.ui.focusedWindowId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
-    serialize: (s) => {
+    json: serialized((s) => {
       // Small Yahu windows aren't restored: closing (or quitting) throws their page away.
       const windows = Object.values(s.windows).filter((w) => !w.incognito && w.kind !== "small");
       const kept = new Set(windows.map((w) => w.id));
@@ -59,7 +65,7 @@ const DOCS: Doc[] = [
         deletedGroups: s.deletedGroups.filter((c) => c.tabs.every(publicTab)),
         cleanedTabs: s.cleanedTabs.filter((c) => publicTab(c.tab)),
       };
-    },
+    }),
   },
 ];
 
@@ -257,7 +263,7 @@ export function startPersistence() {
     if (frozen) return;
     const s = useBrowser.getState();
     for (const doc of DOCS.filter((d) => dirty.has(d))) {
-      const json = JSON.stringify(doc.serialize(s));
+      const json = doc.json(s);
       if (lastJson.get(doc.name) !== json) {
         lastJson.set(doc.name, json);
         write(doc.name, json);

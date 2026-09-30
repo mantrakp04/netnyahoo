@@ -25,6 +25,31 @@ export function withoutVisitsSince(entry: HistoryEntry, since: number): HistoryE
   return { ...entry, visits: entry.visits - (times.length - kept.length), lastVisit: kept[kept.length - 1]!, visitTimes: kept };
 }
 
+// history.json, byte for byte what JSON.stringify({ version, history }) gives. Entries are immutable
+// (a visit replaces its entry), so each one is stringified once and reused: a save after a visit
+// re-serializes one entry instead of all 5000.
+const entryJson = new WeakMap<HistoryEntry, string>();
+
+export function historyDocument(version: number, history: Record<string, HistoryEntry[]>): string {
+  const profiles: string[] = [];
+  for (const [profileId, list] of Object.entries(history)) {
+    const rows = new Array<string>(list.length);
+    for (let i = 0; i < list.length; i++) {
+      const entry = list[i]!;
+      // A malformed saved row (null, say) is written as JSON.stringify writes it.
+      if (typeof entry !== "object" || entry === null) {
+        rows[i] = JSON.stringify(entry) ?? "null";
+        continue;
+      }
+      let json = entryJson.get(entry);
+      if (json === undefined) entryJson.set(entry, (json = JSON.stringify(entry)));
+      rows[i] = json;
+    }
+    profiles.push(`${JSON.stringify(profileId)}:[${rows.join(",")}]`);
+  }
+  return `{"version":${JSON.stringify(version)},"history":{${profiles.join(",")}}}`;
+}
+
 export const createHistorySlice: StateCreator<BrowserState, [], [], HistorySlice> = (set) => ({
   history: {},
 
