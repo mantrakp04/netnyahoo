@@ -1,0 +1,44 @@
+apps/browser/src/components/Downloads.tsx
+  s_9c356f9574d31c::t_cfabec77e56963 316
+packages/shell/ios/ShellModule.swift
+  s_9c356f9574d31c::t_4fad6de5802494 95-98
+apps/browser/src/components/layout/TopTabStrip.tsx
+  s_9c356f9574d31c::t_cfabec77e56963 70,83,113,156,163
+  s_9c356f9574d31c::t_96265d804675c1 565
+  s_9c356f9574d31c::t_0d66fcd2d185f3 1-2,8,33-35,38,44,48,50-53,56,61,72-76,79-82,84-105,107,143,145,147-150,166,178-190,196,226,242-251,257,260,264,266-269,271,274,278,281-284,287,289-298,303,311-312,315-328,331-408,418-425,427-435,442-446,457-474,476-477,491,496,499,507,522-523,525-528,531,533-534,536,539,573-574,626
+  s_9c356f9574d31c::t_011189c88d4b3d 426,436-441
+  s_9c356f9574d31c::t_6b0ce6c7d26b59 285-286
+  s_9c356f9574d31c::t_09b41f8d8c9753 25-32,36-37,40-43,46
+  s_9c356f9574d31c::t_dfec1a95914e58 23,71,532,544,552,555
+packages/shell/ios/ChromeWindows.swift
+  s_9c356f9574d31c::t_4fad6de5802494 40-43
+apps/browser/src/components/media/TabBadges.tsx
+  s_9c356f9574d31c::t_cfabec77e56963 9-10,13
+packages/shell/ios/Windows.swift
+  s_9c356f9574d31c::t_4fad6de5802494 110,112-115
+  s_9c356f9574d31c::t_f97ab585380ee0 77,107-109,111,178,221
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_4fad6de5802494 219,261-262
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_48281e71f683a2 331
+apps/browser/src/App.tsx
+  s_9c356f9574d31c::t_37e246d200f3bc 18,71-73
+docs/dia-spec.md
+  s_9c356f9574d31c::t_1cd1319c4d4dac 548-577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "097fe1fd8f399e1f217f6a1c445913fe01ad4c1d",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
