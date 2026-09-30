@@ -83,6 +83,7 @@ log stream --style compact --predicate "process == \"runningboardd\" AND eventMe
   > "$work/exit.log" 2>/dev/null &
 logger=$!
 sleep 1
+touch "$work/quit-marker"
 "$work/quit" "$pid" >/dev/null || true
 tenths=0
 while kill -0 "$pid" 2>/dev/null && [ $tenths -lt 150 ]; do sleep 0.1; tenths=$((tenths + 1)); done
@@ -98,8 +99,9 @@ else
     # carry its pid ("[xpcservice<…([app<…>:<pid>])…>:<their pid>]"), and launchd SIGKILLs those
     # (2, 9, 9) as their client exits, sometimes logging them first.
     exited="$(grep -o ">:$pid\] termination reported by launchd ([0-9, ]*)" "$work/exit.log" | head -1 | sed 's/.*launchd //' || true)"
-    report="$(grep -l "\"pid\" : $pid," ~/Library/Logs/DiagnosticReports/Netnyahoo-*.ips \
-      ~/Library/Logs/DiagnosticReports/Retired/Netnyahoo-*.ips 2>/dev/null | head -1 || true)"
+    # Only reports written after the quit: pids get reused, and an old report can share this one's.
+    report="$(find ~/Library/Logs/DiagnosticReports ~/Library/Logs/DiagnosticReports/Retired -maxdepth 1 \
+      -name 'Netnyahoo-*.ips' -newer "$work/quit-marker" -exec grep -l "\"pid\" : $pid," {} + 2>/dev/null | head -1 || true)"
     [ -n "$report" ] && break
     [ "$exited" = "(0, 0, 0)" ] && break
   done
