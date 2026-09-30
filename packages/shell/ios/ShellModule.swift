@@ -11,6 +11,53 @@ public enum OpenURLInbox {
   }
 }
 
+/// JS saves (the session and history run to megabytes) land on a background queue instead of blocking the JS
+/// thread for the write. A read sees the newest save of a document even before it's on disk, a save never lands
+/// after a newer one of the same document, and quitting waits for the queue.
+enum DocumentStore {
+  private static let queue = DispatchQueue(label: "netnyahoo.documents", qos: .utility)
+  private static let lock = NSLock()
+  private static var staged: [String: (generation: UInt64, contents: String)] = [:]
+  private static var generation: UInt64 = 0
+  private static let flushOnQuit = NotificationCenter.default.addObserver(
+    forName: NSApplication.willTerminateNotification, object: nil, queue: nil
+  ) { _ in queue.sync {} }
+
+  static func read(_ name: String) -> String? {
+    guard let url = try? ShellModule.documentURL(name) else { return nil }
+    lock.lock()
+    let pending = staged[url.lastPathComponent]?.contents
+    lock.unlock()
+    return pending ?? (try? String(contentsOf: url, encoding: .utf8))
+  }
+
+  static func write(_ name: String, _ contents: String) throws {
+    _ = flushOnQuit
+    let url = try ShellModule.documentURL(name)
+    let key = url.lastPathComponent
+    lock.lock()
+    generation += 1
+    let mine = generation
+    staged[key] = (mine, contents)
+    lock.unlock()
+    queue.async {
+      lock.lock()
+      let newest = staged[key]
+      lock.unlock()
+      // A newer save of this document is queued behind this one; it writes instead.
+      guard let newest, newest.generation == mine else { return }
+      do {
+        try newest.contents.write(to: url, atomically: true, encoding: .utf8)
+      } catch {
+        NSLog("Netnyahoo: saving \(key) failed: \(error.localizedDescription)")
+      }
+      lock.lock()
+      if staged[key]?.generation == mine { staged[key] = nil }
+      lock.unlock()
+    }
+  }
+}
+
 public class ShellModule: Module {
   static func documentURL(_ name: String) throws -> URL {
     let dir: URL
@@ -164,15 +211,9 @@ public class ShellModule: Module {
       }
     }.runOnQueue(.main)
 
-    Function("readDocument") { (name: String) -> String? in
-      guard let url = try? ShellModule.documentURL(name) else { return nil }
-      return try? String(contentsOf: url, encoding: .utf8)
-    }
+    Function("readDocument") { (name: String) -> String? in DocumentStore.read(name) }
 
-    Function("writeDocument") { (name: String, contents: String) in
-      let url = try ShellModule.documentURL(name)
-      try contents.write(to: url, atomically: true, encoding: .utf8)
-    }
+    Function("writeDocument") { (name: String, contents: String) in try DocumentStore.write(name, contents) }
 
     AsyncFunction("setSwitcherCapture") { [weak self] (active: Bool) in
       guard let self else { return }
