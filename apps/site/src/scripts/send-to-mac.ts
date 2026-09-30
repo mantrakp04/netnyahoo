@@ -1,10 +1,9 @@
-// Phones and tablets can't run a Mac app. components/SendToMac.astro shows them a short address to type on
-// the Mac later (netnyahoo.com/mac), "Email it to me" (mailto to self) first, then Share and Copy link.
-// The clipboard isn't the plan: X's iOS browser refused it for 56 of 56 people (docs/growth.md), so a copy
-// that fails selects the address instead. The other download CTAs ([data-download]: header, menu) scroll to
+// Phones and tablets can't run a Mac app. components/SendToMac.astro gives them "Send to my Mac" (the share
+// sheet; a mailto to themselves where there's none), then Share, Copy link and Email it to me. X's iOS browser
+// refuses the clipboard (docs/growth.md), so a failed copy points at Email instead. The other download CTAs ([data-download]: header, menu) scroll to
 // the page's panel, or go to the home page's when the page has none. The device class comes from
 // components/Visitor.astro; data-inapp="x" marks X's iOS browser.
-// Tracks send_to_mac_clicked { location, method: "email" | "share" | "copy" | "panel", outcome?, inapp? }.
+// Tracks send_to_mac_clicked { location, method: "email" | "share" | "copy" | "panel", outcome?, via?: "main" | "link", inapp? }.
 import { track } from "./track";
 
 const LINK = "https://netnyahoo.com/?ref=share";
@@ -13,8 +12,14 @@ const DATA: ShareData = { url: LINK, title: "Netnyahoo", text: "Netnyahoo: real 
 const root = document.documentElement;
 const inapp = root.dataset.inapp ?? null;
 
-function report(location: string | null, method: "email" | "share" | "copy" | "panel", outcome?: string) {
-  track("send_to_mac_clicked", { location, method, ...(outcome ? { outcome } : {}), ...(inapp ? { inapp } : {}) });
+function report(location: string | null, method: "email" | "share" | "copy" | "panel", outcome?: string, via?: string) {
+  track("send_to_mac_clicked", {
+    location,
+    method,
+    ...(outcome ? { outcome } : {}),
+    ...(via ? { via } : {}),
+    ...(inapp ? { inapp } : {}),
+  });
 }
 
 async function copy(): Promise<boolean> {
@@ -28,7 +33,7 @@ async function copy(): Promise<boolean> {
 
 function wire(panel: HTMLElement) {
   const location = panel.dataset.location ?? null;
-  const addr = panel.querySelector<HTMLElement>("[data-send-addr]");
+  const main = panel.querySelector<HTMLAnchorElement>('[data-send="main"]');
   const email = panel.querySelector<HTMLAnchorElement>('[data-send="email"]');
   const share = panel.querySelector<HTMLButtonElement>('[data-send="share"]');
   const copyBtn = panel.querySelector<HTMLButtonElement>('[data-send="copy"]');
@@ -37,26 +42,32 @@ function wire(panel: HTMLElement) {
   email?.addEventListener("click", () => report(location, "email"));
 
   const canShare = typeof navigator.share === "function" && (!navigator.canShare || navigator.canShare(DATA));
+  const openSheet = async (via: string) => {
+    try {
+      await navigator.share(DATA);
+      report(location, "share", "shared", via);
+    } catch (e) {
+      // Dismissed: Copy link and Email are right below; no clipboard retry (it's refused by now).
+      report(location, "share", e instanceof DOMException && e.name === "AbortError" ? "cancelled" : "error", via);
+    }
+  };
+  // The main button is the share sheet; without one it stays the mailto it's rendered as.
+  main?.addEventListener("click", (e) => {
+    if (!canShare) return report(location, "email", undefined, "main");
+    e.preventDefault();
+    void openSheet("main");
+  });
   if (share && canShare) {
     share.hidden = false;
-    share.addEventListener("click", async () => {
-      try {
-        await navigator.share(DATA);
-        report(location, "share", "shared");
-      } catch (e) {
-        // Dismissed: the address and Email are still right there; no clipboard retry (it's refused by now).
-        report(location, "share", e instanceof DOMException && e.name === "AbortError" ? "cancelled" : "error");
-      }
-    });
+    share.addEventListener("click", () => void openSheet("link"));
   }
 
   let timer = 0;
   copyBtn?.addEventListener("click", async () => {
     const ok = await copy();
-    if (!ok && addr) getSelection()?.selectAllChildren(addr);
     report(location, "copy", ok ? "copied" : "blocked");
     if (!copyLabel) return;
-    copyLabel.textContent = ok ? "Link copied" : "Selected: hold to copy";
+    copyLabel.textContent = ok ? "Link copied" : "Blocked here: email it";
     clearTimeout(timer);
     timer = window.setTimeout(() => (copyLabel.textContent = "Copy link"), ok ? 2400 : 5000);
   });
