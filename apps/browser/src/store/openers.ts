@@ -1,6 +1,6 @@
 import type { BrowserState } from "./browser";
 import { inPinnedContainer } from "./model";
-import { groupOf } from "./organize";
+import { groupOf, pinnedChildGroup } from "./organize";
 import { splitOf } from "./splits";
 import type { BrowserWindow, Tab } from "./types";
 
@@ -21,19 +21,27 @@ export function insertionIndex(s: BrowserState, w: BrowserWindow, tab: Tab, back
     const panes = splitOf(s, opener.id)?.tabIds ?? [opener.id];
     const at = Math.max(...panes.map((id) => w.tabIds.indexOf(id))) + 1;
     index = background ? afterFamily(s, w, tab, at, opener.id) : at;
+  } else if (opener && opener.windowId === w.id && opener.profileId === tab.profileId) {
+    // From a pinned tab: just below the pinned tabs, after the links it opened before (Dia gathers them there).
+    const gathered = pinnedChildGroup(s, opener.id, tab.profileId);
+    index = gathered
+      ? Math.max(...gathered.tabIds.map((id) => w.tabIds.indexOf(id))) + 1
+      : afterFamily(s, w, tab, firstRegular(s, w, tab), opener.id);
   } else {
     index = listStart(s, w, tab);
-    // An opener in the pinned section or in another window (Small Yahu) still keeps its tabs in order.
+    // An opener in another window (Small Yahu) still keeps its tabs in order.
     if (opener) index = afterFamily(s, w, tab, index, opener.id);
   }
   return outsideSplit(s, w, index);
 }
 
-function listStart(s: BrowserState, w: BrowserWindow, tab: Tab): number {
-  if (s.settings.newTabPosition !== "top") return w.tabIds.length;
+function firstRegular(s: BrowserState, w: BrowserWindow, tab: Tab): number {
   const first = w.tabIds.findIndex((id) => s.tabs[id]?.profileId === tab.profileId && regular(s, id));
   return first >= 0 ? first : w.tabIds.length;
 }
+
+const listStart = (s: BrowserState, w: BrowserWindow, tab: Tab) =>
+  s.settings.newTabPosition === "top" ? firstRegular(s, w, tab) : w.tabIds.length;
 
 // Past the tabs the opener opened, and the tabs those opened, that follow `from` in the same group.
 function afterFamily(s: BrowserState, w: BrowserWindow, tab: Tab, from: number, openerId: string): number {

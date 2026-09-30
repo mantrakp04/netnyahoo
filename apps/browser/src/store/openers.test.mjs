@@ -165,3 +165,35 @@ test("links a Small Yahu page sends keep their order in the main window", () => 
   assert.deepEqual(hosts(main), ["c1", "c2", "a"]);
   assert.equal(active(main), "a");
 });
+
+test("links opened behind from a pinned tab gather in a group below the pinned tabs", () => {
+  reset({ cmdClickCreatesTabGroup: true });
+  const [w, a, b] = setup("a", "b");
+  S().togglePin(a);
+  S().activate(a);
+  const c1 = open(w, "c1", a);
+  const c2 = open(w, "c2", a);
+  assert.deepEqual(hosts(w), ["a", "c1", "c2", "b"]);
+  const group = Object.values(S().groups)[0];
+  assert.deepEqual(group.tabIds, [c1, c2], "the pinned tab stays pinned, out of the group");
+  assert.ok(S().tabs[a].pinned);
+  S().activate(b);
+  S().activate(a);
+  const c3 = open(w, "c3", a);
+  assert.deepEqual(S().groups[group.id].tabIds, [c1, c2, c3], "later links from it join that group");
+});
+
+test("closing a group that holds the shown tab shows the tab just above the group", () => {
+  reset({ cmdClickCreatesTabGroup: true });
+  const [w, pin, home] = setup("pin", "home");
+  S().togglePin(pin);
+  S().activate(home);
+  S().activate(pin);
+  const c1 = open(w, "c1", pin);
+  open(w, "c2", pin);
+  const group = Object.values(S().groups)[0];
+  S().moveTab(home, 0);
+  S().activate(c1);
+  S().closeGroup(group.id);
+  assert.equal(active(w), "home", "not the pinned opener");
+});

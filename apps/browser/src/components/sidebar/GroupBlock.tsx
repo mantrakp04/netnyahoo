@@ -1,4 +1,4 @@
-import { ContextMenuArea, FadeLabel, Surface } from "@netnyahoo/shell";
+import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
 import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { hex, layout, useTheme } from "../../lib/theme";
@@ -19,6 +19,9 @@ import { RenameField, SplitRowItem, TabRowItem } from "./TabRow";
 import { GROUP_COLORS, useSidebarTokens, withAlpha } from "./tokens";
 
 const PAD = 2;
+// Dia 1.50.1 (owner recording, 60 fps): a group opens or closes in about 150 ms, fast at first.
+const TOGGLE_MS = 150;
+const TOGGLE_EASING = Easing.bezier(0.2, 0.9, 0.3, 1);
 
 export const GroupBlock = memo(function GroupBlock({ groupId, section }: { groupId: string; section: "list" | "pinnedGroups" }) {
   const windowId = useWindowId();
@@ -48,7 +51,7 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
       return;
     }
     setAnimating(true);
-    Animated.timing(open, { toValue: collapsed ? 0 : 1, duration: 240, easing: Easing.bezier(0.2, 0.9, 0.3, 1), useNativeDriver: false }).start(
+    Animated.timing(open, { toValue: collapsed ? 0 : 1, duration: TOGGLE_MS, easing: TOGGLE_EASING, useNativeDriver: false }).start(
       ({ finished }) => {
         if (!finished) return;
         settled.current = collapsed;
@@ -108,8 +111,12 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
   const dropInto = useDropInto() === groupId;
   const { hovered, hoverProps } = useRowHover(windowId, collapsed && !renaming ? { kind: "group", id: groupId } : null);
   const countdown = useMeetingCountdown(groupId);
+  const [labelWidth, setLabelWidth] = useState(0);
+  const turn = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
+  useEffect(() => {
+    Animated.timing(turn, { toValue: collapsed ? 0 : 1, duration: TOGGLE_MS, easing: TOGGLE_EASING, useNativeDriver: false }).start();
+  }, [collapsed]);
   if (!group) return null;
-  const count = group.tabIds.length;
   const target = { kind: "group" as const, id: groupId };
 
   return (
@@ -146,18 +153,34 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
                   onDone={(text) => (text === null ? endRename(target) : commitRename(target, text))}
                 />
               ) : (
-                <Animated.View style={{ flex: 1, height: 18, marginLeft: 5, transform: [{ rotate: countdown.rotate }] }}>
-                  <FadeLabel text={label} fontSize={13} weight="medium" color={tokens.groupTitle} style={{ flex: 1, height: 18 }} />
+                // Dia: the name, then a chevron right after it (∨ open, › closed), no count.
+                <Animated.View style={{ flex: 1, height: 18, marginLeft: 5, flexDirection: "row", alignItems: "center", transform: [{ rotate: countdown.rotate }] }}>
+                  <Text
+                    numberOfLines={1}
+                    onLayout={(e) => setLabelWidth(Math.ceil(e.nativeEvent.layout.width))}
+                    style={{ position: "absolute", opacity: 0, fontSize: 13, fontWeight: "500" }}
+                  >
+                    {label}
+                  </Text>
+                  <FadeLabel text={label} fontSize={13} weight="medium" color={tokens.groupTitle} style={{ width: labelWidth + 8, flexShrink: 1, height: 18 }} />
+                  <Animated.View
+                    style={{
+                      width: 10,
+                      height: 10,
+                      marginLeft: 0,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ["-90deg", "0deg"] }) }],
+                    }}
+                  >
+                    <Symbol name="chevron.down" size={9} weight="semibold" color={withAlpha(tokens.groupTitle, 0.5)} style={{ width: 10, height: 10 }} />
+                  </Animated.View>
                 </Animated.View>
               )}
               {hovered && !renaming ? (
                 <IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => useBrowser.getState().closeGroup(groupId)} tooltip="Close Group" />
               ) : countdown.label && !renaming ? (
                 <MeetingTimeLabel label={countdown.label} urgent={countdown.urgent} />
-              ) : collapsed && !renaming ? (
-                <View style={{ minWidth: 20, height: 18, borderRadius: 9, paddingHorizontal: 6, backgroundColor: tokens.countPill, alignItems: "center", justifyContent: "center", marginRight: 2 }}>
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: theme.textTab, fontVariant: ["tabular-nums"] }}>{count}</Text>
-                </View>
               ) : null}
             </Surface>
           )}

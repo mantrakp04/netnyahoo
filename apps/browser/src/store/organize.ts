@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
+import { autoGroupName } from "./groupNames";
 import { leaveGroups, orderSections, placeBlock, syncGroupOrder } from "./groups";
 import { activeTabId, bookmarkProfileId, inPinnedContainer, isIncognitoProfile, newId, snapshotTab, viewTabIds, without } from "./model";
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
@@ -74,10 +75,10 @@ export function samePage(a: string, b: string): boolean {
 export const awayFromPin = (t: Pick<Tab, "pinned" | "url" | "pinnedUrl">) =>
   t.pinned && !!t.pinnedUrl && !!t.url && !samePage(t.url, t.pinnedUrl);
 
+// A name the user gave wins; otherwise one from the tabs' titles (store/groupNames.ts).
 export function groupLabel(s: Pick<BrowserState, "tabs">, g: TabGroup): string {
   if (g.name) return g.name;
-  const first = s.tabs[g.tabIds[0] ?? ""];
-  return (first && hostOf(first.url)) || "New Group";
+  return autoGroupName(g.tabIds.map((id) => s.tabs[id]).filter((t): t is Tab => !!t?.url)) || "New Group";
 }
 
 export function isSiteMuted(s: Pick<BrowserState, "settings" | "privateSiteMutes">, tab: Pick<Tab, "windowId" | "profileId">, host: string): boolean {
@@ -107,31 +108,43 @@ export function pruneSelection(selection: Record<string, string[]>, gone: Set<st
 }
 
 // A tab opened from a link joins its opener's group, as in Chrome; opened behind from an ungrouped tab it
-// starts one with it when the setting is on (Dia's "⌘-clicking links creates tab groups"). Pinned tabs and
-// pinned groups keep their section: their links open as ordinary tabs.
+// starts one with it when the setting is on (Dia's "⌘-clicking links creates tab groups"). A pinned tab (or a
+// tab of a pinned group) stays in its section: its links opened behind gather in a group of their own, below
+// the pinned tabs, as in Dia.
 export function groupWithOpener(s: BrowserState, tabId: string, openerId: string, background: boolean): BrowserState {
   const tab = s.tabs[tabId];
   const opener = s.tabs[openerId];
-  if (!tab || !opener || inPinnedContainer(s, openerId)) return s;
+  if (!tab || !opener) return s;
   if (opener.windowId !== tab.windowId || opener.profileId !== tab.profileId) return s;
   const w = s.windows[tab.windowId]!;
+  if (inPinnedContainer(s, openerId)) {
+    const gathered = pinnedChildGroup(s, openerId, tab.profileId);
+    if (gathered) return joinGroup(s, w, gathered, tabId);
+    if (!background || !s.settings.cmdClickCreatesTabGroup) return s;
+    return withGroup(s, [tabId], { autoUngroup: true, pinnedOpenerId: openerId })[0];
+  }
   const existing = groupOf(s, openerId);
   if (!existing && !(background && s.settings.cmdClickCreatesTabGroup)) return s;
-  if (existing) {
-    const members = [...existing.tabIds, tabId];
-    const window = { ...w, tabIds: placeBlock(w.tabIds, w.tabIds.filter((id) => members.includes(id))) };
-    const groups = { ...s.groups, [existing.id]: { ...existing, tabIds: window.tabIds.filter((id) => members.includes(id)) } };
-    return { ...s, groups, windows: { ...s.windows, [w.id]: window } };
-  }
+  if (existing) return joinGroup(s, w, existing, tabId);
   // A split opener brings its other panes: a split is one row, inside or outside the group.
   const panes = Object.values(s.splits).find((v) => v.tabIds.includes(openerId))?.tabIds ?? [openerId];
   return withGroup(s, [...panes, tabId], { autoUngroup: true })[0];
 }
 
+export const pinnedChildGroup = (s: Pick<BrowserState, "groups">, openerId: string, profileId: string): TabGroup | undefined =>
+  Object.values(s.groups).find((g) => g.pinnedOpenerId === openerId && g.profileId === profileId && g.tabIds.length);
+
+function joinGroup(s: BrowserState, w: BrowserWindow, group: TabGroup, tabId: string): BrowserState {
+  const members = [...group.tabIds, tabId];
+  const window = { ...w, tabIds: placeBlock(w.tabIds, w.tabIds.filter((id) => members.includes(id))) };
+  const groups = { ...s.groups, [group.id]: { ...group, tabIds: window.tabIds.filter((id) => members.includes(id)) } };
+  return { ...s, groups, windows: { ...s.windows, [w.id]: window } };
+}
+
 export function withGroup(
   s: BrowserState,
   ids: string[],
-  o: { name?: string; pinned?: boolean; autoUngroup?: boolean } = {},
+  o: { name?: string; pinned?: boolean; autoUngroup?: boolean; pinnedOpenerId?: string } = {},
 ): [BrowserState, string] {
   const tabs = ids.map((id) => s.tabs[id]).filter((t): t is Tab => !!t && !t.pinned);
   const first = tabs[0];
@@ -151,6 +164,7 @@ export function withGroup(
     tabIds: tabIds.filter((id) => members.has(id)),
     createdAt: Date.now(),
     ...(o.autoUngroup ? { autoUngroup: true } : {}),
+    ...(o.pinnedOpenerId ? { pinnedOpenerId: o.pinnedOpenerId } : {}),
   };
   const groups = { ...leaveGroups(s.groups, members), [group.id]: group };
   tabIds = orderSections(tabIds, s.tabs, groups);
@@ -185,6 +199,21 @@ function closeQuietly(s: BrowserState, ids: string[]): BrowserState {
   return removeTabs(s, ids, false);
 }
 
+// Closing a group that holds the page on screen shows the tab just above the group, as in Dia (not the opener
+// of the page, nor the tab after it); at the top of the list, the one below.
+function showAboveGroup(before: BrowserState, s: BrowserState, g: TabGroup): BrowserState {
+  const w = s.windows[g.windowId];
+  const was = before.windows[g.windowId]?.activeTabIds[g.profileId];
+  if (!w || !was || !g.tabIds.includes(was)) return s;
+  const order = viewTabIds(before, g.windowId, g.profileId).filter((id) => !inPinnedContainer(before, id));
+  const at = order.indexOf(g.tabIds[0]!);
+  const stays = (id: string) => !!s.tabs[id] && !g.tabIds.includes(id) && !s.tabs[id]!.unloaded;
+  const pick = order.slice(0, at).reverse().find(stays) ?? order.slice(at).find(stays);
+  if (!pick) return s;
+  if (w.profileId === g.profileId) return apply(s, activated(s, pick));
+  return { ...s, windows: { ...s.windows, [w.id]: { ...w, activeTabIds: { ...w.activeTabIds, [g.profileId]: pick } } } };
+}
+
 export function closingGroup(s: BrowserState, groupId: string, deleted = false): BrowserState {
   const g = s.groups[groupId];
   const w = g && s.windows[g.windowId];
@@ -199,7 +228,7 @@ export function closingGroup(s: BrowserState, groupId: string, deleted = false):
     closedAt: Date.now(),
   };
   const recordable = !w.incognito && entry.tabs.some((t) => t.url);
-  const next = closeQuietly(s, g.tabIds);
+  const next = showAboveGroup(s, closeQuietly(s, g.tabIds), g);
   if (!recordable) return next;
   if (deleted) return { ...next, deletedGroups: [...keptDeletedGroups(next.deletedGroups), entry] };
   return { ...next, closedGroups: [...next.closedGroups, entry].slice(-MAX_CLOSED_GROUPS) };
