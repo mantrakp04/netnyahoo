@@ -1,0 +1,26 @@
+apps/browser/src/lib/chromeTabs.ts
+  s_9c356f9574d31c::t_41ec94bf4e2c83 6,22
+  s_9c356f9574d31c::t_cd2e89d0239fd9 121
+apps/browser/src/lib/tabStripEcho.ts
+  s_9c356f9574d31c::t_15088de89bba09 3-11,14-15,17,26-31,34,37-46
+  s_9c356f9574d31c::t_41ec94bf4e2c83 1-2,12-13,16,18-25,32-33,35-36
+apps/browser/src/store/tabStripEcho.test.mjs
+  s_9c356f9574d31c::t_41ec94bf4e2c83 1-8,10-12,14,48,51
+  s_9c356f9574d31c::t_15986d077fdc02 9,13,15-47,49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5922d0d24a1ed8c6d85a09408edf73a019e9d44b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
