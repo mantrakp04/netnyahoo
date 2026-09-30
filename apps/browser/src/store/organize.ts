@@ -76,9 +76,20 @@ export const awayFromPin = (t: Pick<Tab, "pinned" | "url" | "pinnedUrl">) =>
   t.pinned && !!t.pinnedUrl && !!t.url && !samePage(t.url, t.pinnedUrl);
 
 // A name the user gave wins; otherwise one from the tabs' titles (store/groupNames.ts).
+const autoLabels = new WeakMap<TabGroup, { tabs: object; members: (Tab | undefined)[]; label: string }>();
+
+// Memoized per group on its member tabs: headers ask on every store update, and naming reads every title.
 export function groupLabel(s: Pick<BrowserState, "tabs">, g: TabGroup): string {
   if (g.name) return g.name;
-  return autoGroupName(g.tabIds.map((id) => s.tabs[id]).filter((t): t is Tab => !!t?.url)) || "New Group";
+  const cached = autoLabels.get(g);
+  if (cached && (cached.tabs === s.tabs || g.tabIds.every((id, i) => s.tabs[id] === cached.members[i]))) {
+    cached.tabs = s.tabs;
+    return cached.label;
+  }
+  const members = g.tabIds.map((id) => s.tabs[id]);
+  const label = autoGroupName(members.filter((t): t is Tab => !!t?.url)) || "New Group";
+  autoLabels.set(g, { tabs: s.tabs, members, label });
+  return label;
 }
 
 export function isSiteMuted(s: Pick<BrowserState, "settings" | "privateSiteMutes">, tab: Pick<Tab, "windowId" | "profileId">, host: string): boolean {

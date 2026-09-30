@@ -66,7 +66,15 @@ export function autoGroupName(members: Member[]): string {
   if (!members.length) return "";
   const hosts = members.map((m) => hostOf(m.url));
   const titledByHost = new Map<string, string[]>();
-  members.forEach((m, i) => m.title && m.title !== m.url && titledByHost.set(hosts[i]!, [...(titledByHost.get(hosts[i]!) ?? []), m.title]));
+  // The first tab with a title for each URL, for tabs of that URL still loading.
+  const loadedByUrl = new Map<string, Member>();
+  members.forEach((m, i) => {
+    if (!m.title || m.title === m.url) return;
+    const titles = titledByHost.get(hosts[i]!);
+    if (titles) titles.push(m.title);
+    else titledByHost.set(hosts[i]!, [m.title]);
+    if (!loadedByUrl.has(m.url)) loadedByUrl.set(m.url, m);
+  });
   const siteOfHost = new Map<string, string>();
   for (const host of new Set(hosts)) {
     const titles = titledByHost.get(host);
@@ -79,7 +87,7 @@ export function autoGroupName(members: Member[]): string {
   // One site: add the page when every tab is on the same one (a loading tab counts if a loaded one has its URL).
   const siteInTitles = members.some((m) => m.title && pageOf(m.title, site) !== m.title.trim()) ? site : undefined;
   const pages = members.map((m) => {
-    const loaded = m.title && m.title !== m.url ? m : members.find((o) => o.url === m.url && o.title && o.title !== o.url);
+    const loaded = m.title && m.title !== m.url ? m : loadedByUrl.get(m.url);
     return loaded ? pageOf(loaded.title, siteInTitles) : undefined;
   });
   const page = pages[0];
