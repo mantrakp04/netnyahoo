@@ -1,0 +1,26 @@
+packages/cef/ios/NNPictureInPicture.mm
+  s_9c356f9574d31c::t_83820705f4688e 18-19,21,270-274,450-451
+  s_9c356f9574d31c::t_0eb202211dfa76 20,165,234-237,259-269,275-279,624
+  s_9c356f9574d31c::t_dcc08be227e5ce 448-449,452,464,512-515,581-588
+  s_9c356f9574d31c::t_ee63eca2f870e1 280
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_721e6d41f43b15 575
+docs/dia-spec.md
+  s_9c356f9574d31c::t_cd3d86c8b122d4 617-621
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "25475af4693dca4e4fd51b369ace2cb35bfe00e8",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
