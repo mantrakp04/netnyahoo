@@ -109,7 +109,7 @@ export function TabRow({ tabId }: { tabId: string }) {
                 style={{ height: layout.rowHeight, flexDirection: "row", alignItems: "center", paddingLeft: 9 - border, paddingRight: 6 - border }}
               >
                 <View>
-                  <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
+                  <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} profileId={tab.profileId} />
                   <TabBadges tabId={tab.id} />
                 </View>
                 {(playingAudio || tab.muted) && (

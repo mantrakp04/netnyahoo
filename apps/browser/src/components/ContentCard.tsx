@@ -111,15 +111,20 @@ export function ContentCard() {
     return out;
   }, [warm, warmSplits, size.width, size.height]);
 
+  const shownMemo = useRef<{ mounted?: string[]; panes?: object; tabs?: object; keys: string[] }>({ keys: [] });
   const shown = useBrowser(
-    useShallow((s) =>
-      [...new Set([...mounted, ...Object.keys(panes)])]
+    useShallow((s) => {
+      const memo = shownMemo.current;
+      if (memo.mounted === mounted && memo.panes === panes && memo.tabs === s.tabs) return memo.keys;
+      const keys = [...new Set([...mounted, ...Object.keys(panes)])]
         .map((id) => s.tabs[id])
         .filter((t) => !!t)
         // Keep mount order stable; reordering native subviews while tabs move can shuffle them.
         .sort((a, b) => a!.createdAt - b!.createdAt)
-        .map((t) => `${t!.id}|${t!.profileId}`),
-    ),
+        .map((t) => `${t!.id}|${t!.profileId}`);
+      shownMemo.current = { mounted, panes, tabs: s.tabs, keys };
+      return keys;
+    }),
   );
 
   const geometryFor = (rect: Rect | undefined): ToolbarGeometry => {

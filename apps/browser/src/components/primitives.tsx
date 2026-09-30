@@ -2,7 +2,7 @@ import { displayHost } from "@netnyahoo/core";
 import { Symbol, type SymbolProps } from "@netnyahoo/shell";
 import { useState } from "react";
 import { Image, Pressable, Text, View, type ViewStyle } from "react-native";
-import { faviconFailed, useFavicon, useFaviconTheme } from "../lib/favicons";
+import { faviconFailed, useAppearanceDark, useFavicon, useFaviconTheme } from "../lib/favicons";
 import { useTheme } from "../lib/theme";
 
 export function useHover() {
@@ -80,6 +80,7 @@ export function Favicon({
   direct?: boolean;
 }) {
   const theme = useTheme();
+  useAppearanceDark();
   const cached = useFavicon(url, direct ? null : favicon, profileId);
   const resolved = direct && favicon ? { uri: favicon, profileId: "" } : cached;
   const shape = useFaviconTheme(theme.dark || direct ? "" : url, favicon, profileId);

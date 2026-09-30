@@ -29,13 +29,20 @@ export const TabIcon = memo(function TabIcon({
   direct?: boolean;
 }) {
   const sleeping = useIsSleeping(tabId ?? "");
-  const tabProfile = useBrowser((s) => (tabId ? s.tabs[tabId]?.profileId : undefined));
+  const props = { url, favicon, icon, size, color, direct };
   return (
     <View style={{ opacity: sleeping ? SLEEPING_OPACITY : 1 }}>
-      <Icon url={url} favicon={favicon} icon={icon} size={size} color={color} profileId={profile ?? tabProfile} direct={direct} />
+      {profile || !tabId ? <Icon {...props} profileId={profile} /> : <TabProfileIcon {...props} tabId={tabId} />}
     </View>
   );
 });
+
+// Looks the tab's profile up only when the caller didn't pass it: a subscription per icon adds up in
+// the sidebar, where every row runs its selectors on every store update.
+function TabProfileIcon({ tabId, ...props }: Omit<Parameters<typeof Icon>[0], "profileId"> & { tabId: string }) {
+  const profileId = useBrowser((s) => s.tabs[tabId]?.profileId);
+  return <Icon {...props} profileId={profileId} />;
+}
 
 const SLEEPING_OPACITY = 0.45;
 

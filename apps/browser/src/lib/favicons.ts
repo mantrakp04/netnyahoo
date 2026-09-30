@@ -206,8 +206,11 @@ export function resolveFavicon(url: string, src?: string | null, profileId?: str
   return found ? { uri: found.icon.uri, profileId: found.profileId } : null;
 }
 
+// Callers re-render on an appearance change themselves (useAppearanceDark): the lookup reads it for
+// icons that have a light and a dark version.
+export const useAppearanceDark = () => useBrowser((s) => s.ui.appDark);
+
 export function useFavicon(url: string, src?: string | null, profileId?: string): ResolvedFavicon | null {
-  useBrowser((s) => s.ui.appDark);
   const key = useFavicons(() => {
     const found = resolveFavicon(url, src, profileId);
     return found ? `${found.profileId} ${found.uri}` : null;
@@ -226,7 +229,6 @@ export function useFavicon(url: string, src?: string | null, profileId?: string)
 const theming = new Set<string>();
 
 export function useFaviconTheme(url: string, src?: string | null, profileId?: string): IconTheme | null | undefined {
-  useBrowser((s) => s.ui.appDark);
   const icon = useFavicons(() => resolveIcon(url, src, profileId)?.icon ?? null);
   const pending = !!icon && icon.theme === undefined && hasDockSelection;
   useEffect(() => {
