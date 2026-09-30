@@ -1,0 +1,23 @@
+packages/cef/ios/NNChromePages.mm
+  s_9c356f9574d31c::t_a1fcbec0259cda 463
+packages/cef/ios/NNContentBlocker.h
+  s_9c356f9574d31c::t_a1fcbec0259cda 10-12
+packages/cef/ios/NNContentBlocker.mm
+  s_9c356f9574d31c::t_a1fcbec0259cda 311-325
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "34181f19cef089a33e2582f545570fae6d8a8df4",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
