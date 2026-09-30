@@ -43,3 +43,17 @@ a Mission Control thumbnail capture are retained separately and excluded from th
 The recorded vertical-sidebar clip probe remains a pre-existing harness limitation documented in
 `profile-swipe-replay.md`. It is not counted as a pass. Real web scrolling and gesture ownership
 checks pass. The owner's physical trackpad comparison remains an installed-build check.
+
+## Shipped export
+
+0.2.18, build 26, ships from tag `v0.2.18` (`bb8f0d70`), with the completed tab-move crash guard
+and its matching CEF distribution. App and DMG notarization passed. The final export passes
+19/19 smoke checks plus clean quit, signature and update-feed checks, with no screen-lock skips.
+An earlier run missed the autofill suggestion; a fresh full run passes it. Targeted ⌃2 then ⌃1
+inputs in the exported app persist Work then Personal. This verifies shortcuts and selection,
+not physical trackpad feel.
+
+Published asset hashes and source identity are recorded in `dist/0.2.18/verification.json`.
+The update feed, public download, release notes, homepage version and sitemap were checked live.
+The tweet image crops the real neutral-page capture of the verified native controller; it redraws
+no product pixels.
