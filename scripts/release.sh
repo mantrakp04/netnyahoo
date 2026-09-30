@@ -13,7 +13,7 @@
 set -euo pipefail
 
 version="${1:?usage: scripts/release.sh <version>}"
-root="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(cd "$(dirname "$0")/.." && pwd -P)"
 app_dir="$root/apps/browser"
 macos="$app_dir/macos"
 repo="mantrakp04/netnyahoo"
