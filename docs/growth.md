@@ -1,7 +1,8 @@
 # Growth log
 
 A running log of what we change on netnyahoo.com to get more Mac downloads, and what happened. Newest entry
-at the bottom. Events and flags live in `apps/site/src/scripts/analytics.ts`; PostHog (EU) is the source.
+at the bottom. Events live in `apps/site/src/scripts/analytics.ts`; since 2026-09-30 they go to our own
+ClickHouse (see **Telemetry** below; before that, PostHog Cloud EU, whose history was copied over).
 
 ## Baseline — 2026-09-29
 
@@ -44,10 +45,11 @@ or narrower.
   band right under that screenshot ("That was a screenshot. This is the app.") raises the share of Mac
   visitors who click Download.
 - **Flag key:** `download-band`. **Variants:** `control` (no band), `band` (the band is shown). 50/50.
-- **Who's in it:** Mac desktops only. The page calls `posthog.getFeatureFlag("download-band")` only when
-  `data-device="mac"`, inside `posthog.onFeatureFlags`, and never when flags failed to load. That call records
-  `$feature_flag_called`, which is the exposure. Phones, tablets, Windows and Linux never call it.
-  No flag, a load error or a blocked PostHog shows control.
+- **Who's in it:** Mac desktops only. The page asks for the variant only when `data-device="mac"`, and that
+  records `$feature_flag_called` (plus `$experiment_exposure`), which is the exposure. Phones, tablets, Windows
+  and Linux never ask. Until 2026-09-30 PostHog's flags decided the variant; since the switch the site buckets
+  first-party with PostHog's own hash on the visitor id (`apps/site/src/scripts/telemetry/flags.ts`), so every
+  visitor keeps the variant PostHog gave them (checked against all 1,318 exposures).
 - **Primary metric:** unique `download_clicked` per exposed Mac visitor (any location). Secondary:
   `download_clicked` with `location = office-band`, and the share reaching the closing section
   (`section_viewed { section: closing }`).
@@ -73,10 +75,10 @@ takes effect with the first release after 0.2.13):
 - **Update checks:** builds after 0.2.13 poll `https://netnyahoo.com/appcast.xml` (`SUFeedURL`). nginx
   (`infra/site/nginx.conf`) answers every request with a 302 to
   `https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml` and, beside it, mirrors a
-  PostHog event `update_check { version, first }` with the day as its timestamp. Only requests whose
+  telemetry event `update_check { version, first }` with the day as its timestamp. Only requests whose
   User-Agent is the app's Sparkle (`Netnyahoo/<version> Sparkle/…`) count. Nothing else is passed on: no IP
-  (PostHog sees our server), no headers, no cookie, a fixed `distinct_id` (`update-check`) and no person
-  profile. The redirect never waits on PostHog; if PostHog is down or slow, the update still works.
+  (so no country), no headers, no cookie, a fixed `distinct_id` (`update-check`). The redirect never waits on
+  the count; if the collector is down or slow, the update still works.
 - **First launch:** the app adds `first=1` to its first check ever (`packages/shell/ios/Updater.swift`,
   Sparkle's `feedParameters`). Sparkle checks at the first launch (automatic checks are on in Info.plist),
   so `first` per version ≈ copies of that version that were installed and opened. A first check made while
@@ -91,20 +93,86 @@ takes effect with the first release after 0.2.13):
 Where it's disclosed: Settings › General › "Check for updates automatically", the What's Sent sheet in
 Settings › Privacy & Security, and the site's Q&A ("What does it collect?").
 
-**Read the counts:** `POSTHOG_PERSONAL_API_KEY=phx_… node scripts/update-checks.mjs [days]` (a personal key
-with `query:read` for project 287835). It prints, per version, DMG downloads, first launches, first/DMG,
-update downloads and GitHub feed fetches, then checks and first launches per day and version. Without the
-key it prints the GitHub columns. The same query in PostHog's SQL editor:
+**Read the counts:** `node scripts/update-checks.mjs [days]` (reads ClickHouse with the credentials in
+`~/.config/netnyahoo/telemetry.env`, see Telemetry). It prints, per version, DMG downloads, first launches,
+first/DMG, update downloads and GitHub feed fetches, then checks and first launches per day and version.
+Without the env file it prints the GitHub columns. The same query with `node scripts/telemetry-sql.mjs`:
 
 ```sql
-SELECT toDate(timestamp) AS day, toString(properties.version) AS version,
-       count() AS checks, countIf(toString(properties.first) = 'true') AS first_launches
-FROM events
-WHERE event = 'update_check' AND match(toString(properties.version), '^[0-9]+\\.[0-9]+\\.[0-9]+$')
+SELECT toDate(timestamp) AS day, properties['version'] AS version,
+       count() AS checks, countIf(properties['first'] = 'true') AS first_launches
+FROM telemetry.events
+WHERE event = 'update_check' AND match(properties['version'], '^[0-9]+\\.[0-9]+\\.[0-9]+$')
 GROUP BY day, version ORDER BY day DESC, version
 ```
 
 (The version filter drops `0.0.0-selftest`, from a local test of the endpoint on 2026-09-30.)
+
+## Telemetry (since 2026-09-30)
+
+Site analytics, session replays, the app's opt-in telemetry and the update-check count are first-party:
+they go to netnyahoo.com and are stored on our own servers (Hexclave, same project as the site). No third
+party sees them. The one exception is the footer's "Write to the office" chat, which is still PostHog's
+widget: posthog-js loads only when someone clicks it, and only the conversation goes to PostHog.
+
+```
+browser / app ──POST──▶ netnyahoo.com/otel/v1/logs ──▶ otel-collector ──▶ ph-clickhouse  (telemetry.otel_logs)
+browser ──POST──▶ netnyahoo.com/otel/replay/<session>/<seq>.json[.gz] ──▶ ph-objects (SeaweedFS, replays/<day>/…)
+Sparkle ──GET──▶ netnyahoo.com/appcast.xml ──(nginx mirror)──▶ otel-collector
+owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo.com/_replays/ (token)
+```
+
+- **Where it runs:** `infra/telemetry/hexclave.deploy.ts` (ClickHouse, OpenTelemetry Collector, SeaweedFS; all
+  private, images pinned by digest) and the routes in `infra/site/nginx.conf`. Only nginx is public. It limits
+  bodies (512 KB events, 2 MB replay chunks), rates per visitor (20/s events, 5/s replays), and only accepts
+  OTLP logs (no traces or metrics).
+- **Format:** each event is an OTLP log record. The body and the `event` attribute are the event name, plus
+  `uuid`, `distinct_id`, `$session_id` (site) and every property, under PostHog's names. Senders:
+  `apps/site/src/scripts/telemetry/` and `apps/browser/src/telemetry/`. The collector
+  (`infra/telemetry/collector/config.yaml`) turns the visitor's address into `$geoip_country_code`/`_name` and
+  `$geoip_continent_code`, then drops it. It adds no location to events that carry `$geoip_disable` (the app
+  sends it). No IP is ever stored.
+- **Tables** (`infra/telemetry/clickhouse/schema.sql`): `telemetry.events` is the one to query (PostHog's
+  shape: `uuid, event, distinct_id, session_id, timestamp, properties Map, elements_chain, source`). It unions
+  `otel_logs` (new data) and `posthog_events` (PostHog Cloud history, 2026-09-29 09:04 → 2026-09-30).
+  `telemetry.logs` holds plain warnings/errors from the site and app (kept 90 days).
+  `telemetry.replay_sessions` has one row per recorded session. Events are kept; replays 30 days.
+- **Reading it:** `~/.config/netnyahoo/telemetry.env` (not in git, mode 600) has the read-only ClickHouse user
+  and the replay token. Use `node scripts/telemetry-sql.mjs "<SQL>"`, `node scripts/update-checks.mjs`, and
+  `node scripts/replay.mjs --list` / `<session-id>`. The stats skill's queries are in
+  `.claude/skills/stats/queries.md`. Secrets are Hexclave project secrets (`TELEMETRY_*`); a backup is in
+  `~/.config/netnyahoo/telemetry-secrets.env`.
+- **Checks of the pipeline:** send with service `netnyahoo-selftest` (or version `0.0.0-selftest`); the views
+  leave those out.
+- **PostHog Cloud** (EU project 287835) is untouched. App versions released before the switch still send
+  their opt-in events there. `infra/telemetry/import-posthog.py` loads a Cloud export into `posthog_events`
+  (safe to re-run; the export steps are in the export's `export-notes.md`). Recordings made in PostHog stay
+  there: the MCP can't export snapshots, and they expire from Cloud after 30 days.
+- **Leftover disks:** a trial self-hosted PostHog (30 Sep) left two detached Hexclave volumes in group
+  "posthog": `pgdata` (10 GB, service ph-db) and `redpanda` (5 GB, ph-kafka). Hexclave has no API to delete
+  a volume; ask Hexclave support to remove them.
+
+### Parity: what PostHog did, what does it now
+
+| Feature | Before (PostHog) | Now | Checked |
+| --- | --- | --- | --- |
+| Page views, page leaves (time on page, scroll) | posthog-js | `$pageview`, `$pageleave` with the same `$prev_pageview_*` props | local browser run, then live |
+| Clicks | autocapture | `$autocapture` with `$elements_chain` in PostHog's format, `$el_text`, `$external_click_url`; never input values | local browser run |
+| Rage, dead clicks, dead swipes | posthog-js | `$rageclick`, `$dead_click`, `$dead_swipe`, same rules and props | synthetic clicks |
+| Exceptions | `capture_exceptions` | `$exception` with `$exception_list`, `_types`, `_values`… (site and app) | thrown errors; app harness live |
+| Web vitals | `capture_performance` | `$web_vitals` (web-vitals 6.2.2, loaded after the page) | local run |
+| Console warnings/errors | PostHog Logs | `telemetry.logs` (site and app) | local run; app harness live |
+| Session replay | PostHog recordings, inputs masked | rrweb (@rrweb/record 2.1.6, loaded after the page): inputs and `.nn-private` text masked, no canvas, network or console; sessions over 4 s; kept 30 days | live session replayed with `scripts/replay.mjs` |
+| Custom events and `data-track*` props | posthog.capture | same names and props | local run |
+| Referrer, UTM, device, OS, browser | posthog-js | same props; UA parsed in the page (matches PostHog on 849 real UAs) | offline check |
+| Country | PostHog GeoIP | collector GeoIP, IP dropped | live |
+| Visitors and sessions | PostHog ids | same ids reused (posthog-js's stored id), first-party session id | local run |
+| `download-band` experiment | PostHog flag 293364 | first-party bucketing with PostHog's hash; `$feature_flag_called` + `$experiment_exposure` | 1,318/1,318 exposures reproduce |
+| Support chat ("Write to the office") | PostHog conversations | still PostHog's widget, posthog-js loaded on click only | local run |
+| App opt-in telemetry | PostHog `/batch/`, `/i/v1/logs` | OTLP to netnyahoo.com (ships with the next app release) | Node harness against the live endpoint |
+| Update checks | nginx → PostHog | nginx → collector | live |
+| History (2026-09-29 → switch) | PostHog Cloud | `telemetry.posthog_events`, 73,192 events, counts equal Cloud's | per-event counts and stats numbers vs Cloud |
+| Stats | PostHog MCP / HogQL | ClickHouse SQL (`.claude/skills/stats/queries.md`) | same numbers as Cloud for the migrated window |
 
 ## Log
 
@@ -201,3 +269,8 @@ GROUP BY day, version ORDER BY day DESC, version
     probably the same fetch. The rest is noise (cross-origin `Script error.`, a wallet). No app exceptions.
     Three local `ExcUserFault` reports (18:14 to 18:19 IST) came from a 0.2.14 test build under `~/Documents`.
     They're IconServices faults inside Chromium's `shortcuts::SetIconForFile`, not crashes.
+- **2026-09-30 14:28 UTC: analytics moved off PostHog** (owner's call). The site now sends its events and
+  rrweb replays to netnyahoo.com, stored in our own ClickHouse and SeaweedFS ("Telemetry" above). The
+  update-check count goes there too; the app follows in its next release. PostHog Cloud's history, 73,192
+  events from 2026-09-29 09:04, was copied over; the numbers match Cloud's. Returning visitors keep their id
+  and their `download-band` variant, so the experiment carries on. Recordings made in PostHog stay in PostHog.

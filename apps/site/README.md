@@ -45,10 +45,17 @@ Pages without a custom domain).
 
 ## Analytics
 
-netnyahoo.com reports to PostHog (EU cloud): pageviews and pageleaves, autocapture, session replay (inputs
-masked, console included), exceptions, console logs into PostHog Logs, and web vitals. The snippet is
-`src/components/PostHog.astro`; the project key and host are in `src/data/posthog.ts` (`PUBLIC_POSTHOG_KEY`
-overrides the key, and an empty value builds without PostHog). The named events are listed at the top of
+netnyahoo.com counts its own visitors: `src/scripts/telemetry/` posts events to `/otel/v1/logs` on the same
+origin (OTLP/HTTP JSON; netnyahoo.com's nginx hands them to our OpenTelemetry Collector, which writes
+ClickHouse) and rrweb session replays to `/otel/replay/<session>/<seq>.json[.gz]` (SeaweedFS, kept 30 days).
+The one third-party script is PostHog's support chat ("Write to the office", `src/scripts/support.ts`): posthog-js
+loads through nginx's `/relay` only when someone clicks the button, with everything but the chat switched off.
+Event and property names are PostHog's (`$pageview`, `$pageleave`, `$autocapture`,
+`$rageclick`, `$dead_click`, `$dead_swipe`, `$exception`, `$web_vitals`, `$feature_flag_called`, `$browser`,
+`$os`, `$device_type` …), so the migrated PostHog history and new events read the same. Console warnings and
+errors go out as plain logs. Replays mask every input and the text of anything marked `.nn-private` or
+`data-private`; rrweb and web-vitals load in their own chunks after the page has. Settings (hosts, sample rate,
+minimum session length, flags) are in `src/data/telemetry.ts`. The named events are listed at the top of
 `src/scripts/analytics.ts`; tag a link with `data-track="event"` and `data-track-<prop>="value"`, or call
 `track()` from `src/scripts/track.ts`.
 
@@ -58,6 +65,5 @@ line, and only Macs evaluate the `download-band` experiment (`src/components/InO
 `?nndevice=phone|mac|other` and `?nnflag=band|control` force them. The experiment log is `docs/growth.md`.
 
 Only netnyahoo.com reports. `pnpm dev`, `pnpm preview` and any other host stay silent unless you opt in from
-the console with `localStorage.setItem("nn:posthog", "dev")`, and then every event carries
-`environment: development` (on localhost the person is also marked `$internal_or_test_user`). Remove the item
-when you're done.
+the console with `localStorage.setItem("nn:telemetry", "dev")` (the old `"nn:posthog"` works too), and then
+events go to the same paths on that host and carry `environment: development`. Remove the item when you're done.

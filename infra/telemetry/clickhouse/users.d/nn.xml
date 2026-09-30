@@ -1,0 +1,60 @@
+<!-- Users. Passwords come from Hexclave secrets (hexclave.deploy.ts); none are in git.
+     - default: admin, only from inside this server (start.sh applies schema.sql with it).
+     - otel: the collector's writer. It connects over the project's private network.
+     - reader: read-only, for the stats (through netnyahoo.com/_ch/, infra/site/nginx.conf).
+     - importer: loads PostHog Cloud exports into telemetry.posthog_events (also through /_ch/). -->
+<clickhouse>
+    <profiles>
+        <reader>
+            <readonly>2</readonly>
+            <max_execution_time>60</max_execution_time>
+            <max_memory_usage>2000000000</max_memory_usage>
+            <max_result_rows>1000000</max_result_rows>
+            <result_overflow_mode>break</result_overflow_mode>
+        </reader>
+        <importer>
+            <max_execution_time>300</max_execution_time>
+            <max_memory_usage>2000000000</max_memory_usage>
+        </importer>
+    </profiles>
+
+    <users>
+        <default>
+            <password remove="1"/>
+            <password_sha256_hex remove="1"/>
+            <password from_env="CLICKHOUSE_ADMIN_PASSWORD"/>
+            <networks replace="replace">
+                <ip>::1</ip>
+                <ip>127.0.0.1</ip>
+            </networks>
+        </default>
+        <otel>
+            <password from_env="CLICKHOUSE_OTEL_PASSWORD"/>
+            <networks><ip>::/0</ip></networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <grants>
+                <query>GRANT INSERT, SELECT ON telemetry.otel_logs</query>
+            </grants>
+        </otel>
+        <reader>
+            <password from_env="CLICKHOUSE_READER_PASSWORD"/>
+            <networks><ip>::/0</ip></networks>
+            <profile>reader</profile>
+            <quota>default</quota>
+            <grants>
+                <query>GRANT SELECT ON telemetry.*</query>
+            </grants>
+        </reader>
+        <importer>
+            <password from_env="CLICKHOUSE_IMPORTER_PASSWORD"/>
+            <networks><ip>::/0</ip></networks>
+            <profile>importer</profile>
+            <quota>default</quota>
+            <grants>
+                <query>GRANT SELECT, INSERT ON telemetry.posthog_events</query>
+                <query>GRANT SELECT ON telemetry.*</query>
+            </grants>
+        </importer>
+    </users>
+</clickhouse>

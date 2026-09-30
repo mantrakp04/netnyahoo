@@ -29,7 +29,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
           data-track-link="issues"
           data-track-location="footer">Report a bug</a
         >
-        {/* Shown once PostHog's support widget is switched on (scripts/analytics.ts). */}
+        {/* PostHog's support chat, loaded on click (scripts/support.ts). Shown on netnyahoo.com. */}
         <button class="link" type="button" data-support="footer" hidden>Write to the office</button>
       </nav>
       <div class="col">
@@ -39,8 +39,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
           or any government, lobby or donor.
         </p>
         <p>
-          This website counts its visitors with PostHog: page views, clicks and session replays, with typing
-          masked.
+          This website counts its own visitors, on its own servers: page views, clicks and session replays,
+          with typing masked. Replays are deleted after 30 days. No third party sees any of it. The support chat is
+          PostHog's, and loads only if you open it.
         </p>
       </div>
       <div class="col">

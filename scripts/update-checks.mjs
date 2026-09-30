@@ -5,14 +5,15 @@
 //     version, day, and whether it's a copy's first check. No IP, no ID. Builds after 0.2.13 only;
 //     older copies poll GitHub directly and aren't counted.
 //
-// usage: POSTHOG_PERSONAL_API_KEY=phx_… node scripts/update-checks.mjs [days=14]
-// The key is a PostHog personal API key with the "query:read" scope (eu.posthog.com › Settings ›
-// Personal API keys), for project 287835. Without it, only the GitHub counts print.
+// usage: node scripts/update-checks.mjs [days=14]
+// The events come from our ClickHouse (docs/growth.md, "Telemetry"), read with the read-only user in
+// ~/.config/netnyahoo/telemetry.env. Without that file, only the GitHub counts print.
 
-const PROJECT = 287835;
+import { clickhouse, hasTelemetryEnv } from "./telemetry-env.mjs";
+
 const REPO = "mantrakp04/netnyahoo";
 const days = Math.max(1, Number(process.argv[2] ?? 14) || 14);
-const key = process.env.POSTHOG_PERSONAL_API_KEY;
+const key = hasTelemetryEnv();
 
 async function github() {
   const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=100`, {
@@ -28,31 +29,21 @@ async function github() {
   return byVersion;
 }
 
-async function hogql(query) {
-  const res = await fetch(`https://eu.posthog.com/api/projects/${PROJECT}/query/`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query: { kind: "HogQLQuery", query }, name: "update-checks" }),
-  });
-  if (!res.ok) throw new Error(`PostHog: ${res.status} ${await res.text()}`);
-  return (await res.json()).results;
-}
-
 // Real versions only (a local test of the endpoint sends 0.0.0-selftest).
-const WHERE = `event = 'update_check' AND match(toString(properties.version), '^[0-9]+\\\\.[0-9]+\\\\.[0-9]+$')`;
-const FIRST = `toString(properties.first) = 'true'`;
+const WHERE = `event = 'update_check' AND match(properties['version'], '^[0-9]+\\\\.[0-9]+\\\\.[0-9]+$')`;
+const FIRST = `properties['first'] = 'true'`;
 
 const releases = await github();
 let firstByVersion = new Map();
 let daily = [];
 if (key) {
   firstByVersion = new Map(
-    (await hogql(`SELECT toString(properties.version) AS v, countIf(${FIRST}) FROM events WHERE ${WHERE} GROUP BY v`)).map(([v, n]) => [v, n]),
+    (await clickhouse(`SELECT properties['version'] AS v, countIf(${FIRST}) FROM telemetry.events WHERE ${WHERE} GROUP BY v`)).map(([v, n]) => [v, Number(n)]),
   );
-  daily = await hogql(
-    `SELECT toDate(timestamp) AS day, toString(properties.version) AS v, count(), countIf(${FIRST})
-     FROM events WHERE ${WHERE} AND timestamp >= today() - ${days} GROUP BY day, v ORDER BY day, v`,
-  );
+  daily = (await clickhouse(
+    `SELECT toString(toDate(timestamp)) AS day, properties['version'] AS v, count(), countIf(${FIRST})
+     FROM telemetry.events WHERE ${WHERE} AND timestamp >= today() - ${days} GROUP BY day, v ORDER BY day, v`,
+  )).map(([day, v, checks, first]) => [day, v, Number(checks), Number(first)]);
 }
 
 const pad = (s, n) => String(s).padEnd(n);
@@ -70,7 +61,7 @@ console.log("GitHub feed: fetches of that release's appcast.xml, i.e. update che
 console.log("included) while it was the latest release.");
 
 if (!key) {
-  console.log("\nSet POSTHOG_PERSONAL_API_KEY for first launches and daily checks.");
+  console.log("\nNo ~/.config/netnyahoo/telemetry.env: first launches and daily checks need it (docs/growth.md, Telemetry).");
   process.exit(0);
 }
 console.log(`\nUpdate checks per day, last ${days} days (UTC)`);

@@ -5,9 +5,16 @@ description: Netnyahoo's numbers in one short report — users and installs, sit
 
 # Netnyahoo stats
 
-Fetch the numbers yourself: PostHog through its MCP (EU project 287835, site and app events) and GitHub
-through `gh` (repo, traffic, release download counts). `docs/growth.md` explains what the events mean;
-compare against its last **Log** entry and say what changed since.
+Fetch the numbers yourself: our ClickHouse for site and app events (`node scripts/telemetry-sql.mjs "<SQL>"`,
+read-only, credentials in `~/.config/netnyahoo/telemetry.env`; the query for each number below is in
+[queries.md](queries.md)), `node scripts/update-checks.mjs` for installs, and GitHub through `gh` (repo,
+traffic, release download counts). `docs/growth.md` explains what the events mean ("Telemetry" has the
+tables); compare against its last **Log** entry and say what changed since. If the env file is missing, say
+so and ask the owner for it; don't fall back to PostHog.
+
+App versions released before 2026-09-30 still send their opt-in events to PostHog Cloud (EU project
+287835), not to ClickHouse. While any are in use, include them: read them through the PostHog MCP, or load
+a fresh Cloud export with `infra/telemetry/import-posthog.py` first. Say which you did.
 
 ## What I want to know
 

@@ -29,10 +29,12 @@ import office from "../assets/shots/office.webp";
 </section>
 
 <script>
-  // The download-band experiment. Only Mac desktops evaluate the flag, so only they count as exposures
-  // (getFeatureFlag records $feature_flag_called). No flag, an error or a blocked PostHog: control, no band.
-  // On localhost, ?nnflag=band (or control) stands in for PostHog.
-  import { ph } from "../scripts/track";
+  // The download-band experiment. Only Mac desktops ask for the flag, so only they count as exposures
+  // (getFeatureFlag records $feature_flag_called and $experiment_exposure, once per visitor). The variant is
+  // bucketed on the visitor id with PostHog's algorithm (scripts/telemetry/flags.ts), so visitors keep theirs.
+  // A silent build (not netnyahoo.com, no opt-in) or no Web Crypto: control, no band.
+  // On localhost, ?nnflag=band (or control) forces a variant.
+  import { getFeatureFlag } from "../scripts/telemetry";
 
   const FLAG = "download-band";
   const band = document.querySelector<HTMLElement>("[data-download-band]");
@@ -44,10 +46,7 @@ import office from "../assets/shots/office.webp";
     const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
     const forced = local ? new URLSearchParams(location.search).get("nnflag") : null;
     if (forced) show(forced);
-    else
-      ph()?.onFeatureFlags?.((_flags, _variants, context) => {
-        if (!context?.errorsLoading) show(ph()?.getFeatureFlag?.(FLAG));
-      });
+    else void getFeatureFlag(FLAG).then(show);
   }
 </script>
 

@@ -13,8 +13,10 @@
     "@fontsource-variable/archivo": "^5.3.0",
     "@fontsource-variable/martian-mono": "^5.3.0",
     "@fontsource-variable/newsreader": "^5.3.0",
+    "@rrweb/record": "2.1.6",
     "astro": "^7.3.4",
-    "three": "^0.186.0"
+    "three": "^0.186.0",
+    "web-vitals": "6.2.2"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",

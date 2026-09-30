@@ -1,0 +1,94 @@
+# The collector behind netnyahoo.com/otel/ (infra/site/nginx.conf): OTLP/HTTP logs in, ClickHouse out.
+# Senders and the event format: docs/growth.md, "Telemetry". Only logs; there is no traces or
+# metrics pipeline.
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        # nginx passes the visitor's address as X-Real-IP; it becomes a country below and is dropped.
+        include_metadata: true
+        max_request_body_size: 2097152
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+
+  attributes/client-ip:
+    actions:
+      - key: client.address
+        from_context: metadata.x-real-ip
+        action: upsert
+
+  # Senders that ask for no location (the app sends $geoip_disable, as it did with PostHog) keep none.
+  transform/geoip-opt-out:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - delete_key(attributes, "client.address") where attributes["$geoip_disable"] == true or attributes["$geoip_disable"] == "true"
+
+  geoip:
+    context: record
+    error_mode: silent
+    providers:
+      maxmind:
+        database_path: /etc/otelcol-contrib/GeoLite2-City.mmdb
+
+  transform/clean:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          # Country only, under PostHog's property names; never the IP, city or coordinates.
+          - set(attributes["$geoip_country_code"], attributes["geo.country.iso_code"]) where attributes["geo.country.iso_code"] != nil
+          - set(attributes["$geoip_country_name"], attributes["geo.country_name"]) where attributes["geo.country_name"] != nil
+          - set(attributes["$geoip_continent_code"], attributes["geo.continent.code"]) where attributes["geo.continent.code"] != nil
+          - delete_matching_keys(attributes, "^geo\\.")
+          - delete_key(attributes, "client.address")
+          - delete_key(attributes, "source.address")
+          # A sender that only knows a date or an ISO time (the update_check mirror) sends it here.
+          - set(time, Time(attributes["timestamp"], "%Y-%m-%dT%H:%M:%SZ")) where attributes["timestamp"] != nil
+          - delete_key(attributes, "timestamp")
+          # A record without a time gets the time it arrived.
+          - set(time, Now()) where time_unix_nano == 0
+
+  batch:
+    timeout: 2s
+    send_batch_size: 2000
+
+exporters:
+  clickhouse:
+    endpoint: tcp://${env:CLICKHOUSE_HOST}:9000?dial_timeout=10s
+    database: telemetry
+    username: otel
+    password: ${env:CLICKHOUSE_OTEL_PASSWORD}
+    create_schema: false
+    logs_table_name: otel_logs
+    async_insert: true
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 10m
+    sending_queue:
+      enabled: true
+      queue_size: 5000
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      level: none
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/client-ip, transform/geoip-opt-out, geoip, transform/clean, batch]
+      exporters: [clickhouse]

@@ -1,5 +1,5 @@
-
-// Named events (beyond PostHog's pageviews, autocapture and dead clicks):
+// Named events (beyond the automatic ones in scripts/telemetry: $pageview, $pageleave, $autocapture, $rageclick,
+// $dead_click, $dead_swipe, $exception, $web_vitals, $replay_chunk, $feature_flag_called):
 //   download_clicked { location, version }       a Download button (data-track)
 //   github_clicked { link, location }            a GitHub link (data-track)
 //   send_to_mac_clicked { location, method: email|share|copy|panel, outcome?, inapp? }
@@ -11,9 +11,12 @@
 //   notify_clicked { os, location }              Windows/Linux: "Tell me when it's on …" (GitHub Watch › Releases)
 //   non_mac_visit { os }                         Windows/Linux desktops, once per session
 //   section_viewed { section }                   a [data-shot] section scrolled into view
-//   support_opened { location }                  the footer's support widget
+//   support_opened { location }                  the footer's support chat (scripts/support.ts)
+//   release_notes_viewed { version, latest, trigger }   pages/release-notes.astro
+//   yahu_found { seconds, misses }, yahu_danced { stage, dance }, yahu_spun { stage }   the game and Big Yahu
 // Experiment: flag "download-band", Macs only (components/InOffice.astro, docs/growth.md).
-import { ph, track, type Props } from "./track";
+import { track, type Props } from "./track";
+import "./support";
 
 function onTrackedClick(e: MouseEvent) {
   const el = (e.target as Element | null)?.closest<HTMLElement>("[data-track]");
@@ -43,33 +46,6 @@ if (sections.length) {
     { threshold: 0.35 },
   );
   for (const s of sections) seen.observe(s);
-}
-
-const support = document.querySelectorAll<HTMLButtonElement>("[data-support]");
-if (support.length) {
-  let tries = 0;
-  const check = () => {
-    if (ph()?.conversations?.isAvailable?.()) {
-      for (const b of support) b.hidden = false;
-      return;
-    }
-    if (++tries < 15) setTimeout(check, 1000);
-  };
-  addEventListener("load", () => setTimeout(check, 1000), { once: true });
-  for (const b of support) {
-    b.addEventListener("click", () => {
-      // show() only puts PostHog's chat bubble in the corner; open the chat itself.
-      ph()?.conversations?.show?.();
-      let waited = 0;
-      const open = () => {
-        const bubble = document.querySelector<HTMLButtonElement>('#ph-conversations-widget-container button[aria-label="Open chat"]');
-        if (bubble) bubble.click();
-        else if ((waited += 50) < 2000) setTimeout(open, 50);
-      };
-      open();
-      track("support_opened", { location: b.dataset.support ?? null });
-    });
-  }
 }
 
 // Links sent from a phone come back with ?ref=: typed netnyahoo.com/mac (pages/mac.astro), the share sheet or
