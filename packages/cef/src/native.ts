@@ -1,6 +1,7 @@
 import { requireNativeModule, type EventSubscription } from "expo-modules-core";
 import type { ContentBlockerState, ContentBlockerStats } from "./contentBlocker";
 import type { DisplayMediaSource } from "./WebView";
+import type { ExternalAppAllowance } from "./externalApps";
 import type { FaviconImage } from "./favicons";
 import type { BrowsingDataType, Download, EngineComponent, EngineInfo, EngineTask, ChromeWindowState, PermissionRequest, PermissionResult, SystemState } from "./module";
 import type { SavedPassword } from "./passwords";
@@ -43,6 +44,10 @@ export const Cef = requireNativeModule<{
   pauseDownload(id: string): Promise<void>;
   resumeDownload(id: string): Promise<void>;
   resolvePermission(id: string, result: PermissionResult, remember?: boolean): Promise<void>;
+  // Optional: builds from before app-link prompts lack these.
+  resolveExternalApp?(id: string, open: boolean, remember: boolean): Promise<void>;
+  getExternalAppAllowances?(profile: string): Promise<ExternalAppAllowance[]>;
+  removeExternalAppAllowance?(profile: string, origin: string, scheme: string): Promise<void>;
   clearBrowsingData(profile: string, types: BrowsingDataType[], since: number | null): Promise<void>;
   fetchFavicon(url: string, profile: string, name: string | null): Promise<FaviconImage | null>;
   pruneFavicons(profile: string, keep: string[]): Promise<void>;

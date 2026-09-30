@@ -2,6 +2,7 @@ export * from "./WebView";
 export * from "./module";
 export * from "./contentBlocker";
 export * from "./siteSettings";
+export * from "./externalApps";
 export * from "./zoom";
 export * from "./passwords";
 export * from "./autofill";

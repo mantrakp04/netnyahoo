@@ -2,6 +2,7 @@
 
 #import "NNChromeWindow.h"
 #import "NNClient.h"
+#import "NNExternalApps.h"
 #import "NNWindowHost.h"
 
 using namespace nn;
@@ -84,6 +85,8 @@ NSMutableSet<NNPopupWindowController *> *gControllers;
     NSString *title = payload[@"title"];
     _window.title = title.length && ![title isEqualToString:payload[@"url"]] ? title : host;
     _window.subtitle = [_window.title isEqualToString:host] ? @"" : host;
+  } else if ([name isEqualToString:@"externalApp"]) {
+    external::ShowSheet(_window, payload);
   } else if ([name isEqualToString:@"windowClose"]) {
     // Close Chrome windows through CEF so tabs outlive the close.
     if (!host::CloseWindow(_window)) [_window close];

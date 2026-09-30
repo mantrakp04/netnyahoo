@@ -49,6 +49,14 @@ public class CefModule: Module {
     AsyncFunction("resolvePermission") { (id: String, result: String, remember: Bool?) in
       NNCef.resolvePermission(id, result: result, remember: remember ?? false)
     }.runOnQueue(.main)
+    AsyncFunction("resolveExternalApp") { (id: String, open: Bool, remember: Bool?) in
+      NNExternalApps.resolve(id, open: open, remember: remember ?? false)
+    }.runOnQueue(.main)
+    AsyncFunction("getExternalAppAllowances") { (profile: String) in NNExternalApps.allowed(profile: profile) }
+      .runOnQueue(.main)
+    AsyncFunction("removeExternalAppAllowance") { (profile: String, origin: String, scheme: String) in
+      NNExternalApps.removeAllowed(profile: profile, origin: origin, scheme: scheme)
+    }.runOnQueue(.main)
 
     AsyncFunction("clearBrowsingData") { (profile: String, types: [String], since: Double?, promise: Promise) in
       NNCef.clearBrowsingData(profile: profile, types: types, since: since ?? 0) { promise.resolve(nil) }
@@ -291,6 +299,7 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
     "onDiscarded",
     "onPasswordPrompt",
     "onTabStrip",
+    "onExternalApp",
   ]
 
   let browser = NNBrowserView(frame: .zero)
@@ -327,6 +336,7 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
   let onDiscarded = EventDispatcher()
   let onPasswordPrompt = EventDispatcher()
   let onTabStrip = EventDispatcher()
+  let onExternalApp = EventDispatcher()
 
   private var propsReady = false
 
@@ -386,6 +396,7 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
     case "discarded": onDiscarded(payload)
     case "passwordPrompt": onPasswordPrompt(payload)
     case "tabStrip": onTabStrip(payload)
+    case "externalApp": onExternalApp(payload)
     default: break
     }
   }

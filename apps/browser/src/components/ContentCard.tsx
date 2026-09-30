@@ -27,7 +27,7 @@ import { openLinkInSplit } from "./layout/splitActions";
 import { setUrlAnchor, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { NewTabPage } from "./NewTabPage";
 import { InternalPage, isInternalTab } from "./pages";
-import { BlockedPopupsPrompt, PasswordPrompt, PermissionPrompt, shouldPromptForPopups, showPasswordPrompt } from "./site/Prompts";
+import { BlockedPopupsPrompt, ExternalAppPrompt, PasswordPrompt, PermissionPrompt, answerExternalApp, shouldPromptForPopups, showPasswordPrompt } from "./site/Prompts";
 import { SiteControls } from "./site/SiteControls";
 import { ZoomPopover } from "./site/ZoomControls";
 import { SelectionPopover } from "./site/SelectionPopover";
@@ -235,6 +235,7 @@ function TabPane({
             <SadTab tabId={tabId} />
             <PermissionPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 308))} top={4} />
             <PasswordPrompt tabId={tabId} right={8} top={4} />
+            <ExternalAppPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />
             {popover === "siteControls" && <SiteControls tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
             {popover === "popups" && <BlockedPopupsPrompt tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
             {popover === "zoom" && <ZoomPopover tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
@@ -252,6 +253,7 @@ function TabPane({
 
 const isBlank = (url: string) => !url || url === "about:blank";
 const pageKey = (url: string) => url.replace(/#.*$/, "");
+const hostOf = (url: string) => url.match(/^[a-z][\w+.-]*:\/\/([^/?#]*)/i)?.[1]?.toLowerCase() ?? "";
 
 function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean; warm: boolean }) {
   const theme = useTheme();
@@ -326,6 +328,8 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
         store().updateTab(tabId, { url, title });
         store().updateLive(tabId, { isLoading, canGoBack, canGoForward, themeColor });
         if (lastPage.current !== null && pageKey(url) !== lastPage.current) {
+          // Like Chrome's tab-modal dialogs, the open-app prompt stays within a site.
+          if (pageOf(tabId).externalApp && hostOf(url) !== hostOf(lastPage.current)) answerExternalApp(tabId, false);
           dismissPermissions(tabId);
           setPopover(tabId, null);
           setPageSelection(tabId, null);
@@ -395,6 +399,7 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
       }}
       onPasswordPrompt={(prompt) => showPasswordPrompt(tabId, prompt)}
       onTabStrip={(place) => onChromeTabStrip(tabId, place)}
+      onExternalApp={(externalApp) => patchPage(tabId, { externalApp })}
       onPageFocus={() => {
         const t = tab();
         if (t && splitOf(store(), tabId) && store().windows[t.windowId]?.activeTabIds[t.profileId] !== tabId) store().activate(tabId);

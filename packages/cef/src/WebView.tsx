@@ -1,6 +1,7 @@
 import { requireNativeViewManager } from "expo-modules-core";
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import type { NativeSyntheticEvent, ViewProps } from "react-native";
+import type { ExternalAppRequest } from "./externalApps";
 import type { FaviconImage } from "./favicons";
 
 export type NavigationState = {
@@ -154,6 +155,7 @@ export type WebViewProps = ViewProps & {
   onDiscarded?: (url: string) => void;
   onPasswordPrompt?: (prompt: PasswordPrompt) => void;
   onTabStrip?: (place: TabStripPlace) => void;
+  onExternalApp?: (request: ExternalAppRequest) => void;
 };
 
 export type WebViewHandle = {
@@ -233,6 +235,7 @@ type NativeEvents = {
   onDiscarded: { url: string };
   onPasswordPrompt: PasswordPrompt;
   onTabStrip: TabStripPlace;
+  onExternalApp: ExternalAppRequest;
 };
 type Handlers = keyof NativeEvents;
 type NativeProps = Omit<WebViewProps, Handlers> & { [K in Handlers]?: Evt<NativeEvents[K]> };
@@ -273,6 +276,7 @@ const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<
   onDiscarded: (e) => [fromEngine(e.url)],
   onPasswordPrompt: (e) => [e],
   onTabStrip: (e) => [e],
+  onExternalApp: (e) => [e],
 };
 
 type NativeHandle = Omit<

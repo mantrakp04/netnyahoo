@@ -85,6 +85,14 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
     NS_SWIFT_NAME(clearSiteData(profile:origin:completion:));
 @end
 
+// Apps allowed to open links of a scheme from a site ("Always allow" in the open-app prompt).
+@interface NNExternalApps : NSObject
++ (void)resolve:(NSString *)requestId open:(BOOL)open remember:(BOOL)remember NS_SWIFT_NAME(resolve(_:open:remember:));
++ (NSArray<NSDictionary<NSString *, id> *> *)allowedForProfile:(NSString *)profile NS_SWIFT_NAME(allowed(profile:));
++ (void)removeAllowedForProfile:(NSString *)profile origin:(NSString *)origin scheme:(NSString *)scheme
+    NS_SWIFT_NAME(removeAllowed(profile:origin:scheme:));
+@end
+
 @interface NNZoom : NSObject
 + (void)setZoom:(double)zoom profile:(NSString *)profile host:(NSString *)host NS_SWIFT_NAME(setZoom(_:profile:host:));
 + (NSDictionary<NSString *, NSNumber *> *)zoomLevelsForProfile:(NSString *)profile NS_SWIFT_NAME(zoomLevels(profile:));

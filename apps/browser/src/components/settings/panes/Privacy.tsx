@@ -1,10 +1,12 @@
 import {
   clearSiteData,
   getContentBlocker,
+  getExternalAppAllowances,
   getSiteSettings,
   getSiteSettingsOrigins,
   getZoomLevels,
   onContentBlockerChange,
+  removeExternalAppAllowance,
   resetSiteSettings,
   setContentBlockerAllowed,
   setContentBlockerEnabled,
@@ -12,6 +14,7 @@ import {
   setSiteSetting,
   setZoom,
   type ContentBlockerState,
+  type ExternalAppAllowance,
   type FilterList,
   type FilterListCategory,
   type SiteSettings,
@@ -20,7 +23,7 @@ import {
 } from "@netnyahoo/cef";
 import { confirm } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Image, ScrollView, Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
 import { useBrowser } from "../../../store/browser";
 import { useProfiles } from "../../../store/hooks";
@@ -110,6 +113,7 @@ export function PrivacyPane() {
       )}
 
       <SitePermissions />
+      <AppLinks />
       <ZoomLevels />
       {blocker && (
         <Text style={{ marginTop: 14, fontSize: 11.5, color: theme.textTertiary }}>
@@ -251,6 +255,47 @@ function SitePermissions() {
               title={origin.replace(/^https?:\/\//, "")}
               onPress={() => showSettingsSheet(<SiteSheet profileId={profileId} origin={origin} onChanged={refresh} />)}
             />
+          ))
+        )}
+      </Group>
+    </>
+  );
+}
+
+function AppLinks() {
+  const profiles = useProfiles();
+  const [profileId, setProfileId] = useState(() => useBrowser.getState().settings.defaultProfileId);
+  const [allowed, setAllowed] = useState<ExternalAppAllowance[] | null>(null);
+  const refresh = () => void getExternalAppAllowances(engineProfile(profileId)).then(setAllowed).catch(() => setAllowed([]));
+  useEffect(refresh, [profileId]);
+
+  return (
+    <>
+      <SectionHeader
+        title="Apps allowed to open links"
+        description="Sites that open another app without asking first."
+        action={
+          profiles.length > 1 ? (
+            <PopUp value={profileId} options={profiles.map((p) => ({ value: p.id, title: p.name }))} onChange={setProfileId} />
+          ) : undefined
+        }
+      />
+      <Group>
+        {allowed === null ? null : allowed.length === 0 ? (
+          <Row title="No apps yet" description="Check “Always allow” when a site opens an app, and it shows up here." />
+        ) : (
+          allowed.map((a) => (
+            <Row
+              key={`${a.origin}|${a.scheme}`}
+              icon={a.icon ? <Image source={{ uri: a.icon }} style={{ width: 20, height: 20 }} /> : <Favicon url={a.origin} />}
+              title={a.origin.replace(/^https?:\/\//, "")}
+              description={`Opens ${a.scheme}: links in ${a.app ?? "an app that's no longer installed"}`}
+            >
+              <Button
+                title="Remove"
+                onPress={() => void removeExternalAppAllowance(engineProfile(profileId), a.origin, a.scheme).then(refresh)}
+              />
+            </Row>
           ))
         )}
       </Group>

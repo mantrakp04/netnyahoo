@@ -1,6 +1,7 @@
 #import "NNClient.h"
 
 #import "NNChromeUI.h"
+#import "NNExternalApps.h"
 #import "NNPictureInPicture.h"
 #import "NNPopupWindow.h"
 #import "NNSiteSettings.h"
@@ -236,7 +237,10 @@ std::map<std::string, PendingPopup> &Popups() {
   return popups;
 }
 
-Client::Client(NNBrowserView *view, NSString *profile) : view_(view), profile_([profile copy] ?: @"") { WatchMenuKeys(); }
+Client::Client(NNBrowserView *view, NSString *profile) : view_(view), profile_([profile copy] ?: @"") {
+  WatchMenuKeys();
+  external::WatchUserInput();
+}
 
 NSString *Client::URL() const {
   if (!browser_) return @"";
@@ -652,6 +656,11 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
     OpenPopupWindow(request);
     return false;
   }
+  // An app link opens no tab: ask in the opener, as the page that asked.
+  if (external::IsAppLink(target_url)) {
+    OpenAppLink(frame, url, user_gesture);
+    return true;
+  }
   Emit(@"openWindow", @{
     @"url" : url,
     @"adoptId" : adopt,
@@ -751,6 +760,7 @@ bool Client::OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
   }
   if (!frame->IsMain()) return false;
   if (!is_redirect) pendingNavigation_.clear();
+  external::BrowserClosed(browser->GetIdentifier());
   pendingNavigation_.push_back(url.UTF8String);
   bool userInitiated = ConsumeUserNavigation(url) || user_gesture;
   if (!is_redirect && !userInitiated && !committedPage_ && WasNavigationDownload(url, profile_)) {
@@ -787,6 +797,11 @@ CefRefPtr<CefResourceRequestHandler> Client::GetResourceRequestHandler(
     return nullptr;
   }
   static CefRefPtr<BlockedCounter> counter = new BlockedCounter();
+  // An app link: GetResourceRequestHandler cancels it and asks (NNExternalApps).
+  if (external::IsAppLink(request->GetURL())) {
+    external::NoteNavigation(browser->GetIdentifier(), frame->GetIdentifier().ToString(), url, user_gesture);
+    return false;
+  }
   return is_download ? nullptr : counter;
 }
 
@@ -803,6 +818,10 @@ void Client::OnRenderProcessResponsive(CefRefPtr<CefBrowser> browser) {
   if (!unresponsive_) return;
   unresponsive_ = false;
   Emit(@"responsive", @{});
+  if (external::IsAppLink(target_url)) {
+    OpenAppLink(frame, ToNS(target_url), user_gesture);
+    return true;
+  }
 }
 
 void Client::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus status, int error_code,
@@ -812,10 +831,32 @@ void Client::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, Terminatio
   nowPlaying_.clear();
   unresponsive_ = false;
   site::SetUnresponsiveCallback(browser->GetIdentifier(), nullptr);
+// An app link from window.open, target=_blank or a modified click: no new tab, the opener asks.
+void Client::OpenAppLink(CefRefPtr<CefFrame> frame, NSString *url, bool user_gesture) {
+  external::Navigation navigation;
+  navigation.url = url;
+  navigation.initiator = OriginOf(frame ? ToNS(frame->GetURL()) : URL()) ?: @"null";
+  navigation.ownsTab = false;
+  navigation.userGesture = user_gesture;
+  external::Handle(this, navigation);
+}
+
   static NSString *const kReasons[] = {@"abnormal", @"killed", @"crashed", @"oom", @"launchFailed", @"integrity"};
   NSString *reason = status >= 0 && status < 6 ? kReasons[status] : @"unknown";
   Emit(@"crashed", @{@"status" : @(status), @"reason" : reason, @"code" : @(error_code)});
 }
+  // Chromium has no loader for an app link; left alone, CEF shows ERR_UNKNOWN_URL_SCHEME. Cancel
+  // it quietly (the page stays) and ask on the main thread, with the initiator only this sees.
+  if (is_navigation && external::IsAppLink(request->GetURL())) {
+    external::Navigation navigation;
+    navigation.url = ToNS(request->GetURL());
+    navigation.initiator = ToNS(request_initiator);
+    navigation.frameId = frame ? frame->GetIdentifier().ToString() : "";
+    navigation.ownsTab = !frame || frame->IsMain();
+    navigation.typed = (request->GetTransitionType() & TT_SOURCE_MASK) == TT_EXPLICIT;
+    dispatch_async(dispatch_get_main_queue(), ^{ external::Handle(self, navigation); });
+    return external::Canceller();
+  }
 
 bool Client::OnCertificateError(CefRefPtr<CefBrowser> browser, cef_errorcode_t cert_error,
                                 const CefString &request_url, CefRefPtr<CefSSLInfo> ssl_info,
@@ -1124,6 +1165,7 @@ bool Client::OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString
   alert.messageText = @"Leave site?";
   alert.informativeText = @"Changes you made may not be saved.";
   [alert addButtonWithTitle:@"Leave"];
+  external::NoteUserInput();
   [alert addButtonWithTitle:@"Cancel"];
   CefRefPtr<Client> self(this);
   CefRefPtr<CefBrowser> tab = browser;

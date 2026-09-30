@@ -1,4 +1,4 @@
-import type { BlockedPopup, CrashInfo, MediaAccess, NavigationState, PasswordPrompt, PermissionRequest, SecurityInfo } from "@netnyahoo/cef";
+import type { BlockedPopup, CrashInfo, ExternalAppRequest, MediaAccess, NavigationState, PasswordPrompt, PermissionRequest, SecurityInfo } from "@netnyahoo/cef";
 import { create } from "zustand";
 import { useBrowser } from "../../store/browser";
 
@@ -16,6 +16,7 @@ export type PageState = {
   mediaAccess: MediaAccess | null;
   wasNewTab: boolean;
   backToNewTab: boolean;
+  externalApp: ExternalAppRequest | null;
   newTabShown: { url: string; title: string; favicon: string | null } | null;
 };
 
@@ -33,6 +34,7 @@ export const IDLE_PAGE: PageState = {
   mediaAccess: null,
   wasNewTab: false,
   backToNewTab: false,
+  externalApp: null,
   newTabShown: null,
 };
 

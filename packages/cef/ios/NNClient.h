@@ -58,6 +58,7 @@ class Client : public CefClient,
   void NotificationAction(NSString *notificationId, NSString *action);
 
   bool Fullscreen() const { return fullscreen_; }
+  bool CommittedPage() const { return committedPage_; }
   void NoteBlocked(NSString *url);
 
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
@@ -167,6 +168,7 @@ class Client : public CefClient,
 
  private:
   void OnPageMessage(CefRefPtr<CefFrame> frame, const std::string &kind, id data);
+  void OpenAppLink(CefRefPtr<CefFrame> frame, NSString *url, bool user_gesture);
   void ChromeTabContextMenu(CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params,
                             CefRefPtr<CefMenuModel> model);
 

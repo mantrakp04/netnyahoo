@@ -1,13 +1,14 @@
-import { getSiteSettings, setSiteSetting, type PasswordPrompt as ChromePasswordPrompt, type PasswordPromptAnswer } from "@netnyahoo/cef";
+import { getSiteSettings, resolveExternalApp, setSiteSetting, type PasswordPrompt as ChromePasswordPrompt, type PasswordPromptAnswer } from "@netnyahoo/cef";
 import { Symbol } from "@netnyahoo/shell";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { webviews } from "../../lib/webviews";
 import { useBrowser } from "../../store/browser";
 import { engineProfile } from "../../store/model";
 import { useHover } from "../primitives";
 import { Popover, PopoverRow, PopoverSeparator, PromptButton } from "../layout/controls";
+import { Checkbox } from "../settings/controls";
 import { patchPage, pageOf, setPopover, usePage } from "../layout/pageState";
 import { answerPermission, describePermission } from "./permissions";
 
@@ -21,14 +22,16 @@ const hostOf = (origin: string) => {
 
 function PromptBody({
   icons,
+  image,
   title,
   message,
   detail,
   children,
 }: {
   icons: string[];
+  image?: string | null;
   title: string;
-  message?: string;
+  message?: string | null;
   detail?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -36,6 +39,7 @@ function PromptBody({
   return (
     <View style={{ padding: 14, gap: 10 }}>
       <View style={{ flexDirection: "row", gap: 6 }}>
+        {image ? <Image source={{ uri: image }} style={{ width: 32, height: 32, marginLeft: -1, marginVertical: -1 }} /> : null}
         {icons.map((icon) => (
           <View key={icon} style={{ width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)" }}>
             <Symbol name={icon} size={14} color={theme.icon} style={{ width: 20, height: 20 }} />
@@ -212,6 +216,57 @@ export function PasswordPrompt({ tabId, right, top }: { tabId: string; right: nu
       </View>
     </Popover>
   );
+}
+
+// "Open “Codex”?": a site (or an OAuth redirect) sent this tab to another app's link.
+export function ExternalAppPrompt({ tabId, left, top }: { tabId: string; left: number; top: number }) {
+  const theme = useTheme();
+  const request = usePage(tabId, (p) => p.externalApp);
+  const [always, setAlways] = useState(false);
+  if (!request) return null;
+  const answer = (open: boolean) => {
+    answerExternalApp(tabId, open, open && always);
+    setAlways(false);
+  };
+  return (
+    <Popover key={request.id} width={340} top={top} left={left} modal={false}>
+      <View>
+        <PromptBody
+          icons={request.icon ? [] : [request.app ? "app" : "questionmark.app.dashed"]}
+          image={request.icon}
+          title={request.title}
+          message={request.message}
+          detail={
+            request.remember ? (
+              <Pressable onPress={() => setAlways(!always)} style={{ flexDirection: "row", alignItems: "flex-start", gap: 7 }}>
+                <View style={{ marginTop: 1 }}>
+                  <Checkbox value={always} onChange={setAlways} />
+                </View>
+                <Text style={{ flex: 1, fontSize: 12, lineHeight: 16, color: theme.textPrimary }}>{request.remember}</Text>
+              </Pressable>
+            ) : undefined
+          }
+        >
+          {request.app ? (
+            <>
+              <PromptButton title="Cancel" onPress={() => answer(false)} />
+              <PromptButton title="Open" primary onPress={() => answer(true)} />
+            </>
+          ) : (
+            <PromptButton title="OK" primary onPress={() => answer(false)} />
+          )}
+        </PromptBody>
+        <CloseButton color={theme.textSecondary} onPress={() => answer(false)} />
+      </View>
+    </Popover>
+  );
+}
+
+export function answerExternalApp(tabId: string, open: boolean, remember = false) {
+  const request = pageOf(tabId).externalApp;
+  if (!request) return;
+  patchPage(tabId, { externalApp: null });
+  void resolveExternalApp(request.id, open, remember);
 }
 
 function UsernameChoice({ name, selected, onPress }: { name: string; selected: boolean; onPress: () => void }) {
