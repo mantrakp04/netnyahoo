@@ -100,6 +100,7 @@ class Client : public CefClient,
   void OnBeforeDevToolsPopup(CefRefPtr<CefBrowser> browser, CefWindowInfo &windowInfo, CefRefPtr<CefClient> &client,
                              CefBrowserSettings &settings, CefRefPtr<CefDictionaryValue> &extra_info,
                              bool *use_default_window) override;
+  void OnBeforePopupAborted(CefRefPtr<CefBrowser> browser, int popup_id) override;
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
   bool DoClose(CefRefPtr<CefBrowser> browser) override;
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
@@ -148,6 +149,7 @@ class Client : public CefClient,
                       CefRefPtr<CefMenuModel> model, CefRefPtr<CefRunContextMenuCallback> callback) override;
 
   void OnGotFocus(CefRefPtr<CefBrowser> browser) override;
+  bool OnSetFocus(CefRefPtr<CefBrowser> browser, FocusSource source) override;
 
   bool OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event, CefEventHandle os_event,
                      bool *is_keyboard_shortcut) override;
@@ -215,6 +217,8 @@ class Client : public CefClient,
   std::map<std::string, NSDictionary *> nowPlaying_;
   std::string nowPlayingFrame_;
   std::map<int, void (^)(NSString *)> evals_;
+  // Popups this page opened (popup_id → adoptId), for OnBeforePopupAborted.
+  std::map<int, std::string> pendingPopups_;
   IMPLEMENT_REFCOUNTING(Client);
 };
 
@@ -233,6 +237,7 @@ bool MenuBarTakesChromeShortcut(int command_id);
 - (void)emit:(NSString *)name payload:(NSDictionary *)payload;
 - (void)browserCreated:(CefRefPtr<CefBrowser>)browser;
 - (void)browserClosed;
+- (void)adoptionFailed;
 - (void)layoutDockedDevTools;
 - (void)tabDiscardedChanged:(BOOL)discarded;
 @property (nonatomic, readonly) BOOL closingByRequest;

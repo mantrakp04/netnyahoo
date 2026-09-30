@@ -127,6 +127,9 @@ class TabRouter : public CefClient,
                               extra, no_js);
     return true;
   }
+  void OnBeforePopupAborted(CefRefPtr<CefBrowser> browser, int popup_id) override {
+    if (Client *c = Tab(browser)) c->OnBeforePopupAborted(browser, popup_id);
+  }
 
 #define NN_FORWARD(call) \
   if (Client *c = Tab(browser)) c->call;
@@ -238,6 +241,9 @@ class TabRouter : public CefClient,
     NN_FORWARD_RETURN(RunContextMenu(browser, frame, params, model, callback), false)
   }
   void OnGotFocus(CefRefPtr<CefBrowser> browser) override { NN_FORWARD(OnGotFocus(browser)) }
+  bool OnSetFocus(CefRefPtr<CefBrowser> browser, FocusSource source) override {
+    NN_FORWARD_RETURN(OnSetFocus(browser, source), false)
+  }
   bool OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event, CefEventHandle os_event,
                      bool *is_keyboard_shortcut) override {
     NN_FORWARD_RETURN(OnPreKeyEvent(browser, event, os_event, is_keyboard_shortcut), false)
@@ -850,8 +856,8 @@ bool CreateTabWithHistory(NNBrowserView *view, CefRefPtr<Client> client, CefRefP
 #endif
 }
 
-void ConfigurePopup(CefWindowInfo &info, NSSize size) {
-  if (NN_POPUP_TABS) return;
+void ConfigurePopup(CefWindowInfo &info, NSSize size, CefRefPtr<CefBrowser> opener) {
+  if (NN_POPUP_TABS && IsChromeTab(opener)) return;
   info.SetAsChild((__bridge CefWindowHandle)ParkingView(), CefRect(0, 0, MAX(1, (int)size.width), MAX(1, (int)size.height)));
   info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
 }
@@ -887,6 +893,27 @@ void TabShown(NNBrowserView *view) {
     gActivatingTab = false;
   });
 #endif
+}
+
+std::map<int, ChromeWindow *> gClosingTabs;
+
+void NoteClosingTab(CefRefPtr<CefBrowser> browser) {
+  if (ChromeWindow *window = IsChromeTab(browser) ? WindowOfTab(browser) : nullptr)
+    gClosingTabs[browser->GetIdentifier()] = window;
+}
+
+void TabGone(CefRefPtr<CefBrowser> browser) { gClosingTabs.erase(browser->GetIdentifier()); }
+
+// Chrome made `browser` active while a tab of its window was closing: show the app's page there again.
+bool PickedByClose(CefRefPtr<CefBrowser> browser) {
+  ChromeWindow *window = IsChromeTab(browser) ? WindowOfTab(browser) : nullptr;
+  if (!window || gClosingTabs.empty()) return false;
+  bool closing = false;
+  for (auto &[id, w] : gClosingTabs) closing |= w == window && id != browser->GetIdentifier();
+  if (!closing) return false;
+  if (NNBrowserView *shown = window->Shown(); shown.visible && shown.client && shown.client->Browser())
+    TabShown(shown);
+  return true;
 }
 
 void TabMoved(NNBrowserView *view) {

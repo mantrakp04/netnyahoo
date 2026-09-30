@@ -58,7 +58,11 @@ NSString *SelectionLabel(NSString *text) {
   return [[collapsed substringToIndex:end] stringByAppendingString:@"…"];
 }
 
+// ⌥⇧-click (ours, read from the keys still held: Chrome makes it a new window) or ⌥⌘-click (Chrome's own).
 bool IsSplitClick(cef_window_open_disposition_t d) {
+#if CEF_API_ADDED(14800)
+  if (d == CEF_WOD_NEW_SPLIT_VIEW) return true;
+#endif
   NSEventModifierFlags held = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
   return d == CEF_WOD_NEW_WINDOW && (held & NSEventModifierFlagShift) && (held & NSEventModifierFlagOption) &&
          !(held & NSEventModifierFlagCommand);
@@ -671,6 +675,11 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
     Emit(@"openWindow", @{@"url" : url, @"disposition" : @"incognito", @"userGesture" : @(user_gesture)});
     return true;
   }
+  // Every private window is a session of its own: a new one loads the page afresh, so make no browser to adopt.
+  if (disposition == CEF_WOD_NEW_WINDOW && Incognito()) {
+    Emit(@"openWindow", @{@"url" : url, @"disposition" : @"window", @"userGesture" : @(user_gesture)});
+    return true;
+  }
 
   bool popup = disposition == CEF_WOD_NEW_POPUP;
   std::string adoptId = [[NSUUID UUID].UUIDString UTF8String];
@@ -681,9 +690,11 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
   if (popup) {
     bounds.size = NSMakeSize(features.widthSet ? features.width : 500, features.heightSet ? features.height : 600);
   }
-  host::ConfigurePopup(windowInfo, bounds.size);
+  host::ConfigurePopup(windowInfo, bounds.size, browser);
   client = popupClient;
   Popups()[adoptId] = {popupClient, nullptr, nil};
+  std::erase_if(pendingPopups_, [](const auto &p) { return !Popups().count(p.second); });
+  pendingPopups_[popup_id] = adoptId;
 
   NSString *adopt = @(adoptId.c_str());
   if (popup) {
@@ -713,13 +724,31 @@ void Client::OnBeforeDevToolsPopup(CefRefPtr<CefBrowser> browser, CefWindowInfo 
   if (client.get() == this) client = DevToolsFrontendClient(browser);
 }
 
+void Client::OnBeforePopupAborted(CefRefPtr<CefBrowser> browser, int popup_id) {
+  auto pending = pendingPopups_.find(popup_id);
+  if (pending == pendingPopups_.end()) return;
+  std::string adoptId = pending->second;
+  pendingPopups_.erase(pending);
+  auto it = Popups().find(adoptId);
+  if (it == Popups().end()) return;
+  NNBrowserView *adopter = it->second.adopter;
+  Popups().erase(it);
+  // The tab that was waiting for it loads the page itself.
+  [adopter adoptionFailed];
+}
+
 void Client::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   browser_ = browser;
   BrowserCreated(browser);
   if (openerBrowserId_) host::TabOpenedFrom(browser, openerBrowserId_);
   if (!adoptId_.empty()) {
     auto it = Popups().find(adoptId_);
-    if (it == Popups().end()) return;
+    if (it == Popups().end()) {
+      // Its tab closed before the browser was made: nothing will show it.
+      closingByEngine_ = true;
+      browser->GetHost()->CloseBrowser(true);
+      return;
+    }
     it->second.browser = browser;
     if (NNBrowserView *adopter = it->second.adopter) {
       Popups().erase(it);
@@ -743,6 +772,7 @@ void Client::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
 }
 
 bool Client::DoClose(CefRefPtr<CefBrowser> browser) {
+  host::NoteClosingTab(browser);
 // Use a run-loop block so shutdown’s nested loop can drain it.
   NSView *hostView = host::ContentsView(browser);
   [NSRunLoop.mainRunLoop performBlock:^{ [hostView removeFromSuperview]; }];
@@ -761,6 +791,7 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
     SyncWindowFullScreen();
   }
   BrowserClosed(browser);
+  host::TabGone(browser);
   site::BrowserClosed(browser->GetIdentifier());
   external::BrowserClosed(browser->GetIdentifier());
   if (!adoptId_.empty()) Popups().erase(adoptId_);
@@ -776,6 +807,7 @@ void Client::OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool ac
   tabStripActive_ = active;
   tabStripPinned_ = pinned;
   if (first) return;
+  if (active && !(view_ && view_.visible) && host::PickedByClose(browser)) return;
   Emit(@"tabStrip", @{@"index" : @(index), @"active" : @(active), @"pinned" : @(pinned)});
 }
 #endif
@@ -1155,6 +1187,13 @@ bool Client::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFr
 }
 
 // MARK: CefFocusHandler
+
+// For a Chrome tab CEF follows focus with ChromeBrowserHostImpl::OnSetFocus, which also makes it Chrome's active
+// tab, and the app takes that as a tab switch (onTabStrip). Its first navigation asks for focus
+// (FOCUS_SOURCE_NAVIGATION), so a link opened behind came to the front. Only the page on screen takes focus.
+bool Client::OnSetFocus(CefRefPtr<CefBrowser> browser, FocusSource source) {
+  return !view_ || !view_.visible;
+}
 
 void Client::OnGotFocus(CefRefPtr<CefBrowser> browser) {
   if (host::ActivatingTab()) return;

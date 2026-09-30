@@ -2,6 +2,7 @@
 
 #import "NNChromeWindow.h"
 #import "NNClient.h"
+#import "NNExtensionsInternal.h"
 #import "NNExternalApps.h"
 #import "NNWindowHost.h"
 
@@ -29,6 +30,8 @@ NSMutableSet<NNPopupWindowController *> *gControllers;
   _browserView.profile = request.profile;
   _browserView.delegate = self;
   _browserView.adoptId = request.adoptId;
+  // Loaded only if the popup is never made (OnBeforePopupAborted).
+  _browserView.initialURL = request.url;
   _window = [NNChromeWindowHost makePopupWindowForProfile:request.profile ?: @"" root:_browserView];
   if (_window) {
     [_window setContentSize:size];
@@ -90,6 +93,10 @@ NSMutableSet<NNPopupWindowController *> *gControllers;
   } else if ([name isEqualToString:@"windowClose"]) {
     // Close Chrome windows through CEF so tabs outlive the close.
     if (!host::CloseWindow(_window)) [_window close];
+  } else if ([name isEqualToString:@"openWindow"] && !_opener) {
+    // The tab that opened this popup is gone: its links open as a tab of the profile's window (a private
+    // window's popup has none to go to).
+    if (!IsIncognito(_browserView.profile)) ext::EmitOpenTab(payload[@"url"], _browserView.profile);
   } else if ([name isEqualToString:@"openWindow"] || [name isEqualToString:@"popupBlocked"] ||
              [name isEqualToString:@"command"]) {
     [_opener emit:name payload:payload];

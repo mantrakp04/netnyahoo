@@ -139,6 +139,10 @@ NSString *const kExitPictureInPictureScript =
   BOOL _creating;
   BOOL _closingByRequest;
   NSString *_pendingURL;
+  // The URL a new browser opens with. The page's first loadURL asks for it again, often after the browser
+  // exists; loading it twice ran the page twice and, for a tab opened behind, focused it (Client::OnSetFocus).
+  NSString *_creatingURL;
+  CFTimeInterval _creatingAt;
   NSString *_discardedURL;
   NSString *_transferredURL;
   BOOL _chromeDiscarded;
@@ -285,6 +289,8 @@ NSString *const kExitPictureInPictureScript =
   _client = new Client(self, _profile);
   NSString *url = _pendingURL ?: _initialURL;
   _pendingURL = nil;
+  _creatingURL = url;
+  _creatingAt = CACurrentMediaTime();
   host::CreateTab(self, _client, url.length ? url : @"about:blank", [self browserSettings]);
 }
 
@@ -439,12 +445,22 @@ NSString *const kExitPictureInPictureScript =
   }];
 }
 
+// The popup this view was to adopt was never made (OnBeforePopupAborted): open the page in a browser of its own.
+- (void)adoptionFailed {
+  if (_browser || !_adoptId.length) return;
+  _adoptId = nil;
+  _creating = NO;
+  _client = nullptr;
+  if (self.window) [self ensureBrowser];
+}
+
 - (void)browserClosed {
   [self keepPageFrame:nil];
   [self dropDockedDevTools];
   _chromeDiscarded = NO;
   _browser = nullptr;
   _creating = NO;
+  _creatingURL = nil;
 }
 
 - (void)emit:(NSString *)name payload:(NSDictionary *)payload {
@@ -541,7 +557,11 @@ NSString *const kExitPictureInPictureScript =
   if (!url.length) return;
   NSString *transferred = _transferredURL;
   _transferredURL = nil;
+  NSString *creating = _creatingURL;
+  _creatingURL = nil;
   if (_browser && SamePage(url, transferred)) return;
+  // Only the page's own first request, which follows the view's creation at once (not a revived tab's later one).
+  if ((_browser || _creating) && [url isEqualToString:creating] && CACurrentMediaTime() - _creatingAt < 2) return;
   if (_browser) {
     _browser->GetMainFrame()->LoadURL(ToCef(url));
   } else {
@@ -818,6 +838,7 @@ NSString *const kExitPictureInPictureScript =
 #endif
   if (_browser) {
     _closingByRequest = YES;
+    host::NoteClosingTab(_browser);
     _browser->GetHost()->CloseBrowser(true);
     _browser = nullptr;
   }
