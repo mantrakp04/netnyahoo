@@ -9,8 +9,8 @@ vendor="$(cd "$(dirname "$0")/.." && pwd)/vendor"
 # built-in extension in every profile (NNContentBlocker.mm). Pinned release; the
 # manifest gets our `key` so its extension id is fixed
 # (bnjeokpoejhioagiokhkhmdogkhbnbki), wherever the app bundle lives.
-UBOL_VERSION="2026.926.2202"
-UBOL_SHA256="9a0d94e832fde9430f64817ff1ba3f34040f19caa113a24e6d84aad1d05eb1aa"
+UBOL_VERSION="2026.930.1227"
+UBOL_SHA256="13dd17bcc9720abbf5006793b0a4f7b672d34b394db2e6198daa7ef282b20361"
 UBOL_KEY="MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0ZvGFQVC3AezHHji9jii1xuD992hwYUSRZuvPmdugT/g4FkXxqD9NgrPPVh+nLdRfEvK7ht6i1ADwFJXo9vYh7asPSeB8cU/z/Vt2VufXw7XvR7PGcDWsXXfS3P/LBv/BG3tYOADD/RwwBAPqasjAtWkLsJdEawZArm316VS6Boo89W5lrCNp4bm4RYqTP9MRTBzRzZS7NmMQWNnD1OFEDb4w+36+J1lSLMv8A06EEbVzvIdYK6MQrUwhLXe6CfeITpp/YQ6PWWEfmRpQUolkLiOE/swvV8GvkV9Kpx/USDwhkaybF7JZqKV5nUSYdiRiO/7t30yDnk52MG7xR4KBQIDAQAB"
 ubol="$vendor/ubol"
 if [ ! -f "$ubol/.version" ] || [ "$(cat "$ubol/.version")" != "$UBOL_VERSION" ]; then
