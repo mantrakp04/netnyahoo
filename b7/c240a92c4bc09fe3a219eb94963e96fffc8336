@@ -1,0 +1,21 @@
+docs/release-notes/0.2.17.md
+  s_631b13a766b697::t_a3606ae802e334 1-14
+apps/browser/macos/Netnyahoo.xcodeproj/project.pbxproj
+  s_631b13a766b697::t_3f7cb21bb5f79f 392,400,424,432
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b7c240a92c4bc09fe3a219eb94963e96fffc8336",
+  "prompts": {},
+  "sessions": {
+    "s_631b13a766b697": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ef88-d29f-71c0-bccb-8ac6c46b7bc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
