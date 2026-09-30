@@ -2,6 +2,8 @@
 
 #include <dlfcn.h>
 
+#include <mutex>
+
 #import "NNChromeUI.h"
 #import "NNExternalApps.h"
 #import "NNPictureInPicture.h"
@@ -122,20 +124,48 @@ NSString *DispositionName(cef_window_open_disposition_t d) {
   }
 }
 
+// Counts requests the content blocker stopped. They arrive on the IO thread, many per page; each tab's count goes to
+// its client in one main-thread pass per burst instead of a pass over every tab per request.
 class BlockedCounter : public CefResourceRequestHandler {
  public:
   void OnResourceLoadComplete(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request,
                               CefRefPtr<CefResponse> response, URLRequestStatus status, int64_t) override {
     if (!browser || !response || response->GetError() != ERR_BLOCKED_BY_CLIENT) return;
     NSString *url = ToNS(request->GetURL());
-    int browserId = browser->GetIdentifier();
-    dispatch_async(dispatch_get_main_queue(), ^{
-      for (NNBrowserView *view in LiveViews())
-        if (view.browserId == browserId && view.client) view.client->NoteBlocked(url);
-    });
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      Blocked &blocked = pending_[browser->GetIdentifier()];
+      blocked.count++;
+      blocked.url = url;
+      if (flushQueued_) return;
+      flushQueued_ = true;
+    }
+    CefRefPtr<BlockedCounter> self(this);
+    dispatch_async(dispatch_get_main_queue(), ^{ self->Flush(); });
   }
 
  private:
+  struct Blocked {
+    int count = 0;
+    NSString *url;
+  };
+
+  void Flush() {
+    std::map<int, Blocked> batch;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      batch.swap(pending_);
+      flushQueued_ = false;
+    }
+    for (NNBrowserView *view in LiveViews()) {
+      auto it = batch.find(view.browserId);
+      if (it != batch.end() && view.client) view.client->NoteBlocked(it->second.url, it->second.count);
+    }
+  }
+
+  std::mutex mutex_;
+  std::map<int, Blocked> pending_;
+  bool flushQueued_ = false;
   IMPLEMENT_REFCOUNTING(BlockedCounter);
 };
 
@@ -367,8 +397,8 @@ void Client::ApplyMute() {
   EmitMedia();
 }
 
-void Client::NoteBlocked(NSString *url) {
-  blockedCount_++;
+void Client::NoteBlocked(NSString *url, int count) {
+  blockedCount_ += count;
   lastBlocked_ = url;
   if (blockedEmitQueued_) return;
   blockedEmitQueued_ = true;

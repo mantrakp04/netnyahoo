@@ -59,7 +59,7 @@ class Client : public CefClient,
 
   bool Fullscreen() const { return fullscreen_; }
   bool CommittedPage() const { return committedPage_; }
-  void NoteBlocked(NSString *url);
+  void NoteBlocked(NSString *url, int count = 1);
 
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
