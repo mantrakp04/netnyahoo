@@ -28,7 +28,12 @@ Pages without a custom domain).
   Liquid Glass pinned tiles and address field (`screencapture -l <windowID> -o` of a hidden test instance drawn
   as the active window), and `split`, `extensions` and
   `privacy` from 0.1.0 (`privacy.webp` is the app's own offscreen render of that Settings pane, no window
-  frame). `game/crowd.webp` is a work-in-progress capture of the offline game; its hotspot coordinates are in
+  frame). `pip.webp` is 0.2.13 (the export, re-signed to inject the draw-active dylib): the window on Wikipedia with
+  the Picture in Picture window where Chrome opened it (window-relative 1085, 692 pt), its real shadow from
+  `screencapture -l`; `pip-loop.{mp4,webm}` is that rectangle over 7 s of SCK captures of the PiP window, laid
+  over the still by `Shot.astro` (`loop` in `data/pledges.ts`; `scripts/loops.ts` plays it, never with reduced
+  motion or Save-Data). SCK captures of the main window show macOS's "being shared" capsule in place of the
+  traffic lights, so its pixels come from `screencapture`. `game/crowd.webp` is a work-in-progress capture of the offline game; its hotspot coordinates are in
   `Game.astro`. Replace a file with a new capture of the same name; Astro makes the AVIF/WebP sizes. On phones
   a shot shows only its `focus` region (see `Shot.astro` and `data/pledges.ts`), so check the crop after
   replacing one.

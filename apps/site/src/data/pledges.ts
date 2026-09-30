@@ -1,5 +1,5 @@
 import type { ImageMetadata } from "astro";
-import type { Focus } from "../components/Shot.astro";
+import type { Focus, Loop } from "../components/Shot.astro";
 import addressToolbar from "../assets/shots/address-toolbar.webp";
 import addressSidebar from "../assets/shots/address-sidebar.webp";
 import split from "../assets/shots/split.webp";
@@ -8,6 +8,10 @@ import work from "../assets/shots/profile-work.webp";
 import campaign from "../assets/shots/profile-campaign.webp";
 import extensions from "../assets/shots/extensions.webp";
 import privacy from "../assets/shots/privacy.webp";
+import pip from "../assets/shots/pip.webp";
+import pipPoster from "../assets/shots/pip-loop-poster.webp";
+import pipMp4 from "../assets/shots/pip-loop.mp4";
+import pipWebm from "../assets/shots/pip-loop.webm";
 
 // Every image here is a real capture of Netnyahoo (see apps/site/README.md). Window shots are
 // ScreenCaptureKit captures of the window; `panel` shots are the app's own render of one view
@@ -24,6 +28,8 @@ export interface Pledge {
   panel?: boolean;
   /** The part worth showing on a phone. */
   focus?: Focus;
+  /** A clip of the part that moves, over the one shot. */
+  loop?: Loop;
 }
 
 export const pledges: Pledge[] = [
@@ -44,6 +50,17 @@ export const pledges: Pledge[] = [
     alt: "Netnyahoo in split view: MDN on the left, Wikipedia on the right, both in one window.",
     caption: "Split view",
     focus: { x: 0.5, y: 0, zoom: 1.3, ratio: 0.8 },
+  },
+  {
+    id: "mini-player",
+    title: "Refuses to leave the picture.",
+    body: "Switch tabs mid-video and it floats along in the corner. Go back, and it steps down quietly.",
+    shots: [pip],
+    alt: "Netnyahoo on Wikipedia’s article about Big Buck Bunny, while the film keeps playing in a small floating window at the bottom right. Its tab, muted, is in the sidebar, with a player at the foot of the sidebar.",
+    caption: "Picture in Picture, still playing",
+    focus: { x: 1, y: 1, zoom: 2.4, ratio: 0.8 },
+    // The capture's floating window, 336 × 189 pt at 2×, where it opened over the 1440 × 900 window.
+    loop: { mp4: pipMp4, webm: pipWebm, poster: pipPoster, rect: { x: 2170, y: 1384, w: 672, h: 378 } },
   },
   {
     id: "profiles",
