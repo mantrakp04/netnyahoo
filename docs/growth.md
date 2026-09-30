@@ -171,3 +171,15 @@ GROUP BY day, version ORDER BY day DESC, version
   - **Shipped (03:20 UTC):** "Write to the office" now opens the chat. `conversations.show()` only revealed
     PostHog's blue bubble in the corner, so the button looked dead (the dead and rage clicks above). Checked live:
     one click opens the message box. Watch `support_opened` and the dead clicks on that button.
+- **2026-09-30 ~09:40 UTC check** (first run of the `stats` skill): 5,239 visitors all time, 1,391 since 03:05.
+  Traffic climbed through the morning (304/h at 06:00, 317 at 07:00, 388 at 08:00, the best hour yet).
+  - Downloads: 113 people all time (88 Mac). Last 24 h, Mac desktop 87/1,399 = 6.2%; Windows 13/729, Linux 10/219.
+  - Phones, last 6 h (new panel: Send to my Mac, then Share / Copy link / Email): 15 opened it; share sheet
+    dismissed 13, shared 1, copied 7, clipboard blocked 8, email 7. `mac_link_visit` 3 people in 24 h.
+  - Installs: GitHub DMG downloads 150 all time (0.2.11 70, 0.2.13 21, 0.2.12 18, 0.2.14 16); Sparkle update zips 23.
+    `update_check` is live: 8 copies of 0.2.14 have made their first check (new installs and updates from
+    0.2.13, which never set the flag).
+  - Opted-in app users, 7 days: 0.2.11 7, 0.2.13 4, 0.2.12 3, 0.2.14 2, 0.2.9 1.
+  - GitHub: 19 stars (8 today, 8 yesterday); repo page 5 views in 14 days.
+  - Errors: one visitor failed to load the 3D chunk (`error loading dynamically imported module`), which made
+    an unhandled rejection; fixed and deployed (abd489e8), the poster stays. The rest is known noise.
