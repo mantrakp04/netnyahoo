@@ -68,3 +68,23 @@ Evidence is in `output/profile-swipe/replay-audit/routing-fix-*.json` and
 This establishes the copy-failure routing fix; it does not establish that copy failure caused the
 owner's original recording. Physical input in the installed app still needs confirmation after the
 next release. The vertical probe limitation above remains unchanged.
+
+
+## Follow-up recording and animation race
+
+The 12:20 recording was preserved at `output/profile-swipe/owner-2026-09-30-1220/capture.mov`
+and extracted at 30 fps (441 frames, 14.68 seconds). Sidebar tint changes at approximately 2.33,
+2.97, 3.93 and 6.00 seconds; it then stays on Personal through the end. Notification Center also
+appears. There is no input log in this recording, so motionless intervals alone do not establish
+which gestures reached the app. The installed process was still running from before the unshipped
+`b424d923` native fix.
+
+A separate production-class regression establishes another race: a release queued its spring
+while waiting for a coordinate rebase; a new drag halted animation, but applying the rebase
+started the old queued spring during that drag. The deferred spring now checks the existing
+gesture generation, preserving the rebase itself. The saved original source fails this regression;
+the fixed production class passes and the next drag releases and switches normally. All eleven
+hidden-instance regressions pass, including real RN Animated remaining motionless for 120 ms
+after the new drag begins. Evidence: `output/profile-swipe/replay-audit/pager-race-*.{json,log}`.
+
+Both fixes are included in 0.2.14. A physical trackpad check requires updating the installed app.
