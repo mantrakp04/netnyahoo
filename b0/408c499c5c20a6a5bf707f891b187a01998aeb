@@ -1,0 +1,50 @@
+apps/browser/src/lib/devHarness.ts
+  s_9c356f9574d31c::t_cd59e0ad7ad1d4 56
+  s_9c356f9574d31c::t_318365d9e86d58 7,12,16-17
+apps/browser/scripts/perf/js-bench.mjs
+  s_9c356f9574d31c::t_e93199ad3b18e5 291,337-339,341-344
+  s_9c356f9574d31c::t_bf33f6f8b3da8a 102,105-107
+  s_9c356f9574d31c::t_62ae70bb2a87be 1-101,103-104,108-242,247-290,292-336,340,345-406
+  s_9c356f9574d31c::t_1df790dc188ec1 243-246
+apps/browser/scripts/perf/core-bench.mjs
+  s_9c356f9574d31c::t_4805f5fa4c3d2b 1-40
+apps/browser/scripts/perf/bench-app.js
+  s_f7aae000065a2a::t_3932a4087a07d6 237-238,240
+  s_9c356f9574d31c::t_9e43041e79ec57 239,241-242
+  s_9c356f9574d31c::t_ee36bde4bbf692 1-236,243-247
+apps/browser/src/components/omnibox/devDriver.ts
+  s_9c356f9574d31c::t_318365d9e86d58 2,39
+apps/browser/index.js
+  s_9c356f9574d31c::t_4a912f43f5d780 1-2,13,21,32,35-38,49
+apps/browser/scripts/perf/seed.mjs
+  s_9c356f9574d31c::t_bc69c525b20c89 1-165
+apps/browser/src/lib/perfProbe.ts
+  s_9c356f9574d31c::t_b24353c5cabb78 1-3,28-29,33-34
+  s_9c356f9574d31c::t_953ada70558135 59,147-153
+  s_9c356f9574d31c::t_9e43041e79ec57 125-133,141-143,255-257
+  s_9c356f9574d31c::t_ff39a1dafef912 4-27,30-32,35-58,60-124,134-140,144-146,154-254,258-264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b0408c499c5c20a6a5bf707f891b187a01998aeb",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f7aae000065a2a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e358827-291e-45c1-a344-9aa0e5727e2b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
