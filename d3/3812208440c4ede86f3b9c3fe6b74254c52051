@@ -1,0 +1,29 @@
+apps/site/README.md
+  s_9c356f9574d31c::t_5838fd78ecd77c 44-49
+apps/site/src/styles/fonts.css
+  s_9c356f9574d31c::t_04f9a0c32f2757 1-141
+apps/site/package.json
+  s_9c356f9574d31c::t_d666a7560882ba 29
+apps/site/pnpm-lock.yaml
+  s_9c356f9574d31c::t_b1158da2f2b2dd 54-56,1101-1103,1127-1129,1360-1363,1379-1381,1526-1528,1834-1837,1841-1843,1877-1880,2876-2880,2906-2907,3119-3122,3136-3137,3326-3331,3563-3566,3569-3572,3613-3614
+apps/site/scripts/build-fonts.mjs
+  s_9c356f9574d31c::t_fc51b76d8e13f2 1-95
+apps/site/src/layouts/Base.astro
+  s_9c356f9574d31c::t_d636062c647298 4-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d33812208440c4ede86f3b9c3fe6b74254c52051",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
