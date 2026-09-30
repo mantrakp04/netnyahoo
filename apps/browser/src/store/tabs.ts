@@ -54,7 +54,8 @@ export type TabsSlice = {
   activateIndex(windowId: string, index: number): void;
   cycle(windowId: string, delta: 1 | -1): void;
   navigate(id: string, input: string, options?: { userInitiated?: boolean }): void;
-  updateTab(id: string, patch: Partial<Tab>): void;
+  // `live` patches the tab's live state in the same update (one pass over the store's subscribers).
+  updateTab(id: string, patch: Partial<Tab>, live?: Partial<TabLive>): void;
   updateLive(id: string, patch: Partial<TabLive>): void;
   duplicateTab(id: string): string | undefined;
   togglePin(id: string): void;
@@ -369,12 +370,19 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     if (ui?.panel.open) get().closePanel(tab.windowId);
   },
 
-  updateTab(id, patch) {
-    const tab = get().tabs[id];
+  updateTab(id, patch, livePatch) {
+    const s = get();
+    const tab = s.tabs[id];
     if (!tab) return;
     const url = patch.url;
-    const next = merge(tab, url !== undefined && url !== tab.url ? { ...onUrlChange(get(), tab, url), ...patch } : patch);
-    if (next !== tab) set((s) => ({ tabs: { ...s.tabs, [id]: next } }));
+    const next = merge(tab, url !== undefined && url !== tab.url ? { ...onUrlChange(s, tab, url), ...patch } : patch);
+    const live = livePatch ? s.live[id] : undefined;
+    const nextLive = live && livePatch ? merge(live, livePatch) : live;
+    if (next === tab && nextLive === live) return;
+    set((s) => ({
+      ...(next !== tab ? { tabs: { ...s.tabs, [id]: next } } : {}),
+      ...(nextLive !== live ? { live: { ...s.live, [id]: nextLive! } } : {}),
+    }));
   },
 
   updateLive(id, patch) {

@@ -342,8 +342,7 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
           patchPage(tabId, { newTabShown: null });
         }
         if (fromNewTab.current && url && !isBlank(url)) patchPage(tabId, { backToNewTab: true });
-        store().updateTab(tabId, { url, title });
-        store().updateLive(tabId, { isLoading, canGoBack, canGoForward, themeColor });
+        store().updateTab(tabId, { url, title }, { isLoading, canGoBack, canGoForward, themeColor });
         if (lastPage.current !== null && pageKey(url) !== lastPage.current) {
           // Like Chrome's tab-modal dialogs, the open-app prompt stays within a site.
           if (pageOf(tabId).externalApp && hostOf(url) !== hostOf(lastPage.current)) answerExternalApp(tabId, false);

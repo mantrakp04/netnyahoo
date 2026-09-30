@@ -256,3 +256,24 @@ test("a reopened window's tabs wake with their back/forward list", () => {
   assert.equal(S().tabs[rb.id].adoptId, `restore:${b}`);
   assert.equal(S().tabs[rb.id].wakeAdoptId, undefined);
 });
+
+test("updateTab with a live patch updates the tab and its live state in one store update", () => {
+  reset();
+  const w = S().createWindow({ url: "a.com" });
+  const id = model.activeTabId(S(), w);
+  let updates = 0;
+  const stop = useBrowser.subscribe(() => updates++);
+  S().updateTab(id, { title: "A" }, { isLoading: true, progress: 0.5 });
+  assert.equal(updates, 1);
+  assert.equal(S().tabs[id].title, "A");
+  assert.equal(S().live[id].isLoading, true);
+  S().updateTab(id, { title: "A" }, { isLoading: true });
+  assert.equal(updates, 1, "nothing changed, no update");
+  S().updateTab(id, { title: "A" }, { isLoading: false });
+  assert.equal(updates, 2, "a live-only change still updates");
+  const tab = S().tabs[id];
+  S().updateTab(id, { title: "B" });
+  assert.notEqual(S().tabs[id], tab);
+  assert.equal(S().live[id].isLoading, false);
+  stop();
+});
