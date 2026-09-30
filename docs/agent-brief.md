@@ -124,7 +124,7 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
     For the New Tab intro, launch with `NETNYAHOO_SHADERS_FORCE_KEY=1` (it only plays in a key window).
   - The user's screen may be locked: screen captures then fail or deliver no frames. Fall back to
     `nn.shell.devSnapshotWindow(windowId, path)` (the window's layers at 2x; Metal views render
-    blank), `globalThis.expo.modules.NetnyahooAreaLight.debugSnapshot(dir)` (every Metal view,
+    blank; text opacity is applied twice, so a label at α reads 1 − (1 − α)², don't match colours on it), `globalThis.expo.modules.NetnyahooAreaLight.debugSnapshot(dir)` (every Metal view,
     offscreen, with its frame), the accessibility tree and store state, and list "needs visual
     check" items in your report.
   - Ready-made helpers (Node 22, no deps) in the scratchpad folder below: `cdp.mjs <expr> [pageIndex]`
