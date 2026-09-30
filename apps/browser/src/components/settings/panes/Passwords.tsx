@@ -92,6 +92,10 @@ export function PasswordsPane({ profileId: initial }: { profileId?: string | nul
         <Row title="Import passwords" description={importStatus || "From a CSV exported by Chrome, Safari, Firefox, 1Password, Bitwarden…"}>
           <Button title="Import CSV…" onPress={() => void importCsv()} />
         </Row>
+        <Row
+          title="Password manager apps"
+          description="1Password, Bitwarden, KeePassXC and Proton Pass extensions connect to their Mac apps. For 1Password, add Netnyahoo once in its Settings › Browser › Add Browser."
+        />
       </Group>
 
       {!unlocked ? (

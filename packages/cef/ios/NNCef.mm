@@ -4,6 +4,7 @@
 #import "NNChromeUI.h"
 #import "NNContentBlocker.h"
 #import "NNExtensionsInternal.h"
+#import "NNNativeMessaging.h"
 #import "NNPopupWindow.h"
 #import "NNSiteSettings.h"
 #import "NNWindowHost.h"
@@ -735,6 +736,7 @@ NSView *ParkingView() {
   NSString *root = AppSupportRoot();
   [[NSFileManager defaultManager] createDirectoryAtPath:ProfilePath(@"") withIntermediateDirectories:YES attributes:nil error:nil];
   CefString(&settings.root_cache_path) = root.UTF8String;
+  nn::nativemessaging::SyncHosts(root);
   CefString(&settings.cache_path) = ProfilePath(@"").UTF8String;
   CefString(&settings.log_file) = [root stringByAppendingPathComponent:@"debug.log"].UTF8String;
   CefString(&settings.accept_language_list) = AcceptLanguages();
@@ -755,6 +757,14 @@ NSView *ParkingView() {
                                                   object:nil
                                                    queue:nil
                                               usingBlock:^(NSNotification *) { [NNCef shutdown]; }];
+  // A password manager installed while we run connects once the user comes back to us.
+  static dispatch_queue_t syncQueue = dispatch_queue_create("netnyahoo.native-messaging", DISPATCH_QUEUE_SERIAL);
+  [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidBecomeActiveNotification
+                                                  object:nil
+                                                   queue:nil
+                                              usingBlock:^(NSNotification *) {
+                                                dispatch_async(syncQueue, ^{ nn::nativemessaging::SyncHosts(root); });
+                                              }];
   return YES;
 }
 
