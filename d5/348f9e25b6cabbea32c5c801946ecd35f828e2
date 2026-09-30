@@ -1,0 +1,19 @@
+packages/cef/scripts/ubol.sh
+  s_631b13a766b697::t_a82447acd02bd5 12-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d5348f9e25b6cabbea32c5c801946ecd35f828e2",
+  "prompts": {},
+  "sessions": {
+    "s_631b13a766b697": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ef88-d29f-71c0-bccb-8ac6c46b7bc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
