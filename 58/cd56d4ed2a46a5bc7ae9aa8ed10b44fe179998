@@ -1,0 +1,46 @@
+packages/cef/ios/NNClient.h
+  s_9c356f9574d31c::t_6ea7f1abe938d3 186-188,190-191,193-195
+  s_9c356f9574d31c::t_e6ab7484448b5f 192
+packages/cef/ios/NNBrowserView.mm
+  s_9c356f9574d31c::t_0143dc6f33d6c5 492-493
+apps/browser/src/lib/chromeTabs.ts
+  s_9c356f9574d31c::t_2597e0a37f7ddc 103-107
+  s_9c356f9574d31c::t_6a35460a25d4da 5
+apps/browser/src/components/media/pip.ts
+  s_9c356f9574d31c::t_0a1e7308a30b38 83-84
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_e6ab7484448b5f 552,555
+  s_9c356f9574d31c::t_96e7f70eeb11a5 518-519,522-537,540-547,551,553-554,558-581,762
+  s_9c356f9574d31c::t_40bacd3acedf55 45-47
+  s_9c356f9574d31c::t_e93158e26fd1dd 759-761
+apps/browser/src/components/layout/pageState.ts
+  s_9c356f9574d31c::t_dfa8bdc2da160a 3,5-6,87-88,90-96
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_9572cadcf56d2c 586
+packages/cef/ios/NNChromeWindow.mm
+  s_9c356f9574d31c::t_40bacd3acedf55 648-651,653-663
+  s_9c356f9574d31c::t_7771b86c597961 80,100-109,402-405
+  s_9c356f9574d31c::t_a05a07a6dd35eb 406-407
+packages/shell/ios/Windows.swift
+  s_9c356f9574d31c::t_baf616c17abcec 96-99,218-222,226-227,230-233,237-238,241-246,248-249
+  s_9c356f9574d31c::t_8b94def7a34729 217,228-229,234-236,239-240,247
+  s_9c356f9574d31c::t_701127c0eb726d 250
+packages/cef/ios/NNWindowHost.h
+  s_9c356f9574d31c::t_90afae6bd5c4ab 47-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "58cd56d4ed2a46a5bc7ae9aa8ed10b44fe179998",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
