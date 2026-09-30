@@ -49,5 +49,22 @@ despite all events matching and passing through the tracker. Its failing movemen
 retained, with trace evidence. Native input forwarding needs further validation; do not report
 that probe as passed. Real web-content scrolling and the tracker ownership checks do pass.
 
-The installed version and a physical-trackpad check of the current release remain necessary.
-No additional production gesture fix was made during this audit.
+## Routing fix verified after the audit
+
+Recognition previously depended on constructing an NSEvent for the current profile window. If that
+copy failed, it recognized against the stale source window and found no swipe target. Recognition
+now resolves the moving root's current window and converts the pointer location directly, retaining
+the original deltas, phases and timestamps. Event copying is used only for native scroll forwarding.
+
+The tenth hidden-instance regression injects copy failure: the legacy route misses the reverse
+(`noTarget`, profile stays Work), then the fixed route immediately returns to Personal with the same
+inputs and failure. All ten regressions, the Debug build, workspace typecheck and 11 unit tests pass.
+A fresh sparse replay passes all 1,325 decoded events, all 24 releases and eight profile commits
+through the app monitor. A second run captured the isolated app at 30 fps; extracted frames show
+the first forward landing and repeated reversals, with 523 encoded frames over 18.07 seconds.
+Evidence is in `output/profile-swipe/replay-audit/routing-fix-*.json` and
+`output/profile-swipe/routing-fix-capture/`.
+
+This establishes the copy-failure routing fix; it does not establish that copy failure caused the
+owner's original recording. Physical input in the installed app still needs confirmation after the
+next release. The vertical probe limitation above remains unchanged.

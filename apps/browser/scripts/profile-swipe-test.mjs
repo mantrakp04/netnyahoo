@@ -218,6 +218,31 @@ try {
       }
     });
   }
+  await test("stale source window reverses even when the retargeted event copy fails", async () => {
+    await reset();
+    const source = (await nativeWindow()).window;
+    const first = await simulate(gesture(-1), source);
+    await waitProfile("work");
+    const failingCopy = (extra) => gesture(1).map((s) => ({ ...s, retargetCopyFailure: true, ...extra }));
+    const legacy = await simulate(failingCopy({ legacyRecognition: true }), source);
+    assert.notEqual(legacy.where.targetWindow, legacy.where.sourceWindow, "the source window must be stale after the switch");
+    await sleep(600);
+    const legacyProfile = await profile();
+    const legacyBegin = legacy.acks.find((a) => a.diag === "begin");
+    evidence.baselineExpectedFailure = {
+      profile: legacyProfile,
+      beginWindow: legacyBegin?.window,
+      target: legacyBegin?.target,
+      targetMisses: legacyBegin?.targets?.map((t) => t.miss),
+      reject: legacy.acks.find((a) => a.diag === "reject")?.reason,
+    };
+    assert.equal(legacyProfile, "work", "legacy clone-first recognition should miss the reverse when the copy fails");
+    const reverse = await simulate(failingCopy({}), source);
+    await waitProfile("default");
+    const begin = reverse.acks.find((a) => a.diag === "begin");
+    assert.equal(begin?.window, reverse.where.targetWindow, "recognition should run in the shown profile's window");
+    return { source, first, legacy, reverse };
+  });
   await test("web page horizontal and vertical scrolling retain renderer ownership", async () => {
     await reset();
     const url = `http://127.0.0.1:${server.address().port}/scroll-fixture`;
