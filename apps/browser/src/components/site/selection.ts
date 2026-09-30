@@ -6,6 +6,8 @@ import { webviews } from "../../lib/webviews";
 import { useBrowser } from "../../store/browser";
 import { defaultSearchEngine } from "../../store/settings";
 import { showToast } from "../layout/splitActions";
+import { openModeFor } from "../bookmarks/actions";
+import { openFromPage } from "../layout/openFromPage";
 
 export type PageSelection = { text: string; rect: { x: number; y: number; width: number; height: number } };
 
@@ -28,13 +30,18 @@ export function startSelectionTools() {
   return useBrowser.subscribe((s, prev) => s.settings !== prev.settings && sync());
 }
 
-export function searchSelection(tabId: string, text: string) {
+export type ClickModifiers = { metaKey?: boolean; shiftKey?: boolean; altKey?: boolean; middle?: boolean };
+
+// A new tab next to the page, or where the keys held say (Chrome's): ⌘ behind, ⇧⌘ in front, ⇧ a new window.
+export function searchSelection(tabId: string, text: string, modifiers: ClickModifiers = {}) {
   const tab = store().tabs[tabId];
   const query = text.replace(/\s+/g, " ").trim();
   if (!tab || !query) return;
   setPageSelection(tabId, null);
   const url = searchUrl(defaultSearchEngine(store().settings), query);
-  store().newTab(tab.windowId, { url, openerId: tabId, profileId: tab.profileId });
+  const mode = openModeFor(modifiers);
+  const disposition = mode === "current" || mode === "incognito" ? "foreground" : mode;
+  openFromPage({ url, disposition }, { windowId: tab.windowId, profileId: tab.profileId, tabId });
 }
 
 const SELECTION_CONTEXT = `(() => {

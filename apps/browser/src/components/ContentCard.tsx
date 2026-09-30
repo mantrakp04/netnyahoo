@@ -11,7 +11,7 @@ import { noteDiscarded, noteGone, noteReady } from "../lib/tabLifecycle";
 import { webviewRef, webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
 import { useActiveTabId, useSidebarOpen, useWindowId } from "../store/hooks";
-import { engineProfile, navigationTo } from "../store/model";
+import { engineProfile, wake } from "../store/model";
 import { splitOf } from "../store/splits";
 import type { SplitView } from "../store/types";
 import { BookmarksBar } from "./bookmarks/BookmarksBar";
@@ -83,7 +83,7 @@ export function ContentCard() {
     const s = useBrowser.getState();
     for (const id of Object.keys(panes)) {
       const t = s.tabs[id];
-      if (t?.url && !t.navigation && !t.adoptId) s.updateTab(id, { navigation: navigationTo(t.url) });
+      if (t?.url && !t.navigation && !t.adoptId) s.updateTab(id, wake(t));
     }
   }, [panes]);
 
@@ -408,8 +408,8 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
       // Engine close callbacks also fire during quit; don't remove saved-session tabs then.
       onWindowClose={() => !isQuitting() && store().closeTab(tabId)}
       onNotification={(notification) => showWebNotification(tabId, notification)}
-      onCommand={({ command, text }) => {
-        if (command === "search") searchSelection(tabId, text);
+      onCommand={({ command, text, modifiers }) => {
+        if (command === "search") searchSelection(tabId, text, modifiers);
         else if (command === "copyLinkToHighlight") void copyLinkToSelection(tabId);
         else if (command === "escape") closeSmallYahuOnEscape(tabId);
       }}

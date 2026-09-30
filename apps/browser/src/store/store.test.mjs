@@ -29,7 +29,8 @@ test("window lifecycle: new tabs, last tab closes window, reopen", () => {
   S().reopenClosed();
   const w2 = S().windowOrder.at(-1);
   assert.deepEqual(view(w2), ["https://a.com"]);
-  assert.ok(S().tabs[model.activeTabId(S(), w2)].navigation, "restored active tab loads");
+  const shown = S().tabs[model.activeTabId(S(), w2)];
+  assert.ok(shown.navigation || shown.adoptId, "restored active tab loads");
 });
 
 test("closeTabs keeps a New Tab page, pins sort first, moveTab within section", () => {
@@ -233,4 +234,25 @@ test("new tab position setting and opener placement", () => {
   S().updateSettings({ newTabPosition: "top" });
   S().newTab(w, { url: "top.com" });
   assert.equal(view(w)[0], "https://top.com");
+});
+
+test("a reopened window's tabs wake with their back/forward list", () => {
+  reset();
+  S().createWindow({ url: "keep.com" });
+  const w = S().createWindow({ url: "a.com" });
+  const [a] = S().windows[w].tabIds;
+  const b = S().newTab(w, { url: "b.com", background: true });
+  const lazy = S().newTab(w, { url: "c.com", background: true, snapshot: { url: "https://c.com" } });
+  S().updateTab(lazy, { navigation: null });
+  S().closeWindow(w);
+  S().reopenClosedWindow();
+  const w2 = S().windowOrder.at(-1);
+  const [ra, rb, rc] = S().windows[w2].tabIds.map((id) => S().tabs[id]);
+  assert.equal(ra.adoptId, `restore:${a}`, "the shown tab loads with its history");
+  assert.equal(rb.restoreFrom, b, "the others keep it until they wake");
+  assert.equal(rb.navigation, null);
+  assert.equal(rc.restoreFrom, undefined, "a tab that never loaded has none");
+  S().activate(rb.id);
+  assert.equal(S().tabs[rb.id].adoptId, `restore:${b}`);
+  assert.equal(S().tabs[rb.id].restoreFrom, undefined);
 });

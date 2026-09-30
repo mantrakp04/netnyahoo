@@ -7,7 +7,7 @@ import { useMedia } from "../components/media/state";
 import { isInternalTab } from "../components/pages";
 import { openSettings } from "../components/settings/windows";
 import { useBrowser, type BrowserState } from "../store/browser";
-import { activeTabId, engineProfile, isIncognitoProfile, navigationTo } from "../store/model";
+import { activeTabId, engineProfile, isIncognitoProfile, wake } from "../store/model";
 import { splitOf } from "../store/splits";
 import { webviews } from "./webviews";
 
@@ -330,7 +330,7 @@ export function reloadRecentTabs(sys: SystemState) {
   ids.forEach((id, i) =>
     setTimeout(() => {
       const t = store().tabs[id];
-      if (t?.url && !t.navigation && !t.adoptId) store().updateTab(id, { navigation: navigationTo(t.url) });
+      if (t?.url && !t.navigation && !t.adoptId) store().updateTab(id, wake(t));
     }, 2000 * (i + 1)),
   );
   return ids;

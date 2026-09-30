@@ -15,7 +15,7 @@ const VERSION = 2;
 
 type Doc = { name: string; sources: (s: BrowserState) => unknown[]; serialize: (s: BrowserState) => unknown };
 
-const persistedTab = ({ navigation: _n, adoptId: _a, ...t }: Tab) => t;
+const persistedTab = ({ navigation: _n, adoptId: _a, restoreFrom: _r, ...t }: Tab) => t;
 const publicTab = (t: { profileId: string }) => !isIncognitoProfile(t.profileId);
 
 const DOCS: Doc[] = [

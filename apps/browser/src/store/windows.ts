@@ -157,7 +157,8 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
         kind: "window",
         id: newId("cw"),
         window: { profileId: w.profileId, sidebarOpen: w.sidebarOpen, frame: w.frame },
-        tabs: tabs.map((t) => ({ ...snapshotTab(t), active: active.has(t.id) })),
+        // A tab with a page keeps its id: the engine holds its back/forward list under it (NoteClosedTabState).
+        tabs: tabs.map((t) => ({ ...snapshotTab(t), active: active.has(t.id), ...(t.url && (t.navigation || t.adoptId) ? { tabId: t.id } : {}) })),
         groups: Object.values(s.groups)
           .filter((g) => g.windowId === id && !g.pinned)
           .map(({ tabIds: members, windowId: _, ...g }) => ({ ...g, tabIndexes: members.map((t) => tabIds.indexOf(t)) })),
@@ -382,8 +383,9 @@ function restoreWindow(s: BrowserState, entry: ClosedWindow): BrowserState {
   const tabs = { ...s.tabs };
   const live = { ...s.live };
   const ids: string[] = [];
-  for (const { active, ...snap } of entry.tabs) {
+  for (const { active, tabId, ...snap } of entry.tabs) {
     const t = makeTab(id, profileOk(snap.profileId), "", { ...snap, profileId: profileOk(snap.profileId) });
+    if (tabId && snap.url) t.restoreFrom = tabId;
     tabs[t.id] = t;
     live[t.id] = IDLE_LIVE;
     ids.push(t.id);

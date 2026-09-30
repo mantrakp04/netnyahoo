@@ -45,7 +45,12 @@ export type BlockedPopup = { id: string; url: string; origin: string };
 
 export type FindResult = { count: number; active: number; final: boolean };
 // "escape": an Esc the page left alone, outside a text field (Small Yahu closes on it).
-export type PageCommand = { command: "search" | "ask" | "copyLinkToHighlight" | "escape"; text: string };
+// `modifiers`: the keys held when the menu item was picked ("search").
+export type PageCommand = {
+  command: "search" | "ask" | "copyLinkToHighlight" | "escape";
+  text: string;
+  modifiers?: { metaKey?: boolean; shiftKey?: boolean; altKey?: boolean; middle?: boolean };
+};
 export type LoadError = { url: string; code: number; text: string };
 export type NavigationEntry = { url: string; title: string; current: boolean };
 export type CrashInfo = { status: number; reason: "abnormal" | "killed" | "crashed" | "oom" | "launchFailed" | "integrity" | "unknown"; code: number };

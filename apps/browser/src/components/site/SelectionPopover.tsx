@@ -5,7 +5,7 @@ import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { defaultSearchEngine } from "../../store/settings";
 import { useHover } from "../primitives";
-import { searchSelection, setPageSelection, usePageSelection, type PageSelection } from "./selection";
+import { searchSelection, setPageSelection, usePageSelection, type ClickModifiers, type PageSelection } from "./selection";
 
 const HEIGHT = 32;
 const GAP = 6;
@@ -87,7 +87,7 @@ function SearchButton({ tabId, text }: { tabId: string; text: string }) {
   const quoted = text.length > 40 ? `${text.slice(0, 40).trimEnd()}…` : text;
   return (
     <View {...hoverProps} tooltip={`Search ${engine} for “${quoted.replace(/\s+/g, " ")}”`}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Search ${engine}`} onPress={() => searchSelection(tabId, text)}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Search ${engine}`} onPress={(e) => searchSelection(tabId, text, e.nativeEvent as unknown as ClickModifiers)}>
         {({ pressed }) => (
           <View
             style={{

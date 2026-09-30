@@ -42,6 +42,8 @@ export type Tab = {
   navigation: { url: string; seq: number; userInitiated?: boolean } | null;
   adoptId?: string;
   openerId: string | null;
+  // A reopened window's tab that hasn't loaded yet: the closed tab whose back/forward list it wakes with.
+  restoreFrom?: string;
   liveItem?: { folderId: string; itemId: string };
   unloaded?: boolean;
   createdAt: number;
@@ -125,7 +127,7 @@ export type ClosedWindow = {
   kind: "window";
   id: string;
   window: Pick<BrowserWindow, "profileId" | "sidebarOpen" | "frame">;
-  tabs: (TabSnapshot & { active: boolean })[];
+  tabs: (TabSnapshot & { active: boolean; tabId?: string })[];
   groups: (Omit<TabGroup, "tabIds" | "windowId"> & { tabIndexes: number[] })[];
   closedAt: number;
 };

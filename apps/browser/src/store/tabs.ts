@@ -14,6 +14,7 @@ import {
   pinnedFirst,
   snapshotTab,
   viewTabIds,
+  wake,
   without,
 } from "./model";
 import { forgetOpeners, insertionIndex, openerSuccessor, switchKeepsOpeners } from "./openers";
@@ -72,7 +73,7 @@ export function activated(s: BrowserState, id: string): Partial<BrowserState> {
   if (!tab || !w) return {};
   const lazy = !!tab.url && !tab.navigation && !tab.adoptId;
   const { unloaded: _, ...rest } = tab;
-  const nextTab: Tab = { ...rest, lastActiveAt: Date.now(), ...(lazy ? { navigation: navigationTo(tab.url) } : {}) };
+  const nextTab: Tab = { ...rest, lastActiveAt: Date.now(), ...(lazy ? wake(tab) : {}) };
   const window: BrowserWindow = {
     ...w,
     profileId: w.incognito ? w.profileId : tab.profileId,

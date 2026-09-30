@@ -58,14 +58,55 @@ NSString *SelectionLabel(NSString *text) {
   return [[collapsed substringToIndex:end] stringByAppendingString:@"…"];
 }
 
-// ⌥⇧-click (ours, read from the keys still held: Chrome makes it a new window) or ⌥⌘-click (Chrome's own).
+NSEventModifierFlags gMenuPickFlags = 0;
+CFTimeInterval gMenuPickAt = 0;
+
+void NoteMenuModifiers(NSEventModifierFlags flags) {
+  gMenuPickFlags = flags;
+  gMenuPickAt = CACurrentMediaTime();
+}
+
+// The keys held for the last click or key press, taken from the event: by the time Chrome asks where a link
+// goes (OnBeforePopup, OnOpenURLFromTab), ⌥ may already be up.
+NSEventModifierFlags gInputFlags = 0;
+CFTimeInterval gInputAt = 0;
+
+void WatchInputModifiers() {
+  static id monitor = nil;
+  if (monitor) return;
+  monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp |
+                                                          NSEventMaskOtherMouseUp | NSEventMaskKeyDown
+                                                  handler:^NSEvent *(NSEvent *event) {
+                                                    gInputFlags = event.modifierFlags;
+                                                    gInputAt = CACurrentMediaTime();
+                                                    return event;
+                                                  }];
+}
+
+NSEventModifierFlags InputModifiers() {
+  NSEventModifierFlags flags = CACurrentMediaTime() - gInputAt < 1 ? gInputFlags : NSEvent.modifierFlags;
+  return flags & NSEventModifierFlagDeviceIndependentFlagsMask;
+}
+
+// ⌥⇧-click (ours: Chrome makes it a new window) or ⌥⌘-click (Chrome's own).
 bool IsSplitClick(cef_window_open_disposition_t d) {
 #if CEF_API_ADDED(14800)
   if (d == CEF_WOD_NEW_SPLIT_VIEW) return true;
 #endif
-  NSEventModifierFlags held = NSEvent.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+  NSEventModifierFlags held = InputModifiers();
   return d == CEF_WOD_NEW_WINDOW && (held & NSEventModifierFlagShift) && (held & NSEventModifierFlagOption) &&
          !(held & NSEventModifierFlagCommand);
+}
+
+// The keys held when a menu item was picked, for where its page opens (Chrome's DispositionFromEventFlags). CEF
+// hands Chrome's page menu commands no event flags, so they come from the event that picked the item.
+NSDictionary *MenuModifiers() {
+  NSEventModifierFlags held = CACurrentMediaTime() - gMenuPickAt < 1 ? gMenuPickFlags : NSEvent.modifierFlags;
+  return @{
+    @"metaKey" : @((held & NSEventModifierFlagCommand) != 0),
+    @"shiftKey" : @((held & NSEventModifierFlagShift) != 0),
+    @"altKey" : @((held & NSEventModifierFlagOption) != 0),
+  };
 }
 
 NSString *DispositionName(cef_window_open_disposition_t d) {
@@ -143,6 +184,9 @@ void WatchMenuKeys() {
                                                 usingBlock:^(NSNotification *) {
                                                   NSEvent *event = NSApp.currentEvent;
                                                   if (event.type == NSEventTypeKeyDown) gMenuKeyTime = event.timestamp;
+                                                  // A pick with the mouse or Return, not a key equivalent.
+                                                  if (event.type != NSEventTypeKeyDown || event.keyCode == 36 || event.keyCode == 76)
+                                                    NoteMenuModifiers(event.modifierFlags);
                                                 }];
   });
 }
@@ -245,6 +289,7 @@ std::map<std::string, PendingPopup> &Popups() {
 
 Client::Client(NNBrowserView *view, NSString *profile) : view_(view), profile_([profile copy] ?: @"") {
   WatchMenuKeys();
+  WatchInputModifiers();
   external::WatchUserInput();
 }
 
@@ -1114,7 +1159,13 @@ bool Client::RunContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
   NSString *pick = [NSString stringWithContentsOfFile:pickPath encoding:NSUTF8StringEncoding error:nil];
   [NSFileManager.defaultManager removeItemAtPath:pickPath error:nil];
   pick = [pick stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-  if (int id = pick.length ? FindMenuItem(model, pick) : 0) callback->Continue(id, EVENTFLAG_NONE);
+  // "<label>\t<cef_event_flags_t>" picks it as if with those keys held.
+  NSArray<NSString *> *parts = [pick componentsSeparatedByString:@"\t"];
+  cef_event_flags_t flags = parts.count > 1 ? (cef_event_flags_t)parts[1].intValue : EVENTFLAG_NONE;
+  NoteMenuModifiers((flags & EVENTFLAG_COMMAND_DOWN ? NSEventModifierFlagCommand : 0) |
+                    (flags & EVENTFLAG_SHIFT_DOWN ? NSEventModifierFlagShift : 0) |
+                    (flags & EVENTFLAG_ALT_DOWN ? NSEventModifierFlagOption : 0));
+  if (int id = pick.length ? FindMenuItem(model, parts[0]) : 0) callback->Continue(id, flags);
   else callback->Cancel();
   return true;
 }
@@ -1171,7 +1222,8 @@ bool Client::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFr
       [NSPasteboard.generalPasteboard setString:src forType:NSPasteboardTypeString];
       return true;
     case kSearchSelection:
-      Emit(@"command", @{@"command" : @"search", @"text" : ToNS(params->GetSelectionText())});
+      Emit(@"command", @{@"command" : @"search", @"text" : ToNS(params->GetSelectionText()),
+                         @"modifiers" : MenuModifiers()});
       return true;
     case kAskSelection:
       Emit(@"command", @{@"command" : @"ask", @"text" : ToNS(params->GetSelectionText())});
