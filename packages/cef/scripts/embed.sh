@@ -106,6 +106,10 @@ if [ -n "${UNLOCALIZED_RESOURCES_FOLDER_PATH:-}" ]; then
   if [ -f "$pkg/vendor/ubol/ext/manifest.json" ]; then
     mkdir -p "$extensions"
     rsync -a --delete "$pkg/vendor/ubol/ext/" "$extensions/ublock-lite/"
+    # What the app compares with its writable copy's stamp at launch (NNContentBlocker.mm), so it needn't walk
+    # the thousand files itself.
+    (cd "$extensions/ublock-lite" && find . -type f ! -path './_metadata/*' -print0 | LC_ALL=C sort -z \
+      | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1) > "$extensions/ublock-lite.fingerprint"
   else
     echo "warning: no uBlock Origin Lite in vendor/ubol (run packages/cef/scripts/setup.sh); ad blocking will be off" >&2
   fi

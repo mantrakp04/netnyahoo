@@ -827,6 +827,7 @@ NSView *ParkingView() {
     return NO;
   }
   gStarted = YES;
+  blocker::StartPreparing();
   zoom::InstallScrollMonitor();
   [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillTerminateNotification
                                                   object:nil

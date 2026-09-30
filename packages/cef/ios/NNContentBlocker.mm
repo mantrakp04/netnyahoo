@@ -206,7 +206,13 @@ void Changed(void (^completion)(void)) {
   });
 }
 
+// The fingerprint embed.sh wrote next to the bundled copy; builds from before it walk the copy instead.
 NSString *Fingerprint(NSString *dir) {
+  NSString *stamped = [NSString stringWithContentsOfFile:[dir stringByAppendingString:@".fingerprint"]
+                                                encoding:NSUTF8StringEncoding
+                                                   error:nil];
+  stamped = [stamped stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+  if (stamped.length) return stamped;
   NSData *manifest = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"manifest.json"]];
   if (!manifest) return nil;
   unsigned char digest[CC_SHA256_DIGEST_LENGTH];
@@ -283,15 +289,29 @@ NSString *WritableCopy(NSString *bundled) {
 
 namespace nn::blocker {
 
-NSString *ExtensionPath() {
-  static NSString *path;
+namespace {
+NSString *gExtensionPath;
+dispatch_group_t Preparing() {
+  static dispatch_group_t group = dispatch_group_create();
+  return group;
+}
+}
+
+void StartPreparing() {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
-    NSString *bundled = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"Extensions/ublock-lite"];
-    if ([NSFileManager.defaultManager fileExistsAtPath:[bundled stringByAppendingPathComponent:@"manifest.json"]])
-      path = WritableCopy(bundled);
+    dispatch_group_async(Preparing(), dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      NSString *bundled = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"Extensions/ublock-lite"];
+      if ([NSFileManager.defaultManager fileExistsAtPath:[bundled stringByAppendingPathComponent:@"manifest.json"]])
+        gExtensionPath = WritableCopy(bundled);
+    });
   });
-  return path;
+}
+
+NSString *ExtensionPath() {
+  StartPreparing();
+  dispatch_group_wait(Preparing(), DISPATCH_TIME_FOREVER);
+  return gExtensionPath;
 }
 
 NSString *ExtensionId() { return @"bnjeokpoejhioagiokhkhmdogkhbnbki"; }
