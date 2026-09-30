@@ -288,10 +288,18 @@ try {
   const binary = `${app}/Contents/MacOS/Netnyahoo`;
   const pids = () => spawnSync("pgrep", ["-f", `^${binary}`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
   const before = new Set(pids());
+  const listener = () => spawnSync("lsof", ["-t", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean);
+  assert.equal(listener().length, 0, "the isolated debugging port must be free");
   execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`,
     "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app]);
-  for (let i = 0; i < 60 && !pid; i++) { await sleep(500); pid = pids().find((p) => !before.has(p)); }
-  assert.ok(pid, "isolated app should start");
+  for (let i = 0; i < 60 && !pid; i++) {
+    await sleep(500);
+    const candidate = listener()[0];
+    if (!candidate) continue;
+    assert.ok(!before.has(candidate) && pids().includes(candidate), "the port listener must belong to the newly launched isolated app");
+    pid = candidate;
+  }
+  assert.ok(pid, "the isolated debugging port should start");
   evidence.pid = pid;
   let ready = false;
   for (let i = 0; i < 40 && !ready; i++) {

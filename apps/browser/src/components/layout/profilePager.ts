@@ -17,7 +17,6 @@ function restPages(current: string | null, order: string[]): PagerPage[] {
 }
 
 const SETTLE = { ...springParams(PAGING_SETTLE_RESPONSE, 1), restDisplacementThreshold: 0.003, restSpeedThreshold: 0.1 };
-const SWITCH_NEAR = 0.03;
 const LINGER_MS = 150;
 const WEB_PAGE_WARMUP_MS = 60;
 
@@ -34,16 +33,25 @@ const WHEEL_COOLDOWN_MS = 250;
 
 type Drag = { start: number; lo: number; hi: number; home: number; detent: number };
 
+// Work that needs the exact position, waiting for a stopped native spring to report it.
+type Pending =
+  | { kind: "drag"; track: SwipeEvent | null; release: { event: SwipeEvent; cancelled: boolean } | null }
+  | { kind: "switch"; profileId: string };
+
 class ProfilePager {
-  readonly pos = new Animated.Value(0);
+  // Springs run on the native driver, so settling keeps its frames while JS is busy.
+  readonly pos = new Animated.Value(0, { useNativeDriver: true });
   readonly state = create<{ pages: PagerPage[] | null }>(() => ({ pages: null }));
-  private value = 0;
+  // The native value as last written or snapshotted; null while a stop snapshot is pending.
+  private model: number | null = 0;
+  private animating = false;
+  private pending: Pending | null = null;
+  private shiftWaiting = false;
   private shift = 0;
   private shiftedWrite: number | null = null;
   private afterShift: (() => void)[] = [];
   private drag: Drag | null = null;
   private target: string | null = null;
-  private settling: number | null = null;
   private generation = 0;
   private linger: ReturnType<typeof setTimeout> | undefined;
   private surfaces = 0;
@@ -53,10 +61,6 @@ class ProfilePager {
   private wheelState = { sum: 0, last: 0, trigger: 0 };
 
   constructor(readonly windowId: string) {
-    this.pos.addListener(({ value }) => {
-      this.value = value;
-      if (this.target && this.settling !== null && Math.abs(value - this.settling) < SWITCH_NEAR) this.finish();
-    });
     this.unsubscribe = useBrowser.subscribe((s, prev) => {
       const w = s.windows[windowId];
       if (!w) return this.dispose();
@@ -80,10 +84,15 @@ class ProfilePager {
   beginDrag() {
     const current = this.current();
     if (!current) return;
-    this.halt();
+    this.drag = null;
     if (this.target && !this.fits(this.around(current))) this.finish();
     this.target = null;
-    const home = this.current()!;
+    this.stop({ kind: "drag", track: null, release: null });
+  }
+
+  private startDrag() {
+    const home = this.current();
+    if (!home) return;
     this.arrange(home, this.around(home));
     const pages = this.pages();
     const slot = (id: string | undefined) => pages.find((p) => p.id === id)?.slot;
@@ -94,6 +103,8 @@ class ProfilePager {
   }
 
   track(e: SwipeEvent) {
+    // Distances are cumulative, so the latest event is the whole gesture so far.
+    if (this.pending?.kind === "drag") return void (this.pending.track = e);
     const d = this.drag;
     if (!d || !e.width) return;
     const x = pagingPosition(d.start, e.distance, e.direction, e.width, d.lo, d.hi);
@@ -107,6 +118,7 @@ class ProfilePager {
   }
 
   release(e: SwipeEvent, cancelled: boolean) {
+    if (this.pending?.kind === "drag") return void (this.pending.release = { event: e, cancelled });
     if (__DEV__) this.lastEvent = { phase: e.phase, distance: e.distance, velocity: e.velocity, width: e.width, at: this.logical() };
     const d = this.drag;
     this.drag = null;
@@ -142,19 +154,26 @@ class ProfilePager {
     const s = useBrowser.getState();
     if (!s.profiles[profileId] || !this.current()) return;
     if (!this.active) return s.switchProfile(this.windowId, profileId);
-    if (profileId === (this.target ?? this.current())) return;
-    this.halt();
+    // Compare against where the pager is headed, including a click still waiting for its snapshot.
+    const pending = this.pending;
+    if (profileId === (pending?.kind === "switch" ? pending.profileId : (this.target ?? this.current()))) return;
     this.drag = null;
     if (this.target) this.finish();
-    const current = this.current()!;
-    if (profileId === current) return this.later(() => this.settle(this.slotOf(current) ?? 0, 0));
+    this.stop({ kind: "switch", profileId });
+  }
+
+  private switchNow(profileId: string) {
+    const s = useBrowser.getState();
+    const current = this.current();
+    if (!s.profiles[profileId] || !current) return;
+    const generation = this.generation;
+    if (profileId === current) return this.later(() => generation === this.generation && this.settle(this.slotOf(current) ?? 0, 0));
     const order = s.profileOrder;
     const side = order.indexOf(profileId) < order.indexOf(current) ? -1 : 1;
-    const generation = this.generation;
     if (showsWebPage(s, this.windowId, profileId)) {
       unstable_batchedUpdates(() => this.arrange(current, [[profileId, side]]));
       this.target = profileId;
-      setTimeout(() => this.target === profileId && this.finish(), WEB_PAGE_WARMUP_MS);
+      setTimeout(() => generation === this.generation && this.target === profileId && this.finish(), WEB_PAGE_WARMUP_MS);
     } else {
       unstable_batchedUpdates(() => {
         this.arrange(current, [[profileId, side]]);
@@ -170,10 +189,13 @@ class ProfilePager {
 
   applyShift() {
     if (!this.shift) return;
-    const to = this.shiftedWrite ?? this.value - this.shift;
+    // Rebasing needs the exact position; it runs once the pending snapshot arrives.
+    if (this.model === null) return void (this.shiftWaiting = true);
+    this.shiftWaiting = false;
+    const to = this.shiftedWrite ?? this.model - this.shift;
     this.shift = 0;
     this.shiftedWrite = null;
-    this.pos.setValue(to);
+    this.setPosition(to);
     const then = this.afterShift;
     this.afterShift = [];
     then.forEach((f) => f());
@@ -241,12 +263,17 @@ class ProfilePager {
   }
 
   private logical() {
-    return this.shiftedWrite ?? this.value - this.shift;
+    return this.shiftedWrite ?? this.model! - this.shift;
   }
 
   private write(x: number) {
     if (this.shift) this.shiftedWrite = x;
-    else this.pos.setValue(x);
+    else this.setPosition(x);
+  }
+
+  private setPosition(x: number) {
+    this.model = x;
+    this.pos.setValue(x);
   }
 
   private later(f: () => void) {
@@ -262,19 +289,22 @@ class ProfilePager {
     this.target = page && page.id !== current ? page.id : null;
     const from = this.logical();
     const v = Math.sign(slot - from) === Math.sign(velocity) ? velocity : 0;
-    this.settling = slot;
     // A settle queued behind a rebase is dropped if a new drag halts it first.
     const generation = this.generation;
     this.later(() => {
       if (generation !== this.generation) return;
-      Animated.spring(this.pos, { toValue: slot, velocity: v, ...SETTLE, useNativeDriver: false }).start(({ finished }) => {
-        if (finished) this.settled();
+      this.animating = true;
+      Animated.spring(this.pos, { toValue: slot, velocity: v, ...SETTLE, useNativeDriver: true }).start(({ finished }) => {
+        if (!finished || generation !== this.generation) return;
+        this.animating = false;
+        this.model = slot;
+        this.settled();
       });
     });
   }
 
+  // The target is committed once the spring has landed.
   private settled() {
-    this.settling = null;
     this.finish();
     clearTimeout(this.linger);
     this.linger = setTimeout(() => this.end(), LINGER_MS);
@@ -293,7 +323,7 @@ class ProfilePager {
   }
 
   private end() {
-    if (this.drag || !this.state.getState().pages) return;
+    if (this.drag || this.pending || !this.state.getState().pages) return;
     const current = this.current();
     const slot = current ? this.slotOf(current) : undefined;
     this.rebase(slot ?? this.logical());
@@ -301,15 +331,41 @@ class ProfilePager {
     if (!this.surfaces) this.applyShift();
   }
 
-  private halt() {
+  // Stops any settle, then runs the work with the exact position: at once when it is known, otherwise
+  // when the native spring reports where it stopped. A newer stop or a reset supersedes this one.
+  private stop(work: Pending) {
     this.generation++;
-    this.settling = null;
     clearTimeout(this.linger);
-    this.pos.stopAnimation();
+    this.pending = work;
+    if (!this.animating && this.model !== null) return this.resume();
+    this.animating = false;
+    this.model = null;
+    const generation = this.generation;
+    this.pos.stopAnimation((value) => {
+      if (generation !== this.generation) return;
+      this.model = value;
+      if (this.shiftWaiting) this.applyShift();
+      this.resume();
+    });
+  }
+
+  private resume() {
+    const work = this.pending;
+    this.pending = null;
+    if (!work) return;
+    if (work.kind === "switch") return this.switchNow(work.profileId);
+    this.startDrag();
+    if (work.track) this.track(work.track);
+    if (work.release) this.release(work.release.event, work.release.cancelled);
   }
 
   private reset(land: boolean) {
-    this.halt();
+    this.generation++;
+    clearTimeout(this.linger);
+    this.pending = null;
+    this.animating = false;
+    this.shiftWaiting = false;
+    this.pos.stopAnimation();
     this.drag = null;
     if (land) this.finish();
     this.target = null;
@@ -317,7 +373,7 @@ class ProfilePager {
     this.shift = 0;
     this.shiftedWrite = null;
     this.state.setState({ pages: null });
-    this.pos.setValue(0);
+    this.setPosition(0);
   }
 
   private dispose() {
@@ -327,7 +383,7 @@ class ProfilePager {
   }
 
   debug() {
-    return { lastEvent: this.lastEvent, pos: this.value, shift: this.shift, target: this.target, dragging: !!this.drag, surfaces: this.surfaces, pages: this.state.getState().pages };
+    return { lastEvent: this.lastEvent, pos: this.model, pending: this.pending?.kind ?? null, animating: this.animating, shift: this.shift, target: this.target, dragging: !!this.drag, surfaces: this.surfaces, pages: this.state.getState().pages };
   }
 }
 

@@ -5,24 +5,106 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+// Ownership of the launched app: parallel runs share one Debug binary, so the owned PID is the
+// single new process of that binary listening on this run's CDP port, and only it is ever killed.
+function parsePort(value) {
+  const n = Number(value);
+  if (!/^\d+$/.test(value) || n < 1 || n > 65535) throw new Error(`--port must be an integer 1..65535, got ${value}`);
+  return n;
+}
+const pidList = (text) => [...new Set(text.split(/\s+/).filter(Boolean).map(Number))].filter((n) => Number.isInteger(n) && n > 0);
+const commandIsBinary = (command, binary) => command === binary || command.startsWith(`${binary} `);
+function listenerPids(port) {
+  const r = spawnSync("lsof", ["-nP", "-t", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8", timeout: 5000 });
+  if (r.error || r.status > 1) throw new Error(`lsof failed for port ${port}: ${r.error ?? r.stderr}`);
+  return pidList(r.stdout);
+}
+// `ps -o lstart= -o command=` line: a 5-token start time, then the full command.
+function parseProcessLine(line) {
+  const m = /^\s*(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.*\S)\s*$/.exec(line);
+  return m ? { started: m[1], command: m[2] } : null;
+}
+function processInfo(pid) {
+  const r = spawnSync("ps", ["-ww", "-p", String(pid), "-o", "lstart=", "-o", "command="], { encoding: "utf8", timeout: 5000 });
+  return r.status === 0 ? parseProcessLine(r.stdout) : null;
+}
+function binaryPids(binary) {
+  const r = spawnSync("ps", ["-ww", "-ax", "-o", "pid=", "-o", "command="], { encoding: "utf8", timeout: 5000 });
+  if (r.status !== 0) throw new Error(`ps failed: ${r.stderr}`);
+  return new Set(r.stdout.split("\n").map((l) => /^\s*(\d+)\s+(.*)$/.exec(l))
+    .filter((m) => m && commandIsBinary(m[2], binary)).map((m) => Number(m[1])));
+}
+// null while nothing listens yet; throws when the port holder cannot be this run's app.
+function ownedCandidate(listeners, before, commandOf, binary) {
+  if (!listeners.length) return null;
+  if (listeners.length !== 1) throw new Error(`port has ${listeners.length} listeners: ${listeners.join(", ")}`);
+  const [pid] = listeners;
+  const command = commandOf(pid) ?? "";
+  if (before.has(pid)) throw new Error(`port listener ${pid} predates the launch`);
+  if (!commandIsBinary(command, binary)) throw new Error(`port listener ${pid} is not ${binary}: ${command}`);
+  return pid;
+}
+const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+
 const args = process.argv.slice(2);
+if (args.includes("--self-test")) {
+  const bin = "/tmp/Netnyahoo.app/Contents/MacOS/Netnyahoo";
+  const cmd = (map) => (pid) => map[pid];
+  assert.equal(parsePort("9474"), 9474);
+  for (const bad of ["0", "65536", "94.5", "-1", "", "9474x", "1e3"]) assert.throws(() => parsePort(bad), /1\.\.65535/, bad);
+  assert.deepEqual(pidList("12\n34\n12\n"), [12, 34]);
+  assert.deepEqual(pidList(""), []);
+  assert.ok(commandIsBinary(bin, bin));
+  assert.ok(commandIsBinary(`${bin} --flag`, bin));
+  assert.ok(!commandIsBinary(`${bin}2`, bin));
+  assert.ok(!commandIsBinary(`/tmp/Netnyahoo.app/Contents/Frameworks/Netnyahoo Helper.app/Contents/MacOS/Netnyahoo Helper`, bin));
+  assert.deepEqual(parseProcessLine(`Wed Sep 30 18:44:18 2026     ${bin} --x\n`), { started: "Wed Sep 30 18:44:18 2026", command: `${bin} --x` });
+  assert.equal(parseProcessLine(""), null);
+  assert.equal(ownedCandidate([], new Set(), cmd({}), bin), null);
+  assert.equal(ownedCandidate([7], new Set([5]), cmd({ 7: bin }), bin), 7);
+  // The failure this guards: another run's instance of the same binary must never become ours.
+  assert.throws(() => ownedCandidate([5], new Set([5]), cmd({ 5: bin }), bin), /predates/);
+  assert.throws(() => ownedCandidate([7], new Set(), cmd({ 7: "/usr/bin/python3 -m http.server" }), bin), /is not/);
+  assert.throws(() => ownedCandidate([7], new Set(), cmd({}), bin), /is not/);
+  assert.throws(() => ownedCandidate([7, 8], new Set(), cmd({ 7: bin, 8: bin }), bin), /2 listeners/);
+  assert.ok(isAlive(process.pid));
+  console.log("PASS self-test");
+  process.exit(0);
+}
 const appArg = args.find((a) => !a.startsWith("--"));
 if (!appArg) {
-  console.error("usage: node profile-swipe-test.mjs <Debug Netnyahoo.app> [--port=9474] [--keep-data] [--stale-window] [--only=<case name substring>]");
+  console.error("usage: node profile-swipe-test.mjs <Debug Netnyahoo.app> [--port=9474] [--keep-data] [--stale-window] [--only=<case name substring>] | --self-test");
   process.exit(2);
 }
 const app = resolve(appArg);
 assert.notEqual(app, "/Applications/Netnyahoo.app", "use an isolated Debug build");
-const port = args.find((a) => a.startsWith("--port="))?.split("=")[1] ?? "9474";
+let port;
+try { port = parsePort(args.find((a) => a.startsWith("--port="))?.slice("--port=".length) ?? "9474"); } catch (error) {
+  console.error(error.message);
+  process.exit(2);
+}
 const keep = args.includes("--keep-data");
 const stale = args.includes("--stale-window");
 const only = args.find((a) => a.startsWith("--only="))?.slice("--only=".length).toLowerCase();
 let matched = 0;
 const data = mkdtempSync(join(tmpdir(), "nn-profile-swipe-"));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const binary = `${app}/Contents/MacOS/Netnyahoo`;
 const evidence = { app, data, stale, cases: [] };
-let pid;
+// { pid, port, binary, command, started } once verified; the only process cleanup may signal.
+let owned;
 let evalId = 0;
+// An Error when the owned app has died (recorded once in evidence.death), else null.
+function ownedDeath() {
+  if (!owned || isAlive(owned.pid)) return null;
+  evidence.death ??= { pid: owned.pid, detectedAt: new Date().toISOString(), alive: false,
+    portListeners: (() => { try { return listenerPids(port); } catch (e) { return String(e); } })() };
+  return Object.assign(new Error(`owned app pid ${owned.pid} died`), { appDied: true });
+}
+function assertOwnedAlive() {
+  const death = ownedDeath();
+  if (death) throw death;
+}
 const server = createServer((req, res) => {
   res.writeHead(200, { "content-type": "text/html" });
   res.end('<!doctype html><title>Swipe scroll fixture</title><body style="margin:0"><div style="width:2600px;height:4000px;background:linear-gradient(120deg,#ffd9dd,#addbff)">Native scroll fixture</div>');
@@ -45,6 +127,7 @@ async function nn(body, timeout = 15000) {
   const id = `swipe-${Date.now()}-${++evalId}`;
   writeFileSync(join(data, "dev-eval.js"), `// ${id}\n${body}`);
   for (let start = Date.now(); Date.now() - start < timeout; await sleep(50)) {
+    assertOwnedAlive();
     let out;
     try { out = JSON.parse(readFileSync(join(data, "dev-eval-result.json"), "utf8")); } catch { continue; }
     if (out.id !== id) continue;
@@ -109,10 +192,36 @@ async function test(name, fn) {
     evidence.cases.push({ name, passed: true, result });
     console.log(`PASS ${name}`);
   } catch (error) {
-    evidence.cases.push({ name, passed: false, error: String(error), ...(error.evidence ? { evidence: error.evidence } : {}),
-      windows: await windows().catch(() => []) });
+    const death = error.appDied ? error : ownedDeath();
+    const failed = { name, passed: false, error: String(error), ...(error.evidence ? { evidence: error.evidence } : {}) };
+    evidence.cases.push(failed);
+    if (!death) failed.windows = await windows().catch((e) => ({ error: String(e) }));
     console.error(`FAIL ${name}: ${error.message}`);
+    // A dead app fails this case with its traces kept, then stops the run.
+    const fatal = death ?? ownedDeath();
+    if (fatal) {
+      failed.appDeath = evidence.death;
+      throw fatal;
+    }
   }
+}
+
+// Same start time and binary means the same process; a reused PID gets a new start time.
+function stillOwned() {
+  const info = processInfo(owned.pid);
+  return info?.started === owned.started && commandIsBinary(info.command, owned.binary) ? info : null;
+}
+async function stopOwned() {
+  if (!stillOwned()) return { signal: null, reason: "owned process already gone or pid reused" };
+  if (!listenerPids(owned.port).includes(owned.pid)) return { signal: null, reason: `pid ${owned.pid} no longer listens on ${owned.port}` };
+  process.kill(owned.pid, "SIGTERM");
+  for (const start = Date.now(); Date.now() - start < 3000; await sleep(100)) {
+    if (!stillOwned()) return { signal: "SIGTERM", exited: true };
+  }
+  // The CDP listener may already be closed mid-shutdown, so start time and command decide here.
+  if (!stillOwned()) return { signal: "SIGTERM", exited: true };
+  process.kill(owned.pid, "SIGKILL");
+  return { signal: "SIGKILL", exited: null };
 }
 
 async function pageEval(expression) {
@@ -138,16 +247,25 @@ async function pageEval(expression) {
 
 try {
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const binary = `${app}/Contents/MacOS/Netnyahoo`;
-  const pids = () => spawnSync("pgrep", ["-f", `^${binary}`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
-  const before = new Set(pids());
+  const occupied = listenerPids(port);
+  if (occupied.length) throw new Error(`CDP port ${port} is already in use by pid ${occupied.join(", ")}; pick a free --port`);
+  const before = binaryPids(binary);
+  evidence.launch = { port, binary, preexistingBinaryPids: [...before] };
   execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`,
     "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app]);
-  for (let i = 0; i < 60 && !pid; i++) { await sleep(500); pid = pids().find((p) => !before.has(p)); }
-  assert.ok(pid, "isolated app should start");
+  for (const start = Date.now(); !owned && Date.now() - start < 30000; await sleep(250)) {
+    let info;
+    const pid = ownedCandidate(listenerPids(port), before, (p) => {
+      info = processInfo(p);
+      return info?.command;
+    }, binary);
+    if (info) owned = { pid, port, binary, ...info };
+  }
+  evidence.owner = owned ?? null;
+  assert.ok(owned, `isolated app should listen on CDP port ${port} within 30s`);
   let ready = false;
   for (let i = 0; i < 40 && !ready; i++) {
-    try { ready = await nn('return !!globalThis.nnSwipe?.sidebar("w1");', 1500); } catch {}
+    try { ready = await nn('return !!globalThis.nnSwipe?.sidebar("w1");', 1500); } catch (error) { if (error.appDied) throw error; }
     if (!ready) await sleep(500);
   }
   assert.ok(ready, "profile swipe dev harness should load; Metro must be running");
@@ -216,7 +334,7 @@ try {
         const p = globalThis.nnPager("w1");
         const snap = () => ({ ...p.debug(), queued: p.afterShift.length, generation: p.generation, profile: nn.store.getState().windows.w1.profileId });
         p.switchTo("work");
-        p.pos.setValue(1);
+        p.write(1);
         p.end();
         const pending = snap();
         p.beginDrag();
@@ -243,6 +361,125 @@ try {
     } finally {
       await reset();
     }
+  });
+  await test("native settle interruption buffers an immediate reverse release", async () => {
+    await reset();
+    const result = await nn(`
+      const p = globalThis.nnPager("w1");
+      p.reset(false);
+      const snap = () => ({ ...p.debug(), profile: nn.store.getState().windows.w1.profileId });
+      const event = (phase, direction, distance, velocity) => ({ phase, direction, distance, velocity, dy: 0, available: true, width: 190 });
+      const commits = [];
+      const unsubscribe = nn.store.subscribe((s, old) => {
+        if (s.windows.w1.profileId !== old.windows.w1.profileId) commits.push(s.windows.w1.profileId);
+      });
+      p.beginDrag();
+      p.track(event("changed", "forward", 130, 0));
+      p.release(event("ended", "forward", 130, 1000), false);
+      return new Promise((resolve) => setTimeout(() => {
+        const before = snap();
+        p.beginDrag();
+        p.track(event("changed", "back", 160, 0));
+        p.release(event("ended", "back", 160, 1000), false);
+        const buffered = snap();
+        setTimeout(() => {
+          const after = snap();
+          unsubscribe();
+          p.reset(false);
+          resolve({ before, buffered, after, commits });
+        }, 800);
+      }, 30));
+    `);
+    try {
+      assert.equal(result.before.profile, "default", "the forward settle should still be interrupted before commit");
+      assert.equal(result.after.profile, "default", "the buffered reverse should settle back to Personal");
+      assert.equal(result.after.animating, false, "the reverse should finish its own settle");
+      assert.deepEqual(result.commits, [], "the interrupted forward settle must never commit Work");
+      return result;
+    } catch (error) { error.evidence = result; throw error; }
+  });
+  await test("a queued native spring completion cannot finish a newer reverse", async () => {
+    await reset();
+    const result = await nn(`
+      const p = globalThis.nnPager("w1");
+      p.reset(false);
+      const snap = () => ({ ...p.debug(), profile: nn.store.getState().windows.w1.profileId });
+      const event = (phase, direction, distance, velocity) => ({ phase, direction, distance, velocity, dy: 0, available: true, width: 190 });
+      const commits = [];
+      const unsubscribe = nn.store.subscribe((s, old) => {
+        if (s.windows.w1.profileId !== old.windows.w1.profileId) commits.push(s.windows.w1.profileId);
+      });
+      p.beginDrag();
+      p.track(event("changed", "forward", 130, 0));
+      p.release(event("ended", "forward", 130, 1000), false);
+      // Yield once so the spring starts on the native display link, then hold its completion in JS's queue.
+      return new Promise((resolve) => setTimeout(() => {
+        const began = performance.now();
+        while (performance.now() - began < 700) {}
+        const blockedMs = performance.now() - began;
+        const held = snap();
+        p.beginDrag();
+        p.track(event("changed", "back", 300, 0));
+        p.release(event("ended", "back", 300, 1000), false);
+        const buffered = snap();
+        setTimeout(() => {
+          const mid = snap();
+          setTimeout(() => {
+            const after = snap();
+            unsubscribe();
+            p.reset(false);
+            resolve({ held, buffered, mid, after, commits, blockedMs });
+          }, 800);
+        }, 50);
+      }, 30));
+    `);
+    try {
+      assert.equal(result.held.profile, "default", "the old completion must still be queued when the new drag starts");
+      assert.equal(result.mid.animating, true, "the old completion must not clear the newer reverse settle");
+      assert.equal(result.after.profile, "default", "the newer reverse should end on Personal");
+      assert.equal(result.after.animating, false, "the newer reverse should complete normally");
+      assert.deepEqual(result.commits, [], "the queued old completion must not commit Work");
+      return result;
+    } catch (error) { error.evidence = result; throw error; }
+  });
+  await test("clicking the current profile cancels a pending profile click", async () => {
+    await reset();
+    await nn('globalThis.nnPager("w1").switchTo("work"); return true;');
+    await waitProfile("work");
+    await sleep(650);
+    try {
+      const result = await nn(`
+        const p = globalThis.nnPager("w1");
+        const snap = () => ({ ...p.debug(), profile: nn.store.getState().windows.w1.profileId });
+        const event = (phase) => ({ phase, direction: "back", distance: 20, velocity: 0, dy: 0, available: true, width: 190 });
+        const commits = [];
+        const unsubscribe = nn.store.subscribe((s, old) => {
+          if (s.windows.w1.profileId !== old.windows.w1.profileId) commits.push(s.windows.w1.profileId);
+        });
+        p.beginDrag();
+        p.track(event("changed"));
+        p.release(event("ended"), false);
+        return new Promise((resolve) => setTimeout(() => {
+          p.switchTo("default");
+          const first = snap();
+          p.switchTo("work");
+          const replacement = snap();
+          setTimeout(() => {
+            const after = snap();
+            unsubscribe();
+            p.reset(false);
+            resolve({ first, replacement, after, commits });
+          }, 800);
+        }, 30));
+      `);
+      try {
+        assert.equal(result.first.pending, "switch", "the first click should wait for a native stop snapshot");
+        assert.equal(result.after.profile, "work", "the newest current-profile click should stay on Work");
+        assert.equal(result.after.animating, false, "the home settle should finish");
+        assert.deepEqual(result.commits, [], "the superseded Personal click must never commit");
+        return result;
+      } catch (error) { error.evidence = result; throw error; }
+    } finally { await reset(); }
   });
   await test("new gesture recovers after a missing end", async () => {
     await reset();
@@ -319,16 +556,36 @@ try {
   await test("web page horizontal and vertical scrolling retain renderer ownership", async () => {
     await reset();
     const url = `http://127.0.0.1:${server.address().port}/scroll-fixture`;
-    await nn(`nn.store.getState().navigate("t1", ${JSON.stringify(url)}); return true;`);
+    const fixtureState = await nn(`
+      nn.store.getState().activate("t1");
+      nn.store.getState().navigate("t1", ${JSON.stringify(url)});
+      const w = nn.store.getState().windows.w1;
+      return { profileId: w.profileId, activeTabId: w.activeTabIds.default };
+    `);
+    try {
+      assert.equal(fixtureState.profileId, "default", "the fixture's profile must be active");
+      assert.equal(fixtureState.activeTabId, "t1", "the fixture tab must own the visible pane");
+    } catch (error) { error.evidence = { fixtureState }; throw error; }
     let loaded = false;
     for (let i = 0; i < 30 && !loaded; i++) {
-      try { loaded = await pageEval('document.readyState === "complete"'); } catch {}
+      try { loaded = await pageEval('document.readyState === "complete"'); } catch { assertOwnedAlive(); }
       if (!loaded) await sleep(100);
     }
     assert.ok(loaded, "local scroll fixture must load");
     await pageEval("window.scrollTo(400,400); true");
     await sleep(100);
     const before = await pageEval("({x:scrollX,y:scrollY,url:location.href})");
+    // A loaded CDP target may still be an inactive tab. Keep UI/root state if its gesture area is absent.
+    const webState = await nn(`return {
+      window: nn.store.getState().windows.w1,
+      pager: globalThis.nnPager("w1").debug(),
+      pane: !!globalThis.nnSwipe.pane("t1")
+    };`);
+    if (!webState.pane) {
+      const error = new Error("loaded web fixture has no visible t1 swipe pane");
+      error.evidence = { fixtureState, webState, windows: await windows(), before };
+      throw error;
+    }
     const horizontal = await nn(`return globalThis.nnSwipe.pane("t1").devSimulate(${JSON.stringify(gesture(-1))}, {ignorePreference:true});`);
     await sleep(250);
     const afterHorizontal = await pageEval("({x:scrollX,y:scrollY,url:location.href})");
@@ -390,18 +647,12 @@ try {
     evidence.error = `--only=${only} matched no test`;
     console.error(`FAIL ${evidence.error}`);
   }
-  writeFileSync(join(data, "profile-swipe-results.json"), JSON.stringify(evidence, null, 2));
-  if (pid) {
-    spawnSync("kill", ["-TERM", pid]);
-    let alive = true;
-    for (let i = 0; i < 30 && alive; i++) {
-      await sleep(100);
-      try { process.kill(Number(pid), 0); } catch { alive = false; }
-    }
-    if (alive) spawnSync("kill", ["-KILL", pid]);
+  if (owned) {
+    try { evidence.cleanup = await stopOwned(); } catch (error) { evidence.cleanup = { error: String(error) }; }
   }
+  writeFileSync(join(data, "profile-swipe-results.json"), JSON.stringify(evidence, null, 2));
   server.close();
-  if (keep) console.log(`Evidence: ${join(data, "profile-swipe-results.json")}`);
+  if (keep || evidence.error || evidence.cases.some((c) => !c.passed)) console.log(`Evidence: ${join(data, "profile-swipe-results.json")}`);
   else rmSync(data, { recursive: true, force: true });
 }
 process.exitCode = evidence.error || evidence.cases.some((c) => !c.passed) ? 1 : 0;
