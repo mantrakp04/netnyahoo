@@ -201,6 +201,11 @@ public class ShellModule: Module {
       MenuState.current = MenuState(state)
       MainMenu.refresh()
     }.runOnQueue(.main)
+    // The bookmark lists, sent only when they change (the menu state then leaves them out).
+    AsyncFunction("setMenuBookmarks") { (bookmarks: [String: Any]) in
+      MenuState.setBookmarks(bookmarks)
+      MainMenu.refresh()
+    }.runOnQueue(.main)
 
     AsyncFunction("replyToTerminate") { (ok: Bool) in WindowManager.shared.replyToTerminate(ok) }.runOnQueue(.main)
 

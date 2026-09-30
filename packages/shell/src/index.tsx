@@ -226,7 +226,8 @@ const Shell = requireNativeModule<{
   keyWindowId(): Promise<string | null>;
   setAppearance(mode: "auto" | "light" | "dark"): Promise<void>;
   isDarkAppearance(): Promise<boolean>;
-  setMenuState(state: MenuState): Promise<void>;
+  setMenuState(state: MenuState | Omit<MenuState, MenuBookmarkKey>): Promise<void>;
+  setMenuBookmarks?(bookmarks: Pick<MenuState, MenuBookmarkKey>): Promise<void>;
   replyToTerminate(ok: boolean): Promise<void>;
   confirm(options: ConfirmOptions): Promise<{ confirmed: boolean; suppressed: boolean }>;
   prompt(options: PromptOptions): Promise<string | null>;
@@ -273,6 +274,19 @@ export const keyWindowId = () => Shell.keyWindowId();
 export const setAppearance = (mode: "auto" | "light" | "dark") => Shell.setAppearance(mode);
 export const isDarkAppearance = () => Shell.isDarkAppearance();
 export const setMenuState = (state: MenuState) => Shell.setMenuState(state);
+
+type MenuBookmarkKey = "bookmarkFolders" | "recentBookmarks" | "bookmarksBar" | "otherBookmarks";
+/**
+ * Sends the menu state with the bookmark lists only when `bookmarksChanged`, so the native menus rebuild (and the
+ * bridge carries) thousands of bookmarks only when they change. Native builds without the separate channel get
+ * the whole state every time.
+ */
+export function setMenuStateParts(state: MenuState, bookmarksChanged: boolean) {
+  if (!Shell.setMenuBookmarks) return Shell.setMenuState(state);
+  const { bookmarkFolders, recentBookmarks, bookmarksBar, otherBookmarks, ...rest } = state;
+  if (bookmarksChanged) void Shell.setMenuBookmarks({ bookmarkFolders, recentBookmarks, bookmarksBar, otherBookmarks });
+  return Shell.setMenuState(rest);
+}
 export const replyToTerminate = (ok: boolean) => Shell.replyToTerminate(ok);
 
 export const confirm = (options: ConfirmOptions) => Shell.confirm(options);

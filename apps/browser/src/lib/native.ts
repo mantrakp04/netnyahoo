@@ -9,7 +9,7 @@ import {
   openWindow,
   replyToTerminate,
   setAppearance,
-  setMenuState,
+  setMenuStateParts,
   setWindowProfile,
   setWindowTitle,
   windowIds,
@@ -139,10 +139,11 @@ export function startNativeSync() {
     const { bookmarkFolders, recentBookmarks, bookmarksBar, otherBookmarks, ...rest } = state;
     const bookmarkMenus = [bookmarkFolders, recentBookmarks, bookmarksBar, otherBookmarks];
     const json = JSON.stringify(rest);
-    if (json === lastMenu && bookmarkMenus.every((menu, i) => menu === lastBookmarkMenus[i])) return;
+    const bookmarksChanged = !bookmarkMenus.every((menu, i) => menu === lastBookmarkMenus[i]);
+    if (json === lastMenu && !bookmarksChanged) return;
     lastMenu = json;
     lastBookmarkMenus = bookmarkMenus;
-    void setMenuState(state);
+    void setMenuStateParts(state, bookmarksChanged);
   };
 
   void windowIds().then((ids) => {

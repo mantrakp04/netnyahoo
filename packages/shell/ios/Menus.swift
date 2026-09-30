@@ -1,7 +1,7 @@
 import AppKit
 
 struct MenuState {
-  struct Entry {
+  struct Entry: Equatable {
     let id: String
     let title: String
     let current: Bool
@@ -25,6 +25,9 @@ struct MenuState {
   var recentBookmarks: [Bookmark] = []
   var bookmarksBar: [Bookmark] = []
   var otherBookmarks: [Bookmark] = []
+  // Set when the bookmark lists come separately (setMenuBookmarks), bumped each time they do; nil when every
+  // update carries them.
+  var bookmarksRevision: Int?
   var recentlyClosed: [Entry] = []
   var recentlyClosedGroups: [Entry] = []
   var warnBeforeQuitting = false
@@ -35,6 +38,34 @@ struct MenuState {
 
   init() {}
 
+  static func bookmarks(_ list: Any?) -> [Bookmark] {
+    (list as? [[String: Any]] ?? []).map {
+      Bookmark(
+        id: $0["id"] as? String ?? "", title: $0["title"] as? String ?? "", url: $0["url"] as? String,
+        children: $0["children"] == nil ? nil : bookmarks($0["children"]))
+    }
+  }
+
+  // The bookmark lists as setMenuBookmarks last sent them.
+  private(set) static var sentBookmarks: (state: MenuState, revision: Int)?
+
+  static func setBookmarks(_ d: [String: Any]) {
+    var state = MenuState()
+    state.bookmarkFolders = (d["bookmarkFolders"] as? [[String: Any]] ?? []).map {
+      Entry(id: $0["id"] as? String ?? "", title: $0["title"] as? String ?? "", current: $0["current"] as? Bool ?? false)
+    }
+    state.recentBookmarks = bookmarks(d["recentBookmarks"])
+    state.bookmarksBar = bookmarks(d["bookmarksBar"])
+    state.otherBookmarks = bookmarks(d["otherBookmarks"])
+    let revision = (sentBookmarks?.revision ?? 0) + 1
+    sentBookmarks = (state, revision)
+    current.bookmarkFolders = state.bookmarkFolders
+    current.recentBookmarks = state.recentBookmarks
+    current.bookmarksBar = state.bookmarksBar
+    current.otherBookmarks = state.otherBookmarks
+    current.bookmarksRevision = revision
+  }
+
   init(_ d: [String: Any]) {
     func strings(_ key: String) -> [String] { d[key] as? [String] ?? [] }
     func entries(_ key: String) -> [Entry] {
@@ -42,22 +73,21 @@ struct MenuState {
         Entry(id: $0["id"] as? String ?? "", title: $0["title"] as? String ?? "", current: $0["current"] as? Bool ?? false)
       }
     }
-    func bookmarks(_ list: Any?) -> [Bookmark] {
-      (list as? [[String: Any]] ?? []).map {
-        Bookmark(
-          id: $0["id"] as? String ?? "", title: $0["title"] as? String ?? "", url: $0["url"] as? String,
-          children: $0["children"] == nil ? nil : bookmarks($0["children"]))
-      }
-    }
     checked = Set(strings("checked"))
     disabled = Set(strings("disabled"))
     titles = d["titles"] as? [String: String] ?? [:]
     profiles = entries("profiles")
     windows = entries("windows")
-    bookmarkFolders = entries("bookmarkFolders")
-    recentBookmarks = bookmarks(d["recentBookmarks"])
-    bookmarksBar = bookmarks(d["bookmarksBar"])
-    otherBookmarks = bookmarks(d["otherBookmarks"])
+    if d["bookmarksBar"] == nil, let sent = MenuState.sentBookmarks {
+      (bookmarkFolders, recentBookmarks, bookmarksBar, otherBookmarks) =
+        (sent.state.bookmarkFolders, sent.state.recentBookmarks, sent.state.bookmarksBar, sent.state.otherBookmarks)
+      bookmarksRevision = sent.revision
+    } else {
+      bookmarkFolders = entries("bookmarkFolders")
+      recentBookmarks = Self.bookmarks(d["recentBookmarks"])
+      bookmarksBar = Self.bookmarks(d["bookmarksBar"])
+      otherBookmarks = Self.bookmarks(d["otherBookmarks"])
+    }
     recentlyClosed = entries("recentlyClosed")
     recentlyClosedGroups = entries("recentlyClosedGroups")
     warnBeforeQuitting = d["warnBeforeQuitting"] as? Bool ?? false
@@ -435,6 +465,7 @@ enum MainMenu {
 
     NSApp.helpMenu = top("Help", helpItems())
 
+    built = nil
     refresh()
     return main
   }
@@ -491,9 +522,27 @@ enum MainMenu {
     return image
   }
 
+  // What each rebuilt submenu was last built from: a menu state update (every 120 ms at most while the store
+  // changes) rebuilds only the submenus whose contents changed, so thousands of bookmarks aren't rebuilt for a
+  // loading spinner.
+  private static var built: (profiles: [MenuState.Entry], windows: [MenuState.Entry], bookmarks: Int?,
+                             extensions: [String], history: [[MenuState.Entry]])?
+
   static func refresh() {
     let state = MenuState.current
+    let last = built
+    let extensionKeys = state.extensions.map { "\($0.id)|\($0.title)|\($0.icon ?? "")" }
+    let history = [state.recentlyClosed, state.recentlyClosedGroups]
+    built = (state.profiles, state.windows, state.bookmarksRevision, extensionKeys, history)
+    if last?.profiles != state.profiles { buildProfileMenus(state) }
+    if last?.windows != state.windows { buildMoveToWindow(state) }
+    if state.bookmarksRevision == nil || last?.bookmarks != state.bookmarksRevision { buildBookmarkMenus(state) }
+    if last?.extensions != extensionKeys { buildExtensions(state) }
+    if last?.history != history { buildHistory(state) }
+    applyShortcuts(state.shortcuts)
+  }
 
+  private static func buildProfileMenus(_ state: MenuState) {
     moveToProfile.removeAllItems()
     for p in state.profiles {
       let item = CommandItem(p.title, "moveTabToProfile", arg: p.id)
@@ -503,16 +552,6 @@ enum MainMenu {
     }
     moveToProfile.addItem(.separator())
     moveToProfile.addItem(CommandItem("New Profile…", "moveTabToProfile", arg: "new"))
-
-    moveToWindow.removeAllItems()
-    for w in state.windows { moveToWindow.addItem(CommandItem(w.title, "moveTabToWindow", arg: w.id)) }
-    if !state.windows.isEmpty { moveToWindow.addItem(.separator()) }
-    moveToWindow.addItem(CommandItem("New Window", "moveTabToWindow", arg: "new"))
-
-    bookmarkToFolder.removeAllItems()
-    for f in state.bookmarkFolders { bookmarkToFolder.addItem(CommandItem(f.title, "addBookmarkToFolder", arg: f.id)) }
-    bookmarkToFolder.addItem(.separator())
-    bookmarkToFolder.addItem(CommandItem("New Folder…", "addBookmarkToFolder", arg: "new"))
 
     profiles.removeAllItems()
     profilesItem.isHidden = state.profiles.count < 2
@@ -528,6 +567,20 @@ enum MainMenu {
     profiles.addItem(CommandItem("Previous Profile", "previousProfile"))
     profiles.addItem(.separator())
     profiles.addItem(CommandItem("New Profile…", "newProfile"))
+  }
+
+  private static func buildMoveToWindow(_ state: MenuState) {
+    moveToWindow.removeAllItems()
+    for w in state.windows { moveToWindow.addItem(CommandItem(w.title, "moveTabToWindow", arg: w.id)) }
+    if !state.windows.isEmpty { moveToWindow.addItem(.separator()) }
+    moveToWindow.addItem(CommandItem("New Window", "moveTabToWindow", arg: "new"))
+  }
+
+  private static func buildBookmarkMenus(_ state: MenuState) {
+    bookmarkToFolder.removeAllItems()
+    for f in state.bookmarkFolders { bookmarkToFolder.addItem(CommandItem(f.title, "addBookmarkToFolder", arg: f.id)) }
+    bookmarkToFolder.addItem(.separator())
+    bookmarkToFolder.addItem(CommandItem("New Folder…", "addBookmarkToFolder", arg: "new"))
 
     while bookmarks.items.count > bookmarksFixedCount { bookmarks.removeItem(at: bookmarksFixedCount) }
     bookmarks.addItem(.separator())
@@ -540,7 +593,9 @@ enum MainMenu {
     }
     bookmarks.addItem(folderItem("Bookmarks Bar", state.bookmarksBar))
     bookmarks.addItem(folderItem("Other Bookmarks", state.otherBookmarks))
+  }
 
+  private static func buildExtensions(_ state: MenuState) {
     extensions.removeAllItems()
     for ext in state.extensions {
       let item = CommandItem(ext.title, "openExtension", arg: ext.id)
@@ -551,7 +606,9 @@ enum MainMenu {
     extensions.addItem(CommandItem("Add Extension…", "addExtension"))
     extensions.addItem(CommandItem("Manage Extensions…", "manageExtensions"))
     extensions.addItem(CommandItem("Pin Extensions…", "pinExtensions"))
+  }
 
+  private static func buildHistory(_ state: MenuState) {
     history.removeAllItems()
     history.addItem(CommandItem("Show History…", "showHistory", key: "y"))
     history.addItem(CommandItem("Clear Browsing Data…", "clearBrowsingData", key: "\u{8}", [.command, .shift]))
@@ -568,8 +625,6 @@ enum MainMenu {
       history.addItem(groupsHeader)
       for entry in state.recentlyClosedGroups { history.addItem(CommandItem(entry.title, "restoreClosed", arg: entry.id)) }
     }
-
-    applyShortcuts(state.shortcuts)
   }
 
   // MARK: Keyboard Shortcuts settings
