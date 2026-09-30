@@ -26,6 +26,8 @@ existing JavaScript pager as a compatibility path.
 - `profile-swipe-test.mjs`: 21/21 hidden-instance cases, including reversals, window retargeting,
   blocked JavaScript, latest dots, rapid shortcuts, external selection, reorder, deletion and real
   web-content scrolling.
+- Final `profile-swipe-replay.mjs --only=sequence --dispatch=app` with the committed bundle: all
+  1,325 owner-recorded inputs, 24 releases and eight alternating profile commits pass at original timing.
 - `profile-pager-race-test.mjs`: 9/9 compatibility cases for the legacy pager.
 - `profile-motion-stall-test.mjs --native-input`: 55 AppKit inputs, three alternating drags and three
   280 ms JavaScript stalls. Correct final profile; native controller idle and selection acknowledged.
