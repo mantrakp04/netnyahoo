@@ -15,6 +15,9 @@ if (!appArg) {
   process.exit(2);
 }
 const app = resolve(appArg);
+const bundlePort = args.find((a) => a.startsWith("--bundle-port="))?.split("=")[1];
+if (bundlePort) assert.match(bundlePort, /^\d{2,5}$/);
+const bundleArgs = bundlePort ? ["--args", "-RCT_jsLocation", `127.0.0.1:${bundlePort}`] : [];
 assert.notEqual(app, "/Applications/Netnyahoo.app", "use an isolated Debug build");
 const port = opt("port", "9475");
 const keep = args.includes("--keep-data");
@@ -291,7 +294,7 @@ try {
   const listener = () => spawnSync("lsof", ["-t", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean);
   assert.equal(listener().length, 0, "the isolated debugging port must be free");
   execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`,
-    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app]);
+    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app, ...bundleArgs]);
   for (let i = 0; i < 60 && !pid; i++) {
     await sleep(500);
     const candidate = listener()[0];
@@ -307,6 +310,15 @@ try {
     if (!ready) await sleep(500);
   }
   assert.ok(ready, "profile swipe dev harness should load; Metro must be running");
+  // Freeze this instance's JS while other engineers edit the shared Metro checkout.
+  // Call the client locally; do not change the app's persisted developer settings.
+  evidence.liveUpdatesDisabled = await nn(`
+    const entry=[...globalThis.__r.getModules()].find(([,m])=>m.verboseName?.endsWith("/Libraries/Utilities/HMRClient.js"));
+    if (!entry) throw new Error("HMR client missing");
+    globalThis.__r(entry[0]).default.disable();
+    return true;
+  `);
+
   await nn("nn.store.getState().updateSettings({ sidebarWidth: 190 }); return true;");
   await sleep(1000);
   evidence.setup = {
@@ -356,7 +368,7 @@ try {
       const { result, received } = await replay([...stepsOf(a), ...stepsOf(b, gap)]);
       const seen = await waitProfile(profileIds[0], started + gap + endMs(b) + 1800);
       const out = { profile: seen, summary: summarize(result, received), result };
-      assert.ok(received.some((event) => event.phase === "ended"), "JS should receive the reverse gesture");
+      assert.ok(result.acks?.some((event) => event.diag === "emit" && event.phase === "ended"), "the native tracker must deliver the reverse release");
       if (seen !== profileIds[0]) throw fail(`profile ${seen} after forward+reverse, expected ${profileIds[0]}`, out);
       return out;
     });

@@ -9,6 +9,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL allowsVerticalMotion;
 @optional
 @property (nonatomic, readonly) BOOL isPager;
+// A native pager takes its drags here instead of swipeEvent: phase is prepare, began, changed, ended,
+// cancelled or abandon; distance is cumulative along direction (1 back, -1 forward); timestamp is the event's.
+@property (nonatomic, readonly) BOOL hasNativePager;
+- (void)pagerInput:(NSString *)phase distance:(CGFloat)distance direction:(int)direction timestamp:(NSTimeInterval)timestamp;
 @required
 - (void)swipeEvent:(NSDictionary<NSString *, id> *)event;
 @end

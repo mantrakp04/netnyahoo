@@ -62,3 +62,10 @@ swallowed. Preserve the failing evidence rather than counting that probe as a pa
 The web scrolling fixture activates its seeded tab before navigating it. A loaded CDP target can
 be a background tab, which has no visible swipe pane; an automatically opened startup tab exposed
 that fixture assumption. The test now asserts the active tab and retains UI/root evidence on failure.
+
+## 0.2.18 follow-up
+
+Dragging, velocity and interruption now run in AppKit too. React receives semantic selection and
+native direct events drive its Animated graphs. See `profile-swipe-native-controller.md` for the
+implementation and the full-size 30 fps blocked-JavaScript drag capture. The earlier measurements
+above describe 0.2.17.

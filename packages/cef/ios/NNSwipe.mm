@@ -163,10 +163,13 @@ struct Gesture {
   BOOL ignoreSystemPreference = NO;
   int seq = 0;
   int emitted = 0;
+  NSTimeInterval time = 0;
 };
 Gesture gGesture;
 int gGestureSeq;
 id gMonitor;
+// A native pager that caught its settle on fingers down, until the gesture tracks it or lets it go.
+__weak NSView<NNSwipeTarget> *gPrepared;
 
 BOOL IsRenderWidgetView(NSView *view) {
   static Class cls = NSClassFromString(@"RenderWidgetHostViewCocoa");
@@ -236,6 +239,19 @@ NSArray *HitChain(NSView *hit) {
 
 BOOL IsPager(NSView<NNSwipeTarget> *target) {
   return [target respondsToSelector:@selector(isPager)] && target.isPager;
+}
+
+BOOL HasNativePager(NSView<NNSwipeTarget> *target) {
+  return IsPager(target) && [target respondsToSelector:@selector(hasNativePager)] && target.hasNativePager &&
+         [target respondsToSelector:@selector(pagerInput:distance:direction:timestamp:)];
+}
+
+void ReleasePrepared(NSTimeInterval timestamp) {
+  NSView<NNSwipeTarget> *prepared = gPrepared;
+  gPrepared = nil;
+  if (!prepared) return;
+  Diag(@{@"diag" : @"pagerAbandon", @"target" : [NSString stringWithFormat:@"%p", prepared]});
+  [prepared pagerInput:@"abandon" distance:0 direction:0 timestamp:timestamp];
 }
 
 NSView *FirstRenderer(NSView *view) {
@@ -354,6 +370,10 @@ void Emit(NSString *phase, CGFloat velocity) {
     @"width" : @(NSWidth(target.bounds)),
     @"target" : [NSString stringWithFormat:@"%p", target],
   });
+  if (HasNativePager(target)) {
+    [target pagerInput:phase distance:distance direction:gGesture.direction timestamp:gGesture.time];
+    return;
+  }
   [target swipeEvent:@{
     @"phase" : phase,
     @"direction" : gGesture.direction > 0 ? @"back" : @"forward",
@@ -410,7 +430,22 @@ NSEvent *HandleWheel(NSEvent *event, NSWindow *window, NSPoint location) {
   return nil;
 }
 
-void Begin(NSWindow *window, NSPoint location, BOOL ignoreSystemPreference) {
+// Fingers down over a native pager stop its settle at once; the scroll itself still goes on to AppKit.
+void Prepare(NSWindow *window, NSPoint location, NSTimeInterval timestamp) {
+  ReleasePrepared(timestamp);
+  NSView<NNSwipeTarget> *target = nil;
+  BOOL fallback = NO;
+  ResolveHit(window, location, &target, &fallback);
+  if (!target || !HasNativePager(target)) return;
+  Diag(@{@"diag" : @"pagerPrepare", @"target" : [NSString stringWithFormat:@"%p", target]});
+  gPrepared = target;
+  [target pagerInput:@"prepare" distance:0 direction:0 timestamp:timestamp];
+}
+
+void Begin(NSWindow *window, NSPoint location, BOOL ignoreSystemPreference, NSTimeInterval timestamp) {
+  // A begin without the previous end: let the old native drag land before this one resolves.
+  if (gGesture.state == State::Tracking && HasNativePager(gGesture.target))
+    [gGesture.target pagerInput:@"abandon" distance:0 direction:0 timestamp:timestamp];
   gGesture = Gesture();
   gGesture.ignoreSystemPreference = ignoreSystemPreference;
   gGesture.seq = ++gGestureSeq;
@@ -442,8 +477,10 @@ void Begin(NSWindow *window, NSPoint location, BOOL ignoreSystemPreference) {
   if (!target || (!NSEvent.isSwipeTrackingFromScrollEventsEnabled && !ignoreSystemPreference && !IsPager(target))) {
     Diag(@{@"diag" : @"reject", @"seq" : @(gGesture.seq), @"reason" : target ? @"systemPreferenceOff" : (hit ? @"noTarget" : @"noHit")});
     gGesture.state = State::Ignored;
+    ReleasePrepared(timestamp);
     return;
   }
+  if (gPrepared != target) ReleasePrepared(timestamp);
   gGesture.state = State::Pending;
   gGesture.target = target;
   gGesture.hit = hit;
@@ -459,6 +496,7 @@ BOOL Reject(NSString *reason, NSDictionary *extra = nil) {
     [gTrace addObject:entry];
   }
   gGesture.state = State::Ignored;
+  ReleasePrepared(gGesture.time);
   return NO;
 }
 
@@ -473,7 +511,9 @@ BOOL ShouldTrack() {
   // Let a pager's small initial vertical wobble resolve before locking its axis.
   const CGFloat verticalIntent = IsPager(target) ? 3 * kStartDistance : kStartDistance;
   if (fabs(dy) >= verticalIntent && kCancelDominance * fabs(dx) < fabs(dy)) return Reject(@"verticalIntent");
-  if (fabs(dx) < kStartDistance || kStartDominance * fabs(dx) < fabs(dy)) return Wait(@"belowStart");
+  // A native pager starts on the first horizontal movement; everything else keeps the 4pt start.
+  const BOOL below = HasNativePager(target) ? dx == 0 : fabs(dx) < kStartDistance;
+  if (below || kStartDominance * fabs(dx) < fabs(dy)) return Wait(@"belowStart");
   int direction = dx > 0 ? 1 : -1;
 
   NNRendererScrollObserver *renderer = gGesture.renderer;
@@ -513,12 +553,17 @@ NSEvent *HandleScroll(NSEvent *event, NSWindow *window, NSPoint location, BOOL i
 
   // Leave begin/end events to Chromium or wheel-phase scrolling stalls.
   if (phase == NSEventPhaseNone) return event;
-  if (phase & NSEventPhaseMayBegin) return event;
-  if (phase & NSEventPhaseBegan) Begin(window, location, ignoreSystemPreference);
+  if (phase & NSEventPhaseMayBegin) {
+    Prepare(window, location, event.timestamp);
+    return event;
+  }
+  if (phase & NSEventPhaseBegan) Begin(window, location, ignoreSystemPreference, event.timestamp);
 
   switch (gGesture.state) {
     case State::Idle:
     case State::Ignored:
+      // Fingers lifted without a tracked gesture: a caught settle resumes.
+      if (phase & (NSEventPhaseEnded | NSEventPhaseCancelled)) ReleasePrepared(event.timestamp);
       return event;
     case State::Pending:
     case State::Tracking:
@@ -531,12 +576,14 @@ NSEvent *HandleScroll(NSEvent *event, NSWindow *window, NSPoint location, BOOL i
 
   gGesture.dx += event.scrollingDeltaX;
   gGesture.dy += event.scrollingDeltaY;
+  gGesture.time = event.timestamp;
   Sample(event);
 
   if (phase & (NSEventPhaseEnded | NSEventPhaseCancelled)) {
     if (gGesture.state != State::Tracking) {
       Diag(@{@"diag" : @"endUntracked", @"seq" : @(gGesture.seq), @"dx" : @(gGesture.dx), @"dy" : @(gGesture.dy)});
       gGesture.state = State::Idle;
+      ReleasePrepared(event.timestamp);
       return event;
     }
     Emit(phase & NSEventPhaseEnded ? @"ended" : @"cancelled", ReleaseVelocity(event.timestamp));
@@ -547,6 +594,8 @@ NSEvent *HandleScroll(NSEvent *event, NSWindow *window, NSPoint location, BOOL i
   if (gGesture.state == State::Pending) {
     if (!ShouldTrack()) return event;
     gGesture.state = State::Tracking;
+    // The began below adopts the caught settle.
+    if (gPrepared == gGesture.target) gPrepared = nil;
     Emit(@"began", 0);
     return nil;
   }

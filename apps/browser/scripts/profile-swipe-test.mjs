@@ -77,6 +77,9 @@ if (!appArg) {
   process.exit(2);
 }
 const app = resolve(appArg);
+const bundlePort = args.find((a) => a.startsWith("--bundle-port="))?.split("=")[1];
+if (bundlePort) assert.match(bundlePort, /^\d{2,5}$/);
+const bundleArgs = bundlePort ? ["--args", "-RCT_jsLocation", `127.0.0.1:${bundlePort}`] : [];
 assert.notEqual(app, "/Applications/Netnyahoo.app", "use an isolated Debug build");
 let port;
 try { port = parsePort(args.find((a) => a.startsWith("--port="))?.slice("--port=".length) ?? "9474"); } catch (error) {
@@ -184,6 +187,23 @@ function fixtureFidelity(steps, result) {
 const simulate = (steps, source) => nn(source
   ? `return globalThis.expo.modules.NetnyahooSwipe.devSimulate(120, 400, ${source}, ${JSON.stringify(steps)}, true);`
   : `return globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});`);
+function alternatingGestures(count, gapMs = 112) {
+  return Array.from({ length: count }, (_, n) => gesture(n % 2 ? 1 : -1).map((step) => ({
+    ...step, atMs: step.atMs + n * gapMs, timestampMs: step.timestampMs + n * gapMs,
+  }))).flat();
+}
+async function nativeBatch(steps, blockedMs = 0) {
+  return nn(`
+    const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});
+    if (${blockedMs}) setTimeout(()=>{
+      const until=performance.now()+${blockedMs}; while(performance.now()<until){}
+    },20);
+    return simulation.then(result=>new Promise(resolve=>setTimeout(()=>{
+      globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({result,state,
+        profile:nn.store.getState().windows.w1.profileId,pager:globalThis.nnPager("w1").debug()}));
+    },650)));
+  `, 15000);
+}
 async function test(name, fn) {
   if (only && !name.toLowerCase().includes(only)) return;
   matched++;
@@ -252,7 +272,7 @@ try {
   const before = binaryPids(binary);
   evidence.launch = { port, binary, preexistingBinaryPids: [...before] };
   execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`,
-    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app]);
+    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app, ...bundleArgs]);
   for (const start = Date.now(); !owned && Date.now() - start < 30000; await sleep(250)) {
     let info;
     const pid = ownedCandidate(listenerPids(port), before, (p) => {
@@ -269,6 +289,15 @@ try {
     if (!ready) await sleep(500);
   }
   assert.ok(ready, "profile swipe dev harness should load; Metro must be running");
+  // Freeze this instance's JS while other engineers edit the shared Metro checkout.
+  // Call the client locally; do not change the app's persisted developer settings.
+  evidence.liveUpdatesDisabled = await nn(`
+    const entry=[...globalThis.__r.getModules()].find(([,m])=>m.verboseName?.endsWith("/Libraries/Utilities/HMRClient.js"));
+    if (!entry) throw new Error("HMR client missing");
+    globalThis.__r(entry[0]).default.disable();
+    return true;
+  `);
+
   await sleep(1000);
 
   await test("rapid forward/reverse profile swipes", async () => {
@@ -326,6 +355,78 @@ try {
     await waitProfile("work");
     return { result, next };
   });
+  const nativePager = await nn('return globalThis.expo.modules.NetnyahooSwipe.nativePagerVersion >= 1;');
+  if (nativePager) {
+    await test("a new native drag interrupts the current settle synchronously", async () => {
+      await reset();
+      const result = await nativeBatch(alternatingGestures(2));
+      assert.equal(result.profile, "default");
+      assert.equal(result.state.selected, 0);
+      assert.equal(result.state.phase, "idle");
+      assert.equal(result.pager.native, true);
+      assert.ok(result.pager.ack >= result.state.selectionSequence, "latest selection must be acknowledged");
+      return result;
+    });
+    await test("twelve native reversals keep the latest profile and stable coordinates", async () => {
+      await reset();
+      const result = await nativeBatch(alternatingGestures(12));
+      assert.equal(result.profile, "default");
+      assert.equal(result.state.selected, 0);
+      assert.ok(Math.abs(result.state.position) < 0.003);
+      assert.equal(result.state.phase, "idle");
+      return result;
+    });
+    await test("queued selection events cannot rewind a native reversal while JS is blocked", async () => {
+      await reset();
+      const result = await nativeBatch(alternatingGestures(3), 700);
+      assert.equal(result.profile, "work");
+      assert.equal(result.state.selected, 1);
+      assert.equal(result.state.phase, "idle");
+      assert.equal(result.pager.native, true);
+      assert.ok(result.pager.ack >= result.state.selectionSequence, "latest selection must be acknowledged");
+      return result;
+    });
+    await test("rapid profile shortcuts count every queued press", async () => {
+      await reset();
+      await nn('nn.runCommand({command:"nextProfile",windowId:"w1"}); nn.runCommand({command:"nextProfile",windowId:"w1"}); nn.runCommand({command:"nextProfile",windowId:"w1"}); return true;');
+      await waitProfile("work");
+      await sleep(450);
+      const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
+      assert.equal(result.profileId, "work");
+      assert.equal(result.selected, 1);
+      assert.equal(result.phase, "idle");
+      return result;
+    });
+    await test("external profile selection interrupts a native drag without a late rewind", async () => {
+      await reset();
+      const steps=gesture(-1).map((s)=>({...s, atMs:s.atMs*3, timestampMs:s.timestampMs*3}));
+      const result = await nn(`
+        const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)},{ignorePreference:true});
+        setTimeout(()=>nn.store.getState().switchProfile("w1","work"),40);
+        setTimeout(()=>nn.store.getState().switchProfile("w1","default"),56);
+        return simulation.then(native=>new Promise(resolve=>setTimeout(()=>{
+          globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({native,state,
+            profile:nn.store.getState().windows.w1.profileId}));
+        },650)));
+      `);
+      assert.equal(result.profile,"default");
+      assert.equal(result.state.profileId,"default");
+      assert.equal(result.state.phase,"idle");
+      return result;
+    });
+    await test("latest profile dot cancels an in-flight native selection", async () => {
+      await reset();
+      await simulate(gesture(-1));
+      await nn('const p=globalThis.nnPager("w1"); p.switchTo("default"); p.switchTo("work"); return true;');
+      await waitProfile("work");
+      await sleep(650);
+      const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
+      assert.equal(result.selected, 1);
+      assert.equal(result.phase, "idle");
+      assert.ok(Math.abs(result.position - 1) < 0.003);
+      return result;
+    });
+  } else {
   await test("a new drag drops a settle queued behind a pending rebase (real pager)", async () => {
     await reset();
     try {
@@ -481,6 +582,7 @@ try {
       } catch (error) { error.evidence = result; throw error; }
     } finally { await reset(); }
   });
+  }
   await test("new gesture recovers after a missing end", async () => {
     await reset();
     const incomplete = await simulate(gesture(-1).slice(0, -1));
@@ -637,6 +739,46 @@ try {
     assert.equal(routing(result)?.fallback, false, "an ordinary sidebar hit should match directly");
     return result;
   });
+  if (nativePager) {
+    await test("reordering profiles preserves a native selection queued behind blocked JS", async () => {
+      await reset();
+      try {
+        const result = await nn(`
+          const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(gesture(-1))}, {ignorePreference:true});
+          setTimeout(()=>{
+            const until=performance.now()+180; while(performance.now()<until){}
+            nn.store.getState().reorderProfiles(["work","default"]);
+          },20);
+          return simulation.then(native=>new Promise(resolve=>setTimeout(()=>{
+            globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({native,state,
+              profile:nn.store.getState().windows.w1.profileId,order:nn.store.getState().profileOrder}));
+          },650)));
+        `);
+        assert.equal(result.profile, "work");
+        assert.equal(result.state.profileId, "work");
+        assert.equal(result.state.selected, 0);
+        assert.ok(Math.abs(result.state.position) < 0.003);
+        return result;
+      } finally {
+        await nn('nn.store.getState().reorderProfiles(["default","work"]); return true;');
+      }
+    });
+    await test("removing the other profile keeps the remaining sidebar at its origin", async () => {
+      await nn('nn.store.getState().switchProfile("w1","work"); return true;');
+      await waitProfile("work");
+      await sleep(350);
+      await nn('nn.store.getState().deleteProfile("default"); return true;');
+      await sleep(350);
+      const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
+      assert.equal(await profile(), "work");
+      assert.equal(result.count, 1);
+      assert.equal(result.selected, 0);
+      assert.ok(Math.abs(result.position) < 0.003);
+      assert.equal(result.phase, "idle");
+      assert.ok(result.areas >= 1);
+      return result;
+    });
+  }
   evidence.snapshot = { path: join(data, "profile-swipe.png"),
     saved: await nn(`return nn.shell.devSnapshotWindow("w1", ${JSON.stringify(join(data, "profile-swipe.png"))});`) };
 } catch (error) {

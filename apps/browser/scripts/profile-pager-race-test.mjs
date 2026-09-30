@@ -124,6 +124,7 @@ globalThis.__pagerMocks = {
   create: (init) => createStore(init),
   useBrowser,
   swipeHaptic: () => {},
+  useShallow: (selector) => selector,
 };
 
 const stub = (names) => `data:text/javascript,${encodeURIComponent(names.map((n) => `export const ${n} = globalThis.__pagerMocks.${n};`).join("\n") + "\nexport const useEffect = () => {}, useLayoutEffect = () => {}, useMemo = (f) => f();")}`;
@@ -131,6 +132,7 @@ registerHooks({
   resolve(specifier, context, next) {
     if (specifier === "react-native") return { url: stub(["Animated", "unstable_batchedUpdates"]), shortCircuit: true };
     if (specifier === "react") return { url: stub([]), shortCircuit: true };
+    if (specifier === "zustand/react/shallow") return { url: stub(["useShallow"]), shortCircuit: true };
     if (specifier === "zustand") return { url: stub(["create"]), shortCircuit: true };
     if (specifier === "@netnyahoo/cef") return { url: stub(["swipeHaptic"]), shortCircuit: true };
     if (specifier.endsWith("/store/browser")) return { url: stub(["useBrowser"]), shortCircuit: true };

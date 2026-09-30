@@ -1,3 +1,4 @@
+import * as cef from "@netnyahoo/cef";
 import { listExtensions } from "@netnyahoo/cef";
 import { confirm, focusWindow, prompt } from "@netnyahoo/shell";
 import { pageToProfile } from "../components/layout/profilePager";
@@ -119,11 +120,23 @@ export function switchProfile(windowId: string, profileId: string, animated = fa
 }
 
 export function cycleProfile(windowId: string, delta: 1 | -1) {
+  if (!cycleTarget(windowId, delta)) return;
+  // The native pager steps from its own selection, so rapid presses advance past a store that lags.
+  if (((cef as { nativePagerVersion?: number }).nativePagerVersion ?? 0) < 1) return cycleFromStore(windowId, delta);
+  void cef.stepPager(windowId, delta, true, store().profileOrder.join("\n")).then((ok) => ok || cycleFromStore(windowId, delta));
+}
+
+function cycleFromStore(windowId: string, delta: 1 | -1) {
+  const target = cycleTarget(windowId, delta);
+  if (target) switchProfile(windowId, target, true);
+}
+
+function cycleTarget(windowId: string, delta: 1 | -1) {
   const s = store();
   const w = s.windows[windowId];
-  if (!w || w.incognito || s.profileOrder.length < 2) return;
+  if (!w || w.incognito || s.profileOrder.length < 2) return null;
   const i = s.profileOrder.indexOf(w.profileId);
-  switchProfile(windowId, s.profileOrder[(i + delta + s.profileOrder.length) % s.profileOrder.length]!, true);
+  return s.profileOrder[(i + delta + s.profileOrder.length) % s.profileOrder.length]!;
 }
 
 export function adjacentProfile(windowId: string, delta: 1 | -1): string | null {

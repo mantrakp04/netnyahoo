@@ -1,4 +1,4 @@
-// Captures the production pager settling while JS is blocked. Verify motion from the window's pixels;
+// Captures the production pager while JS is blocked. Verify motion from the window's pixels;
 // pager.debug().pos is the last write/snapshot, not a per-frame native animation value.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -9,10 +9,13 @@ import { join, resolve } from "node:path";
 const args = process.argv.slice(2);
 const appArg = args.find((a) => !a.startsWith("--"));
 if (!appArg) {
-  console.error("usage: node profile-motion-stall-test.mjs <Debug Netnyahoo.app> [--port=9474] [--keep-data] [--wait-for-capture]");
+  console.error("usage: node profile-motion-stall-test.mjs <Debug Netnyahoo.app> [--port=9474] [--keep-data] [--wait-for-capture] [--native-input]");
   process.exit(2);
 }
 const app = resolve(appArg);
+const bundlePort = args.find((a) => a.startsWith("--bundle-port="))?.split("=")[1];
+if (bundlePort) assert.match(bundlePort, /^\d{2,5}$/);
+const bundleArgs = bundlePort ? ["--args", "-RCT_jsLocation", `127.0.0.1:${bundlePort}`] : [];
 assert.notEqual(app, "/Applications/Netnyahoo.app", "use an isolated Debug build");
 const port = args.find((a) => a.startsWith("--port="))?.split("=")[1] ?? "9474";
 const keep = args.includes("--keep-data");
@@ -84,7 +87,7 @@ try {
   const listener = () => spawnSync("lsof", ["-t", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean);
   assert.equal(listener().length, 0, "the isolated debugging port must be free");
   execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`,
-    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app]);
+    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app, ...bundleArgs]);
   for (let i = 0; i < 60 && !pid; i++) {
     await sleep(500);
     const candidate = listener()[0];
@@ -99,6 +102,15 @@ try {
     if (!ready) await sleep(500);
   }
   assert.ok(ready, "profile swipe dev harness should load; Metro must be running");
+  // Freeze this instance's JS while other engineers edit the shared Metro checkout.
+  // Call the client locally; do not change the app's persisted developer settings.
+  evidence.liveUpdatesDisabled = await nn(`
+    const entry=[...globalThis.__r.getModules()].find(([,m])=>m.verboseName?.endsWith("/Libraries/Utilities/HMRClient.js"));
+    if (!entry) throw new Error("HMR client missing");
+    globalThis.__r(entry[0]).default.disable();
+    return true;
+  `);
+
   // Cold ad-block rule indexing uses the Chromium UI thread; measure steady-state paging.
   await sleep(10000);
   evidence.fixture = await nn(`
@@ -109,6 +121,13 @@ try {
   `);
   assert.deepEqual(evidence.fixture.tabs.sort(), ["t1", "t2"], "capture only the seeded neutral tabs");
 
+  // Prime both Chrome profile contexts before measuring steady-state gesture responsiveness.
+  // First use creates Chrome's hidden settings pages on the same UI thread as AppKit input.
+  for (const profileId of ["work", "default"]) {
+    await nn(`nn.store.getState().switchProfile("w1", ${JSON.stringify(profileId)}); return true;`);
+    await waitProfile(profileId);
+    await sleep(2000);
+  }
   const readyPath = join(data, "ready.json");
   writeFileSync(readyPath, JSON.stringify({pid:Number(pid),data}));
   console.log(`READY ${readyPath}`);
@@ -120,7 +139,45 @@ try {
     }
     assert.ok(gate,"capture gate deadline");
   }
-  await test("profile settle under a 300ms JS stall", async () => {
+  if (args.includes("--native-input")) await test("native drag and reversal under blocked JS", async () => {
+    await reset();
+    // These are actual native phased events, not calls to the JavaScript pager's track method.
+    // Reverse before the first spring can land, then repeat while JS cannot process selection events.
+    const steps = [];
+    const append = (sign, start, end) => {
+      steps.push({ phase: "mayBegin", dx: 0, dy: 0, atMs: start, timestampMs: start });
+      steps.push({ phase: "began", dx: sign, dy: 0, atMs: start + 16, timestampMs: start + 16 });
+      for (let t = start + 32; t < end; t += 24) {
+        steps.push({ phase: "changed", dx: 12 * sign, dy: 0.15, atMs: t, timestampMs: t });
+      }
+      steps.push({ phase: "ended", dx: 0, dy: 0, atMs: end, timestampMs: end });
+    };
+    append(-1, 0, 440);
+    append(1, 472, 824);
+    append(-1, 856, 1240);
+    const result = await nn(`
+      const trace=[];
+      const simulation = globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});
+      for (const delay of [100, 490, 880]) setTimeout(()=>{
+        trace.push({kind:"stallStart",at:performance.now(),wallAt:Date.now()});
+        const until=performance.now()+280; while(performance.now()<until){}
+        trace.push({kind:"stallEnd",at:performance.now(),wallAt:Date.now()});
+      }, delay);
+      return simulation.then(native=>new Promise(resolve=>setTimeout(()=>resolve({native,trace,
+        profile:nn.store.getState().windows.w1.profileId,state:globalThis.nnPager("w1").debug()}),1000)));
+    `, 18000);
+    const errors = (result.native.events ?? []).filter((e) => e.error);
+    assert.deepEqual(errors, [], "every native event must decode");
+    assert.equal(result.native.events.length, steps.length, "every scheduled native event must run during the JS stalls");
+    assert.equal(result.profile, "work", "three alternating native gestures must end on Work");
+    assert.equal(result.trace.filter((t) => t.kind === "stallStart").length, 3);
+    assert.equal(result.state.native, true, "exercise the native controller");
+    assert.equal(result.state.snapshot.phase, "idle", "no native gesture or settle remains active");
+    assert.equal(result.state.snapshot.selected, 1);
+    assert.ok(result.state.ack >= result.state.snapshot.selectionSequence, "latest native selection is acknowledged");
+    return { ...result, steps };
+  });
+  else await test("profile settle under a 300ms JS stall", async () => {
     await reset();
     const result = await nn(`
       const p = globalThis.nnPager("w1");

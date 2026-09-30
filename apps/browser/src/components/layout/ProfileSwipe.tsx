@@ -1,12 +1,12 @@
 import { SwipeArea, type SwipeAreaHandle, type SwipeEvent } from "@netnyahoo/cef";
 import { WindowBackdrop } from "@netnyahoo/shaders";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Animated, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { themeFor } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
-import { pagerFor, usePagerPages, usePagerSurface } from "./profilePager";
+import { pagerFor, usePagerNativeConfig, usePagerPages, usePagerSurface } from "./profilePager";
 
 
 export function ProfileSwipe({ children }: { children: ReactNode }) {
@@ -29,9 +29,15 @@ export function ProfileSwipeArea({ surface, style, pageWidth }: { surface: "side
     }),
   );
   const area = useRef<SwipeAreaHandle>(null);
+  const pager = pagerFor(windowId);
+  const nativePager = usePagerNativeConfig(windowId, pageWidth);
+  // One event per area: Animated attaches an event object to a single view.
+  const onPagerPosition = useMemo(
+    () => (pager.native ? Animated.event([{ nativeEvent: { position: pager.pos } }], { useNativeDriver: true }) : undefined),
+    [pager],
+  );
 
   const onSwipe = (event: SwipeEvent) => {
-    const pager = pagerFor(windowId);
     if (__DEV__) {
       if (received.length >= 4096) received.shift();
       received.push({ at: performance.now(), surface, profile: useBrowser.getState().windows[windowId]?.profileId, ...event });
@@ -39,6 +45,8 @@ export function ProfileSwipeArea({ surface, style, pageWidth }: { surface: "side
     const e = pageWidth ? { ...event, width: pageWidth } : event;
     if (e.phase === "swipe") return pager.step(e.direction === "back" ? -1 : 1);
     if (e.phase === "wheel") return pager.wheel(e);
+    // Drags on the native pager never reach JS; a stray one from an older binary is ignored.
+    if (nativePager) return;
     if (e.phase === "began") pager.beginDrag();
     if (e.phase === "began" || e.phase === "changed") return pager.track(e);
     pager.release(e, e.phase === "cancelled");
@@ -51,8 +59,23 @@ export function ProfileSwipeArea({ surface, style, pageWidth }: { surface: "side
     return () => void (devAreas.get(key) === area && devAreas.delete(key));
   }, [windowId, surface]);
 
-  if (!multiple) return null;
-  return <SwipeArea ref={area} style={style} canSwipeBack={previous} canSwipeForward={next} tracksUnavailableDirections isPager onSwipe={onSwipe} />;
+  // Keep the native controller configured when the last extra profile is removed, so its absolute
+  // position returns to zero. The area stays transparent and recognizes no single-profile drags.
+  if (!multiple && !nativePager) return null;
+  return (
+    <SwipeArea
+      ref={area}
+      style={style}
+      canSwipeBack={previous}
+      canSwipeForward={next}
+      tracksUnavailableDirections={multiple}
+      isPager={multiple}
+      onSwipe={onSwipe}
+      nativePager={nativePager}
+      onPagerPosition={nativePager && onPagerPosition}
+      onPagerState={nativePager && pager.onNativeState}
+    />
+  );
 }
 
 export function ProfileTint() {
