@@ -1,11 +1,11 @@
-import { ContextMenuArea, FadeLabel, Surface, Symbol, WindowDragRegion } from "@netnyahoo/shell";
-import { useMemo, useRef, useState } from "react";
+import { ContextMenuArea, FadeLabel, setTrafficLightsCenter, Surface, Symbol, WindowDragRegion } from "@netnyahoo/shell";
+import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
-import { PageProfileContext, useIsActiveTab, usePageProfileId, useTab, useTabLive, useWindowId, useWindowProfileId } from "../../store/hooks";
+import { PageProfileContext, useIsActiveTab, usePageProfileId, useSettings, useTab, useTabLive, useWindowId, useWindowProfileId } from "../../store/hooks";
 import { viewTabIds } from "../../store/model";
 import type { TabGroup } from "../../store/types";
 import { ProfileIndicator } from "../ProfileIndicator";
@@ -20,28 +20,45 @@ import { usePageOffset, usePagerPages } from "./profilePager";
 import { ProfileSwipeArea } from "./ProfileSwipe";
 import { openNewTabInSplit } from "./splitActions";
 import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag } from "./tabDrag";
+import { toolbarPalette, useEasedColor, type ToolbarPalette } from "./toolbarColors";
 
-const CHIP_HEIGHT = 32;
-// Chips centre on the traffic lights (y 27); the strip leaves the same room under them as above.
-const CHIP_TOP = 27 - CHIP_HEIGHT / 2;
-export const TOP_STRIP_HEIGHT = CHIP_TOP * 2 + CHIP_HEIGHT;
+// Dia's top strip, from a 2x capture of 1.50.1: the card starts 42 below the window top, and everything in the
+// strip (window buttons, icons, titles) centres on y 21.
+export const TOP_STRIP_HEIGHT = 42;
+export const TOP_CARD_INSET = 6;
+const MID = 21;
+// Hover backgrounds, the pinned group and the + button: 32 tall, 5…37.
+const ITEM_HEIGHT = 32;
+const ITEM_TOP = MID - ITEM_HEIGHT / 2;
+// The selected tab rises from the card: fill from y 3 with top corners of 10 and concave 15 pt flares at its foot,
+// and a 0.5 pt rim just outside it that fades out down the sides.
+const TAB_TOP = 3;
+const TAB_RADIUS = 10;
+const FLARE = 15;
+const RIM_HEIGHT = 27.5;
 const PEEK_PAD = 7;
-const PEEK_HEIGHT = CHIP_HEIGHT + PEEK_PAD * 2;
-const PINNED_WIDTH = 40;
-// Dia: tab groups 96–232pt.
+const PEEK_HEIGHT = ITEM_HEIGHT + PEEK_PAD * 2;
+// Pinned tabs share one container: 34 pt cells 2 apart, 16 pt icons.
+const PINNED_CELL = 34;
+const PINNED_SPACING = 2;
+const DOCK_GAP = 4.5;
 const MIN_CHIP = 96;
-const MAX_CHIP = 232;
+const MAX_CHIP = 173;
 const GAP = 4;
-// Room after the zoom button (≈ the lights' own spacing); without it the first tile touches it.
+// The first item starts at x 86, 12 pt after the zoom button.
 const LIGHTS_GAP = 8;
+const LIGHTS_CENTER: [number, number] = [20.75, 20.75];
+
+// The drop-down strip (full screen, auto-hidden tabs) has no card to attach the selected tab to.
+const FloatingStrip = createContext(false);
 
 type Entry =
-  | { kind: "pinned"; id: string }
+  | { kind: "dock"; ids: string[] }
   | { kind: "group"; id: string }
   | { kind: "tab"; id: string; group: string | null }
   | { kind: "split"; id: string; tabIds: string[]; group: string | null };
 
-export function TopTabStrip({ floating }: { floating?: boolean }) {
+export function TopTabStrip({ floating = false }: { floating?: boolean }) {
   const windowId = useWindowId();
   const [width, setWidth] = useState(0);
   const current = useWindowProfileId();
@@ -50,39 +67,50 @@ export function TopTabStrip({ floating }: { floating?: boolean }) {
   const left = floating ? 8 : layout.trafficLightsWidth + LIGHTS_GAP;
   const right = Math.max(84, controls + 8 + 6);
   const pageWidth = Math.max(0, width - left - right);
+  const flare = floating ? 0 : FLARE;
+
+  useEffect(() => {
+    if (floating) return;
+    void setTrafficLightsCenter(windowId, LIGHTS_CENTER);
+    return () => void setTrafficLightsCenter(windowId, null);
+  }, [floating, windowId]);
 
   return (
-    <View style={{ height: TOP_STRIP_HEIGHT }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-      <WindowDragRegion style={StyleSheet.absoluteFill} />
-      <View style={{ position: "absolute", left, right, top: 0, bottom: 0, overflow: "hidden" }}>
-        {pages.map((page) => (
-          <StripPage key={page.id} profileId={page.id} slot={page.slot} pageWidth={pageWidth} current={page.id === current} resting={!!page.resting} />
-        ))}
+    <FloatingStrip.Provider value={floating}>
+      <View style={{ height: TOP_STRIP_HEIGHT }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+        <WindowDragRegion style={StyleSheet.absoluteFill} />
+        {/* The clip starts a flare's width early so the first tab's flare isn't cut. */}
+        <View style={{ position: "absolute", left: left - flare, right: right - flare, top: 0, bottom: 0, overflow: "hidden" }}>
+          {pages.map((page) => (
+            <StripPage key={page.id} profileId={page.id} slot={page.slot} pageWidth={pageWidth} current={page.id === current} resting={!!page.resting} />
+          ))}
+        </View>
+        <View
+          onLayout={(e) => setControls(Math.ceil(e.nativeEvent.layout.width))}
+          style={{ position: "absolute", right: 8, top: MID - 17, flexDirection: "row", alignItems: "center", gap: 2 }}
+        >
+          <ProfileIndicator room={140} />
+          <IconButton
+            icon="arrow.down.circle"
+            size={16}
+            box={34}
+            radius={10}
+            tooltip="Downloads (⇧⌘J)"
+            onPress={() => {
+              const s = useBrowser.getState();
+              s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
+            }}
+          />
+        </View>
+        <ProfileSwipeArea surface="strip" style={StyleSheet.absoluteFill} pageWidth={pageWidth} />
       </View>
-      <View
-        onLayout={(e) => setControls(Math.ceil(e.nativeEvent.layout.width))}
-        style={{ position: "absolute", right: 8, top: CHIP_TOP - 1, flexDirection: "row", alignItems: "center", gap: 2 }}
-      >
-        <ProfileIndicator room={140} />
-        <IconButton
-          icon="arrow.down.circle"
-          size={16}
-          box={34}
-          radius={10}
-          tooltip="Downloads (⇧⌘J)"
-          onPress={() => {
-            const s = useBrowser.getState();
-            s.setDownloadsOpen(windowId, !s.windowUi[windowId]?.downloadsOpen);
-          }}
-        />
-      </View>
-      <ProfileSwipeArea surface="strip" style={StyleSheet.absoluteFill} pageWidth={pageWidth} />
-    </View>
+    </FloatingStrip.Provider>
   );
 }
 
 function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId: string; slot: number; pageWidth: number; current: boolean; resting: boolean }) {
   const windowId = useWindowId();
+  const flare = useContext(FloatingStrip) ? 0 : FLARE;
   const translateX = usePageOffset(windowId, slot, pageWidth);
   const entries = useBrowser(
     useShallow((s): string[] => {
@@ -112,28 +140,30 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
       return out;
     }),
   );
-  const parsed = useMemo(() => entries.map(parseEntry), [entries]);
+  const parsed = useMemo(() => parseEntries(entries), [entries]);
   const tabCount = parsed.filter((e) => e.kind === "tab" || e.kind === "split").length;
-  const pinnedCount = parsed.filter((e) => e.kind === "pinned").length;
+  const pinnedCount = parsed.reduce((n, e) => n + (e.kind === "dock" ? e.ids.length : 0), 0);
   const groupCount = parsed.filter((e) => e.kind === "group").length;
-  const room = pageWidth - pinnedCount * (PINNED_WIDTH + GAP) - groupCount * (110 + GAP) - 46;
-  const chip = Math.max(MIN_CHIP, Math.min(MAX_CHIP, tabCount ? room / tabCount - GAP : MAX_CHIP));
+  const dockWidth = pinnedCount ? pinnedCount * (PINNED_CELL + PINNED_SPACING) - PINNED_SPACING + DOCK_GAP : 0;
+  const room = pageWidth - dockWidth - groupCount * (110 + GAP) - (ITEM_HEIGHT + GAP);
+  // Half-point widths keep every tab edge on the 2x pixel grid, so the attached tab shows no seam against the card.
+  const chip = Math.round(Math.max(MIN_CHIP, Math.min(MAX_CHIP, tabCount ? room / tabCount - GAP : MAX_CHIP)) * 2) / 2;
   const regular = parsed.filter((e) => e.kind === "tab").map((e) => e.id);
 
   return (
     <Animated.View
       pointerEvents={current ? "auto" : "none"}
-      style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pageWidth, display: resting ? "none" : "flex", transform: [{ translateX }] }}
+      style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pageWidth + flare * 2, display: resting ? "none" : "flex", transform: [{ translateX }] }}
     >
       <PageProfileContext.Provider value={profileId}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={{ flex: 1 }}
-          contentContainerStyle={{ alignItems: "flex-start", gap: GAP, paddingTop: CHIP_TOP, paddingRight: 6 }}
+          contentContainerStyle={{ alignItems: "flex-start", gap: GAP, paddingLeft: flare, paddingRight: flare }}
         >
           {parsed.map((e) => {
-            if (e.kind === "pinned") return <PinnedChip key={e.id} tabId={e.id} />;
+            if (e.kind === "dock") return <PinnedDock key="dock" tabIds={e.ids} />;
             if (e.kind === "group") return <GroupLabel key={e.id} groupId={e.id} />;
             if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} group={e.group} />;
             return <DraggableChip key={e.id} tabId={e.id} width={chip} index={regular.indexOf(e.id)} count={regular.length} group={e.group} />;
@@ -145,17 +175,25 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
   );
 }
 
-function parseEntry(key: string): Entry {
-  const [kind, id, a, b] = key.split(":");
-  if (kind === "pinned") return { kind, id: id! };
-  if (kind === "group") return { kind, id: id! };
-  if (kind === "split") return { kind, id: id!, tabIds: a!.split(","), group: b || null };
-  return { kind: "tab", id: id!, group: a || null };
+function parseEntries(keys: string[]): Entry[] {
+  const out: Entry[] = [];
+  for (const key of keys) {
+    const [kind, id, a, b] = key.split(":");
+    if (kind === "pinned") {
+      const last = out[out.length - 1];
+      if (last?.kind === "dock") last.ids.push(id!);
+      else out.push({ kind: "dock", ids: [id!] });
+    } else if (kind === "group") out.push({ kind, id: id! });
+    else if (kind === "split") out.push({ kind, id: id!, tabIds: a!.split(","), group: b || null });
+    else out.push({ kind: "tab", id: id!, group: a || null });
+  }
+  return out;
 }
 
 function DraggableChip({ tabId, width, index, count, group }: { tabId: string; width: number; index: number; count: number; group: string | null }) {
   const dx = useRef(new Animated.Value(0)).current;
   const [dragging, setDragging] = useState(false);
+  const active = useIsActiveTab(tabId);
   const pitch = width + GAP;
   const responder = useMemo(
     () =>
@@ -185,7 +223,7 @@ function DraggableChip({ tabId, width, index, count, group }: { tabId: string; w
     [index, count, tabId, pitch],
   );
   return (
-    <Animated.View {...responder.panHandlers} style={{ zIndex: dragging ? 10 : 0, opacity: dragging ? 0.92 : 1, transform: [{ translateX: dx }] }}>
+    <Animated.View {...responder.panHandlers} style={{ zIndex: dragging ? 10 : active ? 1 : 0, opacity: dragging ? 0.92 : 1, transform: [{ translateX: dx }] }}>
       <TabChip tabId={tabId} width={width} group={group} />
     </Animated.View>
   );
@@ -201,39 +239,68 @@ function sectionIndex(tabId: string, visibleIndex: number) {
   return target ? section.indexOf(target) : section.length - 1;
 }
 
+// The toolbar's website colour, eased the same way, so the selected tab and the toolbar read as one surface.
+function useWebsiteBand(tabId: string) {
+  const theme = useTheme();
+  const extend = useSettings((s) => s.extendWebsiteColor);
+  const url = useTab(tabId)?.url;
+  const themeColor = useTabLive(tabId, (l) => l.themeColor);
+  const palette = toolbarPalette(theme, extend && url ? themeColor : null);
+  return { palette, band: useEasedColor(palette.background) };
+}
+
 function TabChip({ tabId, width, group }: { tabId: string; width: number; group: string | null }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const tab = useTab(tabId);
   const active = useIsActiveTab(tabId);
+  const floating = useContext(FloatingStrip);
   const playing = useTabLive(tabId, (l) => l.playingAudio);
   const groupColor = useBrowser((s) => (group ? s.groups[group]?.color : null));
+  const { palette, band } = useWebsiteBand(tabId);
   const { hovered, hoverProps } = useHover();
   if (!tab) return null;
   const title = tab.customTitle || tab.title || tab.url || "New Tab";
+  const onBand = active && !floating && !!palette.background;
   return (
-    <View {...hoverProps} tooltip={tab.url ? `${title}\n${tab.url}` : title}>
-      <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)}>
-        <Pressable onPress={(e) => clickTab(windowId, tab.id, modifiersOf(e))}>
+    <View {...hoverProps} tooltip={tab.url ? `${title}\n${tab.url}` : title} style={{ width, height: TOP_STRIP_HEIGHT }}>
+      {active && <SelectedTab width={width} band={band} />}
+      <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)} style={StyleSheet.absoluteFill}>
+        <Pressable onPress={(e) => clickTab(windowId, tab.id, modifiersOf(e))} style={{ flex: 1 }}>
           {({ pressed }) => (
-            <ChipSurface active={active} hovered={hovered} pressed={pressed} width={width}>
+            <ItemRow hovered={hovered && !active} pressed={pressed && !active}>
               <View>
                 <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
-                <TabBadges tabId={tab.id} />
+                <TabBadges tabId={tab.id} pip={false} />
               </View>
               {(playing || tab.muted) && (
                 <Pressable onPress={() => toggleMute(tab.id)} style={{ marginLeft: 5 }} tooltip={tab.muted ? "Unmute" : "Mute"}>
-                  <Symbol name={tab.muted ? "speaker.slash" : "speaker.wave.2"} size={11} color={theme.textTab} style={{ width: 16, height: 16 }} />
+                  <Symbol name={tab.muted ? "speaker.slash" : "speaker.wave.2"} size={11} color={onBand ? palette.icon : theme.textTab} style={{ width: 16, height: 16 }} />
                 </Pressable>
               )}
-              <FadeLabel text={title} fontSize={12.5} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 17, marginLeft: 6 }} />
+              <FadeLabel
+                text={title}
+                fontSize={12}
+                color={onBand ? palette.text : active ? theme.tabSelectedText : theme.textTab}
+                // The label draws 2 pt in, so the text starts 7 after the favicon.
+                style={{ flex: 1, height: 16, marginLeft: 5 }}
+              />
               {hovered ? (
-                <IconButton icon="xmark" size={9} weight="semibold" box={20} radius={5} onPress={() => void closeTab(tab.id)} tooltip="Close Tab" />
+                <IconButton
+                  icon="xmark"
+                  size={9}
+                  weight="semibold"
+                  box={20}
+                  radius={5}
+                  color={onBand ? palette.icon : undefined}
+                  onPress={() => void closeTab(tab.id)}
+                  tooltip="Close Tab"
+                />
               ) : (
                 <View style={{ width: 20 }} />
               )}
               {groupColor !== undefined && group ? <GroupUnderline color={groupColor} /> : null}
-            </ChipSurface>
+            </ItemRow>
           )}
         </Pressable>
       </ContextMenuArea>
@@ -241,22 +308,104 @@ function TabChip({ tabId, width, group }: { tabId: string; width: number; group:
   );
 }
 
-function ChipSurface({ active, hovered, pressed, width, children }: { active: boolean; hovered: boolean; pressed: boolean; width: number; children: React.ReactNode }) {
+// A tab's content row, 5…37, with Dia's hover and pressed fills for a tab that isn't selected.
+function ItemRow({ hovered, pressed, children }: { hovered: boolean; pressed: boolean; children: React.ReactNode }) {
   const theme = useTheme();
   return (
-    <Surface
-      fill={hex(active ? theme.tabSelected : pressed ? theme.tabPressed : hovered ? theme.tabHover : "rgba(0,0,0,0)")}
-      cornerRadius={10}
-      borderWidth={active ? 1 : 0}
-      borderColors={active ? theme.tabSelectedBorder.map(hex) : undefined}
-      shadowColor={active ? hex(theme.tabSelectedShadow) : undefined}
-      shadowOpacity={active ? 1 : 0}
-      shadowRadius={theme.tabSelectedShadowRadius}
-      shadowOffset={[0, 0.5]}
-      style={{ width, height: CHIP_HEIGHT, flexDirection: "row", alignItems: "center", paddingLeft: 9, paddingRight: 5 }}
+    <View
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: ITEM_TOP,
+        height: ITEM_HEIGHT,
+        borderRadius: TAB_RADIUS,
+        backgroundColor: pressed ? theme.tabPressed : hovered ? theme.tabHover : undefined,
+        flexDirection: "row",
+        alignItems: "center",
+        paddingLeft: 9.5,
+        paddingRight: 6,
+      }}
     >
       {children}
-    </Surface>
+    </View>
+  );
+}
+
+type Fill = string | ReturnType<typeof useEasedColor>;
+
+// The selected tab: the card's own fill (and the toolbar's website colour over it) rising out of the card.
+function SelectedTab({ width, band }: { width: number; band: Fill | null }) {
+  const theme = useTheme();
+  const floating = useContext(FloatingStrip);
+  if (floating) {
+    return (
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          left: 0,
+          top: ITEM_TOP,
+          width,
+          height: ITEM_HEIGHT,
+          borderRadius: TAB_RADIUS,
+          borderWidth: 0.5,
+          borderColor: theme.dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)",
+          backgroundColor: theme.card,
+        }}
+      />
+    );
+  }
+  const body = width - 1;
+  const fills: Fill[] = band ? [theme.card, band] : [theme.card];
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width, height: TOP_STRIP_HEIGHT }}>
+      {fills.map((fill, i) => (
+        <Fragment key={i}>
+          <Animated.View
+            style={{
+              position: "absolute",
+              left: 0.5,
+              top: TAB_TOP,
+              width: body,
+              height: TOP_STRIP_HEIGHT - TAB_TOP,
+              borderTopLeftRadius: TAB_RADIUS,
+              borderTopRightRadius: TAB_RADIUS,
+              backgroundColor: fill,
+            }}
+          />
+          <Flare x={0.5 - FLARE} side="left" color={fill} />
+          <Flare x={0.5 + body} side="right" color={fill} />
+        </Fragment>
+      ))}
+      <Surface
+        cornerRadius={TAB_RADIUS + 0.5}
+        borderWidth={0.5}
+        borderColors={[theme.dark ? "#FFFFFF3B" : "#FFFFFFFA", "#FFFFFF00"]}
+        style={{ position: "absolute", left: 0, top: TAB_TOP - 0.5, width, height: RIM_HEIGHT }}
+      />
+    </View>
+  );
+}
+
+// The tab's concave foot: an r×r square filled outside a circle of radius r centred on its outer top corner.
+function Flare({ x, side, color }: { x: number; side: "left" | "right"; color: Fill }) {
+  const outer = FLARE * 2;
+  return (
+    <View style={{ position: "absolute", left: x, top: TOP_STRIP_HEIGHT - FLARE, width: FLARE, height: FLARE, overflow: "hidden" }}>
+      <Animated.View
+        style={{
+          position: "absolute",
+          left: side === "left" ? -outer : FLARE - outer,
+          top: -outer,
+          width: outer * 2,
+          height: outer * 2,
+          borderRadius: outer,
+          borderWidth: FLARE,
+          borderColor: color,
+        }}
+      />
+    </View>
   );
 }
 
@@ -266,7 +415,35 @@ function GroupUnderline({ color }: { color: TabGroup["color"] }) {
   return <View pointerEvents="none" style={{ position: "absolute", left: 10, right: 10, bottom: 1, height: 2, borderRadius: 1, backgroundColor: tint }} />;
 }
 
-function PinnedChip({ tabId }: { tabId: string }) {
+// Dia keeps pinned tabs in one shared container (the TabDockItemResting fill and stroke), not a tile each.
+function PinnedDock({ tabIds }: { tabIds: string[] }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        marginTop: ITEM_TOP,
+        marginRight: DOCK_GAP - GAP,
+        width: tabIds.length * (PINNED_CELL + PINNED_SPACING) - PINNED_SPACING,
+        height: ITEM_HEIGHT,
+        flexDirection: "row",
+        alignItems: "center",
+        borderRadius: TAB_RADIUS,
+        borderWidth: 0.5,
+        borderColor: theme.pinnedRestingStroke,
+        backgroundColor: theme.pinnedResting,
+      }}
+    >
+      {/* The stroke sits inside the container, over the cells' outer edges. */}
+      <View style={{ flexDirection: "row", gap: PINNED_SPACING, marginHorizontal: -0.5 }}>
+        {tabIds.map((id) => (
+          <PinnedCell key={id} tabId={id} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function PinnedCell({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const tab = useTab(tabId);
@@ -277,44 +454,27 @@ function PinnedChip({ tabId }: { tabId: string }) {
     <View {...hoverProps} tooltip={`${tab.customTitle || tab.title || tab.url}${tab.url ? `\n${tab.url}` : ""}`}>
       <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)}>
         <Pressable onPress={(e) => clickTab(windowId, tab.id, modifiersOf(e))}>
-          {({ pressed }) =>
-            active ? (
-              <Surface
-                fill={hex(theme.pinnedSelectedRim)}
-                cornerRadius={10}
-                shadowColor={theme.dark ? "#FFFFFF" : "#000000"}
-                shadowOpacity={theme.dark ? 0.15 : 0.12}
-                shadowRadius={1.5}
-                shadowOffset={[0, 0.5]}
-                style={{ width: PINNED_WIDTH, height: CHIP_HEIGHT, padding: 1 }}
-              >
-                <View style={{ flex: 1, borderRadius: 9, backgroundColor: theme.pinnedSelectedFill, borderTopWidth: 1, borderColor: theme.pinnedSelectedOutline, alignItems: "center", justifyContent: "center" }}>
-                  <View>
-                    <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
-                    <TabBadges tabId={tab.id} />
-                  </View>
-                </View>
-              </Surface>
-            ) : (
-              <View
-                style={{
-                  width: PINNED_WIDTH,
-                  height: CHIP_HEIGHT,
-                  borderRadius: 10,
-                  borderWidth: 0.5,
-                  borderColor: theme.pinnedRestingStroke,
-                  backgroundColor: pressed ? theme.tabPressed : hovered ? theme.tabHover : theme.pinnedResting,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <View>
-                  <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
-                  <TabBadges tabId={tab.id} />
-                </View>
+          {({ pressed }) => (
+            <View style={{ width: PINNED_CELL, height: ITEM_HEIGHT - 1, alignItems: "center", justifyContent: "center" }}>
+              {(active || hovered || pressed) && (
+                <View
+                  style={{
+                    position: "absolute",
+                    left: 2,
+                    right: 2,
+                    top: 2,
+                    bottom: 2,
+                    borderRadius: 8,
+                    backgroundColor: pressed ? theme.tabPressed : active ? theme.pinnedSelectedFill : theme.tabHover,
+                  }}
+                />
+              )}
+              <View>
+                <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
+                <TabBadges tabId={tab.id} pip={false} />
               </View>
-            )
-          }
+            </View>
+          )}
         </Pressable>
       </ContextMenuArea>
     </View>
@@ -328,15 +488,15 @@ function GroupLabel({ groupId }: { groupId: string }) {
   if (!group) return null;
   const tint = group.color ? GROUP_COLORS[group.color].hex : null;
   return (
-    <View {...hoverProps} tooltip={group.collapsed ? "Expand Group" : "Collapse Group"}>
+    <View {...hoverProps} tooltip={group.collapsed ? "Expand Group" : "Collapse Group"} style={{ marginTop: ITEM_TOP }}>
       <Pressable onPress={() => useBrowser.getState().updateGroup(groupId, { collapsed: !group.collapsed })}>
         {({ pressed }) => (
           <View
             style={{
-              height: CHIP_HEIGHT,
+              height: ITEM_HEIGHT,
               maxWidth: 140,
               paddingHorizontal: 10,
-              borderRadius: 10,
+              borderRadius: TAB_RADIUS,
               flexDirection: "row",
               alignItems: "center",
               gap: 6,
@@ -344,7 +504,7 @@ function GroupLabel({ groupId }: { groupId: string }) {
             }}
           >
             {group.icon ? <Text style={{ fontSize: 13 }}>{group.icon}</Text> : <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tint ?? theme.textSecondary }} />}
-            <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 12.5, fontWeight: "600", color: tint ?? theme.textPrimary }}>
+            <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 12, fontWeight: "600", color: tint ?? theme.textPrimary }}>
               {group.name || (group.collapsed ? `${group.tabIds.length} Tabs` : "Group")}
             </Text>
             {group.collapsed && group.name ? <Text style={{ fontSize: 11, color: theme.textSecondary }}>{group.tabIds.length}</Text> : null}
@@ -359,23 +519,29 @@ function SplitChip({ tabIds, width, group }: { tabIds: string[]; width: number; 
   const theme = useTheme();
   const windowId = useWindowId();
   const profileId = usePageProfileId();
-  const active = useBrowser((s) => tabIds.includes(s.windows[windowId]?.activeTabIds[profileId] ?? ""));
+  const focusedId = useBrowser((s) => s.windows[windowId]?.activeTabIds[profileId] ?? "");
+  const active = tabIds.includes(focusedId);
   const groupColor = useBrowser((s) => (group ? s.groups[group]?.color : null));
+  // Each pane has its own card and toolbar; the tab takes the focused pane's colour.
+  const { band, palette } = useWebsiteBand(active ? focusedId : tabIds[0]!);
+  const floating = useContext(FloatingStrip);
+  const ink = active && !floating && palette.background ? palette : null;
   const { hovered, hoverProps } = useHover();
   return (
-    <View {...hoverProps}>
-      <ChipSurface active={active} hovered={hovered} pressed={false} width={width}>
-        <Symbol name="rectangle.split.2x1" size={11} color={theme.textSecondary} style={{ width: 14, height: 16, marginRight: 4 }} />
+    <View {...hoverProps} style={{ width, height: TOP_STRIP_HEIGHT, zIndex: active ? 1 : 0 }}>
+      {active && <SelectedTab width={width} band={band} />}
+      <ItemRow hovered={hovered && !active} pressed={false}>
+        <Symbol name="rectangle.split.2x1" size={11} color={ink?.secondary ?? theme.textSecondary} style={{ width: 14, height: 16, marginRight: 4 }} />
         {tabIds.map((id, i) => (
-          <SplitPart key={id} tabId={id} first={i === 0} />
+          <SplitPart key={id} tabId={id} first={i === 0} ink={ink} />
         ))}
         {groupColor !== undefined && group ? <GroupUnderline color={groupColor} /> : null}
-      </ChipSurface>
+      </ItemRow>
     </View>
   );
 }
 
-function SplitPart({ tabId, first }: { tabId: string; first: boolean }) {
+function SplitPart({ tabId, first, ink }: { tabId: string; first: boolean; ink: ToolbarPalette | null }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const tab = useTab(tabId);
@@ -383,10 +549,10 @@ function SplitPart({ tabId, first }: { tabId: string; first: boolean }) {
   if (!tab) return null;
   return (
     <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)} style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-      {!first && <View style={{ width: StyleSheet.hairlineWidth, height: 16, marginHorizontal: 6, backgroundColor: theme.textTertiary }} />}
+      {!first && <View style={{ width: StyleSheet.hairlineWidth, height: 16, marginHorizontal: 6, backgroundColor: ink?.divider ?? theme.textTertiary }} />}
       <Pressable onPress={() => useBrowser.getState().activate(tab.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center" }} tooltip={tab.title || tab.url}>
         <TabIcon url={tab.url} favicon={tab.favicon} icon={tab.customIcon} size={14} profileId={tab.profileId} />
-        <FadeLabel text={tab.customTitle || tab.title || tab.url || "New Tab"} fontSize={12} color={focused ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: 5 }} />
+        <FadeLabel text={tab.customTitle || tab.title || tab.url || "New Tab"} fontSize={12} color={ink ? (focused ? ink.text : ink.secondary) : focused ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: 5 }} />
       </Pressable>
     </ContextMenuArea>
   );
@@ -396,7 +562,7 @@ function NewTabButton({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
   return (
-    <View {...hoverProps} tooltip="New Tab (⌘T) — ⌥-click to open in Split View">
+    <View {...hoverProps} tooltip="New Tab (⌘T) — ⌥-click to open in Split View" style={{ marginTop: ITEM_TOP, marginLeft: 0.5 }}>
       <Pressable
         onPress={(e) => {
           if (modifiersOf(e).altKey) openNewTabInSplit(windowId);
@@ -404,8 +570,8 @@ function NewTabButton({ windowId }: { windowId: string }) {
         }}
       >
         {({ pressed }) => (
-          <View style={{ width: CHIP_HEIGHT, height: CHIP_HEIGHT, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? theme.tabPressed : hovered ? theme.tabHover : undefined }}>
-            <Symbol name="plus" size={13} weight="medium" color={theme.textSecondary} style={{ width: 16, height: 16 }} />
+          <View style={{ width: ITEM_HEIGHT, height: ITEM_HEIGHT, borderRadius: TAB_RADIUS, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? theme.tabPressed : hovered ? theme.tabHover : undefined }}>
+            <Symbol name="plus" size={13} color={theme.textSecondary} style={{ width: 16, height: 16 }} />
           </View>
         )}
       </Pressable>
@@ -457,7 +623,7 @@ export function TopStripPeek() {
             shadowOffset={[0, 6]}
             style={{ flex: 1 }}
           >
-            <View style={{ position: "absolute", left: 0, right: 0, top: PEEK_PAD - CHIP_TOP, height: TOP_STRIP_HEIGHT }}>
+            <View style={{ position: "absolute", left: 0, right: 0, top: PEEK_PAD - ITEM_TOP, height: TOP_STRIP_HEIGHT }}>
               <TopTabStrip floating />
             </View>
           </Surface>

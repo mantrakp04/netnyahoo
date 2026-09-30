@@ -216,6 +216,7 @@ const Shell = requireNativeModule<{
   closeWindow(id: string): Promise<void>;
   setWindowProfile?(id: string, profile: string, neighbours: string[]): Promise<void>;
   focusWindow(id: string): Promise<void>;
+  setTrafficLightsCenter?(id: string, center: [number, number] | null): Promise<void>;
   setWindowTitle(id: string, title: string): Promise<void>;
   windowIds(): Promise<string[]>;
   keyWindowId(): Promise<string | null>;
@@ -257,6 +258,8 @@ export const WindowProfile: ComponentType<WindowProfileProps> | null = requireOp
 export const closeWindow = (id: string) => Shell.closeWindow(id);
 export const focusWindow = (id: string) => Shell.focusWindow(id);
 export const setWindowTitle = (id: string, title: string) => Shell.setWindowTitle(id, title);
+export const setTrafficLightsCenter = (id: string, center: [number, number] | null) =>
+  Shell.setTrafficLightsCenter?.(id, center) ?? Promise.resolve();
 export const windowIds = () => Shell.windowIds();
 export const keyWindowId = () => Shell.keyWindowId();
 

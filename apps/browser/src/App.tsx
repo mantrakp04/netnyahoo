@@ -15,7 +15,7 @@ import { OnboardingOverlay } from "./components/onboarding";
 import { CreateProfileHost } from "./components/profiles/CreateProfile";
 import { useFullscreenTab } from "./components/layout/pageState";
 import { ProfileSwipe, ProfileTint } from "./components/layout/ProfileSwipe";
-import { TOP_STRIP_HEIGHT, TopStripPeek, TopTabStrip } from "./components/layout/TopTabStrip";
+import { TOP_CARD_INSET, TOP_STRIP_HEIGHT, TopStripPeek, TopTabStrip } from "./components/layout/TopTabStrip";
 import { useTabLayout } from "./components/layout/windowLayout";
 import { WindowProfile } from "./components/layout/WindowProfile";
 import { Sidebar } from "./components/Sidebar";
@@ -68,9 +68,9 @@ function BrowserWindow() {
                 flex: 1,
                 flexDirection: "row",
                 paddingTop: showStrip ? TOP_STRIP_HEIGHT : layout.cardTop,
-                paddingRight: layout.cardInset,
-                paddingBottom: layout.cardInset,
-                paddingLeft: showSidebar ? 0 : layout.cardInset,
+                paddingRight: showStrip ? TOP_CARD_INSET : layout.cardInset,
+                paddingBottom: showStrip ? TOP_CARD_INSET : layout.cardInset,
+                paddingLeft: showSidebar ? 0 : showStrip ? TOP_CARD_INSET : layout.cardInset,
               }
         }
       >

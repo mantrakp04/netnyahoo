@@ -545,6 +545,36 @@ than ours at the same cap height.
   Clean Up Once and Clean Up Daily (8 apart) at the right (`0x103bca7d0`). Netnyahoo's card lives in the 160–400 pt
   sidebar, so it stacks the three buttons.
 
+### Top tab strip (1.50.1, 2× capture of the user's window, 2026-09-30)
+
+Measured from a read-only `screencapture -l` of Dia's window in the top layout (View › Show Tabs in Sidebar off),
+dark, inactive, plum theme, 1512 × 949: two pinned tabs (X, YouTube), "(1) Home / X", and Reddit selected. The
+classes are `TabStrip.TabStripViewController`, `TabStripDockView` (the pinned group) and `TabUI.TabShapeView`
+(`hasInnerCorners`, `cornerRadiusFraction`); the numbers below come from the pixels, not the binary.
+- **Strip and card.** The card starts at y **42**; its left, right and bottom insets are **6** (not the sidebar
+  layout's 7), radius 10. Everything in the strip centres on **y 21**.
+- **The window buttons move** in this layout: centres (20.75, 20.75), (43.75, 20.75), (66.75, 20.75), 4 pt left of
+  and 6 pt above the sidebar layout's (24.75, 26.75).
+- **Pinned group** (`TabStripDockView`): one container at x **86** (12.25 after the zoom button), y 5 … 37 (32 tall),
+  **70** wide for two tabs (n × 34 + (n − 1) × 2), radius 10. Fill white 0.10 (`TabDockItemRestingBackground`) with a
+  0.5 pt inner stroke of white 0.14 over it (`TabDockItemRestingStroke`); light mode has the same tokens (black 0.05 /
+  0.18). Icons 16 pt, centred at x 102.75 and 138.75 (36 apart, 20 pt between icons) and y 21. No box per icon and
+  **no badge**: nothing marks picture in picture or media in the strip (`TabBadgeView` and `PinnedTabBadgeView` are
+  unread counts). The group scrolls with the tabs.
+- **Tabs** are **173** wide on a **177** pitch (4 apart); the first starts 4.5 after the pinned group (x 160.5).
+  Favicon 16 at x + 9.5, centred on y 21; the title starts 7 after it, SF **12 pt regular**, `TabTitleSelected` white 1
+  or `TabTitleUnselected` white 0.78 (measured (213, 210, 211) on (65, 50, 53)). Unselected tabs have no background.
+- **Selected tab**: attached to the card, with no gap and no border between them. Filled from y **3** down to the card
+  (39 tall) with the card's own fill and the toolbar's website colour over it (Reddit: (15, 17, 19) in both). Top
+  corners radius **10** (the same profile as the card's corner). At its foot, concave flares of radius **15** (a
+  circular fit, 0.15 px rms) curve out into the card's top edge on both sides, from y 27 to 42. A 0.5 pt rim sits just
+  outside the fill: white **0.23** along the top, fading down the sides (0.15 at y 12, about 0.03 at y 28, gone where
+  the flares start).
+- **"+"**: a plain `plus` glyph, 10 pt wide, centred at (530.5, 20.5): a 32 pt button 4 after the last tab, white ~0.55.
+- Not captured (it would take clicking in Dia): hover and pressed states in the strip, a selected pinned tab, split and
+  grouped tabs, and light mode. Netnyahoo uses the sidebar's tokens there (`TabBackgroundHovered` 0.16 / 0.55,
+  `TabBackgroundPressed` 0.31 / 0.70, in a 32 pt row with radius 10).
+
 ### Menus (1.50.1, menu builder `0x10000f000`–`0x10001c8f4`)
 - View: Appearance ▸ (Automatic, Light, Dark; still there although the Appearance pane is gone), Refresh ⌘R, Force
   Refresh the Page ⇧⌘R (built with the alternate flag, so probably shown only with ⇧ held; medium confidence), —,

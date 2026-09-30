@@ -328,7 +328,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 ## 4. Sidebar & layout
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
-| Vertical sidebar vs top tab strip (⇧⌘S) | ✓ | ✅ | per window; new windows follow Settings › Tabs |
+| Vertical sidebar vs top tab strip (⇧⌘S) | ✓ | ✅ | per window; new windows follow Settings › Tabs. The top strip matches a 2× Dia capture (`dia-spec.md` › Top tab strip): pinned tabs share one container, the selected tab is attached to the card (concave flares, the toolbar's website colour), the card starts at y 42 with 6 pt insets, and the window buttons centre on y 20.75 |
 | Auto‑hide tabs / Focus Mode (⌘S) | ✓ | ✅ | |
 | Peek sidebar on hover at left edge | ✓ | ✅ | top strip peeks too |
 | Sidebar toggle button in nav bar | ✓ | ✅ | |

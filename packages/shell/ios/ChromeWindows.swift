@@ -37,6 +37,10 @@ enum ChromeWindows {
     host?.perform(NSSelectorFromString("showProfile:inWindow:"), with: profile, with: window)
   }
 
+  static func setTrafficLightsCenter(_ center: NSPoint?, in window: NSWindow) {
+    host?.perform(NSSelectorFromString("setTrafficLightsCenter:inWindow:"), with: center.map { NSValue(point: $0) }, with: window)
+  }
+
   static func prepare(_ profiles: [String], for window: NSWindow) {
     guard !profiles.isEmpty else { return }
     host?.perform(NSSelectorFromString("prepareProfiles:forWindow:"), with: profiles, with: window)

@@ -74,6 +74,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     place(window, frame: frame)
     relayoutRoot(window)
     windows[id] = window
+    if let center = lightsCenters[id] { ChromeWindows.setTrafficLightsCenter(center, in: window) }
     lastPlaced = window
     if focus { window.makeKeyAndOrderFront(nil) } else { window.orderFront(nil) }
     observeFrame(window)
@@ -101,6 +102,15 @@ final class WindowManager: NSObject, NSWindowDelegate {
     guard let window = windows[id] else { return }
     ChromeWindows.showProfile(profile, in: window)
     if let current = windows[id] { ChromeWindows.prepare(neighbours, for: current) }
+  }
+
+  // Kept per id: JS can ask before the window is registered.
+  private var lightsCenters: [String: NSPoint] = [:]
+
+  func setTrafficLightsCenter(id: String, center: NSPoint?) {
+    lightsCenters[id] = center
+    guard let window = windows[id] else { return }
+    ChromeWindows.setTrafficLightsCenter(center, in: window)
   }
 
   private func adopt(from: NSWindow, to: NSWindow) {
@@ -165,6 +175,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
       // Keep Chrome Browser alive until tabs finish moving out.
       NotificationCenter.default.removeObserver(self, name: nil, object: window)
       windows[id] = nil
+      lightsCenters[id] = nil
       auxKinds[id] = nil
       ChromeWindows.close(window)
       DispatchQueue.main.async { ChromeWindows.removeRoot(of: window) }
@@ -207,6 +218,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     guard let window = notification.object as? NSWindow, let id = id(of: window) else { return }
     NotificationCenter.default.removeObserver(self, name: nil, object: window)
     windows[id] = nil
+    lightsCenters[id] = nil
     auxKinds[id] = nil
     if closingFromJS.remove(id) == nil {
       emit?("onWindowEvent", ["type": "close", "id": id])

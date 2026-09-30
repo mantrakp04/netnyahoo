@@ -92,6 +92,10 @@ public class ShellModule: Module {
     AsyncFunction("setWindowProfile") { (id: String, profile: String, neighbours: [String]) in
       WindowManager.shared.setProfile(id: id, profile: profile, neighbours: neighbours)
     }.runOnQueue(.main)
+    // [x, y] from the window's top-left; nil puts the buttons back at their default place.
+    AsyncFunction("setTrafficLightsCenter") { (id: String, center: [Double]?) in
+      WindowManager.shared.setTrafficLightsCenter(id: id, center: center.flatMap { $0.count == 2 ? NSPoint(x: $0[0], y: $0[1]) : nil })
+    }.runOnQueue(.main)
     AsyncFunction("focusWindow") { (id: String) in WindowManager.shared.focus(id: id) }.runOnQueue(.main)
     AsyncFunction("setWindowTitle") { (id: String, title: String) in
       WindowManager.shared.setTitle(id: id, title: title)

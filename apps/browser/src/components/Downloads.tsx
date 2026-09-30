@@ -313,7 +313,7 @@ export function DownloadMagnet() {
 
   const sidebar = !topStrip && sidebarOpen ? sidebarWidth : 0;
   const footer = { x: layout.sidebarInset + SIDEBAR_FOOTER_DOWNLOADS.size / 2, y: size.height - SIDEBAR_FOOTER_DOWNLOADS.bottom - SIDEBAR_FOOTER_DOWNLOADS.size / 2 };
-  const target = topStrip ? { x: size.width - 25, y: 27 } : addressBar ? footer : sidebarOpen ? { x: sidebarWidth - 24, y: 27 } : { x: 24, y: 24 };
+  const target = topStrip ? { x: size.width - 25, y: 21 } : addressBar ? footer : sidebarOpen ? { x: sidebarWidth - 24, y: 27 } : { x: 24, y: 24 };
   const start = { x: sidebar + (size.width - sidebar) / 2, y: size.height * 0.45 };
   const icon = 44;
   const steps = [0, 0.25, 0.5, 0.75, 1];

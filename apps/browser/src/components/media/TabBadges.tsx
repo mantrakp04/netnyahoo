@@ -6,10 +6,11 @@ import { useSidebarTokens } from "../sidebar/tokens";
 import { useMedia } from "./state";
 import { CAPTURE_RED } from "./tokens";
 
-export function TabBadges({ tabId, size = 16 }: { tabId: string; size?: number }) {
+// `pip: false` where Dia shows no picture-in-picture badge (the top tab strip).
+export function TabBadges({ tabId, size = 16, pip = true }: { tabId: string; size?: number; pip?: boolean }) {
   return (
     <>
-      <PipBadge tabId={tabId} size={size} />
+      {pip && <PipBadge tabId={tabId} size={size} />}
       <CaptureBadge tabId={tabId} size={size} />
     </>
   );
