@@ -89,7 +89,13 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
   floor.receiveShadow = true;
   scene.add(floor);
 
-  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(modelUrl);
+  let gltf: Awaited<ReturnType<GLTFLoader["loadAsync"]>>;
+  try {
+    gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(modelUrl);
+  } catch (e) {
+    renderer.dispose();
+    throw e;
+  }
   const bones = new Map<string, Bone>();
   gltf.scene.traverse((o: Object3D) => {
     if (o instanceof SkinnedMesh) {

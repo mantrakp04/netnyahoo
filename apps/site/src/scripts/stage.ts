@@ -1,4 +1,4 @@
-import type { Yahu } from "./yahu";
+import type { Framing, Yahu } from "./yahu";
 
 const hero = document.querySelector<HTMLElement>('[data-stage="hero"]');
 const closing = document.querySelector<HTMLElement>('[data-stage="closing"]');
@@ -18,11 +18,12 @@ function webgl() {
 
 const phone = matchMedia("(max-width: 820px), (pointer: coarse)").matches;
 
-// The 3D chunk can fail to load (a flaky connection, or a page cached from before a deploy asking for
-// a chunk that's gone). The poster already shows him, so keep it and stay quiet.
-async function loadYahu() {
+// The 3D chunk or the model can fail to load (a flaky connection, or a page cached from before a deploy
+// asking for a chunk that's gone). The poster already shows him, so keep it and stay quiet.
+async function startYahu(stage: HTMLElement, framing: Framing) {
   try {
-    return (await import("./yahu")).createYahu;
+    const { createYahu } = await import("./yahu");
+    return await createYahu(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb`, stage, framing);
   } catch {
     return null;
   }
@@ -30,10 +31,8 @@ async function loadYahu() {
 
 async function bootClosing() {
   if (!closing || yahu || saveData || !webgl()) return;
-  const createYahu = await loadYahu();
-  if (!createYahu) return;
-  const url = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb`;
-  yahu = await createYahu(url, closing, "poster");
+  yahu = await startYahu(closing, "poster");
+  if (!yahu) return;
   at = closing;
   closing.addEventListener(
     "yahu:ready",
@@ -60,10 +59,8 @@ function watchClosing() {
 async function boot() {
   if (phone) return watchClosing();
   if (!hero || yahu || saveData || !webgl()) return;
-  const createYahu = await loadYahu();
-  if (!createYahu) return;
-  const url = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb`;
-  yahu = await createYahu(url, hero, "hero");
+  yahu = await startYahu(hero, "hero");
+  if (!yahu) return;
   at = hero;
   hero.addEventListener("yahu:ready", () => hero.setAttribute("data-live", ""), { once: true });
   closing?.addEventListener("yahu:ready", () => closing.setAttribute("data-live", ""));
