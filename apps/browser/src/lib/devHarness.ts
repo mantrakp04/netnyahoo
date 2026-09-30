@@ -4,13 +4,17 @@ import { omniboxDrivers } from "../components/omnibox/devDriver";
 import { pagesDrivers } from "../components/pages/devDrivers";
 import { usePages } from "../components/layout/pageState";
 import { openSettings } from "../components/settings/windows";
+import { useSidebarUi } from "../components/sidebar/state";
 import { useBrowser } from "../store/browser";
 import * as actions from "./actions";
 import { runCommand } from "./commands";
 import * as favicons from "./favicons";
+import { probeStore } from "./perfProbe";
 import { webviews } from "./webviews";
 
 export function startDevHarness() {
+  probeStore("pages", usePages);
+  probeStore("sidebarUi", useSidebarUi);
   for (const level of ["error", "warn"] as const) {
     const original = console[level].bind(console);
     console[level] = (...args: unknown[]) => {
@@ -49,7 +53,7 @@ export function startDevHarness() {
   (globalThis as { nn?: typeof nn }).nn = nn;
   const scriptId = (source: string | null) => source?.match(/^\/\/ *(\S+)/)?.[1];
   let lastId = scriptId(readDocument("dev-eval.js")) ?? "";
-  setInterval(() => {
+  setInterval(function pollDevEval() {
     const source = readDocument("dev-eval.js");
     const id = scriptId(source);
     if (!source || !id || id === lastId) return;

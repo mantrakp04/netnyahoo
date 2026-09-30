@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { perfProbeEnabled } from "../../lib/perfProbe";
 
 export type OmniboxDriver = {
   type(text: string): void;
@@ -35,7 +36,7 @@ export function useOmniboxDriver(id: string, driver: OmniboxDriver) {
   const latest = useRef(driver);
   latest.current = driver;
   useEffect(() => {
-    if (!__DEV__) return;
+    if (!__DEV__ && !perfProbeEnabled) return;
     const proxy: OmniboxDriver = {
       type: (text) => latest.current.type(text),
       clear: () => latest.current.clear(),
