@@ -11,7 +11,16 @@ export function sidebarEntries(s: BrowserState, windowId: string, profileId?: st
   const key = profileId ? `${windowId}|${profileId}` : windowId;
   const cached = memo.get(key);
   if (cached && cached.inputs.every((v, i) => v === inputs[i])) return cached.result;
-  const result = computeEntries(s, windowId, profileId);
+  let result = computeEntries(s, windowId, profileId);
+  // Keep the previous object when nothing listed changed (a title or a switch), so subscribers compare by identity.
+  if (cached) {
+    const was = cached.result;
+    const same = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+    const tiles = same(result.tiles, was.tiles) ? was.tiles : result.tiles;
+    const pinnedGroups = same(result.pinnedGroups, was.pinnedGroups) ? was.pinnedGroups : result.pinnedGroups;
+    const list = same(result.list, was.list) ? was.list : result.list;
+    result = tiles === was.tiles && pinnedGroups === was.pinnedGroups && list === was.list ? was : { tiles, pinnedGroups, list };
+  }
   memo.set(key, { inputs, result });
   return result;
 }
@@ -55,14 +64,19 @@ export function numberedTabs(s: BrowserState, windowId: string): string[] {
   return [...tiles, ...pinnedGroups.flatMap((id) => rowTab(`g:${id}`)), ...list.flatMap(rowTab)];
 }
 
+const groupMemo = new WeakMap<object, { tabs: BrowserState["tabs"]; splits: BrowserState["splits"]; result: string[] }>();
+
 export function groupEntries(s: BrowserState, groupId: string): string[] {
   const g = s.groups[groupId];
   if (!g) return [];
+  const cached = groupMemo.get(g);
+  if (cached && cached.tabs === s.tabs && cached.splits === s.splits) return cached.result;
   const out: string[] = [];
   for (const id of g.tabIds) {
     const entry = splitEntry(s, id);
     if (!out.includes(entry)) out.push(entry);
   }
+  groupMemo.set(g, { tabs: s.tabs, splits: s.splits, result: out });
   return out;
 }
 
@@ -74,10 +88,7 @@ function splitEntry(s: BrowserState, tabId: string): string {
 }
 
 export function useSidebarEntries(windowId: string, profileId?: string): SidebarEntries {
-  const tiles = useBrowser(useShallow((s) => sidebarEntries(s, windowId, profileId).tiles));
-  const pinnedGroups = useBrowser(useShallow((s) => sidebarEntries(s, windowId, profileId).pinnedGroups));
-  const list = useBrowser(useShallow((s) => sidebarEntries(s, windowId, profileId).list));
-  return { tiles, pinnedGroups, list };
+  return useBrowser((s) => sidebarEntries(s, windowId, profileId));
 }
 
 export const useGroupEntries = (groupId: string) => useBrowser(useShallow((s) => groupEntries(s, groupId)));

@@ -9,10 +9,12 @@ import { useSidebarTokens } from "../sidebar/tokens";
 import { useLiveColors } from "./colors";
 
 export function NextMeetingBadge({ tabId }: { tabId: string }) {
-  const calendar = useBrowser((s) => {
+  // The URL, not the check: the selector runs on every store update, the regex only when it changes.
+  const pinnedUrl = useBrowser((s) => {
     const t = s.tabs[tabId];
-    return !!t?.pinned && isCalendarUrl(t.pinnedUrl ?? t.url);
+    return t?.pinned ? (t.pinnedUrl ?? t.url) : null;
   });
+  const calendar = pinnedUrl !== null && isCalendarUrl(pinnedUrl);
   const on = useLive((s) => s.calendar.showTimeToNext);
   const events = useCalendar((s) => s.events);
   const now = useNow(15_000, calendar && on);

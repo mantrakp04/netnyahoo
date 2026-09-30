@@ -3,8 +3,9 @@ import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Pressable, TextInput, View, type GestureResponderEvent } from "react-native";
 import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
-import { useBrowser } from "../../store/browser";
-import { useIsActiveTab, usePageProfileId, useTab, useTabLive, useWindowId } from "../../store/hooks";
+import { useBrowser, type BrowserState } from "../../store/browser";
+import { activeTabId } from "../../store/model";
+import { useIsActiveTab, usePageProfileId, useTab, useWindowId } from "../../store/hooks";
 import { IconButton } from "../primitives";
 import { clickTab, commitRename, endRename, startRename, tabTitle } from "./actions";
 import { useDragItem } from "./dnd";
@@ -41,15 +42,33 @@ export const TabRowItem = memo(function TabRowItem({
   );
 });
 
+const ACTIVE = 1;
+const SELECTED = 2;
+const PLAYING = 4;
+const LOADING = 8;
+
+function rowFlags(s: BrowserState, windowId: string, tabId: string): number {
+  const tab = s.tabs[tabId];
+  const live = s.live[tabId];
+  let flags = 0;
+  if (tab && activeTabId(s, tab.windowId, tab.profileId) === tabId) flags |= ACTIVE;
+  if (s.selection[windowId]?.includes(tabId)) flags |= SELECTED;
+  if (live?.playingAudio) flags |= PLAYING;
+  if (live?.isLoading) flags |= LOADING;
+  return flags;
+}
+
 export function TabRow({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const windowId = useWindowId();
   const tab = useTab(tabId);
-  const active = useIsActiveTab(tabId);
-  const selected = useBrowser((s) => (s.selection[windowId] ?? []).includes(tabId));
-  const playingAudio = useTabLive(tabId, (l) => l.playingAudio);
-  const loading = useTabLive(tabId, (l) => l.isLoading);
+  // The row's flags in one number: a sidebar has hundreds of rows, and each selector runs on every store update.
+  const flags = useBrowser((s) => rowFlags(s, windowId, tabId));
+  const active = !!(flags & ACTIVE);
+  const selected = !!(flags & SELECTED);
+  const playingAudio = !!(flags & PLAYING);
+  const loading = !!(flags & LOADING);
   const renaming = useSidebarUi((u) => u.renaming?.kind === "tab" && u.renaming.id === tabId);
   const { hovered, hoverProps } = useRowHover(windowId, renaming ? null : { kind: "tab", id: tabId });
   if (!tab) return null;

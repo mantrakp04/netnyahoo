@@ -5,7 +5,6 @@ import { switchToTab, toggleMute } from "../../lib/actions";
 import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useTab } from "../../store/hooks";
-import { viewTabIds } from "../../store/model";
 import { Favicon, IconButton, useHover } from "../primitives";
 import { useSidebarTokens } from "../sidebar/tokens";
 import { useArtwork } from "./artwork";
@@ -15,8 +14,21 @@ import { useMediaTokens } from "./tokens";
 
 export const SIDEBAR_PLAYER_HEIGHT = 74 + 8;
 
+const NO_IDS: string[] = [];
+
 export function useSidebarPlayerTab(windowId: string): string | undefined {
-  const hidden = useBrowser(useShallow((s) => viewTabIds(s, windowId).filter((id) => !isTabShown(s, id))));
+  // Only tabs with a media session can have a player: start from those (usually none) rather than
+  // filtering every tab in the window on every store update.
+  const sessions = useMedia(useShallow((m) => Object.keys(m.sessions)));
+  const hidden = useBrowser(
+    useShallow((s) => {
+      const w = s.windows[windowId];
+      if (!sessions.length || !w) return NO_IDS;
+      const ids = sessions.filter((id) => s.tabs[id]?.windowId === windowId && s.tabs[id]!.profileId === w.profileId && !isTabShown(s, id));
+      // In sidebar order, which breaks ties between equally recent sessions.
+      return ids.length > 1 ? ids.sort((a, b) => w.tabIds.indexOf(a) - w.tabIds.indexOf(b)) : ids;
+    }),
+  );
   return useMedia((m) => playerTabFor(m, hidden));
 }
 

@@ -63,13 +63,20 @@ export function ContentCard() {
   useEffect(startMedia, []);
   useEffect(startSelectionTools, []);
 
+  // Recomputed only when the window's tabs change, not on every store update (page progress, say).
+  const mountedMemo = useRef<{ tabIds?: string[]; tabs?: object; ids: string[] }>({ ids: [] });
   const mounted = useBrowser(
-    useShallow((s) =>
-      (s.windows[windowId]?.tabIds ?? [])
+    useShallow((s) => {
+      const tabIds = s.windows[windowId]?.tabIds;
+      const memo = mountedMemo.current;
+      if (memo.tabIds === tabIds && memo.tabs === s.tabs) return memo.ids;
+      const ids = (tabIds ?? [])
         .map((id) => s.tabs[id]!)
         .filter((t) => t && (t.navigation || t.adoptId) && !isInternalTab(t))
-        .map((t) => t.id),
-    ),
+        .map((t) => t.id);
+      mountedMemo.current = { tabIds, tabs: s.tabs, ids };
+      return ids;
+    }),
   );
 
   const { panes, dividers } = useMemo(() => {
