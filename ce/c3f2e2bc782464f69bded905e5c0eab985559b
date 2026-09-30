@@ -1,0 +1,21 @@
+apps/site/src/scripts/send-to-mac.ts
+  s_9c356f9574d31c::t_ed1b12a3efb9c1 1-3,6,15-22,36,45-59,62,70
+apps/site/src/components/SendToMac.astro
+  s_9c356f9574d31c::t_d74309aab723c0 3-4,18-27,36-37,42-45,49-50,67,72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cec3f2e2bc782464f69bded905e5c0eab985559b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
