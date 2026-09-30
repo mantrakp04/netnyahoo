@@ -1,17 +1,11 @@
 ---
 import { Image } from "astro:assets";
 import poster from "../assets/yahu-poster.webp";
-import loopPoster from "../assets/loop/app-loop-poster.webp";
-import loopMp4 from "../assets/loop/app-loop.mp4";
 import DownloadButton from "./DownloadButton.astro";
 import MacOnlyNote from "./MacOnlyNote.astro";
 import SendToMac from "./SendToMac.astro";
 import { DMG_SIZE, REPO, VERSION } from "../data/release";
 import { STARS } from "../data/github";
-// Mac desktops see the app moving (an 8 s silent loop cut from the launch film, 3.2–11.8 s of
-// output/launch-video/netnyahoo-launch.mp4, the last 0.6 s crossfaded into the first) where everyone
-// else sees Big Yahu. Only Macs ever load it; with reduced motion or Save-Data they get the poster frame.
-const reel = { mp4: loopMp4, poster: loopPoster.src };
 ---
 
 <section class="hero" id="top" data-shot="hero">
@@ -50,31 +44,6 @@ const reel = { mp4: loopMp4, poster: loopPoster.src };
     </div>
 
     <figure class="hero-figure">
-      <div class="reel" data-reel>
-        <video
-          muted
-          loop
-          playsinline
-          disablepictureinpicture
-          preload="none"
-          width="1080"
-          height="1350"
-          aria-label="The Netnyahoo window: typing in the sidebar's address field, swiping from the Personal to the Work sidebar, then a split view of GitHub and Chrome's extension docs."
-        ></video>
-        <script is:inline define:vars={{ reel }}>
-          (function (video) {
-            // Before first paint, Macs only: the poster, and the loop unless motion or data is unwelcome.
-            if (document.documentElement.dataset.device !== "mac") return;
-            video.poster = reel.poster;
-            if (navigator.connection && navigator.connection.saveData) return;
-            video.dataset.src = reel.mp4;
-            if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-            video.preload = "auto";
-            video.autoplay = true;
-            video.src = reel.mp4;
-          })(document.currentScript.previousElementSibling);
-        </script>
-      </div>
       <div class="stage" data-stage="hero">
         <Image
           class="stage-poster"
@@ -87,13 +56,9 @@ const reel = { mp4: loopMp4, poster: loopPoster.src };
         />
         <p class="stamp" aria-hidden="true"><span>Incumbent</span></p>
       </div>
-      <figcaption class="label stage-caption yahu-caption">
+      <figcaption class="label stage-caption">
         <span>Fig. 1 — Big Yahu, candidate</span>
         <span class="hint">Drag to turn · click to dance</span>
-      </figcaption>
-      <figcaption class="label stage-caption reel-caption">
-        <span>Fig. 1 — Caught on tape</span>
-        <span>Real app. No body double.</span>
       </figcaption>
     </figure>
   </div>
@@ -206,35 +171,6 @@ const reel = { mp4: loopMp4, poster: loopPoster.src };
     position: relative;
     z-index: 2;
     width: min(100%, 560px);
-  }
-  /* Macs: the loop instead of Big Yahu, same place, the film's 4:5. */
-  .hero-figure .reel,
-  .hero-figure .reel-caption {
-    display: none;
-  }
-  :global(:root[data-device="mac"]) .reel,
-  :global(:root[data-device="mac"]) .reel-caption {
-    display: flex;
-  }
-  :global(:root[data-device="mac"]) .stage,
-  :global(:root[data-device="mac"]) .yahu-caption {
-    display: none;
-  }
-  :global(:root[data-device="mac"]) .hero-figure {
-    width: min(100%, calc(max(400px, 66svh) * 0.8));
-    margin-left: auto;
-  }
-  .reel {
-    position: relative;
-    aspect-ratio: 4 / 5;
-    background: var(--night);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .reel video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
   }
   .stage {
     position: relative;
@@ -378,32 +314,6 @@ const reel = { mp4: loopMp4, poster: loopPoster.src };
 </style>
 
 <script>
-  // The loop (Macs only, set up inline above): play while it's on screen and motion is welcome.
-  const reel = document.querySelector<HTMLElement>("[data-reel]");
-  const video = reel?.querySelector("video");
-  if (video?.dataset.src) {
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-    let visible = true;
-    const sync = () => {
-      if (reduced.matches) {
-        // Back to the poster frame.
-        if (video.getAttribute("src")) {
-          video.removeAttribute("src");
-          video.load();
-        }
-        return;
-      }
-      if (!video.getAttribute("src")) video.src = video.dataset.src!;
-      if (visible) void video.play().catch(() => {});
-      else video.pause();
-    };
-    reduced.addEventListener("change", sync);
-    new IntersectionObserver(([e]) => {
-      visible = e.isIntersecting;
-      sync();
-    }).observe(video);
-  }
-
   // Back from a link sent from a phone (send-to-mac.ts): point at the download.
   const ref = new URLSearchParams(location.search).get("ref");
   if (ref === "mac" || ref === "share" || ref === "email") {
