@@ -16,10 +16,10 @@ export type PageState = {
   popups: BlockedPopup[];
   permission: PermissionRequest | null;
   passwordPrompt: PasswordPrompt | null;
+  externalApp: ExternalAppRequest | null;
   mediaAccess: MediaAccess | null;
   wasNewTab: boolean;
   backToNewTab: boolean;
-  externalApp: ExternalAppRequest | null;
   newTabShown: { url: string; title: string; favicon: string | null } | null;
 };
 
@@ -34,10 +34,10 @@ export const IDLE_PAGE: PageState = {
   popups: [],
   permission: null,
   passwordPrompt: null,
+  externalApp: null,
   mediaAccess: null,
   wasNewTab: false,
   backToNewTab: false,
-  externalApp: null,
   newTabShown: null,
 };
 

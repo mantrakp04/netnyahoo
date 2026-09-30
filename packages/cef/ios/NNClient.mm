@@ -658,6 +658,11 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
     Emit(@"popupBlocked", @{@"id" : blockedId, @"url" : url, @"origin" : OriginOf(openerURL) ?: @""});
     return true;
   }
+  // An app link opens no tab: ask in the opener, as the page that asked.
+  if (external::IsAppLink(target_url)) {
+    OpenAppLink(frame, url, user_gesture);
+    return true;
+  }
   if (user_gesture && IsSplitClick(disposition)) {
     Emit(@"openWindow", @{@"url" : url, @"disposition" : @"split", @"userGesture" : @YES});
     return true;
@@ -692,11 +697,6 @@ bool Client::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fr
     request.opener = view_;
     OpenPopupWindow(request);
     return false;
-  }
-  // An app link opens no tab: ask in the opener, as the page that asked.
-  if (external::IsAppLink(target_url)) {
-    OpenAppLink(frame, url, user_gesture);
-    return true;
   }
   Emit(@"openWindow", @{
     @"url" : url,
@@ -762,6 +762,7 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
   }
   BrowserClosed(browser);
   site::BrowserClosed(browser->GetIdentifier());
+  external::BrowserClosed(browser->GetIdentifier());
   if (!adoptId_.empty()) Popups().erase(adoptId_);
   [view_ browserClosed];
   browser_ = nullptr;
@@ -798,9 +799,13 @@ bool Client::OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
     }
     return true;
   }
+  // An app link: GetResourceRequestHandler cancels it and asks (NNExternalApps).
+  if (external::IsAppLink(request->GetURL())) {
+    external::NoteNavigation(browser->GetIdentifier(), frame->GetIdentifier().ToString(), url, user_gesture);
+    return false;
+  }
   if (!frame->IsMain()) return false;
   if (!is_redirect) pendingNavigation_.clear();
-  external::BrowserClosed(browser->GetIdentifier());
   pendingNavigation_.push_back(url.UTF8String);
   bool userInitiated = ConsumeUserNavigation(url) || user_gesture;
   if (!is_redirect && !userInitiated && !committedPage_ && WasNavigationDownload(url, profile_)) {
@@ -815,6 +820,10 @@ bool Client::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
                               cef_window_open_disposition_t disposition, bool user_gesture) {
   if (disposition == CEF_WOD_CURRENT_TAB) return false;
   if (IsAppURL(ToNS(target_url)) && !IsWebUIPage(frame ? ToNS(frame->GetURL()) : URL())) return true;
+  if (external::IsAppLink(target_url)) {
+    OpenAppLink(frame, ToNS(target_url), user_gesture);
+    return true;
+  }
   if (user_gesture) AllowUserNavigation(ToNS(target_url));
   Emit(@"openWindow", @{
     @"url" : ToNS(target_url),
@@ -824,10 +833,32 @@ bool Client::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
   return true;
 }
 
+// An app link from window.open, target=_blank or a modified click: no new tab, the opener asks.
+void Client::OpenAppLink(CefRefPtr<CefFrame> frame, NSString *url, bool user_gesture) {
+  external::Navigation navigation;
+  navigation.url = url;
+  navigation.initiator = OriginOf(frame ? ToNS(frame->GetURL()) : URL()) ?: @"null";
+  navigation.ownsTab = false;
+  navigation.userGesture = user_gesture;
+  external::Handle(this, navigation);
+}
+
 CefRefPtr<CefResourceRequestHandler> Client::GetResourceRequestHandler(
     CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool is_navigation,
     bool is_download, const CefString &request_initiator, bool &disable_default_handling) {
   CefRefPtr<Client> self(this);
+  // Chromium has no loader for an app link; left alone, CEF shows ERR_UNKNOWN_URL_SCHEME. Cancel
+  // it quietly (the page stays) and ask on the main thread, with the initiator only this sees.
+  if (is_navigation && external::IsAppLink(request->GetURL())) {
+    external::Navigation navigation;
+    navigation.url = ToNS(request->GetURL());
+    navigation.initiator = ToNS(request_initiator);
+    navigation.frameId = frame ? frame->GetIdentifier().ToString() : "";
+    navigation.ownsTab = !frame || frame->IsMain();
+    navigation.typed = (request->GetTransitionType() & TT_SOURCE_MASK) == TT_EXPLICIT;
+    dispatch_async(dispatch_get_main_queue(), ^{ external::Handle(self, navigation); });
+    return external::Canceller();
+  }
   if (is_navigation && frame && frame->IsMain()) {
     dispatch_async(dispatch_get_main_queue(), ^{
       self->blockedCount_ = 0;
@@ -837,11 +868,6 @@ CefRefPtr<CefResourceRequestHandler> Client::GetResourceRequestHandler(
     return nullptr;
   }
   static CefRefPtr<BlockedCounter> counter = new BlockedCounter();
-  // An app link: GetResourceRequestHandler cancels it and asks (NNExternalApps).
-  if (external::IsAppLink(request->GetURL())) {
-    external::NoteNavigation(browser->GetIdentifier(), frame->GetIdentifier().ToString(), url, user_gesture);
-    return false;
-  }
   return is_download ? nullptr : counter;
 }
 
@@ -858,10 +884,6 @@ void Client::OnRenderProcessResponsive(CefRefPtr<CefBrowser> browser) {
   if (!unresponsive_) return;
   unresponsive_ = false;
   Emit(@"responsive", @{});
-  if (external::IsAppLink(target_url)) {
-    OpenAppLink(frame, ToNS(target_url), user_gesture);
-    return true;
-  }
 }
 
 void Client::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus status, int error_code,
@@ -871,32 +893,10 @@ void Client::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, Terminatio
   nowPlaying_.clear();
   unresponsive_ = false;
   site::SetUnresponsiveCallback(browser->GetIdentifier(), nullptr);
-// An app link from window.open, target=_blank or a modified click: no new tab, the opener asks.
-void Client::OpenAppLink(CefRefPtr<CefFrame> frame, NSString *url, bool user_gesture) {
-  external::Navigation navigation;
-  navigation.url = url;
-  navigation.initiator = OriginOf(frame ? ToNS(frame->GetURL()) : URL()) ?: @"null";
-  navigation.ownsTab = false;
-  navigation.userGesture = user_gesture;
-  external::Handle(this, navigation);
-}
-
   static NSString *const kReasons[] = {@"abnormal", @"killed", @"crashed", @"oom", @"launchFailed", @"integrity"};
   NSString *reason = status >= 0 && status < 6 ? kReasons[status] : @"unknown";
   Emit(@"crashed", @{@"status" : @(status), @"reason" : reason, @"code" : @(error_code)});
 }
-  // Chromium has no loader for an app link; left alone, CEF shows ERR_UNKNOWN_URL_SCHEME. Cancel
-  // it quietly (the page stays) and ask on the main thread, with the initiator only this sees.
-  if (is_navigation && external::IsAppLink(request->GetURL())) {
-    external::Navigation navigation;
-    navigation.url = ToNS(request->GetURL());
-    navigation.initiator = ToNS(request_initiator);
-    navigation.frameId = frame ? frame->GetIdentifier().ToString() : "";
-    navigation.ownsTab = !frame || frame->IsMain();
-    navigation.typed = (request->GetTransitionType() & TT_SOURCE_MASK) == TT_EXPLICIT;
-    dispatch_async(dispatch_get_main_queue(), ^{ external::Handle(self, navigation); });
-    return external::Canceller();
-  }
 
 bool Client::OnCertificateError(CefRefPtr<CefBrowser> browser, cef_errorcode_t cert_error,
                                 const CefString &request_url, CefRefPtr<CefSSLInfo> ssl_info,
@@ -1167,6 +1167,7 @@ void Client::OnGotFocus(CefRefPtr<CefBrowser> browser) {
 bool Client::OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event, CefEventHandle os_event,
                            bool *is_keyboard_shortcut) {
   if (event.type != KEYEVENT_RAWKEYDOWN) return false;
+  external::NoteUserInput();
   if (event.windows_key_code == 0x1B && fullscreen_) {
     browser->GetHost()->ExitFullscreen(true);
     return true;
@@ -1205,7 +1206,6 @@ bool Client::OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser, const CefString
   alert.messageText = @"Leave site?";
   alert.informativeText = @"Changes you made may not be saved.";
   [alert addButtonWithTitle:@"Leave"];
-  external::NoteUserInput();
   [alert addButtonWithTitle:@"Cancel"];
   CefRefPtr<Client> self(this);
   CefRefPtr<CefBrowser> tab = browser;
