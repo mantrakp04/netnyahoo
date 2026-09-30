@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile, isIncognitoProfile } from "../store/model";
 import { DEFAULT_PROFILE_ID } from "../store/settings";
+import type { HistoryEntry } from "../store/types";
 import { webviews } from "./webviews";
 
 type Icon = {
@@ -50,11 +51,17 @@ function indexFor(profileId: string): ProfileIcons {
 const dirty = new Set<string>();
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
+// Changes since each profile's index was last compacted; a profile not in the map hasn't been this launch.
+const changesSinceCompact = new Map<string, number>();
+const COMPACT_EVERY = 500;
+
 function update(profileId: string, change: (index: ProfileIcons) => ProfileIcons) {
   const next = change(indexFor(profileId));
   useFavicons.setState((s) => ({ profiles: { ...s.profiles, [profileId]: next } }));
   if (isIncognitoProfile(profileId)) return;
   dirty.add(profileId);
+  const changes = changesSinceCompact.get(profileId);
+  if (changes !== undefined) changesSinceCompact.set(profileId, changes + 1);
   saveTimer ??= setTimeout(flushFavicons, SAVE_DELAY_MS);
 }
 
@@ -62,10 +69,76 @@ export function flushFavicons() {
   clearTimeout(saveTimer);
   saveTimer = undefined;
   for (const profileId of dirty) {
+    if (isIncognitoProfile(profileId)) continue;
+    // Once per launch and then every COMPACT_EVERY changes, before the save that follows them.
+    if ((changesSinceCompact.get(profileId) ?? COMPACT_EVERY) >= COMPACT_EVERY) compactFavicons(profileId);
     const index = useFavicons.getState().profiles[profileId];
-    if (index && !isIncognitoProfile(profileId)) writeDocument(docName(profileId), JSON.stringify(index));
+    if (index) writeDocument(docName(profileId), JSON.stringify(index));
   }
   dirty.clear();
+}
+
+const NO_HISTORY: HistoryEntry[] = [];
+const sourceSets = new WeakMap<object, Set<string>>();
+
+// The favicon sources a history list or bookmarks tree names, kept until it changes.
+function sourcesOf<T extends object>(owner: T, list: (owner: T) => (string | null | undefined)[]): Set<string> {
+  let set = sourceSets.get(owner);
+  if (!set) {
+    set = new Set();
+    for (const src of list(owner)) if (src) set.add(src);
+    sourceSets.set(owner, set);
+  }
+  return set;
+}
+
+// Drops what nothing refers to any more: hosts of no kept page, icons no page, host, tab, history entry or
+// bookmark names (nor their other appearance), and appearance pairs of dropped icons. Pages are capped at
+// MAX_PAGES and history at its own cap, so this bounds the index; without it every icon ever seen stayed, and the
+// index took longer to update and save the longer it was used. Only the index: the files go with Clear Data
+// (pruneProfileFavicons), since profiles sharing data share the folder and downloads may be landing.
+function compactFavicons(profileId: string) {
+  changesSinceCompact.set(profileId, 0);
+  const index = indexFor(profileId);
+  const liveHosts = new Set<string>();
+  const used = new Set<string>();
+  // Sources, not names: an icon keeps its source, and hashing every bookmark's would cost more than the rest.
+  const s = useBrowser.getState();
+  const tabSources = new Set<string>();
+  for (const t of Object.values(s.tabs)) if (t.favicon) tabSources.add(t.favicon);
+  const history = sourcesOf(s.history[profileId] ?? NO_HISTORY, (list) => list.map((h) => h.favicon));
+  const bookmarks = sourcesOf(s.bookmarks, (b) => Object.values(b.nodes).map((n) => (n.kind === "url" ? n.favicon : null)));
+  for (const name in index.icons) {
+    const src = index.icons[name]!.src;
+    if (tabSources.has(src) || history.has(src) || bookmarks.has(src)) used.add(name);
+  }
+  for (const page in index.pages) {
+    liveHosts.add(hostKey(page));
+    used.add(index.pages[page]!);
+  }
+  // Kept entries are copied into new maps (deleting most keys of a big map is slower than building a small one).
+  let hosts = index.hosts;
+  let droppedHosts = false;
+  for (const host in index.hosts) {
+    if (liveHosts.has(host)) used.add(index.hosts[host]!);
+    else droppedHosts = true;
+  }
+  if (droppedHosts) {
+    hosts = {};
+    for (const host in index.hosts) if (liveHosts.has(host)) hosts[host] = index.hosts[host]!;
+  }
+  for (const name of [...used]) for (const other of index.appearances?.[name] ?? []) used.add(other);
+  let icons = index.icons;
+  for (const name in index.icons) {
+    if (used.has(name)) continue;
+    icons = {};
+    for (const kept in index.icons) if (used.has(kept)) icons[kept] = index.icons[kept]!;
+    break;
+  }
+  let appearances = index.appearances;
+  if (appearances && icons !== index.icons) appearances = Object.fromEntries(Object.entries(appearances).filter(([name]) => icons[name]));
+  if (hosts === index.hosts && icons === index.icons) return;
+  useFavicons.setState((f) => ({ profiles: { ...f.profiles, [profileId]: { icons, pages: index.pages, hosts, appearances } } }));
 }
 
 // MARK: Keys
@@ -126,12 +199,10 @@ function remember(profileId: string, pageUrl: string, name: string, icon?: Icon)
       const pair: [string, string] = dark ? [previous, name] : [name, previous];
       appearances = { ...appearances, [previous]: pair, [name]: pair };
     }
-    return {
-      icons: icon ? { ...index.icons, [name]: icon } : index.icons,
-      pages,
-      hosts: host && index.hosts[host] !== name ? { ...index.hosts, [host]: name } : index.hosts,
-      appearances,
-    };
+    // Icons and hosts are changed in place too (not EMPTY's shared maps).
+    const icons = !icon ? index.icons : index.icons === EMPTY.icons ? { [name]: icon } : Object.assign(index.icons, { [name]: icon });
+    const hosts = !host || index.hosts[host] === name ? index.hosts : index.hosts === EMPTY.hosts ? { [host]: name } : Object.assign(index.hosts, { [host]: name });
+    return { icons, pages, hosts, appearances };
   });
 }
 
