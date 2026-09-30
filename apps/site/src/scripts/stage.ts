@@ -18,9 +18,20 @@ function webgl() {
 
 const phone = matchMedia("(max-width: 820px), (pointer: coarse)").matches;
 
+// The 3D chunk can fail to load (a flaky connection, or a page cached from before a deploy asking for
+// a chunk that's gone). The poster already shows him, so keep it and stay quiet.
+async function loadYahu() {
+  try {
+    return (await import("./yahu")).createYahu;
+  } catch {
+    return null;
+  }
+}
+
 async function bootClosing() {
   if (!closing || yahu || saveData || !webgl()) return;
-  const { createYahu } = await import("./yahu");
+  const createYahu = await loadYahu();
+  if (!createYahu) return;
   const url = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb`;
   yahu = await createYahu(url, closing, "poster");
   at = closing;
@@ -49,7 +60,8 @@ function watchClosing() {
 async function boot() {
   if (phone) return watchClosing();
   if (!hero || yahu || saveData || !webgl()) return;
-  const { createYahu } = await import("./yahu");
+  const createYahu = await loadYahu();
+  if (!createYahu) return;
   const url = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/models/big-yahu.glb`;
   yahu = await createYahu(url, hero, "hero");
   at = hero;
