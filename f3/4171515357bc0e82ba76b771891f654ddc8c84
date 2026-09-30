@@ -1,0 +1,29 @@
+apps/browser/src/components/sidebar/entries.ts
+  s_9c356f9574d31c::t_6ca9cf544848e9 4,37,47,78-79,82-86,88-90,93-95
+apps/browser/src/components/layout/stripGroups.ts
+  s_9c356f9574d31c::t_59ff1ce0dd7c34 3,128-168
+  s_9c356f9574d31c::t_948a3a3e6fa417 169
+apps/browser/src/store/groups.ts
+  s_9c356f9574d31c::t_d3cb84b48dc796 111-112
+apps/browser/src/components/layout/TopTabStrip.tsx
+  s_9c356f9574d31c::t_7f93d1c170c541 31
+  s_9c356f9574d31c::t_59ff1ce0dd7c34 130
+apps/browser/src/store/structure.ts
+  s_9c356f9574d31c::t_6ca9cf544848e9 1-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f34171515357bc0e82ba76b771891f654ddc8c84",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
