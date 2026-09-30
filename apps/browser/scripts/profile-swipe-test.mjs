@@ -171,6 +171,42 @@ try {
     await waitProfile("work");
     return { result, next };
   });
+  await test("a new drag drops a settle queued behind a pending rebase (real pager)", async () => {
+    await reset();
+    try {
+      // One synchronous turn, so React's layout effect cannot apply the shift in between.
+      const result = await nn(`
+        const p = globalThis.nnPager("w1");
+        const snap = () => ({ ...p.debug(), queued: p.afterShift.length, generation: p.generation, profile: nn.store.getState().windows.w1.profileId });
+        p.switchTo("work");
+        p.pos.setValue(1);
+        p.end();
+        const pending = snap();
+        p.beginDrag();
+        p.track({ phase: "changed", direction: "back", distance: 130, dy: 0, velocity: 0, available: true, width: 190 });
+        p.release({ phase: "ended", direction: "back", distance: 130, dy: 0, velocity: 1000, available: true, width: 190 }, false);
+        const queued = snap();
+        p.beginDrag();
+        p.applyShift();
+        const immediate = snap();
+        return new Promise((resolve) => setTimeout(() => {
+          const later = snap();
+          p.reset(false);
+          resolve({ pending, queued, immediate, later });
+        }, 120));
+      `);
+      assert.equal(result.pending.profile, "work", "switchTo should commit the New Tab profile at once");
+      assert.notEqual(result.pending.shift, 0, "end() should leave a rebase pending before the first drag");
+      assert.equal(result.queued.queued, 1, "the release's settle should be queued behind the shift");
+      assert.equal(result.immediate.queued, 0, "applyShift should flush the queue");
+      assert.equal(result.immediate.dragging, true, "the second drag should be active after applyShift");
+      assert.equal(result.later.dragging, true, "the second drag should still be active 120ms later");
+      assert.equal(result.later.pos, result.immediate.pos, "the page must not move without new input");
+      return result;
+    } finally {
+      await reset();
+    }
+  });
   await test("new gesture recovers after a missing end", async () => {
     await reset();
     const incomplete = await simulate(gesture(-1).slice(0, -1));

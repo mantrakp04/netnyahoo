@@ -263,11 +263,14 @@ class ProfilePager {
     const from = this.logical();
     const v = Math.sign(slot - from) === Math.sign(velocity) ? velocity : 0;
     this.settling = slot;
-    this.later(() =>
+    // A settle queued behind a rebase is dropped if a new drag halts it first.
+    const generation = this.generation;
+    this.later(() => {
+      if (generation !== this.generation) return;
       Animated.spring(this.pos, { toValue: slot, velocity: v, ...SETTLE, useNativeDriver: false }).start(({ finished }) => {
         if (finished) this.settled();
-      }),
-    );
+      });
+    });
   }
 
   private settled() {
