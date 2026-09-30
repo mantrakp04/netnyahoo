@@ -1,0 +1,41 @@
+.claude/skills/release/scripts/smoke.mjs
+  s_9c356f9574d31c::t_f09cb20a481710 255-276
+packages/cef/ios/NNPictureInPicture.mm
+  s_9c356f9574d31c::t_27531523d939b1 582-584,586-595
+  s_9c356f9574d31c::t_354f98523f2276 577-578,585,598,600-604
+  s_9c356f9574d31c::t_389288c3d4abda 573-576,579-581,596-597,599,637-639
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_dfc321b1c43d94 460
+  s_9c356f9574d31c::t_3fc5794566828b 461
+apps/browser/src/components/media/pip.ts
+  s_9c356f9574d31c::t_732ab3c197ad5c 5,32,45-47
+  s_9c356f9574d31c::t_ac288b95b0da60 28-31,33-34,56-61,69,74,84
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_2d2749186f6ede 51
+.claude/skills/release/scripts/pages/video.html
+  s_9c356f9574d31c::t_3a2e1091f177d9 1-3
+packages/cef/patches/chromium-zz-pip-close-keeps-playing.patch
+  s_9c356f9574d31c::t_647cd13f61298c 1-31
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_2d2749186f6ede 575-576
+packages/cef/helper/page_script.js
+  s_9c356f9574d31c::t_dfc321b1c43d94 125
+.claude/skills/release/scripts/smoke.sh
+  s_9c356f9574d31c::t_7b8f74288e27b5 67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bac68e2abf0035a1c123524f2a324b9f3f027cb0",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
