@@ -1,0 +1,127 @@
+scripts/replay.mjs
+  s_9c356f9574d31c::t_6d15ab7e57da4c 1-97,100-104
+  s_9c356f9574d31c::t_51edc97743f441 98-99
+scripts/update-checks.mjs
+  s_9c356f9574d31c::t_49002f77dcd382 8-12,16,33-34,41,43-46,64
+.claude/skills/stats/SKILL.md
+  s_9c356f9574d31c::t_34cebf9c46f513 8-17
+apps/site/src/data/telemetry.ts
+  s_9c356f9574d31c::t_96a722fcf726e2 1-51
+infra/telemetry/clickhouse/Dockerfile
+  s_9c356f9574d31c::t_e3d969a7951dac 1-10
+apps/site/src/scripts/telemetry/index.ts
+  s_9c356f9574d31c::t_d4f8e9d839c76d 1-20
+infra/telemetry/clickhouse/users.d/nn.xml
+  s_9c356f9574d31c::t_9f64783b30cbb3 1-60
+infra/site/hexclave.deploy.ts
+  s_9c356f9574d31c::t_3a3fd5cf213fe1 3,11-17
+apps/site/src/scripts/telemetry/recorder.ts
+  s_9c356f9574d31c::t_9c44c7c784683f 18,180
+  s_9c356f9574d31c::t_2a79c27f94fc0a 1-11,17,19-179,181-190
+  s_9c356f9574d31c::t_34c8aae75cf7cb 12-16
+apps/site/src/scripts/track.ts
+  s_9c356f9574d31c::t_2acf44146cb727 1-2,7
+apps/site/src/scripts/telemetry/autocapture.ts
+  s_9c356f9574d31c::t_0c7550498b2c58 247-265
+  s_9c356f9574d31c::t_1c68b7ff297119 1-246
+infra/telemetry/clickhouse/schema.sql
+  s_9c356f9574d31c::t_26e43ae6a6db21 1-75,77-80,85-107,109-158
+  s_9c356f9574d31c::t_8b7e06a6df94cd 76
+  s_9c356f9574d31c::t_aed452e4d26ede 81-84,108
+infra/site/Dockerfile
+  s_9c356f9574d31c::t_3a3fd5cf213fe1 5
+apps/site/src/scripts/telemetry/replay.ts
+  s_9c356f9574d31c::t_7a1c672e0f62aa 1-20
+apps/site/src/scripts/analytics.ts
+  s_9c356f9574d31c::t_0a38317ef1d40c 1-2,15-16,18
+  s_9c356f9574d31c::t_c4f6242aee5091 14,19
+scripts/telemetry-env.mjs
+  s_9c356f9574d31c::t_c29af3d68ec2ce 1-32
+.claude/skills/stats/queries.md
+  s_9c356f9574d31c::t_e9457bc49e4c74 1-8,10-118
+  s_9c356f9574d31c::t_6026a16c4f1bba 9
+apps/site/src/scripts/telemetry/ua.ts
+  s_9c356f9574d31c::t_f80fc4a4853296 1-26,28-112,115-126
+  s_9c356f9574d31c::t_9661dc73de858b 27,113-114
+infra/telemetry/collector/config.yaml
+  s_9c356f9574d31c::t_d1a84272ed96f5 29-93
+  s_9c356f9574d31c::t_3b1d6485e7a53c 1-28,94
+apps/site/src/components/InOffice.astro
+  s_9c356f9574d31c::t_8e9cf6fbd16d39 32-37,49
+docs/growth.md
+  s_9c356f9574d31c::t_3e0e3a9b183dec 272-276
+  s_9c356f9574d31c::t_4f6bc3c86f2058 111-176
+  s_9c356f9574d31c::t_119721171dedf9 4-5,48-52,78,80-81,96-99,102-105
+apps/site/src/components/Press.astro
+  s_9c356f9574d31c::t_c4f6242aee5091 24
+apps/site/package.json
+  s_9c356f9574d31c::t_8ff1c406a58333 16,18-19
+infra/telemetry/clickhouse/start.sh
+  s_9c356f9574d31c::t_e3d969a7951dac 1-24
+infra/site/nginx.conf
+  s_631b13a766b697::t_5915a21b9d6895 122-123
+  s_9c356f9574d31c::t_15a13dff422427 28-38,90-121,124-159
+  s_9c356f9574d31c::t_adb0dbca28ed15 175-178,183-185,190
+  s_9c356f9574d31c::t_966d2390d44423 160
+apps/site/src/scripts/telemetry/core.ts
+  s_9c356f9574d31c::t_68a78ec44ecd31 1-37,39-42,44-191,196-549
+  s_9c356f9574d31c::t_f045a6a667538c 38,43,192-195
+apps/site/src/scripts/telemetry/flags.ts
+  s_9c356f9574d31c::t_f045a6a667538c 7,85-87
+  s_9c356f9574d31c::t_784a536be34d6a 12-13,18-31,35
+  s_9c356f9574d31c::t_e155fc96fa14e3 1-6,8-11,14-17,32-34,36-62,64-84,88
+  s_9c356f9574d31c::t_b9d7e660227063 63
+apps/site/src/scripts/telemetry/errors.ts
+  s_9c356f9574d31c::t_89642f61d90ed4 1-140,153,173
+  s_9c356f9574d31c::t_0c7550498b2c58 141-152,154-172
+infra/telemetry/hexclave.deploy.ts
+  s_9c356f9574d31c::t_214b4e540d7991 1-76
+apps/site/src/scripts/telemetry/vitals.ts
+  s_9c356f9574d31c::t_156a6a43ad3f87 1-63
+apps/site/README.md
+  s_9c356f9574d31c::t_fc8fb1a3d64469 48-50,53-58,68-69
+  s_9c356f9574d31c::t_719a592dd835ea 51-52
+infra/telemetry/clickhouse/config.d/nn.xml
+  s_9c356f9574d31c::t_9f64783b30cbb3 1-36
+apps/site/src/scripts/support.ts
+  s_9c356f9574d31c::t_c4f6242aee5091 85-87
+  s_9c356f9574d31c::t_ead9088618092c 80-81,83
+  s_9c356f9574d31c::t_103e8e6cbf73d5 1-79,82,84,88-99
+infra/telemetry/import-posthog.py
+  s_9c356f9574d31c::t_fbfdd7bcc90cfc 1-108
+apps/site/src/components/Footer.astro
+  s_9c356f9574d31c::t_66acc75eecaa4e 42
+  s_9c356f9574d31c::t_c4f6242aee5091 32,43-44
+apps/site/pnpm-lock.yaml
+  s_9c356f9574d31c::t_533bbab4459e0c 20-22,29-31,741-749,787-789,849-851,908-911,1288-1290,1447-1455,1815-1817,2388-2397,2444-2445,2533-2534,2662-2663,3017-3018,3172-3190,3514-3515
+apps/site/src/pages/robots.txt.ts
+  s_9c356f9574d31c::t_b53c5db34a5d1b 4
+infra/telemetry/collector/Dockerfile
+  s_9c356f9574d31c::t_9714634225a0e2 1-10
+scripts/telemetry-sql.mjs
+  s_9c356f9574d31c::t_1b9386708499f9 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4c1b690f4409dd99cc1e22532712e68cc1499cf3",
+  "prompts": {},
+  "sessions": {
+    "s_631b13a766b697": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ef88-d29f-71c0-bccb-8ac6c46b7bc6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
