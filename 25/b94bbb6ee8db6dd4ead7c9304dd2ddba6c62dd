@@ -1,0 +1,27 @@
+apps/browser/src/components/Sidebar.tsx
+  s_9c356f9574d31c::t_914015fbe9a010 32-34,73,76,104,110,230
+  s_9c356f9574d31c::t_efe6316825b607 308,332-333
+apps/browser/src/components/sidebar/dnd.tsx
+  s_9c356f9574d31c::t_efe6316825b607 4,40-41,214
+apps/browser/src/components/sidebar/tokens.ts
+  s_9c356f9574d31c::t_efe6316825b607 25-26,48-49
+docs/dia-spec.md
+  s_9c356f9574d31c::t_6c4810901cdfea 152-154
+  s_9c356f9574d31c::t_75978265bbc4e1 543-544
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "25b94bbb6ee8db6dd4ead7c9304dd2ddba6c62dd",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
