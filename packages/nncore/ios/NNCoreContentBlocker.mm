@@ -378,7 +378,7 @@ void PageEval(NSString *profile, NSString *expression, void (^completion)(id val
     if (!window) {
       PageWindows()[profile] = window = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)];
       // The extension's page is ours, not the user's: never in history or the omnibox.
-      if ([window respondsToSelector:@selector(setRecordsHistory:)]) window.recordsHistory = NO;
+      if ([window respondsToSelector:@selector(setInternal:)]) window.internal = YES;
     }
     tab = [window openTab:[NSString stringWithFormat:@"chrome-extension://%@/manifest.json", ExtensionId()] profile:p foreground:YES];
     if (!tab) return completion(nil, @"closed");

@@ -135,7 +135,9 @@ public class CefModule: Module {
     AsyncFunction("getZoomLevels") { (profile: String, promise: Promise) in
       NNCoreServices.zoomLevels(profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("devScrollZoom") { (steps: [[String: Any]]) in NNCoreWebView.devScrollZoom(steps) }.runOnQueue(.main)
+    AsyncFunction("devScrollZoom") { (steps: [[String: Any]], browserId: Int?) in
+      NNCoreWebView.devScrollZoom(steps, browserId: Int32(browserId ?? 0))
+    }.runOnQueue(.main)
 
     AsyncFunction("listPasswords") { (profile: String, promise: Promise) in
       NNCoreServices.listPasswords(profile: profile) { promise.resolve($0) }

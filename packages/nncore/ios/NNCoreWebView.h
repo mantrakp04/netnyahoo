@@ -34,8 +34,9 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)setSearchEngineName:(NSString *)name;
 // ⌘-scroll zooms the page under the pointer (a mouse wheel or Magic Mouse; a trackpad pinches), as packages/cef.
 + (void)installScrollZoom;
-// DEV: see packages/cef's devScrollZoom.
-+ (NSArray<NSNumber *> *)devScrollZoom:(NSArray<NSDictionary<NSString *, id> *> *)steps NS_SWIFT_NAME(devScrollZoom(_:));
+// DEV: see packages/cef's devScrollZoom; over the page of `browserId` (0: the last visible one).
++ (NSArray<NSNumber *> *)devScrollZoom:(NSArray<NSDictionary<NSString *, id> *> *)steps
+                               browser:(int)browserId NS_SWIFT_NAME(devScrollZoom(_:browserId:));
 // Pages' getDisplayMedia goes to the app's source picker (onDisplayMediaRequest), as on CEF.
 + (void)setDisplayMediaPicker:(BOOL)enabled;
 + (NSArray<NSDictionary<NSString *, id> *> *)devEventsForBrowser:(int)browserId NS_SWIFT_NAME(devEvents(browserId:));

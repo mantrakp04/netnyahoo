@@ -1605,10 +1605,13 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
 // DEV: ⌘-scroll events over the middle of the visible page through the app's event dispatch, as packages/cef's.
 // Each step is {phase: "wheel" | "mayBegin" | "began" | "changed" | "ended" | "momentum", dy, trackpad}; the result
 // says, per step, whether the scroll zoomed the page instead of scrolling it.
-+ (NSArray<NSNumber *> *)devScrollZoom:(NSArray<NSDictionary<NSString *, id> *> *)steps {
++ (NSArray<NSNumber *> *)devScrollZoom:(NSArray<NSDictionary<NSString *, id> *> *)steps browser:(int)browserId {
   NNCoreWebView *view = nil;
+  // The page asked for (a run has several windows: the last visible view needn't be the check's).
   for (NNCoreWebView *v in LiveViews())
-    if (v.window.isVisible && !v.isHiddenOrHasHiddenAncestor && v->_tab && v->_visible) view = v;
+    if (v.window.isVisible && !v.isHiddenOrHasHiddenAncestor && v->_tab && v->_visible &&
+        (!browserId || nncore_host::BrowserId(v->_tab) == browserId))
+      view = v;
   if (!view) return @[];
   NSWindow *window = view.window;
   NSPoint inWindow = [view convertPoint:NSMakePoint(NSMidX(view.bounds), NSMidY(view.bounds)) toView:nil];

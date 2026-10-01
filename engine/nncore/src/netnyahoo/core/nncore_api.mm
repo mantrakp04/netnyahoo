@@ -637,7 +637,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
     BrowserWindowInterface* browser =
         GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
     nncore::WindowHost* host = browser ? nncore::WindowHost::ForBrowser(browser) : nullptr;
-    return !host || host->records_history();
+    return !host || !host->internal();
   };
   // No Chrome Apps or web-app shims here: Chrome's platform-app shortcut manager would
   // otherwise, when a profile is deleted, look for that profile's shims in
@@ -1303,6 +1303,7 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
     return;
   }
   _host->SetActiveProfile(browser->GetProfile());
+  _host->NoteHostActivated(static_cast<Browser*>(browser));
   nncore::TabBridge::GetOrCreate(contents)->NoteHostFocus();
   TabStripModel* model = browser->GetTabStripModel();
   int index = model->GetIndexOfWebContents(contents);
@@ -1335,12 +1336,12 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   return browser && chrome::ExecuteCommand(browser, commandId);
 }
 
-- (BOOL)recordsHistory {
-  return _host->records_history();
+- (BOOL)internal {
+  return _host->internal();
 }
 
-- (void)setRecordsHistory:(BOOL)recordsHistory {
-  _host->set_records_history(recordsHistory);
+- (void)setInternal:(BOOL)internal {
+  _host->set_internal(internal);
 }
 
 - (void)showInactive {

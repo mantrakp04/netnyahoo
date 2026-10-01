@@ -338,9 +338,11 @@ NNCORE_EXPORT
                          foreground:(BOOL)foreground;
 // Chrome's tab-strip index and pin state for a tab of this window (the host's order).
 - (void)placeTab:(NNCoreTab*)tab index:(int)index pinned:(BOOL)pinned;
-// NO: this window's pages never reach the profile's history (the host's own hidden pages,
-// extension popups). YES by default.
-@property(nonatomic) BOOL recordsHistory;
+// YES: a window of the host's own pages (a hidden extension page, extension popups and side
+// panels): they never reach the profile's history, and its Browsers never become Chrome's
+// active one (the last-used profile, which tab sharing and Chrome-made windows follow). NO by
+// default.
+@property(nonatomic) BOOL internal;
 @end
 
 // --- Tabs -------------------------------------------------------------------------------

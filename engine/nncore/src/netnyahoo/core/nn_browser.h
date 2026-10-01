@@ -30,6 +30,7 @@
 #include "extensions/browser/extension_install_prompt_client.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
+#include "ui/views/widget/widget_observer.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/rect.h"
 #include "url/gurl.h"
@@ -62,6 +63,7 @@ const char* DispositionName(WindowOpenDisposition disposition);
 // One NSWindow (a Views widget, so Chrome's bubbles and sheets attach to it) and the
 // Browsers of every profile shown in it.
 class WindowHost : public TabStripModelObserver,
+                   public views::WidgetObserver,
                    public web_modal::WebContentsModalDialogHost {
  public:
   WindowHost(NNCoreWindow* owner, const gfx::Rect& bounds);
@@ -85,13 +87,22 @@ class WindowHost : public TabStripModelObserver,
   std::vector<Browser*> browsers() const;
   void SetActiveProfile(Profile* profile);
   Profile* active_profile() const { return active_profile_; }
+  // The host showed one of this window's tabs: its Browser becomes Chrome's last active one
+  // (the last-used profile, which tab sharing follows) if this window is the user's (key),
+  // or none is (a hidden instance).
+  void NoteHostActivated(Browser* browser);
+  // views::WidgetObserver: the user's window (key) makes its shown profile's Browser
+  // Chrome's active one, as a BrowserView's activation does.
+  void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
   bool IsActiveBrowser(const Browser* browser) const;
   // While set, Chrome's active-tab changes aren't reported (a command run in a background
   // tab activates it for a moment).
   void set_quiet_activation(bool quiet) { quiet_activation_ = quiet; }
-  // The host's own pages (a hidden extension page, extension popups): never history.
-  void set_records_history(bool records) { records_history_ = records; }
-  bool records_history() const { return records_history_; }
+  // The host's own pages (a hidden extension page, extension popups): never history, and
+  // never Chrome's active Browser (its last-used profile, which tab sharing and new windows
+  // follow).
+  void set_internal(bool internal) { internal_ = internal; }
+  bool internal() const { return internal_; }
   // The close can no longer be cancelled: every Browser is closing.
   bool closing() const { return close_state_ == CloseState::kClosing; }
   // Cancellable: beforeunload in every Browser, then the downloads the close would cancel;
@@ -165,7 +176,7 @@ class WindowHost : public TabStripModelObserver,
   CloseState close_state_ = CloseState::kOpen;
   bool widget_close_allowed_ = false;
   bool quiet_activation_ = false;
-  bool records_history_ = true;
+  bool internal_ = false;
   PendingOpen pending_open_;
   base::ObserverList<web_modal::ModalDialogHostObserver> modal_observers_;
   base::WeakPtrFactory<WindowHost> weak_factory_{this};

@@ -592,6 +592,8 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
     @"popupWindows" : @(nncore_host::PopupWindowCount()),
     @"chromeWindows" : @(chromeWindows),
     @"keepAlive" : engine.keepAliveState ?: @"",
+    // Chrome's last-used profile (what tab sharing and Chrome-made windows follow), by directory.
+    @"lastUsedProfile" : engine.defaultProfile.name ?: @"",
   };
 }
 

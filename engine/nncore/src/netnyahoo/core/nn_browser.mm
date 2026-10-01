@@ -14,6 +14,7 @@
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
@@ -159,6 +160,7 @@ WindowHost::WindowHost(NNCoreWindow* owner, const gfx::Rect& bounds)
   params.bounds = bounds;
   params.name = "NNCoreWindow";
   widget_->Init(std::move(params));
+  widget_->AddObserver(this);
 
   // The host's views go inside Chrome's content view (the page must stay under it:
   // RenderWidgetHostViewCocoa hit-tests from it), and are hit-tested first.
@@ -183,7 +185,61 @@ WindowHost::~WindowHost() {
   }
   browsers_.clear();
   widget_close_allowed_ = true;
+  if (widget_) {
+    widget_->RemoveObserver(this);
+  }
   widget_.reset();
+}
+
+namespace {
+
+// Chrome has one active Browser at a time (its last active, whose profile is the last used):
+// the others go inactive first, and one already flagged active is flagged again so Chrome
+// hears of it.
+void ActivateExclusively(Browser* browser) {
+  for (WindowHost* host : WindowHost::All()) {
+    for (Browser* other : host->browsers()) {
+      if (other != browser) {
+        BrowserActiveStateManager::From(other)->DidBecomeInactive();
+      }
+    }
+  }
+  BrowserActiveStateManager* state = BrowserActiveStateManager::From(browser);
+  if (GlobalBrowserCollection::GetInstance()->GetLastActiveBrowser() != browser ||
+      ProfileManager::GetLastUsedProfileIfLoaded() != browser->GetProfile()) {
+    state->DidBecomeInactive();
+  }
+  state->DidBecomeActive();
+}
+
+}  // namespace
+
+void WindowHost::NoteHostActivated(Browser* browser) {
+  if (internal_ || !browser || ExistingBrowserFor(browser->GetProfile()) != browser) {
+    return;
+  }
+  for (WindowHost* host : Hosts()) {
+    if (host != this && host->widget() && host->widget()->IsActive()) {
+      return;  // the user's window is another one
+    }
+  }
+  if (GlobalBrowserCollection::GetInstance()->GetLastActiveBrowser() == browser &&
+      ProfileManager::GetLastUsedProfileIfLoaded() == browser->GetProfile()) {
+    return;
+  }
+  ActivateExclusively(browser);
+}
+
+void WindowHost::OnWidgetActivationChanged(views::Widget* widget, bool active) {
+  Browser* browser = !internal_ && active_profile_ ? ExistingBrowserFor(active_profile_) : nullptr;
+  if (!browser) {
+    return;
+  }
+  if (active) {
+    ActivateExclusively(browser);
+  } else {
+    BrowserActiveStateManager::From(browser)->DidBecomeInactive();
+  }
 }
 
 NSWindow* WindowHost::ns_window() const {
@@ -264,8 +320,9 @@ void WindowHost::SetActiveProfile(Profile* profile) {
     BrowserActiveStateManager::From(old_browser)->DidBecomeInactive();
   }
   // The shown profile's Browser is Chrome's last active one: chrome.windows'
-  // currentWindow, keyboard shortcuts and new tabs from Chrome go to it.
-  if (Browser* browser = ExistingBrowserFor(profile)) {
+  // currentWindow, keyboard shortcuts and new tabs from Chrome go to it (never one of the
+  // host's own hidden pages).
+  if (Browser* browser = internal_ ? nullptr : ExistingBrowserFor(profile)) {
     BrowserActiveStateManager::From(browser)->DidBecomeActive();
   }
 }

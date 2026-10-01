@@ -966,6 +966,14 @@ try {
     await evalApp(`nn.actions.switchToTab(${JSON.stringify(id)}); return true`);
     await until(`${id}'s WebView`, () => evalApp(`return !!nn.webviews.get(${JSON.stringify(id)})`), 15000);
   };
+  // A new foreground tab on `url` in the run's window, mounted and loaded (for checks after move-tab-to-window took
+  // the first tab to a window of its own).
+  const freshTab = async (url) => {
+    const id = await evalApp(`return nn.store.getState().newTab(${JSON.stringify(mainWindow)}, { url: ${JSON.stringify(url)} })`);
+    await shownAndMounted(id);
+    await until(`${url} loaded`, () => evalApp(`const s = nn.store.getState(); return s.tabs[${JSON.stringify(id)}]?.url && !s.live[${JSON.stringify(id)}]?.isLoading ? true : null`));
+    return id;
+  };
   const backToA = async () => {
     await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a", { userInitiated: true }); return true`);
     await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
@@ -1115,7 +1123,7 @@ try {
       const capturer = await browserOf(first.id);
       const instead = await browserOf(other.id);
       const changed = await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.changeCaptureSource(${capturer}, ${instead})`);
-      if (changed !== true) throw new Error(`changeCaptureSource answered ${changed}`);
+      if (changed !== true) throw new Error(`changeCaptureSource answered ${changed} (Chrome's last-used profile: ${(await cef(`engineInfo()`)).lastUsedProfile})`);
       await sleep(1000);
       const stopped = await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.stopCapture(${capturer})`);
       const ended = await until("the track ended", async () =>
@@ -1333,7 +1341,8 @@ try {
       await evalApp(`return nn.webviews.get("${first.id}").zoomStep(0)`);
       await until("zoom 100%", async () => ((await zoom()) === 1 ? true : null), 5000);
     };
-    const scroll = (steps) => evalApp(`return globalThis.expo.modules.NetnyahooCEF.devScrollZoom(${JSON.stringify(steps)})`);
+    const browser = await browserOf(first.id);
+    const scroll = (steps) => evalApp(`return globalThis.expo.modules.NetnyahooCEF.devScrollZoom(${JSON.stringify(steps)}, ${browser})`);
     const gesture = (trackpad) => [
       { phase: "mayBegin", dy: 0, trackpad }, { phase: "began", dy: 12, trackpad },
       ...Array.from({ length: 4 }, () => ({ phase: "changed", dy: 40, trackpad })),
@@ -2230,7 +2239,7 @@ try {
       });
       const docOn = await until("onPictureInPicture document", async () => lastEvent(tab.id, "pictureInPicture", (p) => p.kind === "document" && p.active), 5000)
         .catch((e) => { throw new Error(`${e.message}; requestWindow: ${JSON.stringify(doc.result)}`); });
-      const docWindow = await until("the document PiP window", async () => (await pipWindows())?.find((w) => w.visible && !w.styled) ?? null, 5000)
+      const docWindow = await until("the document PiP window", async () => (await pipWindows())?.find((w) => w.visible && !w.styled && !w.video) ?? null, 5000)
         .catch(async (e) => { throw new Error(`${e.message}: ${JSON.stringify(await pipWindows())}`); });
       if (docWindow.alpha !== 0 || !docWindow.ignoresMouseEvents) throw new Error(`a hidden run's document PiP window shows: ${JSON.stringify(docWindow)}`);
       await evalApp(`return nn.webviews.get("${tab.id}").exitPictureInPicture()`);
@@ -2841,9 +2850,9 @@ try {
 
   await check("devtools-toggle", async () => {
     // ⌥⌘I twice opens then closes DevTools (Chrome's IDC_DEV_TOOLS_TOGGLE, as CEF ran it); ⌥⌘J opens the console.
-    await shownAndMounted(first.id);
+    const tab = await freshTab(`${base}/b?devtools`);
     const devtools = async () => (await targets()).filter((t) => t.url.startsWith("devtools://")).length;
-    const handle = (panel) => evalApp(`return nn.webviews.get("${first.id}").showDevTools(${JSON.stringify(panel)})`);
+    const handle = (panel) => evalApp(`return nn.webviews.get("${tab}").showDevTools(${JSON.stringify(panel)})`);
     await handle("toggle");
     const opened = await until("DevTools open", async () => ((await devtools()) > 0 ? await devtools() : null), 10000);
     await handle("toggle");
@@ -2852,6 +2861,7 @@ try {
     await until("DevTools on the console", async () => ((await devtools()) > 0 ? true : null), 10000);
     await handle("toggle");
     await until("DevTools closed again", async () => ((await devtools()) === 0 ? true : null), 10000);
+    await evalApp(`nn.store.getState().closeTab("${tab}"); return true`);
     return { opened };
   });
 
@@ -2860,8 +2870,8 @@ try {
     // it without the user asking (a restored tab) stays empty instead of downloading it again.
     const files = () => readdirSync(downloadsDir).filter((f) => f.startsWith("nncore-test")).length;
     const before = files();
-    await shownAndMounted(first.id);
-    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/file.bin?memory", { userInitiated: true }); return true`);
+    const tab = await freshTab(`${base}/b?memory`);
+    await evalApp(`nn.store.getState().navigate("${tab}", "${base}/file.bin?memory", { userInitiated: true }); return true`);
     await until("the download", async () => (files() > before ? true : null), 15000);
     const saved = JSON.parse(readFileSync(join(data, "Chromium", "NavigationDownloads.json"), "utf8"));
     if (!saved[`${base}/file.bin?memory`]) throw new Error(`not remembered: ${JSON.stringify(saved)}`);

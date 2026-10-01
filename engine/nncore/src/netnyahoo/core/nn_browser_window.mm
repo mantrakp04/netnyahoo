@@ -302,7 +302,8 @@ void NNBrowserWindow::Close() {
 }
 
 void NNBrowserWindow::Activate() {
-  if (!host_ || !browser_) {
+  // The host's own hidden pages never make their profile Chrome's last used.
+  if (!host_ || !browser_ || host_->internal()) {
     return;
   }
   host_->SetActiveProfile(browser_->GetProfile());
