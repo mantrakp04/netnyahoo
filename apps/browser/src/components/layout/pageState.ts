@@ -103,9 +103,16 @@ export function useFullscreenTab(windowId: string): string | undefined {
 useBrowser.subscribe((s, prev) => {
   if (s.tabs === prev.tabs) return;
   const { pages, browsers, popover } = usePages.getState();
-  const gone = Object.keys(pages).filter((id) => !s.tabs[id]);
+  // Plain loops that allocate nothing while every entry still has its tab: this runs on every tab update.
+  const stale = (ids: string[], tabOf: (id: string) => string) => {
+    for (let i = 0; i < ids.length; i++) if (!s.tabs[tabOf(ids[i]!)]) return true;
+    return false;
+  };
+  const pageIds = Object.keys(pages);
+  const browserIds = Object.keys(browsers);
+  if (!stale(pageIds, (id) => id) && !stale(browserIds, (id) => browsers[Number(id)]!)) return;
+  const gone = pageIds.filter((id) => !s.tabs[id]);
   const goneBrowsers = Object.entries(browsers).filter(([, id]) => !s.tabs[id]);
-  if (!gone.length && !goneBrowsers.length) return;
   const nextPages = { ...pages };
   const nextPopover = { ...popover };
   for (const id of gone) {

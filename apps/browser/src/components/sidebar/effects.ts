@@ -2,6 +2,7 @@ import { onAppEvent } from "@netnyahoo/shell";
 import { webviews } from "../../lib/webviews";
 import { startLive } from "../../live";
 import { useBrowser } from "../../store/browser";
+import { changedIds } from "../../store/changes";
 import { cancelSwitcher, commitSwitcher, moveSwitcher } from "./switcher";
 
 const AUTO_CLEAN_EVERY_MS = 30 * 60 * 1000;
@@ -13,10 +14,9 @@ export function startSidebarEffects() {
   startLive();
 
   useBrowser.subscribe((s, prev) => {
-    if (s.tabs === prev.tabs) return;
-    for (const id in s.tabs) {
-      const muted = s.tabs[id]!.muted;
-      if (prev.tabs[id] && prev.tabs[id]!.muted !== muted) void webviews.get(id)?.setMuted(muted);
+    for (const id of changedIds(s.tabs, prev.tabs)) {
+      const muted = s.tabs[id]?.muted;
+      if (muted !== undefined && prev.tabs[id] && prev.tabs[id]!.muted !== muted) void webviews.get(id)?.setMuted(muted);
     }
   });
 

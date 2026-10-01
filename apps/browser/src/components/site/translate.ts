@@ -2,6 +2,7 @@ import { translation } from "@netnyahoo/shell";
 import { create } from "zustand";
 import { webviews } from "../../lib/webviews";
 import { useBrowser } from "../../store/browser";
+import { changedIds } from "../../store/changes";
 import { isIncognitoProfile } from "../../store/model";
 import { hideKeyedToast, showToast } from "../layout/splitActions";
 import { translatorCall, type Passage } from "./pageTranslator";
@@ -225,10 +226,10 @@ export async function otherLanguages(): Promise<{ id: string; name: string }[]> 
 export function startTranslate() {
   if (!translation) return () => {};
   return useBrowser.subscribe((s, prev) => {
-    if (s.live === prev.live && s.tabs === prev.tabs) return;
-    for (const id in s.live) {
-      if (prev.live[id]?.isLoading && !s.live[id]!.isLoading) void detect(id).catch(() => {});
+    for (const id of changedIds(s.live, prev.live)) {
+      if (s.live[id] && prev.live[id]?.isLoading && !s.live[id].isLoading) void detect(id).catch(() => {});
     }
+    if (s.tabs === prev.tabs) return;
     const gone = Object.keys(useTranslate.getState()).filter((id) => !s.tabs[id]);
     if (gone.length) useTranslate.setState(Object.fromEntries(gone.map((id) => [id, undefined])));
   });

@@ -12,6 +12,7 @@ import { AppState } from "react-native";
 import { openWindow } from "../../lib/actions";
 import { webviews } from "../../lib/webviews";
 import { useBrowser, type BrowserState } from "../../store/browser";
+import { changedIds } from "../../store/changes";
 import { activeTabId, engineProfile } from "../../store/model";
 import { tabForBrowser, usePages } from "../layout/pageState";
 import { startExtensionSearchEngines } from "./searchEngines";
@@ -105,8 +106,11 @@ function startActionPolling() {
     }
   };
   setInterval(() => void poll(true), 1500);
+  // Actions are the shown tabs' own: a change to a tab in the background doesn't ask again.
   useBrowser.subscribe((s, prev) => {
-    if (s.windows !== prev.windows || s.tabs !== prev.tabs || s.ui.focusedWindowId !== prev.ui.focusedWindowId) void poll();
+    if (s.windows !== prev.windows || s.ui.focusedWindowId !== prev.ui.focusedWindowId) return void poll();
+    if (s.tabs === prev.tabs) return;
+    if (s.windowOrder.some((id) => { const active = activeTabId(s, id); return !!active && s.tabs[active] !== prev.tabs[active]; })) void poll();
   });
   useExtensions.subscribe((e, prev) => {
     if (e.lists !== prev.lists || e.popup !== prev.popup) void poll();
@@ -213,15 +217,18 @@ function startWebStoreIntegration() {
       if (tab.url === url) listen(tabId, url);
     });
   };
-  const sync = (s: BrowserState) => {
+  // After the first pass, only the tabs whose page or loading state changed since `prev` are looked at.
+  const sync = (s: BrowserState, prev?: BrowserState) => {
     for (const [tabId, url] of listening) if (s.tabs[tabId]?.url !== url || s.live[tabId]?.isLoading) listening.delete(tabId);
-    for (const tab of Object.values(s.tabs)) {
-      if (!isStorePage(tab.url) || s.live[tab.id]?.isLoading || listening.get(tab.id) === tab.url) continue;
-      listen(tab.id, tab.url);
+    const ids = prev ? new Set([...changedIds(s.tabs, prev.tabs), ...changedIds(s.live, prev.live)]) : Object.keys(s.tabs);
+    for (const id of ids) {
+      const tab = s.tabs[id];
+      if (!tab || !isStorePage(tab.url) || s.live[id]?.isLoading || listening.get(id) === tab.url) continue;
+      listen(id, tab.url);
     }
   };
   useBrowser.subscribe((s, prev) => {
-    if (s.tabs !== prev.tabs || s.live !== prev.live) sync(s);
+    if (s.tabs !== prev.tabs || s.live !== prev.live) sync(s, prev);
   });
   sync(useBrowser.getState());
 }

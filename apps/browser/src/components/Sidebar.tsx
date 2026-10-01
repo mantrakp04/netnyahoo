@@ -325,8 +325,9 @@ function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, s
       const w = s.windows[windowId];
       const before = prev.windows[windowId];
       if (!w || !before || w.tabIds === before.tabIds) return;
+      const had = new Set(before.tabIds);
       for (const id of w.tabIds) {
-        if (!before.tabIds.includes(id) && s.tabs[id]?.openerId && id !== active) reveal(id);
+        if (!had.has(id) && s.tabs[id]?.openerId && id !== active) reveal(id);
       }
     });
     return () => {

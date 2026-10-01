@@ -12,6 +12,7 @@ import {
 } from "@netnyahoo/nncore";
 import { usePages } from "../components/layout/pageState";
 import { useBrowser, type BrowserState } from "../store/browser";
+import { changedIds } from "../store/changes";
 import { chromeChanged, groupStep, stripActual, stripPlan, type GroupBindings } from "../store/liveTabs";
 import { engineProfile } from "../store/model";
 import { webviews } from "./webviews";
@@ -170,9 +171,10 @@ const liveTabs = () =>
 
 function announceMoves(s: BrowserState, prev: BrowserState) {
   let live: Map<string, string> | null = null;
-  for (const [id, tab] of Object.entries(s.tabs)) {
+  for (const id of changedIds(s.tabs, prev.tabs)) {
+    const tab = s.tabs[id];
     const before = prev.tabs[id];
-    if (!before || before.windowId === tab.windowId) continue;
+    if (!tab || !before || before.windowId === tab.windowId) continue;
     if (engineProfile(before.profileId) !== engineProfile(tab.profileId)) continue;
     live ??= liveTabs();
     if (live.has(id)) prepareTabTransfer(id);

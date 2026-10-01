@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { webviews } from "../../lib/webviews";
 import { useBrowser } from "../../store/browser";
+import { changedIds } from "../../store/changes";
 import type { TabLive } from "../../store/types";
 import { internalPageOf, tabDestination } from "../pages/urls";
 import { pageOf, patchPage, usePage } from "./pageState";
@@ -56,11 +57,10 @@ function hideNewTab(tabId: string) {
 }
 
 useBrowser.subscribe((s, prev) => {
-  if (s.tabs === prev.tabs) return;
-  for (const id in s.tabs) {
-    const tab = s.tabs[id]!;
+  for (const id of changedIds(s.tabs, prev.tabs)) {
+    const tab = s.tabs[id];
     const before = prev.tabs[id];
-    if (!before || tab === before) continue;
+    if (!tab || !before) continue;
     if (!tabDestination(before) && internalPageOf(tabDestination(tab)) && !pageOf(id).backToNewTab) patchPage(id, { backToNewTab: true });
   }
 });

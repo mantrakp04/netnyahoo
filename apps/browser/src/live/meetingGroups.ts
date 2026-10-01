@@ -1,5 +1,6 @@
 import { confirm } from "@netnyahoo/shell";
 import { useBrowser, type BrowserState } from "../store/browser";
+import { changedIds } from "../store/changes";
 import { activeTabId } from "../store/model";
 import { groupOf } from "../store/organize";
 import { connectCalendar, useCalendar } from "./calendar";
@@ -56,9 +57,9 @@ export function startMeetingGroups() {
   started = true;
 
   useBrowser.subscribe((s, prev) => {
-    if (s.tabs === prev.tabs) return;
-    for (const id in s.tabs) {
-      const tab = s.tabs[id]!;
+    for (const id of changedIds(s.tabs, prev.tabs)) {
+      const tab = s.tabs[id];
+      if (!tab) continue;
       const before = prev.tabs[id];
       if (before && before.url === tab.url && before.pinned === tab.pinned) continue;
       if (s.settings.autoGroupMeetingTabs && !tab.pinned && meetingOf(tab.url) && (!before || !meetingOf(before.url))) groupCall(id);
