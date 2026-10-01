@@ -2588,7 +2588,7 @@ SPEC CHECKSUMS:
   fmt: 4cf0c5ec5864511c96d8d4bd7b03c3c69040af06
   glog: 0b31c25149b9d350b2666c7d459229861a00ec07
   hermes-engine: 7219f6e751ad6ec7f3d7ec121830ee34dae40749
-  NetnyahooCEF: 5b8b7beec984199203feeb1be99dadc6f5a57e68
+  NetnyahooCEF: 12cd0d7618f07fc35ec02c1a01a9ef0b0c6d283c
   NetnyahooImport: 7dd96a9eabaf73af2d5b1ac14375d2b043ef9034
   NetnyahooShaders: e8fed32c44e855c4cbaaf875fc06223788039c4e
   NetnyahooShell: 79ef5ec56886e548efdaa02ab1076d3b4800be56
