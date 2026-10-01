@@ -75,6 +75,206 @@ index a37a1c106a04752c1baeb6dd2170402ce5f34f71..c096a10720e76e449619a026d4b756ec
    }
  
    if (_respondsToDisplayLayer) {
+diff --git a/React/CoreModules/RCTTiming.mm b/React/CoreModules/RCTTiming.mm
+index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63be3fd3089 100644
+--- a/React/CoreModules/RCTTiming.mm
++++ b/React/CoreModules/RCTTiming.mm
+@@ -18,7 +18,9 @@
+ 
+ #import "CoreModulesPlugins.h"
+ 
+-static const NSTimeInterval kMinimumSleepInterval = 1;
++#if TARGET_OS_OSX // [macOS]
++#import <atomic>
++#endif // macOS]
+ 
+ // These timing contants should be kept in sync with the ones in `JSTimers.js`.
+ // The duration of a frame. This assumes that we want to run at 60 fps.
+@@ -26,6 +28,17 @@
+ // The minimum time left in a frame to trigger the idle callback.
+ static const NSTimeInterval kIdleCallbackFrameDeadline = 0.001;
+ 
++#if !TARGET_OS_OSX // [macOS]
++static const NSTimeInterval kMinimumSleepInterval = 1;
++#else // [macOS
++// [Netnyahoo: sleep on an NSTimer whenever the next timer is more than two frames out, not a second. The display
++// link wakes the JS thread every frame (120 times a second on ProMotion), so an app with a few timers a second kept it
++// running much of the time at idle. The NSTimer fires at the target; the display link stays for what is due within a
++// couple of frames (requestAnimationFrame, short timeouts).
++static const NSTimeInterval kMinimumSleepInterval = 2 * kFrameDuration;
++// Netnyahoo]
++#endif // macOS]
++
+ @interface _RCTTimer : NSObject
+ 
+ @property (nonatomic, strong, readonly) NSDate *target;
+@@ -101,6 +114,12 @@ @implementation RCTTiming {
+   BOOL _sendIdleEvents;
+   BOOL _inBackground;
+   id<RCTTimingDelegate> _timingDelegate;
++#if TARGET_OS_OSX // [macOS]
++  // [Netnyahoo: whether NSApp is hidden (written on the main thread), and the run loop timers are created on (JS).
++  std::atomic<bool> _appHidden;
++  NSRunLoop *_timingRunLoop;
++  // Netnyahoo]
++#endif // macOS]
+ }
+ 
+ @synthesize bridge = _bridge;
+@@ -133,11 +152,22 @@ - (void)setup
+      if (!self->_inBackground &&
+         ([RCTSharedApplication() applicationState] == UIApplicationStateBackground ||
+          [UIDevice currentDevice].proximityState)) {
+-#else // [macOS
+-    if (!self->_inBackground && ![RCTSharedApplication() isHidden]) {
+-#endif
+       [self appDidMoveToBackground];
+     }
++#else // [macOS
++    // [Netnyahoo: background only while the app is hidden. This read `![NSApp isHidden]`, so a visible app went to
++    // background at launch and never came back: the display link stopped and every timer, requestAnimationFrame
++    // included, ran off a one-shot NSTimer, as fast as JS asked (about 1000 frames a second). Observed here, on the
++    // main thread with the first read, so no hide or unhide falls between them.
++    for (NSString *name in @[ NSApplicationDidHideNotification, NSApplicationDidUnhideNotification ]) {
++      [[NSNotificationCenter defaultCenter] addObserver:self
++                                               selector:@selector(appHiddenDidChange)
++                                                   name:name
++                                                 object:nil];
++    }
++    [self appHiddenDidChange];
++    // Netnyahoo]
++#endif
+   });
+ 
+ #if !TARGET_OS_OSX // [macOS]
+@@ -166,6 +196,49 @@ - (void)setup
+ #endif // [macOS]
+ }
+ 
++#if TARGET_OS_OSX // [macOS]
++// [Netnyahoo: AppKit tells the main thread; the timing thread (JS) switches, where the display link calls in and the
++// sleep timer must live (on the main run loop, default mode only, a menu or a live resize would hold every timer). It
++// reads the latest state whenever it switches, so a late or repeated nudge can't leave it stale; before the first
++// timer there's nothing to nudge, and the first createTimer catches up.
++- (void)appHiddenDidChange
++{
++  _appHidden = [RCTSharedApplication() isHidden];
++  NSRunLoop *runLoop;
++  @synchronized(self) {
++    runLoop = _timingRunLoop;
++  }
++  CFRunLoopRef cfRunLoop = [runLoop getCFRunLoop];
++  if (cfRunLoop) {
++    __weak RCTTiming *weakSelf = self;
++    CFRunLoopPerformBlock(cfRunLoop, kCFRunLoopDefaultMode, ^{
++      [weakSelf syncWithAppHidden];
++    });
++    CFRunLoopWakeUp(cfRunLoop);
++  }
++}
++
++// On the timing thread.
++- (void)syncWithAppHidden
++{
++  if (!_timingRunLoop) {
++    @synchronized(self) {
++      _timingRunLoop = [NSRunLoop currentRunLoop];
++    }
++  }
++  if (!_bridge && !_timingDelegate) {
++    return;
++  }
++  bool hidden = _appHidden;
++  if (hidden && !_inBackground) {
++    [self appDidMoveToBackground];
++  } else if (!hidden && _inBackground) {
++    [self appDidMoveToForeground];
++  }
++}
++// Netnyahoo]
++#endif // [macOS]
++
+ - (void)dealloc
+ {
+   [_sleepTimer invalidate];
+@@ -325,6 +398,14 @@ - (void)didUpdateFrame:(RCTFrameUpdate *)update
+ 
+ - (void)scheduleSleepTimer:(NSDate *)sleepTarget
+ {
++#if TARGET_OS_OSX // [macOS]
++  // [Netnyahoo: a hidden app keeps running, with no display link to pace it: a frame apart at least, or a
++  // requestAnimationFrame loop comes back as fast as the run loop turns.
++  if (_inBackground) {
++    sleepTarget = [sleepTarget laterDate:[NSDate dateWithTimeIntervalSinceNow:kFrameDuration]];
++  }
++  // Netnyahoo]
++#endif // [macOS]
+   @synchronized(self) {
+     if (!_sleepTimer || !_sleepTimer.valid) {
+       _sleepTimer = [[NSTimer alloc] initWithFireDate:sleepTarget
+@@ -344,12 +425,42 @@ - (void)timerDidFire
+ {
+   _sleepTimer = nil;
+   if (_paused) {
++#if !TARGET_OS_OSX // [macOS]
+     [self startTimers];
+ 
+     // Immediately dispatch frame, so we don't have to wait on the displaylink.
+     [self didUpdateFrame:nil];
++#else // [macOS
++    // [Netnyahoo: fire what's due without waking the display link for it, then sleep until the next timer, or start
++    // the display link if that one is due within a couple of frames (a timer's callback that asks for a frame starts
++    // it from createTimer).
++    [self didUpdateFrame:nil];
++    if (_paused && !_inBackground) {
++      [self sleepOrStartTimers];
++    }
++    // Netnyahoo]
++#endif // macOS]
++  }
++}
++
++#if TARGET_OS_OSX // [macOS]
++// [Netnyahoo
++- (void)sleepOrStartTimers
++{
++  NSDate *next = nil;
++  @synchronized(_timers) {
++    for (_RCTTimer *timer in _timers.allValues) {
++      next = next ? [next earlierDate:timer.target] : timer.target;
++    }
++  }
++  if (_sendIdleEvents || (next && [next timeIntervalSinceNow] <= kMinimumSleepInterval)) {
++    [self startTimers];
++  } else if (next) {
++    [self scheduleSleepTimer:next];
+   }
+ }
++// Netnyahoo]
++#endif // macOS]
+ 
+ /**
+  * A method used for asynchronously creating a timer. If the timer has already expired,
+@@ -391,6 +502,9 @@ - (void)createTimerForNextFrame:(nonnull NSNumber *)callbackID
+                jsSchedulingTime:(NSDate *)jsSchedulingTime
+                         repeats:(BOOL)repeats
+ {
++#if TARGET_OS_OSX // [macOS]
++  [self syncWithAppHidden]; // [Netnyahoo]
++#endif // macOS]
+   NSTimeInterval jsSchedulingOverhead = MAX(-jsSchedulingTime.timeIntervalSinceNow, 0);
+ 
+   NSTimeInterval targetTime = jsDuration - jsSchedulingOverhead;
+@@ -429,6 +543,9 @@ - (void)createTimerForNextFrame:(nonnull NSNumber *)callbackID
+ 
+ RCT_EXPORT_METHOD(setSendIdleEvents : (BOOL)sendIdleEvents)
+ {
++#if TARGET_OS_OSX // [macOS]
++  [self syncWithAppHidden]; // [Netnyahoo]
++#endif // macOS]
+   _sendIdleEvents = sendIdleEvents;
+   if (sendIdleEvents) {
+     [self startTimers];
 diff --git a/React/Views/RCTView.m b/React/Views/RCTView.m
 index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..78f8909a61d1f8999fd9c4ecc414eaaffaf18be1 100644
 --- a/React/Views/RCTView.m
