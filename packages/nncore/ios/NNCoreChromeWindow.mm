@@ -123,7 +123,11 @@ void KeepTrafficLightsInset(NSWindow *window) {
 }
 
 void ConfigureWindow(NSWindow *window) {
+  // AppKit keeps the content rect through a style change: going full-size content, the window would lose its title
+  // bar's height (32 pt, so app windows opened 32 pt shorter than CEF's). It keeps the frame Chrome made instead.
+  const NSRect frame = window.frame;
   window.styleMask |= NSWindowStyleMaskFullSizeContentView;
+  if (!NSEqualRects(window.frame, frame)) [window setFrame:frame display:NO];
   window.titlebarAppearsTransparent = YES;
   window.titleVisibility = NSWindowTitleHidden;
   window.title = @"Netnyahoo";

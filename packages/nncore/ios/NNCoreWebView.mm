@@ -7,6 +7,7 @@
 // takes that live tab.
 #import "NNCoreWebView.h"
 #import "NNCoreWebViewInternal.h"
+#import "NNCorePictureInPicture.h"
 #import "NNCoreServices.h"
 
 #import <IOKit/IOKitLib.h>
@@ -179,6 +180,61 @@ NSString *SelectionLabel(NSString *text) {
   return [[collapsed substringToIndex:end] stringByAppendingString:@"…"];
 }
 
+// Chrome's menu model items (ui::MenuModel::ItemType in "type"; an older engine says "separator") as CEF's
+// DescribeMenu wrote them for NETNYAHOO_CONTEXT_MENU_LOG: cef_menu_item_type_t, CefSimpleMenuModelImpl's mapping.
+constexpr int kMenuSeparator = 3;
+
+int MenuItemType(NSDictionary *item) {
+  if (NSNumber *type = Field<NSNumber>(item, @"type")) return type.intValue;
+  return Flag(item, @"separator") ? kMenuSeparator : 0;
+}
+
+NSString *MenuTitle(NSString *label);
+
+NSArray *DescribeMenu(NSArray *items) {
+  NSMutableArray *out = [NSMutableArray array];
+  for (NSDictionary *item in items) {
+    if (![item isKindOfClass:NSDictionary.class]) continue;
+    static const int kCefTypes[] = {1, 2, 3, 4, 0, 5, 5};  // command, check, radio, separator, button, submenus
+    const int type = MenuItemType(item);
+    NSMutableDictionary *described = [@{
+      @"id" : Field<NSNumber>(item, @"id") ?: @0,
+      @"label" : MenuTitle(Field<NSString>(item, @"label") ?: @""),
+      @"type" : @(type >= 0 && type < 7 ? kCefTypes[type] : 0),
+      @"enabled" : @(Flag(item, @"enabled")),
+      @"visible" : @(Field<NSNumber>(item, @"visible") ? Flag(item, @"visible") : YES),
+    } mutableCopy];
+    if (NSArray *submenu = Field<NSArray>(item, @"submenu")) described[@"submenu"] = DescribeMenu(submenu);
+    [out addObject:described];
+  }
+  return out;
+}
+
+// A Chrome menu label as its Mac menus show it (l10n_util::FixUpWindowsStyleLabel): no Windows mnemonics ("&Copy",
+// "Emoji && Symbols"), as CEF's background guard logged the NSMenu's titles.
+NSString *MenuTitle(NSString *label) {
+  NSMutableString *title = [NSMutableString stringWithCapacity:label.length];
+  for (NSUInteger i = 0; i < label.length; i++) {
+    const unichar c = [label characterAtIndex:i];
+    if (c != '&') {
+      [title appendFormat:@"%C", c];
+    } else if (i + 1 < label.length && [label characterAtIndex:i + 1] == '&') {
+      [title appendString:@"&"];
+      i++;
+    }
+  }
+  return title;
+}
+
+NSNumber *FindMenuItem(NSArray *items, NSString *label) {
+  for (NSDictionary *item in items) {
+    if (![item isKindOfClass:NSDictionary.class]) continue;
+    if ([MenuTitle(Field<NSString>(item, @"label") ?: @"") isEqualToString:label]) return Field<NSNumber>(item, @"id");
+    if (NSNumber *found = FindMenuItem(Field<NSArray>(item, @"submenu"), label)) return found;
+  }
+  return nil;
+}
+
 NSString *JSONString(id value) {
   NSData *data = [NSJSONSerialization dataWithJSONObject:value ?: NSNull.null options:NSJSONWritingFragmentsAllowed error:nil];
   return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"null";
@@ -336,6 +392,7 @@ NSString *JSONString(id value) {
     NNCoreTab *tab = [controller.coreWindow openTab:url.length ? url : @"about:blank" profile:profile foreground:NO];
     controller.hostChanges--;
     if (tab) [view attach:tab];
+    if (tab && url.length) [view focusAfterLoad];
   });
 }
 
@@ -800,7 +857,11 @@ NSString *JSONString(id value) {
     [self emitZoom];
   } else if ([kind isEqualToString:@"pip"] && dict) {
     NSNumber *active = [dict[@"active"] isKindOfClass:NSNumber.class] ? dict[@"active"] : nil;
-    if (active) [self emit:@"pictureInPicture" payload:@{@"kind" : [dict[@"kind"] isEqual:@"document"] ? @"document" : @"video", @"active" : active}];
+    NSString *pipKind = [dict[@"kind"] isEqual:@"document"] ? @"document" : @"video";
+    if (!active) return;
+    [self emit:@"pictureInPicture" payload:@{@"kind" : pipKind, @"active" : active}];
+    // Chrome's video window, styled and handled as on CEF (NNCorePictureInPicture).
+    if ([pipKind isEqual:@"video"]) nncore_pip::VideoChanged(self, [NSURL URLWithString:tab.url ?: @""].host ?: @"", frameId, active.boolValue);
   } else if ([kind isEqualToString:@"notification"] && dict) {
     NSString *nid = Text(dict, @"id", 128);
     NSString *origin = OriginOf(tab.url);
@@ -922,6 +983,14 @@ NSString *JSONString(id value) {
 - (void)loadNow:(NSString *)url userInitiated:(BOOL)userInitiated {
   if ([_tab respondsToSelector:@selector(loadURL:userInitiated:)]) [_tab loadURL:url userInitiated:userInitiated];
   else [_tab loadURL:url];
+  [self focusAfterLoad];
+}
+
+// The page on screen takes keyboard focus after a load the app asked for, as on CEF (LoadURL and a new browser's
+// first navigation call OnSetFocus(FOCUS_SOURCE_NAVIGATION), which NNClient allows only for a visible view): typing
+// goes to the page, and Chrome's page focus (autofill on a click, find…) holds in a window that isn't key.
+- (void)focusAfterLoad {
+  if (_visible && _tab) [self focusPage];
 }
 
 - (void)loadOpenedURL:(NSInteger)openedId url:(NSString *)url {
@@ -1092,6 +1161,14 @@ NSString *JSONString(id value) {
   }
 }
 
+// Back to Tab from our PiP menu: the video's own frame leaves Picture in Picture (CEF kept the CefFrame).
+- (void)exitPictureInPictureInFrame:(NSString *)frameId {
+  if (frameId.length && [_tab respondsToSelector:@selector(executeJavaScript:frame:)])
+    [_tab executeJavaScript:@"document.pictureInPictureElement && document.exitPictureInPicture()" frame:frameId];
+  else
+    [self exitPictureInPicture];
+}
+
 - (void)exitPictureInPicture {
   [self executeJavaScript:@"document.pictureInPictureElement && document.exitPictureInPicture();"
                            "window.documentPictureInPicture && documentPictureInPicture.window && documentPictureInPicture.window.close()"];
@@ -1195,9 +1272,47 @@ NSString *JSONString(id value) {
     [self emit:@"command" payload:@{@"command" : @"search", @"text" : selection ?: @"", @"modifiers" : modifiers ?: @{}}];
 }
 
-// Background mode: the menu Chrome would have shown, in the dev event log (devEvents) for the tests.
+// The autofill suggestions Chrome showed for the page (tests: in the dev event log).
+- (void)tab:(NNCoreTab *)tab didShowAutofillSuggestions:(NSArray<NSDictionary<NSString *, NSString *> *> *)items {
+  NoteEvent(nncore_host::BrowserId(tab), @"autofillSuggestions", @{@"items" : items ?: @[]});
+}
+
+// Background mode (or NETNYAHOO_CONTEXT_MENU_LOG): the menu Chrome would have shown, not shown. In the dev event log
+// (devEvents), and as packages/cef has it: a line in activation.log, or with NETNYAHOO_CONTEXT_MENU_LOG the menu
+// dumped there and the item its ".pick" file names run (Client::RunContextMenu).
 - (void)tab:(NNCoreTab *)tab didShowContextMenu:(NSArray<NSDictionary *> *)items {
-  NoteEvent(nncore_host::BrowserId(tab), @"contextMenu", @{@"items" : items ?: @[]});
+  [self tab:tab runContextMenu:@{@"items" : items ?: @[]}];
+}
+
+- (NSDictionary<NSString *, NSNumber *> *)tab:(NNCoreTab *)tab runContextMenu:(NSDictionary<NSString *, id> *)menu {
+  NSArray *items = Field<NSArray>(menu, @"items") ?: @[];
+  NoteEvent(nncore_host::BrowserId(tab), @"contextMenu", @{@"items" : items});
+  static const char *log = getenv("NETNYAHOO_CONTEXT_MENU_LOG");
+  if (!log) {
+    // CEF's background guard logs the NSMenu it didn't pop up: its titled items, top level.
+    if (nncore_host::Background()) {
+      NSMutableArray<NSString *> *titles = [NSMutableArray array];
+      for (NSDictionary *item in items)
+        if (MenuItemType(item) != kMenuSeparator && Field<NSString>(item, @"label").length) [titles addObject:MenuTitle(item[@"label"])];
+      nncore_host::LogActivation([NSString stringWithFormat:@"context menu (not shown): %@", [titles componentsJoinedByString:@" | "]]);
+    }
+    return nil;
+  }
+  NSString *path = @(log), *pickPath = [path stringByAppendingString:@".pick"];
+  NSDictionary *dump = @{
+    @"url" : Field<NSString>(menu, @"url") ?: tab.url ?: @"",
+    @"link" : Field<NSString>(menu, @"link") ?: @"",
+    @"items" : DescribeMenu(items),
+  };
+  [JSONString(dump) writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  NSString *pick = [NSString stringWithContentsOfFile:pickPath encoding:NSUTF8StringEncoding error:nil];
+  [NSFileManager.defaultManager removeItemAtPath:pickPath error:nil];
+  pick = [pick stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+  // "<label>\t<flags>" picks it as if with those keys held (cef_event_flags_t, the same bits as Chrome's ui::EventFlags).
+  NSArray<NSString *> *parts = [pick componentsSeparatedByString:@"\t"];
+  NSNumber *command = pick.length ? FindMenuItem(items, parts[0]) : nil;
+  if (!command) return nil;
+  return @{@"command" : command, @"flags" : @(parts.count > 1 ? parts[1].intValue : 0)};
 }
 
 // Chrome's own picture-in-picture windows: a document's is reported here only (a video's state comes from the page

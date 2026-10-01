@@ -240,6 +240,10 @@ void InstallActivationGuardsEarly() {
   InterceptFilePanels();
 }
 
+void LogActivation(NSString *what) {
+  Log(what, @[]);
+}
+
 void InstallActivationGuardsLate() {
   if (Background()) [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
 }

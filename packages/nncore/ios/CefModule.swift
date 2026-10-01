@@ -30,6 +30,8 @@ public class CefModule: Module {
     AsyncFunction("chromeWindows") { NNCoreHost.chromeWindows }.runOnQueue(.main)
     AsyncFunction("devEvents") { (browserId: Int) in NNCoreWebView.devEvents(browserId: Int32(browserId)) }.runOnQueue(.main)
     AsyncFunction("devWindowNumber") { (browserId: Int) in NNCoreWebView.devWindowNumber(browserId: Int32(browserId)) }.runOnQueue(.main)
+    AsyncFunction("devPictureInPicture") { NNCoreWebView.devPictureInPicture() }.runOnQueue(.main)
+    AsyncFunction("devPictureInPictureAction") { (action: String) in NNCoreWebView.devPictureInPictureAction(action) }.runOnQueue(.main)
     AsyncFunction("devWindow") { (windowNumber: Int, action: String) -> String in
       guard let window = NSApp.window(withWindowNumber: windowNumber) else { return "" }
       return NNChromeWindowHost.devAction(action, window: window) ?? ""

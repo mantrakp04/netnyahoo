@@ -32,6 +32,8 @@ NSString *AppDisposition(NSString *chromeDisposition);
 void InstallActivationGuardsEarly();
 void InstallActivationGuardsLate();
 bool Background();
+// A line in $NETNYAHOO_DATA_DIR/activation.log, as the guards write theirs (what a test instance didn't show).
+void LogActivation(NSString *what);
 
 }  // namespace nncore_host
 

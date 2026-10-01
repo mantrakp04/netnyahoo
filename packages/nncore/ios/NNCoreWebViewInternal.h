@@ -13,6 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)tabActivatedByChrome:(BOOL)chromes;
 - (void)devToolsChanged:(nullable NSView *)devToolsView;
 - (void)emit:(NSString *)name payload:(NSDictionary<NSString *, id> *)payload;
+// Leaves video Picture in Picture in one frame (a frame id from the page script), else the main frame's.
+- (void)exitPictureInPictureInFrame:(nullable NSString *)frameId;
 @end
 
 NS_ASSUME_NONNULL_END
