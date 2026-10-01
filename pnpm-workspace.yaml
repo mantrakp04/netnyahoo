@@ -16,4 +16,5 @@ autoInstallPeers: false
 
 # Fixes in dependencies, applied by every `pnpm install` (docs/agent-brief.md › "Patched dependencies").
 patchedDependencies:
+  expo-modules-core@3.0.30: patches/expo-modules-core@3.0.30.patch
   react-native-macos@0.81.9: patches/react-native-macos@0.81.9.patch

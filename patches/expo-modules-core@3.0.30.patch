@@ -1,0 +1,63 @@
+diff --git a/ios/Core/ExpoBridgeModule.mm b/ios/Core/ExpoBridgeModule.mm
+index 2ed1c00f47406e109750cc27ace7e0d88e42c00e..d8a48716793d0b252cd667982f8a2cb4d4a42277 100644
+--- a/ios/Core/ExpoBridgeModule.mm
++++ b/ios/Core/ExpoBridgeModule.mm
+@@ -3,6 +3,8 @@
+ #import <ReactCommon/RCTTurboModule.h>
+ #import <ExpoModulesCore/ExpoBridgeModule.h>
+ #import <ExpoModulesCore/Swift.h>
++#import <React/RCTBridge+Private.h>
++#import <React/RCTJSThread.h>
+ 
+ // The runtime executor is included as of React Native 0.74 in bridgeless mode.
+ #if __has_include(<ReactCommon/RCTRuntimeExecutor.h>)
+@@ -46,10 +48,35 @@ - (void)setBridge:(RCTBridge *)bridge
+   _appContext.reactBridge = bridge;
+ 
+ #if !__has_include(<ReactCommon/RCTRuntimeExecutor.h>)
+-  _appContext._runtime = [EXJavaScriptRuntimeManager runtimeFromBridge:bridge];
++  // [Netnyahoo: React Native 0.81 has no RCTRuntimeExecutor.h, so the legacy bridge lands here, and not always on the
++  // JS thread: EXNativeModulesProxy is set up on the main thread and pulls this module in through moduleForClass:.
++  // Preparing the runtime there raced the JS thread's initializeRuntime (Hermes' reentrancy trap in Debug, unguarded
++  // concurrent use of the runtime in Release). The runtime is only touched on the JS thread: there, ahead of the
++  // bundle as before when the runtime exists by then, else by installModules once JS asks. Netnyahoo]
++  __weak ExpoBridgeModule *weakSelf = self;
++  __weak RCTBridge *weakBridge = bridge;
++  [bridge dispatchBlock:^{
++    ExpoBridgeModule *strongSelf = weakSelf;
++    RCTBridge *strongBridge = weakBridge;
++    if (strongSelf && strongBridge.valid && strongSelf->_bridge == strongBridge) {
++      [strongSelf installRuntimeIfNeeded];
++    }
++  } queue:RCTJSThread];
+ #endif // React Native <0.74
+ }
+ 
++// [Netnyahoo: on the JS thread only. A runtime that isn't there yet is left unset (setting nil releases the modules'
++// JS objects). Netnyahoo]
++- (void)installRuntimeIfNeeded
++{
++  if (_bridge && !_appContext._runtime) {
++    EXRuntime *runtime = [EXJavaScriptRuntimeManager runtimeFromBridge:_bridge];
++    if (runtime) {
++      _appContext._runtime = runtime;
++    }
++  }
++}
++
+ #if __has_include(<ReactCommon/RCTRuntimeExecutor.h>)
+ - (void)setRuntimeExecutor:(RCTRuntimeExecutor *)runtimeExecutor
+ {
+@@ -77,11 +104,7 @@ - (void)legacyProxyDidSetBridge:(nonnull EXNativeModulesProxy *)moduleProxy
+  */
+ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(installModules)
+ {
+-  if (_bridge && !_appContext._runtime) {
+-    // TODO: Keep this condition until we remove the other way of installing modules.
+-    // See `setBridge` method above.
+-    _appContext._runtime = [EXJavaScriptRuntimeManager runtimeFromBridge:_bridge];
+-  }
++  [self installRuntimeIfNeeded];
+   return nil;
+ }
+ 
