@@ -25,6 +25,15 @@ type Store = {
 
 type Counter = Record<string, number>;
 
+// This runs before anything has imported expo-modules-core, and the legacy bridge installs `expo` ahead of the bundle
+// only when its runtime exists by then: install it as expo-modules-core's ensureNativeModulesAreInstalled does, or the
+// probe stays off in some launches.
+if (!(globalThis as { expo?: unknown }).expo) {
+  try {
+    const { TurboModuleRegistry } = require("react-native") as typeof import("react-native");
+    (TurboModuleRegistry.get("ExpoModulesCore") as { installModules?: () => void } | null)?.installModules?.();
+  } catch {}
+}
 const modules = (globalThis as { expo?: { modules?: Record<string, Record<string, (...a: unknown[]) => unknown>> } }).expo?.modules;
 const shell = modules?.NetnyahooShell;
 
