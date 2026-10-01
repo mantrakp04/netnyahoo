@@ -47,6 +47,10 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   - `react-native-macos`: a view's `transform` survives AppKit laying it out (it reset the layer's
     transform on every frame change, so a view resting at a non-zero translate, rotate or scale drew
     untransformed), and applies from the view's centre as on iOS.
+  - `react-native-macos`: RCTTiming leaves the display link only while the app is hidden (upstream's macOS check
+    was inverted, so every visible launch ran timers off one-shot NSTimers: requestAnimationFrame at ~1000/s),
+    tracks hide/unhide, and lets the display link sleep when the next timer is over two frames away (c7ebd600).
+  - `expo-modules-core`: the JS runtime is prepared on the JS thread only (a startup race, 364f5f7e).
 
 ## The engine
 - NNCore is built outside the repo in `~/chromium-build` (the tree and its patches: `engine/patches`,
