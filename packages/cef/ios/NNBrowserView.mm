@@ -595,10 +595,17 @@ NSString *const kExitPictureInPictureScript =
 
 // A link opened in an existing pane (a split): Chrome's kept navigation (POST body, referrer), else its URL.
 - (void)loadOpenedURL:(NSInteger)openedId url:(NSString *)url {
-  if (_browser && LoadOpenedURL(_browser, (int)openedId)) {
-    _loadRequests++;
+  _loadRequests++;
+  if (!_browser) {
+    // No browser yet (an empty split pane): it loads the navigation once made (browserCreated), not the URL first.
+    if (_openedId && _openedId != openedId) [NNCef forgetOpenedURL:_openedId];
+    _openedId = (int)openedId;
+    _openedURL = url;
+    _pendingURL = nil;
+    if (self.window) [self ensureBrowser];
     return;
   }
+  if (LoadOpenedURL(_browser, (int)openedId)) return;
   [NNCef forgetOpenedURL:openedId];
   [self loadURL:url userInitiated:NO];
 }

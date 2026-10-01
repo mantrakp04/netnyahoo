@@ -23,7 +23,7 @@ import { SadTab, StatusBubble } from "./layout/PaneOverlays";
 import { DropTargets, SplitDividers, SplitToast } from "./layout/SplitChrome";
 import { SplitEmptyState } from "./layout/SplitEmptyState";
 import { pagerFor } from "./layout/profilePager";
-import { openFromPage } from "./layout/openFromPage";
+import { openFromPage, releaseKept } from "./layout/openFromPage";
 import { setUrlAnchor, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { NewTabPage } from "./NewTabPage";
 import { InternalPage, isInternalTab } from "./pages";
@@ -305,13 +305,15 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
   const onOpenWindow = (request: OpenWindowRequest) => {
     const t = tab();
     if (t) openFromPage(request, { windowId: t.windowId, profileId: t.profileId, tabId });
+    else releaseKept(request.adoptId);
   };
 
   return (
     <WebView
       ref={ref}
       style={StyleSheet.absoluteFill}
-      url={navigation?.url ?? (adoptId ? tab()?.url : undefined)}
+      // A link the engine kept (a POST into an empty split pane): the new browser starts blank and loads it (loadUrl).
+      url={navigation?.opened ? "about:blank" : (navigation?.url ?? (adoptId ? tab()?.url : undefined))}
       profile={engineProfile(profileId)}
       adoptId={adoptId}
       transferKey={tabId}

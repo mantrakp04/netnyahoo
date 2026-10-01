@@ -940,8 +940,13 @@ bool Client::OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
 bool Client::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString &target_url,
                               cef_window_open_disposition_t disposition, bool user_gesture) {
   if (disposition == CEF_WOD_CURRENT_TAB) return false;
-  if (IsAppURL(ToNS(target_url)) && !IsWebUIPage(frame ? ToNS(frame->GetURL()) : URL())) return true;
+  // Cancelled here, so the navigation the engine kept for it is dropped.
+  if (IsAppURL(ToNS(target_url)) && !IsWebUIPage(frame ? ToNS(frame->GetURL()) : URL())) {
+    [NNCef forgetOpenedURL:OpenedURLId()];
+    return true;
+  }
   if (external::IsAppLink(target_url)) {
+    [NNCef forgetOpenedURL:OpenedURLId()];
     OpenAppLink(frame, ToNS(target_url), user_gesture);
     return true;
   }
@@ -953,7 +958,10 @@ bool Client::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
     @"userGesture" : @(user_gesture),
   } mutableCopy];
   // The tab that opens it loads the navigation itself: its POST body, referrer and initiator (NNBrowserView).
-  if (int opened = OpenedURLId()) request[@"adoptId"] = [NSString stringWithFormat:@"open:%d", opened];
+  if (int opened = OpenedURLId()) {
+    request[@"adoptId"] = [NSString stringWithFormat:@"open:%d", opened];
+    request[@"postBody"] = @(OpenedURLHasBody(opened));
+  }
   Emit(@"openWindow", request);
   return true;
 }
@@ -972,6 +980,11 @@ void *EngineSymbol(const char *name) {
 int OpenedURLId() {
   static auto openedURLId = (int (*)())EngineSymbol("cef_nn_open_url_id");
   return openedURLId ? openedURLId() : 0;
+}
+
+bool OpenedURLHasBody(int id) {
+  static auto hasBody = (int (*)(int))EngineSymbol("cef_nn_open_url_has_body");
+  return hasBody && id && hasBody(id);
 }
 
 bool LoadOpenedURL(CefRefPtr<CefBrowser> browser, int id) {

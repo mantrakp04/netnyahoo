@@ -193,7 +193,7 @@ export function unloadPinnedTabs(s: BrowserState, ids: string[]): BrowserState {
     if (loaded && t.url) {
       closed.push({ kind: "tab", id: newId("ct"), tab: snapshotTab(t), tabId: id, windowId: t.windowId, index: w?.tabIds.indexOf(id) ?? 0, group: null, closedAt: now, pinnedTile: true });
     }
-    tabs[id] = { ...t, ...backToPin(s, t), navigation: null, adoptId: undefined, unloaded: true };
+    tabs[id] = { ...t, ...backToPin(s, t), navigation: null, adoptId: undefined, wakeAdoptId: undefined, unloaded: true };
     live[id] = IDLE_LIVE;
   }
   let next: BrowserState = {
@@ -362,7 +362,8 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
       if (get().windowUi[tab.windowId]?.panel.open) get().closePanel(tab.windowId);
       return;
     }
-    const { unloaded: _, ...rest } = tab;
+    // A new address supersedes a link the tab kept to load when shown (the engine drops it: lib/chromeTabs.ts).
+    const { unloaded: _, wakeAdoptId: _kept, ...rest } = tab;
     // Typing an address starts a new task (a New Tab page gets one lookup first, as in Chrome).
     const base = userInitiated && tab.url ? forgetOpeners(s, tab.windowId) : s;
     set(apply(base, { tabs: { ...base.tabs, [id]: { ...rest, openerId: base.tabs[id]!.openerId, navigation: { ...navigationTo(url, userInitiated), ...(opened ? { opened } : {}) }, url: tab.url || url } } }));
@@ -375,7 +376,10 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     const tab = s.tabs[id];
     if (!tab) return;
     const url = patch.url;
-    const next = merge(tab, url !== undefined && url !== tab.url ? { ...onUrlChange(s, tab, url), ...patch } : patch);
+    // Loading something else supersedes the link the tab kept to load when shown.
+    const supersedes = !!tab.wakeAdoptId && !("wakeAdoptId" in patch) && (!!patch.navigation || !!patch.adoptId || (url !== undefined && url !== tab.url));
+    const change = supersedes ? { ...patch, wakeAdoptId: undefined } : patch;
+    const next = merge(tab, url !== undefined && url !== tab.url ? { ...onUrlChange(s, tab, url), ...change } : change);
     const live = livePatch ? s.live[id] : undefined;
     const nextLive = live && livePatch ? merge(live, livePatch) : live;
     if (next === tab && nextLive === live) return;

@@ -1,8 +1,8 @@
 diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
-index db46768..da33f68 100644
+index db46768..a44fe57 100644
 --- a/include/cef_netnyahoo.h
 +++ b/include/cef_netnyahoo.h
-@@ -121,4 +121,33 @@
+@@ -121,4 +121,30 @@
  // first), enabled or not. Everywhere else Chrome's rules are unchanged.
  #define CEF_NN_QUIET_UNINSTALL 1
  
@@ -17,30 +17,27 @@ index db46768..da33f68 100644
 +//     (a new browser's about:blank entry is replaced, a page's isn't) and
 +//     forgets it; 0 if the id is unknown.
 +//   void cef_nn_forget_open_url(int id): drops it unused (its tab closed).
++//   int cef_nn_open_url_has_body(int id): 1 if it carries a POST body.
 +// Entries wait until used or forgotten (a tab opened behind may load only
-+// when first shown); past 200 the oldest go.
++// when first shown); past 200 entries or 64 MB the oldest go, those without a
++// body first.
 +#define CEF_NN_OPEN_URL_PARAMS 1
 +typedef int (*cef_nn_open_url_id_t)(void);
 +typedef int (*cef_nn_load_open_url_t)(int browser_id, int id);
 +typedef void (*cef_nn_forget_open_url_t)(int id);
++typedef int (*cef_nn_open_url_has_body_t)(int id);
 +
 +// CefLifeSpanHandler::OnBeforePopup's |extra_info| holds
 +// "nn_opener_suppressed" (true) when the page asked for noopener or
 +// noreferrer, and "nn_no_referrer" when it sent no referrer.
 +#define CEF_NN_POPUP_OPENER_SUPPRESSED 1
 +
-+// With CefSettings.external_message_pump, CefDoMessageLoopWork() ends by
-+// calling CefBrowserProcessHandler::OnScheduleMessagePumpWork() for its next
-+// call: 0 when work is left over from its time slice, or the delay until the
-+// next delayed task. A client needs no poll of its own to run delayed tasks.
-+#define CEF_NN_PUMP_SCHEDULE 1
-+
  #endif  // CEF_INCLUDE_CEF_NETNYAHOO_H_
 diff --git a/libcef/browser/browser_contents_delegate.cc b/libcef/browser/browser_contents_delegate.cc
-index b1591e9..1ab1d8d 100644
+index b1591e9..bfdfed9 100644
 --- a/libcef/browser/browser_contents_delegate.cc
 +++ b/libcef/browser/browser_contents_delegate.cc
-@@ -4,6 +4,15 @@
+@@ -4,6 +4,16 @@
  
  #include "cef/libcef/browser/browser_contents_delegate.h"
  
@@ -52,11 +49,12 @@ index b1591e9..1ab1d8d 100644
 +#include "cef/libcef/browser/thread_util.h"
 +#include "content/public/browser/navigation_controller.h"
 +#include "content/public/browser/site_instance.h"
++#include "services/network/public/cpp/resource_request_body.h"
 +
  #include "base/memory/raw_ptr.h"
  #include "cef/libcef/browser/browser_event_util.h"
  #include "cef/libcef/browser/browser_host_base.h"
-@@ -111,6 +120,88 @@ void CefBrowserContentsDelegate::RemoveObserver(Observer* observer) {
+@@ -111,6 +121,135 @@ void CefBrowserContentsDelegate::RemoveObserver(Observer* observer) {
    observers_.RemoveObserver(observer);
  }
  
@@ -67,11 +65,28 @@ index b1591e9..1ab1d8d 100644
 +// client to load into the browser it opens for them. UI thread only.
 +struct OpenedURL {
 +  content::OpenURLParams params;
++  size_t bytes = 0;
 +};
 +
 +// A tab opened behind may load only when first shown, so entries stay until
-+// used or forgotten; the oldest go past this many.
++// used or forgotten. Past these bounds the oldest go, those without a body
++// first (the client loads one with a body at once, so it's rarely waiting).
 +constexpr size_t kMaxOpenedURLs = 200;
++constexpr size_t kMaxOpenedURLBytes = 64 * 1024 * 1024;
++size_t g_opened_url_bytes = 0;
++
++size_t SizeOf(const content::OpenURLParams& params) {
++  size_t bytes = params.url.spec().size() + params.referrer.url.spec().size() +
++                 params.extra_headers.size();
++  if (params.post_data) {
++    for (const auto& element : *params.post_data->elements()) {
++      if (element.type() == network::DataElement::Tag::kBytes) {
++        bytes += element.As<network::DataElementBytes>().bytes().size();
++      }
++    }
++  }
++  return bytes;
++}
 +
 +std::map<int, OpenedURL>& OpenedURLs() {
 +  static base::NoDestructor<std::map<int, OpenedURL>> urls;
@@ -81,9 +96,27 @@ index b1591e9..1ab1d8d 100644
 +int g_next_opened_url = 0;
 +int g_current_opened_url = 0;
 +
-+void ForgetStaleOpenedURLs() {
-+  while (OpenedURLs().size() >= kMaxOpenedURLs) {
-+    OpenedURLs().erase(OpenedURLs().begin());
++void EraseOpenedURL(std::map<int, OpenedURL>::iterator it) {
++  g_opened_url_bytes -= it->second.bytes;
++  OpenedURLs().erase(it);
++}
++
++// Room for |incoming| more bytes.
++void ForgetStaleOpenedURLs(size_t incoming) {
++  auto& urls = OpenedURLs();
++  auto over = [&] {
++    return urls.size() >= kMaxOpenedURLs ||
++           g_opened_url_bytes + incoming > kMaxOpenedURLBytes;
++  };
++  for (auto it = urls.begin(); over() && it != urls.end();) {
++    auto next = std::next(it);
++    if (!it->second.params.post_data) {
++      EraseOpenedURL(it);
++    }
++    it = next;
++  }
++  while (over() && !urls.empty()) {
++    EraseOpenedURL(urls.begin());
 +  }
 +}
 +
@@ -101,9 +134,21 @@ index b1591e9..1ab1d8d 100644
 +}
 +
 +extern "C" CEF_EXPORT void cef_nn_forget_open_url(int id) {
-+  if (CEF_CURRENTLY_ON_UIT()) {
-+    OpenedURLs().erase(id);
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    return;
 +  }
++  auto it = OpenedURLs().find(id);
++  if (it != OpenedURLs().end()) {
++    EraseOpenedURL(it);
++  }
++}
++
++extern "C" CEF_EXPORT int cef_nn_open_url_has_body(int id) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    return 0;
++  }
++  auto it = OpenedURLs().find(id);
++  return it != OpenedURLs().end() && it->second.params.post_data ? 1 : 0;
 +}
 +
 +extern "C" CEF_EXPORT int cef_nn_load_open_url(int browser_id, int id) {
@@ -118,18 +163,18 @@ index b1591e9..1ab1d8d 100644
 +  content::WebContents* web_contents =
 +      browser ? browser->GetWebContents() : nullptr;
 +  if (!web_contents) {
-+    OpenedURLs().erase(it);
++    EraseOpenedURL(it);
 +    return 0;
 +  }
 +  // Only into the profile the navigation came from: its source SiteInstance
 +  // belongs to that BrowserContext.
 +  const auto& source = it->second.params.source_site_instance;
 +  if (source && source->GetBrowserContext() != web_contents->GetBrowserContext()) {
-+    OpenedURLs().erase(it);
++    EraseOpenedURL(it);
 +    return 0;
 +  }
 +  content::NavigationController::LoadURLParams load(it->second.params);
-+  OpenedURLs().erase(it);
++  EraseOpenedURL(it);
 +  // A new browser starts on about:blank: the page takes that entry. In a
 +  // browser with a page (a split's pane), it's a new entry.
 +  const content::NavigationEntry* current =
@@ -145,15 +190,17 @@ index b1591e9..1ab1d8d 100644
  // |source| may be NULL for navigations in the current tab, or if the
  // navigation originates from a guest view via MaybeAllowNavigation.
  content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
-@@ -120,6 +211,15 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
+@@ -120,6 +259,17 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
          navigation_handle_callback) {
    bool cancel = false;
  
 +  int opened_url = 0;
 +  if (KeepsOpenedURL(params.disposition)) {
-+    ForgetStaleOpenedURLs();
++    const size_t bytes = SizeOf(params);
++    ForgetStaleOpenedURLs(bytes);
 +    opened_url = ++g_next_opened_url;
-+    OpenedURLs().emplace(opened_url, OpenedURL{params});
++    OpenedURLs().emplace(opened_url, OpenedURL{params, bytes});
++    g_opened_url_bytes += bytes;
 +  }
 +  const int outer_opened_url = g_current_opened_url;
 +  g_current_opened_url = opened_url;
@@ -161,13 +208,15 @@ index b1591e9..1ab1d8d 100644
    if (auto c = client()) {
      if (auto handler = c->GetRequestHandler()) {
        // May return nullptr for omnibox navigations.
-@@ -135,6 +235,10 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
+@@ -135,6 +285,12 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTabEx(
            params.user_gesture);
      }
    }
 +  g_current_opened_url = outer_opened_url;
 +  if (opened_url && !cancel) {
-+    OpenedURLs().erase(opened_url);
++    if (auto it = OpenedURLs().find(opened_url); it != OpenedURLs().end()) {
++      EraseOpenedURL(it);
++    }
 +  }
  
    if (!cancel) {

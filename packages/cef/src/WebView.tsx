@@ -39,6 +39,8 @@ export type OpenWindowRequest = {
   disposition: OpenDisposition;
   adoptId?: string;
   userGesture?: boolean;
+  /** The navigation the engine kept for it ("open:<id>") carries a POST body. */
+  postBody?: boolean;
 };
 
 export type BlockedPopup = { id: string; url: string; origin: string };

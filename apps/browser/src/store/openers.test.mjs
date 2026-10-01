@@ -197,3 +197,23 @@ test("closing a group that holds the shown tab shows the tab just above the grou
   S().closeGroup(group.id);
   assert.equal(active(w), "home", "not the pinned opener");
 });
+
+test("a link kept to load when shown is dropped once the tab loads something else", () => {
+  reset();
+  const [w, a] = setup("a");
+  const kept = S().newTab(w, { url: "form.com", background: true, wakeAdoptId: "open:7" });
+  assert.equal(S().tabs[kept].wakeAdoptId, "open:7");
+  S().togglePin(kept);
+  S().navigate(kept, "other.com");
+  assert.equal(S().tabs[kept].wakeAdoptId, undefined, "typing an address supersedes it");
+  S().updateTab(kept, { url: "https://other.com" });
+  S().activate(a);
+  S().closeTab(kept);
+  S().activate(kept);
+  assert.notEqual(S().tabs[kept].adoptId, "open:7", "unloading and showing it again never replays the old request");
+  assert.ok(S().tabs[kept].navigation);
+
+  const other = S().newTab(w, { url: "form2.com", background: true, wakeAdoptId: "open:8" });
+  S().updateTab(other, { navigation: { url: "https://x.com", seq: 1 } });
+  assert.equal(S().tabs[other].wakeAdoptId, undefined, "any load supersedes it");
+});
