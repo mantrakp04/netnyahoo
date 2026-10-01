@@ -381,6 +381,12 @@ NSString *JSONString(id value) {
   else [self ensureTab];
 }
 
+- (void)setExtensionHost:(NSString *)extensionHost {
+  _extensionHost = [extensionHost copy];
+  // Never in a tab strip, as a standalone view.
+  if (_extensionHost.length) _standalone = YES;
+}
+
 - (void)setAdoptId:(NSString *)adoptId {
   _adoptId = [adoptId copy];
   if (self.window) [self ensureTab];
@@ -422,11 +428,18 @@ NSString *JSONString(id value) {
     if (!profile || view->_tab || !controller) return;
     // Extension popups and side panels: out of the app window's Browser and strip, as CEF's standalone browsers.
     const BOOL standalone = view->_standalone;
-    if (standalone) controller = [NNCoreWindowController standaloneWindowForProfile:profile] ?: controller;
     NSString *url = view->_pendingURL ?: view->_initialURL;
     view->_pendingURL = nil;
     view->_creatingURL = url;
     view->_creatingAt = CACurrentMediaTime();
+    // Chrome's own extension view (an engine that has it): bound to this window's Browser, so the page's current
+    // window and active tab are this window's and its tab, as for Chrome's popup. Else a tab in a hidden window.
+    if (view->_extensionHost.length && url.length &&
+        [controller.coreWindow respondsToSelector:@selector(openExtensionView:profile:kind:)]) {
+      if (NNCoreTab *tab = [controller.coreWindow openExtensionView:url profile:profile kind:view->_extensionHost])
+        return [view attach:tab];
+    }
+    if (standalone) controller = [NNCoreWindowController standaloneWindowForProfile:profile] ?: controller;
     if (!standalone && [kind isEqualToString:@"clone"] && [view cloneTab:key profile:profile]) return;
     if (!standalone && [kind isEqualToString:@"restore"] && url.length && !nncore_host::IsIncognito(view->_profile) &&
         [controller.coreWindow respondsToSelector:@selector(restoreTab:profile:foreground:)]) {

@@ -31,6 +31,8 @@ source_set("core") {
     "nn_devtools_call.mm",
     "nn_device_chooser.h",
     "nn_device_chooser.mm",
+    "nn_extension_view.h",
+    "nn_extension_view.mm",
     "nn_external_apps.h",
     "nn_external_apps.mm",
     "nn_icon_fetch.mm",

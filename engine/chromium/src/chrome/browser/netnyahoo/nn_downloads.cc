@@ -18,6 +18,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
+#include "chrome/browser/download/download_crx_util.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_observer.h"
@@ -28,6 +29,7 @@
 #include "components/download/public/common/download_item.h"
 #include "content/public/browser/download_item_utils.h"
 #include "content/public/browser/download_manager.h"
+#include "extensions/browser/webstore_installer.h"
 
 namespace netnyahoo {
 namespace {
@@ -47,6 +49,22 @@ const char* StateName(const DownloadItem& item) {
     default:
       return "downloading";
   }
+}
+
+// Chrome's own downloads of an extension to install (the Web Store's .crx, which
+// WebstoreInstaller fetches and CrxInstaller installs and deletes), and transient ones: never
+// the user's downloads.
+bool Listed(DownloadItem* item) {
+  // The installer's own download says so from the start (its approval comes a moment later).
+  if (item->IsTransient() ||
+      item->GetDownloadSource() == download::DownloadSource::EXTENSION_INSTALLER ||
+      extensions::WebstoreInstaller::GetAssociatedApproval(*item)) {
+    return false;
+  }
+  content::BrowserContext* context =
+      content::DownloadItemUtils::GetBrowserContext(item);
+  return !context || !download_crx_util::IsTrustedExtensionDownload(
+                         Profile::FromBrowserContext(context), *item);
 }
 
 bool IsOffTheRecord(DownloadItem* item) {
@@ -144,7 +162,7 @@ class DownloadsState : public ProfileState {
         content::DownloadManager::DownloadVector some;
         manager->GetAllDownloads(&some);
         for (DownloadItem* item : some) {
-          if (!item->IsTransient()) {
+          if (Listed(item)) {
             items.push_back(item);
           }
         }
@@ -171,7 +189,15 @@ class DownloadsState : public ProfileState {
   }
 
   void Changed(DownloadItem* item) {
-    if (item->IsTransient()) {
+    if (!Listed(item)) {
+      // Known only once its response came (the .crx's type) or the installer tagged it.
+      if (auto it = entries_.find(item->GetGuid()); it != entries_.end()) {
+        const bool emitted = it->second.emitted;
+        entries_.erase(it);
+        if (emitted) {
+          Post("downloads.removed", base::DictValue().Set("id", item->GetGuid()));
+        }
+      }
       return;
     }
     Entry& entry = entries_[item->GetGuid()];
@@ -221,7 +247,7 @@ class DownloadsState : public ProfileState {
   }
 
   void Removed(DownloadItem* item) {
-    if (item->IsTransient()) {
+    if (!Listed(item)) {
       return;
     }
     entries_.erase(item->GetGuid());

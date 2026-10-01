@@ -63,6 +63,28 @@ class NNContextMenu : public RenderViewContextMenuMacCocoa {
   using RenderViewContextMenuMacCocoa::RenderViewContextMenuMacCocoa;
   ~NNContextMenu() override { LiveMenus().erase(this); }
 
+  // After Init(): Chrome's items that open its side panel, which our Browsers have none of
+  // (picking Reading mode did nothing), as CEF's menu had none. No separator is left doubled
+  // or at either end.
+  void RemoveSidePanelItems() {
+    for (int command : {IDC_CONTENT_CONTEXT_OPEN_IN_READING_MODE,
+                        IDC_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE}) {
+      if (std::optional<size_t> index = menu_model_.GetIndexOfCommandId(command)) {
+        menu_model_.RemoveItemAt(*index);
+      }
+    }
+    const auto separator = [this](size_t i) {
+      return menu_model_.GetTypeAt(i) == ui::MenuModel::TYPE_SEPARATOR;
+    };
+    for (size_t i = menu_model_.GetItemCount(); i-- > 0;) {
+      const size_t count = menu_model_.GetItemCount();
+      if (i < count && separator(i) &&
+          (i == 0 || i + 1 == count || separator(i + 1))) {
+        menu_model_.RemoveItemAt(i);
+      }
+    }
+  }
+
   // After Init(): the host's items for a selection.
   void AddHostItems() {
     LiveMenus()[this] = weak_factory_.GetWeakPtr();
@@ -166,6 +188,7 @@ class NNViewDelegate : public ChromeWebContentsViewDelegateViewsMac {
         render_frame_host, params, paste_enabled_, paste_and_match_style_enabled_,
         view->GetNativeView().GetNativeNSView());
     menu->Init();
+    menu->RemoveSidePanelItems();
     menu->AddHostItems();
     return menu;
   }

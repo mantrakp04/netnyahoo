@@ -257,6 +257,10 @@ bool HostExtensionInstallPrompt(
     extensions::ExtensionInstallPromptClient::DoneCallback* done_callback);
 void ResolveExtensionInstallPrompt(const std::string& request_id, bool accepted);
 
+// Has declarativeNetRequest report each rule it applies to a tab's request (the hook in
+// extensions' ActionTracker, engine/nncore/apply.sh) to that tab's TabBridge.
+void InstallRuleMatchedHook();
+
 // Starts reporting Chrome's media capture indicator (camera, microphone, screen) per tab.
 void StartMediaCaptureObserver();
 
@@ -361,6 +365,11 @@ class TabBridge : public content::WebContentsObserver,
   void BlockedUrlAdded(int32_t popup_id, const GURL& url) override;
   float pinch_scale() const { return pinch_scale_; }
 
+  // An extension's declarativeNetRequest rule applied to one of this tab's requests (from
+  // Chrome's ActionTracker): a block or a redirect (to a stand-in) counts as blocked, once,
+  // even when the request then fails with ERR_BLOCKED_BY_CLIENT too.
+  void NoteRuleMatched(bool block, const GURL& url);
+
   // The host closed it (-[NNCoreTab close]): no tabWillClose.
   void set_closed_by_host() { closed_by_host_ = true; }
   // Reports tabWillClose once, for a close the host didn't ask for.
@@ -435,6 +444,11 @@ class TabBridge : public content::WebContentsObserver,
   // Blocked requests since the last tab:didBlockRequests:lastURL: (sent next turn).
   void NoteBlocked(const GURL& url);
   void ReportBlocked();
+  // A request failed with ERR_BLOCKED_BY_CLIENT at `blocked_url` (its URL after redirects):
+  // counted, as `url`, unless a block rule already was.
+  void NoteBlockedByClient(const GURL& blocked_url, const GURL& url);
+  // URLs a block rule stopped and counted, whose ERR_BLOCKED_BY_CLIENT is still to come.
+  std::vector<GURL> rule_blocked_urls_;
   int blocked_pending_ = 0;
   GURL blocked_last_url_;
   bool will_close_reported_ = false;

@@ -303,6 +303,14 @@ NNCORE_EXPORT
 - (NNCoreTab*)openTab:(NSString*)url
               profile:(NNCoreProfile*)profile
            foreground:(BOOL)foreground;
+// An extension's popup ("popup") or side panel ("sidePanel") page, `url` (chrome-extension:),
+// bound to the profile's Browser of this window as Chrome binds them to theirs: chrome.windows'
+// current window is this one, its active tab the extension's active tab. Not a tab: it is in
+// no tab strip, and closes with -closeNow, with tabWillClose: when Chrome closes it
+// (window.close(), Esc in a popup), or with the window. nil: no such enabled extension here.
+- (nullable NNCoreTab*)openExtensionView:(NSString*)url
+                                 profile:(NNCoreProfile*)profile
+                                    kind:(NSString*)kind;
 // The profile whose Browser is current (focus, chrome.windows' currentWindow, keys).
 @property(nonatomic, nullable) NNCoreProfile* activeProfile;
 - (void)activateTab:(NNCoreTab*)tab;

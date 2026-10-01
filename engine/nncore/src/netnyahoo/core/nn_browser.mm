@@ -2,6 +2,8 @@
 
 #import <AppKit/AppKit.h>
 
+#include <algorithm>
+
 #include "base/auto_reset.h"
 #include "base/no_destructor.h"
 #include "base/functional/bind.h"
@@ -29,6 +31,10 @@
 #include "components/password_manager/core/browser/password_form.h"
 #import "components/remote_cocoa/app_shim/bridged_content_view.h"
 #include "content/public/browser/navigation_handle.h"
+#include "extensions/browser/api/declarative_net_request/request_action.h"
+#include "extensions/browser/api/web_request/web_request_info.h"
+#include "extensions/browser/extensions_browser_client.h"
+#include "extensions/common/constants.h"
 #include "content/public/browser/web_contents.h"
 #include "chrome/browser/tab_list/tab_removed_reason.h"
 #include "net/base/net_errors.h"
@@ -54,6 +60,13 @@
 #include "ui/views/widget/widget_delegate.h"
 #include "ui/views/window/client_view.h"
 #include "url/origin.h"
+
+// The hook in declarativeNetRequest's ActionTracker (engine/nncore/apply.sh).
+extern void (*g_netnyahoo_dnr_rule_matched)(
+    content::BrowserContext* browser_context,
+    int tab_id,
+    const extensions::declarative_net_request::RequestAction& action,
+    const extensions::WebRequestInfo& request);
 
 namespace nncore {
 
@@ -1244,6 +1257,10 @@ void TabBridge::WasDiscarded() {
 }
 
 void TabBridge::DidStartNavigation(content::NavigationHandle* handle) {
+  // A new page: blocks of the old one's requests are no longer awaited.
+  if (handle->IsInPrimaryMainFrame() && !handle->IsSameDocument()) {
+    rule_blocked_urls_.clear();
+  }
   // A discarded tab reloads when it's next shown or navigated.
   if (discarded_ && handle->IsInPrimaryMainFrame() &&
       !web_contents()->WasDiscarded()) {
@@ -1351,7 +1368,59 @@ void TabBridge::ResourceLoadComplete(
       !InPrimaryPage(render_frame_host)) {
     return;
   }
-  NoteBlocked(original_url);
+  NoteBlockedByClient(resource_load_info.final_url, original_url);
+}
+
+void TabBridge::NoteRuleMatched(bool block, const GURL& url) {
+  if (block) {
+    // Bounded (cleared with each page): a blocked request whose failure never comes back is
+    // forgotten.
+    if (rule_blocked_urls_.size() >= 4096) {
+      rule_blocked_urls_.erase(rule_blocked_urls_.begin());
+    }
+    rule_blocked_urls_.push_back(url);
+  }
+  NoteBlocked(url);
+}
+
+void TabBridge::NoteBlockedByClient(const GURL& blocked_url, const GURL& url) {
+  // A rule saw the request as it was blocked (after any redirect).
+  auto it = std::find(rule_blocked_urls_.begin(), rule_blocked_urls_.end(), blocked_url);
+  if (it != rule_blocked_urls_.end()) {
+    rule_blocked_urls_.erase(it);
+    return;
+  }
+  NoteBlocked(url);
+}
+
+void InstallRuleMatchedHook() {
+  g_netnyahoo_dnr_rule_matched =
+      [](content::BrowserContext* context, int tab_id,
+         const extensions::declarative_net_request::RequestAction& action,
+         const extensions::WebRequestInfo& request) {
+        using Type = extensions::declarative_net_request::RequestAction::Type;
+        const bool block = action.type == Type::BLOCK || action.type == Type::COLLAPSE;
+        if ((!block && action.type != Type::REDIRECT) ||
+            tab_id == extension_misc::kUnknownTabId) {
+          return;
+        }
+        // A frame's request counts for the page the tab shows, not a prerendered one; a
+        // navigation's has no frame yet.
+        content::RenderFrameHost* frame =
+            content::RenderFrameHost::FromID(request.global_id);
+        if (frame && !InPrimaryPage(frame)) {
+          return;
+        }
+        content::WebContents* contents = nullptr;
+        if (!extensions::ExtensionsBrowserClient::Get()->IsValidTabId(
+                context, tab_id, /*include_incognito=*/true, &contents) ||
+            !contents) {
+          return;
+        }
+        if (TabBridge* bridge = TabBridge::FromWebContents(contents)) {
+          bridge->NoteRuleMatched(block, request.url);
+        }
+      };
 }
 
 void TabBridge::NoteBlocked(const GURL& url) {
@@ -1385,7 +1454,7 @@ void TabBridge::DidFinishNavigation(content::NavigationHandle* handle) {
       (handle->IsInMainFrame()
            ? handle->IsInPrimaryMainFrame()
            : InPrimaryPage(handle->GetParentFrameOrOuterDocument()))) {
-    NoteBlocked(handle->GetURL());
+    NoteBlockedByClient(handle->GetURL(), handle->GetURL());
   }
   if (handle->IsInPrimaryMainFrame() && handle->IsDownload()) {
     // The page stays; Chrome downloads the response instead (CEF's downloadNavigation).

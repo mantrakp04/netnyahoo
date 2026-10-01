@@ -2,7 +2,8 @@
 # Puts NNCore into the Chromium tree: copies src/netnyahoo/ to //netnyahoo and adds its hooks:
 # a dep of the macOS //chrome:chrome_dll on //netnyahoo/core (Chrome's framework then links
 # our layer), ChromeMain making NNCore's main delegate, Browser asking NNCore for the window of a
-# Browser Chrome makes itself, HistoryTabHelper asking NNCore which tabs are history, and three
+# Browser Chrome makes itself, HistoryTabHelper asking NNCore which tabs are history,
+# declarativeNetRequest telling it which rules matched a tab's requests, and three
 # CHECKs made tolerant of Browsers without a BrowserView (CEF's and Chrome's behaviour unchanged).
 # Idempotent. Never touches
 # args.gn; the next autoninja re-runs gn by itself.
@@ -25,7 +26,9 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'nncore::NNMainDelegate' "$src/chrome/app/chrome_main.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" &&
-    grep -q 'g_netnyahoo_history_eligible(' "$src/chrome/browser/history/history_tab_helper.cc"
+    grep -q 'g_netnyahoo_history_eligible(' "$src/chrome/browser/history/history_tab_helper.cc" &&
+    grep -q 'g_netnyahoo_dnr_rule_matched(' "$src/extensions/browser/api/declarative_net_request/action_tracker.cc" &&
+    grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/extensions/browser_window_util.cc"
   exit
 fi
 
@@ -264,4 +267,69 @@ assert s.count(old_fn) == 1 and s.count(old) == 1
 s = s.replace(old_fn, decl + old_fn).replace(old, new)
 open(path, "w").write(s)
 print("hooked HistoryTabHelper")
+PY2
+
+# declarativeNetRequest's ActionTracker tells NNCore of each rule an extension's ruleset applied
+# to a tab's request (block, redirect…), as it counts them for the action's badge: the host's
+# blocked count follows what was stopped, redirects to a stand-in included. Only NNCore sets
+# the hook, so CEF behaves as before.
+python3 - "$src/extensions/browser/api/declarative_net_request/action_tracker.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_dnr_rule_matched" in s:
+    sys.exit(0)
+old_ns = "namespace extensions::declarative_net_request {\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) counts what extensions' rules did to a tab's requests.\n"
+        "void (*g_netnyahoo_dnr_rule_matched)(\n"
+        "    content::BrowserContext* browser_context,\n"
+        "    int tab_id,\n"
+        "    const extensions::declarative_net_request::RequestAction& action,\n"
+        "    const extensions::WebRequestInfo& request) = nullptr;\n\n")
+old = """  const int tab_id =
+      GetTabIdForMatchedRule(browser_context_, request_info.frame_data.tab_id);
+"""
+new = old + """  // Netnyahoo: NNCore
+  if (g_netnyahoo_dnr_rule_matched) {
+    g_netnyahoo_dnr_rule_matched(browser_context_, tab_id, request_action,
+                                 request_info);
+  }
+"""
+assert s.count(old_ns) == 1 and s.count(old) == 1
+s = s.replace(old_ns, decl + old_ns).replace(old, new)
+open(path, "w").write(s)
+print("hooked declarativeNetRequest's ActionTracker")
+PY2
+
+# The Browser extensions get for their windows when nothing names one (a popup's window.open,
+# a private tab.create's parent) skips the host's own hidden pages, as chrome.windows' current
+# window does (chromium-hidden-window-current-window.patch): their windows are never shown.
+python3 - "$src/chrome/browser/extensions/browser_window_util.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "Netnyahoo: NNCore" in s:
+    sys.exit(0)
+old_inc = '#include "components/tabs/public/tab_interface.h"\n'
+new_inc = old_inc + ('\n#include "cef/libcef/features/features.h"\n'
+                     '#if BUILDFLAG(ENABLE_CEF)\n'
+                     '#include "cef/libcef/browser/chrome/hidden_from_extensions.h"  // nogncheck\n'
+                     '#endif\n')
+old = """  if (restrict_to_normal_browsers &&
+      browser.GetType() != BrowserWindowInterface::TYPE_NORMAL) {
+    return false;
+  }
+"""
+new = old + """
+#if BUILDFLAG(ENABLE_CEF)
+  // Netnyahoo: NNCore. The host's own hidden pages are no extension's window.
+  if (cef::IsHiddenFromExtensions(&browser)) {
+    return false;
+  }
+#endif
+"""
+assert s.count(old_inc) == 1 and s.count(old) == 1
+s = s.replace(old_inc, new_inc).replace(old, new)
+open(path, "w").write(s)
+print("hooked extensions' browser_window_util")
 PY2

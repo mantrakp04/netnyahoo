@@ -129,6 +129,10 @@ export type WebViewProps = ViewProps & {
    *  tab by it (`StripTab.key`, tabStrip.ts). */
   transferKey?: string;
   standalone?: boolean;
+  /** An extension's popup or side panel page (implies `standalone`): Chrome's own extension view, bound to the
+   *  window it shows in, so the page's current window and active tab are that window's (chrome.windows,
+   *  chrome.tabs). Without it, a standalone page's current window is a hidden one. */
+  extensionHost?: "popup" | "sidePanel";
   visible?: boolean;
   warm?: boolean;
   pageBackgroundColor?: string;

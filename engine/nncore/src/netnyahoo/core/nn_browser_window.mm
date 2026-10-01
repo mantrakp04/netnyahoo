@@ -273,9 +273,9 @@ gfx::Rect NNBrowserWindow::GetBounds() const {
 }
 
 void NNBrowserWindow::Show() {
-  // Chrome shows a Browser's window when it wants it seen (a new popup tab, DevTools).
-  // The host decides what is shown and never steals focus: show, but stay inactive.
-  ShowInactive();
+  // Chrome shows a Browser's window when it wants it seen (a tab it opened, the install
+  // bubble's window). The host decides what is shown: its windows are on screen when it
+  // showed them, and its hidden ones (a Browser Chrome made, its own pages) never are.
 }
 
 bool NNBrowserWindow::IsVisible() const {
@@ -284,9 +284,7 @@ bool NNBrowserWindow::IsVisible() const {
 }
 
 void NNBrowserWindow::ShowInactive() {
-  if (host_) {
-    host_->ShowInactive();
-  }
+  // As Show(): only the host shows its windows (-[NNCoreWindow showInactive]).
 }
 
 void NNBrowserWindow::Close() {
@@ -321,7 +319,10 @@ ui::ZOrderLevel NNBrowserWindow::GetZOrderLevel() const {
 }
 
 bool NNBrowserWindow::IsOnCurrentWorkspace() const {
-  return true;
+  // The host's own hidden pages never are: Chrome looking for a window to show something in
+  // (ProfileBrowserCollection::FindTabbedBrowser: the install bubble, an options page) skips
+  // them.
+  return host_ && !host_->internal();
 }
 
 bool NNBrowserWindow::IsVisibleOnScreen() const {

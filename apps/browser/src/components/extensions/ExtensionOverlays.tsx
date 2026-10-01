@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { hex, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
+import { activeTabId } from "../../store/model";
 import { useWindowId } from "../../store/hooks";
 import { openFromPage, pageProfileId } from "../layout/openFromPage";
 import { PromptButton } from "../layout/controls";
@@ -83,6 +84,13 @@ function ActionPopup({ windowId, pageProfile, url, anchor }: { windowId: string;
     };
   }, []);
 
+  // As Chrome's popup, which closes when its window's tab changes (the page opened a tab, the user switched).
+  const tabId = useBrowser((s) => activeTabId(s, windowId));
+  const openedOn = useRef(tabId);
+  useEffect(() => {
+    if (tabId !== openedOn.current) closeExtensionPopup();
+  }, [tabId]);
+
   const watchSize = () => {
     void web.current?.evaluate<{ w: number; h: number }>(MEASURE).then((m) => {
       if (!alive.current || !m) return;
@@ -133,6 +141,7 @@ function ActionPopup({ windowId, pageProfile, url, anchor }: { windowId: string;
               url={url}
               profile={pageProfile}
               standalone
+              extensionHost="popup"
               pageBackgroundColor="#FFFFFF"
               onNavigationChange={({ isLoading }) => {
                 if (isLoading) return;

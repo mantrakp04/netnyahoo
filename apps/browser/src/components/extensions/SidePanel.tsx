@@ -117,6 +117,7 @@ function PanelCard({ windowId, panel }: { windowId: string; panel: SidePanel }) 
           url={url}
           profile={pageProfile}
           standalone
+          extensionHost="sidePanel"
           pageBackgroundColor="#FFFFFF"
           onWindowClose={() => closeSidePanel(windowId, extensionId)}
           onOpenWindow={(request) => openFromPage(request, { windowId, profileId: pageProfileId(windowId, pageProfile) })}

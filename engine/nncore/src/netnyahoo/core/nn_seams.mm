@@ -112,7 +112,10 @@ bool HandleExtensionSidePanel(BrowserWindowInterface* browser_window,
 }
 
 bool IsHiddenFromExtensions(const BrowserWindowInterface* browser) {
-  return false;
+  // The host's own hidden pages (the content blocker's extension page, standalone views):
+  // never an extension's window, its current one, or where its tabs.create lands.
+  nncore::WindowHost* host = nncore::WindowHost::ForBrowser(browser);
+  return host && host->internal();
 }
 
 bool HandlePasswordBubble(content::WebContents* web_contents) {

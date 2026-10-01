@@ -19,6 +19,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *adoptId;
 @property (nonatomic, copy, nullable) NSString *transferKey;
 @property (nonatomic) BOOL standalone;
+// "popup" or "sidePanel": an extension's page in Chrome's own extension view, bound to this window (implies standalone).
+@property (nonatomic, copy, nullable) NSString *extensionHost;
 @property (nonatomic, strong, nullable) NSColor *pageBackgroundColor;
 @property (nonatomic) BOOL visible;
 @property (nonatomic) BOOL warm;

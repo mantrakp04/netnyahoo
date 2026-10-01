@@ -61,6 +61,7 @@
 #include "extensions/browser/unpacked_installer.h"
 #include "extensions/common/extension.h"
 #include "netnyahoo/core/nn_browser.h"
+#include "netnyahoo/core/nn_extension_view.h"
 #include "netnyahoo/core/nn_lifetime.h"
 #include "netnyahoo/core/nn_main_delegate.h"
 #include "netnyahoo/core/nn_page_channel.h"
@@ -633,6 +634,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   g_delegate = delegate;
   g_engine = [[NNCoreEngine alloc] init];
   g_netnyahoo_browser_window_factory = &WindowForChromeBrowser;
+  nncore::InstallRuleMatchedHook();
   g_netnyahoo_history_eligible = [](content::WebContents* contents) {
     BrowserWindowInterface* browser =
         GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
@@ -665,6 +667,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
         // Before Chrome tears profiles down: a popup's host keeps its extension's
         // renderer alive.
         CurrentPopup().reset();
+        nncore::CloseAllExtensionViews();
         if ([g_delegate respondsToSelector:@selector(engineWillShutDown)]) {
           [g_delegate engineWillShutDown];
         }
@@ -1271,6 +1274,16 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
       &_host->pending_open(), nncore::WindowHost::PendingOpen{params.disposition, nullptr});
   Navigate(&params);
   content::WebContents* contents = params.navigated_or_inserted_contents;
+  return contents ? nncore::TabBridge::GetOrCreate(contents)->tab() : nil;
+}
+
+- (NNCoreTab*)openExtensionView:(NSString*)url
+                        profile:(NNCoreProfile*)profile
+                           kind:(NSString*)kind {
+  content::WebContents* contents = nncore::OpenExtensionView(
+      _host->BrowserFor(profile.chromeProfile), GURL(base::SysNSStringToUTF8(url)),
+      [kind isEqualToString:@"sidePanel"] ? nncore::ExtensionViewKind::kSidePanel
+                                          : nncore::ExtensionViewKind::kPopup);
   return contents ? nncore::TabBridge::GetOrCreate(contents)->tab() : nil;
 }
 
@@ -2186,7 +2199,7 @@ TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents)
     });
     return;
   }
-  if (!_contents) {
+  if (!_contents || nncore::CloseExtensionView(_contents)) {
     return;
   }
   BrowserWindowInterface* browser =
@@ -2218,7 +2231,7 @@ TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents)
     });
     return;
   }
-  if (!_contents) {
+  if (!_contents || nncore::CloseExtensionView(_contents)) {
     return;
   }
   BrowserWindowInterface* browser =
