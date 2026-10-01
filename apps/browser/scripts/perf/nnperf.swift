@@ -3,6 +3,8 @@
 //   nnperf rusage <pid>...            one JSON line per pid: CPU time, wakeups, phys_footprint
 //   nnperf waitwindow <pid> <secs>    prints the epoch ms at which the pid first has an on-screen window ≥ 300×200
 //   nnperf windows <pid>              JSON array of the pid's on-screen windows
+//   nnperf newwindow <pid> <secs>     prints "ready" once it knows the pid's windows, then {"at": epoch ms, "id": window
+//                                     number} when a new one is on screen (≥ 300×200, alpha > 0), polling every 2 ms
 //   nnperf quit <pid>                 asks that one process to quit (a quit Apple event, as ⌘Q would)
 import AppKit
 import CoreGraphics
@@ -67,7 +69,23 @@ case "waitwindow":
     usleep(4000)
   }
   exit(2)
+case "newwindow":
+  let pid = pid_t(args[2]) ?? 0
+  let deadline = Date().addingTimeInterval(Double(args[3]) ?? 30)
+  let shown = { windows(pid).filter { ($0["w"] as? Double ?? 0) >= 300 && ($0["h"] as? Double ?? 0) >= 200 && ($0["alpha"] as? Double ?? 0) > 0 } }
+  let before = Set(shown().compactMap { $0["id"] as? Int })
+  print("ready")
+  fflush(stdout)
+  while Date() < deadline {
+    if let new = shown().first(where: { !before.contains($0["id"] as? Int ?? 0) }) {
+      print(String(format: "{\"at\":%.1f,\"id\":%d}", nowMs(), new["id"] as? Int ?? 0))
+      exit(0)
+    }
+    if kill(pid, 0) != 0 { exit(3) }
+    usleep(2000)
+  }
+  exit(2)
 default:
-  FileHandle.standardError.write("usage: nnperf rusage <pid>... | windows <pid> | quit <pid> | waitwindow <pid> <secs>\n".data(using: .utf8)!)
+  FileHandle.standardError.write("usage: nnperf rusage <pid>... | windows <pid> | quit <pid> | waitwindow <pid> <secs> | newwindow <pid> <secs>\n".data(using: .utf8)!)
   exit(64)
 }

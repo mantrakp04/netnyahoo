@@ -8,12 +8,14 @@
 //                           omitted). Pass the same file to a before and an after run so only native code differs.
 //     --runs <n>            session runs (default 3); --launch-runs <n> cold launches (default 5)
 //     --idle <secs>         each idle window (default 60)
-//     --only <a,b>          phases: launch, session (idle/memory/switch/new tab/window/close), throttle, churn, sample
+//     --only <a,b>          phases: launch, session (idle/memory/switch/new tab/window/close), throttle, churn, sample,
+//                           windows (new windows alone: 8 per run, --runs runs)
 //     --compare <a.json>    print a before/after table against another run's results.json
 //     --report <b.json>     print the table for saved results (with --compare, before/after) without running
 //
 // Results: <out>/<label>/results.json (every sample) and a summary table (median, min–max over runs) on stdout.
-// Needs: Node 22+, swiftc (builds scripts/perf/nnperf.swift), the app signed with an identity in the keychain.
+// Needs: Node 22+, swiftc (builds scripts/perf/nnperf.swift), clang (builds scripts/perf/nnmark.m, loaded into the copy
+// of the app to mark when a window's content appears), the app signed with an identity in the keychain.
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -63,6 +65,19 @@ function nnperf(...args) {
   }
   const r = spawnSync(bin, args, { encoding: "utf8", timeout: 120_000 });
   return { code: r.status, out: r.stdout.trim() };
+}
+
+// The content marker (nnmark.m), loaded into the benchmark's copy of the app.
+function markerLibrary() {
+  const lib = join(toolDir, "nnmark.dylib");
+  const src = join(here, "nnmark.m");
+  if (!existsSync(lib) || readFileSync(src, "utf8") !== (existsSync(lib + ".src") ? readFileSync(lib + ".src", "utf8") : "")) {
+    mkdirSync(toolDir, { recursive: true });
+    execFileSync("clang", ["-dynamiclib", "-fobjc-arc", "-framework", "AppKit", "-framework", "QuartzCore", "-arch", "arm64", src, "-o", lib], { stdio: "inherit" });
+    execFileSync("codesign", ["--force", "--sign", "-", lib]);
+    writeFileSync(lib + ".src", readFileSync(src, "utf8"));
+  }
+  return lib;
 }
 
 function processTree(root) {
@@ -250,7 +265,11 @@ function prepareApp(app, out, bundle) {
   const info = spawnSync("codesign", ["-dvv", app], { encoding: "utf8" }).stderr;
   const identity = info.match(/^Authority=(.+)$/m)?.[1] ?? "-";
   const entitlements = join(out, "entitlements.plist");
-  writeFileSync(entitlements, execFileSync("codesign", ["-d", "--entitlements", "-", "--xml", app]));
+  // The copy loads the content marker (nnmark.m): DYLD_INSERT_LIBRARIES, an ad-hoc signed library.
+  const granted = execFileSync("codesign", ["-d", "--entitlements", "-", "--xml", app], { encoding: "utf8" });
+  const marker = ["com.apple.security.cs.allow-dyld-environment-variables", "com.apple.security.cs.disable-library-validation"]
+    .filter((key) => !granted.includes(`<key>${key}</key>`)).map((key) => `<key>${key}</key><true/>`).join("");
+  writeFileSync(entitlements, granted.replace(/<\/dict>\s*<\/plist>\s*$/, `${marker}</dict></plist>`));
   execFileSync("codesign", ["--force", "--sign", identity, "--options", "runtime", "--entitlements", entitlements, copy], { stdio: "inherit" });
   return copy;
 }
@@ -280,7 +299,8 @@ class Instance {
     if (spawnSync("pgrep", ["-f", main]).status === 0) throw new Error("a bench instance is still running");
     this.t0 = Date.now();
     execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${this.dataDir}`,
-      "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${this.port}`, "--env", `NETNYAHOO_UPDATE_FEED_URL=${this.feed}`, benchApp,
+      "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${this.port}`, "--env", `NETNYAHOO_UPDATE_FEED_URL=${this.feed}`,
+      "--env", `DYLD_INSERT_LIBRARIES=${markerLibrary()}`, benchApp,
       // App Nap would stretch the hidden instance's timers (a tab switch after a quiet minute took seconds).
       // BENCH_ALLOW_APP_NAP=1 leaves it on: the control for the App Nap check in the table.
       ...(process.env.BENCH_ALLOW_APP_NAP ? [] : ["--args", "-NSAppSleepDisabled", "YES"])]);
@@ -352,7 +372,7 @@ class Instance {
 
 const base = () => `http://127.0.0.1:${server.address().port}`;
 let server;
-const results = { meta: {}, launch: [], session: [], throttle: [], sample: [] };
+const results = { meta: {}, launch: [], session: [], windows: [], throttle: [], sample: [] };
 
 const WINDOW = `(() => { const s = nn.store.getState(); return s.ui.focusedWindowId && s.windows[s.ui.focusedWindowId] ? s.ui.focusedWindowId : s.windowOrder.find((id) => s.windows[id] && !s.windows[id].kind); })()`;
 
@@ -441,6 +461,50 @@ async function tabIds(app) {
   return app.run(`const s = nn.store.getState(); return s.windows[${WINDOW}].tabIds.map((id) => [id, s.tabs[id].url]);`);
 }
 
+// A new window: command → on screen (CGWindowList: alpha > 0), → on screen with its content (on screen, and the
+// transaction carrying its React content committed: 0.2.21 showed a window empty and its content after, 0.2.22 keeps it
+// transparent until then), and → its page's first paint.
+async function newWindow(app, id) {
+  const watcher = spawn(join(toolDir, "nnperf"), ["newwindow", String(app.pid), "20"], { stdio: ["ignore", "pipe", "ignore"] });
+  let said = "";
+  watcher.stdout.on("data", (d) => (said += d));
+  const exited = new Promise((done) => watcher.on("exit", done));
+  for (const end = Date.now() + 10_000; !said.includes("ready") && Date.now() < end; ) await Promise.race([exited, sleep(5)]);
+  const at = await app.run(`const t = nn.now(); nn.actions.openWindow({ url: "${base()}/static?id=${id}" }); return t;`);
+  await exited;
+  const shown = JSON.parse(said.split("\n").find((l) => l.startsWith("{")) ?? "null");
+  const s = await app.pageState(`id=${id}`, 20_000, (st) => st.fcp);
+  let marks = [];
+  try {
+    marks = readFileSync(join(app.dataDir, "bench-marks.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  } catch {}
+  const content = marks.find((m) => m.content >= at && (!shown || m.window === shown.id));
+  const committed = content && marks.find((m) => m.committed >= content.content && m.window === content.window);
+  await app.run(`const s = nn.store.getState(); const t = Object.values(s.tabs).find((t) => t.url.includes("id=${id}"));
+    if (t) nn.store.getState().closeWindow(t.windowId); return true;`);
+  await sleep(1500);
+  return {
+    window: shown ? shown.at - at : NaN,
+    withContent: shown && committed ? Math.max(shown.at, committed.committed) - at : NaN,
+    firstPaint: s ? s.fcp - at : NaN,
+  };
+}
+
+async function windowsRun(template, i) {
+  const app = new Instance(freshDir(template, `windows-${i}`), +opt.port, `${base()}/appcast.xml`);
+  const r = { newWindow: [] };
+  try {
+    await app.launch();
+    await app.pageState("id=seed", 30_000, (s) => s.fcp);
+    await sleep(10_000);
+    for (let k = 0; k < 8; k++) r.newWindow.push(await newWindow(app, `w${k}`));
+    log(`windows ${i}:`, JSON.stringify(r.newWindow));
+    results.windows.push(r);
+  } finally {
+    await app.quit();
+  }
+}
+
 async function sessionRun(template, i) {
   const secs = +opt.idle;
   const app = new Instance(freshDir(template, `session-${i}`), +opt.port, `${base()}/appcast.xml`);
@@ -487,25 +551,7 @@ async function sessionRun(template, i) {
     }
     await app.run(`const s = nn.store.getState(); for (const id of Object.keys(s.tabs)) if (s.tabs[id].url.includes("id=n")) nn.store.getState().closeTab(id); return true;`);
 
-    // New windows: command → the window on screen, and → the page's first paint.
-    for (let k = 0; k < 3; k++) {
-      const before = JSON.parse(nnperf("windows", String(app.pid)).out || "[]").length;
-      const at = await app.run(`const t = nn.now(); nn.actions.openWindow({ url: "${base()}/static?id=w${k}" }); return t;`);
-      let windowAt = NaN;
-      for (let n = 0; n < 1000; n++) {
-        const ws = JSON.parse(nnperf("windows", String(app.pid)).out || "[]").filter((w) => w.w >= 300 && w.alpha > 0);
-        if (ws.length > before) {
-          windowAt = Date.now();
-          break;
-        }
-        await sleep(5);
-      }
-      const s = await app.pageState(`id=w${k}`, 20_000, (st) => st.fcp);
-      r.newWindow.push({ window: windowAt - at, firstPaint: s ? s.fcp - at : NaN });
-      await app.run(`const s = nn.store.getState(); const t = Object.values(s.tabs).find((t) => t.url.includes("id=w${k}"));
-        if (t) nn.store.getState().closeWindow(t.windowId); return true;`);
-      await sleep(1500);
-    }
+    for (let k = 0; k < 3; k++) r.newWindow.push(await newWindow(app, `w${k}`));
 
     // Close all but the first tab; memory once the renderers are gone.
     r.processes.tabs20 = usage(app.pid).length;
@@ -658,8 +704,11 @@ function summary(res) {
   add("samples left out: page couldn't paint (switch + new tab, per run)", S.map((r) => r.throttled ? r.throttled.tabSwitch + r.throttled.newTab : NaN), "");
   add("tab switch → shown (median of 16 per run)", S.map((r) => median(r.tabSwitch)), "ms");
   add("new tab → first paint (median of 5 per run)", S.map((r) => median(r.newTab)), "ms");
-  add("new window → on screen (median of 3 per run)", S.map((r) => median(r.newWindow.map((w) => w.window))), "ms");
-  add("new window → first paint (median of 3 per run)", S.map((r) => median(r.newWindow.map((w) => w.firstPaint))), "ms");
+  // The window phase's runs too (8 windows each).
+  const W = [...S, ...(res.windows ?? [])];
+  add("new window → on screen (median per run)", W.map((r) => median(r.newWindow.map((w) => w.window))), "ms");
+  add("new window → on screen with its content (median per run)", W.map((r) => median(r.newWindow.map((w) => w.withContent))), "ms");
+  add("new window → first paint (median per run)", W.map((r) => median(r.newWindow.map((w) => w.firstPaint))), "ms");
   return rows;
 }
 
@@ -703,6 +752,7 @@ try {
   const only = new Set(opt.only.split(","));
   if (only.has("launch")) await launchRuns(template);
   if (only.has("session")) for (let i = 0; i < +opt.runs; i++) await sessionRun(template, i);
+  if (only.has("windows")) for (let i = 0; i < +opt.runs; i++) await windowsRun(template, i);
   if (only.has("throttle")) await throttleRun(template);
   if (only.has("churn")) await churnRun(template);
   if (only.has("sample")) await sampleRun(template);
