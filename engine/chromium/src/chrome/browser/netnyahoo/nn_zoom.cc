@@ -6,6 +6,11 @@
 
 #include "base/callback_list.h"
 #include "base/functional/bind.h"
+#include "chrome/browser/extensions/extension_tab_util.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "content/public/browser/web_contents.h"
 #include "content/public/browser/host_zoom_map.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 
@@ -14,6 +19,37 @@ namespace {
 
 content::HostZoomMap* ZoomMap(Profile* profile) {
   return content::HostZoomMap::GetDefaultForBrowserContext(profile);
+}
+
+// The profile whose zoom map a call means: the profile at |profile_dir|, or,
+// with "tab", that tab's own profile (a private window's off-the-record
+// profile, whose zoom map lives and dies with the private session, as in
+// Chrome's incognito). Null if the tab is gone.
+Profile* ZoomProfile(const Call& call) {
+  std::optional<int> tab = call.args().FindInt("tab");
+  if (!tab) {
+    return call.profile();
+  }
+  // Every Browser's tabs, private ones included: CEF's private profiles are
+  // off-the-record profiles of their own, which chrome.tabs' lookup (the
+  // primary off-the-record profile only) doesn't search.
+  Profile* found = nullptr;
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [&](BrowserWindowInterface* window) {
+        TabStripModel* strip = window->GetTabStripModel();
+        for (int i = 0; strip && i < strip->count(); ++i) {
+          content::WebContents* contents = strip->GetWebContentsAt(i);
+          if (extensions::ExtensionTabUtil::GetTabId(contents) == *tab) {
+            found = Profile::FromBrowserContext(contents->GetBrowserContext());
+            return false;
+          }
+        }
+        return true;
+      });
+  // Only a tab of the profile the call names, or of one of its private
+  // profiles.
+  return found && found->GetOriginalProfile() == call.profile() ? found
+                                                                  : nullptr;
 }
 
 // Tells the app about every host zoom change in the profile.
@@ -48,8 +84,12 @@ NN_ENGINE_CALL(nn_zoom_list) {
   if (!call) {
     return;
   }
-  netnyahoo::StateFor<netnyahoo::ZoomState>(call.profile());
-  content::HostZoomMap* map = netnyahoo::ZoomMap(call.profile());
+  Profile* profile = netnyahoo::ZoomProfile(call);
+  if (!profile) {
+    return call.TakeReply().Error("no such tab");
+  }
+  netnyahoo::StateFor<netnyahoo::ZoomState>(profile);
+  content::HostZoomMap* map = netnyahoo::ZoomMap(profile);
   const double fallback = map->GetDefaultZoomLevel();
   base::DictValue levels;
   for (const auto& entry : map->GetAllZoomLevels()) {
@@ -66,13 +106,17 @@ NN_ENGINE_CALL(nn_zoom_set) {
   if (!call) {
     return;
   }
-  netnyahoo::StateFor<netnyahoo::ZoomState>(call.profile());
+  Profile* profile = netnyahoo::ZoomProfile(call);
+  if (!profile) {
+    return call.TakeReply().Error("no such tab");
+  }
+  netnyahoo::StateFor<netnyahoo::ZoomState>(profile);
   const std::string host = call.String("host");
   const double level = call.Double("level");
   if (host.empty() || !std::isfinite(level)) {
     return call.TakeReply().Error("host and level required");
   }
-  content::HostZoomMap* map = netnyahoo::ZoomMap(call.profile());
+  content::HostZoomMap* map = netnyahoo::ZoomMap(profile);
   // As chrome://settings removes a site's zoom: the default level erases it.
   map->SetZoomLevelForHost(
       host, blink::ZoomValuesEqual(level, 0) ? map->GetDefaultZoomLevel()
