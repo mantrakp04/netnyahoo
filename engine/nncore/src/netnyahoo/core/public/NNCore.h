@@ -218,6 +218,17 @@ NNCORE_EXPORT
 - (void)fetchSavedLogins:(void (^)(NSArray<NSDictionary<NSString*, id>*>* logins))completion;
 @end
 
+@interface NNCoreProfile (Icons)
+// An http(s) icon fetched as Chrome fetches one without a tab: through this profile's network
+// stack (its proxy; an off-the-record profile's cache stays in memory), no cookies or
+// credentials, redirects followed, at most `maxBytes`, 30 s. `body` is a 200's body Chrome
+// would decode as a favicon (PNG, JPEG, GIF, WebP, BMP, ICO, AVIF; SVG served as
+// image/svg+xml), else nil. Completes later on the main thread; nil if the profile goes first.
+- (void)fetchIcon:(NSString*)url
+         maxBytes:(NSUInteger)maxBytes
+       completion:(void (^)(NSData* _Nullable body))completion;
+@end
+
 // --- Windows ----------------------------------------------------------------------------
 
 @protocol NNCoreWindowDelegate <NSObject>

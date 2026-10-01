@@ -1,6 +1,6 @@
 // The favicons the app keeps per profile (lib/favicons.ts), stored as packages/cef's NNFavicons stores them.
 // A favicon a tab already showed comes from Chrome's favicon driver (noteImage:forURL:); anything else is
-// downloaded without cookies. Stage 2 reads Chrome's FaviconService instead.
+// downloaded through the profile's network stack without cookies (Download).
 #import "NNCoreInternal.h"
 
 namespace {
@@ -15,6 +15,12 @@ NSCache<NSString *, NSImage *> *Seen() {
     return c;
   }();
   return cache;
+}
+
+// Per profile: a private tab's icon (fetched with its cookies) never answers another profile's fetch, which the app
+// would keep in that profile's favicon store.
+NSString *SeenKey(NSString *profile, NSString *url) {
+  return [NSString stringWithFormat:@"%@\n%@", profile ?: @"", url];
 }
 
 NSString *FaviconDirectory(NSString *profile) {
@@ -73,60 +79,24 @@ NSData *PNG(NSImage *image, int pixels, int *width, int *height) {
   return [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
 }
 
-}  // namespace
-
-// Downloads one favicon, never more than kMaxBytes (it cancels at the cap instead of buffering the rest).
-@interface NNCoreFaviconFetch : NSObject <NSURLSessionDataDelegate>
-@property(nonatomic, copy) void (^done)(NSData *_Nullable data);
-@property(nonatomic, strong) NSMutableData *data;
-@end
-
-@implementation NNCoreFaviconFetch
-- (void)URLSession:(NSURLSession *)session
-              dataTask:(NSURLSessionDataTask *)task
-    didReceiveResponse:(NSURLResponse *)response
-     completionHandler:(void (^)(NSURLSessionResponseDisposition))handler {
-  const NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
-  const bool ok = status >= 200 && status < 300 && response.expectedContentLength <= (long long)kMaxBytes;
-  handler(ok ? NSURLSessionResponseAllow : NSURLSessionResponseCancel);
-}
-- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
-  if (!_data) _data = [NSMutableData data];
-  if (_data.length + data.length > kMaxBytes) {
-    _data = nil;
-    return [task cancel];
-  }
-  [_data appendData:data];
-}
-- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
-  NSData *data = error ? nil : _data;
-  void (^done)(NSData *) = _done;
-  _done = nil;
-  [session finishTasksAndInvalidate];
-  dispatch_async(dispatch_get_main_queue(), ^{ done(data); });
-}
-@end
-
-namespace {
-
-void Download(NSURL *url, void (^done)(NSData *_Nullable data)) {
-  NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
-  config.HTTPShouldSetCookies = NO;
-  config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyNever;
-  config.timeoutIntervalForRequest = 15;
-  config.timeoutIntervalForResource = 30;
-  NNCoreFaviconFetch *fetch = [NNCoreFaviconFetch new];
-  fetch.done = done;
-  NSURLSession *session = [NSURLSession sessionWithConfiguration:config delegate:fetch delegateQueue:nil];
-  [[session dataTaskWithURL:url] resume];
+// Through Chrome's network stack, with the profile's own loader (NNCoreProfile fetchIcon:): its proxy and cache,
+// no cookies, Chrome's favicon types only. A private window's profile is used only while it is open: a fetch never
+// makes one.
+void Download(NSString *url, NSString *profileName, void (^done)(NSData *_Nullable data)) {
+  void (^fetch)(NNCoreProfile *) = ^(NNCoreProfile *profile) {
+    if (!profile || profile.destroyed || ![profile respondsToSelector:@selector(fetchIcon:maxBytes:completion:)]) return done(nil);
+    [profile fetchIcon:url maxBytes:kMaxBytes completion:done];
+  };
+  if (nncore_host::IsIncognito(profileName)) return fetch(nncore_host::LoadedProfile(profileName));
+  nncore_host::WithProfile(profileName, fetch);
 }
 
 }  // namespace
 
 @implementation NNCoreFavicons
 
-+ (void)noteImage:(NSImage *)image forURL:(NSString *)url {
-  if (image && url.length) [Seen() setObject:image forKey:url];
++ (void)noteImage:(NSImage *)image forURL:(NSString *)url profile:(NSString *)profile {
+  if (image && url.length) [Seen() setObject:image forKey:SeenKey(profile, url)];
 }
 
 + (void)fetch:(NSString *)url
@@ -134,7 +104,7 @@ void Download(NSURL *url, void (^done)(NSData *_Nullable data)) {
           name:(NSString *)name
     completion:(void (^)(NSDictionary<NSString *, id> *))completion {
   int width = 0, height = 0;
-  if (NSImage *seen = [Seen() objectForKey:url]) {
+  if (NSImage *seen = [Seen() objectForKey:SeenKey(profile, url)]) {
     return completion(Store(PNG(seen, kFaviconSize * 2, &width, &height), width, height, profile, name));
   }
   if ([url hasPrefix:@"data:image/"]) {
@@ -142,11 +112,10 @@ void Download(NSURL *url, void (^done)(NSData *_Nullable data)) {
     NSImage *image = data ? [[NSImage alloc] initWithData:data] : nil;
     return completion(Store(PNG(image, kFaviconSize * 2, &width, &height), width, height, profile, name));
   }
-  NSURL *target = [NSURL URLWithString:url];
-  NSString *scheme = target.scheme.lowercaseString;
-  if (nncore_host::IsIncognito(profile) || !([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"]))
-    return completion(nil);
-  Download(target, ^(NSData *body) {
+  NSString *scheme = [NSURL URLWithString:url].scheme.lowercaseString;
+  if (!([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"])) return completion(nil);
+  // A private profile's icon comes back as a data: URI (Store), never into the profile's folder.
+  Download(url, profile, ^(NSData *body) {
     int w = 0, h = 0;
     NSImage *image = body ? [[NSImage alloc] initWithData:body] : nil;
     completion(image ? Store(PNG(image, kFaviconSize * 2, &w, &h), w, h, profile, name) : nil);

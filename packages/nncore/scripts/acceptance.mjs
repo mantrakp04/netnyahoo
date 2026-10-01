@@ -11,7 +11,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statS
 import { createServer, request as httpRequest } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { basename, join, resolve } from "node:path";
-import { inflateSync } from "node:zlib";
+import { crc32, deflateSync, inflateSync } from "node:zlib";
 
 const [appArg, scratchArg, ...only] = process.argv.slice(2);
 if (!appArg || !scratchArg) {
@@ -2434,6 +2434,140 @@ try {
     const isData = (r) => JSON.stringify(r ?? null).includes("data:image/png");
     if (!isData(image) || !isData(favicon) || !isData(fetched)) throw new Error(`not data URLs: ${JSON.stringify({ image, favicon, fetched }).slice(0, 300)}`);
     return { image: true, favicon: true, fetched: true };
+  });
+
+  await check("favicon-fetch", async () => {
+    // fetchFavicon with no tab (restored and unloaded tabs, bookmarks, history) goes through Chrome's network stack
+    // with the profile's own loader, as Chrome fetches icons: plain http to any host (App Transport Security exempts
+    // only 127.0.0.1, so NSURLSession failed *.localhost and the web), no cookies or credentials, redirects followed,
+    // 200 only, at most 2 MB, Chrome's favicon types only, and a time-out. A private window fetches through its own
+    // profile and never one it would have to make.
+    const png = (side, rgb) => {
+      const chunk = (type, body) => {
+        const out = Buffer.alloc(12 + body.length);
+        out.writeUInt32BE(body.length, 0);
+        out.write(type, 4, "ascii");
+        body.copy(out, 8);
+        out.writeUInt32BE(crc32(out.subarray(4, 8 + body.length)), 8 + body.length);
+        return out;
+      };
+      const header = Buffer.alloc(13);
+      header.writeUInt32BE(side, 0);
+      header.writeUInt32BE(side, 4);
+      header.set([8, 2, 0, 0, 0], 8);
+      const row = Buffer.concat([Buffer.from([0]), Buffer.concat(Array.from({ length: side }, () => Buffer.from(rgb)))]);
+      return Buffer.concat([
+        Buffer.from("89504e470d0a1a0a", "hex"),
+        chunk("IHDR", header),
+        chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: side }, () => row)))),
+        chunk("IEND", Buffer.alloc(0)),
+      ]);
+    };
+    const icon = png(16, [0, 160, 0]);
+    // An .ico holding that PNG, served as text/plain: Chrome decodes favicons by their bytes.
+    const ico = Buffer.concat([Buffer.from([0, 0, 1, 0, 1, 0, 16, 16, 0, 0, 1, 0, 32, 0]), Buffer.alloc(8), icon]);
+    ico.writeUInt32LE(icon.length, 14);
+    ico.writeUInt32LE(22, 18);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#0a0"/></svg>`;
+    // A TIFF: AppKit decodes it, Chrome never takes one as a favicon.
+    const pngPath = join(scratch, "favicon-fetch.png"), tiffPath = join(scratch, "favicon-fetch.tiff");
+    writeFileSync(pngPath, icon);
+    execFileSync("sips", ["-s", "format", "tiff", pngPath, "--out", tiffPath], { stdio: "ignore" });
+    const tiff = readFileSync(tiffPath);
+    const seen = [];
+    const hung = new Set();
+    const icons = createServer((req, res) => {
+      const url = new URL(req.url, "http://x");
+      seen.push({ path: url.pathname + url.search, host: req.headers.host, cookie: req.headers.cookie ?? null, authorization: req.headers.authorization ?? null });
+      const send = (status, type, body, headers = {}) => {
+        res.writeHead(status, { "content-type": type, ...headers });
+        res.end(body);
+      };
+      if (url.pathname === "/set-cookie") return send(200, "text/html", "<!doctype html><title>Favicon Cookie</title>", { "set-cookie": "nnfav=1; path=/" });
+      if (url.pathname === "/icon.png") return send(200, "image/png", icon);
+      if (url.pathname === "/icon.ico") return send(200, "text/plain", ico);
+      if (url.pathname === "/icon.svg") return send(200, "image/svg+xml", svg);
+      if (url.pathname === "/svg-as-text") return send(200, "text/plain", svg);
+      if (url.pathname === "/icon.tiff") return send(200, "image/png", tiff);
+      if (url.pathname === "/redirect") return send(302, "text/plain", "", { location: "/icon.png?redirected" });
+      if (url.pathname === "/missing") return send(404, "image/png", icon);
+      if (url.pathname === "/auth") return send(401, "image/png", icon, { "www-authenticate": 'Basic realm="nnfav"' });
+      if (url.pathname === "/oversized") return send(200, "image/png", Buffer.concat([icon, Buffer.alloc(3 * 1024 * 1024)]));
+      if (url.pathname === "/hang") return hung.add(res);
+      send(404, "text/plain", "no");
+    });
+    await new Promise((r) => icons.listen(0, "127.0.0.1", r));
+    // *.localhost is loopback to Chrome, but not ATS-exempt as 127.0.0.1 is.
+    const favBase = `http://nnfav.localhost:${icons.address().port}`;
+    const fetchIcon = async (url, profile = "") => {
+      const started = Date.now();
+      const r = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.fetchFavicon(${JSON.stringify(url)}, ${JSON.stringify(profile)})`, 60000);
+      return { uri: typeof r?.uri === "string" ? r.uri.slice(0, 22) : null, width: r?.width ?? null, ms: Date.now() - started };
+    };
+    const ok = (r) => r.uri === "data:image/png;base64,";
+    let privateWindow = null;
+    try {
+      // The time-out runs alongside everything else (in the app: the dev harness answers one script at a time).
+      await evalApp(`const h = (globalThis.nnFaviconHang = { started: Date.now() });
+        globalThis.expo.modules.NetnyahooCEF.fetchFavicon(${JSON.stringify(`${favBase}/hang`)}, "").then((r) => { h.uri = r?.uri ?? null; h.ms = Date.now() - h.started; }, () => { h.uri = null; h.ms = Date.now() - h.started; });
+        return true`);
+      // A cookie the profile holds for the host: the icon request never carries it.
+      const cookieTab = await openTab(`${favBase}/set-cookie`, "Favicon Cookie");
+      const cookie = (await cdp(await pageFor(cookieTab.id, "/set-cookie"), "Runtime.evaluate", { expression: "document.cookie", returnByValue: true })).result.value;
+      await closeTab(cookieTab.id);
+      if (!cookie.includes("nnfav=1")) throw new Error(`the profile has no cookie for the host: "${cookie}"`);
+      const accepted = {
+        png: await fetchIcon(`${favBase}/icon.png?cookie`),
+        ico: await fetchIcon(`${favBase}/icon.ico`),
+        svg: await fetchIcon(`${favBase}/icon.svg`),
+        redirect: await fetchIcon(`${favBase}/redirect`),
+        https: await fetchIcon("https://github.githubassets.com/favicons/favicon.svg"),
+      };
+      const refused = {
+        missing: await fetchIcon(`${favBase}/missing`),
+        auth: await fetchIcon(`${favBase}/auth`),
+        oversized: await fetchIcon(`${favBase}/oversized`),
+        tiff: await fetchIcon(`${favBase}/icon.tiff`),
+        svgAsText: await fetchIcon(`${favBase}/svg-as-text`),
+        noHost: await fetchIcon("http://nnfav-nowhere.invalid/favicon.ico"),
+        notHttp: await fetchIcon("file:///System/Library/CoreServices/Finder.app/Contents/Resources/Finder.icns"),
+      };
+      const bad = [
+        ...Object.entries(accepted).filter(([, r]) => !ok(r)).map(([k, r]) => `${k} not loaded (${JSON.stringify(r)})`),
+        ...Object.entries(refused).filter(([, r]) => r.uri !== null).map(([k]) => `${k} loaded`),
+      ];
+      if (bad.length) throw new Error(bad.join("; "));
+      const iconRequest = seen.find((s) => s.path === "/icon.png?cookie");
+      if (!iconRequest || iconRequest.cookie) throw new Error(`the icon request carried cookies: ${JSON.stringify(iconRequest)}`);
+      if (!seen.some((s) => s.path === "/icon.png?redirected")) throw new Error("the redirect wasn't followed");
+      if (seen.some((s) => s.authorization)) throw new Error("credentials were sent");
+      // A remote plain-http icon (the dogfood repro's): required when this script reaches it too, else only reported.
+      const remoteUrl = "http://neverssl.com/favicon.ico";
+      const reachable = await fetch(remoteUrl, { signal: AbortSignal.timeout(8000) }).then((r) => r.ok, () => false);
+      const remoteFetch = await fetchIcon(remoteUrl);
+      if (reachable && !ok(remoteFetch)) throw new Error(`${remoteUrl} not loaded (${JSON.stringify(remoteFetch)})`);
+      const remote = `${ok(remoteFetch) ? "ok" : "null"}${reachable ? "" : " (not reachable from this script)"}`;
+      // A private window's profile: fetched through it, handed back as data (Chrome's favicon store refuses it). A
+      // private profile no window shows is never made for a fetch.
+      const noWindow = await fetchIcon(`${favBase}/icon.png?no-private-window`, "incognito:nnfav");
+      if (noWindow.uri !== null) throw new Error("a fetch made a private profile");
+      privateWindow = await evalApp(`return nn.actions.openWindow({ incognito: true, url: "${favBase}/icon.png?private-page" })`);
+      const privateProfile = await until("the private window's profile", () => evalApp(`return nn.store.getState().windows["${privateWindow}"]?.profileId ?? null`), 10000);
+      await until("the private page", () => (seen.some((s) => s.path === "/icon.png?private-page") ? true : null), 10000);
+      const privately = await fetchIcon(`${favBase}/icon.png?private`, privateProfile);
+      if (!ok(privately)) throw new Error(`the private window's fetch failed: ${JSON.stringify(privately)}`);
+      const stored = JSON.parse(await cef(`engineCall("nn_favicons_set", ${JSON.stringify(privateProfile)}, ${JSON.stringify(JSON.stringify({ page: `${favBase}/private-page`, icon: `${favBase}/icon.png?private`, png: "AA==" }))})`).catch((e) => JSON.stringify({ refused: String(e) })));
+      if (!stored?.error) throw new Error(`a private profile wrote Chrome's favicon store: ${JSON.stringify(stored)}`);
+      // The time-out: nil after Chrome's 30 s, never a hang.
+      const timedOut = await until("the hung request's end", () => evalApp(`const h = globalThis.nnFaviconHang; return h.ms ? { uri: h.uri ? h.uri.slice(0, 22) : null, ms: h.ms } : null`), 50000);
+      if (timedOut.uri !== null || timedOut.ms < 25000 || timedOut.ms > 50000) throw new Error(`the hung request: ${JSON.stringify(timedOut)}`);
+      const ms = (o) => Object.fromEntries(Object.entries(o).map(([k, r]) => [k, r.ms]));
+      return { accepted: ms(accepted), refused: ms(refused), timedOutMs: timedOut.ms, remote, private: { noWindow: null, open: "data", storeSet: stored.error } };
+    } finally {
+      if (privateWindow) await evalApp(`nn.store.getState().closeWindow("${privateWindow}"); return true`).catch(() => null);
+      for (const res of hung) res.destroy();
+      icons.close();
+    }
   });
 
   await check("extension-surfaces", async () => {

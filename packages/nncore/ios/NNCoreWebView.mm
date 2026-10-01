@@ -876,7 +876,7 @@ NSString *JSONString(id value) {
   NSImage *image = tab.favicon;
   if (!image) return;
   NSString *url = [tab respondsToSelector:@selector(faviconURL)] ? tab.faviconURL : nil;
-  if (url.length) [NNCoreFavicons noteImage:image forURL:url];
+  if (url.length) [NNCoreFavicons noteImage:image forURL:url profile:_profile];
   else url = PNGDataURL(image);
   if (!url.length || [url isEqualToString:_lastFavicon]) return;
   _lastFavicon = url;

@@ -117,8 +117,8 @@ bool EngineHasTabModel();
 @end
 
 @interface NNCoreFavicons (Tabs)
-// A tab showed this favicon: fetch() for its URL uses it instead of downloading it again.
-+ (void)noteImage:(nullable NSImage *)image forURL:(nullable NSString *)url;
+// A tab of `profile` showed this favicon: fetch() for its URL in that profile uses it instead of downloading it again.
++ (void)noteImage:(nullable NSImage *)image forURL:(nullable NSString *)url profile:(nullable NSString *)profile;
 @end
 
 NS_ASSUME_NONNULL_END
