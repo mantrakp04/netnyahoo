@@ -332,6 +332,8 @@ function top(file, only) {
     }
     const origins = Object.entries(stats.origins ?? {}).sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, n]) => `${k} ${n}`).join(", ");
     if (origins) console.log(`  updates start in: ${origins}`);
+    const tasks = Object.entries(stats.commitTasks ?? {}).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, n]) => `${k} ${n}`).join(", ");
+    if (tasks) console.log(`  commits happen in: ${tasks}`);
     const keys = Object.entries(stats.storeKeys ?? {}).sort((x, y) => y[1] - x[1]).slice(0, 6).map(([k, n]) => `${k} ${n}`).join(", ");
     if (keys) console.log(`  store keys: ${keys}`);
   }

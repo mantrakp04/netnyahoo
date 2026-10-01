@@ -71,6 +71,8 @@ function fresh() {
     since: now(),
     commits: 0,
     commitTimes: [] as number[],
+    // The task of each commit in commitTimes.
+    commitTaskLog: [] as string[],
     renders: {} as Counter,
     mounts: {} as Counter,
     hostUpdates: 0,
@@ -84,6 +86,10 @@ function fresh() {
     listenerSiteMs: {} as Counter,
     tasks: {} as Counter,
     taskMs: {} as Counter,
+    // When each native→JS task other than a timer started: [label, time].
+    taskLog: [] as [string, number][],
+    // Commits by the task they happened in (a native→JS call, a timer, a native module's event).
+    commitTasks: {} as Counter,
     timers: {} as Counter,
     timerMs: {} as Counter,
     selectorCalls: {} as Counter,
@@ -112,6 +118,8 @@ const startedAt = now();
 const startup: [task: string, at: number, ms: number][] = [];
 const roots = new Set<{ current: Fiber }>();
 let firstCommit = 0;
+// The native→JS task running now (bridge call, timer callback or native module event), for commitTasks.
+let task: string | null = null;
 
 function nameOf(type: unknown): string {
   if (typeof type === "function") return (type as { displayName?: string }).displayName || type.name || "Anonymous";
@@ -236,7 +244,11 @@ function installReactHook() {
       firstCommit ||= Date.now();
       roots.add(root);
       stats.commits++;
-      if (stats.commitTimes.length < 5000) stats.commitTimes.push(t);
+      bump(stats.commitTasks, task ?? "other");
+      if (stats.commitTimes.length < 5000) {
+        stats.commitTimes.push(t);
+        stats.commitTaskLog.push(task ?? "other");
+      }
       try {
         walk(root.current);
       } catch {}
@@ -269,9 +281,12 @@ function wrapTimers() {
         this,
         function (this: unknown, ...args: unknown[]) {
           const t = now();
+          const outer = task;
+          task = label;
           try {
             return (callback as (...a: unknown[]) => unknown).apply(this, args);
           } finally {
+            task = outer;
             bump(stats.timers, label);
             bump(stats.timerMs, label, now() - t);
           }
@@ -312,10 +327,13 @@ function wrapBridge() {
     if (typeof original !== "function") return;
     queue[method] = (...args: unknown[]) => {
       const t = now();
+      const key = label(args);
+      task = key;
+      if (key !== "JSTimers.callTimers" && stats.taskLog.length < 5000) stats.taskLog.push([key, t]);
       try {
         return original.apply(queue, args);
       } finally {
-        const key = label(args);
+        task = null;
         const end = now();
         bump(stats.tasks, key);
         bump(stats.taskMs, key, end - t);
@@ -330,6 +348,43 @@ function wrapBridge() {
     return `${String(module)}.${String(method)}`;
   });
   wrap("invokeCallbackAndReturnFlushedQueue", () => "callback");
+}
+
+// Native modules' events (Expo's, through JSI) don't go through the bridge queue: time each listener call as a
+// `module:<event>` task. A listener an event of the JS side's own runs inside its task and isn't counted again.
+function wrapModuleEvents() {
+  const proto = (globalThis as unknown as { expo?: { EventEmitter?: { prototype: Record<string, unknown> } } }).expo?.EventEmitter?.prototype;
+  const add = proto?.addListener as ((this: unknown, name: string, listener: (...a: unknown[]) => void) => unknown) | undefined;
+  const remove = proto?.removeListener as ((this: unknown, name: string, listener: unknown) => unknown) | undefined;
+  if (!proto || typeof add !== "function" || typeof remove !== "function") return;
+  // Per listener and event, so removeListener finds what addListener added.
+  const wrapped = new WeakMap<object, Map<string, (...a: unknown[]) => void>>();
+  proto.addListener = function (this: unknown, name: string, listener: (...a: unknown[]) => void) {
+    if (typeof listener !== "function") return add.call(this, name, listener);
+    const key = `module:${name}`;
+    const byName = wrapped.get(listener) ?? new Map<string, (...a: unknown[]) => void>();
+    wrapped.set(listener, byName);
+    const timed =
+      byName.get(name) ??
+      function (this: unknown, ...args: unknown[]) {
+        if (task !== null) return listener.apply(this, args);
+        const t = now();
+        task = key;
+        if (stats.taskLog.length < 5000) stats.taskLog.push([key, t]);
+        try {
+          return listener.apply(this, args);
+        } finally {
+          task = null;
+          bump(stats.tasks, key);
+          bump(stats.taskMs, key, now() - t);
+        }
+      };
+    byName.set(name, timed);
+    return add.call(this, name, timed);
+  };
+  proto.removeListener = function (this: unknown, name: string, listener: unknown) {
+    return remove.call(this, name, (typeof listener === "function" && wrapped.get(listener)?.get(name)) || listener);
+  };
 }
 
 function wrapWrites() {
@@ -400,6 +455,7 @@ if (perfProbeEnabled) {
   installReactHook();
   wrapTimers();
   wrapBridge();
+  wrapModuleEvents();
   wrapWrites();
   if (probeOptions?.includes("selectors")) wrapSelectors();
   (globalThis as { nnPerf?: unknown }).nnPerf = {
