@@ -13,9 +13,15 @@ Keep this list short and shrinking; each item names its owner.
 
 1. **Cutover commits** C1 (the fold: one project, `Netnyahoo-macOS`, `com.netnyahoo.browser`), C2 (CEF's native
    side deleted, references fixed), release.sh/smoke on NNCore. *Release-pipeline agent, CEF-removal helper.*
-2. **Production data dir and migration**: NNCore reuses `~/Library/Application Support/com.netnyahoo.browser`
-   in place (no `NETNYAHOO_DATA_DIR`, the real keychain, the same "Netnyahoo Safe Storage" item from
-   `chromium-safe-storage-name.patch`), with a one-shot first-launch migration of 0.2.21's data. *Migration agent.*
+2. ~~**Production data dir and migration**~~ done: a release build without `NETNYAHOO_DATA_DIR` opens
+   `~/Library/Application Support/com.netnyahoo.browser/Chromium` in place (`InstalledDataDirectory`), with the
+   login keychain only when Developer ID-signed and the app's documents in the folder above, as on CEF. No migration
+   step: both engines are Chromium 154.0.8037.58 and read the same "Netnyahoo Safe Storage" item. Proven by
+   `carryover.sh` (the release smoke test): 0.2.21 made two profiles' tabs, persistent and session cookies,
+   localStorage, passwords, bookmarks, history, an address, a site permission, a zoom level and an unpacked
+   extension; the NNCore build found and read every one (21/21) without `NETNYAHOO_DATA_DIR`. Left for the owner:
+   the real login keychain's item, which no hidden run reads (both binaries name it "Netnyahoo Safe Storage", and
+   smoke.sh checks the build satisfies 0.2.21's designated requirement, which the item's access trusts).
 3. **Session cookies are dropped at every launch** (CEF restores them; NNCore's profile prefs don't): users would
    be signed out at the switch and after every restart. Fix in `ConfigureNetworkContextParams`. *Engine helper.*
 4. **The content blocker blocks nothing** in a production build (uBlock Origin Lite installed and indexed, no
