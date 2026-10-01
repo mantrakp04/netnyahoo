@@ -1,0 +1,21 @@
+packages/nncore/ios/NNCoreWebView.mm
+  s_9c356f9574d31c::t_623681ce85a60e 87,89-91,386-387,395,403-407,441,443-465
+docs/nncore-parity.md
+  s_9c356f9574d31c::t_9d1a9b141138c0 1-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1e215e49804011917fa27edb232324ab27e34257",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
