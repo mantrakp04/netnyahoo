@@ -253,6 +253,9 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
       args[@"group"] = [group isKindOfClass:NSString.class] ? group : @"";
       for (NSString *key in @[ @"title", @"color" ])
         if ([command[key] isKindOfClass:NSString.class]) args[key] = command[key];
+      // Collapse mirrors both ways (bffaa2de). NNCore's Browsers have no views tab strip, so collapsing never
+      // moves the active tab (only BrowserTabStripController did that).
+      if ([command[@"collapsed"] isKindOfClass:NSNumber.class]) args[@"collapsed"] = command[@"collapsed"];
       gCommand = nil;
       NNCoreWindowController *controller = found;
       NNCoreProfile *p = profile;

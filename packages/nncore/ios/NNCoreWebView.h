@@ -32,6 +32,8 @@ NS_ASSUME_NONNULL_BEGIN
 // Tests: the last events a tab's view sent, and the window it shows in.
 // The engine the page menu's "Search <engine> for …" names.
 + (void)setSearchEngineName:(NSString *)name;
+// Pages' getDisplayMedia goes to the app's source picker (onDisplayMediaRequest), as on CEF.
++ (void)setDisplayMediaPicker:(BOOL)enabled;
 + (NSArray<NSDictionary<NSString *, id> *> *)devEventsForBrowser:(int)browserId NS_SWIFT_NAME(devEvents(browserId:));
 + (NSInteger)devWindowNumberForBrowser:(int)browserId NS_SWIFT_NAME(devWindowNumber(browserId:));
 

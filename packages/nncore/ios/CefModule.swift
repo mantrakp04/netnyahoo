@@ -48,7 +48,7 @@ public class CefModule: Module {
     AsyncFunction("setSearchEngineName") { (name: String) in NNCoreWebView.setSearchEngineName(name) }.runOnQueue(.main)
     // NNCore keeps no navigations for later (CEF's "open:<id>"): nothing to forget.
     AsyncFunction("forgetOpenedURL") { (id: Int) in }.runOnQueue(.main)
-    AsyncFunction("setDisplayMediaPicker") { (enabled: Bool) in }.runOnQueue(.main)
+    AsyncFunction("setDisplayMediaPicker") { (enabled: Bool) in NNCoreWebView.setDisplayMediaPicker(enabled) }.runOnQueue(.main)
     AsyncFunction("displayMediaSources") { NNCoreHost.displayMediaSources }.runOnQueue(.main)
     AsyncFunction("listTasks") { (promise: Promise) in NNCoreServices.tasks { promise.resolve($0) } }.runOnQueue(.main)
     AsyncFunction("killTask") { (id: Int64, promise: Promise) in NNCoreServices.killTask(id) { promise.resolve($0) } }.runOnQueue(.main)
@@ -79,11 +79,8 @@ public class CefModule: Module {
       NNCoreHost.deleteProfileData(profile) { promise.resolve(["remaining": $0]) }
     }.runOnQueue(.main)
 
-    AsyncFunction("fetchFavicon") { (url: String, profile: String, name: String?, promise: Promise) in
-      NNCoreFavicons.fetch(url, profile: profile, name: name) { promise.resolve($0) }
-    }.runOnQueue(.main)
-    AsyncFunction("pruneFavicons") { (profile: String, keep: [String]) in
-      NNCoreFavicons.prune(profile: profile, keeping: keep)
+    AsyncFunction("fetchFavicon") { (url: String, profile: String, promise: Promise) in
+      NNCoreFavicons.fetch(url, profile: profile, name: nil) { promise.resolve($0) }
     }.runOnQueue(.main)
     AsyncFunction("removeLegacyFavicons") { (profile: String) in }.runOnQueue(.main)
     AsyncFunction("engineCall") { (name: String, profile: String, args: String?, promise: Promise) in
@@ -156,8 +153,8 @@ public class CefModule: Module {
     AsyncFunction("allowSavingPasswords") { (profile: String, origin: String, promise: Promise) in
       NNCoreServices.allowSaving(profile: profile, origin: origin) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("exportPasswords") { (profile: String, path: String?, promise: Promise) in
-      NNCoreServices.exportPasswords(profile: profile, path: path) { promise.resolve($0) }
+    AsyncFunction("exportPasswords") { (profile: String, promise: Promise) in
+      NNCoreServices.exportPasswords(profile: profile, path: nil) { promise.resolve($0) }
     }.runOnQueue(.main)
     AsyncFunction("getPasswordAutofill") { (profile: String) in
       NNCoreServices.boolPreference("credentials_enable_service", profile: profile)
@@ -242,8 +239,8 @@ public class CefModule: Module {
       AsyncFunction("navigationEntries") { (view: CefWebView, promise: Promise) in
         view.browser.navigationEntries { promise.resolve($0) }
       }.runOnQueue(.main)
-      AsyncFunction("downloadFavicon") { (view: CefWebView, url: String, name: String?, promise: Promise) in
-        view.browser.downloadFavicon(url, name: name) { promise.resolve($0) }
+      AsyncFunction("downloadFavicon") { (view: CefWebView, url: String, promise: Promise) in
+        view.browser.downloadFavicon(url, name: nil) { promise.resolve($0) }
       }.runOnQueue(.main)
       AsyncFunction("downloadImage") { (view: CefWebView, url: String, maxPixels: Int, promise: Promise) in
         view.browser.downloadImage(url, maxPixels: maxPixels) { promise.resolve($0) }

@@ -53,6 +53,7 @@ NNCoreBootstrapDelegate *gBootstrap;
 // launch callback exactly once, from AppKit if it hasn't sent it yet, else from launchApp.
 bool gAppKitWillFinish = false;
 bool gAppKitDidFinish = false;
+NSArray<NSURL *> *gPendingLaunchURLs;
 void (^gEventHandler)(NSString *, NSDictionary *);
 void (^gChromeUIHandler)(NSString *, NSDictionary *);
 void (^gExtensionsEventHandler)(NSString *, NSDictionary *);
@@ -107,6 +108,9 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
     [gAppDelegate applicationWillFinishLaunching:note];
   if (!gAppKitDidFinish) {
     NSLog(@"[nncore] app delegate %@ set before AppKit finished launching", NSStringFromClass([gAppDelegate class]));
+    // AppKit sends it the launch callbacks; the URLs the bootstrap delegate held follow them (the
+    // DidFinishLaunching observer).
+    gPendingLaunchURLs = launchURLs;
     return;
   }
   note = [NSNotification notificationWithName:NSApplicationDidFinishLaunchingNotification object:NSApp];
@@ -211,7 +215,18 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidFinishLaunchingNotification
                                                   object:nil
                                                    queue:nil
-                                              usingBlock:^(NSNotification *) { gAppKitDidFinish = true; }];
+                                              usingBlock:^(NSNotification *) {
+                                                gAppKitDidFinish = true;
+                                                // After the delegate's own applicationDidFinishLaunching: (AppKit
+                                                // calls it from this same notification, in no set order).
+                                                if (!gPendingLaunchURLs.count) return;
+                                                dispatch_async(dispatch_get_main_queue(), ^{
+                                                  NSArray<NSURL *> *urls = gPendingLaunchURLs;
+                                                  gPendingLaunchURLs = nil;
+                                                  if (urls.count && [gAppDelegate respondsToSelector:@selector(application:openURLs:)])
+                                                    [gAppDelegate application:NSApp openURLs:urls];
+                                                });
+                                              }];
 
   std::vector<std::string> extra = {
       "--user-data-dir=" + std::string(gDataDirectory.UTF8String),

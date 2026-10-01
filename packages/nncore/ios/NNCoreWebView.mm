@@ -155,6 +155,8 @@ void NoteEvent(int browserId, NSString *name, NSDictionary *payload) {
 
 // The search engine the app names in its menu ("Search Google for …"), as CEF's NNClient keeps it.
 NSString *gSearchEngineName = @"Google";
+// The app's screen-share picker (setDisplayMediaPicker): pages' getDisplayMedia asks the app for a source.
+BOOL gDisplayMediaPicker = NO;
 
 // CEF's SelectionLabel: whitespace collapsed, cut near 50 characters at a word.
 NSString *SelectionLabel(NSString *text) {
@@ -194,6 +196,8 @@ NSString *JSONString(id value) {
   BOOL _pinned;
   NSView *_devtoolsView;
   BOOL _navigationQueued;
+  NSUInteger _createGeneration;
+  NSUInteger _blockedGeneration;
   // Requests the content blocker stopped on this page (onContentBlocked), as CEF's NNClient counts them.
   NSInteger _blockedCount;
   NSString *_lastBlocked;
@@ -278,29 +282,36 @@ NSString *JSONString(id value) {
   }
   _adoptId = nil;
   _creating = YES;
+  // A close (or a new creation) while Chrome is asked makes this one stale.
+  const NSUInteger generation = ++_createGeneration;
   __weak NNCoreWebView *weakSelf = self;
   nncore_host::WithProfile(_profile, ^(NNCoreProfile *profile) {
     NNCoreWebView *view = weakSelf;
-    if (!view) return;
+    if (!view || view->_createGeneration != generation) return;
     view->_creating = NO;
     NNCoreWindowController *controller = view.controller;
     if (!profile || view->_tab || !controller) return;
     // Extension popups and side panels: out of the app window's Browser and strip, as CEF's standalone browsers.
-    if (view->_standalone) controller = [NNCoreWindowController standaloneWindowForProfile:profile] ?: controller;
+    const BOOL standalone = view->_standalone;
+    if (standalone) controller = [NNCoreWindowController standaloneWindowForProfile:profile] ?: controller;
     NSString *url = view->_pendingURL ?: view->_initialURL;
     view->_pendingURL = nil;
     view->_creatingURL = url;
     view->_creatingAt = CACurrentMediaTime();
-    if ([kind isEqualToString:@"clone"] && [view cloneTab:key profile:profile]) return;
-    if ([kind isEqualToString:@"restore"] && url.length && !nncore_host::IsIncognito(view->_profile) &&
+    if (!standalone && [kind isEqualToString:@"clone"] && [view cloneTab:key profile:profile]) return;
+    if (!standalone && [kind isEqualToString:@"restore"] && url.length && !nncore_host::IsIncognito(view->_profile) &&
         [controller.coreWindow respondsToSelector:@selector(restoreTab:profile:foreground:)]) {
       // Its back/forward list is the one Chrome's TabRestoreService kept when it closed (closeBrowser tagged it
-      // with the tab's id; on disk, so it survives a relaunch). Without one, the page loads.
+      // with the tab's id; on disk, so it survives a relaunch). Without one, the page loads. The view stays
+      // "creating" meanwhile, so a load asked for in between waits for the tab (attach loads it).
+      view->_creating = YES;
       [NNCoreServices call:@"nn_tab_restore_take" profile:view->_profile args:@{@"key" : key}
                 completion:^(NSDictionary *result) {
                   NNCoreWebView *later = weakSelf;
+                  if (!later || later->_createGeneration != generation) return;
+                  later->_creating = NO;
                   NNCoreWindowController *now = later.controller;
-                  if (!later || later->_tab || !now) return;
+                  if (later->_tab || !now) return;
                   NSString *state = [result[@"state"] isKindOfClass:NSString.class] ? result[@"state"] : nil;
                   NNCoreTab *tab = nil;
                   now.hostChanges++;
@@ -413,10 +424,14 @@ NSString *JSONString(id value) {
   [NNCoreTabs setView:nil forTab:_tab];
   if (_tab.view.superview == self) [_tab.view removeFromSuperview];
   [self dropDevTools];
+  [self resetBlocked:NO];
   _tab = nil;
 }
 
 - (void)closeBrowser {
+  // A tab still being made for this view is no longer wanted.
+  _createGeneration++;
+  _creating = NO;
   if (!_tab) return;
   NNCoreTab *tab = _tab;
   if (TransferRequested(_transferKey) && !tab.closed) {
@@ -595,6 +610,10 @@ NSString *JSONString(id value) {
   return RecentEvents()[@(browserId)] ?: @[];
 }
 
++ (void)setDisplayMediaPicker:(BOOL)enabled {
+  gDisplayMediaPicker = enabled;
+}
+
 + (void)setSearchEngineName:(NSString *)name {
   gSearchEngineName = name.length ? [name copy] : @"Google";
 }
@@ -644,7 +663,18 @@ NSString *JSONString(id value) {
 }
 
 - (void)tabDidChangeLoading:(NNCoreTab *)tab {
+  // A page starting to load starts its blocked count again, as CEF's at each main-frame navigation request.
+  if (tab.loading) [self resetBlocked:YES];
   [self queueNavigation];
+}
+
+- (void)resetBlocked:(BOOL)report {
+  _blockedGeneration++;
+  _blockedEmitQueued = NO;
+  const BOOL had = _blockedCount || _lastBlocked;
+  _blockedCount = 0;
+  _lastBlocked = nil;
+  if (report && had) [self emit:@"contentBlocked" payload:@{@"count" : @0, @"url" : @""}];
 }
 
 - (void)tabDidChangeNavigationState:(NNCoreTab *)tab {
@@ -704,13 +734,24 @@ NSString *JSONString(id value) {
   NSDictionary *dict = [data isKindOfClass:NSDictionary.class] ? data : nil;
   frameId = frameId ?: @"";
   if ([kind isEqualToString:@"hello"]) {
-    [self callFrame:frameId kind:@"config" json:@"{}"];
-    // A new main document: its blocked count starts again.
-    if (main && (_blockedCount || _lastBlocked)) {
-      _blockedCount = 0;
-      _lastBlocked = nil;
-      [self emit:@"contentBlocked" payload:@{@"count" : @0, @"url" : @""}];
-    }
+    // The frame's settings, as CEF's NNClient answers hello: autoplay blocked for the top page's site.
+    NSString *frameURL = Text(dict, @"url", 8192) ?: tab.url;
+    NSString *origin = OriginOf(main ? frameURL : tab.url);
+    __weak NNCoreWebView *weakSelf = self;
+    void (^answer)(BOOL) = ^(BOOL blockAutoplay) {
+      NSMutableDictionary *config = [NSMutableDictionary dictionary];
+      if (blockAutoplay) config[@"blockAutoplay"] = @YES;
+      // The app's screen-share picker needs the engine to grant the picked desktop source to getUserMedia (CEF's
+      // site::AllowDesktopCapture); until it does, pages keep Chrome's own picker (gDisplayMediaPicker is kept).
+      [weakSelf callFrame:frameId kind:@"config" json:JSONString(config)];
+    };
+    if (origin && [origin hasPrefix:@"http"])
+      [NNCoreServices siteSettings:_profile ?: @"" origin:origin completion:^(NSDictionary *settings) {
+        NSDictionary *autoplay = [settings[@"autoplay"] isKindOfClass:NSDictionary.class] ? settings[@"autoplay"] : nil;
+        answer([autoplay[@"value"] isEqual:@"block"]);
+      }];
+    else
+      answer(NO);
   } else if ([kind isEqualToString:@"selection"] && main) {
     [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : SelectionState(dict) ?: NSNull.null}];
   } else if ([kind isEqualToString:@"media"] && dict) {
@@ -1023,14 +1064,17 @@ NSString *JSONString(id value) {
 // Requests the content blocker stopped (ERR_BLOCKED_BY_CLIENT), new since the last report: the page's total at most
 // every 150 ms, as CEF's NNClient::NoteBlocked.
 - (void)tab:(NNCoreTab *)tab didBlockRequests:(int)count lastURL:(NSString *)url {
+  if (tab != _tab) return;
   _blockedCount += count;
   _lastBlocked = url;
   if (_blockedEmitQueued) return;
   _blockedEmitQueued = YES;
   __weak NNCoreWebView *weakSelf = self;
+  const NSUInteger generation = _blockedGeneration;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
     NNCoreWebView *view = weakSelf;
-    if (!view) return;
+    // Reset (a new page, the tab gone or replaced) since: not this page's count any more.
+    if (!view || view->_blockedGeneration != generation || !view->_tab) return;
     view->_blockedEmitQueued = NO;
     [view emit:@"contentBlocked" payload:@{@"count" : @(view->_blockedCount), @"url" : view->_lastBlocked ?: @""}];
   });

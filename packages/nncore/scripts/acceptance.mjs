@@ -82,6 +82,7 @@ const server = createServer((req, res) => {
     return res.end(wav);
   }
   res.writeHead(200, { "content-type": "text/html" });
+  if (url.pathname === "/blocking") return res.end(page("Blocking", `<img src="/nnblock-1.png"><img src="/nnblock-2.png"><img src="/icon.png">`));
   if (url.pathname === "/media") return res.end(page("Media", `<audio id="tone" src="/tone.wav" loop></audio>`));
   if (url.pathname === "/a") return res.end(page("Page A", `<a id="next" href="/b">to B</a> <a id="blank" target="_blank" href="/c">blank</a> <a id="cmd" href="/d">cmd</a>`));
   if (url.pathname === "/b") return res.end(page("Page B", "B"));
@@ -198,6 +199,18 @@ async function cdp(target, method, params = {}) {
 }
 
 const pageTarget = async (urlPart) => (await targets()).find((t) => t.type === "page" && t.url.includes(urlPart));
+// The DevTools target of one app tab (several tabs can show the same URL): marked through the app, then found.
+async function pageFor(tabId, urlPart) {
+  const candidates = (await targets()).filter((t) => t.type === "page" && t.url.includes(urlPart));
+  if (candidates.length <= 1) return candidates[0];
+  await evalApp(`return nn.webviews.get(${JSON.stringify(tabId)})?.executeJavaScript(${JSON.stringify(`window.__nnTab = ${JSON.stringify(tabId)}`)})`);
+  await sleep(200);
+  for (const t of candidates) {
+    const r = await cdp(t, "Runtime.evaluate", { expression: "String(window.__nnTab)", returnByValue: true }).catch(() => null);
+    if (r?.result?.value === tabId) return t;
+  }
+  return candidates[0];
+}
 // The window the run works in: the first one, then the one its first tab is in.
 let mainWindow = null;
 let first;
@@ -408,7 +421,7 @@ try {
 
   await check("status-text", async () => {
     // Hovering a link shows its URL (Chrome's UpdateTargetURL → onStatus → the status bubble's state).
-    const t = await pageTarget(`${base}/a`);
+    const t = await pageFor(first.id, `${base}/a`);
     const r = await cdp(t, "Runtime.evaluate", { expression: "JSON.stringify(document.getElementById('next').getBoundingClientRect())", returnByValue: true });
     const box = JSON.parse(r.result.value);
     await cdp(t, "Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x + 3, y: box.y + box.height / 2 });
@@ -432,7 +445,8 @@ try {
     await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
     await until("A shown", async () => (await state()).active === first.id);
     await sleep(300);
-    const t = await pageTarget(`${base}/a`);
+    let t = await pageFor(first.id, `${base}/a`);
+    const rightClick = async () => {
     const r = await cdp(t, "Runtime.evaluate", {
       expression: `(() => { const el = document.getElementById('next'); const range = document.createRange(); range.selectNodeContents(el);
         getSelection().removeAllRanges(); getSelection().addRange(range); return JSON.stringify(el.getBoundingClientRect()); })()`,
@@ -447,12 +461,24 @@ try {
       await cdp(t, "Input.dispatchMouseEvent", { type: "mouseReleased", ...at });
       e = await until("a context menu", async () => (await eventsOf(first.id)).findLast((x) => x.name === "contextMenu"), 4000).catch(() => null);
     }
+    return e;
+    };
+    let e = await rightClick();
+    if (!e) {
+      // Once more on a freshly loaded page (seen flaky in long runs only).
+      log("  context menu: none after 3 right-clicks; reloading the page and trying again");
+      await evalApp(`return nn.webviews.get("${first.id}").reload()`);
+      await sleep(1500);
+      t = await pageFor(first.id, `${base}/a`);
+      e = await rightClick();
+    }
     if (!e) throw new Error(`no context menu reported; events: ${JSON.stringify((await eventsOf(first.id)).slice(-6).map((x) => x.name))}`);
+    const selection = !!(await eventsOf(first.id)).findLast((x) => x.name === "pageMessage" && x.payload?.kind === "selection");
     const labels = e.payload.items.filter((i) => !i.separator).map((i) => i.label);
     const search = labels.filter((l) => /^Search .* for /.test(l));
     if (!search.some((l) => l.startsWith("Search Acceptance for “to B”"))) throw new Error(`no app search item: ${JSON.stringify(labels)}`);
     await cdp(t, "Runtime.evaluate", { expression: "getSelection().removeAllRanges()" });
-    return { items: labels.length, search };
+    return { items: labels.length, search, selectionMessage: selection };
   });
 
   await check("duplicate-and-reopen", async () => {
@@ -479,7 +505,7 @@ try {
   await check("device-chooser", async () => {
     // WebUSB requestDevice: Chrome's chooser comes to the app's sheet (onDeviceChooser); cancelling it rejects
     // the page's promise with NotFoundError.
-    const t = await pageTarget(`${base}/a`);
+    const t = await pageFor(first.id, `${base}/a`);
     await cdp(t, "Runtime.evaluate", {
       expression: "window.__usb = 'pending'; navigator.usb.requestDevice({ filters: [] }).then(() => (window.__usb = 'picked'), (e) => (window.__usb = e.name))",
       userGesture: true,
@@ -611,8 +637,14 @@ try {
     // A window an extension makes (chrome.windows.create): its tab lands in the app's window, live (tab:<id>).
     const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
     if (installed?.error) throw new Error(installed.error);
-    const worker = await until("the extension's worker", async () =>
-      (await targets()).find((t) => t.type === "service_worker" && t.url.includes(installed.id)), 15000);
+    // The installed copy's worker (an earlier install's target can linger, without the chrome API).
+    const worker = await until("the extension's worker", async () => {
+      for (const t of (await targets()).filter((t) => t.type === "service_worker" && t.url.includes(installed.id))) {
+        const r = await cdp(t, "Runtime.evaluate", { expression: "typeof chrome?.windows?.create", returnByValue: true }).catch(() => null);
+        if (r?.result?.value === "function") return t;
+      }
+      return null;
+    }, 15000);
     const made = await cdp(worker, "Runtime.evaluate", {
       expression: `chrome.windows.create({ url: "${base}/e?window" }).then((w) => JSON.stringify({ id: w.id, tabs: w.tabs?.length }))`,
       awaitPromise: true,
@@ -677,7 +709,9 @@ try {
     const never = await cef(`getNeverSavePasswordOrigins("")`);
     const allowed = await cef(`allowSavingPasswords("", "https://never.test")`);
     const file = join(scratch, "passwords.csv");
-    const exported = await cef(`exportPasswords("", ${JSON.stringify(file)})`);
+    // The save panel a background instance doesn't show answers from file-chooser.txt.
+    writeFileSync(join(data, "file-chooser.txt"), file + "\n");
+    const exported = await cef(`exportPasswords("")`);
     const written = await until("the export file", async () => existsSync(file) && readFileSync(file, "utf8").includes("newuser"), 10000);
     await cef(`deletePassword("", "${origin}", "newuser")`);
     return { updated: revealed.password, unlocked, never: never?.origins?.length ?? never, allowed, exported: exported?.status ?? exported, written };
@@ -722,19 +756,21 @@ try {
       (await cef(`getContentBlocker()`)).lists.find((l) => l.id === list.id)?.enabled === !list.enabled ? true : null, 20000);
     await cef(`setFilterListEnabled(${JSON.stringify(list.id)}, ${list.enabled})`);
     await cef(`removeExternalAppAllowance("", "https://none.test", "nncore-no-such-app")`);
-    return { reset: reset.value, blockerOff: off, list: list.id, toggled };
+    const siteData = await evalApp(`return nn.webviews.get("${first.id}")?.clearSiteData() ?? null`);
+    if (!siteData || siteData.error) throw new Error(`clearSiteData: ${JSON.stringify(siteData)}`);
+    return { reset: reset.value, blockerOff: off, list: list.id, toggled, siteData };
   });
 
   await check("download-controls", async () => {
     // A running download paused, resumed and cancelled from the app (nn_downloads_pause/_resume/_cancel).
     await evalApp(`nn.actions.openUrls(["${base}/slow.bin"], ${JSON.stringify(mainWindow)}); return true`);
-    const find = () => evalApp(`return nn.store.getState().downloads.map((d) => ({ id: d.id, state: d.state, filename: d.filename, received: d.received }))`)
+    const find = () => evalApp(`return nn.store.getState().downloads.map((d) => ({ id: d.id, state: d.state, paused: d.paused, filename: d.filename, received: d.received }))`)
       .then((l) => l.find((x) => x.filename?.includes("nncore-slow")) ?? null);
-    const d = await until("the slow download running", async () => { const x = await find(); return x?.state === "inProgress" && x.received > 0 ? x : null; }, 15000);
+    const d = await until("the slow download running", async () => { const x = await find(); return x?.state === "downloading" && !x.paused && x.received > 0 ? x : null; }, 15000);
     await cef(`pauseDownload("${d.id}")`);
-    await until("paused", async () => ((await find())?.state === "paused" ? true : null), 8000);
+    await until("paused", async () => ((await find())?.paused ? true : null), 8000);
     await cef(`resumeDownload("${d.id}")`);
-    await until("running again", async () => ((await find())?.state === "inProgress" ? true : null), 8000);
+    await until("running again", async () => { const x = await find(); return x?.state === "downloading" && !x.paused ? true : null; }, 8000);
     await cef(`cancelDownload("${d.id}")`);
     const last = await until("cancelled", async () => { const x = await find(); return x?.state === "cancelled" ? x : null; }, 8000);
     return { id: d.id, state: last.state };
@@ -787,22 +823,40 @@ try {
     const zoom = await until("onZoom", async () => (await eventsOf(first.id)).filter((x) => x.name === "zoom").pop(), 8000);
     await evalApp(`return nn.webviews.get("${first.id}").zoomStep(0)`);
     const security = await evalApp(`return nn.webviews.get("${first.id}").getSecurityInfo()`);
-    const t = await pageTarget(`${base}/a`);
-    await cdp(t, "Runtime.evaluate", { expression: "location.href = 'nncore-no-such-app://hello'", userGesture: true });
-    const external = await until("onExternalApp", async () => evalApp(`return nn.pageState.getState().pages["${first.id}"]?.externalApp ?? null`), 10000);
+    // Esc first: the external-app prompt below is the app's own sheet, which takes Esc itself.
     const s = await state();
     await evalApp(`return nn.webviews.get("${first.id}").focus()`);
     await sleep(300);
-    await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "\u001b", keyCode: 53, modifiers: [], focus: "page" })`);
-    const escape = await until("onCommand escape", async () => (await eventsOf(first.id)).find((x) => x.name === "command"), 5000);
-    return { zoom: zoom.payload.zoom, security: security?.level, external: { scheme: external.scheme, app: external.app }, escape: escape.payload.command };
+    const sent = await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "\u001b", keyCode: 53, modifiers: [], focus: "page" })`);
+    const escape = await until("onCommand escape", async () => (await eventsOf(first.id)).find((x) => x.name === "command" && x.payload?.command === "escape"), 5000)
+      .catch(async (e) => {
+        const profile = await evalApp(`const s = nn.store.getState(); return s.windows["${s.windowId}"]?.profileId ?? null`);
+        throw new Error(`${e.message}; key: ${JSON.stringify(sent)}; window profile: ${profile}; active: ${(await state()).active}`);
+      });
+    const t = await pageFor(first.id, `${base}/a`);
+    await cdp(t, "Runtime.evaluate", { expression: "location.href = 'nncore-no-such-app://hello'", userGesture: true });
+    const external = await until("onExternalApp", async () => evalApp(`return nn.pageState.getState().pages["${first.id}"]?.externalApp ?? null`), 10000);
+    const securityEvent = (await eventsOf(first.id)).some((x) => x.name === "security");
+    if (!securityEvent) throw new Error("no onSecurity");
+    const focused = (await eventsOf(first.id)).some((x) => x.name === "focus");
+    // A background tab's window.focus() asks the app to bring it forward (onActivateRequest "page").
+    const other = (await state()).tabs.find((x) => x.id !== first.id && x.url?.startsWith(`${base}/d`));
+    let activate = null;
+    if (other) {
+      const ot = await pageTarget(`${base}/d`);
+      await cdp(ot, "Runtime.evaluate", { expression: "window.focus()", userGesture: true });
+      activate = await until("onActivateRequest", async () => (await eventsOf(other.id)).find((x) => x.name === "activateRequest"), 3000).catch(() => null);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+    return { zoom: zoom.payload.zoom, security: security?.level, securityEvent, focused, activate: activate?.payload?.reason ?? null,
+      external: { scheme: external.scheme, app: external.app }, escape: escape.payload.command };
   });
 
   await check("notifications", async () => {
     // A page's Notification goes to the app (onNotification), and the app's click reaches the page.
     await cef(`setSiteSetting("", "${base}", "notifications", "allow")`);
     await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
-    const t = await pageTarget(`${base}/a`);
+    const t = await pageFor(first.id, `${base}/a`);
     await cdp(t, "Runtime.evaluate", {
       expression: "window.__clicked = false; const n = new Notification('Acceptance', { body: 'hello', tag: 'nn' }); n.onclick = () => (window.__clicked = true); true",
       userGesture: true,
@@ -813,8 +867,10 @@ try {
       const r = await cdp(t, "Runtime.evaluate", { expression: "window.__clicked", returnByValue: true });
       return r.result.value === true ? true : null;
     }, 8000);
+    await cdp(t, "Runtime.evaluate", { expression: "window.__n2 = new Notification('Second'); setTimeout(() => window.__n2.close(), 300); true", userGesture: true });
+    const closed = await until("onNotificationClose", async () => (await eventsOf(first.id)).find((x) => x.name === "notificationClose"), 8000);
     await cef(`setSiteSetting("", "${base}", "notifications", "default")`);
-    return { title: e.payload.title, body: e.payload.body, clicked };
+    return { title: e.payload.title, body: e.payload.body, clicked, closed: !!closed };
   });
 
   await check("now-playing", async () => {
@@ -825,22 +881,74 @@ try {
     await evalApp(`return nn.webviews.get("${first.id}").setMuted(true)`);
     const t = await pageTarget(`${base}/media`);
     await cdp(t, "Runtime.evaluate", {
-      expression: "navigator.mediaSession.metadata = new MediaMetadata({ title: 'NN Tone', artist: 'Acceptance' }); document.getElementById('tone').play().then(() => true)",
+      expression: "navigator.mediaSession.metadata = new MediaMetadata({ title: 'NN Tone', artist: 'Acceptance' }); window.__play = 'pending'; document.getElementById('tone').play().then(() => (window.__play = 'ok'), (e) => (window.__play = e.name)); true",
       userGesture: true,
-      awaitPromise: true,
     });
+    try {
     const playing = await until("onNowPlaying playing", async () =>
-      (await eventsOf(first.id)).findLast((x) => x.name === "nowPlaying" && x.payload?.title === "NN Tone" && x.payload?.playbackState === "playing"), 10000);
+      (await eventsOf(first.id)).findLast((x) => x.name === "nowPlaying" && x.payload?.state?.title === "NN Tone" && x.payload?.state?.playbackState === "playing"), 10000);
     await evalApp(`return nn.webviews.get("${first.id}").mediaCommand("pause")`);
     await until("paused by the app", async () => {
       const r = await cdp(t, "Runtime.evaluate", { expression: "document.getElementById('tone').paused", returnByValue: true });
       return r.result.value === true ? true : null;
     }, 8000);
     const media = (await eventsOf(first.id)).filter((x) => x.name === "media").length;
-    await evalApp(`return nn.webviews.get("${first.id}").setMuted(false)`);
+    return { title: playing.payload.state.title, artist: playing.payload.state.artist, mediaEvents: media };
+    } finally {
+      await evalApp(`return nn.webviews.get("${first.id}").setMuted(false)`).catch(() => null);
+      await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a", { userInitiated: true }); return true`);
+      await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
+    }
+  });
+
+  await check("images", async () => {
+    // The page's images and favicons as data: PNGs (downloadImage, downloadFavicon, fetchFavicon).
+    const image = await evalApp(`return nn.webviews.get("${first.id}").downloadImage("${base}/icon.png", 64)`);
+    const favicon = await evalApp(`return nn.webviews.get("${first.id}").downloadFavicon("${base}/icon.png")`);
+    const fetched = await cef(`fetchFavicon("${base}/icon.png", "")`);
+    const isData = (r) => JSON.stringify(r ?? null).includes("data:image/png");
+    if (!isData(image) || !isData(favicon) || !isData(fetched)) throw new Error(`not data URLs: ${JSON.stringify({ image, favicon, fetched }).slice(0, 300)}`);
+    return { image: true, favicon: true, fetched: true };
+  });
+
+  await check("extension-surfaces", async () => {
+    // An installed extension's action state and side panel for a tab, reload, and its DNR blocks counted on the page
+    // (onContentBlocked).
+    const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
+    if (installed?.error) throw new Error(installed.error);
+    const browser = await browserOf(first.id);
+    const states = await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.actionStates(${browser}, ["${installed.id}"])`);
+    if (!states?.[installed.id]) throw new Error(`no action state: ${JSON.stringify(states)}`);
+    const panel = await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.sidePanelURL(${browser}, "${installed.id}")`);
+    const reloaded = await exts(`reload("${installed.id}", "")`);
+    if (reloaded?.error) throw new Error(`reload: ${reloaded.error}`);
+    await sleep(1000);
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/blocking", { userInitiated: true }); return true`);
+    const blocked = await until("onContentBlocked", async () =>
+      (await eventsOf(first.id)).findLast((x) => x.name === "contentBlocked" && x.payload?.count >= 2), 10000).catch(() => null);
+    await exts(`uninstall("${installed.id}", "")`);
     await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a", { userInitiated: true }); return true`);
     await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
-    return { title: playing.payload.title, artist: playing.payload.artist, mediaEvents: media };
+    if (!blocked) throw new Error("no onContentBlocked count for the extension's blocked images");
+    return { state: states[installed.id], panel, reloaded: true, blocked: blocked.payload };
+  });
+
+  await check("frozen", async () => {
+    // The app freezes a background page (setFrozen) and wakes it; the page sees freeze and resume.
+    const s = await state();
+    const other = s.tabs.find((x) => x.id !== first.id && x.id !== s.active && x.url?.startsWith(`${base}/d`));
+    if (!other) throw new Error("no background tab");
+    const t = await pageTarget(`${base}/d`);
+    await cdp(t, "Runtime.evaluate", { expression: "window.__life = []; document.addEventListener('freeze', () => __life.push('freeze')); document.addEventListener('resume', () => __life.push('resume')); true" });
+    await evalApp(`return nn.webviews.get("${other.id}")?.setFrozen(true)`);
+    await sleep(1500);
+    await evalApp(`return nn.webviews.get("${other.id}")?.setFrozen(false)`);
+    const life = await until("freeze and resume", async () => {
+      const r = await cdp(t, "Runtime.evaluate", { expression: "JSON.stringify(window.__life)", returnByValue: true });
+      const l = JSON.parse(r.result.value ?? "[]");
+      return l.includes("freeze") && l.includes("resume") ? l : null;
+    }, 8000);
+    return { life };
   });
 
   await check("discard", async () => {
@@ -858,7 +966,7 @@ try {
     // goes back to Chrome. Chrome holds a background tab's prompt until it shows, so the page is shown first.
     await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
     await until("A shown", async () => (await state()).active === first.id);
-    const t = await pageTarget(`${base}/a`);
+    const t = await pageFor(first.id, `${base}/a`);
     await cdp(t, "Runtime.evaluate", {
       // MIDI with sysex: a Chrome permission with no macOS prompt behind it (location and the camera would ask macOS).
       expression: "navigator.requestMIDIAccess({ sysex: true }).then(() => (window.__geo = 'ok'), (e) => (window.__geo = 'denied:' + e.name))",
@@ -879,7 +987,7 @@ try {
     await evalApp(`return nn.webviews.get("${first.id}").reload()`);
     await sleep(1500);
     await until("A loaded", async () => (await state()).tabs.find((t) => t.id === first.id && !t.loading), 10000);
-    const t = await pageTarget(`${base}/a`);
+    const t = await pageFor(first.id, `${base}/a`);
     await cdp(t, "Runtime.evaluate", { expression: `window.open("${base}/c?blocked")` });
     const popups = await until("the blocked popup", async () => {
       const p = await evalApp(`return nn.pageState.getState().pages["${first.id}"]?.popups ?? []`);

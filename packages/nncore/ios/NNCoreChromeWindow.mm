@@ -139,8 +139,13 @@ bool IsReservedKey(NSEvent *event) {
   return controller;
 }
 
+NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
+  static NSMapTable *windows = [NSMapTable weakToStrongObjectsMapTable];
+  return windows;
+}
+
 + (instancetype)standaloneWindowForProfile:(NNCoreProfile *)profile {
-  static NSMapTable<NNCoreProfile *, NNCoreWindowController *> *windows = [NSMapTable weakToStrongObjectsMapTable];
+  NSMapTable<NNCoreProfile *, NNCoreWindowController *> *windows = StandaloneWindows();
   NNCoreWindowController *controller = [windows objectForKey:profile];
   if (controller && controller.coreWindow.window) return controller;
   NNCoreWindow *coreWindow = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)];
@@ -265,14 +270,20 @@ bool IsReservedKey(NSEvent *event) {
 - (void)window:(NNCoreWindow *)window didRemoveTab:(NNCoreTab *)tab {
   if (NNCoreProfile *profile = tab.profile) [NNCoreTabStrip changedInWindow:self profile:profile];
   [[self viewFor:tab] tabRemovedFromWindow:window];
-  if (_stray) {
-    // Its last tab went to the app's windows: the hidden window goes too.
+  if (_stray || _standalone) {
+    // Its last tab went to the app's windows (or its last standalone view closed): the hidden window goes too, so
+    // its empty Browsers don't keep a private profile alive.
     __weak NNCoreWindowController *weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
       NNCoreWindowController *c = weakSelf;
       if (!c) return;
       for (NNCoreProfile *p in nncore_host::LoadedProfiles())
         if ([c.coreWindow tabsForProfile:p].count) return;
+      if (c.standalone) {
+        NSMapTable<NNCoreProfile *, NNCoreWindowController *> *windows = StandaloneWindows();
+        for (NNCoreProfile *p in windows.keyEnumerator.allObjects)
+          if ([windows objectForKey:p] == c) [windows removeObjectForKey:p];
+      }
       [c.coreWindow close];
     });
   }
