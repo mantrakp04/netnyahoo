@@ -391,8 +391,13 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
 + (void)releaseProfile:(NSString *)profile {
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   NNCoreProfile *p = nncore_host::LoadedProfile(profile);
+  if (nncore_host::IsIncognito(profile)) {
+    [Profiles() removeObjectForKey:profile];
+    // Every private window shares the one off-the-record profile: it goes only once no other private window of the
+    // app holds it, even one whose window isn't made yet.
+    if ([Profiles().allValues containsObject:p]) return;
+  }
   if (p && [engine respondsToSelector:@selector(releaseProfile:)]) [engine releaseProfile:p];
-  if (nncore_host::IsIncognito(profile)) [Profiles() removeObjectForKey:profile];
 }
 
 + (BOOL)stopCapture:(int)browserId {
@@ -582,7 +587,15 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
 
 namespace nncore_host {
 
+// Profiles Chrome destroyed (a private profile once its last window closed, a deleted one) leave the cache: a
+// window or tab never gets one (WindowHost::BrowserFor crashed on its null Profile in the 0.2.22 RC).
+void ForgetDestroyedProfiles() {
+  for (NSString *name in Profiles().allKeys)
+    if (Profiles()[name].destroyed) [Profiles() removeObjectForKey:name];
+}
+
 NSArray<NNCoreProfile *> *LoadedProfiles() {
+  ForgetDestroyedProfiles();
   NSMutableArray *profiles = [NSMutableArray array];
   for (NNCoreProfile *profile in Profiles().allValues)
     if (![profiles containsObject:profile]) [profiles addObject:profile];
@@ -594,25 +607,42 @@ bool IsIncognito(NSString *name) {
 }
 
 NNCoreProfile *LoadedProfile(NSString *name) {
-  return Profiles()[name ?: @""];
+  NNCoreProfile *profile = Profiles()[name ?: @""];
+  if (!profile.destroyed) return profile;
+  [Profiles() removeObjectForKey:name ?: @""];
+  return nil;
 }
+
+namespace {
+
+// A private window's profile: Personal's off-the-record one, never Personal itself. While the last one is still
+// closing the engine has none to give: asked again for a few seconds (Chrome destroys it within its timeout).
+void WithPrivateProfile(NSString *name, void (^completion)(NNCoreProfile *), int tries) {
+  NNCoreEngine *engine = NNCoreEngine.sharedEngine;
+  WithProfile(@"", ^(NNCoreProfile *base) {
+    if (NNCoreProfile *known = LoadedProfile(name)) return completion(known);
+    NNCoreProfile *otr = base && [engine respondsToSelector:@selector(offTheRecordProfileFor:)]
+                             ? [engine offTheRecordProfileFor:base]
+                             : nil;
+    if (otr && otr.offTheRecord && !otr.destroyed) {
+      Profiles()[name] = otr;
+      return completion(otr);
+    }
+    if (!base || tries >= 60) return completion(nil);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+      WithPrivateProfile(name, completion, tries + 1);
+    });
+  });
+}
+
+}  // namespace
 
 void WithProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
   name = name ?: @"";
-  if (NNCoreProfile *profile = Profiles()[name]) return completion(profile);
+  if (NNCoreProfile *profile = LoadedProfile(name)) return completion(profile);
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   if (!engine) return completion(nil);
-  if (IsIncognito(name)) {
-    // A private window's profile is Personal's off-the-record one.
-    return WithProfile(@"", ^(NNCoreProfile *base) {
-      if (NNCoreProfile *known = Profiles()[name]) return completion(known);
-      NNCoreProfile *otr = base && [engine respondsToSelector:@selector(offTheRecordProfileFor:)]
-                               ? [engine offTheRecordProfileFor:base]
-                               : nil;
-      if (otr) Profiles()[name] = otr;
-      completion(otr);
-    });
-  }
+  if (IsIncognito(name)) return WithPrivateProfile(name, [completion copy], 0);
   if (name.length == 0) {
     if (NNCoreProfile *personal = PersonalIfLoaded(engine)) {
       Profiles()[@""] = personal;

@@ -176,6 +176,8 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   if (controller && controller.coreWindow.window) return controller;
   NNCoreWindow *coreWindow = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)];
   if (!coreWindow.window) return nil;
+  // Extension popups and side panels aren't pages the user visited (CEF's standalone browsers kept no history).
+  if ([coreWindow respondsToSelector:@selector(setRecordsHistory:)]) coreWindow.recordsHistory = NO;
   controller = [[NNCoreWindowController alloc] initWithCoreWindow:coreWindow];
   controller->_standalone = YES;
   [Controllers() setObject:controller forKey:coreWindow.window];

@@ -375,7 +375,11 @@ void PageEval(NSString *profile, NSString *expression, void (^completion)(id val
   if (!tab || tab.closed) {
     // A window of our own that nobody sees: no controller, so nothing routes or reports its tab.
     NNCoreWindow *window = PageWindows()[profile];
-    if (!window) PageWindows()[profile] = window = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)];
+    if (!window) {
+      PageWindows()[profile] = window = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(0, 0, 400, 300)];
+      // The extension's page is ours, not the user's: never in history or the omnibox.
+      if ([window respondsToSelector:@selector(setRecordsHistory:)]) window.recordsHistory = NO;
+    }
     tab = [window openTab:[NSString stringWithFormat:@"chrome-extension://%@/manifest.json", ExtensionId()] profile:p foreground:YES];
     if (!tab) return completion(nil, @"closed");
     Pages()[profile] = tab;
