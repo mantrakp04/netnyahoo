@@ -221,7 +221,7 @@ because it needs the user present), add it to the **Test ledger** with the exact
   - **Auto-update (W3), verified**: see W3.
   - **Content blocker**: `getContentBlocker` lists 55 rulesets in all six categories (ads 5, trackers 3, cookie
     banners 1, annoyances 6, malware 2, regional 38) with filter counts, and version 2026.920.1710.
-  - **Tabs between windows**: the drop logic is unit-tested (`layout/windowDrop.test.mjs`); a real mouse drag across
+  - **Tabs between windows**: the drop logic is `layout/windowDrop.ts`; a real mouse drag across
     windows is checklist step 11 in `docs/dia-feature-parity.md`.
 
 - Polish pass (instance `polish`, CEF 154.0.28 + `cef-ui-triggers.patch`, 2026-09-25). Driven through devHarness,

@@ -22,6 +22,9 @@ existing JavaScript pager as a compatibility path.
 
 ## Verification
 
+The replay, race and motion-stall harnesses named here were removed on 2026-10-01 (`docs/testing.md`);
+`profile-swipe-test.mjs` stays.
+
 - Latest Debug build and workspace typecheck pass.
 - `profile-swipe-test.mjs`: 21/21 hidden-instance cases, including reversals, window retargeting,
   blocked JavaScript, latest dots, rapid shortcuts, external selection, reorder, deletion and real
@@ -40,8 +43,8 @@ Capture, timestamps, native input results, pixel metrics and frame montage are i
 on. First-use Chromium helper creation can still block the macOS main thread; a cold recording and
 a Mission Control thumbnail capture are retained separately and excluded from this measurement.
 
-The recorded vertical-sidebar clip probe remains a pre-existing harness limitation documented in
-`profile-swipe-replay.md`. It is not counted as a pass. Real web scrolling and gesture ownership
+The recorded vertical-sidebar clip probe remained a limitation of the replay harness and was not
+counted as a pass. Real web scrolling and gesture ownership
 checks pass. The owner's physical trackpad comparison remains an installed-build check.
 
 ## Shipped export
