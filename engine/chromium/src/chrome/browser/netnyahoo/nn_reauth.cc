@@ -45,15 +45,20 @@ class ReauthState : public ProfileState {
              base::TimeDelta validity,
              base::OnceCallback<void(bool)> done) {
     base::WeakPtr<ReauthState> self = weak_factory_.GetWeakPtr();
-    // Cancelling answers the older request (false) synchronously; its reply
-    // may start another request or let the profile go, so check after each.
+    const int generation = ++generation_;
+    // Cancelling answers the older request (false) synchronously. Its reply
+    // may start another request (which then wins: this one fails) or let the
+    // profile go.
     while (authenticator_) {
       std::unique_ptr<device_reauth::DeviceAuthenticator> older =
           std::move(authenticator_);
-      ++generation_;
       older->Cancel();
       older.reset();
       if (!self) {
+        return;
+      }
+      if (generation_ != generation) {
+        std::move(done).Run(false);
         return;
       }
     }
@@ -61,7 +66,7 @@ class ReauthState : public ProfileState {
         profile(), device_reauth::DeviceAuthParams(validity, source,
                                                    Histogram(source)));
     authenticator_->AuthenticateWithMessage(
-        purpose, base::BindOnce(&ReauthState::Done, self, ++generation_,
+        purpose, base::BindOnce(&ReauthState::Done, self, generation,
                                 std::move(done)));
   }
 

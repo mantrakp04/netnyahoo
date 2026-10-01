@@ -20,6 +20,8 @@ for dir in "${owned[@]}"; do
     diff -r "$here/src/$dir" "$src/$dir" >/dev/null || { echo "drift: $dir" >&2; exit 1; }
   else
     mkdir -p "$src/$dir"
-    rsync -a --delete --checksum "$here/src/$dir/" "$src/$dir/"
+    # Not -t: a copied file gets the time of the copy, so ninja always sees it as new (a repo file
+    # older than the last gn run would otherwise never regenerate or recompile).
+    rsync -rlp --delete --checksum "$here/src/$dir/" "$src/$dir/"
   fi
 done

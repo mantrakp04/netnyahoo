@@ -118,27 +118,35 @@ class AutofillState : public ProfileState,
   explicit AutofillState(Profile* profile) : ProfileState(profile) {}
 
   void WhenLoaded(PersonalDataManager* pdm, Ready ready) {
+    if (!observation_.IsObserving()) {
+      observation_.Observe(pdm);
+    }
     if (pdm->IsDataLoaded()) {
       return std::move(ready).Run(pdm);
     }
     waiting_.push_back(std::move(ready));
-    if (!observation_.IsObserving()) {
-      observation_.Observe(pdm);
-    }
+  }
+
+  // How many times the data changed: Chrome notifies once a write has gone
+  // through its database and the data was read back.
+  int changes() const { return changes_; }
+  base::WeakPtr<AutofillState> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
   }
 
  private:
   void Release() override {
+    weak_factory_.InvalidateWeakPtrs();
     observation_.Reset();
     waiting_.clear();
   }
 
   void OnPersonalDataChanged() override {
+    ++changes_;
     PersonalDataManager* pdm = observation_.GetSource();
     if (!pdm->IsDataLoaded()) {
       return;
     }
-    observation_.Reset();
     for (Ready& ready : std::exchange(waiting_, {})) {
       std::move(ready).Run(pdm);
     }
@@ -148,6 +156,8 @@ class AutofillState : public ProfileState,
                           autofill::PersonalDataManagerObserver>
       observation_{this};
   std::vector<Ready> waiting_;
+  int changes_ = 0;
+  base::WeakPtrFactory<AutofillState> weak_factory_{this};
 };
 
 // Runs |then| with the loaded data manager, or replies with an error.
@@ -172,17 +182,31 @@ void Load(const Call& call,
 
 using Check = base::RepeatingCallback<bool(PersonalDataManager*)>;
 
-// Sends |result| once |landed| holds, or an error after kSettleChecks: Chrome
-// didn't take the change (a duplicate, say).
-void Settle(base::WeakPtr<PersonalDataManager> pdm,
+// A write in flight: the data manager, and the change count before it.
+struct Write {
+  base::WeakPtr<PersonalDataManager> pdm;
+  base::WeakPtr<AutofillState> state;
+  int changes;
+};
+
+Write StartWrite(Profile* profile, PersonalDataManager* pdm) {
+  AutofillState& state = StateFor<AutofillState>(profile);
+  return {pdm->GetWeakPtr(), state.GetWeakPtr(), state.changes()};
+}
+
+// Sends |result| once Chrome has written the change (its data changed since
+// the write began: the in-memory copy updates before the database does) and
+// |landed| holds for what it read back; an error after kSettleChecks (Chrome
+// refused it: a duplicate, say).
+void Settle(Write write,
             Check landed,
             base::DictValue result,
             Reply reply,
             int checks_left = kSettleChecks) {
-  if (!pdm) {
+  if (!write.pdm || !write.state) {
     return reply.Error("closed");
   }
-  if (landed.Run(pdm.get())) {
+  if (write.state->changes() > write.changes && landed.Run(write.pdm.get())) {
     return reply.Send(std::move(result));
   }
   if (checks_left <= 1) {
@@ -190,8 +214,8 @@ void Settle(base::WeakPtr<PersonalDataManager> pdm,
   }
   base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE,
-      base::BindOnce(&Settle, pdm, landed, std::move(result), std::move(reply),
-                     checks_left - 1),
+      base::BindOnce(&Settle, write, landed, std::move(result),
+                     std::move(reply), checks_left - 1),
       kSettleStep);
 }
 
@@ -231,7 +255,8 @@ NN_ENGINE_CALL(nn_autofill_save_address) {
   netnyahoo::Load(
       call,
       base::BindOnce(
-          [](base::DictValue address, PersonalDataManager* pdm, Reply reply) {
+          [](Profile* owner, base::DictValue address, PersonalDataManager* pdm,
+             Reply reply) {
             autofill::AddressDataManager& adm = pdm->address_data_manager();
             const std::string* id = address.FindString("id");
             const autofill::AutofillProfile* existing =
@@ -264,13 +289,17 @@ NN_ENGINE_CALL(nn_autofill_save_address) {
             }
             profile.FinalizeAfterImport();
             const std::string guid = profile.guid();
+            if (existing && existing->Compare(profile) == 0) {
+              return reply.Send(base::DictValue().Set("id", guid));
+            }
+            netnyahoo::Write write = netnyahoo::StartWrite(owner, pdm);
             if (existing) {
               adm.UpdateProfile(profile);
             } else {
               adm.AddProfile(profile);
             }
             netnyahoo::Settle(
-                pdm->GetWeakPtr(),
+                write,
                 base::BindRepeating(
                     [](const autofill::AutofillProfile& wanted,
                        PersonalDataManager* pdm) {
@@ -282,7 +311,7 @@ NN_ENGINE_CALL(nn_autofill_save_address) {
                     profile),
                 base::DictValue().Set("id", guid), std::move(reply));
           },
-          address->Clone()),
+          call.profile(), address->Clone()),
       call.TakeReply());
 }
 
@@ -309,7 +338,8 @@ NN_ENGINE_CALL(nn_autofill_save_card) {
   netnyahoo::Load(
       call,
       base::BindOnce(
-          [](base::DictValue card, std::string number, PersonalDataManager* pdm,
+          [](Profile* owner, base::DictValue card, std::string number,
+             PersonalDataManager* pdm,
              Reply reply) {
             autofill::PaymentsDataManager& paydm = pdm->payments_data_manager();
             const std::string* id = card.FindString("id");
@@ -353,15 +383,17 @@ NN_ENGINE_CALL(nn_autofill_save_card) {
                                      base::NumberToString16(*year));
             }
             const std::string guid = credit_card.guid();
+            if (existing && existing->Compare(credit_card) == 0) {
+              return reply.Send(base::DictValue().Set("id", guid));
+            }
+            netnyahoo::Write write = netnyahoo::StartWrite(owner, pdm);
             if (existing) {
-              if (existing->Compare(credit_card) != 0) {
-                paydm.UpdateCreditCard(credit_card);
-              }
+              paydm.UpdateCreditCard(credit_card);
             } else {
               paydm.AddCreditCard(credit_card);
             }
             netnyahoo::Settle(
-                pdm->GetWeakPtr(),
+                write,
                 base::BindRepeating(
                     [](const autofill::CreditCard& wanted,
                        PersonalDataManager* pdm) {
@@ -373,7 +405,7 @@ NN_ENGINE_CALL(nn_autofill_save_card) {
                     credit_card),
                 base::DictValue().Set("id", guid), std::move(reply));
           },
-          card->Clone(), call.String("number")),
+          call.profile(), card->Clone(), call.String("number")),
       call.TakeReply());
 }
 
@@ -382,14 +414,22 @@ NN_ENGINE_CALL(nn_autofill_remove) {
   netnyahoo::Load(
       call,
       base::BindOnce(
-          [](std::string id, PersonalDataManager* pdm, Reply reply) {
-            if (pdm->address_data_manager().GetProfileByGUID(id)) {
+          [](Profile* owner, std::string id, PersonalDataManager* pdm,
+             Reply reply) {
+            const bool address =
+                !!pdm->address_data_manager().GetProfileByGUID(id);
+            if (!address &&
+                !pdm->payments_data_manager().GetCreditCardByGUID(id)) {
+              return reply.Ok();
+            }
+            netnyahoo::Write write = netnyahoo::StartWrite(owner, pdm);
+            if (address) {
               pdm->address_data_manager().RemoveProfile(id);
             } else {
               pdm->payments_data_manager().RemoveByGUID(id);
             }
             netnyahoo::Settle(
-                pdm->GetWeakPtr(),
+                write,
                 base::BindRepeating(
                     [](const std::string& id, PersonalDataManager* pdm) {
                       return !pdm->address_data_manager().GetProfileByGUID(
@@ -400,7 +440,7 @@ NN_ENGINE_CALL(nn_autofill_remove) {
                     id),
                 base::DictValue().Set("ok", true), std::move(reply));
           },
-          call.String("id")),
+          call.profile(), call.String("id")),
       call.TakeReply());
 }
 
