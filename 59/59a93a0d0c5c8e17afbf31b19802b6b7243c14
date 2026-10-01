@@ -1,0 +1,29 @@
+packages/cef/patches/cef-extension-requests.patch
+  s_9c356f9574d31c::t_a0dc20868825b2 12-14,16-25,30
+  s_9c356f9574d31c::t_158d89e47587d0 1-11,15,26-29,31-33
+packages/cef/patches/series.py
+  s_9c356f9574d31c::t_5d2a0ac6f5a0e8 52-64,145-149,229,232-233
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_270b6ce3cf4019 37,109
+  s_9c356f9574d31c::t_2d489906364871 361-362
+packages/cef/patches/series
+  s_9c356f9574d31c::t_158d89e47587d0 26
+packages/cef/engine.lock
+  s_9c356f9574d31c::t_daeecf1a9ce734 4-5,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5959a93a0d0c5c8e17afbf31b19802b6b7243c14",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
