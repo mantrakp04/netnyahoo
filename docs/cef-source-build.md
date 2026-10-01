@@ -360,6 +360,9 @@ no longer carry the order.
   lists each step that no longer applies and each file the series doesn't reproduce (an edit made in the tree but
   not in a patch, or the reverse), and keeps the scratch copy for `diff -u`. It writes nothing else and needs no
   lock.
+- A file the series starts touching later (a new hook) needs its base too: run `capture-base` before the hook
+  first goes into the tree. Until then `check` takes the checkout's git HEAD for it and says so, which is right
+  only when nothing upstream changes that file.
 - `materialize --until <patch> <dir>`: the touched files as the series leaves them after one line. To remake a
   patch, materialize the line above it, edit a copy, and diff.
 - `files`: what each line touches.

@@ -167,6 +167,18 @@ def copy_path(src_root, dst_root, path, is_dir, missing_ok=True):
     shutil.copy2(src, dst)
 
 
+def base_from_git(path, out):
+    """A touched file the base doesn't have (a hook added after the base was captured): the checkout's own
+    git HEAD, right when nothing upstream (CEF's patches, ungoogled, domain substitution) changes it."""
+    repo, rel = (os.path.join(SRC, "cef"), path[4:]) if path.startswith("cef/") else (SRC, path)
+    p = subprocess.run(["git", "show", f"HEAD:{rel}"], cwd=repo, capture_output=True)
+    if p.returncode:
+        return False
+    os.makedirs(os.path.dirname(os.path.join(out, path)), exist_ok=True)
+    open(os.path.join(out, path), "wb").write(p.stdout)
+    return True
+
+
 # Commands
 
 
@@ -210,8 +222,12 @@ def materialize(steps, out, until=None, report=None):
     """Copies the base into `out` and applies `steps` in order (stopping after `until`). Returns errors."""
     paths = touched(steps)
     for path, is_dir in paths:
-        if not is_dir:
+        if is_dir:
+            continue
+        if os.path.exists(os.path.join(BASE, path)):
             copy_path(BASE, out, path, False)
+        elif base_from_git(path, out):
+            print(f"note: {path} isn't in the base; using the checkout's git HEAD (capture-base it before hooking it)")
     errors = []
     for step in steps:
         error = apply_step(step, out, strict=True)
