@@ -314,14 +314,14 @@ Known gaps:
 ## Stage 2: per-tab features and UI seams
 
 Stage 2 adds the per-tab features and UI seams `packages/nncore` needs to emit what `packages/cef` emits. Wherever
-it's practical, they hand over dictionaries already in the JS shapes of `packages/cef/src`. NNHost passes 93 of 93
-checks in `S7`–`S22`. The unresponsive-page check is skipped: Chrome's hang monitor ignores hidden pages.
+it's practical, they hand over dictionaries already in the JS shapes of `packages/cef/src`. NNHost passes 95 of 95
+checks in `S7`–`S23`. The unresponsive-page check is skipped: Chrome's hang monitor ignores hidden pages.
 
 | Area | What NNCore provides |
 |---|---|
 | Profile | Allow-listed bool prefs (CEF's per-profile prefs set on load). Chrome's `BrowsingDataRemover`. Component extensions. Deleting a profile and releasing an incognito one. Cast routes |
 | Tab state | `securityInfo`, per-site zoom and pinch scale, `focusedEditable`, media capture access, base background colour, `mediaCaptureSourceId` |
-| Tab actions | Chrome commands on a background tab. Discard (`WebContentsDiscard`, so the same tab survives). Freeze. Unresponsive pages. Stop sharing. Autofill on demand. Scripts with a user gesture. Restore from `nn_tab_restore_take`'s state, and duplicate |
+| Tab actions | Chrome commands on a background tab. Discard (`WebContentsDiscard`, so the same tab survives). Freeze. Unresponsive pages. Stop sharing. Autofill on demand. Scripts with a user gesture. Restore from `nn_tab_restore_take`'s state, and duplicate. "Share this tab instead", answered by Chrome's tab-sharing infobar model with no hook |
 | Chrome UI the host shows instead | Permission prompts (`SetCreatePermissionPromptFunction`, before Chrome's bubble or chip). Blocked popups. Links to other apps. Extension install prompts. Extension actions, states and side panels. Device choosers. The Cast dialog. Context-menu items (Chrome's menu, plus the host's items; in background mode the menu is reported instead of shown) |
 | Events | Download navigations. Activation requests (PiP's back-to-tab, `window.focus()`) |
 
