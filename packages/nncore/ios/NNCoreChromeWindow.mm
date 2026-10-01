@@ -1,0 +1,312 @@
+// NNChromeWindowHost on NNCore: the class packages/shell's ChromeWindows looks up by name. Each app window is
+// one NNCoreWindow (a Views-backed NSWindow, so Chrome's bubbles and dialogs attach to it) holding a Chrome
+// Browser per profile shown in it. Paging between profiles is a change of the active profile, never a window
+// swap, so swappedHandler never fires here.
+#import "NNChromeWindow.h"
+#import "NNCoreInternal.h"
+#import "NNCoreWebView.h"
+#import "NNCoreWebViewInternal.h"
+
+#import <objc/runtime.h>
+
+namespace {
+
+BOOL (^gShouldClose)(NSWindow *);
+void (^gSwapped)(NSWindow *, NSWindow *);
+
+NSMapTable<NSWindow *, NNCoreWindowController *> *Controllers() {
+  static NSMapTable *controllers = [NSMapTable weakToStrongObjectsMapTable];
+  return controllers;
+}
+
+NSColor *WindowColor() {
+  return [NSColor colorWithName:nil
+                dynamicProvider:^NSColor *(NSAppearance *appearance) {
+                  const bool dark = [[appearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameDarkAqua, NSAppearanceNameAqua ]]
+                      isEqualToString:NSAppearanceNameDarkAqua];
+                  return dark ? [NSColor colorWithSRGBRed:0.17 green:0.12 blue:0.14 alpha:1]
+                              : [NSColor colorWithSRGBRed:0.93 green:0.91 blue:0.90 alpha:1];
+                }];
+}
+
+// MARK: Traffic lights (as packages/cef/ios/NNChromeWindow.mm)
+
+constexpr CGFloat kTrafficLightInsetX = 18;
+const void *kFollowedKey = &kFollowedKey;
+const void *kLightsCenterKey = &kLightsCenterKey;
+const void *kLightsBaseYKey = &kLightsBaseYKey;
+
+void LayoutTrafficLights(NSWindow *window) {
+  if (!window || (window.styleMask & NSWindowStyleMaskFullScreen)) return;
+  NSButton *close = [window standardWindowButton:NSWindowCloseButton];
+  NSButton *mini = [window standardWindowButton:NSWindowMiniaturizeButton];
+  NSButton *zoom = [window standardWindowButton:NSWindowZoomButton];
+  if (!close || !mini || !zoom) return;
+  if (!objc_getAssociatedObject(close, kFollowedKey)) {
+    objc_setAssociatedObject(close, kFollowedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    close.postsFrameChangedNotifications = YES;
+    __weak NSWindow *weakWindow = window;
+    [NSNotificationCenter.defaultCenter addObserverForName:NSViewFrameDidChangeNotification
+                                                    object:close
+                                                     queue:nil
+                                                usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
+  }
+  const CGFloat spacing = NSMinX(mini.frame) - NSMinX(close.frame);
+  NSValue *center = objc_getAssociatedObject(window, kLightsCenterKey);
+  NSNumber *baseY = objc_getAssociatedObject(window, kLightsBaseYKey);
+  CGFloat x, y;
+  if (center) {
+    const NSPoint c = [close.superview convertPoint:NSMakePoint(center.pointValue.x, NSHeight(window.frame) - center.pointValue.y)
+                                           fromView:nil];
+    x = c.x - NSWidth(close.frame) / 2;
+    y = c.y - NSHeight(close.frame) / 2;
+    if (!baseY) objc_setAssociatedObject(window, kLightsBaseYKey, @(NSMinY(close.frame)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  } else {
+    x = kTrafficLightInsetX - [close.superview convertPoint:NSZeroPoint toView:nil].x;
+    y = baseY ? baseY.doubleValue : NSMinY(close.frame);
+    objc_setAssociatedObject(window, kLightsBaseYKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  }
+  if (fabs(NSMinX(close.frame) - x) < 0.5 && fabs(NSMinY(close.frame) - y) < 0.5) return;
+  NSArray<NSButton *> *buttons = @[ close, mini, zoom ];
+  for (NSUInteger i = 0; i < buttons.count; i++) [buttons[i] setFrameOrigin:NSMakePoint(x + i * spacing, y)];
+}
+
+void KeepTrafficLightsInset(NSWindow *window) {
+  __weak NSWindow *weakWindow = window;
+  for (NSNotificationName name in @[
+         NSWindowDidResizeNotification, NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
+         NSWindowDidExitFullScreenNotification, NSWindowDidBecomeMainNotification
+       ])
+    [NSNotificationCenter.defaultCenter addObserverForName:name
+                                                    object:window
+                                                     queue:nil
+                                                usingBlock:^(NSNotification *) {
+                                                  LayoutTrafficLights(weakWindow);
+                                                  dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
+                                                }];
+  dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
+}
+
+void ConfigureWindow(NSWindow *window) {
+  window.styleMask |= NSWindowStyleMaskFullSizeContentView;
+  window.titlebarAppearsTransparent = YES;
+  window.titleVisibility = NSWindowTitleHidden;
+  window.title = @"Netnyahoo";
+  window.minSize = NSMakeSize(720, 460);
+  window.backgroundColor = WindowColor();
+  window.releasedWhenClosed = NO;
+  window.tabbingMode = NSWindowTabbingModeDisallowed;
+  KeepTrafficLightsInset(window);
+}
+
+// Shortcuts the app's menus own before the page sees them, as Chrome reserves them (they can't be
+// overridden by a page): new/close tab and window, quit, reopen closed tab, tab cycling.
+bool IsReservedKey(NSEvent *event) {
+  const NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+  NSString *key = event.charactersIgnoringModifiers.lowercaseString;
+  if ((mods & NSEventModifierFlagControl) && event.keyCode == 48) return true;  // ⌃Tab, ⌃⇧Tab
+  if (!(mods & NSEventModifierFlagCommand) || (mods & (NSEventModifierFlagControl | NSEventModifierFlagOption))) return false;
+  return [@[ @"t", @"w", @"n", @"q" ] containsObject:key];
+}
+
+}  // namespace
+
+// MARK: - NNCoreWindowController
+
+@implementation NNCoreWindowController
+
++ (instancetype)forNSWindow:(NSWindow *)window {
+  return window ? [Controllers() objectForKey:window] : nil;
+}
+
++ (NSArray<NNCoreWindowController *> *)all {
+  return Controllers().objectEnumerator.allObjects;
+}
+
+- (instancetype)initWithCoreWindow:(NNCoreWindow *)coreWindow {
+  if ((self = [super init])) {
+    _coreWindow = coreWindow;
+    coreWindow.delegate = self;
+  }
+  return self;
+}
+
+- (NNCoreWebView *)viewFor:(NNCoreTab *)tab {
+  return tab ? [NNCoreTabs viewForTab:tab] : nil;
+}
+
+// A shown tab of this window: who hears about tabs Chrome opened with no opener the app hosts (an
+// extension's tabs.create, say).
+- (NNCoreWebView *)anyShownViewForProfile:(NNCoreProfile *)profile {
+  for (NNCoreTab *tab in [_coreWindow tabsForProfile:profile]) {
+    NNCoreWebView *view = [NNCoreTabs viewForTab:tab];
+    if (view.visible) return view;
+  }
+  return nil;
+}
+
+- (void)window:(NNCoreWindow *)window didInsertTab:(NNCoreTab *)tab opener:(NNCoreTab *)opener disposition:(NSString *)disposition {
+  // The app's own (a WebView opening its tab, or adopting one): the view attaches it itself.
+  if (_hostChanges > 0 || [NNCoreTabs viewForTab:tab]) return;
+  NSString *adoptId = [NNCoreTabs offerTab:tab];
+  NNCoreWebView *from = [self viewFor:opener] ?: [self anyShownViewForProfile:tab.profile];
+  [from openedTab:tab adoptId:adoptId disposition:nncore_host::AppDisposition(disposition)];
+}
+
+- (void)window:(NNCoreWindow *)window didRemoveTab:(NNCoreTab *)tab {
+  [[self viewFor:tab] tabRemovedFromWindow:window];
+}
+
+- (void)window:(NNCoreWindow *)window didActivateTab:(NNCoreTab *)tab {
+  [[self viewFor:tab] tabActivatedByChrome:_hostChanges == 0];
+}
+
+- (void)window:(NNCoreWindow *)window devToolsDidChangeForTab:(NNCoreTab *)tab view:(NSView *)devToolsView {
+  [[self viewFor:tab] devToolsChanged:devToolsView];
+}
+
+- (void)window:(NNCoreWindow *)window tab:(NNCoreTab *)tab didChangeFullscreen:(BOOL)fullscreen {
+  [[self viewFor:tab] emit:@"fullscreen" payload:@{@"fullscreen" : @(fullscreen)}];
+}
+
+- (void)window:(NNCoreWindow *)window passwordSavePromptForTab:(NNCoreTab *)tab username:(NSString *)username origin:(NSString *)origin {
+  [[self viewFor:tab] emit:@"passwordPrompt"
+                   payload:@{
+                     @"state" : @"save",
+                     @"origin" : origin ?: @"",
+                     @"username" : username ?: @"",
+                     @"passwordLength" : @0,
+                     @"federation" : @"",
+                     @"usernames" : username.length ? @[ username ] : @[],
+                   }];
+}
+
+- (BOOL)windowShouldClose:(NNCoreWindow *)window {
+  return [NNChromeWindowHost windowShouldClose:window.window];
+}
+
+- (void)windowDidCancelClose:(NNCoreWindow *)window {
+  NSLog(@"[nncore] window close cancelled");
+}
+
+- (void)window:(NNCoreWindow *)window confirmCloseWithDownloads:(int)count completion:(void (^)(BOOL))completion {
+  // The app asks about downloads in flight before it quits (WindowManager.confirmActiveDownloads); closing one
+  // window with downloads going keeps them going in Chrome's download manager until quit.
+  completion(YES);
+}
+
+- (BOOL)window:(NNCoreWindow *)window preHandleKeyEvent:(NSEvent *)event {
+  return IsReservedKey(event) && [NSApp.mainMenu performKeyEquivalent:event];
+}
+
+- (BOOL)window:(NNCoreWindow *)window handleKeyEvent:(NSEvent *)event {
+  return [NSApp.mainMenu performKeyEquivalent:event];
+}
+
+@end
+
+// MARK: - NNChromeWindowHost
+
+NSView *NNWindowRootView(NSWindow *window) {
+  return [NNChromeWindowHost rootViewOfWindow:window] ?: window.contentView;
+}
+
+@implementation NNChromeWindowHost
+
++ (NSWindow *)makeWindowForProfile:(NSString *)profile {
+  if (!NNCoreHost.isStarted) return nil;
+  NNCoreWindow *coreWindow = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1360, 860)];
+  NSWindow *window = coreWindow.window;
+  if (!window) return nil;
+  ConfigureWindow(window);
+  NNCoreWindowController *controller = [[NNCoreWindowController alloc] initWithCoreWindow:coreWindow];
+  [Controllers() setObject:controller forKey:window];
+  [self showProfile:profile ?: @"" inWindow:window];
+  return window;
+}
+
++ (NSWindow *)makePopupWindowForProfile:(NSString *)profile root:(NSView *)root {
+  return nil;
+}
+
++ (void)showProfile:(NSString *)profile inWindow:(NSWindow *)window {
+  NNCoreWindowController *controller = [NNCoreWindowController forNSWindow:window];
+  if (!controller) return;
+  __weak NNCoreWindow *coreWindow = controller.coreWindow;
+  nncore_host::WithProfile(profile ?: @"", ^(NNCoreProfile *p) {
+    if (p && coreWindow) coreWindow.activeProfile = p;
+  });
+}
+
++ (void)prepareProfiles:(NSArray<NSString *> *)profiles forWindow:(NSWindow *)window {
+  NNCoreWindowController *controller = [NNCoreWindowController forNSWindow:window];
+  if (!controller || ![controller.coreWindow respondsToSelector:@selector(prepareProfile:)]) return;
+  __weak NNCoreWindow *coreWindow = controller.coreWindow;
+  for (NSString *profile in profiles)
+    nncore_host::WithProfile(profile, ^(NNCoreProfile *p) {
+      if (p && coreWindow) [coreWindow prepareProfile:p];
+    });
+}
+
++ (void)setTrafficLightsCenter:(NSValue *)center inWindow:(NSWindow *)window {
+  NSValue *current = objc_getAssociatedObject(window, kLightsCenterKey);
+  if (current == center || [current isEqual:center]) return;
+  objc_setAssociatedObject(window, kLightsCenterKey, center, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  LayoutTrafficLights(window);
+}
+
++ (void)setSwappedHandler:(void (^)(NSWindow *, NSWindow *))handler {
+  gSwapped = [handler copy];
+}
+
++ (void (^)(NSWindow *, NSWindow *))swappedHandler {
+  return gSwapped;
+}
+
++ (void)closeWindow:(NSWindow *)window {
+  NNCoreWindowController *controller = [NNCoreWindowController forNSWindow:window];
+  if (controller) [controller.coreWindow close];
+  else [window close];
+}
+
++ (void)setShouldCloseHandler:(BOOL (^)(NSWindow *))handler {
+  gShouldClose = [handler copy];
+}
+
++ (BOOL (^)(NSWindow *))shouldCloseHandler {
+  return gShouldClose;
+}
+
++ (BOOL)windowShouldClose:(NSWindow *)window {
+  return gShouldClose ? gShouldClose(window) : YES;
+}
+
++ (void)embedRootView:(NSView *)root inWindow:(NSWindow *)window {
+  NNCoreWindowController *controller = [NNCoreWindowController forNSWindow:window];
+  if (!controller) return;
+  NSView *host = controller.coreWindow.hostView;
+  root.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  root.frame = host.bounds;
+  [host addSubview:root];
+  controller.root = root;
+}
+
++ (NSView *)rootViewOfWindow:(NSWindow *)window {
+  return [NNCoreWindowController forNSWindow:window].root;
+}
+
++ (void)removeRootViewOfWindow:(NSWindow *)window {
+  NNCoreWindowController *controller = [NNCoreWindowController forNSWindow:window];
+  [controller.root removeFromSuperview];
+  controller.root = nil;
+}
+
+@end
+
+@implementation NNChromeWindowHost (Dev)
+
++ (NSString *)devAction:(NSString *)action window:(NSWindow *)window {
+  return nil;
+}
+
+@end

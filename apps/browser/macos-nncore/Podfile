@@ -1,0 +1,44 @@
+# The NNCore build of the app (dev only until docs/nncore-parity.md says switch): the same JS and the same
+# native packages as apps/browser/macos, except packages/cef, whose Expo modules packages/nncore provides on
+# NNCore. Its own Pods, project and workspace, so it never touches the shipping build's.
+require 'pathname'
+
+ws_dir = Pathname.new(__dir__)
+ws_dir = ws_dir.parent until
+  File.exist?("#{ws_dir}/node_modules/react-native-macos/scripts/react_native_pods.rb") ||
+  ws_dir.expand_path.to_s == '/'
+require "#{ws_dir}/node_modules/react-native-macos/scripts/react_native_pods.rb"
+require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
+
+ENV['RCT_NEW_ARCH_ENABLED'] ||= '0'
+
+prepare_react_native_project!
+
+project 'NetnyahooNNCore.xcodeproj'
+
+target 'Netnyahoo-NNCore' do
+  platform :macos, '14.0'
+
+  use_expo_modules!({
+    searchPaths: ["#{__dir__}/../node_modules", "#{ws_dir}/node_modules", "#{ws_dir}/packages"],
+    exclude: ['@netnyahoo/cef'],
+  })
+  use_native_modules!
+
+  use_react_native!(
+    :path => Pathname.new("#{ws_dir}/node_modules/react-native-macos").relative_path_from(Pathname.new(__dir__)).to_s,
+    :fabric_enabled => ENV['RCT_NEW_ARCH_ENABLED'] == '1',
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(installer)
+
+    rn_path = "${PODS_ROOT}/" + Pathname.new("#{ws_dir}/node_modules/react-native-macos").relative_path_from(Pathname.new(installer.sandbox.root)).to_s
+    installer.pods_project.build_configurations.each { |c| c.build_settings['REACT_NATIVE_PATH'] = rn_path }
+
+    installer.pods_project.targets.each do |t|
+      t.build_configurations.each { |c| c.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '14.0' }
+    end
+  end
+end
