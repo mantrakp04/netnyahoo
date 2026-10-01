@@ -66,6 +66,12 @@
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
 #include "netnyahoo/core/nn_permissions.h"
+#include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
+#include "base/pickle.h"
+#include "chrome/browser/ui/browser_tabrestore.h"
+#include "components/sessions/core/serialized_navigation_entry.h"
+#include "components/sessions/core/serialized_user_agent_override.h"
+#include "netnyahoo/core/nn_device_chooser.h"
 #include "netnyahoo/core/nn_context_menu.h"
 #include "netnyahoo/core/nn_autofill_trigger.h"
 #include "base/trace_event/trace_config.h"
@@ -438,8 +444,13 @@ std::string InstallPromptTypeName(extensions::InstallPromptData::PromptType type
 
 using InstallDone = extensions::ExtensionInstallPromptClient::DoneCallback;
 
-std::map<std::string, InstallDone>& InstallPrompts() {
-  static base::NoDestructor<std::map<std::string, InstallDone>> prompts;
+struct PendingInstall {
+  InstallDone done;
+  base::WeakPtr<Profile> profile;
+};
+
+std::map<std::string, PendingInstall>& InstallPrompts() {
+  static base::NoDestructor<std::map<std::string, PendingInstall>> prompts;
   return *prompts;
 }
 
@@ -478,7 +489,7 @@ bool HostExtensionInstallPrompt(Profile* profile,
     @"icon" : icon,
     @"permissions" : permissions,
   };
-  InstallPrompts()[request_id] = std::move(*done_callback);
+  InstallPrompts()[request_id] = {std::move(*done_callback), profile->GetWeakPtr()};
   NNCoreTab* tab = parent ? TabBridge::GetOrCreate(parent)->tab() : nil;
   // Not from inside Chrome's prompt: the host may answer at once.
   dispatch_async(dispatch_get_main_queue(), ^{
@@ -492,11 +503,28 @@ void ResolveExtensionInstallPrompt(const std::string& request_id, bool accepted)
   if (it == InstallPrompts().end()) {
     return;
   }
-  InstallDone done = std::move(it->second);
+  PendingInstall pending = std::move(it->second);
   InstallPrompts().erase(it);
+  // The profile went (shutdown, deletion): Chrome's dialog would have been cancelled.
+  if (!pending.profile) {
+    return;
+  }
+  InstallDone done = std::move(pending.done);
   using Payload = extensions::ExtensionInstallPromptClient::DoneCallbackPayload;
   using Result = extensions::ExtensionInstallPromptClient::Result;
   std::move(done).Run(Payload(accepted ? Result::ACCEPTED : Result::USER_CANCELED));
+}
+
+bool HostWantsDeviceChoosers() {
+  return [g_delegate respondsToSelector:@selector(engine:deviceChooser:tab:)];
+}
+
+void HostDeviceChooser(content::WebContents* contents, NSDictionary* state) {
+  if (HostWantsDeviceChoosers()) {
+    [g_delegate engine:g_engine
+         deviceChooser:state
+                   tab:TabBridge::GetOrCreate(contents)->tab()];
+  }
 }
 
 bool HostExtensionSidePanel(content::WebContents* contents,
@@ -666,7 +694,7 @@ static bool g_tracing = false;
   // temporary file, deleted once written.
   NSDateFormatter* format = [[NSDateFormatter alloc] init];
   format.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-  format.dateFormat = @"yyyy-MM-dd 'at' HH.mm.ss";
+  format.dateFormat = @"yyyy-MM-dd 'at' HH.mm.ss.SSS";
   NSString* folder =
       keep ? [NSFileManager.defaultManager URLsForDirectory:NSDownloadsDirectory
                                                   inDomains:NSUserDomainMask]
@@ -701,6 +729,22 @@ static bool g_tracing = false;
   return g_tracing;
 }
 
++ (void)selectDevice:(int)chooserId index:(int)index {
+  nncore::SelectDevice(chooserId, index);
+}
+
++ (void)cancelDeviceChooser:(int)chooserId {
+  nncore::CancelDeviceChooser(chooserId);
+}
+
++ (void)refreshDeviceChooser:(int)chooserId {
+  nncore::RefreshDeviceChooser(chooserId);
+}
+
++ (void)openDeviceChooserSettings:(int)chooserId {
+  nncore::OpenDeviceChooserSettings(chooserId);
+}
+
 + (void)resolveExtensionInstallPrompt:(NSString*)requestId accepted:(BOOL)accepted {
   nncore::ResolveExtensionInstallPrompt(base::SysNSStringToUTF8(requestId), accepted);
 }
@@ -730,7 +774,17 @@ static bool g_tracing = false;
   // A private profile goes for good once nothing shows it (as CEF's private contexts): its
   // cookies, cache and downloads with it. A regular profile stays loaded.
   Profile* chrome_profile = profile.chromeProfile;
-  if (chrome_profile && chrome_profile->IsOffTheRecord()) {
+  if (!chrome_profile || !chrome_profile->IsOffTheRecord()) {
+    return;
+  }
+  // Every incognito window shares it: only once none is left.
+  bool in_use = false;
+  GlobalBrowserCollection::GetInstance()->ForEach([&](BrowserWindowInterface* browser) {
+    in_use |= browser->GetProfile() == chrome_profile &&
+              !browser->capabilities()->IsAttemptingToCloseBrowser();
+    return !in_use;
+  });
+  if (!in_use) {
     ProfileDestroyer::DestroyOTRProfileWhenAppropriate(chrome_profile);
   }
 }
@@ -1140,6 +1194,85 @@ static bool g_tracing = false;
   if (to != at) {
     model->MoveWebContentsAt(at, to, /*select_after_move=*/false);
   }
+}
+
+- (NNCoreTab*)restoreTab:(NSString*)state
+                 profile:(NNCoreProfile*)profile
+              foreground:(BOOL)foreground {
+  if (nncore::IsNotifyingTabStrip()) {
+    return nil;  // Not from inside a tab-strip callback (Chrome CHECKs re-entrant inserts).
+  }
+  // The format of nn_tab_restore_take and CEF's GetNavigationState: base64 of a pickle of
+  // version 1, the selected index, the count, then each SerializedNavigationEntry.
+  std::optional<std::vector<uint8_t>> bytes =
+      state ? base::Base64Decode(base::SysNSStringToUTF8(state)) : std::nullopt;
+  Browser* browser = profile.chromeProfile ? _host->BrowserFor(profile.chromeProfile) : nullptr;
+  if (!bytes || bytes->empty() || !browser) {
+    return nil;
+  }
+  base::Pickle pickle = base::Pickle::WithUnownedBuffer(*bytes);
+  base::PickleIterator it(pickle);
+  int version = 0, selected = 0, count = 0;
+  if (!it.ReadInt(&version) || version != 1 || !it.ReadInt(&selected) ||
+      !it.ReadInt(&count) || count <= 0 || count > 1000) {
+    return nil;
+  }
+  std::vector<sessions::SerializedNavigationEntry> navigations;
+  for (int i = 0; i < count; ++i) {
+    sessions::SerializedNavigationEntry entry;
+    if (!entry.ReadFromPickle(&it)) {
+      return nil;
+    }
+    navigations.push_back(std::move(entry));
+  }
+  selected = std::clamp(selected, 0, count - 1);
+  // Chrome's own path for reopening a closed tab; the host's tab, reported as one it opened.
+  base::AutoReset<nncore::WindowHost::PendingOpen> pending(
+      &_host->pending_open(),
+      nncore::WindowHost::PendingOpen{
+          foreground ? WindowOpenDisposition::NEW_FOREGROUND_TAB
+                     : WindowOpenDisposition::NEW_BACKGROUND_TAB,
+          nullptr});
+  content::WebContents* contents = chrome::AddRestoredTab(
+      browser, navigations, browser->GetTabStripModel()->count(), selected,
+      /*extension_app_id=*/std::string(), /*group=*/std::nullopt, foreground,
+      /*pin=*/false, base::TimeTicks::Now(), base::Time::Now(),
+      /*storage_namespace=*/nullptr, sessions::SerializedUserAgentOverride(),
+      /*extra_data=*/{}, /*from_session_restore=*/false,
+      /*is_active_browser=*/std::nullopt);
+  return contents ? nncore::TabBridge::GetOrCreate(contents)->tab() : nil;
+}
+
+- (NNCoreTab*)duplicateTab:(NNCoreTab*)source
+                   profile:(NNCoreProfile*)profile
+                foreground:(BOOL)foreground {
+  if (nncore::IsNotifyingTabStrip()) {
+    return nil;  // Not from inside a tab-strip callback (Chrome CHECKs re-entrant inserts).
+  }
+  content::WebContents* contents = source.contents;
+  Profile* chrome_profile = profile.chromeProfile;
+  if (!contents || !chrome_profile ||
+      Profile::FromBrowserContext(contents->GetBrowserContext()) != chrome_profile) {
+    return nil;
+  }
+  Browser* browser = _host->BrowserFor(chrome_profile);
+  if (!browser) {
+    return nil;
+  }
+  // chrome::DuplicateTabAt's copy (history, scroll, form state), inserted where the host
+  // places it.
+  std::unique_ptr<content::WebContents> copy = contents->Clone();
+  content::WebContents* raw = copy.get();
+  base::AutoReset<nncore::WindowHost::PendingOpen> pending(
+      &_host->pending_open(),
+      nncore::WindowHost::PendingOpen{
+          foreground ? WindowOpenDisposition::NEW_FOREGROUND_TAB
+                     : WindowOpenDisposition::NEW_BACKGROUND_TAB,
+          contents->GetWeakPtr()});
+  TabStripModel* model = browser->GetTabStripModel();
+  model->InsertWebContentsAt(model->count(), std::move(copy),
+                             foreground ? AddTabTypes::ADD_ACTIVE : AddTabTypes::ADD_NONE);
+  return nncore::TabBridge::GetOrCreate(raw)->tab();
 }
 
 + (NNCoreWindow*)windowForNSWindow:(NSWindow*)window {

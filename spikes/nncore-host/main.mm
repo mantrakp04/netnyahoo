@@ -611,7 +611,8 @@ static void Log(NSDictionary* event) {
                                      accepted:![_config[@"installAnswer"] isEqual:@NO]];
 }
 - (NSArray<NSDictionary*>*)tab:(NNCoreTab*)tab contextMenuItemsForSelection:(NSString*)text {
-  return @[ @{@"id" : @"search", @"title" : [NSString stringWithFormat:@"Search Test for “%@”", text]} ];
+  return @[ @{@"id" : @"search", @"title" : [NSString stringWithFormat:@"Search Test for “%@”", text],
+              @"replaces" : @"search"} ];
 }
 - (void)tab:(NNCoreTab*)tab
     contextMenuCommand:(NSString*)itemId
@@ -621,6 +622,12 @@ static void Log(NSDictionary* event) {
 }
 - (void)tab:(NNCoreTab*)tab didShowContextMenu:(NSArray<NSDictionary*>*)items {
   Log(@{@"event" : @"contextMenu", @"tabId" : @(tab.tabId), @"items" : items});
+}
+- (void)engine:(NNCoreEngine*)engine deviceChooser:(NSDictionary*)chooser tab:(NNCoreTab*)tab {
+  Log(@{@"event" : @"deviceChooser", @"tabId" : @(tab.tabId), @"chooser" : chooser});
+  if ([chooser[@"open"] boolValue]) {
+    [NNCoreEngine cancelDeviceChooser:[chooser[@"id"] intValue]];
+  }
 }
 - (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason {
   Log(@{@"event" : @"activationRequest", @"tabId" : @(tab.tabId), @"reason" : reason});
@@ -1044,6 +1051,12 @@ static void Log(NSDictionary* event) {
     }
   } else if ([name isEqualToString:@"capture"]) {
     reply(@{@"sourceId" : tab.mediaCaptureSourceId ?: NSNull.null, @"stopped" : @([tab stopCapture])});
+  } else if ([name isEqualToString:@"duplicate"]) {
+    NNCoreTab* copy = [_window duplicateTab:tab profile:tab.profile foreground:NO];
+    reply(copy ? @{@"tabId" : @(copy.tabId), @"entries" : copy.navigationEntries} : NSNull.null);
+  } else if ([name isEqualToString:@"restore"]) {
+    NNCoreTab* t = [_window restoreTab:cmd[@"state"] profile:profile foreground:NO];
+    reply(t ? @(t.tabId) : NSNull.null);
   } else if ([name isEqualToString:@"editable"]) {
     reply(@(tab.focusedEditable));
   } else if ([name isEqualToString:@"autofill"]) {

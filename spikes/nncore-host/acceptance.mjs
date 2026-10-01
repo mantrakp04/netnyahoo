@@ -222,10 +222,18 @@ async function attach(match) {
       cdpEvents.push(msg);
     }
   };
+  // Answers within 30 s or rejects (a target that never runs its script mustn't stall the run).
   const send = (method, params = {}) =>
-    new Promise((r) => {
+    new Promise((r, reject) => {
       const id = ++n;
-      pending.set(id, r);
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`no answer to ${method}`));
+      }, 30000);
+      pending.set(id, (msg) => {
+        clearTimeout(timer);
+        r(msg);
+      });
       ws.send(JSON.stringify({ id, method, params }));
     });
   const evaluate = async (expression) =>
@@ -884,7 +892,8 @@ try {
     const labels = menu ? menu.items.filter((i) => !i.separator).map((i) => i.label) : [];
     const ours = labels.indexOf("Search Test for “Index”");
     const copy = labels.findIndex((l) => /^Copy$/.test(l));
-    check("S20", "Chrome's context menu with the host's item after Copy (reported in background mode)", ours > 0 && (copy < 0 || ours === copy + 1), { labels: labels.slice(0, 12) });
+    const chromeSearch = labels.some((l) => /^&?Search .* for /.test(l) && l !== "Search Test for “Index”");
+    check("S20", "Chrome's context menu with the host's item, in place of Chrome's search item (reported in background mode)", ours > 0 && !chromeSearch, { labels: labels.slice(0, 12) });
     pc2.close();
     const kt2 = await cmd("open", { url: `${base}/keys?edit=1`, profile: "A" });
     await waitFor(async () => (await tabState(kt2.tabId))?.loading === false);
@@ -896,6 +905,31 @@ try {
     pk2.close();
     check("S20", "focusedEditable", before === false && after === true, { before, after });
     await cmd("nav", { tabId: kt2.tabId, action: "closeNow" });
+  }
+  // S21 (K, H): duplicate and restore tabs; device choosers.
+  {
+    const src = await cmd("open", { url: `${base}/target?from=dup1`, profile: "A" });
+    await waitFor(async () => (await tabState(src.tabId))?.loading === false);
+    await cmd("nav", { tabId: src.tabId, action: "load", url: `${base}/target?from=dup2` });
+    await waitFor(async () => (await tabState(src.tabId))?.title.startsWith("target:dup2"));
+    const dup = await cmd("duplicate", { tabId: src.tabId });
+    const dupIns = await waitFor(() => evs("didInsertTab", (e) => e.tabId === dup?.tabId)[0], 5000);
+    check("S21", "duplicateTab: the copy has the source's history, reported with the source as opener", dup && dup.entries.length === 2 && dupIns && dupIns.opener === src.tabId, { dup, opener: dupIns?.opener });
+    const bad = await cmd("restore", { state: "bm90IGEgcGlja2xl", profile: "A" });
+    const none = await cmd("restore", { profile: "A" });
+    check("S21", "restoreTab: nil for an unreadable or missing state (a real one needs nn_tab_restore_take)", bad === null && none === null, { bad, none });
+    // (A fresh page: the copy shares the URL and loads only when shown.)
+    const ut = await cmd("open", { url: `${base}/target?from=usb`, profile: "A" });
+    await waitFor(async () => (await tabState(ut.tabId))?.loading === false);
+    const pu = await attach((t) => t.url.includes("from=usb"));
+    const usb = (await pu.send("Runtime.evaluate", { expression: "Promise.race([navigator.usb.requestDevice({ filters: [] }).then(() => 'picked', (e) => e.name), new Promise((r) => setTimeout(() => r('timeout'), 8000))])", awaitPromise: true, userGesture: true, returnByValue: true })).result?.result?.value;
+    pu.close();
+    const chooser = evs("deviceChooser", (e) => e.tabId === ut.tabId && e.chooser.open)[0];
+    const closed = evs("deviceChooser", (e) => e.tabId === ut.tabId && !e.chooser.open)[0];
+    check("S21", "WebUSB requestDevice → the host's device chooser (JS DeviceChooser); cancel → NotFoundError", chooser && typeof chooser.chooser.title === "string" && Array.isArray(chooser.chooser.options) && closed && usb === "NotFoundError", { usb, title: chooser?.chooser.title, options: chooser?.chooser.options?.length });
+    await cmd("nav", { tabId: src.tabId, action: "closeNow" });
+    await cmd("nav", { tabId: ut.tabId, action: "closeNow" });
+    if (dup) await cmd("nav", { tabId: dup.tabId, action: "closeNow" });
   }
   // S16 (item 9): extension actions.
   {
@@ -1028,7 +1062,15 @@ try {
   const crashes = fs
     .readdirSync(path.join(process.env.HOME, "Library/Logs/DiagnosticReports"))
     .filter((f) => f.startsWith("NNHost") || f.startsWith("Chromium Helper"))
-    .filter((f) => fs.statSync(path.join(process.env.HOME, "Library/Logs/DiagnosticReports", f)).mtimeMs > startedAt);
+    .filter((f) => fs.statSync(path.join(process.env.HOME, "Library/Logs/DiagnosticReports", f)).mtimeMs > startedAt)
+    // Only this run's app (other agents' builds share the helper names).
+    .filter((f) => {
+      try {
+        return fs.readFileSync(path.join(process.env.HOME, "Library/Logs/DiagnosticReports", f), "utf8").includes("NNHost.app");
+      } catch {
+        return true;
+      }
+    });
   check("S1", "applicationWillTerminate: reaches NSApp.delegate at the quit's point of no return", events().some((e) => e.event === "applicationWillTerminate"), {});
   check(8, "quit: run loop ends, process exits 0, no crash report", exited && exited.code === 0 && shutdown && crashes.length === 0, {
     exit: exited,

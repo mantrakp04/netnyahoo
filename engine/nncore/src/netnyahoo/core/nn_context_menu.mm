@@ -66,7 +66,28 @@ class NNContextMenu : public RenderViewContextMenuMacCocoa {
         continue;
       }
       host_items_.push_back(base::SysNSStringToUTF8(item_id));
-      menu_model_.InsertItemAt(at++, command, base::SysNSStringToUTF16(title));
+      // "replaces": "search": in place of Chrome's own search item(s).
+      size_t place = at;
+      bool replaced = false;
+      if ([item[@"replaces"] isEqual:@"search"]) {
+        for (int chrome_id : {IDC_CONTENT_CONTEXT_SEARCHWEBFOR,
+                              IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB}) {
+          if (std::optional<size_t> index = menu_model_.GetIndexOfCommandId(chrome_id)) {
+            if (!replaced) {
+              place = *index;
+            }
+            menu_model_.RemoveItemAt(*index);
+            replaced = true;
+            if (*index < at) {
+              --at;
+            }
+          }
+        }
+      }
+      menu_model_.InsertItemAt(place, command, base::SysNSStringToUTF16(title));
+      if (!replaced || place < at) {
+        ++at;
+      }
     }
   }
 
@@ -159,7 +180,9 @@ void InstallContextMenuShowHandler() {
           }];
         }
         [delegate tab:tab didShowContextMenu:items];
-        return true;  // Background mode: logged, not shown.
+        // Background mode: logged, not shown; closed at once for the page (as a dismissal).
+        menu->MenuClosed(const_cast<ui::SimpleMenuModel*>(&model));
+        return true;
       }));
 }
 

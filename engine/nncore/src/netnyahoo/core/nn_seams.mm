@@ -24,6 +24,7 @@
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_guest.h"
 #include "netnyahoo/core/nn_browser.h"
+#include "netnyahoo/core/nn_device_chooser.h"
 #include "components/tabs/public/tab_interface.h"
 
 namespace cef {
@@ -78,7 +79,7 @@ Browser* BrowserDelegate::CreateDevToolsBrowser(
 bool HandleDeviceChooser(content::RenderFrameHost* owner,
                          std::unique_ptr<permissions::ChooserController>* c,
                          base::OnceClosure* close_closure) {
-  return false;
+  return nncore::HandleDeviceChooser(owner, c, close_closure);
 }
 
 bool WantsCastDialog(content::WebContents* initiator) {

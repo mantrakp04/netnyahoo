@@ -1246,7 +1246,10 @@ void TabBridge::DidFinishNavigation(content::NavigationHandle* handle) {
   }
   [tab_ notify:@selector(tabDidChangeURL:)];
   const int error = handle->GetNetErrorCode();
-  if (alive && handle->IsInPrimaryMainFrame() && error != net::OK) {
+  // ERR_ABORTED is a navigation that stopped or became a download, not a failure (CEF's
+  // adapter skipped it too).
+  if (alive && handle->IsInPrimaryMainFrame() && error != net::OK &&
+      error != net::ERR_ABORTED) {
     NNCoreTab* tab = tab_;
     id<NNCoreTabDelegate> delegate = tab.delegate;
     if ([delegate respondsToSelector:@selector(tab:didFailLoad:code:description:)]) {

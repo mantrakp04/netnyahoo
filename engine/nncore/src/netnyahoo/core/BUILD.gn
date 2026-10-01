@@ -23,6 +23,8 @@ source_set("core") {
     "nn_browser_window.mm",
     "nn_context_menu.h",
     "nn_context_menu.mm",
+    "nn_device_chooser.h",
+    "nn_device_chooser.mm",
     "nn_external_apps.h",
     "nn_external_apps.mm",
     "nn_lifetime.h",

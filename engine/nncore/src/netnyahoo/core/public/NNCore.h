@@ -61,6 +61,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)engine:(NNCoreEngine*)engine
     extensionInstallPrompt:(NSDictionary<NSString*, id>*)prompt
                        tab:(nullable NNCoreTab*)tab;
+// A page's device chooser (WebUSB, WebHID, Web Serial, Web Bluetooth requestDevice): JS
+// DeviceChooser without browserId, {id, open, title, okLabel, cancelLabel, noOptionsText,
+// scanningText, refreshing, canRefresh, adapterOff, unauthorized, bothButtonsEnabled,
+// showSignal, options:[{name, connected, paired, signal}]}. Sent again on every change; the
+// last one has open NO. Answer with +selectDevice:index: or +cancelDeviceChooser:.
+// Without this, Chrome's bubble.
+- (void)engine:(NNCoreEngine*)engine
+    deviceChooser:(NSDictionary<NSString*, id>*)chooser
+              tab:(NNCoreTab*)tab;
 @end
 
 NNCORE_EXPORT
@@ -99,16 +108,24 @@ NNCORE_EXPORT
                    result:(NSString*)result
                  remember:(BOOL)remember;
 + (void)resolveExtensionInstallPrompt:(NSString*)requestId accepted:(BOOL)accepted;
+// Device choosers (engine:deviceChooser:tab:). index: an option, or -1 for a scanning
+// prompt's OK.
++ (void)selectDevice:(int)chooserId index:(int)index;
++ (void)cancelDeviceChooser:(int)chooserId;
++ (void)refreshDeviceChooser:(int)chooserId;
++ (void)openDeviceChooserSettings:(int)chooserId;  // Bluetooth's system settings
 // Chrome's tracing (chrome://tracing's default categories). end: keep writes
 // "Netnyahoo Trace <date>.json" to Downloads and answers its path; else nil (discarded).
 + (void)beginTracing:(void (^)(BOOL started))completion;
 + (void)endTracing:(BOOL)keep completion:(void (^)(NSString* _Nullable path))completion;
 @property(class, readonly) BOOL isTracing;
 // Deletes a profile as Chrome's profile settings do (its Browsers close, its directory goes).
+// YES: scheduled (a page's beforeunload can still keep its window, and the profile, open).
 // NO for the default profile or an incognito one.
 - (void)deleteProfile:(NNCoreProfile*)profile
            completion:(nullable void (^)(BOOL deleted))completion;
-// An incognito profile is destroyed once nothing shows it (its data with it); no-op otherwise.
+// An incognito profile is destroyed (its data with it) if no window shows it any more; a
+// no-op otherwise, and for a regular profile.
 - (void)releaseProfile:(NNCoreProfile*)profile;
 // Answers tab:externalAppRequest:. open: launch the app (through Chrome); remember: Chrome's
 // "always allow" for that origin and scheme.
@@ -243,6 +260,18 @@ NNCORE_EXPORT
 // Moves a live tab (with its WebContents, history and opener) into this window's Browser for
 // its profile, at the end. No-op if it is already here.
 - (void)adoptTab:(NNCoreTab*)tab;
+// A tab whose back/forward list is `state` (nn_tab_restore_take's format, as CEF's
+// GetNavigationState), through Chrome's own reopen path: it arrives as the host's own tab
+// (window:didInsertTab:…). nil for a nil or unreadable state.
+// (Both answer nil when called from inside a tab-strip callback.)
+- (nullable NNCoreTab*)restoreTab:(nullable NSString*)state
+                          profile:(NNCoreProfile*)profile
+                       foreground:(BOOL)foreground;
+// A copy of `source` with its history (chrome::DuplicateTabAt), at the end of this window's
+// Browser for `profile` (the source's), reported with `source` as its opener.
+- (nullable NNCoreTab*)duplicateTab:(NNCoreTab*)source
+                            profile:(NNCoreProfile*)profile
+                         foreground:(BOOL)foreground;
 // Chrome's tab-strip index and pin state for a tab of this window (the host's order).
 - (void)placeTab:(NNCoreTab*)tab index:(int)index pinned:(BOOL)pinned;
 @end
@@ -296,7 +325,8 @@ NNCORE_EXPORT
 // "page" (window.focus()). Without this, Chrome activates it in its strip.
 - (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason;
 // The page's context menu is Chrome's own; the host adds items for a selection
-// ([{id, title}], placed after Copy; not on editable fields) and runs them.
+// ([{id, title, replaces?}], placed after Copy; not on editable fields) and runs them.
+// replaces "search": in place of Chrome's own "Search <engine> for …" item(s).
 - (NSArray<NSDictionary<NSString*, NSString*>*>*)tab:(NNCoreTab*)tab
                          contextMenuItemsForSelection:(NSString*)text;
 // modifiers: {metaKey, shiftKey, altKey} held when the item was picked.
