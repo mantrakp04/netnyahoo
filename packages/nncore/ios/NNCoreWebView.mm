@@ -88,6 +88,23 @@ bool IsRendererDebugURL(NSString *url) {
   return [hosts containsObject:c.host.lowercaseString ?: @""];
 }
 
+// Chrome names a page after its URL until the page names itself (NavigationEntryImpl::GetTitleForDisplay: the URL
+// without "http(s)://", "www." or a bare host's slash, spaces unescaped). While the page loads that stand-in isn't
+// reported: it changed the tab's title once more per load (one more store update for every listener and row), and the
+// page's own title follows within a frame or two. A page that never names itself gets it once loaded, as Chrome shows.
+NSString *ReportedTitle(NSString *title, NSString *url, BOOL loading) {
+  if (!loading || !title.length) return title ?: @"";
+  NSURLComponents *c = [NSURLComponents componentsWithString:url];
+  NSString *scheme = c.scheme.lowercaseString;
+  if ((![scheme isEqualToString:@"http"] && ![scheme isEqualToString:@"https"]) || ![[url substringWithRange:NSMakeRange(scheme.length, MIN(3, url.length - scheme.length))] isEqualToString:@"://"])
+    return title;
+  NSString *shown = [url substringFromIndex:scheme.length + 3];
+  if ([shown.lowercaseString hasPrefix:@"www."]) shown = [shown substringFromIndex:4];
+  if ([c.path isEqualToString:@"/"] && !c.query && !c.fragment && [shown hasSuffix:@"/"]) shown = [shown substringToIndex:shown.length - 1];
+  shown = [shown stringByReplacingOccurrencesOfString:@"%20" withString:@" "];
+  return [title isEqualToString:shown] ? @"" : title;
+}
+
 NSString *PNGDataURL(NSImage *image) {
   CGImageRef cg = [image CGImageForProposedRect:nil context:nil hints:nil];
   if (!cg) return nil;
@@ -865,7 +882,7 @@ NSString *JSONString(id value) {
   if (IsRendererDebugURL(url)) url = _sentNavigation[@"url"] ?: @"";
   NSDictionary *navigation = @{
         @"url" : url,
-        @"title" : _tab.title ?: @"",
+        @"title" : ReportedTitle(_tab.title, url, _tab.loading),
         @"canGoBack" : @(_tab.canGoBack),
         @"canGoForward" : @(_tab.canGoForward),
         @"isLoading" : @(_tab.loading),
