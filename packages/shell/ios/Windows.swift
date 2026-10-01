@@ -66,7 +66,9 @@ final class WindowManager: NSObject, NSWindowDelegate {
     if small { smallIds.insert(id) }
     if let chromeWindow = ChromeWindows.makeWindow(profile: profile) {
       if incognito { chromeWindow.appearance = NSAppearance(named: .darkAqua) }
-      ChromeWindows.embed(makeContentView(id), in: chromeWindow)
+      let root = makeContentView(id)
+      ChromeWindows.embed(root, in: chromeWindow)
+      holdUntilContent(chromeWindow, id: id, root: root)
       ChromeWindows.onSwap { [weak self] from, to in self?.adopt(from: from, to: to) }
       observeDelegateNotifications(chromeWindow)
       if small { configureSmall(chromeWindow) }
@@ -90,17 +92,55 @@ final class WindowManager: NSObject, NSWindowDelegate {
     windows[id] = window
     if let center = lightsCenters[id] { ChromeWindows.setTrafficLightsCenter(center, in: window) }
     if smallSize == nil { lastPlaced = window }
-    // A window opened without focus (tabs Small Yahu sends behind with no main window open) goes behind the
-    // key window instead of over it.
-    if focus {
+    if focus, unrevealed[id] != nil {
+      // Key once it shows: typing and shortcuts mustn't go to a window that can't be seen yet.
+      window.orderFront(nil)
+      unrevealed[id]!.append { [weak self, weak window] in
+        if let window, self?.windows[id] === window { window.makeKeyAndOrderFront(nil) }
+      }
+    } else if focus {
       window.makeKeyAndOrderFront(nil)
     } else if let key = NSApp.keyWindow, key !== window {
+      // A window opened without focus (tabs Small Yahu sends behind with no main window open) goes behind the
+      // key window instead of over it.
       window.order(.below, relativeTo: key.windowNumber)
     } else {
       window.orderFront(nil)
     }
     observeFrame(window)
     reportFrame(window)
+  }
+
+  // A window opened while the app runs waits, transparent, until its React content is on screen, as Dia's appear at
+  // their final frame with their content: it showed an empty window (the traffic lights alone), then its sidebar
+  // and an unpainted page, for several frames (rec1522, 20.97 s). The first windows at launch show at once.
+  private static let revealTimeout = 0.6
+  private var unrevealed: [String: [() -> Void]] = [:]
+
+  private func holdUntilContent(_ window: NSWindow, id: String, root: NSView) {
+    guard windows.values.contains(where: { $0.isVisible && isBrowserWindow($0) }) else { return }
+    window.alphaValue = 0
+    unrevealed[id] = []
+    var observer: NSObjectProtocol?
+    let reveal: () -> Void = { [weak self, weak window] in
+      if let observer { NotificationCenter.default.removeObserver(observer) }
+      observer = nil
+      guard let self, let waiting = self.unrevealed.removeValue(forKey: id) else { return }
+      window?.alphaValue = 1
+      // On screen now, before making it key and the rest.
+      CATransaction.flush()
+      waiting.forEach { $0() }
+    }
+    // Posted (a turn after the root's first view went in) once the batch that mounted the content is done.
+    observer = NotificationCenter.default.addObserver(forName: Notification.Name("RCTContentDidAppearNotification"), object: root, queue: .main) {
+      _ in reveal()
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.revealTimeout, execute: reveal)
+  }
+
+  /// `then` once the window shows its content (now, if it does or isn't one of ours).
+  func whenRevealed(_ id: String, _ then: @escaping () -> Void) {
+    if unrevealed[id] != nil { unrevealed[id]!.append(then) } else { then() }
   }
 
   private func observeFrame(_ window: NSWindow) {
@@ -221,6 +261,11 @@ final class WindowManager: NSObject, NSWindowDelegate {
       // Keep Chrome Browser alive until tabs finish moving out.
       NotificationCenter.default.removeObserver(self, name: nil, object: window)
       windows[id] = nil
+      // Off the screen at once: its React content goes before the window does (and Chrome fades a closing window
+      // out), which showed an empty window with its traffic lights for a few frames (rec1522, 21 s).
+      window.animationBehavior = .none
+      window.orderOut(nil)
+      if let waiting = unrevealed.removeValue(forKey: id) { waiting.forEach { $0() } }
       lightsCenters[id] = nil
       auxKinds[id] = nil
       smallIds.remove(id)
@@ -431,7 +476,12 @@ final class DragPreview {
   }
 
   private var panel: Panel?
+  // The card's rim (corners, border, clip) and the picture in it.
+  private let rim = CALayer()
   private let picture = CALayer()
+  // Growing into a new window: the picture is the whole window, width-fit and top-aligned, so it lines up with the
+  // window it becomes (height ÷ width); 0 otherwise (the picture fills the panel).
+  private var windowAspect: CGFloat = 0
   private weak var source: NSWindow?
   private var sourceClosing: NSObjectProtocol?
   private var windowImage: CGImage?
@@ -479,7 +529,7 @@ final class DragPreview {
     pageImage = (image, frame)
     placeholder = false
     composeCard()
-    if shape == "card" { picture.contents = cardImage }
+    if shape == "card" { show(cardImage) }
   }
 
   /// A tab never painted (asleep, not shown since launch): its icon and title where its page would be.
@@ -517,7 +567,7 @@ final class DragPreview {
     pageImage = (cg, page)
     placeholder = true
     composeCard()
-    if shape == "card" { picture.contents = cardImage }
+    if shape == "card" { show(cardImage) }
   }
 
   /// `shape`: "hidden", "pill" (over another window's tabs) or "card"; `at`: the pointer in the source window from its
@@ -558,11 +608,13 @@ final class DragPreview {
   }
 
   /// The drag ended. `windowId`: the new window the tab went to (`fallback`: the frame it asked for, on screen);
-  /// the card grows into the window's real frame (Dia: 0.2 s) before it fades. Otherwise the card fades at once.
+  /// the card grows into the window's real frame (Dia: 0.2 s), a picture of the whole window lined up with it, and
+  /// fades once the window shows its content (it waits, transparent, until then: WindowManager.whenRevealed).
+  /// Otherwise the card fades at once.
   func end(windowId: String?, fallback: NSRect?) {
     let panel = self.panel
     let showing = shape != "hidden"
-    let card = cardImage
+    let whole = windowId != nil ? composeWindow() : nil
     release()
     guard let panel, showing else {
       panel?.orderOut(nil)
@@ -574,17 +626,21 @@ final class DragPreview {
       self.animate(panel, to: panel.frame, alpha: 0, duration: Self.fadeOut) { panel.orderOut(nil) }
     }
     guard let windowId, let fallback, fallback.width > 0 else { return fade() }
-    picture.contents = card
+    if let whole { show(whole.image, windowAspect: whole.aspect) }
     // The window opens a moment later, placed by AppKit (kept on its screen, below the menu bar).
     var tries = 0
     func grow() {
       guard generation == gen else { return }
-      if let window = WindowManager.shared.windows[windowId], window.isVisible {
-        return animate(panel, to: window.frame, alpha: 1, duration: Self.grow, then: fade)
+      guard let window = WindowManager.shared.windows[windowId] else {
+        tries += 1
+        if tries > 20 { return animate(panel, to: fallback, alpha: 1, duration: Self.grow, then: fade) }
+        return DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) { grow() }
       }
-      tries += 1
-      if tries > 20 { return animate(panel, to: fallback, alpha: 1, duration: Self.grow, then: fade) }
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) { grow() }
+      // Over the new window until it shows (a floating panel is anyway).
+      if background { panel.order(.above, relativeTo: window.windowNumber) }
+      animate(panel, to: window.frame, alpha: 1, duration: Self.grow) {
+        WindowManager.shared.whenRevealed(windowId, fade)
+      }
     }
     grow()
   }
@@ -601,6 +657,7 @@ final class DragPreview {
     generation += 1
     shape = "hidden"
     wanted = "hidden"
+    windowAspect = 0
     if let sourceClosing { NotificationCenter.default.removeObserver(sourceClosing) }
     sourceClosing = nil
     source = nil
@@ -652,6 +709,7 @@ final class DragPreview {
       let mix = { (a: CGFloat, b: CGFloat) in a + (b - a) * e }
       panel.setFrame(NSRect(x: mix(from.minX, target.minX), y: mix(from.minY, target.minY), width: mix(from.width, target.width),
         height: mix(from.height, target.height)), display: true)
+      self?.layoutPicture()
       panel.alphaValue = mix(fromAlpha, alpha)
       guard t >= 1 else { return }
       timer.invalidate()
@@ -677,12 +735,14 @@ final class DragPreview {
     let view = NSView(frame: panel.contentLayoutRect)
     view.wantsLayer = true
     view.autoresizingMask = [.width, .height]
-    picture.frame = view.bounds
-    picture.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+    rim.frame = view.bounds
+    rim.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+    rim.masksToBounds = true
+    rim.borderWidth = 0.5
+    picture.frame = rim.bounds
     picture.contentsGravity = .resizeAspectFill
-    picture.masksToBounds = true
-    picture.borderWidth = 0.5
-    view.layer?.addSublayer(picture)
+    rim.addSublayer(picture)
+    view.layer?.addSublayer(rim)
     panel.contentView = view
     self.panel = panel
     return panel
@@ -694,11 +754,13 @@ final class DragPreview {
     // The pill keeps the pointer where it held the tab; the card is centred on it.
     let offset = pill ? grab : NSPoint(x: size.width / 2, y: size.height / 2)
     let frame = NSRect(x: (point.x - offset.x).rounded(), y: (point.y - size.height + offset.y).rounded(), width: size.width, height: size.height)
+    // The picture changes at once, and the pill's is never scaled up to fill the card: a cross-fade from the pill
+    // filled the growing card with its title (rec1522: "ease notes -" across the card).
+    show(pill ? pillImage : cardImage, fit: pill)
     CATransaction.begin()
-    CATransaction.setDisableActions(!animated)
-    picture.contents = pill ? pillImage : cardImage
-    picture.cornerRadius = pill ? 10 : 4
-    picture.borderColor = NSColor(white: 1, alpha: pill ? 0.15 : 0.3).cgColor
+    CATransaction.setDisableActions(true)
+    rim.cornerRadius = pill ? 10 : 4
+    rim.borderColor = NSColor(white: 1, alpha: pill ? 0.15 : 0.3).cgColor
     CATransaction.commit()
     if animated, panel.frame.size != frame.size {
       animate(panel, to: frame, alpha: 1, duration: Self.morph)
@@ -707,6 +769,53 @@ final class DragPreview {
     } else {
       desired = frame
     }
+    layoutPicture()
+  }
+
+  /// Shows `image` with no implicit cross-fade: `fit` inside the panel (the pill, while it morphs), else filling it;
+  /// `windowAspect` > 0: the whole window, lined up as it grows.
+  private func show(_ image: CGImage?, windowAspect: CGFloat = 0, fit: Bool = false) {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    self.windowAspect = windowAspect
+    picture.contents = image
+    picture.contentsGravity = windowAspect > 0 ? .resize : fit ? .resizeAspect : .resizeAspectFill
+    CATransaction.commit()
+    layoutPicture()
+  }
+
+  private func layoutPicture() {
+    guard let bounds = panel?.contentView?.bounds else { return }
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    rim.frame = bounds
+    if windowAspect > 0 {
+      let height = bounds.width * windowAspect
+      picture.frame = CGRect(x: 0, y: bounds.height - height, width: bounds.width, height: height)
+    } else {
+      picture.frame = bounds
+    }
+    CATransaction.commit()
+  }
+
+  // The whole source window with the page painted in: the card grows into the new window as this, which lines up
+  // with it (same size and layout) where the card's top crop scaled to the window's aspect didn't (doubled pages).
+  private func composeWindow() -> (image: CGImage, aspect: CGFloat)? {
+    guard let window = source, let base = windowImage else { return nil }
+    let size = window.frame.size
+    guard size.width > 0, size.height > 0 else { return nil }
+    let width = base.width, height = base.height
+    let scale = CGFloat(width) / size.width
+    guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+    ctx.interpolationQuality = .high
+    ctx.draw(base, in: CGRect(x: 0, y: 0, width: width, height: height))
+    if let page = pageImage {
+      let r = page.frame
+      ctx.draw(page.image, in: CGRect(x: r.minX * scale, y: CGFloat(height) - r.maxY * scale, width: r.width * scale, height: r.height * scale))
+    }
+    guard let image = ctx.makeImage() else { return nil }
+    return (image, size.height / size.width)
   }
 
   // The window with the page painted in, at the card's aspect from the top (title bar and tabs kept).
