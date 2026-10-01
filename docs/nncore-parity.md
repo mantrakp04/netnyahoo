@@ -23,8 +23,13 @@ Keep this list short and shrinking; each item names its owner.
    extension; the NNCore build found and read every one (21/21) without `NETNYAHOO_DATA_DIR`. Left for the owner:
    the real login keychain's item, which no hidden run reads (both binaries name it "Netnyahoo Safe Storage", and
    smoke.sh checks the build satisfies 0.2.21's designated requirement, which the item's access trusts).
-3. **Session cookies are dropped at every launch** (CEF restores them; NNCore's profile prefs don't): users would
-   be signed out at the switch and after every restart. Fix in `ConfigureNetworkContextParams`. *Engine helper.*
+   Going back works too (`rollback.sh`): 0.2.21 → the RC → 0.2.21 on the same folder keeps everything from both
+   sessions (tabs, passwords, bookmarks, history, zoom, the extension's setting, persistent cookies, localStorage),
+   with no crash and no profile reset (the same Chrome version, so no newer-profile handling; Local State,
+   Preferences and Sessions intact). Only session cookies don't come back, because 0.2.21 drops them at every launch.
+3. ~~**Session cookies**~~ done: NNCore keeps them across launches (09fe90cc), and keeps 0.2.21's at the switch
+   (`carryover.sh`). 0.2.21 itself drops session cookies at every launch (its own restart loses them; measured with
+   `rollback.sh`), so this is a gain over CEF, not parity.
 4. **The content blocker blocks nothing** in a production build (uBlock Origin Lite installed and indexed, no
    request blocked). *Fixes helper.*
 5. **Private-window privacy**: an off-the-record tab Chrome makes (an extension's

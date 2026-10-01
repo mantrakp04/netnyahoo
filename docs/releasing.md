@@ -120,6 +120,10 @@ two profiles with tabs, persistent and session cookies, localStorage, saved pass
 a site permission, a zoom level and an unpacked extension, and the new build, started without `NETNYAHOO_DATA_DIR`,
 must find and read all of it. Both run as test copies (bundle id `com.netnyahoo.browser.carryover`, signed ad hoc) in
 a fake home (`HOME` and `CFFIXED_USER_HOME`), so the real app's data, defaults and keychain are never touched.
+`rollback.sh <previous app> <new app>` (not part of smoke.sh) checks going back on the same setup: the previous build,
+then the new one adding a second session, then the previous one again must show both sessions' data without crashing
+or resetting the profile. 0.2.21 → 0.2.22 → 0.2.21 keeps everything but session cookies, which 0.2.21 drops at every
+launch anyway.
 
 `update-test.sh` runs Sparkle itself: the previous build's `Sparkle.framework` (through `sparkle-host.swift`) reads a
 local feed made of the release appcast's own item, downloads the zip, checks its EdDSA signature, extracts it and runs

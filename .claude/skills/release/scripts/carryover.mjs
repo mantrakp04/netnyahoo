@@ -6,6 +6,11 @@
 //   node carryover.mjs read <new app> <home> <cdp port> <pages origin> <created.json> <out.json>
 //     The new build with no NETNYAHOO_DATA_DIR, so it finds the installed copy's folder itself. Reads the same things
 //     and prints a PASS/FAIL line for each; exits 1 on any FAIL.
+//   node carryover.mjs use <new app> <home> <cdp port> <pages origin> - <used.json>          (rollback.sh)
+//     The new build adds a second session: a tab with persistent and session cookies and localStorage, a visit, a
+//     password, a bookmark, a zoom level, and the extension turned off. Reads it all back, quits.
+//   node carryover.mjs back <previous app> <home> <cdp port> <pages origin> <used.json> <out.json>  (rollback.sh)
+//     The previous build again (NETNYAHOO_DATA_DIR set, as in create): everything from both sessions must be there.
 // The apps run hidden (NETNYAHOO_BACKGROUND=1, which also keeps them off the login keychain) with HOME and
 // CFFIXED_USER_HOME at <home>; their data folder is named after their (test) bundle id.
 import { execFileSync, execSync } from "node:child_process";
@@ -30,7 +35,7 @@ const pids = () => { try { return execSync(`pgrep -f '^${exe}'`).toString().trim
 const before = new Set(pids());
 const env = ["NETNYAHOO_BACKGROUND=1", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, `HOME=${home}`, `CFFIXED_USER_HOME=${home}`,
   "NETNYAHOO_TEST_REAUTH=granted", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows"];
-if (phase === "create") env.push(`NETNYAHOO_DATA_DIR=${docs}`);
+if (phase === "create" || phase === "back") env.push(`NETNYAHOO_DATA_DIR=${docs}`);
 execFileSync("open", ["-g", "-n", ...env.flatMap((e) => ["--env", e]), app]);
 for (let i = 0; i < 40 && !pid; i++) { await sleep(500); pid = pids().find((p) => !before.has(p)) ?? null; }
 if (!pid) { console.error("carryover: the app didn't start"); process.exit(2); }
@@ -122,7 +127,24 @@ try {
         .then(() => globalThis.expo.modules.NetnyahooExtensions.install(${JSON.stringify(extra)}, ""));`, 60_000);
     await sleep(4000);
   }
+  if (phase === "use") {
+    const W = JSON.stringify(w);
+    await inApp(`nn.actions.switchProfile(${W}, "default"); nn.actions.switchToTab(nn.store.getState().newTab(${W}, { url: "${origin}/page3.html", profileId: "default" })); return 1;`);
+    report.setNew = await inPage("page3.html", `document.cookie = "n_persist=yes; max-age=31536000; path=/"; document.cookie = "n_session=yes; path=/"; localStorage.setItem("n_ls", "yes"); document.cookie`);
+    report.made = await inApp(`
+      const s = nn.store.getState(), C = globalThis.expo.modules.NetnyahooCEF, X = globalThis.expo.modules.NetnyahooExtensions, O = ${JSON.stringify(origin)};
+      s.addBookmark({ profileId: "default", url: O + "/page3.html", title: "New build bookmark" });
+      return C.savePassword("", O, "carol", "pw-new-789")
+        .then(() => C.setZoom("", "localhost", 0.9))
+        .then(() => X.list(""))
+        .then((l) => { const e = ((l && l.extensions) || []).find((e) => e.name === "NNCore spike extension"); return e ? X.setEnabled(e.id, "", false) : "no extension"; });`, 60_000);
+    await sleep(4000);
+  }
   report.read = await inApp(READ, 90_000);
+  if (phase === "use" || phase === "back") {
+    await show("/page3/"); await sleep(2500);
+    report.read["New build page"] = await inPage("page3.html", `document.cookie + "; localStorage " + localStorage.getItem("n_ls")`);
+  }
   // Cookies and localStorage as each profile's page sees them (showing a tab loads it).
   await show("/work/"); await sleep(2500);
   report.read["Work page"] = await inPage("work.html", `document.cookie + "; localStorage " + localStorage.getItem("w_ls")`);
@@ -143,6 +165,12 @@ for (let i = 0; i < 60 && alive(); i++) await sleep(500);
 report.quit = !alive();
 if (alive()) process.kill(Number(pid), "SIGKILL");
 
+if (phase === "use") {
+  fs.writeFileSync(out, JSON.stringify(report, null, 2));
+  const ok = !report.error && report.quit && /n_session/.test(report.setNew) && /pw-new-789/.test(JSON.stringify(report.read)) && /\(off\)/.test(JSON.stringify(report.read));
+  if (!ok) { console.log(`FAIL  the new build added its session  (${report.error ?? JSON.stringify(report).slice(0, 300)})`); process.exit(1); }
+  process.exit(0);
+}
 if (phase === "create") {
   fs.writeFileSync(out, JSON.stringify(report, null, 2));
   // Everything the run made must read back as made, or a later "carried over" compares nothing.
@@ -166,18 +194,24 @@ const created = JSON.parse(fs.readFileSync(extra, "utf8")).read;
 fs.writeFileSync(out, JSON.stringify(report, null, 2));
 let failed = !!report.error;
 if (report.error) console.log(`FAIL  the new build read the data  (${report.error})`);
+// Key order aside (Chrome lists zoom levels in its own order).
+const stable = (v) => JSON.stringify(v, (k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x));
+// The previous build may drop session cookies at its own launch (0.2.21 does, at every launch): reported, not failed.
+const sessionless = (v) => (typeof v === "string" ? v.replace(/\w+_session=yes; /g, "") : v);
 const line = (ok, name, detail) => { console.log(`${ok ? "PASS" : "FAIL"}  carried over: ${name}${detail ? `  (${detail})` : ""}`); if (!ok) failed = true; };
 const expected = path.join(docs, "Chromium");
-line(report.read?.dataDirectory?.replace(/^\/private/, "") === expected.replace(/^\/private/, ""), "the installed copy's folder, found without NETNYAHOO_DATA_DIR", report.read?.dataDirectory);
+if (phase !== "back") line(report.read?.dataDirectory?.replace(/^\/private/, "") === expected.replace(/^\/private/, ""), "the installed copy's folder, found without NETNYAHOO_DATA_DIR", report.read?.dataDirectory);
 for (const [key, was] of Object.entries(created)) {
   if (key === "dataDirectory") continue;
   const now = report.read?.[key];
   // History may gain entries; every earlier one must still be there.
   const failedRead = typeof now === "string" && now.startsWith("error:");
-  const ok = !failedRead && key.endsWith(" history") && Array.isArray(was) && Array.isArray(now) ? was.every((u) => now.includes(u)) : !failedRead && JSON.stringify(now) === JSON.stringify(was);
+  const ok = !failedRead && key.endsWith(" history") && Array.isArray(was) && Array.isArray(now) ? was.every((u) => now.includes(u)) : !failedRead && (stable(now) === stable(was) || (phase === "back" && key.endsWith(" page") && sessionless(now) === sessionless(was)));
+  if (phase === "back" && key.endsWith(" page") && ok && stable(now) !== stable(was))
+    console.log(`INFO  ${key}: the previous build dropped session cookies at launch (${(String(was).match(/\w+_session/g) || []).join(", ")})`);
   const shown = JSON.stringify(now ?? null);
   line(ok, key, ok ? shown.slice(0, 120) : `${JSON.stringify(was).slice(0, 150)} → ${shown.slice(0, 150)}`);
 }
 line(report.realHomeFiles?.length === 0, "nothing opened in the real home's Netnyahoo folders", report.realHomeFiles?.slice(0, 2).join(", "));
-line(report.quit, "the new build quits on the quit Apple event");
+line(report.quit, "it quits on the quit Apple event");
 process.exit(failed ? 1 : 0);
