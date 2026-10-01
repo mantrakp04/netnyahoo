@@ -49,6 +49,7 @@ NSString *DirectoryName(NSString *name) {
 namespace {
 NNCoreBootstrapDelegate *gBootstrap;
 void (^gEventHandler)(NSString *, NSDictionary *);
+void (^gChromeUIHandler)(NSString *, NSDictionary *);
 }  // namespace
 
 // MARK: - Engine delegate
@@ -115,14 +116,22 @@ void (^gEventHandler)(NSString *, NSDictionary *);
   if (gEventHandler) gEventHandler(@"permission", payload);
 }
 
+- (void)engine:(NNCoreEngine *)engine extensionSidePanel:(NSDictionary *)panel tab:(NNCoreTab *)tab {
+  NSMutableDictionary *payload = [panel mutableCopy];
+  payload[@"browserId"] = @(tab ? nncore_host::BrowserId(tab) : 0);
+  if (gChromeUIHandler) gChromeUIHandler(@"sidePanel", payload);
+}
+
 - (void)engine:(NNCoreEngine *)engine permissionRequestDismissed:(NSString *)requestId {
   if (gEventHandler) gEventHandler(@"permissionDismissed", @{@"id" : requestId ?: @""});
 }
 
 - (NNCoreWindow *)engineWindowForNewBrowserOfProfile:(NNCoreProfile *)profile type:(NSString *)type {
-  // Windows Chrome makes itself (chrome.windows.create, an incognito window, undocked DevTools, PiP) keep
-  // Chrome's own for now; stage 2 routes normal and popup ones through the app's window manager.
-  return nil;
+  // Normal and popup windows Chrome makes (chrome.windows.create): a hidden window of ours holds the Browser, and its
+  // tabs go to the app's windows as tabs Chrome made (tab:<id>), live, as the app places them. Undocked DevTools and
+  // Picture in Picture keep Chrome's own windows.
+  if (![type isEqualToString:@"normal"] && ![type isEqualToString:@"popup"]) return nil;
+  return [NNCoreWindowController strayWindowForProfile:profile].coreWindow;
 }
 
 @end
@@ -185,10 +194,70 @@ void (^gEventHandler)(NSString *, NSDictionary *);
   gEventHandler = [handler copy];
 }
 
++ (void (^)(NSString *, NSDictionary *))chromeUIHandler {
+  return gChromeUIHandler;
+}
+
++ (void)setChromeUIHandler:(void (^)(NSString *, NSDictionary *))handler {
+  gChromeUIHandler = [handler copy];
+}
+
++ (void)resolveExternalApp:(NSString *)requestId open:(BOOL)open remember:(BOOL)remember {
+  if ([NNCoreEngine respondsToSelector:@selector(resolveExternalApp:open:remember:)])
+    [NNCoreEngine resolveExternalApp:requestId open:open remember:remember];
+}
+
++ (NSDictionary *)actionStates:(int)browserId extensions:(NSArray<NSString *> *)ids {
+  NNCoreTab *tab = nncore_host::TabWithBrowserId(browserId);
+  return [tab respondsToSelector:@selector(actionStatesForExtensions:)] ? [tab actionStatesForExtensions:ids] ?: @{} : @{};
+}
+
++ (NSString *)sidePanelURL:(int)browserId extension:(NSString *)extensionId {
+  NNCoreTab *tab = nncore_host::TabWithBrowserId(browserId);
+  return [tab respondsToSelector:@selector(sidePanelURLForExtension:)] ? [tab sidePanelURLForExtension:extensionId] : nil;
+}
+
 + (void)resolvePermission:(NSString *)requestId result:(NSString *)result remember:(BOOL)remember {
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   if ([engine respondsToSelector:@selector(resolvePermission:result:remember:)])
     [engine resolvePermission:requestId result:result remember:remember];
+}
+
++ (NSArray<NSDictionary<NSString *, id> *> *)displayMediaSources {
+  NSMutableArray *sources = [NSMutableArray array];
+  NSUInteger index = 0;
+  for (NSScreen *screen in NSScreen.screens) {
+    NSNumber *display = screen.deviceDescription[@"NSScreenNumber"];
+    index++;
+    [sources addObject:@{
+      @"id" : [NSString stringWithFormat:@"screen:%u:0", display.unsignedIntValue],
+      @"kind" : @"screen",
+      @"name" : screen.localizedName ?: [NSString stringWithFormat:@"Screen %lu", (unsigned long)index],
+      @"width" : @(screen.frame.size.width),
+      @"height" : @(screen.frame.size.height),
+    }];
+  }
+  NSArray *windows = CFBridgingRelease(
+      CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
+  const pid_t me = getpid();
+  for (NSDictionary *w in windows) {
+    if ([w[(id)kCGWindowLayer] intValue] != 0 || [w[(id)kCGWindowOwnerPID] intValue] == me) continue;
+    NSDictionary *bounds = w[(id)kCGWindowBounds];
+    const CGFloat width = [bounds[@"Width"] doubleValue], height = [bounds[@"Height"] doubleValue];
+    if (width < 50 || height < 50) continue;
+    NSString *app = w[(id)kCGWindowOwnerName] ?: @"";
+    NSString *title = w[(id)kCGWindowName];
+    [sources addObject:@{
+      @"id" : [NSString stringWithFormat:@"window:%u:0", [w[(id)kCGWindowNumber] unsignedIntValue]],
+      @"kind" : @"window",
+      @"name" : title.length ? title : app,
+      @"app" : app,
+      @"pid" : w[(id)kCGWindowOwnerPID] ?: @0,
+      @"width" : @(width),
+      @"height" : @(height),
+    }];
+  }
+  return sources;
 }
 
 + (BOOL)isStarted {

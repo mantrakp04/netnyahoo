@@ -130,6 +130,26 @@ bool IsReservedKey(NSEvent *event) {
   NSHashTable<NNCoreTab *> *_closing;
 }
 
++ (instancetype)strayWindowForProfile:(NNCoreProfile *)profile {
+  NNCoreWindow *coreWindow = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)];
+  if (!coreWindow.window) return nil;
+  NNCoreWindowController *controller = [[NNCoreWindowController alloc] initWithCoreWindow:coreWindow];
+  controller->_stray = YES;
+  [Controllers() setObject:controller forKey:coreWindow.window];
+  return controller;
+}
+
+// The app's window to hand a stray tab to: one showing the tab's profile, else any.
++ (NNCoreWebView *)hostingViewForProfile:(NNCoreProfile *)profile {
+  NNCoreWebView *any = nil;
+  for (NNCoreWindowController *c in Controllers().objectEnumerator) {
+    if (c.stray) continue;
+    if (NNCoreWebView *view = [c anyShownViewForProfile:profile]) return view;
+    any = any ?: [c anyView];
+  }
+  return any;
+}
+
 + (instancetype)holding:(NNCoreTab *)tab {
   NNCoreProfile *profile = tab.profile;
   if (!profile) return nil;
@@ -203,6 +223,12 @@ bool IsReservedKey(NSEvent *event) {
   [NNCoreTabStrip changedInWindow:self profile:tab.profile];
   // The app's own (a WebView opening its tab, or adopting one): the view attaches it itself.
   if (_hostChanges > 0 || [NNCoreTabs viewForTab:tab]) return;
+  if (_stray) {
+    // A window Chrome made (chrome.windows.create): the tab goes to the app's windows, as a tab Chrome made.
+    NNCoreWebView *view = [NNCoreWindowController hostingViewForProfile:tab.profile];
+    if (view) [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
+    return;
+  }
   NNCoreWebView *openerView = [self viewFor:opener];
   if (openerView) {
     // A page's popup, target=_blank or ⌘-click: placed by the app's opener rules.
@@ -226,6 +252,17 @@ bool IsReservedKey(NSEvent *event) {
 - (void)window:(NNCoreWindow *)window didRemoveTab:(NNCoreTab *)tab {
   if (NNCoreProfile *profile = tab.profile) [NNCoreTabStrip changedInWindow:self profile:profile];
   [[self viewFor:tab] tabRemovedFromWindow:window];
+  if (_stray) {
+    // Its last tab went to the app's windows: the hidden window goes too.
+    __weak NNCoreWindowController *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NNCoreWindowController *c = weakSelf;
+      if (!c) return;
+      for (NNCoreProfile *p in nncore_host::LoadedProfiles())
+        if ([c.coreWindow tabsForProfile:p].count) return;
+      [c.coreWindow close];
+    });
+  }
   // After Chrome picked the next active tab (it does before it reports the removal).
   dispatch_async(dispatch_get_main_queue(), ^{ [self->_closing removeObject:tab]; });
 }

@@ -19,6 +19,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property(class, readonly) NSArray<NSDictionary<NSString *, id> *> *chromeWindows;
 // The NetnyahooCEF module's events that don't belong to one view ("permission", "permissionDismissed"…).
 @property(class, nonatomic, copy, nullable) void (^eventHandler)(NSString *name, NSDictionary<NSString *, id> *payload);
+// Screens and other apps' windows the app's screen-share picker offers (as packages/cef's).
+@property(class, readonly) NSArray<NSDictionary<NSString *, id> *> *displayMediaSources;
+// The NetnyahooChromeUI module's events ("sidePanel"…).
+@property(class, nonatomic, copy, nullable) void (^chromeUIHandler)(NSString *name, NSDictionary<NSString *, id> *payload);
++ (void)resolveExternalApp:(NSString *)requestId open:(BOOL)open remember:(BOOL)remember NS_SWIFT_NAME(resolveExternalApp(_:open:remember:));
++ (NSDictionary<NSString *, id> *)actionStates:(int)browserId extensions:(NSArray<NSString *> *)ids NS_SWIFT_NAME(actionStates(browserId:extensions:));
++ (nullable NSString *)sidePanelURL:(int)browserId extension:(NSString *)extensionId NS_SWIFT_NAME(sidePanelURL(browserId:extension:));
 + (void)resolvePermission:(NSString *)requestId result:(NSString *)result remember:(BOOL)remember
     NS_SWIFT_NAME(resolvePermission(_:result:remember:));
 

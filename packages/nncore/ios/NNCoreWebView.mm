@@ -222,10 +222,6 @@ NSString *JSONString(id value) {
   return _tab ? _tab.tabId : 0;
 }
 
-- (BOOL)discarded {
-  return NO;
-}
-
 - (NNCoreWindowController *)controller {
   return [NNCoreWindowController forNSWindow:self.window];
 }
@@ -325,6 +321,7 @@ NSString *JSONString(id value) {
   [self layoutPage];
   [self applyPainting];
   if (_muted && [tab respondsToSelector:@selector(setMuted:)]) tab.muted = YES;
+  if (_pageBackgroundColor && [tab respondsToSelector:@selector(setPageBackgroundColor:)]) tab.pageBackgroundColor = _pageBackgroundColor;
   if (_pendingURL) {
     [self loadNow:_pendingURL userInitiated:NO];
     _pendingURL = nil;
@@ -500,6 +497,12 @@ NSString *JSONString(id value) {
 
 - (void)setFrozen:(BOOL)frozen {
   _frozen = frozen;
+  if ([_tab respondsToSelector:@selector(setFrozen:)]) _tab.frozen = frozen;
+}
+
+- (void)setPageBackgroundColor:(NSColor *)color {
+  _pageBackgroundColor = color;
+  if ([_tab respondsToSelector:@selector(setPageBackgroundColor:)]) _tab.pageBackgroundColor = color;
 }
 
 // MARK: Events
@@ -881,10 +884,20 @@ NSString *JSONString(id value) {
 }
 
 - (void)requestPictureInPicture:(void (^)(BOOL))completion {
-  completion(NO);
+  if (![_tab respondsToSelector:@selector(evaluate:completion:)]) return completion(NO);
+  [_tab evaluate:@"(async () => {"
+                  "  const videos = [...document.querySelectorAll('video')].filter(v => v.readyState > 0 && !v.disablePictureInPicture);"
+                  "  videos.sort((a, b) => (b.paused ? 0 : 1) - (a.paused ? 0 : 1) || b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);"
+                  "  if (!videos.length) return post('result', 'false');"
+                  "  if (document.pictureInPictureElement === videos[0]) return post('result', 'true');"
+                  "  try { await videos[0].requestPictureInPicture(); post('result', 'true'); } catch (e) { post('result', 'false'); }"
+                  "})()"
+      completion:^(NSString *json) { completion([json isEqualToString:@"true"]); }];
 }
 
 - (void)exitPictureInPicture {
+  [self executeJavaScript:@"document.pictureInPictureElement && document.exitPictureInPicture();"
+                           "window.documentPictureInPicture && documentPictureInPicture.window && documentPictureInPicture.window.close()"];
 }
 
 - (void)securityInfo:(void (^)(NSDictionary<NSString *, id> *))completion {
@@ -920,7 +933,7 @@ NSString *JSONString(id value) {
 }
 
 - (NSString *)executeExtensionAction:(NSString *)extensionId {
-  return nil;
+  return [_tab respondsToSelector:@selector(executeExtensionAction:)] ? [_tab executeExtensionAction:extensionId] : nil;
 }
 
 - (void)resolveDisplayMedia:(NSString *)requestId sourceId:(NSString *)sourceId {
@@ -944,10 +957,36 @@ NSString *JSONString(id value) {
 }
 
 - (void)resolveUnresponsive:(BOOL)terminate {
+  if ([_tab respondsToSelector:@selector(resolveUnresponsive:)]) [_tab resolveUnresponsive:terminate];
 }
 
 - (BOOL)discard:(BOOL)unload {
-  return NO;
+  return [_tab respondsToSelector:@selector(discard)] && [_tab discard];
+}
+
+- (BOOL)discarded {
+  return [_tab respondsToSelector:@selector(discarded)] && _tab.discarded;
+}
+
+- (void)tabDidChangeDiscarded:(NNCoreTab *)tab {
+  // As CEF's onDiscarded: the page's URL, to load again when it shows.
+  if (tab.discarded) [self emit:@"discarded" payload:@{@"url" : tab.url ?: @""}];
+}
+
+- (void)tabBecameUnresponsive:(NNCoreTab *)tab {
+  [self emit:@"unresponsive" payload:@{}];
+}
+
+- (void)tabBecameResponsive:(NNCoreTab *)tab {
+  [self emit:@"responsive" payload:@{}];
+}
+
+- (void)tab:(NNCoreTab *)tab didChangeMediaAccess:(NSDictionary<NSString *, NSNumber *> *)access {
+  [self emit:@"mediaAccess" payload:access ?: @{}];
+}
+
+- (void)tab:(NNCoreTab *)tab externalAppRequest:(NSDictionary<NSString *, id> *)request {
+  [self emit:@"externalApp" payload:request ?: @{}];
 }
 
 @end

@@ -73,7 +73,7 @@ const stdout = join(scratch, "app.out.log");
 const pidsBefore = new Set(pgrep());
 execFileSync("open", [
   "-g", "-n",
-  "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
+  "--env", "NETNYAHOO_BACKGROUND=1", "--env", "NETNYAHOO_TEST_REAUTH=granted", "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
   "--stdout", stdout, "--stderr", stdout,
   app,
 ]);
@@ -161,6 +161,7 @@ const state = () =>
 
 async function check(name, fn) {
   if (only.length && !only.includes(name)) return;
+  if ((process.env.SKIP ?? "").split(",").includes(name)) return;
   const started = Date.now();
   try {
     const evidence = await fn();
@@ -403,6 +404,117 @@ try {
     const after = await lights();
     if (during !== before || after !== before) throw new Error(`lights moved: ${before} → ${during} → ${after}`);
     return { lights: before };
+  });
+
+  const cef = (call) => evalApp(`return globalThis.expo.modules.NetnyahooCEF.${call}`);
+  const exts = (call) => evalApp(`return globalThis.expo.modules.NetnyahooExtensions.${call}`);
+
+  await check("passwords", async () => {
+    // Chrome's password store through //chrome/browser/netnyahoo (nn_passwords_*).
+    const origin = "https://example.test";
+    const saved = await cef(`savePassword("", "${origin}", "nnuser", "s3cret")`);
+    if (saved?.error) throw new Error(saved.error);
+    const list = await until("the saved login", async () => {
+      const r = await cef(`listPasswords("")`);
+      return r.passwords?.find((p) => p.username === "nnuser") ? r : null;
+    });
+    const revealed = await cef(`getPassword("", "${origin}", "nnuser")`);
+    await cef(`deletePassword("", "${origin}", "nnuser")`);
+    const after = await cef(`listPasswords("")`);
+    if (after.passwords?.some((p) => p.username === "nnuser")) throw new Error("not deleted");
+    const autofill = await cef(`getPasswordAutofill("")`);
+    await cef(`setPasswordAutofill("", false)`);
+    const off = await cef(`getPasswordAutofill("")`);
+    await cef(`setPasswordAutofill("", true)`);
+    return { listed: list.passwords.length, revealed: revealed?.password ?? revealed, autofill, off };
+  });
+
+  await check("autofill", async () => {
+    const saved = await cef(`saveAddress("", { fullName: "Big Yahu", city: "Tel Aviv", country: "IL" })`);
+    if (saved?.error) throw new Error(saved.error);
+    const list = await until("the address", async () => {
+      const r = await cef(`listAddresses("")`);
+      return r.addresses?.length ? r : null;
+    });
+    const id = list.addresses[0].id;
+    await cef(`deleteAutofillEntry("", "${id}")`);
+    const settings = await cef(`getAutofillSettings("")`);
+    return { addresses: list.addresses.length, first: list.addresses[0].fullName ?? list.addresses[0].name, settings };
+  });
+
+  await check("zoom-levels", async () => {
+    await cef(`setZoom("", "zoom.test", 1.5)`);
+    const levels = await until("the zoom level", async () => {
+      const l = await cef(`getZoomLevels("")`);
+      return l["zoom.test"] ? l : null;
+    });
+    await cef(`setZoom("", "zoom.test", 1)`);
+    return { levels };
+  });
+
+  const extPath = resolve(new URL(".", import.meta.url).pathname, "../../../spikes/nncore-host/fixtures/ext");
+  await check("extensions", async () => {
+    const inspected = await exts(`inspectUnpacked(${JSON.stringify(extPath)})`);
+    const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
+    if (installed?.error) throw new Error(installed.error);
+    const list = await until("the extension listed", async () => {
+      const r = await exts(`list("")`);
+      return r.extensions?.find((e) => e.id === installed.id) ? r : null;
+    });
+    await exts(`setEnabled("${installed.id}", "", false)`);
+    await exts(`uninstall("${installed.id}", "")`);
+    const engines = await exts(`searchEngineList("")`);
+    return { id: installed.id, name: inspected.name, listed: list.extensions.length, engines: !!engines.list };
+  });
+
+  await check("chrome-windows-create", async () => {
+    // A window an extension makes (chrome.windows.create): its tab lands in the app's window, live (tab:<id>).
+    const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
+    if (installed?.error) throw new Error(installed.error);
+    const worker = await until("the extension's worker", async () =>
+      (await targets()).find((t) => t.type === "service_worker" && t.url.includes(installed.id)), 15000);
+    const made = await cdp(worker, "Runtime.evaluate", {
+      expression: `chrome.windows.create({ url: "${base}/e?window" }).then((w) => JSON.stringify({ id: w.id, tabs: w.tabs?.length }))`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    log("  chrome.windows.create:", JSON.stringify(made.result?.value ?? made.exceptionDetails?.exception?.description ?? made));
+    const tab = await until("the window's tab in the app", async () => {
+      const tabs = await evalApp(`const s = nn.store.getState(); return Object.values(s.tabs).map((t) => ({ id: t.id, url: t.url, adoptId: t.adoptId, windowId: t.windowId }))`);
+      return tabs.find((t) => t.url?.includes("e?window")) ?? null;
+    }, 15000);
+    await exts(`uninstall("${installed.id}", "")`);
+    return { tab: tab.id, adoptId: tab.adoptId ?? null, window: tab.windowId };
+  });
+
+  await check("permission-prompt", async () => {
+    // A site asking for a permission reaches the app's prompt (onPermission → pageState.permission), and its answer
+    // goes back to Chrome.
+    const t = await pageTarget(`${base}/a`);
+    await cdp(t, "Runtime.evaluate", {
+      expression: "navigator.geolocation.getCurrentPosition(() => (window.__geo = 'ok'), (e) => (window.__geo = 'denied:' + e.code))",
+      userGesture: true,
+    });
+    const request = await until("the prompt", async () => evalApp(`return nn.pageState.getState().pages["${first.id}"]?.permission ?? null`), 10000);
+    await cef(`resolvePermission("${request.id}", "deny", false)`);
+    const answer = await until("the page's answer", async () => {
+      const r = await cdp(t, "Runtime.evaluate", { expression: "String(window.__geo)", returnByValue: true });
+      return r.result.value !== "undefined" ? r.result.value : null;
+    }, 10000);
+    return { permissions: request.permissions, origin: request.origin, answer };
+  });
+
+  await check("popup-blocked", async () => {
+    // A popup without a user gesture: Chrome's blocker keeps it, the app hears of it and can open it.
+    const t = await pageTarget(`${base}/a`);
+    await cdp(t, "Runtime.evaluate", { expression: `window.open("${base}/c?blocked")` });
+    const popups = await until("the blocked popup", async () => {
+      const p = await evalApp(`return nn.pageState.getState().pages["${first.id}"]?.popups ?? []`);
+      return p.length ? p : null;
+    }, 10000);
+    await evalApp(`return nn.webviews.get("${first.id}").openBlockedPopup("${popups[0].id}")`);
+    const opened = await until("the popup as a tab", async () => (await state()).tabs.find((x) => x.url?.includes("c?blocked")), 10000);
+    return { popup: popups[0].url, tab: opened.id };
   });
 
   await check("second-profile", async () => {

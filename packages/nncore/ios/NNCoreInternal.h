@@ -44,6 +44,10 @@ bool Background();
 // The host itself is changing Chrome's tab strip (opening, activating, placing a tab): reports it causes
 // are the app's own (TabStripPlace.byApp).
 @property(nonatomic) NSInteger hostChanges;
+// A hidden window holding a Browser Chrome made itself (chrome.windows.create): its tabs are handed to the app's
+// windows as tab:<id>, and it closes once empty.
++ (NNCoreWindowController *)strayWindowForProfile:(NNCoreProfile *)profile;
+@property(nonatomic, readonly) BOOL stray;
 // Tabs the app asked to close that are still in Chrome's strip (beforeunload, the close in flight): the active tab
 // Chrome picks after them is the app's change too, not a switch (TabStripPlace.byApp).
 - (void)noteClosing:(NNCoreTab *)tab;

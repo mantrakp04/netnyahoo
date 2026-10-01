@@ -43,9 +43,10 @@ public class CefModule: Module {
     AsyncFunction("endTracing") { (keep: Bool) -> String? in nil }.runOnQueue(.main)
     AsyncFunction("isTracing") { false }.runOnQueue(.main)
     AsyncFunction("setSearchEngineName") { (name: String) in }.runOnQueue(.main)
+    // NNCore keeps no navigations for later (CEF's "open:<id>"): nothing to forget.
     AsyncFunction("forgetOpenedURL") { (id: Int) in }.runOnQueue(.main)
     AsyncFunction("setDisplayMediaPicker") { (enabled: Bool) in }.runOnQueue(.main)
-    AsyncFunction("displayMediaSources") { [[String: Any]]() }.runOnQueue(.main)
+    AsyncFunction("displayMediaSources") { NNCoreHost.displayMediaSources }.runOnQueue(.main)
     AsyncFunction("listTasks") { [[String: Any]]() }.runOnQueue(.main)
     AsyncFunction("killTask") { (id: Int64) in false }.runOnQueue(.main)
     AsyncFunction("systemState") { SystemState.shared.snapshot }.runOnQueue(.main)
@@ -57,7 +58,9 @@ public class CefModule: Module {
     AsyncFunction("resolvePermission") { (id: String, result: String, remember: Bool?) in
       NNCoreHost.resolvePermission(id, result: result, remember: remember ?? false)
     }.runOnQueue(.main)
-    AsyncFunction("resolveExternalApp") { (id: String, open: Bool, remember: Bool?) in }.runOnQueue(.main)
+    AsyncFunction("resolveExternalApp") { (id: String, open: Bool, remember: Bool?) in
+      NNCoreHost.resolveExternalApp(id, open: open, remember: remember ?? false)
+    }.runOnQueue(.main)
     AsyncFunction("getExternalAppAllowances") { (profile: String) in [[String: Any]]() }.runOnQueue(.main)
     AsyncFunction("removeExternalAppAllowance") { (profile: String, origin: String, scheme: String) in }.runOnQueue(.main)
 

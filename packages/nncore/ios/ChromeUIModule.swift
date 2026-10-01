@@ -8,6 +8,12 @@ public class ChromeUIModule: Module {
     Name("NetnyahooChromeUI")
     Events("onDeviceChooser", "onCastDialog", "onCastRoutes", "onSidePanel")
 
+    OnCreate {
+      NNCoreHost.chromeUIHandler = { [weak self] name, payload in
+        if name == "sidePanel" { self?.sendEvent("onSidePanel", payload) }
+      }
+    }
+
     AsyncFunction("selectDevice") { (id: Int, index: Int) in }.runOnQueue(.main)
     AsyncFunction("cancelDeviceChooser") { (id: Int) in }.runOnQueue(.main)
     AsyncFunction("refreshDeviceChooser") { (id: Int) in }.runOnQueue(.main)
@@ -20,8 +26,12 @@ public class ChromeUIModule: Module {
     AsyncFunction("watchCastRoutes") { (profile: String) in }.runOnQueue(.main)
     AsyncFunction("terminateCastRoute") { (route: String) in }.runOnQueue(.main)
 
-    AsyncFunction("actionStates") { (browserId: Int, ids: [String]) in [String: Any]() }.runOnQueue(.main)
-    AsyncFunction("sidePanelURL") { (browserId: Int, extensionId: String) -> String? in nil }.runOnQueue(.main)
+    AsyncFunction("actionStates") { (browserId: Int, ids: [String]) in
+      NNCoreHost.actionStates(browserId: Int32(browserId), extensions: ids)
+    }.runOnQueue(.main)
+    AsyncFunction("sidePanelURL") { (browserId: Int, extensionId: String) -> String? in
+      NNCoreHost.sidePanelURL(browserId: Int32(browserId), extension: extensionId)
+    }.runOnQueue(.main)
 
     AsyncFunction("changeCaptureSource") { (capturer: Int, target: Int) in }.runOnQueue(.main)
     AsyncFunction("stopCapture") { (capturer: Int) in }.runOnQueue(.main)
