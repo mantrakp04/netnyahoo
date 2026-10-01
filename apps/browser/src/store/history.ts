@@ -11,6 +11,8 @@ export type HistorySlice = {
   history: Record<string, HistoryEntry[]>;
   // Profiles whose view has been read from Chrome (until then it's empty, not "no history").
   historyReady: Record<string, true>;
+  // Visits at or before this may be missing from a profile's view (it holds Chrome's newest MAX_HISTORY URLs).
+  historyFloor: Record<string, number>;
 
   removeHistory(profileId: string, urls: string[]): void;
   // The view only: Clear Browsing Data deletes from Chrome (clearBrowsingData's "history").
@@ -34,6 +36,7 @@ const failed = (what: string) => (error: unknown) => console.warn(`[history] ${w
 export const createHistorySlice: StateCreator<BrowserState, [], [], HistorySlice> = (set) => ({
   history: {},
   historyReady: {},
+  historyFloor: {},
 
   removeHistory(profileId, urls) {
     if (!urls.length || isIncognitoProfile(profileId)) return;

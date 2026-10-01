@@ -47,13 +47,25 @@ function viewOf(engine: string): HistoryEntry[] {
   return [];
 }
 
-function setView(engine: string, list: HistoryEntry[]) {
+// Sync may use a view only once history.json is in Chrome: before, its visits would read as deleted.
+let legacyMoved = false;
+
+/**
+ * Shows `list` for the engine profile. `floor`: visits at or before it may be missing from the view (it holds
+ * Chrome's newest MAX_HISTORY URLs); a read sets it, and it only rises while the view fills from events.
+ */
+function setView(engine: string, list: HistoryEntry[], floor?: number) {
   useBrowser.setState((s) => {
     const ids = profilesUsing(s, engine);
-    if (ids.every((id) => s.history[id] === list && s.historyReady[id])) return {};
+    const was = ids.map((id) => s.historyFloor[id] ?? -Infinity).reduce((a, b) => Math.max(a, b), -Infinity);
+    const full = list.length >= MAX_HISTORY ? list[list.length - 1]!.lastVisit : -Infinity;
+    const next = Math.max(floor ?? was, full);
+    const ready = legacyMoved;
+    if (ids.every((id) => s.history[id] === list && (s.historyFloor[id] ?? -Infinity) === next && (!ready || s.historyReady[id]))) return {};
     return {
       history: { ...s.history, ...Object.fromEntries(ids.map((id) => [id, list])) },
-      historyReady: { ...s.historyReady, ...Object.fromEntries(ids.map((id) => [id, true as const])) },
+      historyFloor: { ...s.historyFloor, ...Object.fromEntries(ids.map((id) => [id, next])) },
+      ...(ready ? { historyReady: { ...s.historyReady, ...Object.fromEntries(ids.map((id) => [id, true as const])) } } : {}),
     };
   });
 }
@@ -122,10 +134,13 @@ function load(engine: string): Promise<void> {
         state.again = false;
         state.queued = [];
         await watchHistory(engine);
-        let list = (await queryHistory(engine, MAX_HISTORY, MAX_VISIT_TIMES)).filter((e) => shownInHistory(e.url)).map(toEntry).sort(byLastVisit);
+        const read = await queryHistory(engine, MAX_HISTORY, MAX_VISIT_TIMES);
+        // Chrome had more URLs than the view reads: the older ones may be missing (shown or not).
+        const floor = read.length >= MAX_HISTORY ? Math.min(...read.map((e) => e.visitTimes.at(-1) ?? 0)) : -Infinity;
+        let list = read.filter((e) => shownInHistory(e.url)).map(toEntry).sort(byLastVisit);
         for (const change of state.queued) if (!(change.kind === "deleted" && change.all)) list = applyHistoryChange(list, change);
         if (state.queued.some((c) => c.kind === "deleted" && c.all)) state.again = true;
-        setView(engine, list);
+        setView(engine, list, floor);
         loaded.add(engine);
       } while (state.again);
     } catch (error) {
@@ -209,7 +224,10 @@ export function startHistory() {
   loadAll(store());
   // Read again after the move, so the views have the moved visits.
   void migrateHistoryFile().then((result) => {
+    legacyMoved = result !== "kept";
+    // Read again after a move, so the views have the moved visits; else the views read so far are complete.
     if (result === "moved") void reloadHistory();
+    else if (legacyMoved) for (const engine of loaded) setView(engine, viewOf(engine));
   });
   const stop = useBrowser.subscribe((s, prev) => {
     if (s.profiles === prev.profiles) return;

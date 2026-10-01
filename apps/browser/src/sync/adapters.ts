@@ -116,10 +116,18 @@ export function bookmarksAdapter(profileId: string): Adapter {
       const roots = b.roots[profileId];
       const values = new Map<string, unknown>();
       if (!roots) return { values };
-      const keyOf = (id: string) => (id === roots.bar ? "bar" : id === roots.other ? "other" : (b.nodes[id]?.syncKey ?? id));
-      const walk = (folderId: string, depth: number) => {
+      // An old key names this node only if it maps to it (a copy of a bookmark carries its original's key along).
+      const keyOf = (id: string) => {
+        if (id === roots.bar) return "bar";
+        if (id === roots.other) return "other";
+        const key = b.nodes[id]?.syncKey;
+        return key && bookmarkUuidFor(key) === id ? key : id;
+      };
+      const seen = new Set<string>();
+      const walk = (folderId: string) => {
         const folder = b.nodes[folderId];
-        if (folder?.kind !== "folder" || depth > 64) return;
+        if (folder?.kind !== "folder" || seen.has(folderId)) return;
+        seen.add(folderId);
         const parent = keyOf(folderId);
         const children = folder.children.filter((id) => b.nodes[id]);
         const positions = assignPositions(
@@ -138,11 +146,11 @@ export function bookmarksAdapter(profileId: string): Adapter {
             a: node.addedAt,
             pos: positions[i]!,
           } satisfies BookmarkValue);
-          if (node.kind === "folder") walk(id, depth + 1);
+          if (node.kind === "folder") walk(id);
         });
       };
-      walk(roots.bar, 0);
-      walk(roots.other, 0);
+      walk(roots.bar);
+      walk(roots.other);
       return { values };
     },
     apply: (visible) => {
@@ -231,8 +239,8 @@ export function historyAdapter(profileId: string): Adapter {
       const values = new Map<string, unknown>();
       const older = new Set<string>();
       const view = store().history[profileId] ?? [];
-      // The view holds the newest MAX_HISTORY URLs: one older than its oldest may only have dropped off it.
-      const capped = view.length >= MAX_HISTORY ? view[view.length - 1]!.lastVisit : -Infinity;
+      // The view holds Chrome's newest MAX_HISTORY URLs: one visited at or before this may only be missing from it.
+      const floor = store().historyFloor[profileId] ?? -Infinity;
       for (const e of view) {
         if (!keptInHistory(e.url)) continue;
         const key = `h:${e.url}`;
@@ -249,7 +257,7 @@ export function historyAdapter(profileId: string): Adapter {
         if (older.has(key) || !keptInHistory(key.slice(2))) return true;
         // Chrome expired it (as every Mac does), or the view no longer reaches it: not a deletion.
         const known = base(key) as HistoryValue | undefined;
-        return !!known && (lastVisitOf(known) < since || lastVisitOf(known) <= capped);
+        return !!known && (lastVisitOf(known) < since || lastVisitOf(known) <= floor);
       };
       return { values, ignore };
     },

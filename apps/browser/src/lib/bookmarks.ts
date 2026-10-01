@@ -144,6 +144,9 @@ export function bookmarkOps(from: Flat, to: Flat, engine: string): BookmarkOp[] 
   return ops;
 }
 
+// What Chrome keeps as a bookmark's URL (roughly GURL's validity: a scheme).
+const keepsUrl = (url: string) => /^[a-z][a-z0-9+.-]*:./i.test(url);
+
 /**
  * `ops` applied to a tree as Chrome applies them (nn_bookmarks_apply): in order, stopping at the first that can't
  * apply. For merging the app's edits into a tree read from Chrome meanwhile.
@@ -179,18 +182,21 @@ export function applyOps(tree: Flat, ops: BookmarkOp[], engine: string): Flat {
     }
     if (op.op === "update") {
       if (!node || node.parent === null) break;
-      flat.nodes.set(op.id, { ...node, ...(op.t !== undefined ? { title: op.t } : {}), ...(op.u && node.kind === "url" ? { url: op.u } : {}) });
+      flat.nodes.set(op.id, { ...node, ...(op.t !== undefined ? { title: op.t } : {}), ...(op.u && node.kind === "url" && keepsUrl(op.u) ? { url: op.u } : {}) });
       continue;
     }
     const parent = flatParent(engine, op.parent);
     if (flat.nodes.get(parent)?.kind !== "folder") break;
+    if (op.op === "add" && node && op.ifAbsent) continue;
     if (op.op === "move" || node) {
       if (!node || node.parent === null || inside(op.id, parent)) break;
       detach(op.id);
       attach(op.id, parent, op.index);
-      if (op.op === "add") flat.nodes.set(op.id, { ...flat.nodes.get(op.id)!, title: op.t, ...(op.u && node.kind === "url" ? { url: op.u } : {}) });
+      if (op.op === "add") flat.nodes.set(op.id, { ...flat.nodes.get(op.id)!, title: op.t, ...(op.u && node.kind === "url" && keepsUrl(op.u) ? { url: op.u } : {}) });
       continue;
     }
+    // Chrome drops an add whose URL it can't keep, and goes on.
+    if (op.k === "u" && !keepsUrl(op.u ?? "")) continue;
     flat.nodes.set(op.id, {
       kind: op.k === "u" ? "url" : "folder",
       parent,
@@ -207,19 +213,23 @@ export function applyOps(tree: Flat, ops: BookmarkOp[], engine: string): Flat {
 
 // MARK: Keeping them alike
 
+// One engine profile's work, one step at a time (a read, or a batch of ops), so each batch is computed against
+// what Chrome confirmed, never against a batch still in flight.
 type EngineState = {
+  // Chrome's tree as last read or confirmed; null until the first read.
   shadow: Flat | null;
-  // Ops sent: a read that started before some was made against an older tree.
-  sent: number;
-  reading: Promise<void> | null;
-  again: boolean;
+  busy: boolean;
+  needRead: boolean;
+  needPush: boolean;
 };
 const engines = new Map<string, EngineState>();
 const stateOf = (engine: string) => {
   let state = engines.get(engine);
-  if (!state) engines.set(engine, (state = { shadow: null, sent: 0, reading: null, again: false }));
+  if (!state) engines.set(engine, (state = { shadow: null, busy: false, needRead: false, needPush: false }));
   return state;
 };
+// Sync may use a tree only once bookmarks.json is in Chrome: before, its bookmarks would read as deleted.
+let legacyMoved = false;
 
 const engineProfiles = (s: Pick<BrowserState, "profiles">) =>
   [...new Set(Object.keys(s.profiles).filter((id) => !isIncognitoProfile(id)).map(engineProfile))];
@@ -246,72 +256,83 @@ function adopt(engine: string, flat: Flat) {
     const ids = profilesUsing(s, engine);
     return {
       bookmarks: { nodes, roots: { ...s.bookmarks.roots, ...Object.fromEntries(ids.map((id) => [id, roots])) } },
-      bookmarksReady: { ...s.bookmarksReady, ...Object.fromEntries(ids.map((id) => [id, true as const])) },
+      ...(legacyMoved ? { bookmarksReady: { ...s.bookmarksReady, ...Object.fromEntries(ids.map((id) => [id, true as const])) } } : {}),
     };
   });
 }
 
-function send(engine: string, ops: BookmarkOp[]) {
-  if (!ops.length) return;
-  const state = stateOf(engine);
-  state.sent++;
-  void applyBookmarkOps(engine, ops).then(
-    (result) => {
-      // Chrome stopped at an op it couldn't apply (its tree had changed): its tree wins.
-      if (result.skipped) void read(engine);
-    },
-    (error) => {
-      console.warn("[bookmarks] couldn't save to Chrome", error);
-      void read(engine);
-    },
-  );
+// Sends ops; true once Chrome applied every one (else its tree has changed, and is read again).
+async function sendOps(engine: string, ops: BookmarkOp[]): Promise<boolean> {
+  try {
+    const result = await applyBookmarkOps(engine, ops);
+    return !result.skipped && !result.invalid.length;
+  } catch (error) {
+    console.warn("[bookmarks] couldn't save to Chrome", error);
+    return false;
+  }
 }
 
-function read(engine: string): Promise<void> {
+/** Reads Chrome's tree and makes the store's edits since the last confirmed tree again on it. */
+async function readTree(engine: string, state: EngineState) {
+  await watchBookmarks(engine);
+  const fetched = flatFromEngine(await bookmarkTree(engine), engine);
+  // Before the first read the store had nothing of Chrome's, so what it has are edits (made at launch).
+  const base = state.shadow ?? flatFromStore({ nodes: {}, roots: {} }, engine);
+  const edits = bookmarkOps(base, flatFromStore(store().bookmarks, engine), engine);
+  const merged = edits.length ? applyOps(fetched, edits, engine) : fetched;
+  state.shadow = fetched;
+  adopt(engine, merged);
+  if (!edits.length) return;
+  if (await sendOps(engine, edits)) state.shadow = merged;
+  else state.needRead = true;
+}
+
+async function pushTree(engine: string, state: EngineState) {
+  if (!state.shadow) return;
+  const desired = flatFromStore(store().bookmarks, engine);
+  if (!desired.nodes.size) return;
+  const ops = bookmarkOps(state.shadow, desired, engine);
+  if (!ops.length) return;
+  if (await sendOps(engine, ops)) state.shadow = desired;
+  else state.needRead = true;
+}
+
+function work(engine: string) {
   const state = stateOf(engine);
-  if (state.reading) {
-    state.again = true;
-    return state.reading;
-  }
-  state.reading = (async () => {
+  if (state.busy) return;
+  state.busy = true;
+  void (async () => {
     try {
-      do {
-        state.again = false;
-        const sentBefore = state.sent;
-        // What the store had when the read started: its edits after that are made again on what Chrome has.
-        const base = flatFromStore(store().bookmarks, engine);
-        await watchBookmarks(engine);
-        const fetched = flatFromEngine(await bookmarkTree(engine), engine);
-        if (state.sent !== sentBefore) {
-          state.again = true;
-          continue;
+      while (state.needRead || state.needPush) {
+        if (state.needRead) {
+          state.needRead = false;
+          state.needPush = false;
+          await readTree(engine, state);
+        } else {
+          state.needPush = false;
+          await pushTree(engine, state);
         }
-        // The app's edits since the read started, made again on Chrome's tree (and sent, as `push` held them).
-        const edits = bookmarkOps(base, flatFromStore(store().bookmarks, engine), engine);
-        const merged = edits.length ? applyOps(fetched, edits, engine) : fetched;
-        state.shadow = merged;
-        adopt(engine, merged);
-        send(engine, edits);
-      } while (state.again);
+      }
     } catch (error) {
       console.warn(`[bookmarks] couldn't read ${engine || "the default profile"}'s bookmarks`, error);
     } finally {
-      state.reading = null;
+      state.busy = false;
     }
   })();
-  return state.reading;
+}
+
+function read(engine: string) {
+  stateOf(engine).needRead = true;
+  work(engine);
 }
 
 function push(s: BrowserState) {
   for (const engine of engineProfiles(s)) {
     const state = stateOf(engine);
-    // Edits made while a read is out are merged when it lands.
-    if (!state.shadow || state.reading) continue;
-    const desired = flatFromStore(s.bookmarks, engine);
-    if (!desired.nodes.size) continue;
-    const ops = bookmarkOps(state.shadow, desired, engine);
-    state.shadow = desired;
-    send(engine, ops);
+    // Not read yet: the first read takes the store's edits.
+    if (!state.shadow) continue;
+    state.needPush = true;
+    work(engine);
   }
 }
 
@@ -378,15 +399,16 @@ export async function migrateBookmarksFile({ keepMs = LEGACY_KEPT_MS } = {}): Pr
 
 export function startBookmarks() {
   const changes = onBookmarksChanged((engine) => {
-    if (stateOf(engine).shadow) void read(engine);
+    if (stateOf(engine).shadow) read(engine);
   });
   let stopped = false;
-  void migrateBookmarksFile().then(() => {
-    if (!stopped) for (const engine of engineProfiles(store())) void read(engine);
+  void migrateBookmarksFile().then((result) => {
+    legacyMoved = result !== "kept";
+    if (!stopped) for (const engine of engineProfiles(store())) read(engine);
   });
   const stop = useBrowser.subscribe((s, prev) => {
     if (s.profiles !== prev.profiles) {
-      for (const engine of engineProfiles(s)) if (!stateOf(engine).shadow && !stateOf(engine).reading) void read(engine);
+      for (const engine of engineProfiles(s)) if (!stateOf(engine).shadow && !stateOf(engine).busy) read(engine);
     }
     if (s.bookmarks !== prev.bookmarks) push(s);
   });
@@ -397,5 +419,8 @@ export function startBookmarks() {
   };
 }
 
-/** Reads every profile's bookmarks from Chrome again (the dev harness, tests). */
-export const reloadBookmarks = () => Promise.all(engineProfiles(store()).map(read));
+/** Reads every profile's bookmarks from Chrome again; resolves when they're read (the dev harness, tests). */
+export async function reloadBookmarks() {
+  for (const engine of engineProfiles(store())) read(engine);
+  for (let i = 0; i < 200 && [...engines.values()].some((e) => e.busy); i++) await new Promise((r) => setTimeout(r, 5));
+}

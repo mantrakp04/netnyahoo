@@ -112,3 +112,39 @@ test("the store's tree and Chrome's stay alike: the app's edits go as ops, an ex
   assert.equal(stub.bookmarkOpsSent.length, sent, "the app sends nothing back for it");
   stop();
 });
+
+test("an edit made at launch, before Chrome's tree is read, reaches Chrome and stays", async () => {
+  S().hydrate({ bookmarks: { nodes: {}, roots: {} } });
+  stub.docs.clear();
+  stub.bookmarkDbs.clear();
+  stub.chromeBookmarkEdit("", [{ op: "add", id: "0f0f0f0f-0000-4000-8000-0000000000a1", k: "u", t: "In Chrome", u: "https://chrome.example/", a: 1, parent: "bar" }]);
+  S().addBookmark({ profileId: "default", url: "https://early.example/", title: "Early" });
+  const stop = startBookmarks();
+  await reloadBookmarks();
+  assert.deepEqual(chromeTree().bar, { "Bookmarks Bar": ["Early=https://early.example/", "In Chrome=https://chrome.example/"] });
+  assert.deepEqual(storeTree(), chromeTree());
+  stop();
+});
+
+test("ops Chrome can't apply (an extension moved things meanwhile) stop there: nothing the store kept is removed", async () => {
+  S().hydrate({ bookmarks: { nodes: {}, roots: {} } });
+  stub.docs.clear();
+  stub.bookmarkDbs.clear();
+  const stop = startBookmarks();
+  await reloadBookmarks();
+  const b = S().addBookmarkFolder({ profileId: "default", title: "B" });
+  const f = S().addBookmarkFolder({ profileId: "default", title: "F" });
+  const a = S().addBookmarkFolder({ profileId: "default", title: "A", parentId: f });
+  await reloadBookmarks();
+  // An extension puts B inside A; before the app hears of it, the app moves A into B and deletes F.
+  const db = stub.chromeBookmarks("");
+  db.get("bar").children = db.get("bar").children.filter((c) => c !== b);
+  db.get(a).children.push(b);
+  db.get(b).parent = a;
+  S().moveBookmark(a, b, 0);
+  S().removeBookmark(f);
+  await reloadBookmarks();
+  assert.ok(db.has(a) && db.has(b), "A and B are still in Chrome");
+  assert.deepEqual(storeTree(), chromeTree(), "the store shows Chrome's tree");
+  stop();
+});
