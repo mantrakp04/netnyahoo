@@ -69,6 +69,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
       let root = makeContentView(id)
       ChromeWindows.embed(root, in: chromeWindow)
       holdUntilContent(chromeWindow, id: id, root: root)
+      keepContentSizedAcrossReloads(id: id, root: root)
       ChromeWindows.onSwap { [weak self] from, to in self?.adopt(from: from, to: to) }
       observeDelegateNotifications(chromeWindow)
       if small { configureSmall(chromeWindow) }
@@ -269,6 +270,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
       // turn, after its page had left for the other window, which drew it emptied for 2–4 frames.
       CATransaction.flush()
       if let waiting = unrevealed.removeValue(forKey: id) { waiting.forEach { $0() } }
+      stopKeepingContentSized(id)
       lightsCenters[id] = nil
       auxKinds[id] = nil
       smallIds.remove(id)
@@ -343,6 +345,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     guard let window = notification.object as? NSWindow, let id = id(of: window) else { return }
     NotificationCenter.default.removeObserver(self, name: nil, object: window)
     windows[id] = nil
+    stopKeepingContentSized(id)
     lightsCenters[id] = nil
     auxKinds[id] = nil
     smallIds.remove(id)
@@ -361,6 +364,47 @@ final class WindowManager: NSObject, NSWindowDelegate {
   }
 
   /// Lay out RCTRootView immediately after programmatic frame changes; occluded windows may not get a display pass.
+  // React Native's root content view takes its size from the root's own layout pass only, and reports its own
+  // bounds as the size React lays out in. A new window's first layout can lose that race: its content was sized
+  // before the root was (zero), React's layout for that size landed after the root's pass, and the content view
+  // then reported its zero bounds back. Nothing laid the root out again, so the window stayed empty (hits reach the
+  // bare RCTRootView), its panes unmounted, and a tab just moved into it lost its page (acceptance
+  // move-tab-to-window, under a long run's load). Whenever the content's size leaves the root's, the root lays out
+  // again, which sets it back and reports the right size.
+  private var contentSizers: [String: NSObjectProtocol] = [:]
+
+  private func keepContentSized(id: String, root: NSView) {
+    if let old = contentSizers.removeValue(forKey: id) { NotificationCenter.default.removeObserver(old) }
+    guard let content = root.subviews.first(where: { NSStringFromClass(type(of: $0)).hasSuffix("RootContentView") }) else { return }
+    content.postsFrameChangedNotifications = true
+    contentSizers[id] = NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: content, queue: .main) {
+      [weak root, weak content] _ in
+      guard let root, let content, content.superview === root, root.window != nil, !root.bounds.isEmpty,
+        content.frame.size != root.bounds.size
+      else { return }
+      root.needsLayout = true
+      content.needsLayout = true
+    }
+  }
+
+  // A JavaScript reload replaces the root's content view (its first view coming in posts this): watch the new one.
+  private var contentReloads: [String: NSObjectProtocol] = [:]
+
+  private func keepContentSizedAcrossReloads(id: String, root: NSView) {
+    keepContentSized(id: id, root: root)
+    contentReloads[id] = NotificationCenter.default.addObserver(forName: Notification.Name("RCTContentDidAppearNotification"), object: root, queue: .main) {
+      [weak self, weak root] _ in
+      guard let self, let root, self.contentReloads[id] != nil else { return }
+      self.keepContentSized(id: id, root: root)
+    }
+  }
+
+  private func stopKeepingContentSized(_ id: String) {
+    for token in [contentSizers.removeValue(forKey: id), contentReloads.removeValue(forKey: id)] {
+      if let token { NotificationCenter.default.removeObserver(token) }
+    }
+  }
+
   private func relayoutRoot(_ window: NSWindow) {
     guard let root = ChromeWindows.root(of: window) ?? window.contentView else { return }
     root.needsLayout = true

@@ -1,5 +1,5 @@
-import { WebView, type OpenWindowRequest } from "@netnyahoo/nncore";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { prepareTabTransfer, WebView, type OpenWindowRequest } from "@netnyahoo/nncore";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { focus, switchToTab } from "../lib/actions";
@@ -302,6 +302,20 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
   }, [seq]);
   const fromNewTab = useRef(pageOf(tabId).wasNewTab && !adoptId);
   useEffect(() => () => noteGone(tabId), []);
+  // A web view can go while its tab stays (its window's content laid out again, its pane remounted): the tab's page
+  // waits, parked, for the tab's next view instead of closing with this one. Its loss was a moved tab's page going for
+  // good when the new window's content unmounted it once (acceptance move-tab-to-window). Before the native unmount
+  // (a layout effect's cleanup runs in the commit); a tab that closed, went to sleep, changed profile or is going to one
+  // of the app's own pages closes as before.
+  const mountedProfile = useRef(profileId);
+  useLayoutEffect(
+    () => () => {
+      const t = tab();
+      if (t && (t.navigation || t.adoptId) && !isInternalTab(t) && engineProfile(t.profileId) === engineProfile(mountedProfile.current) && !isQuitting())
+        prepareTabTransfer(tabId);
+    },
+    [],
+  );
 
   const onOpenWindow = (request: OpenWindowRequest) => {
     const t = tab();

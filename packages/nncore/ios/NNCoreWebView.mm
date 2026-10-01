@@ -30,6 +30,8 @@ bool TraceVisibility() {
 }
 
 constexpr CFTimeInterval kTransferWindow = 3;
+// The tab's current parking (closeBrowser), so an earlier parking's deadline leaves a later one alone.
+const char kParkingKey = 0;
 // How long a page that left the screen keeps painting (leaveScreen): a few frames, under load too.
 constexpr CFTimeInterval kLeaveScreenDelay = 0.1;
 
@@ -513,13 +515,23 @@ NSString *JSONString(id value) {
   }
 }
 
+// Only a page of this view's own profile: a tab moved to another profile opens afresh there, and a page parked as
+// its view went (ContentCard) mustn't show in a profile the tab moved to meanwhile.
+- (BOOL)canTake:(NNCoreTab *)tab {
+  NNCoreProfile *profile = tab.profile;
+  if (!profile || tab.closed || profile.offTheRecord != nncore_host::IsIncognito(_profile)) return NO;
+  return profile.offTheRecord || [nncore_host::ProfileName(profile) isEqualToString:_profile ?: @""];
+}
+
 - (BOOL)takeTransferredTab {
   NNCoreTab *tab = Parked()[_transferKey];
+  if (tab && ![self canTake:tab]) return NO;
   if (tab) [Parked() removeObjectForKey:_transferKey];
   // The new view can mount before the old one unmounts: take the tab from it.
   if (!tab) {
     for (NNCoreWebView *other in LiveViews()) {
       if (other == self || ![other.transferKey isEqualToString:_transferKey] || other.window == self.window || !other->_tab) continue;
+      if (![self canTake:other->_tab]) return NO;
       tab = other->_tab;
       [other detach];
       break;
@@ -608,8 +620,12 @@ NSString *JSONString(id value) {
     [ParkingView() addSubview:tab.view];
     NSString *key = [_transferKey copy];
     Parked()[key] = tab;
+    // Each parking has its own deadline: an earlier one's (the tab taken and parked again since) isn't this one's.
+    static NSUInteger parkings = 0;
+    const NSUInteger parking = ++parkings;
+    objc_setAssociatedObject(tab, &kParkingKey, @(parking), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kTransferWindow * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      if (Parked()[key] != tab) return;
+      if (Parked()[key] != tab || [objc_getAssociatedObject(tab, &kParkingKey) unsignedIntegerValue] != parking) return;
       [Parked() removeObjectForKey:key];
       // At once, as a closed view's tab: a beforeunload prompt nobody sees would keep it (and the hidden window
       // keepTransfersOfWindow: put it in) alive.
