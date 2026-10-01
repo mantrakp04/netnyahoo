@@ -339,6 +339,9 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   // reason. NETNYAHOO_ALLOW_OCCLUSION=1 keeps Chrome's behaviour (the acceptance run's occlusion check uses it).
   if (getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_ALLOW_OCCLUSION"))
     extra.push_back("--disable-backgrounding-occluded-windows");
+  // Nor may it make a sound on the owner's Mac (a test page's media, a video it plays). NETNYAHOO_ALLOW_AUDIO=1 keeps
+  // the sound for a test that needs to hear it.
+  if (getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_ALLOW_AUDIO")) extra.push_back("--mute-audio");
   if (const char *port = getenv("NETNYAHOO_REMOTE_DEBUGGING_PORT")) {
     extra.push_back(std::string("--remote-debugging-port=") + port);
     extra.push_back("--remote-allow-origins=*");
