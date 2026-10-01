@@ -73,15 +73,52 @@ NSData *PNG(NSImage *image, int pixels, int *width, int *height) {
   return [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
 }
 
-NSURLSession *Session() {
-  static NSURLSession *session = [] {
-    NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
-    config.HTTPShouldSetCookies = NO;
-    config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyNever;
-    config.timeoutIntervalForRequest = 15;
-    return [NSURLSession sessionWithConfiguration:config];
-  }();
-  return session;
+}  // namespace
+
+// Downloads one favicon, never more than kMaxBytes (it cancels at the cap instead of buffering the rest).
+@interface NNCoreFaviconFetch : NSObject <NSURLSessionDataDelegate>
+@property(nonatomic, copy) void (^done)(NSData *_Nullable data);
+@property(nonatomic, strong) NSMutableData *data;
+@end
+
+@implementation NNCoreFaviconFetch
+- (void)URLSession:(NSURLSession *)session
+              dataTask:(NSURLSessionDataTask *)task
+    didReceiveResponse:(NSURLResponse *)response
+     completionHandler:(void (^)(NSURLSessionResponseDisposition))handler {
+  const NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
+  const bool ok = status >= 200 && status < 300 && response.expectedContentLength <= (long long)kMaxBytes;
+  handler(ok ? NSURLSessionResponseAllow : NSURLSessionResponseCancel);
+}
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
+  if (!_data) _data = [NSMutableData data];
+  if (_data.length + data.length > kMaxBytes) {
+    _data = nil;
+    return [task cancel];
+  }
+  [_data appendData:data];
+}
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+  NSData *data = error ? nil : _data;
+  void (^done)(NSData *) = _done;
+  _done = nil;
+  [session finishTasksAndInvalidate];
+  dispatch_async(dispatch_get_main_queue(), ^{ done(data); });
+}
+@end
+
+namespace {
+
+void Download(NSURL *url, void (^done)(NSData *_Nullable data)) {
+  NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
+  config.HTTPShouldSetCookies = NO;
+  config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyNever;
+  config.timeoutIntervalForRequest = 15;
+  config.timeoutIntervalForResource = 30;
+  NNCoreFaviconFetch *fetch = [NNCoreFaviconFetch new];
+  fetch.done = done;
+  NSURLSession *session = [NSURLSession sessionWithConfiguration:config delegate:fetch delegateQueue:nil];
+  [[session dataTaskWithURL:url] resume];
 }
 
 }  // namespace
@@ -109,16 +146,11 @@ NSURLSession *Session() {
   NSString *scheme = target.scheme.lowercaseString;
   if (nncore_host::IsIncognito(profile) || !([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"]))
     return completion(nil);
-  [[Session() dataTaskWithURL:target
-            completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-              const NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
-              NSData *body = !error && status >= 200 && status < 300 && data.length <= kMaxBytes ? data : nil;
-              dispatch_async(dispatch_get_main_queue(), ^{
-                int w = 0, h = 0;
-                NSImage *image = body ? [[NSImage alloc] initWithData:body] : nil;
-                completion(image ? Store(PNG(image, kFaviconSize * 2, &w, &h), w, h, profile, name) : nil);
-              });
-            }] resume];
+  Download(target, ^(NSData *body) {
+    int w = 0, h = 0;
+    NSImage *image = body ? [[NSImage alloc] initWithData:body] : nil;
+    completion(image ? Store(PNG(image, kFaviconSize * 2, &w, &h), w, h, profile, name) : nil);
+  });
 }
 
 + (void)pruneProfile:(NSString *)profile keeping:(NSArray<NSString *> *)names {

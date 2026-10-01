@@ -30,6 +30,26 @@ NSString *DirectoryName(NSString *name) {
 
 }  // namespace
 
+// NSApp's delegate from the moment AppKit finishes launching (inside Chromium's loop, before the engine is up) until
+// the app's own is made: a cold launch's open-URL events arrive then, and are handed on once it exists.
+@interface NNCoreBootstrapDelegate : NSObject <NSApplicationDelegate>
+@property(nonatomic, readonly) NSMutableArray<NSURL *> *urls;
+@end
+
+@implementation NNCoreBootstrapDelegate
+- (instancetype)init {
+  if ((self = [super init])) _urls = [NSMutableArray array];
+  return self;
+}
+- (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {
+  [_urls addObjectsFromArray:urls];
+}
+@end
+
+namespace {
+NNCoreBootstrapDelegate *gBootstrap;
+}  // namespace
+
 // MARK: - Engine delegate
 
 @interface NNCoreHostEngineDelegate : NSObject <NNCoreEngineDelegate>
@@ -52,8 +72,10 @@ NSString *DirectoryName(NSString *name) {
 
   // NSApp's delegate as NSApplicationMain would set it, but in Chromium's loop: [NSApp run] already finished
   // launching, so the launch callbacks are called here.
+  NSArray<NSURL *> *launchURLs = gBootstrap.urls.copy;
   gAppDelegate = gMakeDelegate();
   NSApp.delegate = gAppDelegate;
+  gBootstrap = nil;
   NSNotification *note = [NSNotification notificationWithName:NSApplicationWillFinishLaunchingNotification object:NSApp];
   if ([gAppDelegate respondsToSelector:@selector(applicationWillFinishLaunching:)])
     [gAppDelegate applicationWillFinishLaunching:note];
@@ -61,6 +83,8 @@ NSString *DirectoryName(NSString *name) {
   if ([gAppDelegate respondsToSelector:@selector(applicationDidFinishLaunching:)])
     [gAppDelegate applicationDidFinishLaunching:note];
   NSLog(@"[nncore] app delegate %@ launched", NSStringFromClass([gAppDelegate class]));
+  if (launchURLs.count && [gAppDelegate respondsToSelector:@selector(application:openURLs:)])
+    [gAppDelegate application:NSApp openURLs:launchURLs];
 }
 
 - (void)engineWillShutDown {
@@ -94,6 +118,14 @@ NSString *DirectoryName(NSString *name) {
   gDataDirectory = [@(dataDir) stringByAppendingPathComponent:@"Chromium"];
   [NSFileManager.defaultManager createDirectoryAtPath:gDataDirectory withIntermediateDirectories:YES attributes:nil error:nil];
   nncore_host::InstallActivationGuardsEarly();
+  [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillFinishLaunchingNotification
+                                                  object:nil
+                                                   queue:nil
+                                              usingBlock:^(NSNotification *) {
+                                                if (gAppDelegate || NSApp.delegate) return;
+                                                gBootstrap = [NNCoreBootstrapDelegate new];
+                                                NSApp.delegate = gBootstrap;
+                                              }];
 
   std::vector<std::string> extra = {
       "--user-data-dir=" + std::string(gDataDirectory.UTF8String),
@@ -151,6 +183,13 @@ NSString *DirectoryName(NSString *name) {
 // MARK: - Profiles
 
 namespace nncore_host {
+
+NSArray<NNCoreProfile *> *LoadedProfiles() {
+  NSMutableArray *profiles = [NSMutableArray array];
+  for (NNCoreProfile *profile in Profiles().allValues)
+    if (![profiles containsObject:profile]) [profiles addObject:profile];
+  return profiles;
+}
 
 bool IsIncognito(NSString *name) {
   return [name hasPrefix:@"incognito"];

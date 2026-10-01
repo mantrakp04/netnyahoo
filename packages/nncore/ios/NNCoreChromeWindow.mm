@@ -113,7 +113,34 @@ bool IsReservedKey(NSEvent *event) {
 
 // MARK: - NNCoreWindowController
 
-@implementation NNCoreWindowController
+@implementation NNCoreWindowController {
+  NSHashTable<NNCoreTab *> *_closing;
+}
+
++ (instancetype)holding:(NNCoreTab *)tab {
+  NNCoreProfile *profile = tab.profile;
+  if (!profile) return nil;
+  for (NNCoreWindowController *c in Controllers().objectEnumerator)
+    if ([[c.coreWindow tabsForProfile:profile] containsObject:tab]) return c;
+  return nil;
+}
+
+- (void)noteClosing:(NNCoreTab *)tab {
+  if (!_closing) _closing = [NSHashTable weakObjectsHashTable];
+  [_closing addObject:tab];
+  // A close that never completes (a page's beforeunload kept it) stops counting after a while.
+  __weak NNCoreWindowController *weakSelf = self;
+  __weak NNCoreTab *weakTab = tab;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    NNCoreWindowController *c = weakSelf;
+    NNCoreTab *t = weakTab;
+    if (c && t) [c->_closing removeObject:t];
+  });
+}
+
+- (BOOL)appChanging {
+  return _hostChanges > 0 || _closing.count > 0;
+}
 
 + (instancetype)forNSWindow:(NSWindow *)window {
   return window ? [Controllers() objectForKey:window] : nil;
@@ -146,6 +173,7 @@ bool IsReservedKey(NSEvent *event) {
 }
 
 - (void)window:(NNCoreWindow *)window didInsertTab:(NNCoreTab *)tab opener:(NNCoreTab *)opener disposition:(NSString *)disposition {
+  [NNCoreTabStrip changedInWindow:self profile:tab.profile];
   // The app's own (a WebView opening its tab, or adopting one): the view attaches it itself.
   if (_hostChanges > 0 || [NNCoreTabs viewForTab:tab]) return;
   NSString *adoptId = [NNCoreTabs offerTab:tab];
@@ -154,11 +182,16 @@ bool IsReservedKey(NSEvent *event) {
 }
 
 - (void)window:(NNCoreWindow *)window didRemoveTab:(NNCoreTab *)tab {
+  if (NNCoreProfile *profile = tab.profile) [NNCoreTabStrip changedInWindow:self profile:profile];
   [[self viewFor:tab] tabRemovedFromWindow:window];
+  // After Chrome picked the next active tab (it does before it reports the removal).
+  dispatch_async(dispatch_get_main_queue(), ^{ [self->_closing removeObject:tab]; });
 }
 
 - (void)window:(NNCoreWindow *)window didActivateTab:(NNCoreTab *)tab {
-  [[self viewFor:tab] tabActivatedByChrome:_hostChanges == 0];
+  [NNCoreTabStrip activated:tab inWindow:self];
+  [NNCoreTabStrip changedInWindow:self profile:tab.profile];
+  [[self viewFor:tab] tabActivatedByChrome:!self.appChanging];
 }
 
 - (void)window:(NNCoreWindow *)window devToolsDidChangeForTab:(NNCoreTab *)tab view:(NSView *)devToolsView {

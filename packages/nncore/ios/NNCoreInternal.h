@@ -4,6 +4,7 @@
 
 #import "NNCore.h"
 #import "NNCoreHost.h"
+#import "NNCoreTabStrip.h"
 
 @class NNCoreWebView;
 
@@ -43,7 +44,26 @@ bool Background();
 // The host itself is changing Chrome's tab strip (opening, activating, placing a tab): reports it causes
 // are the app's own (TabStripPlace.byApp).
 @property(nonatomic) NSInteger hostChanges;
+// Tabs the app asked to close that are still in Chrome's strip (beforeunload, the close in flight): the active tab
+// Chrome picks after them is the app's change too, not a switch (TabStripPlace.byApp).
+- (void)noteClosing:(NNCoreTab *)tab;
+// The window whose Browser holds `tab` now (nil if none of ours).
++ (nullable NNCoreWindowController *)holding:(NNCoreTab *)tab;
 @end
+
+@interface NNCoreTabStrip (Engine)
+// A strip changed (a tab inserted, removed, activated or placed); the cause is the command being run, the app's
+// own change (hostChanges) or Chrome's.
++ (void)changedInWindow:(NNCoreWindowController *)controller profile:(NNCoreProfile *)profile;
++ (void)activated:(NNCoreTab *)tab inWindow:(NNCoreWindowController *)controller;
++ (void)setPinned:(BOOL)pinned tab:(NNCoreTab *)tab;
+@end
+
+namespace nncore_host {
+NSArray<NNCoreProfile *> *LoadedProfiles();
+// The engine has stage 1's tab model (adoptTab:, tabWillClose:…); older engines report closes only as removals.
+bool EngineHasTabModel();
+}
 
 // MARK: Tabs
 // Which WebView hosts which tab, and tabs Chrome opened that wait for the app to adopt them.

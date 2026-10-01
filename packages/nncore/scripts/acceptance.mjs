@@ -142,7 +142,7 @@ async function cdp(target, method, params = {}) {
 
 const pageTarget = async (urlPart) => (await targets()).find((t) => t.type === "page" && t.url.includes(urlPart));
 const state = () =>
-  evalApp(`const s = nn.store.getState(); const w = Object.values(s.windows)[0];
+  evalApp(`const s = nn.store.getState(); const w = Object.values(s.windows).filter((w) => !w.incognito).sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))[0];
     return { windowId: w?.id, profileId: w?.profileId, tabs: (w?.tabIds ?? []).map((id) => ({ id, url: s.tabs[id]?.url, title: s.tabs[id]?.title, favicon: s.tabs[id]?.favicon?.slice(0, 40), adoptId: s.tabs[id]?.adoptId, profileId: s.tabs[id]?.profileId, loading: s.live[id]?.isLoading, back: s.live[id]?.canGoBack, fwd: s.live[id]?.canGoForward })), active: w ? w.activeTabIds[w.profileId] : null, windows: Object.keys(s.windows).length, profiles: s.profileOrder };`);
 
 async function check(name, fn) {
@@ -356,7 +356,7 @@ try {
     const s = await state();
     // A tab opened just before quitting must be in the saved session: the app saved it on the way out
     // (willQuit → flushPersistence, the documents flushed on willTerminate).
-    await evalApp(`nn.actions.openUrls(["${base}/quit-marker"]); return true`);
+    await evalApp(`nn.actions.openUrls(["${base}/quit-marker"], "${s.windowId}"); return true`);
     await until("the marker tab", async () => (await state()).tabs.some((x) => x.url?.includes("quit-marker")));
     const started = Date.now();
     // ⌘Q → the app's Quit item → NSApp terminate: → applicationShouldTerminate (the app saves its session) →

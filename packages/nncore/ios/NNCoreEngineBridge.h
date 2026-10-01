@@ -1,0 +1,18 @@
+#import <Foundation/Foundation.h>
+
+NS_ASSUME_NONNULL_BEGIN
+
+// //chrome/browser/netnyahoo's C exports (engine/chromium/src/chrome/browser/netnyahoo/public/nn_engine.h), the same
+// code CEF's framework exports: NNCore's Chrome framework links and exports it too.
+@interface NNCoreEngineBridge : NSObject
+// Calls the export `name` for the profile's data (a private window's is the default profile's); the completion gets
+// its JSON reply ({"error"} on failure).
++ (void)call:(NSString *)name
+       profile:(NSString *)profile
+          args:(nullable NSString *)args
+    completion:(void (^)(NSString *json))completion NS_SWIFT_NAME(call(_:profile:args:completion:));
+// Every engine event (topic, JSON payload whose "profile" is the app's profile name).
++ (void)setEventHandler:(nullable void (^)(NSString *topic, NSString *json))handler;
+@end
+
+NS_ASSUME_NONNULL_END

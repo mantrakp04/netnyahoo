@@ -4,7 +4,8 @@
 The NNCore app is the same app (same sources, assets, Expo and React Native build phases) with three
 differences: its own main.swift (Chromium runs the process, NNCoreHost), NNCore's framework staged, linked
 and embedded instead of CEF's (packages/nncore/scripts), and no dock tile or Sparkle (a dev build).
-Run it again after changing apps/browser/macos/Netnyahoo.xcodeproj, then `pod install` here.
+Run it after changing apps/browser/macos/Netnyahoo.xcodeproj, and again after every `pod install` here (CocoaPods
+re-integrates the target and moves the Expo phases into an order Xcode reports as a cycle).
 """
 import os
 import plistlib

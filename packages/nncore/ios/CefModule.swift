@@ -9,9 +9,11 @@ public class CefModule: Module {
 
   public func definition() -> ModuleDefinition {
     Name("NetnyahooCEF")
-    Events("onDownload", "onPermission", "onPermissionDismissed", "onContentBlocker", "onSystemState")
+    Events("onDownload", "onPermission", "onPermissionDismissed", "onContentBlocker", "onSystemState", "onEngineEvent", "onTabStrip")
 
     OnCreate {
+      NNCoreEngineBridge.setEventHandler { [weak self] topic, json in self?.sendEvent("onEngineEvent", ["topic": topic, "payload": json]) }
+      NNCoreTabStrip.setHandler { [weak self] tx in self?.sendEvent("onTabStrip", tx) }
       SystemState.shared.onChange = { [weak self] state in self?.sendEvent("onSystemState", state) }
       SystemState.shared.start()
     }
@@ -21,6 +23,9 @@ public class CefModule: Module {
     AsyncFunction("devWindow") { (windowNumber: Int, action: String) in "" }.runOnQueue(.main)
     // Apply tab transfers synchronously before either view mounts or unmounts.
     Function("prepareTransfer") { (key: String) in NNCoreWebView.prepareTransfer(key) }
+    AsyncFunction("tabStripCommand") { (id: Int, command: [String: Any]) in NNCoreTabStrip.command(id, command: command) }
+      .runOnQueue(.main)
+    AsyncFunction("tabStrips") { NNCoreTabStrip.allStrips }.runOnQueue(.main)
     AsyncFunction("components") { [[String: Any]]() }.runOnQueue(.main)
 
     AsyncFunction("beginTracing") { false }.runOnQueue(.main)
@@ -53,6 +58,10 @@ public class CefModule: Module {
     }.runOnQueue(.main)
     AsyncFunction("pruneFavicons") { (profile: String, keep: [String]) in
       NNCoreFavicons.prune(profile: profile, keeping: keep)
+    }.runOnQueue(.main)
+    AsyncFunction("removeLegacyFavicons") { (profile: String) in }.runOnQueue(.main)
+    AsyncFunction("engineCall") { (name: String, profile: String, args: String?, promise: Promise) in
+      NNCoreEngineBridge.call(name, profile: profile, args: args) { promise.resolve($0) }
     }.runOnQueue(.main)
 
     AsyncFunction("getContentBlocker") { () -> [String: Any] in

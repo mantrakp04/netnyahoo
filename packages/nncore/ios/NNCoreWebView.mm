@@ -15,6 +15,11 @@ namespace {
 
 constexpr CFTimeInterval kTransferWindow = 3;
 
+NSHashTable<NNCoreWebView *> *LiveViews() {
+  static NSHashTable *views = [NSHashTable weakObjectsHashTable];
+  return views;
+}
+
 NSMutableDictionary<NSString *, NSNumber *> *TransferRequests() {
   static NSMutableDictionary *requests = [NSMutableDictionary dictionary];
   return requests;
@@ -174,6 +179,15 @@ NSString *JSONString(id value) {
 - (BOOL)takeTransferredTab {
   NNCoreTab *tab = Parked()[_transferKey];
   if (tab) [Parked() removeObjectForKey:_transferKey];
+  // The new view can mount before the old one unmounts: take the tab from it.
+  if (!tab) {
+    for (NNCoreWebView *other in LiveViews()) {
+      if (other == self || ![other.transferKey isEqualToString:_transferKey] || other.window == self.window || !other->_tab) continue;
+      tab = other->_tab;
+      [other detach];
+      break;
+    }
+  }
   if (!tab || tab.closed) return NO;
   [TransferRequests() removeObjectForKey:_transferKey];
   _adoptId = nil;
@@ -189,15 +203,19 @@ NSString *JSONString(id value) {
   NNCoreWindowController *controller = self.controller;
   if (!controller || ![controller.coreWindow respondsToSelector:@selector(adoptTab:)]) return;
   if ([[controller.coreWindow tabsForProfile:_tab.profile] containsObject:_tab]) return;
+  NNCoreWindowController *source = [NNCoreWindowController holding:_tab];
   _moving = YES;
   controller.hostChanges++;
+  source.hostChanges++;
   [controller.coreWindow adoptTab:_tab];
+  source.hostChanges--;
   controller.hostChanges--;
   _moving = NO;
   if (_tabIndex >= 0) [self placeTab];
 }
 
 - (void)attach:(NNCoreTab *)tab {
+  [LiveViews() addObject:self];
   _tab = tab;
   tab.delegate = self;
   [NNCoreTabs setView:self forTab:tab];
@@ -220,6 +238,12 @@ NSString *JSONString(id value) {
   [self tabDidChangeFavicon:tab];
   if (_tabIndex >= 0) [self placeTab];
   if (_visible) [self activate];
+  // The strip names the tab by this view's key from now on.
+  if (NNCoreWindowController *controller = self.controller) {
+    controller.hostChanges++;
+    [NNCoreTabStrip changedInWindow:controller profile:tab.profile];
+    controller.hostChanges--;
+  }
 }
 
 - (void)detach {
@@ -248,6 +272,7 @@ NSString *JSONString(id value) {
     return;
   }
   _closing = YES;
+  [[NNCoreWindowController holding:tab] noteClosing:tab];
   [self detach];
   [tab close];
 }
@@ -257,6 +282,7 @@ NSString *JSONString(id value) {
   if (!_tab || !controller) return;
   controller.hostChanges++;
   [controller.coreWindow activateTab:_tab];
+  [NNCoreTabStrip activated:_tab inWindow:controller];
   controller.hostChanges--;
 }
 
@@ -271,35 +297,35 @@ NSString *JSONString(id value) {
 // MARK: From the window
 
 - (void)openedTab:(NNCoreTab *)tab adoptId:(NSString *)adoptId disposition:(NSString *)disposition {
-  // window.open makes its contents before it navigates them: wait (briefly) for the URL it is going to.
-  __weak NNCoreWebView *weakSelf = self;
-  __block int tries = 0;
-  __block void (^send)(void);
-  void (^attempt)(void) = ^{
-    NNCoreWebView *view = weakSelf;
-    if (!view) return;
-    NSString *url = tab.url;
-    if (!tab.closed && (!url.length || [url isEqualToString:@"about:blank"]) && tries++ < 20) {
-      void (^again)(void) = send;
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 25 * NSEC_PER_MSEC), dispatch_get_main_queue(), again);
-      return;
-    }
-    send = nil;
-    [view emit:@"openWindow"
-        payload:@{
-          @"url" : url ?: @"",
-          @"disposition" : disposition,
-          @"adoptId" : adoptId,
-          @"userGesture" : @YES,
-          @"postBody" : @NO,
-        }];
-  };
-  send = attempt;
-  attempt();
+  [self announceOpenedTab:tab adoptId:adoptId disposition:disposition tries:0];
+}
+
+// window.open makes its contents before it navigates them: wait (briefly) for the URL it is going to.
+- (void)announceOpenedTab:(NNCoreTab *)tab adoptId:(NSString *)adoptId disposition:(NSString *)disposition tries:(int)tries {
+  if (tab.closed) return;
+  NSString *url = tab.url;
+  if ((!url.length || [url isEqualToString:@"about:blank"]) && tries < 20) {
+    __weak NNCoreWebView *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 25 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+      [weakSelf announceOpenedTab:tab adoptId:adoptId disposition:disposition tries:tries + 1];
+    });
+    return;
+  }
+  [self emit:@"openWindow"
+      payload:@{
+        @"url" : url ?: @"",
+        @"disposition" : disposition,
+        @"adoptId" : adoptId,
+        @"userGesture" : @YES,
+        @"postBody" : @NO,
+      }];
 }
 
 - (void)tabRemovedFromWindow:(NNCoreWindow *)window {
   if (_moving || _closing || !_tab) return;
+  // A stage 1 engine says when Chrome closes a tab (tabWillClose:); a removal is then a move (an extension's
+  // tabs.move to another window), which keeps the tab.
+  if (nncore_host::EngineHasTabModel()) return;
   // Chrome closed it (window.close(), an extension): the app closes the tab (onWindowClose).
   [self detach];
   [self emit:@"windowClose" payload:@{}];
@@ -668,6 +694,7 @@ NSString *JSONString(id value) {
 - (void)setTabStripIndex:(NSInteger)index pinned:(BOOL)pinned {
   _tabIndex = index;
   _pinned = pinned;
+  if (_tab) [NNCoreTabStrip setPinned:pinned tab:_tab];
   [self placeTab];
 }
 
@@ -749,6 +776,11 @@ constexpr int64_t kOfferSeconds = 30;
 @end
 
 namespace nncore_host {
+
+bool EngineHasTabModel() {
+  static const bool has = [NNCoreWindow instancesRespondToSelector:@selector(adoptTab:)];
+  return has;
+}
 
 namespace {
 const void *kBrowserIdKey = &kBrowserIdKey;
