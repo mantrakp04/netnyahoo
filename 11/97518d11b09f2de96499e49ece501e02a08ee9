@@ -1,0 +1,31 @@
+packages/nncore/ios/NNCoreEngineBridge.mm
+  s_9c356f9574d31c::t_b64cd98eb27bee 43-47,49,53-63,84-94
+packages/nncore/ios/NNCoreChromeWindow.mm
+  s_9c356f9574d31c::t_389af30b12d705 320-321
+  s_9c356f9574d31c::t_d601d64b2bcedb 315-319,322-326
+packages/nncore/ios/NNCoreTabStrip.mm
+  s_9c356f9574d31c::t_b64cd98eb27bee 10-11,38-49,80-85,90,95-97,114-135,219-240
+  s_9c356f9574d31c::t_d538a9335034ec 241
+packages/nncore/scripts/acceptance.mjs
+  s_9c356f9574d31c::t_ecccc1978c31c3 521-522
+  s_9c356f9574d31c::t_e6fded58d7e01d 639
+  s_9c356f9574d31c::t_8488272775e986 11,64-78,516-518,660
+packages/nncore/ios/NNCoreEngineBridge.h
+  s_9c356f9574d31c::t_b64cd98eb27bee 16-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1197518d11b09f2de96499e49ece501e02a08ee9",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
