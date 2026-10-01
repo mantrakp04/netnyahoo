@@ -6,13 +6,17 @@
 #ifndef CHROME_BROWSER_NETNYAHOO_NN_ENGINE_H_
 #define CHROME_BROWSER_NETNYAHOO_NN_ENGINE_H_
 
+#include <memory>
 #include <string>
 #include <string_view>
 
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
+#include "base/supports_user_data.h"
 #include "base/values.h"
 #include "chrome/browser/netnyahoo/public/nn_engine.h"
-
-class Profile;
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_observer.h"
 
 // Defines an exported call: NN_ENGINE_CALL(nn_zoom_list) { ... } with
 // |profile_dir|, |args_json|, |reply| and |context| in scope.
@@ -71,8 +75,43 @@ class Call {
   Reply reply_;
 };
 
-// The loaded profile at |dir|, or nullptr.
+// The loaded profile at |dir| (symlinks resolved), or nullptr.
 Profile* ProfileAt(std::string_view dir);
+
+// A domain's state for one profile (observers, held services), created on
+// first use and kept for the profile's life. Release() runs before the
+// profile's services shut down: drop everything that points into them there.
+class ProfileState : public base::SupportsUserData::Data,
+                     public ProfileObserver {
+ public:
+  explicit ProfileState(Profile* profile);
+  ~ProfileState() override;
+
+  Profile* profile() const { return profile_; }
+
+ protected:
+  virtual void Release() {}
+
+ private:
+  void OnProfileWillBeDestroyed(Profile* profile) override;
+
+  raw_ptr<Profile> profile_;
+  base::ScopedObservation<Profile, ProfileObserver> observation_{this};
+};
+
+// StateFor<T>(profile): the profile's T (a ProfileState with a T(Profile*)
+// constructor), made on first use.
+template <typename T>
+T& StateFor(Profile* profile) {
+  static const int kKey = 0;
+  auto* state = static_cast<T*>(profile->GetUserData(&kKey));
+  if (!state) {
+    auto owned = std::make_unique<T>(profile);
+    state = owned.get();
+    profile->SetUserData(&kKey, std::move(owned));
+  }
+  return *state;
+}
 
 // Sends an event to the app's sink, if any. Adds "profile": the original
 // (on-disk) profile's directory.

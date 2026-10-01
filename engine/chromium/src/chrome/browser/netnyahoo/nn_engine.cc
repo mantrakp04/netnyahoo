@@ -2,6 +2,9 @@
 
 #include "chrome/browser/netnyahoo/nn_engine.h"
 
+#include <limits.h>
+#include <stdlib.h>
+
 #include <optional>
 #include <utility>
 
@@ -104,13 +107,40 @@ double Call::Double(std::string_view key, double fallback) const {
   return args_.FindDouble(key).value_or(fallback);
 }
 
+ProfileState::ProfileState(Profile* profile) : profile_(profile) {
+  observation_.Observe(profile);
+}
+
+ProfileState::~ProfileState() = default;
+
+void ProfileState::OnProfileWillBeDestroyed(Profile* profile) {
+  Release();
+  observation_.Reset();
+}
+
 Profile* ProfileAt(std::string_view dir) {
   ProfileManager* manager =
       g_browser_process ? g_browser_process->profile_manager() : nullptr;
   if (!manager || dir.empty()) {
     return nullptr;
   }
-  return manager->GetProfileByPath(base::FilePath(dir));
+  if (Profile* profile = manager->GetProfileByPath(base::FilePath(dir))) {
+    return profile;
+  }
+  // The app and Chrome may spell the data directory differently (/tmp and
+  // /private/tmp): compare real paths. realpath() is one syscall per profile.
+  auto real = [](const base::FilePath& path) {
+    char resolved[PATH_MAX];
+    return realpath(path.value().c_str(), resolved) ? std::string(resolved)
+                                                    : path.value();
+  };
+  const std::string wanted = real(base::FilePath(dir));
+  for (Profile* profile : manager->GetLoadedProfiles()) {
+    if (real(profile->GetPath()) == wanted) {
+      return profile;
+    }
+  }
+  return nullptr;
 }
 
 void Emit(std::string_view topic, Profile* profile, base::DictValue payload) {
