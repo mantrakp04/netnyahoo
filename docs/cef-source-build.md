@@ -43,7 +43,7 @@ What the build adds:
 | `chromium-extension-install-prompt-hook.patch` | The client may replace Chrome's extension install dialog |
 | `chromium-branding.patch` | Netnyahoo's bundle and team id (`branding_file_path`), for the passkey and payments keychain access groups; product names stay "Chromium" |
 | `chromium-icloud-keychain-window.patch` | iCloud Keychain's passkey sheet attaches to the tab's own window when it isn't a `views::Widget` |
-| `chromium-safe-storage-name.patch` | The Safe Storage key lives in its own "Netnyahoo Safe Storage" keychain item (`CEF_NN_SAFE_STORAGE`) |
+| `chromium-safe-storage-name.patch` | The Safe Storage key lives in its own "Netnyahoo Safe Storage" keychain item, account "Netnyahoo" (`CEF_NN_SAFE_STORAGE`). **Load-bearing:** it's Chromium's own `os_crypt` code, so NNCore uses it too, and every user's saved passwords and cookies are encrypted with that item's key. Keep it, unchanged, through every re-sync (plain Chromium for NNCore, a version bump); without it Chrome reads "Chromium Safe Storage" and nothing decrypts |
 | `chromium-device-chooser-hook.patch` | `chrome::ShowDeviceChooserDialog` asks the client first (`CEF_NN_CHROME_UI`) |
 | `chromium-cast-dialog-hook.patch` | The Media Router's Cast dialog (and Presentation API requests) asks the client first |
 | `chromium-side-panel-hook.patch` | `side_panel_util` asks the client first for an extension's side panel |

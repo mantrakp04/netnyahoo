@@ -40,6 +40,8 @@ chromium chromium-extension-window-hidden.patch
 chromium chromium-neterror-yahu.patch
 chromium chromium-branding.patch
 chromium chromium-icloud-keychain-window.patch
+# Load-bearing for every user's data: the Safe Storage item ("Netnyahoo Safe Storage" / "Netnyahoo") holds the key to
+# their saved passwords and cookies. It must survive any re-sync (plain Chromium for NNCore, a version bump), unchanged.
 chromium chromium-safe-storage-name.patch
 chromium chromium-password-bubble-hook.patch
 chromium chromium-password-generation-local.patch
