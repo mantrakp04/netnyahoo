@@ -1,0 +1,121 @@
+diff --git a/React/Base/macOS/RCTUIKit.m b/React/Base/macOS/RCTUIKit.m
+index a37a1c106a04752c1baeb6dd2170402ce5f34f71..c096a10720e76e449619a026d4b756ec1bb6907b 100644
+--- a/React/Base/macOS/RCTUIKit.m
++++ b/React/Base/macOS/RCTUIKit.m
+@@ -284,20 +284,53 @@ - (CATransform3D)transform3D
+   return _transform3D;
+ }
+ 
+-- (void)setTransform3D:(CATransform3D)transform3D
++// [Netnyahoo: the layer transform for transform3D at the view's current size. On macOS, layer.anchorPoint is
++// {0, 0} instead of {0.5, 0.5} as on iOS, so the transform is moved to apply from the view's center; that depends
++// on the size, so it's worked out again each time it's applied.
++static CATransform3D RCTUIViewLayerTransform(RCTUIView *view)
++{
++  CATransform3D transform = view->_transform3D;
++  if (CGPointEqualToPoint(view.layer.anchorPoint, CGPointZero) && view->_hasCustomTransform3D) {
++    CATransform3D originAdjust = CATransform3DMakeTranslation(view.bounds.size.width / 2, view.bounds.size.height / 2, 0);
++    transform = CATransform3DConcat(CATransform3DConcat(CATransform3DInvert(originAdjust), transform), originAdjust);
++  }
++  return transform;
++}
++
++// AppKit owns a layer-backed view's geometry: it puts the layer's transform back to identity whenever the frame
++// changes (setFrameOrigin:/setFrameSize:, which don't always lead to updateLayer) and when the view joins a layer
++// tree (before updateLayer). Each of those writes the stored transform back.
++static void RCTUIViewApplyTransform3D(RCTUIView *view)
+ {
+-  // On macOS, layer.anchorPoint defaults to {0, 0} instead of {0.5, 0.5} on iOS.
+-  // Compensate so transforms are applied from the view's center as expected.
+-  CGPoint anchorPoint = self.layer.anchorPoint;
+-  if (CGPointEqualToPoint(anchorPoint, CGPointZero) && !CATransform3DEqualToTransform(transform3D, CATransform3DIdentity)) {
+-    CATransform3D originAdjust = CATransform3DTranslate(CATransform3DIdentity, self.frame.size.width / 2, self.frame.size.height / 2, 0);
+-    transform3D = CATransform3DConcat(CATransform3DConcat(CATransform3DInvert(originAdjust), transform3D), originAdjust);
++  CATransform3D transform = RCTUIViewLayerTransform(view);
++  if (!CATransform3DEqualToTransform(view.layer.transform, transform)) {
++    view.layer.transform = transform;
+   }
++}
+ 
++- (void)setTransform3D:(CATransform3D)transform3D
++{
+   _transform3D = transform3D;
+   _hasCustomTransform3D = !CATransform3DEqualToTransform(transform3D, CATransform3DIdentity);
+-  self.layer.transform = transform3D;
++  self.layer.transform = RCTUIViewLayerTransform(self);
++}
++
++- (void)setFrameOrigin:(NSPoint)newOrigin
++{
++  [super setFrameOrigin:newOrigin];
++  if (_hasCustomTransform3D) {
++    RCTUIViewApplyTransform3D(self);
++  }
++}
++
++- (void)setFrameSize:(NSSize)newSize
++{
++  [super setFrameSize:newSize];
++  if (_hasCustomTransform3D) {
++    RCTUIViewApplyTransform3D(self);
++  }
+ }
++// Netnyahoo]
+ 
+ - (NSView *)hitTest:(NSPoint)point
+ {
+@@ -331,8 +364,8 @@ - (void)updateLayer
+   // On macOS, AppKit's layer-backed view system resets layer.transform to identity
+   // during its layout/display cycle because NSView has no built-in transform property
+   // (unlike UIView on iOS). We must re-apply the stored transform after each cycle.
+-  if (_hasCustomTransform3D && !CATransform3DEqualToTransform(layer.transform, _transform3D)) {
+-    layer.transform = _transform3D;
++  if (_hasCustomTransform3D) {
++    RCTUIViewApplyTransform3D(self); // [Netnyahoo]
+   }
+ 
+   if (_respondsToDisplayLayer) {
+diff --git a/React/Views/RCTView.m b/React/Views/RCTView.m
+index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..78f8909a61d1f8999fd9c4ecc414eaaffaf18be1 100644
+--- a/React/Views/RCTView.m
++++ b/React/Views/RCTView.m
+@@ -1248,17 +1248,8 @@ - (void)displayLayer:(CALayer *)layer
+   RCTUIColor *backgroundColor = _backgroundColor;
+ #endif // macOS]
+ 
+-#if TARGET_OS_OSX // [macOS
+-  CATransform3D transform = [[self layer] transform];
+-  CGPoint anchorPoint = [layer anchorPoint];
+-  if (CGPointEqualToPoint(anchorPoint, CGPointZero) && !CATransform3DEqualToTransform(transform, CATransform3DIdentity)) {
+-    // https://developer.apple.com/documentation/quartzcore/calayer/1410817-anchorpoint
+-    // This compensates for the fact that layer.anchorPoint is {0, 0} instead of {0.5, 0.5} on macOS for some reason.
+-    CATransform3D originAdjust = CATransform3DTranslate(CATransform3DIdentity, self.frame.size.width / 2, self.frame.size.height / 2, 0);
+-    transform = CATransform3DConcat(CATransform3DConcat(CATransform3DInvert(originAdjust), transform), originAdjust);
+-  }
+-  [layer setTransform:transform];
+-#endif // macOS]
++  // [Netnyahoo: the anchor point compensation that was here moved to -[RCTUIView setTransform3D:], which
++  // UIView+React's updateTransform now goes through; doing it here as well applied it twice. Netnyahoo]
+ 
+   if (useIOSBorderRendering) {
+     layer.cornerRadius = cornerRadii.topLeftHorizontal;
+diff --git a/React/Views/UIView+React.m b/React/Views/UIView+React.m
+index 30c4f1e53e7b94016c8ed1b425587753fc80c2ce..b1c734080b05e4924a2034aae15b3f03bd071f88 100644
+--- a/React/Views/UIView+React.m
++++ b/React/Views/UIView+React.m
+@@ -306,7 +306,15 @@ static void updateTransform(RCTPlatformView *view) // [macOS]
+     transform = view.reactTransform;
+   }
+ 
++#if TARGET_OS_OSX // [Netnyahoo: RCTUIView keeps the transform and puts it back after AppKit resets the layer's.
++  if ([view isKindOfClass:[RCTUIView class]]) {
++    ((RCTUIView *)view).transform3D = transform;
++  } else {
++    view.layer.transform = transform;
++  }
++#else
+   view.layer.transform = transform;
++#endif // Netnyahoo]
+   // Enable edge antialiasing in rotation, skew, or perspective transforms
+   view.layer.allowsEdgeAntialiasing = transform.m12 != 0.0f || transform.m21 != 0.0f || transform.m34 != 0.0f;
+ }

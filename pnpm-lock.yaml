@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: false
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  react-native-macos@0.81.9: c44451db85422b398c69453d345240be94b9ce31f332035907f73ff482a390ad
+
 importers:
 
   .:
@@ -49,7 +52,7 @@ importers:
         version: 0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4)
       react-native-macos:
         specifier: 0.81.9
-        version: 0.81.9(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
+        version: 0.81.9(patch_hash=c44451db85422b398c69453d345240be94b9ce31f332035907f73ff482a390ad)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)
       zustand:
         specifier: ^5.0.8
         version: 5.0.15(@types/react@19.1.17)(react@19.1.4)
@@ -6492,7 +6495,7 @@ snapshots:
 
   react-is@18.3.1: {}
 
-  react-native-macos@0.81.9(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4):
+  react-native-macos@0.81.9(patch_hash=c44451db85422b398c69453d345240be94b9ce31f332035907f73ff482a390ad)(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4):
     dependencies:
       '@jest/create-cache-key-function': 29.7.0
       '@react-native-macos/virtualized-lists': 0.81.9(@types/react@19.1.17)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)

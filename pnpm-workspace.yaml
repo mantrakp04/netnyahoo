@@ -13,3 +13,7 @@ nodeLinker: hoisted
 # Peers are listed explicitly: an auto-installed one could be a package with no
 # react-native-macos build (Reanimated 4, say).
 autoInstallPeers: false
+
+# Fixes in dependencies, applied by every `pnpm install` (docs/agent-brief.md › "Patched dependencies").
+patchedDependencies:
+  react-native-macos@0.81.9: patches/react-native-macos@0.81.9.patch

@@ -36,6 +36,16 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   - `packages/core`: pure TS (omnibox parsing, suggestions) with tests.
 - react-native-macos quirks: RN shadow props crash → use `Surface` for shadows; RCTView resets
   layer props → draw in sublayers; native views must size subviews in `setFrameSize`.
+- **Patched dependencies** live in `patches/` and are listed under `patchedDependencies` in
+  `pnpm-workspace.yaml` (pnpm 11 reads them there); every `pnpm install` applies them, and both Podfiles
+  (`macos`, `macos-nncore`) compile React from `node_modules`, so a rebuild picks a change up (`pod install`
+  only if a patch adds or removes files). To change one: `pnpm patch <pkg>@<version> --edit-dir <scratch dir>`,
+  edit there, then `scripts/agent/locked pod -- pnpm patch-commit <scratch dir>`, and read the new `.patch`:
+  pnpm can add bogus `deleted file` entries (drop them and run `pnpm install` again under the same lock).
+  Mark edits `[Netnyahoo: … Netnyahoo]`. Current patches:
+  - `react-native-macos`: a view's `transform` survives AppKit laying it out (it reset the layer's
+    transform on every frame change, so a view resting at a non-zero translate, rotate or scale drew
+    untransformed), and applies from the view's centre as on iOS.
 
 ## The engine
 - The CEF distribution is built outside the repo in `~/chromium-build` from the patches in
