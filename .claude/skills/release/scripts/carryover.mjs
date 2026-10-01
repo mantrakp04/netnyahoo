@@ -30,13 +30,18 @@ setTimeout(() => { console.error("carryover: no result in 240 s"); if (pid) try 
 try { await fetch(`http://127.0.0.1:${port}/json/version`); console.error(`carryover: port ${port} is taken`); process.exit(4); } catch {}
 fs.mkdirSync(docs, { recursive: true });
 fs.writeFileSync(path.join(docs, "perf-probe"), ""); // starts the dev harness in a release build's isolated instance
+// The previous build (create, back) predates silent test instances: onboarding done, so its intro music never starts,
+// and Chrome's --mute-audio for page audio. NNCore builds (read, use) mute themselves under NETNYAHOO_BACKGROUND.
+const previousBuild = phase === "create" || phase === "back";
+if (previousBuild && !fs.existsSync(path.join(docs, "onboarding.json")))
+  fs.writeFileSync(path.join(docs, "onboarding.json"), JSON.stringify({ version: 1, completedAt: Date.now(), introMusicMuted: true }));
 const exe = `${app}/Contents/MacOS/Netnyahoo`;
 const pids = () => { try { return execSync(`pgrep -f '^${exe}'`).toString().trim().split("\n").filter(Boolean); } catch { return []; } };
 const before = new Set(pids());
 const env = ["NETNYAHOO_BACKGROUND=1", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, `HOME=${home}`, `CFFIXED_USER_HOME=${home}`,
   "NETNYAHOO_TEST_REAUTH=granted", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows"];
 if (phase === "create" || phase === "back") env.push(`NETNYAHOO_DATA_DIR=${docs}`);
-execFileSync("open", ["-g", "-n", ...env.flatMap((e) => ["--env", e]), app]);
+execFileSync("open", ["-g", "-n", ...env.flatMap((e) => ["--env", e]), app, ...(previousBuild ? ["--args", "--mute-audio"] : [])]);
 for (let i = 0; i < 40 && !pid; i++) { await sleep(500); pid = pids().find((p) => !before.has(p)) ?? null; }
 if (!pid) { console.error("carryover: the app didn't start"); process.exit(2); }
 
