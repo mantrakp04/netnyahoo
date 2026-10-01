@@ -7,7 +7,7 @@
 //
 // It never takes focus and never touches a real profile: the data dir is <scratch dir>/data, wiped first.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 
@@ -285,6 +285,36 @@ try {
     return { t, w, tabs: [before, afterT.tabs.length, afterW.tabs.length] };
   });
 
+  await check("cmd-l-from-page", async () => {
+    const s = await state();
+    const r = await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "l", keyCode: 37, modifiers: ["command"], focus: "page" })`);
+    if (!r.fired?.some((f) => f.command === "focusCommandBar")) throw new Error(`⌘L didn't reach the menu: ${JSON.stringify(r)}`);
+    return { handledBy: r.handledBy, fired: r.fired.map((f) => f.command) };
+  });
+
+  await check("tab-keys-from-page", async () => {
+    const s = await state();
+    // ⌃Tab opens the tab switcher (it switches when ⌃ is released); ⌘⇧] goes to the next tab at once.
+    const ctrlTab = await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "\t", keyCode: 48, modifiers: ["control"], focus: "page" })`);
+    if (!ctrlTab.fired?.some((f) => f.command === "tabSwitcher")) throw new Error(`⌃Tab: ${JSON.stringify(ctrlTab)}`);
+    await evalApp(`nn.runCommand?.("escape"); return true`).catch(() => {});
+    const next = await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "}", keyCode: 30, modifiers: ["command", "shift"], focus: "page" })`);
+    const after = await until("the next tab", async () => {
+      const n = await state();
+      return n.active !== s.active ? n : null;
+    }, 5000);
+    return { ctrlTab: ctrlTab.fired.map((f) => f.command), next: (next.fired ?? []).map((f) => f.command), from: s.active, to: after.active };
+  });
+
+  await check("window-close", async () => {
+    const e = (await state()).tabs.find((x) => x.url?.startsWith(`${base}/e`));
+    if (!e) throw new Error("no window.open tab to close");
+    const t = await pageTarget(`${base}/e`);
+    await cdp(t, "Runtime.evaluate", { expression: "window.close()", userGesture: true });
+    await until("the tab gone from the store", async () => !(await state()).tabs.some((x) => x.id === e.id));
+    return { closed: e.id };
+  });
+
   await check("second-profile", async () => {
     const s = await state();
     const id = await evalApp(`return nn.store.getState().createProfile({ name: "Work" })`);
@@ -312,6 +342,34 @@ try {
       return ids.length > before.length ? ids : null;
     });
     return { before, after };
+  });
+  await check("incognito-window", async () => {
+    const id = await evalApp(`return nn.actions.openWindow({ incognito: true, url: "${base}/b?private" })`);
+    const t = await until("a private tab", async () => {
+      const tabs = await evalApp(`const s = nn.store.getState(); return (s.windows["${id}"]?.tabIds ?? []).map((i) => ({ url: s.tabs[i]?.url, title: s.tabs[i]?.title, profile: s.tabs[i]?.profileId }))`);
+      return tabs.find((x) => x.title === "Page B") ?? null;
+    });
+    return { window: id, tab: t };
+  });
+
+  await check("quit", async () => {
+    const s = await state();
+    // A tab opened just before quitting must be in the saved session: the app saved it on the way out
+    // (willQuit → flushPersistence, the documents flushed on willTerminate).
+    await evalApp(`nn.actions.openUrls(["${base}/quit-marker"]); return true`);
+    await until("the marker tab", async () => (await state()).tabs.some((x) => x.url?.includes("quit-marker")));
+    const started = Date.now();
+    // ⌘Q → the app's Quit item → NSApp terminate: → applicationShouldTerminate (the app saves its session) →
+    // NNCore's quit. The app may exit before the harness answers.
+    await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "q", keyCode: 12, modifiers: ["command"], focus: "window" })`, 5000).catch(() => null);
+    await until("the app to exit", async () => exited, 20000);
+    const saved = readFileSync(join(data, "session.json"), "utf8").includes("quit-marker");
+    if (!saved) throw new Error("the session wasn't saved on quit");
+    const reports = readdirSync(join(process.env.HOME, "Library/Logs/DiagnosticReports")).filter(
+      (f) => f.includes("NetnyahooNNCore") && statSync(join(process.env.HOME, "Library/Logs/DiagnosticReports", f)).mtimeMs > started,
+    );
+    if (reports.length) throw new Error(`crash report: ${reports}`);
+    return { exitedAfterMs: Date.now() - started, sessionSaved: saved };
   });
 } finally {
   writeFileSync(join(scratch, "results.json"), JSON.stringify(results, null, 2));
