@@ -3,21 +3,16 @@
 #import "NNEngine.h"
 #import "NNWindowHost.h"
 
-#include <algorithm>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
-// Chrome reports a strip through CefLifeSpanHandler::OnTabStripChanged: after every change to a Chrome window's
-// TabStripModel it calls it for each of the window's tabs, in strip order, in one synchronous loop
-// (ChromeBrowserDelegate::NotifyTabStripChanged, cef-chrome-tabs.patch). One loop is a burst: an index that
-// doesn't grow starts the next one. A burst is one strip, whole, and belongs to the Chrome window most of its tabs
-// are in as far as the app knows: a tab votes for the window it was last reported in, unless that window has
-// reported since without it (it left: a move between windows reports the window it left first). A tab an extension
-// moved in is the odd one out, and is in that window from now on.
-//
-// Groups come from the engine's own strip reports (nn_tabs, //chrome/browser/netnyahoo), which follow every
-// change synchronously too, groups' included; CEF's report carries none.
+// The engine layer's own strip reports (nn_tabs, //chrome/browser/netnyahoo) are the strips: after every change to
+// a Browser's TabStripModel, synchronously, its tabs (Chrome's tab ids, order, active, pinned, group), its groups,
+// and whether Chrome picked the active tab because the active one left. They name the Browser, so a strip's window
+// is never inferred from its tabs. CEF's own report (CefLifeSpanHandler::OnTabStripChanged) only tells this file
+// which browser each Chrome tab id is.
 //
 // Causes: a JS command (its id), the app's own engine call (kApp), or Chrome (kChrome). Changes are held until
 // their cause ends: a command or app call flushes on return, Chrome's changes at the end of the main-thread task.
@@ -32,88 +27,93 @@ constexpr NSInteger kApp = -1;
 
 struct Entry {
   int browser;
-  int index;
   bool active;
   bool pinned;
+  std::string group;  // Chrome's group token, "" for none
 };
 
 struct Strip {
   NSString *profile = @"";
   int window = 0;
+  NSString *appWindow = nil;
+  int chromeWindow = 0;
   std::vector<Entry> tabs;
+  NSArray *groups = @[];
+  NSNumber *pickedOnClose = nil;  // absent from engines that don't say
   bool dirty = false;
   bool closed = false;
   NSDictionary *sent = nil;
 };
 
+// Strips by the app's id for them (the Chrome window's, NNWindowHost), and Chrome's window id → that id, learnt
+// the first time the engine reports the window (when it holds the tab it was made with) and kept for its life.
 std::map<int, Strip> gStrips;
-// The loop being reported.
-std::vector<Entry> gBurst;
-// browser id → the strip that last reported it.
-std::map<int, int> gReportedIn;
-// browser id → the app's tab id (the transferKey of the view that showed it).
-std::map<int, std::string> gKeys;
-// browser id → Chrome's tab id (chrome.tabs; nn_tabs names tabs by it), and the token of its tab group.
+std::map<int, int> gStripOfChromeWindow;
+// The engine's latest report of each Chrome window not yet applied.
+std::map<int, NSDictionary *> gReports;
+// browser id → Chrome's tab id, and → the app's tab id (the transferKey of the view that showed it).
 std::map<int, int> gTabIds;
-std::map<int, std::string> gGroupOf;
-// strip → Chrome's window id (nn_tabs names strips by it); Chrome window id → its groups (id, title, color,
-// collapsed).
-std::map<int, int> gChromeWindowOf;
-std::map<int, int> gChromeWindowOfBrowser;
-std::map<int, NSArray *> gGroupsOf;
+std::map<int, std::string> gKeys;
 bool gWatching = false;
 NSInteger gCause = kChrome;
 NSInteger gHeldCause = kChrome;
 NSInteger gRev = 0;
 bool gFlushQueued = false;
 
-// The burst is complete: it replaces its strip's tabs.
-void EndBurst() {
-  if (gBurst.empty()) return;
-  std::vector<Entry> tabs;
-  tabs.swap(gBurst);
+int StripFor(int chromeWindow, const std::vector<Entry> &tabs) {
+  auto known = gStripOfChromeWindow.find(chromeWindow);
+  if (known != gStripOfChromeWindow.end()) return known->second;
   std::map<int, int> votes;
-  for (const Entry &e : tabs) {
-    CefRefPtr<CefBrowser> b = CefBrowserHost::GetBrowserByIdentifier(e.browser);
-    const int cached = b ? host::StripOf(b) : 0;
-    auto last = gReportedIn.find(e.browser);
-    auto strip = last != gReportedIn.end() ? gStrips.find(last->second) : gStrips.end();
-    const bool left = strip != gStrips.end() && strip->first == cached &&
-                      std::none_of(strip->second.tabs.begin(), strip->second.tabs.end(),
-                                   [&](const Entry &t) { return t.browser == e.browser; });
-    if (cached && !left) votes[cached]++;
-  }
+  for (const Entry &e : tabs)
+    if (CefRefPtr<CefBrowser> b = CefBrowserHost::GetBrowserByIdentifier(e.browser))
+      if (int strip = host::StripOf(b)) votes[strip]++;
   int strip = 0;
   for (auto &[id, n] : votes)
     if (!strip || n > votes[strip]) strip = id;
-  NSString *profile = nil;
-  int window = 0;
-  if (!strip || !host::StripInfo(strip, &profile, &window)) return;
-  for (auto &[id, s] : gStrips) {
-    if (id == strip) continue;
-    // A tab is in one strip: one that moved leaves its old strip, even when nothing is left there to report.
-    auto gone = std::remove_if(s.tabs.begin(), s.tabs.end(), [&](const Entry &e) {
-      return std::any_of(tabs.begin(), tabs.end(), [&](const Entry &t) { return t.browser == e.browser; });
-    });
-    if (gone == s.tabs.end()) continue;
-    s.tabs.erase(gone, s.tabs.end());
+  if (strip) gStripOfChromeWindow[chromeWindow] = strip;
+  return strip;
+}
+
+// Applies the engine's reports: Chrome's tab ids become browsers (CEF reported them in the same change).
+void ApplyReports() {
+  std::map<int, int> browserOf;
+  for (auto &[browser, tab] : gTabIds) browserOf[tab] = browser;
+  for (auto it = gReports.begin(); it != gReports.end();) {
+    NSDictionary *report = it->second;
+    const int chromeWindow = it->first;
+    std::vector<Entry> tabs;
+    for (NSDictionary *tab in report[@"tabs"]) {
+      auto b = browserOf.find([tab[@"tab"] intValue]);
+      if (b == browserOf.end()) continue;
+      id group = tab[@"group"];
+      tabs.push_back({b->second, [tab[@"active"] boolValue], [tab[@"pinned"] boolValue],
+                      [group isKindOfClass:NSString.class] ? std::string([group UTF8String]) : std::string()});
+    }
+    const int id = StripFor(chromeWindow, tabs);
+    NSString *profile = nil, *appWindow = nil;
+    int window = 0;
+    if (!id || !host::StripInfo(id, &profile, &window, &appWindow)) {
+      // Not one of ours (yet): an empty new window waits for its first tab.
+      it = tabs.empty() ? std::next(it) : gReports.erase(it);
+      continue;
+    }
+    Strip &s = gStrips[id];
+    s.profile = profile ?: @"";
+    s.window = window;
+    s.appWindow = appWindow;
+    s.chromeWindow = chromeWindow;
+    s.tabs = std::move(tabs);
+    s.groups = [report[@"groups"] isKindOfClass:NSArray.class] ? report[@"groups"] : @[];
+    s.pickedOnClose = [report[@"activePickedOnClose"] isKindOfClass:NSNumber.class] ? report[@"activePickedOnClose"] : nil;
+    s.closed = false;
     s.dirty = true;
+    for (const Entry &e : s.tabs) host::NoteStrip(e.browser, id);
+    it = gReports.erase(it);
   }
-  for (const Entry &e : tabs) {
-    host::NoteStrip(e.browser, strip);
-    gReportedIn[e.browser] = strip;
-    if (auto w = gChromeWindowOfBrowser.find(e.browser); w != gChromeWindowOfBrowser.end()) gChromeWindowOf[strip] = w->second;
-  }
-  Strip &s = gStrips[strip];
-  s.profile = profile ?: @"";
-  s.window = window;
-  s.closed = false;
-  s.tabs = std::move(tabs);
-  s.dirty = true;
 }
 
 bool AnyDirty() {
-  if (!gBurst.empty()) return true;
+  if (!gReports.empty()) return true;
   for (auto &[id, s] : gStrips)
     if (s.dirty) return true;
   return false;
@@ -124,25 +124,24 @@ NSDictionary *StateOf(int stripId, const Strip &s) {
   int index = 0;
   for (const Entry &e : s.tabs) {
     auto key = gKeys.find(e.browser);
-    auto group = gGroupOf.find(e.browser);
     [list addObject:@{
       @"key" : key != gKeys.end() ? (id)@(key->second.c_str()) : (id)[NSNull null],
       @"browser" : @(e.browser),
       @"index" : @(index++),
       @"active" : @(e.active),
       @"pinned" : @(e.pinned),
-      @"group" : group != gGroupOf.end() ? (id)@(group->second.c_str()) : (id)[NSNull null],
+      @"group" : e.group.empty() ? (id)[NSNull null] : (id)@(e.group.c_str()),
     }];
   }
-  auto chromeWindow = gChromeWindowOf.find(stripId);
-  NSArray *groups = chromeWindow != gChromeWindowOf.end() ? gGroupsOf[chromeWindow->second] : nil;
   NSMutableDictionary *state = [@{
     @"strip" : @(stripId),
     @"window" : @(s.window),
     @"profile" : s.profile ?: @"",
     @"tabs" : list,
-    @"groups" : groups ?: @[],
+    @"groups" : s.groups ?: @[],
   } mutableCopy];
+  if (s.pickedOnClose) state[@"activePickedOnClose"] = s.pickedOnClose;
+  if (s.appWindow) state[@"appWindow"] = s.appWindow;
   if (s.closed) state[@"closed"] = @YES;
   return state;
 }
@@ -150,7 +149,7 @@ NSDictionary *StateOf(int stripId, const Strip &s) {
 // Sends what changed under the held cause as one transaction. A JS command always gets its transaction (it's
 // the command's answer), even when nothing changed.
 void Flush(bool answer = false, bool rejected = false) {
-  EndBurst();
+  ApplyReports();
   const NSInteger cause = gHeldCause;
   NSMutableArray *strips = [NSMutableArray array];
   for (auto it = gStrips.begin(); it != gStrips.end();) {
@@ -190,48 +189,26 @@ void Hold() {
   gHeldCause = gCause;
 }
 
-// The engine's report of a strip: its tabs' groups and the groups' looks.
-void EngineReport(NSDictionary *event) {
-  const int chromeWindow = [event[@"window"] intValue];
-  if ([event[@"closed"] boolValue]) {
-    gGroupsOf.erase(chromeWindow);
+void EngineReport(NSDictionary *report) {
+  const int chromeWindow = [report[@"window"] intValue];
+  if ([report[@"closed"] boolValue]) {
+    gReports.erase(chromeWindow);
+    auto strip = gStripOfChromeWindow.find(chromeWindow);
+    if (strip != gStripOfChromeWindow.end()) {
+      WindowClosed(strip->second);
+      gStripOfChromeWindow.erase(strip);
+    }
     return;
   }
   Hold();
-  // Chrome's tab ids of the tabs the app knows (the engine may report a strip before CEF does).
-  auto learn = [](int browser) {
-    if (gTabIds.count(browser)) return;
-    if (CefRefPtr<CefBrowser> b = CefBrowserHost::GetBrowserByIdentifier(browser)) gTabIds[browser] = host::TabId(b);
-  };
-  for (auto &[id, s] : gStrips)
-    for (const Entry &e : s.tabs) learn(e.browser);
-  for (const Entry &e : gBurst) learn(e.browser);
-  std::map<int, int> browserOf;
-  for (auto &[browser, tab] : gTabIds) browserOf[tab] = browser;
-  int strip = 0;
-  for (NSDictionary *tab in event[@"tabs"]) {
-    auto b = browserOf.find([tab[@"tab"] intValue]);
-    if (b == browserOf.end()) continue;
-    id group = tab[@"group"];
-    if ([group isKindOfClass:NSString.class]) gGroupOf[b->second] = [group UTF8String];
-    else gGroupOf.erase(b->second);
-    gChromeWindowOfBrowser[b->second] = chromeWindow;
-    for (auto &[id, s] : gStrips)
-      for (const Entry &e : s.tabs)
-        if (e.browser == b->second) strip = id;
-  }
-  gGroupsOf[chromeWindow] = [event[@"groups"] isKindOfClass:NSArray.class] ? event[@"groups"] : @[];
-  if (strip) {
-    gChromeWindowOf[strip] = chromeWindow;
-    gStrips[strip].dirty = true;
-  }
+  gReports[chromeWindow] = report;
   QueueFlush();
 }
 
 void Watch() {
   if (gWatching) return;
   gWatching = true;
-  engine::Observe(@"tabs.strip", ^(NSDictionary *event) { EngineReport(event); });
+  engine::Observe(@"tabs.strip", ^(NSDictionary *report) { EngineReport(report); });
   engine::Call("nn_tabs_watch", @"", nil, ^(NSDictionary *) {});
 }
 
@@ -258,6 +235,7 @@ class Scope {
 
 CefRefPtr<CefBrowser> BrowserFor(NSString *key, int strip) {
   if (!key.length) return nullptr;
+  ApplyReports();
   const std::string k = key.UTF8String;
   auto s = gStrips.find(strip);
   if (s == gStrips.end()) return nullptr;
@@ -274,27 +252,19 @@ void Report(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) 
   if (!host::StripOf(browser)) return;
   if (!gTabIds.count(browser->GetIdentifier())) gTabIds[browser->GetIdentifier()] = host::TabId(browser);
   Watch();
-  Hold();
-  if (!gBurst.empty() && index <= gBurst.back().index) EndBurst();
-  gBurst.push_back({browser->GetIdentifier(), index, active, pinned});
-  QueueFlush();
 }
 
 void Closed(CefRefPtr<CefBrowser> browser) {
   const int b = browser->GetIdentifier();
   Hold();
-  EndBurst();
+  ApplyReports();
   for (auto &[id, s] : gStrips) {
-    auto gone = std::remove_if(s.tabs.begin(), s.tabs.end(), [&](const Entry &e) { return e.browser == b; });
-    if (gone == s.tabs.end()) continue;
-    s.tabs.erase(gone, s.tabs.end());
-    s.dirty = true;
+    const size_t before = s.tabs.size();
+    std::erase_if(s.tabs, [&](const Entry &e) { return e.browser == b; });
+    if (s.tabs.size() != before) s.dirty = true;
   }
   gKeys.erase(b);
-  gReportedIn.erase(b);
   gTabIds.erase(b);
-  gGroupOf.erase(b);
-  gChromeWindowOfBrowser.erase(b);
   QueueFlush();
 }
 
@@ -316,7 +286,6 @@ void WindowClosed(int strip) {
   auto it = gStrips.find(strip);
   if (it == gStrips.end()) return;
   Hold();
-  EndBurst();
   it->second.tabs.clear();
   it->second.closed = true;
   it->second.dirty = true;
@@ -353,18 +322,18 @@ void RunCommand(NSInteger cmd, NSDictionary *command) {
   }
   if ([op isEqualToString:@"group"]) {
     // Into a group of Chrome's ("new" makes one; null takes the tabs out of theirs), with its look when given.
-    auto chromeWindow = gChromeWindowOf.find(strip);
+    auto s = gStrips.find(strip);
     NSMutableArray *tabs = [NSMutableArray array];
     for (NSString *key in command[@"keys"])
       if (CefRefPtr<CefBrowser> b = BrowserFor(key, strip)) [tabs addObject:@(host::TabId(b))];
-    if (chromeWindow == gChromeWindowOf.end() || !tabs.count) return scope.Answer(true);
-    NSMutableDictionary *args = [@{@"window" : @(chromeWindow->second), @"tabs" : tabs} mutableCopy];
+    if (s == gStrips.end() || !s->second.chromeWindow || !tabs.count) return scope.Answer(true);
+    NSMutableDictionary *args = [@{@"window" : @(s->second.chromeWindow), @"tabs" : tabs} mutableCopy];
     id group = command[@"group"];
     args[@"group"] = [group isKindOfClass:NSString.class] ? group : @"";
     for (NSString *field in @[ @"title", @"color", @"collapsed" ])
       if (command[field] && command[field] != NSNull.null) args[field] = command[field];
     __block bool done = false;
-    engine::Call("nn_tabs_group", gStrips[strip].profile, args, ^(NSDictionary *result) { done = !result[@"error"]; });
+    engine::Call("nn_tabs_group", s->second.profile, args, ^(NSDictionary *result) { done = !result[@"error"]; });
     return scope.Answer(!done);
   }
   scope.Answer(true);

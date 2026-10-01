@@ -110,8 +110,11 @@ implement the same):
     tab, a strip's placeholder tab going).
   - A transaction never mixes causes. Chrome's pending changes go out before a command runs; whatever Chrome does
     synchronously inside a command (selection, observers) is the command's.
-  - `strips` holds every strip the change touched, each whole: `{ strip, window, profile, tabs, closed? }`
-    (`window` is shared by the strips of one app window, one per engine profile it shows), `tabs` in strip
+  - `strips` holds every strip the change touched, each whole: `{ strip, window, appWindow?, profile, tabs,
+    groups?, activePickedOnClose?, closed? }` (`window` is shared by the strips of one app window, one per engine
+    profile it shows; `appWindow` is the app's id for that window, its React root's `windowId`;
+    `activePickedOnClose` says the active tab is the one Chrome picked because the active tab left the strip, not
+    one anybody activated), `tabs` in strip
     order as `{ key, browser, index, active, pinned, group? }`, and `groups?: [{ id, title, color, collapsed }]`. `key` is the WebView's `transferKey` (the store's tab
     id), bound when a view first shows the browser and kept while the browser moves between views; `null` for a tab
     no view has shown (one Chrome made, before the app adopts it; an engine placeholder). `group` (Chrome's group id,
@@ -137,12 +140,15 @@ implement the same):
     place, keeping a group both neighbours share). A split is one row: its panes move together and nothing lands
     between them;
   - a new active tab that stayed in the strip is shown (`activate`'s rules, opener bookkeeping included), unless
-    the old active tab left the strip in the same change: then it's Chrome's pick of a successor, and the store's
-    own rule (store/openers.ts) decides. A split's other pane and a tab of a profile the window isn't showing
+    it's Chrome's pick of a successor (`activePickedOnClose`; from engines that don't say, any activation that comes
+    with the old active tab leaving): then the store's own rule (store/openers.ts) decides. An explicit activation
+    in the same change as the close (an extension's remove then update) is a switch, and wins over the store's
+    successor command still on its way. A split's other pane and a tab of a profile the window isn't showing
     aren't shown (the focused pane changes on user focus; profiles keep their own tab);
   - a tab Chrome made (`tab:` adoption) takes Chrome's pin, place and activation the first time the app sees it;
-    a tab arriving in a strip of another app window (an extension moving it) changes window as it is, page and
-    live state included (`intoWindow`; its view takes the same browser there);
+    a tab arriving in a strip of another app window (an extension moving it; the window is `appWindow`, else the
+    one its other tabs are in) changes window as it is, page and live state included (`intoWindow`; its view takes
+    the same browser there), also into a window holding only New Tab pages;
   - groups, when the engine reports them: a tab Chrome put in a group or took out of one joins or leaves the
     store's group in place; a group Chrome made becomes a store group (title, color); a group's title, color or
     collapsed state follows. Chrome's group ids and the store's are bound in memory (`GroupBindings`);
@@ -155,9 +161,9 @@ implement the same):
   missing members, title and color; never collapsing, which would make Chrome switch away from the active tab);
   one command per strip at a time; the same command isn't sent
   again until something other than the app's commands changed that strip (a plan Chrome can't reach doesn't loop).
-- Known gaps: an extension removing the active tab and activating another in one task has its activation replaced
-  by the opener rule; an extension moving a tab into a window none of whose strips holds a tab the store knows (only
-  New Tab pages there) doesn't move it in the sidebar.
+- CEF (NNTabStrip.mm) takes the strips from the engine layer's `nn_tabs` reports, which name the Browser, so a
+  strip's window is never inferred from its tabs; CEF's own `OnTabStripChanged` only maps Chrome's tab ids to
+  browsers.
 - Tests: `src/store/liveTabs.test.mjs` runs the real wiring against a fake engine that keeps this contract.
 
 ## Sync (apps/browser/src/sync, packages/sync)

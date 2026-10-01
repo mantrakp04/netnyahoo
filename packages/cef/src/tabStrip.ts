@@ -34,9 +34,14 @@ export type StripState = {
   strip: number;
   /** The app window it belongs to: the strips of one app window (one per profile it shows) share it. */
   window: number;
+  /** The app's id for that window (the `windowId` its React root was made with), when the engine knows it. */
+  appWindow?: string;
   /** The engine profile (the WebView `profile` prop). */
   profile: string;
   tabs: StripTab[];
+  /** The active tab is the one Chrome picked because the active tab left the strip (closed, or moved to another
+   *  window), not one anybody activated. Absent from engines that don't say. */
+  activePickedOnClose?: boolean;
   /** Its tab groups. Absent while the engine doesn't report groups. */
   groups?: StripGroup[];
   /** Its window is gone; the strip won't be reported again. */

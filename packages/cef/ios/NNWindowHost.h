@@ -21,10 +21,10 @@ NSView *ContentsView(CefRefPtr<CefBrowser> browser);
 void TabShown(NNBrowserView *view);
 void TabMoved(NNBrowserView *view);
 // Tab strips (NNTabStrip): the id of the Chrome window that holds the tab as far as the app knows (0 when it's not
-// a hosted tab); a strip's profile and app window (the strips of one app window share it); the tab is in that
-// strip now (an extension moved it).
+// a hosted tab); a strip's profile, its app window's number (the strips of one app window share it) and the app's
+// id for that window; the tab is in that strip now.
 int StripOf(CefRefPtr<CefBrowser> browser);
-bool StripInfo(int strip, NSString **profile, int *window);
+bool StripInfo(int strip, NSString **profile, int *window, NSString **appWindow);
 void NoteStrip(int browserId, int strip);
 void TabOpenedFrom(CefRefPtr<CefBrowser> browser, int openerBrowserId);
 void LayoutChanged(NSWindow *window);

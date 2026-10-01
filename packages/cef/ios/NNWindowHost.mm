@@ -871,7 +871,27 @@ int StripOf(CefRefPtr<CefBrowser> browser) {
   return window ? window->Id() : 0;
 }
 
-bool StripInfo(int strip, NSString **profile, int *window) {
+// The app's id for a window (its React root's `windowId`), looked up in the Chrome windows of its group: the root
+// lives in the one of the profile it shows.
+NSString *AppWindowOf(NSObject *group) {
+  for (auto &w : gWindows) {
+    if (w->Group() != group || w->Closed()) continue;
+    NSMutableArray<NSView *> *views = [NSMutableArray array];
+    if (NSView *root = [NNChromeWindowHost rootViewOfWindow:w->Window()]) [views addObject:root];
+    for (NSUInteger i = 0; i < views.count && i < 16; i++) {
+      NSView *view = views[i];
+      if ([view respondsToSelector:NSSelectorFromString(@"appProperties")]) {
+        id properties = [view valueForKey:@"appProperties"];
+        id windowId = [properties isKindOfClass:NSDictionary.class] ? properties[@"windowId"] : nil;
+        if ([windowId isKindOfClass:NSString.class]) return windowId;
+      }
+      [views addObjectsFromArray:view.subviews];
+    }
+  }
+  return nil;
+}
+
+bool StripInfo(int strip, NSString **profile, int *window, NSString **appWindow) {
   for (auto &w : gWindows) {
     if (w->Id() != strip || w->Closed()) continue;
     // The strips of one app window (its profiles' Chrome windows) share their group's number.
@@ -881,6 +901,7 @@ bool StripInfo(int strip, NSString **profile, int *window) {
     if (!number) [numbers setObject:(number = @(++last)) forKey:w->Group()];
     *profile = w->Profile();
     *window = number.intValue;
+    *appWindow = AppWindowOf(w->Group());
     return true;
   }
   return false;

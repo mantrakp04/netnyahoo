@@ -33,7 +33,7 @@ const seen = new Set<string>();
 // The command each strip is waiting for (an arrange or group with the tabs it lists; the store group a new Chrome
 // group is made for).
 type Kind = "arrange" | "activate" | "group";
-const inflight = new Map<number, { kind: Kind; cmd: number; keys?: string[]; makes?: string }>();
+const inflight = new Map<number, { kind: Kind; cmd: number; keys?: string[]; makes?: string; successor?: boolean }>();
 // Chrome's group ids → the store's.
 const groups: GroupBindings = new Map();
 // What was last sent to each strip, against which of its states: a plan Chrome couldn't reach isn't sent again
@@ -105,7 +105,9 @@ function receive(tx: TabStripTransaction) {
         pending: {
           arranged: new Set(waiting?.kind === "arrange" ? waiting.keys : []),
           grouped: new Set(waiting?.kind === "group" ? waiting.keys : []),
-          active: waiting?.kind === "activate",
+          // The store's successor for a tab that closed gives way to a tab Chrome activated explicitly meanwhile
+          // (an extension closing and activating in one go), as in Chrome.
+          active: waiting?.kind === "activate" && !waiting.successor,
         },
       });
     }
@@ -138,7 +140,9 @@ function project(s: BrowserState) {
     // The shown tab first: Chrome's commands and extensions act on its active tab.
     const order = `${plan.keys.join(",")}|${plan.pinned}`;
     if (plan.active && plan.active !== actual.active) {
-      send(strip.strip, "activate", plan.active, { op: "activate", strip: strip.strip, key: plan.active });
+      // Chrome's active tab is gone from the store (it closed): the store's pick is a successor.
+      const successor = !!actual.active && !s.tabs[actual.active];
+      send(strip.strip, "activate", plan.active, { op: "activate", strip: strip.strip, key: plan.active }, undefined, successor);
     } else if (order !== `${actual.keys.join(",")}|${actual.pinned}`) {
       send(strip.strip, "arrange", order, { op: "arrange", strip: strip.strip, keys: plan.keys, pinned: plan.pinned });
     } else {
@@ -151,12 +155,12 @@ function project(s: BrowserState) {
   }
 }
 
-function send(strip: number, kind: Kind, sig: string, command: TabStripCommand, makes?: string) {
+function send(strip: number, kind: Kind, sig: string, command: TabStripCommand, makes?: string, successor?: boolean) {
   const since = changedAt.get(strip) ?? 0;
   const last = tried.get(`${strip}:${kind}`);
   if (last?.sig === sig && last.since === since) return;
   tried.set(`${strip}:${kind}`, { sig, since });
-  inflight.set(strip, { kind, cmd: sendTabStripCommand(command), ...(command.op !== "activate" ? { keys: command.keys } : {}), makes });
+  inflight.set(strip, { kind, cmd: sendTabStripCommand(command), ...(command.op !== "activate" ? { keys: command.keys } : {}), makes, successor });
 }
 
 // MARK: Moves between windows

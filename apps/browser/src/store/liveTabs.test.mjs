@@ -33,13 +33,15 @@ class FakeChrome {
     return {
       strip: id,
       window: id,
+      ...(s.appWindow ? { appWindow: s.appWindow } : {}),
+      activePickedOnClose: !!s.pickedOnClose,
       profile: "",
       tabs: s.tabs.map((t, index) => ({ key: t.key, browser: t.browser, index, active: t.browser === s.active, pinned: t.pinned, group: t.group ?? null })),
       groups: [...s.groups].filter(([id]) => s.tabs.some((t) => t.group === id)).map(([id, g]) => ({ id, ...g })),
     };
   }
-  emit(id, cmd) {
-    this.outbox.push({ rev: ++this.rev, cmd, strips: [this.state(id)] });
+  emit(id, cmd, ...more) {
+    this.outbox.push({ rev: ++this.rev, cmd, strips: [id, ...more].map((x) => this.state(x)) });
   }
   strip(id) {
     if (!this.strips.has(id)) this.strips.set(id, { tabs: [], active: 0, groups: new Map() });
@@ -64,9 +66,33 @@ class FakeChrome {
   remove(key) {
     const f = this.find(key);
     if (!f) return;
-    f.s.tabs.splice(f.i, 1);
-    if (f.s.active === f.tab.browser) f.s.active = (f.s.tabs[f.i] ?? f.s.tabs[f.i - 1])?.browser ?? 0;
+    this.drop(f);
     this.emit(f.id, null);
+  }
+  drop(f) {
+    f.s.tabs.splice(f.i, 1);
+    if (f.s.active === f.tab.browser) {
+      f.s.active = (f.s.tabs[f.i] ?? f.s.tabs[f.i - 1])?.browser ?? 0;
+      f.s.pickedOnClose = true;
+    }
+  }
+  // An extension closes a tab and activates another in one go: one change.
+  removeAndActivate(key, other) {
+    const f = this.find(key);
+    this.drop(f);
+    f.s.active = this.find(other).tab.browser;
+    f.s.pickedOnClose = false;
+    this.emit(f.id, null);
+  }
+  // An extension moves a tab to another window (chrome.tabs.move with windowId), in front there.
+  moveTo(key, stripId) {
+    const f = this.find(key);
+    this.drop(f);
+    const to = this.strip(stripId);
+    to.tabs.push(f.tab);
+    to.active = f.tab.browser;
+    to.pickedOnClose = false;
+    this.emit(f.id, null, stripId);
   }
   // An extension (cmd null).
   move(key, index) {
@@ -113,6 +139,7 @@ class FakeChrome {
   activate(key, cmd = null) {
     const f = this.find(key);
     f.s.active = f.tab.browser;
+    f.s.pickedOnClose = false;
     this.emit(f.id, cmd);
   }
   // Runs the next command the app sent, as the engine does: Chrome's pending changes already went out.
@@ -124,6 +151,7 @@ class FakeChrome {
     const has = (key) => s?.tabs.some((t) => t.key === key);
     if (command.op === "activate" && has(command.key)) {
       s.active = s.tabs.find((t) => t.key === command.key).browser;
+      s.pickedOnClose = false;
       this.emit(command.strip, id);
     } else if (command.op === "group" && command.keys.some(has)) {
       const keys = command.keys.filter(has);
@@ -163,6 +191,7 @@ const S = () => useBrowser.getState();
 const tick = () => new Promise((r) => setImmediate(r));
 const urlOf = (id) => S().tabs[id].url.replace(/^https:\/\/|\.com\/?$/g, "");
 const shown = (w) => urlOf(model.activeTabId(S(), w));
+const shownIn = (w) => urlOf(S().windows[w].activeTabIds[S().windows[w].profileId]);
 const order = (w) => S().windows[w].tabIds.map(urlOf);
 const chromeOrder = (strip) => chrome.strips.get(strip).tabs.map((t) => urlOf(t.key));
 const chromeShown = (strip) => urlOf(chrome.strips.get(strip).tabs.find((t) => t.browser === chrome.strips.get(strip).active).key);
@@ -172,9 +201,14 @@ let nextStrip = 1;
 function windowWith(...urls) {
   S().hydrate({});
   S().updateSettings({ cmdClickCreatesTabGroup: false, newTabPosition: "bottom" });
-  const w = S().createWindow({ url: `${urls[0]}.com` });
+  return anotherWindow(...urls);
+}
+function anotherWindow(...urls) {
+  const w = S().createWindow({ url: urls[0] ? `${urls[0]}.com` : undefined });
   for (const u of urls.slice(1)) S().newTab(w, { url: `${u}.com`, background: true });
-  return { w, strip: nextStrip++ };
+  const strip = nextStrip++;
+  chrome.strip(strip).appWindow = w;
+  return { w, strip };
 }
 // What ContentCard does: a browser for every loaded tab, none for closed ones.
 function mountViews({ w, strip }) {
@@ -332,4 +366,40 @@ test("an extension's tab groups reach the sidebar, and the sidebar's groups reac
   S().updateGroup(mine, { name: "Renamed" });
   await settle(win);
   assert.equal(chrome.strips.get(win.strip).groups.get(token).title, "Renamed");
+});
+
+test("an extension that closes the shown tab and shows another in one go is obeyed", async () => {
+  const win = windowWith("a", "b");
+  const [a, b] = S().windows[win.w].tabIds;
+  // c, opened behind from a, shown: closing it on its own would go back to a (the opener rule).
+  const c = S().newTab(win.w, { url: "c.com", openerId: a, background: true });
+  await settle(win);
+  S().activate(c);
+  await settle(win);
+  chrome.removeAndActivate(c, b);
+  S().closeTab(c);
+  await settle(win);
+  assert.equal(shown(win.w), "b", "the extension's tab, not the opener rule's");
+  assert.equal(chromeShown(win.strip), "b");
+  assert.ok(S().tabs[a]);
+});
+
+test("an extension moving a tab into a window of New Tab pages, or into a one-tab window, moves it there", async () => {
+  const one = windowWith("a", "b");
+  await settle(one);
+  const empty = anotherWindow();
+  await settle(one);
+  const [, b] = S().windows[one.w].tabIds;
+  chrome.moveTo(b, empty.strip);
+  await settle(one);
+  assert.equal(S().tabs[b].windowId, empty.w, "the window the engine named");
+  assert.equal(shownIn(empty.w), "b");
+  // The last tab of a window into a window with one tab: the engine names the window, nothing to guess.
+  const lone = anotherWindow("c");
+  await settle(lone);
+  const [a] = S().windows[one.w].tabIds;
+  chrome.moveTo(a, lone.strip);
+  await settle(lone);
+  assert.equal(S().tabs[a].windowId, lone.w);
+  assert.deepEqual(S().windows[lone.w].tabIds.map(urlOf), ["c", "a"]);
 });

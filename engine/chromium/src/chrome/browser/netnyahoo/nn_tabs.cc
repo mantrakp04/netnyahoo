@@ -3,6 +3,7 @@
 #include "chrome/browser/netnyahoo/nn_tabs.h"
 
 #include <algorithm>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -56,7 +57,7 @@ std::optional<tab_groups::TabGroupId> GroupNamed(TabStripModel* model,
   return std::nullopt;
 }
 
-base::DictValue StripOf(BrowserWindowInterface* browser) {
+base::DictValue StripOf(BrowserWindowInterface* browser, bool picked_by_close) {
   TabStripModel* model = browser->GetTabStripModel();
   base::ListValue tabs;
   for (int i = 0; i < model->count(); ++i) {
@@ -87,7 +88,8 @@ base::DictValue StripOf(BrowserWindowInterface* browser) {
   return base::DictValue()
       .Set("window", browser->GetSessionID().id())
       .Set("tabs", std::move(tabs))
-      .Set("groups", std::move(groups));
+      .Set("groups", std::move(groups))
+      .Set("activePickedOnClose", picked_by_close);
 }
 
 // Reports every Browser's strip after each change to it. Global: a Browser's
@@ -110,7 +112,7 @@ class StripWatcher : public BrowserCollectionObserver,
     // Every strip as it is now, then every change.
     browsers->ForEach([this](BrowserWindowInterface* browser) {
       Watch(browser);
-      Emit("tabs.strip", browser->GetProfile(), StripOf(browser));
+      Emit("tabs.strip", browser->GetProfile(), StripOf(browser, false));
       return true;
     });
   }
@@ -123,6 +125,7 @@ class StripWatcher : public BrowserCollectionObserver,
     TabStripModel* model = browser->GetTabStripModel();
     if (model) {
       model->RemoveObserver(this);
+      picked_.erase(model);
     }
     Emit("tabs.strip", browser->GetProfile(),
          base::DictValue()
@@ -134,6 +137,11 @@ class StripWatcher : public BrowserCollectionObserver,
   void OnTabStripModelChanged(TabStripModel* model,
                               const TabStripModelChange& change,
                               const TabStripSelectionChange& selection) override {
+    // The active tab Chrome picked because the active one left the strip (closed, or moved to another window), as
+    // opposed to one somebody activated; it stays so until the active tab changes again.
+    if (selection.active_tab_changed()) {
+      picked_[model] = change.type() == TabStripModelChange::kRemoved;
+    }
     Report(model);
   }
   void OnTabPinnedStateChanged(tabs::TabInterface* tab, int index) override {
@@ -182,11 +190,12 @@ class StripWatcher : public BrowserCollectionObserver,
           return false;
         });
     if (found) {
-      Emit("tabs.strip", found->GetProfile(), StripOf(found));
+      Emit("tabs.strip", found->GetProfile(), StripOf(found, picked_[model]));
     }
   }
 
   bool started_ = false;
+  std::map<TabStripModel*, bool> picked_;
   base::ScopedObservation<BrowserCollection, BrowserCollectionObserver>
       observation_{this};
 };
