@@ -39,12 +39,11 @@ export type Tab = {
   customTitle: string | null;
   customIcon: string | null;
   pinnedUrl: string | null;
-  // `opened`: load the navigation the engine kept for a link ("open:<id>": POST body, referrer) instead, if it can.
-  navigation: { url: string; seq: number; userInitiated?: boolean; opened?: number } | null;
+  navigation: { url: string; seq: number; userInitiated?: boolean } | null;
   adoptId?: string;
   openerId: string | null;
   // What a tab that hasn't loaded adopts when first shown (store/model.ts wake): a reopened window's tab
-  // "restore:<closed tab>" (its back/forward list, from Chrome's TabRestoreService), a link opened behind "open:<id>" (its POST body, referrer).
+  // "restore:<closed tab>" (its back/forward list, from Chrome's TabRestoreService).
   wakeAdoptId?: string;
   liveItem?: { folderId: string; itemId: string };
   unloaded?: boolean;

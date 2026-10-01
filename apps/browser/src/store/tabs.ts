@@ -33,7 +33,7 @@ export type NewTabOptions = {
   pinned?: boolean;
   snapshot?: Partial<TabSnapshot>;
   index?: number;
-  // Load only when first shown, adopting this (a link opened behind: "open:<id>").
+  // Load only when first shown, adopting this (a restored tab: "restore:<id>").
   wakeAdoptId?: string;
 };
 
@@ -53,7 +53,7 @@ export type TabsSlice = {
   activate(id: string): void;
   activateIndex(windowId: string, index: number): void;
   cycle(windowId: string, delta: 1 | -1): void;
-  navigate(id: string, input: string, options?: { userInitiated?: boolean; opened?: number }): void;
+  navigate(id: string, input: string, options?: { userInitiated?: boolean }): void;
   // `live` patches the tab's live state in the same update (one pass over the store's subscribers).
   updateTab(id: string, patch: Partial<Tab>, live?: Partial<TabLive>): void;
   updateLive(id: string, patch: Partial<TabLive>): void;
@@ -357,7 +357,7 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     if (view.length) get().activate(view[(i + delta + view.length) % view.length]!);
   },
 
-  navigate(id, input, { userInitiated = true, opened } = {}) {
+  navigate(id, input, { userInitiated = true } = {}) {
     const s = get();
     const url = resolveInput(input, searchUrlPrefix(s.settings));
     const tab = s.tabs[id];
@@ -370,7 +370,7 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     const { unloaded: _, wakeAdoptId: _kept, ...rest } = tab;
     // Typing an address starts a new task (a New Tab page gets one lookup first, as in Chrome).
     const base = userInitiated && tab.url ? forgetOpeners(s, tab.windowId) : s;
-    set(apply(base, { tabs: { ...base.tabs, [id]: { ...rest, openerId: base.tabs[id]!.openerId, navigation: { ...navigationTo(url, userInitiated), ...(opened ? { opened } : {}) }, url: tab.url || url } } }));
+    set(apply(base, { tabs: { ...base.tabs, [id]: { ...rest, openerId: base.tabs[id]!.openerId, navigation: navigationTo(url, userInitiated), url: tab.url || url } } }));
     const ui = get().windowUi[tab.windowId];
     if (ui?.panel.open) get().closePanel(tab.windowId);
   },

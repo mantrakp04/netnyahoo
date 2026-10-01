@@ -40,7 +40,7 @@ export type OpenWindowRequest = {
   disposition: OpenDisposition;
   adoptId?: string;
   userGesture?: boolean;
-  /** The navigation the engine kept for it ("open:<id>") carries a POST body. */
+  /** The new tab's navigation is a form's POST. */
   postBody?: boolean;
 };
 
@@ -168,8 +168,7 @@ export type WebViewProps = ViewProps & {
 };
 
 export type WebViewHandle = {
-  /** `opened`: an "open:<id>" navigation the engine kept (POST body, referrer) to load instead, if it still can. */
-  loadUrl(url: string, options?: { userInitiated?: boolean; opened?: number }): Promise<void>;
+  loadUrl(url: string, options?: { userInitiated?: boolean }): Promise<void>;
   goBack(): Promise<void>;
   goForward(): Promise<void>;
   goToOffset(offset: number): Promise<void>;
@@ -292,7 +291,6 @@ type NativeHandle = Omit<
   evaluate(code: string): Promise<string | null>;
   downloadFavicon(url: string): Promise<FaviconImage | null>;
   loadUrl(url: string, userInitiated?: boolean): Promise<void>;
-  loadOpenedUrl(openedId: number, url: string): Promise<void>;
   resolvePasswordPrompt(answer: string, username: string | null, password: string | null): Promise<void>;
   discard(unload: boolean): Promise<boolean>;
 };
@@ -325,11 +323,7 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
     };
     return {
       loadUrl: (url, options) =>
-        call(undefined, (n) =>
-          options?.opened
-            ? n.loadOpenedUrl(options.opened, toEngineUrl(url))
-            : n.loadUrl(toEngineUrl(url), options?.userInitiated ?? false),
-        ),
+        call(undefined, (n) => n.loadUrl(toEngineUrl(url), options?.userInitiated ?? false)),
       goBack: () => call(undefined, (n) => n.goBack()),
       goForward: () => call(undefined, (n) => n.goForward()),
       goToOffset: (offset) => call(undefined, (n) => n.goToOffset(offset)),

@@ -115,7 +115,6 @@ export const removeDocument = (name) => docs.delete(name);
 export const chromeWindows = () => Promise.resolve([]);
 export const devWindowAction = () => Promise.resolve("");
 export const engineInfo = () => Promise.resolve(null);
-export const forgetOpenedURL = () => {};
 export const prepareTabTransfer = () => {};
 export const onTabStripTransaction = (listener) => globalThis.nnTestTabStrip.listen(listener);
 export const sendTabStripCommand = (command) => globalThis.nnTestTabStrip.command(command);

@@ -347,7 +347,7 @@ export function loadChoice() {
 export function startClient(): { previous: PreviousSession; updatedFrom: string | null } | null {
   loadChoice();
   void engineInfo()
-    .then((e) => (engineVersion = `CEF ${e.cefVersion} / Chromium ${e.chromiumVersion}`))
+    .then((e) => (engineVersion = `NNCore / Chromium ${e.chromiumVersion}`))
     .catch(() => {});
   if (!saved.sharing) {
     const stale = readJson<Queue>(QUEUE_DOC);

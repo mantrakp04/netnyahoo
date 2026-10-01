@@ -241,7 +241,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     let next = removeTabs(s, [tabId], false);
     const base = next.windows[w.id] ?? { ...w, tabIds: [], activeTabIds: {} };
     const loaded = !!tab.url && (!!tab.navigation || !!tab.adoptId);
-    // A link opened behind reopens from its URL: its kept navigation belongs to the other profile.
+    // A tab moved to another profile reopens from its URL: its live tab belongs to the other profile.
     const { adoptId: _, wakeAdoptId: _w, ...rest } = tab;
     const moved: Tab = { ...rest, profileId, navigation: loaded ? navigationTo(tab.url) : null, lastActiveAt: Date.now() };
     const tabs = { ...next.tabs, [tabId]: moved };

@@ -1,4 +1,3 @@
-import { forgetOpenedURL } from "@netnyahoo/nncore";
 import { showMenu, type MenuItem } from "@netnyahoo/shell";
 import { create } from "zustand";
 import { closeTab } from "../../lib/actions";
@@ -48,7 +47,7 @@ export function openInSplit(tabId: string, side: SplitSide = "right") {
   openSplitPane(tab.windowId, { tabId, anchorTabId: active, side });
 }
 
-// `adoptId`: the navigation the engine kept for the link ("open:<id>": a POST form keeps its body).
+// `adoptId`: the tab Chrome already made for the link.
 export function openLinkInSplit(sourceTabId: string, url: string, adoptId?: string) {
   const s = store();
   const source = s.tabs[sourceTabId];
@@ -57,11 +56,9 @@ export function openLinkInSplit(sourceTabId: string, url: string, adoptId?: stri
   const next = split?.tabIds[split.tabIds.indexOf(sourceTabId) + 1];
   if (split && (next || split.tabIds.length >= MAX_SPLIT_PANES)) {
     const target = next ?? split.tabIds.at(-1)!;
-    const opened = Number(adoptId?.match(/^open:(\d+)$/)?.[1]) || undefined;
-    if (target !== sourceTabId) return s.navigate(target, url, { opened });
+    if (target !== sourceTabId) return s.navigate(target, url);
   }
-  if (!openSplitPane(source.windowId, { anchorTabId: sourceTabId, url, side: "right", background: true, adoptId }) && adoptId?.startsWith("open:"))
-    forgetOpenedURL(Number(adoptId.slice(5)));
+  openSplitPane(source.windowId, { anchorTabId: sourceTabId, url, side: "right", background: true, adoptId });
 }
 
 export function dropTabIntoSplit(tabId: string, targetTabId: string, side: SplitSide) {

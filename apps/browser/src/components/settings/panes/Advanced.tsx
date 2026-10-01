@@ -54,7 +54,7 @@ export function AdvancedPane() {
 
       <SectionHeader title="Web engine" />
       <Group>
-        <Row title="Chromium" description={info ? `CEF ${info.cefVersion}` : undefined}>
+        <Row title="Chromium" description={info ? "NNCore" : undefined}>
           <Text selectable style={{ fontSize: 13, color: theme.textSecondary }}>
             {info?.chromiumVersion ?? "…"}
           </Text>
