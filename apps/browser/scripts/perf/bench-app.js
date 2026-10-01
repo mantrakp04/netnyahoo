@@ -36,6 +36,18 @@ async function quiet(ms = 400) {
   await sleep(ms);
 }
 
+// Waits until the app has written nothing for `quietMs` (longer than its longest save delay: 2 s for the
+// bookmarks cache, 0.8 s for the session), so an idle window doesn't catch saves left over from startup.
+async function writesSettled(quietMs = 3000, timeoutMs = 30000) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    P.reset();
+    await sleep(quietMs);
+    if (!Object.keys(P.read().writes).length) return true;
+  }
+  return false;
+}
+
 function hostOf(fiber) {
   for (let f = fiber.child; f; f = f.child) if (f.tag === 5) return f;
   return null;
@@ -51,6 +63,7 @@ const scenarios = {
 
   async idle({ seconds = 10 } = {}) {
     await quiet(1000);
+    await writesSettled();
     P.reset();
     await sleep(seconds * 1000);
     return { stats: P.read() };
@@ -180,11 +193,11 @@ const scenarios = {
     return { runs: results };
   },
 
-  async hover({ rows = 24, gapMs = 60 } = {}) {
+  async hover({ rows = 24, gapMs = 60, from = 8 } = {}) {
     await quiet();
     const fibers = P.findFibers("TabRow", 400).filter((f) => f.alternate || true);
     const hosts = fibers.map(hostOf).filter((h) => h && typeof h.memoizedProps?.onMouseEnter === "function");
-    const list = hosts.slice(8, 8 + rows);
+    const list = hosts.slice(from, from + rows);
     if (list.length < 2) throw new Error(`only ${list.length} hoverable rows`);
     P.reset();
     const steps = [];
@@ -315,11 +328,180 @@ const scenarios = {
   },
 };
 
+Object.assign(scenarios, renderScenarios());
+
 // Hermes' runtime compiler takes async methods but not async arrows.
 scenarios.traced = function ({ scenario, ...options }) {
   P.traceTimers = true;
   return scenarios[scenario](options).finally(() => (P.traceTimers = false));
 };
+
+// The render benchmark's interactions (render-bench.mjs, a 20-tab session): each settles, resets the probe, acts
+// and reads what rendered until things settle again. The ones a page drives (scrolling, media) are `mark` and
+// `read` around the host's CDP calls.
+function renderScenarios() {
+  const tabsInView = () => {
+    const s = S();
+    const w = s.windows[windowId()];
+    return w.tabIds.filter((id) => s.tabs[id]?.profileId === w.profileId);
+  };
+  const settle = (ms = 1500) => sleep(ms).then(() => P.read());
+  return {
+    async mark({ settleMs = 0 } = {}) {
+      if (settleMs) await quiet(settleMs);
+      P.reset();
+      return true;
+    },
+    async read({ settleMs = 1000 } = {}) {
+      return { stats: await settle(settleMs) };
+    },
+    async wake({ gapMs = 400 } = {}) {
+      const start = activeId();
+      for (const id of tabsInView()) {
+        timed(() => S().activate(id));
+        await sleep(gapMs);
+      }
+      timed(() => S().activate(start));
+      await quiet(1000);
+      return tabsInView().filter((id) => S().live[id]).length;
+    },
+    async tabSwitch({ count = 10, gapMs = 300 } = {}) {
+      const s = S();
+      const ids = tabsInView().filter((id) => !s.tabs[id].pinned).slice(0, count);
+      const start = activeId();
+      await quiet(800);
+      P.reset();
+      const steps = [];
+      for (const id of ids) {
+        steps.push(timed(() => S().activate(id)));
+        await sleep(gapMs);
+      }
+      const stats = await settle(800);
+      timed(() => S().activate(start));
+      await quiet(800);
+      return { steps, stats };
+    },
+    async openCloseTab({ count = 5, origin, gapMs = 400 } = {}) {
+      const w = windowId();
+      await quiet(800);
+      P.reset();
+      const ids = [];
+      const open = [];
+      for (let i = 0; i < count; i++) {
+        let id;
+        open.push(timed(() => (id = S().newTab(w, { url: `${origin}/p/r-${i}-${Date.now()}` }))));
+        ids.push(typeof id === "string" ? id : activeId());
+        await sleep(gapMs);
+      }
+      const openStats = await settle(1000);
+      P.reset();
+      const close = [];
+      for (const id of ids.reverse()) {
+        close.push(timed(() => S().closeTab(id)));
+        await sleep(gapMs);
+      }
+      return { open, close, openStats, closeStats: await settle(1000) };
+    },
+    async typeIn({ bar = "panel", query = "github.com/facebook/react", gapMs = 60, origin } = {}) {
+      const w = windowId();
+      await quiet(600);
+      let tab = null;
+      if (bar === "panel") S().openPanel(w);
+      else tab = S().newTab(w);
+      const id = `${w}:${bar}`;
+      if (!(await until(() => nn.omnibox.get(id), 4000))) throw new Error(`no omnibox driver ${id}`);
+      await sleep(800);
+      const driver = nn.omnibox.get(id);
+      P.reset();
+      const keys = [];
+      for (let i = 1; i <= query.length; i++) {
+        keys.push(timed(() => driver.type(query.slice(0, i))));
+        await sleep(gapMs);
+      }
+      const stats = await settle(600);
+      if (bar === "panel") S().closePanel(w);
+      else if (typeof tab === "string") S().closeTab(tab);
+      await sleep(400);
+      return { keys, stats };
+    },
+    // Opens a page in a background tab (title ticker, media) and returns its id.
+    async openBackground({ path, origin, settleMs = 2500 } = {}) {
+      const w = windowId();
+      const id = S().newTab(w, { url: `${origin}${path}`, background: true });
+      await sleep(settleMs);
+      return typeof id === "string" ? id : null;
+    },
+    async openActive({ path, origin, settleMs = 2000 } = {}) {
+      const w = windowId();
+      const id = S().newTab(w, { url: `${origin}${path}` });
+      await quiet(settleMs);
+      return typeof id === "string" ? id : null;
+    },
+    async closeTab({ id } = {}) {
+      if (id && S().tabs[id]) S().closeTab(id);
+      await sleep(400);
+      return true;
+    },
+    // A background tab loading a page (progress, title, favicon, loading state): only its row should render.
+    async bgLoad({ origin } = {}) {
+      await quiet(800);
+      const s = S();
+      const id = tabsInView().find((t) => t !== activeId() && !s.tabs[t].pinned && s.live[t]);
+      if (!id) throw new Error("no loaded background tab");
+      P.reset();
+      S().navigate(id, `${origin}/heavy?run=bg-${Date.now()}`);
+      return { stats: await settle(4000) };
+    },
+    async idleFor({ seconds = 60 } = {}) {
+      await quiet(1500);
+      await writesSettled();
+      P.reset();
+      await sleep(seconds * 1000);
+      return { stats: P.read() };
+    },
+    async split({ origin } = {}) {
+      const w = windowId();
+      await quiet(800);
+      P.reset();
+      const ms = timed(() => S().openSplitPane(w, { url: `${origin}/p/split-${Date.now()}` }));
+      const stats = await settle(2000);
+      const splitId = Object.keys(S().splits).find((k) => S().splits[k].windowId === w);
+      P.reset();
+      const closeMs = splitId ? timed(() => S().separateSplit(splitId)) : null;
+      const closeStats = await settle(1500);
+      return { ms, stats, closeMs, closeStats };
+    },
+    async sidebar() {
+      const w = windowId();
+      await quiet(800);
+      P.reset();
+      const ms = timed(() => S().toggleSidebar(w));
+      const stats = await settle(1200);
+      P.reset();
+      const openMs = timed(() => S().toggleSidebar(w));
+      const openStats = await settle(1200);
+      return { ms, stats, openMs, openStats };
+    },
+    // A download's progress as the engine reports it (onDownload → upsertDownload), ten updates a second.
+    async downloads({ updates = 40, gapMs = 100 } = {}) {
+      const total = 50_000_000;
+      const d = { id: `bench-${Date.now()}`, url: "http://127.0.0.1/file.zip", filename: "file.zip", path: "", state: "downloading", paused: false, received: 0, total, speed: 0, mimeType: "application/zip", profile: S().windows[windowId()].profileId };
+      await quiet(800);
+      P.reset();
+      const steps = [];
+      for (let i = 0; i <= updates; i++) {
+        const received = Math.round((total * i) / updates);
+        steps.push(timed(() => S().upsertDownload({ ...d, received, speed: 5_000_000, state: i === updates ? "complete" : "downloading" })));
+        await sleep(gapMs);
+      }
+      const stats = await settle(1000);
+      S().removeDownload(d.id);
+      S().setDownloadsOpen(windowId(), false);
+      await sleep(400);
+      return { steps, stats };
+    },
+  };
+}
 
 globalThis.nnBench = {
   names: Object.keys(scenarios),

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // JS/React benchmark for Netnyahoo on a production (Hermes) bundle.
 //
-//   node js-bench.mjs bundle <outDir>
+//   node js-bench.mjs bundle <outDir> [--profiling 1]
 //       Builds the production JS bundle of the current tree (metro, --dev false) and compiles it with
-//       hermesc, as the Release build does. Prints sizes and the biggest packages.
+//       hermesc, as the Release build does. Prints sizes and the biggest packages. --profiling 1 bundles
+//       React's profiling renderer, which times each component's render (render-bench.mjs uses it).
 //   node js-bench.mjs run --app <Release Netnyahoo.app> --bundle <main.jsbundle> --label <name>
 //                         [--runs 5] [--scenarios a,b] [--port 47817] [--out <dir>]
 //       Clones the app (APFS clone), swaps in the bundle, and for each run seeds a fresh data folder
@@ -50,7 +51,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // MARK: Bundle
 
-function bundle(outDir) {
+export function bundle(outDir, { profiling = false } = {}) {
   mkdirSync(outDir, { recursive: true });
   const js = join(outDir, "main.js");
   const hbc = join(outDir, "main.jsbundle");
@@ -62,7 +63,7 @@ function bundle(outDir) {
       "--minify", "false", "--bundle-output", js, "--sourcemap-output", `${js}.map`, "--assets-dest", join(outDir, "assets"),
       "--config-cmd", `'${process.execPath}' '${join(rn, "cli.js")}' config`,
     ],
-    { cwd: appDir, stdio: ["ignore", "ignore", "inherit"] },
+    { cwd: appDir, stdio: ["ignore", "ignore", "inherit"], env: { ...process.env, ...(profiling ? { NN_REACT_PROFILING: "1" } : {}) } },
   );
   const hermesc = join(appDir, "macos/Pods/hermes-engine/destroot/bin/hermesc");
   execFileSync(hermesc, ["-emit-binary", "-max-diagnostic-width=80", "-O", "-out", hbc, js], { stdio: "inherit" });
@@ -120,7 +121,28 @@ function packageSizes(js) {
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
-function startServer(port) {
+// Two seconds of a quiet 440 Hz tone (16-bit mono WAV), for a tab that plays audio.
+const TONE = (() => {
+  const rate = 8000;
+  const samples = rate * 2;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + samples * 2, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24);
+  wav.writeUInt32LE(rate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 2000), 44 + i * 2);
+  return wav;
+})();
+
+export function startServer(port) {
   const server = createServer((req, res) => {
     const url = new URL(req.url, "http://localhost");
     if (url.pathname.startsWith("/img/") || url.pathname === "/favicon.ico") {
@@ -137,6 +159,26 @@ function startServer(port) {
       return void res.end(`<!doctype html><html><head><meta name="theme-color" content="#336699"><title>Loading ${run}</title>
 <link rel="icon" href="/favicon.ico?d=300&r=${run}"></head><body><h1>Heavy page</h1>${images}
 <script>let n=0;const t=setInterval(()=>{document.title='Heavy '+(++n);if(n>=5)clearInterval(t)},150);</script></body></html>`);
+    }
+    // render-bench.mjs: a page that retitles itself every second and swaps its icon every third, a looping tone,
+    // a long page to scroll.
+    if (url.pathname === "/ticker") {
+      res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+      return void res.end(`<!doctype html><html><head><title>Tick 0</title><link id=i rel="icon" href="/favicon.ico?t=0"></head>
+<body><p>ticker</p><script>let n=0;setInterval(()=>{document.title='Tick '+(++n);if(n%3===0)document.getElementById('i').href='/favicon.ico?t='+n},1000);</script></body></html>`);
+    }
+    if (url.pathname === "/tone.wav") {
+      res.writeHead(200, { "content-type": "audio/wav", "cache-control": "no-store" });
+      return void res.end(TONE);
+    }
+    if (url.pathname === "/media") {
+      res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+      return void res.end(`<!doctype html><html><head><title>Media</title></head><body><audio id=a src="/tone.wav" loop></audio></body></html>`);
+    }
+    if (url.pathname === "/long") {
+      const rows = Array.from({ length: 400 }, (_, i) => `<p style="height:40px">Row ${i}</p>`).join("");
+      res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+      return void res.end(`<!doctype html><html><head><title>Long page</title></head><body>${rows}</body></html>`);
     }
     const name = url.pathname.split("/").pop();
     res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
@@ -167,7 +209,7 @@ const alive = (pid) => {
   }
 };
 
-async function launch(app, dataDir, port) {
+export async function launch(app, dataDir, port) {
   const binary = join(app, "Contents/MacOS/Netnyahoo");
   if (pidsOf(binary).length) throw new Error(`an instance of ${app} is already running`);
   const launchedAt = Date.now();
@@ -183,7 +225,7 @@ async function launch(app, dataDir, port) {
   throw new Error("app did not start");
 }
 
-async function quit(pid) {
+export async function quit(pid) {
   if (!alive(pid)) return;
   process.kill(pid, "SIGTERM");
   for (let i = 0; i < 150 && alive(pid); i++) await sleep(100);
@@ -191,7 +233,7 @@ async function quit(pid) {
 }
 
 let evalSeq = 0;
-async function evaluate(dataDir, pid, body, timeoutMs = 120_000) {
+export async function evaluate(dataDir, pid, body, timeoutMs = 120_000) {
   const id = `bench-${process.pid}-${++evalSeq}`;
   writeFileSync(join(dataDir, "dev-eval.js"), `// ${id}\n${body}`);
   const file = join(dataDir, "dev-eval-result.json");
@@ -417,17 +459,19 @@ function compare(a, b) {
   }
 }
 
-if (command === "bundle") bundle(positional[0] ?? join(defaultOut, "bundle"));
-else if (command === "run") await run();
-else if (command === "compare") compare(positional[0], positional[1]);
-else if (command === "summary") {
-  // Recomputes the summary from the raw results (so older reports pick up new summary lines).
-  const report = JSON.parse(readFileSync(positional[0], "utf8"));
-  report.summary = summarize(report.results, report.bundleSize);
-  writeFileSync(positional[0], JSON.stringify(report, null, 2));
-  printSummary(report.summary);
-}
-else {
-  console.error("usage: js-bench.mjs bundle <outDir> | run --app … --bundle … --label … | compare <a.json> <b.json> | summary <a.json>");
-  process.exit(64);
+// render-bench.mjs imports the launcher and server from here; the commands run only from the command line.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  if (command === "bundle") bundle(positional[0] ?? join(defaultOut, "bundle"), { profiling: !!flags.profiling });
+  else if (command === "run") await run();
+  else if (command === "compare") compare(positional[0], positional[1]);
+  else if (command === "summary") {
+    // Recomputes the summary from the raw results (so older reports pick up new summary lines).
+    const report = JSON.parse(readFileSync(positional[0], "utf8"));
+    report.summary = summarize(report.results, report.bundleSize);
+    writeFileSync(positional[0], JSON.stringify(report, null, 2));
+    printSummary(report.summary);
+  } else {
+    console.error("usage: js-bench.mjs bundle <outDir> [--profiling 1] | run --app … --bundle … --label … | compare <a.json> <b.json> | summary <a.json>");
+    process.exit(64);
+  }
 }

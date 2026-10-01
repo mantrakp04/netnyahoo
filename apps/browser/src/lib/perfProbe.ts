@@ -15,8 +15,16 @@ type Fiber = {
   sibling: Fiber | null;
   alternate: Fiber | null;
   memoizedProps: Record<string, unknown> | null;
+  memoizedState: unknown;
+  dependencies: { firstContext: ContextItem | null } | null;
   stateNode: unknown;
+  // Set by React's profiling build only (the bench bundles it with --profiling).
+  selfBaseDuration?: number;
+  actualDuration?: number;
 };
+
+type ContextItem = { context: { displayName?: string }; memoizedValue: unknown; next: ContextItem | null };
+type Hook = { memoizedState: unknown; queue: unknown; next: Hook | null };
 
 type Store = {
   subscribe: (listener: (s: unknown, prev: unknown) => void) => () => void;
@@ -37,7 +45,8 @@ if (!(globalThis as { expo?: unknown }).expo) {
 const modules = (globalThis as { expo?: { modules?: Record<string, Record<string, (...a: unknown[]) => unknown>> } }).expo?.modules;
 const shell = modules?.NetnyahooShell;
 
-// The file's contents name optional (slower) probes: "selectors" times every store selector by call site.
+// The file's contents name optional (slower) probes: "selectors" times every store selector by call site;
+// "renders" says why each component rendered (props, state, context, or nothing: a wasted render).
 const probeOptions = (() => {
   try {
     const info = modules?.NetnyahooApp?.systemInfo?.() as { isolatedInstance?: boolean } | undefined;
@@ -50,6 +59,7 @@ const probeOptions = (() => {
 })();
 
 export const perfProbeEnabled = probeOptions !== null;
+const rendersProbe = !!probeOptions?.includes("renders");
 // "listeners" also times each store listener by the functions that subscribed it.
 const listenersProbe = !!probeOptions?.includes("listeners");
 
@@ -81,6 +91,18 @@ function fresh() {
     writes: {} as Counter,
     writeBytes: {} as Counter,
     writeMs: {} as Counter,
+    // With the "renders" probe: per component, renders that changed nothing (wasted), their time, each
+    // render's self time, and what changed (props:<key> real change, fn:<key> new function, obj:<key> new
+    // but shallow-equal object, state, state~ new but shallow-equal state, context:<name>).
+    wasted: {} as Counter,
+    wastedMs: {} as Counter,
+    unstable: {} as Counter,
+    unstableMs: {} as Counter,
+    renderMs: {} as Counter,
+    causes: {} as Record<string, Counter>,
+    // Components whose own state or context changed with their props unchanged: where an update starts.
+    origins: {} as Counter,
+    commitMs: 0,
   };
 }
 
@@ -114,9 +136,87 @@ function walk(fiber: Fiber) {
   for (let c = fiber.child; c; c = c.sibling) {
     if (COMPONENT_TAGS.has(c.tag)) {
       if (!c.alternate) bump(stats.mounts, nameOf(c.type));
-      else if (c.flags & PERFORMED_WORK) bump(stats.renders, nameOf(c.type));
+      else if (c.flags & PERFORMED_WORK) {
+        bump(stats.renders, nameOf(c.type));
+        if (rendersProbe) classify(c, c.alternate);
+      }
     } else if (c.tag === HOST_COMPONENT && c.alternate && c.flags & UPDATE) stats.hostUpdates++;
     walk(c);
+  }
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+
+function shallowEqual(a: unknown, b: unknown) {
+  if (Object.is(a, b)) return true;
+  if (!isObject(a) || !isObject(b)) return false;
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && Object.is(a[k], b[k]));
+}
+
+// Why a component rendered this commit, against what it rendered with last time (its alternate).
+function classify(fiber: Fiber, before: Fiber) {
+  const name = nameOf(fiber.type);
+  const causes: string[] = [];
+  const props = fiber.memoizedProps ?? {};
+  const prev = before.memoizedProps ?? {};
+  let propsChanged = false;
+  let realProps = false;
+  if (props !== prev) {
+    for (const key of new Set([...Object.keys(props), ...Object.keys(prev)])) {
+      const a = props[key];
+      const b = prev[key];
+      if (Object.is(a, b)) continue;
+      propsChanged = true;
+      if (typeof a === "function" && typeof b === "function") causes.push(`fn:${key}`);
+      else if (key !== "children" && isObject(a) && isObject(b) && shallowEqual(a, b)) causes.push(`obj:${key}`);
+      else {
+        realProps = true;
+        causes.push(`props:${key}`);
+      }
+    }
+  }
+  let stateChanged = false;
+  if (fiber.tag === 1) {
+    if (!shallowEqual(fiber.memoizedState, before.memoizedState)) {
+      stateChanged = true;
+      causes.push("state");
+    }
+  } else {
+    // Only hooks with an update queue hold state (useState, useReducer, useSyncExternalStore: zustand
+    // selectors); memo, ref and effect hooks follow from props and state.
+    let h = fiber.memoizedState as Hook | null;
+    let o = before.memoizedState as Hook | null;
+    for (; h && o; h = h.next, o = o.next) {
+      if (h.queue == null || Object.is(h.memoizedState, o.memoizedState)) continue;
+      stateChanged = true;
+      causes.push(shallowEqual(h.memoizedState, o.memoizedState) ? "state~" : "state");
+    }
+  }
+  let contextChanged = false;
+  let ci = fiber.dependencies?.firstContext ?? null;
+  let co = before.dependencies?.firstContext ?? null;
+  for (; ci; ci = ci.next, co = co?.next ?? null) {
+    if (co && Object.is(ci.memoizedValue, co.memoizedValue)) continue;
+    contextChanged = true;
+    causes.push(`context:${ci.context.displayName ?? "?"}`);
+  }
+  const ms = fiber.selfBaseDuration ?? 0;
+  bump(stats.renderMs, name, ms);
+  const counter = (stats.causes[name] ??= {});
+  if (!propsChanged && !stateChanged && !contextChanged) {
+    bump(stats.wasted, name);
+    bump(stats.wastedMs, name, ms);
+    bump(counter, "wasted");
+  } else {
+    if (!propsChanged) bump(stats.origins, name);
+    // Only new functions or new-but-equal objects: stable props (memo, callbacks) would have skipped it.
+    else if (!realProps && !stateChanged && !contextChanged) {
+      bump(stats.unstable, name);
+      bump(stats.unstableMs, name, ms);
+    }
+    for (const cause of new Set(causes)) bump(counter, cause);
   }
 }
 
@@ -140,6 +240,7 @@ function installReactHook() {
       try {
         walk(root.current);
       } catch {}
+      stats.commitMs += root.current.actualDuration ?? 0;
       stats.walkMs += now() - t;
     },
   };
