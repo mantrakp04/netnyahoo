@@ -112,6 +112,8 @@ ordered transaction that names its cause. There are no echo windows, timers or "
     tab, a strip's placeholder tab going).
   - A transaction never mixes causes. Chrome's pending changes go out before a command runs; whatever Chrome does
     synchronously inside a command (selection, observers) is the command's.
+  - A change that isn't a command's and leaves its strip as it was last sent isn't sent (a new tab's insertion and
+    placing made two identical transactions).
   - `strips` holds every strip the change touched, each whole: `{ strip, window, appWindow?, profile, tabs,
     groups?, activePickedOnClose?, closed? }` (`window` is shared by the strips of one app window, one per engine
     profile it shows; `appWindow` is the app's id for that window, its React root's `windowId`;

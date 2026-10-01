@@ -34,6 +34,26 @@ void Remember(NNCoreWindowController *controller, int strip, NSString *profile) 
 }
 // The command being run (its changes carry its id).
 NSNumber *gCommand;
+// Its strip: the command's one transaction reports it once the command is done (changes to it while the command runs
+// would each have gone out as another transaction with the same id).
+__weak NNCoreWindowController *gCommandWindow;
+__weak NNCoreProfile *gCommandProfile;
+
+// The last state each strip went out with: a report of the same state again, not answering a command, isn't sent (a
+// new tab made two identical ones, its insertion and its placing). Its rev would only have told the app that nothing
+// changed.
+NSMutableDictionary<NSNumber *, NSDictionary *> *Sent() {
+  static NSMutableDictionary *sent = [NSMutableDictionary dictionary];
+  return sent;
+}
+
+void Send(NSDictionary *tx) {
+  for (NSDictionary *strip in tx[@"strips"]) {
+    if ([strip[@"closed"] boolValue]) [Sent() removeObjectForKey:strip[@"strip"]];
+    else Sent()[strip[@"strip"]] = strip;
+  }
+  gHandler(tx);
+}
 
 // Chrome's tab groups as //chrome/browser/netnyahoo's nn_tabs reports them ("tabs.strip"), by the Browser's session id
 // (= the strip id): {groups: [...], tabs: {chrome tab id: group token or NSNull}}.
@@ -165,8 +185,11 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
 
 + (void)changedInWindow:(NNCoreWindowController *)controller profile:(NNCoreProfile *)profile cause:(id)cause {
   if (!gHandler || !controller || !profile || controller.standalone) return;
+  if (gCommand && controller == gCommandWindow && profile == gCommandProfile) return;
   cause = cause ?: (gCommand ?: (controller.hostChanges > 0 ? @(-1) : NSNull.null));
-  gHandler(@{@"rev" : @(++gRev), @"cmd" : cause, @"strips" : @[ Strip(controller, profile) ]});
+  NSDictionary *strip = Strip(controller, profile);
+  if ((cause == NSNull.null || [cause isEqual:@(-1)]) && [Sent()[strip[@"strip"]] isEqualToDictionary:strip]) return;
+  Send(@{@"rev" : @(++gRev), @"cmd" : cause, @"strips" : @[ strip ]});
 }
 
 + (void)windowClosed:(NNCoreWindowController *)controller {
@@ -177,7 +200,7 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
   const NSInteger window = controller.coreWindow.window.windowNumber;
   for (NSNumber *strip in strips)
     [closed addObject:@{@"strip" : strip, @"window" : @(window), @"profile" : strips[strip], @"tabs" : @[], @"closed" : @YES}];
-  gHandler(@{@"rev" : @(++gRev), @"cmd" : NSNull.null, @"strips" : closed});
+  Send(@{@"rev" : @(++gRev), @"cmd" : NSNull.null, @"strips" : closed});
 }
 
 + (BOOL)commandsSeen {
@@ -198,6 +221,7 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
   for (NNCoreWindowController *controller in NNCoreWindowController.all)
     if (!controller.standalone)
       for (NNCoreProfile *profile in ProfilesWithTabs(controller)) [strips addObject:Strip(controller, profile)];
+  for (NSDictionary *strip in strips) Sent()[strip[@"strip"]] = strip;
   return @{@"rev" : @(gRev), @"cmd" : NSNull.null, @"strips" : strips};
 }
 
@@ -217,6 +241,8 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
   }
   BOOL rejected = !found;
   gCommand = @(commandId);
+  gCommandWindow = found;
+  gCommandProfile = profile;
   if (found && [op isEqualToString:@"activate"]) {
     NNCoreTab *tab = byKey[command[@"key"]];
     if (tab) {
@@ -262,7 +288,7 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
       [NNCoreServices call:@"nn_tabs_group" profile:nncore_host::ProfileName(profile) args:args completion:^(NSDictionary *result) {
         NSMutableDictionary *tx = [@{@"rev" : @(++gRev), @"cmd" : @(commandId), @"strips" : @[ Strip(controller, p) ]} mutableCopy];
         if (result[@"error"]) tx[@"rejected"] = @YES;
-        if (gHandler) gHandler(tx);
+        if (gHandler) Send(tx);
       }];
       return;
     }
@@ -271,7 +297,7 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
   NSMutableDictionary *tx = [@{@"rev" : @(++gRev), @"cmd" : @(commandId), @"strips" : found ? @[ Strip(found, profile) ] : @[]} mutableCopy];
   // None of its keys were in its strip: nothing was done.
   if (rejected) tx[@"rejected"] = @YES;
-  if (gHandler) gHandler(tx);
+  if (gHandler) Send(tx);
 }
 
 @end
