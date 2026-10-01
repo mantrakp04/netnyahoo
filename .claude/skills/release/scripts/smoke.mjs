@@ -274,6 +274,17 @@ check(
   closed ? `closed ${closed.closed}, paused ${after?.paused}, ${before?.toFixed(2)} → ${after?.time?.toFixed(2)} s` : "no close click",
 );
 
+// smoke.sh left Chrome's last-used profile at Work, as quitting with Work's window in front does, and Chrome starts in
+// it. Personal (the app's own profile, Chrome's Default directory) must still be itself: before 0.2.20 Personal's
+// pages ran in Work's profile after such a quit (Work's cookies; Personal's history and bookmarks didn't load).
+execFileSync(process.env.SMOKE_KEYS, [pid, "18", "t"]); // ⌃1: the first profile, Personal
+let homeContext;
+for (const start = Date.now(); !homeContext && Date.now() - start < 8000; await sleep(500)) {
+  homeContext = (await browserCall("Target.getTargets")).targetInfos?.find((t) => t.type === "page" && t.url.endsWith("?home"))?.browserContextId;
+}
+check("Personal's pages run in Personal's profile when Work was the last used", !!homeContext && !!workContext && homeContext !== workContext,
+  `personal ${homeContext}, work ${workContext}`);
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);
 process.exit(failed ? 1 : 0);

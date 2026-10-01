@@ -60,6 +60,11 @@ cat > "$work/data/session.json" <<JSON
  "groups":[],"splits":[],"closedTabs":[],"closedWindows":[],"closedGroups":[],"cleanedTabs":[]}
 JSON
 
+# Chrome's last-used profile is Work's, as after quitting with Work's window in front (smoke.mjs checks Personal's
+# pages don't run in it).
+mkdir -p "$work/data/Chromium"
+printf '{"profile":{"last_used":"Profile p-work"}}' > "$work/data/Chromium/Local State"
+
 codesign --verify --deep --strict "$app"
 before="$(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true)"
 open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR="$work/data" \

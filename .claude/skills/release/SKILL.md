@@ -111,6 +111,8 @@ and a session whose window was left on its second profile, and checks, over CDP 
   page navigates (the 0.1.2–0.1.4 regressions);
 - the autofill dropdown accepts a suggestion (0.1.3), the offline page is Where's Big Yahu?, chrome://version;
 - right-click shows the native context menu (0.1.5);
+- with Chrome's last-used profile left at Work (as quitting with Work's window in front does), Personal's pages
+  still run in Personal's profile (0.2.19 and earlier ran them in Work's);
 - quitting the way ⌘Q and Sparkle's update do (the quit Apple event, sent to this instance's pid only) exits
   within 15 s with status 0 and no crash report (0.2.6 and 0.2.7 crashed on every quit, so every update
   ended in "Netnyahoo quit unexpectedly");
