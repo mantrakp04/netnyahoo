@@ -89,6 +89,12 @@ The plan:
 
 ### 2. Stop storing what Chrome already stores; keep our UI over Chrome's data
 
+**Status (2026-10-01): done** for history, closed tabs, favicons and bookmarks (`b79cb1c5`, `5e385337`, `7263d37a`;
+`docs/store-api.md`, `docs/sync.md`); zoom is with rec. 4. Chrome's services are reached through
+`//chrome/browser/netnyahoo` (`nn_history_*`, `nn_favicons_*`, `nn_tab_restore_*`, `nn_bookmarks_*`), so NNCore
+calls the same code. history.json and bookmarks.json move into Chrome once; bookmarks synced before keep their old
+ids as sync keys, so Macs on either version share one tree.
+
 **What.** Chrome's own services already run underneath us and record the same data. Read from them instead of
 keeping parallel JSON copies:
 
