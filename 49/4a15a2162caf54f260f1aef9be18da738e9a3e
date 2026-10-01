@@ -1,0 +1,97 @@
+engine/nncore/src/netnyahoo/core/nn_lifetime.h
+  s_9c356f9574d31c::t_d580c0e19d6a48 1-35
+engine/nncore/src/netnyahoo/core/nn_lifetime.mm
+  s_9c356f9574d31c::t_a5606e80a80266 4,164-165,168-172,182-198,201-211,226-227,230-238
+  s_9c356f9574d31c::t_cabd9782896e6b 1-3,5-163,166-167,173-181,199-200,212-225,228-229,239-241
+engine/nncore/src/netnyahoo/core/BUILD.gn
+  s_9c356f9574d31c::t_ad81fcdfbbbfd3 26-27,32-33,60-61,63-69
+  s_9c356f9574d31c::t_f2cf8f1ce8fcd9 22-23
+spikes/nncore-host/acceptance.mjs
+  s_9c356f9574d31c::t_9b1d8d982e66b2 181,183,185,621,650,660-662,721,732-740
+  s_9c356f9574d31c::t_3c765cf9e4e1e6 533-540,675
+  s_9c356f9574d31c::t_0d4a9da64db6ea 483-510,547-619,677-719
+  s_9c356f9574d31c::t_7f8946efe441b9 623,625,652-659,663-665,667
+  s_9c356f9574d31c::t_53be5d3a111bf5 112-134,179-180,182,184,201,207-208,231,481-482,511-532,541-546,620,622,624,626-649,651,666,668-674,676,720,722,726-731,752
+engine/nncore/src/netnyahoo/core/renderer/nn_content_renderer_client.cc
+  s_9c356f9574d31c::t_4cec4828c38778 166,220
+  s_9c356f9574d31c::t_2bb5f89a98872f 1-5,7-65,68-107,109-165,167-208,218-219,221-276
+  s_9c356f9574d31c::t_09f4bf0e8ab212 6,66-67,108,209-217
+engine/nncore/src/netnyahoo/core/nn_main_delegate.cc
+  s_9c356f9574d31c::t_ad81fcdfbbbfd3 29-31,124-141,188,198-200
+  s_9c356f9574d31c::t_5cae090b727c9d 28,57,158,186-187
+  s_9c356f9574d31c::t_a91d16ce1af727 201-202
+engine/nncore/src/netnyahoo/core/nncore_api.mm
+  s_9c356f9574d31c::t_7d494309b4be43 29-30,130-145,395-398,402-404,409-413,418-424,429-436,438,442,447-450,470-472,494-497
+  s_9c356f9574d31c::t_8d80da08ed35b0 75-78
+  s_9c356f9574d31c::t_8bfc5dbc4fab72 62-67,359-367,614-666,678,690,697,699,704-790,798-826,964
+  s_9c356f9574d31c::t_f2cf8f1ce8fcd9 60,303-309
+  s_9c356f9574d31c::t_a55ab54baa9b35 33,237-275,302
+  s_9c356f9574d31c::t_1bd67462a792d3 369-377,667-677
+  s_9c356f9574d31c::t_9fdca1cf41de2c 791-797
+  s_9c356f9574d31c::t_1dafcc1ca5cdd5 146-147,368,679
+engine/nncore/src/netnyahoo/core/mojom/nncore.mojom
+  s_9c356f9574d31c::t_940c40407ee6bf 1-31
+engine/nncore/src/netnyahoo/core/nn_browser_window.mm
+  s_9c356f9574d31c::t_ec1bfbfca8f3fd 5-7,21,23,26,424-476,479-484,487-502,508-522
+engine/nncore/src/netnyahoo/core/nn_browser.h
+  s_9c356f9574d31c::t_fce0a34450b09b 107
+  s_9c356f9574d31c::t_a55ab54baa9b35 36,102-104,175-180,205
+  s_9c356f9574d31c::t_0a585f5388b6bb 28,237,273-278,280-284,310-312
+  s_9c356f9574d31c::t_9a0f03fce19a1e 11,14,65-69,73,77-80,82-84,87-90,130-137,139-140,146-147,210-214
+  s_9c356f9574d31c::t_ea0a267ffef67a 91,105,215
+engine/nncore/src/netnyahoo/core/nn_browser.mm
+  s_9c356f9574d31c::t_a55ab54baa9b35 216-229
+  s_9c356f9574d31c::t_884a16ee44936b 878-882
+  s_9c356f9574d31c::t_0a585f5388b6bb 30,32-34,515-516,523-528,724-725,760,774-783,845-877,883-908,929-939,967
+  s_9c356f9574d31c::t_0afeea790a5653 719-723,754-759
+  s_9c356f9574d31c::t_12d43c14b64589 517-522
+  s_9c356f9574d31c::t_fce0a34450b09b 6,11-12,18,20-22,41,73-125,127-128,134-139,164,172,185-192,197-200,212-215,230-231,262,267-279,281,284-291,294-337,339-367,372-439,443,451-453,455,621-640,656-658
+engine/nncore/src/netnyahoo/core/nn_page_channel.mm
+  s_9c356f9574d31c::t_9fdca1cf41de2c 230,238-257
+  s_9c356f9574d31c::t_4cec4828c38778 10,208-223,225,258-263,269,280,285
+  s_9c356f9574d31c::t_89ade6d148d710 1-9,11-14,16-48,53-64,66-70,80,90-102,115-207,224,226-229,231-237,264-268,270-279,281-284,286-290
+  s_9c356f9574d31c::t_0afeea790a5653 15,49-52,65,71-79,81-89,103-114
+engine/nncore/src/netnyahoo/core/nn_page_channel.h
+  s_9c356f9574d31c::t_7a0170943f6d2c 1-14,17,19-28,30-43,47-48,52-69,71-82,86,89-94
+  s_9c356f9574d31c::t_9fdca1cf41de2c 70,84
+  s_9c356f9574d31c::t_0afeea790a5653 29,44-46,49-51
+  s_9c356f9574d31c::t_4cec4828c38778 15-16,18,83,85,87-88
+engine/nncore/src/netnyahoo/core/public/NNCore.h
+  s_9c356f9574d31c::t_a55ab54baa9b35 35-37,200,202-208,285-286
+  s_9c356f9574d31c::t_e855f23c2afdbe 29-34,38-39,57-63,65-72,84-86,132-145,173,175-185,199,201,209-214,219-221,263-276,280-284
+  s_9c356f9574d31c::t_f2cf8f1ce8fcd9 127-131
+  s_9c356f9574d31c::t_0afeea790a5653 215-218
+  s_9c356f9574d31c::t_9fdca1cf41de2c 277-279
+spikes/nncore-host/build.sh
+  s_9c356f9574d31c::t_9bbe9b2f6ca285 32
+spikes/nncore-host/main.mm
+  s_9c356f9574d31c::t_884a16ee44936b 65,79,135,210,644-645,697
+  s_9c356f9574d31c::t_9bbe9b2f6ca285 21,874-877,950
+  s_9c356f9574d31c::t_3c765cf9e4e1e6 560-562
+  s_9c356f9574d31c::t_f3ca89378e7900 12-13,59-64,74-78,80-82,84-95,113-134,136-186,394-408,470-505,548-559,563-584,621-624,634-643,646-651,685-696,698-716,720-757,838-873,878-933,946-949,951-955,957-961
+engine/nncore/src/netnyahoo/core/mojom/BUILD.gn
+  s_9c356f9574d31c::t_940c40407ee6bf 1-9
+engine/nncore/apply.sh
+  s_9c356f9574d31c::t_09c217d43e379d 4-5,21-22,129-192
+engine/nncore/src/netnyahoo/core/nn_main_delegate.h
+  s_9c356f9574d31c::t_ad81fcdfbbbfd3 30
+  s_9c356f9574d31c::t_5cae090b727c9d 39-40
+engine/nncore/src/netnyahoo/core/renderer/nn_content_renderer_client.h
+  s_9c356f9574d31c::t_4e484b4bd09b7c 1-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "494a15a2162caf54f260f1aef9be18da738e9a3e",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
