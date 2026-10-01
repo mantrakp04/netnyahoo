@@ -1,0 +1,21 @@
+packages/cef/patches/series.py
+  s_9c356f9574d31c::t_2b2d1aa950eb3b 170-181,225-227,229-230
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_c20c89313c31f9 363-365
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "23766d151c6f70b8562dca37062c075ef5ede6ec",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
