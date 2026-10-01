@@ -15,8 +15,9 @@ deployed with the new entry — otherwise that tab opens on a page that doesn't 
 
 ## Ground rules (why they exist)
 
-- **Never touch the Chromium build cache.** Nothing here needs `~/chromium-build` except `setup.sh`,
-  which release.sh runs and which only copies the finished distribution. Never delete or clean
+- **Never touch the Chromium build cache.** release.sh only reads the engine framework from
+  `~/chromium-build/chromium_git/chromium/src/out/Release_GN_arm64` (and refuses one older than the tree's NNCore
+  sources: rebuilding it is an incremental `chrome_framework` build under the chromium lock). Never delete or clean
   `~/chromium-build/chromium_git/chromium/src/out`, run `gclient sync` or `gn clean`: a full Chromium
   rebuild costs ~5 hours and the user has been emphatic about it.
 - **Never launch or touch `/Applications/Netnyahoo.app`** — the user is using it. Test only the exported
@@ -79,14 +80,15 @@ sed -i '' 's/MARKETING_VERSION = <previous>;/MARKETING_VERSION = <version>;/; s/
   apps/browser/macos/Netnyahoo.xcodeproj/project.pbxproj
 git add docs/release-notes/<version>.md apps/browser/macos/Netnyahoo.xcodeproj/project.pbxproj
 git commit -m "Release <version>"
-scripts/release.sh <version>     # ~5–10 min; run it in the background and wait
+scripts/release.sh <version>     # ~15–25 min with notarization; run it in the background and wait
 # "resources-to-copy-…txt: No such file" in the archive log means another build shared the Pods dir at
 # the same moment (each build writes and deletes that file): make sure no other xcodebuild runs, retry.
 ```
 
 `CURRENT_PROJECT_VERSION` is the build number Sparkle compares — it must go up every release (read the
 current value with `grep CURRENT_PROJECT_VERSION …project.pbxproj | sort -u`). release.sh refuses to run
-if `MARKETING_VERSION` doesn't match or the notes file is missing. It notarizes the app and the DMG with the
+if `MARKETING_VERSION` doesn't match, the notes file is missing, the tree has uncommitted app or engine
+changes, or the engine framework is stale (`docs/releasing.md` lists what it checks). It notarizes the app and the DMG with the
 `netnyahoo` notarytool profile (an App Store Connect API key in the login keychain, set up 2026-09-26) and
 ends with "Notarized and stapled." If it says "NOT notarized.", the profile is gone or invalid
 (`xcrun notarytool history --keychain-profile netnyahoo` shows why): stop and tell the user rather than
@@ -96,13 +98,27 @@ Notarization adds a few minutes per submission.
 ## 4. Smoke test the build
 
 ```bash
-.claude/skills/release/scripts/smoke.sh <version> <previous>
+.claude/skills/release/scripts/smoke.sh <version> <previous>     # --rc for dist/<version>-rc
 ```
 
-It launches `dist/<version>/export/Netnyahoo.app` hidden with a data dir that says `<previous>` ran last,
+First it checks the update from `<previous>` (its export in `dist/<previous>/export`):
+
+- the engine is NNCore (Chrome's framework, no CEF);
+- the identity Sparkle, the keychain and TCC compare: same bundle id, executable, feed and EdDSA key, the build
+  satisfies `<previous>`'s designated requirement, and its build number is higher;
+- the appcast's EdDSA signature of the zip verifies with the app's key, and the zip holds this very app, sealed and
+  stapled; Gatekeeper accepts the app and the DMG as notarized;
+- `update-test.sh`: `<previous>`'s own Sparkle updates a scratch copy of it to this build, through a local feed made of
+  the appcast's item (test bundle id and key; no relaunch, no UI);
+- `carryover.sh`: `<previous>`'s data, made where an installed copy keeps it (two profiles: tabs, cookies including
+  session ones, localStorage, passwords, bookmarks, history, an address, a site permission, zoom, an extension),
+  opens in this build started without `NETNYAHOO_DATA_DIR` (test copies in a fake home; never the real data).
+
+Then it launches `dist/<version>/export/Netnyahoo.app` hidden with a data dir that says `<previous>` ran last,
 and a session whose window was left on its second profile, and checks, over CDP and the window list:
 
 - engine is Chromium 154, the after-update release-notes tab opened exactly once;
+- the browser's child processes are the bundle's own helpers (Chrome's process checks pass under Developer ID);
 - pages load, uBlock blocks an ad script, H.264/AAC/WebGL2;
 - no hidden full-size Chrome window (since 0.2.0 the app window is Chrome's own; before, a hidden "ghost"
   sat behind it), and the window restores as the Work profile's Chrome window, alone on screen, its pages

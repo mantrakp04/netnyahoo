@@ -66,7 +66,7 @@ item = re.sub(r'length="[^"]*"', f'length="{length}"', item)
 item = re.sub(r'sparkle:edSignature="[^"]*"', f'sparkle:edSignature="{signature}"', item)
 print(xml[: xml.index("<item>")] + item + "\n    </channel>\n</rss>")
 PY
-if curl -fs --max-time 2 "http://127.0.0.1:$port/" >/dev/null 2>&1; then
+if nc -z -G 2 127.0.0.1 "$port" 2>/dev/null; then
   echo "error: port $port is taken (UPDATE_TEST_PORT)" >&2
   exit 1
 fi

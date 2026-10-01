@@ -35,7 +35,8 @@ deployed with the new entry by the time the update reaches people.
   `xcrun notarytool store-credentials netnyahoo --apple-id <id> --team-id U5L5T3NGVV` (it asks for an
   app-specific password). Without it, the script still builds and signs, but the release is unnotarized and
   Gatekeeper blocks the first launch.
-- The engine (`packages/cef/scripts/setup.sh`, `docs/cef-source-build.md`) and `pod install`.
+- The engine: NNCore's `Chromium Framework.framework` built in `~/chromium-build` (`engine/nncore/apply.sh`, then
+  `chrome_framework`; `docs/nncore-spike.md`), and `pod install` in `apps/browser/macos`.
 
 ## Cutting a release
 
@@ -46,20 +47,33 @@ deployed with the new entry by the time the update reaches people.
    and check it on the site: `pnpm -C apps/site build && pnpm -C apps/site preview`, then
    `http://localhost:4321/release-notes#<version>`.
 3. `scripts/release.sh <version>`. It stops right away if the notes file is missing or lacks its `date` and
-   `headline`. It writes `dist/<version>/`:
-   - archives the Release configuration (arm64 only) and exports it with Developer ID,
-   - checks the signature, the helpers' JIT entitlements and that the app isn't signed with
-     `com.apple.developer.web-browser.public-key-credential` (Apple hasn't granted it yet;
+   `headline`, if the tree under `apps/browser`, `packages` or `engine` has uncommitted changes, or if the engine
+   framework is older than the tree's NNCore sources or the Chromium tree differs from `engine/nncore`
+   (`apply.sh --check`). It writes `dist/<version>/`:
+   - archives the Release configuration of `apps/browser/macos` (arm64 only), staging the engine into its own
+     derived data so a development build restaging can't change it mid-build, and exports it with Developer ID,
+   - signs Chrome's framework inside out as Chrome signs its own (`chrome/installer/mac/signing/parts.py`): the
+     helpers under the hardened runtime with library validation, except the renderer and GPU ones (Aperitif's too),
+     which get `allow-jit` (`packages/nncore/scripts/signing`) instead; then the framework, then the app again with
+     the entitlements the export gave it,
+   - checks what an in-place update depends on: bundle id `com.netnyahoo.browser`, executable `Netnyahoo`, the
+     designated requirement (our team), the keychain groups, Sparkle's feed and key and the usage strings in
+     `Info.plist`; that every piece of code is Developer ID with a timestamp and no `get-task-allow`; and that the app
+     isn't signed with `com.apple.developer.web-browser.public-key-credential` (Apple hasn't granted it yet;
      `Netnyahoo-ICloudPasskeys.entitlements` is the future entitlements file),
    - launches the app once in the background (throwaway data dir), waits for uBlock's rulesets to be indexed,
-     quits it and checks the signature again: the app must never write into its own bundle
-     (`docs/cef-source-build.md` › "Nothing writes into the app bundle"),
-   - notarizes and staples the app and the DMG when the `netnyahoo` profile exists,
+     quits it and checks the signature again: the app must never write into its own bundle,
+   - notarizes and staples the app and the DMG,
    - packages the DMG and the zip, and signs `appcast.xml` with the Sparkle key. It starts from the
      published appcast, so earlier versions stay listed. The new item embeds the notes' headline and body
      (Markdown, shown in Sparkle's update dialog) and links the page as its full release notes
      (`sparkle:fullReleaseNotesLink`: "You're up to date" › Version History opens it in a tab),
-   - writes `release-notes.md`: the notes' body, then the standard Install section and a link to the page.
+   - writes `release-notes.md` (the notes' body, then the standard Install section and a link to the page) and
+     `provenance.txt` (the commit and the engine build it shipped).
+
+   `scripts/release.sh <version> --rc` builds a candidate into `dist/<version>-rc/` from the working tree, as
+   `<version>` with the next build number, notarized but never published: no notes file or clean tree needed (it
+   lists the uncommitted files it included).
 4. Commit (the notes file with the version bump), tag and publish:
 
    ```bash
@@ -74,14 +88,48 @@ deployed with the new entry by the time the update reaches people.
    first so the download button points at the new DMG. Deploying is the maintainer's call: an agent cutting
    a release stops before this step unless told to do it.
 
-Before publishing, run the smoke test: `.claude/skills/release/scripts/smoke.sh <version> <previous>` (the `release` skill runs the whole flow). By hand, check the build the way the script can't: launch `dist/<version>/export/Netnyahoo.app` with
-`NETNYAHOO_BACKGROUND=1`, a throwaway `NETNYAHOO_DATA_DIR` and `NETNYAHOO_REMOTE_DEBUGGING_PORT`, and load a
-page over CDP. Afterwards `codesign --verify --deep --strict` must still pass on it.
+Before publishing, run the smoke test: `.claude/skills/release/scripts/smoke.sh <version> <previous> [--rc]` (the
+`release` skill runs the whole flow). Besides the hidden launch over CDP, it checks the update itself against
+`dist/<previous>/export`: the identity Sparkle, the keychain and TCC compare (bundle id, executable, feed, key, the
+previous build's designated requirement, a higher build number), the appcast's EdDSA signature of the zip, Gatekeeper
+on the app and the DMG, Sparkle actually updating a copy of the previous build (`update-test.sh`) and the previous
+build's data opening in the new one (`carryover.sh`). By hand, check the build the way the script can't: launch
+`dist/<version>/export/Netnyahoo.app` with `NETNYAHOO_BACKGROUND=1`, a throwaway `NETNYAHOO_DATA_DIR` and
+`NETNYAHOO_REMOTE_DEBUGGING_PORT`, and load a page over CDP. Afterwards `codesign --verify --deep --strict` must still
+pass on it.
 
 To check the after-update tab too: in that data dir, set `lastVersion` in `release-notes.json` to the
 previous version (`{"version":1,"lastVersion":"<previous>","pending":null}`) and relaunch with
 `NETNYAHOO_RELEASE_NOTES=1` added (test instances skip the tab without it). `curl localhost:<port>/json` must
 list one `…/release-notes#<version>` page; a second launch opens none.
+
+## The engine switch (0.2.21 → 0.2.22)
+
+0.2.22 is the first release on NNCore; 0.2.21 and earlier ran on CEF. It's the same app to macOS and Sparkle (bundle
+id, executable, Developer ID team, designated requirement, feed and key), so Sparkle updates a CEF copy in place and
+macOS keeps its permissions, keychain items and passkeys.
+
+Nothing is migrated. A release build without `NETNYAHOO_DATA_DIR` opens the CEF build's data where it is
+(`InstalledDataDirectory` in `packages/nncore/ios/NNCoreHost.mm`): Chrome's user data dir
+`~/Library/Application Support/com.netnyahoo.browser/Chromium` (profiles `Default` and `Profile <id>`), with the app's
+own documents (session, settings) in the folder above. Both engines are Chromium 154.0.8037.58, so every store keeps its
+format, and both read the same "Netnyahoo Safe Storage" keychain item, which trusts the app by its designated
+requirement. Only Developer ID builds use the login keychain; test instances (`NETNYAHOO_DATA_DIR` or
+`NETNYAHOO_BACKGROUND`) and ad hoc builds use Chrome's mock keychain. `carryover.sh` checks it: the previous build makes
+two profiles with tabs, persistent and session cookies, localStorage, saved passwords, bookmarks, history, an address,
+a site permission, a zoom level and an unpacked extension, and the new build, started without `NETNYAHOO_DATA_DIR`,
+must find and read all of it. Both run as test copies (bundle id `com.netnyahoo.browser.carryover`, signed ad hoc) in
+a fake home (`HOME` and `CFFIXED_USER_HOME`), so the real app's data, defaults and keychain are never touched.
+
+`update-test.sh` runs Sparkle itself: the previous build's `Sparkle.framework` (through `sparkle-host.swift`) reads a
+local feed made of the release appcast's own item, downloads the zip, checks its EdDSA signature, extracts it and runs
+Sparkle's installer, which swaps a scratch copy of the previous build for the new one, silently and without
+relaunching it. The copies get a test bundle id and a throwaway key, so neither the real defaults nor the release key
+are involved; the real identity and signature are what smoke.sh's other update checks compare.
+
+The framework and its helpers keep Chrome's names (`Chromium Framework`, `Chromium Helper (Renderer)`): they are
+compiled in from the branding file, so renaming them is a full engine rebuild. Their bundle ids and team are ours,
+and the keychain and macOS permissions belong to the app itself, so only Activity Monitor shows the names.
 
 ## Unnotarized builds
 

@@ -2,6 +2,8 @@
 // [NSApp run]); the React Native host starts inside it once the engine is up. There is no external pump and no
 // second Chromium: NSApp is Chrome's BrowserCrApplication, and NNCore makes -terminate: follow Cocoa's
 // applicationShouldTerminate: contract, so the app's own quit flow (ShellApp.shouldTerminate) runs as on CEF.
+#import <Security/Security.h>
+
 #import "NNCoreInternal.h"
 #import "NNCoreServices.h"
 #import "NNCoreStartup.h"
@@ -29,6 +31,31 @@ NSMutableDictionary<NSString *, NSMutableArray *> *ProfileWaiters() {
 
 NSString *DirectoryName(NSString *name) {
   return name.length ? [@"Profile " stringByAppendingString:name] : @"Default";
+}
+
+// The installed app's Chrome user data dir, the one the CEF releases (0.2.21 and earlier) used, so an update from one
+// opens the same data in place. Nothing is copied or converted: both are Chromium 154.0.8037.58 with the same
+// profile layout ("Default", "Profile <id>") and the same Safe Storage keychain item ("Netnyahoo Safe Storage"), and
+// the app's documents stay in the folder above (ShellModule.documentURL). The release smoke test's carryover check
+// (.claude/skills/release/scripts/carryover.sh) opens a previous release's data this way.
+NSString *InstalledDataDirectory() {
+  NSString *support = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
+  NSString *bundleId = NSBundle.mainBundle.bundleIdentifier ?: @"com.netnyahoo.browser";
+  return [[support stringByAppendingPathComponent:bundleId] stringByAppendingPathComponent:@"Chromium"];
+}
+
+// Signed by a team (a Developer ID release): only those use the login keychain, as the CEF releases did. The Safe
+// Storage item trusts the signed app, so an ad hoc build reading it would make macOS ask for the password.
+bool IsTeamSigned() {
+  SecCodeRef code = nullptr;
+  if (SecCodeCopySelf(kSecCSDefaultFlags, &code) != errSecSuccess) return false;
+  CFDictionaryRef info = nullptr;
+  OSStatus status = SecCodeCopySigningInformation((SecStaticCodeRef)code, kSecCSSigningInformation, &info);
+  CFRelease(code);
+  if (status != errSecSuccess || !info) return false;
+  bool team = CFDictionaryGetValue(info, kSecCodeInfoTeamIdentifier) != nullptr;
+  CFRelease(info);
+  return team;
 }
 
 }  // namespace
@@ -199,22 +226,18 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
 + (int)runWithArgc:(int)argc argv:(char **)argv delegate:(id<NSApplicationDelegate> (^)(void))makeDelegate {
   const char *dataDir = getenv("NETNYAHOO_DATA_DIR");
   // A data dir from the environment is a test or development instance's scratch one: it keeps off the login
-  // keychain too. Without one, a release build has its own folder, apart from the CEF build's (the two can run side
-  // by side); a development build refuses (it never falls back to a real profile).
+  // keychain too. Without one, a release build uses the installed app's (InstalledDataDirectory), and a development
+  // build refuses (it never falls back to a real profile). The environment stays as it is: the app's other modules
+  // read NETNYAHOO_DATA_DIR as "a test instance" (documents, sync keys, telemetry, the update feed).
   gScratchDataDir = dataDir && *dataDir;
-  if (!gScratchDataDir) {
 #if DEBUG
+  if (!gScratchDataDir) {
     fprintf(stderr, "[nncore] set NETNYAHOO_DATA_DIR to a scratch directory\n");
     return 1;
-#else
-    NSString *support = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
-    NSString *own = [support stringByAppendingPathComponent:@"Netnyahoo NNCore"];
-    setenv("NETNYAHOO_DATA_DIR", own.fileSystemRepresentation, 1);
-    dataDir = getenv("NETNYAHOO_DATA_DIR");
-#endif
   }
+#endif
   gMakeDelegate = [makeDelegate copy];
-  gDataDirectory = [@(dataDir) stringByAppendingPathComponent:@"Chromium"];
+  gDataDirectory = gScratchDataDir ? [@(dataDir) stringByAppendingPathComponent:@"Chromium"] : InstalledDataDirectory();
   [NSFileManager.defaultManager createDirectoryAtPath:gDataDirectory withIntermediateDirectories:YES attributes:nil error:nil];
   nncore_host::InstallActivationGuardsEarly();
   nncore_host::PrepareContentBlocker();
@@ -274,8 +297,10 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
       // (packages/cef does the same, a4ffd530).
       "--profile-directory=Default",
   };
-  // Test instances keep off the login keychain (as packages/cef does with a data dir).
-  if (gScratchDataDir) extra.push_back("--use-mock-keychain");
+  // Test instances (a scratch data dir) and ad hoc builds keep off the login keychain, as the CEF releases did. Never
+  // anything else: the installed data's cookies and passwords are encrypted with the real key, and Chrome drops what
+  // it can't decrypt. (The release's carryover check runs the installed-data path on ad hoc copies.)
+  if (gScratchDataDir || !IsTeamSigned()) extra.push_back("--use-mock-keychain");
   nncore_host::PrepareStartup(gDataDirectory, extra);
   // A background (test) instance shares the screen with the owner's windows: when one of theirs covers it, Chrome
   // marks its pages hidden (WebContentsOcclusionCheckerMac / macOS occlusion) and drops their input, so a run's

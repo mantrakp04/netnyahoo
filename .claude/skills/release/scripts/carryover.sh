@@ -8,6 +8,8 @@
 # one starts without NETNYAHOO_DATA_DIR, as an installed copy does, and must find and read all of it
 # (carryover.mjs lists what). Never touches /Applications, the real app's data or the login keychain.
 set -euo pipefail
+# The new build must find the data by itself: nothing from this shell may point it elsewhere.
+unset NETNYAHOO_DATA_DIR NETNYAHOO_UPDATE_FEED_URL
 
 old="${1:?usage: carryover.sh <previous app> <new app>}"
 new="${2:?usage: carryover.sh <previous app> <new app>}"
@@ -41,7 +43,7 @@ for page in page1 page2 work; do
 done
 # An unpacked extension, copied out of the checkout (an app reading ~/Documents raises macOS's folder prompt).
 cp -R "$root/spikes/nncore-host/fixtures/ext" "$work/extension"
-if curl -fs --max-time 2 "http://127.0.0.1:$pages_port/" >/dev/null 2>&1; then
+if nc -z -G 2 127.0.0.1 "$pages_port" 2>/dev/null; then
   echo "error: port $pages_port is taken (CARRYOVER_PAGES_PORT)" >&2
   exit 1
 fi

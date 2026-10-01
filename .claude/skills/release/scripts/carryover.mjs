@@ -130,8 +130,11 @@ try {
   report.read["Personal page"] = await inPage("page1.html", `document.cookie + "; localStorage " + localStorage.getItem("p_ls")`);
   // Files the app has open in the real home's Netnyahoo folders: must be none.
   const real = path.join(os.userInfo().homedir, "Library");
-  const open = (() => { try { return execSync(`lsof -p ${pid} -Fn`).toString(); } catch { return ""; } })();
+  const tree = [pid];
+  for (let i = 0; i < tree.length; i++) { try { tree.push(...execSync(`pgrep -P ${tree[i]}`).toString().trim().split("\n").filter(Boolean)); } catch {} }
+  const open = execSync(`lsof -p ${tree.join(",")} -Fn`).toString(); // throws (and fails the run) if lsof can't look
   report.realHomeFiles = open.split("\n").filter((l) => l.startsWith(`n${real}/Application Support/com.netnyahoo`) || l.startsWith(`n${real}/Caches/com.netnyahoo`));
+  report.processesChecked = tree.length;
 } catch (e) {
   report.error = String(e.stack || e);
 }
@@ -142,7 +145,19 @@ if (alive()) process.kill(Number(pid), "SIGKILL");
 
 if (phase === "create") {
   fs.writeFileSync(out, JSON.stringify(report, null, 2));
-  const ok = !report.error && report.quit && /p_session/.test(report.setPersonal) && /w_session/.test(report.setWork);
+  // Everything the run made must read back as made, or a later "carried over" compares nothing.
+  const r = report.read ?? {};
+  const want = {
+    "profiles": '["Personal","Work"]', "Personal passwords": '["alice pw-personal-123"]', "Work passwords": '["bob pw-work-456"]',
+    "Personal bookmarks": `["Carryover bookmark ${origin}/page2.html"]`, "Work bookmarks": `["Work bookmark ${origin}/work.html"]`,
+    "Personal addresses": '["Ada Lovelace, London"]', "Personal notifications": '"allow"', "Personal zoom": '{"127.0.0.1":1.5}',
+    "Personal extensions": '["NNCore spike extension"]',
+    "Personal page": '"p_persist=yes; p_session=yes; localStorage yes"', "Work page": '"w_persist=yes; w_session=yes; localStorage yes"',
+  };
+  const wrong = Object.entries(want).filter(([k, v]) => JSON.stringify(r[k]) !== v).map(([k]) => `${k}: ${JSON.stringify(r[k])}`);
+  if (!(r["Personal history"] ?? []).includes(`${origin}/page1.html`) || !(r["Work history"] ?? []).includes(`${origin}/work.html`)) wrong.push("history");
+  const ok = !report.error && report.quit && !wrong.length;
+  if (!ok && !report.error) report.error = `not as made: ${wrong.join("; ")}`;
   if (!ok) { console.log(`FAIL  the previous build made the test data  (${report.error ?? JSON.stringify(report).slice(0, 300)})`); process.exit(1); }
   process.exit(0);
 }
@@ -158,7 +173,8 @@ for (const [key, was] of Object.entries(created)) {
   if (key === "dataDirectory") continue;
   const now = report.read?.[key];
   // History may gain entries; every earlier one must still be there.
-  const ok = key.endsWith(" history") && Array.isArray(was) && Array.isArray(now) ? was.every((u) => now.includes(u)) : JSON.stringify(now) === JSON.stringify(was);
+  const failedRead = typeof now === "string" && now.startsWith("error:");
+  const ok = !failedRead && key.endsWith(" history") && Array.isArray(was) && Array.isArray(now) ? was.every((u) => now.includes(u)) : !failedRead && JSON.stringify(now) === JSON.stringify(was);
   const shown = JSON.stringify(now ?? null);
   line(ok, key, ok ? shown.slice(0, 120) : `${JSON.stringify(was).slice(0, 150)} → ${shown.slice(0, 150)}`);
 }

@@ -1,28 +1,39 @@
 #!/usr/bin/env bash
-# Builds a release: scripts/release.sh <version>  (docs/releasing.md)
+# Builds a release (docs/releasing.md):
+#   scripts/release.sh <version>          dist/<version>/: what gets published
+#   scripts/release.sh <version> --rc     dist/<version>-rc/: a candidate from the working tree, never published
 #
-# Archives the Release configuration (arm64 only, like our CEF build), exports it signed with
-# Developer ID, notarizes and staples it when the notarytool keychain profile exists, and writes
-# dist/<version>/: Netnyahoo-<version>.dmg, Netnyahoo-<version>.zip (Sparkle's update archive),
-# appcast.xml, signed with the Sparkle EdDSA key in the login keychain, and release-notes.md (the
-# GitHub release's notes). The notes come from docs/release-notes/<version>.md, which must exist.
+# Archives the Release configuration of apps/browser/macos (arm64), exports it with Developer ID, signs Chrome's
+# framework inside out the way Chrome signs its own (chrome/installer/mac/signing/parts.py), checks the signatures and
+# what an in-place update from an earlier copy depends on, launches the app once hidden and checks its bundle is still
+# sealed, notarizes and staples the app and the DMG, and writes Netnyahoo-<version>.dmg, Netnyahoo-<version>.zip
+# (Sparkle's update archive), appcast.xml (signed with the Sparkle EdDSA key in the login keychain) and
+# release-notes.md (the GitHub release's notes, from docs/release-notes/<version>.md).
 #
-# NOTARY_PROFILE   notarytool keychain profile (default netnyahoo); missing → error
-# ALLOW_UNNOTARIZED=1  build anyway without notarizing
-# SPARKLE_ACCOUNT  keychain account of the Sparkle key (default netnyahoo)
+# A release needs the notes file, MARKETING_VERSION set to <version> (and CURRENT_PROJECT_VERSION bumped) and a
+# clean tree under apps/browser, packages and engine. A candidate needs none of those: it builds the working tree as
+# <version> with the next build number, and uses the notes file if there is one.
+#
+# NOTARY_PROFILE      notarytool keychain profile (default netnyahoo), unless scripts/.notary.env sets an API key
+# ALLOW_UNNOTARIZED=1 build anyway without notarizing
+# SPARKLE_ACCOUNT     keychain account of the Sparkle key (default netnyahoo)
+# NNCORE_FRAMEWORK    another Chromium Framework.framework than out/Release_GN_arm64's
+# RELEASE_BUILD_DIR   the derived data folder (default apps/browser/build-release)
 set -euo pipefail
 
-version="${1:?usage: scripts/release.sh <version>}"
+version="${1:?usage: scripts/release.sh <version> [--rc]}"
+rc=0
+[ "${2:-}" = --rc ] && rc=1
 root="$(cd "$(dirname "$0")/.." && pwd -P)"
 app_dir="$root/apps/browser"
 macos="$app_dir/macos"
+nncore="$root/packages/nncore"
 repo="mantrakp04/netnyahoo"
 notes_page="https://netnyahoo.com/release-notes"
 notary_profile="${NOTARY_PROFILE:-netnyahoo}"
-# App Store Connect API key for notarytool, when scripts/.notary.env (untracked) sets
-# NOTARY_KEY (path to AuthKey_<id>.p8), NOTARY_KEY_ID and NOTARY_ISSUER. Preferred over the keychain
-# profile: notarytool keeps that profile in the data-protection keychain, which reads as missing while
-# the Mac's screen is locked.
+# App Store Connect API key for notarytool, when scripts/.notary.env (untracked) sets NOTARY_KEY (path to
+# AuthKey_<id>.p8), NOTARY_KEY_ID and NOTARY_ISSUER. Preferred over the keychain profile: notarytool keeps that
+# profile in the data-protection keychain, which reads as missing while the Mac's screen is locked.
 [ -f "$root/scripts/.notary.env" ] && . "$root/scripts/.notary.env"
 if [ -n "${NOTARY_KEY:-}" ]; then
   notary_auth=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
@@ -31,39 +42,79 @@ else
 fi
 sparkle_account="${SPARKLE_ACCOUNT:-netnyahoo}"
 sparkle="$macos/Pods/Sparkle/bin"
-dist="$root/dist/$version"
-build="$app_dir/build-release"
+if [ "$rc" = 1 ]; then dist="$root/dist/$version-rc"; else dist="$root/dist/$version"; fi
+build="${RELEASE_BUILD_DIR:-$app_dir/build-release}"
 archive="$dist/Netnyahoo.xcarchive"
 app="$dist/export/Netnyahoo.app"
 zip="$dist/Netnyahoo-$version.zip"
 dmg="$dist/Netnyahoo-$version.dmg"
+chromium_src="${CHROMIUM_SRC:-$HOME/chromium-build/chromium_git/chromium/src}"
+framework_src="${NNCORE_FRAMEWORK:-$chromium_src/out/Release_GN_arm64/Chromium Framework.framework}"
+die() { echo "error: $*" >&2; exit 1; }
 
-# The version ships from the tagged commit: bump it in the project first.
-project_version="$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' "$macos/Netnyahoo.xcodeproj/project.pbxproj" | sort -u)"
-if [ "$project_version" != "$version" ]; then
-  echo "error: MARKETING_VERSION is '$project_version'. Set it to $version (and bump CURRENT_PROJECT_VERSION) first." >&2
-  exit 1
+# The version ships from the tagged commit: bump it in the project first. A candidate is <version> with the next
+# build number, so it sorts after the published release in Sparkle.
+pbx="$macos/Netnyahoo.xcodeproj/project.pbxproj"
+project_version="$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' "$pbx" | sort -u)"
+project_build="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \(.*\);/\1/p' "$pbx" | sort -u)"
+version_settings=()
+if [ "$rc" = 1 ]; then
+  [ "$project_version" = "$version" ] || version_settings=(MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$((project_build + 1))")
+elif [ "$project_version" != "$version" ]; then
+  die "MARKETING_VERSION is '$project_version'. Set it to $version (and bump CURRENT_PROJECT_VERSION) first."
 fi
-# Written before the build (docs/release-notes/README.md): the website, the GitHub release and the
-# update dialog all show it.
+
+# Written before the build (docs/release-notes/README.md): the website, the GitHub release and the update dialog
+# all show it.
 notes="$root/docs/release-notes/$version.md"
-[ -f "$notes" ] || { echo "error: no release notes: write docs/release-notes/$version.md first" >&2; exit 1; }
-frontmatter() { awk 'NR == 1 && $0 == "---" { inside = 1; next } inside && $0 == "---" { exit } inside' "$notes"; }
-notes_body() { awk 'NR == 1 && $0 == "---" { inside = 1; next } inside && $0 == "---" { inside = 0; next } !inside' "$notes" | sed '/./,$!d'; }
-meta="$(frontmatter)"
-headline="$(sed -n 's/^headline: *//p' <<< "$meta")"
-grep -Eq '^date: *[0-9]{4}-[0-9]{2}-[0-9]{2} *$' <<< "$meta" && [ -n "$headline" ] \
-  || { echo "error: $notes needs 'date: YYYY-MM-DD' and 'headline:' frontmatter" >&2; exit 1; }
-identity="Developer ID Application"
-[[ "$(security find-identity -v -p codesigning)" == *"$identity"* ]] || { echo "error: no $identity identity" >&2; exit 1; }
+if [ -f "$notes" ]; then
+  frontmatter() { awk 'NR == 1 && $0 == "---" { inside = 1; next } inside && $0 == "---" { exit } inside' "$notes"; }
+  notes_body() { awk 'NR == 1 && $0 == "---" { inside = 1; next } inside && $0 == "---" { inside = 0; next } !inside' "$notes" | sed '/./,$!d'; }
+  meta="$(frontmatter)"
+  headline="$(sed -n 's/^headline: *//p' <<< "$meta")"
+  grep -Eq '^date: *[0-9]{4}-[0-9]{2}-[0-9]{2} *$' <<< "$meta" && [ -n "$headline" ] \
+    || die "$notes needs 'date: YYYY-MM-DD' and 'headline:' frontmatter"
+elif [ "$rc" = 1 ]; then
+  headline="Release candidate $version"
+  notes_body() { echo "A release candidate of Netnyahoo $version. Not published."; }
+else
+  die "no release notes: write docs/release-notes/$version.md first"
+fi
+
+# A release ships a commit: anything uncommitted in the app's sources would ship with it (another agent's work in
+# progress, say). A candidate builds the working tree and records what it included.
+dirty="$(git -C "$root" status --porcelain -- apps/browser packages engine | grep -v ' apps/browser/build' || true)"
+if [ -n "$dirty" ]; then
+  [ "$rc" = 1 ] || { echo "$dirty" >&2; die "uncommitted changes under apps/browser, packages or engine (above)"; }
+  echo "warning: the candidate includes uncommitted changes:" >&2
+  echo "$dirty" >&2
+fi
+
+# The engine must be built from this checkout's own Chromium code, NNCore's (engine/nncore) and the services it calls
+# (engine/chromium): each apply.sh puts its copy in the tree and gives a changed file a new mtime, so a framework older
+# than the tree's copy is stale. (The patches in engine/patches aren't checked here: they change only at a rebuild.)
+[ -d "$framework_src" ] || die "no NNCore framework at $framework_src (engine/nncore/apply.sh, then build chrome_framework)"
+if [ -z "${NNCORE_FRAMEWORK:-}" ]; then
+  for layer in nncore chromium; do
+    "$root/engine/$layer/apply.sh" --check \
+      || die "the Chromium tree differs from engine/$layer: run engine/$layer/apply.sh and rebuild chrome_framework"
+  done
+  newest="$(find "$chromium_src/netnyahoo" "$chromium_src/chrome/browser/netnyahoo" -type f \
+    -newer "$framework_src/Versions/Current/Chromium Framework" -print -quit)"
+  [ -z "$newest" ] || die "$newest is newer than the framework: rebuild chrome_framework (docs/nncore-spike.md)"
+fi
+
+identity_name="Developer ID Application"
+identity="$(security find-identity -v -p codesigning | awk -v n="$identity_name" 'index($0, n) { print $2; exit }')"
+[ -n "$identity" ] || die "no $identity_name identity"
 notarize=0
 if xcrun notarytool history "${notary_auth[@]}" >/dev/null 2>&1; then
   notarize=1
 elif [ "${ALLOW_UNNOTARIZED:-0}" = 1 ]; then
-  echo "warning: no notarytool profile '$notary_profile'; the release won't be notarized" >&2
+  echo "warning: no notarytool credentials; the build won't be notarized" >&2
 else
-  # Releases are notarized since 0.2.1: an unnotarized one makes every new user go through
-  # System Settings › Open Anyway again. Store the profile (docs/releasing.md) or set ALLOW_UNNOTARIZED=1.
+  # Releases are notarized since 0.2.1: an unnotarized one makes every new user go through System Settings › Open
+  # Anyway again. Store the credentials (docs/releasing.md) or set ALLOW_UNNOTARIZED=1.
   echo "error: notarytool credentials are missing or invalid (scripts/.notary.env or the '$notary_profile' profile):" >&2
   xcrun notarytool history "${notary_auth[@]}" 2>&1 | head -2 >&2
   exit 1
@@ -71,44 +122,107 @@ fi
 
 rm -rf "$dist"
 mkdir -p "$dist"
+{
+  echo "version $version${version_settings:+ (${version_settings[*]})}"
+  echo "commit $(git -C "$root" rev-parse HEAD)${dirty:+ + uncommitted changes}"
+  echo "framework $(plutil -extract SCMRevision raw "$framework_src/Versions/Current/Resources/Info.plist" 2>/dev/null)"
+  echo "framework built $(stat -f '%Sm' "$framework_src/Versions/Current/Chromium Framework")"
+} > "$dist/provenance.txt"
 
-echo "==> CEF"
-"$root/packages/cef/scripts/setup.sh"
-# A release ships the engine engine.lock pins, the one a fresh checkout gets.
-"$root/packages/cef/scripts/engine.sh" verify
+echo "==> Content blocker"
+# The pinned uBlock Origin Lite, which embed.sh copies into the app.
+"$nncore/scripts/ubol.sh"
+[ -f "$nncore/vendor/ubol/ext/manifest.json" ] || die "uBlock Origin Lite isn't installed ($nncore/scripts/ubol.sh)"
 
 echo "==> Archive"
-(cd "$app_dir" && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \
-  -configuration Release -destination 'generic/platform=macOS' ARCHS=arm64 \
+# The engine is staged into this build's own folder, so a development build restaging its copy can't change a
+# release mid-build. The pod lock too: a pod install rewriting Pods.xcodeproj under the archive breaks it.
+(cd "$app_dir" && NNCORE_FRAMEWORK="$framework_src" "$root/scripts/agent/locked" pod --wait 1800 -- \
+  "$root/scripts/agent/locked" xcodebuild --wait 1800 -- xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \
+  -configuration Release -destination 'generic/platform=macOS' ARCHS=arm64 NNCORE_STAGE_DIR="$build/NNCoreFramework" \
+  ${version_settings[@]+"${version_settings[@]}"} \
   -derivedDataPath "$build" -archivePath "$archive" -allowProvisioningUpdates archive) \
-  > "$dist/archive.log" 2>&1 || { grep -E "error:" "$dist/archive.log" >&2; echo "error: archive failed ($dist/archive.log)" >&2; exit 1; }
+  > "$dist/archive.log" 2>&1 || {
+  # (Pods' old deployment targets print as errors too, but don't fail the build.)
+  grep -E "error:|build commands failed" -A2 "$dist/archive.log" | grep -v MACOSX_DEPLOYMENT_TARGET | tail -20 >&2
+  die "archive failed ($dist/archive.log)"
+}
 
 echo "==> Export (Developer ID)"
 xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$macos/ExportOptions-DeveloperID.plist" \
   -exportPath "$dist/export" -allowProvisioningUpdates > "$dist/export.log" 2>&1 \
   || { cat "$dist/export.log" >&2; exit 1; }
 
+echo "==> Sign Chrome's framework"
+# Xcode's export signs what it knows: the app (with the Developer ID profile its keychain groups need), Sparkle,
+# hermes. Chrome's framework and its helpers are signed as Chrome signs them, inside out: the helpers under the
+# hardened runtime, the renderer and GPU ones (Aperitif's too) with their JIT entitlements and without library
+# validation (incompatible with JIT), then the framework, then the app again with what the export gave it.
+entitlements_dir="$nncore/scripts/signing"
+sign() { codesign --force --timestamp --sign "$identity" "$@"; }
+fw="$app/Contents/Frameworks/Chromium Framework.framework"
+fwv="$(cd "$fw/Versions/Current" && pwd -P)" || die "no Chromium Framework.framework in the export"
+for lib in "$fwv"/Libraries/*.dylib; do sign "$lib"; done
+for helper in "$fwv"/Helpers/*.app; do
+  case "$(basename "$helper")" in
+    *"Renderer).app") sign --options restrict,kill,runtime --entitlements "$entitlements_dir/renderer.entitlements" "$helper" ;;
+    *"GPU).app") sign --options restrict,kill,runtime --entitlements "$entitlements_dir/gpu.entitlements" "$helper" ;;
+    *) sign --options restrict,library,kill,runtime "$helper" ;;
+  esac
+done
+sign --options restrict,library,kill,runtime "$fwv/Helpers/chrome_crashpad_handler"
+sign --options restrict,library,kill,runtime "$fwv/Helpers/app_mode_loader"
+[ -e "$fwv/Helpers/web_app_shortcut_copier" ] && sign --options restrict,library,kill,runtime \
+  --identifier com.netnyahoo.browser.web_app_shortcut_copier "$fwv/Helpers/web_app_shortcut_copier"
+sign "$fw"
+sign --preserve-metadata=entitlements,requirements,flags,runtime "$app"
+
 echo "==> Verify"
 codesign --verify --deep --strict "$app"
 # Crash reports from users can only be symbolicated with the archive's dSYM (0.1.0/0.1.1 had none).
-[ -d "$archive/dSYMs/Netnyahoo.app.dSYM" ] || { echo "error: the archive has no Netnyahoo.app.dSYM" >&2; exit 1; }
+[ -d "$archive/dSYMs/Netnyahoo.app.dSYM" ] || die "the archive has no Netnyahoo.app.dSYM"
 entitlements() { codesign -d --entitlements - --xml "$1" 2>/dev/null; }
-# Chromium's helpers need their JIT entitlements under the hardened runtime.
-for helper in "(Renderer)" "(GPU)"; do
-  [[ "$(entitlements "$app/Contents/Frameworks/Netnyahoo Helper $helper.app")" == *cs.allow-jit* ]] \
-    || { echo "error: Netnyahoo Helper $helper lost allow-jit" >&2; exit 1; }
+info() { plutil -extract "$1" raw "$app/Contents/Info.plist" 2>/dev/null; }
+# What an in-place update from an earlier copy depends on: the same bundle id and executable (Sparkle), the
+# designated requirement (the keychain's Safe Storage item, TCC's grants), the feed and the update key.
+[ "$(info CFBundleIdentifier)" = com.netnyahoo.browser ] || die "bundle id is $(info CFBundleIdentifier)"
+[ "$(info CFBundleExecutable)" = Netnyahoo ] || die "executable is $(info CFBundleExecutable)"
+[ "$(info CFBundleShortVersionString)" = "$version" ] || die "CFBundleShortVersionString is $(info CFBundleShortVersionString)"
+for key in SUFeedURL SUPublicEDKey NSDockTilePlugIn NSCameraUsageDescription NSMicrophoneUsageDescription \
+  NSBluetoothAlwaysUsageDescription NSLocationUsageDescription NSLocalNetworkUsageDescription; do
+  [ -n "$(info "$key")" ] || die "Info.plist has no $key"
+done
+[ -d "$app/Contents/Frameworks/Sparkle.framework" ] || die "no Sparkle.framework"
+[ -d "$app/Contents/PlugIns/NetnyahooDockTile.plugin" ] || die "no dock tile plug-in"
+[ -f "$app/Contents/embedded.provisionprofile" ] || die "no Developer ID provisioning profile (keychain groups need it)"
+[ -f "$app/Contents/Resources/Extensions/ublock-lite/manifest.json" ] || die "no uBlock Origin Lite in the app"
+designated="$(codesign -d -r- "$app" 2>&1 | sed -n 's/^designated => //p')"
+[[ "$designated" == *'identifier "com.netnyahoo.browser"'* && "$designated" == *"subject.OU] = U5L5T3NGVV"* ]] \
+  || die "designated requirement: $designated"
+app_ents="$(entitlements "$app")"
+for group in webauthn unexportable-keys secure-payment-confirmation; do
+  [[ "$app_ents" == *"U5L5T3NGVV.com.netnyahoo.browser.$group"* ]] || die "the app lacks the keychain group …$group"
 done
 # Apple hasn't granted the managed passkey capability (Netnyahoo-ICloudPasskeys.entitlements).
-if [[ "$(entitlements "$app")" == *web-browser.public-key-credential* ]]; then
-  echo "error: the app is signed with com.apple.developer.web-browser.public-key-credential" >&2
-  exit 1
-fi
+[[ "$app_ents" != *web-browser.public-key-credential* ]] || die "the app is signed with com.apple.developer.web-browser.public-key-credential"
+for helper in "$fwv"/Helpers/*"Renderer).app" "$fwv"/Helpers/*"GPU).app"; do
+  [[ "$(entitlements "$helper")" == *cs.allow-jit* ]] || die "$(basename "$helper") lost allow-jit"
+done
+# Every piece of code: Developer ID, our team, a timestamp, no debugging entitlement.
+while IFS= read -r -d '' code; do
+  details="$(codesign -dvv "$code" 2>&1)"
+  [[ "$details" == *"TeamIdentifier=U5L5T3NGVV"* && "$details" == *"Authority=Developer ID Application"* \
+    && "$details" == *"Timestamp="* ]] || die "$code isn't Developer ID-signed with a timestamp"
+  [[ "$(entitlements "$code")" != *get-task-allow* ]] || die "$code has get-task-allow"
+done < <(find "$app" \( -name "*.app" -o -name "*.framework" -o -name "*.dylib" -o -name "*.xpc" -o -name "*.plugin" \
+  -o -path "*/Helpers/*" -type f -perm -u+x -o -path "*/MacOS/*" -type f \) -print0)
 
 echo "==> Launch check"
-# Running the app must leave its bundle as signed: anything written into it breaks the signature
-# (Chrome indexing uBlock's rulesets next to the extension did, in 0.1.0). Launch it once in the
-# background with a throwaway data dir, wait for the first-launch indexing, quit, verify again.
-check_data="$(mktemp -d)"
+# Running the app must leave its bundle as signed: anything written into it breaks the signature (Chrome indexing
+# uBlock's rulesets next to the extension did, in 0.1.0). Launch it hidden with a throwaway data dir, wait for the
+# rulesets to be indexed, quit, verify again.
+check_data="$(mktemp -d "${TMPDIR:-/tmp}/nn-release.XXXXXX")"
+before="$(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true)"
 open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR="$check_data" "$app"
 indexes="$check_data/Built-in Extensions/ublock-lite/_metadata/generated_indexed_rulesets"
 for _ in $(seq 1 90); do
@@ -116,20 +230,19 @@ for _ in $(seq 1 90); do
   sleep 1
 done
 sleep 5
-pid="$(pgrep -f "^$app/Contents/MacOS/Netnyahoo" || true)"
-[ -n "$pid" ] || { echo "error: the app didn't start (or quit)" >&2; exit 1; }
-kill -TERM $pid
-for _ in $(seq 1 30); do kill -0 $pid 2>/dev/null || break; sleep 1; done
-kill -KILL $pid 2>/dev/null || true
-codesign --verify --deep --strict "$app" || { echo "error: running the app changed its bundle" >&2; exit 1; }
-[ -d "$indexes" ] || { echo "error: uBlock's rulesets weren't indexed in the data dir" >&2; exit 1; }
+pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true) | head -1)"
+[ -n "$pid" ] || die "the app didn't start (or quit)"
+kill -TERM "$pid"
+for _ in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+kill -KILL "$pid" 2>/dev/null || true
+codesign --verify --deep --strict "$app" || die "running the app changed its bundle"
+[ "$(ls "$indexes" 2>/dev/null | wc -l)" -ge 6 ] || die "uBlock's rulesets weren't indexed in the data dir (90 s)"
 rm -rf "$check_data"
 
 notarize_file() {
   echo "Notarizing $(basename "$1")"
-  xcrun notarytool submit "$1" "${notary_auth[@]}" --wait --timeout 1h \
-    | tee "$dist/notary-$(basename "$1").log"
-  grep -q "status: Accepted" "$dist/notary-$(basename "$1").log" || { echo "error: notarization failed" >&2; exit 1; }
+  xcrun notarytool submit "$1" "${notary_auth[@]}" --wait --timeout 1h | tee "$dist/notary-$(basename "$1").log"
+  grep -q "status: Accepted" "$dist/notary-$(basename "$1").log" || die "notarization failed"
 }
 if [ "$notarize" = 1 ]; then
   echo "==> Notarize app"
@@ -173,19 +286,18 @@ EOF
 } > "$dist/release-notes.md"
 
 echo "==> Appcast"
-# generate_appcast updates an existing appcast, so start from the published one to keep
-# earlier versions listed.
+# generate_appcast updates an existing appcast, so start from the published one to keep earlier versions listed.
 updates="$dist/updates"
 mkdir -p "$updates"
 cp "$zip" "$updates/"
 # Next to the archive, generate_appcast embeds it in the item: Sparkle's update dialog shows it (Markdown).
 { printf '**%s**\n\n' "$headline"; notes_body; } > "$updates/Netnyahoo-$version.md"
 curl -fsL "https://github.com/$repo/releases/latest/download/appcast.xml" -o "$updates/appcast.xml" || rm -f "$updates/appcast.xml"
-# Only generate_keys (which created or imported the key) may read it without a keychain
-# prompt, so hand generate_appcast an exported copy.
+# Only generate_keys (which created or imported the key) may read it without a keychain prompt, so hand
+# generate_appcast an exported copy.
 key="$(mktemp -d)/sparkle-key"
 trap 'rm -rf "$(dirname "$key")"' EXIT
-"$sparkle/generate_keys" --account "$sparkle_account" -x "$key"
+"$sparkle/generate_keys" --account "$sparkle_account" -x "$key" >/dev/null
 # --full-release-notes-url: "You're up to date" › Version History (packages/shell/ios/Updater.swift).
 "$sparkle/generate_appcast" --ed-key-file "$key" \
   --download-url-prefix "https://github.com/$repo/releases/download/v$version/" \
@@ -196,4 +308,5 @@ rm -rf "$updates"
 
 echo
 [ "$notarize" = 1 ] && echo "Notarized and stapled." || echo "NOT notarized."
+[ "$rc" = 1 ] && echo "Release candidate: never publish dist/$version-rc."
 du -sh "$app" "$dmg" "$zip" "$dist/appcast.xml" "$dist/release-notes.md"
