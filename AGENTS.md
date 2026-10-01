@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Netnyahoo is a macOS browser: Dia's polish and Arc's sidebar, built on our own patched Chromium (CEF 154),
+Netnyahoo is a macOS browser: Dia's polish and Arc's sidebar, built on Chrome's own framework (Chromium 154) through NNCore, our thin layer,
 with no account and no AI. It's also a satire brand. This file is how the owner works; follow it.
 For the architecture and the test tooling, read `docs/agent-brief.md`.
 
@@ -105,6 +105,6 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   - Every UI pixel is a real capture of the app.
 
 ## Repo map
-`apps/browser` is the React Native macOS app. The native Expo modules are in `packages/{cef,shell,shaders,import,sync}`,
+`apps/browser` is the React Native macOS app. The native Expo modules are in `packages/{nncore,shell,shaders,import,sync}` (`engine/nncore` is NNCore's engine side),
 and `packages/core` holds the omnibox logic and its tests. `apps/site` is netnyahoo.com and
 `apps/launch-video` holds the launch films. The license is Apache-2.0.
