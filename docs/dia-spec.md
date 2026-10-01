@@ -613,6 +613,42 @@ theme, a group "X" of five tabs after the pinned dock. Positions in points from 
   tab 6.5 after the chip, container 4.5 after it, the next tab 8 after the container; spring sampled in the app: response
   0.31 s / damping 0.81 expanding, 0.30 s / 0.82 collapsing, 1.1 % overshoot.
 
+#### Dragging tabs and split targets (1.50.1, owner's 2× recordings, 2026-10-01)
+
+Two recordings, dark, tabs on top (3024 × 1964, variable frame rate, every frame's own timestamp): one with three
+"New Tab" tabs dragged within and out of the strip (rec1026, 0–8 s; then Netnyahoo 0.2.18), one with the active tab
+dragged onto the page and into a split (rec1027, 7.6 s). The page card spans x 6 … 1505.5 and y 38 … 908.5 (1499.5 ×
+870.5). Classes: `DragDrop.SplitTargetView` (`leftSplitTarget` / `rightSplitTarget`), titles "Add left split" / "Add
+right split"; the numbers are from the pixels.
+- **In the strip** a tab follows the pointer and the others trade places; the window never moves, even with one tab.
+- **Leaving the strip**: the targets came when the pointer was 26 pt below the strip (not at 5.5). Both slide in from
+  outside the card's edges in ~0.11 s (1.375 → 1.483 s), the tab leaves the strip (the tabs after it close up, nothing
+  is selected), and under the pointer the tab becomes a small window: **209 × 109.5**, centred on the pointer, 0.5 pt
+  light rim, a shadow, traffic lights in its title bar (a picture of the window).
+- **Targets at rest**: centred on the card vertically, **198.5 × 333.5** (0.132 × 0.383 of the card), **37.5** in from
+  its side. Radius ~20. Fill (38, 31, 28) on the page's (31, 26, 28), a lighter 0.5 pt edge (49, 44, 41), and a dashed
+  rounded rect **9.5** inside: **6 pt dashes, 6 pt gaps, ~1.75 pt** wide, (55, 48, 46). The glyph
+  (`rectangle.lefthalf.filled` / `righthalf`, ~19 pt) above the title, SF 13 semibold, white ~0.6 ((166, 159, 156)).
+- **Grown**: right after they've slid in (1.508 → ~1.625 s) both grow to **322 × 532** (0.215 × 0.611), 30 from the
+  side, still centred; no overshoot.
+- **Under the dragged card**: a target the card overlaps (the pointer itself was 32 pt outside it, 1.683 s) grows to
+  **362 × 600** (0.241 × 0.69) and leans toward the pointer: its centre moves **43 %** of the way to the pointer's x
+  (1.70 → 1.83 s). Fill turns the accent at ~0.15 ((54, 35, 35) here, the owner's red theme), the dashes become the
+  accent, **7 pt dashes / 7 pt gaps**, ~2 pt; glyph and title the accent ((200, 70, 98)).
+- **Drop** (2.27 s): the page splits, the new pane sliding in on the dropped side; the strip shows the split as one tab.
+  Dragged again while split, each pane has its own pair of targets; a pane's tab dragged out of the window leaves the
+  split for a window of its own.
+- **Netnyahoo** (`layout/splitDrop.ts`, `SplitChrome.tsx`): the same stages as fractions of the pane's card, the same
+  lean, 0.11 s slide, a 0.2 s / 0.9 spring for the sizes; the dashes are React Native's (3 × the width: 2 pt → 6 / 6,
+  2.33 pt → 7 / 7). The dragged card shows the tab's icon and title, not a picture of the page. Not matched: the brief
+  tab-shaped pill Dia shows under the pointer before the card (1.483 s), and the picture Dia shows outside the window
+  (a window of its own while dragging; ours appears on release).
+- **0.2.18's bug** (rec1026, 11–17.8 s): pressing a tab and dragging moved the whole window. No view in the tab
+  consumed the press, so it climbed the responder chain to the strip's `WindowDragRegion`, which called
+  `performWindowDrag`. The region now ignores presses that came through a view with `mouseDownCanMoveWindow` off
+  (the strip's tabs, pinned tiles, splits, group chips and buttons), and the strip's icons take no hits (an image view
+  under a press in an inactive window lets AppKit move the window itself).
+
 ### Menus (1.50.1, menu builder `0x10000f000`–`0x10001c8f4`)
 - View: Appearance ▸ (Automatic, Light, Dark; still there although the Appearance pane is gone), Refresh ⌘R, Force
   Refresh the Page ⇧⌘R (built with the alternate flag, so probably shown only with ⇧ held; medium confidence), —,

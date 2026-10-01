@@ -468,6 +468,31 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     NSPoint p = WindowPoint(window, [action substringFromIndex:4]);
     return Describe([frameView hitTest:p]);
   }
+  // Window drags started since the last call, with who started them: a drag from the tab strip must not move the
+  // window. The first call starts recording (AppKit's two entry points to a window drag).
+  if ([action isEqualToString:@"windowDrags"]) {
+    static NSMutableArray<NSString *> *drags;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      drags = [NSMutableArray array];
+      for (NSString *name in @[ @"performWindowDragWithEvent:", @"performWindowDragWithEvent:completionHandler:" ]) {
+        Method m = class_getInstanceMethod(NSWindow.class, NSSelectorFromString(name));
+        if (!m) continue;
+        IMP original = method_getImplementation(m);
+        bool handler = [name hasSuffix:@"Handler:"];
+        method_setImplementation(m, handler ? imp_implementationWithBlock(^(NSWindow *w, NSEvent *e, id done) {
+          [drags addObject:[[NSThread callStackSymbols] componentsJoinedByString:@"\n"]];
+          ((void (*)(id, SEL, NSEvent *, id))original)(w, NSSelectorFromString(name), e, done);
+        }) : imp_implementationWithBlock(^(NSWindow *w, NSEvent *e) {
+          [drags addObject:[[NSThread callStackSymbols] componentsJoinedByString:@"\n"]];
+          ((void (*)(id, SEL, NSEvent *))original)(w, NSSelectorFromString(name), e);
+        }));
+      }
+    });
+    NSString *out = [NSString stringWithFormat:@"%lu\n%@", (unsigned long)drags.count, [drags componentsJoinedByString:@"\n---\n"]];
+    [drags removeAllObjects];
+    return out;
+  }
   if ([action hasPrefix:@"click:"]) {
     NSString *spec = [action substringFromIndex:6];
     bool right = [spec hasSuffix:@",right"];

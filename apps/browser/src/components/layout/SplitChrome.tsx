@@ -2,13 +2,16 @@ import { Surface, Symbol, VisualEffect } from "@netnyahoo/shell";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 import { hex, useTheme } from "../../lib/theme";
+import { withAlpha } from "../sidebar/tokens";
 import { useBrowser } from "../../store/browser";
 import type { SplitView } from "../../store/types";
 import { resize, type Divider, type Rect } from "./geometry";
 import { useHover } from "../primitives";
 import { hideToast, useToasts } from "./splitActions";
-import { useWindowId } from "../../store/hooks";
-import { setDropTarget, useTabDrag, type DropTarget } from "./tabDrag";
+import { useTab, useWindowId } from "../../store/hooks";
+import { TabIcon } from "../sidebar/TabIcon";
+import { PREVIEW, zoneHit, zoneRect, type ZoneStage } from "./splitDrop";
+import { setDropTarget, setOnPage, setTargetResolver, useTabDrag } from "./tabDrag";
 
 export function SplitDividers({ split, dividers, width, height }: { split: SplitView; dividers: Divider[]; width: number; height: number }) {
   return (
@@ -84,74 +87,193 @@ function DividerHandle({ split, divider, width, height }: { split: SplitView; di
   );
 }
 
+// Dia's split targets while a tab is dragged over the page (from the sidebar or the top strip): a target at each
+// side of every pane, sliding in from the card's edges, growing once the tab is over the page, and the one under
+// the dragged card turning the accent colour and leaning toward the pointer. Geometry in splitDrop.ts.
 export function DropTargets({ panes, origin }: { panes: Record<string, Rect>; origin: { x: number; y: number } | null }) {
-  const theme = useTheme();
   const windowId = useWindowId();
   const dragging = useTabDrag((s) => (s.windowId === windowId ? s.tabId : null));
   const x = useTabDrag((s) => s.x);
   const y = useTabDrag((s) => s.y);
+  const lifted = useTabDrag((s) => s.lifted);
+  const outside = useTabDrag((s) => s.outside);
   const target = useTabDrag((s) => s.target);
   const full = Object.keys(panes).length >= 3;
+  // The page showing the dragged tab alone splits with the tab it leaves for: the one used last.
+  const fallback = useBrowser((s) => {
+    if (!dragging || Object.keys(panes).length !== 1 || !panes[dragging]) return null;
+    const tab = s.tabs[dragging];
+    const others = (s.windows[windowId]?.tabIds ?? []).map((id) => s.tabs[id]!).filter((t) => t && t.id !== dragging && t.profileId === tab?.profileId);
+    return others.sort((a, b) => b.lastActiveAt - a.lastActiveAt)[0]?.id ?? null;
+  });
+  const candidates = useMemo((): [string, Rect][] => {
+    if (fallback && dragging) return [[fallback, panes[dragging]!]];
+    return Object.entries(panes).filter(([tabId]) => tabId !== dragging);
+  }, [panes, dragging, fallback]);
 
-  const hit = useMemo((): DropTarget | null => {
-    if (!dragging || !origin || x < 0 || full) return null;
-    const px = x - origin.x;
-    const py = y - origin.y;
-    for (const [tabId, r] of Object.entries(panes)) {
-      if (tabId === dragging) continue;
-      if (px < r.x || px > r.x + r.width || py < r.y || py > r.y + r.height) continue;
-      return { tabId, side: px < r.x + r.width / 2 ? "left" : "right" };
-    }
-    return null;
-  }, [dragging, origin, x, y, panes, full]);
+  const px = origin ? x - origin.x : -1;
+  const py = origin ? y - origin.y : -1;
+  const overPage = !!origin && x >= 0 && Object.values(panes).some((r) => px >= r.x && px <= r.x + r.width && py >= r.y && py <= r.y + r.height);
+  const shown = !!dragging && !!origin && !full && !outside && candidates.length > 0 && (lifted ?? overPage);
+  const [grown, setGrown] = useState(false);
+  useEffect(() => {
+    setGrown(false);
+    if (!shown) return;
+    // Dia grows the targets as soon as they've slid in.
+    const timer = setTimeout(() => setGrown(true), ZONE_SLIDE_MS);
+    return () => clearTimeout(timer);
+  }, [shown]);
+
+  const hit = shown && grown && overPage ? zoneHit(candidates, px, py, target) : null;
+  const preview = shown && overPage;
+  const resolver = useRef({ candidates, origin, panes, ready: false });
+  resolver.current = { candidates, origin, panes, ready: !!dragging && !!origin && !full && candidates.length > 0 && grown && lifted !== false };
+  useEffect(() => {
+    if (!dragging) return;
+    setTargetResolver((x, y, current, outside) => {
+      const { candidates, origin, panes, ready } = resolver.current;
+      if (!ready || outside || !origin) return null;
+      const px = x - origin.x, py = y - origin.y;
+      if (!Object.values(panes).some((r) => px >= r.x && px <= r.x + r.width && py >= r.y && py <= r.y + r.height)) return null;
+      return zoneHit(candidates, px, py, current);
+    });
+    return () => setTargetResolver(null);
+  }, [dragging]);
   useEffect(() => setDropTarget(hit), [hit?.tabId, hit?.side]);
-  useEffect(() => () => setDropTarget(null), []);
+  useEffect(() => setOnPage(preview), [preview]);
+  useEffect(
+    () => () => {
+      setDropTarget(null);
+      setOnPage(false);
+    },
+    [],
+  );
+  // Zones stay mounted for their slide out.
+  const [mounted, setMounted] = useState<[string, Rect][]>([]);
+  useEffect(() => {
+    if (shown) setMounted(candidates);
+  }, [shown, candidates]);
 
-  if (!dragging || full || !origin) return null;
-  const overPage = Object.entries(panes).some(([, r]) => x - origin.x >= r.x && x - origin.x <= r.x + r.width && y - origin.y >= r.y && y - origin.y <= r.y + r.height);
-  if (!overPage) return null;
+  if (!mounted.length) return null;
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {Object.entries(panes)
-        .filter(([tabId]) => tabId !== dragging)
-        .flatMap(([tabId, r]) =>
-          (["left", "right"] as const).map((side) => (
-            <DropZone key={`${tabId}${side}`} rect={r} side={side} active={target?.tabId === tabId && target.side === side} dark={theme.dark} />
-          )),
-        )}
+      {mounted.flatMap(([tabId, rect]) =>
+        (["left", "right"] as const).map((side) => (
+          <DropZone
+            key={`${tabId}${side}`}
+            pane={rect}
+            side={side}
+            shown={shown}
+            stage={target?.tabId === tabId && target.side === side ? "active" : grown ? "grown" : "rest"}
+            pointerX={px}
+            onHidden={() => setMounted([])}
+          />
+        )),
+      )}
+      {preview && dragging ? <DragPreview tabId={dragging} x={px} y={py} /> : null}
     </View>
   );
 }
 
-function DropZone({ rect, side, active, dark }: { rect: Rect; side: "left" | "right"; active: boolean; dark: boolean }) {
-  const glow = useRef(new Animated.Value(active ? 1 : 0)).current;
+const ZONE_SLIDE_MS = 110;
+// Dia's targets settle in about 0.12 s with no overshoot: a 0.2 s response, 0.9 damping.
+const ZONE_SPRING = { stiffness: 987, damping: 56.5, mass: 1, useNativeDriver: false } as const;
+
+function DropZone({ pane, side, shown, stage, pointerX, onHidden }: { pane: Rect; side: "left" | "right"; shown: boolean; stage: ZoneStage; pointerX: number; onHidden(): void }) {
+  const theme = useTheme();
+  const rect = zoneRect(pane, side, stage, pointerX);
+  const anim = useRef({ x: new Animated.Value(rect.x), y: new Animated.Value(rect.y), w: new Animated.Value(rect.width), h: new Animated.Value(rect.height) }).current;
+  const glow = useRef(new Animated.Value(0)).current;
+  const slide = useRef(new Animated.Value(0)).current;
+  const active = stage === "active";
   useEffect(() => {
-    // JS driver: the glow animates colours.
-    Animated.timing(glow, { toValue: active ? 1 : 0, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    // JS driver: frames are layout.
+    Animated.parallel([
+      Animated.spring(anim.x, { toValue: rect.x, ...ZONE_SPRING }),
+      Animated.spring(anim.y, { toValue: rect.y, ...ZONE_SPRING }),
+      Animated.spring(anim.w, { toValue: rect.width, ...ZONE_SPRING }),
+      Animated.spring(anim.h, { toValue: rect.height, ...ZONE_SPRING }),
+    ]).start();
+  }, [rect.x, rect.y, rect.width, rect.height]);
+  useEffect(() => {
+    Animated.timing(glow, { toValue: active ? 1 : 0, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [active]);
-  const inset = 10;
-  const w = rect.width / 2 - inset * 1.5;
+  useEffect(() => {
+    Animated.timing(slide, { toValue: shown ? 1 : 0, duration: ZONE_SLIDE_MS, easing: shown ? Easing.out(Easing.cubic) : Easing.in(Easing.quad), useNativeDriver: false }).start(
+      ({ finished }) => finished && !shown && onHidden(),
+    );
+  }, [shown]);
+  // In from (and back out past) the card's edge.
+  const away = side === "left" ? -(rect.x - pane.x + rect.width) : pane.x + pane.width - rect.x;
+  const dark = theme.dark;
+  const rest = dark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.55)";
   return (
     <Animated.View
       style={{
         position: "absolute",
-        top: rect.y + inset,
-        height: rect.height - inset * 2,
-        left: side === "left" ? rect.x + inset : rect.x + rect.width - inset - w,
-        width: w,
-        borderRadius: 10,
-        borderWidth: 1.5,
-        borderColor: glow.interpolate({ inputRange: [0, 1], outputRange: [dark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.12)", dark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.35)"] }),
-        backgroundColor: glow.interpolate({ inputRange: [0, 1], outputRange: [dark ? "rgba(30,28,29,0.35)" : "rgba(255,255,255,0.3)", dark ? "rgba(60,56,58,0.62)" : "rgba(255,255,255,0.7)"] }),
+        left: anim.x,
+        top: anim.y,
+        width: anim.w,
+        height: anim.h,
+        borderRadius: 20,
+        borderWidth: 0.5,
+        borderColor: dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
+        backgroundColor: glow.interpolate({ inputRange: [0, 1], outputRange: [dark ? "rgba(255,236,214,0.04)" : "rgba(255,255,255,0.45)", withAlpha(theme.accent, dark ? 0.16 : 0.12)] }),
         alignItems: "center",
         justifyContent: "center",
-        gap: 8,
-        transform: [{ scale: glow.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1] }) }],
+        transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [away, 0] }) }],
       }}
     >
-      <Symbol name={side === "left" ? "rectangle.lefthalf.filled" : "rectangle.righthalf.filled"} size={26} weight="light" color={dark ? "#FFFFFFCC" : "#000000A8"} style={{ width: 40, height: 32 }} />
-      <Text style={{ fontSize: 13, fontWeight: "500", color: dark ? "#FFFFFFCC" : "#000000A8" }}>{side === "left" ? "Split Left" : "Split Right"}</Text>
+      <View
+        style={{
+          position: "absolute",
+          left: 9.5,
+          right: 9.5,
+          top: 9.5,
+          bottom: 9.5,
+          borderRadius: 11,
+          borderStyle: "dashed",
+          // RN dashes are 3 × the width: Dia's 6 pt dashes, and 7 pt on the target under the card.
+          borderWidth: active ? 2.33 : 2,
+          borderColor: active ? theme.accent : dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
+        }}
+      />
+      <Symbol name={side === "left" ? "rectangle.lefthalf.filled" : "rectangle.righthalf.filled"} size={18} color={active ? theme.accent : rest} style={{ width: 24, height: 20 }} />
+      <Text style={{ marginTop: 11, fontSize: 13, fontWeight: "600", color: active ? theme.accent : rest }}>{side === "left" ? "Add left split" : "Add right split"}</Text>
     </Animated.View>
+  );
+}
+
+// The dragged tab as a small window under the pointer, as Dia shows it over the page.
+function DragPreview({ tabId, x, y }: { tabId: string; x: number; y: number }) {
+  const theme = useTheme();
+  const tab = useTab(tabId);
+  if (!tab) return null;
+  const title = tab.customTitle || tab.title || tab.url || "New Tab";
+  return (
+    <Surface
+      fill={hex(theme.dark ? "#141316" : "#F4F2F3")}
+      cornerRadius={4}
+      borderColor={hex(theme.dark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.18)")}
+      borderWidth={0.5}
+      shadowColor="#000000"
+      shadowOpacity={theme.dark ? 0.45 : 0.2}
+      shadowRadius={14}
+      shadowOffset={[0, 6]}
+      style={{ position: "absolute", left: x - PREVIEW.width / 2, top: y - PREVIEW.height / 2, width: PREVIEW.width, height: PREVIEW.height }}
+    >
+      <View style={{ height: 11, flexDirection: "row", alignItems: "center", paddingLeft: 6, gap: 2.5, backgroundColor: theme.dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)" }}>
+        {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
+          <View key={c} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: c }} />
+        ))}
+      </View>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 14, gap: 6 }}>
+        <TabIcon url={tab.url} favicon={tab.favicon} icon={tab.customIcon} size={18} profileId={tab.profileId} />
+        <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: "500", color: theme.textSecondary, maxWidth: PREVIEW.width - 28 }}>
+          {title}
+        </Text>
+      </View>
+    </Surface>
   );
 }
 

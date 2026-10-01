@@ -589,12 +589,24 @@ final class WindowDragRegion: ExpoView {
   }
 
   override func mouseDown(with event: NSEvent) {
+    // A press on a view over the region that handles its own (`mouseDownCanMoveWindow` false: a tab in the strip,
+    // which drags to reorder) reaches here through the responder chain; it isn't a window drag.
+    if handledAbove(event) { return }
     if event.clickCount == 2 {
       let action = UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") ?? "Maximize"
       action == "Minimize" ? window?.performMiniaturize(nil) : window?.performZoom(nil)
       return
     }
     window?.performDrag(with: event)
+  }
+
+  private func handledAbove(_ event: NSEvent) -> Bool {
+    var responder: NSResponder? = window?.contentView?.superview?.hitTest(event.locationInWindow)
+    while let r = responder, r !== self {
+      if let view = r as? NSView, !view.mouseDownCanMoveWindow { return true }
+      responder = r.nextResponder
+    }
+    return false
   }
 }
 

@@ -36,7 +36,7 @@ import {
   type DragGeometry,
   type DragSlot,
 } from "./stripGroups";
-import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag } from "./tabDrag";
+import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag, useTabDrag } from "./tabDrag";
 import { toolbarPalette, useEasedColor, type ToolbarPalette } from "./toolbarColors";
 
 // Dia's top strip, from a 2x capture of 1.50.1: the card starts 42 below the window top, and everything in the
@@ -62,6 +62,9 @@ const DOCK_GAP = 4.5;
 const MIN_CHIP = 96;
 const MAX_CHIP = 173;
 const GAP = 4;
+// A tab pulled this far below the strip leaves it for the page (Dia: its split targets came between 5.5 and 26 pt).
+const LIFT_SLOP = 12;
+const LIFT_MS = 150;
 // The first item starts at x 86, 12 pt after the zoom button.
 const LIGHTS_GAP = 8;
 const LIGHTS_CENTER: [number, number] = [20.75, 20.75];
@@ -102,6 +105,7 @@ export function TopTabStrip({ floating = false }: { floating?: boolean }) {
         </View>
         <View
           onLayout={(e) => setControls(Math.ceil(e.nativeEvent.layout.width))}
+          mouseDownCanMoveWindow={false}
           style={{ position: "absolute", right: 8, top: MID - 17, flexDirection: "row", alignItems: "center", gap: 2 }}
         >
           <ProfileIndicator room={140} />
@@ -186,8 +190,8 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
                     onChipWidth={(width) => setChipWidths((all) => (all[e.id] === width ? all : { ...all, [e.id]: width }))}
                   />
                 );
-              if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} />;
-              return <DraggableChip key={e.id} tabId={e.id} width={chip} geometry={top} from={slotOf(e.id)} />;
+              if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} geometry={top} from={slotOf(e.tabIds[0]!)} group={null} />;
+              return <DraggableChip key={e.id} tabId={e.id} width={chip} geometry={top} from={slotOf(e.id)} group={null} />;
             })}
             <NewTabButton windowId={windowId} />
           </ScrollView>
@@ -227,44 +231,130 @@ const tabsOf = (m: Member) => (m.kind === "split" ? m.tabIds : [m.id]);
 // A split shows at most two panes' width.
 const units = (m: Member) => (m.kind === "split" ? Math.min(m.tabIds.length, 2) : 1);
 
-function DraggableChip({ tabId, width, geometry, from, tuck }: { tabId: string; width: number; geometry: DragGeometry; from: number; tuck?: () => void }) {
+// What a strip item drags: `tabId` is the tab the page can split with (none for a whole split); `ids` move along
+// the strip and out of the window (a tab with the rest of a multi-selection, or a split's panes).
+// `axis`: "y" for a split's pane, which leaves the strip on its own, while its split moves along the strip as one.
+type StripDrag = { tabId: string | null; ids: () => string[]; pinned: boolean; groupId: string | null; geometry: DragGeometry; from: number; width: number; gap: number; axis?: "x" | "y" };
+
+// An item follows the pointer along the strip, trading places with whole tabs, splits and groups. Pulled down
+// past the strip a tab leaves it for the page (whose split targets show, SplitChrome.tsx); let go outside the
+// window, it moves to the window under the pointer or a new one (tabDrag.ts). Items are
+// `mouseDownCanMoveWindow={false}`: no view consumes the press, so it climbed the responder chain to the strip's
+// WindowDragRegion, which moved the window under the pointer instead of the tab (it leaves such presses alone).
+function useStripDrag(item: StripDrag) {
   const dx = useRef(new Animated.Value(0)).current;
+  const lift = useRef(new Animated.Value(0)).current;
   const [dragging, setDragging] = useState(false);
-  const active = useIsActiveTab(tabId);
+  const view = useRef<View>(null);
+  const latest = useRef(item);
+  latest.current = item;
+  const drag = useRef({ stripBottom: TOP_STRIP_HEIGHT, lifted: false, ids: [] as string[] });
+  const setLifted = (lifted: boolean) => {
+    if (drag.current.lifted === lifted) return;
+    drag.current.lifted = lifted;
+    // JS driver: the strip closes the gap the tab leaves.
+    Animated.timing(lift, { toValue: lifted ? 1 : 0, duration: LIFT_MS, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+  };
+  const owns = useRef(false);
+  const reset = () => {
+    owns.current = false;
+    dx.setValue(0);
+    setLifted(false);
+    setDragging(false);
+  };
+  // Closed mid-drag (⌘W): RN drops the responder without telling it, so the drag would stay open and block the next.
+  useEffect(() => () => void (owns.current && cancelTabDrag()), []);
   const responder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 4 || Math.abs(g.dy) > 6,
+        onMoveShouldSetPanResponder: (_, g) => {
+          // RN grants a parent that asks for a drag before the child holding it can refuse: a split doesn't ask
+          // while its pane is dragging.
+          if (useTabDrag.getState().tabIds.length) return false;
+          const axis = latest.current.axis;
+          if (axis === "y") return Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx);
+          if (axis === "x") return Math.abs(g.dx) > 4;
+          return Math.abs(g.dx) > 4 || Math.abs(g.dy) > 6;
+        },
         onPanResponderGrant: () => {
+          const ids = latest.current.ids();
+          drag.current = { stripBottom: TOP_STRIP_HEIGHT, lifted: false, ids };
+          owns.current = true;
+          view.current?.measureInWindow((_, top) => (drag.current.stripBottom = top + TOP_STRIP_HEIGHT));
           setDragging(true);
-          beginTabDrag(tabId);
+          beginTabDrag(ids.length === 1 ? latest.current.tabId : null, ids);
         },
         onPanResponderMove: (_, g) => {
+          const { geometry, from, tabId } = latest.current;
+          // Only a tab leaves the strip for the page; a split or a selection stays on it until it leaves the window.
+          const lifted = !!tabId && drag.current.ids.length === 1 && g.moveY > drag.current.stripBottom + LIFT_SLOP;
+          setLifted(lifted);
           const [min, max] = from < 0 ? [0, 0] : dragRange(geometry, from);
-          dx.setValue(Math.max(min, Math.min(max, g.dx)));
-          updateTabDrag(g.moveX, g.moveY);
+          if (!lifted) dx.setValue(Math.max(min, Math.min(max, g.dx)));
+          updateTabDrag(g.moveX, g.moveY, lifted);
         },
         onPanResponderRelease: (_, g) => {
-          dx.setValue(0);
-          setDragging(false);
-          if (endTabDrag() || from < 0) return;
-          const s = useBrowser.getState();
-          const tab = s.tabs[tabId];
-          if (!tab) return;
-          const section = s.windows[tab.windowId]?.tabIds.filter((id) => s.tabs[id]?.profileId === tab.profileId && !s.tabs[id]?.pinned) ?? [];
-          const index = moveIndex(section, tabId, geometry.slots, from, dropIndex(geometry, from, g.dx));
-          if (index !== null) s.moveTab(tabId, index);
+          const lifted = drag.current.lifted;
+          reset();
+          // Let go over the page away from a split target: the tab goes back, as in Dia.
+          if (endTabDrag() || lifted || latest.current.from < 0) return;
+          reorder(drag.current.ids, latest.current, g.dx);
         },
         onPanResponderTerminate: () => {
-          dx.setValue(0);
-          setDragging(false);
+          reset();
           cancelTabDrag();
         },
       }),
-    [tabId, geometry, from],
+    [],
   );
+  const style = {
+    zIndex: dragging ? 10 : 0,
+    opacity: lift.interpolate({ inputRange: [0, 1], outputRange: [dragging ? 0.92 : 1, 0] }),
+    marginRight: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -(item.width + item.gap)] }),
+    transform: [{ translateX: dx }],
+  };
+  return { ref: view, panHandlers: responder.panHandlers, style, dragging };
+}
+
+function reorder(ids: string[], { geometry, from, pinned, groupId }: StripDrag, dx: number) {
+  const s = useBrowser.getState();
+  const tab = s.tabs[ids[0] ?? ""];
+  const w = tab && s.windows[tab.windowId];
+  if (!tab || !w) return;
+  const to = dropIndex(geometry, from, dx);
+  if (ids.length === 1) {
+    // One tab: its place among the section's tabs (which keeps it in or out of its group as it was).
+    const section = w.tabIds.filter((id) => s.tabs[id]?.profileId === tab.profileId && !!s.tabs[id]?.pinned === pinned);
+    const index = moveIndex(section, tab.id, geometry.slots, from, to);
+    if (index !== null) s.moveTab(tab.id, index);
+    return;
+  }
+  if (to === from) return;
+  // Before the first tab of the slot it lands on that isn't moving along (a multi-selection's other tabs), else
+  // before whatever follows the strip's last slot.
+  const others = geometry.slots.filter((_, i) => i !== from);
+  let beforeId = others.slice(to).flatMap((slot) => slot.tabIds).find((id) => !ids.includes(id)) ?? null;
+  if (!beforeId) {
+    const last = w.tabIds.indexOf(others.at(-1)?.tabIds.at(-1) ?? "");
+    beforeId = last < 0 ? null : (w.tabIds.slice(last + 1).find((id) => !ids.includes(id)) ?? null);
+  }
+  s.placeTabs(ids, { pinned, beforeId, groupId });
+}
+
+// The tab and, when it's part of the window's multi-selection, the rest of the selection, in strip order.
+function withSelection(tabId: string): string[] {
+  const s = useBrowser.getState();
+  const tab = s.tabs[tabId];
+  const selection = tab ? (s.selection[tab.windowId] ?? []) : [];
+  if (selection.length < 2 || !selection.includes(tabId)) return [tabId];
+  return s.windows[tab!.windowId]!.tabIds.filter((id) => selection.includes(id) && !!s.tabs[id]?.pinned === tab!.pinned);
+}
+
+function DraggableChip({ tabId, width, geometry, from, group, tuck }: { tabId: string; width: number; geometry: DragGeometry; from: number; group: string | null; tuck?: () => void }) {
+  const active = useIsActiveTab(tabId);
+  const drag = useStripDrag({ tabId, ids: () => withSelection(tabId), pinned: false, groupId: group, geometry, from, width, gap: GAP });
   return (
-    <Animated.View {...responder.panHandlers} style={{ zIndex: dragging ? 10 : active ? 1 : 0, opacity: dragging ? 0.92 : 1, transform: [{ translateX: dx }] }}>
+    <Animated.View ref={drag.ref} {...drag.panHandlers} mouseDownCanMoveWindow={false} style={{ ...drag.style, zIndex: drag.dragging ? 10 : active ? 1 : 0 }}>
       <TabChip tabId={tabId} width={width} tuck={tuck} />
     </Animated.View>
   );
@@ -300,7 +390,8 @@ function TabChip({ tabId, width, tuck }: { tabId: string; width: number; tuck?: 
         <Pressable onPress={(e) => clickTab(windowId, tab.id, modifiersOf(e))} style={{ flex: 1 }}>
           {({ pressed }) => (
             <ItemRow hovered={hovered && !active} pressed={pressed && !active}>
-              <View>
+              {/* Not hit: an image view under a press in an inactive window moves the window (AppKit's first mouse). */}
+              <View pointerEvents="none">
                 <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
                 <TabBadges tabId={tab.id} pip={false} />
               </View>
@@ -442,6 +533,8 @@ function Flare({ x, side, color }: { x: number; side: "left" | "right"; color: F
 // Dia keeps pinned tabs in one shared container (the TabDockItemResting fill and stroke), not a tile each.
 function PinnedDock({ tabIds }: { tabIds: string[] }) {
   const theme = useTheme();
+  // Pinned tabs trade places among themselves.
+  const geometry = useMemo(() => dragGeometry(tabIds.map((id) => ({ tabIds: [id], width: PINNED_CELL })), PINNED_SPACING), [tabIds]);
   return (
     <View
       style={{
@@ -459,49 +552,52 @@ function PinnedDock({ tabIds }: { tabIds: string[] }) {
     >
       {/* The stroke sits inside the container, over the cells' outer edges. */}
       <View style={{ flexDirection: "row", gap: PINNED_SPACING, marginHorizontal: -0.5 }}>
-        {tabIds.map((id) => (
-          <PinnedCell key={id} tabId={id} />
+        {tabIds.map((id, i) => (
+          <PinnedCell key={id} tabId={id} geometry={geometry} from={i} />
         ))}
       </View>
     </View>
   );
 }
 
-function PinnedCell({ tabId }: { tabId: string }) {
+function PinnedCell({ tabId, geometry, from }: { tabId: string; geometry: DragGeometry; from: number }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const tab = useTab(tabId);
   const active = useIsActiveTab(tabId);
   const { hovered, hoverProps } = useHover();
+  const drag = useStripDrag({ tabId, ids: () => withSelection(tabId), pinned: true, groupId: null, geometry, from, width: PINNED_CELL, gap: PINNED_SPACING });
   if (!tab) return null;
   return (
-    <View {...hoverProps} tooltip={`${tab.customTitle || tab.title || tab.url}${tab.url ? `\n${tab.url}` : ""}`}>
-      <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)}>
-        <Pressable onPress={(e) => clickTab(windowId, tab.id, modifiersOf(e))}>
-          {({ pressed }) => (
-            <View style={{ width: PINNED_CELL, height: ITEM_HEIGHT - 1, alignItems: "center", justifyContent: "center" }}>
-              {(active || hovered || pressed) && (
-                <View
-                  style={{
-                    position: "absolute",
-                    left: 2,
-                    right: 2,
-                    top: 2,
-                    bottom: 2,
-                    borderRadius: 8,
-                    backgroundColor: pressed ? theme.tabPressed : active ? theme.pinnedSelectedFill : theme.tabHover,
-                  }}
-                />
-              )}
-              <View>
-                <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
-                <TabBadges tabId={tab.id} pip={false} />
+    <Animated.View ref={drag.ref} {...drag.panHandlers} mouseDownCanMoveWindow={false} style={drag.style}>
+      <View {...hoverProps} tooltip={`${tab.customTitle || tab.title || tab.url}${tab.url ? `\n${tab.url}` : ""}`}>
+        <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)}>
+          <Pressable onPress={(e) => clickTab(windowId, tab.id, modifiersOf(e))}>
+            {({ pressed }) => (
+              <View style={{ width: PINNED_CELL, height: ITEM_HEIGHT - 1, alignItems: "center", justifyContent: "center" }}>
+                {(active || hovered || pressed) && (
+                  <View
+                    style={{
+                      position: "absolute",
+                      left: 2,
+                      right: 2,
+                      top: 2,
+                      bottom: 2,
+                      borderRadius: 8,
+                      backgroundColor: pressed ? theme.tabPressed : active ? theme.pinnedSelectedFill : theme.tabHover,
+                    }}
+                  />
+                )}
+                <View pointerEvents="none">
+                  <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
+                  <TabBadges tabId={tab.id} pip={false} />
+                </View>
               </View>
-            </View>
-          )}
-        </Pressable>
-      </ContextMenuArea>
-    </View>
+            )}
+          </Pressable>
+        </ContextMenuArea>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -602,12 +698,13 @@ function StripGroup({
           tuck={tuckable && i === shown ? tuck : undefined}
         />
       ))}
-      <Animated.View pointerEvents={expanded ? "box-none" : "none"} style={{ position: "absolute", top: ITEM_TOP, height: ITEM_HEIGHT, left: tail, flexDirection: "row", alignItems: "center", opacity: fade }}>
+      <Animated.View pointerEvents={expanded ? "box-none" : "none"} mouseDownCanMoveWindow={false} style={{ position: "absolute", top: ITEM_TOP, height: ITEM_HEIGHT, left: tail, flexDirection: "row", alignItems: "center", opacity: fade }}>
         <View style={{ width: 0.5, height: 15, backgroundColor: divider }} />
         <IconButton icon="xmark" size={9} weight="semibold" box={24} radius={6} style={{ marginLeft: 1 }} onPress={() => useBrowser.getState().closeGroup(entry.id)} tooltip="Close Group" />
       </Animated.View>
       <View
         {...hoverProps}
+        mouseDownCanMoveWindow={false}
         tooltip={expanded ? "Collapse Group" : "Expand Group"}
         onLayout={(e) => onChipWidth(Math.ceil(e.nativeEvent.layout.width * 2) / 2)}
         style={{ position: "absolute", left: 0, top: ITEM_TOP, height: ITEM_HEIGHT }}
@@ -671,9 +768,9 @@ function GroupMember({
   return (
     <Animated.View pointerEvents={interactive ? "box-none" : "none"} style={{ position: "absolute", top: 0, left, width, height: TOP_STRIP_HEIGHT, opacity, zIndex: shown ? 2 : 1 }}>
       {member.kind === "split" ? (
-        <SplitChip tabIds={member.tabIds} width={width} />
+        <SplitChip tabIds={member.tabIds} width={width} geometry={geometry} from={from} group={member.group} />
       ) : (
-        <DraggableChip tabId={member.id} width={width} geometry={geometry} from={from} tuck={tuck} />
+        <DraggableChip tabId={member.id} width={width} geometry={geometry} from={from} group={member.group} tuck={tuck} />
       )}
     </Animated.View>
   );
@@ -690,7 +787,9 @@ function GroupGlyph({ color }: { color: string }) {
   );
 }
 
-function SplitChip({ tabIds, width }: { tabIds: string[]; width: number }) {
+// A split moves along the strip as one; each pane pulled down leaves it on its own (onto the page, or out of the
+// window into one of its own), as Dia's split tab does.
+function SplitChip({ tabIds, width, geometry, from, group }: { tabIds: string[]; width: number; geometry: DragGeometry; from: number; group: string | null }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const profileId = usePageProfileId();
@@ -701,33 +800,43 @@ function SplitChip({ tabIds, width }: { tabIds: string[]; width: number }) {
   const floating = useContext(FloatingStrip);
   const ink = active && !floating && palette.background ? palette : null;
   const { hovered, hoverProps } = useHover();
+  const drag = useStripDrag({ tabId: null, ids: () => tabIds, pinned: false, groupId: group, geometry, from, width, gap: GAP, axis: "x" });
   return (
-    <View {...hoverProps} style={{ width, height: TOP_STRIP_HEIGHT, zIndex: active ? 1 : 0 }}>
-      {active && <SelectedTab width={width} band={band} />}
-      <ItemRow hovered={hovered && !active} pressed={false}>
-        <Symbol name="rectangle.split.2x1" size={11} color={ink?.secondary ?? theme.textSecondary} style={{ width: 14, height: 16, marginRight: 4 }} />
-        {tabIds.map((id, i) => (
-          <SplitPart key={id} tabId={id} first={i === 0} ink={ink} />
-        ))}
-      </ItemRow>
-    </View>
+    <Animated.View ref={drag.ref} {...drag.panHandlers} mouseDownCanMoveWindow={false} style={{ ...drag.style, zIndex: drag.dragging ? 10 : active ? 1 : 0 }}>
+      <View {...hoverProps} style={{ width, height: TOP_STRIP_HEIGHT }}>
+        {active && <SelectedTab width={width} band={band} />}
+        <ItemRow hovered={hovered && !active} pressed={false}>
+          <Symbol name="rectangle.split.2x1" size={11} color={ink?.secondary ?? theme.textSecondary} style={{ width: 14, height: 16, marginRight: 4 }} />
+          {tabIds.map((id, i) => (
+            <SplitPart key={id} tabId={id} first={i === 0} ink={ink} />
+          ))}
+        </ItemRow>
+      </View>
+    </Animated.View>
   );
 }
+
+const NO_SLOTS = dragGeometry([], GAP);
 
 function SplitPart({ tabId, first, ink }: { tabId: string; first: boolean; ink: ToolbarPalette | null }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const tab = useTab(tabId);
   const focused = useIsActiveTab(tabId);
+  const drag = useStripDrag({ tabId, ids: () => [tabId], pinned: false, groupId: null, geometry: NO_SLOTS, from: -1, width: 0, gap: 0, axis: "y" });
   if (!tab) return null;
   return (
-    <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)} style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-      {!first && <View style={{ width: StyleSheet.hairlineWidth, height: 16, marginHorizontal: 6, backgroundColor: ink?.divider ?? theme.textTertiary }} />}
-      <Pressable onPress={() => useBrowser.getState().activate(tab.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center" }} tooltip={tab.title || tab.url}>
-        <TabIcon url={tab.url} favicon={tab.favicon} icon={tab.customIcon} size={14} profileId={tab.profileId} />
-        <FadeLabel text={tab.customTitle || tab.title || tab.url || "New Tab"} fontSize={12} color={ink ? (focused ? ink.text : ink.secondary) : focused ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: 5 }} />
-      </Pressable>
-    </ContextMenuArea>
+    <Animated.View ref={drag.ref} {...drag.panHandlers} style={{ flex: 1, flexDirection: "row", alignItems: "center", opacity: drag.style.opacity }}>
+      <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)} style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+        {!first && <View style={{ width: StyleSheet.hairlineWidth, height: 16, marginHorizontal: 6, backgroundColor: ink?.divider ?? theme.textTertiary }} />}
+        <Pressable onPress={() => useBrowser.getState().activate(tab.id)} style={{ flex: 1, flexDirection: "row", alignItems: "center" }} tooltip={tab.title || tab.url}>
+          <View pointerEvents="none">
+            <TabIcon url={tab.url} favicon={tab.favicon} icon={tab.customIcon} size={14} profileId={tab.profileId} />
+          </View>
+          <FadeLabel text={tab.customTitle || tab.title || tab.url || "New Tab"} fontSize={12} color={ink ? (focused ? ink.text : ink.secondary) : focused ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: 5 }} />
+        </Pressable>
+      </ContextMenuArea>
+    </Animated.View>
   );
 }
 
@@ -735,7 +844,7 @@ function NewTabButton({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
   return (
-    <View {...hoverProps} tooltip="New Tab (⌘T) — ⌥-click to open in Split View" style={{ marginTop: ITEM_TOP, marginLeft: 0.5 }}>
+    <View {...hoverProps} mouseDownCanMoveWindow={false} tooltip="New Tab (⌘T) — ⌥-click to open in Split View" style={{ marginTop: ITEM_TOP, marginLeft: 0.5 }}>
       <Pressable
         onPress={(e) => {
           if (modifiersOf(e).altKey) openNewTabInSplit(windowId);

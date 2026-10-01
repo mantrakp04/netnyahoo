@@ -4,6 +4,7 @@ import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { groupLabel } from "../../store/organize";
 import { tabTitle } from "./actions";
+import { useTabDrag } from "../layout/tabDrag";
 import type { Ghost } from "./dnd";
 import { TabIcon } from "./TabIcon";
 import { useSidebarTokens } from "./tokens";
@@ -15,8 +16,10 @@ export function DragGhost({ ghost }: { ghost: Ghost }) {
   const tab = useBrowser((s) => s.tabs[item.tabIds[0] ?? ""]);
   const label = useBrowser((s) => (item.groupId && s.groups[item.groupId] ? groupLabel(s, s.groups[item.groupId]!) : tab ? tabTitle(tab) : ""));
   const tile = item.kind === "tile";
+  // Over the page the tab shows as the page's own card (SplitChrome.tsx).
+  const onPage = useTabDrag((d) => d.onPage);
   return (
-    <Animated.View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width, height, transform: position.getTranslateTransform() }}>
+    <Animated.View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width, height, opacity: onPage ? 0 : 1, transform: position.getTranslateTransform() }}>
       <Surface
         fill={hex(tokens.dragSilhouette)}
         cornerRadius={10}

@@ -280,7 +280,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | Close tabs above/below/left/right | ✓ | ✅ | sidebar: Above / Below; top strip: Close Tabs to the Left / Right (sidebar/menus.ts) |
 | Close All Tabs ⇧⌘K | ✓ | ✅ | keeps pinned tabs and pinned groups |
 | Reopen closed tab ⇧⌘T | ✓ (full state) | ✅ | position, pin, group, custom name/icon, mute and the back/forward list (with the current entry) come back: the closing tab's list is kept (this session) and restored through Chrome's own `chrome::AddRestoredTab` (`restore:<tab id>` adoption, CEF_NN_TAB_HISTORY). After a relaunch it reopens from its URL, like open tabs |
-| Drag reorder | ✓ | ✅ | rows, pinned tiles, groups, splits, across sections, into/out of groups, onto the page to split |
+| Drag reorder | ✓ | ✅ | rows, pinned tiles, groups, splits, across sections, into/out of groups, onto the page to split. Tabs on top (fixed 2026-10-01, the owner's 0.2.18 report: pressing a tab moved the window instead): tabs, pinned tiles (among themselves), splits (as one) and group members trade places along the strip; a tab or a split's pane pulled below the strip goes to the page's split targets, out of the window to another window or a new one; the window never moves, even with one tab. `apps/browser/scripts/tab-drag-test.mjs` (10 cases through AppKit's event path, sidebar included). Left for a person: the drags with a real mouse |
 | Haptic tick while reordering | ✓ | ✅ | setting in Tabs |
 | Pin / unpin (grid of pinned tiles) | ✓ | ✅ | pins are mirrored into Chrome's tab strip |
 | Pinned tab remembers base URL; "Back to Pinned URL" ⌘↩; Replace Pin; Edit Pinned Page | ✓ | ✅ | |
@@ -369,7 +369,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 |---|---|---|---|
 | Split view up to 3 panes, horizontal/vertical, add bottom split | ✓ | ✅ | each pane is a Chrome tab at its own size; Chrome's dialogs follow the focused pane (ledger "Split view") |
 | Open Split Pane ⌃⇧=, focus next/prev ⌃⇧] / ⌃⇧[ | ✓ | ✅ | |
-| Drag tab to edge to split; ⌥‑click ➕ opens split NTP; ⇧⌥‑click link opens right pane | ✓ | ✅ | |
+| Drag tab to edge to split; ⌥‑click ➕ opens split NTP; ⇧⌥‑click link opens right pane | ✓ | ✅ | Dia's split targets from the sidebar and the top strip alike ("Add left split" / "Add right split" at each pane's sides: slide in, grow, the one under the dragged card takes the accent and leans to the pointer; the tab shows as a small window under the pointer; `dia-spec.md` › Dragging tabs and split targets). The page showing the dragged tab alone splits with the tab used before it |
 | Per‑pane nav bar / tint / close | ✓ | ✅ | unfocused panes dim |
 | Flip / convert orientation / separate all | ✓ | ✅ | + Move Pane Left/Right, Remove from Split View |
 
