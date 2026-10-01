@@ -78,14 +78,30 @@ run() {
 
 if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
   start=$(now)
+  deadline=$((start + wait))
   opts=(--wait "$wait" --ttl "$ttl")
   [[ -n "$take" ]] && opts+=(--take "$take")
   [[ -n "$as" ]] && opts+=(--as "$as")
   [[ -n "$release" ]] && opts+=(--release "$release")
-  NN_LOCKED_INNER=1 NN_LOCKED_DEADLINE=$((start + wait)) lockf -s -k -t "$wait" "$kernel" "$0" "$name" "${opts[@]}" -- "$@"
-  status=$?
-  # 76: the inner run gave up and already said why; 75 from lockf itself: its own wait ran out.
-  [[ $status -eq 76 ]] && exit 75
+  # The kernel lock only guards the holder bookkeeping and the command itself. A caller waiting for someone
+  # else's hold waits out here, between attempts, so it never blocks the holder's own --as commands (it once
+  # did: a waiter sat inside the kernel lock and the taker's next build waited its full 500 s).
+  while :; do
+    left=$((deadline - $(now)))
+    ((left < 1)) && left=1
+    NN_LOCKED_INNER=1 NN_LOCKED_DEADLINE=$deadline lockf -s -k -t "$left" "$kernel" "$0" "$name" "${opts[@]}" -- "$@"
+    status=$?
+    # 77: busy (held by someone else); try again until the deadline.
+    if [[ $status -eq 77 && $(now) -lt $deadline ]]; then
+      sleep 3
+      continue
+    fi
+    break
+  done
+  # 76: the inner run gave up and already said why; 77: still busy at the deadline; 75 from lockf itself: its own
+  # wait ran out.
+  [[ $status -eq 77 ]] && echo "locked: $name lock still busy after ${wait}s; $(describe)" >&2
+  [[ $status -eq 76 || $status -eq 77 ]] && exit 75
   if [[ $status -eq 75 && $(($(now) - start)) -ge $wait ]]; then
     echo "locked: $name lock still busy after ${wait}s; $(describe)" >&2
   fi
@@ -135,7 +151,8 @@ while ! mkdir "$legacy" 2>/dev/null; do
     echo "locked: $name lock still busy after ${wait}s; $(describe)" >&2
     exit 76
   fi
-  sleep 3
+  # Busy: leave the kernel lock and let the outer loop try again (see above).
+  exit 77
 done
 # A holder file left beside a directory we just created belongs to nobody.
 rm -f "$holder"
