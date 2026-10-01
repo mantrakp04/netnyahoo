@@ -4,6 +4,7 @@
 // applicationShouldTerminate: contract, so the app's own quit flow (ShellApp.shouldTerminate) runs as on CEF.
 #import "NNCoreInternal.h"
 #import "NNCoreServices.h"
+#import "NNCoreWebView.h"
 
 #include <string>
 #include <vector>
@@ -74,6 +75,7 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   if (NNCoreProfile *profile = engine.defaultProfile) Profiles()[@""] = profile;
   nncore_host::LoadContentBlocker(@"");
+  [NNCoreWebView installScrollZoom];
   [NNCoreServices watchDownloads:@""];
 
   // The page script CEF's renderer ran (packages/cef/helper/page_script.js), now NNCore's.
@@ -212,6 +214,27 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
                                                 gBootstrap = [NNCoreBootstrapDelegate new];
                                                 NSApp.delegate = gBootstrap;
                                               }];
+  if (getenv("NETNYAHOO_TRACE_VISIBILITY")) {
+    // What can hide every page at once: a window's occlusion (macOS's or Chrome's own checker), displays asleep, the
+    // session going inactive (screen locked).
+    [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidChangeOcclusionStateNotification
+                                                    object:nil
+                                                     queue:nil
+                                                usingBlock:^(NSNotification *note) {
+                                                  NSWindow *w = note.object;
+                                                  id chrome = [w respondsToSelector:NSSelectorFromString(@"isOccluded")]
+                                                                  ? [w valueForKey:@"occluded"] : nil;
+                                                  NSLog(@"[nncore-vis] window %ld occlusion macOSVisible=%d chromeOccluded=%@ fromChecker=%d",
+                                                        (long)w.windowNumber, (w.occlusionState & NSWindowOcclusionStateVisible) != 0,
+                                                        chrome, note.userInfo.count > 0);
+                                                }];
+    NSNotificationCenter *workspace = NSWorkspace.sharedWorkspace.notificationCenter;
+    for (NSNotificationName name in @[ NSWorkspaceScreensDidSleepNotification, NSWorkspaceScreensDidWakeNotification,
+                                        NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceSessionDidBecomeActiveNotification ])
+      [workspace addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
+        NSLog(@"[nncore-vis] workspace %@", note.name);
+      }];
+  }
   [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidFinishLaunchingNotification
                                                   object:nil
                                                    queue:nil
@@ -237,6 +260,12 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
       // Test instances keep off the login keychain (as packages/cef does with a data dir).
       "--use-mock-keychain",
   };
+  // A background (test) instance shares the screen with the owner's windows: when one of theirs covers it, Chrome
+  // marks its pages hidden (WebContentsOcclusionCheckerMac / macOS occlusion) and drops their input, so a run's
+  // results would depend on what the owner has open. Chrome's own browser tests use this switch for the same
+  // reason. NETNYAHOO_ALLOW_OCCLUSION=1 keeps Chrome's behaviour (the acceptance run's occlusion check uses it).
+  if (getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_ALLOW_OCCLUSION"))
+    extra.push_back("--disable-backgrounding-occluded-windows");
   if (const char *port = getenv("NETNYAHOO_REMOTE_DEBUGGING_PORT")) {
     extra.push_back(std::string("--remote-debugging-port=") + port);
     extra.push_back("--remote-allow-origins=*");
@@ -485,6 +514,10 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
       @"key" : @(w.isKeyWindow),
       @"canBecomeKey" : @(w.canBecomeKeyWindow),
       @"visible" : @(w.isVisible),
+      // How Chrome sees it: macOS's occlusion state, and Chrome's own occlusion checker (pages of an occluded
+      // window are hidden).
+      @"occlusionVisible" : @((w.occlusionState & NSWindowOcclusionStateVisible) != 0),
+      @"chromeOccluded" : [w respondsToSelector:NSSelectorFromString(@"isOccluded")] ? [w valueForKey:@"occluded"] : NSNull.null,
       @"parentWindow" : @(w.parentWindow.windowNumber),
       @"chromeWindows" : @1,
       @"anchorBrowserId" : @0,

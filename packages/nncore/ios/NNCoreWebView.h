@@ -32,6 +32,10 @@ NS_ASSUME_NONNULL_BEGIN
 // Tests: the last events a tab's view sent, and the window it shows in.
 // The engine the page menu's "Search <engine> for …" names.
 + (void)setSearchEngineName:(NSString *)name;
+// ⌘-scroll zooms the page under the pointer (a mouse wheel or Magic Mouse; a trackpad pinches), as packages/cef.
++ (void)installScrollZoom;
+// DEV: see packages/cef's devScrollZoom.
++ (NSArray<NSNumber *> *)devScrollZoom:(NSArray<NSDictionary<NSString *, id> *> *)steps NS_SWIFT_NAME(devScrollZoom(_:));
 // Pages' getDisplayMedia goes to the app's source picker (onDisplayMediaRequest), as on CEF.
 + (void)setDisplayMediaPicker:(BOOL)enabled;
 + (NSArray<NSDictionary<NSString *, id> *> *)devEventsForBrowser:(int)browserId NS_SWIFT_NAME(devEvents(browserId:));

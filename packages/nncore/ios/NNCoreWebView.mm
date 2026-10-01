@@ -9,13 +9,21 @@
 #import "NNCoreWebViewInternal.h"
 #import "NNCoreServices.h"
 
+#import <IOKit/IOKitLib.h>
 #import <QuartzCore/QuartzCore.h>
+#import <dlfcn.h>
 #import <objc/runtime.h>
 
 #include <climits>
 #include <cmath>
 
 namespace {
+
+// NETNYAHOO_TRACE_VISIBILITY=1: each change of what a WebView shows, for chasing a page Chrome reports hidden.
+bool TraceVisibility() {
+  static const bool on = getenv("NETNYAHOO_TRACE_VISIBILITY") != nullptr;
+  return on;
+}
 
 constexpr CFTimeInterval kTransferWindow = 3;
 
@@ -255,6 +263,7 @@ NSString *JSONString(id value) {
 
 - (void)viewDidMoveToWindow {
   [super viewDidMoveToWindow];
+  if (TraceVisibility()) NSLog(@"[nncore-vis] %@ window=%ld tab=%d", _transferKey, (long)self.window.windowNumber, _tab ? (int)_tab.tabId : -1);
   if (!self.window) return;
   if (_tab) [self adoptIntoWindow];
   else [self ensureTab];
@@ -389,6 +398,7 @@ NSString *JSONString(id value) {
 }
 
 - (void)attach:(NNCoreTab *)tab {
+  if (TraceVisibility()) NSLog(@"[nncore-vis] %@ attach tab=%d visible=%d", _transferKey, (int)tab.tabId, _visible);
   [LiveViews() addObject:self];
   _tab = tab;
   tab.delegate = self;
@@ -420,6 +430,7 @@ NSString *JSONString(id value) {
 
 - (void)detach {
   if (!_tab) return;
+  if (TraceVisibility()) NSLog(@"[nncore-vis] %@ detach tab=%d", _transferKey, (int)_tab.tabId);
   if (_tab.delegate == self) _tab.delegate = nil;
   [NNCoreTabs setView:nil forTab:_tab];
   if (_tab.view.superview == self) [_tab.view removeFromSuperview];
@@ -514,6 +525,7 @@ NSString *JSONString(id value) {
 }
 
 - (void)tabActivatedByChrome:(BOOL)chromes {
+  if (TraceVisibility()) NSLog(@"[nncore-vis] %@ chrome-activated tab=%d byChrome=%d", _transferKey, _tab ? (int)_tab.tabId : -1, chromes);
   if (_standalone) return;
   [self emit:@"tabStrip"
       payload:@{
@@ -570,6 +582,10 @@ NSString *JSONString(id value) {
   self.alphaValue = _visible || !_warm ? 1 : 0;
   const BOOL shown = self.paints;
   for (NSView *sub in self.subviews) sub.hidden = !shown;
+  if (TraceVisibility())
+    NSLog(@"[nncore-vis] %@ paint visible=%d warm=%d tab=%d page=%@ inWindow=%ld hiddenAncestor=%d", _transferKey,
+          _visible, _warm, _tab ? (int)_tab.tabId : -1, _tab.view.superview == self ? @"here" : @"elsewhere",
+          (long)self.window.windowNumber, _tab.view.isHiddenOrHasHiddenAncestor);
 }
 
 - (void)setWarm:(BOOL)warm {
@@ -1189,6 +1205,125 @@ NSString *JSONString(id value) {
 
 - (void)tab:(NNCoreTab *)tab externalAppRequest:(NSDictionary<NSString *, id> *)request {
   [self emit:@"externalApp" payload:request ?: @{}];
+}
+
+// MARK: ⌘-scroll zoom (packages/cef's NNZoom, the same rules)
+
+namespace {
+
+// Set by devScrollZoom: the device a synthetic scroll claims to come from, and the ⌘-scrolls that zoomed.
+int gDevTrackpad = -1;
+NSUInteger gZoomScrolls = 0;
+bool gGestureTrackpad = false;
+
+// Scroll events look the same from a trackpad and a Magic Mouse; the HID service that sent one doesn't. Built-in
+// trackpads and Magic Trackpads are AppleMultitouchTrackpadHIDEventDriver. Momentum events have no sender.
+BOOL FromTrackpad(NSEvent *event) {
+  if (gDevTrackpad >= 0) return gDevTrackpad;
+  static auto copyHIDEvent = (CFTypeRef (*)(CGEventRef))dlsym(RTLD_DEFAULT, "CGEventCopyIOHIDEvent");
+  static auto senderOf = (uint64_t (*)(CFTypeRef))dlsym(RTLD_DEFAULT, "IOHIDEventGetSenderID");
+  CGEventRef cg = event.CGEvent;
+  CFTypeRef hid = copyHIDEvent && senderOf && cg ? copyHIDEvent(cg) : nullptr;
+  if (!hid) return NO;
+  uint64_t sender = senderOf(hid);
+  CFRelease(hid);
+  if (!sender) return NO;
+  static NSMutableDictionary<NSNumber *, NSNumber *> *trackpads = [NSMutableDictionary dictionary];
+  if (NSNumber *known = trackpads[@(sender)]) return known.boolValue;
+  BOOL trackpad = NO;
+  io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault, IORegistryEntryIDMatching(sender));
+  if (service) {
+    io_name_t name;
+    trackpad = IOObjectGetClass(service, name) == KERN_SUCCESS && strstr(name, "Trackpad");
+    IOObjectRelease(service);
+  }
+  trackpads[@(sender)] = @(trackpad);
+  return trackpad;
+}
+
+// A trackpad pinches to zoom; ⌘ with two fingers is a thumb resting on the key while scrolling (zoom::CommandScrollZooms).
+bool CommandScrollZooms(NSEvent *event, bool trackpad) {
+  if (event.phase & (NSEventPhaseBegan | NSEventPhaseMayBegin)) gGestureTrackpad = trackpad;
+  else if (event.phase == NSEventPhaseNone && event.momentumPhase == NSEventPhaseNone) gGestureTrackpad = false;
+  else gGestureTrackpad = gGestureTrackpad || trackpad;
+  return (event.modifierFlags & NSEventModifierFlagCommand) && !gGestureTrackpad;
+}
+
+}  // namespace
+
++ (void)installScrollZoom {
+  static id monitor, touchMonitor;
+  if (monitor) return;
+  static double accumulated = 0;
+  static NSUInteger touching = 0;
+  static NSTimeInterval touchedAt = 0;
+  touchMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskGesture handler:^NSEvent *(NSEvent *event) {
+    touching = [event touchesMatchingPhase:NSTouchPhaseTouching inView:nil].count;
+    touchedAt = event.timestamp;
+    return event;
+  }];
+  monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel handler:^NSEvent *(NSEvent *event) {
+    // Two fingers down is a trackpad too (a Magic Mouse scrolls with one), when AppKit reports touches.
+    BOOL fingers = (event.phase & (NSEventPhaseBegan | NSEventPhaseMayBegin)) && touching >= 2 && event.timestamp - touchedAt < 0.5;
+    BOOL trackpad = event.phase != NSEventPhaseNone && (fingers || FromTrackpad(event));
+    if (!CommandScrollZooms(event, trackpad)) return event;
+    NSWindow *window = event.window;
+    NSView *content = window.contentView;
+    NSView *hit = content ? [content hitTest:[content.superview convertPoint:event.locationInWindow fromView:nil]] : nil;
+    while (hit && ![hit isKindOfClass:NNCoreWebView.class]) hit = hit.superview;
+    NNCoreWebView *view = (NNCoreWebView *)hit;
+    if (!view->_tab) return event;
+    if (event.phase == NSEventPhaseBegan) accumulated = 0;
+    accumulated += event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.scrollingDeltaY * 30;
+    gZoomScrolls++;
+    if (fabs(accumulated) >= 30) {
+      [view zoomStep:accumulated > 0 ? 1 : -1];
+      accumulated = 0;
+    }
+    return nil;
+  }];
+}
+
+// DEV: ⌘-scroll events over the middle of the visible page through the app's event dispatch, as packages/cef's.
+// Each step is {phase: "wheel" | "mayBegin" | "began" | "changed" | "ended" | "momentum", dy, trackpad}; the result
+// says, per step, whether the scroll zoomed the page instead of scrolling it.
++ (NSArray<NSNumber *> *)devScrollZoom:(NSArray<NSDictionary<NSString *, id> *> *)steps {
+  NNCoreWebView *view = nil;
+  for (NNCoreWebView *v in LiveViews())
+    if (v.window.isVisible && !v.isHiddenOrHasHiddenAncestor && v->_tab && v->_visible) view = v;
+  if (!view) return @[];
+  NSWindow *window = view.window;
+  NSPoint inWindow = [view convertPoint:NSMakePoint(NSMidX(view.bounds), NSMidY(view.bounds)) toView:nil];
+  NSPoint screen = [window convertPointToScreen:inWindow];
+  static auto setWindowLocation = (void (*)(CGEventRef, CGPoint))dlsym(RTLD_DEFAULT, "CGEventSetWindowLocation");
+  NSMutableArray *zoomed = [NSMutableArray array];
+  for (NSDictionary *step in steps) {
+    NSString *phase = step[@"phase"];
+    BOOL wheel = [phase isEqualToString:@"wheel"];
+    int32_t dy = (int32_t)[step[@"dy"] intValue];
+    CGEventRef cg = CGEventCreateScrollWheelEvent2(NULL, wheel ? kCGScrollEventUnitLine : kCGScrollEventUnitPixel, 1, dy, 0, 0);
+    CGEventSetFlags(cg, kCGEventFlagMaskCommand);
+    CGEventSetIntegerValueField(cg, kCGScrollWheelEventIsContinuous, !wheel);
+    if (!wheel) CGEventSetDoubleValueField(cg, kCGScrollWheelEventFixedPtDeltaAxis1, dy);
+    if ([phase isEqualToString:@"momentum"]) CGEventSetIntegerValueField(cg, kCGScrollWheelEventMomentumPhase, kCGMomentumScrollPhaseContinue);
+    else if (!wheel)
+      CGEventSetIntegerValueField(cg, kCGScrollWheelEventScrollPhase,
+                                  [phase isEqualToString:@"mayBegin"] ? kCGScrollPhaseMayBegin
+                                  : [phase isEqualToString:@"began"]  ? kCGScrollPhaseBegan
+                                  : [phase isEqualToString:@"ended"]  ? kCGScrollPhaseEnded
+                                                                      : kCGScrollPhaseChanged);
+    CGEventSetLocation(cg, CGPointMake(screen.x, NSHeight(NSScreen.screens.firstObject.frame) - screen.y));
+    CGEventSetIntegerValueField(cg, (CGEventField)51, window.windowNumber);
+    if (setWindowLocation) setWindowLocation(cg, CGPointMake(inWindow.x, NSHeight(window.frame) - inWindow.y));
+    NSEvent *event = [NSEvent eventWithCGEvent:cg];
+    CFRelease(cg);
+    gDevTrackpad = [step[@"trackpad"] boolValue];
+    NSUInteger before = gZoomScrolls;
+    [NSApp sendEvent:event];
+    gDevTrackpad = -1;
+    [zoomed addObject:@(gZoomScrolls > before)];
+  }
+  return zoomed;
 }
 
 @end

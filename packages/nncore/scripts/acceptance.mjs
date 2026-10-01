@@ -37,6 +37,7 @@ mkdirSync(data, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
 const log = (...a) => console.log(...a);
+const stamp = () => new Date().toISOString().slice(11, 23);
 
 // MARK: Fixtures
 
@@ -83,6 +84,9 @@ const server = createServer((req, res) => {
   }
   res.writeHead(200, { "content-type": "text/html" });
   if (url.pathname === "/blocking") return res.end(page("Blocking", `<img src="/nnblock-1.png"><img src="/nnblock-2.png"><img src="/icon.png">`));
+  if (url.pathname === "/login") return res.end(page("Login", `<form action="/b" method="get"><input name="u" id="u" autocomplete="username"><input type="password" name="p" id="p" autocomplete="current-password"><button id="go">Sign in</button></form>`));
+  if (url.pathname === "/text") return res.end(page("Text", `<p id="t" style="font: 20px sans-serif; margin: 40px">Hello selection world, select me please</p>`));
+  if (url.pathname === "/capture-target") return res.end(page("Capture Target", "the tab that tab capture picks"));
   if (url.pathname === "/media") return res.end(page("Media", `<audio id="tone" src="/tone.wav" loop></audio>`));
   if (url.pathname === "/a") return res.end(page("Page A", `<a id="next" href="/b">to B</a> <a id="blank" target="_blank" href="/c">blank</a> <a id="cmd" href="/d">cmd</a>`));
   if (url.pathname === "/b") return res.end(page("Page B", "B"));
@@ -119,9 +123,15 @@ execFileSync("defaults", ["write", "com.netnyahoo.browser.nncore", "RCTDevMenu",
 const exe = join(app, "Contents/MacOS/NetnyahooNNCore");
 const stdout = join(scratch, "app.out.log");
 const pidsBefore = new Set(pgrep());
+const launchedAt = Date.now();
 execFileSync("open", [
   "-g", "-n",
   "--env", "NETNYAHOO_BACKGROUND=1", "--env", "NETNYAHOO_TEST_REAUTH=granted", "--env", `NETNYAHOO_DOWNLOADS_DIR=${downloadsDir}`, "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
+  // Tab capture without Chrome's picker: getDisplayMedia takes the tab titled "Capture Target" (Chrome's browser-test
+  // switch; a tab, so no macOS screen-recording prompt).
+  "--env", `NETNYAHOO_CHROMIUM_SWITCHES=--auto-select-tab-capture-source-by-title=Capture Target ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""}`.trim(),
+  // Passed through for experiments (e.g. NETNYAHOO_ALLOW_OCCLUSION=1).
+  ...["NETNYAHOO_ALLOW_OCCLUSION", "NETNYAHOO_TRACE_VISIBILITY"].filter((k) => process.env[k]).flatMap((k) => ["--env", `${k}=${process.env[k]}`]),
   "--stdout", stdout, "--stderr", stdout,
   app,
 ]);
@@ -199,6 +209,14 @@ async function cdp(target, method, params = {}) {
 }
 
 const pageTarget = async (urlPart) => (await targets()).find((t) => t.type === "page" && t.url.includes(urlPart));
+const cef = (call) => evalApp(`return globalThis.expo.modules.NetnyahooCEF.${call}`);
+const exts = (call) => evalApp(`return globalThis.expo.modules.NetnyahooExtensions.${call}`);
+// A copy in the scratch dir: the app reading the checkout under ~/Documents would raise macOS's folder-access
+// prompt (and block the main thread on it) for every re-signed build.
+const extPath = join(scratch, "fixture-ext");
+cpSync(resolve(new URL(".", import.meta.url).pathname, "../../../spikes/nncore-host/fixtures/ext"), extPath, { recursive: true });
+// The module's browser id of an app tab.
+const browserOf = (tabId) => evalApp(`return nn.pageState.getState().browsers ? Object.entries(nn.pageState.getState().browsers).find(([, t]) => t === "${tabId}")?.[0] ?? null : null`);
 // The DevTools target of one app tab (several tabs can show the same URL): marked through the app, then found.
 async function pageFor(tabId, urlPart) {
   const candidates = (await targets()).filter((t) => t.type === "page" && t.url.includes(urlPart));
@@ -214,15 +232,44 @@ async function pageFor(tabId, urlPart) {
 // The window the run works in: the first one, then the one its first tab is in.
 let mainWindow = null;
 let first;
-let eventsOf = async () => [];
+// The dev event log (NNCoreWebView's devEvents) of an app tab.
+const eventsOf = async (tabId) => {
+  const browser = await browserOf(tabId);
+  return browser ? evalApp(`return globalThis.expo.modules.NetnyahooCEF.devEvents(${browser})`) : [];
+};
 const state = () =>
   evalApp(`const s = nn.store.getState(); const w = s.windows[${JSON.stringify(mainWindow)}] ?? Object.values(s.windows).filter((w) => !w.incognito && w.kind !== "small").sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))[0];
     return { windowId: w?.id, profileId: w?.profileId, tabs: (w?.tabIds ?? []).map((id) => ({ id, url: s.tabs[id]?.url, title: s.tabs[id]?.title, favicon: s.tabs[id]?.favicon?.slice(0, 40), adoptId: s.tabs[id]?.adoptId, profileId: s.tabs[id]?.profileId, loading: s.live[id]?.isLoading, back: s.live[id]?.canGoBack, fwd: s.live[id]?.canGoForward })), active: w ? w.activeTabIds[w.profileId] : null, windows: Object.keys(s.windows).length, profiles: s.profileOrder };`);
+
+// NETNYAHOO_TRACE_VISIBILITY: the first tab's document.visibilityState, sampled every 250 ms over one DevTools
+// connection, each change logged with the time and the check running (the app logs its side as [nncore-vis]).
+let currentCheck = "";
+let visibilityWatch = null;
+function watchVisibility(target) {
+  const ws = new WebSocket(target.webSocketDebuggerUrl);
+  let last = null, seq = 0;
+  ws.onmessage = (m) => {
+    const msg = JSON.parse(m.data);
+    const value = msg.result?.result?.value;
+    if (value && value !== last) {
+      log(`  [vis ${stamp()}] ${last ?? "-"} → ${value} during ${currentCheck}`);
+      last = value;
+    }
+  };
+  const timer = setInterval(() => {
+    if (ws.readyState === 1)
+      ws.send(JSON.stringify({ id: ++seq, method: "Runtime.evaluate", params: { expression: "document.visibilityState + '/' + location.pathname + '/' + document.hasFocus()", returnByValue: true } }));
+  }, 250);
+  ws.onclose = () => clearInterval(timer);
+  visibilityWatch = { stop: () => { clearInterval(timer); try { ws.close(); } catch {} } };
+}
 
 async function check(name, fn) {
   if (only.length && !only.includes(name)) return;
   if ((process.env.SKIP ?? "").split(",").includes(name)) return;
   const started = Date.now();
+  currentCheck = name;
+  if (process.env.NETNYAHOO_TRACE_VISIBILITY) log(`  [check ${stamp()}] ${name}`);
   try {
     const evidence = await fn();
     results.push({ name, ok: true, evidence, ms: Date.now() - started });
@@ -276,6 +323,7 @@ try {
     first = s.t;
     const t = await pageTarget(`${base}/a`);
     if (!t) throw new Error("no CDP target for A");
+    if (process.env.NETNYAHOO_TRACE_VISIBILITY) watchVisibility(t);
     return { tab: s.t.id, title: s.t.title, active: s.s.active === s.t.id };
   });
 
@@ -285,6 +333,52 @@ try {
     const vis = (await cdp(t, "Runtime.evaluate", { expression: "document.visibilityState + '/' + document.hasFocus()", returnByValue: true })).result.value;
     const windows = (await evalApp(`return globalThis.expo.modules.NetnyahooCEF.chromeWindows()`)).map((w) => ({ visible: w.visible, alpha: w.alpha, key: w.key, frame: w.frame }));
     return { page: vis, windows };
+  });
+
+  await check("occlusion", async () => {
+    // A background-mode window that something covers (here: one of the app's own windows right above it, which macOS
+    // reports as occluding it) keeps its shown page visible and taking input: hidden instances must not depend on
+    // the owner's windows (Chrome hides an occluded window's pages and drops their input).
+    // With NETNYAHOO_ALLOW_OCCLUSION=1 (Chrome's own behaviour, as the user's app has it) the page goes hidden while
+    // covered and must come back visible once uncovered.
+    const allow = !!process.env.NETNYAHOO_ALLOW_OCCLUSION;
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await until("A shown", async () => (await state()).active === first.id);
+    const t = await pageFor(first.id, `${base}/a`);
+    const vis = async () => (await cdp(t, "Runtime.evaluate", { expression: "document.visibilityState", returnByValue: true })).result.value;
+    const browser = await browserOf(first.id);
+    const windowNumber = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindowNumber(${browser})`);
+    const chromeSees = async () => (await evalApp(`return globalThis.expo.modules.NetnyahooCEF.chromeWindows()`)).find((x) => x.window === windowNumber);
+    await evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindow(${windowNumber}, "cover")`);
+    let samples = [], escape = null, w = null;
+    try {
+      // macOS reports the window occluded (Chrome's occlusion checker follows it, and waits a second more before
+      // telling the page; with the background switch it doesn't run).
+      w = await until("macOS to see the window occluded", async () => {
+        const x = await chromeSees();
+        return x && !x.occlusionVisible && (!allow || x.chromeOccluded) ? x : null;
+      }, 10000);
+      for (let i = 0; i < 8; i++) {
+        samples.push(await vis());
+        await sleep(400);
+      }
+      if (!allow) {
+        // Input still reaches the covered page: an Esc it leaves alone comes back to the app.
+        const s = await state();
+        const before = (await eventsOf(first.id)).filter((x) => x.name === "command" && x.payload?.command === "escape").length;
+        await evalApp(`return nn.webviews.get("${first.id}").focus()`);
+        await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "\u001b", keyCode: 53, modifiers: [], focus: "page" })`);
+        escape = await until("Esc while covered", async () =>
+          (await eventsOf(first.id)).filter((x) => x.name === "command" && x.payload?.command === "escape").length > before ? true : null, 5000);
+      }
+    } finally {
+      await evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindow(${windowNumber}, "uncover")`);
+    }
+    const back = await until("visible again", async () => ((await vis()) === "visible" ? "visible" : null), 10000);
+    const expected = allow ? "hidden" : "visible";
+    if (allow ? !samples.slice(4).every((v) => v === "hidden") : !samples.every((v) => v === "visible"))
+      throw new Error(`while covered the page was ${JSON.stringify(samples)}, expected ${expected}`);
+    return { chromeOccluded: w.chromeOccluded, macOSVisible: w.occlusionVisible, samples, escape, back };
   });
 
   await check("favicon", async () => {
@@ -425,11 +519,6 @@ try {
     return { closed: e.id };
   });
 
-  const browserOf = (tabId) => evalApp(`return nn.pageState.getState().browsers ? Object.entries(nn.pageState.getState().browsers).find(([, t]) => t === "${tabId}")?.[0] ?? null : null`);
-  eventsOf = async (tabId) => {
-    const browser = await browserOf(tabId);
-    return browser ? evalApp(`return globalThis.expo.modules.NetnyahooCEF.devEvents(${browser})`) : [];
-  };
 
   await check("status-text", async () => {
     // Hovering a link shows its URL (Chrome's UpdateTargetURL → onStatus → the status bubble's state).
@@ -555,6 +644,294 @@ try {
     return { header: dialog.header, sinks: dialog.sinks?.length ?? 0, routeProfiles: Object.keys(routes ?? {}) };
   });
 
+  // A tab of the main window at `url`, loaded; foreground or behind.
+  const openTab = async (url, title, background = false) => {
+    const before = new Set((await state()).tabs.map((t) => t.id));
+    await evalApp(`nn.actions.openUrls([${JSON.stringify(url)}], ${JSON.stringify(mainWindow)}); return true`);
+    const tab = await until(`a tab for ${url}`, async () => (await state()).tabs.find((t) => !before.has(t.id) && t.title === title && !t.loading), 15000);
+    if (background) {
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+      await until("A shown", async () => (await state()).active === first.id);
+    }
+    return tab;
+  };
+  const closeTab = (id) => evalApp(`nn.store.getState().closeTab("${id}"); return true`);
+  const backToA = async () => {
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a", { userInitiated: true }); return true`);
+    await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+  };
+
+  await check("user-selection", async () => {
+    // A mouse selection of page text: the page script reports it (onPageMessage "selection").
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/text", { userInitiated: true }); return true`);
+    await until("the text page", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Text" && !t.loading));
+    try {
+      const t = await pageFor(first.id, `${base}/text`);
+      const r = await cdp(t, "Runtime.evaluate", { expression: "JSON.stringify(document.getElementById('t').getBoundingClientRect())", returnByValue: true });
+      const box = JSON.parse(r.result.value);
+      const y = box.y + box.height / 2;
+      await cdp(t, "Input.dispatchMouseEvent", { type: "mousePressed", x: box.x + 2, y, button: "left", buttons: 1, clickCount: 1 });
+      for (let k = 1; k <= 8; k++)
+        await cdp(t, "Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x + 2 + ((box.width - 10) * k) / 8, y, button: "left", buttons: 1 });
+      await cdp(t, "Input.dispatchMouseEvent", { type: "mouseReleased", x: box.x + box.width - 8, y, button: "left", buttons: 0, clickCount: 1 });
+      const e = await until("onPageMessage selection", async () =>
+        (await eventsOf(first.id)).findLast((x) => x.name === "pageMessage" && x.payload?.kind === "selection" && x.payload?.data), 6000);
+      return { text: String(JSON.stringify(e.payload.data)).slice(0, 80) };
+    } finally {
+      await backToA();
+    }
+  });
+
+  await check("password-prompt", async () => {
+    // A sign-in form submitted with typed values: Chrome's password manager offers to save (onPasswordPrompt), and
+    // the app's answer saves it (resolvePasswordPrompt).
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/login", { userInitiated: true }); return true`);
+    await until("the login page", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Login" && !t.loading));
+    try {
+      const t = await pageFor(first.id, `${base}/login`);
+      for (const [field, text] of [["u", "nnformuser"], ["p", "form-s3cret"]]) {
+        await cdp(t, "Runtime.evaluate", { expression: `document.getElementById('${field}').focus()` });
+        await cdp(t, "Input.insertText", { text });
+      }
+      const r = await cdp(t, "Runtime.evaluate", { expression: "JSON.stringify(document.getElementById('go').getBoundingClientRect())", returnByValue: true });
+      const box = JSON.parse(r.result.value);
+      const at = { x: box.x + box.width / 2, y: box.y + box.height / 2, button: "left", clickCount: 1 };
+      await cdp(t, "Input.dispatchMouseEvent", { type: "mousePressed", ...at, buttons: 1 });
+      await cdp(t, "Input.dispatchMouseEvent", { type: "mouseReleased", ...at, buttons: 0 });
+      const e = await until("onPasswordPrompt", async () => (await eventsOf(first.id)).findLast((x) => x.name === "passwordPrompt"), 10000);
+      await evalApp(`return nn.webviews.get("${first.id}").resolvePasswordPrompt("save")`);
+      const saved = await until("the saved login", async () => {
+        const list = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.listPasswords("")`);
+        return list.passwords?.find((x) => x.username === "nnformuser") ?? null;
+      }, 10000);
+      await evalApp(`return globalThis.expo.modules.NetnyahooCEF.deletePassword("", ${JSON.stringify(saved.origin)}, "nnformuser")`);
+      return { prompt: e.payload.kind ?? e.payload.type ?? Object.keys(e.payload), origin: saved.origin };
+    } finally {
+      await backToA();
+    }
+  });
+
+  await check("tab-capture", async () => {
+    // Tab capture (getDisplayMedia; the test switch picks the tab titled "Capture Target"): the capturing tab's
+    // media access (onMediaAccess), its source id, "Share this tab instead" (changeCaptureSource) and Stop sharing
+    // (stopCapture, which ends the page's track).
+    const target = await openTab(`${base}/capture-target`, "Capture Target", true);
+    const other = await openTab(`${base}/d?share-instead`, "Page D", true);
+    const t = await pageFor(first.id, `${base}/a`);
+    try {
+      await cdp(t, "Runtime.evaluate", {
+        expression: "window.__cap = 'pending'; navigator.mediaDevices.getDisplayMedia({ video: true }).then((s) => { window.__stream = s; s.getVideoTracks()[0].onended = () => (window.__cap = 'ended'); window.__cap = 'live'; }, (e) => (window.__cap = e.name)); true",
+        userGesture: true,
+      });
+      const live = await until("a live capture", async () => {
+        const v = (await cdp(t, "Runtime.evaluate", { expression: "window.__cap", returnByValue: true })).result.value;
+        if (v !== "pending" && v !== "live") throw new Error(`getDisplayMedia: ${v}`);
+        return v === "live" ? v : null;
+      }, 15000);
+      const access = await until("onMediaAccess", async () => {
+        for (const id of [first.id, target.id]) {
+          const e = (await eventsOf(id)).findLast((x) => x.name === "mediaAccess");
+          if (e) return { tab: id === first.id ? "capturer" : "captured", access: e.payload };
+        }
+        return null;
+      }, 8000);
+      const sourceId = await evalApp(`return nn.webviews.get("${target.id}")?.mediaCaptureSourceId() ?? null`);
+      const capturer = await browserOf(first.id);
+      const instead = await browserOf(other.id);
+      const changed = await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.changeCaptureSource(${capturer}, ${instead})`);
+      if (changed !== true) throw new Error(`changeCaptureSource answered ${changed}`);
+      await sleep(1000);
+      const stopped = await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.stopCapture(${capturer})`);
+      const ended = await until("the track ended", async () =>
+        (await cdp(t, "Runtime.evaluate", { expression: "window.__cap", returnByValue: true })).result.value === "ended" ? true : null, 8000);
+      return { live, access, sourceId: sourceId ? String(sourceId).slice(0, 40) : null, changed, stopped, ended };
+    } finally {
+      await cdp(t, "Runtime.evaluate", { expression: "window.__stream?.getTracks().forEach((x) => x.stop())" }).catch(() => null);
+      await closeTab(target.id);
+      await closeTab(other.id);
+    }
+  });
+
+  await check("unresponsive", async () => {
+    // A page that stops answering: Chrome's hang monitor (onUnresponsive), the app's "wait" (resolveUnresponsive),
+    // and the page answering again (onResponsive).
+    const busy = await openTab(`${base}/b?busy`, "Page B");
+    try {
+      const t = await pageFor(busy.id, `${base}/b?busy`);
+      await cdp(t, "Runtime.evaluate", { expression: "setTimeout(() => { const end = Date.now() + 24000; while (Date.now() < end); }, 50); true" });
+      await sleep(500);
+      const s = await state();
+      await evalApp(`return nn.webviews.get("${busy.id}").focus()`);
+      await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "a", keyCode: 0, modifiers: [], focus: "page" })`);
+      const hung = await until("onUnresponsive", async () => (await eventsOf(busy.id)).find((x) => x.name === "unresponsive"), 22000);
+      await evalApp(`return nn.webviews.get("${busy.id}").resolveUnresponsive(false)`);
+      const back = await until("onResponsive", async () => (await eventsOf(busy.id)).find((x) => x.name === "responsive"), 30000)
+        .catch(async (e) => { throw new Error(`${e.message}; events ${JSON.stringify((await eventsOf(busy.id)).map((x) => x.name).slice(-10))}`); });
+      return { unresponsive: !!hung, responsive: !!back };
+    } finally {
+      await closeTab(busy.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
+  await check("permission-dismissed", async () => {
+    // A prompt the page leaves (it navigates away): Chrome dismisses it and the app hears so (onPermissionDismissed).
+    await evalApp(`globalThis.__nnDismissed = []; globalThis.__nnDismissSub?.remove(); globalThis.__nnDismissSub = globalThis.expo.modules.NetnyahooCEF.addListener("onPermissionDismissed", (e) => globalThis.__nnDismissed.push(e)); return true`);
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    const t = await pageFor(first.id, `${base}/a`);
+    await cdp(t, "Runtime.evaluate", { expression: "navigator.requestMIDIAccess({ sysex: true }).catch(() => {}); true", userGesture: true });
+    const request = await until("the prompt", async () => evalApp(`return nn.pageState.getState().pages["${first.id}"]?.permission ?? null`), 10000);
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/b?away", { userInitiated: true }); return true`);
+    try {
+      const dismissed = await until("onPermissionDismissed", async () => {
+        const list = await evalApp(`return globalThis.__nnDismissed`);
+        return list.length ? list : null;
+      }, 10000);
+      return { request: request.id, dismissed: dismissed[0] };
+    } finally {
+      await evalApp(`globalThis.__nnDismissSub?.remove(); return true`);
+      await backToA();
+    }
+  });
+
+  await check("kill-task", async () => {
+    // Chrome's task manager ends a tab's renderer (killTask): the tab shows its crash (onCrashed).
+    const victim = await openTab(`${base}/c?kill`, "Page C", true);
+    try {
+      const browser = Number(await browserOf(victim.id));
+      const task = await until("the tab's task", async () => {
+        const tasks = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.listTasks()`);
+        return tasks.find((x) => (x.browserIds ?? []).includes(browser)) ?? null;
+      }, 10000);
+      const killed = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.killTask(${task.id})`);
+      const crashed = await until("onCrashed", async () => (await eventsOf(victim.id)).find((x) => x.name === "crashed"), 10000);
+      return { task: task.title ?? task.id, killed, crashed: crashed.payload.reason };
+    } finally {
+      await closeTab(victim.id);
+    }
+  });
+
+  await check("module-events", async () => {
+    // Events with no WebView: the blocker's state (onContentBlocker), extensions changing (onChanged); and the
+    // screen-share picker's sources (displayMediaSources: screens and windows, no macOS prompt).
+    await evalApp(`globalThis.__nnEvents = []; globalThis.__nnSubs?.forEach((x) => x.remove());
+      globalThis.__nnSubs = [globalThis.expo.modules.NetnyahooCEF.addListener("onContentBlocker", (e) => globalThis.__nnEvents.push(["blocker", e])),
+        globalThis.expo.modules.NetnyahooExtensions.addListener("onChanged", (e) => globalThis.__nnEvents.push(["extensions", e]))]; return true`);
+    try {
+      await evalApp(`return globalThis.expo.modules.NetnyahooCEF.setContentBlockerEnabled(false)`);
+      await evalApp(`return globalThis.expo.modules.NetnyahooCEF.setContentBlockerEnabled(true)`);
+      const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
+      const configured = await exts(`configure("${installed.id}", "", { incognito: true })`);
+      if (configured?.error) throw new Error(`configure: ${configured.error}`);
+      await exts(`uninstall("${installed.id}", "")`);
+      const events = await until("both events", async () => {
+        const list = await evalApp(`return globalThis.__nnEvents`);
+        return list.some((x) => x[0] === "blocker") && list.filter((x) => x[0] === "extensions").length >= 2 ? list : null;
+      }, 15000).catch(async (e) => { throw new Error(`${e.message}; got ${JSON.stringify(await evalApp(`return globalThis.__nnEvents`)).slice(0, 300)}`); });
+      const sources = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.displayMediaSources()`);
+      if (!sources.some((x) => x.kind === "screen")) throw new Error("no screen among the display media sources");
+      return { blocker: events.filter((x) => x[0] === "blocker").length, extensions: events.filter((x) => x[0] === "extensions").map((x) => x[1].event), configured: true, sources: sources.length };
+    } finally {
+      await evalApp(`globalThis.__nnSubs?.forEach((x) => x.remove()); return true`);
+    }
+  });
+
+  await check("save-page", async () => {
+    // Chrome's Save Page As (runPageCommand "savePage"), its save panel answered from file-chooser.txt.
+    const file = join(scratch, "saved-page.html");
+    writeFileSync(join(data, "file-chooser.txt"), file + "\n");
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await evalApp(`return nn.webviews.get("${first.id}").runPageCommand("savePage")`);
+    const saved = await until("the saved page", async () => existsSync(file) && readFileSync(file, "utf8").includes("Page A"), 15000);
+    return { saved };
+  });
+
+  await check("activate-request", async () => {
+    // A page focusing the popup it opened (window.focus() on it) while the app shows the opener: Chrome asks the app
+    // to bring the popup forward (onActivateRequest "page").
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    const t = await pageFor(first.id, `${base}/a`);
+    const before = new Set((await state()).tabs.map((x) => x.id));
+    await cdp(t, "Runtime.evaluate", { expression: `window.__popup = window.open("${base}/c?focus-me", "_blank"); true`, userGesture: true });
+    const popup = await until("the popup", async () => (await state()).tabs.find((x) => !before.has(x.id) && x.title === "Page C" && !x.loading), 10000);
+    try {
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+      await until("A shown", async () => (await state()).active === first.id);
+      await cdp(t, "Runtime.evaluate", { expression: "window.__popup.focus(); true", userGesture: true });
+      const e = await until("onActivateRequest", async () => (await eventsOf(popup.id)).findLast((x) => x.name === "activateRequest"), 8000)
+        .catch(async (err) => { throw new Error(`${err.message}; popup events ${JSON.stringify((await eventsOf(popup.id)).map((x) => x.name).slice(-8))}`); });
+      return { reason: e.payload.reason };
+    } finally {
+      await closeTab(popup.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
+  await check("private-release", async () => {
+    // A private window's profile goes when its last window closes (releaseProfile): a new private window starts
+    // without the old one's cookies.
+    const a = await evalApp(`return nn.actions.openWindow({ incognito: true, url: "${base}/cookie?private1" })`);
+    await until("the private cookie set", async () => {
+      const tabs = await evalApp(`const s = nn.store.getState(); return (s.windows["${a}"]?.tabIds ?? []).map((i) => s.tabs[i]?.title)`);
+      return tabs.includes("Cookie") ? true : null;
+    }, 10000);
+    await sleep(500);
+    await evalApp(`nn.store.getState().closeWindow("${a}"); return true`);
+    await sleep(2000);
+    const b = await evalApp(`return nn.actions.openWindow({ incognito: true, url: "${base}/b?private2" })`);
+    try {
+      await until("the second private window's page", async () => {
+        const tabs = await evalApp(`const s = nn.store.getState(); return (s.windows["${b}"]?.tabIds ?? []).map((i) => s.tabs[i]?.title)`);
+        return tabs.includes("Page B") ? true : null;
+      }, 10000);
+      const pt = await pageTarget(`${base}/b?private2`);
+      const cookie = (await cdp(pt, "Runtime.evaluate", { expression: "document.cookie", returnByValue: true })).result.value;
+      if (cookie.includes("private1")) throw new Error(`the first private window's cookie survived: ${cookie}`);
+      return { cookie: cookie || "(none)" };
+    } finally {
+      await evalApp(`nn.store.getState().closeWindow("${b}"); return true`);
+    }
+  });
+
+  await check("extension-popup-and-panel", async () => {
+    // The extension's action (executeExtensionAction) opens its popup, and its side panel opens beside the page:
+    // both are standalone WebViews, whose tabs stay out of the window's tab strip and close with them.
+    const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
+    if (installed?.error) throw new Error(installed.error);
+    const windowsBefore = (await cef(`chromeWindows()`)).length;
+    try {
+      await evalApp(`return nn.extensions.refreshExtensions("").then(() => true)`);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+      await evalApp(`const lists = nn.extensions.useExtensions.getState().lists; const ext = Object.values(lists).flat().find((x) => x.id === "${installed.id}");
+        return nn.extensions.activateExtension(${JSON.stringify(mainWindow)}, ext, { x: 100, y: 40, width: 20, height: 20 }).then(() => !!nn.extensions.useExtensions.getState().popup)`);
+      const popupTarget = await until("the popup page", async () => (await targets()).find((t) => t.type === "page" && t.url.includes(`${installed.id}/popup.html`)), 10000);
+      const strips = await cef(`tabStrips()`);
+      const inStrip = strips.strips.some((st) => st.tabs.some((x) => x.key == null));
+      const popupVisible = (await cdp(popupTarget, "Runtime.evaluate", { expression: "document.visibilityState", returnByValue: true })).result.value;
+      await evalApp(`nn.extensions.closeExtensionPopup(); return true`);
+      await until("the popup gone", async () => !(await targets()).some((t) => t.url.includes(`${installed.id}/popup.html`)), 8000);
+      await evalApp(`return nn.extensions.openSidePanel(${JSON.stringify(mainWindow)}, "${installed.id}").then(() => !!nn.extensions.useExtensions.getState().sidePanels[${JSON.stringify(mainWindow)}])`);
+      const panelTarget = await until("the side panel page", async () => (await targets()).find((t) => t.type === "page" && t.url.includes(`${installed.id}/panel.html`)), 10000);
+      const panelVisible = (await cdp(panelTarget, "Runtime.evaluate", { expression: "document.visibilityState", returnByValue: true })).result.value;
+      const stripsWithPanel = await cef(`tabStrips()`);
+      const panelInStrip = stripsWithPanel.strips.some((st) => st.tabs.length !== strips.strips.find((x) => x.strip === st.strip)?.tabs.length);
+      await evalApp(`nn.extensions.closeSidePanel(${JSON.stringify(mainWindow)}); return true`);
+      await until("the panel gone", async () => !(await targets()).some((t) => t.url.includes(`${installed.id}/panel.html`)), 8000);
+      const windowsAfter = await until("the standalone window closed", async () => {
+        const n = (await cef(`chromeWindows()`)).length;
+        return n <= windowsBefore ? n : null;
+      }, 8000).catch(async () => (await cef(`chromeWindows()`)).length);
+      if (inStrip || panelInStrip) throw new Error("a standalone WebView's tab is in the window's strip");
+      if (popupVisible !== "visible" || panelVisible !== "visible") throw new Error(`popup ${popupVisible}, panel ${panelVisible}`);
+      return { popup: popupVisible, panel: panelVisible, windowsBefore, windowsAfter };
+    } finally {
+      await evalApp(`nn.extensions.closeExtensionPopup(); nn.extensions.closeSidePanel(${JSON.stringify(mainWindow)}); return true`).catch(() => null);
+      await exts(`uninstall("${installed.id}", "")`);
+    }
+  });
+
   await check("crash", async () => {
     // A renderer crash reaches the app (onCrashed → the sad tab), and the app keeps running.
     await evalApp(`nn.actions.openUrls(["${base}/crash-me"], ${JSON.stringify(mainWindow)}); return true`);
@@ -584,8 +961,6 @@ try {
     return { lights: before };
   });
 
-  const cef = (call) => evalApp(`return globalThis.expo.modules.NetnyahooCEF.${call}`);
-  const exts = (call) => evalApp(`return globalThis.expo.modules.NetnyahooExtensions.${call}`);
 
   await check("passwords", async () => {
     // Chrome's password store through //chrome/browser/netnyahoo (nn_passwords_*).
@@ -630,10 +1005,6 @@ try {
     return { levels };
   });
 
-  // A copy in the scratch dir: the app reading the checkout under ~/Documents would raise macOS's folder-access
-  // prompt (and block the main thread on it) for every re-signed build.
-  const extPath = join(scratch, "fixture-ext");
-  cpSync(resolve(new URL(".", import.meta.url).pathname, "../../../spikes/nncore-host/fixtures/ext"), extPath, { recursive: true });
   await check("extensions", async () => {
     const inspected = await exts(`inspectUnpacked(${JSON.stringify(extPath)})`);
     const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
@@ -914,6 +1285,7 @@ try {
       return r.result.value === true ? true : null;
     }, 8000);
     const media = (await eventsOf(first.id)).filter((x) => x.name === "media").length;
+    if (!media) throw new Error("no onMedia while playing");
     return { title: playing.payload.state.title, artist: playing.payload.state.artist, mediaEvents: media };
     } finally {
       await evalApp(`return nn.webviews.get("${first.id}").setMuted(false)`).catch(() => null);
@@ -1114,13 +1486,23 @@ try {
     await sleep(4000);  // a crash in teardown writes its report a moment after the process is gone
     const saved = readFileSync(join(data, "session.json"), "utf8").includes("quit-marker");
     if (!saved) throw new Error("the session wasn't saved on quit");
-    const reports = readdirSync(join(process.env.HOME, "Library/Logs/DiagnosticReports")).filter(
-      (f) => f.includes("NetnyahooNNCore") && statSync(join(process.env.HOME, "Library/Logs/DiagnosticReports", f)).mtimeMs > started,
-    );
-    if (reports.length) throw new Error(`crash report: ${reports}`);
-    return { exitedAfterMs: Date.now() - started, sessionSaved: saved };
+    // This instance's reports only (another run may be going alongside). ExcUserFault reports are os_fault logs
+    // the process survives; they're listed, crashes fail the check.
+    const dir = join(process.env.HOME, "Library/Logs/DiagnosticReports");
+    const ours = readdirSync(dir).filter((f) => {
+      if (!f.includes("NetnyahooNNCore") || statSync(join(dir, f)).mtimeMs < launchedAt) return false;
+      try {
+        return new RegExp(`"pid"\\s*:\\s*${child.pid}\\b`).test(readFileSync(join(dir, f), "utf8").slice(0, 8000));
+      } catch {
+        return false;
+      }
+    });
+    const crashes = ours.filter((f) => !f.startsWith("ExcUserFault_"));
+    if (crashes.length) throw new Error(`crash report: ${crashes}`);
+    return { exitedAfterMs: Date.now() - started, sessionSaved: saved, faults: ours.filter((f) => f.startsWith("ExcUserFault_")) };
   });
 } finally {
+  visibilityWatch?.stop();
   writeFileSync(join(scratch, "results.json"), JSON.stringify(results, null, 2));
   const passed = results.filter((r) => r.ok).length;
   log(`${passed}/${results.length} passed`);
