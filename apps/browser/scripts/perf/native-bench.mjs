@@ -146,7 +146,10 @@ const footprint = (snap) => {
 // MARK: Test pages
 
 const PAGE_SCRIPT = `
-window.__nn = { vis: [[Date.now(), document.visibilityState]], shown: [], fcp: null, ticks: 0, raf: 0, fast: 0 };
+window.__nn = { vis: [[Date.now(), document.visibilityState]], shown: [], fcp: null, frame: null, ticks: 0, raf: 0, fast: 0 };
+// The page's first frame (its first animation frame starts): the same event in every build. First contentful paint
+// isn't: CEF (0.2.21) stamps it with that frame's start, Chrome (NNCore) with the frame on screen, ~a frame later.
+requestAnimationFrame(() => (__nn.frame = Date.now()));
 new PerformanceObserver((list) => {
   for (const e of list.getEntries()) if (e.name === "first-contentful-paint") __nn.fcp = performance.timeOrigin + e.startTime;
 }).observe({ type: "paint", buffered: true });
@@ -302,8 +305,9 @@ class Instance {
       "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${this.port}`, "--env", `NETNYAHOO_UPDATE_FEED_URL=${this.feed}`,
       "--env", `DYLD_INSERT_LIBRARIES=${markerLibrary()}`, benchApp,
       // App Nap would stretch the hidden instance's timers (a tab switch after a quiet minute took seconds).
-      // BENCH_ALLOW_APP_NAP=1 leaves it on: the control for the App Nap check in the table.
-      ...(process.env.BENCH_ALLOW_APP_NAP ? [] : ["--args", "-NSAppSleepDisabled", "YES"])]);
+      // BENCH_ALLOW_APP_NAP=1 leaves it on: the control for the App Nap check in the table. --mute-audio: builds
+      // before b7899c26 (0.2.21, whose CEF takes its switches from the command line) aren't muted on their own.
+      "--args", "--mute-audio", ...(process.env.BENCH_ALLOW_APP_NAP ? [] : ["-NSAppSleepDisabled", "YES"])]);
     for (let i = 0; i < 400 && !this.pid; i++) {
       const r = spawnSync("pgrep", ["-f", main], { encoding: "utf8" });
       if (r.status === 0) this.pid = +r.stdout.trim().split("\n")[0];
@@ -380,6 +384,8 @@ async function makeTemplate(dir) {
   log("seeding a session");
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
+  // Past onboarding: its intro music would play on the owner's Mac from builds without b7899c26 (0.2.21).
+  writeFileSync(join(dir, "onboarding.json"), JSON.stringify({ version: 1, completedAt: 1 }));
   const app = await new Instance(dir, +opt.port, `${base()}/appcast.xml`).launch();
   try {
     await app.run(`const w = ${WINDOW}; nn.store.getState().newTab(w, { url: "${base()}/static?id=seed" }); return w;`);
@@ -411,7 +417,7 @@ async function launchRuns(template) {
     try {
       await app.launch();
       const page = await app.pageState("id=seed", 30_000, (s) => s.fcp);
-      const r = { window: app.windowAt - app.t0, js: app.jsStart - app.t0, firstPaint: (page?.fcp ?? NaN) - app.t0 };
+      const r = { window: app.windowAt - app.t0, js: app.jsStart - app.t0, firstPaint: (page?.fcp ?? NaN) - app.t0, firstFrame: (page?.frame ?? NaN) - app.t0 };
       log(`launch ${i}:`, JSON.stringify(r));
       results.launch.push(r);
     } finally {
@@ -487,6 +493,7 @@ async function newWindow(app, id) {
     window: shown ? shown.at - at : NaN,
     withContent: shown && committed ? Math.max(shown.at, committed.committed) - at : NaN,
     firstPaint: s ? s.fcp - at : NaN,
+    firstFrame: s?.frame ? s.frame - at : NaN,
   };
 }
 
@@ -508,7 +515,7 @@ async function windowsRun(template, i) {
 async function sessionRun(template, i) {
   const secs = +opt.idle;
   const app = new Instance(freshDir(template, `session-${i}`), +opt.port, `${base()}/appcast.xml`);
-  const r = { memory: {}, idle: {}, tabSwitch: [], newTab: [], newWindow: [], processes: {}, throttled: { tabSwitch: 0, newTab: 0 } };
+  const r = { memory: {}, idle: {}, tabSwitch: [], newTab: [], newTabFrame: [], newWindow: [], processes: {}, throttled: { tabSwitch: 0, newTab: 0 } };
   try {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
@@ -547,6 +554,7 @@ async function sessionRun(template, i) {
       const s = await app.pageState(`id=n${k}`, 20_000, (st) => st.fcp);
       if (hidden) r.throttled.newTab++;
       r.newTab.push(s && !hidden ? s.fcp - at : NaN);
+      r.newTabFrame.push(s?.frame && !hidden ? s.frame - at : NaN);
       await sleep(800);
     }
     await app.run(`const s = nn.store.getState(); for (const id of Object.keys(s.tabs)) if (s.tabs[id].url.includes("id=n")) nn.store.getState().closeTab(id); return true;`);
@@ -688,6 +696,7 @@ function summary(res) {
   add("launch → window shown", res.launch.map((r) => r.window), "ms");
   add("launch → JS running", res.launch.map((r) => r.js), "ms");
   add("launch → first page painted", res.launch.map((r) => r.firstPaint), "ms");
+  add("launch → first page's first frame", res.launch.map((r) => r.firstFrame), "ms");
   const S = res.session;
   for (const t of ["tabs1", "tabs20"]) {
     add(`idle CPU, ${t.slice(4)} tab(s) (all processes)`, S.map((r) => r.idle[t]?.total.cpu), "%", 2);
@@ -704,11 +713,13 @@ function summary(res) {
   add("samples left out: page couldn't paint (switch + new tab, per run)", S.map((r) => r.throttled ? r.throttled.tabSwitch + r.throttled.newTab : NaN), "");
   add("tab switch → shown (median of 16 per run)", S.map((r) => median(r.tabSwitch)), "ms");
   add("new tab → first paint (median of 5 per run)", S.map((r) => median(r.newTab)), "ms");
+  add("new tab → its page's first frame (median of 5 per run)", S.map((r) => median(r.newTabFrame ?? [])), "ms");
   // The window phase's runs too (8 windows each).
   const W = [...S, ...(res.windows ?? [])];
   add("new window → on screen (median per run)", W.map((r) => median(r.newWindow.map((w) => w.window))), "ms");
   add("new window → on screen with its content (median per run)", W.map((r) => median(r.newWindow.map((w) => w.withContent))), "ms");
   add("new window → first paint (median per run)", W.map((r) => median(r.newWindow.map((w) => w.firstPaint))), "ms");
+  add("new window → its page's first frame (median per run)", W.map((r) => median(r.newWindow.map((w) => w.firstFrame))), "ms");
   return rows;
 }
 
