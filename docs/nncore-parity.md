@@ -382,7 +382,7 @@ NNCore:
 
 ## Status
 
-Full hidden runs on committed 8662b3bf (2026-10-01): 116/116 twice in a row, on a `git archive` of HEAD with its own
+Full hidden runs on committed b1a94afe (2026-10-02, the screen locked): 119/119 twice in a row, on a `git archive` of HEAD with its own
 `pnpm install`, `pod install`, derived data and Metro (`react-native start --port <p>` in the archive, `METRO_PORT=<p>`),
 and the framework built from the same commit (`engine/nncore/apply.sh --check`). Run it that way: the shared Metro and
 working tree carry other agents' uncommitted edits, which turned earlier runs' failures into noise.
@@ -399,6 +399,13 @@ The earlier visibility flake is gone. What the 0.2.22 push found and fixed:
   late database writes, and the content blocker loading it back).
 - Checks that left UI open (the ⌃Tab switcher, the downloads popover) covered the page for scroll-zoom; unresponsive
   sent its key before the busy loop started under load; navigation-download-memory now opens a restored tab.
+- With the screen locked AppKit never advances an NSAnimation, and Chrome closes a tab-modal dialog when its close
+  animation ends: the print preview stayed open after its page navigated, and tab-capture's picker stayed over the
+  capturing tab, where Chrome's autofill dropdown won't open over a visible dialog (autofill-suggestions failed in
+  every full run, never alone). Hidden instances pass `--disable-modal-animations`, as Chrome's tests of both dialogs
+  do; tab-capture checks its picker closed. download-controls left the downloads popover (a full-window click
+  catcher) open for the rest of the run. scroll-zoom's one failure (neither ⌘-wheel step counted) never came back in
+  8 runs and 80 more steps; devScrollZoom now logs why a step didn't zoom and the check quotes it.
 
 Fixed during stage 2 because the acceptance run caught them:
 - Two React Native runtimes in one app (the launch callbacks sent twice when the loop went idle before AppKit
