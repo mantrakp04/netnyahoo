@@ -1,0 +1,24 @@
+engine/chromium/src/chrome/browser/netnyahoo/nn_autofill.cc
+  s_9c356f9574d31c::t_7e03c87c08f26a 121-123,128-134,139,145,159-160,185-201,206,209,217-218
+  s_9c356f9574d31c::t_944d55e5ce09f7 258-259,292-295,302,314,341-342,386-389,391,396,408,417-426,432,443
+engine/chromium/apply.sh
+  s_9c356f9574d31c::t_8514c87cf50e10 23-25
+engine/chromium/src/chrome/browser/netnyahoo/nn_reauth.cc
+  s_9c356f9574d31c::t_7e03c87c08f26a 48-51,60-63,69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d1e5062c886fbbfa573461be30f15a60134b4343",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
