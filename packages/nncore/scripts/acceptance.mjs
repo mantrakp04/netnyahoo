@@ -1621,6 +1621,94 @@ try {
     return { window: id, tab: tabId };
   });
 
+  await check("startup-native-messaging", async () => {
+    // As packages/cef's NNCef at startup (NNCoreStartup.mm): the password managers installed on this Mac get their
+    // native messaging manifests in the user data dir (only those whose host exists, listed as ours), and Chrome
+    // runs a host from that dir for an extension it names (an echo host here: no real app is started).
+    const dir = join(data, "Chromium", "NativeMessagingHosts");
+    const known = {
+      "com.1password.1password": "/Applications/1Password.app/Contents/Library/LoginItems/1Password Browser Helper.app/Contents/MacOS/1Password-BrowserSupport",
+      "com.8bit.bitwarden": "/Applications/Bitwarden.app/Contents/MacOS/desktop_proxy",
+      "org.keepassxc.keepassxc_browser": "/Applications/KeePassXC.app/Contents/MacOS/keepassxc-proxy",
+      "me.proton.pass.nm": "/Applications/Proton Pass.app/Contents/Resources/assets/proton_pass_nm_host",
+    };
+    const expected = Object.keys(known).filter((name) => existsSync(known[name])).sort();
+    const managed = JSON.parse(existsSync(join(dir, ".netnyahoo-managed.json")) ? readFileSync(join(dir, ".netnyahoo-managed.json"), "utf8") : "[]");
+    for (const name of expected) {
+      const manifest = JSON.parse(readFileSync(join(dir, `${name}.json`), "utf8"));
+      if (manifest.name !== name || manifest.type !== "stdio" || !existsSync(manifest.path)) throw new Error(`${name}: ${JSON.stringify(manifest)}`);
+    }
+    if (JSON.stringify(managed.slice().sort()) !== JSON.stringify(expected)) throw new Error(`managed ${JSON.stringify(managed)}, expected ${JSON.stringify(expected)}`);
+
+    const ext = join(scratch, "fixture-ext-nm");
+    cpSync(extPath, ext, { recursive: true });
+    const manifest = JSON.parse(readFileSync(join(ext, "manifest.json"), "utf8"));
+    manifest.permissions = [...manifest.permissions, "nativeMessaging"];
+    writeFileSync(join(ext, "manifest.json"), JSON.stringify(manifest, null, 2));
+    const installed = await exts(`install(${JSON.stringify(ext)}, "")`);
+    if (installed?.error) throw new Error(installed.error);
+    const host = join(scratch, "echo-host.sh");
+    writeFileSync(host, "#!/bin/sh\nexec cat\n", { mode: 0o755 });
+    const hostManifest = join(dir, "com.netnyahoo.acceptance.echo.json");
+    writeFileSync(hostManifest, JSON.stringify({ name: "com.netnyahoo.acceptance.echo", description: "echo", path: host, type: "stdio", allowed_origins: [`chrome-extension://${installed.id}/`] }));
+    try {
+      const worker = await until("the extension's worker", async () => {
+        for (const t of (await targets()).filter((t) => t.type === "service_worker" && t.url.includes(installed.id))) {
+          const r = await cdp(t, "Runtime.evaluate", { expression: "typeof chrome?.runtime?.sendNativeMessage", returnByValue: true }).catch(() => null);
+          if (r?.result?.value === "function") return t;
+        }
+        return null;
+      }, 15000);
+      const reply = await cdp(worker, "Runtime.evaluate", {
+        expression: `chrome.runtime.sendNativeMessage("com.netnyahoo.acceptance.echo", { ping: 42 }).then((r) => JSON.stringify(r), (e) => "error: " + e.message)`,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      const echoed = reply.result?.value;
+      if (echoed !== JSON.stringify({ ping: 42 })) throw new Error(`echo host: ${echoed}`);
+      return { hosts: expected, echoed };
+    } finally {
+      rmSync(hostManifest, { force: true });
+      await exts(`uninstall("${installed.id}", "")`).catch(() => null);
+    }
+  });
+
+  await check("startup-accept-language", async () => {
+    // As CEF's accept_language_list (NNCoreStartup.mm, --accept-lang): pages see the system's preferred languages,
+    // "<language>-<region>" then "<language>", in navigator.languages and the Accept-Language header. (Chrome's own
+    // default follows the app bundle's English UI locale: "en-US,en" whatever the system's languages.)
+    const system = JSON.parse(execFileSync("osascript", ["-l", "JavaScript", "-e",
+      `ObjC.import("Foundation"); const out = []; const all = $.NSLocale.preferredLanguages;
+       for (let i = 0; i < all.count; i++) { const l = $.NSLocale.localeWithLocaleIdentifier(all.objectAtIndex(i));
+         out.push([ObjC.unwrap(l.languageCode), ObjC.unwrap(l.regionCode) ?? null, ObjC.unwrap(l.scriptCode) ?? null]); }
+       JSON.stringify(out)`]).toString());
+    const expected = [];
+    for (let [language, region, script] of system) {
+      if (!language) continue;
+      if (language === "zh" && !region) region = script === "Hant" ? "TW" : "CN";
+      for (const tag of region ? [`${language}-${region}`, language] : [language]) if (!expected.includes(tag)) expected.push(tag);
+    }
+    let header = null;
+    const echo = createServer((req, res) => {
+      header = req.headers["accept-language"] ?? "";
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("<!doctype html><title>Languages</title>");
+    });
+    await new Promise((r) => echo.listen(0, "127.0.0.1", r));
+    const tab = await openTab(`http://127.0.0.1:${echo.address().port}/languages`, "Languages");
+    try {
+      const t = await pageFor(tab.id, "/languages");
+      const languages = (await cdp(t, "Runtime.evaluate", { expression: "navigator.languages", returnByValue: true })).result.value;
+      const sent = (header ?? "").split(",").map((s) => s.split(";")[0].trim()).filter(Boolean);
+      if (JSON.stringify(languages) !== JSON.stringify(expected)) throw new Error(`navigator.languages ${JSON.stringify(languages)}, expected ${JSON.stringify(expected)}`);
+      if (JSON.stringify(sent) !== JSON.stringify(expected)) throw new Error(`Accept-Language "${header}", expected ${JSON.stringify(expected)}`);
+      return { languages, header };
+    } finally {
+      await closeTab(tab.id);
+      echo.close();
+    }
+  });
+
   let personal = null;
   await check("last-used-profile", async () => {
     // Before the quit: Personal sets a cookie, then the window shows another profile, so that profile is Chrome's

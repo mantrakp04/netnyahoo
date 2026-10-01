@@ -4,6 +4,7 @@
 // applicationShouldTerminate: contract, so the app's own quit flow (ShellApp.shouldTerminate) runs as on CEF.
 #import "NNCoreInternal.h"
 #import "NNCoreServices.h"
+#import "NNCoreStartup.h"
 #import "NNCoreWebView.h"
 
 #include <string>
@@ -275,6 +276,7 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   };
   // Test instances keep off the login keychain (as packages/cef does with a data dir).
   if (gScratchDataDir) extra.push_back("--use-mock-keychain");
+  nncore_host::PrepareStartup(gDataDirectory, extra);
   // A background (test) instance shares the screen with the owner's windows: when one of theirs covers it, Chrome
   // marks its pages hidden (WebContentsOcclusionCheckerMac / macOS occlusion) and drops their input, so a run's
   // results would depend on what the owner has open. Chrome's own browser tests use this switch for the same
