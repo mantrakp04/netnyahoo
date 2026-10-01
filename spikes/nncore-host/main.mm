@@ -1083,6 +1083,7 @@ static void Log(NSDictionary* event) {
   } else if ([name isEqualToString:@"devtools.call"]) {
     [tab devToolsCall:cmd[@"method"]
                params:[cmd[@"params"] isKindOfClass:NSDictionary.class] ? cmd[@"params"] : nil
+              timeout:[cmd[@"timeout"] doubleValue]
            completion:^(NSDictionary* result, NSString* error) {
              reply(@{@"result" : result ?: NSNull.null, @"error" : error ?: NSNull.null,
                      @"mainThread" : @(NSThread.isMainThread)});

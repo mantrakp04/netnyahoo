@@ -819,9 +819,18 @@ try {
     await cmd("show", { tabId: ht.tabId });
     // No DevTools client on the hung tab (Chrome ignores a debugged page's hang): the loop
     // starts through the host, and an input event then goes unanswered.
-    const hang = async (seconds) => {
+    let busyCall = null;
+    const hang = async (seconds, { capture = false } = {}) => {
       await cmd("exec", { tabId: ht.tabId, code: `setTimeout(() => { const end = Date.now() + ${seconds * 1000}; while (Date.now() < end); }, 50)` });
-      await sleep(800);
+      await sleep(300);
+      if (capture) {
+        // As the app's tab pictures: a screenshot of the busy page never answers; the 1 s
+        // timeout answers it and lets NNCore's client go.
+        const t0 = Date.now();
+        busyCall = await cmd("devtools.call", { tabId: ht.tabId, method: "Page.captureScreenshot", params: { format: "jpeg", quality: 80 }, timeout: 1 }, 10000);
+        busyCall.ms = Date.now() - t0;
+      }
+      await sleep(500);
       // (Away from the page's own "hang" button, which would start another loop.)
       await cmd("nativeClick", { tabId: ht.tabId, x: 400, y: 300 });
     };
@@ -831,10 +840,10 @@ try {
     await sleep(300);
     // "Wait", then the page recovers: tabBecameResponsive:.
     await cmd("config", { values: { waitHung: true, terminateHung: false } });
-    await hang(25);
+    await hang(25, { capture: true });
     const hung = await waitFor(() => evs("unresponsive", (e) => e.tabId === ht.tabId)[0], 30000);
     const back = hung && await waitFor(() => evs("responsive", (e) => e.tabId === ht.tabId)[0], 30000);
-    check("S14", "after a devToolsCall on it, an unresponsive page → tabBecameUnresponsive; resolveUnresponsive:NO (wait), then it recovers → tabBecameResponsive", dtc?.result && hung && back, { called: !!dtc?.result, hung: !!hung, back: !!back, after: back && hung && Math.round((back.t - hung.t) * 10) / 10 });
+    check("S14", "after devToolsCalls on it (one timed out on the busy page), an unresponsive page → tabBecameUnresponsive; resolveUnresponsive:NO (wait), then it recovers → tabBecameResponsive", dtc?.result && busyCall?.error === "timed out" && hung && back, { called: !!dtc?.result, busyCall, hung: !!hung, back: !!back, after: back && hung && Math.round((back.t - hung.t) * 10) / 10 });
     // "Exit page": the renderer goes.
     await cmd("config", { values: { waitHung: false, terminateHung: true } });
     const before2 = evs("unresponsive", (e) => e.tabId === ht.tabId).length;

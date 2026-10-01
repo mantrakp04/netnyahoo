@@ -1817,6 +1817,13 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 - (void)devToolsCall:(NSString*)method
               params:(NSDictionary*)params
           completion:(void (^)(NSDictionary* result, NSString* error))completion {
+  [self devToolsCall:method params:params timeout:0 completion:completion];
+}
+
+- (void)devToolsCall:(NSString*)method
+              params:(NSDictionary*)params
+             timeout:(NSTimeInterval)timeout
+          completion:(void (^)(NSDictionary* result, NSString* error))completion {
   base::DictValue dict;
   if (params.count) {
     NSData* data = [NSJSONSerialization dataWithJSONObject:params options:0 error:nil];
@@ -1835,6 +1842,7 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   }
   nncore::CallDevTools(
       _contents, base::SysNSStringToUTF8(method), std::move(dict),
+      timeout > 0 ? std::optional<base::TimeDelta>(base::Seconds(timeout)) : std::nullopt,
       base::BindOnce(
           [](void (^completion)(NSDictionary*, NSString*),
              std::optional<base::DictValue> result, std::optional<std::string> error) {

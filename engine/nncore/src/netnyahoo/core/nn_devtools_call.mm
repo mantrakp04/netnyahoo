@@ -43,7 +43,10 @@ class DevToolsCaller : public content::DevToolsAgentHostClient,
     FailAll("the tab is gone");
   }
 
-  void Call(const std::string& method, base::DictValue params, DevToolsReply reply) {
+  void Call(const std::string& method,
+            base::DictValue params,
+            std::optional<base::TimeDelta> timeout,
+            DevToolsReply reply) {
     if (!host_) {
       host_ = content::DevToolsAgentHost::GetOrCreateFor(&GetWebContents());
       if (!host_ || !host_->AttachClient(this)) {
@@ -64,6 +67,12 @@ class DevToolsCaller : public content::DevToolsAgentHostClient,
     }
     pending_[id] = std::move(reply);
     ++generation_;  // a detach scheduled before this call stands down
+    if (timeout) {
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE,
+          base::BindOnce(&DevToolsCaller::TimedOut, weak_factory_.GetWeakPtr(), id),
+          *timeout);
+    }
     // The agent host may answer (or close) from inside the call.
     scoped_refptr<content::DevToolsAgentHost> host = host_;
     host->DispatchProtocolMessage(this, base::as_byte_span(*json));
@@ -112,6 +121,17 @@ class DevToolsCaller : public content::DevToolsAgentHostClient,
  private:
   friend class content::WebContentsUserData<DevToolsCaller>;
 
+  void TimedOut(int id) {
+    auto it = pending_.find(id);
+    if (it == pending_.end()) {
+      return;
+    }
+    DevToolsReply reply = std::move(it->second);
+    pending_.erase(it);
+    Answer(std::move(reply), std::nullopt, "timed out");
+    MaybeDetachSoon();
+  }
+
   // Not from inside the agent host's dispatch; a call made meanwhile keeps the client.
   void MaybeDetachSoon() {
     if (!pending_.empty()) {
@@ -156,13 +176,14 @@ WEB_CONTENTS_USER_DATA_KEY_IMPL(DevToolsCaller);
 void CallDevTools(content::WebContents* contents,
                   const std::string& method,
                   base::DictValue params,
+                  std::optional<base::TimeDelta> timeout,
                   DevToolsReply reply) {
   if (!contents) {
     Answer(std::move(reply), std::nullopt, "no tab");
     return;
   }
   DevToolsCaller::CreateForWebContents(contents);
-  DevToolsCaller::FromWebContents(contents)->Call(method, std::move(params),
+  DevToolsCaller::FromWebContents(contents)->Call(method, std::move(params), timeout,
                                                   std::move(reply));
 }
 

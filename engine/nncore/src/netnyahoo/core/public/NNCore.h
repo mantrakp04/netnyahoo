@@ -511,6 +511,15 @@ NNCORE_EXPORT
               params:(nullable NSDictionary*)params
           completion:(void (^)(NSDictionary* _Nullable result,
                                NSString* _Nullable error))completion;
+// The same, answered by `timeout` seconds at the latest: then error "timed out", the call is
+// forgotten (a late reply is dropped) and the client detaches if nothing else is pending. A
+// busy page never answers some methods (Page.captureScreenshot); without a timeout the client
+// would stay attached and hide that page's hang.
+- (void)devToolsCall:(NSString*)method
+              params:(nullable NSDictionary*)params
+             timeout:(NSTimeInterval)timeout
+          completion:(void (^)(NSDictionary* _Nullable result,
+                               NSString* _Nullable error))completion;
 // While another tab is being shared (getDisplayMedia's tab capture): Chrome's "Share this
 // tab instead" for this tab (the capture moves here). NO if Chrome offers none here.
 @property(readonly) BOOL canShareThisTabInstead;

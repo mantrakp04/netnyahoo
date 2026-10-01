@@ -9,6 +9,7 @@
 #include <string>
 
 #include "base/functional/callback.h"
+#include "base/time/time.h"
 #include "base/values.h"
 
 namespace content {
@@ -19,12 +20,15 @@ namespace nncore {
 
 // Sends {id, method, params} to the tab's DevTools agent (its page target) through a client
 // of NNCore's own, attached on the first call and detached when the tab goes. `reply` gets
-// the matching reply's result, or its error message; always asynchronously.
+// the matching reply's result, or its error message; always asynchronously. With a timeout,
+// a call not answered by then gets the error "timed out" and is forgotten (a late reply is
+// dropped), so a hung page doesn't keep the client attached.
 using DevToolsReply = base::OnceCallback<void(std::optional<base::DictValue> result,
                                               std::optional<std::string> error)>;
 void CallDevTools(content::WebContents* contents,
                   const std::string& method,
                   base::DictValue params,
+                  std::optional<base::TimeDelta> timeout,
                   DevToolsReply reply);
 
 }  // namespace nncore
