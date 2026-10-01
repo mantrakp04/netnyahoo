@@ -1,0 +1,24 @@
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_c6cf0cf3b8f873 354
+  s_9c356f9574d31c::t_af76ebcc935307 258,261,317
+docs/research/profile-swipe-native-controller.md
+  s_9c356f9574d31c::t_f68856f0f356f1 25-27,46-47
+docs/migration-status.md
+  s_9c356f9574d31c::t_e588a9acb192b3 224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bc5836585e9c1f0d8b16775c9f9ac4b28b779589",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
