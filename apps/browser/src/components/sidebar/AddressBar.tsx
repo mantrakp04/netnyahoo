@@ -51,13 +51,13 @@ export function SidebarHeaderTools({ width }: { width: number }) {
 const alreadyFocused = () => {};
 
 function NavigationButtons({ tab, palette }: { tab: Tab; palette: ToolbarPalette }) {
-  const live = useTabLive(tab.id);
-  const history = useHistoryAvailability(tab.id, live);
+  const loading = useTabLive(tab.id, (l) => l.isLoading);
+  const history = useHistoryAvailability(tab.id);
   return (
     <>
       <HistoryButton tab={tab} direction={-1} disabled={!history.back} palette={palette} onFocus={alreadyFocused} />
       <HistoryButton tab={tab} direction={1} disabled={!history.forward} palette={palette} onFocus={alreadyFocused} />
-      <ReloadButton tab={tab} loading={live.isLoading} palette={palette} onFocus={alreadyFocused} />
+      <ReloadButton tab={tab} loading={loading} palette={palette} onFocus={alreadyFocused} />
     </>
   );
 }
@@ -84,7 +84,7 @@ export function SidebarAddressRow() {
 
 function PageField({ tab, windowId }: { tab: Tab; windowId: string }) {
   const palette = toolbarPalette(useTheme(), null);
-  const live = useTabLive(tab.id);
+  const progress = useTabLive(tab.id, (l) => (l.isLoading ? l.progress : null));
   const inSplit = useBrowser((s) => !!splitOf(s, tab.id));
   const extensionsWidth = useToolbarExtensionsWidth(windowId);
   return (
@@ -96,7 +96,7 @@ function PageField({ tab, windowId }: { tab: Tab; windowId: string }) {
       onFocus={alreadyFocused}
       sidebar={{
         height: SIDEBAR_FIELD.height,
-        progress: live.isLoading ? live.progress : null,
+        progress,
         accessory: extensionsWidth ? (
           <View style={{ width: extensionsWidth - 6, height: 28 }}>
             <ToolbarExtensions tabId={tab.id} windowId={windowId} palette={palette} top={0} right={0} />

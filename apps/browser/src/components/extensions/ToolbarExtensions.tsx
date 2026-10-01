@@ -1,6 +1,6 @@
 import { terminateCastRoute, type CastRoute, type InstalledExtension } from "@netnyahoo/nncore";
 import { ContextMenuArea, showMenu, Symbol } from "@netnyahoo/shell";
-import { useMemo, useRef } from "react";
+import { memo, useMemo, useRef } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
@@ -35,7 +35,8 @@ export function useToolbarExtensionsWidth(windowId: string): number {
   return count ? count * BUTTON + 6 : 0;
 }
 
-export function ToolbarExtensions({
+// Memoized: the toolbar re-renders with its page (title, loading), and these props rarely change.
+export const ToolbarExtensions = memo(function ToolbarExtensions({
   tabId,
   windowId,
   palette,
@@ -64,7 +65,7 @@ export function ToolbarExtensions({
       {overflow && <OverflowButton windowId={windowId} palette={palette} />}
     </View>
   );
-}
+});
 
 function useAnchor(key: string) {
   const ref = useRef<View>(null);

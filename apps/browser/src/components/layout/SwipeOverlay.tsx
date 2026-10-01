@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
-import { useTabLive } from "../../store/hooks";
 import { Favicon, NewTabIcon } from "../primitives";
 import { HistoryPopover } from "./HistoryPopover";
 import { goBack, goForward, goToHistoryItem, historyItems, openHistoryMenu, useHistoryAvailability, useHistoryMenu, type HistoryItem } from "./history";
@@ -50,8 +49,7 @@ type Shown = { direction: "back" | "forward"; confirmed: boolean; list: HistoryI
 
 export function SwipeOverlay({ tabId }: { tabId: string }) {
   const theme = useTheme();
-  const live = useTabLive(tabId);
-  const history = useHistoryAvailability(tabId, live);
+  const history = useHistoryAvailability(tabId);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [shown, setShown] = useState<Shown | null>(null);
   const area = useRef<SwipeAreaHandle>(null);

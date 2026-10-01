@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { webviews } from "../../lib/webviews";
 import { useBrowser } from "../../store/browser";
 import { changedIds } from "../../store/changes";
+import { useTabLive } from "../../store/hooks";
 import type { TabLive } from "../../store/types";
 import { internalPageOf, tabDestination } from "../pages/urls";
 import { pageOf, patchPage, usePage } from "./pageState";
@@ -17,10 +18,13 @@ export function canGoForward(tabId: string, live: Pick<TabLive, "canGoForward">)
   return !!pageOf(tabId).newTabShown || live.canGoForward;
 }
 
-export function useHistoryAvailability(tabId: string, live: Pick<TabLive, "canGoBack" | "canGoForward">) {
+// Subscribes to the two flags only, so a page's progress and audio reports don't re-render the buttons' owner.
+export function useHistoryAvailability(tabId: string) {
+  const back = useTabLive(tabId, (l) => l.canGoBack);
+  const forward = useTabLive(tabId, (l) => l.canGoForward);
   const shown = usePage(tabId, (p) => !!p.newTabShown);
   const backToNewTab = usePage(tabId, (p) => p.backToNewTab);
-  return { back: !shown && (live.canGoBack || backToNewTab), forward: shown || live.canGoForward };
+  return { back: !shown && (back || backToNewTab), forward: shown || forward };
 }
 
 export function goBack(tabId: string) {

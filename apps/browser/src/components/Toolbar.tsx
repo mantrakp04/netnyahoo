@@ -1,11 +1,12 @@
 import { breadcrumb, urlForDisplay } from "@netnyahoo/core";
 import { ContextMenuArea, FadeLabel, MouseArea, Symbol, WindowDragRegion } from "@netnyahoo/shell";
-import { useEffect, useRef, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { Animated, Easing, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { layout, useTheme } from "../lib/theme";
 import { webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
-import { useIsBookmarked, useSettings, useTab, useTabLive } from "../store/hooks";
+import { useIsBookmarked, useSettings, useTabLive } from "../store/hooks";
 import { bookmarkProfileId } from "../store/model";
 import type { Tab } from "../store/types";
 import { ToolbarButton, type ClickModifiers } from "./layout/controls";
@@ -23,15 +24,21 @@ import { GlassFill, liquidGlass } from "./glass";
 import { TranslateButton } from "./site/TranslateControls";
 import { ZoomIndicator } from "./site/ZoomControls";
 
+// What the toolbar shows of its tab: the page's favicon and the tab's bookkeeping (last active, …) don't re-render it.
+type ToolbarTab = Pick<Tab, "id" | "url" | "title" | "windowId" | "zoom">;
+const toolbarTab = (t: Tab | undefined): ToolbarTab | undefined => t && { id: t.id, url: t.url, title: t.title, windowId: t.windowId, zoom: t.zoom };
+
 export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId: string; geometry: ToolbarGeometry; windowId: string; inSplit: boolean; focused: boolean }) {
   const theme = useTheme();
-  const tab = useTab(tabId);
-  const live = useTabLive(tabId);
+  const tab = useBrowser(useShallow((s) => toolbarTab(s.tabs[tabId])));
+  // Narrow on purpose: a loading page reports progress many times a second, and only the bar below shows it.
+  const isLoading = useTabLive(tabId, (l) => l.isLoading);
+  const themeColor = useTabLive(tabId, (l) => l.themeColor);
   const extendColor = useSettings((s) => s.extendWebsiteColor);
-  const website = extendColor && tab?.url ? live.themeColor : null;
+  const website = extendColor && tab?.url ? themeColor : null;
   const palette = toolbarPalette(theme, website);
   const band = useEasedColor(palette.background);
-  const history = useHistoryAvailability(tabId, live);
+  const history = useHistoryAvailability(tabId);
   const extensionsWidth = useToolbarExtensionsWidth(windowId);
   const dim = useRef(new Animated.Value(focused ? 1 : 0.5)).current;
   const dimmedFor = useRef(focused);
@@ -41,14 +48,19 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
     dimmedFor.current = focused;
     Animated.timing(dim, { toValue: focused ? 1 : 0.5, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
   }, [focused]);
-  if (!tab) return <View style={{ height: layout.toolbarHeight }} />;
-
-  const focus = () => {
-    if (!focused) useBrowser.getState().activate(tab.id);
-  };
-  const top = 21.2 - layout.toolbarButton / 2;
-  const at = (center: number) => ({ position: "absolute" as const, top, left: center - layout.toolbarButton / 2 });
+  // Stable callbacks and styles: the buttons are memoized, and a loading or history change re-renders only theirs.
+  const focus = useCallback(() => {
+    if (!focused) useBrowser.getState().activate(tabId);
+  }, [focused, tabId]);
+  const at = useMemo(() => {
+    const top = 21.2 - layout.toolbarButton / 2;
+    const place = (center: number | null) => ({ position: "absolute" as const, top, left: (center ?? 0) - layout.toolbarButton / 2 });
+    return { sidebarButton: place(geometry.sidebarButton), back: place(geometry.back), forward: place(geometry.forward), reload: place(geometry.reload) };
+  }, [geometry]);
   const right = (inSplit ? 12 + 2 * 28 : 12) + extensionsWidth;
+  const urlStyle = useMemo(() => ({ position: "absolute" as const, left: geometry.urlLeft, right, top: 21.2 - 15 }), [geometry.urlLeft, right]);
+  if (!tab) return <View style={{ height: layout.toolbarHeight }} />;
+  const top = 21.2 - layout.toolbarButton / 2;
 
   return (
     <View style={{ height: layout.toolbarHeight }}>
@@ -57,19 +69,19 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: dim }]} pointerEvents="box-none">
         {geometry.sidebarButton !== null && (
           <ToolbarButton
-            style={at(geometry.sidebarButton)}
+            style={at.sidebarButton}
             palette={palette}
             icon="sidebar.left"
             onPress={() => useBrowser.getState().toggleSidebar(windowId)}
             tooltip="Auto-Hide Tabs (⌘S)"
           />
         )}
-        <HistoryButton style={at(geometry.back)} tab={tab} direction={-1} disabled={!history.back} palette={palette} onFocus={focus} />
-        <HistoryButton style={at(geometry.forward)} tab={tab} direction={1} disabled={!history.forward} palette={palette} onFocus={focus} />
-        <ReloadButton style={at(geometry.reload)} tab={tab} loading={live.isLoading} palette={palette} onFocus={focus} />
+        <HistoryButton style={at.back} tab={tab} direction={-1} disabled={!history.back} palette={palette} onFocus={focus} />
+        <HistoryButton style={at.forward} tab={tab} direction={1} disabled={!history.forward} palette={palette} onFocus={focus} />
+        <ReloadButton style={at.reload} tab={tab} loading={isLoading} palette={palette} onFocus={focus} />
         <ToolbarExtensions tabId={tab.id} windowId={windowId} palette={palette} top={21.2 - 14} right={inSplit ? 8 + 60 : 8} />
         {tab.url ? (
-          <UrlField tab={tab} palette={palette} windowId={windowId} inSplit={inSplit} onFocus={focus} style={{ position: "absolute", left: geometry.urlLeft, right, top: 21.2 - 15 }} />
+          <UrlField tab={tab} palette={palette} windowId={windowId} inSplit={inSplit} onFocus={focus} style={urlStyle} />
         ) : null}
         {inSplit && (
           <View style={{ position: "absolute", top, right: 8, flexDirection: "row", gap: -2 }}>
@@ -80,12 +92,24 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
       </Animated.View>
 
       {tab.url ? <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: StyleSheet.hairlineWidth, backgroundColor: palette.divider }} /> : null}
-      {live.isLoading && <ProgressBar progress={live.progress} color={palette.background ? palette.icon : theme.accent} />}
+      {isLoading && <TabProgressBar tabId={tabId} color={palette.background ? palette.icon : theme.accent} />}
     </View>
   );
 }
 
-export function ReloadButton({ tab, loading, palette, style, onFocus }: { tab: Tab; loading: boolean; palette: ToolbarPalette; style?: ViewStyle; onFocus: () => void }) {
+export const ReloadButton = memo(function ReloadButton({
+  tab,
+  loading,
+  palette,
+  style,
+  onFocus,
+}: {
+  tab: Pick<Tab, "id" | "url" | "windowId">;
+  loading: boolean;
+  palette: ToolbarPalette;
+  style?: ViewStyle;
+  onFocus: () => void;
+}) {
   const web = () => webviews.get(tab.id);
   return (
     <ToolbarButton
@@ -103,7 +127,11 @@ export function ReloadButton({ tab, loading, palette, style, onFocus }: { tab: T
       tooltip={loading ? "Stop Loading This Page" : "Refresh (⌘R)"}
     />
   );
-}
+});
+
+const TabProgressBar = memo(function TabProgressBar({ tabId, color }: { tabId: string; color: string }) {
+  return <ProgressBar progress={useTabLive(tabId, (l) => l.progress)} color={color} />;
+});
 
 function ProgressBar({ progress, color }: { progress: number; color: string }) {
   const width = useRef(new Animated.Value(Math.max(progress, 0.08))).current;
@@ -130,7 +158,7 @@ function ProgressBar({ progress, color }: { progress: number; color: string }) {
   );
 }
 
-export function HistoryButton({
+export const HistoryButton = memo(function HistoryButton({
   tab,
   direction,
   disabled,
@@ -138,7 +166,7 @@ export function HistoryButton({
   style,
   onFocus,
 }: {
-  tab: Tab;
+  tab: Pick<Tab, "id" | "windowId">;
   direction: -1 | 1;
   disabled: boolean;
   palette: ToolbarPalette;
@@ -173,9 +201,9 @@ export function HistoryButton({
       />
     </MouseArea>
   );
-}
+});
 
-export function UrlField({
+export const UrlField = memo(function UrlField({
   tab,
   palette,
   windowId,
@@ -184,7 +212,7 @@ export function UrlField({
   style,
   sidebar,
 }: {
-  tab: Tab;
+  tab: ToolbarTab;
   palette: ToolbarPalette;
   windowId: string;
   inSplit: boolean;
@@ -204,7 +232,9 @@ export function UrlField({
   };
   const toggleBookmark = () => {
     const s = useBrowser.getState();
-    s.toggleBookmark(bookmarkProfileId(s, s.windows[windowId]), tab);
+    // The whole tab (its favicon too) as it is now; the field itself follows only what it shows.
+    const page = s.tabs[tab.id];
+    if (page) s.toggleBookmark(bookmarkProfileId(s, s.windows[windowId]), page);
   };
   const toggleSiteControls = () => {
     onFocus();
@@ -316,7 +346,7 @@ export function UrlField({
       {sidebar && sidebar.progress !== null ? <ProgressBar progress={sidebar.progress} color={theme.accent} /> : null}
     </View>
   );
-}
+});
 
 function CaptureIndicator({ camera, microphone, screen, onPress }: { camera: boolean; microphone: boolean; screen: boolean; onPress: () => void }) {
   const icon = screen ? "rectangle.inset.filled.on.rectangle" : camera ? "video.fill" : "mic.fill";
