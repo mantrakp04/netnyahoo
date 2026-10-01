@@ -125,11 +125,17 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
     NS_SWIFT_NAME(allowSaving(profile:origin:completion:));
 @end
 
+// //chrome/browser/netnyahoo's calls over Chrome's stores (NNEngineBridge.mm): JSON in, JSON out.
+@interface NNEngineBridge : NSObject
++ (void)call:(NSString *)name profile:(NSString *)profile args:(nullable NSString *)args
+    completion:(void (^)(NSString *json))completion NS_SWIFT_NAME(call(_:profile:args:completion:));
++ (void)setEventHandler:(void (^)(NSString *topic, NSString *json))handler NS_SWIFT_NAME(setEventHandler(_:));
+@end
+
 @interface NNFavicons : NSObject
-+ (void)fetch:(NSString *)url profile:(NSString *)profile name:(nullable NSString *)name
-    completion:(void (^)(NSDictionary<NSString *, id> *_Nullable result))completion
-    NS_SWIFT_NAME(fetch(_:profile:name:completion:));
-+ (void)pruneProfile:(NSString *)profile keeping:(NSArray<NSString *> *)names NS_SWIFT_NAME(prune(profile:keeping:));
++ (void)fetch:(NSString *)url profile:(NSString *)profile
+    completion:(void (^)(NSDictionary<NSString *, id> *_Nullable result))completion NS_SWIFT_NAME(fetch(_:profile:completion:));
++ (void)removeLegacyFilesForProfile:(NSString *)profile NS_SWIFT_NAME(removeLegacyFiles(profile:));
 @end
 
 @interface NNBrowsingData : NSObject
@@ -200,9 +206,8 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 - (void)executeJavaScript:(NSString *)code;
 - (void)evaluate:(NSString *)code completion:(void (^)(NSString *_Nullable json))completion;
 - (void)navigationEntries:(void (^)(NSArray<NSDictionary<NSString *, id> *> *entries))completion;
-- (void)downloadFavicon:(NSString *)url name:(nullable NSString *)name
-             completion:(void (^)(NSDictionary<NSString *, id> *_Nullable result))completion
-    NS_SWIFT_NAME(downloadFavicon(_:name:completion:));
+- (void)downloadFavicon:(NSString *)url completion:(void (^)(NSDictionary<NSString *, id> *_Nullable result))completion
+    NS_SWIFT_NAME(downloadFavicon(_:completion:));
 - (void)downloadImage:(NSString *)url
             maxPixels:(NSInteger)maxPixels
            completion:(void (^)(NSDictionary<NSString *, id> *_Nullable result))completion

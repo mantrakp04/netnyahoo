@@ -1,4 +1,5 @@
-// Incognito favicons are data URIs only; never write them to disk.
+// Favicons are data URIs held in memory by the app; Chrome's FaviconService is where they're kept
+// (packages/cef/src/favicons.ts). Nothing here writes them to disk.
 
 #import "NNCefInternal.h"
 
@@ -15,26 +16,8 @@ namespace {
 constexpr int kFaviconSize = 32;
 constexpr size_t kMaxBytes = 2 * 1024 * 1024;
 
-NSString *FaviconDirectory(NSString *profile) {
-  return [ProfileDirectory(profile) stringByAppendingPathComponent:@"Netnyahoo Favicons"];
-}
-
-bool SafeName(NSString *name) {
-  static NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:@"^[A-Za-z0-9_-]{1,80}$" options:0 error:nil];
-  return name.length && [re firstMatchInString:name options:0 range:NSMakeRange(0, name.length)];
-}
-
-NSDictionary *Store(NSData *png, int width, int height, NSString *profile, NSString *name) {
+NSDictionary *Store(NSData *png, int width, int height) {
   if (!png.length) return nil;
-  if (profile && !IsIncognito(profile) && SafeName(name)) {
-    NSString *dir = FaviconDirectory(profile);
-    [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-    NSString *path = [dir stringByAppendingPathComponent:[name stringByAppendingPathExtension:@"png"]];
-    if (![png writeToFile:path atomically:YES]) return nil;
-    NSString *uri = [NSString stringWithFormat:@"%@?v=%lld", [NSURL fileURLWithPath:path].absoluteString,
-                                               (long long)(NSDate.date.timeIntervalSince1970 * 1000)];
-    return @{@"uri" : uri, @"width" : @(width), @"height" : @(height)};
-  }
   NSString *uri = [@"data:image/png;base64," stringByAppendingString:[png base64EncodedStringWithOptions:0]];
   return @{@"uri" : uri, @"width" : @(width), @"height" : @(height)};
 }
@@ -72,8 +55,7 @@ NSData *PNGFromData(NSData *data, int pixels, int *width, int *height) {
 
 class DownloadCallback : public CefDownloadImageCallback {
  public:
-  DownloadCallback(NSString *profile, NSString *name, void (^completion)(NSDictionary *))
-      : profile_([profile copy]), name_([name copy]), completion_([completion copy]) {}
+  explicit DownloadCallback(void (^completion)(NSDictionary *)) : completion_([completion copy]) {}
   void OnDownloadImageFinished(const CefString &image_url, int http_status_code, CefRefPtr<CefImage> image) override {
     NSDictionary *result = nil;
     if (image && !image->IsEmpty()) {
@@ -82,23 +64,20 @@ class DownloadCallback : public CefDownloadImageCallback {
       if (png && png->GetSize()) {
         NSMutableData *data = [NSMutableData dataWithLength:png->GetSize()];
         png->GetData(data.mutableBytes, data.length, 0);
-        result = Store(data, width, height, profile_, name_);
+        result = Store(data, width, height);
       }
     }
     completion_(result);
   }
 
  private:
-  NSString *profile_;
-  NSString *name_;
   void (^completion_)(NSDictionary *);
   IMPLEMENT_REFCOUNTING(DownloadCallback);
 };
 
 class FetchClient : public CefURLRequestClient {
  public:
-  FetchClient(NSString *profile, NSString *name, void (^completion)(NSDictionary *))
-      : profile_([profile copy]), name_([name copy]), completion_([completion copy]), data_([NSMutableData data]) {}
+  explicit FetchClient(void (^completion)(NSDictionary *)) : completion_([completion copy]), data_([NSMutableData data]) {}
   void OnRequestComplete(CefRefPtr<CefURLRequest> request) override {
     NSDictionary *result = nil;
     CefRefPtr<CefResponse> response = request->GetResponse();
@@ -106,7 +85,7 @@ class FetchClient : public CefURLRequestClient {
     if (request->GetRequestStatus() == UR_SUCCESS && status >= 200 && status < 300 && !truncated_) {
       int width = 0, height = 0;
       NSData *png = PNGFromData(data_, kFaviconSize * 2, &width, &height);
-      result = Store(png, width, height, profile_, name_);
+      result = Store(png, width, height);
     }
     completion_(result);
   }
@@ -126,8 +105,6 @@ class FetchClient : public CefURLRequestClient {
   }
 
  private:
-  NSString *profile_;
-  NSString *name_;
   void (^completion_)(NSDictionary *);
   NSMutableData *data_;
   bool truncated_ = false;
@@ -171,23 +148,21 @@ class CacheCleared : public CefCompletionCallback {
 
 namespace nn {
 
-void DownloadFavicon(CefRefPtr<CefBrowser> browser, NSString *url, NSString *name, void (^completion)(NSDictionary *)) {
+void DownloadFavicon(CefRefPtr<CefBrowser> browser, NSString *url, void (^completion)(NSDictionary *)) {
   if (!browser || !url.length) return completion(nil);
-  NSString *profile = ProfileForContext(browser->GetHost()->GetRequestContext()) ?: @"incognito:unknown";
-  browser->GetHost()->DownloadImage(ToCef(url), true, kFaviconSize, false, new DownloadCallback(profile, name, completion));
+  browser->GetHost()->DownloadImage(ToCef(url), true, kFaviconSize, false, new DownloadCallback(completion));
 }
 
 void DownloadImage(CefRefPtr<CefBrowser> browser, NSString *url, int maxPixels, void (^completion)(NSDictionary *)) {
   if (!browser || !url.length) return completion(nil);
-  browser->GetHost()->DownloadImage(ToCef(url), true, MAX(16, MIN(maxPixels, 1024)), false, new DownloadCallback(nil, nil, completion));
+  browser->GetHost()->DownloadImage(ToCef(url), true, MAX(16, MIN(maxPixels, 1024)), false, new DownloadCallback(completion));
 }
 
 }
 
 @implementation NNFavicons
 
-+ (void)fetch:(NSString *)url profile:(NSString *)profile name:(NSString *)name
-    completion:(void (^)(NSDictionary<NSString *, id> *_Nullable))completion {
++ (void)fetch:(NSString *)url profile:(NSString *)profile completion:(void (^)(NSDictionary<NSString *, id> *_Nullable))completion {
   NSString *scheme = [NSURL URLWithString:url].scheme.lowercaseString;
   if (IsIncognito(profile) || !([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"])) return completion(nil);
   CefRefPtr<CefRequest> request = CefRequest::Create();
@@ -195,17 +170,13 @@ void DownloadImage(CefRefPtr<CefBrowser> browser, NSString *url, int maxPixels, 
   request->SetMethod("GET");
 // Favicon requests must omit cookies.
   request->SetFlags(UR_FLAG_NONE);
-  CefURLRequest::Create(request, new FetchClient(profile, name, completion), ContextForProfile(profile));
+  CefURLRequest::Create(request, new FetchClient(completion), ContextForProfile(profile));
 }
 
-+ (void)pruneProfile:(NSString *)profile keeping:(NSArray<NSString *> *)names {
+// Before Chrome's FaviconService held them, icons were PNG files in each profile's "Netnyahoo Favicons".
++ (void)removeLegacyFilesForProfile:(NSString *)profile {
   if (IsIncognito(profile)) return;
-  NSString *dir = FaviconDirectory(profile);
-  NSSet<NSString *> *keep = [NSSet setWithArray:names];
-  for (NSString *file in [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil]) {
-    if (![keep containsObject:file.stringByDeletingPathExtension])
-      [[NSFileManager defaultManager] removeItemAtPath:[dir stringByAppendingPathComponent:file] error:nil];
-  }
+  [[NSFileManager defaultManager] removeItemAtPath:[ProfileDirectory(profile) stringByAppendingPathComponent:@"Netnyahoo Favicons"] error:nil];
 }
 
 @end

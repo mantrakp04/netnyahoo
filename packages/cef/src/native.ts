@@ -24,6 +24,7 @@ export const Cef = requireNativeModule<{
   addListener(name: "onPermissionDismissed", listener: (p: { id: string }) => void): EventSubscription;
   addListener(name: "onContentBlocker", listener: (s: ContentBlockerStats) => void): EventSubscription;
   addListener(name: "onSystemState", listener: (s: SystemState) => void): EventSubscription;
+  addListener(name: "onEngineEvent", listener: (e: { topic: string; payload: string }) => void): EventSubscription;
 
   engineInfo(): Promise<EngineInfo>;
   chromeWindows(): Promise<ChromeWindowState[]>;
@@ -49,8 +50,9 @@ export const Cef = requireNativeModule<{
   getExternalAppAllowances(profile: string): Promise<ExternalAppAllowance[]>;
   removeExternalAppAllowance(profile: string, origin: string, scheme: string): Promise<void>;
   clearBrowsingData(profile: string, types: BrowsingDataType[], since: number | null): Promise<void>;
-  fetchFavicon(url: string, profile: string, name: string | null): Promise<FaviconImage | null>;
-  pruneFavicons(profile: string, keep: string[]): Promise<void>;
+  fetchFavicon(url: string, profile: string): Promise<FaviconImage | null>;
+  removeLegacyFavicons(profile: string): Promise<void>;
+  engineCall(name: string, profile: string, args: string | null): Promise<string>;
   releaseProfile(profile: string): Promise<void>;
   deleteProfileData(profile: string): Promise<{ remaining: string[] }>;
 

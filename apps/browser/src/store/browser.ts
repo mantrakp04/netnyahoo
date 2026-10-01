@@ -141,7 +141,11 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
       privateSiteMutes: {},
       selection: {},
       history: Object.fromEntries(Object.entries(data.history ?? {}).filter(([p]) => profiles[p])),
+      // A view handed in (tests) counts as read; the app's history and bookmarks come from Chrome later
+      // (lib/history.ts, lib/bookmarks.ts).
+      historyReady: Object.fromEntries(Object.keys(data.history ?? {}).filter((p) => profiles[p]).map((p) => [p, true as const])),
       bookmarks,
+      bookmarksReady: Object.fromEntries(Object.keys(data.bookmarks?.roots ?? {}).filter((p) => profiles[p]).map((p) => [p, true as const])),
       downloads: data.downloads ?? [],
       windowUi: {},
       find: {},

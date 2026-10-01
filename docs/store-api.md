@@ -9,7 +9,8 @@ modules before using them — this is a summary from the agent that built it.
 - `tabs` (persisted) vs `live` (loading/progress/back-forward/audio/theme colour; never persisted).
 - `groups`: `{ windowId, profileId, name, icon, color, collapsed, pinned, tabIds }` (members contiguous).
 - `splits` (store/splits.ts): `{ windowId, tabIds (2–3, pane order), orientation, sizes, stack? }` — `stack` = two panes sharing a slot the other way (Add Bottom Split). Members are contiguous in `window.tabIds`; the window's active tab is the focused pane. `window.tabLayout` ("sidebar" | "top", unset = Settings).
-- `history[profileId]`; `bookmarks`: `{ nodes, roots[profileId]: { bar, other } }`.
+- `history[profileId]`: a view of Chrome's history (HistoryService), one entry per URL, not saved; `historyReady[profileId]`
+  once it has been read (lib/history.ts). `bookmarks`: `{ nodes, roots[profileId]: { bar, other } }`.
 - `closedTabs` / `closedWindows` (full state; a closed window's entry leaves out its pinned tabs and pinned groups);
   `downloads`; `settings` (typed, store/settings.ts).
 - `parkedPins[profileId]` (store/parkedPins.ts): pinned tabs belong to the profile's sidebar, as in Dia. Closing a
@@ -30,7 +31,7 @@ modules before using them — this is a summary from the agent that built it.
 - Tabs: `newTab(windowId, { url, background, adoptId, openerId, profileId, pinned, index })`, `closeTab`,
   `closeTabs`, `activate`, `navigate`, `updateTab(id, patch, live?)` (the live patch lands in the same store update), `updateLive`,
   `togglePin`, `moveTab`, `duplicateTab`. The engine's page reports go through `navigated(id, { url, title }, live)` and
-  `faviconChanged(id, favicon)`, which also record history (a finished load is one visit; `live.visitedUrl` remembers it).
+  `faviconChanged(id, favicon)`. Chrome records the visit (HistoryService) and keeps the icon (FaviconService) itself.
   Closing a pinned tab only unloads it (`unloadPinnedTabs`, like Dia): the tile stays with `unloaded: true`, back at its
   pinned URL and without a web view until selected; the window selects its last-used regular tab, else the loaded
   pinned tab it showed last, else a New Tab page, and ⇧⌘T restores the page into the tile. Closing the last tab closes
@@ -56,7 +57,14 @@ modules before using them — this is a summary from the agent that built it.
   components/profiles/CreateProfile.tsx (`lib/actions.createProfile`).
 - Bookmarks: `addBookmark`, `addBookmarkFolder`, `moveBookmark`, `removeBookmark`, `toggleBookmark`,
   `addBookmarkTree` (imports, Bookmark All Tabs), `removeBookmarks` → `restoreBookmarks` (bulk delete + undo).
-- History: `recordVisit`, `removeHistory`, `clearHistory(profileId, since?)`, `importHistory`. Settings: `updateSettings`
+  They're Chrome's (BookmarkModel, so `chrome.bookmarks` sees them): lib/bookmarks.ts reads each engine profile's tree,
+  sends each store change to Chrome as ops (`bookmarkOps`), takes back what extensions change, and moved the old
+  `bookmarks.json` in once. Node ids are Chrome UUIDs (`newBookmarkId`); an engine profile's roots are
+  `bar@<engine>` / `other@<engine>` (`rootIdsFor`); `bookmarksReady[profileId]` once read; `syncKey` (sync/adapters.ts).
+- History (Chrome's; lib/history.ts reads it and follows its `history.changed` events, and moved the old `history.json`
+  into it once): `removeHistory` (deletes from Chrome too), `clearHistory(profileId, since?)` (the view; Clear Browsing
+  Data deletes from Chrome), `importHistory` (Chrome's importer path). Favicons are Chrome's too: lib/favicons.ts is
+  an in-memory cache by page, plus the icons live tabs show and the light/dark pick. Settings: `updateSettings`
   (`bookmarksBar`, `shortcuts` = remapped menu keys read by Menus.swift, …).
 
 ## Hooks (store/hooks.ts, window-scoped)
@@ -110,7 +118,7 @@ don't re-render every tab.
   - Display: `urlForDisplay` / `displayUrl` / `breadcrumb` show `netnyahoo://version`, keeping the
     scheme and dropping a root "/". `tabLabel` (window title) and `hostLabel` (History / Bookmarks
     pages) show `netnyahoo://<host>`.
-  - History records `netnyahoo://` visits (Chrome's WebUI), so the bar suggests them again.
+  - History is Chrome's, which doesn't record its WebUI pages (`netnyahoo://`).
 - **Where each host goes** (`appUrlRoute`):
 
   | URL | Opens |

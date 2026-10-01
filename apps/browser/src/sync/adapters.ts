@@ -1,6 +1,7 @@
-import { deletePassword, savePassword } from "@netnyahoo/cef";
+import { addHistoryVisits, deleteHistoryUrls, deletePassword, savePassword } from "@netnyahoo/cef";
 import { assignPositions, SyncNative, type Adapter, type Extraction, type SavedLogin } from "@netnyahoo/sync";
-import { ensureRoots } from "../store/bookmarks";
+import { bookmarkUuidFor, ensureRoots, isBookmarkUuid } from "../store/bookmarks";
+import { MAX_HISTORY, MAX_VISIT_TIMES } from "../store/history";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { orderSections, syncGroupOrder } from "../store/groups";
 import { engineProfile, makeTab, pinnedFirst, without } from "../store/model";
@@ -101,15 +102,21 @@ export function deviceAdapter(deviceId: string, name: () => string, retired = fa
 
 type BookmarkValue = { k: "u" | "f"; p: string; t: string; u?: string; a: number; pos: string };
 
+// A bookmark's record key is its sync key: Chrome's UUID, or for a bookmark synced before Chrome kept bookmarks,
+// its old id (kept on Chrome's node as `syncKey`), so Macs not yet updated and updated ones name it alike. A key
+// that isn't a UUID becomes the node bookmarkUuidFor gives, on every Mac.
 export function bookmarksAdapter(profileId: string): Adapter {
+  // Before the tree is read from Chrome it's empty, which would read as every bookmark deleted.
+  const ready = () => !!store().bookmarksReady[profileId];
   return {
     prefix: "bm:",
     extract: (base) => {
+      if (!ready()) return null;
       const b = store().bookmarks;
       const roots = b.roots[profileId];
       const values = new Map<string, unknown>();
       if (!roots) return { values };
-      const keyOf = (id: string) => (id === roots.bar ? "bar" : id === roots.other ? "other" : id);
+      const keyOf = (id: string) => (id === roots.bar ? "bar" : id === roots.other ? "other" : (b.nodes[id]?.syncKey ?? id));
       const walk = (folderId: string, depth: number) => {
         const folder = b.nodes[folderId];
         if (folder?.kind !== "folder" || depth > 64) return;
@@ -117,13 +124,13 @@ export function bookmarksAdapter(profileId: string): Adapter {
         const children = folder.children.filter((id) => b.nodes[id]);
         const positions = assignPositions(
           children.map((id) => {
-            const known = base(`bm:${id}`) as BookmarkValue | undefined;
+            const known = base(`bm:${keyOf(id)}`) as BookmarkValue | undefined;
             return known?.p === parent ? known.pos : undefined;
           }),
         );
         children.forEach((id, i) => {
           const node = b.nodes[id]!;
-          values.set(`bm:${id}`, {
+          values.set(`bm:${keyOf(id)}`, {
             k: node.kind === "url" ? "u" : "f",
             p: parent,
             t: node.title,
@@ -139,14 +146,18 @@ export function bookmarksAdapter(profileId: string): Adapter {
       return { values };
     },
     apply: (visible) => {
+      if (!ready()) return false;
       const s = store();
       const [b, roots] = ensureRoots(s.bookmarks, profileId);
-      const values = new Map([...visible].map(([k, v]) => [k.slice(3), v as BookmarkValue]));
+      // By node id; a key that isn't a UUID names the node bookmarkUuidFor gives it.
+      const values = new Map([...visible].map(([k, v]) => [bookmarkUuidFor(k.slice(3)), v as BookmarkValue]));
+      const keys = new Map([...visible.keys()].map((k) => [bookmarkUuidFor(k.slice(3)), k.slice(3)]));
       const rootOf = (key: string) => (key === "bar" ? roots.bar : key === "other" ? roots.other : null);
       const parentOf = new Map<string, string>();
       for (const [id, v] of values) {
         const root = rootOf(v.p);
-        parentOf.set(id, root ?? (values.get(v.p)?.k === "f" ? v.p : roots.other));
+        const parent = root ? null : bookmarkUuidFor(v.p);
+        parentOf.set(id, root ?? (parent && values.get(parent)?.k === "f" ? parent : roots.other));
       }
       for (const id of [...values.keys()].sort()) {
         const seen = new Set<string>([id]);
@@ -163,7 +174,9 @@ export function bookmarksAdapter(profileId: string): Adapter {
       const byPosition = (a: string, z: string) => {
         const pa = values.get(a)!.pos;
         const pz = values.get(z)!.pos;
-        return pa < pz ? -1 : pa > pz ? 1 : a < z ? -1 : 1;
+        const ka = keys.get(a)!;
+        const kz = keys.get(z)!;
+        return pa < pz ? -1 : pa > pz ? 1 : ka < kz ? -1 : 1;
       };
       const nodes: Record<string, BookmarkNode> = { ...b.nodes };
       const drop = (id: string) => {
@@ -175,10 +188,12 @@ export function bookmarksAdapter(profileId: string): Adapter {
       drop(roots.other);
       for (const [id, v] of values) {
         const old = b.nodes[id];
+        const key = keys.get(id)!;
+        const syncKey = isBookmarkUuid(key) ? {} : { syncKey: key };
         nodes[id] =
           v.k === "u"
-            ? { kind: "url", id, parentId: parentOf.get(id)!, title: v.t, url: v.u ?? "", favicon: old?.kind === "url" ? old.favicon : null, addedAt: v.a }
-            : { kind: "folder", id, parentId: parentOf.get(id)!, title: v.t, children: [], addedAt: v.a };
+            ? { kind: "url", id, parentId: parentOf.get(id)!, title: v.t, url: v.u ?? "", favicon: old?.kind === "url" ? old.favicon : null, addedAt: v.a, ...syncKey }
+            : { kind: "folder", id, parentId: parentOf.get(id)!, title: v.t, children: [], addedAt: v.a, ...syncKey };
       }
       for (const [parent, ids] of children) {
         const folder = nodes[parent];
@@ -190,43 +205,104 @@ export function bookmarksAdapter(profileId: string): Adapter {
 }
 
 export const HISTORY_WINDOW_MS = 90 * 86_400_000;
-const MAX_HISTORY = 5000;
 
 type HistoryValue = { t: string; n: number; vt: number[] };
 const lastVisitOf = (v: HistoryValue) => Math.max(0, ...v.vt);
+// What Chrome keeps in history (an app page, netnyahoo://, it doesn't): other records are left alone.
+const keptInHistory = (url: string) => /^(https?|file):/i.test(url);
+// Chrome stores visit times in microseconds and reports them in whole ms: the same visit reads back within this.
+const SAME_VISIT_MS = 1;
 
 export const historyExpired = (key: string, value: unknown, now: number) =>
   key.startsWith("h:") && lastVisitOf(value as HistoryValue) < now - HISTORY_WINDOW_MS;
 
+// History is Chrome's (lib/history.ts keeps the store's view of it). Applying a record adds its visits to
+// Chrome, so Chrome's copy then differs from the record (its own visit count and title). A local edit is a visit
+// the record doesn't have; anything else publishes the record unchanged. Two Macs settle on the union of their
+// visits instead of trading versions.
 export function historyAdapter(profileId: string): Adapter {
+  const ready = () => !!store().historyReady[profileId];
   return {
     prefix: "h:",
-    extract: () => {
+    extract: (base) => {
+      // Before the view is read from Chrome it's empty, which would read as every URL deleted.
+      if (!ready()) return null;
       const since = Date.now() - HISTORY_WINDOW_MS;
       const values = new Map<string, unknown>();
       const older = new Set<string>();
-      for (const e of store().history[profileId] ?? []) {
-        if (e.lastVisit < since) older.add(`h:${e.url}`);
-        else values.set(`h:${e.url}`, { t: e.title, n: e.visits, vt: e.visitTimes?.length ? e.visitTimes : [e.lastVisit] } satisfies HistoryValue);
+      const view = store().history[profileId] ?? [];
+      // The view holds the newest MAX_HISTORY URLs: one older than its oldest may only have dropped off it.
+      const capped = view.length >= MAX_HISTORY ? view[view.length - 1]!.lastVisit : -Infinity;
+      for (const e of view) {
+        if (!keptInHistory(e.url)) continue;
+        const key = `h:${e.url}`;
+        if (e.lastVisit < since) {
+          older.add(key);
+          continue;
+        }
+        const local: HistoryValue = { t: e.title, n: e.visits, vt: e.visitTimes?.length ? e.visitTimes : [e.lastVisit] };
+        const known = base(key) as HistoryValue | undefined;
+        const edited = !known || local.vt.some((t) => !known.vt.some((k) => Math.abs(k - t) <= SAME_VISIT_MS));
+        values.set(key, edited ? local : known);
       }
-      return { values, ignore: (key) => older.has(key) };
+      const ignore = (key: string) => {
+        if (older.has(key) || !keptInHistory(key.slice(2))) return true;
+        // Chrome expired it (as every Mac does), or the view no longer reaches it: not a deletion.
+        const known = base(key) as HistoryValue | undefined;
+        return !!known && (lastVisitOf(known) < since || lastVisitOf(known) <= capped);
+      };
+      return { values, ignore };
     },
     editedAt: (v) => lastVisitOf(v as HistoryValue),
-    apply: (visible, changed) => {
+    apply: async (visible, changed) => {
+      if (!ready()) return false;
       const since = Date.now() - HISTORY_WINDOW_MS;
       const byUrl = new Map((store().history[profileId] ?? []).map((e) => [e.url, e]));
+      const add: { url: string; title: string; visitTimes: number[] }[] = [];
+      const remove: string[] = [];
+      const updates = new Map<string, HistoryEntry | null>();
       for (const key of changed) {
         const url = key.slice(2);
+        if (!keptInHistory(url)) continue;
         const v = visible.get(key) as HistoryValue | undefined;
         const old = byUrl.get(url);
         if (v) {
-          byUrl.set(url, { url, title: v.t || old?.title || "", favicon: old?.favicon ?? null, visits: v.n, lastVisit: lastVisitOf(v), visitTimes: v.vt });
+          const have = old?.visitTimes ?? [];
+          const fresh = v.vt.filter((t) => t >= since && !have.some((h) => Math.abs(h - t) <= SAME_VISIT_MS));
+          if (fresh.length) add.push({ url, title: v.t, visitTimes: fresh });
+          const times = [...have, ...fresh].sort((a, z) => a - z).slice(-MAX_VISIT_TIMES);
+          if (!times.length) continue;
+          updates.set(url, {
+            url,
+            title: v.t || old?.title || "",
+            favicon: null,
+            visits: Math.max(v.n, old?.visits ?? 0),
+            lastVisit: times[times.length - 1]!,
+            visitTimes: times,
+          });
         } else if (old && old.lastVisit >= since) {
-          byUrl.delete(url);
+          remove.push(url);
+          updates.set(url, null);
         }
       }
-      const list: HistoryEntry[] = [...byUrl.values()].sort((a, z) => z.lastVisit - a.lastVisit).slice(0, MAX_HISTORY);
-      useBrowser.setState((s) => ({ history: { ...s.history, [profileId]: list } }));
+      if (!updates.size) return;
+      const engine = engineProfile(profileId);
+      await Promise.all([addHistoryVisits(engine, add, SAME_VISIT_MS), deleteHistoryUrls(engine, remove)]);
+      // The view as it is now (Chrome's reports may have landed meanwhile), with the records merged in.
+      useBrowser.setState((s) => {
+        const current = new Map((s.history[profileId] ?? []).map((e) => [e.url, e]));
+        for (const [url, update] of updates) {
+          const now = current.get(url);
+          if (!update) current.delete(url);
+          else if (!now) current.set(url, update);
+          else {
+            const times = [...new Set([...(now.visitTimes ?? []), ...(update.visitTimes ?? [])])].sort((a, z) => a - z).slice(-MAX_VISIT_TIMES);
+            current.set(url, { ...update, visits: Math.max(now.visits, update.visits), lastVisit: times[times.length - 1]!, visitTimes: times });
+          }
+        }
+        const list = [...current.values()].sort((a, z) => z.lastVisit - a.lastVisit).slice(0, MAX_HISTORY);
+        return { history: { ...s.history, [profileId]: list } };
+      });
     },
   };
 }

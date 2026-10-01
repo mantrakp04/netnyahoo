@@ -74,6 +74,20 @@ async function ready(name) {
   throw new Error(`${name} didn't start`);
 }
 
+// A page load, which Chrome records in its history; the store's view shows it once Chrome reports it.
+async function visit(name, url) {
+  const tab = await ev(name, `const s = nn.store.getState(); return s.newTab(s.windowOrder[0], { url: ${JSON.stringify(url)} });`);
+  const end = Date.now() + 30_000;
+  while (Date.now() < end) {
+    if (await ev(name, `return (nn.store.getState().history.default || []).some((h) => h.url === ${JSON.stringify(url)})`)) {
+      await ev(name, `nn.store.getState().closeTab(${JSON.stringify(tab)}); return true;`);
+      return;
+    }
+    await sleep(300);
+  }
+  throw new Error(`${name}: ${url} never reached Chrome's history`);
+}
+
 const sync = async (...names) => {
   for (const n of names) await ev(n, "return nnSync.syncNow()");
 };
@@ -148,13 +162,13 @@ try {
     const f = s.addBookmarkFolder({ profileId: "default", title: "NNE2E Folder" });
     s.addBookmark({ profileId: "default", url: "${W}/alpha.html?nne2e=bm1", title: "NNE2E Bookmark Alpha", parentId: f });
     s.addBookmark({ profileId: "default", url: "${W}/beta.html?nne2e=bm2", title: "NNE2E Bookmark Beta" });
-    s.recordVisit("default", "${W}/visited.html?nne2e=hist1", "NNE2E Visited Page", null, true);
     s.updateSettings({ appearance: "dark", searchEngine: "duckduckgo" });
     const w = nn.store.getState().windowOrder[0];
     nn.store.getState().pinTabs([s.newTab(w, { url: "${W}/pinned.html?nne2e=pin1" })], true);
     s.newTab(w, { url: "${W}/open.html?nne2e=tab1" });
     return true;`,
   );
+  await visit("A", `${W}/visited.html?nne2e=hist1`);
   await ev("A", savePassword("https://nne2e-bank.example", "nne2e-alice", "NNE2E-hunter2-secret"));
   await sync("A");
 
@@ -206,10 +220,10 @@ try {
     s.removeBookmark(nodes.find((n) => n.title === "NNE2E Bookmark Gamma from B").id);
     s.addBookmark({ profileId: "default", url: "${W}/delta.html?nne2e=bmD", title: "NNE2E Bookmark Delta from B" });
     s.removeHistory("default", ["${W}/visited.html?nne2e=hist1"]);
-    s.recordVisit("default", "${W}/visited2.html?nne2e=hist2", "NNE2E Visited Two", null, true);
     s.updateSettings({ showFullUrl: true, cleanUpInactiveTabsAfterHours: 24 });
     return globalThis.expo.modules.NetnyahooCEF.deletePassword("", "https://nne2e-shop.example", "nne2e-bob");`,
   );
+  await visit("B", `${W}/visited2.html?nne2e=hist2`);
   await ev("B", savePassword("https://nne2e-bank.example", "nne2e-alice", "NNE2E-changed-on-B"));
   await sync("B", "A", "B", "A");
   a = await state("A");

@@ -1,14 +1,15 @@
 import { cancelDownload, setZoom as setHostZoom, type Download } from "@netnyahoo/cef";
 import { readDocument, writeDocument } from "@netnyahoo/shell";
-import { EMPTY_BOOKMARKS, ensureRoots } from "../store/bookmarks";
+import { EMPTY_BOOKMARKS, ensureRoots, newBookmarkId } from "../store/bookmarks";
 import { useBrowser, type BrowserState, type HydrateData } from "../store/browser";
 import { engineProfile, inPinnedContainer, isIncognitoProfile, makeTab, newId, snapshotTab } from "../store/model";
 import { parkWindowPins } from "../store/parkedPins";
 import { DEFAULT_PROFILE } from "../store/profiles";
 import { DEFAULT_SETTINGS } from "../store/settings";
-import { historyDocument } from "../store/history";
 import type { Bookmarks, BrowserWindow, ClosedTab, HistoryEntry, Tab } from "../store/types";
-import { flushFavicons, startFavicons } from "./favicons";
+import { startFavicons } from "./favicons";
+import { startBookmarks } from "./bookmarks";
+import { startHistory } from "./history";
 import { startProfileDataCleanup } from "./profileData";
 
 const SAVE_DELAY_MS = 800;
@@ -25,8 +26,6 @@ const persistedTab = ({ navigation: _n, adoptId: _a, wakeAdoptId: _w, ...t }: Ta
 const publicTab = (t: { profileId: string }) => !isIncognitoProfile(t.profileId);
 
 const DOCS: Doc[] = [
-  { name: "history.json", sources: (s) => [s.history], json: (s) => historyDocument(VERSION, s.history) },
-  { name: "bookmarks.json", sources: (s) => [s.bookmarks], json: serialized((s) => ({ version: VERSION, bookmarks: s.bookmarks })) },
   {
     name: "downloads.json",
     sources: (s) => [s.downloads],
@@ -37,7 +36,6 @@ const DOCS: Doc[] = [
         .map((d) => (d.state === "downloading" ? { ...d, state: "failed" } : d)),
     })),
   },
-// Save history and bookmarks before replacing the v1 file.
   {
     name: "session.json",
     sources: (s) => [s.profiles, s.profileOrder, s.orphanedProfileData, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.parkedPins, s.settings, s.ui.focusedWindowId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
@@ -147,7 +145,7 @@ export function migrateV1(v1: SessionV1): HydrateData {
   }));
   let [bookmarks, roots] = ensureRoots(EMPTY_BOOKMARKS, profileId);
   for (const b of v1.bookmarks) {
-    const id = newId("bm");
+    const id = newBookmarkId();
     const bar = bookmarks.nodes[roots.bar]!;
     if (bar.kind !== "folder") break;
     bookmarks = {
@@ -168,7 +166,6 @@ export function migrateV1(v1: SessionV1): HydrateData {
     focusedWindowId: tabs.length ? windowId : null,
     tabs: byId(tabs),
     closedTabs,
-    history: { [profileId]: v1.history },
     bookmarks,
   };
 }
@@ -177,11 +174,13 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
   const session = read<SessionV2 | SessionV1>("session.json");
   if (session?.version === 1) {
     write("session.v1.backup.json", JSON.stringify(session));
-    return { data: migrateV1(session), migrated: true };
+    // Chrome keeps history and bookmarks now: lib/history.ts and lib/bookmarks.ts move these files into it.
+    write("history.json", JSON.stringify({ version: VERSION, history: { [DEFAULT_PROFILE.id]: session.history } }));
+    const { bookmarks, ...data } = migrateV1(session);
+    write("bookmarks.json", JSON.stringify({ version: VERSION, bookmarks }));
+    return { data, migrated: true };
   }
   if (session?.version !== 2) return { data: null, migrated: false };
-  const history = read<{ history: Record<string, HistoryEntry[]> }>("history.json");
-  const bookmarks = read<{ bookmarks: Bookmarks }>("bookmarks.json");
   const downloads = read<{ downloads: Download[] }>("downloads.json");
   const data: HydrateData = {
     profiles: session.profiles,
@@ -200,13 +199,11 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
     closedGroups: session.closedGroups ?? [],
     deletedGroups: session.deletedGroups ?? [],
     cleanedTabs: session.cleanedTabs ?? [],
-    history: history?.history ?? {},
-    bookmarks: bookmarks?.bookmarks ?? EMPTY_BOOKMARKS,
     downloads: (downloads?.downloads ?? []).map((d, i) => ({ ...d, id: `saved-${i}` })),
   };
   if (session.settings && session.settings.restoreSession === false) {
     const now = Date.now();
-    const pinSource = { tabs: data.tabs ?? {}, groups: data.groups ?? {}, history: data.history ?? {} };
+    const pinSource = { tabs: data.tabs ?? {}, groups: data.groups ?? {}, history: {} };
     for (const w of session.windows) data.parkedPins = parkWindowPins(data.parkedPins ?? {}, w, pinSource);
     data.closedWindows = [
       ...(data.closedWindows ?? []),
@@ -243,7 +240,6 @@ let frozen = false;
 
 export function flushPersistence({ final = false } = {}) {
   flush();
-  flushFavicons();
   if (final) frozen = true;
 }
 
@@ -287,6 +283,8 @@ export function startPersistence() {
   check(useBrowser.getState(), true);
   if (migrated) save();
   const stopFavicons = startFavicons();
+  const stopHistory = startHistory();
+  const stopBookmarks = startBookmarks();
   const stopProfileData = startProfileDataCleanup();
   const stopSession = useBrowser.subscribe((s, prev) => {
     check(s);
@@ -294,6 +292,8 @@ export function startPersistence() {
   });
   return () => {
     stopFavicons();
+    stopHistory();
+    stopBookmarks();
     stopProfileData();
     stopSession();
   };

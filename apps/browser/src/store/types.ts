@@ -44,7 +44,7 @@ export type Tab = {
   adoptId?: string;
   openerId: string | null;
   // What a tab that hasn't loaded adopts when first shown (store/model.ts wake): a reopened window's tab
-  // "restore:<closed tab>" (its back/forward list), a link opened behind "open:<id>" (its POST body, referrer).
+  // "restore:<closed tab>@<closed at>" (its back/forward list, from Chrome's TabRestoreService), a link opened behind "open:<id>" (its POST body, referrer).
   wakeAdoptId?: string;
   liveItem?: { folderId: string; itemId: string };
   unloaded?: boolean;
@@ -59,8 +59,6 @@ export type TabLive = {
   canGoForward: boolean;
   playingAudio: boolean;
   themeColor: string | null;
-  /** The page the tab last counted as a history visit: a title or icon update of it isn't another visit. */
-  visitedUrl?: string;
 };
 
 export type GroupColor = "grey" | "blue" | "red" | "yellow" | "green" | "pink" | "purple" | "cyan" | "orange";
@@ -99,9 +97,11 @@ export type HistoryEntry = {
   visitTimes?: number[];
 };
 
+// `id` is Chrome's UUID for the node (BookmarkModel). `syncKey` is its sync record's key when that isn't the id: a
+// bookmark synced before Chrome kept bookmarks keeps the key its old id gave it (sync/adapters.ts).
 export type BookmarkNode =
-  | { kind: "url"; id: string; parentId: string; title: string; url: string; favicon: string | null; addedAt: number }
-  | { kind: "folder"; id: string; parentId: string | null; title: string; children: string[]; addedAt: number };
+  | { kind: "url"; id: string; parentId: string; title: string; url: string; favicon: string | null; addedAt: number; syncKey?: string }
+  | { kind: "folder"; id: string; parentId: string | null; title: string; children: string[]; addedAt: number; syncKey?: string };
 
 export type BookmarkFolder = Extract<BookmarkNode, { kind: "folder" }>;
 

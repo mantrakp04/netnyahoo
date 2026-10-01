@@ -1,9 +1,9 @@
-// What survives a quit, a relaunch and a closed window: session.json, history.json and pinned tabs.
+// What survives a quit, a relaunch and a closed window: session.json, history (Chrome's) and pinned tabs.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("./browser.ts");
 const model = await import("./model.ts");
-const { historyDocument } = await import("./history.ts");
+const { migrateHistoryFile, reloadHistory, startHistory } = await import("../lib/history.ts");
 const { flushPersistence, loadSession, startPersistence } = await import("../lib/persist.ts");
 const stub = await import("../test-native-stub.mjs");
 
@@ -57,9 +57,10 @@ test("v1 session migrates to v2 and round-trips", () => {
   assert.ok(shown.navigation, "active tab loads");
   assert.equal(S().tabs[model.viewTabIds(S(), w)[0]].navigation, null, "others lazy");
   assert.equal(S().closedTabs[0].tab.url, "https://gone.com");
-  assert.equal(S().history.default.length, 1);
-  const bar = S().bookmarks.nodes[S().bookmarks.roots.default.bar];
-  assert.equal(S().bookmarks.nodes[bar.children[0]].url, "https://a.com");
+  assert.equal(JSON.parse(stub.docs.get("history.json")).history.default[0].url, "https://a.com", "its history goes to Chrome next");
+  const { bookmarks } = JSON.parse(stub.docs.get("bookmarks.json"));
+  const bar = bookmarks.nodes[bookmarks.roots.default.bar];
+  assert.equal(bookmarks.nodes[bar.children[0]].url, "https://a.com", "its bookmarks go to Chrome next");
   assert.ok(stub.docs.get("session.v1.backup.json"));
 });
 
@@ -96,12 +97,12 @@ test("a reopened window's tabs wake with their back/forward list", () => {
   S().reopenClosedWindow();
   const w2 = S().windowOrder.at(-1);
   const [ra, rb, rc] = S().windows[w2].tabIds.map((id) => S().tabs[id]);
-  assert.equal(ra.adoptId, `restore:${a}`, "the shown tab loads with its history");
-  assert.equal(rb.wakeAdoptId, `restore:${b}`, "the others keep it until they wake");
+  assert.match(ra.adoptId, new RegExp(`^restore:${a}@\\d+$`), "the shown tab loads with its history");
+  assert.match(rb.wakeAdoptId, new RegExp(`^restore:${b}@\\d+$`), "the others keep it until they wake");
   assert.equal(rb.navigation, null);
   assert.equal(rc.wakeAdoptId, undefined, "a tab that never loaded has none");
   S().activate(rb.id);
-  assert.equal(S().tabs[rb.id].adoptId, `restore:${b}`);
+  assert.match(S().tabs[rb.id].adoptId, new RegExp(`^restore:${b}@\\d+$`));
   assert.equal(S().tabs[rb.id].wakeAdoptId, undefined);
 });
 
@@ -109,7 +110,7 @@ test("profiles sharing data still share it after a save and reload", () => {
   reset();
   const a = S().createProfile({ name: "A" });
   const b = S().createProfile({ name: "B", shareWith: a });
-  S().recordVisit(b, "https://a.com/", "A", null, true);
+  S().importHistory(b, [{ url: "https://a.com/", title: "A", visits: 1, lastVisit: Date.now() }]);
   const saved = JSON.parse(JSON.stringify({ profiles: S().profiles, profileOrder: S().profileOrder, history: S().history, bookmarks: S().bookmarks }));
   reset();
   assert.equal(model.engineProfile(b), b, "registry follows the loaded profiles");
@@ -119,56 +120,73 @@ test("profiles sharing data still share it after a save and reload", () => {
   assert.deepEqual(S().bookmarks.roots[a], S().bookmarks.roots[b]);
 });
 
-test("a finished load is one visit; its title and icon updates refresh the entry", () => {
+const flushEvents = () => new Promise((r) => setTimeout(r, 0));
+const DAY = 86_400_000;
+
+// 0.2.20: history moved from history.json into Chrome's HistoryService, which had recorded the same visits all
+// along, a moment apart.
+test("history.json moves into Chrome once: Chrome's own visits aren't doubled, a second run adds nothing", async () => {
   reset();
-  const w = S().createWindow({ url: "https://a.com/" });
-  const tab = model.viewTabIds(S(), w)[0];
-  const entry = (url) => S().history.default?.find((h) => h.url === url);
-  const report = (url, title, isLoading) => S().navigated(tab, { url, title }, { isLoading, canGoBack: false, canGoForward: false, themeColor: null });
-  report("https://a.com/", "", true);
-  assert.equal(entry("https://a.com/"), undefined, "a load in progress isn't a visit");
-  report("https://a.com/", "A", false);
-  assert.equal(entry("https://a.com/").visits, 1);
-  const before = S();
-  report("https://a.com/", "A", false);
-  assert.equal(S(), before, "a repeated report changes nothing");
-  report("https://a.com/", "A, retitled", false);
-  assert.deepEqual([entry("https://a.com/").visits, entry("https://a.com/").title], [1, "A, retitled"]);
-  S().faviconChanged(tab, "https://a.com/icon.png");
-  assert.equal(S().tabs[tab].favicon, "https://a.com/icon.png");
-  assert.equal(entry("https://a.com/").favicon, "https://a.com/icon.png");
-  report("https://b.com/", "B", false);
-  report("https://a.com/", "A", false);
-  assert.equal(entry("https://a.com/").visits, 2, "coming back is another visit");
-  S().navigate(tab, "netnyahoo://history");
-  report("https://a.com/", "A", false);
-  assert.equal(entry("https://a.com/").visits, 3, "back from an app page (no engine report in between) is another visit");
+  stub.docs.clear();
+  stub.historyDbs.clear();
+  const now = Date.now();
+  const work = S().createProfile({ name: "Work" });
+  const shared = S().createProfile({ name: "Shared", shareWith: work });
+  // Chrome recorded a.com 20 s after the app did; b.com (imported) and c.com (another Mac's) only the app has.
+  stub.chromeVisit("", "https://a.com/", "A", now - DAY + 20_000);
+  // d.com: Chrome has one of two visits 30 s apart; the other is still added.
+  stub.chromeVisit("", "https://d.com/", "D", now - DAY);
+  const entry = (url, times, title = url) => ({ url, title, favicon: null, visits: times.length, lastVisit: times.at(-1), visitTimes: times });
+  const list = [
+    entry("https://a.com/", [now - DAY]),
+    entry("https://b.com/", [now - 3 * DAY, now - 2 * DAY]),
+    entry("https://d.com/", [now - DAY, now - DAY + 30_000]),
+    entry("https://old.com/", [now - 200 * DAY]),
+  ];
+  const workList = [entry("https://c.com/", [now - DAY])];
+  stub.docs.set("history.json", JSON.stringify({ version: 2, history: { default: list, [work]: workList, [shared]: workList, gone: [entry("https://x.com/", [now])] } }));
+
+  assert.equal(await migrateHistoryFile(now, { keepMs: 0 }), "moved");
+  const visits = (profile, url) => stub.chromeHistory(profile).get(url)?.visits.length ?? 0;
+  assert.equal(visits("", "https://a.com/"), 1, "a visit Chrome has isn't added again");
+  assert.equal(visits("", "https://b.com/"), 2);
+  assert.equal(visits("", "https://d.com/"), 2, "one visit Chrome has accounts for one saved visit");
+  assert.equal(visits("", "https://old.com/"), 0, "Chrome has expired what's older than 90 days");
+  assert.equal(visits(work, "https://c.com/"), 1, "profiles sharing data add their list once");
+  assert.equal(stub.historyDbs.get(null).has("gone"), false, "a deleted profile's list goes");
+  assert.equal(stub.docs.has("history.json"), false, "the file is deleted");
+
+  // A launch that stopped before deleting the file runs it again: nothing more is added.
+  stub.docs.set("history.json", JSON.stringify({ version: 2, history: { default: list, [work]: workList } }));
+  assert.equal(await migrateHistoryFile(now, { keepMs: 0 }), "moved");
+  assert.deepEqual([visits("", "https://a.com/"), visits("", "https://b.com/"), visits("", "https://d.com/"), visits(work, "https://c.com/")], [1, 2, 2, 1]);
+  assert.equal(await migrateHistoryFile(now, { keepMs: 0 }), "none");
 });
 
-// history.json is written by a hand-rolled serializer that reuses unchanged entries; it must match JSON.stringify.
-test("history.json is byte for byte JSON.stringify's, visit after visit", () => {
-  const doc = () => historyDocument(2, S().history);
-  const reference = () => JSON.stringify({ version: 2, history: S().history });
+test("history is a view of Chrome's: visits, deletions and a relaunch all read back what Chrome has", async () => {
   reset();
-  S().createProfile({ name: "Work" });
-  const work = S().profileOrder[1];
-  S().recordVisit("default", "https://a.com/", 'Quotes " and \\ and   and ✨', null, true);
-  S().recordVisit("default", "https://b.com/", "B", "https://b.com/favicon.ico", true);
-  S().recordVisit(work, "https://c.com/", "", null, true);
-  assert.equal(doc(), reference());
-  S().recordVisit("default", "https://a.com/", "A again", null, true);
-  assert.equal(doc(), reference(), "a changed entry is serialized anew");
-  S().recordVisit("default", "https://b.com/", "B", "https://b.com/new.ico");
-  assert.equal(doc(), reference(), "a favicon update is serialized anew");
-  S().removeHistory("default", ["https://b.com/"]);
-  S().clearHistory(work);
-  assert.equal(doc(), reference());
-  const odd = {
-    123: [{ url: "https://x.com/", title: "X", favicon: null, visits: 3, lastVisit: 5 }],
-    default: [{ url: "https://z.com/", title: "Z", favicon: undefined, visits: 2, lastVisit: 2, visitTimes: undefined }],
-    broken: [null, undefined, 3, "x"],
-  };
-  assert.equal(historyDocument(2, odd), JSON.stringify({ version: 2, history: odd }), "numeric keys, optional fields, junk");
+  stub.docs.clear();
+  stub.historyDbs.clear();
+  const stop = startHistory();
+  await reloadHistory();
+  const urls = () => (S().history.default ?? []).map((h) => h.url);
+  stub.chromeVisit("", "https://a.com/", "A");
+  stub.chromeVisit("", "https://b.com/", "B");
+  await flushEvents();
+  assert.deepEqual(urls(), ["https://b.com/", "https://a.com/"]);
+  assert.ok(S().historyReady.default);
+
+  S().removeHistory("default", ["https://a.com/"]);
+  assert.deepEqual(urls(), ["https://b.com/"], "gone from the view at once");
+  await flushEvents();
+  assert.equal(stub.chromeHistory("").has("https://a.com/"), false, "and from Chrome");
+  await reloadHistory();
+  assert.deepEqual(urls(), ["https://b.com/"], "a relaunch doesn't bring it back");
+
+  const before = S().history.default;
+  await reloadHistory();
+  assert.deepEqual(S().history.default, before);
+  stop();
 });
 
 // Pinned tabs (0.2.2): ⌘W unloads a pinned tab instead of closing it, and a closed window parks its pins for the

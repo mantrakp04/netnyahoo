@@ -9,4 +9,7 @@ export * from "./autofill";
 export * from "./extensions";
 export * from "./chromeUI";
 export * from "./favicons";
+export * from "./engine";
+export * from "./history";
+export * from "./bookmarks";
 export * from "./swipe";

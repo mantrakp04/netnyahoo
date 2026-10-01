@@ -21,24 +21,17 @@ function privateWindowWith(...urls) {
   return { w, ids };
 }
 
-function withClock(times, run) {
-  const now = Date.now;
-  let i = 0;
-  Date.now = () => times[Math.min(i++, times.length - 1)];
-  try {
-    run();
-  } finally {
-    Date.now = now;
-  }
-}
 
 test("incognito window: own profile, closing records nothing, history ignored", () => {
   S().hydrate({});
   const w = S().createWindow({ incognito: true, url: "secret.com" });
   const tab = S().tabs[model.activeTabId(S(), w)];
   assert.equal(tab.profileId, `incognito:${w}`);
-  S().recordVisit(tab.profileId, "https://secret.com", "S", null, true);
+  stub.historyDbs.clear();
+  assert.equal(S().importHistory(tab.profileId, [{ url: "https://secret.com/", title: "S", visits: 1, lastVisit: Date.now() }]), 0);
+  S().removeHistory(tab.profileId, ["https://secret.com/"]);
   assert.equal(S().history[tab.profileId], undefined);
+  assert.equal(stub.historyDbs.size, 0, "nothing reaches Chrome's history, not even the default profile's");
   S().newTab(w, { url: "x.com" });
   S().closeTab(model.viewTabIds(S(), w)[1]);
   assert.equal(S().closedTabs.length, 1);
@@ -162,8 +155,8 @@ test("incognito downloads never reach downloads.json and leave with their window
   stop();
 });
 
-test("favicons: incognito icons stay in memory and in their own profile", async () => {
-  const { noteFavicon, resolveFavicon, flushFavicons, useFavicons } = await import("../lib/favicons.ts");
+test("favicons: incognito icons stay in memory and in their own profile; nothing is written", async () => {
+  const { noteFavicon, resolveFavicon, useFavicons } = await import("../lib/favicons.ts");
   const { webviews } = await import("../lib/webviews.ts");
   stub.docs.clear();
   const stop = startPersistence();
@@ -172,27 +165,22 @@ test("favicons: incognito icons stay in memory and in their own profile", async 
   const [normalTab] = S().windows[normal].tabIds;
   const [privateTab] = S().windows[incognito].tabIds;
   const privateProfile = S().windows[incognito].profileId;
-  const asked = [];
-  const handle = (uri) => ({ downloadFavicon: (url, name) => (asked.push({ url, name }), Promise.resolve({ uri, width: 32, height: 32 })) });
-  webviews.set(normalTab, handle("file:///tmp/site.png"));
+  const handle = (uri) => ({ downloadFavicon: () => Promise.resolve({ uri, width: 32, height: 32 }) });
+  webviews.set(normalTab, handle("data:image/png;base64,SITE"));
   webviews.set(privateTab, handle("data:image/png;base64,AAAA"));
 
   noteFavicon(normalTab, "https://site.example/favicon.ico");
   noteFavicon(privateTab, "https://secret.example/favicon.ico");
   await new Promise((r) => setTimeout(r, 0));
 
-  assert.ok(asked.find((a) => a.url.includes("site.example")).name);
-  assert.equal(asked.find((a) => a.url.includes("secret.example")).name, undefined);
-
-  assert.equal(resolveFavicon("https://site.example/a")?.uri, "file:///tmp/site.png");
+  assert.equal(resolveFavicon("https://site.example/a")?.uri, "data:image/png;base64,SITE");
   assert.equal(resolveFavicon("https://secret.example/x"), null);
   assert.equal(resolveFavicon("https://secret.example/x", null, "default"), null);
   assert.equal(resolveFavicon("https://secret.example/x", null, privateProfile)?.uri, "data:image/png;base64,AAAA");
-  assert.equal(resolveFavicon("https://site.example/a", null, privateProfile)?.uri, "file:///tmp/site.png");
+  assert.equal(resolveFavicon("https://site.example/a", null, privateProfile)?.uri, "data:image/png;base64,SITE");
 
-  flushFavicons();
-  assert.ok(stub.docs.get("favicons-default.json")?.includes("site.example"));
-  assert.ok(![...stub.docs.keys()].some((k) => k.includes("incognito")));
+  flushPersistence();
+  assert.ok(![...stub.docs.keys()].some((k) => k.startsWith("favicons")), "Chrome keeps icons; the app writes none");
   assert.ok(![...stub.docs.values()].some((v) => String(v).includes("secret.example")));
 
   S().closeWindow(incognito);
@@ -217,9 +205,8 @@ test("incognito windows neither give nor take dragged tabs", () => {
 test("clearing a time range removes visits, not pages", () => {
   S().hydrate({});
   const t0 = 1_700_000_000_000;
-  withClock([t0 - 5 * HOUR], () => S().recordVisit("default", "https://a.com/", "A", null, true));
-  withClock([t0 - 10 * 60_000], () => S().recordVisit("default", "https://a.com/", "A", null, true));
-  withClock([t0 - 5 * 60_000], () => S().recordVisit("default", "https://b.com/", "B", null, true));
+  const entry = (url, times) => ({ url, title: url, favicon: null, visits: times.length, lastVisit: times.at(-1), visitTimes: times });
+  S().hydrate({ history: { default: [entry("https://b.com/", [t0 - 5 * 60_000]), entry("https://a.com/", [t0 - 5 * HOUR, t0 - 10 * 60_000])] } });
   assert.deepEqual(S().history.default.map((h) => [h.url, h.visits]), [["https://b.com/", 1], ["https://a.com/", 2]]);
 
   S().clearHistory("default", t0 - HOUR);
@@ -287,7 +274,7 @@ test("queued profile data is deleted once, and stays queued in session.json unti
 test("deleting a profile keeps the data others share", () => {
   S().hydrate({});
   const a = S().createProfile({ name: "A" });
-  S().recordVisit(a, "https://a.com/", "A", null, true);
+  S().importHistory(a, [{ url: "https://a.com/", title: "A", visits: 1, lastVisit: 2 }]);
   const bookmark = S().addBookmark({ profileId: a, url: "https://b.com/", title: "B" });
   const b = S().createProfile({ name: "B", shareWith: a });
   S().deleteProfile(a);
@@ -295,7 +282,7 @@ test("deleting a profile keeps the data others share", () => {
   assert.equal(model.engineProfile(b), a, "still on A's engine context");
   assert.ok(S().bookmarks.nodes[bookmark], "shared bookmarks stay");
   assert.deepEqual(S().history[b].map((h) => h.url), ["https://a.com/"]);
-  S().recordVisit(b, "https://c.com/", "C", null, true);
+  S().importHistory(b, [{ url: "https://c.com/", title: "C", visits: 1, lastVisit: 3 }]);
   assert.equal(S().history[b].length, 2);
   S().deleteProfile(b);
   assert.equal(S().bookmarks.nodes[bookmark], undefined);

@@ -54,6 +54,19 @@ enum DocumentStore {
     queue.async { land(key, mine, attempt: 0) }
   }
 
+  // Deletes the document, and any save of it still waiting.
+  static func remove(_ name: String) throws {
+    let url = try ShellModule.documentURL(name)
+    lock.lock()
+    generation += 1
+    let waiters = staged.removeValue(forKey: url.lastPathComponent)?.waiters ?? []
+    lock.unlock()
+    queue.async {
+      try? FileManager.default.removeItem(at: url)
+      for waiter in waiters { waiter(nil) }
+    }
+  }
+
   // On the queue. Writes the document if `generation` is still its newest save.
   private static func land(_ key: String, _ generation: UInt64, attempt: Int) {
     lock.lock()
@@ -257,6 +270,8 @@ public class ShellModule: Module {
     Function("readDocument") { (name: String) -> String? in DocumentStore.read(name) }
 
     Function("writeDocument") { (name: String, contents: String) in try DocumentStore.write(name, contents) }
+
+    Function("removeDocument") { (name: String) in try DocumentStore.remove(name) }
 
     // The same save, resolved once it's on disk (or a newer save of the document is), rejected if it can't be
     // written: for writes that must land before something else happens (sync's journal).

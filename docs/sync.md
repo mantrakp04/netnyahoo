@@ -109,7 +109,7 @@ The JSON is one of:
 ```jsonc
 // A log: a batch of one device's changes. seq counts up per device and scope.
 { "v": 1, "kind": "log", "device": "<id>", "seq": 7, "at": 1790000000000,
-  "ops": [{ "k": "bm:bm-…", "h": "<hlc>", "v": { … } }, { "k": "h:https://…", "h": "…", "v": null }] }
+  "ops": [{ "k": "bm:<uuid>", "h": "<hlc>", "v": { … } }, { "k": "h:https://…", "h": "…", "v": null }] }
 // A snapshot: a device's whole merged replica, and the seqs it covers per device.
 { "v": 1, "kind": "snapshot", "device": "<id>", "at": …, "vv": { "<device>": 41, … },
   "seen": { "<device>": <ms> }, "records": { "<key>": { "h": "<hlc>", "v": …, "o": ["<device>", <seq>] } } }
@@ -214,8 +214,8 @@ Profiles).
 | `set:<name>` | app | the settings that follow the user (`SYNCED_SETTINGS`: search engine and custom engines, appearance, address bar, tab layout and behaviour, bookmarks bar, full URL, muted sites, clean-up, keyboard shortcuts…) | not window sizes, battery saver, extension engines or the default profile id |
 | `prof:<sync id>` | app | a profile's name, colour, icon (`d` for the default) | deleting a profile on one Mac doesn't delete it on another |
 | `dev:<device id>` | app | a device's name | removed when it stops syncing |
-| `bm:<node id>` | profile | `{ k, p (parent: id, "bar" or "other"), t, u, a (added), pos }` | favicons stay local. A node whose folder was deleted elsewhere lands in Other Bookmarks; a cycle from two concurrent moves is broken the same way on every Mac (tested) |
-| `h:<url>` | profile | `{ t, n (visits), vt (last 50 visit times) }` for pages visited in the last 90 days | older history stays on the Mac that has it: it's never published, never deleted by sync, and dropped from snapshots |
+| `bm:<sync key>` | profile | `{ k, p (parent: its sync key, "bar" or "other"), t, u, a (added), pos }` | Bookmarks are Chrome's (BookmarkModel). A node's sync key is its Chrome UUID, or, for a bookmark synced before 0.2.20, its old id (`bm-…`, kept on Chrome's node as meta info `nn_sync_key`); every Mac makes an old key the node `bookmarkUuidFor` gives it, so Macs on either version name a bookmark alike (no renames, no duplicates; tested). Favicons stay local. A node whose folder was deleted elsewhere lands in Other Bookmarks; a cycle from two concurrent moves is broken the same way on every Mac (tested). Nothing is published or applied until the tree has been read from Chrome |
+| `h:<url>` | profile | `{ t, n (visits), vt (last 50 visit times) }` for pages visited in the last 90 days | History is Chrome's (HistoryService). Applying a record adds the visits Chrome lacks; a local edit is a visit the record doesn't have, so Macs settle on the union of their visits (tested). Not deletions: older history (it stays on the Mac that has it and is dropped from snapshots), Chrome's 90-day expiry, URLs past the newest 5,000 the app reads, and pages Chrome doesn't keep (`netnyahoo://`) |
 | `tabs:<device id>` | profile | `{ n (device name), tabs: [{ u, t }] }`: that device's 30 most recent open tabs | only its device writes it. It feeds the overflow menu's "Your Devices" |
 | `pin:t:<tab id>`, `pin:g:<group id>` | profile | pinned tabs `{ g, u, t, i, ti, pos }` and pinned groups `{ n, i, c, pos }` (Dia's pinned container) | they arrive as unloaded tiles in the window showing the profile and load when selected. Unpinning on one Mac removes the tile on the others |
 | `pw:<origin>\n<username>` | profile | `{ o, u, p }` | see below |

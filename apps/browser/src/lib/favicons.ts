@@ -1,297 +1,189 @@
-import { fetchFavicon, pruneFavicons, type FaviconImage } from "@netnyahoo/cef";
-import { iconTheme, readDocument, writeDocument, type IconTheme } from "@netnyahoo/shell";
+import { faviconsFor, fetchFavicon, onHistoryChanged, removeLegacyFavicons } from "@netnyahoo/cef";
+import { iconTheme, readDocument, removeDocument, type IconTheme } from "@netnyahoo/shell";
 import { useEffect } from "react";
 import { create } from "zustand";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile, isIncognitoProfile } from "../store/model";
 import { DEFAULT_PROFILE_ID } from "../store/settings";
-import type { HistoryEntry } from "../store/types";
 import { webviews } from "./webviews";
 
-type Icon = {
-  uri: string;
-  src: string;
-  at: number;
-  theme?: IconTheme | null;
-};
-type ProfileIcons = {
-  icons: Record<string, Icon>;
-  pages: Record<string, string>;
-  hosts: Record<string, string>;
-  appearances?: Record<string, [string, string]>;
+// Favicons are Chrome's (FaviconService): Chrome saves a page's icon when the page shows it and drops it with the
+// page's history. This is the app's in-memory cache of them, by page, plus what Chrome doesn't keep:
+// - the icons tabs show right now, private windows' included (those stay here and in their own profile);
+// - the light/dark pick: a page whose icon changes with the appearance keeps both, for this launch.
+// Nothing here is saved.
+
+type Icons = {
+  // By page (no fragment): Chrome's answer, `null` when it has none.
+  pages: Record<string, string | null>;
+  // By icon URL: what tabs reported or the app fetched.
+  srcs: Record<string, string>;
+  // A page's [light, dark] icons.
+  appearances: Record<string, [string, string]>;
 };
 
-const EMPTY: ProfileIcons = { icons: {}, pages: {}, hosts: {} };
+const EMPTY: Icons = { pages: {}, srcs: {}, appearances: {} };
 const APPEARANCE_SWAP_MS = 5000;
+const MAX_ICONS = 3000;
+const LOOKUP_DELAY_MS = 16;
+// Per engine call (nn_favicons_get answers up to 500).
+const LOOKUP_BATCH = 200;
 let appearanceChangedAt = -Infinity;
-const REFRESH_MS = 7 * 86_400_000;
-const MAX_PAGES = 5000;
-const SAVE_DELAY_MS = 1000;
 
-export const useFavicons = create<{ profiles: Record<string, ProfileIcons> }>(() => ({ profiles: {} }));
+// Keyed by cache key: the engine profile, or a private profile's own id.
+export const useFavicons = create<{ profiles: Record<string, Icons>; themes: Record<string, IconTheme | null> }>(() => ({
+  profiles: {},
+  themes: {},
+}));
 
-const docName = (profileId: string) => `favicons-${profileId}.json`;
-
-function indexFor(profileId: string): ProfileIcons {
-  const loaded = useFavicons.getState().profiles[profileId];
-  if (loaded) return loaded;
-  if (isIncognitoProfile(profileId)) return EMPTY;
-  let index = EMPTY;
-  try {
-    const json = readDocument(docName(profileId));
-    const saved = json ? (JSON.parse(json) as Partial<ProfileIcons>) : null;
-    if (saved?.icons) index = { icons: saved.icons, pages: saved.pages ?? {}, hosts: saved.hosts ?? {}, appearances: saved.appearances };
-  } catch (error) {
-    console.warn(`Couldn't read ${docName(profileId)}`, error);
-  }
-  useFavicons.getState().profiles[profileId] = index;
-  return index;
-}
-
-const dirty = new Set<string>();
-let saveTimer: ReturnType<typeof setTimeout> | undefined;
-
-// Changes since each profile's index was last compacted; a profile not in the map hasn't been this launch.
-const changesSinceCompact = new Map<string, number>();
-const COMPACT_EVERY = 500;
-
-function update(profileId: string, change: (index: ProfileIcons) => ProfileIcons) {
-  const next = change(indexFor(profileId));
-  useFavicons.setState((s) => ({ profiles: { ...s.profiles, [profileId]: next } }));
-  if (isIncognitoProfile(profileId)) return;
-  dirty.add(profileId);
-  const changes = changesSinceCompact.get(profileId);
-  if (changes !== undefined) changesSinceCompact.set(profileId, changes + 1);
-  saveTimer ??= setTimeout(flushFavicons, SAVE_DELAY_MS);
-}
-
-export function flushFavicons() {
-  clearTimeout(saveTimer);
-  saveTimer = undefined;
-  for (const profileId of dirty) {
-    if (isIncognitoProfile(profileId)) continue;
-    // Once per launch and then every COMPACT_EVERY changes, before the save that follows them.
-    if ((changesSinceCompact.get(profileId) ?? COMPACT_EVERY) >= COMPACT_EVERY) compactFavicons(profileId);
-    const index = useFavicons.getState().profiles[profileId];
-    if (index) writeDocument(docName(profileId), JSON.stringify(index));
-  }
-  dirty.clear();
-}
-
-const NO_HISTORY: HistoryEntry[] = [];
-const sourceSets = new WeakMap<object, Set<string>>();
-
-// The favicon sources a history list or bookmarks tree names, kept until it changes.
-function sourcesOf<T extends object>(owner: T, list: (owner: T) => (string | null | undefined)[]): Set<string> {
-  let set = sourceSets.get(owner);
-  if (!set) {
-    set = new Set();
-    for (const src of list(owner)) if (src) set.add(src);
-    sourceSets.set(owner, set);
-  }
-  return set;
-}
-
-// Drops what nothing refers to any more: hosts of no kept page, icons no page, host, tab, history entry or
-// bookmark names (nor their other appearance), and appearance pairs of dropped icons. Pages are capped at
-// MAX_PAGES and history at its own cap, so this bounds the index; without it every icon ever seen stayed, and the
-// index took longer to update and save the longer it was used. Only the index: the files go with Clear Data
-// (pruneProfileFavicons), since profiles sharing data share the folder and downloads may be landing.
-function compactFavicons(profileId: string) {
-  changesSinceCompact.set(profileId, 0);
-  const index = indexFor(profileId);
-  const liveHosts = new Set<string>();
-  const used = new Set<string>();
-  // Sources, not names: an icon keeps its source, and hashing every bookmark's would cost more than the rest.
-  const s = useBrowser.getState();
-  const tabSources = new Set<string>();
-  for (const t of Object.values(s.tabs)) if (t.favicon) tabSources.add(t.favicon);
-  const history = sourcesOf(s.history[profileId] ?? NO_HISTORY, (list) => list.map((h) => h.favicon));
-  const bookmarks = sourcesOf(s.bookmarks, (b) => Object.values(b.nodes).map((n) => (n.kind === "url" ? n.favicon : null)));
-  for (const name in index.icons) {
-    const src = index.icons[name]!.src;
-    if (tabSources.has(src) || history.has(src) || bookmarks.has(src)) used.add(name);
-  }
-  for (const page in index.pages) {
-    liveHosts.add(hostKey(page));
-    used.add(index.pages[page]!);
-  }
-  // Kept entries are copied into new maps (deleting most keys of a big map is slower than building a small one).
-  let hosts = index.hosts;
-  let droppedHosts = false;
-  for (const host in index.hosts) {
-    if (liveHosts.has(host)) used.add(index.hosts[host]!);
-    else droppedHosts = true;
-  }
-  if (droppedHosts) {
-    hosts = {};
-    for (const host in index.hosts) if (liveHosts.has(host)) hosts[host] = index.hosts[host]!;
-  }
-  for (const name of [...used]) for (const other of index.appearances?.[name] ?? []) used.add(other);
-  let icons = index.icons;
-  for (const name in index.icons) {
-    if (used.has(name)) continue;
-    icons = {};
-    for (const kept in index.icons) if (used.has(kept)) icons[kept] = index.icons[kept]!;
-    break;
-  }
-  let appearances = index.appearances;
-  if (appearances && icons !== index.icons) appearances = Object.fromEntries(Object.entries(appearances).filter(([name]) => icons[name]));
-  if (hosts === index.hosts && icons === index.icons) return;
-  useFavicons.setState((f) => ({ profiles: { ...f.profiles, [profileId]: { icons, pages: index.pages, hosts, appearances } } }));
-}
-
-// MARK: Keys
-
+const cacheKey = (profileId: string) => (isIncognitoProfile(profileId) ? profileId : engineProfile(profileId));
 export const pageKey = (url: string) => url.replace(/#.*$/, "");
-const hostKey = (url: string) => /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?([^/?#:]+)/i.exec(url)?.[1]?.toLowerCase().replace(/^www\./, "") ?? "";
 
-const names = new Map<string, string>();
-export function iconName(src: string): string {
-  let name = names.get(src);
-  if (name) return name;
-  let a = 0x811c9dc5;
-  let b = 0x01000193 ^ src.length;
-  for (let i = 0; i < src.length; i++) {
-    const c = src.charCodeAt(i);
-    a = Math.imul(a ^ c, 0x01000193);
-    b = Math.imul(b ^ c, 0x5bd1e995);
+function update(key: string, change: (icons: Icons) => Icons) {
+  useFavicons.setState((f) => {
+    const before = f.profiles[key] ?? EMPTY;
+    const after = change(before);
+    return after === before ? f : { profiles: { ...f.profiles, [key]: after } };
+  });
+}
+
+// Bounded: past MAX_ICONS a map starts over (Chrome still has every icon; pages ask again).
+const capped = <T,>(map: Record<string, T>, key: string, value: T): Record<string, T> =>
+  Object.keys(map).length >= MAX_ICONS ? { [key]: value } : { ...map, [key]: value };
+
+// MARK: Asking Chrome
+
+const queued = new Map<string, Set<string>>();
+const asked = new Set<string>();
+let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+
+function ask(key: string, page: string) {
+  if (isIncognitoProfile(key) || asked.has(`${key}|${page}`)) return;
+  asked.add(`${key}|${page}`);
+  if (!queued.has(key)) queued.set(key, new Set());
+  queued.get(key)!.add(page);
+  lookupTimer ??= setTimeout(lookUp, LOOKUP_DELAY_MS);
+}
+
+function lookUp() {
+  lookupTimer = undefined;
+  const batches = [...queued];
+  queued.clear();
+  for (const [key, pages] of batches) {
+    const all = [...pages];
+    for (let i = 0; i < all.length; i += LOOKUP_BATCH) lookUpPages(key, all.slice(i, i + LOOKUP_BATCH));
   }
-  name = `i${(a >>> 0).toString(16).padStart(8, "0")}${(b >>> 0).toString(16).padStart(8, "0")}`;
-  if (names.size > 5000) names.clear();
-  names.set(src, name);
-  return name;
+}
+
+function lookUpPages(key: string, list: string[]) {
+  void faviconsFor(key, list)
+    .then((found) =>
+      update(key, (icons) => {
+        const next = { ...icons.pages };
+        for (const page of list) next[page] = found.pages.get(page)?.uri ?? null;
+        return { ...icons, pages: next };
+      }),
+    )
+    .catch((error) => {
+      // Asked again next time it's shown.
+      for (const page of list) asked.delete(`${key}|${page}`);
+      console.warn("[favicons] lookup failed", error);
+    });
 }
 
 // MARK: Recording
 
-// Each pages map's newest page (its last key) and size, so a report changes the index without walking or
-// copying its 5000 pages. Keyed by the map, so a closed private profile's index takes them with it.
-const newestPage = new WeakMap<Record<string, string>, string>();
-const pageCounts = new WeakMap<Record<string, string>, number>();
+const inflight = new Map<string, Promise<string | null>>();
 
-function remember(profileId: string, pageUrl: string, name: string, icon?: Icon) {
-  const page = pageKey(pageUrl);
-  const host = hostKey(pageUrl);
-  const dark = useBrowser.getState().ui.appDark;
-  const swapped = Date.now() - appearanceChangedAt < APPEARANCE_SWAP_MS;
-  const known = indexFor(profileId);
-  // Pages report their icon on every load: nothing to record when this page is already the newest with it.
-  if (!icon && newestPage.get(known.pages) === page && known.pages[page] === name && (!host || known.hosts[host] === name)) return;
-  update(profileId, (index) => {
-    // The pages map is changed in place (copying it per report cost more than the rest of the report); the index
-    // object is new, so subscribers still see the change. EMPTY's map is shared, so it's never written.
-    const pages = index.pages === EMPTY.pages ? {} : index.pages;
-    const previous = pages[page];
-    let count = pageCounts.get(pages) ?? Object.keys(pages).length;
-    if (previous === undefined) count++;
-    delete pages[page];
-    pages[page] = name;
-    for (const old in pages) {
-      if (count <= MAX_PAGES) break;
-      delete pages[old];
-      count--;
-    }
-    pageCounts.set(pages, count);
-    newestPage.set(pages, page);
-    let appearances = index.appearances;
-    if (swapped && previous && previous !== name) {
-      const pair: [string, string] = dark ? [previous, name] : [name, previous];
-      appearances = { ...appearances, [previous]: pair, [name]: pair };
-    }
-    // Icons and hosts are changed in place too (not EMPTY's shared maps).
-    const icons = !icon ? index.icons : index.icons === EMPTY.icons ? { [name]: icon } : Object.assign(index.icons, { [name]: icon });
-    const hosts = !host || index.hosts[host] === name ? index.hosts : index.hosts === EMPTY.hosts ? { [host]: name } : Object.assign(index.hosts, { [host]: name });
-    return { icons, pages, hosts, appearances };
-  });
-}
-
-const inflight = new Map<string, Promise<FaviconImage | null>>();
-
+/** A tab reports its page's icon: shown at once, and Chrome keeps it with the page. */
 export function noteFavicon(tabId: string, src: string) {
   const tab = useBrowser.getState().tabs[tabId];
   if (!tab?.url || !src) return;
-  const { profileId, url } = tab;
-  const name = iconName(src);
-  const known = indexFor(profileId).icons[name];
-  if (known && Date.now() - known.at < REFRESH_MS) return remember(profileId, url, name);
+  const key = cacheKey(tab.profileId);
+  const page = pageKey(tab.url);
+  const known = useFavicons.getState().profiles[key]?.srcs[src];
+  if (known) return remember(key, page, src, known);
   const handle = webviews.get(tabId);
   if (!handle) return;
-  const key = `${profileId}|${name}`;
-  let pending = inflight.get(key);
+  const id = `${key}|${src}`;
+  let pending = inflight.get(id);
   if (!pending) {
-    pending = handle.downloadFavicon(src, isIncognitoProfile(profileId) ? undefined : name).catch(() => null);
-    inflight.set(key, pending);
-    void pending.finally(() => inflight.delete(key));
+    pending = handle
+      .downloadFavicon(src)
+      .then((image) => image?.uri ?? null)
+      .catch(() => null);
+    inflight.set(id, pending);
+    void pending.finally(() => inflight.delete(id));
   }
-  void pending.then((image) => {
-    if (image) remember(profileId, url, name, { uri: image.uri, src, at: Date.now() });
-    else if (known) remember(profileId, url, name);
+  void pending.then((uri) => uri && remember(key, page, src, uri));
+}
+
+function remember(key: string, page: string, src: string, uri: string) {
+  const dark = useBrowser.getState().ui.appDark;
+  const swapped = Date.now() - appearanceChangedAt < APPEARANCE_SWAP_MS;
+  update(key, (icons) => {
+    const previous = icons.pages[page];
+    if (previous === uri && icons.srcs[src] === uri) return icons;
+    let appearances = icons.appearances;
+    if (swapped && previous && previous !== uri) appearances = { ...appearances, [page]: dark ? [previous, uri] : [uri, previous] };
+    return { pages: capped(icons.pages, page, uri), srcs: icons.srcs[src] === uri ? icons.srcs : capped(icons.srcs, src, uri), appearances };
   });
 }
 
 const failedFetches = new Set<string>();
 
-function fetchMissing(profileId: string, pageUrl: string, src: string) {
+// An icon Chrome doesn't have for a page the app names with one (an imported bookmark never visited): fetched
+// without cookies and handed to Chrome, which keeps it as an on-demand icon.
+function fetchMissing(profileId: string, url: string, src: string) {
+  const key = cacheKey(profileId);
   if (isIncognitoProfile(profileId) || !/^https?:/i.test(src)) return;
-  const name = iconName(src);
-  const key = `${profileId}|${name}`;
-  if (inflight.has(key) || failedFetches.has(key)) return;
-  const pending = fetchFavicon(src, engineProfile(profileId), name).catch(() => null);
-  inflight.set(key, pending);
-  void pending.then((image) => {
-    inflight.delete(key);
-    if (image) remember(profileId, pageUrl, name, { uri: image.uri, src, at: Date.now() });
-    else failedFetches.add(key);
+  const id = `${key}|${src}`;
+  if (inflight.has(id) || failedFetches.has(id)) return;
+  const pending = fetchFavicon(src, key, pageKey(url))
+    .then((image) => image?.uri ?? null)
+    .catch(() => null);
+  inflight.set(id, pending);
+  void pending.then((uri) => {
+    inflight.delete(id);
+    if (uri) remember(key, pageKey(url), src, uri);
+    else failedFetches.add(id);
   });
 }
 
 export function faviconFailed(profileId: string, uri: string) {
-  const index = useFavicons.getState().profiles[profileId];
-  const name = index && Object.keys(index.icons).find((n) => index.icons[n]!.uri === uri);
-  if (!name) return;
-  update(profileId, (i) => {
-    const { [name]: _gone, ...icons } = i.icons;
-    return { ...i, icons };
-  });
+  update(cacheKey(profileId), (icons) => ({
+    pages: Object.fromEntries(Object.entries(icons.pages).map(([page, u]) => [page, u === uri ? null : u])),
+    srcs: Object.fromEntries(Object.entries(icons.srcs).filter(([, u]) => u !== uri)),
+    appearances: icons.appearances,
+  }));
 }
 
 // MARK: Lookup
 
 export type ResolvedFavicon = { uri: string; profileId: string };
 
-function lookupIn(profileId: string, url: string, src: string | null | undefined): string | undefined {
-  const index = indexFor(profileId);
-  const byPage = index.pages[pageKey(url)];
-  const name = src ? iconName(src) : undefined;
-  if (name && index.icons[name]) return inScheme(index, name);
-  if (byPage && index.icons[byPage]) return inScheme(index, byPage);
-  const byHost = index.hosts[hostKey(url)];
-  return byHost && index.icons[byHost] ? inScheme(index, byHost) : undefined;
+function lookupIn(key: string, url: string, src: string | null | undefined): string | undefined {
+  const icons = useFavicons.getState().profiles[key];
+  if (!icons) return undefined;
+  const page = pageKey(url);
+  const pair = icons.appearances[page];
+  if (pair) return pair[useBrowser.getState().ui.appDark ? 1 : 0];
+  return (src ? icons.srcs[src] : undefined) ?? icons.pages[page] ?? undefined;
 }
 
-function inScheme(index: ProfileIcons, name: string): string {
-  const pair = index.appearances?.[name];
-  const shown = pair?.[useBrowser.getState().ui.appDark ? 1 : 0];
-  return shown && index.icons[shown] ? shown : name;
-}
-
-function resolveIcon(url: string, src?: string | null, profileId?: string): { profileId: string; name: string; icon: Icon } | null {
-  if (!url) return null;
-  const order =
-    profileId && !isIncognitoProfile(profileId)
-      ? [profileId]
-      : [...new Set([...(profileId ? [profileId] : []), DEFAULT_PROFILE_ID, ...useBrowser.getState().profileOrder])];
-  for (const id of order) {
-    const name = lookupIn(id, url, src);
-    if (name) return { profileId: id, name, icon: indexFor(id).icons[name]! };
-  }
-  return null;
+// Where to look: the profile's own icons; a private window's (or no profile's) also the others'.
+function lookupOrder(profileId?: string): string[] {
+  if (profileId && !isIncognitoProfile(profileId)) return [profileId];
+  return [...new Set([...(profileId ? [profileId] : []), DEFAULT_PROFILE_ID, ...useBrowser.getState().profileOrder])];
 }
 
 export function resolveFavicon(url: string, src?: string | null, profileId?: string): ResolvedFavicon | null {
-  const found = resolveIcon(url, src, profileId);
-  return found ? { uri: found.icon.uri, profileId: found.profileId } : null;
+  if (!url) return null;
+  for (const id of lookupOrder(profileId)) {
+    const uri = lookupIn(cacheKey(id), url, src);
+    if (uri) return { uri, profileId: id };
+  }
+  return null;
 }
 
 // Callers re-render on an appearance change themselves (useAppearanceDark): the lookup reads it for
@@ -303,13 +195,19 @@ export function useFavicon(url: string, src?: string | null, profileId?: string)
     const found = resolveFavicon(url, src, profileId);
     return found ? `${found.profileId} ${found.uri}` : null;
   });
-  const split = key?.indexOf(" ") ?? -1;
-  const resolved = key ? { profileId: key.slice(0, split), uri: key.slice(split + 1) } : null;
-  const missing = !resolved && !!url && !!src && !!profileId;
+  // Chrome's answer for the page: not asked yet, or asked and none.
+  const answer = useFavicons((f) => {
+    if (!url || key) return "found";
+    const ids = lookupOrder(profileId).filter((id) => !isIncognitoProfile(id));
+    if (ids.some((id) => f.profiles[cacheKey(id)]?.pages[pageKey(url)] === undefined)) return "unknown";
+    return "none";
+  });
   useEffect(() => {
-    if (missing) fetchMissing(profileId!, url, src!);
-  }, [missing, profileId, url, src]);
-  return resolved;
+    if (answer === "unknown") for (const id of lookupOrder(profileId)) ask(cacheKey(id), pageKey(url));
+    else if (answer === "none" && src && profileId) fetchMissing(profileId, url, src);
+  }, [answer, profileId, url, src]);
+  const split = key?.indexOf(" ") ?? -1;
+  return key ? { profileId: key.slice(0, split), uri: key.slice(split + 1) } : null;
 }
 
 // MARK: Themes
@@ -317,55 +215,55 @@ export function useFavicon(url: string, src?: string | null, profileId?: string)
 const theming = new Set<string>();
 
 export function useFaviconTheme(url: string, src?: string | null, profileId?: string): IconTheme | null | undefined {
-  const icon = useFavicons(() => resolveIcon(url, src, profileId)?.icon ?? null);
-  const pending = !!icon && icon.theme === undefined;
+  const uri = useFavicons(() => resolveFavicon(url, src, profileId)?.uri ?? null);
+  const theme = useFavicons((f) => (uri ? f.themes[uri] : undefined));
+  const pending = !!uri && theme === undefined;
   useEffect(() => {
-    if (!pending) return;
-    const found = resolveIcon(url, src, profileId);
-    if (!found) return;
-    const { profileId: id, name, icon: current } = found;
-    const key = `${id}|${name}|${current.uri}`;
-    if (theming.has(key)) return;
-    theming.add(key);
-    void iconTheme({ uri: current.uri })
+    if (!pending || !uri || theming.has(uri)) return;
+    theming.add(uri);
+    void iconTheme({ uri })
       .catch(() => null)
-      .then((theme) =>
-        update(id, (index) => {
-          const now = index.icons[name];
-          if (!now || now.uri !== current.uri) return index;
-          return { ...index, icons: { ...index.icons, [name]: { ...now, theme } } };
-        }),
-      );
-  }, [pending, url, src, profileId]);
-  return icon?.theme;
+      .then((found) => useFavicons.setState((f) => ({ themes: capped(f.themes, uri, found ?? null) })))
+      .finally(() => theming.delete(uri));
+  }, [pending, uri]);
+  return theme;
 }
 
 // MARK: Housekeeping
 
-export function pruneProfileFavicons(profileId: string) {
-  if (isIncognitoProfile(profileId)) return;
-  const s = useBrowser.getState();
-  const keep = new Set<string>();
-  for (const h of s.history[profileId] ?? []) keep.add(pageKey(h.url));
-  for (const t of Object.values(s.tabs)) if (t.profileId === profileId && t.url) keep.add(pageKey(t.url));
-  const roots = s.bookmarks.roots[profileId];
-  if (roots) for (const n of Object.values(s.bookmarks.nodes)) if (n.kind === "url") keep.add(pageKey(n.url));
-  update(profileId, (index) => {
-    const pages = Object.fromEntries(Object.entries(index.pages).filter(([page]) => keep.has(page)));
-    const liveHosts = new Set(Object.keys(pages).map(hostKey));
-    const hosts = Object.fromEntries(Object.entries(index.hosts).filter(([host]) => liveHosts.has(host)));
-    const used = new Set([...Object.values(pages), ...Object.values(hosts)]);
-    for (const name of [...used]) for (const other of index.appearances?.[name] ?? []) used.add(other);
-    const icons = Object.fromEntries(Object.entries(index.icons).filter(([name]) => used.has(name)));
-    const appearances = Object.fromEntries(Object.entries(index.appearances ?? {}).filter(([name]) => icons[name]));
-    return { icons, pages, hosts, appearances };
-  });
-  flushFavicons();
-  void pruneFavicons(engineProfile(profileId), Object.keys(indexFor(profileId).icons));
+function forget(key: string) {
+  for (const id of [...asked]) if (id.startsWith(`${key}|`)) asked.delete(id);
+  update(key, () => EMPTY);
+}
+
+/** Clear Data deleted the profile's icons from Chrome: forget what's cached. */
+export const pruneProfileFavicons = (profileId: string) => forget(cacheKey(profileId));
+
+// Before Chrome kept them: an index per profile (favicons-<profile>.json) and a folder of PNGs per engine profile.
+function removeLegacyFiles(s: Pick<BrowserState, "profiles">) {
+  for (const id of Object.keys(s.profiles)) {
+    const doc = `favicons-${id}.json`;
+    try {
+      if (readDocument(doc) === null) continue;
+      removeDocument(doc);
+      if (!isIncognitoProfile(id)) void removeLegacyFavicons(engineProfile(id)).catch(() => {});
+    } catch (error) {
+      console.warn(`[favicons] couldn't remove ${doc}`, error);
+    }
+  }
 }
 
 export function startFavicons() {
-  const check = (s: BrowserState, prev: BrowserState) => {
+  removeLegacyFiles(useBrowser.getState());
+  const history = onHistoryChanged((change) => {
+    if (change.kind !== "deleted") return;
+    if (change.all) return forget(change.profile);
+    const gone = new Set(change.urls.map(pageKey));
+    const key = change.profile;
+    for (const page of gone) asked.delete(`${key}|${page}`);
+    update(key, (icons) => ({ ...icons, pages: Object.fromEntries(Object.entries(icons.pages).filter(([page]) => !gone.has(page))) }));
+  });
+  const stop = useBrowser.subscribe((s, prev) => {
     if (s.ui.appDark !== prev.ui.appDark) appearanceChangedAt = Date.now();
     if (s.windows !== prev.windows) {
       const open = new Set(Object.values(s.windows).map((w) => w.profileId));
@@ -375,14 +273,9 @@ export function startFavicons() {
         useFavicons.setState((f) => ({ profiles: Object.fromEntries(Object.entries(f.profiles).filter(([id]) => !gone.includes(id))) }));
       }
     }
-    if (s.profiles !== prev.profiles) {
-      for (const id of Object.keys(prev.profiles)) {
-        if (s.profiles[id]) continue;
-        dirty.delete(id);
-        writeDocument(docName(id), "");
-        useFavicons.setState((f) => ({ profiles: Object.fromEntries(Object.entries(f.profiles).filter(([p]) => p !== id)) }));
-      }
-    }
+  });
+  return () => {
+    history.remove();
+    stop();
   };
-  return useBrowser.subscribe(check);
 }

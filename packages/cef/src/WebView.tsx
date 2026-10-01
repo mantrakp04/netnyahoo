@@ -195,7 +195,7 @@ export type WebViewHandle = {
   executeJavaScript(code: string): Promise<void>;
   evaluate<T = unknown>(code: string): Promise<T | null>;
   navigationEntries(): Promise<NavigationEntry[]>;
-  downloadFavicon(url: string, name?: string): Promise<FaviconImage | null>;
+  downloadFavicon(url: string): Promise<FaviconImage | null>;
   downloadImage(url: string, maxPixels: number): Promise<FaviconImage | null>;
 
   mediaCommand(action: MediaCommand, seconds?: number): Promise<void>;
@@ -299,7 +299,7 @@ type NativeHandle = Omit<
   "evaluate" | "loadUrl" | "downloadFavicon" | "resolvePasswordPrompt" | "discard"
 > & {
   evaluate(code: string): Promise<string | null>;
-  downloadFavicon(url: string, name: string | null): Promise<FaviconImage | null>;
+  downloadFavicon(url: string): Promise<FaviconImage | null>;
   loadUrl(url: string, userInitiated?: boolean): Promise<void>;
   loadOpenedUrl(openedId: number, url: string): Promise<void>;
   resolvePasswordPrompt(answer: string, username: string | null, password: string | null): Promise<void>;
@@ -365,7 +365,7 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
       },
       navigationEntries: async () => (await call([], (n) => n.navigationEntries())).map((e) => ({ ...e, url: toAppUrl(e.url) })),
       downloadImage: (url, maxPixels) => call(null, (n) => n.downloadImage(url, maxPixels)),
-      downloadFavicon: (url, name) => call(null, (n) => n.downloadFavicon(url, name ?? null)),
+      downloadFavicon: (url) => call(null, (n) => n.downloadFavicon(url)),
       mediaCommand: (action, seconds) => call(undefined, (n) => n.mediaCommand(action, seconds)),
       requestPictureInPicture: () => call(false, (n) => n.requestPictureInPicture()),
       exitPictureInPicture: () => call(undefined, (n) => n.exitPictureInPicture()),

@@ -1,10 +1,12 @@
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
-import { newId, without } from "./model";
+import { engineProfile, without } from "./model";
 import type { BookmarkFolder, BookmarkNode, Bookmarks } from "./types";
 
 export type BookmarksSlice = {
   bookmarks: Bookmarks;
+  // Profiles whose tree has been read from Chrome (until then it's empty, not "no bookmarks").
+  bookmarksReady: Record<string, true>;
 
   addBookmark(options: { profileId: string; url: string; title: string; favicon?: string | null; parentId?: string; index?: number }): string;
   addBookmarkFolder(options: { profileId: string; title: string; parentId?: string; index?: number }): string;
@@ -23,6 +25,51 @@ export type RemovedBookmarks = { nodes: BookmarkNode[]; places: { id: string; pa
 
 export const EMPTY_BOOKMARKS: Bookmarks = { nodes: {}, roots: {} };
 
+// Bookmarks are Chrome's (BookmarkModel; lib/bookmarks.ts keeps Chrome's tree and this one alike). A node's id is
+// its Chrome UUID, so sync and chrome.bookmarks name it the same way; Chrome's two permanent folders are each
+// engine profile's roots.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const isBookmarkUuid = (id: string) => UUID.test(id);
+
+function uuidFrom(words: number[]): string {
+  const hex = words.map((w) => (w >>> 0).toString(16).padStart(8, "0")).join("");
+  // Version 4, variant 10xx: what Chrome generates.
+  const v = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${v}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+export const newBookmarkId = () => uuidFrom(Array.from({ length: 4 }, () => Math.floor(Math.random() * 0x1_0000_0000)));
+
+/**
+ * The UUID a bookmark saved before Chrome kept them gets, from its old id ("bm-…"), which stays its sync key: the
+ * same on every Mac, so the bookmarks.json move and a synced record keyed by the old id make one bookmark. A UUID
+ * stays as it is.
+ */
+export function bookmarkUuidFor(id: string): string {
+  if (isBookmarkUuid(id)) return id;
+  const text = `netnyahoo-bookmark:${id}`;
+  let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
+  for (let i = 0; i < text.length; i++) {
+    const k = text.charCodeAt(i);
+    h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+  }
+  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+  h1 ^= h2 ^ h3 ^ h4;
+  h2 ^= h1;
+  h3 ^= h1;
+  h4 ^= h1;
+  return uuidFrom([h1, h2, h3, h4]);
+}
+
+/** An engine profile's permanent folders, as store ids. */
+export const rootIdsFor = (engine: string) => ({ bar: `bar@${engine || "default"}`, other: `other@${engine || "default"}` });
+
 export function bookmarkRoots(b: Bookmarks, profileId: string) {
   return b.roots[profileId];
 }
@@ -30,11 +77,11 @@ export function bookmarkRoots(b: Bookmarks, profileId: string) {
 export function ensureRoots(b: Bookmarks, profileId: string): [Bookmarks, { bar: string; other: string }] {
   const existing = b.roots[profileId];
   if (existing) return [b, existing];
-  const now = Date.now();
-  const bar: BookmarkFolder = { kind: "folder", id: newId("bm"), parentId: null, title: "Bookmarks Bar", children: [], addedAt: now };
-  const other: BookmarkFolder = { kind: "folder", id: newId("bm"), parentId: null, title: "Other Bookmarks", children: [], addedAt: now };
-  const roots = { bar: bar.id, other: other.id };
-  return [{ nodes: { ...b.nodes, [bar.id]: bar, [other.id]: other }, roots: { ...b.roots, [profileId]: roots } }, roots];
+  const roots = rootIdsFor(engineProfile(profileId));
+  const nodes = { ...b.nodes };
+  nodes[roots.bar] ??= { kind: "folder", id: roots.bar, parentId: null, title: "Bookmarks Bar", children: [], addedAt: 0 };
+  nodes[roots.other] ??= { kind: "folder", id: roots.other, parentId: null, title: "Other Bookmarks", children: [], addedAt: 0 };
+  return [{ nodes, roots: { ...b.roots, [profileId]: roots } }, roots];
 }
 
 function subtree(b: Bookmarks, ids: string[]): string[] {
@@ -110,17 +157,18 @@ export function folderLinks(b: Bookmarks, folderId: string): Extract<BookmarkNod
 
 export const createBookmarksSlice: StateCreator<BrowserState, [], [], BookmarksSlice> = (set, get) => ({
   bookmarks: EMPTY_BOOKMARKS,
+  bookmarksReady: {},
 
   addBookmark({ profileId, url, title, favicon = null, parentId, index }) {
     const [b, roots] = ensureRoots(get().bookmarks, profileId);
-    const node: BookmarkNode = { kind: "url", id: newId("bm"), parentId: parentId ?? roots.bar, title, url, favicon, addedAt: Date.now() };
+    const node: BookmarkNode = { kind: "url", id: newBookmarkId(), parentId: parentId ?? roots.bar, title, url, favicon, addedAt: Date.now() };
     set({ bookmarks: insertChild(b, node, node.parentId, index) });
     return node.id;
   },
 
   addBookmarkFolder({ profileId, title, parentId, index }) {
     const [b, roots] = ensureRoots(get().bookmarks, profileId);
-    const node: BookmarkNode = { kind: "folder", id: newId("bm"), parentId: parentId ?? roots.bar, title, children: [], addedAt: Date.now() };
+    const node: BookmarkNode = { kind: "folder", id: newBookmarkId(), parentId: parentId ?? roots.bar, title, children: [], addedAt: Date.now() };
     set({ bookmarks: insertChild(b, node, node.parentId!, index) });
     return node.id;
   },
@@ -159,7 +207,7 @@ export const createBookmarksSlice: StateCreator<BrowserState, [], [], BookmarksS
     let [b, roots] = ensureRoots(get().bookmarks, profileId);
     const nodes = { ...b.nodes };
     const build = (d: BookmarkDraft, parent: string): string => {
-      const id = newId("bm");
+      const id = newBookmarkId();
       const addedAt = d.addedAt ?? Date.now();
       if (d.url !== undefined && !d.children) {
         nodes[id] = { kind: "url", id, parentId: parent, title: d.title, url: d.url, favicon: null, addedAt };

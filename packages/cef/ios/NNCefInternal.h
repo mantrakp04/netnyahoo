@@ -50,7 +50,7 @@ inline bool IsIncognito(NSString *profile) { return [profile hasPrefix:@"incogni
 NSString *ProfileForContext(CefRefPtr<CefRequestContext> context);
 NSString *DataRoot();
 NSString *ProfileDirectory(NSString *profile);
-void DownloadFavicon(CefRefPtr<CefBrowser> browser, NSString *url, NSString *name, void (^completion)(NSDictionary *));
+void DownloadFavicon(CefRefPtr<CefBrowser> browser, NSString *url, void (^completion)(NSDictionary *));
 void DownloadImage(CefRefPtr<CefBrowser> browser, NSString *url, int maxPixels, void (^completion)(NSDictionary *));
 
 bool DisplayMediaPickerEnabled();

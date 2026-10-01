@@ -101,7 +101,7 @@ held report flushed before any other event so JS sees them in order.
 |---|---|---|
 | `url` | done | |
 | `profile` | done | `""` is Chrome's Default profile, `<id>` is `Profile <id>`, `incognito…` the default profile's OTR profile |
-| `adoptId` | done | `nncore:<id>` takes the live tab Chrome made. CEF's `open:`/`clone:`/`restore:` ids open the URL fresh |
+| `adoptId` | done | `nncore:<id>` takes the live tab Chrome made. CEF's `open:`/`clone:`/`restore:` ids open the URL fresh. `restore:<tab id>@<closed at ms>` should restore Chrome's TabRestoreService entry: `nn_tab_restore_take({url, closedAt})` (in NNCore's framework) returns its navigations in CEF's `GetNavigationState` format (base64 pickle: version 1, index, count, `SerializedNavigationEntry`s); NNCore needs a restore that takes them (`chrome::AddRestoredTab`) |
 | `transferKey` | partial | A tab moving between windows is parked (or taken from a view that hasn't unmounted yet) and its WebContents moves into the new window's Browser (`adoptTab:`). Untested in the app. It is also the tab's key in tab-strip transactions |
 | `visible`, `warm` | done | Hidden views hide the page view, so Chrome marks it hidden |
 | `standalone` | stubbed | |
@@ -137,7 +137,7 @@ held report flushed before any other event so JS sees them in order.
 | `goBack`, `goForward`, `goToOffset`, `reload`, `forceReload`, `stopLoading`, `focus`, `find`, `stopFinding`, `showDevTools` | done | DevTools dock in the tab's view (Chrome's split) |
 | `setMuted`, `executeJavaScript`, `evaluate`, `navigationEntries` | done | Through NNCore's renderer side (an NNCore `ContentRendererClient` and a mojo channel, `engine/nncore`) |
 | `setTabStrip` | done | Chrome's index and pin (`placeTab:`) |
-| `downloadFavicon`, `downloadImage` | partial | From Chrome's favicon when a tab showed it, else a cookieless download |
+| `downloadFavicon`, `downloadImage` | partial | From Chrome's favicon when a tab showed it, else a cookieless download. `downloadFavicon(url)` returns a `data:` PNG and writes nothing (Chrome's FaviconService keeps icons) |
 | `mediaCommand` | partial | Sent to the page script's `media` handler. Untested |
 | `getSecurityInfo` | partial | The scheme only (secure/insecure/local), no certificate |
 | `resolvePasswordPrompt` | partial | save and dismiss |
@@ -156,7 +156,7 @@ Closing: the app closes a tab by unmounting its WebView; NNCore closes it at onc
 | `engineCall`, `onEngineEvent` | done | `//chrome/browser/netnyahoo`'s C exports, which NNCore's framework links and exports (the same code as CEF's), called with the profile's directory |
 | `removeLegacyFavicons` | done | Nothing to remove on NNCore |
 | `systemState`, `onSystemState` | done | Same code as CEF's (IOKit, memory pressure) |
-| `fetchFavicon`, `pruneFavicons` | partial | As `downloadFavicon`; stored where CEF stores them (`<profile>/Netnyahoo Favicons`) |
+| `fetchFavicon` | partial | `(url, profile)`, a cookieless download as a `data:` PNG; the JS then hands it to Chrome with `engineCall("nn_favicons_set")` |
 | `chromeWindows`, `devWindow`, `components`, `beginTracing`, `endTracing`, `isTracing`, `listTasks`, `killTask`, `setSearchEngineName`, `forgetOpenedURL`, `setDisplayMediaPicker`, `displayMediaSources` | stubbed | `forgetOpenedURL` has nothing to forget on NNCore |
 | `onDownload`, `cancelDownload`, `pauseDownload`, `resumeDownload` | stubbed | Downloads run in Chrome's download manager with no app UI yet |
 | `onPermission`, `onPermissionDismissed`, `resolvePermission` | stubbed | Chrome's own permission prompts (child windows of ours) |

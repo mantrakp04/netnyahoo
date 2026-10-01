@@ -40,9 +40,11 @@ globalThis.nnTestNativeModules = {
 const shell = await import("@netnyahoo/shell");
 const { useBrowser } = await import("../store/browser.ts");
 const S = () => useBrowser.getState();
+// Bookmarks are the store's alone here (lib/bookmarks.ts, which reads Chrome's, isn't running).
+const reset = () => (S().hydrate({}), useBrowser.setState({ bookmarksReady: { default: true } }));
 
 test("a crash after a batch lands: after the restart it's sent again as it was, and the next batch gets a new seq", async () => {
-  S().hydrate({});
+  reset();
   const first = await import("./engine.ts?first");
   first.startSync();
   assert.ok("ok" in (await first.turnOnSync("/sync")));
@@ -81,7 +83,7 @@ test("a crash after a batch lands: after the restart it's sent again as it was, 
 });
 
 test("a batch is published only once the journal holding it is on disk", async () => {
-  S().hydrate({});
+  reset();
   const engine = await import("./engine.ts?held");
   engine.startSync();
   assert.ok("ok" in (await engine.turnOnSync("/sync")));
