@@ -84,7 +84,7 @@ theme.ts and App.tsx, take small additive edits only, as the agent brief says). 
 its own files (Findings 1).
 
 **R1 · Tab state on Chrome** (engine + store) — **done 2026-09-25** (`docs/migration-status.md` › "R1"; CEF hooks
-in `packages/cef/patches/cef-tab-state.patch`).
+in `engine/patches/cef-tab-state.patch`).
 - Reopen Closed Tab and Duplicate keep the back/forward list: `IDC_RESTORE_TAB` / `IDC_DUPLICATE_TAB` (or
   TabRestoreService) on the Chrome tab, adopted into our snapshot's place, pin and group (§2, 2 ❌).
 - Sleeping tabs through Chrome's own discard, so history survives and `chrome.tabs` lists them as
@@ -190,7 +190,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
    scan the QR code with your phone's camera. Pass: the phone connects and saves the passkey; Authenticate with the
    phone succeeds.
 8. **Remove-extension sheet** (W2). ⌘, › Extensions › Load unpacked…, pick
-   `~/Documents/netnyahoo/packages/cef/patches/test/ext`, confirm Add. Then Remove on its row. Pass: a sheet
+   `~/Documents/netnyahoo/spikes/nncore-host/fixtures/ext`, confirm Add. Then Remove on its row. Pass: a sheet
    attached to the Settings window, "Remove “nn component test”?" with Cancel and a red Remove; Cancel keeps it,
    Remove takes it off the list. If you have a store extension installed, "Remove from Netnyahoo" on its store
    page must show the same sheet on the browser window.
@@ -566,7 +566,7 @@ Chrome's password manager and autofill fill pages themselves; our Settings panes
 | Feature | Dia | Netnyahoo | Gap |
 |---|---|---|---|
 | Built‑in ad + tracker blocker (EasyList, EasyPrivacy), per‑site toggle | ✓ | ✅ | uBlock Origin Lite (MV3 DNR + cosmetic) as a component extension in every profile, incognito included (ledger 16); per-site "disable on this site"; blocked count from `ERR_BLOCKED_BY_CLIENT` |
-| Cookie‑banner blocking, regional lists | ✓ | ✅ | uBOL's cookie and regional rulesets, toggles in Privacy › Advanced Ad Block Settings, which lists every uBOL ruleset truthfully (ads, trackers, cookie banners, annoyances, malware and scams, regional; filter counts; "On by default") and says which uBOL version the lists come from. The regional list for the user's languages is on from the first launch: the engine's languages now follow macOS's preferred languages (`accept_language_list`; before, every Mac got `en-US,en`), and uBOL turns on the lists for them as it does in Chrome (checked: German → deu-0, Simplified Chinese → chn-0, Canadian French → fra-0, English → none). Dia has no such default: its block-list manifest (bundled, and the live one on its server) gives no list a `languages` value, so its regional lists are opt-in. Freshness: Dia refreshes its lists from its server between releases. Ours come with uBOL, which publishes a release about weekly, and every Netnyahoo release now moves to the latest one (`scripts/update-ubol.sh`, step 3 of the release skill; the pin is `UBOL_VERSION` in `packages/cef/scripts/ubol.sh`). Between our releases they don't change: Chrome never auto-updates a component extension (`Manifest::IsAutoUpdateableLocation` excludes it), and uBOL's URL-imported lists compile to dynamic rules, which Chrome caps far below EasyList's size |
+| Cookie‑banner blocking, regional lists | ✓ | ✅ | uBOL's cookie and regional rulesets, toggles in Privacy › Advanced Ad Block Settings, which lists every uBOL ruleset truthfully (ads, trackers, cookie banners, annoyances, malware and scams, regional; filter counts; "On by default") and says which uBOL version the lists come from. The regional list for the user's languages is on from the first launch: the engine's languages now follow macOS's preferred languages (`accept_language_list`; before, every Mac got `en-US,en`), and uBOL turns on the lists for them as it does in Chrome (checked: German → deu-0, Simplified Chinese → chn-0, Canadian French → fra-0, English → none). Dia has no such default: its block-list manifest (bundled, and the live one on its server) gives no list a `languages` value, so its regional lists are opt-in. Freshness: Dia refreshes its lists from its server between releases. Ours come with uBOL, which publishes a release about weekly, and every Netnyahoo release now moves to the latest one (`scripts/update-ubol.sh`, step 3 of the release skill; the pin is `UBOL_VERSION` in `packages/nncore/scripts/ubol.sh`). Between our releases they don't change: Chrome never auto-updates a component extension (`Manifest::IsAutoUpdateableLocation` excludes it), and uBOL's URL-imported lists compile to dynamic rules, which Chrome caps far below EasyList's size |
 | Clear cookies / cache for site | ✓ | ✅ | Site Controls and Settings › Privacy › site permissions |
 | Incognito | ✓ | ✅ | in-memory profile per window; favicons and downloads stay in the window (WP5); uBOL blocks there too |
 | Usage / content data sharing opt‑in | ✓ | — | no telemetry here |
