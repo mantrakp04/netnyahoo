@@ -64,6 +64,8 @@ const base = `http://127.0.0.1:${server.address().port}`;
 // The Metro server this tree's JS comes from (METRO_PORT, default 8081): the NNCore build has its own defaults
 // domain, so this never touches the CEF app's.
 execFileSync("defaults", ["write", "com.netnyahoo.browser.nncore", "RCT_jsLocation", `localhost:${process.env.METRO_PORT ?? 8081}`]);
+// No Fast Refresh: other agents edit this tree while the run goes, and a reload would restart the app's JS mid-run.
+execFileSync("defaults", ["write", "com.netnyahoo.browser.nncore", "RCTDevMenu", "-dict", "hotLoadingEnabled", "-bool", "NO", "isHotLoadingEnabled", "-bool", "NO"]);
 
 // As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
 const exe = join(app, "Contents/MacOS/NetnyahooNNCore");
@@ -149,8 +151,12 @@ async function cdp(target, method, params = {}) {
 }
 
 const pageTarget = async (urlPart) => (await targets()).find((t) => t.type === "page" && t.url.includes(urlPart));
+// The window the run works in: the first one, then the one its first tab is in.
+let mainWindow = null;
+let first;
+let eventsOf = async () => [];
 const state = () =>
-  evalApp(`const s = nn.store.getState(); const w = Object.values(s.windows).filter((w) => !w.incognito).sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))[0];
+  evalApp(`const s = nn.store.getState(); const w = s.windows[${JSON.stringify(mainWindow)}] ?? Object.values(s.windows).filter((w) => !w.incognito && w.kind !== "small").sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))[0];
     return { windowId: w?.id, profileId: w?.profileId, tabs: (w?.tabIds ?? []).map((id) => ({ id, url: s.tabs[id]?.url, title: s.tabs[id]?.title, favicon: s.tabs[id]?.favicon?.slice(0, 40), adoptId: s.tabs[id]?.adoptId, profileId: s.tabs[id]?.profileId, loading: s.live[id]?.isLoading, back: s.live[id]?.canGoBack, fwd: s.live[id]?.canGoForward })), active: w ? w.activeTabIds[w.profileId] : null, windows: Object.keys(s.windows).length, profiles: s.profileOrder };`);
 
 async function check(name, fn) {
@@ -167,6 +173,10 @@ async function check(name, fn) {
     } catch {}
     results.push({ name, ok: false, error: String(e?.message ?? e), state: snapshot, ms: Date.now() - started });
     log(`FAIL ${name}: ${e?.message ?? e}\n  state: ${JSON.stringify(snapshot)}`);
+    if (process.env.VERBOSE && first)
+      try {
+        log(`  events of ${first.id}: ${JSON.stringify((await eventsOf(first.id)).slice(-12))}`);
+      } catch {}
   }
 }
 
@@ -187,12 +197,12 @@ try {
     const front = execFileSync("lsappinfo", ["front"]).toString();
     const asn = execFileSync("lsappinfo", ["info", "-only", "pid", front.trim()]).toString();
     if (asn.includes(`=${child.pid}`)) throw new Error("the app took focus");
+    mainWindow = s.windowId;
     return { chromium: info.chromiumVersion, windows: s.windows, tabs: s.tabs.length, pid: child.pid };
   });
 
-  let first;
   await check("open-url", async () => {
-    await evalApp(`nn.actions.openUrls(["${base}/a"]); return true`);
+    await evalApp(`nn.actions.openUrls(["${base}/a"], ${JSON.stringify(mainWindow)}); return true`);
     const s = await until("tab A titled", async () => {
       const s = await state();
       const t = s.tabs.find((t) => t.url?.startsWith(`${base}/a`));
@@ -342,13 +352,66 @@ try {
     return { closed: e.id };
   });
 
+  const browserOf = (tabId) => evalApp(`return nn.pageState.getState().browsers ? Object.entries(nn.pageState.getState().browsers).find(([, t]) => t === "${tabId}")?.[0] ?? null : null`);
+  eventsOf = async (tabId) => {
+    const browser = await browserOf(tabId);
+    return browser ? evalApp(`return globalThis.expo.modules.NetnyahooCEF.devEvents(${browser})`) : [];
+  };
+
+  await check("status-text", async () => {
+    // Hovering a link shows its URL (Chrome's UpdateTargetURL → onStatus → the status bubble's state).
+    const t = await pageTarget(`${base}/a`);
+    const r = await cdp(t, "Runtime.evaluate", { expression: "JSON.stringify(document.getElementById('next').getBoundingClientRect())", returnByValue: true });
+    const box = JSON.parse(r.result.value);
+    await cdp(t, "Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x + 3, y: box.y + box.height / 2 });
+    const status = await until("a status", async () => (await evalApp(`return nn.pageState.getState().pages["${first.id}"]?.status ?? ""`)) || null, 8000);
+    return { status };
+  });
+
+  await check("load-error", async () => {
+    await evalApp(`nn.store.getState().navigate("${first.id}", "http://127.0.0.1:9/nothing", { userInitiated: true }); return true`);
+    const e = await until("onLoadError", async () => (await eventsOf(first.id)).find((x) => x.name === "loadError"), 10000);
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a", { userInitiated: true }); return true`);
+    await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
+    return { loadError: e.payload };
+  });
+
+  await check("crash", async () => {
+    // A renderer crash reaches the app (onCrashed → the sad tab), and the app keeps running.
+    await evalApp(`nn.actions.openUrls(["${base}/crash-me"], ${JSON.stringify(mainWindow)}); return true`);
+    const tab = await until("the tab to crash", async () => (await state()).tabs.find((x) => x.url?.includes("crash-me") && !x.loading));
+    const t = await pageTarget("crash-me");
+    await cdp(t, "Page.crash").catch(() => null);
+    const crashed = await until("onCrashed", async () => evalApp(`return nn.pageState.getState().pages["${tab.id}"]?.crashed ?? null`), 10000);
+    return { crashed };
+  });
+
+  await check("traffic-lights-after-profile-switch", async () => {
+    const s = await state();
+    const browser = await browserOf(first.id);
+    const windowNumber = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindowNumber(${browser})`);
+    const lights = () => evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindow(${windowNumber}, "lights")`);
+    const before = await lights();
+    const id = await evalApp(`return nn.store.getState().createProfile({ name: "Lights" })`);
+    await evalApp(`nn.actions.switchProfile("${s.windowId}", "${id}"); return true`);
+    await until("profile shown", async () => (await state()).profileId === id);
+    await sleep(500);
+    const during = await lights();
+    await evalApp(`nn.actions.switchProfile("${s.windowId}", "${s.profileId}"); return true`);
+    await until("profile back", async () => (await state()).profileId === s.profileId);
+    await sleep(500);
+    const after = await lights();
+    if (during !== before || after !== before) throw new Error(`lights moved: ${before} → ${during} → ${after}`);
+    return { lights: before };
+  });
+
   await check("second-profile", async () => {
     const s = await state();
     const id = await evalApp(`return nn.store.getState().createProfile({ name: "Work" })`);
     if (!id) throw new Error("no profile made");
     await evalApp(`nn.actions.switchProfile("${s.windowId}", "${id}"); return true`);
     await until("profile shown", async () => (await state()).profileId === id);
-    await evalApp(`nn.actions.openUrls(["${base}/cookie?B"]); return true`);
+    await evalApp(`nn.actions.openUrls(["${base}/cookie?B"], ${JSON.stringify(mainWindow)}); return true`);
     const tb = await until("cookie page in B", async () => (await state()).tabs.find((x) => x.profileId === id && x.url?.includes("/cookie")));
     const targetsNow = await targets();
     const b = targetsNow.find((t) => t.url.includes("/cookie?B"));
@@ -377,6 +440,50 @@ try {
       return tabs.find((x) => x.title === "Page B") ?? null;
     });
     return { window: id, tab: t };
+  });
+
+  await check("move-tab-to-window", async () => {
+    // The tab keeps its page (same WebContents: no reload) in the new window.
+    const t = await pageTarget(`${base}/a`);
+    await cdp(t, "Runtime.evaluate", { expression: "window.__kept = 42" });
+    const windowId = await evalApp(`const id = nn.store.getState().moveTabsToWindow(["${first.id}"], null); return id`);
+    await until("the tab in the new window", async () => evalApp(`return nn.store.getState().tabs["${first.id}"]?.windowId === "${windowId}" && nn.store.getState().windows["${windowId}"]?.tabIds.includes("${first.id}")`));
+    await sleep(1500);
+    const t2 = await pageTarget(`${base}/a`);
+    const kept = (await cdp(t2, "Runtime.evaluate", { expression: "String(window.__kept)", returnByValue: true })).result.value;
+    if (kept !== "42") throw new Error(`the page reloaded or went: ${kept}`);
+    const tx = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.tabStrips()`);
+    const browser = await browserOf(first.id);
+    const windowNumber = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindowNumber(${browser})`);
+    const holding = tx.strips.find((x) => x.tabs.some((tab) => tab.browser === Number(browser)));
+    if (!holding || holding.window !== windowNumber) throw new Error(`the tab's strip is window ${holding?.window}, its view is in ${windowNumber}`);
+    return { windowId, kept, strip: holding.strip, window: holding.window };
+  });
+
+  await check("title-bar-close", async () => {
+    // The title bar's close button on the second window: NNCore asks the app (windowShouldClose:), which closes it.
+    const ids = await evalApp(`return nn.shell.windowIds()`);
+    const browser = await browserOf(first.id);
+    const windowNumber = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindowNumber(${browser})`);
+    const clicked = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindow(${windowNumber}, "close-button")`);
+    const after = await until("one window fewer", async () => {
+      const now = await evalApp(`return nn.shell.windowIds()`);
+      return now.length < ids.length ? now : null;
+    }, 10000);
+    return { clicked, before: ids.length, after: after.length };
+  });
+
+  await check("small-yahu", async () => {
+    const before = await evalApp(`return Object.keys(nn.store.getState().windows)`);
+    await evalApp(`nn.runCommand({ command: "newSmallYahu" }); return true`);
+    const id = await until("a Small Yahu window", async () => {
+      const w = await evalApp(`return Object.values(nn.store.getState().windows).find((w) => w.kind === "small")?.id ?? null`);
+      return w;
+    });
+    const tabId = await until("its tab", async () => evalApp(`return nn.store.getState().windows["${id}"]?.tabIds[0] ?? null`));
+    await evalApp(`nn.store.getState().navigate("${tabId}", "${base}/b?small", { userInitiated: true }); return true`);
+    await until("Page B in Small Yahu", async () => evalApp(`return nn.store.getState().tabs["${tabId}"]?.title === "Page B"`));
+    return { window: id, tab: tabId };
   });
 
   await check("quit", async () => {

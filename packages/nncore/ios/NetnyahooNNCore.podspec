@@ -22,7 +22,7 @@ Pod::Spec.new do |s|
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
   s.source_files   = '*.{h,mm,swift}'
-  s.public_header_files = 'NNCoreHost.h', 'NNCoreWebView.h', 'NNCoreTabStrip.h', 'NNCoreEngineBridge.h', 'NNSwipe.h', 'NNChromeWindow.h'
+  s.public_header_files = 'NNCoreHost.h', 'NNCoreWebView.h', 'NNCoreTabStrip.h', 'NNCoreEngineBridge.h', 'NNCoreServices.h', 'NNSwipe.h', 'NNChromeWindow.h'
   s.resources      = 'page_script.js'
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',

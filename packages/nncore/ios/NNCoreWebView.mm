@@ -11,6 +11,9 @@
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
+#include <climits>
+#include <cmath>
+
 namespace {
 
 constexpr CFTimeInterval kTransferWindow = 3;
@@ -63,6 +66,92 @@ id JSONValue(NSString *json) {
   return data ? [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingFragmentsAllowed error:nil] : nil;
 }
 
+template <typename T>
+T *Field(NSDictionary *d, NSString *key) {
+  id value = d[key];
+  return [value isKindOfClass:[T class]] ? value : nil;
+}
+
+NSString *Text(NSDictionary *d, NSString *key, NSUInteger max) {
+  NSString *s = Field<NSString>(d, key);
+  if (s.length <= max) return s;
+  return [s substringToIndex:[s rangeOfComposedCharacterSequenceAtIndex:max].location];
+}
+
+bool Flag(NSDictionary *d, NSString *key) {
+  return Field<NSNumber>(d, key).boolValue;
+}
+
+bool Finite(NSDictionary *d, NSString *key, double *out) {
+  NSNumber *n = Field<NSNumber>(d, key);
+  if (!n || !std::isfinite(n.doubleValue)) return false;
+  *out = n.doubleValue;
+  return true;
+}
+
+NSString *OriginOf(NSString *url) {
+  NSURLComponents *c = [NSURLComponents componentsWithString:url ?: @""];
+  if (!c.scheme.length || !c.host.length) return nil;
+  return c.port ? [NSString stringWithFormat:@"%@://%@:%@", c.scheme, c.host, c.port] : [NSString stringWithFormat:@"%@://%@", c.scheme, c.host];
+}
+
+NSDictionary *NowPlayingState(NSDictionary *d) {
+  NSString *state = Field<NSString>(d, @"playbackState");
+  if (![@[ @"none", @"paused", @"playing" ] containsObject:state]) state = @"none";
+  NSMutableArray *actions = [NSMutableArray array];
+  for (id action in Field<NSArray>(d, @"actions"))
+    if ([action isKindOfClass:NSString.class] && [action length] <= 64 && actions.count < 32) [actions addObject:action];
+  double position = 0, duration = 0, rate = 1, timestamp = 0;
+  Finite(d, @"position", &position);
+  const bool hasDuration = Finite(d, @"duration", &duration) && duration >= 0;
+  Finite(d, @"playbackRate", &rate);
+  Finite(d, @"timestamp", &timestamp);
+  return @{
+    @"frame" : Text(d, @"frame", 64) ?: @"",
+    @"title" : Text(d, @"title", 1024) ?: @"",
+    @"artist" : Text(d, @"artist", 1024) ?: @"",
+    @"album" : Text(d, @"album", 1024) ?: @"",
+    @"artwork" : Text(d, @"artwork", 1 << 20) ?: NSNull.null,
+    @"playbackState" : state,
+    @"position" : @(MAX(position, 0)),
+    @"duration" : hasDuration ? @(duration) : NSNull.null,
+    @"playbackRate" : @(rate),
+    @"timestamp" : @(timestamp),
+    @"hasVideo" : @(Flag(d, @"hasVideo")),
+    @"actions" : actions,
+  };
+}
+
+NSDictionary *SelectionState(NSDictionary *d) {
+  NSString *text = Text(d, @"text", 4000);
+  NSDictionary *rect = Field<NSDictionary>(d, @"rect");
+  double x, y, width, height;
+  if (!text || !Finite(rect, @"x", &x) || !Finite(rect, @"y", &y) || !Finite(rect, @"width", &width) ||
+      !Finite(rect, @"height", &height))
+    return nil;
+  return @{@"text" : text, @"rect" : @{@"x" : @(x), @"y" : @(y), @"width" : @(width), @"height" : @(height)}};
+}
+
+// The last events each tab's view sent (names and payloads), for tests (devEvents).
+NSMutableDictionary<NSNumber *, NSMutableArray *> *RecentEvents() {
+  static NSMutableDictionary *events = [NSMutableDictionary dictionary];
+  return events;
+}
+
+void NoteEvent(int browserId, NSString *name, NSDictionary *payload) {
+#if DEBUG
+  NSMutableArray *list = RecentEvents()[@(browserId)];
+  if (!list) RecentEvents()[@(browserId)] = list = [NSMutableArray array];
+  NSMutableDictionary *brief = [NSMutableDictionary dictionary];
+  for (NSString *key in payload) {
+    id value = payload[key];
+    brief[key] = [value isKindOfClass:NSString.class] && [value length] > 200 ? [value substringToIndex:200] : value;
+  }
+  [list addObject:@{@"name" : name, @"payload" : brief}];
+  if (list.count > 80) [list removeObjectAtIndex:0];
+#endif
+}
+
 NSString *JSONString(id value) {
   NSData *data = [NSJSONSerialization dataWithJSONObject:value ?: NSNull.null options:NSJSONWritingFragmentsAllowed error:nil];
   return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"null";
@@ -94,6 +183,13 @@ NSString *JSONString(id value) {
   CFTimeInterval _sentProgressAt;
   double _sentProgress;
   BOOL _progressQueued;
+  // The page script's reports, per frame (as packages/cef's NNClient keeps them).
+  NSMutableDictionary<NSString *, NSNumber *> *_mediaFrames;
+  NSMutableDictionary<NSString *, NSDictionary *> *_nowPlaying;
+  NSString *_nowPlayingFrame;
+  NSMutableDictionary<NSString *, NSString *> *_notificationFrames;
+  NSMutableDictionary<NSString *, NSDictionary *> *_displayRequests;
+  double _pinchScale;
 }
 
 + (void)prepareTransfer:(NSString *)transferKey {
@@ -151,7 +247,7 @@ NSString *JSONString(id value) {
 - (void)ensureTab {
   if (_tab || _creating || !self.window || !NNCoreHost.isStarted || !self.controller) return;
   if (TransferRequested(_transferKey) && [self takeTransferredTab]) return;
-  if ([_adoptId hasPrefix:@"nncore:"]) {
+  if ([_adoptId hasPrefix:@"nncore:"] || [_adoptId hasPrefix:@"tab:"]) {
     NNCoreTab *offered = [NNCoreTabs takeOffered:_adoptId];
     _adoptId = nil;
     if (offered && !offered.closed) return [self attach:offered];
@@ -237,13 +333,10 @@ NSString *JSONString(id value) {
   [self emitNavigation];
   [self tabDidChangeFavicon:tab];
   if (_tabIndex >= 0) [self placeTab];
-  if (_visible) [self activate];
-  // The strip names the tab by this view's key from now on.
-  if (NNCoreWindowController *controller = self.controller) {
-    controller.hostChanges++;
-    [NNCoreTabStrip changedInWindow:controller profile:tab.profile];
-    controller.hostChanges--;
-  }
+  if (_visible && !NNCoreTabStrip.commandsSeen) [self activate];
+  // The strip names the tab by this view's key from now on (re-sent as Chrome's report, cmd null).
+  if (NNCoreWindowController *controller = self.controller)
+    [NNCoreTabStrip changedInWindow:controller profile:tab.profile cause:NSNull.null];
 }
 
 - (void)detach {
@@ -401,7 +494,8 @@ NSString *JSONString(id value) {
   if (_visible == visible) return;
   _visible = visible;
   [self applyPainting];
-  if (visible) [self activate];
+  // With tab-strip commands, only they (and Chrome) change the active tab.
+  if (visible && !NNCoreTabStrip.commandsSeen) [self activate];
 }
 
 - (void)setFrozen:(BOOL)frozen {
@@ -413,7 +507,18 @@ NSString *JSONString(id value) {
 - (void)emit:(NSString *)name payload:(NSDictionary *)payload {
   // Events reach JS in the order they happened: a held navigation report goes first.
   if (_navigationQueued && ![name isEqualToString:@"navigation"]) [self emitNavigation];
+  if (_tab) NoteEvent(nncore_host::BrowserId(_tab), name, payload);
   [self.delegate webView:self event:name payload:payload];
+}
+
++ (NSArray<NSDictionary<NSString *, id> *> *)devEventsForBrowser:(int)browserId {
+  return RecentEvents()[@(browserId)] ?: @[];
+}
+
++ (NSInteger)devWindowNumberForBrowser:(int)browserId {
+  NNCoreTab *tab = nncore_host::TabWithBrowserId(browserId);
+  NNCoreWebView *view = tab ? [NNCoreTabs viewForTab:tab] : nil;
+  return view.window.windowNumber;
 }
 
 - (void)emitNavigation {
@@ -508,16 +613,114 @@ NSString *JSONString(id value) {
   [self emit:@"find" payload:@{@"count" : @(count), @"active" : @(active), @"final" : @(final)}];
 }
 
-- (void)tab:(NNCoreTab *)tab didReceivePageMessage:(NSString *)kind json:(NSString *)json {
+// The page script's messages from every frame (packages/cef/helper/page_script.js; NNClient::OnPageMessage on CEF).
+// The page runs it in its own world, so every field is untrusted.
+- (void)tab:(NNCoreTab *)tab didReceivePageMessage:(NSString *)kind json:(NSString *)json frame:(NSString *)frameId main:(BOOL)main {
+  id data = JSONValue(json);
+  NSDictionary *dict = [data isKindOfClass:NSDictionary.class] ? data : nil;
+  frameId = frameId ?: @"";
   if ([kind isEqualToString:@"hello"]) {
-    if ([tab respondsToSelector:@selector(callPage:json:)]) [tab callPage:@"config" json:@"{}"];
-  } else if ([kind isEqualToString:@"selection"]) {
-    [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : JSONValue(json) ?: NSNull.null}];
-  } else if ([kind isEqualToString:@"pip"]) {
-    NSDictionary *d = JSONValue(json);
-    if ([d isKindOfClass:NSDictionary.class] && [d[@"active"] isKindOfClass:NSNumber.class])
-      [self emit:@"pictureInPicture" payload:@{@"kind" : [d[@"kind"] isEqual:@"document"] ? @"document" : @"video", @"active" : d[@"active"]}];
+    [self callFrame:frameId kind:@"config" json:@"{}"];
+  } else if ([kind isEqualToString:@"selection"] && main) {
+    [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : SelectionState(dict) ?: NSNull.null}];
+  } else if ([kind isEqualToString:@"media"] && dict) {
+    NSString *mediaFrame = Text(dict, @"frame", 64);
+    if (!mediaFrame) return;
+    if (!_mediaFrames) _mediaFrames = [NSMutableDictionary dictionary];
+    NSString *key = [NSString stringWithFormat:@"%@:%@", frameId, mediaFrame];
+    if (_mediaFrames.count >= 256 && !_mediaFrames[key]) return;
+    _mediaFrames[key] = @(Flag(dict, @"playing"));
+    [self emitMedia];
+  } else if ([kind isEqualToString:@"nowPlaying"]) {
+    if (!_nowPlaying) _nowPlaying = [NSMutableDictionary dictionary];
+    if (dict) _nowPlaying[frameId] = NowPlayingState(dict);
+    else [_nowPlaying removeObjectForKey:frameId];
+    _nowPlayingFrame = dict ? frameId : _nowPlaying.allKeys.firstObject;
+    for (NSString *f in _nowPlaying)
+      if ([_nowPlaying[f][@"playbackState"] isEqual:@"playing"]) _nowPlayingFrame = f;
+    NSMutableDictionary *state = [_nowPlaying[_nowPlayingFrame ?: @""] mutableCopy];
+    [state removeObjectForKey:@"frame"];
+    [self emit:@"nowPlaying" payload:@{@"state" : state ?: NSNull.null}];
+  } else if ([kind isEqualToString:@"theme"]) {
+    [self queueNavigation];
+  } else if ([kind isEqualToString:@"pinch"] && main && dict) {
+    double scale;
+    if (!Finite(dict, @"scale", &scale) || scale <= 0) return;
+    _pinchScale = MIN(scale, 100);
+    [self emitZoom];
+  } else if ([kind isEqualToString:@"pip"] && dict) {
+    NSNumber *active = [dict[@"active"] isKindOfClass:NSNumber.class] ? dict[@"active"] : nil;
+    if (active) [self emit:@"pictureInPicture" payload:@{@"kind" : [dict[@"kind"] isEqual:@"document"] ? @"document" : @"video", @"active" : active}];
+  } else if ([kind isEqualToString:@"notification"] && dict) {
+    NSString *nid = Text(dict, @"id", 128);
+    NSString *origin = OriginOf(tab.url);
+    if (!nid.length || !Text(dict, @"title", 1024) || !origin) return;
+    if (!_notificationFrames || _notificationFrames.count > 500) _notificationFrames = [NSMutableDictionary dictionary];
+    _notificationFrames[nid] = frameId;
+    [self emit:@"notification"
+        payload:@{
+          @"id" : nid,
+          @"title" : Text(dict, @"title", 1024),
+          @"body" : Text(dict, @"body", 4096) ?: @"",
+          @"icon" : Text(dict, @"icon", 1 << 20) ?: NSNull.null,
+          @"tag" : Text(dict, @"tag", 1024) ?: @"",
+          @"silent" : @(Flag(dict, @"silent")),
+          @"requireInteraction" : @(Flag(dict, @"requireInteraction")),
+          @"origin" : origin,
+          @"browserId" : @(nncore_host::BrowserId(tab)),
+          @"isMainFrame" : @(main),
+        }];
+  } else if ([kind isEqualToString:@"notificationClose"] && dict) {
+    NSString *nid = Text(dict, @"id", 128);
+    if (!nid.length) return;
+    [_notificationFrames removeObjectForKey:nid];
+    [self emit:@"notificationClose" payload:@{@"id" : nid}];
+  } else if ([kind isEqualToString:@"displayMedia"] && dict) {
+    double pageId;
+    if (!Finite(dict, @"id", &pageId) || pageId < 1 || pageId > INT_MAX || pageId != floor(pageId)) return;
+    if (!_displayRequests) _displayRequests = [NSMutableDictionary dictionary];
+    if (_displayRequests.count >= 16) return;
+    NSString *requestId = NSUUID.UUID.UUIDString;
+    _displayRequests[requestId] = @{@"frame" : frameId, @"id" : @((int)pageId), @"audio" : @(Flag(dict, @"audio"))};
+    [self emit:@"displayMediaRequest"
+        payload:@{@"id" : requestId, @"origin" : OriginOf(tab.url) ?: @"", @"audio" : @(Flag(dict, @"audio")), @"sources" : @[]}];
   }
+}
+
+// Engines without per-frame messages: main-frame posts only.
+- (void)tab:(NNCoreTab *)tab didReceivePageMessage:(NSString *)kind json:(NSString *)json {
+  [self tab:tab didReceivePageMessage:kind json:json frame:@"" main:YES];
+}
+
+- (void)callFrame:(NSString *)frameId kind:(NSString *)kind json:(NSString *)json {
+  if (frameId.length && [_tab respondsToSelector:@selector(callFrame:kind:json:)]) [_tab callFrame:frameId kind:kind json:json];
+  else if ([_tab respondsToSelector:@selector(callPage:json:)]) [_tab callPage:kind json:json];
+}
+
+- (void)emitMedia {
+  BOOL playing = NO;
+  for (NSNumber *p in _mediaFrames.allValues) playing |= p.boolValue;
+  if ([_tab respondsToSelector:@selector(audible)]) playing |= _tab.audible;
+  [self emit:@"media" payload:@{@"playing" : @(playing), @"muted" : @(_muted)}];
+}
+
+- (void)emitZoom {
+  const double zoom = [_tab respondsToSelector:@selector(zoomFactor)] ? _tab.zoomFactor : 1;
+  [self emit:@"zoom"
+      payload:@{
+        @"zoom" : @(round(zoom * 100) / 100),
+        @"host" : [NSURL URLWithString:_tab.url ?: @""].host.lowercaseString ?: @"",
+        @"isDefault" : @(fabs(zoom - 1) < 0.001),
+        @"pinchScale" : @(_pinchScale ?: 1),
+      }];
+}
+
+- (void)tabDidChangeZoom:(NNCoreTab *)tab {
+  [self emitZoom];
+}
+
+- (void)tabDidChangeSecurity:(NNCoreTab *)tab {
+  if (NSDictionary *info = tab.securityInfo) [self emit:@"security" payload:info];
 }
 
 - (void)tabWillClose:(NNCoreTab *)tab {
@@ -543,8 +746,7 @@ NSString *JSONString(id value) {
 }
 
 - (void)tabDidChangeAudio:(NNCoreTab *)tab {
-  const BOOL audible = [tab respondsToSelector:@selector(audible)] && tab.audible;
-  [self emit:@"media" payload:@{@"playing" : @(audible), @"muted" : @(_muted)}];
+  [self emitMedia];
 }
 
 // MARK: Commands
@@ -614,9 +816,11 @@ NSString *JSONString(id value) {
 }
 
 - (void)setZoomFactor:(double)factor {
+  if ([_tab respondsToSelector:@selector(setZoomFactor:)]) _tab.zoomFactor = factor;
 }
 
 - (void)zoomStep:(NSInteger)direction {
+  if ([_tab respondsToSelector:@selector(zoomStep:)]) [_tab zoomStep:(int)direction];
 }
 
 - (void)find:(NSString *)text forward:(BOOL)forward findNext:(BOOL)findNext {
@@ -628,6 +832,11 @@ NSString *JSONString(id value) {
 }
 
 - (void)print {
+  [self runChromeCommand:35003];  // IDC_PRINT
+}
+
+- (void)runChromeCommand:(int)command {
+  if ([_tab respondsToSelector:@selector(executeChromeCommand:)]) [_tab executeChromeCommand:command];
 }
 
 - (void)showDevTools {
@@ -639,6 +848,11 @@ NSString *JSONString(id value) {
 }
 
 - (void)runPageCommand:(NSString *)name {
+  const int command = [name isEqualToString:@"savePage"]        ? 35004   // IDC_SAVE_PAGE
+                      : [name isEqualToString:@"systemPrint"]   ? 35007   // IDC_BASIC_PRINT
+                      : [name isEqualToString:@"caretBrowsing"] ? 40260   // IDC_CARET_BROWSING_TOGGLE
+                                                                : 0;
+  if (command) [self runChromeCommand:command];
 }
 
 - (void)executeJavaScript:(NSString *)code {
@@ -663,8 +877,7 @@ NSString *JSONString(id value) {
 }
 
 - (void)mediaCommand:(NSString *)action seconds:(double)seconds {
-  if ([_tab respondsToSelector:@selector(callPage:json:)])
-    [_tab callPage:@"media" json:JSONString(@{@"action" : action ?: @"", @"seconds" : @(seconds)})];
+  [self callFrame:_nowPlayingFrame ?: @"" kind:@"media" json:JSONString(@{@"action" : action ?: @"", @"seconds" : @(seconds)})];
 }
 
 - (void)requestPictureInPicture:(void (^)(BOOL))completion {
@@ -675,6 +888,7 @@ NSString *JSONString(id value) {
 }
 
 - (void)securityInfo:(void (^)(NSDictionary<NSString *, id> *))completion {
+  if ([_tab respondsToSelector:@selector(securityInfo)] && _tab.securityInfo) return completion(_tab.securityInfo);
   NSString *url = _tab.url ?: @"";
   NSString *scheme = [NSURL URLWithString:url].scheme.lowercaseString;
   NSString *level = [scheme isEqualToString:@"https"] ? @"secure" : [scheme isEqualToString:@"http"] ? @"insecure" : @"local";
@@ -682,6 +896,11 @@ NSString *JSONString(id value) {
 }
 
 - (void)openBlockedPopup:(NSString *)popupId always:(BOOL)always {
+  if ([_tab respondsToSelector:@selector(openBlockedPopup:always:)]) [_tab openBlockedPopup:popupId always:always];
+}
+
+- (void)tab:(NNCoreTab *)tab didBlockPopup:(NSDictionary<NSString *, NSString *> *)popup {
+  [self emit:@"popupBlocked" payload:popup];
 }
 
 - (void)clearSiteData:(void (^)(NSDictionary<NSString *, id> *))completion {
@@ -705,6 +924,12 @@ NSString *JSONString(id value) {
 }
 
 - (void)resolveDisplayMedia:(NSString *)requestId sourceId:(NSString *)sourceId {
+  NSDictionary *request = requestId ? _displayRequests[requestId] : nil;
+  if (!request) return;
+  [_displayRequests removeObjectForKey:requestId];
+  // No desktop sources on NNCore yet: the page's own getDisplayMedia goes ahead with Chrome's picker.
+  [self callFrame:request[@"frame"] kind:@"displayMedia"
+             json:JSONString(@{@"id" : request[@"id"], @"sourceId" : sourceId.length ? sourceId : NSNull.null})];
 }
 
 - (NSString *)mediaCaptureSourceId {
@@ -712,6 +937,10 @@ NSString *JSONString(id value) {
 }
 
 - (void)notificationAction:(NSString *)notificationId action:(NSString *)action {
+  NSString *frame = notificationId ? _notificationFrames[notificationId] : nil;
+  if (!frame) return;
+  if (![action isEqualToString:@"click"]) [_notificationFrames removeObjectForKey:notificationId];
+  [self callFrame:frame kind:@"notification" json:JSONString(@{@"id" : notificationId, @"action" : action ?: @""})];
 }
 
 - (void)resolveUnresponsive:(BOOL)terminate {
@@ -754,7 +983,11 @@ constexpr int64_t kOfferSeconds = 30;
 }
 
 + (NSString *)offerTab:(NNCoreTab *)tab {
-  NSString *adoptId = [NSString stringWithFormat:@"nncore:%d", nncore_host::BrowserId(tab)];
+  return [self offerTab:tab prefix:@"nncore"];
+}
+
++ (NSString *)offerTab:(NNCoreTab *)tab prefix:(NSString *)prefix {
+  NSString *adoptId = [NSString stringWithFormat:@"%@:%d", prefix, nncore_host::BrowserId(tab)];
   Offered()[adoptId] = tab;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, kOfferSeconds * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
     if (Offered()[adoptId] != tab) return;

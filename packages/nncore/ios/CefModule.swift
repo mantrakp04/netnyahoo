@@ -5,8 +5,6 @@ import IOKit.ps
 // (packages/cef/src) runs unchanged. What NNCore doesn't do yet answers the way an empty engine would (no
 // downloads, no saved passwords…) and is listed in docs/nncore-parity.md.
 public class CefModule: Module {
-  private static let notYet = ["error": "Not on NNCore yet"]
-
   public func definition() -> ModuleDefinition {
     Name("NetnyahooCEF")
     Events("onDownload", "onPermission", "onPermissionDismissed", "onContentBlocker", "onSystemState", "onEngineEvent", "onTabStrip")
@@ -14,13 +12,26 @@ public class CefModule: Module {
     OnCreate {
       NNCoreEngineBridge.setEventHandler { [weak self] topic, json in self?.sendEvent("onEngineEvent", ["topic": topic, "payload": json]) }
       NNCoreTabStrip.setHandler { [weak self] tx in self?.sendEvent("onTabStrip", tx) }
+      NNCoreHost.eventHandler = { [weak self] name, payload in
+        switch name {
+        case "permission": self?.sendEvent("onPermission", payload)
+        case "permissionDismissed": self?.sendEvent("onPermissionDismissed", payload)
+        case "download": self?.sendEvent("onDownload", payload)
+        default: break
+        }
+      }
       SystemState.shared.onChange = { [weak self] state in self?.sendEvent("onSystemState", state) }
       SystemState.shared.start()
     }
 
     AsyncFunction("engineInfo") { NNCoreHost.engineInfo }.runOnQueue(.main)
-    AsyncFunction("chromeWindows") { [[String: Any]]() }.runOnQueue(.main)
-    AsyncFunction("devWindow") { (windowNumber: Int, action: String) in "" }.runOnQueue(.main)
+    AsyncFunction("chromeWindows") { NNCoreHost.chromeWindows }.runOnQueue(.main)
+    AsyncFunction("devEvents") { (browserId: Int) in NNCoreWebView.devEvents(browserId: Int32(browserId)) }.runOnQueue(.main)
+    AsyncFunction("devWindowNumber") { (browserId: Int) in NNCoreWebView.devWindowNumber(browserId: Int32(browserId)) }.runOnQueue(.main)
+    AsyncFunction("devWindow") { (windowNumber: Int, action: String) -> String in
+      guard let window = NSApp.window(withWindowNumber: windowNumber) else { return "" }
+      return NNChromeWindowHost.devAction(action, window: window) ?? ""
+    }.runOnQueue(.main)
     // Apply tab transfers synchronously before either view mounts or unmounts.
     Function("prepareTransfer") { (key: String) in NNCoreWebView.prepareTransfer(key) }
     AsyncFunction("tabStripCommand") { (id: Int, command: [String: Any]) in NNCoreTabStrip.command(id, command: command) }
@@ -43,12 +54,16 @@ public class CefModule: Module {
     AsyncFunction("pauseDownload") { (id: String) in }.runOnQueue(.main)
     AsyncFunction("resumeDownload") { (id: String) in }.runOnQueue(.main)
 
-    AsyncFunction("resolvePermission") { (id: String, result: String, remember: Bool?) in }.runOnQueue(.main)
+    AsyncFunction("resolvePermission") { (id: String, result: String, remember: Bool?) in
+      NNCoreHost.resolvePermission(id, result: result, remember: remember ?? false)
+    }.runOnQueue(.main)
     AsyncFunction("resolveExternalApp") { (id: String, open: Bool, remember: Bool?) in }.runOnQueue(.main)
     AsyncFunction("getExternalAppAllowances") { (profile: String) in [[String: Any]]() }.runOnQueue(.main)
     AsyncFunction("removeExternalAppAllowance") { (profile: String, origin: String, scheme: String) in }.runOnQueue(.main)
 
-    AsyncFunction("clearBrowsingData") { (profile: String, types: [String], since: Double?) in }.runOnQueue(.main)
+    AsyncFunction("clearBrowsingData") { (profile: String, types: [String], since: Double?, promise: Promise) in
+      NNCoreServices.clearBrowsingData(profile: profile, types: types, since: since ?? 0) { promise.resolve(nil) }
+    }.runOnQueue(.main)
     AsyncFunction("releaseProfile") { (profile: String) in }.runOnQueue(.main)
     // Nothing deleted yet: say so, so the app keeps the profile's folder.
     AsyncFunction("deleteProfileData") { (profile: String) in ["remaining": ["data"]] }.runOnQueue(.main)
@@ -81,32 +96,78 @@ public class CefModule: Module {
     AsyncFunction("resetSiteSettings") { (profile: String, origin: String) in }.runOnQueue(.main)
     AsyncFunction("clearSiteData") { (profile: String, origin: String) in ["cookies": false, "storage": false] }.runOnQueue(.main)
 
-    AsyncFunction("setZoom") { (profile: String, host: String, zoom: Double) in }.runOnQueue(.main)
-    AsyncFunction("getZoomLevels") { (profile: String) in [String: Double]() }.runOnQueue(.main)
+    AsyncFunction("setZoom") { (profile: String, host: String, zoom: Double) in
+      NNCoreServices.setZoom(zoom, profile: profile, host: host)
+    }.runOnQueue(.main)
+    AsyncFunction("getZoomLevels") { (profile: String, promise: Promise) in
+      NNCoreServices.zoomLevels(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
     AsyncFunction("devScrollZoom") { (steps: [[String: Any]]) in [Double]() }.runOnQueue(.main)
 
-    AsyncFunction("listPasswords") { (profile: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("unlockPasswords") { (profile: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("getPassword") { (profile: String, origin: String, username: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("savePassword") { (profile: String, origin: String, username: String, password: String) in Self.notYet }
-      .runOnQueue(.main)
-    AsyncFunction("updatePassword") {
-      (profile: String, origin: String, username: String, newUsername: String?, newPassword: String?) in Self.notYet
+    AsyncFunction("listPasswords") { (profile: String, promise: Promise) in
+      NNCoreServices.listPasswords(profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("deletePassword") { (profile: String, origin: String, username: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("getNeverSavePasswordOrigins") { (profile: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("allowSavingPasswords") { (profile: String, origin: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("getPasswordAutofill") { (profile: String) in true }.runOnQueue(.main)
-    AsyncFunction("setPasswordAutofill") { (profile: String, enabled: Bool) in }.runOnQueue(.main)
+    AsyncFunction("unlockPasswords") { (profile: String, promise: Promise) in
+      NNCoreServices.unlockPasswords(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("getPassword") { (profile: String, origin: String, username: String, promise: Promise) in
+      NNCoreServices.password(profile: profile, origin: origin, username: username) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("savePassword") { (profile: String, origin: String, username: String, password: String, promise: Promise) in
+      NNCoreServices.savePassword(profile: profile, origin: origin, username: username, password: password) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("updatePassword") {
+      (profile: String, origin: String, username: String, newUsername: String?, newPassword: String?, promise: Promise) in
+      NNCoreServices.updatePassword(profile: profile, origin: origin, username: username, newUsername: newUsername,
+                                    newPassword: newPassword) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("deletePassword") { (profile: String, origin: String, username: String, promise: Promise) in
+      NNCoreServices.deletePassword(profile: profile, origin: origin, username: username) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("getNeverSavePasswordOrigins") { (profile: String, promise: Promise) in
+      NNCoreServices.neverSaveOrigins(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("allowSavingPasswords") { (profile: String, origin: String, promise: Promise) in
+      NNCoreServices.allowSaving(profile: profile, origin: origin) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("exportPasswords") { (profile: String, path: String, promise: Promise) in
+      NNCoreServices.exportPasswords(profile: profile, path: path) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("getPasswordAutofill") { (profile: String) in
+      NNCoreServices.boolPreference("credentials_enable_service", profile: profile)
+    }.runOnQueue(.main)
+    AsyncFunction("setPasswordAutofill") { (profile: String, enabled: Bool) in
+      NNCoreServices.setBoolPreference("credentials_enable_service", value: enabled, profile: profile)
+    }.runOnQueue(.main)
 
-    AsyncFunction("getAutofillSettings") { (profile: String) in ["addresses": true, "cards": true] }.runOnQueue(.main)
-    AsyncFunction("setAutofillSettings") { (profile: String, addresses: Bool?, cards: Bool?) in }.runOnQueue(.main)
-    AsyncFunction("listAddresses") { (profile: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("saveAddress") { (profile: String, address: [String: Any]) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("listCards") { (profile: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("saveCard") { (profile: String, card: [String: Any], number: String?) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("deleteAutofillEntry") { (profile: String, id: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("revealCardNumber") { (profile: String, id: String) in Self.notYet }.runOnQueue(.main)
+    AsyncFunction("getAutofillSettings") { (profile: String) in
+      [
+        "addresses": NNCoreServices.boolPreference("autofill.profile_enabled", profile: profile),
+        "cards": NNCoreServices.boolPreference("autofill.credit_card_enabled", profile: profile),
+      ]
+    }.runOnQueue(.main)
+    AsyncFunction("setAutofillSettings") { (profile: String, addresses: Bool?, cards: Bool?) in
+      if let addresses { NNCoreServices.setBoolPreference("autofill.profile_enabled", value: addresses, profile: profile) }
+      if let cards { NNCoreServices.setBoolPreference("autofill.credit_card_enabled", value: cards, profile: profile) }
+    }.runOnQueue(.main)
+    AsyncFunction("listAddresses") { (profile: String, promise: Promise) in
+      NNCoreServices.addresses(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("saveAddress") { (profile: String, address: [String: Any], promise: Promise) in
+      NNCoreServices.saveAddress(address, profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("listCards") { (profile: String, promise: Promise) in
+      NNCoreServices.cards(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("saveCard") { (profile: String, card: [String: Any], number: String?, promise: Promise) in
+      NNCoreServices.saveCard(card, number: number, profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("deleteAutofillEntry") { (profile: String, id: String, promise: Promise) in
+      NNCoreServices.deleteAutofillEntry(id, profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("revealCardNumber") { (profile: String, id: String, promise: Promise) in
+      NNCoreServices.revealCardNumber(id, profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
 
     View(CefWebView.self) {
       Events(CefWebView.events)

@@ -12,6 +12,24 @@ namespace {
 
 void (^gHandler)(NSDictionary *);
 int64_t gRev = 0;
+// The JS sends tab-strip commands: only they (and Chrome) change the active tab, not a view becoming visible.
+bool gCommandsSeen = false;
+
+// The strips each window has reported, to send them once more as closed when the window goes.
+NSMapTable<NNCoreWindowController *, NSMutableDictionary<NSNumber *, NSString *> *> *KnownStrips() {
+  static NSMapTable *known = [NSMapTable weakToStrongObjectsMapTable];
+  return known;
+}
+
+void Remember(NNCoreWindowController *controller, int strip, NSString *profile) {
+  if (strip < 0) return;
+  NSMutableDictionary *strips = [KnownStrips() objectForKey:controller];
+  if (!strips) {
+    strips = [NSMutableDictionary dictionary];
+    [KnownStrips() setObject:strips forKey:controller];
+  }
+  strips[@(strip)] = profile;
+}
 // The command being run (its changes carry its id).
 NSNumber *gCommand;
 
@@ -46,9 +64,13 @@ NSDictionary *Strip(NNCoreWindowController *controller, NNCoreProfile *profile) 
       @"pinned" : @([[Pinned() objectForKey:tab] boolValue]),
     }];
   }
+  const int strip = [window chromeWindowIdForProfile:profile];
+  NSString *name = nncore_host::ProfileName(profile);
+  Remember(controller, strip, name);
   return @{
-    @"strip" : @([window chromeWindowIdForProfile:profile]),
-    @"profile" : nncore_host::ProfileName(profile),
+    @"strip" : @(strip),
+    @"window" : @(window.window.windowNumber),
+    @"profile" : name,
     @"tabs" : tabs,
   };
 }
@@ -70,9 +92,28 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
 }
 
 + (void)changedInWindow:(NNCoreWindowController *)controller profile:(NNCoreProfile *)profile {
+  [self changedInWindow:controller profile:profile cause:nil];
+}
+
++ (void)changedInWindow:(NNCoreWindowController *)controller profile:(NNCoreProfile *)profile cause:(id)cause {
   if (!gHandler || !controller || !profile) return;
-  id cause = gCommand ?: (controller.hostChanges > 0 ? @(-1) : NSNull.null);
+  cause = cause ?: (gCommand ?: (controller.hostChanges > 0 ? @(-1) : NSNull.null));
   gHandler(@{@"rev" : @(++gRev), @"cmd" : cause, @"strips" : @[ Strip(controller, profile) ]});
+}
+
++ (void)windowClosed:(NNCoreWindowController *)controller {
+  NSDictionary<NSNumber *, NSString *> *strips = [KnownStrips() objectForKey:controller];
+  [KnownStrips() removeObjectForKey:controller];
+  if (!gHandler || !strips.count) return;
+  NSMutableArray *closed = [NSMutableArray array];
+  const NSInteger window = controller.coreWindow.window.windowNumber;
+  for (NSNumber *strip in strips)
+    [closed addObject:@{@"strip" : strip, @"window" : @(window), @"profile" : strips[strip], @"tabs" : @[], @"closed" : @YES}];
+  gHandler(@{@"rev" : @(++gRev), @"cmd" : NSNull.null, @"strips" : closed});
+}
+
++ (BOOL)commandsSeen {
+  return gCommandsSeen;
 }
 
 + (void)activated:(NNCoreTab *)tab inWindow:(NNCoreWindowController *)controller {
@@ -92,6 +133,7 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
 }
 
 + (void)command:(NSInteger)commandId command:(NSDictionary<NSString *, id> *)command {
+  gCommandsSeen = true;
   NSString *op = command[@"op"];
   const int stripId = [command[@"strip"] intValue];
   NNCoreWindowController *found = nil;
@@ -118,6 +160,9 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
     NSArray<NSString *> *keys = [command[@"keys"] isKindOfClass:NSArray.class] ? command[@"keys"] : @[];
     const NSInteger pinned = [command[@"pinned"] integerValue];
     int index = 0;
+    rejected = keys.count > 0;
+    for (NSString *key in keys)
+      if (byKey[key]) rejected = NO;
     for (NSUInteger i = 0; i < keys.count; i++) {
       NNCoreTab *tab = byKey[keys[i]];
       if (!tab) continue;
@@ -129,6 +174,7 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
   }
   gCommand = nil;
   NSMutableDictionary *tx = [@{@"rev" : @(++gRev), @"cmd" : @(commandId), @"strips" : found ? @[ Strip(found, profile) ] : @[]} mutableCopy];
+  // None of its keys were in its strip: nothing was done.
   if (rejected) tx[@"rejected"] = @YES;
   if (gHandler) gHandler(tx);
 }

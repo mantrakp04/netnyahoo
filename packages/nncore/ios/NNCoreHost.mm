@@ -48,6 +48,7 @@ NSString *DirectoryName(NSString *name) {
 
 namespace {
 NNCoreBootstrapDelegate *gBootstrap;
+void (^gEventHandler)(NSString *, NSDictionary *);
 }  // namespace
 
 // MARK: - Engine delegate
@@ -108,6 +109,16 @@ NNCoreBootstrapDelegate *gBootstrap;
   NSLog(@"[nncore] quit cancelled");
 }
 
+- (void)engine:(NNCoreEngine *)engine permissionRequest:(NSDictionary *)request tab:(NNCoreTab *)tab {
+  NSMutableDictionary *payload = [request mutableCopy];
+  payload[@"browserId"] = @(tab ? nncore_host::BrowserId(tab) : 0);
+  if (gEventHandler) gEventHandler(@"permission", payload);
+}
+
+- (void)engine:(NNCoreEngine *)engine permissionRequestDismissed:(NSString *)requestId {
+  if (gEventHandler) gEventHandler(@"permissionDismissed", @{@"id" : requestId ?: @""});
+}
+
 - (NNCoreWindow *)engineWindowForNewBrowserOfProfile:(NNCoreProfile *)profile type:(NSString *)type {
   // Windows Chrome makes itself (chrome.windows.create, an incognito window, undocked DevTools, PiP) keep
   // Chrome's own for now; stage 2 routes normal and popup ones through the app's window manager.
@@ -166,6 +177,20 @@ NNCoreBootstrapDelegate *gBootstrap;
   return [NNCoreEngine runWithArgc:(int)args.size() argv:args.data() delegate:engineDelegate];
 }
 
++ (void (^)(NSString *, NSDictionary *))eventHandler {
+  return gEventHandler;
+}
+
++ (void)setEventHandler:(void (^)(NSString *, NSDictionary *))handler {
+  gEventHandler = [handler copy];
+}
+
++ (void)resolvePermission:(NSString *)requestId result:(NSString *)result remember:(BOOL)remember {
+  NNCoreEngine *engine = NNCoreEngine.sharedEngine;
+  if ([engine respondsToSelector:@selector(resolvePermission:result:remember:)])
+    [engine resolvePermission:requestId result:result remember:remember];
+}
+
 + (BOOL)isStarted {
   return gStarted;
 }
@@ -189,6 +214,36 @@ NNCoreBootstrapDelegate *gBootstrap;
     @"chromeWindows" : @(chromeWindows),
     @"keepAlive" : engine.keepAliveState ?: @"",
   };
+}
+
++ (NSArray<NSDictionary<NSString *, id> *> *)chromeWindows {
+  NSMutableArray *list = [NSMutableArray array];
+  for (NNCoreWindowController *c in NNCoreWindowController.all) {
+    NSWindow *w = c.coreWindow.window;
+    if (!w) continue;
+    NNCoreProfile *active = c.coreWindow.activeProfile;
+    [list addObject:@{
+      @"profile" : nncore_host::ProfileName(active),
+      @"window" : @(w.windowNumber),
+      @"frame" : NSStringFromRect(w.frame),
+      @"alpha" : @(w.alphaValue),
+      @"key" : @(w.isKeyWindow),
+      @"canBecomeKey" : @(w.canBecomeKeyWindow),
+      @"visible" : @(w.isVisible),
+      @"parentWindow" : @(w.parentWindow.windowNumber),
+      @"chromeWindows" : @1,
+      @"anchorBrowserId" : @0,
+      @"anyTabBrowserId" : @0,
+      @"ready" : @YES,
+      @"active" : @(w.isMainWindow),
+      @"pageInsets" : @[ @0, @0, @0, @0 ],
+      @"hosting" : @(c.root != nil),
+      @"group" : @"",
+      @"hasRoot" : @(c.root != nil),
+      @"translucent" : @(!w.opaque),
+    }];
+  }
+  return list;
 }
 
 @end

@@ -15,6 +15,12 @@ NS_ASSUME_NONNULL_BEGIN
 // $NETNYAHOO_DATA_DIR/Chromium: Chrome's user data dir (profiles are "Default" and "Profile <id>").
 @property(class, readonly) NSString *dataDirectory;
 @property(class, readonly) NSDictionary<NSString *, id> *engineInfo;
+// The app windows' state (JS ChromeWindowState), for diagnostics and tests.
+@property(class, readonly) NSArray<NSDictionary<NSString *, id> *> *chromeWindows;
+// The NetnyahooCEF module's events that don't belong to one view ("permission", "permissionDismissed"…).
+@property(class, nonatomic, copy, nullable) void (^eventHandler)(NSString *name, NSDictionary<NSString *, id> *payload);
++ (void)resolvePermission:(NSString *)requestId result:(NSString *)result remember:(BOOL)remember
+    NS_SWIFT_NAME(resolvePermission(_:result:remember:));
 
 @end
 

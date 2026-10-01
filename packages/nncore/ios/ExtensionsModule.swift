@@ -1,25 +1,46 @@
 import ExpoModulesCore
 
-// "NetnyahooExtensions" on NNCore. Stage 1 lists no extensions; installing, the action popups and the
-// install prompt come with NNCore's extensions API (docs/nncore-parity.md).
+// "NetnyahooExtensions" on NNCore, over //chrome/browser/netnyahoo's nn_extensions_* exports (the same calls as
+// packages/cef/ios/NNExtensions.mm). Chrome's own install prompt still shows for now (resolveInstallPrompt waits on
+// NNCore's install-prompt seam).
 public class ExtensionsModule: Module {
-  private static let notYet = ["error": "Extensions aren't on NNCore yet"]
-
   public func definition() -> ModuleDefinition {
     Name("NetnyahooExtensions")
     Events("onChanged", "onTabs", "onInstallPrompt")
 
+    OnCreate {
+      NNCoreServices.extensionsHandler = { [weak self] name, payload in
+        switch name {
+        case "changed": self?.sendEvent("onChanged", payload)
+        case "tabs": self?.sendEvent("onTabs", payload)
+        default: break
+        }
+      }
+    }
+
     AsyncFunction("resolveInstallPrompt") { (requestId: String, accepted: Bool) in }.runOnQueue(.main)
-    AsyncFunction("list") { (profile: String) in ["extensions": [[String: Any]]()] }.runOnQueue(.main)
-    AsyncFunction("inspectUnpacked") { (path: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("install") { (path: String, profile: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("setEnabled") { (id: String, profile: String, enabled: Bool) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("uninstall") { (id: String, profile: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("reload") { (id: String, profile: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("configure") { (id: String, profile: String, options: [String: Any]) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("searchEngineList") { (profile: String) in Self.notYet }.runOnQueue(.main)
-    AsyncFunction("evaluateInHost") { (expression: String, profile: String) -> String? in nil }.runOnQueue(.main)
-    AsyncFunction("evaluateInPage") { (expression: String, profile: String, page: String) -> String? in nil }.runOnQueue(.main)
+    AsyncFunction("list") { (profile: String, promise: Promise) in
+      NNCoreServices.listExtensions(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("inspectUnpacked") { (path: String) in NNCoreServices.inspectUnpacked(path) }.runOnQueue(.main)
+    AsyncFunction("install") { (path: String, profile: String, promise: Promise) in
+      NNCoreServices.installExtension(path: path, profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("setEnabled") { (id: String, profile: String, enabled: Bool, promise: Promise) in
+      NNCoreServices.setExtension(id, enabled: enabled, profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("uninstall") { (id: String, profile: String, promise: Promise) in
+      NNCoreServices.uninstallExtension(id, profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("reload") { (id: String, profile: String, promise: Promise) in
+      NNCoreServices.reloadExtension(id, profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("configure") { (id: String, profile: String, options: [String: Any], promise: Promise) in
+      NNCoreServices.configureExtension(id, profile: profile, options: options) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("searchEngineList") { (profile: String, promise: Promise) in
+      NNCoreServices.searchEngineList(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
     AsyncFunction("chooseFolder") { (promise: Promise) in
       let panel = NSOpenPanel()
       panel.canChooseFiles = false

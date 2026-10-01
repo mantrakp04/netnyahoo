@@ -6,8 +6,11 @@
 #import "NNCoreInternal.h"
 #import "NNCoreWebView.h"
 #import "NNCoreWebViewInternal.h"
+#import "NNCoreServices.h"
 
 #import <objc/runtime.h>
+
+#include <initializer_list>
 
 namespace {
 
@@ -85,6 +88,16 @@ void KeepTrafficLightsInset(NSWindow *window) {
                                                   dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
                                                 }];
   dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
+  // AppKit lays the title bar out again when the window first shows and when a Browser of another profile becomes
+  // current, without moving the close button through setFrame (no frame notification): check after every update.
+  [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidUpdateNotification
+                                                  object:window
+                                                   queue:nil
+                                              usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
+  for (double delay : {0.05, 0.25, 1.0})
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      LayoutTrafficLights(weakWindow);
+    });
 }
 
 void ConfigureWindow(NSWindow *window) {
@@ -154,6 +167,13 @@ bool IsReservedKey(NSEvent *event) {
   if ((self = [super init])) {
     _coreWindow = coreWindow;
     coreWindow.delegate = self;
+    __weak NNCoreWindowController *weakSelf = self;
+    [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification
+                                                    object:coreWindow.window
+                                                     queue:nil
+                                                usingBlock:^(NSNotification *) {
+                                                  if (NNCoreWindowController *c = weakSelf) [NNCoreTabStrip windowClosed:c];
+                                                }];
   }
   return self;
 }
@@ -172,13 +192,35 @@ bool IsReservedKey(NSEvent *event) {
   return nil;
 }
 
+- (NNCoreWebView *)anyView {
+  for (NNCoreProfile *profile in nncore_host::LoadedProfiles())
+    for (NNCoreTab *tab in [_coreWindow tabsForProfile:profile])
+      if (NNCoreWebView *view = [NNCoreTabs viewForTab:tab]) return view;
+  return nil;
+}
+
 - (void)window:(NNCoreWindow *)window didInsertTab:(NNCoreTab *)tab opener:(NNCoreTab *)opener disposition:(NSString *)disposition {
   [NNCoreTabStrip changedInWindow:self profile:tab.profile];
   // The app's own (a WebView opening its tab, or adopting one): the view attaches it itself.
   if (_hostChanges > 0 || [NNCoreTabs viewForTab:tab]) return;
-  NSString *adoptId = [NNCoreTabs offerTab:tab];
-  NNCoreWebView *from = [self viewFor:opener] ?: [self anyShownViewForProfile:tab.profile];
-  [from openedTab:tab adoptId:adoptId disposition:nncore_host::AppDisposition(disposition)];
+  NNCoreWebView *openerView = [self viewFor:opener];
+  if (openerView) {
+    // A page's popup, target=_blank or ⌘-click: placed by the app's opener rules.
+    [openerView openedTab:tab adoptId:[NNCoreTabs offerTab:tab] disposition:nncore_host::AppDisposition(disposition)];
+  } else {
+    // A tab Chrome made on its own (an extension's tabs.create): the app takes Chrome's place for it, through a view
+    // of this window; with none, through the extensions module (the app opens the URL itself).
+    NNCoreWebView *view = [self anyShownViewForProfile:tab.profile] ?: [self anyView];
+    if (view) {
+      [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
+    } else if (NNCoreServices.extensionsHandler) {
+      NNCoreServices.extensionsHandler(@"tabs", @{
+        @"action" : @"open", @"url" : tab.url ?: @"", @"profile" : nncore_host::ProfileName(tab.profile), @"active" : @YES,
+        @"window" : NSNull.null, @"extensionId" : @""
+      });
+      [tab closeNow];
+    }
+  }
 }
 
 - (void)window:(NNCoreWindow *)window didRemoveTab:(NNCoreTab *)tab {
@@ -266,8 +308,14 @@ NSView *NNWindowRootView(NSWindow *window) {
   NNCoreWindowController *controller = [NNCoreWindowController forNSWindow:window];
   if (!controller) return;
   __weak NNCoreWindow *coreWindow = controller.coreWindow;
+  __weak NSWindow *weakWindow = window;
   nncore_host::WithProfile(profile ?: @"", ^(NNCoreProfile *p) {
-    if (p && coreWindow) coreWindow.activeProfile = p;
+    if (!p || !coreWindow) return;
+    coreWindow.activeProfile = p;
+    // Showing another profile's Browser makes AppKit lay the title bar out again, which puts the window buttons
+    // back at their standard place: put them back where the app wants them, now and once that layout ran.
+    LayoutTrafficLights(weakWindow);
+    dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
   });
 }
 
@@ -338,7 +386,19 @@ NSView *NNWindowRootView(NSWindow *window) {
 
 @implementation NNChromeWindowHost (Dev)
 
+// "lights": the close button's frame in window coordinates (x,y,w,h, bottom-left origin).
 + (NSString *)devAction:(NSString *)action window:(NSWindow *)window {
+  if ([action isEqualToString:@"lights"]) {
+    NSButton *close = [window standardWindowButton:NSWindowCloseButton];
+    if (!close) return nil;
+    NSRect r = [close convertRect:close.bounds toView:nil];
+    return [NSString stringWithFormat:@"%.1f,%.1f,%.1f,%.1f", r.origin.x, r.origin.y, r.size.width, r.size.height];
+  }
+  if ([action isEqualToString:@"close-button"]) {
+    // The title bar's close button, as a click on it (performClose: → windowShouldClose:).
+    [[window standardWindowButton:NSWindowCloseButton] performClick:nil];
+    return @"clicked";
+  }
   return nil;
 }
 

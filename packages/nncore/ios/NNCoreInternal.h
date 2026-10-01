@@ -55,13 +55,14 @@ bool Background();
 // A strip changed (a tab inserted, removed, activated or placed); the cause is the command being run, the app's
 // own change (hostChanges) or Chrome's.
 + (void)changedInWindow:(NNCoreWindowController *)controller profile:(NNCoreProfile *)profile;
+// With an explicit cause (NSNull: Chrome's, e.g. a view binding its key to a tab Chrome made).
++ (void)changedInWindow:(NNCoreWindowController *)controller profile:(NNCoreProfile *)profile cause:(nullable id)cause;
+// The window went: its strips are sent once more, closed.
++ (void)windowClosed:(NNCoreWindowController *)controller;
+// The JS drives Chrome's active tab with commands (views then don't activate their tab when shown).
+@property(class, readonly) BOOL commandsSeen;
 + (void)activated:(NNCoreTab *)tab inWindow:(NNCoreWindowController *)controller;
 + (void)setPinned:(BOOL)pinned tab:(NNCoreTab *)tab;
-@end
-
-// Asked of the engine (stage 1): close a tab at once, without beforeunload, as CEF's CloseBrowser(true).
-@interface NNCoreTab (Pending)
-- (void)closeNow;
 @end
 
 namespace nncore_host {
@@ -77,6 +78,8 @@ bool EngineHasTabModel();
 + (nullable NNCoreWebView *)viewForTab:(NNCoreTab *)tab;
 // The app's adoptId for a tab Chrome made ("nncore:<browserId>"); kept until adopted, closed if never.
 + (NSString *)offerTab:(NNCoreTab *)tab;
+// A tab Chrome made with no page opener (an extension's tabs.create): offered as "tab:<browserId>".
++ (NSString *)offerTab:(NNCoreTab *)tab prefix:(NSString *)prefix;
 + (nullable NNCoreTab *)takeOffered:(NSString *)adoptId;
 + (void)forget:(NNCoreTab *)tab;
 @end
