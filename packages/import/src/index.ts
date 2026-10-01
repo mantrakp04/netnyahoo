@@ -289,11 +289,3 @@ export const openAutomationSettings = () => call<void>(Native.openAutomationSett
 export const openDia = () => call<void>(Native.openDia());
 
 export const readDiaTabs = () => call<DiaTabsResult>(Native.readDiaTabs());
-
-export function flattenBookmarks(node: BookmarkNode | undefined): { url: string; title: string }[] {
-  if (!node) return [];
-  if (node.type === "url") return node.url ? [{ url: node.url, title: node.title }] : [];
-  return (node.children ?? []).flatMap(flattenBookmarks);
-}
-
-export const toolbarFolder = (root: BookmarkNode | undefined) => root?.children?.find((c) => c.role === "toolbar");

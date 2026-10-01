@@ -315,16 +315,6 @@ export async function applyAdapter(state: ScopeState, adapter: Adapter, keys: Se
   return true;
 }
 
-export async function applyRemote(state: ScopeState, adapters: Adapter[], changed: Set<string>) {
-  const keys = new Set([...state.unapplied, ...changed]);
-  const unapplied: string[] = [];
-  for (const adapter of adapters) {
-    if (!(await applyAdapter(state, adapter, keys))) unapplied.push(...[...keys].filter((k) => k.startsWith(adapter.prefix)));
-  }
-  const handled = (k: string) => adapters.some((a) => k.startsWith(a.prefix));
-  state.unapplied = [...unapplied, ...[...keys].filter((k) => !handled(k))];
-}
-
 export async function compact(state: ScopeState, transport: Transport, scope: string, device: string, now: number, options: ScopeOptions = {}, force = false) {
   const o = { ...DEFAULTS, ...options };
   const count = Object.keys(state.files).length;

@@ -65,8 +65,6 @@ export function cleanUrl(url: string): string {
   return `${base}${kept.length ? `?${kept.join("&")}` : ""}${hash}`;
 }
 
-export const hasTrackingParams = (url: string) => cleanUrl(url) !== url;
-
 export function markdownLink(title: string, url: string): string {
   return `[${(title || url).replace(/([[\]])/g, "\\$1")}](${cleanUrl(url)})`;
 }

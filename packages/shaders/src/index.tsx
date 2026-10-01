@@ -1,4 +1,4 @@
-import { requireNativeModule, requireNativeViewManager } from "expo-modules-core";
+import { requireNativeViewManager } from "expo-modules-core";
 import type { ViewProps } from "react-native";
 
 export const DIA_SPECTRUM = ["#0358F7", "#5092C7", "#E1E1FE", "#FFD400", "#FA3D1D", "#FD02F5"];
@@ -115,11 +115,3 @@ export function PowerUp({ palette = "pink", halo = null, ...props }: PowerUpProp
   );
 }
 
-type AreaLightDebugModule = {
-  debugState(): Record<string, unknown>;
-  debugSetWindowActive(active: boolean | null): Promise<void>;
-  debugSetReduceMotion(reduce: boolean | null): Promise<void>;
-  debugSnapshot(dir: string): Promise<Array<{ file: string; class: string; ok: boolean; window: number; frame: number[]; key: boolean; main: boolean; hidden: boolean; alpha: number }>>;
-};
-
-export const shaderDebug = () => requireNativeModule<AreaLightDebugModule>("NetnyahooAreaLight");

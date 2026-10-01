@@ -298,8 +298,6 @@ export const onAppEvent = (listener: (e: AppEvent) => void) => Shell.addListener
 export const onOpenURLs = (listener: (urls: string[]) => void) =>
   Shell.addListener("onOpenURLs", ({ urls }) => listener(urls));
 
-export type { Frame as WindowFrame };
-
 export const WindowDragRegion = requireNativeViewManager<ViewProps>("NetnyahooShell");
 
 export type SymbolProps = ViewProps & {

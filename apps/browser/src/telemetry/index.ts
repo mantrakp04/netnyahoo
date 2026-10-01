@@ -6,7 +6,6 @@ import { devOmniboxSampler } from "./track";
 import { devHourly, sessionEnding, startUsage } from "./usage";
 
 export { installErrorReporting };
-export { dismissAsk, setSharing, useTelemetry, type SharingSource } from "./client";
 
 export function startTelemetry() {
   startUsage();

@@ -52,7 +52,6 @@ const Keychain = requireOptionalNativeModule<{
   delete(account: string): Promise<boolean>;
 }>("NetnyahooKeychain");
 
-export const hasKeychain = !!Keychain;
 const memory = new Map<string, string>();
 
 export const keychainGet = async (account: string) => (Keychain ? await Keychain.get(account) : (memory.get(account) ?? null));
