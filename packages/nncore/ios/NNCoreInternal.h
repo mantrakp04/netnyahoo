@@ -18,6 +18,7 @@ namespace nncore_host {
 NNCoreProfile *_Nullable LoadedProfile(NSString *name);
 void WithProfile(NSString *name, void (^completion)(NNCoreProfile *_Nullable profile));
 NSString *ProfileName(NNCoreProfile *_Nullable profile);
+NNCoreProfile *_Nullable PersonalIfLoaded(NNCoreEngine *engine);
 bool IsIncognito(NSString *name);
 
 // A stable id per tab for the app's lifetime (the WebView's browserId).

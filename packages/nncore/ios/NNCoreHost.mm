@@ -52,6 +52,7 @@ namespace {
 NNCoreBootstrapDelegate *gBootstrap;
 // How far AppKit's own launch got ([NSApp finishLaunching], inside Chromium's loop): the app delegate gets each
 // launch callback exactly once, from AppKit if it hasn't sent it yet, else from launchApp.
+bool gScratchDataDir = false;
 bool gAppKitWillFinish = false;
 bool gAppKitDidFinish = false;
 NSArray<NSURL *> *gPendingLaunchURLs;
@@ -73,7 +74,8 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   gStarted = YES;
   nncore_host::InstallActivationGuardsLate();
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
-  if (NNCoreProfile *profile = engine.defaultProfile) Profiles()[@""] = profile;
+  // Personal ("") is always Chrome's Default profile directory, whichever profile Chrome used last.
+  if (NNCoreProfile *profile = nncore_host::PersonalIfLoaded(engine)) Profiles()[@""] = profile;
   nncore_host::LoadContentBlocker(@"");
   [NNCoreWebView installScrollZoom];
   [NNCoreServices watchDownloads:@""];
@@ -195,10 +197,20 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
 
 + (int)runWithArgc:(int)argc argv:(char **)argv delegate:(id<NSApplicationDelegate> (^)(void))makeDelegate {
   const char *dataDir = getenv("NETNYAHOO_DATA_DIR");
-  if (!dataDir || !*dataDir) {
-    // A development build: never fall back to a real profile.
+  // A data dir from the environment is a test or development instance's scratch one: it keeps off the login
+  // keychain too. Without one, a release build has its own folder, apart from the CEF build's (the two can run side
+  // by side); a development build refuses (it never falls back to a real profile).
+  gScratchDataDir = dataDir && *dataDir;
+  if (!gScratchDataDir) {
+#if DEBUG
     fprintf(stderr, "[nncore] set NETNYAHOO_DATA_DIR to a scratch directory\n");
     return 1;
+#else
+    NSString *support = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *own = [support stringByAppendingPathComponent:@"Netnyahoo NNCore"];
+    setenv("NETNYAHOO_DATA_DIR", own.fileSystemRepresentation, 1);
+    dataDir = getenv("NETNYAHOO_DATA_DIR");
+#endif
   }
   gMakeDelegate = [makeDelegate copy];
   gDataDirectory = [@(dataDir) stringByAppendingPathComponent:@"Chromium"];
@@ -257,9 +269,12 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
       "--disable-stack-profiler",
       "--disable-features=MacAppCodeSignClone",
       "--enable-features=WebContentsDiscard",
-      // Test instances keep off the login keychain (as packages/cef does with a data dir).
-      "--use-mock-keychain",
+      // Chrome otherwise starts in the profile last used (Local State), and Personal is the Default directory
+      // (packages/cef does the same, a4ffd530).
+      "--profile-directory=Default",
   };
+  // Test instances keep off the login keychain (as packages/cef does with a data dir).
+  if (gScratchDataDir) extra.push_back("--use-mock-keychain");
   // A background (test) instance shares the screen with the owner's windows: when one of theirs covers it, Chrome
   // marks its pages hidden (WebContentsOcclusionCheckerMac / macOS occlusion) and drops their input, so a run's
   // results would depend on what the owner has open. Chrome's own browser tests use this switch for the same
@@ -561,16 +576,21 @@ void WithProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   if (!engine) return completion(nil);
   if (IsIncognito(name)) {
-    NNCoreProfile *base = Profiles()[@""] ?: engine.defaultProfile;
-    NNCoreProfile *otr = base && [engine respondsToSelector:@selector(offTheRecordProfileFor:)]
-                             ? [engine offTheRecordProfileFor:base]
-                             : nil;
-    if (otr) Profiles()[name] = otr;
-    return completion(otr);
+    // A private window's profile is Personal's off-the-record one.
+    return WithProfile(@"", ^(NNCoreProfile *base) {
+      if (NNCoreProfile *known = Profiles()[name]) return completion(known);
+      NNCoreProfile *otr = base && [engine respondsToSelector:@selector(offTheRecordProfileFor:)]
+                               ? [engine offTheRecordProfileFor:base]
+                               : nil;
+      if (otr) Profiles()[name] = otr;
+      completion(otr);
+    });
   }
-  if (name.length == 0 && engine.defaultProfile) {
-    Profiles()[@""] = engine.defaultProfile;
-    return completion(engine.defaultProfile);
+  if (name.length == 0) {
+    if (NNCoreProfile *personal = PersonalIfLoaded(engine)) {
+      Profiles()[@""] = personal;
+      return completion(personal);
+    }
   }
   NSMutableArray *waiters = ProfileWaiters()[name];
   if (waiters) return (void)[waiters addObject:[completion copy]];
@@ -584,6 +604,13 @@ void WithProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
              [ProfileWaiters() removeObjectForKey:name];
              for (void (^waiter)(NNCoreProfile *) in pending) waiter(profile);
            }];
+}
+
+// Chrome's Default profile, if it's the one Chrome has loaded as its "last used" (Chrome starts with
+// --profile-directory=Default, so normally yes); else WithProfile loads it by its directory.
+NNCoreProfile *PersonalIfLoaded(NNCoreEngine *engine) {
+  NNCoreProfile *profile = engine.defaultProfile;
+  return [profile.name isEqualToString:@"Default"] ? profile : nil;
 }
 
 NSString *ProfileName(NNCoreProfile *profile) {

@@ -12,6 +12,23 @@
 
 #include <initializer_list>
 
+// A block observer's registration, removed when its owner (the object it's associated with) goes.
+@interface NNObserverRegistration : NSObject
+- (instancetype)initWithToken:(id)token;
+@end
+
+@implementation NNObserverRegistration {
+  id _token;
+}
+- (instancetype)initWithToken:(id)token {
+  if ((self = [super init])) _token = token;
+  return self;
+}
+- (void)dealloc {
+  if (_token) [NSNotificationCenter.defaultCenter removeObserver:_token];
+}
+@end
+
 namespace {
 
 BOOL (^gShouldClose)(NSWindow *);
@@ -49,13 +66,15 @@ void LayoutTrafficLights(NSWindow *window) {
   // that isn't key): follow the frames of all of them.
   for (NSView *view = close; view && view != window.contentView.superview; view = view.superview) {
     if (objc_getAssociatedObject(view, kFollowedKey)) continue;
-    objc_setAssociatedObject(view, kFollowedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     view.postsFrameChangedNotifications = YES;
     __weak NSWindow *weakWindow = window;
-    [NSNotificationCenter.defaultCenter addObserverForName:NSViewFrameDidChangeNotification
-                                                    object:view
-                                                     queue:nil
-                                                usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
+    id token = [NSNotificationCenter.defaultCenter addObserverForName:NSViewFrameDidChangeNotification
+                                                               object:view
+                                                                queue:nil
+                                                           usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
+    // The registration goes with the view (a window's title bar views go with the window).
+    objc_setAssociatedObject(view, kFollowedKey, [[NNObserverRegistration alloc] initWithToken:token],
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   }
   const CGFloat spacing = NSMinX(mini.frame) - NSMinX(close.frame);
   NSValue *center = objc_getAssociatedObject(window, kLightsCenterKey);
@@ -477,6 +496,7 @@ NSString *Describe(NSView *view) {
 
 NSPoint WindowPoint(NSWindow *window, NSString *spec) {
   NSArray<NSString *> *n = [spec componentsSeparatedByString:@","];
+  if (n.count < 2) return NSMakePoint(-1, -1);
   CGFloat height = window.contentView.superview.bounds.size.height;
   return NSMakePoint(n[0].doubleValue, height - n[1].doubleValue);
 }
@@ -580,6 +600,7 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
   }
   if ([action hasPrefix:@"keys:"]) {
     NSArray<NSString *> *parts = [action componentsSeparatedByString:@":"];
+    if (parts.count < 3) return @"keys:<flags>:<characters>[:<keyCode>]";
     NSEventModifierFlags flags = (NSEventModifierFlags)parts[1].longLongValue;
     unsigned short code = parts.count > 3 ? (unsigned short)parts[3].intValue : 0;
     NSEvent *down = Key(window, NSEventTypeKeyDown, flags, parts[2], code);

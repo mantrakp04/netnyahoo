@@ -21,13 +21,14 @@ const app = resolve(appArg);
 const scratch = resolve(scratchArg);
 const data = join(scratch, "data");
 // A DevTools port nothing else listens on (another instance's would answer for the wrong app).
-const port = await new Promise((resolve) => {
+const freePort = () => new Promise((resolve) => {
   const probe = createNetServer();
   probe.listen(0, "127.0.0.1", () => {
     const { port } = probe.address();
     probe.close(() => resolve(port));
   });
 });
+let port;
 const downloadsDir = join(scratch, "downloads");
 rmSync(data, { recursive: true, force: true });
 rmSync(downloadsDir, { recursive: true, force: true });
@@ -121,20 +122,8 @@ execFileSync("defaults", ["write", "com.netnyahoo.browser.nncore", "RCTDevMenu",
 
 // As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
 const exe = join(app, "Contents/MacOS/NetnyahooNNCore");
-const stdout = join(scratch, "app.out.log");
-const pidsBefore = new Set(pgrep());
-const launchedAt = Date.now();
-execFileSync("open", [
-  "-g", "-n",
-  "--env", "NETNYAHOO_BACKGROUND=1", "--env", "NETNYAHOO_TEST_REAUTH=granted", "--env", `NETNYAHOO_DOWNLOADS_DIR=${downloadsDir}`, "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
-  // Tab capture without Chrome's picker: getDisplayMedia takes the tab titled "Capture Target" (Chrome's browser-test
-  // switch; a tab, so no macOS screen-recording prompt).
-  "--env", `NETNYAHOO_CHROMIUM_SWITCHES=--auto-select-tab-capture-source-by-title=Capture Target ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""}`.trim(),
-  // Passed through for experiments (e.g. NETNYAHOO_ALLOW_OCCLUSION=1).
-  ...["NETNYAHOO_ALLOW_OCCLUSION", "NETNYAHOO_TRACE_VISIBILITY"].filter((k) => process.env[k]).flatMap((k) => ["--env", `${k}=${process.env[k]}`]),
-  "--stdout", stdout, "--stderr", stdout,
-  app,
-]);
+let stdout = join(scratch, "app.out.log");
+let pid, child, launchedAt, exited = null;
 function pgrep() {
   try {
     return execFileSync("pgrep", ["-f", `^${exe}`]).toString().split("\n").filter(Boolean).map(Number);
@@ -142,20 +131,40 @@ function pgrep() {
     return [];
   }
 }
-const pid = await (async () => {
-  for (let i = 0; i < 100; i++) {
-    const fresh = pgrep().filter((p) => !pidsBefore.has(p));
-    if (fresh.length) return fresh[0];
-    await sleep(100);
-  }
-  throw new Error("the app didn't start");
-})();
-const child = { pid, kill: (sig) => { try { process.kill(pid, sig); } catch {} } };
-let exited = null;
+// Starts the app on the run's data dir (again for the relaunch checks), with a fresh DevTools port.
+async function launch(log = "app.out.log") {
+  port = await freePort();
+  stdout = join(scratch, log);
+  const pidsBefore = new Set(pgrep());
+  launchedAt = Date.now();
+  execFileSync("open", [
+    "-g", "-n",
+    "--env", "NETNYAHOO_BACKGROUND=1", "--env", "NETNYAHOO_TEST_REAUTH=granted", "--env", `NETNYAHOO_DOWNLOADS_DIR=${downloadsDir}`, "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
+    // Tab capture without Chrome's picker: getDisplayMedia takes the tab titled "Capture Target" (Chrome's browser-test
+    // switch; a tab, so no macOS screen-recording prompt).
+    "--env", `NETNYAHOO_CHROMIUM_SWITCHES=--auto-select-tab-capture-source-by-title=Capture Target ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""}`.trim(),
+    // Passed through for experiments (e.g. NETNYAHOO_ALLOW_OCCLUSION=1).
+    ...["NETNYAHOO_ALLOW_OCCLUSION", "NETNYAHOO_TRACE_VISIBILITY"].filter((k) => process.env[k]).flatMap((k) => ["--env", `${k}=${process.env[k]}`]),
+    "--stdout", stdout, "--stderr", stdout,
+    app,
+  ]);
+  pid = await (async () => {
+    for (let i = 0; i < 100; i++) {
+      const fresh = pgrep().filter((p) => !pidsBefore.has(p));
+      if (fresh.length) return fresh[0];
+      await sleep(100);
+    }
+    throw new Error("the app didn't start");
+  })();
+  const own = pid;
+  child = { pid: own, kill: (sig) => { try { process.kill(own, sig); } catch {} } };
+  exited = null;
+  writeFileSync(join(scratch, "app.pid"), String(own));
+}
+await launch();
 const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
 setInterval(() => { if (!exited && !alive()) exited = { pid }; }, 300).unref();
 const appLog = { join: () => (existsSync(stdout) ? readFileSync(stdout, "utf8") : "") };
-writeFileSync(join(scratch, "app.pid"), String(pid));
 
 let evalSeq = 0;
 async function evalApp(body, timeoutMs = 20000) {
@@ -713,12 +722,49 @@ try {
     }
   });
 
+  await check("screen-share-picker", async () => {
+    // getDisplayMedia through the app's source picker (setDisplayMediaPicker, as the app sets it): the request reaches
+    // the app (onDisplayMediaRequest, with displayMediaSources' list), the app picks another tab (its
+    // mediaCaptureSourceId), and the engine grants that source to the page (resolveDisplayMedia): the page captures it.
+    const target = await openTab(`${base}/capture-target?picker`, "Capture Target", true);
+    const t = await pageFor(first.id, `${base}/a`);
+    try {
+      await evalApp(`return globalThis.expo.modules.NetnyahooCEF.setDisplayMediaPicker(true).then(() => true)`);
+      await evalApp(`return nn.webviews.get("${first.id}").reload()`);
+      await until("A loaded", async () => (await state()).tabs.find((x) => x.id === first.id && x.title === "Page A" && !x.loading), 10000);
+      await sleep(500);
+      const page = await pageFor(first.id, `${base}/a`);
+      await cdp(page, "Runtime.evaluate", {
+        expression: "window.__cap = 'pending'; navigator.mediaDevices.getDisplayMedia({ video: true }).then((s) => { window.__stream = s; window.__cap = 'live'; }, (e) => (window.__cap = e.name)); true",
+        userGesture: true,
+      });
+      const request = await until("onDisplayMediaRequest", async () => (await eventsOf(first.id)).findLast((x) => x.name === "displayMediaRequest"), 10000);
+      const sourceId = await evalApp(`return nn.webviews.get("${target.id}").mediaCaptureSourceId()`);
+      if (!sourceId) throw new Error("no capture source id for the target tab");
+      // As the app's picker answers (it closes the sheet too).
+      await evalApp(`globalThis.nnSharePicker.answerDisplayMedia("${first.id}", ${JSON.stringify(sourceId)}); return true`);
+      const live = await until("a live capture", async () => {
+        const v = (await cdp(page, "Runtime.evaluate", { expression: "window.__cap", returnByValue: true })).result.value;
+        if (v !== "pending" && v !== "live") throw new Error(`getDisplayMedia: ${v}`);
+        return v === "live" ? v : null;
+      }, 15000);
+      await cdp(page, "Runtime.evaluate", { expression: "window.__stream?.getTracks().forEach((x) => x.stop()); true" });
+      return { sources: Array.isArray(request.payload.sources) ? request.payload.sources.length : request.payload.sources, sourceId: String(sourceId).slice(0, 40), live };
+    } finally {
+      await closeTab(target.id);
+    }
+  });
+
   await check("tab-capture", async () => {
-    // Tab capture (getDisplayMedia; the test switch picks the tab titled "Capture Target"): the capturing tab's
-    // media access (onMediaAccess), its source id, "Share this tab instead" (changeCaptureSource) and Stop sharing
+    // Chrome's own picker (the app's turned off; the test switch picks the tab titled "Capture Target"): the capturing
+    // tab's media access (onMediaAccess), "Share this tab instead" (changeCaptureSource) and Stop sharing
     // (stopCapture, which ends the page's track).
     const target = await openTab(`${base}/capture-target`, "Capture Target", true);
     const other = await openTab(`${base}/d?share-instead`, "Page D", true);
+    await evalApp(`return globalThis.expo.modules.NetnyahooCEF.setDisplayMediaPicker(false).then(() => true)`);
+    await evalApp(`return nn.webviews.get("${first.id}").reload()`);
+    await until("A loaded", async () => (await state()).tabs.find((x) => x.id === first.id && x.title === "Page A" && !x.loading), 10000);
+    await sleep(500);
     const t = await pageFor(first.id, `${base}/a`);
     try {
       await cdp(t, "Runtime.evaluate", {
@@ -749,9 +795,22 @@ try {
       return { live, access, sourceId: sourceId ? String(sourceId).slice(0, 40) : null, changed, stopped, ended };
     } finally {
       await cdp(t, "Runtime.evaluate", { expression: "window.__stream?.getTracks().forEach((x) => x.stop())" }).catch(() => null);
+      await evalApp(`return globalThis.expo.modules.NetnyahooCEF.setDisplayMediaPicker(true).then(() => true)`);
       await closeTab(target.id);
       await closeTab(other.id);
+      await evalApp(`return nn.webviews.get("${first.id}").reload()`);
+      await until("A loaded", async () => (await state()).tabs.find((x) => x.id === first.id && x.title === "Page A" && !x.loading), 10000);
     }
+  });
+
+  await check("capture-picture", async () => {
+    // The page as painted (capturePicture, the dragged tab's picture): a JPEG and the view's frame.
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await until("A shown", async () => (await state()).active === first.id);
+    const picture = await evalApp(`return nn.webviews.get("${first.id}").capturePicture(0.3)`);
+    if (!picture?.data || !Buffer.from(picture.data, "base64").subarray(0, 2).equals(Buffer.from([0xff, 0xd8])))
+      throw new Error(`no JPEG: ${JSON.stringify(picture)?.slice(0, 120)}`);
+    return { bytes: Buffer.from(picture.data, "base64").length, frame: picture.frame };
   });
 
   await check("unresponsive", async () => {
@@ -759,15 +818,18 @@ try {
     // and the page answering again (onResponsive).
     const busy = await openTab(`${base}/b?busy`, "Page B");
     try {
-      const t = await pageFor(busy.id, `${base}/b?busy`);
-      await cdp(t, "Runtime.evaluate", { expression: "setTimeout(() => { const end = Date.now() + 24000; while (Date.now() < end); }, 50); true" });
-      await sleep(500);
-      const s = await state();
+      // No DevTools client on the page meanwhile: Chrome ignores a hang while a debugger is attached.
       await evalApp(`return nn.webviews.get("${busy.id}").focus()`);
-      await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "a", keyCode: 0, modifiers: [], focus: "page" })`);
-      const hung = await until("onUnresponsive", async () => (await eventsOf(busy.id)).find((x) => x.name === "unresponsive"), 22000);
+      await evalApp(`return nn.webviews.get("${busy.id}").executeJavaScript("setTimeout(() => { const end = Date.now() + 40000; while (Date.now() < end); }, 50)")`);
+      await sleep(800);
+      const s = await state();
+      // Input the busy page can't answer: Chrome's hang monitor starts with it.
+      const sent = await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "a", keyCode: 0, modifiers: [], focus: "page" })`);
+      const busyNow = "-";
+      const hung = await until("onUnresponsive", async () => (await eventsOf(busy.id)).find((x) => x.name === "unresponsive"), 35000)
+        .catch(async (e) => { throw new Error(`${e.message}; page ${busyNow}; key ${JSON.stringify(sent)}; events ${JSON.stringify((await eventsOf(busy.id)).map((x) => x.name).slice(-8))}; active ${(await state()).active === busy.id}`); });
       await evalApp(`return nn.webviews.get("${busy.id}").resolveUnresponsive(false)`);
-      const back = await until("onResponsive", async () => (await eventsOf(busy.id)).find((x) => x.name === "responsive"), 30000)
+      const back = await until("onResponsive", async () => (await eventsOf(busy.id)).find((x) => x.name === "responsive"), 45000)
         .catch(async (e) => { throw new Error(`${e.message}; events ${JSON.stringify((await eventsOf(busy.id)).map((x) => x.name).slice(-10))}`); });
       return { unresponsive: !!hung, responsive: !!back };
     } finally {
@@ -777,22 +839,23 @@ try {
   });
 
   await check("permission-dismissed", async () => {
-    // A prompt the page leaves (it navigates away): Chrome dismisses it and the app hears so (onPermissionDismissed).
+    // A prompt Chrome drops on its own (its tab closes before the app answers): the app hears so
+    // (onPermissionDismissed). A navigation doesn't show it: the app answers "dismiss" itself then.
     await evalApp(`globalThis.__nnDismissed = []; globalThis.__nnDismissSub?.remove(); globalThis.__nnDismissSub = globalThis.expo.modules.NetnyahooCEF.addListener("onPermissionDismissed", (e) => globalThis.__nnDismissed.push(e)); return true`);
-    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
-    const t = await pageFor(first.id, `${base}/a`);
-    await cdp(t, "Runtime.evaluate", { expression: "navigator.requestMIDIAccess({ sysex: true }).catch(() => {}); true", userGesture: true });
-    const request = await until("the prompt", async () => evalApp(`return nn.pageState.getState().pages["${first.id}"]?.permission ?? null`), 10000);
-    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/b?away", { userInitiated: true }); return true`);
+    const asker = await openTab(`${base}/c?asker`, "Page C");
     try {
+      const t = await pageFor(asker.id, `${base}/c?asker`);
+      await cdp(t, "Runtime.evaluate", { expression: "navigator.requestMIDIAccess({ sysex: true }).catch(() => {}); true", userGesture: true });
+      const request = await until("the prompt", async () => evalApp(`return nn.pageState.getState().pages["${asker.id}"]?.permission ?? null`), 10000);
+      await closeTab(asker.id);
       const dismissed = await until("onPermissionDismissed", async () => {
         const list = await evalApp(`return globalThis.__nnDismissed`);
-        return list.length ? list : null;
-      }, 10000);
-      return { request: request.id, dismissed: dismissed[0] };
+        return list.find((x) => x.id === request.id) ?? null;
+      }, 10000).catch(async (e) => { throw new Error(`${e.message}; request ${request.id}; got ${JSON.stringify(await evalApp(`return globalThis.__nnDismissed`))}`); });
+      return { request: request.id, dismissed };
     } finally {
       await evalApp(`globalThis.__nnDismissSub?.remove(); return true`);
-      await backToA();
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
     }
   });
 
@@ -926,6 +989,92 @@ try {
       if (inStrip || panelInStrip) throw new Error("a standalone WebView's tab is in the window's strip");
       if (popupVisible !== "visible" || panelVisible !== "visible") throw new Error(`popup ${popupVisible}, panel ${panelVisible}`);
       return { popup: popupVisible, panel: panelVisible, windowsBefore, windowsAfter };
+    } finally {
+      await evalApp(`nn.extensions.closeExtensionPopup(); nn.extensions.closeSidePanel(${JSON.stringify(mainWindow)}); return true`).catch(() => null);
+      await exts(`uninstall("${installed.id}", "")`);
+    }
+  });
+
+  await check("scroll-zoom", async () => {
+    // ⌘-scroll zooms the page with a wheel or a Magic Mouse and scrolls it with a trackpad (devScrollZoom, as
+    // packages/cef's zoom-scroll-test).
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await until("A shown", async () => (await state()).active === first.id);
+    const zoom = () => evalApp(`return nn.store.getState().tabs["${first.id}"]?.zoom ?? 1`);
+    const reset = async () => {
+      await evalApp(`return nn.webviews.get("${first.id}").zoomStep(0)`);
+      await until("zoom 100%", async () => ((await zoom()) === 1 ? true : null), 5000);
+    };
+    const scroll = (steps) => evalApp(`return globalThis.expo.modules.NetnyahooCEF.devScrollZoom(${JSON.stringify(steps)})`);
+    const gesture = (trackpad) => [
+      { phase: "mayBegin", dy: 0, trackpad }, { phase: "began", dy: 12, trackpad },
+      ...Array.from({ length: 4 }, () => ({ phase: "changed", dy: 40, trackpad })),
+      { phase: "ended", dy: 0, trackpad }, ...Array.from({ length: 3 }, () => ({ phase: "momentum", dy: 30 })),
+    ];
+    await reset();
+    const trackpad = await scroll(gesture(true));
+    await sleep(800);
+    const afterTrackpad = await zoom();
+    const wheel = await scroll([{ phase: "wheel", dy: 1 }, { phase: "wheel", dy: 1 }]);
+    const afterWheel = await until("zoomed", async () => { const z = await zoom(); return z > 1 ? z : null; }, 5000)
+      .catch(async (e) => { throw new Error(`${e.message}; trackpad ${JSON.stringify(trackpad)} wheel ${JSON.stringify(wheel)} zoom ${await zoom()} events ${JSON.stringify((await eventsOf(first.id)).filter((x) => x.name === "zoom").slice(-2))}`); });
+    await reset();
+    if (trackpad.some(Boolean) || afterTrackpad !== 1) throw new Error(`a trackpad ⌘-scroll zoomed: ${JSON.stringify(trackpad)} → ${afterTrackpad}`);
+    if (!wheel.some(Boolean)) throw new Error(`the wheel didn't zoom: ${JSON.stringify(wheel)}`);
+    return { trackpad, wheel, afterWheel };
+  });
+
+  await check("print-preview", async () => {
+    // Print (WebViewHandle.print): Chrome's print preview for the page; closed again.
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await evalApp(`return nn.webviews.get("${first.id}").print()`);
+    const preview = await until("the print preview", async () => (await targets()).find((t) => t.url.startsWith("chrome://print")), 15000);
+    // Chrome closes a print preview when its page navigates.
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a?after-print", { userInitiated: true }); return true`);
+    await until("the preview closed", async () => !(await targets()).some((t) => t.url.startsWith("chrome://print")), 10000);
+    await backToA();
+    return { preview: preview.url };
+  });
+
+  await check("extension-prompts", async () => {
+    // An extension asking for an optional permission: Chrome's install prompt goes to the app's dialog
+    // (onInstallPrompt), and the app's answer grants it (resolveInstallPrompt). Its action opening its side panel
+    // (chrome.sidePanel.open from the action's click): the app shows the panel (onSidePanel).
+    const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
+    if (installed?.error) throw new Error(installed.error);
+    try {
+      await evalApp(`return nn.extensions.refreshExtensions("").then(() => true)`);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+      const activate = () => evalApp(`const lists = nn.extensions.useExtensions.getState().lists; const ext = Object.values(lists).flat().find((x) => x.id === "${installed.id}");
+        return nn.extensions.activateExtension(${JSON.stringify(mainWindow)}, ext, { x: 100, y: 40, width: 20, height: 20 }).then(() => true)`);
+      await activate();
+      const popup = await until("the popup page", async () => (await targets()).find((t) => t.type === "page" && t.url.includes(`${installed.id}/popup.html`)), 10000);
+      // Not granted yet (an earlier install of the same extension may have it): Chrome asks again.
+      await cdp(popup, "Runtime.evaluate", { expression: "chrome.permissions.remove({ permissions: ['bookmarks'] }).then(() => true)", awaitPromise: true });
+      await cdp(popup, "Runtime.evaluate", { expression: "window.__perm = 'pending'; chrome.permissions.request({ permissions: ['bookmarks'] }).then((g) => (window.__perm = String(g)), (e) => (window.__perm = String(e))); true", userGesture: true });
+      const request = await until("the app's install dialog", async () => evalApp(`return nn.extensions.useExtensions.getState().install ?? null`), 10000);
+      const requestId = request.requestId ?? request.prompt?.requestId ?? request.request?.requestId;
+      await exts(`resolveInstallPrompt(${JSON.stringify(requestId)}, true)`);
+      const granted = await until("the page's answer", async () => {
+        const v = (await cdp(popup, "Runtime.evaluate", { expression: "window.__perm", returnByValue: true })).result.value;
+        return v !== "pending" ? v : null;
+      }, 10000);
+      if (granted !== "true") throw new Error(`permissions.request answered ${granted}`);
+      await evalApp(`nn.extensions.closeExtensionPopup(); return true`);
+      // The action's click opens the side panel instead of a popup.
+      const worker = await until("the extension's worker", async () => {
+        for (const t of (await targets()).filter((t) => t.type === "service_worker" && t.url.includes(installed.id))) {
+          const r = await cdp(t, "Runtime.evaluate", { expression: "typeof chrome?.sidePanel?.open", returnByValue: true }).catch(() => null);
+          if (r?.result?.value === "function") return t;
+        }
+        return null;
+      }, 15000);
+      await cdp(worker, "Runtime.evaluate", { expression: "chrome.action.setPopup({ popup: '' }); chrome.action.onClicked.addListener((tab) => chrome.sidePanel.open({ tabId: tab.id })); true" });
+      await sleep(300);
+      await activate();
+      const panel = await until("the side panel", async () => (await targets()).find((t) => t.type === "page" && t.url.includes(`${installed.id}/panel.html`)), 10000);
+      const shown = await evalApp(`return !!nn.extensions.useExtensions.getState().sidePanels[${JSON.stringify(mainWindow)}]`);
+      return { prompt: request.type ?? request.prompt?.type ?? Object.keys(request), granted, panel: !!panel, shown };
     } finally {
       await evalApp(`nn.extensions.closeExtensionPopup(); nn.extensions.closeSidePanel(${JSON.stringify(mainWindow)}); return true`).catch(() => null);
       await exts(`uninstall("${installed.id}", "")`);
@@ -1472,6 +1621,25 @@ try {
     return { window: id, tab: tabId };
   });
 
+  let personal = null;
+  await check("last-used-profile", async () => {
+    // Before the quit: Personal sets a cookie, then the window shows another profile, so that profile is Chrome's
+    // last used when the app quits (the relaunch check after the quit).
+    const s = await state();
+    personal = s.profileId;
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    const before = new Set(s.tabs.map((x) => x.id));
+    await evalApp(`nn.actions.openUrls(["${base}/cookie?personal"], ${JSON.stringify(mainWindow)}); return true`);
+    await until("Personal's cookie page", async () => (await state()).tabs.find((x) => !before.has(x.id) && x.title === "Cookie" && !x.loading), 10000);
+    const play = await evalApp(`return nn.store.getState().createProfile({ name: "Play" })`);
+    await evalApp(`nn.actions.switchProfile("${s.windowId}", "${play}"); return true`);
+    await until("Play shown", async () => (await state()).profileId === play);
+    await evalApp(`nn.actions.openUrls(["${base}/cookie?play"], ${JSON.stringify(mainWindow)}); return true`);
+    await until("Play's cookie page", async () => (await state()).tabs.find((x) => x.profileId === play && x.url?.includes("cookie?play") && !x.loading), 10000);
+    await sleep(1000);
+    return { personal, play };
+  });
+
   await check("quit", async () => {
     const s = await state();
     // A tab opened just before quitting must be in the saved session: the app saved it on the way out
@@ -1500,6 +1668,34 @@ try {
     const crashes = ours.filter((f) => !f.startsWith("ExcUserFault_"));
     if (crashes.length) throw new Error(`crash report: ${crashes}`);
     return { exitedAfterMs: Date.now() - started, sessionSaved: saved, faults: ours.filter((f) => f.startsWith("ExcUserFault_")) };
+  });
+
+  await check("relaunch-profile", async () => {
+    // Relaunched with another profile last used: Personal is still Chrome's Default profile (its cookie, not Play's).
+    if (!personal) throw new Error("last-used-profile didn't run");
+    await launch("app2.out.log");
+    await until("the relaunched app", async () => {
+      try {
+        return await evalApp(`return globalThis.expo.modules.NetnyahooCEF.engineInfo()`, 3000);
+      } catch (e) {
+        if (exited) throw e;
+        return null;
+      }
+    }, 90000);
+    const windowId = await until("a window", async () => (await state()).windowId, 30000);
+    mainWindow = windowId;
+    await evalApp(`nn.actions.switchProfile("${windowId}", "${personal}"); return true`);
+    await until("Personal shown", async () => (await state()).profileId === personal, 10000);
+    const before = new Set((await state()).tabs.map((x) => x.id));
+    await evalApp(`nn.actions.openUrls(["${base}/b?personal-again"], ${JSON.stringify(windowId)}); return true`);
+    await until("a Personal page", async () => (await state()).tabs.find((x) => !before.has(x.id) && x.title === "Page B" && !x.loading), 15000);
+    const t = await pageTarget(`${base}/b?personal-again`);
+    const cookie = (await cdp(t, "Runtime.evaluate", { expression: "document.cookie", returnByValue: true })).result.value;
+    const info = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.chromeWindows()`);
+    await evalApp(`nn.shell.quit?.(); return true`, 3000).catch(() => null);
+    await until("the relaunched app to exit", async () => exited, 20000).catch(() => child.kill("SIGTERM"));
+    if (!cookie.includes("who=personal") || cookie.includes("who=play")) throw new Error(`Personal's page sees "${cookie}"`);
+    return { cookie, windows: info.map((w) => w.profile) };
   });
 } finally {
   visibilityWatch?.stop();

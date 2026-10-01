@@ -12,6 +12,7 @@
 #import <IOKit/IOKitLib.h>
 #import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
+#import <objc/message.h>
 #import <objc/runtime.h>
 
 #include <climits>
@@ -757,8 +758,10 @@ NSString *JSONString(id value) {
     void (^answer)(BOOL) = ^(BOOL blockAutoplay) {
       NSMutableDictionary *config = [NSMutableDictionary dictionary];
       if (blockAutoplay) config[@"blockAutoplay"] = @YES;
-      // The app's screen-share picker needs the engine to grant the picked desktop source to getUserMedia (CEF's
-      // site::AllowDesktopCapture); until it does, pages keep Chrome's own picker (gDisplayMediaPicker is kept).
+      // The app's screen-share picker, when the engine can grant the picked source to getUserMedia (CEF's
+      // site::AllowDesktopCapture).
+      if (gDisplayMediaPicker && [NNCoreEngine respondsToSelector:@selector(allowDesktopCapture:tab:frame:origin:)])
+        config[@"displayMediaPicker"] = @YES;
       [weakSelf callFrame:frameId kind:@"config" json:JSONString(config)];
     };
     if (origin && [origin hasPrefix:@"http"])
@@ -830,7 +833,7 @@ NSString *JSONString(id value) {
     NSString *requestId = NSUUID.UUID.UUIDString;
     _displayRequests[requestId] = @{@"frame" : frameId, @"id" : @((int)pageId), @"audio" : @(Flag(dict, @"audio"))};
     [self emit:@"displayMediaRequest"
-        payload:@{@"id" : requestId, @"origin" : OriginOf(tab.url) ?: @"", @"audio" : @(Flag(dict, @"audio")), @"sources" : @[]}];
+        payload:@{@"id" : requestId, @"origin" : OriginOf(tab.url) ?: @"", @"audio" : @(Flag(dict, @"audio")), @"sources" : NNCoreHost.displayMediaSources}];
   }
 }
 
@@ -1011,6 +1014,35 @@ NSString *JSONString(id value) {
   [_tab evaluate:code completion:completion];
 }
 
+// The page as painted (packages/cef's capturePicture, for the dragged tab's picture): a JPEG of the viewport and the
+// view's frame in its window from the top-left; nil after a second (a hung or unpainted page).
+- (void)capturePicture:(double)scale completion:(void (^)(NSDictionary<NSString *, id> *))completion {
+  NSWindow *window = self.window;
+  if (!_tab || !window || self.hidden || ![_tab respondsToSelector:@selector(devToolsCall:params:completion:)]) return completion(nil);
+  NSRect inWindow = [self convertRect:self.bounds toView:nil];
+  CGFloat top = NSHeight(window.contentView.frame);
+  NSArray *frame = @[ @(NSMinX(inWindow)), @(top - NSMaxY(inWindow)), @(NSWidth(inWindow)), @(NSHeight(inWindow)) ];
+  __block BOOL answered = NO;
+  void (^answer)(NSDictionary *) = ^(NSDictionary *result) {
+    if (answered) return;
+    answered = YES;
+    completion(result);
+  };
+  NSDictionary *params = @{@"format" : @"jpeg", @"quality" : @(scale < 0.5 ? 55 : 75), @"optimizeForSpeed" : @YES};
+  void (^done)(NSDictionary *, NSString *) = ^(NSDictionary *shot, NSString *error) {
+    NSString *data = shot[@"data"];
+    answer([data isKindOfClass:NSString.class] ? @{@"data" : data, @"frame" : frame} : nil);
+  };
+  // With a deadline the engine forgets the call (and detaches its DevTools client): a hung page keeps Chrome's hang
+  // reporting, which ignores pages a debugger is attached to.
+  SEL timed = NSSelectorFromString(@"devToolsCall:params:timeout:completion:");
+  if ([_tab respondsToSelector:timed])
+    ((void (*)(id, SEL, NSString *, NSDictionary *, NSTimeInterval, id))objc_msgSend)(_tab, timed, @"Page.captureScreenshot", params, 1.0, done);
+  else
+    [_tab devToolsCall:@"Page.captureScreenshot" params:params completion:done];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ answer(nil); });
+}
+
 - (void)navigationEntries:(void (^)(NSArray<NSDictionary<NSString *, id> *> *))completion {
   completion([_tab respondsToSelector:@selector(navigationEntries)] ? _tab.navigationEntries : @[]);
 }
@@ -1126,7 +1158,12 @@ NSString *JSONString(id value) {
   NSDictionary *request = requestId ? _displayRequests[requestId] : nil;
   if (!request) return;
   [_displayRequests removeObjectForKey:requestId];
-  // No desktop sources on NNCore yet: the page's own getDisplayMedia goes ahead with Chrome's picker.
+  // The picked source, granted to that frame's next desktop getUserMedia (once, within 15 s).
+  if (sourceId.length && _tab && [NNCoreEngine respondsToSelector:@selector(allowDesktopCapture:tab:frame:origin:)])
+    [NNCoreEngine allowDesktopCapture:sourceId
+                                  tab:_tab
+                                frame:[request[@"frame"] length] ? request[@"frame"] : nil
+                               origin:nil];
   [self callFrame:request[@"frame"] kind:@"displayMedia"
              json:JSONString(@{@"id" : request[@"id"], @"sourceId" : sourceId.length ? sourceId : NSNull.null})];
 }
@@ -1161,6 +1198,13 @@ NSString *JSONString(id value) {
 // Background mode: the menu Chrome would have shown, in the dev event log (devEvents) for the tests.
 - (void)tab:(NNCoreTab *)tab didShowContextMenu:(NSArray<NSDictionary *> *)items {
   NoteEvent(nncore_host::BrowserId(tab), @"contextMenu", @{@"items" : items ?: @[]});
+}
+
+// Chrome's own picture-in-picture windows: a document's is reported here only (a video's state comes from the page
+// script, as on CEF).
+- (void)tab:(NNCoreTab *)tab didChangePictureInPicture:(NSDictionary<NSString *, id> *)state {
+  if (![state[@"kind"] isEqual:@"document"]) return;
+  [self emit:@"pictureInPicture" payload:@{@"kind" : @"document", @"active" : @([state[@"active"] boolValue])}];
 }
 
 - (void)tab:(NNCoreTab *)tab requestsActivation:(NSString *)reason {
@@ -1268,11 +1312,23 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
     BOOL trackpad = event.phase != NSEventPhaseNone && (fingers || FromTrackpad(event));
     if (!CommandScrollZooms(event, trackpad)) return event;
     NSWindow *window = event.window;
+    NSPoint point = event.locationInWindow;
+    if (!window) {
+      // No window: the location is on the screen (packages/cef's NNZoom does the same).
+      NSPoint screen = event.locationInWindow;
+      for (NSWindow *w in NSApp.orderedWindows)
+        if (w.isVisible && !w.ignoresMouseEvents && NSPointInRect(screen, w.frame)) {
+          window = w;
+          break;
+        }
+      point = [window convertPointFromScreen:screen];
+    }
     NSView *content = window.contentView;
-    NSView *hit = content ? [content hitTest:[content.superview convertPoint:event.locationInWindow fromView:nil]] : nil;
+    NSView *hit = content ? [content hitTest:[content.superview convertPoint:point fromView:nil]] : nil;
     while (hit && ![hit isKindOfClass:NNCoreWebView.class]) hit = hit.superview;
     NNCoreWebView *view = (NNCoreWebView *)hit;
-    if (!view->_tab) return event;
+    // Over the sidebar, the toolbar or another window: not a page's to zoom.
+    if (!view || !view->_tab) return event;
     if (event.phase == NSEventPhaseBegan) accumulated = 0;
     accumulated += event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.scrollingDeltaY * 30;
     gZoomScrolls++;
