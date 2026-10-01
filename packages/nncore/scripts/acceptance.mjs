@@ -31,6 +31,9 @@ const freePort = () => new Promise((resolve) => {
 });
 let port;
 const downloadsDir = join(scratch, "downloads");
+// NETNYAHOO_TRAFFIC_LIGHTS_LOG (every launch): each change to a window's buttons and each AppKit layout pass of them.
+const lightsLog = join(scratch, "traffic-lights.log");
+rmSync(lightsLog, { force: true });
 rmSync(data, { recursive: true, force: true });
 rmSync(downloadsDir, { recursive: true, force: true });
 mkdirSync(downloadsDir, { recursive: true });
@@ -180,6 +183,7 @@ async function launch(log = "app.out.log", env = {}, args = []) {
     "--env", `NETNYAHOO_CHROMIUM_SWITCHES=--auto-select-tab-capture-source-by-title=Capture Target --netnyahoo-test-external-protocol-no-launch ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""}`.trim(),
     // Passed through for experiments (e.g. NETNYAHOO_ALLOW_OCCLUSION=1).
     ...["NETNYAHOO_ALLOW_OCCLUSION", "NETNYAHOO_TRACE_VISIBILITY"].filter((k) => process.env[k]).flatMap((k) => ["--env", `${k}=${process.env[k]}`]),
+    "--env", `NETNYAHOO_TRAFFIC_LIGHTS_LOG=${lightsLog}`,
     ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
     "--stdout", stdout, "--stderr", stdout,
     app,
@@ -2902,6 +2906,48 @@ try {
       await evalApp(`globalThis.__nnTabsSub?.remove(); return true`).catch(() => null);
       await exts(`uninstall("${installed.id}", "")`).catch(() => null);
     }
+  });
+
+  await check("traffic-lights-steady", async () => {
+    // Tab work makes AppKit lay the title bar out again (the app renames the window to its active tab): the buttons
+    // must stay at (18, 20) from the window's top-left, visible and opaque, through every pass. The log samples them
+    // synchronously at each pass and at each change to them or the title bar views holding them; on 0.2.22's first
+    // NNCore build they went to AppKit's (9, 9) at each switch or close and came back 10–430 ms later.
+    const w = (await state()).windowId;
+    const W = JSON.stringify(w);
+    const from = existsSync(lightsLog) ? readFileSync(lightsLog, "utf8").length : 0;
+    const run = async (body) => {
+      const result = await evalApp(body);
+      await sleep(500);
+      return result;
+    };
+    const tabs = [];
+    for (let i = 0; i < 4; i++) tabs.push(await run(`return nn.store.getState().newTab(${W}, { url: "${base}/a?lights${i}" })`));
+    for (const id of [tabs[0], tabs[2], tabs[1], tabs[3]]) await run(`nn.actions.switchToTab("${id}"); return true`);
+    await run(`return nn.store.getState().createSplit(["${tabs[2]}", "${tabs[3]}"])`);
+    await run(`nn.store.getState().closeTab("${tabs[3]}"); return true`);
+    await run(`nn.store.getState().toggleSidebar(${W}); return true`);
+    await run(`nn.actions.switchToTab("${tabs[0]}"); return true`);
+    await run(`nn.store.getState().toggleSidebar(${W}); return true`);
+    for (const id of [tabs[0], tabs[1], tabs[2]]) await run(`nn.store.getState().closeTab("${id}"); return true`);
+    const other = await run(`return nn.actions.openWindow()`);
+    await run(`nn.store.getState().closeWindow(${JSON.stringify(other)}); return true`);
+    const lines = readFileSync(lightsLog, "utf8").slice(from).split("\n").filter(Boolean);
+    const sample = (line) => line.match(/ -> (.*?) \| /)?.[1] ?? line;
+    const bad = lines.filter((line) => {
+      const state = sample(line);
+      return !state.startsWith("close=(18.0,20.0) ") || !state.endsWith(" hidden=0 alpha=1.00") || / _NSTheme\w*Widget set/.test(line);
+    });
+    // Each window's buttons are in one place throughout (minimise and zoom too).
+    const places = new Map();
+    for (const line of lines) {
+      const window = line.match(/window=(\d+)/)?.[1];
+      places.set(window, (places.get(window) ?? new Set()).add(sample(line)));
+    }
+    const moved = [...places].filter(([, set]) => set.size > 1).map(([window, set]) => ({ window, places: [...set] }));
+    if (!lines.some((line) => line.includes(" layout -> "))) throw new Error("no layout pass logged (is NETNYAHOO_TRAFFIC_LIGHTS_LOG set?)");
+    if (bad.length || moved.length) throw new Error(`traffic lights left their spot: ${JSON.stringify({ moved, bad: bad.slice(0, 6) })}`);
+    return { samples: lines.length, layoutPasses: lines.filter((line) => line.includes(" layout -> ")).length, at: [...places.values()].map((set) => [...set][0]) };
   });
 
   await check("launch-cocoa-args", async () => {

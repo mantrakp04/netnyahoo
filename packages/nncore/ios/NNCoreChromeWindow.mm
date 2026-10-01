@@ -8,26 +8,10 @@
 #import "NNCoreWebViewInternal.h"
 #import "NNCoreServices.h"
 
+#import <objc/message.h>
 #import <objc/runtime.h>
 
 #include <initializer_list>
-
-// A block observer's registration, removed when its owner (the object it's associated with) goes.
-@interface NNObserverRegistration : NSObject
-- (instancetype)initWithToken:(id)token;
-@end
-
-@implementation NNObserverRegistration {
-  id _token;
-}
-- (instancetype)initWithToken:(id)token {
-  if ((self = [super init])) _token = token;
-  return self;
-}
-- (void)dealloc {
-  if (_token) [NSNotificationCenter.defaultCenter removeObserver:_token];
-}
-@end
 
 namespace {
 
@@ -49,91 +33,194 @@ NSColor *WindowColor() {
                 }];
 }
 
-// MARK: Traffic lights (as packages/cef/ios/NNChromeWindow.mm)
+// MARK: Traffic lights
 
+// The close button's top-left from the window's top-left, as the CEF build's window had it (Chrome's browser frame
+// made AppKit's title bar as tall as its tab strip, which centred the buttons there): its centre at (25, 27); Dia's is
+// at (25, 26). The app can centre them elsewhere (setTrafficLightsCenter:inWindow:).
 constexpr CGFloat kTrafficLightInsetX = 18;
 constexpr CGFloat kTrafficLightTop = 20;
-const void *kFollowedKey = &kFollowedKey;
+const void *kInsetLightsKey = &kInsetLightsKey;
 const void *kLightsCenterKey = &kLightsCenterKey;
 
-void LayoutTrafficLights(NSWindow *window) {
-  if (!window || (window.styleMask & NSWindowStyleMaskFullScreen)) return;
-  NSButton *close = [window standardWindowButton:NSWindowCloseButton];
-  NSButton *mini = [window standardWindowButton:NSWindowMiniaturizeButton];
-  NSButton *zoom = [window standardWindowButton:NSWindowZoomButton];
-  if (!close || !mini || !zoom) return;
-  // AppKit moves the buttons, or the title bar views holding them (a layout pass, with no window update in a window
-  // that isn't key): follow the frames of all of them.
-  for (NSView *view = close; view && view != window.contentView.superview; view = view.superview) {
-    if (objc_getAssociatedObject(view, kFollowedKey)) continue;
-    view.postsFrameChangedNotifications = YES;
-    __weak NSWindow *weakWindow = window;
-    id token = [NSNotificationCenter.defaultCenter addObserverForName:NSViewFrameDidChangeNotification
-                                                               object:view
-                                                                queue:nil
-                                                           usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
-    // The registration goes with the view (a window's title bar views go with the window).
-    objc_setAssociatedObject(view, kFollowedKey, [[NNObserverRegistration alloc] initWithToken:token],
-                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+// MARK: Test hook: every change to the traffic lights (NETNYAHOO_TRAFFIC_LIGHTS_LOG=<file>, test instances only)
+
+// One line per frame, visibility or alpha change of a window's buttons or the title bar views holding them, per style
+// mask change and per AppKit layout pass of the buttons ("layout"), each with the close button's top-left from the
+// window's top-left right then and the caller. Tab operations may lay the buttons out but must never move, hide or fade
+// them (acceptance: traffic-lights-steady).
+const void *kLoggedKey = &kLoggedKey;
+NSFileHandle *gLightsLog;
+
+// "close=(x,y) mini=(x,y) zoom=(x,y) hidden=0 alpha=1.00": each button's top-left from the window's top-left.
+NSString *LightsState(NSWindow *window) {
+  NSMutableString *state = [NSMutableString string];
+  BOOL hidden = NO;
+  CGFloat alpha = 1;
+  for (NSWindowButton kind : {NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton}) {
+    NSButton *button = [window standardWindowButton:kind];
+    if (!button) return @"no buttons";
+    const NSRect r = [button convertRect:button.bounds toView:nil];
+    [state appendFormat:@"%@=(%.1f,%.1f) ", kind == NSWindowCloseButton ? @"close" : kind == NSWindowZoomButton ? @"zoom" : @"mini",
+                        NSMinX(r), NSHeight(window.frame) - NSMaxY(r)];
+    hidden |= button.hiddenOrHasHiddenAncestor;
+    CGFloat opacity = 1;  // As drawn: a title bar view above the button can fade it too.
+    for (NSView *view = button; view && view != window.contentView.superview; view = view.superview) opacity *= view.alphaValue;
+    alpha = MIN(alpha, opacity);
   }
-  const CGFloat spacing = NSMinX(mini.frame) - NSMinX(close.frame);
-  NSValue *center = objc_getAssociatedObject(window, kLightsCenterKey);
-  CGFloat x, y;
-  if (center) {
-    const NSPoint c = [close.superview convertPoint:NSMakePoint(center.pointValue.x, NSHeight(window.frame) - center.pointValue.y)
-                                           fromView:nil];
-    x = c.x - NSWidth(close.frame) / 2;
-    y = c.y - NSHeight(close.frame) / 2;
-  } else {
-    // The app's default, as the CEF build's window has it (Chrome's browser frame makes AppKit's title bar as tall
-    // as its tab strip, which centres the buttons there): the close button's top-left at (18, 20) from the window's
-    // top-left, its centre at (25, 27); Dia's is at (25, 26).
-    const NSPoint topLeft = [close.superview convertPoint:NSMakePoint(kTrafficLightInsetX, NSHeight(window.frame) - kTrafficLightTop)
-                                                 fromView:nil];
-    x = topLeft.x;
-    y = topLeft.y - NSHeight(close.frame);
-  }
-  if (fabs(NSMinX(close.frame) - x) < 0.5 && fabs(NSMinY(close.frame) - y) < 0.5) return;
-  NSArray<NSButton *> *buttons = @[ close, mini, zoom ];
-  for (NSUInteger i = 0; i < buttons.count; i++) [buttons[i] setFrameOrigin:NSMakePoint(x + i * spacing, y)];
+  [state appendFormat:@"hidden=%d alpha=%.2f", hidden, alpha];
+  return state;
 }
 
-void KeepTrafficLightsInset(NSWindow *window) {
-  __weak NSWindow *weakWindow = window;
-  for (NSNotificationName name in @[
-         NSWindowDidResizeNotification, NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
-         NSWindowDidExitFullScreenNotification, NSWindowDidBecomeMainNotification
-       ])
-    [NSNotificationCenter.defaultCenter addObserverForName:name
-                                                    object:window
-                                                     queue:nil
-                                                usingBlock:^(NSNotification *) {
-                                                  LayoutTrafficLights(weakWindow);
-                                                  dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
-                                                }];
-  dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
-  // AppKit lays the title bar out again when the window first shows and when a Browser of another profile becomes
-  // current, without moving the close button through setFrame (no frame notification): check after every update.
-  [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidUpdateNotification
-                                                  object:window
-                                                   queue:nil
-                                              usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
-  // AppKit can lay the title bar out again later without moving the buttons through setFrame (a window that is never
-  // key gets no updates): a few more passes as the window settles, and on each occlusion change.
-  id occlusion = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidChangeOcclusionStateNotification
-                                                                object:window
-                                                                 queue:nil
-                                                            usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
-  static const void *kOcclusionFollowKey = &kOcclusionFollowKey;
-  objc_setAssociatedObject(window, kOcclusionFollowKey, [[NNObserverRegistration alloc] initWithToken:occlusion],
-                           OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  for (double delay : {0.05, 0.25, 1.0, 2.5, 5.0})
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      LayoutTrafficLights(weakWindow);
+void LogLights(NSWindow *window, NSString *what) {
+  if (!gLightsLog || !window) return;
+  NSArray<NSString *> *stack = NSThread.callStackSymbols;
+  NSMutableArray<NSString *> *callers = [NSMutableArray array];
+  for (NSUInteger i = 2; i < stack.count && callers.count < 8; i++) {
+    NSString *frame = stack[i];
+    const NSRange at = [frame rangeOfString:@"0x"];
+    NSString *symbol = at.location == NSNotFound ? frame : [frame substringFromIndex:at.location];
+    const NSRange space = [symbol rangeOfString:@" "];
+    [callers addObject:space.location == NSNotFound ? symbol : [symbol substringFromIndex:space.location + 1]];
+  }
+  NSString *line = [NSString stringWithFormat:@"%.3f window=%ld %@ -> %@ | %@\n", NSProcessInfo.processInfo.systemUptime,
+                                              (long)window.windowNumber, what, LightsState(window),
+                                              [callers componentsJoinedByString:@" < "]];
+  // A failed write ends the log; it never throws into AppKit's layout.
+  if (![gLightsLog writeData:[line dataUsingEncoding:NSUTF8StringEncoding] error:nil]) gLightsLog = nil;
+}
+
+void Swizzle(Class cls, SEL sel, id (^make)(IMP original)) {
+  Method method = class_getInstanceMethod(cls, sel);
+  IMP original = method_getImplementation(method);
+  method_setImplementation(method, imp_implementationWithBlock(make(original)));
+}
+
+void InstallTrafficLightsLog() {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    NSString *path = NSProcessInfo.processInfo.environment[@"NETNYAHOO_TRAFFIC_LIGHTS_LOG"];
+    if (!path.length) return;
+    [NSFileManager.defaultManager createFileAtPath:path contents:nil attributes:nil];
+    gLightsLog = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!gLightsLog || ![gLightsLog seekToEndReturningOffset:nil error:nil]) {
+      gLightsLog = nil;
+      return;
+    }
+    auto logged = ^NSWindow *(NSView *view) { return objc_getAssociatedObject(view, kLoggedKey) ? view.window : nil; };
+    Swizzle(NSView.class, @selector(setFrameOrigin:), ^id(IMP original) {
+      return ^(NSView *self, NSPoint origin) {
+        const NSRect before = self.frame;
+        ((void (*)(id, SEL, NSPoint))original)(self, @selector(setFrameOrigin:), origin);
+        if (NSWindow *window = logged(self); window && !NSEqualRects(before, self.frame))
+          LogLights(window, [NSString stringWithFormat:@"%@ setFrameOrigin %@", self.className, NSStringFromPoint(origin)]);
+      };
     });
+    Swizzle(NSView.class, @selector(setFrameSize:), ^id(IMP original) {
+      return ^(NSView *self, NSSize size) {
+        const NSRect before = self.frame;
+        ((void (*)(id, SEL, NSSize))original)(self, @selector(setFrameSize:), size);
+        if (NSWindow *window = logged(self); window && !NSEqualRects(before, self.frame))
+          LogLights(window, [NSString stringWithFormat:@"%@ setFrameSize %@", self.className, NSStringFromSize(size)]);
+      };
+    });
+    Swizzle(NSView.class, @selector(setFrame:), ^id(IMP original) {
+      return ^(NSView *self, NSRect frame) {
+        const NSRect before = self.frame;
+        ((void (*)(id, SEL, NSRect))original)(self, @selector(setFrame:), frame);
+        if (NSWindow *window = logged(self); window && !NSEqualRects(before, self.frame))
+          LogLights(window, [NSString stringWithFormat:@"%@ setFrame %@", self.className, NSStringFromRect(frame)]);
+      };
+    });
+    Swizzle(NSView.class, @selector(setHidden:), ^id(IMP original) {
+      return ^(NSView *self, BOOL hidden) {
+        const BOOL before = self.hidden;
+        ((void (*)(id, SEL, BOOL))original)(self, @selector(setHidden:), hidden);
+        if (NSWindow *window = logged(self); window && before != hidden)
+          LogLights(window, [NSString stringWithFormat:@"%@ setHidden %d", self.className, hidden]);
+      };
+    });
+    Swizzle(NSView.class, @selector(setAlphaValue:), ^id(IMP original) {
+      return ^(NSView *self, CGFloat alpha) {
+        const CGFloat before = self.alphaValue;
+        ((void (*)(id, SEL, CGFloat))original)(self, @selector(setAlphaValue:), alpha);
+        if (NSWindow *window = logged(self); window && before != alpha)
+          LogLights(window, [NSString stringWithFormat:@"%@ setAlphaValue %.2f", self.className, alpha]);
+      };
+    });
+    const SEL layout = NSSelectorFromString(@"_updateButtonPositions");
+    if (Class themeFrame = NSClassFromString(@"NSThemeFrame"); class_getInstanceMethod(themeFrame, layout))
+      Swizzle(themeFrame, layout, ^id(IMP original) {
+        return ^(NSView *self) {
+          ((void (*)(id, SEL))original)(self, layout);
+          if (objc_getAssociatedObject(self.window, kLoggedKey)) LogLights(self.window, @"layout");
+        };
+      });
+    Swizzle(NSWindow.class, @selector(setStyleMask:), ^id(IMP original) {
+      return ^(NSWindow *self, NSWindowStyleMask mask) {
+        const NSWindowStyleMask before = self.styleMask;
+        ((void (*)(id, SEL, NSWindowStyleMask))original)(self, @selector(setStyleMask:), mask);
+        if (objc_getAssociatedObject(self, kLoggedKey) && before != mask)
+          LogLights(self, [NSString stringWithFormat:@"setStyleMask %#llx -> %#llx", (unsigned long long)before, (unsigned long long)mask]);
+      };
+    });
+  });
+}
+
+// Logs the window's buttons and the title bar views above them (each layout pass may replace none of them).
+void LogTrafficLightsOf(NSWindow *window) {
+  if (!gLightsLog || !window) return;
+  objc_setAssociatedObject(window, kLoggedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  for (NSWindowButton kind : {NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton})
+    for (NSView *view = [window standardWindowButton:kind]; view && view != window.contentView.superview; view = view.superview)
+      objc_setAssociatedObject(view, kLoggedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+// AppKit lays the title bar out again on every title change (a tab switch or close renames the window), style, key or
+// size change, and each pass puts the buttons where the frame view's -_closeButtonOrigin says (minimise and zoom
+// follow it). Answering it for our windows keeps the buttons at the app's spot in every pass. Moving them back after
+// AppKit's pass (on the next window update or notification) showed them at AppKit's (9, 9) for 10–430 ms at each tab
+// switch or close.
+void InstallTrafficLightsOrigin(Class frameClass) {
+  static NSMutableSet<Class> *installed = [NSMutableSet set];
+  if (!frameClass || [installed containsObject:frameClass]) return;
+  [installed addObject:frameClass];
+  const SEL sel = NSSelectorFromString(@"_closeButtonOrigin");
+  Method method = class_getInstanceMethod(frameClass, sel);
+  if (!method) return;  // An AppKit without it: the buttons stay at its standard place.
+  const IMP standard = method_getImplementation(method);
+  const IMP ours = imp_implementationWithBlock(^NSPoint(NSView *frameView) {
+    NSWindow *window = frameView.window;
+    if (!window || !objc_getAssociatedObject(window, kInsetLightsKey) || (window.styleMask & NSWindowStyleMaskFullScreen))
+      return ((NSPoint (*)(id, SEL))standard)(frameView, sel);
+    // The frame view's coordinates: the whole window, y up.
+    NSButton *close = [window standardWindowButton:NSWindowCloseButton];
+    const NSSize size = close ? close.frame.size : NSMakeSize(14, 14);
+    const CGFloat height = NSHeight(frameView.bounds);
+    if (NSValue *center = objc_getAssociatedObject(window, kLightsCenterKey))
+      return NSMakePoint(center.pointValue.x - size.width / 2, height - center.pointValue.y - size.height / 2);
+    return NSMakePoint(kTrafficLightInsetX, height - kTrafficLightTop - size.height);
+  });
+  // Chrome's frame class inherits NSThemeFrame's: add the override there (or replace its own, if it has one).
+  if (!class_addMethod(frameClass, sel, ours, method_getTypeEncoding(method))) method_setImplementation(method, ours);
+}
+
+// AppKit's layout pass for the buttons, run now (the app moved their spot).
+void RetileTrafficLights(NSWindow *window) {
+  NSView *frameView = window.contentView.superview;
+  const SEL sel = NSSelectorFromString(@"_updateButtonPositions");
+  if ([frameView respondsToSelector:sel]) ((void (*)(id, SEL))objc_msgSend)(frameView, sel);
+}
+
+void InsetTrafficLights(NSWindow *window) {
+  objc_setAssociatedObject(window, kInsetLightsKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  InstallTrafficLightsOrigin(object_getClass(window.contentView.superview));
+  RetileTrafficLights(window);
+  LogTrafficLightsOf(window);
 }
 
 void ConfigureWindow(NSWindow *window) {
+  InstallTrafficLightsLog();
   // AppKit keeps the content rect through a style change: going full-size content, the window would lose its title
   // bar's height (32 pt, so app windows opened 32 pt shorter than CEF's). It keeps the frame Chrome made instead.
   const NSRect frame = window.frame;
@@ -146,7 +233,7 @@ void ConfigureWindow(NSWindow *window) {
   window.backgroundColor = WindowColor();
   window.releasedWhenClosed = NO;
   window.tabbingMode = NSWindowTabbingModeDisallowed;
-  KeepTrafficLightsInset(window);
+  InsetTrafficLights(window);
 }
 
 // Shortcuts the app's menus own before the page sees them, as Chrome reserves them (they can't be
@@ -626,14 +713,9 @@ NSView *NNWindowRootView(NSWindow *window) {
   NNCoreWindowController *controller = [NNCoreWindowController forNSWindow:window];
   if (!controller) return;
   __weak NNCoreWindow *coreWindow = controller.coreWindow;
-  __weak NSWindow *weakWindow = window;
   nncore_host::WithProfile(profile ?: @"", ^(NNCoreProfile *p) {
     if (!p || !coreWindow) return;
     coreWindow.activeProfile = p;
-    // Showing another profile's Browser makes AppKit lay the title bar out again, which puts the window buttons
-    // back at their standard place: put them back where the app wants them, now and once that layout ran.
-    LayoutTrafficLights(weakWindow);
-    dispatch_async(dispatch_get_main_queue(), ^{ LayoutTrafficLights(weakWindow); });
   });
 }
 
@@ -651,7 +733,7 @@ NSView *NNWindowRootView(NSWindow *window) {
   NSValue *current = objc_getAssociatedObject(window, kLightsCenterKey);
   if (current == center || [current isEqual:center]) return;
   objc_setAssociatedObject(window, kLightsCenterKey, center, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  LayoutTrafficLights(window);
+  RetileTrafficLights(window);
 }
 
 + (void)setSwappedHandler:(void (^)(NSWindow *, NSWindow *))handler {
