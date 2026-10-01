@@ -4,6 +4,8 @@
 #import "NNCoreInternal.h"
 #import "NNExtensionPackage.h"
 
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+
 #include <cmath>
 
 namespace {
@@ -126,7 +128,22 @@ NSString *StoreFolder(NSString *profile, NSString *extensionId, id version) {
 }
 
 + (void)exportPasswords:(NSString *)profile path:(NSString *)path completion:(NNCoreResult)completion {
-  [self call:@"nn_passwords_export" profile:profile args:@{@"path" : path ?: @""} completion:completion];
+  void (^run)(NSString *) = ^(NSString *target) {
+    if (!target) return completion(@{@"status" : @"cancelled"});
+    [self call:@"nn_passwords_export" profile:profile args:@{@"path" : target} completion:^(NSDictionary *result) {
+      NSMutableDictionary *answer = [result mutableCopy];
+      if ([result[@"status"] isEqual:@"succeeded"]) answer[@"path"] = target;
+      completion(answer);
+    }];
+  };
+  if (path.length) return run(path);
+  // As packages/cef: the user picks where (a background test instance answers from file-chooser.txt).
+  NSSavePanel *panel = [NSSavePanel savePanel];
+  panel.nameFieldStringValue = @"Netnyahoo Passwords.csv";
+  panel.allowedContentTypes = @[ UTTypeCommaSeparatedText ];
+  panel.canCreateDirectories = YES;
+  panel.message = @"Anyone who can open this file can read your passwords.";
+  [panel beginWithCompletionHandler:^(NSModalResponse response) { run(response == NSModalResponseOK ? panel.URL.path : nil); }];
 }
 
 // MARK: Preferences
@@ -279,6 +296,129 @@ NSString *StoreFolder(NSString *profile, NSString *extensionId, id version) {
   [self call:@"nn_search_engines_list" profile:profile args:nil completion:^(NSDictionary *result) {
     if (result[@"error"]) return completion(result);
     completion(@{@"list" : @{@"engines" : result[@"engines"] ?: @[]}});
+  }];
+}
+
+// MARK: Downloads
+
+void (^gDownloadsHandler)(NSDictionary *);
+NSMutableDictionary<NSString *, NSString *> *DownloadProfiles() {
+  static NSMutableDictionary *profiles = [NSMutableDictionary dictionary];
+  return profiles;
+}
+
++ (void (^)(NSDictionary *))downloadsHandler {
+  return gDownloadsHandler;
+}
+
++ (void)setDownloadsHandler:(void (^)(NSDictionary *))handler {
+  gDownloadsHandler = [handler copy];
+  static bool observing = false;
+  if (observing) return;
+  observing = true;
+  [NNCoreEngineBridge observe:@"downloads.changed"
+                      handler:^(NSDictionary *payload) {
+                        NSDictionary *download = [payload[@"download"] isKindOfClass:NSDictionary.class] ? payload[@"download"] : nil;
+                        if (!download) return;
+                        NSMutableDictionary *d = [download mutableCopy];
+                        d[@"profile"] = payload[@"profile"] ?: @"";
+                        if ([d[@"id"] isKindOfClass:NSString.class]) DownloadProfiles()[d[@"id"]] = d[@"profile"];
+                        if (gDownloadsHandler) gDownloadsHandler(d);
+                      }];
+}
+
++ (void)watchDownloads:(NSString *)profile {
+  // The list starts the profile's events, and reports what's in flight now.
+  [self call:@"nn_downloads_list" profile:profile args:nil completion:^(NSDictionary *result) {
+    for (NSDictionary *download in [result[@"downloads"] isKindOfClass:NSArray.class] ? result[@"downloads"] : @[]) {
+      if (![download isKindOfClass:NSDictionary.class]) continue;
+      NSMutableDictionary *d = [download mutableCopy];
+      d[@"profile"] = profile ?: @"";
+      if ([d[@"id"] isKindOfClass:NSString.class]) DownloadProfiles()[d[@"id"]] = d[@"profile"];
+      if (gDownloadsHandler) gDownloadsHandler(d);
+    }
+  }];
+}
+
++ (void)downloadCommand:(NSString *)command id:(NSString *)downloadId {
+  NSString *profile = DownloadProfiles()[downloadId ?: @""] ?: @"";
+  [self call:[@"nn_downloads_" stringByAppendingString:command] profile:profile args:@{@"id" : downloadId ?: @""}
+      completion:^(NSDictionary *) {}];
+}
+
+// MARK: Site settings
+
++ (void)siteSettings:(NSString *)profile origin:(NSString *)origin completion:(NNCoreResult)completion {
+  [self call:@"nn_site_settings_get" profile:profile args:@{@"origin" : origin ?: @""} completion:^(NSDictionary *result) {
+    completion([result[@"settings"] isKindOfClass:NSDictionary.class] ? result[@"settings"] : @{});
+  }];
+}
+
++ (void)setSiteSetting:(NSString *)value profile:(NSString *)profile origin:(NSString *)origin type:(NSString *)type {
+  [self call:@"nn_site_settings_set" profile:profile args:@{@"origin" : origin ?: @"", @"type" : type ?: @"", @"value" : value ?: @""}
+      completion:^(NSDictionary *) {}];
+}
+
++ (void)siteSettingsOrigins:(NSString *)profile completion:(void (^)(NSArray<NSString *> *))completion {
+  [self call:@"nn_site_settings_origins" profile:profile args:nil completion:^(NSDictionary *result) {
+    completion([result[@"origins"] isKindOfClass:NSArray.class] ? result[@"origins"] : @[]);
+  }];
+}
+
++ (void)resetSiteSettings:(NSString *)profile origin:(NSString *)origin {
+  [self call:@"nn_site_settings_reset" profile:profile args:@{@"origin" : origin ?: @""} completion:^(NSDictionary *) {}];
+}
+
++ (void)clearSiteData:(NSString *)profile origin:(NSString *)origin completion:(NNCoreResult)completion {
+  [self call:@"nn_site_data_clear" profile:profile args:@{@"origin" : origin ?: @""} completion:^(NSDictionary *result) {
+    completion(result[@"error"] ? @{@"cookies" : @NO, @"storage" : @NO} : result);
+  }];
+}
+
+// MARK: External apps
+
++ (void)externalAppAllowances:(NSString *)profile completion:(void (^)(NSArray *))completion {
+  [self call:@"nn_external_apps_allowances" profile:profile args:nil completion:^(NSDictionary *result) {
+    completion([result[@"allowances"] isKindOfClass:NSArray.class] ? result[@"allowances"] : @[]);
+  }];
+}
+
++ (void)removeExternalAppAllowance:(NSString *)profile origin:(NSString *)origin scheme:(NSString *)scheme {
+  [self call:@"nn_external_apps_remove" profile:profile args:@{@"origin" : origin ?: @"", @"scheme" : scheme ?: @""}
+      completion:^(NSDictionary *) {}];
+}
+
+// MARK: Tasks and components
+
++ (void)tasks:(void (^)(NSArray *))completion {
+  [self call:@"nn_tasks_list" profile:@"" args:nil completion:^(NSDictionary *result) {
+    NSMutableArray *tasks = [NSMutableArray array];
+    for (NSDictionary *task in [result[@"tasks"] isKindOfClass:NSArray.class] ? result[@"tasks"] : @[]) {
+      if (![task isKindOfClass:NSDictionary.class]) continue;
+      NSMutableDictionary *t = [task mutableCopy];
+      // The app's browser ids for Chrome's tab ids.
+      NSMutableArray *browserIds = [NSMutableArray array];
+      for (NSNumber *tabId in [task[@"tabIds"] isKindOfClass:NSArray.class] ? task[@"tabIds"] : @[])
+        for (NNCoreWindowController *c in NNCoreWindowController.all)
+          for (NNCoreProfile *p in nncore_host::LoadedProfiles())
+            for (NNCoreTab *tab in [c.coreWindow tabsForProfile:p])
+              if (tab.tabId == tabId.intValue) [browserIds addObject:@(nncore_host::BrowserId(tab))];
+      t[@"browserIds"] = browserIds;
+      [tasks addObject:t];
+    }
+    completion(tasks);
+  }];
+}
+
++ (void)killTask:(long long)taskId completion:(void (^)(BOOL))completion {
+  [self call:@"nn_tasks_kill" profile:@"" args:@{@"id" : @(taskId)} completion:^(NSDictionary *result) {
+    completion([result[@"ok"] boolValue]);
+  }];
+}
+
++ (void)components:(void (^)(NSArray *))completion {
+  [self call:@"nn_components_list" profile:@"" args:nil completion:^(NSDictionary *result) {
+    completion([result[@"components"] isKindOfClass:NSArray.class] ? result[@"components"] : @[]);
   }];
 }
 

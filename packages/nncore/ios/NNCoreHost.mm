@@ -3,6 +3,7 @@
 // second Chromium: NSApp is Chrome's BrowserCrApplication, and NNCore makes -terminate: follow Cocoa's
 // applicationShouldTerminate: contract, so the app's own quit flow (ShellApp.shouldTerminate) runs as on CEF.
 #import "NNCoreInternal.h"
+#import "NNCoreServices.h"
 
 #include <string>
 #include <vector>
@@ -48,8 +49,14 @@ NSString *DirectoryName(NSString *name) {
 
 namespace {
 NNCoreBootstrapDelegate *gBootstrap;
+// How far AppKit's own launch got ([NSApp finishLaunching], inside Chromium's loop): the app delegate gets each
+// launch callback exactly once, from AppKit if it hasn't sent it yet, else from launchApp.
+bool gAppKitWillFinish = false;
+bool gAppKitDidFinish = false;
 void (^gEventHandler)(NSString *, NSDictionary *);
 void (^gChromeUIHandler)(NSString *, NSDictionary *);
+void (^gExtensionsEventHandler)(NSString *, NSDictionary *);
+NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDictionary dictionary];
 }  // namespace
 
 // MARK: - Engine delegate
@@ -66,6 +73,7 @@ void (^gChromeUIHandler)(NSString *, NSDictionary *);
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   if (NNCoreProfile *profile = engine.defaultProfile) Profiles()[@""] = profile;
   nncore_host::LoadContentBlocker(@"");
+  [NNCoreServices watchDownloads:@""];
 
   // The page script CEF's renderer ran (packages/cef/helper/page_script.js), now NNCore's.
   NSBundle *bundle = [NSBundle bundleForClass:NNCoreHostEngineDelegate.class];
@@ -85,16 +93,22 @@ void (^gChromeUIHandler)(NSString *, NSDictionary *);
   CFRelease(idle);
 }
 
-// NSApp's delegate as NSApplicationMain would set it, but in Chromium's loop: [NSApp run] already finished
-// launching, so the launch callbacks are called here.
+// NSApp's delegate as NSApplicationMain would set it, but in Chromium's loop: the launch callbacks AppKit already
+// sent (to the bootstrap delegate) are called here.
 - (void)launchApp {
   NSArray<NSURL *> *launchURLs = gBootstrap.urls.copy;
   gAppDelegate = gMakeDelegate();
   NSApp.delegate = gAppDelegate;
   gBootstrap = nil;
+  // The loop can go idle before [NSApp run] finished launching; AppKit then sends the delegate's launch callbacks
+  // itself, and sending them here too made a second React Native factory (two JS runtimes, two stores).
   NSNotification *note = [NSNotification notificationWithName:NSApplicationWillFinishLaunchingNotification object:NSApp];
-  if ([gAppDelegate respondsToSelector:@selector(applicationWillFinishLaunching:)])
+  if (gAppKitWillFinish && [gAppDelegate respondsToSelector:@selector(applicationWillFinishLaunching:)])
     [gAppDelegate applicationWillFinishLaunching:note];
+  if (!gAppKitDidFinish) {
+    NSLog(@"[nncore] app delegate %@ set before AppKit finished launching", NSStringFromClass([gAppDelegate class]));
+    return;
+  }
   note = [NSNotification notificationWithName:NSApplicationDidFinishLaunchingNotification object:NSApp];
   if ([gAppDelegate respondsToSelector:@selector(applicationDidFinishLaunching:)])
     [gAppDelegate applicationDidFinishLaunching:note];
@@ -117,10 +131,42 @@ void (^gChromeUIHandler)(NSString *, NSDictionary *);
   if (gEventHandler) gEventHandler(@"permission", payload);
 }
 
+// A page's WebUSB/WebHID/Serial/Bluetooth chooser: the app's sheet (onDeviceChooser), as CEF's NNChromeSurfaces sent
+// it; sent again on every change, the last with open NO.
+- (void)engine:(NNCoreEngine *)engine deviceChooser:(NSDictionary *)chooser tab:(NNCoreTab *)tab {
+  NSMutableDictionary *payload = [chooser mutableCopy];
+  payload[@"browserId"] = @(tab ? nncore_host::BrowserId(tab) : 0);
+  if (auto handler = NNCoreHost.chromeUIHandler) handler(@"deviceChooser", payload);
+  else if ([payload[@"open"] boolValue] && [NNCoreEngine respondsToSelector:@selector(cancelDeviceChooser:)])
+    [NNCoreEngine cancelDeviceChooser:[payload[@"id"] intValue]];
+}
+
+// Chrome's Cast dialog for a tab: the app's popover (onCastDialog), as CEF's NNChromeSurfaces sent it.
+- (void)engine:(NNCoreEngine *)engine castDialog:(NSDictionary *)dialog tab:(NNCoreTab *)tab {
+  NSMutableDictionary *payload = [dialog mutableCopy];
+  payload[@"browserId"] = @(tab ? nncore_host::BrowserId(tab) : 0);
+  if (gChromeUIHandler) gChromeUIHandler(@"castDialog", payload);
+  else if ([payload[@"open"] boolValue] && [NNCoreEngine respondsToSelector:@selector(closeCastDialog:)])
+    [NNCoreEngine closeCastDialog:[payload[@"id"] intValue]];
+}
+
+- (void)engine:(NNCoreEngine *)engine castRoutes:(NSArray *)routes profile:(NNCoreProfile *)profile {
+  if (gChromeUIHandler)
+    gChromeUIHandler(@"castRoutes", @{@"profile" : nncore_host::ProfileName(profile), @"routes" : routes ?: @[]});
+}
+
 - (void)engine:(NNCoreEngine *)engine extensionSidePanel:(NSDictionary *)panel tab:(NNCoreTab *)tab {
   NSMutableDictionary *payload = [panel mutableCopy];
   payload[@"browserId"] = @(tab ? nncore_host::BrowserId(tab) : 0);
   if (gChromeUIHandler) gChromeUIHandler(@"sidePanel", payload);
+}
+
+- (void)engine:(NNCoreEngine *)engine extensionInstallPrompt:(NSDictionary *)prompt tab:(NNCoreTab *)tab {
+  NSMutableDictionary *payload = [prompt mutableCopy];
+  payload[@"browserId"] = @(tab ? nncore_host::BrowserId(tab) : 0);
+  // Answered or not, it waits in the engine; the JS asks again after a reload (it listens from launch).
+  gInstallPrompts[payload[@"requestId"] ?: @""] = payload;
+  if (gExtensionsEventHandler) gExtensionsEventHandler(@"installPrompt", payload);
 }
 
 - (void)engine:(NNCoreEngine *)engine permissionRequestDismissed:(NSString *)requestId {
@@ -152,14 +198,20 @@ void (^gChromeUIHandler)(NSString *, NSDictionary *);
   gDataDirectory = [@(dataDir) stringByAppendingPathComponent:@"Chromium"];
   [NSFileManager.defaultManager createDirectoryAtPath:gDataDirectory withIntermediateDirectories:YES attributes:nil error:nil];
   nncore_host::InstallActivationGuardsEarly();
+  nncore_host::PrepareContentBlocker();
   [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillFinishLaunchingNotification
                                                   object:nil
                                                    queue:nil
                                               usingBlock:^(NSNotification *) {
+                                                gAppKitWillFinish = true;
                                                 if (gAppDelegate || NSApp.delegate) return;
                                                 gBootstrap = [NNCoreBootstrapDelegate new];
                                                 NSApp.delegate = gBootstrap;
                                               }];
+  [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidFinishLaunchingNotification
+                                                  object:nil
+                                                   queue:nil
+                                              usingBlock:^(NSNotification *) { gAppKitDidFinish = true; }];
 
   std::vector<std::string> extra = {
       "--user-data-dir=" + std::string(gDataDirectory.UTF8String),
@@ -195,12 +247,130 @@ void (^gChromeUIHandler)(NSString *, NSDictionary *);
   gEventHandler = [handler copy];
 }
 
++ (void (^)(NSString *, NSDictionary *))extensionsEventHandler {
+  return gExtensionsEventHandler;
+}
+
++ (void)setExtensionsEventHandler:(void (^)(NSString *, NSDictionary *))handler {
+  gExtensionsEventHandler = [handler copy];
+  // Prompts still waiting (the JS reloaded, or listened late) come again.
+  if (handler)
+    for (NSDictionary *prompt in gInstallPrompts.allValues) handler(@"installPrompt", prompt);
+}
+
++ (void)resolveExtensionInstallPrompt:(NSString *)requestId accepted:(BOOL)accepted {
+  [gInstallPrompts removeObjectForKey:requestId ?: @""];
+  if ([NNCoreEngine respondsToSelector:@selector(resolveExtensionInstallPrompt:accepted:)])
+    [NNCoreEngine resolveExtensionInstallPrompt:requestId accepted:accepted];
+}
+
++ (void)beginTracing:(void (^)(BOOL))completion {
+  if (![NNCoreEngine respondsToSelector:@selector(beginTracing:)]) return completion(NO);
+  [NNCoreEngine beginTracing:completion];
+}
+
++ (void)endTracing:(BOOL)keep completion:(void (^)(NSString *))completion {
+  if (![NNCoreEngine respondsToSelector:@selector(endTracing:completion:)]) return completion(nil);
+  [NNCoreEngine endTracing:keep completion:completion];
+}
+
++ (BOOL)isTracing {
+  return [NNCoreEngine respondsToSelector:@selector(isTracing)] && NNCoreEngine.isTracing;
+}
+
++ (void)deleteProfileData:(NSString *)profile completion:(void (^)(NSArray<NSString *> *))completion {
+  // The default profile can't go (it backs private windows): as packages/cef, its data is cleared through Chrome's
+  // own stores instead; that sequence lives in packages/cef's ProfileData for now.
+  if (nncore_host::IsIncognito(profile)) return completion(@[]);
+  NNCoreEngine *engine = NNCoreEngine.sharedEngine;
+  NNCoreProfile *p = nncore_host::LoadedProfile(profile);
+  if (!profile.length || ![engine respondsToSelector:@selector(deleteProfile:completion:)]) return completion(@[ @"data" ]);
+  void (^remove)(NNCoreProfile *) = ^(NNCoreProfile *loaded) {
+    if (!loaded) {
+      // Never loaded this session: its folder alone.
+      NSString *path = [gDataDirectory stringByAppendingPathComponent:[@"Profile " stringByAppendingString:profile]];
+      [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+      return completion([NSFileManager.defaultManager fileExistsAtPath:path] ? @[ @"files" ] : @[]);
+    }
+    [engine deleteProfile:loaded completion:^(BOOL deleted) {
+      if (deleted) [Profiles() removeObjectForKey:profile];
+      completion(deleted ? @[] : @[ @"data" ]);
+    }];
+  };
+  // Loading a profile only to delete it would create it (and race Chrome writing its folder): one this session never
+  // loaded is its folder alone.
+  remove(p);
+}
+
++ (void)releaseProfile:(NSString *)profile {
+  NNCoreEngine *engine = NNCoreEngine.sharedEngine;
+  NNCoreProfile *p = nncore_host::LoadedProfile(profile);
+  if (p && [engine respondsToSelector:@selector(releaseProfile:)]) [engine releaseProfile:p];
+  if (nncore_host::IsIncognito(profile)) [Profiles() removeObjectForKey:profile];
+}
+
++ (BOOL)stopCapture:(int)browserId {
+  NNCoreTab *tab = nncore_host::TabWithBrowserId(browserId);
+  return [tab respondsToSelector:@selector(stopCapture)] && [tab stopCapture];
+}
+
++ (BOOL)showAutofillSuggestions:(int)browserId passwords:(BOOL)passwords {
+  NNCoreTab *tab = nncore_host::TabWithBrowserId(browserId);
+  return [tab respondsToSelector:@selector(showAutofillSuggestions:)] && [tab showAutofillSuggestions:passwords];
+}
+
 + (void (^)(NSString *, NSDictionary *))chromeUIHandler {
   return gChromeUIHandler;
 }
 
 + (void)setChromeUIHandler:(void (^)(NSString *, NSDictionary *))handler {
   gChromeUIHandler = [handler copy];
+}
+
++ (void)deviceChooser:(int)chooserId select:(int)index {
+  if ([NNCoreEngine respondsToSelector:@selector(selectDevice:index:)]) [NNCoreEngine selectDevice:chooserId index:index];
+}
+
++ (void)deviceChooser:(int)chooserId action:(NSString *)action {
+  if ([action isEqualToString:@"cancel"] && [NNCoreEngine respondsToSelector:@selector(cancelDeviceChooser:)])
+    [NNCoreEngine cancelDeviceChooser:chooserId];
+  else if ([action isEqualToString:@"refresh"] && [NNCoreEngine respondsToSelector:@selector(refreshDeviceChooser:)])
+    [NNCoreEngine refreshDeviceChooser:chooserId];
+  else if ([action isEqualToString:@"settings"] && [NNCoreEngine respondsToSelector:@selector(openDeviceChooserSettings:)])
+    [NNCoreEngine openDeviceChooserSettings:chooserId];
+}
+
+// "Share this tab instead": the capture moves to the target tab (Chrome's tab-sharing infobar's own action).
++ (BOOL)shareTabInstead:(int)targetBrowserId {
+  NNCoreTab *tab = nncore_host::TabWithBrowserId(targetBrowserId);
+  return [tab respondsToSelector:@selector(shareThisTabInstead)] && tab.canShareThisTabInstead && [tab shareThisTabInstead];
+}
+
++ (BOOL)showCastDialog:(int)browserId {
+  NNCoreTab *tab = nncore_host::TabWithBrowserId(browserId);
+  return [tab respondsToSelector:@selector(showCastDialog)] && [tab showCastDialog];
+}
+
++ (void)castDialog:(int)dialogId start:(NSString *)sink mode:(int)mode {
+  if ([NNCoreEngine respondsToSelector:@selector(startCasting:sink:mode:)]) [NNCoreEngine startCasting:dialogId sink:sink mode:mode];
+}
+
++ (void)castDialog:(int)dialogId stop:(NSString *)route {
+  if ([NNCoreEngine respondsToSelector:@selector(stopCasting:route:)]) [NNCoreEngine stopCasting:dialogId route:route];
+}
+
++ (void)closeCastDialog:(int)dialogId {
+  if ([NNCoreEngine respondsToSelector:@selector(closeCastDialog:)]) [NNCoreEngine closeCastDialog:dialogId];
+}
+
++ (void)watchCastRoutes:(NSString *)profileName {
+  nncore_host::WithProfile(profileName, ^(NNCoreProfile *profile) {
+    if ([profile respondsToSelector:@selector(watchCastRoutes)]) [profile watchCastRoutes];
+  });
+}
+
++ (void)terminateCastRoute:(NSString *)route {
+  if ([NNCoreEngine respondsToSelector:@selector(terminateCastRoute:)]) [NNCoreEngine terminateCastRoute:route];
 }
 
 + (void)resolveExternalApp:(NSString *)requestId open:(BOOL)open remember:(BOOL)remember {
@@ -361,6 +531,7 @@ void WithProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
            completion:^(NNCoreProfile *profile) {
              if (profile) Profiles()[name] = profile;
              if (profile) nncore_host::LoadContentBlocker(name);
+             if (profile) [NNCoreServices watchDownloads:name];
              NSArray *pending = ProfileWaiters()[name];
              [ProfileWaiters() removeObjectForKey:name];
              for (void (^waiter)(NNCoreProfile *) in pending) waiter(profile);

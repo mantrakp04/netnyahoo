@@ -99,6 +99,8 @@ importers:
 
   packages/import: {}
 
+  packages/nncore: {}
+
   packages/shaders: {}
 
   packages/shell: {}

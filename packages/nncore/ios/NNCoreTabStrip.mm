@@ -62,6 +62,22 @@ NSMapTable<NNCoreProfile *, NNCoreTab *> *ActiveTabs(NNCoreWindowController *con
   return active;
 }
 
+// The app's id for the window (the windowId its React root was made with).
+NSString *AppWindowOf(NNCoreWindowController *controller) {
+  NSMutableArray<NSView *> *views = [NSMutableArray array];
+  if (controller.root) [views addObject:controller.root];
+  for (NSUInteger i = 0; i < views.count && i < 16; i++) {
+    NSView *view = views[i];
+    if ([view respondsToSelector:NSSelectorFromString(@"appProperties")]) {
+      id properties = [view valueForKey:@"appProperties"];
+      id windowId = [properties isKindOfClass:NSDictionary.class] ? properties[@"windowId"] : nil;
+      if ([windowId isKindOfClass:NSString.class]) return windowId;
+    }
+    [views addObjectsFromArray:view.subviews];
+  }
+  return nil;
+}
+
 NSDictionary *Strip(NNCoreWindowController *controller, NNCoreProfile *profile) {
   NNCoreWindow *window = controller.coreWindow;
   NSMutableArray *tabs = [NSMutableArray array];
@@ -93,7 +109,11 @@ NSDictionary *Strip(NNCoreWindowController *controller, NNCoreProfile *profile) 
     @"profile" : name,
     @"tabs" : tabs,
   } mutableCopy];
-  if (ReportsGroups()) state[@"groups"] = Groups()[@(strip)][@"groups"] ?: @[];
+  if (ReportsGroups()) {
+    state[@"groups"] = Groups()[@(strip)][@"groups"] ?: @[];
+    if ([Groups()[@(strip)][@"activePickedOnClose"] boolValue]) state[@"activePickedOnClose"] = @YES;
+  }
+  if (NSString *appWindow = AppWindowOf(controller)) state[@"appWindow"] = appWindow;
   return state;
 }
 
@@ -123,7 +143,11 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
                         for (NSDictionary *tab in strip[@"tabs"])
                           if ([tab isKindOfClass:NSDictionary.class] && tab[@"tab"]) byTab[tab[@"tab"]] = tab[@"group"] ?: NSNull.null;
                         NSDictionary *before = Groups()[window];
-                        NSDictionary *now = @{@"groups" : strip[@"groups"] ?: @[], @"tabs" : byTab};
+                        NSDictionary *now = @{
+                          @"groups" : strip[@"groups"] ?: @[],
+                          @"tabs" : byTab,
+                          @"activePickedOnClose" : @([strip[@"activePickedOnClose"] boolValue]),
+                        };
                         Groups()[window] = now;
                         if ([before isEqualToDictionary:now] || gCommand) return;
                         // A group change Chrome made (an extension's tabs.group): the strip again, as Chrome's report.
@@ -140,7 +164,7 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
 }
 
 + (void)changedInWindow:(NNCoreWindowController *)controller profile:(NNCoreProfile *)profile cause:(id)cause {
-  if (!gHandler || !controller || !profile) return;
+  if (!gHandler || !controller || !profile || controller.standalone) return;
   cause = cause ?: (gCommand ?: (controller.hostChanges > 0 ? @(-1) : NSNull.null));
   gHandler(@{@"rev" : @(++gRev), @"cmd" : cause, @"strips" : @[ Strip(controller, profile) ]});
 }
@@ -172,7 +196,8 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
 + (NSDictionary<NSString *, id> *)allStrips {
   NSMutableArray *strips = [NSMutableArray array];
   for (NNCoreWindowController *controller in NNCoreWindowController.all)
-    for (NNCoreProfile *profile in ProfilesWithTabs(controller)) [strips addObject:Strip(controller, profile)];
+    if (!controller.standalone)
+      for (NNCoreProfile *profile in ProfilesWithTabs(controller)) [strips addObject:Strip(controller, profile)];
   return @{@"rev" : @(gRev), @"cmd" : NSNull.null, @"strips" : strips};
 }
 

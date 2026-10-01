@@ -1,8 +1,7 @@
 import ExpoModulesCore
 
-// "NetnyahooChromeUI" on NNCore. Chrome's device choosers, Cast dialog, extension side panels and the
-// autofill trigger keep Chrome's own UI for now (they attach to the window as child windows); these hand-offs
-// to the app's UI come with NNCore's UI seams (docs/nncore-parity.md).
+// "NetnyahooChromeUI" on NNCore: device choosers, the Cast dialog and routes, extension side panels, capture and
+// the autofill trigger go to the app's UI, as on CEF (docs/nncore-parity.md).
 public class ChromeUIModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooChromeUI")
@@ -10,21 +9,29 @@ public class ChromeUIModule: Module {
 
     OnCreate {
       NNCoreHost.chromeUIHandler = { [weak self] name, payload in
-        if name == "sidePanel" { self?.sendEvent("onSidePanel", payload) }
+        switch name {
+        case "sidePanel": self?.sendEvent("onSidePanel", payload)
+        case "deviceChooser": self?.sendEvent("onDeviceChooser", payload)
+        case "castDialog": self?.sendEvent("onCastDialog", payload)
+        case "castRoutes": self?.sendEvent("onCastRoutes", payload)
+        default: break
+        }
       }
     }
 
-    AsyncFunction("selectDevice") { (id: Int, index: Int) in }.runOnQueue(.main)
-    AsyncFunction("cancelDeviceChooser") { (id: Int) in }.runOnQueue(.main)
-    AsyncFunction("refreshDeviceChooser") { (id: Int) in }.runOnQueue(.main)
-    AsyncFunction("openBluetoothSettings") { (id: Int) in }.runOnQueue(.main)
+    AsyncFunction("selectDevice") { (id: Int, index: Int) in NNCoreHost.deviceChooser(Int32(id), select: Int32(index)) }.runOnQueue(.main)
+    AsyncFunction("cancelDeviceChooser") { (id: Int) in NNCoreHost.deviceChooser(Int32(id), action: "cancel") }.runOnQueue(.main)
+    AsyncFunction("refreshDeviceChooser") { (id: Int) in NNCoreHost.deviceChooser(Int32(id), action: "refresh") }.runOnQueue(.main)
+    AsyncFunction("openBluetoothSettings") { (id: Int) in NNCoreHost.deviceChooser(Int32(id), action: "settings") }.runOnQueue(.main)
 
-    AsyncFunction("showCastDialog") { (browserId: Int) in false }.runOnQueue(.main)
-    AsyncFunction("startCasting") { (id: Int, sink: String, mode: Int) in }.runOnQueue(.main)
-    AsyncFunction("stopCasting") { (id: Int, route: String) in }.runOnQueue(.main)
-    AsyncFunction("closeCastDialog") { (id: Int) in }.runOnQueue(.main)
-    AsyncFunction("watchCastRoutes") { (profile: String) in }.runOnQueue(.main)
-    AsyncFunction("terminateCastRoute") { (route: String) in }.runOnQueue(.main)
+    AsyncFunction("showCastDialog") { (browserId: Int) in NNCoreHost.showCastDialog(browserId: Int32(browserId)) }.runOnQueue(.main)
+    AsyncFunction("startCasting") { (id: Int, sink: String, mode: Int) in
+      NNCoreHost.castDialog(Int32(id), start: sink, mode: Int32(mode))
+    }.runOnQueue(.main)
+    AsyncFunction("stopCasting") { (id: Int, route: String) in NNCoreHost.castDialog(Int32(id), stop: route) }.runOnQueue(.main)
+    AsyncFunction("closeCastDialog") { (id: Int) in NNCoreHost.closeCastDialog(Int32(id)) }.runOnQueue(.main)
+    AsyncFunction("watchCastRoutes") { (profile: String) in NNCoreHost.watchCastRoutes(profile) }.runOnQueue(.main)
+    AsyncFunction("terminateCastRoute") { (route: String) in NNCoreHost.terminateCastRoute(route) }.runOnQueue(.main)
 
     AsyncFunction("actionStates") { (browserId: Int, ids: [String]) in
       NNCoreHost.actionStates(browserId: Int32(browserId), extensions: ids)
@@ -33,8 +40,12 @@ public class ChromeUIModule: Module {
       NNCoreHost.sidePanelURL(browserId: Int32(browserId), extension: extensionId)
     }.runOnQueue(.main)
 
-    AsyncFunction("changeCaptureSource") { (capturer: Int, target: Int) in }.runOnQueue(.main)
-    AsyncFunction("stopCapture") { (capturer: Int) in }.runOnQueue(.main)
-    AsyncFunction("showAutofillSuggestions") { (browserId: Int, passwords: Bool) in false }.runOnQueue(.main)
+    AsyncFunction("changeCaptureSource") { (capturer: Int, target: Int) -> Bool in
+      NNCoreHost.shareTabInstead(browserId: Int32(target))
+    }.runOnQueue(.main)
+    AsyncFunction("stopCapture") { (capturer: Int) in NNCoreHost.stopCapture(browserId: Int32(capturer)) }.runOnQueue(.main)
+    AsyncFunction("showAutofillSuggestions") { (browserId: Int, passwords: Bool) in
+      NNCoreHost.showAutofillSuggestions(browserId: Int32(browserId), passwords: passwords)
+    }.runOnQueue(.main)
   }
 }

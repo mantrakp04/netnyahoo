@@ -48,6 +48,10 @@ bool Background();
 // windows as tab:<id>, and it closes once empty.
 + (NNCoreWindowController *)strayWindowForProfile:(NNCoreProfile *)profile;
 @property(nonatomic, readonly) BOOL stray;
+// The hidden window holding a profile's standalone WebViews' tabs (extension popups and side panels): CEF made
+// those as browsers outside Chrome's tab strip, so they stay out of the app windows' Browsers and strips.
++ (NNCoreWindowController *)standaloneWindowForProfile:(NNCoreProfile *)profile;
+@property(nonatomic, readonly) BOOL standalone;
 // Tabs the app asked to close that are still in Chrome's strip (beforeunload, the close in flight): the active tab
 // Chrome picks after them is the app's change too, not a switch (TabStripPlace.byApp).
 - (void)noteClosing:(NNCoreTab *)tab;
@@ -78,6 +82,8 @@ namespace nncore_host {
 NSArray<NNCoreProfile *> *LoadedProfiles();
 // Loads the built-in content blocker into a profile Chrome just loaded (NNCoreContentBlocker.mm).
 void LoadContentBlocker(NSString *profile);
+// Starts making the blocker's writable copy (at launch, off the main thread).
+void PrepareContentBlocker();
 // The engine has stage 1's tab model (adoptTab:, tabWillClose:…); older engines report closes only as removals.
 bool EngineHasTabModel();
 }

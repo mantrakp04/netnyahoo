@@ -7,7 +7,7 @@
 //
 // It never takes focus and never touches a real profile: the data dir is <scratch dir>/data, wiped first.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { join, resolve } from "node:path";
@@ -28,7 +28,10 @@ const port = await new Promise((resolve) => {
     probe.close(() => resolve(port));
   });
 });
+const downloadsDir = join(scratch, "downloads");
 rmSync(data, { recursive: true, force: true });
+rmSync(downloadsDir, { recursive: true, force: true });
+mkdirSync(downloadsDir, { recursive: true });
 mkdirSync(data, { recursive: true });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -47,7 +50,39 @@ const server = createServer((req, res) => {
     res.writeHead(200, { "content-type": "image/png" });
     return res.end(png);
   }
+  if (url.pathname === "/file.bin") {
+    res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": 'attachment; filename="nncore-test.bin"' });
+    return res.end(Buffer.alloc(64 * 1024, 7));
+  }
+  if (url.pathname === "/slow.bin") {
+    // 2 MB over about 8 s, for pausing, resuming and cancelling a download that is still running.
+    res.writeHead(200, { "content-type": "application/octet-stream", "content-length": String(40 * 50 * 1024), "content-disposition": 'attachment; filename="nncore-slow.bin"' });
+    let sent = 0;
+    const timer = setInterval(() => {
+      if (res.destroyed || sent >= 40) {
+        clearInterval(timer);
+        if (!res.destroyed) res.end();
+        return;
+      }
+      sent++;
+      res.write(Buffer.alloc(50 * 1024, 3));
+    }, 200);
+    req.on("close", () => clearInterval(timer));
+    return;
+  }
+  if (url.pathname === "/tone.wav") {
+    // One second of a quiet 440 Hz tone (the tab is muted while it plays).
+    const rate = 8000, n = rate;
+    const wav = Buffer.alloc(44 + n * 2);
+    wav.write("RIFF", 0); wav.writeUInt32LE(36 + n * 2, 4); wav.write("WAVEfmt ", 8); wav.writeUInt32LE(16, 16);
+    wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28);
+    wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write("data", 36); wav.writeUInt32LE(n * 2, 40);
+    for (let i = 0; i < n; i++) wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 3000), 44 + i * 2);
+    res.writeHead(200, { "content-type": "audio/wav", "content-length": String(wav.length) });
+    return res.end(wav);
+  }
   res.writeHead(200, { "content-type": "text/html" });
+  if (url.pathname === "/media") return res.end(page("Media", `<audio id="tone" src="/tone.wav" loop></audio>`));
   if (url.pathname === "/a") return res.end(page("Page A", `<a id="next" href="/b">to B</a> <a id="blank" target="_blank" href="/c">blank</a> <a id="cmd" href="/d">cmd</a>`));
   if (url.pathname === "/b") return res.end(page("Page B", "B"));
   if (url.pathname === "/c") return res.end(page("Page C", "C"));
@@ -85,7 +120,7 @@ const stdout = join(scratch, "app.out.log");
 const pidsBefore = new Set(pgrep());
 execFileSync("open", [
   "-g", "-n",
-  "--env", "NETNYAHOO_BACKGROUND=1", "--env", "NETNYAHOO_TEST_REAUTH=granted", "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
+  "--env", "NETNYAHOO_BACKGROUND=1", "--env", "NETNYAHOO_TEST_REAUTH=granted", "--env", `NETNYAHOO_DOWNLOADS_DIR=${downloadsDir}`, "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
   "--stdout", stdout, "--stderr", stdout,
   app,
 ]);
@@ -389,6 +424,96 @@ try {
     return { loadError: e.payload };
   });
 
+  await check("context-menu-search", async () => {
+    // Chrome's own page menu, with the app's "Search <engine> for …" after Copy (background mode reports it
+    // instead of showing it).
+    await evalApp(`return globalThis.expo.modules.NetnyahooCEF.setSearchEngineName("Acceptance").then(() => true)`);
+    // A page on screen: Chrome doesn't run a hidden tab's context menu.
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await until("A shown", async () => (await state()).active === first.id);
+    await sleep(300);
+    const t = await pageTarget(`${base}/a`);
+    const r = await cdp(t, "Runtime.evaluate", {
+      expression: `(() => { const el = document.getElementById('next'); const range = document.createRange(); range.selectNodeContents(el);
+        getSelection().removeAllRanges(); getSelection().addRange(range); return JSON.stringify(el.getBoundingClientRect()); })()`,
+      returnByValue: true,
+    });
+    const box = JSON.parse(r.result.value);
+    const at = { x: box.x + 3, y: box.y + box.height / 2, button: "right", clickCount: 1 };
+    let e = null;
+    for (let attempt = 0; attempt < 3 && !e; attempt++) {
+      await cdp(t, "Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y });
+      await cdp(t, "Input.dispatchMouseEvent", { type: "mousePressed", ...at });
+      await cdp(t, "Input.dispatchMouseEvent", { type: "mouseReleased", ...at });
+      e = await until("a context menu", async () => (await eventsOf(first.id)).findLast((x) => x.name === "contextMenu"), 4000).catch(() => null);
+    }
+    if (!e) throw new Error(`no context menu reported; events: ${JSON.stringify((await eventsOf(first.id)).slice(-6).map((x) => x.name))}`);
+    const labels = e.payload.items.filter((i) => !i.separator).map((i) => i.label);
+    const search = labels.filter((l) => /^Search .* for /.test(l));
+    if (!search.some((l) => l.startsWith("Search Acceptance for “to B”"))) throw new Error(`no app search item: ${JSON.stringify(labels)}`);
+    await cdp(t, "Runtime.evaluate", { expression: "getSelection().removeAllRanges()" });
+    return { items: labels.length, search };
+  });
+
+  await check("duplicate-and-reopen", async () => {
+    // Duplicate copies the tab's back/forward list (clone:), and ⇧⌘T brings a closed tab back with its own list
+    // (restore:, through Chrome's TabRestoreService entry tagged with the tab's id).
+    const copyId = await evalApp(`const c = nn.store.getState().duplicateTab("${first.id}"); return typeof c === "string" ? c : c?.id ?? null`);
+    if (!copyId) throw new Error("no copy");
+    await until("the copy on A with history", async () => (await state()).tabs.find((t) => t.id === copyId && t.title === "Page A" && t.back && !t.loading), 15000);
+    await evalApp(`nn.store.getState().closeTab("${copyId}"); return true`);
+    await until("the copy closed", async () => !(await state()).tabs.some((t) => t.id === copyId));
+    await sleep(500);
+    const before = new Set((await state()).tabs.map((t) => t.id));
+    await evalApp(`nn.store.getState().reopenClosedTab(${JSON.stringify(mainWindow)}); return true`);
+    const back = await until("the reopened tab with history", async () => {
+      const s = await state();
+      return s.tabs.find((t) => !before.has(t.id) && t.title === "Page A" && t.back && !t.loading);
+    }, 15000);
+    await evalApp(`nn.store.getState().closeTab("${back.id}"); return true`);
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await until("first tab active", async () => (await state()).active === first.id);
+    return { copy: copyId, reopened: back.id };
+  });
+
+  await check("device-chooser", async () => {
+    // WebUSB requestDevice: Chrome's chooser comes to the app's sheet (onDeviceChooser); cancelling it rejects
+    // the page's promise with NotFoundError.
+    const t = await pageTarget(`${base}/a`);
+    await cdp(t, "Runtime.evaluate", {
+      expression: "window.__usb = 'pending'; navigator.usb.requestDevice({ filters: [] }).then(() => (window.__usb = 'picked'), (e) => (window.__usb = e.name))",
+      userGesture: true,
+    });
+    const chooser = await until("the app's chooser", async () => {
+      const c = await evalApp(`return globalThis.nnDeviceChoosers?.useChoosers.getState().byTab["${first.id}"] ?? null`);
+      if (c) return c;
+      const r = await cdp(t, "Runtime.evaluate", { expression: "String(window.__usb)", returnByValue: true });
+      if (r.result.value !== "pending") throw new Error(`no chooser; the page got ${r.result.value}`);
+      return null;
+    }, 10000);
+    await evalApp(`return globalThis.nnDeviceChoosers.cancelDeviceChooser(${chooser.id}).then(() => true)`);
+    const result = await until("the page's answer", async () => {
+      const r = await cdp(t, "Runtime.evaluate", { expression: "window.__usb", returnByValue: true });
+      return r.result.value !== "pending" ? r.result.value : null;
+    }, 8000);
+    await until("the sheet gone", async () => !(await evalApp(`return globalThis.nnDeviceChoosers.useChoosers.getState().byTab["${first.id}"] ?? null`)), 5000);
+    if (result !== "NotFoundError") throw new Error(`page got ${result}`);
+    return { chooser: { id: chooser.id, title: chooser.title, options: chooser.options?.length }, page: result };
+  });
+
+  await check("cast-dialog", async () => {
+    // Chrome's Cast dialog for the tab comes to the app's popover (onCastDialog), the profile's routes to
+    // onCastRoutes, and closing it from the app closes Chrome's.
+    const browser = await browserOf(first.id);
+    const shown = await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.showCastDialog(${browser})`);
+    if (!shown) throw new Error("showCastDialog said no (media router off?)");
+    const dialog = await until("the app's Cast dialog", async () => evalApp(`return globalThis.nnCast?.useCast.getState().dialogs["${first.id}"] ?? null`), 10000);
+    const routes = await evalApp(`return globalThis.nnCast.useCast.getState().routes`);
+    await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.closeCastDialog(${dialog.id}).then(() => true)`);
+    await until("the dialog closed", async () => !(await evalApp(`return globalThis.nnCast.useCast.getState().dialogs["${first.id}"] ?? null`)), 5000);
+    return { header: dialog.header, sinks: dialog.sinks?.length ?? 0, routeProfiles: Object.keys(routes ?? {}) };
+  });
+
   await check("crash", async () => {
     // A renderer crash reaches the app (onCrashed → the sad tab), and the app keeps running.
     await evalApp(`nn.actions.openUrls(["${base}/crash-me"], ${JSON.stringify(mainWindow)}); return true`);
@@ -464,7 +589,10 @@ try {
     return { levels };
   });
 
-  const extPath = resolve(new URL(".", import.meta.url).pathname, "../../../spikes/nncore-host/fixtures/ext");
+  // A copy in the scratch dir: the app reading the checkout under ~/Documents would raise macOS's folder-access
+  // prompt (and block the main thread on it) for every re-signed build.
+  const extPath = join(scratch, "fixture-ext");
+  cpSync(resolve(new URL(".", import.meta.url).pathname, "../../../spikes/nncore-host/fixtures/ext"), extPath, { recursive: true });
   await check("extensions", async () => {
     const inspected = await exts(`inspectUnpacked(${JSON.stringify(extPath)})`);
     const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
@@ -511,6 +639,220 @@ try {
     return { enabled: state.enabled, lists: state.lists.length, version: state.version, allowed };
   });
 
+  await check("download", async () => {
+    // Chrome's download manager through //chrome/browser/netnyahoo (nn_downloads_*): the app's list fills in.
+    await evalApp(`nn.actions.openUrls(["${base}/file.bin"], ${JSON.stringify(mainWindow)}); return true`);
+    const d = await until("the finished download", async () => {
+      const list = await evalApp(`return nn.store.getState().downloads.map((d) => ({ id: d.id, state: d.state, filename: d.filename, path: d.path, received: d.received }))`);
+      return list.find((x) => x.filename?.includes("nncore-test") && x.state === "finished") ?? null;
+    }, 20000);
+    if (!d.path.startsWith(downloadsDir)) throw new Error(`downloaded to ${d.path}, not the scratch dir`);
+    return d;
+  });
+
+  await check("site-settings", async () => {
+    const origin = "https://settings.test";
+    await cef(`setSiteSetting("", "${origin}", "popups", "allow")`);
+    const settings = await until("the setting", async () => {
+      const s = await cef(`getSiteSettings("", "${origin}")`);
+      return s?.popups?.value === "allow" ? s : null;
+    });
+    const origins = await cef(`getSiteSettingsOrigins("")`);
+    await cef(`resetSiteSettings("", "${origin}")`);
+    const cleared = await cef(`clearSiteData("", "${origin}")`);
+    return { popups: settings.popups, origins: origins.length, cleared };
+  });
+
+  await check("passwords-more", async () => {
+    // The rest of Settings › Passwords: edit, the never-save list, unlock (NETNYAHOO_TEST_REAUTH), export to a file.
+    const origin = "https://more.test";
+    await cef(`savePassword("", "${origin}", "olduser", "pw1")`);
+    const updated = await cef(`updatePassword("", "${origin}", "olduser", "newuser", "pw2")`);
+    if (updated?.error) throw new Error(`update: ${updated.error}`);
+    const revealed = await until("the edited login", async () => {
+      const r = await cef(`getPassword("", "${origin}", "newuser")`);
+      return r?.password === "pw2" ? r : null;
+    });
+    const unlocked = await cef(`unlockPasswords("")`);
+    const never = await cef(`getNeverSavePasswordOrigins("")`);
+    const allowed = await cef(`allowSavingPasswords("", "https://never.test")`);
+    const file = join(scratch, "passwords.csv");
+    const exported = await cef(`exportPasswords("", ${JSON.stringify(file)})`);
+    const written = await until("the export file", async () => existsSync(file) && readFileSync(file, "utf8").includes("newuser"), 10000);
+    await cef(`deletePassword("", "${origin}", "newuser")`);
+    return { updated: revealed.password, unlocked, never: never?.origins?.length ?? never, allowed, exported: exported?.status ?? exported, written };
+  });
+
+  await check("autofill-cards", async () => {
+    // Cards in Chrome's personal data manager: save (with a published test number), list, reveal, delete; settings.
+    const saved = await cef(`saveCard("", { name: "Acceptance Test", expMonth: 12, expYear: 2031 }, "4111111111111111")`);
+    if (saved?.error) throw new Error(`save: ${saved.error}`);
+    const card = await until("the card listed", async () => {
+      const r = await cef(`listCards("")`);
+      return r?.cards?.find((c) => c.id === saved.id) ?? null;
+    });
+    const number = await cef(`revealCardNumber("", "${saved.id}")`);
+    if (number?.number !== "4111111111111111") throw new Error(`reveal: ${JSON.stringify(number)}`);
+    await cef(`deleteAutofillEntry("", "${saved.id}")`);
+    await until("the card gone", async () => !(await cef(`listCards("")`))?.cards?.some((c) => c.id === saved.id));
+    await cef(`setAutofillSettings("", null, false)`);
+    const off = await cef(`getAutofillSettings("")`);
+    await cef(`setAutofillSettings("", null, true)`);
+    if (off.cards !== false) throw new Error(`cards setting: ${JSON.stringify(off)}`);
+    return { card: { last4: card.lastFour ?? card.last4 ?? null, name: card.name }, revealed: true, cardsOff: true };
+  });
+
+  await check("settings-services", async () => {
+    // Clearing browsing data, resetting a site, the blocker's switches and an external-app allowance, as Settings does.
+    await cef(`clearBrowsingData("", ["cache", "history"], null)`);
+    await cef(`setSiteSetting("", "https://reset.test", "sound", "block")`);
+    await cef(`resetSiteSettings("", "https://reset.test")`);
+    const reset = await until("the site reset", async () => {
+      const r = await cef(`getSiteSettings("", "https://reset.test")`);
+      return r?.sound?.isDefault ? r.sound : null;
+    });
+    const before = await cef(`getContentBlocker()`);
+    await cef(`setContentBlockerEnabled(false)`);
+    const off = await until("the blocker off", async () => ((await cef(`getContentBlocker()`)).enabled === false ? true : null), 15000);
+    await cef(`setContentBlockerEnabled(true)`);
+    await until("the blocker on", async () => ((await cef(`getContentBlocker()`)).enabled === true ? true : null), 15000);
+    const list = before.lists.find((l) => !l.enabled) ?? before.lists[0];
+    await cef(`setFilterListEnabled(${JSON.stringify(list.id)}, ${!list.enabled})`);
+    const toggled = await until("the list toggled", async () =>
+      (await cef(`getContentBlocker()`)).lists.find((l) => l.id === list.id)?.enabled === !list.enabled ? true : null, 20000);
+    await cef(`setFilterListEnabled(${JSON.stringify(list.id)}, ${list.enabled})`);
+    await cef(`removeExternalAppAllowance("", "https://none.test", "nncore-no-such-app")`);
+    return { reset: reset.value, blockerOff: off, list: list.id, toggled };
+  });
+
+  await check("download-controls", async () => {
+    // A running download paused, resumed and cancelled from the app (nn_downloads_pause/_resume/_cancel).
+    await evalApp(`nn.actions.openUrls(["${base}/slow.bin"], ${JSON.stringify(mainWindow)}); return true`);
+    const find = () => evalApp(`return nn.store.getState().downloads.map((d) => ({ id: d.id, state: d.state, filename: d.filename, received: d.received }))`)
+      .then((l) => l.find((x) => x.filename?.includes("nncore-slow")) ?? null);
+    const d = await until("the slow download running", async () => { const x = await find(); return x?.state === "inProgress" && x.received > 0 ? x : null; }, 15000);
+    await cef(`pauseDownload("${d.id}")`);
+    await until("paused", async () => ((await find())?.state === "paused" ? true : null), 8000);
+    await cef(`resumeDownload("${d.id}")`);
+    await until("running again", async () => ((await find())?.state === "inProgress" ? true : null), 8000);
+    await cef(`cancelDownload("${d.id}")`);
+    const last = await until("cancelled", async () => { const x = await find(); return x?.state === "cancelled" ? x : null; }, 8000);
+    return { id: d.id, state: last.state };
+  });
+
+  await check("tasks-components", async () => {
+    const tasks = await until("tasks", async () => {
+      const t = await cef(`listTasks()`);
+      return t.length ? t : null;
+    });
+    const components = await cef(`components()`);
+    const allowances = await cef(`getExternalAppAllowances("")`);
+    return { tasks: tasks.length, browserTasks: tasks.filter((t) => t.browserIds.length).length, components: components.length, allowances: allowances.length };
+  });
+
+  await check("download-navigation", async () => {
+    // A page navigating to a download stays where it was, and the app hears of it (onDownloadNavigation).
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/file.bin?nav", { userInitiated: true }); return true`);
+    const e = await until("onDownloadNavigation", async () => (await eventsOf(first.id)).find((x) => x.name === "downloadNavigation"), 15000);
+    return e.payload;
+  });
+
+  await check("tracing", async () => {
+    const started = await cef(`beginTracing()`);
+    const during = await cef(`isTracing()`);
+    const path = await cef(`endTracing(false)`);
+    const after = await cef(`isTracing()`);
+    if (!started || !during || after) throw new Error(`tracing ${started} ${during} ${after}`);
+    return { started, during, after, path };
+  });
+
+  await check("delete-profile-data", async () => {
+    // A loaded profile's data goes through Chrome's profile deletion (one never loaded is its folder alone).
+    const folder = join(data, "Chromium", "Profile scratch-delete");
+    await cef(`listPasswords("scratch-delete")`);
+    await until("the profile loaded", async () => existsSync(folder), 10000);
+    const result = await cef(`deleteProfileData("scratch-delete")`);
+    if (result.remaining.length) throw new Error(`remaining ${JSON.stringify(result)}`);
+    // Chrome removes the folder once the profile is destroyed (its Browsers closed, its services gone).
+    const gone = await until("the folder gone", async () => !existsSync(folder), 15000).catch(() => false);
+    if (!gone) throw new Error("the profile's folder is still there");
+    return { ...result, folderGone: true };
+  });
+
+  await check("page-events", async () => {
+    // Zoom steps, the security report, an app link with no app on this Mac, and an Esc the page leaves alone.
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await until("A's WebView", async () => evalApp(`return !!nn.webviews.get("${first.id}")`), 8000);
+    await evalApp(`return nn.webviews.get("${first.id}").zoomStep(1)`);
+    const zoom = await until("onZoom", async () => (await eventsOf(first.id)).filter((x) => x.name === "zoom").pop(), 8000);
+    await evalApp(`return nn.webviews.get("${first.id}").zoomStep(0)`);
+    const security = await evalApp(`return nn.webviews.get("${first.id}").getSecurityInfo()`);
+    const t = await pageTarget(`${base}/a`);
+    await cdp(t, "Runtime.evaluate", { expression: "location.href = 'nncore-no-such-app://hello'", userGesture: true });
+    const external = await until("onExternalApp", async () => evalApp(`return nn.pageState.getState().pages["${first.id}"]?.externalApp ?? null`), 10000);
+    const s = await state();
+    await evalApp(`return nn.webviews.get("${first.id}").focus()`);
+    await sleep(300);
+    await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "\u001b", keyCode: 53, modifiers: [], focus: "page" })`);
+    const escape = await until("onCommand escape", async () => (await eventsOf(first.id)).find((x) => x.name === "command"), 5000);
+    return { zoom: zoom.payload.zoom, security: security?.level, external: { scheme: external.scheme, app: external.app }, escape: escape.payload.command };
+  });
+
+  await check("notifications", async () => {
+    // A page's Notification goes to the app (onNotification), and the app's click reaches the page.
+    await cef(`setSiteSetting("", "${base}", "notifications", "allow")`);
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    const t = await pageTarget(`${base}/a`);
+    await cdp(t, "Runtime.evaluate", {
+      expression: "window.__clicked = false; const n = new Notification('Acceptance', { body: 'hello', tag: 'nn' }); n.onclick = () => (window.__clicked = true); true",
+      userGesture: true,
+    });
+    const e = await until("onNotification", async () => (await eventsOf(first.id)).findLast((x) => x.name === "notification"), 8000);
+    await evalApp(`return nn.webviews.get("${first.id}").notificationAction(${JSON.stringify(e.payload.id)}, "click")`);
+    const clicked = await until("the page's click", async () => {
+      const r = await cdp(t, "Runtime.evaluate", { expression: "window.__clicked", returnByValue: true });
+      return r.result.value === true ? true : null;
+    }, 8000);
+    await cef(`setSiteSetting("", "${base}", "notifications", "default")`);
+    return { title: e.payload.title, body: e.payload.body, clicked };
+  });
+
+  await check("now-playing", async () => {
+    // A playing <audio> with Media Session metadata: onNowPlaying, onMedia, and the app's pause (mediaCommand).
+    // The tab is muted first: nothing is heard.
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/media", { userInitiated: true }); return true`);
+    await until("the media page", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Media" && !t.loading), 10000);
+    await evalApp(`return nn.webviews.get("${first.id}").setMuted(true)`);
+    const t = await pageTarget(`${base}/media`);
+    await cdp(t, "Runtime.evaluate", {
+      expression: "navigator.mediaSession.metadata = new MediaMetadata({ title: 'NN Tone', artist: 'Acceptance' }); document.getElementById('tone').play().then(() => true)",
+      userGesture: true,
+      awaitPromise: true,
+    });
+    const playing = await until("onNowPlaying playing", async () =>
+      (await eventsOf(first.id)).findLast((x) => x.name === "nowPlaying" && x.payload?.title === "NN Tone" && x.payload?.playbackState === "playing"), 10000);
+    await evalApp(`return nn.webviews.get("${first.id}").mediaCommand("pause")`);
+    await until("paused by the app", async () => {
+      const r = await cdp(t, "Runtime.evaluate", { expression: "document.getElementById('tone').paused", returnByValue: true });
+      return r.result.value === true ? true : null;
+    }, 8000);
+    const media = (await eventsOf(first.id)).filter((x) => x.name === "media").length;
+    await evalApp(`return nn.webviews.get("${first.id}").setMuted(false)`);
+    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a", { userInitiated: true }); return true`);
+    await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
+    return { title: playing.payload.title, artist: playing.payload.artist, mediaEvents: media };
+  });
+
+  await check("discard", async () => {
+    // A tab in the background discarded by Chrome keeps its place; the app hears onDiscarded.
+    const s = await state();
+    const other = s.tabs.find((x) => x.id !== first.id && x.id !== s.active && x.url?.startsWith(base));
+    if (!other) throw new Error("no background tab to discard");
+    const ok = await evalApp(`return nn.webviews.get("${other.id}").discard()`);
+    const e = await until("onDiscarded", async () => (await eventsOf(other.id)).find((x) => x.name === "discarded"), 8000);
+    return { ok, url: e.payload.url };
+  });
+
   await check("permission-prompt", async () => {
     // A site asking for a permission reaches the app's prompt (onPermission → pageState.permission), and its answer
     // goes back to Chrome. Chrome holds a background tab's prompt until it shows, so the page is shown first.
@@ -532,7 +874,11 @@ try {
   });
 
   await check("popup-blocked", async () => {
-    // A popup without a user gesture: Chrome's blocker keeps it, the app hears of it and can open it.
+    // A popup without a user gesture: Chrome's blocker keeps it, the app hears of it and can open it. The page is
+    // loaded again first: the checks before gave it a user activation (CDP's userGesture), which would let it through.
+    await evalApp(`return nn.webviews.get("${first.id}").reload()`);
+    await sleep(1500);
+    await until("A loaded", async () => (await state()).tabs.find((t) => t.id === first.id && !t.loading), 10000);
     const t = await pageTarget(`${base}/a`);
     await cdp(t, "Runtime.evaluate", { expression: `window.open("${base}/c?blocked")` });
     const popups = await until("the blocked popup", async () => {

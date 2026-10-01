@@ -30,6 +30,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (void)prepareTransfer:(NSString *)transferKey;
 // Tests: the last events a tab's view sent, and the window it shows in.
+// The engine the page menu's "Search <engine> for …" names.
++ (void)setSearchEngineName:(NSString *)name;
 + (NSArray<NSDictionary<NSString *, id> *> *)devEventsForBrowser:(int)browserId NS_SWIFT_NAME(devEvents(browserId:));
 + (NSInteger)devWindowNumberForBrowser:(int)browserId NS_SWIFT_NAME(devWindowNumber(browserId:));
 

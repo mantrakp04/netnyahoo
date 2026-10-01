@@ -7,6 +7,7 @@
 // takes that live tab.
 #import "NNCoreWebView.h"
 #import "NNCoreWebViewInternal.h"
+#import "NNCoreServices.h"
 
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
@@ -152,6 +153,21 @@ void NoteEvent(int browserId, NSString *name, NSDictionary *payload) {
 #endif
 }
 
+// The search engine the app names in its menu ("Search Google for …"), as CEF's NNClient keeps it.
+NSString *gSearchEngineName = @"Google";
+
+// CEF's SelectionLabel: whitespace collapsed, cut near 50 characters at a word.
+NSString *SelectionLabel(NSString *text) {
+  NSArray *words = [text componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+  NSString *collapsed = [[words filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]]
+      componentsJoinedByString:@" "];
+  if (collapsed.length <= 50) return collapsed;
+  NSRange space = [collapsed rangeOfString:@" " options:NSBackwardsSearch range:NSMakeRange(0, 50)];
+  NSUInteger end = space.location != NSNotFound && space.location > 25 ? space.location : 50;
+  end = [collapsed rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, end)].length;
+  return [[collapsed substringToIndex:end] stringByAppendingString:@"…"];
+}
+
 NSString *JSONString(id value) {
   NSData *data = [NSJSONSerialization dataWithJSONObject:value ?: NSNull.null options:NSJSONWritingFragmentsAllowed error:nil];
   return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"null";
@@ -178,6 +194,10 @@ NSString *JSONString(id value) {
   BOOL _pinned;
   NSView *_devtoolsView;
   BOOL _navigationQueued;
+  // Requests the content blocker stopped on this page (onContentBlocked), as CEF's NNClient counts them.
+  NSInteger _blockedCount;
+  NSString *_lastBlocked;
+  BOOL _blockedEmitQueued;
   NSDictionary *_sentNavigation;
   NSString *_lastFavicon;
   CFTimeInterval _sentProgressAt;
@@ -190,6 +210,7 @@ NSString *JSONString(id value) {
   NSMutableDictionary<NSString *, NSString *> *_notificationFrames;
   NSMutableDictionary<NSString *, NSDictionary *> *_displayRequests;
   double _pinchScale;
+  BOOL _autoPictureInPictureActive;
 }
 
 + (void)prepareTransfer:(NSString *)transferKey {
@@ -248,6 +269,13 @@ NSString *JSONString(id value) {
     _adoptId = nil;
     if (offered && !offered.closed) return [self attach:offered];
   }
+  // "restore:<closed tab id>" and "clone:<source tab id>": a tab with history (⇧⌘T, Duplicate).
+  NSString *kind = nil, *key = nil;
+  NSRange colon = _adoptId ? [_adoptId rangeOfString:@":"] : NSMakeRange(NSNotFound, 0);
+  if (colon.location != NSNotFound) {
+    kind = [_adoptId substringToIndex:colon.location];
+    key = [_adoptId substringFromIndex:NSMaxRange(colon)];
+  }
   _adoptId = nil;
   _creating = YES;
   __weak NNCoreWebView *weakSelf = self;
@@ -257,15 +285,57 @@ NSString *JSONString(id value) {
     view->_creating = NO;
     NNCoreWindowController *controller = view.controller;
     if (!profile || view->_tab || !controller) return;
+    // Extension popups and side panels: out of the app window's Browser and strip, as CEF's standalone browsers.
+    if (view->_standalone) controller = [NNCoreWindowController standaloneWindowForProfile:profile] ?: controller;
     NSString *url = view->_pendingURL ?: view->_initialURL;
     view->_pendingURL = nil;
     view->_creatingURL = url;
     view->_creatingAt = CACurrentMediaTime();
+    if ([kind isEqualToString:@"clone"] && [view cloneTab:key profile:profile]) return;
+    if ([kind isEqualToString:@"restore"] && url.length && !nncore_host::IsIncognito(view->_profile) &&
+        [controller.coreWindow respondsToSelector:@selector(restoreTab:profile:foreground:)]) {
+      // Its back/forward list is the one Chrome's TabRestoreService kept when it closed (closeBrowser tagged it
+      // with the tab's id; on disk, so it survives a relaunch). Without one, the page loads.
+      [NNCoreServices call:@"nn_tab_restore_take" profile:view->_profile args:@{@"key" : key}
+                completion:^(NSDictionary *result) {
+                  NNCoreWebView *later = weakSelf;
+                  NNCoreWindowController *now = later.controller;
+                  if (!later || later->_tab || !now) return;
+                  NSString *state = [result[@"state"] isKindOfClass:NSString.class] ? result[@"state"] : nil;
+                  NNCoreTab *tab = nil;
+                  now.hostChanges++;
+                  if (state.length) tab = [now.coreWindow restoreTab:state profile:profile foreground:NO];
+                  if (!tab) tab = [now.coreWindow openTab:url profile:profile foreground:NO];
+                  now.hostChanges--;
+                  if (tab) [later attach:tab];
+                }];
+      return;
+    }
     controller.hostChanges++;
     NNCoreTab *tab = [controller.coreWindow openTab:url.length ? url : @"about:blank" profile:profile foreground:NO];
     controller.hostChanges--;
     if (tab) [view attach:tab];
   });
+}
+
+// Duplicate: Chrome's copy of the source tab (its back/forward list and current page), for this view.
+- (BOOL)cloneTab:(NSString *)sourceKey profile:(NNCoreProfile *)profile {
+  NNCoreWindowController *controller = self.controller;
+  if (![controller.coreWindow respondsToSelector:@selector(duplicateTab:profile:foreground:)]) return NO;
+  NNCoreTab *source = nil;
+  for (NNCoreWebView *other in LiveViews())
+    if (other != self && [other.transferKey isEqualToString:sourceKey] && other->_tab && !other->_tab.closed) source = other->_tab;
+  if (!source || source.profile != profile) return NO;
+  NNCoreWindowController *holder = [NNCoreWindowController holding:source];
+  _pendingURL = nil;
+  controller.hostChanges++;
+  holder.hostChanges++;
+  NNCoreTab *tab = [controller.coreWindow duplicateTab:source profile:profile foreground:NO];
+  holder.hostChanges--;
+  controller.hostChanges--;
+  if (!tab) return NO;
+  [self attach:tab];
+  return YES;
 }
 
 - (BOOL)takeTransferredTab {
@@ -292,6 +362,7 @@ NSString *JSONString(id value) {
 // The tab's Browser is its window's: a tab this view takes from elsewhere (a popup Chrome opened in another
 // window's Browser, a tab moved between windows) moves into this window's Browser for its profile.
 - (void)adoptIntoWindow {
+  if (_standalone) return;
   NNCoreWindowController *controller = self.controller;
   if (!controller || ![controller.coreWindow respondsToSelector:@selector(adoptTab:)]) return;
   if ([[controller.coreWindow tabsForProfile:_tab.profile] containsObject:_tab]) return;
@@ -362,6 +433,10 @@ NSString *JSONString(id value) {
     return;
   }
   _closing = YES;
+  // The entry Chrome's TabRestoreService records for the tab carries the app's id for it, so ⇧⌘T finds this one.
+  if (_transferKey.length && !nncore_host::IsIncognito(_profile) && NNCoreHost.isStarted)
+    [NNCoreServices call:@"nn_tab_restore_tag" profile:_profile args:@{@"tab" : @(tab.tabId), @"key" : _transferKey}
+              completion:^(NSDictionary *) {}];
   [[NNCoreWindowController holding:tab] noteClosing:tab];
   [self detach];
   // As CEF's CloseBrowser(true): the app already dropped the tab, so no beforeunload keeps it alive unseen.
@@ -424,6 +499,7 @@ NSString *JSONString(id value) {
 }
 
 - (void)tabActivatedByChrome:(BOOL)chromes {
+  if (_standalone) return;
   [self emit:@"tabStrip"
       payload:@{
         @"index" : @(MAX(_tabIndex, 0)),
@@ -491,6 +567,7 @@ NSString *JSONString(id value) {
   if (_visible == visible) return;
   _visible = visible;
   [self applyPainting];
+  [self updateAutoPictureInPicture];
   // With tab-strip commands, only they (and Chrome) change the active tab.
   if (visible && !NNCoreTabStrip.commandsSeen) [self activate];
 }
@@ -516,6 +593,10 @@ NSString *JSONString(id value) {
 
 + (NSArray<NSDictionary<NSString *, id> *> *)devEventsForBrowser:(int)browserId {
   return RecentEvents()[@(browserId)] ?: @[];
+}
+
++ (void)setSearchEngineName:(NSString *)name {
+  gSearchEngineName = name.length ? [name copy] : @"Google";
 }
 
 + (NSInteger)devWindowNumberForBrowser:(int)browserId {
@@ -624,6 +705,12 @@ NSString *JSONString(id value) {
   frameId = frameId ?: @"";
   if ([kind isEqualToString:@"hello"]) {
     [self callFrame:frameId kind:@"config" json:@"{}"];
+    // A new main document: its blocked count starts again.
+    if (main && (_blockedCount || _lastBlocked)) {
+      _blockedCount = 0;
+      _lastBlocked = nil;
+      [self emit:@"contentBlocked" payload:@{@"count" : @0, @"url" : @""}];
+    }
   } else if ([kind isEqualToString:@"selection"] && main) {
     [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : SelectionState(dict) ?: NSNull.null}];
   } else if ([kind isEqualToString:@"media"] && dict) {
@@ -885,7 +972,7 @@ NSString *JSONString(id value) {
 
 - (void)requestPictureInPicture:(void (^)(BOOL))completion {
   if (![_tab respondsToSelector:@selector(evaluate:completion:)]) return completion(NO);
-  [_tab evaluate:@"(async () => {"
+  [self evaluateWithGesture:@"(async () => {"
                   "  const videos = [...document.querySelectorAll('video')].filter(v => v.readyState > 0 && !v.disablePictureInPicture);"
                   "  videos.sort((a, b) => (b.paused ? 0 : 1) - (a.paused ? 0 : 1) || b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight);"
                   "  if (!videos.length) return post('result', 'false');"
@@ -893,6 +980,27 @@ NSString *JSONString(id value) {
                   "  try { await videos[0].requestPictureInPicture(); post('result', 'true'); } catch (e) { post('result', 'false'); }"
                   "})()"
       completion:^(NSString *json) { completion([json isEqualToString:@"true"]); }];
+}
+
+// Picture in Picture needs the user activation a click would give (CEF's EvaluateWithGesture).
+- (void)evaluateWithGesture:(NSString *)code completion:(void (^)(NSString *))completion {
+  if ([_tab respondsToSelector:@selector(evaluate:userGesture:completion:)]) return [_tab evaluate:code userGesture:YES completion:completion];
+  [_tab evaluate:code completion:completion];
+}
+
+// Auto Picture in Picture (Arc's): a playing video goes into PiP when its tab is switched away from, and comes back
+// when it shows again.
+- (void)updateAutoPictureInPicture {
+  if (!_tab) return;
+  NSDictionary *np = _nowPlaying[_nowPlayingFrame ?: @""];
+  const BOOL playingVideo = [np[@"hasVideo"] boolValue] && [np[@"playbackState"] isEqual:@"playing"];
+  if (!_visible && _autoPictureInPicture && playingVideo) {
+    _autoPictureInPictureActive = YES;
+    [self requestPictureInPicture:^(BOOL) {}];
+  } else if (_visible && _autoPictureInPictureActive) {
+    _autoPictureInPictureActive = NO;
+    [self exitPictureInPicture];
+  }
 }
 
 - (void)exitPictureInPicture {
@@ -912,12 +1020,30 @@ NSString *JSONString(id value) {
   if ([_tab respondsToSelector:@selector(openBlockedPopup:always:)]) [_tab openBlockedPopup:popupId always:always];
 }
 
+// Requests the content blocker stopped (ERR_BLOCKED_BY_CLIENT), new since the last report: the page's total at most
+// every 150 ms, as CEF's NNClient::NoteBlocked.
+- (void)tab:(NNCoreTab *)tab didBlockRequests:(int)count lastURL:(NSString *)url {
+  _blockedCount += count;
+  _lastBlocked = url;
+  if (_blockedEmitQueued) return;
+  _blockedEmitQueued = YES;
+  __weak NNCoreWebView *weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+    NNCoreWebView *view = weakSelf;
+    if (!view) return;
+    view->_blockedEmitQueued = NO;
+    [view emit:@"contentBlocked" payload:@{@"count" : @(view->_blockedCount), @"url" : view->_lastBlocked ?: @""}];
+  });
+}
+
 - (void)tab:(NNCoreTab *)tab didBlockPopup:(NSDictionary<NSString *, NSString *> *)popup {
   [self emit:@"popupBlocked" payload:popup];
 }
 
 - (void)clearSiteData:(void (^)(NSDictionary<NSString *, id> *))completion {
-  completion(@{@"cookies" : @NO, @"storage" : @NO});
+  NSString *origin = OriginOf(_tab.url);
+  if (!origin) return completion(@{@"cookies" : @NO, @"storage" : @NO});
+  [NNCoreServices clearSiteData:_profile origin:origin completion:completion];
 }
 
 - (void)resolvePasswordPrompt:(NSString *)action username:(NSString *)username password:(NSString *)password {
@@ -946,7 +1072,39 @@ NSString *JSONString(id value) {
 }
 
 - (NSString *)mediaCaptureSourceId {
-  return nil;
+  return [_tab respondsToSelector:@selector(mediaCaptureSourceId)] ? _tab.mediaCaptureSourceId : nil;
+}
+
+- (void)tab:(NNCoreTab *)tab navigationBecameDownload:(NSString *)url {
+  [self emit:@"downloadNavigation" payload:@{@"url" : url ?: @"", @"committedUrl" : tab.url ?: @"", @"skipped" : @NO}];
+}
+
+// The page's menu is Chrome's; the app adds "Search <engine> for …" after Copy, as CEF did, and runs it itself
+// (onCommand "search", the app's engine and opening rules, with the keys held).
+- (NSArray<NSDictionary<NSString *, NSString *> *> *)tab:(NNCoreTab *)tab
+                           contextMenuItemsForSelection:(NSString *)text {
+  return @[ @{
+    @"id" : @"search",
+    @"title" : [NSString stringWithFormat:@"Search %@ for “%@”", gSearchEngineName, SelectionLabel(text)],
+    @"replaces" : @"search",
+  } ];
+}
+
+- (void)tab:(NNCoreTab *)tab
+    contextMenuCommand:(NSString *)itemId
+                  text:(NSString *)selection
+             modifiers:(NSDictionary<NSString *, NSNumber *> *)modifiers {
+  if ([itemId isEqualToString:@"search"])
+    [self emit:@"command" payload:@{@"command" : @"search", @"text" : selection ?: @"", @"modifiers" : modifiers ?: @{}}];
+}
+
+// Background mode: the menu Chrome would have shown, in the dev event log (devEvents) for the tests.
+- (void)tab:(NNCoreTab *)tab didShowContextMenu:(NSArray<NSDictionary *> *)items {
+  NoteEvent(nncore_host::BrowserId(tab), @"contextMenu", @{@"items" : items ?: @[]});
+}
+
+- (void)tab:(NNCoreTab *)tab requestsActivation:(NSString *)reason {
+  [self emit:@"activateRequest" payload:@{@"reason" : reason ?: @"page"}];
 }
 
 - (void)notificationAction:(NSString *)notificationId action:(NSString *)action {

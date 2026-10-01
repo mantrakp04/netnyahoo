@@ -9,16 +9,22 @@ public class ExtensionsModule: Module {
     Events("onChanged", "onTabs", "onInstallPrompt")
 
     OnCreate {
+      NNCoreHost.extensionsEventHandler = { [weak self] name, payload in
+        if name == "installPrompt" { self?.sendEvent("onInstallPrompt", payload) }
+      }
       NNCoreServices.extensionsHandler = { [weak self] name, payload in
         switch name {
         case "changed": self?.sendEvent("onChanged", payload)
         case "tabs": self?.sendEvent("onTabs", payload)
+        case "installPrompt": self?.sendEvent("onInstallPrompt", payload)
         default: break
         }
       }
     }
 
-    AsyncFunction("resolveInstallPrompt") { (requestId: String, accepted: Bool) in }.runOnQueue(.main)
+    AsyncFunction("resolveInstallPrompt") { (requestId: String, accepted: Bool) in
+      NNCoreHost.resolveExtensionInstallPrompt(requestId, accepted: accepted)
+    }.runOnQueue(.main)
     AsyncFunction("list") { (profile: String, promise: Promise) in
       NNCoreServices.listExtensions(profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)

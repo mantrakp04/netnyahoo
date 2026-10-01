@@ -334,14 +334,20 @@ NSString *ExtensionPath() {
 
 void LoadIntoProfile(NSString *profile) {
   if ([LoadedProfiles() containsObject:profile]) return;
-  NNCoreProfile *p = nncore_host::LoadedProfile(profile);
-  NSString *path = ExtensionPath();
-  if (!p || !path || ![p respondsToSelector:@selector(loadComponentExtension:)]) return;
-  NSString *loaded = [p loadComponentExtension:path];
-  if (![loaded isEqualToString:ExtensionId()]) return (void)NSLog(@"[blocker] component load failed (%@)", loaded);
-  [LoadedProfiles() addObject:profile];
-  [LastAnswers() removeObjectForKey:profile];
-  if (profile.length) FollowDefault(@[ profile ], ^{});
+  // The writable copy is made on a background queue at launch (thousands of files the first time): wait for it
+  // there, never on the main thread.
+  StartPreparing();
+  dispatch_group_notify(Preparing(), dispatch_get_main_queue(), ^{
+    if ([LoadedProfiles() containsObject:profile]) return;
+    NNCoreProfile *p = nncore_host::LoadedProfile(profile);
+    NSString *path = gExtensionPath;
+    if (!p || !path || ![p respondsToSelector:@selector(loadComponentExtension:)]) return;
+    NSString *loaded = [p loadComponentExtension:path];
+    if (![loaded isEqualToString:ExtensionId()]) return (void)NSLog(@"[blocker] component load failed (%@)", loaded);
+    [LoadedProfiles() addObject:profile];
+    [LastAnswers() removeObjectForKey:profile];
+    if (profile.length) FollowDefault(@[ profile ], ^{});
+  });
 }
 
 // MARK: The extension's page
@@ -405,6 +411,10 @@ void PageEval(NSString *profile, NSString *expression, void (^completion)(id val
 }  // namespace
 
 namespace nncore_host {
+void PrepareContentBlocker() {
+  StartPreparing();
+}
+
 void LoadContentBlocker(NSString *profile) {
   if (!IsIncognito(profile)) LoadIntoProfile(profile ?: @"");
 }

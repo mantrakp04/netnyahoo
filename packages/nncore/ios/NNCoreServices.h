@@ -29,7 +29,7 @@ typedef void (^NNCoreResult)(NSDictionary<NSString *, id> *result);
 + (void)neverSaveOrigins:(NSString *)profile completion:(NNCoreResult)completion NS_SWIFT_NAME(neverSaveOrigins(profile:completion:));
 + (void)allowSaving:(NSString *)profile origin:(NSString *)origin completion:(NNCoreResult)completion
     NS_SWIFT_NAME(allowSaving(profile:origin:completion:));
-+ (void)exportPasswords:(NSString *)profile path:(NSString *)path completion:(NNCoreResult)completion
++ (void)exportPasswords:(NSString *)profile path:(nullable NSString *)path completion:(NNCoreResult)completion
     NS_SWIFT_NAME(exportPasswords(profile:path:completion:));
 
 // Chrome's own preferences the settings panes switch (credentials_enable_service, autofill.*).
@@ -68,6 +68,33 @@ typedef void (^NNCoreResult)(NSDictionary<NSString *, id> *result);
 + (void)configureExtension:(NSString *)extensionId profile:(NSString *)profile options:(NSDictionary<NSString *, id> *)options
                 completion:(NNCoreResult)completion NS_SWIFT_NAME(configureExtension(_:profile:options:completion:));
 + (void)searchEngineList:(NSString *)profile completion:(NNCoreResult)completion NS_SWIFT_NAME(searchEngineList(profile:completion:));
+
+// Downloads (nn_downloads_*): the app's Download dictionaries; every change goes to the handler.
+@property(class, nonatomic, copy, nullable) void (^downloadsHandler)(NSDictionary<NSString *, id> *download);
++ (void)watchDownloads:(NSString *)profile NS_SWIFT_NAME(watchDownloads(profile:));
++ (void)downloadCommand:(NSString *)command id:(NSString *)downloadId NS_SWIFT_NAME(downloadCommand(_:id:));
+
+// Site settings (nn_site_settings_*, nn_site_data_clear).
++ (void)siteSettings:(NSString *)profile origin:(NSString *)origin completion:(NNCoreResult)completion
+    NS_SWIFT_NAME(siteSettings(profile:origin:completion:));
++ (void)setSiteSetting:(NSString *)value profile:(NSString *)profile origin:(NSString *)origin type:(NSString *)type
+    NS_SWIFT_NAME(setSiteSetting(_:profile:origin:type:));
++ (void)siteSettingsOrigins:(NSString *)profile completion:(void (^)(NSArray<NSString *> *origins))completion
+    NS_SWIFT_NAME(siteSettingsOrigins(profile:completion:));
++ (void)resetSiteSettings:(NSString *)profile origin:(NSString *)origin NS_SWIFT_NAME(resetSiteSettings(profile:origin:));
++ (void)clearSiteData:(NSString *)profile origin:(NSString *)origin completion:(NNCoreResult)completion
+    NS_SWIFT_NAME(clearSiteData(profile:origin:completion:));
+
+// External apps' "always allow" choices (nn_external_apps_*).
++ (void)externalAppAllowances:(NSString *)profile completion:(void (^)(NSArray *allowances))completion
+    NS_SWIFT_NAME(externalAppAllowances(profile:completion:));
++ (void)removeExternalAppAllowance:(NSString *)profile origin:(NSString *)origin scheme:(NSString *)scheme
+    NS_SWIFT_NAME(removeExternalAppAllowance(profile:origin:scheme:));
+
+// Process-wide: the task manager and the component updater (nn_tasks_*, nn_components_list).
++ (void)tasks:(void (^)(NSArray *tasks))completion NS_SWIFT_NAME(tasks(_:));
++ (void)killTask:(long long)taskId completion:(void (^)(BOOL killed))completion NS_SWIFT_NAME(killTask(_:completion:));
++ (void)components:(void (^)(NSArray *components))completion NS_SWIFT_NAME(components(_:));
 
 // Browsing data (nn_browsing_data_clear and Chrome's remover).
 + (void)clearBrowsingData:(NSString *)profile types:(NSArray<NSString *> *)types since:(double)sinceMs completion:(void (^)(void))completion

@@ -139,11 +139,24 @@ bool IsReservedKey(NSEvent *event) {
   return controller;
 }
 
++ (instancetype)standaloneWindowForProfile:(NNCoreProfile *)profile {
+  static NSMapTable<NNCoreProfile *, NNCoreWindowController *> *windows = [NSMapTable weakToStrongObjectsMapTable];
+  NNCoreWindowController *controller = [windows objectForKey:profile];
+  if (controller && controller.coreWindow.window) return controller;
+  NNCoreWindow *coreWindow = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)];
+  if (!coreWindow.window) return nil;
+  controller = [[NNCoreWindowController alloc] initWithCoreWindow:coreWindow];
+  controller->_standalone = YES;
+  [Controllers() setObject:controller forKey:coreWindow.window];
+  [windows setObject:controller forKey:profile];
+  return controller;
+}
+
 // The app's window to hand a stray tab to: one showing the tab's profile, else any.
 + (NNCoreWebView *)hostingViewForProfile:(NNCoreProfile *)profile {
   NNCoreWebView *any = nil;
   for (NNCoreWindowController *c in Controllers().objectEnumerator) {
-    if (c.stray) continue;
+    if (c.stray || c.standalone) continue;
     if (NNCoreWebView *view = [c anyShownViewForProfile:profile]) return view;
     any = any ?: [c anyView];
   }

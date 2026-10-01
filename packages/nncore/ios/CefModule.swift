@@ -12,6 +12,7 @@ public class CefModule: Module {
     OnCreate {
       NNCoreEngineBridge.setEventHandler { [weak self] topic, json in self?.sendEvent("onEngineEvent", ["topic": topic, "payload": json]) }
       NNCoreTabStrip.setHandler { [weak self] tx in self?.sendEvent("onTabStrip", tx) }
+      NNCoreServices.downloadsHandler = { [weak self] download in self?.sendEvent("onDownload", download) }
       NNCoreHost.eventHandler = { [weak self] name, payload in
         switch name {
         case "permission": self?.sendEvent("onPermission", payload)
@@ -38,23 +39,24 @@ public class CefModule: Module {
     AsyncFunction("tabStripCommand") { (id: Int, command: [String: Any]) in NNCoreTabStrip.command(id, command: command) }
       .runOnQueue(.main)
     AsyncFunction("tabStrips") { NNCoreTabStrip.allStrips }.runOnQueue(.main)
-    AsyncFunction("components") { [[String: Any]]() }.runOnQueue(.main)
+    AsyncFunction("components") { (promise: Promise) in NNCoreServices.components { promise.resolve($0) } }.runOnQueue(.main)
 
-    AsyncFunction("beginTracing") { false }.runOnQueue(.main)
-    AsyncFunction("endTracing") { (keep: Bool) -> String? in nil }.runOnQueue(.main)
-    AsyncFunction("isTracing") { false }.runOnQueue(.main)
-    AsyncFunction("setSearchEngineName") { (name: String) in }.runOnQueue(.main)
+    AsyncFunction("beginTracing") { (promise: Promise) in NNCoreHost.beginTracing { promise.resolve($0) } }.runOnQueue(.main)
+    AsyncFunction("endTracing") { (keep: Bool, promise: Promise) in NNCoreHost.endTracing(keep: keep) { promise.resolve($0) } }
+      .runOnQueue(.main)
+    AsyncFunction("isTracing") { NNCoreHost.isTracing }.runOnQueue(.main)
+    AsyncFunction("setSearchEngineName") { (name: String) in NNCoreWebView.setSearchEngineName(name) }.runOnQueue(.main)
     // NNCore keeps no navigations for later (CEF's "open:<id>"): nothing to forget.
     AsyncFunction("forgetOpenedURL") { (id: Int) in }.runOnQueue(.main)
     AsyncFunction("setDisplayMediaPicker") { (enabled: Bool) in }.runOnQueue(.main)
     AsyncFunction("displayMediaSources") { NNCoreHost.displayMediaSources }.runOnQueue(.main)
-    AsyncFunction("listTasks") { [[String: Any]]() }.runOnQueue(.main)
-    AsyncFunction("killTask") { (id: Int64) in false }.runOnQueue(.main)
+    AsyncFunction("listTasks") { (promise: Promise) in NNCoreServices.tasks { promise.resolve($0) } }.runOnQueue(.main)
+    AsyncFunction("killTask") { (id: Int64, promise: Promise) in NNCoreServices.killTask(id) { promise.resolve($0) } }.runOnQueue(.main)
     AsyncFunction("systemState") { SystemState.shared.snapshot }.runOnQueue(.main)
 
-    AsyncFunction("cancelDownload") { (id: String) in }.runOnQueue(.main)
-    AsyncFunction("pauseDownload") { (id: String) in }.runOnQueue(.main)
-    AsyncFunction("resumeDownload") { (id: String) in }.runOnQueue(.main)
+    AsyncFunction("cancelDownload") { (id: String) in NNCoreServices.downloadCommand("cancel", id: id) }.runOnQueue(.main)
+    AsyncFunction("pauseDownload") { (id: String) in NNCoreServices.downloadCommand("pause", id: id) }.runOnQueue(.main)
+    AsyncFunction("resumeDownload") { (id: String) in NNCoreServices.downloadCommand("resume", id: id) }.runOnQueue(.main)
 
     AsyncFunction("resolvePermission") { (id: String, result: String, remember: Bool?) in
       NNCoreHost.resolvePermission(id, result: result, remember: remember ?? false)
@@ -62,15 +64,20 @@ public class CefModule: Module {
     AsyncFunction("resolveExternalApp") { (id: String, open: Bool, remember: Bool?) in
       NNCoreHost.resolveExternalApp(id, open: open, remember: remember ?? false)
     }.runOnQueue(.main)
-    AsyncFunction("getExternalAppAllowances") { (profile: String) in [[String: Any]]() }.runOnQueue(.main)
-    AsyncFunction("removeExternalAppAllowance") { (profile: String, origin: String, scheme: String) in }.runOnQueue(.main)
+    AsyncFunction("getExternalAppAllowances") { (profile: String, promise: Promise) in
+      NNCoreServices.externalAppAllowances(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("removeExternalAppAllowance") { (profile: String, origin: String, scheme: String) in
+      NNCoreServices.removeExternalAppAllowance(profile: profile, origin: origin, scheme: scheme)
+    }.runOnQueue(.main)
 
     AsyncFunction("clearBrowsingData") { (profile: String, types: [String], since: Double?, promise: Promise) in
       NNCoreServices.clearBrowsingData(profile: profile, types: types, since: since ?? 0) { promise.resolve(nil) }
     }.runOnQueue(.main)
-    AsyncFunction("releaseProfile") { (profile: String) in }.runOnQueue(.main)
-    // Nothing deleted yet: say so, so the app keeps the profile's folder.
-    AsyncFunction("deleteProfileData") { (profile: String) in ["remaining": ["data"]] }.runOnQueue(.main)
+    AsyncFunction("releaseProfile") { (profile: String) in NNCoreHost.releaseProfile(profile) }.runOnQueue(.main)
+    AsyncFunction("deleteProfileData") { (profile: String, promise: Promise) in
+      NNCoreHost.deleteProfileData(profile) { promise.resolve(["remaining": $0]) }
+    }.runOnQueue(.main)
 
     AsyncFunction("fetchFavicon") { (url: String, profile: String, name: String?, promise: Promise) in
       NNCoreFavicons.fetch(url, profile: profile, name: name) { promise.resolve($0) }
@@ -99,11 +106,21 @@ public class CefModule: Module {
       NNCoreContentBlocker.setAllowed(allowed, host: host) { promise.resolve(nil) }
     }.runOnQueue(.main)
 
-    AsyncFunction("setSiteSetting") { (profile: String, origin: String, type: String, value: String) in }.runOnQueue(.main)
-    AsyncFunction("getSiteSettings") { (profile: String, origin: String) in [String: Any]() }.runOnQueue(.main)
-    AsyncFunction("getSiteSettingsOrigins") { (profile: String) in [String]() }.runOnQueue(.main)
-    AsyncFunction("resetSiteSettings") { (profile: String, origin: String) in }.runOnQueue(.main)
-    AsyncFunction("clearSiteData") { (profile: String, origin: String) in ["cookies": false, "storage": false] }.runOnQueue(.main)
+    AsyncFunction("setSiteSetting") { (profile: String, origin: String, type: String, value: String) in
+      NNCoreServices.setSiteSetting(value, profile: profile, origin: origin, type: type)
+    }.runOnQueue(.main)
+    AsyncFunction("getSiteSettings") { (profile: String, origin: String, promise: Promise) in
+      NNCoreServices.siteSettings(profile: profile, origin: origin) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("getSiteSettingsOrigins") { (profile: String, promise: Promise) in
+      NNCoreServices.siteSettingsOrigins(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("resetSiteSettings") { (profile: String, origin: String) in
+      NNCoreServices.resetSiteSettings(profile: profile, origin: origin)
+    }.runOnQueue(.main)
+    AsyncFunction("clearSiteData") { (profile: String, origin: String, promise: Promise) in
+      NNCoreServices.clearSiteData(profile: profile, origin: origin) { promise.resolve($0) }
+    }.runOnQueue(.main)
 
     AsyncFunction("setZoom") { (profile: String, host: String, zoom: Double) in
       NNCoreServices.setZoom(zoom, profile: profile, host: host)
@@ -139,7 +156,7 @@ public class CefModule: Module {
     AsyncFunction("allowSavingPasswords") { (profile: String, origin: String, promise: Promise) in
       NNCoreServices.allowSaving(profile: profile, origin: origin) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("exportPasswords") { (profile: String, path: String, promise: Promise) in
+    AsyncFunction("exportPasswords") { (profile: String, path: String?, promise: Promise) in
       NNCoreServices.exportPasswords(profile: profile, path: path) { promise.resolve($0) }
     }.runOnQueue(.main)
     AsyncFunction("getPasswordAutofill") { (profile: String) in
