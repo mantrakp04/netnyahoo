@@ -3,5 +3,5 @@
 ENGINE_DIST="cef_binary_154.0.28+g564dd6c+chromium-154.0.8037.58_macosarm64_minimal"
 ENGINE_TREE_SHA256="5d2e03fb4a0cf60a99b46f6a1438ef56d6be834c686b002412eb17ee4c917239"
 ENGINE_ARCHIVE_SHA256="bd5acbc8e50ae85be371ef2226cff267b81705729f661f9337cccf36085198e0"
-ENGINE_REPO="mantrakp04/netnyahoo-engine"
+ENGINE_REPO="mantrakp04/netnyahoo"
 ENGINE_TAG="engine-154.0.28+g564dd6c-5d2e03fb"

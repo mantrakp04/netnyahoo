@@ -105,11 +105,7 @@ hash of its archive and the GitHub release that holds the archive. `packages/cef
 - `publish` uploads the archive to `ENGINE_REPO`, under the tag `ENGINE_TAG` (a prerelease that is
   never marked latest).
 
-Pinned now: `cef_binary_154.0.28+g564dd6c+chromium-154.0.8037.58_macosarm64_minimal`, the
-distribution 0.2.19 was built from. Its archive is packed locally (`packages/cef/vendor/`) but
-**not published yet**: `ENGINE_REPO` (`mantrakp04/netnyahoo-engine`, meant to be private) doesn't
-exist, and publishing needs the owner's go-ahead. Until then a fresh checkout without
-`~/chromium-build` can't build the app.
+Pinned now: `cef_binary_154.0.28+g564dd6c+chromium-154.0.8037.58_macosarm64_minimal` (tree `5d2e03fb`), published as a prerelease asset on this repo (`ENGINE_REPO` = `mantrakp04/netnyahoo`, tag `ENGINE_TAG`, never marked latest, so the app's update feed at `releases/latest` is unaffected). `fetch` downloads it over plain HTTPS, no `gh` login needed, so a fresh checkout without `~/chromium-build` builds.
 
 ## API added
 

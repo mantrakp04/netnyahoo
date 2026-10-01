@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The pinned engine: the exact CEF distribution (our patched build, docs/cef-source-build.md) this checkout
-# builds against, recorded in packages/cef/engine.lock and published as a GitHub release asset, so a fresh
+# builds against, recorded in packages/cef/engine.lock and published as a GitHub release asset (prerelease, never latest), so a fresh
 # checkout gets it without ~/chromium-build.
 #
 #   engine.sh verify [dir]  dir (default vendor/cef) holds the pinned distribution; exits 1 if not
@@ -54,7 +54,11 @@ case "${1:-verify}" in
     if [ ! -f "$archive" ] || [ "$(shasum -a 256 < "$archive" | cut -d' ' -f1)" != "$ENGINE_ARCHIVE_SHA256" ]; then
       rm -f "$archive"
       echo "Downloading $ENGINE_DIST from $ENGINE_REPO@$ENGINE_TAG" >&2
-      gh release download "$ENGINE_TAG" --repo "$ENGINE_REPO" --pattern "$(basename "$archive")" --dir "$vendor" >&2
+      # A public release asset: plain HTTPS, no gh login needed ('+' must be escaped in the URL).
+      enc() { printf %s "$1" | sed 's/+/%2B/g'; }
+      curl -fL --progress-bar -o "$archive.part" \
+        "https://github.com/$ENGINE_REPO/releases/download/$(enc "$ENGINE_TAG")/$(enc "$(basename "$archive")")"
+      mv "$archive.part" "$archive"
     fi
     echo "$ENGINE_ARCHIVE_SHA256  $archive" | shasum -a 256 -c - >&2
     rm -rf "$out"
