@@ -47,6 +47,12 @@ BOOL IsChromeVideoPictureInPicture(NSWindow *window) {
   return IsChromeFloatingWindow(window) && !ShowsPage(window.contentView);
 }
 
+// Chrome's document Picture in Picture window, shown or not yet.
+BOOL IsChromeDocumentPictureInPicture(NSWindow *window) {
+  static Class frameless = NSClassFromString(@"NativeWidgetMacFramelessNSWindow");
+  return frameless && [window isKindOfClass:frameless] && ShowsPage(window.contentView);
+}
+
 NSScreen *ScreenFor(NSRect frame) {
   NSScreen *best = nil;
   CGFloat bestArea = 0;
@@ -674,14 +680,15 @@ void VideoChanged(NNCoreWebView *view, NSString *host, NSString *frameId, bool a
   NSMutableArray *list = [NSMutableArray array];
   for (NSWindow *window in NSApp.windows) {
     NNPiPController *controller = [NNPiPController forWindow:window];
-    if (!controller && !(window.visible && window.level >= NSFloatingWindowLevel)) continue;
+    if (!controller && !(window.visible && window.level >= NSFloatingWindowLevel) && !IsChromeDocumentPictureInPicture(window))
+      continue;
     CALayer *content = window.contentView.layer;
     [list addObject:@{
       @"window" : @(window.windowNumber),
       @"class" : NSStringFromClass(window.class),
       @"title" : window.title ?: @"",
       @"video" : @(IsChromeVideoPictureInPicture(window)),
-      @"document" : @(IsChromeFloatingWindow(window) && ShowsPage(window.contentView)),
+      @"document" : @(IsChromeDocumentPictureInPicture(window)),
       @"frame" : NSStringFromRect(window.frame),
       @"visible" : @(window.visible),
       @"alpha" : @(window.alphaValue),

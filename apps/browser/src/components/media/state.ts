@@ -135,7 +135,9 @@ export function playerTabFor(m: Pick<Store, "sessions" | "dismissed">, tabIds: s
 
 // MARK: Picture in Picture
 
-const PIP_STATE = 'post("result", JSON.stringify(!!document.pictureInPictureElement))';
+// A video in Picture in Picture, or the page's own document Picture in Picture window (a call's pop-out): either way the
+// page is in PiP, and a request for the video's would close the page's window.
+const PIP_STATE = 'post("result", JSON.stringify(!!document.pictureInPictureElement || !!window.documentPictureInPicture?.window))';
 
 export async function inPictureInPicture(tabId: string): Promise<boolean> {
   return (await webviews.get(tabId)?.evaluate<boolean>(PIP_STATE)) === true;

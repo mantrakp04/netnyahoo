@@ -2588,7 +2588,7 @@ try {
       });
       const docOn = await until("onPictureInPicture document", async () => lastEvent(tab.id, "pictureInPicture", (p) => p.kind === "document" && p.active), 5000)
         .catch((e) => { throw new Error(`${e.message}; requestWindow: ${JSON.stringify(doc.result)}`); });
-      const docWindow = await until("the document PiP window", async () => (await pipWindows())?.find((w) => w.visible && w.document) ?? null, 5000)
+      const docWindow = await until("the document PiP window", async () => (await pipWindows())?.find((w) => w.document) ?? null, 5000)
         .catch(async (e) => { throw new Error(`${e.message}: ${JSON.stringify(await pipWindows())}`); });
       // Past Chrome's 500 ms fade-in, which would show it again.
       await sleep(800);
