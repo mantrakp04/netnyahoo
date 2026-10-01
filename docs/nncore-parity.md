@@ -1,10 +1,42 @@
 # NNCore parity: the `packages/cef` JS API on NNCore
 
-The app switches from CEF to NNCore (`docs/nncore-spike.md`) in one go, when this list says NNCore does
-everything the JS asks of `packages/cef`. The JS (`packages/cef/src`, `apps/browser/src`) doesn't change: NNCore
-is a second native side, `packages/nncore`, registering the same Expo modules and view names
-(`NetnyahooCEF`, `NetnyahooExtensions`, `NetnyahooSwipe`, `NetnyahooChromeUI`) with the same signatures, built
-into its own app, `apps/browser/macos-nncore`.
+**The owner chose a full cutover (2026-10-01):** the next release ships NNCore only, and CEF's native side leaves
+the repo. The JS (`packages/cef/src`, `apps/browser/src`) doesn't change: `packages/nncore` registers the same Expo
+modules and view names (`NetnyahooCEF`, `NetnyahooExtensions`, `NetnyahooSwipe`, `NetnyahooChromeUI`) with the same
+signatures. The cutover lands as a short series of commits on main: the NNCore project becomes
+`apps/browser/macos` (C1), CEF's native side goes (C2), production data in place with a one-shot migration of
+0.2.21's data, and `scripts/release.sh`/smoke on NNCore.
+
+## Before switching (blockers for the first NNCore release)
+
+Keep this list short and shrinking; each item names its owner.
+
+1. **Cutover commits** C1 (the fold: one project, `Netnyahoo-macOS`, `com.netnyahoo.browser`), C2 (CEF's native
+   side deleted, references fixed), release.sh/smoke on NNCore. *Release-pipeline agent, CEF-removal helper.*
+2. **Production data dir and migration**: NNCore reuses `~/Library/Application Support/com.netnyahoo.browser`
+   in place (no `NETNYAHOO_DATA_DIR`, the real keychain, the same "Netnyahoo Safe Storage" item from
+   `chromium-safe-storage-name.patch`), with a one-shot first-launch migration of 0.2.21's data. *Migration agent.*
+3. **Session cookies are dropped at every launch** (CEF restores them; NNCore's profile prefs don't): users would
+   be signed out at the switch and after every restart. Fix in `ConfigureNetworkContextParams`. *Engine helper.*
+4. **The content blocker blocks nothing** in a production build (uBlock Origin Lite installed and indexed, no
+   request blocked). *Fixes helper.*
+5. **Private-window privacy**: an off-the-record tab Chrome makes (an extension's
+   `chrome.windows.create({incognito: true})`, the page menu's "Open Link in Incognito Window") lands in the
+   Personal window as a normal tab. *Engine helper.*
+6. **Dogfood bugs**: a crashed tab keeps its sad tab after Reload; sized `window.open` popups (OAuth, payments)
+   open as tabs instead of popup windows; app windows 32 pt shorter than CEF's; `chrome://crash` commits as the
+   tab's URL. *Fixes helper.*
+7. **Smoke parity**: background-mode context-menu log, the autofill dropdown's selection, the PiP self-test
+   (`NETNYAHOO_PIP_SELFTEST`), the passkey dialog closing when its page navigates. *Fixes, media, app-parity
+   helpers.*
+8. **Chrome's own UI says "Chromium"** (bubbles, dialogs, error pages); CEF renamed it. *Engine helper.*
+9. **Checks that need the owner** (an unlocked screen, prompts): the page composited under the RN views; menus,
+   bubbles and choosers drawn against the window; PiP on screen; IME marked text; VoiceOver; a camera/microphone
+   grant; a Bluetooth chooser (any Web Serial or Web Bluetooth chooser waits on macOS's Bluetooth permission, so no
+   hidden run can open one).
+
+Not blocking, decided: the framework and helpers keep Chrome's names ("Chromium Framework", "Chromium Helper") until
+the next full engine rebuild (they're compiled in; bundle ids, signing and keychain already key off the app).
 
 Keep this current: whoever adds or changes a native export or event of `packages/cef` adds its row here (as
 **missing** if NNCore doesn't have it yet), and whoever lands it on NNCore updates the row.
