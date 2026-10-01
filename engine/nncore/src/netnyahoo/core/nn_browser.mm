@@ -1211,6 +1211,18 @@ void TabBridge::DidFinishNavigation(content::NavigationHandle* handle) {
   EnsureFaviconObserved();
   EnsureZoomObserved();
   base::WeakPtr<TabBridge> alive = weak_factory_.GetWeakPtr();
+  if (handle->IsInPrimaryMainFrame() && handle->IsDownload()) {
+    // The page stays; Chrome downloads the response instead (CEF's downloadNavigation).
+    NNCoreTab* tab = tab_;
+    id<NNCoreTabDelegate> delegate = tab.delegate;
+    if ([delegate respondsToSelector:@selector(tab:navigationBecameDownload:)]) {
+      [delegate tab:tab
+          navigationBecameDownload:base::SysUTF8ToNSString(handle->GetURL().spec())];
+    }
+    if (!alive) {
+      return;
+    }
+  }
   if (handle->IsInPrimaryMainFrame() && handle->HasCommitted()) {
     CheckSecurity();
   }

@@ -22,10 +22,11 @@ interface NNPageHost {
 interface NNPage {
   // The page script's receive(kind, json).
   CallPage(string kind, string json);
-  // Runs `code` in the main world; fire and forget.
-  Execute(string code);
+  // Runs `code` in the main world; fire and forget. user_gesture: as if the user just
+  // interacted with the page first (for APIs that need one: requestPictureInPicture…).
+  Execute(string code, bool user_gesture);
   // Runs (function(post){'use strict';\n<code>\n}) in the main world; its first
   // post("result", json) answers. Null: no answer (no script context, an exception, the
   // frame went first).
-  Evaluate(string code) => (string? json);
+  Evaluate(string code, bool user_gesture) => (string? json);
 };

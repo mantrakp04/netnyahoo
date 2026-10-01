@@ -27,5 +27,8 @@
   ],
   "side_panel": {
     "default_path": "panel.html"
-  }
+  },
+  "optional_permissions": [
+    "bookmarks"
+  ]
 }

@@ -28,6 +28,7 @@
 #include "third_party/blink/public/platform/web_url.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/public/web/web_script_source.h"
+#include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom.h"
 #include "url/gurl.h"
 #include "v8/include/v8-context.h"
 #include "v8/include/v8-function.h"
@@ -129,12 +130,20 @@ class NNPageObserver : public content::RenderFrameObserver,
         receive_.Get(isolate), v8::Undefined(isolate), 2, args);
   }
 
-  void Execute(const std::string& code) override {
+  void Execute(const std::string& code, bool user_gesture) override {
+    if (user_gesture) {
+      NotifyUserActivation();
+    }
     render_frame()->GetWebFrame()->ExecuteScript(
         Source(code, "netnyahoo://execute"));
   }
 
-  void Evaluate(const std::string& code, EvaluateCallback callback) override {
+  void Evaluate(const std::string& code,
+                bool user_gesture,
+                EvaluateCallback callback) override {
+    if (user_gesture) {
+      NotifyUserActivation();
+    }
     blink::WebLocalFrame* frame = render_frame()->GetWebFrame();
     v8::Isolate* isolate = frame->GetAgentGroupScheduler()->Isolate();
     v8::HandleScope handle_scope(isolate);
@@ -170,6 +179,12 @@ class NNPageObserver : public content::RenderFrameObserver,
   }
 
  private:
+  // As CEF's EvaluateWithGesture: a transient activation, as a click would give.
+  void NotifyUserActivation() {
+    render_frame()->GetWebFrame()->NotifyUserActivation(
+        blink::mojom::UserActivationNotificationType::kInteraction);
+  }
+
   void BindPage(mojo::PendingAssociatedReceiver<mojom::NNPage> receiver) {
     page_receivers_.Add(this, std::move(receiver));
   }

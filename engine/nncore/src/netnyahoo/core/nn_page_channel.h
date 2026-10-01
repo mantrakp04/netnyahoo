@@ -68,9 +68,10 @@ class PageChannel : public content::WebContentsObserver,
   void CallFrame(const std::string& frame_id,
                  const std::string& kind,
                  const std::string& json);
-  void Execute(const std::string& code);
+  void Execute(const std::string& code, bool user_gesture = false);
   void ExecuteInFrame(const std::string& frame_id, const std::string& code);
   void Evaluate(const std::string& code,
+                bool user_gesture,
                 base::OnceCallback<void(const std::optional<std::string>&)> callback);
 
   static std::string FrameId(content::RenderFrameHost* frame);

@@ -129,7 +129,9 @@ bool HandleExtensionInstallPrompt(
     content::WebContents* parent,
     const extensions::InstallPromptData& prompt,
     extensions::ExtensionInstallPromptClient::DoneCallback* done_callback) {
-  return false;
+  // Chrome's "Add <extension>?" (the Web Store, an extension asking for more permissions):
+  // the host asks with its own UI when it wants to.
+  return nncore::HostExtensionInstallPrompt(profile, parent, prompt, done_callback);
 }
 
 bool GetAlloyTabById(int tab_id,

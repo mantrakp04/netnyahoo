@@ -53,6 +53,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)engine:(NNCoreEngine*)engine
     extensionSidePanel:(NSDictionary<NSString*, id>*)panel
                    tab:(NNCoreTab*)tab;
+// Chrome's extension install prompt ("Add <extension>?": the Web Store, an extension asking
+// for more permissions, re-enabling one): JS ExtensionInstallPrompt without browserId,
+// {requestId, profile, id, name, version, type, icon (PNG data: URL or ""), permissions}.
+// `tab` is the asking page's, if any. Answer with
+// +[NNCoreEngine resolveExtensionInstallPrompt:accepted:]. Without this, Chrome's dialog.
+- (void)engine:(NNCoreEngine*)engine
+    extensionInstallPrompt:(NSDictionary<NSString*, id>*)prompt
+                       tab:(nullable NNCoreTab*)tab;
 @end
 
 NNCORE_EXPORT
@@ -90,6 +98,13 @@ NNCORE_EXPORT
 - (void)resolvePermission:(NSString*)requestId
                    result:(NSString*)result
                  remember:(BOOL)remember;
++ (void)resolveExtensionInstallPrompt:(NSString*)requestId accepted:(BOOL)accepted;
+// Deletes a profile as Chrome's profile settings do (its Browsers close, its directory goes).
+// NO for the default profile or an incognito one.
+- (void)deleteProfile:(NNCoreProfile*)profile
+           completion:(nullable void (^)(BOOL deleted))completion;
+// An incognito profile is destroyed once nothing shows it (its data with it); no-op otherwise.
+- (void)releaseProfile:(NNCoreProfile*)profile;
 // Answers tab:externalAppRequest:. open: launch the app (through Chrome); remember: Chrome's
 // "always allow" for that origin and scheme.
 + (void)resolveExternalApp:(NSString*)requestId open:(BOOL)open remember:(BOOL)remember;
@@ -272,6 +287,8 @@ NNCORE_EXPORT
 // (app null: nothing on this Mac opens it; nothing to resolve then). Answer with
 // +[NNCoreEngine resolveExternalApp:open:remember:].
 - (void)tab:(NNCoreTab*)tab externalAppRequest:(NSDictionary<NSString*, id>*)request;
+// A main-frame navigation became a download (the page stays; Chrome downloads it).
+- (void)tab:(NNCoreTab*)tab navigationBecameDownload:(NSString*)url;
 // Lifecycle.
 - (void)tabDidChangeDiscarded:(NNCoreTab*)tab;
 - (void)tabBecameUnresponsive:(NNCoreTab*)tab;  // answer with -resolveUnresponsive:
@@ -336,12 +353,18 @@ NNCORE_EXPORT
 @property(readonly) NSArray<NSDictionary<NSString*, id>*>* navigationEntries;
 // Runs `code` in the main frame's main world. Fire and forget.
 - (void)executeJavaScript:(NSString*)code;
+// The same, as if the user had just interacted with the page (a transient activation:
+// requestPictureInPicture, fullscreen, window.open… need one), as CEF's EvaluateWithGesture.
+- (void)executeJavaScript:(NSString*)code userGesture:(BOOL)userGesture;
 // The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:), e.g. a
 // blocked popup's window.open replayed from the frame that asked.
 - (void)executeJavaScript:(NSString*)code frame:(NSString*)frameId;
 // Runs `code` as the body of `function(post){'use strict'; …}` in the main frame's main world;
 // the first post("result", json) answers. nil json: no answer (no frame, an exception).
 - (void)evaluate:(NSString*)code completion:(void (^)(NSString* _Nullable json))completion;
+- (void)evaluate:(NSString*)code
+     userGesture:(BOOL)userGesture
+      completion:(void (^)(NSString* _Nullable json))completion;
 // The page script's receive(kind, json) in the main frame.
 - (void)callPage:(NSString*)kind json:(NSString*)json;
 

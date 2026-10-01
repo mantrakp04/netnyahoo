@@ -603,6 +603,16 @@ static void Log(NSDictionary* event) {
 - (void)engine:(NNCoreEngine*)engine permissionRequestDismissed:(NSString*)requestId {
   Log(@{@"event" : @"permissionDismissed", @"id" : requestId});
 }
+- (void)engine:(NNCoreEngine*)engine extensionInstallPrompt:(NSDictionary*)prompt tab:(NNCoreTab*)tab {
+  Log(@{@"event" : @"installPrompt", @"tabId" : tab ? @(tab.tabId) : NSNull.null,
+        @"prompt" : [prompt dictionaryWithValuesForKeys:@[ @"requestId", @"profile", @"id", @"name",
+                                                            @"version", @"type", @"permissions" ]]});
+  [NNCoreEngine resolveExtensionInstallPrompt:prompt[@"requestId"]
+                                     accepted:![_config[@"installAnswer"] isEqual:@NO]];
+}
+- (void)tab:(NNCoreTab*)tab navigationBecameDownload:(NSString*)url {
+  Log(@{@"event" : @"downloadNavigation", @"tabId" : @(tab.tabId), @"url" : url});
+}
 - (void)engine:(NNCoreEngine*)engine extensionSidePanel:(NSDictionary*)panel tab:(NNCoreTab*)tab {
   Log(@{@"event" : @"sidePanel", @"tabId" : @(tab.tabId), @"panel" : panel});
 }
@@ -932,9 +942,22 @@ static void Log(NSDictionary* event) {
     gFakeKey = NO;
     reply(result);
   } else if ([name isEqualToString:@"evaluate"]) {
-    [tab evaluate:cmd[@"code"] completion:^(NSString* json) {
+    [tab evaluate:cmd[@"code"] userGesture:[cmd[@"gesture"] boolValue] completion:^(NSString* json) {
       reply(json ?: NSNull.null);
     }];
+  } else if ([name isEqualToString:@"loadProfile"]) {
+    [NNCoreEngine.sharedEngine loadProfile:cmd[@"name"] completion:^(NNCoreProfile* p) {
+      if (p) self->_profiles[cmd[@"as"]] = p;
+      reply(p ? p.path : NSNull.null);
+    }];
+  } else if ([name isEqualToString:@"deleteProfile"]) {
+    NNCoreProfile* p = self->_profiles[cmd[@"profile"]];
+    [NNCoreEngine.sharedEngine deleteProfile:p completion:^(BOOL deleted) {
+      reply(@{@"deleted" : @(deleted), @"destroyedNow" : @(p.destroyed)});
+    }];
+  } else if ([name isEqualToString:@"profileState"]) {
+    NNCoreProfile* p = self->_profiles[cmd[@"profile"]];
+    reply(@{@"destroyed" : @(p.destroyed), @"path" : p.path ?: @""});
   } else if ([name isEqualToString:@"exec"]) {
     [tab executeJavaScript:cmd[@"code"]];
     reply(@YES);

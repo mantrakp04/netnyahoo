@@ -27,6 +27,7 @@
 #include "components/zoom/zoom_observer.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/browser/extension_install_prompt_client.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "ui/base/window_open_disposition.h"
@@ -42,6 +43,10 @@
 class Browser;
 class BrowserWindow;
 class Profile;
+
+namespace extensions {
+class InstallPromptData;
+}
 
 namespace views {
 class Widget;
@@ -228,6 +233,14 @@ bool IsNotifyingTabStrip();
 bool HostExtensionSidePanel(content::WebContents* contents,
                             const std::string& extension_id,
                             bool open);
+
+// Chrome's extension install prompt, to the host (NNCoreEngineDelegate); false: Chrome's own.
+bool HostExtensionInstallPrompt(
+    Profile* profile,
+    content::WebContents* parent,
+    const extensions::InstallPromptData& prompt,
+    extensions::ExtensionInstallPromptClient::DoneCallback* done_callback);
+void ResolveExtensionInstallPrompt(const std::string& request_id, bool accepted);
 
 // Starts reporting Chrome's media capture indicator (camera, microphone, screen) per tab.
 void StartMediaCaptureObserver();

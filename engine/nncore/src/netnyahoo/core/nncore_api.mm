@@ -66,6 +66,10 @@
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
 #include "netnyahoo/core/nn_permissions.h"
+#include "extensions/browser/install_prompt_data.h"
+#include "chrome/browser/profiles/delete_profile_helper.h"
+#include "chrome/browser/profiles/profile_destroyer.h"
+#include "chrome/browser/profiles/profile_metrics.h"
 #include "chrome/browser/extensions/component_loader.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/mojom/manifest.mojom-shared.h"
@@ -403,6 +407,90 @@ void HostPermissionRequest(content::WebContents* contents, NSDictionary* request
   }
 }
 
+namespace {
+
+std::string InstallPromptTypeName(extensions::InstallPromptData::PromptType type) {
+  switch (type) {
+    case extensions::InstallPromptData::INSTALL_PROMPT:
+      return "install";
+    case extensions::InstallPromptData::RE_ENABLE_PROMPT:
+      return "re-enable";
+    case extensions::InstallPromptData::PERMISSIONS_PROMPT:
+      return "permissions";
+    case extensions::InstallPromptData::EXTERNAL_INSTALL_PROMPT:
+      return "external";
+    case extensions::InstallPromptData::REMOTE_INSTALL_PROMPT:
+      return "remote";
+    case extensions::InstallPromptData::REPAIR_PROMPT:
+      return "repair";
+    default:
+      return "other";
+  }
+}
+
+using InstallDone = extensions::ExtensionInstallPromptClient::DoneCallback;
+
+std::map<std::string, InstallDone>& InstallPrompts() {
+  static base::NoDestructor<std::map<std::string, InstallDone>> prompts;
+  return *prompts;
+}
+
+}  // namespace
+
+bool HostExtensionInstallPrompt(Profile* profile,
+                                content::WebContents* parent,
+                                const extensions::InstallPromptData& prompt,
+                                InstallDone* done_callback) {
+  const extensions::Extension* extension = prompt.extension();
+  if (!extension || !done_callback || done_callback->is_null() ||
+      ![g_delegate respondsToSelector:@selector(engine:extensionInstallPrompt:tab:)]) {
+    return false;
+  }
+  static int last_id = 0;
+  const std::string request_id = "install" + std::to_string(++last_id);
+  NSMutableArray* permissions = [NSMutableArray array];
+  for (size_t i = 0; i < prompt.GetPermissionCount(); ++i) {
+    [permissions addObject:NS(prompt.GetPermission(i))];
+  }
+  NSString* icon = @"";
+  if (!prompt.icon().IsEmpty()) {
+    if (auto png = prompt.icon().As1xPNGBytes(); png && png->size()) {
+      icon = NS("data:image/png;base64," +
+                base::Base64Encode(base::span<const uint8_t>(*png)));
+    }
+  }
+  // JS ExtensionInstallPrompt without browserId (the host knows the tab).
+  NSDictionary* payload = @{
+    @"requestId" : NS(request_id),
+    @"profile" : NS(profile->GetOriginalProfile()->GetBaseName().value()),
+    @"id" : NS(extension->id()),
+    @"name" : NS(extension->name()),
+    @"version" : NS(extension->VersionString()),
+    @"type" : NS(InstallPromptTypeName(prompt.type())),
+    @"icon" : icon,
+    @"permissions" : permissions,
+  };
+  InstallPrompts()[request_id] = std::move(*done_callback);
+  NNCoreTab* tab = parent ? TabBridge::GetOrCreate(parent)->tab() : nil;
+  // Not from inside Chrome's prompt: the host may answer at once.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [g_delegate engine:g_engine extensionInstallPrompt:payload tab:tab];
+  });
+  return true;
+}
+
+void ResolveExtensionInstallPrompt(const std::string& request_id, bool accepted) {
+  auto it = InstallPrompts().find(request_id);
+  if (it == InstallPrompts().end()) {
+    return;
+  }
+  InstallDone done = std::move(it->second);
+  InstallPrompts().erase(it);
+  using Payload = extensions::ExtensionInstallPromptClient::DoneCallbackPayload;
+  using Result = extensions::ExtensionInstallPromptClient::Result;
+  std::move(done).Run(Payload(accepted ? Result::ACCEPTED : Result::USER_CANCELED));
+}
+
 bool HostExtensionSidePanel(content::WebContents* contents,
                             const std::string& extension_id,
                             bool open) {
@@ -541,6 +629,40 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
                  remember:(BOOL)remember {
   nncore::ResolvePermission(base::SysNSStringToUTF8(requestId),
                             base::SysNSStringToUTF8(result), remember);
+}
+
++ (void)resolveExtensionInstallPrompt:(NSString*)requestId accepted:(BOOL)accepted {
+  nncore::ResolveExtensionInstallPrompt(base::SysNSStringToUTF8(requestId), accepted);
+}
+
+- (void)deleteProfile:(NNCoreProfile*)profile completion:(void (^)(BOOL deleted))completion {
+  Profile* chrome_profile = profile.chromeProfile;
+  ProfileManager* manager = g_browser_process->profile_manager();
+  if (!chrome_profile || chrome_profile->IsOffTheRecord() ||
+      chrome_profile == ProfileManager::GetLastUsedProfileIfLoaded()) {
+    // Not the default profile (or an incognito one): those aren't deleted this way.
+    if (completion) {
+      completion(NO);
+    }
+    return;
+  }
+  // Chrome's own deletion: its Browsers close, then its directory goes (now, or at the
+  // next start if something still holds it).
+  manager->GetDeleteProfileHelper().MaybeScheduleProfileForDeletion(
+      chrome_profile->GetPath(), base::DoNothing(),
+      ProfileMetrics::DELETE_PROFILE_SETTINGS);
+  if (completion) {
+    completion(YES);
+  }
+}
+
+- (void)releaseProfile:(NNCoreProfile*)profile {
+  // A private profile goes for good once nothing shows it (as CEF's private contexts): its
+  // cookies, cache and downloads with it. A regular profile stays loaded.
+  Profile* chrome_profile = profile.chromeProfile;
+  if (chrome_profile && chrome_profile->IsOffTheRecord()) {
+    ProfileDestroyer::DestroyOTRProfileWhenAppropriate(chrome_profile);
+  }
 }
 
 + (void)resolveExternalApp:(NSString*)requestId open:(BOOL)open remember:(BOOL)remember {
@@ -1067,9 +1189,13 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 }
 
 - (void)executeJavaScript:(NSString*)code {
+  [self executeJavaScript:code userGesture:NO];
+}
+
+- (void)executeJavaScript:(NSString*)code userGesture:(BOOL)userGesture {
   if (_contents) {
     nncore::PageChannel::GetOrCreate(_contents)->Execute(
-        base::SysNSStringToUTF8(code));
+        base::SysNSStringToUTF8(code), userGesture);
   }
 }
 
@@ -1336,12 +1462,18 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 }
 
 - (void)evaluate:(NSString*)code completion:(void (^)(NSString*))completion {
+  [self evaluate:code userGesture:NO completion:completion];
+}
+
+- (void)evaluate:(NSString*)code
+     userGesture:(BOOL)userGesture
+      completion:(void (^)(NSString*))completion {
   if (!_contents) {
     completion(nil);
     return;
   }
   nncore::PageChannel::GetOrCreate(_contents)->Evaluate(
-      base::SysNSStringToUTF8(code),
+      base::SysNSStringToUTF8(code), userGesture,
       base::BindOnce(
           [](void (^completion)(NSString*), const std::optional<std::string>& json) {
             completion(json ? NS(*json) : nil);

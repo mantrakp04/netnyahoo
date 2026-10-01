@@ -135,6 +135,9 @@ async function go() {
       // FaceTime's scheme: Chrome asks first (never mailto:, which Chrome launches unasked); the
       // test host always answers "cancel", so nothing opens.
       return send(page("Mailto", `<a id=m href="facetime://nn-test.invalid">app link</a>`));
+    case "/download":
+      res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": "attachment; filename=nn.bin" });
+      return res.end("nncore");
     case "/keys":
       return send(
         page(
@@ -805,6 +808,42 @@ try {
     await cmd("component", { profile: "A", unload: c1 });
     const gone = await waitFor(async () => !(await targets()).some((t) => t.url.startsWith(`chrome-extension://${c1}/`)), 8000);
     check("S17", "loadComponentExtension (id from the manifest key; again = same id, no reload), hidden from the list, unload", typeof c1 === "string" && c1.length === 32 && c2 === c1 && !listed && !!worker && gone, { c1, c2, listed, worker: worker?.type, gone });
+  }
+  // S18 (A–G): install prompt, download navigation, user gesture, profile deletion.
+  {
+    const extId = ext?.id;
+    const ep = await cmd("open", { url: `chrome-extension://${extId}/popup.html?perm`, profile: "A" });
+    await waitFor(async () => (await tabState(ep.tabId))?.loading === false);
+    const pp = await attach((t) => t.url.startsWith(`chrome-extension://${extId}/popup.html?perm`));
+    const granted = (await pp.send("Runtime.evaluate", { expression: `Promise.race([chrome.permissions.request({ permissions: ['bookmarks'] }), new Promise((r) => setTimeout(() => r('timeout'), 8000))])`, awaitPromise: true, userGesture: true, returnByValue: true })).result?.result?.value;
+    pp.close();
+    const prompt = evs("installPrompt")[0];
+    check("S18", "Chrome's extension install prompt goes to the host (a permissions request); accepting grants it", granted === true && prompt && prompt.prompt.id === extId && prompt.prompt.type === "permissions", { granted, prompt: prompt?.prompt });
+    await cmd("nav", { tabId: ep.tabId, action: "closeNow" });
+
+    // A navigation that turns out to be a download (downloads denied here: nothing is written).
+    const bws = new WebSocket((await (await fetch(`http://127.0.0.1:${cdpPort}/json/version`)).json()).webSocketDebuggerUrl);
+    await new Promise((r) => (bws.onopen = r));
+    bws.send(JSON.stringify({ id: 1, method: "Browser.setDownloadBehavior", params: { behavior: "deny" } }));
+    await sleep(300);
+    const dl = await cmd("open", { url: `${base}/target?from=dl`, profile: "A" });
+    await waitFor(async () => (await tabState(dl.tabId))?.loading === false);
+    await cmd("nav", { tabId: dl.tabId, action: "load", url: `${base}/download` });
+    const dlEv = await waitFor(() => evs("downloadNavigation", (e) => e.tabId === dl.tabId)[0], 8000);
+    const dlTab = await tabState(dl.tabId);
+    bws.close();
+    check("S18", "a navigation that became a download → tab:navigationBecameDownload:, the page stays", dlEv && dlEv.url.endsWith("/download") && dlTab.url.includes("from=dl"), { dlEv, url: dlTab?.url });
+
+    const noGesture = await cmd("evaluate", { tabId: dl.tabId, code: "post('result', JSON.stringify(navigator.userActivation.isActive))" });
+    const gesture = await cmd("evaluate", { tabId: dl.tabId, code: "post('result', JSON.stringify(navigator.userActivation.isActive))", gesture: true });
+    check("S18", "evaluate:userGesture: gives the page a transient activation", noGesture === "false" && gesture === "true", { noGesture, gesture });
+    await cmd("nav", { tabId: dl.tabId, action: "closeNow" });
+
+    const p3 = await cmd("loadProfile", { name: "Profile 3", as: "C" });
+    const del = await cmd("deleteProfile", { profile: "C" });
+    const destroyed = await waitFor(async () => (await cmd("profileState", { profile: "C" })).destroyed, 10000);
+    const delDefault = await cmd("deleteProfile", { profile: "A" });
+    check("S18", "deleteProfile: a non-default profile goes (its wrapper reports destroyed); the default one is refused", p3 && del.deleted && destroyed && delDefault.deleted === false, { p3, del, destroyed, delDefault });
   }
   // S16 (item 9): extension actions.
   {

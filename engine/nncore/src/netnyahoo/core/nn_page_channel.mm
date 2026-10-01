@@ -255,7 +255,7 @@ void PageChannel::ExecuteInFrame(const std::string& frame_id,
   if (target->IsInPrimaryMainFrame()) {
     Execute(code);
   } else if (auto page = PageOf(target)) {
-    page->Execute(code);
+    page->Execute(code, /*user_gesture=*/false);
   }
 }
 
@@ -273,14 +273,15 @@ void PageChannel::CallFrame(const std::string& frame_id,
   }
 }
 
-void PageChannel::Execute(const std::string& code) {
+void PageChannel::Execute(const std::string& code, bool user_gesture) {
   if (mojom::NNPage* page = MainPage()) {
-    page->Execute(code);
+    page->Execute(code, user_gesture);
   }
 }
 
 void PageChannel::Evaluate(
     const std::string& code,
+    bool user_gesture,
     base::OnceCallback<void(const std::optional<std::string>&)> callback) {
   // No answer when the frame (or the renderer) goes before it answers.
   // Always on a later turn: the default answer runs when the remote goes, which can be in
@@ -292,7 +293,7 @@ void PageChannel::Evaluate(
     std::move(answer).Run(std::nullopt);
     return;
   }
-  page->Evaluate(code, std::move(answer));
+  page->Evaluate(code, user_gesture, std::move(answer));
 }
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(PageChannel);
