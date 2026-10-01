@@ -274,29 +274,29 @@ Everything else Chrome writes (crashpad, component updater, caches, extension in
 and `MacAppCodeSignClone` is disabled (`NNCoreHost.mm`). `scripts/release.sh` launches the exported app once and verifies the
 signature again, so a new writer fails the release.
 
-## NNCore shares the tree
+## NNCore's layer: `//netnyahoo/core`
 
-The tree also carries NNCore, the spike of our own Chromium layer (`docs/nncore-spike.md`). `engine/nncore/apply.sh`
-copies it to `//netnyahoo/core` and adds four small hooks: two in files only Chrome's framework compiles
-(`chrome/BUILD.gn`'s macOS `chrome_dll`, `chrome/app/chrome_main.cc`), and two CEF-neutral `CHECK` changes that CEF
-does compile (`browser_window_features.cc`, `read_anything_side_panel_controller.cc`). CEF's behaviour doesn't change,
-and `cefclient` builds with them. Run `apply.sh` again after anything that resets these files (steps 2–4);
-`apply.sh --check` reports drift.
+NNCore (`docs/nncore-spike.md`) is our own layer over Chrome. `engine/nncore/apply.sh` copies `engine/nncore/src` to
+`//netnyahoo/core` and adds its hooks: in files only Chrome's framework compiles (`chrome/BUILD.gn`'s macOS
+`chrome_dll`, `chrome/app/chrome_main.cc`) and a few `CHECK`s made tolerant of a Browser without a `BrowserView`
+(`browser_window_features.cc`, `read_anything_side_panel_controller.cc`, `sad_tab_controller.cc`…). Run `apply.sh`
+again after anything that resets these files (steps 2–4); `apply.sh --check` reports drift.
 
 ## Our own code in the tree: `chrome/browser/netnyahoo`
 
 New engine code is plain Chromium code in new files, not CEF API (`docs/architecture-review.md`, rec. 4). It lives in
 `//chrome/browser/netnyahoo`, calls Chrome's services directly (`PasswordStoreInterface`, `PersonalDataManager`,
-`ExtensionRegistrar`, `HostZoomMap`, `TemplateURLService`, `HistoryService`…) and is exported as plain C, so the CEF
-build and NNCore link the same code and the app calls it the same way under both.
+`ExtensionRegistrar`, `HostZoomMap`, `TemplateURLService`, `HistoryService`…) and is exported as plain C from Chrome's
+framework (it was written while CEF and NNCore both linked it).
 
 - **Where it lives.** `engine/chromium/src` mirrors `chromium/src`; `engine/chromium/apply.sh` copies it in
   (`--check` reports drift). This is NNCore's convention too (`engine/nncore/src` → `//netnyahoo/core`). Edit the
   repo copy only; `apply.sh` replaces the tree's.
 - **How it links.** One `source_set("netnyahoo")` in `chrome/browser/netnyahoo/BUILD.gn`: add your
-  `nn_<domain>.{h,cc}` to its sources (sorted) and its deps. Two hook patches link it:
-  `cef-netnyahoo-layer.patch` (a dep of CEF's `libcef_static`) and `chromium-netnyahoo-layer.patch` (a dep of the
-  macOS `//chrome:chrome_dll`, NNCore's framework, through the `:exports` group that exports `_nn_*`).
+  `nn_<domain>.{h,cc}` to its sources (sorted) and its deps. 
+  `chromium-netnyahoo-layer.patch` links it into the macOS `//chrome:chrome_dll` (NNCore's framework), through the
+  `:exports` group that exports `_nn_*` (`cef-netnyahoo-layer.patch` still links it into CEF's `libcef_static`,
+  which nothing builds now).
 - **The C surface.** `public/nn_engine.h` is plain C with the rules: exports are `nn_<domain>_<verb>`, all with one
   signature `void (const char* profile_dir, const char* args_json, nn_engine_reply_t reply, void* context)`; JSON
   object in, JSON object out (`{"error": …}` on failure); UI thread only; the reply runs once, maybe before the
@@ -353,11 +353,10 @@ The step scripts are copied in `engine/patches/build/`, and each expects `~/chro
 | 2. The `cef` lines of our series, CEF's patches, translator, `gn gen` | `02-cef-patch-and-gen.sh` | 2 min |
 | 3. ungoogled-chromium series, with the exceptions below | `03-ungoogled.py` | 2 min |
 | 4. Domain substitution, minus the store files (`domsub-keep-store.txt`), then the rest of our series (`chromium` and `layer` lines) | `04-domain-substitution.sh` | 5 min |
-| 5. Regenerate the offline page (`yahu-resource.sh`), compile `cefclient cefsimple` (make_distrib takes the framework from cefclient.app) | `05-build.sh` | first build 2 h 8 min; incremental 20 s–2 min |
-| 6. Minimal binary distribution (Release, no docs or symbols) | `06-distrib.sh` | 1 min |
+| 5. Regenerate the offline page (`yahu-resource.sh`), compile `chrome_framework` (NNCore; the app's build stages it from `out/Release_GN_arm64`) | `05-build.sh` | first build about 2 h; incremental 20 s–2 min |
 
-Disk: about 43 GB in total. That's 40 GB for the checkout with its 10 GB out dir, 0.5 GB for the
-distribution and 0.2 GB for the domain-substitution cache.
+Disk: about 43 GB in total. That's 40 GB for the checkout with its 10 GB out dir and 0.2 GB for the
+domain-substitution cache. (Step 6, CEF's binary distribution, went with the cutover.)
 
 Rules for editing the tree after the first build:
 
@@ -366,15 +365,13 @@ Rules for editing the tree after the first build:
   and the CEF-compatible part of ungoogled's `flags.gn`. After changing them, run
   `regen-gn-args.sh`, not step 2: once ungoogled and domain substitution have changed the context of
   CEF's own patches, CEF's patcher can no longer recognize them and stops.
-- **After editing a CEF header under `include/`**, regenerate the C API and wrappers with
-  `cd chromium/src/cef && python3 tools/version_manager.py -u --fast-check`, then run step 5.
-  `cef_netnyahoo.h` is excluded from the translator and shipped through `cef_paths2.gypi`.
 - **Moving to a new CEF/Chromium version.**
   1. Revert domain substitution:
      `python3 ungoogled/utils/domain_substitution.py revert -c domsubcache.tar.gz chromium_git/chromium/src`.
   2. Update the ungoogled checkouts.
-  3. Re-run `01-sync.sh` with the new branch, then steps 2–6.
-  4. Our patches may need their context refreshed.
+  3. Re-run `01-sync.sh` with the new branch, then steps 2–5.
+  4. Our patches may need their context refreshed. CEF's patches (`cef-*.patch`, the `cef` lines of the series)
+     and the CEF checkout can go then: nothing uses them since the NNCore cutover.
 
 ## ungoogled-chromium
 

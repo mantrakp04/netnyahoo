@@ -120,9 +120,8 @@ ordered transaction that names its cause. There are no echo windows, timers or "
     order as `{ key, browser, index, active, pinned, group? }`, and `groups?: [{ id, title, color, collapsed }]`. `key` is the WebView's `transferKey` (the store's tab
     id), bound when a view first shows the browser and kept while the browser moves between views; `null` for a tab
     no view has shown (one Chrome made, before the app adopts it; an engine placeholder). `group` (Chrome's group id,
-    null for none) and `groups` are absent while an engine doesn't report groups. CEF gets them from the engine
-    layer's `nn_tabs` (`//chrome/browser/netnyahoo`: event `tabs.strip`, call `nn_tabs_group`), which NNCore links
-    too. A strip left without tabs is sent with `tabs: []`; a strip whose
+    null for none) and `groups` are absent while an engine doesn't report groups. NNCore reports Chrome's
+    groups (the engine layer's `nn_tabs` in `//chrome/browser/netnyahoo`: event `tabs.strip`, call `nn_tabs_group`). A strip left without tabs is sent with `tabs: []`; a strip whose
     window closed comes once more with `closed: true`.
 - `tabStrips()` answers every strip as a transaction with `cmd: null` and the last `rev` sent: the starting point
   after a JS (re)load. Transactions that arrive before it are held, then applied if newer.
@@ -130,7 +129,7 @@ ordered transaction that names its cause. There are no echo windows, timers or "
   becomes visible; a tab moved to another window goes there in the background). Showing a page still tells the
   engine where Chrome's views go (layout).
 - A tab Chrome made in a window on its own (an extension's `tabs.create`) reaches the app as `onOpenWindow` with
-  `adoptId: "tab:<browser>"`; page popups keep their own ids (`open:`, CEF's popup ids).
+  `adoptId: "tab:<browser>"`; a page's new tabs and popups come as `adoptId: "nncore:<id>"`, already made by Chrome.
 
 **How the app applies them** (lib/chromeTabs.ts): it keeps a mirror of every strip.
 - A transaction with a `cmd` (the app's own) only updates the mirror: the store already holds that intent.
@@ -165,9 +164,8 @@ ordered transaction that names its cause. There are no echo windows, timers or "
   its group collapses);
   one command per strip at a time; the same command isn't sent
   again until something other than the app's commands changed that strip (a plan Chrome can't reach doesn't loop).
-- CEF (NNTabStrip.mm) takes the strips from the engine layer's `nn_tabs` reports, which name the Browser, so a
-  strip's window is never inferred from its tabs; CEF's own `OnTabStripChanged` only maps Chrome's tab ids to
-  browsers.
+- NNCore (`NNCoreTabStrip.mm`) takes the strips from Chrome's own tab strip models, which name the Browser, so a
+  strip's window is never inferred from its tabs.
 - Tests: `src/store/liveTabs.test.mjs` runs the real wiring against a fake engine that keeps this contract.
 
 ## Sync (apps/browser/src/sync, packages/sync)
@@ -202,7 +200,7 @@ ordered transaction that names its cause. There are no echo windows, timers or "
   - The engine boundary is packages/nncore `WebView`. Loading maps `netnyahoo://` → `chrome://`
     (`url` prop, `loadUrl`). Reporting maps `chrome://` → `netnyahoo://` (navigation, open-window,
     popup, load-error, download and discard events, `navigationEntries`).
-  - Pages linking to `netnyahoo://`: NNClient only follows these from a WebUI page (chrome://,
+  - Pages linking to `netnyahoo://`: the engine (`nn_page_channel.h`) only follows these from a WebUI page (chrome://,
     devtools://) and drops them from web pages, like Chrome does for chrome://. That covers links,
     ⌘-clicks and popups.
   - Display: `urlForDisplay` / `displayUrl` / `breadcrumb` show `netnyahoo://version`, keeping the

@@ -226,7 +226,7 @@ Saved passwords are Chrome's (its password manager).
 - **Reading.** Chrome's own API (`passwordsPrivate`) reveals a password only after device
   authentication, so sync reads the profile's `Login Data` with the importer's reader
   (`ChromiumSecrets`, `packages/import`). Chrome's key is its "Netnyahoo Safe Storage" item, or
-  the mock keychain's where NNCef uses that. No Touch ID prompt is needed each cycle, and no
+  the mock keychain's where NNCoreHost uses that (test instances, ad hoc builds). No Touch ID prompt is needed each cycle, and no
   Chromium change.
 - **Writing.** Writes go through Chrome's API (`savePassword`, `deletePassword` in
   `@netnyahoo/nncore`), so Chrome's in-memory store and autofill see them at once. A changed
