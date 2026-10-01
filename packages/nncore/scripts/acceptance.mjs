@@ -1241,8 +1241,11 @@ try {
     try {
       // No DevTools client on the page meanwhile: Chrome ignores a hang while a debugger is attached.
       await evalApp(`return nn.webviews.get("${busy.id}").focus()`);
-      await evalApp(`return nn.webviews.get("${busy.id}").executeJavaScript("setTimeout(() => { const end = Date.now() + 40000; while (Date.now() < end); }, 50)")`);
-      await sleep(800);
+      // The page says it's busy (its title) as the loop starts: a key sent before then (a loaded run delays the script)
+      // was answered at once, and the loop that followed had no input to hang on.
+      await evalApp(`return nn.webviews.get("${busy.id}").executeJavaScript("setTimeout(() => { document.title = 'Busy'; const end = Date.now() + 40000; while (Date.now() < end); }, 50)")`);
+      await until("the page busy", async () => (await state()).tabs.find((t) => t.id === busy.id && t.title === "Busy"), 10000);
+      await sleep(300);
       const s = await state();
       // Input the busy page can't answer: Chrome's hang monitor starts with it.
       const sent = await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "a", keyCode: 0, modifiers: [], focus: "page" })`);
@@ -2306,6 +2309,9 @@ try {
     // Chrome removes the folder once the profile is destroyed (its Browsers closed, its services gone).
     const gone = await until("the folder gone", async () => !existsSync(folder), 15000).catch(() => false);
     if (!gone) throw new Error("the profile's folder is still there");
+    // And it stays gone: nothing working for the profile (the content blocker's messages) loads it back.
+    await sleep(3000);
+    if (existsSync(folder)) throw new Error("the profile's folder came back");
     // The app window still shows its own profile (Chrome's deletion moves "last used", not the window).
     const shown = (await cef(`chromeWindows()`)).filter((w) => w.visible || w.alpha >= 0).map((w) => w.profile);
     return { ...result, folderGone: true, windowProfiles: shown };

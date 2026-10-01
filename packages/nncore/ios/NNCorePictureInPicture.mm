@@ -476,7 +476,13 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
          @{@"level" : @(window.level), @"keepOnTop" : @(self.keepOnTop), @"shadow" : @(window.hasShadow)});
   after(0.6, ^{
     record(@"nothing of ours at rest", self.overlay.handle.hidden && [self.overlay hitTest:NSMakePoint(20, 20)] == nil, nil);
-    record(@"rounded corners", rounded(), @{@"cornerRadius" : @(window.contentView.layer.cornerRadius)});
+    record(@"rounded corners", rounded(), @{
+      @"cornerRadius" : @(window.contentView.layer.cornerRadius),
+      @"masksToBounds" : @(window.contentView.layer.masksToBounds),
+      @"opaque" : @(window.opaque),
+      @"shadow" : @(window.hasShadow),
+      @"rim" : @(self.overlay.layer.borderWidth),
+    });
     snapshot(@"rest");
     dragTo(NSMaxX(visible) - NSWidth(window.frame) * 0.3);
   });
