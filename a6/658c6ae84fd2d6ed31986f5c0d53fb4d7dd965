@@ -1,0 +1,66 @@
+docs/nncore-parity.md
+  s_9c356f9574d31c::t_9bb12e4f0ab454 248-254
+  s_9c356f9574d31c::t_085b94317c5515 255
+  s_9c356f9574d31c::t_3f97c5fb44c08c 233
+  s_9c356f9574d31c::t_6b9bfe9c7b4841 234-247
+docs/agent-brief.md
+  s_9c356f9574d31c::t_f21bd033e4ff26 26-30,53-55
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_c67eded8691a66 16-17,23-36,43-49,58-61,68-71,342-373,382,384
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_1c0d5356280b2a 578
+docs/dia-spec.md
+  s_9c356f9574d31c::t_bb5de04ff46839 652
+packages/cef/engine.lock
+  s_9c356f9574d31c::t_dc3799a60d914e 4-5,7
+packages/cef/ios/CefModule.swift
+  s_9c356f9574d31c::t_c4ab6236814f8e 119-121,150-152,538,540,564-572
+packages/cef/ios/NNAutofill.mm
+  s_9c356f9574d31c::t_07a20850a29641 1,7,21-34,54,58-62,66,73-75,79,82,84-85,89-92
+packages/cef/ios/NNCef.h
+  s_9c356f9574d31c::t_0eae97c3752624 108-109,135-138,173-175
+packages/cef/ios/NNCef.mm
+  s_9c356f9574d31c::t_c12036cf6bdfd1 5,832
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_3d41a2a1123c90 27-28
+packages/cef/ios/NNContentBlocker.mm
+  s_9c356f9574d31c::t_5b8a1f74e257ef 3-4,33,51,62,68-69,340
+packages/cef/ios/NNEngine.mm
+  s_9c356f9574d31c::t_10a5a25a734540 91-98
+packages/cef/ios/NNExtensionPage.h
+  s_9c356f9574d31c::t_2ea67296767e7d 5-7,11,14-15
+packages/cef/ios/NNExtensionPage.mm
+  s_9c356f9574d31c::t_6e184cc17d9631 1,3,11,210,222,237
+packages/cef/ios/NNExtensions.mm
+  s_9c356f9574d31c::t_101d33c9757d2d 5,35-41,128-130,137-138,148-149,166-168,173-174,179-181,185,189-192
+packages/cef/ios/NNPasswords.mm
+  s_9c356f9574d31c::t_c6433f8d61f09a 1,7-9,12,14,34-41,45,52,60-62,71-74,81,85,89-93
+packages/cef/ios/NNPictureInPicture.mm
+  s_9c356f9574d31c::t_a6fcaa2afbb14e 16,497
+packages/cef/ios/NNSearchEngines.mm
+  s_9c356f9574d31c::t_c361e157ec1d51 3,9-10,12-14
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_bb02451b21edac 5,343
+packages/cef/ios/NNZoom.mm
+  s_9c356f9574d31c::t_20e4b6f856c390 4,74,125-135,148-154
+packages/cef/patches/cef-open-url-params.patch
+  s_9c356f9574d31c::t_067347b0c72828 5-7
+packages/cef/patches/cef-pump-wake.patch
+  s_9c356f9574d31c::t_3fd2df5b2b3f76 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a6658c6ae84fd2d6ed31986f5c0d53fb4d7dd965",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
