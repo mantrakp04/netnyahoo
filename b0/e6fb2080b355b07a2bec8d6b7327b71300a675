@@ -1,0 +1,28 @@
+docs/agent-brief.md
+  s_9c356f9574d31c::t_a5b5aade7db20a 39-48
+pnpm-workspace.yaml
+  s_9c356f9574d31c::t_a5b5aade7db20a 17
+  s_9c356f9574d31c::t_debf0c25817a35 16,18-19
+patches/react-native-macos@0.81.9.patch
+  s_9c356f9574d31c::t_debf0c25817a35 1-121
+apps/browser/src/components/layout/profilePager.ts
+  s_9c356f9574d31c::t_679ef770f83b46 218,221
+pnpm-lock.yaml
+  s_9c356f9574d31c::t_fad5fc0c059a33 7-9,55,6498
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b0e6fb2080b355b07a2bec8d6b7327b71300a675",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
