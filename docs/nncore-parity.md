@@ -3,38 +3,39 @@
 The app switches from CEF to NNCore (`docs/nncore-spike.md`) in one go, when this list says NNCore does
 everything the JS asks of `packages/cef`. The JS (`packages/cef/src`, `apps/browser/src`) doesn't change: NNCore
 is a second native side, `packages/nncore`, registering the same Expo modules and view names
-(`NetnyahooCEF`, `NetnyahooExtensions`, `NetnyahooSwipe`, `NetnyahooChromeUI`), built into its own app,
-`apps/browser/macos-nncore`.
+(`NetnyahooCEF`, `NetnyahooExtensions`, `NetnyahooSwipe`, `NetnyahooChromeUI`) with the same signatures, built
+into its own app, `apps/browser/macos-nncore`.
 
 Keep this current: whoever adds or changes a native export or event of `packages/cef` adds its row here (as
 **missing** if NNCore doesn't have it yet), and whoever lands it on NNCore updates the row.
 
 Statuses:
-- **done**: does on NNCore what it does on CEF.
-- **partial**: the common path works; the gap is in the note. Rows marked "untested" are wired to the engine
-  callback but no acceptance check covers them yet.
-- **stubbed**: exported, so the JS never throws, but answers as an engine without the feature would (an empty
-  list, `{ error }`, a no-op). The app runs; the feature is absent.
+- **done**: does on NNCore what it does on CEF, and the acceptance run (below) or the engine's own run proves it.
+- **partial**: wired to the engine and doing the common path, but not proven in a hidden run (the note says why),
+  or with a gap the note names.
+- **stubbed**: exported, so the JS never throws, but answers as an engine without the feature would.
 - **missing**: not exported on NNCore; the JS throws if it calls it.
 
-## Summary (2026-10-01, end of stage 1)
+## Summary (2026-10-01, stage 2)
 
 | Area | done | partial | stubbed | missing |
 |---|---|---|---|---|
-| `WebView` props (9) | 5 | 1 | 3 | 0 |
-| `WebView` events (33) | 9 | 8 | 16 | 0 |
-| `WebView` methods (35) | 16 | 5 | 14 | 0 |
-| `NetnyahooCEF` module functions (62) and events (7) | 10 | 2 | 57 | 0 |
-| `NetnyahooExtensions` (12 functions, 3 events) | 1 | 0 | 14 | 0 |
-| `NetnyahooChromeUI` (15 functions, 4 events) | 0 | 0 | 19 | 0 |
-| `NetnyahooSwipe` (7 functions, view with 3 events) | 11 | 0 | 0 | 0 |
-| Window hosting (`NNChromeWindowHost`, used by `packages/shell`) (13) | 8 | 2 | 3 | 0 |
-| **Total (204)** | **60** | **18** | **126** | **0** |
+| `WebView` props (9) | 6 | 3 | 0 | 0 |
+| `WebView` events (32) | 22 | 10 | 0 | 0 |
+| `WebView` methods (35) | 26 | 9 | 0 | 0 |
+| `NetnyahooCEF` functions (62) and events (7) | 61 | 7 | 1 | 0 |
+| `NetnyahooExtensions` (10 functions, 3 events) | 8 | 5 | 0 | 0 |
+| `NetnyahooChromeUI` (15 functions, 4 events) | 9 | 10 | 0 | 0 |
+| `NetnyahooSwipe` (7 functions, a view with 3 events) | 11 | 0 | 0 | 0 |
+| Window hosting (`NNChromeWindowHost`, used by `packages/shell`) (13) | 13 | 0 | 0 | 0 |
+| **Total (201)** | **156 (78%)** | **44** | **1** | **0** |
 
-Nothing is **missing**: every name the JS requires is exported, so the whole app runs on NNCore. The switch waits
-on the **stubbed** and **partial** rows; the largest blocks are passwords and autofill, extensions, downloads,
-permissions, site settings, zoom and the content blocker, most of which are already plain C exports in the
-framework (`//chrome/browser/netnyahoo`) waiting for their module glue.
+Nothing is **missing** and every signature matches `packages/cef`'s (checked by diffing the Swift module
+definitions). 200 of 201 rows are wired to Chrome; the **partial** rows are almost all paths a hidden, locked-screen
+run can't drive without side effects on the owner's Mac: camera, microphone and screen capture (macOS prompts),
+Picture in Picture (a floating window on screen), hung pages (Chrome's hang monitor ignores hidden windows), real
+Cast sinks and USB/Bluetooth devices, print and save dialogs. They are listed under "What's left" with what each
+needs.
 
 ## How to build and check it
 
@@ -45,8 +46,8 @@ framework (`//chrome/browser/netnyahoo`) waiting for their module glue.
 (cd apps/browser/macos-nncore && ../../../scripts/agent/locked pod -- pod install && python3 generate.py)
 cd apps/browser && ../../scripts/agent/locked xcodebuild -- xcodebuild -workspace macos-nncore/NetnyahooNNCore.xcworkspace \
   -scheme Netnyahoo-NNCore -derivedDataPath build-nncore -destination 'platform=macOS,arch=arm64' -configuration Debug build
-# Acceptance, hidden (open -g -n, NETNYAHOO_BACKGROUND=1, a scratch data dir); METRO_PORT is the running Metro's port.
-METRO_PORT=8081 node packages/nncore/scripts/acceptance.mjs apps/browser/build-nncore/Build/Products/Debug/NetnyahooNNCore.app <scratch dir>
+# Acceptance, hidden (open -g -n, NETNYAHOO_BACKGROUND=1, a scratch data dir); METRO_PORT is a Metro for this checkout.
+METRO_PORT=8081 node packages/nncore/scripts/acceptance.mjs apps/browser/build-nncore/Build/Products/Debug/NetnyahooNNCore.app <scratch dir> [check…]
 ```
 
 The NNCore build is a development build: bundle id `com.netnyahoo.browser.nncore` (its own defaults domain;
@@ -55,206 +56,275 @@ Sparkle, no dock tile, and it refuses to start without `NETNYAHOO_DATA_DIR` (it 
 profile). Its build stages a signed copy of the engine framework (`packages/nncore/scripts/stage-framework.sh`,
 under the chromium lock) and links that.
 
-## Stage 1 acceptance (hidden instance)
+Test hygiene the run keeps (each was a real failure):
+- Metro is reached through a proxy that refuses its websockets (`/hot`, `/message`), so another session's edits
+  never reload the app mid-run.
+- Every file the app is asked to read lives in the scratch dir: the checkout is under `~/Documents`, and an ad hoc
+  build reading it raises macOS's folder-access prompt and blocks the main thread on it (the extension fixture is
+  copied).
+- Permissions use MIDI and notifications (no macOS prompt behind them), external apps a scheme no app handles;
+  never camera, location or `mailto:`.
+- A check that needs a page on screen (permission prompts, choosers, context menus) shows it first: Chrome holds
+  those for hidden tabs. Checks that need "no user activation" reload the page first (CDP's `userGesture` leaves
+  one behind).
 
-`packages/nncore/scripts/acceptance.mjs`, 18 checks, all passing on the engine at c6e5b49d:
+## Acceptance (hidden instance)
+
+`packages/nncore/scripts/acceptance.mjs`, 55 checks (one, `visibility`, is a diagnostic). Latest full run: see "Status" at the end.
 
 | Check | What it proves |
 |---|---|
-| boot | The RN app runs inside Chromium's own loop (`ChromeMain` → `MessagePumpNSApplication`, NSApp is Chrome's `BrowserCrApplication`), the store makes a window, the app never takes focus (`lsappinfo front`) |
-| open-url | `openUrls` opens a tab; title, URL and loading reach the sidebar |
-| favicon | The page's favicon URL reaches the store |
-| navigate-back-forward-reload | Omnibox-style navigation (`navigate(…, { userInitiated })`), back, forward, reload |
-| target-blank, window-open | The page's new tab arrives as `onOpenWindow` with `adoptId: "nncore:<id>"`, already made and navigated by Chrome; the new WebView takes that live tab (no replay, no orphan timer); it stays |
-| cmd-click | A ⌘-clicked link opens behind, as a tab of ours, and the shown tab stays shown |
-| evaluate | `WebViewHandle.evaluate` runs in the page's main world through NNCore's renderer side; the page script ran at document start |
-| tab-strips | `tabStrips()` names every live tab of the window by its key, with the active one |
-| tab-switch | Switching tabs in the sidebar shows them and makes them Chrome's active tab |
-| cmd-t-cmd-w | ⌘T with the page focused (a reserved key: the menu gets it before the page), ⌘W from the window |
-| cmd-l-from-page | ⌘L, not reserved: the page sees it first, then the app's menu (once) |
-| tab-keys-from-page | ⌃Tab opens the tab switcher, ⌘⇧} goes to the next tab, from the page |
+| boot | The RN app runs inside Chromium's own loop (`ChromeMain` → `MessagePumpNSApplication`, NSApp is Chrome's `BrowserCrApplication`), one JS runtime, the store makes a window, the app never takes focus |
+| open-url, favicon | `openUrls` opens a tab; title, URL, loading and the favicon reach the store |
+| navigate-back-forward-reload | Omnibox navigation (`navigate(…, { userInitiated })`), back, forward, reload (the page really reloads) |
+| target-blank, window-open, cmd-click | A page's new tab arrives as `onOpenWindow` with `adoptId: "nncore:<id>"`, already made by Chrome; the WebView takes that live tab; ⌘-click opens behind |
+| evaluate | `WebViewHandle.evaluate` in the page's main world; the page script ran at document start |
+| tab-strips, tab-switch | `tabStrips()` names every live tab by key; switching tabs makes them Chrome's active tab |
+| cmd-t-cmd-w, cmd-l-from-page, tab-keys-from-page | Reserved keys reach the menu before the page; others after the page leaves them; ⌃Tab and ⌘⇧} from the page |
 | window-close | A page's `window.close()` closes its tab in the app (`onWindowClose`) |
-| second-profile | A second profile's tab shows in the **same** NSWindow (one NNCoreWindow, a Browser per profile) and doesn't see the first profile's cookies |
-| settings-window | The settings window opens |
-| incognito-window | A private window loads a page in the default profile's off-the-record profile |
-| quit | ⌘Q → the app's Quit → `NSApp terminate:` → `applicationShouldTerminate:` (the app saves its session) → NNCore's quit; the process exits with no crash report, and a tab opened just before is in the saved session |
+| status-text, load-error | `onStatus` (a hovered link), `onLoadError` |
+| context-menu-search | Chrome's page menu with the app's "Search <engine> for “…”" in place of Chrome's search item (`setSearchEngineName`; background mode reports the menu) |
+| duplicate-and-reopen | Duplicate (`clone:`) copies the back/forward list; ⇧⌘T (`restore:`) brings a closed tab back with its own list from Chrome's TabRestoreService |
+| device-chooser | WebUSB `requestDevice` → the app's chooser (`onDeviceChooser`); `cancelDeviceChooser` → the page gets NotFoundError |
+| cast-dialog | `showCastDialog` → `onCastDialog` ("Cast tab"), `onCastRoutes` for the profile, `closeCastDialog` |
+| crash | A renderer crash → `onCrashed`, the app keeps running |
+| traffic-lights-after-profile-switch | The traffic lights keep their place after the window's profile changes |
+| passwords, passwords-more | Chrome's password store: save, list, reveal, edit, delete, never-save list, unlock (test reauth), export through the save panel, the autofill pref |
+| autofill, autofill-cards | Addresses; cards saved with a published test number, listed, revealed, deleted; the address and card switches |
+| zoom-levels | `setZoom`/`getZoomLevels` on Chrome's host zoom map |
+| extensions, extension-surfaces | Unpacked inspect, install, list, disable, uninstall, reload; action state and side panel URL for a tab; the extension's declarativeNetRequest blocks counted on the page (`onContentBlocked`) |
+| chrome-windows-create | `chrome.windows.create` from an extension → the tab lands in the app's window as a live tab (`tab:<id>`) |
+| content-blocker, settings-services | uBlock Origin Lite as a component extension: state, lists, allow-list, on/off, a list toggled; clearing browsing data, resetting a site, an external-app allowance, a tab's site data |
+| download, download-controls, download-navigation | Downloads land in the scratch folder through Chrome's manager and the app's list; pause, resume and cancel a running one; a navigation that became a download |
+| site-settings | Set, get, origins, clear site data |
+| tasks-components, tracing | Chrome's task manager (with tab ids), components, tracing start/stop |
+| delete-profile-data | A loaded profile deleted through Chrome's profile deletion; its folder goes |
+| page-events | `zoomStep` → `onZoom`, `getSecurityInfo` and `onSecurity`, an app link with no app → `onExternalApp`, Esc the page leaves → `onCommand escape` |
+| notifications | A page's `Notification` → `onNotification`, the app's click reaches the page, `close()` → `onNotificationClose` |
+| now-playing | `<audio>` with Media Session metadata (tab muted) → `onNowPlaying`; the app's `mediaCommand("pause")` pauses it |
+| images | `downloadImage`, `downloadFavicon`, `fetchFavicon` as `data:` PNGs |
+| frozen | `setFrozen(true/false)` on a background page: the page sees freeze and resume |
+| discard | A background tab discarded in place → `onDiscarded` |
+| permission-prompt, popup-blocked | A permission request → the app's prompt → Chrome; a popup without a gesture → `onPopupBlocked` → `openBlockedPopup` |
+| second-profile, settings-window, incognito-window | A second profile's tab in the same window with its own cookies; the settings window; a private window |
+| move-tab-to-window | A tab moved to a new window keeps its page (same WebContents) and its strip follows |
+| title-bar-close | The title bar's close button asks the app (`windowShouldClose:`), which closes the window |
+| small-yahu | A Small Yahu window opens and navigates |
+| quit | ⌘Q → the app's quit flow → NNCore's quit; the session is saved; no crash report |
 
-The engine's own run (`spikes/nncore-host/acceptance.mjs`, 65 checks) covers what the app's can't reach yet:
-beforeunload cancelling a close and a quit, the downloads prompt, Dock/logout quits (kAEQuitApplication),
-chrome.windows.create and incognito landing in a host window, IME wiring, `-closeNow`.
-
-Fixed during stage 1: two boots in six trapped in React Native's debug `ReentrancyCheck`, Expo's bridge module
-setting its runtime up from the main thread (`-[ExpoBridgeModule setBridge:]`, RCTCxxBridge's main-queue module
-setup) while the JS thread already ran it, because Chrome's startup tasks held the main queue right after
-`engineDidStart`. `NNCoreHost` now starts React Native on the loop's first idle (`kCFRunLoopBeforeWaiting`): 8 of 8
-boots and every full run since are clean. Keep an eye on it: the race is React Native's, NNCore only widened it.
+The engine's own run (`spikes/nncore-host/acceptance.mjs`, 96 checks at 66a7e266) covers what the app's can't
+reach: beforeunload cancelling a close and a quit, Dock/logout quits, IME wiring, tab capture with "Share this tab
+instead" and Stop sharing (`--auto-select-tab-capture-source-by-title`), the context menu's item click path,
+`closeNow` recording the closed tab.
 
 ## WebView (`packages/cef/src/WebView.tsx`)
 
-The module coalesces events as `packages/cef`'s `NNClient` does (d6b026d6): navigation reports held for a run-loop
-turn and sent only when they changed, load progress at most 10 times a second (its start and end at once), and a
-held report flushed before any other event so JS sees them in order.
+Events are coalesced as `packages/cef`'s `NNClient` does (d6b026d6): navigation reports held for a run-loop turn
+and sent only when changed, progress at most 10 times a second, a held report flushed before any other event.
 
 ### Props
 
 | Prop | Status | Note |
 |---|---|---|
-| `url` | done | |
-| `profile` | done | `""` is Chrome's Default profile, `<id>` is `Profile <id>`, `incognito…` the default profile's OTR profile |
-| `adoptId` | done | `nncore:<id>` takes the live tab Chrome made. CEF's `open:`/`clone:`/`restore:` ids open the URL fresh. `restore:<tab id>` should restore Chrome's TabRestoreService entry: the WebView tags a tab with its `transferKey` as it closes it (`nn_tab_restore_tag({tab, key})`, session data saved with each navigation), and `nn_tab_restore_take({key})` (both in NNCore's framework) returns that entry's navigations in CEF's `GetNavigationState` format (base64 pickle: version 1, index, count, `SerializedNavigationEntry`s); NNCore needs a restore that takes them (`chrome::AddRestoredTab`) |
-| `transferKey` | partial | A tab moving between windows is parked (or taken from a view that hasn't unmounted yet) and its WebContents moves into the new window's Browser (`adoptTab:`). Untested in the app. It is also the tab's key in tab-strip transactions |
-| `visible`, `warm` | done | Hidden views hide the page view, so Chrome marks it hidden |
-| `standalone` | stubbed | |
-| `pageBackgroundColor` | stubbed | |
-| `autoPictureInPicture` | stubbed | |
+| `url`, `profile`, `visible`, `warm` | done | `""` is Chrome's Default profile, `<id>` is `Profile <id>`, `incognito…` the default profile's OTR profile |
+| `adoptId` | done | `nncore:<id>` (a tab Chrome made for a page), `tab:<id>` (one Chrome made on its own: an extension's tabs.create/windows.create), `restore:<tab id>` (Chrome's TabRestoreService entry the WebView tagged as it closed the tab: `nn_tab_restore_tag`/`_take`, `-[NNCoreWindow restoreTab:…]`), `clone:<tab id>` (`duplicateTab:`). A restore in flight is cancelled by a close |
+| `transferKey` | done | A tab moving between windows is parked or taken from the old view and moves into the new window's Browser (`adoptTab:`); it is also the tab's key in strip transactions |
+| `standalone` | partial | Extension popups and side panels: their tabs live in a hidden per-profile window, outside the app windows' Browsers and strips, as CEF's standalone browsers; the window closes with its last tab. Needs a visual check |
+| `pageBackgroundColor`, `autoPictureInPicture` | partial | Wired (`setPageBackgroundColor:`, auto PiP from the page script's video state); both need a visible window to check |
 
 ### Events
 
 | Event | Status | Note |
 |---|---|---|
-| `onReady` | done | `browserId` is the module's own per-tab id; `tabId` is the chrome.tabs id |
-| `onNavigationChange` | done | url, title, back/forward, loading, `themeColor` (`<meta name=theme-color>`) |
-| `onProgress` | done | |
-| `onFavicon` | done | The favicon's own URL (Chrome's favicon driver), its image cached for `fetchFavicon` |
-| `onOpenWindow` | done | Popups, target=_blank, window.open, ⌘-click: `nncore:<id>`. A WebUI page's netnyahoo: link: `current`, for the app to route; web pages can't reach netnyahoo: |
-| `onFindResult` | done | Chrome's FindTabHelper |
-| `onFullscreen` | done | |
-| `onWindowClose` | done | Chrome closing the tab (window.close(), an extension); an extension moving it to another window doesn't |
-| `onTabStrip` | done | The per-view report (index/pinned/activated/byApp); being replaced by the module's revisioned transactions (below) |
+| `onReady`, `onNavigationChange`, `onProgress`, `onFavicon`, `onOpenWindow`, `onWindowClose` | done | |
+| `onFindResult`, `onFullscreen`, `onStatus`, `onCrashed`, `onLoadError` | done | `onLoadError` skips ERR_ABORTED (stopped loads, downloads), as CEF |
+| `onZoom`, `onSecurity`, `onExternalApp`, `onCommand` | done | `onCommand`: Esc the page left alone, the menu's search |
+| `onDiscarded`, `onPopupBlocked`, `onDownloadNavigation` | done | |
+| `onNotification`, `onNotificationClose`, `onNowPlaying` | done | Through the page script, as CEF |
+| `onContentBlocked` | done | The engine's per-tab report of ERR_BLOCKED_BY_CLIENT (`tab:didBlockRequests:lastURL:`, e809deac), counted and coalesced as CEF (150 ms, reset when a page starts loading). A report can land a turn late, so a few of the old page's blocks may count on the next page |
+| `onPageMessage` | partial | `selection` from the page script (main frame). Programmatic selections don't send it; a mouse selection does (needs a visible window) |
+| `onMedia` | partial | Audible state from the page script; the muted test tab doesn't prove it |
+| `onPictureInPicture` | partial | Video PiP state from the page script; document PiP not reported. PiP opens a window on screen |
+| `onMediaAccess`, `onDisplayMediaRequest` | partial | Camera/mic/screen use (macOS prompts). `onDisplayMediaRequest` waits on the engine granting an app-picked desktop source (below) |
+| `onActivateRequest` | partial | `tab:requestsActivation:` ("page", "pictureInPicture"); Chrome ignores a hidden window's `window.focus()` |
+| `onPageFocus` | partial | Needs a key window |
+| `onUnresponsive`, `onResponsive` | partial | Chrome's hang monitor ignores hidden windows |
 | `onPasswordPrompt` | partial | "save" only; no update/never/federation details |
-| `onPageMessage` | partial | `selection` from the page script, main frame only. Untested |
-| `onPictureInPicture` | partial | Video PiP state from the page script; document PiP not reported. Untested |
-| `onMedia` | partial | Audible state from Chrome. Untested |
-| `onStatus`, `onCrashed`, `onLoadError`, `onPageFocus` | partial | Wired to the engine's tab callbacks. Untested |
-| `onNowPlaying`, `onNotification`, `onNotificationClose`, `onDisplayMediaRequest` | stubbed | Page-script messages (`nowPlaying`, `notification`…) arrive but aren't handled yet |
-| `onMediaAccess`, `onPopupBlocked`, `onSecurity`, `onZoom`, `onContentBlocked`, `onDownloadNavigation`, `onActivateRequest`, `onCommand`, `onDiscarded`, `onExternalApp`, `onUnresponsive`, `onResponsive` | stubbed | Never fire. Chrome's own popup blocker blocks silently (no UI) |
 
 ### Methods (`WebViewHandle`)
 
 | Method | Status | Note |
 |---|---|---|
-| `loadUrl` | done | `opened` (CEF's kept navigation) loads the URL |
-| `goBack`, `goForward`, `goToOffset`, `reload`, `forceReload`, `stopLoading`, `focus`, `find`, `stopFinding`, `showDevTools` | done | DevTools dock in the tab's view (Chrome's split) |
-| `setMuted`, `executeJavaScript`, `evaluate`, `navigationEntries` | done | Through NNCore's renderer side (an NNCore `ContentRendererClient` and a mojo channel, `engine/nncore`) |
-| `setTabStrip` | done | Chrome's index and pin (`placeTab:`) |
-| `downloadFavicon`, `downloadImage` | partial | From Chrome's favicon when a tab showed it, else a cookieless download. `downloadFavicon(url)` returns a `data:` PNG and writes nothing (Chrome's FaviconService keeps icons) |
-| `mediaCommand` | partial | Sent to the page script's `media` handler. Untested |
-| `getSecurityInfo` | partial | The scheme only (secure/insecure/local), no certificate |
+| `loadUrl`, `loadOpenedUrl`, `goBack`, `goForward`, `goToOffset`, `reload`, `forceReload`, `stopLoading`, `focus` | done | |
+| `setMuted`, `zoomStep`, `find`, `stopFinding`, `showDevTools` | done | DevTools dock in the tab's view |
+| `executeJavaScript`, `evaluate`, `navigationEntries` | done | NNCore's renderer side (`NNContentRendererClient`, a mojo channel) |
+| `getSecurityInfo`, `openBlockedPopup`, `clearSiteData`, `discard`, `setFrozen` | done | |
+| `downloadFavicon`, `downloadImage` | done | `data:` PNGs; Chrome's FaviconService keeps icons |
+| `mediaCommand`, `notificationAction` | done | |
+| `print`, `runPageCommand` | partial | Chrome's commands (print preview, save page, system print, caret browsing): dialogs in a hidden run |
+| `requestPictureInPicture`, `exitPictureInPicture` | partial | Through the page script with a user gesture; a PiP window shows on screen |
+| `resolveDisplayMedia`, `mediaCaptureSourceId` | partial | `mediaCaptureSourceId` is Chrome's (engine-proven); an app-picked source needs the engine to grant it to `getUserMedia` (CEF's `site::AllowDesktopCapture`), so pages keep Chrome's own picker for now |
 | `resolvePasswordPrompt` | partial | save and dismiss |
-| `zoomStep`, `print`, `runPageCommand`, `requestPictureInPicture`, `exitPictureInPicture`, `openBlockedPopup`, `clearSiteData`, `executeExtensionAction`, `resolveDisplayMedia`, `mediaCaptureSourceId`, `notificationAction`, `resolveUnresponsive`, `discard`, `setFrozen` | stubbed | |
+| `executeExtensionAction` | partial | Opens the action's popup (a standalone WebView, or Chrome's own bubble); needs a visible window |
+| `resolveUnresponsive` | partial | See `onUnresponsive` |
 
-Closing: the app closes a tab by unmounting its WebView; NNCore closes it at once without beforeunload
-(`-[NNCoreTab closeNow]`), as CEF's `CloseBrowser(true)`.
+The app closes a tab by unmounting its WebView; NNCore closes it at once without beforeunload
+(`-[NNCoreTab closeNow]`, as CEF's `CloseBrowser(true)`), recording Chrome's closed-tab entry first.
 
 ## `NetnyahooCEF` module (`packages/cef/src/native.ts`, `module.ts`)
 
 | Function / event | Status | Note |
 |---|---|---|
-| `engineInfo` | done | `engine: "nncore"`, Chromium version, windows, keep-alive state |
-| `prepareTransfer` | done | |
-| `tabStripCommand`, `tabStrips`, `onTabStrip` | done | Rec. 1's live-tab contract, natively: a strip is one profile's Browser in one NNCoreWindow; every insert, removal, activation and placement is one revisioned transaction naming its cause (the command's id, -1 for the app's own, null for Chrome's); keys are the WebViews' `transferKey`. Not yet: `group`, `closed` strips, `tab:<id>` offers for tabs Chrome makes with no opener |
-| `engineCall`, `onEngineEvent` | done | `//chrome/browser/netnyahoo`'s C exports, which NNCore's framework links and exports (the same code as CEF's), called with the profile's directory |
-| `removeLegacyFavicons` | done | Nothing to remove on NNCore |
-| `systemState`, `onSystemState` | done | Same code as CEF's (IOKit, memory pressure) |
-| `fetchFavicon` | partial | `(url, profile)`, a cookieless download as a `data:` PNG; the JS then hands it to Chrome with `engineCall("nn_favicons_set")` |
-| `chromeWindows`, `devWindow`, `components`, `beginTracing`, `endTracing`, `isTracing`, `listTasks`, `killTask`, `setSearchEngineName`, `forgetOpenedURL`, `setDisplayMediaPicker`, `displayMediaSources` | stubbed | `forgetOpenedURL` has nothing to forget on NNCore |
-| `onDownload`, `cancelDownload`, `pauseDownload`, `resumeDownload` | stubbed | Downloads run in Chrome's download manager with no app UI yet |
-| `onPermission`, `onPermissionDismissed`, `resolvePermission` | stubbed | Chrome's own permission prompts (child windows of ours) |
-| `resolveExternalApp`, `getExternalAppAllowances`, `removeExternalAppAllowance` | stubbed | |
-| `clearBrowsingData`, `releaseProfile`, `deleteProfileData` | stubbed | `deleteProfileData` says the data remains |
-| `onContentBlocker`, `getContentBlocker`, `setContentBlockerEnabled`, `setFilterListEnabled`, `isContentBlockerAllowed`, `setContentBlockerAllowed` | stubbed | No content blocker on NNCore yet |
-| `setSiteSetting`, `getSiteSettings`, `getSiteSettingsOrigins`, `resetSiteSettings`, `clearSiteData` | stubbed | |
-| `setZoom`, `getZoomLevels`, `devScrollZoom` | stubbed | `nn_zoom_*` exports exist; module glue missing |
-| `listPasswords`, `unlockPasswords`, `getPassword`, `savePassword`, `updatePassword`, `deletePassword`, `getNeverSavePasswordOrigins`, `allowSavingPasswords`, `getPasswordAutofill`, `setPasswordAutofill` | stubbed | `{ error }`. To come from the engine C exports |
-| `getAutofillSettings`, `setAutofillSettings`, `listAddresses`, `saveAddress`, `listCards`, `saveCard`, `deleteAutofillEntry`, `revealCardNumber` | stubbed | Same |
+| `engineInfo`, `chromeWindows`, `devWindow`, `systemState`, `onSystemState` | done | |
+| `prepareTransfer`, `tabStripCommand`, `tabStrips`, `onTabStrip` | done | Rec. 1's contract natively: a strip is one profile's Browser in one NNCoreWindow; revisioned transactions naming their cause; `group` (`nn_tabs_group`), `closed` strips, `appWindow`, `activePickedOnClose` |
+| `engineCall`, `onEngineEvent` | done | `//chrome/browser/netnyahoo`'s C exports, the same code as CEF's |
+| `components`, `listTasks`, `beginTracing`, `endTracing`, `isTracing` | done | |
+| `setSearchEngineName`, `forgetOpenedURL`, `removeLegacyFavicons` | done | The last two have nothing to do on NNCore |
+| `fetchFavicon` | done | `(url, profile)` → `data:` PNG |
+| `onDownload`, `cancelDownload`, `pauseDownload`, `resumeDownload` | done | `nn_downloads_*` over Chrome's DownloadManager |
+| `onPermission`, `resolvePermission` | done | |
+| `getExternalAppAllowances`, `removeExternalAppAllowance` | done | |
+| `clearBrowsingData`, `deleteProfileData` | done | A profile never loaded this session is its folder alone |
+| `getContentBlocker`, `setContentBlockerEnabled`, `setFilterListEnabled`, `isContentBlockerAllowed`, `setContentBlockerAllowed` | done | uBlock Origin Lite as a component extension (`loadComponentExtension:`), driven through its runtime messages |
+| `setSiteSetting`, `getSiteSettings`, `getSiteSettingsOrigins`, `resetSiteSettings`, `clearSiteData` | done | Chrome's content settings under CEF's type names; the page script's `blockAutoplay` comes from them as on CEF |
+| `setZoom`, `getZoomLevels` | done | |
+| `listPasswords`, `unlockPasswords`, `getPassword`, `savePassword`, `updatePassword`, `deletePassword`, `getNeverSavePasswordOrigins`, `allowSavingPasswords`, `exportPasswords`, `getPasswordAutofill`, `setPasswordAutofill` | done | |
+| `getAutofillSettings`, `setAutofillSettings`, `listAddresses`, `saveAddress`, `listCards`, `saveCard`, `deleteAutofillEntry`, `revealCardNumber` | done | |
+| `killTask` | partial | Works; the services run saw it answer `{ok: false}` once for a renderer it had just killed |
+| `resolveExternalApp` | partial | The prompt is proven; opening the app is not (it would launch one) |
+| `releaseProfile` | partial | Destroys a private profile once no window shows it (engine-proven) |
+| `onPermissionDismissed` | partial | Wired; no check dismisses a prompt by navigating yet |
+| `onContentBlocker` | partial | Reported by the blocker's state changes; not asserted on its own |
+| `setDisplayMediaPicker`, `displayMediaSources` | partial | Kept, but pages keep Chrome's picker until the engine grants app-picked desktop sources; `displayMediaSources` lists screens and windows as CEF (no prompt) |
+| `devScrollZoom` | stubbed | CEF's test hook for its own pinch path; NNCore's pinch is Chrome's |
 
 ## `NetnyahooExtensions` (`packages/cef/src/extensions.ts`)
 
 | Function / event | Status | Note |
 |---|---|---|
-| `chooseFolder` | done | |
-| `list` | stubbed | No extensions |
-| `inspectUnpacked`, `install`, `setEnabled`, `uninstall`, `reload`, `configure`, `searchEngineList`, `evaluateInHost`, `evaluateInPage`, `resolveInstallPrompt`, `onChanged`, `onTabs`, `onInstallPrompt` | stubbed | NNCore can load an unpacked extension and open its action popup (spike); the module doesn't expose it yet |
+| `chooseFolder`, `list`, `inspectUnpacked`, `install`, `setEnabled`, `uninstall`, `reload`, `searchEngineList` | done | `nn_extensions_*`, `nn_search_engines_list` |
+| `configure` | partial | Wired; not called by a check |
+| `resolveInstallPrompt`, `onInstallPrompt` | partial | Engine-proven (`extensionInstallPrompt`); a web-store install needs the network |
+| `onChanged` | partial | Fires on install/uninstall; not asserted on its own |
+| `onTabs` | partial | Only for a tab Chrome makes when no app window can take it; the usual path is `tab:<id>` (proven) |
 
 ## `NetnyahooChromeUI` (`packages/cef/src/chromeUI.ts`)
 
-All 15 functions and 4 events are **stubbed**: device choosers, the Cast dialog, extension side panels, action
-states, tab-capture source changes and the autofill trigger keep Chrome's own UI (attached to our window) or don't
-exist yet.
+| Function / event | Status | Note |
+|---|---|---|
+| `onDeviceChooser`, `cancelDeviceChooser` | done | |
+| `showCastDialog`, `onCastDialog`, `closeCastDialog`, `watchCastRoutes`, `onCastRoutes` | done | |
+| `actionStates`, `sidePanelURL` | done | |
+| `selectDevice`, `refreshDeviceChooser`, `openBluetoothSettings` | partial | No devices in a hidden run; the last opens System Settings |
+| `startCasting`, `stopCasting`, `terminateCastRoute` | partial | No Cast sinks here |
+| `onSidePanel` | partial | Engine's `extensionSidePanel`; needs a side panel opened by the extension |
+| `changeCaptureSource`, `stopCapture` | partial | "Share this tab instead" and Stop sharing, engine-proven with tab capture (e65d1bd5) |
+| `showAutofillSuggestions` | partial | Needs a focused field in a key window |
 
 ## `NetnyahooSwipe` (`packages/cef/src/swipe.tsx`)
 
-**done**: the same sources as CEF's (`NNSwipe.mm`, `SwipeModule.swift`, linked into `packages/nncore/ios`); they
-don't depend on CEF. Profile paging on NNCore is a change of the window's active profile, never a window swap.
+**done**: the same sources as CEF's (`NNSwipe.mm`, `SwipeModule.swift`, linked into `packages/nncore/ios`). Profile
+paging on NNCore is a change of the window's active profile, never a window swap.
 
 ## Window hosting (`NNChromeWindowHost`, looked up by `packages/shell/ios/ChromeWindows.swift`)
 
-| Selector | Status | Note |
-|---|---|---|
-| `makeWindowForProfile:` | done | One `NNCoreWindow` (a Views-backed NSWindow) per app window, styled as the app's (full-size content, transparent title bar, traffic lights inset) |
-| `embedRootView:inWindow:`, `rootViewOfWindow:`, `removeRootViewOfWindow:` | done | The RN root is the host view's subview, hit-tested before Chrome's views |
-| `showProfile:inWindow:`, `prepareProfiles:forWindow:` | done | The window's active profile; its Browser made ahead |
-| `setTrafficLightsCenter:inWindow:` | done | |
-| `closeWindow:` | done | `-[NNCoreWindow close]` (beforeunload first, cancellable) |
-| `shouldCloseHandler`, `windowShouldClose:` | partial | The title bar's close button asks the app first (NNCore's `windowShouldClose:`). Untested in the app (needs a click on the title bar) |
-| `swappedHandler` | stubbed | Never fires: no window swaps on NNCore |
-| `makePopupWindowForProfile:root:`, `devAction:window:` | stubbed | |
+All 13 **done**: `makeWindowForProfile:` (one `NNCoreWindow` per app window, styled as the app's),
+`embedRootView:inWindow:`, `rootViewOfWindow:`, `removeRootViewOfWindow:`, `showProfile:inWindow:` (the traffic
+lights are placed again after every switch), `prepareProfiles:forWindow:`, `setTrafficLightsCenter:inWindow:`,
+`closeWindow:`, `shouldCloseHandler` and `windowShouldClose:` (the title-bar close button asks the app),
+`devAction:window:` (`lights`, `close-button`), `swappedHandler` (never fires: no window swaps on NNCore) and
+`makePopupWindowForProfile:root:` (CEF-internal, for its own popup windows; NNCore's popups are live tabs).
 
 ## Runtime
 
 | Item | Status | Note |
 |---|---|---|
-| RN app in Chromium's loop | done | `NNCoreHost` runs `ChromeMain`; the app delegate is made in `engineDidStart`, a bootstrap delegate holds a cold launch's open-URL events until then |
-| Popups as our tabs | done | Chrome's `WebContents` and navigation, POST bodies included |
+| RN app in Chromium's loop | done | `NNCoreHost` runs `ChromeMain`; React Native starts on the loop's first idle (React Native's debug `ReentrancyCheck` trapped when it started inside Chrome's startup burst). The app delegate gets each launch callback once: when that idle comes before AppKit finished launching, AppKit sends them (sending them twice made a second React Native factory, two JS runtimes), and a cold launch's URLs follow |
+| Popups and Chrome-made tabs as the app's tabs | done | |
 | Two profiles in one window | done | |
-| Background test instances | done | `NETNYAHOO_BACKGROUND=1`: the CEF build's activation guards (`NNCoreActivation.mm`) |
-| Key equivalents from the page | done | Reserved keys (⌘T/W/N/Q, ⌃Tab) go to the app's menu before the page; others after the page leaves them; Chrome's own accelerators never run in our windows |
-| Key window, IME, accessibility | partial | Wiring checked in the engine's run; marked text and VoiceOver need an unlocked screen and a key window |
-| Quit and terminate: (⌘Q, Dock, logout) | done | Cocoa's `applicationShouldTerminate:` contract, so the app's own quit flow runs; cancellable |
-| Cancellable window close (beforeunload), downloads prompt | partial | Engine-proven; the app answers the downloads prompt "close" (it asks itself before quitting) |
-| Renderer side (page script, page messages, evaluate, netnyahoo:) | done | Main frame used by the module; subframe messages available (`didReceivePageMessage:json:frame:main:`) |
-| Windows Chrome makes itself (chrome.windows.create, incognito, undocked DevTools, PiP) | partial | The engine asks the host (`engineWindowForNewBrowserOfProfile:type:`); the app answers nil (Chrome's own window) until it routes them into its window manager |
-| Native composition of the page under the RN views, bubbles and sheets against the window | needs a visual check | The screen was locked for all of stage 1; in-process snapshots show the RN UI drawn in the NNCore window, not the page's GPU layers |
+| Background test instances | done | `NETNYAHOO_BACKGROUND=1`: activation guards, panels answered from `file-chooser.txt`, context menus reported |
+| Key equivalents from the page | done | |
+| Quit and terminate (⌘Q, Dock, logout) | done | Cocoa's `applicationShouldTerminate:` contract, cancellable |
+| Windows Chrome makes (chrome.windows.create, incognito) | done | Routed into the app's windows (`tab:<id>`) through a hidden stray window |
+| Key window, IME, accessibility | partial | Wiring checked in the engine's run; marked text and VoiceOver need an unlocked screen |
+| Native composition of the page under the RN views, bubbles and sheets | needs a visual check | The screen was locked for stages 1 and 2 |
 
-## Renderer side: what CEF's renderer gave the app, and NNCore's replacement
+## Renderer side
 
-CEF ran Netnyahoo's code in each renderer (`packages/cef/helper/helper_main.mm`) and talked to it with process
-messages. NNCore does the same with its own renderer client (`NNContentRendererClient`, a subclass of Chrome's) and
-a mojo interface (`engine/nncore/src/netnyahoo/core/mojom`):
+CEF ran Netnyahoo's code in each renderer (`packages/cef/helper/helper_main.mm`). NNCore does the same with its own
+renderer client (`NNContentRendererClient`) and a mojo interface (`engine/nncore/src/netnyahoo/core/mojom`):
 
 | CEF | NNCore | Used by |
 |---|---|---|
-| `OnContextCreated` runs the page script (`page_script.js`) in every frame's main world, as `function(post)` | `NNContentRendererClient`'s `DidCreateScriptContext` (main world), the script sent to each renderer at launch (`NNCoreEngine.pageScript`) | Everything below |
-| `post(kind, json)` → the "nn" process message → `NNClient::OnPageMessage` | `NNPageHost.Post` (frame-associated) → `tab:didReceivePageMessage:json:frame:main:` (or the main-frame-only 3-argument form) | hello, media, nowPlaying, theme, selection, pinch, pip, displayMedia, notification, notificationClose. On NNCore the module handles hello, selection and pip so far |
-| "nn-call" (`CallPage`) → the page's `receive` | `callPage:json:` (main frame), `callFrame:kind:json:` | config (the reply to hello), media, displayMedia, notification |
-| "nn-eval" → strict `function(post)` wrapper, first `post("result")` answers | `evaluate:completion:` | `WebViewHandle.evaluate` |
-| `ExecuteJavaScript` | `executeJavaScript:` and `executeJavaScript:frame:` | `history.go` (now `goToOffset:`), `WebViewHandle.executeJavaScript`, the blocked-popup replay and PiP exit in one frame, DevTools' showPanel (untested) |
-| `IsAppURL` in `OnBeforeBrowse` / `OnBeforePopup` / `OnOpenURLFromTab` | A navigation throttle plus the popup and open-URL paths: web pages' `netnyahoo:` navigations are dropped; a Chrome page's become `tab:didRequestAppURL:userGesture:` → `onOpenWindow` `current` | The app's own pages linked from chrome:// pages |
+| `OnContextCreated` runs `page_script.js` in every frame's main world | `DidCreateScriptContext` (main world), the script sent at launch (`NNCoreEngine.pageScript`) | Everything below |
+| `post(kind, json)` → `NNClient::OnPageMessage` | `tab:didReceivePageMessage:json:frame:main:` | hello (→ config with `blockAutoplay`), media, nowPlaying, theme, selection, pinch, pip, displayMedia, notification, notificationClose |
+| "nn-call" (`CallPage`) | `callPage:json:`, `callFrame:kind:json:` | config, media, displayMedia, notification |
+| "nn-eval" | `evaluate:completion:`, `evaluate:userGesture:completion:` | `WebViewHandle.evaluate`, PiP requests |
+| `ExecuteJavaScript` | `executeJavaScript:` (`:frame:`, `:userGesture:`) | `WebViewHandle.executeJavaScript`, blocked-popup replay |
+| `IsAppURL` checks | A navigation throttle; a Chrome page's `netnyahoo:` link → `tab:didRequestAppURL:userGesture:` → `onOpenWindow` `current` | The app's own pages linked from chrome:// pages |
 
 ## Engine C exports (`//chrome/browser/netnyahoo`, shared by both engines)
 
-Plain Chromium code over Chrome's services (`engine/chromium/src/chrome/browser/netnyahoo`, rules in its
-`public/nn_engine.h`), linked into CEF's framework and into NNCore's (`chromium-netnyahoo-layer.patch` adds it to
-`//chrome:chrome_dll` and exports `_nn_*`). The CEF app calls them through `nn::engine::Call`
-(`packages/cef/ios/NNEngine.mm`, `dlsym` on the framework); NNCore's module does the same on `Chromium Framework`, so
-each row below is the native half of the JS functions in its last column. "NNCore" says whether `packages/nncore`
-calls it yet.
+Plain Chromium code over Chrome's services (`engine/chromium/src/chrome/browser/netnyahoo`, rules in
+`public/nn_engine.h`), linked into CEF's framework and NNCore's. Both apps call them through `dlsym` on the
+framework (`nn::engine::Call` on CEF, `NNCoreEngineBridge`/`NNCoreServices` on NNCore). All of them are wired on
+NNCore:
 
-| Export | JS functions (`packages/cef`) | NNCore |
-|---|---|---|
-| `nn_engine_abi_version`, `nn_engine_set_event_sink` | (events: `reauth.requested`, `passwords.export`, `zoom.changed`) | done (`engineCall`, `onEngineEvent`) |
-| `nn_passwords_list`, `_unlock`, `_reveal`, `_add`, `_update`, `_remove`, `_exceptions`, `_allow` | `listPasswords`, `unlockPasswords`, `getPassword`, `savePassword`, `updatePassword`, `deletePassword`, `getNeverSavePasswordOrigins`, `allowSavingPasswords` | missing |
-| `nn_passwords_export` | `exportPasswords` (Settings › Passwords › Export; the native side shows the save panel) | missing |
-| `nn_autofill_addresses`, `_save_address`, `_cards`, `_save_card`, `_remove`, `_card_number` | `listAddresses`, `saveAddress`, `listCards`, `saveCard`, `deleteAutofillEntry`, `revealCardNumber` | missing |
-| `nn_extensions_list`, `_install`, `_set_enabled`, `_uninstall`, `_reload`, `_configure` | `NetnyahooExtensions.list`, `install`, `setEnabled`, `uninstall`, `reload`, `configure` | missing |
-| `nn_search_engines_list` | `NetnyahooExtensions.searchEngineList` | missing |
-| `nn_zoom_list`, `nn_zoom_set` (`tab` for a private window's own zoom map) | `getZoomLevels`, `setZoom` (a site with no open tab) | missing |
-| `nn_browsing_data_clear` | `deleteProfileData` of the default profile (form data, site settings) | missing |
-| `nn_history_query`, `_add`, `_import`, `_delete_urls`, `_watch` (event `history.changed`) | `queryHistory`, `addHistoryVisits`, `importHistoryRows`, `deleteHistoryUrls`, `watchHistory`, `onHistoryChanged` (`packages/cef/src/history.ts`) | done (`engineCall`) |
-| `nn_favicons_get`, `_set` | `faviconsFor`, `fetchFavicon`'s hand-off (`favicons.ts`) | done (`engineCall`) |
-| `nn_bookmarks_tree`, `_apply`, `_watch` (event `bookmarks.changed`) | `bookmarkTree`, `applyBookmarkOps`, `watchBookmarks`, `onBookmarksChanged` (`bookmarks.ts`) | done (`engineCall`) |
-| `nn_tab_restore_tag`, `nn_tab_restore_take` | none: native, as a WebView closes its tab and for `adoptId` `restore:<tab id>` (`NNBrowserView.mm`) | missing (see `adoptId`) |
-| `nn_tab_restore_load` | allow-listed for `engineCall`, no caller yet | done (`engineCall`) |
+| Export | JS functions (`packages/cef`) |
+|---|---|
+| `nn_engine_abi_version`, `nn_engine_set_event_sink` | `engineCall`, `onEngineEvent` |
+| `nn_passwords_*` (list, unlock, reveal, add, update, remove, exceptions, allow, export) | the password functions |
+| `nn_autofill_*` | the address and card functions |
+| `nn_extensions_*`, `nn_search_engines_list` | `NetnyahooExtensions` |
+| `nn_zoom_list`, `nn_zoom_set` | `getZoomLevels`, `setZoom` |
+| `nn_browsing_data_clear` | `clearBrowsingData`, the default profile's `deleteProfileData` |
+| `nn_downloads_*` (list, cancel, pause, resume, keep, remove; events `downloads.changed`/`removed`) | `onDownload` and the download functions |
+| `nn_site_settings_*`, `nn_site_data_clear` | the site-settings functions, both `clearSiteData`s |
+| `nn_external_apps_allowances`, `_remove` | `getExternalAppAllowances`, `removeExternalAppAllowance` |
+| `nn_prefs_get`, `_set` (allow-listed) | password and autofill switches |
+| `nn_tasks_list`, `_kill`, `nn_components_list` | `listTasks`, `killTask`, `components` |
+| `nn_history_*`, `nn_favicons_*`, `nn_bookmarks_*` | `history.ts`, `favicons.ts`, `bookmarks.ts` (through `engineCall`) |
+| `nn_tab_restore_tag`, `_take`, `_load` | native: the WebView's close and `restore:` |
+| `nn_tabs_watch`, `nn_tabs_group` | tab groups in strip transactions |
 
-`NetnyahooExtensions.evaluateInHost` and `evaluateInPage` are gone from `packages/cef` (they scripted the hidden
-chrome:// pages, and nothing in the JS called them), and from `packages/nncore`.
+## What's left before a release-signed NNCore build can sit next to the CEF build
+
+1. **Engine:** granting an app-picked desktop source to `getUserMedia` (the app's screen-share picker; pages use
+   Chrome's picker meanwhile); document PiP state; Paste and Paste and Match Style are always enabled in the page
+   menu (Chrome's clipboard check is private to its view delegate); a tracing start that fails asynchronously
+   never calls back.
+2. **Signing and packaging:** Developer ID signing with the hardened runtime and the CEF build's entitlements
+   (keychain access group for passwords, camera/mic/screen usage strings), notarization of the app with the
+   framework and its helpers, the framework's name and bundle id (still "Chromium Framework", renamed only at a
+   full engine rebuild), Sparkle and the dock tile left out on purpose until the switch.
+3. **Checks that need an unlocked screen and a visible window** (none can run hidden): the page composited under
+   the RN views; menus, choosers, Cast and bubbles drawn against the window; PiP; IME marked text; VoiceOver; the
+   hang monitor; print and save dialogs; a camera/microphone grant; a mouse text selection; extension popups and
+   side panels as standalone WebViews.
+4. **Side by side:** the same profile data opened by both builds (they share Chrome's prefs and stores by design)
+   with a scratch copy, a day of the owner's use on the NNCore build, and the partial rows above re-checked there.
+
+## Status
+
+Full hidden runs on the framework at e809deac (runs 24–31): 52–54 of the 54 real checks pass per
+run (the last: 52 of 54); every check passes on its own and in the shorter sequences used to bisect.
+
+Known flake, being chased: in about half of the full runs, the tab the app shows (also Chrome's active tab in
+its strip, both checked) reports `document.visibilityState` "hidden" to its page from somewhere between
+`open-url` (visible then, the `visibility` check) and `context-menu-search`, and a hidden page's input is dropped:
+`context-menu-search` gets no menu and `page-events` no Esc. The window is visible with alpha 1. It never
+reproduced twice in a row in a shorter sequence. Next step: log WasShown/WasHidden for the tab's WebContents in a
+full run (engine side) against the app's `visible` changes during the tab switches and ⌘T/⌘W of those checks.
+A page that stays hidden while shown would be a blank or frozen tab for the user, so this blocks the switch.
+
+Fixed during stage 2 because the acceptance run caught them:
+- Two React Native runtimes in one app (the launch callbacks sent twice when the loop went idle before AppKit
+  finished launching); `boot` now fails on a second runtime's window.
+- `fetchFavicon`, `downloadFavicon` and `exportPasswords` took one argument more than `packages/cef`'s, so the JS's
+  calls would have thrown.
+- ⇧⌘T restored a tab without its history: `closeNow` didn't record Chrome's closed-tab entry (66a7e266).
+- Esc from a page stopped reaching the app after a profile was deleted: the routing looked for the focused page
+  only among the window's active profile's tabs; it now looks at every loaded profile's (why the deletion
+  changes what `activeProfile` answers is still open).
+- The content blocker's writable copy blocked the main thread at launch; deleting a profile that the session
+  never loaded created it first.

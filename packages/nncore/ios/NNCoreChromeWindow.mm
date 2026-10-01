@@ -339,14 +339,18 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   // An Esc the page left alone (Small Yahu closes on it): onCommand "escape" on the shown tab.
   const NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
   if (event.type == NSEventTypeKeyDown && event.keyCode == 53 && !(mods & (NSEventModifierFlagCommand | NSEventModifierFlagOption | NSEventModifierFlagControl))) {
-    for (NNCoreTab *tab in [window tabsForProfile:window.activeProfile]) {
-      NNCoreWebView *view = [NNCoreTabs viewForTab:tab];
-      NSResponder *focused = window.window.firstResponder;
-      if (view.visible && [focused isKindOfClass:NSView.class] && [(NSView *)focused isDescendantOf:tab.view]) {
-        [view emit:@"command" payload:@{@"command" : @"escape", @"text" : @""}];
-        break;
+    // The page holding focus, whichever profile's Browser has it (the window's active profile can be another one
+    // for a moment, e.g. while Chrome deletes a profile that had a Browser here).
+    NSResponder *focused = window.window.firstResponder;
+    NNCoreWebView *target = nil;
+    for (NNCoreProfile *profile in nncore_host::LoadedProfiles()) {
+      for (NNCoreTab *tab in [window tabsForProfile:profile]) {
+        NNCoreWebView *view = [NNCoreTabs viewForTab:tab];
+        if (view.visible && [focused isKindOfClass:NSView.class] && [(NSView *)focused isDescendantOf:tab.view]) target = view;
       }
+      if (target) break;
     }
+    [target emit:@"command" payload:@{@"command" : @"escape", @"text" : @""}];
   }
   return [NSApp.mainMenu performKeyEquivalent:event];
 }

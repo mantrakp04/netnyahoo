@@ -259,6 +259,10 @@ try {
     const asn = execFileSync("lsappinfo", ["info", "-only", "pid", front.trim()]).toString();
     if (asn.includes(`=${child.pid}`)) throw new Error("the app took focus");
     mainWindow = s.windowId;
+    // One JS runtime: a second one (the launch callbacks sent twice) makes a second window with its own id prefix.
+    await sleep(2000);
+    const native = await evalApp(`return nn.shell.windowIds()`);
+    if (native.length !== 1) throw new Error(`windows ${JSON.stringify(native)} (a second JS runtime?)`);
     return { chromium: info.chromiumVersion, windows: s.windows, tabs: s.tabs.length, pid: child.pid };
   });
 
@@ -273,6 +277,14 @@ try {
     const t = await pageTarget(`${base}/a`);
     if (!t) throw new Error("no CDP target for A");
     return { tab: s.t.id, title: s.t.title, active: s.s.active === s.t.id };
+  });
+
+  await check("visibility", async () => {
+    // Diagnostic: how Chrome sees the shown page of a hidden (background-mode) window.
+    const t = await pageFor(first.id, `${base}/a`);
+    const vis = (await cdp(t, "Runtime.evaluate", { expression: "document.visibilityState + '/' + document.hasFocus()", returnByValue: true })).result.value;
+    const windows = (await evalApp(`return globalThis.expo.modules.NetnyahooCEF.chromeWindows()`)).map((w) => ({ visible: w.visible, alpha: w.alpha, key: w.key, frame: w.frame }));
+    return { page: vis, windows };
   });
 
   await check("favicon", async () => {
@@ -472,7 +484,10 @@ try {
       t = await pageFor(first.id, `${base}/a`);
       e = await rightClick();
     }
-    if (!e) throw new Error(`no context menu reported; events: ${JSON.stringify((await eventsOf(first.id)).slice(-6).map((x) => x.name))}`);
+    if (!e) {
+      const vis = (await cdp(t, "Runtime.evaluate", { expression: "document.visibilityState + '/' + document.hasFocus()", returnByValue: true })).result.value;
+      throw new Error(`no context menu reported (page ${vis}); events: ${JSON.stringify((await eventsOf(first.id)).slice(-6).map((x) => x.name))}`);
+    }
     const selection = !!(await eventsOf(first.id)).findLast((x) => x.name === "pageMessage" && x.payload?.kind === "selection");
     const labels = e.payload.items.filter((i) => !i.separator).map((i) => i.label);
     const search = labels.filter((l) => /^Search .* for /.test(l));
@@ -738,7 +753,7 @@ try {
 
   await check("settings-services", async () => {
     // Clearing browsing data, resetting a site, the blocker's switches and an external-app allowance, as Settings does.
-    await cef(`clearBrowsingData("", ["cache", "history"], null)`);
+    await evalApp(`return globalThis.expo.modules.NetnyahooCEF.clearBrowsingData("", ["cache", "history"], null)`, 90000);
     await cef(`setSiteSetting("", "https://reset.test", "sound", "block")`);
     await cef(`resetSiteSettings("", "https://reset.test")`);
     const reset = await until("the site reset", async () => {
@@ -812,7 +827,9 @@ try {
     // Chrome removes the folder once the profile is destroyed (its Browsers closed, its services gone).
     const gone = await until("the folder gone", async () => !existsSync(folder), 15000).catch(() => false);
     if (!gone) throw new Error("the profile's folder is still there");
-    return { ...result, folderGone: true };
+    // The app window still shows its own profile (Chrome's deletion moves "last used", not the window).
+    const shown = (await cef(`chromeWindows()`)).filter((w) => w.visible || w.alpha >= 0).map((w) => w.profile);
+    return { ...result, folderGone: true, windowProfiles: shown };
   });
 
   await check("page-events", async () => {
@@ -831,7 +848,11 @@ try {
     const escape = await until("onCommand escape", async () => (await eventsOf(first.id)).find((x) => x.name === "command" && x.payload?.command === "escape"), 5000)
       .catch(async (e) => {
         const profile = await evalApp(`const s = nn.store.getState(); return s.windows["${s.windowId}"]?.profileId ?? null`);
-        throw new Error(`${e.message}; key: ${JSON.stringify(sent)}; window profile: ${profile}; active: ${(await state()).active}`);
+        const pt = await pageFor(first.id, `${base}/a`);
+        const vis = (await cdp(pt, "Runtime.evaluate", { expression: "document.visibilityState + '/' + document.hasFocus()", returnByValue: true })).result.value;
+        const tx = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.tabStrips()`);
+        const chromeActive = tx.strips.map((st) => st.tabs.find((x) => x.active)?.key ?? null);
+        throw new Error(`${e.message}; key: ${JSON.stringify(sent)}; window profile: ${profile}; active: ${(await state()).active}; Chrome's active: ${JSON.stringify(chromeActive)}; page ${vis}`);
       });
     const t = await pageFor(first.id, `${base}/a`);
     await cdp(t, "Runtime.evaluate", { expression: "location.href = 'nncore-no-such-app://hello'", userGesture: true });
