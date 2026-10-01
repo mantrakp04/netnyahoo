@@ -45,6 +45,13 @@
             <quota>default</quota>
             <grants>
                 <query>GRANT SELECT ON telemetry.*</query>
+                <!-- Server health, for diagnosing from the Mac (the admin user is local only). -->
+                <query>GRANT SELECT ON system.parts</query>
+                <query>GRANT SELECT ON system.merges</query>
+                <query>GRANT SELECT ON system.errors</query>
+                <query>GRANT SELECT ON system.metrics</query>
+                <query>GRANT SELECT ON system.asynchronous_metrics</query>
+                <query>GRANT SELECT ON system.processes</query>
             </grants>
         </reader>
         <importer>
