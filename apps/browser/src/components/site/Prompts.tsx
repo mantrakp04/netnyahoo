@@ -1,4 +1,4 @@
-import { getSiteSettings, resolveExternalApp, setSiteSetting, type PasswordPrompt as ChromePasswordPrompt, type PasswordPromptAnswer } from "@netnyahoo/cef";
+import { getSiteSettings, resolveExternalApp, setSiteSetting, type PasswordPrompt as ChromePasswordPrompt, type PasswordPromptAnswer } from "@netnyahoo/nncore";
 import { Symbol } from "@netnyahoo/shell";
 import { useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";

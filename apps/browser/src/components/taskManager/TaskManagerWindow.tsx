@@ -1,4 +1,4 @@
-import { killTask, listTasks, type EngineTask } from "@netnyahoo/cef";
+import { killTask, listTasks, type EngineTask } from "@netnyahoo/nncore";
 import { Symbol, WindowDragRegion } from "@netnyahoo/shell";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";

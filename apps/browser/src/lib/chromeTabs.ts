@@ -10,7 +10,7 @@ import {
   type StripState,
   type TabStripCommand,
   type TabStripTransaction,
-} from "@netnyahoo/cef";
+} from "@netnyahoo/nncore";
 import { usePages } from "../components/layout/pageState";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { chromeChanged, groupStep, stripActual, stripPlan, type GroupBindings } from "../store/liveTabs";

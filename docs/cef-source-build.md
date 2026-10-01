@@ -1,10 +1,9 @@
-# Building CEF from source
+# Building the engine from source
 
-Netnyahoo runs on its own build of the Chromium Embedded Framework, not the prebuilt Spotify
-distribution. The build uses the same Chromium 154 branch: CEF branch 8037 at 154.0.28+g564dd6c,
-Chromium 154.0.8037.58. The CEF API version (15400) and its hash are unchanged, and every addition
-is `CEF_API_ADDED(CEF_EXPERIMENTAL)`. `packages/cef` builds against the experimental API (the
-default), so it sees all of it.
+Netnyahoo runs on NNCore: Chrome's own framework (`//chrome:chrome_framework`) built from our patched Chromium 154
+tree, with our layers linked in (`docs/nncore-spike.md`). The tree is the one we built CEF from (CEF branch 8037 at
+154.0.28+g564dd6c, Chromium 154.0.8037.58), and it still carries CEF and its patches (`cef-*.patch`) until the next
+Chromium bump; the app no longer uses them (CEF's native side left the repo with the NNCore cutover, 2026-10-01).
 
 What the build adds:
 
@@ -13,7 +12,7 @@ What the build adds:
 - **ungoogled-chromium** 154.0.8037.57-1. Its patch series and domain substitution strip Google
   background services; see [ungoogled-chromium](#ungoogled-chromium). The Chrome Web Store and
   extension auto-updates are deliberately kept working.
-- **Our patches**, in `packages/cef/patches/`, applied in the order `packages/cef/patches/series` gives (see
+- **Our patches**, in `engine/patches/`, applied in the order `engine/patches/series` gives (see
   [The patch series](#the-patch-series)):
 
 | Patch | What it does |
@@ -73,40 +72,11 @@ Removed after 0.2.19 with the hidden chrome:// pages they served (their callers 
 
 ## Using it
 
-`packages/cef/scripts/setup.sh` installs the distribution `packages/cef/engine.lock` pins into
-`vendor/cef` and builds `libcef_dll_wrapper`: from
-`~/chromium-build/distrib/<ENGINE_DIST>` when that exists (it re-copies it when the framework is
-rebuilt in place), otherwise from the pinned release asset (`engine.sh fetch`). It warns when
-`vendor/cef` isn't the pinned build.
-
-- `CEF_DIST=<dir>` picks another local distribution.
-- `CEF_ROOT=<dir>` installs somewhere other than `vendor/cef`. Build one app against that with
-  `xcodebuild … NN_CEF_ROOT=<dir>`: the pod's header/library paths use
-  `$(NN_CEF_ROOT:default=…/vendor/cef)` and `scripts/embed.sh` reads the same setting.
-
-There is no build against stock CEF any more (it was `NN_CHROME_TABS=0` with `CEF_PREBUILT=1`, removed
-2026-10-01). `packages/cef/ios/NNCefInternal.h` fails the build with `#error` when `vendor/cef` lacks
-`include/cef_netnyahoo.h` or any `CEF_NN_*` marker the app uses, and every hook is used unconditionally.
-A new hook adds its marker to that check.
-
-### The pinned engine
-
-`packages/cef/engine.lock` names the exact distribution the app builds against: its name, the
-hash of its files (`ENGINE_TREE_SHA256`: every file and link but `build/` and `.version`), the
-hash of its archive and the GitHub release that holds the archive. `packages/cef/scripts/engine.sh`:
-
-- `verify [dir]` checks `vendor/cef` (or `dir`) against the lock. `scripts/release.sh` runs it after
-  `setup.sh`, so a release ships the pinned engine.
-- `fetch` downloads the archive (`gh release download`), checks its hash, unpacks it into
-  `vendor/` and checks the tree. `setup.sh` runs it on a machine without `~/chromium-build`.
-- `pack [dir]` archives a distribution (default `vendor/cef`) as
-  `vendor/<ENGINE_DIST>.tar.zst` (about 170 MB) and rewrites the lock. After an engine change:
-  rebuild, `setup.sh`, check the app, `pack`, commit `engine.lock` with the code that needs it,
-  then `publish`.
-- `publish` uploads the archive to `ENGINE_REPO`, under the tag `ENGINE_TAG` (a prerelease that is
-  never marked latest).
-
-Pinned now: `cef_binary_154.0.28+g564dd6c+chromium-154.0.8037.58_macosarm64_minimal` (tree `bf6f8828`), published as a prerelease asset on this repo (`ENGINE_REPO` = `mantrakp04/netnyahoo`, tag `ENGINE_TAG`, never marked latest, so the app's update feed at `releases/latest` is unaffected). `fetch` downloads it over plain HTTPS, no `gh` login needed, so a fresh checkout without `~/chromium-build` builds.
+The app's build (`apps/browser/macos`) stages `out/Release_GN_arm64/Chromium Framework.framework` itself
+(`packages/nncore/scripts/stage-framework.sh`, under the chromium lock) and embeds it (`embed.sh`); there is no
+distribution to install and nothing to pin. After an engine change, rebuild incrementally
+(`scripts/agent/locked chromium -- autoninja -C out/Release_GN_arm64 chrome_framework`) and the next app build picks
+it up. (CEF's distribution, `setup.sh`, `engine.lock` and its release asset went with the cutover.)
 
 ## API added
 
@@ -293,7 +263,7 @@ found one writer (2026-09-25):
   (`FileBackedRulesetSource::CreateStatic`). The ruleset checksums live in the profile's prefs, so a profile with none
   (every new profile; component extensions are never "installed") indexes again, and so does any profile whose
   indexes go stale (a new indexed format in a Chrome update). Shipping prebuilt indexes wouldn't stop the writes.
-  So `NNContentBlocker.mm` loads uBlock Origin Lite from a copy in the data directory,
+  So `NNCoreContentBlocker.mm` loads uBlock Origin Lite from a copy in the data directory,
   `<data dir>/Built-in Extensions/ublock-lite` (an APFS clone of the bundled folder, made writable, next to
   `Chromium`), and copies it again when the bundled extension changes (`ublock-lite.source` holds the manifest's
   SHA-256, file count and size). Chrome's indexes persist in the copy, so later launches load them without indexing.
@@ -301,7 +271,7 @@ found one writer (2026-09-25):
   from a read-only bundle nothing was blocked at all.
 
 Everything else Chrome writes (crashpad, component updater, caches, extension installs) goes to the user data dir,
-and `MacAppCodeSignClone` is disabled (NNCef.mm). `scripts/release.sh` launches the exported app once and verifies the
+and `MacAppCodeSignClone` is disabled (`NNCoreHost.mm`). `scripts/release.sh` launches the exported app once and verifies the
 signature again, so a new writer fails the release.
 
 ## NNCore shares the tree
@@ -333,18 +303,18 @@ build and NNCore link the same code and the app calls it the same way under both
   call returns. Events go to one sink (`nn_engine_set_event_sink`) as `("<domain>.<what>", {profile, …})`.
   `nn_engine.h` has the C++ side (`NN_ENGINE_CALL`, `netnyahoo::Call`, `Reply`, `Emit`).
 - **The app** includes `public/nn_engine.h` from the repo and looks each export up with `dlsym` on the engine
-  framework (`packages/cef/ios/NNEngine.mm`). A missing export aborts: the app bundles an engine it wasn't built
+  framework (`packages/nncore/ios/NNCoreEngineBridge.mm`). A missing export aborts: the app bundles an engine it wasn't built
   for. Add each new call to `docs/nncore-parity.md`.
 
 ## The patch series
 
-`packages/cef/patches/series` is the one place that says what goes into the tree and in what order: `cef <patch>`
+`engine/patches/series` is the one place that says what goes into the tree and in what order: `cef <patch>`
 lines (CEF's own tree, step 2), then `chromium <patch>` lines (after ungoogled-chromium and domain substitution,
 step 4), then `layer <dir>` lines (our own files, `<dir>/apply.sh`). Each patch is made against the tree as every
 line above it leaves it, and covers one concern, named for it. A new patch goes where it belongs in the file; names
 no longer carry the order.
 
-`packages/cef/patches/series.py` does everything with it:
+`engine/patches/series.py` does everything with it:
 
 - `apply [--phase cef|chromium]`: applies the series to the tree, skipping what is applied (steps 2 and 4 run it,
   through `02-cef-patch-and-gen.sh` and `apply-chromium-patches.sh`).
@@ -367,7 +337,7 @@ no longer carry the order.
 
 Run `check` after any patch change, before committing it. For a nightly run on this machine (a local launchd job;
 nothing remote is set up), point a LaunchAgent at it, for example `~/Library/LaunchAgents/com.netnyahoo.series-check.plist`
-with `ProgramArguments` `/usr/bin/python3`, `<repo>/packages/cef/patches/series.py`, `check`, a
+with `ProgramArguments` `/usr/bin/python3`, `<repo>/engine/patches/series.py`, `check`, a
 `StartCalendarInterval` of 03:00 and `StandardOutPath` `~/chromium-build/logs/series-check.log`. A CI machine
 needs only the repo plus a copy of the base and the tree's touched files: `CHROMIUM_SRC` and `NN_SERIES_BASE` say
 where they are.
@@ -375,7 +345,7 @@ where they are.
 ## Rebuilding
 
 Everything lives outside the repo in `~/chromium-build`, which carries `.metadata_never_index`.
-The step scripts are copied in `packages/cef/patches/build/`, and each expects `~/chromium-build`.
+The step scripts are copied in `engine/patches/build/`, and each expects `~/chromium-build`.
 
 | Step | Script | Time (M5 Pro, shared machine) |
 |---|---|---|
@@ -399,12 +369,6 @@ Rules for editing the tree after the first build:
 - **After editing a CEF header under `include/`**, regenerate the C API and wrappers with
   `cd chromium/src/cef && python3 tools/version_manager.py -u --fast-check`, then run step 5.
   `cef_netnyahoo.h` is excluded from the translator and shipped through `cef_paths2.gypi`.
-- **Test harness.** `packages/cef/patches/test/nativehost.mm` (`build.sh`) is the acceptance test. It
-  can't activate (`NSApplicationActivationPolicyProhibited`). It hosts two tabs of one ghost Chrome
-  window, then checks the `CALayerHost` under `RenderWidgetHostViewCocoa`, the rAF rate, the capture
-  id and codec support. It also exercises CreateTabInBrowser, popup tabs, tabs.create from a component
-  extension's action, and closing the first tab. With `STORE_TEST=1 … <Web Store detail URL>` it
-  clicks "Add to Chrome" and accepts through `OnExtensionInstallPrompt`.
 - **Moving to a new CEF/Chromium version.**
   1. Revert domain substitution:
      `python3 ungoogled/utils/domain_substitution.py revert -c domsubcache.tar.gz chromium_git/chromium/src`.
@@ -416,7 +380,7 @@ Rules for editing the tree after the first build:
 
 The patch set comes from the 154.0.8037.57-1 series plus the macOS repo's
 `fix-disabling-safebrowsing.patch`: 110 patches in all. Of those, 91 applied, 7 partial,
-6 reverted and 6 skipped. The full list with reasons is `packages/cef/patches/ungoogled-status.tsv`.
+6 reverted and 6 skipped. The full list with reasons is `engine/patches/ungoogled-status.tsv`.
 
 **Partial:**
 

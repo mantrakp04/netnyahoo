@@ -12,7 +12,7 @@ of its time in `swift test`'s first build. Each package also runs its own:
 | `extras/raycast-netnyahoo` | `node --test extras/raycast-netnyahoo/src/scripts.test.ts` | 1 |
 
 `apps/browser` runs its TypeScript under plain Node: `src/test-loader.mjs` maps `@netnyahoo/shell`,
-`@netnyahoo/cef` and `expo-modules-core` to `src/test-native-stub.mjs`. One file:
+`@netnyahoo/nncore` and `expo-modules-core` to `src/test-native-stub.mjs`. One file:
 `node --no-warnings --import ./src/test-loader.mjs --test src/store/tabs.test.mjs` (from `apps/browser`).
 
 End-to-end checks need a built app and are run by hand:
@@ -24,7 +24,8 @@ End-to-end checks need a built app and are run by hand:
 | Profile swipes | `node apps/browser/scripts/profile-swipe-test.mjs <Debug app>` | The native pager's races (0.2.14–0.2.18 fixes) |
 | ⌘-scroll | `node apps/browser/scripts/zoom-scroll-test.mjs <Debug app>` | Trackpad scrolls, mouse zooms (regressed in 0.1.4 and 0.2.12) |
 | Sync | `node packages/sync/scripts/e2e.mjs <Debug app>` | Two and three hidden instances through one folder (`docs/sync.md`) |
-| Engine patches | `packages/cef/patches/test/build.sh` | Our CEF patches (`docs/cef-source-build.md`) |
+| Engine patches | `python3 engine/patches/series.py check` | The patch series reproduces the Chromium tree (`docs/cef-source-build.md`) |
+| Engine (NNCore) | `node packages/nncore/scripts/acceptance.mjs <Debug app> <scratch dir>` | The app on NNCore, hidden (`docs/nncore-parity.md`) |
 
 ## What's kept, and why
 

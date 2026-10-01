@@ -21,15 +21,15 @@ importers:
 
   apps/browser:
     dependencies:
-      '@netnyahoo/cef':
-        specifier: workspace:*
-        version: link:../../packages/cef
       '@netnyahoo/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@netnyahoo/import':
         specifier: workspace:*
         version: link:../../packages/import
+      '@netnyahoo/nncore':
+        specifier: workspace:*
+        version: link:../../packages/nncore
       '@netnyahoo/shaders':
         specifier: workspace:*
         version: link:../../packages/shaders
@@ -86,12 +86,6 @@ importers:
         specifier: ~5.9.2
         version: 5.9.3
 
-  packages/cef:
-    dependencies:
-      '@netnyahoo/core':
-        specifier: workspace:*
-        version: link:../core
-
   packages/core:
     devDependencies:
       '@types/node':
@@ -100,7 +94,11 @@ importers:
 
   packages/import: {}
 
-  packages/nncore: {}
+  packages/nncore:
+    dependencies:
+      '@netnyahoo/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/shaders: {}
 

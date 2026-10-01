@@ -11,7 +11,7 @@ import {
   setAutofillSettings,
   type SavedAddress,
   type SavedCard,
-} from "@netnyahoo/cef";
+} from "@netnyahoo/nncore";
 import { confirm, copyText, Symbol } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";

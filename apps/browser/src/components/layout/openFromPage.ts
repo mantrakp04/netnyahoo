@@ -1,4 +1,4 @@
-import { forgetOpenedURL, type OpenWindowRequest } from "@netnyahoo/cef";
+import { forgetOpenedURL, type OpenWindowRequest } from "@netnyahoo/nncore";
 import { openWindow } from "../../lib/actions";
 import { useBrowser } from "../../store/browser";
 import { engineProfile } from "../../store/model";

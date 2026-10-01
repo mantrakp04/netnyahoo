@@ -1,4 +1,4 @@
-import { applyBookmarkOps, bookmarkTree, onBookmarksChanged, watchBookmarks, type BookmarkOp, type EngineBookmark } from "@netnyahoo/cef";
+import { applyBookmarkOps, bookmarkTree, onBookmarksChanged, watchBookmarks, type BookmarkOp, type EngineBookmark } from "@netnyahoo/nncore";
 import { readDocument, removeDocument, writeDocument } from "@netnyahoo/shell";
 import { bookmarkUuidFor, isBookmarkUuid, rootIdsFor } from "../store/bookmarks";
 import { useBrowser, type BrowserState } from "../store/browser";

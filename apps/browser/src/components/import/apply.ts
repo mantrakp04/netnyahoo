@@ -1,4 +1,4 @@
-import { savePassword } from "@netnyahoo/cef";
+import { savePassword } from "@netnyahoo/nncore";
 import type { BookmarkNode as ImportedNode, Credential, DiaTabsProfile, ImportedTab, ImportResult, SafariExport, SpaceSuggestion } from "@netnyahoo/import";
 import type { BookmarkDraft } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";

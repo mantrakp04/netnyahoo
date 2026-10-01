@@ -1,4 +1,4 @@
-import { setSearchEngineName } from "@netnyahoo/cef";
+import { setSearchEngineName } from "@netnyahoo/nncore";
 import { chooseTextFragment, cleanUrl, searchUrl, withTextFragment, type SelectionContext } from "@netnyahoo/core";
 import { copyText } from "@netnyahoo/shell";
 import { create } from "zustand";

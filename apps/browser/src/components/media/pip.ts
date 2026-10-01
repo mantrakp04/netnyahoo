@@ -1,4 +1,4 @@
-import { setDisplayMediaPicker } from "@netnyahoo/cef";
+import { setDisplayMediaPicker } from "@netnyahoo/nncore";
 import { onAppEvent, onWindowEvent } from "@netnyahoo/shell";
 import { useRef } from "react";
 import { webviews } from "../../lib/webviews";

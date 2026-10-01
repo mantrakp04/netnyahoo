@@ -229,7 +229,7 @@ Saved passwords are Chrome's (its password manager).
   the mock keychain's where NNCef uses that. No Touch ID prompt is needed each cycle, and no
   Chromium change.
 - **Writing.** Writes go through Chrome's API (`savePassword`, `deletePassword` in
-  `@netnyahoo/cef`), so Chrome's in-memory store and autofill see them at once. A changed
+  `@netnyahoo/nncore`), so Chrome's in-memory store and autofill see them at once. A changed
   password is a delete plus an add: the update API needs the device check.
 - **Safety.**
   - A read that finds any row it can't decrypt is skipped (a partial list would read as

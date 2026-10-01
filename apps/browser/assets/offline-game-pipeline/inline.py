@@ -3,7 +3,7 @@
 Usage: python3 inline.py <out.html>
 
 The engine serves the result in place of Chrome's dino page
-(packages/cef/patches/chromium-neterror-yahu.patch), and step 5 of the CEF
+(engine/patches/chromium-neterror-yahu.patch), and step 5 of the CEF
 build regenerates it, so ../offline-game stays the source: CSS, scripts and
 the manifest go inline, every WebP becomes a data: URL in window.YAHU_ASSETS
 (read by game.js), and the CSP allows exactly those inline blocks by hash.

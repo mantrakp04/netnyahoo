@@ -1,4 +1,4 @@
-import { SwipeArea, swipeHaptic, type SwipeAreaHandle, type SwipeEvent } from "@netnyahoo/cef";
+import { SwipeArea, swipeHaptic, type SwipeAreaHandle, type SwipeEvent } from "@netnyahoo/nncore";
 import { Surface, Symbol, VisualEffect } from "@netnyahoo/shell";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";

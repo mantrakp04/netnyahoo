@@ -1,4 +1,4 @@
-import { forgetOpenedURL } from "@netnyahoo/cef";
+import { forgetOpenedURL } from "@netnyahoo/nncore";
 import { showMenu, type MenuItem } from "@netnyahoo/shell";
 import { create } from "zustand";
 import { closeTab } from "../../lib/actions";

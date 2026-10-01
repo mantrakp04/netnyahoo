@@ -28,7 +28,7 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 SRC = os.environ.get("CHROMIUM_SRC", os.path.expanduser("~/chromium-build/chromium_git/chromium/src"))
 BASE = os.environ.get("NN_SERIES_BASE", os.path.expanduser("~/chromium-build/series-base"))
 

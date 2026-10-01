@@ -2,10 +2,11 @@
 
 Dia = installed build **1.49.1 (87398), Chromium 153** plus the public changelog up to **v1.50.0 (2026‑09‑24)**;
 visual rows re-checked against **1.50.1 (87750)** (`docs/dia-spec.md` › "1.50 Sunglow").
-Netnyahoo = this working tree on **2026‑09‑25, after the Chrome migration**: our patched Chrome-style CEF
-(154.0.28, pinned in `packages/cef/engine.lock`, `docs/cef-source-build.md`), where every app window is Chrome's own Browser window
+Netnyahoo = this working tree on **2026‑09‑25, after the Chrome migration**: then our patched Chrome-style CEF
+(154.0.28, `docs/cef-source-build.md`), where every app window is Chrome's own Browser window
 (since 0.2.0, `docs/research/chrome-hosted-window.md`) and every tab a real Chrome tab of it, hosted in our React
-Native views.
+Native views. Since 2026‑10‑01 the app runs on NNCore, Chrome's own framework from the same tree with our layer
+(`docs/nncore-parity.md`); the rows hold for both.
 
 How this audit was done: every non-AI row re-read against the code (packages/cef, apps/browser/src, packages/shell,
 packages/core, the Xcode project), not against earlier claims. Runtime evidence comes from the migration ledger,
@@ -804,8 +805,8 @@ reproduced.
 11. **Fixed (R3).** The Widevine row offered an update that can't download (and never completed). It now says
     Widevine isn't available in this build; `updateComponent` is gone from the engine API.
 12. **Removed (2026-10-01): the stock-CEF path.** `NN_CHROME_TABS=0`, `CEF_PREBUILT=1` and the per-feature `NN_*`
-    macros are gone (architecture review, rec. 3): the app builds only against our engine, which
-    `packages/cef/engine.lock` pins and `setup.sh` fetches on a fresh checkout (`docs/cef-source-build.md`).
+    macros are gone (architecture review, rec. 3): the app builds only against our engine (since the NNCore
+    cutover, Chrome's framework from our tree, `docs/cef-source-build.md`).
 13. **Fixed (R3): docs and comments that contradicted the code.** `docs/agent-brief.md` rewritten for the current
     architecture (Chrome-style CEF, `NETNYAHOO_BACKGROUND` / NNActivation, the own-CEF rebuild flow, `packages/import`,
     no `packages/webkit`, a repo with history); `docs/migration-status.md`'s finished "In progress", "Known regressions"

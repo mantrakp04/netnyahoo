@@ -1,4 +1,4 @@
-import { cancelDownload, setZoom as setHostZoom, type Download } from "@netnyahoo/cef";
+import { cancelDownload, setZoom as setHostZoom, type Download } from "@netnyahoo/nncore";
 import { readDocument, writeDocument } from "@netnyahoo/shell";
 import { EMPTY_BOOKMARKS, ensureRoots, newBookmarkId } from "../store/bookmarks";
 import { useBrowser, type BrowserState, type HydrateData } from "../store/browser";

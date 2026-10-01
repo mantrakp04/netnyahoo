@@ -11,7 +11,7 @@ import {
   unlockPasswords,
   updatePassword,
   type SavedPassword,
-} from "@netnyahoo/cef";
+} from "@netnyahoo/nncore";
 import { confirm, copyText, Symbol, systemInfo } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";

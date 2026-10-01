@@ -1,4 +1,4 @@
-import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@netnyahoo/cef";
+import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@netnyahoo/nncore";
 import { fileExists, MouseArea, openFile, revealFile, Symbol } from "@netnyahoo/shell";
 import { useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";

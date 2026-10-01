@@ -1,4 +1,4 @@
-import { WebView, type OpenWindowRequest } from "@netnyahoo/cef";
+import { WebView, type OpenWindowRequest } from "@netnyahoo/nncore";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";

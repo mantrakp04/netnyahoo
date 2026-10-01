@@ -20,7 +20,7 @@ import {
   type SiteSettings,
   type SiteSettingType,
   type SiteSettingValue,
-} from "@netnyahoo/cef";
+} from "@netnyahoo/nncore";
 import { confirm } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
 import { Image, ScrollView, Text, View } from "react-native";

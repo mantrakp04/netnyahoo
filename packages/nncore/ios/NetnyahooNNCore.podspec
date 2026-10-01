@@ -1,13 +1,9 @@
-# NNCore's native side of the @netnyahoo/cef JS API (the same Expo module and view names), on our own
-# Chromium layer (engine/nncore) instead of CEF. Only apps/browser/macos-nncore links it; the shipping
-# app (apps/browser/macos) keeps packages/cef until NNCore reaches parity (docs/nncore-parity.md).
+# The web engine's native side (Expo modules NetnyahooCEF, NetnyahooExtensions, NetnyahooSwipe and
+# NetnyahooChromeUI, the names the JS in ../src uses), on our own Chromium layer (engine/nncore).
 #
 # The engine is Chrome's framework built with engine/nncore ("Chromium Framework.framework"). The app
 # target stages a copy of it (packages/nncore/scripts/stage-framework.sh), links that and embeds it
 # (scripts/embed.sh); this pod only needs NNCore's public header.
-#
-# NNSwipe.{h,mm}, SwipeModule.swift and NNChromeWindow.h are symlinks to packages/cef/ios: they don't
-# depend on CEF, so both builds share one copy.
 engine_public = File.expand_path('../../../engine/nncore/src/netnyahoo/core/public', __dir__)
 
 Pod::Spec.new do |s|

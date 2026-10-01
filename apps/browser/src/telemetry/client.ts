@@ -1,4 +1,4 @@
-import { engineInfo } from "@netnyahoo/cef";
+import { engineInfo } from "@netnyahoo/nncore";
 import { launchEnvironment, readDocument, systemInfo, writeDocument, type SystemInfo } from "@netnyahoo/shell";
 import { create } from "zustand";
 import { DEV_SEND_ENV, LOGS_URL, MAX_BODY_BYTES } from "./config";

@@ -1,4 +1,4 @@
-import { faviconsFor, fetchFavicon, onHistoryChanged, removeLegacyFavicons } from "@netnyahoo/cef";
+import { faviconsFor, fetchFavicon, onHistoryChanged, removeLegacyFavicons } from "@netnyahoo/nncore";
 import { iconTheme, readDocument, removeDocument, type IconTheme } from "@netnyahoo/shell";
 import { useEffect } from "react";
 import { create } from "zustand";

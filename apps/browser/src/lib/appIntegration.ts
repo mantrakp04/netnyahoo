@@ -1,4 +1,4 @@
-import * as cef from "@netnyahoo/cef";
+import * as cef from "@netnyahoo/nncore";
 import {
   confirm,
   copyText,

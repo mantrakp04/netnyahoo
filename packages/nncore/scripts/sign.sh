@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Developer ID signing of a NNCore Release app, inside out, with the hardened runtime (a dry run until the switch):
-#   packages/nncore/scripts/sign.sh <copy of NetnyahooNNCore.app>     (signs in place)
-# Helpers get packages/cef/helper's entitlements (JIT for the renderer and GPU); the app gets the CEF app's minus the
+#   packages/nncore/scripts/sign.sh <copy of Netnyahoo.app>     (signs in place)
+# Helpers get signing/'s entitlements (JIT for the renderer and GPU); the app gets the shipping app's minus the
 # keychain access groups, which need a provisioning profile for the bundle id. Notarize the result with notarytool
 # (scripts/.notary.env), as scripts/release.sh does.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-helper_ents="$here/../../cef/helper"
+helper_ents="$here/signing"
 app="$1"
 id="Developer ID Application: mantra patel (U5L5T3NGVV)"
 sign() { codesign --force --options runtime --timestamp --sign "$id" "$@"; }

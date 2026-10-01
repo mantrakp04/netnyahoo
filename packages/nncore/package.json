@@ -2,5 +2,18 @@
   "name": "@netnyahoo/nncore",
   "version": "0.0.0",
   "private": true,
-  "description": "NNCore's native side of the @netnyahoo/cef JS API: the same Expo modules and views, on our own Chromium layer (engine/nncore) instead of CEF. Linked only by apps/browser/macos-nncore."
+  "description": "The web engine for React Native macOS via Expo Modules: Chrome's own framework from our patched Chromium with our layer (engine/nncore), hosting Chrome tabs in the app's views.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@netnyahoo/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
 }

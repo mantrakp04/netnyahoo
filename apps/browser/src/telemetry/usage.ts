@@ -1,4 +1,4 @@
-import { listTasks, onExtensionsChanged } from "@netnyahoo/cef";
+import { listTasks, onExtensionsChanged } from "@netnyahoo/nncore";
 import { onAppEvent } from "@netnyahoo/shell";
 import { useTranslate } from "../components/site/translate";
 import { useBrowser } from "../store/browser";

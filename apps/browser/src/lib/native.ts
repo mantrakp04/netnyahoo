@@ -1,4 +1,4 @@
-import { onDownload, releaseProfile } from "@netnyahoo/cef";
+import { onDownload, releaseProfile } from "@netnyahoo/nncore";
 import {
   closeWindow,
   isDarkAppearance,

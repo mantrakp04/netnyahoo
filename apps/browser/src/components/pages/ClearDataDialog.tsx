@@ -1,4 +1,4 @@
-import { clearBrowsingData, type BrowsingDataType } from "@netnyahoo/cef";
+import { clearBrowsingData, type BrowsingDataType } from "@netnyahoo/nncore";
 import { Surface } from "@netnyahoo/shell";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";

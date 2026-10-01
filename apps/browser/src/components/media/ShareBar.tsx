@@ -1,4 +1,4 @@
-import { changeCaptureSource, stopCapture } from "@netnyahoo/cef";
+import { changeCaptureSource, stopCapture } from "@netnyahoo/nncore";
 import { Symbol } from "@netnyahoo/shell";
 import { useEffect, useRef } from "react";
 import { Animated, Easing, Text, View } from "react-native";

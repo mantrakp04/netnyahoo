@@ -1,4 +1,4 @@
-import { permissionWarnings, WebView, type InstalledExtension, type WebViewHandle } from "@netnyahoo/cef";
+import { permissionWarnings, WebView, type InstalledExtension, type WebViewHandle } from "@netnyahoo/nncore";
 import { Surface } from "@netnyahoo/shell";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";

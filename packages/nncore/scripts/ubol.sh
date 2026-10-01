@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Installs the pinned uBlock Origin Lite into vendor/ubol/ext, where embed.sh copies it into the
-# app. setup.sh runs it; scripts/update-ubol.sh moves the pin to uBOL's latest release. Idempotent.
+# Installs the pinned uBlock Origin Lite into packages/nncore/vendor/ubol/ext, where embed.sh copies it into the
+# app. The build runs it (embed.sh); scripts/update-ubol.sh moves the pin to uBOL's latest release. Idempotent.
 set -euo pipefail
 
 vendor="$(cd "$(dirname "$0")/.." && pwd)/vendor"
 
 # The content blocker: uBlock Origin Lite (MV3, declarativeNetRequest), loaded as a
-# built-in extension in every profile (NNContentBlocker.mm). Pinned release; the
+# built-in extension in every profile (NNCoreContentBlocker.mm). Pinned release; the
 # manifest gets our `key` so its extension id is fixed
 # (bnjeokpoejhioagiokhkhmdogkhbnbki), wherever the app bundle lives.
 UBOL_VERSION="2026.930.1227"

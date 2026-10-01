@@ -1,4 +1,4 @@
-import { reloadExtension, type InstalledExtension } from "@netnyahoo/cef";
+import { reloadExtension, type InstalledExtension } from "@netnyahoo/nncore";
 import { useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";

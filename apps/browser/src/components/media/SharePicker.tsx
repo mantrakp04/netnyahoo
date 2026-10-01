@@ -1,4 +1,4 @@
-import { getDisplayMediaSources, type DisplayMediaRequest, type DisplayMediaSource } from "@netnyahoo/cef";
+import { getDisplayMediaSources, type DisplayMediaRequest, type DisplayMediaSource } from "@netnyahoo/nncore";
 import { runningAppIcon, Symbol } from "@netnyahoo/shell";
 import { useEffect, useRef, useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";

@@ -1,4 +1,4 @@
-import { searchEngineList } from "@netnyahoo/cef";
+import { searchEngineList } from "@netnyahoo/nncore";
 import { extensionEnginesFromChrome } from "@netnyahoo/core";
 import { useBrowser } from "../../store/browser";
 import { useExtensions } from "./state";

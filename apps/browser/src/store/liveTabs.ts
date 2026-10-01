@@ -1,4 +1,4 @@
-import type { StripGroup, StripState, StripTab } from "@netnyahoo/cef";
+import type { StripGroup, StripState, StripTab } from "@netnyahoo/nncore";
 import type { BrowserState } from "./browser";
 import { engineProfile, pinnedFirst } from "./model";
 import { forgetOpeners, switchKeepsOpeners } from "./openers";

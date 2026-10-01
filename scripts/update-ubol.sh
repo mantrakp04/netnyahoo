@@ -8,13 +8,13 @@
 #
 # It checks the release's chromium zip against the SHA-256 digest GitHub records for the asset
 # and against the manifest inside (its version must be the tag's, MV3 with declarativeNetRequest
-# rulesets), then rewrites the pin (UBOL_VERSION, UBOL_SHA256) in packages/cef/scripts/ubol.sh
-# and installs it into packages/cef/vendor/ubol. Commit ubol.sh afterwards; the next build (or
-# release.sh, through setup.sh) bundles it. Nothing downloaded here runs until it is committed.
+# rulesets), then rewrites the pin (UBOL_VERSION, UBOL_SHA256) in packages/nncore/scripts/ubol.sh
+# and installs it into packages/nncore/vendor/ubol. Commit ubol.sh afterwards; the next build (or
+# a release) bundles it. Nothing downloaded here runs until it is committed.
 set -euo pipefail
 
 root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
-pin="$root/packages/cef/scripts/ubol.sh"
+pin="$root/packages/nncore/scripts/ubol.sh"
 repo="uBlockOrigin/uBOL-home"
 current="$(sed -n 's/^UBOL_VERSION="\(.*\)"$/\1/p' "$pin")"
 [ -n "$current" ] || { echo "error: no UBOL_VERSION in $pin" >&2; exit 1; }
@@ -34,7 +34,7 @@ print(r["tag_name"], a["browser_download_url"], digest or "-")
 
 if [ "$latest" = "$current" ]; then
   echo "uBOL $current is the latest release"
-  "$root/packages/cef/scripts/ubol.sh"
+  "$root/packages/nncore/scripts/ubol.sh"
   exit 0
 fi
 # Tags are dates (2026.920.1710): never move the pin backwards.
@@ -48,7 +48,7 @@ if [ "${1:-}" = "--check" ]; then
 fi
 [ "$digest" != "-" ] || { echo "error: GitHub gives no digest for $url; not updating" >&2; exit 1; }
 
-ubol="$root/packages/cef/vendor/ubol"
+ubol="$root/packages/nncore/vendor/ubol"
 zip="$ubol/uBOLite_$latest.chromium.zip"
 mkdir -p "$ubol"
 echo "Downloading $url"
@@ -68,7 +68,7 @@ if problems: sys.exit("error: manifest.json: " + "; ".join(problems))
 mv "$zip.part" "$zip"
 
 sed -i '' "s/^UBOL_VERSION=\".*\"$/UBOL_VERSION=\"$latest\"/; s/^UBOL_SHA256=\".*\"$/UBOL_SHA256=\"$sha\"/" "$pin"
-"$root/packages/cef/scripts/ubol.sh"
+"$root/packages/nncore/scripts/ubol.sh"
 [ "$(cat "$ubol/.version")" = "$latest" ] || { echo "error: vendor/ubol didn't install $latest" >&2; exit 1; }
 echo "uBOL $current -> $latest (sha256 $sha)"
-echo "Commit it: git add packages/cef/scripts/ubol.sh && git commit -m \"Block lists: uBlock Origin Lite $latest\""
+echo "Commit it: git add packages/nncore/scripts/ubol.sh && git commit -m \"Block lists: uBlock Origin Lite $latest\""

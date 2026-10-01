@@ -1,4 +1,4 @@
-import type { WebViewHandle } from "@netnyahoo/cef";
+import type { WebViewHandle } from "@netnyahoo/nncore";
 
 export const webviews = new Map<string, WebViewHandle>();
 

@@ -15,7 +15,7 @@ import {
   type ExtensionInstallPrompt,
   type ExtensionPackage,
   type InstalledExtension,
-} from "@netnyahoo/cef";
+} from "@netnyahoo/nncore";
 import { confirm, showMenu } from "@netnyahoo/shell";
 import { useMemo } from "react";
 import { create } from "zustand";

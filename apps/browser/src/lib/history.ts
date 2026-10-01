@@ -1,4 +1,4 @@
-import { addHistoryVisits, onHistoryChanged, queryHistory, watchHistory, type EngineHistoryEntry, type HistoryChange } from "@netnyahoo/cef";
+import { addHistoryVisits, onHistoryChanged, queryHistory, watchHistory, type EngineHistoryEntry, type HistoryChange } from "@netnyahoo/nncore";
 import { readDocument, removeDocument } from "@netnyahoo/shell";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { MAX_HISTORY, MAX_VISIT_TIMES } from "../store/history";

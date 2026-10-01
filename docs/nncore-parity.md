@@ -1,9 +1,9 @@
-# NNCore parity: the `packages/cef` JS API on NNCore
+# NNCore parity: the app's engine API on NNCore
 
 **The owner chose a full cutover (2026-10-01):** the next release ships NNCore only, and CEF's native side leaves
-the repo. The JS (`packages/cef/src`, `apps/browser/src`) doesn't change: `packages/nncore` registers the same Expo
-modules and view names (`NetnyahooCEF`, `NetnyahooExtensions`, `NetnyahooSwipe`, `NetnyahooChromeUI`) with the same
-signatures. The cutover lands as a short series of commits on main: the NNCore project becomes
+the repo. The JS API (once `packages/cef/src`, now `packages/nncore/src`, imported as `@netnyahoo/nncore`) doesn't
+change: `packages/nncore` registers the same Expo modules and view names (`NetnyahooCEF`, `NetnyahooExtensions`,
+`NetnyahooSwipe`, `NetnyahooChromeUI`) with the same signatures. The cutover lands as a short series of commits on main: the NNCore project becomes
 `apps/browser/macos` (C1), CEF's native side goes (C2), production data in place with a one-shot migration of
 0.2.21's data, and `scripts/release.sh`/smoke on NNCore.
 
@@ -11,8 +11,9 @@ signatures. The cutover lands as a short series of commits on main: the NNCore p
 
 Keep this list short and shrinking; each item names its owner.
 
-1. **Cutover commits** C1 (the fold: one project, `Netnyahoo-macOS`, `com.netnyahoo.browser`), C2 (CEF's native
-   side deleted, references fixed), release.sh/smoke on NNCore. *Release-pipeline agent, CEF-removal helper.*
+1. **Cutover commits**: C1, the fold (8f1074f1: one project, `Netnyahoo-macOS`, `com.netnyahoo.browser`), and C2
+   (`packages/cef` deleted, its JS in `packages/nncore/src`, the patch series in `engine/patches`,
+   `apps/browser/macos-nncore` gone) are done. Left: release.sh/smoke on NNCore. *Release-pipeline agent.*
 2. ~~**Production data dir and migration**~~ done: a release build without `NETNYAHOO_DATA_DIR` opens
    `~/Library/Application Support/com.netnyahoo.browser/Chromium` in place (`InstalledDataDirectory`), with the
    login keychain only when Developer ID-signed and the app's documents in the folder above, as on CEF. No migration
@@ -44,8 +45,8 @@ Keep this list short and shrinking; each item names its owner.
 Not blocking, decided: the framework and helpers keep Chrome's names ("Chromium Framework", "Chromium Helper") until
 the next full engine rebuild (they're compiled in; bundle ids, signing and keychain already key off the app).
 
-Keep this current: whoever adds or changes a native export or event of `packages/cef` adds its row here (as
-**missing** if NNCore doesn't have it yet), and whoever lands it on NNCore updates the row.
+Keep this current: whoever adds or changes a native export or event of the JS API (`packages/nncore/src`) adds its
+row here. The rows compare with CEF's implementation as it was at the cutover (`git show c6b9634c:packages/cef`).
 
 Statuses:
 - **done**: does on NNCore what it does on CEF, and the acceptance run (below) or the engine's own run proves it.
@@ -80,19 +81,19 @@ needs.
 ```bash
 # Engine (once, and after engine/nncore changes): engine/nncore/apply.sh, then
 #   scripts/agent/locked chromium -- autoninja -C out/Release_GN_arm64 chrome_framework   (docs/nncore-spike.md)
-# App: the project is generated from the CEF one; run generate.py again after every pod install there.
-(cd apps/browser/macos-nncore && ../../../scripts/agent/locked pod -- pod install && python3 generate.py)
-cd apps/browser && ../../scripts/agent/locked xcodebuild -- xcodebuild -workspace macos-nncore/NetnyahooNNCore.xcworkspace \
-  -scheme Netnyahoo-NNCore -derivedDataPath build-nncore -destination 'platform=macOS,arch=arm64' -configuration Debug build
+# App: apps/browser/macos (the only app project; pod install there after adding native files).
+cd apps/browser && ../../scripts/agent/locked xcodebuild -- xcodebuild -workspace macos/Netnyahoo.xcworkspace \
+  -scheme Netnyahoo-macOS -derivedDataPath build-<you> -destination 'platform=macOS,arch=arm64' -configuration Debug build
 # Acceptance, hidden (open -g -n, NETNYAHOO_BACKGROUND=1, a scratch data dir); METRO_PORT is a Metro for this checkout.
-METRO_PORT=8081 node packages/nncore/scripts/acceptance.mjs apps/browser/build-nncore/Build/Products/Debug/NetnyahooNNCore.app <scratch dir> [check…]
+METRO_PORT=8081 node packages/nncore/scripts/acceptance.mjs apps/browser/build-<you>/Build/Products/Debug/Netnyahoo.app <scratch dir> [check…]
 ```
 
-The NNCore build is a development build: bundle id `com.netnyahoo.browser.nncore` (its own defaults domain;
-`acceptance.mjs` points its `RCT_jsLocation` at `METRO_PORT`), ad hoc signing without the hardened runtime, no
-Sparkle, no dock tile, and it refuses to start without `NETNYAHOO_DATA_DIR` (it never falls back to a real
-profile). Its build stages a signed copy of the engine framework (`packages/nncore/scripts/stage-framework.sh`,
-under the chromium lock) and links that.
+The app is the CEF app's (bundle id `com.netnyahoo.browser`, Apple Development signing with the hardened runtime in
+Debug; `scripts/release.sh` signs releases with Developer ID). A Debug build refuses to start without
+`NETNYAHOO_DATA_DIR` (it never falls back to a real profile). A test run hands it its Metro in `NETNYAHOO_JS_LOCATION`
+(that launch's argument domain, never written); never `defaults write com.netnyahoo.browser`, the installed app's. Its build stages a copy of the engine framework
+(`packages/nncore/scripts/stage-framework.sh`, under the chromium lock, into `NNCORE_STAGE_DIR`), links that, and
+`embed.sh` signs the embedded copy with the build's identity.
 
 Test hygiene the run keeps (each was a real failure):
 - Metro is reached through a proxy that refuses its websockets (`/hot`, `/message`), so another session's edits
@@ -155,7 +156,7 @@ reach: beforeunload cancelling a close and a quit, Dock/logout quits, IME wiring
 instead" and Stop sharing (`--auto-select-tab-capture-source-by-title`), the context menu's item click path,
 `closeNow` recording the closed tab.
 
-## WebView (`packages/cef/src/WebView.tsx`)
+## WebView (`packages/nncore/src/WebView.tsx`)
 
 Events are coalesced as `packages/cef`'s `NNClient` does (d6b026d6): navigation reports held for a run-loop turn
 and sent only when changed, progress at most 10 times a second, a held report flushed before any other event.
@@ -209,7 +210,7 @@ and sent only when changed, progress at most 10 times a second, a held report fl
 The app closes a tab by unmounting its WebView; NNCore closes it at once without beforeunload
 (`-[NNCoreTab closeNow]`, as CEF's `CloseBrowser(true)`), recording Chrome's closed-tab entry first.
 
-## `NetnyahooCEF` module (`packages/cef/src/native.ts`, `module.ts`)
+## `NetnyahooCEF` module (`packages/nncore/src/native.ts`, `module.ts`)
 
 | Function / event | Status | Note |
 |---|---|---|
@@ -236,7 +237,7 @@ The app closes a tab by unmounting its WebView; NNCore closes it at once without
 | `setDisplayMediaPicker`, `displayMediaSources` | partial | Kept, but pages keep Chrome's picker until the engine grants app-picked desktop sources; `displayMediaSources` lists screens and windows as CEF (no prompt) |
 | `devScrollZoom` | stubbed | CEF's test hook for its own pinch path; NNCore's pinch is Chrome's |
 
-## `NetnyahooExtensions` (`packages/cef/src/extensions.ts`)
+## `NetnyahooExtensions` (`packages/nncore/src/extensions.ts`)
 
 | Function / event | Status | Note |
 |---|---|---|
@@ -246,7 +247,7 @@ The app closes a tab by unmounting its WebView; NNCore closes it at once without
 | `onChanged` | partial | Fires on install/uninstall; not asserted on its own |
 | `onTabs` | partial | Only for a tab Chrome makes when no app window can take it; the usual path is `tab:<id>` (proven) |
 
-## `NetnyahooChromeUI` (`packages/cef/src/chromeUI.ts`)
+## `NetnyahooChromeUI` (`packages/nncore/src/chromeUI.ts`)
 
 | Function / event | Status | Note |
 |---|---|---|
@@ -259,7 +260,7 @@ The app closes a tab by unmounting its WebView; NNCore closes it at once without
 | `changeCaptureSource`, `stopCapture` | partial | "Share this tab instead" and Stop sharing, engine-proven with tab capture (e65d1bd5) |
 | `showAutofillSuggestions` | partial | Needs a focused field in a key window |
 
-## `NetnyahooSwipe` (`packages/cef/src/swipe.tsx`)
+## `NetnyahooSwipe` (`packages/nncore/src/swipe.tsx`)
 
 **done**: the same sources as CEF's (`NNSwipe.mm`, `SwipeModule.swift`, linked into `packages/nncore/ios`). Profile
 paging on NNCore is a change of the window's active profile, never a window swap.

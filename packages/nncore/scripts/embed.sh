@@ -38,9 +38,10 @@ if ! [[ -f "$stamp" && "$(cat "$stamp")" == "$want" && -d "$frameworks/Chromium 
   echo "$want" > "$stamp"
 fi
 
-# The built-in content blocker (uBlock Origin Lite, fetched by packages/cef/scripts/setup.sh) → Resources/Extensions,
+# The built-in content blocker (uBlock Origin Lite, pinned in ubol.sh, which installs it once) → Resources/Extensions,
 # with the fingerprint NNCoreContentBlocker.mm compares its writable copy with.
-ubol="$repo/packages/cef/vendor/ubol/ext"
+"$here/ubol.sh"
+ubol="$repo/packages/nncore/vendor/ubol/ext"
 if [ -n "${UNLOCALIZED_RESOURCES_FOLDER_PATH:-}" ] && [ -f "$ubol/manifest.json" ]; then
   extensions="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Extensions"
   mkdir -p "$extensions"

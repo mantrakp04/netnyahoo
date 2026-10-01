@@ -1,4 +1,4 @@
-import { CastMode, preferredCastMode, startCasting, stopCasting, type CastSink } from "@netnyahoo/cef";
+import { CastMode, preferredCastMode, startCasting, stopCasting, type CastSink } from "@netnyahoo/nncore";
 import { openExternalURL, showMenu, Symbol } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";

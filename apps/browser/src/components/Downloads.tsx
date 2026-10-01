@@ -1,4 +1,4 @@
-import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@netnyahoo/cef";
+import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@netnyahoo/nncore";
 import { ContextMenuArea, copyText, fileExists, fileIcon, MouseArea, moveToTrash, openFile, revealFile, showMenu, Surface, Symbol, type MenuItem } from "@netnyahoo/shell";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";

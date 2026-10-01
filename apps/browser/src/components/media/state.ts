@@ -1,4 +1,4 @@
-import type { DisplayMediaRequest, MediaCommand, NowPlaying, PictureInPictureState } from "@netnyahoo/cef";
+import type { DisplayMediaRequest, MediaCommand, NowPlaying, PictureInPictureState } from "@netnyahoo/nncore";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { webviews } from "../../lib/webviews";

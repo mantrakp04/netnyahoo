@@ -30,8 +30,8 @@ Thumbs.db
 
 # Xcode DerivedData, including per-agent build-<name> dirs
 build/
-# …but not the CEF source build's step scripts (docs/cef-source-build.md)
-!packages/cef/patches/build/
+# …but not the engine source build's step scripts (docs/cef-source-build.md)
+!engine/patches/build/
 build-*/
 DerivedData/
 *.xcuserstate
@@ -49,8 +49,8 @@ Pods/
 .swiftpm/
 .build/
 
-# CEF binary + filter lists (packages/cef/scripts/setup.sh)
-packages/cef/vendor/
+# The content blocker's filter lists (packages/nncore/scripts/ubol.sh)
+packages/nncore/vendor/
 
 # Generated design / video frames
 output/

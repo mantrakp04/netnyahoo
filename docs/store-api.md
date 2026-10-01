@@ -82,7 +82,7 @@ don't re-render every tab.
 - Menu commands: lib/commands.ts (JS) + packages/shell/ios/Menus.swift (native menu bar).
 - Tests: `pnpm --filter @netnyahoo/browser test` (`docs/testing.md`).
 
-## Live tabs: Chrome's tab strips (lib/chromeTabs.ts, store/liveTabs.ts, packages/cef/src/tabStrip.ts)
+## Live tabs: Chrome's tab strips (lib/chromeTabs.ts, store/liveTabs.ts, packages/nncore/src/tabStrip.ts)
 
 One writer per fact. The store owns the **workspace**: sidebar order, pins, groups, splits, Small Yahu, unloaded
 and parked tiles, and which tab each window shows per profile (`activeTabIds`). Chrome's `TabStripModel` owns
@@ -91,8 +91,7 @@ the active one, pins (and groups, once the engine reports them). JS never writes
 caused a report: it sends commands with ids, the engine commits them in Chrome, and every change comes back as one
 ordered transaction that names its cause. There are no echo windows, timers or "was that us" flags.
 
-**The engine contract** (`@netnyahoo/cef`; CEF implements it in `packages/cef/ios/NNTabStrip.mm`, NNCore must
-implement the same):
+**The engine contract** (`@netnyahoo/nncore`; NNCore implements it in `packages/nncore/ios/NNCoreTabStrip.mm`):
 - `sendTabStripCommand(command): number` sends a command and returns its id (unique for the app's lifetime, also
   across JS reloads). Commands:
   - `{ op: "activate", strip, key }`: make that tab the strip's active tab.
@@ -186,7 +185,7 @@ implement the same):
   `$NETNYAHOO_DATA_DIR/dev-console.log`.
 - lib/devHarness.ts runs `$NETNYAHOO_DATA_DIR/dev-eval.js` against the store — use it to drive a running instance.
 - Menus per instance: scratchpad `axmenus` tool (System Events confuses instances sharing a bundle id).
-- Swipes (layout/SwipeOverlay, layout/ProfileSwipe, packages/cef/ios/NNSwipe.mm): `globalThis.nnSwipe.pane(tabId).devSimulate(steps, { ignorePreference: true })`
+- Swipes (layout/SwipeOverlay, layout/ProfileSwipe, packages/nncore/ios/NNSwipe.mm): `globalThis.nnSwipe.pane(tabId).devSimulate(steps, { ignorePreference: true })`
   and `.sidebar(windowId)` play synthetic trackpad gestures through the real tracker (pages scroll and ack for real); `nnSwipe.history` opens the back/forward list.
 
 ## Internal pages, Settings, Import (components/pages, settings, import)
@@ -200,7 +199,7 @@ implement the same):
   closed tabs, the bar, AppleScript. Nothing in the store is `chrome://`.
   - Input: `resolveInput` / `fixupUrl` turn `chrome://x`, `chrome:x`, `about:x` and `netnyahoo:x` into
     `netnyahoo://x`. about:blank and about:srcdoc stay as they are.
-  - The engine boundary is packages/cef `WebView`. Loading maps `netnyahoo://` → `chrome://`
+  - The engine boundary is packages/nncore `WebView`. Loading maps `netnyahoo://` → `chrome://`
     (`url` prop, `loadUrl`). Reporting maps `chrome://` → `netnyahoo://` (navigation, open-window,
     popup, load-error, download and discard events, `navigationEntries`).
   - Pages linking to `netnyahoo://`: NNClient only follows these from a WebUI page (chrome://,

@@ -1,5 +1,5 @@
-import * as cef from "@netnyahoo/cef";
-import { listExtensions } from "@netnyahoo/cef";
+import * as cef from "@netnyahoo/nncore";
+import { listExtensions } from "@netnyahoo/nncore";
 import { confirm, focusWindow, prompt } from "@netnyahoo/shell";
 import { pageToProfile } from "../components/layout/profilePager";
 import { profileNames, requestCreateProfile, type CreateProfilePreset } from "../components/profiles/CreateProfile";
@@ -79,7 +79,7 @@ export async function deleteProfile(profileId: string, windowId?: string) {
 }
 
 // Chrome won't remove the original profile's extensions without asking, so they're only turned off
-// (ProfileData in packages/cef/ios/CefModule.swift); say so.
+// (packages/nncore/ios/NNCoreProfileData.swift); say so.
 async function keptExtensionsNote(): Promise<string> {
   const names = await listExtensions("").then(
     (list) => list.filter((e) => e.mayModify).map((e) => e.name),

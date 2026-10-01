@@ -1,4 +1,4 @@
-import type { WebNotification } from "@netnyahoo/cef";
+import type { WebNotification } from "@netnyahoo/nncore";
 import {
   confirm,
   notificationPermission,

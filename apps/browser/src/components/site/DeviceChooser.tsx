@@ -5,7 +5,7 @@ import {
   refreshDeviceChooser,
   selectDevice,
   type DeviceChooser as Chooser,
-} from "@netnyahoo/cef";
+} from "@netnyahoo/nncore";
 import { Symbol } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";

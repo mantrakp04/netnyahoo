@@ -1,4 +1,4 @@
-import { deleteHistoryUrls, importHistoryRows } from "@netnyahoo/cef";
+import { deleteHistoryUrls, importHistoryRows } from "@netnyahoo/nncore";
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 import { engineProfile, isIncognitoProfile } from "./model";

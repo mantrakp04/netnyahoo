@@ -15,7 +15,7 @@
     "@netnyahoo/core": "workspace:*",
     "@netnyahoo/shaders": "workspace:*",
     "@netnyahoo/shell": "workspace:*",
-    "@netnyahoo/cef": "workspace:*",
+    "@netnyahoo/nncore": "workspace:*",
     "@netnyahoo/import": "workspace:*",
     "@netnyahoo/sync": "workspace:*",
     "expo": "~54.0.37",

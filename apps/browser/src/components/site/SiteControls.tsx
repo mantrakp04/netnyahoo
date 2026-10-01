@@ -8,7 +8,7 @@ import {
   type SiteSettingType,
   type SiteSettingValue,
   type SiteSettings,
-} from "@netnyahoo/cef";
+} from "@netnyahoo/nncore";
 import { cleanUrl, displayHost } from "@netnyahoo/core";
 import { confirm, copyText, showMenu, Symbol } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";

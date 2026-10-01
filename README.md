@@ -1,14 +1,14 @@
 # Netnyahoo
 
-A macOS browser that looks and feels like [Dia](https://diabrowser.com): Chromium rendering through our
-own patched, Chrome-style build of CEF, an Expo + React Native macOS shell, and Metal shaders
+A macOS browser that looks and feels like [Dia](https://diabrowser.com): Chrome's own framework from our
+patched Chromium with our layer on top (NNCore), an Expo + React Native macOS shell, and Metal shaders
 reconstructed from Dia's own New Tab effects.
 
 ```
 apps/
   browser/            Expo + react-native-macos app (UI in src/, Xcode project in macos/)
 packages/
-  cef/                The engine: CEF 154 (Chrome tabs hosted in our views), JS API in src/
+  nncore/             The engine: Chromium 154's framework with our layer (Chrome tabs hosted in our views), JS API in src/
   shell/              Native menu bar + shortcuts → JS, windows, SF Symbols, native primitives
   shaders/            Metal: New Tab effects + grained OKLab window backdrop
   import/             Import from other browsers (bookmarks, history, passwords, Arc spaces)
@@ -23,13 +23,10 @@ Requires Xcode 26+, CocoaPods, Node 22+, pnpm 11.
 pnpm install
 ```
 
-Install the engine: our own CEF build, the one `packages/cef/engine.lock` pins. This copies it from
-`~/chromium-build` when you build the engine yourself (`docs/cef-source-build.md`; the first build takes
-about 2 hours), and otherwise downloads it (`gh`, signed in):
-
-```bash
-packages/cef/scripts/setup.sh
-```
+Build the engine: Chrome's framework from our patched Chromium tree in `~/chromium-build`
+(`docs/cef-source-build.md` › "Rebuilding", then `engine/chromium/apply.sh`, `engine/nncore/apply.sh` and
+`autoninja -C out/Release_GN_arm64 chrome_framework`; the first build takes about 2 hours). The app's build stages
+it from there.
 
 ```bash
 pnpm pods
@@ -41,7 +38,8 @@ In one terminal, start Metro:
 pnpm dev
 ```
 
-In another, build and launch the Debug app:
+In another, build and launch the Debug app (on its own data, `~/Library/Application Support/Netnyahoo Dev`, or
+`NETNYAHOO_DATA_DIR`):
 
 ```bash
 pnpm macos
