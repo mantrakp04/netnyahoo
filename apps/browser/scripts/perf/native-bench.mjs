@@ -275,14 +275,15 @@ class Instance {
     this.seq = 0;
   }
   async launch() {
-    const exe = join(benchApp, "Contents/MacOS/Netnyahoo");
+    const exe = join(benchApp, "Contents/MacOS", execFileSync("defaults", ["read", join(benchApp, "Contents/Info.plist"), "CFBundleExecutable"], { encoding: "utf8" }).trim());
     const main = `^${exe.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`;
     if (spawnSync("pgrep", ["-f", main]).status === 0) throw new Error("a bench instance is still running");
     this.t0 = Date.now();
     execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${this.dataDir}`,
       "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${this.port}`, "--env", `NETNYAHOO_UPDATE_FEED_URL=${this.feed}`, benchApp,
       // App Nap would stretch the hidden instance's timers (a tab switch after a quiet minute took seconds).
-      "--args", "-NSAppSleepDisabled", "YES"]);
+      // BENCH_ALLOW_APP_NAP=1 leaves it on: the control for the App Nap check in the table.
+      ...(process.env.BENCH_ALLOW_APP_NAP ? [] : ["--args", "-NSAppSleepDisabled", "YES"])]);
     for (let i = 0; i < 400 && !this.pid; i++) {
       const r = spawnSync("pgrep", ["-f", main], { encoding: "utf8" });
       if (r.status === 0) this.pid = +r.stdout.trim().split("\n")[0];
@@ -406,7 +407,27 @@ async function idleWindow(app, secs) {
   await sleep(secs * 1000);
   const b = usage(app.pid);
   await sleep(2000);
-  return usageDelta(a, b);
+  // App Nap check: a napped app answers its first command late and stretches a 100 ms timer (the bench passes
+  // -NSAppSleepDisabled; NNCore keeps Cocoa's argument-domain switches off Chrome's command line, AppKit reads them).
+  const asked = Date.now();
+  const late = await app.run(`return new Promise((r) => { const t = Date.now(); setTimeout(() => r(Date.now() - t - 100), 100); });`);
+  return { ...usageDelta(a, b), afterIdle: { commandMs: Date.now() - asked, timerLateMs: late } };
+}
+
+// Whether the page on screen can paint right now: frames in 250 ms of requestAnimationFrame. A window macOS stops
+// giving display-link frames (the display asleep, or a covered window on some systems) paints about once a second
+// whatever the app does, so a sample taken then measures that, not the app: it's counted and left out of the medians.
+async function throttled(app) {
+  for (const t of await app.cdp.targets()) {
+    const r = await app.cdp.send(t, "Runtime.evaluate", {
+      expression: `document.visibilityState !== "visible" ? -1 : new Promise((done) => { let n = 0; const t0 = performance.now();
+        (function f() { n++; if (performance.now() - t0 < 250) requestAnimationFrame(f); else done(n); })(); })`,
+      awaitPromise: true, returnByValue: true,
+    }, 3000).catch(() => null);
+    const frames = r?.result?.value;
+    if (typeof frames === "number" && frames >= 0) return frames < 5;
+  }
+  return null;
 }
 
 async function openTabs(app, from, to, kind = "static") {
@@ -423,7 +444,7 @@ async function tabIds(app) {
 async function sessionRun(template, i) {
   const secs = +opt.idle;
   const app = new Instance(freshDir(template, `session-${i}`), +opt.port, `${base()}/appcast.xml`);
-  const r = { memory: {}, idle: {}, tabSwitch: [], newTab: [], newWindow: [], processes: {} };
+  const r = { memory: {}, idle: {}, tabSwitch: [], newTab: [], newWindow: [], processes: {}, throttled: { tabSwitch: 0, newTab: 0 } };
   try {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
@@ -445,19 +466,23 @@ async function sessionRun(template, i) {
       const marker = url.match(/id=(t\d+)/)[1];
       const target = await app.cdp.find(`id=${marker}`);
       const before = (await app.cdp.state(target))?.shown.length ?? 0;
+      const hidden = await throttled(app);
       const at = await app.run(`const t = nn.now(); nn.actions.switchToTab(${JSON.stringify(id)}); return t;`);
       const s = await app.pageState(`id=${marker}`, 5000, (st) => st.shown.length > before);
       const shown = s?.shown.at(-1);
-      r.tabSwitch.push(shown ? shown[1] - at : NaN);
+      if (hidden) r.throttled.tabSwitch++;
+      r.tabSwitch.push(shown && !hidden ? shown[1] - at : NaN);
       if (process.env.BENCH_DEBUG) log("switch", marker, "before", before, "at", at - Date.now(), "state", JSON.stringify((await app.cdp.state(target)) ?? null)?.slice(0, 300));
       await sleep(400);
     }
 
     // New tabs with a page: command → first contentful paint.
     for (let k = 0; k < 5; k++) {
+      const hidden = await throttled(app);
       const at = await app.run(`const t = nn.now(); nn.store.getState().newTab(${WINDOW}, { url: "${base()}/static?id=n${k}" }); return t;`);
       const s = await app.pageState(`id=n${k}`, 20_000, (st) => st.fcp);
-      r.newTab.push(s ? s.fcp - at : NaN);
+      if (hidden) r.throttled.newTab++;
+      r.newTab.push(s && !hidden ? s.fcp - at : NaN);
       await sleep(800);
     }
     await app.run(`const s = nn.store.getState(); for (const id of Object.keys(s.tabs)) if (s.tabs[id].url.includes("id=n")) nn.store.getState().closeTab(id); return true;`);
@@ -597,7 +622,8 @@ function summarizeSample(file) {
     samples: total,
     waiting: idleWait,
     busy: total - idleWait,
-    cefWork: count("CefDoMessageLoopWork"),
+    // Chromium's own work on the main thread: CEF's pump (0.2.21 and older) or NNCore's run loop source.
+    engineWork: count("CefDoMessageLoopWork|MessagePumpCFRunLoopBase::RunWorkSource"),
     metalDraw: count("MTKView draw|\\bdraw\\(in:"),
     caCommit: count("CA::Transaction::commit"),
     rnLayout: count("RCTUIManager|YGNodeCalculateLayout"),
@@ -628,6 +654,8 @@ function summary(res) {
   for (const m of ["tabs1", "tabs10", "tabs20", "closed"]) add(`memory (phys_footprint), ${m === "closed" ? "after closing back to 1 tab" : m.slice(4) + " tab(s)"}`, S.map((r) => r.memory[m]?.totalMB), "MB");
   add("memory, browser process, 20 tabs", S.map((r) => r.memory.tabs20?.kinds.browser), "MB");
   add("memory, browser process, after closing", S.map((r) => r.memory.closed?.kinds.browser), "MB");
+  add("after an idle minute: command answered (App Nap check)", S.map((r) => r.idle.tabs1?.afterIdle?.commandMs), "ms");
+  add("samples left out: page couldn't paint (switch + new tab, per run)", S.map((r) => r.throttled ? r.throttled.tabSwitch + r.throttled.newTab : NaN), "");
   add("tab switch → shown (median of 16 per run)", S.map((r) => median(r.tabSwitch)), "ms");
   add("new tab → first paint (median of 5 per run)", S.map((r) => median(r.newTab)), "ms");
   add("new window → on screen (median of 3 per run)", S.map((r) => median(r.newWindow.map((w) => w.window))), "ms");
