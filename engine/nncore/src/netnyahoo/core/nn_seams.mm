@@ -24,6 +24,7 @@
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_guest.h"
 #include "netnyahoo/core/nn_browser.h"
+#include "components/tabs/public/tab_interface.h"
 
 namespace cef {
 
@@ -93,7 +94,19 @@ bool HandleExtensionSidePanel(BrowserWindowInterface* browser_window,
                               content::WebContents* web_contents,
                               const extensions::ExtensionId& extension_id,
                               bool open) {
-  return false;
+  // An extension opening (chrome.sidePanel.open) or closing its side panel: the host's
+  // tabs show it in their own panel.
+  content::WebContents* contents = web_contents;
+  if (!contents && browser_window && browser_window->GetActiveTabInterface()) {
+    contents = browser_window->GetActiveTabInterface()->GetContents();
+  }
+  BrowserWindowInterface* browser =
+      contents ? GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents)
+               : browser_window;
+  if (!contents || !nncore::WindowHost::ForBrowser(browser)) {
+    return false;
+  }
+  return nncore::HostExtensionSidePanel(contents, extension_id, open);
 }
 
 bool IsHiddenFromExtensions(const BrowserWindowInterface* browser) {

@@ -20,6 +20,7 @@ if [[ "${1:-}" == --check ]]; then
     grep -q '"//netnyahoo/core"' "$src/chrome/BUILD.gn" &&
     grep -q 'g_netnyahoo_browser_window_factory(this)' "$src/chrome/browser/ui/browser.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/sad_tab_controller.cc" &&
+    grep -q 'g_netnyahoo_external_protocol_dialog(' "$src/chrome/browser/external_protocol/external_protocol_handler.cc" &&
     grep -q 'nncore::NNMainDelegate' "$src/chrome/app/chrome_main.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc"
@@ -27,7 +28,8 @@ if [[ "${1:-}" == --check ]]; then
 fi
 
 mkdir -p "$src/netnyahoo"
-rsync -a --delete --checksum "$here/src/netnyahoo/" "$src/netnyahoo/"
+# No -t: a changed file gets a new mtime, so ninja always sees it (a restored older copy too).
+rsync -r --delete --checksum "$here/src/netnyahoo/" "$src/netnyahoo/"
 
 python3 - "$src/chrome/BUILD.gn" <<'PY'
 import re, sys
@@ -189,4 +191,44 @@ new = """  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(bro
 assert s.count(old) == 1
 open(path, "w").write(s.replace(old, new))
 print("hooked SadTabController")
+PY2
+
+# Chrome's "Open <app>?" dialog for a link to another app (mailto: aside, which Chrome opens
+# unasked) asks NNCore first, before the Mac's "no app for this scheme" check: for the host's
+# tabs the host shows its own (and launches through Chrome on "open"). Only NNCore sets the
+# hook, so CEF behaves as before.
+python3 - "$src/chrome/browser/external_protocol/external_protocol_handler.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_external_protocol_dialog" in s:
+    sys.exit(0)
+old_fn = "\nnamespace {\n"
+decl = """
+// Netnyahoo: NNCore (engine/nncore) shows this dialog itself for the tabs it hosts.
+bool (*g_netnyahoo_external_protocol_dialog)(
+    const GURL& url,
+    content::WebContents* web_contents,
+    const std::optional<url::Origin>& initiating_origin,
+    content::WeakDocumentPtr initiator_document,
+    const std::u16string& program_name) = nullptr;
+"""
+old = """  DCHECK(web_contents);
+  if (delegate) {
+    delegate->RunExternalProtocolDialog(url, web_contents, page_transition,"""
+new = """  DCHECK(web_contents);
+  // Netnyahoo: NNCore
+  if (!delegate && g_netnyahoo_external_protocol_dialog &&
+      g_netnyahoo_external_protocol_dialog(url, web_contents, initiating_origin,
+                                           initiator_document, program_name)) {
+    return;
+  }
+  if (delegate) {
+    delegate->RunExternalProtocolDialog(url, web_contents, page_transition,"""
+assert s.count(old) == 1
+at = s.index(old_fn)  # the first anonymous namespace: the hook stays out of it
+s = s[:at] + decl + s[at:]
+s = s.replace(old, new)
+open(path, "w").write(s)
+print("hooked external protocol dialog")
 PY2

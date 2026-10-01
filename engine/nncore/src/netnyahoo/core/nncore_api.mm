@@ -27,6 +27,10 @@
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_observer.h"
+#include "chrome/browser/profiles/profile_manager_observer.h"
+#include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
+#include "content/public/browser/browsing_data_remover.h"
+#include "components/prefs/pref_service.h"
 #include "base/scoped_observation.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/browser.h"
@@ -60,6 +64,29 @@
 #include "netnyahoo/core/nn_lifetime.h"
 #include "netnyahoo/core/nn_main_delegate.h"
 #include "netnyahoo/core/nn_page_channel.h"
+#include "netnyahoo/core/nn_tab_info.h"
+#include "netnyahoo/core/nn_permissions.h"
+#include "chrome/browser/extensions/component_loader.h"
+#include "extensions/common/manifest.h"
+#include "extensions/common/mojom/manifest.mojom-shared.h"
+#include "netnyahoo/core/nn_external_apps.h"
+#include "base/base64.h"
+#include "chrome/browser/extensions/api/side_panel/side_panel_service.h"
+#include "chrome/browser/extensions/extension_action_runner.h"
+#include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom.h"
+#include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
+#include "ui/gfx/codec/png_codec.h"
+#include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/image/image_skia_rep.h"
+#include "base/auto_reset.h"
+#include "base/strings/string_number_conversions.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "components/blocked_content/popup_blocker_tab_helper.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/zoom/page_zoom.h"
+#include "components/zoom/zoom_controller.h"
+#include "content/public/common/page_zoom.h"
+#include "third_party/blink/public/common/page/page_zoom.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -143,6 +170,99 @@ class ProfileGoneObserver : public ProfileObserver {
  private:
   __weak NNCoreProfile* wrapper_;
   base::ScopedObservation<Profile, ProfileObserver> observation_{this};
+};
+
+// "#rrggbb", or null for a transparent colour (NNChromeUI.mm HexColor).
+id HexColor(SkColor color) {
+  if (!SkColorGetA(color)) {
+    return NSNull.null;
+  }
+  return [NSString stringWithFormat:@"#%02x%02x%02x", SkColorGetR(color),
+                                    SkColorGetG(color), SkColorGetB(color)];
+}
+
+// A data: URL of the image's 2x PNG (the toolbar draws on Retina screens), as CEF's.
+NSString* PngDataURL(const gfx::Image& image) {
+  if (image.IsEmpty()) {
+    return @"";
+  }
+  const gfx::ImageSkiaRep& rep = image.ToImageSkia()->GetRepresentation(2.0f);
+  std::optional<std::vector<uint8_t>> png = gfx::PNGCodec::EncodeBGRASkBitmap(
+      rep.GetBitmap(), /*discard_transparency=*/false);
+  if (!png) {
+    return @"";
+  }
+  return NS("data:image/png;base64," + base::Base64Encode(*png));
+}
+
+// Prefs CEF set on every profile it loaded (packages/cef/ios/NNEngine.mm WhenProfileReady):
+// a new session starts on a new tab, and the download bubble doesn't open by itself.
+void PrepareProfilePrefs(Profile* profile) {
+  if (!profile || profile->IsOffTheRecord()) {
+    return;
+  }
+  PrefService* prefs = profile->GetPrefs();
+  if (prefs->FindPreference("session.restore_on_startup")) {
+    prefs->SetInteger("session.restore_on_startup", 5);
+  }
+  if (prefs->FindPreference("download_bubble.partial_view_enabled")) {
+    prefs->SetBoolean("download_bubble.partial_view_enabled", false);
+  }
+}
+
+class ProfilePrefsApplier : public ProfileManagerObserver {
+ public:
+  explicit ProfilePrefsApplier(ProfileManager* manager) {
+    observation_.Observe(manager);
+  }
+  void OnProfileAdded(Profile* profile) override { PrepareProfilePrefs(profile); }
+  // (g_browser_process->profile_manager() is already null here: it is being destroyed.)
+  void OnProfileManagerDestroying() override { observation_.Reset(); }
+
+ private:
+  base::ScopedObservation<ProfileManager, ProfileManagerObserver> observation_{this};
+};
+
+void StartApplyingProfilePrefs() {
+  ProfileManager* manager = g_browser_process->profile_manager();
+  for (Profile* profile : manager->GetLoadedProfiles()) {
+    PrepareProfilePrefs(profile);
+  }
+  static base::NoDestructor<ProfilePrefsApplier> applier(manager);
+}
+
+// The prefs the host may read and write (NNCoreProfile boolPreference:).
+bool IsHostPreference(const std::string& name) {
+  static const char* const kAllowed[] = {
+      "credentials_enable_service", "autofill.profile_enabled",
+      "autofill.credit_card_enabled", "download_bubble.partial_view_enabled"};
+  for (const char* allowed : kAllowed) {
+    if (name == allowed) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// One BrowsingDataRemover task; deletes itself when it reports.
+class BrowsingDataDone : public content::BrowsingDataRemover::Observer {
+ public:
+  BrowsingDataDone(content::BrowsingDataRemover* remover, void (^completion)(void))
+      : completion_(completion) {
+    observation_.Observe(remover);
+  }
+  void OnBrowsingDataRemoverDone(uint64_t failed_data_types) override {
+    if (completion_) {
+      completion_();
+    }
+    delete this;
+  }
+
+ private:
+  void (^completion_)(void);
+  base::ScopedObservation<content::BrowsingDataRemover,
+                          content::BrowsingDataRemover::Observer>
+      observation_{this};
 };
 
 class ActionPopup;
@@ -273,6 +393,36 @@ BrowserWindow* WindowForChromeBrowser(Browser* browser) {
 
 }  // namespace
 
+namespace nncore {
+
+void HostPermissionRequest(content::WebContents* contents, NSDictionary* request) {
+  if ([g_delegate respondsToSelector:@selector(engine:permissionRequest:tab:)]) {
+    [g_delegate engine:g_engine
+        permissionRequest:request
+                      tab:TabBridge::GetOrCreate(contents)->tab()];
+  }
+}
+
+bool HostExtensionSidePanel(content::WebContents* contents,
+                            const std::string& extension_id,
+                            bool open) {
+  if (![g_delegate respondsToSelector:@selector(engine:extensionSidePanel:tab:)]) {
+    return false;
+  }
+  [g_delegate engine:g_engine
+      extensionSidePanel:@{@"extensionId" : NS(extension_id), @"open" : @(open)}
+                     tab:TabBridge::GetOrCreate(contents)->tab()];
+  return true;
+}
+
+void HostPermissionRequestDismissed(NSString* request_id) {
+  if ([g_delegate respondsToSelector:@selector(engine:permissionRequestDismissed:)]) {
+    [g_delegate engine:g_engine permissionRequestDismissed:request_id];
+  }
+}
+
+}  // namespace nncore
+
 // The C entry point, for hosts that don't use the ObjC runtime to start.
 extern "C" __attribute__((visibility("default"))) int NNCoreMain(
     int argc,
@@ -308,7 +458,13 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
       }),
   });
   nncore::SetEngineCallbacks({
-      .started = base::BindOnce([] { [g_delegate engineDidStart]; }),
+      .started = base::BindOnce([] {
+        StartApplyingProfilePrefs();
+        nncore::InstallPermissionPrompts();
+        nncore::StartMediaCaptureObserver();
+        nncore::InstallExternalAppPrompts();
+        [g_delegate engineDidStart];
+      }),
       .shutting_down = base::BindOnce([] {
         // Before Chrome tears profiles down: a popup's host keeps its extension's
         // renderer alive.
@@ -321,6 +477,20 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 
   // The host owns every window: Chrome opens none at startup and never restores its own.
   std::vector<const char*> args(argv, argv + argc);
+  // Chrome's discard keeps the tab's WebContents (and so its NNCoreTab) instead of replacing
+  // it: WebContentsDiscard, merged into the host's own --enable-features.
+  static std::string features = "--enable-features=WebContentsDiscard";
+  bool merged = false;
+  for (const char*& arg : args) {
+    if (strncmp(arg, "--enable-features=", 18) == 0 && !merged) {
+      features = std::string(arg) + ",WebContentsDiscard";
+      arg = features.c_str();
+      merged = true;
+    }
+  }
+  if (!merged) {
+    args.push_back(features.c_str());
+  }
   args.push_back("--no-startup-window");
   args.push_back("--no-first-run");
   args.push_back("--no-default-browser-check");
@@ -364,6 +534,17 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 - (void)setPageScript:(NSString*)pageScript {
   nncore::SetPageScript(pageScript ? base::SysNSStringToUTF8(pageScript)
                                    : std::string());
+}
+
+- (void)resolvePermission:(NSString*)requestId
+                   result:(NSString*)result
+                 remember:(BOOL)remember {
+  nncore::ResolvePermission(base::SysNSStringToUTF8(requestId),
+                            base::SysNSStringToUTF8(result), remember);
+}
+
++ (void)resolveExternalApp:(NSString*)requestId open:(BOOL)open remember:(BOOL)remember {
+  nncore::ResolveExternalApp(base::SysNSStringToUTF8(requestId), open, remember);
 }
 
 - (NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile {
@@ -465,6 +646,86 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   installer->Load(base::FilePath(base::SysNSStringToUTF8(path)));
 }
 
+- (NSNumber*)boolPreference:(NSString*)name {
+  const std::string key = base::SysNSStringToUTF8(name);
+  if (!_profile || !IsHostPreference(key)) {
+    return nil;
+  }
+  const PrefService::Preference* pref = _profile->GetPrefs()->FindPreference(key);
+  return pref && pref->GetValue()->is_bool() ? @(pref->GetValue()->GetBool()) : nil;
+}
+
+- (void)setBoolPreference:(NSString*)name value:(BOOL)value {
+  const std::string key = base::SysNSStringToUTF8(name);
+  if (_profile && IsHostPreference(key) &&
+      _profile->GetPrefs()->FindPreference(key)) {
+    _profile->GetPrefs()->SetBoolean(key, value);
+  }
+}
+
+- (void)clearBrowsingData:(NSArray<NSString*>*)types
+                    since:(NSDate*)since
+               completion:(void (^)(void))completion {
+  // The categories of Chrome's "Delete browsing data" dialog (as CEF's ClearBrowsingData).
+  uint64_t mask = 0;
+  for (NSString* type in types) {
+    if ([type isEqualToString:@"history"]) {
+      mask |= chrome_browsing_data_remover::DATA_TYPE_HISTORY;
+    } else if ([type isEqualToString:@"siteData"]) {
+      mask |= chrome_browsing_data_remover::DATA_TYPE_SITE_DATA;
+    } else if ([type isEqualToString:@"cache"]) {
+      mask |= content::BrowsingDataRemover::DATA_TYPE_CACHE;
+    } else if ([type isEqualToString:@"downloads"]) {
+      mask |= content::BrowsingDataRemover::DATA_TYPE_DOWNLOADS;
+    }
+  }
+  if (!_profile || !mask) {
+    if (completion) {
+      completion();
+    }
+    return;
+  }
+  content::BrowsingDataRemover* remover = _profile->GetBrowsingDataRemover();
+  const base::Time begin =
+      since ? base::Time::FromSecondsSinceUnixEpoch(since.timeIntervalSince1970)
+            : base::Time();
+  remover->RemoveAndReply(begin, base::Time::Max(), mask,
+                          content::BrowsingDataRemover::ORIGIN_TYPE_UNPROTECTED_WEB,
+                          new BrowsingDataDone(remover, completion));
+}
+
+- (NSString*)loadComponentExtension:(NSString*)path {
+  if (!_profile || !path.length) {
+    return nil;
+  }
+  const base::FilePath root(base::SysNSStringToUTF8(path));
+  // Already running from there: nothing to do (a reload would restart its worker).
+  for (const auto& extension :
+       extensions::ExtensionRegistry::Get(_profile)->enabled_extensions()) {
+    if (extension->location() == extensions::mojom::ManifestLocation::kComponent &&
+        extension->path() == root) {
+      return NS(extension->id());
+    }
+  }
+  // Chrome's component extensions (its own built-ins): the manifest's key fixes the id;
+  // hidden from chrome://extensions and the user's list, as CEF's LoadComponentExtension.
+  extensions::ComponentLoader* loader = extensions::ComponentLoader::Get(_profile);
+  if (!loader) {
+    return nil;
+  }
+  const std::string extension_id = loader->AddOrReplace(root);
+  return extension_id.empty() ? nil : NS(extension_id);
+}
+
+- (void)unloadComponentExtension:(NSString*)extensionId {
+  if (!_profile) {
+    return;
+  }
+  if (extensions::ComponentLoader* loader = extensions::ComponentLoader::Get(_profile)) {
+    loader->Remove(extensions::ExtensionId(base::SysNSStringToUTF8(extensionId)));
+  }
+}
+
 - (NSArray<NSDictionary<NSString*, id>*>*)extensions {
   NSMutableArray* list = [NSMutableArray array];
   if (!_profile) {
@@ -473,6 +734,10 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   auto* registry = extensions::ExtensionRegistry::Get(_profile);
   auto* actions = extensions::ExtensionActionManager::Get(_profile);
   for (const auto& extension : registry->enabled_extensions()) {
+    // The user's extensions: not Chrome's built-ins or the host's component ones.
+    if (extensions::Manifest::IsComponentLocation(extension->location())) {
+      continue;
+    }
     extensions::ExtensionAction* action =
         actions->GetExtensionAction(*extension);
     [list addObject:@{
@@ -582,6 +847,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
     return;
   }
   _host->SetActiveProfile(browser->GetProfile());
+  nncore::TabBridge::GetOrCreate(contents)->NoteHostFocus();
   TabStripModel* model = browser->GetTabStripModel();
   int index = model->GetIndexOfWebContents(contents);
   if (index != TabStripModel::kNoTab && index != model->active_index()) {
@@ -706,6 +972,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 @implementation NNCoreTab {
   raw_ptr<content::WebContents> _contents;
   int _browserId;
+  NSColor* __strong _pageBackgroundColor;
 }
 
 @synthesize delegate = _delegate;
@@ -804,6 +1071,261 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
     nncore::PageChannel::GetOrCreate(_contents)->Execute(
         base::SysNSStringToUTF8(code));
   }
+}
+
+- (NSDictionary*)securityInfo {
+  return nncore::SecurityInfoFor(_contents);
+}
+
+- (double)zoomFactor {
+  return _contents ? blink::ZoomLevelToZoomFactor(
+                         zoom::ZoomController::GetZoomLevelForWebContents(_contents))
+                   : 1;
+}
+
+- (void)setZoomFactor:(double)zoomFactor {
+  if (!_contents || zoomFactor <= 0) {
+    return;
+  }
+  if (auto* zoom = zoom::ZoomController::FromWebContents(_contents)) {
+    // Chrome's per-site zoom (HostZoomMap), as its menu sets it.
+    zoom->SetZoomLevel(blink::ZoomFactorToZoomLevel(zoomFactor));
+  }
+}
+
+- (void)zoomStep:(int)direction {
+  if (_contents) {
+    zoom::PageZoom::Zoom(_contents, direction > 0   ? content::PAGE_ZOOM_IN
+                                    : direction < 0 ? content::PAGE_ZOOM_OUT
+                                                    : content::PAGE_ZOOM_RESET);
+  }
+}
+
+- (double)pinchScale {
+  return _contents ? nncore::TabBridge::GetOrCreate(_contents)->pinch_scale() : 1;
+}
+
+- (BOOL)discard {
+  if (!_contents) {
+    return NO;
+  }
+  auto* unit =
+      resource_coordinator::TabLifecycleUnitExternal::FromWebContents(_contents);
+  // Chrome's discard: the page goes, the tab (and this object) stays; it reloads on use.
+  return unit && unit->DiscardTab(
+                     ::mojom::LifecycleUnitDiscardReason::EXTERNAL);
+}
+
+- (BOOL)discarded {
+  return _contents && _contents->WasDiscarded();
+}
+
+- (BOOL)frozen {
+  return _contents && nncore::TabBridge::GetOrCreate(_contents)->frozen();
+}
+
+- (void)setFrozen:(BOOL)frozen {
+  // Chrome freezes hidden pages only (a shown page unfreezes).
+  if (frozen && _contents &&
+      _contents->GetVisibility() == content::Visibility::VISIBLE) {
+    return;
+  }
+  if (_contents) {
+    nncore::TabBridge::GetOrCreate(_contents)->set_frozen(frozen);
+    _contents->SetPageFrozen(frozen);
+  }
+}
+
+- (void)resolveUnresponsive:(BOOL)terminate {
+  if (_contents) {
+    nncore::TabBridge::GetOrCreate(_contents)->ResolveUnresponsive(terminate);
+  }
+}
+
+- (NSColor*)pageBackgroundColor {
+  return _pageBackgroundColor;
+}
+
+- (void)setPageBackgroundColor:(NSColor*)color {
+  _pageBackgroundColor = color;
+  if (!_contents) {
+    return;
+  }
+  if (!color) {
+    _contents->SetPageBaseBackgroundColor(std::nullopt);
+    return;
+  }
+  NSColor* rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+  _contents->SetPageBaseBackgroundColor(SkColorSetARGB(
+      rgb.alphaComponent * 255, rgb.redComponent * 255, rgb.greenComponent * 255,
+      rgb.blueComponent * 255));
+}
+
+- (NSString*)executeExtensionAction:(NSString*)extensionId {
+  if (!_contents) {
+    return @"none";
+  }
+  const extensions::Extension* extension =
+      extensions::ExtensionRegistry::Get(_contents->GetBrowserContext())
+          ->enabled_extensions()
+          .GetByID(base::SysNSStringToUTF8(extensionId));
+  auto* runner = extensions::ExtensionActionRunner::GetForWebContents(_contents);
+  if (!extension || !runner) {
+    return @"none";
+  }
+  // As a click on its toolbar button (grants activeTab); the host shows what it asks for.
+  switch (runner->RunAction(extension, /*grant_tab_permissions=*/true)) {
+    case extensions::ExtensionAction::ShowAction::kShowPopup:
+      return @"popup";
+    case extensions::ExtensionAction::ShowAction::kToggleSidePanel:
+      return @"sidePanel";
+    case extensions::ExtensionAction::ShowAction::kNone:
+      return @"none";
+  }
+  return @"none";
+}
+
+- (NSDictionary<NSString*, NSDictionary*>*)actionStatesForExtensions:
+    (NSArray<NSString*>*)extensionIds {
+  NSMutableDictionary* states = [NSMutableDictionary dictionary];
+  if (!_contents) {
+    return states;
+  }
+  content::BrowserContext* context = _contents->GetBrowserContext();
+  const int tab_id = self.tabId;
+  for (NSString* extensionId in extensionIds) {
+    const extensions::Extension* extension =
+        extensions::ExtensionRegistry::Get(context)->enabled_extensions().GetByID(
+            base::SysNSStringToUTF8(extensionId));
+    extensions::ExtensionAction* action =
+        extension ? extensions::ExtensionActionManager::Get(context)
+                        ->GetExtensionAction(*extension)
+                  : nullptr;
+    if (!action) {
+      continue;
+    }
+    gfx::Image icon = action->GetExplicitlySetIcon(tab_id);
+    if (icon.IsEmpty()) {
+      icon = action->GetDeclarativeIcon(tab_id);
+    }
+    NSString* badge = NS(action->GetDisplayBadgeText(tab_id));
+    // JS ActionState (packages/cef/src/extensions.ts), as NNChromeUI.mm shapes it.
+    states[extensionId] = @{
+      @"title" : NS(action->GetTitle(tab_id)),
+      @"badgeText" : [badge hasPrefix:@"<<"] ? @"" : badge,
+      @"badgeColor" : HexColor(action->GetBadgeBackgroundColor(tab_id)),
+      @"badgeTextColor" : HexColor(action->GetBadgeTextColor(tab_id)),
+      @"popup" : NS(action->GetPopupUrl(tab_id).spec()),
+      @"enabled" : @(action->GetIsVisible(tab_id)),
+      @"icon" : PngDataURL(icon),
+    };
+  }
+  return states;
+}
+
+- (NSString*)sidePanelURLForExtension:(NSString*)extensionId {
+  if (!_contents) {
+    return nil;
+  }
+  content::BrowserContext* context = _contents->GetBrowserContext();
+  const extensions::Extension* extension =
+      extensions::ExtensionRegistry::Get(context)->enabled_extensions().GetByID(
+          base::SysNSStringToUTF8(extensionId));
+  auto* service = extension ? extensions::SidePanelService::Get(context) : nullptr;
+  if (!service) {
+    return nil;
+  }
+  auto options = service->GetOptions(*extension, self.tabId);
+  if (!options.path || !options.enabled.value_or(false)) {
+    return nil;
+  }
+  return NS(extension->GetResourceURL(*options.path).spec());
+}
+
+- (void)openBlockedPopup:(NSString*)popupId always:(BOOL)always {
+  if (nncore::IsNotifyingTabStrip()) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self openBlockedPopup:popupId always:always];
+    });
+    return;
+  }
+  if (!_contents) {
+    return;
+  }
+  auto* popups = blocked_content::PopupBlockerTabHelper::FromWebContents(_contents);
+  int id_number = 0;
+  // Only a popup this page still has (Chrome drops them when the page navigates).
+  if (!popups || !base::StringToInt(base::SysNSStringToUTF8(popupId), &id_number) ||
+      !popups->GetBlockedPopupRequests().contains(id_number)) {
+    return;
+  }
+  if (always) {
+    // Chrome's "Always allow pop-ups from this site".
+    HostContentSettingsMapFactory::GetForProfile(_contents->GetBrowserContext())
+        ->SetContentSettingDefaultScope(_contents->GetLastCommittedURL(), GURL(),
+                                        ContentSettingsType::POPUPS,
+                                        CONTENT_SETTING_ALLOW);
+  }
+  // Chrome navigates the request it kept (POST body, opener, referrer); it lands as a tab
+  // of ours, reported with this page as its opener.
+  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(_contents);
+  nncore::WindowHost* host = nncore::WindowHost::ForBrowser(browser);
+  std::optional<base::AutoReset<nncore::WindowHost::PendingOpen>> pending;
+  if (host) {
+    pending.emplace(&host->pending_open(),
+                    nncore::WindowHost::PendingOpen{
+                        WindowOpenDisposition::NEW_FOREGROUND_TAB,
+                        _contents->GetWeakPtr()});
+  }
+  popups->ShowBlockedPopup(id_number, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+}
+
+- (BOOL)executeChromeCommand:(int)command {
+  if (nncore::IsNotifyingTabStrip()) {
+    // Inside a tab-strip callback: on the next turn (YES: queued).
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self executeChromeCommand:command];
+    });
+    return YES;
+  }
+  if (!_contents) {
+    return NO;
+  }
+  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(_contents);
+  if (!browser) {
+    return NO;
+  }
+  TabStripModel* model = browser->GetTabStripModel();
+  const int index = model->GetIndexOfWebContents(_contents);
+  const int active = model->active_index();
+  if (index == TabStripModel::kNoTab) {
+    return NO;
+  }
+  if (index == active) {
+    return chrome::ExecuteCommand(browser, command);
+  }
+  // Chrome's page commands act on the active tab: this one, for a moment, unreported.
+  nncore::WindowHost* host = nncore::WindowHost::ForBrowser(browser);
+  if (host) {
+    host->set_quiet_activation(true);
+  }
+  base::WeakPtr<content::WebContents> previous =
+      active != TabStripModel::kNoTab ? model->GetWebContentsAt(active)->GetWeakPtr()
+                                      : nullptr;
+  model->ActivateTabAt(index);
+  const bool ran = chrome::ExecuteCommand(browser, command);
+  // Back to the tab that was active (by identity: the command may have moved or closed tabs).
+  const int back = previous ? model->GetIndexOfWebContents(previous.get())
+                            : TabStripModel::kNoTab;
+  if (back != TabStripModel::kNoTab && back != model->active_index()) {
+    model->ActivateTabAt(back);
+  }
+  if (host) {
+    host->set_quiet_activation(false);
+  }
+  return ran;
 }
 
 - (void)executeJavaScript:(NSString*)code frame:(NSString*)frameId {
@@ -922,6 +1444,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 
 - (void)focus {
   if (_contents) {
+    nncore::TabBridge::GetOrCreate(_contents)->NoteHostFocus();
     _contents->Focus();
   }
 }

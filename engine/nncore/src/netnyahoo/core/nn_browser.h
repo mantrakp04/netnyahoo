@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
@@ -19,6 +20,11 @@
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "components/favicon/core/favicon_driver_observer.h"
 #include "components/find_in_page/find_result_observer.h"
+#include "components/zoom/zoom_controller.h"
+#include "components/blocked_content/popup_blocker_tab_helper.h"
+#include "components/blocked_content/url_list_manager.h"
+#include "base/time/time.h"
+#include "components/zoom/zoom_observer.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -28,6 +34,7 @@
 #include "url/gurl.h"
 
 @class NNCoreTab;
+@class NSDictionary;
 @class NNCoreWindow;
 @class NSView;
 @class NSWindow;
@@ -74,6 +81,9 @@ class WindowHost : public TabStripModelObserver,
   void SetActiveProfile(Profile* profile);
   Profile* active_profile() const { return active_profile_; }
   bool IsActiveBrowser(const Browser* browser) const;
+  // While set, Chrome's active-tab changes aren't reported (a command run in a background
+  // tab activates it for a moment).
+  void set_quiet_activation(bool quiet) { quiet_activation_ = quiet; }
   // The close can no longer be cancelled: every Browser is closing.
   bool closing() const { return close_state_ == CloseState::kClosing; }
   // Cancellable: beforeunload in every Browser, then the downloads the close would cancel;
@@ -146,6 +156,7 @@ class WindowHost : public TabStripModelObserver,
   raw_ptr<Profile> active_profile_ = nullptr;
   CloseState close_state_ = CloseState::kOpen;
   bool widget_close_allowed_ = false;
+  bool quiet_activation_ = false;
   PendingOpen pending_open_;
   base::ObserverList<web_modal::ModalDialogHostObserver> modal_observers_;
   base::WeakPtrFactory<WindowHost> weak_factory_{this};
@@ -212,6 +223,15 @@ NNBrowserDelegate* DelegateFor(const BrowserWindowInterface* browser);
 // asks for now must wait for the next turn.
 bool IsNotifyingTabStrip();
 
+// An extension's side panel opening or closing in one of the host's tabs (the API tells the
+// engine delegate). True: the host took it.
+bool HostExtensionSidePanel(content::WebContents* contents,
+                            const std::string& extension_id,
+                            bool open);
+
+// Starts reporting Chrome's media capture indicator (camera, microphone, screen) per tab.
+void StartMediaCaptureObserver();
+
 // The quit's downloads prompt (Chrome's Mac close manager leaves it to AppController): asks the
 // host through the last active window. `callback` runs later, never synchronously.
 void ConfirmQuitWithDownloads(int count, base::OnceCallback<void(bool)> callback);
@@ -240,6 +260,13 @@ class NNWebContentsDelegate : public BrowserWebContentsDelegate {
       base::OnceCallback<void(content::NavigationHandle&)>
           navigation_handle_callback) override;
   void UpdateTargetURL(content::WebContents* source, const GURL& url) override;
+  // The host shows its own "page unresponsive" UI (tabBecameUnresponsive:), not Chrome's
+  // hung-renderer dialog.
+  void RendererUnresponsive(content::WebContents* source,
+                            content::RenderWidgetHost* render_widget_host,
+                            base::RepeatingClosure hang_monitor_restarter) override;
+  void RendererResponsive(content::WebContents* source,
+                          content::RenderWidgetHost* render_widget_host) override;
   content::WebContents* AddNewContents(
       content::WebContents* source,
       std::unique_ptr<content::WebContents> new_contents,
@@ -255,6 +282,8 @@ class NNWebContentsDelegate : public BrowserWebContentsDelegate {
 
 // Per tab: owns the ObjC NNCoreTab and reports the page's state to it.
 class TabBridge : public content::WebContentsObserver,
+                  public zoom::ZoomObserver,
+                  public blocked_content::UrlListManager::Observer,
                   public favicon::FaviconDriverObserver,
                   public find_in_page::FindResultObserver,
                   public content::WebContentsUserData<TabBridge> {
@@ -274,6 +303,23 @@ class TabBridge : public content::WebContentsObserver,
   // Chrome attaches the favicon driver with the tab helpers, after we may have made this.
   void EnsureFaviconObserved();
   void EnsureFindObserved();
+  void EnsureZoomObserved();
+  void EnsurePopupsObserved();
+  // Focus the host itself asked for (activateTab:, -focus) isn't the page's.
+  void NoteHostFocus();
+
+  // Unresponsive renderer (NNWebContentsDelegate): kept until it answers or the host decides.
+  void SetUnresponsive(content::RenderWidgetHost* host, base::RepeatingClosure restarter);
+  void SetResponsive(content::RenderWidgetHost* host);
+  void ResolveUnresponsive(bool terminate);
+  bool frozen() const { return frozen_; }
+  void set_frozen(bool frozen) { frozen_ = frozen; }
+  // Media capture (camera, microphone, screen) as JS MediaAccess.
+  void MediaAccessChanged();
+
+  // blocked_content::UrlListManager::Observer:
+  void BlockedUrlAdded(int32_t popup_id, const GURL& url) override;
+  float pinch_scale() const { return pinch_scale_; }
 
   // The host closed it (-[NNCoreTab close]): no tabWillClose.
   void set_closed_by_host() { closed_by_host_ = true; }
@@ -283,6 +329,18 @@ class TabBridge : public content::WebContentsObserver,
 
   // content::WebContentsObserver:
   void PrimaryMainFrameRenderProcessGone(base::TerminationStatus status) override;
+  void DidChangeVisibleSecurityState() override;
+  void WasDiscarded() override;
+  void DidStartNavigation(content::NavigationHandle* handle) override;
+  void OnPageScaleFactorChanged(float page_scale_factor) override;
+  void OnVisibilityChanged(content::Visibility visibility) override;
+
+  // zoom::ZoomObserver:
+  void OnZoomChanged(const zoom::ZoomController::ZoomChangedEventData& data) override;
+  void OnZoomControllerDestroyed(zoom::ZoomController* zoom_controller) override;
+
+  // Security state as JS SecurityInfo; tabDidChangeSecurity: when it changes.
+  void CheckSecurity();
   void BeforeUnloadFired(bool proceed) override;
   void DidChangeThemeColor() override;
   void OnWebContentsFocused(content::RenderWidgetHost* render_widget_host) override;
@@ -314,6 +372,19 @@ class TabBridge : public content::WebContentsObserver,
 
   NNCoreTab* __strong tab_;
   GURL favicon_url_;
+  NSDictionary* __strong security_;
+  raw_ptr<zoom::ZoomController> zoom_ = nullptr;
+  raw_ptr<blocked_content::PopupBlockerTabHelper> popups_ = nullptr;
+  base::TimeTicks host_focus_at_;
+  bool discarded_ = false;
+  bool frozen_ = false;
+  NSDictionary* __strong media_access_;
+  // The hung widget, by id (it may go while the host decides).
+  std::optional<std::pair<int, int>> unresponsive_;
+  base::RepeatingClosure hang_monitor_restarter_;
+  // The host may close the tab from any callback: checked after each, where more follows.
+  base::WeakPtrFactory<TabBridge> weak_factory_{this};
+  float pinch_scale_ = 1;
   bool closed_by_host_ = false;
   bool will_close_reported_ = false;
   std::optional<WindowOpenDisposition> open_disposition_;

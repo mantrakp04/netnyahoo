@@ -560,6 +560,53 @@ static void Log(NSDictionary* event) {
 - (void)tab:(NNCoreTab*)tab didRequestAppURL:(NSString*)url userGesture:(BOOL)userGesture {
   Log(@{@"event" : @"appURL", @"tabId" : @(tab.tabId), @"url" : url, @"userGesture" : @(userGesture)});
 }
+// --- Stage 2 ------------------------------------------------------------------------------
+- (void)tabDidChangeSecurity:(NNCoreTab*)tab {
+  Log(@{@"event" : @"security", @"tabId" : @(tab.tabId), @"level" : tab.securityInfo[@"level"] ?: @""});
+}
+- (void)tabDidChangeZoom:(NNCoreTab*)tab {
+  Log(@{@"event" : @"zoom", @"tabId" : @(tab.tabId), @"factor" : @(tab.zoomFactor),
+        @"pinch" : @(tab.pinchScale)});
+}
+- (void)tab:(NNCoreTab*)tab didBlockPopup:(NSDictionary*)popup {
+  Log(@{@"event" : @"popupBlocked", @"tabId" : @(tab.tabId), @"popup" : popup});
+}
+- (void)tab:(NNCoreTab*)tab externalAppRequest:(NSDictionary*)request {
+  Log(@{@"event" : @"externalApp", @"tabId" : @(tab.tabId), @"request" : request});
+  // Never launch anything from a test: always "cancel".
+  [NNCoreEngine resolveExternalApp:request[@"id"] open:NO remember:NO];
+}
+- (void)tabDidChangeDiscarded:(NNCoreTab*)tab {
+  Log(@{@"event" : @"discarded", @"tabId" : @(tab.tabId), @"discarded" : @(tab.discarded)});
+}
+- (void)tabBecameUnresponsive:(NNCoreTab*)tab {
+  Log(@{@"event" : @"unresponsive", @"tabId" : @(tab.tabId)});
+  if ([_config[@"terminateHung"] boolValue]) {
+    [tab resolveUnresponsive:YES];
+  }
+}
+- (void)tabBecameResponsive:(NNCoreTab*)tab {
+  Log(@{@"event" : @"responsive", @"tabId" : @(tab.tabId)});
+}
+- (void)tab:(NNCoreTab*)tab didChangeMediaAccess:(NSDictionary*)access {
+  Log(@{@"event" : @"mediaAccess", @"tabId" : @(tab.tabId), @"access" : access});
+}
+- (void)engine:(NNCoreEngine*)engine permissionRequest:(NSDictionary*)request tab:(NNCoreTab*)tab {
+  Log(@{@"event" : @"permission", @"tabId" : @(tab.tabId), @"request" : request});
+  NSDictionary* answers = _config[@"permissionAnswers"];
+  NSString* kind = [request[@"permissions"] firstObject] ?: @"";
+  NSString* answer = answers[kind];
+  if (answer) {
+    [engine resolvePermission:request[@"id"] result:answer remember:NO];
+  }
+}
+- (void)engine:(NNCoreEngine*)engine permissionRequestDismissed:(NSString*)requestId {
+  Log(@{@"event" : @"permissionDismissed", @"id" : requestId});
+}
+- (void)engine:(NNCoreEngine*)engine extensionSidePanel:(NSDictionary*)panel tab:(NNCoreTab*)tab {
+  Log(@{@"event" : @"sidePanel", @"tabId" : @(tab.tabId), @"panel" : panel});
+}
+
 - (void)tabWillClose:(NNCoreTab*)tab {
   Log(@{@"event" : @"tabWillClose", @"tabId" : @(tab.tabId)});
 }
@@ -940,6 +987,45 @@ static void Log(NSDictionary* event) {
     });
   } else if ([name isEqualToString:@"windowStyle"]) {
     reply([self windowStyleInfo]);
+  } else if ([name isEqualToString:@"component"]) {
+    if (cmd[@"unload"]) {
+      [profile unloadComponentExtension:cmd[@"unload"]];
+      reply(@YES);
+    } else {
+      reply([profile loadComponentExtension:cmd[@"path"]] ?: NSNull.null);
+    }
+  } else if ([name isEqualToString:@"security"]) {
+    reply(tab.securityInfo);
+  } else if ([name isEqualToString:@"zoom"]) {
+    if (cmd[@"factor"]) tab.zoomFactor = [cmd[@"factor"] doubleValue];
+    if (cmd[@"step"]) [tab zoomStep:[cmd[@"step"] intValue]];
+    reply(@(tab.zoomFactor));
+  } else if ([name isEqualToString:@"tabCommand"]) {
+    reply(@([tab executeChromeCommand:[cmd[@"command"] intValue]]));
+  } else if ([name isEqualToString:@"openPopup"]) {
+    [tab openBlockedPopup:cmd[@"popupId"] always:[cmd[@"always"] boolValue]];
+    reply(@YES);
+  } else if ([name isEqualToString:@"discard"]) {
+    reply(@{@"ok" : @([tab discard]), @"discarded" : @(tab.discarded)});
+  } else if ([name isEqualToString:@"frozen"]) {
+    tab.frozen = [cmd[@"value"] boolValue];
+    reply(@(tab.frozen));
+  } else if ([name isEqualToString:@"background"]) {
+    tab.pageBackgroundColor = cmd[@"color"] ? NSColor.systemTealColor : nil;
+    reply(@(tab.pageBackgroundColor != nil));
+  } else if ([name isEqualToString:@"extAction"]) {
+    reply([tab executeExtensionAction:cmd[@"extId"]]);
+  } else if ([name isEqualToString:@"actionStates"]) {
+    reply([tab actionStatesForExtensions:cmd[@"ids"]]);
+  } else if ([name isEqualToString:@"sidePanelURL"]) {
+    reply([tab sidePanelURLForExtension:cmd[@"extId"]] ?: NSNull.null);
+  } else if ([name isEqualToString:@"pref"]) {
+    if (cmd[@"value"]) [profile setBoolPreference:cmd[@"name"] value:[cmd[@"value"] boolValue]];
+    reply([profile boolPreference:cmd[@"name"]] ?: NSNull.null);
+  } else if ([name isEqualToString:@"clearData"]) {
+    [profile clearBrowsingData:cmd[@"types"] since:nil completion:^{
+      reply(@YES);
+    }];
   } else if ([name isEqualToString:@"quit"]) {
     reply(@YES);
     dispatch_async(dispatch_get_main_queue(), ^{

@@ -32,6 +32,12 @@
 #include "chrome/browser/tab_list/tab_removed_reason.h"
 #include "net/base/net_errors.h"
 #include "netnyahoo/core/nn_page_channel.h"
+#include "netnyahoo/core/nn_tab_info.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
+#include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
+#include "content/public/browser/render_process_host.h"
+#include "content/public/browser/render_widget_host.h"
+#include "content/public/common/result_codes.h"
 #include "netnyahoo/core/nn_browser_window.h"
 #import "netnyahoo/core/nncore_internal.h"
 #include "ui/gfx/image/image.h"
@@ -471,6 +477,9 @@ void WindowHost::ActiveTabChanged(Browser* browser,
   if (!contents) {
     return;
   }
+  if (quiet_activation_) {
+    return;
+  }
   base::AutoReset<int> notifying(&g_tab_strip_notifying,
                                  g_tab_strip_notifying + 1);
   NNCoreTab* tab = TabBridge::GetOrCreate(contents)->tab();
@@ -492,6 +501,8 @@ void WindowHost::OnTabStripModelChanged(
     for (const auto& inserted : change.GetInsert()->contents) {
       TabBridge* bridge = TabBridge::GetOrCreate(inserted.contents);
       bridge->EnsureFaviconObserved();
+      bridge->EnsurePopupsObserved();
+      bridge->EnsureZoomObserved();
       std::optional<WindowOpenDisposition> disposition =
           bridge->TakeOpenDisposition();
       content::WebContents* source = bridge->open_source();
@@ -807,6 +818,80 @@ void NNWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
   }
 }
 
+void NNWebContentsDelegate::RendererUnresponsive(
+    content::WebContents* source,
+    content::RenderWidgetHost* render_widget_host,
+    base::RepeatingClosure hang_monitor_restarter) {
+  TabBridge::GetOrCreate(source)->SetUnresponsive(
+      render_widget_host, std::move(hang_monitor_restarter));
+}
+
+void NNWebContentsDelegate::RendererResponsive(
+    content::WebContents* source,
+    content::RenderWidgetHost* render_widget_host) {
+  TabBridge::GetOrCreate(source)->SetResponsive(render_widget_host);
+}
+
+namespace {
+
+// Chrome's media capture indicator, for every tab: what the page is capturing now.
+class MediaCaptureObserver : public MediaStreamCaptureIndicator::Observer {
+ public:
+  explicit MediaCaptureObserver(scoped_refptr<MediaStreamCaptureIndicator> indicator)
+      : indicator_(std::move(indicator)) {
+    indicator_->AddObserver(this);
+  }
+  void OnIsCapturingVideoChanged(content::WebContents* contents, bool) override {
+    Changed(contents);
+  }
+  void OnIsCapturingAudioChanged(content::WebContents* contents, bool) override {
+    Changed(contents);
+  }
+  void OnIsCapturingTabChanged(content::WebContents* contents, bool) override {
+    Changed(contents);
+  }
+  void OnIsCapturingWindowChanged(content::WebContents* contents, bool) override {
+    Changed(contents);
+  }
+  void OnIsCapturingDisplayChanged(content::WebContents* contents, bool) override {
+    Changed(contents);
+  }
+
+  NSDictionary* AccessOf(content::WebContents* contents) const {
+    return @{
+      @"camera" : @(indicator_->IsCapturingVideo(contents)),
+      @"microphone" : @(indicator_->IsCapturingAudio(contents)),
+      @"screen" : @(indicator_->IsCapturingTab(contents) ||
+                    indicator_->IsCapturingWindow(contents) ||
+                    indicator_->IsCapturingDisplay(contents)),
+    };
+  }
+
+ private:
+  void Changed(content::WebContents* contents) {
+    if (contents) {
+      TabBridge::GetOrCreate(contents)->MediaAccessChanged();
+    }
+  }
+
+  scoped_refptr<MediaStreamCaptureIndicator> indicator_;
+};
+
+MediaCaptureObserver*& CaptureObserver() {
+  static MediaCaptureObserver* observer = nullptr;
+  return observer;
+}
+
+}  // namespace
+
+void StartMediaCaptureObserver() {
+  if (!CaptureObserver()) {
+    // Lives as long as the indicator (the process): never removed.
+    CaptureObserver() = new MediaCaptureObserver(
+        MediaCaptureDevicesDispatcher::GetInstance()->GetMediaStreamCaptureIndicator());
+  }
+}
+
 // --- TabBridge --------------------------------------------------------------------------
 
 TabBridge::TabBridge(content::WebContents* contents)
@@ -922,13 +1007,174 @@ void TabBridge::PrimaryMainFrameRenderProcessGone(
   }
 }
 
+void TabBridge::CheckSecurity() {
+  NSDictionary* info = SecurityInfoFor(web_contents());
+  if ([info isEqualToDictionary:security_]) {
+    return;
+  }
+  security_ = info;
+  [tab_ notify:@selector(tabDidChangeSecurity:)];
+}
+
+void TabBridge::DidChangeVisibleSecurityState() {
+  CheckSecurity();
+}
+
+void TabBridge::OnVisibilityChanged(content::Visibility visibility) {
+  // Showing a page unfreezes it (Chrome's rule).
+  if (visibility == content::Visibility::VISIBLE) {
+    frozen_ = false;
+  }
+}
+
+void TabBridge::OnPageScaleFactorChanged(float page_scale_factor) {
+  pinch_scale_ = page_scale_factor;
+  [tab_ notify:@selector(tabDidChangeZoom:)];
+}
+
+void TabBridge::EnsureZoomObserved() {
+  if (zoom_) {
+    return;
+  }
+  zoom_ = zoom::ZoomController::FromWebContents(web_contents());
+  if (zoom_) {
+    zoom_->AddObserver(this);
+  }
+}
+
+void TabBridge::OnZoomChanged(
+    const zoom::ZoomController::ZoomChangedEventData& data) {
+  if (data.web_contents == web_contents()) {
+    [tab_ notify:@selector(tabDidChangeZoom:)];
+  }
+}
+
+void TabBridge::OnZoomControllerDestroyed(zoom::ZoomController* zoom_controller) {
+  zoom_controller->RemoveObserver(this);
+  zoom_ = nullptr;
+}
+
 void TabBridge::DidChangeThemeColor() {
   [tab_ notify:@selector(tabDidChangeThemeColor:)];
 }
 
+void TabBridge::MediaAccessChanged() {
+  if (!CaptureObserver()) {
+    return;
+  }
+  NSDictionary* access = CaptureObserver()->AccessOf(web_contents());
+  if ([access isEqualToDictionary:media_access_]) {
+    return;
+  }
+  media_access_ = access;
+  NNCoreTab* tab = tab_;
+  id<NNCoreTabDelegate> delegate = tab.delegate;
+  if ([delegate respondsToSelector:@selector(tab:didChangeMediaAccess:)]) {
+    [delegate tab:tab didChangeMediaAccess:access];
+  }
+}
+
+void TabBridge::SetUnresponsive(content::RenderWidgetHost* host,
+                                base::RepeatingClosure restarter) {
+  if (host) {
+    unresponsive_ = std::make_pair(host->GetProcess()->GetDeprecatedID(),
+                                   host->GetRoutingID());
+  }
+  hang_monitor_restarter_ = std::move(restarter);
+  [tab_ notify:@selector(tabBecameUnresponsive:)];
+}
+
+void TabBridge::SetResponsive(content::RenderWidgetHost* host) {
+  // Only the widget that hung (another frame's recovery isn't this one's).
+  if (!unresponsive_ ||
+      (host && *unresponsive_ != std::make_pair(host->GetProcess()->GetDeprecatedID(),
+                                                host->GetRoutingID()))) {
+    return;
+  }
+  unresponsive_.reset();
+  hang_monitor_restarter_.Reset();
+  [tab_ notify:@selector(tabBecameResponsive:)];
+}
+
+void TabBridge::ResolveUnresponsive(bool terminate) {
+  content::RenderWidgetHost* host =
+      unresponsive_ ? content::RenderWidgetHost::FromID(unresponsive_->first,
+                                                         unresponsive_->second)
+                    : nullptr;
+  base::RepeatingClosure restarter = std::move(hang_monitor_restarter_);
+  unresponsive_.reset();
+  hang_monitor_restarter_.Reset();
+  if (terminate) {
+    // As Chrome's "Exit pages" (the sad tab and rendererGone follow).
+    if (host && host->GetProcess()->IsInitializedAndNotDead()) {
+      host->GetProcess()->Shutdown(content::RESULT_CODE_HUNG);
+    }
+  } else if (restarter) {
+    restarter.Run();  // "Wait": ask again if it stays hung.
+  }
+}
+
+void TabBridge::WasDiscarded() {
+  discarded_ = true;
+  [tab_ notify:@selector(tabDidChangeDiscarded:)];
+}
+
+void TabBridge::DidStartNavigation(content::NavigationHandle* handle) {
+  // A discarded tab reloads when it's next shown or navigated.
+  if (discarded_ && handle->IsInPrimaryMainFrame() &&
+      !web_contents()->WasDiscarded()) {
+    discarded_ = false;
+    [tab_ notify:@selector(tabDidChangeDiscarded:)];
+  }
+}
+
+void TabBridge::NoteHostFocus() {
+  host_focus_at_ = base::TimeTicks::Now();
+}
+
 void TabBridge::OnWebContentsFocused(
     content::RenderWidgetHost* render_widget_host) {
+  // The page's focus, not the one following the host's own activate or -focus.
+  if (base::TimeTicks::Now() - host_focus_at_ < base::Milliseconds(250)) {
+    return;
+  }
   [tab_ notify:@selector(tabDidGainFocus:)];
+}
+
+void TabBridge::EnsurePopupsObserved() {
+  if (popups_) {
+    return;
+  }
+  popups_ = blocked_content::PopupBlockerTabHelper::FromWebContents(web_contents());
+  if (popups_) {
+    popups_->manager()->AddObserver(this);
+  }
+}
+
+void TabBridge::BlockedUrlAdded(int32_t popup_id, const GURL& url) {
+  // JS BlockedPopup: {id, url, origin} (the page's origin, which "always allow" applies to).
+  // On the next turn: Chrome is still adding it (the host may open it at once).
+  NSDictionary* popup = @{
+    @"id" : [NSString stringWithFormat:@"%d", popup_id],
+    @"url" : base::SysUTF8ToNSString(url.spec()),
+    @"origin" : OriginOf(web_contents()->GetLastCommittedURL()) ?: @"",
+  };
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<TabBridge> bridge, int32_t popup_id,
+                        NSDictionary* popup) {
+                       if (!bridge || !bridge->popups_ ||
+                           !bridge->popups_->GetBlockedPopupRequests().contains(
+                               popup_id)) {
+                         return;
+                       }
+                       NNCoreTab* tab = bridge->tab_;
+                       id<NNCoreTabDelegate> delegate = tab.delegate;
+                       if ([delegate respondsToSelector:@selector(tab:didBlockPopup:)]) {
+                         [delegate tab:tab didBlockPopup:popup];
+                       }
+                     },
+                     weak_factory_.GetWeakPtr(), popup_id, popup));
 }
 
 void TabBridge::OnAudioStateChanged(bool audible) {
@@ -945,11 +1191,16 @@ void TabBridge::TitleWasSet(content::NavigationEntry* entry) {
 
 void TabBridge::DidStartLoading() {
   EnsureFaviconObserved();
+  EnsurePopupsObserved();
   [tab_ notify:@selector(tabDidChangeLoading:)];
 }
 
 void TabBridge::DidStopLoading() {
+  base::WeakPtr<TabBridge> alive = weak_factory_.GetWeakPtr();
   [tab_ notify:@selector(tabDidChangeLoading:)];
+  if (alive) {
+    CheckSecurity();
+  }
 }
 
 void TabBridge::LoadProgressChanged(double progress) {
@@ -958,9 +1209,17 @@ void TabBridge::LoadProgressChanged(double progress) {
 
 void TabBridge::DidFinishNavigation(content::NavigationHandle* handle) {
   EnsureFaviconObserved();
+  EnsureZoomObserved();
+  base::WeakPtr<TabBridge> alive = weak_factory_.GetWeakPtr();
+  if (handle->IsInPrimaryMainFrame() && handle->HasCommitted()) {
+    CheckSecurity();
+  }
+  if (!alive) {
+    return;
+  }
   [tab_ notify:@selector(tabDidChangeURL:)];
   const int error = handle->GetNetErrorCode();
-  if (handle->IsInPrimaryMainFrame() && error != net::OK) {
+  if (alive && handle->IsInPrimaryMainFrame() && error != net::OK) {
     NNCoreTab* tab = tab_;
     id<NNCoreTabDelegate> delegate = tab.delegate;
     if ([delegate respondsToSelector:@selector(tab:didFailLoad:code:description:)]) {
@@ -978,6 +1237,14 @@ void TabBridge::NavigationEntryCommitted(
 }
 
 void TabBridge::WebContentsDestroyed() {
+  if (popups_) {
+    popups_->manager()->RemoveObserver(this);
+    popups_ = nullptr;
+  }
+  if (zoom_) {
+    zoom_->RemoveObserver(this);
+    zoom_ = nullptr;
+  }
   if (find_helper_) {
     find_helper_->RemoveObserver(this);
     find_helper_ = nullptr;

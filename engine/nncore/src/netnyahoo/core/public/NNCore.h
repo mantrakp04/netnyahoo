@@ -14,6 +14,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class NNCoreEngine;
 @class NNCoreProfile;
 @class NNCoreTab;
 @class NNCoreWindow;
@@ -37,6 +38,21 @@ NS_ASSUME_NONNULL_BEGIN
 // own window then).
 - (nullable NNCoreWindow*)engineWindowForNewBrowserOfProfile:(NNCoreProfile*)profile
                                                         type:(NSString*)type;
+// Stage 2. Chrome's permission prompt for one of the host's tabs (camera, microphone,
+// location, notifications…; Chrome answers remembered decisions itself). `request` is JS
+// PermissionRequest without browserId: {id, origin, permissions:[PermissionKind…]}. Answer
+// with -[NNCoreEngine resolvePermission:result:remember:].
+- (void)engine:(NNCoreEngine*)engine
+    permissionRequest:(NSDictionary<NSString*, id>*)request
+                  tab:(NNCoreTab*)tab;
+// The request went unanswered: the page navigated or closed, or Chrome replaced it.
+- (void)engine:(NNCoreEngine*)engine permissionRequestDismissed:(NSString*)requestId;
+// An extension opened or closed its side panel (chrome.sidePanel.open, its action set to
+// open it) in one of the host's tabs: {extensionId, open}. The host shows it
+// (-[NNCoreTab sidePanelURLForExtension:]).
+- (void)engine:(NNCoreEngine*)engine
+    extensionSidePanel:(NSDictionary<NSString*, id>*)panel
+                   tab:(NNCoreTab*)tab;
 @end
 
 NNCORE_EXPORT
@@ -68,6 +84,15 @@ NNCORE_EXPORT
 // -[NNCoreTab callPage:json:]. Set it before the first tab opens; renderers launched later
 // get the current value.
 @property(nonatomic, copy, nullable) NSString* pageScript;
+// Answers engine:permissionRequest:tab:. `result` is "accept" | "deny" | "dismiss".
+// remember NO: an accept is one-time where Chrome supports it (camera, microphone,
+// location), and a deny isn't kept (the site stays "ask").
+- (void)resolvePermission:(NSString*)requestId
+                   result:(NSString*)result
+                 remember:(BOOL)remember;
+// Answers tab:externalAppRequest:. open: launch the app (through Chrome); remember: Chrome's
+// "always allow" for that origin and scheme.
++ (void)resolveExternalApp:(NSString*)requestId open:(BOOL)open remember:(BOOL)remember;
 // The off-the-record profile of `profile` (created on first use): incognito windows.
 - (NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile;
 @property(readonly) NSString* chromiumVersion;
@@ -84,12 +109,29 @@ NNCORE_EXPORT
 @property(readonly) BOOL offTheRecord;
 // The Profile went (shutdown, profile deletion): every call is then a no-op.
 @property(readonly) BOOL destroyed;
+// A component extension (Chrome's built-in kind; the manifest has a `key`, which fixes the
+// id): runs hidden from chrome://extensions and the profile's list (CEF's
+// LoadComponentExtension). Loading one already running from `path` is a no-op returning its
+// id. nil on failure.
+- (nullable NSString*)loadComponentExtension:(NSString*)path;
+- (void)unloadComponentExtension:(NSString*)extensionId;
 // chrome.management-style install of an unpacked extension (MV3 fine).
 - (void)loadUnpackedExtension:(NSString*)path
                    completion:(void (^)(NSString* _Nullable extensionId,
                                         NSString* _Nullable error))completion;
 // {id, name, version, enabled, actionPopupURL}
 @property(readonly) NSArray<NSDictionary<NSString*, id>*>* extensions;
+// Stage 2. Profile prefs the host owns: credentials_enable_service, autofill.profile_enabled,
+// autofill.credit_card_enabled, download_bubble.partial_view_enabled (nil: not one of those).
+// NNCore sets session.restore_on_startup = 5 (new tab) and turns the download bubble's
+// partial view off on every profile it loads, as CEF did.
+- (nullable NSNumber*)boolPreference:(NSString*)name;
+- (void)setBoolPreference:(NSString*)name value:(BOOL)value;
+// Chrome's BrowsingDataRemover: types "history" | "siteData" | "cache" | "downloads", from
+// `since` (nil: all time) to now.
+- (void)clearBrowsingData:(NSArray<NSString*>*)types
+                    since:(nullable NSDate*)since
+               completion:(nullable void (^)(void))completion;
 // Chrome's password store, for checks: [{origin, username}]
 - (void)fetchSavedLogins:(void (^)(NSArray<NSDictionary<NSString*, NSString*>*>* logins))completion;
 @end
@@ -219,6 +261,23 @@ NNCORE_EXPORT
 - (void)tabDidChangeThemeColor:(NNCoreTab*)tab;
 - (void)tabDidGainFocus:(NNCoreTab*)tab;
 - (void)tabDidChangeAudio:(NNCoreTab*)tab;
+// Stage 2.
+- (void)tabDidChangeSecurity:(NNCoreTab*)tab;  // securityInfo changed
+- (void)tabDidChangeZoom:(NNCoreTab*)tab;      // zoomFactor or pinchScale changed
+// Chrome's popup blocker kept a popup this page asked for: JS BlockedPopup {id, url, origin}.
+// -openBlockedPopup:always: opens it.
+- (void)tab:(NNCoreTab*)tab didBlockPopup:(NSDictionary<NSString*, NSString*>*)popup;
+// A link to another app (mailto:, zoommtg:…) where Chrome would ask "Open <app>?": JS
+// ExternalAppRequest {id, url, scheme, origin, app, appPath, icon, title, message, remember}
+// (app null: nothing on this Mac opens it; nothing to resolve then). Answer with
+// +[NNCoreEngine resolveExternalApp:open:remember:].
+- (void)tab:(NNCoreTab*)tab externalAppRequest:(NSDictionary<NSString*, id>*)request;
+// Lifecycle.
+- (void)tabDidChangeDiscarded:(NNCoreTab*)tab;
+- (void)tabBecameUnresponsive:(NNCoreTab*)tab;  // answer with -resolveUnresponsive:
+- (void)tabBecameResponsive:(NNCoreTab*)tab;
+// What the page captures now: JS MediaAccess {camera, microphone, screen}.
+- (void)tab:(NNCoreTab*)tab didChangeMediaAccess:(NSDictionary<NSString*, NSNumber*>*)access;
 @end
 
 NNCORE_EXPORT
@@ -285,6 +344,42 @@ NNCORE_EXPORT
 - (void)evaluate:(NSString*)code completion:(void (^)(NSString* _Nullable json))completion;
 // The page script's receive(kind, json) in the main frame.
 - (void)callPage:(NSString*)kind json:(NSString*)json;
+
+// Stage 2.
+// JS SecurityInfo (packages/cef/src/WebView.tsx): {level, url, origin, protocol?, certificate?,
+// certificateErrors?, mixedContent?, isEV?}.
+@property(readonly) NSDictionary<NSString*, id>* securityInfo;
+// Chrome's per-site zoom (HostZoomMap, as Chrome's menu), 1 = 100 %.
+@property(nonatomic) double zoomFactor;
+// Chrome's preset zoom levels: > 0 in, < 0 out, 0 reset.
+- (void)zoomStep:(int)direction;
+@property(readonly) double pinchScale;  // the page's pinch-zoom scale (1 = none)
+// One of Chrome's commands (chrome/app/chrome_command_ids.h) on this tab, as its menu item
+// would run it: IDC_PRINT, IDC_BASIC_PRINT, IDC_SAVE_PAGE, IDC_CARET_BROWSING_TOGGLE… A
+// background tab is made active for the moment, unreported. NO if it is disabled.
+- (BOOL)executeChromeCommand:(int)command;
+// Opens a popup tab:didBlockPopup: reported, as Chrome kept it (POST body, opener): it
+// arrives through window:didInsertTab:… with this tab as its opener. always: allow popups for
+// the page's site from now on (Chrome's content setting).
+- (void)openBlockedPopup:(NSString*)popupId always:(BOOL)always;
+// Chrome's tab discard: the page's memory goes, the tab (this object, its history) stays and
+// reloads when used again. NO if Chrome won't (already discarded…).
+- (BOOL)discard;
+@property(readonly) BOOL discarded;
+// Freezes the page (timers, loading) while YES (WebContents::SetPageFrozen).
+@property(nonatomic) BOOL frozen;
+// Answers tabBecameUnresponsive:: YES ends the page's renderer (sad tab, rendererGone), NO
+// waits (asked again if it stays hung).
+- (void)resolveUnresponsive:(BOOL)terminate;
+// The page's base background (before it paints its own), e.g. the app's theme; nil: Chrome's.
+@property(nonatomic, nullable) NSColor* pageBackgroundColor;
+// Extensions. Runs the extension's action as a click on its toolbar button would (grants
+// activeTab): "none", "popup" (show it: -openActionPopupForExtension:anchor:) or "sidePanel".
+- (NSString*)executeExtensionAction:(NSString*)extensionId;
+// {extensionId: JS ActionState {title, badgeText, badgeColor, badgeTextColor, popup, enabled,
+// icon (a PNG data: URL)}} for this tab.
+- (NSDictionary<NSString*, NSDictionary*>*)actionStatesForExtensions:(NSArray<NSString*>*)extensionIds;
+- (nullable NSString*)sidePanelURLForExtension:(NSString*)extensionId;
 // The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:).
 - (void)callFrame:(NSString*)frameId kind:(NSString*)kind json:(NSString*)json;
 @end

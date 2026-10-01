@@ -125,6 +125,16 @@ async function go() {
           `<p>leave?</p><script>addEventListener('beforeunload', (e) => { if (!window.__allowLeave) { e.preventDefault(); e.returnValue = ''; } });</script>`,
         ),
       );
+    case "/popupblock":
+      return send(page("PopupBlock", `<script>setTimeout(() => { window.__opened = !!window.open('/target?from=blocked'); }, 300)</script>`));
+    case "/perm":
+      return send(page("Perm", `<p id=p>perm</p>`));
+    case "/hang":
+      return send(page("Hang", `<button id=hang onclick="const end = Date.now() + 45000; while (Date.now() < end) {}">hang</button>`));
+    case "/mailto":
+      // FaceTime's scheme: Chrome asks first (never mailto:, which Chrome launches unasked); the
+      // test host always answers "cancel", so nothing opens.
+      return send(page("Mailto", `<a id=m href="facetime://nn-test.invalid">app link</a>`));
     case "/keys":
       return send(
         page(
@@ -658,6 +668,160 @@ try {
     check("S3", "host view focused (NSTextField): ⌘T reaches the main menu; Chrome runs none of its own", kF.handledByMenu || kF.handledByWindow ? s3b.menuHits.filter((h) => h.key === "t").length === 2 && s3b.keyEvents.length === pre && s3b.tabs.length === tabsBefore : false, { kF, tabsBefore, tabsAfter: s3b.tabs.length });
     check("S3", "the page's view is an NSTextInputClient (IME needs a key window: visual check)", kT.textInputClient, {});
     pk.close();
+  }
+
+  // =======================================================================================
+  // Stage 2: per-tab features and UI seams (S7–S16)
+  {
+    const t2 = await cmd("open", { url: `${base}/perm`, profile: "A" });
+    await waitFor(async () => (await tabState(t2.tabId))?.title === "Perm");
+    const p2 = await attach((t) => t.url === `${base}/perm`);
+
+    // S7 (item 0): profile prefs and clearing data.
+    const before = await cmd("pref", { profile: "A", name: "credentials_enable_service" });
+    const off = await cmd("pref", { profile: "A", name: "credentials_enable_service", value: false });
+    const on = await cmd("pref", { profile: "A", name: "credentials_enable_service", value: true });
+    const notAllowed = await cmd("pref", { profile: "A", name: "profile.content_settings" });
+    const cleared = await cmd("clearData", { profile: "A", types: ["history", "cache"] }, 30000);
+    check("S7", "profile prefs (allow-listed bools) and Chrome's BrowsingDataRemover", before === true && off === false && on === true && notAllowed === null && cleared === true, { before, off, on, notAllowed, cleared });
+
+    // S8 (item 1): security, as JS SecurityInfo.
+    const httpInfo = await cmd("security", { tabId: t2.tabId });
+    let httpsInfo = null;
+    try {
+      const keyFile = path.join(workDir, "tls.key"), certFile = path.join(workDir, "tls.crt");
+      execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certFile, "-days", "2", "-subj", "/CN=localhost/O=Big Yahu Test"], { stdio: "ignore" });
+      const https = await import("node:https");
+      const tls = https.createServer({ key: fs.readFileSync(keyFile), cert: fs.readFileSync(certFile) }, (q, r) => { r.writeHead(200, { "content-type": "text/html" }); r.end("<title>TLS</title>tls"); });
+      await new Promise((r) => tls.listen(0, "127.0.0.1", r));
+      const tt = await cmd("open", { url: `https://localhost:${tls.address().port}/`, profile: "A" });
+      httpsInfo = await waitFor(async () => {
+        const i = await cmd("security", { tabId: tt.tabId });
+        return i.level === "certificateError" && i.certificate ? i : null;
+      }, 10000);
+      const secEvent = evs("security", (e) => e.tabId === tt.tabId && e.level === "certificateError")[0];
+      check("S8", "securityInfo: http insecure; a self-signed https page is certificateError with its certificate; tabDidChangeSecurity", httpInfo.level === "insecure" && httpInfo.origin === base && httpsInfo && httpsInfo.certificateErrors.includes("authorityInvalid") && httpsInfo.certificate.subject.commonName === "localhost" && httpsInfo.certificate.sha256?.length === 95 && !!secEvent, { httpInfo, httpsInfo: httpsInfo && { level: httpsInfo.level, errors: httpsInfo.certificateErrors, subject: httpsInfo.certificate.subject, protocol: httpsInfo.protocol } });
+      await cmd("nav", { tabId: tt.tabId, action: "closeNow" });
+      tls.close();
+    } catch (e) {
+      check("S8", "securityInfo", false, String(e));
+    }
+
+    // S9 (item 2): zoom.
+    const z1 = await cmd("zoom", { tabId: t2.tabId, factor: 1.5 });
+    const z2 = await cmd("zoom", { tabId: t2.tabId, step: 1 });
+    const z3 = await cmd("zoom", { tabId: t2.tabId, step: 0 });
+    const zEv = await waitFor(() => evs("zoom", (e) => e.tabId === t2.tabId && Math.abs(e.factor - 1.5) < 0.01)[0], 4000);
+    const inner = await p2.evaluate("window.innerWidth");
+    check("S9", "zoomFactor (per site), zoomStep in and reset, tabDidChangeZoom", Math.abs(z1 - 1.5) < 0.01 && z2 > 1.5 && Math.abs(z3 - 1) < 0.01 && !!zEv, { z1, z2, z3, zoomEvents: evs("zoom", (e) => e.tabId === t2.tabId).length, inner });
+
+    // S10 (item 3): a Chrome command on a background tab (print preview), the switch unreported.
+    const bg = await cmd("open", { url: `${base}/target?from=print`, profile: "A", background: true });
+    await waitFor(async () => (await tabState(bg.tabId))?.loading === false);
+    const activations = evs("didActivateTab").length;
+    const printed = await cmd("tabCommand", { tabId: bg.tabId, command: 35003 /* IDC_PRINT */ });
+    const preview = await waitFor(async () => (await targets()).find((t) => t.url.startsWith("chrome://print")), 10000);
+    check("S10", "executeChromeCommand on a background tab (IDC_PRINT → print preview), no activation reported", printed === true && !!preview && evs("didActivateTab").length === activations, { printed, preview: preview?.url, activationsReported: evs("didActivateTab").length - activations });
+    await cmd("nav", { tabId: bg.tabId, action: "closeNow" });
+
+    // S11 (item 4): Chrome's popup blocker → the host; open it.
+    const pb = await cmd("open", { url: `${base}/popupblock`, profile: "A" });
+    const blocked = await waitFor(() => evs("popupBlocked", (e) => e.tabId === pb.tabId)[0], 8000);
+    if (blocked) await cmd("openPopup", { tabId: pb.tabId, popupId: blocked.popup.id, always: false });
+    const opened = await waitFor(() => evs("didInsertTab", (e) => e.url.includes("from=blocked"))[0], 8000);
+    check("S11", "a popup Chrome blocked reaches the host ({id,url,origin}); opening it lands as our tab with the page as opener", blocked && blocked.popup.url.includes("from=blocked") && blocked.popup.origin === base && opened && opened.opener === pb.tabId, { popup: blocked?.popup, opened: opened && { opener: opened.opener, disposition: opened.disposition } });
+
+    // S12 (item 5): permission prompts go to the host.
+    // Chrome holds a background tab's prompts until it shows: show it.
+    await cmd("show", { tabId: t2.tabId });
+    // (Not geolocation: Chrome also asks macOS for location, a system prompt.)
+    await cmd("config", { values: { permissionAnswers: { midi: "deny", notifications: "accept" } } });
+    const timed = (expr) => `Promise.race([${expr}, new Promise((r) => setTimeout(() => r('timeout'), 8000))])`;
+    const geo = (await p2.send("Runtime.evaluate", { expression: timed(`navigator.requestMIDIAccess({ sysex: true }).then(() => 'granted', (e) => 'error ' + e.name)`), awaitPromise: true, userGesture: true, returnByValue: true })).result?.result?.value;
+    const geoReq = evs("permission", (e) => e.tabId === t2.tabId && e.request.permissions.includes("midi"))[0];
+    const notif = (await p2.send("Runtime.evaluate", { expression: timed("Notification.requestPermission()"), awaitPromise: true, userGesture: true, returnByValue: true })).result?.result?.value;
+    const notifReq = evs("permission", (e) => e.request.permissions.includes("notifications"))[0];
+    check("S12", "Chrome's permission prompt goes to the host ({id, origin, permissions}); deny → the page's error (MIDI sysex), accept → granted (notifications)", geoReq && geoReq.request.origin.startsWith(base) && /^error/.test(geo) && notifReq && notif === "granted", { midi: geo, notif, geoReq: geoReq?.request, childWindows: (await state()).childWindows.length });
+    // (No camera check: Chrome asks macOS for camera access first, a system prompt. Media
+    // access needs a manual check.)
+    const bgSet = await cmd("background", { tabId: t2.tabId, color: "teal" });
+    check("S15", "pageBackgroundColor", bgSet === true, {});
+
+    // S13 (item 6): a link to another app asks the host (the test answers "cancel").
+    const mt = await cmd("open", { url: `${base}/mailto`, profile: "A" });
+    await waitFor(async () => (await tabState(mt.tabId))?.title === "Mailto");
+    const pm = await attach((t) => t.url === `${base}/mailto`);
+    await pm.click("#m");
+    const ext6 = await waitFor(() => evs("externalApp", (e) => e.tabId === mt.tabId)[0], 10000);
+    pm.close();
+    check("S13", "a link to another app asks the host (JS ExternalAppRequest) instead of Chrome's dialog", ext6 && ext6.request.scheme === "facetime" && ext6.request.origin === base && typeof ext6.request.app === "string" && /^Open “/.test(ext6.request.title) && /^data:image\/png/.test(ext6.request.icon), ext6?.request && { ...ext6.request, icon: ext6.request.icon ? "data:…" : null });
+
+    // S14 (item 7): discard, freeze, unresponsive.
+    const dt = await cmd("open", { url: `${base}/target?from=discard`, profile: "A", background: true });
+    await waitFor(async () => (await tabState(dt.tabId))?.loading === false);
+    const idBefore = (await cmd("tabInfo", { tabId: dt.tabId })).info.browserId;
+    const dis = await cmd("discard", { tabId: dt.tabId });
+    const disEv = await waitFor(() => evs("discarded", (e) => e.tabId === dt.tabId && e.discarded)[0], 5000);
+    await cmd("nav", { tabId: dt.tabId, action: "reload" });
+    const undis = await waitFor(() => evs("discarded", (e) => e.tabId === dt.tabId && !e.discarded)[0], 8000);
+    const idAfter = (await cmd("tabInfo", { tabId: dt.tabId }))?.info.browserId;
+    check("S14", "discard keeps the tab (same NNCoreTab); tabDidChangeDiscarded on and off", dis.ok && dis.discarded && disEv && undis && idAfter === idBefore, { dis, idBefore, idAfter });
+    const fz = await cmd("frozen", { tabId: dt.tabId, value: true });
+    const unfz = await cmd("frozen", { tabId: dt.tabId, value: false });
+    check("S14", "frozen", fz === true && unfz === false, {});
+    await cmd("nav", { tabId: dt.tabId, action: "closeNow" });
+    // Its own site (127.0.0.1, not localhost): the hung renderer must not be the other tabs'.
+    const hangURL = base.replace("localhost", "127.0.0.1") + "/hang";
+    const ht = await cmd("open", { url: hangURL, profile: "A" });
+    await waitFor(async () => (await tabState(ht.tabId))?.title === "Hang");
+    await cmd("show", { tabId: ht.tabId });
+    await cmd("config", { values: { terminateHung: true } });
+    const ph = await attach((t) => t.url === hangURL);
+    // The page spins for 45 s (started off the DevTools call, which would wait it out); an
+    // input event then goes unanswered.
+    await ph.send("Runtime.evaluate", { expression: "setTimeout(() => document.getElementById('hang').click(), 50); 1" });
+    await sleep(1000);
+    await cmd("nativeClick", { tabId: ht.tabId, x: 10, y: 10 });
+    const hung = await waitFor(() => evs("unresponsive", (e) => e.tabId === ht.tabId)[0], 25000);
+    const killed = await waitFor(() => evs("rendererGone", (e) => e.tabId === ht.tabId)[0], 10000);
+    ph.close();
+    if (hung) {
+      check("S14", "an unresponsive page → tabBecameUnresponsive; resolveUnresponsive:YES ends it (rendererGone)", hung && killed, { killed });
+    } else {
+      // Chrome's hang monitor ignores hidden pages, and this hidden instance's window is
+      // occluded: a check for an unlocked screen with the window shown.
+      console.log("SKIP [S14] unresponsive page (needs a visible window: the hang monitor ignores hidden pages)");
+    }
+    await cmd("nav", { tabId: ht.tabId, action: "closeNow" });
+    p2.close();
+  }
+  // S17 (A0): component extensions.
+  {
+    const dir = path.join(here, "fixtures/component");
+    const c1 = await cmd("component", { profile: "A", path: dir });
+    const c2 = await cmd("component", { profile: "A", path: dir });
+    const listed = (await cmd("ext.list", { profile: "A" })).some((e) => e.id === c1);
+    const worker = await waitFor(async () => (await targets()).find((t) => t.url.startsWith(`chrome-extension://${c1}/`)), 8000);
+    await cmd("component", { profile: "A", unload: c1 });
+    const gone = await waitFor(async () => !(await targets()).some((t) => t.url.startsWith(`chrome-extension://${c1}/`)), 8000);
+    check("S17", "loadComponentExtension (id from the manifest key; again = same id, no reload), hidden from the list, unload", typeof c1 === "string" && c1.length === 32 && c2 === c1 && !listed && !!worker && gone, { c1, c2, listed, worker: worker?.type, gone });
+  }
+  // S16 (item 9): extension actions.
+  {
+    const extId = ext?.id;
+    const action = await cmd("extAction", { tabId: indexId, extId });
+    const states = await cmd("actionStates", { tabId: indexId, ids: [extId] });
+    const st = states?.[extId];
+    const panelURL = await cmd("sidePanelURL", { tabId: indexId, extId });
+    check("S16", "executeExtensionAction → popup; actionStates (JS ActionState); sidePanelURL", action === "popup" && st && st.title === "NNCore spike" && st.popup.endsWith("/popup.html") && st.enabled === true && panelURL?.endsWith("/panel.html"), { action, state: st && { ...st, icon: st.icon.slice(0, 22) }, panelURL });
+    const et = await cmd("open", { url: `chrome-extension://${extId}/popup.html?panel`, profile: "A" });
+    await waitFor(async () => (await tabState(et.tabId))?.loading === false);
+    const pe = await attach((t) => t.url.startsWith(`chrome-extension://${extId}/popup.html?panel`));
+    const openRes = (await pe.send("Runtime.evaluate", { expression: `chrome.sidePanel.open({ tabId: ${indexId} }).then(() => 'ok', (e) => 'error ' + e.message)`, awaitPromise: true, userGesture: true, returnByValue: true })).result?.result?.value;
+    pe.close();
+    const panelEv = await waitFor(() => evs("sidePanel", (e) => e.panel.extensionId === extId && e.panel.open)[0], 5000);
+    check("S16", "chrome.sidePanel.open → engine:extensionSidePanel:tab: {extensionId, open}", !!panelEv, { openRes, panelEv: panelEv?.panel, tab: panelEv?.tabId });
+    await cmd("nav", { tabId: et.tabId, action: "closeNow" });
   }
 
   // ---------------------------------------------------------------------------------------
