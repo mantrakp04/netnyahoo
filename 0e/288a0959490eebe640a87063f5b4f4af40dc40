@@ -1,0 +1,20 @@
+docs/nncore-spike.md
+  s_9c356f9574d31c::t_1c9b49acaef6e3 128
+  s_9c356f9574d31c::t_8b391a5706bc03 284-312
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0e288a0959490eebe640a87063f5b4f4af40dc40",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
