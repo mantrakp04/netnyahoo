@@ -222,6 +222,10 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 - (void)executeJavaScript:(NSString *)code;
 - (void)evaluate:(NSString *)code completion:(void (^)(NSString *_Nullable json))completion;
 - (void)navigationEntries:(void (^)(NSArray<NSDictionary<NSString *, id> *> *entries))completion;
+/// The page as painted: {data: base64 JPEG, frame: [x, y, w, h] of the view in its window from the top-left}, or nil
+/// (no page, or not painted within a second). `scale`: how small it will be drawn (lower JPEG quality below 0.5).
+- (void)capturePicture:(double)scale completion:(void (^)(NSDictionary<NSString *, id> *_Nullable picture))completion
+    NS_SWIFT_NAME(capturePicture(_:completion:));
 - (void)downloadFavicon:(NSString *)url completion:(void (^)(NSDictionary<NSString *, id> *_Nullable result))completion
     NS_SWIFT_NAME(downloadFavicon(_:completion:));
 - (void)downloadImage:(NSString *)url

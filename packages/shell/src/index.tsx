@@ -221,6 +221,12 @@ const Shell = requireNativeModule<{
   setWindowProfile(id: string, profile: string, neighbours: string[]): Promise<void>;
   focusWindow(id: string): Promise<void>;
   setTrafficLightsCenter(id: string, center: [number, number] | null): Promise<void>;
+  dragPreviewBegin?(windowId: string, chip: Rect4, grab: [number, number]): Promise<void>;
+  dragPreviewPage?(base64: string, frame: Rect4): Promise<void>;
+  dragPreviewUpdate?(shape: DragPreviewShape, point: [number, number]): Promise<void>;
+  dragPreviewCancel?(): Promise<void>;
+  windowFrame?(id: string): Promise<Rect4 | null>;
+  dragPreviewEnd?(windowId: string | null, frame: Rect4 | null): Promise<void>;
   setWindowTitle(id: string, title: string): Promise<void>;
   windowIds(): Promise<string[]>;
   keyWindowId(): Promise<string | null>;
@@ -266,6 +272,22 @@ export const focusWindow = (id: string) => Shell.focusWindow(id);
 export const setWindowTitle = (id: string, title: string) => Shell.setWindowTitle(id, title);
 export const setTrafficLightsCenter = (id: string, center: [number, number] | null) =>
   Shell.setTrafficLightsCenter(id, center);
+type Rect4 = [number, number, number, number];
+export type DragPreviewShape = "hidden" | "pill" | "card";
+// The dragged tab's picture under the pointer, a native panel that floats over everything (Windows.swift ›
+// DragPreview). Rects and points are in the source window from its top-left; `end`'s frame (the new window's, as
+// asked for) is on screen, in AppKit's coordinates. Optional: builds from before it have no picture, nothing else
+// changes.
+export const dragPreview = {
+  begin: (windowId: string, chip: Rect4, grab: [number, number]) => void Shell.dragPreviewBegin?.(windowId, chip, grab),
+  page: (base64: string, frame: Rect4) => void Shell.dragPreviewPage?.(base64, frame),
+  update: (shape: DragPreviewShape, point: [number, number]) => void Shell.dragPreviewUpdate?.(shape, point),
+  /** `windowId`: the new window the tab went to; the picture grows into it. */
+  end: (windowId: string | null = null, frame: Rect4 | null = null) => void Shell.dragPreviewEnd?.(windowId, frame),
+  cancel: () => void Shell.dragPreviewCancel?.(),
+};
+/** The window's frame now, on screen (AppKit's coordinates); null on builds without it. */
+export const windowFrame = (id: string): Promise<Rect4 | null> => Shell.windowFrame?.(id) ?? Promise.resolve(null);
 export const windowIds = () => Shell.windowIds();
 export const keyWindowId = () => Shell.keyWindowId();
 

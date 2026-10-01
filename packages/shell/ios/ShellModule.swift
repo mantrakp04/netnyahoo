@@ -196,6 +196,43 @@ public class ShellModule: Module {
       WindowManager.shared.setTrafficLightsCenter(id: id, center: center.flatMap { $0.count == 2 ? NSPoint(x: $0[0], y: $0[1]) : nil })
     }.runOnQueue(.main)
     AsyncFunction("focusWindow") { (id: String) in WindowManager.shared.focus(id: id) }.runOnQueue(.main)
+    // The dragged tab's picture under the pointer (DragPreview). Rects and points are in the source window from its
+    // top-left ([x, y, w, h], [x, y]), but for the new window's frame: on screen in AppKit's coordinates.
+    AsyncFunction("dragPreviewBegin") { (windowId: String, chip: [Double], grab: [Double]) in
+      guard chip.count == 4, grab.count == 2 else { return }
+      DragPreview.shared.begin(windowId: windowId, chip: NSRect(x: chip[0], y: chip[1], width: chip[2], height: chip[3]), grab: NSPoint(x: grab[0], y: grab[1]))
+    }.runOnQueue(.main)
+    AsyncFunction("dragPreviewPage") { (base64: String, frame: [Double]) in
+      guard frame.count == 4, let data = Data(base64Encoded: base64) else { return }
+      DragPreview.shared.setPage(data, frame: NSRect(x: frame[0], y: frame[1], width: frame[2], height: frame[3]))
+    }.runOnQueue(.main)
+    AsyncFunction("dragPreviewUpdate") { (shape: String, point: [Double]) in
+      guard point.count == 2 else { return }
+      DragPreview.shared.update(shape: shape, at: NSPoint(x: point[0], y: point[1]))
+    }.runOnQueue(.main)
+    AsyncFunction("dragPreviewCancel") { DragPreview.shared.cancel() }.runOnQueue(.main)
+    // The window's frame now, on screen in AppKit's coordinates (the store's stays the restored one in full screen).
+    AsyncFunction("windowFrame") { (id: String) -> [Double]? in
+      guard let f = WindowManager.shared.windows[id]?.frame else { return nil }
+      return [f.minX, f.minY, f.width, f.height]
+    }.runOnQueue(.main)
+    AsyncFunction("devDragPreviewState") { () -> [String: Any] in
+      #if DEBUG
+      return DragPreview.shared.debugState
+      #else
+      return [:]
+      #endif
+    }.runOnQueue(.main)
+    AsyncFunction("devDragPreviewWrite") { (dir: String) -> Bool in
+      #if DEBUG
+      return DragPreview.shared.debugWrite(dir: dir)
+      #else
+      return false
+      #endif
+    }.runOnQueue(.main)
+    AsyncFunction("dragPreviewEnd") { (windowId: String?, frame: [Double]?) in
+      DragPreview.shared.end(windowId: windowId, fallback: frame.flatMap { $0.count == 4 ? NSRect(x: $0[0], y: $0[1], width: $0[2], height: $0[3]) : nil })
+    }.runOnQueue(.main)
     AsyncFunction("setWindowTitle") { (id: String, title: String) in
       WindowManager.shared.setTitle(id: id, title: title)
     }.runOnQueue(.main)

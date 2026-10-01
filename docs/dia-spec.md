@@ -636,13 +636,28 @@ right split"; the numbers are from the pixels.
   (1.70 → 1.83 s). Fill turns the accent at ~0.15 ((54, 35, 35) here, the owner's red theme), the dashes become the
   accent, **7 pt dashes / 7 pt gaps**, ~2 pt; glyph and title the accent ((200, 70, 98)).
 - **Drop** (2.27 s): the page splits, the new pane sliding in on the dropped side; the strip shows the split as one tab.
-  Dragged again while split, each pane has its own pair of targets; a pane's tab dragged out of the window leaves the
-  split for a window of its own.
-- **Netnyahoo** (`layout/splitDrop.ts`, `SplitChrome.tsx`): the same stages as fractions of the pane's card, the same
-  lean, 0.11 s slide, a 0.2 s / 0.9 spring for the sizes; the dashes are React Native's (3 × the width: 2 pt → 6 / 6,
-  2.33 pt → 7 / 7). The dragged card shows the tab's icon and title, not a picture of the page. Not matched: the brief
-  tab-shaped pill Dia shows under the pointer before the card (1.483 s), and the picture Dia shows outside the window
-  (a window of its own while dragging; ours appears on release).
+  Dragged again while split, each pane has its own pair of targets.
+- **Let go over the page away from a target** (rec1027, 4.475 s): the tab opens in a window of its own. A window
+  grows out of the card at the pointer to its full size in **~0.2 s** (4.475 → 4.675 s) and takes focus; a split's pane
+  leaves its split that way.
+- **Outside the window** (rec1026, 1.742 s; two Dia windows): the same card, centred on the pointer, drawn over
+  everything (the menu bar too), so it's a window of its own. Over another window's tab strip it turns into a
+  tab-shaped pill in ~0.05 s (1.758 → 1.808 s) and that strip makes room for it; let go there, the tab joins it.
+- **The pill** (rec1027, 1.483 s): for a frame or two before the card, the tab itself (its strip look, title and ✕)
+  follows the pointer; then it becomes the card (1.508 s).
+- **Netnyahoo** (`layout/splitDrop.ts`, `SplitChrome.tsx`; the picture is `DragPreview` in `packages/shell/ios/Windows.swift`):
+  the same target stages as fractions of the pane's card, the same lean, 0.11 s slide, a 0.2 s / 0.9 spring for the
+  sizes; the dashes are React Native's (3 × the width: 2 pt → 6 / 6, 2.33 pt → 7 / 7). The picture is a borderless,
+  non-activating panel that takes no mouse: the tab's own strip look as the pill (30 ms, then 60 ms into the card),
+  then a 209 × 110 card of the window with the page painted in (the engine's `Page.captureScreenshot` of the page
+  shown, at 0.35×), on the page and outside the window alike; over another window, the pill. Let go away from a
+  target or a tab list, the card grows into the new window in 0.2 s, then fades in 0.1 s. Not matched: the other
+  window's strip making room for the pill (it lights up instead, and the tab lands at its end); a background tab's
+  card shows the window's page, not the tab's own.
+- **In the strip** (both layouts): an item takes its neighbour's place once its leading edge passes the neighbour's
+  centre, so a wide group passes a narrow tab. Not in the recordings, matched to Dia's behaviour: a group moves
+  by its chip; a tab dragged into the pinned tabs (its leading edge past the last one's middle) is pinned there, and a
+  pinned tab dragged out among the tabs is unpinned.
 - **0.2.18's bug** (rec1026, 11–17.8 s): pressing a tab and dragging moved the whole window. No view in the tab
   consumed the press, so it climbed the responder chain to the strip's `WindowDragRegion`, which called
   `performWindowDrag`. The region now ignores presses that came through a view with `mouseDownCanMoveWindow` off

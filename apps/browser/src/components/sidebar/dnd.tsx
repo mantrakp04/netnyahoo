@@ -5,7 +5,7 @@ import { layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
 import type { TabPlacement } from "../../store/organize";
-import { beginTabDrag, cancelTabDrag, endTabDrag, updateTabDrag, useTabDrag } from "../layout/tabDrag";
+import { beginTabDrag, cancelTabDrag, endTabDrag, setDragPicture, updateTabDrag, useTabDrag } from "../layout/tabDrag";
 import { suppressHover } from "./hover";
 
 type Frame = { x: number; y: number; w: number; h: number };
@@ -94,9 +94,10 @@ class DragController {
       : [item];
     const token = (this.token = {});
     suppressHover(true);
+    let seq = 0;
     if (item.kind === "row" || item.kind === "tile") {
       const single = this.sources.length === 1 ? (item.tabIds[0] ?? null) : null;
-      beginTabDrag(single, [...new Set(this.sources.flatMap((i) => i.tabIds))]);
+      seq = beginTabDrag(single, [...new Set(this.sources.flatMap((i) => i.tabIds))]);
     }
     this.pointer = { x, y };
     this.measured = false;
@@ -105,6 +106,7 @@ class DragController {
     if (this.token !== token || !this.sources.length) return;
     const frame = item.frame ?? { x, y, w: 176, h: 33 };
     this.grab = { x: x - frame.x, y: y - frame.y };
+    if (seq) setDragPicture(seq, [frame.x, frame.y, frame.w, frame.h], [x, y]);
     const count = new Set(this.sources.flatMap((s) => s.tabIds)).size;
     const height = item.kind === "group" ? Math.min(frame.h, item.headerFrame?.h ?? 33) : frame.h;
     this.ghost = {
@@ -298,6 +300,8 @@ export function DragProvider({ children }: { children: (ghost: Ghost | null, con
   controller.setGhost = setGhost;
   controller.setDropInto = setDropInto;
   const value = useMemo(() => ({ controller, sources, dropInto }), [controller, sources, dropInto]);
+  // The sidebar going away mid-drag (its window closing, the layout switching) ends the drag and its picture.
+  useEffect(() => () => void (controller.active && controller.end(false)), [controller]);
   return (
     <DragContext.Provider value={value}>
       {children(ghost, controller)}

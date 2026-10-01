@@ -8,9 +8,8 @@ import type { SplitView } from "../../store/types";
 import { resize, type Divider, type Rect } from "./geometry";
 import { useHover } from "../primitives";
 import { hideToast, useToasts } from "./splitActions";
-import { useTab, useWindowId } from "../../store/hooks";
-import { TabIcon } from "../sidebar/TabIcon";
-import { PREVIEW, zoneHit, zoneRect, type ZoneStage } from "./splitDrop";
+import { useWindowId } from "../../store/hooks";
+import { zoneHit, zoneRect, type ZoneStage } from "./splitDrop";
 import { setDropTarget, setOnPage, setTargetResolver, useTabDrag } from "./tabDrag";
 
 export function SplitDividers({ split, dividers, width, height }: { split: SplitView; dividers: Divider[]; width: number; height: number }) {
@@ -170,7 +169,6 @@ export function DropTargets({ panes, origin }: { panes: Record<string, Rect>; or
           />
         )),
       )}
-      {preview && dragging ? <DragPreview tabId={dragging} x={px} y={py} /> : null}
     </View>
   );
 }
@@ -241,39 +239,6 @@ function DropZone({ pane, side, shown, stage, pointerX, onHidden }: { pane: Rect
       <Symbol name={side === "left" ? "rectangle.lefthalf.filled" : "rectangle.righthalf.filled"} size={18} color={active ? theme.accent : rest} style={{ width: 24, height: 20 }} />
       <Text style={{ marginTop: 11, fontSize: 13, fontWeight: "600", color: active ? theme.accent : rest }}>{side === "left" ? "Add left split" : "Add right split"}</Text>
     </Animated.View>
-  );
-}
-
-// The dragged tab as a small window under the pointer, as Dia shows it over the page.
-function DragPreview({ tabId, x, y }: { tabId: string; x: number; y: number }) {
-  const theme = useTheme();
-  const tab = useTab(tabId);
-  if (!tab) return null;
-  const title = tab.customTitle || tab.title || tab.url || "New Tab";
-  return (
-    <Surface
-      fill={hex(theme.dark ? "#141316" : "#F4F2F3")}
-      cornerRadius={4}
-      borderColor={hex(theme.dark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.18)")}
-      borderWidth={0.5}
-      shadowColor="#000000"
-      shadowOpacity={theme.dark ? 0.45 : 0.2}
-      shadowRadius={14}
-      shadowOffset={[0, 6]}
-      style={{ position: "absolute", left: x - PREVIEW.width / 2, top: y - PREVIEW.height / 2, width: PREVIEW.width, height: PREVIEW.height }}
-    >
-      <View style={{ height: 11, flexDirection: "row", alignItems: "center", paddingLeft: 6, gap: 2.5, backgroundColor: theme.dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)" }}>
-        {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
-          <View key={c} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: c }} />
-        ))}
-      </View>
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 14, gap: 6 }}>
-        <TabIcon url={tab.url} favicon={tab.favicon} icon={tab.customIcon} size={18} profileId={tab.profileId} />
-        <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: "500", color: theme.textSecondary, maxWidth: PREVIEW.width - 28 }}>
-          {title}
-        </Text>
-      </View>
-    </Surface>
   );
 }
 

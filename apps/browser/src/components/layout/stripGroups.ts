@@ -97,12 +97,17 @@ export function dragRange({ slots, lefts }: DragGeometry, from: number): [number
   return [lefts[0]! - lefts[from]!, lefts[last]! + slots[last]!.width - (lefts[from]! + slots[from]!.width)];
 }
 
-/** The slot index the dragged one lands on: past the centre of a neighbour, it takes that neighbour's place. */
+/**
+ * The slot index the dragged one lands on: once its leading edge passes a neighbour's centre, it takes that
+ * neighbour's place (a wide group passes a narrow tab, and a tab doesn't have to travel a whole width).
+ */
 export function dropIndex({ slots, lefts }: DragGeometry, from: number, dx: number): number {
-  const centre = lefts[from]! + slots[from]!.width / 2 + dx;
+  const left = lefts[from]! + dx;
+  const right = left + slots[from]!.width;
   let index = 0;
   slots.forEach((slot, i) => {
-    if (i !== from && lefts[i]! + slot.width / 2 < centre) index++;
+    const centre = lefts[i]! + slot.width / 2;
+    if (i < from ? centre < left : i > from && centre < right) index++;
   });
   return index;
 }

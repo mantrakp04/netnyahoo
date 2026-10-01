@@ -407,3 +407,308 @@ final class WindowManager: NSObject, NSWindowDelegate {
   }
 }
 
+
+// MARK: - Dragged tab preview
+
+/// The dragged tab as Dia shows it once it leaves its list: a small picture of the window under the pointer
+/// (over the page, outside the window, over other apps), after a moment as a tab-shaped pill. A borderless,
+/// non-activating panel that takes no mouse events, so the drag keeps going to the window it started in and no
+/// app is activated. In a hidden instance (NETNYAHOO_BACKGROUND) it stays just above its window instead of
+/// floating over every app.
+final class DragPreview {
+  static let shared = DragPreview()
+
+  // Dia's card (209 × 109.5, a picture of the window) and its tab pill; measured in dia-spec.md › Dragging tabs.
+  static let card = NSSize(width: 209, height: 110)
+  private static let pillMs = 0.03
+  private static let morph = 0.06
+  private static let grow = 0.2
+  private static let fadeOut = 0.1
+
+  private final class Panel: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+  }
+
+  private var panel: Panel?
+  private let picture = CALayer()
+  private weak var source: NSWindow?
+  private var sourceClosing: NSObjectProtocol?
+  private var windowImage: CGImage?
+  private var pageImage: (image: CGImage, frame: NSRect)?
+  private var cardImage: CGImage?
+  private var pillImage: CGImage?
+  private var pillSize = NSSize(width: 173, height: 32)
+  // The pointer's place in the pill when the tab was grabbed, from its top-left.
+  private var grab = NSPoint(x: 86, y: 16)
+  private var shape = "hidden" { didSet { if shape != oldValue { shapes.append(shape) } } }
+  // The shapes shown since the drag began (DEV state).
+  private var shapes: [String] = []
+  private var wanted = "hidden"
+  private var lastPoint = NSPoint.zero
+  private var shownAt = 0.0
+  private var generation = 0
+  private let background = ProcessInfo.processInfo.environment["NETNYAHOO_BACKGROUND"] == "1"
+  // A frame and alpha animation driven here: AppKit's animator doesn't run for a panel of an app that isn't active
+  // (a hidden instance, or a drag that started in a window behind another app's). It heads for `desired`, which
+  // follows the pointer.
+  private var animation: Timer?
+  private var desired = NSRect.zero
+
+  /// `chip`: the dragged item in the window, from its top-left; `grab`: the pointer in the same coordinates.
+  func begin(windowId: String, chip: NSRect, grab: NSPoint) {
+    cancel()
+    shapes = []
+    guard let window = WindowManager.shared.windows[windowId] else { return }
+    source = window
+    sourceClosing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) {
+      [weak self] _ in self?.cancel()
+    }
+    pillSize = chip.size
+    self.grab = NSPoint(x: grab.x - chip.minX, y: grab.y - chip.minY)
+    windowImage = Self.snapshot(window)
+    pillImage = windowImage.flatMap { Self.crop($0, to: chip, in: window) }
+    composeCard()
+  }
+
+  /// The page as the engine painted it (the window's own snapshot has no web content), at `frame` in the
+  /// window from its top-left.
+  func setPage(_ data: Data, frame: NSRect) {
+    guard source != nil, let image = NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+    pageImage = (image, frame)
+    composeCard()
+    if shape == "card" { picture.contents = cardImage }
+  }
+
+  /// `shape`: "hidden", "pill" (over another window's tabs) or "card"; `at`: the pointer in the source window from its
+  /// top-left (converted here with the window's real frame, which is right in full screen too). A card that wasn't
+  /// showing comes in as the pill first, as Dia's does.
+  func update(shape next: String, at local: NSPoint) {
+    guard let source else { return }
+    let point = NSPoint(x: source.frame.minX + local.x, y: source.frame.maxY - local.y)
+    wanted = next
+    lastPoint = point
+    if next == "hidden" {
+      hide()
+      return
+    }
+    let panel = self.panel ?? makePanel()
+    if shape == "hidden" {
+      // Comes in as the pill, then becomes the card.
+      shownAt = ProcessInfo.processInfo.systemUptime
+      shape = "pill"
+      animation?.invalidate()
+      animation = nil
+      panel.alphaValue = 1
+      place(panel, shape: "pill", at: point, animated: false)
+      if background { panel.order(.above, relativeTo: source.windowNumber) } else { panel.orderFrontRegardless() }
+      guard next == "card" else { return }
+      let gen = generation
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.pillMs) { [weak self] in
+        guard let self, self.generation == gen, self.shape == "pill", self.wanted == "card" else { return }
+        self.shape = "card"
+        self.place(panel, shape: "card", at: self.lastPoint, animated: true)
+      }
+    } else if shape != next, !(next == "card" && ProcessInfo.processInfo.systemUptime - shownAt < Self.pillMs) {
+      shape = next
+      place(panel, shape: next, at: point, animated: true)
+    } else {
+      place(panel, shape: shape, at: point, animated: false)
+    }
+  }
+
+  /// The drag ended. `windowId`: the new window the tab went to (`fallback`: the frame it asked for, on screen);
+  /// the card grows into the window's real frame (Dia: 0.2 s) before it fades. Otherwise the card fades at once.
+  func end(windowId: String?, fallback: NSRect?) {
+    let panel = self.panel
+    let showing = shape != "hidden"
+    let card = cardImage
+    release()
+    guard let panel, showing else {
+      panel?.orderOut(nil)
+      return
+    }
+    let gen = generation
+    let fade: () -> Void = { [weak self] in
+      guard let self, self.generation == gen else { return }
+      self.animate(panel, to: panel.frame, alpha: 0, duration: Self.fadeOut) { panel.orderOut(nil) }
+    }
+    guard let windowId, let fallback, fallback.width > 0 else { return fade() }
+    picture.contents = card
+    // The window opens a moment later, placed by AppKit (kept on its screen, below the menu bar).
+    var tries = 0
+    func grow() {
+      guard generation == gen else { return }
+      if let window = WindowManager.shared.windows[windowId], window.isVisible {
+        return animate(panel, to: window.frame, alpha: 1, duration: Self.grow, then: fade)
+      }
+      tries += 1
+      if tries > 20 { return animate(panel, to: fallback, alpha: 1, duration: Self.grow, then: fade) }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) { grow() }
+    }
+    grow()
+  }
+
+  /// Gone at once, with everything it held (a new drag, the source window closing).
+  func cancel() {
+    animation?.invalidate()
+    animation = nil
+    panel?.orderOut(nil)
+    release()
+  }
+
+  private func release() {
+    generation += 1
+    shape = "hidden"
+    wanted = "hidden"
+    if let sourceClosing { NotificationCenter.default.removeObserver(sourceClosing) }
+    sourceClosing = nil
+    source = nil
+    windowImage = nil
+    pageImage = nil
+    cardImage = nil
+    pillImage = nil
+  }
+
+  private func hide() {
+    animation?.invalidate()
+    animation = nil
+    guard shape != "hidden" else { return }
+    shape = "hidden"
+    panel?.orderOut(nil)
+  }
+
+  /// DEV: the card and pill pictures as PNGs, to look at.
+  func debugWrite(dir: String) -> Bool {
+    var ok = false
+    for (name, image) in [("card", cardImage), ("pill", pillImage)] {
+      guard let image, let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { continue }
+      ok = (try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("drag-\(name).png"))) != nil || ok
+    }
+    return ok
+  }
+
+  /// DEV: what shows, for tests (the panel can't be captured while the screen is locked).
+  var debugState: [String: Any] {
+    let frame = panel?.frame ?? .zero
+    return [
+      "shape": shape, "shapes": shapes, "visible": panel?.isVisible ?? false, "alpha": panel?.alphaValue ?? 0,
+      "frame": [frame.minX, frame.minY, frame.width, frame.height], "page": pageImage != nil,
+      "key": panel?.isKeyWindow ?? false, "ignoresMouse": panel?.ignoresMouseEvents ?? false,
+      "level": panel?.level.rawValue ?? 0, "activeApp": NSApp.isActive,
+    ]
+  }
+
+  private func animate(_ panel: NSPanel, to frame: NSRect, alpha: CGFloat, duration: Double, then done: (() -> Void)? = nil) {
+    animation?.invalidate()
+    desired = frame
+    let from = panel.frame, fromAlpha = panel.alphaValue
+    let start = ProcessInfo.processInfo.systemUptime
+    let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] timer in
+      let t = min(1, (ProcessInfo.processInfo.systemUptime - start) / max(duration, 0.001))
+      let target = self?.desired ?? frame
+      let e = 1 - pow(1 - t, 3)  // ease-out
+      let mix = { (a: CGFloat, b: CGFloat) in a + (b - a) * e }
+      panel.setFrame(NSRect(x: mix(from.minX, target.minX), y: mix(from.minY, target.minY), width: mix(from.width, target.width),
+        height: mix(from.height, target.height)), display: true)
+      panel.alphaValue = mix(fromAlpha, alpha)
+      guard t >= 1 else { return }
+      timer.invalidate()
+      if self?.animation === timer { self?.animation = nil }
+      done?()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    animation = timer
+  }
+
+  private func makePanel() -> Panel {
+    let panel = Panel(contentRect: NSRect(origin: .zero, size: Self.card), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+    panel.isFloatingPanel = !background
+    panel.level = background ? .normal : .floating
+    panel.ignoresMouseEvents = true
+    panel.hidesOnDeactivate = false
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = true
+    panel.animationBehavior = .none
+    panel.isReleasedWhenClosed = false
+    panel.collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary, .canJoinAllSpaces]
+    let view = NSView(frame: panel.contentLayoutRect)
+    view.wantsLayer = true
+    view.autoresizingMask = [.width, .height]
+    picture.frame = view.bounds
+    picture.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+    picture.contentsGravity = .resizeAspectFill
+    picture.masksToBounds = true
+    picture.borderWidth = 0.5
+    view.layer?.addSublayer(picture)
+    panel.contentView = view
+    self.panel = panel
+    return panel
+  }
+
+  private func place(_ panel: NSPanel, shape: String, at point: NSPoint, animated: Bool) {
+    let pill = shape == "pill"
+    let size = pill ? pillSize : Self.card
+    // The pill keeps the pointer where it held the tab; the card is centred on it.
+    let offset = pill ? grab : NSPoint(x: size.width / 2, y: size.height / 2)
+    let frame = NSRect(x: (point.x - offset.x).rounded(), y: (point.y - size.height + offset.y).rounded(), width: size.width, height: size.height)
+    CATransaction.begin()
+    CATransaction.setDisableActions(!animated)
+    picture.contents = pill ? pillImage : cardImage
+    picture.cornerRadius = pill ? 10 : 4
+    picture.borderColor = NSColor(white: 1, alpha: pill ? 0.15 : 0.3).cgColor
+    CATransaction.commit()
+    if animated, panel.frame.size != frame.size {
+      animate(panel, to: frame, alpha: 1, duration: Self.morph)
+    } else if animation == nil {
+      panel.setFrame(frame, display: false)
+    } else {
+      desired = frame
+    }
+  }
+
+  // The window with the page painted in, at the card's aspect from the top (title bar and tabs kept).
+  private func composeCard() {
+    guard let window = source, let base = windowImage else { return }
+    let size = window.frame.size
+    let scale = 2.0
+    let width = Int(Self.card.width * scale), height = Int(Self.card.height * scale)
+    guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+    let fit = max(Self.card.width / size.width, Self.card.height / size.height) * scale
+    // CG's origin is bottom-left: the window's top sits at the card's top.
+    let drawn = CGRect(x: 0, y: CGFloat(height) - size.height * fit, width: size.width * fit, height: size.height * fit)
+    ctx.interpolationQuality = .high
+    ctx.draw(base, in: drawn)
+    if let page = pageImage {
+      let r = page.frame
+      ctx.draw(page.image, in: CGRect(x: r.minX * fit, y: drawn.maxY - r.maxY * fit, width: r.width * fit, height: r.height * fit))
+    }
+    cardImage = ctx.makeImage()
+  }
+
+  private static func snapshot(_ window: NSWindow) -> CGImage? {
+    guard let view = window.contentView, let layer = view.layer else { return nil }
+    let size = view.bounds.size
+    let scale = window.backingScaleFactor
+    guard size.width > 0, size.height > 0,
+      let ctx = CGContext(data: nil, width: Int(size.width * scale), height: Int(size.height * scale), bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { return nil }
+    ctx.setFillColor((window.backgroundColor ?? .windowBackgroundColor).cgColor)
+    ctx.fill(CGRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale))
+    ctx.scaleBy(x: scale, y: scale)
+    if view.isFlipped || layer.isGeometryFlipped {
+      ctx.translateBy(x: 0, y: size.height)
+      ctx.scaleBy(x: 1, y: -1)
+    }
+    layer.render(in: ctx)
+    return ctx.makeImage()
+  }
+
+  private static func crop(_ image: CGImage, to rect: NSRect, in window: NSWindow) -> CGImage? {
+    let scale = CGFloat(image.width) / max(1, window.frame.width)
+    return image.cropping(to: CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale))
+  }
+}
