@@ -59,6 +59,11 @@ bool Background();
 + (void)setPinned:(BOOL)pinned tab:(NNCoreTab *)tab;
 @end
 
+// Asked of the engine (stage 1): close a tab at once, without beforeunload, as CEF's CloseBrowser(true).
+@interface NNCoreTab (Pending)
+- (void)closeNow;
+@end
+
 namespace nncore_host {
 NSArray<NNCoreProfile *> *LoadedProfiles();
 // The engine has stage 1's tab model (adoptTab:, tabWillClose:…); older engines report closes only as removals.

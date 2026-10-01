@@ -274,7 +274,9 @@ NSString *JSONString(id value) {
   _closing = YES;
   [[NNCoreWindowController holding:tab] noteClosing:tab];
   [self detach];
-  [tab close];
+  // As CEF's CloseBrowser(true): the app already dropped the tab, so no beforeunload keeps it alive unseen.
+  if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
+  else [tab close];
 }
 
 - (void)activate {

@@ -9,6 +9,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { join, resolve } from "node:path";
 
 const [appArg, scratchArg, ...only] = process.argv.slice(2);
@@ -19,7 +20,14 @@ if (!appArg || !scratchArg) {
 const app = resolve(appArg);
 const scratch = resolve(scratchArg);
 const data = join(scratch, "data");
-const port = 9400 + Math.floor(Math.random() * 400);
+// A DevTools port nothing else listens on (another instance's would answer for the wrong app).
+const port = await new Promise((resolve) => {
+  const probe = createNetServer();
+  probe.listen(0, "127.0.0.1", () => {
+    const { port } = probe.address();
+    probe.close(() => resolve(port));
+  });
+});
 rmSync(data, { recursive: true, force: true });
 mkdirSync(data, { recursive: true });
 
