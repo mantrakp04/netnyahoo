@@ -1,8 +1,8 @@
-import type { StripState, StripTab } from "@netnyahoo/cef";
+import type { StripGroup, StripState, StripTab } from "@netnyahoo/cef";
 import type { BrowserState } from "./browser";
 import { engineProfile, pinnedFirst } from "./model";
 import { forgetOpeners, switchKeepsOpeners } from "./openers";
-import { groupOf, placing } from "./organize";
+import { groupOf, placing, withGroup } from "./organize";
 import { splitOf } from "./splits";
 import { activated, apply, removeTabs } from "./tabs";
 
@@ -20,17 +20,22 @@ const known = (s: BrowserState, t: StripTab | undefined): t is Keyed => !!t?.key
 const madeByChrome = (s: BrowserState, key: string) => !!s.tabs[key]?.adoptId?.startsWith("tab:");
 
 /** What a command of the app's own, already on its way to the strip, will set anyway (Chrome's change came first,
- *  the command commits after it and wins): the order and pins of the tabs an `arrange` lists, the active tab. */
-export type Pending = { arranged: ReadonlySet<string>; active: boolean };
+ *  the command commits after it and wins): the order and pins of the tabs an `arrange` lists, the groups of the
+ *  tabs a `group` lists, the active tab. */
+export type Pending = { arranged: ReadonlySet<string>; grouped?: ReadonlySet<string>; active: boolean };
 const NOTHING_PENDING: Pending = { arranged: new Set(), active: false };
+
+/** Chrome's group ids → the store's: bound when the app makes a Chrome group for a store group, or takes in one an
+ *  extension made. */
+export type GroupBindings = Map<string, string>;
 
 export function chromeChanged(
   s: BrowserState,
   before: StripState | undefined,
   after: StripState,
-  context: { seen: ReadonlySet<string>; siblings?: StripState[]; pending?: Pending },
+  context: { seen: ReadonlySet<string>; siblings?: StripState[]; pending?: Pending; groups?: GroupBindings },
 ): BrowserState {
-  const { seen, siblings = [], pending = NOTHING_PENDING } = context;
+  const { seen, siblings = [], pending = NOTHING_PENDING, groups = new Map() } = context;
   const was = new Map((before?.tabs ?? []).map((t) => [t.browser, t]));
   const now = after.tabs.filter((t): t is Keyed => known(s, t));
   // A tab stayed when it was there before as the same tab. A tab Chrome made is Chrome's to place the first time
@@ -62,6 +67,8 @@ export function chromeChanged(
     settled.add(t.key);
   }
 
+  if (reportsGroups(after)) s = groupsChanged(s, before, after, now, (t) => stayed(t) || taken.has(t.key), taken, groups, pending);
+
   if (!pending.active) {
     const active = after.tabs.find((t) => t.active);
     const previous = before?.tabs.find((t) => t.active);
@@ -77,6 +84,97 @@ export function chromeChanged(
     }
   }
   return s;
+}
+
+const reportsGroups = (strip: StripState) => strip.tabs.some((t) => t.group !== undefined);
+
+// Chrome's own group changes (an extension's tabs.group / ungroup / tabGroups.update) become the store's: a tab
+// joins or leaves a group, a group Chrome made becomes a store group, a group's title, color or collapsed state
+// follows. Chrome can't group pinned tabs, and the store's pinned tiles aren't in groups either.
+function groupsChanged(
+  s: BrowserState,
+  before: StripState | undefined,
+  after: StripState,
+  now: Keyed[],
+  followed: (t: Keyed) => boolean,
+  taken: ReadonlySet<string>,
+  bound: GroupBindings,
+  pending: Pending,
+): BrowserState {
+  const was = new Map((before?.tabs ?? []).map((t) => [t.browser, t.group ?? null]));
+  const looks = new Map((after.groups ?? []).map((g) => [g.id, g]));
+  const looksBefore = new Map((before?.groups ?? []).map((g) => [g.id, g]));
+  for (const t of now) {
+    const tab = s.tabs[t.key];
+    if (!tab || tab.pinned || !followed(t) || pending.grouped?.has(t.key)) continue;
+    const token = t.group ?? null;
+    if (!taken.has(t.key) && was.get(t.browser) === token) continue;
+    const current = groupOf(s, t.key);
+    if (token === null) {
+      if (current) s = regroupInPlace(s, t.key, null);
+      continue;
+    }
+    const id = bound.get(token);
+    if (id && s.groups[id]) {
+      if (current?.id !== id) s = regroupInPlace(s, t.key, id);
+      continue;
+    }
+    // A group Chrome made: the store makes it, with the tabs Chrome has in it.
+    const members = now.filter((x) => x.group === token && s.tabs[x.key] && !s.tabs[x.key]!.pinned).map((x) => x.key);
+    const [next, made] = withGroup(s, members, { pinned: false, name: looks.get(token)?.title ?? "" });
+    if (!made) continue;
+    bound.set(token, made);
+    s = withLook(next, made, looks.get(token));
+  }
+  for (const [token, look] of looks) {
+    const id = bound.get(token);
+    const was = looksBefore.get(token);
+    if (!id || !s.groups[id] || (was && was.title === look.title && was.color === look.color && was.collapsed === look.collapsed)) continue;
+    s = withLook(s, id, look);
+  }
+  return s;
+}
+
+// Moves a tab into a group, or out of its own, where it is.
+function regroupInPlace(s: BrowserState, key: string, groupId: string | null): BrowserState {
+  const w = s.windows[s.tabs[key]!.windowId];
+  if (!w) return s;
+  const beforeId = w.tabIds[w.tabIds.indexOf(key) + 1] ?? null;
+  return placing(s, [key], { pinned: false, beforeId, groupId });
+}
+
+function withLook(s: BrowserState, id: string, look: StripGroup | undefined): BrowserState {
+  const g = s.groups[id];
+  if (!g || !look) return s;
+  // Chrome always has a color; grey is the store's none.
+  const color = look.color === "grey" && !g.color ? null : look.color;
+  if (g.name === look.title && g.color === color && g.collapsed === look.collapsed) return s;
+  return { ...s, groups: { ...s.groups, [id]: { ...g, name: look.title, color, collapsed: look.collapsed } } };
+}
+
+export type GroupStep = { keys: string[]; group: string | null; title?: string; color?: StripGroup["color"]; makes?: string };
+
+/** The next change that makes Chrome's groups in the strip the store's: a Chrome group for a store group that has
+ *  none (`makes`), tabs missing from their group, a group's title or color, tabs in a group the store doesn't have
+ *  them in. Collapsing isn't sent: Chrome would switch away from a collapsed group's active tab. */
+export function groupStep(s: BrowserState, strip: StripState, bound: GroupBindings): GroupStep | null {
+  if (!reportsGroups(strip)) return null;
+  const tabs = strip.tabs.filter((t): t is Keyed => known(s, t) && !t.pinned && !s.tabs[t.key]!.pinned);
+  const looks = new Map((strip.groups ?? []).map((g) => [g.id, g]));
+  const tokenOf = (id: string) => [...bound].find(([token, g]) => g === id && looks.has(token))?.[0];
+  const storeGroups = [...new Set(tabs.map((t) => groupOf(s, t.key)).filter((g) => !!g))];
+  for (const g of storeGroups) {
+    const keys = tabs.filter((t) => groupOf(s, t.key)?.id === g!.id).map((t) => t.key);
+    const token = tokenOf(g!.id);
+    const look = { title: g!.name, color: g!.color ?? "grey" } as const;
+    if (!token) return { keys, group: "new", ...look, makes: g!.id };
+    const missing = tabs.filter((t) => keys.includes(t.key) && t.group !== token).map((t) => t.key);
+    if (missing.length) return { keys: missing, group: token };
+    const now = looks.get(token)!;
+    if (now.title !== look.title || now.color !== look.color) return { keys, group: token, ...look };
+  }
+  const strays = tabs.filter((t) => t.group && t.group !== (groupOf(s, t.key) ? tokenOf(groupOf(s, t.key)!.id) : undefined));
+  return strays.length ? { keys: strays.map((t) => t.key), group: null } : null;
 }
 
 // The workspace window a strip belongs to: its tabs that stayed, else any tab of a strip of the same app window.

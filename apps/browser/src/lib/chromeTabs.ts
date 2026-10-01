@@ -13,7 +13,7 @@ import {
 } from "@netnyahoo/cef";
 import { usePages } from "../components/layout/pageState";
 import { useBrowser, type BrowserState } from "../store/browser";
-import { chromeChanged, stripActual, stripPlan } from "../store/liveTabs";
+import { chromeChanged, groupStep, stripActual, stripPlan, type GroupBindings } from "../store/liveTabs";
 import { engineProfile } from "../store/model";
 import { webviews } from "./webviews";
 
@@ -30,8 +30,12 @@ let lastRev = -1;
 let early: TabStripTransaction[] = [];
 // Tabs the app has seen in a strip (a tab Chrome made is Chrome's to place only the first time).
 const seen = new Set<string>();
-// The command each strip is waiting for (an arrange with the tabs it lists).
-const inflight = new Map<number, { kind: "arrange" | "activate"; cmd: number; keys?: string[] }>();
+// The command each strip is waiting for (an arrange or group with the tabs it lists; the store group a new Chrome
+// group is made for).
+type Kind = "arrange" | "activate" | "group";
+const inflight = new Map<number, { kind: Kind; cmd: number; keys?: string[]; makes?: string }>();
+// Chrome's group ids → the store's.
+const groups: GroupBindings = new Map();
 // What was last sent to each strip, against which of its states: a plan Chrome couldn't reach isn't sent again
 // until something other than the app's commands changes the strip.
 const tried = new Map<string, { sig: string; since: number }>();
@@ -43,7 +47,7 @@ if (__DEV__) {
     engineInfo,
     devWindowAction,
     strips: () => [...mirror.values()],
-    state: () => ({ lastRev, inflight: Object.fromEntries(inflight), tried: Object.fromEntries(tried) }),
+    state: () => ({ lastRev, inflight: Object.fromEntries(inflight), tried: Object.fromEntries(tried), groups: Object.fromEntries(groups) }),
   };
 }
 
@@ -76,7 +80,13 @@ export function startChromeTabs() {
 function receive(tx: TabStripTransaction) {
   if (tx.rev <= lastRev) return;
   lastRev = tx.rev;
-  for (const [strip, f] of inflight) if (f.cmd === tx.cmd) inflight.delete(strip);
+  for (const [strip, f] of inflight) {
+    if (f.cmd !== tx.cmd) continue;
+    inflight.delete(strip);
+    // The Chrome group made for a store group: whatever group its tabs are in now.
+    const made = f.makes && tx.strips.find((x) => x.strip === strip)?.tabs.find((t) => t.key === f.keys?.[0])?.group;
+    if (made && f.makes) groups.set(made, f.makes);
+  }
   const start = useBrowser.getState();
   let s = start;
   for (const strip of tx.strips) {
@@ -91,7 +101,12 @@ function receive(tx: TabStripTransaction) {
       s = chromeChanged(s, before, strip, {
         seen,
         siblings,
-        pending: { arranged: new Set(waiting?.kind === "arrange" ? waiting.keys : []), active: waiting?.kind === "activate" },
+        groups,
+        pending: {
+          arranged: new Set(waiting?.kind === "arrange" ? waiting.keys : []),
+          grouped: new Set(waiting?.kind === "group" ? waiting.keys : []),
+          active: waiting?.kind === "activate",
+        },
       });
     }
     for (const t of strip.tabs) if (t.key) seen.add(t.key);
@@ -126,16 +141,22 @@ function project(s: BrowserState) {
       send(strip.strip, "activate", plan.active, { op: "activate", strip: strip.strip, key: plan.active });
     } else if (order !== `${actual.keys.join(",")}|${actual.pinned}`) {
       send(strip.strip, "arrange", order, { op: "arrange", strip: strip.strip, keys: plan.keys, pinned: plan.pinned });
+    } else {
+      const step = groupStep(s, strip, groups);
+      if (step) {
+        const { makes, ...rest } = step;
+        send(strip.strip, "group", JSON.stringify(step), { op: "group", strip: strip.strip, ...rest }, makes);
+      }
     }
   }
 }
 
-function send(strip: number, kind: "arrange" | "activate", sig: string, command: TabStripCommand) {
+function send(strip: number, kind: Kind, sig: string, command: TabStripCommand, makes?: string) {
   const since = changedAt.get(strip) ?? 0;
   const last = tried.get(`${strip}:${kind}`);
   if (last?.sig === sig && last.since === since) return;
   tried.set(`${strip}:${kind}`, { sig, since });
-  inflight.set(strip, { kind, cmd: sendTabStripCommand(command), ...(command.op === "arrange" ? { keys: command.keys } : {}) });
+  inflight.set(strip, { kind, cmd: sendTabStripCommand(command), ...(command.op !== "activate" ? { keys: command.keys } : {}), makes });
 }
 
 // MARK: Moves between windows

@@ -97,6 +97,8 @@ implement the same):
   - `{ op: "arrange", strip, keys, pinned }`: the listed tabs in this order at the start of the strip, the first
     `pinned` of them pinned and the rest not. Keys not in that strip (any more) are skipped; the strip's other tabs
     follow the listed ones.
+  - `{ op: "group", strip, keys, group, title?, color? }`: the listed unpinned tabs into one of the strip's groups
+    (its id), `"new"` for a new one, `null` out of theirs; the group's title and color when given.
 - `onTabStripTransaction(listener)` delivers `{ rev, cmd, strips, rejected? }`:
   - `rev` is one more than the previous transaction's, for the engine's lifetime, in the order the changes were
     committed. A listener applies them in that order and drops any `rev` it has already passed.
@@ -110,10 +112,11 @@ implement the same):
     synchronously inside a command (selection, observers) is the command's.
   - `strips` holds every strip the change touched, each whole: `{ strip, window, profile, tabs, closed? }`
     (`window` is shared by the strips of one app window, one per engine profile it shows), `tabs` in strip
-    order as `{ key, browser, index, active, pinned, group? }`. `key` is the WebView's `transferKey` (the store's tab
+    order as `{ key, browser, index, active, pinned, group? }`, and `groups?: [{ id, title, color, collapsed }]`. `key` is the WebView's `transferKey` (the store's tab
     id), bound when a view first shows the browser and kept while the browser moves between views; `null` for a tab
-    no view has shown (one Chrome made, before the app adopts it; an engine placeholder). `group` is absent while the
-    engine doesn't report groups (CEF today). A strip left without tabs is sent with `tabs: []`; a strip whose
+    no view has shown (one Chrome made, before the app adopts it; an engine placeholder). `group` (Chrome's group id,
+    null for none) and `groups` are absent while the engine doesn't report groups (CEF gets them from the engine
+    layer's `nn_tabs`, `//chrome/browser/netnyahoo`, once a distribution with it is pinned). A strip left without tabs is sent with `tabs: []`; a strip whose
     window closed comes once more with `closed: true`.
 - `tabStrips()` answers every strip as a transaction with `cmd: null` and the last `rev` sent: the starting point
   after a JS (re)load. Transactions that arrive before it are held, then applied if newer.
@@ -139,15 +142,21 @@ implement the same):
   - a tab Chrome made (`tab:` adoption) takes Chrome's pin, place and activation the first time the app sees it;
     a tab arriving in a strip of another app window (an extension moving it) changes window as it is, page and
     live state included (`intoWindow`; its view takes the same browser there);
+  - groups, when the engine reports them: a tab Chrome put in a group or took out of one joins or leaves the
+    store's group in place; a group Chrome made becomes a store group (title, color); a group's title, color or
+    collapsed state follows. Chrome's group ids and the store's are bound in memory (`GroupBindings`);
   - Chrome's change to a fact that a command of the app's own, already sent to that strip, will set (the order
-    and pins of the tabs an `arrange` lists, the active tab for `activate`) is skipped: that command commits after
-    it and wins.
+    and pins of the tabs an `arrange` lists, the groups of the tabs a `group` lists, the active tab for
+    `activate`) is skipped: that command commits after it and wins.
 - After every store change and transaction, `stripPlan` gives what the store wants each strip to be (the store's
   tabs in it in window order, pinned first; the shown profile's active tab) and the app sends the command that
-  closes the gap: `activate` first, then `arrange`; one command per strip at a time; the same command isn't sent
+  closes the gap: `activate` first, then `arrange`, then `group` (a Chrome group for a store group that has none,
+  missing members, title and color; never collapsing, which would make Chrome switch away from the active tab);
+  one command per strip at a time; the same command isn't sent
   again until something other than the app's commands changed that strip (a plan Chrome can't reach doesn't loop).
-- Known gaps: Chrome's tab groups (needs the engine to report them, `//chrome/browser/netnyahoo`); an extension
-  removing the active tab and activating another in one task has its activation replaced by the opener rule.
+- Known gaps: an extension removing the active tab and activating another in one task has its activation replaced
+  by the opener rule; an extension moving a tab into a window none of whose strips holds a tab the store knows (only
+  New Tab pages there) doesn't move it in the sidebar.
 - Tests: `src/store/liveTabs.test.mjs` runs the real wiring against a fake engine that keeps this contract.
 
 ## Sync (apps/browser/src/sync, packages/sync)

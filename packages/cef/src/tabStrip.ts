@@ -16,8 +16,17 @@ export type StripTab = {
   index: number;
   active: boolean;
   pinned: boolean;
-  /** Chrome's tab group, null for none. Absent while the engine doesn't report groups. */
+  /** Chrome's tab group (its id in `StripState.groups`), null for none. Absent while the engine doesn't report
+   *  groups. */
   group?: string | null;
+};
+
+/** A Chrome tab group of the strip, as extensions see it (`chrome.tabGroups`). */
+export type StripGroup = {
+  id: string;
+  title: string;
+  color: "grey" | "blue" | "red" | "yellow" | "green" | "pink" | "purple" | "cyan" | "orange";
+  collapsed: boolean;
 };
 
 /** A Chrome window's tab strip, whole. One per engine profile per app window. */
@@ -28,6 +37,8 @@ export type StripState = {
   /** The engine profile (the WebView `profile` prop). */
   profile: string;
   tabs: StripTab[];
+  /** Its tab groups. Absent while the engine doesn't report groups. */
+  groups?: StripGroup[];
   /** Its window is gone; the strip won't be reported again. */
   closed?: boolean;
 };
@@ -50,7 +61,10 @@ export type TabStripCommand =
   | { op: "activate"; strip: number; key: string }
   /** Put the strip's tabs in this order, the first `pinned` pinned and the rest not. Tabs not listed (or no longer
    *  in the strip) are left out; the strip's other tabs end up after the listed ones. */
-  | { op: "arrange"; strip: number; keys: string[]; pinned: number };
+  | { op: "arrange"; strip: number; keys: string[]; pinned: number }
+  /** Put the strip's listed (unpinned) tabs in a group: one of its `groups`, "new" for a new one, null for none
+   *  (out of theirs); with the group's title and color when given. */
+  | { op: "group"; strip: number; keys: string[]; group: string | null; title?: string; color?: StripGroup["color"] };
 
 // Ids stay unique across a JS reload, so a command from before it can't be taken for a new one.
 let lastCommand = Math.floor(Math.random() * 1e6) * 1e3;

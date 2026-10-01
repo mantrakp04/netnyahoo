@@ -13,6 +13,7 @@ class FakeChrome {
   commands = [];
   sent = 0;
   lastCommand = 0;
+  lastGroup = 0;
   nextBrowser = 1;
   listen(listener) {
     this.listener = listener;
@@ -33,14 +34,15 @@ class FakeChrome {
       strip: id,
       window: id,
       profile: "",
-      tabs: s.tabs.map((t, index) => ({ key: t.key, browser: t.browser, index, active: t.browser === s.active, pinned: t.pinned })),
+      tabs: s.tabs.map((t, index) => ({ key: t.key, browser: t.browser, index, active: t.browser === s.active, pinned: t.pinned, group: t.group ?? null })),
+      groups: [...s.groups].filter(([id]) => s.tabs.some((t) => t.group === id)).map(([id, g]) => ({ id, ...g })),
     };
   }
   emit(id, cmd) {
     this.outbox.push({ rev: ++this.rev, cmd, strips: [this.state(id)] });
   }
   strip(id) {
-    if (!this.strips.has(id)) this.strips.set(id, { tabs: [], active: 0 });
+    if (!this.strips.has(id)) this.strips.set(id, { tabs: [], active: 0, groups: new Map() });
     return this.strips.get(id);
   }
   find(key) {
@@ -78,6 +80,25 @@ class FakeChrome {
     s.tabs.sort((a, b) => keys.indexOf(a.key) - keys.indexOf(b.key));
     this.emit(stripId, null);
   }
+  // tabs.group / tabGroups.update: Chrome groups tabs (contiguous, as Chrome keeps them).
+  group(keys, title, color = "blue") {
+    const f = this.find(keys[0]);
+    const id = `g${++this.lastGroup}`;
+    f.s.groups.set(id, { title, color, collapsed: false });
+    this.regroup(f.s, keys, id);
+    this.emit(f.id, null);
+    return id;
+  }
+  regroup(s, keys, id) {
+    const moving = s.tabs.filter((t) => keys.includes(t.key) && !t.pinned);
+    const at = s.tabs.indexOf(moving[0]);
+    for (const t of moving) t.group = id;
+    s.tabs = s.tabs.filter((t) => !moving.includes(t));
+    s.tabs.splice(Math.min(at, s.tabs.length), 0, ...moving);
+  }
+  retitle(id, title) {
+    for (const [sid, s] of this.strips) if (s.groups.has(id)) { s.groups.get(id).title = title; this.emit(sid, null); }
+  }
   pin(key, pinned) {
     const f = this.find(key);
     f.tab.pinned = pinned;
@@ -100,6 +121,15 @@ class FakeChrome {
     const has = (key) => s?.tabs.some((t) => t.key === key);
     if (command.op === "activate" && has(command.key)) {
       s.active = s.tabs.find((t) => t.key === command.key).browser;
+      this.emit(command.strip, id);
+    } else if (command.op === "group" && command.keys.some(has)) {
+      const keys = command.keys.filter(has);
+      let token = command.group;
+      if (token === "new") s.groups.set((token = `g${++this.lastGroup}`), { title: command.title ?? "", color: command.color ?? "grey", collapsed: false });
+      if (token) {
+        if (command.title !== undefined) Object.assign(s.groups.get(token), { title: command.title, color: command.color });
+        this.regroup(s, keys, token);
+      } else for (const t of s.tabs) if (keys.includes(t.key)) t.group = null;
       this.emit(command.strip, id);
     } else if (command.op === "arrange" && command.keys.some(has)) {
       const listed = command.keys.filter(has).map((key) => s.tabs.find((t) => t.key === key));
@@ -261,4 +291,31 @@ test("a command on its way wins over Chrome's earlier change; stale transactions
   const before = S().windows[win.w];
   chrome.listener({ rev: chrome.rev - 1, cmd: null, strips: [{ ...chrome.state(win.strip), tabs: [] }] });
   assert.equal(S().windows[win.w], before);
+});
+
+test("an extension's tab groups reach the sidebar, and the sidebar's groups reach Chrome", async () => {
+  const win = windowWith("a", "b", "c", "d");
+  await settle(win);
+  const id = (u) => S().windows[win.w].tabIds.find((t) => urlOf(t) === u);
+  const ext = chrome.group([id("b"), id("c")], "Reading");
+  await settle(win);
+  const made = Object.values(S().groups).find((g) => g.windowId === win.w);
+  assert.ok(made, "the store made the group");
+  assert.deepEqual(made.tabIds.map(urlOf), ["b", "c"]);
+  assert.equal(made.name, "Reading");
+  assert.equal(made.color, "blue");
+  chrome.retitle(ext, "Later");
+  await settle(win);
+  assert.equal(S().groups[made.id].name, "Later");
+  // The sidebar groups a and d: Chrome gets a group for them, with the store's name.
+  const mine = S().groupTabs([id("d"), id("a")], { pinned: false, name: "Mine" });
+  await settle(win);
+  const strip = chrome.strips.get(win.strip);
+  const tokens = new Set(strip.tabs.filter((t) => [id("a"), id("d")].includes(t.key)).map((t) => t.group));
+  assert.equal(tokens.size, 1);
+  const token = [...tokens][0];
+  assert.ok(token && token !== ext);
+  assert.equal(strip.groups.get(token).title, "Mine");
+  assert.deepEqual(chromeOrder(win.strip), order(win.w));
+  assert.ok(S().groups[mine]);
 });
