@@ -10,6 +10,7 @@
 #import <objc/runtime.h>
 
 #include <initializer_list>
+#include <vector>
 
 namespace nncore_host {
 
@@ -34,6 +35,22 @@ void Log(NSString *what, NSArray<NSString *> *stack) {
   [file seekToEndOfFile];
   [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
   [file closeFile];
+}
+
+// The same, symbolicated and written off the main thread: a test instance's window calls (every new window's
+// makeKeyAndOrderFront:) took ~12 ms each to symbolicate a stack through Chromium's symbol table, which the window
+// benchmarks counted.
+void LogLater(NSString *what, NSArray<NSNumber *> *addresses) {
+  static dispatch_queue_t queue = dispatch_queue_create("netnyahoo.activation-log", DISPATCH_QUEUE_SERIAL);
+  dispatch_async(queue, ^{
+    std::vector<void *> frames;
+    for (NSNumber *address in addresses) frames.push_back((void *)address.unsignedLongValue);
+    char **symbols = backtrace_symbols(frames.data(), (int)frames.size());
+    NSMutableArray<NSString *> *stack = [NSMutableArray array];
+    for (size_t i = 0; symbols && i < frames.size(); i++) [stack addObject:@(symbols[i])];
+    free(symbols);
+    Log(what, stack);
+  });
 }
 
 bool FromChromium(NSArray<NSString *> *stack) {
@@ -192,8 +209,8 @@ void InstallActivationGuardsEarly() {
   if (!Background()) return;
   auto note = [](NSString *name, NSWindow *window) {
     if (!NSApp.isActive)
-      Log([NSString stringWithFormat:@"%@ on %@ \"%@\" (inactive app)", name, window.className, window.title],
-          NSThread.callStackSymbols);
+      LogLater([NSString stringWithFormat:@"%@ on %@ \"%@\" (inactive app)", name, window.className, window.title],
+               NSThread.callStackReturnAddresses);
   };
   // A child window ordered to the front (Chrome's bubbles: "extension added", save card…) would come up
   // over the user's other apps while its window stays behind them. Keep it just above its parent.

@@ -746,6 +746,7 @@ NSView *NNWindowRootView(NSWindow *window) {
 
 + (void)closeWindow:(NSWindow *)window {
   NNCoreWindowController *controller = [NNCoreWindowController forNSWindow:window];
+  [NNCoreWebView keepTransfersOfWindow:window];
   if (controller) [controller.coreWindow close];
   else [window close];
 }

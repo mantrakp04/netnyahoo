@@ -30,11 +30,20 @@ bool TraceVisibility() {
 }
 
 constexpr CFTimeInterval kTransferWindow = 3;
+// How long a page that left the screen keeps painting (leaveScreen): a few frames, under load too.
+constexpr CFTimeInterval kLeaveScreenDelay = 0.1;
 
 NSHashTable<NNCoreWebView *> *LiveViews() {
   static NSHashTable *views = [NSHashTable weakObjectsHashTable];
   return views;
 }
+
+// Views whose visible or warm prop changed this run-loop turn, and whether the drain is scheduled (schedulePainting).
+NSHashTable<NNCoreWebView *> *PendingPainting() {
+  static NSHashTable *views = [NSHashTable weakObjectsHashTable];
+  return views;
+}
+bool gPaintingScheduled = false;
 
 NSMutableDictionary<NSString *, NSNumber *> *TransferRequests() {
   static NSMutableDictionary *requests = [NSMutableDictionary dictionary];
@@ -306,6 +315,9 @@ NSString *JSONString(id value) {
   BOOL _capturing;
   // Its renderer died and nothing loaded since (emitNavigation).
   BOOL _crashed;
+  // Just left the screen: still painting (visible to Chrome), at alpha 0, for kLeaveScreenDelay.
+  BOOL _leaving;
+  NSUInteger _leaveGeneration;
 }
 
 + (void)prepareTransfer:(NSString *)transferKey {
@@ -451,6 +463,26 @@ NSString *JSONString(id value) {
   return YES;
 }
 
++ (void)keepTransfersOfWindow:(NSWindow *)window {
+  NNCoreWindowController *closing = [NNCoreWindowController forNSWindow:window];
+  if (!closing || ![closing.coreWindow respondsToSelector:@selector(adoptTab:)]) return;
+  // Moving a window's last tab to another window closes the window at once, while the tab's new view is still to
+  // mount: its tab closed with the Browser, and the new view loaded the page afresh (blank for a moment, its history
+  // and state gone).
+  for (NNCoreWebView *view in LiveViews().allObjects)
+    if (view->_tab && !view->_tab.closed && TransferRequested(view->_transferKey) && [NNCoreWindowController holding:view->_tab] == closing)
+      [view closeBrowser];
+  for (NNCoreTab *tab in Parked().allValues) {
+    if (tab.closed || [NNCoreWindowController holding:tab] != closing || !tab.profile) continue;
+    NNCoreWindowController *keeper = [NNCoreWindowController strayWindowForProfile:tab.profile];
+    keeper.hostChanges++;
+    closing.hostChanges++;
+    [keeper.coreWindow adoptTab:tab];
+    closing.hostChanges--;
+    keeper.hostChanges--;
+  }
+}
+
 - (BOOL)takeTransferredTab {
   NNCoreTab *tab = Parked()[_transferKey];
   if (tab) [Parked() removeObjectForKey:_transferKey];
@@ -530,6 +562,8 @@ NSString *JSONString(id value) {
   [self dropDevTools];
   [self resetBlocked:NO];
   _tab = nil;
+  _leaving = NO;
+  _leaveGeneration++;
 }
 
 - (void)closeBrowser {
@@ -547,7 +581,10 @@ NSString *JSONString(id value) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kTransferWindow * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
       if (Parked()[key] != tab) return;
       [Parked() removeObjectForKey:key];
-      [tab close];
+      // At once, as a closed view's tab: a beforeunload prompt nobody sees would keep it (and the hidden window
+      // keepTransfersOfWindow: put it in) alive.
+      if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
+      else [tab close];
     });
     return;
   }
@@ -668,11 +705,11 @@ NSString *JSONString(id value) {
 }
 
 - (BOOL)paints {
-  return _visible || _warm;
+  return _visible || _warm || _leaving;
 }
 
 - (void)applyPainting {
-  self.alphaValue = _visible || !_warm ? 1 : 0;
+  self.alphaValue = _visible || !(_warm || _leaving) ? 1 : 0;
   const BOOL shown = self.paints;
   for (NSView *sub in self.subviews) sub.hidden = !shown;
   if (TraceVisibility())
@@ -684,16 +721,63 @@ NSString *JSONString(id value) {
 - (void)setWarm:(BOOL)warm {
   if (_warm == warm) return;
   _warm = warm;
-  [self applyPainting];
+  [self schedulePainting];
 }
 
 - (void)setVisible:(BOOL)visible {
   if (_visible == visible) return;
   _visible = visible;
-  [self applyPainting];
+  [self schedulePainting];
   [self updateAutoPictureInPicture];
   // With tab-strip commands, only they (and Chrome) change the active tab.
   if (visible && !NNCoreTabStrip.commandsSeen) [self activate];
+}
+
+// A tab switch arrives as one batch of view updates, and showing a page makes Chrome commit the Core Animation
+// transaction there and then: the screen got the half-applied batch (the new page's first tiles over the old page,
+// the old tab's toolbar) for a frame. The pages change once the batch is done, before the turn's transaction commits
+// (Core Animation's commit observer runs at order 2000000): the ones leaving first, then the ones coming in. The
+// visible and warm props both go through here, so a page going from warm to visible (a profile swipe) never hides.
+- (void)schedulePainting {
+  [PendingPainting() addObject:self];
+  if (gPaintingScheduled) return;
+  gPaintingScheduled = true;
+  CFRunLoopObserverRef observer = CFRunLoopObserverCreateWithHandler(nil, kCFRunLoopBeforeWaiting, false, 0, ^(CFRunLoopObserverRef, CFRunLoopActivity) {
+    [NNCoreWebView drainPainting];
+  });
+  CFRunLoopAddObserver(CFRunLoopGetMain(), observer, kCFRunLoopCommonModes);
+  CFRelease(observer);
+}
+
++ (void)drainPainting {
+  gPaintingScheduled = false;
+  NSArray<NNCoreWebView *> *views = PendingPainting().allObjects;
+  [PendingPainting() removeAllObjects];
+  for (NNCoreWebView *view in views) {
+    if (view->_visible) continue;
+    [view leaveScreen];
+    [view applyPainting];
+  }
+  for (NNCoreWebView *view in views)
+    if (view->_visible) [view applyPainting];
+}
+
+// Hiding Chrome's view tells the page it's hidden, and Chrome drops its layers at once, on its own schedule: the page
+// went blank (or kept a few tiles) for a frame before the app's switch to the next tab reached the screen. A page
+// leaving the screen goes transparent with the rest of the switch and stays visible to Chrome a few frames more.
+- (void)leaveScreen {
+  const NSUInteger generation = ++_leaveGeneration;
+  NSView *page = _tab.view;
+  // Only a page on screen now (not one already hidden, nor a warm one, which keeps painting anyway).
+  _leaving = !_visible && !_warm && page.superview == self && !page.hidden && self.alphaValue > 0;
+  if (!_leaving) return;
+  __weak NNCoreWebView *weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kLeaveScreenDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    NNCoreWebView *view = weakSelf;
+    if (!view || view->_leaveGeneration != generation) return;
+    view->_leaving = NO;
+    [view schedulePainting];
+  });
 }
 
 - (void)setFrozen:(BOOL)frozen {
