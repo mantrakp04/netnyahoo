@@ -1,0 +1,19 @@
+packages/cef/ios/NNClient.mm
+  s_a8667082bb6b8c::t_c0ca4c341d6f9f 1273-1275,1280-1281,1283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "66304bb1f22362d6ed1b29cffe0451ffa37ca823",
+  "prompts": {},
+  "sessions": {
+    "s_a8667082bb6b8c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f604-7777-7030-80c4-88da883fdfe4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
