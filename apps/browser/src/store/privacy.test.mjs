@@ -171,7 +171,8 @@ test("favicons: incognito icons stay in memory and in their own profile; nothing
 
   noteFavicon(normalTab, "https://site.example/favicon.ico");
   noteFavicon(privateTab, "https://secret.example/favicon.ico");
-  await new Promise((r) => setTimeout(r, 0));
+  // Recorded icons land with the next frame's batch.
+  await new Promise((r) => setTimeout(r, 50));
 
   assert.equal(resolveFavicon("https://site.example/a")?.uri, "data:image/png;base64,SITE");
   assert.equal(resolveFavicon("https://secret.example/x"), null);

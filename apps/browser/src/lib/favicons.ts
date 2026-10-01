@@ -2,7 +2,7 @@ import { faviconsFor, fetchFavicon, onHistoryChanged, removeLegacyFavicons } fro
 import { iconTheme, readDocument, removeDocument, type IconTheme } from "@netnyahoo/shell";
 import { useEffect } from "react";
 import { create } from "zustand";
-import { useBrowser, type BrowserState } from "../store/browser";
+import { batchStoreUpdates, useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile, isIncognitoProfile } from "../store/model";
 import { DEFAULT_PROFILE_ID } from "../store/settings";
 import { webviews } from "./webviews";
@@ -30,21 +30,47 @@ const LOOKUP_DELAY_MS = 16;
 const LOOKUP_BATCH = 200;
 let appearanceChangedAt = -Infinity;
 
-// Keyed by cache key: the engine profile, or a private profile's own id.
-export const useFavicons = create<{ profiles: Record<string, Icons>; themes: Record<string, IconTheme | null> }>(() => ({
-  profiles: {},
-  themes: {},
-}));
+type Favicons = {
+  // Keyed by cache key: the engine profile, or a private profile's own id.
+  profiles: Record<string, Icons>;
+  themes: Record<string, IconTheme | null>;
+};
+
+export const useFavicons = create<Favicons>(() => ({ profiles: {}, themes: {} }));
 
 const cacheKey = (profileId: string) => (isIncognitoProfile(profileId) ? profileId : engineProfile(profileId));
 export const pageKey = (url: string) => url.replace(/#.*$/, "");
 
-function update(key: string, change: (icons: Icons) => Icons) {
-  useFavicons.setState((f) => {
+// MARK: Writing
+
+// Answers come in bursts (a launch asks Chrome about every tab's page, then checks each icon's shape), so changes
+// wait for the next frame and land together, in order: one store update and one commit. A change that gives back
+// what it got changes nothing, and no icon re-renders for it.
+type Change = (f: Favicons) => Favicons;
+const FLUSH_MS = 16;
+const changes: Change[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+function queue(change: Change, now = false) {
+  changes.push(change);
+  if (now) flush();
+  else flushTimer ??= setTimeout(flush, FLUSH_MS);
+}
+
+function flush() {
+  clearTimeout(flushTimer);
+  flushTimer = undefined;
+  const all = changes.splice(0);
+  if (all.length) batchStoreUpdates(() => useFavicons.setState((f) => all.reduce((s, change) => change(s), f)));
+}
+
+// `now` for what the user did (Clear Data, a closed private window): applied after anything queued.
+function update(key: string, change: (icons: Icons) => Icons, now = false) {
+  queue((f) => {
     const before = f.profiles[key] ?? EMPTY;
     const after = change(before);
-    return after === before ? f : { profiles: { ...f.profiles, [key]: after } };
-  });
+    return after === before ? f : { ...f, profiles: { ...f.profiles, [key]: after } };
+  }, now);
 }
 
 // Bounded: past MAX_ICONS a map starts over (Chrome still has every icon; pages ask again).
@@ -79,9 +105,14 @@ function lookUpPages(key: string, list: string[]) {
   void faviconsFor(key, list)
     .then((found) =>
       update(key, (icons) => {
-        const next = { ...icons.pages };
-        for (const page of list) next[page] = found.pages.get(page)?.uri ?? null;
-        return { ...icons, pages: next };
+        let next: Record<string, string | null> | undefined;
+        for (const page of list) {
+          const uri = found.pages.get(page)?.uri ?? null;
+          if (icons.pages[page] === uri) continue;
+          next ??= { ...icons.pages };
+          next[page] = uri;
+        }
+        return next ? { ...icons, pages: next } : icons;
       }),
     )
     .catch((error) => {
@@ -151,11 +182,14 @@ function fetchMissing(profileId: string, url: string, src: string) {
 }
 
 export function faviconFailed(profileId: string, uri: string) {
-  update(cacheKey(profileId), (icons) => ({
-    pages: Object.fromEntries(Object.entries(icons.pages).map(([page, u]) => [page, u === uri ? null : u])),
-    srcs: Object.fromEntries(Object.entries(icons.srcs).filter(([, u]) => u !== uri)),
-    appearances: icons.appearances,
-  }));
+  update(cacheKey(profileId), (icons) => {
+    if (!Object.values(icons.pages).includes(uri) && !Object.values(icons.srcs).includes(uri)) return icons;
+    return {
+      pages: Object.fromEntries(Object.entries(icons.pages).map(([page, u]) => [page, u === uri ? null : u])),
+      srcs: Object.fromEntries(Object.entries(icons.srcs).filter(([, u]) => u !== uri)),
+      appearances: icons.appearances,
+    };
+  });
 }
 
 // MARK: Lookup
@@ -190,22 +224,37 @@ export function resolveFavicon(url: string, src?: string | null, profileId?: str
 // icons that have a light and a dark version.
 export const useAppearanceDark = () => useBrowser((s) => s.ui.appDark);
 
+// Whether every profile the lookup reads has Chrome's answer for the page (an icon, or none).
+function answered(url: string, profileId?: string): boolean {
+  const { profiles } = useFavicons.getState();
+  const page = pageKey(url);
+  return lookupOrder(profileId).every((id) => isIncognitoProfile(id) || profiles[cacheKey(id)]?.pages[page] !== undefined);
+}
+
 export function useFavicon(url: string, src?: string | null, profileId?: string): ResolvedFavicon | null {
   const key = useFavicons(() => {
     const found = resolveFavicon(url, src, profileId);
     return found ? `${found.profileId} ${found.uri}` : null;
   });
-  // Chrome's answer for the page: not asked yet, or asked and none.
-  const answer = useFavicons((f) => {
-    if (!url || key) return "found";
-    const ids = lookupOrder(profileId).filter((id) => !isIncognitoProfile(id));
-    if (ids.some((id) => f.profiles[cacheKey(id)]?.pages[pageKey(url)] === undefined)) return "unknown";
-    return "none";
-  });
+  // No icon yet: ask Chrome, and when it has none, fetch the one the app names. Watched outside React: Chrome
+  // answering "none" changes nothing on screen, so it doesn't re-render the icon.
+  const missing = !!url && !key;
+  // Without a profile the lookup reads every profile: one added since asks too, on the next render.
+  const order = missing ? lookupOrder(profileId).join(" ") : "";
   useEffect(() => {
-    if (answer === "unknown") for (const id of lookupOrder(profileId)) ask(cacheKey(id), pageKey(url));
-    else if (answer === "none" && src && profileId) fetchMissing(profileId, url, src);
-  }, [answer, profileId, url, src]);
+    if (!missing) return;
+    let last: boolean | undefined;
+    const check = () => {
+      const known = answered(url, profileId);
+      if (known === last) return;
+      last = known;
+      if (!known) for (const id of lookupOrder(profileId)) ask(cacheKey(id), pageKey(url));
+      // This runs before React re-renders for an icon that just came: only "none" fetches.
+      else if (src && profileId && !resolveFavicon(url, src, profileId)) fetchMissing(profileId, url, src);
+    };
+    check();
+    return useFavicons.subscribe(check);
+  }, [missing, order, profileId, url, src]);
   const split = key?.indexOf(" ") ?? -1;
   return key ? { profileId: key.slice(0, split), uri: key.slice(split + 1) } : null;
 }
@@ -223,7 +272,7 @@ export function useFaviconTheme(url: string, src?: string | null, profileId?: st
     theming.add(uri);
     void iconTheme({ uri })
       .catch(() => null)
-      .then((found) => useFavicons.setState((f) => ({ themes: capped(f.themes, uri, found ?? null) })))
+      .then((found) => queue((f) => (f.themes[uri] === (found ?? null) ? f : { ...f, themes: capped(f.themes, uri, found ?? null) })))
       .finally(() => theming.delete(uri));
   }, [pending, uri]);
   return theme;
@@ -233,7 +282,7 @@ export function useFaviconTheme(url: string, src?: string | null, profileId?: st
 
 function forget(key: string) {
   for (const id of [...asked]) if (id.startsWith(`${key}|`)) asked.delete(id);
-  update(key, () => EMPTY);
+  update(key, () => EMPTY, true);
 }
 
 /** Clear Data deleted the profile's icons from Chrome: forget what's cached. */
@@ -261,17 +310,21 @@ export function startFavicons() {
     const gone = new Set(change.urls.map(pageKey));
     const key = change.profile;
     for (const page of gone) asked.delete(`${key}|${page}`);
-    update(key, (icons) => ({ ...icons, pages: Object.fromEntries(Object.entries(icons.pages).filter(([page]) => !gone.has(page))) }));
+    update(key, (icons) => {
+      if (!Object.keys(icons.pages).some((page) => gone.has(page))) return icons;
+      return { ...icons, pages: Object.fromEntries(Object.entries(icons.pages).filter(([page]) => !gone.has(page))) };
+    });
   });
   const stop = useBrowser.subscribe((s, prev) => {
     if (s.ui.appDark !== prev.ui.appDark) appearanceChangedAt = Date.now();
     if (s.windows !== prev.windows) {
       const open = new Set(Object.values(s.windows).map((w) => w.profileId));
       for (const t of Object.values(s.tabs)) open.add(t.profileId);
-      const gone = Object.keys(useFavicons.getState().profiles).filter((id) => isIncognitoProfile(id) && !open.has(id));
-      if (gone.length) {
-        useFavicons.setState((f) => ({ profiles: Object.fromEntries(Object.entries(f.profiles).filter(([id]) => !gone.includes(id))) }));
-      }
+      // After what's queued, which may still hold the window's icons.
+      queue((f) => {
+        const gone = Object.keys(f.profiles).filter((id) => isIncognitoProfile(id) && !open.has(id));
+        return gone.length ? { ...f, profiles: Object.fromEntries(Object.entries(f.profiles).filter(([id]) => !gone.includes(id))) } : f;
+      }, true);
     }
   });
   return () => {

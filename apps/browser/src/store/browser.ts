@@ -54,6 +54,8 @@ let batch = (update: () => void) => update();
 export function setStoreBatching(batchedUpdates: (update: () => void) => void) {
   batch = batchedUpdates;
 }
+/** For the app's other stores: their subscribers re-render in one commit. */
+export const batchStoreUpdates = (update: () => void) => batch(update);
 
 const batched =
   <T,>(creator: StateCreator<T>): StateCreator<T> =>
