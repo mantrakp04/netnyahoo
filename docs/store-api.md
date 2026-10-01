@@ -115,8 +115,9 @@ implement the same):
     order as `{ key, browser, index, active, pinned, group? }`, and `groups?: [{ id, title, color, collapsed }]`. `key` is the WebView's `transferKey` (the store's tab
     id), bound when a view first shows the browser and kept while the browser moves between views; `null` for a tab
     no view has shown (one Chrome made, before the app adopts it; an engine placeholder). `group` (Chrome's group id,
-    null for none) and `groups` are absent while the engine doesn't report groups (CEF gets them from the engine
-    layer's `nn_tabs`, `//chrome/browser/netnyahoo`, once a distribution with it is pinned). A strip left without tabs is sent with `tabs: []`; a strip whose
+    null for none) and `groups` are absent while an engine doesn't report groups. CEF gets them from the engine
+    layer's `nn_tabs` (`//chrome/browser/netnyahoo`: event `tabs.strip`, call `nn_tabs_group`), which NNCore links
+    too. A strip left without tabs is sent with `tabs: []`; a strip whose
     window closed comes once more with `closed: true`.
 - `tabStrips()` answers every strip as a transaction with `cmd: null` and the last `rev` sent: the starting point
   after a JS (re)load. Transactions that arrive before it are held, then applied if newer.
