@@ -1,4 +1,4 @@
-// Run from apps/browser:  node --import ./src/sync/test-loader.mjs --test src/sync/engine.test.mjs
+// 0.2.11: a crash at the wrong moment could stop some changes from reaching your other Macs.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 

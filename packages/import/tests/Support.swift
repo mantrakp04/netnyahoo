@@ -32,30 +32,3 @@ enum Fixtures {
     )
   }
 }
-
-final class Recorder: @unchecked Sendable {
-  private let lock = NSLock()
-  private(set) var events: [ImportProgress] = []
-  private(set) var chunks: [[HistoryEntry]] = []
-
-  func observer(chunkSize: Int = 1000, stream: Bool = true, onEvent: @escaping @Sendable (ImportProgress) -> Void = { _ in }) -> ImportObserver {
-    let progress: @Sendable (ImportProgress) -> Void = { [self] e in
-      lock.withLock { events.append(e) }
-      onEvent(e)
-    }
-    var history: (@Sendable ([HistoryEntry]) -> Void)?
-    if stream {
-      history = { [self] chunk in lock.withLock { chunks.append(chunk) } }
-    }
-    return ImportObserver(chunkSize: chunkSize, progress: progress, history: history)
-  }
-}
-
-extension BookmarkNode {
-  var outline: String {
-    switch type {
-    case .url: "\(title)<\(url ?? "")>"
-    case .folder: "\(title)\(role.map { "{\($0)}" } ?? "")[\((children ?? []).map(\.outline).joined(separator: ", "))]"
-    }
-  }
-}

@@ -2,7 +2,7 @@
 // Micro-benchmarks for store-side work that scales with a profile's size, run in Node (V8's JIT: expect Hermes
 // in the app to take several times longer). Each prints the median of repeated runs.
 //
-//   cd apps/browser && node --no-warnings --import ./src/store/test-loader.mjs scripts/perf/micro-bench.mjs [name…]
+//   cd apps/browser && node --no-warnings --import ./src/test-loader.mjs scripts/perf/micro-bench.mjs [name…]
 
 const { useBrowser } = await import("../../src/store/browser.ts");
 const { sidebarEntries, groupEntries } = await import("../../src/components/sidebar/entries.ts");
@@ -10,7 +10,7 @@ const { groupLabel } = await import("../../src/store/organize.ts");
 const strip = await import("../../src/components/layout/stripGroups.ts");
 const favicons = await import("../../src/lib/favicons.ts");
 const { webviews } = await import("../../src/lib/webviews.ts");
-const stub = await import("../../src/store/test-native-stub.mjs");
+const stub = await import("../../src/test-native-stub.mjs");
 const core = await import("../../../../packages/core/src/index.ts");
 
 const S = () => useBrowser.getState();

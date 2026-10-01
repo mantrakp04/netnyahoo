@@ -8,7 +8,8 @@
     "macos": "xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build -destination 'platform=macOS,arch=arm64' -quiet -configuration Debug && open build/Build/Products/Debug/Netnyahoo.app",
     "pods": "cd macos && pod install",
     "build": "xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build -destination 'platform=macOS,arch=arm64' -quiet -configuration Release",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "test": "node --no-warnings --import ./src/test-loader.mjs --test \"src/**/*.test.mjs\""
   },
   "dependencies": {
     "@netnyahoo/core": "workspace:*",

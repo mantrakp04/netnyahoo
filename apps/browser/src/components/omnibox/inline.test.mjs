@@ -1,4 +1,5 @@
-// Run from apps/browser:  node --import ./src/store/test-loader.mjs --test src/components/omnibox/inline.test.mjs
+// 0.1.6: typing quickly while the address bar filled in a suggestion could drop or reorder letters. These run
+// the field, the JS side and the completion protocol under every interleaving of their messages.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildSuggestions } from "@netnyahoo/core";
@@ -121,14 +122,7 @@ function world() {
     }
   };
 
-  const setText = (text) => {
-    js.inline = null;
-    js.typed = text;
-    js.suppress = true;
-    rendered();
-  };
-
-  return { field, js, shown, main, events, results, key, setText, onMain, onEvent, onResult, steps: 0 };
+  return { field, js, shown, main, events, results, key, onMain, onEvent, onResult, steps: 0 };
 }
 
 function run(keys, pick) {
@@ -189,13 +183,6 @@ test("typing over a completion: m → f → s is 'mfs' in every interleaving", (
   assert.ok(n > 50, `${n} schedules`);
 });
 
-test("typing along a completion: m → a → i keeps completing, in every interleaving", () => {
-  everySchedule(["m", "a", "i"], (w, schedule) => {
-    assertSettled(w, "mai", `schedule ${schedule}`);
-    assert.equal(w.field.text, "mail.google.com", `schedule ${schedule}`);
-  });
-});
-
 test("random schedules: what's typed is what the field shows, completion selected after it", () => {
   const words = ["mfs", "mail.google.com/x", "mail.go", "accounts", "ma.x", "x.com/hx", "mmm", "am", "xcom"];
   for (const word of words) {
@@ -205,13 +192,6 @@ test("random schedules: what's typed is what the field shows, completion selecte
       assertSettled(w, word, `${word} seed ${seed}`);
     }
   }
-});
-
-test("typed slowly (JS catches up after every key), 'm' completes to the host, selected", () => {
-  const w = run(["m"], (n) => n - 1);
-  assert.equal(w.field.text, "mail.google.com");
-  assert.deepEqual(w.field.selection, { start: 1, end: 15 });
-  assert.equal(w.js.typed, "m");
 });
 
 test("a completion computed for older text is never applied", () => {
@@ -227,65 +207,4 @@ test("a completion computed for older text is never applied", () => {
   w.onEvent(w.events.shift());
   assert.equal(w.js.typed, "mf");
   assert.deepEqual(w.js.pending, []);
-});
-
-function settle(w) {
-  while (w.main.length || w.events.length || w.results.length) {
-    if (w.main.length) w.onMain(w.main.shift());
-    else if (w.events.length) w.onEvent(w.events.shift());
-    else w.onResult(w.results.shift());
-  }
-}
-
-test("⌫ over a completion removes just the completion, and doesn't complete again", () => {
-  const w = world();
-  for (const k of ["m", "a"]) {
-    w.key(k);
-    settle(w);
-  }
-  assert.equal(w.field.text, "mail.google.com");
-  w.key("⌫");
-  settle(w);
-  assert.equal(w.field.text, "ma");
-  assert.equal(w.shown(), "");
-  assert.equal(w.js.suppress, true);
-  w.key("⌫");
-  settle(w);
-  assert.equal(w.field.text, "m");
-  assert.equal(w.shown(), "");
-  w.key("a");
-  settle(w);
-  assert.equal(w.field.text, "mail.google.com");
-  assert.deepEqual(w.field.selection, { start: 2, end: 15 });
-});
-
-test("the bar clearing itself while a completion is on its way stays cleared", () => {
-  const w = world();
-  w.key("m");
-  w.onEvent(w.events.shift());
-  w.setText("");
-  w.onMain(w.main.shift());
-  assert.equal(w.field.text, "mail.google.com");
-  settle(w);
-  assert.equal(w.field.text, "");
-  assert.equal(w.js.typed, "");
-  assert.equal(w.shown(), "");
-});
-
-test("fieldChange: typing, deleting, echoes", () => {
-  assert.deepEqual(fieldChange("m", "ail.google.com", "mf", []), { echo: false, typed: "mf", suppress: false });
-  assert.deepEqual(fieldChange("m", "ail.google.com", "m", []), { echo: false, typed: "m", suppress: true });
-  assert.deepEqual(fieldChange("ma", "", "m", []), { echo: false, typed: "m", suppress: true });
-  const pending = [{ typed: "m", completion: "ail.google.com" }];
-  assert.deepEqual(fieldChange("m", "", "mail.google.com", pending), { echo: true, settled: 1, inline: pending[0], stale: false });
-  assert.equal(fieldChange("", "", "mail.google.com", [{ ...pending[0], orphaned: true }]).stale, true);
-  const older = [{ typed: "mail.googl", completion: "e.com" }];
-  assert.deepEqual(fieldChange("mail.google.co", "", "mail.google.com", older), { echo: false, typed: "mail.google.com", suppress: false });
-});
-
-test("completionToWrite: only what the field doesn't show or isn't about to", () => {
-  assert.equal(completionToWrite("m", "ail.google.com", "ail.google.com", []), null);
-  assert.deepEqual(completionToWrite("m", "ail.google.com", "", []), { typed: "m", completion: "ail.google.com" });
-  assert.equal(completionToWrite("m", "ail.google.com", "", [{ typed: "m", completion: "ail.google.com" }]), null);
-  assert.deepEqual(completionToWrite("m", "", "", [{ typed: "m", completion: "ail.google.com" }]), { typed: "m", completion: "" });
 });

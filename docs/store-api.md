@@ -69,7 +69,7 @@ don't re-render every tab.
 - Dialogs / native side effects go through lib/actions.ts (`closeTab`, `switchToTab`, `moveTabToProfile`,
   `moveTabToWindow`, `createProfile`, `renameProfile`, `deleteProfile`, `openWindow`).
 - Menu commands: lib/commands.ts (JS) + packages/shell/ios/Menus.swift (native menu bar).
-- Tests: `cd apps/browser && node --import ./src/store/test-loader.mjs --test src/store/store.test.mjs`.
+- Tests: `pnpm --filter @netnyahoo/browser test` (`docs/testing.md`).
 
 ## Sync (apps/browser/src/sync, packages/sync)
 - End-to-end-encrypted sync through a folder the user picks; design in `docs/sync.md`. `sync/engine.ts` owns the
@@ -78,7 +78,7 @@ don't re-render every tab.
   Adapters rebuild or patch store state with `useBrowser.setState`, so store invariants they touch (group contiguity,
   pinned-first order) are kept there.
 - Record keys use store ids (`bm:<id>`, `pin:t:<tab id>`), so ids must stay unique across Macs: `newId` has a random part.
-- Tests: `node --import ./src/sync/test-loader.mjs --test src/sync/adapters.test.mjs` (two devices swap the one store).
+- Tests: `src/sync/adapters.test.mjs` (two devices swap the one store; `docs/testing.md`).
   DEV: `nnSync` (`turnOnSync`, `enterRecoveryPhrase`, `syncNow`, `stopSync`, `useSync`, `menu`, `sheets`).
 
 ## Dev tooling (DEV builds)

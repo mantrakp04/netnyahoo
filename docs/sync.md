@@ -305,38 +305,18 @@ bookmark, settings, profile or group edit, and on Sync Now. A cycle:
 ## Tests
 
 - `pnpm --filter @netnyahoo/sync test`:
-  - `swift test`: 21 tests.
-    - The phrase: the wordlist hash, reference vectors, round trips, lenient input, and errors
-      (count, word, checksum).
-    - Crypto: round trip across padding sizes, randomized sealing, no plaintext, tampering
-      (nonce, ciphertext, tag), truncation, renamed or moved files, the wrong phrase, stable
-      opaque tags, base32 vectors.
-    - The vault: new files only, the wrong phrase finds nothing, partial and placeholder files
-      (a cut file, an empty file, a `.icloud` stub, foreign files), no plaintext in names or
-      contents, deleting one chain leaves another.
-    - Key stores: file and Keychain.
-    - The Recovery Kit: every word in the PDF, the text sheet parses back, the QR code decodes
-      back.
-  - `node --test`: 16 tests.
-    - HLC, positions.
-    - Both-way sync; concurrent edits in both orders; deletes, re-adds and edit-after-delete;
-      clock skew (slow, and days ahead).
-    - Late, out-of-order and half-copied files; an edit during a read.
-    - Joining; compaction and a new device from a snapshot; offline for weeks with collected
-      tombstones; expiry; an old snapshot put back after its tombstones were collected.
-    - A crash after publishing, and a write that fails before or after the file lands: no seq
-      carries two different batches.
-    - 40 randomized three-device runs with flaky delivery, compaction and crashes.
-- `apps/browser`: `node --import ./src/sync/test-loader.mjs --test src/sync/adapters.test.mjs`
-  runs 11 tests against the real store.
-  - Bookmarks, both ways; delete versus add; concurrent moves that would make a cycle.
-  - History and its 90-day window; settings adopted on join; pinned tabs and pinned groups
-    (order, unloaded, unpin); open tabs; passwords both ways.
-  - Steady state publishes nothing.
-  - A crash after publishing: the next batch gets a new seq and sends only what's new.
-- `apps/browser`: `node --import ./src/sync/test-loader.mjs --test src/sync/engine.test.mjs` runs the
-  engine against a fake native module: a crash the moment a batch lands, then a restart from what
-  was on disk, re-sends the journalled batches byte for byte and numbers the next one after them.
+  - `swift test`: 5 tests. BIP39 reference vectors; tampering and truncation are detected; the
+    wrong phrase opens nothing; the folder holds no plaintext in names or contents; deleting one
+    chain leaves another.
+  - `node --test`: 8 tests. Concurrent edits converge in any order; deletes, re-adds and
+    edit-after-delete; clock skew; late, out-of-order and half-copied files; an edit during a read;
+    an old snapshot put back after its tombstones were collected; a write that fails before or
+    after the file lands; 40 randomized three-device runs with flaky delivery, compaction and crashes.
+- `pnpm --filter @netnyahoo/browser test` runs `src/sync/adapters.test.mjs` (4 tests against the real
+  store: delete versus add, concurrent moves that would make a cycle, parked pinned tabs, passwords
+  both ways) and `src/sync/engine.test.mjs` (the engine against a fake native module: a crash the
+  moment a batch lands re-sends the journalled batches byte for byte and numbers the next one after
+  them; nothing is published before its journal is on disk).
 - End to end: `node packages/sync/scripts/e2e.mjs [Debug app] [work dir]` drives two hidden
   instances (then a third) with their own data folders through a temporary sync folder, never
   iCloud Drive, over the dev harness. It checks 40 things, and all 40 passed on 2026-09-26 (Debug

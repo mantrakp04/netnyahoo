@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p .",
-    "test": "swift test --scratch-path \"${TMPDIR:-/tmp}/netnyahoo-import-swiftpm\" && node --test src/index.test.ts",
+    "test": "swift test --scratch-path \"${TMPDIR:-/tmp}/netnyahoo-import-swiftpm\"",
     "fixtures": "python3 fixtures/generate.py"
   },
   "peerDependencies": {

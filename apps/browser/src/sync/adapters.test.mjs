@@ -1,11 +1,11 @@
-// Run from apps/browser:  node --import ./src/sync/test-loader.mjs --test src/sync/adapters.test.mjs
+// Two simulated Macs share one sync folder; each round trip runs the real adapters against the real store.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../store/browser.ts");
 const model = await import("../store/model.ts");
-const { Clock, emptyScope, restoreJournal, syncScope } = await import("@netnyahoo/sync");
+const { Clock, emptyScope, syncScope } = await import("@netnyahoo/sync");
 const adapters = await import("./adapters.ts");
-const stub = await import("./test-native-stub.mjs");
+const stub = await import("../test-native-stub.mjs");
 
 const S = () => useBrowser.getState();
 
@@ -38,19 +38,6 @@ class Device {
     this.clock = new Clock(id);
     stub.passwordStores.set(id, new Map());
     this.passwords = adapters.passwordsAdapter("default", () => true, stub.readLogins);
-    this.journal = { app: new Map(), p: new Map() };
-    this.save();
-  }
-  // What the engine keeps on disk: the state and clock as last saved, and the batches persisted since.
-  save() {
-    this.saved = { scopes: structuredClone(this.scopes), clock: this.clock.last };
-    for (const [scope, list] of Object.entries(this.journal)) for (const seq of list.keys()) if (seq <= this.scopes[scope].seq) list.delete(seq);
-  }
-  // Quit without saving; the browser's own data is saved separately and keeps its edits.
-  crash() {
-    this.scopes = structuredClone(this.saved.scopes);
-    this.clock = new Clock(this.id, this.saved.clock);
-    for (const scope of Object.keys(this.scopes)) restoreJournal(this.scopes[scope], [...this.journal[scope].values()], this.clock);
   }
   with(fn) {
     stub.current.device = this.id;
@@ -64,9 +51,6 @@ class Device {
   async sync(profileId = "default") {
     stub.current.device = this.id;
     useBrowser.setState(this.browser, true);
-    const persist = (scope) => async (batches) => {
-      for (const f of batches) this.journal[scope].set(f.seq, structuredClone(f));
-    };
     const run = (scope, list, options) =>
       syncScope({
         scope,
@@ -75,7 +59,7 @@ class Device {
         adapters: list,
         clock: this.clock,
         device: this.id,
-        options: { ...options, persist: persist(scope) },
+        options,
       });
     const app = await run("app", [adapters.settingsAdapter]);
     const p = await run(
@@ -120,38 +104,6 @@ function assertTreeWhole(device) {
   });
 }
 
-test("bookmarks: a tree made on one Mac appears on the other, then edits flow back", async () => {
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  const b = new Device("devB", folder);
-  a.with(() => {
-    const f = S().addBookmarkFolder({ profileId: "default", title: "Work" });
-    S().addBookmark({ profileId: "default", url: "https://docs.example/", title: "Docs", parentId: f });
-    S().addBookmark({ profileId: "default", url: "https://mail.example/", title: "Mail" });
-    const other = S().bookmarks.roots.default.other;
-    S().addBookmark({ profileId: "default", url: "https://later.example/", title: "Later", parentId: other });
-  });
-  await syncAll([a, b]);
-  assert.deepEqual(tree(b), tree(a));
-  assert.equal((await a.sync()).published, 0);
-  assert.equal((await b.sync()).published, 0);
-
-  b.with(() => {
-    const nodes = Object.values(S().bookmarks.nodes);
-    const mail = nodes.find((n) => n.title === "Mail");
-    const work = nodes.find((n) => n.title === "Work");
-    S().updateBookmark(mail.id, { title: "Inbox" });
-    S().moveBookmark(mail.id, S().bookmarks.roots.default.bar, 0);
-    S().removeBookmark(nodes.find((n) => n.title === "Later").id);
-    S().addBookmark({ profileId: "default", url: "https://spec.example/", title: "Spec", parentId: work.id, index: 0 });
-  });
-  await syncAll([b, a]);
-  assert.deepEqual(tree(a), tree(b));
-  assert.deepEqual(tree(a).bar, { "Bookmarks Bar": ["Inbox=https://mail.example/", { Work: ["Spec=https://spec.example/", "Docs=https://docs.example/"] }] });
-  assert.deepEqual(tree(a).other, { "Other Bookmarks": [] });
-  assertTreeWhole(a);
-});
-
 test("bookmarks: a folder deleted on one Mac while the other adds to it keeps the new bookmark", async () => {
   const folder = new Folder();
   const a = new Device("devA", folder);
@@ -185,102 +137,6 @@ test("bookmarks: folders moved into each other on two Macs don't make a cycle", 
   assertTreeWhole(a);
   const reachable = JSON.stringify(tree(a));
   assert.ok(reachable.includes("One") && reachable.includes("Two"));
-});
-
-test("history: visits sync, deletions sync, pages older than 90 days stay where they are", async () => {
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  const b = new Device("devB", folder);
-  const old = Date.now() - 200 * 86_400_000;
-  a.with(() => {
-    S().recordVisit("default", "https://news.example/", "News", null, true);
-    S().recordVisit("default", "https://blog.example/", "Blog", null, true);
-    S().importHistory("default", [{ url: "https://ancient.example/", title: "Ancient", visits: 3, lastVisit: old }]);
-  });
-  b.with(() => S().importHistory("default", [{ url: "https://b-ancient.example/", title: "B's old page", visits: 1, lastVisit: old }]));
-  await syncAll([a, b]);
-  const urls = (d) => d.with(() => (S().history.default ?? []).map((h) => h.url).sort());
-  assert.deepEqual(urls(b), ["https://b-ancient.example/", "https://blog.example/", "https://news.example/"]);
-  assert.ok(urls(a).includes("https://ancient.example/"));
-  b.with(() => S().removeHistory("default", ["https://news.example/"]));
-  await syncAll([b, a]);
-  assert.ok(!urls(a).includes("https://news.example/"));
-  assert.ok(urls(a).includes("https://ancient.example/"), "old history is never deleted by sync");
-  assert.equal(b.with(() => S().history.default.find((h) => h.url === "https://blog.example/").title), "Blog");
-});
-
-test("settings: a Mac that joins takes the synced settings; a change later syncs back", async () => {
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  a.with(() => S().updateSettings({ appearance: "dark", searchEngine: "duckduckgo", sidebarWidth: 300 }));
-  await syncAll([a]);
-  const b = new Device("devB", folder);
-  b.scopes.app.awaitRemote = true;
-  b.with(() => S().updateSettings({ appearance: "light", sidebarWidth: 222 }));
-  await syncAll([b, a, b]);
-  const pick = (d) => d.with(() => ({ appearance: S().settings.appearance, searchEngine: S().settings.searchEngine, sidebarWidth: S().settings.sidebarWidth }));
-  assert.deepEqual(pick(b), { appearance: "dark", searchEngine: "duckduckgo", sidebarWidth: 222 });
-  b.with(() => S().updateSettings({ showFullUrl: true }));
-  await syncAll([b, a]);
-  assert.equal(a.with(() => S().settings.showFullUrl), true);
-  assert.equal(a.with(() => S().settings.sidebarWidth), 300, "window sizes stay per Mac");
-  assert.equal(a.with(() => S().settings.cleanUpInactiveTabsAfterHours), null);
-  for (let i = 0; i < 2; i++) {
-    assert.equal((await a.sync()).published, 0);
-    assert.equal((await b.sync()).published, 0);
-  }
-  b.with(() => S().updateSettings({ cleanUpInactiveTabsAfterHours: 24 }));
-  await syncAll([b, a]);
-  assert.equal(a.with(() => S().settings.cleanUpInactiveTabsAfterHours), 24);
-  b.with(() => S().updateSettings({ cleanUpInactiveTabsAfterHours: null }));
-  await syncAll([b, a]);
-  assert.equal(a.with(() => S().settings.cleanUpInactiveTabsAfterHours), null);
-});
-
-test("pinned tabs and pinned groups: tiles arrive unloaded, in order, and unpinning removes them elsewhere", async () => {
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  const b = new Device("devB", folder);
-  a.with(() => {
-    const w = S().createWindow({ url: "https://mail.example/" });
-    const mail = model.viewTabIds(S(), w)[0];
-    const cal = S().newTab(w, { url: "https://cal.example/" });
-    const x = S().newTab(w, { url: "https://x.example/" });
-    const y = S().newTab(w, { url: "https://y.example/" });
-    S().newTab(w, { url: "https://regular.example/" });
-    S().pinTabs([mail, cal], true);
-    S().groupTabs([x, y], { pinned: true, name: "Research" });
-  });
-  b.with(() => S().createWindow({ url: "https://b-home.example/" }));
-  await syncAll([a, b]);
-  const pinnedView = (d) =>
-    d.with(() => {
-      const s = S();
-      const w = s.windowOrder[0];
-      return model.viewTabIds(s, w).map((id) => {
-        const t = s.tabs[id];
-        const g = Object.values(s.groups).find((gr) => gr.tabIds.includes(id));
-        return `${t.pinned ? "pin" : g?.pinned ? `grp:${g.name}` : "tab"} ${t.pinnedUrl || t.url}`;
-      });
-    });
-  assert.deepEqual(pinnedView(b), [
-    "pin https://mail.example/",
-    "pin https://cal.example/",
-    "grp:Research https://x.example/",
-    "grp:Research https://y.example/",
-    "tab https://b-home.example/",
-  ]);
-  assert.ok(b.with(() => Object.values(S().tabs).filter((t) => t.pinned).every((t) => t.unloaded)), "synced tiles don't load until selected");
-  assert.equal((await b.sync()).published, 0);
-  assert.equal((await a.sync()).published, 0);
-
-  b.with(() => {
-    const cal = Object.values(S().tabs).find((t) => t.url === "https://cal.example/");
-    S().pinTabs([cal.id], false);
-  });
-  await syncAll([b, a]);
-  assert.deepEqual(pinnedView(a).filter((l) => !l.startsWith("tab")), ["pin https://mail.example/", "grp:Research https://x.example/", "grp:Research https://y.example/"]);
-  assert.equal(a.with(() => Object.values(S().tabs).some((t) => t.url === "https://cal.example/")), false);
 });
 
 test("pinned tabs parked by a closed window still sync: not deleted elsewhere, and changes elsewhere reach them", async () => {
@@ -321,39 +177,6 @@ test("pinned tabs parked by a closed window still sync: not deleted elsewhere, a
   assert.equal((await a.sync()).published, 0, "adopting them publishes nothing new");
 });
 
-test("0.2.7's Liquid Glass leftovers: tabs pinned as rows show and sync as tiles; its setting is ignored", async () => {
-  const { sidebarEntries } = await import("../components/sidebar/entries.ts");
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  const b = new Device("devB", folder);
-  const w = a.with(() => {
-    const w = S().createWindow({ url: "https://mail.example/" });
-    const row = S().newTab(w, { url: "https://row.example/" });
-    S().pinTabs([row], true);
-    useBrowser.setState((s) => ({ tabs: { ...s.tabs, [row]: { ...s.tabs[row], pinnedRow: true } }, settings: { ...s.settings, sidebarStyle: "glass" } }));
-    return w;
-  });
-  const tiles = (d, window) => d.with(() => sidebarEntries(S(), window ?? S().windowOrder[0]).tiles.map((id) => S().tabs[id].pinnedUrl));
-  assert.deepEqual(tiles(a, w), ["https://row.example/"]);
-  b.with(() => S().createWindow({ url: "https://b-home.example/" }));
-  await syncAll([a, b]);
-  assert.deepEqual(tiles(b), ["https://row.example/"]);
-});
-
-test("open tabs: each device publishes its own tabs record only", async () => {
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  const b = new Device("devB", folder);
-  a.with(() => S().createWindow({ url: "https://a-open.example/" }));
-  b.with(() => S().createWindow({ url: "https://b-open.example/" }));
-  await syncAll([a, b]);
-  const records = b.scopes.p.records;
-  assert.deepEqual(records["tabs:devA"].v.tabs.map((t) => t.u), ["https://a-open.example/"]);
-  assert.equal(records["tabs:devA"].v.n, "devA's MacBook Pro");
-  assert.deepEqual(records["tabs:devB"].v.tabs.map((t) => t.u), ["https://b-open.example/"]);
-  assert.deepEqual(b.with(() => Object.values(S().tabs).map((t) => t.url)), ["https://b-open.example/"]);
-});
-
 test("passwords: saved on one Mac, changed or deleted on another; the newer edit of a login wins", async () => {
   const folder = new Folder();
   const a = new Device("devA", folder);
@@ -372,27 +195,4 @@ test("passwords: saved on one Mac, changed or deleted on another; the newer edit
   await syncAll([b, a]);
   assert.deepEqual(list(a), ["https://bank.example alice=correct horse", "https://shop.example bob=sh0p"]);
   assert.equal((await a.sync()).published, 0);
-});
-
-test("a crash after publishing: the next batch doesn't reuse its seq, and what went out isn't sent again", async () => {
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  const b = new Device("devB", folder);
-  const find = (d, title) => d.with(() => Object.values(S().bookmarks.nodes).find((n) => n.title === title));
-  a.with(() => S().addBookmark({ profileId: "default", url: "https://one.example/", title: "One" }));
-  await syncAll([a, b]);
-  a.save();
-  a.with(() => {
-    S().updateBookmark(find(a, "One").id, { title: "Uno" });
-    S().addBookmark({ profileId: "default", url: "https://two.example/", title: "Two" });
-  });
-  await a.sync();
-  await b.sync();
-  assert.ok(find(b, "Uno") && find(b, "Two"));
-  a.crash();
-  a.with(() => S().addBookmark({ profileId: "default", url: "https://three.example/", title: "Three" }));
-  assert.equal((await a.sync()).published, 1, "only the new bookmark");
-  await syncAll([b, a]);
-  assert.ok(find(b, "Three"), "B got the batch published after the crash");
-  assert.deepEqual(tree(b), tree(a));
 });

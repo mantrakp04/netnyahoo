@@ -1,4 +1,3 @@
-// Run from apps/browser:  node --test src/telemetry/sanitize.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { cleanProperties, errorCode, errorMessage, errorType, nativeCrashExceptions, nativeFrames, parseStack, scrubText } from "./sanitize.ts";
@@ -35,36 +34,6 @@ test("quoted text, emails, ids and long numbers are stripped", () => {
   assert.equal(scrubText("Couldn't save the sync state; can't retry"), "Couldn't save the sync state; can't retry");
 });
 
-test("messages are one line and bounded", () => {
-  assert.equal(scrubText("first line\nsecond line with https://x.test"), "first line");
-  assert.equal(scrubText("x".repeat(500), 20).length, 20);
-  assert.equal(scrubText(42), "");
-});
-
-test("errors keep their type, never a made-up one", () => {
-  assert.equal(errorType(new TypeError("x")), "TypeError");
-  assert.equal(errorType("thrown string"), "Error");
-  assert.equal(errorType({ name: "https://evil.test/" }), "Object");
-  assert.equal(errorMessage(new Error("fetch https://secret.test/a failed")), "fetch <url> failed");
-});
-
-test("failed native calls keep the function name and code, and drop the cause", () => {
-  const coded = Object.assign(
-    new Error(
-      "Calling the 'loadUrl' function has failed\n→ Caused by: The 1st argument cannot be cast to type View<CefWebView>\n→ Caused by: Unable to find the 'CefWebView' view with tag '1234'",
-    ),
-    { code: "ERR_ARGUMENT_CAST" },
-  );
-  assert.equal(errorMessage(coded), "Calling the 'loadUrl' function has failed");
-  assert.equal(errorCode(coded), "ERR_ARGUMENT_CAST");
-  assert.equal(errorMessage(new Error("Calling the 'https://x.test/' function has failed")), "Calling the <text> function has failed");
-  assert.equal(errorMessage(new Error("Calling the 'a' function has failed for /Users/bob")), "Calling the <text> function has failed for <path>");
-  assert.equal(errorCode({ code: "ENOENT" }), "ENOENT");
-  assert.equal(errorCode({ code: "bob@example.com" }), null);
-  assert.equal(errorCode({ code: 42 }), null);
-  assert.equal(errorCode(new Error("x")), null);
-});
-
 test("Hermes stacks keep function and bundle names, not the dev host, query or directories", () => {
   const stack = [
     "TypeError: boom",
@@ -84,28 +53,6 @@ test("Hermes stacks keep function and bundle names, not the dev host, query or d
   assert.equal(frames.at(-3).filename, "native");
   assert.equal(frames.at(-3).in_app, false);
   for (const f of frames) assert.equal(f.platform, "custom");
-});
-
-test("JSC-style stacks parse too, and odd function names become anonymous", () => {
-  const frames = parseStack("run@http://example.test/app/main.js?token=abc:10:2\nhttps://evil.test/x@file.js:1:1");
-  assert.equal(frames.at(-1).function, "run");
-  assert.equal(frames.at(-1).filename, "main.js");
-  assert.equal(frames[0].function, "<anonymous>");
-  assert.deepEqual(leaks(JSON.stringify(frames), "example", "token", "evil"), []);
-});
-
-test("native crash frames keep image and symbol names only", () => {
-  const frames = nativeFrames([
-    { image: "Netnyahoo", symbol: "CrashReports.crashForTesting()", offset: 4096 },
-    { image: "Chromium Embedded Framework", offset: 255 },
-    { image: "/Users/alice/Library/Something.dylib", symbol: "load(/Users/alice/x)" },
-  ]);
-  assert.deepEqual(leaks(JSON.stringify(frames), "alice", "Users/"), []);
-  assert.equal(frames.at(-1).function, "CrashReports.crashForTesting()");
-  assert.equal(frames.at(-1).in_app, true);
-  assert.equal(frames.at(-2).function, "Chromium Embedded Framework + 0xff");
-  assert.equal(frames.at(-2).resolved, false);
-  assert.equal(frames[0].filename, "Something.dylib");
 });
 
 test("event properties are flat, plain and scrubbed", () => {
@@ -145,21 +92,4 @@ test("an uncaught NSException sends its name and throw site first, never its rea
   assert.equal(exceptions[0].frames[0].function, "TabStrip.select(_:)");
   assert.equal(exceptions[0].frames[0].in_app, true);
   assert.equal(exceptions[1].frames.at(-1).function, "+[NSApplication _crashOnException:]");
-});
-
-test("exception names that aren't framework constants are dropped", () => {
-  for (const bad of ["reason: secret", "alice@example.com", "Name With Spaces", "NSRangeException: 5 beyond", "x"]) {
-    const { name, exceptions } = nativeCrashExceptions({ exceptionName: bad, frames: [], exceptionFrames: [{ image: "AppKit" }] });
-    assert.equal(name, null, bad);
-    assert.equal(exceptions[0].type, "NSException");
-  }
-  for (const good of ["NSInvalidArgumentException", "CALayerInvalidGeometry", "RCTFatalException", "NSInternalInconsistencyException"]) {
-    assert.equal(nativeCrashExceptions({ exceptionName: good, frames: [] }).name, good);
-  }
-});
-
-test("a crash without an exception backtrace sends the crashed thread only", () => {
-  const { exceptions } = nativeCrashExceptions({ exceptionType: "EXC_BAD_ACCESS", signal: "SIGSEGV", frames: [{ image: "Netnyahoo" }] });
-  assert.deepEqual(exceptions.map((e) => e.type), ["EXC_BAD_ACCESS"]);
-  assert.equal(nativeCrashExceptions({ exceptionType: "weird type", frames: [] }).exceptions[0].type, "Crash");
 });

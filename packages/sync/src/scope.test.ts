@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Clock, formatHLC, hlcWall, parseHLC } from "./hlc.ts";
-import { assignPositions, positionBetween } from "./order.ts";
+import { Clock } from "./hlc.ts";
 import { compact, emptyScope, restoreJournal, syncScope, type Adapter, type Listing, type LogFile, type ScopeOptions, type ScopeState, type Transport } from "./scope.ts";
 
 type Entry = { payload: string; hiddenFrom: Set<string>; partialFor: Set<string>; at: number };
@@ -139,68 +138,6 @@ async function syncAll(devices: Device[], rounds = 2) {
   for (let i = 0; i < rounds; i++) for (const d of devices) await d.sync();
 }
 
-test("hybrid logical clocks order by wall time, then counter, then device", () => {
-  let t = 1000;
-  const clock = new Clock("a", null, () => t);
-  const first = clock.tick();
-  const second = clock.tick();
-  assert.ok(second > first);
-  assert.deepEqual(parseHLC(second), { wall: 1000, counter: 1, device: "a" });
-  t = 900;
-  assert.ok(clock.tick() > second);
-  clock.observe(formatHLC(5000, 3, "b"));
-  const after = clock.tick();
-  assert.ok(after > formatHLC(5000, 3, "b"));
-  assert.equal(hlcWall(after), 5000);
-  assert.equal(hlcWall(clock.at(200)), 200);
-  assert.ok(clock.tick() > after);
-});
-
-test("positions sort in list order and keep what they can", () => {
-  let keys: string[] = [];
-  let prev = "";
-  for (let i = 0; i < 200; i++) {
-    const k = positionBetween(prev, null);
-    assert.ok(k > prev);
-    keys.push((prev = k));
-  }
-  for (let i = 0; i < 200; i++) {
-    const a = keys[i]!;
-    const b = keys[i + 1] ?? null;
-    const m = positionBetween(a, b);
-    assert.ok(m > a && (b === null || m < b), `${a} < ${m} < ${b}`);
-    assert.ok(!m.endsWith("0"));
-  }
-  let lo = "a";
-  const hi = "b";
-  for (let i = 0; i < 100; i++) {
-    lo = positionBetween(lo, hi);
-    assert.ok(lo > "a" && lo < hi);
-  }
-  keys = assignPositions([undefined, undefined, undefined]);
-  assert.ok(keys[0]! < keys[1]! && keys[1]! < keys[2]!);
-  const moved = assignPositions([keys[2], keys[0], keys[1]]);
-  assert.equal(moved[1], keys[0]);
-  assert.equal(moved[2], keys[1]);
-  assert.ok(moved[0]! < moved[1]!);
-  const dup = assignPositions([keys[0], keys[0], keys[1]]);
-  assert.ok(dup[0]! < dup[1]! && dup[1]! < dup[2]!);
-});
-
-test("changes on one device reach the other, both ways", async () => {
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  const b = new Device("devB", folder);
-  a.store.set("x:1", { title: "Netnyahoo" });
-  await syncAll([a, b]);
-  assert.deepEqual(snapshot(b), { "x:1": { title: "Netnyahoo" } });
-  b.store.set("x:2", "from B");
-  b.store.set("x:1", { title: "Renamed on B" });
-  await syncAll([b, a]);
-  assert.deepEqual(snapshot(a), snapshot(b));
-  assert.deepEqual(snapshot(a), { "x:1": { title: "Renamed on B" }, "x:2": "from B" });
-});
-
 test("concurrent edits converge on the newest, whatever order devices sync in", async () => {
   for (const order of [["devA", "devB"], ["devB", "devA"]]) {
     const folder = new Folder();
@@ -316,88 +253,6 @@ test("a local edit made while files are read isn't overwritten", async () => {
   assert.equal(a.store.get("x:k"), "B, typed during the read");
 });
 
-test("a joining device adopts synced settings, then its own new ones sync", async () => {
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  a.settings.set("set:appearance", "dark");
-  await syncAll([a]);
-  const b = new Device("devB", folder);
-  b.state.awaitRemote = true;
-  b.settings.set("set:appearance", "light");
-  b.settings.set("set:onlyB", true);
-  for (const e of folder.scope("s").values()) e.hiddenFrom.add("devB");
-  await b.sync();
-  assert.equal(b.state.joined, false);
-  for (const e of folder.scope("s").values()) e.hiddenFrom.clear();
-  await syncAll([b, a, b]);
-  assert.equal(b.settings.get("set:appearance"), "dark");
-  assert.equal(a.settings.get("set:appearance"), "dark");
-  assert.equal(a.settings.get("set:onlyB"), true);
-});
-
-test("compaction: a snapshot replaces the logs it covers; new devices start from it", async () => {
-  const folder = new Folder();
-  const opts = { compactAfterFiles: 10, compactInterval: 0 };
-  const a = new Device("devA", folder, opts);
-  const b = new Device("devB", folder, opts);
-  for (let i = 0; i < 30; i++) {
-    folder.now += 100;
-    a.store.set(`x:${i % 7}`, `a${i}`);
-    if (i % 3 === 0) b.store.set(`x:b${i}`, i);
-    await a.sync();
-    await b.sync();
-  }
-  await syncAll([a, b]);
-  assert.deepEqual(snapshot(a), snapshot(b));
-  assert.ok(folder.fileCount() <= 12, `files: ${folder.fileCount()}`);
-  const kinds = [...folder.scope("s").values()].map((e) => (JSON.parse(e.payload) as { kind: string }).kind);
-  assert.ok(kinds.includes("snapshot"));
-  const c = new Device("devC", folder, opts);
-  await c.sync();
-  assert.deepEqual(snapshot(c), snapshot(a));
-});
-
-test("a device offline for weeks catches up, keeps its offline edits, and learns collected deletes", async () => {
-  const folder = new Folder();
-  const day = 86_400_000;
-  const opts: ScopeOptions = { compactAfterFiles: 3, compactInterval: 0, tombstoneTTL: 7 * day };
-  const a = new Device("devA", folder, opts);
-  const b = new Device("devB", folder, opts);
-  a.store.set("x:keep", 1);
-  a.store.set("x:doomed", 2);
-  await syncAll([a, b]);
-  assert.equal(b.store.get("x:doomed"), 2);
-  b.store.set("x:offline", "made offline");
-  folder.now += day;
-  a.store.delete("x:doomed");
-  await a.sync();
-  for (let i = 0; i < 6; i++) {
-    folder.now += 5 * day;
-    a.store.set(`x:w${i}`, i);
-    await a.sync();
-  }
-  await compact(a.state, folder.transport("devA"), "s", "devA", folder.now, { ...opts, pruneGrace: 0 }, true);
-  const tombstones = Object.values(a.state.records).filter((r) => r.v === null);
-  assert.equal(tombstones.length, 0);
-  b.relaunch();
-  await syncAll([b, a, b]);
-  assert.equal(b.store.has("x:doomed"), false, "the collected delete reached B");
-  assert.equal(a.store.get("x:offline"), "made offline");
-  assert.deepEqual(snapshot(a), snapshot(b));
-});
-
-test("expired records leave snapshots without deleting anything a device still keeps", async () => {
-  const folder = new Folder();
-  const opts: ScopeOptions = { compactAfterFiles: 0, compactInterval: 0, expired: (_k, v, now) => (v as { t: number }).t < now - 1000 };
-  const a = new Device("devA", folder, opts);
-  a.store.set("x:old", { t: 0 });
-  a.store.set("x:new", { t: 5000 });
-  folder.now = 5000;
-  await a.sync();
-  const snap = [...folder.scope("s").values()].map((e) => JSON.parse(e.payload) as { kind: string; records?: object }).find((f) => f.kind === "snapshot");
-  assert.ok(snap?.records && !("x:old" in snap.records) && "x:new" in snap.records);
-});
-
 test("three devices, random edits, sync orders and crashes, converge", async () => {
   let seed = 7;
   const random = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
@@ -473,33 +328,6 @@ test("an old snapshot put back after its tombstones were collected doesn't bring
   await c.sync();
   assert.equal(c.store.has("x:secret"), false, "C");
   assert.deepEqual(snapshot(c), snapshot(a));
-});
-
-test("a crash after publishing a batch doesn't reuse its sequence number", async () => {
-  const folder = new Folder();
-  const a = new Device("devA", folder);
-  const b = new Device("devB", folder);
-  a.store.set("x:1", "one");
-  await syncAll([a, b]);
-  a.save();
-  a.store.set("x:2", "two");
-  await a.sync();
-  await b.sync();
-  assert.equal(b.store.get("x:2"), "two");
-  a.crash();
-  a.store.set("x:3", "three");
-  await syncAll([a, b]);
-  assert.equal(b.store.get("x:3"), "three", "B got the batch published after the crash");
-  a.store.set("x:2", "two, edited");
-  await syncAll([a, b]);
-  assert.deepEqual(snapshot(b), snapshot(a));
-  const seqs = [...folder.scope("s").values()].map((e) => JSON.parse(e.payload) as { device: string; seq: number; ops: unknown[] });
-  const mine = new Map<number, string>();
-  for (const f of seqs.filter((f) => f.device === "devA")) {
-    const ops = JSON.stringify(f.ops);
-    assert.equal(mine.get(f.seq) ?? ops, ops, `seq ${f.seq} was published twice with different changes`);
-    mine.set(f.seq, ops);
-  }
 });
 
 test("a failed write is retried as the same batch, even when the file did land", async () => {

@@ -34,3 +34,17 @@ export const cancelDownload = () => Promise.resolve();
 export const deletedProfileData = [];
 export const profileDataLeft = new Map();
 export const deleteProfileData = (profile) => (deletedProfileData.push(profile), Promise.resolve(profileDataLeft.get(profile) ?? []));
+
+// expo-modules-core: a test installs native modules on globalThis.nnTestNativeModules.
+export const requireOptionalNativeModule = (name) => globalThis.nnTestNativeModules?.[name] ?? null;
+export const requireNativeModule = () => ({});
+// Saved passwords, one store per simulated device (sync tests).
+export const passwordStores = new Map();
+export const current = { device: null };
+const logins = () => passwordStores.get(current.device);
+export const savePassword = async (_profile, origin, username, password) => {
+  logins().set(`${origin}\n${username}`, { origin: `${origin}/`, url: origin, username, password, created: Date.now() });
+  return true;
+};
+export const deletePassword = async (_profile, origin, username) => (logins().delete(`${origin}\n${username}`), true);
+export const readLogins = async () => [...logins().values()];
