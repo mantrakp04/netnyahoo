@@ -1,0 +1,58 @@
+apps/browser/src/store/liveTabs.ts
+  s_9c356f9574d31c::t_5c21e04428cd4c 1-210
+packages/cef/ios/NNTabStrip.mm
+  s_9c356f9574d31c::t_bfe2a9350bbd11 1-47,50-65,72-88,93-223,225-303
+  s_9c356f9574d31c::t_38c4c9ab9f0de0 48-49,66-71,89-92,224
+packages/shell/ios/AppModule.swift
+  s_9c356f9574d31c::t_4ef42e5636411f 10
+docs/store-api.md
+  s_9c356f9574d31c::t_4c785245b00fb3 111-112,116-117,130-134,140-144
+  s_9c356f9574d31c::t_3369541c7ff971 83-110,113-115,118-129,135-139,145-151
+  s_9c356f9574d31c::t_5ea993c78b7332 82
+apps/browser/src/nativeApi.tsx
+  s_9c356f9574d31c::t_4ef42e5636411f 8
+apps/browser/src/components/ContentCard.tsx
+  s_9c356f9574d31c::t_173da4bb36510e 9
+apps/browser/src/lib/chromeTabs.ts
+  s_9c356f9574d31c::t_7709f73e2dc285 1-13,16,20-25,27-38,40-48,53-64,70,72-113,117-142
+apps/browser/src/store/liveTabs.test.mjs
+  s_9c356f9574d31c::t_bf9f7908288351 1-264
+packages/cef/ios/CefModule.swift
+  s_9c356f9574d31c::t_02f58c599a97a5 7-8,18,33-35
+packages/cef/ios/NNBrowserView.mm
+  s_9c356f9574d31c::t_eea783fd72ea72 6,405-409,415,702-705,721-723
+packages/cef/ios/NNCef.h
+  s_9c356f9574d31c::t_6ad47b6a90796b 48-55
+packages/cef/ios/NNClient.mm
+  s_9c356f9574d31c::t_853debb80a27dd 12,946,955,1379,1386-1387
+packages/cef/ios/NNTabStrip.h
+  s_9c356f9574d31c::t_fa9897412033c3 1-29
+packages/cef/ios/NNWindowHost.h
+  s_9c356f9574d31c::t_d99cabbd34e4e2 23-28
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_f5a265a059b561 7,49,115,119,293,296,587,611-612,784,787-792,824-832,858-859,869-871,874-887,889-891,906-908,910-915
+packages/cef/src/WebView.tsx
+  s_9c356f9574d31c::t_718c5eb0b66163 128-129
+packages/cef/src/index.ts
+  s_9c356f9574d31c::t_83f47eda5bf93e 16
+packages/cef/src/native.ts
+  s_9c356f9574d31c::t_c5634da38ce0b5 8,33-35
+packages/cef/src/tabStrip.ts
+  s_9c356f9574d31c::t_2261f05ce37a24 1-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1463148891a6dbca15f6a9b959360390c51c1830",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
