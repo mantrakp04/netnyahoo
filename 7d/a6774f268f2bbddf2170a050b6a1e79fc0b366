@@ -1,0 +1,24 @@
+packages/cef/scripts/engine.sh
+  s_9c356f9574d31c::t_95a48297d3e70e 57-61
+  s_9c356f9574d31c::t_fa45bfe2c8bfa1 3
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_e8bf27b1aa2cd6 108
+packages/cef/engine.lock
+  s_9c356f9574d31c::t_227a1b7ff0fc1c 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7da6774f268f2bbddf2170a050b6a1e79fc0b366",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
