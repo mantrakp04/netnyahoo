@@ -345,6 +345,11 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   // Nor use the Mac's camera or microphone, or make macOS ask the owner for them: capture comes from Chrome's fake
   // devices, which macOS never gates (the engine keeps the microphone on a fake input, nn_fake_media.mm).
   if (getenv("NETNYAHOO_BACKGROUND")) extra.push_back("--use-fake-device-for-media-stream");
+  // Nor animate a tab-modal dialog's close: Chrome closes one when its NSAnimation ends, and with the screen locked
+  // AppKit never advances it, so the dialog stayed on screen for the rest of a run (a print preview after its page
+  // navigated; the tab-capture picker after Chrome picked the tab, and Chrome's autofill dropdown refuses to open over
+  // a visible dialog). Chrome's own tests of both dialogs use the switch for the same reason.
+  if (getenv("NETNYAHOO_BACKGROUND")) extra.push_back("--disable-modal-animations");
   // Chrome's switches that answer capture prompts by themselves pick the fake list's "default" microphone, which is the
   // Mac's real one: a test instance never takes them.
   auto autoAccepts = [](const char *sw) {

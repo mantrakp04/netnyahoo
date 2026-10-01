@@ -1240,7 +1240,14 @@ try {
       const stopped = await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.stopCapture(${capturer})`);
       const ended = await until("the track ended", async () =>
         (await cdp(t, "Runtime.evaluate", { expression: "window.__cap", returnByValue: true })).result.value === "ended" ? true : null, 8000);
-      return { live, access, sourceId: sourceId ? String(sourceId).slice(0, 40) : null, changed, stopped, ended };
+      // Chrome's picker, which the test switch answered, is gone: with the screen locked its close animation never
+      // ended, and the dialog left over the page kept Chrome's autofill dropdown from opening there for the rest of the run.
+      const windowNumber = await cef(`devWindowNumber(${capturer})`);
+      const picker = await until("the picker closed", async () => {
+        const children = JSON.parse(await cef(`devWindow(${windowNumber}, "children")`));
+        return children.some((c) => c.visible && c.title.startsWith("Choose what to share")) ? null : "closed";
+      }, 5000);
+      return { live, access, sourceId: sourceId ? String(sourceId).slice(0, 40) : null, changed, stopped, ended, picker };
     } finally {
       await cdp(t, "Runtime.evaluate", { expression: "window.__stream?.getTracks().forEach((x) => x.stop())" }).catch(() => null);
       await evalApp(`return globalThis.expo.modules.NetnyahooCEF.setDisplayMediaPicker(true).then(() => true)`);
@@ -1364,6 +1371,9 @@ try {
     await evalApp(`return nn.webviews.get("${first.id}").runPageCommand("savePage")`);
     try {
       const saved = await until("the saved page", async () => existsSync(file) && readFileSync(file, "utf8").includes("Page A"), 15000);
+      // The popover opens as the app hears of the download; closed before that, it would open over the page later.
+      await until("the saved page in the app's downloads", () =>
+        evalApp(`return nn.store.getState().downloads.some((d) => d.state === "finished" && (d.path ?? d.filename ?? "").endsWith("saved-page.html"))`), 10000);
       return { saved };
     } finally {
       await closeDownloads();
@@ -1477,7 +1487,12 @@ try {
     const afterTrackpad = await zoom();
     const wheel = await scroll([{ phase: "wheel", dy: 1 }, { phase: "wheel", dy: 1 }]);
     const afterWheel = await until("zoomed", async () => { const z = await zoom(); return z > 1 ? z : null; }, 5000)
-      .catch(async (e) => { throw new Error(`${e.message}; trackpad ${JSON.stringify(trackpad)} wheel ${JSON.stringify(wheel)} zoom ${await zoom()} events ${JSON.stringify((await eventsOf(first.id)).filter((x) => x.name === "zoom").slice(-2))}`); });
+      .catch(async (e) => {
+        // Why (devScrollZoom logs each ⌘-wheel step that didn't zoom), and the app's UI that can cover the page.
+        const why = appLog.join().split("\n").filter((l) => l.includes("[scroll-zoom]")).slice(-3).map((l) => l.replace(/^.*\[scroll-zoom\] /, ""));
+        const ui = await evalApp(`return nn.store.getState().windowUi[${JSON.stringify(mainWindow)}] ?? null`).catch(() => null);
+        throw new Error(`${e.message}; trackpad ${JSON.stringify(trackpad)} wheel ${JSON.stringify(wheel)} zoom ${await zoom()} why ${JSON.stringify(why)} ui ${JSON.stringify(ui)} events ${JSON.stringify((await eventsOf(first.id)).filter((x) => x.name === "zoom").slice(-2))}`);
+      });
     await reset();
     if (trackpad.some(Boolean) || afterTrackpad !== 1) throw new Error(`a trackpad ⌘-scroll zoomed: ${JSON.stringify(trackpad)} → ${afterTrackpad}`);
     if (!wheel.some(Boolean)) throw new Error(`the wheel didn't zoom: ${JSON.stringify(wheel)}`);
@@ -2290,14 +2305,19 @@ try {
     await evalApp(`nn.actions.openUrls(["${base}/slow.bin"], ${JSON.stringify(mainWindow)}); return true`);
     const find = () => evalApp(`return nn.store.getState().downloads.map((d) => ({ id: d.id, state: d.state, paused: d.paused, filename: d.filename, received: d.received }))`)
       .then((l) => l.find((x) => x.filename?.includes("nncore-slow")) ?? null);
-    const d = await until("the slow download running", async () => { const x = await find(); return x?.state === "downloading" && !x.paused && x.received > 0 ? x : null; }, 15000);
-    await cef(`pauseDownload("${d.id}")`);
-    await until("paused", async () => ((await find())?.paused ? true : null), 8000);
-    await cef(`resumeDownload("${d.id}")`);
-    await until("running again", async () => { const x = await find(); return x?.state === "downloading" && !x.paused ? true : null; }, 8000);
-    await cef(`cancelDownload("${d.id}")`);
-    const last = await until("cancelled", async () => { const x = await find(); return x?.state === "cancelled" ? x : null; }, 8000);
-    return { id: d.id, state: last.state };
+    try {
+      const d = await until("the slow download running", async () => { const x = await find(); return x?.state === "downloading" && !x.paused && x.received > 0 ? x : null; }, 15000);
+      await cef(`pauseDownload("${d.id}")`);
+      await until("paused", async () => ((await find())?.paused ? true : null), 8000);
+      await cef(`resumeDownload("${d.id}")`);
+      await until("running again", async () => { const x = await find(); return x?.state === "downloading" && !x.paused ? true : null; }, 8000);
+      await cef(`cancelDownload("${d.id}")`);
+      const last = await until("cancelled", async () => { const x = await find(); return x?.state === "cancelled" ? x : null; }, 8000);
+      return { id: d.id, state: last.state };
+    } finally {
+      // The new download opened the popover over the page; it stayed open for the rest of the run.
+      await closeDownloads();
+    }
   });
 
   await check("tasks-components", async () => {

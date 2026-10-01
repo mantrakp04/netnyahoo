@@ -1656,6 +1656,8 @@ namespace {
 // Set by devScrollZoom: the device a synthetic scroll claims to come from, and the ⌘-scrolls that zoomed.
 int gDevTrackpad = -1;
 NSUInteger gZoomScrolls = 0;
+// Why the monitor let a devScrollZoom step through (nil: it never saw the step).
+NSString *gDevZoomMiss = nil;
 bool gGestureTrackpad = false;
 
 // Scroll events look the same from a trackpad and a Magic Mouse; the HID service that sent one doesn't. Built-in
@@ -1708,6 +1710,7 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
     // Two fingers down is a trackpad too (a Magic Mouse scrolls with one), when AppKit reports touches.
     BOOL fingers = (event.phase & (NSEventPhaseBegan | NSEventPhaseMayBegin)) && touching >= 2 && event.timestamp - touchedAt < 0.5;
     BOOL trackpad = event.phase != NSEventPhaseNone && (fingers || FromTrackpad(event));
+    if (gDevTrackpad >= 0) gDevZoomMiss = @"not a zoom (a trackpad gesture, or no ⌘)";
     if (!CommandScrollZooms(event, trackpad)) return event;
     NSWindow *window = event.window;
     NSPoint point = event.locationInWindow;
@@ -1726,8 +1729,8 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
     while (hit && ![hit isKindOfClass:NNCoreWebView.class]) hit = hit.superview;
     NNCoreWebView *view = (NNCoreWebView *)hit;
     if (gDevTrackpad >= 0 && (!view || !view->_tab))
-      NSLog(@"[scroll-zoom] dev scroll not over a page: window %ld %@, hit %@", (long)window.windowNumber,
-            NSStringFromPoint(point), [content hitTest:[content.superview convertPoint:point fromView:nil]]);
+      gDevZoomMiss = [NSString stringWithFormat:@"not over a page: window %ld %@, hit %@", (long)window.windowNumber,
+                                                NSStringFromPoint(point), [content hitTest:[content.superview convertPoint:point fromView:nil]]];
     // Over the sidebar, the toolbar or another window: not a page's to zoom.
     if (!view || !view->_tab) return event;
     if (event.phase == NSEventPhaseBegan) accumulated = 0;
@@ -1758,6 +1761,7 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
   const NSRect b = view.bounds;
   NSView *content = window.contentView;
   NSPoint inWindow = [view convertPoint:NSMakePoint(NSMidX(b), NSMidY(b)) toView:nil];
+  BOOL uncovered = NO;
   for (int i = 1; i < 8; i++)
     for (int j = 1; j < 8; j++) {
       const NSPoint candidate = [view convertPoint:NSMakePoint(NSMinX(b) + NSWidth(b) * j / 8, NSMinY(b) + NSHeight(b) * i / 8) toView:nil];
@@ -1765,9 +1769,13 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
       while (hit && hit != view) hit = hit.superview;
       if (hit) {
         inWindow = candidate;
+        uncovered = YES;
         i = j = 8;
       }
     }
+  if (!uncovered)
+    NSLog(@"[scroll-zoom] the page is covered everywhere: %@ over its centre",
+          [content hitTest:[content.superview convertPoint:inWindow fromView:nil]]);
   NSPoint screen = [window convertPointToScreen:inWindow];
   static auto setWindowLocation = (void (*)(CGEventRef, CGPoint))dlsym(RTLD_DEFAULT, "CGEventSetWindowLocation");
   NSMutableArray *zoomed = [NSMutableArray array];
@@ -1793,9 +1801,13 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
     CFRelease(cg);
     gDevTrackpad = [step[@"trackpad"] boolValue];
     NSUInteger before = gZoomScrolls;
+    gDevZoomMiss = nil;
     [NSApp sendEvent:event];
     gDevTrackpad = -1;
     [zoomed addObject:@(gZoomScrolls > before)];
+    // A wheel step should always zoom: say why one didn't (the acceptance run quotes it).
+    if (wheel && gZoomScrolls == before)
+      NSLog(@"[scroll-zoom] a ⌘-wheel step didn't zoom: %@", gDevZoomMiss ?: @"the zoom monitor never saw it");
   }
   return zoomed;
 }
