@@ -11,9 +11,9 @@ change: `packages/nncore` registers the same Expo modules and view names (`Netny
 
 Keep this list short and shrinking; each item names its owner.
 
-1. **Cutover commits**: C1, the fold (8f1074f1: one project, `Netnyahoo-macOS`, `com.netnyahoo.browser`), and C2
-   (`packages/cef` deleted, its JS in `packages/nncore/src`, the patch series in `engine/patches`,
-   `apps/browser/macos-nncore` gone) are done. Left: release.sh/smoke on NNCore. *Release-pipeline agent.*
+1. ~~**Cutover commits**~~ done: C1, the fold (8f1074f1: one project, `Netnyahoo-macOS`, `com.netnyahoo.browser`),
+   and C2 (6bdf66ce, 4b0d0697: `packages/cef` deleted, its JS in `packages/nncore/src`, the patch series in
+   `engine/patches`, `apps/browser/macos-nncore` gone). Left: release.sh/smoke on NNCore. *Release-pipeline agent.*
 2. ~~**Production data dir and migration**~~ done: a release build without `NETNYAHOO_DATA_DIR` opens
    `~/Library/Application Support/com.netnyahoo.browser/Chromium` in place (`InstalledDataDirectory`), with the
    login keychain only when Developer ID-signed and the app's documents in the folder above, as on CEF. No migration
@@ -33,9 +33,9 @@ Keep this list short and shrinking; each item names its owner.
 6. **Dogfood bugs**: a crashed tab keeps its sad tab after Reload; sized `window.open` popups (OAuth, payments)
    open as tabs instead of popup windows; app windows 32 pt shorter than CEF's; `chrome://crash` commits as the
    tab's URL. *Fixes helper.*
-7. **Smoke parity**: background-mode context-menu log, the autofill dropdown's selection, the PiP self-test
-   (`NETNYAHOO_PIP_SELFTEST`), the passkey dialog closing when its page navigates. *Fixes, media, app-parity
-   helpers.*
+7. ~~**Smoke parity**~~ done: background-mode context-menu log, the autofill dropdown's selection, the PiP self-test
+   (`NETNYAHOO_PIP_SELFTEST`) and the passkey dialog closing when its page navigates; the release smoke test passes
+   21/21 on NNCore (e8ece135, 2109af22, 2047812f).
 8. **Chrome's own UI says "Chromium"** (bubbles, dialogs, error pages); CEF renamed it. *Engine helper.*
 9. **Checks that need the owner** (an unlocked screen, prompts): the page composited under the RN views; menus,
    bubbles and choosers drawn against the window; PiP on screen; IME marked text; VoiceOver; a camera/microphone
