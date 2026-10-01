@@ -1,0 +1,32 @@
+engine/chromium/src/chrome/browser/netnyahoo/nn_tab_restore.cc
+  s_9c356f9574d31c::t_d673511eeb3065 9-20,22-23,25,35,39-40,45-47,56-57,65-76,78-92,95-102,142,151-152,228-231,235-236,242,244,260-285
+  s_9c356f9574d31c::t_e369238d6b1d9e 286
+packages/cef/patches/cef-alloy-history.patch
+  s_360dfdbc986ff7::t_cffc8341645443 1-19
+packages/cef/patches/series
+  s_360dfdbc986ff7::t_cffc8341645443 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a0fd3cf69985038fbb1e445197463b688e93ca0e",
+  "prompts": {},
+  "sessions": {
+    "s_360dfdbc986ff7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f58a-5968-78a1-8d65-58f2c8d15b58",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
