@@ -10,6 +10,7 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_agent_host_client.h"
@@ -28,8 +29,10 @@ void Answer(DevToolsReply reply,
       FROM_HERE, base::BindOnce(std::move(reply), std::move(result), std::move(error)));
 }
 
-// NNCore's own DevTools client of one tab: attached on its first call, like any other
-// client (the remote-debugging port's keep working beside it), and detached with the tab.
+// NNCore's own DevTools client of one tab, like any other client (the remote-debugging
+// port's keep working beside it): attached only while calls are pending, since a page with
+// a DevTools client attached has its hangs ignored (WebContentsImpl::
+// ShouldIgnoreUnresponsiveRenderer) and runs as debugged.
 class DevToolsCaller : public content::DevToolsAgentHostClient,
                        public content::WebContentsUserData<DevToolsCaller> {
  public:
@@ -60,6 +63,7 @@ class DevToolsCaller : public content::DevToolsAgentHostClient,
       return;
     }
     pending_[id] = std::move(reply);
+    ++generation_;  // a detach scheduled before this call stands down
     // The agent host may answer (or close) from inside the call.
     scoped_refptr<content::DevToolsAgentHost> host = host_;
     host->DispatchProtocolMessage(this, base::as_byte_span(*json));
@@ -83,6 +87,7 @@ class DevToolsCaller : public content::DevToolsAgentHostClient,
     }
     DevToolsReply reply = std::move(it->second);
     pending_.erase(it);
+    MaybeDetachSoon();
     if (base::DictValue* error = parsed->FindDict("error")) {
       const std::string* text = error->FindString("message");
       Answer(std::move(reply), std::nullopt, text ? *text : "error");
@@ -106,6 +111,25 @@ class DevToolsCaller : public content::DevToolsAgentHostClient,
 
  private:
   friend class content::WebContentsUserData<DevToolsCaller>;
+
+  // Not from inside the agent host's dispatch; a call made meanwhile keeps the client.
+  void MaybeDetachSoon() {
+    if (!pending_.empty()) {
+      return;
+    }
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&DevToolsCaller::DetachIfIdle,
+                                  weak_factory_.GetWeakPtr(), generation_));
+  }
+
+  void DetachIfIdle(int generation) {
+    if (generation != generation_ || !pending_.empty() || !host_) {
+      return;
+    }
+    scoped_refptr<content::DevToolsAgentHost> host = std::move(host_);
+    host->DetachClient(this);
+  }
+
   explicit DevToolsCaller(content::WebContents* contents)
       : content::WebContentsUserData<DevToolsCaller>(*contents) {}
 
@@ -120,6 +144,8 @@ class DevToolsCaller : public content::DevToolsAgentHostClient,
   scoped_refptr<content::DevToolsAgentHost> host_;
   int next_id_ = 1;
   std::map<int, DevToolsReply> pending_;
+  int generation_ = 0;
+  base::WeakPtrFactory<DevToolsCaller> weak_factory_{this};
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
 

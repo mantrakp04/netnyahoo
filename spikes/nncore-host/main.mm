@@ -586,6 +586,8 @@ static void Log(NSDictionary* event) {
   Log(@{@"event" : @"unresponsive", @"tabId" : @(tab.tabId)});
   if ([_config[@"terminateHung"] boolValue]) {
     [tab resolveUnresponsive:YES];
+  } else if ([_config[@"waitHung"] boolValue]) {
+    [tab resolveUnresponsive:NO];
   }
 }
 - (void)tabBecameResponsive:(NNCoreTab*)tab {
@@ -1213,6 +1215,9 @@ int main(int argc, const char* argv[]) {
     // getDisplayMedia's picker picks the tab titled so, by itself (tab-capture checks).
     args.push_back("--auto-select-tab-capture-source-by-title=NNShareTarget");
     args.push_back("--password-store=basic");
+    // A hidden test window is occluded: its pages would be hidden, and Chrome's hang monitor
+    // ignores hidden pages (as the app's background mode).
+    args.push_back("--disable-backgrounding-occluded-windows");
   }
   static Host* host = [[Host alloc] init];
   return [NNCoreEngine runWithArgc:(int)args.size() argv:args.data() delegate:host];

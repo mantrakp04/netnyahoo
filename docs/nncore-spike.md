@@ -314,8 +314,8 @@ Known gaps:
 ## Stage 2: per-tab features and UI seams
 
 Stage 2 adds the per-tab features and UI seams `packages/nncore` needs to emit what `packages/cef` emits. Wherever
-it's practical, they hand over dictionaries already in the JS shapes of `packages/cef/src`. NNHost passes 105 of 105
-checks in `S7`–`S27`. The unresponsive-page check is skipped: Chrome's hang monitor ignores hidden pages.
+it's practical, they hand over dictionaries already in the JS shapes of `packages/cef/src`. NNHost passes 107 of 107
+checks in `S7`–`S27`. Hidden runs pass `--disable-backgrounding-occluded-windows`, so the hang checks run too.
 
 | Area | What NNCore provides |
 |---|---|

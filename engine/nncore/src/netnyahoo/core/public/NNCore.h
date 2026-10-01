@@ -503,8 +503,9 @@ NNCORE_EXPORT
 // shares nothing.
 - (BOOL)stopCapture;
 // A DevTools protocol call on this tab's page, in process (CEF's ExecuteDevToolsMethod):
-// {method, params} through NNCore's own client (attached on the first call, detached with
-// the tab; the remote-debugging port keeps working beside it). completion: the reply's
+// {method, params} through NNCore's own client (attached only while calls are pending, so
+// the page isn't left "debugged", which would hide its hangs; the remote-debugging port keeps
+// working beside it). completion: the reply's
 // result, or its error message; on the main thread, never from inside the call.
 - (void)devToolsCall:(NSString*)method
               params:(nullable NSDictionary*)params

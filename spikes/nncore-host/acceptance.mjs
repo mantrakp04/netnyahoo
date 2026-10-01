@@ -817,23 +817,32 @@ try {
     const ht = await cmd("open", { url: hangURL, profile: "A" });
     await waitFor(async () => (await tabState(ht.tabId))?.title === "Hang");
     await cmd("show", { tabId: ht.tabId });
-    await cmd("config", { values: { terminateHung: true } });
-    const ph = await attach((t) => t.url === hangURL);
-    // The page spins for 45 s (started off the DevTools call, which would wait it out); an
-    // input event then goes unanswered.
-    await ph.send("Runtime.evaluate", { expression: "setTimeout(() => document.getElementById('hang').click(), 50); 1" });
-    await sleep(1000);
-    await cmd("nativeClick", { tabId: ht.tabId, x: 10, y: 10 });
-    const hung = await waitFor(() => evs("unresponsive", (e) => e.tabId === ht.tabId)[0], 25000);
-    const killed = await waitFor(() => evs("rendererGone", (e) => e.tabId === ht.tabId)[0], 10000);
-    ph.close();
-    if (hung) {
-      check("S14", "an unresponsive page → tabBecameUnresponsive; resolveUnresponsive:YES ends it (rendererGone)", hung && killed, { killed });
-    } else {
-      // Chrome's hang monitor ignores hidden pages, and this hidden instance's window is
-      // occluded: a check for an unlocked screen with the window shown.
-      console.log("SKIP [S14] unresponsive page (needs a visible window: the hang monitor ignores hidden pages)");
-    }
+    // No DevTools client on the hung tab (Chrome ignores a debugged page's hang): the loop
+    // starts through the host, and an input event then goes unanswered.
+    const hang = async (seconds) => {
+      await cmd("exec", { tabId: ht.tabId, code: `setTimeout(() => { const end = Date.now() + ${seconds * 1000}; while (Date.now() < end); }, 50)` });
+      await sleep(800);
+      // (Away from the page's own "hang" button, which would start another loop.)
+      await cmd("nativeClick", { tabId: ht.tabId, x: 400, y: 300 });
+    };
+    // A devToolsCall on the tab first (as the app's tab pictures do): NNCore's client mustn't
+    // stay attached, or Chrome ignores the tab's hangs as a debugged page's.
+    const dtc = await cmd("devtools.call", { tabId: ht.tabId, method: "Page.getLayoutMetrics" }, 15000);
+    await sleep(300);
+    // "Wait", then the page recovers: tabBecameResponsive:.
+    await cmd("config", { values: { waitHung: true, terminateHung: false } });
+    await hang(25);
+    const hung = await waitFor(() => evs("unresponsive", (e) => e.tabId === ht.tabId)[0], 30000);
+    const back = hung && await waitFor(() => evs("responsive", (e) => e.tabId === ht.tabId)[0], 30000);
+    check("S14", "after a devToolsCall on it, an unresponsive page → tabBecameUnresponsive; resolveUnresponsive:NO (wait), then it recovers → tabBecameResponsive", dtc?.result && hung && back, { called: !!dtc?.result, hung: !!hung, back: !!back, after: back && hung && Math.round((back.t - hung.t) * 10) / 10 });
+    // "Exit page": the renderer goes.
+    await cmd("config", { values: { waitHung: false, terminateHung: true } });
+    const before2 = evs("unresponsive", (e) => e.tabId === ht.tabId).length;
+    await hang(45);
+    const hung2 = await waitFor(() => evs("unresponsive", (e) => e.tabId === ht.tabId).length > before2, 30000);
+    const killed = hung2 && await waitFor(() => evs("rendererGone", (e) => e.tabId === ht.tabId)[0], 10000);
+    check("S14", "an unresponsive page; resolveUnresponsive:YES ends it (rendererGone)", hung2 && killed, { killed });
+    await cmd("config", { values: { terminateHung: false } });
     await cmd("nav", { tabId: ht.tabId, action: "closeNow" });
     p2.close();
   }
@@ -1074,8 +1083,19 @@ try {
     const cdpTitle = await pdt.evaluate("document.title");
     const again = await cmd("devtools.call", { tabId: dt.tabId, method: "Runtime.evaluate", params: { expression: "1 + 1", returnByValue: true } }, 15000);
     pdt.close();
+    // Between calls the page has no client of ours (an attached one would hide its hangs).
+    const attachedNow = async () => {
+      const bw = new WebSocket((await (await fetch(`http://127.0.0.1:${cdpPort}/json/version`)).json()).webSocketDebuggerUrl);
+      await new Promise((r) => (bw.onopen = r));
+      const reply = new Promise((r) => (bw.onmessage = (m) => r(JSON.parse(m.data))));
+      bw.send(JSON.stringify({ id: 1, method: "Target.getTargets" }));
+      const infos = (await reply).result?.targetInfos || [];
+      bw.close();
+      return infos.find((t) => t.url.includes("from=devtools"))?.attached;
+    };
+    const idle = await waitFor(async () => (await attachedNow()) === false ? "detached" : null, 5000);
     const jpeg = shot?.result?.data ? Buffer.from(shot.result.data, "base64") : null;
-    check("S27", "devToolsCall: Page.getLayoutMetrics, a small Page.captureScreenshot (JPEG), an error for an unknown method, beside the CDP port's client", vv && jpeg && jpeg[0] === 0xff && jpeg[1] === 0xd8 && metrics.mainThread && bad?.error && !bad.result && again?.result?.result?.value === 2 && cdpTitle, { viewport: vv && [vv.clientWidth, vv.clientHeight], jpegBytes: jpeg?.length, bad: bad?.error, again: again?.result?.result, cdpTitle });
+    check("S27", "devToolsCall: Page.getLayoutMetrics, a small Page.captureScreenshot (JPEG), an error for an unknown method, beside the CDP port's client; detached between calls", vv && jpeg && jpeg[0] === 0xff && jpeg[1] === 0xd8 && metrics.mainThread && bad?.error && !bad.result && again?.result?.result?.value === 2 && cdpTitle && idle, { idle, viewport: vv && [vv.clientWidth, vv.clientHeight], jpegBytes: jpeg?.length, bad: bad?.error, again: again?.result?.result, cdpTitle });
     await cmd("nav", { tabId: dt.tabId, action: "closeNow" });
   }
   // S23 (E): tab capture: "Share this tab instead" and Stop sharing.
