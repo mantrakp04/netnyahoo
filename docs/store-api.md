@@ -99,8 +99,9 @@ implement the same):
   - `{ op: "arrange", strip, keys, pinned }`: the listed tabs in this order at the start of the strip, the first
     `pinned` of them pinned and the rest not. Keys not in that strip (any more) are skipped; the strip's other tabs
     follow the listed ones.
-  - `{ op: "group", strip, keys, group, title?, color? }`: the listed unpinned tabs into one of the strip's groups
-    (its id), `"new"` for a new one, `null` out of theirs; the group's title and color when given.
+  - `{ op: "group", strip, keys, group, title?, color?, collapsed? }`: the listed unpinned tabs into one of the
+    strip's groups (its id), `"new"` for a new one, `null` out of theirs; the group's title, color and collapsed
+    state when given.
 - `onTabStripTransaction(listener)` delivers `{ rev, cmd, strips, rejected? }`:
   - `rev` is one more than the previous transaction's, for the engine's lifetime, in the order the changes were
     committed. A listener applies them in that order and drops any `rev` it has already passed.
@@ -138,7 +139,8 @@ implement the same):
   diffing each strip before and after it:
   - tabs whose order among the tabs that stayed changed (off the heaviest kept run; grouped tabs weigh more, so a
     tab moved into a group joins it rather than the group's tab leaving), or that Chrome pinned or unpinned, go
-    where Chrome put them (`placing`, last to first, each before the next tab Chrome has after it that's already in
+    where Chrome put them (a pane of a split keeps its pin, as in Dia: the split stays and Chrome is put back;
+    `placing`, last to first, each before the next tab Chrome has after it that's already in
     place, keeping a group both neighbours share). A split is one row: its panes move together and nothing lands
     between them;
   - a new active tab that stayed in the strip is shown (`activate`'s rules, opener bookkeeping included), unless
@@ -160,7 +162,8 @@ implement the same):
 - After every store change and transaction, `stripPlan` gives what the store wants each strip to be (the store's
   tabs in it in window order, pinned first; the shown profile's active tab) and the app sends the command that
   closes the gap: `activate` first, then `arrange`, then `group` (a Chrome group for a store group that has none,
-  missing members, title and color; never collapsing, which would make Chrome switch away from the active tab);
+  missing members, title, color and collapsed, as Dia's engine mirrors it; Chrome's model keeps the active tab when
+  its group collapses);
   one command per strip at a time; the same command isn't sent
   again until something other than the app's commands changed that strip (a plan Chrome can't reach doesn't loop).
 - CEF (NNTabStrip.mm) takes the strips from the engine layer's `nn_tabs` reports, which name the Browser, so a

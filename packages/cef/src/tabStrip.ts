@@ -68,8 +68,16 @@ export type TabStripCommand =
    *  in the strip) are left out; the strip's other tabs end up after the listed ones. */
   | { op: "arrange"; strip: number; keys: string[]; pinned: number }
   /** Put the strip's listed (unpinned) tabs in a group: one of its `groups`, "new" for a new one, null for none
-   *  (out of theirs); with the group's title and color when given. */
-  | { op: "group"; strip: number; keys: string[]; group: string | null; title?: string; color?: StripGroup["color"] };
+   *  (out of theirs); with the group's title, color and collapsed state when given. */
+  | {
+      op: "group";
+      strip: number;
+      keys: string[];
+      group: string | null;
+      title?: string;
+      color?: StripGroup["color"];
+      collapsed?: boolean;
+    };
 
 // Ids stay unique across a JS reload, so a command from before it can't be taken for a new one.
 let lastCommand = Math.floor(Math.random() * 1e6) * 1e3;

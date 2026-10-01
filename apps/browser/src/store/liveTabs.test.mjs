@@ -125,6 +125,9 @@ class FakeChrome {
     s.tabs = s.tabs.filter((t) => !moving.includes(t));
     s.tabs.splice(Math.min(at, s.tabs.length), 0, ...moving);
   }
+  collapse(id, collapsed) {
+    for (const [sid, s] of this.strips) if (s.groups.has(id)) { s.groups.get(id).collapsed = collapsed; this.emit(sid, null); }
+  }
   retitle(id, title) {
     for (const [sid, s] of this.strips) if (s.groups.has(id)) { s.groups.get(id).title = title; this.emit(sid, null); }
   }
@@ -159,6 +162,7 @@ class FakeChrome {
       if (token === "new") s.groups.set((token = `g${++this.lastGroup}`), { title: command.title ?? "", color: command.color ?? "grey", collapsed: false });
       if (token) {
         if (command.title !== undefined) Object.assign(s.groups.get(token), { title: command.title, color: command.color });
+        if (command.collapsed !== undefined) s.groups.get(token).collapsed = command.collapsed;
         this.regroup(s, keys, token);
       } else for (const t of s.tabs) if (keys.includes(t.key)) t.group = null;
       this.emit(command.strip, id);
@@ -402,4 +406,29 @@ test("an extension moving a tab into a window of New Tab pages, or into a one-ta
   await settle(lone);
   assert.equal(S().tabs[a].windowId, lone.w);
   assert.deepEqual(S().windows[lone.w].tabIds.map(urlOf), ["c", "a"]);
+});
+
+test("as in Dia: an extension pinning one pane of a split leaves the split; collapsing goes both ways", async () => {
+  const win = windowWith("a", "b", "c");
+  const [a, b, c] = S().windows[win.w].tabIds;
+  S().createSplit([a, b]);
+  await settle(win);
+  chrome.pin(b, true);
+  await settle(win);
+  assert.equal(S().tabs[b].pinned, false, "the pane isn't pinned");
+  assert.ok(Object.values(S().splits).some((v) => v.tabIds.includes(a) && v.tabIds.includes(b)), "the split stays");
+  assert.equal(chrome.find(b).tab.pinned, false, "Chrome is put back");
+  // A group collapsed in the sidebar is collapsed for extensions, and the other way; the shown tab stays.
+  S().activate(c);
+  const g = S().groupTabs([c], { pinned: false, name: "C" });
+  await settle(win);
+  S().updateGroup(g, { collapsed: true });
+  await settle(win);
+  const token = chrome.find(c).tab.group;
+  assert.equal(chrome.find(c).s.groups.get(token).collapsed, true);
+  assert.equal(chromeShown(win.strip), "c");
+  chrome.collapse(token, false);
+  await settle(win);
+  assert.equal(S().groups[g].collapsed, false);
+  assert.equal(shown(win.w), "c");
 });

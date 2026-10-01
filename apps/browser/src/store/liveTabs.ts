@@ -68,6 +68,9 @@ export function chromeChanged(
   for (const t of [...followed].reverse()) {
     const tab = s.tabs[t.key];
     if (!tab) continue;
+    // A pane of a split doesn't pin on its own: Dia's engine has no way to tell the app an extension pinned a tab
+    // (ArcCore's delegates have none), so the split stays as it is and Chrome is put back.
+    if (tab.pinned !== t.pinned && splitOf(s, t.key)) continue;
     // Chrome pinned or unpinned it now (the store may still be getting there itself).
     const pinFlip = tab.pinned !== t.pinned && (taken.has(t.key) || was.get(t.browser)!.pinned !== t.pinned);
     if (kept.has(t.key) && !pinFlip) continue;
@@ -77,7 +80,7 @@ export function chromeChanged(
   // Each moved tab ends up in the store group of the Chrome group it's in.
   for (const t of followed) {
     const want = chromeGroup(t);
-    if (want === undefined || !s.tabs[t.key] || s.tabs[t.key]!.pinned || kept.has(t.key)) continue;
+    if (want === undefined || !s.tabs[t.key] || s.tabs[t.key]!.pinned || t.pinned || kept.has(t.key)) continue;
     if ((groupOf(s, t.key)?.id ?? null) !== want) s = regroupInPlace(s, t.key, want);
   }
 
@@ -171,11 +174,20 @@ function withLook(s: BrowserState, id: string, look: StripGroup | undefined): Br
   return { ...s, groups: { ...s.groups, [id]: { ...g, name: look.title, color, collapsed: look.collapsed } } };
 }
 
-export type GroupStep = { keys: string[]; group: string | null; title?: string; color?: StripGroup["color"]; makes?: string };
+export type GroupStep = {
+  keys: string[];
+  group: string | null;
+  title?: string;
+  color?: StripGroup["color"];
+  collapsed?: boolean;
+  makes?: string;
+};
 
 /** The next change that makes Chrome's groups in the strip the store's: a Chrome group for a store group that has
- *  none (`makes`), tabs missing from their group, a group's title or color, tabs in a group the store doesn't have
- *  them in. Collapsing isn't sent: Chrome would switch away from a collapsed group's active tab. */
+ *  none (`makes`), tabs missing from their group, a group's title, color or collapsed state (Dia's engine reports
+ *  and takes collapsed too: ArcTabGroupInfo/ArcTabGroupProperties; Chrome's model doesn't switch away from the
+ *  active tab when a group collapses, only its tab strip view does, which our windows don't have), tabs in a group
+ *  the store doesn't have them in. */
 export function groupStep(s: BrowserState, strip: StripState, bound: GroupBindings): GroupStep | null {
   if (!reportsGroups(strip)) return null;
   const tabs = strip.tabs.filter((t): t is Keyed => known(s, t) && !t.pinned && !s.tabs[t.key]!.pinned);
@@ -185,12 +197,12 @@ export function groupStep(s: BrowserState, strip: StripState, bound: GroupBindin
   for (const g of storeGroups) {
     const keys = tabs.filter((t) => groupOf(s, t.key)?.id === g!.id).map((t) => t.key);
     const token = tokenOf(g!.id);
-    const look = { title: g!.name, color: g!.color ?? "grey" } as const;
+    const look = { title: g!.name, color: g!.color ?? "grey", collapsed: g!.collapsed } as const;
     if (!token) return { keys, group: "new", ...look, makes: g!.id };
     const missing = tabs.filter((t) => keys.includes(t.key) && t.group !== token).map((t) => t.key);
     if (missing.length) return { keys: missing, group: token };
     const now = looks.get(token)!;
-    if (now.title !== look.title || now.color !== look.color) return { keys, group: token, ...look };
+    if (now.title !== look.title || now.color !== look.color || now.collapsed !== look.collapsed) return { keys, group: token, ...look };
   }
   const strays = tabs.filter((t) => t.group && t.group !== (groupOf(s, t.key) ? tokenOf(groupOf(s, t.key)!.id) : undefined));
   return strays.length ? { keys: strays.map((t) => t.key), group: null } : null;
