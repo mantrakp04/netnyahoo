@@ -1,0 +1,28 @@
+.claude/skills/release/scripts/pages/busy.html
+  s_9c356f9574d31c::t_73ae093187e403 1-3
+.claude/skills/release/SKILL.md
+  s_9c356f9574d31c::t_15e64d070d14c7 116-117
+.claude/skills/release/scripts/smoke.sh
+  s_9c356f9574d31c::t_be39ff30c1b50e 65-68
+.claude/skills/release/scripts/smoke.mjs
+  s_9c356f9574d31c::t_50b0fd85df8560 289,294-332
+  s_9c356f9574d31c::t_20e9763ccbd791 291-292
+  s_9c356f9574d31c::t_e73c9722e654a2 3
+  s_9c356f9574d31c::t_7b89b7bc39d8f4 288,290,293,333-334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fa70cfc843910464d8049cadf1f364431222ea09",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
