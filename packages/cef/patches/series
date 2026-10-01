@@ -1,0 +1,52 @@
+# The order Netnyahoo's changes go into the CEF/Chromium tree (docs/cef-source-build.md › "The patch series").
+#
+#   cef <patch>       a patch to CEF's own tree (chromium/src/cef), step 2, before CEF's gclient hook
+#   chromium <patch>  a patch to chromium/src, after ungoogled-chromium and domain substitution (step 4)
+#   layer <dir>       our own files, copied in by <dir>/apply.sh (engine/<layer>/src mirrors chromium/src)
+#
+# Lines run top to bottom; a patch is made against the tree as every line above it leaves it.
+# One concern per patch, named for it; a new patch goes where it belongs, not where its name sorts.
+
+cef cef-chrome-tabs.patch
+cef cef-tab-capture.patch
+cef cef-tab-state.patch
+cef cef-ui-surfaces.patch
+cef cef-ui-triggers.patch
+cef cef-zidle-pump.patch
+cef cef-zwindow-client.patch
+cef cef-zwindow-keys.patch
+cef cef-zwindow-translucent.patch
+cef cef-zwindow-z-devtools.patch
+cef cef-zwindow-zz-devtools-toolbox.patch
+cef cef-zz-media-router-shutdown.patch
+cef cef-zz-media-source.patch
+cef cef-zz-quiet-uninstall.patch
+cef cef-zzz-open-url-params.patch
+cef cef-zzz-pump-wake.patch
+cef cef-netnyahoo-layer.patch
+
+chromium chromium-autofill-card-touchbar.patch
+chromium chromium-browser-view-hosted-fullscreen.patch
+chromium chromium-chrome-ui-hooks.patch
+chromium chromium-devtools-redock-display.patch
+chromium chromium-devtools-window-title.patch
+chromium chromium-extension-install-prompt-hook.patch
+chromium chromium-extension-updates.patch
+chromium chromium-extension-window-hidden.patch
+chromium chromium-neterror-yahu.patch
+chromium chromium-passkeys.patch
+chromium chromium-password-bubble-hook.patch
+chromium chromium-password-generation-local.patch
+chromium chromium-tab-strip-notify-before-insert.patch
+chromium chromium-ui-update-before-insert.patch
+chromium chromium-webview-native-hosted.patch
+chromium chromium-window-docked-devtools.patch
+chromium chromium-window-hosted.patch
+chromium chromium-zz-extension-installed-bubble.patch
+chromium chromium-zz-extensions-page-uninstall.patch
+chromium chromium-zz-pip-close-keeps-playing.patch
+chromium chromium-zz-pip-dia-controls.patch
+chromium chromium-netnyahoo-layer.patch
+
+layer engine/chromium
+layer engine/nncore

@@ -317,6 +317,29 @@ does compile (`browser_window_features.cc`, `read_anything_side_panel_controller
 and `cefclient` builds with them. Run `apply.sh` again after anything that resets these files (steps 2–4);
 `apply.sh --check` reports drift.
 
+## Our own code in the tree: `chrome/browser/netnyahoo`
+
+New engine code is plain Chromium code in new files, not CEF API (`docs/architecture-review.md`, rec. 4). It lives in
+`//chrome/browser/netnyahoo`, calls Chrome's services directly (`PasswordStoreInterface`, `PersonalDataManager`,
+`ExtensionRegistrar`, `HostZoomMap`, `TemplateURLService`, `HistoryService`…) and is exported as plain C, so the CEF
+build and NNCore link the same code and the app calls it the same way under both.
+
+- **Where it lives.** `engine/chromium/src` mirrors `chromium/src`; `engine/chromium/apply.sh` copies it in
+  (`--check` reports drift). This is NNCore's convention too (`engine/nncore/src` → `//netnyahoo/core`). Edit the
+  repo copy only; `apply.sh` replaces the tree's.
+- **How it links.** One `source_set("netnyahoo")` in `chrome/browser/netnyahoo/BUILD.gn`: add your
+  `nn_<domain>.{h,cc}` to its sources (sorted) and its deps. Two hook patches link it:
+  `cef-netnyahoo-layer.patch` (a dep of CEF's `libcef_static`) and `chromium-netnyahoo-layer.patch` (a dep of the
+  macOS `//chrome:chrome_dll`, NNCore's framework, through the `:exports` group that exports `_nn_*`).
+- **The C surface.** `public/nn_engine.h` is plain C with the rules: exports are `nn_<domain>_<verb>`, all with one
+  signature `void (const char* profile_dir, const char* args_json, nn_engine_reply_t reply, void* context)`; JSON
+  object in, JSON object out (`{"error": …}` on failure); UI thread only; the reply runs once, maybe before the
+  call returns. Events go to one sink (`nn_engine_set_event_sink`) as `("<domain>.<what>", {profile, …})`.
+  `nn_engine.h` has the C++ side (`NN_ENGINE_CALL`, `netnyahoo::Call`, `Reply`, `Emit`).
+- **The app** includes `public/nn_engine.h` from the repo and looks each export up with `dlsym` on the engine
+  framework (`packages/cef/ios/NNEngine.mm`). A missing export aborts: the app bundles an engine it wasn't built
+  for. Add each new call to `docs/nncore-parity.md`.
+
 ## Rebuilding
 
 Everything lives outside the repo in `~/chromium-build`, which carries `.metadata_never_index`.
