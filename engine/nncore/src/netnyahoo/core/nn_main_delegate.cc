@@ -1,6 +1,7 @@
 #include "netnyahoo/core/nn_main_delegate.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/command_line.h"
@@ -10,6 +11,7 @@
 #include "base/path_service.h"
 #include "base/run_loop.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_impl.h"
 #include "chrome/browser/chrome_browser_main.h"
@@ -147,6 +149,16 @@ class NNContentBrowserClient : public ChromeContentBrowserClient {
       content::NavigationThrottleRegistry& registry) override {
     ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
     AddAppSchemeThrottle(registry);
+  }
+  // The spare renderer that replaces one a navigation took starts a moment later, not
+  // within that navigation's own start: its RenderProcessHostImpl::Init held the UI
+  // thread ~7 ms inside a new tab's creation, which in a new window is the middle of
+  // the window's first layout, delaying the page's request and first paint.
+  std::optional<base::TimeDelta> GetSpareRendererDelayForSiteURL(
+      const GURL& site_url) override {
+    std::optional<base::TimeDelta> delay =
+        ChromeContentBrowserClient::GetSpareRendererDelayForSiteURL(site_url);
+    return delay ? delay : std::optional<base::TimeDelta>(base::Milliseconds(500));
   }
 
   bool ConfigureNetworkContextParams(
