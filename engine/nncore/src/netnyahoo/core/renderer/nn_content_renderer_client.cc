@@ -78,19 +78,24 @@ class NNPageObserver : public content::RenderFrameObserver,
     v8::HandleScope handle_scope(isolate);
     v8::Context::Scope context_scope(context);
     receive_.Reset();
+    // Script can remove this frame (and this observer) synchronously, e.g. a same-origin
+    // parent removing the iframe: check after every call into it.
+    base::WeakPtr<NNPageObserver> alive = weak_factory_.GetWeakPtr();
     // Before the page's own scripts: the document's first script context.
     v8::Local<v8::Value> install = frame->ExecuteScriptAndReturnValue(
         Source(PageScript(), "netnyahoo://page-script"));
-    if (install.IsEmpty() || !install->IsFunction()) {
+    if (!alive || install.IsEmpty() || !install->IsFunction()) {
       return;
     }
     v8::Local<v8::Value> post = PostFunction(isolate, context, std::nullopt);
     v8::Local<v8::Value> receive;
-    if (!frame
-             ->CallFunctionEvenIfScriptDisabled(install.As<v8::Function>(),
-                                                v8::Undefined(isolate), 1, &post)
-             .ToLocal(&receive) ||
-        !receive->IsFunction()) {
+    const bool ran = frame
+                         ->CallFunctionEvenIfScriptDisabled(
+                             install.As<v8::Function>(), v8::Undefined(isolate),
+                             1, &post)
+                         .ToLocal(&receive);
+    if (!alive || !ran || !receive->IsFunction() ||
+        frame->MainWorldScriptContext() != context) {
       return;
     }
     receive_.Reset(isolate, receive.As<v8::Function>());
@@ -152,10 +157,13 @@ class NNPageObserver : public content::RenderFrameObserver,
     evaluations_[id] = std::move(callback);
     v8::Local<v8::Value> post = PostFunction(isolate, context, id);
     v8::Local<v8::Value> result;
-    if (!frame
-             ->CallFunctionEvenIfScriptDisabled(fn.As<v8::Function>(),
-                                                v8::Undefined(isolate), 1, &post)
-             .ToLocal(&result)) {
+    base::WeakPtr<NNPageObserver> alive = weak_factory_.GetWeakPtr();
+    const bool ran = frame
+                         ->CallFunctionEvenIfScriptDisabled(
+                             fn.As<v8::Function>(), v8::Undefined(isolate), 1,
+                             &post)
+                         .ToLocal(&result);
+    if (alive && !ran) {
       // It threw (an answer posted before the throw still counts).
       Answer(id, std::nullopt);
     }

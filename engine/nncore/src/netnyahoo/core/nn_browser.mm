@@ -456,11 +456,23 @@ void WindowHost::BrowserWindowDestroyed(NNBrowserWindow* window) {
   }
 }
 
+namespace {
+// Chrome is inside a tab-strip change while it tells the host (its TabStripModel CHECKs
+// against re-entrant changes): the API defers tab-strip changes made from the callbacks.
+int g_tab_strip_notifying = 0;
+}  // namespace
+
+bool IsNotifyingTabStrip() {
+  return g_tab_strip_notifying > 0;
+}
+
 void WindowHost::ActiveTabChanged(Browser* browser,
                                   content::WebContents* contents) {
   if (!contents) {
     return;
   }
+  base::AutoReset<int> notifying(&g_tab_strip_notifying,
+                                 g_tab_strip_notifying + 1);
   NNCoreTab* tab = TabBridge::GetOrCreate(contents)->tab();
   NNCoreWindow* owner = owner_;
   if ([owner.delegate respondsToSelector:@selector(window:didActivateTab:)]) {
@@ -472,6 +484,8 @@ void WindowHost::OnTabStripModelChanged(
     TabStripModel* tab_strip_model,
     const TabStripModelChange& change,
     const TabStripSelectionChange& selection) {
+  base::AutoReset<int> notifying(&g_tab_strip_notifying,
+                                 g_tab_strip_notifying + 1);
   NNCoreWindow* owner = owner_;
   id<NNCoreWindowDelegate> delegate = owner.delegate;
   if (change.type() == TabStripModelChange::kInserted) {
@@ -634,8 +648,20 @@ void ConfirmQuitWithDownloads(int count, base::OnceCallback<void(bool)> callback
 
 void NotifyWindowsQuitCancelled() {
   for (WindowHost* host : WindowHost::All()) {
-    host->NotifyCloseCancelled();
+    host->QuitCancelled();
   }
+}
+
+void WindowHost::QuitCancelled() {
+  // A close of ours the quit overtook (Chrome's close manager took its Browsers' beforeunload
+  // over): it ends with the quit, the window as it was.
+  if (close_state_ == CloseState::kAsking) {
+    close_state_ = CloseState::kOpen;
+    for (Browser* browser : browsers()) {
+      UnloadController::From(browser)->ResetTryToCloseWindow();
+    }
+  }
+  NotifyCloseCancelled();
 }
 
 // --- NNBrowserDelegate ------------------------------------------------------------------
@@ -840,6 +866,13 @@ std::optional<WindowOpenDisposition> TabBridge::TakeOpenDisposition() {
   std::optional<WindowOpenDisposition> d = open_disposition_;
   open_disposition_.reset();
   return d;
+}
+
+void TabBridge::BeforeUnloadFired(bool proceed) {
+  // The host's close was cancelled by the page: a later close is someone else's.
+  if (!proceed) {
+    closed_by_host_ = false;
+  }
 }
 
 void TabBridge::ReportWillClose() {

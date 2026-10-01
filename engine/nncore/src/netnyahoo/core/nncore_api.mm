@@ -566,6 +566,12 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 }
 
 - (void)activateTab:(NNCoreTab*)tab {
+  if (nncore::IsNotifyingTabStrip()) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self activateTab:tab];
+    });
+    return;
+  }
   content::WebContents* contents = tab.contents;
   if (!contents) {
     return;
@@ -612,6 +618,12 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 }
 
 - (void)adoptTab:(NNCoreTab*)tab {
+  if (nncore::IsNotifyingTabStrip()) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self adoptTab:tab];
+    });
+    return;
+  }
   content::WebContents* contents = tab.contents;
   if (!contents) {
     return;
@@ -640,6 +652,12 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 }
 
 - (void)placeTab:(NNCoreTab*)tab index:(int)index pinned:(BOOL)pinned {
+  if (nncore::IsNotifyingTabStrip()) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self placeTab:tab index:index pinned:pinned];
+    });
+    return;
+  }
   content::WebContents* contents = tab.contents;
   if (!contents) {
     return;
@@ -953,6 +971,12 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 }
 
 - (void)close {
+  if (nncore::IsNotifyingTabStrip()) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self close];
+    });
+    return;
+  }
   if (!_contents) {
     return;
   }

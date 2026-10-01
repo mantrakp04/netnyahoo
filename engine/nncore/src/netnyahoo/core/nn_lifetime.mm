@@ -16,6 +16,10 @@
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "ui/color/color_provider_manager.h"
+#include "ui/native_theme/native_theme.h"
+#include <vector>
 #include "netnyahoo/core/nn_browser.h"
 #include "netnyahoo/core/nn_main_delegate.h"
 
@@ -23,8 +27,12 @@ namespace nncore {
 
 namespace {
 
-// A quit NNCore started and that can still be cancelled (beforeunload, the downloads prompt).
-bool g_quitting = false;
+// A quit NNCore started and that can still be cancelled: first the host's downloads prompt,
+// then Chrome closing every Browser (beforeunload). Each attempt has its own generation, so
+// an old prompt's late answer can't steer a newer quit.
+enum class QuitPhase { kNone, kAskingDownloads, kClosing };
+QuitPhase g_phase = QuitPhase::kNone;
+int g_quit_generation = 0;
 // -applicationShouldTerminate: answered NSTerminateLater; waiting for the reply.
 bool g_terminate_pending = false;
 
@@ -39,10 +47,10 @@ base::CallbackListSubscription& ClosingAllBrowsersSubscription() {
 }
 
 void QuitCancelled() {
-  if (!g_quitting) {
+  if (g_phase == QuitPhase::kNone) {
     return;
   }
-  g_quitting = false;
+  g_phase = QuitPhase::kNone;
   // Not from inside Chrome's cancel path: the host may close or quit again right away.
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce([] {
@@ -54,6 +62,7 @@ void QuitCancelled() {
 }
 
 void StartQuit() {
+  g_phase = QuitPhase::kClosing;
   // As -[AppController tryToTerminateApplication]: everything closes, beforeunload first; the
   // keep-alive goes only when the last Browser has (NSApplicationWillTerminateNotification).
   chrome::OnClosingAllBrowsers(true);
@@ -61,7 +70,7 @@ void StartQuit() {
 }
 
 void Terminate() {
-  if (g_quitting || g_terminate_pending) {
+  if (g_phase != QuitPhase::kNone || g_terminate_pending) {
     return;
   }
   id<NSApplicationDelegate> delegate = NSApp.delegate;
@@ -84,7 +93,7 @@ void Terminate() {
 }  // namespace
 
 bool IsQuitting() {
-  return g_quitting;
+  return g_phase != QuitPhase::kNone;
 }
 
 void SetLifetimeCallbacks(LifetimeCallbacks callbacks) {
@@ -92,26 +101,31 @@ void SetLifetimeCallbacks(LifetimeCallbacks callbacks) {
 }
 
 void QuitEngine() {
-  if (g_quitting || browser_shutdown::IsTryingToQuit()) {
+  if (g_phase != QuitPhase::kNone || browser_shutdown::IsTryingToQuit()) {
     return;
   }
-  g_quitting = true;
+  const int generation = ++g_quit_generation;
   // Chrome's Mac close manager leaves the in-progress downloads prompt to AppController.
   const int downloads = DownloadCoreService::BlockingShutdownCountAllProfiles();
   if (downloads == 0) {
     StartQuit();
     return;
   }
-  ConfirmQuitWithDownloads(downloads, base::BindOnce([](bool quit_anyway) {
-                             if (!g_quitting) {
-                               return;
-                             }
-                             if (quit_anyway) {
-                               StartQuit();
-                             } else {
-                               QuitCancelled();
-                             }
-                           }));
+  g_phase = QuitPhase::kAskingDownloads;
+  ConfirmQuitWithDownloads(
+      downloads, base::BindOnce(
+                     [](int generation, bool quit_anyway) {
+                       if (generation != g_quit_generation ||
+                           g_phase != QuitPhase::kAskingDownloads) {
+                         return;
+                       }
+                       if (quit_anyway) {
+                         StartQuit();
+                       } else {
+                         QuitCancelled();
+                       }
+                     },
+                     generation));
 }
 
 void StartLifetimeObservers() {
@@ -120,7 +134,10 @@ void StartLifetimeObservers() {
   // has already reset browser_shutdown's "trying to quit".
   ClosingAllBrowsersSubscription() =
       chrome::AddClosingAllBrowsersCallback(base::BindRepeating([](bool closing) {
-        if (!closing && g_quitting && !browser_shutdown::IsTryingToQuit()) {
+        // Only while Chrome is closing for our quit: a window's own close being cancelled
+        // during the downloads prompt is not the quit's.
+        if (!closing && g_phase == QuitPhase::kClosing &&
+            !browser_shutdown::IsTryingToQuit()) {
           QuitCancelled();
         }
       }));
@@ -132,7 +149,7 @@ void StartLifetimeObservers() {
                   object:nil
                    queue:nil
               usingBlock:^(NSNotification*) {
-                g_quitting = false;
+                g_phase = QuitPhase::kNone;
                 ReleaseAppKeepAlive();
                 // With a remote-debugging port and no startup window Chrome also stays up
                 // for the automation client until it says Browser.close.
@@ -144,10 +161,50 @@ void StartLifetimeObservers() {
 
 // --- AppKit overrides --------------------------------------------------------------------
 
+// What +[AppController sharedController] answers under NNCore: not Chrome's AppController
+// (which would make itself NSApp.delegate), but a stand-in for the few things //chrome asks
+// it outside its own menus. Anything else it is sent answers zero/nil, as nil would.
+@interface NNAppControllerStandIn : NSObject
+@property(readonly, nonatomic) Profile* lastProfileIfLoaded;
+@property(readonly, nonatomic) Profile* lastProfile;
+- (const ui::ColorProvider&)lastActiveColorProvider;
+- (BOOL)keyWindowIsModal;
+@end
+
+@implementation NNAppControllerStandIn
+- (Profile*)lastProfileIfLoaded {
+  return ProfileManager::GetLastUsedProfileIfLoaded();
+}
+- (Profile*)lastProfile {
+  return ProfileManager::GetLastUsedProfileIfLoaded();
+}
+- (const ui::ColorProvider&)lastActiveColorProvider {
+  // Chrome answers with its last active Browser window's; menus only need a valid one.
+  return *ui::ColorProviderManager::Get().GetColorProviderFor(
+      ui::NativeTheme::GetInstanceForNativeUi()->GetColorProviderKey(nullptr));
+}
+- (BOOL)keyWindowIsModal {
+  return NSApp.keyWindow.sheet || NSApp.modalWindow != nil;
+}
+- (NSMethodSignature*)methodSignatureForSelector:(SEL)selector {
+  return [super methodSignatureForSelector:selector]
+             ?: [AppController instanceMethodSignatureForSelector:selector];
+}
+- (void)forwardInvocation:(NSInvocation*)invocation {
+  // As a message to nil: no effect, a zero result.
+  const NSUInteger length = invocation.methodSignature.methodReturnLength;
+  if (length) {
+    std::vector<char> zero(length, 0);
+    [invocation setReturnValue:zero.data()];
+  }
+}
+@end
+
 namespace {
 
-id NilSharedController(id self, SEL _cmd) {
-  return nil;
+id StandInSharedController(id self, SEL _cmd) {
+  static NNAppControllerStandIn* stand_in = [[NNAppControllerStandIn alloc] init];
+  return stand_in;
 }
 
 void NNTerminate(id self, SEL _cmd, id sender) {
@@ -212,11 +269,11 @@ void InstallQuitAppleEventHandler() {
 
 void InstallAppOverrides() {
   // +[AppController sharedController] would create Chrome's AppController and make it
-  // NSApp.delegate. Every caller in this tree messages its result (nil-safe), and
-  // -confirmQuitIfNeeded on nil is ConfirmQuitResultNotPrompted.
+  // NSApp.delegate. It answers a stand-in instead (-confirmQuitIfNeeded answers zero,
+  // ConfirmQuitResultNotPrompted).
   Class app_controller = [AppController class];
   class_replaceMethod(object_getClass(app_controller), @selector(sharedController),
-                      reinterpret_cast<IMP>(NilSharedController), "@@:");
+                      reinterpret_cast<IMP>(StandInSharedController), "@@:");
   // Cocoa's contract for terminate:, instead of Chrome's AppController.
   Class app = [BrowserCrApplication class];
   class_replaceMethod(app, @selector(terminate:), reinterpret_cast<IMP>(NNTerminate),

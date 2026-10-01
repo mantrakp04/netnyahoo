@@ -11,6 +11,7 @@
 
 #include "base/functional/callback.h"
 #include "content/public/browser/render_frame_host_receiver_set.h"
+#include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "content/public/browser/global_routing_id.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
@@ -50,7 +51,8 @@ void ReportAppURLRequest(content::WebContents* contents,
                          const GURL& url,
                          bool user_gesture);
 
-class PageChannel : public content::WebContentsUserData<PageChannel>,
+class PageChannel : public content::WebContentsObserver,
+                    public content::WebContentsUserData<PageChannel>,
                     public mojom::NNPageHost {
  public:
   ~PageChannel() override;
@@ -75,6 +77,9 @@ class PageChannel : public content::WebContentsUserData<PageChannel>,
 
   // mojom::NNPageHost:
   void Post(const std::string& kind, const std::string& json) override;
+
+  // content::WebContentsObserver:
+  void PrimaryPageChanged(content::Page& page) override;
 
  private:
   friend class content::WebContentsUserData<PageChannel>;

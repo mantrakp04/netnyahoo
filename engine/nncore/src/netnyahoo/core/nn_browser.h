@@ -88,6 +88,7 @@ class WindowHost : public TabStripModelObserver,
   // the host. `callback` runs later, never synchronously.
   void ConfirmCloseWithDownloads(int count, base::OnceCallback<void(bool)> callback);
   void NotifyCloseCancelled();
+  void QuitCancelled();
 
   // Disposition Chrome chose for the contents it is about to insert (OpenURLFromTab
   // rewrites popups and windows into tabs of our Browser; the host still learns what the
@@ -207,6 +208,10 @@ class NNBrowserDelegate : public cef::BrowserDelegate {
 
 NNBrowserDelegate* DelegateFor(const BrowserWindowInterface* browser);
 
+// The host is being told of a tab-strip change (inside Chrome's change): tab-strip changes it
+// asks for now must wait for the next turn.
+bool IsNotifyingTabStrip();
+
 // The quit's downloads prompt (Chrome's Mac close manager leaves it to AppController): asks the
 // host through the last active window. `callback` runs later, never synchronously.
 void ConfirmQuitWithDownloads(int count, base::OnceCallback<void(bool)> callback);
@@ -278,6 +283,7 @@ class TabBridge : public content::WebContentsObserver,
 
   // content::WebContentsObserver:
   void PrimaryMainFrameRenderProcessGone(base::TerminationStatus status) override;
+  void BeforeUnloadFired(bool proceed) override;
   void DidChangeThemeColor() override;
   void OnWebContentsFocused(content::RenderWidgetHost* render_widget_host) override;
   void OnAudioStateChanged(bool audible) override;

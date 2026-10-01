@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "base/functional/bind.h"
+#include "base/task/bind_post_task.h"
 #include "base/no_destructor.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
@@ -162,8 +163,15 @@ void AddAppSchemeThrottle(content::NavigationThrottleRegistry& registry) {
 // --- PageChannel --------------------------------------------------------------------------
 
 PageChannel::PageChannel(content::WebContents* contents)
-    : content::WebContentsUserData<PageChannel>(*contents),
+    : content::WebContentsObserver(contents),
+      content::WebContentsUserData<PageChannel>(*contents),
       receivers_(contents, this) {}
+
+void PageChannel::PrimaryPageChanged(content::Page& page) {
+  // The old document's pending evaluations get no answer (it may sit in the back/forward
+  // cache, timers frozen, and answer much later otherwise).
+  main_page_.reset();
+}
 
 PageChannel::~PageChannel() = default;
 
@@ -275,8 +283,10 @@ void PageChannel::Evaluate(
     const std::string& code,
     base::OnceCallback<void(const std::optional<std::string>&)> callback) {
   // No answer when the frame (or the renderer) goes before it answers.
-  auto answer = mojo::WrapCallbackWithDefaultInvokeIfNotRun(std::move(callback),
-                                                            std::nullopt);
+  // Always on a later turn: the default answer runs when the remote goes, which can be in
+  // the middle of this object's work (and the host may close the tab from its completion).
+  auto answer = mojo::WrapCallbackWithDefaultInvokeIfNotRun(
+      base::BindPostTaskToCurrentDefault(std::move(callback)), std::nullopt);
   mojom::NNPage* page = MainPage();
   if (!page) {
     std::move(answer).Run(std::nullopt);
