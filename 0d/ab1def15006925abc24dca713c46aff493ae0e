@@ -1,0 +1,64 @@
+apps/browser/src/components/layout/SplitChrome.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 166,174,177
+  s_9c356f9574d31c::t_81daf36a329798 129
+apps/browser/src/components/layout/controls.tsx
+  s_9c356f9574d31c::t_81daf36a329798 236
+  s_9c356f9574d31c::t_3a6a0d789729e3 94
+apps/browser/src/components/Toolbar.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 42
+  s_9c356f9574d31c::t_297248603513d9 115
+apps/browser/src/components/media/MiniPlayer.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 173
+apps/browser/src/components/sidebar/PinnedGrid.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 88
+apps/browser/src/components/media/ShareBar.tsx
+  s_9c356f9574d31c::t_81daf36a329798 79
+apps/browser/src/components/sidebar/ResizeHandle.tsx
+  s_9c356f9574d31c::t_81daf36a329798 37
+apps/browser/src/components/smallYahu/SmallYahuWindow.tsx
+  s_9c356f9574d31c::t_81daf36a329798 142
+apps/browser/src/components/FindBar.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 26
+apps/browser/src/components/sidebar/dnd.tsx
+  s_9c356f9574d31c::t_81daf36a329798 44
+  s_9c356f9574d31c::t_3a6a0d789729e3 315
+apps/browser/src/components/layout/PaneOverlays.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 18,22
+apps/browser/src/components/sidebar/GroupBlock.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 133
+  s_9c356f9574d31c::t_81daf36a329798 58
+apps/browser/src/components/media/Marquee.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 22
+apps/browser/src/components/sidebar/LiveFolderBlock.tsx
+  s_9c356f9574d31c::t_81daf36a329798 59,334
+  s_9c356f9574d31c::t_3a6a0d789729e3 209,257,414
+apps/browser/src/components/layout/toolbarColors.ts
+  s_9c356f9574d31c::t_81daf36a329798 96
+apps/browser/src/App.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 114
+apps/browser/src/components/layout/SwipeOverlay.tsx
+  s_9c356f9574d31c::t_8c12e5e5703181 231-245,247,249-256
+  s_9c356f9574d31c::t_3a6a0d789729e3 125,140,158-159
+  s_9c356f9574d31c::t_70fefe5b6967bc 35-37,123,150,229-230
+apps/browser/src/components/layout/TopTabStrip.tsx
+  s_9c356f9574d31c::t_81daf36a329798 545,658
+  s_9c356f9574d31c::t_3a6a0d789729e3 761
+apps/browser/src/components/Downloads.tsx
+  s_9c356f9574d31c::t_3a6a0d789729e3 140,310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0dab1def15006925abc24dca713c46aff493ae0e",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
