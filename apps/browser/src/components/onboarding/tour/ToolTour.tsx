@@ -24,9 +24,9 @@ export function ToolTour() {
   useEffect(() => {
     if (active) {
       setShown(session);
-      Animated.timing(presence, { toValue: 1, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+      Animated.timing(presence, { toValue: 1, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
     } else if (shown !== null) {
-      Animated.timing(presence, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(({ finished }) => {
+      Animated.timing(presence, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
         if (finished) setShown(null);
       });
     }
@@ -83,6 +83,7 @@ function Tour({ windowId }: { windowId: string }) {
       card.y.setValue(cardTo.y);
       return;
     }
+    // JS driver: these drive layout (left/top/width/height) and Ring's radius listener.
     const spring = (v: Animated.Value, toValue: number) => Animated.spring(v, { toValue, friction: 10, tension: 70, useNativeDriver: false });
     Animated.parallel([
       ...(Object.keys(to) as (keyof typeof to)[]).map((k) => spring(hole[k], to[k])),
@@ -136,8 +137,8 @@ function Ring({ hole }: { hole: { x: Animated.Value; y: Animated.Value; w: Anima
     const id = hole.r.addListener(({ value }) => setR(Math.max(0, value)));
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
-        Animated.timing(pulse, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ]),
     );
     loop.start();
@@ -156,10 +157,12 @@ function Ring({ hole }: { hole: { x: Animated.Value; y: Animated.Value; w: Anima
         top: Animated.subtract(hole.y, out),
         width: Animated.add(hole.w, out * 2),
         height: Animated.add(hole.h, out * 2),
-        opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] }),
       }}
     >
-      <Surface style={StyleSheet.absoluteFill} cornerRadius={r + out} borderWidth={1.5} borderColor="#FFFFFFB3" />
+      {/* Its own view: a native-driven value can't share a style with the JS-driven frame above. */}
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] }) }]}>
+        <Surface style={StyleSheet.absoluteFill} cornerRadius={r + out} borderWidth={1.5} borderColor="#FFFFFFB3" />
+      </Animated.View>
     </Animated.View>
   );
 }

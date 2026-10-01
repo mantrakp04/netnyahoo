@@ -67,7 +67,7 @@ export function NewTabPage({ tabId, toolbar = true }: { tabId: string; toolbar?:
   }, [tabId]);
   useEffect(() => {
     if (!playIntro || reduceMotion) return;
-    const timer = setTimeout(() => Animated.spring(rise, { toValue: 0, ...YAHU_SPRING, useNativeDriver: false }).start(), YAHU_DELAY_MS);
+    const timer = setTimeout(() => Animated.spring(rise, { toValue: 0, ...YAHU_SPRING, useNativeDriver: true }).start(), YAHU_DELAY_MS);
     return () => clearTimeout(timer);
   }, [playIntro, rise]);
 

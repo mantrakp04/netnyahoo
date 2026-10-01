@@ -33,19 +33,19 @@ function Overlay({ session }: { session: number }) {
   const card = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(presence, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    Animated.timing(presence, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
   }, []);
 
   useEffect(() => {
     if (step === "intro") return card.setValue(0);
-    Animated.spring(card, { toValue: 1, friction: 9, tension: 60, useNativeDriver: false }).start();
+    Animated.spring(card, { toValue: 1, friction: 9, tension: 60, useNativeDriver: true }).start();
   }, [step === "intro"]);
 
   useEffect(() => {
     if (!leaving) return;
     Animated.parallel([
-      Animated.timing(presence, { toValue: 0, duration: 420, easing: Easing.in(Easing.cubic), useNativeDriver: false }),
-      Animated.timing(card, { toValue: 2, duration: 420, easing: Easing.in(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(presence, { toValue: 0, duration: 420, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(card, { toValue: 2, duration: 420, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
     ]).start(({ finished }) => finished && dismissOnboarding(session));
   }, [leaving]);
 

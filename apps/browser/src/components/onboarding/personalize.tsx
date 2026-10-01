@@ -33,6 +33,7 @@ function ColorButton({ color, size, selected, onPress }: { color: ProfileColor; 
   const { hovered, hoverProps } = useHover();
   const t = useRef(new Animated.Value(selected ? 1 : 0)).current;
   useEffect(() => {
+    // JS driver: t also sizes the swatch (width/height).
     Animated.timing(t, { toValue: selected ? 1 : 0, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [selected]);
   return (

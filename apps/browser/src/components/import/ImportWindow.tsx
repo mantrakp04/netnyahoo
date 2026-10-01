@@ -922,10 +922,10 @@ function CategoryRow({ title, icon, status, index }: { title: string; icon: stri
   const appear = useRef(new Animated.Value(0)).current;
   const check = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(appear, { toValue: 1, duration: 260, delay: index * 70, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    Animated.timing(appear, { toValue: 1, duration: 260, delay: index * 70, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, []);
   useEffect(() => {
-    if (status === "done" || status === "failed") Animated.spring(check, { toValue: 1, friction: 5, tension: 160, useNativeDriver: false }).start();
+    if (status === "done" || status === "failed") Animated.spring(check, { toValue: 1, friction: 5, tension: 160, useNativeDriver: true }).start();
   }, [status]);
   const active = status === "active";
   return (
@@ -965,7 +965,7 @@ function CategoryRow({ title, icon, status, index }: { title: string; icon: stri
 function SuccessMark() {
   const scale = useRef(new Animated.Value(0.4)).current;
   useEffect(() => {
-    Animated.spring(scale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: false }).start();
+    Animated.spring(scale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
   }, []);
   return (
     <Animated.View style={{ transform: [{ scale }] }}>

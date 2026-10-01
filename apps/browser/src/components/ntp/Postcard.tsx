@@ -50,8 +50,8 @@ export function ReleaseNotesPostcard({ notes, size, onOpen, onDismiss }: { notes
       if (reduce) return drop.setValue(0), opacity.setValue(1);
       const stiffness = (2 * Math.PI / 0.65) ** 2;
       Animated.parallel([
-        Animated.spring(drop, { toValue: 0, stiffness, damping: 2 * Math.sqrt(stiffness), mass: 1, useNativeDriver: false }),
-        Animated.timing(opacity, { toValue: 1, duration: 300, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+        Animated.spring(drop, { toValue: 0, stiffness, damping: 2 * Math.sqrt(stiffness), mass: 1, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 300, easing: Easing.out(Easing.quad), useNativeDriver: true }),
       ]).start();
     });
     return () => {
@@ -60,15 +60,15 @@ export function ReleaseNotesPostcard({ notes, size, onOpen, onDismiss }: { notes
   }, []);
 
   useEffect(() => {
-    Animated.timing(scale, { toValue: hovered ? 1.05 : 1, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
-    Animated.timing(tooltip, { toValue: hovered ? 1 : 0, duration: hovered ? 50 : 100, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    Animated.timing(scale, { toValue: hovered ? 1.05 : 1, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+    Animated.timing(tooltip, { toValue: hovered ? 1 : 0, duration: hovered ? 50 : 100, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
   }, [hovered]);
 
   const dismiss = () => {
     setLeaving(true);
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: false }),
-      Animated.timing(scale, { toValue: 0.96, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: false }),
+      Animated.timing(opacity, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.timing(scale, { toValue: 0.96, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }),
     ]).start(onDismiss);
   };
   if (size.height < 420 || size.width < 560) return null;
@@ -182,12 +182,12 @@ export function ReleaseNotesPage({ notes, size, onClose }: { notes: ReleaseNotes
   const t = useRef(new Animated.Value(0)).current;
   const [closing, setClosing] = useState(false);
   useEffect(() => {
-    Animated.spring(t, { toValue: 1, friction: 9, tension: 55, useNativeDriver: false }).start();
+    Animated.spring(t, { toValue: 1, friction: 9, tension: 55, useNativeDriver: true }).start();
     return onClose;
   }, []);
   const close = () => {
     setClosing(true);
-    Animated.timing(t, { toValue: 0, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: false }).start(onClose);
+    Animated.timing(t, { toValue: 0, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(onClose);
   };
 
   const width = Math.min(860, size.width - 64);

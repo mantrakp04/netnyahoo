@@ -46,6 +46,7 @@ export function Toggle({ value, onChange, disabled }: { value: boolean; onChange
   const colors = useFormColors();
   const t = useRef(new Animated.Value(value ? 1 : 0)).current;
   useEffect(() => {
+    // JS driver: t also animates the track color.
     Animated.timing(t, { toValue: value ? 1 : 0, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
   }, [value]);
   return (

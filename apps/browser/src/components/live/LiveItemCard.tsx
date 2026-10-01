@@ -18,7 +18,7 @@ export function HoverSurface({ anchor, width, children }: { anchor: Anchor; widt
   const theme = useTheme();
   const appear = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(appear, { toValue: 1, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    Animated.timing(appear, { toValue: 1, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, []);
   return (
     <Animated.View
@@ -171,8 +171,8 @@ function CIProgressBar({ checks, colors }: { checks: PullRequestCheck[]; colors:
     if (!pending) return;
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.45, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
-        Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 0.45, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       ]),
     );
     loop.start();

@@ -50,7 +50,7 @@ function PersonalizePanel({ windowId, onClose }: { windowId: string; onClose: ()
   const theme = useTheme();
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(t, { toValue: 1, friction: 9, tension: 90, useNativeDriver: false }).start();
+    Animated.spring(t, { toValue: 1, friction: 9, tension: 90, useNativeDriver: true }).start();
   }, []);
   return (
     <>

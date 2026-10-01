@@ -64,7 +64,7 @@ export function ProfilesPane() {
 
 const ROW_HEIGHT = 46;
 const settle = (value: Animated.Value, toValue: number) =>
-  Animated.timing(value, { toValue, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: false });
+  Animated.timing(value, { toValue, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: true });
 
 function ProfileList() {
   const colors = useFormColors();

@@ -43,7 +43,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     const ease = Easing.out(Easing.cubic);
-    const at = (s: number) => ({ delay: ms(s), useNativeDriver: false });
+    const at = (s: number) => ({ delay: ms(s), useNativeDriver: true });
     const sequence = Animated.parallel([
       Animated.spring(icon, { toValue: 1, friction: 7, tension: 50, ...at(CUES.icon) }),
       ...letters.map((l, i) =>
@@ -59,7 +59,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
 
   const skip = () => {
     stopIntroMusic(0.35);
-    Animated.timing(exit, { toValue: 1, duration: 280, easing: Easing.out(Easing.quad), useNativeDriver: false }).start(finish);
+    Animated.timing(exit, { toValue: 1, duration: 280, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(finish);
   };
 
   const toggleMute = () => {

@@ -41,7 +41,7 @@ function AlertCard({ event, windowId, windowWidth }: { event: CalendarEvent; win
     };
   }, [calendarTab, sidebarShown, windowWidth]);
   useEffect(() => {
-    Animated.spring(appear, { toValue: 1, speed: 14, bounciness: 6, useNativeDriver: false }).start();
+    Animated.spring(appear, { toValue: 1, speed: 14, bounciness: 6, useNativeDriver: true }).start();
   }, []);
 
   const link = joinLink(event);

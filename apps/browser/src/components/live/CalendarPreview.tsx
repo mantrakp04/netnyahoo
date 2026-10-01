@@ -73,7 +73,7 @@ function Refresh({ spinning }: { spinning: boolean }) {
   useEffect(() => {
     if (!spinning) return;
     turn.setValue(0);
-    const loop = Animated.loop(Animated.timing(turn, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: false }));
+    const loop = Animated.loop(Animated.timing(turn, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true }));
     loop.start();
     return () => loop.stop();
   }, [spinning]);

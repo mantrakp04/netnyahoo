@@ -33,18 +33,18 @@ function Card({ leaving, onFeedback, onClose }: { leaving: null | (() => void); 
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(opacity, { toValue: 1, duration: 300, delay: 300, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    Animated.timing(opacity, { toValue: 1, duration: 300, delay: 300, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
   }, []);
   useEffect(() => {
     if (leaving) return;
     const stiffness = (2 * Math.PI / 0.2) ** 2;
-    Animated.spring(scale, { toValue: pressed ? 0.98 : hovered ? 1.02 : 1, stiffness, damping: 2 * 0.5 * Math.sqrt(stiffness), mass: 1, useNativeDriver: false }).start();
+    Animated.spring(scale, { toValue: pressed ? 0.98 : hovered ? 1.02 : 1, stiffness, damping: 2 * 0.5 * Math.sqrt(stiffness), mass: 1, useNativeDriver: true }).start();
   }, [hovered, pressed, !!leaving]);
   useEffect(() => {
     if (!leaving) return;
     Animated.parallel([
-      Animated.timing(scale, { toValue: 0.98, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: false }),
-      Animated.timing(opacity, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.timing(scale, { toValue: 0.98, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
     ]).start(() => leaving());
   }, [leaving]);
 

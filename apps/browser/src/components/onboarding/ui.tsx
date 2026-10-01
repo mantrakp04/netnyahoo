@@ -80,7 +80,7 @@ export const useOnboardingColors = () => onboardingColors(useTheme().dark);
 export function Reveal({ delay = 0, children, style }: { delay?: number; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(t, { toValue: 1, duration: 420, delay, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    Animated.timing(t, { toValue: 1, duration: 420, delay, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, []);
   return (
     <Animated.View style={[style, { opacity: t, transform: [{ translateY: t.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>
@@ -179,7 +179,7 @@ export function CheckMark({ on, size = 18 }: { on: boolean; size?: number }) {
   const colors = useOnboardingColors();
   const t = useRef(new Animated.Value(on ? 1 : 0)).current;
   useEffect(() => {
-    Animated.timing(t, { toValue: on ? 1 : 0, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    Animated.timing(t, { toValue: on ? 1 : 0, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
   }, [on]);
   return (
     <View

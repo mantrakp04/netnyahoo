@@ -46,13 +46,13 @@ function Card({ leaving, onShare, onNotNow, onClose }: { leaving: null | (() => 
   const scale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.timing(opacity, { toValue: 1, duration: 300, delay: 600, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    Animated.timing(opacity, { toValue: 1, duration: 300, delay: 600, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
   }, []);
   useEffect(() => {
     if (!leaving) return;
     Animated.parallel([
-      Animated.timing(scale, { toValue: 0.98, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: false }),
-      Animated.timing(opacity, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+      Animated.timing(scale, { toValue: 0.98, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
     ]).start(() => leaving());
   }, [leaving]);
 

@@ -91,7 +91,7 @@ function ActionPopup({ windowId, pageProfile, url, anchor }: { windowId: string;
         height: Math.min(MAX.height, Math.max(MIN.height, m.h)),
       };
       setSize((prev) => {
-        if (!prev) Animated.timing(appear, { toValue: 1, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+        if (!prev) Animated.timing(appear, { toValue: 1, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
         return prev && prev.width === next.width && prev.height === next.height ? prev : next;
       });
       watchSize();
@@ -266,7 +266,7 @@ function Dialog({ onDismiss, children }: { onDismiss?: () => void; children: Rea
   const theme = useTheme();
   const appear = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(appear, { toValue: 1, duration: 170, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    Animated.timing(appear, { toValue: 1, duration: 170, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, []);
   return (
     <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>

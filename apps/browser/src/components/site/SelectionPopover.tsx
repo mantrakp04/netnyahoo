@@ -35,7 +35,7 @@ function Bar({ tabId, selection, zoom, area }: { tabId: string; selection: PageS
   const [width, setWidth] = useState(0);
   const appear = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(appear, { toValue: 1, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    Animated.timing(appear, { toValue: 1, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, []);
   const r = selection.rect;
   const top = r.y * zoom;

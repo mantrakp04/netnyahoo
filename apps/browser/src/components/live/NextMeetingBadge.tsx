@@ -26,7 +26,7 @@ export function NextMeetingBadge({ tabId }: { tabId: string }) {
   const [label, setLabel] = useState(text);
   useEffect(() => {
     if (text) setLabel(text);
-    Animated.spring(shown, { toValue: text ? 1 : 0, speed: 16, bounciness: text ? 10 : 0, useNativeDriver: false }).start(() => {
+    Animated.spring(shown, { toValue: text ? 1 : 0, speed: 16, bounciness: text ? 10 : 0, useNativeDriver: true }).start(() => {
       if (!text) setLabel(null);
     });
   }, [text]);
