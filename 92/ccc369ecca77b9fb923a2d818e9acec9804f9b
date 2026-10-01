@@ -1,0 +1,20 @@
+docs/nncore-parity.md
+  s_9c356f9574d31c::t_e2ee731cab38fe 25-27,31-32,34-37,44-45,52-56,60-61,66,69-71,73-76,79-90,94-97,103,105,116-119,122-123,125-129,137-141,143-147,155-157,167-168,194,196,198-199,203,207
+  s_9c356f9574d31c::t_887e87a7f38c50 14-15,20,211-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "92ccc369ecca77b9fb923a2d818e9acec9804f9b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
