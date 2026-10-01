@@ -215,3 +215,18 @@ don't depend on CEF. Profile paging on NNCore is a change of the window's active
 | Renderer side (page script, page messages, evaluate, netnyahoo:) | done | Main frame used by the module; subframe messages available (`didReceivePageMessage:json:frame:main:`) |
 | Windows Chrome makes itself (chrome.windows.create, incognito, undocked DevTools, PiP) | partial | The engine asks the host (`engineWindowForNewBrowserOfProfile:type:`); the app answers nil (Chrome's own window) until it routes them into its window manager |
 | Native composition of the page under the RN views, bubbles and sheets against the window | needs a visual check | The screen was locked for all of stage 1; in-process snapshots show the RN UI drawn in the NNCore window, not the page's GPU layers |
+
+## Renderer side: what CEF's renderer gave the app, and NNCore's replacement
+
+CEF ran Netnyahoo's code in each renderer (`packages/cef/helper/helper_main.mm`) and talked to it with process
+messages. NNCore does the same with its own renderer client (`NNContentRendererClient`, a subclass of Chrome's) and
+a mojo interface (`engine/nncore/src/netnyahoo/core/mojom`):
+
+| CEF | NNCore | Used by |
+|---|---|---|
+| `OnContextCreated` runs the page script (`page_script.js`) in every frame's main world, as `function(post)` | `NNContentRendererClient`'s `DidCreateScriptContext` (main world), the script sent to each renderer at launch (`NNCoreEngine.pageScript`) | Everything below |
+| `post(kind, json)` → the "nn" process message → `NNClient::OnPageMessage` | `NNPageHost.Post` (frame-associated) → `tab:didReceivePageMessage:json:frame:main:` (or the main-frame-only 3-argument form) | hello, media, nowPlaying, theme, selection, pinch, pip, displayMedia, notification, notificationClose. On NNCore the module handles hello, selection and pip so far |
+| "nn-call" (`CallPage`) → the page's `receive` | `callPage:json:` (main frame), `callFrame:kind:json:` | config (the reply to hello), media, displayMedia, notification |
+| "nn-eval" → strict `function(post)` wrapper, first `post("result")` answers | `evaluate:completion:` | `WebViewHandle.evaluate` |
+| `ExecuteJavaScript` | `executeJavaScript:` and `executeJavaScript:frame:` | `history.go` (now `goToOffset:`), `WebViewHandle.executeJavaScript`, the blocked-popup replay and PiP exit in one frame, DevTools' showPanel (untested) |
+| `IsAppURL` in `OnBeforeBrowse` / `OnBeforePopup` / `OnOpenURLFromTab` | A navigation throttle plus the popup and open-URL paths: web pages' `netnyahoo:` navigations are dropped; a Chrome page's become `tab:didRequestAppURL:userGesture:` → `onOpenWindow` `current` | The app's own pages linked from chrome:// pages |
