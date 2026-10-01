@@ -1960,9 +1960,17 @@ TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents)
   nncore::TabBridge::GetOrCreate(_contents)->set_closed_by_host();
   TabStripModel* model = browser->GetTabStripModel();
   const int index = model->GetIndexOfWebContents(_contents);
-  if (index != TabStripModel::kNoTab) {
-    model->DetachAndDeleteWebContentsAt(index);
+  if (index == TabStripModel::kNoTab) {
+    return;
   }
+  // Chrome's closed-tab entry (⇧⌘T, chrome.sessions), as a user's close records it, now: a
+  // tag the host set just before is in it. Not for incognito or a page that never committed.
+  content::NavigationEntry* committed = _contents->GetController().GetLastCommittedEntry();
+  if (!Profile::FromBrowserContext(_contents->GetBrowserContext())->IsOffTheRecord() &&
+      committed && !committed->IsInitialEntry()) {
+    model->delegate()->CreateHistoricalTab(_contents);
+  }
+  model->DetachAndDeleteWebContentsAt(index);
 }
 
 - (void)close {

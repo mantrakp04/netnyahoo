@@ -23,7 +23,8 @@
   ],
   "permissions": [
     "tabs",
-    "sidePanel"
+    "sidePanel",
+    "sessions"
   ],
   "side_panel": {
     "default_path": "panel.html"

@@ -418,7 +418,8 @@ NNCORE_EXPORT
 - (void)goToOffset:(int)offset;
 - (void)reloadIgnoringCache;
 // Closes the tab at once, without beforeunload (CEF's CloseBrowser(true)): didRemoveTab:,
-// never tabWillClose:.
+// never tabWillClose:. Chrome records its closed-tab entry first (⇧⌘T, chrome.sessions), as
+// for a user's close; not for incognito tabs or ones that never committed a page.
 - (void)closeNow;
 // [{url, title, current}] of the back/forward list.
 @property(readonly) NSArray<NSDictionary<NSString*, id>*>* navigationEntries;

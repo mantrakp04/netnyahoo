@@ -1037,6 +1037,14 @@ try {
     await sleep(300);
     check("S6", "closeNow: no beforeunload, didRemoveTab, no tabWillClose", removedNow && !pn.events.some((e) => e.method === "Page.javascriptDialogOpening") && !evs("tabWillClose", (e) => e.tabId === cn.tabId).length, {});
     pn.close();
+    // ...and Chrome recorded it as closed (chrome.sessions, from the extension).
+    const sx = await cmd("open", { url: `chrome-extension://${ext?.id}/popup.html?sessions`, profile: "A" });
+    await waitFor(async () => (await tabState(sx.tabId))?.loading === false);
+    const ps = await attach((t) => t.url.includes("popup.html?sessions"));
+    const recent = await ps.evaluate(`new Promise((r) => chrome.sessions.getRecentlyClosed({ maxResults: 25 }, (list) => r(list.map((e) => e.tab ? e.tab.url : e.window ? 'window' : '?'))))`);
+    ps.close();
+    await cmd("nav", { tabId: sx.tabId, action: "closeNow" });
+    check("S6", "closeNow records Chrome's closed-tab entry (chrome.sessions.getRecentlyClosed)", Array.isArray(recent) && recent.includes(`${base}/unload?now=1`), { recent: recent?.slice(0, 5) });
   }
 
   // ---------------------------------------------------------------------------------------
