@@ -7,7 +7,8 @@
     <profiles>
         <reader>
             <readonly>2</readonly>
-            <max_execution_time>60</max_execution_time>
+            <!-- The server has 2 cores; a stats query over the PostHog history's property maps takes ~15 s alone. -->
+            <max_execution_time>180</max_execution_time>
             <max_memory_usage>2000000000</max_memory_usage>
             <max_result_rows>1000000</max_result_rows>
             <result_overflow_mode>break</result_overflow_mode>

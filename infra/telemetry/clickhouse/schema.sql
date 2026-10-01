@@ -63,6 +63,12 @@ ENGINE = ReplacingMergeTree
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (event, toDate(timestamp), uuid);
 
+-- Compact parts (all columns in one file) until a part passes 1 GiB. Wide parts keep two files per
+-- column and these tables are mostly Maps, so a stats query over wide parts held hundreds of files open
+-- per table and four at once ran the server out (errno 24, 2026-10-01). start.sh merges older wide parts.
+ALTER TABLE telemetry.otel_logs MODIFY SETTING min_bytes_for_wide_part = 1073741824;
+ALTER TABLE telemetry.posthog_events MODIFY SETTING min_bytes_for_wide_part = 1073741824;
+
 -- Everything, in PostHog's shape. `source` is the service that sent it (netnyahoo-site, netnyahoo-app,
 -- netnyahoo-feed) or posthog-cloud for the migrated history. Deduplicated on uuid.
 CREATE OR REPLACE VIEW telemetry.events AS
