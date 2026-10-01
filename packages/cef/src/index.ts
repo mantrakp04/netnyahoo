@@ -13,3 +13,4 @@ export * from "./engine";
 export * from "./history";
 export * from "./bookmarks";
 export * from "./swipe";
+export * from "./tabStrip";

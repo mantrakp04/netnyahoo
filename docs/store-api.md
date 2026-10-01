@@ -80,6 +80,76 @@ don't re-render every tab.
 - Menu commands: lib/commands.ts (JS) + packages/shell/ios/Menus.swift (native menu bar).
 - Tests: `pnpm --filter @netnyahoo/browser test` (`docs/testing.md`).
 
+## Live tabs: Chrome's tab strips (lib/chromeTabs.ts, store/liveTabs.ts, packages/cef/src/tabStrip.ts)
+
+One writer per fact. The store owns the **workspace**: sidebar order, pins, groups, splits, Small Yahu, unloaded
+and parked tiles, and which tab each window shows per profile (`activeTabIds`). Chrome's `TabStripModel` owns
+the **live tabs**: which tabs each Chrome window ("strip": one per engine profile per app window) has, their order,
+the active one, pins (and groups, once the engine reports them). JS never writes a live fact and never guesses who
+caused a report: it sends commands with ids, the engine commits them in Chrome, and every change comes back as one
+ordered transaction that names its cause. There are no echo windows, timers or "was that us" flags.
+
+**The engine contract** (`@netnyahoo/cef`; CEF implements it in `packages/cef/ios/NNTabStrip.mm`, NNCore must
+implement the same):
+- `sendTabStripCommand(command): number` sends a command and returns its id (unique for the app's lifetime, also
+  across JS reloads). Commands:
+  - `{ op: "activate", strip, key }`: make that tab the strip's active tab.
+  - `{ op: "arrange", strip, keys, pinned }`: the listed tabs in this order at the start of the strip, the first
+    `pinned` of them pinned and the rest not. Keys not in that strip (any more) are skipped; the strip's other tabs
+    follow the listed ones.
+- `onTabStripTransaction(listener)` delivers `{ rev, cmd, strips, rejected? }`:
+  - `rev` is one more than the previous transaction's, for the engine's lifetime, in the order the changes were
+    committed. A listener applies them in that order and drops any `rev` it has already passed.
+  - `cmd` is the cause: the id of the command (each command yields exactly one transaction, also when nothing
+    changed, with `rejected: true` when none of its tabs were in its strip); `-1` for the app's own engine calls
+    that aren't commands (a WebView creating, restoring or duplicating its tab, a tab moving to another app
+    window, a page command or DevTools activating its tab); `null` for what Chrome did on its own (an extension's
+    `chrome.tabs`/`tabGroups` call, the tab Chrome shows after the active one leaves, a focus request selecting a
+    tab, a strip's placeholder tab going).
+  - A transaction never mixes causes. Chrome's pending changes go out before a command runs; whatever Chrome does
+    synchronously inside a command (selection, observers) is the command's.
+  - `strips` holds every strip the change touched, each whole: `{ strip, window, profile, tabs, closed? }`
+    (`window` is shared by the strips of one app window, one per engine profile it shows), `tabs` in strip
+    order as `{ key, browser, index, active, pinned, group? }`. `key` is the WebView's `transferKey` (the store's tab
+    id), bound when a view first shows the browser and kept while the browser moves between views; `null` for a tab
+    no view has shown (one Chrome made, before the app adopts it; an engine placeholder). `group` is absent while the
+    engine doesn't report groups (CEF today). A strip left without tabs is sent with `tabs: []`; a strip whose
+    window closed comes once more with `closed: true`.
+- `tabStrips()` answers every strip as a transaction with `cmd: null` and the last `rev` sent: the starting point
+  after a JS (re)load. Transactions that arrive before it are held, then applied if newer.
+- The engine never activates, moves or pins a tab for an app reason except on a command (no activation when a view
+  becomes visible; a tab moved to another window goes there in the background). Showing a page still tells the
+  engine where Chrome's views go (layout).
+- A tab Chrome made in a window on its own (an extension's `tabs.create`) reaches the app as `onOpenWindow` with
+  `adoptId: "tab:<browser>"`; page popups keep their own ids (`open:`, CEF's popup ids).
+
+**How the app applies them** (lib/chromeTabs.ts): it keeps a mirror of every strip.
+- A transaction with a `cmd` (the app's own) only updates the mirror: the store already holds that intent.
+- A `null` one is Chrome's change, and `chromeChanged` (store/liveTabs.ts) makes the same change in the workspace,
+  diffing each strip before and after it:
+  - tabs whose order among the tabs that stayed changed (off the heaviest kept run; grouped tabs weigh more, so a
+    tab moved into a group joins it rather than the group's tab leaving), or that Chrome pinned or unpinned, go
+    where Chrome put them (`placing`, last to first, each before the next tab Chrome has after it that's already in
+    place, keeping a group both neighbours share). A split is one row: its panes move together and nothing lands
+    between them;
+  - a new active tab that stayed in the strip is shown (`activate`'s rules, opener bookkeeping included), unless
+    the old active tab left the strip in the same change: then it's Chrome's pick of a successor, and the store's
+    own rule (store/openers.ts) decides. A split's other pane and a tab of a profile the window isn't showing
+    aren't shown (the focused pane changes on user focus; profiles keep their own tab);
+  - a tab Chrome made (`tab:` adoption) takes Chrome's pin, place and activation the first time the app sees it;
+    a tab arriving in a strip of another app window (an extension moving it) changes window as it is, page and
+    live state included (`intoWindow`; its view takes the same browser there);
+  - Chrome's change to a fact that a command of the app's own, already sent to that strip, will set (the order
+    and pins of the tabs an `arrange` lists, the active tab for `activate`) is skipped: that command commits after
+    it and wins.
+- After every store change and transaction, `stripPlan` gives what the store wants each strip to be (the store's
+  tabs in it in window order, pinned first; the shown profile's active tab) and the app sends the command that
+  closes the gap: `activate` first, then `arrange`; one command per strip at a time; the same command isn't sent
+  again until something other than the app's commands changed that strip (a plan Chrome can't reach doesn't loop).
+- Known gaps: Chrome's tab groups (needs the engine to report them, `//chrome/browser/netnyahoo`); an extension
+  removing the active tab and activating another in one task has its activation replaced by the opener rule.
+- Tests: `src/store/liveTabs.test.mjs` runs the real wiring against a fake engine that keeps this contract.
+
 ## Sync (apps/browser/src/sync, packages/sync)
 - End-to-end-encrypted sync through a folder the user picks; design in `docs/sync.md`. `sync/engine.ts` owns the
   state (`useSync`: status, devices, other devices' tabs), the setup flows and the cycle; `sync/adapters.ts` maps the

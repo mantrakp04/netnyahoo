@@ -45,6 +45,14 @@ typedef void (^NNEventHandler)(NSString *name, NSDictionary<NSString *, id> *pay
 + (void)forgetOpenedURL:(NSInteger)openedId;
 @end
 
+/// Chrome's tab strips (NNTabStrip.mm, docs/store-api.md › "Live tabs"): runs one JS command, whose transaction
+/// carries `cmd`; the strips as they are now, as a transaction with no command.
+@interface NNCef (TabStrip)
++ (void)tabStripCommand:(NSInteger)cmd command:(NSDictionary<NSString *, id> *)command
+    NS_SWIFT_NAME(tabStripCommand(_:command:));
+@property (class, nonatomic, readonly) NSDictionary<NSString *, id> *tabStrips;
+@end
+
 @interface NNCef (Components)
 @property (class, nonatomic, readonly) NSArray<NSDictionary<NSString *, id> *> *components;
 @end
@@ -223,7 +231,6 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 
 - (void)resolvePasswordPrompt:(NSString *)action username:(nullable NSString *)username password:(nullable NSString *)password
     NS_SWIFT_NAME(resolvePasswordPrompt(_:username:password:));
-- (void)setTabStripIndex:(NSInteger)index pinned:(BOOL)pinned NS_SWIFT_NAME(setTabStrip(index:pinned:));
 - (nullable NSString *)executeExtensionAction:(NSString *)extensionId NS_SWIFT_NAME(executeExtensionAction(_:));
 
 - (void)resolveDisplayMedia:(NSString *)requestId sourceId:(nullable NSString *)sourceId

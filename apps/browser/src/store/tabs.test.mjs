@@ -5,7 +5,6 @@ const { useBrowser } = await import("./browser.ts");
 const model = await import("./model.ts");
 const organize = await import("./organize.ts");
 const { controllingSearchExtension, defaultSearchEngine, searchUrlPrefix } = await import("./settings.ts");
-const { isChromeSwitch } = await import("../lib/tabStripEcho.ts");
 const media = await import("../components/media/state.ts");
 
 const S = () => useBrowser.getState();
@@ -182,22 +181,6 @@ test("abandoned New Tab cleanup never closes a window or the tab it shows", () =
   useBrowser.setState((s) => ({ windows: { ...s.windows, [w2]: { ...s.windows[w2], activeTabIds: {} } } }));
   S().closeAbandonedNewTabs();
   assert.equal(S().windows[w2].tabIds.length, 1);
-});
-
-// Chrome reports tab activations back to the app; its echo of the app's own switch must not switch again.
-test("with the engine's flags, only an activation the app didn't ask for is a switch", () => {
-  reset();
-  const w = S().createWindow({ url: "a.com" });
-  const a = model.activeTabId(S(), w);
-  const b = S().newTab(w, { url: "b.com", background: true });
-  const c = S().newTab(w, { url: "c.com", background: true });
-  S().activate(b);
-  const place = (active, activated, byApp) => ({ index: 0, pinned: false, active, activated, byApp });
-  assert.equal(isChromeSwitch(a, b, place(true, false, false)), false, "a was already Chrome's active tab: its index moved");
-  assert.equal(isChromeSwitch(b, b, place(true, true, true)), false, "the app's own switch echoing back");
-  assert.equal(isChromeSwitch(c, b, place(true, true, true)), false, "activated by the app's request (a moved tab)");
-  assert.equal(isChromeSwitch(a, b, place(true, true, false)), true, "Chrome activating a tab the app just left is real");
-  assert.equal(isChromeSwitch(c, b, place(false, false, false)), false, "not active");
 });
 
 test("an extension that took the default search engine controls it until it goes", () => {

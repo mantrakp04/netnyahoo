@@ -5,6 +5,7 @@ import type { ExternalAppAllowance } from "./externalApps";
 import type { FaviconImage } from "./favicons";
 import type { BrowsingDataType, Download, EngineComponent, EngineInfo, EngineTask, ChromeWindowState, PermissionRequest, PermissionResult, SystemState } from "./module";
 import type { SavedPassword } from "./passwords";
+import type { TabStripCommand, TabStripTransaction } from "./tabStrip";
 import type { AddressInput, CardInput, SavedAddress, SavedCard } from "./autofill";
 import type { ClearSiteDataResult, SiteSettingType, SiteSettingValue, SiteSettings } from "./siteSettings";
 
@@ -29,6 +30,9 @@ export const Cef = requireNativeModule<{
   engineInfo(): Promise<EngineInfo>;
   chromeWindows(): Promise<ChromeWindowState[]>;
   prepareTransfer(key: string): void;
+  addListener(name: "onTabStrip", listener: (tx: TabStripTransaction) => void): EventSubscription;
+  tabStripCommand(id: number, command: TabStripCommand): Promise<void>;
+  tabStrips(): Promise<TabStripTransaction>;
   devWindow(windowNumber: number, action: string): Promise<string>;
   components(): Promise<EngineComponent[]>;
   beginTracing(): Promise<boolean>;

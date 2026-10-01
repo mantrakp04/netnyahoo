@@ -9,6 +9,7 @@
 #import "NNPictureInPicture.h"
 #import "NNPopupWindow.h"
 #import "NNSiteSettings.h"
+#import "NNTabStrip.h"
 #import "NNWindowHost.h"
 #import "NNZoom.h"
 
@@ -924,7 +925,6 @@ void Client::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
 }
 
 bool Client::DoClose(CefRefPtr<CefBrowser> browser) {
-  host::NoteClosingTab(browser);
 // Use a run-loop block so shutdown’s nested loop can drain it.
   NSView *hostView = host::ContentsView(browser);
   [NSRunLoop.mainRunLoop performBlock:^{ [hostView removeFromSuperview]; }];
@@ -943,7 +943,7 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
     SyncWindowFullScreen();
   }
   BrowserClosed(browser);
-  host::TabGone(browser);
+  strip::Closed(browser);
   site::BrowserClosed(browser->GetIdentifier());
   external::BrowserClosed(browser->GetIdentifier());
   if (!adoptId_.empty()) Popups().erase(adoptId_);
@@ -952,23 +952,7 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
 }
 
 void Client::OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) {
-  if (tabStripIndex_ == index && tabStripActive_ == active && tabStripPinned_ == pinned) return;
-  const bool first = tabStripIndex_ < 0;
-  // Chrome made this tab its active one just now; a report for a tab that already was (its index changed) isn't.
-  const bool activated = active && !tabStripActive_;
-  tabStripIndex_ = index;
-  tabStripActive_ = active;
-  tabStripPinned_ = pinned;
-  if (first) return;
-  if (active && !(view_ && view_.visible) && host::PickedByClose(browser)) return;
-  Emit(@"tabStrip", @{
-    @"index" : @(index),
-    @"active" : @(active),
-    @"pinned" : @(pinned),
-    @"activated" : @(activated),
-    // The app's own request made the change (showing or moving a tab), so it echoes what the app already shows.
-    @"byApp" : @(host::ActivatingTab()),
-  });
+  strip::Report(browser, index, active, pinned);
 }
 
 void Client::OnTabDiscardedChanged(CefRefPtr<CefBrowser> browser, bool discarded) {
@@ -1392,14 +1376,15 @@ bool Client::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFr
 // MARK: CefFocusHandler
 
 // For a Chrome tab CEF follows focus with ChromeBrowserHostImpl::OnSetFocus, which also makes it Chrome's active
-// tab, and the app takes that as a tab switch (onTabStrip). Its first navigation asks for focus
+// tab, and the app takes that as a tab switch (a Chrome-made change, NNTabStrip). Its first navigation asks for focus
 // (FOCUS_SOURCE_NAVIGATION), so a link opened behind came to the front. Only the page on screen takes focus.
 bool Client::OnSetFocus(CefRefPtr<CefBrowser> browser, FocusSource source) {
   return !view_ || !view_.visible;
 }
 
 void Client::OnGotFocus(CefRefPtr<CefBrowser> browser) {
-  if (host::ActivatingTab()) return;
+  // Focus that follows the app's own activate command isn't the user's.
+  if (strip::InCommand()) return;
   if (view_) host::TabShown(view_);
   Emit(@"focus", @{});
 }

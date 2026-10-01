@@ -3,6 +3,7 @@
 #import "NNChromeUI.h"
 #import "NNEngine.h"
 #import "NNSiteSettings.h"
+#import "NNTabStrip.h"
 #import "NNWindowHost.h"
 #import "NNZoom.h"
 
@@ -401,11 +402,17 @@ NSString *const kExitPictureInPictureScript =
   });
 }
 
+- (void)setTransferKey:(NSString *)transferKey {
+  _transferKey = [transferKey copy];
+  if (_browser) strip::Bind(_browser, _transferKey);
+}
+
 - (void)browserCreated:(CefRefPtr<CefBrowser>)browser {
   _browser = browser;
   _creating = NO;
   _frozen = NO;
   RegisterView(self);
+  strip::Bind(browser, _transferKey);
   NSView *browserView = host::ContentsView(browser);
   if (browserView && browserView.superview != self) {
     [browserView removeFromSuperview];
@@ -692,8 +699,10 @@ NSString *const kExitPictureInPictureScript =
                   : [panel isEqualToString:@"inspect"] ? IDC_DEV_TOOLS_INSPECT
                   : [panel isEqualToString:@"toggle"]  ? IDC_DEV_TOOLS_TOGGLE
                                                        : IDC_DEV_TOOLS;
-    _browser->GetHost()->ActivateTab();
-    _browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
+    CefRefPtr<CefBrowser> browser = _browser;
+    // Chrome's command runs on its active tab; making it so is the app's call, not a tab switch.
+    strip::AsApp(^{ browser->GetHost()->ActivateTab(); });
+    browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
     return;
   }
   if ([panel isEqualToString:@"toggle"]) {
@@ -709,8 +718,9 @@ NSString *const kExitPictureInPictureScript =
                 : [name isEqualToString:@"caretBrowsing"] ? IDC_CARET_BROWSING_TOGGLE
                                                           : 0;
   if (!command || !_browser || !host::IsChromeTab(_browser)) return;
-  _browser->GetHost()->ActivateTab();
-  _browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
+  CefRefPtr<CefBrowser> browser = _browser;
+  strip::AsApp(^{ browser->GetHost()->ActivateTab(); });
+  browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
 }
 
 - (void)executeJavaScript:(NSString *)code {
@@ -793,12 +803,6 @@ NSString *const kExitPictureInPictureScript =
   if (_browser) chromeui::ResolvePasswordPrompt(_browser, action, username, password);
 }
 
-- (void)setTabStripIndex:(NSInteger)index pinned:(BOOL)pinned {
-  if (!host::IsChromeTab(_browser)) return;
-  _browser->GetHost()->SetTabPinned(pinned);
-  _browser->GetHost()->SetTabIndex((int)index);
-}
-
 - (NSString *)executeExtensionAction:(NSString *)extensionId {
   return _browser ? chromeui::ExecuteExtensionAction(_browser, extensionId) : nil;
 }
@@ -874,7 +878,6 @@ NSString *const kExitPictureInPictureScript =
   if (_browser && TransferRequested(_transferKey)) return [self parkBrowserForTransfer];
   if (_browser) {
     _closingByRequest = YES;
-    host::NoteClosingTab(_browser);
     _browser->GetHost()->CloseBrowser(true);
     _browser = nullptr;
   }

@@ -19,13 +19,13 @@ void ConfigurePopup(CefWindowInfo &info, NSSize size, CefRefPtr<CefBrowser> open
 NSView *ContentsView(CefRefPtr<CefBrowser> browser);
 
 void TabShown(NNBrowserView *view);
-// A Chrome tab that closes while it's its window's active tab makes Chrome pick another; the app has
-// already picked the page it shows (store/openers.ts), so that pick must not reach it as a tab switch.
-void NoteClosingTab(CefRefPtr<CefBrowser> browser);
-void TabGone(CefRefPtr<CefBrowser> browser);
-bool PickedByClose(CefRefPtr<CefBrowser> browser);
-bool ActivatingTab();
 void TabMoved(NNBrowserView *view);
+// Tab strips (NNTabStrip): the id of the Chrome window that holds the tab as far as the app knows (0 when it's not
+// a hosted tab); a strip's profile and app window (the strips of one app window share it); the tab is in that
+// strip now (an extension moved it).
+int StripOf(CefRefPtr<CefBrowser> browser);
+bool StripInfo(int strip, NSString **profile, int *window);
+void NoteStrip(int browserId, int strip);
 void TabOpenedFrom(CefRefPtr<CefBrowser> browser, int openerBrowserId);
 void LayoutChanged(NSWindow *window);
 int TabId(CefRefPtr<CefBrowser> browser);

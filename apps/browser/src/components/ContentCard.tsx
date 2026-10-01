@@ -6,7 +6,7 @@ import { focus, switchToTab } from "../lib/actions";
 import { noteFavicon } from "../lib/favicons";
 import { isQuitting } from "../lib/native";
 import { layout, useTheme } from "../lib/theme";
-import { onChromeTabStrip, startChromeTabs } from "../lib/chromeTabs";
+import { startChromeTabs } from "../lib/chromeTabs";
 import { noteDiscarded, noteGone, noteReady } from "../lib/tabLifecycle";
 import { webviewRef, webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
@@ -407,7 +407,6 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
         if (first) void shouldPromptForPopups(engineProfile(profileId), popup.origin).then((ask) => ask && setPopover(tabId, "popups"));
       }}
       onPasswordPrompt={(prompt) => showPasswordPrompt(tabId, prompt)}
-      onTabStrip={(place) => onChromeTabStrip(tabId, place)}
       onExternalApp={(externalApp) => patchPage(tabId, { externalApp })}
       onPageFocus={() => {
         const t = tab();

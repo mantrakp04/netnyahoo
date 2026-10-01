@@ -118,15 +118,6 @@ export type PasswordPrompt = {
   federation: string;
   usernames: string[];
 };
-export type TabStripPlace = {
-  index: number;
-  active: boolean;
-  pinned: boolean;
-  /** Chrome made the tab its active one with this report. */
-  activated: boolean;
-  /** The app's own request (showing or moving a tab) caused the report. */
-  byApp: boolean;
-};
 export type PasswordPromptAnswer = "save" | "update" | "never" | "nope" | "dismiss";
 export type ExtensionActionResult = "none" | "popup" | "sidePanel";
 
@@ -134,6 +125,8 @@ export type WebViewProps = ViewProps & {
   url?: string;
   profile?: string;
   adoptId?: string;
+  /** The app's id for the tab: its browser keeps it while moving between views, and Chrome's tab strips name the
+   *  tab by it (`StripTab.key`, tabStrip.ts). */
   transferKey?: string;
   standalone?: boolean;
   visible?: boolean;
@@ -171,7 +164,6 @@ export type WebViewProps = ViewProps & {
   onReady?: (browserId: number, chromeTabId: number) => void;
   onDiscarded?: (url: string) => void;
   onPasswordPrompt?: (prompt: PasswordPrompt) => void;
-  onTabStrip?: (place: TabStripPlace) => void;
   onExternalApp?: (request: ExternalAppRequest) => void;
 };
 
@@ -207,7 +199,6 @@ export type WebViewHandle = {
   clearSiteData(): Promise<{ cookies: number | false; storage: boolean }>;
 
   resolvePasswordPrompt(answer: PasswordPromptAnswer, edits?: { username?: string; password?: string }): Promise<void>;
-  setTabStrip(index: number, pinned: boolean): Promise<void>;
   executeExtensionAction(extensionId: string): Promise<ExtensionActionResult | null>;
 
   resolveDisplayMedia(id: string, sourceId: string | null): Promise<void>;
@@ -252,7 +243,6 @@ type NativeEvents = {
   onReady: { browserId: number; tabId?: number };
   onDiscarded: { url: string };
   onPasswordPrompt: PasswordPrompt;
-  onTabStrip: TabStripPlace;
   onExternalApp: ExternalAppRequest;
 };
 type Handlers = keyof NativeEvents;
@@ -290,7 +280,6 @@ const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<
   onReady: (e) => [e.browserId, e.tabId ?? 0],
   onDiscarded: (e) => [toAppUrl(e.url)],
   onPasswordPrompt: (e) => [e],
-  onTabStrip: (e) => [e],
   onExternalApp: (e) => [e],
 };
 
@@ -375,7 +364,6 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
       resolvePasswordPrompt: (answer, edits) =>
         call(undefined, (n) => n.resolvePasswordPrompt(answer, edits?.username ?? null, edits?.password ?? null)),
       executeExtensionAction: (extensionId) => call(null, (n) => n.executeExtensionAction(extensionId)),
-      setTabStrip: (index, pinned) => call(undefined, (n) => n.setTabStrip(index, pinned)),
       resolveDisplayMedia: (id, sourceId) => call(undefined, (n) => n.resolveDisplayMedia(id, sourceId)),
       mediaCaptureSourceId: () => call(null, (n) => n.mediaCaptureSourceId()),
       notificationAction: (id, action) => call(undefined, (n) => n.notificationAction(id, action)),

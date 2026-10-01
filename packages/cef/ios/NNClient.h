@@ -220,9 +220,6 @@ class Client : public CefClient,
   };
   std::map<std::string, DisplayRequest> displayRequests_;
   bool committedPage_ = false;
-  int tabStripIndex_ = -1;
-  bool tabStripActive_ = false;
-  bool tabStripPinned_ = false;
   std::map<std::string, bool> mediaFrames_;
   std::map<std::string, NSDictionary *> nowPlaying_;
   std::string nowPlayingFrame_;

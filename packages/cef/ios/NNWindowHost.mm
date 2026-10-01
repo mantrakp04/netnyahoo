@@ -4,6 +4,7 @@
 #import "NNChromeWindow.h"
 #import "NNClient.h"
 #import "NNExtensionsInternal.h"
+#import "NNTabStrip.h"
 
 #include <algorithm>
 #include <map>
@@ -45,7 +46,7 @@ class ChromeWindow;
 std::vector<CefRefPtr<ChromeWindow>> gWindows;
 std::map<int, ChromeWindow *> gTabWindow;
 ChromeWindow *gCreatingIn = nullptr;
-bool gActivatingTab = false;
+int gLastStripId = 0;
 
 ChromeWindow *WindowOfTab(CefRefPtr<CefBrowser> browser);
 bool Live(ChromeWindow *window);
@@ -111,10 +112,11 @@ class TabRouter : public CefClient,
     std::lock_guard<std::mutex> lock(mutex_);
     tabs_.erase(browser->GetIdentifier());
     if (anchor_ && anchor_->IsSame(browser)) anchor_ = nullptr;
+    strip::Closed(browser);
     BrowserClosed(browser);
   }
   void OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) override {
-    if (Client *c = Tab(browser)) c->OnTabStripChanged(browser, index, active, pinned);
+    strip::Report(browser, index, active, pinned);
   }
   bool OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int popup_id, const CefString &url,
                      const CefString &name, cef_window_open_disposition_t disposition, bool gesture,
@@ -288,9 +290,10 @@ class TabRouter : public CefClient,
 
 class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
  public:
-  ChromeWindow(NSString *profile, bool popup) : profile_([profile copy]), popup_(popup) {}
+  ChromeWindow(NSString *profile, bool popup) : profile_([profile copy]), popup_(popup), id_(++gLastStripId) {}
 
   NSWindow *Window() const { return nswindow_; }
+  int Id() const { return id_; }
   NSString *Profile() const { return profile_; }
   CefRefPtr<CefBrowser> Anchor() const { return router_ ? router_->Anchor() : nullptr; }
   bool Closed() const { return closing_; }
@@ -581,6 +584,7 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
   bool Translucent() const { return !popup_ && TranslucentSwap(); }
 
   void Forget() {
+    strip::WindowClosed(id_);
     for (auto it = gTabWindow.begin(); it != gTabWindow.end();) it = it->second == this ? gTabWindow.erase(it) : std::next(it);
     gWindows.erase(std::remove(gWindows.begin(), gWindows.end(), CefRefPtr<ChromeWindow>(this)), gWindows.end());
   }
@@ -604,6 +608,8 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
   bool browserStarted_ = false;
   bool closeRequested_ = false;
   const bool popup_;
+  // Its tab strip's id in transactions (NNTabStrip).
+  const int id_;
   IMPLEMENT_REFCOUNTING(ChromeWindow);
 };
 
@@ -763,8 +769,6 @@ class StrayWindowClient : public CefClient, public CefLifeSpanHandler, public Ce
 
 namespace nn::host {
 
-bool ActivatingTab() { return gActivatingTab; }
-
 bool Hostable(NNBrowserView *view) {
   return [NNCef isStarted] && !view.standalone && ChromeWindowOf(view.window);
 }
@@ -777,13 +781,15 @@ void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, con
       if (!client->View()) return;
       CefRefPtr<CefBrowser> any = w->AnyTab();
       if (!any) {
-        w->CreateTab(client, url, tabSettings);
+        strip::AsApp(^{ w->CreateTab(client, url, tabSettings); });
         return;
       }
-      gCreatingIn = w;
-      CefRefPtr<CefBrowser> tab = CefBrowserHost::CreateTabInBrowser(any, client, ToCef(url), tabSettings, nullptr, false);
-      gCreatingIn = nullptr;
-      if (tab) gTabWindow[tab->GetIdentifier()] = w;
+      strip::AsApp(^{
+        gCreatingIn = w;
+        CefRefPtr<CefBrowser> tab = CefBrowserHost::CreateTabInBrowser(any, client, ToCef(url), tabSettings, nullptr, false);
+        gCreatingIn = nullptr;
+        if (tab) gTabWindow[tab->GetIdentifier()] = w;
+      });
       w->DropAnchor();
     });
     return;
@@ -815,13 +821,15 @@ bool CreateTabWithHistory(NNBrowserView *view, CefRefPtr<Client> client, CefRefP
     NNBrowserView *target = weakView;
     if (!target || !client->View()) return;
     CefRefPtr<CefBrowser> any = w->AnyTabOrAnchor();
-    CefRefPtr<CefBrowser> tab;
-    gCreatingIn = w;
-    if (source && source->IsValid() && WindowOfTab(source) == w)
-      tab = source->GetHost()->DuplicateTab(client, tabSettings, nullptr);
-    else if (any && navigationState.length)
-      tab = CefBrowserHost::RestoreTabInBrowser(any, client, ToCef(navigationState), tabSettings, nullptr);
-    gCreatingIn = nullptr;
+    __block CefRefPtr<CefBrowser> tab;
+    strip::AsApp(^{
+      gCreatingIn = w;
+      if (source && source->IsValid() && WindowOfTab(source) == w)
+        tab = source->GetHost()->DuplicateTab(client, tabSettings, nullptr);
+      else if (any && navigationState.length)
+        tab = CefBrowserHost::RestoreTabInBrowser(any, client, ToCef(navigationState), tabSettings, nullptr);
+      gCreatingIn = nullptr;
+    });
     if (tab) {
       gTabWindow[tab->GetIdentifier()] = w;
       w->DropAnchor();
@@ -847,6 +855,8 @@ bool IsChromeTab(CefRefPtr<CefBrowser> browser) {
   return browser && browser->GetHost()->GetRuntimeStyle() == CEF_RUNTIME_STYLE_CHROME;
 }
 
+// The page on screen decides where Chrome's views go (layout); which tab is Chrome's active one is the app's
+// `activate` command (NNTabStrip), never a side effect of showing a page.
 void TabShown(NNBrowserView *view) {
   CefRefPtr<Client> client = view.client;
   CefRefPtr<CefBrowser> browser = client ? client->Browser() : nullptr;
@@ -854,34 +864,31 @@ void TabShown(NNBrowserView *view) {
   ChromeWindow *window = WindowOfTab(browser);
   if (!window || window->Window() != view.window) return;
   window->SetShown(view);
-  dispatch_async(dispatch_get_main_queue(), ^{
-    if (!view.visible || !view.client || !view.client->Browser() || !view.client->Browser()->IsSame(browser)) return;
-    if (!Live(window) || window->Shown() != view) return;
-    gActivatingTab = true;
-    browser->GetHost()->ActivateTab();
-    gActivatingTab = false;
-  });
 }
 
-std::map<int, ChromeWindow *> gClosingTabs;
-
-void NoteClosingTab(CefRefPtr<CefBrowser> browser) {
-  if (ChromeWindow *window = IsChromeTab(browser) ? WindowOfTab(browser) : nullptr)
-    gClosingTabs[browser->GetIdentifier()] = window;
-}
-
-void TabGone(CefRefPtr<CefBrowser> browser) { gClosingTabs.erase(browser->GetIdentifier()); }
-
-// Chrome made `browser` active while a tab of its window was closing: show the app's page there again.
-bool PickedByClose(CefRefPtr<CefBrowser> browser) {
+int StripOf(CefRefPtr<CefBrowser> browser) {
   ChromeWindow *window = IsChromeTab(browser) ? WindowOfTab(browser) : nullptr;
-  if (!window || gClosingTabs.empty()) return false;
-  bool closing = false;
-  for (auto &[id, w] : gClosingTabs) closing |= w == window && id != browser->GetIdentifier();
-  if (!closing) return false;
-  if (NNBrowserView *shown = window->Shown(); shown.visible && shown.client && shown.client->Browser())
-    TabShown(shown);
-  return true;
+  return window ? window->Id() : 0;
+}
+
+bool StripInfo(int strip, NSString **profile, int *window) {
+  for (auto &w : gWindows) {
+    if (w->Id() != strip || w->Closed()) continue;
+    // The strips of one app window (its profiles' Chrome windows) share their group's number.
+    static NSMapTable<NSObject *, NSNumber *> *numbers = [NSMapTable weakToStrongObjectsMapTable];
+    static int last = 0;
+    NSNumber *number = [numbers objectForKey:w->Group()];
+    if (!number) [numbers setObject:(number = @(++last)) forKey:w->Group()];
+    *profile = w->Profile();
+    *window = number.intValue;
+    return true;
+  }
+  return false;
+}
+
+void NoteStrip(int browserId, int strip) {
+  for (auto &w : gWindows)
+    if (w->Id() == strip && !w->Closed()) gTabWindow[browserId] = w.get();
 }
 
 void TabMoved(NNBrowserView *view) {
@@ -896,11 +903,16 @@ void TabMoved(NNBrowserView *view) {
     NNBrowserView *moved = weakView;
     if (!moved || moved.client != client || !client->Browser()) return;
     CefRefPtr<CefBrowser> into = target->AnyTabOrAnchor(browser);
-    gActivatingTab = true;
-    const bool movedIn = into && browser->GetHost()->MoveToBrowser(into, -1, moved.visible);
-    gActivatingTab = false;
-    if (!movedIn) return;
+    // In the background: the app's activate command shows it there. The tab's reports during the move are the
+    // target's already.
+    ChromeWindow *before = WindowOfTab(browser);
     gTabWindow[browser->GetIdentifier()] = target;
+    __block bool movedIn = false;
+    strip::AsApp(^{ movedIn = into && browser->GetHost()->MoveToBrowser(into, -1, false); });
+    if (!movedIn) {
+      if (before) gTabWindow[browser->GetIdentifier()] = before;
+      return;
+    }
     target->DropAnchor();
     if (moved.visible) TabShown(moved);
   });

@@ -4,6 +4,8 @@ import IOKit.ps
 public class CefModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooCEF")
+    // Chrome's tab strips: one revisioned transaction per change (NNTabStrip.mm).
+    Events("onTabStrip")
     Events("onDownload", "onPermission", "onPermissionDismissed", "onContentBlocker", "onSystemState", "onEngineEvent")
 
     OnCreate {
@@ -13,6 +15,7 @@ public class CefModule: Module {
         case "permission": self?.sendEvent("onPermission", payload)
         case "permissionDismissed": self?.sendEvent("onPermissionDismissed", payload)
         case "contentBlocker": self?.sendEvent("onContentBlocker", payload)
+        case "tabStrip": self?.sendEvent("onTabStrip", payload)
         default: break
         }
       }
@@ -27,6 +30,9 @@ public class CefModule: Module {
       .runOnQueue(.main)
 // Apply tab transfers synchronously before either view mounts or unmounts.
     Function("prepareTransfer") { (key: String) in NNBrowserView.prepareTransfer(key) }
+    AsyncFunction("tabStripCommand") { (id: Int, command: [String: Any]) in NNCef.tabStripCommand(id, command: command) }
+      .runOnQueue(.main)
+    AsyncFunction("tabStrips") { NNCef.tabStrips }.runOnQueue(.main)
     AsyncFunction("components") { NNCef.components }.runOnQueue(.main)
 
     AsyncFunction("beginTracing") { (promise: Promise) in
@@ -245,9 +251,6 @@ public class CefModule: Module {
       AsyncFunction("resolvePasswordPrompt") { (view: CefWebView, action: String, username: String?, password: String?) in
         view.browser.resolvePasswordPrompt(action, username: username, password: password)
       }.runOnQueue(.main)
-      AsyncFunction("setTabStrip") { (view: CefWebView, index: Int, pinned: Bool) in
-        view.browser.setTabStrip(index: index, pinned: pinned)
-      }.runOnQueue(.main)
       AsyncFunction("executeExtensionAction") { (view: CefWebView, extensionId: String) in
         view.browser.executeExtensionAction(extensionId)
       }.runOnQueue(.main)
@@ -305,7 +308,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
     "onReady",
     "onDiscarded",
     "onPasswordPrompt",
-    "onTabStrip",
     "onExternalApp",
   ]
 
@@ -342,7 +344,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
   let onReady = EventDispatcher()
   let onDiscarded = EventDispatcher()
   let onPasswordPrompt = EventDispatcher()
-  let onTabStrip = EventDispatcher()
   let onExternalApp = EventDispatcher()
 
   private var propsReady = false
@@ -402,7 +403,6 @@ final class CefWebView: ExpoView, NNBrowserViewDelegate {
     case "ready": onReady(payload)
     case "discarded": onDiscarded(payload)
     case "passwordPrompt": onPasswordPrompt(payload)
-    case "tabStrip": onTabStrip(payload)
     case "externalApp": onExternalApp(payload)
     default: break
     }
