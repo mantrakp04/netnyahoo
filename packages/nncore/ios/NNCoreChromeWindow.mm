@@ -196,15 +196,16 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   return controller;
 }
 
-// The app's window to hand a stray tab to: one showing the tab's profile, else any.
+// The app's window to hand a stray tab to: one showing the tab's profile, else any (nil profile: any). A private
+// tab only ever goes to a window showing its own profile.
 + (NNCoreWebView *)hostingViewForProfile:(NNCoreProfile *)profile {
   NNCoreWebView *any = nil;
   for (NNCoreWindowController *c in Controllers().objectEnumerator) {
     if (c.stray || c.standalone) continue;
-    if (NNCoreWebView *view = [c anyShownViewForProfile:profile]) return view;
+    if (NNCoreWebView *view = profile ? [c anyShownViewForProfile:profile] : nil) return view;
     any = any ?: [c anyView];
   }
-  return any;
+  return profile.offTheRecord ? nil : any;
 }
 
 + (instancetype)holding:(NNCoreTab *)tab {
@@ -281,12 +282,30 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   // The app's own (a WebView opening its tab, or adopting one): the view attaches it itself.
   if (_hostChanges > 0 || [NNCoreTabs viewForTab:tab]) return;
   if (_stray) {
-    // A window Chrome made (chrome.windows.create): the tab goes to the app's windows, as a tab Chrome made.
-    NNCoreWebView *view = [NNCoreWindowController hostingViewForProfile:tab.profile];
-    if (view) [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
+    // A window Chrome made (chrome.windows.create, Open Link in Incognito Window): the tab goes to the app's windows,
+    // as a tab Chrome made. A private tab goes to a private window showing its profile, else to a private window the
+    // app opens for it ("incognito"), never into a normal window.
+    NNCoreProfile *profile = tab.profile;
+    // A profile on its way out (the last private window just closed) has no profile to show it under.
+    if (!profile) return (void)dispatch_async(dispatch_get_main_queue(), ^{ [tab closeNow]; });
+    NNCoreWebView *view = [NNCoreWindowController hostingViewForProfile:profile];
+    if (view || !profile.offTheRecord) {
+      if (view) [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
+      return;
+    }
+    if (!(view = [NNCoreWindowController hostingViewForProfile:nil])) return;
+    // The app's private windows are Personal's off-the-record profile: another profile's (an extension of Work's)
+    // opens afresh in one, and Chrome's tab goes.
+    const BOOL personals = [profile.name isEqualToString:@"Default"];
+    [view openedTab:tab adoptId:personals ? [NNCoreTabs offerTab:tab prefix:@"tab"] : @"" disposition:@"incognito"];
+    if (!personals) dispatch_async(dispatch_get_main_queue(), ^{ [tab closeNow]; });
     return;
   }
   NNCoreWebView *openerView = [self viewFor:opener];
+  if ([disposition isEqualToString:@"popup"] && [tab respondsToSelector:@selector(popupFeatures)]) {
+    // A sized window.open (OAuth, payments): a window of its own, not a tab.
+    return nncore_host::OpenPopupWindow(tab, openerView);
+  }
   if (openerView) {
     // A page's popup, target=_blank or ⌘-click: placed by the app's opener rules.
     [openerView openedTab:tab adoptId:[NNCoreTabs offerTab:tab] disposition:nncore_host::AppDisposition(disposition)];
@@ -311,12 +330,16 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   [[self viewFor:tab] tabRemovedFromWindow:window];
   if (_stray || _standalone) {
     // Its last tab went to the app's windows (or its last standalone view closed): the hidden window goes too, so
-    // its empty Browsers don't keep a private profile alive.
+    // its empty Browsers don't keep a private profile alive. (The removed tab's profile counts too: one the app never
+    // loaded, another profile's private one, may still have tabs here.)
     __weak NNCoreWindowController *weakSelf = self;
+    NNCoreProfile *removedProfile = tab.profile;
     dispatch_async(dispatch_get_main_queue(), ^{
       NNCoreWindowController *c = weakSelf;
       if (!c) return;
-      for (NNCoreProfile *p in nncore_host::LoadedProfiles())
+      NSMutableArray<NNCoreProfile *> *profiles = [nncore_host::LoadedProfiles() mutableCopy];
+      if (removedProfile) [profiles addObject:removedProfile];
+      for (NNCoreProfile *p in profiles)
         if ([c.coreWindow tabsForProfile:p].count) return;
       if (c.standalone) {
         NSMapTable<NNCoreProfile *, NNCoreWindowController *> *windows = StandaloneWindows();
@@ -389,6 +412,191 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
 }
 
 @end
+
+// MARK: - Popup windows
+
+// A page's sized popup in a window of its own (packages/cef's NNPopupWindow): a plain titled window (the page's title,
+// its host below), the tab Chrome made for window.open moved into it live, so window.opener holds both ways. Links it
+// opens go to the opener's tab, as the app places them; its window.close() closes the window.
+@interface NNCorePopupWindow : NSObject <NNCoreWindowDelegate, NNCoreTabDelegate>
+@end
+
+namespace {
+
+NSMutableSet<NNCorePopupWindow *> *PopupWindows() {
+  static NSMutableSet *windows = [NSMutableSet set];
+  return windows;
+}
+
+NSString *HostOf(NSString *url) {
+  return [NSURL URLWithString:url ?: @""].host ?: @"";
+}
+
+}  // namespace
+
+@implementation NNCorePopupWindow {
+  NNCoreWindow *_coreWindow;
+  NNCoreTab *_tab;
+  __weak NNCoreWebView *_opener;
+  id _closeObserver;
+  BOOL _adopting;
+}
+
+- (instancetype)initWithTab:(NNCoreTab *)tab opener:(NNCoreWebView *)opener {
+  if (!(self = [super init])) return nil;
+  _tab = tab;
+  _opener = opener;
+  NSDictionary<NSString *, NSNumber *> *features = tab.popupFeatures ?: @{};
+  // window.open's width and height are the page's; Chrome's own floor for a popup is 100 × 100, CEF's window 200 × 150.
+  const NSSize size = NSMakeSize(MAX(features[@"width"] ? features[@"width"].doubleValue : 500, 200),
+                                 MAX(features[@"height"] ? features[@"height"].doubleValue : 600, 150));
+  _coreWindow = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(0, 0, size.width, size.height)];
+  NSWindow *window = _coreWindow.window;
+  if (!window) return nil;
+  _coreWindow.delegate = self;
+  window.styleMask |= NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable |
+                      NSWindowStyleMaskResizable;
+  window.releasedWhenClosed = NO;
+  window.tabbingMode = NSWindowTabbingModeDisallowed;
+  window.minSize = NSMakeSize(200, 150);
+  [window setContentSize:size];
+  [self placeWithFeatures:features];
+  __weak NNCorePopupWindow *weakSelf = self;
+  _closeObserver = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification
+                                                                   object:window
+                                                                    queue:nil
+                                                               usingBlock:^(NSNotification *) { [weakSelf windowWillClose]; }];
+  return self;
+}
+
+- (void)placeWithFeatures:(NSDictionary<NSString *, NSNumber *> *)features {
+  NSWindow *window = _coreWindow.window;
+  NSWindow *parent = _opener.window;
+  NSScreen *screen = parent.screen ?: NSScreen.mainScreen;
+  NSRect frame = window.frame;
+  if (features[@"x"] || features[@"y"]) {
+    // The page's left and top: screen points from the primary screen's top-left (the content's, as Chrome places it).
+    const NSRect primary = NSScreen.screens.firstObject.frame;
+    const NSRect content = [window contentRectForFrameRect:frame];
+    const CGFloat left = features[@"x"] ? features[@"x"].doubleValue : NSMidX(parent.frame) - NSWidth(frame) / 2;
+    const CGFloat top = features[@"y"] ? features[@"y"].doubleValue : NSMaxY(primary) - NSMaxY(parent.frame) + 60;
+    frame.origin = NSMakePoint(left, NSMaxY(primary) - top - NSHeight(content));
+  } else if (parent) {
+    frame.origin = NSMakePoint(NSMidX(parent.frame) - NSWidth(frame) / 2, NSMaxY(parent.frame) - NSHeight(frame) - 60);
+  } else {
+    [window center];
+    frame = window.frame;
+  }
+  const NSRect visible = screen.visibleFrame;
+  frame.origin.x = MAX(NSMinX(visible), MIN(NSMinX(frame), NSMaxX(visible) - NSWidth(frame)));
+  frame.origin.y = MAX(NSMinY(visible), MIN(NSMinY(frame), NSMaxY(visible) - NSHeight(frame)));
+  [window setFrame:frame display:NO];
+}
+
+// After the insert that reported the tab: Chrome's strip can't change from inside its own callback.
+- (void)takeTab {
+  if (_tab.closed) return [_coreWindow close];
+  _adopting = YES;
+  [_coreWindow adoptTab:_tab];
+  _adopting = NO;
+  if (NNCoreProfile *profile = _tab.profile) _coreWindow.activeProfile = profile;
+  _tab.delegate = self;
+  NSView *page = _tab.view;
+  [page removeFromSuperview];
+  page.frame = _coreWindow.hostView.bounds;
+  page.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  [_coreWindow.hostView addSubview:page];
+  [self updateTitle];
+  if (nncore_host::Background()) [_coreWindow showInactive];
+  else [_coreWindow.window makeKeyAndOrderFront:nil];
+  [_tab focus];
+}
+
+- (void)updateTitle {
+  NSString *url = _tab.url ?: @"", *host = HostOf(url), *title = _tab.title;
+  NSWindow *window = _coreWindow.window;
+  window.title = title.length && ![title isEqualToString:url] ? title : host;
+  window.subtitle = [window.title isEqualToString:host] ? @"" : host;
+}
+
+- (void)windowWillClose {
+  if (_closeObserver) [NSNotificationCenter.defaultCenter removeObserver:_closeObserver];
+  _closeObserver = nil;
+  if (_tab.delegate == self) _tab.delegate = nil;
+  // Removed after the close finishes (the engine is still unwinding the window).
+  NNCorePopupWindow *me = self;
+  dispatch_async(dispatch_get_main_queue(), ^{ [PopupWindows() removeObject:me]; });
+}
+
+// MARK: The page
+
+- (void)tabDidChangeTitle:(NNCoreTab *)tab {
+  [self updateTitle];
+}
+
+- (void)tabDidChangeURL:(NNCoreTab *)tab {
+  [self updateTitle];
+}
+
+- (void)tab:(NNCoreTab *)tab requestsActivation:(NSString *)reason {
+  if (!nncore_host::Background()) [_coreWindow.window makeKeyAndOrderFront:nil];
+}
+
+- (void)tab:(NNCoreTab *)tab externalAppRequest:(NSDictionary<NSString *, id> *)request {
+  // The app's prompt, over the opener's tab (the request answers through the engine, whichever tab shows it).
+  id<NNCoreTabDelegate> opener = (id<NNCoreTabDelegate>)_opener;
+  if ([opener respondsToSelector:@selector(tab:externalAppRequest:)]) [opener tab:tab externalAppRequest:request];
+}
+
+// MARK: The window
+
+- (void)window:(NNCoreWindow *)window didInsertTab:(NNCoreTab *)tab opener:(NNCoreTab *)opener disposition:(NSString *)disposition {
+  if (_adopting || tab == _tab) return;
+  // The popup's own popups get windows too; its other new tabs go to the app beside the opener's tab.
+  if ([disposition isEqualToString:@"popup"]) return nncore_host::OpenPopupWindow(tab, _opener);
+  NNCoreWebView *view = _opener ?: [NNCoreWindowController hostingViewForProfile:tab.profile];
+  if (view) [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab] disposition:nncore_host::AppDisposition(disposition)];
+  else [tab closeNow];
+}
+
+- (void)window:(NNCoreWindow *)window didRemoveTab:(NNCoreTab *)tab {
+  if (tab != _tab) return;
+  // Its page closed (or went to the app): nothing is left to show.
+  __weak NNCoreWindow *coreWindow = _coreWindow;
+  dispatch_async(dispatch_get_main_queue(), ^{ [coreWindow close]; });
+}
+
+- (BOOL)window:(NNCoreWindow *)window preHandleKeyEvent:(NSEvent *)event {
+  // ⌘W closes the popup (the app's menu would close the opener window's tab).
+  const NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+  if (mods == NSEventModifierFlagCommand && [event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"w"]) {
+    [_coreWindow close];
+    return YES;
+  }
+  return NO;
+}
+
+@end
+
+namespace nncore_host {
+
+void OpenPopupWindow(NNCoreTab *tab, NNCoreWebView *opener) {
+  NNCorePopupWindow *popup = [[NNCorePopupWindow alloc] initWithTab:tab opener:opener];
+  if (!popup) {
+    // No window: the tab goes to the app as any page's new tab would.
+    if (opener) [opener openedTab:tab adoptId:[NNCoreTabs offerTab:tab] disposition:@"foreground"];
+    return;
+  }
+  [PopupWindows() addObject:popup];
+  __weak NNCorePopupWindow *weakPopup = popup;
+  dispatch_async(dispatch_get_main_queue(), ^{ [weakPopup takeTab]; });
+}
+
+NSUInteger PopupWindowCount() {
+  return PopupWindows().count;
+}
+
+}  // namespace nncore_host
 
 // MARK: - NNChromeWindowHost
 

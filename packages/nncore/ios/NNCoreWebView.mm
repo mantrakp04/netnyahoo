@@ -363,6 +363,14 @@ NSString *JSONString(id value) {
   if ([_adoptId hasPrefix:@"nncore:"] || [_adoptId hasPrefix:@"tab:"]) {
     NNCoreTab *offered = [NNCoreTabs takeOffered:_adoptId];
     _adoptId = nil;
+    // Never a private tab in a normal view, or the reverse, and a private view takes only Personal's private tabs
+    // (its profile): the view loads its URL itself instead.
+    const BOOL wantsPrivate = nncore_host::IsIncognito(_profile);
+    if (offered && (!offered.profile || offered.profile.offTheRecord != wantsPrivate ||
+                    (wantsPrivate && ![offered.profile.name isEqualToString:@"Default"]))) {
+      [offered closeNow];
+      offered = nil;
+    }
     if (offered && !offered.closed) return [self attach:offered];
   }
   // "restore:<closed tab id>" and "clone:<source tab id>": a tab with history (⇧⌘T, Duplicate).

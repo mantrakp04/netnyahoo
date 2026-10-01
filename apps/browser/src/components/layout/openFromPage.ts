@@ -29,6 +29,9 @@ export function openFromPage({ url, adoptId, disposition, postBody }: OpenWindow
     return;
   }
   if (disposition === "incognito") {
+    // A private tab Chrome already made (an extension's incognito window, Open Link in Incognito Window) moves in
+    // live; anything else loads afresh in the private window.
+    if (adoptId?.startsWith("tab:")) return void openWindow({ incognito: true, url, adoptId });
     releaseKept(adoptId);
     return void openWindow({ incognito: true, url });
   }

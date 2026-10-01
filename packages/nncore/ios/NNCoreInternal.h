@@ -35,6 +35,12 @@ bool Background();
 // A line in $NETNYAHOO_DATA_DIR/activation.log, as the guards write theirs (what a test instance didn't show).
 void LogActivation(NSString *what);
 
+// A page's sized popup (window.open with a size or position: disposition "popup") in a window of its own, as
+// packages/cef's NNPopupWindow: the live tab (opener kept), sized and placed as asked; what it opens goes to the
+// opener's tab (NNCoreChromeWindow.mm).
+void OpenPopupWindow(NNCoreTab *tab, NNCoreWebView *_Nullable opener);
+NSUInteger PopupWindowCount();
+
 }  // namespace nncore_host
 
 // MARK: Windows
@@ -60,6 +66,9 @@ void LogActivation(NSString *what);
 - (void)noteClosing:(NNCoreTab *)tab;
 // The window whose Browser holds `tab` now (nil if none of ours).
 + (nullable NNCoreWindowController *)holding:(NNCoreTab *)tab;
+// An app view to hand a tab Chrome made to: one shown for `profile`, else any (nil profile: any); a private profile's
+// only to a view of its own.
++ (nullable NNCoreWebView *)hostingViewForProfile:(nullable NNCoreProfile *)profile;
 @end
 
 @interface NNCoreTabStrip (Engine)

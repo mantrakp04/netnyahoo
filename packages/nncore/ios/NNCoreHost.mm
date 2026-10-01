@@ -558,7 +558,7 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
     @"engine" : @"nncore",
     @"chromiumVersion" : engine.chromiumVersion ?: @"",
     @"liveBrowsers" : @0,
-    @"popupWindows" : @0,
+    @"popupWindows" : @(nncore_host::PopupWindowCount()),
     @"chromeWindows" : @(chromeWindows),
     @"keepAlive" : engine.keepAliveState ?: @"",
   };
