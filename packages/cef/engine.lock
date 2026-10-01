@@ -1,7 +1,7 @@
 # The engine this checkout builds against: our CEF build (docs/cef-source-build.md › "The pinned engine").
 # Written by scripts/engine.sh pack; setup.sh installs it and engine.sh verify checks vendor/cef against it.
 ENGINE_DIST="cef_binary_154.0.28+g564dd6c+chromium-154.0.8037.58_macosarm64_minimal"
-ENGINE_TREE_SHA256="d99d3715a92f7abadd50929b46ee45c07ce3d23d26b059ec3028b61be69446d0"
-ENGINE_ARCHIVE_SHA256="829024c35a80f9b24ccbf2b91df8e40468f56a5e7ece156ac3d182326d1e354a"
+ENGINE_TREE_SHA256="94572a4234f624b1afa4c43e4132102289c327829f1c372bbe5f9f03a537d76d"
+ENGINE_ARCHIVE_SHA256="a8c662bb3948cf9a869d9b9e88ab96360d33f6012a66fe2baf89f0bb626356ee"
 ENGINE_REPO="mantrakp04/netnyahoo-engine"
-ENGINE_TAG="engine-154.0.28+g564dd6c-d99d3715"
+ENGINE_TAG="engine-154.0.28+g564dd6c-94572a42"

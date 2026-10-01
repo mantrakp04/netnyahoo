@@ -1,8 +1,8 @@
 #import "NNExtensions.h"
 
-#import "NNChromePages.h"
 #import "NNClient.h"
 #import "NNContentBlocker.h"
+#import "NNEngine.h"
 #import "NNExtensionPackage.h"
 #import "NNExtensionsInternal.h"
 #import "NNWindowHost.h"
@@ -10,12 +10,8 @@
 #include <map>
 
 using namespace nn;
-using pages::DataProfile;
-using pages::Script;
 
 namespace {
-
-NSString *const kExtensionsPage = @"chrome://extensions/";
 
 NNEventHandler gHandler = nil;
 void Emit(NSString *name, NSDictionary *payload) {
@@ -36,13 +32,13 @@ NSString *StoreFolder(NSString *profile, NSString *extensionId, NSString *versio
   return nil;
 }
 
-void HostEval(NSString *profile, NSString *expression, pages::EvalCompletion completion) {
-  pages::WebUIEval(profile, kExtensionsPage, expression, completion);
-}
-
-void Respond(NNExtensionsCompletion completion, id value, NSString *error) {
-  if (error) return completion(@{@"error" : error});
-  completion([value isKindOfClass:NSDictionary.class] ? value : @{@"ok" : @YES});
+// //chrome/browser/netnyahoo/nn_extensions.h; a change the app should hear about is announced once done.
+void Run(const char *name, NSString *profile, NSDictionary *args, NSString *event, NNExtensionsCompletion completion) {
+  NSString *extensionId = args[@"id"];
+  engine::Call(name, profile, args, ^(NSDictionary *result) {
+    if (event && !result[@"error"]) Changed(profile, extensionId, event);
+    completion(result);
+  });
 }
 
 }
@@ -128,41 +124,18 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
   callback->Continue(accepted);
 }
 
-+ (void)evaluateInHost:(NSString *)expression profile:(NSString *)profile page:(NSString *)page completion:(void (^)(id))completion {
-  pages::WebUIEval(profile, page ?: kExtensionsPage, expression, ^(id value, NSString *error) {
-    completion(error ? @{@"error" : error} : value);
-  });
-}
-
 + (void)listForProfile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
-  NSString *js = @"(async () => {"
-                  "  const infos = await chrome.developerPrivate.getExtensionsInfo({ includeDisabled: true, includeTerminated: true });"
-                  "  return { extensions: infos.filter((i) => i.type === 'EXTENSION').map((i) => {"
-                  "    const hosts = i.permissions.runtimeHostPermissions;"
-                  "    return {"
-                  "      id: i.id, name: i.name, version: i.version, description: i.description,"
-                  "      enabled: i.state === 'ENABLED', state: i.state, icon: i.iconUrl,"
-                  "      permissions: i.permissions.simplePermissions.map((p) => p.message),"
-                  "      siteAccess: hosts ? hosts.hostAccess : null,"
-                  "      sites: hosts ? hosts.hosts.filter((h) => h.granted).map((h) => h.host) : [],"
-                  "      optionsUrl: i.optionsPage ? i.optionsPage.url : null,"
-                  "      location: i.location, path: i.path || null,"
-                  "      homepageUrl: (i.homePage && i.homePage.url) || null,"
-                  "      incognito: i.incognitoAccess.isActive, fileAccess: i.fileAccess.isActive,"
-                  "      pinned: !!i.pinnedToToolbar, mayModify: i.userMayModify,"
-                  "      errors: [...i.manifestErrors, ...i.runtimeErrors].map((e) => e.message),"
-                  "    };"
-                  "  }) };"
-                  "})()";
-  HostEval(profile, js, ^(id value, NSString *error) {
-    if (error) return completion(@{@"error" : error});
-    NSArray *infos = [value isKindOfClass:NSDictionary.class] ? value[@"extensions"] : nil;
+  engine::Call("nn_extensions_list", profile, nil, ^(NSDictionary *result) {
+    if (result[@"error"]) return completion(result);
+    NSArray *infos = result[@"extensions"];
     if (![infos isKindOfClass:NSArray.class]) return completion(@{@"error" : @"Unexpected extension list"});
     NSMutableArray *list = [NSMutableArray array];
     for (NSDictionary *info in infos) {
       if (![info isKindOfClass:NSDictionary.class]) continue;
       if ([info[@"id"] isEqual:blocker::ExtensionId()]) continue;
       NSMutableDictionary *item = [info mutableCopy];
+      for (NSString *key in item.allKeys)
+        if (item[key] == NSNull.null) item[key] = nil;
       NSString *path = [info[@"path"] isKindOfClass:NSString.class] ? info[@"path"] : nil;
       // Store extensions have no path: their manifest is in Chrome's copy. Without it their popup never opened
       // from the extensions menu or a shortcut, which pass no action state.
@@ -172,6 +145,8 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
         if (manifest[key]) item[key] = manifest[key];
       // Whether its pages can run in a private window's own profile (Chrome loads only split-mode ones there).
       item[@"incognitoSplit"] = @([manifest[@"incognitoSplit"] boolValue]);
+      for (NSString *key in @[ @"siteAccess", @"optionsUrl", @"path", @"homepageUrl" ])
+        if (!item[key]) item[key] = NSNull.null;
       BOOL fromStore = [info[@"location"] isEqual:@"FROM_STORE"];
       item[@"fromWebStore"] = @(fromStore);
       item[@"webStoreUrl"] = fromStore ? [@"https://chromewebstore.google.com/detail/" stringByAppendingString:info[@"id"]] : [NSNull null];
@@ -188,72 +163,33 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
 }
 
 + (void)installPath:(NSString *)folder profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
-  pages::SetWebUIDialogPath(profile, kExtensionsPage, folder);
-  NSString *js = Script(@"(async () => {"
-                         "  const dp = chrome.developerPrivate;"
-                         "  await dp.updateProfileConfiguration({ inDeveloperMode: true });"
-                         "  const error = await dp.loadUnpacked({ failQuietly: true });"
-                         "  if (error) return { error: error.error || 'Could not load the extension' };"
-                         "  const all = await dp.getExtensionsInfo({ includeDisabled: true, includeTerminated: true });"
-                         "  const hit = all.find((i) => i.path === %@);"
-                         "  return hit ? { id: hit.id } : { error: 'The extension could not be loaded' };"
-                         "})()",
-                         @[ folder ]);
-  HostEval(profile, js, ^(id value, NSString *error) {
-    NSString *installed = [value isKindOfClass:NSDictionary.class] ? value[@"id"] : nil;
-    if (installed) {
-      pages::CloseExtensionContext(profile, installed);
-      Changed(profile, installed, @"installed");
-    }
-    Respond(completion, value, error);
+  engine::Call("nn_extensions_install", profile, @{@"path" : folder ?: @""}, ^(NSDictionary *result) {
+    if ([result[@"id"] isKindOfClass:NSString.class]) Changed(profile, result[@"id"], @"installed");
+    completion(result);
   });
 }
 
 + (void)setEnabled:(BOOL)enabled extension:(NSString *)extensionId profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
-  NSString *js = Script(@"chrome.management.setEnabled(%@, %@).then(() => ({ ok: true }))", @[ extensionId, @(enabled) ]);
-  pages::CloseExtensionContext(profile, extensionId);
-  HostEval(profile, js, ^(id value, NSString *error) {
-    if (!error) Changed(profile, extensionId, enabled ? @"enabled" : @"disabled");
-    Respond(completion, value, error);
-  });
+  Run("nn_extensions_set_enabled", profile, @{@"id" : extensionId, @"enabled" : @(enabled)}, enabled ? @"enabled" : @"disabled",
+      completion);
 }
 
 + (void)uninstall:(NSString *)extensionId profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
   // Removing deletes nothing itself: Chrome deletes its own copy of a store extension, and an unpacked
-  // extension's folder is the user's.
-  // The app asked the user already. chrome://extensions may skip Chrome's dialog (which would never show
-  // from the hidden page), and a disabled extension stays disabled until it's gone.
-  NSString *js = Script(@"chrome.management.uninstall(%@, { showConfirmDialog: false }).then(() => ({ ok: true }))",
-                        @[ extensionId ]);
-  pages::CloseExtensionContext(profile, extensionId);
-  HostEval(profile, js, ^(id value, NSString *error) {
-    if (!error) Changed(profile, extensionId, @"uninstalled");
-    Respond(completion, value, error);
-  });
+  // extension's folder is the user's. The app asked the user already, so Chrome's dialog doesn't show, and a
+  // disabled extension stays disabled until it's gone.
+  Run("nn_extensions_uninstall", profile, @{@"id" : extensionId}, @"uninstalled", completion);
 }
 
 + (void)reload:(NSString *)extensionId profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
-  pages::CloseExtensionContext(profile, extensionId);
-  NSString *js = Script(@"chrome.developerPrivate.reload(%@, { failQuietly: true }).then((e) => e ? { error: e.error } : { ok: true })",
-                        @[ extensionId ]);
-  HostEval(profile, js, ^(id value, NSString *error) {
-    if (!error) Changed(profile, extensionId, @"reloaded");
-    Respond(completion, value, error);
-  });
+  Run("nn_extensions_reload", profile, @{@"id" : extensionId}, @"reloaded", completion);
 }
 
 + (void)configure:(NSString *)extensionId profile:(NSString *)profile options:(NSDictionary *)options completion:(NNExtensionsCompletion)completion {
-  NSMutableDictionary *update = [NSMutableDictionary dictionaryWithObject:extensionId forKey:@"extensionId"];
-  if (options[@"pinned"]) update[@"pinnedToToolbar"] = options[@"pinned"];
-  if (options[@"incognito"]) update[@"incognitoAccess"] = options[@"incognito"];
-  if (options[@"fileAccess"]) update[@"fileAccess"] = options[@"fileAccess"];
-  NSDictionary *access = @{@"onClick" : @"ON_CLICK", @"specificSites" : @"ON_SPECIFIC_SITES", @"allSites" : @"ON_ALL_SITES"};
-  if (access[options[@"siteAccess"]]) update[@"hostAccess"] = access[options[@"siteAccess"]];
-  NSString *js = Script(@"chrome.developerPrivate.updateExtensionConfiguration(%@).then(() => ({ ok: true }))", @[ update ]);
-  HostEval(profile, js, ^(id value, NSString *error) {
-    if (!error) Changed(profile, extensionId, @"configured");
-    Respond(completion, value, error);
-  });
+  NSMutableDictionary *args = [NSMutableDictionary dictionaryWithObject:extensionId forKey:@"id"];
+  for (NSString *key in @[ @"pinned", @"incognito", @"fileAccess", @"siteAccess" ])
+    if (options[key]) args[key] = options[key];
+  Run("nn_extensions_configure", profile, args, @"configured", completion);
 }
 
 @end

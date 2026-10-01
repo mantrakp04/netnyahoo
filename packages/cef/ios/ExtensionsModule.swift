@@ -34,12 +34,6 @@ public class ExtensionsModule: Module {
     AsyncFunction("searchEngineList") { (profile: String, promise: Promise) in
       NNExtensions.searchEngineList(profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("evaluateInHost") { (expression: String, profile: String, promise: Promise) in
-      NNExtensions.evaluateInHost(expression, profile: profile, page: nil) { promise.resolve($0) }
-    }.runOnQueue(.main)
-    AsyncFunction("evaluateInPage") { (expression: String, profile: String, page: String, promise: Promise) in
-      NNExtensions.evaluateInHost(expression, profile: profile, page: page) { promise.resolve($0) }
-    }.runOnQueue(.main)
     AsyncFunction("chooseFolder") { (promise: Promise) in
       let panel = NSOpenPanel()
       panel.canChooseFiles = false

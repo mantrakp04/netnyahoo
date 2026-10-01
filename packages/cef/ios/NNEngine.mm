@@ -88,6 +88,14 @@ class ContextReady : public CefRequestContextHandler {
 namespace nn::engine {
 
 void Call(const char *name, NSString *profile, NSDictionary<NSString *, id> *args, Completion completion) {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    // A hidden test instance never shows Chrome's OS reauth (nn_reauth.h); the engine reports each request.
+    Observe(@"reauth.requested", ^(NSDictionary *event) {
+      NSLog(@"[engine] OS reauth requested (%@) in a hidden instance: %@", event[@"purpose"],
+            [event[@"granted"] boolValue] ? @"granted" : @"denied");
+    });
+  });
   auto call = (nn_engine_call_t)Symbol(name);
   NSString *data = DataProfile(profile);
   NSString *json = args ? ToJSON(args) : nil;

@@ -1,27 +1,17 @@
 #import "NNExtensions.h"
 
-#import "NNChromePages.h"
+#import "NNEngine.h"
 
 using namespace nn;
 
-namespace {
-
-NSString *const kListScript =
-    @"(async () => {"
-     "  const { sendWithPromise } = await import('chrome://resources/js/cr.js');"
-     "  const { loadTimeData } = await import('chrome://resources/js/load_time_data.js');"
-     "  const categorized = loadTimeData.valueExists('searchSettingsUpdate') && loadTimeData.getBoolean('searchSettingsUpdate');"
-     "  return { list: await sendWithPromise(categorized ? 'getCategorizedTemplateUrls' : 'getSearchEnginesList') };"
-     "})()";
-
-}
-
 @implementation NNExtensions (SearchEngines)
 
+// Chrome's search engines (//chrome/browser/netnyahoo/nn_search_engines.h), as {list: {engines: [...]}}: the
+// JS reads the extension-provided ones from every group of `list`.
 + (void)searchEngineListForProfile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
-  pages::WebUIEval(profile, @"chrome://settings/", kListScript, ^(id value, NSString *error) {
-    if (error) return completion(@{@"error" : error});
-    completion([value isKindOfClass:NSDictionary.class] ? value : @{@"list" : @{}});
+  engine::Call("nn_search_engines_list", profile, nil, ^(NSDictionary *result) {
+    if (result[@"error"]) return completion(result);
+    completion(@{@"list" : @{@"engines" : result[@"engines"] ?: @[]}});
   });
 }
 

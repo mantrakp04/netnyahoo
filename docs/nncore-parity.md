@@ -230,3 +230,26 @@ a mojo interface (`engine/nncore/src/netnyahoo/core/mojom`):
 | "nn-eval" → strict `function(post)` wrapper, first `post("result")` answers | `evaluate:completion:` | `WebViewHandle.evaluate` |
 | `ExecuteJavaScript` | `executeJavaScript:` and `executeJavaScript:frame:` | `history.go` (now `goToOffset:`), `WebViewHandle.executeJavaScript`, the blocked-popup replay and PiP exit in one frame, DevTools' showPanel (untested) |
 | `IsAppURL` in `OnBeforeBrowse` / `OnBeforePopup` / `OnOpenURLFromTab` | A navigation throttle plus the popup and open-URL paths: web pages' `netnyahoo:` navigations are dropped; a Chrome page's become `tab:didRequestAppURL:userGesture:` → `onOpenWindow` `current` | The app's own pages linked from chrome:// pages |
+
+## Engine C exports (`//chrome/browser/netnyahoo`, shared by both engines)
+
+Plain Chromium code over Chrome's services (`engine/chromium/src/chrome/browser/netnyahoo`, rules in its
+`public/nn_engine.h`), linked into CEF's framework and into NNCore's (`chromium-netnyahoo-layer.patch` adds it to
+`//chrome:chrome_dll` and exports `_nn_*`). The CEF app calls them through `nn::engine::Call`
+(`packages/cef/ios/NNEngine.mm`, `dlsym` on the framework); NNCore's module does the same on `Chromium Framework`, so
+each row below is the native half of the JS functions in its last column. "NNCore" says whether `packages/nncore`
+calls it yet.
+
+| Export | JS functions (`packages/cef`) | NNCore |
+|---|---|---|
+| `nn_engine_abi_version`, `nn_engine_set_event_sink` | (events: `reauth.requested`, `passwords.export`, `zoom.changed`) | done (`engineCall`, `onEngineEvent`) |
+| `nn_passwords_list`, `_unlock`, `_reveal`, `_add`, `_update`, `_remove`, `_exceptions`, `_allow` | `listPasswords`, `unlockPasswords`, `getPassword`, `savePassword`, `updatePassword`, `deletePassword`, `getNeverSavePasswordOrigins`, `allowSavingPasswords` | missing |
+| `nn_passwords_export` | `exportPasswords` (native only; no JS caller yet) | missing |
+| `nn_autofill_addresses`, `_save_address`, `_cards`, `_save_card`, `_remove`, `_card_number` | `listAddresses`, `saveAddress`, `listCards`, `saveCard`, `deleteAutofillEntry`, `revealCardNumber` | missing |
+| `nn_extensions_list`, `_install`, `_set_enabled`, `_uninstall`, `_reload`, `_configure` | `NetnyahooExtensions.list`, `install`, `setEnabled`, `uninstall`, `reload`, `configure` | missing |
+| `nn_search_engines_list` | `NetnyahooExtensions.searchEngineList` | missing |
+| `nn_zoom_list`, `nn_zoom_set` | `getZoomLevels`, `setZoom` (a site with no open tab) | missing |
+| `nn_browsing_data_clear` | `deleteProfileData` of the default profile (form data, site settings) | missing |
+
+`NetnyahooExtensions.evaluateInHost` and `evaluateInPage` are gone from `packages/cef` (they scripted the hidden
+chrome:// pages, and nothing in the JS called them), and from `packages/nncore`.

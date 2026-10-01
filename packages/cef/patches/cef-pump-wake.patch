@@ -1,7 +1,7 @@
 diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
 --- a/include/cef_netnyahoo.h
 +++ b/include/cef_netnyahoo.h
-@@ -144,4 +144,10 @@
+@@ -139,4 +139,10 @@
  // noreferrer, and "nn_no_referrer" when it sent no referrer.
  #define CEF_NN_POPUP_OPENER_SUPPRESSED 1
  

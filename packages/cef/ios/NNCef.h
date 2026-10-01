@@ -105,7 +105,8 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
 
 @interface NNZoom : NSObject
 + (void)setZoom:(double)zoom profile:(NSString *)profile host:(NSString *)host NS_SWIFT_NAME(setZoom(_:profile:host:));
-+ (NSDictionary<NSString *, NSNumber *> *)zoomLevelsForProfile:(NSString *)profile NS_SWIFT_NAME(zoomLevels(profile:));
++ (void)zoomLevelsForProfile:(NSString *)profile completion:(void (^)(NSDictionary<NSString *, NSNumber *> *levels))completion
+    NS_SWIFT_NAME(zoomLevels(profile:completion:));
 + (NSArray<NSNumber *> *)devScroll:(NSArray<NSDictionary<NSString *, id> *> *)steps NS_SWIFT_NAME(devScroll(_:));
 @end
 
@@ -131,6 +132,10 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
     NS_SWIFT_NAME(neverSaveOrigins(profile:completion:));
 + (void)allowSavingForProfile:(NSString *)profile origin:(NSString *)origin completion:(NNResultCompletion)completion
     NS_SWIFT_NAME(allowSaving(profile:origin:completion:));
+// Chrome's export: a reauth every time, then the CSV at `path`. {status: succeeded | cancelled | writeFailed |
+// reauthFailed | inProgress}.
++ (void)exportForProfile:(NSString *)profile path:(NSString *)path completion:(NNResultCompletion)completion
+    NS_SWIFT_NAME(export(profile:path:completion:));
 @end
 
 // //chrome/browser/netnyahoo's calls over Chrome's stores (NNEngineBridge.mm): JSON in, JSON out.
@@ -165,6 +170,9 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
     NS_SWIFT_NAME(deleteEntry(_:profile:completion:));
 + (void)revealCardNumber:(NSString *)cardId profile:(NSString *)profile completion:(NNResultCompletion)completion
     NS_SWIFT_NAME(revealCardNumber(_:profile:completion:));
+// Autofill and autocomplete entries and every site's settings, as Chrome's Delete Browsing Data dialog deletes them.
++ (void)clearFormDataAndSiteSettingsForProfile:(NSString *)profile completion:(NNResultCompletion)completion
+    NS_SWIFT_NAME(clearFormDataAndSiteSettings(profile:completion:));
 @end
 
 @class NNBrowserView;

@@ -16,8 +16,6 @@ Pod::Spec.new do |s|
   s.source         = { git: '' }
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
-  # Touch ID before revealing a saved card number (NNAutofill).
-  s.frameworks     = 'LocalAuthentication'
   s.source_files   = '*.{h,mm,swift}'
   s.public_header_files = 'NNCef.h', 'NNExtensions.h', 'NNSwipe.h', 'NNChromeSurfaces.h'
   s.pod_target_xcconfig = {

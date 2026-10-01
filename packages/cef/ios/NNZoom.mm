@@ -1,7 +1,7 @@
 #import "NNZoom.h"
 
-#import "NNChromePages.h"
 #import "NNClient.h"
+#import "NNEngine.h"
 
 #import <IOKit/IOKitLib.h>
 #import <dlfcn.h>
@@ -9,8 +9,6 @@
 using namespace nn;
 
 namespace {
-
-NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, NSNumber *> *> *gPending;
 
 void EmitAll(NSString *profile, NSString *host) {
   for (NNBrowserView *view in LiveViews()) {
@@ -73,16 +71,7 @@ void Changed(NSString *profile, NSString *host) {
   dispatch_async(dispatch_get_main_queue(), ^{ EmitAll(profile, host); });
 }
 
-void Committed(Client *client) {
-  NSString *host = HostOf(client->URL());
-  NSNumber *factor = gPending[client->Profile()][host];
-  if (factor && client->Browser()) {
-    [gPending[client->Profile()] removeObjectForKey:host];
-    client->Browser()->GetHost()->SetZoomLevel(fabs(factor.doubleValue - 1) < 0.001 ? 0 : LevelForFactor(factor.doubleValue));
-    Changed(client->Profile(), host);
-  }
-  client->EmitZoom();
-}
+void Committed(Client *client) { client->EmitZoom(); }
 
 void InstallScrollMonitor() {
   static id monitor, touchMonitor;
@@ -133,24 +122,17 @@ void InstallScrollMonitor() {
 
 @implementation NNZoom
 
-+ (NSDictionary<NSString *, NSNumber *> *)zoomLevelsForProfile:(NSString *)profile {
-  NSMutableDictionary *levels = [NSMutableDictionary dictionary];
-  CefRefPtr<CefValue> pref = ContextForProfile(profile)->GetPreference("partition.per_host_zoom_levels");
-  CefRefPtr<CefDictionaryValue> partitions = pref && pref->GetType() == VTYPE_DICTIONARY ? pref->GetDictionary() : nullptr;
-  CefDictionaryValue::KeyList partitionKeys;
-  if (partitions) partitions->GetKeys(partitionKeys);
-  for (const CefString &partition : partitionKeys) {
-    CefRefPtr<CefDictionaryValue> hosts = partitions->GetDictionary(partition);
-    CefDictionaryValue::KeyList hostKeys;
-    if (hosts) hosts->GetKeys(hostKeys);
-    for (const CefString &host : hostKeys) {
-      CefRefPtr<CefValue> entry = hosts->GetValue(host);
-      double level = entry->GetType() == VTYPE_DICTIONARY ? entry->GetDictionary()->GetDouble("zoom_level") : entry->GetDouble();
-      if (fabs(level) > 0.001) levels[ToNS(host)] = @(round(zoom::FactorForLevel(level) * 100) / 100);
-    }
-  }
-  for (NSString *host in gPending[profile]) levels[host] = gPending[profile][host];
-  return levels;
+// Chrome's per-site zoom (//chrome/browser/netnyahoo/nn_zoom.h): {host: factor} for every site not at 100%.
++ (void)zoomLevelsForProfile:(NSString *)profile completion:(void (^)(NSDictionary<NSString *, NSNumber *> *))completion {
+  // A private window's zoom levels are its own and go with it; Chrome keeps none for it on disk.
+  if (IsIncognito(profile)) return completion(@{});
+  engine::Call("nn_zoom_list", profile, nil, ^(NSDictionary *result) {
+    NSMutableDictionary *levels = [NSMutableDictionary dictionary];
+    NSDictionary *hosts = [result[@"levels"] isKindOfClass:NSDictionary.class] ? result[@"levels"] : @{};
+    for (NSString *host in hosts)
+      levels[host] = @(round(zoom::FactorForLevel([hosts[host] doubleValue]) * 100) / 100);
+    completion(levels);
+  });
 }
 
 + (void)setZoom:(double)zoom profile:(NSString *)profile host:(NSString *)host {
@@ -163,15 +145,13 @@ void InstallScrollMonitor() {
       return;
     }
   }
-  if (!gPending) gPending = [NSMutableDictionary dictionary];
-  if (fabs(zoom - 1) < 0.001) {
-    [gPending[profile] removeObjectForKey:host];
-    pages::WebUIEval(profile, @"chrome://settings/", pages::Script(@"(chrome.send('removeZoomLevel', [%@]), true)", @[ host ]),
-                     ^(id, NSString *) {});
-    return;
-  }
-  if (!gPending[profile]) gPending[profile] = [NSMutableDictionary dictionary];
-  gPending[profile][host] = @(zoom);
+  // Chrome zooms by host: the level applies to the site's tabs as they open.
+  if (IsIncognito(profile)) return;
+  double level = fabs(zoom - 1) < 0.001 ? 0 : zoom::LevelForFactor(zoom);
+  engine::Call("nn_zoom_set", profile, @{@"host" : host, @"level" : @(level)}, ^(NSDictionary *result) {
+    if (result[@"error"]) NSLog(@"[zoom] %@: %@", host, result[@"error"]);
+    zoom::Changed(profile, host);
+  });
 }
 
 // DEV: sends ⌘-scroll events over the middle of the visible page through the app's event dispatch.

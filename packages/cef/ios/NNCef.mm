@@ -1,8 +1,8 @@
 #import "NNCefInternal.h"
 
-#import "NNChromePages.h"
 #import "NNChromeUI.h"
 #import "NNContentBlocker.h"
+#import "NNExtensionPage.h"
 #import "NNExtensionsInternal.h"
 #import "NNNativeMessaging.h"
 #import "NNPopupWindow.h"
@@ -829,7 +829,7 @@ NSView *ParkingView() {
   if (!gStarted) return;
   gStarted = NO;
   gShuttingDown = true;
-  pages::CloseAll();
+  extpage::CloseAll();
   host::CloseAll();
 // Close Chrome browsers before CefShutdown or profile teardown crashes.
   for (int bid : std::set<int>(gLiveBrowsers)) {

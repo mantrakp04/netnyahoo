@@ -2,9 +2,9 @@ diff --git a/include/cef_netnyahoo.h b/include/cef_netnyahoo.h
 index db46768..a44fe57 100644
 --- a/include/cef_netnyahoo.h
 +++ b/include/cef_netnyahoo.h
-@@ -121,4 +121,30 @@
- // first), enabled or not. Everywhere else Chrome's rules are unchanged.
- #define CEF_NN_QUIET_UNINSTALL 1
+@@ -116,4 +116,30 @@
+ // frame's own browser, not its Chrome window's active tab.
+ #define CEF_NN_MEDIA_REQUEST_SOURCE 1
  
 +// A navigation Chrome asks to open in a new tab or window
 +// (CefRequestHandler::OnOpenURLFromTab with NEW_FOREGROUND_TAB,

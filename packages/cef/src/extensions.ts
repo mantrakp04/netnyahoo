@@ -104,8 +104,6 @@ type NativeExtensions = {
   reload(id: string, profile: string): Promise<Result<{ ok: true }>>;
   configure(id: string, profile: string, options: Record<string, unknown>): Promise<Result<{ ok: true }>>;
   searchEngineList(profile: string): Promise<Result<{ list: unknown }>>;
-  evaluateInHost(expression: string, profile: string): Promise<unknown>;
-  evaluateInPage(expression: string, profile: string, page: string): Promise<unknown>;
   chooseFolder(): Promise<string | null>;
 };
 

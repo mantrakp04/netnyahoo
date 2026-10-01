@@ -13,34 +13,40 @@ What the build adds:
 - **ungoogled-chromium** 154.0.8037.57-1. Its patch series and domain substitution strip Google
   background services; see [ungoogled-chromium](#ungoogled-chromium). The Chrome Web Store and
   extension auto-updates are deliberately kept working.
-- **Our patches**, in `packages/cef/patches/`:
+- **Our patches**, in `packages/cef/patches/`, applied in the order `packages/cef/patches/series` gives (see
+  [The patch series](#the-patch-series)):
 
 | Patch | What it does |
 |---|---|
 | `cef-tab-capture.patch` | Tab capture: `CefGetMediaCaptureSourceId()`, with a tab's audio for desktop audio |
 | `cef-chrome-tabs.patch` | The Chrome-style hosting API and hooks below, plus `include/cef_netnyahoo.h` |
-| `cef-tab-state.patch` (after `cef-chrome-tabs.patch`) | Tab history for reopened and duplicated tabs, Chrome's tab discarding, Chrome's BrowsingDataRemover (below) |
-| `cef-ui-surfaces.patch` (after `cef-tab-state.patch`: its `cef_netnyahoo.h` hunk follows that patch's markers) | `include/cef_chrome_ui.h`: Chrome's device choosers, Cast dialog and extension side panels handed to the client, toolbar action state, "Share this tab instead" and Stop Sharing; `CefMediaRoute::IsLocal` / `GetDescription` (below) |
-| `cef-ui-triggers.patch` (after `cef-ui-surfaces.patch`) | `CefShowAutofillSuggestions`: Chrome's autofill dropdown at the tab's focused form field (below) |
-| `cef-zidle-pump.patch` | The external message pump runs Chromium's idle work whenever no task is due now. Stock CEF waited for no delayed tasks either, which never happens in a browser, so next-idle callbacks never ran and autofill popups (saved logins, passkeys, addresses) ignored clicks and Enter |
-| `cef-zwindow-client.patch` (after `cef-zidle-pump.patch`) | `CefBrowserSettings.client_window` and `CefBrowserView::CreateTab`: Chrome's Browser window is the app's visible window (below) |
-| `cef-zwindow-keys.patch` (after `cef-zwindow-client.patch`) | In a `client_window`, Chrome's key equivalents wait for the client's first responder and menus: its dispatcher no longer runs reserved commands (new/close tab or window, tab switching) before them. Chrome's shortcuts still run after them, through `CefCommandHandler::OnChromeCommand` |
-| `cef-zwindow-translucent.patch` (after `cef-zwindow-keys.patch`) | `CefWindowDelegate::IsTranslucent`: the window's widget is `kTranslucent` (a non-opaque `NSWindow`, compositor cleared to the window view's background, transparent if that is). A Chrome-hosted window swaps out without a frame of its own drawing (`CEF_NN_TRANSLUCENT_WINDOW`) |
-| `cef-zwindow-z-devtools.patch` (after `cef-zwindow-translucent.patch`) | Docked DevTools in client windows: `CefBrowserHost::GetDockedDevTools` and `CefDisplayHandler::OnDevToolsDockChanged` (below). The client shows DevTools' contents next to the page, as it shows the page |
-| `cef-zwindow-zz-devtools-toolbox.patch` (after `cef-zwindow-z-devtools.patch`) | Device mode's toolbox (`device_mode_emulation_frame.html`, the device toolbar and rulers shown in the tab while DevTools are undocked) may open from DevTools that have no CEF browser of their own (docked, or not yet in their window). Stock CEF cancelled that `window.open`, so undocked DevTools lost device mode and the page its emulated viewport |
-| `cef-zz-media-router-shutdown.patch` | A context that outlives its Profile (the global one, until CEF shuts down) drops its media router objects when the Profile goes, while the Profile's MediaRouter still exists. Stock CEF dropped them only with the context, after the router was gone, so an app that had used `CefMediaRouter` on the default profile failed a `MediaRoutesObserver` check on every quit |
-| `cef-zz-media-source.patch` (after `cef-zz-media-router-shutdown.patch`) | `CefGetMediaAccessDesktopSource`: the desktop source a media access request would capture, so the app can hold a screen-sharing approval to the source the user picked (`CEF_NN_MEDIA_REQUEST_SOURCE`). `OnRequestMediaAccessPermission` goes to the requesting frame's own browser; Chrome's window delegate used to pass its active tab |
-| `cef-zz-quiet-uninstall.patch` (after `cef-zz-media-source.patch`) | The `CEF_NN_QUIET_UNINSTALL` marker for `chromium-zz-extensions-page-uninstall.patch` |
-| `cef-zzz-open-url-params.patch` | `CEF_NN_OPEN_URL_PARAMS` (a new tab or window's full navigation) and `CEF_NN_POPUP_OPENER_SUPPRESSED` |
-| `cef-zzz-pump-wake.patch` (last) | The external message pump asks for its next call itself (`CEF_NN_PUMP_SCHEDULE`): at once when its 10 ms slice ends with work left, else when the next delayed task is due. Stock CEF dropped both, so delayed tasks ran only at the client's poll (30 Hz, idle or not), leftover work waited up to 33 ms, and it spun in `Run` while a delayed task was due within the slice. `NNCef.mm` keeps a 1 s safety poll with it. Idle browser-process wakeups went from ~42/s to ~15/s |
+| `cef-tab-state.patch` | Tab history for reopened and duplicated tabs, Chrome's tab discarding, Chrome's BrowsingDataRemover (below) |
+| `cef-ui-surfaces.patch` | `include/cef_chrome_ui.h`: Chrome's device choosers, Cast dialog and extension side panels handed to the client, toolbar action state, "Share this tab instead" and Stop Sharing; `CefMediaRoute::IsLocal` / `GetDescription` (below) |
+| `cef-ui-triggers.patch` | `CefShowAutofillSuggestions`: Chrome's autofill dropdown at the tab's focused form field (below) |
+| `cef-idle-pump.patch` | The external message pump runs Chromium's idle work whenever no task is due now. Stock CEF waited for no delayed tasks either, which never happens in a browser, so next-idle callbacks never ran and autofill popups (saved logins, passkeys, addresses) ignored clicks and Enter |
+| `cef-window-client.patch` | `CefBrowserSettings.client_window` and `CefBrowserView::CreateTab`: Chrome's Browser window is the app's visible window (below) |
+| `cef-window-keys.patch` | In a `client_window`, Chrome's key equivalents wait for the client's first responder and menus: its dispatcher no longer runs reserved commands (new/close tab or window, tab switching) before them. Chrome's shortcuts still run after them, through `CefCommandHandler::OnChromeCommand` |
+| `cef-window-translucent.patch` | `CefWindowDelegate::IsTranslucent`: the window's widget is `kTranslucent` (a non-opaque `NSWindow`, compositor cleared to the window view's background, transparent if that is). A Chrome-hosted window swaps out without a frame of its own drawing (`CEF_NN_TRANSLUCENT_WINDOW`) |
+| `cef-window-devtools.patch` | Docked DevTools in client windows: `CefBrowserHost::GetDockedDevTools` and `CefDisplayHandler::OnDevToolsDockChanged` (below). The client shows DevTools' contents next to the page, as it shows the page |
+| `cef-devtools-toolbox.patch` | Device mode's toolbox (`device_mode_emulation_frame.html`, the device toolbar and rulers shown in the tab while DevTools are undocked) may open from DevTools that have no CEF browser of their own (docked, or not yet in their window). Stock CEF cancelled that `window.open`, so undocked DevTools lost device mode and the page its emulated viewport |
+| `cef-media-router-shutdown.patch` | A context that outlives its Profile (the global one, until CEF shuts down) drops its media router objects when the Profile goes, while the Profile's MediaRouter still exists. Stock CEF dropped them only with the context, after the router was gone, so an app that had used `CefMediaRouter` on the default profile failed a `MediaRoutesObserver` check on every quit |
+| `cef-media-source.patch` | `CefGetMediaAccessDesktopSource`: the desktop source a media access request would capture, so the app can hold a screen-sharing approval to the source the user picked (`CEF_NN_MEDIA_REQUEST_SOURCE`). `OnRequestMediaAccessPermission` goes to the requesting frame's own browser; Chrome's window delegate used to pass its active tab |
+| `cef-open-url-params.patch` | `CEF_NN_OPEN_URL_PARAMS` (a new tab or window's full navigation) and `CEF_NN_POPUP_OPENER_SUPPRESSED` |
+| `cef-netnyahoo-layer.patch` | CEF's `libcef_static` links `//chrome/browser/netnyahoo` ([our own code](#our-own-code-in-the-tree-chromebrowsernetnyahoo)) |
+| `cef-pump-wake.patch` | The external message pump asks for its next call itself (`CEF_NN_PUMP_SCHEDULE`): at once when its 10 ms slice ends with work left, else when the next delayed task is due. Stock CEF dropped both, so delayed tasks ran only at the client's poll (30 Hz, idle or not), leftover work waited up to 33 ms, and it spun in `Run` while a delayed task was due within the slice. `NNCef.mm` keeps a 1 s safety poll with it. Idle browser-process wakeups went from ~42/s to ~15/s |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs (we host each tab's view in our own views) |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the Browser window to the app: Chrome only tracks the state, and the app shows the page full screen itself (`CefDisplayHandler::OnFullscreenModeChange`) |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
 | `chromium-extension-window-hidden.patch` | `hidden_from_extensions` windows are invisible to chrome.windows/tabs |
 | `chromium-password-bubble-hook.patch` | The client may replace Chrome's password bubble |
 | `chromium-extension-install-prompt-hook.patch` | The client may replace Chrome's extension install dialog |
-| `chromium-passkeys.patch` | Netnyahoo bundle/team id branding, iCloud Keychain window fallback, "Netnyahoo Safe Storage" |
-| `chromium-chrome-ui-hooks.patch` | `chrome::ShowDeviceChooserDialog`, the Media Router's Cast dialog (and Presentation API requests) and `side_panel_util` ask the client first; extension pages in hidden windows take the last active window as their current window |
+| `chromium-branding.patch` | Netnyahoo's bundle and team id (`branding_file_path`), for the passkey and payments keychain access groups; product names stay "Chromium" |
+| `chromium-icloud-keychain-window.patch` | iCloud Keychain's passkey sheet attaches to the tab's own window when it isn't a `views::Widget` |
+| `chromium-safe-storage-name.patch` | The Safe Storage key lives in its own "Netnyahoo Safe Storage" keychain item (`CEF_NN_SAFE_STORAGE`) |
+| `chromium-device-chooser-hook.patch` | `chrome::ShowDeviceChooserDialog` asks the client first (`CEF_NN_CHROME_UI`) |
+| `chromium-cast-dialog-hook.patch` | The Media Router's Cast dialog (and Presentation API requests) asks the client first |
+| `chromium-side-panel-hook.patch` | `side_panel_util` asks the client first for an extension's side panel |
+| `chromium-hidden-window-current-window.patch` | Extension pages in hidden windows (our popups and side panels) take the last active window as their current window |
 | `chromium-extension-updates.patch` | Undoes ungoogled's early `return` in `UpdateCheckerImpl::CheckForUpdates`, which left every update check pending: Web Store extensions never updated |
 | `chromium-window-docked-devtools.patch` | DevTools may dock in a CEF client's own window (`BrowserDelegate::AllowsDockedDevTools`), and `DevtoolsUIController::UpdateDevtools` tells the CEF delegate of every change to a natively hosted tab's docked DevTools. `NativeHostedContents::Unmark` for DevTools that undock |
 | `chromium-devtools-redock-display.patch` | A `RenderWidgetHostViewMac` that a `views::WebView` gives up (`SetParentUiLayer(nullptr)`) draws into its own NSView again. Chrome switched it to the Views compositor for good the first time it was attached, so DevTools docked back from their own window stayed blank in the client's view |
@@ -49,23 +55,20 @@ What the build adds:
 | `chromium-neterror-yahu.patch` | "Where's Big Yahu?" replaces the dino: the offline page and chrome://yahu (below) |
 | `chromium-autofill-card-touchbar.patch` | `WebTextfieldTouchBarController` gets no touch bar for a Browser window without a `BrowserNativeWidget` (CEF's views-hosted windows): showing the card autofill dropdown crashed the app there, on any secure page with a saved card |
 | `chromium-password-generation-local.patch` | Chrome offers "Suggest strong password" without password sync (`PasswordFeatureManagerImpl::IsGenerationEnabled`); generated passwords save to the profile's local store like any other. With no account, its popup says "Passwords are saved to Password Manager on this device." instead of "…saved to Google Password Manager for ." |
-| `chromium-zz-extensions-page-uninstall.patch` | `chrome.management.uninstall(id, { showConfirmDialog: false })` from chrome://extensions itself (a WebUI frame at that URL, no extension) uninstalls without Chrome's dialog, enabled or disabled. Stock Chrome forces the dialog for anything but an extension removing itself, and the dialog never shows from the app's hidden extensions page, so the app had to enable an extension to have it remove itself. Chrome's own page always asks for the dialog; extensions and web pages (the Web Store included) keep Chrome's rules |
-| `chromium-zz-extension-installed-bubble.patch` | Chrome's "<extension> has been added" bubble (`ShowInfoDialog`): a window without Chrome's toolbar (every client window) gets it as a bubble under the top-right corner of the window, with a close button, closing on Esc and when the window is clicked. Chrome fell back to a browser-modal sheet there, with no buttons and no way to dismiss it. The app renames "Chromium" in Chrome's strings itself (`NNCef.mm`, `CefResourceBundleHandler`) |
-| `chromium-zz-pip-close-keeps-playing.patch` | The video Picture in Picture window's close button (and the window going away any other way) closes it without pausing the video, which keeps playing in its tab, as in Dia and Arc. Chrome paused it whenever the window had a play/pause button (`VideoOverlayWindowViews::CloseAndPauseIfAvailable`, `OnNativeWidgetDestroyed`). Back to tab and the page's own `exitPictureInPicture()` never paused |
-| `chromium-zz-pip-dia-controls.patch` | Dia's video Picture in Picture window (measured in `docs/dia-spec.md` › Picture in Picture) on Chrome's `VideoOverlayWindowViews`: nothing but the video at rest (the origin shows only with the controls); on hover a 35 % black scrim, back to tab (top left) and close (top right) as 28 pt rounded squares with 1 pt line glyphs, the origin centred in 13 pt, a bare play/pause glyph and a 5 pt progress bar that seeks; no skip, time, mute, captions or minimize controls (the keyboard shortcuts stay). Controls fade in 200 ms ease-in-out. The window shows at once and fades out in Core Animation (100 ms from the close button, 70 ms otherwise, smooth while the tab is being shown), and a new window opens where the last one was left, sized to the new video and kept on screen (`NetnyahooPictureInPicture.plist` in the user data dir) |
+| `chromium-extension-installed-bubble.patch` | Chrome's "<extension> has been added" bubble (`ShowInfoDialog`): a window without Chrome's toolbar (every client window) gets it as a bubble under the top-right corner of the window, with a close button, closing on Esc and when the window is clicked. Chrome fell back to a browser-modal sheet there, with no buttons and no way to dismiss it. The app renames "Chromium" in Chrome's strings itself (`NNCef.mm`, `CefResourceBundleHandler`) |
+| `chromium-netnyahoo-layer.patch` | The macOS `//chrome:chrome_dll` (NNCore's framework) links `//chrome/browser/netnyahoo` and exports its `nn_*` calls |
+| `chromium-pip-close-keeps-playing.patch` | The video Picture in Picture window's close button (and the window going away any other way) closes it without pausing the video, which keeps playing in its tab, as in Dia and Arc. Chrome paused it whenever the window had a play/pause button (`VideoOverlayWindowViews::CloseAndPauseIfAvailable`, `OnNativeWidgetDestroyed`). Back to tab and the page's own `exitPictureInPicture()` never paused |
+| `chromium-pip-overlay-window.patch` | Chrome makes our `NetnyahooVideoOverlayWindow` (`chrome/browser/netnyahoo/pip/`, a `VideoOverlayWindowViews` subclass with its own buttons, progress bar, fade and bounds memory; the hook makes six methods virtual): Dia's video Picture in Picture window (measured in `docs/dia-spec.md` › Picture in Picture): nothing but the video at rest (the origin shows only with the controls); on hover a 35 % black scrim, back to tab (top left) and close (top right) as 28 pt rounded squares with 1 pt line glyphs, the origin centred in 13 pt, a bare play/pause glyph and a 5 pt progress bar that seeks; no skip, time, mute, captions or minimize controls (the keyboard shortcuts stay). Controls fade in 200 ms ease-in-out. The window shows at once and fades out in Core Animation (100 ms from the close button, 70 ms otherwise, smooth while the tab is being shown), and a new window opens where the last one was left, sized to the new video and kept on screen (`NetnyahooPictureInPicture.plist` in the user data dir) |
 
 Removed in 0.2.0, with the hidden "ghost" Browser windows they served (every app window is now Chrome's own,
 `docs/research/chrome-hosted-window.md`): `chromium-context-menu-hosted.patch` (the context menu's widget lookup
 fell back to the tab's Browser window; a tab's view is now always in a Chrome window, so the stock lookup finds
 it).
 
-The Chromium patches are made against the fully patched tree (CEF + ungoogled + domain
-substitution). Step 2 applies the `cef-*.patch` files in name order, which is the order they were
-made in: `cef-chrome-tabs`, `cef-tab-capture`, `cef-tab-state`, `cef-ui-surfaces`, `cef-ui-triggers`,
-`cef-zidle-pump`, `cef-zwindow-client`, `cef-zwindow-keys`, `cef-zwindow-translucent`, `cef-zwindow-z-devtools`, `cef-zwindow-zz-devtools-toolbox`, `cef-zz-media-router-shutdown`, `cef-zz-media-source`, `cef-zz-quiet-uninstall` (checked on a clean worktree of the CEF checkout on 2026-09-25: the
-first four reproduce the built tree exactly; `cef-ui-triggers` reverse-applies cleanly to it;
-`cef-zwindow-client` and `chromium-window-hosted` were made as diffs of their files against the fully patched
-tree). A new patch needs a name that sorts last.
+Removed after 0.2.19 with the hidden chrome:// pages they served (their callers now use
+[our own code](#our-own-code-in-the-tree-chromebrowsernetnyahoo)): `chromium-zz-extensions-page-uninstall.patch`
+(chrome://extensions could uninstall without Chrome's dialog) and its marker, `cef-zz-quiet-uninstall.patch`
+(`CEF_NN_QUIET_UNINSTALL`).
 
 ## Using it
 
@@ -227,10 +230,6 @@ Each marker in `cef_netnyahoo.h` covers these APIs:
     `-accessibilityChildren` / `-accessibilityHitTest:`. The page must stay under the content view:
     `RenderWidgetHostViewCocoa -shouldIgnoreMouseEvent:` hit-tests from it, and the occlusion checker only walks it.
 
-- **`CEF_NN_QUIET_UNINSTALL`**
-  - No API. chrome://extensions may call `chrome.management.uninstall(id, { showConfirmDialog: false })`: the extension is
-    removed without Chrome's dialog and without being enabled first. The client confirms with the user before it asks.
-
 - **`CEF_NN_OPEN_URL_PARAMS`** (outside the translated API: plain C exports, looked up with `dlsym` on the framework,
   so no API hash change)
   - `CefBrowserContentsDelegate::OpenURLFromTabEx` keeps the `content::OpenURLParams` of every NEW_FOREGROUND_TAB,
@@ -340,6 +339,38 @@ build and NNCore link the same code and the app calls it the same way under both
   framework (`packages/cef/ios/NNEngine.mm`). A missing export aborts: the app bundles an engine it wasn't built
   for. Add each new call to `docs/nncore-parity.md`.
 
+## The patch series
+
+`packages/cef/patches/series` is the one place that says what goes into the tree and in what order: `cef <patch>`
+lines (CEF's own tree, step 2), then `chromium <patch>` lines (after ungoogled-chromium and domain substitution,
+step 4), then `layer <dir>` lines (our own files, `<dir>/apply.sh`). Each patch is made against the tree as every
+line above it leaves it, and covers one concern, named for it. A new patch goes where it belongs in the file; names
+no longer carry the order.
+
+`packages/cef/patches/series.py` does everything with it:
+
+- `apply [--phase cef|chromium]`: applies the series to the tree, skipping what is applied (steps 2 and 4 run it,
+  through `02-cef-patch-and-gen.sh` and `apply-chromium-patches.sh`).
+- `capture-base`: records every file the series touches as it is before the series (the base). Steps 2 and 4 run it
+  just before they apply their phase, so a fresh or rebased checkout records its own; `01-sync.sh` clears the old
+  one. It lives in `~/chromium-build/series-base` (`NN_SERIES_BASE`).
+- `check`: copies the base to a scratch directory, applies the whole series there strictly (`git apply`: exact
+  context, no fuzz; each layer's `apply.sh` with `CHROMIUM_SRC` pointed at the scratch copy) and compares every
+  touched file with the tree, byte for byte. Exit 0 means the series reproduces the engine we build; otherwise it
+  lists each step that no longer applies and each file the series doesn't reproduce (an edit made in the tree but
+  not in a patch, or the reverse), and keeps the scratch copy for `diff -u`. It writes nothing else and needs no
+  lock.
+- `materialize --until <patch> <dir>`: the touched files as the series leaves them after one line. To remake a
+  patch, materialize the line above it, edit a copy, and diff.
+- `files`: what each line touches.
+
+Run `check` after any patch change, before committing it. For a nightly run on this machine (a local launchd job;
+nothing remote is set up), point a LaunchAgent at it, for example `~/Library/LaunchAgents/com.netnyahoo.series-check.plist`
+with `ProgramArguments` `/usr/bin/python3`, `<repo>/packages/cef/patches/series.py`, `check`, a
+`StartCalendarInterval` of 03:00 and `StandardOutPath` `~/chromium-build/logs/series-check.log`. A CI machine
+needs only the repo plus a copy of the base and the tree's touched files: `CHROMIUM_SRC` and `NN_SERIES_BASE` say
+where they are.
+
 ## Rebuilding
 
 Everything lives outside the repo in `~/chromium-build`, which carries `.metadata_never_index`.
@@ -348,9 +379,9 @@ The step scripts are copied in `packages/cef/patches/build/`, and each expects `
 | Step | Script | Time (M5 Pro, shared machine) |
 |---|---|---|
 | 1. Sync CEF 8037 + Chromium 154.0.8037.58 without history (depot_tools, gclient hooks) | `01-sync.sh` | ~40 min, 30 GB |
-| 2. Our CEF/Chromium patches, CEF's patches, translator, `gn gen` | `02-cef-patch-and-gen.sh` | 2 min |
+| 2. The `cef` lines of our series, CEF's patches, translator, `gn gen` | `02-cef-patch-and-gen.sh` | 2 min |
 | 3. ungoogled-chromium series, with the exceptions below | `03-ungoogled.py` | 2 min |
-| 4. Domain substitution, minus the store files (`domsub-keep-store.txt`), then our Chromium patches | `04-domain-substitution.sh` | 5 min |
+| 4. Domain substitution, minus the store files (`domsub-keep-store.txt`), then the rest of our series (`chromium` and `layer` lines) | `04-domain-substitution.sh` | 5 min |
 | 5. Regenerate the offline page (`yahu-resource.sh`), compile `cefclient cefsimple` (make_distrib takes the framework from cefclient.app) | `05-build.sh` | first build 2 h 8 min; incremental 20 s–2 min |
 | 6. Minimal binary distribution (Release, no docs or symbols) | `06-distrib.sh` | 1 min |
 

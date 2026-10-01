@@ -24,8 +24,8 @@
     !defined(CEF_NN_CLIENT_WINDOW) || !defined(CEF_NN_TRANSLUCENT_WINDOW) || !defined(CEF_NN_DOCKED_DEVTOOLS) || \
     !defined(CEF_NN_POPUP_TABS) || !defined(CEF_NN_TAB_CAPTURE) || !defined(CEF_NN_CHROME_UI) || \
     !defined(CEF_NN_CAPTURE_STOP) || !defined(CEF_NN_AUTOFILL_TRIGGER) || !defined(CEF_NN_MEDIA_REQUEST_SOURCE) || \
-    !defined(CEF_NN_QUIET_UNINSTALL) || !defined(CEF_NN_OPEN_URL_PARAMS) || \
-    !defined(CEF_NN_POPUP_OPENER_SUPPRESSED) || !defined(CEF_NN_PUMP_SCHEDULE) || !defined(CEF_NN_SAFE_STORAGE)
+    !defined(CEF_NN_OPEN_URL_PARAMS) || !defined(CEF_NN_POPUP_OPENER_SUPPRESSED) || !defined(CEF_NN_PUMP_SCHEDULE) || \
+    !defined(CEF_NN_SAFE_STORAGE)
 #error "packages/cef/vendor/cef is older than this app: run packages/cef/scripts/setup.sh (docs/cef-source-build.md)"
 #endif
 

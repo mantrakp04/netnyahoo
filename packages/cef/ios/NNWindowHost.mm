@@ -1,8 +1,8 @@
 #import "NNWindowHost.h"
 
-#import "NNChromePages.h"
 #import "NNChromeWindow.h"
 #import "NNClient.h"
+#import "NNEngine.h"
 #import "NNExtensionsInternal.h"
 #import "NNTabStrip.h"
 
@@ -340,7 +340,7 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
     first.chrome_status_bubble = STATE_DISABLED;
     NSString *firstURL = founder && url.length ? url : @"about:blank";
     CefRefPtr<ChromeWindow> self(this);
-    pages::WhenProfileReady(profile_, ^(CefRefPtr<CefRequestContext> context) {
+    WhenProfileReady(profile_, ^(CefRefPtr<CefRequestContext> context) {
       if (self->closing_ || !self->window_) return;
       self->view_ = CefBrowserView::CreateBrowserView(self->router_, ToCef(firstURL), first, nullptr, context, self.get());
       self->window_->AddChildView(self->view_);

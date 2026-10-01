@@ -116,7 +116,9 @@ public class CefModule: Module {
     AsyncFunction("setZoom") { (profile: String, host: String, zoom: Double) in
       NNZoom.setZoom(zoom, profile: profile, host: host)
     }.runOnQueue(.main)
-    AsyncFunction("getZoomLevels") { (profile: String) in NNZoom.zoomLevels(profile: profile) }.runOnQueue(.main)
+    AsyncFunction("getZoomLevels") { (profile: String, promise: Promise) in
+      NNZoom.zoomLevels(profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
     AsyncFunction("devScrollZoom") { (steps: [[String: Any]]) in NNZoom.devScroll(steps) }.runOnQueue(.main)
 
     AsyncFunction("listPasswords") { (profile: String, promise: Promise) in
@@ -144,6 +146,9 @@ public class CefModule: Module {
     }.runOnQueue(.main)
     AsyncFunction("allowSavingPasswords") { (profile: String, origin: String, promise: Promise) in
       NNPasswords.allowSaving(profile: profile, origin: origin) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("exportPasswords") { (profile: String, path: String, promise: Promise) in
+      NNPasswords.export(profile: profile, path: path) { promise.resolve($0) }
     }.runOnQueue(.main)
     AsyncFunction("getPasswordAutofill") { (profile: String) in NNPasswords.autofillEnabled(profile: profile) }.runOnQueue(.main)
     AsyncFunction("setPasswordAutofill") { (profile: String, enabled: Bool) in
@@ -530,27 +535,9 @@ enum ProfileData {
     run(0)
   }
 
-  // Chrome's Delete Browsing Data handler: form data is autofill plus autocomplete entries, which have no other
-  // API. It CHECK-fails on a malformed call, so the call matches Chrome 154's settings page exactly.
+  // As Chrome's Delete Browsing Data dialog deletes them: form data is autofill plus autocomplete entries.
   private static func clearFormDataAndSiteSettings(_ ok: @escaping (Bool) -> Void) {
-    let js = """
-      (async () => {
-        const call = (name, ...args) => new Promise((resolve) => {
-          const id = `nn-${name}-${Date.now()}`;
-          const previous = window.cr.webUIResponse;
-          window.cr.webUIResponse = (callbackId, success, result) => {
-            if (callbackId !== id) return previous(callbackId, success, result);
-            window.cr.webUIResponse = previous;
-            resolve(success);
-          };
-          chrome.send(name, [id, ...args]);
-          setTimeout(() => resolve(false), 30000);
-        });
-        if (!(await call('initializeClearBrowsingData'))) return false;
-        return call('clearBrowsingData', ['browser.clear_data.form_data', 'browser.clear_data.site_settings'], 4);
-      })()
-      """
-    NNExtensions.evaluateInHost(js, profile: "", page: "chrome://settings/clearBrowserData") { ok(($0 as? Bool) == true) }
+    NNAutofill.clearFormDataAndSiteSettings(profile: "") { ok($0["ok"] as? Bool == true) }
   }
 
   private static func deletePasswords(_ ok: @escaping (Bool) -> Void) {
@@ -574,13 +561,16 @@ enum ProfileData {
   }
 
   private static func resetZoom(_ ok: @escaping (Bool) -> Void) {
-    for host in NNZoom.zoomLevels(profile: "").keys { NNZoom.setZoom(1, profile: "", host: host) }
-    // Resetting goes through the settings page; give it a moment to land.
-    func check(_ attempt: Int) {
-      if NNZoom.zoomLevels(profile: "").isEmpty || attempt >= 20 { return ok(NNZoom.zoomLevels(profile: "").isEmpty) }
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { check(attempt + 1) }
+    NNZoom.zoomLevels(profile: "") { levels in
+      for host in levels.keys { NNZoom.setZoom(1, profile: "", host: host) }
+      func check(_ attempt: Int) {
+        NNZoom.zoomLevels(profile: "") { left in
+          if left.isEmpty || attempt >= 20 { return ok(left.isEmpty) }
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { check(attempt + 1) }
+        }
+      }
+      check(0)
     }
-    check(0)
   }
 
   /// Lists the items under `key`, clears each, and lists again: done(true) when none are left.

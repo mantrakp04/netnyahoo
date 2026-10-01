@@ -20,7 +20,6 @@ cef cef-window-devtools.patch
 cef cef-devtools-toolbox.patch
 cef cef-media-router-shutdown.patch
 cef cef-media-source.patch
-cef cef-zz-quiet-uninstall.patch
 cef cef-open-url-params.patch
 cef cef-pump-wake.patch
 cef cef-netnyahoo-layer.patch
@@ -48,7 +47,6 @@ chromium chromium-webview-native-hosted.patch
 chromium chromium-window-docked-devtools.patch
 chromium chromium-window-hosted.patch
 chromium chromium-extension-installed-bubble.patch
-chromium chromium-zz-extensions-page-uninstall.patch
 chromium chromium-pip-close-keeps-playing.patch
 chromium chromium-pip-overlay-window.patch
 chromium chromium-netnyahoo-layer.patch

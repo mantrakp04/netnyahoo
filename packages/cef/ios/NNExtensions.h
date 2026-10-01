@@ -31,11 +31,6 @@ typedef void (^NNExtensionsCompletion)(NSDictionary<NSString *, id> *result);
           options:(NSDictionary<NSString *, id> *)options
        completion:(NNExtensionsCompletion)completion NS_SWIFT_NAME(configure(_:profile:options:completion:));
 
-+ (void)evaluateInHost:(NSString *)expression
-               profile:(NSString *)profile
-                  page:(nullable NSString *)page
-            completion:(void (^)(id _Nullable value))completion NS_SWIFT_NAME(evaluateInHost(_:profile:page:completion:));
-
 @end
 
 @interface NNExtensions (SearchEngines)

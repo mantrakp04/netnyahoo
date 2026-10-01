@@ -1,6 +1,7 @@
 #import "NNContentBlocker.h"
 
-#import "NNChromePages.h"
+#import "NNEngine.h"
+#import "NNExtensionPage.h"
 
 #import <CommonCrypto/CommonDigest.h>
 #include <sys/clonefile.h>
@@ -29,7 +30,7 @@ bool Answering(NSString *profile) { return LastAnswers()[profile] && LastAnswers
 bool PageDead(NSString *error) { return [error containsString:@"context invalidated"] || [error isEqualToString:@"closed"]; }
 void Reopen(NSString *profile) {
   [LastAnswers() removeObjectForKey:profile];
-  pages::CloseExtensionContext(profile, blocker::ExtensionId());
+  extpage::Close(profile, blocker::ExtensionId());
 }
 
 void WhenAnswering(NSString *profile, void (^then)(void), int tries = 0) {
@@ -47,7 +48,7 @@ void WhenAnswering(NSString *profile, void (^then)(void), int tries = 0) {
   };
   NSString *js = @"Promise.race([chrome.runtime.sendMessage({what: 'getDefaultFilteringMode'}), "
                  @"new Promise((r) => setTimeout(r, 1000))]).then((level) => typeof level === 'number')";
-  pages::ExtensionEval(profile, blocker::ExtensionId(), js, ^(id answered, NSString *error) {
+  extpage::Eval(profile, blocker::ExtensionId(), js, ^(id answered, NSString *error) {
     if (PageDead(error)) Reopen(profile);
     next([answered isEqual:@YES]);
   });
@@ -58,14 +59,14 @@ void Send(NSString *profile, NSDictionary *message, void (^completion)(id value,
   if (![NNCef isStarted]) return completion(nil, @"unavailable");
   completion = [completion copy];
   if (![LoadedProfiles() containsObject:profile]) {
-    return pages::WhenProfileReady(profile, ^(CefRefPtr<CefRequestContext>) {
+    return WhenProfileReady(profile, ^(CefRefPtr<CefRequestContext>) {
       if ([LoadedProfiles() containsObject:profile]) Send(profile, message, completion, retried);
       else completion(nil, @"not loaded");
     });
   }
   WhenAnswering(profile, ^{
-    NSString *js = pages::Script(@"chrome.runtime.sendMessage(%@)", @[ message ]);
-    pages::ExtensionEval(profile, blocker::ExtensionId(), js, ^(id value, NSString *error) {
+    NSString *js = extpage::Script(@"chrome.runtime.sendMessage(%@)", @[ message ]);
+    extpage::Eval(profile, blocker::ExtensionId(), js, ^(id value, NSString *error) {
       if (!error) LastAnswers()[profile] = [NSDate date];
       else {
         [LastAnswers() removeObjectForKey:profile];
@@ -336,7 +337,7 @@ void LoadAgainIfNeeded(NSString *profile, CefRefPtr<CefRequestContext> context) 
     settled = true;
     if (!running) LoadIntoProfile(profile, context);
   };
-  pages::ExtensionEval(profile, ExtensionId(), @"chrome.declarativeNetRequest.getEnabledRulesets().then((r) => r.length > 0)",
+  extpage::Eval(profile, ExtensionId(), @"chrome.declarativeNetRequest.getEnabledRulesets().then((r) => r.length > 0)",
                        ^(id value, NSString *) { decide([value isEqual:@YES]); });
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1500 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ decide(false); });
 }

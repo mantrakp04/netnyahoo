@@ -649,7 +649,7 @@ Measured from a 13 s recording of the user's Dia (3024 × 1964, YouTube video, d
 window 468 × 263 pt at (1034, 43), where the user had left it. Dia draws its own video PiP window (`PIP.VideoPIPContentController`,
 `PIPWindowController`) and keeps where it was last left (`LastVideoPIPPosition`); the first-ever default wasn't
 recovered (Netnyahoo keeps Chrome's: a fifth of the work area, bottom right). Netnyahoo restyles Chrome's own window
-to these numbers (`chromium-zz-pip-dia-controls.patch`); a same-crop comparison is in the table.
+to these numbers (`chrome/browser/netnyahoo/pip/` (`engine/chromium`)); a same-crop comparison is in the table.
 - **At rest**: only the video. Corners circular, **6 pt** (the outline fits a circle to 0.1 px at 2×), with a 1 pt rim
   of white **17 %** just inside the edge (content + 32…40 levels) and a faint shadow that follows the rounded corners
   (the backdrop is 3–4 levels darker next to the window, with a 1 px dark contact line). No title, host label or badge.

@@ -23,9 +23,11 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
       "transparent"). In full screen, another profile's window shows over the full-screen one.
     - Every tab is a real Chrome tab of its window's Browser; its view is hosted in our React Native
       views (`NNBrowserView`). Sized popups get a Chrome window of their own (`NNPopupWindow`).
-    - Alloy is used only for extension popups and side panels, PiP windows, and hidden helper pages
-      (Chrome's WebUI settings pages that `NNPasswords`, `NNAutofill`, `NNExtensions`… drive, in
-      `NNChromePages`).
+    - Alloy is used only for extension popups and side panels, PiP windows, and the content blocker's
+      hidden extension page (`NNExtensionPage`).
+    - Passwords, autofill, extensions, zoom and search engines call Chrome's services directly through our
+      own Chromium code, `//chrome/browser/netnyahoo` (`engine/chromium`), exported as plain C and called
+      with `nn::engine::Call` (`NNEngine.mm`); no chrome:// page is scripted.
     - JS API in `packages/cef/src` (`WebView`, downloads, permissions, profiles, extensions, Chrome UI).
   - `packages/shell`: menus, shortcuts, windows, native primitives (Surface, Symbol, FadeLabel,
     VisualEffect, WindowDragRegion, ContextMenuArea, ActivitySpinner…).
@@ -48,6 +50,9 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   distribution changes every agent's next build, so say so in your report. To try an engine
   change privately, install it elsewhere (`CEF_DIST=<dist> CEF_ROOT=<dir> setup.sh`) and build with
   `xcodebuild … NN_CEF_ROOT=<dir>`.
+- New engine code goes in `//chrome/browser/netnyahoo` (repo copy `engine/chromium/src`), not CEF's API
+  (`docs/cef-source-build.md` › "Our own code in the tree"). `packages/cef/patches/series` is the apply order;
+  `packages/cef/patches/series.py check` proves the series reproduces the tree.
 - Engine APIs our patches add are marked in `include/cef_netnyahoo.h` (`CEF_NN_*`). The app needs
   every marker it uses (`NNCefInternal.h` fails the build without one) and calls the hooks
   unconditionally: there is no build against stock CEF and no `#if` per feature. A new hook adds its

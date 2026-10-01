@@ -13,7 +13,7 @@ namespace {
 
 constexpr CGFloat kPeek = 28;
 constexpr CGFloat kReturnMargin = 16;
-// Chrome's corner buttons, restyled as Dia's (chromium-zz-pip-dia-controls.patch): 28 pt squares 12 pt in.
+// Chrome's corner buttons, restyled as Dia's (chrome/browser/netnyahoo/pip in engine/chromium): 28 pt squares 12 pt in.
 constexpr CGFloat kButtonMargin = 12, kButtonSize = 28;
 // Dia's window corners: circular, 6 pt (fitted at 2x to 0.1 px), with the shadow following them, and a 1 pt rim of
 // white at 17 % just inside the edge.
@@ -494,7 +494,7 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
   after(7.0, ^{
     record(@"drag out of the stash", self.stashedEdge == NNPiPEdgeNone && fabs(NSMinX(window.frame) - (NSMinX(visible) + 100)) < 0.5, nil);
     // Chrome saves where the window was left in its user data dir, in screen DIPs from the top left of the primary
-    // display (chromium-zz-pip-dia-controls.patch).
+    // display (chrome/browser/netnyahoo/pip in engine/chromium).
     NSArray *saved = [NSArray arrayWithContentsOfFile:[dir stringByAppendingPathComponent:@"Chromium/NetnyahooPictureInPicture.plist"]];
     NSRect frame = window.frame;
     CGFloat top = NSMaxY(NSScreen.screens.firstObject.frame) - NSMaxY(frame);
