@@ -146,23 +146,33 @@ export function startNativeSync() {
     void setMenuStateParts(state, bookmarksChanged);
   };
 
+  // The windows open now, without first asking which exist: that answer comes from the main thread, which Chrome's
+  // startup holds, and waiting for it put 20–100 ms before the first frame. Opening one that exists (after a JS reload)
+  // only brings it forward; the ones the store doesn't have close when the answer comes.
+  syncWindows(store.getState());
+  syncMenu();
+  store.subscribe((s, prev) => {
+    syncWindows(s, prev);
+    menuTimer ??= setTimeout(syncMenu, 120);
+  });
+  store.subscribe((s, prev) => {
+    if (s.settings.appearance !== prev.settings.appearance) void setAppearance(s.settings.appearance);
+  });
+  useExtensions.subscribe((e, prev) => {
+    if (e.lists !== prev.lists) menuTimer ??= setTimeout(syncMenu, 120);
+  });
   void windowIds().then((ids) => {
+    const s = store.getState();
     for (const id of ids) {
-      if (store.getState().windows[id]) open.add(id);
-      else if (!isUtilityWindowId(id)) void closeWindow(id);
+      if (!s.windows[id]) {
+        if (!isUtilityWindowId(id)) void closeWindow(id);
+        continue;
+      }
+      // One that already existed kept the title it had (openWindow leaves it be): send the current one.
+      const title = windowTitle(s, id);
+      titles.set(id, title);
+      void setWindowTitle(id, title);
     }
-    syncWindows(store.getState());
-    syncMenu();
-    store.subscribe((s, prev) => {
-      syncWindows(s, prev);
-      menuTimer ??= setTimeout(syncMenu, 120);
-    });
-    store.subscribe((s, prev) => {
-      if (s.settings.appearance !== prev.settings.appearance) void setAppearance(s.settings.appearance);
-    });
-    useExtensions.subscribe((e, prev) => {
-      if (e.lists !== prev.lists) menuTimer ??= setTimeout(syncMenu, 120);
-    });
   });
 }
 
