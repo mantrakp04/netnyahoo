@@ -1,0 +1,45 @@
+packages/nncore/scripts/acceptance.mjs
+  s_9c356f9574d31c::t_f2f97585c66dc5 145,359
+apps/browser/macos-nncore/Podfile.lock
+  s_9c356f9574d31c::t_cc33520ef85658 2592
+apps/browser/macos-nncore/generate.py
+  s_9c356f9574d31c::t_cbc9ad4db7f5f5 7-8
+packages/nncore/ios/CefModule.swift
+  s_9c356f9574d31c::t_2e0b3d20222d72 12,15-16,26-28,62-65
+packages/nncore/ios/NNCoreChromeWindow.mm
+  s_9c356f9574d31c::t_adc74b36a43162 116-143,176,185,187-188,192-194
+packages/nncore/ios/NNCoreEngineBridge.h
+  s_9c356f9574d31c::t_654587b0cc3365 1-18
+packages/nncore/ios/NNCoreEngineBridge.mm
+  s_9c356f9574d31c::t_24da228bef0bbe 1-72
+packages/nncore/ios/NNCoreFavicons.mm
+  s_9c356f9574d31c::t_38a624137296b2 76-121,149-153
+packages/nncore/ios/NNCoreHost.mm
+  s_9c356f9574d31c::t_82ff86f50686ff 33-52,75,78,86-87,121-128,187-193
+packages/nncore/ios/NNCoreInternal.h
+  s_9c356f9574d31c::t_787e3f03b2d1dc 7,47-51,54-67
+packages/nncore/ios/NNCoreTabStrip.h
+  s_9c356f9574d31c::t_21bb94e39fa010 1-14
+packages/nncore/ios/NNCoreTabStrip.mm
+  s_9c356f9574d31c::t_fd25d29c92b70e 1-136
+packages/nncore/ios/NNCoreWebView.mm
+  s_9c356f9574d31c::t_6c48d8f5f076e6 18-22,182-190,206,209,211,218,241-246,275,285,300-321,326-328,697,780-784
+packages/nncore/ios/NetnyahooNNCore.podspec
+  s_9c356f9574d31c::t_7e2297db0fe72d 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f0e266f00c3b3970d185db58bcb512b005ab023f",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
