@@ -1,0 +1,36 @@
+engine/nncore/src/netnyahoo/core/BUILD.gn
+  s_9c356f9574d31c::t_4aaca679a8a2bd 24-25
+engine/nncore/src/netnyahoo/core/nn_context_menu.h
+  s_9c356f9574d31c::t_2a5cb7a4060319 1-27
+spikes/nncore-host/acceptance.mjs
+  s_9c356f9574d31c::t_a9d19c710fc98d 162-163,875-898
+  s_9c356f9574d31c::t_56bcc039f08d7d 899
+engine/nncore/src/netnyahoo/core/nn_context_menu.mm
+  s_9c356f9574d31c::t_3a45f8d373f625 45-46,73,122,125
+  s_9c356f9574d31c::t_2a5cb7a4060319 1-44,47-72,74-121,123-124,126-166
+engine/nncore/src/netnyahoo/core/nncore_api.mm
+  s_9c356f9574d31c::t_4aaca679a8a2bd 69,562,1554-1555
+  s_9c356f9574d31c::t_ca54b4bf051a86 1556-1557
+engine/nncore/src/netnyahoo/core/public/NNCore.h
+  s_9c356f9574d31c::t_4aaca679a8a2bd 298-309,435-436
+spikes/nncore-host/main.mm
+  s_9c356f9574d31c::t_a9d19c710fc98d 613-624,1047-1048
+engine/nncore/src/netnyahoo/core/nn_main_delegate.cc
+  s_9c356f9574d31c::t_bfd8289389cafa 29,31,138-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e58a641d3ddc9f6bb16d57ae9a1611a539ea600b",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
