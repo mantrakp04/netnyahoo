@@ -1,0 +1,66 @@
+# NNCore: Netnyahoo's own layer over //chrome (the "ArcCore" of Netnyahoo).
+#
+# Linked into Chrome's framework through one dep in //chrome:chrome_dll (see
+# engine/nncore/apply.sh), so the framework that comes out of `chrome_framework`
+# is NNCore: //chrome's services plus our BrowserWindow, window host and ObjC API.
+# A host app links the framework and drives it through public/NNCore.h.
+
+assert(is_mac)
+
+config("exports") {
+  # Chrome's framework exports only ChromeMain; keep our API visible too.
+  ldflags = [ "-Wl,-exported_symbols_list," +
+              rebase_path("nncore.exports", root_build_dir) ]
+}
+
+source_set("core") {
+  sources = [
+    "nn_browser.h",
+    "nn_browser.mm",
+    "nn_browser_window.h",
+    "nn_browser_window.mm",
+    "nn_main_delegate.cc",
+    "nn_main_delegate.h",
+    "nn_seams.mm",
+    "nncore_api.mm",
+    "nncore_internal.h",
+    "public/NNCore.h",
+  ]
+
+  # The framework that links this exports our API (an all_dependent config
+  # reaches the framework's link through //chrome:chrome_dll).
+  all_dependent_configs = [ ":exports" ]
+
+  deps = [
+    "//base",
+    "//cef/libcef/features:buildflags",
+    "//chrome/app:command_ids",
+    "//chrome/browser",
+    "//chrome/browser/devtools",
+    "//chrome/browser/extensions",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui",
+    "//chrome/common",
+    "//chrome/common/profiler",
+    "//components/component_updater",
+    "//components/keep_alive_registry",
+    "//components/favicon/content",
+    "//components/find_in_page",
+    "//components/password_manager/core/browser",
+    "//components/prefs",
+    "//components/remote_cocoa/app_shim",
+    "//components/web_modal",
+    "//content/public/browser",
+    "//extensions/browser",
+    "//skia",
+    "//ui/base",
+    "//ui/color",
+    "//ui/gfx",
+    "//ui/views",
+  ]
+
+  frameworks = [
+    "AppKit.framework",
+    "Foundation.framework",
+  ]
+}

@@ -296,6 +296,15 @@ Everything else Chrome writes (crashpad, component updater, caches, extension in
 and `MacAppCodeSignClone` is disabled (NNCef.mm). `scripts/release.sh` launches the exported app once and verifies the
 signature again, so a new writer fails the release.
 
+## NNCore shares the tree
+
+The tree also carries NNCore, the spike of our own Chromium layer (`docs/nncore-spike.md`). `engine/nncore/apply.sh`
+copies it to `//netnyahoo/core` and adds four small hooks: two in files only Chrome's framework compiles
+(`chrome/BUILD.gn`'s macOS `chrome_dll`, `chrome/app/chrome_main.cc`), and two CEF-neutral `CHECK` changes that CEF
+does compile (`browser_window_features.cc`, `read_anything_side_panel_controller.cc`). CEF's behaviour doesn't change,
+and `cefclient` builds with them. Run `apply.sh` again after anything that resets these files (steps 2–4);
+`apply.sh --check` reports drift.
+
 ## Rebuilding
 
 Everything lives outside the repo in `~/chromium-build`, which carries `.metadata_never_index`.

@@ -1,0 +1,4 @@
+# Symbols NNCore exports from Chrome's framework, on top of chrome/app/framework.exports.
+_NNCoreMain
+_OBJC_CLASS_$_NNCore*
+_OBJC_METACLASS_$_NNCore*
