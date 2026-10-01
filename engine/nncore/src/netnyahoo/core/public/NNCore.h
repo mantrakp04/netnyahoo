@@ -295,6 +295,18 @@ NNCORE_EXPORT
 // Chrome asks to bring this tab forward: "pictureInPicture" (the PiP window's back-to-tab),
 // "page" (window.focus()). Without this, Chrome activates it in its strip.
 - (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason;
+// The page's context menu is Chrome's own; the host adds items for a selection
+// ([{id, title}], placed after Copy; not on editable fields) and runs them.
+- (NSArray<NSDictionary<NSString*, NSString*>*>*)tab:(NNCoreTab*)tab
+                         contextMenuItemsForSelection:(NSString*)text;
+// modifiers: {metaKey, shiftKey, altKey} held when the item was picked.
+- (void)tab:(NNCoreTab*)tab
+    contextMenuCommand:(NSString*)itemId
+                  text:(NSString*)selection
+             modifiers:(NSDictionary<NSString*, NSNumber*>*)modifiers;
+// Background mode (NETNYAHOO_BACKGROUND set): the menu is reported here instead of shown:
+// [{id, label, enabled, separator}].
+- (void)tab:(NNCoreTab*)tab didShowContextMenu:(NSArray<NSDictionary*>*)items;
 // A main-frame navigation became a download (the page stays; Chrome downloads it).
 - (void)tab:(NNCoreTab*)tab navigationBecameDownload:(NSString*)url;
 // Lifecycle.
@@ -420,6 +432,8 @@ NNCORE_EXPORT
 // Chrome's autofill dropdown at the page's focused field, now (CEF's
 // CefShowAutofillSuggestions): passwords: the saved-passwords list. NO without a field.
 - (BOOL)showAutofillSuggestions:(BOOL)passwords;
+// Whether the page's focused element takes text now (Esc in a text field is the page's).
+@property(readonly) BOOL focusedEditable;
 // The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:).
 - (void)callFrame:(NSString*)frameId kind:(NSString*)kind json:(NSString*)json;
 @end

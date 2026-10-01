@@ -66,6 +66,7 @@
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
 #include "netnyahoo/core/nn_permissions.h"
+#include "netnyahoo/core/nn_context_menu.h"
 #include "netnyahoo/core/nn_autofill_trigger.h"
 #include "base/trace_event/trace_config.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
@@ -558,6 +559,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
         nncore::InstallPermissionPrompts();
         nncore::StartMediaCaptureObserver();
         nncore::InstallExternalAppPrompts();
+        nncore::InstallContextMenuShowHandler();
         [g_delegate engineDidStart];
       }),
       .shutting_down = base::BindOnce([] {
@@ -1547,6 +1549,10 @@ static bool g_tracing = false;
   indicator->StopMediaCapturing(_contents,
                                 MediaStreamCaptureIndicator::MediaType::kDisplayMedia);
   return capturing;
+}
+
+- (BOOL)focusedEditable {
+  return _contents && _contents->IsFocusedElementEditable();
 }
 
 - (BOOL)showAutofillSuggestions:(BOOL)passwords {

@@ -610,6 +610,18 @@ static void Log(NSDictionary* event) {
   [NNCoreEngine resolveExtensionInstallPrompt:prompt[@"requestId"]
                                      accepted:![_config[@"installAnswer"] isEqual:@NO]];
 }
+- (NSArray<NSDictionary*>*)tab:(NNCoreTab*)tab contextMenuItemsForSelection:(NSString*)text {
+  return @[ @{@"id" : @"search", @"title" : [NSString stringWithFormat:@"Search Test for “%@”", text]} ];
+}
+- (void)tab:(NNCoreTab*)tab
+    contextMenuCommand:(NSString*)itemId
+                  text:(NSString*)selection
+             modifiers:(NSDictionary*)modifiers {
+  Log(@{@"event" : @"contextMenuCommand", @"tabId" : @(tab.tabId), @"item" : itemId, @"text" : selection});
+}
+- (void)tab:(NNCoreTab*)tab didShowContextMenu:(NSArray<NSDictionary*>*)items {
+  Log(@{@"event" : @"contextMenu", @"tabId" : @(tab.tabId), @"items" : items});
+}
 - (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason {
   Log(@{@"event" : @"activationRequest", @"tabId" : @(tab.tabId), @"reason" : reason});
 }
@@ -1032,6 +1044,8 @@ static void Log(NSDictionary* event) {
     }
   } else if ([name isEqualToString:@"capture"]) {
     reply(@{@"sourceId" : tab.mediaCaptureSourceId ?: NSNull.null, @"stopped" : @([tab stopCapture])});
+  } else if ([name isEqualToString:@"editable"]) {
+    reply(@(tab.focusedEditable));
   } else if ([name isEqualToString:@"autofill"]) {
     reply(@([tab showAutofillSuggestions:[cmd[@"passwords"] boolValue]]));
   } else if ([name isEqualToString:@"security"]) {

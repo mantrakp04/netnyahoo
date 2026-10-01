@@ -26,7 +26,9 @@
 #include "content/public/common/content_switches.h"
 #include "content/public/common/result_codes.h"
 #include "netnyahoo/core/nn_lifetime.h"
+#include "netnyahoo/core/nn_context_menu.h"
 #include "netnyahoo/core/nn_page_channel.h"
+#include "content/public/browser/web_contents_view_delegate.h"
 #include "netnyahoo/core/renderer/nn_content_renderer_client.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 
@@ -132,6 +134,10 @@ class NNContentBrowserClient : public ChromeContentBrowserClient {
         RegisterAssociatedInterfaceBindersForRenderFrameHost(
             render_frame_host, associated_registry);
     RegisterPageChannelBinders(render_frame_host, associated_registry);
+  }
+  std::unique_ptr<content::WebContentsViewDelegate> GetWebContentsViewDelegate(
+      content::WebContents* web_contents) override {
+    return CreateViewDelegate(web_contents);
   }
   void CreateThrottlesForNavigation(
       content::NavigationThrottleRegistry& registry) override {

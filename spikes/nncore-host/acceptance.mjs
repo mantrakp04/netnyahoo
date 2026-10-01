@@ -159,7 +159,8 @@ const logFd = fs.openSync(path.join(workDir, "stdout.log"), "w");
 const startedAt = Date.now();
 let hostExit = null;
 const host = spawn(exe, [], {
-  env: { ...process.env, NNHOST_DIR: hostDir, NNHOST_CDP_PORT: String(cdpPort) },
+  // Background mode: context menus are reported, not shown (NNCore's and the app's rule).
+  env: { ...process.env, NNHOST_DIR: hostDir, NNHOST_CDP_PORT: String(cdpPort), NETNYAHOO_BACKGROUND: "1" },
   stdio: ["ignore", logFd, logFd],
 });
 host.on("exit", (code, signal) => (hostExit = { code, signal }));
@@ -870,6 +871,31 @@ try {
     pl3.close();
     check("S19", "showAutofillSuggestions: Chrome's dropdown at the focused field", shown === true && !!dropdown, { shown, dropdown });
     await cmd("nav", { tabId: lg.tabId, action: "closeNow" });
+  }
+  // S20 (J): the host's context-menu items; focusedEditable.
+  {
+    await cmd("show", { tabId: indexId });
+    const pc2 = await attach((t) => t.url === `${base}/index`);
+    const at = await pc2.evaluate(`(() => { const h = document.querySelector('h1'); getSelection().selectAllChildren(h); const r = h.getBoundingClientRect(); return [r.x + 5, r.y + r.height / 2]; })()`);
+    for (const type of ["mousePressed", "mouseReleased"]) {
+      await pc2.send("Input.dispatchMouseEvent", { type, x: at[0], y: at[1], button: "right", clickCount: 1 });
+    }
+    const menu = await waitFor(() => evs("contextMenu", (e) => e.tabId === indexId)[0], 6000);
+    const labels = menu ? menu.items.filter((i) => !i.separator).map((i) => i.label) : [];
+    const ours = labels.indexOf("Search Test for “Index”");
+    const copy = labels.findIndex((l) => /^Copy$/.test(l));
+    check("S20", "Chrome's context menu with the host's item after Copy (reported in background mode)", ours > 0 && (copy < 0 || ours === copy + 1), { labels: labels.slice(0, 12) });
+    pc2.close();
+    const kt2 = await cmd("open", { url: `${base}/keys?edit=1`, profile: "A" });
+    await waitFor(async () => (await tabState(kt2.tabId))?.loading === false);
+    const pk2 = await attach((t) => t.url === `${base}/keys?edit=1`);
+    await cmd("focus", { tabId: kt2.tabId });
+    const before = await cmd("editable", { tabId: kt2.tabId });
+    await pk2.evaluate("document.getElementById('box').focus()");
+    const after = await cmd("editable", { tabId: kt2.tabId });
+    pk2.close();
+    check("S20", "focusedEditable", before === false && after === true, { before, after });
+    await cmd("nav", { tabId: kt2.tabId, action: "closeNow" });
   }
   // S16 (item 9): extension actions.
   {
