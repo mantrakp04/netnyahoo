@@ -77,6 +77,9 @@
 #include "netnyahoo/core/nn_device_chooser.h"
 #include "netnyahoo/core/nn_cast_dialog.h"
 #include "netnyahoo/core/nn_context_menu.h"
+#include "netnyahoo/core/nn_desktop_capture.h"
+#include "netnyahoo/core/nn_devtools_call.h"
+#include "netnyahoo/core/nn_picture_in_picture.h"
 #include "netnyahoo/core/nn_autofill_trigger.h"
 #include "base/trace_event/trace_config.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
@@ -101,6 +104,9 @@
 #include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/image/image_skia_rep.h"
 #include "base/auto_reset.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
+#include "chrome/browser/apps/platform_apps/shortcut_manager.h"
 #include "base/strings/string_number_conversions.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "components/blocked_content/popup_blocker_tab_helper.h"
@@ -400,7 +406,11 @@ const char* BrowserTypeName(BrowserWindowInterface::Type type) {
 // command, undocked DevTools, document PiP): the host may hold it in one of its windows.
 BrowserWindow* WindowForChromeBrowser(Browser* browser) {
   nncore::NNBrowserDelegate* delegate = nncore::DelegateFor(browser);
+  // A document picture-in-picture window is always Chrome's own: Chrome reaches into its
+  // PictureInPictureBrowserFrameView (content_settings::UpdateLocationBarUiForWebContents
+  // on every commit), which a window of ours doesn't have.
   if (!delegate || delegate->is_ours() ||
+      browser->GetType() == BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE ||
       ![g_delegate respondsToSelector:@selector
                    (engineWindowForNewBrowserOfProfile:type:)]) {
     return nullptr;
@@ -594,6 +604,11 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   g_delegate = delegate;
   g_engine = [[NNCoreEngine alloc] init];
   g_netnyahoo_browser_window_factory = &WindowForChromeBrowser;
+  // No Chrome Apps or web-app shims here: Chrome's platform-app shortcut manager would
+  // otherwise, when a profile is deleted, look for that profile's shims in
+  // ~/Applications/"Chromium Apps.localized", and its first lookup per run rewrites that
+  // folder's icon and localized name (in the user's home, outside the data dir).
+  AppShortcutManager::SuppressShortcutsForTesting();
   nncore::SetLifetimeCallbacks({
       .quit_cancelled = base::BindRepeating([] {
         if ([g_delegate respondsToSelector:@selector(engineQuitCancelled)]) {
@@ -608,6 +623,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
         nncore::StartMediaCaptureObserver();
         nncore::InstallExternalAppPrompts();
         nncore::InstallContextMenuShowHandler();
+        nncore::StartPictureInPictureObserver();
         [g_delegate engineDidStart];
       }),
       .shutting_down = base::BindOnce([] {
@@ -690,18 +706,97 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 
 static bool g_tracing = false;
 
+namespace {
+
+// One beginTracing: answered once. Chrome calls back only when tracing started; when the
+// tracing service fails first (TracingControllerImpl::OnTracingFailed), it drops the
+// session and keeps the callback, so the start is watched until one or the other.
+// `session` is g_tracing_session at its start: endTracing or a later start supersedes it,
+// and a superseded start never touches the newer session.
+struct TracingStart {
+  void (^completion)(BOOL);
+  bool answered = false;
+  int session = 0;
+};
+
+int g_tracing_session = 0;
+std::weak_ptr<TracingStart>& PendingTracingStart() {
+  static base::NoDestructor<std::weak_ptr<TracingStart>> pending;
+  return *pending;
+}
+
+constexpr int kTracingStartChecks = 100;  // every 100 ms: 10 s
+
+bool IsCurrent(const TracingStart& start) {
+  return start.session == g_tracing_session;
+}
+
+void AnswerTracingStart(const std::shared_ptr<TracingStart>& start, bool started) {
+  if (start->answered) {
+    return;
+  }
+  start->answered = true;
+  if (!started && IsCurrent(*start)) {
+    g_tracing = false;
+  }
+  start->completion(started);
+}
+
+void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
+  if (start->answered) {
+    return;
+  }
+  if (!IsCurrent(*start)) {
+    AnswerTracingStart(start, false);
+    return;
+  }
+  content::TracingController* tracing = content::TracingController::GetInstance();
+  if (!tracing->IsTracing()) {
+    AnswerTracingStart(start, false);
+    return;
+  }
+  if (checks_left == 0) {
+    // Never started: given up, and stopped so a later start can't leave it running.
+    AnswerTracingStart(start, false);
+    tracing->StopTracing(nullptr);
+    return;
+  }
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE, base::BindOnce(&WatchTracingStart, std::move(start), checks_left - 1),
+      base::Milliseconds(100));
+}
+
+}  // namespace
+
 + (void)beginTracing:(void (^)(BOOL started))completion {
   if (g_tracing) {
     completion(NO);
     return;
   }
+  auto start = std::make_shared<TracingStart>();
+  start->completion = completion;
+  start->session = ++g_tracing_session;
+  PendingTracingStart() = start;
   // Chrome's default categories, as CEF's CefBeginTracing("").
   g_tracing = content::TracingController::GetInstance()->StartTracing(
       base::trace_event::TraceConfig(),
-      base::BindOnce([](void (^completion)(BOOL)) { completion(YES); }, completion));
+      base::BindOnce(
+          [](std::shared_ptr<TracingStart> start) {
+            if (start->answered) {
+              // Started after it was given up on (answered NO): not ours any more.
+              if (IsCurrent(*start) && !g_tracing) {
+                content::TracingController::GetInstance()->StopTracing(nullptr);
+              }
+              return;
+            }
+            AnswerTracingStart(start, true);
+          },
+          start));
   if (!g_tracing) {
-    completion(NO);
+    AnswerTracingStart(start, false);
+    return;
   }
+  WatchTracingStart(start, kTracingStartChecks);
 }
 
 + (void)endTracing:(BOOL)keep completion:(void (^)(NSString* _Nullable path))completion {
@@ -710,6 +805,11 @@ static bool g_tracing = false;
     return;
   }
   g_tracing = false;
+  // A start not answered yet never started: NO, and its watcher stands down.
+  ++g_tracing_session;
+  if (std::shared_ptr<TracingStart> pending = PendingTracingStart().lock()) {
+    AnswerTracingStart(pending, false);
+  }
   // keep: "Netnyahoo Trace <date>.json" in Downloads (as CEF's NNDiagnostics); else a
   // temporary file, deleted once written.
   NSDateFormatter* format = [[NSDateFormatter alloc] init];
@@ -827,6 +927,15 @@ static bool g_tracing = false;
   if (!in_use) {
     ProfileDestroyer::DestroyOTRProfileWhenAppropriate(chrome_profile);
   }
+}
+
++ (void)allowDesktopCapture:(NSString*)sourceId
+                        tab:(NNCoreTab*)tab
+                      frame:(NSString*)frameId
+                     origin:(NSString*)origin {
+  nncore::AllowDesktopCapture(tab.contents, base::SysNSStringToUTF8(sourceId ?: @""),
+                              base::SysNSStringToUTF8(frameId ?: @""),
+                              base::SysNSStringToUTF8(origin ?: @""));
 }
 
 + (void)resolveExternalApp:(NSString*)requestId open:(BOOL)open remember:(BOOL)remember {
@@ -1103,6 +1212,10 @@ static bool g_tracing = false;
   params.disposition = foreground ? WindowOpenDisposition::NEW_FOREGROUND_TAB
                                   : WindowOpenDisposition::NEW_BACKGROUND_TAB;
   params.window_action = NavigateParams::WindowAction::kNoAction;
+  // Reported as the host asked: Chrome makes the first tab of a Browser a foreground one,
+  // and each profile has its own Browser here, so a background tab would read as shown.
+  base::AutoReset<nncore::WindowHost::PendingOpen> pending(
+      &_host->pending_open(), nncore::WindowHost::PendingOpen{params.disposition, nullptr});
   Navigate(&params);
   content::WebContents* contents = params.navigated_or_inserted_contents;
   return contents ? nncore::TabBridge::GetOrCreate(contents)->tab() : nil;
@@ -1699,6 +1812,47 @@ static bool g_tracing = false;
     host->set_quiet_activation(false);
   }
   return ran;
+}
+
+- (void)devToolsCall:(NSString*)method
+              params:(NSDictionary*)params
+          completion:(void (^)(NSDictionary* result, NSString* error))completion {
+  base::DictValue dict;
+  if (params.count) {
+    NSData* data = [NSJSONSerialization dataWithJSONObject:params options:0 error:nil];
+    std::optional<base::DictValue> parsed =
+        data ? base::JSONReader::ReadDict(
+                   std::string_view(static_cast<const char*>(data.bytes), data.length),
+                   base::JSON_PARSE_RFC)
+             : std::nullopt;
+    if (!parsed) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        completion(nil, @"params aren't JSON");
+      });
+      return;
+    }
+    dict = std::move(*parsed);
+  }
+  nncore::CallDevTools(
+      _contents, base::SysNSStringToUTF8(method), std::move(dict),
+      base::BindOnce(
+          [](void (^completion)(NSDictionary*, NSString*),
+             std::optional<base::DictValue> result, std::optional<std::string> error) {
+            if (!result) {
+              completion(nil, base::SysUTF8ToNSString(error.value_or("error")));
+              return;
+            }
+            std::optional<std::string> json = base::WriteJson(*result);
+            NSData* data = json ? [NSData dataWithBytes:json->data() length:json->size()] : nil;
+            id object = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil]
+                             : nil;
+            if (![object isKindOfClass:NSDictionary.class]) {
+              completion(nil, @"the reply isn't JSON");
+              return;
+            }
+            completion(object, nil);
+          },
+          completion));
 }
 
 - (NSString*)mediaCaptureSourceId {

@@ -273,6 +273,11 @@ class NNWebContentsDelegate : public BrowserWebContentsDelegate {
       base::OnceCallback<void(content::NavigationHandle&)>
           navigation_handle_callback) override;
   void UpdateTargetURL(content::WebContents* source, const GURL& url) override;
+  // getUserMedia for a source the host's picker approved (+allowDesktopCapture:…):
+  // Chrome's desktop-capture handler, with the source registered as a stream id.
+  void RequestMediaAccessPermission(content::WebContents* web_contents,
+                                    const content::MediaStreamRequest& request,
+                                    content::MediaResponseCallback callback) override;
   // Chrome asks to bring a tab forward (Picture in Picture's "back to tab", a page's
   // window.focus()): the host decides (tabRequestsActivation:).
   void ActivateContents(content::WebContents* contents) override;

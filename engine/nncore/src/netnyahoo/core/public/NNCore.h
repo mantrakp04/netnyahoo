@@ -30,8 +30,9 @@ NS_ASSUME_NONNULL_BEGIN
 // A quit was cancelled (a page's beforeunload, the downloads prompt): the app keeps running.
 - (void)engineQuitCancelled;
 // Chrome is creating a Browser the host didn't ask for (chrome.windows.create, an incognito
-// window from a Chrome command, undocked DevTools, document Picture in Picture). `type` is
-// "normal", "popup", "devtools", "picture_in_picture" or "app". Return a window to hold it
+// window from a Chrome command, undocked DevTools). `type` is "normal", "popup", "devtools"
+// or "app" (a document Picture in Picture window is always Chrome's own, never offered: Chrome
+// needs its own PiP frame for it). Return a window to hold it
 // (its tabs then arrive through window:didInsertTab:…), or nil for Chrome's own Views window.
 // Called while Chrome builds the Browser: make or pick the window and return, nothing more. A
 // window that is closing, or already holds a Browser of `profile`, can't take it (Chrome's
@@ -150,6 +151,17 @@ NNCORE_EXPORT
 // Answers tab:externalAppRequest:. open: launch the app (through Chrome); remember: Chrome's
 // "always allow" for that origin and scheme.
 + (void)resolveExternalApp:(NSString*)requestId open:(BOOL)open remember:(BOOL)remember;
+// The host's screen-share picker chose `sourceId` ("screen:<CGDirectDisplayID>:0",
+// "window:<CGWindowID>:0", or a tab's mediaCaptureSourceId) for a page of `tab`: its next
+// getUserMedia({chromeMediaSource: "desktop", chromeMediaSourceId: sourceId}) from that
+// frame (frameId as in tab:didReceivePageMessage:…; nil: any frame of the tab) and origin
+// (nil: any), within 15 s, is granted. Once: any desktop-capture request of the tab uses the
+// grant up. Chrome then shows its own sharing UI (a tab's: the tab-sharing infobar model;
+// a screen's or window's: its "is sharing" bar).
++ (void)allowDesktopCapture:(NSString*)sourceId
+                        tab:(NNCoreTab*)tab
+                      frame:(nullable NSString*)frameId
+                     origin:(nullable NSString*)origin;
 // The off-the-record profile of `profile` (created on first use): incognito windows.
 - (NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile;
 @property(readonly) NSString* chromiumVersion;
@@ -346,6 +358,10 @@ NNCORE_EXPORT
 // Chrome asks to bring this tab forward: "pictureInPicture" (the PiP window's back-to-tab),
 // "page" (window.focus()). Without this, Chrome activates it in its strip.
 - (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason;
+// A picture-in-picture window this tab's page opened, or its closing: {active, kind:
+// "video" (a video's requestPictureInPicture) | "document" (documentPictureInPicture)}. Both
+// windows are Chrome's own floating ones.
+- (void)tab:(NNCoreTab*)tab didChangePictureInPicture:(NSDictionary<NSString*, id>*)state;
 // The content blocker (an extension's declarativeNetRequest, net error ERR_BLOCKED_BY_CLIENT)
 // stopped requests of the page: subresources, frames and main-frame navigations. `count` is
 // the number since the last report (at most one per main-loop turn); `url` the last one's.
@@ -486,6 +502,14 @@ NNCORE_EXPORT
 // Chrome's "Stop sharing" for what this page is sharing (a tab, window or screen). NO if it
 // shares nothing.
 - (BOOL)stopCapture;
+// A DevTools protocol call on this tab's page, in process (CEF's ExecuteDevToolsMethod):
+// {method, params} through NNCore's own client (attached on the first call, detached with
+// the tab; the remote-debugging port keeps working beside it). completion: the reply's
+// result, or its error message; on the main thread, never from inside the call.
+- (void)devToolsCall:(NSString*)method
+              params:(nullable NSDictionary*)params
+          completion:(void (^)(NSDictionary* _Nullable result,
+                               NSString* _Nullable error))completion;
 // While another tab is being shared (getDisplayMedia's tab capture): Chrome's "Share this
 // tab instead" for this tab (the capture moves here). NO if Chrome offers none here.
 @property(readonly) BOOL canShareThisTabInstead;

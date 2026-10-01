@@ -17,6 +17,8 @@
 
 #import "NNCore.h"
 
+static NSPasteboard* gTestPasteboard;  // see main
+
 static NSString* gDir;
 static BOOL gFakeKey = NO;  // tests: our windows count as key (see FakeIsKeyWindow)
 
@@ -157,6 +159,7 @@ static void Log(NSDictionary* event) {
 
 - (void)applicationWillTerminate:(NSNotification*)notification {
   Log(@{@"event" : @"applicationWillTerminate"});
+  [gTestPasteboard releaseGlobally];
 }
 
 // --- The app's menu (key equivalents the tests press) ---------------------------------------
@@ -644,6 +647,9 @@ static void Log(NSDictionary* event) {
 - (void)tab:(NNCoreTab*)tab didBlockRequests:(int)count lastURL:(NSString*)url {
   Log(@{@"event" : @"blocked", @"tabId" : @(tab.tabId), @"count" : @(count), @"url" : url});
 }
+- (void)tab:(NNCoreTab*)tab didChangePictureInPicture:(NSDictionary*)state {
+  Log(@{@"event" : @"pictureInPicture", @"tabId" : @(tab.tabId), @"state" : state});
+}
 - (void)tab:(NNCoreTab*)tab navigationBecameDownload:(NSString*)url {
   Log(@{@"event" : @"downloadNavigation", @"tabId" : @(tab.tabId), @"url" : url});
 }
@@ -984,6 +990,17 @@ static void Log(NSDictionary* event) {
       if (p) self->_profiles[cmd[@"as"]] = p;
       reply(p ? p.path : NSNull.null);
     }];
+  } else if ([name isEqualToString:@"pasteboard"]) {
+    // The private test pasteboard (see main): text, or cleared.
+    NSPasteboard* pb = NSPasteboard.generalPasteboard;
+    [pb clearContents];
+    if ([cmd[@"text"] isKindOfClass:NSString.class]) {
+      [pb setString:cmd[@"text"] forType:NSPasteboardTypeString];
+    }
+    reply(@{@"types" : pb.types ?: @[], @"private" : @(pb == gTestPasteboard)});
+  } else if ([name isEqualToString:@"prepareProfile"]) {
+    [_window prepareProfile:self->_profiles[cmd[@"profile"]]];
+    reply(@{@"activeProfile" : _window.activeProfile.name ?: NSNull.null});
   } else if ([name isEqualToString:@"deleteProfile"]) {
     NNCoreProfile* p = self->_profiles[cmd[@"profile"]];
     [NNCoreEngine.sharedEngine deleteProfile:p completion:^(BOOL deleted) {
@@ -1061,6 +1078,19 @@ static void Log(NSDictionary* event) {
         reply(@{@"path" : path ?: NSNull.null, @"isTracing" : @(NNCoreEngine.isTracing)});
       }];
     }
+  } else if ([name isEqualToString:@"devtools.call"]) {
+    [tab devToolsCall:cmd[@"method"]
+               params:[cmd[@"params"] isKindOfClass:NSDictionary.class] ? cmd[@"params"] : nil
+           completion:^(NSDictionary* result, NSString* error) {
+             reply(@{@"result" : result ?: NSNull.null, @"error" : error ?: NSNull.null,
+                     @"mainThread" : @(NSThread.isMainThread)});
+           }];
+  } else if ([name isEqualToString:@"allowCapture"]) {
+    [NNCoreEngine allowDesktopCapture:cmd[@"source"]
+                                  tab:tab
+                                frame:[cmd[@"frame"] isKindOfClass:NSString.class] ? cmd[@"frame"] : nil
+                               origin:[cmd[@"origin"] isKindOfClass:NSString.class] ? cmd[@"origin"] : nil];
+    reply(@YES);
   } else if ([name isEqualToString:@"capture"]) {
     reply(@{@"sourceId" : tab.mediaCaptureSourceId ?: NSNull.null, @"stopped" : @([tab stopCapture])});
   } else if ([name isEqualToString:@"duplicate"]) {
@@ -1135,7 +1165,23 @@ static BOOL FakeIsKeyWindow(NSWindow* self, SEL _cmd) {
   return gOriginalIsKeyWindow(self, _cmd);
 }
 
+// Tests only: Chrome's clipboard (and AppKit's) uses a private pasteboard, never the Mac's
+// general one, so a test run neither reads nor overwrites what the user copied.
+static NSPasteboard* TestGeneralPasteboard(id self, SEL _cmd) {
+  return gTestPasteboard;
+}
+
 int main(int argc, const char* argv[]) {
+  bool is_helper = false;
+  for (int i = 1; i < argc; ++i) {
+    is_helper |= strncmp(argv[i], "--type=", 7) == 0;
+  }
+  if (!is_helper) {
+    gTestPasteboard = [NSPasteboard pasteboardWithUniqueName];
+    method_setImplementation(
+        class_getClassMethod([NSPasteboard class], @selector(generalPasteboard)),
+        (IMP)TestGeneralPasteboard);
+  }
   {
     Method m = class_getInstanceMethod([NSWindow class], @selector(isKeyWindow));
     gOriginalIsKeyWindow = (BOOL(*)(id, SEL))method_getImplementation(m);

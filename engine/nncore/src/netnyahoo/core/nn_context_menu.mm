@@ -5,11 +5,19 @@
 #include <string>
 #include <vector>
 
+#include "base/functional/bind.h"
+#include "base/memory/weak_ptr.h"
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/renderer_context_menu/render_view_context_menu.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.h"
+#include "chrome/browser/ui/tab_contents/chrome_web_contents_menu_helper.h"
 #include "chrome/browser/ui/tab_contents/chrome_web_contents_view_delegate.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/browser_context.h"
+#include "ui/base/clipboard/clipboard.h"
+#include "ui/base/clipboard/clipboard_format_type.h"
+#include "ui/base/data_transfer_policy/data_transfer_endpoint.h"
 #include "chrome/browser/ui/views/tab_contents/chrome_web_contents_view_delegate_views_mac.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "content/public/browser/context_menu_params.h"
@@ -137,18 +145,83 @@ class NNViewDelegate : public ChromeWebContentsViewDelegateViewsMac {
       return ChromeWebContentsViewDelegateViewsMac::BuildMenu(render_frame_host,
                                                               params);
     }
-    // Chrome's menu for the page, with the host's items.
+    // Chrome's menu for the page, with the host's items. Paste follows the clipboard as
+    // BuildMenuAsync last read it (Chrome's view delegate keeps its own flags private).
     auto menu = std::make_unique<NNContextMenu>(
-        render_frame_host, params, /*is_paste_enabled=*/true,
-        /*is_paste_and_match_style_enabled=*/true,
+        render_frame_host, params, paste_enabled_, paste_and_match_style_enabled_,
         view->GetNativeView().GetNativeNSView());
     menu->Init();
     menu->AddHostItems();
     return menu;
   }
 
+  // Chrome's own sequence (ChromeWebContentsViewDelegateViews::BuildMenuAsync): the
+  // clipboard's types decide Paste, plain text Paste and Match Style; then BuildMenu.
+  void BuildMenuAsync(
+      content::RenderFrameHost& render_frame_host,
+      const content::ContextMenuParams& params,
+      base::OnceCallback<void(std::unique_ptr<RenderViewContextMenuBase>)> callback)
+      override {
+    if (!TabOf(contents_)) {
+      ChromeWebContentsViewDelegateViewsMac::BuildMenuAsync(render_frame_host, params,
+                                                            std::move(callback));
+      return;
+    }
+    // As Chrome's Mac delegate: a click doesn't activate the WebContents on the Mac.
+    tabs::TabInterface* tab_interface = tabs::TabInterface::MaybeGetFromContents(contents_);
+    if (tab_interface && !tab_interface->IsActivated()) {
+      contents_->Focus();
+    }
+    std::optional<ui::DataTransferEndpoint> data_dst;
+    if (params.page_url.is_valid()) {
+      data_dst.emplace(params.page_url,
+                       ui::DataTransferEndpointOptions{
+                           .notify_if_restricted = false,
+                           .off_the_record =
+                               contents_->GetBrowserContext()->IsOffTheRecord(),
+                       });
+    }
+    ui::Clipboard::GetForCurrentThread()->ReadAvailableTypes(
+        ui::ClipboardBuffer::kCopyPaste, data_dst,
+        base::BindOnce(&NNViewDelegate::OnReadAvailableTypes, weak_factory_.GetWeakPtr(),
+                       render_frame_host.GetGlobalId(),
+                       AddContextMenuParamsPropertiesFromPreferences(contents_, params),
+                       data_dst, std::move(callback)));
+  }
+
  private:
+  void OnReadAvailableTypes(
+      content::GlobalRenderFrameHostId frame_id,
+      const content::ContextMenuParams& params,
+      std::optional<ui::DataTransferEndpoint> data_dst,
+      base::OnceCallback<void(std::unique_ptr<RenderViewContextMenuBase>)> callback,
+      std::vector<std::u16string> types) {
+    paste_enabled_ = !types.empty();
+    ui::Clipboard::GetForCurrentThread()->GetAllAvailableFormats(
+        ui::ClipboardBuffer::kCopyPaste, std::move(data_dst),
+        base::BindOnce(&NNViewDelegate::OnGetAllAvailableFormats,
+                       weak_factory_.GetWeakPtr(), frame_id, params, std::move(callback)));
+  }
+
+  void OnGetAllAvailableFormats(
+      content::GlobalRenderFrameHostId frame_id,
+      const content::ContextMenuParams& params,
+      base::OnceCallback<void(std::unique_ptr<RenderViewContextMenuBase>)> callback,
+      base::flat_set<ui::ClipboardFormatType> formats) {
+    paste_and_match_style_enabled_ =
+        formats.contains(ui::ClipboardFormatType::PlainTextType());
+    content::RenderFrameHost* frame = content::RenderFrameHost::FromID(frame_id);
+    if (!frame) {
+      std::move(callback).Run(nullptr);
+      return;
+    }
+    std::move(callback).Run(BuildMenu(*frame, params));
+  }
+
   raw_ptr<content::WebContents> contents_;
+  bool paste_enabled_ = false;
+  bool paste_and_match_style_enabled_ = false;
+  base::WeakPtrFactory<NNViewDelegate> weak_factory_{this};
 };
 
 }  // namespace

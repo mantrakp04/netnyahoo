@@ -34,6 +34,7 @@
 #include "content/public/browser/render_frame_host.h"
 #include "third_party/blink/public/common/loader/resource_type_util.h"
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom.h"
+#include "netnyahoo/core/nn_desktop_capture.h"
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
 #include "netnyahoo/core/nn_autofill_trigger.h"
@@ -824,6 +825,16 @@ void NNWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
   }
 }
 
+void NNWebContentsDelegate::RequestMediaAccessPermission(
+    content::WebContents* web_contents,
+    const content::MediaStreamRequest& request,
+    content::MediaResponseCallback callback) {
+  content::MediaStreamRequest granted(request);
+  ApplyDesktopCaptureGrant(web_contents, granted);
+  BrowserWebContentsDelegate::RequestMediaAccessPermission(web_contents, granted,
+                                                           std::move(callback));
+}
+
 void NNWebContentsDelegate::ActivateContents(content::WebContents* contents) {
   NNCoreTab* tab = TabBridge::GetOrCreate(contents)->tab();
   id<NNCoreTabDelegate> delegate = tab.delegate;
@@ -1120,15 +1131,17 @@ void TabBridge::ResolveUnresponsive(bool terminate) {
                                                          unresponsive_->second)
                     : nullptr;
   base::RepeatingClosure restarter = std::move(hang_monitor_restarter_);
-  unresponsive_.reset();
   hang_monitor_restarter_.Reset();
   if (terminate) {
+    unresponsive_.reset();
     // As Chrome's "Exit pages" (the sad tab and rendererGone follow).
     if (host && host->GetProcess()->IsInitializedAndNotDead()) {
       host->GetProcess()->Shutdown(content::RESULT_CODE_HUNG);
     }
   } else if (restarter) {
-    restarter.Run();  // "Wait": ask again if it stays hung.
+    // "Wait": ask again if it stays hung. Still the hung widget until it answers, so its
+    // recovery reports tabBecameResponsive: (as CEF's onResponsive after a wait).
+    restarter.Run();
   }
 }
 

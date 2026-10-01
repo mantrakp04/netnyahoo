@@ -314,20 +314,21 @@ Known gaps:
 ## Stage 2: per-tab features and UI seams
 
 Stage 2 adds the per-tab features and UI seams `packages/nncore` needs to emit what `packages/cef` emits. Wherever
-it's practical, they hand over dictionaries already in the JS shapes of `packages/cef/src`. NNHost passes 98 of 98
-checks in `S7`–`S24`. The unresponsive-page check is skipped: Chrome's hang monitor ignores hidden pages.
+it's practical, they hand over dictionaries already in the JS shapes of `packages/cef/src`. NNHost passes 105 of 105
+checks in `S7`–`S27`. The unresponsive-page check is skipped: Chrome's hang monitor ignores hidden pages.
 
 | Area | What NNCore provides |
 |---|---|
-| Profile | Allow-listed bool prefs (CEF's per-profile prefs set on load). Chrome's `BrowsingDataRemover`. Component extensions. Deleting a profile (the last-used one too, not "Default") and releasing an incognito one. Cast routes |
+| Profile | Allow-listed bool prefs (CEF's per-profile prefs set on load). Chrome's `BrowsingDataRemover`. Component extensions. Deleting a profile (the last-used one too, not "Default") and releasing an incognito one. Cast routes. Profile deletion leaves `~/Applications` alone (Chrome's platform-app shortcut cleanup is off) |
 | Tab state | `securityInfo`, per-site zoom and pinch scale, `focusedEditable`, media capture access, base background colour, `mediaCaptureSourceId` |
-| Tab actions | Chrome commands on a background tab. Discard (`WebContentsDiscard`, so the same tab survives). Freeze. Unresponsive pages. Stop sharing. Autofill on demand. Scripts with a user gesture. Restore from `nn_tab_restore_take`'s state, and duplicate. "Share this tab instead", answered by Chrome's tab-sharing infobar model with no hook |
+| Tab actions | Chrome commands on a background tab. Discard (`WebContentsDiscard`, so the same tab survives). Freeze. Unresponsive pages. Stop sharing. The host picker's screen-share source, granted once per frame (`allowDesktopCapture`). In-process DevTools calls. Autofill on demand. Scripts with a user gesture. Restore from `nn_tab_restore_take`'s state, and duplicate. "Share this tab instead", answered by Chrome's tab-sharing infobar model with no hook |
 | Chrome UI the host shows instead | Permission prompts (`SetCreatePermissionPromptFunction`, before Chrome's bubble or chip). Blocked popups. Links to other apps. Extension install prompts. Extension actions, states and side panels. Device choosers. The Cast dialog. Context-menu items (Chrome's menu, plus the host's items; in background mode the menu is reported instead of shown) |
-| Events | Download navigations. Activation requests (PiP's back-to-tab, `window.focus()`). Requests the content blocker stopped (`ERR_BLOCKED_BY_CLIENT`), batched per turn |
+| Events | Download navigations. Activation requests (PiP's back-to-tab, `window.focus()`). Requests the content blocker stopped (`ERR_BLOCKED_BY_CLIENT`), batched per turn. Picture-in-picture open and close (video or document; a document PiP window is always Chrome's own) |
 
 New hook in Chrome's files, added by `apply.sh` and checked by `--check` and `series.py check`:
 - **`chrome/browser/external_protocol/external_protocol_handler.cc` (12 lines).** Placed before the Mac's
   "no app for this scheme" check, so a scheme with no app also reaches the host. Only NNCore sets it.
 
-What a hidden run can't prove: the screen-share picker (getDisplayMedia) is still Chrome's own, and camera,
-microphone and geolocation prompts also ask macOS.
+What a hidden run can't prove: a screen or window capture (macOS asks for screen recording; tests use a tab
+source), a video's picture-in-picture window, and camera, microphone and geolocation prompts (they also ask macOS).
+Test runs keep a scratch home (`CFFIXED_USER_HOME`) and a private pasteboard.

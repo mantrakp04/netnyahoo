@@ -164,9 +164,16 @@ const exe = path.join(appPath, "Contents/MacOS/NNHost");
 const logFd = fs.openSync(path.join(workDir, "stdout.log"), "w");
 const startedAt = Date.now();
 let hostExit = null;
+const userAppsFolder = path.join(process.env.HOME, "Applications", "Chromium Apps.localized");
+const userAppsBefore = (() => { try { return fs.statSync(userAppsFolder).mtimeMs; } catch { return null; } })();
+const fakeHome = path.join(workDir, "home");
+fs.mkdirSync(fakeHome, { recursive: true });
 const host = spawn(exe, [], {
   // Background mode: context menus are reported, not shown (NNCore's and the app's rule).
-  env: { ...process.env, NNHOST_DIR: hostDir, NNHOST_CDP_PORT: String(cdpPort), NETNYAHOO_BACKGROUND: "1" },
+  // CFFIXED_USER_HOME: a scratch home, so what Chrome keeps in the user's folders (the web-app
+  // shortcuts' "Chromium Apps" folder in ~/Applications, which deleting a profile updates)
+  // stays in the run's directory.
+  env: { ...process.env, NNHOST_DIR: hostDir, NNHOST_CDP_PORT: String(cdpPort), NETNYAHOO_BACKGROUND: "1", CFFIXED_USER_HOME: fakeHome },
   stdio: ["ignore", logFd, logFd],
 });
 host.on("exit", (code, signal) => (hostExit = { code, signal }));
@@ -763,6 +770,20 @@ try {
     const notif = (await p2.send("Runtime.evaluate", { expression: timed("Notification.requestPermission()"), awaitPromise: true, userGesture: true, returnByValue: true })).result?.result?.value;
     const notifReq = evs("permission", (e) => e.request.permissions.includes("notifications"))[0];
     check("S12", "Chrome's permission prompt goes to the host ({id, origin, permissions}); deny → the page's error (MIDI sysex), accept → granted (notifications)", geoReq && geoReq.request.origin.startsWith(base) && /^error/.test(geo) && notifReq && notif === "granted", { midi: geo, notif, geoReq: geoReq?.request, childWindows: (await state()).childWindows.length });
+    // A prompt the host never answers goes with the page (a main-frame navigation of its tab):
+    // engine:permissionRequestDismissed: reports it.
+    await cmd("config", { values: { permissionAnswers: {} } });
+    const pn = await cmd("open", { url: `${base}/perm?nav=a`, profile: "A" });
+    await waitFor(async () => (await tabState(pn.tabId))?.loading === false);
+    await cmd("show", { tabId: pn.tabId });
+    const ppn = await attach((t) => t.url === `${base}/perm?nav=a`);
+    ppn.send("Runtime.evaluate", { expression: "navigator.requestMIDIAccess({ sysex: true }).then(() => 'granted', (e) => 'error ' + e.name)", awaitPromise: true, userGesture: true, returnByValue: true }).catch(() => {});
+    const pending = await waitFor(() => evs("permission", (e) => e.tabId === pn.tabId)[0], 8000);
+    await cmd("nav", { tabId: pn.tabId, action: "load", url: `${base}/perm?nav=b` });
+    const gone = pending && await waitFor(() => evs("permissionDismissed", (e) => e.id === pending.request.id)[0], 10000);
+    ppn.close();
+    check("S12", "a prompt the host didn't answer, when its page navigates away → engine:permissionRequestDismissed:", pending && gone, { pending: pending?.request, gone });
+    await cmd("nav", { tabId: pn.tabId, action: "closeNow" });
     // (No camera check: Chrome asks macOS for camera access first, a system prompt. Media
     // access needs a manual check.)
     const bgSet = await cmd("background", { tabId: t2.tabId, color: "teal" });
@@ -872,6 +893,23 @@ try {
     const goneLast = await waitFor(async () => (await cmd("profileState", { profile: "D" })).destroyed, 10000);
     const nowLast = await waitFor(() => { const v = lastUsed(); return v && v !== "Profile 4" ? v : null; }, 15000, 500);
     await cmd("show", { tabId: indexId });
+    // Deleting a profile the window doesn't show (only loaded; prepared; with a background tab)
+    // leaves the window's activeProfile alone.
+    const kept = [];
+    const shownVisibility = async () => { const pv = await attach((t) => t.url === `${base}/index`); const v = await pv.evaluate("document.visibilityState"); pv.close(); return v; };
+    const visBefore = await shownVisibility();
+    for (const [as, name, how] of [["E", "Profile 5", "loaded"], ["F", "Profile 6", "prepared"], ["G", "Profile 7", "tab"]]) {
+      await cmd("loadProfile", { name, as });
+      if (how === "prepared") await cmd("prepareProfile", { profile: as });
+      if (how === "tab") await cmd("open", { url: `${base}/target?from=${as}`, profile: as, background: true });
+      const before = (await state()).activeProfile;
+      const d = await cmd("deleteProfile", { profile: as });
+      const gone = await waitFor(async () => (await cmd("profileState", { profile: as })).destroyed, 10000);
+      await sleep(300);
+      kept.push({ how, before, after: (await state()).activeProfile, deleted: d.deleted, gone: !!gone });
+    }
+    const visAfter = await shownVisibility();
+    check("S18", "deleteProfile of a profile the window doesn't show (loaded, prepared, with a background tab) keeps the window's activeProfile and its page's visibility", kept.every((k) => k.before === "Default" && k.after === k.before && k.deleted && k.gone) && visAfter === visBefore, { kept, visBefore, visAfter });
     check("S18", "deleteProfile: the last-used profile (shown in the window) goes; Chrome makes another one last-used", p4 && wasLast && delLast.deleted && goneLast && nowLast && (await state()).activeProfile, { p4, wasLast, delLast, goneLast, nowLast });
   }
   // S19 (D, E, F, I): tracing, tab capture id, activation requests, autofill on demand.
@@ -880,6 +918,28 @@ try {
     await sleep(500);
     const te = await cmd("tracing", {}, 60000);
     check("S19", "beginTracing / endTracing (not kept) / isTracing", tb.started && tb.isTracing && te.path === null && te.isTracing === false, { tb, te });
+    // A start the tracing service never answers (our own helper, stopped for the test) → NO
+    // after 10 s; once the service runs again, the next start works. (A killed service
+    // isn't testable: Chrome's own producer CHECKs when it reconnects.)
+    const svc = execFileSync("ps", ["-axo", "pid=,ppid=,command="]).toString().split("\n")
+      .map((l) => l.trim().split(/\s+/)).filter(([, ppid, ...c]) => Number(ppid) === host.pid && c.join(" ").includes("TracingService"));
+    const svcPid = Number(svc[0]?.[0]) || null;
+    let failed = null;
+    let again = null;
+    let againEnd = null;
+    if (svcPid) {
+      process.kill(svcPid, "SIGSTOP");
+      const t0 = Date.now();
+      try {
+        failed = await cmd("tracing", { begin: true }, 20000);
+        failed.ms = Date.now() - t0;
+      } finally {
+        process.kill(svcPid, "SIGCONT");
+      }
+      again = await waitFor(async () => { const r = await cmd("tracing", { begin: true }, 15000); return r.started ? r : null; }, 15000, 500);
+      againEnd = await cmd("tracing", {}, 60000);
+    }
+    check("S19", "a tracing start the service never answers → beginTracing answers NO (10 s); the next start works", svcPid && failed?.started === false && failed.isTracing === false && again?.started && againEnd?.path === null, { svcPid, failed, again, againEnd });
     const cap = await cmd("capture", { tabId: indexId });
     check("S19", "mediaCaptureSourceId (CEF's format); stopCapture with nothing shared", /^web-contents-media-stream:\/\/\d+:\d+$/.test(cap.sourceId) && cap.stopped === false, cap);
     await cmd("show", { tabId: indexId });
@@ -924,6 +984,23 @@ try {
     const after = await cmd("editable", { tabId: kt2.tabId });
     pk2.close();
     check("S20", "focusedEditable", before === false && after === true, { before, after });
+    // Paste follows the clipboard (the host's private test pasteboard).
+    const pasteMenu = async (text) => {
+      const pb = await cmd("pasteboard", { text });
+      const n = evs("contextMenu", (e) => e.tabId === kt2.tabId).length;
+      const pk3 = await attach((t) => t.url === `${base}/keys?edit=1`);
+      const at = await pk3.evaluate(`(() => { const b = document.getElementById('box'); b.focus(); const r = b.getBoundingClientRect(); return [r.x + 5, r.y + r.height / 2]; })()`);
+      for (const type of ["mousePressed", "mouseReleased"]) {
+        await pk3.send("Input.dispatchMouseEvent", { type, x: at[0], y: at[1], button: "right", clickCount: 1 });
+      }
+      const m = await waitFor(() => evs("contextMenu", (e) => e.tabId === kt2.tabId)[n], 6000);
+      pk3.close();
+      const item = (re) => m?.items.find((i) => re.test(i.label.replace(/&/g, "")));
+      return { private: pb.private, paste: item(/^Paste$/)?.enabled, matchStyle: item(/match style|plain text/i)?.enabled };
+    };
+    const withText = await pasteMenu("nn paste");
+    const empty = await pasteMenu(null);
+    check("S20", "the page menu's Paste and Paste and Match Style follow the clipboard", withText.private && withText.paste === true && empty.paste === false && (withText.matchStyle === undefined || (withText.matchStyle === true && empty.matchStyle === false)), { withText, empty });
     await cmd("nav", { tabId: kt2.tabId, action: "closeNow" });
   }
   // S21 (K, H): duplicate and restore tabs; device choosers.
@@ -963,6 +1040,43 @@ try {
     const main = await waitFor(() => evs("blocked", (e) => e.tabId === bt.tabId && e.url.endsWith("/nnblock-main"))[0], 8000);
     check("S24", "tab:didBlockRequests:lastURL: — subresources, a subframe (5, batched per turn) and a cancelled main-frame navigation", subTotal === 5 && sub.every((e) => e.count >= 1 && /\/nnblock-[1-5](\.|$)/.test(e.url)) && main && main.count === 1, { subTotal, reports: sub.map((e) => [e.count, e.url.replace(base, "")]), main: main && [main.count, main.url.replace(base, "")] });
     await cmd("nav", { tabId: bt.tabId, action: "closeNow" });
+  }
+  // S25: the host's screen-share picker approves one source (another tab) for one frame.
+  {
+    const src = await cmd("open", { url: `${base}/target?from=dcsrc`, profile: "A", background: true });
+    await waitFor(async () => (await tabState(src.tabId))?.loading === false);
+    const dc = await cmd("open", { url: `${base}/target?from=dc`, profile: "A" });
+    await waitFor(async () => (await tabState(dc.tabId))?.loading === false);
+    const hello = await waitFor(() => evs("pageMessage", (e) => e.tabId === dc.tabId && e.kind === "hello" && e.main)[0], 8000);
+    const source = (await cmd("capture", { tabId: src.tabId })).sourceId;
+    const pd = await attach((t) => t.url.includes("from=dc") && !t.url.includes("dcsrc"));
+    const gum = async () => (await pd.send("Runtime.evaluate", { expression: `Promise.race([navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: ${JSON.stringify(source)} } } }).then((s) => { const t = s.getVideoTracks()[0]; const r = 'capturing ' + (t.getSettings().displaySurface || ''); s.getTracks().forEach((x) => x.stop()); return r; }, (e) => 'error ' + e.name), new Promise((r) => setTimeout(() => r('timeout'), 8000))])`, awaitPromise: true, returnByValue: true })).result?.result?.value;
+    const none = await gum();
+    await cmd("allowCapture", { tabId: dc.tabId, source, frame: "0:0", origin: base });
+    const wrongFrame = await gum();
+    await cmd("allowCapture", { tabId: dc.tabId, source, frame: hello?.frame, origin: base });
+    const granted = await gum();
+    const reused = await gum();
+    pd.close();
+    check("S25", "allowDesktopCapture: the approved tab source, once, for that frame and origin; refused without a grant or for another frame", /^capturing/.test(granted) && /^error/.test(none) && /^error/.test(wrongFrame) && /^error/.test(reused), { source, frame: hello?.frame, none, wrongFrame, granted, reused });
+    for (const t of [src, dc]) await cmd("nav", { tabId: t.tabId, action: "closeNow" });
+  }
+  // S27: DevTools protocol calls in process (CEF's ExecuteDevToolsMethod).
+  {
+    const dt = await cmd("open", { url: `${base}/target?from=devtools`, profile: "A" });
+    await waitFor(async () => (await tabState(dt.tabId))?.loading === false);
+    const metrics = await cmd("devtools.call", { tabId: dt.tabId, method: "Page.getLayoutMetrics" }, 15000);
+    const vv = metrics?.result?.cssVisualViewport;
+    const shot = vv && await cmd("devtools.call", { tabId: dt.tabId, method: "Page.captureScreenshot", params: { format: "jpeg", quality: 80, clip: { x: vv.pageX, y: vv.pageY, width: Math.min(vv.clientWidth, 200), height: Math.min(vv.clientHeight, 120), scale: 0.5 } } }, 20000);
+    const bad = await cmd("devtools.call", { tabId: dt.tabId, method: "Nope.notAMethod" }, 15000);
+    // The remote-debugging port's own client keeps working beside ours.
+    const pdt = await attach((t) => t.url.includes("from=devtools"));
+    const cdpTitle = await pdt.evaluate("document.title");
+    const again = await cmd("devtools.call", { tabId: dt.tabId, method: "Runtime.evaluate", params: { expression: "1 + 1", returnByValue: true } }, 15000);
+    pdt.close();
+    const jpeg = shot?.result?.data ? Buffer.from(shot.result.data, "base64") : null;
+    check("S27", "devToolsCall: Page.getLayoutMetrics, a small Page.captureScreenshot (JPEG), an error for an unknown method, beside the CDP port's client", vv && jpeg && jpeg[0] === 0xff && jpeg[1] === 0xd8 && metrics.mainThread && bad?.error && !bad.result && again?.result?.result?.value === 2 && cdpTitle, { viewport: vv && [vv.clientWidth, vv.clientHeight], jpegBytes: jpeg?.length, bad: bad?.error, again: again?.result?.result, cdpTitle });
+    await cmd("nav", { tabId: dt.tabId, action: "closeNow" });
   }
   // S23 (E): tab capture: "Share this tab instead" and Stop sharing.
   {
@@ -1133,7 +1247,8 @@ try {
   const shutdown = events().find((e) => e.event === "engineWillShutDown");
   const crashes = fs
     .readdirSync(path.join(process.env.HOME, "Library/Logs/DiagnosticReports"))
-    .filter((f) => f.startsWith("NNHost") || f.startsWith("Chromium Helper"))
+    // (ExcUserFault_: a non-fatal fault report, e.g. an os_log fault.)
+    .filter((f) => /^(ExcUserFault_)?(NNHost|Chromium Helper)/.test(f))
     .filter((f) => fs.statSync(path.join(process.env.HOME, "Library/Logs/DiagnosticReports", f)).mtimeMs > startedAt)
     // Only this run's app (other agents' builds share the helper names).
     .filter((f) => {
@@ -1143,6 +1258,12 @@ try {
         return true;
       }
     });
+  // Nothing of the run outside its own directories: Chrome's web-app shortcuts folder
+  // ("Chromium Apps.localized" in Applications), which the run's home would now hold.
+  const runAppsFolder = fs.existsSync(path.join(fakeHome, "Applications", "Chromium Apps.localized"));
+  const userAppsAfter = (() => { try { return fs.statSync(userAppsFolder).mtimeMs; } catch { return null; } })();
+  // (The user's folder's mtime is evidence only: other agents' builds may touch it meanwhile.)
+  check("S26", "no Chrome apps folder made or updated (profiles were deleted): none in the run's home", !runAppsFolder, { runAppsFolder, userAppsUnchanged: userAppsAfter === userAppsBefore });
   check("S1", "applicationWillTerminate: reaches NSApp.delegate at the quit's point of no return", events().some((e) => e.event === "applicationWillTerminate"), {});
   check(8, "quit: run loop ends, process exits 0, no crash report", exited && exited.code === 0 && shutdown && crashes.length === 0, {
     exit: exited,
