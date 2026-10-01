@@ -151,6 +151,10 @@ NNCORE_EXPORT
 // Answers tab:externalAppRequest:. open: launch the app (through Chrome); remember: Chrome's
 // "always allow" for that origin and scheme.
 + (void)resolveExternalApp:(NSString*)requestId open:(BOOL)open remember:(BOOL)remember;
+// Test runs (--netnyahoo-test-external-protocol-no-launch): what resolveExternalApp: opened
+// instead of launching it, [{url, remembered}] in order; remembered: Chrome now keeps
+// "always allow" for that origin and scheme. Empty without the switch.
+@property(class, readonly) NSArray<NSDictionary*>* testExternalLaunches;
 // The host's screen-share picker chose `sourceId` ("screen:<CGDirectDisplayID>:0",
 // "window:<CGWindowID>:0", or a tab's mediaCaptureSourceId) for a page of `tab`: its next
 // getUserMedia({chromeMediaSource: "desktop", chromeMediaSourceId: sourceId}) from that

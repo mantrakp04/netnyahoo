@@ -938,6 +938,10 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
                               base::SysNSStringToUTF8(origin ?: @""));
 }
 
++ (NSArray<NSDictionary*>*)testExternalLaunches {
+  return nncore::TestExternalLaunches();
+}
+
 + (void)resolveExternalApp:(NSString*)requestId open:(BOOL)open remember:(BOOL)remember {
   nncore::ResolveExternalApp(base::SysNSStringToUTF8(requestId), open, remember);
 }

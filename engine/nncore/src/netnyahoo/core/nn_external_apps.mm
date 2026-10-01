@@ -12,6 +12,7 @@
 #include <string>
 
 #include "base/base64.h"
+#include "base/command_line.h"
 #include "base/memory/weak_ptr.h"
 #include "base/functional/bind.h"
 #include "base/no_destructor.h"
@@ -19,6 +20,8 @@
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/external_protocol/external_protocol_handler.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/common/pref_names.h"
+#include "components/prefs/pref_service.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "content/public/browser/weak_document_ptr.h"
 #include "content/public/browser/web_contents.h"
@@ -166,6 +169,17 @@ bool AskHost(const GURL& url,
 
 }  // namespace
 
+namespace {
+
+constexpr char kTestNoLaunchSwitch[] = "netnyahoo-test-external-protocol-no-launch";
+
+NSMutableArray<NSDictionary*>* TestLaunches() {
+  static NSMutableArray<NSDictionary*>* launches = [NSMutableArray array];
+  return launches;
+}
+
+}  // namespace
+
 void InstallExternalAppPrompts() {
   g_netnyahoo_external_protocol_dialog = &AskHost;
 }
@@ -182,15 +196,35 @@ void ResolveExternalApp(const std::string& request_id, bool open, bool remember)
   if (!open || !contents || !pending.initiator.AsRenderFrameHostIfValid()) {
     return;
   }
+  Profile* profile = Profile::FromBrowserContext(contents->GetBrowserContext());
+  const std::string scheme(pending.url.scheme());
   if (remember && pending.can_remember && pending.origin) {
     // Chrome's own "always allow" (its protocol_handler prefs), as its dialog's checkbox.
-    ExternalProtocolHandler::SetBlockState(
-        std::string(pending.url.scheme()), *pending.origin,
-        ExternalProtocolHandler::DONT_BLOCK,
-        Profile::FromBrowserContext(contents->GetBrowserContext()));
+    ExternalProtocolHandler::SetBlockState(scheme, *pending.origin,
+                                           ExternalProtocolHandler::DONT_BLOCK, profile);
+  }
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(kTestNoLaunchSwitch)) {
+    // Test runs: recorded, with what Chrome now remembers for the origin, not launched.
+    // (Chrome's own prefs, not GetBlockState, which answers BLOCK for a while after any
+    // request: its flood guard.)
+    const base::DictValue* allowed =
+        pending.origin ? profile->GetPrefs()
+                             ->GetDict(prefs::kProtocolHandlerPerOriginAllowedProtocols)
+                             .FindDict(pending.origin->Serialize())
+                       : nullptr;
+    const bool remembered = allowed && allowed->FindBool(scheme).value_or(false);
+    [TestLaunches() addObject:@{
+      @"url" : base::SysUTF8ToNSString(pending.url.spec()),
+      @"remembered" : @(remembered),
+    }];
+    return;
   }
   ExternalProtocolHandler::LaunchUrlWithoutSecurityCheck(pending.url, contents,
                                                          pending.initiator);
+}
+
+NSArray<NSDictionary*>* TestExternalLaunches() {
+  return [TestLaunches() copy];
 }
 
 }  // namespace nncore

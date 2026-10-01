@@ -576,8 +576,10 @@ static void Log(NSDictionary* event) {
 }
 - (void)tab:(NNCoreTab*)tab externalAppRequest:(NSDictionary*)request {
   Log(@{@"event" : @"externalApp", @"tabId" : @(tab.tabId), @"request" : request});
-  // Never launch anything from a test: always "cancel".
-  [NNCoreEngine resolveExternalApp:request[@"id"] open:NO remember:NO];
+  // Never launch anything from a test: "cancel", or with config openExternalApp an "open,
+  // always" that the no-launch switch (main) records instead of launching.
+  BOOL open = [_config[@"openExternalApp"] boolValue];
+  [NNCoreEngine resolveExternalApp:request[@"id"] open:open remember:open];
 }
 - (void)tabDidChangeDiscarded:(NNCoreTab*)tab {
   Log(@{@"event" : @"discarded", @"tabId" : @(tab.tabId), @"discarded" : @(tab.discarded)});
@@ -1091,6 +1093,8 @@ static void Log(NSDictionary* event) {
              reply(@{@"result" : result ?: NSNull.null, @"error" : error ?: NSNull.null,
                      @"mainThread" : @(NSThread.isMainThread)});
            }];
+  } else if ([name isEqualToString:@"externalLaunches"]) {
+    reply(NNCoreEngine.testExternalLaunches);
   } else if ([name isEqualToString:@"allowCapture"]) {
     [NNCoreEngine allowDesktopCapture:cmd[@"source"]
                                   tab:tab
@@ -1222,6 +1226,8 @@ int main(int argc, const char* argv[]) {
     // A hidden test window is occluded: its pages would be hidden, and Chrome's hang monitor
     // ignores hidden pages (as the app's background mode).
     args.push_back("--disable-backgrounding-occluded-windows");
+    // An app link the host opens is recorded, never launched (+testExternalLaunches).
+    args.push_back("--netnyahoo-test-external-protocol-no-launch");
   }
   static Host* host = [[Host alloc] init];
   return [NNCoreEngine runWithArgc:(int)args.size() argv:args.data() delegate:host];

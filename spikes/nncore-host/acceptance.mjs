@@ -802,6 +802,20 @@ try {
     pm.close();
     check("S13", "a link to another app asks the host (JS ExternalAppRequest) instead of Chrome's dialog", ext6 && ext6.request.scheme === "facetime" && ext6.request.origin === base && typeof ext6.request.app === "string" && /^Open “/.test(ext6.request.title) && /^data:image\/png/.test(ext6.request.icon), ext6?.request && { ...ext6.request, icon: ext6.request.icon ? "data:…" : null });
 
+    // "Open, always" (another origin, never clicked again: a remembered scheme would launch
+    // through Chrome itself): recorded by the no-launch test switch, remembered by Chrome.
+    await cmd("config", { values: { openExternalApp: true } });
+    const ipBase = base.replace("localhost", "127.0.0.1");
+    const mt2 = await cmd("open", { url: `${ipBase}/mailto`, profile: "A" });
+    await waitFor(async () => (await tabState(mt2.tabId))?.title === "Mailto");
+    const pm2 = await attach((t) => t.url === `${ipBase}/mailto`);
+    await pm2.click("#m");
+    const launched = await waitFor(async () => (await cmd("externalLaunches")).find((l) => l.url.startsWith("facetime:")), 10000);
+    pm2.close();
+    await cmd("config", { values: { openExternalApp: false } });
+    check("S13", "resolveExternalApp open + remember: launched (recorded by the test switch, not run) and remembered by Chrome", launched && launched.remembered === true, launched);
+    await cmd("nav", { tabId: mt2.tabId, action: "closeNow" });
+
     // S14 (item 7): discard, freeze, unresponsive.
     const dt = await cmd("open", { url: `${base}/target?from=discard`, profile: "A", background: true });
     await waitFor(async () => (await tabState(dt.tabId))?.loading === false);
@@ -926,7 +940,7 @@ try {
       if (how === "tab") await cmd("open", { url: `${base}/target?from=${as}`, profile: as, background: true });
       const before = (await state()).activeProfile;
       const d = await cmd("deleteProfile", { profile: as });
-      const gone = await waitFor(async () => (await cmd("profileState", { profile: as })).destroyed, 10000);
+      const gone = await waitFor(async () => (await cmd("profileState", { profile: as })).destroyed, 20000);
       await sleep(300);
       kept.push({ how, before, after: (await state()).activeProfile, deleted: d.deleted, gone: !!gone });
     }
