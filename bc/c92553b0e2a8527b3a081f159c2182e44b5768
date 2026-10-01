@@ -1,0 +1,95 @@
+apps/browser/macos-nncore/NetnyahooNNCore.xcodeproj/project.pbxproj
+  s_9c356f9574d31c::t_3bcc8510b0db5f 1-16,18-28,30-64,66-94,103-127,130-136,138,140-142,144-157,159-178,180-191,193-281,283-308,310-375,377-571,573-580,582-593
+  s_9c356f9574d31c::t_7b06cef84f0237 17,29,65,95-102,128-129,137,139,143,158,179,192,282,309,376,572,581
+apps/browser/macos-nncore/Info.plist
+  s_9c356f9574d31c::t_3bcc8510b0db5f 1-116
+apps/browser/macos-nncore/Podfile
+  s_9c356f9574d31c::t_5ca9c5aa004a09 1-44
+apps/browser/macos-nncore/generate.py
+  s_9c356f9574d31c::t_7b06cef84f0237 59,63-65
+  s_9c356f9574d31c::t_3bcc8510b0db5f 60,66
+  s_9c356f9574d31c::t_e4d2b6593ebbba 1-58,61-62,67-90
+packages/nncore/ios/NNCoreActivation.mm
+  s_9c356f9574d31c::t_30e58826ebe3aa 243-244,246-247
+  s_9c356f9574d31c::t_b9c4cac9001ccb 1-242,245
+packages/nncore/ios/NNCoreWebView.h
+  s_9c356f9574d31c::t_db976b63115384 1-88
+apps/browser/macos-nncore/main.swift
+  s_9c356f9574d31c::t_5ca9c5aa004a09 1-6
+packages/nncore/ios/NNCoreWebView.mm
+  s_9c356f9574d31c::t_e0bebb1ac58a5b 1-11,13-744
+  s_9c356f9574d31c::t_6fd335ec611b82 12
+packages/nncore/ios/NNCoreFavicons.mm
+  s_9c356f9574d31c::t_688dafa084cabd 1-133
+packages/nncore/scripts/acceptance.mjs
+  s_9c356f9574d31c::t_62ee966b718146 1-8,10-55,61,86,91-232,237-246,248-258,261-276,278-289,291-307,309,313,315-329
+  s_9c356f9574d31c::t_27fbf3e030d373 9,60,62-85,87-90
+  s_9c356f9574d31c::t_dfd89b805e7e40 247,259-260,290,308,310-312,314
+  s_9c356f9574d31c::t_65c2f8830fe957 233-236,277
+  s_9c356f9574d31c::t_16a0b24ce61a67 56-59
+packages/nncore/ios/ExtensionsModule.swift
+  s_9c356f9574d31c::t_6d08a93c075e20 1-33
+apps/browser/macos-nncore/NetnyahooNNCore.xcodeproj/xcshareddata/xcschemes/Netnyahoo-NNCore.xcscheme
+  s_9c356f9574d31c::t_3bcc8510b0db5f 1-78
+packages/nncore/ios/ChromeUIModule.swift
+  s_9c356f9574d31c::t_6d08a93c075e20 1-30
+packages/nncore/package.json
+  s_9c356f9574d31c::t_627e20bf80956e 1-6
+apps/browser/macos-nncore/NetnyahooNNCore.xcworkspace/contents.xcworkspacedata
+  s_9c356f9574d31c::t_105ac0e00d18cd 1-10
+apps/browser/macos-nncore/.gitignore
+  s_9c356f9574d31c::t_5ca9c5aa004a09 1
+apps/browser/macos-nncore/.xcode.env
+  s_9c356f9574d31c::t_5ca9c5aa004a09 1
+packages/nncore/expo-module.config.json
+  s_9c356f9574d31c::t_627e20bf80956e 1-6
+packages/nncore/ios/NNCoreChromeWindow.mm
+  s_9c356f9574d31c::t_7eeaa7ed40da0a 1-312
+packages/nncore/scripts/stage-framework.sh
+  s_9c356f9574d31c::t_8574e7701d60ac 1-36
+packages/nncore/ios/NNCoreInternal.h
+  s_9c356f9574d31c::t_273b054e4fae66 59-63
+  s_9c356f9574d31c::t_4864fa57f0a408 1-58,64
+packages/nncore/ios/NNCoreHost.h
+  s_9c356f9574d31c::t_e9385088ffa5b0 21-31
+  s_9c356f9574d31c::t_9b0eac9780ed17 1-20,32
+packages/nncore/ios/NNCoreWebViewInternal.h
+  s_9c356f9574d31c::t_6b8a1805955495 1-18
+packages/nncore/ios/CefModule.swift
+  s_9c356f9574d31c::t_f799216f512cfe 1-404
+packages/nncore/ios/NetnyahooNNCore.podspec
+  s_9c356f9574d31c::t_3701057e18b7dd 1-32
+packages/nncore/scripts/embed.sh
+  s_9c356f9574d31c::t_ae0ef6903628d0 10-11
+  s_9c356f9574d31c::t_8574e7701d60ac 1-9,12-17
+packages/nncore/ios/NNCoreHost.mm
+  s_9c356f9574d31c::t_bb22ea18626e47 1-215
+apps/browser/macos-nncore/Podfile.lock
+  s_9c356f9574d31c::t_1a07b048a9fc1c 1-2665
+packages/nncore/ios/NNChromeWindow.h
+  s_9c356f9574d31c::t_202c583174c88b 1
+packages/nncore/ios/NNSwipe.h
+  s_9c356f9574d31c::t_6231fe46ee47b7 1
+packages/nncore/ios/NNSwipe.mm
+  s_9c356f9574d31c::t_cc71071aa3d395 1
+packages/nncore/ios/SwipeModule.swift
+  s_9c356f9574d31c::t_8934829219cd74 1
+packages/nncore/ios/page_script.js
+  s_9c356f9574d31c::t_295653938f3217 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bcc92553b0e2a8527b3a081f159c2182e44b5768",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
