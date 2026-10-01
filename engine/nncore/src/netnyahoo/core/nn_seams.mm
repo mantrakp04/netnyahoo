@@ -25,6 +25,7 @@
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_guest.h"
 #include "netnyahoo/core/nn_browser.h"
 #include "netnyahoo/core/nn_device_chooser.h"
+#include "netnyahoo/core/nn_cast_dialog.h"
 #include "components/tabs/public/tab_interface.h"
 
 namespace cef {
@@ -83,12 +84,12 @@ bool HandleDeviceChooser(content::RenderFrameHost* owner,
 }
 
 bool WantsCastDialog(content::WebContents* initiator) {
-  return false;
+  return nncore::WantsCastDialog(initiator);
 }
 
 bool HandleCastDialog(content::WebContents* initiator,
                       media_router::MediaRouterUI* ui) {
-  return false;
+  return nncore::HandleCastDialog(initiator, ui);
 }
 
 bool HandleExtensionSidePanel(BrowserWindowInterface* browser_window,

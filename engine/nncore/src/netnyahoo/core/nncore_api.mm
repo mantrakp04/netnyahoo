@@ -72,6 +72,7 @@
 #include "components/sessions/core/serialized_navigation_entry.h"
 #include "components/sessions/core/serialized_user_agent_override.h"
 #include "netnyahoo/core/nn_device_chooser.h"
+#include "netnyahoo/core/nn_cast_dialog.h"
 #include "netnyahoo/core/nn_context_menu.h"
 #include "netnyahoo/core/nn_autofill_trigger.h"
 #include "base/trace_event/trace_config.h"
@@ -515,6 +516,16 @@ void ResolveExtensionInstallPrompt(const std::string& request_id, bool accepted)
   std::move(done).Run(Payload(accepted ? Result::ACCEPTED : Result::USER_CANCELED));
 }
 
+bool HostWantsCastDialogs() {
+  return [g_delegate respondsToSelector:@selector(engine:castDialog:tab:)];
+}
+
+void HostCastDialog(content::WebContents* contents, NSDictionary* state) {
+  if (HostWantsCastDialogs()) {
+    [g_delegate engine:g_engine castDialog:state tab:TabBridge::GetOrCreate(contents)->tab()];
+  }
+}
+
 bool HostWantsDeviceChoosers() {
   return [g_delegate respondsToSelector:@selector(engine:deviceChooser:tab:)];
 }
@@ -727,6 +738,18 @@ static bool g_tracing = false;
 
 + (BOOL)isTracing {
   return g_tracing;
+}
+
++ (void)startCasting:(int)dialogId sink:(NSString*)sinkId mode:(int)castMode {
+  nncore::StartCasting(dialogId, base::SysNSStringToUTF8(sinkId), castMode);
+}
+
++ (void)stopCasting:(int)dialogId route:(NSString*)routeId {
+  nncore::StopCasting(dialogId, base::SysNSStringToUTF8(routeId));
+}
+
++ (void)closeCastDialog:(int)dialogId {
+  nncore::CloseCastDialog(dialogId);
 }
 
 + (void)selectDevice:(int)chooserId index:(int)index {
@@ -1682,6 +1705,10 @@ static bool g_tracing = false;
   indicator->StopMediaCapturing(_contents,
                                 MediaStreamCaptureIndicator::MediaType::kDisplayMedia);
   return capturing;
+}
+
+- (BOOL)showCastDialog {
+  return nncore::ShowCastDialog(_contents);
 }
 
 - (BOOL)focusedEditable {

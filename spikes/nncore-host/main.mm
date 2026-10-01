@@ -629,6 +629,12 @@ static void Log(NSDictionary* event) {
     [NNCoreEngine cancelDeviceChooser:[chooser[@"id"] intValue]];
   }
 }
+- (void)engine:(NNCoreEngine*)engine castDialog:(NSDictionary*)dialog tab:(NNCoreTab*)tab {
+  Log(@{@"event" : @"castDialog", @"tabId" : @(tab.tabId), @"dialog" : dialog});
+  if ([dialog[@"open"] boolValue] && [_config[@"closeCast"] boolValue]) {
+    [NNCoreEngine closeCastDialog:[dialog[@"id"] intValue]];
+  }
+}
 - (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason {
   Log(@{@"event" : @"activationRequest", @"tabId" : @(tab.tabId), @"reason" : reason});
 }
@@ -1057,6 +1063,8 @@ static void Log(NSDictionary* event) {
   } else if ([name isEqualToString:@"restore"]) {
     NNCoreTab* t = [_window restoreTab:cmd[@"state"] profile:profile foreground:NO];
     reply(t ? @(t.tabId) : NSNull.null);
+  } else if ([name isEqualToString:@"cast"]) {
+    reply(@([tab showCastDialog]));
   } else if ([name isEqualToString:@"editable"]) {
     reply(@(tab.focusedEditable));
   } else if ([name isEqualToString:@"autofill"]) {

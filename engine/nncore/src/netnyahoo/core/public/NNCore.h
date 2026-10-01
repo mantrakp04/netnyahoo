@@ -70,6 +70,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)engine:(NNCoreEngine*)engine
     deviceChooser:(NSDictionary<NSString*, id>*)chooser
               tab:(NNCoreTab*)tab;
+// Chrome's Cast dialog for a host tab (-[NNCoreTab showCastDialog], a page's Presentation
+// API request): JS CastDialog without browserId, {id, open, header, permissionRejected,
+// castingStarted, sinks:[{id, name, status, state, icon, modes, routeId, issue}]}. Sent on
+// every change; the last has open NO. +startCasting:sink:mode:, +stopCasting:route:,
+// +closeCastDialog:. Without this, Chrome's bubble.
+- (void)engine:(NNCoreEngine*)engine
+    castDialog:(NSDictionary<NSString*, id>*)dialog
+           tab:(NNCoreTab*)tab;
 @end
 
 NNCORE_EXPORT
@@ -108,6 +116,11 @@ NNCORE_EXPORT
                    result:(NSString*)result
                  remember:(BOOL)remember;
 + (void)resolveExtensionInstallPrompt:(NSString*)requestId accepted:(BOOL)accepted;
+// Cast (engine:castDialog:tab:). mode: JS CastMode (presentation 1, tab 2, screen 4,
+// remotePlayback 8).
++ (void)startCasting:(int)dialogId sink:(NSString*)sinkId mode:(int)castMode;
++ (void)stopCasting:(int)dialogId route:(NSString*)routeId;
++ (void)closeCastDialog:(int)dialogId;
 // Device choosers (engine:deviceChooser:tab:). index: an option, or -1 for a scanning
 // prompt's OK.
 + (void)selectDevice:(int)chooserId index:(int)index;
@@ -462,6 +475,9 @@ NNCORE_EXPORT
 // Chrome's autofill dropdown at the page's focused field, now (CEF's
 // CefShowAutofillSuggestions): passwords: the saved-passwords list. NO without a field.
 - (BOOL)showAutofillSuggestions:(BOOL)passwords;
+// Chrome's Cast dialog for this tab (as its toolbar button): engine:castDialog:tab:. NO if
+// the media router is off.
+- (BOOL)showCastDialog;
 // Whether the page's focused element takes text now (Esc in a text field is the page's).
 @property(readonly) BOOL focusedEditable;
 // The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:).

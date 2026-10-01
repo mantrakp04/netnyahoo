@@ -931,6 +931,15 @@ try {
     await cmd("nav", { tabId: ut.tabId, action: "closeNow" });
     if (dup) await cmd("nav", { tabId: dup.tabId, action: "closeNow" });
   }
+  // S22 (H): Chrome's Cast dialog to the host.
+  {
+    await cmd("config", { values: { closeCast: true } });
+    const shown = await cmd("cast", { tabId: indexId });
+    const opened = await waitFor(() => evs("castDialog", (e) => e.dialog.open)[0], 8000);
+    const closed = await waitFor(() => evs("castDialog", (e) => !e.dialog.open)[0], 8000);
+    const childBubble = (await state()).childWindows.filter((w) => w.visible && w.class !== "NSPanel").length;
+    check("S22", "showCastDialog → engine:castDialog:tab: (JS CastDialog); closeCastDialog: closes it", shown === true && opened && typeof opened.dialog.header === "string" && Array.isArray(opened.dialog.sinks) && closed, { shown, header: opened?.dialog.header, sinks: opened?.dialog.sinks?.length, closed: !!closed, childBubble });
+  }
   // S16 (item 9): extension actions.
   {
     const extId = ext?.id;
