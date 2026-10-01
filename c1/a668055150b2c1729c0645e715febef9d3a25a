@@ -1,0 +1,35 @@
+infra/telemetry/clickhouse/users.d/nn.xml
+  s_f7aae000065a2a::t_b50ec55647ebc8 10-11
+infra/telemetry/clickhouse/start.sh
+  s_f7aae000065a2a::t_ddbd195b827491 30-37
+  s_f7aae000065a2a::t_cfcd36c82c90c9 10-15
+  s_9c356f9574d31c::t_3758b76fd4eff5 38
+.claude/skills/stats/queries.md
+  s_f7aae000065a2a::t_a03a52b7c01967 3-6
+infra/telemetry/clickhouse/schema.sql
+  s_f7aae000065a2a::t_1da165b3d5b0a1 66-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c1a668055150b2c1729c0645e715febef9d3a25a",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f7aae000065a2a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e358827-291e-45c1-a344-9aa0e5727e2b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
