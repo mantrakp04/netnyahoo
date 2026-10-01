@@ -2073,8 +2073,11 @@ try {
   });
 
   await check("internal-pages-not-history", async () => {
-    // The content blocker's hidden page (chrome-extension://<uBOL>/manifest.json, opened in every profile it loads
-    // into) never reaches a profile's history or the omnibox; a page the user visits does.
+    // The host's own pages never reach a profile's history or the omnibox: the content blocker's hidden page
+    // (chrome-extension://<uBOL>/manifest.json, opened in every profile it loads into), extension popups and side
+    // panels. A page the user visits does, an extension's page opened as a tab too (an options page: Chrome records
+    // chrome-extension: URLs, CanAddURLToHistory, as extension-windows-hidden opens one).
+    const userOpened = (u) => /^chrome-extension:\/\/[a-p]{32}\/options\.html/.test(u);
     const profiles = ["", ...(await evalApp(`return nn.store.getState().profileOrder.filter((p) => p !== "default")`))];
     await sleep(1500);
     const found = {};
@@ -2083,7 +2086,7 @@ try {
       const r = JSON.parse(await cef(`engineCall("nn_history_query", ${JSON.stringify(profile)}, ${JSON.stringify(JSON.stringify({ maxUrls: 1000, maxVisits: 1 }))})`));
       const urls = (r.entries ?? []).map((e) => e.u ?? "");
       pages += urls.filter((u) => u.startsWith("http")).length;
-      const internal = urls.filter((u) => u.startsWith("chrome-extension://"));
+      const internal = urls.filter((u) => u.startsWith("chrome-extension://") && !userOpened(u));
       if (internal.length) found[profile || "personal"] = internal;
     }
     if (Object.keys(found).length) throw new Error(`extension pages in history: ${JSON.stringify(found)}`);
