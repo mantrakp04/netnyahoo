@@ -1,0 +1,106 @@
+apps/browser/src/test-native-stub.mjs
+  s_9c356f9574d31c::t_0101d5717e3051 49-82,91-217
+  s_9c356f9574d31c::t_e48f433dd11fa7 83-90
+apps/browser/src/lib/history.ts
+  s_9c356f9574d31c::t_9153c90c08eb57 1-24,29-67,69-124,126-231
+  s_9c356f9574d31c::t_a2417d817197b4 25-28,68,125
+apps/browser/src/sync/engine.test.mjs
+  s_9c356f9574d31c::t_f04919281c14bc 43-44,47,86
+docs/nncore-parity.md
+  s_9c356f9574d31c::t_9bb12e4f0ab454 104,140,159
+apps/browser/src/lib/favicons.ts
+  s_9c356f9574d31c::t_9153c90c08eb57 1-2,10-22,25,27-30,33-37,39-47,50-52,54-65,68-74,78,96,98,102-105,108-109,111-116,118-129,135-138,140-149,154-158,165-171,174-177,180,182-184,198-204,206-210,218-220,222-224,226-229,234-253,257-266,276-279
+  s_9c356f9574d31c::t_7d318cf8c2d1c2 79-91
+packages/cef/src/bookmarks.ts
+  s_9c356f9574d31c::t_863280ca07c4c6 1-37
+apps/browser/src/store/bookmarks.test.mjs
+  s_9c356f9574d31c::t_e48f433dd11fa7 1-114
+apps/browser/src/lib/bookmarks.ts
+  s_9c356f9574d31c::t_3528771ae3e7c2 289-290
+  s_9c356f9574d31c::t_f963f44da23bb5 3-284,291-373,375,390,397-398
+  s_9c356f9574d31c::t_e39f6b3ae91881 1-2,285-288,374,376-389,391-396,399-401
+apps/browser/src/store/session.test.mjs
+  s_9c356f9574d31c::t_170c085110389e 61-63
+  s_9c356f9574d31c::t_e48f433dd11fa7 1,6,60,100-101,105,113,123-128,130-163,166,168-189
+apps/browser/src/store/types.ts
+  s_9c356f9574d31c::t_dfbd01ccecea87 47,100-101,103-104
+apps/browser/src/sync/adapters.ts
+  s_9c356f9574d31c::t_9153c90c08eb57 233-236,250,252,291,293-304
+  s_9c356f9574d31c::t_0101d5717e3051 1,3-4,105-107,109-110,114,149,211-214,219-222,224,227-229,237-246,248-249,251,253-254,257-258,261-263,266,270-282,284-285,288-290,292,305
+  s_9c356f9574d31c::t_cf3cf17fad5f83 119,127,133,152-154,159-160,177-179,191-192,195-196
+apps/browser/src/store/bookmarks.ts
+  s_9c356f9574d31c::t_661e9378a231f0 3,8-9,28-72,80-84,160,164,171,210
+apps/browser/src/sync/adapters.test.mjs
+  s_9c356f9574d31c::t_cf3cf17fad5f83 36-37,201-250
+  s_9c356f9574d31c::t_a851d619dfa08b 280
+  s_9c356f9574d31c::t_9e74a15cf0cb85 252-279,282-307,311-315,317-320
+  s_9c356f9574d31c::t_ab5d2560c02724 308-310,316
+  s_9c356f9574d31c::t_03563222832349 281
+  s_9c356f9574d31c::t_f839aa66ea6129 251,321
+docs/store-api.md
+  s_9c356f9574d31c::t_3369541c7ff971 12-13,34,60-67,121
+packages/cef/src/history.ts
+  s_9c356f9574d31c::t_7d318cf8c2d1c2 1-62
+docs/sync.md
+  s_9c356f9574d31c::t_9551ca14c0363d 112,217-218
+apps/browser/src/lib/persist.ts
+  s_9c356f9574d31c::t_9c17661d7d0e7f 3,10-12,148,177-181,206,286-287,295-296
+apps/browser/src/nativeApi.tsx
+  s_9c356f9574d31c::t_62d1a9e5e6ee0c 8
+apps/browser/src/store/browser.ts
+  s_9c356f9574d31c::t_5903bfd55c5a92 144-146,148
+apps/browser/src/store/history.ts
+  s_9c356f9574d31c::t_0fccead4b8e1e6 1,4,7-9,12-13,16,21,32,36,39,41,46,50,52-54,56,59
+apps/browser/src/store/privacy.test.mjs
+  s_9c356f9574d31c::t_663cbd230beb28 30-32,34,158-159,168-169,176,180,182-183,208-209,277,285
+apps/browser/src/store/tabs.ts
+  s_9c356f9574d31c::t_cb965f8ebeca28 60,62,404
+apps/browser/src/store/windows.ts
+  s_9c356f9574d31c::t_40ecd441bf87a0 24-27,341,348,368,393
+packages/cef/ios/CefModule.swift
+  s_9c356f9574d31c::t_2f9fcd44d88e21 7,20,71-72,74-77,220-221,522
+packages/cef/ios/NNBrowserView.mm
+  s_9c356f9574d31c::t_0ab770ce050d07 4,297,313-340,741,743
+packages/cef/ios/NNBrowsingData.mm
+  s_9c356f9574d31c::t_bad5443f2c9690 1-2,19,58,67,80,88,151,153,158,165,173,176-177,179
+packages/cef/ios/NNCef.h
+  s_9c356f9574d31c::t_618c73d8d00945 128-134,136-138,209-210
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_f69e932b94fba3 53
+packages/cef/ios/NNEngineBridge.mm
+  s_9c356f9574d31c::t_6556a0e1b3b862 1-48
+packages/cef/src/WebView.tsx
+  s_9c356f9574d31c::t_d9947a66ba7017 198,302,368
+packages/cef/src/engine.ts
+  s_9c356f9574d31c::t_fd3692e8999ebe 1-13
+packages/cef/src/favicons.ts
+  s_9c356f9574d31c::t_f25e0ce8636a49 1,6-7,9-32
+packages/cef/src/index.ts
+  s_9c356f9574d31c::t_027549c09a6672 12-14
+packages/cef/src/native.ts
+  s_9c356f9574d31c::t_0d56b2f704eb6c 27,53-55
+packages/shell/ios/AppModule.swift
+  s_9c356f9574d31c::t_32791d8b0c3b5b 10
+packages/shell/ios/ShellModule.swift
+  s_9c356f9574d31c::t_72c785810f7911 57-69,274-275
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_864a7ae09bf1f7 218,240
+packages/sync/scripts/e2e.mjs
+  s_9c356f9574d31c::t_8cdf2feb2fe59c 77-90,171,226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5e3853373fcfbbbd768f9f2a86b5b46c354e1e01",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
