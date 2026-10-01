@@ -685,9 +685,12 @@ try {
   await check("chrome-strings", async () => {
     // Chrome's own strings name the product Netnyahoo, as on CEF (a WebUI page, browser side; NNHost's S29 also
     // checks a renderer error page); the credit still names the Chromium Authors.
+    // On screen: a background tab's WebUI page can sit "loading" (Chrome defers it while hidden).
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await until("A shown", async () => (await state()).active === first.id);
     await evalApp(`nn.store.getState().navigate("${first.id}", "chrome://version", { userInitiated: true }); return true`);
     // The app shows Chrome's pages under its own scheme (netnyahoo://version).
-    await until("chrome://version", async () => (await state()).tabs.find((t) => t.id === first.id && /^(chrome|netnyahoo):\/\/version/.test(t.url ?? "") && !t.loading));
+    await until("chrome://version", async () => (await state()).tabs.find((t) => t.id === first.id && /^(chrome|netnyahoo):\/\/version/.test(t.url ?? "") && t.title === "About Version"), 20000);
     try {
       const t = await pageFor(first.id, "chrome://version");
       const text = (await cdp(t, "Runtime.evaluate", { expression: "document.body?.innerText ?? ''", returnByValue: true })).result?.value ?? "";

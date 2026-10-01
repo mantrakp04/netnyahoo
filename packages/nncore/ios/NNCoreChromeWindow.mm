@@ -821,6 +821,15 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
 + (NSString *)devAction:(NSString *)action window:(NSWindow *)window {
   if (!window) return nil;
   NSView *frameView = window.contentView.superview;
+  // The window's child windows (Chrome's dropdowns, bubbles and menus attach as children): [{class, frame, visible}].
+  if ([action isEqualToString:@"children"]) {
+    NSMutableArray *children = [NSMutableArray array];
+    for (NSWindow *child in window.childWindows)
+      [children addObject:@{@"class" : NSStringFromClass(child.class), @"frame" : NSStringFromRect(child.frame),
+                            @"visible" : @(child.visible), @"title" : child.title ?: @""}];
+    NSData *json = [NSJSONSerialization dataWithJSONObject:children options:0 error:nil];
+    return json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : @"[]";
+  }
   if ([action hasPrefix:@"hit:"]) {
     NSPoint p = WindowPoint(window, [action substringFromIndex:4]);
     return Describe([frameView hitTest:p]);

@@ -1589,6 +1589,9 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
     NSView *hit = content ? [content hitTest:[content.superview convertPoint:point fromView:nil]] : nil;
     while (hit && ![hit isKindOfClass:NNCoreWebView.class]) hit = hit.superview;
     NNCoreWebView *view = (NNCoreWebView *)hit;
+    if (gDevTrackpad >= 0 && (!view || !view->_tab))
+      NSLog(@"[scroll-zoom] dev scroll not over a page: window %ld %@, hit %@", (long)window.windowNumber,
+            NSStringFromPoint(point), [content hitTest:[content.superview convertPoint:point fromView:nil]]);
     // Over the sidebar, the toolbar or another window: not a page's to zoom.
     if (!view || !view->_tab) return event;
     if (event.phase == NSEventPhaseBegan) accumulated = 0;
@@ -1602,7 +1605,7 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
   }];
 }
 
-// DEV: ⌘-scroll events over the middle of the visible page through the app's event dispatch, as packages/cef's.
+// DEV: ⌘-scroll events over the visible page through the app's event dispatch, as packages/cef's.
 // Each step is {phase: "wheel" | "mayBegin" | "began" | "changed" | "ended" | "momentum", dy, trackpad}; the result
 // says, per step, whether the scroll zoomed the page instead of scrolling it.
 + (NSArray<NSNumber *> *)devScrollZoom:(NSArray<NSDictionary<NSString *, id> *> *)steps browser:(int)browserId {
@@ -1614,7 +1617,21 @@ bool CommandScrollZooms(NSEvent *event, bool trackpad) {
       view = v;
   if (!view) return @[];
   NSWindow *window = view.window;
-  NSPoint inWindow = [view convertPoint:NSMakePoint(NSMidX(view.bounds), NSMidY(view.bounds)) toView:nil];
+  // A point of the page no app overlay covers (a toast, a bar, a prompt left from before): the first of a grid over
+  // the page whose hit test lands in it.
+  const NSRect b = view.bounds;
+  NSView *content = window.contentView;
+  NSPoint inWindow = [view convertPoint:NSMakePoint(NSMidX(b), NSMidY(b)) toView:nil];
+  for (int i = 1; i < 8; i++)
+    for (int j = 1; j < 8; j++) {
+      const NSPoint candidate = [view convertPoint:NSMakePoint(NSMinX(b) + NSWidth(b) * j / 8, NSMinY(b) + NSHeight(b) * i / 8) toView:nil];
+      NSView *hit = [content hitTest:[content.superview convertPoint:candidate fromView:nil]];
+      while (hit && hit != view) hit = hit.superview;
+      if (hit) {
+        inWindow = candidate;
+        i = j = 8;
+      }
+    }
   NSPoint screen = [window convertPointToScreen:inWindow];
   static auto setWindowLocation = (void (*)(CGEventRef, CGPoint))dlsym(RTLD_DEFAULT, "CGEventSetWindowLocation");
   NSMutableArray *zoomed = [NSMutableArray array];
