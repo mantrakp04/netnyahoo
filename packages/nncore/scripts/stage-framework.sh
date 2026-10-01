@@ -1,5 +1,5 @@
 #!/bin/bash
-# Stages NNCore for the app target (apps/browser/macos-nncore): a copy of Chrome's framework built with
+# Stages NNCore for the app target (apps/browser/macos): a copy of Chrome's framework built with
 # engine/nncore, signed ad hoc with its helpers, in apps/browser/build-nncore/NNCoreFramework. The app links
 # that copy and embed.sh clones it into the bundle. Copied only when the build's framework changed, and
 # holding the chromium lock, so a framework being linked is never copied half-written.

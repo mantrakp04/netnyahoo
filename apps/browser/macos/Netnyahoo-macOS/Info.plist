@@ -103,7 +103,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Websites may ask to use your microphone.</string>
 	<key>NSPrincipalClass</key>
-	<string>NNApplication</string>
+	<string>BrowserCrApplication</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>NSUserActivityTypeBrowsingWeb</string>

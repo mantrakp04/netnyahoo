@@ -1,8 +1,6 @@
 import AppKit
-import NetnyahooCEF
+import NetnyahooNNCore
 
-let app = NNApplication.shared
-guard NNCef.start(withArgc: CommandLine.argc, argv: CommandLine.unsafeArgv) else { exit(0) }
-let delegate = AppDelegate()
-app.delegate = delegate
-_ = NSApplicationMain(CommandLine.argc, CommandLine.unsafeArgv)
+// The app on NNCore: Chromium runs the process and its loop, and the React Native host (AppDelegate) starts inside
+// it. Nothing may touch NSApp before this: Chrome makes it its own NSApplication.
+exit(NNCoreHost.run(argc: CommandLine.argc, argv: CommandLine.unsafeArgv) { AppDelegate() })

@@ -85,9 +85,16 @@ final class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
 
   override func bundleURL() -> URL? {
     #if DEBUG
-    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+    // A test run picks its Metro (NETNYAHOO_JS_LOCATION=host:port) for this launch only: the argument domain is never
+    // written to disk, and a Debug build shares its defaults with the installed app (com.netnyahoo.browser).
+    if let location = ProcessInfo.processInfo.environment["NETNYAHOO_JS_LOCATION"], !location.isEmpty {
+      var arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+      arguments["RCT_jsLocation"] = location
+      UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+    }
+    return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
     #else
-    Bundle.main.url(forResource: "main", withExtension: "jsbundle")
+    return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
     #endif
   }
 }

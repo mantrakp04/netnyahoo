@@ -3,18 +3,18 @@
 // (NETNYAHOO_BACKGROUND=1, its own data dir and DevTools port), serves fixture pages, and drives the real app
 // through its dev harness (lib/devHarness.ts: $NETNYAHOO_DATA_DIR/dev-eval.js) and Chrome's DevTools protocol.
 //
-//   node packages/nncore/scripts/acceptance.mjs <NetnyahooNNCore.app> <scratch dir> [check…]
+//   node packages/nncore/scripts/acceptance.mjs <Netnyahoo.app> <scratch dir> [check…]
 //
 // It never takes focus and never touches a real profile: the data dir is <scratch dir>/data, wiped first.
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
 import { createServer as createNetServer } from "node:net";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 const [appArg, scratchArg, ...only] = process.argv.slice(2);
 if (!appArg || !scratchArg) {
-  console.error("usage: acceptance.mjs <NetnyahooNNCore.app> <scratch dir> [check…]");
+  console.error("usage: acceptance.mjs <Netnyahoo.app> <scratch dir> [check…]");
   process.exit(64);
 }
 const app = resolve(appArg);
@@ -104,7 +104,8 @@ const base = `http://127.0.0.1:${server.address().port}`;
 
 // The Metro server this tree's JS comes from (METRO_PORT, default 8081), through a proxy that passes the bundle
 // and refuses Metro's websockets (/hot, /message): other agents' edits and reload broadcasts can't restart the app's
-// JS mid-run. The NNCore build has its own defaults domain, so this never touches the CEF app's.
+// JS mid-run. The app takes it from NETNYAHOO_JS_LOCATION for that launch only: a Debug build shares its defaults with
+// the installed app, so nothing is written there.
 const metroPort = Number(process.env.METRO_PORT ?? 8081);
 const metroProxy = createServer((req, res) => {
   const upstream = httpRequest({ host: "127.0.0.1", port: metroPort, path: req.url, method: req.method, headers: req.headers }, (r) => {
@@ -116,12 +117,16 @@ const metroProxy = createServer((req, res) => {
 });
 metroProxy.on("upgrade", (req, socket) => socket.destroy());
 await new Promise((r) => metroProxy.listen(0, "127.0.0.1", r));
-execFileSync("defaults", ["write", "com.netnyahoo.browser.nncore", "RCT_jsLocation", `localhost:${metroProxy.address().port}`]);
-// No Fast Refresh: other agents edit this tree while the run goes, and a reload would restart the app's JS mid-run.
-execFileSync("defaults", ["write", "com.netnyahoo.browser.nncore", "RCTDevMenu", "-dict", "hotLoadingEnabled", "-bool", "NO", "isHotLoadingEnabled", "-bool", "NO"]);
+// The old dev build (com.netnyahoo.browser.nncore, apps/browser/macos-nncore) predates NETNYAHOO_JS_LOCATION and has
+// a defaults domain of its own.
+const bundleId = execFileSync("plutil", ["-extract", "CFBundleIdentifier", "raw", join(app, "Contents/Info.plist")]).toString().trim();
+if (bundleId !== "com.netnyahoo.browser") {
+  execFileSync("defaults", ["write", bundleId, "RCT_jsLocation", `localhost:${metroProxy.address().port}`]);
+  execFileSync("defaults", ["write", bundleId, "RCTDevMenu", "-dict", "hotLoadingEnabled", "-bool", "NO", "isHotLoadingEnabled", "-bool", "NO"]);
+}
 
 // As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
-const exe = join(app, "Contents/MacOS/NetnyahooNNCore");
+const exe = join(app, "Contents/MacOS", execFileSync("plutil", ["-extract", "CFBundleExecutable", "raw", join(app, "Contents/Info.plist")]).toString().trim());
 let stdout = join(scratch, "app.out.log");
 let pid, child, launchedAt, exited = null;
 function pgrep() {
@@ -143,6 +148,7 @@ async function launch(log = "app.out.log") {
   execFileSync("open", [
     "-g", "-n",
     "--env", "NETNYAHOO_BACKGROUND=1", "--env", "NETNYAHOO_TEST_REAUTH=granted", "--env", `NETNYAHOO_DOWNLOADS_DIR=${downloadsDir}`, "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
+    "--env", `NETNYAHOO_JS_LOCATION=localhost:${metroProxy.address().port}`,
     // Tab capture without Chrome's picker: getDisplayMedia takes the tab titled "Capture Target" (Chrome's browser-test
     // switch; a tab, so no macOS screen-recording prompt).
     "--env", `NETNYAHOO_CHROMIUM_SWITCHES=--auto-select-tab-capture-source-by-title=Capture Target ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""}`.trim(),
@@ -1874,7 +1880,7 @@ try {
     // the process survives; they're listed, crashes fail the check.
     const dir = join(process.env.HOME, "Library/Logs/DiagnosticReports");
     const ours = readdirSync(dir).filter((f) => {
-      if (!f.includes("NetnyahooNNCore") || statSync(join(dir, f)).mtimeMs < launchedAt) return false;
+      if (!f.includes(basename(exe)) || statSync(join(dir, f)).mtimeMs < launchedAt) return false;
       try {
         return new RegExp(`"pid"\\s*:\\s*${child.pid}\\b`).test(readFileSync(join(dir, f), "utf8").slice(0, 8000));
       } catch {

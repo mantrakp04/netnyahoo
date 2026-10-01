@@ -16,7 +16,12 @@ prepare_react_native_project!
 target 'Netnyahoo-macOS' do
   platform :macos, '14.0'
 
-  use_expo_modules!
+  # The engine is packages/nncore (not an npm dependency, so it's found in packages/), which provides
+  # packages/cef's Expo modules (NetnyahooCEF…) on NNCore.
+  use_expo_modules!({
+    searchPaths: ["#{__dir__}/../node_modules", "#{ws_dir}/node_modules", "#{ws_dir}/packages"],
+    exclude: ['@netnyahoo/cef'],
+  })
   use_native_modules!
 
   use_react_native!(

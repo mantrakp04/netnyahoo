@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "react-native start",
-    "macos": "xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build -destination 'platform=macOS,arch=arm64' -quiet -configuration Debug && open build/Build/Products/Debug/Netnyahoo.app",
+    "macos": "xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build -destination 'platform=macOS,arch=arm64' -quiet -configuration Debug && open -n --env NETNYAHOO_DATA_DIR=\"${NETNYAHOO_DATA_DIR:-$HOME/Library/Application Support/Netnyahoo Dev}\" build/Build/Products/Debug/Netnyahoo.app",
     "pods": "cd macos && pod install",
     "build": "xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build -destination 'platform=macOS,arch=arm64' -quiet -configuration Release",
     "typecheck": "tsc -p .",
