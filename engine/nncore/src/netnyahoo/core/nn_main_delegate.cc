@@ -173,6 +173,18 @@ void NNMainDelegate::PreSandboxStartup() {
     // The host always names the data dir. Never fall back to Chromium's default
     // (~/Library/Application Support/Chromium): that is someone else's profile.
     base::FilePath dir = command_line.GetSwitchValuePath(switches::kUserDataDir);
+    if (dir.empty() && !process_type.empty()) {
+      // A helper Chrome launched without it (the browser always has one). It never opens a
+      // profile; it gets a scratch path rather than Chromium's default.
+      base::FilePath scratch;
+      if (base::GetTempDir(&scratch)) {
+        base::PathService::OverrideAndCreateIfNeeded(
+            chrome::DIR_USER_DATA, scratch.Append("nncore-helper"),
+            /*is_absolute=*/true, /*create=*/false);
+      }
+      ChromeMainDelegate::PreSandboxStartup();
+      return;
+    }
     CHECK(!dir.empty()) << "NNCore needs --user-data-dir";
     CHECK(base::CreateDirectory(dir));
     dir = base::MakeAbsoluteFilePath(dir);

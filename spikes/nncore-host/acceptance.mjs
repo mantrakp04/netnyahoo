@@ -640,7 +640,18 @@ try {
     check("S3", "page focused: a reserved ⌘T goes to the host first (preHandle) and never to the page", kT.firstResponder === "RenderWidgetHostViewCocoa" && s3.keyEvents.some((k) => k.call === "pre" && k.key === "t" && k.reserved) && hits.includes("t") && !pageKeys.includes("cmd+t"), { kT, pageKeys, hits });
     check("S3", "page focused: ⌘K the page doesn't handle reaches the host's main menu after the page", pageKeys.includes("cmd+k") && s3.keyEvents.some((k) => k.call === "handle" && k.key === "k") && hits.includes("k"), { kK });
     check("S3", "page focused: ⌘J the page preventDefaults stays with the page", pageKeys.includes("cmd+j") && !hits.includes("j") && !s3.keyEvents.some((k) => k.call === "handle" && k.key === "j"), { kJ });
-    const pre = s3.keyEvents.length;
+    // Exactly one menu action per press for a shortcut the page leaves (through the
+    // window's key equivalents, and through the page view's entry point called directly).
+    const hitsK = () => s3.menuHits.filter((h) => h.key === "k").length;
+    const kBefore = (await state()).menuHits.filter((h) => h.key === "k").length;
+    await cmd("key", { tabId: kt.tabId, key: "k", meta: true, keyCode: 40 });
+    await sleep(800);
+    const kMid = (await state()).menuHits.filter((h) => h.key === "k").length;
+    await cmd("key", { tabId: kt.tabId, key: "k", meta: true, keyCode: 40, direct: true });
+    await sleep(800);
+    const kAfter = (await state()).menuHits.filter((h) => h.key === "k").length;
+    check("S3", "one menu action per press (page focused, a non-reserved shortcut the page leaves)", hitsK() === 1 && kMid - kBefore === 1 && kAfter - kMid === 1, { first: hitsK(), viaWindow: kMid - kBefore, viaViewDirect: kAfter - kMid });
+    const pre = (await state()).keyEvents.length;
     const kF = await cmd("key", { key: "t", meta: true, keyCode: 17, target: "field" });
     await sleep(300);
     const s3b = await state();

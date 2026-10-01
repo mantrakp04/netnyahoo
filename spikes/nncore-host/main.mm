@@ -737,9 +737,17 @@ static void Log(NSDictionary* event) {
                                 windowNumber:window.windowNumber context:nil characters:chars
                  charactersIgnoringModifiers:key isARepeat:NO keyCode:[cmd[@"keyCode"] unsignedShortValue]];
   NSString* responder = NSStringFromClass(window.firstResponder.class);
-  BOOL byWindow = [window performKeyEquivalent:event];
+  BOOL byWindow = NO;
   BOOL byMenu = NO;
-  if (!byWindow) {
+  if ([cmd[@"direct"] boolValue]) {
+    // What a not-key window's page gets from a dev harness: RenderWidgetHostViewCocoa's
+    // key-equivalent entry point, called directly.
+    gFakeKey = NO;
+    SEL sel = NSSelectorFromString(@"keyEvent:wasKeyEquivalent:");
+    ((void (*)(id, SEL, NSEvent*, BOOL))[window.firstResponder methodForSelector:sel])(
+        window.firstResponder, sel, event, YES);
+    byWindow = YES;
+  } else if (!(byWindow = [window performKeyEquivalent:event])) {
     byMenu = [NSApp.mainMenu performKeyEquivalent:event];
     if (!byMenu) {
       [window sendEvent:event];
