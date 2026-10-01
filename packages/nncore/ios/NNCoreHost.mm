@@ -70,8 +70,21 @@ NNCoreBootstrapDelegate *gBootstrap;
   NSString *script = path ? [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil] : nil;
   if (script && [engine respondsToSelector:@selector(setPageScript:)]) engine.pageScript = script;
 
-  // NSApp's delegate as NSApplicationMain would set it, but in Chromium's loop: [NSApp run] already finished
-  // launching, so the launch callbacks are called here.
+  // React Native starts when the loop first goes idle: Chrome's startup burst holds the main thread right after
+  // engineDidStart, and RN's main-queue module setup (Expo's bridge module installing into the JS runtime) must
+  // not wait behind it while the JS thread already runs that runtime (RN's debug ReentrancyCheck traps on it).
+  CFRunLoopObserverRef idle = CFRunLoopObserverCreateWithHandler(
+      nullptr, kCFRunLoopBeforeWaiting, false, 0, ^(CFRunLoopObserverRef observer, CFRunLoopActivity) {
+        CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, kCFRunLoopCommonModes);
+        [self launchApp];
+      });
+  CFRunLoopAddObserver(CFRunLoopGetMain(), idle, kCFRunLoopCommonModes);
+  CFRelease(idle);
+}
+
+// NSApp's delegate as NSApplicationMain would set it, but in Chromium's loop: [NSApp run] already finished
+// launching, so the launch callbacks are called here.
+- (void)launchApp {
   NSArray<NSURL *> *launchURLs = gBootstrap.urls.copy;
   gAppDelegate = gMakeDelegate();
   NSApp.delegate = gAppDelegate;
