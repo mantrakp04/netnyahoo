@@ -1,0 +1,65 @@
+packages/nncore/ios/CefModule.swift
+  s_9c356f9574d31c::t_ac6a41277175d2 28
+  s_9c356f9574d31c::t_93bdcdbde6344c 29-30
+  s_9c356f9574d31c::t_073bf32f4c4783 31-34
+  s_9c356f9574d31c::t_ed8786ea794711 64-66,99-104,107-118,120-140,143-170
+  s_9c356f9574d31c::t_283f4f6dc01b3b 15-22,57-59
+packages/nncore/ios/NNCoreServices.h
+  s_9c356f9574d31c::t_7b5bd56d71745b 1-78
+packages/nncore/ios/ExtensionsModule.swift
+  s_9c356f9574d31c::t_ed8786ea794711 3-5,11-12,17-20,22-43
+  s_9c356f9574d31c::t_e3f96238062641 13-16
+packages/nncore/ios/NNCoreInternal.h
+  s_9c356f9574d31c::t_5039301aa20cf8 58-63,81-82
+packages/nncore/ios/NNCoreHost.mm
+  s_9c356f9574d31c::t_ac6a41277175d2 192,219-248
+  s_9c356f9574d31c::t_283f4f6dc01b3b 51,112-121,180-191
+  s_9c356f9574d31c::t_47221e7203fb17 193
+packages/nncore/ios/NNCoreTabStrip.mm
+  s_9c356f9574d31c::t_5039301aa20cf8 15-32,67-69,71-73,95-98,100,104-118,136,163-165,177
+packages/nncore/ios/NNCoreServices.mm
+  s_9c356f9574d31c::t_a8fd112b475d2b 1-296
+packages/nncore/ios/NetnyahooNNCore.podspec
+  s_9c356f9574d31c::t_ed8786ea794711 25
+packages/nncore/ios/NNCoreWebView.mm
+  s_9c356f9574d31c::t_5039301aa20cf8 133,250,336-339,497-498,522,986-990
+  s_9c356f9574d31c::t_283f4f6dc01b3b 899-903
+  s_9c356f9574d31c::t_93bdcdbde6344c 135-154,510,514-521
+  s_9c356f9574d31c::t_94ae43d6a04fca 14-16,69-132,186-192,616-621,623-686,690-725,749,819,823,835-839,851-855,880,927-932,940-943
+  s_9c356f9574d31c::t_31557e68110424 134,523,891
+packages/nncore/ios/NNCoreWebView.h
+  s_9c356f9574d31c::t_93bdcdbde6344c 32-34
+packages/nncore/ios/NNCoreHost.h
+  s_9c356f9574d31c::t_283f4f6dc01b3b 20-23
+  s_9c356f9574d31c::t_ac6a41277175d2 18-19
+packages/nncore/scripts/acceptance.mjs
+  s_9c356f9574d31c::t_c2e8ab32656ab3 67-68,154-157,159,176-179,200,205,356
+  s_9c356f9574d31c::t_576c416de93a4a 355,357-380,382-407,414,445-487
+  s_9c356f9574d31c::t_457145875c7866 381,488
+packages/nncore/ios/NNCoreChromeWindow.mm
+  s_9c356f9574d31c::t_073bf32f4c4783 311,313-318,389,391-401
+  s_9c356f9574d31c::t_5039301aa20cf8 170-176,195-201,206-210,223
+  s_9c356f9574d31c::t_c9fda97bd09ac6 9,13-14,91-100,211-222
+apps/browser/macos-nncore/Podfile.lock
+  s_9c356f9574d31c::t_1b580f0dc7d46c 2592
+packages/nncore/ios/NNExtensionPackage.h
+  s_9c356f9574d31c::t_db711bd8e0f19e 1
+packages/nncore/ios/NNExtensionPackage.mm
+  s_9c356f9574d31c::t_84229f523e02e8 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2e1442754e2f24358b4b5836143d0830598f1220",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
