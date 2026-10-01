@@ -100,6 +100,11 @@ if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
   done
   # 76: the inner run gave up and already said why; 77: still busy at the deadline; 75 from lockf itself: its own
   # wait ran out.
+  # A build registers its Netnyahoo.app with LaunchServices under the real bundle id; take it back out so
+  # macOS never opens a test build as the owner's browser (unregister-builds says why).
+  if [[ $name == xcodebuild && -z "$take$release" ]]; then
+    "$(dirname "$0")/unregister-builds" >/dev/null 2>&1 &
+  fi
   [[ $status -eq 77 ]] && echo "locked: $name lock still busy after ${wait}s; $(describe)" >&2
   [[ $status -eq 76 || $status -eq 77 ]] && exit 75
   if [[ $status -eq 75 && $(($(now) - start)) -ge $wait ]]; then
