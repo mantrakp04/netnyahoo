@@ -260,6 +260,25 @@ try {
     return { tab: d.id, adoptId: d.adoptId ?? null, background: true };
   });
 
+  await check("evaluate", async () => {
+    // The page channel (NNCore's renderer side): evaluate runs in the page's main world and answers with post.
+    const title = await evalApp(`return nn.webviews.get("${first.id}").evaluate("post('result', JSON.stringify(document.title))")`);
+    if (title !== "Page A") throw new Error(`evaluate gave ${JSON.stringify(title)}`);
+    const script = await evalApp(`return nn.webviews.get("${first.id}").evaluate("post('result', JSON.stringify(typeof window.Notification))")`);
+    return { title, notification: script };
+  });
+
+  await check("tab-strips", async () => {
+    const tx = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.tabStrips()`);
+    const s = await state();
+    const strip = tx.strips.find((x) => x.tabs.some((t) => t.key === first.id));
+    if (!strip) throw new Error(`no strip names ${first.id}: ${JSON.stringify(tx)}`);
+    const keys = strip.tabs.map((t) => t.key);
+    const missing = s.tabs.filter((t) => t.url && !keys.includes(t.id)).map((t) => t.id);
+    if (missing.length) throw new Error(`tabs missing from the strip: ${missing}`);
+    return { rev: tx.rev, strips: tx.strips.length, tabs: keys.length, active: strip.tabs.find((t) => t.active)?.key };
+  });
+
   await check("tab-switch", async () => {
     const s = await state();
     const other = s.tabs.find((x) => x.id !== first.id && x.url);
