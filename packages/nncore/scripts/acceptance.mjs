@@ -726,7 +726,8 @@ try {
     // ⌃Tab opens the tab switcher (it switches when ⌃ is released); ⌘⇧] goes to the next tab at once.
     const ctrlTab = await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "\t", keyCode: 48, modifiers: ["control"], focus: "page" })`);
     if (!ctrlTab.fired?.some((f) => f.command === "tabSwitcher")) throw new Error(`⌃Tab: ${JSON.stringify(ctrlTab)}`);
-    await evalApp(`nn.runCommand?.("escape"); return true`).catch(() => {});
+    // Esc in the switcher, as the user ends it without switching (left open, it covers the page for later checks).
+    await evalApp(`nn.switcher.cancelSwitcher(); return true`);
     const next = await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "}", keyCode: 30, modifiers: ["command", "shift"], focus: "page" })`);
     const after = await until("the next tab", async () => {
       const n = await state();
@@ -1321,14 +1322,22 @@ try {
     }
   });
 
+  // A download opens the downloads popover, whose backdrop (a click outside closes it) covers the page: a check that
+  // downloads closes it again, so a later one's mouse or scroll lands on the page.
+  const closeDownloads = () => evalApp(`nn.store.getState().setDownloadsOpen(${JSON.stringify(mainWindow)}, false); return true`).catch(() => null);
+
   await check("save-page", async () => {
     // Chrome's Save Page As (runPageCommand "savePage"), its save panel answered from file-chooser.txt.
     const file = join(scratch, "saved-page.html");
     writeFileSync(join(data, "file-chooser.txt"), file + "\n");
     await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
     await evalApp(`return nn.webviews.get("${first.id}").runPageCommand("savePage")`);
-    const saved = await until("the saved page", async () => existsSync(file) && readFileSync(file, "utf8").includes("Page A"), 15000);
-    return { saved };
+    try {
+      const saved = await until("the saved page", async () => existsSync(file) && readFileSync(file, "utf8").includes("Page A"), 15000);
+      return { saved };
+    } finally {
+      await closeDownloads();
+    }
   });
 
   await check("activate-request", async () => {
@@ -2159,6 +2168,7 @@ try {
       const list = await evalApp(`return nn.store.getState().downloads.map((d) => ({ id: d.id, state: d.state, filename: d.filename, path: d.path, received: d.received }))`);
       return list.find((x) => x.filename?.includes("nncore-test") && x.state === "finished") ?? null;
     }, 20000);
+    await closeDownloads();
     if (!d.path.startsWith(downloadsDir)) throw new Error(`downloaded to ${d.path}, not the scratch dir`);
     return d;
   });
@@ -2562,7 +2572,9 @@ try {
         .catch(async (e) => { throw new Error(`${e.message}: ${JSON.stringify(await pipWindows())}`); });
       if (!video.rounded || !video.keepOnTop || video.rim !== 1 || video.level < 3 || video.host !== "127.0.0.1" || !video.backToTab)
         throw new Error(`not styled as on CEF: ${JSON.stringify(video)}`);
-      if (video.alpha !== 0 || !video.ignoresMouseEvents) throw new Error(`a hidden run's PiP window shows: ${JSON.stringify(video)}`);
+      await sleep(800);
+      const videoShown = (await pipWindows())?.find((w) => w.window === video.window) ?? video;
+      if (videoShown.alpha !== 0 || !videoShown.ignoresMouseEvents) throw new Error(`a hidden run's PiP window shows: ${JSON.stringify(videoShown)}`);
       const menu = await cef(`devPictureInPictureAction("menu")`);
       await evalApp(`return nn.webviews.get("${tab.id}").exitPictureInPicture()`);
       const off = await until("onPictureInPicture video off", async () => {
@@ -2576,9 +2588,12 @@ try {
       });
       const docOn = await until("onPictureInPicture document", async () => lastEvent(tab.id, "pictureInPicture", (p) => p.kind === "document" && p.active), 5000)
         .catch((e) => { throw new Error(`${e.message}; requestWindow: ${JSON.stringify(doc.result)}`); });
-      const docWindow = await until("the document PiP window", async () => (await pipWindows())?.find((w) => w.visible && !w.styled && !w.video) ?? null, 5000)
+      const docWindow = await until("the document PiP window", async () => (await pipWindows())?.find((w) => w.visible && w.document) ?? null, 5000)
         .catch(async (e) => { throw new Error(`${e.message}: ${JSON.stringify(await pipWindows())}`); });
-      if (docWindow.alpha !== 0 || !docWindow.ignoresMouseEvents) throw new Error(`a hidden run's document PiP window shows: ${JSON.stringify(docWindow)}`);
+      // Past Chrome's 500 ms fade-in, which would show it again.
+      await sleep(800);
+      const docShown = (await pipWindows())?.find((w) => w.window === docWindow.window) ?? docWindow;
+      if (docShown.alpha !== 0 || !docShown.ignoresMouseEvents) throw new Error(`a hidden run's document PiP window shows: ${JSON.stringify(docShown)}`);
       await evalApp(`return nn.webviews.get("${tab.id}").exitPictureInPicture()`);
       const docOff = await until("onPictureInPicture document off", async () => {
         const e = await lastEvent(tab.id, "pictureInPicture");
@@ -2712,7 +2727,7 @@ try {
     };
     const shownCount = async () => (await eventsOf(first.id)).filter((x) => x.name === "autofillSuggestions").length;
     const key = async (t, k) => {
-      const code = { ArrowDown: 40, Enter: 13 }[k];
+      const code = { ArrowDown: 40, Enter: 13, Escape: 27 }[k];
       const at = { key: k, code: k, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code };
       await cdp(t, "Input.dispatchKeyEvent", { type: "rawKeyDown", ...at, ...(k === "Enter" ? { text: "\r" } : {}) });
       if (k === "Enter") await cdp(t, "Input.dispatchKeyEvent", { type: "char", ...at, text: "\r" });
@@ -2755,6 +2770,9 @@ try {
       t = await go("/login?fill", "Login");
       await evalApp(`return nn.webviews.get("${first.id}").focus()`);
       await cdp(t, "Runtime.evaluate", { expression: "document.getElementById('u').focus(); 1", userGesture: true });
+      // Chrome offers the saved sign-in as the field takes focus: that dropdown goes (Esc) before the command's.
+      await sleep(1000);
+      await key(t, "Escape");
       await sleep(400);
       count = await shownCount();
       await evalApp(`nn.runCommand({ command: "autofill", arg: "passwords", windowId: ${JSON.stringify(mainWindow)} }); return true`);
@@ -3212,8 +3230,9 @@ try {
     await until("the download", async () => (files() > before ? true : null), 15000);
     const saved = JSON.parse(readFileSync(join(data, "Chromium", "NavigationDownloads.json"), "utf8"));
     if (!saved[`${base}/file.bin?memory`]) throw new Error(`not remembered: ${JSON.stringify(saved)}`);
-    await evalApp(`nn.actions.openUrls(["${base}/file.bin?memory"], ${JSON.stringify(mainWindow)}); return true`);
-    // The app opens it in a new tab, or in the window's empty new-tab tab.
+    // A tab the app restores on it (its saved tab, as a relaunch or a reopened window brings back: not the user asking,
+    // which downloads it again, as on CEF).
+    await evalApp(`nn.store.getState().newTab(${JSON.stringify(mainWindow)}, { url: "${base}/file.bin?memory", snapshot: { url: "${base}/file.bin?memory", title: "file.bin" } }); return true`);
     const skipped = await until("downloadNavigation skipped", async () => {
       for (const t of (await state()).tabs) {
         const e = (await eventsOf(t.id)).find((x) => x.name === "downloadNavigation" && x.payload?.skipped);

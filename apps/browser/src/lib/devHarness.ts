@@ -52,6 +52,11 @@ export function startDevHarness() {
     get extensions(): typeof import("../components/extensions/state") {
       return require("../components/extensions/state");
     },
+    // The ⌃Tab switcher: a test ends it as the user does (Esc cancels, releasing ⌃ commits), which a hidden instance
+    // can't send.
+    get switcher(): typeof import("../components/sidebar/switcher") {
+      return require("../components/sidebar/switcher");
+    },
   };
   (globalThis as { nn?: typeof nn }).nn = nn;
   const scriptId = (source: string | null) => source?.match(/^\/\/ *(\S+)/)?.[1];
