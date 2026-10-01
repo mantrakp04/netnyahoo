@@ -1,0 +1,61 @@
+packages/nncore/scripts/acceptance.mjs
+  s_9c356f9574d31c::t_b4624bf55dfb64 770-771,832
+  s_9c356f9574d31c::t_1ca19a7be51bb2 898-932
+  s_9c356f9574d31c::t_b4fa519c160932 212-217
+  s_9c356f9574d31c::t_3120e38b0cf083 126,1489-1502
+  s_9c356f9574d31c::t_c69bd0dad49650 1288
+  s_9c356f9574d31c::t_7b3f244bbb4007 355-360,823-824,852-853,857,860-864
+  s_9c356f9574d31c::t_dccdc854cdf7ac 40,244-266,271-272,326,1505
+  s_9c356f9574d31c::t_4106468247dfaf 352
+  s_9c356f9574d31c::t_93bcff827427db 235-239
+  s_9c356f9574d31c::t_a4eebc53d0eacd 218-219
+  s_9c356f9574d31c::t_c45d56895ce3b5 376
+  s_9c356f9574d31c::t_f8f28494bf9dfc 339-346,351,353-354,361-375,377-381
+  s_9c356f9574d31c::t_2f6f49cf8f6b57 338,347-350
+  s_9c356f9574d31c::t_45877cea347e71 87-89,130-134
+  s_9c356f9574d31c::t_065620df65b79f 382,647-769,772-822,825-831,833-851,854-856,858-859,865-896,933
+  s_9c356f9574d31c::t_dc6779d7d314c7 383,897,934
+packages/nncore/ios/NNCoreWebView.mm
+  s_9c356f9574d31c::t_91495a27ef7728 22-27,266,401,433,528,585-588
+  s_9c356f9574d31c::t_5006856fc398fc 12,14,1210-1327
+  s_9c356f9574d31c::t_28a1605e27028f 1328
+packages/nncore/ios/CefModule.swift
+  s_9c356f9574d31c::t_5006856fc398fc 128
+packages/nncore/ios/NNCoreHost.mm
+  s_9c356f9574d31c::t_5006856fc398fc 78
+  s_9c356f9574d31c::t_19b6ea54ed1cf8 517-520
+  s_9c356f9574d31c::t_893ad90cddf3b4 217-237
+  s_0facd7bbe88349::t_948263333b825c 7
+  s_9c356f9574d31c::t_25241181b69d7b 263-268
+packages/nncore/ios/NNCoreWebView.h
+  s_9c356f9574d31c::t_5006856fc398fc 35-38
+packages/nncore/ios/NNCoreChromeWindow.mm
+  s_9c356f9574d31c::t_4106468247dfaf 732-750,752-754
+  s_9c356f9574d31c::t_19b6ea54ed1cf8 751
+  s_9c356f9574d31c::t_1d7cc15068fa9c 467-496,501-725,755
+  s_9c356f9574d31c::t_d76afac3cba005 48-53,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "88ebe404f21849bd99acd30bc1335a7504251c73",
+  "prompts": {},
+  "sessions": {
+    "s_0facd7bbe88349": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f5f9-afdb-77d1-9867-bb7e4a7d5c5b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
