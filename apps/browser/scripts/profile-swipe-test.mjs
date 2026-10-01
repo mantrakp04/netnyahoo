@@ -79,7 +79,8 @@ if (!appArg) {
 const app = resolve(appArg);
 const bundlePort = args.find((a) => a.startsWith("--bundle-port="))?.split("=")[1];
 if (bundlePort) assert.match(bundlePort, /^\d{2,5}$/);
-const bundleArgs = bundlePort ? ["--args", "-RCT_jsLocation", `127.0.0.1:${bundlePort}`] : [];
+// The app's Metro for this launch (AppDelegate): arguments after --args would reach Chrome's command line.
+const bundleArgs = bundlePort ? ["--env", `NETNYAHOO_JS_LOCATION=127.0.0.1:${bundlePort}`] : [];
 assert.notEqual(app, "/Applications/Netnyahoo.app", "use an isolated Debug build");
 let port;
 try { port = parsePort(args.find((a) => a.startsWith("--port="))?.slice("--port=".length) ?? "9474"); } catch (error) {
@@ -272,7 +273,7 @@ try {
   const before = binaryPids(binary);
   evidence.launch = { port, binary, preexistingBinaryPids: [...before] };
   execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`,
-    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app, ...bundleArgs]);
+    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", ...bundleArgs, app]);
   for (const start = Date.now(); !owned && Date.now() - start < 30000; await sleep(250)) {
     let info;
     const pid = ownedCandidate(listenerPids(port), before, (p) => {
