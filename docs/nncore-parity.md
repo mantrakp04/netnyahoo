@@ -250,6 +250,11 @@ calls it yet.
 | `nn_search_engines_list` | `NetnyahooExtensions.searchEngineList` | missing |
 | `nn_zoom_list`, `nn_zoom_set` | `getZoomLevels`, `setZoom` (a site with no open tab) | missing |
 | `nn_browsing_data_clear` | `deleteProfileData` of the default profile (form data, site settings) | missing |
+| `nn_history_query`, `_add`, `_import`, `_delete_urls`, `_watch` (event `history.changed`) | `queryHistory`, `addHistoryVisits`, `importHistoryRows`, `deleteHistoryUrls`, `watchHistory`, `onHistoryChanged` (`packages/cef/src/history.ts`) | done (`engineCall`) |
+| `nn_favicons_get`, `_set` | `faviconsFor`, `fetchFavicon`'s hand-off (`favicons.ts`) | done (`engineCall`) |
+| `nn_bookmarks_tree`, `_apply`, `_watch` (event `bookmarks.changed`) | `bookmarkTree`, `applyBookmarkOps`, `watchBookmarks`, `onBookmarksChanged` (`bookmarks.ts`) | done (`engineCall`) |
+| `nn_tab_restore_take` | none: native, for `adoptId` `restore:<tab id>@<closed at ms>` (`NNBrowserView.mm`) | missing (see `adoptId`) |
+| `nn_tab_restore_load` | allow-listed for `engineCall`, no caller yet | done (`engineCall`) |
 
 `NetnyahooExtensions.evaluateInHost` and `evaluateInPage` are gone from `packages/cef` (they scripted the hidden
 chrome:// pages, and nothing in the JS called them), and from `packages/nncore`.
