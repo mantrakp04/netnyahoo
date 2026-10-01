@@ -1,0 +1,67 @@
+apps/browser/src/components/onboarding/tour/ToolTour.tsx
+  s_9c356f9574d31c::t_be06295b58745d 86
+  s_9c356f9574d31c::t_8092cf7fdb9fd2 162-165
+  s_67009f7814c584::t_07164d1c6d1392 27,29,140-141
+apps/browser/src/components/settings/controls.tsx
+  s_9c356f9574d31c::t_c7af8b7bf97e44 49
+apps/browser/src/components/onboarding/personalize.tsx
+  s_9c356f9574d31c::t_1ff541eab71afe 36
+apps/browser/src/components/NewTabPage.tsx
+  s_9c356f9574d31c::t_90a14338ad924b 70
+apps/browser/src/components/extensions/ExtensionOverlays.tsx
+  s_9c356f9574d31c::t_71cf216ef8a5d4 94,269
+apps/browser/src/components/import/ImportWindow.tsx
+  s_9c356f9574d31c::t_91e351af1aee2d 925,928,968
+apps/browser/src/components/live/CalendarPreview.tsx
+  s_9c356f9574d31c::t_ce0ec10692ada2 76
+apps/browser/src/components/live/LiveItemCard.tsx
+  s_9c356f9574d31c::t_4dd92c5ad5cbba 21,174-175
+apps/browser/src/components/live/MeetingAlert.tsx
+  s_9c356f9574d31c::t_69cc3e98046a1a 44
+apps/browser/src/components/live/MeetingCountdown.tsx
+  s_9c356f9574d31c::t_b2572c890c412c 26
+apps/browser/src/components/live/NextMeetingBadge.tsx
+  s_9c356f9574d31c::t_762904ada9ccc7 29
+apps/browser/src/components/ntp/CheckInBanner.tsx
+  s_9c356f9574d31c::t_b6f76430e914f6 36,41,46-47
+apps/browser/src/components/ntp/Personalize.tsx
+  s_9c356f9574d31c::t_e7b795b87ee451 53
+apps/browser/src/components/ntp/Postcard.tsx
+  s_9c356f9574d31c::t_c376438987ed68 53-54,63-64,70-71,185,190
+apps/browser/src/components/ntp/TelemetryAsk.tsx
+  s_9c356f9574d31c::t_0743ed5fc676be 49,54-55
+apps/browser/src/components/onboarding/Intro.tsx
+  s_9c356f9574d31c::t_f1e8f196c6f475 46,62
+apps/browser/src/components/onboarding/OnboardingOverlay.tsx
+  s_9c356f9574d31c::t_c719c3986ac9dd 36,41,47-48
+apps/browser/src/components/onboarding/ui.tsx
+  s_9c356f9574d31c::t_92a8cf1741406d 83,182
+apps/browser/src/components/settings/panes/Profiles.tsx
+  s_9c356f9574d31c::t_1a265ee6267cf1 67
+apps/browser/src/components/site/SelectionPopover.tsx
+  s_9c356f9574d31c::t_9823d9cb431a26 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2545fbacd9746bb25a7a53f802ee2606a4cbc68f",
+  "prompts": {},
+  "sessions": {
+    "s_67009f7814c584": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9cf7fae4ad9b7047",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
