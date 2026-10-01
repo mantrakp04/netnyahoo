@@ -84,7 +84,11 @@ NSString *JSONString(id value) {
   BOOL _pinned;
   NSView *_devtoolsView;
   BOOL _navigationQueued;
+  NSDictionary *_sentNavigation;
   NSString *_lastFavicon;
+  CFTimeInterval _sentProgressAt;
+  double _sentProgress;
+  BOOL _progressQueued;
 }
 
 + (void)prepareTransfer:(NSString *)transferKey {
@@ -379,6 +383,8 @@ NSString *JSONString(id value) {
 // MARK: Events
 
 - (void)emit:(NSString *)name payload:(NSDictionary *)payload {
+  // Events reach JS in the order they happened: a held navigation report goes first.
+  if (_navigationQueued && ![name isEqualToString:@"navigation"]) [self emitNavigation];
   [self.delegate webView:self event:name payload:payload];
 }
 
@@ -386,8 +392,7 @@ NSString *JSONString(id value) {
   _navigationQueued = NO;
   if (!_tab) return;
   NSString *theme = [_tab respondsToSelector:@selector(themeColor)] ? _tab.themeColor : nil;
-  [self emit:@"navigation"
-      payload:@{
+  NSDictionary *navigation = @{
         @"url" : _tab.url ?: @"",
         @"title" : _tab.title ?: @"",
         @"canGoBack" : @(_tab.canGoBack),
@@ -395,7 +400,11 @@ NSString *JSONString(id value) {
         @"isLoading" : @(_tab.loading),
         @"themeColor" : theme ?: NSNull.null,
         @"themeColorSource" : theme ? @"meta" : NSNull.null,
-      }];
+  };
+  // As packages/cef (NNClient): a report that changes nothing isn't sent.
+  if ([navigation isEqualToDictionary:_sentNavigation]) return;
+  _sentNavigation = navigation;
+  [self emit:@"navigation" payload:navigation];
 }
 
 // Title, URL, loading and history change together during a navigation: one report per run-loop turn.
@@ -429,8 +438,31 @@ NSString *JSONString(id value) {
   [self queueNavigation];
 }
 
+// Load progress at most 10 times a second; its start and end at once (as packages/cef's NNClient).
 - (void)tabDidChangeProgress:(NNCoreTab *)tab {
-  [self emit:@"progress" payload:@{@"progress" : @(tab.progress)}];
+  const double progress = tab.progress;
+  const CFTimeInterval wait = _sentProgressAt + 0.1 - CACurrentMediaTime();
+  if (progress <= 0.1 || progress >= 1 || wait <= 0) return [self sendProgress];
+  if (_progressQueued) return;
+  _progressQueued = YES;
+  __weak NNCoreWebView *weakSelf = self;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    NNCoreWebView *view = weakSelf;
+    if (view && view->_progressQueued) [view sendProgress];
+  });
+}
+
+- (void)sendProgress {
+  _progressQueued = NO;
+  if (!_tab || _tab.progress == _sentProgress) return;
+  _sentProgress = _tab.progress;
+  _sentProgressAt = CACurrentMediaTime();
+  [self emit:@"progress" payload:@{@"progress" : @(_sentProgress)}];
+}
+
+// A browser page's link to an app page (netnyahoo:) opens in its tab as if typed: the app maps it (core/appUrls).
+- (void)tab:(NNCoreTab *)tab didRequestAppURL:(NSString *)url userGesture:(BOOL)userGesture {
+  [self emit:@"openWindow" payload:@{@"url" : url ?: @"", @"disposition" : @"current", @"userGesture" : @(userGesture)}];
 }
 
 - (void)tabDidChangeFavicon:(NNCoreTab *)tab {
