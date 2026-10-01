@@ -1,0 +1,41 @@
+engine/chromium/src/chrome/browser/netnyahoo/nn_engine.exports
+  s_9c356f9574d31c::t_2f6007b16481ec 1-2
+packages/cef/patches/series
+  s_9c356f9574d31c::t_79659803c84668 1-52
+engine/chromium/src/chrome/browser/netnyahoo/BUILD.gn
+  s_9c356f9574d31c::t_2f6007b16481ec 1-41
+engine/chromium/src/chrome/browser/netnyahoo/public/nn_engine.h
+  s_9c356f9574d31c::t_582984c14d848d 1-60
+packages/cef/patches/cef-netnyahoo-layer.patch
+  s_9c356f9574d31c::t_9b29860e7a6cc2 2-11
+  s_9c356f9574d31c::t_e12cecff5b35d6 1
+docs/cef-source-build.md
+  s_9c356f9574d31c::t_4094083afcbe3e 320-342
+engine/chromium/apply.sh
+  s_9c356f9574d31c::t_e12cecff5b35d6 1-25
+packages/cef/patches/chromium-netnyahoo-layer.patch
+  s_9c356f9574d31c::t_9b29860e7a6cc2 2-11
+  s_9c356f9574d31c::t_e12cecff5b35d6 1
+engine/chromium/src/chrome/browser/netnyahoo/nn_engine.h
+  s_9c356f9574d31c::t_25925a8e9ddccd 1-36,38-59,61-69,71-78,80-83
+  s_9c356f9574d31c::t_93b00acb2cdcb5 37,60,70,79
+engine/chromium/src/chrome/browser/netnyahoo/nn_engine.cc
+  s_9c356f9574d31c::t_01c936b713bd50 1-22,24-52,54-63,65-67,69-115,117-138
+  s_9c356f9574d31c::t_eaff5c7cd72e29 23,53,64,68,116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1ff1d9066df3ea4088e4cb2641d5dfc7c2a734be",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
