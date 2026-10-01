@@ -1,0 +1,30 @@
+spikes/nncore-host/acceptance.mjs
+  s_9c356f9574d31c::t_ab4b2a4baa54de 825-826,840,842
+  s_9c356f9574d31c::t_2eff4abee3da23 820-824,827-836,838-839,841,843-845
+  s_9c356f9574d31c::t_3ce53fe4a95e38 1086-1096,1098
+  s_9c356f9574d31c::t_bd95ecd9c416e5 837
+engine/nncore/src/netnyahoo/core/nn_devtools_call.mm
+  s_9c356f9574d31c::t_09be1e002dd15f 13,32-35,66,90,114-132,147-148
+engine/nncore/src/netnyahoo/core/public/NNCore.h
+  s_9c356f9574d31c::t_09be1e002dd15f 506-508
+spikes/nncore-host/main.mm
+  s_9c356f9574d31c::t_2eff4abee3da23 589-590,1218-1220
+docs/nncore-spike.md
+  s_9c356f9574d31c::t_53671414b67ac2 317-318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "74007a69219fe6278b47b020a7cb40dba0255b4a",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
