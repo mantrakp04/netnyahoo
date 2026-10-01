@@ -1,0 +1,54 @@
+packages/cef/ios/NNCefInternal.h
+  s_9c356f9574d31c::t_7c8d80a686cce7 102,104
+apps/browser/src/lib/tabPictures.ts
+  s_9c356f9574d31c::t_93f5448c7d2472 49
+  s_9c356f9574d31c::t_c02ca0ffd414d3 1-41,47-48,53-66
+  s_9c356f9574d31c::t_526a3aa734e240 42-46,50-52
+apps/browser/src/components/layout/tabDrag.ts
+  s_9c356f9574d31c::t_c72680cb74f8f2 4,52-53
+  s_9c356f9574d31c::t_a45a52ecde5367 8,140-141,143-144
+  s_9c356f9574d31c::t_b04e6b6aede6ac 88,90-96,186-188,207
+  s_9c356f9574d31c::t_19c45325ddc080 133-137,142,145
+  s_9c356f9574d31c::t_5a77c40de89e74 10,29-32,35-48,63,82-86,97-103,107-108,111,128-130,138-139,146-147,169-180,206
+  s_9c356f9574d31c::t_04453d49f06049 54,87,89
+apps/browser/src/components/layout/TopTabStrip.tsx
+  s_9c356f9574d31c::t_526a3aa734e240 165-166,168-170,172-173,188
+  s_9c356f9574d31c::t_b04e6b6aede6ac 39,171,174-187,189-200
+  s_9c356f9574d31c::t_df2cb194833b77 159-164,167,201-222,264-266,284,286-287,297-301,303
+packages/shell/src/index.tsx
+  s_9c356f9574d31c::t_be0a8d1c3cd768 228,289-290
+packages/shell/ios/Windows.swift
+  s_9c356f9574d31c::t_be0a8d1c3cd768 485-514
+  s_9c356f9574d31c::t_62c40de72e6ba8 439,480-484,515,606,634
+apps/browser/scripts/tab-drag-test.mjs
+  s_9c356f9574d31c::t_27a2b590a529ea 119-125
+  s_9c356f9574d31c::t_52ff26e3b338a1 39-41,43,45,173-192,205,207,214
+  s_9c356f9574d31c::t_9eb97966a2d92e 193-204,206,208-213
+  s_9c356f9574d31c::t_39f4ecc906b7ac 215
+packages/shell/ios/ShellModule.swift
+  s_9c356f9574d31c::t_be0a8d1c3cd768 214-216
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_b606533c3980f1 283
+packages/cef/ios/NNBrowserView.mm
+  s_9c356f9574d31c::t_7c8d80a686cce7 773-774,776-782
+docs/dia-spec.md
+  s_9c356f9574d31c::t_b606533c3980f1 653-657
+packages/cef/ios/NNDevTools.mm
+  s_9c356f9574d31c::t_7c8d80a686cce7 264,282-289
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4179481eb8317b897ac5b0aad5cab17b42ac0e9a",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
