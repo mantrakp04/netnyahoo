@@ -21,9 +21,8 @@ import { isSmall, isSmallWindow, mainWindowFor, smallYahuProfile } from "./small
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
 import type { BrowserWindow, ClosedTab, ClosedWindow, Frame, ParkedPins, Tab, TabGroup } from "./types";
 
-// A closed tab's back/forward list is Chrome's (TabRestoreService): the engine finds it by the tab's page and
-// when it closed.
-const restoreId = (tabId: string, closedAt: number) => `restore:${tabId}@${closedAt}`;
+// A closed tab's back/forward list is Chrome's (TabRestoreService), which the engine finds by the closed tab's id.
+const restoreId = (tabId: string) => `restore:${tabId}`;
 
 export type CreateWindowOptions = {
   profileId?: string;
@@ -338,14 +337,14 @@ function restoreTab(s: BrowserState, entry: ClosedTab, requested?: string | null
       url: entry.tab.url || undefined,
       profileId,
       snapshot: { ...entry.tab, pinned: false, profileId },
-      adoptId: entry.tabId && entry.tab.url ? restoreId(entry.tabId, entry.closedAt) : undefined,
+      adoptId: entry.tabId && entry.tab.url ? restoreId(entry.tabId) : undefined,
     })[0];
   }
   const tile = entry.pinnedTile && entry.tabId ? s.tabs[entry.tabId] : undefined;
   if (tile) {
     const unloaded = !tile.navigation && !tile.adoptId;
     const tabs = unloaded
-      ? { ...s.tabs, [tile.id]: { ...tile, url: entry.tab.url, title: entry.tab.title, favicon: entry.tab.favicon, muted: entry.tab.muted, adoptId: restoreId(tile.id, entry.closedAt) } }
+      ? { ...s.tabs, [tile.id]: { ...tile, url: entry.tab.url, title: entry.tab.title, favicon: entry.tab.favicon, muted: entry.tab.muted, adoptId: restoreId(tile.id) } }
       : s.tabs;
     const next: BrowserState = { ...s, closedTabs, tabs };
     return apply(next, activated(next, tile.id));
@@ -365,7 +364,7 @@ function restoreTab(s: BrowserState, entry: ClosedTab, requested?: string | null
     profileId,
     snapshot: entry.tab,
     index: w.id === entry.windowId ? entry.index : undefined,
-    adoptId: entry.tabId && entry.tab.url ? restoreId(entry.tabId, entry.closedAt) : undefined,
+    adoptId: entry.tabId && entry.tab.url ? restoreId(entry.tabId) : undefined,
   });
   next = withTab;
   const g = entry.group;
@@ -390,7 +389,7 @@ function restoreWindow(s: BrowserState, entry: ClosedWindow): BrowserState {
   const ids: string[] = [];
   for (const { active, tabId, ...snap } of entry.tabs) {
     const t = makeTab(id, profileOk(snap.profileId), "", { ...snap, profileId: profileOk(snap.profileId) });
-    if (tabId && snap.url) t.wakeAdoptId = restoreId(tabId, entry.closedAt);
+    if (tabId && snap.url) t.wakeAdoptId = restoreId(tabId);
     tabs[t.id] = t;
     live[t.id] = IDLE_LIVE;
     ids.push(t.id);

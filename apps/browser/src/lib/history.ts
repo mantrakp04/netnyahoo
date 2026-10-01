@@ -242,6 +242,8 @@ export function startHistory() {
   return () => {
     events.remove();
     stop();
+    loaded.clear();
+    legacyMoved = false;
   };
 }
 

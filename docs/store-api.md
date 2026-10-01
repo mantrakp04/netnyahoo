@@ -61,6 +61,8 @@ modules before using them — this is a summary from the agent that built it.
   sends each store change to Chrome as ops (`bookmarkOps`), takes back what extensions change, and moved the old
   `bookmarks.json` in once. Node ids are Chrome UUIDs (`newBookmarkId`); an engine profile's roots are
   `bar@<engine>` / `other@<engine>` (`rootIdsFor`); `bookmarksReady[profileId]` once read; `syncKey` (sync/adapters.ts).
+  Until Chrome's tree is read at launch the store shows the last one read (`bookmarks-cache.json`), which is display
+  only: it's never sent to Chrome, and edits made meanwhile are replayed on Chrome's tree.
 - History (Chrome's; lib/history.ts reads it and follows its `history.changed` events, and moved the old `history.json`
   into it once): `removeHistory` (deletes from Chrome too), `clearHistory(profileId, since?)` (the view; Clear Browsing
   Data deletes from Chrome), `importHistory` (Chrome's importer path). Favicons are Chrome's too: lib/favicons.ts is

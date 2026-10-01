@@ -40,7 +40,13 @@ int gEvalSeq = 0;
 // MARK: Tabs moving between windows
 
 constexpr CFTimeInterval kTransferWindow = 3;
-NSMutableDictionary<NSString *, NSNumber *> *gTransferRequests;  // Lock transfer history; Chrome callbacks can arrive on any thread.
+// A JS reload (development: Metro) unmounts every WebView and mounts them again once the new bundle has run. Each
+// tab's browser is parked meanwhile and taken back by its new view, instead of being closed and loaded again (which
+// was wasted work, and a second history visit for every open page).
+constexpr CFTimeInterval kReloadWindow = 30;
+// By transfer key: until when a view may take the key's parked browser. Lock it; Chrome callbacks can arrive on any
+// thread.
+NSMutableDictionary<NSString *, NSNumber *> *gTransferRequests;
 
 struct ParkedBrowser {
   CefRefPtr<Client> client;
@@ -51,8 +57,22 @@ std::map<std::string, ParkedBrowser> gParked;
 bool TransferRequested(NSString *key) {
   if (!key.length) return false;
   @synchronized(NSNull.null) {
-    NSNumber *at = gTransferRequests[key];
-    return at && CACurrentMediaTime() - at.doubleValue < kTransferWindow;
+    NSNumber *until = gTransferRequests[key];
+    return until && CACurrentMediaTime() < until.doubleValue;
+  }
+}
+
+void RequestTransfer(NSString *key, CFTimeInterval window) {
+  if (!key.length) return;
+  @synchronized(NSNull.null) {
+    if (!gTransferRequests) gTransferRequests = [NSMutableDictionary dictionary];
+    gTransferRequests[key] = @(CACurrentMediaTime() + window);
+  }
+}
+
+double TransferDeadline(NSString *key) {
+  @synchronized(NSNull.null) {
+    return gTransferRequests[key].doubleValue;
   }
 }
 
@@ -67,8 +87,8 @@ void TransferDone(NSString *key) {
 bool nn::TabTransfersPending() {
   if (!gParked.empty()) return true;
   @synchronized(NSNull.null) {
-    for (NSNumber *at in gTransferRequests.allValues)
-      if (CACurrentMediaTime() - at.doubleValue < kTransferWindow) return true;
+    for (NSNumber *until in gTransferRequests.allValues)
+      if (CACurrentMediaTime() < until.doubleValue) return true;
   }
   return false;
 }
@@ -124,11 +144,15 @@ NSString *const kExitPictureInPictureScript =
 }
 
 + (void)prepareTransfer:(NSString *)transferKey {
-  if (!transferKey.length) return;
-  @synchronized(NSNull.null) {
-    if (!gTransferRequests) gTransferRequests = [NSMutableDictionary dictionary];
-    gTransferRequests[transferKey] = @(CACurrentMediaTime());
-  }
+  RequestTransfer(transferKey, kTransferWindow);
+}
+
++ (void)initialize {
+  if (self != NNBrowserView.class) return;
+  [NSNotificationCenter.defaultCenter addObserverForName:@"RCTBridgeWillReloadNotification" object:nil queue:nil
+                                              usingBlock:^(NSNotification *) {
+    for (NNBrowserView *view in LiveViews()) RequestTransfer(view.transferKey, kReloadWindow);
+  }];
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
@@ -312,13 +336,11 @@ NSString *const kExitPictureInPictureScript =
 }
 
 // A closed tab reopened: its back/forward list is the one Chrome's TabRestoreService kept when it closed (on disk,
-// so it survives a relaunch), found by its page and when it closed ("<tab id>@<ms>"). Without one, the page loads.
+// so it survives a relaunch), found by the closed tab's id, which closeBrowser gave its navigations. Without one,
+// the page loads.
 - (BOOL)restoreClosedTab:(NSString *)key {
   NSString *url = _pendingURL ?: _initialURL;
   if (!url.length || IsIncognito(_profile)) return NO;
-  NSRange at = [key rangeOfString:@"@" options:NSBackwardsSearch];
-  double closedAt = at.location != NSNotFound ? [key substringFromIndex:NSMaxRange(at)].doubleValue
-                                              : NSDate.date.timeIntervalSince1970 * 1000;
   _pendingURL = nil;
   _adoptId = nil;
   // The page's own first request for it is this load, as for a new tab.
@@ -327,7 +349,7 @@ NSString *const kExitPictureInPictureScript =
   CefRefPtr<Client> client = new Client(self, _profile);
   _client = client;
   __weak NNBrowserView *weakSelf = self;
-  engine::Call("nn_tab_restore_take", _profile, @{@"url" : url, @"closedAt" : @(closedAt)}, ^(NSDictionary *result) {
+  engine::Call("nn_tab_restore_take", _profile, @{@"key" : key}, ^(NSDictionary *result) {
     NNBrowserView *view = weakSelf;
     // Closed, or replaced, while Chrome looked.
     if (!view || view->_client != client) return;
@@ -393,7 +415,8 @@ NSString *const kExitPictureInPictureScript =
   _client = nullptr;
   _creating = NO;
   gParked[key] = {client, browser};
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kTransferWindow * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+  const double wait = MAX(kTransferWindow, TransferDeadline(_transferKey) - CACurrentMediaTime());
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     auto it = gParked.find(key);
     if (it == gParked.end() || !it->second.browser->IsSame(browser)) return;
     gParked.erase(it);
@@ -876,6 +899,9 @@ NSString *const kExitPictureInPictureScript =
   }
   _adoptId = nil;
   if (_browser && TransferRequested(_transferKey)) return [self parkBrowserForTransfer];
+  // The entry Chrome's TabRestoreService records for the tab carries the tab's id, so ⇧⌘T finds this one.
+  if (_browser && _transferKey.length && host::IsChromeTab(_browser) && !IsIncognito(_profile) && !ShuttingDown())
+    engine::Call("nn_tab_restore_tag", _profile, @{@"tab" : @(host::TabId(_browser)), @"key" : _transferKey}, ^(NSDictionary *) {});
   if (_browser) {
     _closingByRequest = YES;
     _browser->GetHost()->CloseBrowser(true);

@@ -44,7 +44,7 @@ export type Tab = {
   adoptId?: string;
   openerId: string | null;
   // What a tab that hasn't loaded adopts when first shown (store/model.ts wake): a reopened window's tab
-  // "restore:<closed tab>@<closed at>" (its back/forward list, from Chrome's TabRestoreService), a link opened behind "open:<id>" (its POST body, referrer).
+  // "restore:<closed tab>" (its back/forward list, from Chrome's TabRestoreService), a link opened behind "open:<id>" (its POST body, referrer).
   wakeAdoptId?: string;
   liveItem?: { folderId: string; itemId: string };
   unloaded?: boolean;

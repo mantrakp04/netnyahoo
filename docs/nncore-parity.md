@@ -101,7 +101,7 @@ held report flushed before any other event so JS sees them in order.
 |---|---|---|
 | `url` | done | |
 | `profile` | done | `""` is Chrome's Default profile, `<id>` is `Profile <id>`, `incognito…` the default profile's OTR profile |
-| `adoptId` | done | `nncore:<id>` takes the live tab Chrome made. CEF's `open:`/`clone:`/`restore:` ids open the URL fresh. `restore:<tab id>@<closed at ms>` should restore Chrome's TabRestoreService entry: `nn_tab_restore_take({url, closedAt})` (in NNCore's framework) returns its navigations in CEF's `GetNavigationState` format (base64 pickle: version 1, index, count, `SerializedNavigationEntry`s); NNCore needs a restore that takes them (`chrome::AddRestoredTab`) |
+| `adoptId` | done | `nncore:<id>` takes the live tab Chrome made. CEF's `open:`/`clone:`/`restore:` ids open the URL fresh. `restore:<tab id>` should restore Chrome's TabRestoreService entry: the WebView tags a tab with its `transferKey` as it closes it (`nn_tab_restore_tag({tab, key})`, session data saved with each navigation), and `nn_tab_restore_take({key})` (both in NNCore's framework) returns that entry's navigations in CEF's `GetNavigationState` format (base64 pickle: version 1, index, count, `SerializedNavigationEntry`s); NNCore needs a restore that takes them (`chrome::AddRestoredTab`) |
 | `transferKey` | partial | A tab moving between windows is parked (or taken from a view that hasn't unmounted yet) and its WebContents moves into the new window's Browser (`adoptTab:`). Untested in the app. It is also the tab's key in tab-strip transactions |
 | `visible`, `warm` | done | Hidden views hide the page view, so Chrome marks it hidden |
 | `standalone` | stubbed | |
@@ -253,7 +253,7 @@ calls it yet.
 | `nn_history_query`, `_add`, `_import`, `_delete_urls`, `_watch` (event `history.changed`) | `queryHistory`, `addHistoryVisits`, `importHistoryRows`, `deleteHistoryUrls`, `watchHistory`, `onHistoryChanged` (`packages/cef/src/history.ts`) | done (`engineCall`) |
 | `nn_favicons_get`, `_set` | `faviconsFor`, `fetchFavicon`'s hand-off (`favicons.ts`) | done (`engineCall`) |
 | `nn_bookmarks_tree`, `_apply`, `_watch` (event `bookmarks.changed`) | `bookmarkTree`, `applyBookmarkOps`, `watchBookmarks`, `onBookmarksChanged` (`bookmarks.ts`) | done (`engineCall`) |
-| `nn_tab_restore_take` | none: native, for `adoptId` `restore:<tab id>@<closed at ms>` (`NNBrowserView.mm`) | missing (see `adoptId`) |
+| `nn_tab_restore_tag`, `nn_tab_restore_take` | none: native, as a WebView closes its tab and for `adoptId` `restore:<tab id>` (`NNBrowserView.mm`) | missing (see `adoptId`) |
 | `nn_tab_restore_load` | allow-listed for `engineCall`, no caller yet | done (`engineCall`) |
 
 `NetnyahooExtensions.evaluateInHost` and `evaluateInPage` are gone from `packages/cef` (they scripted the hidden

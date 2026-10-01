@@ -148,3 +148,24 @@ test("ops Chrome can't apply (an extension moved things meanwhile) stop there: n
   assert.deepEqual(storeTree(), chromeTree(), "the store shows Chrome's tree");
   stop();
 });
+
+test("at launch the bar shows the last tree read from Chrome until Chrome's loads, and nothing of it is written back", async () => {
+  S().hydrate({ bookmarks: { nodes: {}, roots: {} } });
+  stub.docs.clear();
+  stub.bookmarkDbs.clear();
+  stub.chromeBookmarkEdit("", [{ op: "add", id: "0f0f0f0f-0000-4000-8000-0000000000c1", k: "u", t: "Now", u: "https://now.example/", a: 1, parent: "bar" }]);
+  const node = (id, parentId, x) => ({ id, parentId, addedAt: 1, ...x });
+  const gone = "0f0f0f0f-0000-4000-8000-0000000000c2";
+  stub.docs.set("bookmarks-cache.json", JSON.stringify({ version: 1, trees: { "": [
+    node("bar@default", null, { kind: "folder", title: "Bookmarks Bar", children: [gone] }),
+    node("other@default", null, { kind: "folder", title: "Other Bookmarks", children: [] }),
+    node(gone, "bar@default", { kind: "url", title: "Deleted since", url: "https://gone.example/", favicon: null }),
+  ] } }));
+  const stop = startBookmarks();
+  assert.deepEqual(storeTree().bar, { "Bookmarks Bar": ["Deleted since=https://gone.example/"] }, "the cache shows at once");
+  assert.ok(!S().bookmarksReady.default, "sync waits for Chrome's tree");
+  await reloadBookmarks();
+  assert.deepEqual(storeTree(), chromeTree(), "then Chrome's tree");
+  assert.ok(!stub.chromeBookmarks("").has(gone), "the cache's stale bookmark isn't written back");
+  stop();
+});

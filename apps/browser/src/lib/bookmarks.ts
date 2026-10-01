@@ -1,5 +1,5 @@
 import { applyBookmarkOps, bookmarkTree, onBookmarksChanged, watchBookmarks, type BookmarkOp, type EngineBookmark } from "@netnyahoo/cef";
-import { readDocument, removeDocument } from "@netnyahoo/shell";
+import { readDocument, removeDocument, writeDocument } from "@netnyahoo/shell";
 import { bookmarkUuidFor, isBookmarkUuid, rootIdsFor } from "../store/bookmarks";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile, isIncognitoProfile } from "../store/model";
@@ -17,6 +17,10 @@ const LEGACY_FILE = "bookmarks.json";
 // Chrome saves its bookmarks file a moment after a change; the old file stays until then, so a crash before it
 // moves it again (adding only what Chrome lacks).
 const LEGACY_KEPT_MS = 10_000;
+// The tree as last read from Chrome, shown at launch until Chrome has loaded its own (no empty bar). Display only:
+// it's never sent to Chrome, and what the app does before the read is replayed on Chrome's tree.
+const CACHE_FILE = "bookmarks-cache.json";
+const CACHE_SAVE_MS = 2000;
 const store = () => useBrowser.getState();
 
 // MARK: Trees
@@ -218,6 +222,8 @@ export function applyOps(tree: Flat, ops: BookmarkOp[], engine: string): Flat {
 type EngineState = {
   // Chrome's tree as last read or confirmed; null until the first read.
   shadow: Flat | null;
+  // What the store showed before the first read (the cache): the base the launch's edits are made against.
+  shown: Flat | null;
   busy: boolean;
   needRead: boolean;
   needPush: boolean;
@@ -225,7 +231,7 @@ type EngineState = {
 const engines = new Map<string, EngineState>();
 const stateOf = (engine: string) => {
   let state = engines.get(engine);
-  if (!state) engines.set(engine, (state = { shadow: null, busy: false, needRead: false, needPush: false }));
+  if (!state) engines.set(engine, (state = { shadow: null, shown: null, busy: false, needRead: false, needPush: false }));
   return state;
 };
 // Sync may use a tree only once bookmarks.json is in Chrome: before, its bookmarks would read as deleted.
@@ -237,7 +243,7 @@ const profilesUsing = (s: Pick<BrowserState, "profiles">, engine: string) =>
   Object.keys(s.profiles).filter((id) => !isIncognitoProfile(id) && engineProfile(id) === engine);
 
 // Puts a tree in the store: the engine's subtree is replaced; icons the store knew stay.
-function adopt(engine: string, flat: Flat) {
+function adopt(engine: string, flat: Flat, { ready = legacyMoved } = {}) {
   useBrowser.setState((s) => {
     const roots = rootIdsFor(engine);
     const old = flatFromStore(s.bookmarks, engine);
@@ -256,7 +262,7 @@ function adopt(engine: string, flat: Flat) {
     const ids = profilesUsing(s, engine);
     return {
       bookmarks: { nodes, roots: { ...s.bookmarks.roots, ...Object.fromEntries(ids.map((id) => [id, roots])) } },
-      ...(legacyMoved ? { bookmarksReady: { ...s.bookmarksReady, ...Object.fromEntries(ids.map((id) => [id, true as const])) } } : {}),
+      ...(ready ? { bookmarksReady: { ...s.bookmarksReady, ...Object.fromEntries(ids.map((id) => [id, true as const])) } } : {}),
     };
   });
 }
@@ -276,11 +282,12 @@ async function sendOps(engine: string, ops: BookmarkOp[]): Promise<boolean> {
 async function readTree(engine: string, state: EngineState) {
   await watchBookmarks(engine);
   const fetched = flatFromEngine(await bookmarkTree(engine), engine);
-  // Before the first read the store had nothing of Chrome's, so what it has are edits (made at launch).
-  const base = state.shadow ?? flatFromStore({ nodes: {}, roots: {} }, engine);
+  // Before the first read the store had only the cache, so the rest are edits (made at launch).
+  const base = state.shadow ?? state.shown ?? flatFromStore({ nodes: {}, roots: {} }, engine);
   const edits = bookmarkOps(base, flatFromStore(store().bookmarks, engine), engine);
   const merged = edits.length ? applyOps(fetched, edits, engine) : fetched;
   state.shadow = fetched;
+  state.shown = null;
   adopt(engine, merged);
   if (!edits.length) return;
   if (await sendOps(engine, edits)) state.shadow = merged;
@@ -333,6 +340,66 @@ function push(s: BrowserState) {
     if (!state.shadow) continue;
     state.needPush = true;
     work(engine);
+  }
+}
+
+// MARK: The cache
+
+type CacheDoc = { version: 1; trees: Record<string, BookmarkNode[]> };
+
+function readCache(): CacheDoc["trees"] {
+  try {
+    const json = readDocument(CACHE_FILE);
+    const doc = json ? (JSON.parse(json) as CacheDoc) : null;
+    return doc?.version === 1 ? doc.trees : {};
+  } catch {
+    return {};
+  }
+}
+
+// The cache's trees, or on the launch that moves bookmarks.json in, that file's (under the UUIDs it moves to).
+function launchTrees(): Record<string, Flat> {
+  const out: Record<string, Flat> = {};
+  for (const [engine, nodes] of Object.entries(readCache())) {
+    const roots = rootIdsFor(engine);
+    const b: Bookmarks = { nodes: Object.fromEntries(nodes.map((n) => [n.id, n])), roots: {} };
+    if (b.nodes[roots.bar] && b.nodes[roots.other]) out[engine] = flatFromStore(b, engine);
+  }
+  if (Object.keys(out).length) return out;
+  try {
+    const legacy = (JSON.parse(readDocument(LEGACY_FILE) ?? "null") as { bookmarks?: Bookmarks } | null)?.bookmarks;
+    const s = store();
+    for (const [profileId, roots] of Object.entries(legacy?.roots ?? {})) {
+      if (!s.profiles[profileId] || isIncognitoProfile(profileId)) continue;
+      const engine = engineProfile(profileId);
+      const ids = rootIdsFor(engine);
+      const id = (old: string) => (old === roots.bar ? ids.bar : old === roots.other ? ids.other : bookmarkUuidFor(old));
+      const nodes: Bookmarks["nodes"] = {};
+      for (const n of Object.values(legacy!.nodes)) {
+        const mapped = { ...n, id: id(n.id), parentId: n.parentId === null ? null : id(n.parentId) } as BookmarkNode;
+        nodes[mapped.id] = mapped.kind === "folder" ? { ...mapped, children: mapped.children.map(id) } : mapped;
+      }
+      out[engine] ??= flatFromStore({ nodes, roots: {} }, engine);
+    }
+  } catch {}
+  return out;
+}
+
+let cacheTimer: ReturnType<typeof setTimeout> | undefined;
+
+// The trees Chrome confirmed, as the store shows them (with icons).
+function saveCache() {
+  cacheTimer = undefined;
+  const s = store();
+  const trees: CacheDoc["trees"] = {};
+  for (const [engine, state] of engines) {
+    if (!state.shadow || !engineProfiles(s).includes(engine)) continue;
+    trees[engine] = [...flatFromStore(s.bookmarks, engine).nodes.keys()].map((id) => s.bookmarks.nodes[id]!);
+  }
+  try {
+    writeDocument(CACHE_FILE, JSON.stringify({ version: 1, trees } satisfies CacheDoc));
+  } catch (error) {
+    console.warn(`[bookmarks] couldn't save ${CACHE_FILE}`, error);
   }
 }
 
@@ -398,6 +465,12 @@ export async function migrateBookmarksFile({ keepMs = LEGACY_KEPT_MS } = {}): Pr
 // MARK: Start
 
 export function startBookmarks() {
+  // Shown until Chrome's own tree is read; not ready for sync, never sent to Chrome.
+  for (const [engine, flat] of Object.entries(launchTrees())) {
+    if (!engineProfiles(store()).includes(engine)) continue;
+    stateOf(engine).shown = flat;
+    adopt(engine, flat, { ready: false });
+  }
   const changes = onBookmarksChanged((engine) => {
     if (stateOf(engine).shadow) read(engine);
   });
@@ -410,12 +483,20 @@ export function startBookmarks() {
     if (s.profiles !== prev.profiles) {
       for (const engine of engineProfiles(s)) if (!stateOf(engine).shadow && !stateOf(engine).busy) read(engine);
     }
-    if (s.bookmarks !== prev.bookmarks) push(s);
+    if (s.bookmarks !== prev.bookmarks) {
+      push(s);
+      if ([...engines.values()].some((e) => e.shadow)) cacheTimer ??= setTimeout(saveCache, CACHE_SAVE_MS);
+    }
   });
   return () => {
     stopped = true;
+    clearTimeout(cacheTimer);
+    if (cacheTimer) saveCache();
+    cacheTimer = undefined;
     changes.remove();
     stop();
+    engines.clear();
+    legacyMoved = false;
   };
 }
 
