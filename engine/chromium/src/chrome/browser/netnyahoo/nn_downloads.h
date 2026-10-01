@@ -39,7 +39,8 @@
 // ~/Downloads by default; NETNYAHOO_DOWNLOADS_DIR overrides it, for tests),
 // named uniquely by Chrome (" (1)"), without a save panel: the first call
 // turns "Ask where to save each file" (download.prompt_for_download, which the
-// ungoogled patches default to on) off unless it was set. A finished file gets com.apple.quarantine
+// ungoogled patches default to on) off unless it was set, and private
+// profiles follow it (Chrome forces it on for them). A finished file gets com.apple.quarantine
 // (Gatekeeper checks what it opens) unless it already has one; a private
 // download's record leaves out its URLs.
 

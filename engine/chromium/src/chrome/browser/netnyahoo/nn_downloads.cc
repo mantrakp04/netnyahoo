@@ -312,6 +312,14 @@ Watch::Watch(DownloadsState* owner, Profile* profile)
       notifier_(profile->GetDownloadManager(), this) {
   if (profile->IsOffTheRecord()) {
     observation_.Observe(profile);
+    // Chrome's desktop download UI turns "Ask where to save" on for every
+    // private profile when its download manager starts (DownloadUIController's
+    // bubble delegate; notifier_ has started it by now). A private window
+    // follows the profile's own choice instead, as in CEF's engine.
+    profile->GetPrefs()->SetBoolean(
+        prefs::kPromptForDownload,
+        profile->GetOriginalProfile()->GetPrefs()->GetBoolean(
+            prefs::kPromptForDownload));
   }
 }
 
