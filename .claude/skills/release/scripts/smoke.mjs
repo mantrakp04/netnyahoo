@@ -70,9 +70,35 @@ await send("Runtime.enable");
 await go("https://example.com/");
 check("a web page loads", (await evaluate("document.title")) === "Example Domain");
 
-const ad = await evaluate(
-  `fetch("https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js",{mode:"no-cors"}).then(()=>"loaded",e=>"blocked")`,
-);
+// What became of the ad script's request while `run` ran, judged by the network: "blocked" when uBlock failed it
+// (ERR_BLOCKED_BY_CLIENT, as on CEF) or redirected it to its no-op stand-in inside the extension (uBOL's optimal mode
+// on NNCore: the stand-in loads, so the page's onload fires, but nothing left the browser), "loaded" when the ad
+// server answered.
+const adScript = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js";
+async function adFate(run) {
+  const ids = new Set();
+  let fate;
+  const listener = (m) => {
+    const p = m.params ?? {};
+    if (m.method === "Network.requestWillBeSent" && (p.request?.url === adScript || ids.has(p.requestId))) {
+      ids.add(p.requestId);
+      if (p.request.url.startsWith("chrome-extension://")) fate ??= "blocked";
+    } else if (!ids.has(p.requestId)) {
+      return;
+    } else if (m.method === "Network.loadingFailed") {
+      fate ??= /ERR_BLOCKED_BY_CLIENT/.test(p.errorText ?? "") || p.blockedReason ? "blocked" : `failed (${p.errorText})`;
+    } else if (m.method === "Network.responseReceived" && new URL(p.response.url).hostname.endsWith("googlesyndication.com")) {
+      fate ??= p.response.status < 400 ? "loaded" : `failed (${p.response.status})`;
+    }
+  };
+  listeners.push(listener);
+  await run();
+  for (const start = Date.now(); !fate && Date.now() - start < 5000; ) await sleep(100);
+  listeners.splice(listeners.indexOf(listener), 1);
+  return fate ?? (ids.size ? "pending" : "not requested");
+}
+await send("Network.enable");
+const ad = await adFate(() => evaluate(`fetch(${JSON.stringify(adScript)},{mode:"no-cors"}).then(()=>"loaded",e=>"blocked")`));
 const control = await evaluate(`fetch("https://www.iana.org/favicon.ico",{mode:"no-cors"}).then(()=>"loaded",e=>"failed")`);
 check("uBlock blocks an ad script, lets other requests through", ad === "blocked" && control === "loaded", `${ad}/${control}`);
 
@@ -142,7 +168,7 @@ await sleep(1500);
 checkUnlocked("…and closes when the page navigates", !windows().some((w) => /passkey/i.test(w.title)));
 
 const ubolPage = "chrome-extension://bnjeokpoejhioagiokhkhmdogkhbnbki/manifest.json";
-const adsOnPage = async () => (await go(`${pages}/ad.html`), await evaluate("window.ad"));
+const adsOnPage = () => adFate(() => go(`${pages}/ad.html`));
 async function allowAds(allowed) {
   await go(ubolPage);
   return evaluate(`chrome.runtime.sendMessage({ what: "setFilteringMode", hostname: "localhost", level: ${allowed ? 0 : 2} })`);
