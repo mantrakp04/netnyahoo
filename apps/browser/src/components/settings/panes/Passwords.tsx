@@ -12,7 +12,7 @@ import {
   updatePassword,
   type SavedPassword,
 } from "@netnyahoo/cef";
-import { confirm, copyText, Symbol } from "@netnyahoo/shell";
+import { confirm, copyText, Symbol, systemInfo } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { useTheme } from "../../../lib/theme";
@@ -24,6 +24,14 @@ import { hostLabel, matchesQuery } from "../../pages/PageLayout";
 import { Favicon, IconButton } from "../../primitives";
 import { Button, Group, PopUp, Row, SearchField, SectionHeader, Sheet, TextField, Toggle } from "../controls";
 import { closeSettingsSheet, showSettingsSheet } from "../sheet";
+
+// 1Password connects to a browser it has been told to trust, and only to one installed in Applications.
+function passwordManagerAppsNote() {
+  const apps = "1Password, Bitwarden, KeePassXC and Proton Pass extensions connect to their Mac apps.";
+  return systemInfo().inApplicationsFolder === false
+    ? `${apps} For 1Password, move Netnyahoo to your Applications folder and reopen it (1Password only connects to browsers there), then in the 1Password app open Settings › Browser › Add Browser and choose it.`
+    : `${apps} For 1Password, add Netnyahoo once: in the 1Password app, open Settings › Browser › Add Browser and choose Netnyahoo.`;
+}
 
 const UNLOCK_MS = 5 * 60_000;
 const unlockedUntil = new Map<string, number>();
@@ -106,10 +114,7 @@ export function PasswordsPane({ profileId: initial }: { profileId?: string | nul
         <Row title="Export passwords" description={exportStatus || "To a CSV file. Anyone who can open the file can read your passwords."}>
           <Button title="Export CSV…" onPress={() => void exportCsv()} />
         </Row>
-        <Row
-          title="Password manager apps"
-          description="1Password, Bitwarden, KeePassXC and Proton Pass extensions connect to their Mac apps. For 1Password, add Netnyahoo once in its Settings › Browser › Add Browser."
-        />
+        <Row title="Password manager apps" description={passwordManagerAppsNote()} />
       </Group>
 
       {!unlocked ? (

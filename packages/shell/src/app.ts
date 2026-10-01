@@ -60,6 +60,7 @@ export type SystemInfo = {
   isolatedInstance?: boolean;
   forceReleaseNotes?: boolean;
   processStart?: number | null;
+  inApplicationsFolder?: boolean;
 };
 
 export type CrashReport = {
