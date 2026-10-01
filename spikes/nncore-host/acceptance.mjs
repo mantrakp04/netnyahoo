@@ -118,6 +118,10 @@ async function go() {
       );
     case "/frame":
       return send(page("Frame", "frame"));
+    case "/ac":
+      return send(page("AC", `<form method=get action=/ac-done><input id=city name=nncity autocomplete=on><button id=go>Go</button></form>`));
+    case "/ac-done":
+      return send(page("AC done", "ok"));
     case "/blocky":
       // Five requests the test extension's declarativeNetRequest rule blocks ("nnblock-").
       return send(page("Blocky", `<img src="/nnblock-1.png"><script src="/nnblock-2.js"></script>` +
@@ -976,6 +980,27 @@ try {
     const dropdown = await waitFor(async () => (await state()).childWindows.find((w) => w.visible && w.class !== "NSPanel"), 5000);
     pl3.close();
     check("S19", "showAutofillSuggestions: Chrome's dropdown at the focused field", shown === true && !!dropdown, { shown, dropdown });
+    // Chrome's own (not the password manager's) dropdown is reported: an autocomplete entry
+    // this profile submitted before.
+    const af = await cmd("open", { url: `${base}/ac`, profile: "A" });
+    await waitFor(async () => (await tabState(af.tabId))?.title === "AC");
+    const pa = await attach((t) => t.url === `${base}/ac`);
+    await pa.type("#city", "Springfield");
+    await pa.click("#go");
+    pa.close();
+    await waitFor(async () => (await tabState(af.tabId))?.title === "AC done", 8000);
+    await sleep(500);
+    await cmd("nav", { tabId: af.tabId, action: "load", url: `${base}/ac?again=1` });
+    await waitFor(async () => (await tabState(af.tabId))?.title === "AC" && !(await tabState(af.tabId)).loading, 8000);
+    const pa2 = await attach((t) => t.url === `${base}/ac?again=1`);
+    await cmd("focus", { tabId: af.tabId });
+    await pa2.click("#city");
+    await sleep(400);
+    const acShown = await cmd("autofill", { tabId: af.tabId, passwords: false });
+    const rows = await waitFor(() => evs("autofillSuggestions", (e) => e.tabId === af.tabId && e.items.some((i) => i.label === "Springfield"))[0], 6000);
+    pa2.close();
+    check("S19", "tab:didShowAutofillSuggestions: Chrome's dropdown rows (an autocomplete entry)", rows, { acShown, items: rows?.items ?? evs("autofillSuggestions").map((e) => e.items) });
+    await cmd("nav", { tabId: af.tabId, action: "closeNow" });
     await cmd("nav", { tabId: lg.tabId, action: "closeNow" });
   }
   // S20 (J): the host's context-menu items; focusedEditable.

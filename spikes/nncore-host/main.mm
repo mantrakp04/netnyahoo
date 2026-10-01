@@ -649,6 +649,9 @@ static void Log(NSDictionary* event) {
 - (void)tab:(NNCoreTab*)tab didBlockRequests:(int)count lastURL:(NSString*)url {
   Log(@{@"event" : @"blocked", @"tabId" : @(tab.tabId), @"count" : @(count), @"url" : url});
 }
+- (void)tab:(NNCoreTab*)tab didShowAutofillSuggestions:(NSArray*)items {
+  Log(@{@"event" : @"autofillSuggestions", @"tabId" : @(tab.tabId), @"items" : items});
+}
 - (void)tab:(NNCoreTab*)tab didChangePictureInPicture:(NSDictionary*)state {
   Log(@{@"event" : @"pictureInPicture", @"tabId" : @(tab.tabId), @"state" : state});
 }

@@ -362,6 +362,10 @@ NNCORE_EXPORT
 // "video" (a video's requestPictureInPicture) | "document" (documentPictureInPicture)}. Both
 // windows are Chrome's own floating ones.
 - (void)tab:(NNCoreTab*)tab didChangePictureInPicture:(NSDictionary<NSString*, id>*)state;
+// Chrome's autofill dropdown opened at a field of this page (a click, a key, or
+// -showAutofillSuggestions:): its rows as [{label, sublabel, minorText, type}] (type: Chrome's
+// SuggestionType name, e.g. "kAddressEntry", "kPasswordEntry"; separators left out).
+- (void)tab:(NNCoreTab*)tab didShowAutofillSuggestions:(NSArray<NSDictionary<NSString*, NSString*>*>*)items;
 // The content blocker (an extension's declarativeNetRequest, net error ERR_BLOCKED_BY_CLIENT)
 // stopped requests of the page: subresources, frames and main-frame navigations. `count` is
 // the number since the last report (at most one per main-loop turn); `url` the last one's.
