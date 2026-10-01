@@ -1,5 +1,5 @@
 import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { closeTab } from "../../lib/actions";
@@ -29,7 +29,8 @@ const NONE: string[] = [];
 
 export const liveRowKey = (folderId: string, itemId: string) => `live|${folderId}|${itemId}`;
 
-export function LiveFolders({ windowId, spaced }: { windowId: string; spaced: boolean }) {
+// Memoized: the sidebar page re-renders whenever a tab opens or closes.
+export const LiveFolders = memo(function LiveFolders({ windowId, spaced }: { windowId: string; spaced: boolean }) {
   const page = usePageProfileId();
   const profileId = useBrowser((s) => (s.windows[windowId]?.incognito ? "" : page));
   const ids = useLive(useShallow((s) => profileFolders(s, profileId)));
@@ -41,7 +42,7 @@ export function LiveFolders({ windowId, spaced }: { windowId: string; spaced: bo
       ))}
     </View>
   );
-}
+});
 
 function useDisclosure(collapsed: boolean) {
   const open = useRef(new Animated.Value(collapsed ? 0 : 1)).current;

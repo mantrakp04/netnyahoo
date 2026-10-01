@@ -42,10 +42,19 @@ export function Sidebar() {
   const current = useWindowProfileId();
   const { pages, paging } = usePagerPages(windowId);
   const [available, setAvailable] = useState(0);
-  const [listHeight, setListHeight] = useState(0);
+  // The list's height matters only through `docked`: kept in a ref, so a tab opening or closing re-renders the
+  // sidebar only when the New Tab row docks or undocks.
+  const listHeight = useRef(0);
+  const [, setDockChanges] = useState(0);
+  const dockedAt = (list: number) => available > 0 && list + ROW_PITCH + 12 > available;
+  const docked = dockedAt(listHeight.current);
+  const onListHeight = (height: number) => {
+    const before = dockedAt(listHeight.current);
+    listHeight.current = height;
+    if (dockedAt(height) !== before) setDockChanges((n) => n + 1);
+  };
   const scroll = useRef<ScrollView>(null);
   const scrollY = useRef(0);
-  const docked = available > 0 && listHeight + ROW_PITCH + 12 > available;
   const playerTab = useSidebarPlayerTab(windowId);
   const playerHeight = playerTab ? SIDEBAR_PLAYER_HEIGHT : 0;
   const addressBar = useAddressBarInSidebar();
@@ -90,7 +99,7 @@ export function Sidebar() {
                 glowRoom={glowRoom}
                 ghost={ghost}
                 rows={page.id === current ? undefined : Math.ceil(available / ROW_PITCH) + 1}
-                onListHeight={setListHeight}
+                onListHeight={onListHeight}
                 onScrollView={(v) => {
                   scroll.current = v;
                   controller.scroll = v;
@@ -404,7 +413,7 @@ const NewTabRow = memo(function NewTabRow({ windowId }: { windowId: string }) {
 const UPSELL_MIN = 10;
 let upsellDeclined = false;
 
-function CleanUpUpsell({ windowId }: { windowId: string }) {
+const CleanUpUpsell = memo(function CleanUpUpsell({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const [count, setCount] = useState(0);
@@ -459,4 +468,4 @@ function CleanUpUpsell({ windowId }: { windowId: string }) {
       </View>
     </View>
   );
-}
+});

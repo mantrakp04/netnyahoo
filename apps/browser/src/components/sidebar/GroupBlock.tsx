@@ -1,6 +1,7 @@
 import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
 import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
+import { useShallow } from "zustand/react/shallow";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { usePageProfileId, useWindowId } from "../../store/hooks";
@@ -123,7 +124,13 @@ function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; 
   const tokens = useSidebarTokens();
   const group = useBrowser((s) => s.groups[groupId]);
   const label = useBrowser((s) => (s.groups[groupId] ? groupLabel(s, s.groups[groupId]!) : ""));
-  const firstTab = useBrowser((s) => s.tabs[s.groups[groupId]?.tabIds[0] ?? ""]);
+  // The first tab's icon fields only: its title, loading and bookkeeping changes don't re-render the header.
+  const firstTab = useBrowser(
+    useShallow((s) => {
+      const t = s.tabs[s.groups[groupId]?.tabIds[0] ?? ""];
+      return t && { url: t.url, favicon: t.favicon, customIcon: t.customIcon, profileId: t.profileId };
+    }),
+  );
   const renaming = useSidebarUi((u) => u.renaming?.kind === "group" && u.renaming.id === groupId);
   const dropInto = useDropInto() === groupId;
   const { hovered, hoverProps } = useRowHover(windowId, collapsed && !renaming ? { kind: "group", id: groupId } : null);
