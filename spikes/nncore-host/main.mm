@@ -9,6 +9,8 @@
 // without becoming key.
 
 #import <AppKit/AppKit.h>
+#import <Carbon/Carbon.h>
+#import <objc/runtime.h>
 
 #include <string>
 #include <vector>
@@ -16,6 +18,7 @@
 #import "NNCore.h"
 
 static NSString* gDir;
+static BOOL gFakeKey = NO;  // tests: our windows count as key (see FakeIsKeyWindow)
 
 static void Log(NSDictionary* event) {
   NSMutableDictionary* e = [event mutableCopy];
@@ -53,6 +56,13 @@ static void Log(NSDictionary* event) {
   NSButton* _forward;
   NSTimer* _poll;
   NSMutableArray<NSDictionary*>* _passwordPrompts;
+  // Stage 1: more windows (chrome.windows.create, incognito, closes), keys, the quit.
+  NSMutableArray<NNCoreWindow*>* _extraWindows;
+  NSMutableDictionary<NSNumber*, NNCoreWindow*>* _tabWindow;  // tabId -> window
+  NSMutableDictionary<NSString*, id>* _config;  // answers the tests pick
+  NSMutableArray<NSDictionary*>* _menuHits;
+  NSMutableArray<NSDictionary*>* _keyEvents;  // pre/handle calls from NNCore
+  NSMapTable<NNCoreWindow*, NSNumber*>* _windowNumbers;  // kept after the NSWindow closes
 }
 
 - (void)engineDidStart {
@@ -61,7 +71,28 @@ static void Log(NSDictionary* event) {
   _tabs = [NSMutableArray array];
   _origins = [NSMutableDictionary dictionary];
   _passwordPrompts = [NSMutableArray array];
+  _extraWindows = [NSMutableArray array];
+  _tabWindow = [NSMutableDictionary dictionary];
+  _config = [NSMutableDictionary dictionary];
+  _menuHits = [NSMutableArray array];
+  _keyEvents = [NSMutableArray array];
+  _windowNumbers = [NSMapTable strongToStrongObjectsMapTable];
+  // The app's delegate is ours (Chrome's AppController never exists): -terminate: asks us.
+  NSApp.delegate = (id<NSApplicationDelegate>)self;
+  [self buildMenu];
   NNCoreEngine* engine = NNCoreEngine.sharedEngine;
+  // A page script like the app's (packages/cef/helper/page_script.js), for the checks.
+  engine.pageScript =
+      @"(function (post) {\n"
+       "  const top = window === window.top;\n"
+       "  window.__nnPageScript = 'main-world';\n"
+       "  post('hello', JSON.stringify({ url: location.href, top, readyState: document.readyState,\n"
+       "                                pageGlobal: typeof window.pageSetGlobal }));\n"
+       "  return function receive(kind, json) {\n"
+       "    document.documentElement.dataset.nnReceived = kind + ':' + json;\n"
+       "    post('echo', JSON.stringify({ kind, json, top }));\n"
+       "  };\n"
+       "})";
   _profiles[@"A"] = engine.defaultProfile;
   Log(@{@"event" : @"engineDidStart", @"chromium" : engine.chromiumVersion,
         @"profileA" : engine.defaultProfile.path ?: @""});
@@ -77,6 +108,80 @@ static void Log(NSDictionary* event) {
 
 - (void)engineWillShutDown {
   Log(@{@"event" : @"engineWillShutDown"});
+}
+
+- (void)engineQuitCancelled {
+  Log(@{@"event" : @"engineQuitCancelled", @"keepAlive" : NNCoreEngine.sharedEngine.keepAliveState});
+}
+
+- (NNCoreWindow*)engineWindowForNewBrowserOfProfile:(NNCoreProfile*)profile type:(NSString*)type {
+  if (![type isEqualToString:@"normal"] && ![type isEqualToString:@"popup"]) {
+    Log(@{@"event" : @"engineWindowForNewBrowser", @"type" : type, @"hosted" : @NO});
+    return nil;
+  }
+  NNCoreWindow* window = [self newWindow];
+  Log(@{@"event" : @"engineWindowForNewBrowser", @"type" : type, @"hosted" : @YES,
+        @"profile" : profile.name ?: @"", @"offTheRecord" : @(profile.offTheRecord),
+        @"windowNumber" : @(window.window.windowNumber)});
+  return window;
+}
+
+// A plain extra window: its tabs fill it.
+- (NNCoreWindow*)newWindow {
+  NNCoreWindow* window = [[NNCoreWindow alloc] initWithContentRect:NSMakeRect(140, 160, 800, 600)];
+  window.delegate = self;
+  [_extraWindows addObject:window];
+  [window showInactive];
+  [_windowNumbers setObject:@(window.window.windowNumber) forKey:window];
+  return window;
+}
+
+// --- NSApplicationDelegate (Cocoa's terminate contract) ----------------------------------
+
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender {
+  NSString* reply = _config[@"terminateReply"] ?: @"now";
+  Log(@{@"event" : @"applicationShouldTerminate", @"reply" : reply});
+  if ([reply isEqualToString:@"cancel"]) {
+    return NSTerminateCancel;
+  }
+  if ([reply isEqualToString:@"later"]) {
+    BOOL answer = ![_config[@"laterAnswer"] isEqual:@NO];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+      Log(@{@"event" : @"replyToApplicationShouldTerminate", @"answer" : @(answer)});
+      [NSApp replyToApplicationShouldTerminate:answer];
+    });
+    return NSTerminateLater;
+  }
+  return NSTerminateNow;
+}
+
+- (void)applicationWillTerminate:(NSNotification*)notification {
+  Log(@{@"event" : @"applicationWillTerminate"});
+}
+
+// --- The app's menu (key equivalents the tests press) ---------------------------------------
+
+- (void)buildMenu {
+  NSMenu* main = [[NSMenu alloc] init];
+  NSMenuItem* fileItem = [[NSMenuItem alloc] init];
+  NSMenu* file = [[NSMenu alloc] initWithTitle:@"File"];
+  for (NSString* key in @[ @"t", @"k", @"j" ]) {
+    NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:[@"Test " stringByAppendingString:key]
+                                                  action:@selector(menuHit:)
+                                           keyEquivalent:key];
+    item.target = self;
+    [file addItem:item];
+  }
+  fileItem.submenu = file;
+  [main addItem:fileItem];
+  NSApp.mainMenu = main;
+}
+
+- (void)menuHit:(NSMenuItem*)item {
+  NSDictionary* hit = @{@"key" : item.keyEquivalent,
+                        @"firstResponder" : NSStringFromClass(_window.window.firstResponder.class)};
+  [_menuHits addObject:hit];
+  Log(@{@"event" : @"menuHit", @"key" : item.keyEquivalent});
 }
 
 // --- Our chrome ------------------------------------------------------------------------
@@ -102,6 +207,7 @@ static void Log(NSDictionary* event) {
   _address = [NSTextField textFieldWithString:@""];
   _address.target = self;
   _address.action = @selector(addressEntered:);
+  _address.cell.sendsActionOnEndEditing = NO;  // Return only (the key tests focus it)
   _profileSwitch = [NSSegmentedControl segmentedControlWithLabels:@[ @"A", @"B" ]
                                                      trackingMode:NSSegmentSwitchTrackingSelectOne
                                                            target:self
@@ -285,6 +391,21 @@ static void Log(NSDictionary* event) {
           opener:(NNCoreTab*)opener
      disposition:(NSString*)disposition {
   tab.delegate = self;
+  _tabWindow[@(tab.tabId)] = window;
+  if (window != _window) {
+    // Extra windows just show their tab.
+    if (![_tabs containsObject:tab]) {
+      [_tabs addObject:tab];
+    }
+    tab.view.frame = window.hostView.bounds;
+    tab.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [window.hostView addSubview:tab.view];
+    Log(@{@"event" : @"didInsertTab", @"tabId" : @(tab.tabId), @"url" : tab.url,
+          @"opener" : opener ? @(opener.tabId) : NSNull.null, @"disposition" : disposition,
+          @"profile" : tab.profile.name ?: @"", @"offTheRecord" : @(tab.profile.offTheRecord),
+          @"windowNumber" : @(window.window.windowNumber), @"extraWindow" : @YES});
+    return;
+  }
   if (![_tabs containsObject:tab]) {
     // Product rule (the store's job in the app): children go right after their opener.
     NSUInteger at = opener ? [_tabs indexOfObject:opener] : NSNotFound;
@@ -346,6 +467,42 @@ static void Log(NSDictionary* event) {
   [_passwordPrompts addObject:@{@"tabId" : @(tab.tabId), @"username" : username}];
 }
 
+- (BOOL)windowShouldClose:(NNCoreWindow*)window {
+  BOOL answer = ![_config[@"shouldClose"] isEqual:@NO];
+  Log(@{@"event" : @"windowShouldClose", @"windowNumber" : @(window.window.windowNumber),
+        @"answer" : @(answer)});
+  return answer;
+}
+
+- (void)windowDidCancelClose:(NNCoreWindow*)window {
+  Log(@{@"event" : @"windowDidCancelClose", @"windowNumber" : @(window.window.windowNumber)});
+}
+
+- (void)window:(NNCoreWindow*)window
+    confirmCloseWithDownloads:(int)count
+                   completion:(void (^)(BOOL))completion {
+  BOOL answer = ![_config[@"closeWithDownloads"] isEqual:@NO];
+  Log(@{@"event" : @"confirmCloseWithDownloads", @"count" : @(count), @"answer" : @(answer)});
+  completion(answer);
+}
+
+- (BOOL)window:(NNCoreWindow*)window preHandleKeyEvent:(NSEvent*)event {
+  // ⌘T is reserved: the menu runs it and the page never sees it.
+  BOOL reserved = (event.modifierFlags & NSEventModifierFlagCommand) &&
+                  [event.charactersIgnoringModifiers isEqualToString:@"t"];
+  [_keyEvents addObject:@{@"call" : @"pre", @"key" : event.charactersIgnoringModifiers ?: @"",
+                          @"reserved" : @(reserved)}];
+  if (reserved) {
+    [NSApp.mainMenu performKeyEquivalent:event];
+  }
+  return reserved;
+}
+
+- (BOOL)window:(NNCoreWindow*)window handleKeyEvent:(NSEvent*)event {
+  [_keyEvents addObject:@{@"call" : @"handle", @"key" : event.charactersIgnoringModifiers ?: @""}];
+  return NO;  // NNCore's default: the main menu.
+}
+
 - (void)window:(NNCoreWindow*)window tab:(NNCoreTab*)tab didChangeFullscreen:(BOOL)fullscreen {
   // The app would show the page alone, full screen; the spike only records it.
   Log(@{@"event" : @"fullscreen", @"tabId" : @(tab.tabId), @"fullscreen" : @(fullscreen)});
@@ -388,6 +545,43 @@ static void Log(NSDictionary* event) {
 - (void)tabDidChangeNavigationState:(NNCoreTab*)tab {
   [self tabChanged:tab what:@"navState"];
 }
+- (void)tab:(NNCoreTab*)tab
+    didReceivePageMessage:(NSString*)kind
+                     json:(NSString*)json
+                    frame:(NSString*)frameId
+                     main:(BOOL)main {
+  Log(@{@"event" : @"pageMessage", @"tabId" : @(tab.tabId), @"kind" : kind, @"json" : json,
+        @"frame" : frameId, @"main" : @(main)});
+  if (!main && [kind isEqualToString:@"hello"]) {
+    // As NNClient answers a frame's hello with its config: to that frame only.
+    [tab callFrame:frameId kind:@"config" json:@"{\"frame\":true}"];
+  }
+}
+- (void)tab:(NNCoreTab*)tab didRequestAppURL:(NSString*)url userGesture:(BOOL)userGesture {
+  Log(@{@"event" : @"appURL", @"tabId" : @(tab.tabId), @"url" : url, @"userGesture" : @(userGesture)});
+}
+- (void)tabWillClose:(NNCoreTab*)tab {
+  Log(@{@"event" : @"tabWillClose", @"tabId" : @(tab.tabId)});
+}
+- (void)tab:(NNCoreTab*)tab rendererGone:(NSString*)status code:(int)code {
+  Log(@{@"event" : @"rendererGone", @"tabId" : @(tab.tabId), @"status" : status, @"code" : @(code)});
+}
+- (void)tab:(NNCoreTab*)tab didFailLoad:(NSString*)url code:(int)code description:(NSString*)text {
+  Log(@{@"event" : @"didFailLoad", @"tabId" : @(tab.tabId), @"url" : url, @"code" : @(code),
+        @"description" : text});
+}
+- (void)tab:(NNCoreTab*)tab didChangeStatusText:(NSString*)text {
+  Log(@{@"event" : @"statusText", @"tabId" : @(tab.tabId), @"text" : text});
+}
+- (void)tabDidChangeThemeColor:(NNCoreTab*)tab {
+  Log(@{@"event" : @"themeColor", @"tabId" : @(tab.tabId), @"color" : tab.themeColor ?: NSNull.null});
+}
+- (void)tabDidGainFocus:(NNCoreTab*)tab {
+  Log(@{@"event" : @"tabFocus", @"tabId" : @(tab.tabId)});
+}
+- (void)tabDidChangeAudio:(NNCoreTab*)tab {
+  Log(@{@"event" : @"audio", @"tabId" : @(tab.tabId), @"audible" : @(tab.audible), @"muted" : @(tab.muted)});
+}
 
 // --- Test commands ---------------------------------------------------------------------
 
@@ -424,6 +618,10 @@ static void Log(NSDictionary* event) {
     @"opener" : origin[@"opener"] ?: NSNull.null,
     @"disposition" : origin[@"disposition"] ?: NSNull.null,
     @"inWindow" : @(view.window == _window.window),
+    @"windowNumber" : @(view.window.windowNumber),
+    @"browserId" : @(tab.browserId), @"faviconURL" : tab.faviconURL ?: NSNull.null,
+    @"themeColor" : tab.themeColor ?: NSNull.null, @"muted" : @(tab.muted),
+    @"audible" : @(tab.audible), @"offTheRecord" : @(tab.profile.offTheRecord),
     @"frame" : NSStringFromRect(inWindow),
     @"devTools" : tab.devToolsView
         ? @{@"inWindow" : @(tab.devToolsView.window == _window.window),
@@ -431,6 +629,24 @@ static void Log(NSDictionary* event) {
                                                                toView:nil])}
         : NSNull.null,
   };
+}
+
+- (NSArray*)extraWindowsInfo {
+  NSMutableArray* list = [NSMutableArray array];
+  for (NNCoreWindow* w in _extraWindows) {
+    NSMutableArray* tabs = [NSMutableArray array];
+    for (NSNumber* tabId in _tabWindow) {
+      NNCoreTab* t = [self tabWithId:tabId.integerValue];
+      if (_tabWindow[tabId] == w && t && !t.closed) {
+        [tabs addObject:@{@"tabId" : tabId, @"url" : t.url, @"offTheRecord" : @(t.profile.offTheRecord)}];
+      }
+    }
+    [list addObject:@{@"windowNumber" : [_windowNumbers objectForKey:w] ?: @(w.window.windowNumber),
+                      @"visible" : @(w.window.visible), @"hasNSWindow" : @(w.window != nil),
+                      @"tabs" : tabs,
+                      @"lookup" : @([NNCoreWindow windowForNSWindow:w.window] == w)}];
+  }
+  return list;
 }
 
 - (id)state {
@@ -466,7 +682,77 @@ static void Log(NSDictionary* event) {
     @"isKey" : @(_window.window.isKeyWindow), @"appActive" : @(NSApp.active),
     @"passwordPrompts" : _passwordPrompts,
     @"keepAlive" : NNCoreEngine.sharedEngine.keepAliveState,
+    @"extraWindows" : [self extraWindowsInfo],
+    @"menuHits" : _menuHits, @"keyEvents" : _keyEvents,
+    @"appDelegate" : NSStringFromClass([(NSObject*)NSApp.delegate class]),
+    @"appClass" : NSStringFromClass(NSApp.class),
   };
+}
+
+- (NNCoreWindow*)windowWithNumber:(NSInteger)number {
+  if (_window.window.windowNumber == number) {
+    return _window;
+  }
+  for (NNCoreWindow* w in _extraWindows) {
+    if ([[_windowNumbers objectForKey:w] integerValue] == number) {
+      return w;
+    }
+  }
+  return nil;
+}
+
+- (NSDictionary*)windowStyleInfo {
+  NSWindow* w = _window.window;
+  return @{
+    @"styleMask" : @(w.styleMask),
+    @"fullSizeContentView" : @((w.styleMask & NSWindowStyleMaskFullSizeContentView) != 0),
+    @"titlebarTransparent" : @(w.titlebarAppearsTransparent),
+    @"titleHidden" : @(w.titleVisibility == NSWindowTitleHidden),
+    @"background" : w.backgroundColor.description ?: @"",
+    @"minSize" : NSStringFromSize(w.minSize),
+    @"frame" : NSStringFromRect(w.frame),
+    @"contentView" : NSStringFromRect(w.contentView.frame),
+    @"hostView" : NSStringFromRect([_window.hostView convertRect:_window.hostView.bounds toView:nil]),
+    @"closeButton" : NSStringFromPoint([w standardWindowButton:NSWindowCloseButton].frame.origin),
+  };
+}
+
+// A key down delivered as AppKit delivers one to the key window: the window's key
+// equivalents (the first responder's view tree), then the main menu, then keyDown:. The
+// test window can't be key, so isKeyWindow is faked for it (as Chromium's
+// ScopedFakeNSWindowFocus does).
+- (NSDictionary*)deliverKey:(NSDictionary*)cmd tab:(NNCoreTab*)tab {
+  NSWindow* window = _window.window;
+  if ([cmd[@"target"] isEqualToString:@"field"]) {
+    [window makeFirstResponder:_address];
+  } else {
+    [tab focus];
+  }
+  NSString* key = cmd[@"key"];
+  NSEventModifierFlags flags = [cmd[@"meta"] boolValue] ? NSEventModifierFlagCommand : 0;
+  NSString* chars = key;
+  NSUInteger before = _menuHits.count;
+  NSEvent* event = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:flags
+                                   timestamp:NSProcessInfo.processInfo.systemUptime
+                                windowNumber:window.windowNumber context:nil characters:chars
+                 charactersIgnoringModifiers:key isARepeat:NO keyCode:[cmd[@"keyCode"] unsignedShortValue]];
+  NSString* responder = NSStringFromClass(window.firstResponder.class);
+  BOOL byWindow = [window performKeyEquivalent:event];
+  BOOL byMenu = NO;
+  if (!byWindow) {
+    byMenu = [NSApp.mainMenu performKeyEquivalent:event];
+    if (!byMenu) {
+      [window sendEvent:event];
+    }
+  }
+  NSEvent* up = [NSEvent keyEventWithType:NSEventTypeKeyUp location:NSZeroPoint modifierFlags:flags
+                                timestamp:NSProcessInfo.processInfo.systemUptime
+                             windowNumber:window.windowNumber context:nil characters:chars
+              charactersIgnoringModifiers:key isARepeat:NO keyCode:[cmd[@"keyCode"] unsignedShortValue]];
+  [window sendEvent:up];
+  return @{@"firstResponder" : responder, @"handledByWindow" : @(byWindow),
+           @"handledByMenu" : @(byMenu), @"menuHitsNow" : @(_menuHits.count - before),
+           @"textInputClient" : @([window.firstResponder conformsToProtocol:@protocol(NSTextInputClient)])};
 }
 
 - (void)run:(NSDictionary*)cmd reply:(void (^)(id))reply {
@@ -549,6 +835,102 @@ static void Log(NSDictionary* event) {
     [profile fetchSavedLogins:^(NSArray* logins) {
       reply(logins);
     }];
+  } else if ([name isEqualToString:@"config"]) {
+    [_config addEntriesFromDictionary:cmd[@"values"] ?: @{}];
+    reply(_config);
+  } else if ([name isEqualToString:@"newWindow"]) {
+    NNCoreWindow* w = [self newWindow];
+    NNCoreTab* t = [w openTab:cmd[@"url"] profile:profile foreground:YES];
+    reply(@{@"windowNumber" : @(w.window.windowNumber), @"tabId" : t ? @(t.tabId) : NSNull.null});
+  } else if ([name isEqualToString:@"closeWindow"]) {
+    NNCoreWindow* w = [self windowWithNumber:[cmd[@"windowNumber"] integerValue]];
+    if ([cmd[@"performClose"] boolValue]) {
+      [w.window performClose:nil];  // the title bar's close button
+    } else {
+      [w close];
+    }
+    reply(@(w != nil));
+  } else if ([name isEqualToString:@"terminate"]) {
+    reply(@YES);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if ([cmd[@"appleEvent"] boolValue]) {
+        // The Dock's Quit, logout and `osascript … to quit` send kAEQuitApplication.
+        NSAppleEventDescriptor* target =
+            [NSAppleEventDescriptor descriptorWithProcessIdentifier:getpid()];
+        NSAppleEventDescriptor* event =
+            [NSAppleEventDescriptor appleEventWithEventClass:kCoreEventClass
+                                                     eventID:kAEQuitApplication
+                                            targetDescriptor:target
+                                                    returnID:kAutoGenerateReturnID
+                                               transactionID:kAnyTransactionID];
+        NSError* error = nil;
+        [event sendEventWithOptions:NSAppleEventSendNoReply timeout:5 error:&error];
+        Log(@{@"event" : @"quitAppleEventSent", @"error" : error.description ?: NSNull.null});
+      } else {
+        [NSApp terminate:nil];
+      }
+    });
+  } else if ([name isEqualToString:@"key"]) {
+    gFakeKey = YES;
+    NSDictionary* result = [self deliverKey:cmd tab:tab];
+    gFakeKey = NO;
+    reply(result);
+  } else if ([name isEqualToString:@"evaluate"]) {
+    [tab evaluate:cmd[@"code"] completion:^(NSString* json) {
+      reply(json ?: NSNull.null);
+    }];
+  } else if ([name isEqualToString:@"exec"]) {
+    [tab executeJavaScript:cmd[@"code"]];
+    reply(@YES);
+  } else if ([name isEqualToString:@"callPage"]) {
+    [tab callPage:cmd[@"kind"] json:cmd[@"json"]];
+    reply(@YES);
+  } else if ([name isEqualToString:@"tabInfo"]) {
+    reply(tab ? @{@"info" : [self tabInfo:tab], @"entries" : tab.navigationEntries} : NSNull.null);
+  } else if ([name isEqualToString:@"mute"]) {
+    tab.muted = [cmd[@"muted"] boolValue];
+    reply(@(tab.muted));
+  } else if ([name isEqualToString:@"goToOffset"]) {
+    [tab goToOffset:[cmd[@"offset"] intValue]];
+    reply(@YES);
+  } else if ([name isEqualToString:@"loadUser"]) {
+    [tab loadURL:cmd[@"url"] userInitiated:[cmd[@"user"] boolValue]];
+    reply(@YES);
+  } else if ([name isEqualToString:@"reloadHard"]) {
+    [tab reloadIgnoringCache];
+    reply(@YES);
+  } else if ([name isEqualToString:@"placeTab"]) {
+    [_window placeTab:tab index:[cmd[@"index"] intValue] pinned:[cmd[@"pinned"] boolValue]];
+    NSMutableArray* order = [NSMutableArray array];
+    for (NNCoreTab* t in [_window tabsForProfile:profile]) {
+      [order addObject:@(t.tabId)];
+    }
+    reply(order);
+  } else if ([name isEqualToString:@"adoptTab"]) {
+    [_window adoptTab:tab];
+    _tabWindow[@(tab.tabId)] = _window;
+    reply(@{@"inMain" : @(tab.view.window == _window.window || !tab.view.window),
+            @"closed" : @(tab.closed)});
+  } else if ([name isEqualToString:@"incognito"]) {
+    NNCoreProfile* otr = [NNCoreEngine.sharedEngine offTheRecordProfileFor:profile];
+    reply(@{@"name" : otr.name ?: @"", @"offTheRecord" : @(otr.offTheRecord),
+            @"command" : @([_window executeChromeCommand:34001 /* IDC_NEW_INCOGNITO_WINDOW */
+                                                 profile:profile])});
+  } else if ([name isEqualToString:@"styleWindow"]) {
+    // What the RN host does to its window after -initWithContentRect:.
+    NSWindow* w = _window.window;
+    w.styleMask |= NSWindowStyleMaskFullSizeContentView;
+    w.titlebarAppearsTransparent = YES;
+    w.titleVisibility = NSWindowTitleHidden;
+    w.backgroundColor = NSColor.systemPinkColor;
+    w.minSize = NSMakeSize(500, 400);
+    [w standardWindowButton:NSWindowCloseButton].frameOrigin = NSMakePoint(20, 10);
+    [w setFrame:NSOffsetRect(w.frame, 1, 0) display:YES];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+      reply([self windowStyleInfo]);
+    });
+  } else if ([name isEqualToString:@"windowStyle"]) {
+    reply([self windowStyleInfo]);
   } else if ([name isEqualToString:@"quit"]) {
     reply(@YES);
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -561,7 +943,22 @@ static void Log(NSDictionary* event) {
 
 @end
 
+// Tests only: the hidden test window counts as key (Chromium's ScopedFakeNSWindowFocus),
+// so AppKit-path key equivalents reach the page as they do in a key window.
+static BOOL (*gOriginalIsKeyWindow)(id, SEL);
+static BOOL FakeIsKeyWindow(NSWindow* self, SEL _cmd) {
+  if (gFakeKey && [NNCoreWindow windowForNSWindow:self]) {
+    return YES;
+  }
+  return gOriginalIsKeyWindow(self, _cmd);
+}
+
 int main(int argc, const char* argv[]) {
+  {
+    Method m = class_getInstanceMethod([NSWindow class], @selector(isKeyWindow));
+    gOriginalIsKeyWindow = (BOOL(*)(id, SEL))method_getImplementation(m);
+    method_setImplementation(m, (IMP)FakeIsKeyWindow);
+  }
   // Never touch NSApp before Chromium does: it makes NSApp its own NSApplication subclass.
   const char* dir = getenv("NNHOST_DIR");
   gDir = dir ? @(dir) : [NSTemporaryDirectory() stringByAppendingPathComponent:@"nncore-host"];

@@ -3,16 +3,23 @@
 #import <AppKit/AppKit.h>
 
 #include "base/auto_reset.h"
+#include "base/no_destructor.h"
 #include "base/functional/bind.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/devtools/devtools_window.h"
+#include "chrome/browser/download/download_core_service.h"
+#include "chrome/browser/download/download_core_service_factory.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
+#include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/unload_controller.h"
 #include "chrome/browser/ui/passwords/passwords_model_delegate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "components/favicon/content/content_favicon_driver.h"
@@ -20,13 +27,18 @@
 #include "components/find_in_page/find_tab_helper.h"
 #include "components/password_manager/core/browser/password_form.h"
 #import "components/remote_cocoa/app_shim/bridged_content_view.h"
+#include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
+#include "chrome/browser/tab_list/tab_removed_reason.h"
+#include "net/base/net_errors.h"
+#include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_browser_window.h"
 #import "netnyahoo/core/nncore_internal.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/mac/coordinate_conversion.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
+#include "ui/views/window/client_view.h"
 #include "url/origin.h"
 
 namespace nncore {
@@ -58,13 +70,73 @@ const char* DispositionName(WindowOpenDisposition disposition) {
 
 // --- WindowHost -------------------------------------------------------------------------
 
+namespace {
+
+std::vector<WindowHost*>& Hosts() {
+  static base::NoDestructor<std::vector<WindowHost*>> hosts;
+  return *hosts;
+}
+
+// The window's client view: AppKit's close (the title bar's button, -performClose:) and
+// Views' own close requests come here first. The widget closes only once every Browser has;
+// anything else becomes the host's cancellable close.
+class HostClientView : public views::ClientView {
+ public:
+  HostClientView(views::Widget* widget,
+                 views::View* contents,
+                 base::WeakPtr<WindowHost> host)
+      : views::ClientView(widget, contents), host_(std::move(host)) {}
+
+  views::CloseRequestResult OnWindowCloseRequested() override {
+    if (!host_ || host_->CanCloseWidget()) {
+      return views::CloseRequestResult::kCanClose;
+    }
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&WindowHost::CloseRequestedByUser, host_));
+    return views::CloseRequestResult::kCannotClose;
+  }
+
+ private:
+  base::WeakPtr<WindowHost> host_;
+};
+
+}  // namespace
+
+// static
+const std::vector<WindowHost*>& WindowHost::All() {
+  return Hosts();
+}
+
+// static
+WindowHost* WindowHost::ForNSWindow(NSWindow* window) {
+  for (WindowHost* host : Hosts()) {
+    if (window && host->ns_window() == window) {
+      return host;
+    }
+  }
+  return nullptr;
+}
+
+// static
+WindowHost* WindowHost::ForBrowser(const BrowserWindowInterface* browser) {
+  NNBrowserDelegate* delegate = DelegateFor(browser);
+  return delegate ? delegate->host() : nullptr;
+}
+
 WindowHost::WindowHost(NNCoreWindow* owner, const gfx::Rect& bounds)
-    : owner_(owner) {
+    : owner_(owner), owner_ref_(owner) {
+  Hosts().push_back(this);
   widget_delegate_ = std::make_unique<views::WidgetDelegate>();
   widget_delegate_->SetCanResize(true);
   widget_delegate_->SetCanMaximize(true);
   widget_delegate_->SetCanMinimize(true);
   widget_delegate_->SetTitle(u"Netnyahoo");
+  widget_delegate_->SetClientViewFactory(base::BindOnce(
+      [](base::WeakPtr<WindowHost> host, views::Widget* widget,
+         views::View* contents) -> std::unique_ptr<views::ClientView> {
+        return std::make_unique<HostClientView>(widget, contents, host);
+      },
+      GetWeakPtr()));
 
   widget_ = std::make_unique<views::Widget>();
   views::Widget::InitParams params(
@@ -89,6 +161,7 @@ WindowHost::WindowHost(NNCoreWindow* owner, const gfx::Rect& bounds)
 }
 
 WindowHost::~WindowHost() {
+  std::erase(Hosts(), this);
   for (auto& observer : modal_observers_) {
     observer.OnHostDestroying();
   }
@@ -96,6 +169,7 @@ WindowHost::~WindowHost() {
     browser->GetTabStripModel()->RemoveObserver(this);
   }
   browsers_.clear();
+  widget_close_allowed_ = true;
   widget_.reset();
 }
 
@@ -108,12 +182,22 @@ Browser* WindowHost::ExistingBrowserFor(Profile* profile) const {
   return it == browsers_.end() ? nullptr : it->second.get();
 }
 
+std::vector<Browser*> WindowHost::browsers() const {
+  std::vector<Browser*> list;
+  for (const auto& [profile, browser] : browsers_) {
+    list.push_back(browser.get());
+  }
+  return list;
+}
+
 Browser* WindowHost::BrowserFor(Profile* profile) {
   if (Browser* browser = ExistingBrowserFor(profile)) {
     return browser;
   }
-  if (closing_ || GetBrowserWindowCreationStatusForProfile(*profile) !=
-                      BrowserWindowInterface::CreationStatus::kOk) {
+  if (close_state_ != CloseState::kOpen || !widget_ || widget_close_allowed_ ||
+      browser_shutdown::IsTryingToQuit() ||
+      GetBrowserWindowCreationStatusForProfile(*profile) !=
+          BrowserWindowInterface::CreationStatus::kOk) {
     return nullptr;
   }
   auto* window = new NNBrowserWindow(GetWeakPtr());
@@ -125,12 +209,31 @@ Browser* WindowHost::BrowserFor(Profile* profile) {
   params.cef_params = base::MakeRefCounted<NNCreateParams>(GetWeakPtr());
   Browser* browser = static_cast<Browser*>(CreateBrowserWindow(std::move(params)));
   window->AttachBrowser(browser);
+  AddBrowser(browser);
+  return browser;
+}
+
+BrowserWindow* WindowHost::HostChromeBrowser(Browser* browser) {
+  Profile* profile = browser->GetProfile();
+  NNBrowserDelegate* delegate = DelegateFor(browser);
+  if (!delegate || delegate->is_ours() || close_state_ != CloseState::kOpen ||
+      widget_close_allowed_ || ExistingBrowserFor(profile)) {
+    return nullptr;
+  }
+  delegate->AdoptIntoHost(GetWeakPtr());
+  auto* window = new NNBrowserWindow(GetWeakPtr());
+  window->AttachBrowser(browser);
+  AddBrowser(browser);
+  return window;
+}
+
+void WindowHost::AddBrowser(Browser* browser) {
+  Profile* profile = browser->GetProfile();
   browsers_[profile] = browser;
   browser->GetTabStripModel()->AddObserver(this);
   if (!active_profile_) {
     SetActiveProfile(profile);
   }
-  return browser;
 }
 
 void WindowHost::SetActiveProfile(Profile* profile) {
@@ -156,34 +259,188 @@ bool WindowHost::IsActiveBrowser(const Browser* browser) const {
 }
 
 void WindowHost::ShowInactive() {
-  if (widget_ && !widget_->IsVisible()) {
+  if (widget_ && !widget_close_allowed_ && !widget_->IsVisible()) {
     widget_->ShowInactive();
   }
 }
 
+void WindowHost::CloseRequestedByUser() {
+  if (close_state_ != CloseState::kOpen) {
+    return;
+  }
+  NNCoreWindow* owner = owner_;
+  id<NNCoreWindowDelegate> delegate = owner.delegate;
+  if ([delegate respondsToSelector:@selector(windowShouldClose:)] &&
+      ![delegate windowShouldClose:owner]) {
+    return;
+  }
+  Close();
+}
+
 void WindowHost::Close() {
-  if (closing_) {
+  if (close_state_ != CloseState::kOpen) {
     return;
   }
-  closing_ = true;
+  close_state_ = CloseState::kAsking;
+  ContinueClose();
+}
+
+// As BrowserCloseManager does for the quit: every Browser's beforeunload first, one Browser
+// at a time, and nothing closes until all of them said yes.
+void WindowHost::ContinueClose() {
+  if (close_state_ != CloseState::kAsking) {
+    return;
+  }
+  for (Browser* browser : browsers()) {
+    if (UnloadController::From(browser)->TryToCloseWindow(
+            /*skip_beforeunload=*/false,
+            base::BindRepeating(&WindowHost::OnBeforeUnloadAnswered,
+                                GetWeakPtr()))) {
+      return;  // A page is asking; OnBeforeUnloadAnswered continues.
+    }
+  }
+  const int downloads = DownloadsCancelledByClose();
+  if (downloads > 0) {
+    ConfirmCloseWithDownloads(
+        downloads, base::BindOnce(
+                       [](base::WeakPtr<WindowHost> host, bool close_anyway) {
+                         if (!host || host->close_state_ != CloseState::kAsking) {
+                           return;
+                         }
+                         if (close_anyway) {
+                           host->CommitClose();
+                         } else {
+                           host->CancelClose();
+                         }
+                       },
+                       GetWeakPtr()));
+    return;
+  }
+  CommitClose();
+}
+
+void WindowHost::OnBeforeUnloadAnswered(bool proceed) {
+  if (close_state_ != CloseState::kAsking) {
+    return;
+  }
+  if (proceed) {
+    ContinueClose();
+  } else {
+    CancelClose();
+  }
+}
+
+void WindowHost::CancelClose() {
+  close_state_ = CloseState::kOpen;
+  // Browsers whose pages already agreed go back to normal (their unload handlers won't run).
+  for (Browser* browser : browsers()) {
+    UnloadController::From(browser)->ResetTryToCloseWindow();
+  }
+  NotifyCloseCancelled();
+}
+
+void WindowHost::NotifyCloseCancelled() {
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<WindowHost> host) {
+                       if (!host) {
+                         return;
+                       }
+                       NNCoreWindow* owner = host->owner_;
+                       id<NNCoreWindowDelegate> delegate = owner.delegate;
+                       if ([delegate respondsToSelector:@selector
+                                     (windowDidCancelClose:)]) {
+                         [delegate windowDidCancelClose:owner];
+                       }
+                     },
+                     GetWeakPtr()));
+}
+
+void WindowHost::CommitClose() {
+  close_state_ = CloseState::kClosing;
   if (browsers_.empty()) {
-    widget_->Close();
+    CloseWidget();
     return;
   }
-  // Each Browser closes its tabs (beforeunload first) and is destroyed by Chrome;
-  // BrowserWindowDestroyed closes the widget after the last one.
-  std::vector<Browser*> browsers;
-  for (auto& [profile, browser] : browsers_) {
-    browsers.push_back(browser.get());
-  }
-  for (Browser* browser : browsers) {
+  // Each Browser runs its pages' unload handlers, closes its tabs and is destroyed by
+  // Chrome; BrowserWindowDestroyed closes the widget after the last one.
+  for (Browser* browser : browsers()) {
     browser->GetWindow()->Close();
   }
+}
+
+void WindowHost::CloseWidget() {
+  if (widget_close_allowed_) {
+    return;
+  }
+  widget_close_allowed_ = true;
+  if (widget_) {
+    widget_->Close();
+  }
+  std::erase(Hosts(), this);
+  // The host may have let go of its NNCoreWindow after -close; it goes after this turn.
+  NNCoreWindow* owner = owner_ref_;
+  owner_ref_ = nil;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    (void)owner;
+  });
+}
+
+int WindowHost::DownloadsCancelledByClose() const {
+  // On the Mac a profile's downloads outlive its windows (the app stays up); an
+  // off-the-record profile's go with its last window.
+  int count = 0;
+  for (const auto& [profile, browser] : browsers_) {
+    if (!profile->IsOffTheRecord()) {
+      continue;
+    }
+    bool other_window = false;
+    GlobalBrowserCollection::GetInstance()->ForEach(
+        [&](BrowserWindowInterface* other) {
+          if (other->GetProfile() == profile && WindowHost::ForBrowser(other) != this &&
+              !other->capabilities()->IsAttemptingToCloseBrowser()) {
+            other_window = true;
+          }
+          return !other_window;
+        });
+    DownloadCoreService* downloads =
+        DownloadCoreServiceFactory::GetForBrowserContext(profile);
+    if (!other_window && downloads) {
+      count += downloads->BlockingShutdownCount();
+    }
+  }
+  return count;
+}
+
+void WindowHost::ConfirmCloseWithDownloads(int count,
+                                           base::OnceCallback<void(bool)> callback) {
+  auto answer = std::make_shared<base::OnceCallback<void(bool)>>(std::move(callback));
+  // Never synchronously: Chrome's callers set up their state after asking.
+  auto reply = ^(BOOL close_anyway) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(
+                       [](std::shared_ptr<base::OnceCallback<void(bool)>> answer,
+                          bool close_anyway) {
+                         if (*answer) {
+                           std::move(*answer).Run(close_anyway);
+                         }
+                       },
+                       answer, close_anyway));
+  };
+  NNCoreWindow* owner = owner_;
+  id<NNCoreWindowDelegate> delegate = owner.delegate;
+  if (![delegate respondsToSelector:@selector
+                 (window:confirmCloseWithDownloads:completion:)]) {
+    reply(YES);
+    return;
+  }
+  [delegate window:owner confirmCloseWithDownloads:count completion:reply];
 }
 
 void WindowHost::BrowserWindowDestroyed(NNBrowserWindow* window) {
   for (auto it = browsers_.begin(); it != browsers_.end(); ++it) {
     if (it->second == window->browser()) {
+      it->second->GetTabStripModel()->RemoveObserver(this);
       if (active_profile_ == it->first) {
         active_profile_ = nullptr;
       }
@@ -191,16 +448,11 @@ void WindowHost::BrowserWindowDestroyed(NNBrowserWindow* window) {
       break;
     }
   }
-  if (browsers_.empty() && (closing_ || browser_shutdown::IsTryingToQuit())) {
-    closing_ = true;
+  if (browsers_.empty() &&
+      (closing() || browser_shutdown::IsTryingToQuit())) {
+    close_state_ = CloseState::kClosing;
     base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, base::BindOnce(
-                       [](base::WeakPtr<WindowHost> host) {
-                         if (host && host->widget_) {
-                           host->widget_->Close();
-                         }
-                       },
-                       GetWeakPtr()));
+        FROM_HERE, base::BindOnce(&WindowHost::CloseWidget, GetWeakPtr()));
   }
 }
 
@@ -260,6 +512,20 @@ void WindowHost::OnTabStripModelChanged(
         continue;
       }
       TabBridge* bridge = TabBridge::FromWebContents(removed.contents);
+      // Closed by the page (window.close()) or by Chrome (an extension's tabs.remove),
+      // not by the host, nor by its window or the quit closing everything.
+      Browser* browser = nullptr;
+      for (Browser* b : browsers()) {
+        if (b->GetTabStripModel() == tab_strip_model) {
+          browser = b;
+        }
+      }
+      const bool browser_closing =
+          !browser || UnloadController::From(browser)->is_attempting_to_close_browser();
+      if (bridge && removed.remove_reason == TabRemovedReason::kDeleted &&
+          !browser_closing && !closing() && !browser_shutdown::IsTryingToQuit()) {
+        bridge->ReportWillClose();
+      }
       if (bridge &&
           [delegate respondsToSelector:@selector(window:didRemoveTab:)]) {
         [delegate window:owner didRemoveTab:bridge->tab()];
@@ -352,6 +618,26 @@ void WindowHost::RemoveObserver(web_modal::ModalDialogHostObserver* observer) {
   modal_observers_.RemoveObserver(observer);
 }
 
+void ConfirmQuitWithDownloads(int count, base::OnceCallback<void(bool)> callback) {
+  WindowHost* host =
+      WindowHost::ForBrowser(GetLastActiveBrowserWindowInterfaceWithAnyProfile());
+  if (!host && !WindowHost::All().empty()) {
+    host = WindowHost::All().back();
+  }
+  if (host) {
+    host->ConfirmCloseWithDownloads(count, std::move(callback));
+    return;
+  }
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(std::move(callback), true));
+}
+
+void NotifyWindowsQuitCancelled() {
+  for (WindowHost* host : WindowHost::All()) {
+    host->NotifyCloseCancelled();
+  }
+}
+
 // --- NNBrowserDelegate ------------------------------------------------------------------
 
 NNBrowserDelegate::NNBrowserDelegate(Browser* browser,
@@ -367,8 +653,9 @@ std::unique_ptr<content::WebContents> NNBrowserDelegate::AddWebContents(
 
 bool NNBrowserDelegate::KeepsWindowWithoutTabs() const {
   // A profile's Browser stays while its window is open, tabs or not; the host decides.
-  return host_ && !host_->closing() && !closing_ &&
-         !browser_shutdown::IsTryingToQuit();
+  // (Chrome checks the Browser's own close first: UnloadController's
+  // is_attempting_to_close_browser.)
+  return host_ && !host_->closing() && !browser_shutdown::IsTryingToQuit();
 }
 
 bool NNBrowserDelegate::AllowsDockedDevTools() const {
@@ -429,6 +716,13 @@ content::WebContents* NNWebContentsDelegate::OpenURLFromTab(
     const content::OpenURLParams& params,
     base::OnceCallback<void(content::NavigationHandle&)>
         navigation_handle_callback) {
+  // The app's own pages: never opened here. Chrome's pages ask the host (nn_page_channel.h).
+  if (IsAppURL(params.url)) {
+    if (source && IsWebUIURL(source->GetLastCommittedURL())) {
+      ReportAppURLRequest(source, params.url, params.user_gesture);
+    }
+    return nullptr;
+  }
   WindowHost* host = host_.get();
   if (!host || !IsNewTabDisposition(params.disposition)) {
     return BrowserWebContentsDelegate::OpenURLFromTab(
@@ -457,6 +751,13 @@ content::WebContents* NNWebContentsDelegate::AddNewContents(
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
+  if (IsAppURL(target_url)) {
+    // window.open('netnyahoo:…'): dropped, as CEF did; Chrome's pages ask the host.
+    if (source && IsWebUIURL(source->GetLastCommittedURL())) {
+      ReportAppURLRequest(source, target_url, user_gesture);
+    }
+    return nullptr;
+  }
   if (host_ && new_contents) {
     // window.open and target=_blank: the renderer already made the contents (opener
     // relationship and all). Keep them as a tab of ours.
@@ -468,6 +769,16 @@ content::WebContents* NNWebContentsDelegate::AddNewContents(
   return BrowserWebContentsDelegate::AddNewContents(
       source, std::move(new_contents), target_url, disposition,
       window_features, user_gesture, was_blocked);
+}
+
+void NNWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
+                                            const GURL& url) {
+  BrowserWebContentsDelegate::UpdateTargetURL(source, url);
+  NNCoreTab* tab = TabBridge::GetOrCreate(source)->tab();
+  id<NNCoreTabDelegate> delegate = tab.delegate;
+  if ([delegate respondsToSelector:@selector(tab:didChangeStatusText:)]) {
+    [delegate tab:tab didChangeStatusText:base::SysUTF8ToNSString(url.spec())];
+  }
 }
 
 // --- TabBridge --------------------------------------------------------------------------
@@ -531,6 +842,70 @@ std::optional<WindowOpenDisposition> TabBridge::TakeOpenDisposition() {
   return d;
 }
 
+void TabBridge::ReportWillClose() {
+  if (closed_by_host_ || will_close_reported_) {
+    return;
+  }
+  will_close_reported_ = true;
+  [tab_ notify:@selector(tabWillClose:)];
+}
+
+namespace {
+const char* TerminationName(base::TerminationStatus status) {
+  switch (status) {
+    case base::TERMINATION_STATUS_NORMAL_TERMINATION:
+      return "normal";
+    case base::TERMINATION_STATUS_ABNORMAL_TERMINATION:
+      return "abnormal";
+    case base::TERMINATION_STATUS_PROCESS_WAS_KILLED:
+      return "killed";
+    case base::TERMINATION_STATUS_PROCESS_CRASHED:
+      return "crashed";
+    case base::TERMINATION_STATUS_OOM:
+      return "oom";
+    case base::TERMINATION_STATUS_LAUNCH_FAILED:
+      return "launchFailed";
+    case base::TERMINATION_STATUS_EVICTED_FOR_MEMORY:
+      return "evicted";
+    default:
+      return "other";
+  }
+}
+}  // namespace
+
+void TabBridge::PrimaryMainFrameRenderProcessGone(
+    base::TerminationStatus status) {
+  // A renderer that exits cleanly (the quit, an unused process) leaves no sad tab.
+  if (status == base::TERMINATION_STATUS_NORMAL_TERMINATION ||
+      status == base::TERMINATION_STATUS_STILL_RUNNING) {
+    return;
+  }
+  NNCoreTab* tab = tab_;
+  id<NNCoreTabDelegate> delegate = tab.delegate;
+  if ([delegate respondsToSelector:@selector(tab:rendererGone:code:)]) {
+    [delegate tab:tab
+        rendererGone:@(TerminationName(status))
+                code:web_contents()->GetCrashedErrorCode()];
+  }
+}
+
+void TabBridge::DidChangeThemeColor() {
+  [tab_ notify:@selector(tabDidChangeThemeColor:)];
+}
+
+void TabBridge::OnWebContentsFocused(
+    content::RenderWidgetHost* render_widget_host) {
+  [tab_ notify:@selector(tabDidGainFocus:)];
+}
+
+void TabBridge::OnAudioStateChanged(bool audible) {
+  [tab_ notify:@selector(tabDidChangeAudio:)];
+}
+
+void TabBridge::DidUpdateAudioMutingState(bool muted) {
+  [tab_ notify:@selector(tabDidChangeAudio:)];
+}
+
 void TabBridge::TitleWasSet(content::NavigationEntry* entry) {
   [tab_ notify:@selector(tabDidChangeTitle:)];
 }
@@ -551,6 +926,17 @@ void TabBridge::LoadProgressChanged(double progress) {
 void TabBridge::DidFinishNavigation(content::NavigationHandle* handle) {
   EnsureFaviconObserved();
   [tab_ notify:@selector(tabDidChangeURL:)];
+  const int error = handle->GetNetErrorCode();
+  if (handle->IsInPrimaryMainFrame() && error != net::OK) {
+    NNCoreTab* tab = tab_;
+    id<NNCoreTabDelegate> delegate = tab.delegate;
+    if ([delegate respondsToSelector:@selector(tab:didFailLoad:code:description:)]) {
+      [delegate tab:tab
+          didFailLoad:base::SysUTF8ToNSString(handle->GetURL().spec())
+                 code:error
+          description:base::SysUTF8ToNSString(net::ErrorToShortString(error))];
+    }
+  }
 }
 
 void TabBridge::NavigationEntryCommitted(
@@ -578,6 +964,7 @@ void TabBridge::OnFaviconUpdated(favicon::FaviconDriver* favicon_driver,
                                  const GURL& icon_url,
                                  bool icon_url_changed,
                                  const gfx::Image& image) {
+  favicon_url_ = icon_url;
   [tab_ notify:@selector(tabDidChangeFavicon:)];
 }
 

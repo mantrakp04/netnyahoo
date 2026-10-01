@@ -15,8 +15,6 @@
 #include "chrome/browser/chrome_browser_main.h"
 #include "chrome/browser/chrome_browser_main_extra_parts.h"
 #include "chrome/browser/chrome_content_browser_client.h"
-#include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
-#include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_paths_internal.h"
 #include "chrome/common/chrome_switches.h"
@@ -27,6 +25,10 @@
 #include "content/public/browser/browser_main_parts.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/result_codes.h"
+#include "netnyahoo/core/nn_lifetime.h"
+#include "netnyahoo/core/nn_page_channel.h"
+#include "netnyahoo/core/renderer/nn_content_renderer_client.h"
+#include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 
 namespace nncore {
 
@@ -52,6 +54,7 @@ class NNBrowserMainExtraParts : public ChromeBrowserMainExtraParts {
   void PreBrowserStart() override {
     AppKeepAlive() = std::make_unique<ScopedKeepAlive>(
         KeepAliveOrigin::APP_CONTROLLER, KeepAliveRestartOption::DISABLED);
+    StartLifetimeObservers();
   }
   void PostBrowserStart() override {
     g_browser_started = true;
@@ -118,6 +121,24 @@ class NNBrowserMainParts : public content::BrowserMainParts {
 
 class NNContentBrowserClient : public ChromeContentBrowserClient {
  public:
+  void RenderProcessWillLaunch(content::RenderProcessHost* host) override {
+    ChromeContentBrowserClient::RenderProcessWillLaunch(host);
+    SendPageScript(host);
+  }
+  void RegisterAssociatedInterfaceBindersForRenderFrameHost(
+      content::RenderFrameHost& render_frame_host,
+      blink::AssociatedInterfaceRegistry& associated_registry) override {
+    ChromeContentBrowserClient::
+        RegisterAssociatedInterfaceBindersForRenderFrameHost(
+            render_frame_host, associated_registry);
+    RegisterPageChannelBinders(render_frame_host, associated_registry);
+  }
+  void CreateThrottlesForNavigation(
+      content::NavigationThrottleRegistry& registry) override {
+    ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
+    AddAppSchemeThrottle(registry);
+  }
+
   std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
       bool is_integration_test) override {
     std::unique_ptr<content::BrowserMainParts> chrome =
@@ -134,14 +155,8 @@ void SetEngineCallbacks(EngineCallbacks callbacks) {
   Callbacks() = std::move(callbacks);
 }
 
-void QuitEngine() {
-  // Not chrome::AttemptExit: on the Mac that goes through -[NSApp terminate:] to
-  // AppController, which NNCore apps don't have.
-  chrome::CloseAllBrowsersAndQuit();
+void ReleaseAppKeepAlive() {
   AppKeepAlive().reset();
-  // With a remote-debugging port and no startup window Chrome also stays up for the
-  // automation client until it says Browser.close; the app's own quit says so too.
-  ChromeDevToolsManagerDelegate::AllowBrowserToClose();
 }
 
 NNMainDelegate::NNMainDelegate(const StartupTimestamps& timestamps)
@@ -168,6 +183,9 @@ void NNMainDelegate::PreSandboxStartup() {
     component_updater::RegisterPathProvider(chrome::DIR_COMPONENTS,
                                             chrome::DIR_USER_DATA);
   }
+  if (process_type.empty()) {
+    InstallAppOverrides();
+  }
   ChromeMainDelegate::PreSandboxStartup();
 }
 
@@ -175,6 +193,11 @@ void NNMainDelegate::CreateThreadPool(std::string_view name) {
   ChromeMainDelegate::CreateThreadPool(name);
   // Started as early as Chrome starts it: once the thread pool exists.
   sampling_profiler_ = std::make_unique<MainThreadStackSamplingProfiler>();
+}
+
+content::ContentRendererClient* NNMainDelegate::CreateContentRendererClient() {
+  static base::NoDestructor<NNContentRendererClient> client;
+  return client.get();
 }
 
 content::ContentBrowserClient* NNMainDelegate::CreateContentBrowserClient() {

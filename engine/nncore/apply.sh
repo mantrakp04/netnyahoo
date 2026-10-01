@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Puts NNCore into the Chromium tree: copies src/netnyahoo/ to //netnyahoo and adds its hooks:
 # a dep of the macOS //chrome:chrome_dll on //netnyahoo/core (Chrome's framework then links
-# our layer), ChromeMain making NNCore's main delegate, and three CHECKs made tolerant of
+# our layer), ChromeMain making NNCore's main delegate, Browser asking NNCore for the window of a
+# Browser Chrome makes itself, and three CHECKs made tolerant of
 # Browsers without a BrowserView (CEF's and Chrome's behaviour unchanged). Idempotent. Never touches
 # args.gn; the next autoninja re-runs gn by itself.
 #
@@ -17,6 +18,8 @@ src=${CHROMIUM_SRC:-$HOME/chromium-build/chromium_git/chromium/src}
 if [[ "${1:-}" == --check ]]; then
   diff -r "$here/src/netnyahoo" "$src/netnyahoo" >/dev/null &&
     grep -q '"//netnyahoo/core"' "$src/chrome/BUILD.gn" &&
+    grep -q 'g_netnyahoo_browser_window_factory(this)' "$src/chrome/browser/ui/browser.cc" &&
+    grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/sad_tab_controller.cc" &&
     grep -q 'nncore::NNMainDelegate' "$src/chrome/app/chrome_main.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc"
@@ -123,3 +126,67 @@ assert s.count(old) == 1
 open(path, "w").write(s.replace(old, new))
 print("hooked ReadAnythingSidePanelController")
 PY
+
+# A Browser Chrome makes itself (chrome.windows.create, an incognito window, undocked DevTools,
+# document Picture in Picture) asks NNCore for its window before Chrome builds a BrowserView:
+# NNCore may host it in one of the app's windows. The factory is only ever set by NNCore, so
+# CEF (which compiles this file too) behaves as before.
+python3 - "$src/chrome/browser/ui/browser.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_browser_window_factory" in s:
+    sys.exit(0)
+old_ctor = "Browser::Browser(BrowserWindowCreateParams params)\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) supplies the window of a Browser it hosts.\n"
+        "BrowserWindow* (*g_netnyahoo_browser_window_factory)(Browser*) = nullptr;\n\n")
+old = """  features_->Init(this);
+
+  window_ =
+      custom_window
+          ? std::unique_ptr<BrowserWindow, BrowserWindowDeleter>(custom_window)
+          : BrowserWindow::CreateBrowserWindow(this, user_gesture,
+                                               in_tab_dragging);
+"""
+new = """  features_->Init(this);
+
+  // Netnyahoo: NNCore may host a Browser Chrome makes itself.
+  BrowserWindow* const hosted_window =
+      !custom_window && g_netnyahoo_browser_window_factory
+          ? g_netnyahoo_browser_window_factory(this)
+          : nullptr;
+  window_ =
+      custom_window || hosted_window
+          ? std::unique_ptr<BrowserWindow, BrowserWindowDeleter>(
+                custom_window ? custom_window : hosted_window)
+          : BrowserWindow::CreateBrowserWindow(this, user_gesture,
+                                               in_tab_dragging);
+"""
+assert s.count(old_ctor) == 1 and s.count(old) == 1
+s = s.replace(old_ctor, decl + old_ctor).replace(old, new)
+open(path, "w").write(s)
+print("hooked Browser window creation")
+PY2
+
+# A renderer crash shows Chrome's sad tab in the tab's ContentsWebView, found through the
+# Browser's BrowserView; NNCore's Browsers have none (the host shows its own, from
+# tab:rendererGone:code:). Without one the sad tab stays unattached, as in unit tests.
+python3 - "$src/chrome/browser/ui/sad_tab_controller.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "Netnyahoo: NNCore" in s:
+    sys.exit(0)
+old = """  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
+  DCHECK(browser_view);
+"""
+new = """  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
+  // Netnyahoo: NNCore's Browsers have no BrowserView (engine/nncore).
+  if (!browser_view) {
+    return nullptr;
+  }
+"""
+assert s.count(old) == 1
+open(path, "w").write(s.replace(old, new))
+print("hooked SadTabController")
+PY2

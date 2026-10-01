@@ -8,8 +8,10 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "base/memory/raw_ptr.h"
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "cef/libcef/browser/chrome/browser_delegate.h"
@@ -23,6 +25,7 @@
 #include "content/public/browser/web_contents_user_data.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/rect.h"
+#include "url/gurl.h"
 
 @class NNCoreTab;
 @class NNCoreWindow;
@@ -30,6 +33,7 @@
 @class NSWindow;
 
 class Browser;
+class BrowserWindow;
 class Profile;
 
 namespace views {
@@ -58,15 +62,32 @@ class WindowHost : public TabStripModelObserver,
   views::Widget* widget() const { return widget_.get(); }
   NNCoreWindow* owner() const { return owner_; }
 
+  // Every live WindowHost (a window that hasn't finished closing).
+  static const std::vector<WindowHost*>& All();
+  static WindowHost* ForNSWindow(NSWindow* window);
+  static WindowHost* ForBrowser(const BrowserWindowInterface* browser);
+
   // The profile's Browser in this window, created on first use.
   Browser* BrowserFor(Profile* profile);
   Browser* ExistingBrowserFor(Profile* profile) const;
+  std::vector<Browser*> browsers() const;
   void SetActiveProfile(Profile* profile);
   Profile* active_profile() const { return active_profile_; }
   bool IsActiveBrowser(const Browser* browser) const;
-  bool closing() const { return closing_; }
+  // The close can no longer be cancelled: every Browser is closing.
+  bool closing() const { return close_state_ == CloseState::kClosing; }
+  // Cancellable: beforeunload in every Browser, then the downloads the close would cancel;
+  // a "stay" leaves every Browser as it was (windowDidCancelClose:).
   void Close();
+  // The user asked the NSWindow itself to close (title bar, -performClose:).
+  void CloseRequestedByUser();
+  bool CanCloseWidget() const { return widget_close_allowed_; }
   void ShowInactive();
+
+  // Downloads in flight that closing `browser` (a Browser of this window) would cancel; asks
+  // the host. `callback` runs later, never synchronously.
+  void ConfirmCloseWithDownloads(int count, base::OnceCallback<void(bool)> callback);
+  void NotifyCloseCancelled();
 
   // Disposition Chrome chose for the contents it is about to insert (OpenURLFromTab
   // rewrites popups and windows into tabs of our Browser; the host still learns what the
@@ -78,7 +99,12 @@ class WindowHost : public TabStripModelObserver,
   // Set for the duration of one OpenURLFromTab (base::AutoReset: re-entrant safe).
   PendingOpen& pending_open() { return pending_open_; }
 
+  // A Browser Chrome is building itself (inside its constructor), hosted here: its window.
+  // Null if this window can't take it (closing, or it already has the profile's Browser).
+  BrowserWindow* HostChromeBrowser(Browser* browser);
+
   // From Chrome, through our BrowserWindow / delegates.
+  void AddBrowser(Browser* browser);
   void BrowserWindowDestroyed(NNBrowserWindow* window);
   void ActiveTabChanged(Browser* browser, content::WebContents* contents);
   void DevToolsDockChanged(content::WebContents* inspected,
@@ -101,13 +127,24 @@ class WindowHost : public TabStripModelObserver,
   void RemoveObserver(web_modal::ModalDialogHostObserver* observer) override;
 
  private:
+  enum class CloseState { kOpen, kAsking, kClosing };
+  void ContinueClose();
+  void OnBeforeUnloadAnswered(bool proceed);
+  void CancelClose();
+  void CommitClose();
+  void CloseWidget();
+  int DownloadsCancelledByClose() const;
+
   __weak NNCoreWindow* owner_;
+  // The owner lives until the window has closed (the host may drop it after -close).
+  NNCoreWindow* __strong owner_ref_;
   std::unique_ptr<views::WidgetDelegate> widget_delegate_;
   std::unique_ptr<views::Widget> widget_;
   NSView* __strong host_view_;
   std::map<Profile*, raw_ptr<Browser>> browsers_;
   raw_ptr<Profile> active_profile_ = nullptr;
-  bool closing_ = false;
+  CloseState close_state_ = CloseState::kOpen;
+  bool widget_close_allowed_ = false;
   PendingOpen pending_open_;
   base::ObserverList<web_modal::ModalDialogHostObserver> modal_observers_;
   base::WeakPtrFactory<WindowHost> weak_factory_{this};
@@ -135,8 +172,12 @@ class NNBrowserDelegate : public cef::BrowserDelegate {
 
   WindowHost* host() const { return host_.get(); }
   bool is_ours() const { return is_ours_; }
-  // Our BrowserWindow::Close ran: the Browser goes once its tabs have closed.
-  void set_closing() { closing_ = true; }
+  // A Browser Chrome made itself that the host took into one of its windows (before
+  // Chrome sets up the Browser's WebContentsDelegate).
+  void AdoptIntoHost(base::WeakPtr<WindowHost> host) {
+    host_ = std::move(host);
+    is_ours_ = true;
+  }
 
   // cef::BrowserDelegate:
   std::unique_ptr<content::WebContents> AddWebContents(
@@ -161,11 +202,16 @@ class NNBrowserDelegate : public cef::BrowserDelegate {
  private:
   raw_ptr<Browser> browser_;
   base::WeakPtr<WindowHost> host_;
-  const bool is_ours_;
-  bool closing_ = false;
+  bool is_ours_;
 };
 
 NNBrowserDelegate* DelegateFor(const BrowserWindowInterface* browser);
+
+// The quit's downloads prompt (Chrome's Mac close manager leaves it to AppController): asks the
+// host through the last active window. `callback` runs later, never synchronously.
+void ConfirmQuitWithDownloads(int count, base::OnceCallback<void(bool)> callback);
+// A cancelled quit: every window's delegate gets windowDidCancelClose:.
+void NotifyWindowsQuitCancelled();
 
 // Keeps every tab Chrome opens from one of our tabs in our Browser: popups and new
 // windows become tabs the host owns (it gets the original disposition), with their
@@ -188,6 +234,7 @@ class NNWebContentsDelegate : public BrowserWebContentsDelegate {
       const content::OpenURLParams& params,
       base::OnceCallback<void(content::NavigationHandle&)>
           navigation_handle_callback) override;
+  void UpdateTargetURL(content::WebContents* source, const GURL& url) override;
   content::WebContents* AddNewContents(
       content::WebContents* source,
       std::unique_ptr<content::WebContents> new_contents,
@@ -223,7 +270,18 @@ class TabBridge : public content::WebContentsObserver,
   void EnsureFaviconObserved();
   void EnsureFindObserved();
 
+  // The host closed it (-[NNCoreTab close]): no tabWillClose.
+  void set_closed_by_host() { closed_by_host_ = true; }
+  // Reports tabWillClose once, for a close the host didn't ask for.
+  void ReportWillClose();
+  const GURL& favicon_url() const { return favicon_url_; }
+
   // content::WebContentsObserver:
+  void PrimaryMainFrameRenderProcessGone(base::TerminationStatus status) override;
+  void DidChangeThemeColor() override;
+  void OnWebContentsFocused(content::RenderWidgetHost* render_widget_host) override;
+  void OnAudioStateChanged(bool audible) override;
+  void DidUpdateAudioMutingState(bool muted) override;
   void TitleWasSet(content::NavigationEntry* entry) override;
   void DidStartLoading() override;
   void DidStopLoading() override;
@@ -249,6 +307,9 @@ class TabBridge : public content::WebContentsObserver,
   explicit TabBridge(content::WebContents* contents);
 
   NNCoreTab* __strong tab_;
+  GURL favicon_url_;
+  bool closed_by_host_ = false;
+  bool will_close_reported_ = false;
   std::optional<WindowOpenDisposition> open_disposition_;
   base::WeakPtr<content::WebContents> open_source_;
   bool observing_favicon_ = false;

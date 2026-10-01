@@ -29,7 +29,7 @@ xcrun clang++ -std=c++20 -O2 -arch arm64 -mmacosx-version-min=13.0 -fobjc-arc \
   -I"$repo/engine/nncore/src/netnyahoo/core/public" \
   "$here/main.mm" \
   "$app/Contents/Frameworks/$fw_name.framework/Versions/$version/$fw_name" \
-  -framework AppKit \
+  -framework AppKit -framework Carbon \
   -o "$app/Contents/MacOS/NNHost"
 
 cat > "$app/Contents/Info.plist" <<PLIST

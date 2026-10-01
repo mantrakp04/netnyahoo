@@ -26,6 +26,17 @@ NS_ASSUME_NONNULL_BEGIN
 @optional
 // Chromium is about to return from its run loop (quit finished).
 - (void)engineWillShutDown;
+// A quit was cancelled (a page's beforeunload, the downloads prompt): the app keeps running.
+- (void)engineQuitCancelled;
+// Chrome is creating a Browser the host didn't ask for (chrome.windows.create, an incognito
+// window from a Chrome command, undocked DevTools, document Picture in Picture). `type` is
+// "normal", "popup", "devtools", "picture_in_picture" or "app". Return a window to hold it
+// (its tabs then arrive through window:didInsertTab:…), or nil for Chrome's own Views window.
+// Called while Chrome builds the Browser: make or pick the window and return, nothing more. A
+// window that is closing, or already holds a Browser of `profile`, can't take it (Chrome's
+// own window then).
+- (nullable NNCoreWindow*)engineWindowForNewBrowserOfProfile:(NNCoreProfile*)profile
+                                                        type:(NSString*)type;
 @end
 
 NNCORE_EXPORT
@@ -43,7 +54,22 @@ NNCORE_EXPORT
 - (void)loadProfile:(NSString*)directoryName
          completion:(void (^)(NNCoreProfile* _Nullable profile))completion;
 // Chrome's own quit: beforeunload, downloads, then every Browser closes and the loop ends.
+// Cancellable: a page that cancels its beforeunload keeps the app (and its keep-alive) running,
+// and the delegate gets engineQuitCancelled.
+//
+// -[NSApp terminate:] (the Quit menu item, the Dock, logout, AppleScript) follows Cocoa's
+// contract: NNCore asks NSApp.delegate's applicationShouldTerminate: (NSTerminateLater waits
+// for -replyToApplicationShouldTerminate:) and quits through -quit on YES. Chrome's
+// AppController is never created, so it can't take over NSApp.delegate.
 - (void)quit;
+// The page script every frame's main world runs at document start (before the page's own
+// scripts). It is evaluated as an expression that returns `function(post)`: the engine calls
+// it with `post(kind, json)` and keeps what it returns, `receive(kind, json)`, for
+// -[NNCoreTab callPage:json:]. Set it before the first tab opens; renderers launched later
+// get the current value.
+@property(nonatomic, copy, nullable) NSString* pageScript;
+// The off-the-record profile of `profile` (created on first use): incognito windows.
+- (NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile;
 @property(readonly) NSString* chromiumVersion;
 // What keeps the app alive (Chrome's KeepAliveRegistry), for diagnostics.
 @property(readonly) NSString* keepAliveState;
@@ -55,6 +81,9 @@ NNCORE_EXPORT
 @interface NNCoreProfile : NSObject
 @property(readonly) NSString* name;  // the directory name
 @property(readonly) NSString* path;
+@property(readonly) BOOL offTheRecord;
+// The Profile went (shutdown, profile deletion): every call is then a no-op.
+@property(readonly) BOOL destroyed;
 // chrome.management-style install of an unpacked extension (MV3 fine).
 - (void)loadUnpackedExtension:(NSString*)path
                    completion:(void (^)(NSString* _Nullable extensionId,
@@ -95,6 +124,25 @@ NNCORE_EXPORT
     passwordSavePromptForTab:(NNCoreTab*)tab
                     username:(NSString*)username
                       origin:(NSString*)origin;
+// The user asked the NSWindow itself to close (the title bar's close button, -performClose:),
+// not -[NNCoreWindow close]. NO keeps the window (the host may ask its UI first, then call
+// -close itself); YES (or no delegate) runs -close. Views never closes the window under
+// the Browsers on that path.
+- (BOOL)windowShouldClose:(NNCoreWindow*)window;
+// -close (or the quit) was cancelled: a page's beforeunload said stay, or the host declined
+// the downloads prompt. The window and its Browsers stay as they were.
+- (void)windowDidCancelClose:(NNCoreWindow*)window;
+// Closing would cancel `count` downloads in flight. Answer YES to close anyway. Without this,
+// the window closes.
+- (void)window:(NNCoreWindow*)window
+    confirmCloseWithDownloads:(int)count
+                   completion:(void (^)(BOOL closeAnyway))completion;
+// Keys. Before the page sees a key down: YES if the host handled it (a reserved shortcut its
+// menu owns, e.g. ⌘T, ⌘W, ⌘N, ⌘Q, ⌃Tab), and the page never gets it.
+- (BOOL)window:(NNCoreWindow*)window preHandleKeyEvent:(NSEvent*)event;
+// A key the page didn't handle (no preventDefault): YES if the host did (its main menu's key
+// equivalents, say). Without this, unhandled keys go to NSApp.mainMenu.
+- (BOOL)window:(NNCoreWindow*)window handleKeyEvent:(NSEvent*)event;
 @end
 
 // One NSWindow. It holds one Chrome Browser per profile shown in it (so chrome.windows sees
@@ -122,7 +170,19 @@ NNCORE_EXPORT
 // profile's Browser, as its menu item or shortcut would. NO if it is disabled.
 - (BOOL)executeChromeCommand:(int)commandId profile:(NNCoreProfile*)profile;
 - (void)showInactive;
+// Closes every Browser (beforeunload first). Cancellable: see windowDidCancelClose:.
 - (void)close;
+
+// Stage 1 additions.
+// The NNCoreWindow whose NSWindow this is (nil for other windows).
++ (nullable NNCoreWindow*)windowForNSWindow:(NSWindow*)window;
+// Creates the profile's Browser in this window now (paging between profiles stays a view swap).
+- (void)prepareProfile:(NNCoreProfile*)profile;
+// Moves a live tab (with its WebContents, history and opener) into this window's Browser for
+// its profile, at the end. No-op if it is already here.
+- (void)adoptTab:(NNCoreTab*)tab;
+// Chrome's tab-strip index and pin state for a tab of this window (the host's order).
+- (void)placeTab:(NNCoreTab*)tab index:(int)index pinned:(BOOL)pinned;
 @end
 
 // --- Tabs -------------------------------------------------------------------------------
@@ -136,6 +196,29 @@ NNCORE_EXPORT
 - (void)tabDidChangeFavicon:(NNCoreTab*)tab;
 - (void)tabDidChangeNavigationState:(NNCoreTab*)tab;  // canGoBack / canGoForward
 - (void)tab:(NNCoreTab*)tab didFindMatches:(int)count active:(int)active final:(BOOL)final;
+// Stage 1 additions.
+// The main frame's post(kind, json).
+- (void)tab:(NNCoreTab*)tab didReceivePageMessage:(NSString*)kind json:(NSString*)json;
+// Every frame's post(kind, json) (implement this one instead of the above to hear subframes:
+// it replaces it). `frameId` names the frame for -callFrame:kind:json:.
+- (void)tab:(NNCoreTab*)tab
+    didReceivePageMessage:(NSString*)kind
+                     json:(NSString*)json
+                    frame:(NSString*)frameId
+                     main:(BOOL)main;
+// window.close(), or Chrome closing the tab itself (not -close from the host).
+- (void)tabWillClose:(NNCoreTab*)tab;
+// The renderer went away: status is "crashed", "killed", "oom", "abnormal", "launchFailed"…
+- (void)tab:(NNCoreTab*)tab rendererGone:(NSString*)status code:(int)code;
+- (void)tab:(NNCoreTab*)tab didFailLoad:(NSString*)url code:(int)code description:(NSString*)text;
+- (void)tab:(NNCoreTab*)tab didChangeStatusText:(NSString*)text;  // hovered link
+// A page of Chrome's (chrome:, devtools:) navigated its main frame to, or opened, an app URL
+// (netnyahoo:…). NNCore cancelled it; the host routes it (as `openWindow` with disposition
+// "current" in the app). Web pages' netnyahoo: navigations are dropped silently.
+- (void)tab:(NNCoreTab*)tab didRequestAppURL:(NSString*)url userGesture:(BOOL)userGesture;
+- (void)tabDidChangeThemeColor:(NNCoreTab*)tab;
+- (void)tabDidGainFocus:(NNCoreTab*)tab;
+- (void)tabDidChangeAudio:(NNCoreTab*)tab;
 @end
 
 NNCORE_EXPORT
@@ -177,6 +260,30 @@ NNCORE_EXPORT
 // Opens the extension's action popup (Chrome's ExtensionViewHost) in a panel attached to
 // the tab's window, under `anchor` (window coordinates). Returns NO if it has no popup.
 - (BOOL)openActionPopupForExtension:(NSString*)extensionId anchor:(NSRect)anchor;
+
+// Stage 1 additions.
+@property(readonly, nullable) NSString* faviconURL;  // the favicon's own URL
+@property(readonly, nullable) NSString* themeColor;  // #rrggbb from <meta name=theme-color>
+@property(readonly) BOOL audible;
+@property(nonatomic) BOOL muted;
+@property(readonly) int browserId;  // stable per tab for the app's lifetime (never reused)
+- (void)loadURL:(NSString*)url userInitiated:(BOOL)userInitiated;
+- (void)goToOffset:(int)offset;
+- (void)reloadIgnoringCache;
+// [{url, title, current}] of the back/forward list.
+@property(readonly) NSArray<NSDictionary<NSString*, id>*>* navigationEntries;
+// Runs `code` in the main frame's main world. Fire and forget.
+- (void)executeJavaScript:(NSString*)code;
+// The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:), e.g. a
+// blocked popup's window.open replayed from the frame that asked.
+- (void)executeJavaScript:(NSString*)code frame:(NSString*)frameId;
+// Runs `code` as the body of `function(post){'use strict'; …}` in the main frame's main world;
+// the first post("result", json) answers. nil json: no answer (no frame, an exception).
+- (void)evaluate:(NSString*)code completion:(void (^)(NSString* _Nullable json))completion;
+// The page script's receive(kind, json) in the main frame.
+- (void)callPage:(NSString*)kind json:(NSString*)json;
+// The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:).
+- (void)callFrame:(NSString*)frameId kind:(NSString*)kind json:(NSString*)json;
 @end
 
 NS_ASSUME_NONNULL_END

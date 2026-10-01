@@ -27,6 +27,7 @@ class NNMainDelegate : public ChromeMainDelegate {
   void PreSandboxStartup() override;
   void CreateThreadPool(std::string_view name) override;
   content::ContentBrowserClient* CreateContentBrowserClient() override;
+  content::ContentRendererClient* CreateContentRendererClient() override;
 };
 
 // The browser process's lifetime, for the ObjC API.
@@ -35,8 +36,8 @@ struct EngineCallbacks {
   base::OnceClosure shutting_down;  // the run loop ended
 };
 void SetEngineCallbacks(EngineCallbacks callbacks);
-// Quit as Chrome does (beforeunload, then every Browser closes); the loop ends after.
-void QuitEngine();
+// The keep-alive that stands in for AppController's: the loop ends once it goes (nn_lifetime).
+void ReleaseAppKeepAlive();
 
 }  // namespace nncore
 

@@ -1,0 +1,9 @@
+# NNCore's own IPC between the browser and its renderers (the page script, page messages).
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+mojom("mojom") {
+  cpp_only = true
+  disable_variants = true
+  sources = [ "nncore.mojom" ]
+}

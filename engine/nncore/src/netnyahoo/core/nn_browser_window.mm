@@ -2,6 +2,9 @@
 
 #import <AppKit/AppKit.h>
 
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
+
 #include "chrome/browser/devtools/devtools_ui_controller.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/ui/browser.h"
@@ -15,9 +18,12 @@
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
 #include "chrome/browser/ui/views/frame/contents_container_view.h"
 #include "content/public/browser/eye_dropper.h"
+#include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
+#import "netnyahoo/core/nncore_internal.h"
 #include "content/public/browser/web_contents.h"
 #include "netnyahoo/core/nn_browser.h"
+#include "netnyahoo/core/nn_lifetime.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/color/color_provider_manager.h"
 #include "ui/gfx/geometry/rect.h"
@@ -289,9 +295,6 @@ void NNBrowserWindow::Close() {
   if (!browser_) {
     return;
   }
-  if (NNBrowserDelegate* delegate = DelegateFor(browser_)) {
-    delegate->set_closing();
-  }
   UnloadController* unload = UnloadController::From(browser_);
   if (unload) {
     unload->OnWindowClosing();
@@ -418,18 +421,105 @@ void NNBrowserWindow::ConfirmBrowserCloseWithPendingDownloads(
     int download_count,
     UnloadController::DownloadCloseType dialog_type,
     base::OnceCallback<void(bool)> callback) {
-  // The host owns download UI; closing never waits on Chrome's dialog.
-  std::move(callback).Run(true);
+  // Chrome asks here when closing this Browser would cancel an off-the-record profile's
+  // downloads. A close or quit the host started has asked already; anything else (an
+  // extension's chrome.windows.remove…) asks the host now. Never synchronously: Chrome sets
+  // up its state after asking.
+  if (host_ && !host_->closing() && !IsQuitting()) {
+    host_->ConfirmCloseWithDownloads(download_count, std::move(callback));
+    return;
+  }
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(std::move(callback), true));
 }
 
+namespace {
+
+// A key down the host's main menu has an item for (its key equivalent and modifiers).
+bool MenuHasKeyEquivalent(NSMenu* menu, NSEvent* event) {
+  const NSEventModifierFlags mask =
+      NSEventModifierFlagCommand | NSEventModifierFlagOption |
+      NSEventModifierFlagControl | NSEventModifierFlagShift;
+  const NSEventModifierFlags flags = event.modifierFlags & mask;
+  NSString* chars = event.charactersIgnoringModifiers.lowercaseString;
+  for (NSMenuItem* item in menu.itemArray) {
+    if (item.hasSubmenu) {
+      if (MenuHasKeyEquivalent(item.submenu, event)) {
+        return true;
+      }
+      continue;
+    }
+    NSString* key = item.keyEquivalent;
+    if (!key.length) {
+      continue;
+    }
+    NSEventModifierFlags item_flags = item.keyEquivalentModifierMask & mask;
+    // An upper-case key equivalent implies Shift.
+    if (![key isEqualToString:key.lowercaseString]) {
+      item_flags |= NSEventModifierFlagShift;
+    }
+    if (item_flags == flags && [key.lowercaseString isEqualToString:chars]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// As Chrome's BrowserNativeWidgetMac: what the renderer ignored is the browser's to handle,
+// except IME-consumed keys and the synthesized Char that follows a key down.
+NSEvent* UnhandledKeyDown(const input::NativeWebKeyboardEvent& event) {
+  if (event.skip_if_unhandled ||
+      event.GetType() == input::NativeWebKeyboardEvent::Type::kChar) {
+    return nil;
+  }
+  NSEvent* ns_event = event.os_event.Get();
+  return ns_event.type == NSEventTypeKeyDown ? ns_event : nil;
+}
+
+}  // namespace
+
+// Keys with the page focused. AppKit hands a key equivalent to the window, whose
+// RenderWidgetHostViewCocoa takes it when it is first responder (it never reaches the main
+// menu from there): Chrome asks here first, synchronously, then the page gets it, and what
+// the page leaves (no preventDefault) comes back to HandleKeyboardEvent.
 content::KeyboardEventProcessingResult NNBrowserWindow::PreHandleKeyboardEvent(
     const input::NativeWebKeyboardEvent& event) {
+  NSEvent* ns_event = event.os_event.Get();
+  if (!ns_event || ns_event.type != NSEventTypeKeyDown || !host_) {
+    return content::KeyboardEventProcessingResult::NOT_HANDLED;
+  }
+  NNCoreWindow* owner = host_->owner();
+  id<NNCoreWindowDelegate> delegate = owner.delegate;
+  if ([delegate respondsToSelector:@selector(window:preHandleKeyEvent:)] &&
+      [delegate window:owner preHandleKeyEvent:ns_event]) {
+    return content::KeyboardEventProcessingResult::HANDLED;
+  }
+  // A shortcut of the host's menu: the page still sees it first (Chrome's rule for
+  // shortcuts it doesn't reserve), as a browser shortcut (no keypress/char follows).
+  if ((ns_event.modifierFlags & NSEventModifierFlagCommand) &&
+      MenuHasKeyEquivalent(NSApp.mainMenu, ns_event)) {
+    return content::KeyboardEventProcessingResult::NOT_HANDLED_IS_SHORTCUT;
+  }
   return content::KeyboardEventProcessingResult::NOT_HANDLED;
 }
 
 bool NNBrowserWindow::HandleKeyboardEvent(
     const input::NativeWebKeyboardEvent& event) {
-  return false;
+  NSEvent* ns_event = UnhandledKeyDown(event);
+  if (!ns_event || !host_) {
+    return false;
+  }
+  NNCoreWindow* owner = host_->owner();
+  id<NNCoreWindowDelegate> delegate = owner.delegate;
+  if ([delegate respondsToSelector:@selector(window:handleKeyEvent:)] &&
+      [delegate window:owner handleKeyEvent:ns_event]) {
+    return true;
+  }
+  // Where AppKit would have taken it had the page not been first responder: Chrome's
+  // CommandDispatcher redispatch does the same (window key equivalents without the first
+  // responder, then the main menu); our window has no Chrome dispatcher delegate or parent.
+  // Chrome's own accelerators (IDC_NEW_TAB…) don't run: the host's menu owns the keys.
+  return [NSApp.mainMenu performKeyEquivalent:ns_event];
 }
 
 std::unique_ptr<FindBar> NNBrowserWindow::CreateFindBar() {

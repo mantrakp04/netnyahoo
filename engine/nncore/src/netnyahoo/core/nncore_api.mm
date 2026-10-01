@@ -26,8 +26,11 @@
 #include "components/keep_alive_registry/keep_alive_registry.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_observer.h"
+#include "base/scoped_observation.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "components/find_in_page/find_tab_helper.h"
 #include "components/find_in_page/find_types.h"
@@ -54,13 +57,24 @@
 #include "extensions/browser/unpacked_installer.h"
 #include "extensions/common/extension.h"
 #include "netnyahoo/core/nn_browser.h"
+#include "netnyahoo/core/nn_lifetime.h"
 #include "netnyahoo/core/nn_main_delegate.h"
+#include "netnyahoo/core/nn_page_channel.h"
+#include "chrome/browser/ui/tabs/tab_enums.h"
+#include "chrome/browser/ui/tabs/tab_model.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include <algorithm>
+#include <optional>
 #import "netnyahoo/core/nncore_internal.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/mac/coordinate_conversion.h"
 
 extern "C" int ChromeMain(int argc, const char** argv);
+
+@interface NNCoreProfile (Lifetime)
+- (void)profileWillBeDestroyed;
+@end
 
 namespace {
 
@@ -111,6 +125,24 @@ class LoginsFetcher : public password_manager::PasswordStoreConsumer {
  private:
   void (^completion_)(NSArray<NSDictionary<NSString*, NSString*>*>*);
   base::WeakPtrFactory<LoginsFetcher> weak_factory_{this};
+};
+
+// Tells a profile's wrapper when its Profile goes.
+class ProfileGoneObserver : public ProfileObserver {
+ public:
+  ProfileGoneObserver(Profile* profile, NNCoreProfile* wrapper)
+      : wrapper_(wrapper) {
+    observation_.Observe(profile);
+  }
+  void OnProfileWillBeDestroyed(Profile* profile) override {
+    observation_.Reset();
+    // May destroy this.
+    [wrapper_ profileWillBeDestroyed];
+  }
+
+ private:
+  __weak NNCoreProfile* wrapper_;
+  base::ScopedObservation<Profile, ProfileObserver> observation_{this};
 };
 
 class ActionPopup;
@@ -202,6 +234,45 @@ std::unique_ptr<ActionPopup>& CurrentPopup() {
 
 }  // namespace
 
+// The window-creation hook in Chrome's Browser constructor (engine/nncore/apply.sh).
+extern BrowserWindow* (*g_netnyahoo_browser_window_factory)(Browser*);
+
+namespace {
+
+const char* BrowserTypeName(BrowserWindowInterface::Type type) {
+  switch (type) {
+    case BrowserWindowInterface::TYPE_NORMAL:
+      return "normal";
+    case BrowserWindowInterface::TYPE_POPUP:
+      return "popup";
+    case BrowserWindowInterface::TYPE_DEVTOOLS:
+      return "devtools";
+    case BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE:
+      return "picture_in_picture";
+    default:
+      return "app";
+  }
+}
+
+// A Browser Chrome makes itself (chrome.windows.create, an incognito window from a Chrome
+// command, undocked DevTools, document PiP): the host may hold it in one of its windows.
+BrowserWindow* WindowForChromeBrowser(Browser* browser) {
+  nncore::NNBrowserDelegate* delegate = nncore::DelegateFor(browser);
+  if (!delegate || delegate->is_ours() ||
+      ![g_delegate respondsToSelector:@selector
+                   (engineWindowForNewBrowserOfProfile:type:)]) {
+    return nullptr;
+  }
+  NNCoreWindow* window = [g_delegate
+      engineWindowForNewBrowserOfProfile:[NNCoreProfile
+                                             wrapperFor:browser->GetProfile()]
+                                    type:@(BrowserTypeName(browser->GetType()))];
+  nncore::WindowHost* host = window.host;
+  return host ? host->HostChromeBrowser(browser) : nullptr;
+}
+
+}  // namespace
+
 // The C entry point, for hosts that don't use the ObjC runtime to start.
 extern "C" __attribute__((visibility("default"))) int NNCoreMain(
     int argc,
@@ -228,6 +299,14 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 
   g_delegate = delegate;
   g_engine = [[NNCoreEngine alloc] init];
+  g_netnyahoo_browser_window_factory = &WindowForChromeBrowser;
+  nncore::SetLifetimeCallbacks({
+      .quit_cancelled = base::BindRepeating([] {
+        if ([g_delegate respondsToSelector:@selector(engineQuitCancelled)]) {
+          [g_delegate engineQuitCancelled];
+        }
+      }),
+  });
   nncore::SetEngineCallbacks({
       .started = base::BindOnce([] { [g_delegate engineDidStart]; }),
       .shutting_down = base::BindOnce([] {
@@ -277,6 +356,25 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   nncore::QuitEngine();
 }
 
+- (NSString*)pageScript {
+  const std::string& script = nncore::GetPageScript();
+  return script.empty() ? nil : NS(script);
+}
+
+- (void)setPageScript:(NSString*)pageScript {
+  nncore::SetPageScript(pageScript ? base::SysNSStringToUTF8(pageScript)
+                                   : std::string());
+}
+
+- (NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile {
+  Profile* original = profile.chromeProfile;
+  if (!original) {
+    return profile;
+  }
+  return [NNCoreProfile
+      wrapperFor:original->GetPrimaryOTRProfile(/*create_if_needed=*/true)];
+}
+
 - (NSString*)keepAliveState {
   std::ostringstream out;
   out << *KeepAliveRegistry::GetInstance()
@@ -294,31 +392,62 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 
 @implementation NNCoreProfile {
   raw_ptr<Profile> _profile;
+  std::unique_ptr<ProfileGoneObserver> _observer;
+  NSString* __strong _name;
+  NSString* __strong _path;
+  BOOL _offTheRecord;
 }
 
 + (NNCoreProfile*)wrapperFor:(Profile*)profile {
+  if (!profile) {
+    return nil;
+  }
   NNCoreProfile* __strong& wrapper = ProfileWrappers()[profile];
   if (!wrapper) {
     wrapper = [[NNCoreProfile alloc] init];
     wrapper->_profile = profile;
+    wrapper->_offTheRecord = profile->IsOffTheRecord();
+    // An off-the-record profile is named after its original's directory.
+    wrapper->_name = NS(profile->GetBaseName().value());
+    wrapper->_path = NS(profile->GetPath().value());
+    wrapper->_observer = std::make_unique<ProfileGoneObserver>(profile, wrapper);
   }
   return wrapper;
+}
+
+- (void)profileWillBeDestroyed {
+  // The wrapper outlives its Profile (the host may hold it); every call is a no-op from now.
+  ProfileWrappers().erase(_profile.get());
+  _profile = nullptr;
+  _observer.reset();
 }
 
 - (Profile*)chromeProfile {
   return _profile;
 }
 
+- (BOOL)destroyed {
+  return !_profile;
+}
+
+- (BOOL)offTheRecord {
+  return _offTheRecord;
+}
+
 - (NSString*)name {
-  return NS(_profile->GetBaseName().value());
+  return _name;
 }
 
 - (NSString*)path {
-  return NS(_profile->GetPath().value());
+  return _path;
 }
 
 - (void)loadUnpackedExtension:(NSString*)path
                    completion:(void (^)(NSString*, NSString*))completion {
+  if (!_profile) {
+    completion(nil, @"profile destroyed");
+    return;
+  }
   // Chrome keeps unpacked extensions disabled unless the profile is in developer mode
   // (DISABLE_UNSUPPORTED_DEVELOPER_EXTENSION); loading one is that mode's flow.
   extensions::util::SetDeveloperModeForProfile(_profile, true);
@@ -338,6 +467,9 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 
 - (NSArray<NSDictionary<NSString*, id>*>*)extensions {
   NSMutableArray* list = [NSMutableArray array];
+  if (!_profile) {
+    return list;
+  }
   auto* registry = extensions::ExtensionRegistry::Get(_profile);
   auto* actions = extensions::ExtensionActionManager::Get(_profile);
   for (const auto& extension : registry->enabled_extensions()) {
@@ -359,6 +491,10 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 
 - (void)fetchSavedLogins:
     (void (^)(NSArray<NSDictionary<NSString*, NSString*>*>*))completion {
+  if (!_profile) {
+    completion(@[]);
+    return;
+  }
   scoped_refptr<password_manager::PasswordStoreInterface> store =
       ProfilePasswordStoreFactory::GetForProfile(
           _profile, ServiceAccessType::EXPLICIT_ACCESS);
@@ -475,6 +611,72 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   _host->ShowInactive();
 }
 
+- (void)adoptTab:(NNCoreTab*)tab {
+  content::WebContents* contents = tab.contents;
+  if (!contents) {
+    return;
+  }
+  BrowserWindowInterface* from =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
+  Browser* to = _host->BrowserFor(
+      Profile::FromBrowserContext(contents->GetBrowserContext()));
+  if (!from || !to || from == to) {
+    return;
+  }
+  TabStripModel* source = from->GetTabStripModel();
+  const int index = source->GetIndexOfWebContents(contents);
+  if (index == TabStripModel::kNoTab) {
+    return;
+  }
+  // Chrome's tab move between windows: the tab (its WebContents, history, opener) leaves
+  // one strip and enters the other; the hosts see didRemoveTab: then didInsertTab:.
+  std::unique_ptr<tabs::TabModel> moved = source->DetachTabAtForInsertion(index);
+  if (!moved) {
+    return;
+  }
+  TabStripModel* target = to->GetTabStripModel();
+  target->InsertDetachedTabAt(target->count(), std::move(moved),
+                              AddTabTypes::ADD_NONE);
+}
+
+- (void)placeTab:(NNCoreTab*)tab index:(int)index pinned:(BOOL)pinned {
+  content::WebContents* contents = tab.contents;
+  if (!contents) {
+    return;
+  }
+  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
+  if (!browser || nncore::WindowHost::ForBrowser(browser) != _host.get()) {
+    return;
+  }
+  TabStripModel* model = browser->GetTabStripModel();
+  int at = model->GetIndexOfWebContents(contents);
+  if (at == TabStripModel::kNoTab) {
+    return;
+  }
+  if (model->IsTabPinned(at) != static_cast<bool>(pinned)) {
+    at = model->SetTabPinned(at, pinned);
+  }
+  // Chrome keeps pinned tabs first; the index is clamped to the tab's side.
+  const int pinned_count = model->IndexOfFirstNonPinnedTab();
+  int to = std::clamp(index, 0, model->count() - 1);
+  to = pinned ? std::min(to, pinned_count - 1) : std::max(to, pinned_count);
+  if (to != at) {
+    model->MoveWebContentsAt(at, to, /*select_after_move=*/false);
+  }
+}
+
++ (NNCoreWindow*)windowForNSWindow:(NSWindow*)window {
+  nncore::WindowHost* host = nncore::WindowHost::ForNSWindow(window);
+  return host ? host->owner() : nil;
+}
+
+- (void)prepareProfile:(NNCoreProfile*)profile {
+  if (profile.chromeProfile) {
+    _host->BrowserFor(profile.chromeProfile);
+  }
+}
+
 - (void)close {
   _host->Close();
 }
@@ -485,15 +687,141 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
 
 @implementation NNCoreTab {
   raw_ptr<content::WebContents> _contents;
+  int _browserId;
 }
 
 @synthesize delegate = _delegate;
 
 - (instancetype)initWithContents:(content::WebContents*)contents {
   if ((self = [super init])) {
+    static int lastBrowserId = 0;
     _contents = contents;
+    _browserId = ++lastBrowserId;
   }
   return self;
+}
+
+- (int)browserId {
+  return _browserId;
+}
+
+- (NSString*)faviconURL {
+  if (!_contents) {
+    return nil;
+  }
+  const GURL& url = nncore::TabBridge::GetOrCreate(_contents)->favicon_url();
+  return url.is_valid() ? NS(url.spec()) : nil;
+}
+
+- (NSString*)themeColor {
+  std::optional<SkColor> color = _contents ? _contents->GetThemeColor() : std::nullopt;
+  if (!color) {
+    return nil;
+  }
+  return [NSString stringWithFormat:@"#%02x%02x%02x", SkColorGetR(*color),
+                                    SkColorGetG(*color), SkColorGetB(*color)];
+}
+
+- (BOOL)audible {
+  return _contents && _contents->IsCurrentlyAudible();
+}
+
+- (BOOL)muted {
+  return _contents && _contents->IsAudioMuted();
+}
+
+- (void)setMuted:(BOOL)muted {
+  if (_contents) {
+    _contents->SetAudioMuted(muted);
+  }
+}
+
+- (void)loadURL:(NSString*)url userInitiated:(BOOL)userInitiated {
+  if (!_contents) {
+    return;
+  }
+  content::NavigationController::LoadURLParams params(
+      GURL(base::SysNSStringToUTF8(url)));
+  params.transition_type = userInitiated
+                               ? ui::PageTransitionFromInt(
+                                     ui::PAGE_TRANSITION_TYPED |
+                                     ui::PAGE_TRANSITION_FROM_ADDRESS_BAR)
+                               : ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
+  params.has_user_gesture = userInitiated;
+  _contents->GetController().LoadURLWithParams(params);
+}
+
+- (void)goToOffset:(int)offset {
+  if (_contents && _contents->GetController().CanGoToOffset(offset)) {
+    _contents->GetController().GoToOffset(offset);
+  }
+}
+
+- (void)reloadIgnoringCache {
+  if (_contents) {
+    _contents->GetController().Reload(content::ReloadType::BYPASSING_CACHE, true);
+  }
+}
+
+- (NSArray<NSDictionary<NSString*, id>*>*)navigationEntries {
+  NSMutableArray* entries = [NSMutableArray array];
+  if (!_contents) {
+    return entries;
+  }
+  content::NavigationController& controller = _contents->GetController();
+  const int current = controller.GetCurrentEntryIndex();
+  for (int i = 0; i < controller.GetEntryCount(); ++i) {
+    content::NavigationEntry* entry = controller.GetEntryAtIndex(i);
+    [entries addObject:@{
+      @"url" : NS(entry->GetURL().spec()),
+      @"title" : NS(entry->GetTitle()),
+      @"current" : @(i == current),
+    }];
+  }
+  return entries;
+}
+
+- (void)executeJavaScript:(NSString*)code {
+  if (_contents) {
+    nncore::PageChannel::GetOrCreate(_contents)->Execute(
+        base::SysNSStringToUTF8(code));
+  }
+}
+
+- (void)executeJavaScript:(NSString*)code frame:(NSString*)frameId {
+  if (_contents) {
+    nncore::PageChannel::GetOrCreate(_contents)->ExecuteInFrame(
+        base::SysNSStringToUTF8(frameId), base::SysNSStringToUTF8(code));
+  }
+}
+
+- (void)evaluate:(NSString*)code completion:(void (^)(NSString*))completion {
+  if (!_contents) {
+    completion(nil);
+    return;
+  }
+  nncore::PageChannel::GetOrCreate(_contents)->Evaluate(
+      base::SysNSStringToUTF8(code),
+      base::BindOnce(
+          [](void (^completion)(NSString*), const std::optional<std::string>& json) {
+            completion(json ? NS(*json) : nil);
+          },
+          completion));
+}
+
+- (void)callPage:(NSString*)kind json:(NSString*)json {
+  if (_contents) {
+    nncore::PageChannel::GetOrCreate(_contents)->CallPage(
+        base::SysNSStringToUTF8(kind), base::SysNSStringToUTF8(json));
+  }
+}
+
+- (void)callFrame:(NSString*)frameId kind:(NSString*)kind json:(NSString*)json {
+  if (_contents) {
+    nncore::PageChannel::GetOrCreate(_contents)->CallFrame(
+        base::SysNSStringToUTF8(frameId), base::SysNSStringToUTF8(kind),
+        base::SysNSStringToUTF8(json));
+  }
 }
 
 - (content::WebContents*)contents {
@@ -633,6 +961,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   if (!browser) {
     return;
   }
+  nncore::TabBridge::GetOrCreate(_contents)->set_closed_by_host();
   TabStripModel* model = browser->GetTabStripModel();
   int index = model->GetIndexOfWebContents(_contents);
   if (index != TabStripModel::kNoTab) {
