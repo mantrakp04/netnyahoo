@@ -49,6 +49,19 @@ class Step:
         """Where the step's paths are relative to, inside a tree."""
         return "cef" if self.kind == "cef" else ""
 
+    def created(self):
+        """Paths (relative to chromium/src) the step's patch creates: they aren't in the tree before it."""
+        if self.kind not in ("cef", "chromium"):
+            return set()
+        out, new = set(), False
+        for line in open(self.patch, encoding="utf-8", errors="surrogateescape"):
+            if line.startswith("--- "):
+                new = line.strip() == "--- /dev/null"
+            m = re.match(r"^\+\+\+ (?:b/)?(\S+)", line)
+            if m and new:
+                out.add(os.path.join(self.root, m.group(1)))
+        return out
+
     def paths(self):
         """(path relative to chromium/src, is_dir) for everything the step writes."""
         if self.kind in ("cef", "chromium"):
@@ -129,6 +142,11 @@ def apply_step(step, tree, strict=True):
         return None
     if strict:
         return p.stderr.strip()
+    # Dry run first: on a tree where the patch is partly in already (later patches moved its context), a real run
+    # would skip those hunks and apply the rest a second time.
+    p = run(["patch", "-p1", "--forward", "--dry-run", "-s", "-i", step.patch], cwd)
+    if p.returncode != 0:
+        return (p.stdout + p.stderr).strip()
     p = run(["patch", "-p1", "--forward", "-s", "-i", step.patch], cwd)
     return None if p.returncode == 0 else (p.stdout + p.stderr).strip()
 
@@ -208,10 +226,11 @@ def cmd_apply(args):
 
 def cmd_capture_base(args):
     steps = [s for s in read_series() if not args.phase or phase_of(s) == args.phase]
+    created = set().union(*(s.created() for s in steps))
     count = 0
     for path, is_dir in touched(steps):
-        if is_dir:
-            continue  # A layer's own directory: absent before it, copied whole.
+        if is_dir or path in created:
+            continue  # A layer's own directory, or a file a patch adds: absent before the series.
         if os.path.exists(os.path.join(BASE, path)) and not args.force:
             continue
         copy_path(SRC, BASE, path, False)

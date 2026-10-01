@@ -34,6 +34,7 @@ What the build adds:
 | `cef-open-url-params.patch` | `CEF_NN_OPEN_URL_PARAMS` (a new tab or window's full navigation) and `CEF_NN_POPUP_OPENER_SUPPRESSED` |
 | `cef-netnyahoo-layer.patch` | CEF's `libcef_static` links `//chrome/browser/netnyahoo` ([our own code](#our-own-code-in-the-tree-chromebrowsernetnyahoo)) |
 | `cef-pump-wake.patch` | The external message pump asks for its next call itself (`CEF_NN_PUMP_SCHEDULE`): at once when its 10 ms slice ends with work left, else when the next delayed task is due. Stock CEF dropped both, so delayed tasks ran only at the client's poll (30 Hz, idle or not), leftover work waited up to 33 ms, and it spun in `Run` while a delayed task was due within the slice. `NNCef.mm` keeps a 1 s safety poll with it. Idle browser-process wakeups went from ~42/s to ~15/s |
+| `cef-extension-requests.patch` | An extension page, worker or offscreen document fetching a web URL leaves its Origin header to Chrome's `CorsURLLoader`, which knows the extension's host permissions: no Origin on a GET to a host the extension may access, the extension's origin otherwise, as in Chrome. CEF's request proxy made every such request say `Origin: null` (an extension origin isn't an http(s) referrer), and 1Password's Watchtower lists got a cached CloudFront 503 for it. Still unlike Chrome: a default (`same-origin`) fetch to a host the extension may access goes without cookies (CEF works the credentials flag out without host permissions; leaving it to the network service would let CEF's own cookie loading, used whenever the client has a resource handler, send cookies to hosts the extension may not access). `credentials: "include"` sends them |
 | `chromium-webview-native-hosted.patch` | `views::NativeHostedContents`: `views::WebView` never attaches marked tabs (we host each tab's view in our own views) |
 | `chromium-browser-view-hosted-fullscreen.patch` | Tab fullscreen of hosted tabs leaves the Browser window to the app: Chrome only tracks the state, and the app shows the page full screen itself (`CefDisplayHandler::OnFullscreenModeChange`) |
 | `chromium-ui-update-before-insert.patch`, `chromium-tab-strip-notify-before-insert.patch` | Fix a CHECK when a tab loads before it's in the tab strip (CEF sets the delegate early) |
@@ -105,7 +106,7 @@ hash of its archive and the GitHub release that holds the archive. `packages/cef
 - `publish` uploads the archive to `ENGINE_REPO`, under the tag `ENGINE_TAG` (a prerelease that is
   never marked latest).
 
-Pinned now: `cef_binary_154.0.28+g564dd6c+chromium-154.0.8037.58_macosarm64_minimal` (tree `5d2e03fb`), published as a prerelease asset on this repo (`ENGINE_REPO` = `mantrakp04/netnyahoo`, tag `ENGINE_TAG`, never marked latest, so the app's update feed at `releases/latest` is unaffected). `fetch` downloads it over plain HTTPS, no `gh` login needed, so a fresh checkout without `~/chromium-build` builds.
+Pinned now: `cef_binary_154.0.28+g564dd6c+chromium-154.0.8037.58_macosarm64_minimal` (tree `bf6f8828`), published as a prerelease asset on this repo (`ENGINE_REPO` = `mantrakp04/netnyahoo`, tag `ENGINE_TAG`, never marked latest, so the app's update feed at `releases/latest` is unaffected). `fetch` downloads it over plain HTTPS, no `gh` login needed, so a fresh checkout without `~/chromium-build` builds.
 
 ## API added
 
@@ -357,7 +358,8 @@ no longer carry the order.
   not in a patch, or the reverse), and keeps the scratch copy for `diff -u`. It writes nothing else and needs no
   lock.
 - A file the series starts touching later (a new hook) needs its base too: run `capture-base` before the hook
-  first goes into the tree. Until then `check` takes the checkout's git HEAD for it and says so, which is right
+  first goes into the tree. On an applied tree that's safe: it only records files the base lacks, never one a patch creates. `apply`
+  dry-runs each patch first and refuses one that is partly in already, instead of applying its other hunks twice. Until then `check` takes the checkout's git HEAD for it and says so, which is right
   only when nothing upstream changes that file.
 - `materialize --until <patch> <dir>`: the touched files as the series leaves them after one line. To remake a
   patch, materialize the line above it, edit a copy, and diff.
