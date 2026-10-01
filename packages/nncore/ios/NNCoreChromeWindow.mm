@@ -312,6 +312,18 @@ bool IsReservedKey(NSEvent *event) {
 }
 
 - (BOOL)window:(NNCoreWindow *)window handleKeyEvent:(NSEvent *)event {
+  // An Esc the page left alone (Small Yahu closes on it): onCommand "escape" on the shown tab.
+  const NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+  if (event.type == NSEventTypeKeyDown && event.keyCode == 53 && !(mods & (NSEventModifierFlagCommand | NSEventModifierFlagOption | NSEventModifierFlagControl))) {
+    for (NNCoreTab *tab in [window tabsForProfile:window.activeProfile]) {
+      NNCoreWebView *view = [NNCoreTabs viewForTab:tab];
+      NSResponder *focused = window.window.firstResponder;
+      if (view.visible && [focused isKindOfClass:NSView.class] && [(NSView *)focused isDescendantOf:tab.view]) {
+        [view emit:@"command" payload:@{@"command" : @"escape", @"text" : @""}];
+        break;
+      }
+    }
+  }
   return [NSApp.mainMenu performKeyEquivalent:event];
 }
 

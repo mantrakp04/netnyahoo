@@ -7,6 +7,8 @@
 
 #import "NNCoreInternal.h"
 #import "NNCoreWebView.h"
+#import "NNCoreEngineBridge.h"
+#import "NNCoreServices.h"
 
 namespace {
 
@@ -32,6 +34,18 @@ void Remember(NNCoreWindowController *controller, int strip, NSString *profile) 
 }
 // The command being run (its changes carry its id).
 NSNumber *gCommand;
+
+// Chrome's tab groups as //chrome/browser/netnyahoo's nn_tabs reports them ("tabs.strip"), by the Browser's session id
+// (= the strip id): {groups: [...], tabs: {chrome tab id: group token or NSNull}}.
+NSMutableDictionary<NSNumber *, NSDictionary *> *Groups() {
+  static NSMutableDictionary *groups = [NSMutableDictionary dictionary];
+  return groups;
+}
+
+bool ReportsGroups() {
+  static bool reports = [NNCoreEngineBridge exports:@"nn_tabs_watch"];
+  return reports;
+}
 
 NSMapTable<NNCoreTab *, NSNumber *> *Pinned() {
   static NSMapTable *pinned = [NSMapTable weakToStrongObjectsMapTable];
@@ -63,16 +77,24 @@ NSDictionary *Strip(NNCoreWindowController *controller, NNCoreProfile *profile) 
       @"active" : @(tab == active || (!active && i == 0)),
       @"pinned" : @([[Pinned() objectForKey:tab] boolValue]),
     }];
+    if (ReportsGroups()) {
+      NSMutableDictionary *last = [tabs.lastObject mutableCopy];
+      id group = Groups()[@([window chromeWindowIdForProfile:profile])][@"tabs"][@(tab.tabId)];
+      last[@"group"] = group ?: NSNull.null;
+      tabs[tabs.count - 1] = last;
+    }
   }
   const int strip = [window chromeWindowIdForProfile:profile];
   NSString *name = nncore_host::ProfileName(profile);
   Remember(controller, strip, name);
-  return @{
+  NSMutableDictionary *state = [@{
     @"strip" : @(strip),
     @"window" : @(window.window.windowNumber),
     @"profile" : name,
     @"tabs" : tabs,
-  };
+  } mutableCopy];
+  if (ReportsGroups()) state[@"groups"] = Groups()[@(strip)][@"groups"] ?: @[];
+  return state;
 }
 
 NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
@@ -89,6 +111,28 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
 
 + (void)setHandler:(void (^)(NSDictionary<NSString *, id> *))handler {
   gHandler = [handler copy];
+  static bool watching = false;
+  if (watching || !ReportsGroups()) return;
+  watching = true;
+  [NNCoreEngineBridge observe:@"tabs.strip"
+                      handler:^(NSDictionary *strip) {
+                        NSNumber *window = [strip[@"window"] isKindOfClass:NSNumber.class] ? strip[@"window"] : nil;
+                        if (!window) return;
+                        if ([strip[@"closed"] boolValue]) return (void)[Groups() removeObjectForKey:window];
+                        NSMutableDictionary *byTab = [NSMutableDictionary dictionary];
+                        for (NSDictionary *tab in strip[@"tabs"])
+                          if ([tab isKindOfClass:NSDictionary.class] && tab[@"tab"]) byTab[tab[@"tab"]] = tab[@"group"] ?: NSNull.null;
+                        NSDictionary *before = Groups()[window];
+                        NSDictionary *now = @{@"groups" : strip[@"groups"] ?: @[], @"tabs" : byTab};
+                        Groups()[window] = now;
+                        if ([before isEqualToDictionary:now] || gCommand) return;
+                        // A group change Chrome made (an extension's tabs.group): the strip again, as Chrome's report.
+                        for (NNCoreWindowController *c in NNCoreWindowController.all)
+                          for (NNCoreProfile *p in nncore_host::LoadedProfiles())
+                            if ([c.coreWindow chromeWindowIdForProfile:p] == window.intValue)
+                              [NNCoreTabStrip changedInWindow:c profile:p cause:c.hostChanges > 0 ? @(-1) : NSNull.null];
+                      }];
+  [NNCoreServices call:@"nn_tabs_watch" profile:@"" args:nil completion:^(NSDictionary *) {}];
 }
 
 + (void)changedInWindow:(NNCoreWindowController *)controller profile:(NNCoreProfile *)profile {
@@ -170,6 +214,29 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
       if ([found.coreWindow respondsToSelector:@selector(placeTab:index:pinned:)])
         [found.coreWindow placeTab:tab index:index pinned:(NSInteger)i < pinned];
       index++;
+    }
+  }
+  if (found && [op isEqualToString:@"group"]) {
+    NSMutableArray *ids = [NSMutableArray array];
+    for (NSString *key in [command[@"keys"] isKindOfClass:NSArray.class] ? command[@"keys"] : @[])
+      if (NNCoreTab *tab = byKey[key]) [ids addObject:@(tab.tabId)];
+    if (!ids.count) rejected = YES;
+    else {
+      // nn_tabs_group replies once Chrome grouped them; the command's one transaction carries the result.
+      NSMutableDictionary *args = [@{@"window" : @(stripId), @"tabs" : ids} mutableCopy];
+      id group = command[@"group"];
+      args[@"group"] = [group isKindOfClass:NSString.class] ? group : @"";
+      for (NSString *key in @[ @"title", @"color" ])
+        if ([command[key] isKindOfClass:NSString.class]) args[key] = command[key];
+      gCommand = nil;
+      NNCoreWindowController *controller = found;
+      NNCoreProfile *p = profile;
+      [NNCoreServices call:@"nn_tabs_group" profile:nncore_host::ProfileName(profile) args:args completion:^(NSDictionary *result) {
+        NSMutableDictionary *tx = [@{@"rev" : @(++gRev), @"cmd" : @(commandId), @"strips" : @[ Strip(controller, p) ]} mutableCopy];
+        if (result[@"error"]) tx[@"rejected"] = @YES;
+        if (gHandler) gHandler(tx);
+      }];
+      return;
     }
   }
   gCommand = nil;

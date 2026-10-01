@@ -13,6 +13,10 @@ NS_ASSUME_NONNULL_BEGIN
     completion:(void (^)(NSString *json))completion NS_SWIFT_NAME(call(_:profile:args:completion:));
 // Every engine event (topic, JSON payload whose "profile" is the app's profile name).
 + (void)setEventHandler:(nullable void (^)(NSString *topic, NSString *json))handler;
+// Every event of `topic` for the native side itself (its payload's "profile" the app's name), for the app's life.
++ (void)observe:(NSString *)topic handler:(void (^)(NSDictionary<NSString *, id> *payload))handler;
+// The engine framework has this export.
++ (BOOL)exports:(NSString *)name;
 @end
 
 NS_ASSUME_NONNULL_END

@@ -40,12 +40,27 @@ NSString *ProfileNamed(NSString *dir) {
   return [name hasPrefix:@"Profile "] ? [name substringFromIndex:8] : @"";
 }
 
+NSMutableDictionary<NSString *, NSMutableArray *> *Observers() {
+  static NSMutableDictionary *observers = [NSMutableDictionary dictionary];
+  return observers;
+}
+
 void Dispatch(void *, const char *topic, const char *json) {
-  if (!gEventHandler || !topic) return;
+  if (!topic) return;
   NSData *data = [@(json ?: "{}") dataUsingEncoding:NSUTF8StringEncoding];
   NSMutableDictionary *payload = [[NSJSONSerialization JSONObjectWithData:data options:0 error:nil] mutableCopy] ?: [NSMutableDictionary dictionary];
   if ([payload[@"profile"] isKindOfClass:NSString.class]) payload[@"profile"] = ProfileNamed(payload[@"profile"]);
-  gEventHandler(@(topic), JSON(payload));
+  for (void (^observer)(NSDictionary *) in [Observers()[@(topic)] copy]) observer(payload);
+  if (gEventHandler) gEventHandler(@(topic), JSON(payload));
+}
+
+void InstallSink() {
+  static bool installed = false;
+  if (installed) return;
+  auto sink = (nn_engine_set_event_sink_t)Symbol("nn_engine_set_event_sink");
+  if (!sink) return;
+  installed = true;
+  sink(Dispatch, nullptr);
 }
 
 }  // namespace
@@ -66,7 +81,17 @@ void Dispatch(void *, const char *topic, const char *json) {
 
 + (void)setEventHandler:(void (^)(NSString *, NSString *))handler {
   gEventHandler = [handler copy];
-  if (auto sink = (nn_engine_set_event_sink_t)Symbol("nn_engine_set_event_sink")) sink(handler ? Dispatch : nullptr, nullptr);
+  InstallSink();
+}
+
++ (void)observe:(NSString *)topic handler:(void (^)(NSDictionary<NSString *, id> *))handler {
+  if (!Observers()[topic]) Observers()[topic] = [NSMutableArray array];
+  [Observers()[topic] addObject:[handler copy]];
+  InstallSink();
+}
+
++ (BOOL)exports:(NSString *)name {
+  return Symbol(name.UTF8String) != nullptr;
 }
 
 @end

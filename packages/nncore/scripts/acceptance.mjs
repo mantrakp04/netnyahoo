@@ -8,7 +8,7 @@
 // It never takes focus and never touches a real profile: the data dir is <scratch dir>/data, wiped first.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { join, resolve } from "node:path";
 
@@ -61,9 +61,21 @@ const base = `http://127.0.0.1:${server.address().port}`;
 
 // MARK: The app
 
-// The Metro server this tree's JS comes from (METRO_PORT, default 8081): the NNCore build has its own defaults
-// domain, so this never touches the CEF app's.
-execFileSync("defaults", ["write", "com.netnyahoo.browser.nncore", "RCT_jsLocation", `localhost:${process.env.METRO_PORT ?? 8081}`]);
+// The Metro server this tree's JS comes from (METRO_PORT, default 8081), through a proxy that passes the bundle
+// and refuses Metro's websockets (/hot, /message): other agents' edits and reload broadcasts can't restart the app's
+// JS mid-run. The NNCore build has its own defaults domain, so this never touches the CEF app's.
+const metroPort = Number(process.env.METRO_PORT ?? 8081);
+const metroProxy = createServer((req, res) => {
+  const upstream = httpRequest({ host: "127.0.0.1", port: metroPort, path: req.url, method: req.method, headers: req.headers }, (r) => {
+    res.writeHead(r.statusCode ?? 502, r.headers);
+    r.pipe(res);
+  });
+  upstream.on("error", () => res.destroy());
+  req.pipe(upstream);
+});
+metroProxy.on("upgrade", (req, socket) => socket.destroy());
+await new Promise((r) => metroProxy.listen(0, "127.0.0.1", r));
+execFileSync("defaults", ["write", "com.netnyahoo.browser.nncore", "RCT_jsLocation", `localhost:${metroProxy.address().port}`]);
 // No Fast Refresh: other agents edit this tree while the run goes, and a reload would restart the app's JS mid-run.
 execFileSync("defaults", ["write", "com.netnyahoo.browser.nncore", "RCTDevMenu", "-dict", "hotLoadingEnabled", "-bool", "NO", "isHotLoadingEnabled", "-bool", "NO"]);
 
@@ -501,10 +513,13 @@ try {
 
   await check("permission-prompt", async () => {
     // A site asking for a permission reaches the app's prompt (onPermission → pageState.permission), and its answer
-    // goes back to Chrome.
+    // goes back to Chrome. Chrome holds a background tab's prompt until it shows, so the page is shown first.
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await until("A shown", async () => (await state()).active === first.id);
     const t = await pageTarget(`${base}/a`);
     await cdp(t, "Runtime.evaluate", {
-      expression: "navigator.geolocation.getCurrentPosition(() => (window.__geo = 'ok'), (e) => (window.__geo = 'denied:' + e.code))",
+      // MIDI with sysex: a Chrome permission with no macOS prompt behind it (location and the camera would ask macOS).
+      expression: "navigator.requestMIDIAccess({ sysex: true }).then(() => (window.__geo = 'ok'), (e) => (window.__geo = 'denied:' + e.name))",
       userGesture: true,
     });
     const request = await until("the prompt", async () => evalApp(`return nn.pageState.getState().pages["${first.id}"]?.permission ?? null`), 10000);
@@ -621,6 +636,7 @@ try {
     // NNCore's quit. The app may exit before the harness answers.
     await evalApp(`return nn.shell.devKeyEquivalent("${s.windowId}", { key: "q", keyCode: 12, modifiers: ["command"], focus: "window" })`, 5000).catch(() => null);
     await until("the app to exit", async () => exited, 20000);
+    await sleep(4000);  // a crash in teardown writes its report a moment after the process is gone
     const saved = readFileSync(join(data, "session.json"), "utf8").includes("quit-marker");
     if (!saved) throw new Error("the session wasn't saved on quit");
     const reports = readdirSync(join(process.env.HOME, "Library/Logs/DiagnosticReports")).filter(
@@ -641,5 +657,6 @@ try {
   await sleep(1000);
   if (!exited) child.kill("SIGKILL");
   server.close();
+  metroProxy.close();
   process.exitCode = passed === results.length ? 0 : 1;
 }
