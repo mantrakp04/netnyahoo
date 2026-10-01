@@ -6,6 +6,7 @@ import { profileNames, requestCreateProfile, type CreateProfilePreset } from "..
 import { useBrowser, type CreateWindowOptions } from "../store/browser";
 import { activeTabId, closesWindow, engineProfile, isIncognitoProfile, resolveWindowId } from "../store/model";
 import { engineIdOf, sharingProfiles } from "../store/profiles";
+import { applyHeldReports } from "./nativeEvents";
 import { webviews } from "./webviews";
 import { closeWindowDialog } from "./windowClose";
 
@@ -37,6 +38,8 @@ export async function closeTab(tabId: string) {
     const { confirmed, suppressed } = await confirm({ ...closeWindowDialog(w.id), suppression: "Don’t ask me again", windowId: w.id });
     if (suppressed) store().updateSettings({ warnBeforeClosingLastTab: false });
     if (!confirmed) return;
+    // The page's last reports land before the tab closes (Reopen Closed Tab restores what it showed).
+    applyHeldReports();
   }
   store().closeTab(tabId);
 }

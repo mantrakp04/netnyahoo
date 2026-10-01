@@ -1,4 +1,6 @@
 // The app itself, which index.js loads once the native build matches this bundle (nativeApi.tsx).
+// First, so every native module listener the app adds applies held page reports before it runs.
+import "./lib/nativeEvents";
 import { useEffect } from "react";
 import { AppRegistry, unstable_batchedUpdates } from "react-native";
 import { WindowRoot } from "./App";

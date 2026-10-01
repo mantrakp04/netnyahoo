@@ -82,6 +82,19 @@ don't re-render every tab.
 - Menu commands: lib/commands.ts (JS) + packages/shell/ios/Menus.swift (native menu bar).
 - Tests: `pnpm --filter @netnyahoo/browser test` (`docs/testing.md`).
 
+## Native events (lib/nativeEvents.ts)
+Every native→JS call is its own task, and React Native commits after each, so a page's reports used to cost a commit
+apiece (about ten per new tab). A WebView's page reports (`HELD_EVENTS`: navigation, progress, favicon, media, now
+playing, status, security, blocked count, media access, load error) are held until the calls already queued behind
+them have run (a 0 ms timer), then applied in arrival order in one React batch. Anything else that reaches JS first
+applies them before it runs: any other event (touches, layout, a page opening a window, focus, activation, commands,
+find, zoom, a new page's ready report), a timer, a callback, and every native module listener (Expo's EventEmitter, so
+a tab strip transaction or a download), which also runs as one commit with them. Nothing is reordered or dropped, and
+nothing a user action waits on is held. Work JSI delivers without a listener (an Expo promise settling) can run before
+held reports, as it already could before a view event's own dispatch hop: code that decides from a page's live state
+after awaiting the engine calls `applyHeldReports()` first (tabLifecycle's sleep and freeze, closeTab). Store
+notifications stay one per `set()`; the batch saves the commits and renders between them.
+
 ## Live tabs: Chrome's tab strips (lib/chromeTabs.ts, store/liveTabs.ts, packages/nncore/src/tabStrip.ts)
 
 One writer per fact. The store owns the **workspace**: sidebar order, pins, groups, splits, Small Yahu, unloaded

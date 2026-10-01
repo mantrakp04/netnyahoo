@@ -9,6 +9,7 @@ import { openSettings } from "../components/settings/windows";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { activeTabId, engineProfile, isIncognitoProfile, wake } from "../store/model";
 import { splitOf } from "../store/splits";
+import { applyHeldReports } from "./nativeEvents";
 import { webviews } from "./webviews";
 
 export const POLICY = {
@@ -125,6 +126,8 @@ export async function sleepTab(id: string, unload = false): Promise<boolean> {
   const l = useLifecycle.getState();
   const unsaved = asleep ? false : l.frozen[id] ? (dirtyWhenFrozen.get(id) ?? null) : await hasUnsavedInput(handle);
   if (unsaved !== false) return false;
+  // The page's reports that came while we waited (audio, loading, capture) count.
+  applyHeldReports();
   const s = store();
   if (shownTabIds(s).has(id) || keepAliveReason(s, id) || webviews.get(id) !== handle) return false;
   if (await handle.discard({ unload })) unloaded.add(id);
@@ -304,6 +307,7 @@ export async function freezeTab(id: string): Promise<boolean> {
   const handle = webviews.get(id);
   if (!handle || !useLifecycle.getState().batterySaver) return false;
   const unsaved = await hasUnsavedInput(handle);
+  applyHeldReports();
   const s = store();
   if (shownTabIds(s).has(id) || keepAliveReason(s, id) || webviews.get(id) !== handle) return false;
   dirtyWhenFrozen.set(id, unsaved !== false);
