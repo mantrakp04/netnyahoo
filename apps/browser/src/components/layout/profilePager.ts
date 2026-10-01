@@ -215,9 +215,19 @@ export function usePagerNativeConfig(windowId: string, width?: number): NativePa
   );
 }
 
-export function usePageOffset(windowId: string, slot: number, width: number) {
+// A page's place in the pager. Off to the side at rest it's also transparent: react-native-macos sets a transform on
+// the view's layer only, and AppKit drops it when it lays the view out (a page mounted beside the current one, a new
+// profile's, kept a layer transform of 0 and drew over it). Opacity is the view's own and stays; native frames set
+// both during a drag.
+export function usePageStyle(windowId: string, slot: number, width: number) {
   const { pos } = pagerFor(windowId);
-  return useMemo(() => Animated.multiply(Animated.add(pos, -slot), -width), [pos, slot, width]);
+  return useMemo(
+    () => ({
+      transform: [{ translateX: Animated.multiply(Animated.add(pos, -slot), -width) }],
+      opacity: pos.interpolate({ inputRange: [slot - 1, slot - 0.999, slot + 0.999, slot + 1], outputRange: [0, 1, 1, 0], extrapolate: "clamp" }),
+    }),
+    [pos, slot, width],
+  );
 }
 
 if (__DEV__) {

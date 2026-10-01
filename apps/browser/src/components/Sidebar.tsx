@@ -12,7 +12,7 @@ import { listTopGap, SIDEBAR_FOOTER_DOWNLOADS, SIDEBAR_HEADER_WITH_FIELD, useAdd
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
 import { IconButton, useHover } from "./primitives";
 import { PROFILE_INDICATOR_X, ProfileIndicator } from "./ProfileIndicator";
-import { usePageOffset, usePagerPages } from "./layout/profilePager";
+import { usePageStyle, usePagerPages } from "./layout/profilePager";
 import { PROFILE_DOTS_HEIGHT, ProfileDots, useProfileDotsShown } from "./profiles/ProfileDots";
 import { SidebarAddressRow, SidebarHeaderTools } from "./sidebar/AddressBar";
 import { DragGhost } from "./sidebar/DragGhost";
@@ -183,7 +183,7 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
   const topGap = listTopGap(useAddressBarInSidebar());
   const newTabsAtTop = useSettings((s) => s.newTabPosition === "top");
   const innerWidth = width - layout.sidebarInset * 2;
-  const translateX = usePageOffset(windowId, slot, width);
+  const pageStyle = usePageStyle(windowId, slot, width);
   const inlineNewTab = !current || !docked;
   const measured = useRef(0);
   useEffect(() => {
@@ -204,7 +204,7 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
   return (
     <Animated.View
       pointerEvents={current ? "auto" : "none"}
-      style={{ position: "absolute", top: 0, bottom: 0, left: 0, width, display: resting ? "none" : "flex", transform: [{ translateX }] }}
+      style={{ position: "absolute", top: 0, bottom: 0, left: 0, width, display: resting ? "none" : "flex", ...pageStyle }}
     >
       <PageProfileContext.Provider value={profileId}>
         <ThemeScope>

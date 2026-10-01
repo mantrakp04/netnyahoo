@@ -13,7 +13,7 @@ import { TabIcon } from "../sidebar/TabIcon";
 import { TabBadges } from "../media/TabBadges";
 import { GROUP_COLORS, useSidebarTokens, withAlpha } from "../sidebar/tokens";
 import { modifiersOf } from "./controls";
-import { usePageOffset, usePagerPages } from "./profilePager";
+import { usePageStyle, usePagerPages } from "./profilePager";
 import { ProfileSwipeArea } from "./ProfileSwipe";
 import { openNewTabInSplit } from "./splitActions";
 import {
@@ -126,7 +126,7 @@ export function TopTabStrip({ floating = false }: { floating?: boolean }) {
 function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId: string; slot: number; pageWidth: number; current: boolean; resting: boolean }) {
   const windowId = useWindowId();
   const flare = useContext(FloatingStrip) ? 0 : FLARE;
-  const translateX = usePageOffset(windowId, slot, pageWidth);
+  const pageStyle = usePageStyle(windowId, slot, pageWidth);
   const entries = useBrowser((s) => stripEntries(s, windowId, profileId));
   const activeId = useBrowser((s) => s.windows[windowId]?.activeTabIds[profileId] ?? "");
   const parsed = useMemo(() => parseEntries(entries), [entries]);
@@ -163,7 +163,7 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
   return (
     <Animated.View
       pointerEvents={current ? "auto" : "none"}
-      style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pageWidth + flare * 2, display: resting ? "none" : "flex", transform: [{ translateX }] }}
+      style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: pageWidth + flare * 2, display: resting ? "none" : "flex", ...pageStyle }}
     >
       <PageProfileContext.Provider value={profileId}>
         <ThemeScope>

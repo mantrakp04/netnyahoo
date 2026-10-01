@@ -84,7 +84,7 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
     <Animated.View ref={wrapper.ref} style={wrapper.style}>
       <View style={{ borderRadius: 12, backgroundColor: fill, borderWidth: 0.5, borderColor: stroke, paddingHorizontal: PAD }}>
         <View ref={headerRef} {...handle}>
-          <GroupHeader groupId={groupId} windowId={windowId} collapsed={collapsed} />
+          <GroupHeader groupId={groupId} windowId={windowId} collapsed={collapsed} open={open} />
         </View>
         {shownWhileCollapsed && !moving ? (
           <View style={{ paddingBottom: PAD }}>
@@ -117,7 +117,8 @@ function Entry({ entry, section, groupId }: { entry: string; section: "list" | "
   );
 }
 
-function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; windowId: string; collapsed: boolean }) {
+// `open` is the members' collapse animation: the chevron turns on its frames, so the two never drift apart.
+function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; windowId: string; collapsed: boolean; open: Animated.Value }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const group = useBrowser((s) => s.groups[groupId]);
@@ -128,10 +129,6 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
   const { hovered, hoverProps } = useRowHover(windowId, collapsed && !renaming ? { kind: "group", id: groupId } : null);
   const countdown = useMeetingCountdown(groupId);
   const [labelWidth, setLabelWidth] = useState(0);
-  const turn = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
-  useEffect(() => {
-    Animated.timing(turn, { toValue: collapsed ? 0 : 1, duration: TOGGLE_MS, easing: TOGGLE_EASING, useNativeDriver: true }).start();
-  }, [collapsed]);
   if (!group) return null;
   const target = { kind: "group" as const, id: groupId };
 
@@ -186,7 +183,7 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
                       marginLeft: 0,
                       alignItems: "center",
                       justifyContent: "center",
-                      transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ["-90deg", "0deg"] }) }],
+                      transform: [{ rotate: open.interpolate({ inputRange: [0, 1], outputRange: ["-90deg", "0deg"] }) }],
                     }}
                   >
                     <Symbol name="chevron.down" size={9} weight="semibold" color={withAlpha(tokens.groupTitle, 0.5)} style={{ width: 10, height: 10 }} />
