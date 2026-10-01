@@ -1,0 +1,62 @@
+apps/browser/src/components/layout/splitDrop.ts
+  s_9c356f9574d31c::t_04be4f642737aa 1-50
+apps/browser/src/components/layout/TopTabStrip.tsx
+  s_9c356f9574d31c::t_df5e09959e7a6f 258,260,265-266,282,333-334,336
+  s_9c356f9574d31c::t_18f4b1f8249e2e 193,771,790-792,803,805-815,819-820,826,829,839
+  s_9c356f9574d31c::t_92c4def9ea6f15 108,701,707,847
+  s_9c356f9574d31c::t_4912f23b3985ea 246,252-257,291,293-294,297,299
+  s_9c356f9574d31c::t_2158683aa45789 573-590,592-594,596-599,830-832,836-838
+  s_9c356f9574d31c::t_5e5d6432d7bee9 194,234-235,238-244,249-251,259,261-264,280-281,285,288-290,298,300-301,304,308,310-332,335,337-355,357,773
+  s_9c356f9574d31c::t_e5d2bd542d632d 65-67,248,283
+  s_9c356f9574d31c::t_b1815bbeb30af5 236-237,270,274-278,536-537,555-556,563,569,572,600
+  s_9c356f9574d31c::t_12e1bc7053dcff 39,271-273,393-394,591,833-835
+packages/cef/ios/NNChromeWindow.mm
+  s_9c356f9574d31c::t_5d2e9e3535e9b4 471-494
+  s_9c356f9574d31c::t_80b3ffae6b19a0 495
+apps/browser/src/components/layout/SplitChrome.tsx
+  s_9c356f9574d31c::t_fb2081f87cd845 14,131-132,139-141
+  s_9c356f9574d31c::t_a194c74757fded 5
+  s_9c356f9574d31c::t_f80e80dbd6577a 128,143-146,173
+  s_9c356f9574d31c::t_df5e09959e7a6f 129-130,133-138
+  s_9c356f9574d31c::t_a7109b0872581d 11-13,90-92,98-99,102-125,127,151-155,157,160-172,178-188,190-199,201-209,214-221,224,227-242,247-276
+  s_9c356f9574d31c::t_50d5b0570bbcdc 147-150,277-279
+docs/dia-spec.md
+  s_9c356f9574d31c::t_c4511922290da6 616-651
+apps/browser/src/components/layout/tabDrag.ts
+  s_9c356f9574d31c::t_7bce5e4b70c443 30
+  s_9c356f9574d31c::t_fb2081f87cd845 56-59,62,68-69
+  s_9c356f9574d31c::t_30ead4676476b5 11,18-20,37-38,44,66
+  s_9c356f9574d31c::t_9c0ae9fac718a4 28,34,64
+  s_9c356f9574d31c::t_df5e09959e7a6f 53-55,70
+  s_9c356f9574d31c::t_67d77342476408 21-22,29,60-61,63
+apps/browser/scripts/tab-drag-test.mjs
+  s_9c356f9574d31c::t_336e6efb1a2344 175-176,190-191
+  s_9c356f9574d31c::t_384429dceaa32b 177,182
+  s_9c356f9574d31c::t_60ea2a0850bbb9 178-181,184
+  s_9c356f9574d31c::t_85d612d210b320 1-39,44-70,72,74-117,120-133,135-156,161-174,183,186-189,192-193,195-239
+  s_9c356f9574d31c::t_f17d69be9d0d11 71,73
+  s_9c356f9574d31c::t_29987ef3b2f6f4 40-43,118-119,134,157-160,185,194
+packages/shell/ios/ShellModule.swift
+  s_9c356f9574d31c::t_bd9b124a2987a4 592-594,602-609
+  s_9c356f9574d31c::t_aaf2e66166c16a 610
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_6157ac20223458 283,372
+apps/browser/src/components/sidebar/DragGhost.tsx
+  s_9c356f9574d31c::t_913956459ff5f5 7,19-20,22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8425da041363b37395f51852c6ffd9d0a758b400",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
