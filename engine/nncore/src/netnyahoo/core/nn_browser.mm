@@ -33,6 +33,8 @@
 #include "net/base/net_errors.h"
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
+#include "netnyahoo/core/nn_autofill_trigger.h"
+#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
 #include "content/public/browser/render_process_host.h"
@@ -500,6 +502,7 @@ void WindowHost::OnTabStripModelChanged(
   if (change.type() == TabStripModelChange::kInserted) {
     for (const auto& inserted : change.GetInsert()->contents) {
       TabBridge* bridge = TabBridge::GetOrCreate(inserted.contents);
+      TrackAutofillFocus(inserted.contents);
       bridge->EnsureFaviconObserved();
       bridge->EnsurePopupsObserved();
       bridge->EnsureZoomObserved();
@@ -816,6 +819,18 @@ void NNWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
   if ([delegate respondsToSelector:@selector(tab:didChangeStatusText:)]) {
     [delegate tab:tab didChangeStatusText:base::SysUTF8ToNSString(url.spec())];
   }
+}
+
+void NNWebContentsDelegate::ActivateContents(content::WebContents* contents) {
+  NNCoreTab* tab = TabBridge::GetOrCreate(contents)->tab();
+  id<NNCoreTabDelegate> delegate = tab.delegate;
+  if (![delegate respondsToSelector:@selector(tab:requestsActivation:)]) {
+    BrowserWebContentsDelegate::ActivateContents(contents);
+    return;
+  }
+  const bool pip =
+      PictureInPictureWindowManager::GetInstance()->GetWebContents() == contents;
+  [delegate tab:tab requestsActivation:pip ? @"pictureInPicture" : @"page"];
 }
 
 void NNWebContentsDelegate::RendererUnresponsive(

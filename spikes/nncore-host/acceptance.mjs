@@ -845,6 +845,32 @@ try {
     const delDefault = await cmd("deleteProfile", { profile: "A" });
     check("S18", "deleteProfile: a non-default profile goes (its wrapper reports destroyed); the default one is refused", p3 && del.deleted && destroyed && delDefault.deleted === false, { p3, del, destroyed, delDefault });
   }
+  // S19 (D, E, F, I): tracing, tab capture id, activation requests, autofill on demand.
+  {
+    const tb = await cmd("tracing", { begin: true }, 30000);
+    await sleep(500);
+    const te = await cmd("tracing", {}, 60000);
+    check("S19", "beginTracing / endTracing (not kept) / isTracing", tb.started && tb.isTracing && te.path === null && te.isTracing === false, { tb, te });
+    const cap = await cmd("capture", { tabId: indexId });
+    check("S19", "mediaCaptureSourceId (CEF's format); stopCapture with nothing shared", /^web-contents-media-stream:\/\/\d+:\d+$/.test(cap.sourceId) && cap.stopped === false, cap);
+    await cmd("show", { tabId: indexId });
+    const pf = await attach((t) => t.url === `${base}/index`);
+    await pf.send("Runtime.evaluate", { expression: "window.__w = window.open('/target?from=focus'); setTimeout(() => window.__w.focus(), 800); 1", userGesture: true });
+    const act = await waitFor(() => evs("activationRequest")[0], 6000);
+    pf.close();
+    check("S19", "a page's window.focus() on its popup → tab:requestsActivation: (\"page\")", act && act.reason === "page", act);
+    const lg = await cmd("open", { url: `${base}/login?again=3`, profile: "A" });
+    await waitFor(async () => (await tabState(lg.tabId))?.loading === false);
+    const pl3 = await attach((t) => t.url === `${base}/login?again=3`);
+    await cmd("focus", { tabId: lg.tabId });
+    await pl3.click("#u");
+    await sleep(400);
+    const shown = await cmd("autofill", { tabId: lg.tabId, passwords: true });
+    const dropdown = await waitFor(async () => (await state()).childWindows.find((w) => w.visible && w.class !== "NSPanel"), 5000);
+    pl3.close();
+    check("S19", "showAutofillSuggestions: Chrome's dropdown at the focused field", shown === true && !!dropdown, { shown, dropdown });
+    await cmd("nav", { tabId: lg.tabId, action: "closeNow" });
+  }
   // S16 (item 9): extension actions.
   {
     const extId = ext?.id;

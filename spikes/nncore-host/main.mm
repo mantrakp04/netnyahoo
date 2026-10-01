@@ -610,6 +610,9 @@ static void Log(NSDictionary* event) {
   [NNCoreEngine resolveExtensionInstallPrompt:prompt[@"requestId"]
                                      accepted:![_config[@"installAnswer"] isEqual:@NO]];
 }
+- (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason {
+  Log(@{@"event" : @"activationRequest", @"tabId" : @(tab.tabId), @"reason" : reason});
+}
 - (void)tab:(NNCoreTab*)tab navigationBecameDownload:(NSString*)url {
   Log(@{@"event" : @"downloadNavigation", @"tabId" : @(tab.tabId), @"url" : url});
 }
@@ -1017,6 +1020,20 @@ static void Log(NSDictionary* event) {
     } else {
       reply([profile loadComponentExtension:cmd[@"path"]] ?: NSNull.null);
     }
+  } else if ([name isEqualToString:@"tracing"]) {
+    if ([cmd[@"begin"] boolValue]) {
+      [NNCoreEngine beginTracing:^(BOOL started) {
+        reply(@{@"started" : @(started), @"isTracing" : @(NNCoreEngine.isTracing)});
+      }];
+    } else {
+      [NNCoreEngine endTracing:NO completion:^(NSString* path) {
+        reply(@{@"path" : path ?: NSNull.null, @"isTracing" : @(NNCoreEngine.isTracing)});
+      }];
+    }
+  } else if ([name isEqualToString:@"capture"]) {
+    reply(@{@"sourceId" : tab.mediaCaptureSourceId ?: NSNull.null, @"stopped" : @([tab stopCapture])});
+  } else if ([name isEqualToString:@"autofill"]) {
+    reply(@([tab showAutofillSuggestions:[cmd[@"passwords"] boolValue]]));
   } else if ([name isEqualToString:@"security"]) {
     reply(tab.securityInfo);
   } else if ([name isEqualToString:@"zoom"]) {

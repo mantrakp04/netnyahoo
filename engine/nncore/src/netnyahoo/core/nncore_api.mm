@@ -66,6 +66,13 @@
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
 #include "netnyahoo/core/nn_permissions.h"
+#include "netnyahoo/core/nn_autofill_trigger.h"
+#include "base/trace_event/trace_config.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
+#include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
+#include "content/public/browser/render_process_host.h"
+#include "content/public/browser/tracing_controller.h"
+#include "content/public/browser/web_contents_media_capture_id.h"
 #include "extensions/browser/install_prompt_data.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
 #include "chrome/browser/profiles/profile_destroyer.h"
@@ -629,6 +636,67 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
                  remember:(BOOL)remember {
   nncore::ResolvePermission(base::SysNSStringToUTF8(requestId),
                             base::SysNSStringToUTF8(result), remember);
+}
+
+static bool g_tracing = false;
+
++ (void)beginTracing:(void (^)(BOOL started))completion {
+  if (g_tracing) {
+    completion(NO);
+    return;
+  }
+  // Chrome's default categories, as CEF's CefBeginTracing("").
+  g_tracing = content::TracingController::GetInstance()->StartTracing(
+      base::trace_event::TraceConfig(),
+      base::BindOnce([](void (^completion)(BOOL)) { completion(YES); }, completion));
+  if (!g_tracing) {
+    completion(NO);
+  }
+}
+
++ (void)endTracing:(BOOL)keep completion:(void (^)(NSString* _Nullable path))completion {
+  if (!g_tracing) {
+    completion(nil);
+    return;
+  }
+  g_tracing = false;
+  // keep: "Netnyahoo Trace <date>.json" in Downloads (as CEF's NNDiagnostics); else a
+  // temporary file, deleted once written.
+  NSDateFormatter* format = [[NSDateFormatter alloc] init];
+  format.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+  format.dateFormat = @"yyyy-MM-dd 'at' HH.mm.ss";
+  NSString* folder =
+      keep ? [NSFileManager.defaultManager URLsForDirectory:NSDownloadsDirectory
+                                                  inDomains:NSUserDomainMask]
+                 .firstObject.path
+           : NSTemporaryDirectory();
+  [NSFileManager.defaultManager createDirectoryAtPath:folder
+                          withIntermediateDirectories:YES
+                                           attributes:nil
+                                                error:nil];
+  NSString* path = [folder
+      stringByAppendingPathComponent:[NSString stringWithFormat:@"Netnyahoo Trace %@.json",
+                                                                [format stringFromDate:NSDate.date]]];
+  const bool stopped = content::TracingController::GetInstance()->StopTracing(
+      content::TracingController::CreateFileEndpoint(
+          base::FilePath(base::SysNSStringToUTF8(path)),
+          base::BindOnce(
+              [](NSString* path, BOOL keep, void (^completion)(NSString*)) {
+                if (keep) {
+                  completion(path);
+                } else {
+                  [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+                  completion(nil);
+                }
+              },
+              path, keep, completion)));
+  if (!stopped) {
+    completion(nil);
+  }
+}
+
++ (BOOL)isTracing {
+  return g_tracing;
 }
 
 + (void)resolveExtensionInstallPrompt:(NSString*)requestId accepted:(BOOL)accepted {
@@ -1452,6 +1520,37 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
     host->set_quiet_activation(false);
   }
   return ran;
+}
+
+- (NSString*)mediaCaptureSourceId {
+  content::RenderFrameHost* frame =
+      _contents ? _contents->GetPrimaryMainFrame() : nullptr;
+  if (!frame || !frame->IsRenderFrameLive()) {
+    return nil;
+  }
+  // As CEF's CefGetMediaCaptureSourceId: the id getDisplayMedia/tab capture uses for this tab.
+  return NS(content::WebContentsMediaCaptureId(frame->GetProcess()->GetDeprecatedID(),
+                                               frame->GetRoutingID())
+                .ToString());
+}
+
+- (BOOL)stopCapture {
+  if (!_contents) {
+    return NO;
+  }
+  scoped_refptr<MediaStreamCaptureIndicator> indicator =
+      MediaCaptureDevicesDispatcher::GetInstance()->GetMediaStreamCaptureIndicator();
+  const bool capturing = indicator->IsCapturingTab(_contents) ||
+                         indicator->IsCapturingWindow(_contents) ||
+                         indicator->IsCapturingDisplay(_contents);
+  // Chrome's "Stop sharing" for what this page shares (tab, window or screen).
+  indicator->StopMediaCapturing(_contents,
+                                MediaStreamCaptureIndicator::MediaType::kDisplayMedia);
+  return capturing;
+}
+
+- (BOOL)showAutofillSuggestions:(BOOL)passwords {
+  return nncore::ShowAutofillSuggestions(_contents, passwords);
 }
 
 - (void)executeJavaScript:(NSString*)code frame:(NSString*)frameId {

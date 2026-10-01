@@ -99,6 +99,11 @@ NNCORE_EXPORT
                    result:(NSString*)result
                  remember:(BOOL)remember;
 + (void)resolveExtensionInstallPrompt:(NSString*)requestId accepted:(BOOL)accepted;
+// Chrome's tracing (chrome://tracing's default categories). end: keep writes
+// "Netnyahoo Trace <date>.json" to Downloads and answers its path; else nil (discarded).
++ (void)beginTracing:(void (^)(BOOL started))completion;
++ (void)endTracing:(BOOL)keep completion:(void (^)(NSString* _Nullable path))completion;
+@property(class, readonly) BOOL isTracing;
 // Deletes a profile as Chrome's profile settings do (its Browsers close, its directory goes).
 // NO for the default profile or an incognito one.
 - (void)deleteProfile:(NNCoreProfile*)profile
@@ -287,6 +292,9 @@ NNCORE_EXPORT
 // (app null: nothing on this Mac opens it; nothing to resolve then). Answer with
 // +[NNCoreEngine resolveExternalApp:open:remember:].
 - (void)tab:(NNCoreTab*)tab externalAppRequest:(NSDictionary<NSString*, id>*)request;
+// Chrome asks to bring this tab forward: "pictureInPicture" (the PiP window's back-to-tab),
+// "page" (window.focus()). Without this, Chrome activates it in its strip.
+- (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason;
 // A main-frame navigation became a download (the page stays; Chrome downloads it).
 - (void)tab:(NNCoreTab*)tab navigationBecameDownload:(NSString*)url;
 // Lifecycle.
@@ -403,6 +411,15 @@ NNCORE_EXPORT
 // icon (a PNG data: URL)}} for this tab.
 - (NSDictionary<NSString*, NSDictionary*>*)actionStatesForExtensions:(NSArray<NSString*>*)extensionIds;
 - (nullable NSString*)sidePanelURLForExtension:(NSString*)extensionId;
+// The id a capture of this tab uses (getDisplayMedia's tab source), as CEF's
+// CefGetMediaCaptureSourceId. nil without a live page.
+@property(readonly, nullable) NSString* mediaCaptureSourceId;
+// Chrome's "Stop sharing" for what this page is sharing (a tab, window or screen). NO if it
+// shares nothing.
+- (BOOL)stopCapture;
+// Chrome's autofill dropdown at the page's focused field, now (CEF's
+// CefShowAutofillSuggestions): passwords: the saved-passwords list. NO without a field.
+- (BOOL)showAutofillSuggestions:(BOOL)passwords;
 // The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:).
 - (void)callFrame:(NSString*)frameId kind:(NSString*)kind json:(NSString*)json;
 @end
