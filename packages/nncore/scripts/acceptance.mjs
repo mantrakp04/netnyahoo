@@ -131,6 +131,9 @@ function pgrep() {
     return [];
   }
 }
+// Cast without network devices: the engine's test sink, and Chrome's own Cast/DIAL discovery off (on a Mac it can
+// raise the Local Network prompt). Passed with the other test switches below.
+process.env.NETNYAHOO_CHROMIUM_SWITCHES = `--netnyahoo-test-media-route-provider --disable-media-route-providers-for-test ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""}`.trim();
 // Starts the app on the run's data dir (again for the relaunch checks), with a fresh DevTools port.
 async function launch(log = "app.out.log") {
   port = await freePort();
@@ -651,6 +654,58 @@ try {
     await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.closeCastDialog(${dialog.id}).then(() => true)`);
     await until("the dialog closed", async () => !(await evalApp(`return globalThis.nnCast.useCast.getState().dialogs["${first.id}"] ?? null`)), 5000);
     return { header: dialog.header, sinks: dialog.sinks?.length ?? 0, routeProfiles: Object.keys(routes ?? {}) };
+  });
+
+  await check("cast-routes", async () => {
+    // Casting the tab to the engine's test sink (--netnyahoo-test-media-route-provider: Chrome's media router with no
+    // network device; the real providers are off): the app's picker starts it (startCasting), the route reaches
+    // onCastRoutes and the dialog's sink, and both ways the app stops it end it: the picker's Stop (stopCasting) and
+    // the toolbar's "Stop Casting" menu (terminateCastRoute).
+    const browser = await browserOf(first.id);
+    const routesNow = () => evalApp(`return Object.values(globalThis.nnCast.useCast.getState().routes).flat()`);
+    const dialogNow = () => evalApp(`return globalThis.nnCast.useCast.getState().dialogs["${first.id}"] ?? null`);
+    const openDialog = async () => {
+      if (!(await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.showCastDialog(${browser})`))) throw new Error("showCastDialog said no");
+      return until("the test sink in the app's dialog", async () => {
+        const d = await dialogNow();
+        const sink = d?.sinks?.find((s) => s.name === "Netnyahoo Test Sink" && s.state === "available");
+        return sink ? { dialog: d, sink } : null;
+      }, 10000).catch(async (e) => { throw new Error(`${e.message}; dialog ${JSON.stringify(await dialogNow())}`); });
+    };
+    const casting = async (dialogId, sink) => {
+      await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.startCasting(${dialogId}, ${JSON.stringify(sink.id)}, 2).then(() => true)`);
+      return until("the route in onCastRoutes", async () => (await routesNow()).find((r) => r.sink === sink.id) ?? null, 10000);
+    };
+    try {
+      const { dialog, sink } = await openDialog();
+      if (!(sink.modes & 2)) throw new Error(`the test sink can't cast a tab (modes ${sink.modes})`);
+      const route = await casting(dialog.id, sink);
+      const connected = await until("the sink connected in the dialog", async () => {
+        const d = await dialogNow();
+        const s = d?.sinks?.find((x) => x.id === sink.id);
+        return s?.routeId === route.id && s.state === "connected" ? { dialog: d, sink: s } : null;
+      }, 10000);
+      await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.stopCasting(${dialog.id}, ${JSON.stringify(route.id)}).then(() => true)`);
+      await until("the route gone after stopCasting", async () => !(await routesNow()).some((r) => r.id === route.id), 10000);
+      // Again, then the dialog closed and the route ended from the toolbar's menu.
+      const second = await casting(dialog.id, sink);
+      await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.closeCastDialog(${dialog.id}).then(() => true)`);
+      await until("the dialog closed", async () => !(await dialogNow()), 5000);
+      if (!(await routesNow()).some((r) => r.id === second.id)) throw new Error("closing the dialog ended the route");
+      await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.terminateCastRoute(${JSON.stringify(second.id)}).then(() => true)`);
+      await until("the route gone after terminateCastRoute", async () => !(await routesNow()).some((r) => r.id === second.id), 10000);
+      return {
+        sink: { name: sink.name, modes: sink.modes },
+        started: { route: route.description, source: route.source, castingStarted: connected.dialog.castingStarted, state: connected.sink.state },
+        stopped: true,
+        terminated: true,
+      };
+    } finally {
+      const d = await dialogNow().catch(() => null);
+      if (d) await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.closeCastDialog(${d.id}).then(() => true)`).catch(() => null);
+      for (const r of await routesNow().catch(() => []))
+        await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.terminateCastRoute(${JSON.stringify(r.id)}).then(() => true)`).catch(() => null);
+    }
   });
 
   // A tab of the main window at `url`, loaded; foreground or behind.
