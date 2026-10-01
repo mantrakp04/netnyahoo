@@ -11,7 +11,8 @@ import { noteDiscarded, noteGone, noteReady } from "../lib/tabLifecycle";
 import { webviewRef, webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
 import { useActiveTabId, useSidebarOpen, useWindowId } from "../store/hooks";
-import { engineProfile, wake } from "../store/model";
+import { activeTabId, engineProfile, wake } from "../store/model";
+import { removeTabs } from "../store/tabs";
 import { splitOf } from "../store/splits";
 import type { SplitView } from "../store/types";
 import { BookmarksBar } from "./bookmarks/BookmarksBar";
@@ -19,6 +20,7 @@ import { FindBar } from "./FindBar";
 import { NO_TOOLBAR, splitGeometry, toolbarGeometry, type Rect, type ToolbarGeometry } from "./layout/geometry";
 import { dismissPermissions, startPermissionPrompts } from "./site/permissions";
 import { patchPage, pageOf, setBrowserId, setPopover, useFullscreenTab, usePage, usePopover } from "./layout/pageState";
+import { useTabDrag } from "./layout/tabDrag";
 import { SadTab, StatusBubble } from "./layout/PaneOverlays";
 import { DropTargets, SplitDividers, SplitToast } from "./layout/SplitChrome";
 import { SplitEmptyState } from "./layout/SplitEmptyState";
@@ -95,12 +97,23 @@ export function ContentCard() {
   }, [panes]);
 
   const pagerPages = pagerFor(windowId).state((st) => st.pages);
-  // Keep adjacent profile pages painting so a swipe doesn't reveal an unpainted page.
+  // Tabs dragged where a drop takes them out of this window (outside it, or onto its page away from a split target).
+  const leaving = useTabDrag((d) => (d.windowId === windowId && d.tabIds.length && (d.outside || !!(d.lifted ?? d.onPage)) ? d.tabIds : null));
+  // The tab the window shows once they go, painting meanwhile. Hidden until the drop, its page had no frame to show:
+  // the window showed an empty card while Chrome drew one (~90 ms, with the new window being built meanwhile).
+  const successor = useMemo(() => {
+    if (!leaving) return undefined;
+    const s = useBrowser.getState();
+    const next = activeTabId(removeTabs(s, leaving, false), windowId);
+    return next && next !== activeTabId(s, windowId) ? next : undefined;
+  }, [leaving, windowId]);
+  // Keep adjacent profile pages painting so a swipe doesn't reveal an unpainted page, and the successor of tabs being
+  // dragged out so the drop shows it at once.
   const warm = useBrowser(
     useShallow((s) => {
       const w = s.windows[windowId];
-      if (!w || !pagerPages) return [];
-      return pagerPages.map((p) => (p.id === w.profileId ? undefined : w.activeTabIds[p.id])).filter((id): id is string => !!id);
+      const ids = !w || !pagerPages ? [] : pagerPages.map((p) => (p.id === w.profileId ? undefined : w.activeTabIds[p.id])).filter((id): id is string => !!id);
+      return successor && s.tabs[successor]?.windowId === windowId && !ids.includes(successor) ? [...ids, successor] : ids;
     }),
   );
   const warmSplits = useBrowser(useShallow((s) => warm.map((id) => splitOf(s, id)).filter((v): v is SplitView => !!v)));

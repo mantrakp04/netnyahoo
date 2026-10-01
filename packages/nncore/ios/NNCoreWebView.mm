@@ -773,6 +773,12 @@ NSString *JSONString(id value) {
 - (void)setVisible:(BOOL)visible {
   if (_visible == visible) return;
   _visible = visible;
+  // A page painting already (warm, or just left the screen: its view shown, at alpha 0) shows with the rest of the
+  // batch: Chrome has nothing to draw first. Deferred to the end of the turn, the next tab of a window a tab was torn
+  // off from (kept warm through the drag, ContentCard) missed the commit the torn page's new window made meanwhile,
+  // and the window showed an empty card for a few frames. By what's applied, not the warm prop, which the same batch
+  // can clear first.
+  if (visible && self.alphaValue < 1 && _tab.view.superview == self && !_tab.view.hidden) self.alphaValue = 1;
   [self schedulePainting];
   [self updateAutoPictureInPicture];
   // With tab-strip commands, only they (and Chrome) change the active tab.

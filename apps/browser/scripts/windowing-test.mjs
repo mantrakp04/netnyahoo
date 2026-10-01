@@ -240,12 +240,13 @@ try {
     const crops = frames.map((f) => crop(f, page));
     const sd = (c) => { const m = mean(c); return Math.sqrt(c.reduce((s, v) => s + (v - m) ** 2, 0) / c.length); };
     const blank = crops.filter((c) => sd(c) < 3);
+    console.log(`  ${blank.length} frames of w1's page blank`);
     await run(`st().closeWindow("${torn[0]}"); return settle(500);`);
-    // Not there yet: 3–5 frames blank. The torn page leaves w1 with the app's batch (~80 ms after the drop); the next
-    // page, hidden until then, has no frame to show, and Chrome draws its first one only ~90 ms later, while the new
-    // window is being built on the main thread. Should become ≤ 1 (the next tab kept painting while a tab is dragged
-    // out); this guards against it getting worse.
-    assert.ok(blank.length <= 6, `${blank.length} frames of w1's page blank`);
+    // Not there yet: 1–4 frames blank (was 3–5). The next tab now paints through the drag and shows in the batch that
+    // takes the torn tab away (it showed an empty card for 2 more frames). Left: the torn page draws only its
+    // background in w1 for 1–3 frames before that batch lands, while the new window is built. This guards against it
+    // getting worse.
+    assert.ok(blank.length <= 5, `${blank.length} frames of w1's page blank`);
   });
 
   await check("a window's last tab dropped onto another window: the tab keeps its page, the emptied window goes at once", async () => {
