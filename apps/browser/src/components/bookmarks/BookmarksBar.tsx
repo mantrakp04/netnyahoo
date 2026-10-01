@@ -1,6 +1,6 @@
 import { cleanUrl } from "@netnyahoo/core";
 import { ContextMenuArea, copyText, MouseArea, prompt, showMenu, Symbol, type MenuItem } from "@netnyahoo/shell";
-import { useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View, type LayoutRectangle } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { folderChildren, folderLinks } from "../../store/bookmarks";
@@ -18,12 +18,13 @@ export const BOOKMARKS_BAR_HEIGHT = 30;
 const ITEM_HEIGHT = 24;
 const OVERFLOW_WIDTH = 28;
 
-export function BookmarksBar({ tabId, placeholder }: { tabId: string; placeholder?: boolean }) {
+// Memoized: every tab's pane renders one, and panes re-render on layout changes (sidebar, splits).
+export const BookmarksBar = memo(function BookmarksBar({ tabId, placeholder }: { tabId: string; placeholder?: boolean }) {
   const windowId = useWindowId();
   const shown = useBookmarksBarShown(tabId);
   if (!shown) return null;
   return placeholder ? <View style={{ height: BOOKMARKS_BAR_HEIGHT }} /> : <Bar windowId={windowId} />;
-}
+});
 
 export function useBookmarksBarShown(tabId: string): boolean {
   return useBrowser((s) => {

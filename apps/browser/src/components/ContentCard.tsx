@@ -163,7 +163,7 @@ export function ContentCard() {
               fullWidth={size.width}
               fullHeight={size.height}
               focused={tabId === activeId}
-              split={split}
+              inActiveSplit={!!split?.tabIds.includes(tabId)}
               fullscreen={tabId === fullscreenTab}
               geometry={geometryFor(rect)}
               toolbar={!addressInSidebar && !small}
@@ -188,7 +188,7 @@ const TabPane = memo(function TabPane({
   fullWidth,
   fullHeight,
   focused,
-  split,
+  inActiveSplit,
   fullscreen,
   geometry,
   toolbar,
@@ -202,7 +202,8 @@ const TabPane = memo(function TabPane({
   fullWidth: number;
   fullHeight: number;
   focused: boolean;
-  split: SplitView | undefined;
+  // Whether the window's shown split holds this pane (a boolean, so a split change re-renders only its panes).
+  inActiveSplit: boolean;
   fullscreen: boolean;
   geometry: ToolbarGeometry;
   toolbar: boolean;
@@ -217,7 +218,7 @@ const TabPane = memo(function TabPane({
   const popover = usePopover(tabId);
   const newTabShown = usePage(tabId, (p) => !!p.newTabShown);
   const inSomeSplit = useBrowser((s) => !!warm && !!splitOf(s, tabId));
-  const inSplit = visible ? !!split?.tabIds.includes(tabId) : inSomeSplit;
+  const inSplit = visible ? inActiveSplit : inSomeSplit;
   const frame = rect ?? warm ?? { x: 0, y: 0, width: fullWidth, height: fullHeight };
   useEffect(() => {
     if (visible && isNewTab && !mounted) patchPage(tabId, { wasNewTab: true });
@@ -278,7 +279,8 @@ const isBlank = (url: string) => !url || url === "about:blank";
 const pageKey = (url: string) => url.replace(/#.*$/, "");
 const hostOf = (url: string) => url.match(/^[a-z][\w+.-]*:\/\/([^/?#]*)/i)?.[1]?.toLowerCase() ?? "";
 
-function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean; warm: boolean }) {
+// Memoized: its pane re-renders on layout changes, and the web view's props only change with these.
+const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean; warm: boolean }) {
   const theme = useTheme();
   const navigation = useBrowser((s) => s.tabs[tabId]?.navigation);
   const adoptId = useBrowser((s) => s.tabs[tabId]?.adoptId);
@@ -437,4 +439,4 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
       }}
     />
   );
-}
+});

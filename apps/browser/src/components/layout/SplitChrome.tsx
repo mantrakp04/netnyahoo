@@ -1,5 +1,5 @@
 import { Surface, Symbol, VisualEffect } from "@netnyahoo/shell";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 import { hex, useTheme } from "../../lib/theme";
 import { withAlpha } from "../sidebar/tokens";
@@ -242,7 +242,8 @@ function DropZone({ pane, side, shown, stage, pointerX, onHidden }: { pane: Rect
   );
 }
 
-export function SplitToast({ windowId }: { windowId: string }) {
+// Memoized: the content card re-renders on every tab switch.
+export const SplitToast = memo(function SplitToast({ windowId }: { windowId: string }) {
   const theme = useTheme();
   const toast = useToasts((s) => s.toasts[windowId] ?? null);
   const appear = useRef(new Animated.Value(0)).current;
@@ -304,7 +305,7 @@ export function SplitToast({ windowId }: { windowId: string }) {
       </Animated.View>
     </View>
   );
-}
+});
 
 function ToastAction({ title, onPress }: { title: string; onPress(): void }) {
   const theme = useTheme();

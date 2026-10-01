@@ -1,8 +1,9 @@
 import { Surface } from "@netnyahoo/shell";
 import { hex, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
-import { useActiveTab, useWindowId, useWindowUi } from "../store/hooks";
-import { useUrlAnchor } from "./layout/windowLayout";
+import { useWindowId, useWindowUi } from "../store/hooks";
+import { activeTabId } from "../store/model";
+import { useUrlAnchors } from "./layout/windowLayout";
 import { Omnibox } from "./Omnibox";
 
 // Dia: 37.4pt offset, 5.5pt rise, 888pt max, 12pt margin/radius.
@@ -19,9 +20,10 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const { panel } = useWindowUi();
-  const active = useActiveTab();
-  const anchor = useUrlAnchor(windowId);
-  if (!panel.open || !active || !anchor) return null;
+  // The active tab's id, and only while the panel is open: a closed panel doesn't re-render on tab switches.
+  const activeId = useBrowser((s) => (panel.open ? activeTabId(s, windowId) : undefined));
+  const anchor = useUrlAnchors((s) => (panel.open ? s[windowId] : undefined));
+  if (!panel.open || !activeId || !anchor) return null;
 
   const room = (left: number, fallback: number) => (windowWidth > 0 ? windowWidth - left - WINDOW_MARGIN : fallback);
   const onCancel = () => useBrowser.getState().closePanel(windowId);
@@ -40,7 +42,7 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
         shadowOffset={[0, 10]}
         style={{ position: "absolute", top: anchor.top, left: anchor.left, width }}
       >
-        <Omnibox key={active.id} variant="sidebar" tabId={active.id} initialText={panel.initialText} onCancel={onCancel} />
+        <Omnibox key={activeId} variant="sidebar" tabId={activeId} initialText={panel.initialText} onCancel={onCancel} />
       </Surface>
     );
   }
@@ -61,7 +63,7 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
       shadowOffset={[0, 10]}
       style={{ position: "absolute", top, left, width }}
     >
-      <Omnibox key={active.id} variant="panel" tabId={active.id} initialText={panel.initialText} onCancel={onCancel} />
+      <Omnibox key={activeId} variant="panel" tabId={activeId} initialText={panel.initialText} onCancel={onCancel} />
     </Surface>
   );
 }
