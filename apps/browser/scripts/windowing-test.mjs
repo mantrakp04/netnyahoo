@@ -1,5 +1,6 @@
-// Windowing seen frame by frame (the owner's 0.2.22 RC recording, rec1522): tab switches, a new window, and a
-// window's last tab dragged onto another window, recorded off the screen at 60 fps in a hidden instance.
+// Windowing seen frame by frame (the owner's 0.2.22 RC recording, rec1522): tab switches, a new window, a tab torn
+// off into a new window, and a window's last tab dragged onto another window, recorded off the screen at 60 fps in a
+// hidden instance.
 //
 //   node apps/browser/scripts/windowing-test.mjs <Debug Netnyahoo.app> [--port=9483] [--keep-data]
 //
@@ -215,6 +216,38 @@ try {
     await run(`st().closeWindow("${created}"); return settle(500);`);
   });
 
+  await check("a tab torn off into a new window: its old window shows its next tab soon", async () => {
+    if (!canRecord) return "no screen";
+    const w1 = await run(`return st().windows.w1.frame;`);
+    // g1's row in w1's tab list: the row a click there activates.
+    let row = null;
+    for (let y = 60; y <= 200 && row === null; y += 12) {
+      await run(`return act("w1", "click:60,${y}").then(() => settle(250));`);
+      if ((await run(`return st().windows.w1.activeTabIds.default;`)) === "g1") row = y;
+    }
+    assert.ok(row !== null, "g1's row in w1's tab list");
+    // Each page painted once, the torn one shown last.
+    await run(`nn.actions.switchToTab("b1"); return settle(800).then(() => { nn.actions.switchToTab("g1"); return settle(1200); });`);
+    const ids = await run(`return Object.keys(st().windows);`);
+    // Out of w1 to the right, below w2, so the new window and the dragged card stay clear of w1's page.
+    const target = [w1[2] + 300, w1[3] - 50];
+    const path = `60,${row};60,${row + 20};${w1[2] - 100},${row + 60};${target.join(",")};${target[0] + 2},${target[1] + 2};${target.join(",")}`;
+    const frames = await record(5, () => run(`return act("w1", "drag:${path}").then(() => settle(${6 * 12 * 16 + 1500}));`));
+    const torn = (await run(`return Object.values(st().windows).map((w) => [w.id, w.tabIds]);`)).find(([id]) => !ids.includes(id));
+    assert.ok(torn && torn[1].includes("g1"), "g1 in a new window");
+    assert.ok(frames, "no frames");
+    const page = regionOf(w1, H, { left: 200, top: 56, right: 16, bottom: 16 });
+    const crops = frames.map((f) => crop(f, page));
+    const sd = (c) => { const m = mean(c); return Math.sqrt(c.reduce((s, v) => s + (v - m) ** 2, 0) / c.length); };
+    const blank = crops.filter((c) => sd(c) < 3);
+    await run(`st().closeWindow("${torn[0]}"); return settle(500);`);
+    // Not there yet: 3–5 frames blank. The torn page leaves w1 with the app's batch (~80 ms after the drop); the next
+    // page, hidden until then, has no frame to show, and Chrome draws its first one only ~90 ms later, while the new
+    // window is being built on the main thread. Should become ≤ 1 (the next tab kept painting while a tab is dragged
+    // out); this guards against it getting worse.
+    assert.ok(blank.length <= 6, `${blank.length} frames of w1's page blank`);
+  });
+
   await check("a window's last tab dropped onto another window: the tab keeps its page, the emptied window goes at once", async () => {
     const strips = () => run(`return C.tabStrips().then((tx) => tx.strips.flatMap((s) => s.tabs).filter((t) => t.key === "m1").map((t) => t.browser));`);
     const [browser] = await strips();
@@ -233,14 +266,13 @@ try {
     await sleep(800);
     assert.deepEqual(await strips(), [browser], "the same live tab, not a new one");
     if (!frames) return "no screen";
-    // w2's place shows w2 as it was, then nothing: not w2 emptied, nor fading out. (Its React content can still go a
-    // frame or two before the window: the close comes after the app's batch. 0.2.22 RC: ~5 empty frames, then a
-    // 0.2 s fade.)
+    // w2's place shows w2 as it was, then nothing: not w2 emptied, nor fading out. (0.2.22 RC: ~5 empty frames, then a
+    // 0.2 s fade; then 2–4 frames of w2 without its page, its ordering out waiting for the end of the turn.)
     const r = regionOf(w2, H, { left: 8, top: 8, right: 8, bottom: 8 });
     const crops = frames.map((f) => crop(f, r));
     const was = crops[0];
     const between = crops.filter((c) => diff(c, was) > 4 && mean(c) > 3);
-    assert.ok(between.length <= 2, `${between.length} frames of w2 neither as it was nor gone`);
+    assert.ok(between.length <= 1, `${between.length} frames of w2 neither as it was nor gone`);
     // w1's page goes from its own page to the moved one; at most a frame blank while Chrome draws it in its new
     // window (0.2.22 RC: ~280 ms, the page loading again).
     const page = regionOf(w1, H, { left: 200, top: 56, right: 16, bottom: 16 });

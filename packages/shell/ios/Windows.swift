@@ -265,6 +265,9 @@ final class WindowManager: NSObject, NSWindowDelegate {
       // out), which showed an empty window with its traffic lights for a few frames (rec1522, 21 s).
       window.animationBehavior = .none
       window.orderOut(nil)
+      // The ordering reaches the screen with a Core Animation commit: without one now it waited for the end of the
+      // turn, after its page had left for the other window, which drew it emptied for 2–4 frames.
+      CATransaction.flush()
       if let waiting = unrevealed.removeValue(forKey: id) { waiting.forEach { $0() } }
       lightsCenters[id] = nil
       auxKinds[id] = nil
