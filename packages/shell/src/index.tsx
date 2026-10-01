@@ -1,5 +1,4 @@
-import { requireNativeModule, requireNativeViewManager, requireOptionalNativeModule, type EventSubscription } from "expo-modules-core";
-import type { ComponentType } from "react";
+import { requireNativeModule, requireNativeViewManager, type EventSubscription } from "expo-modules-core";
 import type { ViewProps } from "react-native";
 
 export * from "./system";
@@ -210,24 +209,24 @@ const Shell = requireNativeModule<{
   addListener<K extends keyof ShellEvents>(name: K, listener: ShellEvents[K]): EventSubscription;
   showMenu(items: MenuItem[]): Promise<string | null>;
   copyText(text: string): void;
-  setSwitcherCapture?(active: boolean): Promise<void>;
+  setSwitcherCapture(active: boolean): Promise<void>;
   startDictation(): void;
   pickFiles(): Promise<string[]>;
   readDocument(name: string): string | null;
   writeDocument(name: string, contents: string): void;
-  saveDocument?(name: string, contents: string): Promise<void>;
+  saveDocument(name: string, contents: string): Promise<void>;
   openWindow(id: string, options: OpenWindowOptions): Promise<void>;
   closeWindow(id: string): Promise<void>;
-  setWindowProfile?(id: string, profile: string, neighbours: string[]): Promise<void>;
+  setWindowProfile(id: string, profile: string, neighbours: string[]): Promise<void>;
   focusWindow(id: string): Promise<void>;
-  setTrafficLightsCenter?(id: string, center: [number, number] | null): Promise<void>;
+  setTrafficLightsCenter(id: string, center: [number, number] | null): Promise<void>;
   setWindowTitle(id: string, title: string): Promise<void>;
   windowIds(): Promise<string[]>;
   keyWindowId(): Promise<string | null>;
   setAppearance(mode: "auto" | "light" | "dark"): Promise<void>;
   isDarkAppearance(): Promise<boolean>;
   setMenuState(state: MenuState | Omit<MenuState, MenuBookmarkKey>): Promise<void>;
-  setMenuBookmarks?(bookmarks: Pick<MenuState, MenuBookmarkKey>): Promise<void>;
+  setMenuBookmarks(bookmarks: Pick<MenuState, MenuBookmarkKey>): Promise<void>;
   replyToTerminate(ok: boolean): Promise<void>;
   confirm(options: ConfirmOptions): Promise<{ confirmed: boolean; suppressed: boolean }>;
   prompt(options: PromptOptions): Promise<string | null>;
@@ -236,11 +235,10 @@ const Shell = requireNativeModule<{
 export const readDocument = (name: string) => Shell.readDocument(name);
 export const writeDocument = (name: string, contents: string) => Shell.writeDocument(name, contents);
 /** Resolves once the document is on disk (writeDocument returns before), rejects if it can't be written. */
-export const saveDocument = async (name: string, contents: string) =>
-  Shell.saveDocument ? Shell.saveDocument(name, contents) : Shell.writeDocument(name, contents);
+export const saveDocument = (name: string, contents: string) => Shell.saveDocument(name, contents);
 
 export const startDictation = () => Shell.startDictation();
-export const setSwitcherCapture = (active: boolean) => void Shell.setSwitcherCapture?.(active);
+export const setSwitcherCapture = (active: boolean) => void Shell.setSwitcherCapture(active);
 export const pickFiles = () => Shell.pickFiles();
 
 export function copyText(text: string) {
@@ -253,21 +251,19 @@ export function showMenu(items: MenuItem[]): Promise<string | null> {
 
 export const openWindow = (id: string, options: OpenWindowOptions = {}) => Shell.openWindow(id, options);
 export const setWindowProfile = (id: string, profile: string, neighbours: string[]) =>
-  Shell.setWindowProfile?.(id, profile, neighbours) ?? Promise.resolve();
+  Shell.setWindowProfile(id, profile, neighbours);
 
 export type WindowProfileProps = ViewProps & {
   profile: string;
   neighbours: string[];
 };
-export const WindowProfile: ComponentType<WindowProfileProps> | null = requireOptionalNativeModule("NetnyahooWindowProfile")
-  ? requireNativeViewManager<WindowProfileProps>("NetnyahooWindowProfile")
-  : null;
+export const WindowProfile = requireNativeViewManager<WindowProfileProps>("NetnyahooWindowProfile");
 
 export const closeWindow = (id: string) => Shell.closeWindow(id);
 export const focusWindow = (id: string) => Shell.focusWindow(id);
 export const setWindowTitle = (id: string, title: string) => Shell.setWindowTitle(id, title);
 export const setTrafficLightsCenter = (id: string, center: [number, number] | null) =>
-  Shell.setTrafficLightsCenter?.(id, center) ?? Promise.resolve();
+  Shell.setTrafficLightsCenter(id, center);
 export const windowIds = () => Shell.windowIds();
 export const keyWindowId = () => Shell.keyWindowId();
 
@@ -278,11 +274,9 @@ export const setMenuState = (state: MenuState) => Shell.setMenuState(state);
 type MenuBookmarkKey = "bookmarkFolders" | "recentBookmarks" | "bookmarksBar" | "otherBookmarks";
 /**
  * Sends the menu state with the bookmark lists only when `bookmarksChanged`, so the native menus rebuild (and the
- * bridge carries) thousands of bookmarks only when they change. Native builds without the separate channel get
- * the whole state every time.
+ * bridge carries) thousands of bookmarks only when they change.
  */
 export function setMenuStateParts(state: MenuState, bookmarksChanged: boolean) {
-  if (!Shell.setMenuBookmarks) return Shell.setMenuState(state);
   const { bookmarkFolders, recentBookmarks, bookmarksBar, otherBookmarks, ...rest } = state;
   if (bookmarksChanged) void Shell.setMenuBookmarks({ bookmarkFolders, recentBookmarks, bookmarksBar, otherBookmarks });
   return Shell.setMenuState(rest);
@@ -319,9 +313,7 @@ export type FadeLabelProps = ViewProps & {
 
 export const FadeLabel = requireNativeViewManager<FadeLabelProps>("NetnyahooFadeLabel");
 
-export const ActivitySpinner: ComponentType<ViewProps> = requireOptionalNativeModule("NetnyahooActivitySpinner")
-  ? requireNativeViewManager<ViewProps>("NetnyahooActivitySpinner")
-  : () => null;
+export const ActivitySpinner = requireNativeViewManager<ViewProps>("NetnyahooActivitySpinner");
 
 export type ContextMenuAreaProps = ViewProps & {
   onContextMenu?: () => void;
@@ -384,26 +376,20 @@ export type GlassEffectProps = ViewProps & {
   dark?: boolean;
 };
 
-const GlassEffectModule = requireOptionalNativeModule<{ isLiquidGlass(): boolean }>("NetnyahooGlassEffect");
+const GlassEffectModule = requireNativeModule<{ isLiquidGlass(): boolean }>("NetnyahooGlassEffect");
 
-export const isLiquidGlass = (): boolean => GlassEffectModule?.isLiquidGlass() ?? false;
+export const isLiquidGlass = (): boolean => GlassEffectModule.isLiquidGlass();
 
-export const GlassEffect: ComponentType<GlassEffectProps> = GlassEffectModule
-  ? requireNativeViewManager<GlassEffectProps>("NetnyahooGlassEffect")
-  : ({ cornerRadius, style }: GlassEffectProps) => <VisualEffect material="sidebar" blendingMode="behindWindow" cornerRadius={cornerRadius} style={style} />;
+export const GlassEffect = requireNativeViewManager<GlassEffectProps>("NetnyahooGlassEffect");
 
 export type IconTheme = { kind: "blur" } | { kind: "template"; fill: string; stroke?: string };
 
-const DockSelectionModule = requireOptionalNativeModule<{
+const DockSelectionModule = requireNativeModule<{
   iconTheme(uri: string | null, emoji: string | null): Promise<IconTheme | null>;
 }>("NetnyahooDockSelection");
 
-export const hasDockSelection = !!DockSelectionModule;
-
 export const iconTheme = (source: { uri: string } | { emoji: string }): Promise<IconTheme | null> =>
-  DockSelectionModule
-    ? DockSelectionModule.iconTheme("uri" in source ? source.uri : null, "emoji" in source ? source.emoji : null)
-    : Promise.resolve(null);
+  DockSelectionModule.iconTheme("uri" in source ? source.uri : null, "emoji" in source ? source.emoji : null);
 
 export type DockSelectionProps = ViewProps & {
   image?: string;
@@ -418,19 +404,16 @@ export type DockSelectionProps = ViewProps & {
   glass?: boolean;
 };
 
-export const DockSelection: ComponentType<DockSelectionProps> = DockSelectionModule
-  ? requireNativeViewManager<DockSelectionProps>("NetnyahooDockSelection")
-  : () => null;
+export const DockSelection = requireNativeViewManager<DockSelectionProps>("NetnyahooDockSelection");
 
-const InlineCompletionModule = requireOptionalNativeModule<{
+const InlineCompletionModule = requireNativeModule<{
   complete(tag: number, typed: string, completion: string): Promise<InlineWrite>;
 }>("NetnyahooInlineCompletion");
 
 export type InlineWrite = 0 | 1 | 2;
 
-export const completeInline = InlineCompletionModule
-  ? (tag: number, typed: string, completion: string) => InlineCompletionModule.complete(tag, typed, completion)
-  : null;
+export const completeInline = (tag: number, typed: string, completion: string) =>
+  InlineCompletionModule.complete(tag, typed, completion);
 
 type TranslationModule = {
   readonly available: boolean;
@@ -443,6 +426,7 @@ type TranslationModule = {
   translate(source: string, target: string, texts: string[]): Promise<string[]>;
   translateBlocks(source: string, target: string, blocks: string[][]): Promise<(string[] | null)[]>;
 };
-const TranslationNative = requireOptionalNativeModule<TranslationModule>("NetnyahooTranslate");
+const TranslationNative = requireNativeModule<TranslationModule>("NetnyahooTranslate");
 
-export const translation: Omit<TranslationModule, "available"> | null = TranslationNative?.available ? TranslationNative : null;
+// Null before macOS 26, which has no translation API for apps.
+export const translation: Omit<TranslationModule, "available"> | null = TranslationNative.available ? TranslationNative : null;

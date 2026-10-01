@@ -1,4 +1,4 @@
-import { hasDockSelection, iconTheme, type IconTheme } from "@netnyahoo/shell";
+import { iconTheme, type IconTheme } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
 import { useAppearanceDark, useFavicon, useFaviconTheme } from "./favicons";
 
@@ -13,7 +13,7 @@ export function useTileTheme(url: string, favicon: string | null | undefined, cu
   const pageTheme = useFaviconTheme(customIcon ? "" : url, favicon, profileId);
   const [emojiTheme, setEmojiTheme] = useState<{ emoji: string; theme: IconTheme | null } | null>(null);
   useEffect(() => {
-    if (!emoji || !hasDockSelection) return;
+    if (!emoji) return;
     let live = true;
     let pending = emojiThemes.get(emoji);
     if (!pending) emojiThemes.set(emoji, (pending = iconTheme({ emoji }).catch(() => null)));

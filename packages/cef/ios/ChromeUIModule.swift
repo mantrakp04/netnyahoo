@@ -17,8 +17,6 @@ public class ChromeUIModule: Module {
       }
     }
 
-    AsyncFunction("available") { NNChromeSurfaces.available }.runOnQueue(.main)
-
     AsyncFunction("selectDevice") { (id: Int, index: Int) in NNChromeSurfaces.selectDevice(id, index: index) }.runOnQueue(.main)
     AsyncFunction("cancelDeviceChooser") { (id: Int) in NNChromeSurfaces.cancelDeviceChooser(id) }.runOnQueue(.main)
     AsyncFunction("refreshDeviceChooser") { (id: Int) in NNChromeSurfaces.refreshDeviceChooser(id) }.runOnQueue(.main)

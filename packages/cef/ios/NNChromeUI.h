@@ -2,13 +2,8 @@
 
 #import "NNCefInternal.h"
 
-#if NN_CHROME_TABS && defined(CEF_NN_CHROME_UI)
-#define NN_CHROME_UI 1
 #include "include/cef_chrome_ui.h"
 #include "include/cef_media_router.h"
-#else
-#define NN_CHROME_UI 0
-#endif
 
 namespace nn {
 class Client;

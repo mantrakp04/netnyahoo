@@ -7,13 +7,9 @@ export function useInlineCompletion(input: RefObject<TextInput | null>, typed: s
   const [inline, setInline] = useState<Inline | null>(null);
   const pending = useRef<PendingInline[]>([]);
   const heard = useRef(typed);
-  const shown = !completeInline ? wanted : inline?.typed === typed ? inline.completion : "";
+  const shown = inline?.typed === typed ? inline.completion : "";
 
   useLayoutEffect(() => {
-    if (!completeInline) {
-      if (shown) input.current?.setSelection(typed.length, typed.length + shown.length);
-      return;
-    }
     if (typed !== heard.current) {
       heard.current = typed;
       pending.current = pending.current.map((p) => ({ ...p, orphaned: true }));

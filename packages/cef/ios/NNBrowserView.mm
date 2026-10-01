@@ -7,9 +7,7 @@
 
 #include "include/cef_command_ids.h"
 #include "include/cef_parser.h"
-#if NN_TAB_CAPTURE
 #include "include/cef_media_capture.h"
-#endif
 
 using namespace nn;
 
@@ -227,7 +225,6 @@ NSString *const kExitPictureInPictureScript =
 }
 
 - (void)layoutDockedDevTools {
-#if NN_DOCKED_DEVTOOLS
   NSView *page = _browser ? host::ContentsView(_browser) : nil;
   CefRect bounds;
   NSView *devtools =
@@ -252,7 +249,6 @@ NSString *const kExitPictureInPictureScript =
     page.frame = self.pageFrame;
     page.hidden = !self.paints || (devtools && NSIsEmptyRect(page.frame));
   }
-#endif
 }
 
 - (void)dropDockedDevTools {
@@ -426,9 +422,7 @@ NSString *const kExitPictureInPictureScript =
   browserView.hidden = !self.paints;
   [self keepPageFrame:browserView];
   if (_muted) _client->SetUserMuted(true);
-#if NN_TAB_DISCARD
   _chromeDiscarded = host::IsChromeTab(browser) && browser->GetHost()->IsTabDiscarded();
-#endif
   browser->GetHost()->WasResized();
   if (_openedId && _pendingURL) {
     [NNCef forgetOpenedURL:_openedId];
@@ -696,7 +690,6 @@ NSString *const kExitPictureInPictureScript =
 
 - (void)showDevToolsPanel:(NSString *)panel {
   if (!_browser) return;
-#if NN_CHROME_TABS
   if (host::IsChromeTab(_browser)) {
     if ([panel isEqualToString:@"toggle"] && nn::CloseKeyDevToolsWindow()) return;
     int command = [panel isEqualToString:@"console"]   ? IDC_DEV_TOOLS_CONSOLE
@@ -707,7 +700,6 @@ NSString *const kExitPictureInPictureScript =
     _browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
     return;
   }
-#endif
   if ([panel isEqualToString:@"toggle"]) {
     if (nn::CloseKeyDevToolsWindow()) return;
     panel = nil;
@@ -716,7 +708,6 @@ NSString *const kExitPictureInPictureScript =
 }
 
 - (void)runPageCommand:(NSString *)name {
-#if NN_CHROME_TABS
   int command = [name isEqualToString:@"savePage"]        ? IDC_SAVE_PAGE
                 : [name isEqualToString:@"systemPrint"]   ? IDC_BASIC_PRINT
                 : [name isEqualToString:@"caretBrowsing"] ? IDC_CARET_BROWSING_TOGGLE
@@ -724,7 +715,6 @@ NSString *const kExitPictureInPictureScript =
   if (!command || !_browser || !host::IsChromeTab(_browser)) return;
   _browser->GetHost()->ActivateTab();
   _browser->GetHost()->ExecuteChromeCommand(command, CEF_WOD_CURRENT_TAB);
-#endif
 }
 
 - (void)executeJavaScript:(NSString *)code {
@@ -808,11 +798,9 @@ NSString *const kExitPictureInPictureScript =
 }
 
 - (void)setTabStripIndex:(NSInteger)index pinned:(BOOL)pinned {
-#if NN_TAB_STRIP
   if (!host::IsChromeTab(_browser)) return;
   _browser->GetHost()->SetTabPinned(pinned);
   _browser->GetHost()->SetTabIndex((int)index);
-#endif
 }
 
 - (NSString *)executeExtensionAction:(NSString *)extensionId {
@@ -826,12 +814,8 @@ NSString *const kExitPictureInPictureScript =
 }
 
 - (NSString *)mediaCaptureSourceId {
-#if NN_TAB_CAPTURE
   NSString *sourceId = _browser ? ToNS(CefGetMediaCaptureSourceId(_browser)) : nil;
   return sourceId.length ? sourceId : nil;
-#else
-  return nil;
-#endif
 }
 
 // MARK: Notifications
@@ -859,12 +843,10 @@ NSString *const kExitPictureInPictureScript =
 
 - (BOOL)discard:(BOOL)unload {
   if (!_browser || _discardedURL) return _discardedURL != nil;
-#if NN_TAB_DISCARD
   if (!unload && host::IsChromeTab(_browser)) {
     if (!_chromeDiscarded) _browser->GetHost()->DiscardTab();
     return NO;
   }
-#endif
   NSString *url = _client->URL();
   [self closeBrowser];
   _discardedURL = url.length ? url : @"about:blank";
@@ -894,10 +876,8 @@ NSString *const kExitPictureInPictureScript =
   }
   _adoptId = nil;
   if (_browser && TransferRequested(_transferKey)) return [self parkBrowserForTransfer];
-#if NN_TAB_HISTORY
   if (_browser && host::IsChromeTab(_browser) && !ShuttingDown())
     NoteClosedTabState(_transferKey, ToNS(_browser->GetHost()->GetNavigationState()));
-#endif
   if (_browser) {
     _closingByRequest = YES;
     host::NoteClosingTab(_browser);

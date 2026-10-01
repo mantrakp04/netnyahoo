@@ -121,10 +121,10 @@ export type TabStripPlace = {
   index: number;
   active: boolean;
   pinned: boolean;
-  /** Chrome made the tab its active one with this report. Older native builds leave it (and `byApp`) out. */
-  activated?: boolean;
+  /** Chrome made the tab its active one with this report. */
+  activated: boolean;
   /** The app's own request (showing or moving a tab) caused the report. */
-  byApp?: boolean;
+  byApp: boolean;
 };
 export type PasswordPromptAnswer = "save" | "update" | "never" | "nope" | "dismiss";
 export type ExtensionActionResult = "none" | "popup" | "sidePanel";
@@ -189,7 +189,7 @@ export type WebViewHandle = {
   find(text: string, forward: boolean, findNext: boolean): Promise<void>;
   stopFinding(clearSelection: boolean): Promise<void>;
   print(): Promise<void>;
-  runPageCommand?(name: "savePage" | "systemPrint" | "caretBrowsing"): Promise<void>;
+  runPageCommand(name: "savePage" | "systemPrint" | "caretBrowsing"): Promise<void>;
   showDevTools(panel?: string): Promise<void>;
   executeJavaScript(code: string): Promise<void>;
   evaluate<T = unknown>(code: string): Promise<T | null>;
@@ -303,7 +303,7 @@ type NativeHandle = Omit<
   evaluate(code: string): Promise<string | null>;
   downloadFavicon(url: string, name: string | null): Promise<FaviconImage | null>;
   loadUrl(url: string, userInitiated?: boolean): Promise<void>;
-  loadOpenedUrl?(openedId: number, url: string): Promise<void>;
+  loadOpenedUrl(openedId: number, url: string): Promise<void>;
   resolvePasswordPrompt(answer: string, username: string | null, password: string | null): Promise<void>;
   discard(unload: boolean): Promise<boolean>;
 };
@@ -337,7 +337,7 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
     return {
       loadUrl: (url, options) =>
         call(undefined, (n) =>
-          options?.opened && typeof n.loadOpenedUrl === "function"
+          options?.opened
             ? n.loadOpenedUrl(options.opened, toEngine(url))
             : n.loadUrl(toEngine(url), options?.userInitiated ?? false),
         ),
@@ -353,8 +353,7 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
       find: (text, forward, findNext) => call(undefined, (n) => n.find(text, forward, findNext)),
       stopFinding: (clear) => call(undefined, (n) => n.stopFinding(clear)),
       print: () => call(undefined, (n) => n.print()),
-      runPageCommand: (name) =>
-        call(undefined, async (n) => void (typeof n.runPageCommand === "function" && (await n.runPageCommand(name)))),
+      runPageCommand: (name) => call(undefined, (n) => n.runPageCommand(name)),
       showDevTools: (panel) => call(undefined, (n) => n.showDevTools(panel)),
       executeJavaScript: (code) => call(undefined, (n) => n.executeJavaScript(code)),
       evaluate: async <T,>(code: string) => {

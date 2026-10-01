@@ -86,8 +86,9 @@ What's left per switch:
 - `MoveRoot`: 15–25 ms of main thread (`_setWindow:` over the whole view tree, then a CA flush that redisplays layers).
 - Applying the switch's view updates: about 40 ms.
 - Chrome showing the tab: roughly 60 ms from the swap to its first frame on screen.
-- The pager animates from JS at 60 fps on a 120 Hz display. The native driver would give it 120 fps and keep it
-  moving through JS work.
+- The pager no longer animates from JS: the native controller (`NNPager`, `SwipeModule.swift`) tracks, settles
+  and selects, and writes the position through the native driver; JS only commits the selection (`layout/profilePager.ts`; the JS pager
+  went on 2026-10-01).
 
 ## Summary
 

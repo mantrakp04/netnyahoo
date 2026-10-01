@@ -5,6 +5,9 @@ import ExpoModulesCore
 public class AppModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooApp")
+    // The JS/native contract: NATIVE_API_VERSION in apps/browser/src/nativeApi.tsx, which a JS bundle checks before it
+    // loads the app. Bump both together whenever JS starts needing native code that older builds lack.
+    Constant("apiVersion") { () -> Int in 1 }
     Events("onNotificationResponse", "onScriptCommand")
 
     OnCreate {

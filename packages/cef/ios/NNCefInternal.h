@@ -12,88 +12,26 @@
 #include "include/cef_request_context.h"
 #include "include/views/cef_window.h"
 
-#if __has_include("include/cef_media_capture.h")
-#define NN_TAB_CAPTURE 1
-#else
-#define NN_TAB_CAPTURE 0
+// The engine is our own CEF build (packages/cef/patches, docs/cef-source-build.md), never stock CEF. Its API
+// additions are marked in cef_netnyahoo.h; this fails the build at once against a distribution that lacks one.
+#if !__has_include("include/cef_netnyahoo.h")
+#error "packages/cef/vendor/cef isn't our CEF build: run packages/cef/scripts/setup.sh (docs/cef-source-build.md)"
 #endif
-
-#ifndef NN_CHROME_TABS
-#define NN_CHROME_TABS 1
-#endif
-
-#if NN_CHROME_TABS && __has_include("include/cef_netnyahoo.h")
 #include "include/cef_netnyahoo.h"
-#endif
-#if NN_CHROME_TABS && !defined(CEF_NN_CHROME_TABS)
-#error "NN_CHROME_TABS needs our CEF build (packages/cef/scripts/setup.sh); against stock CEF (CEF_PREBUILT=1) build with NN_CHROME_TABS=0"
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_EXTENSION_ACTION)
-#define NN_EXTENSION_ACTION 1
-#else
-#define NN_EXTENSION_ACTION 0
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_PASSWORD_PROMPT)
-#define NN_PASSWORD_PROMPT 1
-#else
-#define NN_PASSWORD_PROMPT 0
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_TAB_STRIP)
-#define NN_TAB_STRIP 1
-#else
-#define NN_TAB_STRIP 0
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_HIDDEN_BROWSER)
-#define NN_HIDDEN_BROWSER 1
-#else
-#define NN_HIDDEN_BROWSER 0
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_INSTALL_PROMPT)
-#define NN_INSTALL_PROMPT 1
-#else
-#define NN_INSTALL_PROMPT 0
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_TAB_HISTORY)
-#define NN_TAB_HISTORY 1
-#else
-#define NN_TAB_HISTORY 0
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_TAB_DISCARD)
-#define NN_TAB_DISCARD 1
-#else
-#define NN_TAB_DISCARD 0
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_BROWSING_DATA)
-#define NN_BROWSING_DATA 1
-#else
-#define NN_BROWSING_DATA 0
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_CLIENT_WINDOW)
-#define NN_CLIENT_WINDOW 1
-#else
-#define NN_CLIENT_WINDOW 0
-#endif
-#if NN_CLIENT_WINDOW && defined(CEF_NN_TRANSLUCENT_WINDOW)
-#define NN_TRANSLUCENT_WINDOW 1
-#else
-#define NN_TRANSLUCENT_WINDOW 0
-#endif
-#if NN_CLIENT_WINDOW && defined(CEF_NN_DOCKED_DEVTOOLS)
-#define NN_DOCKED_DEVTOOLS 1
-#else
-#define NN_DOCKED_DEVTOOLS 0
-#endif
-#if NN_CHROME_TABS && defined(CEF_NN_POPUP_TABS)
-#define NN_POPUP_TABS 1
-#else
-#define NN_POPUP_TABS 0
+#if !defined(CEF_NN_CHROME_TABS) || !defined(CEF_NN_EXTENSION_ACTION) || !defined(CEF_NN_PASSWORD_PROMPT) || \
+    !defined(CEF_NN_TAB_STRIP) || !defined(CEF_NN_HIDDEN_BROWSER) || !defined(CEF_NN_INSTALL_PROMPT) || \
+    !defined(CEF_NN_TAB_HISTORY) || !defined(CEF_NN_TAB_DISCARD) || !defined(CEF_NN_BROWSING_DATA) || \
+    !defined(CEF_NN_CLIENT_WINDOW) || !defined(CEF_NN_TRANSLUCENT_WINDOW) || !defined(CEF_NN_DOCKED_DEVTOOLS) || \
+    !defined(CEF_NN_POPUP_TABS) || !defined(CEF_NN_TAB_CAPTURE) || !defined(CEF_NN_CHROME_UI) || \
+    !defined(CEF_NN_CAPTURE_STOP) || !defined(CEF_NN_AUTOFILL_TRIGGER) || !defined(CEF_NN_MEDIA_REQUEST_SOURCE) || \
+    !defined(CEF_NN_QUIET_UNINSTALL) || !defined(CEF_NN_OPEN_URL_PARAMS) || \
+    !defined(CEF_NN_POPUP_OPENER_SUPPRESSED) || !defined(CEF_NN_PUMP_SCHEDULE) || !defined(CEF_NN_SAFE_STORAGE)
+#error "packages/cef/vendor/cef is older than this app: run packages/cef/scripts/setup.sh (docs/cef-source-build.md)"
 #endif
 
 class CefBrowserView;
 
 namespace nn {
-
-constexpr bool kTabCaptureSupported = NN_TAB_CAPTURE;
 
 inline NSString *ToNS(const CefString &s) {
   std::string utf8 = s.ToString();

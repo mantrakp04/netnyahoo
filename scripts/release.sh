@@ -74,6 +74,8 @@ mkdir -p "$dist"
 
 echo "==> CEF"
 "$root/packages/cef/scripts/setup.sh"
+# A release ships the engine engine.lock pins, the one a fresh checkout gets.
+"$root/packages/cef/scripts/engine.sh" verify
 
 echo "==> Archive"
 (cd "$app_dir" && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \

@@ -52,7 +52,7 @@ BOOL FromTrackpad(NSEvent *event) {
 
 zoom::ScrollGesture gScroll;
 
-zoom::ScrollStep ScrollStepOf(NSEvent *event, BOOL trackpad) {
+zoom::ScrollStep ScrollStepOf(NSEvent *event, bool trackpad) {
   return {.phase = event.phase, .momentumPhase = event.momentumPhase, .command = !!(event.modifierFlags & NSEventModifierFlagCommand),
           .trackpad = trackpad};
 }

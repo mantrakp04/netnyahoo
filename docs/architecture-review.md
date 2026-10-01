@@ -130,6 +130,11 @@ Keep what's ours on purpose:
 
 ### 3. Delete the compatibility matrix (quick win, 1–2 days)
 
+**Status (2026-10-01): done**, except publishing the engine archive. The handshake is `NATIVE_API_VERSION`
+(`apps/browser/src/nativeApi.tsx`) against `apiVersion` (`AppModule.swift`); the engine is pinned in
+`packages/cef/engine.lock` (`docs/cef-source-build.md` › "The pinned engine"), and its release asset waits for the
+owner's go-ahead.
+
 **What.**
 1. Drop the stock-CEF build. Remove `NN_CHROME_TABS=0`, its 24 `#if NN_CHROME_TABS` blocks and 9 `#else` branches
    (`NNBrowserView.mm`, `NNWindowHost.mm`, `NNCef.mm`), and `CEF_PREBUILT=1` in `setup.sh`.

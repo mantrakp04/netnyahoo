@@ -1,5 +1,5 @@
 import { fetchFavicon, pruneFavicons, type FaviconImage } from "@netnyahoo/cef";
-import { hasDockSelection, iconTheme, readDocument, writeDocument, type IconTheme } from "@netnyahoo/shell";
+import { iconTheme, readDocument, writeDocument, type IconTheme } from "@netnyahoo/shell";
 import { useEffect } from "react";
 import { create } from "zustand";
 import { useBrowser, type BrowserState } from "../store/browser";
@@ -318,7 +318,7 @@ const theming = new Set<string>();
 
 export function useFaviconTheme(url: string, src?: string | null, profileId?: string): IconTheme | null | undefined {
   const icon = useFavicons(() => resolveIcon(url, src, profileId)?.icon ?? null);
-  const pending = !!icon && icon.theme === undefined && hasDockSelection;
+  const pending = !!icon && icon.theme === undefined;
   useEffect(() => {
     if (!pending) return;
     const found = resolveIcon(url, src, profileId);

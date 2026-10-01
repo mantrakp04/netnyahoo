@@ -15,9 +15,7 @@
 #include "include/cef_command_ids.h"
 #include "include/cef_process_message.h"
 #include "include/cef_values.h"
-#if defined(CEF_NN_MEDIA_REQUEST_SOURCE)
 #include "include/cef_media_capture.h"
-#endif
 
 namespace nn {
 
@@ -662,12 +660,10 @@ void Client::FullscreenWindowSettled(bool entered) {
   SyncWindowFullScreen();
 }
 
-#if NN_DOCKED_DEVTOOLS
 void Client::OnDevToolsDockChanged(CefRefPtr<CefBrowser> browser) {
   __weak NNBrowserView *view = view_;
   dispatch_async(dispatch_get_main_queue(), ^{ [view layoutDockedDevTools]; });
 }
-#endif
 
 void Client::OnStatusMessage(CefRefPtr<CefBrowser> browser, const CefString &value) {
   Emit(@"status", @{@"text" : ToNS(value)});
@@ -879,7 +875,6 @@ void Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
   browser_ = nullptr;
 }
 
-#if NN_TAB_STRIP
 void Client::OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) {
   if (tabStripIndex_ == index && tabStripActive_ == active && tabStripPinned_ == pinned) return;
   const bool first = tabStripIndex_ < 0;
@@ -899,13 +894,10 @@ void Client::OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool ac
     @"byApp" : @(host::ActivatingTab()),
   });
 }
-#endif
 
-#if NN_TAB_DISCARD
 void Client::OnTabDiscardedChanged(CefRefPtr<CefBrowser> browser, bool discarded) {
   [view_ tabDiscardedChanged:discarded];
 }
-#endif
 
 // MARK: CefRequestHandler
 
@@ -967,29 +959,35 @@ bool Client::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 }
 
 // CEF_NN_OPEN_URL_PARAMS: exported by our framework outside the translated API (cef_netnyahoo.h), so looked up
-// at run time; an older distribution has neither and links open from their URL.
+// at run time. main() loaded the framework before anything asks, and it ships inside the app, so a missing
+// export is a broken build.
 void *EngineSymbol(const char *name) {
   static void *engine = [] {
     NSString *path = [NSBundle.mainBundle.privateFrameworksPath
         stringByAppendingPathComponent:@"Chromium Embedded Framework.framework/Chromium Embedded Framework"];
     return dlopen(path.fileSystemRepresentation, RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD);
   }();
-  return engine ? dlsym(engine, name) : nullptr;
+  void *symbol = engine ? dlsym(engine, name) : nullptr;
+  if (!symbol) {
+    NSLog(@"[cef] the engine doesn't export %s: the app bundles a CEF build other than the one it was built with", name);
+    abort();
+  }
+  return symbol;
 }
 
 int OpenedURLId() {
   static auto openedURLId = (int (*)())EngineSymbol("cef_nn_open_url_id");
-  return openedURLId ? openedURLId() : 0;
+  return openedURLId();
 }
 
 bool OpenedURLHasBody(int id) {
   static auto hasBody = (int (*)(int))EngineSymbol("cef_nn_open_url_has_body");
-  return hasBody && id && hasBody(id);
+  return id && hasBody(id);
 }
 
 bool LoadOpenedURL(CefRefPtr<CefBrowser> browser, int id) {
   static auto load = (int (*)(int, int))EngineSymbol("cef_nn_load_open_url");
-  return load && browser && id && load(browser->GetIdentifier(), id);
+  return browser && id && load(browser->GetIdentifier(), id);
 }
 
 // An app link from window.open, target=_blank or a modified click: no new tab, the opener asks.
@@ -1102,10 +1100,7 @@ bool Client::OnRequestMediaAccessPermission(CefRefPtr<CefBrowser> browser, CefRe
     // Screen sharing needs the share picker, and its approval covers only the
     // frame, source and media it was given for: the page chooses what
     // getUserMedia asks for. Like Chrome, nothing else captures the desktop.
-    NSString *source = nil;
-#if defined(CEF_NN_MEDIA_REQUEST_SOURCE)
-    source = ToNS(CefGetMediaAccessDesktopSource(callback));
-#endif
+    NSString *source = ToNS(CefGetMediaAccessDesktopSource(callback));
     int bid = browser->GetIdentifier();
     if (site::ConsumeDesktopCapture(bid, frame ? frame->GetIdentifier().ToString() : "", OriginOf(ToNS(origin)), source,
                                     permissions)) {
@@ -1420,7 +1415,7 @@ bool MenuBarTakesChromeShortcut(int command_id) {
 
 + (void)forgetOpenedURL:(NSInteger)openedId {
   static auto forget = (void (*)(int))nn::EngineSymbol("cef_nn_forget_open_url");
-  if (forget) forget((int)openedId);
+  forget((int)openedId);
 }
 
 + (void)setSearchEngineName:(NSString *)name {

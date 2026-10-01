@@ -339,8 +339,8 @@ Everything that needs the user present; `docs/dia-feature-parity.md` › "Needs 
 
 ## Test ledger
 
-**Setup.** `packages/cef/scripts/setup.sh` puts our CEF build in `vendor/cef`, and `NN_CHROME_TABS` defaults to 1: hooks
-switch on from `include/cef_netnyahoo.h`, and the build fails with `#error` against stock CEF. Build with your
+**Setup.** `packages/cef/scripts/setup.sh` puts our CEF build (the one `engine.lock` pins) in `vendor/cef`, and
+the build fails with `#error` against any other (stock CEF, or one missing a `CEF_NN_*` marker). Build with your
 derived-data folder, and launch with `NETNYAHOO_BACKGROUND=1 NETNYAHOO_DATA_DIR=/tmp/nn-<you>
 NETNYAHOO_REMOTE_DEBUGGING_PORT=<port>`.
 
@@ -742,5 +742,3 @@ Still to run by a person (screen unlocked, the app in front):
 ## Known gaps (by design, for now)
 - `chrome.tabs.move` by an extension doesn't reorder the sidebar. Only activation and pinning come back; our order
   is pushed to Chrome.
-- The stock-CEF build (`NN_CHROME_TABS=0`, `docs/cef-source-build.md`) still has the Alloy-era gaps: no in-page
-  password or autofill filling, no ad blocking in incognito, and extensions don't see our tabs.

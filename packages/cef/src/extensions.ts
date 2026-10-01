@@ -1,4 +1,4 @@
-import { requireOptionalNativeModule, type EventSubscription } from "expo-modules-core";
+import { requireNativeModule, type EventSubscription } from "expo-modules-core";
 import { ChromeUI } from "./chromeUI";
 
 export type SiteAccess = "ON_ALL_SITES" | "ON_SPECIFIC_SITES" | "ON_CLICK";
@@ -103,22 +103,13 @@ type NativeExtensions = {
   uninstall(id: string, profile: string): Promise<Result<{ ok: true }>>;
   reload(id: string, profile: string): Promise<Result<{ ok: true }>>;
   configure(id: string, profile: string, options: Record<string, unknown>): Promise<Result<{ ok: true }>>;
-  searchEngineList?(profile: string): Promise<Result<{ list: unknown }>>;
+  searchEngineList(profile: string): Promise<Result<{ list: unknown }>>;
   evaluateInHost(expression: string, profile: string): Promise<unknown>;
   evaluateInPage(expression: string, profile: string, page: string): Promise<unknown>;
   chooseFolder(): Promise<string | null>;
 };
 
-function unavailable(): NativeExtensions {
-  const error = { error: "Extensions aren't available in this build" };
-  const fallbacks: Record<string, unknown> = { list: { extensions: [] }, chooseFolder: null };
-  return new Proxy({} as NativeExtensions, {
-    get: (_, name: string) =>
-      name === "addListener" ? () => ({ remove() {} }) : async () => (name in fallbacks ? fallbacks[name] : name.startsWith("set") || name.startsWith("resolve") ? undefined : error),
-  });
-}
-
-const Native = requireOptionalNativeModule<NativeExtensions>("NetnyahooExtensions") ?? unavailable();
+const Native = requireNativeModule<NativeExtensions>("NetnyahooExtensions");
 
 if (__DEV__) (globalThis as { nnExtensions?: unknown }).nnExtensions = Native;
 
@@ -148,7 +139,6 @@ export function webStoreExtensionId(urlOrId: string): string | null {
 }
 
 export async function searchEngineList(profile: string): Promise<unknown> {
-  if (!Native.searchEngineList) return null;
   return unwrap(await Native.searchEngineList(profile)).list;
 }
 

@@ -66,14 +66,9 @@ using namespace nn;
 
 namespace {
 
-#if defined(CEF_NN_PUMP_SCHEDULE)
 // The engine asks for its next call itself (when its next delayed task is due, or at once when a time slice ran out
 // with work left), so this poll is only a safety net.
 constexpr double kMaxTimerDelay = 1;
-#else
-// Stock CEF drops its next delayed task's time, so delayed tasks only run at this poll (cefclient's 30 Hz).
-constexpr double kMaxTimerDelay = 1.0 / 30.0;
-#endif
 
 class MessagePump {
  public:
@@ -151,7 +146,6 @@ class MessagePump {
   bool stopped_ = false;
 };
 
-#if defined(CEF_NN_SAFE_STORAGE)
 bool IsTeamSigned() {
   SecCodeRef code = nullptr;
   if (SecCodeCopySelf(kSecCSDefaultFlags, &code) != errSecSuccess) return false;
@@ -163,7 +157,6 @@ bool IsTeamSigned() {
   CFRelease(info);
   return team;
 }
-#endif
 
 // MARK: - Strings
 
@@ -229,10 +222,6 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
                                      CefRefPtr<CefCommandLine> command_line) override {
     if (!process_type.empty()) return;
     command_line->AppendSwitch("enable-smooth-scrolling");
-    if (NSString *builtIn = NN_CHROME_TABS ? nil : nn::blocker::ExtensionPath()) {
-      std::string load = command_line->GetSwitchValue("load-extension").ToString();
-      command_line->AppendSwitchWithValue("load-extension", (load.empty() ? "" : load + ",") + builtIn.UTF8String);
-    }
     command_line->AppendSwitch("disable-popup-blocking");
     // A non-official build counts as a developer build, so Chrome's UMA stack profiler samples the main and IO
     // threads of every process at 10 Hz for its first 30 s (each new tab's renderer too), then 2 % of the time.
@@ -241,22 +230,14 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
     std::string disabled = command_line->GetSwitchValue("disable-features").ToString();
     command_line->AppendSwitchWithValue("disable-features",
                                         (disabled.empty() ? "" : disabled + ",") + "MacAppCodeSignClone");
-#if NN_CHROME_TABS
     std::string enabled = command_line->GetSwitchValue("enable-features").ToString();
     command_line->AppendSwitchWithValue("enable-features",
                                         (enabled.empty() ? "" : enabled + ",") + "WebContentsDiscard");
-#endif
     if (const char *port = getenv("NETNYAHOO_REMOTE_DEBUGGING_PORT")) {
       command_line->AppendSwitchWithValue("remote-debugging-port", port);
       command_line->AppendSwitchWithValue("remote-allow-origins", "*");
     }
-#if defined(CEF_NN_SAFE_STORAGE)
     if (getenv("NETNYAHOO_DATA_DIR") || !IsTeamSigned()) command_line->AppendSwitch("use-mock-keychain");
-#elif defined(DEBUG) || defined(POD_CONFIGURATION_DEBUG)
-    command_line->AppendSwitch("use-mock-keychain");
-#else
-    if (getenv("NETNYAHOO_DATA_DIR")) command_line->AppendSwitch("use-mock-keychain");
-#endif
     if (const char *extra = getenv("NETNYAHOO_CHROMIUM_SWITCHES")) {
       NSString *all = [@" " stringByAppendingString:@(extra)];
       for (NSString *item in [all componentsSeparatedByString:@" --"]) {
@@ -902,8 +883,6 @@ NSView *ParkingView() {
     @"liveBrowsers" : @(gLiveBrowsers.size()),
     @"popupWindows" : @(PopupWindowCount()),
     @"chromeWindows" : @(host::WindowCount()),
-    @"chromeTabs" : @(host::ChromeTabs()),
-    @"tabCapture" : @(kTabCaptureSupported),
   };
 }
 
@@ -972,7 +951,6 @@ static DownloadEntry *FindDownload(NSString *downloadId) {
                               since:(double)sinceMs
                          completion:(void (^)(void))completion {
   CefRefPtr<CefRequestContext> context = ContextForProfile(profile);
-#if NN_BROWSING_DATA
   static NSDictionary<NSString *, NSNumber *> *kTypes = @{
     @"history" : @(CEF_NN_BROWSING_DATA_HISTORY),
     @"siteData" : @(CEF_NN_BROWSING_DATA_SITE_DATA),
@@ -984,21 +962,6 @@ static DownloadEntry *FindDownload(NSString *downloadId) {
   CefBaseTime begin;
   if (sinceMs > 0) begin = CefBaseTime(cef_basetime_t{(int64_t)((sinceMs / 1000 + 11644473600.0) * 1000000)});
   context->ClearBrowsingData(mask, begin, CefBaseTime(), new DoneCallback(completion ?: ^{}));
-#else
-  __block int pending = 1;
-  void (^done)(void) = ^{
-    if (--pending == 0 && completion) completion();
-  };
-  if ([types containsObject:@"siteData"]) {
-    pending++;
-    context->GetCookieManager(nullptr)->DeleteCookies("", "", new DoneCallback(done));
-  }
-  if ([types containsObject:@"cache"]) {
-    pending++;
-    context->ClearHttpCache(new DoneCallback(done));
-  }
-  done();
-#endif
 }
 
 + (void)releaseProfile:(NSString *)profile {

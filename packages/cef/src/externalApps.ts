@@ -18,11 +18,7 @@ export type ExternalAppRequest = {
 
 export type ExternalAppAllowance = { origin: string; scheme: string; app: string | null; icon: string | null };
 
-export const resolveExternalApp = async (id: string, open: boolean, remember = false) => {
-  if (typeof Cef.resolveExternalApp === "function") await Cef.resolveExternalApp(id, open, remember);
-};
-export const getExternalAppAllowances = async (profile: string): Promise<ExternalAppAllowance[]> =>
-  typeof Cef.getExternalAppAllowances === "function" ? Cef.getExternalAppAllowances(profile) : [];
-export const removeExternalAppAllowance = async (profile: string, origin: string, scheme: string) => {
-  if (typeof Cef.removeExternalAppAllowance === "function") await Cef.removeExternalAppAllowance(profile, origin, scheme);
-};
+export const resolveExternalApp = (id: string, open: boolean, remember = false) => Cef.resolveExternalApp(id, open, remember);
+export const getExternalAppAllowances = (profile: string) => Cef.getExternalAppAllowances(profile);
+export const removeExternalAppAllowance = (profile: string, origin: string, scheme: string) =>
+  Cef.removeExternalAppAllowance(profile, origin, scheme);

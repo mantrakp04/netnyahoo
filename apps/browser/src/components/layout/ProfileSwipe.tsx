@@ -32,10 +32,7 @@ export function ProfileSwipeArea({ surface, style, pageWidth }: { surface: "side
   const pager = pagerFor(windowId);
   const nativePager = usePagerNativeConfig(windowId, pageWidth);
   // One event per area: Animated attaches an event object to a single view.
-  const onPagerPosition = useMemo(
-    () => (pager.native ? Animated.event([{ nativeEvent: { position: pager.pos } }], { useNativeDriver: true }) : undefined),
-    [pager],
-  );
+  const onPagerPosition = useMemo(() => Animated.event([{ nativeEvent: { position: pager.pos } }], { useNativeDriver: true }), [pager]);
 
   const onSwipe = (event: SwipeEvent) => {
     if (__DEV__) {
@@ -44,12 +41,8 @@ export function ProfileSwipeArea({ surface, style, pageWidth }: { surface: "side
     }
     const e = pageWidth ? { ...event, width: pageWidth } : event;
     if (e.phase === "swipe") return pager.step(e.direction === "back" ? -1 : 1);
-    if (e.phase === "wheel") return pager.wheel(e);
-    // Drags on the native pager never reach JS; a stray one from an older binary is ignored.
-    if (nativePager) return;
-    if (e.phase === "began") pager.beginDrag();
-    if (e.phase === "began" || e.phase === "changed") return pager.track(e);
-    pager.release(e, e.phase === "cancelled");
+    // Drags never need JS: the native pager tracks and settles them.
+    if (e.phase === "wheel") pager.wheel(e);
   };
 
   useEffect(() => {

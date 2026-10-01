@@ -355,234 +355,73 @@ try {
     await waitProfile("work");
     return { result, next };
   });
-  const nativePager = await nn('return globalThis.expo.modules.NetnyahooSwipe.nativePagerVersion >= 1;');
-  if (nativePager) {
-    await test("a new native drag interrupts the current settle synchronously", async () => {
-      await reset();
-      const result = await nativeBatch(alternatingGestures(2));
-      assert.equal(result.profile, "default");
-      assert.equal(result.state.selected, 0);
-      assert.equal(result.state.phase, "idle");
-      assert.equal(result.pager.native, true);
-      assert.ok(result.pager.ack >= result.state.selectionSequence, "latest selection must be acknowledged");
-      return result;
-    });
-    await test("twelve native reversals keep the latest profile and stable coordinates", async () => {
-      await reset();
-      const result = await nativeBatch(alternatingGestures(12));
-      assert.equal(result.profile, "default");
-      assert.equal(result.state.selected, 0);
-      assert.ok(Math.abs(result.state.position) < 0.003);
-      assert.equal(result.state.phase, "idle");
-      return result;
-    });
-    await test("queued selection events cannot rewind a native reversal while JS is blocked", async () => {
-      await reset();
-      const result = await nativeBatch(alternatingGestures(3), 700);
-      assert.equal(result.profile, "work");
-      assert.equal(result.state.selected, 1);
-      assert.equal(result.state.phase, "idle");
-      assert.equal(result.pager.native, true);
-      assert.ok(result.pager.ack >= result.state.selectionSequence, "latest selection must be acknowledged");
-      return result;
-    });
-    await test("rapid profile shortcuts count every queued press", async () => {
-      await reset();
-      await nn('nn.runCommand({command:"nextProfile",windowId:"w1"}); nn.runCommand({command:"nextProfile",windowId:"w1"}); nn.runCommand({command:"nextProfile",windowId:"w1"}); return true;');
-      await waitProfile("work");
-      await sleep(450);
-      const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
-      assert.equal(result.profileId, "work");
-      assert.equal(result.selected, 1);
-      assert.equal(result.phase, "idle");
-      return result;
-    });
-    await test("external profile selection interrupts a native drag without a late rewind", async () => {
-      await reset();
-      const steps=gesture(-1).map((s)=>({...s, atMs:s.atMs*3, timestampMs:s.timestampMs*3}));
-      const result = await nn(`
-        const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)},{ignorePreference:true});
-        setTimeout(()=>nn.store.getState().switchProfile("w1","work"),40);
-        setTimeout(()=>nn.store.getState().switchProfile("w1","default"),56);
-        return simulation.then(native=>new Promise(resolve=>setTimeout(()=>{
-          globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({native,state,
-            profile:nn.store.getState().windows.w1.profileId}));
-        },650)));
-      `);
-      assert.equal(result.profile,"default");
-      assert.equal(result.state.profileId,"default");
-      assert.equal(result.state.phase,"idle");
-      return result;
-    });
-    await test("latest profile dot cancels an in-flight native selection", async () => {
-      await reset();
-      await simulate(gesture(-1));
-      await nn('const p=globalThis.nnPager("w1"); p.switchTo("default"); p.switchTo("work"); return true;');
-      await waitProfile("work");
-      await sleep(650);
-      const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
-      assert.equal(result.selected, 1);
-      assert.equal(result.phase, "idle");
-      assert.ok(Math.abs(result.position - 1) < 0.003);
-      return result;
-    });
-  } else {
-  await test("a new drag drops a settle queued behind a pending rebase (real pager)", async () => {
+  await test("a new native drag interrupts the current settle synchronously", async () => {
     await reset();
-    try {
-      // One synchronous turn, so React's layout effect cannot apply the shift in between.
-      const result = await nn(`
-        const p = globalThis.nnPager("w1");
-        const snap = () => ({ ...p.debug(), queued: p.afterShift.length, generation: p.generation, profile: nn.store.getState().windows.w1.profileId });
-        p.switchTo("work");
-        p.write(1);
-        p.end();
-        const pending = snap();
-        p.beginDrag();
-        p.track({ phase: "changed", direction: "back", distance: 130, dy: 0, velocity: 0, available: true, width: 190 });
-        p.release({ phase: "ended", direction: "back", distance: 130, dy: 0, velocity: 1000, available: true, width: 190 }, false);
-        const queued = snap();
-        p.beginDrag();
-        p.applyShift();
-        const immediate = snap();
-        return new Promise((resolve) => setTimeout(() => {
-          const later = snap();
-          p.reset(false);
-          resolve({ pending, queued, immediate, later });
-        }, 120));
-      `);
-      assert.equal(result.pending.profile, "work", "switchTo should commit the New Tab profile at once");
-      assert.notEqual(result.pending.shift, 0, "end() should leave a rebase pending before the first drag");
-      assert.equal(result.queued.queued, 1, "the release's settle should be queued behind the shift");
-      assert.equal(result.immediate.queued, 0, "applyShift should flush the queue");
-      assert.equal(result.immediate.dragging, true, "the second drag should be active after applyShift");
-      assert.equal(result.later.dragging, true, "the second drag should still be active 120ms later");
-      assert.equal(result.later.pos, result.immediate.pos, "the page must not move without new input");
-      return result;
-    } finally {
-      await reset();
-    }
+    const result = await nativeBatch(alternatingGestures(2));
+    assert.equal(result.profile, "default");
+    assert.equal(result.state.selected, 0);
+    assert.equal(result.state.phase, "idle");
+    assert.ok(result.pager.ack >= result.state.selectionSequence, "latest selection must be acknowledged");
+    return result;
   });
-  await test("native settle interruption buffers an immediate reverse release", async () => {
+  await test("twelve native reversals keep the latest profile and stable coordinates", async () => {
     await reset();
+    const result = await nativeBatch(alternatingGestures(12));
+    assert.equal(result.profile, "default");
+    assert.equal(result.state.selected, 0);
+    assert.ok(Math.abs(result.state.position) < 0.003);
+    assert.equal(result.state.phase, "idle");
+    return result;
+  });
+  await test("queued selection events cannot rewind a native reversal while JS is blocked", async () => {
+    await reset();
+    const result = await nativeBatch(alternatingGestures(3), 700);
+    assert.equal(result.profile, "work");
+    assert.equal(result.state.selected, 1);
+    assert.equal(result.state.phase, "idle");
+    assert.ok(result.pager.ack >= result.state.selectionSequence, "latest selection must be acknowledged");
+    return result;
+  });
+  await test("rapid profile shortcuts count every queued press", async () => {
+    await reset();
+    await nn('nn.runCommand({command:"nextProfile",windowId:"w1"}); nn.runCommand({command:"nextProfile",windowId:"w1"}); nn.runCommand({command:"nextProfile",windowId:"w1"}); return true;');
+    await waitProfile("work");
+    await sleep(450);
+    const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
+    assert.equal(result.profileId, "work");
+    assert.equal(result.selected, 1);
+    assert.equal(result.phase, "idle");
+    return result;
+  });
+  await test("external profile selection interrupts a native drag without a late rewind", async () => {
+    await reset();
+    const steps=gesture(-1).map((s)=>({...s, atMs:s.atMs*3, timestampMs:s.timestampMs*3}));
     const result = await nn(`
-      const p = globalThis.nnPager("w1");
-      p.reset(false);
-      const snap = () => ({ ...p.debug(), profile: nn.store.getState().windows.w1.profileId });
-      const event = (phase, direction, distance, velocity) => ({ phase, direction, distance, velocity, dy: 0, available: true, width: 190 });
-      const commits = [];
-      const unsubscribe = nn.store.subscribe((s, old) => {
-        if (s.windows.w1.profileId !== old.windows.w1.profileId) commits.push(s.windows.w1.profileId);
-      });
-      p.beginDrag();
-      p.track(event("changed", "forward", 130, 0));
-      p.release(event("ended", "forward", 130, 1000), false);
-      return new Promise((resolve) => setTimeout(() => {
-        const before = snap();
-        p.beginDrag();
-        p.track(event("changed", "back", 160, 0));
-        p.release(event("ended", "back", 160, 1000), false);
-        const buffered = snap();
-        setTimeout(() => {
-          const after = snap();
-          unsubscribe();
-          p.reset(false);
-          resolve({ before, buffered, after, commits });
-        }, 800);
-      }, 30));
+      const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(steps)},{ignorePreference:true});
+      setTimeout(()=>nn.store.getState().switchProfile("w1","work"),40);
+      setTimeout(()=>nn.store.getState().switchProfile("w1","default"),56);
+      return simulation.then(native=>new Promise(resolve=>setTimeout(()=>{
+        globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({native,state,
+          profile:nn.store.getState().windows.w1.profileId}));
+      },650)));
     `);
-    try {
-      assert.equal(result.before.profile, "default", "the forward settle should still be interrupted before commit");
-      assert.equal(result.after.profile, "default", "the buffered reverse should settle back to Personal");
-      assert.equal(result.after.animating, false, "the reverse should finish its own settle");
-      assert.deepEqual(result.commits, [], "the interrupted forward settle must never commit Work");
-      return result;
-    } catch (error) { error.evidence = result; throw error; }
+    assert.equal(result.profile,"default");
+    assert.equal(result.state.profileId,"default");
+    assert.equal(result.state.phase,"idle");
+    return result;
   });
-  await test("a queued native spring completion cannot finish a newer reverse", async () => {
+  await test("latest profile dot cancels an in-flight native selection", async () => {
     await reset();
-    const result = await nn(`
-      const p = globalThis.nnPager("w1");
-      p.reset(false);
-      const snap = () => ({ ...p.debug(), profile: nn.store.getState().windows.w1.profileId });
-      const event = (phase, direction, distance, velocity) => ({ phase, direction, distance, velocity, dy: 0, available: true, width: 190 });
-      const commits = [];
-      const unsubscribe = nn.store.subscribe((s, old) => {
-        if (s.windows.w1.profileId !== old.windows.w1.profileId) commits.push(s.windows.w1.profileId);
-      });
-      p.beginDrag();
-      p.track(event("changed", "forward", 130, 0));
-      p.release(event("ended", "forward", 130, 1000), false);
-      // Yield once so the spring starts on the native display link, then hold its completion in JS's queue.
-      return new Promise((resolve) => setTimeout(() => {
-        const began = performance.now();
-        while (performance.now() - began < 700) {}
-        const blockedMs = performance.now() - began;
-        const held = snap();
-        p.beginDrag();
-        p.track(event("changed", "back", 300, 0));
-        p.release(event("ended", "back", 300, 1000), false);
-        const buffered = snap();
-        setTimeout(() => {
-          const mid = snap();
-          setTimeout(() => {
-            const after = snap();
-            unsubscribe();
-            p.reset(false);
-            resolve({ held, buffered, mid, after, commits, blockedMs });
-          }, 800);
-        }, 50);
-      }, 30));
-    `);
-    try {
-      assert.equal(result.held.profile, "default", "the old completion must still be queued when the new drag starts");
-      assert.equal(result.mid.animating, true, "the old completion must not clear the newer reverse settle");
-      assert.equal(result.after.profile, "default", "the newer reverse should end on Personal");
-      assert.equal(result.after.animating, false, "the newer reverse should complete normally");
-      assert.deepEqual(result.commits, [], "the queued old completion must not commit Work");
-      return result;
-    } catch (error) { error.evidence = result; throw error; }
-  });
-  await test("clicking the current profile cancels a pending profile click", async () => {
-    await reset();
-    await nn('globalThis.nnPager("w1").switchTo("work"); return true;');
+    await simulate(gesture(-1));
+    await nn('const p=globalThis.nnPager("w1"); p.switchTo("default"); p.switchTo("work"); return true;');
     await waitProfile("work");
     await sleep(650);
-    try {
-      const result = await nn(`
-        const p = globalThis.nnPager("w1");
-        const snap = () => ({ ...p.debug(), profile: nn.store.getState().windows.w1.profileId });
-        const event = (phase) => ({ phase, direction: "back", distance: 20, velocity: 0, dy: 0, available: true, width: 190 });
-        const commits = [];
-        const unsubscribe = nn.store.subscribe((s, old) => {
-          if (s.windows.w1.profileId !== old.windows.w1.profileId) commits.push(s.windows.w1.profileId);
-        });
-        p.beginDrag();
-        p.track(event("changed"));
-        p.release(event("ended"), false);
-        return new Promise((resolve) => setTimeout(() => {
-          p.switchTo("default");
-          const first = snap();
-          p.switchTo("work");
-          const replacement = snap();
-          setTimeout(() => {
-            const after = snap();
-            unsubscribe();
-            p.reset(false);
-            resolve({ first, replacement, after, commits });
-          }, 800);
-        }, 30));
-      `);
-      try {
-        assert.equal(result.first.pending, "switch", "the first click should wait for a native stop snapshot");
-        assert.equal(result.after.profile, "work", "the newest current-profile click should stay on Work");
-        assert.equal(result.after.animating, false, "the home settle should finish");
-        assert.deepEqual(result.commits, [], "the superseded Personal click must never commit");
-        return result;
-      } catch (error) { error.evidence = result; throw error; }
-    } finally { await reset(); }
+    const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
+    assert.equal(result.selected, 1);
+    assert.equal(result.phase, "idle");
+    assert.ok(Math.abs(result.position - 1) < 0.003);
+    return result;
   });
-  }
   await test("new gesture recovers after a missing end", async () => {
     await reset();
     const incomplete = await simulate(gesture(-1).slice(0, -1));
@@ -739,46 +578,44 @@ try {
     assert.equal(routing(result)?.fallback, false, "an ordinary sidebar hit should match directly");
     return result;
   });
-  if (nativePager) {
-    await test("reordering profiles preserves a native selection queued behind blocked JS", async () => {
-      await reset();
-      try {
-        const result = await nn(`
-          const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(gesture(-1))}, {ignorePreference:true});
-          setTimeout(()=>{
-            const until=performance.now()+180; while(performance.now()<until){}
-            nn.store.getState().reorderProfiles(["work","default"]);
-          },20);
-          return simulation.then(native=>new Promise(resolve=>setTimeout(()=>{
-            globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({native,state,
-              profile:nn.store.getState().windows.w1.profileId,order:nn.store.getState().profileOrder}));
-          },650)));
-        `);
-        assert.equal(result.profile, "work");
-        assert.equal(result.state.profileId, "work");
-        assert.equal(result.state.selected, 0);
-        assert.ok(Math.abs(result.state.position) < 0.003);
-        return result;
-      } finally {
-        await nn('nn.store.getState().reorderProfiles(["default","work"]); return true;');
-      }
-    });
-    await test("removing the other profile keeps the remaining sidebar at its origin", async () => {
-      await nn('nn.store.getState().switchProfile("w1","work"); return true;');
-      await waitProfile("work");
-      await sleep(350);
-      await nn('nn.store.getState().deleteProfile("default"); return true;');
-      await sleep(350);
-      const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
-      assert.equal(await profile(), "work");
-      assert.equal(result.count, 1);
-      assert.equal(result.selected, 0);
-      assert.ok(Math.abs(result.position) < 0.003);
-      assert.equal(result.phase, "idle");
-      assert.ok(result.areas >= 1);
+  await test("reordering profiles preserves a native selection queued behind blocked JS", async () => {
+    await reset();
+    try {
+      const result = await nn(`
+        const simulation=globalThis.nnSwipe.sidebar("w1").devSimulate(${JSON.stringify(gesture(-1))}, {ignorePreference:true});
+        setTimeout(()=>{
+          const until=performance.now()+180; while(performance.now()<until){}
+          nn.store.getState().reorderProfiles(["work","default"]);
+        },20);
+        return simulation.then(native=>new Promise(resolve=>setTimeout(()=>{
+          globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1").then(state=>resolve({native,state,
+            profile:nn.store.getState().windows.w1.profileId,order:nn.store.getState().profileOrder}));
+        },650)));
+      `);
+      assert.equal(result.profile, "work");
+      assert.equal(result.state.profileId, "work");
+      assert.equal(result.state.selected, 0);
+      assert.ok(Math.abs(result.state.position) < 0.003);
       return result;
-    });
-  }
+    } finally {
+      await nn('nn.store.getState().reorderProfiles(["default","work"]); return true;');
+    }
+  });
+  await test("removing the other profile keeps the remaining sidebar at its origin", async () => {
+    await nn('nn.store.getState().switchProfile("w1","work"); return true;');
+    await waitProfile("work");
+    await sleep(350);
+    await nn('nn.store.getState().deleteProfile("default"); return true;');
+    await sleep(350);
+    const result = await nn('return globalThis.expo.modules.NetnyahooSwipe.devPagerState("w1");');
+    assert.equal(await profile(), "work");
+    assert.equal(result.count, 1);
+    assert.equal(result.selected, 0);
+    assert.ok(Math.abs(result.position) < 0.003);
+    assert.equal(result.phase, "idle");
+    assert.ok(result.areas >= 1);
+    return result;
+  });
   evidence.snapshot = { path: join(data, "profile-swipe.png"),
     saved: await nn(`return nn.shell.devSnapshotWindow("w1", ${JSON.stringify(join(data, "profile-swipe.png"))});`) };
 } catch (error) {

@@ -122,7 +122,6 @@ export function switchProfile(windowId: string, profileId: string, animated = fa
 export function cycleProfile(windowId: string, delta: 1 | -1) {
   if (!cycleTarget(windowId, delta)) return;
   // The native pager steps from its own selection, so rapid presses advance past a store that lags.
-  if (((cef as { nativePagerVersion?: number }).nativePagerVersion ?? 0) < 1) return cycleFromStore(windowId, delta);
   void cef.stepPager(windowId, delta, true, store().profileOrder.join("\n")).then((ok) => ok || cycleFromStore(windowId, delta));
 }
 

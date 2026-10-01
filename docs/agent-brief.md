@@ -27,8 +27,6 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
       (Chrome's WebUI settings pages that `NNPasswords`, `NNAutofill`, `NNExtensions`… drive, in
       `NNChromePages`).
     - JS API in `packages/cef/src` (`WebView`, downloads, permissions, profiles, extensions, Chrome UI).
-      `NN_CHROME_TABS` (`NNCefInternal.h`, default 1) selects all this; `NN_CHROME_TABS=0` is the build
-      against stock CEF (below), with plain app windows and Alloy tabs.
   - `packages/shell`: menus, shortcuts, windows, native primitives (Surface, Symbol, FadeLabel,
     VisualEffect, WindowDragRegion, ContextMenuArea, ActivitySpinner…).
   - `packages/shaders`: Metal views (window backdrop, New Tab effects). Don't touch unless assigned.
@@ -41,7 +39,8 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
 - The CEF distribution is built outside the repo in `~/chromium-build` from the patches in
   `packages/cef/patches/` (`docs/cef-source-build.md` › "Rebuilding"; first build about 2 h,
   incremental 20 s–2 min). `packages/cef/scripts/setup.sh` copies it into `packages/cef/vendor/cef`,
-  which every agent's build uses.
+  which every agent's build uses. `packages/cef/engine.lock` pins the distribution `main` needs
+  (`docs/cef-source-build.md` › "The pinned engine"); on a fresh checkout `setup.sh` downloads it.
 - One agent at a time edits or builds `~/chromium-build`: hold the chromium lock for the whole
   edit → build → `setup.sh` cycle (`scripts/agent/locked chromium --take <you>`, then each command as
   `scripts/agent/locked chromium --as <you> -- …`, and `--release <you>` at the end; an unreleased take
@@ -49,12 +48,10 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   distribution changes every agent's next build, so say so in your report. To try an engine
   change privately, install it elsewhere (`CEF_DIST=<dist> CEF_ROOT=<dir> setup.sh`) and build with
   `xcodebuild … NN_CEF_ROOT=<dir>`.
-- Engine APIs our patches add are marked in `include/cef_netnyahoo.h` (`CEF_NN_*`), and
-  `NNCefInternal.h` turns each feature on only when its marker exists. Code that needs a new hook
-  must compile without it, behind its marker.
-- Without `~/chromium-build` (a fresh checkout): `CEF_PREBUILT=1 packages/cef/scripts/setup.sh`
-  installs the stock prebuilt, and the app builds with the `NN_CHROME_TABS=0` build setting. It
-  loses everything the patches add.
+- Engine APIs our patches add are marked in `include/cef_netnyahoo.h` (`CEF_NN_*`). The app needs
+  every marker it uses (`NNCefInternal.h` fails the build without one) and calls the hooks
+  unconditionally: there is no build against stock CEF and no `#if` per feature. A new hook adds its
+  marker to that check, and the change that needs it ships with a new pinned engine (`engine.sh pack`).
 
 ## Rules
 - **Stay inside the files you own** (listed in your task). If you need a change elsewhere,
@@ -85,8 +82,11 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   - Metro (JS dev server) is already running on :8081 and serves this working tree to every
     instance. Don't start another one and don't kill it. Consequences:
     - Every instance runs everyone's current JS, including instances built before your native
-      change. Guard JS that needs a new native module or view (`requireOptionalNativeModule`, as
-      `ActivitySpinner` in `packages/shell/src/index.tsx` does).
+      change. JS doesn't guard for older builds: when JS starts needing native code that older builds
+      lack (a module, function, view, event or field), bump `NATIVE_API_VERSION`
+      (`apps/browser/src/nativeApi.tsx`) and `apiVersion` (`packages/shell/ios/AppModule.swift`)
+      together. An instance built before then shows "Native API skew" in one window instead of the
+      app, and its dev harness answers every script with that error: rebuild it.
     - A JS exception while modules load (an import cycle, say) opens LogBox, which crashes
       react-native-macos (`RCTView didUpdateShadow`), so every instance dies at launch. Run
       `pnpm -w typecheck` and relaunch your instance after risky import changes.

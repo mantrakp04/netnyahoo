@@ -238,10 +238,8 @@ bool PopupsAllowed(NSString *profile, NSString *openerURL) {
 NSString *RecordBlockedPopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, NSString *url, NSString *name,
                              const CefPopupFeatures &features, CefRefPtr<CefDictionaryValue> extraInfo) {
   NSMutableArray *parts = [NSMutableArray array];
-#if defined(CEF_NN_POPUP_OPENER_SUPPRESSED)
   if (extraInfo && extraInfo->GetBool("nn_opener_suppressed"))
     [parts addObject:extraInfo->GetBool("nn_no_referrer") ? @"noreferrer" : @"noopener"];
-#endif
   if (features.isPopup) [parts addObject:@"popup"];
   if (features.widthSet) [parts addObject:[NSString stringWithFormat:@"width=%d", features.width]];
   if (features.heightSet) [parts addObject:[NSString stringWithFormat:@"height=%d", features.height]];

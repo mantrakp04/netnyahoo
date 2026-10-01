@@ -6,16 +6,13 @@
 
 #include <map>
 
-#if NN_TAB_CAPTURE
 #include "include/cef_media_capture.h"
-#endif
 
 using namespace nn;
 
 namespace nn::chromeui {
 
 NSDictionary *PasswordPrompt(CefRefPtr<CefBrowser> browser) {
-#if NN_PASSWORD_PROMPT
   CefRefPtr<CefDictionaryValue> prompt = browser->GetHost()->GetPasswordPrompt();
   if (!prompt) return nil;
   NSString *state = nil;
@@ -37,9 +34,6 @@ NSDictionary *PasswordPrompt(CefRefPtr<CefBrowser> browser) {
     @"federation" : ToNS(prompt->GetString("federation")),
     @"usernames" : usernames,
   };
-#else
-  return nil;
-#endif
 }
 
 bool ShowPasswordPrompt(Client *client, CefRefPtr<CefBrowser> browser) {
@@ -50,22 +44,16 @@ bool ShowPasswordPrompt(Client *client, CefRefPtr<CefBrowser> browser) {
 }
 
 void ResolvePasswordPrompt(CefRefPtr<CefBrowser> browser, NSString *action, NSString *username, NSString *password) {
-#if NN_PASSWORD_PROMPT
   browser->GetHost()->ResolvePasswordPrompt(ToCef(action), ToCef(username ?: @""), ToCef(password ?: @""));
-#endif
 }
 
 NSString *ExecuteExtensionAction(CefRefPtr<CefBrowser> browser, NSString *extensionId) {
-#if NN_EXTENSION_ACTION
   switch (browser->GetHost()->ExecuteExtensionAction(ToCef(extensionId))) {
     case 0: return @"none";
     case 1: return @"popup";
     case 2: return @"sidePanel";
     default: return nil;
   }
-#else
-  return nil;
-#endif
 }
 
 }
@@ -79,8 +67,6 @@ NNEventHandler gSurfaceHandler = nil;
 void EmitSurface(NSString *name, NSDictionary *payload) {
   if (gSurfaceHandler) gSurfaceHandler(name, payload);
 }
-
-#if NN_CHROME_UI
 
 id FromValue(CefRefPtr<CefValue> value);
 
@@ -245,22 +231,14 @@ CefRefPtr<CefBrowser> BrowserById(NSInteger browserId) {
   return browserId > 0 ? CefBrowserHost::GetBrowserByIdentifier((int)browserId) : nullptr;
 }
 
-#endif
-
 }
 
 void nn::chromeui::ReleaseRouteWatches() {
-#if NN_CHROME_UI
   gRouteWatches.clear();
   RouteObserver::Routes().clear();
-#endif
 }
 
 @implementation NNChromeSurfaces
-
-+ (BOOL)available {
-  return NN_CHROME_UI;
-}
 
 + (NNEventHandler)eventHandler {
   return gSurfaceHandler;
@@ -268,100 +246,75 @@ void nn::chromeui::ReleaseRouteWatches() {
 
 + (void)setEventHandler:(NNEventHandler)eventHandler {
   gSurfaceHandler = [eventHandler copy];
-#if NN_CHROME_UI
   if (eventHandler) InstallSurfaceHandler();
   else if (NNCef.isStarted) CefSetChromeUIHandler(nullptr);
-#endif
 }
 
 + (void)selectDevice:(NSInteger)chooserId index:(NSInteger)index {
-#if NN_CHROME_UI
   auto it = gChoosers.find((int)chooserId);
   if (it == gChoosers.end()) return;
   it->second->Select((int)index);
   ChooserAnswered((int)chooserId);
-#endif
 }
 
 + (void)cancelDeviceChooser:(NSInteger)chooserId {
-#if NN_CHROME_UI
   auto it = gChoosers.find((int)chooserId);
   if (it == gChoosers.end()) return;
   it->second->Cancel();
   ChooserAnswered((int)chooserId);
-#endif
 }
 
 + (void)refreshDeviceChooser:(NSInteger)chooserId {
-#if NN_CHROME_UI
   auto it = gChoosers.find((int)chooserId);
   if (it != gChoosers.end()) it->second->Refresh();
-#endif
 }
 
 + (void)openBluetoothSettings:(NSInteger)chooserId {
-#if NN_CHROME_UI
   auto it = gChoosers.find((int)chooserId);
   if (it != gChoosers.end()) it->second->OpenPermissionSettings();
-#endif
 }
 
 + (BOOL)showCastDialog:(NSInteger)browserId {
-#if NN_CHROME_UI
   CefRefPtr<CefBrowser> browser = BrowserById(browserId);
   return browser && CefShowCastDialog(browser);
-#else
-  return NO;
-#endif
 }
 
 + (void)startCasting:(NSInteger)dialogId sink:(NSString *)sinkId mode:(NSInteger)mode {
-#if NN_CHROME_UI
   auto it = gCastDialogs.find((int)dialogId);
   if (it != gCastDialogs.end()) it->second->StartCasting(ToCef(sinkId), (int)mode);
-#endif
 }
 
 + (void)stopCasting:(NSInteger)dialogId route:(NSString *)routeId {
-#if NN_CHROME_UI
   auto it = gCastDialogs.find((int)dialogId);
   if (it != gCastDialogs.end()) it->second->StopCasting(ToCef(routeId));
   else [self terminateCastRoute:routeId];
-#endif
 }
 
 + (void)closeCastDialog:(NSInteger)dialogId {
-#if NN_CHROME_UI
   auto it = gCastDialogs.find((int)dialogId);
   if (it != gCastDialogs.end()) {
     CefRefPtr<CefCastDialog> dialog = it->second;
     dialog->Close();
   }
-#endif
 }
 
 + (void)watchCastRoutes:(NSString *)profile {
-#if NN_CHROME_UI
   std::string key = profile.UTF8String ?: "";
   CefRefPtr<CefRequestContext> context = ContextForProfile(profile);
   CefRefPtr<CefMediaRouter> router = context ? context->GetMediaRouter(nullptr) : nullptr;
   if (!router) return;
   if (!gRouteWatches.count(key)) gRouteWatches[key] = router->AddObserver(new RouteObserver(profile));
   router->NotifyCurrentRoutes();
-#endif
 }
 
 + (void)terminateCastRoute:(NSString *)routeId {
-#if NN_CHROME_UI
   auto &routes = RouteObserver::Routes();
   auto it = routes.find(routeId.UTF8String ?: "");
   if (it != routes.end()) it->second->Terminate();
-#endif
 }
 
 + (NSDictionary *)actionStatesForBrowser:(NSInteger)browserId extensions:(NSArray<NSString *> *)extensionIds {
   NSMutableDictionary *states = [NSMutableDictionary dictionary];
-#if NN_CHROME_UI
   CefRefPtr<CefBrowser> browser = BrowserById(browserId);
   if (!browser) return states;
   for (NSString *extensionId in extensionIds) {
@@ -377,22 +330,16 @@ void nn::chromeui::ReleaseRouteWatches() {
       @"icon" : ToNS(state->GetString("icon")),
     };
   }
-#endif
   return states;
 }
 
 + (NSString *)sidePanelURLForBrowser:(NSInteger)browserId extension:(NSString *)extensionId {
-#if NN_CHROME_UI
   CefRefPtr<CefBrowser> browser = BrowserById(browserId);
   NSString *url = browser ? ToNS(CefGetExtensionSidePanel(browser, ToCef(extensionId))) : nil;
   return url.length ? url : nil;
-#else
-  return nil;
-#endif
 }
 
 + (BOOL)changeCaptureSource:(NSInteger)capturerId toTab:(NSInteger)targetId {
-#if NN_CHROME_UI && NN_TAB_CAPTURE
   CefRefPtr<CefBrowser> capturer = BrowserById(capturerId), target = BrowserById(targetId);
   CefString source = target ? CefGetMediaCaptureSourceId(target) : CefString();
   if (!capturer || source.empty()) return NO;
@@ -400,27 +347,16 @@ void nn::chromeui::ReleaseRouteWatches() {
   site::AllowDesktopCapture((int)capturerId, "", nil, ToNS(source),
                             CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE);
   return CefChangeMediaCaptureSource(capturer, source);
-#else
-  return NO;
-#endif
 }
 
 + (BOOL)stopCapture:(NSInteger)capturerId {
-#if NN_CHROME_UI && defined(CEF_NN_CAPTURE_STOP)
   CefRefPtr<CefBrowser> capturer = BrowserById(capturerId);
   return capturer && CefStopMediaCapture(capturer);
-#else
-  return NO;
-#endif
 }
 
 + (BOOL)showAutofillSuggestions:(NSInteger)browserId passwords:(BOOL)passwords {
-#if NN_CHROME_UI && defined(CEF_NN_AUTOFILL_TRIGGER)
   CefRefPtr<CefBrowser> browser = BrowserById(browserId);
   return browser && CefShowAutofillSuggestions(browser, passwords ? CEF_NN_AUTOFILL_PASSWORDS : CEF_NN_AUTOFILL_FIELD);
-#else
-  return NO;
-#endif
 }
 
 @end

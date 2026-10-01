@@ -317,7 +317,6 @@ NSString *ExtensionPath() {
 NSString *ExtensionId() { return @"bnjeokpoejhioagiokhkhmdogkhbnbki"; }
 
 void LoadIntoProfile(NSString *profile, CefRefPtr<CefRequestContext> context) {
-#if NN_CHROME_TABS
   NSString *path = ExtensionPath();
   if (!path || !context) return;
   NSString *loaded = ToNS(context->LoadComponentExtension(ToCef(path)));
@@ -325,7 +324,6 @@ void LoadIntoProfile(NSString *profile, CefRefPtr<CefRequestContext> context) {
   [LoadedProfiles() addObject:profile];
   [LastAnswers() removeObjectForKey:profile];
   if (profile.length) FollowDefault(@[ profile ], ^{});
-#endif
 }
 
 void LoadAgainIfNeeded(NSString *profile, CefRefPtr<CefRequestContext> context) {

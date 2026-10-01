@@ -32,24 +32,3 @@ export function listSelection(dySinceShown: number, count: number) {
   const nudge = past ? Math.sign(past) * LIST_ROW * (1 - 1 / (0.1 * overshoot + 1)) * 0.5 : 0;
   return { index, nudge };
 }
-
-// MARK: Profile paging (sidebar, tab strip)
-
-// Dia: 0.5× paging, 255pt rubber band, 5pt/s flick, 0.25s settle.
-export const PAGING_TRACKING_SCALE = 0.5;
-export const PAGING_RUBBER_DIMENSION = 255;
-export const PAGING_FLICK_VELOCITY = 5;
-export const PAGING_SETTLE_RESPONSE = 0.25;
-
-export function pagingPosition(start: number, distance: number, direction: "back" | "forward", pageWidth: number, lo: number, hi: number) {
-  const raw = start + ((direction === "back" ? -1 : 1) * distance * PAGING_TRACKING_SCALE) / pageWidth;
-  if (raw > hi) return hi + rubberBand((raw - hi) * pageWidth, 0, PAGING_RUBBER_DIMENSION) / pageWidth;
-  if (raw < lo) return lo - rubberBand((lo - raw) * pageWidth, 0, PAGING_RUBBER_DIMENSION) / pageWidth;
-  return raw;
-}
-
-export function pagingTarget(position: number, velocity: number, pageWidth: number, lo: number, hi: number, home: number) {
-  const flick = Math.abs(velocity * pageWidth) >= PAGING_FLICK_VELOCITY;
-  const target = !flick ? Math.round(position) : velocity > 0 ? Math.floor(position) + 1 : Math.ceil(position) - 1;
-  return Math.max(lo, home - 1, Math.min(hi, home + 1, target));
-}

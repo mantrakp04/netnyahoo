@@ -113,11 +113,9 @@ class TabRouter : public CefClient,
     if (anchor_ && anchor_->IsSame(browser)) anchor_ = nullptr;
     BrowserClosed(browser);
   }
-#if NN_TAB_STRIP
   void OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) override {
     if (Client *c = Tab(browser)) c->OnTabStripChanged(browser, index, active, pinned);
   }
-#endif
   bool OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int popup_id, const CefString &url,
                      const CefString &name, cef_window_open_disposition_t disposition, bool gesture,
                      const CefPopupFeatures &features, CefWindowInfo &info, CefRefPtr<CefClient> &client,
@@ -156,9 +154,7 @@ class TabRouter : public CefClient,
   void OnStatusMessage(CefRefPtr<CefBrowser> browser, const CefString &value) override {
     NN_FORWARD(OnStatusMessage(browser, value))
   }
-#if NN_DOCKED_DEVTOOLS
   void OnDevToolsDockChanged(CefRefPtr<CefBrowser> browser) override { NN_FORWARD(OnDevToolsDockChanged(browser)) }
-#endif
   void OnLoadingProgressChange(CefRefPtr<CefBrowser> browser, double progress) override {
     NN_FORWARD(OnLoadingProgressChange(browser, progress))
   }
@@ -260,11 +256,9 @@ class TabRouter : public CefClient,
                             CefRefPtr<CefJSDialogCallback> callback) override {
     NN_FORWARD_RETURN(OnBeforeUnloadDialog(browser, text, is_reload, callback), false)
   }
-#if NN_TAB_DISCARD
   void OnTabDiscardedChanged(CefRefPtr<CefBrowser> browser, bool discarded) override {
     NN_FORWARD(OnTabDiscardedChanged(browser, discarded))
   }
-#endif
 #undef NN_FORWARD
 #undef NN_FORWARD_RETURN
 
@@ -334,7 +328,6 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
   bool BrowserStarted() const { return browserStarted_; }
 
   void StartBrowser(CefRefPtr<Client> founder = nullptr, NSString *url = nil, const CefBrowserSettings *settings = nullptr) {
-#if NN_CLIENT_WINDOW
     if (browserStarted_) return;
     browserStarted_ = true;
     if (founder) router_->SetFounder(founder);
@@ -351,11 +344,9 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
       self->laidOut_ = false;
       self->ScheduleLayout();
     });
-#endif
   }
 
   CefRefPtr<CefBrowser> CreateTab(CefRefPtr<Client> client, NSString *url, const CefBrowserSettings &settings) {
-#if NN_CLIENT_WINDOW
     if (!view_ || !ready_) return nullptr;
     const bool anchor = !client;
     if (anchor) router_->ExpectAnchor();
@@ -367,9 +358,6 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
     gCreatingIn = previous;
     if (tab) gTabWindow[tab->GetIdentifier()] = this;
     return tab;
-#else
-    return nullptr;
-#endif
   }
 
   CefRefPtr<CefBrowser> AnyTabOrAnchor(CefRefPtr<CefBrowser> except = nullptr) {
@@ -486,9 +474,7 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
 
   void SetActive(bool active) {
     active_ = active;
-#if NN_CHROME_TABS
     if (CefRefPtr<CefBrowser> tab = AnyTab()) tab->GetHost()->SetWindowActive(active);
-#endif
   }
 
   void CloseLater() {
@@ -574,9 +560,7 @@ class ChromeWindow : public CefWindowDelegate, public CefBrowserViewDelegate {
   cef_show_state_t GetInitialShowState(CefRefPtr<CefWindow> window) override { return CEF_SHOW_STATE_HIDDEN; }
   CefRect GetInitialBounds(CefRefPtr<CefWindow> window) override { return CefRect(0, 0, 1360, 860); }
   bool IsFrameless(CefRefPtr<CefWindow> window) override { return !popup_; }
-#if NN_TRANSLUCENT_WINDOW
   bool IsTranslucent(CefRefPtr<CefWindow> window) override { return Translucent(); }
-#endif
   bool WithStandardWindowButtons(CefRefPtr<CefWindow> window) override { return true; }
   bool GetTitlebarHeight(CefRefPtr<CefWindow> window, float *height) override {
     if (popup_) return false;
@@ -779,8 +763,6 @@ class StrayWindowClient : public CefClient, public CefLifeSpanHandler, public Ce
 
 namespace nn::host {
 
-bool ChromeTabs() { return NN_CHROME_TABS; }
-
 bool ActivatingTab() { return gActivatingTab; }
 
 bool Hostable(NNBrowserView *view) {
@@ -788,7 +770,6 @@ bool Hostable(NNBrowserView *view) {
 }
 
 void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, const CefBrowserSettings &settings) {
-#if NN_CHROME_TABS
   if (ChromeWindow *window = Hostable(view) ? WindowForTab(view.window, view.profile) : nullptr) {
     if (!window->BrowserStarted()) return window->StartBrowser(client, url, &settings);
     CefBrowserSettings tabSettings = settings;
@@ -807,7 +788,6 @@ void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, con
     });
     return;
   }
-#endif
   CefRefPtr<CefRequestContext> context = ContextForProfile(view.profile);
   CefWindowInfo info;
   NSRect bounds = view.bounds;
@@ -819,7 +799,6 @@ void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, con
 
 bool CreateTabWithHistory(NNBrowserView *view, CefRefPtr<Client> client, CefRefPtr<CefBrowser> source, NSString *state,
                           NSString *url, const CefBrowserSettings &settings) {
-#if NN_TAB_HISTORY
   if (!Hostable(view) || (source && !IsChromeTab(source))) return false;
   ChromeWindow *window = WindowForTab(view.window, view.profile);
   if (!window) return false;
@@ -851,30 +830,21 @@ bool CreateTabWithHistory(NNBrowserView *view, CefRefPtr<Client> client, CefRefP
     CreateTab(target, client, fallbackURL.length ? fallbackURL : @"about:blank", tabSettings);
   });
   return true;
-#else
-  return false;
-#endif
 }
 
 void ConfigurePopup(CefWindowInfo &info, NSSize size, CefRefPtr<CefBrowser> opener) {
-  if (NN_POPUP_TABS && IsChromeTab(opener)) return;
+  if (IsChromeTab(opener)) return;
   info.SetAsChild((__bridge CefWindowHandle)ParkingView(), CefRect(0, 0, MAX(1, (int)size.width), MAX(1, (int)size.height)));
   info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
 }
 
 NSView *ContentsView(CefRefPtr<CefBrowser> browser) {
-#if NN_CHROME_TABS
   if (IsChromeTab(browser)) return (__bridge NSView *)browser->GetHost()->GetContentsView();
-#endif
   return (__bridge NSView *)browser->GetHost()->GetWindowHandle();
 }
 
 bool IsChromeTab(CefRefPtr<CefBrowser> browser) {
-#if NN_CHROME_TABS
   return browser && browser->GetHost()->GetRuntimeStyle() == CEF_RUNTIME_STYLE_CHROME;
-#else
-  return false;
-#endif
 }
 
 void TabShown(NNBrowserView *view) {
@@ -884,7 +854,6 @@ void TabShown(NNBrowserView *view) {
   ChromeWindow *window = WindowOfTab(browser);
   if (!window || window->Window() != view.window) return;
   window->SetShown(view);
-#if NN_CHROME_TABS
   dispatch_async(dispatch_get_main_queue(), ^{
     if (!view.visible || !view.client || !view.client->Browser() || !view.client->Browser()->IsSame(browser)) return;
     if (!Live(window) || window->Shown() != view) return;
@@ -892,7 +861,6 @@ void TabShown(NNBrowserView *view) {
     browser->GetHost()->ActivateTab();
     gActivatingTab = false;
   });
-#endif
 }
 
 std::map<int, ChromeWindow *> gClosingTabs;
@@ -917,7 +885,6 @@ bool PickedByClose(CefRefPtr<CefBrowser> browser) {
 }
 
 void TabMoved(NNBrowserView *view) {
-#if NN_CHROME_TABS
   CefRefPtr<Client> client = view.client;
   CefRefPtr<CefBrowser> browser = client ? client->Browser() : nullptr;
   if (!IsChromeTab(browser) || !Hostable(view)) return;
@@ -937,7 +904,6 @@ void TabMoved(NNBrowserView *view) {
     target->DropAnchor();
     if (moved.visible) TabShown(moved);
   });
-#endif
 }
 
 void TabOpenedFrom(CefRefPtr<CefBrowser> browser, int openerBrowserId) {
@@ -951,9 +917,7 @@ void LayoutChanged(NSWindow *window) {
 }
 
 int TabId(CefRefPtr<CefBrowser> browser) {
-#if NN_CHROME_TABS
   if (IsChromeTab(browser)) return MAX(0, browser->GetHost()->GetTabId());
-#endif
   return 0;
 }
 
@@ -976,20 +940,16 @@ bool ReadoptTab(CefRefPtr<CefBrowser> browser, CefRefPtr<Client> client) {
 CefRefPtr<CefClient> DefaultClient() { return new StrayWindowClient(); }
 
 NSWindow *MakeChromeWindow(NSString *profile, bool popup) {
-#if NN_CLIENT_WINDOW
   if (![NNCef isStarted] || ShuttingDown()) return nil;
   ChromeWindow *window = NewChromeWindow(profile ?: @"", nil, popup);
   return window ? window->Window() : nil;
-#else
-  return nil;
-#endif
 }
 
 NSString *SwapStrategy() {
   static NSString *strategy = [] {
     NSString *requested = NSProcessInfo.processInfo.environment[@"NETNYAHOO_PROFILE_SWAP"];
     if ([requested isEqualToString:@"snapshot"] || [requested isEqualToString:@"naive"]) return requested;
-    return NN_TRANSLUCENT_WINDOW ? @"transparent" : @"snapshot";
+    return @"transparent";
   }();
   return strategy;
 }

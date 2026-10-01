@@ -23,18 +23,12 @@ Requires Xcode 26+, CocoaPods, Node 22+, pnpm 11.
 pnpm install
 ```
 
-Install the engine. By default this copies our own CEF build from `~/chromium-build`
-(`docs/cef-source-build.md` builds it; the first build takes about 2 hours):
+Install the engine: our own CEF build, the one `packages/cef/engine.lock` pins. This copies it from
+`~/chromium-build` when you build the engine yourself (`docs/cef-source-build.md`; the first build takes
+about 2 hours), and otherwise downloads it (`gh`, signed in):
 
 ```bash
 packages/cef/scripts/setup.sh
-```
-
-Without it, use the stock prebuilt CEF instead, and build with `NN_CHROME_TABS=0` (it loses what our
-engine patches add; see `docs/cef-source-build.md`):
-
-```bash
-CEF_PREBUILT=1 packages/cef/scripts/setup.sh
 ```
 
 ```bash
@@ -47,8 +41,7 @@ In one terminal, start Metro:
 pnpm dev
 ```
 
-In another, build and launch the Debug app (with the stock CEF, run the `xcodebuild` line from
-`apps/browser/package.json`'s `macos` script with `NN_CHROME_TABS=0` appended):
+In another, build and launch the Debug app:
 
 ```bash
 pnpm macos

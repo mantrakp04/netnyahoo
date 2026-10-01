@@ -5,7 +5,7 @@ const { useBrowser } = await import("./browser.ts");
 const model = await import("./model.ts");
 const organize = await import("./organize.ts");
 const { controllingSearchExtension, defaultSearchEngine, searchUrlPrefix } = await import("./settings.ts");
-const { isChromeSwitch, noteActivations } = await import("../lib/tabStripEcho.ts");
+const { isChromeSwitch } = await import("../lib/tabStripEcho.ts");
 const media = await import("../components/media/state.ts");
 
 const S = () => useBrowser.getState();
@@ -191,15 +191,13 @@ test("with the engine's flags, only an activation the app didn't ask for is a sw
   const a = model.activeTabId(S(), w);
   const b = S().newTab(w, { url: "b.com", background: true });
   const c = S().newTab(w, { url: "c.com", background: true });
-  const prev = S();
   S().activate(b);
-  noteActivations(S(), prev, 1000);
   const place = (active, activated, byApp) => ({ index: 0, pinned: false, active, activated, byApp });
-  assert.equal(isChromeSwitch(w, a, b, place(true, false, false), 1100), false, "a was already Chrome's active tab: its index moved");
-  assert.equal(isChromeSwitch(w, b, b, place(true, true, true), 1100), false, "the app's own switch echoing back");
-  assert.equal(isChromeSwitch(w, c, b, place(true, true, true), 1100), false, "activated by the app's request (a moved tab)");
-  assert.equal(isChromeSwitch(w, a, b, place(true, true, false), 1100), true, "Chrome activating a tab the app just left is real");
-  assert.equal(isChromeSwitch(w, c, b, place(false, false, false), 1100), false, "not active");
+  assert.equal(isChromeSwitch(a, b, place(true, false, false)), false, "a was already Chrome's active tab: its index moved");
+  assert.equal(isChromeSwitch(b, b, place(true, true, true)), false, "the app's own switch echoing back");
+  assert.equal(isChromeSwitch(c, b, place(true, true, true)), false, "activated by the app's request (a moved tab)");
+  assert.equal(isChromeSwitch(a, b, place(true, true, false)), true, "Chrome activating a tab the app just left is real");
+  assert.equal(isChromeSwitch(c, b, place(false, false, false)), false, "not active");
 });
 
 test("an extension that took the default search engine controls it until it goes", () => {

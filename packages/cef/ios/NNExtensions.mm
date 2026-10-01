@@ -54,7 +54,6 @@ void EmitOpenTab(NSString *url, NSString *profile) {
                   @"extensionId" : @""});
 }
 
-#if NN_INSTALL_PROMPT
 namespace {
 struct InstallPrompt {
   CefRefPtr<CefExtensionPromptCallback> callback;
@@ -86,19 +85,16 @@ bool OnInstallPrompt(NSString *profile, CefRefPtr<CefBrowser> browser, const Cef
   dispatch_async(dispatch_get_main_queue(), ^{ Emit(@"installPrompt", payload); });
   return true;
 }
-#endif
 
 CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
   class Handler : public CefRequestContextHandler {
    public:
     explicit Handler(NSString *profile) : profile_([profile copy]) {}
-#if NN_INSTALL_PROMPT
     bool OnExtensionInstallPrompt(CefRefPtr<CefBrowser> browser, const CefString &extension_id,
                                   CefRefPtr<CefDictionaryValue> details,
                                   CefRefPtr<CefExtensionPromptCallback> callback) override {
       return OnInstallPrompt(profile_, browser, extension_id, details, callback);
     }
-#endif
 
    private:
     NSString *profile_;
@@ -119,21 +115,17 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
 
 + (void)setEventHandler:(NNEventHandler)eventHandler {
   gHandler = [eventHandler copy];
-#if NN_INSTALL_PROMPT
   if (gHandler)
     for (auto &[requestId, prompt] : nn::ext::gInstallPrompts) Emit(@"installPrompt", prompt.payload);
-#endif
 }
 
 + (void)resolveInstallPrompt:(NSString *)requestId accepted:(BOOL)accepted {
-#if NN_INSTALL_PROMPT
   auto &prompts = nn::ext::gInstallPrompts;
   auto it = prompts.find(requestId.UTF8String ?: "");
   if (it == prompts.end()) return;
   CefRefPtr<CefExtensionPromptCallback> callback = it->second.callback;
   prompts.erase(it);
   callback->Continue(accepted);
-#endif
 }
 
 + (void)evaluateInHost:(NSString *)expression profile:(NSString *)profile page:(NSString *)page completion:(void (^)(id))completion {
@@ -229,7 +221,6 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
 + (void)uninstall:(NSString *)extensionId profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {
   // Removing deletes nothing itself: Chrome deletes its own copy of a store extension, and an unpacked
   // extension's folder is the user's.
-#if defined(CEF_NN_QUIET_UNINSTALL)
   // The app asked the user already. chrome://extensions may skip Chrome's dialog (which would never show
   // from the hidden page), and a disabled extension stays disabled until it's gone.
   NSString *js = Script(@"chrome.management.uninstall(%@, { showConfirmDialog: false }).then(() => ({ ok: true }))",
@@ -239,42 +230,6 @@ CefRefPtr<CefRequestContextHandler> ContextHandler(NSString *profile) {
     if (!error) Changed(profile, extensionId, @"uninstalled");
     Respond(completion, value, error);
   });
-#else
-  // Without the engine hook only the extension itself can skip the dialog, and only while enabled.
-  NSString *info = Script(@"chrome.developerPrivate.getExtensionInfo(%@).then((i) => ({ enabled: i.state === 'ENABLED' }))", @[ extensionId ]);
-  NSString *gone = Script(@"chrome.developerPrivate.getExtensionInfo(%@).then(() => false, () => true)", @[ extensionId ]);
-  NSString *enable = Script(@"chrome.management.setEnabled(%@, true).then(() => true)", @[ extensionId ]);
-  void (^finish)(NSDictionary *, NSString *) = ^(NSDictionary *details, NSString *error) {
-    if (!error) Changed(profile, extensionId, @"uninstalled");
-    completion(error ? @{@"error" : error} : @{@"ok" : @YES});
-  };
-  __block void (^waitGone)(NSDictionary *, int);
-  void (^wait)(NSDictionary *, int) = ^(NSDictionary *details, int attempt) {
-    HostEval(profile, gone, ^(id removed, NSString *) {
-      if ([removed boolValue] || attempt >= 30) {
-        waitGone = nil;
-        return finish(details, [removed boolValue] ? nil : @"The extension could not be removed");
-      }
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        if (waitGone) waitGone(details, attempt + 1);
-      });
-    });
-  };
-  waitGone = [wait copy];
-  HostEval(profile, info, ^(id details, NSString *error) {
-    if (error) return completion(@{@"error" : error});
-    void (^remove)(void) = ^{
-      pages::ExtensionEval(profile, extensionId, @"(chrome.management.uninstallSelf({ showConfirmDialog: false }), true)",
-                           ^(id, NSString *) {});
-      waitGone(details, 0);
-    };
-    if ([details[@"enabled"] boolValue]) return remove();
-    HostEval(profile, enable, ^(id, NSString *enableError) {
-      if (enableError) return completion(@{@"error" : enableError});
-      remove();
-    });
-  });
-#endif
 }
 
 + (void)reload:(NSString *)extensionId profile:(NSString *)profile completion:(NNExtensionsCompletion)completion {

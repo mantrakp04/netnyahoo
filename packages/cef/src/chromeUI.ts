@@ -1,4 +1,4 @@
-import { requireOptionalNativeModule, type EventSubscription } from "expo-modules-core";
+import { requireNativeModule, type EventSubscription } from "expo-modules-core";
 
 export type DeviceChooser = {
   id: number;
@@ -50,7 +50,6 @@ type NativeChromeUI = {
   addListener(name: "onCastDialog", listener: (e: CastDialog) => void): EventSubscription;
   addListener(name: "onCastRoutes", listener: (e: { profile: string; routes: CastRoute[] }) => void): EventSubscription;
   addListener(name: "onSidePanel", listener: (e: SidePanelRequest) => void): EventSubscription;
-  available(): Promise<boolean>;
   selectDevice(id: number, index: number): Promise<void>;
   cancelDeviceChooser(id: number): Promise<void>;
   refreshDeviceChooser(id: number): Promise<void>;
@@ -65,7 +64,7 @@ type NativeChromeUI = {
   sidePanelURL(browserId: number, extensionId: string): Promise<string | null>;
   changeCaptureSource(capturer: number, target: number): Promise<boolean>;
   stopCapture(capturer: number): Promise<boolean>;
-  showAutofillSuggestions?(browserId: number, passwords: boolean): Promise<boolean>;
+  showAutofillSuggestions(browserId: number, passwords: boolean): Promise<boolean>;
 };
 
 type NativeActionState = {
@@ -78,14 +77,7 @@ type NativeActionState = {
   icon: string;
 };
 
-function unavailable(): NativeChromeUI {
-  const fallbacks: Record<string, unknown> = { available: false, showCastDialog: false, actionStates: {}, sidePanelURL: null, changeCaptureSource: false, stopCapture: false };
-  return new Proxy({} as NativeChromeUI, {
-    get: (_, name: string) => (name === "addListener" ? () => ({ remove() {} }) : async () => fallbacks[name]),
-  });
-}
-
-export const ChromeUI = requireOptionalNativeModule<NativeChromeUI>("NetnyahooChromeUI") ?? unavailable();
+export const ChromeUI = requireNativeModule<NativeChromeUI>("NetnyahooChromeUI");
 
 if (__DEV__) (globalThis as { nnChromeUI?: unknown }).nnChromeUI = ChromeUI;
 
@@ -124,5 +116,5 @@ export const stopCapture = (capturer: number) => ChromeUI.stopCapture(capturer);
 
 // MARK: Autofill
 
-export const showAutofillSuggestions = async (browserId: number, kind: "passwords" | "field") =>
-  (await ChromeUI.showAutofillSuggestions?.(browserId, kind === "passwords")) ?? false;
+export const showAutofillSuggestions = (browserId: number, kind: "passwords" | "field") =>
+  ChromeUI.showAutofillSuggestions(browserId, kind === "passwords");

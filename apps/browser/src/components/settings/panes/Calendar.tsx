@@ -33,14 +33,12 @@ export function CalendarPane() {
                 ? `Connected · ${calendars.length === 1 ? "1 calendar" : `${calendars.length} calendars`}`
                 : denied
                   ? "Netnyahoo isn't allowed to read your calendars. Allow it in System Settings › Privacy & Security › Calendars."
-                  : access === "unavailable"
-                    ? "This build of Netnyahoo can't read calendars."
-                    : "Not connected"
+                  : "Not connected"
           }
         >
           {denied ? (
             <Button title="Open System Settings" onPress={() => void Linking.openURL("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")} />
-          ) : !connected && access !== "unavailable" ? (
+          ) : !connected ? (
             <Button title="Connect Calendar…" kind="primary" onPress={() => void connectCalendar()} />
           ) : null}
         </Row>

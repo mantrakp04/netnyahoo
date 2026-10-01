@@ -133,11 +133,11 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "print":
       return void web?.print();
     case "printWithSystemDialog":
-      return void web?.runPageCommand?.("systemPrint");
+      return void web?.runPageCommand("systemPrint");
     case "savePage":
-      return void web?.runPageCommand?.("savePage");
+      return void web?.runPageCommand("savePage");
     case "caretBrowsing":
-      return void web?.runPageCommand?.("caretBrowsing");
+      return void web?.runPageCommand("caretBrowsing");
     case "emailPageLocation":
       if (!page || !/^https?:/i.test(page.url)) return;
       return void openExternalURL(

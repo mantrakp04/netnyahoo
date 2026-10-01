@@ -3,8 +3,6 @@
 # framework at runtime (CefScopedLibraryLoader) and links the static C++ wrapper.
 # The NN_CEF_ROOT build setting (e.g. `xcodebuild ... NN_CEF_ROOT=<dir>`) builds
 # against another CEF install than vendor/cef (scripts/setup.sh CEF_ROOT=<dir>).
-# NN_CHROME_TABS=0 (another build setting, default 1) builds against the stock
-# prebuilt CEF (scripts/setup.sh CEF_PREBUILT=1), without our engine patches.
 cef = "$(NN_CEF_ROOT:default=#{File.expand_path('../vendor/cef', __dir__)})"
 
 Pod::Spec.new do |s|
@@ -28,7 +26,6 @@ Pod::Spec.new do |s|
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++20',
     # Must match how libcef_dll_wrapper was built (Release): DCHECK_IS_ON changes class layouts.
     'OTHER_CPLUSPLUSFLAGS' => '$(inherited) -DNDEBUG',
-    'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) NN_CHROME_TABS=$(NN_CHROME_TABS:default=1)',
   }
   s.user_target_xcconfig = {
     'OTHER_LDFLAGS' => "$(inherited) \"#{cef}/build/libcef_dll_wrapper/libcef_dll_wrapper.a\"",

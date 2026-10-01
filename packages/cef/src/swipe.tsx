@@ -69,59 +69,47 @@ type NativeProps = Omit<SwipeAreaProps, "onSwipe" | "onPagerState"> & {
 type NativeHandle = { devLocate(): Promise<{ windowNumber: number; x: number; y: number; width: number; height: number } | null> };
 
 type SwipeModule = {
-  nativePagerVersion?: number;
   haptic(pattern: string): void;
-  switchPager?(key: string, index: number, order?: string): Promise<boolean>;
-  stepPager?(key: string, delta: number, wrap: boolean, order?: string): Promise<boolean>;
-  selectPager?(key: string, profileId: string, order: string): Promise<boolean>;
-  pagerState?(key: string): PagerSnapshot | null;
-  devPagerState?(key: string): Promise<unknown>;
+  switchPager(key: string, index: number, order?: string): Promise<boolean>;
+  stepPager(key: string, delta: number, wrap: boolean, order?: string): Promise<boolean>;
+  selectPager(key: string, profileId: string, order: string): Promise<boolean>;
+  pagerState(key: string): PagerSnapshot | null;
+  devPagerState(key: string): Promise<unknown>;
   devSimulate(x: number, y: number, windowNumber: number, steps: SwipeStep[], ignorePreference: boolean): Promise<unknown>;
 };
 type NativeComponent = React.ComponentType<NativeProps & { ref?: React.Ref<NativeHandle> }>;
 
-const Module = (() => {
-  try {
-    return requireNativeModule<SwipeModule>("NetnyahooSwipe");
-  } catch {
-    return null;
-  }
-})();
-let Native: NativeComponent | null | undefined;
-const native = () => (Native ??= Module ? (requireNativeViewManager<NativeProps>("NetnyahooSwipe") as unknown as NativeComponent) : null);
+const Module = requireNativeModule<SwipeModule>("NetnyahooSwipe");
+const Native = requireNativeViewManager<NativeProps>("NetnyahooSwipe") as unknown as NativeComponent;
 // Native Animated attaches onPagerPosition to this view, so frames update the value without JS.
-let AnimatedNative: NativeComponent | null | undefined;
-const animatedNative = () => (AnimatedNative ??= native() ? (Animated.createAnimatedComponent(native()!) as unknown as NativeComponent) : null);
+let AnimatedNative: NativeComponent | undefined;
+const animatedNative = () => (AnimatedNative ??= Animated.createAnimatedComponent(Native) as unknown as NativeComponent);
 
-export const swipeHaptic = (pattern: "levelChange" | "alignment" | "generic") => Module?.haptic(pattern);
+export const swipeHaptic = (pattern: "levelChange" | "alignment" | "generic") => Module.haptic(pattern);
 
-// 0 on binaries without the native pager.
-export const nativePagerVersion: number = (Module?.switchPager && Module.nativePagerVersion) || 0;
 // order: the caller's profile ids joined with newlines, so the index means what the caller meant.
-export const switchPager = (key: string, index: number, order?: string): Promise<boolean> =>
-  Module?.switchPager?.(key, index, order) ?? Promise.resolve(false);
+export const switchPager = (key: string, index: number, order?: string): Promise<boolean> => Module.switchPager(key, index, order);
 // False when the window has no native pager; the caller falls back to the store.
 export const stepPager = (key: string, delta: -1 | 1, wrap = false, order?: string): Promise<boolean> =>
-  Module?.stepPager?.(key, delta, wrap, order) ?? Promise.resolve(false);
+  Module.stepPager(key, delta, wrap, order);
 // Order is the profile ids joined with newlines, as in NativePagerConfig.order.
 export const selectPager = (key: string, profileId: string, order: string): Promise<boolean> =>
-  Module?.selectPager?.(key, profileId, order) ?? Promise.resolve(false);
-export const pagerState = (key: string): PagerSnapshot | null => Module?.pagerState?.(key) ?? null;
-export const devPagerState = (key: string): Promise<unknown> => Module?.devPagerState?.(key) ?? Promise.resolve(null);
+  Module.selectPager(key, profileId, order);
+export const pagerState = (key: string): PagerSnapshot | null => Module.pagerState(key);
+export const devPagerState = (key: string): Promise<unknown> => Module.devPagerState(key);
 
 export const SwipeArea = forwardRef<SwipeAreaHandle, SwipeAreaProps>(function SwipeArea({ onSwipe, onPagerState, ...props }, ref) {
   const handle = useRef<NativeHandle>(null);
   useImperativeHandle(ref, () => ({
     async devSimulate(steps, options = {}) {
       const at = await handle.current?.devLocate();
-      if (!at || !Module) return { error: "area not in a window" };
+      if (!at) return { error: "area not in a window" };
       const x = at.x + (options.x ?? at.width / 2);
       const y = at.y + (options.y ?? at.height / 2);
       return Module.devSimulate(x, y, at.windowNumber, steps, options.ignorePreference ?? false);
     },
   }));
-  const View = props.nativePager ? animatedNative() : native();
-  if (!View) return null;
+  const View = props.nativePager ? animatedNative() : Native;
   return (
     <View
       ref={handle}

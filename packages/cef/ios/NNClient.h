@@ -81,9 +81,7 @@ class Client : public CefClient,
   void OnFaviconURLChange(CefRefPtr<CefBrowser> browser, const std::vector<CefString> &icon_urls) override;
   void OnFullscreenModeChange(CefRefPtr<CefBrowser> browser, bool fullscreen) override;
   void OnStatusMessage(CefRefPtr<CefBrowser> browser, const CefString &value) override;
-#if NN_DOCKED_DEVTOOLS
   void OnDevToolsDockChanged(CefRefPtr<CefBrowser> browser) override;
-#endif
   void OnLoadingProgressChange(CefRefPtr<CefBrowser> browser, double progress) override;
   void OnMediaAccessChange(CefRefPtr<CefBrowser> browser, bool has_video_access, bool has_audio_access) override;
 
@@ -104,12 +102,8 @@ class Client : public CefClient,
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
   bool DoClose(CefRefPtr<CefBrowser> browser) override;
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
-#if NN_TAB_STRIP
   void OnTabStripChanged(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) override;
-#endif
-#if NN_TAB_DISCARD
   void OnTabDiscardedChanged(CefRefPtr<CefBrowser> browser, bool discarded) override;
-#endif
 
   bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request,
                       bool user_gesture, bool is_redirect) override;

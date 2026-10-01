@@ -69,32 +69,44 @@ tree). A new patch needs a name that sorts last.
 
 ## Using it
 
-`packages/cef/scripts/setup.sh` installs
-`~/chromium-build/distrib/cef_binary_154.0.28+g564dd6c+chromium-154.0.8037.58_macosarm64_minimal`
-into `vendor/cef` and builds `libcef_dll_wrapper`. It re-copies the distribution when the
-framework changes (rebuilt in place).
+`packages/cef/scripts/setup.sh` installs the distribution `packages/cef/engine.lock` pins into
+`vendor/cef` and builds `libcef_dll_wrapper`: from
+`~/chromium-build/distrib/<ENGINE_DIST>` when that exists (it re-copies it when the framework is
+rebuilt in place), otherwise from the pinned release asset (`engine.sh fetch`). It warns when
+`vendor/cef` isn't the pinned build.
 
 - `CEF_DIST=<dir>` picks another local distribution.
 - `CEF_ROOT=<dir>` installs somewhere other than `vendor/cef`. Build one app against that with
   `xcodebuild … NN_CEF_ROOT=<dir>`: the pod's header/library paths use
   `$(NN_CEF_ROOT:default=…/vendor/cef)` and `scripts/embed.sh` reads the same setting.
-- `CEF_PREBUILT=1` downloads the stock 154.0.26 prebuilt instead (a fresh checkout without
-  `~/chromium-build`). It lacks every patch, so build the app with the `NN_CHROME_TABS=0` build
-  setting, which `NetnyahooCEF.podspec` passes to the preprocessor (default 1):
 
-  ```bash
-  CEF_PREBUILT=1 packages/cef/scripts/setup.sh
-  cd apps/browser && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \
-    -configuration Debug -destination 'platform=macOS,arch=arm64' build NN_CHROME_TABS=0
-  ```
+There is no build against stock CEF any more (it was `NN_CHROME_TABS=0` with `CEF_PREBUILT=1`, removed
+2026-10-01). `packages/cef/ios/NNCefInternal.h` fails the build with `#error` when `vendor/cef` lacks
+`include/cef_netnyahoo.h` or any `CEF_NN_*` marker the app uses, and every hook is used unconditionally.
+A new hook adds its marker to that check.
 
-  That build hosts Alloy browsers instead of Chrome tabs, so it loses what the patches add:
-  extensions don't see our tabs, pages get no password or autofill filling, incognito windows
-  aren't ad-blocked, and none of the `CEF_NN_*` hooks below exist. Checked 2026-09-25: every `packages/cef/ios/*.mm` compiles against the stock headers, and the
-  app builds and runs (`engineInfo().chromeTabs` false).
+### The pinned engine
 
-`packages/cef/ios/NNCefInternal.h` turns each feature on with `__has_include` plus the
-`CEF_NN_*` markers in `include/cef_netnyahoo.h`.
+`packages/cef/engine.lock` names the exact distribution the app builds against: its name, the
+hash of its files (`ENGINE_TREE_SHA256`: every file and link but `build/` and `.version`), the
+hash of its archive and the GitHub release that holds the archive. `packages/cef/scripts/engine.sh`:
+
+- `verify [dir]` checks `vendor/cef` (or `dir`) against the lock. `scripts/release.sh` runs it after
+  `setup.sh`, so a release ships the pinned engine.
+- `fetch` downloads the archive (`gh release download`), checks its hash, unpacks it into
+  `vendor/` and checks the tree. `setup.sh` runs it on a machine without `~/chromium-build`.
+- `pack [dir]` archives a distribution (default `vendor/cef`) as
+  `vendor/<ENGINE_DIST>.tar.zst` (about 170 MB) and rewrites the lock. After an engine change:
+  rebuild, `setup.sh`, check the app, `pack`, commit `engine.lock` with the code that needs it,
+  then `publish`.
+- `publish` uploads the archive to `ENGINE_REPO`, under the tag `ENGINE_TAG` (a prerelease that is
+  never marked latest).
+
+Pinned now: `cef_binary_154.0.28+g564dd6c+chromium-154.0.8037.58_macosarm64_minimal`, the
+distribution 0.2.19 was built from. Its archive is packed locally (`packages/cef/vendor/`) but
+**not published yet**: `ENGINE_REPO` (`mantrakp04/netnyahoo-engine`, meant to be private) doesn't
+exist, and publishing needs the owner's go-ahead. Until then a fresh checkout without
+`~/chromium-build` can't build the app.
 
 ## API added
 
@@ -407,8 +419,7 @@ permission.
 
 In the app:
 
-- The WebView method `mediaCaptureSourceId()` returns the id, and `engineInfo().tabCapture` says
-  whether tab capture is available.
+- The WebView method `mediaCaptureSourceId()` returns the id.
 - The share picker answers a `displayMediaRequest` with that id, and the page script adds tab audio
   when the page asked for audio.
 - The answer lets one getUserMedia request of the asking frame, within 15 s, capture exactly the picked

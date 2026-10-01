@@ -6,8 +6,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface NNChromeSurfaces : NSObject
 
-@property (class, nonatomic, readonly) BOOL available;
-
 @property (class, nonatomic, copy, nullable) NNEventHandler eventHandler;
 
 + (void)selectDevice:(NSInteger)chooserId index:(NSInteger)index NS_SWIFT_NAME(selectDevice(_:index:));

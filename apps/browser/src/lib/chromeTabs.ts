@@ -3,31 +3,26 @@ import { usePages } from "../components/layout/pageState";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { engineProfile } from "../store/model";
 import { splitOf } from "../store/splits";
-import { isChromeSwitch, noteActivations } from "./tabStripEcho";
+import { isChromeSwitch } from "./tabStripEcho";
 import { webviews } from "./webviews";
 
 let started = false;
-let chromeTabs = false;
 
 if (__DEV__) (globalThis as { nnChromeTabs?: unknown }).nnChromeTabs = { chromeWindows, engineInfo, devWindowAction };
 
 export function startChromeTabs() {
   if (started) return;
   started = true;
-  void engineInfo().then((info) => {
-    chromeTabs = !!info.chromeTabs;
-    if (chromeTabs) scheduleStripSync();
-  });
+  scheduleStripSync();
   useBrowser.subscribe((s, prev) => {
-    noteActivations(s, prev);
     if (s.tabs !== prev.tabs) {
       announceMoves(s, prev);
       forgetUnopened(s, prev);
     }
-    if (chromeTabs && (s.windows !== prev.windows || s.tabs !== prev.tabs)) scheduleStripSync();
+    if (s.windows !== prev.windows || s.tabs !== prev.tabs) scheduleStripSync();
   });
   usePages.subscribe((s, prev) => {
-    if (chromeTabs && s.browsers !== prev.browsers) scheduleStripSync();
+    if (s.browsers !== prev.browsers) scheduleStripSync();
   });
 }
 
@@ -121,5 +116,5 @@ export function onChromeTabStrip(tabId: string, place: TabStripPlace) {
   // A split pane that shows again (after another pane's page full screen, say) becomes Chrome's active tab; the
   // focused pane only changes when the user focuses a page (onPageFocus).
   if (active && active !== tabId && splitOf(s, active)?.tabIds.includes(tabId)) return;
-  if (isChromeSwitch(w.id, tabId, active, place) && w.profileId === tab.profileId) s.activate(tabId);
+  if (isChromeSwitch(tabId, active, place) && w.profileId === tab.profileId) s.activate(tabId);
 }

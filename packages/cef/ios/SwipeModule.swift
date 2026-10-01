@@ -5,8 +5,6 @@ public class SwipeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooSwipe")
 
-    Constant("nativePagerVersion") { () -> Int in 1 }
-
     Function("haptic") { (pattern: String) in
       DispatchQueue.main.async { NNSwipe.performHaptic(pattern) }
     }

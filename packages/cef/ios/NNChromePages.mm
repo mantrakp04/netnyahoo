@@ -130,13 +130,11 @@ class ContextReady : public CefRequestContextHandler {
     ready_ = nil;
     if (ready) dispatch_async(dispatch_get_main_queue(), ^{ ready(context); });
   }
-#if NN_INSTALL_PROMPT
   bool OnExtensionInstallPrompt(CefRefPtr<CefBrowser> browser, const CefString &extension_id,
                                 CefRefPtr<CefDictionaryValue> details,
                                 CefRefPtr<CefExtensionPromptCallback> callback) override {
     return ext::OnInstallPrompt(profile_, browser, extension_id, details, callback);
   }
-#endif
 
  private:
   NSString *profile_;
@@ -247,9 +245,7 @@ class Host : public CefClient, public CefLifeSpanHandler, public CefLoadHandler,
   void CreateView(CefRefPtr<CefRequestContext> context) {
     if (closed_) return;
     CefBrowserSettings settings;
-#if NN_HIDDEN_BROWSER
     settings.hidden_from_extensions = STATE_ENABLED;
-#endif
     view_ = CefBrowserView::CreateBrowserView(this, ToCef(url_), settings, nullptr, context, new HostViewDelegate());
     window_ = CefWindow::CreateTopLevelWindow(new HostWindowDelegate(view_));
   }

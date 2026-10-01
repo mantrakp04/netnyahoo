@@ -8,8 +8,6 @@ class Client;
 
 namespace nn::host {
 
-bool ChromeTabs();
-
 bool Hostable(NNBrowserView *view);
 void CreateTab(NNBrowserView *view, CefRefPtr<Client> client, NSString *url, const CefBrowserSettings &settings);
 bool CreateTabWithHistory(NNBrowserView *view, CefRefPtr<Client> client, CefRefPtr<CefBrowser> source, NSString *state,

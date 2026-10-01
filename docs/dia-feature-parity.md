@@ -3,7 +3,7 @@
 Dia = installed build **1.49.1 (87398), Chromium 153** plus the public changelog up to **v1.50.0 (2026‑09‑24)**;
 visual rows re-checked against **1.50.1 (87750)** (`docs/dia-spec.md` › "1.50 Sunglow").
 Netnyahoo = this working tree on **2026‑09‑25, after the Chrome migration**: our patched Chrome-style CEF
-(154.0.28, `NN_CHROME_TABS 1`, `docs/cef-source-build.md`), where every app window is Chrome's own Browser window
+(154.0.28, pinned in `packages/cef/engine.lock`, `docs/cef-source-build.md`), where every app window is Chrome's own Browser window
 (since 0.2.0, `docs/research/chrome-hosted-window.md`) and every tab a real Chrome tab of it, hosted in our React
 Native views.
 
@@ -774,8 +774,8 @@ reproduced.
    Unpacked). Also gone since: the `unlockPasswords` old-build fallback and with it the shell's `authenticate`, and
    `updateComponent` (Findings 11). Still there: `ZoomState.pinchScale` (sent, never read; the page script's `pinch`
    report feeds it). R2 also dropped `checkContentBlocking`'s JS export, the extension tab model and its "probe"
-   extensions (tab ids now come from Chrome itself; with `NN_CHROME_TABS 0` toolbar badges fall back to the
-   extension's defaults) and the `TabsRequest` actions that no longer occur. The `NN_CHROME_TABS 0` fallbacks stay: the stock-CEF build is kept (12). Alloy stays on
+   extensions (tab ids now come from Chrome itself) and the `TabsRequest` actions that no longer occur. The
+   `NN_CHROME_TABS 0` fallbacks went with the stock-CEF build (12). Alloy stays on
    purpose for the hidden WebUI helper pages and non-hostable views (NNChromePages.mm, NNWindowHost.mm `CreateTab`).
 2. **Fixed (R1).** Page context menu on Chrome tabs: it's Chrome's own menu now, with our search engine's name and
    action on "Search … for", our Inspect, Dia's quote link on "Copy Link to Highlight", our split for "Open Link in
@@ -803,10 +803,9 @@ reproduced.
     so `chrome.bookmarks` is empty and `chrome.history` holds only what Chrome recorded itself (5).
 11. **Fixed (R3).** The Widevine row offered an update that can't download (and never completed). It now says
     Widevine isn't available in this build; `updateComponent` is gone from the engine API.
-12. **Fixed (R3): the stock-CEF path stays.** `NN_CHROME_TABS` is now a build setting (`NetnyahooCEF.podspec` passes
-    it to the preprocessor, default 1): `CEF_PREBUILT=1 packages/cef/scripts/setup.sh`, then `xcodebuild …
-    NN_CHROME_TABS=0` builds and runs against the stock 154.0.26 prebuilt (checked; README and
-    `docs/cef-source-build.md`). So 1's `NN_CHROME_TABS 0` fallbacks stay.
+12. **Removed (2026-10-01): the stock-CEF path.** `NN_CHROME_TABS=0`, `CEF_PREBUILT=1` and the per-feature `NN_*`
+    macros are gone (architecture review, rec. 3): the app builds only against our engine, which
+    `packages/cef/engine.lock` pins and `setup.sh` fetches on a fresh checkout (`docs/cef-source-build.md`).
 13. **Fixed (R3): docs and comments that contradicted the code.** `docs/agent-brief.md` rewritten for the current
     architecture (Chrome-style CEF, `NETNYAHOO_BACKGROUND` / NNActivation, the own-CEF rebuild flow, `packages/import`,
     no `packages/webkit`, a repo with history); `docs/migration-status.md`'s finished "In progress", "Known regressions"

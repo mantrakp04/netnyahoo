@@ -1,4 +1,4 @@
-import { engineInfo, getDisplayMediaSources, type DisplayMediaRequest, type DisplayMediaSource } from "@netnyahoo/cef";
+import { getDisplayMediaSources, type DisplayMediaRequest, type DisplayMediaSource } from "@netnyahoo/cef";
 import { runningAppIcon, Symbol } from "@netnyahoo/shell";
 import { useEffect, useRef, useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
@@ -16,13 +16,10 @@ const WIDTH = 460;
 const REFRESH_MS = 2500;
 const TAB = "tab:";
 
-let tabCapture: boolean | null = null;
-void engineInfo().then((info) => (tabCapture = !!info.tabCapture));
-
 function shareableTabs(tabId: string) {
   const s = useBrowser.getState();
   const tab = s.tabs[tabId];
-  if (!tab || !tabCapture) return [];
+  if (!tab) return [];
   const profile = engineProfile(tab.profileId);
   const live = new Set(Object.values(usePages.getState().browsers));
   return Object.values(s.tabs)

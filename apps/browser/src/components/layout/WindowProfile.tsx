@@ -15,6 +15,5 @@ export function WindowProfile() {
       return [engineProfile(w.profileId), JSON.stringify(next)];
     }),
   );
-  if (!NativeWindowProfile) return null;
   return <NativeWindowProfile profile={profile} neighbours={JSON.parse(neighbours) as string[]} style={{ position: "absolute", width: 0, height: 0 }} />;
 }

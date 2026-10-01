@@ -1,4 +1,4 @@
-import { requireOptionalNativeModule, type EventSubscription } from "expo-modules-core";
+import { requireNativeModule, type EventSubscription } from "expo-modules-core";
 
 export type UpdaterState =
   | { available: false }
@@ -122,52 +122,23 @@ type AppModule = {
   setScriptState(state: ScriptState): Promise<void>;
   replyToScript(id: string, result: Record<string, unknown> | null, error: string | null): Promise<void>;
   systemInfo(): SystemInfo;
-  openExternalURL?(url: string): Promise<boolean>;
+  openExternalURL(url: string): Promise<boolean>;
   launchEnvironment(name: string): string | null;
-  playIntroMusic?(cues: IntroMusicCues, muted: boolean): Promise<void>;
-  setIntroMusicMuted?(muted: boolean): Promise<void>;
-  stopIntroMusic?(fade: number): Promise<void>;
-  devRenderIntroMusic?(cues: IntroMusicCues, path: string): Promise<number | null>;
+  playIntroMusic(cues: IntroMusicCues, muted: boolean): Promise<void>;
+  setIntroMusicMuted(muted: boolean): Promise<void>;
+  stopIntroMusic(fade: number): Promise<void>;
+  devRenderIntroMusic(cues: IntroMusicCues, path: string): Promise<number | null>;
   devRunAppleScript(source: string): Promise<{ ok: boolean; result?: unknown; error?: string; number?: number }>;
   devSnapshotWindow(windowId: string, path: string, transparent?: boolean): Promise<boolean>;
   devMenuCommand(command: string, arg: string | null): Promise<void>;
-  devTypeKeys?(windowId: string, text: string, interval: number): Promise<KeyTiming[]>;
-  devKeyEquivalent?(windowId: string, press: KeyPress): Promise<KeyPressResult>;
-  crashReports?(since: number): Promise<CrashReport[]>;
-  devCrash?(kind?: "exception"): Promise<void>;
+  devTypeKeys(windowId: string, text: string, interval: number): Promise<KeyTiming[]>;
+  devKeyEquivalent(windowId: string, press: KeyPress): Promise<KeyPressResult>;
+  crashReports(since: number): Promise<CrashReport[]>;
+  devCrash(kind?: "exception"): Promise<void>;
 };
 
-const missing: AppModule = {
-  addListener: () => ({ remove() {} }),
-  updaterState: async () => ({ available: false }),
-  checkForUpdates: async () => {},
-  setAutomaticUpdateChecks: async () => {},
-  setAutomaticUpdateDownloads: async () => {},
-  setWindowActivity: async () => {},
-  share: async () => {},
-  isInDock: async () => true,
-  addToDock: async () => false,
-  appIcons: async () => [],
-  appIcon: async () => "default",
-  setAppIcon: async () => {},
-  notificationPermission: async () => "denied",
-  requestNotificationPermission: async () => false,
-  postNotification: async () => null,
-  removeNotifications: async () => {},
-  openNotificationSettings: async () => {},
-  setScriptState: async () => {},
-  replyToScript: async () => {},
-  systemInfo: () => ({
-    appName: "Netnyahoo", appVersion: "", appBuild: "", bundleId: "", configuration: "Debug", osVersion: "", osBuild: "",
-    arch: "", model: "", memoryGB: 0, locale: "", updates: false,
-  }),
-  launchEnvironment: () => null,
-  devRunAppleScript: async () => ({ ok: false, error: "not available in this build" }),
-  devSnapshotWindow: async () => false,
-  devMenuCommand: async () => {},
-};
 
-const App = requireOptionalNativeModule<AppModule>("NetnyahooApp") ?? missing;
+const App = requireNativeModule<AppModule>("NetnyahooApp");
 
 export const updaterState = () => App.updaterState();
 export const checkForUpdates = () => App.checkForUpdates();
@@ -189,8 +160,8 @@ export const setAppIcon = (id: string) => App.setAppIcon(id);
 
 export const notificationPermission = () => App.notificationPermission();
 
-export const crashReports = (since: number): Promise<CrashReport[]> => App.crashReports?.(since) ?? Promise.resolve([]);
-export const devCrash = (kind?: "exception") => App.devCrash?.(kind) ?? Promise.resolve();
+export const crashReports = (since: number): Promise<CrashReport[]> => App.crashReports(since);
+export const devCrash = (kind?: "exception") => App.devCrash(kind);
 export const requestNotificationPermission = () => App.requestNotificationPermission();
 export const postNotification = (options: NotificationOptions) => App.postNotification(options);
 export const removeNotifications = (ids: string[]) => App.removeNotifications(ids);
@@ -203,7 +174,7 @@ export const replyToScript = (id: string, result: Record<string, unknown> | null
 export const onScriptCommand = (listener: (e: ScriptCommand) => void) => App.addListener("onScriptCommand", listener);
 
 export const systemInfo = () => App.systemInfo();
-export const openExternalURL = async (url: string) => (typeof App.openExternalURL === "function" ? await App.openExternalURL(url) : false);
+export const openExternalURL = (url: string) => App.openExternalURL(url);
 export type IntroMusicCues = {
   icon: number;
   letters: number;
@@ -213,16 +184,16 @@ export type IntroMusicCues = {
   exit: number;
   end: number;
 };
-export const playIntroMusic = (cues: IntroMusicCues, muted: boolean) => void App.playIntroMusic?.(cues, muted);
-export const setIntroMusicMuted = (muted: boolean) => void App.setIntroMusicMuted?.(muted);
-export const stopIntroMusic = (fade = 0.4) => void App.stopIntroMusic?.(fade);
-export const devRenderIntroMusic = async (cues: IntroMusicCues, path: string) => (await App.devRenderIntroMusic?.(cues, path)) ?? null;
+export const playIntroMusic = (cues: IntroMusicCues, muted: boolean) => void App.playIntroMusic(cues, muted);
+export const setIntroMusicMuted = (muted: boolean) => void App.setIntroMusicMuted(muted);
+export const stopIntroMusic = (fade = 0.4) => void App.stopIntroMusic(fade);
+export const devRenderIntroMusic = (cues: IntroMusicCues, path: string) => App.devRenderIntroMusic(cues, path);
 export const launchEnvironment = (name: string) => App.launchEnvironment(name);
 export const devRunAppleScript = (source: string) => App.devRunAppleScript(source);
 export const devSnapshotWindow = (windowId: string, path: string, transparent = false) =>
   transparent ? App.devSnapshotWindow(windowId, path, true) : App.devSnapshotWindow(windowId, path);
 export type KeyTiming = { due: number; handled: number; drawn: number };
-export const devTypeKeys = async (windowId: string, text: string, interval: number) => (await App.devTypeKeys?.(windowId, text, interval)) ?? [];
+export const devTypeKeys = (windowId: string, text: string, interval: number) => App.devTypeKeys(windowId, text, interval);
 export type KeyPress = {
   key: string;
   keyCode: number;
@@ -241,6 +212,6 @@ export type KeyPressResult = {
   matched?: { title: string; action: string; command?: string; arg?: string; enabled: boolean }[];
   error?: string;
 };
-export const devKeyEquivalent = async (windowId: string, press: KeyPress): Promise<KeyPressResult> =>
-  (await App.devKeyEquivalent?.(windowId, press)) ?? { error: "not available in this build" };
+export const devKeyEquivalent = (windowId: string, press: KeyPress): Promise<KeyPressResult> =>
+  App.devKeyEquivalent(windowId, press);
 export const devMenuCommand = (command: string, arg: string | null = null) => App.devMenuCommand(command, arg);
