@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Not App Sandboxed: Chromium runs its own sandbox for child processes, like Chrome and Dia. -->
+	<!-- Import › "Dia: open and pinned tabs (via Dia)" sends Dia Apple Events; the hardened runtime blocks
+	     them without this (and NSAppleEventsUsageDescription for the Automation prompt). -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<!-- Passkeys from a phone (hybrid / caBLE) talk to it over Bluetooth. -->
+	<key>com.apple.security.device.bluetooth</key>
+	<true/>
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<!-- USB security keys (FIDO2 / U2F over HID). -->
+	<key>com.apple.security.device.usb</key>
+	<true/>
+	<!-- Live Calendar reads macOS Calendar (EventKit) under the hardened runtime. -->
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+	<!-- Websites' geolocation (CoreLocation) under the hardened runtime. -->
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+</dict>
+</plist>
