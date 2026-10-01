@@ -197,6 +197,7 @@ class ProfileGoneObserver : public ProfileObserver {
   }
   void OnProfileWillBeDestroyed(Profile* profile) override {
     observation_.Reset();
+    nncore::NoteProfileDying(profile);
     // May destroy this.
     [wrapper_ profileWillBeDestroyed];
   }
@@ -390,6 +391,8 @@ std::unique_ptr<ActionPopup>& CurrentPopup() {
 
 // The window-creation hook in Chrome's Browser constructor (engine/nncore/apply.sh).
 extern BrowserWindow* (*g_netnyahoo_browser_window_factory)(Browser*);
+// HistoryTabHelper's eligibility hook (engine/nncore/apply.sh).
+extern bool (*g_netnyahoo_history_eligible)(content::WebContents*);
 
 namespace {
 
@@ -432,6 +435,26 @@ BrowserWindow* WindowForChromeBrowser(Browser* browser) {
 }  // namespace
 
 namespace nncore {
+
+namespace {
+std::vector<base::WeakPtr<Profile>>& DyingProfiles() {
+  static base::NoDestructor<std::vector<base::WeakPtr<Profile>>> dying;
+  return *dying;
+}
+}  // namespace
+
+void NoteProfileDying(Profile* profile) {
+  if (profile && !IsProfileDying(profile)) {
+    DyingProfiles().push_back(profile->GetWeakPtr());
+  }
+}
+
+bool IsProfileDying(const Profile* profile) {
+  std::erase_if(DyingProfiles(), [](const base::WeakPtr<Profile>& p) { return !p; });
+  return profile && std::ranges::any_of(DyingProfiles(), [&](const base::WeakPtr<Profile>& p) {
+           return p.get() == profile;
+         });
+}
 
 void HostPermissionRequest(content::WebContents* contents, NSDictionary* request) {
   if ([g_delegate respondsToSelector:@selector(engine:permissionRequest:tab:)]) {
@@ -610,6 +633,12 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   g_delegate = delegate;
   g_engine = [[NNCoreEngine alloc] init];
   g_netnyahoo_browser_window_factory = &WindowForChromeBrowser;
+  g_netnyahoo_history_eligible = [](content::WebContents* contents) {
+    BrowserWindowInterface* browser =
+        GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
+    nncore::WindowHost* host = browser ? nncore::WindowHost::ForBrowser(browser) : nullptr;
+    return !host || host->records_history();
+  };
   // No Chrome Apps or web-app shims here: Chrome's platform-app shortcut manager would
   // otherwise, when a profile is deleted, look for that profile's shims in
   // ~/Applications/"Chromium Apps.localized", and its first lookup per run rewrites that
@@ -958,8 +987,15 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 
 - (NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile {
   Profile* original = profile.chromeProfile;
-  if (!original) {
-    return profile;
+  // Never the original profile in place of a private one.
+  if (!original || original->IsOffTheRecord()) {
+    return nil;
+  }
+  // The last private window just closed and Chrome is destroying its profile (it waits for
+  // its renderers, up to a second): nil until it has; a new one is made then.
+  if (nncore::IsProfileDying(
+          original->GetPrimaryOTRProfile(/*create_if_needed=*/false))) {
+    return nil;
   }
   return [NNCoreProfile
       wrapperFor:original->GetPrimaryOTRProfile(/*create_if_needed=*/true)];
@@ -981,7 +1017,9 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 // --- NNCoreProfile ----------------------------------------------------------------------
 
 @implementation NNCoreProfile {
-  raw_ptr<Profile> _profile;
+  // Weak: a wrapper made after Chrome sent its destroyed notification (no observer fires
+  // again) still never hands out a freed Profile.
+  base::WeakPtr<Profile> _profile;
   std::unique_ptr<ProfileGoneObserver> _observer;
   NSString* __strong _name;
   NSString* __strong _path;
@@ -989,13 +1027,14 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 }
 
 + (NNCoreProfile*)wrapperFor:(Profile*)profile {
-  if (!profile) {
+  // Never one for a profile on its way out (its destroyed notification was sent already).
+  if (!profile || nncore::IsProfileDying(profile)) {
     return nil;
   }
   NNCoreProfile* __strong& wrapper = ProfileWrappers()[profile];
   if (!wrapper) {
     wrapper = [[NNCoreProfile alloc] init];
-    wrapper->_profile = profile;
+    wrapper->_profile = profile->GetWeakPtr();
     wrapper->_offTheRecord = profile->IsOffTheRecord();
     // An off-the-record profile is named after its original's directory.
     wrapper->_name = NS(profile->GetBaseName().value());
@@ -1008,12 +1047,12 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 - (void)profileWillBeDestroyed {
   // The wrapper outlives its Profile (the host may hold it); every call is a no-op from now.
   ProfileWrappers().erase(_profile.get());
-  _profile = nullptr;
+  _profile.reset();
   _observer.reset();
 }
 
 - (Profile*)chromeProfile {
-  return _profile;
+  return _profile.get();
 }
 
 - (BOOL)destroyed {
@@ -1040,9 +1079,9 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   }
   // Chrome keeps unpacked extensions disabled unless the profile is in developer mode
   // (DISABLE_UNSUPPORTED_DEVELOPER_EXTENSION); loading one is that mode's flow.
-  extensions::util::SetDeveloperModeForProfile(_profile, true);
+  extensions::util::SetDeveloperModeForProfile(_profile.get(), true);
   scoped_refptr<extensions::UnpackedInstaller> installer =
-      extensions::UnpackedInstaller::Create(_profile);
+      extensions::UnpackedInstaller::Create(_profile.get());
   installer->set_be_noisy_on_failure(false);
   installer->set_completion_callback(base::BindOnce(
       [](void (^completion)(NSString*, NSString*),
@@ -1110,7 +1149,7 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   const base::FilePath root(base::SysNSStringToUTF8(path));
   // Already running from there: nothing to do (a reload would restart its worker).
   for (const auto& extension :
-       extensions::ExtensionRegistry::Get(_profile)->enabled_extensions()) {
+       extensions::ExtensionRegistry::Get(_profile.get())->enabled_extensions()) {
     if (extension->location() == extensions::mojom::ManifestLocation::kComponent &&
         extension->path() == root) {
       return NS(extension->id());
@@ -1118,7 +1157,7 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   }
   // Chrome's component extensions (its own built-ins): the manifest's key fixes the id;
   // hidden from chrome://extensions and the user's list, as CEF's LoadComponentExtension.
-  extensions::ComponentLoader* loader = extensions::ComponentLoader::Get(_profile);
+  extensions::ComponentLoader* loader = extensions::ComponentLoader::Get(_profile.get());
   if (!loader) {
     return nil;
   }
@@ -1130,13 +1169,13 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   if (!_profile) {
     return;
   }
-  if (extensions::ComponentLoader* loader = extensions::ComponentLoader::Get(_profile)) {
+  if (extensions::ComponentLoader* loader = extensions::ComponentLoader::Get(_profile.get())) {
     loader->Remove(extensions::ExtensionId(base::SysNSStringToUTF8(extensionId)));
   }
 }
 
 - (void)watchCastRoutes {
-  nncore::WatchCastRoutes(_profile);
+  nncore::WatchCastRoutes(_profile.get());
 }
 
 - (NSArray<NSDictionary<NSString*, id>*>*)extensions {
@@ -1144,8 +1183,8 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   if (!_profile) {
     return list;
   }
-  auto* registry = extensions::ExtensionRegistry::Get(_profile);
-  auto* actions = extensions::ExtensionActionManager::Get(_profile);
+  auto* registry = extensions::ExtensionRegistry::Get(_profile.get());
+  auto* actions = extensions::ExtensionActionManager::Get(_profile.get());
   for (const auto& extension : registry->enabled_extensions()) {
     // The user's extensions: not Chrome's built-ins or the host's component ones.
     if (extensions::Manifest::IsComponentLocation(extension->location())) {
@@ -1175,7 +1214,7 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   }
   scoped_refptr<password_manager::PasswordStoreInterface> store =
       ProfilePasswordStoreFactory::GetForProfile(
-          _profile, ServiceAccessType::EXPLICIT_ACCESS);
+          _profile.get(), ServiceAccessType::EXPLICIT_ACCESS);
   if (!store) {
     completion(@[]);
     return;
@@ -1241,7 +1280,7 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 }
 
 - (void)setActiveProfile:(NNCoreProfile*)profile {
-  if (profile) {
+  if (profile.chromeProfile) {
     _host->BrowserFor(profile.chromeProfile);
     _host->SetActiveProfile(profile.chromeProfile);
   }
@@ -1294,6 +1333,14 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 - (BOOL)executeChromeCommand:(int)commandId profile:(NNCoreProfile*)profile {
   Browser* browser = _host->ExistingBrowserFor(profile.chromeProfile);
   return browser && chrome::ExecuteCommand(browser, commandId);
+}
+
+- (BOOL)recordsHistory {
+  return _host->records_history();
+}
+
+- (void)setRecordsHistory:(BOOL)recordsHistory {
+  _host->set_records_history(recordsHistory);
 }
 
 - (void)showInactive {
@@ -1914,6 +1961,12 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 
 - (BOOL)focusedEditable {
   return _contents && _contents->IsFocusedElementEditable();
+}
+
+- (NSDictionary<NSString*, NSNumber*>*)popupFeatures {
+  nncore::TabBridge* bridge =
+      _contents ? nncore::TabBridge::FromWebContents(_contents) : nullptr;
+  return bridge ? bridge->popup_features() : nil;
 }
 
 namespace {

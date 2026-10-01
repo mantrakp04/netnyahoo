@@ -170,8 +170,10 @@ NNCORE_EXPORT
                         tab:(NNCoreTab*)tab
                       frame:(nullable NSString*)frameId
                      origin:(nullable NSString*)origin;
-// The off-the-record profile of `profile` (created on first use): incognito windows.
-- (NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile;
+// The off-the-record profile of `profile` (created on first use): incognito windows. nil if
+// `profile` went, or while the last one is still closing (its Browser on the way out): ask
+// again shortly. Never `profile` itself.
+- (nullable NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile;
 @property(readonly) NSString* chromiumVersion;
 // What keeps the app alive (Chrome's KeepAliveRegistry), for diagnostics.
 @property(readonly) NSString* keepAliveState;
@@ -325,6 +327,9 @@ NNCORE_EXPORT
                          foreground:(BOOL)foreground;
 // Chrome's tab-strip index and pin state for a tab of this window (the host's order).
 - (void)placeTab:(NNCoreTab*)tab index:(int)index pinned:(BOOL)pinned;
+// NO: this window's pages never reach the profile's history (the host's own hidden pages,
+// extension popups). YES by default.
+@property(nonatomic) BOOL recordsHistory;
 @end
 
 // --- Tabs -------------------------------------------------------------------------------
@@ -397,9 +402,15 @@ NNCORE_EXPORT
     contextMenuCommand:(NSString*)itemId
                   text:(NSString*)selection
              modifiers:(NSDictionary<NSString*, NSNumber*>*)modifiers;
-// Background mode (NETNYAHOO_BACKGROUND set): the menu is reported here instead of shown:
-// [{id, label, enabled, separator}].
+// Background mode (NETNYAHOO_BACKGROUND or NETNYAHOO_CONTEXT_MENU_LOG set): the menu is
+// reported here instead of shown: [{id, label, enabled, visible, separator, type
+// (ui::MenuModel::ItemType), submenu?}].
 - (void)tab:(NNCoreTab*)tab didShowContextMenu:(NSArray<NSDictionary*>*)items;
+// The same, implemented instead of the above to run an item as if picked: `menu` is
+// {items, url (the page's), link}; answer {command: an item's id, flags: ui::EventFlags} or
+// nil (dismissed).
+- (nullable NSDictionary<NSString*, NSNumber*>*)tab:(NNCoreTab*)tab
+                                     runContextMenu:(NSDictionary<NSString*, id>*)menu;
 // A main-frame navigation became a download (the page stays; Chrome downloads it).
 - (void)tab:(NNCoreTab*)tab navigationBecameDownload:(NSString*)url;
 // Lifecycle.
@@ -566,6 +577,10 @@ NNCORE_EXPORT
 - (BOOL)devShowBluetoothChooser:(BOOL)unauthorized;
 // Whether the page's focused element takes text now (Esc in a text field is the page's).
 @property(readonly) BOOL focusedEditable;
+// A popup a page opened (window.open with a size or position: disposition "popup"): what it
+// asked for, in screen points from the top-left of the primary screen, {x, y, width, height}
+// (each only if given; width and height are the page's). nil for other tabs.
+@property(readonly, nullable) NSDictionary<NSString*, NSNumber*>* popupFeatures;
 // The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:).
 - (void)callFrame:(NSString*)frameId kind:(NSString*)kind json:(NSString*)json;
 @end

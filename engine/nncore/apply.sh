@@ -2,8 +2,9 @@
 # Puts NNCore into the Chromium tree: copies src/netnyahoo/ to //netnyahoo and adds its hooks:
 # a dep of the macOS //chrome:chrome_dll on //netnyahoo/core (Chrome's framework then links
 # our layer), ChromeMain making NNCore's main delegate, Browser asking NNCore for the window of a
-# Browser Chrome makes itself, and three CHECKs made tolerant of
-# Browsers without a BrowserView (CEF's and Chrome's behaviour unchanged). Idempotent. Never touches
+# Browser Chrome makes itself, HistoryTabHelper asking NNCore which tabs are history, and three
+# CHECKs made tolerant of Browsers without a BrowserView (CEF's and Chrome's behaviour unchanged).
+# Idempotent. Never touches
 # args.gn; the next autoninja re-runs gn by itself.
 #
 #   engine/nncore/apply.sh            copy + hook
@@ -23,7 +24,8 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'g_netnyahoo_external_protocol_dialog(' "$src/chrome/browser/external_protocol/external_protocol_handler.cc" &&
     grep -q 'nncore::NNMainDelegate' "$src/chrome/app/chrome_main.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" &&
-    grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc"
+    grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" &&
+    grep -q 'g_netnyahoo_history_eligible(' "$src/chrome/browser/history/history_tab_helper.cc"
   exit
 fi
 
@@ -231,4 +233,35 @@ s = s[:at] + decl + s[at:]
 s = s.replace(old, new)
 open(path, "w").write(s)
 print("hooked external protocol dialog")
+PY2
+
+# HistoryTabHelper asks NNCore whether a tab's navigations are history: the host's own pages
+# (the content blocker's hidden extension page, extension popups and side panels) never are,
+# as CEF's Alloy browsers never were. Only NNCore sets the hook, so CEF behaves as before.
+python3 - "$src/chrome/browser/history/history_tab_helper.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_history_eligible" in s:
+    sys.exit(0)
+old_fn = "bool HistoryTabHelper::IsEligibleTab(\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) keeps its own pages out of history.\n"
+        "bool (*g_netnyahoo_history_eligible)(content::WebContents*) = nullptr;\n\n")
+old = """  if (force_eligible_tab_for_testing_) {
+    return true;
+  }
+"""
+new = """  if (force_eligible_tab_for_testing_) {
+    return true;
+  }
+  // Netnyahoo: NNCore
+  if (g_netnyahoo_history_eligible && web_contents() &&
+      !g_netnyahoo_history_eligible(web_contents())) {
+    return false;
+  }
+"""
+assert s.count(old_fn) == 1 and s.count(old) == 1
+s = s.replace(old_fn, decl + old_fn).replace(old, new)
+open(path, "w").write(s)
+print("hooked HistoryTabHelper")
 PY2

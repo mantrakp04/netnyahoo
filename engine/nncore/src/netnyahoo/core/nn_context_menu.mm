@@ -2,11 +2,13 @@
 
 #import <AppKit/AppKit.h>
 
+#include <map>
 #include <string>
 #include <vector>
 
 #include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
+#include "base/no_destructor.h"
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/renderer_context_menu/render_view_context_menu.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
@@ -46,12 +48,24 @@ NNCoreTab* TabOf(content::WebContents* contents) {
              : nil;
 }
 
+class NNContextMenu;
+
+// Our menus alive now, so the show handler can tell when a callback into the host destroyed
+// the one it is showing (a tab closed from the host's side, say).
+std::map<const RenderViewContextMenu*, base::WeakPtr<NNContextMenu>>& LiveMenus() {
+  static base::NoDestructor<std::map<const RenderViewContextMenu*, base::WeakPtr<NNContextMenu>>>
+      menus;
+  return *menus;
+}
+
 class NNContextMenu : public RenderViewContextMenuMacCocoa {
  public:
   using RenderViewContextMenuMacCocoa::RenderViewContextMenuMacCocoa;
+  ~NNContextMenu() override { LiveMenus().erase(this); }
 
   // After Init(): the host's items for a selection.
   void AddHostItems() {
+    LiveMenus()[this] = weak_factory_.GetWeakPtr();
     const std::u16string& selection = params().selection_text;
     NNCoreTab* tab = TabOf(source_web_contents_);
     id<NNCoreTabDelegate> delegate = tab.delegate;
@@ -130,6 +144,7 @@ class NNContextMenu : public RenderViewContextMenuMacCocoa {
 
  private:
   std::vector<std::string> host_items_;
+  base::WeakPtrFactory<NNContextMenu> weak_factory_{this};
 };
 
 class NNViewDelegate : public ChromeWebContentsViewDelegateViewsMac {
@@ -231,30 +246,80 @@ std::unique_ptr<content::WebContentsViewDelegate> CreateViewDelegate(
   return std::make_unique<NNViewDelegate>(contents);
 }
 
+namespace {
+
+// A menu model's items for the host: {id, label, enabled, visible, separator, type
+// (ui::MenuModel::ItemType), submenu?}.
+NSArray* DescribeMenu(ui::MenuModel* model) {
+  NSMutableArray* items = [NSMutableArray array];
+  for (size_t i = 0; model && i < model->GetItemCount(); ++i) {
+    const ui::MenuModel::ItemType type = model->GetTypeAt(i);
+    NSMutableDictionary* item = [@{
+      @"id" : @(model->GetCommandIdAt(i)),
+      @"label" : base::SysUTF16ToNSString(model->GetLabelAt(i)),
+      @"enabled" : @(model->IsEnabledAt(i)),
+      @"visible" : @(model->IsVisibleAt(i)),
+      @"separator" : @(type == ui::MenuModel::TYPE_SEPARATOR),
+      @"type" : @(static_cast<int>(type)),
+    } mutableCopy];
+    if (type == ui::MenuModel::TYPE_SUBMENU ||
+        type == ui::MenuModel::TYPE_ACTIONABLE_SUBMENU) {
+      item[@"submenu"] = DescribeMenu(model->GetSubmenuModelAt(i));
+    }
+    [items addObject:item];
+  }
+  return items;
+}
+
+}  // namespace
+
 void InstallContextMenuShowHandler() {
-  if (!getenv("NETNYAHOO_BACKGROUND")) {
+  // Background (test) instances, and NETNYAHOO_CONTEXT_MENU_LOG (CEF's menu log, release
+  // builds too): the menu goes to the host instead of the screen.
+  if (!getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_CONTEXT_MENU_LOG")) {
     return;
   }
   RenderViewContextMenu::RegisterMenuShowHandlerCallback(
       base::BindRepeating([](RenderViewContextMenu* menu) {
-        NNCoreTab* tab = TabOf(menu->GetWebContents());
-        id<NNCoreTabDelegate> delegate = tab.delegate;
-        if (![delegate respondsToSelector:@selector(tab:didShowContextMenu:)]) {
+        auto live = LiveMenus().find(menu);
+        if (live == LiveMenus().end()) {
           return false;
         }
-        NSMutableArray* items = [NSMutableArray array];
-        const ui::SimpleMenuModel& model = menu->menu_model();
-        for (size_t i = 0; i < model.GetItemCount(); ++i) {
-          [items addObject:@{
-            @"id" : @(model.GetCommandIdAt(i)),
-            @"label" : base::SysUTF16ToNSString(model.GetLabelAt(i)),
-            @"enabled" : @(model.IsEnabledAt(i)),
-            @"separator" : @(model.GetTypeAt(i) == ui::MenuModel::TYPE_SEPARATOR),
-          }];
+        base::WeakPtr<NNContextMenu> weak = live->second;
+        NNCoreTab* tab = TabOf(menu->GetWebContents());
+        id<NNCoreTabDelegate> delegate = tab.delegate;
+        const bool runs = [delegate respondsToSelector:@selector(tab:runContextMenu:)];
+        if (!runs && ![delegate respondsToSelector:@selector(tab:didShowContextMenu:)]) {
+          return false;
         }
-        [delegate tab:tab didShowContextMenu:items];
-        // Background mode: logged, not shown; closed at once for the page (as a dismissal).
-        menu->MenuClosed(const_cast<ui::SimpleMenuModel*>(&model));
+        ui::SimpleMenuModel* model =
+            const_cast<ui::SimpleMenuModel*>(&menu->menu_model());
+        NSNumber* command = nil;
+        NSNumber* flags = nil;
+        if (runs) {
+          NSDictionary* picked = [delegate tab:tab
+                                runContextMenu:@{
+                                  @"items" : DescribeMenu(model),
+                                  @"url" : base::SysUTF8ToNSString(
+                                      menu->params().page_url.spec()),
+                                  @"link" : base::SysUTF8ToNSString(
+                                      menu->params().link_url.spec()),
+                                }];
+          command = [picked[@"command"] isKindOfClass:NSNumber.class] ? picked[@"command"] : nil;
+          flags = [picked[@"flags"] isKindOfClass:NSNumber.class] ? picked[@"flags"] : nil;
+        } else {
+          [delegate tab:tab didShowContextMenu:DescribeMenu(model)];
+        }
+        // The host may have closed the tab (and the menu with it) meanwhile.
+        if (!weak) {
+          return true;
+        }
+        // Not shown: closed at once, then the pick runs, as a Mac menu closes before its
+        // item's action.
+        menu->MenuClosed(model);
+        if (weak && command && menu->IsCommandIdEnabled(command.intValue)) {
+          menu->ExecuteCommand(command.intValue, flags.intValue);
+        }
         return true;
       }));
 }

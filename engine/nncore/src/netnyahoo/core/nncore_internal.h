@@ -13,6 +13,11 @@ class WebContents;
 
 namespace nncore {
 class WindowHost;
+
+// Profiles Chrome is destroying (their OnProfileWillBeDestroyed was sent; an off-the-record
+// one is destroyed once its renderers are gone): never handed out or given a Browser again.
+void NoteProfileDying(Profile* profile);
+bool IsProfileDying(const Profile* profile);
 }
 
 @interface NNCoreProfile ()

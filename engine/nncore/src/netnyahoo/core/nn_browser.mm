@@ -204,6 +204,10 @@ std::vector<Browser*> WindowHost::browsers() const {
 }
 
 Browser* WindowHost::BrowserFor(Profile* profile) {
+  // A profile that went (a destroyed one's wrapper hands out null) or is going: no Browser.
+  if (!profile || IsProfileDying(profile)) {
+    return nullptr;
+  }
   if (Browser* browser = ExistingBrowserFor(profile)) {
     return browser;
   }
@@ -818,7 +822,26 @@ content::WebContents* NNWebContentsDelegate::AddNewContents(
   if (host_ && new_contents) {
     // window.open and target=_blank: the renderer already made the contents (opener
     // relationship and all). Keep them as a tab of ours.
-    TabBridge::GetOrCreate(new_contents.get())->set_open(disposition, source);
+    TabBridge* bridge = TabBridge::GetOrCreate(new_contents.get());
+    bridge->set_open(disposition, source);
+    if (disposition == WindowOpenDisposition::NEW_POPUP) {
+      // The host may give a popup a window of its own, sized and placed as asked.
+      NSMutableDictionary* features = [NSMutableDictionary dictionary];
+      const gfx::Rect& bounds = window_features.bounds;
+      if (window_features.has_x) {
+        features[@"x"] = @(bounds.x());
+      }
+      if (window_features.has_y) {
+        features[@"y"] = @(bounds.y());
+      }
+      if (window_features.has_width) {
+        features[@"width"] = @(bounds.width());
+      }
+      if (window_features.has_height) {
+        features[@"height"] = @(bounds.height());
+      }
+      bridge->set_popup_features(features);
+    }
     if (IsWindowDisposition(disposition)) {
       disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
     }

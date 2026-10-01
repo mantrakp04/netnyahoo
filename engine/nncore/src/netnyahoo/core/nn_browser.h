@@ -89,6 +89,9 @@ class WindowHost : public TabStripModelObserver,
   // While set, Chrome's active-tab changes aren't reported (a command run in a background
   // tab activates it for a moment).
   void set_quiet_activation(bool quiet) { quiet_activation_ = quiet; }
+  // The host's own pages (a hidden extension page, extension popups): never history.
+  void set_records_history(bool records) { records_history_ = records; }
+  bool records_history() const { return records_history_; }
   // The close can no longer be cancelled: every Browser is closing.
   bool closing() const { return close_state_ == CloseState::kClosing; }
   // Cancellable: beforeunload in every Browser, then the downloads the close would cancel;
@@ -162,6 +165,7 @@ class WindowHost : public TabStripModelObserver,
   CloseState close_state_ = CloseState::kOpen;
   bool widget_close_allowed_ = false;
   bool quiet_activation_ = false;
+  bool records_history_ = true;
   PendingOpen pending_open_;
   base::ObserverList<web_modal::ModalDialogHostObserver> modal_observers_;
   base::WeakPtrFactory<WindowHost> weak_factory_{this};
@@ -321,6 +325,10 @@ class TabBridge : public content::WebContentsObserver,
   }
   std::optional<WindowOpenDisposition> TakeOpenDisposition();
   content::WebContents* open_source() const { return open_source_.get(); }
+  // A page's popup (window.open with a size, NEW_POPUP): what it asked for, as
+  // -[NNCoreTab popupFeatures] answers it ({x, y, width, height}, each only if given).
+  void set_popup_features(NSDictionary* features) { popup_features_ = features; }
+  NSDictionary* popup_features() const { return popup_features_; }
   // Chrome attaches the favicon driver with the tab helpers, after we may have made this.
   void EnsureFaviconObserved();
   void EnsureFindObserved();
@@ -421,6 +429,7 @@ class TabBridge : public content::WebContentsObserver,
   bool will_close_reported_ = false;
   std::optional<WindowOpenDisposition> open_disposition_;
   base::WeakPtr<content::WebContents> open_source_;
+  NSDictionary* __strong popup_features_ = nil;
   bool observing_favicon_ = false;
   raw_ptr<find_in_page::FindTabHelper> find_helper_ = nullptr;
   WEB_CONTENTS_USER_DATA_KEY_DECL();
