@@ -244,11 +244,11 @@ calls it yet.
 |---|---|---|
 | `nn_engine_abi_version`, `nn_engine_set_event_sink` | (events: `reauth.requested`, `passwords.export`, `zoom.changed`) | done (`engineCall`, `onEngineEvent`) |
 | `nn_passwords_list`, `_unlock`, `_reveal`, `_add`, `_update`, `_remove`, `_exceptions`, `_allow` | `listPasswords`, `unlockPasswords`, `getPassword`, `savePassword`, `updatePassword`, `deletePassword`, `getNeverSavePasswordOrigins`, `allowSavingPasswords` | missing |
-| `nn_passwords_export` | `exportPasswords` (native only; no JS caller yet) | missing |
+| `nn_passwords_export` | `exportPasswords` (Settings › Passwords › Export; the native side shows the save panel) | missing |
 | `nn_autofill_addresses`, `_save_address`, `_cards`, `_save_card`, `_remove`, `_card_number` | `listAddresses`, `saveAddress`, `listCards`, `saveCard`, `deleteAutofillEntry`, `revealCardNumber` | missing |
 | `nn_extensions_list`, `_install`, `_set_enabled`, `_uninstall`, `_reload`, `_configure` | `NetnyahooExtensions.list`, `install`, `setEnabled`, `uninstall`, `reload`, `configure` | missing |
 | `nn_search_engines_list` | `NetnyahooExtensions.searchEngineList` | missing |
-| `nn_zoom_list`, `nn_zoom_set` | `getZoomLevels`, `setZoom` (a site with no open tab) | missing |
+| `nn_zoom_list`, `nn_zoom_set` (`tab` for a private window's own zoom map) | `getZoomLevels`, `setZoom` (a site with no open tab) | missing |
 | `nn_browsing_data_clear` | `deleteProfileData` of the default profile (form data, site settings) | missing |
 | `nn_history_query`, `_add`, `_import`, `_delete_urls`, `_watch` (event `history.changed`) | `queryHistory`, `addHistoryVisits`, `importHistoryRows`, `deleteHistoryUrls`, `watchHistory`, `onHistoryChanged` (`packages/cef/src/history.ts`) | done (`engineCall`) |
 | `nn_favicons_get`, `_set` | `faviconsFor`, `fetchFavicon`'s hand-off (`favicons.ts`) | done (`engineCall`) |
