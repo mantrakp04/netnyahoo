@@ -15,15 +15,32 @@ source_set("netnyahoo") {
   sources = [
     "nn_engine.cc",
     "nn_engine.h",
+    "pip/nn_pip_controls.cc",
+    "pip/nn_pip_controls.h",
+    "pip/nn_pip_mac.h",
+    "pip/nn_pip_mac.mm",
+    "pip/nn_pip_window.cc",
+    "pip/nn_pip_window.h",
     "public/nn_engine.h",
   ]
 
   deps = [
     "//base",
+    "//cc/paint",
     "//chrome/browser",
+    "//chrome/browser/picture_in_picture",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/views/overlay",
+    "//chrome/common",
     "//content/public/browser",
+    "//services/media_session/public/cpp",
+    "//skia",
+    "//ui/views",
   ]
+
+  # pip/: the Picture in Picture window's Core Animation fade.
+  frameworks = [ "QuartzCore.framework" ]
 }
 
 # Chrome's framework exports only what its lists name; NNCore's framework also
