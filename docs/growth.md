@@ -296,3 +296,26 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
     The event carries only the crashed thread, so the throw site is unknown; the crash telemetry now gets
     the exception's own backtrace (next release). The local `ExcUserFault` reports are the known IconServices
     faults from test builds.
+- **2026-10-01 00:10 UTC check:** 6,537 visitors all time, 393 since 15:10 (t.co 257, direct 126; phones 52%).
+  Traffic fell off a cliff at 15:45: ~50 visitors per 15 minutes until 15:30, ~8 after, and a flat ~40/h
+  since 16:00. Not a tracking break: pageviews, clicks and other events fell together, the device and referrer
+  mix didn't change, and a test visit at 00:04 reached ClickHouse within seconds. The tweet stopped being shown.
+  - Downloads: 152 people all time (120 Mac), +19. Since 15:10, Mac desktop 17/106 = 16%; Windows 2/58,
+    Linux 0/25. The quieter traffic converts better.
+  - Phones since 15:10: header panel 9; the hero's share sheet 12 dismissed, 3 shared, 1 copied; closing 1
+    dismissed. `mac_link_visit` 4 all time (+1).
+  - `github_clicked` 53 (41 people), `screenshot_opened` 60, `notify_clicked` 8, `support_opened` 2.
+    Rage clicks 42 from 19 people; dead clicks 431 from 122.
+  - Experiment: band 55/756 (7.3%), control 57/727 (7.8%). Still even; keep running.
+  - Installs: DMG downloads 204 (+24: 0.2.18 16, 0.2.17 +8); update zips 40 (+10); first launches 32 (+11:
+    0.2.18 7, 0.2.17 +3, 0.2.14 +1). Checks on 09-30: 0.2.14 14, 0.2.17 13, 0.2.18 10, 0.2.16 6, 0.2.15 3.
+  - Opted-in app users, 7 days: 0.2.11 7, 0.2.13 4, 0.2.12 3, 0.2.14 3, 0.2.18 3, 0.2.7 2, one each on 0.2.9,
+    0.2.15, 0.2.16, 0.2.17. 0.2.18 reports to ClickHouse; Cloud (read through the MCP) had 4 people on
+    0.2.11-0.2.17 since 15:03 and no exceptions.
+  - GitHub: 27 stars (+2). Traffic still shows 09-29 last (83 views, 56 people, 50 via netnyahoo.com).
+  - Errors: none from the app. The site's five are not ours (a Safari extension's adopted stylesheets, X's
+    `CONFIG`, a webview's `messageHandlers`, a cross-origin `Script error.`, an I/O read drop).
+    0.2.18 includes the NSException throw-site capture (9bc924b0).
+  - Infra: ClickHouse answered one stats query with `Too many open files` (errno 24) and several timed out at
+    60 s while four queries ran at once. The container likely runs with a low open-file limit; flagged as its
+    own task.
