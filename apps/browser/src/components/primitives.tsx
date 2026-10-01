@@ -1,6 +1,6 @@
 import { displayHost } from "@netnyahoo/core";
 import { Symbol, type SymbolProps } from "@netnyahoo/shell";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Image, Pressable, Text, View, type ViewStyle } from "react-native";
 import { faviconFailed, useAppearanceDark, useFavicon, useFaviconTheme } from "../lib/favicons";
 import { useTheme } from "../lib/theme";
@@ -66,7 +66,8 @@ export function IconButton({
   );
 }
 
-export function Favicon({
+// Memoized (primitive props): it sits in rows that re-render for their own reasons (a title, a player's clock).
+export const Favicon = memo(function Favicon({
   url,
   favicon,
   size = 16,
@@ -99,9 +100,9 @@ export function Favicon({
       style={{ width: size, height: size, borderRadius: size > 18 ? 4 : 3, tintColor: white ? theme.textPrimary : undefined }}
     />
   );
-}
+});
 
-export function FaviconFallback({ url, size = 16 }: { url: string; size?: number }) {
+export const FaviconFallback = memo(function FaviconFallback({ url, size = 16 }: { url: string; size?: number }) {
   const theme = useTheme();
   const initial = hostInitial(url);
   if (!initial) return <Symbol name="globe" size={size - 3} color={theme.textSecondary} style={{ width: size, height: size }} />;
@@ -123,7 +124,7 @@ export function FaviconFallback({ url, size = 16 }: { url: string; size?: number
       </View>
     </View>
   );
-}
+});
 
 function hostInitial(url: string): string {
   const host = /^(?:https?|ftp):\/\/(?:[^@/?#]*@)?([^/?#:]+)/i.exec(url)?.[1];

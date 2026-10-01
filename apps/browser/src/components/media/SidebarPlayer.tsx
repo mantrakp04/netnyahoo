@@ -1,5 +1,6 @@
 import { FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
 import { useShallow } from "zustand/react/shallow";
+import type { ComponentProps } from "react";
 import { Image, Pressable, View } from "react-native";
 import { switchToTab, toggleMute } from "../../lib/actions";
 import { hex, useTheme } from "../../lib/theme";
@@ -40,7 +41,6 @@ export function SidebarPlayer({ tabId }: { tabId: string }) {
   const tab = useTab(tabId);
   const playing = isPlaying(session);
   const { hovered, hoverProps } = useHover();
-  useTicker(playing, 1000);
   const artwork = useArtwork(tabId, session?.artwork);
   if (!session || !tab) return null;
   const tracks = hasTrackControls(session);
@@ -89,7 +89,7 @@ export function SidebarPlayer({ tabId }: { tabId: string }) {
           />
           {session.duration ? (
             <View style={{ flex: 1, flexDirection: "row", marginLeft: 6 }}>
-              <SeekBar session={session} tokens={media} height={12} barHeight={3} onSeek={(p) => seekTo(tabId, session, p * session.duration!)} />
+              <TickingSeekBar playing={playing} session={session} tokens={media} height={12} barHeight={3} onSeek={(p) => seekTo(tabId, session, p * session.duration!)} />
             </View>
           ) : null}
         </View>
@@ -102,6 +102,12 @@ export function SidebarPlayer({ tabId }: { tabId: string }) {
       ) : null}
     </View>
   );
+}
+
+// The bar is the only part that moves with the clock: it ticks on its own instead of re-rendering the player.
+function TickingSeekBar({ playing, ...props }: { playing: boolean } & ComponentProps<typeof SeekBar>) {
+  useTicker(playing, 1000);
+  return <SeekBar {...props} />;
 }
 
 function CornerButton({ icon, tooltip, onPress }: { icon: string; tooltip: string; onPress: () => void }) {
