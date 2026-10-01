@@ -1,6 +1,6 @@
 // usage: node smoke.mjs <cdpPort> <version> <windowsTool> <pid> <pagesOrigin>
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const [port, version, windowsTool, pid, pages] = process.argv.slice(2);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -284,6 +284,53 @@ for (const start = Date.now(); !homeContext && Date.now() - start < 8000; await 
 }
 check("Personal's pages run in Personal's profile when Work was the last used", !!homeContext && !!workContext && homeContext !== workContext,
   `personal ${homeContext}, work ${workContext}`);
+
+// A page that stops answering is reported: Chrome's hang monitor raises onUnresponsive (the "Page Unresponsive" sheet).
+// Chrome ignores a hang while a DevTools client is attached to the page, so the busy page is opened from the browser
+// target, and the click that starts the hang monitor is sent from a client that detaches at once. 0.2.20 kept a client
+// attached to every tab it showed (its drag pictures) and reported no hang in a one-window session; this two-profile
+// session's busy tab isn't captured, so the check passes on 0.2.20 too: it guards hang reporting, not that case. The app's side is read through the dev
+// harness's perf probe (smoke.sh writes perf-probe), which counts every event that reaches the app's JS.
+async function app(body, timeout = 10000) {
+  const id = `smoke-${Date.now()}-${Math.random()}`;
+  writeFileSync(`${process.env.SMOKE_DATA}/dev-eval.js`, `// ${id}\n${body}`);
+  for (const start = Date.now(); Date.now() - start < timeout; await sleep(100)) {
+    let out;
+    try {
+      out = JSON.parse(readFileSync(`${process.env.SMOKE_DATA}/dev-eval-result.json`, "utf8"));
+    } catch {
+      continue;
+    }
+    if (out.id !== id) continue;
+    if (out.error) throw new Error(out.error);
+    return out.result;
+  }
+  throw new Error("the dev harness didn't answer");
+}
+const hangEvents = async () =>
+  Object.entries((await app("return globalThis.nnPerf.read().tasks")) ?? {}).filter(([k]) => /Unresponsive/.test(k)).reduce((n, [, c]) => n + c, 0);
+let hang;
+try {
+  const { targetId: busyId } = await browserCall("Target.createTarget", { url: `${pages}/busy.html` });
+  await sleep(4000); // busy.html loads, then loops 2.5 s later (after 0.2.20's picture at 1.5 s)
+  const before = await hangEvents();
+  const busy = (await (await fetch(`http://localhost:${port}/json`)).json()).find((t) => t.id === busyId);
+  const pws = new WebSocket(busy.webSocketDebuggerUrl);
+  await new Promise((r) => (pws.onopen = r));
+  for (const [id, type] of [[1, "mousePressed"], [2, "mouseReleased"]])
+    pws.send(JSON.stringify({ id, method: "Input.dispatchMouseEvent", params: { type, x: 200, y: 200, button: "left", clickCount: 1 } }));
+  await sleep(300);
+  pws.close();
+  const start = Date.now();
+  while (!hang && Date.now() - start < 28000) {
+    await sleep(1000);
+    if ((await hangEvents()) > before) hang = `${Math.round((Date.now() - start) / 1000)} s after a click`;
+  }
+  await browserCall("Target.closeTarget", { targetId: busyId });
+} catch (error) {
+  console.log(`note: ${error.message}`);
+}
+check("a page that stops responding is reported (Page Unresponsive)", !!hang, hang ?? "no unresponsive event within 28 s");
 
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);

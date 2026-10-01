@@ -62,6 +62,10 @@ JSON
 
 # Chrome's last-used profile is Work's, as after quitting with Work's window in front (smoke.mjs checks Personal's
 # pages don't run in it).
+# The dev harness (dev-eval.js), which release builds start only for an isolated instance with a perf-probe file:
+# smoke.mjs reads the window's accessibility tree through it. The probe itself only counts store and timer calls.
+: > "$work/data/perf-probe"
+
 mkdir -p "$work/data/Chromium"
 printf '{"profile":{"last_used":"Profile p-work"}}' > "$work/data/Chromium/Local State"
 

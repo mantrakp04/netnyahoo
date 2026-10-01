@@ -113,6 +113,8 @@ and a session whose window was left on its second profile, and checks, over CDP 
 - right-click shows the native context menu (0.1.5);
 - with Chrome's last-used profile left at Work (as quitting with Work's window in front does), Personal's pages
   still run in Personal's profile (0.2.19 and earlier ran them in Work's);
+- a page that stops responding is reported (Chrome's hang monitor reaches the app; 0.2.20 attached a DevTools client to
+  every tab it showed, and Chrome ignores hangs while one is attached);
 - quitting the way ⌘Q and Sparkle's update do (the quit Apple event, sent to this instance's pid only) exits
   within 15 s with status 0 and no crash report (0.2.6 and 0.2.7 crashed on every quit, so every update
   ended in "Netnyahoo quit unexpectedly");
