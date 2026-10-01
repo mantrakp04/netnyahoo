@@ -71,7 +71,7 @@ export function startChromeTabs() {
       announceMoves(s, prev);
       forgetUnopened(s, prev);
     }
-    if (s.windows !== prev.windows || s.tabs !== prev.tabs) scheduleProject();
+    if (s.windows !== prev.windows || s.tabs !== prev.tabs || s.groups !== prev.groups) scheduleProject();
   });
 }
 

@@ -59,6 +59,7 @@ std::map<int, std::string> gGroupOf;
 // strip → Chrome's window id (nn_tabs names strips by it); Chrome window id → its groups (id, title, color,
 // collapsed).
 std::map<int, int> gChromeWindowOf;
+std::map<int, int> gChromeWindowOfBrowser;
 std::map<int, NSArray *> gGroupsOf;
 bool gWatching = false;
 NSInteger gCause = kChrome;
@@ -101,6 +102,7 @@ void EndBurst() {
   for (const Entry &e : tabs) {
     host::NoteStrip(e.browser, strip);
     gReportedIn[e.browser] = strip;
+    if (auto w = gChromeWindowOfBrowser.find(e.browser); w != gChromeWindowOfBrowser.end()) gChromeWindowOf[strip] = w->second;
   }
   Strip &s = gStrips[strip];
   s.profile = profile ?: @"";
@@ -196,6 +198,14 @@ void EngineReport(NSDictionary *event) {
     return;
   }
   Hold();
+  // Chrome's tab ids of the tabs the app knows (the engine may report a strip before CEF does).
+  auto learn = [](int browser) {
+    if (gTabIds.count(browser)) return;
+    if (CefRefPtr<CefBrowser> b = CefBrowserHost::GetBrowserByIdentifier(browser)) gTabIds[browser] = host::TabId(b);
+  };
+  for (auto &[id, s] : gStrips)
+    for (const Entry &e : s.tabs) learn(e.browser);
+  for (const Entry &e : gBurst) learn(e.browser);
   std::map<int, int> browserOf;
   for (auto &[browser, tab] : gTabIds) browserOf[tab] = browser;
   int strip = 0;
@@ -205,6 +215,7 @@ void EngineReport(NSDictionary *event) {
     id group = tab[@"group"];
     if ([group isKindOfClass:NSString.class]) gGroupOf[b->second] = [group UTF8String];
     else gGroupOf.erase(b->second);
+    gChromeWindowOfBrowser[b->second] = chromeWindow;
     for (auto &[id, s] : gStrips)
       for (const Entry &e : s.tabs)
         if (e.browser == b->second) strip = id;
@@ -261,8 +272,8 @@ CefRefPtr<CefBrowser> BrowserFor(NSString *key, int strip) {
 
 void Report(CefRefPtr<CefBrowser> browser, int index, bool active, bool pinned) {
   if (!host::StripOf(browser)) return;
-  Watch();
   if (!gTabIds.count(browser->GetIdentifier())) gTabIds[browser->GetIdentifier()] = host::TabId(browser);
+  Watch();
   Hold();
   if (!gBurst.empty() && index <= gBurst.back().index) EndBurst();
   gBurst.push_back({browser->GetIdentifier(), index, active, pinned});
@@ -283,6 +294,7 @@ void Closed(CefRefPtr<CefBrowser> browser) {
   gReportedIn.erase(b);
   gTabIds.erase(b);
   gGroupOf.erase(b);
+  gChromeWindowOfBrowser.erase(b);
   QueueFlush();
 }
 

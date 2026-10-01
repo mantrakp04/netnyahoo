@@ -57,14 +57,28 @@ export function chromeChanged(
   // Tabs an arrange on its way lists don't move here, but they're where the app put them: others can sit by them.
   const kept = new Set([...keptOrder(followed.filter(stayed), (t) => was.get(t.browser)!.index, weight).map((t) => t.key), ...pending.arranged]);
   const settled = new Set(kept);
+  // Where the engine reports groups, a moved tab keeps the store group of the Chrome group it's in (a group moved
+  // as a whole stays one); otherwise its new neighbours decide.
+  const chromeGroup = (t: Keyed): string | null | undefined => {
+    if (t.group === undefined) return undefined;
+    if (t.group === null) return null;
+    const id = groups.get(t.group);
+    return id && s.groups[id] ? id : undefined;
+  };
   for (const t of [...followed].reverse()) {
     const tab = s.tabs[t.key];
     if (!tab) continue;
     // Chrome pinned or unpinned it now (the store may still be getting there itself).
     const pinFlip = tab.pinned !== t.pinned && (taken.has(t.key) || was.get(t.browser)!.pinned !== t.pinned);
     if (kept.has(t.key) && !pinFlip) continue;
-    s = placeLike(s, t.key, pinFlip ? t.pinned : tab.pinned, now, settled, kept);
+    s = placeLike(s, t.key, pinFlip ? t.pinned : tab.pinned, now, settled, kept, chromeGroup(t));
     settled.add(t.key);
+  }
+  // Each moved tab ends up in the store group of the Chrome group it's in.
+  for (const t of followed) {
+    const want = chromeGroup(t);
+    if (want === undefined || !s.tabs[t.key] || s.tabs[t.key]!.pinned || kept.has(t.key)) continue;
+    if ((groupOf(s, t.key)?.id ?? null) !== want) s = regroupInPlace(s, t.key, want);
   }
 
   if (reportsGroups(after)) s = groupsChanged(s, before, after, now, (t) => stayed(t) || taken.has(t.key), taken, groups, pending);
@@ -130,6 +144,8 @@ function groupsChanged(
     const id = bound.get(token);
     const was = looksBefore.get(token);
     if (!id || !s.groups[id] || (was && was.title === look.title && was.color === look.color && was.collapsed === look.collapsed)) continue;
+    // A group command of the app's own on its way sets the group's look itself.
+    if (s.groups[id]!.tabIds.some((key) => pending.grouped?.has(key))) continue;
     s = withLook(s, id, look);
   }
   return s;
@@ -223,6 +239,7 @@ function placeLike(
   strip: Keyed[],
   settled: ReadonlySet<string>,
   kept: ReadonlySet<string>,
+  group?: string | null,
 ): BrowserState {
   const w = s.windows[s.tabs[key]!.windowId];
   if (!w) return s;
@@ -241,7 +258,10 @@ function placeLike(
   const beforeId = next ? rowStart(next) : prior ? rowAfter(prior) : (w.tabIds.find((t) => !moving.includes(t)) ?? null);
   const own = groupOf(s, key)?.id;
   const around = [groupOf(s, prior)?.id, groupOf(s, next)?.id];
-  const groupId = pinned ? null : around[0] && around[0] === around[1] ? around[0] : own && around.includes(own) ? own : null;
+  const guessed = around[0] && around[0] === around[1] ? around[0] : own && around.includes(own) ? own : null;
+  // At the end of the window a tab can't join a group yet (placing would keep it by the group): it does once the
+  // others are in place (chromeChanged's membership pass).
+  const groupId = pinned ? null : group !== undefined ? (beforeId === null ? null : group) : guessed;
   return placing(s, moving, { pinned, beforeId, groupId });
 }
 

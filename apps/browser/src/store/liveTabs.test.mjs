@@ -73,6 +73,9 @@ class FakeChrome {
     const f = this.find(key);
     f.s.tabs.splice(f.i, 1);
     f.s.tabs.splice(index, 0, f.tab);
+    // As Chrome: between two tabs of a group it joins the group, elsewhere it leaves its own.
+    const [prev, next] = [f.s.tabs[index - 1]?.group, f.s.tabs[index + 1]?.group];
+    f.tab.group = prev && prev === next ? prev : f.tab.group && [prev, next].includes(f.tab.group) ? f.tab.group : null;
     this.emit(f.id, null);
   }
   reorder(stripId, keys) {
@@ -318,4 +321,15 @@ test("an extension's tab groups reach the sidebar, and the sidebar's groups reac
   assert.equal(strip.groups.get(token).title, "Mine");
   assert.deepEqual(chromeOrder(win.strip), order(win.w));
   assert.ok(S().groups[mine]);
+  // A whole group moved in Chrome stays a group; a rename in the sidebar alone reaches Chrome.
+  const before = order(win.w);
+  const groupKeys = S().groups[made.id].tabIds;
+  chrome.reorder(win.strip, [...groupKeys, ...S().windows[win.w].tabIds.filter((t) => !groupKeys.includes(t))]);
+  await settle(win);
+  assert.notDeepEqual(order(win.w), before);
+  assert.deepEqual(S().groups[made.id].tabIds, groupKeys);
+  assert.deepEqual(chromeOrder(win.strip), order(win.w));
+  S().updateGroup(mine, { name: "Renamed" });
+  await settle(win);
+  assert.equal(chrome.strips.get(win.strip).groups.get(token).title, "Renamed");
 });
