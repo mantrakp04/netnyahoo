@@ -319,3 +319,10 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
   - Infra: ClickHouse answered one stats query with `Too many open files` (errno 24) and several timed out at
     60 s while four queries ran at once. The container likely runs with a low open-file limit; flagged as its
     own task.
+- **2026-10-01 00:40 UTC, ClickHouse fixed** (c1a66805, 2e3ceddf, deployed): the `Too many open files` came
+  from stats queries reading `events` (FINAL over Map-heavy wide parts, 5 parts in September) on a 2-core
+  server; one query alone took 13-30 s and four at once ran out of descriptors. Now: the open-file limit is
+  raised at boot, the tables write compact parts below 1 GiB, the reader gets 180 s, and the reader can read
+  `system.parts/merges/errors/metrics/asynchronous_metrics/processes`. After the restart each September table
+  is one part; six heavy stats queries in parallel finish in 1-4 s with open files flat (47). Ingestion had
+  no gap around the 15:45 traffic drop (5-minute counts fall gradually), so that drop was real.
