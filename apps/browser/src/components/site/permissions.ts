@@ -50,9 +50,12 @@ function drop(id: string) {
   for (const [tabId, queue] of queues) queues.set(tabId, queue.filter((r) => r.id !== id));
 }
 
-export function answerPermission(tabId: string, result: PermissionResult) {
+// The answer to the prompt the user saw (`requestId`): a second click, or one that lands after the prompt
+// changed, closed or moved on to the tab's next request, is dropped, so no request is answered twice and
+// none is answered without being shown.
+export function answerPermission(tabId: string, requestId: string, result: PermissionResult) {
   const request = pageOf(tabId).permission;
-  if (!request) return;
+  if (!request || request.id !== requestId) return;
   void resolvePermission(request.id, result, result !== "dismiss");
   if (result === "accept" && request.permissions.includes("notifications")) {
     void ensureNotificationPermission(useBrowser.getState().tabs[tabId]?.windowId);

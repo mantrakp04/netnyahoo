@@ -42,6 +42,7 @@
 #include "third_party/blink/public/common/loader/resource_type_util.h"
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom.h"
 #include "netnyahoo/core/nn_desktop_capture.h"
+#include "netnyahoo/core/nn_fake_media.h"
 #include "netnyahoo/core/nn_installed_bubble.h"
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
@@ -951,6 +952,7 @@ void NNWebContentsDelegate::RequestMediaAccessPermission(
     content::MediaResponseCallback callback) {
   content::MediaStreamRequest granted(request);
   ApplyDesktopCaptureGrant(web_contents, granted);
+  KeepAudioCaptureFake(granted);
   BrowserWebContentsDelegate::RequestMediaAccessPermission(web_contents, granted,
                                                            std::move(callback));
 }

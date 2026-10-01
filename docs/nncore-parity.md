@@ -125,14 +125,18 @@ Test hygiene the run keeps (each was a real failure):
   build reading it raises macOS's folder-access prompt and blocks the main thread on it (the extension fixture is
   copied).
 - Permissions use MIDI and notifications (no macOS prompt behind them), external apps a scheme no app handles;
-  never camera, location or `mailto:`.
+  never location or `mailto:`. Camera and microphone only on a copy of the app without the device entitlements
+  (ad hoc, hardened runtime: macOS refuses the devices without asking) and Chrome's fake devices: every hidden
+  instance gets `--use-fake-device-for-media-stream` (NNCoreHost), and with it the engine keeps the microphone on a
+  fake input (`nn_fake_media.mm`), since the fake list's "default" input is the Mac's real one to the audio service and
+  a stream on it raised macOS's microphone dialog on the owner's screen (2026-10-01).
 - A check that needs a page on screen (permission prompts, choosers, context menus) shows it first: Chrome holds
   those for hidden tabs. Checks that need "no user activation" reload the page first (CDP's `userGesture` leaves
   one behind).
 
 ## Acceptance (hidden instance)
 
-`packages/nncore/scripts/acceptance.mjs`, 116 checks (one, `visibility`, is a diagnostic). Latest full run: see "Status" at the end.
+`packages/nncore/scripts/acceptance.mjs`, 119 checks (one, `visibility`, is a diagnostic). Latest full run: see "Status" at the end.
 
 | Check | What it proves |
 |---|---|
@@ -174,6 +178,9 @@ Test hygiene the run keeps (each was a real failure):
 | frozen | `setFrozen(true/false)` on a background page: the page sees freeze and resume |
 | discard | A background tab discarded in place → `onDiscarded` |
 | permission-prompt, popup-blocked | A permission request → the app's prompt → Chrome; a popup without a gesture → `onPopupBlocked` → `openBlockedPopup` |
+| camera-mic-allow | 0.2.21's crash case, on the media copy (above): a camera + microphone getUserMedia is one prompt; Allow starts the stream with both tracks live |
+| permission-answer-once | A double Allow and two more answers straight to the engine decide nothing twice; a late answer to that prompt doesn't answer the tab's next one |
+| permission-element-allow | The `<usermedia>` element (0.2.21's crash path): with macOS "not asked yet" (`--netnyahoo-test-system-media-permission=ask`), one prompt, one Allow, Chrome's "ask macOS" step handled in the engine, no second prompt, the element's stream live |
 | second-profile, settings-window, incognito-window | A second profile's tab in the same window with its own cookies; the settings window; a private window |
 | move-tab-to-window | A tab moved to a new window keeps its page (same WebContents) and its strip follows |
 | title-bar-close | The title bar's close button asks the app (`windowShouldClose:`), which closes the window |
@@ -250,7 +257,7 @@ The app closes a tab by unmounting its WebView; NNCore closes it at once without
 | `setSearchEngineName`, `forgetOpenedURL`, `removeLegacyFavicons` | done | The last two have nothing to do on NNCore |
 | `fetchFavicon` | done | `(url, profile)` → `data:` PNG |
 | `onDownload`, `cancelDownload`, `pauseDownload`, `resumeDownload` | done | `nn_downloads_*` over Chrome's DownloadManager |
-| `onPermission`, `resolvePermission` | done | |
+| `onPermission`, `resolvePermission` | done | One answer per prompt (`nn_permissions.mm`): a page's permission element (Chrome's embedded flow) reaches the app only for its site question; the steps after Allow ("ask macOS", "open System Settings", policy) stay in the engine, as Chrome's own view does, and a later step is never a question even if the site's setting was reset meanwhile. 0.2.21 answered those steps with a second Accept and aborted (`camera-mic-allow`, `permission-answer-once`, `permission-element-allow`) |
 | `getExternalAppAllowances`, `removeExternalAppAllowance` | done | |
 | `clearBrowsingData`, `deleteProfileData` | done | A profile never loaded this session is its folder alone |
 | `getContentBlocker`, `setContentBlockerEnabled`, `setFilterListEnabled`, `isContentBlockerAllowed`, `setContentBlockerAllowed` | done | uBlock Origin Lite as a component extension (`loadComponentExtension:`), driven through its runtime messages |

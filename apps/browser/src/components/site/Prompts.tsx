@@ -65,10 +65,10 @@ export function PermissionPrompt({ tabId, left, top }: { tabId: string; left: nu
     <Popover key={request.id} width={300} top={top} left={left} modal={false}>
       <View>
         <PromptBody icons={icons} title={question} message="Click the lock to change this any time">
-          <PromptButton title="Don't Allow" onPress={() => answerPermission(tabId, "deny")} />
-          <PromptButton title="Allow" primary onPress={() => answerPermission(tabId, "accept")} />
+          <PromptButton title="Don't Allow" onPress={() => answerPermission(tabId, request.id, "deny")} />
+          <PromptButton title="Allow" primary onPress={() => answerPermission(tabId, request.id, "accept")} />
         </PromptBody>
-        <CloseButton onPress={() => answerPermission(tabId, "dismiss")} color={theme.textSecondary} />
+        <CloseButton onPress={() => answerPermission(tabId, request.id, "dismiss")} color={theme.textSecondary} />
       </View>
     </Popover>
   );

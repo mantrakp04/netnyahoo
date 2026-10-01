@@ -133,6 +133,11 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
     Expo modules are on `globalThis.expo.modules` (e.g. `NetnyahooCEF`, NNCore's module under its old name).
   - The NNCore acceptance run (`docs/nncore-parity.md` › "Acceptance"): `METRO_PORT=8081 node
     packages/nncore/scripts/acceptance.mjs <Debug app> <scratch dir> [check…]`.
+  - Camera and microphone: a hidden instance captures only from Chrome's fake devices (NNCoreHost passes
+    `--use-fake-device-for-media-stream` and drops Chrome's auto-accept capture switches; the engine keeps the
+    microphone on a fake input, `nn_fake_media.mm`). Run capture tests on a copy without the device entitlements
+    (ad hoc, hardened runtime), so macOS refuses a real device without asking: acceptance.mjs's media checks make one.
+    On 2026-10-01 a Debug build's microphone stream raised macOS's consent dialog on the owner's screen.
   - Keyboard shortcuts: `nn.shell.devKeyEquivalent(windowId, { key, keyCode, modifiers, focus, asKey })` presses a
     key as AppKit dispatches it (Chrome's window, then the menu bar; a test instance never has the key window), and
     `node apps/browser/scripts/shortcuts-test.mjs <Debug app>` checks every shortcut in every focus.

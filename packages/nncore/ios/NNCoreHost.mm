@@ -342,6 +342,15 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   // Nor may it make a sound on the owner's Mac (a test page's media, a video it plays). NETNYAHOO_ALLOW_AUDIO=1 keeps
   // the sound for a test that needs to hear it.
   if (getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_ALLOW_AUDIO")) extra.push_back("--mute-audio");
+  // Nor use the Mac's camera or microphone, or make macOS ask the owner for them: capture comes from Chrome's fake
+  // devices, which macOS never gates (the engine keeps the microphone on a fake input, nn_fake_media.mm).
+  if (getenv("NETNYAHOO_BACKGROUND")) extra.push_back("--use-fake-device-for-media-stream");
+  // Chrome's switches that answer capture prompts by themselves pick the fake list's "default" microphone, which is the
+  // Mac's real one: a test instance never takes them.
+  auto autoAccepts = [](const char *sw) {
+    return getenv("NETNYAHOO_BACKGROUND") && (!strncmp(sw, "--use-fake-ui-for-media-stream", 30) ||
+                                              !strncmp(sw, "--auto-accept-camera-and-microphone-capture", 43));
+  };
   if (const char *port = getenv("NETNYAHOO_REMOTE_DEBUGGING_PORT")) {
     extra.push_back(std::string("--remote-debugging-port=") + port);
     extra.push_back("--remote-allow-origins=*");
@@ -350,7 +359,8 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
     NSString *all = [@" " stringByAppendingString:@(switches)];
     for (NSString *item in [all componentsSeparatedByString:@" --"]) {
       NSString *sw = [item stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
-      if (sw.length) extra.push_back(std::string("--") + sw.UTF8String);
+      std::string full = std::string("--") + sw.UTF8String;
+      if (sw.length && !autoAccepts(full.c_str())) extra.push_back(full);
     }
   }
   // Cocoa's argument-domain defaults ("-NSAppSleepDisabled YES", as the perf bench passes) are AppKit's, read from the
@@ -368,6 +378,7 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
       i++;
       continue;
     }
+    if (autoAccepts(arg)) continue;
     args.push_back(arg);
   }
   static NNCoreHostEngineDelegate *engineDelegate = [NNCoreHostEngineDelegate new];

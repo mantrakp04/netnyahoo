@@ -98,6 +98,30 @@ const server = createServer((req, res) => {
     return res.end(wav);
   }
   res.writeHead(200, { "content-type": "text/html" });
+  // Camera and microphone (fake devices only: every hidden instance gets --use-fake-device-for-media-stream). `ask(c)`
+  // records the getUserMedia answer and the tracks' states; /element is the <usermedia> element (Chrome's embedded flow).
+  if (url.pathname === "/cam")
+    return res.end(page("Cam", "cam", `<script>
+      window.__asks = []; window.__streams = [];
+      window.ask = (c) => {
+        const entry = { state: "pending" }; window.__asks.push(entry);
+        navigator.mediaDevices.getUserMedia(c).then((s) => { window.__streams.push(s); Object.assign(entry, { state: "ok", audio: s.getAudioTracks().map((t) => t.readyState), video: s.getVideoTracks().map((t) => t.readyState) }); },
+          (e) => Object.assign(entry, { state: "err", error: e.name }));
+        return window.__asks.length - 1;
+      };
+      window.stopAll = () => { for (const s of window.__streams) s.getTracks().forEach((t) => t.stop()); return true; };
+    </script>`));
+  if (url.pathname === "/element")
+    return res.end(page("Element", `<usermedia id="um" style="display:block;font-size:20px;margin:40px"></usermedia>`, `<script>
+      window.__ev = [];
+      addEventListener("DOMContentLoaded", () => {
+        const um = document.getElementById("um");
+        um.addEventListener("stream", () => __ev.push({ audio: um.stream?.getAudioTracks().map((t) => t.readyState), video: um.stream?.getVideoTracks().map((t) => t.readyState) }));
+        um.addEventListener("cancel", () => __ev.push("cancel"));
+        window.box = () => { const r = um.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+        window.stopAll = () => { um.stream?.getTracks().forEach((t) => t.stop()); return true; };
+      });
+    </script>`));
   if (url.pathname === "/blocking") return res.end(page("Blocking", `<img src="/nnblock-1.png"><img src="/nnblock-2.png"><img src="/icon.png">`));
   if (url.pathname === "/login") return res.end(page("Login", `<form action="/b" method="get"><input name="u" id="u" autocomplete="username"><input type="password" name="p" id="p" autocomplete="current-password"><button id="go">Sign in</button></form>`));
   if (url.pathname === "/text") return res.end(page("Text", `<p id="t" style="font: 20px sans-serif; margin: 40px">Hello selection world, select me please</p>`));
@@ -160,7 +184,8 @@ const metroProxy = createServer((req, res) => {
 metroProxy.on("upgrade", (req, socket) => socket.destroy());
 await new Promise((r) => metroProxy.listen(0, "127.0.0.1", r));
 // As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
-const exe = join(app, "Contents/MacOS", execFileSync("plutil", ["-extract", "CFBundleExecutable", "raw", join(app, "Contents/Info.plist")]).toString().trim());
+const exeOf = (bundle) => join(bundle, "Contents/MacOS", execFileSync("plutil", ["-extract", "CFBundleExecutable", "raw", join(bundle, "Contents/Info.plist")]).toString().trim());
+let exe = exeOf(app);
 let stdout = join(scratch, "app.out.log");
 let pid, child, launchedAt, exited = null;
 function pgrep() {
@@ -179,8 +204,10 @@ process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --host-resolver-rules=${["ib.adnxs.
   .map((host) => `MAP ${host} 127.0.0.1:${server.address().port}`).join(", ")}`;
 // The Web Store's update URL: a .crx downloaded from it is a Web Store install's (extension-download-hidden).
 process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --apps-gallery-update-url=${base}/webstore/crx`;
-// Starts the app on the run's data dir (again for the relaunch checks), with a fresh DevTools port.
-async function launch(log = "app.out.log", env = {}, args = []) {
+// Starts the app on the run's data dir (again for the relaunch checks), with a fresh DevTools port. `opts.app` runs
+// another bundle (the media checks' copy), `opts.switches` adds Chromium switches.
+async function launch(log = "app.out.log", env = {}, args = [], opts = {}) {
+  exe = exeOf(opts.app ?? app);
   port = await freePort();
   stdout = join(scratch, log);
   const pidsBefore = new Set(pgrep());
@@ -191,13 +218,13 @@ async function launch(log = "app.out.log", env = {}, args = []) {
     "--env", `NETNYAHOO_JS_LOCATION=localhost:${metroProxy.address().port}`,
     // Tab capture without Chrome's picker: getDisplayMedia takes the tab titled "Capture Target" (Chrome's browser-test
     // switch; a tab, so no macOS screen-recording prompt).
-    "--env", `NETNYAHOO_CHROMIUM_SWITCHES=--auto-select-tab-capture-source-by-title=Capture Target --netnyahoo-test-external-protocol-no-launch ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""}`.trim(),
+    "--env", `NETNYAHOO_CHROMIUM_SWITCHES=--auto-select-tab-capture-source-by-title=Capture Target --netnyahoo-test-external-protocol-no-launch ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""} ${opts.switches ?? ""}`.trim(),
     // Passed through for experiments (e.g. NETNYAHOO_ALLOW_OCCLUSION=1).
     ...["NETNYAHOO_ALLOW_OCCLUSION", "NETNYAHOO_TRACE_VISIBILITY"].filter((k) => process.env[k]).flatMap((k) => ["--env", `${k}=${process.env[k]}`]),
     "--env", `NETNYAHOO_TRAFFIC_LIGHTS_LOG=${lightsLog}`,
     ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
     "--stdout", stdout, "--stderr", stdout,
-    app,
+    opts.app ?? app,
     ...(args.length ? ["--args", ...args] : []),
   ]);
   pid = await (async () => {
@@ -3554,6 +3581,155 @@ try {
     await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(landed.windowId)}); return true`);
     return landed;
   });
+  // MARK: Camera and microphone (the 0.2.21 crash: Allow on a camera + microphone prompt aborted the app)
+  //
+  // Run on a copy of the app without the camera and microphone entitlements (ad hoc, hardened runtime): macOS then
+  // refuses the devices without ever asking, so nothing here can raise its consent dialog on the owner's screen, even
+  // if a path reached a real device. Capture comes from Chrome's fake devices (NNCoreHost gives every hidden instance
+  // --use-fake-device-for-media-stream, and the engine keeps the microphone on a fake input, nn_fake_media.mm); the
+  // engine's stand-in for macOS's own permission (--netnyahoo-test-system-media-permission=ask) says "not asked yet",
+  // so the permission element's flow takes its "ask macOS" step, the one 0.2.21 answered with a second Accept.
+  // Each check asks from an origin of its own (*.localhost: secure, and a grant doesn't carry to the next check).
+  const mediaChecks = ["camera-mic-allow", "permission-answer-once", "permission-element-allow"];
+  if (!only.length || mediaChecks.some((c) => only.includes(c))) {
+    const mediaApp = join(scratch, "media-app", basename(app));
+    let media = null;
+    try {
+      rmSync(join(scratch, "media-app"), { recursive: true, force: true });
+      mkdirSync(join(scratch, "media-app"), { recursive: true });
+      execFileSync("cp", ["-cR", app, mediaApp]);
+      const entitlements = join(scratch, "media-app", "entitlements.plist");
+      writeFileSync(entitlements, `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.cs.disable-library-validation</key><true/></dict></plist>`);
+      execFileSync("codesign", ["-f", "-s", "-", "--options", "runtime", "--entitlements", entitlements, mediaApp], { stdio: "ignore" });
+      const signed = execFileSync("codesign", ["-d", "--entitlements", "-", "--xml", mediaApp], { stdio: ["ignore", "pipe", "ignore"] }).toString();
+      if (/device\.(camera|audio-input)/.test(signed)) throw new Error("the media copy kept a device entitlement");
+      if (!exited) {
+        await evalApp(`nn.shell.quit?.(); return true`, 3000).catch(() => null);
+        await until("the app to exit", async () => exited, 20000).catch(() => child.kill("SIGKILL"));
+      }
+      await launch("app-media.out.log", {}, [], { app: mediaApp, switches: "--netnyahoo-test-system-media-permission=ask" });
+      await until("the media copy", async () => {
+        try {
+          return await evalApp(`return globalThis.expo.modules.NetnyahooCEF.engineInfo()`, 3000);
+        } catch (e) {
+          if (exited) throw e;
+          return null;
+        }
+      }, 90000);
+      mainWindow = await until("a window", async () => (await state()).windowId, 30000);
+      const port = server.address().port;
+      let site = 0;
+      media = {
+        // A tab at a fresh origin, shown (Chrome holds a hidden tab's prompt), and its DevTools target.
+        async open(path, title) {
+          const url = `http://media${++site}.localhost:${port}${path}`;
+          const before = new Set((await state()).tabs.map((t) => t.id));
+          await evalApp(`nn.actions.openUrls([${JSON.stringify(url)}], ${JSON.stringify(mainWindow)}); return true`);
+          const tab = await until(`a tab for ${url}`, async () => (await state()).tabs.find((t) => !before.has(t.id) && t.title === title && !t.loading), 15000);
+          await evalApp(`nn.actions.switchToTab("${tab.id}"); return true`);
+          await until("it shown", async () => (await state()).active === tab.id);
+          return { ...tab, target: await until("its page", () => pageTarget(url), 10000) };
+        },
+        js: async (t, expression) => (await cdp(t, "Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true, userGesture: true })).result.value,
+        prompt: (tabId) => evalApp(`return nn.pageState.getState().pages["${tabId}"]?.permission ?? null`),
+        // The app's own answer path (Prompts.tsx's buttons call it with the prompt they show).
+        answer: (tabId, id, result) => evalApp(`nn.permissions.answerPermission("${tabId}", "${id}", "${result}"); return true`),
+        async answered(t, i = 0) {
+          return until("the page's getUserMedia answer", async () => {
+            const a = JSON.parse(await this.js(t, "JSON.stringify(window.__asks)"))[i];
+            return a && a.state !== "pending" ? a : null;
+          }, 15000);
+        },
+      };
+    } catch (e) {
+      media = { error: String(e?.message ?? e) };
+    }
+    const mediaCheck = (name, fn) => check(name, async () => {
+      if (media?.error) throw new Error(`media copy: ${media.error}`);
+      return fn();
+    });
+
+    await mediaCheck("camera-mic-allow", async () => {
+      // The owner's case: one prompt for a camera + microphone request, Allow, and the stream starts with both tracks.
+      const tab = await media.open("/cam", "Cam");
+      try {
+        await media.js(tab.target, `ask({ audio: true, video: true })`);
+        const request = await until("the prompt", () => media.prompt(tab.id), 10000);
+        if (request.permissions.length !== 2 || !request.permissions.includes("camera") || !request.permissions.includes("microphone"))
+          throw new Error(`one prompt for both, got ${JSON.stringify(request.permissions)}`);
+        await media.answer(tab.id, request.id, "accept");
+        const answer = await media.answered(tab.target);
+        if (answer.state !== "ok" || answer.audio?.[0] !== "live" || answer.video?.[0] !== "live") throw new Error(`getUserMedia: ${JSON.stringify(answer)}`);
+        await sleep(1000);
+        const again = await media.prompt(tab.id);
+        if (again) throw new Error(`a second prompt: ${JSON.stringify(again)}`);
+        if (exited) throw new Error("the app exited");
+        return { permissions: request.permissions, audio: answer.audio, video: answer.video };
+      } finally {
+        await media.js(tab.target, "stopAll()").catch(() => null);
+        await closeTab(tab.id);
+      }
+    });
+
+    await mediaCheck("permission-answer-once", async () => {
+      // A prompt is answered once: a double click on Allow, then the same answer and a contrary one straight to the
+      // engine, decide nothing twice (0.2.21 aborted deciding a request twice). A late click meant for that prompt
+      // doesn't answer the tab's next one either.
+      const tab = await media.open("/cam", "Cam");
+      try {
+        await media.js(tab.target, `ask({ audio: true, video: true })`);
+        const request = await until("the prompt", () => media.prompt(tab.id), 10000);
+        await evalApp(`nn.permissions.answerPermission("${tab.id}", "${request.id}", "accept"); nn.permissions.answerPermission("${tab.id}", "${request.id}", "accept"); return true`);
+        await cef(`resolvePermission("${request.id}", "accept", true)`);
+        await cef(`resolvePermission("${request.id}", "deny", true)`);
+        const answer = await media.answered(tab.target);
+        if (answer.state !== "ok" || answer.audio?.[0] !== "live" || answer.video?.[0] !== "live") throw new Error(`getUserMedia: ${JSON.stringify(answer)}`);
+        await media.js(tab.target, `navigator.requestMIDIAccess({ sysex: true }).then(() => (window.__midi = "granted"), (e) => (window.__midi = e.name)); true`);
+        const next = await until("the next prompt", async () => {
+          const p = await media.prompt(tab.id);
+          return p && p.id !== request.id ? p : null;
+        }, 10000);
+        await media.answer(tab.id, request.id, "accept");
+        await sleep(800);
+        const still = await media.prompt(tab.id);
+        if (still?.id !== next.id) throw new Error(`a late answer to ${request.id} answered ${next.id}`);
+        await media.answer(tab.id, next.id, "dismiss");
+        if (exited) throw new Error("the app exited");
+        return { first: request.permissions, next: next.permissions, alive: true };
+      } finally {
+        await media.js(tab.target, "stopAll()").catch(() => null);
+        await closeTab(tab.id);
+      }
+    });
+
+    await mediaCheck("permission-element-allow", async () => {
+      // The <usermedia> element (0.2.21's crash path): Chrome's embedded flow asks for the site, then, with macOS not
+      // asked yet, shows its "ask macOS" step for the same requests. One app prompt, one Allow, no second prompt, and
+      // the element's stream starts with both tracks.
+      const tab = await media.open("/element", "Element");
+      try {
+        await sleep(1200);  // the element only takes a click once it's been visible a moment
+        const at = await media.js(tab.target, "box()");
+        for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
+          await cdp(tab.target, "Input.dispatchMouseEvent", { type, x: at.x, y: at.y, button: "left", clickCount: 1 });
+        const request = await until("the prompt", () => media.prompt(tab.id), 10000);
+        await media.answer(tab.id, request.id, "accept");
+        const events = await until("the element's stream", async () => {
+          const ev = JSON.parse(await media.js(tab.target, "JSON.stringify(__ev)"));
+          return ev.length ? ev : null;
+        }, 10000);
+        const again = await media.prompt(tab.id);
+        if (again) throw new Error(`a second prompt: ${JSON.stringify(again)}`);
+        if (events[0]?.audio?.[0] !== "live" || events[0]?.video?.[0] !== "live") throw new Error(`the element: ${JSON.stringify(events)}`);
+        if (exited) throw new Error("the app exited");
+        return { permissions: request.permissions, stream: events[0] };
+      } finally {
+        await media.js(tab.target, "stopAll()").catch(() => null);
+        await closeTab(tab.id);
+      }
+    });
+  }
+
   await check("crash-guard", async () => {
     // A hidden test instance that crashes (here Chrome's own Browser.crash, an abort on the main thread) leaves its
     // record in <data dir>/crashes and exits: no crash report for macOS's reporter, so no "quit unexpectedly" dialog
@@ -3589,6 +3765,7 @@ try {
   if (!exited) child.kill("SIGTERM");
   await sleep(1000);
   if (!exited) child.kill("SIGKILL");
+  rmSync(join(scratch, "media-app"), { recursive: true, force: true });
   server.closeAllConnections?.();
   server.close();
   metroProxy.closeAllConnections?.();
