@@ -246,7 +246,7 @@ NNCORE_EXPORT
 - (void)goForward;
 - (void)reload;
 - (void)stop;
-- (void)close;
+- (void)close;  // beforeunload first (the page may keep the tab)
 - (void)showDevTools;  // docked in the tab's window
 - (void)closeDevTools;
 @property(readonly, nullable) NSView* devToolsView;  // while docked
@@ -270,6 +270,9 @@ NNCORE_EXPORT
 - (void)loadURL:(NSString*)url userInitiated:(BOOL)userInitiated;
 - (void)goToOffset:(int)offset;
 - (void)reloadIgnoringCache;
+// Closes the tab at once, without beforeunload (CEF's CloseBrowser(true)): didRemoveTab:,
+// never tabWillClose:.
+- (void)closeNow;
 // [{url, title, current}] of the back/forward list.
 @property(readonly) NSArray<NSDictionary<NSString*, id>*>* navigationEntries;
 // Runs `code` in the main frame's main world. Fire and forget.

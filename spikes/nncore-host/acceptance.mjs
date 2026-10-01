@@ -703,6 +703,20 @@ try {
     pu.close();
   }
 
+  // closeNow: a tab with a beforeunload handler goes at once, no dialog, no tabWillClose.
+  {
+    const cn = await cmd("open", { url: `${base}/unload?now=1`, profile: "A" });
+    await waitFor(async () => (await tabState(cn.tabId))?.title === "Unload");
+    const pn = await attach((t) => t.url === `${base}/unload?now=1`);
+    await pn.send("Page.enable");
+    await pn.click("p");
+    await cmd("nav", { tabId: cn.tabId, action: "closeNow" });
+    const removedNow = await waitFor(() => evs("didRemoveTab", (e) => e.tabId === cn.tabId)[0], 5000);
+    await sleep(300);
+    check("S6", "closeNow: no beforeunload, didRemoveTab, no tabWillClose", removedNow && !pn.events.some((e) => e.method === "Page.javascriptDialogOpening") && !evs("tabWillClose", (e) => e.tabId === cn.tabId).length, {});
+    pn.close();
+  }
+
   // ---------------------------------------------------------------------------------------
   // S1. -[NSApp terminate:] follows Cocoa's contract; a quit a page cancels keeps the app
   {

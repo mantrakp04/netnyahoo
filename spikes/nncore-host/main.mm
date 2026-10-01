@@ -787,6 +787,7 @@ static void Log(NSDictionary* event) {
     else if ([action isEqualToString:@"reload"]) [tab reload];
     else if ([action isEqualToString:@"stop"]) [tab stop];
     else if ([action isEqualToString:@"close"]) [tab close];
+    else if ([action isEqualToString:@"closeNow"]) [tab closeNow];
     else if ([action isEqualToString:@"load"]) [tab loadURL:cmd[@"url"]];
     reply(@YES);
   } else if ([name isEqualToString:@"devtools"]) {

@@ -970,6 +970,30 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   }
 }
 
+- (void)closeNow {
+  if (nncore::IsNotifyingTabStrip()) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self closeNow];
+    });
+    return;
+  }
+  if (!_contents) {
+    return;
+  }
+  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(_contents);
+  if (!browser) {
+    return;
+  }
+  // As CEF's CloseBrowser(true): no beforeunload, gone now (didRemoveTab:, no tabWillClose:).
+  nncore::TabBridge::GetOrCreate(_contents)->set_closed_by_host();
+  TabStripModel* model = browser->GetTabStripModel();
+  const int index = model->GetIndexOfWebContents(_contents);
+  if (index != TabStripModel::kNoTab) {
+    model->DetachAndDeleteWebContentsAt(index);
+  }
+}
+
 - (void)close {
   if (nncore::IsNotifyingTabStrip()) {
     dispatch_async(dispatch_get_main_queue(), ^{
