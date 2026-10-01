@@ -326,3 +326,21 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
   `system.parts/merges/errors/metrics/asynchronous_metrics/processes`. After the restart each September table
   is one part; six heavy stats queries in parallel finish in 1-4 s with open files flat (47). Ingestion had
   no gap around the 15:45 traffic drop (5-minute counts fall gradually), so that drop was real.
+- **2026-10-01 10:05 UTC check:** 7,131 visitors all time, 619 since 00:10 (t.co 438, direct 157, Google 14;
+  phones 60%). Steady at 42-91 an hour (peak 05:00-06:00), no further decline.
+  - Downloads: 169 people all time (135 Mac), +17. Since 00:10, Mac desktop 15/136 = 11%; Windows 1/78,
+    Linux 1/35. Last 24 h, Mac 49/464 = 10.6%.
+  - Phones since 00:10: the hero's share sheet 19 dismissed, 3 shared, 1 copied; header panel 7.
+    `mac_link_visit` still 4. The 23 dead clicks on "Send to my Mac" are the native share sheet opening
+    (no DOM change), not a dead button.
+  - `github_clicked` 34 (32 people), `screenshot_opened` 69 (45), `support_opened` 8 (5), `notify_clicked` 9.
+    Dead clicks: the Big Yahu canvas 160 (69 people), the hero stage ("Incumbent") 20 (18).
+  - Experiment: band 65/803 (8.1%), control 62/762 (8.1%). Dead even.
+  - Installs: DMG downloads 229 (+25); first launches 41 (+9); update zips 49 (+9). Today's checks: 0.2.19 12,
+    0.2.18 4, 0.2.17 2, 0.2.21 2 (0.2.20 and 0.2.21 shipped this morning).
+  - Opted-in app users: 10 in 24 h, 22 in 7 days. Cloud (old versions, read through the MCP) has 3 today, no
+    exceptions. One unreleased 0.2.22 is reporting (a release build being tested).
+  - GitHub: 27 stars (no change). Views on 09-30: 144 from 81 people; 120 of 14 days' visitors came from
+    netnyahoo.com.
+  - Errors: none from the app; the site's two are cross-origin `Script error.` (noise).
+  - ClickHouse: otel_logs 8 parts (one wide, seven compact), every stats query finished without a timeout.
