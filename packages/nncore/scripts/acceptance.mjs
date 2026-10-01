@@ -11,6 +11,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statS
 import { createServer, request as httpRequest } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { basename, join, resolve } from "node:path";
+import { createHash, createSign, generateKeyPairSync } from "node:crypto";
 import { crc32, deflateSync, inflateSync } from "node:zlib";
 
 const [appArg, scratchArg, ...only] = process.argv.slice(2);
@@ -79,6 +80,12 @@ const server = createServer((req, res) => {
     req.on("close", () => clearInterval(timer));
     return;
   }
+  if (url.pathname === "/webstore/crx") {
+    // The Web Store's update URL in this run (--apps-gallery-update-url): Chrome installs what it serves, as the .crx
+    // of a Web Store install (extension-download-hidden).
+    res.writeHead(200, { "content-type": "application/x-chrome-extension" });
+    return res.end(fixtureCrx());
+  }
   if (url.pathname === "/tone.wav") {
     // One second of a quiet 440 Hz tone (the tab is muted while it plays).
     const rate = 8000, n = rate;
@@ -121,6 +128,8 @@ const server = createServer((req, res) => {
           w.document.body.append(document.getElementById("v"));
         });
     </script>`));
+  // An extension's rules on a page (content-blocked-count): an image they block, a script they send to a stand-in.
+  if (url.pathname === "/nn-ads") return res.end(page("Ads", `<img src="/nnblock-ad.png"><script src="/nnredirect-ad.js"></script>`));
   if (url.pathname === "/a") return res.end(page("Page A", `<a id="next" href="/b">to B</a> <a id="blank" target="_blank" href="/c">blank</a> <a id="cmd" href="/d">cmd</a>`));
   if (url.pathname === "/painted") return res.end(page("Painted", "painted", "<style>html, body { background: rgb(60, 60, 60) }</style>"));
   if (url.pathname === "/b") return res.end(page("Page B", "B"));
@@ -168,6 +177,8 @@ process.env.NETNYAHOO_CHROMIUM_SWITCHES = `--netnyahoo-test-media-route-provider
 // The content blocker's check: ad hosts (and a site to allow) answered by the fixture server, never the network.
 process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --host-resolver-rules=${["ib.adnxs.com", "securepubads.g.doubleclick.net", "pagead2.googlesyndication.com", "adpage.test"]
   .map((host) => `MAP ${host} 127.0.0.1:${server.address().port}`).join(", ")}`;
+// The Web Store's update URL: a .crx downloaded from it is a Web Store install's (extension-download-hidden).
+process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --apps-gallery-update-url=${base}/webstore/crx`;
 // Starts the app on the run's data dir (again for the relaunch checks), with a fresh DevTools port.
 async function launch(log = "app.out.log", env = {}, args = []) {
   port = await freePort();
@@ -284,6 +295,76 @@ const exts = (call) => evalApp(`return globalThis.expo.modules.NetnyahooExtensio
 // prompt (and block the main thread on it) for every re-signed build.
 const extPath = join(scratch, "fixture-ext");
 cpSync(resolve(new URL(".", import.meta.url).pathname, "../../../spikes/nncore-host/fixtures/ext"), extPath, { recursive: true });
+// An extension made here (no Web Store): an action popup; rules that block /nnblock-* and send /nnredirect-* to its
+// stand-in script; an options page; with `welcome`, a worker that opens a tab when installed, as Dark Reader opens its
+// help page.
+const extPopupPath = join(scratch, "fixture-ext-popup");
+function writePopupExtension({ welcome = false } = {}) {
+  rmSync(extPopupPath, { recursive: true, force: true });
+  mkdirSync(extPopupPath, { recursive: true });
+  const files = {
+    "manifest.json": JSON.stringify({
+      manifest_version: 3, name: "NNCore popup fixture", version: "1.0",
+      action: { default_popup: "popup.html", default_title: "Popup fixture" },
+      background: { service_worker: "worker.js" },
+      options_page: "options.html",
+      permissions: ["tabs", "declarativeNetRequest"],
+      host_permissions: ["http://127.0.0.1/*"],
+      web_accessible_resources: [{ resources: ["standin.js"], matches: ["http://127.0.0.1/*"] }],
+      declarative_net_request: { rule_resources: [{ id: "rules", enabled: true, path: "rules.json" }] },
+    }),
+    "popup.html": `<!doctype html><title>Popup fixture</title><body style="width: 200px; height: 80px">popup</body>`,
+    "options.html": `<!doctype html><title>Popup fixture options</title><body>options</body>`,
+    "standin.js": "window.__nnStandIn = true;",
+    "worker.js": welcome ? `chrome.runtime.onInstalled.addListener((d) => { if (d.reason === "install") chrome.tabs.create({ url: "${base}/e?installed" }); });` : "",
+    "rules.json": JSON.stringify([
+      { id: 1, priority: 1, action: { type: "block" }, condition: { urlFilter: "nnblock-", resourceTypes: ["image", "script", "xmlhttprequest"] } },
+      { id: 2, priority: 1, action: { type: "redirect", redirect: { extensionPath: "/standin.js" } }, condition: { urlFilter: "nnredirect-", resourceTypes: ["script"] } },
+    ]),
+  };
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(extPopupPath, name), text);
+}
+// A signed CRX3 of a one-file extension: a store-only zip, one RSA proof over its signed data and the archive.
+let crxCache = null;
+function fixtureCrx() {
+  if (crxCache) return crxCache;
+  const files = { "manifest.json": JSON.stringify({ manifest_version: 3, name: "NNCore crx fixture", version: "1.0" }) };
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const data = Buffer.from(text), nameBytes = Buffer.from(name), sum = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt32LE(sum, 14);
+    local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(nameBytes.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt32LE(sum, 16);
+    central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24); central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, nameBytes, data);
+    centrals.push(central, nameBytes);
+    offset += local.length + nameBytes.length + data.length;
+  }
+  const directory = Buffer.concat(centrals), end = Buffer.alloc(22), count = Object.keys(files).length;
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(count, 8); end.writeUInt16LE(count, 10);
+  end.writeUInt32LE(directory.length, 12); end.writeUInt32LE(offset, 16);
+  const zip = Buffer.concat([...locals, directory, end]);
+  const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const der = publicKey.export({ type: "spki", format: "der" });
+  const varint = (n) => { const out = []; while (n > 127) { out.push((n & 127) | 128); n = Math.floor(n / 128); } out.push(n); return Buffer.from(out); };
+  const field = (number, bytes) => Buffer.concat([varint(number * 8 + 2), varint(bytes.length), bytes]);
+  const signedData = field(1, createHash("sha256").update(der).digest().subarray(0, 16));
+  const size = Buffer.alloc(4);
+  size.writeUInt32LE(signedData.length);
+  const signature = createSign("sha256").update(Buffer.concat([Buffer.from("CRX3 SignedData\x00", "latin1"), size, signedData, zip])).sign(privateKey);
+  const header = Buffer.concat([field(2, Buffer.concat([field(1, der), field(2, signature)])), field(10000, signedData)]);
+  const prefix = Buffer.alloc(12);
+  prefix.write("Cr24", 0, "latin1"); prefix.writeUInt32LE(3, 4); prefix.writeUInt32LE(header.length, 8);
+  return (crxCache = Buffer.concat([prefix, header, zip]));
+}
+// The app's windows on screen (CoreGraphics' window numbers).
+const onScreenWindows = () => JSON.parse(execFileSync("osascript", ["-l", "JavaScript", "-e",
+  `ObjC.import("CoreGraphics"); JSON.stringify(ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0)))
+     .filter((w) => w.kCGWindowOwnerPID === ${pid} && w.kCGWindowLayer === 0).map((w) => w.kCGWindowNumber))`], { timeout: 20000 }).toString());
 // The module's browser id of an app tab.
 const browserOf = (tabId) => evalApp(`return nn.pageState.getState().browsers ? Object.entries(nn.pageState.getState().browsers).find(([, t]) => t === "${tabId}")?.[0] ?? null : null`);
 // The DevTools target of one app tab (several tabs can show the same URL): marked through the app, then found.
@@ -1648,6 +1729,187 @@ try {
       for (const w of new Set(opened)) await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(w)}); return true`).catch(() => null);
       await exts(`uninstall("${installed.id}", "")`).catch(() => null);
       await backToA().catch(() => null);
+    }
+  });
+
+  // The popup fixture installed for one check, and gone after it.
+  const withPopupExtension = async (options, fn) => {
+    writePopupExtension(options);
+    const installed = await exts(`install(${JSON.stringify(extPopupPath)}, "")`);
+    if (installed?.error) throw new Error(installed.error);
+    try {
+      await evalApp(`return nn.extensions.refreshExtensions("").then(() => true)`);
+      return await fn(installed.id);
+    } finally {
+      await evalApp(`nn.extensions.closeExtensionPopup(); return true`).catch(() => null);
+      await exts(`uninstall("${installed.id}", "")`).catch(() => null);
+    }
+  };
+  // The Chrome window id of the run's window for Personal (tabStrips' strip).
+  const mainStrip = async () => (await cef(`tabStrips()`)).strips.find((st) => st.appWindow === mainWindow && st.profile === "");
+
+  await check("extension-popup-window", async () => {
+    // B9: an action's popup is Chrome's own extension view, bound to the window it was clicked in, as Chrome's popup:
+    // its current window is that window and its active tab the page under it (not a hidden window and the popup
+    // itself, which made Dark Reader call every page "protected by browser"). It is in no tab strip and makes no
+    // window. Esc in it closes it (Chrome's close reaches the app), as in Chrome.
+    return withPopupExtension({}, async (id) => {
+      const tab = await freshTab(`${base}/b?under-popup`);
+      try {
+        const windowsBefore = (await cef(`chromeWindows()`)).length;
+        const opened = await evalApp(`const ext = Object.values(nn.extensions.useExtensions.getState().lists).flat().find((x) => x.id === "${id}");
+          return nn.extensions.activateExtension(${JSON.stringify(mainWindow)}, ext, { x: 100, y: 40, width: 20, height: 20 }).then(() => !!nn.extensions.useExtensions.getState().popup)`);
+        if (!opened) throw new Error("no popup in the app");
+        const popup = await until("the popup page", async () => (await targets()).find((t) => t.type === "page" && t.url.includes(`${id}/popup.html`)), 10000);
+        const seen = JSON.parse((await cdp(popup, "Runtime.evaluate", {
+          expression: `Promise.all([chrome.windows.getCurrent(), chrome.tabs.query({ active: true, currentWindow: true }), chrome.extension.getViews({ type: "popup" }).length])
+            .then(([w, tabs, popups]) => JSON.stringify({ window: w.id, tabs: tabs.map((t) => t.url), popups }))`,
+          awaitPromise: true,
+          returnByValue: true,
+        })).result.value);
+        const strip = await mainStrip();
+        if (seen.window !== strip?.strip) throw new Error(`the popup's current window is ${seen.window}, the app's is ${strip?.strip}`);
+        if (seen.tabs.length !== 1 || seen.tabs[0] !== `${base}/b?under-popup`) throw new Error(`the popup's active tab: ${JSON.stringify(seen.tabs)}`);
+        if (seen.popups !== 1) throw new Error(`chrome.extension.getViews({ type: "popup" }): ${seen.popups}`);
+        const strips = await cef(`tabStrips()`);
+        if (strips.strips.some((st) => st.tabs.some((x) => x.key == null))) throw new Error("the popup is a tab in a strip");
+        const windowsWith = (await cef(`chromeWindows()`)).length;
+        if (windowsWith !== windowsBefore) throw new Error(`windows ${windowsBefore} → ${windowsWith} with the popup open`);
+        // The popup may go before DevTools acknowledges the key.
+        for (const type of ["rawKeyDown", "keyUp"])
+          await cdp(popup, "Input.dispatchKeyEvent", { type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 53 }).catch(() => null);
+        await until("Esc closing the popup", async () => (await evalApp(`return nn.extensions.useExtensions.getState().popup === null`)) ? true : null, 8000);
+        await until("the popup page gone", async () => !(await targets()).some((t) => t.url.includes(`${id}/popup.html`)), 8000);
+        return { window: seen.window, activeTab: seen.tabs[0], popups: seen.popups, windows: windowsWith };
+      } finally {
+        await closeTab(tab).catch(() => null);
+      }
+    });
+  });
+
+  await check("extension-windows-hidden", async () => {
+    // B10/B11: Chrome never picks one of the host's hidden windows (the content blocker's page, a standalone view's) for
+    // an extension: chrome.windows lists only the app's windows; the tab an extension opens when installed (as Dark
+    // Reader opens its help page) and its options page (chrome.runtime.openOptionsPage shows Chrome's last tabbed window,
+    // as the "added" bubble does) land in the app's window; no window the app didn't show comes on screen.
+    const appWindows = async () => (await cef(`chromeWindows()`)).map((w) => w.window);
+    const before = new Set([...onScreenWindows(), ...(await appWindows())]);
+    return withPopupExtension({ welcome: true }, async (id) => {
+      const opened = [];
+      try {
+        const welcome = await until("the extension's install tab in the app", async () => {
+          const tabs = await evalApp(`const s = nn.store.getState(); return Object.values(s.tabs).map((t) => ({ id: t.id, url: t.url, windowId: t.windowId }))`);
+          return tabs.find((t) => t.url?.includes("e?installed")) ?? null;
+        }, 15000);
+        opened.push(welcome.id);
+        if (welcome.windowId !== mainWindow) throw new Error(`the install tab is in ${welcome.windowId}, not the run's window`);
+        const worker = await until("the extension's worker", async () => {
+          for (const t of (await targets()).filter((t) => t.type === "service_worker" && t.url.includes(id))) {
+            const r = await cdp(t, "Runtime.evaluate", { expression: "typeof chrome?.windows?.getAll", returnByValue: true }).catch(() => null);
+            if (r?.result?.value === "function") return t;
+          }
+          return null;
+        }, 15000);
+        const listed = JSON.parse((await cdp(worker, "Runtime.evaluate", { expression: "chrome.windows.getAll().then((ws) => JSON.stringify(ws.map((w) => w.id)))", awaitPromise: true, returnByValue: true })).result.value);
+        const strips = new Set((await cef(`tabStrips()`)).strips.map((st) => st.strip));
+        const hidden = listed.filter((w) => !strips.has(w));
+        if (hidden.length) throw new Error(`chrome.windows.getAll lists windows the app doesn't show: ${JSON.stringify(hidden)} (app's: ${JSON.stringify([...strips])})`);
+        await cdp(worker, "Runtime.evaluate", { expression: "chrome.runtime.openOptionsPage().then(() => true)", awaitPromise: true });
+        const options = await until("the options page in the app", async () => {
+          const tabs = await evalApp(`const s = nn.store.getState(); return Object.values(s.tabs).map((t) => ({ id: t.id, url: t.url, windowId: t.windowId }))`);
+          return tabs.find((t) => t.url?.includes(`${id}/options.html`)) ?? null;
+        }, 15000);
+        opened.push(options.id);
+        if (options.windowId !== mainWindow) throw new Error(`the options page is in ${options.windowId}, not the run's window`);
+        await sleep(1000);
+        const app = new Set(await appWindows());
+        const stray = onScreenWindows().filter((w) => !before.has(w) && !app.has(w));
+        if (stray.length) throw new Error(`windows on screen the app didn't show: ${JSON.stringify(stray)}`);
+        return { listed, installTab: welcome.url, options: options.url };
+      } finally {
+        for (const tab of opened) await closeTab(tab).catch(() => null);
+      }
+    });
+  });
+
+  await check("content-blocked-count", async () => {
+    // B8: the blocked count counts what extensions' rules stopped, as Chrome's action count does: a blocked image and a
+    // script sent to the extension's stand-in (uBlock Origin Lite answers most ad scripts so), each once.
+    return withPopupExtension({}, async () => {
+      const tab = await freshTab(`${base}/nn-ads`);
+      try {
+        const target = await until("the page", () => pageTarget("/nn-ads"));
+        const standIn = (await cdp(target, "Runtime.evaluate", { expression: "window.__nnStandIn === true", returnByValue: true })).result.value;
+        if (!standIn) throw new Error("the script wasn't sent to the stand-in");
+        const blocked = await until("the count", async () => {
+          const n = await evalApp(`return nn.pageState.getState().pages[${JSON.stringify(tab)}]?.blocked ?? 0`);
+          return n >= 2 ? n : null;
+        }, 8000).catch(async () => evalApp(`return nn.pageState.getState().pages[${JSON.stringify(tab)}]?.blocked ?? 0`));
+        await sleep(500);
+        const settled = await evalApp(`return nn.pageState.getState().pages[${JSON.stringify(tab)}]?.blocked ?? 0`);
+        if (settled !== 2) throw new Error(`blocked ${settled} (then ${blocked}), not 2 (the image and the redirected script)`);
+        return { blocked: settled, standIn };
+      } finally {
+        await closeTab(tab).catch(() => null);
+      }
+    });
+  });
+
+  await check("extension-download-hidden", async () => {
+    // B12: a Web Store install's .crx (Chrome downloads it, installs it and deletes it) is never one of the user's
+    // downloads, and doesn't open the downloads popover. The run's Web Store update URL serves one; it has no Web Store
+    // proof, so Chrome stops at checking the package, after the download.
+    const listed = () => evalApp(`return nn.store.getState().downloads.map((d) => d.url ?? "")`);
+    const open = () => evalApp(`return !!nn.store.getState().windowUi[${JSON.stringify(mainWindow)}]?.downloadsOpen`);
+    const wasOpen = await open();
+    const tab = await freshTab(`${base}/b?crx`);
+    try {
+      const target = await until("the page", () => pageTarget("/b?crx"));
+      const url = `${base}/webstore/crx?nn=${Date.now()}`;
+      await cdp(target, "Runtime.evaluate", { expression: `(() => { const a = document.createElement("a"); a.href = "${url}"; document.body.append(a); a.click(); return true; })()`, userGesture: true });
+      // Chrome made it a download (the page stays: onDownloadNavigation).
+      await until("the .crx becoming a download", async () => (await eventsOf(tab)).some((x) => x.name === "downloadNavigation" && JSON.stringify(x.payload).includes("/webstore/crx")), 10000);
+      const seen = [];
+      for (let i = 0; i < 10; i++) {
+        seen.push(...(await listed()));
+        await sleep(300);
+      }
+      if (seen.some((u) => u.includes("/webstore/crx"))) throw new Error(`the .crx is one of the user's downloads: ${JSON.stringify([...new Set(seen)])}`);
+      if (!wasOpen && (await open())) throw new Error("the downloads popover opened");
+      return { downloads: new Set(seen).size };
+    } finally {
+      await closeTab(tab).catch(() => null);
+    }
+  });
+
+  await check("context-menu-reading-mode", async () => {
+    // B7: Chrome's page menu has no "Open in Reading Mode" (or "Listen to this page"): both open Chrome's side panel,
+    // which the app's windows don't have, so picking one did nothing. CEF's menu had neither. No separator is doubled.
+    const tab = await freshTab(`${base}/text`);
+    try {
+      const target = await until("the page", () => pageTarget("/text"));
+      const before = (await eventsOf(tab)).filter((x) => x.name === "contextMenu").length;
+      let menu = null;
+      for (let attempt = 0; attempt < 3 && !menu; attempt++) {
+        const at = { x: 300, y: 300, button: "right", clickCount: 1 };
+        await cdp(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y });
+        await cdp(target, "Input.dispatchMouseEvent", { type: "mousePressed", ...at });
+        await cdp(target, "Input.dispatchMouseEvent", { type: "mouseReleased", ...at });
+        menu = await until("a context menu", async () => {
+          const menus = (await eventsOf(tab)).filter((x) => x.name === "contextMenu");
+          return menus.length > before ? menus.at(-1) : null;
+        }, 4000).catch(() => null);
+      }
+      if (!menu) throw new Error("no context menu reported");
+      const items = menu.payload.items;
+      const flat = (list) => list.flatMap((i) => [i, ...flat(i.submenu ?? [])]);
+      const found = flat(items).filter((i) => i.id === 50169 || /reading mode|listen to this page/i.test(i.label ?? ""));
+      if (found.length) throw new Error(`still there: ${JSON.stringify(found.map((i) => i.label))}`);
+      const doubled = items.some((i, n) => i.separator && (n === 0 || n === items.length - 1 || items[n + 1]?.separator));
+      if (doubled) throw new Error(`a doubled or end separator: ${JSON.stringify(items.map((i) => (i.separator ? "—" : i.label)))}`);
+      return { items: items.filter((i) => !i.separator).map((i) => i.label) };
+    } finally {
+      await closeTab(tab).catch(() => null);
     }
   });
 

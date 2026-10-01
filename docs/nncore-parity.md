@@ -45,6 +45,13 @@ Keep this list short and shrinking; each item names its owner.
    history (`internal-pages-not-history`). A hidden test instance that crashes writes `<data dir>/crashes/crash-<pid>.txt`
    and exits without macOS's crash report, dialog or focus change (`crash-guard`); a data dir it can't use stops it
    with a message, not an abort; Cocoa's `-Key value` arguments stay off Chrome's command line (`launch-cocoa-args`).
+   The extension batch is done too: B9, an action's popup is Chrome's own extension view bound to the window it was
+   clicked in, so its current window and active tab are that window's (`extension-popup-window`; Dark Reader shows
+   the page's site again); B10/B11, the host's hidden windows are no extension's and never shown by Chrome, so the
+   "added" bubble anchors to the app's window and an extension's tabs land there (`extension-windows-hidden`); B12,
+   an extension install's .crx is no download (`extension-download-hidden`); B8, the blocked count counts the
+   rules' blocks and redirects to stand-ins (`content-blocked-count`); B7, no Reading mode in the page menu
+   (`context-menu-reading-mode`).
    Open: after another profile's window opened and closed, "Share this tab instead" answers false (`tab-capture`).
 7. ~~**Smoke parity**~~ done: background-mode context-menu log, the autofill dropdown's selection, the PiP self-test
    (`NETNYAHOO_PIP_SELFTEST`) and the passkey dialog closing when its page navigates; the release smoke test passes
@@ -146,6 +153,11 @@ Test hygiene the run keeps (each was a real failure):
 | zoom-levels | `setZoom`/`getZoomLevels` on Chrome's host zoom map |
 | extensions, extension-surfaces | Unpacked inspect, install, list, disable, uninstall, reload; action state and side panel URL for a tab; the extension's declarativeNetRequest blocks counted on the page (`onContentBlocked`) |
 | chrome-windows-create | `chrome.windows.create` from an extension → the tab lands in the app's window as a live tab (`tab:<id>`) |
+| extension-popup-window | An action's popup (`extensionHost="popup"`) sees the window it was clicked in as its current window and the page under it as its active tab; it's in no strip and makes no window; Esc in it closes it |
+| extension-windows-hidden | `chrome.windows.getAll` lists only the app's windows; an extension's tab on install and its options page land in the app's window; no window the app didn't show comes on screen |
+| extension-download-hidden | A .crx from the Web Store's update URL (`--apps-gallery-update-url`) is no download in the app, and doesn't open the popover |
+| content-blocked-count | An extension's rules on a page: a blocked image and a script redirected to its stand-in count 2 |
+| context-menu-reading-mode | The page menu has no "Open in Reading Mode" or "Listen to this page", and no doubled separator |
 | content-blocker, settings-services | uBlock Origin Lite as a component extension: state, lists, allow-list, on/off, a list toggled; clearing browsing data, resetting a site, an external-app allowance, a tab's site data |
 | download, download-controls, download-navigation | Downloads land in the scratch folder through Chrome's manager and the app's list; pause, resume and cancel a running one; a navigation that became a download |
 | site-settings | Set, get, origins, clear site data |
@@ -181,7 +193,7 @@ and sent only when changed, progress at most 10 times a second, a held report fl
 | `url`, `profile`, `visible`, `warm` | done | `""` is Chrome's Default profile, `<id>` is `Profile <id>`, `incognito…` the default profile's OTR profile. `visible` and `warm` change the page once the app's batch of view updates is done (a run-loop observer before Core Animation's commit), the pages leaving first; a page leaving the screen goes transparent and stays visible to Chrome for 100 ms. Hiding Chrome's view at once blanked the old page (or left a few tiles) for a frame before the app's switch reached the screen, on most switches away from a web page (rec1522: 13 in 20 switches on the RC, 2 now, each a single frame: the incoming page a frame late, or a tile; `windowing-test.mjs`) |
 | `adoptId` | done | `nncore:<id>` (a tab Chrome made for a page), `tab:<id>` (one Chrome made on its own: an extension's tabs.create/windows.create), `restore:<tab id>` (Chrome's TabRestoreService entry the WebView tagged as it closed the tab: `nn_tab_restore_tag`/`_take`, `-[NNCoreWindow restoreTab:…]`), `clone:<tab id>` (`duplicateTab:`). A restore in flight is cancelled by a close |
 | `transferKey` | done | A tab moving between windows is parked or taken from the old view and moves into the new window's Browser (`adoptTab:`); it is also the tab's key in strip transactions. A window closing while one of its tabs is on its way out (its last tab dropped onto another window) hands the tab to a hidden window first (`keepTransfersOfWindow:`); one nobody takes within 3 s closes at once (`closeNow`) |
-| `standalone` | partial | Extension popups and side panels: their tabs live in a hidden per-profile window, outside the app windows' Browsers and strips, as CEF's standalone browsers; the window closes with its last tab. Needs a visual check |
+| `standalone`, `extensionHost` | partial | Extension popups and side panels (`extensionHost` "popup" or "sidePanel", which implies `standalone`): Chrome's own `ExtensionViewHost`, bound to the window's Browser for the page's profile (`-[NNCoreWindow openExtensionView:profile:kind:]`, `nn_extension_view.mm`), so `chrome.windows`' current window and the active tab are the window's; in no strip. Chrome closing it (`window.close()`, Esc, the extension unloaded, its renderer gone) reaches the app as `onWindowClose`; it closes with its window too. A `standalone` view without `extensionHost` is a tab in a hidden per-profile window (an older engine). Needs a visual check |
 | `pageBackgroundColor`, `autoPictureInPicture` | partial | Wired (`setPageBackgroundColor:`, auto PiP from the page script's video state); both need a visible window to check |
 
 ### Events
@@ -193,7 +205,7 @@ and sent only when changed, progress at most 10 times a second, a held report fl
 | `onZoom`, `onSecurity`, `onExternalApp`, `onCommand` | done | `onCommand`: Esc the page left alone, the menu's search |
 | `onDiscarded`, `onPopupBlocked`, `onDownloadNavigation` | done | |
 | `onNotification`, `onNotificationClose`, `onNowPlaying` | done | Through the page script, as CEF |
-| `onContentBlocked` | done | The engine's per-tab report of ERR_BLOCKED_BY_CLIENT (`tab:didBlockRequests:lastURL:`, e809deac), counted and coalesced as CEF (150 ms, reset when a page starts loading). A report can land a turn late, so a few of the old page's blocks may count on the next page |
+| `onContentBlocked` | done | The engine's per-tab report (`tab:didBlockRequests:lastURL:`, e809deac) of what extensions' declarativeNetRequest rules blocked or redirected (to a stand-in, as uBlock Origin Lite answers most ad scripts), from a hook in Chrome's `ActionTracker` (engine/nncore/apply.sh), plus any other ERR_BLOCKED_BY_CLIENT, each request once; counted and coalesced as CEF (150 ms, reset when a page starts loading). A report can land a turn late, so a few of the old page's blocks may count on the next page |
 | `onPageMessage` | partial | `selection` from the page script (main frame). Programmatic selections don't send it; a mouse selection does (needs a visible window) |
 | `onMedia` | partial | Audible state from the page script; the muted test tab doesn't prove it |
 | `onPictureInPicture` | partial | Video PiP state from the page script; document PiP not reported. PiP opens a window on screen |
@@ -217,7 +229,7 @@ and sent only when changed, progress at most 10 times a second, a held report fl
 | `requestPictureInPicture`, `exitPictureInPicture` | partial | Through the page script with a user gesture; a PiP window shows on screen |
 | `resolveDisplayMedia`, `mediaCaptureSourceId` | partial | `mediaCaptureSourceId` is Chrome's (engine-proven); an app-picked source needs the engine to grant it to `getUserMedia` (CEF's `site::AllowDesktopCapture`), so pages keep Chrome's own picker for now |
 | `resolvePasswordPrompt` | partial | save and dismiss |
-| `executeExtensionAction` | partial | Opens the action's popup (a standalone WebView, or Chrome's own bubble); needs a visible window |
+| `executeExtensionAction` | partial | Runs the action on the tab (activeTab granted); the app shows the popup (`extensionHost="popup"`); needs a visible window |
 | `resolveUnresponsive` | partial | See `onUnresponsive` |
 
 The app closes a tab by unmounting its WebView; NNCore closes it at once without beforeunload
@@ -297,7 +309,7 @@ lights are placed again after every switch), `prepareProfiles:forWindow:`, `setT
 | Background test instances | done | `NETNYAHOO_BACKGROUND=1`: activation guards, panels answered from `file-chooser.txt`, context menus reported |
 | Key equivalents from the page | done | |
 | Quit and terminate (⌘Q, Dock, logout) | done | Cocoa's `applicationShouldTerminate:` contract, cancellable |
-| Windows Chrome makes (chrome.windows.create, incognito) | done | Routed into the app's windows (`tab:<id>`) through a hidden stray window |
+| Windows Chrome makes (chrome.windows.create, incognito) | done | Routed into the app's windows (`tab:<id>`) through a hidden stray window. Chrome never shows a window of the host's (`NNBrowserWindow::Show` does nothing; the app shows its own), and the host's own hidden pages are no extension's window (`cef::IsHiddenFromExtensions`, `IsOnCurrentWorkspace`, extensions' `browser_window_util`) |
 | Key window, IME, accessibility | partial | Wiring checked in the engine's run; marked text and VoiceOver need an unlocked screen |
 | Native composition of the page under the RN views, bubbles and sheets | needs a visual check | The screen was locked for stages 1 and 2 |
 
@@ -352,7 +364,7 @@ NNCore:
 3. **Checks that need an unlocked screen and a visible window** (none can run hidden): the page composited under
    the RN views; menus, choosers, Cast and bubbles drawn against the window; PiP; IME marked text; VoiceOver; the
    hang monitor; print and save dialogs; a camera/microphone grant; a mouse text selection; extension popups and
-   side panels as standalone WebViews.
+   side panels as Chrome's extension views in the app's own (their size, focus, the "added" bubble's place).
 4. **Side by side:** the same profile data opened by both builds (they share Chrome's prefs and stores by design)
    with a scratch copy, a day of the owner's use on the NNCore build, and the partial rows above re-checked there.
 
