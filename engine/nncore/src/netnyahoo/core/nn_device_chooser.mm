@@ -8,20 +8,26 @@
 #import <Foundation/Foundation.h>
 
 #include <map>
+#include <string>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/bluetooth/chrome_bluetooth_chooser_controller.h"
+#include "components/permissions/bluetooth_chooser_controller.h"
 #include "components/permissions/chooser_controller.h"
+#include "content/public/browser/bluetooth_chooser.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "netnyahoo/core/nn_browser.h"
+#include "netnyahoo/core/nn_external_apps.h"
 
 namespace nncore {
 
@@ -51,6 +57,10 @@ class DeviceChooser : public permissions::ChooserController::View {
 
   int id() const { return id_; }
   base::WeakPtr<DeviceChooser> GetWeakPtr() { return weak_factory_.GetWeakPtr(); }
+  // While open (the test Bluetooth chooser drives its controller as an adapter would).
+  permissions::ChooserController* controller() const {
+    return open_ ? controller_.get() : nullptr;
+  }
 
   // JS DeviceChooser without browserId (the host knows the tab).
   NSDictionary* State() const {
@@ -116,10 +126,21 @@ class DeviceChooser : public permissions::ChooserController::View {
     }
   }
 
+  // Bluetooth's privacy settings (Chrome's "authorize Bluetooth" link). Only the choosers
+  // that show that link have them (Bluetooth, Serial); the others' NOTREACHED().
   void OpenSettings() {
-    if (open_ && controller_) {
-      controller_->OpenPermissionPreferences();
+    if (!open_ || !controller_ || !controller_->ShouldShowAdapterUnauthorizedView()) {
+      return;
     }
+    if (TestNoLaunch()) {
+      RecordTestLaunch(@{
+        @"url" : @"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?"
+                 @"Privacy_Bluetooth",
+        @"settings" : @"bluetooth",
+      });
+      return;
+    }
+    controller_->OpenPermissionPreferences();
   }
 
   // The page's request went (navigation, the tab closing): Chrome closes it.
@@ -196,6 +217,73 @@ DeviceChooser* Find(int id) {
   return it == Live().end() ? nullptr : it->second.get();
 }
 
+DeviceChooser* Adopt(std::unique_ptr<permissions::ChooserController> controller,
+                     content::WebContents* contents) {
+  auto chooser = std::make_unique<DeviceChooser>(std::move(controller), contents);
+  DeviceChooser* raw = chooser.get();
+  Live()[raw->id()] = std::move(chooser);
+  // Not from inside Chrome's request: the host may answer at once.
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<DeviceChooser> chooser) {
+                       if (chooser) {
+                         chooser->Announce();
+                       }
+                     },
+                     raw->GetWeakPtr()));
+  return raw;
+}
+
+// --netnyahoo-test-bluetooth-chooser: a Bluetooth chooser with no adapter behind it (a real
+// one wakes IOBluetooth, and macOS asks for Bluetooth access), for test runs.
+constexpr char kTestBluetoothChooserSwitch[] = "netnyahoo-test-bluetooth-chooser";
+
+NSMutableArray<NSDictionary*>* TestEvents() {
+  static NSMutableArray<NSDictionary*>* events = [NSMutableArray array];
+  return events;
+}
+
+NSString* EventName(content::BluetoothChooserEvent event) {
+  switch (event) {
+    case content::BluetoothChooserEvent::DENIED_PERMISSION:
+      return @"denied";
+    case content::BluetoothChooserEvent::CANCELLED:
+      return @"cancelled";
+    case content::BluetoothChooserEvent::SELECTED:
+      return @"selected";
+    case content::BluetoothChooserEvent::RESCAN:
+      return @"rescan";
+    case content::BluetoothChooserEvent::SHOW_OVERVIEW_HELP:
+      return @"overviewHelp";
+    case content::BluetoothChooserEvent::SHOW_ADAPTER_OFF_HELP:
+      return @"adapterOffHelp";
+    case content::BluetoothChooserEvent::SHOW_NEED_LOCATION_HELP:
+      return @"needLocationHelp";
+  }
+  return @"unknown";
+}
+
+// What the adapter would report: no access, or on with one device found and the scan over.
+void DriveTestBluetoothChooser(int chooser_id, bool unauthorized) {
+  DeviceChooser* chooser = Find(chooser_id);
+  auto* controller = chooser ? static_cast<permissions::BluetoothChooserController*>(
+                                   chooser->controller())
+                             : nullptr;
+  if (!controller) {
+    return;
+  }
+  using content::BluetoothChooser;
+  if (unauthorized) {
+    controller->OnAdapterPresenceChanged(BluetoothChooser::AdapterPresence::UNAUTHORIZED);
+    return;
+  }
+  controller->OnAdapterPresenceChanged(BluetoothChooser::AdapterPresence::POWERED_ON);
+  controller->AddOrUpdateDevice("nn-test-device", /*should_update_name=*/false,
+                                u"Netnyahoo Test Device", /*is_gatt_connected=*/false,
+                                /*is_paired=*/false, /*signal_strength_level=*/3);
+  controller->OnDiscoveryStateChanged(BluetoothChooser::DiscoveryState::IDLE);
+}
+
 }  // namespace
 
 bool HandleDeviceChooser(content::RenderFrameHost* owner,
@@ -210,9 +298,7 @@ bool HandleDeviceChooser(content::RenderFrameHost* owner,
       !HostWantsDeviceChoosers()) {
     return false;
   }
-  auto chooser = std::make_unique<DeviceChooser>(std::move(*controller), contents);
-  DeviceChooser* raw = chooser.get();
-  Live()[raw->id()] = std::move(chooser);
+  DeviceChooser* raw = Adopt(std::move(*controller), contents);
   *close_closure = base::BindOnce(
       [](base::WeakPtr<DeviceChooser> chooser) {
         if (chooser) {
@@ -220,16 +306,43 @@ bool HandleDeviceChooser(content::RenderFrameHost* owner,
         }
       },
       raw->GetWeakPtr());
-  // Not from inside Chrome's request: the host may answer at once.
-  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE, base::BindOnce(
-                     [](base::WeakPtr<DeviceChooser> chooser) {
-                       if (chooser) {
-                         chooser->Announce();
-                       }
-                     },
-                     raw->GetWeakPtr()));
   return true;
+}
+
+bool ShowTestBluetoothChooser(content::WebContents* contents, bool unauthorized) {
+  if (!contents || !contents->GetPrimaryMainFrame() ||
+      !base::CommandLine::ForCurrentProcess()->HasSwitch(kTestBluetoothChooserSwitch) ||
+      !HostWantsDeviceChoosers()) {
+    return false;
+  }
+  // Chrome's own controller with a recorder where content's adapter-driving one would be.
+  auto chooser_id = std::make_shared<int>(0);
+  auto handler = base::BindRepeating(
+      [](std::shared_ptr<int> chooser_id, content::BluetoothChooserEvent event,
+         const std::string& device) {
+        [TestEvents() addObject:@{
+          @"event" : EventName(event),
+          @"device" : base::SysUTF8ToNSString(device),
+        }];
+        if (event == content::BluetoothChooserEvent::RESCAN) {
+          // A scan finds the device again, then ends (after this call returns).
+          base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+              FROM_HERE, base::BindOnce(&DriveTestBluetoothChooser, *chooser_id, false));
+        }
+      },
+      chooser_id);
+  DeviceChooser* chooser = Adopt(std::make_unique<ChromeBluetoothChooserController>(
+                                     contents->GetPrimaryMainFrame(), handler),
+                                 contents);
+  *chooser_id = chooser->id();
+  // After the host heard of it (Adopt's announcement goes first).
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&DriveTestBluetoothChooser, chooser->id(), unauthorized));
+  return true;
+}
+
+NSArray<NSDictionary*>* TestChooserEvents() {
+  return [TestEvents() copy];
 }
 
 void SelectDevice(int chooser_id, int index) {

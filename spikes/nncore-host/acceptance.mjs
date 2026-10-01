@@ -116,6 +116,8 @@ async function go() {
           `<body style="font:14px system-ui"><a id=hover href="/target?from=hover">hover me</a>` +
           `<iframe id=frame src="/frame" width=200 height=80></iframe></body>`,
       );
+    case "/fed":
+      return send(page("Fed", `<button id=store>store</button><pre id=out></pre>`));
     case "/frame":
       return send(page("Frame", "frame"));
     case "/ac":
@@ -475,8 +477,8 @@ try {
   await pl.click("#go");
   pl.close();
   const prompt = await waitFor(() => events().find((e) => e.event === "passwordPrompt"), 15000);
-  check(5, "password save prompt reaches the host (Chrome's bubble seam)", prompt && prompt.username === "nnuser", prompt);
-  if (prompt) await cmd("pw.save", { tabId: prompt.tabId });
+  check(5, "password save prompt reaches the host (Chrome's bubble seam) as JS PasswordPrompt", prompt && prompt.username === "nnuser" && prompt.state === "save" && prompt.passwordLength === 10 && prompt.federation === "" && Array.isArray(prompt.usernames) && prompt.origin === base, prompt);
+  if (prompt) await cmd("pw.resolve", { tabId: prompt.tabId, action: "save" });
   const logins = await waitFor(async () => {
     const l = await cmd("logins", { profile: "A" });
     return l.find((x) => x.username === "nnuser") ? l : null;
@@ -1081,9 +1083,52 @@ try {
     const chooser = evs("deviceChooser", (e) => e.tabId === ut.tabId && e.chooser.open)[0];
     const closed = evs("deviceChooser", (e) => e.tabId === ut.tabId && !e.chooser.open)[0];
     check("S21", "WebUSB requestDevice → the host's device chooser (JS DeviceChooser); cancel → NotFoundError", chooser && typeof chooser.chooser.title === "string" && Array.isArray(chooser.chooser.options) && closed && usb === "NotFoundError", { usb, title: chooser?.chooser.title, options: chooser?.chooser.options?.length });
+    // Bluetooth's settings from a chooser without that link (WebUSB, whose Chrome controller would NOTREACHED()):
+    // nothing happens. (Web Serial and Bluetooth choosers wake IOBluetooth, a macOS prompt: S31 uses a test one.)
+    await cmd("config", { values: { chooserSettings: true } });
+    const launchesBefore = (await cmd("externalLaunches")).length;
+    const pu2 = await attach((t) => t.url.includes("from=usb"));
+    const usb2 = (await pu2.send("Runtime.evaluate", { expression: "Promise.race([navigator.usb.requestDevice({ filters: [] }).then(() => 'picked', (e) => e.name), new Promise((r) => setTimeout(() => r('timeout'), 8000))])", awaitPromise: true, userGesture: true, returnByValue: true })).result?.result?.value;
+    pu2.close();
+    await cmd("config", { values: { chooserSettings: false } });
+    const afterUsb = await cmd("externalLaunches");
+    check("S21", "openDeviceChooserSettings on a WebUSB chooser: nothing opened or recorded, no crash", usb2 === "NotFoundError" && afterUsb.length === launchesBefore && hostExit === null, { usb2, recorded: afterUsb.slice(launchesBefore) });
     await cmd("nav", { tabId: src.tabId, action: "closeNow" });
     await cmd("nav", { tabId: ut.tabId, action: "closeNow" });
     if (dup) await cmd("nav", { tabId: dup.tabId, action: "closeNow" });
+  }
+  // S31: Chrome's Bluetooth chooser with no adapter (--netnyahoo-test-bluetooth-chooser): rescan, select,
+  // and Bluetooth's settings from the unauthorized state.
+  {
+    await cmd("config", { values: { keepChooser: true } });
+    const bt = await cmd("open", { url: `${base}/target?from=bt`, profile: "A" });
+    await waitFor(async () => (await tabState(bt.tabId))?.loading === false);
+    const mark = evs("deviceChooser").length;
+    const choosers = () => evs("deviceChooser").slice(mark).filter((e) => e.tabId === bt.tabId);
+    const shown = await cmd("btChooser", { tabId: bt.tabId, unauthorized: false });
+    const listed = await waitFor(() => choosers().find((e) => e.chooser.open && e.chooser.options.some((o) => o.name === "Netnyahoo Test Device")), 8000);
+    const id1 = listed?.chooser.id;
+    const seen = choosers().length;
+    await cmd("chooserAct", { chooserId: id1, action: "refresh" });
+    const rescanned = await waitFor(async () => (await cmd("chooserEvents")).some((e) => e.event === "rescan"), 5000);
+    const relisted = await waitFor(() => choosers().slice(seen).find((e) => e.chooser.id === id1 && e.chooser.options.length === 1 && !e.chooser.refreshing), 5000);
+    await cmd("chooserAct", { chooserId: id1, action: "select", index: 0 });
+    const selected = await waitFor(async () => (await cmd("chooserEvents")).find((e) => e.event === "selected"), 5000);
+    const closed1 = await waitFor(() => choosers().find((e) => e.chooser.id === id1 && !e.chooser.open), 5000);
+    check("S31", "a Bluetooth chooser (Chrome's controller, no adapter): its device listed; rescan lists it again; select → the page hears the device", shown === true && listed && rescanned && relisted && selected?.device === "nn-test-device" && closed1, { title: listed?.chooser.title, options: listed?.chooser.options, selected, canRefresh: listed?.chooser.canRefresh });
+
+    const launchesBefore = (await cmd("externalLaunches")).length;
+    await cmd("btChooser", { tabId: bt.tabId, unauthorized: true });
+    const unauth = await waitFor(() => choosers().find((e) => e.chooser.open && e.chooser.unauthorized && e.chooser.id !== id1), 8000);
+    await cmd("chooserAct", { chooserId: unauth?.chooser.id, action: "settings" });
+    await sleep(300);
+    const recorded = (await cmd("externalLaunches")).slice(launchesBefore);
+    const stillOpen = !choosers().some((e) => e.chooser.id === unauth?.chooser.id && !e.chooser.open);
+    await cmd("chooserAct", { chooserId: unauth?.chooser.id, action: "cancel" });
+    const cancelled = await waitFor(async () => (await cmd("chooserEvents")).some((e) => e.event === "cancelled"), 5000);
+    check("S31", "unauthorized → openDeviceChooserSettings records Bluetooth's privacy settings (test switch), the chooser stays; cancel → the page hears cancelled", unauth && recorded.some((l) => l.settings === "bluetooth" && /Privacy_Bluetooth/.test(l.url)) && stillOpen && cancelled && hostExit === null, { recorded, stillOpen, events: await cmd("chooserEvents") });
+    await cmd("config", { values: { keepChooser: false } });
+    await cmd("nav", { tabId: bt.tabId, action: "closeNow" });
   }
   // S24: requests the content blocker (an extension's declarativeNetRequest) stopped.
   {
@@ -1146,6 +1191,117 @@ try {
     check("S27", "devToolsCall: Page.getLayoutMetrics, a small Page.captureScreenshot (JPEG), an error for an unknown method, beside the CDP port's client; detached between calls", vv && jpeg && jpeg[0] === 0xff && jpeg[1] === 0xd8 && metrics.mainThread && bad?.error && !bad.result && again?.result?.result?.value === 2 && cdpTitle && idle, { idle, viewport: vv && [vv.clientWidth, vv.clientHeight], jpegBytes: jpeg?.length, bad: bad?.error, again: again?.result?.result, cdpTitle });
     await cmd("nav", { tabId: dt.tabId, action: "closeNow" });
   }
+  // S28: Chrome's password bubble as JS PasswordPrompt, answered as CEF's ResolvePasswordPrompt.
+  {
+    const loginsNow = () => cmd("logins", { profile: "A" });
+    const submitLogin = async (url, user, pass) => {
+      const t = await cmd("open", { url, profile: "A" });
+      await waitFor(async () => (await tabState(t.tabId))?.loading === false);
+      const lp = await attach((x) => x.url === url);
+      await lp.evaluate(`document.getElementById('u').value = ''; document.getElementById('p').value = ''`);
+      await lp.type("#u", user);
+      await lp.type("#p", pass);
+      await lp.click("#go");
+      lp.close();
+      return t;
+    };
+    const promptOf = (tabId, ms = 15000) => waitFor(() => evs("passwordPrompt", (e) => e.tabId === tabId)[0], ms);
+    const pick = (p) => p && { state: p.state, origin: p.origin, username: p.username, passwordLength: p.passwordLength, federation: p.federation, usernames: p.usernames };
+    const nnuser = async () => (await loginsNow()).find((l) => l.username === "nnuser" && !l.blocked);
+
+    const t1 = await submitLogin(`${base}/login?pw=1`, "nnuser", "new-password-123");
+    const p1 = await promptOf(t1.tabId);
+    const asked = p1 && (await cmd("pw.prompt", { tabId: t1.tabId }));
+    await cmd("pw.resolve", { tabId: t1.tabId, action: "nope" });
+    await sleep(800);
+    const kept = await nnuser();
+    check("S28", "a changed password → state update, the site's usernames, its length; -passwordPrompt answers the same; nope keeps the old one", p1?.state === "update" && p1.username === "nnuser" && p1.passwordLength === 16 && p1.usernames.includes("nnuser") && asked?.state === "update" && kept?.passwordLength === 10, { prompt: pick(p1), asked: asked?.state, kept: kept?.passwordLength });
+
+    const t2 = await submitLogin(`${base}/login?pw=2`, "nnuser", "new-password-123");
+    const p2 = await promptOf(t2.tabId);
+    await cmd("pw.resolve", { tabId: t2.tabId, action: "update", password: "edited-password-9876" });
+    const updated = await waitFor(async () => ((await nnuser())?.passwordLength === 20 ? await nnuser() : null), 10000);
+    check("S28", "update with the host's edited password → Chrome's store has the edit", p2?.state === "update" && updated, { prompt: pick(p2), stored: updated?.passwordLength });
+
+    const t3 = await submitLogin(`${base}/login?pw=3`, "second", "pw-second-1");
+    const p3 = await promptOf(t3.tabId);
+    await cmd("pw.resolve", { tabId: t3.tabId, action: "save", username: "edited-user" });
+    const saved3 = await waitFor(async () => (await loginsNow()).find((l) => l.username === "edited-user"), 10000);
+    const typed3 = (await loginsNow()).some((l) => l.username === "second");
+    check("S28", "save with the host's edited username (the site's other usernames listed)", p3?.state === "save" && p3.usernames.includes("nnuser") && saved3?.passwordLength === 11 && !typed3, { prompt: pick(p3), saved: saved3, typedSaved: typed3 });
+
+    const t4 = await submitLogin(`${base}/login?pw=4`, "dismissme", "pw-dismiss");
+    const p4 = await promptOf(t4.tabId);
+    await cmd("pw.resolve", { tabId: t4.tabId, action: "dismiss" });
+    await sleep(800);
+    const dismissed = !(await loginsNow()).some((l) => l.username === "dismissme");
+    check("S28", "dismiss saves nothing", p4?.state === "save" && dismissed, { prompt: pick(p4), dismissed });
+
+    const other = base.replace("localhost", "127.0.0.1");
+    const t5 = await submitLogin(`${other}/login?pw=5`, "neveruser", "pw-never-1");
+    const p5 = await promptOf(t5.tabId);
+    await cmd("pw.resolve", { tabId: t5.tabId, action: "never" });
+    const blocked = await waitFor(async () => (await loginsNow()).find((l) => l.blocked && l.origin.startsWith(other)), 10000);
+    const t6 = await submitLogin(`${other}/login?pw=6`, "neveruser2", "pw-never-2");
+    const p6 = await promptOf(t6.tabId, 4000);
+    check("S28", "never → the site is on Chrome's never-save list; its next login asks nothing", p5?.state === "save" && p5.origin === other && blocked && !p6, { prompt: pick(p5), blocked, again: pick(p6) });
+
+    const tf = await cmd("open", { url: `${base}/fed`, profile: "A" });
+    await waitFor(async () => (await tabState(tf.tabId))?.loading === false);
+    const fp = await attach((x) => x.url === `${base}/fed`);
+    fp.send("Runtime.evaluate", { expression: "navigator.credentials.store(new FederatedCredential({ id: 'fed-user', provider: 'https://idp.example', name: 'Fed User' })).then(() => 'stored', (e) => 'error ' + e.name)", userGesture: true, awaitPromise: true }).catch(() => {});
+    const pf = await promptOf(tf.tabId);
+    fp.close();
+    if (pf) await cmd("pw.resolve", { tabId: tf.tabId, action: "save" });
+    const fed = await waitFor(async () => (await loginsNow()).find((l) => l.federation === "https://idp.example"), 10000);
+    check("S28", "a FederatedCredential (credentials.store) → state save with its federation; saved federated", pf?.state === "save" && pf.federation === "https://idp.example" && pf.username === "fed-user" && pf.passwordLength === 0 && fed, { prompt: pick(pf), fed });
+    for (const t of [t1, t2, t3, t4, t5, t6, tf]) await cmd("nav", { tabId: t.tabId, action: "closeNow" });
+  }
+  // S29: Chrome's own strings say Netnyahoo (a WebUI page in the browser, an error page from the renderer).
+  {
+    const tv = await cmd("open", { url: "chrome://version", profile: "A" });
+    await waitFor(async () => (await tabState(tv.tabId))?.loading === false);
+    const vp = await attach((x) => x.url.startsWith("chrome://version"));
+    const version = await waitFor(() => vp.evaluate("document.body?.innerText ?? ''"), 8000);
+    vp.close();
+    const product = (version || "").split("\n").find((l) => /^\w+\t\d+\.\d+\./.test(l) && !/^CEF/.test(l));
+    check("S29", "chrome://version (browser-side strings): the product is Netnyahoo; the credit still names the Chromium Authors", /^Netnyahoo\t/.test(product || "") && /Copyright \d+ The Chromium Authors/.test(version || ""), { product, credit: (version || "").match(/Copyright[^\n]*/)?.[0] });
+    // A refused connection (a port nothing listens on): its suggestions name the product.
+    const closed = http.createServer();
+    await new Promise((r) => closed.listen(0, "127.0.0.1", r));
+    const refusedURL = `http://127.0.0.1:${closed.address().port}/refused`;
+    await new Promise((r) => closed.close(r));
+    const te = await cmd("open", { url: refusedURL, profile: "A" });
+    const ep = await attach((x) => x.url === refusedURL);
+    const html = await waitFor(async () => {
+      const h = await ep.evaluate("document.documentElement.outerHTML");
+      return /ERR_CONNECTION_REFUSED/.test(h || "") ? h : null;
+    }, 10000);
+    ep.close();
+    const said = (html || "").match(/.{0,30}Netnyahoo.{0,40}/)?.[0];
+    // (Its inlined CSS and JS keep their "Copyright … The Chromium Authors" headers.)
+    const named = ((html || "").match(/Chromium(?! Authors)/g) || []).length;
+    check("S29", "the renderer's error page (ERR_CONNECTION_REFUSED) says Netnyahoo, never Chromium (bar the source credits)", said && named === 0, { said, chromium: named });
+    await cmd("nav", { tabId: tv.tabId, action: "closeNow" });
+    await cmd("nav", { tabId: te.tabId, action: "closeNow" });
+  }
+  // S30: Chrome's task manager ends a tab's renderer (nn_tasks_kill, the app's killTask).
+  {
+    const call = (name, args) => cmd("engineCall", { name, profile: "A", args });
+    const taskOf = async (tabId) => (await call("nn_tasks_list", {})).tasks?.find((t) => t.tabIds.includes(tabId));
+    const runs = [];
+    for (let i = 0; i < 4; i++) {
+      const kt = await cmd("open", { url: `${base}/target?from=kill${i}`, profile: "A" });
+      await waitFor(async () => (await tabState(kt.tabId))?.loading === false);
+      const task = await waitFor(() => taskOf(kt.tabId), 8000);
+      const first = task && (await call("nn_tasks_kill", { id: task.id }));
+      const gone = await waitFor(() => evs("rendererGone", (e) => e.tabId === kt.tabId)[0], 8000);
+      const second = task && (await call("nn_tasks_kill", { id: task.id }));
+      runs.push({ title: task?.title, killable: task?.killable, first: first?.ok, gone: gone?.status, second: second?.ok });
+      await cmd("nav", { tabId: kt.tabId, action: "closeNow" });
+    }
+    check("S30", "killTask ends the tab's renderer ({ok: true}, rendererGone); the same task again is {ok: false} (its process is gone)", runs.every((r) => r.first === true && r.gone && r.second === false), runs);
+  }
   // S23 (E): tab capture: "Share this tab instead" and Stop sharing.
   {
     const y = await cmd("open", { url: `${base}/share?t=y`, profile: "A", background: true });
@@ -1176,6 +1332,28 @@ try {
     const routes = await waitFor(() => evs("castRoutes", (e) => e.profile === "Default")[0], 5000);
     check("S22", "watchCastRoutes reports the profile's routes (none here) to engine:castRoutes:profile:", routes && Array.isArray(routes.routes), routes);
     check("S22", "showCastDialog → engine:castDialog:tab: (JS CastDialog); closeCastDialog: closes it", shown === true && opened && typeof opened.dialog.header === "string" && Array.isArray(opened.dialog.sinks) && closed, { shown, header: opened?.dialog.header, sinks: opened?.dialog.sinks?.length, closed: !!closed, childBubble });
+
+    // The test route provider (--netnyahoo-test-media-route-provider): cast the tab, stop, terminate.
+    await cmd("config", { values: { closeCast: false } });
+    const mark = evs("castDialog").length;
+    await cmd("cast", { tabId: indexId });
+    const sinkOf = (e) => e.dialog.sinks.find((k) => k.id === "nn-test-sink");
+    const listed = await waitFor(() => evs("castDialog").slice(mark).find((e) => e.dialog.open && sinkOf(e)), 8000);
+    const dialogId = listed?.dialog.id;
+    const routesNow = () => evs("castRoutes", (e) => e.profile === "Default").at(-1)?.routes ?? [];
+    await cmd("castStart", { dialogId, sink: "nn-test-sink", mode: 2 });
+    const connected = await waitFor(() => evs("castDialog").slice(mark).find((e) => e.dialog.id === dialogId && sinkOf(e)?.state === "connected" && sinkOf(e)?.routeId), 8000);
+    const routeId = connected && sinkOf(connected).routeId;
+    const routed = await waitFor(() => routesNow().find((r) => r.id === routeId), 8000);
+    await cmd("castStop", { dialogId, route: routeId });
+    const stopped = await waitFor(() => routeId && !routesNow().some((r) => r.id === routeId), 8000);
+    await cmd("castStart", { dialogId, sink: "nn-test-sink", mode: 2 });
+    const again = await waitFor(() => routesNow()[0], 8000);
+    await cmd("castClose", { dialogId });
+    const closedNow = await waitFor(() => evs("castDialog").slice(mark).find((e) => e.dialog.id === dialogId && !e.dialog.open), 8000);
+    await cmd("castTerminate", { route: again?.id });
+    const terminated = await waitFor(() => again && routesNow().length === 0, 8000);
+    check("S22", "the test route provider's sink: startCasting (tab) → connected with a route (castRoutes); stopCasting; again, close the dialog, terminateCastRoute", listed && (sinkOf(listed).modes & 2) && !(sinkOf(listed).modes & 4) && connected && routed && stopped && again && closedNow && terminated && hostExit === null, { sink: listed && sinkOf(listed), castingStarted: connected?.dialog.castingStarted, routed, stopped: !!stopped, again: again?.id, closed: !!closedNow, terminated: !!terminated });
   }
   // S16 (item 9): extension actions.
   {
@@ -1338,11 +1516,41 @@ try {
     shutdownEvent: !!shutdown,
     crashes,
   });
+
+  // ---------------------------------------------------------------------------------------
+  // S32. Session cookies outlive a restart (as on CEF): relaunched on the same data dir, profile A
+  // still has the session cookie item 3 set; profile B never had it.
+  if (exited && exited.code === 0) {
+    fs.renameSync(path.join(hostDir, "events.jsonl"), path.join(hostDir, "events-first.jsonl"));
+    hostExit = null;
+    const again = spawn(exe, [], {
+      env: { ...process.env, NNHOST_DIR: hostDir, NNHOST_CDP_PORT: String(cdpPort), NETNYAHOO_BACKGROUND: "1", CFFIXED_USER_HOME: fakeHome },
+      stdio: ["ignore", logFd, logFd],
+    });
+    again.on("exit", (code, signal) => (hostExit = { code, signal }));
+    globalThis.relaunched = again;
+    await waitFor(() => events().find((e) => e.event === "windowReady"), 60000);
+    const read = async (url, profile) => {
+      const t = await cmd("open", { url, profile });
+      await waitFor(async () => (await state()).tabs.find((x) => x.tabId === t.tabId && !x.loading));
+      const p = await attach((x) => x.url === url);
+      const cookie = await p.evaluate("document.cookie");
+      p.close();
+      return cookie;
+    };
+    const cookieA = await read(`${base}/index?relaunch=A`, "A");
+    const cookieB = await read(`${base}/index?relaunch=B`, "B");
+    check("S32", "a session cookie survives a quit and relaunch on the same profile (restore_old_session_cookies); another profile doesn't see it", /who=profileA/.test(cookieA || "") && !/who=profileA/.test(cookieB || ""), { cookieA, cookieB });
+    await cmd("config", { values: { terminateReply: "now" } });
+    await cmd("terminate", {});
+    const exit2 = await waitFor(() => hostExit, 30000);
+    check("S32", "the relaunched host quits cleanly", exit2 && exit2.code === 0, { exit: exit2 });
+  }
 } catch (e) {
   check(0, "run aborted", false, String(e.stack || e));
 } finally {
   clearInterval(frontTimer);
-  if (!hostExit) host.kill("SIGTERM");
+  if (!hostExit) (globalThis.relaunched ?? host).kill("SIGTERM");
   server.close();
   fs.writeFileSync(path.join(workDir, "results.json"), JSON.stringify(results, null, 2));
   const failed = results.filter((r) => !r.ok).length;

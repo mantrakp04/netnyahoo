@@ -155,6 +155,10 @@ NNCORE_EXPORT
 // instead of launching it, [{url, remembered}] in order; remembered: Chrome now keeps
 // "always allow" for that origin and scheme. Empty without the switch.
 @property(class, readonly) NSArray<NSDictionary*>* testExternalLaunches;
+// Test runs (--netnyahoo-test-bluetooth-chooser): what the page of a test Bluetooth chooser
+// (-[NNCoreTab devShowBluetoothChooser:]) heard, [{event: "selected" | "rescan" |
+// "cancelled" | "denied"…, device: an id or ""}] in order.
+@property(class, readonly) NSArray<NSDictionary*>* testChooserEvents;
 // The host's screen-share picker chose `sourceId` ("screen:<CGDirectDisplayID>:0",
 // "window:<CGWindowID>:0", or a tab's mediaCaptureSourceId) for a page of `tab`: its next
 // getUserMedia({chromeMediaSource: "desktop", chromeMediaSourceId: sourceId}) from that
@@ -207,8 +211,9 @@ NNCORE_EXPORT
 - (void)clearBrowsingData:(NSArray<NSString*>*)types
                     since:(nullable NSDate*)since
                completion:(nullable void (^)(void))completion;
-// Chrome's password store, for checks: [{origin, username}]
-- (void)fetchSavedLogins:(void (^)(NSArray<NSDictionary<NSString*, NSString*>*>* logins))completion;
+// Chrome's password store, for checks: [{origin, username, passwordLength, blocked (a site
+// set to never save), federation}]
+- (void)fetchSavedLogins:(void (^)(NSArray<NSDictionary<NSString*, id>*>* logins))completion;
 @end
 
 // --- Windows ----------------------------------------------------------------------------
@@ -236,6 +241,14 @@ NNCORE_EXPORT
 - (void)window:(NNCoreWindow*)window
                     tab:(NNCoreTab*)tab
     didChangeFullscreen:(BOOL)fullscreen;
+// Chrome's password bubble would open (a password to save or update, or one just saved): JS
+// PasswordPrompt {state: "save" | "update" | "saved", origin, username, passwordLength,
+// federation, usernames}, the same as -[NNCoreTab passwordPrompt]. The host shows its own UI
+// and answers with -[NNCoreTab resolvePasswordPrompt:username:password:]. Preferred over
+// the older passwordSavePromptForTab:, which only reports "save".
+- (void)window:(NNCoreWindow*)window
+    passwordPrompt:(NSDictionary<NSString*, id>*)prompt
+            forTab:(NNCoreTab*)tab;
 // Chrome wants to offer to save a password; the host shows its own UI and answers on the tab.
 - (void)window:(NNCoreWindow*)window
     passwordSavePromptForTab:(NNCoreTab*)tab
@@ -433,6 +446,14 @@ NNCORE_EXPORT
 // Answers a passwordSavePromptForTab: callback.
 - (void)savePendingPassword;
 - (void)dismissPendingPassword;
+// What Chrome's password bubble would show now (window:passwordPrompt:forTab:), or nil.
+@property(readonly, nullable) NSDictionary<NSString*, id>* passwordPrompt;
+// Answers it, as Chrome's bubble: "save" or "update" (username/password: the host's edits;
+// nil or empty keeps Chrome's), "never" (never for this site), "nope" (keep the old
+// password), "dismiss".
+- (void)resolvePasswordPrompt:(NSString*)action
+                     username:(nullable NSString*)username
+                     password:(nullable NSString*)password;
 // Opens the extension's action popup (Chrome's ExtensionViewHost) in a panel attached to
 // the tab's window, under `anchor` (window coordinates). Returns NO if it has no popup.
 - (BOOL)openActionPopupForExtension:(NSString*)extensionId anchor:(NSRect)anchor;
@@ -538,6 +559,11 @@ NNCORE_EXPORT
 // Chrome's Cast dialog for this tab (as its toolbar button): engine:castDialog:tab:. NO if
 // the media router is off.
 - (BOOL)showCastDialog;
+// Test runs (--netnyahoo-test-bluetooth-chooser): Chrome's Bluetooth chooser for this page,
+// with no adapter behind it, through engine:deviceChooser:tab: as a page's would be:
+// unauthorized (Bluetooth access off), or one device, "Netnyahoo Test Device". NO without
+// the switch.
+- (BOOL)devShowBluetoothChooser:(BOOL)unauthorized;
 // Whether the page's focused element takes text now (Esc in a text field is the page's).
 @property(readonly) BOOL focusedEditable;
 // The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:).

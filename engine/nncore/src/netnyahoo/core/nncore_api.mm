@@ -64,6 +64,7 @@
 #include "netnyahoo/core/nn_lifetime.h"
 #include "netnyahoo/core/nn_main_delegate.h"
 #include "netnyahoo/core/nn_page_channel.h"
+#include "netnyahoo/core/nn_password_prompt.h"
 #include "netnyahoo/core/nn_tab_info.h"
 #include "netnyahoo/core/nn_permissions.h"
 #include "chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.h"
@@ -153,7 +154,7 @@ std::map<Profile*, NNCoreProfile*>& ProfileWrappers() {
 class LoginsFetcher : public password_manager::PasswordStoreConsumer {
  public:
   explicit LoginsFetcher(
-      void (^completion)(NSArray<NSDictionary<NSString*, NSString*>*>*))
+      void (^completion)(NSArray<NSDictionary<NSString*, id>*>*))
       : completion_(completion) {}
 
   void OnGetPasswordStoreResultsOrErrorFrom(
@@ -166,6 +167,11 @@ class LoginsFetcher : public password_manager::PasswordStoreConsumer {
         [logins addObject:@{
           @"origin" : NS(login.signon_realm),
           @"username" : NS(login.username_value),
+          @"passwordLength" : @(login.password_value.size()),
+          @"blocked" : @(login.blocked_by_user),
+          @"federation" : login.federation_origin.IsValid()
+              ? NS(login.federation_origin.Serialize())
+              : @"",
         }];
       }
     }
@@ -178,7 +184,7 @@ class LoginsFetcher : public password_manager::PasswordStoreConsumer {
   }
 
  private:
-  void (^completion_)(NSArray<NSDictionary<NSString*, NSString*>*>*);
+  void (^completion_)(NSArray<NSDictionary<NSString*, id>*>*);
   base::WeakPtrFactory<LoginsFetcher> weak_factory_{this};
 };
 
@@ -942,6 +948,10 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   return nncore::TestExternalLaunches();
 }
 
++ (NSArray<NSDictionary*>*)testChooserEvents {
+  return nncore::TestChooserEvents();
+}
+
 + (void)resolveExternalApp:(NSString*)requestId open:(BOOL)open remember:(BOOL)remember {
   nncore::ResolveExternalApp(base::SysNSStringToUTF8(requestId), open, remember);
 }
@@ -1158,7 +1168,7 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 }
 
 - (void)fetchSavedLogins:
-    (void (^)(NSArray<NSDictionary<NSString*, NSString*>*>*))completion {
+    (void (^)(NSArray<NSDictionary<NSString*, id>*>*))completion {
   if (!_profile) {
     completion(@[]);
     return;
@@ -1898,6 +1908,10 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   return nncore::ShowCastDialog(_contents);
 }
 
+- (BOOL)devShowBluetoothChooser:(BOOL)unauthorized {
+  return nncore::ShowTestBluetoothChooser(_contents, unauthorized);
+}
+
 - (BOOL)focusedEditable {
   return _contents && _contents->IsFocusedElementEditable();
 }
@@ -2235,6 +2249,16 @@ TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents)
   if (model) {
     model->OnBubbleHidden();
   }
+}
+
+- (NSDictionary<NSString*, id>*)passwordPrompt {
+  return nncore::PasswordPrompt(_contents);
+}
+
+- (void)resolvePasswordPrompt:(NSString*)action
+                     username:(NSString*)username
+                     password:(NSString*)password {
+  nncore::ResolvePasswordPrompt(_contents, action, username, password);
 }
 
 - (BOOL)openActionPopupForExtension:(NSString*)extensionId anchor:(NSRect)anchor {

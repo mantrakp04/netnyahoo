@@ -16,6 +16,10 @@ void ResolveExternalApp(const std::string& request_id, bool open, bool remember)
 // launched: [{url, remembered}] in order (remembered: Chrome's per-origin "always allow"
 // for its scheme, read back after the answer).
 NSArray<NSDictionary*>* TestExternalLaunches();
+// The same switch for other things a test run must not open (System Settings): whether it's
+// set, and adding a record to that list.
+bool TestNoLaunch();
+void RecordTestLaunch(NSDictionary* launch);
 
 }  // namespace nncore
 

@@ -45,6 +45,7 @@
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/common/result_codes.h"
 #include "netnyahoo/core/nn_browser_window.h"
+#include "netnyahoo/core/nn_password_prompt.h"
 #import "netnyahoo/core/nncore_internal.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/mac/coordinate_conversion.h"
@@ -584,6 +585,18 @@ void WindowHost::DevToolsDockChanged(content::WebContents* inspected,
 bool WindowHost::OfferPasswordSave(content::WebContents* contents) {
   NNCoreWindow* owner = owner_;
   id<NNCoreWindowDelegate> delegate = owner.delegate;
+  if ([delegate respondsToSelector:@selector(window:passwordPrompt:forTab:)]) {
+    NSDictionary* prompt = PasswordPrompt(contents);
+    if (!prompt) {
+      return false;
+    }
+    PasswordPromptShown(contents);
+    [delegate window:owner
+        passwordPrompt:prompt
+                forTab:TabBridge::GetOrCreate(contents)->tab()];
+    PasswordConfirmationShown(contents);
+    return true;
+  }
   if (![delegate respondsToSelector:@selector
                  (window:passwordSavePromptForTab:username:origin:)]) {
     return false;

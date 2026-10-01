@@ -11,6 +11,7 @@
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
 #import <objc/runtime.h>
+#include <dlfcn.h>
 
 #include <string>
 #include <vector>
@@ -462,12 +463,13 @@ static void Log(NSDictionary* event) {
 }
 
 - (void)window:(NNCoreWindow*)window
-    passwordSavePromptForTab:(NNCoreTab*)tab
-                    username:(NSString*)username
-                      origin:(NSString*)origin {
-  Log(@{@"event" : @"passwordPrompt", @"tabId" : @(tab.tabId), @"username" : username,
-        @"origin" : origin});
-  [_passwordPrompts addObject:@{@"tabId" : @(tab.tabId), @"username" : username}];
+    passwordPrompt:(NSDictionary<NSString*, id>*)prompt
+            forTab:(NNCoreTab*)tab {
+  NSMutableDictionary* e = [prompt mutableCopy];
+  e[@"event"] = @"passwordPrompt";
+  e[@"tabId"] = @(tab.tabId);
+  Log(e);
+  [_passwordPrompts addObject:@{@"tabId" : @(tab.tabId), @"username" : prompt[@"username"] ?: @""}];
 }
 
 - (BOOL)windowShouldClose:(NNCoreWindow*)window {
@@ -632,7 +634,10 @@ static void Log(NSDictionary* event) {
 }
 - (void)engine:(NNCoreEngine*)engine deviceChooser:(NSDictionary*)chooser tab:(NNCoreTab*)tab {
   Log(@{@"event" : @"deviceChooser", @"tabId" : @(tab.tabId), @"chooser" : chooser});
-  if ([chooser[@"open"] boolValue]) {
+  if ([chooser[@"open"] boolValue] && ![_config[@"keepChooser"] boolValue]) {
+    if ([_config[@"chooserSettings"] boolValue]) {
+      [NNCoreEngine openDeviceChooserSettings:[chooser[@"id"] intValue]];
+    }
     [NNCoreEngine cancelDeviceChooser:[chooser[@"id"] intValue]];
   }
 }
@@ -944,6 +949,30 @@ static void Log(NSDictionary* event) {
   } else if ([name isEqualToString:@"pw.save"]) {
     [tab savePendingPassword];
     reply(@YES);
+  } else if ([name isEqualToString:@"pw.prompt"]) {
+    reply(tab.passwordPrompt ?: NSNull.null);
+  } else if ([name isEqualToString:@"pw.resolve"]) {
+    [tab resolvePasswordPrompt:cmd[@"action"] username:cmd[@"username"] password:cmd[@"password"]];
+    reply(tab.passwordPrompt ?: NSNull.null);
+  } else if ([name isEqualToString:@"engineCall"]) {
+    // //chrome/browser/netnyahoo's C exports (engine/chromium, public/nn_engine.h), as the app
+    // calls them: (profile dir, args JSON, reply, context).
+    typedef void (*Reply)(void*, const char*);
+    typedef void (*Call)(const char*, const char*, Reply, void*);
+    Call call = (Call)dlsym(RTLD_DEFAULT, [cmd[@"name"] UTF8String]);
+    if (!call) {
+      reply(@{@"error" : @"no such export"});
+      return;
+    }
+    NSData* args = [NSJSONSerialization dataWithJSONObject:cmd[@"args"] ?: @{} options:0 error:nil];
+    void (^done)(id) = [reply copy];
+    call(profile.path.UTF8String, [[NSString alloc] initWithData:args encoding:NSUTF8StringEncoding].UTF8String,
+         [](void* context, const char* json) {
+           void (^completion)(id) = (__bridge_transfer void (^)(id))context;
+           NSData* data = [@(json ?: "null") dataUsingEncoding:NSUTF8StringEncoding];
+           completion([NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingFragmentsAllowed error:nil] ?: NSNull.null);
+         },
+         (__bridge_retained void*)done);
   } else if ([name isEqualToString:@"logins"]) {
     [profile fetchSavedLogins:^(NSArray* logins) {
       reply(logins);
@@ -1117,6 +1146,30 @@ static void Log(NSDictionary* event) {
     reply(@YES);
   } else if ([name isEqualToString:@"cast"]) {
     reply(@([tab showCastDialog]));
+  } else if ([name isEqualToString:@"btChooser"]) {
+    reply(@([tab devShowBluetoothChooser:[cmd[@"unauthorized"] boolValue]]));
+  } else if ([name isEqualToString:@"chooserEvents"]) {
+    reply(NNCoreEngine.testChooserEvents);
+  } else if ([name isEqualToString:@"chooserAct"]) {
+    int chooserId = [cmd[@"chooserId"] intValue];
+    NSString* action = cmd[@"action"];
+    if ([action isEqualToString:@"select"]) [NNCoreEngine selectDevice:chooserId index:[cmd[@"index"] intValue]];
+    else if ([action isEqualToString:@"refresh"]) [NNCoreEngine refreshDeviceChooser:chooserId];
+    else if ([action isEqualToString:@"settings"]) [NNCoreEngine openDeviceChooserSettings:chooserId];
+    else [NNCoreEngine cancelDeviceChooser:chooserId];
+    reply(@YES);
+  } else if ([name isEqualToString:@"castStart"]) {
+    [NNCoreEngine startCasting:[cmd[@"dialogId"] intValue] sink:cmd[@"sink"] mode:[cmd[@"mode"] intValue]];
+    reply(@YES);
+  } else if ([name isEqualToString:@"castStop"]) {
+    [NNCoreEngine stopCasting:[cmd[@"dialogId"] intValue] route:cmd[@"route"]];
+    reply(@YES);
+  } else if ([name isEqualToString:@"castClose"]) {
+    [NNCoreEngine closeCastDialog:[cmd[@"dialogId"] intValue]];
+    reply(@YES);
+  } else if ([name isEqualToString:@"castTerminate"]) {
+    [NNCoreEngine terminateCastRoute:cmd[@"route"]];
+    reply(@YES);
   } else if ([name isEqualToString:@"editable"]) {
     reply(@(tab.focusedEditable));
   } else if ([name isEqualToString:@"autofill"]) {
@@ -1228,6 +1281,11 @@ int main(int argc, const char* argv[]) {
     args.push_back("--disable-backgrounding-occluded-windows");
     // An app link the host opens is recorded, never launched (+testExternalLaunches).
     args.push_back("--netnyahoo-test-external-protocol-no-launch");
+    // Cast: only NNCore's test provider (one sink), never the real Cast/DIAL discovery.
+    args.push_back("--netnyahoo-test-media-route-provider");
+    args.push_back("--disable-media-route-providers-for-test");
+    // A Bluetooth chooser with no adapter (a real one makes macOS ask for Bluetooth access).
+    args.push_back("--netnyahoo-test-bluetooth-chooser");
   }
   static Host* host = [[Host alloc] init];
   return [NNCoreEngine runWithArgc:(int)args.size() argv:args.data() delegate:host];

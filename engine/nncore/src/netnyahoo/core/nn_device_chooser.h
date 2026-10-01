@@ -28,6 +28,11 @@ void SelectDevice(int chooser_id, int index);
 void CancelDeviceChooser(int chooser_id);
 void RefreshDeviceChooser(int chooser_id);
 void OpenDeviceChooserSettings(int chooser_id);
+// Test runs (--netnyahoo-test-bluetooth-chooser): Chrome's Bluetooth chooser for the tab's
+// page with no adapter behind it (unauthorized, or one device "Netnyahoo Test Device"), and
+// what the page would have heard from it: [{event, device}].
+bool ShowTestBluetoothChooser(content::WebContents* contents, bool unauthorized);
+NSArray<NSDictionary*>* TestChooserEvents();
 
 // Implemented by the API (nncore_api.mm).
 bool HostWantsDeviceChoosers();

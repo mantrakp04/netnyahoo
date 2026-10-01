@@ -227,4 +227,12 @@ NSArray<NSDictionary*>* TestExternalLaunches() {
   return [TestLaunches() copy];
 }
 
+bool TestNoLaunch() {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(kTestNoLaunchSwitch);
+}
+
+void RecordTestLaunch(NSDictionary* launch) {
+  [TestLaunches() addObject:launch];
+}
+
 }  // namespace nncore

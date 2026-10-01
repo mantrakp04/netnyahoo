@@ -22,12 +22,16 @@
 #include "components/component_updater/component_updater_paths.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
+#include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_main_parts.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/result_codes.h"
+#include "services/cert_verifier/public/mojom/cert_verifier_service_factory.mojom.h"
+#include "services/network/public/mojom/network_context.mojom.h"
 #include "netnyahoo/core/nn_lifetime.h"
 #include "netnyahoo/core/nn_context_menu.h"
 #include "netnyahoo/core/nn_page_channel.h"
+#include "netnyahoo/core/nn_strings.h"
 #include "content/public/browser/web_contents_view_delegate.h"
 #include "netnyahoo/core/renderer/nn_content_renderer_client.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
@@ -145,6 +149,28 @@ class NNContentBrowserClient : public ChromeContentBrowserClient {
     AddAppSchemeThrottle(registry);
   }
 
+  bool ConfigureNetworkContextParams(
+      content::BrowserContext* context,
+      bool in_memory,
+      const base::FilePath& relative_partition_path,
+      network::mojom::NetworkContextParams* network_context_params,
+      cert_verifier::mojom::CertVerifierCreationParams*
+          cert_verifier_creation_params) override {
+    const bool result = ChromeContentBrowserClient::ConfigureNetworkContextParams(
+        context, in_memory, relative_partition_path, network_context_params,
+        cert_verifier_creation_params);
+    // Session cookies outlive a restart, as they did on CEF (which set
+    // session.restore_on_startup to "last session"): a profile's main on-disk partition
+    // keeps and restores them. Chrome would drop them unless it restores its own last
+    // session, which the app does itself. Private profiles stay in memory.
+    if (!in_memory && relative_partition_path.empty() &&
+        !context->IsOffTheRecord()) {
+      network_context_params->restore_old_session_cookies = true;
+      network_context_params->persist_session_cookies = true;
+    }
+    return result;
+  }
+
   std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
       bool is_integration_test) override {
     std::unique_ptr<content::BrowserMainParts> chrome =
@@ -211,6 +237,10 @@ void NNMainDelegate::CreateThreadPool(std::string_view name) {
   ChromeMainDelegate::CreateThreadPool(name);
   // Started as early as Chrome starts it: once the thread pool exists.
   sampling_profiler_ = std::make_unique<MainThreadStackSamplingProfiler>();
+}
+
+ui::ResourceBundle::Delegate* NNMainDelegate::GetResourceBundleDelegate() {
+  return ProductStrings();
 }
 
 content::ContentRendererClient* NNMainDelegate::CreateContentRendererClient() {

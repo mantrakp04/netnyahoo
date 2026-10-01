@@ -28,6 +28,9 @@ class NNMainDelegate : public ChromeMainDelegate {
   void CreateThreadPool(std::string_view name) override;
   content::ContentBrowserClient* CreateContentBrowserClient() override;
   content::ContentRendererClient* CreateContentRendererClient() override;
+  // Chrome's strings say Netnyahoo (nn_strings.h). A CEF-added virtual: after CEF, a
+  // two-line hook where ChromeMainDelegate initialises the ResourceBundle.
+  ui::ResourceBundle::Delegate* GetResourceBundleDelegate() override;
 };
 
 // The browser process's lifetime, for the ObjC API.

@@ -34,6 +34,7 @@
 #include "components/media_router/common/media_route.h"
 #include <vector>
 #include "netnyahoo/core/nn_browser.h"
+#include "netnyahoo/core/nn_test_media_route_provider.h"
 
 namespace nncore {
 
@@ -249,6 +250,8 @@ void RoutesWatcher::OnProfileWillBeDestroyed(Profile* profile) {
 }  // namespace
 
 void WatchCastRoutes(Profile* profile) {
+  // Test runs: before any dialog asks for sinks (the host watches each profile at startup).
+  MaybeRegisterTestMediaRouteProvider(profile);
   if (!profile || Watchers().contains(profile) ||
       !media_router::MediaRouterEnabled(profile)) {
     return;
@@ -302,6 +305,8 @@ bool ShowCastDialog(content::WebContents* contents) {
   if (!contents || !media_router::MediaRouterEnabled(contents->GetBrowserContext())) {
     return false;
   }
+  MaybeRegisterTestMediaRouteProvider(
+      Profile::FromBrowserContext(contents->GetBrowserContext()));
   media_router::MediaRouterDialogController::GetOrCreateForWebContents(contents)
       ->ShowMediaRouterDialog(
           media_router::MediaRouterDialogActivationLocation::TOOLBAR);
