@@ -55,6 +55,7 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
       return;
     }
     setAnimating(true);
+    // JS driver: the height reflows the rows below.
     Animated.timing(open, { toValue: collapsed ? 0 : 1, duration: TOGGLE_MS, easing: TOGGLE_EASING, useNativeDriver: false }).start(
       ({ finished }) => {
         if (!finished) return;
@@ -129,7 +130,7 @@ function GroupHeader({ groupId, windowId, collapsed }: { groupId: string; window
   const [labelWidth, setLabelWidth] = useState(0);
   const turn = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
   useEffect(() => {
-    Animated.timing(turn, { toValue: collapsed ? 0 : 1, duration: TOGGLE_MS, easing: TOGGLE_EASING, useNativeDriver: false }).start();
+    Animated.timing(turn, { toValue: collapsed ? 0 : 1, duration: TOGGLE_MS, easing: TOGGLE_EASING, useNativeDriver: true }).start();
   }, [collapsed]);
   if (!group) return null;
   const target = { kind: "group" as const, id: groupId };

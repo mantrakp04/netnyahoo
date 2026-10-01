@@ -91,7 +91,7 @@ export function Popover({
   const theme = useTheme();
   const appear = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(appear, { toValue: 1, duration: 170, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    Animated.timing(appear, { toValue: 1, duration: 170, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, []);
   const origin = right !== undefined ? "top right" : "top left";
   return (
@@ -233,6 +233,7 @@ export function Toggle({ value, onChange }: { value: boolean; onChange: (value: 
   const theme = useTheme();
   const x = useRef(new Animated.Value(value ? 1 : 0)).current;
   useEffect(() => {
+    // JS driver: the track's colour rides the same value.
     Animated.timing(x, { toValue: value ? 1 : 0, duration: 150, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [value]);
   return (

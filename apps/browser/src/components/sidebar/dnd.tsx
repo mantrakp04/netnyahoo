@@ -41,6 +41,7 @@ export type Ghost = { item: Item; count: number; width: number; height: number; 
 const ROW_GAP = layout.rowGap;
 const TILE_GAP = 6;
 const EDGE = 28;
+// JS driver: gaps and sizes are margins, widths and heights.
 const spring = (value: Animated.Value, toValue: number) =>
   Animated.timing(value, { toValue, duration: 170, easing: Easing.out(Easing.cubic), useNativeDriver: false });
 
@@ -311,7 +312,7 @@ function WindowDropHighlight() {
   const over = useTabDrag((d) => d.overWindow === windowId);
   const glow = useMemo(() => new Animated.Value(0), []);
   useEffect(() => {
-    Animated.timing(glow, { toValue: over ? 1 : 0, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    Animated.timing(glow, { toValue: over ? 1 : 0, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
   }, [over]);
   return (
     <Animated.View

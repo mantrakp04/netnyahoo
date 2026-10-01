@@ -85,7 +85,7 @@ const PinnedTile = memo(function PinnedTile({ tabId, width }: { tabId: string; w
   const tileTheme = useTileTheme(tab?.url ?? "", tab?.favicon, tab?.customIcon, tab?.profileId ?? "");
   const badge = useRef(new Animated.Value(away ? 1 : 0)).current;
   useEffect(() => {
-    Animated.spring(badge, { toValue: away ? 1 : 0, speed: 18, bounciness: 8, useNativeDriver: false }).start();
+    Animated.spring(badge, { toValue: away ? 1 : 0, speed: 18, bounciness: 8, useNativeDriver: true }).start();
   }, [away]);
   if (!tab) return null;
   const radius = 10;

@@ -19,7 +19,7 @@ export function useMarqueeGroup(resetKey: string): MarqueeGroup {
     progress.setValue(0);
     if (max < 1) return;
     const duration = (max / SPEED) * 1000;
-    const leg = (toValue: number) => Animated.timing(progress, { toValue, duration, easing: Easing.linear, useNativeDriver: false });
+    const leg = (toValue: number) => Animated.timing(progress, { toValue, duration, easing: Easing.linear, useNativeDriver: true });
     const loop = Animated.loop(Animated.sequence([Animated.delay(PAUSE_MS), leg(1), Animated.delay(PAUSE_MS), leg(0)]));
     loop.start();
     return () => loop.stop();

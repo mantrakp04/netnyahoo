@@ -23,7 +23,7 @@ function FindBarPanel({ tabId, find }: { tabId: string; find: FindState }) {
   const input = useRef<TextInput>(null);
   const appear = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(appear, { toValue: 1, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    Animated.timing(appear, { toValue: 1, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, []);
   useEffect(() => {
     const request = find.focusRequest;

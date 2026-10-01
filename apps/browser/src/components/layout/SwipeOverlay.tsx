@@ -32,8 +32,9 @@ const LIST_RADIUS = 18;
 const LIST_IDLE_MS = 300;
 const EASE = Easing.bezier(0.25, 0.46, 0.45, 0.94);
 
-export function spring(value: Animated.Value, toValue: number, response: number, dampingRatio: number) {
-  return Animated.spring(value, { toValue, ...springParams(response, dampingRatio), useNativeDriver: false });
+// The capsule's frame (x, w, h, top, radius) is layout and stays on the JS driver; opacity and transforms go native.
+export function spring(value: Animated.Value, toValue: number, response: number, dampingRatio: number, native = false) {
+  return Animated.spring(value, { toValue, ...springParams(response, dampingRatio), useNativeDriver: native });
 }
 
 export function NavigationOverlays({ tabId, windowId, geometry }: { tabId: string; windowId: string; geometry: ToolbarGeometry }) {
@@ -119,9 +120,9 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     if (!g.list) {
       const s = confirmed ? SIZE_CONFIRMED : SIZE;
       layoutTo(s, s, height / 2 - s / 2, s / 2, 0.18, 0.7);
-      spring(v.icon, confirmed ? ICON_CONFIRMED / ICON : 1, 0.18, 0.7).start();
+      spring(v.icon, confirmed ? ICON_CONFIRMED / ICON : 1, 0.18, 0.7, true).start();
     }
-    Animated.timing(v.confirm, { toValue: confirmed ? 1 : 0, duration: 180, easing: EASE, useNativeDriver: false }).start();
+    Animated.timing(v.confirm, { toValue: confirmed ? 1 : 0, duration: 180, easing: EASE, useNativeDriver: true }).start();
     setShown((s) => (s ? { ...s, confirmed } : s));
   };
 
@@ -136,7 +137,7 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     g.listY = lastDy.current;
     swipeHaptic("generic");
     layoutTo(LIST_WIDTH, list.length * ROW + LIST_PAD * 2, height / 2 - LIST_PAD - ROW / 2, LIST_RADIUS, 0.22, 0.77);
-    Animated.timing(v.list, { toValue: 1, duration: 220, easing: EASE, useNativeDriver: false }).start();
+    Animated.timing(v.list, { toValue: 1, duration: 220, easing: EASE, useNativeDriver: true }).start();
     setShown((s) => (s ? { ...s, list, selected: 0 } : s));
   };
 
@@ -146,7 +147,7 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     if (index === g.selected) return;
     g.selected = index;
     swipeHaptic("alignment");
-    spring(v.pill, index * ROW, 0.27, 0.9).start();
+    spring(v.pill, index * ROW, 0.27, 0.9, true).start();
     setShown((s) => (s ? { ...s, selected: index } : s));
   };
 
@@ -154,8 +155,8 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     clearTimeout(g.idle);
     g.active = false;
     Animated.parallel([
-      Animated.timing(v.fade, { toValue: 0, duration: 200, easing: Easing.in(Easing.ease), useNativeDriver: false }),
-      Animated.timing(v.scale, { toValue: 0.01, duration: 200, easing: Easing.in(Easing.ease), useNativeDriver: false }),
+      Animated.timing(v.fade, { toValue: 0, duration: 200, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(v.scale, { toValue: 0.01, duration: 200, easing: Easing.in(Easing.ease), useNativeDriver: true }),
     ]).start(({ finished }) => finished && !g.active && setShown(null));
   };
 
@@ -223,36 +224,37 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
             top: Animated.add(v.top, v.nudge),
             width: v.w,
             height: v.h,
-            opacity: v.fade,
-            transform: [{ scale: v.scale }],
           }}
         >
-          <Surface
-            style={StyleSheet.absoluteFill}
-            cornerRadius={shown.list ? LIST_RADIUS : (shown.confirmed ? SIZE_CONFIRMED : SIZE) / 2}
-            shadowColor="#000000"
-            shadowOpacity={theme.dark ? 0.25 : 0.2}
-            shadowRadius={8}
-            shadowOffset={[0, 2]}
-          />
-          <Animated.View style={{ ...StyleSheet.absoluteFillObject, borderRadius: v.radius, overflow: "hidden" }}>
-            <VisualEffect material="popover" style={StyleSheet.absoluteFill} />
-            {!theme.dark && <Animated.View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.4)", opacity: v.confirm }} />}
-            <Animated.View style={{ ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", opacity: iconOpacity }}>
-              <Animated.View style={{ transform: [{ scale: v.icon }] }}>
-                <Symbol name={back ? "chevron.left" : "chevron.right"} size={ICON} weight="bold" color={theme.dark ? "#FFFFFFD9" : "#000000D9"} style={{ width: ICON + 6, height: ICON + 6 }} />
+          {/* The dismiss fade and shrink sit on their own view: one view can't mix JS- and native-driven values. */}
+          <Animated.View style={{ ...StyleSheet.absoluteFillObject, opacity: v.fade, transform: [{ scale: v.scale }] }}>
+            <Surface
+              style={StyleSheet.absoluteFill}
+              cornerRadius={shown.list ? LIST_RADIUS : (shown.confirmed ? SIZE_CONFIRMED : SIZE) / 2}
+              shadowColor="#000000"
+              shadowOpacity={theme.dark ? 0.25 : 0.2}
+              shadowRadius={8}
+              shadowOffset={[0, 2]}
+            />
+            <Animated.View style={{ ...StyleSheet.absoluteFillObject, borderRadius: v.radius, overflow: "hidden" }}>
+              <VisualEffect material="popover" style={StyleSheet.absoluteFill} />
+              {!theme.dark && <Animated.View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.4)", opacity: v.confirm }} />}
+              <Animated.View style={{ ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", opacity: iconOpacity }}>
+                <Animated.View style={{ transform: [{ scale: v.icon }] }}>
+                  <Symbol name={back ? "chevron.left" : "chevron.right"} size={ICON} weight="bold" color={theme.dark ? "#FFFFFFD9" : "#000000D9"} style={{ width: ICON + 6, height: ICON + 6 }} />
+                </Animated.View>
               </Animated.View>
+              {shown.list && <DestinationList tabId={tabId} items={shown.list} selected={shown.selected} appear={v.list} pill={v.pill} />}
             </Animated.View>
-            {shown.list && <DestinationList tabId={tabId} items={shown.list} selected={shown.selected} appear={v.list} pill={v.pill} />}
+            <Animated.View
+              style={{
+                ...StyleSheet.absoluteFillObject,
+                borderRadius: v.radius,
+                borderWidth: 1,
+                borderColor: theme.dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.125)",
+              }}
+            />
           </Animated.View>
-          <Animated.View
-            style={{
-              ...StyleSheet.absoluteFillObject,
-              borderRadius: v.radius,
-              borderWidth: 1,
-              borderColor: theme.dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.125)",
-            }}
-          />
         </Animated.View>
       )}
     </>

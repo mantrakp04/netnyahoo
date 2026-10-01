@@ -170,7 +170,7 @@ function AlbumArt({
                 key={art}
                 source={{ uri: art }}
                 resizeMode="cover"
-                onLoad={() => Animated.timing(fade, { toValue: 1, duration: 200, useNativeDriver: false }).start()}
+                onLoad={() => Animated.timing(fade, { toValue: 1, duration: 200, useNativeDriver: true }).start()}
                 onError={() => setFailed(art)}
                 style={{ width: ART, height: ART }}
               />

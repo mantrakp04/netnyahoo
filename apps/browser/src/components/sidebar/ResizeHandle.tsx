@@ -34,6 +34,7 @@ export function ResizeHandle({ windowId, width }: { windowId: string; width: num
           const raw = rubberBand(start.current + g.dx);
           const target = clamp(raw);
           if (raw === target) return finish(target);
+          // JS driver: each frame sets the sidebar's width.
           const value = new Animated.Value(raw);
           value.addListener(({ value: v }) => setLive(v));
           Animated.timing(value, { toValue: target, duration: 260, easing: Easing.out(Easing.back(1.2)), useNativeDriver: false }).start(() => {

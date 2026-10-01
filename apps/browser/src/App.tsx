@@ -111,7 +111,7 @@ function SidebarPeek() {
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const animate = (to: number, then?: () => void) =>
-    Animated.timing(slide, { toValue: to, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start(then);
+    Animated.timing(slide, { toValue: to, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(then);
   const show = () => {
     clearTimeout(hideTimer.current);
     setVisible(true);

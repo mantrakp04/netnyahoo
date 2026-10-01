@@ -56,6 +56,7 @@ function useDisclosure(collapsed: boolean) {
       return;
     }
     setAnimating(true);
+    // JS driver: the height reflows the rows below.
     Animated.timing(open, { toValue: collapsed ? 0 : 1, duration: 240, easing: Easing.bezier(0.2, 0.9, 0.3, 1), useNativeDriver: false }).start(({ finished }) => {
       if (!finished) return;
       settled.current = collapsed;
@@ -205,7 +206,7 @@ function RefreshButton({ spinning, tooltip, onPress }: { spinning: boolean; tool
   useEffect(() => {
     if (!spinning) return;
     turn.setValue(0);
-    const loop = Animated.loop(Animated.timing(turn, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: false }));
+    const loop = Animated.loop(Animated.timing(turn, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true }));
     loop.start();
     return () => loop.stop();
   }, [spinning]);
@@ -253,7 +254,7 @@ function Spinner() {
   const theme = useTheme();
   const turn = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const loop = Animated.loop(Animated.timing(turn, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: false }));
+    const loop = Animated.loop(Animated.timing(turn, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true }));
     loop.start();
     return () => loop.stop();
   }, []);
@@ -330,6 +331,7 @@ function LiveItemRow({ folderId, item, windowId, indent = 0 }: { folderId: strin
   useEffect(() => {
     if (!completion) return;
     fold.setValue(1);
+    // JS driver: the height reflows the rows below.
     Animated.sequence([
       Animated.delay(COMPLETION_MS - 420),
       Animated.timing(fold, { toValue: 0, duration: 360, easing: Easing.bezier(0.2, 0.9, 0.3, 1), useNativeDriver: false }),
@@ -409,7 +411,7 @@ function ItemIcon({ item, completion, colors }: { item: LiveItem; completion: Co
   useEffect(() => {
     if (!completion) return;
     pop.setValue(0);
-    Animated.spring(pop, { toValue: 1, speed: 14, bounciness: 14, useNativeDriver: false }).start();
+    Animated.spring(pop, { toValue: 1, speed: 14, bounciness: 14, useNativeDriver: true }).start();
   }, [completion]);
   if (completion) {
     const glyph = COMPLETION_GLYPH[completion];

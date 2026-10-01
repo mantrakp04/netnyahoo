@@ -137,7 +137,7 @@ export function DownloadsPopover() {
   useEffect(() => {
     if (!open) return;
     appear.setValue(0);
-    Animated.timing(appear, { toValue: 1, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    Animated.timing(appear, { toValue: 1, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [open]);
   if (!open) return null;
 
@@ -307,7 +307,7 @@ export function DownloadMagnet() {
       if (!fresh || s.ui.focusedWindowId !== windowId || !downloadVisibleIn(fresh, s.windows[windowId])) return;
       t.setValue(0);
       setFlight({ id: fresh.id, path: fresh.path || fresh.filename });
-      Animated.timing(t, { toValue: 1, duration: 700, easing: Easing.bezier(0.45, 0, 0.2, 1), useNativeDriver: false }).start(() => setFlight(null));
+      Animated.timing(t, { toValue: 1, duration: 700, easing: Easing.bezier(0.45, 0, 0.2, 1), useNativeDriver: true }).start(() => setFlight(null));
     });
   }, [windowId]);
 

@@ -76,6 +76,7 @@ export function ShareBar({ tabId }: { tabId: string }) {
   const height = useRef(new Animated.Value(0)).current;
   const visible = !!found;
   useEffect(() => {
+    // JS driver: the height pushes the page down.
     Animated.timing(height, { toValue: visible ? SHARE_BAR_HEIGHT : 0, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
   }, [visible]);
   const last = useRef(found);

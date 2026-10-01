@@ -139,6 +139,7 @@ function PageField({ tab, windowId, hidden }: { tab: Tab; windowId: string; hidd
 function Progress({ progress, color }: { progress: number; color: string }) {
   const width = useRef(new Animated.Value(Math.max(progress, 0.08))).current;
   useEffect(() => {
+    // JS driver: a scaleX would squash the rounded ends.
     Animated.timing(width, { toValue: Math.max(progress, 0.08), duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [progress]);
   return (

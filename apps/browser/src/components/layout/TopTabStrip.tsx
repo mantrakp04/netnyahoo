@@ -542,6 +542,7 @@ function StripGroup({
   const [moving, setMoving] = useState(false);
   const springs = useRef(0);
   useEffect(() => {
+    // JS driver: `open` moves each member's `left` and `size` is the group's width, which reflows the strip.
     const spring = (value: Animated.Value, toValue: number) => Animated.spring(value, { toValue, ...GROUP_SPRING, useNativeDriver: false });
     const run = (animation: Animated.CompositeAnimation) => {
       const id = ++springs.current;
@@ -654,6 +655,7 @@ function GroupMember({
   // tab back into the group while the tabs after it close the gap.
   const shownValue = useRef(new Animated.Value(shown ? 1 : 0)).current;
   useEffect(() => {
+    // JS driver: it adds into `open`, which is layout.
     Animated.timing(shownValue, { toValue: shown ? 1 : 0, duration: TUCK_FADE_MS, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [shown]);
   const left = useMemo(() => open.interpolate({ inputRange: [0, 1], outputRange: [start, start + offset] }), [start, offset]);
@@ -756,7 +758,7 @@ export function TopStripPeek() {
   const slide = useRef(new Animated.Value(0)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const animate = (to: number, then?: () => void) =>
-    Animated.timing(slide, { toValue: to, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start(then);
+    Animated.timing(slide, { toValue: to, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(then);
   const show = () => {
     clearTimeout(hideTimer.current);
     setVisible(true);

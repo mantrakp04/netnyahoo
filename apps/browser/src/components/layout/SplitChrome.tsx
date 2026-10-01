@@ -126,6 +126,7 @@ export function DropTargets({ panes, origin }: { panes: Record<string, Rect>; or
 function DropZone({ rect, side, active, dark }: { rect: Rect; side: "left" | "right"; active: boolean; dark: boolean }) {
   const glow = useRef(new Animated.Value(active ? 1 : 0)).current;
   useEffect(() => {
+    // JS driver: the glow animates colours.
     Animated.timing(glow, { toValue: active ? 1 : 0, duration: 140, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [active]);
   const inset = 10;
@@ -162,7 +163,7 @@ export function SplitToast({ windowId }: { windowId: string }) {
   useEffect(() => {
     if (toast) return setShown(toast);
     if (!shown?.sticky) return;
-    Animated.timing(appear, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(({ finished }) => {
+    Animated.timing(appear, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
       if (finished) setShown(null);
     });
   }, [toast]);
@@ -170,10 +171,10 @@ export function SplitToast({ windowId }: { windowId: string }) {
     if (!toast) return;
     setShown(toast);
     appear.setValue(0);
-    Animated.spring(appear, { toValue: 1, useNativeDriver: false, speed: 18, bounciness: 6 }).start();
+    Animated.spring(appear, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 6 }).start();
     if (toast.sticky) return;
     const timer = setTimeout(() => {
-      Animated.timing(appear, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(({ finished }) => {
+      Animated.timing(appear, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
         if (!finished) return;
         setShown(null);
         hideToast(windowId, toast.id);

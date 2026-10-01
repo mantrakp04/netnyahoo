@@ -39,7 +39,7 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
     // Mounting starts at the right value; only a change of focus animates.
     if (dimmedFor.current === focused) return;
     dimmedFor.current = focused;
-    Animated.timing(dim, { toValue: focused ? 1 : 0.5, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+    Animated.timing(dim, { toValue: focused ? 1 : 0.5, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
   }, [focused]);
   if (!tab) return <View style={{ height: layout.toolbarHeight }} />;
 
@@ -112,6 +112,7 @@ function ProgressBar({ progress, color }: { progress: number; color: string }) {
     const to = Math.max(progress, 0.08);
     if (shownFor.current === to) return;
     shownFor.current = to;
+    // JS driver: a scaleX version loses its transform when it mounts on macOS (it draws full width until it animates).
     Animated.timing(width, { toValue: to, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
   }, [progress]);
   return (

@@ -15,11 +15,11 @@ export function StatusBubble({ tabId, maxWidth }: { tabId: string; maxWidth: num
   useEffect(() => {
     if (status) {
       setShown(status);
-      Animated.timing(opacity, { toValue: 1, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
+      Animated.timing(opacity, { toValue: 1, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
       return;
     }
     const timer = setTimeout(() => {
-      Animated.timing(opacity, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: false }).start(({ finished }) => {
+      Animated.timing(opacity, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(({ finished }) => {
         if (finished) setShown("");
       });
     }, 180);
