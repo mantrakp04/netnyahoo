@@ -6,23 +6,23 @@
 // pinned tiles, splits), and takes a tab's navigations back from Chrome when it
 // reopens it.
 //
-//   nn_tab_restore_take({url, closedAt}) -> {state: "<base64>" | null}
-//     The navigations of the closed tab showing |url| (the engine's form, the
-//     fragment ignored) closed within a minute of |closedAt| (ms since the
-//     epoch), the closest, in the
-//     format CefBrowserHost::RestoreTabInBrowser reads (its
-//     GetNavigationState: version 1, selected index, count, then each
-//     SerializedNavigationEntry as session restore pickles it). A tab entry
-//     of its own leaves Chrome's list; one inside a closed window or group
-//     stays there (removing it would remove the whole window) but isn't
-//     handed out again.
+//   nn_tab_restore_tag({tab, key}): names the open tab |tab| (its chrome.tabs
+//     id) by |key| (the app's tab id) on each of its navigations, as session
+//     data Chrome saves with them: call it as the app closes the tab, so the
+//     entry Chrome records carries it, on disk too.
+//   nn_tab_restore_take({key}) -> {state: "<base64>" | null}
+//     The navigations of the closed tab named |key|, in the format
+//     CefBrowserHost::RestoreTabInBrowser reads (its GetNavigationState:
+//     version 1, selected index, count, then each SerializedNavigationEntry as
+//     session restore pickles it). Of several (a tab closed with its window
+//     too), the newest. A tab entry of its own leaves Chrome's list; one inside
+//     a closed window or group stays (removing it would remove the whole
+//     window). Without one, null: the app loads the page.
 //
-// The last session's entries load on the first call (and on
-// nn_tab_restore_load, which the app calls at launch).
+// The last session's entries load on the first take (and on
+// nn_tab_restore_load).
 
-#include <cmath>
-#include <map>
-#include <set>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,13 +32,19 @@
 #include "base/pickle.h"
 #include "base/scoped_observation.h"
 #include "base/time/time.h"
+#include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/netnyahoo/nn_engine.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
+#include "components/sessions/content/content_serialized_navigation_driver.h"
+#include "components/sessions/content/extended_info_handler.h"
 #include "components/sessions/core/serialized_navigation_entry.h"
 #include "components/sessions/core/tab_restore_service.h"
 #include "components/sessions/core/tab_restore_service_observer.h"
 #include "components/sessions/core/tab_restore_types.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/web_contents.h"
 #include "url/gurl.h"
 
 namespace netnyahoo {
@@ -47,10 +53,8 @@ namespace {
 
 constexpr int kNavigationStateVersion = 1;
 constexpr int kMaxNavigationEntryBytes = 256 * 1024;
-// The app notes a close a moment before Chrome does (the tab's view goes
-// first): the same page closed within this of the app's time is the tab.
-// Anything else loads the page fresh rather than risk another tab's history.
-constexpr base::TimeDelta kSameUrlWindow = base::Seconds(60);
+// The session data key: once registered, always this.
+constexpr char kTabKey[] = "nn_tab";
 
 using sessions::tab_restore::Entry;
 using sessions::tab_restore::Group;
@@ -58,19 +62,44 @@ using sessions::tab_restore::Tab;
 using sessions::tab_restore::Type;
 using sessions::tab_restore::Window;
 
-GURL WithoutRef(const GURL& url) {
-  if (!url.has_ref()) {
-    return url;
+// The app's tab id, kept on a tab's NavigationEntries and saved with them.
+struct TabKeyData : public base::SupportsUserData::Data {
+  explicit TabKeyData(std::string key) : key(std::move(key)) {}
+  std::string key;
+};
+const char kTabKeyData[] = "nn_tab";
+
+class TabKeyHandler : public sessions::ExtendedInfoHandler {
+ public:
+  std::string GetExtendedInfo(content::NavigationEntry* entry) const override {
+    auto* data = static_cast<TabKeyData*>(entry->GetUserData(kTabKeyData));
+    return data ? data->key : std::string();
   }
-  GURL::Replacements clear;
-  clear.ClearRef();
-  return url.ReplaceComponents(clear);
+  void RestoreExtendedInfo(const std::string& info,
+                           content::NavigationEntry* entry) override {
+    entry->SetUserData(kTabKeyData, std::make_unique<TabKeyData>(info));
+  }
+};
+
+void RegisterTabKey() {
+  static bool registered = false;
+  if (registered) {
+    return;
+  }
+  registered = true;
+  sessions::ContentSerializedNavigationDriver::GetInstance()
+      ->RegisterExtendedInfoHandler(kTabKey,
+                                    std::make_unique<TabKeyHandler>());
 }
 
-// Tabs already handed out from a window or group entry, by entry id.
-std::set<SessionID::id_type>& Taken() {
-  static base::NoDestructor<std::set<SessionID::id_type>> taken;
-  return *taken;
+bool HasKey(const Tab& tab, const std::string& key) {
+  for (const auto& navigation : tab.navigations) {
+    auto it = navigation.extended_info_map().find(kTabKey);
+    if (it != navigation.extended_info_map().end() && it->second == key) {
+      return true;
+    }
+  }
+  return false;
 }
 
 struct Candidate {
@@ -110,28 +139,18 @@ std::string NavigationState(const Tab& tab) {
 }
 
 void Take(sessions::TabRestoreService* service,
-          const GURL& url,
-          base::Time closed_at,
+          const std::string& key,
           Reply reply) {
   std::vector<Candidate> candidates;
   for (const auto& entry : service->entries()) {
     Collect(*entry, &candidates);
   }
-  const GURL page = WithoutRef(url);
   const Candidate* best = nullptr;
-  base::TimeDelta best_delta = base::TimeDelta::Max();
   for (const auto& candidate : candidates) {
     const Tab& tab = *candidate.tab;
-    if (tab.navigations.empty() || Taken().contains(tab.id.id())) {
-      continue;
-    }
-    const base::TimeDelta delta = (tab.timestamp - closed_at).magnitude();
-    const GURL shown =
-        tab.navigations[tab.normalized_navigation_index()].virtual_url();
-    if (WithoutRef(shown) == page && delta <= kSameUrlWindow &&
-        delta < best_delta) {
+    if (!tab.navigations.empty() && HasKey(tab, key) &&
+        (!best || tab.timestamp > best->tab->timestamp)) {
       best = &candidate;
-      best_delta = delta;
     }
   }
   if (!best) {
@@ -140,8 +159,6 @@ void Take(sessions::TabRestoreService* service,
   std::string state = NavigationState(*best->tab);
   if (best->top_level) {
     service->RemoveEntryById(best->tab->id);
-  } else {
-    Taken().insert(best->tab->id.id());
   }
   reply.Send(base::DictValue().Set("state", std::move(state)));
 }
@@ -208,22 +225,23 @@ NN_ENGINE_CALL(nn_tab_restore_take) {
   if (!service) {
     return call.TakeReply().Error("no tab restore service");
   }
-  GURL url(call.String("url"));
-  base::Time closed_at =
-      base::Time::FromMillisecondsSinceUnixEpoch(call.Double("closedAt"));
+  const std::string key = call.String("key");
+  if (key.empty()) {
+    return call.TakeReply().Error("no key");
+  }
   base::WeakPtr<Profile> profile = call.profile()->GetWeakPtr();
   netnyahoo::WhenLoaded::Run(
       service, base::BindOnce(
-                   [](base::WeakPtr<Profile> profile, GURL url,
-                      base::Time closed_at, Reply reply) {
+                   [](base::WeakPtr<Profile> profile, std::string key,
+                      Reply reply) {
                      auto* service =
                          profile ? netnyahoo::ServiceFor(profile.get()) : nullptr;
                      if (!service) {
                        return reply.Error("profile went away");
                      }
-                     netnyahoo::Take(service, url, closed_at, std::move(reply));
+                     netnyahoo::Take(service, key, std::move(reply));
                    },
-                   profile, std::move(url), closed_at, call.TakeReply()));
+                   profile, key, call.TakeReply()));
 }
 
 NN_ENGINE_CALL(nn_tab_restore_load) {
@@ -238,4 +256,31 @@ NN_ENGINE_CALL(nn_tab_restore_load) {
   }
   netnyahoo::WhenLoaded::Run(
       service, base::BindOnce([](Reply reply) { reply.Ok(); }, call.TakeReply()));
+}
+
+NN_ENGINE_CALL(nn_tab_restore_tag) {
+  Call call(profile_dir, args_json, reply, context);
+  if (!call) {
+    return;
+  }
+  const std::string key = call.String("key");
+  content::WebContents* contents = nullptr;
+  if (key.empty() ||
+      !extensions::ExtensionTabUtil::GetTabById(
+          static_cast<int>(call.Double("tab", -1)), call.profile(),
+          /*include_incognito=*/false, &contents) ||
+      !contents) {
+    return call.TakeReply().Error("no such tab");
+  }
+  netnyahoo::RegisterTabKey();
+  content::NavigationController& controller = contents->GetController();
+  for (int i = 0; i < controller.GetEntryCount(); ++i) {
+    controller.GetEntryAtIndex(i)->SetUserData(
+        netnyahoo::kTabKeyData, std::make_unique<netnyahoo::TabKeyData>(key));
+  }
+  if (content::NavigationEntry* pending = controller.GetPendingEntry()) {
+    pending->SetUserData(netnyahoo::kTabKeyData,
+                         std::make_unique<netnyahoo::TabKeyData>(key));
+  }
+  call.TakeReply().Ok();
 }

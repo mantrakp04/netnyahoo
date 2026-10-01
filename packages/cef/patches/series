@@ -22,6 +22,7 @@ cef cef-media-router-shutdown.patch
 cef cef-media-source.patch
 cef cef-open-url-params.patch
 cef cef-pump-wake.patch
+cef cef-alloy-history.patch
 cef cef-netnyahoo-layer.patch
 
 chromium chromium-autofill-card-touchbar.patch
