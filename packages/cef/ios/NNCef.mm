@@ -227,6 +227,11 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
     // threads of every process at 10 Hz for its first 30 s (each new tab's renderer too), then 2 % of the time.
     // Nothing reads the profiles; Chrome's stable channel runs it for a sliver of users.
     command_line->AppendSwitch("disable-stack-profiler");
+    // The app's own profile ("", the global request context) is the Default directory (ProfilePath). Chrome starts
+    // in its last-used profile (Local State's profile.last_used), which it moves to whichever profile's window was
+    // last active; after quitting with another profile's window in front, Personal's tabs ran in that profile and
+    // its history and bookmarks didn't load.
+    command_line->AppendSwitchWithValue("profile-directory", "Default");
     std::string disabled = command_line->GetSwitchValue("disable-features").ToString();
     command_line->AppendSwitchWithValue("disable-features",
                                         (disabled.empty() ? "" : disabled + ",") + "MacAppCodeSignClone");
