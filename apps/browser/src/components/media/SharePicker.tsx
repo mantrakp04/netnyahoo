@@ -36,6 +36,9 @@ export function requestDisplayMedia(tabId: string, request: DisplayMediaRequest)
   useMedia.setState((m) => ({ displayRequests: { ...m.displayRequests, [tabId]: { ...request, pageUrl } as Pending } }));
 }
 
+// The NNCore acceptance run answers the picker as a click would.
+if (__DEV__) (globalThis as { nnSharePicker?: unknown }).nnSharePicker = { answerDisplayMedia: (tabId: string, sourceId: string | null) => answerDisplayMedia(tabId, sourceId) };
+
 export function answerDisplayMedia(tabId: string, sourceId: string | null) {
   const request = useMedia.getState().displayRequests[tabId];
   if (!request) return;
