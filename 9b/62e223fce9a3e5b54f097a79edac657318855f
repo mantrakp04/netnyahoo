@@ -1,0 +1,23 @@
+packages/nncore/ios/NNCoreWebView.mm
+  s_9c356f9574d31c::t_f57d283657ce38 277-279
+packages/nncore/ios/NNCoreInternal.h
+  s_9c356f9574d31c::t_f57d283657ce38 62-66
+packages/nncore/scripts/acceptance.mjs
+  s_9c356f9574d31c::t_8e0d7492f73d80 12,23-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9b62e223fce9a3e5b54f097a79edac657318855f",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
