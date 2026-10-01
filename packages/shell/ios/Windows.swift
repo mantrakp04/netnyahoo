@@ -499,12 +499,15 @@ final class DragPreview {
       (dark ? NSColor(white: 0.12, alpha: 1) : NSColor(white: 0.97, alpha: 1)).setFill()
       rect.fill()
       let iconSide: CGFloat = 64
+      let ink = dark ? NSColor(white: 1, alpha: 0.7) : NSColor(white: 0, alpha: 0.6)
       let label = NSAttributedString(string: title, attributes: [
         .font: NSFont.systemFont(ofSize: 34, weight: .medium),
-        .foregroundColor: dark ? NSColor(white: 1, alpha: 0.7) : NSColor(white: 0, alpha: 0.6),
+        .foregroundColor: ink,
       ])
       let textSize = label.size()
       let textWidth = min(textSize.width, rect.width - 80)
+      // The globe is a template symbol: drawn as is it's black, which vanishes on the dark card.
+      let icon = icon?.isTemplate == true ? icon?.withSymbolConfiguration(.init(paletteColors: [ink])) ?? icon : icon
       icon?.draw(in: NSRect(x: rect.midX - iconSide / 2, y: rect.midY + 12, width: iconSide, height: iconSide))
       label.draw(with: NSRect(x: rect.midX - textWidth / 2, y: rect.midY - 12 - textSize.height, width: textWidth, height: textSize.height),
         options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])

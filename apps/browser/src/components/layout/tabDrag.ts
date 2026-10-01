@@ -138,11 +138,12 @@ export function setDragPicture(drag: number, chip: [number, number, number, numb
   void live.then((picture) => {
     if (drag !== dragSeq || !useTabDrag.getState().tabIds.length) return;
     if (picture) return dragPreview.page(picture.data, picture.frame);
-    // On screen with no web page (a New Tab page): the window's own snapshot already shows it.
-    if (!shown || onScreen) return;
+    const tab = shown ? useBrowser.getState().tabs[shown] : undefined;
+    // On screen with no web page (a New Tab page): the window's own snapshot already shows it. A web page on screen
+    // that couldn't be painted (capture is off on CEF, or timed out) would leave the card's page blank.
+    if (!shown || (onScreen && !tab?.url)) return;
     const last = lastPicture(shown);
     if (last) return dragPreview.page(last.data, last.frame);
-    const tab = useBrowser.getState().tabs[shown];
     if (tab) dragPreview.placeholder(tab.customTitle || tab.title || tab.url || "New Tab", tab.favicon);
   });
 }
