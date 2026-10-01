@@ -1,0 +1,30 @@
+packages/shell/ios/AppModule.swift
+  s_9c356f9574d31c::t_3a0d5a572c670d 323-324
+  s_9c356f9574d31c::t_ffabbfad720a86 322,325-328
+  s_9c356f9574d31c::t_768a622a90f536 126
+  s_9c356f9574d31c::t_b76ae6738290ac 329
+apps/browser/src/components/settings/panes/Passwords.tsx
+  s_9c356f9574d31c::t_fdd667d6f32e9d 28,32
+  s_9c356f9574d31c::t_7f9c7e73e297f8 15,29,31,34-35,117
+  s_9c356f9574d31c::t_86dffd2ba8c9f3 30,33
+packages/shell/src/app.ts
+  s_9c356f9574d31c::t_3894bcced3af23 63
+docs/dia-feature-parity.md
+  s_9c356f9574d31c::t_301a4653b92b0e 547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "df97399973a53832a30402cb848f9f94d835221f",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
