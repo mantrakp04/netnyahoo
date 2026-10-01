@@ -1,0 +1,44 @@
+packages/cef/patches/chromium-icloud-keychain-window.patch
+  s_9c356f9574d31c::t_ac7f345588ece9 1-3
+packages/cef/patches/build/gn_defines.sh
+  s_9c356f9574d31c::t_1c9b49acaef6e3 36
+packages/cef/patches/chromium-device-chooser-hook.patch
+  s_9c356f9574d31c::t_ac7f345588ece9 1-29
+packages/cef/patches/series
+  s_9c356f9574d31c::t_fc19f9592f87e9 15-22,24-25,30-33,40-42,50
+  s_9c356f9574d31c::t_d197d3019854ef 52
+packages/cef/patches/chromium-hidden-window-current-window.patch
+  s_9c356f9574d31c::t_ac7f345588ece9 1-44
+packages/cef/patches/chromium-branding.patch
+  s_9c356f9574d31c::t_ac7f345588ece9 1-15
+packages/cef/patches/build/02-cef-patch-and-gen.sh
+  s_9c356f9574d31c::t_3e5bc2351ebd1a 2-4,8-12
+packages/cef/patches/series.py
+  s_9c356f9574d31c::t_af84c6b6cfb9f7 1-301
+packages/cef/patches/build/apply-chromium-patches.sh
+  s_9c356f9574d31c::t_7625feeab38cc3 2-3,6-9
+packages/cef/patches/build/01-sync.sh
+  s_9c356f9574d31c::t_cebfa795c8916f 6-7
+packages/cef/patches/chromium-side-panel-hook.patch
+  s_9c356f9574d31c::t_ac7f345588ece9 1
+packages/cef/patches/chromium-cast-dialog-hook.patch
+  s_9c356f9574d31c::t_ac7f345588ece9 1-43
+packages/cef/patches/chromium-safe-storage-name.patch
+  s_9c356f9574d31c::t_ac7f345588ece9 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "01a6f1a8df152f6b487bf016dabe898692057e9c",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
