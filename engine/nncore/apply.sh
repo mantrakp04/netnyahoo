@@ -19,6 +19,8 @@ src=${CHROMIUM_SRC:-$HOME/chromium-build/chromium_git/chromium/src}
 
 if [[ "${1:-}" == --check ]]; then
   diff -r "$here/src/netnyahoo" "$src/netnyahoo" >/dev/null &&
+    grep -q 'netnyahoo_alive' "$src/chrome/browser/ui/autofill/autofill_popup_controller_impl.cc" &&
+    grep -q 'g_netnyahoo_opacity_from_default_color' "$src/content/browser/renderer_host/render_widget_host_view_base.cc" &&
     grep -q '"//netnyahoo/core"' "$src/chrome/BUILD.gn" &&
     grep -q 'g_netnyahoo_browser_window_factory(this)' "$src/chrome/browser/ui/browser.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/sad_tab_controller.cc" &&
@@ -198,6 +200,100 @@ new = """  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(bro
 assert s.count(old) == 1
 open(path, "w").write(s.replace(old, new))
 print("hooked SadTabController")
+PY2
+
+# Chrome's autofill dropdown tells NNCore each time it shows, whoever filled it: addresses and
+# entries (BrowserAutofillManager), saved passwords (PasswordAutofillManager, the manual
+# fallback), so the host hears of all of them (tab:didShowAutofillSuggestions:); also when its
+# search bar couldn't take focus in an app that isn't active (Chrome then doesn't count it
+# shown, though it is on screen). Only NNCore sets the hook, so CEF behaves as before.
+python3 - "$src/chrome/browser/ui/autofill/autofill_popup_controller_impl.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "netnyahoo_alive" in s:
+    sys.exit(0)
+old_fn = "void AutofillPopupControllerImpl::Show(\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) hears of each dropdown shown.\n"
+        "void (*g_netnyahoo_autofill_suggestions_shown)(\n"
+        "    content::WebContents* web_contents,\n"
+        "    base::span<const Suggestion> suggestions) = nullptr;\n\n")
+old = """  delegate_->OnSuggestionsShown(
+      non_filtered_suggestions_,
+"""
+new = """  // Netnyahoo: NNCore
+  if (g_netnyahoo_autofill_suggestions_shown && IsRootPopup() && web_contents_) {
+    g_netnyahoo_autofill_suggestions_shown(web_contents_.get(),
+                                           non_filtered_suggestions_);
+  }
+""" + old
+# A dropdown with a search bar (the saved passwords) counts as shown only once its window
+# takes focus, which it can't in an app that isn't active: on screen all the same.
+old2 = """    if (!view_->Show(autoselect_first_suggestion)) {
+      return;
+    }
+"""
+new2 = """    auto netnyahoo_alive = GetWeakPtr();
+    if (!view_->Show(autoselect_first_suggestion)) {
+      // Netnyahoo: NNCore hears of a dropdown on screen whose search bar couldn't
+      // take focus (an app that isn't active), which Chrome doesn't count as shown.
+      if (netnyahoo_alive && view_ && g_netnyahoo_autofill_suggestions_shown &&
+          IsRootPopup() && web_contents_) {
+        g_netnyahoo_autofill_suggestions_shown(web_contents_.get(),
+                                               non_filtered_suggestions_);
+      }
+      return;
+    }
+"""
+if "g_netnyahoo_autofill_suggestions_shown" not in s:
+    assert s.count(old_fn) == 1 and s.count(old) == 1
+    s = s.replace(old_fn, decl + old_fn).replace(old, new)
+assert s.count(old2) == 1
+s = s.replace(old2, new2)
+open(path, "w").write(s)
+print("hooked AutofillPopupControllerImpl")
+PY2
+
+# A new document's view takes over the last page's background (CopyBackgroundColorIfPresentFrom)
+# and, when that background isn't opaque, tells the renderer to paint the page on a transparent
+# base: with NNCore's translucent page background (the host's pageBackgroundColor), every
+# navigation that swapped views after the last page reported its background lost it. With the
+# hook set, the opacity follows the colours the embedder set, as SetBackgroundColor's does.
+# Only NNCore sets the hook, so CEF behaves as before.
+python3 - "$src/content/browser/renderer_host/render_widget_host_view_base.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_opacity_from_default_color" in s:
+    sys.exit(0)
+old_fn = "void RenderWidgetHostViewBase::CopyBackgroundColorIfPresentFrom(\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) has a translucent page background.\n"
+        "bool g_netnyahoo_opacity_from_default_color = false;\n\n")
+old = """  bool was_opaque = IsBackgroundColorOpaque();
+  content_background_color_ = other_base.content_background_color_;
+  default_background_color_ = other_base.default_background_color_;
+  UpdateBackgroundColor();
+  bool opaque = IsBackgroundColorOpaque();
+"""
+new = """  bool was_opaque = IsBackgroundColorOpaque();
+  // Netnyahoo: NNCore
+  const auto netnyahoo_opaque = [this] {
+    return !default_background_color_ ||
+           SkColorGetA(*default_background_color_) == SK_AlphaOPAQUE;
+  };
+  if (g_netnyahoo_opacity_from_default_color) {
+    was_opaque = netnyahoo_opaque();
+  }
+  content_background_color_ = other_base.content_background_color_;
+  default_background_color_ = other_base.default_background_color_;
+  UpdateBackgroundColor();
+  bool opaque = g_netnyahoo_opacity_from_default_color ? netnyahoo_opaque()
+                                                       : IsBackgroundColorOpaque();
+"""
+assert s.count(old_fn) == 1 and s.count(old) == 1
+s = s.replace(old_fn, decl + old_fn).replace(old, new)
+open(path, "w").write(s)
+print("hooked RenderWidgetHostViewBase")
 PY2
 
 # Chrome's "Open <app>?" dialog for a link to another app (mailto: aside, which Chrome opens

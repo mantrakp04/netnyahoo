@@ -19,6 +19,12 @@
 #include "netnyahoo/core/nn_browser.h"
 #import "netnyahoo/core/nncore_internal.h"
 
+namespace autofill {
+extern void (*g_netnyahoo_autofill_suggestions_shown)(
+    content::WebContents* web_contents,
+    base::span<const Suggestion> suggestions);
+}  // namespace autofill
+
 namespace nncore {
 
 namespace {
@@ -75,52 +81,6 @@ class FocusedField : public content::WebContentsUserData<FocusedField>,
                                  FieldGlobalId field) override {
     Focused(manager, field);
   }
-  // Chrome's dropdown opened: its rows to the host (tab:didShowAutofillSuggestions:).
-  void OnSuggestionsShown(AutofillManager& manager,
-                          base::span<const autofill::Suggestion> suggestions) override {
-    NSMutableArray* items = [NSMutableArray array];
-    for (const autofill::Suggestion& suggestion : suggestions) {
-      if (suggestion.type == autofill::SuggestionType::kSeparator) {
-        continue;
-      }
-      NSMutableArray* labels = [NSMutableArray array];
-      for (const auto& row : suggestion.labels) {
-        for (const auto& text : row) {
-          if (!text.value.empty()) {
-            [labels addObject:base::SysUTF16ToNSString(text.value)];
-          }
-        }
-      }
-      NSMutableArray* minor = [NSMutableArray array];
-      for (const auto& text : suggestion.minor_texts) {
-        if (!text.value.empty()) {
-          [minor addObject:base::SysUTF16ToNSString(text.value)];
-        }
-      }
-      [items addObject:@{
-        @"label" : base::SysUTF16ToNSString(suggestion.main_text.value),
-        @"sublabel" : [labels componentsJoinedByString:@" "],
-        @"minorText" : [minor componentsJoinedByString:@" "],
-        @"type" : base::SysUTF8ToNSString(autofill::SuggestionTypeToString(suggestion.type)),
-      }];
-    }
-    // Not from inside Chrome's popup code: the host may close the tab.
-    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, base::BindOnce(
-                       [](base::WeakPtr<content::WebContents> contents, NSArray* items) {
-                         if (!contents) {
-                           return;
-                         }
-                         NNCoreTab* tab = TabBridge::GetOrCreate(contents.get())->tab();
-                         id<NNCoreTabDelegate> delegate = tab.delegate;
-                         if ([delegate respondsToSelector:@selector
-                                       (tab:didShowAutofillSuggestions:)]) {
-                           [delegate tab:tab didShowAutofillSuggestions:items];
-                         }
-                       },
-                       GetWebContents().GetWeakPtr(), items));
-  }
-
   void OnAfterFocusOnNonFormField(AutofillManager& manager) override {
     if (manager_.get() == &manager) {
       manager_.reset();
@@ -141,9 +101,62 @@ class FocusedField : public content::WebContentsUserData<FocusedField>,
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(FocusedField);
 
+// Chrome's dropdown opened (apply.sh's hook in AutofillPopupControllerImpl::Show, for every
+// dropdown: BrowserAutofillManager's, and the password manager's, which no AutofillManager
+// observer hears of): its rows to the host (tab:didShowAutofillSuggestions:), for the tabs
+// tracked here.
+void ReportShown(content::WebContents* contents,
+                 base::span<const autofill::Suggestion> suggestions) {
+  if (!contents || !FocusedField::FromWebContents(contents)) {
+    return;
+  }
+  NSMutableArray* items = [NSMutableArray array];
+  for (const autofill::Suggestion& suggestion : suggestions) {
+    if (suggestion.type == autofill::SuggestionType::kSeparator) {
+      continue;
+    }
+    NSMutableArray* labels = [NSMutableArray array];
+    for (const auto& row : suggestion.labels) {
+      for (const auto& text : row) {
+        if (!text.value.empty()) {
+          [labels addObject:base::SysUTF16ToNSString(text.value)];
+        }
+      }
+    }
+    NSMutableArray* minor = [NSMutableArray array];
+    for (const auto& text : suggestion.minor_texts) {
+      if (!text.value.empty()) {
+        [minor addObject:base::SysUTF16ToNSString(text.value)];
+      }
+    }
+    [items addObject:@{
+      @"label" : base::SysUTF16ToNSString(suggestion.main_text.value),
+      @"sublabel" : [labels componentsJoinedByString:@" "],
+      @"minorText" : [minor componentsJoinedByString:@" "],
+      @"type" : base::SysUTF8ToNSString(autofill::SuggestionTypeToString(suggestion.type)),
+    }];
+  }
+  // Not from inside Chrome's popup code: the host may close the tab.
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<content::WebContents> contents, NSArray* items) {
+                       if (!contents) {
+                         return;
+                       }
+                       NNCoreTab* tab = TabBridge::GetOrCreate(contents.get())->tab();
+                       id<NNCoreTabDelegate> delegate = tab.delegate;
+                       if ([delegate respondsToSelector:@selector
+                                     (tab:didShowAutofillSuggestions:)]) {
+                         [delegate tab:tab didShowAutofillSuggestions:items];
+                       }
+                     },
+                     contents->GetWeakPtr(), items));
+}
+
 }  // namespace
 
 void TrackAutofillFocus(content::WebContents* contents) {
+  autofill::g_netnyahoo_autofill_suggestions_shown = &ReportShown;
   auto* client =
       contents ? autofill::ContentAutofillClient::FromWebContents(contents) : nullptr;
   if (client && !FocusedField::FromWebContents(contents)) {

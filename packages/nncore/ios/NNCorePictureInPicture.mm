@@ -27,10 +27,24 @@ BOOL KeepOnTop() {
   return value ? [value boolValue] : YES;
 }
 
-BOOL IsChromeVideoPictureInPicture(NSWindow *window) {
+// A window showing a page: a document Picture in Picture window is a Browser window of Chrome's, frameless and kept
+// on top like a video's, but with the page's own view in it.
+BOOL ShowsPage(NSView *view) {
+  static Class page = NSClassFromString(@"RenderWidgetHostViewCocoa");
+  if (page && [view isKindOfClass:page]) return YES;
+  for (NSView *child in view.subviews)
+    if (ShowsPage(child)) return YES;
+  return NO;
+}
+
+BOOL IsChromeFloatingWindow(NSWindow *window) {
   static Class frameless = NSClassFromString(@"NativeWidgetMacFramelessNSWindow");
   return frameless && [window isKindOfClass:frameless] && window.visible && window.level >= NSFloatingWindowLevel &&
          (window.collectionBehavior & NSWindowCollectionBehaviorCanJoinAllSpaces);
+}
+
+BOOL IsChromeVideoPictureInPicture(NSWindow *window) {
+  return IsChromeFloatingWindow(window) && !ShowsPage(window.contentView);
 }
 
 NSScreen *ScreenFor(NSRect frame) {
@@ -667,6 +681,7 @@ void VideoChanged(NNCoreWebView *view, NSString *host, NSString *frameId, bool a
       @"class" : NSStringFromClass(window.class),
       @"title" : window.title ?: @"",
       @"video" : @(IsChromeVideoPictureInPicture(window)),
+      @"document" : @(IsChromeFloatingWindow(window) && ShowsPage(window.contentView)),
       @"frame" : NSStringFromRect(window.frame),
       @"visible" : @(window.visible),
       @"alpha" : @(window.alphaValue),

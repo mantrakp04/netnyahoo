@@ -3,6 +3,7 @@
 #include "netnyahoo/core/nn_picture_in_picture.h"
 
 #import <AppKit/AppKit.h>
+#import <objc/runtime.h>
 
 #include <stdlib.h>
 
@@ -54,14 +55,48 @@ void Report(base::WeakPtr<content::WebContents> contents, bool active, NSString*
 // Background (test) instances: Chrome's picture-in-picture windows, video or document, are
 // there for the page (they keep rendering, the session stays) but invisible and
 // click-through, so a hidden run never floats a window over the owner's. Done before they
-// first show.
+// first show, and kept through Chrome's fade-in.
 bool Background() {
   return getenv("NETNYAHOO_BACKGROUND") != nullptr;
 }
 
+}  // namespace
+}  // namespace nncore
+
+// Keeps a window's alpha at 0: Chrome fades its picture-in-picture windows in after showing
+// them (PictureInPictureWidgetFadeAnimator, 500 ms to opacity 1), over any alpha set before.
+@interface NNInvisibleWindowPin : NSObject
+@end
+
+@implementation NNInvisibleWindowPin
+
+- (void)observeValueForKeyPath:(NSString*)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary*)change
+                       context:(void*)context {
+  NSWindow* window = object;
+  if (window.alphaValue != 0) {
+    window.alphaValue = 0;
+  }
+}
+
+@end
+
+namespace nncore {
+namespace {
+
+const void* const kInvisiblePinKey = &kInvisiblePinKey;
+
 void MakeInvisible(NSWindow* window) {
   window.alphaValue = 0;
   window.ignoresMouseEvents = YES;
+  if (!objc_getAssociatedObject(window, kInvisiblePinKey)) {
+    NNInvisibleWindowPin* pin = [[NNInvisibleWindowPin alloc] init];
+    // The window owns the pin; the observation goes with the window (macOS 11+ drops an
+    // observer registration whose object is deallocated).
+    objc_setAssociatedObject(window, kInvisiblePinKey, pin, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [window addObserver:pin forKeyPath:@"alphaValue" options:0 context:nullptr];
+  }
 }
 
 // The video overlay: the observer runs in the task that shows it, after its widget exists.

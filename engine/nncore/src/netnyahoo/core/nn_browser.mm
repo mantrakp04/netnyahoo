@@ -62,6 +62,11 @@
 #include "ui/views/window/client_view.h"
 #include "url/origin.h"
 
+namespace content {
+// RenderWidgetHostViewBase's opacity hook (engine/nncore/apply.sh).
+extern bool g_netnyahoo_opacity_from_default_color;
+}  // namespace content
+
 // The hook in declarativeNetRequest's ActionTracker (engine/nncore/apply.sh).
 extern void (*g_netnyahoo_dnr_rule_matched)(
     content::BrowserContext* browser_context,
@@ -1037,6 +1042,10 @@ void StartMediaCaptureObserver() {
 TabBridge::TabBridge(content::WebContents* contents)
     : content::WebContentsObserver(contents),
       content::WebContentsUserData<TabBridge>(*contents) {
+  // The host's page background (pageBackgroundColor) is translucent: a new document's view
+  // decides the page's opacity from the colours the host set, not from the last page's
+  // background it took over (engine/nncore/apply.sh).
+  content::g_netnyahoo_opacity_from_default_color = true;
   tab_ = [[NNCoreTab alloc] initWithContents:contents];
 }
 
