@@ -310,3 +310,24 @@ Known gaps:
 - **Chrome's multitab close confirmation** (`--close-confirmation`) isn't followed. NNCore never sets that flag.
 - **Teardown watchdog.** One acceptance run in about eight hit Chrome's 10 s teardown watchdog after a clean
   `engineWillShutDown` (exit code 2). The acceptance run now samples the process if the quit takes over 5 s.
+
+## Stage 2: per-tab features and UI seams
+
+Stage 2 adds the per-tab features and UI seams `packages/nncore` needs to emit what `packages/cef` emits. Wherever
+it's practical, they hand over dictionaries already in the JS shapes of `packages/cef/src`. NNHost passes 93 of 93
+checks in `S7`–`S22`. The unresponsive-page check is skipped: Chrome's hang monitor ignores hidden pages.
+
+| Area | What NNCore provides |
+|---|---|
+| Profile | Allow-listed bool prefs (CEF's per-profile prefs set on load). Chrome's `BrowsingDataRemover`. Component extensions. Deleting a profile and releasing an incognito one. Cast routes |
+| Tab state | `securityInfo`, per-site zoom and pinch scale, `focusedEditable`, media capture access, base background colour, `mediaCaptureSourceId` |
+| Tab actions | Chrome commands on a background tab. Discard (`WebContentsDiscard`, so the same tab survives). Freeze. Unresponsive pages. Stop sharing. Autofill on demand. Scripts with a user gesture. Restore from `nn_tab_restore_take`'s state, and duplicate |
+| Chrome UI the host shows instead | Permission prompts (`SetCreatePermissionPromptFunction`, before Chrome's bubble or chip). Blocked popups. Links to other apps. Extension install prompts. Extension actions, states and side panels. Device choosers. The Cast dialog. Context-menu items (Chrome's menu, plus the host's items; in background mode the menu is reported instead of shown) |
+| Events | Download navigations. Activation requests (PiP's back-to-tab, `window.focus()`) |
+
+New hook in Chrome's files, added by `apply.sh` and checked by `--check` and `series.py check`:
+- **`chrome/browser/external_protocol/external_protocol_handler.cc` (12 lines).** Placed before the Mac's
+  "no app for this scheme" check, so a scheme with no app also reaches the host. Only NNCore sets it.
+
+What a hidden run can't prove: the screen-share picker (getDisplayMedia) is still Chrome's own, and camera,
+microphone and geolocation prompts also ask macOS.
