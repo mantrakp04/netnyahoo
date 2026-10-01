@@ -138,6 +138,8 @@ async function go() {
     case "/download":
       res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": "attachment; filename=nn.bin" });
       return res.end("nncore");
+    case "/share":
+      return send(page("NNShareTarget", "share me"));
     case "/keys":
       return send(
         page(
@@ -930,6 +932,25 @@ try {
     await cmd("nav", { tabId: src.tabId, action: "closeNow" });
     await cmd("nav", { tabId: ut.tabId, action: "closeNow" });
     if (dup) await cmd("nav", { tabId: dup.tabId, action: "closeNow" });
+  }
+  // S23 (E): tab capture: "Share this tab instead" and Stop sharing.
+  {
+    const y = await cmd("open", { url: `${base}/share?t=y`, profile: "A", background: true });
+    await waitFor(async () => (await tabState(y.tabId))?.title === "NNShareTarget");
+    const x = await cmd("open", { url: `${base}/target?from=capturer`, profile: "A" });
+    await waitFor(async () => (await tabState(x.tabId))?.loading === false);
+    const z = await cmd("open", { url: `${base}/target?from=other`, profile: "A", background: true });
+    await waitFor(async () => (await tabState(z.tabId))?.loading === false);
+    const px = await attach((t) => t.url.includes("from=capturer"));
+    const started = (await px.send("Runtime.evaluate", { expression: "Promise.race([navigator.mediaDevices.getDisplayMedia({ video: true }).then((s) => { window.__s = s; return 'capturing'; }, (e) => 'error ' + e.name), new Promise((r) => setTimeout(() => r('timeout'), 8000))])", awaitPromise: true, userGesture: true, returnByValue: true })).result?.result?.value;
+    const zBefore = await waitFor(async () => { const r = await cmd("share", { tabId: z.tabId }); return r.can ? r : null; }, 5000);
+    const moved = await cmd("share", { tabId: z.tabId, go: true });
+    const yAfter = await waitFor(async () => { const r = await cmd("share", { tabId: y.tabId }); return r.can ? r : null; }, 5000);
+    check("S23", "getDisplayMedia (tab) → other tabs canShareThisTabInstead; shareThisTabInstead moves the capture there", started === "capturing" && zBefore && moved.did && yAfter, { started, zBefore, moved, yAfter });
+    const stop = await cmd("capture", { tabId: x.tabId });
+    check("S23", "stopCapture on the capturing tab", stop.stopped === true, stop);
+    px.close();
+    for (const t of [x, y, z]) await cmd("nav", { tabId: t.tabId, action: "closeNow" });
   }
   // S22 (H): Chrome's Cast dialog to the host.
   {

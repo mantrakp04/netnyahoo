@@ -480,6 +480,10 @@ NNCORE_EXPORT
 // Chrome's "Stop sharing" for what this page is sharing (a tab, window or screen). NO if it
 // shares nothing.
 - (BOOL)stopCapture;
+// While another tab is being shared (getDisplayMedia's tab capture): Chrome's "Share this
+// tab instead" for this tab (the capture moves here). NO if Chrome offers none here.
+@property(readonly) BOOL canShareThisTabInstead;
+- (BOOL)shareThisTabInstead;
 // Chrome's autofill dropdown at the page's focused field, now (CEF's
 // CefShowAutofillSuggestions): passwords: the saved-passwords list. NO without a field.
 - (BOOL)showAutofillSuggestions:(BOOL)passwords;

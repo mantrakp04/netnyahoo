@@ -66,6 +66,9 @@
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
 #include "netnyahoo/core/nn_permissions.h"
+#include "chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.h"
+#include "components/infobars/content/content_infobar_manager.h"
+#include "components/infobars/core/infobar.h"
 #include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
 #include "base/pickle.h"
 #include "chrome/browser/ui/browser_tabrestore.h"
@@ -1727,6 +1730,40 @@ static bool g_tracing = false;
 
 - (BOOL)focusedEditable {
   return _contents && _contents->IsFocusedElementEditable();
+}
+
+namespace {
+// Chrome's tab-sharing infobar on this tab (it exists while some tab shares a tab).
+TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents) {
+  auto* manager =
+      contents ? infobars::ContentInfoBarManager::FromWebContents(contents) : nullptr;
+  if (!manager) {
+    return nullptr;
+  }
+  for (infobars::InfoBar* infobar : manager->infobars()) {
+    if (infobar->delegate()->GetIdentifier() ==
+        infobars::InfoBarDelegate::TAB_SHARING_INFOBAR_DELEGATE) {
+      return static_cast<TabSharingInfoBarDelegate*>(infobar->delegate());
+    }
+  }
+  return nullptr;
+}
+}  // namespace
+
+- (BOOL)canShareThisTabInstead {
+  TabSharingInfoBarDelegate* sharing = TabSharingDelegateFor(_contents);
+  return sharing &&
+         (sharing->GetButtons() & TabSharingInfoBarDelegate::kShareThisTabInstead) &&
+         sharing->IsButtonEnabled(TabSharingInfoBarDelegate::kShareThisTabInstead);
+}
+
+- (BOOL)shareThisTabInstead {
+  if (!self.canShareThisTabInstead) {
+    return NO;
+  }
+  // Chrome's "Share this tab instead": the capture moves here.
+  TabSharingDelegateFor(_contents)->ShareThisTabInstead();
+  return YES;
 }
 
 - (BOOL)showAutofillSuggestions:(BOOL)passwords {

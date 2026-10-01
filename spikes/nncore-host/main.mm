@@ -1066,6 +1066,9 @@ static void Log(NSDictionary* event) {
   } else if ([name isEqualToString:@"restore"]) {
     NNCoreTab* t = [_window restoreTab:cmd[@"state"] profile:profile foreground:NO];
     reply(t ? @(t.tabId) : NSNull.null);
+  } else if ([name isEqualToString:@"share"]) {
+    BOOL can = tab.canShareThisTabInstead;
+    reply(@{@"can" : @(can), @"did" : @([cmd[@"go"] boolValue] ? [tab shareThisTabInstead] : NO)});
   } else if ([name isEqualToString:@"castRoutes"]) {
     [profile watchCastRoutes];
     reply(@YES);
@@ -1158,6 +1161,8 @@ int main(int argc, const char* argv[]) {
     }
     // Keeps the test instance off the network's Google endpoints and the keychain.
     args.push_back("--use-mock-keychain");
+    // getDisplayMedia's picker picks the tab titled so, by itself (tab-capture checks).
+    args.push_back("--auto-select-tab-capture-source-by-title=NNShareTarget");
     args.push_back("--password-store=basic");
   }
   static Host* host = [[Host alloc] init];
