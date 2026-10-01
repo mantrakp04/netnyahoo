@@ -1,0 +1,95 @@
+packages/nncore/ios/NNCoreHost.mm
+  s_9c356f9574d31c::t_8cdcccf4ec38df 6,76,534
+  s_9c356f9574d31c::t_5c43383e58fdf8 201
+  s_9c356f9574d31c::t_83793f7c7fd3a3 144-157,170,320,341-342,349-374
+  s_9c356f9574d31c::t_264ae24f8d95b3 58-59,164-169,250-299,303-319
+  s_9c356f9574d31c::t_a5e95108f4d848 300-302
+  s_9c356f9574d31c::t_8c686d44455b88 343-348
+  s_9c356f9574d31c::t_bcb4854d36b69d 134-143,330-340
+  s_9c356f9574d31c::t_da3f28e25b5e10 52-55,103-104,106,108-111,206,211-214
+  s_9c356f9574d31c::t_884ff75d64d947 96-97
+  s_9c356f9574d31c::t_10cd7c787aabf8 171,321,375
+packages/nncore/ios/NNCoreInternal.h
+  s_9c356f9574d31c::t_82f259186de929 51-54
+  s_9c356f9574d31c::t_5c43383e58fdf8 85-86
+packages/nncore/ios/NNCoreServices.h
+  s_9c356f9574d31c::t_264ae24f8d95b3 32
+  s_9c356f9574d31c::t_8cdcccf4ec38df 72-97
+  s_9c356f9574d31c::t_f4a7ed1d2f9401 98
+packages/nncore/ios/CefModule.swift
+  s_9c356f9574d31c::t_8cdcccf4ec38df 15,42,53-54,57-59,67-72,80,109-123
+  s_9c356f9574d31c::t_264ae24f8d95b3 44-47,77-79,159
+  s_9c356f9574d31c::t_aa3fa66ba64f3a 48
+packages/nncore/ios/ExtensionsModule.swift
+  s_9c356f9574d31c::t_264ae24f8d95b3 12-14,19,25-27
+packages/nncore/ios/ChromeUIModule.swift
+  s_9c356f9574d31c::t_8c686d44455b88 43-45
+  s_9c356f9574d31c::t_264ae24f8d95b3 46-49
+  s_9c356f9574d31c::t_83793f7c7fd3a3 3-4,15-16,27-34
+  s_9c356f9574d31c::t_bcb4854d36b69d 12-14,17-18,22-25
+packages/nncore/ios/NNCoreHost.h
+  s_9c356f9574d31c::t_264ae24f8d95b3 40-52
+  s_9c356f9574d31c::t_8c686d44455b88 31
+  s_9c356f9574d31c::t_bcb4854d36b69d 27-29
+  s_9c356f9574d31c::t_83793f7c7fd3a3 30,32-37
+packages/nncore/ios/NNCoreContentBlocker.mm
+  s_9c356f9574d31c::t_5c43383e58fdf8 337-350,414-417
+packages/nncore/ios/NNCoreTabStrip.mm
+  s_9c356f9574d31c::t_60dbe581b76615 199-200
+  s_9c356f9574d31c::t_82f259186de929 65-80,112-116,146-150,167
+packages/nncore/scripts/acceptance.mjs
+  s_9c356f9574d31c::t_884ff75d64d947 785
+  s_9c356f9574d31c::t_382890f58e5f14 794-795,877-881
+  s_9c356f9574d31c::t_ec1a1dc5859540 504-514
+  s_9c356f9574d31c::t_207c75816f2971 770-773
+  s_9c356f9574d31c::t_30c9a9bf825d4d 31,33-34,53-56,123,642-653,655-663,741-750
+  s_9c356f9574d31c::t_b30c432bc12c84 10,430,461,494,592-595
+  s_9c356f9574d31c::t_8b161d4d05c6ba 479-486,495-501
+  s_9c356f9574d31c::t_c670e7cde08573 474-475
+  s_9c356f9574d31c::t_d1607a38385bfb 431-434
+  s_9c356f9574d31c::t_2bdb8fc761ea78 57-83,85,664-740,799-843
+  s_9c356f9574d31c::t_b06c52fcb41fa2 427-429,435-442,451-460,462-473,476-478
+  s_9c356f9574d31c::t_8cba6c228446fc 443-450
+  s_9c356f9574d31c::t_5c43383e58fdf8 654,775-779
+  s_9c356f9574d31c::t_63b2146c2db54d 487-493
+  s_9c356f9574d31c::t_6c6b67116c9af0 753-769,774,780-781
+  s_9c356f9574d31c::t_c4afbe4f878442 502,515,751,782-784,786-793,796-798,844-854
+  s_9c356f9574d31c::t_b098e866fd02b6 503,516,752,855
+packages/nncore/ios/NNCoreServices.mm
+  s_9c356f9574d31c::t_264ae24f8d95b3 7-8,131-146
+  s_9c356f9574d31c::t_8cdcccf4ec38df 302-423
+  s_9c356f9574d31c::t_afc132f248f917 424
+packages/nncore/ios/NNCoreWebView.h
+  s_9c356f9574d31c::t_aa3fa66ba64f3a 33-34
+packages/nncore/ios/NNCoreWebView.mm
+  s_9c356f9574d31c::t_422bf01a485d78 1101,1103
+  s_9c356f9574d31c::t_264ae24f8d95b3 213,570,975,985-1003,1075-1079,1105-1107
+  s_9c356f9574d31c::t_3da6fb61ed9dac 156-170,339,600,1004,1037,1080-1100,1102,1104
+  s_9c356f9574d31c::t_60dbe581b76615 288-289,365,502
+  s_9c356f9574d31c::t_3d211c89aaa0ed 436-439
+  s_9c356f9574d31c::t_ad4f1a4d67d31c 197-200,708-713,1023-1036
+  s_9c356f9574d31c::t_1f824738ca5ada 272-278,294-313,321-338
+  s_9c356f9574d31c::t_8cdcccf4ec38df 10,1044-1046
+  s_9c356f9574d31c::t_aa3fa66ba64f3a 598-599
+  s_9c356f9574d31c::t_9b4a8912e13f6c 340,601,1005,1038
+packages/nncore/ios/NNCoreChromeWindow.mm
+  s_9c356f9574d31c::t_82f259186de929 142-154,159
+pnpm-lock.yaml
+  s_9c356f9574d31c::t_e130e266bd77b1 102-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bcb8fe71f58482495d792faa7cbe0e2ae0d9af76",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
