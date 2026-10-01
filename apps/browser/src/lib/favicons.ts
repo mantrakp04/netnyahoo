@@ -64,7 +64,8 @@ function flush() {
   if (all.length) batchStoreUpdates(() => useFavicons.setState((f) => all.reduce((s, change) => change(s), f)));
 }
 
-// `now` for what the user did (Clear Data, a closed private window): applied after anything queued.
+// `now` for what the user did (Clear Data, a closed private window) and for answers that come batched: applied after
+// anything queued.
 function update(key: string, change: (icons: Icons) => Icons, now = false) {
   queue((f) => {
     const before = f.profiles[key] ?? EMPTY;
@@ -120,7 +121,8 @@ function lookUpPages(key: string, list: string[]) {
           touch(page);
         }
         return next ? { ...icons, pages: next } : icons;
-      }),
+        // One answer is already a batch (up to LOOKUP_BATCH pages): it lands at once, not on another timer.
+      }, true),
     )
     .catch((error) => {
       // Asked again next time it's shown.

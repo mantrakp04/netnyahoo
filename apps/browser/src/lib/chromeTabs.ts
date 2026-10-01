@@ -68,7 +68,17 @@ export function startChromeTabs() {
   });
   useBrowser.subscribe((s, prev) => {
     if (s.tabs !== prev.tabs) announceMoves(s, prev);
-    if (s.windows !== prev.windows || s.tabs !== prev.tabs || s.groups !== prev.groups) scheduleProject();
+    if (s.windows !== prev.windows || s.groups !== prev.groups || placed(s, prev)) scheduleProject();
+  });
+}
+
+// Whether a tab came, went or changed what the plans read of it (stripPlan, groupStep: its window, profile and pin).
+// A page's title, address or icon changing doesn't project again.
+function placed(s: BrowserState, prev: BrowserState) {
+  return changedIds(s.tabs, prev.tabs).some((id) => {
+    const a = s.tabs[id];
+    const b = prev.tabs[id];
+    return !a || !b || a.windowId !== b.windowId || a.profileId !== b.profileId || a.pinned !== b.pinned;
   });
 }
 
