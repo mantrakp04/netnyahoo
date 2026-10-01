@@ -938,6 +938,9 @@ try {
     const opened = await waitFor(() => evs("castDialog", (e) => e.dialog.open)[0], 8000);
     const closed = await waitFor(() => evs("castDialog", (e) => !e.dialog.open)[0], 8000);
     const childBubble = (await state()).childWindows.filter((w) => w.visible && w.class !== "NSPanel").length;
+    await cmd("castRoutes", { profile: "A" });
+    const routes = await waitFor(() => evs("castRoutes", (e) => e.profile === "Default")[0], 5000);
+    check("S22", "watchCastRoutes reports the profile's routes (none here) to engine:castRoutes:profile:", routes && Array.isArray(routes.routes), routes);
     check("S22", "showCastDialog → engine:castDialog:tab: (JS CastDialog); closeCastDialog: closes it", shown === true && opened && typeof opened.dialog.header === "string" && Array.isArray(opened.dialog.sinks) && closed, { shown, header: opened?.dialog.header, sinks: opened?.dialog.sinks?.length, closed: !!closed, childBubble });
   }
   // S16 (item 9): extension actions.

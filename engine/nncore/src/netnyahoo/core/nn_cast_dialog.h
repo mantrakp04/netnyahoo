@@ -7,6 +7,8 @@
 
 #include <string>
 
+class Profile;
+
 namespace content {
 class WebContents;
 }
@@ -26,7 +28,12 @@ void StartCasting(int dialog_id, const std::string& sink_id, int cast_mode);
 void StopCasting(int dialog_id, const std::string& route_id);
 void CloseCastDialog(int dialog_id);
 
+// A profile's Cast routes, to the host (HostCastRoutes) now and on every change.
+void WatchCastRoutes(Profile* profile);
+void TerminateCastRoute(const std::string& route_id);
+
 // Implemented by the API (nncore_api.mm).
+void HostCastRoutes(Profile* profile, NSArray* routes);
 bool HostWantsCastDialogs();
 void HostCastDialog(content::WebContents* contents, NSDictionary* state);
 

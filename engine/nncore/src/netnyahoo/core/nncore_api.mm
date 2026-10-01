@@ -516,6 +516,12 @@ void ResolveExtensionInstallPrompt(const std::string& request_id, bool accepted)
   std::move(done).Run(Payload(accepted ? Result::ACCEPTED : Result::USER_CANCELED));
 }
 
+void HostCastRoutes(Profile* profile, NSArray* routes) {
+  if ([g_delegate respondsToSelector:@selector(engine:castRoutes:profile:)]) {
+    [g_delegate engine:g_engine castRoutes:routes profile:[NNCoreProfile wrapperFor:profile]];
+  }
+}
+
 bool HostWantsCastDialogs() {
   return [g_delegate respondsToSelector:@selector(engine:castDialog:tab:)];
 }
@@ -746,6 +752,10 @@ static bool g_tracing = false;
 
 + (void)stopCasting:(int)dialogId route:(NSString*)routeId {
   nncore::StopCasting(dialogId, base::SysNSStringToUTF8(routeId));
+}
+
++ (void)terminateCastRoute:(NSString*)routeId {
+  nncore::TerminateCastRoute(base::SysNSStringToUTF8(routeId));
 }
 
 + (void)closeCastDialog:(int)dialogId {
@@ -993,6 +1003,10 @@ static bool g_tracing = false;
   if (extensions::ComponentLoader* loader = extensions::ComponentLoader::Get(_profile)) {
     loader->Remove(extensions::ExtensionId(base::SysNSStringToUTF8(extensionId)));
   }
+}
+
+- (void)watchCastRoutes {
+  nncore::WatchCastRoutes(_profile);
 }
 
 - (NSArray<NSDictionary<NSString*, id>*>*)extensions {

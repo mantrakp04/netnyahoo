@@ -25,6 +25,14 @@
 #include "components/media_router/browser/media_router_metrics.h"
 #include "chrome/browser/ui/media_router/media_cast_mode.h"
 #include "content/public/browser/web_contents.h"
+#include "base/scoped_observation.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_observer.h"
+#include "components/media_router/browser/media_router.h"
+#include "components/media_router/browser/media_router_factory.h"
+#include "components/media_router/browser/media_routes_observer.h"
+#include "components/media_router/common/media_route.h"
+#include <vector>
 #include "netnyahoo/core/nn_browser.h"
 
 namespace nncore {
@@ -196,7 +204,75 @@ CastDialog* Find(int id) {
   return it == Live().end() ? nullptr : it->second.get();
 }
 
+// A profile's Cast routes (what it casts now), for the host (JS onCastRoutes).
+class RoutesWatcher : public media_router::MediaRoutesObserver,
+                      public ProfileObserver {
+ public:
+  RoutesWatcher(media_router::MediaRouter* router, Profile* profile)
+      : media_router::MediaRoutesObserver(router), profile_(profile) {
+    profile_observation_.Observe(profile);
+  }
+
+  void OnRoutesUpdated(const std::vector<media_router::MediaRoute>& routes) override {
+    NSMutableArray* list = [NSMutableArray array];
+    for (const auto& route : routes) {
+      [list addObject:@{
+        @"id" : base::SysUTF8ToNSString(route.media_route_id()),
+        @"sink" : base::SysUTF8ToNSString(route.media_sink_id()),
+        @"description" : base::SysUTF8ToNSString(route.description()),
+        @"source" : base::SysUTF8ToNSString(route.media_source().id()),
+      }];
+    }
+    HostCastRoutes(profile_, list);
+  }
+
+  // Before its keyed services (the router) go.
+  void OnProfileWillBeDestroyed(Profile* profile) override;
+
+  media_router::MediaRouter* media_router() const { return router(); }
+
+ private:
+  raw_ptr<Profile> profile_;
+  base::ScopedObservation<Profile, ProfileObserver> profile_observation_{this};
+};
+
+std::map<Profile*, std::unique_ptr<RoutesWatcher>>& Watchers() {
+  static base::NoDestructor<std::map<Profile*, std::unique_ptr<RoutesWatcher>>> watchers;
+  return *watchers;
+}
+
+void RoutesWatcher::OnProfileWillBeDestroyed(Profile* profile) {
+  profile_observation_.Reset();
+  Watchers().erase(profile);  // Destroys this.
+}
+
 }  // namespace
+
+void WatchCastRoutes(Profile* profile) {
+  if (!profile || Watchers().contains(profile) ||
+      !media_router::MediaRouterEnabled(profile)) {
+    return;
+  }
+  media_router::MediaRouter* router =
+      media_router::MediaRouterFactory::GetApiForBrowserContext(profile);
+  if (!router) {
+    return;
+  }
+  Watchers()[profile] = std::make_unique<RoutesWatcher>(router, profile);
+  // The routes now (the observer hears only changes).
+  Watchers()[profile]->OnRoutesUpdated(router->GetCurrentRoutes());
+}
+
+void TerminateCastRoute(const std::string& route_id) {
+  for (auto& [profile, watcher] : Watchers()) {
+    for (const auto& route : watcher->media_router()->GetCurrentRoutes()) {
+      if (route.media_route_id() == route_id) {
+        watcher->media_router()->TerminateRoute(route_id);
+        return;
+      }
+    }
+  }
+}
 
 bool WantsCastDialog(content::WebContents* initiator) {
   return HostWantsCastDialogs() && IsHostTab(initiator);

@@ -635,6 +635,9 @@ static void Log(NSDictionary* event) {
     [NNCoreEngine closeCastDialog:[dialog[@"id"] intValue]];
   }
 }
+- (void)engine:(NNCoreEngine*)engine castRoutes:(NSArray*)routes profile:(NNCoreProfile*)profile {
+  Log(@{@"event" : @"castRoutes", @"profile" : profile.name ?: @"", @"routes" : routes});
+}
 - (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason {
   Log(@{@"event" : @"activationRequest", @"tabId" : @(tab.tabId), @"reason" : reason});
 }
@@ -1063,6 +1066,9 @@ static void Log(NSDictionary* event) {
   } else if ([name isEqualToString:@"restore"]) {
     NNCoreTab* t = [_window restoreTab:cmd[@"state"] profile:profile foreground:NO];
     reply(t ? @(t.tabId) : NSNull.null);
+  } else if ([name isEqualToString:@"castRoutes"]) {
+    [profile watchCastRoutes];
+    reply(@YES);
   } else if ([name isEqualToString:@"cast"]) {
     reply(@([tab showCastDialog]));
   } else if ([name isEqualToString:@"editable"]) {

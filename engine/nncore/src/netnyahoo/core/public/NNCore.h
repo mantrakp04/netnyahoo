@@ -78,6 +78,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)engine:(NNCoreEngine*)engine
     castDialog:(NSDictionary<NSString*, id>*)dialog
            tab:(NNCoreTab*)tab;
+// A profile's Cast routes (after -[NNCoreProfile watchCastRoutes]): now, then on every
+// change: [{id, sink, description, source}] (JS CastRoute).
+- (void)engine:(NNCoreEngine*)engine
+    castRoutes:(NSArray<NSDictionary<NSString*, NSString*>*>*)routes
+       profile:(NNCoreProfile*)profile;
 @end
 
 NNCORE_EXPORT
@@ -121,6 +126,7 @@ NNCORE_EXPORT
 + (void)startCasting:(int)dialogId sink:(NSString*)sinkId mode:(int)castMode;
 + (void)stopCasting:(int)dialogId route:(NSString*)routeId;
 + (void)closeCastDialog:(int)dialogId;
++ (void)terminateCastRoute:(NSString*)routeId;  // stop casting it
 // Device choosers (engine:deviceChooser:tab:). index: an option, or -1 for a scanning
 // prompt's OK.
 + (void)selectDevice:(int)chooserId index:(int)index;
@@ -165,6 +171,8 @@ NNCORE_EXPORT
 // id. nil on failure.
 - (nullable NSString*)loadComponentExtension:(NSString*)path;
 - (void)unloadComponentExtension:(NSString*)extensionId;
+// Reports this profile's Cast routes to engine:castRoutes:profile: (now and on change).
+- (void)watchCastRoutes;
 // chrome.management-style install of an unpacked extension (MV3 fine).
 - (void)loadUnpackedExtension:(NSString*)path
                    completion:(void (^)(NSString* _Nullable extensionId,
