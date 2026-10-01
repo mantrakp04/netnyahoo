@@ -225,6 +225,7 @@ const Shell = requireNativeModule<{
   dragPreviewPage?(base64: string, frame: Rect4): Promise<void>;
   dragPreviewUpdate?(shape: DragPreviewShape, point: [number, number]): Promise<void>;
   dragPreviewCancel?(): Promise<void>;
+  dragPreviewPlaceholder?(title: string, favicon: string | null): Promise<void>;
   windowFrame?(id: string): Promise<Rect4 | null>;
   dragPreviewEnd?(windowId: string | null, frame: Rect4 | null): Promise<void>;
   setWindowTitle(id: string, title: string): Promise<void>;
@@ -285,6 +286,8 @@ export const dragPreview = {
   /** `windowId`: the new window the tab went to; the picture grows into it. */
   end: (windowId: string | null = null, frame: Rect4 | null = null) => void Shell.dragPreviewEnd?.(windowId, frame),
   cancel: () => void Shell.dragPreviewCancel?.(),
+  /** A tab with no picture: its icon (a data: or file: URL) and title where its page would be. */
+  placeholder: (title: string, favicon: string | null) => void Shell.dragPreviewPlaceholder?.(title, favicon),
 };
 /** The window's frame now, on screen (AppKit's coordinates); null on builds without it. */
 export const windowFrame = (id: string): Promise<Rect4 | null> => Shell.windowFrame?.(id) ?? Promise.resolve(null);

@@ -436,6 +436,7 @@ final class DragPreview {
   private var sourceClosing: NSObjectProtocol?
   private var windowImage: CGImage?
   private var pageImage: (image: CGImage, frame: NSRect)?
+  private var placeholder = false
   private var cardImage: CGImage?
   private var pillImage: CGImage?
   private var pillSize = NSSize(width: 173, height: 32)
@@ -476,6 +477,42 @@ final class DragPreview {
   func setPage(_ data: Data, frame: NSRect) {
     guard source != nil, let image = NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
     pageImage = (image, frame)
+    placeholder = false
+    composeCard()
+    if shape == "card" { picture.contents = cardImage }
+  }
+
+  /// A tab never painted (asleep, not shown since launch): its icon and title where its page would be.
+  func setPlaceholder(title: String, favicon: String?) {
+    guard let window = source, pageImage == nil else { return }
+    let size = window.frame.size
+    let top: CGFloat = 42
+    let page = NSRect(x: 0, y: top, width: size.width, height: max(1, size.height - top))
+    let icon: NSImage? = favicon.flatMap { spec -> NSImage? in
+      guard let url = URL(string: spec) else { return nil }
+      if url.isFileURL { return NSImage(contentsOf: url) }
+      if url.scheme == "data", let data = try? Data(contentsOf: url) { return NSImage(data: data) }
+      return nil
+    } ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+    let image = NSImage(size: page.size, flipped: false) { rect in
+      let dark = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+      (dark ? NSColor(white: 0.12, alpha: 1) : NSColor(white: 0.97, alpha: 1)).setFill()
+      rect.fill()
+      let iconSide: CGFloat = 64
+      let label = NSAttributedString(string: title, attributes: [
+        .font: NSFont.systemFont(ofSize: 34, weight: .medium),
+        .foregroundColor: dark ? NSColor(white: 1, alpha: 0.7) : NSColor(white: 0, alpha: 0.6),
+      ])
+      let textSize = label.size()
+      let textWidth = min(textSize.width, rect.width - 80)
+      icon?.draw(in: NSRect(x: rect.midX - iconSide / 2, y: rect.midY + 12, width: iconSide, height: iconSide))
+      label.draw(with: NSRect(x: rect.midX - textWidth / 2, y: rect.midY - 12 - textSize.height, width: textWidth, height: textSize.height),
+        options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+      return true
+    }
+    guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+    pageImage = (cg, page)
+    placeholder = true
     composeCard()
     if shape == "card" { picture.contents = cardImage }
   }
@@ -566,6 +603,7 @@ final class DragPreview {
     source = nil
     windowImage = nil
     pageImage = nil
+    placeholder = false
     cardImage = nil
     pillImage = nil
   }
@@ -593,7 +631,7 @@ final class DragPreview {
     let frame = panel?.frame ?? .zero
     return [
       "shape": shape, "shapes": shapes, "visible": panel?.isVisible ?? false, "alpha": panel?.alphaValue ?? 0,
-      "frame": [frame.minX, frame.minY, frame.width, frame.height], "page": pageImage != nil,
+      "frame": [frame.minX, frame.minY, frame.width, frame.height], "page": pageImage != nil, "placeholder": placeholder,
       "key": panel?.isKeyWindow ?? false, "ignoresMouse": panel?.ignoresMouseEvents ?? false,
       "level": panel?.level.rawValue ?? 0, "activeApp": NSApp.isActive,
     ]

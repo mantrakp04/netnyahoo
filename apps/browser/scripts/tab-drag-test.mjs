@@ -36,10 +36,13 @@ const fixture = () => ({ version: 2,
     { id: "w1", profileId: "default", incognito: false, tabIds: ["p1", "p2", "t1", "t2", "t3", "t4"], activeTabIds: { default: "t1" }, sidebarOpen: true, frame: [80, 80, 1280, 800], createdAt: 1 },
     { id: "w2", profileId: "default", incognito: false, tabIds: ["l1"], activeTabIds: { default: "l1" }, sidebarOpen: true, frame: [200, 120, 1100, 700], createdAt: 2 },
     { id: "w3", profileId: "default", incognito: false, tabIds: ["g1", "g2", "x1"], activeTabIds: { default: "x1" }, sidebarOpen: true, frame: [140, 100, 1200, 760], createdAt: 3 },
+    // Side by side, the same height: a tab dragged from one onto the other's strip.
+    { id: "w5", profileId: "default", incognito: false, tabIds: ["a1", "a2"], activeTabIds: { default: "a2" }, sidebarOpen: true, frame: [100, 60, 560, 420], createdAt: 5 },
+    { id: "w6", profileId: "default", incognito: false, tabIds: ["b1", "b2", "b3"], activeTabIds: { default: "b1" }, sidebarOpen: true, frame: [700, 60, 560, 420], createdAt: 6 },
   ],
-  windowOrder: ["w1", "w2", "w3"], focusedWindowId: "w1",
+  windowOrder: ["w1", "w2", "w3", "w5", "w6"], focusedWindowId: "w1",
   tabs: [tab("p1", "w1", true), tab("p2", "w1", true), tab("t1", "w1"), tab("t2", "w1"), tab("t3", "w1"), tab("t4", "w1"), tab("l1", "w2"),
-    tab("g1", "w3"), tab("g2", "w3"), tab("x1", "w3")],
+    tab("g1", "w3"), tab("g2", "w3"), tab("x1", "w3"), tab("a1", "w5"), tab("a2", "w5"), tab("b1", "w6"), tab("b2", "w6"), tab("b3", "w6")],
   groups: [{ id: "grp", windowId: "w3", profileId: "default", name: "Group", icon: null, color: null, collapsed: false, pinned: false, tabIds: ["g1", "g2"], createdAt: 1 }], splits: [], closedTabs: [], closedWindows: [], closedGroups: [], cleanedTabs: [],
 });
 
@@ -113,6 +116,13 @@ try {
   assert.equal(strip.length, 6, `strip items ${JSON.stringify(strip)}`);
   const mid = (i) => Math.round((strip[i][0] + strip[i][1]) / 2);
 
+  // The dragged tab's picture: a native panel that never takes the mouse or activates the app.
+  const PREVIEW = `const preview = () => globalThis.expo.modules.NetnyahooShell.devDragPreviewState();`;
+  const watch = (w, path, ms) => run(`${PREVIEW}
+    const seen = [];
+    const iv = setInterval(() => preview().then((p) => seen.push(p)), 30);
+    return act("${w}", "drag:${path}").then(() => settle(${ms})).then(() => { clearInterval(iv); return seen; });`);
+
   await check("a tab dragged along the strip reorders and doesn't move the window", async () => {
     const frame = await run(`return st().windows.w1.frame;`);
     // The tab follows from where the drag started (a few points past the press), so go a little past t3's centre.
@@ -160,6 +170,49 @@ try {
     assert.deepEqual(await run(`return [st().windows.w3.tabIds, st().groups.grp.tabIds];`), [["g2", "g1", "x1"], ["g2", "g1"]]);
   });
 
+  await check("a tab dragged onto another window's tabs: the strip makes room at the pointer, and it lands there", async () => {
+    // w6 in front of the others under the pointer.
+    await run(`nn.store.setState((s) => ({ ui: { ...s.ui, focusOrder: ["w6", "w5", ...s.ui.focusOrder.filter((id) => id !== "w6" && id !== "w5")] } })); return 1;`);
+    const from = await run(`return items("w5");`);
+    const into = await run(`return items("w6");`);
+    const dx = 600; // w6's left edge in w5's coordinates
+    const a1 = Math.round((from[0][0] + from[0][1]) / 2);
+    // Between b1's and b2's middles.
+    const between = dx + Math.round((into[0][1] + into[1][1]) / 2);
+    const seen = await run(`${PREVIEW}
+      const seen = [];
+      const iv = setInterval(() => preview().then((p) => { const d = globalThis.nnTabDrag.getState(); seen.push({ shape: p.shape, insert: d.insert, over: d.overWindow }); }), 30);
+      return act("w5", "drag:${a1},21;${a1},-20;${dx - 30},-20;${between},21;${between + 2},22;${between + 3},21").then(() => settle(1400)).then(() => { clearInterval(iv); return seen; });`);
+    assert.ok(seen.some((s) => s.over === "w6" && s.insert?.windowId === "w6" && s.insert.beforeId === "b2"), JSON.stringify(seen.slice(-4)));
+    assert.ok(seen.some((s) => s.insert && s.shape === "pill"), "the pill over the strip");
+    assert.deepEqual(await order("w6"), ["b1", "a1", "b2", "b3"]);
+    assert.deepEqual(await order("w5"), ["a2"]);
+  });
+
+  await check("a background tab's card shows its own page: its last picture, else its icon and title", async () => {
+    // Down onto the page and back into the strip (nothing changes), the card sampled over the page.
+    const cardOf = async (id) => {
+      const now = await run(`return items("w1");`);
+      const i = (await order("w1")).indexOf(id);
+      const x = Math.round((now[i][0] + now[i][1]) / 2);
+      return run(`${PREVIEW}
+        const out = {};
+        act("w1", "drag:${x},21;${x},220;640,560;640,600;640,640;${x},100;${x},21");
+        setTimeout(() => preview().then((p) => (out.p = p)), 760);
+        return settle(2200).then(() => out.p);`);
+    };
+    const before = await order("w1");
+    // t4 was never shown: its icon and title.
+    const never = await cardOf("t4");
+    assert.equal(never?.shape, "card", JSON.stringify(never));
+    assert.ok(never.page && never.placeholder, `placeholder ${JSON.stringify(never)}`);
+    // t2 with a page, shown for a moment, then left: its picture from then. (A New Tab page isn't a web page.)
+    await run(`st().activate("t2"); st().navigate("t2", "data:text/html,<body style='background:%2366aaff'><h1>t2</h1>"); return settle(3200).then(() => { st().activate("t1"); return settle(600); });`);
+    const shown = await cardOf("t2");
+    assert.ok(shown?.page && !shown.placeholder, `its picture ${JSON.stringify(shown)}`);
+    assert.deepEqual(await order("w1"), before);
+  });
+
   await check("a tab pulled onto the page's right target splits with the page", async () => {
     const width = await run(`return st().windows.w1.frame[2];`);
     const now = await run(`return items("w1");`);
@@ -176,13 +229,6 @@ try {
     assert.equal(splits.length, 1);
     assert.equal(splits[0].at(-1), "t3", `split ${JSON.stringify(splits)}`);
   });
-
-  // The dragged tab's picture: a native panel that never takes the mouse or activates the app.
-  const PREVIEW = `const preview = () => globalThis.expo.modules.NetnyahooShell.devDragPreviewState();`;
-  const watch = (w, path, ms) => run(`${PREVIEW}
-    const seen = [];
-    const iv = setInterval(() => preview().then((p) => seen.push(p)), 30);
-    return act("${w}", "drag:${path}").then(() => settle(${ms})).then(() => { clearInterval(iv); return seen; });`);
 
   await check("a tab let go over the page away from a target opens in a window of its own, as in Dia", async () => {
     const now = await run(`return items("w1");`);

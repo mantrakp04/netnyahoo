@@ -769,22 +769,17 @@ NSString *const kExitPictureInPictureScript =
   NSRect inWindow = [self convertRect:self.bounds toView:nil];
   CGFloat top = NSHeight(window.contentView.frame);
   NSArray *frame = @[ @(NSMinX(inWindow)), @(top - NSMaxY(inWindow)), @(NSWidth(inWindow)), @(NSHeight(inWindow)) ];
-  // Answered once: by the engine, or empty after a second (a hung or unpainted page).
-  __block void (^once)(NSDictionary *) = [completion copy];
-  void (^finish)(NSDictionary *) = ^(NSDictionary *picture) {
-    if (!once) return;
-    auto done = once;
-    once = nil;
-    done(picture);
-  };
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ finish(nil); });
   // The viewport as painted, in the view's own pixels (no clip: a clip's units change with the page's zoom).
-  // `scale` sets the JPEG's quality budget; the picture is drawn small anyway.
+  // `scale` sets the JPEG's quality budget; the picture is drawn small anyway. Empty after a second (a hung or
+  // unpainted page), and the call is forgotten then.
   NSDictionary *params = @{@"format" : @"jpeg", @"quality" : @(scale < 0.5 ? 55 : 75), @"optimizeForSpeed" : @YES};
-  DevToolsCall(_browser, @"Page.captureScreenshot", params, ^(NSDictionary *shot) {
-    NSString *data = shot[@"data"];
-    finish([data isKindOfClass:NSString.class] ? @{@"data" : data, @"frame" : frame} : nil);
-  });
+  DevToolsCall(
+      _browser, @"Page.captureScreenshot", params,
+      ^(NSDictionary *shot) {
+        NSString *data = shot[@"data"];
+        completion([data isKindOfClass:NSString.class] ? @{@"data" : data, @"frame" : frame} : nil);
+      },
+      1.0);
 }
 
 - (void)navigationEntries:(void (^)(NSArray<NSDictionary<NSString *, id> *> *))completion {

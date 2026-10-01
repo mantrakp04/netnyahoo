@@ -99,8 +99,9 @@ void MakeWindowInert(NSWindow *window);
 
 void CallPage(CefRefPtr<CefFrame> frame, NSString *kind, id payload);
 
+// `timeout` (seconds, 0: none): answered with nil then, and a later reply is dropped.
 void DevToolsCall(CefRefPtr<CefBrowser> browser, NSString *method, NSDictionary *params,
-                  void (^completion)(NSDictionary *result));
+                  void (^completion)(NSDictionary *result), double timeout = 0);
 void DevToolsForget(int browserId);
 void EvaluateWithGesture(CefRefPtr<CefBrowser> browser, NSString *expression,
                          void (^completion)(id value));

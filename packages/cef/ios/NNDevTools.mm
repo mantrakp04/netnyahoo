@@ -261,7 +261,7 @@ CefRefPtr<CefClient> DevToolsFrontendClient(CefRefPtr<CefBrowser> inspected) {
 }
 
 void DevToolsCall(CefRefPtr<CefBrowser> browser, NSString *method, NSDictionary *params,
-                  void (^completion)(NSDictionary *result)) {
+                  void (^completion)(NSDictionary *result), double timeout) {
   if (!browser) {
     if (completion) completion(nil);
     return;
@@ -279,6 +279,14 @@ void DevToolsCall(CefRefPtr<CefBrowser> browser, NSString *method, NSDictionary 
     return;
   }
   gCalls[{bid, id}] = completion ? (void (^)(NSDictionary *))[completion copy] : ^(NSDictionary *) {};
+  if (timeout <= 0) return;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timeout * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    auto it = gCalls.find({bid, id});
+    if (it == gCalls.end()) return;
+    auto late = it->second;
+    gCalls.erase(it);
+    late(nil);
+  });
 }
 
 void EvaluateWithGesture(CefRefPtr<CefBrowser> browser, NSString *expression, void (^completion)(id value)) {

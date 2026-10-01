@@ -650,10 +650,11 @@ right split"; the numbers are from the pixels.
   sizes; the dashes are React Native's (3 × the width: 2 pt → 6 / 6, 2.33 pt → 7 / 7). The picture is a borderless,
   non-activating panel that takes no mouse: the tab's own strip look as the pill (30 ms, then 60 ms into the card),
   then a 209 × 110 card of the window with the page painted in (the engine's `Page.captureScreenshot` of the page
-  shown, at 0.35×), on the page and outside the window alike; over another window, the pill. Let go away from a
-  target or a tab list, the card grows into the new window in 0.2 s, then fades in 0.1 s. Not matched: the other
-  window's strip making room for the pill (it lights up instead, and the tab lands at its end); a background tab's
-  card shows the window's page, not the tab's own.
+  shown, at 0.35×), on the page and outside the window alike; over another window's tab strip, the pill, and that strip opens a
+  tab-wide gap at the pointer (0.12 s) where the tab lands. Let go away from a target or a tab list, the card grows
+  into the new window in 0.2 s, then fades in 0.1 s. A background tab's card shows its own page: its last picture
+  (taken 1.5 s after it was shown or went to another page; memory only, not in private windows), else its icon
+  and title.
 - **In the strip** (both layouts): an item takes its neighbour's place once its leading edge passes the neighbour's
   centre, so a wide group passes a narrow tab. Not in the recordings, matched to Dia's behaviour: a group moves
   by its chip; a tab dragged into the pinned tabs (its leading edge past the last one's middle) is pinned there, and a

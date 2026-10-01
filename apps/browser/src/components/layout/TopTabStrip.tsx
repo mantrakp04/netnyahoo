@@ -36,7 +36,7 @@ import {
   type DragGeometry,
   type DragSlot,
 } from "./stripGroups";
-import { beginTabDrag, cancelTabDrag, endTabDrag, setDragPicture, updateTabDrag, useTabDrag } from "./tabDrag";
+import { beginTabDrag, cancelTabDrag, endTabDrag, setDragPicture, setInsert, setInsertResolver, updateTabDrag, useTabDrag } from "./tabDrag";
 import { toolbarPalette, useEasedColor, type ToolbarPalette } from "./toolbarColors";
 
 // Dia's top strip, from a 2x capture of 1.50.1: the card starts 42 below the window top, and everything in the
@@ -156,6 +156,70 @@ function StripDropHighlight({ left, right }: { left: number; right: number }) {
   );
 }
 
+// A tab dragged from another window over this one's tabs: the strip makes room for it where the pointer is, as
+// Dia's does, and the tab lands there (tabDrag.ts › insert). `origin`: the first gap, where the tabs start.
+function useIncomingTab(windowId: string, current: boolean, top: DragGeometry) {
+  const active = useTabDrag((d) => current && d.tabIds.length > 0 && d.windowId !== windowId);
+  const point = useTabDrag((d) => (current && d.overWindow === windowId ? d.overPoint : null));
+  const origin = useRef<View>(null);
+  const [start, setStart] = useState<number | null>(null);
+  // Where the tabs start, measured again as the pointer moves (the strip may scroll).
+  useEffect(() => {
+    if (!point) return setStart(null);
+    origin.current?.measureInWindow((x) => setStart((old) => (old === x ? old : x)));
+  }, [point?.[0], point?.[1]]);
+  const index = incomingIndex(top, point, start);
+  const beforeId = index === null ? undefined : (top.slots[index]?.tabIds[0] ?? null);
+  useEffect(() => setInsert(windowId, beforeId), [beforeId, windowId]);
+  // The drop asks again at the pointer where it ended.
+  const latest = useRef({ top, start });
+  latest.current = { top, start };
+  useEffect(() => {
+    if (!current) return;
+    setInsertResolver(windowId, (p) => {
+      const i = incomingIndex(latest.current.top, p, latest.current.start);
+      return i === null ? undefined : (latest.current.top.slots[i]?.tabIds[0] ?? null);
+    });
+    return () => {
+      setInsertResolver(windowId, null);
+      setInsert(windowId, undefined);
+    };
+  }, [windowId, current]);
+  return { active, at: index, origin };
+}
+
+// Over the strip (with a little slack below it), at the slot whose centre the pointer passed; never among a
+// pinned group's tabs or before them (a dropped tab isn't pinned).
+function incomingIndex(top: DragGeometry, point: [number, number] | null, start: number | null): number | null {
+  if (!point || start === null || point[1] > TOP_STRIP_HEIGHT + 24) return null;
+  const x = point[0] - start;
+  let index = top.slots.filter((slot, i) => top.lefts[i]! + slot.width / 2 < x).length;
+  const groups = useBrowser.getState().groups;
+  const pinnedGroup = (id: string | undefined) => !!id && Object.values(groups).some((g) => g.pinned && g.tabIds.includes(id));
+  while (index < top.slots.length && pinnedGroup(top.slots[index]!.tabIds[0])) index++;
+  return index;
+}
+
+// The room an incoming tab gets: none (and no row gap) until the pointer is there, then a tab's width.
+function IncomingGap({ open, width, origin }: { open: boolean; width: number; origin?: React.RefObject<View | null> }) {
+  const room = useRef(new Animated.Value(open ? 1 : 0)).current;
+  useEffect(() => {
+    // JS driver: width and margin are layout. Dia: ~0.05 s.
+    Animated.timing(room, { toValue: open ? 1 : 0, duration: 120, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+  }, [open]);
+  return (
+    <Animated.View
+      ref={origin}
+      pointerEvents="none"
+      style={{
+        height: TOP_STRIP_HEIGHT,
+        width: room.interpolate({ inputRange: [0, 1], outputRange: [0, width] }),
+        marginRight: room.interpolate({ inputRange: [0, 1], outputRange: [-GAP, 0] }),
+      }}
+    />
+  );
+}
+
 function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId: string; slot: number; pageWidth: number; current: boolean; resting: boolean }) {
   const windowId = useWindowId();
   const flare = useContext(FloatingStrip) ? 0 : FLARE;
@@ -197,6 +261,9 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
     () => ({ top, dock: dockIds.length ? { ids: dockIds, left: -(dockWidth(dockIds.length) + DOCK_GAP) } : null }),
     [top, dockIds.join()],
   );
+  const incoming = useIncomingTab(windowId, current, top);
+  let slotIndex = 0;
+  const gap = (i: number) => (incoming.active ? <IncomingGap key={`gap${i}`} open={incoming.at === i} width={chip} origin={i === 0 ? incoming.origin : undefined} /> : null);
 
   return (
     <Animated.View
@@ -214,8 +281,10 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
             >
               {parsed.map((e) => {
                 if (e.kind === "dock") return <PinnedDock key="dock" tabIds={e.ids} />;
+                const before = gap(slotIndex++);
                 if (e.kind === "group")
-                  return (
+                  return [
+                    before,
                     <StripGroup
                       key={e.id}
                       entry={e}
@@ -225,11 +294,13 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
                       activeId={activeId}
                       chipWidth={chipOf(e.id)}
                       onChipWidth={(width) => setChipWidths((all) => (all[e.id] === width ? all : { ...all, [e.id]: width }))}
-                    />
-                  );
-                if (e.kind === "split") return <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} geometry={top} from={slotOf(e.tabIds[0]!)} group={null} />;
-                return <DraggableChip key={e.id} tabId={e.id} width={chip} geometry={top} from={slotOf(e.id)} group={null} />;
+                    />,
+                  ];
+                if (e.kind === "split")
+                  return [before, <SplitChip key={e.id} tabIds={e.tabIds} width={chip * Math.min(e.tabIds.length, 2)} geometry={top} from={slotOf(e.tabIds[0]!)} group={null} />];
+                return [before, <DraggableChip key={e.id} tabId={e.id} width={chip} geometry={top} from={slotOf(e.id)} group={null} />];
               })}
+              {gap(top.slots.length)}
               <NewTabButton windowId={windowId} />
             </ScrollView>
           </DockContext.Provider>

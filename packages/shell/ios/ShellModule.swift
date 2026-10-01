@@ -211,6 +211,9 @@ public class ShellModule: Module {
       DragPreview.shared.update(shape: shape, at: NSPoint(x: point[0], y: point[1]))
     }.runOnQueue(.main)
     AsyncFunction("dragPreviewCancel") { DragPreview.shared.cancel() }.runOnQueue(.main)
+    AsyncFunction("dragPreviewPlaceholder") { (title: String, favicon: String?) in
+      DragPreview.shared.setPlaceholder(title: title, favicon: favicon)
+    }.runOnQueue(.main)
     // The window's frame now, on screen in AppKit's coordinates (the store's stays the restored one in full screen).
     AsyncFunction("windowFrame") { (id: String) -> [Double]? in
       guard let f = WindowManager.shared.windows[id]?.frame else { return nil }
