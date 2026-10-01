@@ -1168,6 +1168,79 @@ try {
     return { id: installed.id, name: inspected.name, listed: list.extensions.length, engines: !!engines.list };
   });
 
+  await check("extension-configure", async () => {
+    // What the app's Extensions settings pass to configure (pinned, incognito, siteAccess; fileAccess as CEF's API
+    // takes it) lands in Chrome: list reads each back, onChanged says "configured", and site access "on click"
+    // stops the extension's content script on a fresh page until "on all sites" lets it run again.
+    const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
+    if (installed?.error) throw new Error(installed.error);
+    const id = installed.id;
+    const info = async () => (await exts(`list("")`)).extensions?.find((e) => e.id === id) ?? null;
+    const configure = async (options) => {
+      const r = await exts(`configure("${id}", "", ${JSON.stringify(options)})`);
+      if (r?.error) throw new Error(`configure ${JSON.stringify(options)}: ${r.error}`);
+    };
+    // The content script's mark on a freshly loaded page (it runs at document_idle), or null after a grace period.
+    const scriptRan = async (tag) => {
+      const tab = await openTab(`${base}/e?cfg-${tag}`, "Page E");
+      try {
+        const t = await pageFor(tab.id, `/e?cfg-${tag}`);
+        const deadline = Date.now() + 2500;
+        while (Date.now() < deadline) {
+          const r = await cdp(t, "Runtime.evaluate", { expression: "document.documentElement.dataset.nnext ?? null", returnByValue: true });
+          if (r.result.value) return r.result.value;
+          await sleep(200);
+        }
+        return null;
+      } finally {
+        await closeTab(tab.id);
+      }
+    };
+    await evalApp(`globalThis.__nnCfg = []; globalThis.__nnCfgSub?.remove();
+      globalThis.__nnCfgSub = globalThis.expo.modules.NetnyahooExtensions.addListener("onChanged", (e) => globalThis.__nnCfg.push(e)); return true`);
+    try {
+      const before = await until("the extension listed", info);
+      if (!before.siteAccess) throw new Error("the fixture has no site access to change");
+      if (!(await scriptRan("before"))) throw new Error("the content script didn't run before any change");
+      const set = { pinned: !before.pinned, incognito: !before.incognito, fileAccess: !before.fileAccess };
+      for (const [key, value] of Object.entries(set)) {
+        await configure({ [key]: value });
+        await until(`${key} = ${value}`, async () => (await info())?.[key] === value);
+      }
+      await configure({ siteAccess: "onClick" });
+      const onClick = await until("site access on click", async () => {
+        const e = await info();
+        return e?.siteAccess === "ON_CLICK" ? e : null;
+      });
+      const ranOnClick = await scriptRan("onclick");
+      if (ranOnClick) throw new Error(`the content script ran with site access on click (${ranOnClick})`);
+      await configure({ siteAccess: "allSites" });
+      const allSites = await until("site access on all sites", async () => {
+        const e = await info();
+        return e?.siteAccess === "ON_ALL_SITES" ? e : null;
+      });
+      const ranAgain = await scriptRan("allsites");
+      if (!ranAgain) throw new Error("the content script didn't run again on all sites");
+      const configured = await until("onChanged configured", async () => {
+        const list = await evalApp(`return globalThis.__nnCfg`);
+        const mine = list.filter((x) => x.event === "configured" && x.id === id);
+        return mine.length >= 5 ? mine : null;
+      }, 10000).catch(async (e) => { throw new Error(`${e.message}; got ${JSON.stringify(await evalApp(`return globalThis.__nnCfg`)).slice(0, 300)}`); });
+      // Back as it was (pinning and incognito are profile prefs that would outlive an uninstall-free run).
+      await configure({ pinned: before.pinned, incognito: before.incognito, fileAccess: before.fileAccess });
+      return {
+        set,
+        siteAccess: [before.siteAccess, onClick.siteAccess, allSites.siteAccess],
+        contentScript: { onClick: ranOnClick, allSites: ranAgain },
+        configuredEvents: configured.length,
+      };
+    } finally {
+      await evalApp(`globalThis.__nnCfgSub?.remove(); return true`).catch(() => null);
+      await exts(`uninstall("${id}", "")`).catch(() => null);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`).catch(() => null);
+    }
+  });
+
   await check("chrome-windows-create", async () => {
     // A window an extension makes (chrome.windows.create): its tab lands in the app's window, live (tab:<id>).
     const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
