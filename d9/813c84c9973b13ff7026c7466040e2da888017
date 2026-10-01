@@ -1,0 +1,52 @@
+engine/chromium/src/chrome/browser/netnyahoo/nn_reauth.cc
+  s_9c356f9574d31c::t_aa496d9b83c1c1 1-111
+engine/chromium/src/chrome/browser/netnyahoo/nn_autofill.h
+  s_9c356f9574d31c::t_d44c8f8c34f58d 1-35
+engine/chromium/src/chrome/browser/netnyahoo/nn_extensions.cc
+  s_9c356f9574d31c::t_de98e7b0233a98 1-444
+engine/chromium/src/chrome/browser/netnyahoo/BUILD.gn
+  s_9c356f9574d31c::t_321066d3961754 16-19,22-31,44,46-50,53-54,58-66,68-69,72-73
+engine/chromium/src/chrome/browser/netnyahoo/nn_autofill.cc
+  s_9c356f9574d31c::t_a42af803b2ec6a 1-19,21-29,32-408,411-413,416-418,421,449,451-452
+  s_9c356f9574d31c::t_d44c8f8c34f58d 20,30-31,409-410,414-415,419-420,422-448,450
+engine/chromium/src/chrome/browser/netnyahoo/nn_passwords.cc
+  s_9c356f9574d31c::t_b3d9e5b10572a3 1-578
+engine/chromium/src/chrome/browser/netnyahoo/nn_reauth.h
+  s_9c356f9574d31c::t_aa496d9b83c1c1 1-39
+engine/chromium/src/chrome/browser/netnyahoo/nn_browsing_data.cc
+  s_9c356f9574d31c::t_6a3a44c0845b22 1-47
+engine/chromium/src/chrome/browser/netnyahoo/nn_browsing_data.h
+  s_9c356f9574d31c::t_a04efa29189118 1-17
+engine/chromium/src/chrome/browser/netnyahoo/nn_engine.cc
+  s_9c356f9574d31c::t_4804f7f44082d4 5-7,110-120,127-143
+engine/chromium/src/chrome/browser/netnyahoo/nn_engine.h
+  s_9c356f9574d31c::t_7681a7b858c406 9,13-15,18-19,78,81-115
+engine/chromium/src/chrome/browser/netnyahoo/nn_extensions.h
+  s_9c356f9574d31c::t_9aa67747402910 1-41
+engine/chromium/src/chrome/browser/netnyahoo/nn_passwords.h
+  s_9c356f9574d31c::t_a26196bd469676 1-46
+engine/chromium/src/chrome/browser/netnyahoo/nn_search_engines.cc
+  s_9c356f9574d31c::t_7519d97c2c47eb 1-98
+engine/chromium/src/chrome/browser/netnyahoo/nn_search_engines.h
+  s_9c356f9574d31c::t_e158ff5cb63a90 1-18
+engine/chromium/src/chrome/browser/netnyahoo/nn_zoom.cc
+  s_9c356f9574d31c::t_1ab46d0821ec40 1-81
+engine/chromium/src/chrome/browser/netnyahoo/nn_zoom.h
+  s_9c356f9574d31c::t_fbcb3799a1d1d0 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d9813c84c9973b13ff7026c7466040e2da888017",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
