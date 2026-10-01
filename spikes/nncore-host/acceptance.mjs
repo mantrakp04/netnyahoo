@@ -118,6 +118,10 @@ async function go() {
       );
     case "/frame":
       return send(page("Frame", "frame"));
+    case "/blocky":
+      // Five requests the test extension's declarativeNetRequest rule blocks ("nnblock-").
+      return send(page("Blocky", `<img src="/nnblock-1.png"><script src="/nnblock-2.js"></script>` +
+        `<iframe src="/nnblock-3.html"></iframe><script>for (let i = 4; i <= 5; i++) fetch('/nnblock-' + i).catch(() => {});</script>`));
     case "/unload":
       return send(
         page(
@@ -399,7 +403,10 @@ try {
 
   // ---------------------------------------------------------------------------------------
   // 7. Extensions: unpacked MV3, content script, action popup
-  const ext = await cmd("ext.load", { profile: "A", path: path.join(here, "fixtures/ext") }, 30000);
+  // (A copy: Chrome writes the declarativeNetRequest ruleset's index into the extension's _metadata.)
+  const extDir = path.join(workDir, "ext");
+  fs.cpSync(path.join(here, "fixtures/ext"), extDir, { recursive: true });
+  const ext = await cmd("ext.load", { profile: "A", path: extDir }, 30000);
   check(7, "unpacked MV3 extension installs", ext && ext.id && !ext.error, ext);
   await cmd("nav", { tabId: indexId, action: "reload" });
   await sleep(500);
@@ -855,6 +862,17 @@ try {
     const destroyed = await waitFor(async () => (await cmd("profileState", { profile: "C" })).destroyed, 10000);
     const delDefault = await cmd("deleteProfile", { profile: "A" });
     check("S18", "deleteProfile: a non-default profile goes (its wrapper reports destroyed); the default one is refused", p3 && del.deleted && destroyed && delDefault.deleted === false, { p3, del, destroyed, delDefault });
+    // The last-used profile (shown in the window) can go too: Chrome makes another last-used.
+    const lastUsed = () => { try { return JSON.parse(fs.readFileSync(path.join(hostDir, "data", "Local State"), "utf8")).profile?.last_used; } catch { return null; } };
+    const p4 = await cmd("loadProfile", { name: "Profile 4", as: "D" });
+    const dt = await cmd("open", { url: `${base}/target?from=lastused`, profile: "D" });
+    await cmd("show", { tabId: dt?.tabId });
+    const wasLast = await waitFor(() => lastUsed() === "Profile 4", 15000, 500);
+    const delLast = await cmd("deleteProfile", { profile: "D" });
+    const goneLast = await waitFor(async () => (await cmd("profileState", { profile: "D" })).destroyed, 10000);
+    const nowLast = await waitFor(() => { const v = lastUsed(); return v && v !== "Profile 4" ? v : null; }, 15000, 500);
+    await cmd("show", { tabId: indexId });
+    check("S18", "deleteProfile: the last-used profile (shown in the window) goes; Chrome makes another one last-used", p4 && wasLast && delLast.deleted && goneLast && nowLast && (await state()).activeProfile, { p4, wasLast, delLast, goneLast, nowLast });
   }
   // S19 (D, E, F, I): tracing, tab capture id, activation requests, autofill on demand.
   {
@@ -932,6 +950,19 @@ try {
     await cmd("nav", { tabId: src.tabId, action: "closeNow" });
     await cmd("nav", { tabId: ut.tabId, action: "closeNow" });
     if (dup) await cmd("nav", { tabId: dup.tabId, action: "closeNow" });
+  }
+  // S24: requests the content blocker (an extension's declarativeNetRequest) stopped.
+  {
+    const bt = await cmd("open", { url: `${base}/blocky`, profile: "A" });
+    const sum = () => evs("blocked", (e) => e.tabId === bt.tabId).reduce((n, e) => n + e.count, 0);
+    await waitFor(() => sum() >= 5, 8000);
+    await sleep(500);
+    const sub = evs("blocked", (e) => e.tabId === bt.tabId);
+    const subTotal = sum();
+    await cmd("nav", { tabId: bt.tabId, action: "load", url: `${base}/nnblock-main` });
+    const main = await waitFor(() => evs("blocked", (e) => e.tabId === bt.tabId && e.url.endsWith("/nnblock-main"))[0], 8000);
+    check("S24", "tab:didBlockRequests:lastURL: — subresources, a subframe (5, batched per turn) and a cancelled main-frame navigation", subTotal === 5 && sub.every((e) => e.count >= 1 && /\/nnblock-[1-5](\.|$)/.test(e.url)) && main && main.count === 1, { subTotal, reports: sub.map((e) => [e.count, e.url.replace(base, "")]), main: main && [main.count, main.url.replace(base, "")] });
+    await cmd("nav", { tabId: bt.tabId, action: "closeNow" });
   }
   // S23 (E): tab capture: "Share this tab instead" and Stop sharing.
   {

@@ -140,7 +140,8 @@ NNCORE_EXPORT
 @property(class, readonly) BOOL isTracing;
 // Deletes a profile as Chrome's profile settings do (its Browsers close, its directory goes).
 // YES: scheduled (a page's beforeunload can still keep its window, and the profile, open).
-// NO for the default profile or an incognito one.
+// NO for the user-data-dir's initial profile ("Default") or an incognito one. The last-used
+// profile may go: Chrome makes another one last-used first.
 - (void)deleteProfile:(NNCoreProfile*)profile
            completion:(nullable void (^)(BOOL deleted))completion;
 // An incognito profile is destroyed (its data with it) if no window shows it any more; a
@@ -345,6 +346,10 @@ NNCORE_EXPORT
 // Chrome asks to bring this tab forward: "pictureInPicture" (the PiP window's back-to-tab),
 // "page" (window.focus()). Without this, Chrome activates it in its strip.
 - (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason;
+// The content blocker (an extension's declarativeNetRequest, net error ERR_BLOCKED_BY_CLIENT)
+// stopped requests of the page: subresources, frames and main-frame navigations. `count` is
+// the number since the last report (at most one per main-loop turn); `url` the last one's.
+- (void)tab:(NNCoreTab*)tab didBlockRequests:(int)count lastURL:(NSString*)url;
 // The page's context menu is Chrome's own; the host adds items for a selection
 // ([{id, title, replaces?}], placed after Copy; not on editable fields) and runs them.
 // replaces "search": in place of Chrome's own "Search <engine> for …" item(s).

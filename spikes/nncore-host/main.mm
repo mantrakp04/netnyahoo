@@ -641,6 +641,9 @@ static void Log(NSDictionary* event) {
 - (void)tab:(NNCoreTab*)tab requestsActivation:(NSString*)reason {
   Log(@{@"event" : @"activationRequest", @"tabId" : @(tab.tabId), @"reason" : reason});
 }
+- (void)tab:(NNCoreTab*)tab didBlockRequests:(int)count lastURL:(NSString*)url {
+  Log(@{@"event" : @"blocked", @"tabId" : @(tab.tabId), @"count" : @(count), @"url" : url});
+}
 - (void)tab:(NNCoreTab*)tab navigationBecameDownload:(NSString*)url {
   Log(@{@"event" : @"downloadNavigation", @"tabId" : @(tab.tabId), @"url" : url});
 }

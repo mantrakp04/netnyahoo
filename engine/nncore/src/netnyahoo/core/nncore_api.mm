@@ -788,9 +788,13 @@ static bool g_tracing = false;
 - (void)deleteProfile:(NNCoreProfile*)profile completion:(void (^)(BOOL deleted))completion {
   Profile* chrome_profile = profile.chromeProfile;
   ProfileManager* manager = g_browser_process->profile_manager();
-  if (!chrome_profile || chrome_profile->IsOffTheRecord() ||
-      chrome_profile == ProfileManager::GetLastUsedProfileIfLoaded()) {
-    // Not the default profile (or an incognito one): those aren't deleted this way.
+  // Not the user-data-dir's initial profile ("Default"), nor an incognito, guest or system
+  // one: those aren't deleted this way. The last-used profile may be: Chrome's deletion
+  // makes another one last-used first (a window's, else any other, else a new one), as its
+  // profile picker does.
+  if (!chrome_profile || !chrome_profile->IsRegularProfile() ||
+      chrome_profile->GetPath() ==
+          manager->user_data_dir().Append(ProfileManager::GetInitialProfileDir())) {
     if (completion) {
       completion(NO);
     }

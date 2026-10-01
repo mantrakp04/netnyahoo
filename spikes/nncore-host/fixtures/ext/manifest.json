@@ -24,12 +24,22 @@
   "permissions": [
     "tabs",
     "sidePanel",
-    "sessions"
+    "sessions",
+    "declarativeNetRequest"
   ],
   "side_panel": {
     "default_path": "panel.html"
   },
   "optional_permissions": [
     "bookmarks"
-  ]
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "nnblock",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
 }

@@ -31,6 +31,9 @@
 #include "content/public/browser/web_contents.h"
 #include "chrome/browser/tab_list/tab_removed_reason.h"
 #include "net/base/net_errors.h"
+#include "content/public/browser/render_frame_host.h"
+#include "third_party/blink/public/common/loader/resource_type_util.h"
+#include "third_party/blink/public/mojom/loader/resource_load_info.mojom.h"
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
 #include "netnyahoo/core/nn_autofill_trigger.h"
@@ -1222,10 +1225,62 @@ void TabBridge::LoadProgressChanged(double progress) {
   [tab_ notify:@selector(tabDidChangeProgress:)];
 }
 
+namespace {
+
+// A frame of the page the tab shows (not a prerendered or cached one).
+bool InPrimaryPage(content::RenderFrameHost* rfh) {
+  return rfh && rfh->GetOutermostMainFrame()->IsInPrimaryMainFrame();
+}
+
+}  // namespace
+
+void TabBridge::ResourceLoadComplete(
+    content::RenderFrameHost* render_frame_host,
+    const content::GlobalRequestID& request_id,
+    const GURL& original_url,
+    const blink::mojom::ResourceLoadInfo& resource_load_info) {
+  // Frame loads are navigations: DidFinishNavigation counts those.
+  if (resource_load_info.net_error != net::ERR_BLOCKED_BY_CLIENT ||
+      blink::IsRequestDestinationFrame(resource_load_info.request_destination) ||
+      !InPrimaryPage(render_frame_host)) {
+    return;
+  }
+  NoteBlocked(original_url);
+}
+
+void TabBridge::NoteBlocked(const GURL& url) {
+  blocked_last_url_ = url;
+  if (blocked_pending_++ == 0) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(&TabBridge::ReportBlocked, weak_factory_.GetWeakPtr()));
+  }
+}
+
+void TabBridge::ReportBlocked() {
+  const int count = blocked_pending_;
+  NSString* url = base::SysUTF8ToNSString(blocked_last_url_.spec());
+  blocked_pending_ = 0;
+  blocked_last_url_ = GURL();
+  NNCoreTab* tab = tab_;
+  id<NNCoreTabDelegate> delegate = tab.delegate;
+  if (count > 0 &&
+      [delegate respondsToSelector:@selector(tab:didBlockRequests:lastURL:)]) {
+    [delegate tab:tab didBlockRequests:count lastURL:url];
+  }
+}
+
 void TabBridge::DidFinishNavigation(content::NavigationHandle* handle) {
   EnsureFaviconObserved();
   EnsureZoomObserved();
   base::WeakPtr<TabBridge> alive = weak_factory_.GetWeakPtr();
+  // A navigation the content blocker cancelled (main frame or subframe).
+  if (handle->GetNetErrorCode() == net::ERR_BLOCKED_BY_CLIENT &&
+      (handle->IsInMainFrame()
+           ? handle->IsInPrimaryMainFrame()
+           : InPrimaryPage(handle->GetParentFrameOrOuterDocument()))) {
+    NoteBlocked(handle->GetURL());
+  }
   if (handle->IsInPrimaryMainFrame() && handle->IsDownload()) {
     // The page stays; Chrome downloads the response instead (CEF's downloadNavigation).
     NNCoreTab* tab = tab_;

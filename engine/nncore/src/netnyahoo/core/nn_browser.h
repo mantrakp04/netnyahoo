@@ -348,6 +348,12 @@ class TabBridge : public content::WebContentsObserver,
   void DidChangeVisibleSecurityState() override;
   void WasDiscarded() override;
   void DidStartNavigation(content::NavigationHandle* handle) override;
+  // Requests the content blocker stopped (ERR_BLOCKED_BY_CLIENT): batched per turn.
+  void ResourceLoadComplete(
+      content::RenderFrameHost* render_frame_host,
+      const content::GlobalRequestID& request_id,
+      const GURL& original_url,
+      const blink::mojom::ResourceLoadInfo& resource_load_info) override;
   void OnPageScaleFactorChanged(float page_scale_factor) override;
   void OnVisibilityChanged(content::Visibility visibility) override;
 
@@ -402,6 +408,11 @@ class TabBridge : public content::WebContentsObserver,
   base::WeakPtrFactory<TabBridge> weak_factory_{this};
   float pinch_scale_ = 1;
   bool closed_by_host_ = false;
+  // Blocked requests since the last tab:didBlockRequests:lastURL: (sent next turn).
+  void NoteBlocked(const GURL& url);
+  void ReportBlocked();
+  int blocked_pending_ = 0;
+  GURL blocked_last_url_;
   bool will_close_reported_ = false;
   std::optional<WindowOpenDisposition> open_disposition_;
   base::WeakPtr<content::WebContents> open_source_;
