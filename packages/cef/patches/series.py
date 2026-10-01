@@ -78,6 +78,7 @@ def layer_paths(layer):
     m = re.search(r"^owned=\(([^)]*)\)", script, re.M)
     dirs = m.group(1).split() if m else []
     for path in re.findall(r'"\$src/([A-Za-z0-9_./-]+)"', script):
+        path = path.rstrip("/")  # "$src/netnyahoo/" (an rsync target) is the directory "netnyahoo"
         if os.path.isdir(os.path.join(layer, "src", path)):
             dirs.append(path)
         else:
