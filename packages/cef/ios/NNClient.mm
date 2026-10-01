@@ -1270,15 +1270,17 @@ void Client::ChromeTabContextMenu(CefRefPtr<CefFrame> frame, CefRefPtr<CefContex
   if (!params->GetSelectionText().empty()) {
     NSString *label = [NSString stringWithFormat:@"Search %@ for “%@”", gSearchEngineName,
                                                  SelectionLabel(ToNS(params->GetSelectionText()))];
+    // Chrome's own menu has Copy as IDC_CONTENT_CONTEXT_COPY (CEF's MENU_ID_COPY is the Alloy menu's).
+    int copy = model->GetIndexOf(IDC_CONTENT_CONTEXT_COPY);
+    if (copy < 0) copy = model->GetIndexOf(MENU_ID_COPY);
     if (model->GetIndexOf(IDC_CONTENT_CONTEXT_SEARCHWEBFOR) >= 0) {
       model->SetLabel(IDC_CONTENT_CONTEXT_SEARCHWEBFOR, ToCef(label));
     } else if (model->GetIndexOf(IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB) >= 0) {
       model->SetLabel(IDC_CONTENT_CONTEXT_SEARCHWEBFORNEWTAB, ToCef(label));
-    } else if (!params->IsEditable() && model->GetIndexOf(MENU_ID_COPY) >= 0) {
-      model->InsertItemAt(model->GetIndexOf(MENU_ID_COPY) + 1, kSearchSelection, ToCef(label));
+    } else if (!params->IsEditable() && copy >= 0) {
+      model->InsertItemAt(copy + 1, kSearchSelection, ToCef(label));
     }
-    if (kChatEnabled && !params->IsEditable() && model->GetIndexOf(MENU_ID_COPY) >= 0)
-      model->InsertItemAt(model->GetIndexOf(MENU_ID_COPY) + 1, kAskSelection, "Ask About Selection");
+    if (kChatEnabled && !params->IsEditable() && copy >= 0) model->InsertItemAt(copy + 1, kAskSelection, "Ask About Selection");
   }
   TidySeparators(model);
 }
