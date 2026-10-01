@@ -2,6 +2,11 @@
 // the class swizzles go in before ChromeMain (NSApp doesn't exist yet), the activation policy once Chrome made NSApp.
 #import "NNCoreInternal.h"
 
+#include <execinfo.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <unistd.h>
+
 #import <objc/runtime.h>
 
 #include <initializer_list>
@@ -238,6 +243,57 @@ void InstallActivationGuardsEarly() {
     if ([delegate respondsToSelector:@selector(menuDidClose:)]) [delegate menuDidClose:menu];
   }));
   InterceptFilePanels();
+}
+
+namespace {
+
+char gCrashDir[1024];
+
+void WriteAll(int fd, const char *text) {
+  for (size_t left = strlen(text); left > 0;) {
+    const ssize_t n = write(fd, text, left);
+    if (n <= 0) return;
+    text += n;
+    left -= (size_t)n;
+  }
+}
+
+// Async-signal-safe enough for a dying test instance: a record, then a plain exit, so the kernel never makes a crash
+// report of it (no ReportCrash, no dialog, no focus change).
+void OnFatalSignal(int sig) {
+  char path[1200], number[32];
+  int len = snprintf(path, sizeof(path), "%s/crash-%d.txt", gCrashDir, getpid());
+  const int fd = len > 0 ? open(path, O_WRONLY | O_CREAT | O_APPEND, 0644) : -1;
+  if (fd >= 0) {
+    snprintf(number, sizeof(number), "%d", sig);
+    WriteAll(fd, "signal ");
+    WriteAll(fd, number);
+    WriteAll(fd, sig < NSIG ? " (" : "");
+    WriteAll(fd, sig < NSIG ? sys_signame[sig] : "");
+    WriteAll(fd, sig < NSIG ? ")\n" : "\n");
+    void *frames[128];
+    backtrace_symbols_fd(frames, backtrace(frames, 128), fd);
+    close(fd);
+  }
+  _exit(128 + sig);
+}
+
+}  // namespace
+
+void InstallTestCrashGuard(NSString *dataDir) {
+  if (!dataDir.length) return;
+  NSString *dir = [dataDir stringByAppendingPathComponent:@"crashes"];
+  [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  strlcpy(gCrashDir, dir.fileSystemRepresentation, sizeof(gCrashDir));
+  // Its own stack: a stack overflow still gets a record.
+  static char altStack[64 * 1024];
+  stack_t ss = {.ss_sp = altStack, .ss_size = sizeof(altStack), .ss_flags = 0};
+  sigaltstack(&ss, nullptr);
+  struct sigaction action = {};
+  action.sa_handler = OnFatalSignal;
+  action.sa_flags = SA_ONSTACK | SA_RESETHAND;
+  sigemptyset(&action.sa_mask);
+  for (int sig : {SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGTRAP, SIGFPE, SIGSYS}) sigaction(sig, &action, nullptr);
 }
 
 void LogActivation(NSString *what) {

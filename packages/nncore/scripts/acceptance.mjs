@@ -166,7 +166,7 @@ process.env.NETNYAHOO_CHROMIUM_SWITCHES = `--netnyahoo-test-media-route-provider
 process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --host-resolver-rules=${["ib.adnxs.com", "securepubads.g.doubleclick.net", "pagead2.googlesyndication.com", "adpage.test"]
   .map((host) => `MAP ${host} 127.0.0.1:${server.address().port}`).join(", ")}`;
 // Starts the app on the run's data dir (again for the relaunch checks), with a fresh DevTools port.
-async function launch(log = "app.out.log", env = {}) {
+async function launch(log = "app.out.log", env = {}, args = []) {
   port = await freePort();
   stdout = join(scratch, log);
   const pidsBefore = new Set(pgrep());
@@ -183,6 +183,7 @@ async function launch(log = "app.out.log", env = {}) {
     ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
     "--stdout", stdout, "--stderr", stdout,
     app,
+    ...(args.length ? ["--args", ...args] : []),
   ]);
   pid = await (async () => {
     for (let i = 0; i < 100; i++) {
@@ -956,6 +957,11 @@ try {
     return tab;
   };
   const closeTab = (id) => evalApp(`nn.store.getState().closeTab("${id}"); return true`);
+  // A tab's WebView is mounted (a background or restored tab mounts when shown).
+  const shownAndMounted = async (id) => {
+    await evalApp(`nn.actions.switchToTab(${JSON.stringify(id)}); return true`);
+    await until(`${id}'s WebView`, () => evalApp(`return !!nn.webviews.get(${JSON.stringify(id)})`), 15000);
+  };
   const backToA = async () => {
     await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a", { userInitiated: true }); return true`);
     await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
@@ -1646,7 +1652,7 @@ try {
   const contentBlockerRounds = async (profileId) => {
     await until("the blocker's state", async () => ((await cef(`getContentBlocker()`))?.stats?.ready ? true : null), 30000);
     const page = `http://adpage.test:${server.address().port}/adpage`;
-    const tag0 = profileId ? `p-${profileId}` : "personal";
+    const tag0 = profileId ? profileId : "personal";
     // Another profile's page in a window of its own: closing its only tab in the main window would close that window.
     const ownWindow = profileId ? await evalApp(`return nn.actions.openWindow({ profileId: ${JSON.stringify(profileId)}, url: "${page}?${tag0}" })`) : null;
     const tab = ownWindow
@@ -1656,7 +1662,8 @@ try {
       const round = async (tag) => {
         tag = `${tag0}-${tag}`;
         await evalApp(`nn.store.getState().navigate(${JSON.stringify(tab)}, "${page}?${tag}", { userInitiated: true }); return true`);
-        await until(`the page (${tag})`, async () => (await state()).tabs.find((t) => t.id === tab && t.url?.endsWith(`?${tag}`) && !t.loading));
+        await until(`the page (${tag})`, () => evalApp(`const s = nn.store.getState(); const t = s.tabs[${JSON.stringify(tab)}];
+          return t?.url?.endsWith(${JSON.stringify(`?${tag}`)}) && !s.live[${JSON.stringify(tab)}]?.isLoading ? true : null`));
         const t = await until("its target", () => pageTarget(`/adpage?${tag}`));
         const reached = async (url) => {
           const before = adServed.length;
@@ -2468,7 +2475,9 @@ try {
   await check("discard", async () => {
     // A tab in the background discarded by Chrome keeps its place; the app hears onDiscarded.
     const s = await state();
-    const other = s.tabs.find((x) => x.id !== first.id && x.id !== s.active && x.url?.startsWith(base));
+    let other = null;
+    for (const x of s.tabs.filter((x) => x.id !== first.id && x.id !== s.active && x.url?.startsWith(base)))
+      if (await evalApp(`return !!nn.webviews.get(${JSON.stringify(x.id)})`)) { other = x; break; }
     if (!other) throw new Error("no background tab to discard");
     const ok = await evalApp(`return nn.webviews.get("${other.id}").discard()`);
     const e = await until("onDiscarded", async () => (await eventsOf(other.id)).find((x) => x.name === "discarded"), 8000);
@@ -2694,7 +2703,7 @@ try {
 
   await check("devtools-toggle", async () => {
     // ⌥⌘I twice opens then closes DevTools (Chrome's IDC_DEV_TOOLS_TOGGLE, as CEF ran it); ⌥⌘J opens the console.
-    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await shownAndMounted(first.id);
     const devtools = async () => (await targets()).filter((t) => t.url.startsWith("devtools://")).length;
     const handle = (panel) => evalApp(`return nn.webviews.get("${first.id}").showDevTools(${JSON.stringify(panel)})`);
     await handle("toggle");
@@ -2713,6 +2722,7 @@ try {
     // it without the user asking (a restored tab) stays empty instead of downloading it again.
     const files = () => readdirSync(downloadsDir).filter((f) => f.startsWith("nncore-test")).length;
     const before = files();
+    await shownAndMounted(first.id);
     await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/file.bin?memory", { userInitiated: true }); return true`);
     await until("the download", async () => (files() > before ? true : null), 15000);
     const saved = JSON.parse(readFileSync(join(data, "Chromium", "NavigationDownloads.json"), "utf8"));
@@ -2894,6 +2904,30 @@ try {
     }
   });
 
+  await check("launch-cocoa-args", async () => {
+    // Cocoa's argument-domain defaults on the command line ("-NSAppSleepDisabled YES", as the perf bench passes them)
+    // are AppKit's: the app starts as usual, Chrome never takes "YES" for a page to open, and AppKit still reads them.
+    if (!exited) {
+      await evalApp(`nn.shell.quit?.(); return true`, 3000).catch(() => null);
+      await until("the app to exit", async () => exited, 20000).catch(() => child.kill("SIGKILL"));
+    }
+    await launch("app-args.out.log", {}, ["-NSAppSleepDisabled", "YES", "-ApplePersistenceIgnoreState", "YES"]);
+    await until("the relaunched app", async () => {
+      try {
+        return await evalApp(`return globalThis.expo.modules.NetnyahooCEF.engineInfo()`, 3000);
+      } catch (e) {
+        if (exited) throw e;
+        return null;
+      }
+    }, 90000);
+    await sleep(2000);
+    const pages = (await targets()).filter((t) => t.type === "page").map((t) => t.url);
+    if (pages.some((u) => /yes/i.test(u))) throw new Error(`a page for the defaults' value: ${JSON.stringify(pages)}`);
+    const argv = execFileSync("ps", ["-o", "args=", "-p", String(pid)]).toString().trim();
+    if (!argv.includes("-NSAppSleepDisabled YES")) throw new Error(`the process arguments lost the defaults: ${argv}`);
+    return { pages: pages.length, argv: argv.slice(argv.indexOf("-NS")) };
+  });
+
   await check("context-menu-log", async () => {
     // NETNYAHOO_CONTEXT_MENU_LOG, as CEF's Client::RunContextMenu (release builds too): the page menu is dumped to
     // that file instead of shown ({ url, link, items: [{ id, label, type, enabled, visible, submenu? }] }, CEF's
@@ -2965,6 +2999,29 @@ try {
     await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(landed.windowId)}); return true`);
     return landed;
   });
+  await check("crash-guard", async () => {
+    // A hidden test instance that crashes (here Chrome's own Browser.crash, an abort on the main thread) leaves its
+    // record in <data dir>/crashes and exits: no crash report for macOS's reporter, so no "quit unexpectedly" dialog
+    // and no focus change on the owner's screen.
+    const reports = () => readdirSync(join(process.env.HOME, "Library/Logs/DiagnosticReports")).filter((f) => f.startsWith("Netnyahoo-"));
+    const before = new Set(reports());
+    const front = execFileSync("lsappinfo", ["front"]).toString().trim();
+    const crashed = pid;
+    const version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
+    const ws = new WebSocket(version.webSocketDebuggerUrl);
+    await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)));
+    ws.send(JSON.stringify({ id: 1, method: "Browser.crash" }));
+    await until("the instance gone", async () => exited, 15000);
+    try { ws.close(); } catch {}
+    const record = join(data, "crashes", `crash-${crashed}.txt`);
+    await until("its crash record", async () => existsSync(record), 5000);
+    await sleep(3000);
+    const fresh = reports().filter((f) => !before.has(f));
+    const frontAfter = execFileSync("lsappinfo", ["front"]).toString().trim();
+    if (fresh.length) throw new Error(`macOS made a crash report: ${fresh}`);
+    if (frontAfter !== front) throw new Error(`the frontmost app changed: ${front} → ${frontAfter}`);
+    return { record: readFileSync(record, "utf8").split("\n")[0], front: "unchanged" };
+  });
 } finally {
   visibilityWatch?.stop();
   writeFileSync(join(scratch, "results.json"), JSON.stringify(results, null, 2));
@@ -2977,7 +3034,11 @@ try {
   if (!exited) child.kill("SIGTERM");
   await sleep(1000);
   if (!exited) child.kill("SIGKILL");
+  server.closeAllConnections?.();
   server.close();
+  metroProxy.closeAllConnections?.();
   metroProxy.close();
   process.exitCode = passed === results.length ? 0 : 1;
+  // A DevTools socket or a page's keep-alive connection can hold the loop open: the run ends here either way.
+  setTimeout(() => process.exit(process.exitCode), 3000);
 }

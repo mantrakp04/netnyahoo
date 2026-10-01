@@ -34,6 +34,9 @@ void InstallActivationGuardsLate();
 bool Background();
 // A line in $NETNYAHOO_DATA_DIR/activation.log, as the guards write theirs (what a test instance didn't show).
 void LogActivation(NSString *what);
+// A hidden test instance (dataDir non-nil) that crashes leaves its record in <dataDir>/crashes and exits, never
+// reaching macOS's crash reporter, whose "quit unexpectedly" dialog would show on the owner's screen.
+void InstallTestCrashGuard(NSString *_Nullable dataDir);
 
 // A page's sized popup (window.open with a size or position: disposition "popup") in a window of its own, as
 // packages/cef's NNPopupWindow: the live tab (opener kept), sized and placed as asked; what it opens goes to the

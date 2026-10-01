@@ -10,6 +10,8 @@
 #import "NNCoreStartup.h"
 #import "NNCoreWebView.h"
 
+#include <cctype>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -102,6 +104,9 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   NSLog(@"[nncore] engine started (Chromium %@)", NNCoreEngine.sharedEngine.chromiumVersion);
   gStarted = YES;
   nncore_host::InstallActivationGuardsLate();
+  // Again, over any handlers Chrome installed while it started.
+  if (gScratchDataDir && nncore_host::Background())
+    nncore_host::InstallTestCrashGuard([gDataDirectory stringByDeletingLastPathComponent]);
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   // Personal ("") is always Chrome's Default profile directory, whichever profile Chrome used last.
   if (NNCoreProfile *profile = nncore_host::PersonalIfLoaded(engine)) Profiles()[@""] = profile;
@@ -238,8 +243,19 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   }
 #endif
   gMakeDelegate = [makeDelegate copy];
-  gDataDirectory = gScratchDataDir ? [@(dataDir) stringByAppendingPathComponent:@"Chromium"] : InstalledDataDirectory();
-  [NSFileManager.defaultManager createDirectoryAtPath:gDataDirectory withIntermediateDirectories:YES attributes:nil error:nil];
+  NSString *scratch = gScratchDataDir ? @(dataDir) : nil;
+  // A relative data dir is the launcher's working directory's (launchd starts the app in "/"), as NNIsolation reads it.
+  if (scratch && !scratch.absolutePath)
+    scratch = [NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:scratch];
+  gDataDirectory = scratch ? [scratch.stringByStandardizingPath stringByAppendingPathComponent:@"Chromium"] : InstalledDataDirectory();
+  NSError *dirError;
+  if (![NSFileManager.defaultManager createDirectoryAtPath:gDataDirectory withIntermediateDirectories:YES attributes:nil error:&dirError]) {
+    // Chrome would abort on it (a crash report, and macOS's dialog): say why and stop.
+    fprintf(stderr, "[nncore] can't use the data dir %s: %s\n", gDataDirectory.fileSystemRepresentation,
+            dirError.localizedDescription.UTF8String ?: "");
+    return 1;
+  }
+  nncore_host::InstallTestCrashGuard(scratch && nncore_host::Background() ? scratch.stringByStandardizingPath : nil);
   nncore_host::InstallActivationGuardsEarly();
   nncore_host::PrepareContentBlocker();
   [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillFinishLaunchingNotification
@@ -320,8 +336,23 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
       if (sw.length) extra.push_back(std::string("--") + sw.UTF8String);
     }
   }
-  std::vector<const char *> args(argv, argv + argc);
+  // Cocoa's argument-domain defaults ("-NSAppSleepDisabled YES", as the perf bench passes) are AppKit's, read from the
+  // process's own arguments: Chrome would take the value for a URL to open, so its command line goes without them.
+  // The host's switches go first, right after the program: Chrome stops reading switches at a "--", and the data dir
+  // must never be lost to one (PreSandboxStartup CHECKs that Chrome has it).
+  std::vector<const char *> args = {argc > 0 && argv[0] ? argv[0] : "Netnyahoo"};
   for (const std::string &s : extra) args.push_back(s.c_str());
+  for (int i = 1; i < argc; i++) {
+    const char *arg = argv[i];
+    if (!arg) break;
+    const bool cocoaDefault = arg[0] == '-' && arg[1] != '-' && isalpha((unsigned char)arg[1]) &&
+                              strncmp(arg, "-psn_", 5) != 0 && i + 1 < argc;
+    if (cocoaDefault) {
+      i++;
+      continue;
+    }
+    args.push_back(arg);
+  }
   static NNCoreHostEngineDelegate *engineDelegate = [NNCoreHostEngineDelegate new];
   return [NNCoreEngine runWithArgc:(int)args.size() argv:args.data() delegate:engineDelegate];
 }

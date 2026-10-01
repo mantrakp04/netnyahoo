@@ -30,14 +30,22 @@ Keep this list short and shrinking; each item names its owner.
 3. ~~**Session cookies**~~ done: NNCore keeps them across launches (09fe90cc), and keeps 0.2.21's at the switch
    (`carryover.sh`). 0.2.21 itself drops session cookies at every launch (its own restart loses them; measured with
    `rollback.sh`), so this is a gain over CEF, not parity.
-4. **The content blocker blocks nothing** in a production build (uBlock Origin Lite installed and indexed, no
-   request blocked). *Fixes helper.*
-5. **Private-window privacy**: an off-the-record tab Chrome makes (an extension's
-   `chrome.windows.create({incognito: true})`, the page menu's "Open Link in Incognito Window") lands in the
-   Personal window as a normal tab. *Engine helper.*
-6. **Dogfood bugs**: a crashed tab keeps its sad tab after Reload; sized `window.open` popups (OAuth, payments)
-   open as tabs instead of popup windows; app windows 32 pt shorter than CEF's; `chrome://crash` commits as the
-   tab's URL. *Fixes helper.*
+4. ~~**The content blocker blocks nothing** in a production build~~: not a bug. uBlock Origin Lite runs in its
+   optimal mode on NNCore and answers ad scripts with its stand-ins (`adsbygoogle.js` → its no-op copy, a 307 to the
+   extension's web-accessible resource), so a fetch or a `<script>` "loads" without the request leaving the browser;
+   CEF failed those stand-ins (ERR_BLOCKED_BY_CLIENT), which the smoke test counted as "blocked"; its ad checks now
+   judge by the network (2047812f). Proven by `content-blocker-blocks` and `content-blocker-profile`.
+5. ~~**Private-window privacy**~~: done. A private tab Chrome makes goes to a private window of the app (one
+   showing its profile, else a new one that adopts it live), never into a normal window (`private-windows-create`,
+   `context-menu-incognito`).
+6. **Dogfood bugs**: B1 (the sad tab after Reload), B2 (sized `window.open` popups get a window of their own),
+   B3 (window height) and B4 (`chrome://crash` keeps the tab's URL) are done (`crash-reload`, `popup-window`,
+   `window-size`, `crash-debug-url`). The 0.2.22 RC's crash opening a window (a dead private profile reached
+   `WindowHost::BrowserFor`) is fixed (`window-profiles`), and the content blocker's page no longer shows in
+   history (`internal-pages-not-history`). A hidden test instance that crashes writes `<data dir>/crashes/crash-<pid>.txt`
+   and exits without macOS's crash report, dialog or focus change (`crash-guard`); a data dir it can't use stops it
+   with a message, not an abort; Cocoa's `-Key value` arguments stay off Chrome's command line (`launch-cocoa-args`).
+   Open: after another profile's window opened and closed, "Share this tab instead" answers false (`tab-capture`).
 7. ~~**Smoke parity**~~ done: background-mode context-menu log, the autofill dropdown's selection, the PiP self-test
    (`NETNYAHOO_PIP_SELFTEST`) and the passkey dialog closing when its page navigates; the release smoke test passes
    21/21 on NNCore (e8ece135, 2109af22, 2047812f).
