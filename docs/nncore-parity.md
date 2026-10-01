@@ -51,7 +51,10 @@ Keep this list short and shrinking; each item names its owner.
    "added" bubble anchors to the app's window and an extension's tabs land there (`extension-windows-hidden`); B12,
    an extension install's .crx is no download (`extension-download-hidden`); B8, the blocked count counts the
    rules' blocks and redirects to stand-ins (`content-blocked-count`); B7, no Reading mode in the page menu
-   (`context-menu-reading-mode`).
+   (`context-menu-reading-mode`). Chrome's "<name> has been added" UI is NNCore's (a hook in
+   `ExtensionInstallUIDesktop::OnInstallSuccess`, `nn_installed_bubble.mm`): over a window the app shows for the
+   profile, held until one shows a page when there is none; Chrome's own crashed reading the active tab of a Browser
+   without one (`extension-installed-bubble`).
    Open: after another profile's window opened and closed, "Share this tab instead" answers false (`tab-capture`).
 7. ~~**Smoke parity**~~ done: background-mode context-menu log, the autofill dropdown's selection, the PiP self-test
    (`NETNYAHOO_PIP_SELFTEST`) and the passkey dialog closing when its page navigates; the release smoke test passes
@@ -157,6 +160,7 @@ Test hygiene the run keeps (each was a real failure):
 | extension-windows-hidden | `chrome.windows.getAll` lists only the app's windows; an extension's tab on install and its options page land in the app's window; no window the app didn't show comes on screen |
 | extension-download-hidden | A .crx from the Web Store's update URL (`--apps-gallery-update-url`) is no download in the app, and doesn't open the popover |
 | content-blocked-count | An extension's rules on a page: a blocked image and a script redirected to its stand-in count 2 |
+| extension-installed-bubble | A .crx installed with Chrome's UI (`installCrx`): the "added" bubble shows over the profile's window and closes with it; with the profile's windows closed mid-install nothing shows or crashes until a window of it shows a page, then the bubble does |
 | context-menu-reading-mode | The page menu has no "Open in Reading Mode" or "Listen to this page", and no doubled separator |
 | content-blocker, settings-services | uBlock Origin Lite as a component extension: state, lists, allow-list, on/off, a list toggled; clearing browsing data, resetting a site, an external-app allowance, a tab's site data |
 | download, download-controls, download-navigation | Downloads land in the scratch folder through Chrome's manager and the app's list; pause, resume and cancel a running one; a navigation that became a download |
@@ -267,6 +271,7 @@ The app closes a tab by unmounting its WebView; NNCore closes it at once without
 | Function / event | Status | Note |
 |---|---|---|
 | `chooseFolder`, `list`, `inspectUnpacked`, `install`, `setEnabled`, `uninstall`, `reload`, `searchEngineList` | done | `nn_extensions_*`, `nn_search_engines_list` |
+| `installCrx` | done | NNCore only (not in `packages/cef`'s API; the acceptance run uses it): a CRX3 file as one dropped on chrome://extensions, through `nn_extensions_install_crx` (the app's install prompt, then the "added" bubble) |
 | `configure` | partial | Wired; not called by a check |
 | `resolveInstallPrompt`, `onInstallPrompt` | partial | Engine-proven (`extensionInstallPrompt`); a web-store install needs the network |
 | `onChanged` | partial | Fires on install/uninstall; not asserted on its own |

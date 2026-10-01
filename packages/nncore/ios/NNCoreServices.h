@@ -59,6 +59,9 @@ typedef void (^NNCoreResult)(NSDictionary<NSString *, id> *result);
 + (NSDictionary<NSString *, id> *)inspectUnpacked:(NSString *)path;
 + (void)installExtension:(NSString *)path profile:(NSString *)profile completion:(NNCoreResult)completion
     NS_SWIFT_NAME(installExtension(path:profile:completion:));
+// A .crx file, as one dropped on chrome://extensions: the app's install prompt, then Chrome's "added" bubble.
++ (void)installCrx:(NSString *)path profile:(NSString *)profile completion:(NNCoreResult)completion
+    NS_SWIFT_NAME(installCrx(path:profile:completion:));
 + (void)setExtension:(NSString *)extensionId enabled:(BOOL)enabled profile:(NSString *)profile completion:(NNCoreResult)completion
     NS_SWIFT_NAME(setExtension(_:enabled:profile:completion:));
 + (void)uninstallExtension:(NSString *)extensionId profile:(NSString *)profile completion:(NNCoreResult)completion

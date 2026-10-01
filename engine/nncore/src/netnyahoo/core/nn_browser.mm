@@ -42,6 +42,7 @@
 #include "third_party/blink/public/common/loader/resource_type_util.h"
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom.h"
 #include "netnyahoo/core/nn_desktop_capture.h"
+#include "netnyahoo/core/nn_installed_bubble.h"
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_tab_info.h"
 #include "netnyahoo/core/nn_autofill_trigger.h"
@@ -558,6 +559,10 @@ void WindowHost::ActiveTabChanged(Browser* browser,
   if (!contents) {
     return;
   }
+  // A page of the profile came forward: an "added" bubble waiting for one can show (not from
+  // inside Chrome's tab-strip change).
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&ShowWaitingInstalledBubbles));
   if (quiet_activation_) {
     return;
   }

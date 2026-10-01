@@ -15,6 +15,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "chrome/browser/extensions/api/developer_private/extension_info_generator.h"
+#include "chrome/browser/extensions/extension_install_prompt.h"
 #include "chrome/browser/extensions/extension_management.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -23,8 +24,11 @@
 #include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
 #include "chrome/common/extensions/api/developer_private.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/browser/install_prompt_data.h"
 #include "extensions/browser/api/management/management_api.h"
 #include "extensions/browser/api/management/management_api_delegate.h"
+#include "extensions/browser/install/crx_install_error.h"
+#include "extensions/browser/crx_installer.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_registrar.h"
 #include "extensions/browser/extension_registry.h"
@@ -320,6 +324,42 @@ NN_ENGINE_CALL(nn_extensions_install) {
       },
       call.TakeReply()));
   installer->Load(base::FilePath(path));
+}
+
+NN_ENGINE_CALL(nn_extensions_install_crx) {
+  NN_EXTENSIONS_CALL();
+  const std::string path = call.String("path");
+  if (path.empty() || path[0] != '/') {
+    return call.TakeReply().Error("an absolute path required");
+  }
+  Profile* profile = call.profile();
+  if (extensions::ExtensionManagementFactory::GetForBrowserContext(profile)
+          ->BlocklistedByDefault()) {
+    return call.TakeReply().Error(
+        "Extension installation is blocked by policy.");
+  }
+  // As a .crx dropped on chrome://extensions: Chrome's install prompt (the
+  // app's, through the install-prompt hook), then Chrome's post-install UI.
+  scoped_refptr<extensions::CrxInstaller> installer =
+      extensions::CrxInstaller::Create(
+          profile, std::make_unique<ExtensionInstallPrompt>(
+                       profile, gfx::NativeWindow(),
+                       std::make_unique<extensions::InstallPromptData>(
+                           extensions::InstallPromptData::UNSET_PROMPT_TYPE)));
+  installer->set_off_store_install_allow_reason(
+      extensions::CrxInstaller::OffStoreInstallAllowedFromSettingsPage);
+  installer->AddInstallerCallback(base::BindOnce(
+      [](Reply reply, scoped_refptr<extensions::CrxInstaller> installer,
+         const std::optional<extensions::CrxInstallError>& error) {
+        if (error) {
+          return reply.Error(base::UTF16ToUTF8(error->message()));
+        }
+        reply.Send(base::DictValue().Set(
+            "id", installer->extension() ? installer->extension()->id()
+                                         : installer->expected_id()));
+      },
+      call.TakeReply(), installer));
+  installer->InstallCrx(base::FilePath(path));
 }
 
 NN_ENGINE_CALL(nn_extensions_set_enabled) {

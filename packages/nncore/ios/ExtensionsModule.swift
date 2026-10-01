@@ -32,6 +32,9 @@ public class ExtensionsModule: Module {
     AsyncFunction("install") { (path: String, profile: String, promise: Promise) in
       NNCoreServices.installExtension(path: path, profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)
+    AsyncFunction("installCrx") { (path: String, profile: String, promise: Promise) in
+      NNCoreServices.installCrx(path: path, profile: profile) { promise.resolve($0) }
+    }.runOnQueue(.main)
     AsyncFunction("setEnabled") { (id: String, profile: String, enabled: Bool, promise: Promise) in
       NNCoreServices.setExtension(id, enabled: enabled, profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)

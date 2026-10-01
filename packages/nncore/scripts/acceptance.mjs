@@ -1882,6 +1882,78 @@ try {
     }
   });
 
+  await check("extension-installed-bubble", async () => {
+    // The "<name> has been added" bubble after an install with Chrome's UI (a .crx, as one dropped on
+    // chrome://extensions): over the window the app shows for the profile; with none on screen (its windows closed
+    // mid-install), held until one shows a page, never put in a hidden window. Chrome's own path added a tab to a
+    // Browser without one (the app's New Tab page is its own) and then read that Browser's active tab after the app
+    // had closed it: a crash. The bubble closes with its window.
+    const crxPath = join(scratch, "fixture.crx");
+    writeFileSync(crxPath, fixtureCrx());
+    const profile = await evalApp(`return nn.store.getState().createProfile({ name: "Installs" })`);
+    const opened = [];
+    const bubbleIn = async (windowId) => {
+      for (const w of await cef(`chromeWindows()`)) {
+        const children = JSON.parse(await cef(`devWindow(${w.window}, "children")`));
+        if (children.some((c) => /has been added/.test(c.title))) return w.window;
+      }
+      return null;
+    };
+    const profileWindow = async (path) => {
+      const before = new Set((await cef(`chromeWindows()`)).map((w) => w.window));
+      const id = await evalApp(`return nn.actions.openWindow({ profileId: ${JSON.stringify(profile)}, url: "${base}${path}" })`);
+      opened.push(id);
+      await until(`${path} shown`, () => pageTarget(path));
+      const native = await until("its window", async () => (await cef(`chromeWindows()`)).find((w) => !before.has(w.window))?.window ?? null);
+      return { id, native };
+    };
+    const install = async (closeFirst) => {
+      await evalApp(`nn.extensions.cancelInstall(); globalThis.__nnCrx = null;
+        globalThis.expo.modules.NetnyahooExtensions.installCrx(${JSON.stringify(crxPath)}, ${JSON.stringify(profile)}).then((r) => (globalThis.__nnCrx = r)); return true`);
+      const prompt = await until("the install prompt", async () => {
+        const p = await evalApp(`return nn.extensions.useExtensions.getState().install?.prompt ?? null`);
+        return p?.name === "NNCore crx fixture" ? p : null;
+      }, 15000);
+      if (closeFirst) await closeFirst();
+      await exts(`resolveInstallPrompt(${JSON.stringify(prompt.requestId)}, true)`);
+      const result = await until("the install", () => evalApp(`return globalThis.__nnCrx`), 15000);
+      if (!result.id) throw new Error(`install: ${JSON.stringify(result)}`);
+      return result.id;
+    };
+    let id = null;
+    try {
+      // A window of the profile on screen: the bubble shows over it; the window closes with the bubble up.
+      const first = await profileWindow("/b?installs-1");
+      id = await install();
+      const shown = await until("the bubble", () => bubbleIn(), 8000);
+      if (shown !== first.native) throw new Error(`the bubble is in window ${shown}, not the profile's ${first.native}`);
+      await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(first.id)}); return true`);
+      await sleep(1500);
+      await exts(`uninstall("${id}", ${JSON.stringify(profile)})`);
+      // Its windows closed mid-install: nothing shows, nothing crashes, until a window of the profile shows a page.
+      const before = new Set([...onScreenWindows(), ...(await cef(`chromeWindows()`)).map((w) => w.window)]);
+      const second = await profileWindow("/c?installs-2");
+      id = await install(async () => {
+        await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(second.id)}); return true`);
+        await until("the profile's window closed", async () => !(await cef(`chromeWindows()`)).some((w) => w.window === second.native && w.visible), 8000)
+          .catch(async (e) => { throw new Error(`${e.message}; windows ${JSON.stringify(await cef(`chromeWindows()`))}; app ${JSON.stringify(await evalApp(`return nn.store.getState().windowOrder`))}`); });
+      });
+      await sleep(2000);
+      const early = await bubbleIn();
+      if (early) throw new Error(`the bubble showed in window ${early} with no window of the profile`);
+      const stray = onScreenWindows().filter((w) => !before.has(w));
+      if (stray.length) throw new Error(`windows on screen the app didn't show: ${JSON.stringify(stray)}`);
+      const third = await profileWindow("/d?installs-3");
+      const later = await until("the waiting bubble", () => bubbleIn(), 8000);
+      if (later !== third.native) throw new Error(`the waiting bubble is in window ${later}, not the profile's ${third.native}`);
+      return { immediate: shown, waited: later };
+    } finally {
+      await evalApp(`nn.extensions.cancelInstall(); return true`).catch(() => null);
+      for (const w of opened) await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(w)}); return true`).catch(() => null);
+      if (id) await exts(`uninstall("${id}", ${JSON.stringify(profile)})`).catch(() => null);
+    }
+  });
+
   await check("context-menu-reading-mode", async () => {
     // B7: Chrome's page menu has no "Open in Reading Mode" (or "Listen to this page"): both open Chrome's side panel,
     // which the app's windows don't have, so picking one did nothing. CEF's menu had neither. No separator is doubled.

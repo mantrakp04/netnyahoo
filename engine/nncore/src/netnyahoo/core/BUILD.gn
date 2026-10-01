@@ -36,6 +36,8 @@ source_set("core") {
     "nn_external_apps.h",
     "nn_external_apps.mm",
     "nn_icon_fetch.mm",
+    "nn_installed_bubble.h",
+    "nn_installed_bubble.mm",
     "nn_lifetime.h",
     "nn_lifetime.mm",
     "nn_main_delegate.cc",

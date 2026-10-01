@@ -28,7 +28,9 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" &&
     grep -q 'g_netnyahoo_history_eligible(' "$src/chrome/browser/history/history_tab_helper.cc" &&
     grep -q 'g_netnyahoo_dnr_rule_matched(' "$src/extensions/browser/api/declarative_net_request/action_tracker.cc" &&
-    grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/extensions/browser_window_util.cc"
+    grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/extensions/browser_window_util.cc" &&
+    grep -q 'g_netnyahoo_extension_installed(' "$src/chrome/browser/ui/extensions/extension_install_ui_desktop.cc" &&
+    grep -q 'g_netnyahoo_prompts_without_tab' "$src/chrome/browser/download/download_crx_util.cc"
   exit
 fi
 
@@ -332,4 +334,67 @@ assert s.count(old_inc) == 1 and s.count(old) == 1
 s = s.replace(old_inc, new_inc).replace(old, new)
 open(path, "w").write(s)
 print("hooked extensions' browser_window_util")
+PY2
+
+# Chrome's post-install UI ("<name> has been added") asks NNCore first. Chrome's finds or makes
+# a tabbed Browser for it (a hidden window of ours, given none of the app's), adds a tab when
+# the Browser has none, and reads that Browser's active tab later through a raw pointer (the
+# host had closed the tab, or the window: a crash), then reaches for its BrowserView's
+# toolbar when the bubble closes (ours have none). NNCore shows the bubble over a window the
+# app shows for the profile, later if there is none yet. Only NNCore sets the hook.
+python3 - "$src/chrome/browser/ui/extensions/extension_install_ui_desktop.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_extension_installed" in s:
+    sys.exit(0)
+old_ns = "using content::BrowserThread;\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) shows the post-install UI for the windows it hosts.\n"
+        "bool (*g_netnyahoo_extension_installed)(\n"
+        "    Profile* profile,\n"
+        "    scoped_refptr<const extensions::Extension> extension,\n"
+        "    const SkBitmap* icon) = nullptr;\n\n")
+old = """  // Extensions aren't enabled by default in incognito so we confirm
+  // the install in a normal window.
+"""
+new = """  // Netnyahoo: NNCore
+  if (g_netnyahoo_extension_installed &&
+      g_netnyahoo_extension_installed(profile(), extension, icon)) {
+    return;
+  }
+
+""" + old
+assert s.count(old_ns) == 1 and s.count(old) == 1
+s = s.replace(old_ns, decl + old_ns).replace(old, new)
+open(path, "w").write(s)
+print("hooked the extension post-install UI")
+PY2
+
+# A downloaded .crx whose tab has gone asks without a tab under NNCore (its install prompt is
+# the app's): Chrome would find a Browser, or make one (a hidden window of ours), and read its
+# active tab, which a Browser of the app's need not have. Only NNCore sets the flag.
+python3 - "$src/chrome/browser/download/download_crx_util.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_prompts_without_tab" in s:
+    sys.exit(0)
+old_ns = "namespace download_crx_util {\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) shows the install prompt itself, without a tab.\n"
+        "bool g_netnyahoo_prompts_without_tab = false;\n\n")
+old = """  if (!web_contents) {
+    BrowserWindowInterface* browser =
+"""
+new = """  // Netnyahoo: NNCore
+  if (!web_contents && g_netnyahoo_prompts_without_tab) {
+    return std::make_unique<ExtensionInstallPrompt>(
+        profile, gfx::NativeWindow(),
+        std::make_unique<extensions::InstallPromptData>(
+            extensions::InstallPromptData::UNSET_PROMPT_TYPE));
+  }
+""" + old
+assert s.count(old_ns) == 1 and s.count(old) == 1
+s = s.replace(old_ns, old_ns + "\n" + decl, 1).replace(old, new)
+open(path, "w").write(s)
+print("hooked download_crx_util's install prompt")
 PY2

@@ -16,6 +16,9 @@
 //       ("ENABLED", "FROM_STORE"…).
 //   nn_extensions_install      {path} -> {id}: loads an unpacked extension
 //       (turns developer mode on, as Chrome keeps unpacked ones off without)
+//   nn_extensions_install_crx  {path} -> {id}: installs a CRX3 file as one
+//       dropped on chrome://extensions: Chrome's install prompt (the app's),
+//       then Chrome's post-install UI ("<name> has been added")
 //   nn_extensions_set_enabled  {id, enabled} -> {ok}; enabling one whose
 //       permissions grew shows Chrome's re-enable prompt (the app's install
 //       prompt, through the install-prompt hook) on the profile's last active
@@ -33,6 +36,7 @@
 
 NN_ENGINE_CALL(nn_extensions_list);
 NN_ENGINE_CALL(nn_extensions_install);
+NN_ENGINE_CALL(nn_extensions_install_crx);
 NN_ENGINE_CALL(nn_extensions_set_enabled);
 NN_ENGINE_CALL(nn_extensions_uninstall);
 NN_ENGINE_CALL(nn_extensions_reload);

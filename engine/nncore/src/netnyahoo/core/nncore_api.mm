@@ -62,6 +62,7 @@
 #include "extensions/common/extension.h"
 #include "netnyahoo/core/nn_browser.h"
 #include "netnyahoo/core/nn_extension_view.h"
+#include "netnyahoo/core/nn_installed_bubble.h"
 #include "netnyahoo/core/nn_lifetime.h"
 #include "netnyahoo/core/nn_main_delegate.h"
 #include "netnyahoo/core/nn_page_channel.h"
@@ -635,6 +636,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   g_engine = [[NNCoreEngine alloc] init];
   g_netnyahoo_browser_window_factory = &WindowForChromeBrowser;
   nncore::InstallRuleMatchedHook();
+  nncore::InstallExtensionInstalledHook();
   g_netnyahoo_history_eligible = [](content::WebContents* contents) {
     BrowserWindowInterface* browser =
         GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);

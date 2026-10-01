@@ -272,6 +272,13 @@ NSString *StoreFolder(NSString *profile, NSString *extensionId, id version) {
   }];
 }
 
++ (void)installCrx:(NSString *)path profile:(NSString *)profile completion:(NNCoreResult)completion {
+  [self call:@"nn_extensions_install_crx" profile:profile args:@{@"path" : path ?: @""} completion:^(NSDictionary *result) {
+    if ([result[@"id"] isKindOfClass:NSString.class]) Changed(profile, result[@"id"], @"installed");
+    completion(result);
+  }];
+}
+
 + (void)setExtension:(NSString *)extensionId enabled:(BOOL)enabled profile:(NSString *)profile completion:(NNCoreResult)completion {
   [self run:@"nn_extensions_set_enabled" profile:profile args:@{@"id" : extensionId, @"enabled" : @(enabled)}
       event:enabled ? @"enabled" : @"disabled" completion:completion];
