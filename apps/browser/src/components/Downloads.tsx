@@ -1,6 +1,6 @@
 import { cancelDownload, pauseDownload, resumeDownload, type Download } from "@netnyahoo/nncore";
 import { ContextMenuArea, copyText, fileExists, fileIcon, MouseArea, moveToTrash, openFile, revealFile, showMenu, Surface, Symbol, type MenuItem } from "@netnyahoo/shell";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { hex, layout, useTheme } from "../lib/theme";
 import { useShallow } from "zustand/react/shallow";
@@ -99,7 +99,8 @@ export async function trashDownload(d: Download) {
 }
 
 const iconCache = new Map<string, string | null>();
-export function FileIcon({ path, size = 28 }: { path: string; size?: number }) {
+// Memoized: its row re-renders with every progress report.
+export const FileIcon = memo(function FileIcon({ path, size = 28 }: { path: string; size?: number }) {
   const theme = useTheme();
   const key = `${path}@${size}`;
   const [uri, setUri] = useState(() => iconCache.get(key) ?? null);
@@ -119,7 +120,7 @@ export function FileIcon({ path, size = 28 }: { path: string; size?: number }) {
   ) : (
     <Symbol name="doc" size={size * 0.62} color={theme.icon} style={{ width: size, height: size }} />
   );
-}
+});
 
 // MARK: Popover
 
@@ -129,7 +130,9 @@ export function DownloadsPopover() {
   const theme = useTheme();
   const windowId = useWindowId();
   const open = useWindowUi().downloadsOpen;
-  const downloads = useBrowser(useShallow((s) => downloadsIn(s, windowId)));
+  // Ids only: each row follows its own download, so a progress report re-renders that row, not the popover.
+  const ids = useBrowser(useShallow((s) => (s.windowUi[windowId]?.downloadsOpen ? downloadsIn(s, windowId).map((d) => d.id) : [])));
+  const clearable = useBrowser((s) => !!s.windowUi[windowId]?.downloadsOpen && downloadsIn(s, windowId).some((d) => d.state !== "downloading"));
   const top = useTabLayout() === "top";
   const addressBar = useAddressBarInSidebar();
   const setOpen = (value: boolean) => useBrowser.getState().setDownloadsOpen(windowId, value);
@@ -168,14 +171,14 @@ export function DownloadsPopover() {
             <Text style={{ flex: 1, fontSize: 11, fontWeight: "600", letterSpacing: 0.4, color: theme.dark ? "rgba(247,245,255,0.6)" : "rgba(0,0,0,0.6)" }}>
               RECENT DOWNLOADS
             </Text>
-            {downloads.some((d) => d.state !== "downloading") && <TextButton title="Clear" onPress={() => useBrowser.getState().clearDownloads(windowId)} />}
+            {clearable && <TextButton title="Clear" onPress={() => useBrowser.getState().clearDownloads(windowId)} />}
           </View>
-          {downloads.length === 0 ? (
+          {ids.length === 0 ? (
             <Text style={{ paddingHorizontal: 14, paddingVertical: 12, fontSize: 13, color: theme.textTertiary }}>No downloads yet</Text>
           ) : (
             <ScrollView style={{ maxHeight: 8 * 52 }} contentContainerStyle={{ paddingHorizontal: 6 }}>
-              {downloads.map((d) => (
-                <DownloadRow key={d.id} d={d} windowId={windowId} />
+              {ids.map((id) => (
+                <DownloadRowItem key={id} id={id} windowId={windowId} />
               ))}
             </ScrollView>
           )}
@@ -222,10 +225,31 @@ function FooterButton({ title, onPress }: { title: string; onPress: () => void }
   );
 }
 
+const DownloadRowItem = memo(function DownloadRowItem({ id, windowId }: { id: string; windowId: string }) {
+  const d = useBrowser((s) => s.downloads.find((x) => x.id === id));
+  return d ? <DownloadRow d={d} windowId={windowId} /> : null;
+});
+
 function DownloadRow({ d, windowId }: { d: Download; windowId: string }) {
   const theme = useTheme();
   const { hovered, hoverProps } = useHover();
   const exists = d.state !== "finished" || fileExists(d.path);
+  // A finished row checks its file again whenever a download changes (as it did when every report re-rendered
+  // every row), and re-renders only if that differs from what it shows.
+  const shown = useRef(exists);
+  shown.current = exists;
+  const [, recheck] = useState(0);
+  const finishedPath = d.state === "finished" ? d.path : null;
+  useEffect(() => {
+    if (finishedPath === null) return;
+    const check = () => {
+      if (fileExists(finishedPath) !== shown.current) recheck((n) => n + 1);
+    };
+    check();
+    return useBrowser.subscribe((s, prev) => {
+      if (s.downloads !== prev.downloads) check();
+    });
+  }, [finishedPath]);
   const progress = d.total > 0 ? d.received / d.total : 0;
   const done = d.state === "finished" && exists;
   return (
