@@ -1,0 +1,35 @@
+engine/chromium/src/chrome/browser/netnyahoo/BUILD.gn
+  s_9c356f9574d31c::t_321066d3961754 18-23,29,31,33-35,37-39,41-43
+engine/chromium/src/chrome/browser/netnyahoo/pip/nn_pip_controls.cc
+  s_9c356f9574d31c::t_b94f28496fa094 1-283
+engine/chromium/src/chrome/browser/netnyahoo/pip/nn_pip_controls.h
+  s_9c356f9574d31c::t_e576f149e4bdcd 1-155
+engine/chromium/src/chrome/browser/netnyahoo/pip/nn_pip_mac.h
+  s_9c356f9574d31c::t_7ef3c3c39b3b23 1-29
+engine/chromium/src/chrome/browser/netnyahoo/pip/nn_pip_mac.mm
+  s_9c356f9574d31c::t_192fcd5c001410 1-102
+engine/chromium/src/chrome/browser/netnyahoo/pip/nn_pip_window.cc
+  s_9c356f9574d31c::t_9886b2aee950d8 1-306
+engine/chromium/src/chrome/browser/netnyahoo/pip/nn_pip_window.h
+  s_9c356f9574d31c::t_e5cbd751d2b64f 1-76
+packages/cef/patches/chromium-pip-overlay-window.patch
+  s_9c356f9574d31c::t_113b4a38ab5187 4,8-10,17,19,21-38,43-71,75-77,80-93
+packages/cef/patches/series
+  s_9c356f9574d31c::t_88d30bb4a02efd 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "02a4e60533ef3a54c235e3dea5b1735b1e6cb05a",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
