@@ -50,6 +50,26 @@ BOOL FromTrackpad(NSEvent *event) {
 
 zoom::ScrollGesture gScroll;
 
+// A private window's zoom lives in its off-the-record profile, which the engine reaches through one of its tabs.
+// Levels set while the private profile has no tab wait here for its first one, as Chrome's incognito zoom map
+// would have kept them for the session.
+NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, NSNumber *> *> *gPrivatePending;
+
+int PrivateTab(NSString *profile) {
+  for (NNBrowserView *view in LiveViews())
+    if ([view.profile isEqualToString:profile] && view.chromeTabId > 0) return view.chromeTabId;
+  return 0;
+}
+
+double LevelOf(double factor) { return fabs(factor - 1) < 0.001 ? 0 : zoom::LevelForFactor(factor); }
+
+void SetPrivate(NSString *profile, int tab, NSString *host, double factor) {
+  engine::Call("nn_zoom_set", profile, @{@"host" : host, @"level" : @(LevelOf(factor)), @"tab" : @(tab)}, ^(NSDictionary *result) {
+    if (result[@"error"]) NSLog(@"[zoom] %@: %@", host, result[@"error"]);
+    zoom::Changed(profile, host);
+  });
+}
+
 zoom::ScrollStep ScrollStepOf(NSEvent *event, bool trackpad) {
   return {.phase = event.phase, .momentumPhase = event.momentumPhase, .command = !!(event.modifierFlags & NSEventModifierFlagCommand),
           .trackpad = trackpad};
@@ -71,7 +91,16 @@ void Changed(NSString *profile, NSString *host) {
   dispatch_async(dispatch_get_main_queue(), ^{ EmitAll(profile, host); });
 }
 
-void Committed(Client *client) { client->EmitZoom(); }
+void Committed(Client *client) {
+  NSString *profile = client->Profile();
+  NSDictionary<NSString *, NSNumber *> *pending = gPrivatePending[profile];
+  int tab = pending.count && client->Browser() ? MAX(0, client->Browser()->GetHost()->GetTabId()) : 0;
+  if (tab) {
+    [gPrivatePending removeObjectForKey:profile];
+    for (NSString *host in pending) SetPrivate(profile, tab, host, pending[host].doubleValue);
+  }
+  client->EmitZoom();
+}
 
 void InstallScrollMonitor() {
   static id monitor, touchMonitor;
@@ -123,14 +152,18 @@ void InstallScrollMonitor() {
 @implementation NNZoom
 
 // Chrome's per-site zoom (//chrome/browser/netnyahoo/nn_zoom.h): {host: factor} for every site not at 100%.
+// Chrome's per-site zoom (//chrome/browser/netnyahoo/nn_zoom.h): {host: factor} for every site not at 100%.
 + (void)zoomLevelsForProfile:(NSString *)profile completion:(void (^)(NSDictionary<NSString *, NSNumber *> *))completion {
-  // A private window's zoom levels are its own and go with it; Chrome keeps none for it on disk.
-  if (IsIncognito(profile)) return completion(@{});
-  engine::Call("nn_zoom_list", profile, nil, ^(NSDictionary *result) {
+  NSDictionary *pending = IsIncognito(profile) ? [gPrivatePending[profile] copy] : nil;
+  int tab = IsIncognito(profile) ? PrivateTab(profile) : 0;
+  if (IsIncognito(profile) && !tab) return completion(pending ?: @{});
+  engine::Call("nn_zoom_list", profile, tab ? @{@"tab" : @(tab)} : nil, ^(NSDictionary *result) {
+    if (result[@"error"]) NSLog(@"[zoom] levels of %@: %@", profile, result[@"error"]);
     NSMutableDictionary *levels = [NSMutableDictionary dictionary];
     NSDictionary *hosts = [result[@"levels"] isKindOfClass:NSDictionary.class] ? result[@"levels"] : @{};
     for (NSString *host in hosts)
       levels[host] = @(round(zoom::FactorForLevel([hosts[host] doubleValue]) * 100) / 100);
+    [levels addEntriesFromDictionary:pending];
     completion(levels);
   });
 }
@@ -146,9 +179,15 @@ void InstallScrollMonitor() {
     }
   }
   // Chrome zooms by host: the level applies to the site's tabs as they open.
-  if (IsIncognito(profile)) return;
-  double level = fabs(zoom - 1) < 0.001 ? 0 : zoom::LevelForFactor(zoom);
-  engine::Call("nn_zoom_set", profile, @{@"host" : host, @"level" : @(level)}, ^(NSDictionary *result) {
+  if (IsIncognito(profile)) {
+    if (int tab = PrivateTab(profile)) return SetPrivate(profile, tab, host, zoom);
+    if (!gPrivatePending) gPrivatePending = [NSMutableDictionary dictionary];
+    if (!gPrivatePending[profile]) gPrivatePending[profile] = [NSMutableDictionary dictionary];
+    if (fabs(zoom - 1) < 0.001) [gPrivatePending[profile] removeObjectForKey:host];
+    else gPrivatePending[profile][host] = @(zoom);
+    return;
+  }
+  engine::Call("nn_zoom_set", profile, @{@"host" : host, @"level" : @(LevelOf(zoom))}, ^(NSDictionary *result) {
     if (result[@"error"]) NSLog(@"[zoom] %@: %@", host, result[@"error"]);
     zoom::Changed(profile, host);
   });

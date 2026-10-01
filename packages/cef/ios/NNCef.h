@@ -132,10 +132,10 @@ typedef void (^NNResultCompletion)(NSDictionary<NSString *, id> *result);
     NS_SWIFT_NAME(neverSaveOrigins(profile:completion:));
 + (void)allowSavingForProfile:(NSString *)profile origin:(NSString *)origin completion:(NNResultCompletion)completion
     NS_SWIFT_NAME(allowSaving(profile:origin:completion:));
-// Chrome's export: a reauth every time, then the CSV at `path`. {status: succeeded | cancelled | writeFailed |
-// reauthFailed | inProgress}.
-+ (void)exportForProfile:(NSString *)profile path:(NSString *)path completion:(NNResultCompletion)completion
-    NS_SWIFT_NAME(export(profile:path:completion:));
+// Chrome's export: a save panel, a reauth every time, then the CSV. {status: succeeded | cancelled | writeFailed |
+// reauthFailed | inProgress, path (when it succeeded)}.
++ (void)exportForProfile:(NSString *)profile completion:(NNResultCompletion)completion
+    NS_SWIFT_NAME(export(profile:completion:));
 @end
 
 // //chrome/browser/netnyahoo's calls over Chrome's stores (NNEngineBridge.mm): JSON in, JSON out.

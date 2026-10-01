@@ -1,5 +1,6 @@
 import {
   deletePassword,
+  exportPasswords,
   getNeverSavePasswordOrigins,
   getPassword,
   getPasswordAutofill,
@@ -38,6 +39,7 @@ export function PasswordsPane({ profileId: initial }: { profileId?: string | nul
   const [autofill, setAutofill] = useState(true);
   const [query, setQuery] = useState("");
   const [importStatus, setImportStatus] = useState("");
+  const [exportStatus, setExportStatus] = useState("");
   const profile = engineProfile(profileId);
   const unlocked = isUnlocked(profile);
 
@@ -72,6 +74,15 @@ export function PasswordsPane({ profileId: initial }: { profileId?: string | nul
     }
   };
 
+  const exportCsv = async () => {
+    const { status, path } = await exportPasswords(profile);
+    const folder = path ? path.split("/").slice(-2, -1)[0] : "";
+    if (status === "succeeded") setExportStatus(`Saved to “${folder}”. Delete the file once you're done with it.`);
+    else if (status === "writeFailed") setExportStatus("Couldn't write the file. Try another folder.");
+    else if (status === "inProgress") setExportStatus("An export is already running.");
+    else setExportStatus("");
+  };
+
   const shown = (list ?? []).filter((p) => matchesQuery(query, p.origin, p.username));
 
   return (
@@ -91,6 +102,9 @@ export function PasswordsPane({ profileId: initial }: { profileId?: string | nul
         </Row>
         <Row title="Import passwords" description={importStatus || "From a CSV exported by Chrome, Safari, Firefox, 1Password, Bitwarden…"}>
           <Button title="Import CSV…" onPress={() => void importCsv()} />
+        </Row>
+        <Row title="Export passwords" description={exportStatus || "To a CSV file. Anyone who can open the file can read your passwords."}>
+          <Button title="Export CSV…" onPress={() => void exportCsv()} />
         </Row>
         <Row
           title="Password manager apps"

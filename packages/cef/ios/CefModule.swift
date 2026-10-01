@@ -147,8 +147,8 @@ public class CefModule: Module {
     AsyncFunction("allowSavingPasswords") { (profile: String, origin: String, promise: Promise) in
       NNPasswords.allowSaving(profile: profile, origin: origin) { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("exportPasswords") { (profile: String, path: String, promise: Promise) in
-      NNPasswords.export(profile: profile, path: path) { promise.resolve($0) }
+    AsyncFunction("exportPasswords") { (profile: String, promise: Promise) in
+      NNPasswords.export(profile: profile) { promise.resolve($0) }
     }.runOnQueue(.main)
     AsyncFunction("getPasswordAutofill") { (profile: String) in NNPasswords.autofillEnabled(profile: profile) }.runOnQueue(.main)
     AsyncFunction("setPasswordAutofill") { (profile: String, enabled: Bool) in

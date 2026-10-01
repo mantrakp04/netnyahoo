@@ -4,7 +4,7 @@ import type { DisplayMediaSource } from "./WebView";
 import type { ExternalAppAllowance } from "./externalApps";
 import type { FaviconImage } from "./favicons";
 import type { BrowsingDataType, Download, EngineComponent, EngineInfo, EngineTask, ChromeWindowState, PermissionRequest, PermissionResult, SystemState } from "./module";
-import type { SavedPassword } from "./passwords";
+import type { PasswordExportStatus, SavedPassword } from "./passwords";
 import type { TabStripCommand, TabStripTransaction } from "./tabStrip";
 import type { AddressInput, CardInput, SavedAddress, SavedCard } from "./autofill";
 import type { ClearSiteDataResult, SiteSettingType, SiteSettingValue, SiteSettings } from "./siteSettings";
@@ -89,6 +89,7 @@ export const Cef = requireNativeModule<{
   deletePassword(profile: string, origin: string, username: string): Promise<Result<{ ok: true }>>;
   getNeverSavePasswordOrigins(profile: string): Promise<Result<{ origins: string[] }>>;
   allowSavingPasswords(profile: string, origin: string): Promise<Result<{ ok: true }>>;
+  exportPasswords(profile: string): Promise<Result<{ status: PasswordExportStatus; path?: string }>>;
   getPasswordAutofill(profile: string): Promise<boolean>;
   setPasswordAutofill(profile: string, enabled: boolean): Promise<void>;
 

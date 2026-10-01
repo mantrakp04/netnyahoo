@@ -23,5 +23,9 @@ export const setNeverSavePasswords = async (profile: string, origin: string, nev
 };
 export const getNeverSavePasswordOrigins = async (profile: string) =>
   valueOr(await Cef.getNeverSavePasswordOrigins(profile), { origins: [] }).origins;
+export type PasswordExportStatus = "succeeded" | "cancelled" | "writeFailed" | "reauthFailed" | "inProgress";
+/** Chrome's export: asks where to save, then for Touch ID or the login password, then writes a CSV. */
+export const exportPasswords = async (profile: string): Promise<{ status: PasswordExportStatus; path?: string }> =>
+  valueOr(await Cef.exportPasswords(profile), { status: "writeFailed" as PasswordExportStatus });
 export const getPasswordAutofill = (profile = "") => Cef.getPasswordAutofill(profile);
 export const setPasswordAutofill = (enabled: boolean, profile = "") => Cef.setPasswordAutofill(profile, enabled);

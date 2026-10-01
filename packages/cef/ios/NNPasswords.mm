@@ -1,5 +1,7 @@
 #import "NNEngine.h"
 
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+
 using namespace nn;
 
 namespace {
@@ -89,8 +91,22 @@ CefRefPtr<CefRequestContext> Context(NSString *profile) { return ContextForProfi
   Run("nn_passwords_allow", profile, @{@"origin" : OriginOf(origin) ?: origin}, completion);
 }
 
-+ (void)exportForProfile:(NSString *)profile path:(NSString *)path completion:(NNResultCompletion)completion {
-  Run("nn_passwords_export", profile, @{@"path" : path ?: @""}, completion);
+// Chrome's export: where to save first, then the OS reauth (every time) and Chrome's exporter.
++ (void)exportForProfile:(NSString *)profile completion:(NNResultCompletion)completion {
+  NSSavePanel *panel = [NSSavePanel savePanel];
+  panel.nameFieldStringValue = @"Netnyahoo Passwords.csv";
+  panel.allowedContentTypes = @[ UTTypeCommaSeparatedText ];
+  panel.canCreateDirectories = YES;
+  panel.message = @"Anyone who can open this file can read your passwords.";
+  [panel beginWithCompletionHandler:^(NSModalResponse response) {
+    NSString *path = response == NSModalResponseOK ? panel.URL.path : nil;
+    if (!path) return completion(@{@"status" : @"cancelled"});
+    Run("nn_passwords_export", profile, @{@"path" : path}, ^(NSDictionary *result) {
+      NSMutableDictionary *answer = [result mutableCopy];
+      if ([result[@"status"] isEqual:@"succeeded"]) answer[@"path"] = path;
+      completion(answer);
+    });
+  }];
 }
 
 @end
