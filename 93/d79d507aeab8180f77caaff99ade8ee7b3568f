@@ -1,0 +1,19 @@
+packages/nncore/scripts/acceptance.mjs
+  s_9c356f9574d31c::t_a7843967a1a4ab 263-281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "93d79d507aeab8180f77caaff99ade8ee7b3568f",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
