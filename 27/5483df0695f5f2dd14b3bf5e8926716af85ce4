@@ -1,0 +1,83 @@
+engine/nncore/src/netnyahoo/core/nn_context_menu.mm
+  s_9c356f9574d31c::t_b376626dc1b643 14,17-20,148-149,151,158-168,174-191,193-220,222-224
+  s_9c356f9574d31c::t_f1710a36f346d6 16,169-173
+  s_9c356f9574d31c::t_1fe2f8f984003a 8-9
+engine/nncore/src/netnyahoo/core/nn_desktop_capture.h
+  s_9c356f9574d31c::t_57f86f4e281a5d 1-35
+engine/nncore/src/netnyahoo/core/public/NNCore.h
+  s_9c356f9574d31c::t_24a885e443ea45 33-35,362-363
+  s_9c356f9574d31c::t_43ae3a41d630df 154-164
+  s_9c356f9574d31c::t_66e038dad4771a 505-512
+  s_9c356f9574d31c::t_77908a64407201 361,364
+engine/nncore/src/netnyahoo/core/nn_browser.h
+  s_9c356f9574d31c::t_9bef6284fe3dc4 276-280
+spikes/nncore-host/acceptance.mjs
+  s_9c356f9574d31c::t_3a2ccf6b538139 167-168,1250-1251,1261,1263-1264
+  s_9c356f9574d31c::t_56994b8c10e192 896-898,901-910
+  s_9c356f9574d31c::t_ffff73863e073a 169-170,173-176
+  s_9c356f9574d31c::t_db4920ccefa394 921-923,928-929,932-940,942
+  s_9c356f9574d31c::t_37195237148571 899-900,911-912,924-927,930-931,941,987-1003
+  s_9c356f9574d31c::t_9b7d26798f764c 1044-1062
+  s_9c356f9574d31c::t_3b7a4d625b3cec 773-786
+  s_9c356f9574d31c::t_343b62a208bb3a 1262,1265-1266
+  s_9c356f9574d31c::t_b0a2f12d498de0 1064-1079
+  s_9c356f9574d31c::t_6c4b166ee2b48b 1063,1080
+engine/nncore/src/netnyahoo/core/nn_picture_in_picture.h
+  s_9c356f9574d31c::t_d47b19bcc849aa 1-17
+engine/nncore/src/netnyahoo/core/nn_desktop_capture.mm
+  s_9c356f9574d31c::t_57f86f4e281a5d 1-102
+spikes/nncore-host/main.mm
+  s_9c356f9574d31c::t_9b7d26798f764c 1088-1093
+  s_9c356f9574d31c::t_56994b8c10e192 1001-1003
+  s_9c356f9574d31c::t_cdaf2a8e2dad61 1175-1179
+  s_9c356f9574d31c::t_b0a2f12d498de0 650-651,1081-1087
+  s_9c356f9574d31c::t_b7e5df4ce349e2 20-21,162,993-1000,1168-1171,1180-1184
+  s_9c356f9574d31c::t_cf2a5ec7d97cbf 652,1172-1173
+engine/nncore/src/netnyahoo/core/BUILD.gn
+  s_9c356f9574d31c::t_66e038dad4771a 30-31
+  s_9c356f9574d31c::t_75aeb8d9ff2d03 65
+  s_9c356f9574d31c::t_9bef6284fe3dc4 28-29
+  s_9c356f9574d31c::t_71dd0801b7f9bf 44-45
+engine/nncore/src/netnyahoo/core/nn_picture_in_picture.mm
+  s_9c356f9574d31c::t_d47b19bcc849aa 1-11,13-78
+  s_9c356f9574d31c::t_d7bcca2e917c17 12
+engine/nncore/src/netnyahoo/core/nn_devtools_call.mm
+  s_9c356f9574d31c::t_c2d962ba00f07a 1-143
+engine/nncore/src/netnyahoo/core/nncore_api.mm
+  s_9c356f9574d31c::t_66e038dad4771a 81,1817-1855
+  s_9c356f9574d31c::t_75aeb8d9ff2d03 109,607-611
+  s_9c356f9574d31c::t_555bcf818ae502 753-754,756-761
+  s_9c356f9574d31c::t_e74928d4cc8850 1215-1218
+  s_9c356f9574d31c::t_43ae3a41d630df 80,932-938
+  s_9c356f9574d31c::t_0a9b754e3a1d4e 709-713,716-718,720-721,733-738,740-748,755,762-770,776-777,783-786,788-794,796-797,799,939,1856
+  s_9c356f9574d31c::t_db4920ccefa394 728
+  s_9c356f9574d31c::t_9f237cbcbdd628 714-715,719,722-727,729-732,739,749-752,778-779,787,808-812
+  s_9c356f9574d31c::t_349f1af393cdbf 107-108
+  s_9c356f9574d31c::t_24a885e443ea45 409-411,413
+  s_9c356f9574d31c::t_3e04ff7f735370 82,626,940,1857
+engine/nncore/src/netnyahoo/core/nn_browser.mm
+  s_9c356f9574d31c::t_9bef6284fe3dc4 37,828-835
+  s_9c356f9574d31c::t_7cf549b949960d 1136,1142-1144
+  s_9c356f9574d31c::t_c5d251f24dc37e 836-837
+engine/nncore/src/netnyahoo/core/nn_devtools_call.h
+  s_9c356f9574d31c::t_64a7cf5b3e3d0c 1-32
+docs/nncore-spike.md
+  s_9c356f9574d31c::t_0f6fec66b24fbe 317-318,326
+  s_9c356f9574d31c::t_76ab871d2ce0c0 322,324,332-334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "275483df0695f5f2dd14b3bf5e8926716af85ce4",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
