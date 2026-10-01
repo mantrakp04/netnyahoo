@@ -12,6 +12,7 @@
 
 #import <CoreServices/CoreServices.h>
 #import <Security/Security.h>
+#include <sys/xattr.h>
 
 #include <map>
 #include <set>
@@ -503,25 +504,84 @@ NSURL *QuarantineURL(NSString *url) {
   return c.URL;
 }
 
+constexpr char kQuarantineXattr[] = "com.apple.quarantine";
+
+// LaunchServices writes com.apple.quarantine as "flags;timestamp;agent;event id" and puts the agent there only
+// from the writing process's own quarantine state, which an app gets from LSFileQuarantineEnabled: from us it
+// leaves "0081;<time>;;<id>", so Gatekeeper's first-open prompt can't name Netnyahoo. Fill the agent and flags in
+// as the system writes them for Chrome ("0083;<time>;Google Chrome;<id>"), keeping the event id that ties the file
+// to its row in the quarantine events database.
+void StampQuarantineAgent(NSString *path, NSString *agent) {
+  const char *fs = path.fileSystemRepresentation;
+  char value[1024];
+  ssize_t size = getxattr(fs, kQuarantineXattr, value, sizeof(value) - 1, 0, 0);
+  if (size <= 0) return;
+  value[size] = 0;
+  NSMutableArray<NSString *> *fields = [[@(value) componentsSeparatedByString:@";"] mutableCopy];
+  // The flags field is exactly four hex digits.
+  NSCharacterSet *notHex = [NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdefABCDEF"].invertedSet;
+  if (fields.count < 4 || fields[2].length || fields[0].length != 4 ||
+      [fields[0] rangeOfCharacterFromSet:notHex].location != NSNotFound)
+    return;
+  unsigned long flags = strtoul(fields[0].UTF8String, nullptr, 16);
+  fields[0] = [NSString stringWithFormat:@"%04lx", flags | 0x2];
+  fields[2] = [agent stringByReplacingOccurrencesOfString:@";" withString:@""];
+  NSData *stamped = [[fields componentsJoinedByString:@";"] dataUsingEncoding:NSUTF8StringEncoding];
+  if (setxattr(fs, kQuarantineXattr, stamped.bytes, stamped.length, 0, 0))
+    NSLog(@"[cef] quarantine agent %@: %s", path.lastPathComponent, strerror(errno));
+}
+
+// Spotlight's "Where from" (kMDItemWhereFroms): the download's URL, then the page it came from, as Chrome and
+// Safari record them. It's where the URLs survive: the quarantine events database stopped keeping them in
+// macOS 12.4.
+void SetWhereFroms(NSString *path, NSArray<NSString *> *urls) {
+  const char *fs = path.fileSystemRepresentation;
+  constexpr char kName[] = "com.apple.metadata:kMDItemWhereFroms";
+  if (!urls.count) {
+    removexattr(fs, kName, 0);
+    return;
+  }
+  NSData *plist = [NSPropertyListSerialization dataWithPropertyList:urls
+                                                             format:NSPropertyListBinaryFormat_v1_0
+                                                            options:0
+                                                              error:nil];
+  if (plist && setxattr(fs, kName, plist.bytes, plist.length, 0, 0))
+    NSLog(@"[cef] where froms %@: %s", path.lastPathComponent, strerror(errno));
+}
+
 // The ungoogled patch set makes Chromium's own quarantine a no-op, so a finished download gets
 // com.apple.quarantine here, before the "finished" event reaches JS (Open When Done): opening a downloaded
-// app then goes through Gatekeeper. Private downloads are quarantined without their URLs, which the xattr
-// and LaunchServices' quarantine events database would otherwise keep.
+// app then goes through Gatekeeper. Private downloads are quarantined without their URLs, which the record
+// and Spotlight's "Where from" would otherwise keep.
 void Quarantine(NSString *path, NSString *dataURL, NSString *originURL, bool incognito) {
   NSURL *file = [NSURL fileURLWithPath:path];
+  // A record the file already has keeps its event id; ours fills in the rest.
   NSDictionary *existing = nil;
-  if ([file getResourceValue:&existing forKey:NSURLQuarantinePropertiesKey error:nil] && existing) return;
-  NSMutableDictionary *props = [NSMutableDictionary dictionary];
-  props[(__bridge NSString *)kLSQuarantineAgentNameKey] =
-      NSBundle.mainBundle.infoDictionary[@"CFBundleName"] ?: @"Netnyahoo";
-  props[(__bridge NSString *)kLSQuarantineTypeKey] = (__bridge NSString *)kLSQuarantineTypeWebDownload;
-  if (!incognito) {
-    if (NSURL *data = QuarantineURL(dataURL)) props[(__bridge NSString *)kLSQuarantineDataURLKey] = data;
-    if (NSURL *origin = QuarantineURL(originURL)) props[(__bridge NSString *)kLSQuarantineOriginURLKey] = origin;
-  }
+  [file getResourceValue:&existing forKey:NSURLQuarantinePropertiesKey error:nil];
+  NSMutableDictionary *props = [existing mutableCopy] ?: [NSMutableDictionary dictionary];
+  NSString *agent = NSBundle.mainBundle.infoDictionary[@"CFBundleName"] ?: @"Netnyahoo";
+  props[(__bridge NSString *)kLSQuarantineAgentNameKey] = agent;
+  if (NSString *bundleId = NSBundle.mainBundle.bundleIdentifier)
+    props[(__bridge NSString *)kLSQuarantineAgentBundleIdentifierKey] = bundleId;
+  NSURL *data = incognito ? nil : QuarantineURL(dataURL);
+  NSURL *origin = incognito ? nil : QuarantineURL(originURL);
+  NSString *scheme = [NSURLComponents componentsWithString:dataURL ?: @""].scheme.lowercaseString;
+  props[(__bridge NSString *)kLSQuarantineTypeKey] =
+      [scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"]
+          ? (__bridge NSString *)kLSQuarantineTypeWebDownload
+          : (__bridge NSString *)kLSQuarantineTypeOtherDownload;
+  props[(__bridge NSString *)kLSQuarantineDataURLKey] = data;
+  props[(__bridge NSString *)kLSQuarantineOriginURLKey] = origin;
   NSError *error = nil;
-  if (![file setResourceValue:props forKey:NSURLQuarantinePropertiesKey error:&error])
+  if (![file setResourceValue:props forKey:NSURLQuarantinePropertiesKey error:&error]) {
     NSLog(@"[cef] quarantine %@: %@", path.lastPathComponent, error.localizedDescription);
+    return;
+  }
+  StampQuarantineAgent(path, agent);
+  NSMutableArray<NSString *> *froms = [NSMutableArray array];
+  if (data) [froms addObject:data.absoluteString];
+  if (origin) [froms addObject:origin.absoluteString];
+  SetWhereFroms(path, froms);
 }
 }
 
