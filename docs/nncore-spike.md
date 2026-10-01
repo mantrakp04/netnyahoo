@@ -125,7 +125,7 @@ Chrome's DevTools protocol. The last run passed 29 of 29. The screen was locked,
 | Chrome tab strip sync (`chromeTabs.ts`, `tabStripEcho.ts`) | `OnTabStripChanged`, `SetTabIndex` | `didInsertTab`/`didRemoveTab`/`didActivateTab`, the revisioned transaction contract of rec. 1 |
 | Profiles and paging (`profilePager`, `swipe.tsx`) | One Chrome window per profile, `MoveRoot`, `NNChromeWindow` | `activeProfile` on one `NNCoreWindow`; paging is a view swap |
 | Passwords, autofill, extensions, zoom, search engines | Hidden WebUI pages driven by `Runtime.evaluate` (`NNChromePages`) | Direct calls in `nncore_api.mm` (as `fetchSavedLogins`, `loadUnpackedExtension` do), i.e. rec. 4 |
-| DevTools | `cef-zwindow-z-devtools`, `NNDevTools` | `devToolsDidChangeForTab:` + `devToolsLayoutForSize:` |
+| DevTools | `cef-window-devtools`, `NNDevTools` | `devToolsDidChangeForTab:` + `devToolsLayoutForSize:` |
 | Shortcuts | `NNClient` key tables, `OnChromeCommand` | `executeChromeCommand:`; the key path still has to be designed (below) |
 
 ## What the spike does not prove
@@ -281,3 +281,32 @@ The screen was locked for the whole spike:
 - the extension panel's placement.
 
 Use the SCK recorder from `docs/agent-brief.md` on `NNHost` once the screen is unlocked.
+
+## Stage 1 runtime
+
+Stage 1 (2026-10-01) closes the runtime gaps above under "Before Small Yahu" in the engine. The RN app's
+stage-1 work is in `packages/nncore` and `docs/nncore-parity.md`. `spikes/nncore-host/acceptance.mjs` now
+passes 65 checks in a hidden instance: the spike's 29 plus the `S1`–`S6` checks below.
+
+| Item | How | Checks |
+|---|---|---|
+| `terminate:` and quit | `+[AppController sharedController]` answers a stand-in, so Chrome's `AppController` never exists or takes over `NSApp.delegate`. `-[BrowserCrApplication terminate:]` asks `NSApp.delegate` (`applicationShouldTerminate:`, with `NSTerminateLater` and `-replyToApplicationShouldTerminate:`). NNCore's own `kAEQuitApplication` handler routes the Dock, logout and `osascript` through it, so the delegate is asked once. The keep-alive is dropped only at `NSApplicationWillTerminateNotification`, Chrome's point of no return | S1: host delegate, Cancel, an Apple-event quit answered Later then cancelled by a page, the final quit |
+| Cancellable close and quit | A window close runs every Browser's beforeunload first (`UnloadController::TryToCloseWindow`, as `BrowserCloseManager` does), then asks about downloads, then closes. "Stay" resets every Browser (`windowDidCancelClose:`). A quit has phases with a generation per attempt; a quit cancelled by a page fires `engineQuitCancelled` and keeps the keep-alive. The title bar's close asks `windowShouldClose:`. `NNCoreWindow` keeps itself alive until its window has closed, and profile wrappers drop their `Profile*` when it goes | S2 |
+| Keys | `NNBrowserWindow::PreHandleKeyboardEvent` asks `window:preHandleKeyEvent:` (YES: the page never sees the key). Menu shortcuts are `NOT_HANDLED_IS_SHORTCUT`. Keys the page leaves go to `window:handleKeyEvent:`, then `NSApp.mainMenu`. Chrome's accelerators never run in our windows: a plain views widget has no `ChromeCommandDispatcherDelegate`. With a host view first responder, AppKit's normal path reaches the menu | S3 (the window is made key by a test-only `isKeyWindow` override): reserved ⌘T, ⌘K after the page, ⌘J the page keeps, ⌘T from an `NSTextField`, one menu action per press |
+| Renderer side | `NNContentRendererClient` plus `//netnyahoo/core/mojom`. The page script reaches each renderer on its IPC channel at launch. It runs in every frame's main world in `DidCreateScriptContext`, before page scripts. Also: `post`/`receive`, `evaluate` (strict wrapper, first `post("result")` answers), `executeJavaScript` (main frame or one frame), and the `netnyahoo:` rule as a `NavigationThrottle` (web pages dropped; Chrome's pages: `tab:didRequestAppURL:userGesture:`) | S4 |
+| Chrome's own windows | Hook in `Browser`'s constructor: a Browser Chrome makes itself asks `engineWindowForNewBrowserOfProfile:type:`. A returned window gets an `NNBrowserWindow` and the Browser behaves as ours | S5: `chrome.windows.create`, `IDC_NEW_INCOGNITO_WINDOW` |
+| The rest of the API | `windowForNSWindow:`, `prepareProfile:`, `adoptTab:`, `placeTab:index:pinned:`, `closeNow`, the new tab callbacks and properties | S6 |
+
+New hooks in Chrome's files, all added by `apply.sh` and checked by `--check`:
+- **`browser.cc`, the window factory (8 lines).** Only NNCore sets it, so CEF is unchanged.
+- **`sad_tab_controller.cc` (3 lines).** A Browser without a `BrowserView` keeps its sad tab unattached instead of
+  crashing. Before this hook, a renderer crash in an NNCore tab crashed the browser.
+
+Known gaps:
+- **IME (marked text) and real focus/key-window behaviour** need an unlocked screen. The page's view is an
+  `NSTextInputClient` and keys reach it, but marked text was not exercised.
+- **Logout cancel.** A quit Apple event is answered at once, as Chrome's is, so logout isn't vetoed by an
+  app that later stays.
+- **Chrome's multitab close confirmation** (`--close-confirmation`) isn't followed. NNCore never sets that flag.
+- **Teardown watchdog.** One acceptance run in about eight hit Chrome's 10 s teardown watchdog after a clean
+  `engineWillShutDown` (exit code 2). The acceptance run now samples the process if the quit takes over 5 s.
