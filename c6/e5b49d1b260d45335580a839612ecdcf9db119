@@ -1,0 +1,25 @@
+spikes/nncore-host/acceptance.mjs
+  s_9c356f9574d31c::t_a782ddf65c01e9 706-719
+engine/nncore/src/netnyahoo/core/nncore_api.mm
+  s_9c356f9574d31c::t_a782ddf65c01e9 973-996
+spikes/nncore-host/main.mm
+  s_9c356f9574d31c::t_a782ddf65c01e9 790
+engine/nncore/src/netnyahoo/core/public/NNCore.h
+  s_9c356f9574d31c::t_a782ddf65c01e9 249,273-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c6e5b49d1b260d45335580a839612ecdcf9db119",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
