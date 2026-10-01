@@ -1,3 +1,4 @@
+import { toAppUrl, toEngineUrl } from "@netnyahoo/core";
 import { requireNativeViewManager } from "expo-modules-core";
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import type { NativeSyntheticEvent, ViewProps } from "react-native";
@@ -257,29 +258,26 @@ type NativeEvents = {
 type Handlers = keyof NativeEvents;
 type NativeProps = Omit<WebViewProps, Handlers> & { [K in Handlers]?: Evt<NativeEvents[K]> };
 
-const toEngine = (url: string) => url.replace(/^(view-source:)?netnyahoo:(?:\/\/)?(?=[^/?#])/i, "$1chrome://");
-const fromEngine = (url: string) => url.replace(/^(view-source:)?chrome:\/\/(?=[^/?#])/i, "$1netnyahoo://");
-
 const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<WebViewProps[K]>> } = {
-  onNavigationChange: (e) => [{ ...e, url: fromEngine(e.url) }],
+  onNavigationChange: (e) => [{ ...e, url: toAppUrl(e.url) }],
   onProgress: (e) => [e.progress],
   onFavicon: (e) => [e.url, e.urls],
   onMedia: (e) => [e],
   onNowPlaying: (e) => [e.state],
   onMediaAccess: (e) => [e],
-  onOpenWindow: (e) => [{ ...e, url: fromEngine(e.url) }],
-  onPopupBlocked: (e) => [{ ...e, url: fromEngine(e.url) }],
+  onOpenWindow: (e) => [{ ...e, url: toAppUrl(e.url) }],
+  onPopupBlocked: (e) => [{ ...e, url: toAppUrl(e.url) }],
   onFindResult: (e) => [e],
   onFullscreen: (e) => [e.fullscreen],
   onStatus: (e) => [e.text],
   onCrashed: (e) => [e],
   onUnresponsive: () => [],
   onResponsive: () => [],
-  onLoadError: (e) => [{ ...e, url: fromEngine(e.url) }],
+  onLoadError: (e) => [{ ...e, url: toAppUrl(e.url) }],
   onSecurity: (e) => [e],
   onZoom: (e) => [e],
   onContentBlocked: (e) => [e],
-  onDownloadNavigation: (e) => [{ ...e, url: fromEngine(e.url), committedUrl: fromEngine(e.committedUrl) }],
+  onDownloadNavigation: (e) => [{ ...e, url: toAppUrl(e.url), committedUrl: toAppUrl(e.committedUrl) }],
   onNotification: (e) => [e],
   onNotificationClose: (e) => [e.id],
   onPictureInPicture: (e) => [e],
@@ -290,7 +288,7 @@ const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<
   onPageFocus: () => [],
   onPageMessage: (e) => [e.kind, e.data],
   onReady: (e) => [e.browserId, e.tabId ?? 0],
-  onDiscarded: (e) => [fromEngine(e.url)],
+  onDiscarded: (e) => [toAppUrl(e.url)],
   onPasswordPrompt: (e) => [e],
   onTabStrip: (e) => [e],
   onExternalApp: (e) => [e],
@@ -338,8 +336,8 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
       loadUrl: (url, options) =>
         call(undefined, (n) =>
           options?.opened
-            ? n.loadOpenedUrl(options.opened, toEngine(url))
-            : n.loadUrl(toEngine(url), options?.userInitiated ?? false),
+            ? n.loadOpenedUrl(options.opened, toEngineUrl(url))
+            : n.loadUrl(toEngineUrl(url), options?.userInitiated ?? false),
         ),
       goBack: () => call(undefined, (n) => n.goBack()),
       goForward: () => call(undefined, (n) => n.goForward()),
@@ -365,7 +363,7 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
           return null;
         }
       },
-      navigationEntries: async () => (await call([], (n) => n.navigationEntries())).map((e) => ({ ...e, url: fromEngine(e.url) })),
+      navigationEntries: async () => (await call([], (n) => n.navigationEntries())).map((e) => ({ ...e, url: toAppUrl(e.url) })),
       downloadImage: (url, maxPixels) => call(null, (n) => n.downloadImage(url, maxPixels)),
       downloadFavicon: (url, name) => call(null, (n) => n.downloadFavicon(url, name ?? null)),
       mediaCommand: (action, seconds) => call(undefined, (n) => n.mediaCommand(action, seconds)),
@@ -390,7 +388,7 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
   const nativeProps: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {
     if (key === "url") {
-      nativeProps.url = typeof value === "string" ? toEngine(value) : value;
+      nativeProps.url = typeof value === "string" ? toEngineUrl(value) : value;
       continue;
     }
     const map = unwrap[key as Handlers] as ((e: unknown) => unknown[]) | undefined;

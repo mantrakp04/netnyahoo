@@ -58,7 +58,8 @@ export const createHistorySlice: StateCreator<BrowserState, [], [], HistorySlice
     set((s) => {
       const list = s.history[profileId] ?? [];
       const existing = list.find((h) => h.url === url);
-      if (existing && !countVisit && existing.title === (title || existing.title) && existing.favicon === (favicon ?? existing.favicon)) return {};
+      // Nothing new (a finished load's title, say): the same state, so no subscriber runs.
+      if (existing && !countVisit && existing.title === (title || existing.title) && existing.favicon === (favicon ?? existing.favicon)) return s;
       const now = Date.now();
       const entry: HistoryEntry = existing
         ? {

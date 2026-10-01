@@ -288,7 +288,6 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
   const ref = useMemo(() => webviewRef(tabId), [tabId]);
   const autoPictureInPicture = useAutoPictureInPicture(tabId, visible);
 
-  const lastVisited = useRef<string | null>(null);
   const lastPage = useRef<string | null>(null);
   const pending = useRef<string | null>(navigation?.url ?? (adoptId ? (tab()?.url ?? null) : null));
 
@@ -344,7 +343,7 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
           patchPage(tabId, { newTabShown: null });
         }
         if (fromNewTab.current && url && !isBlank(url)) patchPage(tabId, { backToNewTab: true });
-        store().updateTab(tabId, { url, title }, { isLoading, canGoBack, canGoForward, themeColor });
+        store().navigated(tabId, { url, title }, { isLoading, canGoBack, canGoForward, themeColor });
         if (lastPage.current !== null && pageKey(url) !== lastPage.current) {
           // Like Chrome's tab-modal dialogs, the open-app prompt stays within a site.
           if (pageOf(tabId).externalApp && hostOf(url) !== hostOf(lastPage.current)) answerExternalApp(tabId, false);
@@ -355,12 +354,6 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
         }
         lastPage.current = pageKey(url);
         patchPage(tabId, { themeColorSource: themeColorSource ?? null });
-        if (!isLoading && url) {
-          const isNewPage = lastVisited.current !== url;
-          lastVisited.current = url;
-          const t = tab();
-          if (t) store().recordVisit(t.profileId, url, title, t.favicon, isNewPage);
-        }
       }}
       onLoadError={() => {
         pending.current = null;
@@ -385,11 +378,9 @@ function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean;
       onZoom={({ zoom }) => store().updateTab(tabId, { zoom })}
       onFindResult={({ count, active }) => store().setFind(tabId, { count, active })}
       onFavicon={(favicon) => {
-        const t = tab();
-        if (!favicon || !t) return;
-        store().updateTab(tabId, { favicon });
+        if (!favicon || !tab()) return;
+        store().faviconChanged(tabId, favicon);
         noteFavicon(tabId, favicon);
-        if (t.url) store().recordVisit(t.profileId, t.url, t.title, favicon);
       }}
       onMedia={({ playing, muted }) => {
         store().updateLive(tabId, { playingAudio: playing });

@@ -29,14 +29,18 @@ class Client : public CefClient,
  public:
   Client(NNBrowserView *view, NSString *profile);
 
-  void SetView(NNBrowserView *view) { view_ = view; }
+  void SetView(NNBrowserView *view);
   NNBrowserView *View() const { return view_; }
   CefRefPtr<CefBrowser> Browser() const { return browser_; }
   NSString *Profile() const { return profile_; }
   bool Incognito() const { return IsIncognito(profile_); }
   NSString *URL() const;
 
+  // Every event goes out in order. Navigation and progress are coalesced: navigation sends at most one
+  // report per frame and only when something changed, progress at most 10 a second; any other event
+  // first sends them (FlushCoalesced) so it still follows them.
   void Emit(NSString *name, NSDictionary *payload);
+  void FlushCoalesced();
   void EmitNavigation();
   void EmitMedia();
   void EmitSecurity();
@@ -192,6 +196,18 @@ class Client : public CefClient,
   bool unresponsive_ = false;
   double lastZoom_ = -1;
   double pinchScale_ = 1;
+  void Send(NSString *name, NSDictionary *payload);
+  void SendNavigation();
+  void SendProgress(double progress);
+  bool navigationDirty_ = false;
+  bool navigationFlushQueued_ = false;
+  bool progressFlushQueued_ = false;
+  double pendingProgress_ = -1;
+  double sentProgress_ = -1;
+  CFTimeInterval sentProgressAt_ = 0;
+  // What the view last got, so an unchanged report isn't sent again (reset when the client changes views).
+  NSDictionary *sentNavigation_ = nil;
+  NSDictionary *sentSecurity_ = nil;
   int blockedCount_ = 0;
   bool blockedEmitQueued_ = false;
   NSString *lastBlocked_ = nil;

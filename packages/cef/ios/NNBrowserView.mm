@@ -498,6 +498,8 @@ NSString *const kExitPictureInPictureScript =
 }
 
 - (void)emit:(NSString *)name payload:(NSDictionary *)payload {
+  // The navigation and progress the client is holding come first (Client::FlushCoalesced).
+  if (_client && _client->View() == self) _client->FlushCoalesced();
   [self.delegate browserView:self event:name payload:payload];
 }
 

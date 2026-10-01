@@ -29,7 +29,8 @@ modules before using them — this is a summary from the agent that built it.
   `ClosedTab` with `small: true` that reopens in a new Small Yahu; it isn't saved with the session.
 - Tabs: `newTab(windowId, { url, background, adoptId, openerId, profileId, pinned, index })`, `closeTab`,
   `closeTabs`, `activate`, `navigate`, `updateTab(id, patch, live?)` (the live patch lands in the same store update), `updateLive`,
-  `togglePin`, `moveTab`, `duplicateTab`.
+  `togglePin`, `moveTab`, `duplicateTab`. The engine's page reports go through `navigated(id, { url, title }, live)` and
+  `faviconChanged(id, favicon)`, which also record history (a finished load is one visit; `live.visitedUrl` remembers it).
   Closing a pinned tab only unloads it (`unloadPinnedTabs`, like Dia): the tile stays with `unloaded: true`, back at its
   pinned URL and without a web view until selected; the window selects its last-used regular tab, else the loaded
   pinned tab it showed last, else a New Tab page, and ⇧⌘T restores the page into the tile. Closing the last tab closes

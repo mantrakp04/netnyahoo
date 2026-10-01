@@ -83,6 +83,12 @@ NSMutableSet<NNPopupWindowController *> *gControllers;
 }
 
 - (void)browserView:(NNBrowserView *)view event:(NSString *)name payload:(NSDictionary *)payload {
+  // A page of ours a WebUI page here links to opens as a tab (Client::OnBeforeBrowse), not in the opener's.
+  if ([name isEqualToString:@"openWindow"] && [payload[@"disposition"] isEqual:@"current"]) {
+    NSMutableDictionary *tab = [payload mutableCopy];
+    tab[@"disposition"] = @"foreground";
+    payload = tab;
+  }
   if ([name isEqualToString:@"navigation"]) {
     NSString *host = HostOf(payload[@"url"]);
     NSString *title = payload[@"title"];

@@ -9,6 +9,9 @@
     "setup": "scripts/setup.sh",
     "typecheck": "tsc -p ."
   },
+  "dependencies": {
+    "@netnyahoo/core": "workspace:*"
+  },
   "peerDependencies": {
     "expo": "*",
     "react": "*",

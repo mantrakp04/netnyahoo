@@ -57,6 +57,10 @@ export type TabsSlice = {
   // `live` patches the tab's live state in the same update (one pass over the store's subscribers).
   updateTab(id: string, patch: Partial<Tab>, live?: Partial<TabLive>): void;
   updateLive(id: string, patch: Partial<TabLive>): void;
+  // The engine's report of the tab's page. A finished load is a history visit, counted once per page.
+  navigated(id: string, page: { url: string; title: string }, live: Partial<TabLive>): void;
+  // The page's icon: the tab shows it and its history entry keeps it.
+  faviconChanged(id: string, favicon: string): void;
   duplicateTab(id: string): string | undefined;
   togglePin(id: string): void;
   moveTab(id: string, toIndex: number): void;
@@ -367,6 +371,8 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     // Typing an address starts a new task (a New Tab page gets one lookup first, as in Chrome).
     const base = userInitiated && tab.url ? forgetOpeners(s, tab.windowId) : s;
     set(apply(base, { tabs: { ...base.tabs, [id]: { ...rest, openerId: base.tabs[id]!.openerId, navigation: { ...navigationTo(url, userInitiated), ...(opened ? { opened } : {}) }, url: tab.url || url } } }));
+    // A load the app starts is a visit of its own, even of the page the tab last counted (one shown after an app page).
+    get().updateLive(id, { visitedUrl: undefined });
     const ui = get().windowUi[tab.windowId];
     if (ui?.panel.open) get().closePanel(tab.windowId);
   },
@@ -394,6 +400,20 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     if (!live) return;
     const next = merge(live, patch);
     if (next !== live) set((s) => ({ live: { ...s.live, [id]: next } }));
+  },
+
+  navigated(id, page, live) {
+    const finished = !live.isLoading && !!page.url;
+    const counted = finished && get().live[id]?.visitedUrl !== page.url;
+    get().updateTab(id, page, counted ? { ...live, visitedUrl: page.url } : live);
+    const tab = get().tabs[id];
+    if (finished && tab) get().recordVisit(tab.profileId, page.url, page.title, tab.favicon, counted);
+  },
+
+  faviconChanged(id, favicon) {
+    get().updateTab(id, { favicon });
+    const tab = get().tabs[id];
+    if (tab?.url) get().recordVisit(tab.profileId, tab.url, tab.title, favicon);
   },
 
   duplicateTab(id) {

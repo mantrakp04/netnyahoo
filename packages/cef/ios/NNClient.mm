@@ -244,10 +244,6 @@ bool IsWebUIPage(NSString *url) {
   NSString *u = url.lowercaseString;
   return [u hasPrefix:@"chrome:"] || [u hasPrefix:@"devtools:"];
 }
-NSString *EngineURL(NSString *appURL) {
-  NSString *rest = [appURL substringFromIndex:@"netnyahoo:".length];
-  return [@"chrome:" stringByAppendingString:[rest hasPrefix:@"//"] ? rest : [@"//" stringByAppendingString:rest]];
-}
 
 // MARK: Page message fields
 // The page script runs in the page's own world, where the page can replace
@@ -329,16 +325,67 @@ NSString *Client::URL() const {
   return main ? ToNS(main->GetURL()) : @"";
 }
 
+void Client::SetView(NNBrowserView *view) {
+  if (view == view_) return;
+  view_ = view;
+  // A new view (a tab moved to another window) starts from nothing: it gets every report afresh.
+  sentNavigation_ = nil;
+  sentSecurity_ = nil;
+  sentProgress_ = -1;
+}
+
+// The view sends what's coalesced before any other event (-[NNBrowserView emit:payload:]).
 void Client::Emit(NSString *name, NSDictionary *payload) { [view_ emit:name payload:payload]; }
 
+void Client::Send(NSString *name, NSDictionary *payload) {
+  NNBrowserView *view = view_;
+  [view.delegate browserView:view event:name payload:payload];
+}
+
+// MARK: Coalesced events
+// A load reports its state 5–20 times (address, title, theme colour, loading flips, subframes) and its
+// progress up to 10 times; each report is a JS update. They're held for a frame (progress for 100 ms) and
+// sent as one, built from the state at that moment.
+
+constexpr double kNavigationDelay = 1.0 / 60;
+constexpr double kProgressInterval = 0.1;
+
 void Client::EmitNavigation() {
+  navigationDirty_ = true;
+  if (navigationFlushQueued_) return;
+  navigationFlushQueued_ = true;
+  CefRefPtr<Client> self(this);
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kNavigationDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    self->navigationFlushQueued_ = false;
+    self->FlushCoalesced();
+  });
+}
+
+void Client::FlushCoalesced() {
+  if (!browser_) {
+    navigationDirty_ = false;
+    pendingProgress_ = -1;
+    return;
+  }
+  if (navigationDirty_) {
+    navigationDirty_ = false;
+    SendNavigation();
+  }
+  if (pendingProgress_ >= 0) {
+    double progress = pendingProgress_;
+    pendingProgress_ = -1;
+    SendProgress(progress);
+  }
+}
+
+void Client::SendNavigation() {
   if (!browser_) return;
   NSString *url = URL();
   if (CefRefPtr<CefNavigationEntry> entry = browser_->GetHost()->GetVisibleNavigationEntry()) {
     NSString *display = ToNS(entry->GetDisplayURL());
     if ([display hasPrefix:@"view-source:"]) url = display;
   }
-  Emit(@"navigation", @{
+  NSDictionary *state = @{
     @"url" : url,
     @"title" : title_ ?: @"",
     @"canGoBack" : @(browser_->CanGoBack()),
@@ -346,7 +393,16 @@ void Client::EmitNavigation() {
     @"isLoading" : @(browser_->IsLoading()),
     @"themeColor" : themeColor_ ?: [NSNull null],
     @"themeColorSource" : themeSource_ ?: [NSNull null],
-  });
+  };
+  if ([state isEqualToDictionary:sentNavigation_]) return;
+  sentNavigation_ = state;
+  Send(@"navigation", state);
+}
+
+void Client::SendProgress(double progress) {
+  sentProgress_ = progress;
+  sentProgressAt_ = CACurrentMediaTime();
+  Send(@"progress", @{@"progress" : @(progress)});
 }
 
 void Client::EmitMedia() {
@@ -356,7 +412,11 @@ void Client::EmitMedia() {
 }
 
 void Client::EmitSecurity() {
-  if (browser_) Emit(@"security", site::SecurityInfo(browser_));
+  if (!browser_) return;
+  NSDictionary *info = site::SecurityInfo(browser_);
+  if ([info isEqualToDictionary:sentSecurity_]) return;
+  sentSecurity_ = info;
+  Emit(@"security", info);
 }
 
 void Client::EmitZoom(bool force) {
@@ -670,7 +730,23 @@ void Client::OnStatusMessage(CefRefPtr<CefBrowser> browser, const CefString &val
 }
 
 void Client::OnLoadingProgressChange(CefRefPtr<CefBrowser> browser, double progress) {
-  Emit(@"progress", @{@"progress" : @(progress)});
+  const double latest = pendingProgress_ >= 0 ? pendingProgress_ : sentProgress_;
+  if (progress == latest) return;
+  // A new load (progress going back) and the end of one go out at once, after the navigation they follow.
+  const double wait = sentProgressAt_ + kProgressInterval - CACurrentMediaTime();
+  if (progress >= 1 || progress < latest || wait <= 0) {
+    pendingProgress_ = -1;
+    FlushCoalesced();
+    return SendProgress(progress);
+  }
+  pendingProgress_ = progress;
+  if (progressFlushQueued_) return;
+  progressFlushQueued_ = true;
+  CefRefPtr<Client> self(this);
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    self->progressFlushQueued_ = false;
+    self->FlushCoalesced();
+  });
 }
 
 void Client::OnMediaAccessChange(CefRefPtr<CefBrowser> browser, bool has_video_access, bool has_audio_access) {
@@ -905,11 +981,9 @@ bool Client::OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
                             bool user_gesture, bool is_redirect) {
   NSString *url = ToNS(request->GetURL());
   if (IsAppURL(url)) {
-    if (frame->IsMain() && IsWebUIPage(ToNS(frame->GetURL()))) {
-      CefRefPtr<CefFrame> main = frame;
-      NSString *engineURL = EngineURL(url);
-      dispatch_async(dispatch_get_main_queue(), ^{ main->LoadURL(ToCef(engineURL)); });
-    }
+    // A browser page's link to an app page opens in its tab as if typed (the app maps it: core/appUrls).
+    if (frame->IsMain() && IsWebUIPage(ToNS(frame->GetURL())))
+      Emit(@"openWindow", @{@"url" : url, @"disposition" : @"current", @"userGesture" : @(user_gesture)});
     return true;
   }
   // An app link: GetResourceRequestHandler cancels it and asks (NNExternalApps).

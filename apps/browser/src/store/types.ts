@@ -59,6 +59,8 @@ export type TabLive = {
   canGoForward: boolean;
   playingAudio: boolean;
   themeColor: string | null;
+  /** The page the tab last counted as a history visit: a title or icon update of it isn't another visit. */
+  visitedUrl?: string;
 };
 
 export type GroupColor = "grey" | "blue" | "red" | "yellow" | "green" | "pink" | "purple" | "cyan" | "orange";

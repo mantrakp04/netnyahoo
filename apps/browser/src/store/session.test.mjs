@@ -119,6 +119,32 @@ test("profiles sharing data still share it after a save and reload", () => {
   assert.deepEqual(S().bookmarks.roots[a], S().bookmarks.roots[b]);
 });
 
+test("a finished load is one visit; its title and icon updates refresh the entry", () => {
+  reset();
+  const w = S().createWindow({ url: "https://a.com/" });
+  const tab = model.viewTabIds(S(), w)[0];
+  const entry = (url) => S().history.default?.find((h) => h.url === url);
+  const report = (url, title, isLoading) => S().navigated(tab, { url, title }, { isLoading, canGoBack: false, canGoForward: false, themeColor: null });
+  report("https://a.com/", "", true);
+  assert.equal(entry("https://a.com/"), undefined, "a load in progress isn't a visit");
+  report("https://a.com/", "A", false);
+  assert.equal(entry("https://a.com/").visits, 1);
+  const before = S();
+  report("https://a.com/", "A", false);
+  assert.equal(S(), before, "a repeated report changes nothing");
+  report("https://a.com/", "A, retitled", false);
+  assert.deepEqual([entry("https://a.com/").visits, entry("https://a.com/").title], [1, "A, retitled"]);
+  S().faviconChanged(tab, "https://a.com/icon.png");
+  assert.equal(S().tabs[tab].favicon, "https://a.com/icon.png");
+  assert.equal(entry("https://a.com/").favicon, "https://a.com/icon.png");
+  report("https://b.com/", "B", false);
+  report("https://a.com/", "A", false);
+  assert.equal(entry("https://a.com/").visits, 2, "coming back is another visit");
+  S().navigate(tab, "netnyahoo://history");
+  report("https://a.com/", "A", false);
+  assert.equal(entry("https://a.com/").visits, 3, "back from an app page (no engine report in between) is another visit");
+});
+
 // history.json is written by a hand-rolled serializer that reuses unchanged entries; it must match JSON.stringify.
 test("history.json is byte for byte JSON.stringify's, visit after visit", () => {
   const doc = () => historyDocument(2, S().history);
