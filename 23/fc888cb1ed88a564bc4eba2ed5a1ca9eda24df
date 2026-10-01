@@ -1,0 +1,47 @@
+apps/browser/scripts/chrome-data-test.mjs
+  s_9c356f9574d31c::t_10c79a2b52f57e 173
+  s_9c356f9574d31c::t_13fccb474f95ca 133
+  s_9c356f9574d31c::t_3630dacff03072 139,167-170,172,174-175
+  s_9c356f9574d31c::t_eb283259ac48a3 131-132
+  s_9c356f9574d31c::t_7fe1fe2404bb88 1-59,71-115,117,120-130,134-138,140-166,176-192
+  s_9c356f9574d31c::t_dedf5d964fb334 60-70,116,118,171
+  s_9c356f9574d31c::t_a1ec011b949598 119
+packages/cef/ios/NNBrowserView.mm
+  s_9c356f9574d31c::t_af0184aac80bb1 339-340,352,902-904
+  s_9c356f9574d31c::t_11ee8ab37dbf43 43-49,60-75,90-91,147-155,418-419
+apps/browser/src/store/session.test.mjs
+  s_9c356f9574d31c::t_af0184aac80bb1 100-101,105
+apps/browser/src/store/types.ts
+  s_9c356f9574d31c::t_af0184aac80bb1 47
+apps/browser/src/store/windows.ts
+  s_9c356f9574d31c::t_af0184aac80bb1 24-25,340,347,367,392
+docs/store-api.md
+  s_9c356f9574d31c::t_857be46011df08 64-65
+docs/nncore-parity.md
+  s_9c356f9574d31c::t_857be46011df08 104,256
+apps/browser/src/lib/bookmarks.ts
+  s_9c356f9574d31c::t_bab78640b183e9 495,498-499
+  s_9c356f9574d31c::t_04b486723b763e 2,20-23,225-226,234,246,265,285-286,290,346-405,468-473,486-489,493-494
+apps/browser/src/store/bookmarks.test.mjs
+  s_9c356f9574d31c::t_2fb82e50af6f8f 151-171
+apps/browser/src/lib/history.ts
+  s_9c356f9574d31c::t_a1c813a8f84a05 245-246
+packages/cef/engine.lock
+  s_9c356f9574d31c::t_5215aefd2eb38b 4-5,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "23fc888cb1ed88a564bc4eba2ed5a1ca9eda24df",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
