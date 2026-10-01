@@ -17,6 +17,7 @@ public class CefModule: Module {
         case "permission": self?.sendEvent("onPermission", payload)
         case "permissionDismissed": self?.sendEvent("onPermissionDismissed", payload)
         case "download": self?.sendEvent("onDownload", payload)
+        case "contentBlocker": self?.sendEvent("onContentBlocker", payload)
         default: break
         }
       }
@@ -82,16 +83,21 @@ public class CefModule: Module {
       NNCoreEngineBridge.call(name, profile: profile, args: args) { promise.resolve($0) }
     }.runOnQueue(.main)
 
-    AsyncFunction("getContentBlocker") { () -> [String: Any] in
-      [
-        "enabled": false, "version": "", "lists": [[String: Any]](), "allowedHosts": [String](),
-        "stats": ["ready": false, "enabled": false, "parseMs": 0, "lookups": 0, "averageLookupMicros": 0, "maxLookupMicros": 0],
-      ]
+    AsyncFunction("getContentBlocker") { (promise: Promise) in
+      NNCoreContentBlocker.state { promise.resolve($0) }
     }.runOnQueue(.main)
-    AsyncFunction("setContentBlockerEnabled") { (enabled: Bool) in }.runOnQueue(.main)
-    AsyncFunction("setFilterListEnabled") { (id: String, enabled: Bool) in }.runOnQueue(.main)
-    AsyncFunction("isContentBlockerAllowed") { (host: String) in true }.runOnQueue(.main)
-    AsyncFunction("setContentBlockerAllowed") { (host: String, allowed: Bool) in }.runOnQueue(.main)
+    AsyncFunction("setContentBlockerEnabled") { (enabled: Bool, promise: Promise) in
+      NNCoreContentBlocker.setEnabled(enabled) { promise.resolve(nil) }
+    }.runOnQueue(.main)
+    AsyncFunction("setFilterListEnabled") { (id: String, enabled: Bool, promise: Promise) in
+      NNCoreContentBlocker.setList(id, enabled: enabled) { promise.resolve(nil) }
+    }.runOnQueue(.main)
+    AsyncFunction("isContentBlockerAllowed") { (host: String, promise: Promise) in
+      NNCoreContentBlocker.isAllowed(host: host) { promise.resolve($0) }
+    }.runOnQueue(.main)
+    AsyncFunction("setContentBlockerAllowed") { (host: String, allowed: Bool, promise: Promise) in
+      NNCoreContentBlocker.setAllowed(allowed, host: host) { promise.resolve(nil) }
+    }.runOnQueue(.main)
 
     AsyncFunction("setSiteSetting") { (profile: String, origin: String, type: String, value: String) in }.runOnQueue(.main)
     AsyncFunction("getSiteSettings") { (profile: String, origin: String) in [String: Any]() }.runOnQueue(.main)

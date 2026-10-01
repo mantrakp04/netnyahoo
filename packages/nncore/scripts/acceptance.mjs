@@ -487,6 +487,18 @@ try {
     return { tab: tab.id, adoptId: tab.adoptId ?? null, window: tab.windowId };
   });
 
+  await check("content-blocker", async () => {
+    // The built-in uBlock Origin Lite, loaded as a component extension and driven through its runtime messages.
+    const state = await until("the blocker's state", async () => {
+      const s = await cef(`getContentBlocker()`);
+      return s?.stats?.ready ? s : null;
+    }, 30000);
+    await cef(`setContentBlockerAllowed("allowed.test", true)`);
+    const allowed = await cef(`isContentBlockerAllowed("allowed.test")`);
+    await cef(`setContentBlockerAllowed("allowed.test", false)`);
+    return { enabled: state.enabled, lists: state.lists.length, version: state.version, allowed };
+  });
+
   await check("permission-prompt", async () => {
     // A site asking for a permission reaches the app's prompt (onPermission → pageState.permission), and its answer
     // goes back to Chrome.

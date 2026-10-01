@@ -69,8 +69,15 @@ bool Background();
 + (void)setPinned:(BOOL)pinned tab:(NNCoreTab *)tab;
 @end
 
+// Asked of the engine (stage 2, A0); used with respondsToSelector:.
+@interface NNCoreProfile (Pending)
+- (nullable NSString *)loadComponentExtension:(NSString *)path;
+@end
+
 namespace nncore_host {
 NSArray<NNCoreProfile *> *LoadedProfiles();
+// Loads the built-in content blocker into a profile Chrome just loaded (NNCoreContentBlocker.mm).
+void LoadContentBlocker(NSString *profile);
 // The engine has stage 1's tab model (adoptTab:, tabWillClose:…); older engines report closes only as removals.
 bool EngineHasTabModel();
 }

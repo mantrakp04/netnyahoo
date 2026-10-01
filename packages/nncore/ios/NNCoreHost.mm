@@ -65,6 +65,7 @@ void (^gChromeUIHandler)(NSString *, NSDictionary *);
   nncore_host::InstallActivationGuardsLate();
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   if (NNCoreProfile *profile = engine.defaultProfile) Profiles()[@""] = profile;
+  nncore_host::LoadContentBlocker(@"");
 
   // The page script CEF's renderer ran (packages/cef/helper/page_script.js), now NNCore's.
   NSBundle *bundle = [NSBundle bundleForClass:NNCoreHostEngineDelegate.class];
@@ -359,6 +360,7 @@ void WithProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
   [engine loadProfile:DirectoryName(name)
            completion:^(NNCoreProfile *profile) {
              if (profile) Profiles()[name] = profile;
+             if (profile) nncore_host::LoadContentBlocker(name);
              NSArray *pending = ProfileWaiters()[name];
              [ProfileWaiters() removeObjectForKey:name];
              for (void (^waiter)(NNCoreProfile *) in pending) waiter(profile);
