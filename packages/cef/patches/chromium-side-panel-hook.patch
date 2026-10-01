@@ -1,0 +1,85 @@
+diff --git a/chrome/browser/ui/extensions/extension_side_panel_utils_views.cc b/chrome/browser/ui/extensions/extension_side_panel_utils_views.cc
+--- a/chrome/browser/ui/extensions/extension_side_panel_utils_views.cc
++++ b/chrome/browser/ui/extensions/extension_side_panel_utils_views.cc
+@@ -15,6 +15,11 @@
+ #include "content/public/browser/web_contents.h"
+ #include "extensions/common/extension_id.h"
+ 
++#include "cef/libcef/features/features.h"
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/chrome_ui_hooks.h"
++#endif
++
+ namespace extensions::side_panel_util {
+ 
+ namespace {
+@@ -35,6 +40,13 @@
+ // Defined in extension_side_panel_utils.h
+ void ToggleExtensionSidePanel(BrowserWindowInterface* browser_window,
+                               const ExtensionId& extension_id) {
++#if BUILDFLAG(ENABLE_CEF)
++  // The CEF client may draw extension side panels itself.
++  if (cef::HandleExtensionSidePanel(browser_window, nullptr, extension_id,
++                                    /*open=*/true)) {
++    return;
++  }
++#endif
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
+           ? OrganizerPanelStateController::From(browser_window)
+@@ -55,6 +67,13 @@
+ void OpenGlobalExtensionSidePanel(BrowserWindowInterface& browser_window,
+                                   content::WebContents* web_contents,
+                                   const ExtensionId& extension_id) {
++#if BUILDFLAG(ENABLE_CEF)
++  // The CEF client may draw extension side panels itself.
++  if (cef::HandleExtensionSidePanel(&browser_window, web_contents, extension_id,
++                                    /*open=*/true)) {
++    return;
++  }
++#endif
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
+           ? OrganizerPanelStateController::From(&browser_window)
+@@ -131,6 +150,13 @@
+ void OpenContextualExtensionSidePanel(BrowserWindowInterface& browser_window,
+                                       content::WebContents& web_contents,
+                                       const ExtensionId& extension_id) {
++#if BUILDFLAG(ENABLE_CEF)
++  // The CEF client may draw extension side panels itself.
++  if (cef::HandleExtensionSidePanel(&browser_window, &web_contents, extension_id,
++                                    /*open=*/true)) {
++    return;
++  }
++#endif
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
+           ? OrganizerPanelStateController::From(&browser_window)
+@@ -159,6 +185,13 @@
+ // Declared in extension_side_panel_utils.h
+ void CloseGlobalExtensionSidePanel(BrowserWindowInterface* browser_window,
+                                    const ExtensionId& extension_id) {
++#if BUILDFLAG(ENABLE_CEF)
++  // The CEF client may draw extension side panels itself.
++  if (cef::HandleExtensionSidePanel(browser_window, nullptr, extension_id,
++                                    /*open=*/false)) {
++    return;
++  }
++#endif
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
+           ? OrganizerPanelStateController::From(browser_window)
+@@ -201,6 +234,13 @@
+ void CloseContextualExtensionSidePanel(BrowserWindowInterface* browser_window,
+                                        content::WebContents* web_contents,
+                                        const ExtensionId& extension_id) {
++#if BUILDFLAG(ENABLE_CEF)
++  // The CEF client may draw extension side panels itself.
++  if (cef::HandleExtensionSidePanel(browser_window, web_contents, extension_id,
++                                    /*open=*/false)) {
++    return;
++  }
++#endif
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
+           ? OrganizerPanelStateController::From(browser_window)

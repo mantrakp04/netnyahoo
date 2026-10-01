@@ -33,7 +33,7 @@ _gn_args=(
   enable_iterator_debugging=false
   enable_updater=false
   # Netnyahoo's bundle and team id (webauthn/payments keychain access groups);
-  # product names stay "Chromium" (patches/chromium-passkeys.patch).
+  # product names stay "Chromium" (patches/chromium-branding.patch).
   'branding_file_path="//chrome/app/theme/netnyahoo/BRANDING"'
 )
 export GN_DEFINES="${_gn_args[*]}"
