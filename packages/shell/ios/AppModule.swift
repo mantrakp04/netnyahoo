@@ -61,7 +61,8 @@ public class AppModule: Module {
       AppIcons.variants.map { ["id": $0.id, "name": $0.name, "preview": AppIcons.preview($0.id, size: size) as Any] }
     }.runOnQueue(.main)
     AsyncFunction("appIcon") { () -> String in AppIcons.current }.runOnQueue(.main)
-    AsyncFunction("setAppIcon") { (id: String) in AppIcons.set(id) }.runOnQueue(.main)
+    // A test instance leaves the installed app's Dock tile alone.
+    AsyncFunction("setAppIcon") { (id: String) in AppIcons.set(id, announce: NNIsolatedDataDirectory() == nil) }.runOnQueue(.main)
 
     // MARK: Notifications
 

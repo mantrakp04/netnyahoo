@@ -9,9 +9,14 @@ public final class AppUpdater: NSObject {
   static var feedOverride: String? {
     let env = ProcessInfo.processInfo.environment
     if let feed = env["NETNYAHOO_UPDATE_FEED_URL"] ?? UserDefaults.standard.string(forKey: "NNUpdateFeedURL") { return feed }
-    // SUFeedURL (netnyahoo.com) counts checks as copies in use; test instances go straight to the same file.
-    let isolated = env["NETNYAHOO_BACKGROUND"] == "1" || env["NETNYAHOO_DATA_DIR"] != nil
-    return isolated ? "https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml" : nil
+    // SUFeedURL (netnyahoo.com) counts checks as copies in use; background instances go straight to the same file.
+    return env["NETNYAHOO_BACKGROUND"] == "1" ? "https://github.com/mantrakp04/netnyahoo/releases/latest/download/appcast.xml" : nil
+  }
+
+  // A test instance (NNIsolation.h) checks for updates only when it's given a feed, and keeps Sparkle's state
+  // (last check, skipped version, its settings) in its data dir's defaults.
+  private static var isOff: Bool {
+    NNIsolatedDataDirectory() != nil && ProcessInfo.processInfo.environment["NETNYAHOO_UPDATE_FEED_URL"] == nil
   }
 
   #if canImport(Sparkle)
@@ -33,7 +38,7 @@ public final class AppUpdater: NSObject {
   }
 
   public var isConfigured: Bool {
-    guard isAvailable else { return false }
+    guard isAvailable, !Self.isOff else { return false }
     let info = Bundle.main.infoDictionary ?? [:]
     let feed = (Self.feedOverride ?? info["SUFeedURL"] as? String ?? "").trimmingCharacters(in: .whitespaces)
     let key = (info["SUPublicEDKey"] as? String ?? "").trimmingCharacters(in: .whitespaces)
@@ -58,7 +63,13 @@ public final class AppUpdater: NSObject {
 
   @objc public func checkForUpdates(_ sender: Any?) {
     #if canImport(Sparkle)
-    guard isConfigured else { return showNotSetUp() }
+    guard isConfigured else {
+      // A hidden instance never blocks on an alert.
+      if ProcessInfo.processInfo.environment["NETNYAHOO_BACKGROUND"] == "1" {
+        return NSLog("Netnyahoo: update checks are off in this instance")
+      }
+      return showNotSetUp()
+    }
     start()
     controller.checkForUpdates(sender)
     #endif

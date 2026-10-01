@@ -31,11 +31,12 @@ enum AppIcons {
     if current != "default" { apply(current) }
   }
 
-  static func set(_ id: String) {
+  // `announce` tells the Dock tile plug-in, which serves every copy with this bundle id (the installed app's too).
+  static func set(_ id: String, announce: Bool) {
     guard variants.contains(where: { $0.id == id }) else { return }
     UserDefaults.standard.set(id, forKey: defaultsKey)
     apply(id)
-    if let bundleId = Bundle.main.bundleIdentifier {
+    if announce, let bundleId = Bundle.main.bundleIdentifier {
       DistributedNotificationCenter.default().postNotificationName(
         changedNotification(bundleId: bundleId), object: nil, userInfo: ["icon": id], deliverImmediately: true)
     }
