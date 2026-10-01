@@ -286,6 +286,10 @@ Browser* WindowHost::BrowserFor(Profile* profile) {
   if (Browser* browser = ExistingBrowserFor(profile)) {
     return browser;
   }
+  // Nor a new one for a profile being deleted (Chrome is closing the ones it has).
+  if (IsProfileDeleting(profile)) {
+    return nullptr;
+  }
   if (close_state_ != CloseState::kOpen || !widget_ || widget_close_allowed_ ||
       browser_shutdown::IsTryingToQuit() ||
       GetBrowserWindowCreationStatusForProfile(*profile) !=

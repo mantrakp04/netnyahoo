@@ -32,6 +32,20 @@ NSMutableDictionary<NSString *, NSMutableArray *> *ProfileWaiters() {
   return waiters;
 }
 
+// Profiles deleted this session: never loaded again. A background service still working for one (the content
+// blocker's per-profile messages) would otherwise load it right back, keeping it from being deleted or making its
+// folder again. The app never reuses a profile's id.
+NSMutableSet<NSString *> *DeletedProfiles() {
+  static NSMutableSet *deleted = [NSMutableSet set];
+  return deleted;
+}
+
+// A deletion asked for while the profile was still loading: run once Chrome has it, through Chrome's deletion.
+NSMutableDictionary<NSString *, void (^)(NNCoreProfile *)> *DeletionsAfterLoad() {
+  static NSMutableDictionary *deletions = [NSMutableDictionary dictionary];
+  return deletions;
+}
+
 NSString *DirectoryName(NSString *name) {
   return name.length ? [@"Profile " stringByAppendingString:name] : @"Default";
 }
@@ -403,6 +417,7 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   NNCoreProfile *p = nncore_host::LoadedProfile(profile);
   if (!profile.length || ![engine respondsToSelector:@selector(deleteProfile:completion:)]) return completion(@[ @"data" ]);
+  [DeletedProfiles() addObject:profile];
   void (^remove)(NNCoreProfile *) = ^(NNCoreProfile *loaded) {
     if (!loaded) {
       // Never loaded this session: its folder alone.
@@ -412,9 +427,15 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
     }
     [engine deleteProfile:loaded completion:^(BOOL deleted) {
       if (deleted) [Profiles() removeObjectForKey:profile];
+      else [DeletedProfiles() removeObject:profile];
       completion(deleted ? @[] : @[ @"data" ]);
     }];
   };
+  // Still loading: deleted once Chrome has it (deleting its folder now would race Chrome making it).
+  if (!p && ProfileWaiters()[profile]) {
+    DeletionsAfterLoad()[profile] = [remove copy];
+    return;
+  }
   // Loading a profile only to delete it would create it (and race Chrome writing its folder): one this session never
   // loaded is its folder alone.
   remove(p);
@@ -689,6 +710,7 @@ void WithPrivateProfile(NSString *name, void (^completion)(NNCoreProfile *), int
 
 void WithProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
   name = name ?: @"";
+  if ([DeletedProfiles() containsObject:name]) return completion(nil);
   if (NNCoreProfile *profile = LoadedProfile(name)) return completion(profile);
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   if (!engine) return completion(nil);
@@ -703,12 +725,18 @@ void WithProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
   if (waiters) return (void)[waiters addObject:[completion copy]];
   ProfileWaiters()[name] = [NSMutableArray arrayWithObject:[completion copy]];
   [engine loadProfile:DirectoryName(name)
-           completion:^(NNCoreProfile *profile) {
+           completion:^(NNCoreProfile *loaded) {
+             NSArray *pending = ProfileWaiters()[name];
+             [ProfileWaiters() removeObjectForKey:name];
+             // Deleted while it loaded: it goes now, and nobody waiting gets it.
+             if (void (^deletion)(NNCoreProfile *) = DeletionsAfterLoad()[name]) {
+               [DeletionsAfterLoad() removeObjectForKey:name];
+               deletion(loaded);
+             }
+             NNCoreProfile *profile = [DeletedProfiles() containsObject:name] ? nil : loaded;
              if (profile) Profiles()[name] = profile;
              if (profile) nncore_host::LoadContentBlocker(name);
              if (profile) [NNCoreServices watchDownloads:name];
-             NSArray *pending = ProfileWaiters()[name];
-             [ProfileWaiters() removeObjectForKey:name];
              for (void (^waiter)(NNCoreProfile *) in pending) waiter(profile);
            }];
 }

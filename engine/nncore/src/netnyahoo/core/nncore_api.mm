@@ -9,6 +9,9 @@
 #include <vector>
 
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
+#include "base/task/thread_pool.h"
+#include "content/public/browser/browser_thread.h"
 #include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "base/task/single_thread_task_runner.h"
@@ -92,6 +95,7 @@
 #include "content/public/browser/web_contents_media_capture_id.h"
 #include "extensions/browser/install_prompt_data.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
+#include "chrome/browser/profiles/nuke_profile_directory_utils.h"
 #include "chrome/browser/profiles/profile_destroyer.h"
 #include "chrome/browser/profiles/profile_metrics.h"
 #include "chrome/browser/extensions/component_loader.h"
@@ -458,6 +462,26 @@ bool IsProfileDying(const Profile* profile) {
          });
 }
 
+namespace {
+std::vector<base::WeakPtr<Profile>>& DeletingProfiles() {
+  static base::NoDestructor<std::vector<base::WeakPtr<Profile>>> deleting;
+  return *deleting;
+}
+}  // namespace
+
+void NoteProfileDeleting(Profile* profile) {
+  if (profile && !IsProfileDeleting(profile)) {
+    DeletingProfiles().push_back(profile->GetWeakPtr());
+  }
+}
+
+bool IsProfileDeleting(const Profile* profile) {
+  std::erase_if(DeletingProfiles(), [](const base::WeakPtr<Profile>& p) { return !p; });
+  return profile && std::ranges::any_of(DeletingProfiles(), [&](const base::WeakPtr<Profile>& p) {
+           return p.get() == profile;
+         });
+}
+
 void HostPermissionRequest(content::WebContents* contents, NSDictionary* request) {
   if ([g_delegate respondsToSelector:@selector(engine:permissionRequest:tab:)]) {
     [g_delegate engine:g_engine
@@ -714,11 +738,19 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   ProfileManager* manager = g_browser_process->profile_manager();
   base::FilePath path =
       manager->user_data_dir().Append(base::SysNSStringToUTF8(directoryName));
+  // Never one being deleted: loading it again would keep it, or make its folder anew.
+  Profile* loaded = manager->GetProfileByPath(path);
+  if (IsProfileDirectoryMarkedForDeletion(path) ||
+      (loaded && nncore::IsProfileDeleting(loaded))) {
+    completion(nil);
+    return;
+  }
   manager->CreateProfileAsync(
       path, base::BindOnce(
                 [](void (^completion)(NNCoreProfile*), Profile* profile) {
-                  completion(profile ? [NNCoreProfile wrapperFor:profile]
-                                     : nil);
+                  completion(profile && !nncore::IsProfileDeleting(profile)
+                                 ? [NNCoreProfile wrapperFor:profile]
+                                 : nil);
                 },
                 completion));
 }
@@ -941,10 +973,40 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
     return;
   }
   // Chrome's own deletion: its Browsers close, then its directory goes (now, or at the
-  // next start if something still holds it).
+  // next start if something still holds it). No Browser for it from now on: one made after
+  // Chrome closed the others (the content blocker's hidden page in a profile that just
+  // loaded) kept the profile, and its folder, for as long as it lived.
+  nncore::NoteProfileDeleting(chrome_profile);
+  base::WeakPtr<Profile> weak = chrome_profile->GetWeakPtr();
+  const base::FilePath path = chrome_profile->GetPath();
   manager->GetDeleteProfileHelper().MaybeScheduleProfileForDeletion(
       chrome_profile->GetPath(), base::DoNothing(),
       ProfileMetrics::DELETE_PROFILE_SETTINGS);
+  // A profile Chrome loaded is kept until its first browser window opens; the host's
+  // profiles may never have had one (loaded for its passwords, or deleted right after it
+  // loaded), and then it never unloaded, so its folder stayed until the next launch.
+  if (weak) {
+    manager->ClearFirstBrowserWindowKeepAlive(weak.get());
+  }
+  // Chrome removes the folder once the profile is gone, but services still opening their
+  // databases as it went (a profile deleted right after it loaded) make some of their
+  // folders again afterwards (crbug.com/40594327): swept again a little later, while the
+  // folder is still marked for deletion and nothing has the profile loaded.
+  for (const base::TimeDelta delay : {base::Seconds(2), base::Seconds(10)}) {
+    content::GetUIThreadTaskRunner({})->PostDelayedTask(
+        FROM_HERE, base::BindOnce([](const base::FilePath& dir) {
+          if (!IsProfileDirectoryMarkedForDeletion(dir) ||
+              g_browser_process->profile_manager()->GetProfileByPath(dir)) {
+            return;
+          }
+          base::ThreadPool::PostTask(
+              FROM_HERE,
+              {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
+               base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
+              base::BindOnce(base::IgnoreResult(&base::DeletePathRecursively), dir));
+        }, path),
+        delay);
+  }
   if (completion) {
     completion(YES);
   }
