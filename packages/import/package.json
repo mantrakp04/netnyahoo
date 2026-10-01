@@ -14,8 +14,5 @@
   "peerDependencies": {
     "expo": "*",
     "react-native": "*"
-  },
-  "devDependencies": {
-    "@types/node": "^24.13.6"
   }
 }

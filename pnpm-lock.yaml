@@ -90,11 +90,7 @@ importers:
         specifier: ^24.13.6
         version: 24.13.6
 
-  packages/import:
-    devDependencies:
-      '@types/node':
-        specifier: ^24.13.6
-        version: 24.13.6
+  packages/import: {}
 
   packages/shaders: {}
 
