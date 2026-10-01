@@ -131,7 +131,8 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
     key as AppKit dispatches it (Chrome's window, then the menu bar; a test instance never has the key window), and
     `node apps/browser/scripts/shortcuts-test.mjs <Debug app>` checks every shortcut in every focus.
   - Page content: CDP (`--env NETNYAHOO_REMOTE_DEBUGGING_PORT`, then `http://localhost:<port>/json`,
-    `Runtime.evaluate`, `Page.captureScreenshot`). Chromium doesn't paint fully occluded windows.
+    `Runtime.evaluate`, `Page.captureScreenshot`). A `NETNYAHOO_BACKGROUND` instance keeps painting while covered or with the screen
+    locked (`--disable-backgrounding-occluded-windows`); set `NETNYAHOO_ALLOW_OCCLUSION=1` to test occlusion itself.
   - Native UI: the ScreenCaptureKit recorder in the scratchpad folder (`sckrec <windowID> <secs>
     <outDir> x y w h scale`) records one window even when it's covered; find the window id with
     CGWindowList by owner PID. `screencapture -l <windowID>` works too while nothing covers it. Wrap

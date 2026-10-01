@@ -244,6 +244,12 @@ class BrowserApp : public CefApp, public CefBrowserProcessHandler {
       command_line->AppendSwitchWithValue("remote-allow-origins", "*");
     }
     if (getenv("NETNYAHOO_DATA_DIR") || !IsTeamSigned()) command_line->AppendSwitch("use-mock-keychain");
+    // A background (test) instance shares the screen with the owner's windows: when one of theirs covers it, or the
+    // screen locks, Chrome marks its pages hidden (macOS occlusion) and stops painting them, so screenshots and
+    // capture scripts never answer. Chrome's own browser tests use this switch for the same reason (as NNCoreHost).
+    // NETNYAHOO_ALLOW_OCCLUSION=1 keeps Chrome's behaviour for a test of occlusion itself.
+    if (getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_ALLOW_OCCLUSION"))
+      command_line->AppendSwitch("disable-backgrounding-occluded-windows");
     if (const char *extra = getenv("NETNYAHOO_CHROMIUM_SWITCHES")) {
       NSString *all = [@" " stringByAppendingString:@(extra)];
       for (NSString *item in [all componentsSeparatedByString:@" --"]) {
