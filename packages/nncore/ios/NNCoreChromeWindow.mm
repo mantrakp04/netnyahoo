@@ -52,9 +52,9 @@ NSColor *WindowColor() {
 // MARK: Traffic lights (as packages/cef/ios/NNChromeWindow.mm)
 
 constexpr CGFloat kTrafficLightInsetX = 18;
+constexpr CGFloat kTrafficLightTop = 20;
 const void *kFollowedKey = &kFollowedKey;
 const void *kLightsCenterKey = &kLightsCenterKey;
-const void *kLightsBaseYKey = &kLightsBaseYKey;
 
 void LayoutTrafficLights(NSWindow *window) {
   if (!window || (window.styleMask & NSWindowStyleMaskFullScreen)) return;
@@ -78,18 +78,20 @@ void LayoutTrafficLights(NSWindow *window) {
   }
   const CGFloat spacing = NSMinX(mini.frame) - NSMinX(close.frame);
   NSValue *center = objc_getAssociatedObject(window, kLightsCenterKey);
-  NSNumber *baseY = objc_getAssociatedObject(window, kLightsBaseYKey);
   CGFloat x, y;
   if (center) {
     const NSPoint c = [close.superview convertPoint:NSMakePoint(center.pointValue.x, NSHeight(window.frame) - center.pointValue.y)
                                            fromView:nil];
     x = c.x - NSWidth(close.frame) / 2;
     y = c.y - NSHeight(close.frame) / 2;
-    if (!baseY) objc_setAssociatedObject(window, kLightsBaseYKey, @(NSMinY(close.frame)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   } else {
-    x = kTrafficLightInsetX - [close.superview convertPoint:NSZeroPoint toView:nil].x;
-    y = baseY ? baseY.doubleValue : NSMinY(close.frame);
-    objc_setAssociatedObject(window, kLightsBaseYKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // The app's default, as the CEF build's window has it (Chrome's browser frame makes AppKit's title bar as tall
+    // as its tab strip, which centres the buttons there): the close button's top-left at (18, 20) from the window's
+    // top-left, its centre at (25, 27); Dia's is at (25, 26).
+    const NSPoint topLeft = [close.superview convertPoint:NSMakePoint(kTrafficLightInsetX, NSHeight(window.frame) - kTrafficLightTop)
+                                                 fromView:nil];
+    x = topLeft.x;
+    y = topLeft.y - NSHeight(close.frame);
   }
   if (fabs(NSMinX(close.frame) - x) < 0.5 && fabs(NSMinY(close.frame) - y) < 0.5) return;
   NSArray<NSButton *> *buttons = @[ close, mini, zoom ];
@@ -116,7 +118,16 @@ void KeepTrafficLightsInset(NSWindow *window) {
                                                   object:window
                                                    queue:nil
                                               usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
-  for (double delay : {0.05, 0.25, 1.0})
+  // AppKit can lay the title bar out again later without moving the buttons through setFrame (a window that is never
+  // key gets no updates): a few more passes as the window settles, and on each occlusion change.
+  id occlusion = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowDidChangeOcclusionStateNotification
+                                                                object:window
+                                                                 queue:nil
+                                                            usingBlock:^(NSNotification *) { LayoutTrafficLights(weakWindow); }];
+  static const void *kOcclusionFollowKey = &kOcclusionFollowKey;
+  objc_setAssociatedObject(window, kOcclusionFollowKey, [[NNObserverRegistration alloc] initWithToken:occlusion],
+                           OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  for (double delay : {0.05, 0.25, 1.0, 2.5, 5.0})
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
       LayoutTrafficLights(weakWindow);
     });
@@ -333,16 +344,10 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   [[self viewFor:tab] emit:@"fullscreen" payload:@{@"fullscreen" : @(fullscreen)}];
 }
 
-- (void)window:(NNCoreWindow *)window passwordSavePromptForTab:(NNCoreTab *)tab username:(NSString *)username origin:(NSString *)origin {
-  [[self viewFor:tab] emit:@"passwordPrompt"
-                   payload:@{
-                     @"state" : @"save",
-                     @"origin" : origin ?: @"",
-                     @"username" : username ?: @"",
-                     @"passwordLength" : @0,
-                     @"federation" : @"",
-                     @"usernames" : username.length ? @[ username ] : @[],
-                   }];
+// Chrome's password bubble, already in packages/cef's PasswordPrompt shape (save, update or saved; usernames,
+// federation, the password's length).
+- (void)window:(NNCoreWindow *)window passwordPrompt:(NSDictionary<NSString *, id> *)prompt forTab:(NNCoreTab *)tab {
+  [[self viewFor:tab] emit:@"passwordPrompt" payload:prompt];
 }
 
 - (BOOL)windowShouldClose:(NNCoreWindow *)window {

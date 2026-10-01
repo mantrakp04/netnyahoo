@@ -16,6 +16,8 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 
+#import "NNCoreNavigationDownloads.h"
+
 #include <climits>
 #include <cmath>
 
@@ -62,6 +64,19 @@ bool SamePage(NSString *a, NSString *b) {
     return hash.location == NSNotFound ? url : [url substringToIndex:hash.location];
   };
   return a && b && [strip(a) isEqualToString:strip(b)];
+}
+
+// Chrome's renderer debug URLs (blink::IsRendererDebugURL and the GPU ones content handles), as chrome:// or as the
+// netnyahoo:// the app shows them as.
+bool IsRendererDebugURL(NSString *url) {
+  NSURLComponents *c = [NSURLComponents componentsWithString:url];
+  if (![@[ @"chrome", @"netnyahoo" ] containsObject:c.scheme.lowercaseString ?: @""]) return false;
+  static NSSet *hosts = [NSSet setWithArray:@[
+    @"badcastcrash", @"crash", @"crashdump", @"kill", @"hang", @"shorthang", @"memory-exhaust", @"memory-pressure-critical",
+    @"memory-pressure-moderate", @"gpuclean", @"gpucrash", @"gpuhang", @"inducebrowsercrashforrealz",
+    @"inducebrowserdcheckforrealz", @"cfi-crash", @"heap-corruption-crash"
+  ]];
+  return [hosts containsObject:c.host.lowercaseString ?: @""];
 }
 
 NSString *PNGDataURL(NSImage *image) {
@@ -158,7 +173,7 @@ void NoteEvent(int browserId, NSString *name, NSDictionary *payload) {
     id value = payload[key];
     brief[key] = [value isKindOfClass:NSString.class] && [value length] > 200 ? [value substringToIndex:200] : value;
   }
-  [list addObject:@{@"name" : name, @"payload" : brief}];
+  [list addObject:@{@"name" : name, @"payload" : brief, @"t" : @(round(CACurrentMediaTime() * 1000))}];
   if (list.count > 80) [list removeObjectAtIndex:0];
 #endif
 }
@@ -247,6 +262,11 @@ NSString *JSONString(id value) {
 
 @implementation NNCoreWebView {
   NNCoreTab *_tab;
+  // The app's first load (a restored tab's URL), and the URL the app last asked for until a document commits: what a
+  // navigation that became a download remembers (NNCoreNavigationDownloads).
+  BOOL _loadedOnce;
+  BOOL _pendingUserInitiated;
+  NSString *_requestedURL;
   BOOL _creating;
   BOOL _closing;
   BOOL _moving;
@@ -261,6 +281,8 @@ NSString *JSONString(id value) {
   BOOL _pinned;
   NSView *_devtoolsView;
   BOOL _navigationQueued;
+  NSString *_pageTheme;
+  NSString *_pageThemeSource;
   NSUInteger _createGeneration;
   NSUInteger _blockedGeneration;
   // Requests the content blocker stopped on this page (onContentBlocked), as CEF's NNClient counts them.
@@ -280,6 +302,10 @@ NSString *JSONString(id value) {
   NSMutableDictionary<NSString *, NSDictionary *> *_displayRequests;
   double _pinchScale;
   BOOL _autoPictureInPictureActive;
+  // The page uses the camera, microphone or screen (CEF's capturing_): auto Picture in Picture takes its document PiP.
+  BOOL _capturing;
+  // Its renderer died and nothing loaded since (emitNavigation).
+  BOOL _crashed;
 }
 
 + (void)prepareTransfer:(NSString *)transferKey {
@@ -388,6 +414,7 @@ NSString *JSONString(id value) {
                 }];
       return;
     }
+    if (url.length && [view skipsNavigationDownload:url userInitiated:view->_pendingUserInitiated]) url = nil;
     controller.hostChanges++;
     NNCoreTab *tab = [controller.coreWindow openTab:url.length ? url : @"about:blank" profile:profile foreground:NO];
     controller.hostChanges--;
@@ -473,7 +500,7 @@ NSString *JSONString(id value) {
   if (_muted && [tab respondsToSelector:@selector(setMuted:)]) tab.muted = YES;
   if (_pageBackgroundColor && [tab respondsToSelector:@selector(setPageBackgroundColor:)]) tab.pageBackgroundColor = _pageBackgroundColor;
   if (_pendingURL) {
-    [self loadNow:_pendingURL userInitiated:NO];
+    [self loadNow:_pendingURL userInitiated:_pendingUserInitiated];
     _pendingURL = nil;
   }
   [self emit:@"ready" payload:@{@"browserId" : @(nncore_host::BrowserId(tab)), @"tabId" : @(tab.tabId)}];
@@ -698,19 +725,70 @@ NSString *JSONString(id value) {
   return view.window.windowNumber;
 }
 
+// Tests: a click into the page as the user's, though a hidden instance's window is never key. For the moment Chrome's
+// page view takes the window as key (AppKit's isKeyWindow and the view's didBecomeKey), and becomes first responder
+// as a mouse down makes it; then the window resigns again. Chrome's own focus path runs (GotFocus →
+// OnWebContentsFocused → tabDidGainFocus:), and nothing is activated.
++ (BOOL)devFocusPageOfBrowser:(int)browserId {
+#if DEBUG
+  NNCoreTab *tab = nncore_host::TabWithBrowserId(browserId);
+  NSWindow *window = tab.view.window;
+  NSView *page = nil;
+  for (NSMutableArray<NSView *> *queue = [NSMutableArray arrayWithObject:tab.view ?: [NSView new]]; queue.count && !page;) {
+    NSView *v = queue.firstObject;
+    [queue removeObjectAtIndex:0];
+    if ([NSStringFromClass(v.class) isEqual:@"RenderWidgetHostViewCocoa"]) page = v;
+    [queue addObjectsFromArray:v.subviews];
+  }
+  if (!window || !page) return NO;
+  Method isKey = class_getInstanceMethod(NSWindow.class, @selector(isKeyWindow));
+  IMP original = method_getImplementation(isKey);
+  method_setImplementation(isKey, imp_implementationWithBlock(^BOOL(NSWindow *w) {
+    return w == window || ((BOOL (*)(id, SEL))original)(w, @selector(isKeyWindow));
+  }));
+  [window makeFirstResponder:nil];
+  ((void (*)(id, SEL, id))objc_msgSend)(page, NSSelectorFromString(@"windowDidBecomeKey:"),
+                                        [NSNotification notificationWithName:NSWindowDidBecomeKeyNotification object:window]);
+  const BOOL took = [window makeFirstResponder:page];
+  method_setImplementation(isKey, original);
+  ((void (*)(id, SEL, id))objc_msgSend)(page, NSSelectorFromString(@"windowDidResignKey:"),
+                                        [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:window]);
+  return took;
+#else
+  return NO;
+#endif
+}
+
 - (void)emitNavigation {
   _navigationQueued = NO;
   if (!_tab) return;
-  NSString *theme = [_tab respondsToSelector:@selector(themeColor)] ? _tab.themeColor : nil;
+  // The page script's colour (its <meta name="theme-color">, else the colour at the top of the page), as packages/cef
+  // reports it; Chrome's meta theme-color until the page script has said.
+  NSString *theme = _pageTheme ?: ([_tab respondsToSelector:@selector(themeColor)] ? _tab.themeColor : nil);
+  NSString *themeSource = _pageTheme ? _pageThemeSource : (theme ? @"meta" : nil);
+  NSString *url = _tab.url ?: @"";
+  // A renderer debug URL (chrome://crash, kill, hang…) never commits: Chrome runs it in the page's renderer and its
+  // pending entry stays visible. As on CEF (the main frame's URL), the tab keeps the page it had, so a reload or the
+  // restored session doesn't crash it again.
+  if (IsRendererDebugURL(url)) url = _sentNavigation[@"url"] ?: @"";
   NSDictionary *navigation = @{
-        @"url" : _tab.url ?: @"",
+        @"url" : url,
         @"title" : _tab.title ?: @"",
         @"canGoBack" : @(_tab.canGoBack),
         @"canGoForward" : @(_tab.canGoForward),
         @"isLoading" : @(_tab.loading),
         @"themeColor" : theme ?: NSNull.null,
-        @"themeColorSource" : theme ? @"meta" : NSNull.null,
+        @"themeColorSource" : themeSource ?: NSNull.null,
   };
+  // The first load after a crash: CEF's dead main frame has no URL, so its first report there says none and the app
+  // (ContentCard) takes the reload for a new page and drops the sad tab. The same here, before the real report.
+  if (_crashed && _tab.loading) {
+    _crashed = NO;
+    NSMutableDictionary *gone = [navigation mutableCopy];
+    gone[@"url"] = @"";
+    _sentNavigation = gone;
+    [self emit:@"navigation" payload:gone];
+  }
   // As packages/cef (NNClient): a report that changes nothing isn't sent.
   if ([navigation isEqualToDictionary:_sentNavigation]) return;
   _sentNavigation = navigation;
@@ -808,6 +886,10 @@ NSString *JSONString(id value) {
   NSDictionary *dict = [data isKindOfClass:NSDictionary.class] ? data : nil;
   frameId = frameId ?: @"";
   if ([kind isEqualToString:@"hello"]) {
+    // A new main document: the old page's media and now-playing went with it (CEF's OnLoadStart).
+    if (main) [self resetPageMedia];
+    // A real document committed (not a new tab's initial about:blank): the app's request didn't become a download.
+    if (main && ![(Text(dict, @"url", 8192) ?: @"about:") hasPrefix:@"about:"]) _requestedURL = nil;
     // The frame's settings, as CEF's NNClient answers hello: autoplay blocked for the top page's site.
     NSString *frameURL = Text(dict, @"url", 8192) ?: tab.url;
     NSString *origin = OriginOf(main ? frameURL : tab.url);
@@ -849,6 +931,11 @@ NSString *JSONString(id value) {
     [state removeObjectForKey:@"frame"];
     [self emit:@"nowPlaying" payload:@{@"state" : state ?: NSNull.null}];
   } else if ([kind isEqualToString:@"theme"]) {
+    if (!main || !dict) return;
+    NSString *color = [dict[@"color"] isKindOfClass:NSString.class] ? Text(dict, @"color", 64) : nil;
+    NSString *source = [dict[@"source"] isKindOfClass:NSString.class] ? Text(dict, @"source", 32) : nil;
+    _pageTheme = color;
+    _pageThemeSource = source;
     [self queueNavigation];
   } else if ([kind isEqualToString:@"pinch"] && main && dict) {
     double scale;
@@ -911,8 +998,10 @@ NSString *JSONString(id value) {
 - (void)emitMedia {
   BOOL playing = NO;
   for (NSNumber *p in _mediaFrames.allValues) playing |= p.boolValue;
-  if ([_tab respondsToSelector:@selector(audible)]) playing |= _tab.audible;
-  [self emit:@"media" payload:@{@"playing" : @(playing), @"muted" : @(_muted)}];
+  // As packages/cef's EmitMedia: playing is the page script's (a muted tab's video still "plays"; Chrome's audibility
+  // lags a pause by its hold time), muted is Chrome's own state.
+  const BOOL muted = [_tab respondsToSelector:@selector(muted)] ? _tab.muted : _muted;
+  [self emit:@"media" payload:@{@"playing" : @(playing), @"muted" : @(muted)}];
 }
 
 - (void)emitZoom {
@@ -940,7 +1029,20 @@ NSString *JSONString(id value) {
   [self emit:@"windowClose" payload:@{}];
 }
 
+// The page's media state starts again (a new main document, a crash), as packages/cef's OnLoadStart and
+// OnRenderProcessTerminated: nothing plays and nothing is now playing until the page says so.
+- (void)resetPageMedia {
+  const BOOL hadMedia = _mediaFrames.count > 0, hadNowPlaying = _nowPlaying.count > 0;
+  [_mediaFrames removeAllObjects];
+  [_nowPlaying removeAllObjects];
+  _nowPlayingFrame = nil;
+  if (hadMedia) [self emitMedia];
+  if (hadNowPlaying) [self emit:@"nowPlaying" payload:@{@"state" : NSNull.null}];
+}
+
 - (void)tab:(NNCoreTab *)tab rendererGone:(NSString *)status code:(int)code {
+  _crashed = YES;
+  [self resetPageMedia];
   [self emit:@"crashed" payload:@{@"status" : @(code), @"reason" : status ?: @"unknown", @"code" : @(code)}];
 }
 
@@ -977,10 +1079,12 @@ NSString *JSONString(id value) {
   if ((_tab || _creating) && [url isEqualToString:creating] && CACurrentMediaTime() - _creatingAt < 2) return;
   if (_tab) return [self loadNow:url userInitiated:userInitiated];
   _pendingURL = url;
+  _pendingUserInitiated = userInitiated;
   if (self.window) [self ensureTab];
 }
 
 - (void)loadNow:(NSString *)url userInitiated:(BOOL)userInitiated {
+  if ([self skipsNavigationDownload:url userInitiated:userInitiated]) return;
   if ([_tab respondsToSelector:@selector(loadURL:userInitiated:)]) [_tab loadURL:url userInitiated:userInitiated];
   else [_tab loadURL:url];
   [self focusAfterLoad];
@@ -991,6 +1095,23 @@ NSString *JSONString(id value) {
 // goes to the page, and Chrome's page focus (autofill on a click, find…) holds in a window that isn't key.
 - (void)focusAfterLoad {
   if (_visible && _tab) [self focusPage];
+}
+
+// A restored or reopened tab whose first page was a download stays empty instead of downloading it again (CEF's
+// OnBeforeBrowse); the user asking for it again downloads it. Notes the request otherwise.
+- (BOOL)skipsNavigationDownload:(NSString *)url userInitiated:(BOOL)userInitiated {
+  const BOOL first = !_loadedOnce;
+  _loadedOnce = YES;
+  _pendingUserInitiated = NO;
+  if (first && !userInitiated && nncore_host::WasNavigationDownload(url, _profile)) {
+    // After the tab it opens instead is attached (a new view's tab is made right after this).
+    __weak NNCoreWebView *weakSelf = self;
+    NSDictionary *payload = @{@"url" : url ?: @"", @"committedUrl" : @"", @"skipped" : @YES};
+    dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf emit:@"downloadNavigation" payload:payload]; });
+    return YES;
+  }
+  _requestedURL = url;
+  return NO;
 }
 
 - (void)loadOpenedURL:(NSInteger)openedId url:(NSString *)url {
@@ -1063,7 +1184,13 @@ NSString *JSONString(id value) {
 }
 
 - (void)showDevToolsPanel:(NSString *)panel {
-  [_tab showDevTools];
+  // As packages/cef's: Chrome's own commands, so a second ⌥⌘I closes DevTools and ⌥⌘J/⌥⌘C open their panel.
+  const int command = [panel isEqualToString:@"console"]   ? 40005  // IDC_DEV_TOOLS_CONSOLE
+                      : [panel isEqualToString:@"inspect"] ? 40023  // IDC_DEV_TOOLS_INSPECT
+                      : [panel isEqualToString:@"toggle"]  ? 40237  // IDC_DEV_TOOLS_TOGGLE
+                                                           : 0;
+  if (command && [_tab respondsToSelector:@selector(executeChromeCommand:)]) [self runChromeCommand:command];
+  else [_tab showDevTools];
 }
 
 - (void)runPageCommand:(NSString *)name {
@@ -1152,7 +1279,16 @@ NSString *JSONString(id value) {
   if (!_tab) return;
   NSDictionary *np = _nowPlaying[_nowPlayingFrame ?: @""];
   const BOOL playingVideo = [np[@"hasVideo"] boolValue] && [np[@"playbackState"] isEqual:@"playing"];
-  if (!_visible && _autoPictureInPicture && playingVideo) {
+  // A page that handles Media Session's "enterpictureinpicture" (a call, a player with its own PiP) opens its own
+  // document Picture in Picture, as on CEF (WantsDocumentPictureInPicture).
+  const BOOL handles = [np[@"actions"] isKindOfClass:NSArray.class] && [np[@"actions"] containsObject:@"enterpictureinpicture"];
+  const BOOL wantsDocument = handles && (_capturing || [np[@"playbackState"] isEqual:@"playing"]);
+  if (!_visible && _autoPictureInPicture && wantsDocument) {
+    _autoPictureInPictureActive = YES;
+    // The page's handler needs a user activation: an empty gesture first, then the action.
+    __weak NNCoreWebView *weakSelf = self;
+    [self evaluateWithGesture:@"post('result', '0')" completion:^(NSString *) { [weakSelf mediaCommand:@"enterpictureinpicture" seconds:0]; }];
+  } else if (!_visible && _autoPictureInPicture && playingVideo) {
     _autoPictureInPictureActive = YES;
     [self requestPictureInPicture:^(BOOL) {}];
   } else if (_visible && _autoPictureInPictureActive) {
@@ -1216,8 +1352,7 @@ NSString *JSONString(id value) {
 }
 
 - (void)resolvePasswordPrompt:(NSString *)action username:(NSString *)username password:(NSString *)password {
-  if ([action isEqualToString:@"save"] || [action isEqualToString:@"update"]) [_tab savePendingPassword];
-  else [_tab dismissPendingPassword];
+  [_tab resolvePasswordPrompt:action username:username password:password];
 }
 
 - (void)setTabStripIndex:(NSInteger)index pinned:(BOOL)pinned {
@@ -1250,6 +1385,9 @@ NSString *JSONString(id value) {
 }
 
 - (void)tab:(NNCoreTab *)tab navigationBecameDownload:(NSString *)url {
+  nncore_host::NoteNavigationDownload(url, _profile);
+  if (_requestedURL && ![_requestedURL isEqualToString:url]) nncore_host::NoteNavigationDownload(_requestedURL, _profile);
+  _requestedURL = nil;
   [self emit:@"downloadNavigation" payload:@{@"url" : url ?: @"", @"committedUrl" : tab.url ?: @"", @"skipped" : @NO}];
 }
 
@@ -1359,6 +1497,7 @@ NSString *JSONString(id value) {
 }
 
 - (void)tab:(NNCoreTab *)tab didChangeMediaAccess:(NSDictionary<NSString *, NSNumber *> *)access {
+  _capturing = [access[@"camera"] boolValue] || [access[@"microphone"] boolValue] || [access[@"screen"] boolValue];
   [self emit:@"mediaAccess" payload:access ?: @{}];
 }
 

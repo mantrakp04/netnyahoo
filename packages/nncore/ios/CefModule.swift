@@ -28,10 +28,12 @@ public class CefModule: Module {
 
     AsyncFunction("engineInfo") { NNCoreHost.engineInfo }.runOnQueue(.main)
     AsyncFunction("chromeWindows") { NNCoreHost.chromeWindows }.runOnQueue(.main)
+    AsyncFunction("devExternalLaunches") { NNCoreHost.testExternalLaunches() }.runOnQueue(.main)
     AsyncFunction("devEvents") { (browserId: Int) in NNCoreWebView.devEvents(browserId: Int32(browserId)) }.runOnQueue(.main)
     AsyncFunction("devWindowNumber") { (browserId: Int) in NNCoreWebView.devWindowNumber(browserId: Int32(browserId)) }.runOnQueue(.main)
     AsyncFunction("devPictureInPicture") { NNCoreWebView.devPictureInPicture() }.runOnQueue(.main)
     AsyncFunction("devPictureInPictureAction") { (action: String) in NNCoreWebView.devPictureInPictureAction(action) }.runOnQueue(.main)
+    AsyncFunction("devFocusPage") { (browserId: Int) in NNCoreWebView.devFocusPage(browserId: Int32(browserId)) }.runOnQueue(.main)
     AsyncFunction("devWindow") { (windowNumber: Int, action: String) -> String in
       guard let window = NSApp.window(withWindowNumber: windowNumber) else { return "" }
       return NNChromeWindowHost.devAction(action, window: window) ?? ""
@@ -78,6 +80,8 @@ public class CefModule: Module {
     }.runOnQueue(.main)
     AsyncFunction("releaseProfile") { (profile: String) in NNCoreHost.releaseProfile(profile) }.runOnQueue(.main)
     AsyncFunction("deleteProfileData") { (profile: String, promise: Promise) in
+      // The original profile's folder stays (Chrome's Default profile): its data goes store by store, as on CEF.
+      if profile.isEmpty { return NNCoreProfileData.deleteDefault { promise.resolve(["remaining": $0]) } }
       NNCoreHost.deleteProfileData(profile) { promise.resolve(["remaining": $0]) }
     }.runOnQueue(.main)
 
@@ -86,6 +90,10 @@ public class CefModule: Module {
     }.runOnQueue(.main)
     AsyncFunction("removeLegacyFavicons") { (profile: String) in }.runOnQueue(.main)
     AsyncFunction("engineCall") { (name: String, profile: String, args: String?, promise: Promise) in
+      // As packages/cef's NNEngineBridge: only the stores the JS reads, and never for a private window (the engine
+      // would answer with, or write to, its parent profile's history and favicons).
+      if !CefModule.engineCalls.contains(name) { return promise.resolve(#"{"error":"not an engine call: \#(name)"}"#) }
+      if profile.hasPrefix("incognito") { return promise.resolve(#"{"error":"no engine data for a private profile"}"#) }
       NNCoreEngineBridge.call(name, profile: profile, args: args) { promise.resolve($0) }
     }.runOnQueue(.main)
 

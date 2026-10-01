@@ -23,6 +23,11 @@ public class ChromeUIModule: Module {
     AsyncFunction("cancelDeviceChooser") { (id: Int) in NNCoreHost.deviceChooser(Int32(id), action: "cancel") }.runOnQueue(.main)
     AsyncFunction("refreshDeviceChooser") { (id: Int) in NNCoreHost.deviceChooser(Int32(id), action: "refresh") }.runOnQueue(.main)
     AsyncFunction("openBluetoothSettings") { (id: Int) in NNCoreHost.deviceChooser(Int32(id), action: "settings") }.runOnQueue(.main)
+    // Tests (--netnyahoo-test-bluetooth-chooser): a Bluetooth chooser with no adapter, and what its choices answered.
+    AsyncFunction("devShowBluetoothChooser") { (browserId: Int, unauthorized: Bool) -> Bool in
+      NNCoreHost.devShowBluetoothChooser(browserId: Int32(browserId), unauthorized: unauthorized)
+    }.runOnQueue(.main)
+    AsyncFunction("devChooserEvents") { NNCoreHost.testChooserEvents() }.runOnQueue(.main)
 
     AsyncFunction("showCastDialog") { (browserId: Int) in NNCoreHost.showCastDialog(browserId: Int32(browserId)) }.runOnQueue(.main)
     AsyncFunction("startCasting") { (id: Int, sink: String, mode: Int) in

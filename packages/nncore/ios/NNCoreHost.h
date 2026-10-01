@@ -27,6 +27,12 @@ NS_ASSUME_NONNULL_BEGIN
 // Device choosers: an option (or -1, a scanning prompt's OK); "cancel", "refresh" or "settings".
 + (void)deviceChooser:(int)chooserId select:(int)index NS_SWIFT_NAME(deviceChooser(_:select:));
 + (void)deviceChooser:(int)chooserId action:(NSString *)action NS_SWIFT_NAME(deviceChooser(_:action:));
+// Tests (--netnyahoo-test-external-protocol-no-launch): the app links Chrome recorded instead of launching them.
++ (NSArray<NSDictionary *> *)testExternalLaunches;
+// Tests (--netnyahoo-test-bluetooth-chooser): Chrome's Bluetooth chooser for a tab with no adapter behind it (NO
+// without the switch), and what its choices told the page's side ({event, device}).
++ (BOOL)devShowBluetoothChooser:(int)browserId unauthorized:(BOOL)unauthorized NS_SWIFT_NAME(devShowBluetoothChooser(browserId:unauthorized:));
++ (NSArray<NSDictionary *> *)testChooserEvents;
 // Cast: Chrome's dialog for a tab (NO when the media router is off), its answers, and a profile's routes.
 + (BOOL)shareTabInstead:(int)targetBrowserId NS_SWIFT_NAME(shareTabInstead(browserId:));
 + (BOOL)showCastDialog:(int)browserId NS_SWIFT_NAME(showCastDialog(browserId:));

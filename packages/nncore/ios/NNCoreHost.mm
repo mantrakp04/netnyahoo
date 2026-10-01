@@ -6,6 +6,7 @@
 
 #import "NNCoreInternal.h"
 #import "NNCoreServices.h"
+#import "NNCoreNavigationDownloads.h"
 #import "NNCoreStartup.h"
 #import "NNCoreWebView.h"
 
@@ -393,6 +394,7 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   NNCoreProfile *p = nncore_host::LoadedProfile(profile);
   if (nncore_host::IsIncognito(profile)) {
     [Profiles() removeObjectForKey:profile];
+    nncore_host::ForgetPrivateNavigationDownloads(profile);
     // Every private window shares the one off-the-record profile: it goes only once no other private window of the
     // app holds it, even one whose window isn't made yet.
     if ([Profiles().allValues containsObject:p]) return;
@@ -429,6 +431,21 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
     [NNCoreEngine refreshDeviceChooser:chooserId];
   else if ([action isEqualToString:@"settings"] && [NNCoreEngine respondsToSelector:@selector(openDeviceChooserSettings:)])
     [NNCoreEngine openDeviceChooserSettings:chooserId];
+}
+
+// Tests (--netnyahoo-test-external-protocol-no-launch): the app links Chrome recorded instead of launching them.
++ (NSArray<NSDictionary *> *)testExternalLaunches {
+  return NNCoreEngine.testExternalLaunches ?: @[];
+}
+
+// Tests (--netnyahoo-test-bluetooth-chooser): Chrome's Bluetooth chooser with no adapter, and its recorded choices.
++ (BOOL)devShowBluetoothChooser:(int)browserId unauthorized:(BOOL)unauthorized {
+  NNCoreTab *tab = nncore_host::TabWithBrowserId(browserId);
+  return [tab respondsToSelector:@selector(devShowBluetoothChooser:)] && [tab devShowBluetoothChooser:unauthorized];
+}
+
++ (NSArray<NSDictionary *> *)testChooserEvents {
+  return [NNCoreEngine respondsToSelector:@selector(testChooserEvents)] ? NNCoreEngine.testChooserEvents ?: @[] : @[];
 }
 
 // "Share this tab instead": the capture moves to the target tab (Chrome's tab-sharing infobar's own action).

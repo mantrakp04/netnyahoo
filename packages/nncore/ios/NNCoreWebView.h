@@ -44,6 +44,8 @@ NS_ASSUME_NONNULL_BEGIN
 // (NNCorePictureInPicture.mm).
 + (NSArray<NSDictionary<NSString *, id> *> *)devPictureInPicture NS_SWIFT_NAME(devPictureInPicture());
 + (NSString *)devPictureInPictureAction:(NSString *)action NS_SWIFT_NAME(devPictureInPictureAction(_:));
+// Tests: the page takes focus as a click in a key window gives it (devFocusPageOfBrowser: in NNCoreWebView.mm).
++ (BOOL)devFocusPageOfBrowser:(int)browserId NS_SWIFT_NAME(devFocusPage(browserId:));
 
 - (void)loadURL:(NSString *)url;
 - (void)loadURL:(NSString *)url userInitiated:(BOOL)userInitiated NS_SWIFT_NAME(loadURL(_:userInitiated:));
