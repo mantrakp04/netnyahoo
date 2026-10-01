@@ -50,6 +50,8 @@ const probeOptions = (() => {
 })();
 
 export const perfProbeEnabled = probeOptions !== null;
+// "listeners" also times each store listener by the functions that subscribed it.
+const listenersProbe = !!probeOptions?.includes("listeners");
 
 const now = () => performance.now();
 const bump = (c: Counter, key: string, by = 1) => void (c[key] = (c[key] ?? 0) + by);
@@ -67,6 +69,9 @@ function fresh() {
     storeKeys: {} as Counter,
     listenerCalls: {} as Counter,
     listenerMs: {} as Counter,
+    // With the "listeners" probe: the same, by the store and the function that subscribed.
+    listenerSiteCalls: {} as Counter,
+    listenerSiteMs: {} as Counter,
     tasks: {} as Counter,
     taskMs: {} as Counter,
     timers: {} as Counter,
@@ -81,6 +86,8 @@ function fresh() {
 
 let stats = fresh();
 const marks: Record<string, number> = {};
+const startedAt = now();
+const startup: [task: string, at: number, ms: number][] = [];
 const roots = new Set<{ current: Fiber }>();
 let firstCommit = 0;
 
@@ -208,8 +215,11 @@ function wrapBridge() {
         return original.apply(queue, args);
       } finally {
         const key = label(args);
+        const end = now();
         bump(stats.tasks, key);
-        bump(stats.taskMs, key, now() - t);
+        bump(stats.taskMs, key, end - t);
+        // Until the first window is up: when each task ran (ms from the bundle's start) and for how long.
+        if (!marks.firstWindow && startup.length < 1000) startup.push([key, Math.round(t - startedAt), Math.round((end - t) * 10) / 10]);
       }
     };
   };
@@ -243,16 +253,23 @@ function wrapWrites() {
 export function probeStore(name: string, store: Store) {
   if (!perfProbeEnabled) return;
   const subscribe = store.subscribe;
-  store.subscribe = (listener) =>
-    subscribe((s, prev) => {
+  store.subscribe = (listener) => {
+    const site = listenersProbe ? `${name} ${callers(new Error().stack, 3)}` : "";
+    return subscribe((s, prev) => {
       const t = now();
       try {
         listener(s, prev);
       } finally {
+        const ms = now() - t;
         bump(stats.listenerCalls, name);
-        bump(stats.listenerMs, name, now() - t);
+        bump(stats.listenerMs, name, ms);
+        if (site) {
+          bump(stats.listenerSiteCalls, site);
+          bump(stats.listenerSiteMs, site, ms);
+        }
       }
     });
+  };
   subscribe((s, prev) => {
     bump(stats.storeUpdates, name);
     const a = s as Record<string, unknown>;
@@ -286,6 +303,7 @@ if (perfProbeEnabled) {
   if (probeOptions?.includes("selectors")) wrapSelectors();
   (globalThis as { nnPerf?: unknown }).nnPerf = {
     marks,
+    startup,
     get firstCommit() {
       return firstCommit;
     },
