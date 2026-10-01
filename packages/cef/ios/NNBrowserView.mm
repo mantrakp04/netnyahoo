@@ -766,6 +766,10 @@ NSString *const kExitPictureInPictureScript =
 - (void)capturePicture:(double)scale completion:(void (^)(NSDictionary<NSString *, id> *))completion {
   NSWindow *window = self.window;
   if (!_browser || !window || self.hidden) return completion(nil);
+  // Off until the engine detaches its DevTools client after each call: CEF attaches one on the first
+  // ExecuteDevToolsMethod and keeps it for the browser's life, and Chrome ignores hangs of a page with a
+  // debugger attached, so every captured tab lost "page isn't responding". Drag cards show the placeholder.
+  if (!getenv("NETNYAHOO_CAPTURE_PICTURES")) return completion(nil);
   NSRect inWindow = [self convertRect:self.bounds toView:nil];
   CGFloat top = NSHeight(window.contentView.frame);
   NSArray *frame = @[ @(NSMinX(inWindow)), @(top - NSMaxY(inWindow)), @(NSWidth(inWindow)), @(NSHeight(inWindow)) ];
