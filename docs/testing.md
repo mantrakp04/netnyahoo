@@ -1,7 +1,7 @@
 # Testing
 
-`pnpm test` at the root runs every unit test (82 cases, about a minute, most of it `swift test`'s first
-build). Each package also runs its own:
+`pnpm test` at the root runs every unit test (82 cases). Turbo caches the results; a cold run spends most
+of its time in `swift test`'s first build. Each package also runs its own:
 
 | Package | Command | Cases |
 | --- | --- | --- |
