@@ -1,0 +1,41 @@
+packages/nncore/ios/NNCoreHost.mm
+  s_9c356f9574d31c::t_f606e80bf99556 226-260
+  s_9c356f9574d31c::t_0bd256d46421fb 52,119-124,197-218,261
+  s_9c356f9574d31c::t_0fc1fae26ec8bb 130-134
+  s_9c356f9574d31c::t_7726537fd51ec4 219,262
+packages/nncore/ios/NNCoreHost.h
+  s_9c356f9574d31c::t_0bd256d46421fb 24-28
+  s_9c356f9574d31c::t_f606e80bf99556 22-23
+packages/nncore/ios/NNCoreWebView.mm
+  s_9c356f9574d31c::t_0bd256d46421fb 324,500-505,887-895,899-900,936,960,964-989
+packages/nncore/ios/CefModule.swift
+  s_9c356f9574d31c::t_f606e80bf99556 49
+  s_9c356f9574d31c::t_0bd256d46421fb 46,61-63
+packages/nncore/ios/NNCoreInternal.h
+  s_9c356f9574d31c::t_0fc1fae26ec8bb 47-50
+packages/nncore/ios/NNCoreChromeWindow.mm
+  s_9c356f9574d31c::t_0fc1fae26ec8bb 133-152,226-231,255-265
+packages/nncore/scripts/acceptance.mjs
+  s_9c356f9574d31c::t_558f8803a11496 455,457-458,499,515
+  s_9c356f9574d31c::t_30595c82c19215 76,468-487
+  s_9c356f9574d31c::t_8e5ff2c0e9dfae 409-454,456,459-467,488-498,500-514,516-518
+  s_9c356f9574d31c::t_2707feeffe72cf 164,519
+packages/nncore/ios/ChromeUIModule.swift
+  s_9c356f9574d31c::t_0bd256d46421fb 11-16,29-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4e50753bb768405b059bfe20f3093d2cd916a58e",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
