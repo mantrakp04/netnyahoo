@@ -1,0 +1,40 @@
+engine/chromium/src/chrome/browser/netnyahoo/nn_tabs.cc
+  s_9c356f9574d31c::t_7521f092f85b43 6,60,91-92,115,128,140-144,193,198
+packages/cef/ios/NNWindowHost.h
+  s_9c356f9574d31c::t_505266711051cf 24-25,27
+apps/browser/src/lib/chromeTabs.ts
+  s_9c356f9574d31c::t_70212f13d814e9 36,108-110,143-145,158,163
+apps/browser/src/store/liveTabs.test.mjs
+  s_9c356f9574d31c::t_e1aba8e892dc01 36-37,43-44,69-72,74-84,87-96,142,154,194,204-207,209-211,370-371,374,377-378,380-405
+  s_9c356f9574d31c::t_a382afa84f4108 372-373,375-376,379
+docs/store-api.md
+  s_9c356f9574d31c::t_47294309c2cdd5 113-117,143-146,149-151,164-166
+apps/browser/src/store/liveTabs.ts
+  s_9c356f9574d31c::t_70212f13d814e9 90-94,199-200,202
+engine/chromium/src/chrome/browser/netnyahoo/nn_tabs.h
+  s_9c356f9574d31c::t_b44b5f1db59655 9-12
+  s_9c356f9574d31c::t_7521f092f85b43 8,16-18
+packages/cef/ios/NNTabStrip.mm
+  s_9c356f9574d31c::t_47150eb44022b6 7,11-15,32,38-39,41,48-49,51-54,56,63-65,67-69,73-106,108,110-111,116,133,141,144,152,192-200,204,211,238,260,262-264,325,329-330,336
+  s_9c356f9574d31c::t_0e5c7ac4fa5f34 42,107,143
+packages/cef/ios/NNWindowHost.mm
+  s_9c356f9574d31c::t_505266711051cf 874-894,904
+packages/cef/src/tabStrip.ts
+  s_9c356f9574d31c::t_70212f13d814e9 37-38,42-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0471250ee2389a2aef21332525874b5a7600ab33",
+  "prompts": {},
+  "sessions": {
+    "s_9c356f9574d31c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e87140-35e6-4a65-85e0-018a5c019c75",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
