@@ -268,7 +268,8 @@ bool IsReservedKey(NSEvent *event) {
 // Test instances (NETNYAHOO_BACKGROUND) act the window's full screen out, since a real one opens a Space on the owner's
 // screen: the same notifications go out, Chrome counts the window as full screen (actedFullScreen), and
 // NETNYAHOO_FAKE_FULLSCREEN_MS gives the acted transition AppKit's length. Their windows count as seen unless a run acts
-// occlusion out (fakeOcclusion, fakeFullScreenOcclusionMs), as Chrome's own reading of them is (NNCoreHost.mm).
+// occlusion out (fakeOcclusion, fakeFullScreenOcclusionMs), as Chrome's own reading of them is (NNCoreHost.mm). The
+// owner's screen lock is not the run's: an acted reading counts whether or not their screen is locked.
 
 namespace {
 
@@ -303,6 +304,9 @@ void ActOcclusion(NSWindow *window, NSNumber *visible) {
 // animation occludes the window as it starts, and macOS reports it visible again <ms> after the did-enter or did-exit
 // notification (a negative gap: before it).
 NSTimeInterval gActedOcclusionGap = NAN;
+// The acted transition whose "visible again" is still to come: a transition started before it arrives takes it over,
+// as macOS reports the window visible after the last one.
+const void *kActedOcclusionTurnKey = &kActedOcclusionTurnKey;
 
 // The window's full screen acted out (a test instance): what -toggleFullScreen: does, without the Space.
 void ActWindowFullScreen(NNCoreWindow *coreWindow, BOOL enter, NSTimeInterval seconds) {
@@ -324,9 +328,12 @@ void ActWindowFullScreen(NNCoreWindow *coreWindow, BOOL enter, NSTimeInterval se
   objc_setAssociatedObject(window, kActingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   const NSTimeInterval gap = gActedOcclusionGap;
   if (!isnan(gap)) {
+    NSObject *turn = [NSObject new];
+    objc_setAssociatedObject(window, kActedOcclusionTurnKey, turn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     ActOcclusion(window, @NO);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(MAX(0, seconds + gap) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      if (NSWindow *w = weakWindow) ActOcclusion(w, @YES);
+      NSWindow *w = weakWindow;
+      if (w && objc_getAssociatedObject(w, kActedOcclusionTurnKey) == turn) ActOcclusion(w, @YES);
     });
   }
   void (^finish)(void) = ^{
@@ -411,10 +418,15 @@ NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange
   for (id observer in _observers) [NSNotificationCenter.defaultCenter removeObserver:observer];
 }
 
+// A test instance's reading of occlusion is acted out: always visible, or what the run acts.
+- (BOOL)occlusionActed {
+  return nncore_host::Background() && (!getenv("NETNYAHOO_ALLOW_OCCLUSION") || objc_getAssociatedObject(_coreWindow.window, kActedOcclusionKey));
+}
+
 - (BOOL)windowVisible {
   NSWindow *window = _coreWindow.window;
   if (!window) return NO;
-  if (nncore_host::Background() && !getenv("NETNYAHOO_ALLOW_OCCLUSION") && !objc_getAssociatedObject(window, kActedOcclusionKey)) return YES;
+  if ([self occlusionActed] && !objc_getAssociatedObject(window, kActedOcclusionKey)) return YES;
   return (window.occlusionState & NSWindowOcclusionStateVisible) != 0;
 }
 
@@ -443,7 +455,7 @@ NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange
 }
 
 - (void)updateSeen {
-  if ([CFBridgingRelease(CGSessionCopyCurrentDictionary())[@"CGSSessionScreenIsLocked"] boolValue]) return;
+  if (![self occlusionActed] && [CFBridgingRelease(CGSessionCopyCurrentDictionary())[@"CGSSessionScreenIsLocked"] boolValue]) return;
   const BOOL seen = _settling || [self windowVisible];
   if (getenv("NETNYAHOO_TRACE_VISIBILITY"))
     NSLog(@"[nncore-vis] window %ld seen=%d (transitioning=%d settling=%d)", (long)_coreWindow.window.windowNumber, seen, _transitioning, _settling);
