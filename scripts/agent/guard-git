@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+# Claude Code PreToolUse hook (.claude/settings.json): refuses git commands that throw away working-tree
+# changes. Everyone works in this one checkout, so `git checkout -- <file>` on "your own" file also wipes
+# another agent's unsaved edits in it. Undo your own hunks by editing instead; read old versions with
+# `git show <rev>:<path>`. Exit 2 blocks the call and shows the message to the agent.
+import json, re, sys
+
+try:
+    command = json.load(sys.stdin).get("tool_input", {}).get("command", "")
+except Exception:
+    sys.exit(0)
+
+# Only git where a command starts (after ;, &&, |, a subshell or env assignments), so grep/echo of the text pass.
+G = r"(?:^|[;&|(`\n]\s*|\$\(\s*)(?:\w+=\S*\s+)*git\s+(?:-C\s+\S+\s+)?"
+rules = [
+    (G + r"checkout\b(?!\s+-b\b)", "git checkout"),
+    (G + r"restore\b(?![^;&|\n]*--staged)", "git restore (without --staged)"),
+    (G + r"stash\b", "git stash"),
+    (G + r"reset\b[^;&|\n]*--hard", "git reset --hard"),
+    (G + r"clean\b", "git clean"),
+    (G + r"switch\b", "git switch"),
+]
+for pattern, name in rules:
+    if re.search(pattern, command):
+        print(
+            f"Blocked: {name} in the shared checkout wipes other agents' uncommitted work. "
+            "Undo your own hunks by editing the file; read an old version with `git show <rev>:<path>`; "
+            "unstage with `git restore --staged <path>`.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+sys.exit(0)
