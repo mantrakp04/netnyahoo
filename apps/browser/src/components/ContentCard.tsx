@@ -87,7 +87,12 @@ export function ContentCard() {
 
   const { panes, dividers } = useMemo(() => {
     const full: Rect = { x: 0, y: 0, width: size.width, height: size.height };
-    if (fullscreenTab) return { panes: { [fullscreenTab]: full }, dividers: [] };
+    if (fullscreenTab) {
+      // A split stays laid out under its pane in full screen: the other pane is still shown (painting, and seen by the
+      // user as far as Picture in Picture and Chrome go), only covered.
+      const under = split?.tabIds.includes(fullscreenTab) ? splitGeometry(split, size.width, size.height).panes : {};
+      return { panes: { ...under, [fullscreenTab]: full }, dividers: [] };
+    }
     if (split) return splitGeometry(split, size.width, size.height);
     return { panes: activeId ? { [activeId]: full } : {}, dividers: [] };
   }, [split, activeId, fullscreenTab, size.width, size.height]);
@@ -182,6 +187,7 @@ export function ContentCard() {
               focused={tabId === activeId}
               inActiveSplit={!!split?.tabIds.includes(tabId)}
               fullscreen={tabId === fullscreenTab}
+              covered={!!fullscreenTab && tabId !== fullscreenTab}
               geometry={geometryFor(rect)}
               toolbar={!addressInSidebar && !small}
               autoHide={hideWhileScrolling && tabLayout === "top" && !addressInSidebar && !small}
@@ -208,6 +214,7 @@ const TabPane = memo(function TabPane({
   focused,
   inActiveSplit,
   fullscreen,
+  covered,
   geometry,
   toolbar,
   autoHide,
@@ -224,6 +231,8 @@ const TabPane = memo(function TabPane({
   // Whether the window's shown split holds this pane (a boolean, so a split change re-renders only its panes).
   inActiveSplit: boolean;
   fullscreen: boolean;
+  // Under the window's page in full screen (the other pane of its split): shown, but not drawn and not hit.
+  covered: boolean;
   geometry: ToolbarGeometry;
   toolbar: boolean;
   // The toolbar hides while the page scrolls down (tabs on top, components/AutoHideToolbar.tsx).
@@ -254,7 +263,7 @@ const TabPane = memo(function TabPane({
 
   return (
     <View
-      pointerEvents={visible ? "auto" : "none"}
+      pointerEvents={visible && !covered ? "auto" : "none"}
       onTouchStart={() => {
         if (visible && !focused) useBrowser.getState().activate(tabId);
       }}
@@ -266,6 +275,7 @@ const TabPane = memo(function TabPane({
         height: frame.height,
         borderRadius: fullscreen ? 0 : layout.cardRadius,
         overflow: "hidden",
+        opacity: covered ? 0 : 1,
         backgroundColor: visible && !fullscreen ? theme.card : undefined,
       }}
     >

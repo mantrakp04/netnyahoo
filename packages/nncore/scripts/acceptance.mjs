@@ -3512,6 +3512,38 @@ try {
     }
   });
 
+  await check("fullscreen-split-sibling", async () => {
+    // One pane of a split in page full screen: the split stays shown under it, so the other pane's playing video
+    // doesn't pop out into Picture in Picture and Chrome still counts that page as shown. The tab is muted.
+    const video = await openTab(`${base}/video?split`, "Video");
+    const tab = await openTab(`${base}/b?fs-split`, "Page B");
+    try {
+      await evalApp(`return nn.webviews.get("${video.id}").setMuted(true)`);
+      const split = await evalApp(`return nn.store.getState().createSplit(["${tab.id}", "${video.id}"])`);
+      if (!split) throw new Error("no split");
+      await evalApp(`nn.actions.switchToTab("${tab.id}"); return true`);
+      await until("the split shown", async () => (await state()).active === tab.id && (await evalApp(`return !!nn.webviews.get("${video.id}")`)), 8000);
+      const v = await startVideo(video.id, true);
+      await until("live.playingAudio", async () => (await live(video.id))?.playingAudio === true, 8000);
+      await sleep(500);
+      const pipBefore = (await eventsOf(video.id)).filter((x) => x.name === "pictureInPicture").length;
+      const t = await pageFor(tab.id, "/b?fs-split");
+      await fsEnter(tab.id, t);
+      await sleep(1500);
+      const pip = (await eventsOf(video.id)).filter((x) => x.name === "pictureInPicture").slice(pipBefore).map((x) => x.payload);
+      const sibling = (await cdp(v, "Runtime.evaluate", { expression: "({ pip: !!document.pictureInPictureElement, visibility: document.visibilityState, paused: v.paused })", returnByValue: true })).result.value;
+      await cdp(t, "Runtime.evaluate", { expression: "document.exitFullscreen().then(() => 'ok', (e) => e.name)", awaitPromise: true, returnByValue: true });
+      await fsLeft(tab.id, t, "the pane out of full screen");
+      if (pip.length || sibling.pip || sibling.visibility !== "visible" || sibling.paused)
+        throw new Error(`the other pane counted as hidden: ${JSON.stringify({ pip, sibling })}`);
+      return { sibling };
+    } finally {
+      await closeTab(tab.id);
+      await closeTab(video.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
   await check("fullscreen-pip", async () => {
     // "f", then "f" on a playing video (the owner's YouTube case), 20 times on a page without Media Session handlers
     // and 20 on one with YouTube's, the window's full screen acted out at a real transition's length (700 ms) and its
