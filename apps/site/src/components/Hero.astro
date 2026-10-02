@@ -37,7 +37,7 @@ import { STARS } from "../data/github";
       </div>
       <MacOnlyNote location="hero" />
       <p class="label fine not-phone" data-reveal style="--i: 4">
-        <span>Free</span><span>Open source</span><span>Notarized by Apple</span><span>{DMG_SIZE}</span><span
+        <span>Open source</span><span>Notarized by Apple</span><span>{DMG_SIZE}</span><span
           >v{VERSION}</span
         ><span>macOS 14+</span>
       </p>
@@ -153,8 +153,8 @@ import { STARS } from "../data/github";
     margin-top: 18px;
     color: var(--ink-3);
   }
-  /* The trust half (free, open source, notarized, size) reads darker than the specs. */
-  .fine span:nth-child(-n + 4) {
+  /* The trust half (open source, notarized, size) reads darker than the specs. */
+  .fine span:nth-child(-n + 3) {
     color: var(--ink-2);
   }
   .fine span + span::before {

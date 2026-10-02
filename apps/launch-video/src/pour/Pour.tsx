@@ -226,7 +226,7 @@ const Card: React.FC<{ f: number }> = ({ f }) => {
         <span style={{ ...line(40, 400) }}>netnyahoo.com</span>
       </div>
       <div style={{ position: "absolute", left: 0, right: 0, top: mid + 932, textAlign: "center", ...up(BEAT + 8) }}>
-        <span style={{ ...line(25, 300), opacity: 0.78 }}>Open source. Real Chromium. Free for Mac.</span>
+        <span style={{ ...line(25, 300), opacity: 0.78 }}>Open source. Real Chromium. For Mac.</span>
       </div>
     </AbsoluteFill>
   );

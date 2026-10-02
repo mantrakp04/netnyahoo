@@ -93,7 +93,7 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
 
   The owner has authorized releases to go all the way through. After an update, the app opens the
   release notes on netnyahoo.com.
-- **Every release gets a tweet draft**: a version line, 4–5 short, witty, simple bullets, "Still free." and
+- **Every release gets a tweet draft**: a version line, 4–5 short, witty, simple bullets and
   the URL, under 280 characters. Add a 1600×1000 image in the site's style built from
   real captures of neutral pages (no random user posts or personal data) at `output/tweets/<version>.png`.
   Only the owner posts it.

@@ -161,7 +161,7 @@ const EndCard: React.FC<{ f: number }> = ({ f }) => {
       </div>
       <div style={{ position: "absolute", left: 0, right: 0, top: 1060, textAlign: "center", opacity: ease(f, 25, 35, out) }}>
         <div style={{ ...type(44, 600) }}>netnyahoo.com</div>
-        <div style={{ ...type(28, 480), color: C.grey, marginTop: 12, letterSpacing: "0.01em" }}>Open source. Real Chromium. Free for Mac.</div>
+        <div style={{ ...type(28, 480), color: C.grey, marginTop: 12, letterSpacing: "0.01em" }}>Open source. Real Chromium. For Mac.</div>
       </div>
     </AbsoluteFill>
   );
