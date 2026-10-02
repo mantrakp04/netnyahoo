@@ -294,7 +294,6 @@ const hostOf = (url: string) => url.match(/^[a-z][\w+.-]*:\/\/([^/?#]*)/i)?.[1]?
 
 // Memoized: its pane re-renders on layout changes, and the web view's props only change with these.
 const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean; warm: boolean }) {
-  const theme = useTheme();
   const navigation = useBrowser((s) => s.tabs[tabId]?.navigation);
   const adoptId = useBrowser((s) => s.tabs[tabId]?.adoptId);
   const profileId = useBrowser((s) => s.tabs[tabId]?.profileId ?? "");
@@ -346,7 +345,9 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
       visible={visible}
       warm={warm}
       autoPictureInPicture={autoPictureInPicture}
-      pageBackgroundColor={theme.card}
+      // The card under the page (ContentCard's background) is drawn once, by the app: a page without a background of its
+      // own shows it, as on CEF. The page drawing it again darkened every transparent page.
+      pageBackgroundColor="transparent"
       onReady={(browserId) => {
         setBrowserId(tabId, browserId);
         noteReady(tabId);
