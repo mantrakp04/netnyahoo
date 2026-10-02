@@ -167,6 +167,16 @@ const server = createServer((req, res) => {
           const w = await documentPictureInPicture.requestWindow({ width: 320, height: 180 });
           w.document.body.append(document.getElementById("v"));
         });
+      // ?fkey: "f" toggles the player's full screen, as on YouTube; ?handlers: Media Session handlers, as YouTube's.
+      if (location.search.includes("fkey"))
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "f") document.fullscreenElement ? document.exitFullscreen() : document.body.requestFullscreen();
+        });
+      if (location.search.includes("handlers")) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: "Fixture video", artist: "Netnyahoo" });
+        for (const action of ["play", "pause", "seekbackward", "seekforward", "previoustrack", "nexttrack", "seekto"])
+          navigator.mediaSession.setActionHandler(action, () => {});
+      }
     </script>`));
   // An extension's rules on a page (content-blocked-count): an image they block, a script they send to a stand-in.
   if (url.pathname === "/nn-ads") return res.end(page("Ads", `<img src="/nnblock-ad.png"><script src="/nnredirect-ad.js"></script>`));
@@ -260,7 +270,7 @@ async function launch(log = "app.out.log", env = {}, args = [], opts = {}) {
     // switch; a tab, so no macOS screen-recording prompt).
     "--env", `NETNYAHOO_CHROMIUM_SWITCHES=--auto-select-tab-capture-source-by-title=Capture Target --netnyahoo-test-external-protocol-no-launch ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""} ${opts.switches ?? ""}`.trim(),
     // Passed through for experiments (e.g. NETNYAHOO_ALLOW_OCCLUSION=1).
-    ...["NETNYAHOO_ALLOW_OCCLUSION", "NETNYAHOO_TRACE_VISIBILITY"].filter((k) => process.env[k]).flatMap((k) => ["--env", `${k}=${process.env[k]}`]),
+    ...["NETNYAHOO_ALLOW_OCCLUSION", "NETNYAHOO_TRACE_VISIBILITY", "NETNYAHOO_TRACE_PIP"].filter((k) => process.env[k]).flatMap((k) => ["--env", `${k}=${process.env[k]}`]),
     "--env", `NETNYAHOO_TRAFFIC_LIGHTS_LOG=${lightsLog}`,
     ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
     "--stdout", stdout, "--stderr", stdout,
@@ -3335,6 +3345,31 @@ try {
         await fsWindow(slow.id, "fakeFullScreenMs:0").catch(() => null);
         await closeTab(slow.id);
       }
+      // The page leaves, then comes back while the window's slow way out runs (past 3 s): that transition's late end is
+      // the app's own, not the user leaving by hand, so the page stays in full screen and the window goes back in.
+      const again = await openTab(`${base}/b?fs-again`, "Page B");
+      try {
+        const at = await pageFor(again.id, "/b?fs-again");
+        await fsEnter(again.id, at);
+        await until("the window in full screen", async () => {
+          const w = await fsWindow(again.id);
+          return w.fullScreen && !w.pageFullScreen?.transitioning ? w : null;
+        }, 6000);
+        await fsWindow(again.id, "fakeFullScreenMs:4500");
+        await cdp(at, "Runtime.evaluate", { expression: "document.exitFullscreen().then(() => 'ok', (e) => e.name)", awaitPromise: true, returnByValue: true });
+        await fsLeft(again.id, at, "the page out, the window on its slow way out");
+        await sleep(3300);
+        await fsEnter(again.id, at);
+        out.backDuringSlowExit = await until("the window back in full screen for the page", async () => {
+          const w = await fsWindow(again.id);
+          return w.fullScreen && !w.pageFullScreen?.transitioning ? w : null;
+        }, 15000).catch(async (e) => { throw new Error(`${e.message}; page ${await fsFlag(again.id)}/${await fsElement(at)}, window ${JSON.stringify(await fsWindow(again.id))}`); });
+        await sleep(800);
+        if (!(await fsFlag(again.id)) || !(await fsElement(at))) throw new Error(`the late end of the app's transition took the page out: ${JSON.stringify(await fsWindow(again.id))}`);
+      } finally {
+        await fsWindow(again.id, "fakeFullScreenMs:0").catch(() => null);
+        await closeTab(again.id);
+      }
       const log = readFileSync(join(data, "activation.log"), "utf8").split("\n").filter((l) => l.includes("toggleFullScreen")).length;
       out.actedToggles = log;
       return out;
@@ -3397,6 +3432,100 @@ try {
       await evalApp(`nn.actions.switchProfile(${JSON.stringify(s.windowId)}, ${JSON.stringify(s.profileId)}); return true`).catch(() => null);
       if (profileB) await evalApp(`nn.store.getState().deleteProfile(${JSON.stringify(profileB)}); return true`).catch(() => null);
       await closeTab(tab.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
+  await check("fullscreen-pip", async () => {
+    // "f", then "f" on a playing video (the owner's YouTube case), 20 times on a page without Media Session handlers
+    // and 20 on one with YouTube's, the window's full screen acted out at a real transition's length (700 ms) and its
+    // occlusion as a real Space animation reports it: occluded as the transition starts, visible again from before the
+    // did-enter/did-exit notification to well after it. Picture in Picture never opens, not even for a moment. Then
+    // the window really leaves the user (occluded, no transition): the video pops out, and comes back when the window
+    // shows again. The tab is muted: nothing is heard.
+    const n = await cef(`devWindowNumber(${await browserOf(first.id)})`);
+    const win = (action) => cef(`devWindow(${n}, ${JSON.stringify(action)})`);
+    const pressF = async (t) => {
+      for (const type of ["keyDown", "keyUp"])
+        await cdp(t, "Input.dispatchKeyEvent", { type, key: "f", code: "KeyF", text: type === "keyDown" ? "f" : undefined, windowsVirtualKeyCode: 70, nativeVirtualKeyCode: 3 });
+    };
+    const pipEvents = async (tabId) => (await eventsOf(tabId)).filter((x) => x.name === "pictureInPicture");
+    const gaps = [-150, 0, 40, 120, 300];
+    const out = {};
+    try {
+      await win("fakeOcclusion:visible");
+      await win("fakeFullScreenMs:700");
+      for (const [path, name] of [["/video?fkey", "plain"], ["/video?fkey&handlers", "handlers"]]) {
+        const tab = await openTab(`${base}${path}`, "Video");
+        try {
+          await evalApp(`return nn.webviews.get("${tab.id}").setMuted(true)`);
+          const t = await startVideo(tab.id, true);
+          await until("live.playingAudio", async () => (await live(tab.id))?.playingAudio === true, 8000);
+          await until("onNowPlaying playing", async () => lastEvent(tab.id, "nowPlaying", (p) => p.state?.hasVideo && p.state?.playbackState === "playing"), 5000);
+          await sleep(300);
+          const seen = new Set((await pipEvents(tab.id)).map((x) => x.t));
+          const settled = (what, test) => until(what, async () => {
+            const w = await fsWindow(tab.id);
+            return !w.pageFullScreen?.transitioning && test(w) ? w : null;
+          }, 6000);
+          for (let i = 0; i < 20; i++) {
+            const gap = gaps[i % gaps.length];
+            await win(`fakeFullScreenOcclusionMs:${gap}`);
+            await pressF(t);
+            await settled(`round ${i}: in full screen`, (w) => w.fullScreen && w.pageFullScreen?.page != null);
+            await sleep(Math.max(0, gap) + 150);
+            await pressF(t);
+            await settled(`round ${i}: out of full screen`, (w) => !w.fullScreen && w.pageFullScreen?.page == null);
+            // The occlusion's return, and anything it sets off.
+            await sleep(Math.max(0, gap) + 600);
+            const fresh = (await pipEvents(tab.id)).filter((x) => !seen.has(x.t));
+            const page = (await cdp(t, "Runtime.evaluate", { expression: "({ pip: !!document.pictureInPictureElement, paused: v.paused, fs: !!document.fullscreenElement })", returnByValue: true })).result.value;
+            if (fresh.length || page.pip || page.fs || page.paused) {
+              const timeline = (await eventsOf(tab.id)).filter((x) => x.name === "fullscreen" || x.name === "pictureInPicture").slice(-6)
+                .map((x) => `${x.t} ${x.name} ${JSON.stringify(x.payload)}`);
+              throw new Error(`${name}, round ${i} (visible again ${gap} ms after the transition): ${JSON.stringify({ pip: fresh.map((x) => x.payload), page, timeline })}`);
+            }
+          }
+          out[name] = { rounds: 20, pipWindows: (await pipWindows())?.length ?? null };
+          if (name !== "plain") continue;
+          // The user leaves the window: the video pops out, and comes back with the window.
+          await win("fakeOcclusion:occluded");
+          const popped = await until("auto PiP on leaving the window", async () => lastEvent(tab.id, "pictureInPicture", (p) => p.kind === "video" && p.active), 5000);
+          await win("fakeOcclusion:visible");
+          await until("auto PiP ended with the window back", async () => {
+            const e = await lastEvent(tab.id, "pictureInPicture");
+            return e && e.t > popped.t && !e.payload.active ? e : null;
+          }, 5000);
+          out.leftWindow = "popped out and back";
+          // With the setting off nothing pops out, and a window the user opened by hand still closes when they come
+          // back to the page (another tab and back, the window covered and back).
+          await evalApp(`nn.store.getState().updateSettings({ autoPictureInPicture: false }); return true`);
+          try {
+            out.manual = {};
+            for (const [what, leave, back] of [
+              ["tab", () => evalApp(`nn.actions.switchToTab("${first.id}"); return true`), () => evalApp(`nn.actions.switchToTab("${tab.id}"); return true`)],
+              ["window", () => win("fakeOcclusion:occluded"), () => win("fakeOcclusion:visible")],
+            ]) {
+              if ((await evalApp(`return nn.webviews.get("${tab.id}").requestPictureInPicture()`)) !== true) throw new Error("requestPictureInPicture failed");
+              const opened = await until("PiP opened by hand", async () => lastEvent(tab.id, "pictureInPicture", (p) => p.kind === "video" && p.active), 5000);
+              await leave();
+              await sleep(800);
+              await back();
+              out.manual[what] = (await until(`the hand-opened PiP closed coming back (${what})`, async () => {
+                const e = await lastEvent(tab.id, "pictureInPicture");
+                return e && e.t > opened.t && !e.payload.active ? e : null;
+              }, 5000)).payload;
+            }
+          } finally {
+            await evalApp(`nn.store.getState().updateSettings({ autoPictureInPicture: true }); return true`);
+          }
+        } finally {
+          await closeTab(tab.id);
+        }
+      }
+      return out;
+    } finally {
+      for (const action of ["fakeFullScreenOcclusionMs:-1", "fakeFullScreenMs:0", "fakeOcclusion:off"]) await win(action).catch(() => null);
       await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
     }
   });

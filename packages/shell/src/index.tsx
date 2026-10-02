@@ -116,7 +116,6 @@ export type WindowEvent =
   | { type: "focus"; id: string }
   | { type: "close"; id: string }
   | { type: "frame"; id: string; frame: [number, number, number, number] }
-  | { type: "occlusion"; id: string; visible: boolean }
   | { type: "closeRequest"; id: string };
 
 export type AppEvent =

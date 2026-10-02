@@ -248,26 +248,61 @@ bool IsReservedKey(NSEvent *event) {
 
 }  // namespace
 
-// MARK: - Page full screen
+// MARK: - The window's full screen, and whether the user sees it
 
 // A page's element full screen fills the window, which enters macOS full screen for it unless it already was, and
 // leaves it afterwards only if it entered for the page, as Chrome does on the Mac (and the CEF build did). Leaving the
 // window's full screen by hand (the green button, ⌃⌘F) takes the page out of full screen too. AppKit ignores
 // -toggleFullScreen: mid-transition: the window catches up once the transition ends.
 //
+// Each transition is recorded with who started it, the app (for a page) or the user, rather than inferred afterwards.
+// AppKit sends nothing when a transition fails; the window then waits for its next transition (the page still fills
+// the window), which beats a watchdog misreading a slow transition's late end as the user's.
+//
+// The same record says whether the user sees the window, for what follows the user (NNCoreWebView's seenByUser):
+// macOS's occlusion, except that the window's own full-screen transition never hides it. The Space animation reports
+// the window occluded, and visible again before or after the did-enter/did-exit notification (crbug.com/1081229): the
+// window counts as seen from the transition's start until macOS reports it visible with the transition over. While the
+// screen is locked, occlusion changes nothing (locking covers every window; it doesn't mean the user left).
+//
 // Test instances (NETNYAHOO_BACKGROUND) act the window's full screen out, since a real one opens a Space on the owner's
 // screen: the same notifications go out, Chrome counts the window as full screen (actedFullScreen), and
-// NETNYAHOO_FAKE_FULLSCREEN_MS gives the acted transition AppKit's length.
+// NETNYAHOO_FAKE_FULLSCREEN_MS gives the acted transition AppKit's length. Their windows count as seen unless a run acts
+// occlusion out (fakeOcclusion, fakeFullScreenOcclusionMs), as Chrome's own reading of them is (NNCoreHost.mm).
 
 namespace {
 
 const void *kActedFullScreenKey = &kActedFullScreenKey;
 const void *kActingKey = &kActingKey;
-const void *kPageFullScreenKey = &kPageFullScreenKey;
+const void *kWindowFullScreenKey = &kWindowFullScreenKey;
 
 BOOL IsWindowFullScreen(NSWindow *window) {
   return window && ((window.styleMask & NSWindowStyleMaskFullScreen) || objc_getAssociatedObject(window, kActedFullScreenKey));
 }
+
+// Test instances: macOS's occlusion state for a window, acted out ("fakeOcclusion:<visible|occluded|off>"), so a run
+// doesn't depend on what covers the window on the owner's screen. The change goes out as macOS sends it.
+const void *kActedOcclusionKey = &kActedOcclusionKey;
+
+void ActOcclusion(NSWindow *window, NSNumber *visible) {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    Method m = class_getInstanceMethod(NSWindow.class, @selector(occlusionState));
+    auto original = (NSWindowOcclusionState(*)(id, SEL))method_getImplementation(m);
+    method_setImplementation(m, imp_implementationWithBlock(^NSWindowOcclusionState(NSWindow *w) {
+      NSNumber *acted = objc_getAssociatedObject(w, kActedOcclusionKey);
+      return acted ? (acted.boolValue ? NSWindowOcclusionStateVisible : 0) : original(w, @selector(occlusionState));
+    }));
+  });
+  objc_setAssociatedObject(window, kActedOcclusionKey, visible, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  if (getenv("NETNYAHOO_TRACE_VISIBILITY")) NSLog(@"[nncore-vis] window %ld acted occlusion %@", (long)window.windowNumber, visible ?: @"off");
+  [NSNotificationCenter.defaultCenter postNotificationName:NSWindowDidChangeOcclusionStateNotification object:window];
+}
+
+// What a real transition does to occlusion, for acted ones ("fakeFullScreenOcclusionMs:<ms>", -1 off): the Space
+// animation occludes the window as it starts, and macOS reports it visible again <ms> after the did-enter or did-exit
+// notification (a negative gap: before it).
+NSTimeInterval gActedOcclusionGap = NAN;
 
 // The window's full screen acted out (a test instance): what -toggleFullScreen: does, without the Space.
 void ActWindowFullScreen(NNCoreWindow *coreWindow, BOOL enter, NSTimeInterval seconds) {
@@ -282,14 +317,24 @@ void ActWindowFullScreen(NNCoreWindow *coreWindow, BOOL enter, NSTimeInterval se
     if ([c respondsToSelector:@selector(setActedFullScreen:)]) c.actedFullScreen = on;
   };
   NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+  const BOOL trace = getenv("NETNYAHOO_TRACE_VISIBILITY") != nullptr;
+  if (trace) NSLog(@"[nncore-vis] window %ld acted %@", (long)window.windowNumber, enter ? @"willEnterFullScreen" : @"willExitFullScreen");
   [center postNotificationName:enter ? NSWindowWillEnterFullScreenNotification : NSWindowWillExitFullScreenNotification object:window];
   if (enter) set(YES);
   objc_setAssociatedObject(window, kActingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  const NSTimeInterval gap = gActedOcclusionGap;
+  if (!isnan(gap)) {
+    ActOcclusion(window, @NO);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(MAX(0, seconds + gap) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      if (NSWindow *w = weakWindow) ActOcclusion(w, @YES);
+    });
+  }
   void (^finish)(void) = ^{
     NSWindow *w = weakWindow;
     if (!w) return;
     objc_setAssociatedObject(w, kActingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (!enter) set(NO);
+    if (trace) NSLog(@"[nncore-vis] window %ld acted %@", (long)w.windowNumber, enter ? @"didEnterFullScreen" : @"didExitFullScreen");
     [center postNotificationName:enter ? NSWindowDidEnterFullScreenNotification : NSWindowDidExitFullScreenNotification object:w];
   };
   if (seconds > 0) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), finish);
@@ -309,41 +354,46 @@ void ToggleWindowFullScreen(NNCoreWindow *coreWindow) {
 
 }  // namespace
 
-// One per window that had a page in full screen.
-@interface NNPageFullScreen : NSObject
+NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange";
+
+// One per app window.
+@interface NNWindowFullScreen : NSObject
 @end
 
-@implementation NNPageFullScreen {
+@implementation NNWindowFullScreen {
   __weak NNCoreWindow *_coreWindow;
   __weak NNCoreTab *_tab;  // The page in full screen.
-  BOOL _entered;           // The window went full screen for it.
-  BOOL _leaving;           // The window is leaving full screen because the page did.
-  BOOL _gaveUp;            // The window's transition for this page failed: the page fills the window as it is.
+  BOOL _entered;           // The window is in full screen (or going) for it.
+  NSInteger _asked;        // The transition the app asked for and AppKit hasn't started: 1 in, -1 out.
   BOOL _transitioning;
+  BOOL _ours;              // The running transition is the app's.
+  BOOL _settling;          // A transition started and macOS hasn't reported the window visible since it ended.
+  BOOL _seen;
   BOOL _closed;
-  NSUInteger _transitions;
   NSArray *_observers;
 }
 
 + (instancetype)ofWindow:(NNCoreWindow *)coreWindow create:(BOOL)create {
   NSWindow *window = coreWindow.window;
   if (!window) return nil;
-  NNPageFullScreen *state = objc_getAssociatedObject(window, kPageFullScreenKey);
+  NNWindowFullScreen *state = objc_getAssociatedObject(window, kWindowFullScreenKey);
   if (state || !create) return state;
-  state = [[NNPageFullScreen alloc] initWithCoreWindow:coreWindow];
-  objc_setAssociatedObject(window, kPageFullScreenKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  state = [[NNWindowFullScreen alloc] initWithCoreWindow:coreWindow];
+  objc_setAssociatedObject(window, kWindowFullScreenKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   return state;
 }
 
 - (instancetype)initWithCoreWindow:(NNCoreWindow *)coreWindow {
   if ((self = [super init])) {
     _coreWindow = coreWindow;
-    __weak NNPageFullScreen *weakSelf = self;
+    // Until macOS says otherwise: a window just made may not be on screen yet.
+    _seen = YES;
+    __weak NNWindowFullScreen *weakSelf = self;
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     NSMutableArray *observers = [NSMutableArray array];
     for (NSNotificationName name in @[
-           NSWindowWillEnterFullScreenNotification, NSWindowWillExitFullScreenNotification,
-           NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification, NSWindowWillCloseNotification
+           NSWindowWillEnterFullScreenNotification, NSWindowWillExitFullScreenNotification, NSWindowDidEnterFullScreenNotification,
+           NSWindowDidExitFullScreenNotification, NSWindowDidChangeOcclusionStateNotification, NSWindowWillCloseNotification
          ]) {
       [observers addObject:[center addObserverForName:name
                                                object:coreWindow.window
@@ -361,57 +411,64 @@ void ToggleWindowFullScreen(NNCoreWindow *coreWindow) {
   for (id observer in _observers) [NSNotificationCenter.defaultCenter removeObserver:observer];
 }
 
+- (BOOL)windowVisible {
+  NSWindow *window = _coreWindow.window;
+  if (!window) return NO;
+  if (nncore_host::Background() && !getenv("NETNYAHOO_ALLOW_OCCLUSION") && !objc_getAssociatedObject(window, kActedOcclusionKey)) return YES;
+  return (window.occlusionState & NSWindowOcclusionStateVisible) != 0;
+}
+
 - (void)windowDid:(NSNotificationName)name {
   if ([name isEqualToString:NSWindowWillCloseNotification]) {
     _closed = YES;
     return;
   }
-  if ([name isEqualToString:NSWindowWillEnterFullScreenNotification] || [name isEqualToString:NSWindowWillExitFullScreenNotification]) {
-    _transitioning = YES;
-    // AppKit sends nothing when a transition fails: don't wait on one forever.
-    const NSUInteger transition = ++_transitions;
-    __weak NNPageFullScreen *weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-      NNPageFullScreen *state = weakSelf;
-      if (!state || !state->_transitioning || state->_transitions != transition) return;
-      state->_transitioning = NO;
-      state->_leaving = NO;
-      // What the window is now, not what was asked; a failed entry isn't retried for the same page.
-      const BOOL full = IsWindowFullScreen(state->_coreWindow.window);
-      if (state->_entered && !full) state->_gaveUp = YES;
-      state->_entered = state->_entered && full;
-      [state sync];
-    });
-    return;
+  const BOOL will = [name isEqualToString:NSWindowWillEnterFullScreenNotification] || [name isEqualToString:NSWindowWillExitFullScreenNotification];
+  const BOOL did = [name isEqualToString:NSWindowDidEnterFullScreenNotification] || [name isEqualToString:NSWindowDidExitFullScreenNotification];
+  const BOOL entering = [name isEqualToString:NSWindowWillEnterFullScreenNotification] || [name isEqualToString:NSWindowDidEnterFullScreenNotification];
+  if (will) {
+    _transitioning = _settling = YES;
+    _ours = _asked == (entering ? 1 : -1);
+    _asked = 0;
   }
-  _transitioning = NO;
-  const BOOL entered = [name isEqualToString:NSWindowDidEnterFullScreenNotification];
-  // After the window's other observers (packages/shell's Windows) have heard of it.
-  __weak NNPageFullScreen *weakSelf = self;
-  dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf settled:entered]; });
+  if (did) _transitioning = NO;
+  if (!_transitioning && [self windowVisible]) _settling = NO;
+  [self updateSeen];
+  if (!did) return;
+  const BOOL ours = _ours;
+  _ours = NO;
+  // After the window's other observers have heard of it.
+  __weak NNWindowFullScreen *weakSelf = self;
+  dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf settled:entering ours:ours]; });
 }
 
-- (void)settled:(BOOL)entered {
-  if (entered && _leaving) {
-    // Our toggle out came while the window was still going full screen (past the 3 s we wait for a transition), and
-    // AppKit ignored it: the window is in full screen for the page still.
-    _leaving = NO;
-    _entered = YES;
-  }
-  if (!entered && !_leaving) {
+- (void)updateSeen {
+  if ([CFBridgingRelease(CGSessionCopyCurrentDictionary())[@"CGSSessionScreenIsLocked"] boolValue]) return;
+  const BOOL seen = _settling || [self windowVisible];
+  if (getenv("NETNYAHOO_TRACE_VISIBILITY"))
+    NSLog(@"[nncore-vis] window %ld seen=%d (transitioning=%d settling=%d)", (long)_coreWindow.window.windowNumber, seen, _transitioning, _settling);
+  if (seen == _seen) return;
+  _seen = seen;
+  if (NSWindow *window = _coreWindow.window) [NSNotificationCenter.defaultCenter postNotificationName:NNCoreWindowSeenDidChange object:window];
+}
+
+- (BOOL)seen {
+  return _seen;
+}
+
+- (void)settled:(BOOL)entered ours:(BOOL)ours {
+  if (!entered && !ours) {
     // Left by hand: the page leaves full screen too, and its exit comes back through -tab:fullScreen:.
     _entered = NO;
     NNCoreTab *tab = _tab;
     if (tab && [tab respondsToSelector:@selector(exitFullscreen)]) return [tab exitFullscreen];
   }
-  if (!entered) _leaving = NO;
   [self sync];
 }
 
 - (void)tab:(NNCoreTab *)tab fullScreen:(BOOL)fullScreen {
   if (fullScreen) _tab = tab;
   else if (_tab == tab || !_tab) _tab = nil;
-  _gaveUp = _gaveUp && _tab;
   [self sync];
 }
 
@@ -420,14 +477,15 @@ void ToggleWindowFullScreen(NNCoreWindow *coreWindow) {
   NSWindow *window = coreWindow.window;
   if (!window || _closed || _transitioning) return;
   const BOOL full = IsWindowFullScreen(window), page = _tab != nil;
-  if (page && !full && !_entered && !_gaveUp) {
+  if (page && !full && !_entered) {
     _entered = YES;
+    _asked = 1;
     ToggleWindowFullScreen(coreWindow);
   } else if (!page && full && _entered) {
     _entered = NO;
-    _leaving = YES;
+    _asked = -1;
     ToggleWindowFullScreen(coreWindow);
-  } else if (!page && !_leaving) {
+  } else if (!page) {
     _entered = NO;
   }
 }
@@ -438,8 +496,11 @@ void ToggleWindowFullScreen(NNCoreWindow *coreWindow) {
   return @{
     @"page" : tab ? @(nncore_host::BrowserId(tab)) : NSNull.null,
     @"entered" : @(_entered),
-    @"leaving" : @(_leaving),
+    @"asked" : @(_asked),
     @"transitioning" : @(_transitioning),
+    @"ours" : @(_ours),
+    @"settling" : @(_settling),
+    @"seen" : @(_seen),
     @"fullScreen" : @(IsWindowFullScreen(window)),
   };
 }
@@ -450,6 +511,12 @@ void ToggleWindowFullScreen(NNCoreWindow *coreWindow) {
 
 @implementation NNCoreWindowController {
   NSHashTable<NNCoreTab *> *_closing;
+}
+
++ (BOOL)userSees:(NSWindow *)window {
+  NNCoreWindowController *controller = [self forNSWindow:window];
+  if (!controller || controller.stray || controller.standalone) return YES;
+  return [[NNWindowFullScreen ofWindow:controller.coreWindow create:YES] seen];
 }
 
 + (instancetype)strayWindowForProfile:(NNCoreProfile *)profile {
@@ -651,7 +718,7 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
 - (void)window:(NNCoreWindow *)window tab:(NNCoreTab *)tab didChangeFullscreen:(BOOL)fullscreen {
   [[self viewFor:tab] emit:@"fullscreen" payload:@{@"fullscreen" : @(fullscreen)}];
   // The app's windows only: a hidden one (a stray tab's, extension pages') shows nothing to fill the screen with.
-  if (!_stray && !_standalone) [[NNPageFullScreen ofWindow:window create:fullscreen] tab:tab fullScreen:fullscreen];
+  if (!_stray && !_standalone) [[NNWindowFullScreen ofWindow:window create:YES] tab:tab fullScreen:fullscreen];
 }
 
 // Chrome's password bubble, already in packages/cef's PasswordPrompt shape (save, update or saved; usernames,
@@ -1034,10 +1101,24 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
   // "fakeFullScreen:<1|0>[:<ms>]" (test instances): the window enters or leaves macOS full screen as the green button
   // would, acted out; with a duration the transition ends that much later. "fakeFullScreenMs:<ms>": the length of the
   // acted transitions page full screen starts. "fullScreen": the window's full screen and its page full screen, as JSON.
+  // "fakeOcclusion:<visible|occluded|off>": macOS's occlusion state for the window; "fakeFullScreenOcclusionMs:<ms>"
+  // (-1 off): acted transitions occlude the window as a real one does, visible again <ms> after it ends.
   if ([action hasPrefix:@"fakeFullScreenMs:"]) {
     if (!nncore_host::Background()) return @"test instances only";
     gActedTransition = MAX(0, [action substringFromIndex:17].doubleValue / 1000);
     return [NSString stringWithFormat:@"%.0f", gActedTransition * 1000];
+  }
+  if ([action hasPrefix:@"fakeFullScreenOcclusionMs:"]) {
+    if (!nncore_host::Background()) return @"test instances only";
+    const double ms = [action substringFromIndex:26].doubleValue;
+    gActedOcclusionGap = ms == -1 ? NAN : ms / 1000;
+    return [NSString stringWithFormat:@"%.0f", ms];
+  }
+  if ([action hasPrefix:@"fakeOcclusion:"]) {
+    if (!nncore_host::Background()) return @"test instances only";
+    NSString *to = [action substringFromIndex:14];
+    ActOcclusion(window, [to isEqualToString:@"off"] ? nil : @([to isEqualToString:@"visible"]));
+    return @((window.occlusionState & NSWindowOcclusionStateVisible) != 0).stringValue;
   }
   if ([action hasPrefix:@"fakeFullScreen:"] || [action isEqualToString:@"fullScreen"]) {
     NNCoreWindow *coreWindow = [NNCoreWindowController forNSWindow:window].coreWindow;
@@ -1054,7 +1135,7 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
       @"acted" : @(objc_getAssociatedObject(window, kActedFullScreenKey) != nil),
       @"chromeCounts" : @([coreWindow respondsToSelector:@selector(actedFullScreen)] && coreWindow.actedFullScreen),
     } mutableCopy];
-    if (NNPageFullScreen *page = [NNPageFullScreen ofWindow:coreWindow create:NO]) state[@"pageFullScreen"] = [page state];
+    if (NNWindowFullScreen *page = [NNWindowFullScreen ofWindow:coreWindow create:NO]) state[@"pageFullScreen"] = [page state];
     NSData *json = [NSJSONSerialization dataWithJSONObject:state options:0 error:nil];
     return json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : @"{}";
   }

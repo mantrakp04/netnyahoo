@@ -75,7 +75,11 @@ NSUInteger PopupWindowCount();
 // An app view to hand a tab Chrome made to: one shown for `profile`, else any (nil profile: any); a private profile's
 // only to a view of its own.
 + (nullable NNCoreWebView *)hostingViewForProfile:(nullable NNCoreProfile *)profile;
+// Whether the user sees `window`: not covered or left for another app; its own full-screen transitions never count
+// (NNWindowFullScreen, NNCoreChromeWindow.mm). NNCoreWindowSeenDidChange (object: the window) tells of each change.
++ (BOOL)userSees:(nullable NSWindow *)window;
 @end
+extern NSNotificationName const NNCoreWindowSeenDidChange;
 
 @interface NNCoreTabStrip (Engine)
 // A strip changed (a tab inserted, removed, activated or placed); the cause is the command being run, the app's

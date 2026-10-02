@@ -430,6 +430,52 @@ try {
     }
   });
 
+  await check("call-window-covered", async () => {
+    // The window leaving the user (covered, another app: occlusion acted out) pops the call out once, through Chrome,
+    // and its coming back closes it. Its own full-screen transitions never do: the call's page full screen in and out
+    // five times, with a real transition's length and occlusion (occluded as it starts, visible again after it ends).
+    const call = await joinedCall();
+    const n = await cef(`devWindowNumber(${await browserOf(call.tab)})`);
+    const win = (action) => cef(`devWindow(${n}, ${JSON.stringify(action)})`);
+    const out = {};
+    try {
+      await win("fakeOcclusion:visible");
+      await sleep(600);
+      const base = (await pipState(call.t)).pip;
+      await win("fakeOcclusion:occluded");
+      await until("the call popped out (covered)", async () => {
+        const p = await pipState(call.t);
+        return p.pip > base && p.open ? p : null;
+      }, 8000);
+      await sleep(1200);
+      out.covered = (await pipState(call.t)).pip - base;
+      if (out.covered !== 1) throw new Error(`covered: the handler ran ${out.covered} times`);
+      await win("fakeOcclusion:visible");
+      await until("closed with the window back", async () => !(await pipState(call.t)).open, 8000);
+      await win("fakeFullScreenMs:700");
+      const before = (await pipState(call.t)).pip;
+      for (const gap of [-150, 40, 120, 300, 40]) {
+        await win(`fakeFullScreenOcclusionMs:${gap}`);
+        for (const want of [true, false]) {
+          const r = await js(call.t, want ? "document.documentElement.requestFullscreen().then(() => 'ok', (e) => e.name)" : "document.exitFullscreen().then(() => 'ok', (e) => e.name)");
+          if (r !== "ok") throw new Error(`full screen ${want}: ${r}`);
+          await until(`the window ${want ? "in" : "out of"} full screen`, async () => {
+            const w = JSON.parse(await win("fullScreen"));
+            return w.fullScreen === want && !w.pageFullScreen?.transitioning ? w : null;
+          }, 6000);
+        }
+        await sleep(Math.max(0, gap) + 600);
+        const p = await pipState(call.t);
+        if (p.pip !== before || p.open) throw new Error(`full screen in and out (visible again ${gap} ms after) popped the call out: ${JSON.stringify(p)}`);
+      }
+      out.fullScreenRounds = 5;
+      return out;
+    } finally {
+      for (const action of ["fakeFullScreenOcclusionMs:-1", "fakeFullScreenMs:0", "fakeOcclusion:off"]) await win(action).catch(() => null);
+      await closeTab(call.tab);
+    }
+  });
+
   await check("prompt-follows-page", async () => {
     // A prompt open on a page the app hides stays with it (unanswered, back when the page is); a page the app hides
     // asks only once it shows again; the split's other pane (shown, not Chrome's selected tab) asks at once.

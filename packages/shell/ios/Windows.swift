@@ -154,12 +154,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
   private func observeDelegateNotifications(_ window: NSWindow) {
     for (name, selector) in [
       (NSWindow.didBecomeKeyNotification, #selector(windowDidBecomeKey(_:))),
-      (NSWindow.didChangeOcclusionStateNotification, #selector(windowDidChangeOcclusionState(_:))),
       (NSWindow.willCloseNotification, #selector(windowWillClose(_:))),
-      (NSWindow.willEnterFullScreenNotification, #selector(fullScreenTransitionBegan(_:))),
-      (NSWindow.willExitFullScreenNotification, #selector(fullScreenTransitionBegan(_:))),
-      (NSWindow.didEnterFullScreenNotification, #selector(fullScreenTransitionEnded(_:))),
-      (NSWindow.didExitFullScreenNotification, #selector(fullScreenTransitionEnded(_:))),
     ] {
       NotificationCenter.default.addObserver(self, selector: selector, name: name, object: window)
     }
@@ -304,41 +299,6 @@ final class WindowManager: NSObject, NSWindowDelegate {
     guard let window = notification.object as? NSWindow, let id = id(of: window) else { return }
     if isMainWindow(window) { lastPlaced = window }
     emit?("onWindowEvent", ["type": "focus", "id": id])
-  }
-
-  func windowDidChangeOcclusionState(_ notification: Notification) {
-    guard let window = notification.object as? NSWindow, inFullScreenTransition[ObjectIdentifier(window)] == nil else { return }
-    reportOcclusion(window)
-  }
-
-  private func reportOcclusion(_ window: NSWindow) {
-    guard let id = id(of: window), auxKinds[id] == nil else { return }
-    emit?("onWindowEvent", ["type": "occlusion", "id": id, "visible": window.occlusionState.contains(.visible)])
-  }
-
-  // A full-screen transition moves the window between Spaces and briefly occludes it. Reporting that would
-  // start auto Picture in Picture, which takes a page's video out of its element full screen.
-  private var inFullScreenTransition: [ObjectIdentifier: Int] = [:]
-  private var fullScreenTransitionCount = 0
-
-  @objc private func fullScreenTransitionBegan(_ notification: Notification) {
-    guard let window = notification.object as? NSWindow else { return }
-    let key = ObjectIdentifier(window)
-    fullScreenTransitionCount += 1
-    let transition = fullScreenTransitionCount
-    inFullScreenTransition[key] = transition
-    // AppKit sends no notification when a transition fails.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self, weak window] in
-      guard let self, let window, self.inFullScreenTransition[key] == transition else { return }
-      self.inFullScreenTransition[key] = nil
-      self.reportOcclusion(window)
-    }
-  }
-
-  @objc private func fullScreenTransitionEnded(_ notification: Notification) {
-    guard let window = notification.object as? NSWindow,
-          inFullScreenTransition.removeValue(forKey: ObjectIdentifier(window)) != nil else { return }
-    reportOcclusion(window)
   }
 
   func windowWillClose(_ notification: Notification) {

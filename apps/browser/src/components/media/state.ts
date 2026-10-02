@@ -14,7 +14,7 @@ export type Session = NowPlaying & {
 type Store = {
   sessions: Record<string, Session>;
   dismissed: Record<string, true>;
-  pip: Record<string, "manual" | "auto">;
+  pip: Record<string, "manual">;
   pipOpen: Record<string, PictureInPictureState["kind"]>;
   displayRequests: Record<string, DisplayMediaRequest>;
   tabShares: Record<string, TabShare>;

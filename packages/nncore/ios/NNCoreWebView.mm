@@ -338,6 +338,11 @@ const char kPageReportsKey = 0;
   NSMutableDictionary<NSString *, NSDictionary *> *_displayRequests;
   double _pinchScale;
   BOOL _autoPictureInPictureActive;
+  // The page reported a Picture in Picture window open (a video's or its document's), however it opened.
+  BOOL _inPictureInPicture;
+  // Whether the user saw this page when last asked (-userSightChanged), and the observer of its window's changes.
+  BOOL _seenByUser;
+  id _sightObserver;
   // The page uses the camera, microphone or screen (CEF's capturing_): auto Picture in Picture takes its document PiP.
   BOOL _capturing;
   // Its renderer died and nothing loaded since (emitNavigation).
@@ -355,6 +360,7 @@ const char kPageReportsKey = 0;
   if ((self = [super initWithFrame:frameRect])) {
     _profile = @"";
     _visible = YES;
+    _seenByUser = YES;
     _tabIndex = -1;
     self.wantsLayer = YES;
   }
@@ -362,6 +368,7 @@ const char kPageReportsKey = 0;
 }
 
 - (void)dealloc {
+  if (_sightObserver) [NSNotificationCenter.defaultCenter removeObserver:_sightObserver];
   [self closeBrowser];
 }
 
@@ -386,7 +393,13 @@ const char kPageReportsKey = 0;
 - (void)viewDidMoveToWindow {
   [super viewDidMoveToWindow];
   if (TraceVisibility()) NSLog(@"[nncore-vis] %@ window=%ld tab=%d", _transferKey, (long)self.window.windowNumber, _tab ? (int)_tab.tabId : -1);
+  if (_sightObserver) [NSNotificationCenter.defaultCenter removeObserver:_sightObserver];
+  _sightObserver = nil;
   if (!self.window) return;
+  __weak NNCoreWebView *weakSelf = self;
+  _sightObserver = [NSNotificationCenter.defaultCenter addObserverForName:NNCoreWindowSeenDidChange object:self.window queue:nil
+                                                               usingBlock:^(NSNotification *) { [weakSelf userSightChanged]; }];
+  [self userSightChanged];
   if (_tab) [self adoptIntoWindow];
   else [self ensureTab];
 }
@@ -578,9 +591,10 @@ const char kPageReportsKey = 0;
   _tab = tab;
   tab.delegate = self;
   [NNCoreTabs setView:self forTab:tab];
-  [NNCoreWebView noteShown:tab];
   [self bindRestoreKey];
   [self takePageReports];
+  // From where the last view left it: a tab that comes into sight in this one leaves Picture in Picture.
+  [self userSightChanged];
   [self adoptIntoWindow];
   NSView *page = tab.view;
   if (page.superview != self) {
@@ -651,6 +665,9 @@ const char kPageReportsKey = 0;
   reports[@"pinch"] = @(_pinchScale);
   reports[@"capturing"] = @(_capturing);
   reports[@"crashed"] = @(_crashed);
+  reports[@"seen"] = @(_seenByUser);
+  reports[@"pip"] = @(_inPictureInPicture);
+  reports[@"autoPip"] = @(_autoPictureInPictureActive);
   if (!_tab.closed) objc_setAssociatedObject(_tab, &kPageReportsKey, reports, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   [self takeReports:nil];
 }
@@ -675,6 +692,9 @@ const char kPageReportsKey = 0;
   _pinchScale = [reports[@"pinch"] doubleValue];
   _capturing = [reports[@"capturing"] boolValue];
   _crashed = [reports[@"crashed"] boolValue];
+  if (reports[@"seen"]) _seenByUser = [reports[@"seen"] boolValue];
+  _inPictureInPicture = [reports[@"pip"] boolValue];
+  _autoPictureInPictureActive = [reports[@"autoPip"] boolValue];
 }
 
 - (void)closeBrowser {
@@ -839,22 +859,22 @@ const char kPageReportsKey = 0;
   [self schedulePainting];
 }
 
-// Whether the app shows `tab` (the view holding it is visible: both panes of a split are), for Chrome's automatic
-// Picture in Picture and permission prompts, which would otherwise follow Chrome's strip: the app shows pages over its
-// active tab (New Tab, another Space) and a split's other pane beside it (engine: nn_host_visibility.h). Shown at once;
-// hidden once that held 300 ms (each change restarts the wait), so a switch settles first and a tab moving between
-// views never reads as hidden.
+// Whether the user sees `tab` (-seenByUser: both panes of a split are seen), for Chrome's automatic Picture in Picture
+// and permission prompts, which would otherwise follow Chrome's strip: the app shows pages over its active tab (New Tab,
+// another Space) and a split's other pane beside it (engine: nn_host_visibility.h). Shown at once; hidden once that held
+// 300 ms (each change restarts the wait), so a switch settles first and a tab moving between views never reads as
+// hidden.
 + (void)noteShown:(NNCoreTab *)tab {
   if (![tab respondsToSelector:@selector(noteShownByHost:)]) return;
   static NSMapTable<NNCoreTab *, NSNumber *> *changes = [NSMapTable weakToStrongObjectsMapTable];
   const NSUInteger change = [changes objectForKey:tab].unsignedIntegerValue + 1;
   [changes setObject:@(change) forKey:tab];
   NNCoreWebView *view = [NNCoreTabs viewForTab:tab];
-  if (view && view->_visible) return [tab noteShownByHost:YES];
+  if (view.seenByUser) return [tab noteShownByHost:YES];
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
     if ([changes objectForKey:tab].unsignedIntegerValue != change) return;
     NNCoreWebView *now = [NNCoreTabs viewForTab:tab];
-    if (!now || !now->_visible) [tab noteShownByHost:NO];
+    if (!now.seenByUser) [tab noteShownByHost:NO];
   });
 }
 
@@ -872,11 +892,25 @@ const char kPageReportsKey = 0;
   // can clear first.
   if (visible && self.alphaValue < 1 && _tab.view.superview == self && !_tab.view.hidden) self.alphaValue = 1;
   [self schedulePainting];
-  [self traceAutoPictureInPicture:visible ? @"app: tab shown" : @"app: tab hidden"];
-  [self updateAutoPictureInPicture];
-  if (_tab) [NNCoreWebView noteShown:_tab];
+  [self userSightChanged];
   // With tab-strip commands, only they (and Chrome) change the active tab.
   if (visible && !NNCoreTabStrip.commandsSeen) [self activate];
+}
+
+// The one rule for "the user left this page", which automatic Picture in Picture and Chrome's reading of shown tabs
+// follow: the app stopped showing it (a tab switch, its New Tab page, another Space), or its window left the user
+// (covered, another app). The window's full-screen transitions never count (+[NNCoreWindowController userSees:]).
+- (BOOL)seenByUser {
+  return _visible && [NNCoreWindowController userSees:self.window];
+}
+
+- (void)userSightChanged {
+  if (_tab) [NNCoreWebView noteShown:_tab];
+  const BOOL seen = self.seenByUser;
+  if (seen == _seenByUser) return;
+  _seenByUser = seen;
+  [self traceAutoPictureInPicture:seen ? @"app: the user sees the tab" : @"app: the user left the tab"];
+  [self updateAutoPictureInPicture];
 }
 
 // NETNYAHOO_TRACE_PIP: the app's view of the tab (its now-playing state, what the page says) and Chrome's auto PiP inputs.
@@ -1212,6 +1246,7 @@ const char kPageReportsKey = 0;
     NSNumber *active = [dict[@"active"] isKindOfClass:NSNumber.class] ? dict[@"active"] : nil;
     NSString *pipKind = [dict[@"kind"] isEqual:@"document"] ? @"document" : @"video";
     if (!active) return;
+    _inPictureInPicture = active.boolValue;
     [self emit:@"pictureInPicture" payload:@{@"kind" : pipKind, @"active" : active}];
     // Chrome's video window, styled and handled as on CEF (NNCorePictureInPicture).
     if ([pipKind isEqual:@"video"]) nncore_pip::VideoChanged(self, [NSURL URLWithString:tab.url ?: @""].host ?: @"", frameId, active.boolValue);
@@ -1539,8 +1574,8 @@ const char kPageReportsKey = 0;
   [_tab evaluate:code completion:completion];
 }
 
-// Auto Picture in Picture (Arc's): a playing video goes into PiP when its tab is switched away from, and comes back
-// when it shows again.
+// Auto Picture in Picture (Arc's): a playing video goes into PiP when the user leaves it (-seenByUser). A page the user
+// sees again takes its video back, however it went into PiP (ours, the app's menus, the page's own button).
 - (void)updateAutoPictureInPicture {
   if (!_tab) return;
   NSDictionary *np = _nowPlaying[_nowPlayingFrame ?: @""];
@@ -1549,7 +1584,7 @@ const char kPageReportsKey = 0;
   // document Picture in Picture, as on CEF (WantsDocumentPictureInPicture).
   const BOOL handles = [np[@"actions"] isKindOfClass:NSArray.class] && [np[@"actions"] containsObject:@"enterpictureinpicture"];
   const BOOL wantsDocument = handles && (_capturing || [np[@"playbackState"] isEqual:@"playing"]);
-  if (!_visible && _autoPictureInPicture && wantsDocument) {
+  if (!_seenByUser && _autoPictureInPicture && wantsDocument) {
     // Chrome's own automatic PiP calls the page's handler on a tab switch too (a call: the camera or microphone in use,
     // https, the setting on), as in Chrome and Dia: the handler runs once, or its second requestWindow closes the first
     // window. Chrome hears of the switch about when this view hides (or 300 ms later, from setVisible:): ask after that.
@@ -1557,7 +1592,7 @@ const char kPageReportsKey = 0;
     NNCoreTab *tab = _tab;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 450 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
       NNCoreWebView *view = weakSelf;
-      if (!view || view->_visible || view->_tab != tab || !view->_autoPictureInPicture) return;
+      if (!view || view->_seenByUser || view->_tab != tab || !view->_autoPictureInPicture) return;
       if ([tab respondsToSelector:@selector(autoPictureInPictureIsChromes)] && tab.autoPictureInPictureIsChromes) {
         [view traceAutoPictureInPicture:@"app: auto PiP left to Chrome"];
         return;
@@ -1565,13 +1600,21 @@ const char kPageReportsKey = 0;
       [view traceAutoPictureInPicture:@"app: auto PiP by the app (the page's handler)"];
       view->_autoPictureInPictureActive = YES;
       // The page's handler needs a user activation: an empty gesture first, then the action.
-      [view evaluateWithGesture:@"post('result', '0')" completion:^(NSString *) { [weakSelf mediaCommand:@"enterpictureinpicture" seconds:0]; }];
+      [view evaluateWithGesture:@"post('result', '0')" completion:^(NSString *) {
+        NNCoreWebView *now = weakSelf;
+        if (now && !now->_seenByUser && now->_autoPictureInPictureActive) [now mediaCommand:@"enterpictureinpicture" seconds:0];
+      }];
     });
-  } else if (!_visible && _autoPictureInPicture && playingVideo) {
+  } else if (!_seenByUser && _autoPictureInPicture && playingVideo) {
     [self traceAutoPictureInPicture:@"app: auto PiP by the app (the video)"];
     _autoPictureInPictureActive = YES;
-    [self requestPictureInPicture:^(BOOL) {}];
-  } else if (_visible && _autoPictureInPictureActive) {
+    // The user may be back before the window opens: it closes again then.
+    __weak NNCoreWebView *weakSelf = self;
+    [self requestPictureInPicture:^(BOOL ok) {
+      NNCoreWebView *view = weakSelf;
+      if (ok && view && view->_seenByUser) [view exitPictureInPicture];
+    }];
+  } else if (_seenByUser && (_autoPictureInPictureActive || _inPictureInPicture)) {
     _autoPictureInPictureActive = NO;
     [self exitPictureInPicture];
   }
@@ -1741,6 +1784,7 @@ const char kPageReportsKey = 0;
 // script, as on CEF).
 - (void)tab:(NNCoreTab *)tab didChangePictureInPicture:(NSDictionary<NSString *, id> *)state {
   if (![state[@"kind"] isEqual:@"document"]) return;
+  _inPictureInPicture = [state[@"active"] boolValue];
   [self emit:@"pictureInPicture" payload:@{@"kind" : @"document", @"active" : @([state[@"active"] boolValue])}];
 }
 
