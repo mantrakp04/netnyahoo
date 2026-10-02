@@ -1148,6 +1148,11 @@ const char kPageReportsKey = 0;
       answer(NO);
   } else if ([kind isEqualToString:@"selection"] && main) {
     [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : SelectionState(dict) ?: NSNull.null}];
+  } else if ([kind isEqualToString:@"scroll"] && main) {
+    // The page's scroll direction, for the toolbar that hides while scrolling (page_script.js › Scroll direction).
+    NSString *state = Text(dict, @"state", 8);
+    if ([@[ @"down", @"up", @"top" ] containsObject:state ?: @""])
+      [self emit:@"pageMessage" payload:@{@"kind" : @"scroll", @"data" : @{@"state" : state}}];
   } else if ([kind isEqualToString:@"media"] && dict) {
     NSString *mediaFrame = Text(dict, @"frame", 64);
     if (!mediaFrame) return;

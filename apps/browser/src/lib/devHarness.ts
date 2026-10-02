@@ -57,6 +57,9 @@ export function startDevHarness() {
     get switcher(): typeof import("../components/sidebar/switcher") {
       return require("../components/sidebar/switcher");
     },
+    get toolbarAutoHide(): typeof import("../components/layout/toolbarAutoHide") {
+      return require("../components/layout/toolbarAutoHide");
+    },
   };
   (globalThis as { nn?: typeof nn }).nn = nn;
   const scriptId = (source: string | null) => source?.match(/^\/\/ *(\S+)/)?.[1];

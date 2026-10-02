@@ -27,6 +27,8 @@ export type Settings = {
   commandBarPreference: "website" | "search";
 
   tabLayout: "sidebar" | "top";
+  // With tabs on top: the toolbar collapses to a strip while you scroll down (components/AutoHideToolbar.tsx).
+  hideToolbarWhileScrolling: boolean;
   newTabPosition: "top" | "bottom";
   warnBeforeClosingLastTab: boolean;
   warnBeforeMovingTabsToProfile: boolean;
@@ -71,6 +73,7 @@ export const DEFAULT_SETTINGS: Settings = {
   searchSuggestions: true,
   commandBarPreference: "website",
   tabLayout: "sidebar",
+  hideToolbarWhileScrolling: true,
   newTabPosition: "bottom",
   warnBeforeClosingLastTab: true,
   warnBeforeMovingTabsToProfile: true,

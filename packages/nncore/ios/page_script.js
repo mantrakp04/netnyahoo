@@ -680,5 +680,93 @@
   addEventListener("resize", hideSelection);
   addEventListener("pagehide", hideSelection);
 
+  // MARK: Scroll direction, for the toolbar that tucks away while you read (tabs on top). From the page's real scroll
+  // (the document, or an element scroller filling most of the window), not wheel deltas, and only while the user is
+  // scrolling (wheel, keys, a press or a scrollbar drag in the last second): scroll restoration or a chat scrolling
+  // itself doesn't hide the bar. "down" once a gesture has gone DOWN px down, "up" after UP px back, "top" at the top.
+  // A page with under MIN_RANGE px to scroll never hides it (the bar's own height could make it unscrollable). Hiding
+  // or showing the bar resizes the viewport, which can move the scroll position (the clamp at the bottom, scroll
+  // anchoring): for SETTLE ms the anchor absorbs up to the viewport's change, so that move can't flip the bar back and
+  // forth while a real scroll still counts. Sent on a change, and "down" again at the start of a gesture (the app
+  // shows the bar on its own: tab switch, navigation, a click on the strip).
+  const scrollDirection = () => {
+    const DOWN = 24, UP = 12, MIN_RANGE = 120, SETTLE = 300, GESTURE = 300;
+    let anchor = 0, last = 0, lastAt = -1e9, settleUntil = -1e9, budget = 0, height = 0, sent = null, gestureSent = false;
+    const resized = (viewport, now) => {
+      if (now >= settleUntil) budget = 0;
+      if (height && viewport !== height) {
+        settleUntil = now + SETTLE;
+        budget += Math.abs(viewport - height) + 2;
+      }
+      height = viewport;
+    };
+    return {
+      resized,
+      rebase(y) {
+        anchor = last = y;
+      },
+      scrolled(y, range, viewport, now, user) {
+        resized(viewport, now);
+        if (now - lastAt > GESTURE) {
+          gestureSent = false;
+          anchor = last;
+        }
+        lastAt = now;
+        const moved = y - last;
+        last = y;
+        if (budget > 0 && moved) {
+          const absorbed = Math.min(budget, Math.abs(moved));
+          budget -= absorbed;
+          anchor += moved > 0 ? absorbed : -absorbed;
+        }
+        let state = null;
+        if (y <= 2) state = "top";
+        else if (!user) anchor = y;
+        else if (y - anchor >= DOWN) {
+          if (range >= MIN_RANGE) state = "down";
+          else anchor = y;
+        } else if (anchor - y >= UP) state = "up";
+        else if (sent === "down" ? gestureSent && y > anchor : y < anchor) anchor = y;
+        if (state) anchor = y;
+        if (!state || (state === sent && (state !== "down" || gestureSent))) return null;
+        sent = state;
+        if (state === "down") gestureSent = true;
+        return state;
+      },
+    };
+  };
+  const direction = scrollDirection();
+  let scroller = null;
+  let scrollTarget = null;
+  let inputAt = -1e9;
+  const noteInput = () => {
+    inputAt = performance.now();
+    // The document's position before the first scroll, so a single jump (End, Space) counts.
+    if (!scroller && document.scrollingElement) direction.rebase((scroller = document.scrollingElement).scrollTop);
+  };
+  for (const type of ["wheel", "keydown", "mousedown", "touchstart"]) addEventListener(type, noteInput, { passive: true, capture: true });
+  addEventListener("mousemove", (e) => e.buttons && noteInput(), { passive: true, capture: true });
+  const measureScroll = guard(() => {
+    const target = scrollTarget;
+    scrollTarget = null;
+    const doc = document.scrollingElement || document.documentElement;
+    const el = target === document || target === doc ? doc : target;
+    if (!el || !doc || (el !== doc && (el.clientHeight < innerHeight * 0.5 || el.clientWidth < innerWidth * 0.5))) return;
+    // Another scroller: measured from here on (its first move only tells the top).
+    if (el !== scroller) direction.rebase((scroller = el).scrollTop);
+    const now = performance.now();
+    const state = direction.scrolled(el.scrollTop, el.scrollHeight - el.clientHeight, innerHeight, now, now - inputAt < 1000);
+    if (state) send("scroll", { state });
+  });
+  addEventListener(
+    "scroll",
+    (e) => {
+      if (!scrollTarget) requestAnimationFrame(measureScroll);
+      scrollTarget = e.target;
+    },
+    { passive: true, capture: true },
+  );
+  addEventListener("resize", () => direction.resized(innerHeight, performance.now()));
+
   return receive;
 })

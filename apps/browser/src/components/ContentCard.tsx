@@ -41,6 +41,8 @@ import { CastPicker } from "./media/CastPicker";
 import { DeviceChooser } from "./site/DeviceChooser";
 import { setNowPlaying, setPictureInPictureState } from "./media/state";
 import { Toolbar } from "./Toolbar";
+import { AutoHideToolbar, ToolbarSpace, useToolbarMode } from "./AutoHideToolbar";
+import { noteScroll, revealToolbar } from "./layout/toolbarAutoHide";
 import { NavigationOverlays } from "./layout/SwipeOverlay";
 import "./layout/devExpose";
 import { closeWebNotification, showWebNotification } from "../lib/webNotifications";
@@ -57,6 +59,7 @@ export function ContentCard() {
   const addressInSidebar = useAddressBarInSidebar();
   // Small Yahu draws its own bar above the card (components/smallYahu).
   const small = useBrowser((s) => isSmallWindow(s.windows[windowId]));
+  const hideWhileScrolling = useBrowser((s) => s.settings.hideToolbarWhileScrolling);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const container = useRef<View>(null);
@@ -180,6 +183,7 @@ export function ContentCard() {
               fullscreen={tabId === fullscreenTab}
               geometry={geometryFor(rect)}
               toolbar={!addressInSidebar && !small}
+              autoHide={hideWhileScrolling && tabLayout === "top" && !addressInSidebar && !small}
               small={small}
               mounted={mounted.includes(tabId)}
               warm={warmPanes[tabId]}
@@ -205,6 +209,7 @@ const TabPane = memo(function TabPane({
   fullscreen,
   geometry,
   toolbar,
+  autoHide,
   small,
   mounted,
   warm,
@@ -220,6 +225,8 @@ const TabPane = memo(function TabPane({
   fullscreen: boolean;
   geometry: ToolbarGeometry;
   toolbar: boolean;
+  // The toolbar hides while the page scrolls down (tabs on top, components/AutoHideToolbar.tsx).
+  autoHide: boolean;
   small: boolean;
   mounted: boolean;
   warm: Rect | undefined;
@@ -236,6 +243,12 @@ const TabPane = memo(function TabPane({
   useEffect(() => {
     if (visible && isNewTab && !mounted) patchPage(tabId, { wasNewTab: true });
   }, [visible, isNewTab, mounted]);
+  const hideBar = autoHide && visible && !fullscreen;
+  const mode = useToolbarMode(tabId, windowId, hideBar);
+  // A tab switched to shows its bar.
+  useEffect(() => {
+    if (visible) revealToolbar(tabId);
+  }, [visible]);
 
   return (
     <View
@@ -254,12 +267,14 @@ const TabPane = memo(function TabPane({
         backgroundColor: visible && !fullscreen ? theme.card : undefined,
       }}
     >
-      {!toolbar || fullscreen ? null : visible ? (
+      {!toolbar || fullscreen ? null : hideBar ? (
+        <ToolbarSpace mode={mode} />
+      ) : visible ? (
         <Toolbar tabId={tabId} geometry={geometry} windowId={windowId} inSplit={inSplit} focused={focused || !inSplit} />
       ) : (
         <View style={{ height: layout.toolbarHeight }} />
       )}
-      {!fullscreen && !inSplit && !small && <BookmarksBar tabId={tabId} placeholder={!visible} />}
+      {!fullscreen && !inSplit && !small && mode === "shown" && <BookmarksBar tabId={tabId} placeholder={!visible} />}
       {visible && !fullscreen && <ShareBar tabId={tabId} />}
       <View style={{ flex: 1 }}>
         {mounted && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={!!warm && !newTabShown && !isNewTab} />}
@@ -284,6 +299,7 @@ const TabPane = memo(function TabPane({
           </>
         )}
       </View>
+      {hideBar && <AutoHideToolbar tabId={tabId} geometry={geometry} windowId={windowId} inSplit={inSplit} focused={focused || !inSplit} mode={mode} />}
     </View>
   );
 });
@@ -379,6 +395,7 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
           setPopover(tabId, null);
           setPageSelection(tabId, null);
           patchPage(tabId, { popups: [], passwordPrompt: null, crashed: null, status: "" });
+          revealToolbar(tabId);
         }
         lastPage.current = pageKey(url);
         patchPage(tabId, { themeColorSource: themeColorSource ?? null });
@@ -450,6 +467,7 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
       }}
       onPageMessage={(kind, data) => {
         if (kind === "selection") setPageSelection(tabId, data as PageSelection | null);
+        else if (kind === "scroll") noteScroll(tabId, data);
       }}
       onNotificationClose={closeWebNotification}
       onDiscarded={(url) => {

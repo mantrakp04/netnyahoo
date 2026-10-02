@@ -29,6 +29,13 @@ export function TabsPane() {
         <LayoutChoice layout="sidebar" title="Tab layout in the sidebar" selected={!top} />
         <LayoutChoice layout="top" title="Tab layout across the top of the window" selected={top} />
       </View>
+      <Group style={{ marginTop: 14 }}>
+        {toggle(
+          "hideToolbarWhileScrolling",
+          "Hide toolbar while scrolling",
+          "With tabs across the top, scrolling down tucks the toolbar into a thin strip with the site's name. Scroll up, or click the strip, to bring it back.",
+        )}
+      </Group>
 
       <SectionHeader title="General" />
       <Group>
