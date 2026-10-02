@@ -911,6 +911,10 @@ const char kPageReportsKey = 0;
   gDisplayMediaPicker = enabled;
 }
 
++ (void)setAutoPictureInPictureEnabled:(BOOL)enabled {
+  if ([NNCoreEngine respondsToSelector:@selector(setAutoPictureInPicture:)]) [NNCoreEngine setAutoPictureInPicture:enabled];
+}
+
 + (void)setSearchEngineName:(NSString *)name {
   gSearchEngineName = name.length ? [name copy] : @"Google";
 }
@@ -1480,10 +1484,19 @@ const char kPageReportsKey = 0;
   const BOOL handles = [np[@"actions"] isKindOfClass:NSArray.class] && [np[@"actions"] containsObject:@"enterpictureinpicture"];
   const BOOL wantsDocument = handles && (_capturing || [np[@"playbackState"] isEqual:@"playing"]);
   if (!_visible && _autoPictureInPicture && wantsDocument) {
-    _autoPictureInPictureActive = YES;
-    // The page's handler needs a user activation: an empty gesture first, then the action.
+    // Chrome's own automatic PiP calls the page's handler on a tab switch too (a call: the camera or microphone in use,
+    // https, the setting on), as in Chrome and Dia: the handler runs once, or its second requestWindow closes the first
+    // window. Chrome hears of the switch about when this view hides: ask once it has.
     __weak NNCoreWebView *weakSelf = self;
-    [self evaluateWithGesture:@"post('result', '0')" completion:^(NSString *) { [weakSelf mediaCommand:@"enterpictureinpicture" seconds:0]; }];
+    NNCoreTab *tab = _tab;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+      NNCoreWebView *view = weakSelf;
+      if (!view || view->_visible || view->_tab != tab || !view->_autoPictureInPicture) return;
+      if ([tab respondsToSelector:@selector(autoPictureInPictureIsChromes)] && tab.autoPictureInPictureIsChromes) return;
+      view->_autoPictureInPictureActive = YES;
+      // The page's handler needs a user activation: an empty gesture first, then the action.
+      [view evaluateWithGesture:@"post('result', '0')" completion:^(NSString *) { [weakSelf mediaCommand:@"enterpictureinpicture" seconds:0]; }];
+    });
   } else if (!_visible && _autoPictureInPicture && playingVideo) {
     _autoPictureInPictureActive = YES;
     [self requestPictureInPicture:^(BOOL) {}];

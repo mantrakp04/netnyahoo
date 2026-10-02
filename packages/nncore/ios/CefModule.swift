@@ -53,6 +53,7 @@ public class CefModule: Module {
     // NNCore keeps no navigations for later (CEF's "open:<id>"): nothing to forget.
     AsyncFunction("forgetOpenedURL") { (id: Int) in }.runOnQueue(.main)
     AsyncFunction("setDisplayMediaPicker") { (enabled: Bool) in NNCoreWebView.setDisplayMediaPicker(enabled) }.runOnQueue(.main)
+    AsyncFunction("setAutoPictureInPicture") { (enabled: Bool) in NNCoreWebView.setAutoPictureInPictureEnabled(enabled) }.runOnQueue(.main)
     AsyncFunction("displayMediaSources") { NNCoreHost.displayMediaSources }.runOnQueue(.main)
     AsyncFunction("listTasks") { (promise: Promise) in NNCoreServices.tasks { promise.resolve($0) } }.runOnQueue(.main)
     AsyncFunction("killTask") { (id: Int64, promise: Promise) in NNCoreServices.killTask(id) { promise.resolve($0) } }.runOnQueue(.main)

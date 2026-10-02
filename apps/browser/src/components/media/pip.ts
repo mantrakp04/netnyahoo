@@ -1,4 +1,4 @@
-import { setDisplayMediaPicker } from "@netnyahoo/nncore";
+import { setAutoPictureInPicture, setDisplayMediaPicker } from "@netnyahoo/nncore";
 import { onAppEvent, onWindowEvent } from "@netnyahoo/shell";
 import { useRef } from "react";
 import { webviews } from "../../lib/webviews";
@@ -44,6 +44,14 @@ export function startMedia() {
   if (started) return;
   started = true;
   void setDisplayMediaPicker(true);
+  // Chrome's automatic PiP (a call's own window on a tab switch, Dia's behaviour) goes with ours.
+  let autoPip: boolean | null = null;
+  const syncAutoPip = () => {
+    const on = useBrowser.getState().settings.autoPictureInPicture ?? true;
+    if (on !== autoPip) void setAutoPictureInPicture((autoPip = on));
+  };
+  syncAutoPip();
+  useBrowser.subscribe(syncAutoPip);
   cancelDisplayMediaOnNavigation();
   startTabShareCleanup();
   startCast();

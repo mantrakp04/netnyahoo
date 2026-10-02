@@ -39,6 +39,7 @@ export const Cef = requireNativeModule<{
   endTracing(keep: boolean): Promise<string | null>;
   isTracing(): Promise<boolean>;
   setDisplayMediaPicker(enabled: boolean): Promise<void>;
+  setAutoPictureInPicture?(enabled: boolean): Promise<void>;
   setSearchEngineName(name: string): Promise<void>;
   displayMediaSources(): Promise<DisplayMediaSource[]>;
   listTasks(): Promise<EngineTask[]>;

@@ -106,6 +106,9 @@ export const systemState = () => Cef.systemState();
 export const onSystemState = (listener: (state: SystemState) => void) => Cef.addListener("onSystemState", listener);
 
 export const setDisplayMediaPicker = (enabled: boolean) => Cef.setDisplayMediaPicker(enabled);
+// Chrome's automatic Picture in Picture (a call's own document PiP on a tab switch) follows the app's setting. (Builds
+// before it have no such function: Chrome's default, its prompt, stays.)
+export const setAutoPictureInPicture = (enabled: boolean) => Cef.setAutoPictureInPicture?.(enabled) ?? Promise.resolve();
 export const setSearchEngineName = (name: string) => Cef.setSearchEngineName(name);
 export const getDisplayMediaSources = () => Cef.displayMediaSources();
 

@@ -41,6 +41,8 @@ NS_ASSUME_NONNULL_BEGIN
                                browser:(int)browserId NS_SWIFT_NAME(devScrollZoom(_:browserId:));
 // Pages' getDisplayMedia goes to the app's source picker (onDisplayMediaRequest), as on CEF.
 + (void)setDisplayMediaPicker:(BOOL)enabled;
+// The app's autoPictureInPicture setting, for Chrome's own automatic PiP (a call's document PiP on a tab switch).
++ (void)setAutoPictureInPictureEnabled:(BOOL)enabled NS_SWIFT_NAME(setAutoPictureInPictureEnabled(_:));
 + (NSArray<NSDictionary<NSString *, id> *> *)devEventsForBrowser:(int)browserId NS_SWIFT_NAME(devEvents(browserId:));
 + (NSInteger)devWindowNumberForBrowser:(int)browserId NS_SWIFT_NAME(devWindowNumber(browserId:));
 // Tests: Chrome's picture-in-picture windows (styled or floating) and a test action on the newest styled one

@@ -90,6 +90,7 @@
 #include "base/trace_event/trace_config.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
+#include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/tracing_controller.h"
 #include "content/public/browser/web_contents_media_capture_id.h"
@@ -236,6 +237,18 @@ NSString* PngDataURL(const gfx::Image& image) {
   return NS("data:image/png;base64," + base::Base64Encode(*png));
 }
 
+// Chrome's automatic Picture in Picture (AutoPictureInPictureTabHelper: a page that handles
+// Media Session's "enterpictureinpicture" and uses the camera or microphone, a Meet call, pops
+// out its own document PiP window on a tab switch, as in Chrome and Dia) follows the app's
+// autoPictureInPicture setting: allowed without Chrome's prompt when on, blocked when off.
+bool g_auto_picture_in_picture = true;
+
+void ApplyAutoPictureInPicture(Profile* profile) {
+  HostContentSettingsMapFactory::GetForProfile(profile)->SetDefaultContentSetting(
+      ContentSettingsType::AUTO_PICTURE_IN_PICTURE,
+      g_auto_picture_in_picture ? CONTENT_SETTING_ALLOW : CONTENT_SETTING_BLOCK);
+}
+
 // Prefs CEF set on every profile it loaded (packages/cef/ios/NNEngine.mm WhenProfileReady):
 // a new session starts on a new tab, and the download bubble doesn't open by itself.
 void PrepareProfilePrefs(Profile* profile) {
@@ -249,13 +262,7 @@ void PrepareProfilePrefs(Profile* profile) {
   if (prefs->FindPreference("download_bubble.partial_view_enabled")) {
     prefs->SetBoolean("download_bubble.partial_view_enabled", false);
   }
-  // Automatic Picture in Picture is the app's (its autoPictureInPicture setting: a call's
-  // own "enterpictureinpicture" handler on a tab switch, a video otherwise). Chrome's
-  // (AutoPictureInPictureTabHelper, https pages using the camera or microphone, or playing)
-  // also fires on NNCore's tab switches and occlusion, calling the page's handler a second
-  // time: Meet's second requestWindow closed the first window and the call never showed.
-  HostContentSettingsMapFactory::GetForProfile(profile)->SetDefaultContentSetting(
-      ContentSettingsType::AUTO_PICTURE_IN_PICTURE, CONTENT_SETTING_BLOCK);
+  ApplyAutoPictureInPicture(profile);
 }
 
 class ProfilePrefsApplier : public ProfileManagerObserver {
@@ -934,6 +941,15 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 
 + (void)stopCasting:(int)dialogId route:(NSString*)routeId {
   nncore::StopCasting(dialogId, base::SysNSStringToUTF8(routeId));
+}
+
++ (void)setAutoPictureInPicture:(BOOL)enabled {
+  g_auto_picture_in_picture = enabled;
+  for (Profile* profile : g_browser_process->profile_manager()->GetLoadedProfiles()) {
+    if (!profile->IsOffTheRecord()) {
+      ApplyAutoPictureInPicture(profile);
+    }
+  }
 }
 
 + (void)terminateCastRoute:(NSString*)routeId {
@@ -2034,6 +2050,31 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   indicator->StopMediaCapturing(_contents,
                                 MediaStreamCaptureIndicator::MediaType::kDisplayMedia);
   return capturing;
+}
+
+- (BOOL)autoPictureInPictureIsChromes {
+  if (!_contents) {
+    return NO;
+  }
+  auto* helper = AutoPictureInPictureTabHelper::FromWebContents(_contents);
+  if (!helper) {
+    return NO;
+  }
+  // Chrome took this tab switch (or is in its auto PiP already).
+  if (helper->IsInAutoPictureInPicture() || helper->AreAutoPictureInPicturePreconditionsMet()) {
+    return YES;
+  }
+  // Or will: its conditions for a call (IsEligibleForAutoPictureInPicture), which don't wait
+  // on anything asynchronous.
+  const GURL& url = _contents->GetLastCommittedURL();
+  Profile* profile = Profile::FromBrowserContext(_contents->GetBrowserContext());
+  return helper->HasAutoPictureInPictureBeenRegistered() &&
+         (url.SchemeIs(url::kHttpsScheme) || url.SchemeIsFile()) &&
+         MediaCaptureDevicesDispatcher::GetInstance()
+             ->GetMediaStreamCaptureIndicator()
+             ->IsCapturingUserMedia(_contents) &&
+         HostContentSettingsMapFactory::GetForProfile(profile)->GetContentSetting(
+             url, url, ContentSettingsType::AUTO_PICTURE_IN_PICTURE) == CONTENT_SETTING_ALLOW;
 }
 
 - (BOOL)showCastDialog {

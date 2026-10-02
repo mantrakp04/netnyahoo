@@ -128,6 +128,9 @@ NNCORE_EXPORT
 + (void)stopCasting:(int)dialogId route:(NSString*)routeId;
 + (void)closeCastDialog:(int)dialogId;
 + (void)terminateCastRoute:(NSString*)routeId;  // stop casting it
+// The app's automatic Picture in Picture setting: Chrome's own (a call's document PiP on a tab
+// switch) is allowed without a prompt when on, blocked when off. On by default.
++ (void)setAutoPictureInPicture:(BOOL)enabled;
 // Device choosers (engine:deviceChooser:tab:). index: an option, or -1 for a scanning
 // prompt's OK.
 + (void)selectDevice:(int)chooserId index:(int)index;
@@ -563,6 +566,9 @@ NNCORE_EXPORT
 // Chrome's "Stop sharing" for what this page is sharing (a tab, window or screen). NO if it
 // shares nothing.
 - (BOOL)stopCapture;
+// Chrome's automatic Picture in Picture takes (or took) this tab's switch away: the page
+// handles "enterpictureinpicture" and Chrome calls it, so the host must not as well.
+@property(readonly) BOOL autoPictureInPictureIsChromes;
 // A DevTools protocol call on this tab's page, in process (CEF's ExecuteDevToolsMethod):
 // {method, params} through NNCore's own client (attached only while calls are pending, so
 // the page isn't left "debugged", which would hide its hangs; the remote-debugging port keeps
