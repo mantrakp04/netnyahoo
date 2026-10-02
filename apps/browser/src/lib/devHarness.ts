@@ -87,5 +87,6 @@ export function startDevHarness() {
     } catch (error) {
       done({ error: String(error) });
     }
-  }, 250);
+    // Test scripts wait on every answer (scripts/lib/instance.mjs); a Release build's perf probe keeps the slow poll.
+  }, __DEV__ ? 50 : 250);
 }
