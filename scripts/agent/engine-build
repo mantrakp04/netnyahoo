@@ -1,0 +1,96 @@
+#!/bin/bash
+# The engine's edit → build loop in one command: copy our code into the Chromium tree and build it, holding the
+# chromium lock throughout.
+#
+#   scripts/agent/engine-build [--as WHO] [--wait SECS] [--no-series-check] [target…]
+#   scripts/agent/engine-build -h | --help
+#
+# Steps, stopping at the first that fails (it names the step and exits with its status):
+#   1. take the chromium lock (scripts/agent/locked chromium; with --as WHO, inside WHO's --take if there is one,
+#      as is NN_LOCKED_AS; a call nested in one that already holds chromium runs straight through);
+#   2. engine/chromium/apply.sh, then engine/nncore/apply.sh (copy our code and hooks in);
+#   3. engine/chromium/apply.sh --check and engine/nncore/apply.sh --check (the tree matches the repo);
+#   4. engine/patches/series.py check (the patch series reproduces the tree; ~5 s, no writes outside a scratch
+#      dir; --no-series-check skips it while you're remaking a patch);
+#   5. autoninja -C out/Release_GN_arm64 <target…> in ~/chromium-build/chromium_git/chromium/src, with
+#      engine/patches/build/env.sh's environment (depot_tools on PATH, DEPOT_TOOLS_UPDATE=0).
+# Targets default to chrome_framework (NNCore's framework; the app's next build stages it, so say so).
+# --wait is how long to wait for the lock (locked's default: 500 s). A real build can take far longer than the
+# Bash tool's 10 minutes: run this with run_in_background and act on the notification.
+# Incremental only: never gn clean, gclient sync or touch out/ by hand (AGENTS.md).
+# CHROMIUM_SRC moves the tree (default ~/chromium-build/chromium_git/chromium/src), as for apply.sh and series.py.
+set -uo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../.." && pwd)
+
+help() {
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+  exit 0
+}
+usage() {
+  echo "usage: scripts/agent/engine-build [--as WHO] [--wait SECS] [--no-series-check] [target…]  (--help for more)" >&2
+  exit 64
+}
+
+as="" wait="" series_check=1 targets=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h | --help) help ;;
+    --as | --wait)
+      [[ $# -ge 2 && -n "$2" ]] || { echo "engine-build: $1 needs a value" >&2; usage; }
+      [[ $1 == --as ]] && as="$2" || wait="$2"
+      shift 2
+      ;;
+    --no-series-check) series_check=""; shift ;;
+    --) shift; targets+=("$@"); break ;;
+    -*) echo "engine-build: unknown option $1" >&2; usage ;;
+    *) targets+=("$1"); shift ;;
+  esac
+done
+[[ -z "$wait" || "$wait" =~ ^[0-9]+$ ]] || { echo "engine-build: --wait takes whole seconds" >&2; usage; }
+[[ ${#targets[@]} -gt 0 ]] || targets=(chrome_framework)
+
+# Step 1: run the rest of this script again under the lock.
+if [[ -z "${NN_ENGINE_BUILD_LOCKED:-}" ]]; then
+  lock=(chromium)
+  [[ -n "$as" ]] && lock+=(--as "$as")
+  [[ -n "$wait" ]] && lock+=(--wait "$wait")
+  args=()
+  [[ -z "$series_check" ]] && args+=(--no-series-check)
+  echo "engine-build: taking the chromium lock" >&2
+  NN_ENGINE_BUILD_LOCKED=1 "$repo/scripts/agent/locked" "${lock[@]}" -- "$0" ${args[@]+"${args[@]}"} -- "${targets[@]}"
+  status=$?
+  [[ $status -eq 0 ]] || echo "engine-build: failed (exit $status)" >&2
+  exit $status
+fi
+unset NN_ENGINE_BUILD_LOCKED
+
+src=${CHROMIUM_SRC:-$HOME/chromium-build/chromium_git/chromium/src}
+out=out/Release_GN_arm64
+
+step() {
+  local what="$1"
+  shift
+  echo "engine-build: $what" >&2
+  "$@"
+  local status=$?
+  if [[ $status -ne 0 ]]; then
+    echo "engine-build: FAILED at \"$what\" (exit $status)" >&2
+    exit $status
+  fi
+}
+
+[[ -d "$src/$out" ]] || { echo "engine-build: FAILED: no $src/$out (this script only builds incrementally)" >&2; exit 1; }
+step "engine/chromium/apply.sh" "$repo/engine/chromium/apply.sh"
+step "engine/nncore/apply.sh" "$repo/engine/nncore/apply.sh"
+step "engine/chromium/apply.sh --check" "$repo/engine/chromium/apply.sh" --check
+step "engine/nncore/apply.sh --check" "$repo/engine/nncore/apply.sh" --check
+if [[ -n "$series_check" ]]; then
+  step "engine/patches/series.py check" python3 "$repo/engine/patches/series.py" check
+fi
+# env.sh is written for an interactive shell; it sets PATH (depot_tools), DEPOT_TOOLS_UPDATE=0 and the CEF knobs.
+step "source engine/patches/build/env.sh" source "$repo/engine/patches/build/env.sh"
+step "cd $src" cd "$src"
+step "autoninja -C $out ${targets[*]}" autoninja -C "$out" "${targets[@]}"
+echo "engine-build: built ${targets[*]} in $src/$out" >&2
