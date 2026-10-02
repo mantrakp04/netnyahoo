@@ -320,6 +320,14 @@ class Instance {
     this.jsStart = boot?.jsStart ?? NaN;
     return this;
   }
+  // The content marker's marks (nnmark.m): {content|committed: epoch ms, window}.
+  marks() {
+    try {
+      return readFileSync(join(this.dataDir, "bench-marks.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    } catch {
+      return [];
+    }
+  }
   alive() {
     try {
       process.kill(this.pid, 0);
@@ -417,7 +425,17 @@ async function launchRuns(template) {
     try {
       await app.launch();
       const page = await app.pageState("id=seed", 30_000, (s) => s.fcp);
-      const r = { window: app.windowAt - app.t0, js: app.jsStart - app.t0, firstPaint: (page?.fcp ?? NaN) - app.t0, firstFrame: (page?.frame ?? NaN) - app.t0 };
+      // On screen with its content, as for new windows: 0.2.21 showed its first window empty and its content after,
+      // 0.2.22 keeps it transparent until the transaction carrying its React content commits.
+      const content = app.marks().find((m) => m.content >= app.t0);
+      const committed = content && app.marks().find((m) => m.committed >= content.content && m.window === content.window);
+      const r = {
+        window: app.windowAt - app.t0,
+        withContent: committed ? Math.max(app.windowAt, committed.committed) - app.t0 : NaN,
+        js: app.jsStart - app.t0,
+        firstPaint: (page?.fcp ?? NaN) - app.t0,
+        firstFrame: (page?.frame ?? NaN) - app.t0,
+      };
       log(`launch ${i}:`, JSON.stringify(r));
       results.launch.push(r);
     } finally {
@@ -480,10 +498,7 @@ async function newWindow(app, id) {
   await exited;
   const shown = JSON.parse(said.split("\n").find((l) => l.startsWith("{")) ?? "null");
   const s = await app.pageState(`id=${id}`, 20_000, (st) => st.fcp);
-  let marks = [];
-  try {
-    marks = readFileSync(join(app.dataDir, "bench-marks.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-  } catch {}
+  const marks = app.marks();
   const content = marks.find((m) => m.content >= at && (!shown || m.window === shown.id));
   const committed = content && marks.find((m) => m.committed >= content.content && m.window === content.window);
   await app.run(`const s = nn.store.getState(); const t = Object.values(s.tabs).find((t) => t.url.includes("id=${id}"));
@@ -694,6 +709,7 @@ function summary(res) {
     rows.push({ name, median: median(v), min: Math.min(...v), max: Math.max(...v), n: v.length, unit, digits });
   };
   add("launch → window shown", res.launch.map((r) => r.window), "ms");
+  add("launch → window shown with its content", res.launch.map((r) => r.withContent), "ms");
   add("launch → JS running", res.launch.map((r) => r.js), "ms");
   add("launch → first page painted", res.launch.map((r) => r.firstPaint), "ms");
   add("launch → first page's first frame", res.launch.map((r) => r.firstFrame), "ms");
