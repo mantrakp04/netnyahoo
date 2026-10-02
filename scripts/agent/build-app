@@ -56,13 +56,14 @@ app="$dd/Build/Products/$config/Netnyahoo.app"
 stamp_file="$dd/.nn-native-stamp-$config"
 
 # Everything the native build reads that git sees, plus the Pods install and the engine framework. A change
-# anywhere else is JS (or docs, tests…), which Metro serves to every instance.
+# anywhere else is JS (or docs, tests…), which Metro serves to every instance. A pathspec with a wildcard matches whole
+# paths only: 'packages/*/ios' matched no file, so every edit there read as JS-only.
 native_stamp() {
   (
     cd "$repo" || exit 1
     git ls-files -co --exclude-standard -- \
       apps/browser/macos apps/browser/app.json apps/browser/react-native.config.js \
-      'packages/*/ios' 'packages/*/expo-module.config.json' packages/shell/docktile \
+      'packages/*/ios/*' 'packages/*/expo-module.config.json' packages/shell/docktile \
       packages/nncore/scripts/embed.sh packages/nncore/scripts/stage-framework.sh packages/nncore/scripts/ubol.sh \
       packages/nncore/scripts/signing engine/nncore/src/netnyahoo/core/public patches pnpm-lock.yaml
     echo apps/browser/macos/Pods/Manifest.lock
