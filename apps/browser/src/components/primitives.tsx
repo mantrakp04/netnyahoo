@@ -3,6 +3,7 @@ import { Symbol, type SymbolProps } from "@netnyahoo/shell";
 import { memo, useState } from "react";
 import { Image, Pressable, Text, View, type ViewStyle } from "react-native";
 import { faviconFailed, useAppearanceDark, useFavicon, useFaviconTheme } from "../lib/favicons";
+import { bundledSiteIcon } from "../lib/siteIcons";
 import { useTheme } from "../lib/theme";
 
 export function useHover() {
@@ -102,8 +103,11 @@ export const Favicon = memo(function Favicon({
   );
 });
 
+// Before Chrome has the page's icon: the one the app ships for the site (lib/siteIcons), else the host's initial.
 export const FaviconFallback = memo(function FaviconFallback({ url, size = 16 }: { url: string; size?: number }) {
   const theme = useTheme();
+  const bundled = bundledSiteIcon(url, theme.dark);
+  if (bundled !== undefined) return <Image source={bundled} style={{ width: size, height: size, borderRadius: size > 18 ? 4 : 3 }} />;
   const initial = hostInitial(url);
   if (!initial) return <Symbol name="globe" size={size - 3} color={theme.textSecondary} style={{ width: size, height: size }} />;
   const tile = Math.round((size * 14) / 16);
