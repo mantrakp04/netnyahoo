@@ -4988,7 +4988,7 @@ try {
     report.say(`kept pid ${pid}: --attach ${scratch} [check…] runs more; scripts/agent/nn quit ${data} ends it`);
   } else {
     if (keep) report.say("not kept: the app had exited");
-    if (!exited) await instance.quit();
+    await instance.quit();  // also stops its Metro proxy when the app is already gone (crash-guard ends the run)
     rmSync(join(scratch, "media-app"), { recursive: true, force: true });
   }
   server.closeAllConnections?.();
