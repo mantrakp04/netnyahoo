@@ -1,17 +1,24 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+// Every shortcut in every focus, then a few for real, in a hidden instance.
+//
+//   node apps/browser/scripts/shortcuts-test.mjs <Debug Netnyahoo.app> [cdpPort]
+//
+// One line per focus (the shortcuts that failed in it) and per real check; the table and the details go to
+// shortcuts-test.log beside the instance's data.
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { launch, reporter, session, sleep } from "../../../scripts/lib/instance.mjs";
 
-const [appArg, port = "9473"] = process.argv.slice(2);
-const app = appArg && resolve(appArg);
-if (!app) {
+const [appArg, port] = process.argv.slice(2);
+const appPath = appArg && resolve(appArg);
+if (!appPath) {
   console.error("usage: node shortcuts-test.mjs <Debug Netnyahoo.app> [cdpPort]");
   process.exit(2);
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const data = mkdtempSync(join(tmpdir(), "nn-shortcuts-"));
+const scratch = mkdtempSync(join(tmpdir(), "nn-shortcuts-"));
+const data = join(scratch, "data");
+const rep = reporter(join(scratch, "shortcuts-test.log"), { name: "shortcuts-test" });
 
 const server = createServer((req, res) => {
   const name = new URL(req.url, "http://x").search.slice(1) || "page";
@@ -21,42 +28,16 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const pages = `http://127.0.0.1:${server.address().port}`;
 
-const tab = (id, pinned) =>
-  ({ id, windowId: "w1", profileId: "default", url: `${pages}/?${id}`, title: id, favicon: null, pinned, muted: false, zoom: 1,
-     customTitle: null, customIcon: null, pinnedUrl: pinned ? `${pages}/?${id}` : null, openerId: null, createdAt: 1, lastActiveAt: 1 });
+const tab = (id, pinned) => ({ id, url: `${pages}/?${id}`, title: id, pinned, pinnedUrl: pinned ? `${pages}/?${id}` : null });
 const ids = ["pin1", "pin2", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9"];
-writeFileSync(join(data, "session.json"), JSON.stringify({
-  version: 2,
-  profiles: { default: { id: "default", name: "Personal", color: "plum", icon: null, createdAt: 0 },
-              "p-work": { id: "p-work", name: "Work", color: "blue", icon: null, createdAt: 1 } },
-  profileOrder: ["default", "p-work"],
-  windows: [{ id: "w1", profileId: "default", incognito: false, tabIds: ids, activeTabIds: { default: "t3" }, sidebarOpen: true,
-              frame: [80, 80, 1280, 800], createdAt: 1 }],
-  windowOrder: ["w1"], focusedWindowId: "w1",
-  tabs: ids.map((id) => tab(id, id.startsWith("pin"))),
-  groups: [], splits: [], closedTabs: [], closedWindows: [], closedGroups: [], cleanedTabs: [],
-}));
 
-const binary = `${app}/Contents/MacOS/Netnyahoo`;
-const pids = () => spawnSync("pgrep", ["-f", `^${binary}`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
-const before = new Set(pids());
-execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`,
-  "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", app]);
-let pid;
-for (let i = 0; i < 60 && !pid; i++) {
-  await sleep(500);
-  pid = pids().find((p) => !before.has(p));
-}
-const finish = (code) => {
-  if (pid) spawnSync("kill", ["-KILL", pid]);
+let app = null;
+const finish = async (code) => {
+  await app?.quit();
   server.close();
   rmSync(data, { recursive: true, force: true });
   process.exit(code);
 };
-if (!pid) {
-  console.error("the app didn't start");
-  finish(1);
-}
 process.on("uncaughtException", (error) => {
   console.error(error);
   finish(1);
@@ -65,55 +46,34 @@ process.on("unhandledRejection", (error) => {
   console.error(error);
   finish(1);
 });
-
-let evalId = 0;
-async function nn(body, timeout = 60000) {
-  let id;
-  for (let start = Date.now(), sent = 0; Date.now() - start < timeout; await sleep(100)) {
-    if (Date.now() - sent > 5000) {
-      id = `k${Date.now()}-${++evalId}`;
-      writeFileSync(join(data, "dev-eval.js"), `// ${id}\n${body}`);
-      sent = Date.now();
-    }
-    let out;
-    try {
-      out = JSON.parse(readFileSync(join(data, "dev-eval-result.json"), "utf8"));
-    } catch {
-      continue;
-    }
-    if (out.id !== id) continue;
-    if (out.error) throw new Error(`${out.error}\n${body}`);
-    return out.result;
-  }
-  throw new Error(`no answer to:\n${body}`);
-}
-for (let i = 0; ; i++) {
-  try {
-    if ((await nn("return !!nn.shell.devKeyEquivalent", 2000)) === true) break;
-  } catch {}
-  if (i > 60) {
-    console.error("the dev harness never answered (is Metro running on :8081?)");
-    finish(1);
-  }
-}
+app = await launch(appPath, {
+  data, port,
+  session: session({
+    profiles: [{ id: "default", name: "Personal", color: "plum" }, { id: "p-work", name: "Work", color: "blue" }],
+    windows: [{ id: "w1", tabIds: ids, activeTabIds: { default: "t3" } }],
+    tabs: ids.map((id) => tab(id, id.startsWith("pin"))),
+  }),
+  switches: "--disable-backgrounding-occluded-windows",
+  ready: "return !!nn.shell.devKeyEquivalent",
+});
+rep.log(`instance: pid ${app.pid}, DevTools port ${app.port}, data ${data}`);
 await sleep(3000);
 
+const nn = (body, timeout = 60000) => app.eval(body, { timeout }).catch((error) => {
+  error.message += `\n${body}`;
+  throw error;
+});
+// The expression's value in the first page whose URL holds urlPart (undefined without one, or on an exception).
 async function cdp(urlPart, expression) {
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-  const target = targets.find((t) => t.type === "page" && t.url.includes(urlPart));
-  if (!target) return undefined;
-  const ws = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((r) => (ws.onopen = r));
-  const value = await new Promise((resolve) => {
-    ws.onmessage = (e) => {
-      const m = JSON.parse(e.data);
-      if (m.id === 1) resolve(m.result?.result?.value);
-    };
-    ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, returnByValue: true, awaitPromise: true } }));
-    setTimeout(() => resolve(undefined), 3000);
-  });
-  ws.close();
-  return value;
+  if (!(await app.pageTarget(urlPart))) return undefined;
+  const page = await app.page(urlPart);
+  try {
+    return await page.eval(expression, { timeout: 3000 });
+  } catch {
+    return undefined;
+  } finally {
+    page.close();
+  }
 }
 
 const state = () => nn(`const s = nn.store.getState(), w = s.windows.w1;
@@ -270,6 +230,23 @@ const focuses = {
   },
 };
 
+// Each focus is one check: the shortcuts that failed in it.
+let since = Date.now();
+function recordFocus(focusName) {
+  const lines = [];
+  for (const [name] of shortcuts) {
+    const r = results.get(name)[focusName];
+    if (r && r.result !== "ok") lines.push(`${r.result.padEnd(4)}  ${name} with the focus in ${focusName}: ${r.detail} (first responder ${r.responder})`);
+  }
+  // The failures first: they're what a failing check prints under its line.
+  for (const l of [...lines.filter((l) => l.startsWith("FAIL")), ...lines.filter((l) => !l.startsWith("FAIL"))]) rep.log(l);
+  const failed = shortcuts.filter(([name]) => results.get(name)[focusName]?.result === "FAIL").map(([name]) => name);
+  rep.record(`every shortcut with the focus in ${focusName}`, {
+    ms: Date.now() - since,
+    error: failed.length ? `${failed.length} failed: ${failed.join(" ")}` : null,
+  });
+  since = Date.now();
+}
 const results = new Map(shortcuts.map(([name]) => [name, {}]));
 let failures = 0;
 await showPage("t3");
@@ -287,24 +264,14 @@ for (const [focusName, focus] of Object.entries(focuses)) {
     results.get(name)[focusName] = { result, detail: describe(r), responder: r.firstResponder };
   }
   await focus.teardown?.();
+  recordFocus(focusName);
 }
 
-const cols = Object.keys(focuses);
-console.log(`\n${"shortcut".padEnd(8)} ${"Dia".padEnd(26)} ${cols.map((c) => c.padEnd(10)).join(" ")}`);
-for (const [name, , , dia] of shortcuts) {
-  const row = results.get(name);
-  console.log(`${name.padEnd(8)} ${dia.padEnd(26)} ${cols.map((c) => (row[c]?.result ?? "—").padEnd(10)).join(" ")}`);
-}
-for (const [name] of shortcuts)
-  for (const c of cols) {
-    const r = results.get(name)[c];
-    if (r && r.result !== "ok") console.log(`${r.result.padEnd(4)}  ${name} with the focus in ${c}: ${r.detail} (first responder ${r.responder})`);
-  }
-
-const checks = [];
+// One line per check, timed from the one before.
 const check = (name, ok, detail) => {
-  checks.push({ name, ok, detail });
+  rep.record(name, { ms: Date.now() - since, error: ok ? null : detail || "failed", evidence: ok && detail ? detail : undefined });
   if (!ok) failures++;
+  since = Date.now();
 };
 await nn(`globalThis.selections = []; nn.store.subscribe((s, p) => { const w = s.windows.w1, a = w?.activeTabIds[w.profileId];
   if (a !== p.windows.w1?.activeTabIds[p.windows.w1.profileId]) globalThis.selections.push(a); }); return 1;`);
@@ -388,12 +355,16 @@ await press(cmd("q", 12), { focus: "window", wait: 0 });
 let quit = false;
 for (let i = 0; i < 150 && !quit; i++) {
   await sleep(100);
-  quit = !pids().includes(pid);
+  quit = app.exited;
 }
 check("⌘Q quits", quit, quit ? "" : "still running after 15 s");
-if (quit) pid = undefined;
 
-console.log("");
-for (const c of checks) console.log(`${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.detail ? `  (${c.detail})` : ""}`);
-console.log(failures ? `\n${failures} failed` : "\nall passed");
-finish(failures ? 1 : 0);
+// The whole table, for the log (after the checks, so it isn't printed under a failure).
+const cols = Object.keys(focuses);
+rep.log(`\n${"shortcut".padEnd(8)} ${"Dia".padEnd(26)} ${cols.map((c) => c.padEnd(10)).join(" ")}`);
+for (const [name, , , dia] of shortcuts) {
+  const row = results.get(name);
+  rep.log(`${name.padEnd(8)} ${dia.padEnd(26)} ${cols.map((c) => (row[c]?.result ?? "—").padEnd(10)).join(" ")}`);
+}
+
+finish(rep.summary() && !failures ? 0 : 1);
