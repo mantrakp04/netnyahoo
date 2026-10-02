@@ -7,6 +7,9 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
 ## How work gets done
 - **Move fast.** Don't break work into phases or ask about details you can decide; there are no users to
   migrate yet. Ask only when the answer changes what you build.
+- **Speed is the point.** Do independent work in parallel: agents, builds, test instances, tool calls. Batch what you
+  plan to check into one script or one call instead of one step at a time. Only timing measurements run one at a
+  time, interleaved with their control, because sharing the CPU skews them.
 - **Orchestrate.** The main session plans, hands implementation to Opus subagents, and verifies what they
   return (build, run, capture). Give each agent its own files, its own derived-data dir and its own
   `NETNYAHOO_DATA_DIR`.
