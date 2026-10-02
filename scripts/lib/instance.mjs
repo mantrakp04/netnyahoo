@@ -346,7 +346,8 @@ class Instance {
  *   js        "pinned" (default: Metro through a proxy that refuses reloads), "live" (Metro itself), "host:port",
  *             or "none" (a Release build's own bundle); `metroPort` (default METRO_PORT or 8081)
  *   port      the DevTools port (default a free one); `log` the app's stdout and stderr (default <data>/app.out.log)
- *   ready     wait for the dev harness (default true; a body returning truthy to wait for more)
+ *   ready     wait for the dev harness (default true; a body returning truthy to wait for more, or { test, timeout });
+ *             an app that never gets ready is quit before the error is thrown
  */
 export async function launch(app, opts = {}) {
   app = resolve(app);
@@ -396,7 +397,13 @@ export async function launch(app, opts = {}) {
   }
   if (!owned) throw new Error(`the app didn't listen on DevTools port ${port} within ${(opts.startTimeout ?? 60000) / 1000} s (log: ${log})`);
   const instance = new Instance({ app, binary, data, port, log, launchedAt, js, ...owned, meta: opts.meta ?? {} }).save();
-  if (opts.ready !== false) await instance.ready(typeof opts.ready === "string" ? { test: opts.ready } : {});
+  if (opts.ready !== false)
+    try {
+      await instance.ready(typeof opts.ready === "string" ? { test: opts.ready } : typeof opts.ready === "object" ? opts.ready : {});
+    } catch (e) {
+      await instance.quit({ graceful: false });
+      throw e;
+    }
   return instance;
 }
 
@@ -440,18 +447,24 @@ export function reporter(logFile, { name = "run" } = {}) {
       appendFileSync(logFile, `${line}\n`);
       console.log(line);
     },
-    /** Records a check's outcome: `error` null for a pass. `skip` a reason it didn't run. */
-    record(checkName, { ms = 0, error = null, evidence, skip } = {}) {
+    /**
+     * Records a check's outcome: `error` null for a pass, `skip` a reason it didn't run, `ms` its time (left out of
+     * the line when not given). The lines logged since the last record go under a failure.
+     */
+    record(checkName, { ms, error = null, evidence, skip } = {}) {
       const status = skip ? "SKIP" : error ? "FAIL" : "PASS";
+      const time = skip ? ` (${skip})` : ms !== undefined ? ` ${ms}ms` : "";
+      const logged = section;
+      section = [];
       results.push({ name: checkName, ok: !error, skipped: !!skip, ms, error: error ? String(error.message ?? error) : undefined, evidence });
-      appendFileSync(logFile, `${status} ${checkName} ${ms}ms${skip ? ` (${skip})` : ""}${evidence !== undefined ? ` ${text(evidence)}` : ""}${error ? `: ${text(error)}` : ""}\n`);
+      appendFileSync(logFile, `${status} ${checkName}${time}${evidence !== undefined ? ` ${text(evidence)}` : ""}${error ? `: ${text(error)}` : ""}\n`);
       if (!error) {
-        console.log(`${status} ${checkName}${skip ? ` (${skip})` : ` ${ms}ms`}`);
+        console.log(`${status} ${checkName}${time}`);
         return;
       }
       const message = String(error.message ?? error).split("\n");
-      const detail = [...message.slice(1), ...section].filter((l) => l.trim()).slice(0, 19);
-      console.log(`FAIL ${checkName} ${ms}ms: ${message[0].slice(0, 400)}`);
+      const detail = [...message.slice(1), ...logged].filter((l) => l.trim()).slice(0, 19);
+      console.log(`FAIL ${checkName}${time}: ${message[0].slice(0, 400)}`);
       for (const l of detail) console.log(`  ${l.slice(0, 300)}`);
       console.log(`  (log: ${logFile})`);
     },
