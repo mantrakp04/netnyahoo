@@ -341,7 +341,9 @@ class Instance {
  *   data      NETNYAHOO_DATA_DIR (default a fresh dir under $TMPDIR); created, and wiped first with `fresh`
  *   session   a session.json to restore (an object; see session()); `files` writes any other files into the data dir
  *   onboarded true: onboarding.json says it's done (no intro); probe: true writes perf-probe (a Release build's harness)
- *   env       { NAME: value } more environment; `switches` Chromium switches (string or array)
+ *   env       { NAME: value } more environment (null leaves a variable out: NETNYAHOO_DATA_DIR: null starts the app
+ *             on its default data, as an installed copy; `data` is then the folder its dev harness reads);
+ *             `switches` Chromium switches (string or array)
  *   args      arguments after --args (they reach Chrome's command line)
  *   js        "pinned" (default: Metro through a proxy that refuses reloads), "live" (Metro itself), "host:port",
  *             or "none" (a Release build's own bundle); `metroPort` (default METRO_PORT or 8081)
@@ -387,7 +389,7 @@ export async function launch(app, opts = {}) {
   const before = binaryPids(binary);
   const launchedAt = Date.now();
   // As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
-  execFileSync("open", ["-g", "-n", ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
+  execFileSync("open", ["-g", "-n", ...Object.entries(env).filter(([, v]) => v !== null && v !== undefined).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
     "--stdout", log, "--stderr", log, app, ...(opts.args?.length ? ["--args", ...opts.args] : [])]);
   let owned = null;
   for (const end = Date.now() + (opts.startTimeout ?? 60000); !owned && Date.now() < end; await sleep(100)) {
