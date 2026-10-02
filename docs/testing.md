@@ -78,6 +78,17 @@ A Release or RC build starts the dev harness (`dev-eval.js`) only when `$NETNYAH
 test instance (`src/lib/perfProbe.ts`): `: > "$NETNYAHOO_DATA_DIR/perf-probe"` before launch, as
 `.claude/skills/release/scripts/smoke.sh` does.
 
+Input and capture hooks on `nn.shell` (Debug builds only; a Release build answers nothing or `null`), for driving
+the app as a person would rather than writing a new helper:
+
+| Hook | What it does |
+|---|---|
+| `devKeyEquivalent(windowId, { key, keyCode, modifiers, focus, asKey })` | Presses one shortcut through the window's real key path |
+| `devTypeKeys(windowId, text, interval)` | Types text into the focused field, a key every `interval` ms; resolves with per-key timings |
+| `devMenuCommand(command, arg)` | Fires a menu command as if picked from the menu bar |
+| `devSnapshotWindow(windowId, path, transparent?)` | Writes the window's layers to a PNG in-process (works with the screen locked; `false` = failed) |
+| `devRenderIntroMusic(cues, path)` | Renders the onboarding intro music to an audio file, for the launch films' sound pass |
+
 ## What's kept, and why
 
 The suite was cut from 412 unit cases to 82 on 2026-10-01. A case stays when breaking what it guards would
