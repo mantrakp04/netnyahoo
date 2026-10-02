@@ -1,6 +1,6 @@
 import { FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
 import { useShallow } from "zustand/react/shallow";
-import type { ComponentProps } from "react";
+import { useRef, type ComponentProps } from "react";
 import { Image, Pressable, View } from "react-native";
 import { switchToTab, toggleMute } from "../../lib/actions";
 import { hex, useTheme } from "../../lib/theme";
@@ -30,7 +30,10 @@ export function useSidebarPlayerTab(windowId: string): string | undefined {
       return ids.length > 1 ? ids.sort((a, b) => w.tabIds.indexOf(a) - w.tabIds.indexOf(b)) : ids;
     }),
   );
-  return useMedia((m) => playerTabFor(m, hidden));
+  // The player keeps the tab it shows (playerTabFor): a pause, or a report that was already on its way, never swaps it.
+  const shown = useRef<string | undefined>(undefined);
+  shown.current = useMedia((m) => playerTabFor(m, hidden, shown.current));
+  return shown.current;
 }
 
 export function SidebarPlayer({ tabId }: { tabId: string }) {

@@ -84,18 +84,10 @@ export function formatTime(seconds: number): string {
   return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
+// Play and pause show what the page reports, never what we asked for: a guess would be undone by the report already
+// on its way, and the player would flip twice.
 export function mediaCommand(tabId: string, action: MediaCommand, seconds?: number) {
-  const view = webviews.get(tabId);
-  if (!view) return;
-  if (action === "play" || action === "pause" || action === "toggle") {
-    const session = useMedia.getState().sessions[tabId];
-    if (session) {
-      const playing = action === "toggle" ? !isPlaying(session) : action === "play";
-      const now = Date.now();
-      setNowPlaying(tabId, { ...session, position: positionOf(session, now), timestamp: now, playbackState: playing ? "playing" : "paused" });
-    }
-  }
-  void view.mediaCommand(action, seconds);
+  void webviews.get(tabId)?.mediaCommand(action, seconds);
 }
 
 export function hostOf(url: string): string {
@@ -118,13 +110,20 @@ export function isTabShown(s: BrowserState, tabId: string): boolean {
   return active === tabId || !!splitOf(s, active)?.tabIds.includes(tabId);
 }
 
-export function playerTabFor(m: Pick<Store, "sessions" | "dismissed">, tabIds: string[]): string | undefined {
+// The tab a player shows: the one it shows now (current) for as long as that tab can have a player, so pausing it never
+// swaps in another tab; otherwise playing before paused, then the one that started playing last.
+export function playerTabFor(m: Pick<Store, "sessions" | "dismissed">, tabIds: string[], current?: string): string | undefined {
+  const eligible = (id: string) => {
+    const session = m.sessions[id];
+    return !!session && !m.dismissed[id] && !!session.playedAt && session.playbackState !== "none";
+  };
+  if (current && tabIds.includes(current) && eligible(current)) return current;
   let best: Session | undefined;
   let bestId: string | undefined;
   const rank = (x: Session) => (isPlaying(x) ? 1 : 0);
   for (const id of tabIds) {
-    const session = m.sessions[id];
-    if (!session || m.dismissed[id] || !session.playedAt || session.playbackState === "none") continue;
+    if (!eligible(id)) continue;
+    const session = m.sessions[id]!;
     if (!best || rank(session) > rank(best) || (rank(session) === rank(best) && session.playedAt > best.playedAt)) {
       best = session;
       bestId = id;
@@ -190,5 +189,5 @@ useBrowser.subscribe((s, prev) => {
 });
 
 if (typeof __DEV__ !== "undefined" && __DEV__) {
-  (globalThis as { nnMedia?: unknown }).nnMedia = { useMedia, mediaCommand, togglePictureInPicture, inPictureInPicture };
+  (globalThis as { nnMedia?: unknown }).nnMedia = { useMedia, mediaCommand, setNowPlaying, togglePictureInPicture, inPictureInPicture };
 }
