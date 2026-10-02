@@ -128,27 +128,6 @@ NSHashTable<NSView<NNSwipeTarget> *> *Targets() {
   return targets;
 }
 
-NSMapTable<NSWindow *, NSView *> *WindowRoots() {
-  static NSMapTable *roots = [NSMapTable weakToWeakObjectsMapTable];
-  return roots;
-}
-
-void RememberRoot(NSView<NNSwipeTarget> *target) {
-  NSWindow *window = target.window;
-  NSView *root = [NNChromeWindowHost rootViewOfWindow:window];
-  // Registration can run inside addSubview, before the host records the root.
-  if (!root) {
-    root = target;
-    while (root.superview && root.superview != window.contentView) root = root.superview;
-  }
-  if (root && root != window.contentView) [WindowRoots() setObject:root forKey:window];
-}
-
-NSWindow *CurrentWindow(NSWindow *window) {
-  if (!window) return nil;
-  return [WindowRoots() objectForKey:window].window ?: window;
-}
-
 struct Gesture {
   State state = State::Idle;
   __weak NSView<NNSwipeTarget> *target;
@@ -610,9 +589,6 @@ NSEvent *HandleScroll(NSEvent *event, NSWindow *window, NSPoint location, BOOL i
 
 BOOL HandleDiscreteSwipe(NSWindow *window, NSPoint location, CGFloat deltaX) {
   if (fabs(deltaX) < 0.5) return NO;
-  NSWindow *current = CurrentWindow(window);
-  if (current != window) location = [current convertPointFromScreen:[window convertPointToScreen:location]];
-  window = current;
   NSView *hit = HitView(window, location);
   NSView<NNSwipeTarget> *target = TargetAt(window, location, hit);
   if (!target) return NO;
@@ -630,60 +606,6 @@ BOOL HandleDiscreteSwipe(NSWindow *window, NSPoint location, CGFloat deltaX) {
   return YES;
 }
 
-// DEV simulation only: fail the retargeted copy, or recognize on it as before.
-BOOL gRetargetCopyFailure;
-BOOL gLegacyRecognition;
-
-// The window showing the profile under the pointer. AppKit can keep targeting an old profile
-// window after a swap, including a visible full-screen host.
-NSWindow *RetargetWindow(NSWindow *window) {
-  NSWindow *under = CurrentWindow(window);
-  return window && under != window && under.isVisible && !under.ignoresMouseEvents ? under : nil;
-}
-
-// A copy of the event addressed to the retarget window, for native delivery.
-NSEvent *Unlatched(NSEvent *event) {
-  NSWindow *window = event.window;
-  NSWindow *under = RetargetWindow(window);
-  if (!under || (gTrace && gRetargetCopyFailure)) return nil;
-  const NSPoint screen = [window convertPointToScreen:event.locationInWindow];
-  CGEventRef cg = CGEventCreateCopy(event.CGEvent);
-  if (!cg) return nil;
-  CGEventSetIntegerValueField(cg, (CGEventField)51, under.windowNumber);
-  static auto setWindowLocation = (void (*)(CGEventRef, CGPoint))dlsym(RTLD_DEFAULT, "CGEventSetWindowLocation");
-  const NSPoint inWindow = [under convertPointFromScreen:screen];
-  if (setWindowLocation) setWindowLocation(cg, CGPointMake(inWindow.x, NSHeight(under.frame) - inWindow.y));
-  NSEvent *moved = [NSEvent eventWithCGEvent:cg];
-  CFRelease(cg);
-  return moved.window == under ? moved : nil;
-}
-
-// The pre-decoupling path: recognition depended on the retargeted copy.
-NSEvent *LegacyHandleScrollEvent(NSEvent *event, BOOL ignoreSystemPreference) {
-  NSEvent *moved = Unlatched(event);
-  if (!moved) return HandleScroll(event, event.window, event.locationInWindow, ignoreSystemPreference);
-  Diag(@{@"diag" : @"unlatched", @"legacy" : @YES, @"from" : @(event.window.windowNumber), @"to" : @(moved.window.windowNumber)});
-  if (NSEvent *out = HandleScroll(moved, moved.window, moved.locationInWindow, ignoreSystemPreference)) [moved.window sendEvent:out];
-  return nil;
-}
-
-NSEvent *HandleScrollEvent(NSEvent *event, BOOL ignoreSystemPreference) {
-  if (gTrace && gLegacyRecognition) return LegacyHandleScrollEvent(event, ignoreSystemPreference);
-  // Recognize in the window holding the root, whether or not the event can be rebuilt for it.
-  NSWindow *window = event.window;
-  NSPoint location = event.locationInWindow;
-  NSWindow *canonical = CurrentWindow(window) ?: window;
-  if (canonical != window) location = [canonical convertPointFromScreen:[window convertPointToScreen:location]];
-  NSEvent *out = HandleScroll(event, canonical, location, ignoreSystemPreference);
-  if (!out || canonical == window) return out;
-  // Native scrolling goes to the shown window; without a copy, AppKit delivers it as it would have.
-  NSEvent *moved = Unlatched(event);
-  Diag(@{@"diag" : @"unlatched", @"from" : @(window.windowNumber), @"to" : @(canonical.windowNumber), @"copied" : @(moved != nil)});
-  if (!moved) return out;
-  [moved.window sendEvent:moved];
-  return nil;
-}
-
 void InstallMonitor() {
   if (gMonitor) return;
   gMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel | NSEventMaskSwipe
@@ -698,7 +620,7 @@ void InstallMonitor() {
                                                      });
                                                      NSEvent *out = event.type == NSEventTypeSwipe
                                                                         ? (HandleDiscreteSwipe(event.window, event.locationInWindow, event.deltaX) ? nil : event)
-                                                                        : HandleScrollEvent(event, NO);
+                                                                        : HandleScroll(event, event.window, event.locationInWindow, NO);
                                                      Diag(@{@"diag" : @"monitorExit", @"resultWindow" : out ? @(out.window.windowNumber) : @(-1), @"swallowed" : @(out == nil)});
                                                      return out;
                                                    }];
@@ -801,7 +723,6 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step, ui
 
 + (void)addTarget:(NSView<NNSwipeTarget> *)target {
   [Targets() addObject:target];
-  RememberRoot(target);
   InstallMonitor();
 }
 
@@ -820,15 +741,11 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step, ui
   const uint64_t startNs = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
   NSPoint local = LocalPoint(window, point);
   NSPoint inWindow = [window.contentView convertPoint:local toView:nil];
-  NSWindow *current = CurrentWindow(window);
-  NSPoint currentPoint = current == window ? inWindow : [current convertPointFromScreen:[window convertPointToScreen:inWindow]];
-  NSView *hit = HitView(current, currentPoint);
+  NSView *hit = HitView(window, inWindow);
   NSDictionary *where = @{
     @"hit" : hit ? NSStringFromClass(hit.class) : @"",
-    @"target" : TargetAt(current, currentPoint, hit) ? @YES : @NO,
-    @"sourceWindow" : @(window.windowNumber),
-    @"targetWindow" : @(current.windowNumber),
-    @"sourceVisible" : @(window.isVisible),
+    @"target" : TargetAt(window, inWindow, hit) ? @YES : @NO,
+    @"window" : @(window.windowNumber),
     @"systemSwipeEnabled" : @(NSEvent.isSwipeTrackingFromScrollEventsEnabled),
   };
   __block NSUInteger index = 0;
@@ -853,8 +770,6 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step, ui
         [log addObject:@{@"phase" : phase, @"error" : [NSString stringWithFormat:@"event window %@ at %@, expected %@",
                                                                   event.window, NSStringFromPoint(event.locationInWindow), NSStringFromPoint(inWindow)]}];
       }
-      gRetargetCopyFailure = [s[@"retargetCopyFailure"] boolValue];
-      gLegacyRecognition = [s[@"legacyRecognition"] boolValue];
       gWrongRendererHit = [s[@"wrongRendererHit"] boolValue];
       gLegacyHitRouting = [s[@"legacyHitRouting"] boolValue];
       if ([s[@"dispatch"] isEqualToString:@"app"]) {
@@ -886,7 +801,7 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step, ui
           @"targetWindow" : @(gGesture.target.window.windowNumber),
         }];
       } else {
-        NSEvent *out = HandleScrollEvent(event, ignoreSystemPreference);
+        NSEvent *out = HandleScroll(event, event.window, event.locationInWindow, ignoreSystemPreference);
         [log addObject:@{
           @"phase" : phase,
           @"time" : @(event.timestamp),
@@ -901,13 +816,9 @@ NSEvent *SyntheticScroll(NSWindow *window, NSPoint point, NSDictionary *step, ui
           @"swallowed" : @(out == nil),
           @"renderer" : gGesture.renderer ? @((int)gGesture.renderer.scroll) : @(-1),
           @"targetWindow" : @(gGesture.target.window.windowNumber),
-          @"legacyRecognition" : @(gLegacyRecognition),
-          @"retargetCopyFailure" : @(gRetargetCopyFailure),
         }];
         if (out) [window sendEvent:out];
       }
-      gRetargetCopyFailure = NO;
-      gLegacyRecognition = NO;
       gWrongRendererHit = NO;
       gLegacyHitRouting = NO;
     }
