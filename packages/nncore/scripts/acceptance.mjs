@@ -1737,6 +1737,42 @@ try {
     }
   });
 
+  await check("private-churn", async () => {
+    // ⌘W on the last private window and ⇧⌘N in the same turn, 50 times: each new window gets a live tab, though the
+    // old window's profile is still going when it asks (the engine hands out a new one once the old one is gone), and
+    // the tab stays (it never lands in the dying profile, which would close it). Every other round waits out
+    // Chrome's destruction (≤ 1 s) before checking the tab is still there.
+    const titles = (w) => evalApp(`const s = nn.store.getState(); return (s.windows[${JSON.stringify(w)}]?.tabIds ?? []).map((i) => s.tabs[i]?.title)`);
+    let last = await evalApp(`return nn.actions.openWindow({ incognito: true, url: "${base}/e?churn-start" })`);
+    const waits = [];
+    try {
+      await until("the first private page", async () => ((await titles(last)).includes("Page E") ? true : null), 15000);
+      for (let round = 0; round < 50; round++) {
+        const started = Date.now();
+        const next = await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(last)}); return nn.actions.openWindow({ incognito: true, url: "${base}/e?churn${round}" })`);
+        last = next;
+        await until(`round ${round}: a live tab`, async () => ((await titles(next)).includes("Page E") ? true : null), 15000);
+        waits.push(Date.now() - started);
+        if (round % 2) {
+          await sleep(1200);
+          const after = await titles(next);
+          if (!after.includes("Page E")) throw new Error(`round ${round}: the tab went: ${JSON.stringify(after)}`);
+        }
+      }
+      // Then 10 windows each closed as soon as it's made, before its profile or tab could come: the last one still
+      // gets a live tab, and keeps it.
+      for (let round = 0; round < 10; round++)
+        last = await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(last)}); return nn.actions.openWindow({ incognito: true, url: "${base}/e?burst${round}" })`);
+      await until("the burst's last window: a live tab", async () => ((await titles(last)).includes("Page E") ? true : null), 15000);
+      await sleep(1500);
+      if (!(await titles(last)).includes("Page E")) throw new Error(`the burst's last tab went: ${JSON.stringify(await titles(last))}`);
+      if (exited) throw new Error("the app exited");
+      return { rounds: 50, burst: 10, slowestMs: Math.max(...waits), medianMs: waits.sort((a, b) => a - b)[25] };
+    } finally {
+      await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(last)}); return true`).catch(() => null);
+    }
+  });
+
   await check("extension-popup-and-panel", async () => {
     // The extension's action (executeExtensionAction) opens its popup, and its side panel opens beside the page:
     // both are standalone WebViews, whose tabs stay out of the window's tab strip and close with them.

@@ -56,6 +56,7 @@
 #include "content/public/browser/browsing_data_remover.h"
 #include "components/prefs/pref_service.h"
 #include "base/scoped_observation.h"
+#include "base/supports_user_data.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -501,6 +502,37 @@ bool IsProfileDying(const Profile* profile) {
            return p.get() == profile;
          });
 }
+
+namespace {
+// Rides on a dying profile as its user data, so it goes with the Profile itself: then whoever
+// waited for it to be gone goes on (a turn later, out of Chrome's teardown).
+class GoneNotifier : public base::SupportsUserData::Data {
+ public:
+  static const void* Key() {
+    static const int key = 0;
+    return &key;
+  }
+  ~GoneNotifier() override {
+    for (base::OnceClosure& waiter : waiters_) {
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE, std::move(waiter));
+    }
+  }
+  void Add(base::OnceClosure waiter) { waiters_.push_back(std::move(waiter)); }
+
+ private:
+  std::vector<base::OnceClosure> waiters_;
+};
+
+void WhenProfileGone(Profile* profile, base::OnceClosure done) {
+  auto* notifier = static_cast<GoneNotifier*>(profile->GetUserData(GoneNotifier::Key()));
+  if (!notifier) {
+    auto owned = std::make_unique<GoneNotifier>();
+    notifier = owned.get();
+    profile->SetUserData(GoneNotifier::Key(), std::move(owned));
+  }
+  notifier->Add(std::move(done));
+}
+}  // namespace
 
 namespace {
 std::vector<base::WeakPtr<Profile>>& DeletingProfiles() {
@@ -1102,20 +1134,26 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   nncore::ResolveExternalApp(base::SysNSStringToUTF8(requestId), open, remember);
 }
 
-- (NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile {
+- (void)offTheRecordProfileFor:(NNCoreProfile*)profile
+                    completion:(void (^)(NNCoreProfile*, NSString*))completion {
   Profile* original = profile.chromeProfile;
   // Never the original profile in place of a private one.
   if (!original || original->IsOffTheRecord()) {
-    return nil;
+    completion(nil, original ? @"not a regular profile" : @"the profile went");
+    return;
   }
-  // The last private window just closed and Chrome is destroying its profile (it waits for
-  // its renderers, up to a second): nil until it has; a new one is made then.
-  if (nncore::IsProfileDying(
-          original->GetPrimaryOTRProfile(/*create_if_needed=*/false))) {
-    return nil;
+  // The last private window just closed and Chrome is destroying its profile (it waits for its
+  // renderers, up to a second): a new one once it has gone.
+  Profile* current = original->GetPrimaryOTRProfile(/*create_if_needed=*/false);
+  if (current && nncore::IsProfileDying(current)) {
+    nncore::WhenProfileGone(current, base::BindOnce(^{
+                              [self offTheRecordProfileFor:profile completion:completion];
+                            }));
+    return;
   }
-  return [NNCoreProfile
-      wrapperFor:original->GetPrimaryOTRProfile(/*create_if_needed=*/true)];
+  NNCoreProfile* otr =
+      [NNCoreProfile wrapperFor:original->GetPrimaryOTRProfile(/*create_if_needed=*/true)];
+  completion(otr, otr ? nil : @"Chrome is destroying it");
 }
 
 - (NSString*)keepAliveState {

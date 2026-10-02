@@ -473,6 +473,10 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   NNCoreProfile *p = nncore_host::LoadedProfile(profile);
   if (nncore_host::IsIncognito(profile)) {
     [Profiles() removeObjectForKey:profile];
+    // Still being asked for (WithPrivateProfile): whoever waits gets none.
+    NSArray *waiting = ProfileWaiters()[profile];
+    [ProfileWaiters() removeObjectForKey:profile];
+    for (void (^waiter)(NNCoreProfile *) in waiting) waiter(nil);
     nncore_host::ForgetPrivateNavigationDownloads(profile);
     // Every private window shares the one off-the-record profile: it goes only once no other private window of the
     // app holds it, even one whose window isn't made yet.
@@ -716,22 +720,27 @@ NNCoreProfile *LoadedProfile(NSString *name) {
 namespace {
 
 // A private window's profile: Personal's off-the-record one, never Personal itself. While the last one is still
-// closing the engine has none to give: asked again for a few seconds (Chrome destroys it within its timeout).
-void WithPrivateProfile(NSString *name, void (^completion)(NNCoreProfile *), int tries) {
-  NNCoreEngine *engine = NNCoreEngine.sharedEngine;
+// being destroyed the engine answers once it has gone, with a new one. Asked once per name at a time; when the name is
+// released meanwhile (its window closed, +releaseProfile:), a profile nobody holds goes again.
+void WithPrivateProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
+  if (NSMutableArray *waiters = ProfileWaiters()[name]) return (void)[waiters addObject:completion];
+  ProfileWaiters()[name] = [NSMutableArray arrayWithObject:completion];
   WithProfile(@"", ^(NNCoreProfile *base) {
-    if (NNCoreProfile *known = LoadedProfile(name)) return completion(known);
-    NNCoreProfile *otr = base && [engine respondsToSelector:@selector(offTheRecordProfileFor:)]
-                             ? [engine offTheRecordProfileFor:base]
-                             : nil;
-    if (otr && otr.offTheRecord && !otr.destroyed) {
-      Profiles()[name] = otr;
-      return completion(otr);
-    }
-    if (!base || tries >= 60) return completion(nil);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-      WithPrivateProfile(name, completion, tries + 1);
-    });
+    NNCoreEngine *engine = NNCoreEngine.sharedEngine;
+    void (^answer)(NNCoreProfile *, NSString *) = ^(NNCoreProfile *otr, NSString *error) {
+      NSArray *pending = ProfileWaiters()[name];
+      [ProfileWaiters() removeObjectForKey:name];
+      if (!pending) {
+        if (otr && ![Profiles().allValues containsObject:otr]) [engine releaseProfile:otr];
+        return;
+      }
+      if (otr && !otr.destroyed) Profiles()[name] = otr;
+      else NSLog(@"[nncore] no private profile for %@: %@", name, error ?: @"it went");
+      for (void (^waiter)(NNCoreProfile *) in pending) waiter(Profiles()[name]);
+    };
+    if (!base) return answer(nil, @"Personal isn't loaded");
+    if (![engine respondsToSelector:@selector(offTheRecordProfileFor:completion:)]) return answer(nil, @"the engine is too old");
+    [engine offTheRecordProfileFor:base completion:answer];
   });
 }
 
@@ -743,7 +752,7 @@ void WithProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
   if (NNCoreProfile *profile = LoadedProfile(name)) return completion(profile);
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   if (!engine) return completion(nil);
-  if (IsIncognito(name)) return WithPrivateProfile(name, [completion copy], 0);
+  if (IsIncognito(name)) return WithPrivateProfile(name, [completion copy]);
   if (name.length == 0) {
     if (NNCoreProfile *personal = PersonalIfLoaded(engine)) {
       Profiles()[@""] = personal;

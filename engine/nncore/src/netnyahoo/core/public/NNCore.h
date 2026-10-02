@@ -173,10 +173,13 @@ NNCORE_EXPORT
                         tab:(NNCoreTab*)tab
                       frame:(nullable NSString*)frameId
                      origin:(nullable NSString*)origin;
-// The off-the-record profile of `profile` (created on first use): incognito windows. nil if
-// `profile` went, or while the last one is still closing (its Browser on the way out): ask
-// again shortly. Never `profile` itself.
-- (nullable NNCoreProfile*)offTheRecordProfileFor:(NNCoreProfile*)profile;
+// The off-the-record profile of `profile` (created on first use): incognito windows. Never
+// `profile` itself, and never one Chrome is destroying: while the last one is going (its last
+// Browser closed), the answer comes once it has gone, with a new one. `error` says why there is
+// none (`profile` went).
+- (void)offTheRecordProfileFor:(NNCoreProfile*)profile
+                    completion:(void (^)(NNCoreProfile* _Nullable offTheRecord,
+                                         NSString* _Nullable error))completion;
 @property(readonly) NSString* chromiumVersion;
 // What keeps the app alive (Chrome's KeepAliveRegistry), for diagnostics.
 @property(readonly) NSString* keepAliveState;
