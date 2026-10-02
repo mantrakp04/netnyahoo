@@ -168,6 +168,7 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
   `packages/nncore/ios/NNCoreWebView.mm`, `packages/nncore/scripts/acceptance.mjs`, NNCore's `public/NNCore.h`,
   `nncore_api.mm` and `nn_browser*.mm`, the `expo-module.config.json` files: re-read right before each edit, keep
   edits small and additive (add your case/item/field; don't restructure), and never undo someone else's lines.
+  Native files there compile into everyone's build: check one pod with `scripts/agent/typecheck-pod <Pod>` before saving more.
 - The store API is documented in `docs/store-api.md` (read it before touching app state).
 - Tests, test-instance variables and what background mode changes: `docs/testing.md`. Benchmarks and the perf gate:
   `docs/perf/README.md`.
