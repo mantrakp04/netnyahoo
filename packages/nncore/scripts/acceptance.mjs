@@ -631,6 +631,7 @@ const startVideo = async (tabId, audio) => {
 const stopApp = async () => {
   if (!exited) await instance.quit();
   await until("the app to exit", async () => exited || !alive(), 5000);
+  exited ??= { pid };  // at once, not at the next 300 ms poll: appUp relaunches on it
 };
 // Starts the app on the run's data dir when it isn't running (the quit checks), and waits for its window.
 const appUp = async (logName) => {
@@ -718,7 +719,8 @@ async function check(name, fn) {
 try {
   if (kept) await recoverKept();
   if (kept) report.say(`attached to pid ${pid}${recovered.size ? ` (has ${[...recovered].join(", ")})` : ""}`);
-  for (const [dep, by] of deps) if (!recovered.has(dep)) report.say(`${by.join(", ")} needs ${dep}: running it first`);
+  const running = [...deps.keys()].filter((dep) => !recovered.has(dep));
+  if (running.length) report.say(`first, as ${[...new Set(running.flatMap((d) => deps.get(d)))].join(", ")} need: ${running.join(", ")}`);
   // MARK: Windows, tabs and navigation
 
   await check("boot", async () => {
