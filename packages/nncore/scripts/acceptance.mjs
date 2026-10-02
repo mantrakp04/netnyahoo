@@ -267,9 +267,19 @@ async function launch(log = "app.out.log", env = {}, args = [], opts = {}) {
     opts.app ?? app,
     ...(args.length ? ["--args", ...args] : []),
   ]);
+  // This run's instance by its data dir (`ps -E` lists a process's environment): runs of the same bundle at once
+  // otherwise each took the first new pid, and one's cleanup killed another's app.
+  const ours = (p) => {
+    try {
+      const env = execFileSync("ps", ["-E", "-ww", "-o", "command=", "-p", String(p)]).toString();
+      return !env.includes("NETNYAHOO_DATA_DIR=") || env.includes(`NETNYAHOO_DATA_DIR=${data} `) || env.trimEnd().endsWith(`NETNYAHOO_DATA_DIR=${data}`);
+    } catch {
+      return false;
+    }
+  };
   pid = await (async () => {
     for (let i = 0; i < 100; i++) {
-      const fresh = pgrep().filter((p) => !pidsBefore.has(p));
+      const fresh = pgrep().filter((p) => !pidsBefore.has(p) && ours(p));
       if (fresh.length) return fresh[0];
       await sleep(100);
     }
@@ -325,10 +335,14 @@ async function targets() {
 async function cdp(target, method, params = {}) {
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = () => j(new Error(`DevTools connection to ${target.url} failed (${method})`)))));
-  const reply = new Promise((r) => (ws.onmessage = (m) => {
-    const msg = JSON.parse(m.data);
-    if (msg.id === 1) r(msg);
-  }));
+  const reply = new Promise((r) => {
+    ws.onmessage = (m) => {
+      const msg = JSON.parse(m.data);
+      if (msg.id === 1) r(msg);
+    };
+    // The target went (its page closed) with the call unanswered: say so now rather than wait out the 10 s.
+    ws.onclose = () => r({ error: `the target closed before replying (${method})` });
+  });
   ws.send(JSON.stringify({ id: 1, method, params }));
   const msg = await Promise.race([reply, sleep(10000).then(() => ({ error: "cdp timeout" }))]);
   ws.close();
@@ -356,6 +370,11 @@ function firstPixel(base64) {
 }
 
 const pageTarget = async (urlPart) => (await targets()).find((t) => t.type === "page" && t.url.includes(urlPart));
+// A page's window.close(), a turn after DevTools' reply. Closed inside the evaluate, the page asks to close (its frame's
+// pipe, RequestClose) right behind the reply (the DevTools session's pipe): Mojo doesn't order the two, and when the
+// close comes first Chrome closes the tab at once (the renderer already ran unload) and the queued reply is dropped,
+// so the call got no answer though the tab closed (window-close's "cdp timeout", about half the full runs).
+const closeFromPage = (target) => cdp(target, "Runtime.evaluate", { expression: "setTimeout(() => window.close()); true" });
 const cef = (call) => evalApp(`return globalThis.expo.modules.NetnyahooCEF.${call}`);
 const exts = (call) => evalApp(`return globalThis.expo.modules.NetnyahooExtensions.${call}`);
 // A copy in the scratch dir: the app reading the checkout under ~/Documents would raise macOS's folder-access
@@ -807,7 +826,7 @@ try {
     const e = (await state()).tabs.find((x) => x.url?.startsWith(`${base}/e`));
     if (!e) throw new Error("no window.open tab to close");
     const t = await pageTarget(`${base}/e`);
-    await cdp(t, "Runtime.evaluate", { expression: "window.close()", userGesture: true });
+    await closeFromPage(t);
     await until("the tab gone from the store", async () => !(await state()).tabs.some((x) => x.id === e.id));
     return { closed: e.id };
   });
@@ -1473,7 +1492,7 @@ try {
         await evalApp(`nn.actions.switchToTab("${tab.id}"); return true`);
         await toB(tab.id, "r5");
         const page = await pageTarget(`${base}/b?r5`);
-        await cdp(page, "Runtime.evaluate", { expression: "window.close()", userGesture: true });
+        await closeFromPage(page);
         await until("tab r5 closed", async () => !(await s(`!!s.tabs["${tab.id}"]`)), 10000);
         const now = new Set(await s(`s.windows["${mainWindow}"].tabIds`));
         await evalApp(`nn.store.getState().reopenClosedTab("${mainWindow}"); return true`);
@@ -2482,7 +2501,7 @@ try {
     await cdp(t, "Runtime.evaluate", { expression: `window.opener.postMessage("from-popup", "*")` });
     const message = await until("the opener's message", async () => (await cdp(opener, "Runtime.evaluate", { expression: "window.__msg", returnByValue: true })).result.value);
     const asTab = (await state()).tabs.some((x) => x.url?.includes("/popup-page"));
-    await cdp(t, "Runtime.evaluate", { expression: "window.close()" });
+    await closeFromPage(t);
     await until("the popup window closed", async () => ((await popups()) === before && !(await pageTarget("/popup-page")) ? true : null), 10000);
     const { size, opener: hasOpener } = JSON.parse(page);
     if (asTab) throw new Error("the popup became a tab");
@@ -2807,8 +2826,9 @@ try {
   });
 
   await check("page-background", async () => {
-    // The page's base background (pageBackgroundColor, the app's theme.card: a translucent rgba) under a page that
-    // paints none: a 1×1 screenshot of the page shows it; a page that paints its own background covers it.
+    // The page's base background (pageBackgroundColor) is transparent (53ed19ca): a page that paints none shows the
+    // app's card once, drawn by ContentCard, so a 1×1 screenshot of the page is clear, and stays clear after a reload
+    // (a new document's view once took over an opaque base); a page that paints its own background covers it.
     await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
     await until("A shown", async () => (await state()).active === first.id);
     const pixel = async (t) => {
@@ -2831,11 +2851,11 @@ try {
     } finally {
       await backToA();
     }
-    // theme.ts's card, light and dark.
-    const cards = { light: [255, 255, 255, 0.7], dark: [18, 18, 18, 0.5] };
+    // Navigated to from the painted page: the new document's view doesn't keep the last page's opaque gray.
+    await sleep(500);
+    const after = await pixel(await pageFor(first.id, `${base}/a`));
     const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 3);
-    const theme = Object.entries(cards).find(([, c]) => near(transparent.slice(0, 3), c.slice(0, 3)))?.[0];
-    if (!theme || !near(reloaded, transparent)) {
+    if (transparent[3] !== 0 || reloaded[3] !== 0 || after[3] !== 0) {
       // Whether a base background reaches the screenshot at all: DevTools' own override, then cleared again.
       const t = await pageFor(first.id, `${base}/a`);
       const ws = new WebSocket(t.webSocketDebuggerUrl);
@@ -2853,11 +2873,11 @@ try {
       const cleared = await shot();
       const dark = (await send("Runtime.evaluate", { expression: "matchMedia('(prefers-color-scheme: dark)').matches", returnByValue: true })).result?.value;
       ws.close();
-      throw new Error(`the transparent page shows ${JSON.stringify(transparent)} (after a reload ${JSON.stringify(reloaded)}), not a theme card's color (DevTools' override ${JSON.stringify(overridden)}, cleared ${JSON.stringify(cleared)}, page dark ${dark}, painted ${JSON.stringify(painted)})`);
+      throw new Error(`the transparent page shows ${JSON.stringify(transparent)} (after a reload ${JSON.stringify(reloaded)}, after the painted page ${JSON.stringify(after)}), not a clear base (DevTools' override ${JSON.stringify(overridden)}, cleared ${JSON.stringify(cleared)}, page dark ${dark}, painted ${JSON.stringify(painted)})`);
     }
     // A neutral gray: the screenshot is in the display's color space, where sRGB grays keep their values.
     if (!near(painted, [60, 60, 60, 255])) throw new Error(`the painted page shows ${JSON.stringify(painted)}`);
-    return { theme, card: cards[theme], transparentPage: transparent, alpha: +(transparent[3] / 255).toFixed(2), reloaded, paintedPage: painted };
+    return { transparentPage: transparent, reloaded, paintedPage: painted, afterPainted: after };
   });
 
   await check("external-app-answer", async () => {

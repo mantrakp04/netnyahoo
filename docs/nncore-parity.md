@@ -136,7 +136,7 @@ Test hygiene the run keeps (each was a real failure):
 
 ## Acceptance (hidden instance)
 
-`packages/nncore/scripts/acceptance.mjs`, 119 checks (one, `visibility`, is a diagnostic). Latest full run: see "Status" at the end.
+`packages/nncore/scripts/acceptance.mjs`, 126 checks (one, `visibility`, is a diagnostic). Latest full run: see "Status" at the end.
 
 | Check | What it proves |
 |---|---|
@@ -400,6 +400,12 @@ NNCore:
    with a scratch copy, a day of the owner's use on the NNCore build, and the partial rows above re-checked there.
 
 ## Status
+
+Full hidden runs on 50f1b719 (2026-10-02, the release candidate's NNCore, shared Metro with a clean tree): 126/126
+twice (two runs at once), activation 7/7 twice. The first run's one failure was `page-background`, which still expected
+the theme card as the page's base after 53ed19ca made it transparent; it now checks the base stays clear (also after a
+reload and after an opaque page). `window-close`'s "cdp timeout" was the check's: `window.close()` inside the
+evaluate races its own reply (closeFromPage). Runs of the same bundle at once now each find their own app by its data dir.
 
 Full hidden runs on committed b1a94afe (2026-10-02, the screen locked): 119/119 twice in a row, on a `git archive` of HEAD with its own
 `pnpm install`, `pod install`, derived data and Metro (`react-native start --port <p>` in the archive, `METRO_PORT=<p>`),
