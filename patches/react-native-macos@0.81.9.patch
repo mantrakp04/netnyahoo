@@ -1,3 +1,67 @@
+diff --git a/Libraries/Text/TextInput/Singleline/macOS/RCTUISecureTextField.mm b/Libraries/Text/TextInput/Singleline/macOS/RCTUISecureTextField.mm
+index 6f332dc..5dd8e99 100644
+--- a/Libraries/Text/TextInput/Singleline/macOS/RCTUISecureTextField.mm
++++ b/Libraries/Text/TextInput/Singleline/macOS/RCTUISecureTextField.mm
+@@ -14,6 +14,11 @@
+ 
+ #pragma mark - RCTUISecureTextFieldCell
+ 
++@interface NSSecureTextFieldCell (RCTUISecureTextFieldPrivate)
++- (unichar)_bulletCharacter;
++- (void)_setBulletCharacter:(unichar)character;
++@end
++
+ @interface RCTUISecureTextFieldCell : NSSecureTextFieldCell
+ 
+ @property (nonatomic, assign) UIEdgeInsets textContainerInset;
+@@ -71,13 +76,46 @@ - (NSText *)setUpFieldEditorAttributes:(NSText *)textObj
+ 
+ #pragma mark - RCTUISecureTextField
+ 
+-@implementation RCTUISecureTextField
++@implementation RCTUISecureTextField {
++  BOOL _showsIndicators;
++}
+ 
+ + (Class)cellClass
+ {
+   return RCTUISecureTextFieldCell.class;
+ }
+ 
++// AppKit's secure field editor treats its delegate as an NSSecureTextField: it throws when the delegate isn't one
++// ("NSSecureTextFieldCell is not secure…", for apps built with a recent SDK), then calls NSSecureTextField's own
++// methods on it while drawing. This field is an NSTextField with a secure cell, so it says it is one and implements
++// those methods (NSSecureTextField's whole API over NSTextField: the indicators flag, and the bullet, which is the
++// cell's). Under Chromium either exception was fatal: focusing or drawing any password field crashed the app.
++- (BOOL)isKindOfClass:(Class)aClass
++{
++  return aClass == NSSecureTextField.class || [super isKindOfClass:aClass];
++}
++
++- (BOOL)_shouldShowIndicators
++{
++  return _showsIndicators;
++}
++
++- (void)_setShouldShowIndicators:(BOOL)showsIndicators
++{
++  _showsIndicators = showsIndicators;
++  [self setNeedsDisplay:YES];
++}
++
++- (unichar)_bulletCharacter
++{
++  return [(NSSecureTextFieldCell *)self.cell _bulletCharacter];
++}
++
++- (void)_setBulletCharacter:(unichar)character
++{
++  [(NSSecureTextFieldCell *)self.cell _setBulletCharacter:character];
++}
++
+ @end
+ 
+ #endif // TARGET_OS_OSX
 diff --git a/React/Base/macOS/RCTUIKit.m b/React/Base/macOS/RCTUIKit.m
 index a37a1c106a04752c1baeb6dd2170402ce5f34f71..c096a10720e76e449619a026d4b756ec1bb6907b 100644
 --- a/React/Base/macOS/RCTUIKit.m
