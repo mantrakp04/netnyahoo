@@ -134,20 +134,27 @@ public struct SafariExport: Codable, Equatable, Sendable {
         }
         let start = j + 1
         var end = start
-        while end < buf.count, buf[end] != UInt8(ascii: "\""), buf[end] != UInt8(ascii: "\\") { end += 1 }
-        if end < buf.count, buf[end] == UInt8(ascii: "\"") {
-          numbers.append(SecretBytes(copying: UnsafeRawBufferPointer(rebasing: buf[start..<end])))
-          for k in start..<end { buf[k] = UInt8(ascii: "X") }
-        } else {
-          numbers.append(SecretBytes(count: 0))
+        var escaped = false
+        while end < buf.count, buf[end] != UInt8(ascii: "\"") {
+          if buf[end] == UInt8(ascii: "\\") {
+            escaped = true
+            end += 1
+          }
+          end += 1
         }
+        end = min(end, buf.count)
+        // An escaped number (\u0034…) isn't one a real export writes: mask it all the same and skip the card.
+        numbers.append(escaped ? SecretBytes(count: 0) : SecretBytes(copying: UnsafeRawBufferPointer(rebasing: buf[start..<end])))
+        for k in start..<end { buf[k] = UInt8(ascii: "X") }
         i = end
       }
     }
     guard let top = try JSONSerialization.jsonObject(with: data) as? [String: Any],
           let rows = top["payment_cards"] as? [[String: Any]] else { return [] }
     let withNumbers = rows.filter { $0["card_number"] != nil }
-    guard withNumbers.count == numbers.count else { throw ImportError.unreadable("PaymentCards.json is malformed") }
+    // Every number must have gone through the mask (an escaped key would hide one from it).
+    let masked = withNumbers.allSatisfy { ($0["card_number"] as? String)?.allSatisfy { $0 == "X" } ?? true }
+    guard withNumbers.count == numbers.count, masked else { throw ImportError.unreadable("PaymentCards.json is malformed") }
     var out: [ImportedCard] = []
     for (row, number) in zip(withNumbers, numbers) {
       guard AutofillWire.cardDigitCount(number) != nil else { continue }

@@ -36,11 +36,11 @@ public enum ChromiumCrypto {
     return AES.cbc(.decrypt, Data(body), key: key, iv: iv)
   }
 
-  /// Decrypts a v10 value straight into SecretBytes (no Data/String copy of the plaintext). A value without the
-  /// v10 prefix is legacy plaintext and is copied as is. With `hostKey` (Cookies DB version 24+), the plaintext
-  /// must start with SHA-256(hostKey), which is stripped; without it the value is rejected.
+  /// Decrypts a v10 value straight into SecretBytes (no Data/String copy of the plaintext). Anything else (v11,
+  /// v20, a truncated value) is undecryptable: plaintext lives in its own column. With `hostKey` (Cookies DB
+  /// version 24+), the plaintext must start with SHA-256(hostKey), which is stripped; without it the value is rejected.
   static func decryptSecret(_ value: Data, key: Data, hostKey: String? = nil) -> SecretBytes? {
-    guard isEncrypted(value) else { return value.withUnsafeBytes { SecretBytes(copying: $0) } }
+    guard isEncrypted(value) else { return nil }
     guard key.count == kCCKeySizeAES128 else { return nil }
     let bodyCount = value.count - prefix.count
     guard bodyCount > 0, bodyCount % kCCBlockSizeAES128 == 0 else { return nil }

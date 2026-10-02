@@ -159,8 +159,12 @@ public enum Firefox {
     var isolated = false
     var partition: CookiePartition?
     for pair in text.split(separator: "&") where !pair.isEmpty {
-      let parts = pair.split(separator: "=", maxSplits: 1)
-      let key = String(parts[0])
+      let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+      guard let first = parts.first, !first.isEmpty else {
+        isolated = true  // Malformed: don't guess which jar it belongs to.
+        continue
+      }
+      let key = String(first)
       let value = parts.count > 1 ? (String(parts[1]).removingPercentEncoding ?? String(parts[1])) : ""
       switch key {
       case "userContextId", "privateBrowsingId":

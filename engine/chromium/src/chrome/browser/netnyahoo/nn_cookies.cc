@@ -16,6 +16,7 @@
 #include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/time/time.h"
 #include "base/types/expected.h"
 #include "base/values.h"
@@ -170,6 +171,13 @@ std::optional<Imported> ToCookie(const base::Value& entry, base::Time now) {
   if (!cookie || cookie->IsExpired(now)) {
     return std::nullopt;
   }
+  // The fresh-cookie rules can canonicalize a cookie into another scope (a
+  // path's "..", a public-suffix domain made host-only): import a cookie only
+  // as the source stored it.
+  if (cookie->Domain() != base::ToLowerASCII(*domain) ||
+      cookie->Path() != *path) {
+    return std::nullopt;
+  }
   return Imported{std::move(cookie), std::move(source_url)};
 }
 
@@ -235,7 +243,9 @@ void WriteNew(base::WeakPtr<Profile> profile,
     if (exists) {
       ++counts.existing;
     } else {
+      // A later equivalent in the same import is a duplicate, not a change.
       fresh.push_back(&imported);
+      by_domain[imported.cookie->Domain()].push_back(imported.cookie.get());
     }
   }
 

@@ -55,6 +55,8 @@ export function ImportWindow() {
   const [unlocking, setUnlocking] = useState(false);
   const [fullDiskAccess, setFullDiskAccess] = useState(false);
   const [safariCookies, setSafariCookies] = useState(true);
+  // What was left behind (cookies or cards that didn't decrypt, isolated Firefox cookies), shown at the end.
+  const [notes, setNotes] = useState<string[]>([]);
   const [extensions, setExtensions] = useState<{ profileId: string; list: ImportedExtension[] }>({ profileId: "", list: [] });
   const [diaStatus, setDiaStatus] = useState<DiaAutomationStatus | "checking" | "reading">("checking");
   const [dia, setDia] = useState<DiaTabsResult | null>(null);
@@ -126,6 +128,7 @@ export function ImportWindow() {
     if (b.family === "safari" && api) setFullDiskAccess(api.safariHasFullDiskAccess());
     setDia(null);
     setExtensions({ profileId: "", list: [] });
+    setNotes([]);
     setError(null);
   };
 
@@ -198,6 +201,7 @@ export function ImportWindow() {
     const add = (c: ImportCounts) => (Object.keys(total) as (keyof ImportCounts)[]).forEach((k) => (total[k] += c[k]));
     let destinationIndex = 0;
     const found = new Map<string, ImportedExtension>();
+    const left: string[] = [];
     let extensionsProfile = "";
     // Firefox keeps no keychain key: without a primary password its logins open as they are.
     if (source.family === "firefox" && requested.includes("passwords") && !api.isBrowserUnlocked(source.id)) {
@@ -221,6 +225,9 @@ export function ImportWindow() {
         continue;
       }
       for (const k of result.failed) failed.set(k, [...(failed.get(k) ?? []), profile.name]);
+      for (const w of result.warnings) {
+        if (["undecryptable", "skipped", "locked"].includes(w.code) && !result.failed.includes(w.kind!)) left.push(`${w.message}.`);
+      }
       const refused = (k: ImportKind) => {
         const names = failed.get(k) ?? [];
         if (!names.includes(profile.name)) failed.set(k, [...names, profile.name]);
@@ -249,6 +256,7 @@ export function ImportWindow() {
       }
     }
     setExtensions({ profileId: extensionsProfile, list: [...found.values()] });
+    setNotes(left);
     setStatus((st) => Object.fromEntries(Object.entries(st).map(([k, v]) => [k, failed.has(k as ImportKind) ? "failed" : v === "failed" ? v : "done"])));
     setFailures([...failed].map(([kind, names]) => ({ kind, profiles: selected.length > 1 ? names : [] })));
     setCounts(total);
@@ -419,6 +427,7 @@ export function ImportWindow() {
       counts,
       failures,
       extensions,
+      notes,
       step,
       diaStatus,
       dia,
@@ -766,6 +775,11 @@ export function ImportWindow() {
       counts.cards && plural(counts.cards, "card"),
       counts.tabs && plural(counts.tabs, "tab"),
     ].filter(Boolean) as string[];
+    const leftBehind = notes.length ? (
+      <Text style={{ fontSize: 12, lineHeight: 17, marginTop: 10, color: theme.textTertiary, textAlign: failures.length ? "left" : "center" }}>
+        {notes.join(" ")}
+      </Text>
+    ) : null;
     const extensionList = extensions.list.length ? (
       <View style={{ alignSelf: "stretch", marginTop: 14, gap: 8 }}>
         <Text style={{ fontSize: 12, color: theme.textSecondary, textAlign: "center" }}>
@@ -795,6 +809,7 @@ export function ImportWindow() {
           </Text>
         ))}
         {summary.length > 0 && <Text style={{ fontSize: 12, marginTop: 12, color: theme.textSecondary }}>{`Imported ${summary.join(", ")}.`}</Text>}
+        {leftBehind}
         {extensionList}
         <Text style={{ fontSize: 12, marginTop: 12, color: theme.textTertiary }}>You can retry the import later from the app menu.</Text>
       </>
@@ -805,6 +820,7 @@ export function ImportWindow() {
         <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: "center" }}>
           {summary.length ? `Imported ${summary.join(", ")}.` : "There was nothing new to import."}
         </Text>
+        {leftBehind}
         {extensionList}
       </View>
     );

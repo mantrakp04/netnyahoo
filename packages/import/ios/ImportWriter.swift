@@ -47,6 +47,7 @@ final class ImportVault: @unchecked Sendable {
 enum ImportWriter {
   // A batch of nn_cookies_import's arguments; Chrome's own cookie store takes them (engine/chromium nn_cookies.h).
   static let cookieBatch = 500
+  static let autofillBatch = 500
 
   @MainActor
   static func write(_ entry: ImportVault.Entry, profile: String, kinds: Set<String>) async -> String {
@@ -71,12 +72,19 @@ enum ImportWriter {
       }
       wire.batches.forEach { $0.wipe() }
     }
-    if kinds.contains("autofill"), !entry.addresses.isEmpty || !entry.cards.isEmpty {
-      let reply = await engine("nn_autofill_import", profile: profile, args: AutofillWire.batch(addresses: entry.addresses, cards: entry.cards))
-      if let message = reply["error"] as? String {
-        error = error ?? message
-        out["autofillFailed"] = 1
-      } else {
+    if kinds.contains("autofill") {
+      // In chunks under the engine's per-call limits (1000 of each, 4 MB).
+      var start = 0
+      while start < max(entry.addresses.count, entry.cards.count) {
+        let addresses = Array(entry.addresses[min(start, entry.addresses.count)..<min(start + autofillBatch, entry.addresses.count)])
+        let cards = Array(entry.cards[min(start, entry.cards.count)..<min(start + autofillBatch, entry.cards.count)])
+        start += autofillBatch
+        let reply = await engine("nn_autofill_import", profile: profile, args: AutofillWire.batch(addresses: addresses, cards: cards))
+        if let message = reply["error"] as? String {
+          error = error ?? message
+          out["autofillFailed"] = 1
+          break
+        }
         add("addresses", reply, "addresses")
         add("cards", reply, "cards")
       }

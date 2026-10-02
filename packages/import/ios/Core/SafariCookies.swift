@@ -89,11 +89,14 @@ public enum SafariCookies {
     guard page.count >= 8, page[0] == 0, page[1] == 0, page[2] == 1, page[3] == 0 else { throw Malformed() }
     let count = try le32(page, 4)
     guard count <= (page.count - 8) / 4 else { throw Malformed() }
+    // Records follow the offset table in order and never overlap, so no byte is copied twice.
+    var used = 8 + 4 * count
     for i in 0..<count {
       let start = try le32(page, 8 + 4 * i)
-      guard start <= page.count - headerSize else { throw Malformed() }
+      guard start >= used, start <= page.count - headerSize else { throw Malformed() }
       let size = try le32(page, start)
       guard size >= headerSize, size <= page.count - start else { throw Malformed() }
+      used = start + size
       let c = UnsafeRawBufferPointer(rebasing: page[start..<(start + size)])
 
       func double(_ at: Int) -> Double {

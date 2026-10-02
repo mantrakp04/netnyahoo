@@ -132,7 +132,7 @@ public final class Importer: @unchecked Sendable {
           result.credentials = outcome.items
           count = outcome.items.count
           if outcome.undecryptable > 0 {
-            result.warnings.append(ImportWarning(kind, "undecryptable", "\(outcome.undecryptable) passwords couldn't be decrypted"))
+            result.warnings.append(ImportWarning(kind, "undecryptable", "\(Self.count(outcome.undecryptable, "password")) couldn't be decrypted"))
             if outcome.items.isEmpty { throw ImportError.locked("The \(def.name) key didn't decrypt any passwords") }
           }
         case (.passwords, .firefox):
@@ -146,7 +146,7 @@ public final class Importer: @unchecked Sendable {
           result.cookies = outcome.items
           count = outcome.items.count
           if outcome.undecryptable > 0 {
-            result.warnings.append(ImportWarning(kind, "undecryptable", "\(outcome.undecryptable) cookies couldn't be decrypted"))
+            result.warnings.append(ImportWarning(kind, "undecryptable", "\(Self.count(outcome.undecryptable, "cookie")) couldn't be decrypted"))
           }
         case (.cookies, .firefox):
           let outcome = try Firefox.cookies(profile: dir, cancellation: cancellation)
@@ -154,7 +154,7 @@ public final class Importer: @unchecked Sendable {
           count = outcome.items.count
           if outcome.skipped > 0 {
             result.warnings.append(ImportWarning(kind, "skipped",
-              "\(outcome.skipped) cookies from containers or private windows weren't imported"))
+              "\(Self.count(outcome.skipped, "cookie")) from containers or private windows weren't imported"))
           }
 
         case (.autofill, .chromium), (.autofill, .arc):
@@ -164,10 +164,10 @@ public final class Importer: @unchecked Sendable {
           result.cards = outcome.cards
           count = outcome.addresses.count + outcome.cards.count
           if outcome.lockedCards > 0 {
-            result.warnings.append(ImportWarning(kind, "locked", "Unlock \(def.name) to import \(outcome.lockedCards) saved cards"))
+            result.warnings.append(ImportWarning(kind, "locked", "Unlock \(def.name) to import \(Self.count(outcome.lockedCards, "saved card"))"))
           }
           if outcome.undecryptable > 0 {
-            result.warnings.append(ImportWarning(kind, "undecryptable", "\(outcome.undecryptable) cards couldn't be decrypted"))
+            result.warnings.append(ImportWarning(kind, "undecryptable", "\(Self.count(outcome.undecryptable, "card")) couldn't be decrypted"))
           }
 
         default:
@@ -189,4 +189,6 @@ public final class Importer: @unchecked Sendable {
     }
     return result
   }
+
+  static func count(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s")" }
 }
