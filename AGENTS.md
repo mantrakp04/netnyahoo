@@ -71,6 +71,9 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   (dev harness, CDP, window snapshots).
   - The screen is often locked, and then WindowServer captures fail. Use the in-process snapshots
     (`docs/agent-brief.md`) and say exactly what still needs a visual check.
+  - Verify in proportion. A JS-only change needs no app build (Metro reloads it); run the checks for what
+    you changed, each once before and once after, plus one final pass of the nearby checks. The full suite
+    and Codex are for engine, native lifetime, focus, quit or security changes, and run once at the end.
 - **Build safely.** Run xcodebuild, `pod install`/`pnpm install` and Chromium builds through
   `scripts/agent/locked <xcodebuild|pod|chromium> -- <command>` (usage in the script). Its lock dies with
   its holder; the old `until mkdir /tmp/nn-*.lock` pattern left locks behind that stalled every agent.
