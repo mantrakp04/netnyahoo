@@ -1,5 +1,5 @@
 import { CONFLUENCE_CQL, DRIVE_QUERY, mapBitbucket, mapConfluence, mapDrive, mapNotion, NOTION_SEARCH_BODY, type BitbucketPR, type BitbucketStatuses, type ConfluenceSearch, type DriveFiles, type NotionSearch, type NotionUsers } from "./documents";
-import { GITHUB_QUERY, GITHUB_STATE_QUERY, GITHUB_VARIABLES, mapGithub, VIEWER_QUERY, type GithubResponse } from "./github";
+import { DETAILS_PAGE, detailIds, GITHUB_DETAILS_QUERY, GITHUB_QUERY, GITHUB_STATE_QUERY, GITHUB_VARIABLES, mapGithub, VIEWER_QUERY, withDetails, type GithubResponse, type RawPR } from "./github";
 import { basic, deleteSecret, endpoints, form, getSecret, request, setSecret } from "./net";
 import { live, setAccount, updateConfig } from "./store";
 import { LiveError, type CompletionState, type LiveAccount, type LiveFolder, type LiveItem, type LiveSourceId } from "./types";
@@ -38,8 +38,14 @@ const github: LiveSource = {
   kind: "pullRequests",
   site: "https://github.com",
   async fetch(folder) {
-    const json = await githubGraphql<GithubResponse>(await secret("github"), GITHUB_QUERY, GITHUB_VARIABLES);
-    return mapGithub(json, folder.filters);
+    const token = await secret("github");
+    const json = await githubGraphql<GithubResponse>(token, GITHUB_QUERY, GITHUB_VARIABLES);
+    const ids = detailIds(json, folder.filters);
+    const pages = Array.from({ length: Math.ceil(ids.length / DETAILS_PAGE) }, (_, i) => ids.slice(i * DETAILS_PAGE, (i + 1) * DETAILS_PAGE));
+    const details = await Promise.all(
+      pages.map((page) => githubGraphql<{ data?: { nodes: (RawPR | null)[] } }>(token, GITHUB_DETAILS_QUERY, { ids: page })),
+    );
+    return mapGithub(withDetails(json, details.flatMap((d) => d.data?.nodes ?? [])), folder.filters);
   },
   async resolveGone(items) {
     const prs = items.filter((it) => it.source === "github");

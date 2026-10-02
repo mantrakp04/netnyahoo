@@ -69,6 +69,10 @@ createServer(async (req, res) => {
   if (p === "/github/graphql") {
     if (auth !== "Bearer mock-token") return send(res, 401, { message: "Bad credentials" });
     const { query, variables } = JSON.parse(body || "{}");
+    if (query.includes("LiveFolderDetails")) {
+      const all = new Map([...nodes("authored"), ...nodes("review")].map((n) => [n.id, n]));
+      return send(res, 200, { data: { nodes: variables.ids.map((id) => all.get(id) ?? null) } });
+    }
     if (query.includes("LiveFolderGone")) return send(res, 200, { data: { nodes: variables.ids.map((id) => ({ id, state: state[id] ?? "OPEN" })) } });
     if (!query.includes("search(")) return send(res, 200, { data: { viewer: github.data.viewer } });
     return send(res, 200, github);
