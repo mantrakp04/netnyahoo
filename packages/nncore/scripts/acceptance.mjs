@@ -126,6 +126,21 @@ const server = createServer((req, res) => {
   if (url.pathname === "/login") return res.end(page("Login", `<form action="/b" method="get"><input name="u" id="u" autocomplete="username"><input type="password" name="p" id="p" autocomplete="current-password"><button id="go">Sign in</button></form>`));
   if (url.pathname === "/text") return res.end(page("Text", `<p id="t" style="font: 20px sans-serif; margin: 40px">Hello selection world, select me please</p>`));
   if (url.pathname === "/capture-target") return res.end(page("Capture Target", "the tab that tab capture picks"));
+  // One flat colour (?c=rrggbb), titled ?t: a captured tab whose frames say which tab they are.
+  if (url.pathname === "/solid")
+    return res.end(page(url.searchParams.get("t") ?? "Solid", "", `<style>html, body { margin: 0; height: 100%; background: #${url.searchParams.get("c") ?? "808080"} }</style>`));
+  // A page that shares a tab (getDisplayMedia, the app's picker answers) and reads its stream's middle pixel.
+  if (url.pathname === "/capturer")
+    return res.end(page(url.searchParams.get("t") ?? "Capturer", "capturer", `<script>
+      window.__cap = "idle";
+      window.share = () => { window.__cap = "pending"; navigator.mediaDevices.getDisplayMedia({ video: true }).then((s) => { window.__stream = s; window.__cap = "live"; }, (e) => (window.__cap = e.name)); return true; };
+      window.pixel = async () => {
+        const bitmap = await new ImageCapture(window.__stream.getVideoTracks()[0]).grabFrame();
+        const c = new OffscreenCanvas(bitmap.width, bitmap.height), g = c.getContext("2d");
+        g.drawImage(bitmap, 0, 0);
+        return Array.from(g.getImageData(bitmap.width >> 1, bitmap.height >> 1, 1, 1).data.slice(0, 3));
+      };
+    </script>`));
   if (url.pathname === "/media") return res.end(page("Media", `<audio id="tone" src="/tone.wav" loop></audio>`));
   // The release smoke test's form (.claude/skills/release/scripts/pages/form.html): one field Chrome remembers.
   if (url.pathname === "/form")
@@ -1255,6 +1270,247 @@ try {
       await closeTab(other.id);
       await evalApp(`return nn.webviews.get("${first.id}").reload()`);
       await until("A loaded", async () => (await state()).tabs.find((x) => x.id === first.id && x.title === "Page A" && !x.loading), 10000);
+    }
+  });
+
+  await check("share-instead-two-captures", async () => {
+    // Two calls in one profile share two tabs (red, green) through the app's picker. "Share this tab instead" on a
+    // third tab (blue) for the second call moves that call only: each call's own frames say what it gets.
+    const opened = [];
+    const pages = {};
+    try {
+      await evalApp(`return globalThis.expo.modules.NetnyahooCEF.setDisplayMediaPicker(true).then(() => true)`);
+      for (const [c, t] of [["ff0000", "Red"], ["00ff00", "Green"], ["0000ff", "Blue"]]) opened.push(await openTab(`${base}/solid?c=${c}&t=${t}`, t, true));
+      for (const t of ["CallA", "CallB"]) opened.push(await openTab(`${base}/capturer?t=${t}`, t, true));
+      const [red, green, blue, callA, callB] = opened;
+      const hooks = await evalApp(`return { picker: !!globalThis.nnSharePicker?.shareTab, bar: !!globalThis.nnShareBar }`);
+      const share = async (call, target) => {
+        await evalApp(`nn.actions.switchToTab("${call.id}"); return true`);
+        await until(`${call.title} shown`, async () => (await state()).active === call.id);
+        const page = await pageFor(call.id, `/capturer?t=${call.title}`);
+        await cdp(page, "Runtime.evaluate", { expression: "share()", userGesture: true });
+        await until(`${call.title}'s picker`, async () => (await eventsOf(call.id)).findLast((x) => x.name === "displayMediaRequest"), 10000);
+        // As a click on the target in the app's picker.
+        if (hooks.picker) await evalApp(`return globalThis.nnSharePicker.shareTab("${call.id}", "${target.id}")`);
+        else {
+          const source = await evalApp(`return nn.webviews.get("${target.id}").mediaCaptureSourceId()`);
+          await evalApp(`globalThis.nnSharePicker.answerDisplayMedia("${call.id}", ${JSON.stringify(source)}); return true`);
+        }
+        await until(`${call.title} live`, async () => {
+          const v = (await cdp(page, "Runtime.evaluate", { expression: "window.__cap", returnByValue: true })).result.value;
+          if (v !== "pending" && v !== "live") throw new Error(`${call.title} getDisplayMedia: ${v}`);
+          return v === "live" ? v : null;
+        }, 15000);
+        return page;
+      };
+      pages.A = await share(callA, red);
+      pages.B = await share(callB, green);
+      const colour = async (page) => {
+        const p = (await cdp(page, "Runtime.evaluate", { expression: "pixel()", awaitPromise: true, returnByValue: true })).result.value;
+        const i = p.indexOf(Math.max(...p));
+        return p[i] > 150 && p.filter((x) => x > 100).length === 1 ? ["red", "green", "blue"][i] : `rgb(${p})`;
+      };
+      const both = async () => ({ A: await colour(pages.A), B: await colour(pages.B) });
+      const before = await until("red and green", async () => {
+        const c = await both();
+        return c.A === "red" && c.B === "green" ? c : null;
+      }, 10000);
+      const recorded = hooks.bar && (await evalApp(`const s = globalThis.nnShareBar.tabShares(); return [s["${callA.id}"]?.capturedTabId === "${red.id}", s["${callB.id}"]?.capturedTabId === "${green.id}"]`));
+      if (hooks.bar && !(recorded[0] && recorded[1])) throw new Error(`app records before: ${JSON.stringify(recorded)}`);
+      await evalApp(`nn.actions.switchToTab("${blue.id}"); return true`);
+      await until("blue shown", async () => (await state()).active === blue.id);
+      const changed = hooks.bar
+        ? await evalApp(`return globalThis.nnShareBar.shareInstead("${callB.id}", "${blue.id}")`)
+        : await evalApp(`return globalThis.expo.modules.NetnyahooChromeUI.changeCaptureSource(${await browserOf(callB.id)}, ${await browserOf(blue.id)})`);
+      if (changed !== true) throw new Error(`share instead answered ${JSON.stringify(changed)}`);
+      let after = null;
+      try {
+        after = await until("B on blue", async () => {
+          const c = await both();
+          return c.B === "blue" ? c : null;
+        }, 8000);
+      } catch {
+        after = await both();
+      }
+      await sleep(1000);
+      const settled = await both();
+      if (settled.A !== "red" || settled.B !== "blue") throw new Error(`after B's share instead: A ${settled.A} (want red), B ${settled.B} (want blue)`);
+      let records = null;
+      if (hooks.bar) {
+        // Past the moment the switch turns B's capture off (ShareBar's SHARE_END_MS): the share stays, on blue.
+        await sleep(2000);
+        records = await evalApp(`const s = globalThis.nnShareBar.tabShares(); return { A: s["${callA.id}"]?.capturedTabId ?? null, B: s["${callB.id}"]?.capturedTabId ?? null }`);
+        if (records.A !== red.id || records.B !== blue.id) throw new Error(`app records ${JSON.stringify(records)} (want A ${red.id}, B ${blue.id})`);
+      }
+      return { before, after: settled, changed, records: records && { A: "red", B: "blue" } };
+    } finally {
+      for (const page of Object.values(pages)) await cdp(page, "Runtime.evaluate", { expression: "window.__stream?.getTracks().forEach((x) => x.stop()); true" }).catch(() => null);
+      for (const t of opened) await closeTab(t.id).catch(() => null);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`).catch(() => null);
+    }
+  });
+
+  await check("restore-after-close", async () => {
+    // A → B, then the tab goes with its window, or by itself from Chrome's side, at once; reopened, Back reaches A.
+    // Its Chrome TabRestoreService entry has to carry the app's key before the close starts (nn_tab_restore_tag on
+    // attach and each new NavigationEntry), not from the app's teardown that comes after.
+    const shell = "globalThis.expo.modules.NetnyahooShell";
+    const s = (expr) => evalApp(`const s = nn.store.getState(); return ${expr}`);
+    const toB = async (tabId, tag) => {
+      await until(`A?${tag} loaded`, async () => (await s(`s.tabs["${tabId}"]?.title === "Page A" && !s.live["${tabId}"]?.isLoading && !!nn.webviews.get("${tabId}")`)) || null, 15000);
+      await evalApp(`nn.store.getState().navigate("${tabId}", "${base}/b?${tag}", { userInitiated: true }); return true`);
+      await until(`B?${tag} with Back`, async () => (await s(`s.tabs["${tabId}"]?.title === "Page B" && s.live["${tabId}"]?.canGoBack && !s.live["${tabId}"]?.isLoading`)) || null, 15000);
+    };
+    // The reopened tab (shown): Page B with Back, and Back reaches A.
+    const backReachesA = async (tabId, tag) => {
+      await evalApp(`nn.actions.switchToTab("${tabId}"); return true`);
+      await until(`the reopened B?${tag}`, async () => (await s(`s.tabs["${tabId}"]?.title === "Page B" && !s.live["${tabId}"]?.isLoading && !!nn.webviews.get("${tabId}")`)) || null, 15000);
+      const canGoBack = await s(`!!s.live["${tabId}"]?.canGoBack`);
+      if (!canGoBack) return { canGoBack };
+      await evalApp(`return nn.webviews.get("${tabId}").goBack()`);
+      const a = await until(`Back to A?${tag}`, async () => (await s(`s.tabs["${tabId}"]?.title === "Page A" && s.tabs["${tabId}"]?.url`)) || null, 10000).catch(() => null);
+      return { canGoBack, back: a ? new URL(a).pathname + new URL(a).search : null };
+    };
+    const windowCase = async (tag, close) => {
+      const w = await evalApp(`return nn.store.getState().createWindow({ url: "${base}/a?${tag}", background: true })`);
+      const tabId = await s(`s.windows["${w}"].tabIds[0]`);
+      await toB(tabId, tag);
+      const windowsBefore = new Set(await s(`Object.keys(s.windows)`));
+      await close(w, tabId);
+      await until(`window ${tag} closed`, async () => !(await s(`!!s.windows["${w}"]`)), 15000);
+      await evalApp(`nn.store.getState().reopenClosedWindow(); return true`);
+      const reopened = await until("the reopened window", async () => (await s(`Object.keys(s.windows)`)).find((id) => !windowsBefore.has(id) && id !== w), 10000);
+      const again = await until("its tab", async () => s(`s.windows["${reopened}"]?.tabIds.find((id) => s.tabs[id]?.url?.includes("/b?${tag}")) ?? null`), 10000);
+      try {
+        return await backReachesA(again, tag);
+      } finally {
+        await evalApp(`nn.store.getState().closeWindow("${reopened}"); return true`);
+      }
+    };
+    const closeButton = async (tabId) => {
+      const number = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindowNumber(${await browserOf(tabId)})`);
+      return evalApp(`return globalThis.expo.modules.NetnyahooCEF.devWindow(${number}, "close-button")`);
+    };
+    const warn = await s(`s.settings.warnBeforeClosingWindow`);
+    const results = {};
+    try {
+      results.appCommand = await windowCase("r1", (w) => evalApp(`nn.store.getState().closeWindow("${w}"); return true`));
+      results.closeWarning = await windowCase("r2", async (w, tabId) => {
+        // Two tabs, so the app asks; its dialog (an AppKit sheet) answers Close All Tabs.
+        await evalApp(`nn.store.getState().newTab("${w}", { url: "${base}/c?r2", background: true }); nn.store.getState().updateSettings({ warnBeforeClosingWindow: true }); return true`);
+        await sleep(300);
+        await evalApp(`globalThis.__nnConfirm = ${shell}.confirm; ${shell}.confirm = (o) => { globalThis.__nnAsked = o.title; return Promise.resolve({ confirmed: true, suppressed: false }); }; return true`);
+        await closeButton(tabId);
+        await until("the close warning", () => evalApp(`return globalThis.__nnAsked ?? null`), 5000);
+      });
+      await evalApp(`${shell}.confirm = globalThis.__nnConfirm; return true`);
+      results.nativeClose = await windowCase("r3", async (w, tabId) => {
+        await evalApp(`nn.store.getState().updateSettings({ warnBeforeClosingWindow: false }); return true`);
+        await sleep(300);
+        await closeButton(tabId);
+      });
+      // Tabs Chrome closes itself: an extension's chrome.tabs.remove, and a page's window.close().
+      const tabCase = async (tag, close) => {
+        const tab = await openTab(`${base}/a?${tag}`, "Page A", true);
+        await toB(tab.id, tag);
+        await close(tab);
+        await until(`tab ${tag} closed`, async () => !(await s(`!!s.tabs["${tab.id}"]`)), 10000);
+        const before = new Set(await s(`s.windows["${mainWindow}"].tabIds`));
+        await evalApp(`nn.store.getState().reopenClosedTab("${mainWindow}"); return true`);
+        const again = await until("the reopened tab", async () => (await s(`s.windows["${mainWindow}"].tabIds`)).find((id) => !before.has(id)), 10000);
+        try {
+          return await backReachesA(again, tag);
+        } finally {
+          await closeTab(again);
+        }
+      };
+      const installed = await exts(`install(${JSON.stringify(extPath)}, "")`);
+      if (installed?.error) throw new Error(installed.error);
+      try {
+        const worker = await until("the extension's worker", async () =>
+          (await targets()).find((t) => t.type === "service_worker" && t.url.includes(installed.id)) ?? null, 15000);
+        results.tabsRemove = await tabCase("r4", async () => {
+          const r = await cdp(worker, "Runtime.evaluate", {
+            expression: `chrome.tabs.query({}).then((ts) => { const t = ts.find((t) => (t.url || "").includes("/b?r4")); return t ? chrome.tabs.remove(t.id).then(() => t.id) : null; })`,
+            awaitPromise: true, returnByValue: true,
+          });
+          if (!r.result.value) throw new Error(`chrome.tabs.remove: ${JSON.stringify(r)}`);
+        });
+      } finally {
+        await exts(`uninstall("${installed.id}", "")`);
+      }
+      // window.close() closes a tab a script opened (whatever its history).
+      results.windowClose = await (async () => {
+        const opener = await pageFor(first.id, `${base}/a`);
+        const before = new Set((await state()).tabs.map((t) => t.id));
+        await cdp(opener, "Runtime.evaluate", { expression: `window.__r5 = window.open("${base}/a?r5", "_blank"); true`, userGesture: true });
+        const tab = await until("the opened tab", async () => (await state()).tabs.find((t) => !before.has(t.id) && t.url?.includes("/a?r5")), 10000);
+        await evalApp(`nn.actions.switchToTab("${tab.id}"); return true`);
+        await toB(tab.id, "r5");
+        const page = await pageTarget(`${base}/b?r5`);
+        await cdp(page, "Runtime.evaluate", { expression: "window.close()", userGesture: true });
+        await until("tab r5 closed", async () => !(await s(`!!s.tabs["${tab.id}"]`)), 10000);
+        const now = new Set(await s(`s.windows["${mainWindow}"].tabIds`));
+        await evalApp(`nn.store.getState().reopenClosedTab("${mainWindow}"); return true`);
+        const again = await until("the reopened tab", async () => (await s(`s.windows["${mainWindow}"].tabIds`)).find((id) => !now.has(id)), 10000);
+        try {
+          return await backReachesA(again, "r5");
+        } finally {
+          await closeTab(again);
+        }
+      })();
+    } finally {
+      await evalApp(`if (globalThis.__nnConfirm) ${shell}.confirm = globalThis.__nnConfirm; nn.store.getState().updateSettings({ warnBeforeClosingWindow: ${warn} }); nn.actions.switchToTab("${first.id}"); return true`).catch(() => null);
+    }
+    const failed = Object.entries(results).filter(([, r]) => !r.canGoBack || !r.back?.startsWith("/a?"));
+    if (failed.length) throw new Error(`no Back to A after: ${failed.map(([k, r]) => `${k} ${JSON.stringify(r)}`).join(", ")}`);
+    return results;
+  });
+
+  await check("discard-outcomes", async () => {
+    // What discard answers is what happened, and the app records only that: a discard (the renderer goes, the tab
+    // sleeps, and wakes when shown), an already-discarded tab, a refusal, and unload (unsupported under NNCore).
+    const tab = await openTab(`${base}/d?discard`, "Page D", true);
+    const browser = await browserOf(tab.id);
+    const renderer = async () => (await evalApp(`return globalThis.expo.modules.NetnyahooCEF.listTasks()`)).some((t) => t.browserIds?.includes(Number(browser)));
+    const flags = () => evalApp(`const l = globalThis.nnLifecycle.state(); return { sleeping: !!l.discarded["${tab.id}"], loaded: l.loaded.includes("${tab.id}") }`);
+    const raw = (opts = "") => evalApp(`return nn.webviews.get("${tab.id}").discard(${opts})`);
+    try {
+      const out = {};
+      if (!(await renderer())) throw new Error("no renderer before the discard");
+      // unload: NNCore keeps the tab (and a regular profile): it says so, and nothing changes.
+      out.unload = await raw("{ unload: true }");
+      out.afterUnload = { renderer: await renderer(), ...(await flags()) };
+      // A discard through the app's policy.
+      out.slept = await evalApp(`return globalThis.nnLifecycle.sleepTab("${tab.id}")`);
+      out.afterSleep = { renderer: await until("the renderer gone", async () => ((await renderer()) ? null : "gone"), 5000).catch(() => "still there"), ...(await flags()) };
+      // Again: already discarded.
+      out.again = await raw();
+      // A refusal (as Chrome's for a tab outside a tab strip), through the app's policy: nothing recorded.
+      const other = await openTab(`${base}/e?refused`, "Page E", true);
+      try {
+        out.refusedSlept = await evalApp(`const h = nn.webviews.get("${other.id}"); h.discard = () => Promise.resolve("refused"); return globalThis.nnLifecycle.sleepTab("${other.id}")`);
+        out.refusedFlags = await evalApp(`return !!globalThis.nnLifecycle.state().discarded["${other.id}"]`);
+      } finally {
+        await closeTab(other.id);
+      }
+      // Wake: shown, Chrome loads it again and the app's flag clears.
+      await evalApp(`nn.actions.switchToTab("${tab.id}"); return true`);
+      out.woke = await until("awake", async () => {
+        const f = await flags();
+        return !f.sleeping && (await renderer()) ? { renderer: true, ...f } : null;
+      }, 10000).catch(async () => ({ renderer: await renderer(), ...(await flags()) }));
+      const problems = [];
+      if (out.unload !== "unsupported" || !out.afterUnload.renderer || out.afterUnload.sleeping) problems.push(`unload: ${JSON.stringify([out.unload, out.afterUnload])}`);
+      if (out.slept !== true || out.afterSleep.renderer !== "gone" || !out.afterSleep.sleeping) problems.push(`discard: ${JSON.stringify([out.slept, out.afterSleep])}`);
+      if (out.again !== "already") problems.push(`again: ${JSON.stringify(out.again)}`);
+      if (out.refusedSlept !== false || out.refusedFlags) problems.push(`refused: ${JSON.stringify([out.refusedSlept, out.refusedFlags])}`);
+      if (out.woke.sleeping || !out.woke.renderer || !out.woke.loaded) problems.push(`wake: ${JSON.stringify(out.woke)}`);
+      if (problems.length) throw new Error(problems.join("; "));
+      return out;
+    } finally {
+      await closeTab(tab.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`).catch(() => null);
     }
   });
 

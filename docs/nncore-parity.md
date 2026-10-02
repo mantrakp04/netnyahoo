@@ -202,7 +202,7 @@ and sent only when changed, progress at most 10 times a second, a held report fl
 | Prop | Status | Note |
 |---|---|---|
 | `url`, `profile`, `visible`, `warm` | done | `""` is Chrome's Default profile, `<id>` is `Profile <id>`, `incognito…` the default profile's OTR profile. `visible` and `warm` change the page once the app's batch of view updates is done (a run-loop observer before Core Animation's commit), the pages leaving first; a page leaving the screen goes transparent and stays visible to Chrome for 100 ms. Hiding Chrome's view at once blanked the old page (or left a few tiles) for a frame before the app's switch reached the screen, on most switches away from a web page (rec1522: 13 in 20 switches on the RC, 2 now, each a single frame: the incoming page a frame late, or a tile; `windowing-test.mjs`) |
-| `adoptId` | done | `nncore:<id>` (a tab Chrome made for a page), `tab:<id>` (one Chrome made on its own: an extension's tabs.create/windows.create), `restore:<tab id>` (Chrome's TabRestoreService entry the WebView tagged as it closed the tab: `nn_tab_restore_tag`/`_take`, `-[NNCoreWindow restoreTab:…]`), `clone:<tab id>` (`duplicateTab:`). A restore in flight is cancelled by a close |
+| `adoptId` | done | `nncore:<id>` (a tab Chrome made for a page), `tab:<id>` (one Chrome made on its own: an extension's tabs.create/windows.create), `restore:<tab id>` (Chrome's TabRestoreService entry carrying the tab's id, bound while the tab lives and stamped on each new navigation, so a close Chrome records first keeps it: `nn_tab_restore_tag`/`_take`, `-[NNCoreWindow restoreTab:…]`), `clone:<tab id>` (`duplicateTab:`). A restore in flight is cancelled by a close |
 | `transferKey` | done | A tab moving between windows is parked or taken from the old view and moves into the new window's Browser (`adoptTab:`); it is also the tab's key in strip transactions. A window closing while one of its tabs is on its way out (its last tab dropped onto another window) hands the tab to a hidden window first (`keepTransfersOfWindow:`); one nobody takes within 3 s closes at once (`closeNow`) |
 | `standalone`, `extensionHost` | partial | Extension popups and side panels (`extensionHost` "popup" or "sidePanel", which implies `standalone`): Chrome's own `ExtensionViewHost`, bound to the window's Browser for the page's profile (`-[NNCoreWindow openExtensionView:profile:kind:]`, `nn_extension_view.mm`), so `chrome.windows`' current window and the active tab are the window's; in no strip. Chrome closing it (`window.close()`, Esc, the extension unloaded, its renderer gone) reaches the app as `onWindowClose`; it closes with its window too. A `standalone` view without `extensionHost` is a tab in a hidden per-profile window (an older engine). Needs a visual check |
 | `pageBackgroundColor`, `autoPictureInPicture` | partial | Wired (`setPageBackgroundColor:`, auto PiP from the page script's video state); both need a visible window to check |
@@ -233,7 +233,7 @@ and sent only when changed, progress at most 10 times a second, a held report fl
 | `loadUrl`, `loadOpenedUrl`, `goBack`, `goForward`, `goToOffset`, `reload`, `forceReload`, `stopLoading`, `focus` | done | |
 | `setMuted`, `zoomStep`, `find`, `stopFinding`, `showDevTools` | done | DevTools dock in the tab's view |
 | `executeJavaScript`, `evaluate`, `navigationEntries` | done | NNCore's renderer side (`NNContentRendererClient`, a mojo channel) |
-| `getSecurityInfo`, `openBlockedPopup`, `clearSiteData`, `discard`, `setFrozen` | done | |
+| `getSecurityInfo`, `openBlockedPopup`, `clearSiteData`, `discard`, `setFrozen` | done | `discard` answers what happened (`discarded`, `already`, `refused`; `unload` is `unsupported`: NNCore keeps a regular profile loaded), and a woken tab sends `onReady` again |
 | `downloadFavicon`, `downloadImage` | done | `data:` PNGs; Chrome's FaviconService keeps icons |
 | `mediaCommand`, `notificationAction` | done | |
 | `print`, `runPageCommand` | partial | Chrome's commands (print preview, save page, system print, caret browsing): dialogs in a hidden run |
@@ -294,7 +294,7 @@ The app closes a tab by unmounting its WebView; NNCore closes it at once without
 | `selectDevice`, `refreshDeviceChooser`, `openBluetoothSettings` | partial | No devices in a hidden run; the last opens System Settings |
 | `startCasting`, `stopCasting`, `terminateCastRoute` | partial | No Cast sinks here |
 | `onSidePanel` | partial | Engine's `extensionSidePanel`; needs a side panel opened by the extension |
-| `changeCaptureSource`, `stopCapture` | partial | "Share this tab instead" and Stop sharing, engine-proven with tab capture (e65d1bd5) |
+| `changeCaptureSource`, `stopCapture` | partial | "Share this tab instead" and Stop sharing, engine-proven with tab capture (e65d1bd5); the capturer's own share moves (its infobar, by capturing frame: `chromium-tab-sharing-capturer.patch`), never another call's |
 | `showAutofillSuggestions` | partial | Needs a focused field in a key window |
 
 ## `NetnyahooSwipe` (`packages/nncore/src/swipe.tsx`)
@@ -360,7 +360,7 @@ NNCore:
 | `nn_prefs_get`, `_set` (allow-listed) | password and autofill switches |
 | `nn_tasks_list`, `_kill`, `nn_components_list` | `listTasks`, `killTask`, `components` |
 | `nn_history_*`, `nn_favicons_*`, `nn_bookmarks_*` | `history.ts`, `favicons.ts`, `bookmarks.ts` (through `engineCall`) |
-| `nn_tab_restore_tag`, `_take`, `_load` | native: the WebView's close and `restore:` |
+| `nn_tab_restore_tag`, `_take`, `_load` | native: the WebView's attach (and close) and `restore:` |
 | `nn_tabs_watch`, `nn_tabs_group` | tab groups in strip transactions |
 
 ## What's left before a release-signed NNCore build can sit next to the CEF build

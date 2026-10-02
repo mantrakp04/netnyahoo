@@ -8,8 +8,11 @@
 //
 //   nn_tab_restore_tag({tab, key}): names the open tab |tab| (its chrome.tabs
 //     id) by |key| (the app's tab id) on each of its navigations, as session
-//     data Chrome saves with them: call it as the app closes the tab, so the
-//     entry Chrome records carries it, on disk too.
+//     data Chrome saves with them, and on every navigation it makes from then
+//     on: call it when the app's view takes the tab. Chrome records a closing
+//     tab before the app hears of the close (a window closed at once, an
+//     extension's chrome.tabs.remove, a page's window.close()), so the key has
+//     to be there already; the entry Chrome records carries it, on disk too.
 //   nn_tab_restore_take({key}) -> {state: "<base64>" | null}
 //     The navigations of the closed tab named |key|, in the format
 //     CefBrowserHost::RestoreTabInBrowser reads (its GetNavigationState:
@@ -45,6 +48,8 @@
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_observer.h"
+#include "content/public/browser/web_contents_user_data.h"
 #include "url/gurl.h"
 
 namespace netnyahoo {
@@ -91,6 +96,54 @@ void RegisterTabKey() {
       ->RegisterExtendedInfoHandler(kTabKey,
                                     std::make_unique<TabKeyHandler>());
 }
+
+// A live tab's key: on each of its NavigationEntries, the ones it makes later
+// too (a new entry starts without user data).
+class TabKeyBinding : public content::WebContentsObserver,
+                      public content::WebContentsUserData<TabKeyBinding> {
+ public:
+  ~TabKeyBinding() override = default;
+
+  void Bind(std::string key) {
+    key_ = std::move(key);
+    Stamp();
+  }
+
+  // content::WebContentsObserver:
+  void DidStartNavigation(content::NavigationHandle*) override { Stamp(); }
+  void NavigationEntryCommitted(const content::LoadCommittedDetails&) override {
+    Stamp();
+  }
+
+ private:
+  friend class content::WebContentsUserData<TabKeyBinding>;
+  explicit TabKeyBinding(content::WebContents* contents)
+      : content::WebContentsObserver(contents),
+        content::WebContentsUserData<TabKeyBinding>(*contents) {}
+
+  void StampEntry(content::NavigationEntry* entry) {
+    auto* data = static_cast<TabKeyData*>(entry->GetUserData(kTabKeyData));
+    if (!data || data->key != key_) {
+      entry->SetUserData(kTabKeyData, std::make_unique<TabKeyData>(key_));
+    }
+  }
+
+  void Stamp() {
+    content::NavigationController& controller = web_contents()->GetController();
+    for (int i = 0; i < controller.GetEntryCount(); ++i) {
+      StampEntry(controller.GetEntryAtIndex(i));
+    }
+    if (content::NavigationEntry* pending = controller.GetPendingEntry()) {
+      StampEntry(pending);
+    }
+  }
+
+  std::string key_;
+
+  WEB_CONTENTS_USER_DATA_KEY_DECL();
+};
+
+WEB_CONTENTS_USER_DATA_KEY_IMPL(TabKeyBinding);
 
 bool HasKey(const Tab& tab, const std::string& key) {
   for (const auto& navigation : tab.navigations) {
@@ -273,14 +326,7 @@ NN_ENGINE_CALL(nn_tab_restore_tag) {
     return call.TakeReply().Error("no such tab");
   }
   netnyahoo::RegisterTabKey();
-  content::NavigationController& controller = contents->GetController();
-  for (int i = 0; i < controller.GetEntryCount(); ++i) {
-    controller.GetEntryAtIndex(i)->SetUserData(
-        netnyahoo::kTabKeyData, std::make_unique<netnyahoo::TabKeyData>(key));
-  }
-  if (content::NavigationEntry* pending = controller.GetPendingEntry()) {
-    pending->SetUserData(netnyahoo::kTabKeyData,
-                         std::make_unique<netnyahoo::TabKeyData>(key));
-  }
+  netnyahoo::TabKeyBinding::CreateForWebContents(contents);
+  netnyahoo::TabKeyBinding::FromWebContents(contents)->Bind(key);
   call.TakeReply().Ok();
 }

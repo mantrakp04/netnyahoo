@@ -70,7 +70,6 @@ function shownTabIds(s: BrowserState): Set<string> {
 }
 
 const loadedTabIds = () => [...webviews.keys()].filter((id) => !useLifecycle.getState().discarded[id]);
-const unloaded = new Set<string>();
 
 export function keepAliveReason(s: BrowserState, id: string): string | null {
   const tab = s.tabs[id];
@@ -119,20 +118,19 @@ async function hasUnsavedInput(handle: WebViewHandle): Promise<boolean | null> {
   return typeof result === "boolean" ? result : null;
 }
 
-export async function sleepTab(id: string, unload = false): Promise<boolean> {
+export async function sleepTab(id: string): Promise<boolean> {
   const handle = webviews.get(id);
-  const asleep = !!useLifecycle.getState().discarded[id];
-  if (!handle || unloaded.has(id) || (asleep && !unload)) return false;
   const l = useLifecycle.getState();
-  const unsaved = asleep ? false : l.frozen[id] ? (dirtyWhenFrozen.get(id) ?? null) : await hasUnsavedInput(handle);
+  if (!handle || l.discarded[id]) return false;
+  const unsaved = l.frozen[id] ? (dirtyWhenFrozen.get(id) ?? null) : await hasUnsavedInput(handle);
   if (unsaved !== false) return false;
   // The page's reports that came while we waited (audio, loading, capture) count.
   applyHeldReports();
   const s = store();
   if (shownTabIds(s).has(id) || keepAliveReason(s, id) || webviews.get(id) !== handle) return false;
-  if (await handle.discard({ unload })) unloaded.add(id);
-  noteDiscarded(id);
-  return true;
+  // Only what Chrome did counts, and its onDiscarded records it (a later onReady, the tab woken, clears it): a refusal
+  // leaves the tab awake.
+  return (await handle.discard()) === "discarded";
 }
 
 // MARK: Web view events (ContentCard)
@@ -154,7 +152,6 @@ export function noteGone(tabId: string) {
 
 function forget(tabId: string, all: boolean) {
   dirtyWhenFrozen.delete(tabId);
-  unloaded.delete(tabId);
   busyStreak.delete(tabId);
   if (all) hiddenAt.delete(tabId);
   const l = useLifecycle.getState();
@@ -192,8 +189,7 @@ export async function sweep(overrides: Partial<typeof POLICY> = {}): Promise<str
     const unused = unusedProfiles(s, now, policy.profileIdleMs);
     const candidates = [...webviews.keys()].filter((id) => {
       const tab = s.tabs[id];
-      if (!tab || shown.has(id) || unloaded.has(id)) return false;
-      if (useLifecycle.getState().discarded[id]) return unused.has(tab.profileId);
+      if (!tab || shown.has(id) || useLifecycle.getState().discarded[id]) return false;
       const idle = now - (hiddenAt.get(id) ?? now);
       if (!unused.has(tab.profileId) && (recent.has(id) || (pressure === "normal" && idle < policy.idleMs))) return false;
       return !keepAliveReason(s, id);
@@ -201,7 +197,7 @@ export async function sweep(overrides: Partial<typeof POLICY> = {}): Promise<str
     candidates.sort((a, b) => (hiddenAt.get(a) ?? now) - (hiddenAt.get(b) ?? now));
     for (const id of candidates) {
       if (slept.length >= policy.perSweep) break;
-      if (await sleepTab(id, unused.has(s.tabs[id]!.profileId))) slept.push(id);
+      if (await sleepTab(id)) slept.push(id);
     }
     releaseUnusedProfiles();
   } finally {
@@ -229,7 +225,6 @@ function releaseUnusedProfiles() {
   const s = store();
   const inUse = new Set(Object.values(s.windows).map((w) => engineProfile(w.profileId)));
   for (const id of webviews.keys()) {
-    if (unloaded.has(id)) continue;
     const tab = s.tabs[id];
     if (tab) inUse.add(engineProfile(tab.profileId));
   }

@@ -578,6 +578,7 @@ const char kPageReportsKey = 0;
   _tab = tab;
   tab.delegate = self;
   [NNCoreTabs setView:self forTab:tab];
+  [self bindRestoreKey];
   [self takePageReports];
   [self adoptIntoWindow];
   NSView *page = tab.view;
@@ -604,6 +605,15 @@ const char kPageReportsKey = 0;
   // The strip names the tab by this view's key from now on (re-sent as Chrome's report, cmd null).
   if (NNCoreWindowController *controller = self.controller)
     [NNCoreTabStrip changedInWindow:controller profile:tab.profile cause:NSNull.null];
+}
+
+// Chrome's TabRestoreService entry for the tab carries the app's id for it, so ⇧⌘T finds this one. Bound while the tab
+// lives (the engine stamps each navigation it makes after): Chrome records a tab that closes before the app hears of it
+// (its window closed at once, an extension's chrome.tabs.remove, a page's window.close()).
+- (void)bindRestoreKey {
+  if (_tab && _transferKey.length && !nncore_host::IsIncognito(_profile) && NNCoreHost.isStarted)
+    [NNCoreServices call:@"nn_tab_restore_tag" profile:_profile args:@{@"tab" : @(_tab.tabId), @"key" : _transferKey}
+              completion:^(NSDictionary *) {}];
 }
 
 - (void)detach {
@@ -692,7 +702,7 @@ const char kPageReportsKey = 0;
     return;
   }
   _closing = YES;
-  // The entry Chrome's TabRestoreService records for the tab carries the app's id for it, so ⇧⌘T finds this one.
+  // Again as it closes (bindRestoreKey), for a key that changed since.
   if (_transferKey.length && !nncore_host::IsIncognito(_profile) && NNCoreHost.isStarted)
     [NNCoreServices call:@"nn_tab_restore_tag" profile:_profile args:@{@"tab" : @(tab.tabId), @"key" : _transferKey}
               completion:^(NSDictionary *) {}];
@@ -1734,8 +1744,15 @@ const char kPageReportsKey = 0;
   if ([_tab respondsToSelector:@selector(resolveUnresponsive:)]) [_tab resolveUnresponsive:terminate];
 }
 
-- (BOOL)discard:(BOOL)unload {
-  return [_tab respondsToSelector:@selector(discard)] && [_tab discard];
+// What the discard did, for the app to record only that: "discarded" (Chrome discarded the page now: its renderer goes,
+// the tab and its history stay, and it loads again when shown), "already", "refused" (Chrome wouldn't, or no page yet),
+// or "unsupported" for unload: NNCore keeps a regular profile (and its tabs) loaded, and a private one goes with its
+// windows, so no tab is ever closed to let a profile go (CEF closed the browser).
+- (NSString *)discard:(BOOL)unload {
+  if (unload) return @"unsupported";
+  if (![_tab respondsToSelector:@selector(discard)]) return @"refused";
+  if (_tab.discarded) return @"already";
+  return [_tab discard] && _tab.discarded ? @"discarded" : @"refused";
 }
 
 - (BOOL)discarded {
@@ -1743,8 +1760,10 @@ const char kPageReportsKey = 0;
 }
 
 - (void)tabDidChangeDiscarded:(NNCoreTab *)tab {
-  // As CEF's onDiscarded: the page's URL, to load again when it shows.
+  // As CEF's onDiscarded: the page's URL, to load again when it shows. Loading again (shown or navigated), the tab is
+  // ready again, as CEF said.
   if (tab.discarded) [self emit:@"discarded" payload:@{@"url" : tab.url ?: @""}];
+  else [self emit:@"ready" payload:@{@"browserId" : @(nncore_host::BrowserId(tab)), @"tabId" : @(tab.tabId)}];
 }
 
 - (void)tabBecameUnresponsive:(NNCoreTab *)tab {

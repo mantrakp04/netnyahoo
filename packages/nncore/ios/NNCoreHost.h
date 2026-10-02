@@ -34,7 +34,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (BOOL)devShowBluetoothChooser:(int)browserId unauthorized:(BOOL)unauthorized NS_SWIFT_NAME(devShowBluetoothChooser(browserId:unauthorized:));
 + (NSArray<NSDictionary *> *)testChooserEvents;
 // Cast: Chrome's dialog for a tab (NO when the media router is off), its answers, and a profile's routes.
-+ (BOOL)shareTabInstead:(int)targetBrowserId NS_SWIFT_NAME(shareTabInstead(browserId:));
++ (BOOL)shareTabInstead:(int)capturerBrowserId target:(int)targetBrowserId NS_SWIFT_NAME(shareTabInstead(capturer:target:));
 + (BOOL)showCastDialog:(int)browserId NS_SWIFT_NAME(showCastDialog(browserId:));
 + (void)castDialog:(int)dialogId start:(NSString *)sink mode:(int)mode NS_SWIFT_NAME(castDialog(_:start:mode:));
 + (void)castDialog:(int)dialogId stop:(NSString *)route NS_SWIFT_NAME(castDialog(_:stop:));

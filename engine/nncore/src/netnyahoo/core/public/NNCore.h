@@ -593,10 +593,11 @@ NNCORE_EXPORT
              timeout:(NSTimeInterval)timeout
           completion:(void (^)(NSDictionary* _Nullable result,
                                NSString* _Nullable error))completion;
-// While another tab is being shared (getDisplayMedia's tab capture): Chrome's "Share this
-// tab instead" for this tab (the capture moves here). NO if Chrome offers none here.
-@property(readonly) BOOL canShareThisTabInstead;
-- (BOOL)shareThisTabInstead;
+// While `capturer` shares another tab (getDisplayMedia's tab capture): Chrome's "Share this
+// tab instead" for this tab on that share's bar (that capture, and no other, moves here). NO
+// if Chrome offers none here for it.
+- (BOOL)canShareThisTabInsteadFor:(NNCoreTab*)capturer;
+- (BOOL)shareThisTabInsteadFor:(NNCoreTab*)capturer;
 // Chrome's autofill dropdown at the page's focused field, now (CEF's
 // CefShowAutofillSuggestions): passwords: the saved-passwords list. NO without a field.
 - (BOOL)showAutofillSuggestions:(BOOL)passwords;

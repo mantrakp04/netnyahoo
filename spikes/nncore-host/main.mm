@@ -1139,8 +1139,10 @@ static void Log(NSDictionary* event) {
     NNCoreTab* t = [_window restoreTab:cmd[@"state"] profile:profile foreground:NO];
     reply(t ? @(t.tabId) : NSNull.null);
   } else if ([name isEqualToString:@"share"]) {
-    BOOL can = tab.canShareThisTabInstead;
-    reply(@{@"can" : @(can), @"did" : @([cmd[@"go"] boolValue] ? [tab shareThisTabInstead] : NO)});
+    // "Share this tab instead" on `tab` for the share the tab `capturerId` makes.
+    NNCoreTab* capturer = [self tabWithId:[cmd[@"capturerId"] integerValue]];
+    BOOL can = capturer && [tab canShareThisTabInsteadFor:capturer];
+    reply(@{@"can" : @(can), @"did" : @(can && [cmd[@"go"] boolValue] ? [tab shareThisTabInsteadFor:capturer] : NO)});
   } else if ([name isEqualToString:@"castRoutes"]) {
     [profile watchCastRoutes];
     reply(@YES);

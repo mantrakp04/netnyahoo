@@ -37,7 +37,11 @@ export function requestDisplayMedia(tabId: string, request: DisplayMediaRequest)
 }
 
 // The NNCore acceptance run answers the picker as a click would.
-if (__DEV__) (globalThis as { nnSharePicker?: unknown }).nnSharePicker = { answerDisplayMedia: (tabId: string, sourceId: string | null) => answerDisplayMedia(tabId, sourceId) };
+if (__DEV__)
+  (globalThis as { nnSharePicker?: unknown }).nnSharePicker = {
+    answerDisplayMedia: (tabId: string, sourceId: string | null) => answerDisplayMedia(tabId, sourceId),
+    shareTab: (tabId: string, sharedTabId: string) => shareTab(tabId, sharedTabId),
+  };
 
 export function answerDisplayMedia(tabId: string, sourceId: string | null) {
   const request = useMedia.getState().displayRequests[tabId];
@@ -48,6 +52,17 @@ export function answerDisplayMedia(tabId: string, sourceId: string | null) {
     delete displayRequests[tabId];
     return { displayRequests };
   });
+}
+
+// Shares another tab: its capture id, read just before (a renderer change replaces it).
+async function shareTab(tabId: string, sharedTabId: string) {
+  const request = useMedia.getState().displayRequests[tabId];
+  if (!request) return;
+  const source = await webviews.get(sharedTabId)?.mediaCaptureSourceId();
+  // A newer request replaced this one meanwhile (and answered it): this choice was for the old one.
+  if (useMedia.getState().displayRequests[tabId] !== request) return;
+  if (source) noteTabShare(tabId, sharedTabId, request.origin);
+  answerDisplayMedia(tabId, source ?? null);
 }
 
 export function cancelDisplayMediaOnNavigation() {
@@ -106,18 +121,7 @@ export function SharePicker({ tabId, paneWidth }: { tabId: string; paneWidth: nu
   const valid = !!selected && (isTab(selected) || sources.some((s) => s.id === selected));
   const share = (id: string | null = selected) => {
     if (!id) return;
-    // Renderer changes replace capture IDs; read the ID immediately before sharing.
-    if (isTab(id)) {
-      const shared = id.slice(TAB.length);
-      void webviews
-        .get(shared)
-        ?.mediaCaptureSourceId()
-        .then((source) => {
-          if (source) noteTabShare(tabId, shared, request.origin);
-          answerDisplayMedia(tabId, source);
-        });
-      return;
-    }
+    if (isTab(id)) return void shareTab(tabId, id.slice(TAB.length));
     if (sources.some((s) => s.id === id)) answerDisplayMedia(tabId, id);
   };
   const cancel = () => answerDisplayMedia(tabId, null);

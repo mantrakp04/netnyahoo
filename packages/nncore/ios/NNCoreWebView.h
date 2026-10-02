@@ -103,7 +103,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)notificationAction:(NSString *)notificationId action:(NSString *)action NS_SWIFT_NAME(notificationAction(_:action:));
 
 - (void)resolveUnresponsive:(BOOL)terminate NS_SWIFT_NAME(resolveUnresponsive(terminate:));
-- (BOOL)discard:(BOOL)unload NS_SWIFT_NAME(discard(unload:));
+- (NSString *)discard:(BOOL)unload NS_SWIFT_NAME(discard(unload:));
 - (void)closeBrowser;
 
 @end

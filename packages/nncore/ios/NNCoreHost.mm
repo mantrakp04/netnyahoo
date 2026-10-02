@@ -527,10 +527,12 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   return [NNCoreEngine respondsToSelector:@selector(testChooserEvents)] ? NNCoreEngine.testChooserEvents ?: @[] : @[];
 }
 
-// "Share this tab instead": the capture moves to the target tab (Chrome's tab-sharing infobar's own action).
-+ (BOOL)shareTabInstead:(int)targetBrowserId {
+// "Share this tab instead": the capturer's capture (and no other share's) moves to the target tab (Chrome's tab-sharing
+// infobar's own action, on that share's bar).
++ (BOOL)shareTabInstead:(int)capturerBrowserId target:(int)targetBrowserId {
+  NNCoreTab *capturer = nncore_host::TabWithBrowserId(capturerBrowserId);
   NNCoreTab *tab = nncore_host::TabWithBrowserId(targetBrowserId);
-  return [tab respondsToSelector:@selector(shareThisTabInstead)] && tab.canShareThisTabInstead && [tab shareThisTabInstead];
+  return capturer && [tab respondsToSelector:@selector(shareThisTabInsteadFor:)] && [tab shareThisTabInsteadFor:capturer];
 }
 
 + (BOOL)showCastDialog:(int)browserId {

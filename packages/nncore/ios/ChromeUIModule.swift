@@ -46,7 +46,7 @@ public class ChromeUIModule: Module {
     }.runOnQueue(.main)
 
     AsyncFunction("changeCaptureSource") { (capturer: Int, target: Int) -> Bool in
-      NNCoreHost.shareTabInstead(browserId: Int32(target))
+      NNCoreHost.shareTabInstead(capturer: Int32(capturer), target: Int32(target))
     }.runOnQueue(.main)
     AsyncFunction("stopCapture") { (capturer: Int) in NNCoreHost.stopCapture(browserId: Int32(capturer)) }.runOnQueue(.main)
     AsyncFunction("showAutofillSuggestions") { (browserId: Int, passwords: Bool) in

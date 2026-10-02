@@ -211,9 +211,14 @@ export type WebViewHandle = {
   notificationAction(id: string, action: "click" | "close"): Promise<void>;
 
   resolveUnresponsive(terminate: boolean): Promise<void>;
-  discard(options?: { unload?: boolean }): Promise<boolean>;
+  discard(options?: { unload?: boolean }): Promise<DiscardOutcome>;
   setFrozen(frozen: boolean): Promise<void>;
 };
+
+// What discard() did: "discarded" (Chrome discarded the page now: its renderer goes, the tab and its history stay, and
+// it loads again when shown, with onReady), "already" (it was), "refused" (Chrome wouldn't, or there's no page yet), or
+// "unsupported": unload, which NNCore doesn't do (a regular profile stays loaded, a private one goes with its windows).
+export type DiscardOutcome = "discarded" | "already" | "refused" | "unsupported";
 
 type Evt<T> = (e: NativeSyntheticEvent<T>) => void;
 type NativeEvents = {
@@ -296,7 +301,7 @@ type NativeHandle = Omit<
   downloadFavicon(url: string): Promise<FaviconImage | null>;
   loadUrl(url: string, userInitiated?: boolean): Promise<void>;
   resolvePasswordPrompt(answer: string, username: string | null, password: string | null): Promise<void>;
-  discard(unload: boolean): Promise<boolean>;
+  discard(unload: boolean): Promise<DiscardOutcome>;
 };
 
 const NativeWebView = requireNativeViewManager<NativeProps>("NetnyahooCEF");
@@ -369,7 +374,7 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
       mediaCaptureSourceId: () => call(null, (n) => n.mediaCaptureSourceId()),
       notificationAction: (id, action) => call(undefined, (n) => n.notificationAction(id, action)),
       resolveUnresponsive: (terminate) => call(undefined, (n) => n.resolveUnresponsive(terminate)),
-      discard: (options) => call(false, (n) => n.discard(options?.unload ?? false)),
+      discard: (options) => call<DiscardOutcome>("refused", (n) => n.discard(options?.unload ?? false)),
       setFrozen: (frozen) => call(undefined, (n) => n.setFrozen(frozen)),
     };
   });

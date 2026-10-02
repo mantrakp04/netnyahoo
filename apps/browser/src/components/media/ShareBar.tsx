@@ -42,26 +42,41 @@ export function noteTabShare(capturerTabId: string, capturedTabId: string, origi
   useMedia.setState((m) => ({ tabShares: { ...m.tabShares, [capturerTabId]: { capturedTabId, origin, dismissed: {} } } }));
 }
 
+// A share ends when its capture does. "Share this tab instead" stops the old source before it starts the new one, so the
+// capture goes off for a moment: a share is forgotten only once it stays off.
+const SHARE_END_MS = 1500;
+
 export function startTabShareCleanup() {
   return usePages.subscribe((p, prev) => {
     if (p.pages === prev.pages) return;
     const shares = useMedia.getState().tabShares;
     const ended = Object.keys(shares).filter((id) => prev.pages[id]?.mediaAccess?.screen && !p.pages[id]?.mediaAccess?.screen);
     if (!ended.length) return;
-    const next = { ...shares };
-    for (const id of ended) delete next[id];
-    useMedia.setState({ tabShares: next });
+    setTimeout(() => {
+      const gone = ended.filter((id) => !usePages.getState().pages[id]?.mediaAccess?.screen);
+      if (!gone.length) return;
+      useMedia.setState((m) => {
+        const next = { ...m.tabShares };
+        for (const id of gone) delete next[id];
+        return { tabShares: next };
+      });
+    }, SHARE_END_MS);
   });
 }
 
-async function shareInstead(capturer: string, tabId: string) {
+// The engine moves this capturer's share only (each share has its own bar on every tab), and says whether it did.
+async function shareInstead(capturer: string, tabId: string): Promise<boolean> {
   const ok = await changeCaptureSource(browserIdOf(capturer), browserIdOf(tabId));
-  if (!ok) return;
+  if (!ok) return false;
   useMedia.setState((m) => {
     const share = m.tabShares[capturer];
     return share ? { tabShares: { ...m.tabShares, [capturer]: { ...share, capturedTabId: tabId, dismissed: {} } } } : m;
   });
+  return true;
 }
+
+// The NNCore acceptance run presses "Share This Tab Instead" as a click would.
+if (__DEV__) (globalThis as { nnShareBar?: unknown }).nnShareBar = { shareInstead, tabShares: () => useMedia.getState().tabShares };
 
 function dismiss(capturer: string, tabId: string) {
   useMedia.setState((m) => {

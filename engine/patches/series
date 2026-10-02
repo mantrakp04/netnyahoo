@@ -53,6 +53,7 @@ chromium chromium-window-hosted.patch
 chromium chromium-extension-installed-bubble.patch
 chromium chromium-pip-close-keeps-playing.patch
 chromium chromium-pip-overlay-window.patch
+chromium chromium-tab-sharing-capturer.patch
 chromium chromium-netnyahoo-layer.patch
 
 layer engine/chromium

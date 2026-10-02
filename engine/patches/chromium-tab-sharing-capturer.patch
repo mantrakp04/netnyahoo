@@ -1,0 +1,46 @@
+diff --git a/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.cc b/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.cc
+--- a/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.cc
++++ b/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.cc
+@@ -211,12 +211,13 @@
+   CHECK(infobar_manager);
+   CHECK(ui);
+ 
++  auto delegate = base::WrapUnique(new TabSharingInfoBarDelegate(
++      web_contents, role, share_this_tab_instead_button_state,
++      captured_surface_control_active, ui, capture_type));
++  delegate->capturer_id_ = capturer_id;  // Netnyahoo
+   std::unique_ptr<infobars::InfoBar> new_infobar = CreateTabSharingInfoBar(
+-      base::WrapUnique(new TabSharingInfoBarDelegate(
+-          web_contents, role, share_this_tab_instead_button_state,
+-          captured_surface_control_active, ui, capture_type)),
+-      shared_tab_id, capturer_id, shared_tab_name, capturer_name, role,
+-      capture_type, ui->GetUmaLogger().GetWeakPtr());
++      std::move(delegate), shared_tab_id, capturer_id, shared_tab_name,
++      capturer_name, role, capture_type, ui->GetUmaLogger().GetWeakPtr());
+ 
+   return old_infobar ? infobar_manager->ReplaceInfoBar(old_infobar,
+                                                        std::move(new_infobar))
+diff --git a/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.h b/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.h
+--- a/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.h
++++ b/chrome/browser/ui/tab_sharing/tab_sharing_infobar_delegate.h
+@@ -119,6 +119,10 @@
+   std::u16string GetButtonTooltip(TabSharingInfoBarButton button) const;
+   int GetButtons() const;
+ 
++  // Netnyahoo: the capturing frame of the share this infobar is for. A tab shows
++  // one infobar per share; "Share this tab instead" must move the right one.
++  content::GlobalRenderFrameHostId capturer_id() const { return capturer_id_; }
++
+   void Stop();
+   void ShareThisTabInstead();
+   void OnCapturedSurfaceControlActivityIndicatorPressed();
+@@ -146,6 +150,9 @@
+   // Creates and removes delegate's infobar; outlives delegate.
+   const raw_ptr<TabSharingUI, AcrossTasksDanglingUntriaged> ui_;
+ 
++  // Netnyahoo: see capturer_id().
++  content::GlobalRenderFrameHostId capturer_id_;
++
+   // Indicates whether this instance is used for casting or capturing.
+   const TabShareType capture_type_;
+ 

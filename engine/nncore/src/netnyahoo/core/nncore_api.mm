@@ -56,6 +56,7 @@
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/reload_type.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/extension_action.h"
@@ -2113,36 +2114,50 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 }
 
 namespace {
-// Chrome's tab-sharing infobar on this tab (it exists while some tab shares a tab).
-TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents) {
+// Chrome's tab-sharing infobar on this tab for the share `capturer` makes. Each share
+// puts one on every tab, so a tab shows one per share: matched by its capturing frame
+// (the capturer's main frame, so two shares from one tab can't be told apart: none).
+TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents,
+                                                 content::WebContents* capturer) {
   auto* manager =
       contents ? infobars::ContentInfoBarManager::FromWebContents(contents) : nullptr;
-  if (!manager) {
+  if (!manager || !capturer) {
     return nullptr;
   }
+  TabSharingInfoBarDelegate* found = nullptr;
   for (infobars::InfoBar* infobar : manager->infobars()) {
-    if (infobar->delegate()->GetIdentifier() ==
+    if (infobar->delegate()->GetIdentifier() !=
         infobars::InfoBarDelegate::TAB_SHARING_INFOBAR_DELEGATE) {
-      return static_cast<TabSharingInfoBarDelegate*>(infobar->delegate());
+      continue;
+    }
+    auto* sharing = static_cast<TabSharingInfoBarDelegate*>(infobar->delegate());
+    content::RenderFrameHost* frame =
+        content::RenderFrameHost::FromID(sharing->capturer_id());
+    if (frame && content::WebContents::FromRenderFrameHost(frame) == capturer) {
+      if (found) {
+        return nullptr;
+      }
+      found = sharing;
     }
   }
-  return nullptr;
+  return found;
 }
 }  // namespace
 
-- (BOOL)canShareThisTabInstead {
-  TabSharingInfoBarDelegate* sharing = TabSharingDelegateFor(_contents);
+- (BOOL)canShareThisTabInsteadFor:(NNCoreTab*)capturer {
+  TabSharingInfoBarDelegate* sharing =
+      TabSharingDelegateFor(_contents, capturer.contents);
   return sharing &&
          (sharing->GetButtons() & TabSharingInfoBarDelegate::kShareThisTabInstead) &&
          sharing->IsButtonEnabled(TabSharingInfoBarDelegate::kShareThisTabInstead);
 }
 
-- (BOOL)shareThisTabInstead {
-  if (!self.canShareThisTabInstead) {
+- (BOOL)shareThisTabInsteadFor:(NNCoreTab*)capturer {
+  if (![self canShareThisTabInsteadFor:capturer]) {
     return NO;
   }
-  // Chrome's "Share this tab instead": the capture moves here.
-  TabSharingDelegateFor(_contents)->ShareThisTabInstead();
+  // Chrome's "Share this tab instead" on that share's bar: its capture moves here.
+  TabSharingDelegateFor(_contents, capturer.contents)->ShareThisTabInstead();
   return YES;
 }
 

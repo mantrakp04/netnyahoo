@@ -1312,10 +1312,10 @@ try {
     await waitFor(async () => (await tabState(z.tabId))?.loading === false);
     const px = await attach((t) => t.url.includes("from=capturer"));
     const started = (await px.send("Runtime.evaluate", { expression: "Promise.race([navigator.mediaDevices.getDisplayMedia({ video: true }).then((s) => { window.__s = s; return 'capturing'; }, (e) => 'error ' + e.name), new Promise((r) => setTimeout(() => r('timeout'), 8000))])", awaitPromise: true, userGesture: true, returnByValue: true })).result?.result?.value;
-    const zBefore = await waitFor(async () => { const r = await cmd("share", { tabId: z.tabId }); return r.can ? r : null; }, 5000);
-    const moved = await cmd("share", { tabId: z.tabId, go: true });
-    const yAfter = await waitFor(async () => { const r = await cmd("share", { tabId: y.tabId }); return r.can ? r : null; }, 5000);
-    check("S23", "getDisplayMedia (tab) → other tabs canShareThisTabInstead; shareThisTabInstead moves the capture there", started === "capturing" && zBefore && moved.did && yAfter, { started, zBefore, moved, yAfter });
+    const zBefore = await waitFor(async () => { const r = await cmd("share", { tabId: z.tabId, capturerId: x.tabId }); return r.can ? r : null; }, 5000);
+    const moved = await cmd("share", { tabId: z.tabId, capturerId: x.tabId, go: true });
+    const yAfter = await waitFor(async () => { const r = await cmd("share", { tabId: y.tabId, capturerId: x.tabId }); return r.can ? r : null; }, 5000);
+    check("S23", "getDisplayMedia (tab) → other tabs canShareThisTabInsteadFor: the capturer; shareThisTabInsteadFor: moves its capture there", started === "capturing" && zBefore && moved.did && yAfter, { started, zBefore, moved, yAfter });
     const stop = await cmd("capture", { tabId: x.tabId });
     check("S23", "stopCapture on the capturing tab", stop.stopped === true, stop);
     px.close();
