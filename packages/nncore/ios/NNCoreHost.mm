@@ -3,6 +3,7 @@
 // second Chromium: NSApp is Chrome's BrowserCrApplication, and NNCore makes -terminate: follow Cocoa's
 // applicationShouldTerminate: contract, so the app's own quit flow (ShellApp.shouldTerminate) runs as on CEF.
 #import <Security/Security.h>
+#import <objc/runtime.h>
 
 #import "NNCoreInternal.h"
 #import "NNCoreServices.h"
@@ -337,8 +338,15 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   // marks its pages hidden (WebContentsOcclusionCheckerMac / macOS occlusion) and drops their input, so a run's
   // results would depend on what the owner has open. Chrome's own browser tests use this switch for the same
   // reason. NETNYAHOO_ALLOW_OCCLUSION=1 keeps Chrome's behaviour (the acceptance run's occlusion check uses it).
-  if (getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_ALLOW_OCCLUSION"))
+  if (getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_ALLOW_OCCLUSION")) {
     extra.push_back("--disable-backgrounding-occluded-windows");
+    // The switch makes an occluded page visible, but only once Chrome marks it occluded, and WebContentsViewCocoa
+    // waits a second to do that: in a covered window, every tab shown (a switch, a new tab) stayed hidden for a
+    // second (the 0.2.22 perf gate's 1031 ms switches). Chrome's occlusion flag (-[NSWindow isOccluded], set by
+    // WebContentsOcclusionCheckerMac) is read only there; a test instance's windows are never occluded to it.
+    if (Method occluded = class_getInstanceMethod(NSWindow.class, NSSelectorFromString(@"isOccluded")))
+      method_setImplementation(occluded, imp_implementationWithBlock(^BOOL(id) { return NO; }));
+  }
   // Nor may it make a sound on the owner's Mac (a test page's media, a video it plays). NETNYAHOO_ALLOW_AUDIO=1 keeps
   // the sound for a test that needs to hear it.
   if (getenv("NETNYAHOO_BACKGROUND") && !getenv("NETNYAHOO_ALLOW_AUDIO")) extra.push_back("--mute-audio");
