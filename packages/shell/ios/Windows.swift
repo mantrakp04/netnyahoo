@@ -385,11 +385,21 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
   // MARK: App lifecycle
 
+  // A quit is NNCore's (nn_lifetime's QuitPhase): every quit, ⌘Q, the Dock or logout, asks shouldTerminate once per
+  // attempt, JS saves and answers willQuit with replyToTerminate, and when the quit is cancelled after all (a page's
+  // beforeunload said Stay) JS hears quitCancelled and goes on saving. Nothing here remembers an attempt.
   var appEventsObserved = false
-  private var terminateTimer: Timer?
-  private var awaitingTerminateReply = false
-  private var quitRequested = false
-  private var sessionSaved = false
+  /// The JS runtime `emit` reaches (its ShellModule). One going away (a reload) cancels a quit waiting for its answer,
+  /// and no quit asks it again.
+  var runtime: ObjectIdentifier?
+
+  func runtimeGone(_ gone: ObjectIdentifier) {
+    guard runtime == gone else { return }
+    runtime = nil
+    emit = nil
+    appEventsObserved = false
+    replyToTerminate(false)
+  }
 
   func confirmQuit() {
     if MenuState.current.warnBeforeQuitting {
@@ -404,26 +414,19 @@ final class WindowManager: NSObject, NSWindowDelegate {
       if alert.suppressionButton?.state == .on { emit?("onAppEvent", ["type": "quitWarningSuppressed"]) }
       guard response == .alertFirstButtonReturn else { return }
     }
-    guard confirmActiveDownloads() else { return }
-    guard appEventsObserved, emit != nil else { return NSApp.terminate(nil) }
-    quitRequested = true
-    emit?("onAppEvent", ["type": "willQuit"])
-    startTerminateTimer()
+    NSApp.terminate(nil)
   }
 
   func shouldTerminate() -> NSApplication.TerminateReply {
-    if sessionSaved || !appEventsObserved || emit == nil { return .terminateNow }
-    if !quitRequested, !confirmActiveDownloads() { return .terminateCancel }
-    awaitingTerminateReply = true
-    emit?("onAppEvent", ["type": "willQuit"])
-    startTerminateTimer()
+    guard appEventsObserved, let emit else { return .terminateNow }
+    guard confirmActiveDownloads() else { return .terminateCancel }
+    emit("onAppEvent", ["type": "willQuit"])
     return .terminateLater
   }
 
-  private var downloadsConfirmed = false
   private func confirmActiveDownloads() -> Bool {
     let count = MenuState.current.downloadsInProgress
-    guard count > 0, !downloadsConfirmed else { return true }
+    guard count > 0 else { return true }
     let alert = NSAlert()
     alert.messageText = "Are you sure you want to quit \(ProcessInfo.processInfo.processName)?"
     alert.informativeText = count == 1
@@ -431,27 +434,12 @@ final class WindowManager: NSObject, NSWindowDelegate {
       : "You have \(count) downloads in progress. If you quit now, these downloads will be cancelled."
     alert.addButton(withTitle: "Quit")
     alert.addButton(withTitle: "Cancel")
-    downloadsConfirmed = alert.runModal() == .alertFirstButtonReturn
-    return downloadsConfirmed
+    return alert.runModal() == .alertFirstButtonReturn
   }
 
+  /// JS's answer to willQuit. NNCore takes only the answer to the quit it asked about.
   func replyToTerminate(_ ok: Bool) {
-    terminateTimer?.invalidate()
-    terminateTimer = nil
-    if quitRequested {
-      quitRequested = false
-      sessionSaved = ok
-      if ok { NSApp.terminate(nil) }
-    } else if awaitingTerminateReply {
-      awaitingTerminateReply = false
-      NSApp.reply(toApplicationShouldTerminate: ok)
-    }
-  }
-
-  private func startTerminateTimer() {
-    let timer = Timer(timeInterval: 1.5, repeats: false) { [weak self] _ in self?.replyToTerminate(true) }
-    RunLoop.main.add(timer, forMode: .common)
-    terminateTimer = timer
+    NSApp.reply(toApplicationShouldTerminate: ok)
   }
 
   func reopen() {

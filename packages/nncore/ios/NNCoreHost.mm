@@ -178,8 +178,10 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   gStarted = NO;
 }
 
+// The app's quit flow (ShellApp, packages/shell) hears it as this notification, in a pod that doesn't link this one.
 - (void)engineQuitCancelled {
   NSLog(@"[nncore] quit cancelled");
+  [NSNotificationCenter.defaultCenter postNotificationName:@"NNCoreQuitCancelled" object:nil];
 }
 
 - (void)engine:(NNCoreEngine *)engine permissionRequest:(NSDictionary *)request tab:(NNCoreTab *)tab {

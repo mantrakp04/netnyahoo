@@ -27,7 +27,9 @@ NS_ASSUME_NONNULL_BEGIN
 @optional
 // Chromium is about to return from its run loop (quit finished).
 - (void)engineWillShutDown;
-// A quit was cancelled (a page's beforeunload, the downloads prompt): the app keeps running.
+// A quit was cancelled (a page's beforeunload, the downloads prompt, the host answering
+// applicationShouldTerminate: NO, now or later): the app keeps running. Sent once per cancelled
+// quit, before another quit can start.
 - (void)engineQuitCancelled;
 // Chrome is creating a Browser the host didn't ask for (chrome.windows.create, an incognito
 // window from a Chrome command, undocked DevTools). `type` is "normal", "popup", "devtools"

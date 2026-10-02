@@ -140,11 +140,17 @@ public class ShellModule: Module {
           self?.sendEvent("onCommand", ["command": command, "arg": arg as Any, "windowId": windowId as Any])
         }
         WindowManager.shared.emit = { name, body in self?.sendEvent(name, body) }
+        WindowManager.shared.runtime = self.map(ObjectIdentifier.init)
         NSApp.mainMenu = MainMenu.build()
         self?.appearanceObservation = NSApp.observe(\.effectiveAppearance) { _, _ in
           self?.sendEvent("onAppEvent", ["type": "appearance", "dark": ShellModule.isDark])
         }
         self?.observeForSidebar()
+        // NNCore cancelled a quit JS was told of (willQuit): JS goes on saving (WindowManager's App lifecycle).
+        let quitCancelled = NotificationCenter.default.addObserver(
+          forName: Notification.Name("NNCoreQuitCancelled"), object: nil, queue: .main
+        ) { _ in self?.sendEvent("onAppEvent", ["type": "quitCancelled"]) }
+        self?.sidebarObservers.append((NotificationCenter.default, quitCancelled))
       }
     }
 
@@ -156,6 +162,8 @@ public class ShellModule: Module {
       self.flagsMonitor = nil
       if let monitor = self.switcherMonitor { NSEvent.removeMonitor(monitor) }
       self.switcherMonitor = nil
+      let gone = ObjectIdentifier(self)
+      DispatchQueue.main.async { WindowManager.shared.runtimeGone(gone) }
     }
 
     OnStartObserving("onAppEvent") {

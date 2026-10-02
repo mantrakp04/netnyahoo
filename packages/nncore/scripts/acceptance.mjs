@@ -4203,6 +4203,84 @@ try {
     return { cookie, windows: info.map((w) => w.profile) };
   });
 
+  // The quit checks below start the app on the run's data dir when it isn't running, and wait for its window.
+  const appUp = async (logName) => {
+    if (exited) await launch(logName);
+    await until("the app", async () => {
+      try {
+        return await evalApp(`return globalThis.expo.modules.NetnyahooCEF.engineInfo()`, 3000);
+      } catch (e) {
+        if (exited) throw e;
+        return null;
+      }
+    }, 90000);
+    mainWindow = null;
+    return (mainWindow = await until("a window", async () => (await state()).windowId, 30000));
+  };
+  const pressQuit = (windowId) =>
+    evalApp(`return nn.shell.devKeyEquivalent("${windowId}", { key: "q", keyCode: 12, modifiers: ["command"], focus: "window" })`, 5000).catch(() => null);
+  const savedSession = () => (existsSync(join(data, "session.json")) ? readFileSync(join(data, "session.json"), "utf8") : "");
+  const restored = async (urlPart) => {
+    await appUp("app-restored.out.log");
+    return until(`${urlPart} restored`, async () => (await state()).tabs.find((t) => t.url?.includes(urlPart)) ?? null, 15000);
+  };
+
+  await check("quit-cancelled", async () => {
+    // ⌘Q, a page's beforeunload answered Stay: the app keeps running and keeps saving (it stopped saving for the
+    // quit). Then a new tab, ⌘Q answered Leave: the relaunch restores that tab.
+    const windowId = await appUp("app-quit-cancelled.out.log");
+    await evalApp(`nn.actions.openUrls(["${base}/b?stay"], "${windowId}"); return true`);
+    await until("the page loaded", async () => (await state()).tabs.find((t) => t.url?.includes("b?stay") && t.title === "Page B" && !t.loading), 15000);
+    const target = await until("the page", () => pageTarget(`${base}/b?stay`), 15000);
+    await cdp(target, "Runtime.evaluate", { expression: `addEventListener("beforeunload", (e) => { e.preventDefault(); e.returnValue = ""; }); true`, userGesture: true });
+    // Chrome's beforeunload prompt, answered through DevTools (Page.handleJavaScriptDialog) with `leave`.
+    const ws = new WebSocket(target.webSocketDebuggerUrl);
+    await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = () => j(new Error("DevTools connection failed")))));
+    let leave = false;
+    const prompts = [];
+    ws.onmessage = (m) => {
+      const msg = JSON.parse(m.data);
+      if (msg.method !== "Page.javascriptDialogOpening") return;
+      prompts.push({ type: msg.params.type, leave });
+      ws.send(JSON.stringify({ id: 100 + prompts.length, method: "Page.handleJavaScriptDialog", params: { accept: leave } }));
+    };
+    ws.send(JSON.stringify({ id: 1, method: "Page.enable" }));
+    try {
+      await sleep(300);
+      await pressQuit(windowId);
+      await until("the beforeunload prompt", async () => prompts.length === 1, 10000);
+      await sleep(1500);
+      if (exited) throw new Error("the app quit though the page said Stay");
+      await evalApp(`nn.actions.openUrls(["${base}/c?after-stay"], "${windowId}"); return true`);
+      await until("the tab after Stay saved", async () => savedSession().includes("after-stay"), 10000);
+      leave = true;
+      const started = Date.now();
+      await pressQuit(windowId);
+      await until("the app to exit", async () => exited, 20000);
+      const exitMs = Date.now() - started;
+      if (!savedSession().includes("after-stay")) throw new Error("the second quit didn't save the session");
+      const tab = await restored("after-stay");
+      return { prompts, exitMs, restored: tab.url };
+    } finally {
+      try { ws.close(); } catch {}
+    }
+  });
+
+  await check("quit-js-stall", async () => {
+    // ⌘Q while the JS thread is busy for 2 s: the quit waits for the app's answer, and the tab opened at the end of
+    // the stall (after the quit began) is in the saved session and restored.
+    const windowId = await appUp("app-quit-stall.out.log");
+    const started = Date.now();
+    await evalApp(`nn.shell.devKeyEquivalent("${windowId}", { key: "q", keyCode: 12, modifiers: ["command"], focus: "window" });
+      const t = Date.now(); while (Date.now() - t < 2000) {}
+      nn.actions.openUrls(["${base}/d?stalled"], "${windowId}"); return true`, 5000).catch(() => null);
+    await until("the app to exit", async () => exited, 20000);
+    const exitMs = Date.now() - started;
+    if (!savedSession().includes("d?stalled")) throw new Error(`the quit didn't wait for the app's save (exited after ${exitMs} ms)`);
+    const tab = await restored("d?stalled");
+    return { exitMs, restored: tab.url };
+  });
+
   await check("extension-tab-empty-window", async () => {
     // An extension's tabs.create while the app's window shows no page (its tabs closed: a new-tab placeholder only):
     // Chrome puts its tab in that window's Browser, which no app view holds, so the app hears onTabs and opens the

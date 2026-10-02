@@ -27,14 +27,15 @@ namespace nncore {
 
 namespace {
 
-// A quit NNCore started and that can still be cancelled: first the host's downloads prompt,
-// then Chrome closing every Browser (beforeunload). Each attempt has its own generation, so
-// an old prompt's late answer can't steer a newer quit.
-enum class QuitPhase { kNone, kAskingDownloads, kClosing };
+// The one record of a quit, from -terminate: to the end: asking the host (its
+// applicationShouldTerminate:, NSTerminateLater until it replies), Chrome's downloads prompt,
+// then Chrome closing every Browser (beforeunload). Any of them can cancel it, and the host hears
+// every cancel (engineQuitCancelled) before another quit can start. Past the point of no return
+// (NSApplicationWillTerminateNotification) nothing starts again. Each attempt has its own
+// generation, so an old prompt's late answer can't steer a newer quit.
+enum class QuitPhase { kNone, kAskingHost, kAskingDownloads, kClosing, kCancelling, kExiting };
 QuitPhase g_phase = QuitPhase::kNone;
 int g_quit_generation = 0;
-// -applicationShouldTerminate: answered NSTerminateLater; waiting for the reply.
-bool g_terminate_pending = false;
 
 LifetimeCallbacks& Callbacks() {
   static base::NoDestructor<LifetimeCallbacks> callbacks;
@@ -47,13 +48,16 @@ base::CallbackListSubscription& ClosingAllBrowsersSubscription() {
 }
 
 void QuitCancelled() {
-  if (g_phase == QuitPhase::kNone) {
+  if (g_phase == QuitPhase::kNone || g_phase == QuitPhase::kCancelling ||
+      g_phase == QuitPhase::kExiting) {
     return;
   }
-  g_phase = QuitPhase::kNone;
-  // Not from inside Chrome's cancel path: the host may close or quit again right away.
+  // Not from inside Chrome's cancel path: the host may close or quit again right away. No new
+  // quit starts until the host has heard this one ended (its willQuit, then this, in order).
+  g_phase = QuitPhase::kCancelling;
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce([] {
+        g_phase = QuitPhase::kNone;
         NotifyWindowsQuitCancelled();
         if (Callbacks().quit_cancelled) {
           Callbacks().quit_cancelled.Run();
@@ -70,7 +74,7 @@ void StartQuit() {
 }
 
 void Terminate() {
-  if (g_phase != QuitPhase::kNone || g_terminate_pending) {
+  if (g_phase != QuitPhase::kNone) {
     return;
   }
   id<NSApplicationDelegate> delegate = NSApp.delegate;
@@ -78,14 +82,24 @@ void Terminate() {
     QuitEngine();
     return;
   }
-  switch ([delegate applicationShouldTerminate:NSApp]) {
+  // Before asking: the host's prompts run nested loops, where another quit (the Dock, logout)
+  // must find this one under way. If this one ended in such a loop (and another may have
+  // started), the answer is about nothing any more.
+  const int attempt = ++g_quit_generation;
+  g_phase = QuitPhase::kAskingHost;
+  const NSApplicationTerminateReply reply = [delegate applicationShouldTerminate:NSApp];
+  if (attempt != g_quit_generation || g_phase != QuitPhase::kAskingHost) {
+    return;
+  }
+  switch (reply) {
     case NSTerminateNow:
+      g_phase = QuitPhase::kNone;
       QuitEngine();
       break;
     case NSTerminateLater:
-      g_terminate_pending = true;
-      break;
+      break;  // -replyToApplicationShouldTerminate: goes on.
     case NSTerminateCancel:
+      QuitCancelled();
       break;
   }
 }
@@ -149,7 +163,7 @@ void StartLifetimeObservers() {
                   object:nil
                    queue:nil
               usingBlock:^(NSNotification*) {
-                g_phase = QuitPhase::kNone;
+                g_phase = QuitPhase::kExiting;
                 ReleaseAppKeepAlive();
                 // With a remote-debugging port and no startup window Chrome also stays up
                 // for the automation client until it says Browser.close.
@@ -218,20 +232,17 @@ void NNCancelTerminate(id self, SEL _cmd, id sender) {
   }
 }
 
-IMP g_appkit_reply_to_should_terminate = nullptr;
-
 void NNReplyToApplicationShouldTerminate(id self, SEL _cmd, BOOL should_terminate) {
-  if (!nncore::g_terminate_pending) {
-    // Not ours to answer (an AppKit path asked the delegate itself).
-    if (g_appkit_reply_to_should_terminate) {
-      reinterpret_cast<void (*)(id, SEL, BOOL)>(g_appkit_reply_to_should_terminate)(
-          self, _cmd, should_terminate);
-    }
+  // Only the answer to our own NSTerminateLater (nothing else asks the delegate: terminate: and
+  // the quit Apple event come here); a reply nobody asked for is dropped.
+  if (nncore::g_phase != nncore::QuitPhase::kAskingHost) {
     return;
   }
-  nncore::g_terminate_pending = false;
   if (should_terminate) {
+    nncore::g_phase = nncore::QuitPhase::kNone;
     nncore::QuitEngine();
+  } else {
+    nncore::QuitCancelled();
   }
 }
 
@@ -280,8 +291,6 @@ void InstallAppOverrides() {
                       "v@:@");
   class_replaceMethod(app, @selector(cancelTerminate:),
                       reinterpret_cast<IMP>(NNCancelTerminate), "v@:@");
-  g_appkit_reply_to_should_terminate = class_getMethodImplementation(
-      app, @selector(replyToApplicationShouldTerminate:));
   class_replaceMethod(app, @selector(replyToApplicationShouldTerminate:),
                       reinterpret_cast<IMP>(NNReplyToApplicationShouldTerminate), "v@:c");
   // AppKit installs its Apple event handlers in -finishLaunching (inside -[NSApp run]);

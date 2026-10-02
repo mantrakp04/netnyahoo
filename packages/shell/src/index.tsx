@@ -121,6 +121,7 @@ export type WindowEvent =
 export type AppEvent =
   | { type: "reopen" }
   | { type: "willQuit" }
+  | { type: "quitCancelled" }
   | { type: "appearance"; dark: boolean }
   | { type: "quitWarningSuppressed" }
   | { type: "resignActive" }

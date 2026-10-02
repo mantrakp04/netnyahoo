@@ -29,7 +29,7 @@ import { openWindow as createWindow } from "./actions";
 import { openExternalUrls } from "../components/smallYahu/actions";
 import { SMALL_YAHU_DISABLED_COMMANDS } from "../components/smallYahu/menu";
 import { runCommand } from "./commands";
-import { flushPersistence } from "./persist";
+import { flushPersistence, resumePersistence } from "./persist";
 import { startWindowCloseGuard } from "./windowClose";
 import { startExtensionsBridge } from "../components/extensions/bridge";
 import { extensionMenu, useExtensions } from "../components/extensions/state";
@@ -60,6 +60,10 @@ export function startNativeSync() {
       quitting = true;
       flushPersistence({ final: true });
       void replyToTerminate(true);
+    }
+    if (e.type === "quitCancelled") {
+      quitting = false;
+      resumePersistence();
     }
   });
 

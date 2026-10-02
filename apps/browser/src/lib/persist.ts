@@ -153,11 +153,20 @@ export function loadSession(): HydrateData | null {
 }
 
 let flush: () => void = () => {};
+let resume: () => void = () => {};
+// From the quit's last save until the quit ends or is cancelled: what the quit itself does to the store (its windows
+// closing) is never saved.
 let frozen = false;
 
 export function flushPersistence({ final = false } = {}) {
   flush();
   if (final) frozen = true;
+}
+
+// The quit was cancelled (a page's beforeunload said Stay): saving goes on, starting with what changed meanwhile.
+export function resumePersistence() {
+  frozen = false;
+  resume();
 }
 
 export function startPersistence() {
@@ -196,6 +205,10 @@ export function startPersistence() {
     if (dirty.size && !timer) timer = setTimeout(save, SAVE_DELAY_MS);
   };
   check(useBrowser.getState(), true);
+  resume = () => {
+    check(useBrowser.getState());
+    save();
+  };
   const stopFavicons = startFavicons();
   const stopHistory = startHistory();
   const stopBookmarks = startBookmarks();
