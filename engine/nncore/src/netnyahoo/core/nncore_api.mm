@@ -249,6 +249,13 @@ void PrepareProfilePrefs(Profile* profile) {
   if (prefs->FindPreference("download_bubble.partial_view_enabled")) {
     prefs->SetBoolean("download_bubble.partial_view_enabled", false);
   }
+  // Automatic Picture in Picture is the app's (its autoPictureInPicture setting: a call's
+  // own "enterpictureinpicture" handler on a tab switch, a video otherwise). Chrome's
+  // (AutoPictureInPictureTabHelper, https pages using the camera or microphone, or playing)
+  // also fires on NNCore's tab switches and occlusion, calling the page's handler a second
+  // time: Meet's second requestWindow closed the first window and the call never showed.
+  HostContentSettingsMapFactory::GetForProfile(profile)->SetDefaultContentSetting(
+      ContentSettingsType::AUTO_PICTURE_IN_PICTURE, CONTENT_SETTING_BLOCK);
 }
 
 class ProfilePrefsApplier : public ProfileManagerObserver {
