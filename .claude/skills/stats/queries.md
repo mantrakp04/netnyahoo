@@ -3,7 +3,9 @@
 Run with `node scripts/telemetry-sql.mjs "<query>"` (read-only user from `~/.config/netnyahoo/telemetry.env`),
 one at a time: the server has 2 cores, a query over the PostHog history takes 5–30 s, and parallel ones
 only queue up behind each other (four at once once ran it out of open files). Put a `timestamp >` filter
-first when a query only needs recent events.
+first when a query only needs recent events. For a query that runs often, read the two tables under the view
+directly and filter on the event first (both sort by event, date); unique counts don't need the view's FINAL.
+`scripts/stats-snapshot.mjs` does this: all the headline numbers in one request, about 1 s.
 Everything is in `telemetry.events`: PostHog's event and property names, one row per event, `properties`
 a `Map(String, String)` (booleans are `'true'`/`'false'`). `source` says who sent it: `netnyahoo-site`,
 `netnyahoo-app`, `netnyahoo-feed` (update checks) or `posthog-cloud` (history before the switch, and old app
