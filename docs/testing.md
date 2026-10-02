@@ -15,25 +15,32 @@ of its time in `swift test`'s first build. Each package also runs its own:
 `@netnyahoo/nncore` and `expo-modules-core` to `src/test-native-stub.mjs`. One file:
 `node --no-warnings --import ./src/test-loader.mjs --test src/store/tabs.test.mjs` (from `apps/browser`).
 
-End-to-end checks need a built app and are run by hand:
+End-to-end checks need a built app and are run by hand. Each runs hidden instances through `scripts/lib/instance.mjs`
+and prints one line per check (PASS/FAIL, ms), a failure's first lines, then a summary with the path of the log that
+holds the rest.
 
 | Check | Run | Guards |
 | --- | --- | --- |
 | Release smoke test | `.claude/skills/release/scripts/smoke.sh` (the `release` skill) | Every release, whole |
 | Shortcuts | `node apps/browser/scripts/shortcuts-test.mjs <Debug app>` | Every shortcut in every focus (0.2.8: ⌘1–9 were swallowed outside a page) |
 | Profile swipes | `node apps/browser/scripts/profile-swipe-test.mjs <Debug app>` | The native pager's races (0.2.14–0.2.18 fixes) |
+| Tab dragging | `node apps/browser/scripts/tab-drag-test.mjs <Debug app>` | Dragging in the top tab strip moves the tab, never the window (0.2.18) |
+| Windowing | `node apps/browser/scripts/windowing-test.mjs <Debug app>` | Window frames and what the screen shows in passing |
 | ⌘-scroll | `node apps/browser/scripts/zoom-scroll-test.mjs <Debug app>` | Trackpad scrolls, mouse zooms (regressed in 0.1.4 and 0.2.12) |
 | Hover layout | `node apps/browser/scripts/hover-shift-test.mjs <Debug app>` | Hovering moves nothing: every hover-tracked view in the sidebar, the tab strip and the downloads popover (below) |
 | Sync | `node packages/sync/scripts/e2e.mjs <Debug app>` | Two and three hidden instances through one folder (`docs/sync.md`) |
+| Import | `node packages/import/scripts/e2e.mjs <Debug app> <scratch dir>` | Cookies, addresses and cards from a fake Chrome home (`packages/import/README.md`) |
 | Engine patches | `python3 engine/patches/series.py check` | The patch series reproduces the Chromium tree (`docs/cef-source-build.md`) |
-| Engine (NNCore) | `node packages/nncore/scripts/acceptance.mjs <Debug app> <scratch dir>` | The app on NNCore, hidden (`docs/nncore-parity.md`) |
+| Engine (NNCore) | `node packages/nncore/scripts/acceptance.mjs <Debug app> <scratch dir> [--keep] [check…]` | The app on NNCore, hidden (`docs/nncore-parity.md`). `--keep` leaves the instance up and `--attach <scratch dir> [check…]` re-runs checks on it in seconds; `--list` gives each check's section and what it needs (brought along automatically) |
+| Focus (NNCore) | `node packages/nncore/scripts/activation-acceptance.mjs <Debug app> <scratch dir> [check…]` | The panes shown, Chrome's active tab and native focus agree |
 | Native perf | `node apps/browser/scripts/perf/native-bench.mjs --app <Release app> --out <dir>` | Launch, idle, memory, tab and window latency; the release perf gate (`docs/perf/README.md`) |
 | JS perf | `node apps/browser/scripts/perf/js-bench.mjs run --app <Release app> --bundle <main.jsbundle> --label <name>` | What each interaction costs the JS thread (`docs/perf/README.md`) |
 
 ## Test instances
 
-Launch with `open -g -n --env NAME=value … <app>` (`docs/agent-brief.md`). `NETNYAHOO_BACKGROUND=1` and a scratch
-`NETNYAHOO_DATA_DIR` make an instance a test instance; the rest are hooks for one test.
+Launch with `scripts/agent/nn launch <app> --data <dir> [--env NAME=value]…` (`--help`; then `nn eval`, `nn page`,
+`nn quit`), or `launch()` in `scripts/lib/instance.mjs`. `NETNYAHOO_BACKGROUND=1` and a scratch `NETNYAHOO_DATA_DIR`
+make an instance a test instance; the rest are hooks for one test.
 
 | Variable | Read in | What it does |
 | --- | --- | --- |

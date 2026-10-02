@@ -92,7 +92,7 @@ sqlite3 CLI: it checkpoints the WAL the tests depend on.
 | Rebuild fixtures | `pnpm --filter @netnyahoo/import fixtures` |
 | Typecheck the JS wrapper | `pnpm --filter @netnyahoo/import typecheck` |
 | End to end in a hidden Debug instance (cookies, addresses, cards) | `node packages/import/scripts/e2e.mjs <Netnyahoo.app> <scratch dir>` (`--help`) |
-| Run one script in that instance (`e2e.mjs --keep`) | `node packages/import/scripts/ev.mjs <scratch dir>/data '<js>'` |
+| Run one script in that instance (`e2e.mjs --keep`) | `scripts/agent/nn eval <scratch dir>/data '<js>'` |
 
 ## Test hooks (`ios/ImportModule.swift`)
 

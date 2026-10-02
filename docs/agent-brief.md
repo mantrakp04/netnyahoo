@@ -139,10 +139,12 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
     The build stages the engine framework under the chromium lock (`stage-framework.sh`): `--release` your chromium
     take first, or build with `locked xcodebuild --as <you>`. When several builds queue, pass `--wait 1500` (with
     `run_in_background`); `/tmp/nn-<name>.holder` says who holds a lock. Every `scripts/agent` script takes `--help`.
-  - Run: `open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR=/tmp/nn-<you> --env NETNYAHOO_REMOTE_DEBUGGING_PORT=<port> apps/browser/build-<you>/Build/Products/Debug/Netnyahoo.app`
-    (`NETNYAHOO_DATA_DIR` isolates Chrome's and the app's data; each instance needs its own, and a Debug build
-    refuses to start without one).
-    Kill only your own instance (by PID), never `pkill Netnyahoo`.
+  - Run: `scripts/agent/nn launch apps/browser/build-<you>/Build/Products/Debug/Netnyahoo.app --data <scratch>/data`
+    (hidden: `open -g -n`, `NETNYAHOO_BACKGROUND=1`, its own data dir and DevTools port; prints the pid and port).
+    `nn eval|page|quit|status` take that data dir (`--help`); scripts use `scripts/lib/instance.mjs` (`launch`,
+    `attach`, `session`, `reporter`), whose pid is the DevTools port's listener, never a process-list diff
+    (`NETNYAHOO_DATA_DIR` isolates Chrome's and the app's data; a Debug build refuses to start without one).
+    Quit only your own instance (`nn quit`), never `pkill Netnyahoo`.
   - Open a URL in your instance: CDP `Target.createTarget`, or the dev harness
     (`nn.actions.openUrls([url])`); `open -a` routes to whichever instance macOS picks.
   - Metro (JS dev server) is already running on :8081 and serves this working tree to every
@@ -180,15 +182,15 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
 - **Verify before reporting done.** At minimum: `pnpm -w typecheck` (or `npx tsc -p <pkg>`)
   passes for what you touched, the app builds, and you exercised the feature in a running
   instance.
-  - Drive the app through the dev harness: write a script to `$NETNYAHOO_DATA_DIR/dev-eval.js`
-    (first line `// <id>`, body returns a value or promise; no top-level `await`) and read
-    `dev-eval-result.json`, waiting with `scripts/agent/await --timeout 60 --pid <app pid> -- grep -q
-    '"id":"<id>"' "$NETNYAHOO_DATA_DIR/dev-eval-result.json"` so a crashed instance fails at once. `nn` = store, actions, runCommand, webviews, shell, …
+  - Drive the app through the dev harness: `scripts/agent/nn eval <data dir> '<body>'` (a function body that
+    returns a value or promise; it fails at once if the instance died). `nn` = store, actions, runCommand, webviews, shell, …
     (`lib/devHarness.ts`); Expo modules are on `globalThis.expo.modules`. `nn.runCommand` takes an object:
     `nn.runCommand({ command: "importBrowserData", arg: null, windowId: null })`; the utility windows' ids are
     `"settings"` and `"import"`.
-  - The NNCore acceptance run (`docs/nncore-parity.md` › "How to build and check it"): `METRO_PORT=8081 node
-    packages/nncore/scripts/acceptance.mjs <Debug app> <scratch dir> [check…]`.
+  - The NNCore acceptance run (`docs/nncore-parity.md` › "How to build and check it"): `node
+    packages/nncore/scripts/acceptance.mjs <Debug app> <scratch dir> --keep [check…]` once, then `--attach <scratch
+    dir> [check…]` for each try (no boot: seconds). `--list` names every check and what it needs; each check prints
+    one line, the details go to `<scratch dir>/data/acceptance.log`.
   - Camera and microphone: a hidden instance captures only from Chrome's fake devices (`docs/testing.md`). Run
     capture tests on a copy without the device entitlements (ad hoc, hardened runtime), so macOS refuses a real
     device without asking (acceptance.mjs's media checks make one): on 2026-10-01 a Debug build's microphone stream
@@ -197,8 +199,8 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
     key as AppKit dispatches it (Chrome's window, then the menu bar), `nn.shell.devTypeKeys("key", text, ms)` types
     into whatever window is key, and
     `node apps/browser/scripts/shortcuts-test.mjs <Debug app>` checks every shortcut in every focus.
-  - Page content: CDP (`--env NETNYAHOO_REMOTE_DEBUGGING_PORT`, then `http://localhost:<port>/json`,
-    `Runtime.evaluate`, `Page.captureScreenshot`). A `NETNYAHOO_BACKGROUND` instance's windows answer NO to
+  - Page content: `scripts/agent/nn page <data dir> <url part> '<expression>'`, or CDP on the instance's port
+    (`http://localhost:<port>/json`, `Runtime.evaluate`, `Page.captureScreenshot`). A `NETNYAHOO_BACKGROUND` instance's windows answer NO to
     `-[NSWindow isOccluded]` (`NNCoreHost.mm`), so a covered window shows a tab at once instead of after Chrome's 1 s
     occlusion delay; set `NETNYAHOO_ALLOW_OCCLUSION=1` to test occlusion itself.
   - Native UI: `screencapture -l <windowID>` while nothing covers the window (find the id with CGWindowList by owner
