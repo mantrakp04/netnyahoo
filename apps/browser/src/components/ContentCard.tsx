@@ -1,6 +1,6 @@
 import { prepareTabTransfer, WebView, type OpenWindowRequest } from "@netnyahoo/nncore";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Animated, StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { focus, switchToTab } from "../lib/actions";
 import { noteFavicon } from "../lib/favicons";
@@ -41,7 +41,7 @@ import { CastPicker } from "./media/CastPicker";
 import { DeviceChooser } from "./site/DeviceChooser";
 import { setNowPlaying, setPictureInPictureState } from "./media/state";
 import { Toolbar } from "./Toolbar";
-import { AutoHideToolbar, ToolbarSpace, useToolbarMode } from "./AutoHideToolbar";
+import { AutoHideToolbar, ToolbarSpace, useToolbarMode, useToolbarMotion } from "./AutoHideToolbar";
 import { noteScroll, revealToolbar } from "./layout/toolbarAutoHide";
 import { NavigationOverlays } from "./layout/SwipeOverlay";
 import "./layout/devExpose";
@@ -245,6 +245,7 @@ const TabPane = memo(function TabPane({
   }, [visible, isNewTab, mounted]);
   const hideBar = autoHide && visible && !fullscreen;
   const mode = useToolbarMode(tabId, windowId, hideBar);
+  const motion = useToolbarMotion(mode);
   // A tab switched to shows its bar.
   useEffect(() => {
     if (visible) revealToolbar(tabId);
@@ -275,33 +276,36 @@ const TabPane = memo(function TabPane({
         <View style={{ height: layout.toolbarHeight }} />
       )}
       {!fullscreen && !inSplit && !small && mode === "shown" && <BookmarksBar tabId={tabId} placeholder={!visible} />}
-      {visible && !fullscreen && <ShareBar tabId={tabId} />}
-      <View style={{ flex: 1 }}>
-        {mounted && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={!!warm && !newTabShown && !isNewTab} />}
-        {visible && isNewTab && !small && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} toolbar={toolbar} />)}
-        {visible && <InternalPage tabId={tabId} />}
-        {visible && (
-          <>
-            <FindBar tabId={tabId} />
-            <StatusBubble tabId={tabId} maxWidth={Math.max(160, frame.width / 2)} />
-            <SadTab tabId={tabId} />
-            {/* A page's own prompts go with its page: not over the New Tab page shown in its place (Back to it). */}
-            {!newTabShown && <PermissionPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 308))} top={4} />}
-            <PasswordPrompt tabId={tabId} right={8} top={4} />
-            <AutofillPrompt tabId={tabId} right={8} top={4} />
-            {!newTabShown && <ExternalAppPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />}
-            {popover === "siteControls" && <SiteControls tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
-            {popover === "popups" && <BlockedPopupsPrompt tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
-            {popover === "zoom" && <ZoomPopover tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
-            <SharePicker tabId={tabId} paneWidth={frame.width} />
-            {!newTabShown && <DeviceChooser tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />}
-            <CastPicker tabId={tabId} paneWidth={frame.width} />
-            <NavigationOverlays tabId={tabId} windowId={windowId} geometry={geometry} />
-            <SelectionPopover tabId={tabId} zoom={zoom} />
-          </>
-        )}
-      </View>
-      {hideBar && <AutoHideToolbar tabId={tabId} geometry={geometry} windowId={windowId} inSplit={inSplit} focused={focused || !inSplit} mode={mode} />}
+      {/* The page and what sits on it, moved by the toolbar's motion while it hides (AutoHideToolbar's useToolbarMotion). */}
+      <Animated.View style={[{ flex: 1 }, motion.pageStyle]}>
+        {visible && !fullscreen && <ShareBar tabId={tabId} />}
+        <View style={{ flex: 1 }}>
+          {mounted && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={!!warm && !newTabShown && !isNewTab} />}
+          {visible && isNewTab && !small && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} toolbar={toolbar} />)}
+          {visible && <InternalPage tabId={tabId} />}
+          {visible && (
+            <>
+              <FindBar tabId={tabId} />
+              <StatusBubble tabId={tabId} maxWidth={Math.max(160, frame.width / 2)} />
+              <SadTab tabId={tabId} />
+              {/* A page's own prompts go with its page: not over the New Tab page shown in its place (Back to it). */}
+              {!newTabShown && <PermissionPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 308))} top={4} />}
+              <PasswordPrompt tabId={tabId} right={8} top={4} />
+              <AutofillPrompt tabId={tabId} right={8} top={4} />
+              {!newTabShown && <ExternalAppPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />}
+              {popover === "siteControls" && <SiteControls tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
+              {popover === "popups" && <BlockedPopupsPrompt tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
+              {popover === "zoom" && <ZoomPopover tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
+              <SharePicker tabId={tabId} paneWidth={frame.width} />
+              {!newTabShown && <DeviceChooser tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />}
+              <CastPicker tabId={tabId} paneWidth={frame.width} />
+              <NavigationOverlays tabId={tabId} windowId={windowId} geometry={geometry} />
+              <SelectionPopover tabId={tabId} zoom={zoom} />
+            </>
+          )}
+        </View>
+      </Animated.View>
+      {hideBar && <AutoHideToolbar tabId={tabId} geometry={geometry} windowId={windowId} inSplit={inSplit} focused={focused || !inSplit} mode={mode} motion={motion} />}
     </View>
   );
 });

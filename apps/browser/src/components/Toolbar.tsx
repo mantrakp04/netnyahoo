@@ -28,7 +28,22 @@ import { ZoomIndicator } from "./site/ZoomControls";
 type ToolbarTab = Pick<Tab, "id" | "url" | "title" | "windowId" | "zoom">;
 const toolbarTab = (t: Tab | undefined): ToolbarTab | undefined => t && { id: t.id, url: t.url, title: t.title, windowId: t.windowId, zoom: t.zoom };
 
-export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId: string; geometry: ToolbarGeometry; windowId: string; inSplit: boolean; focused: boolean }) {
+// bare: no band or divider of its own (AutoHideToolbar draws them, so the controls can fade over a band that doesn't).
+export function Toolbar({
+  tabId,
+  geometry,
+  windowId,
+  inSplit,
+  focused,
+  bare,
+}: {
+  tabId: string;
+  geometry: ToolbarGeometry;
+  windowId: string;
+  inSplit: boolean;
+  focused: boolean;
+  bare?: boolean;
+}) {
   const theme = useTheme();
   const tab = useBrowser(useShallow((s) => toolbarTab(s.tabs[tabId])));
   // Narrow on purpose: a loading page reports progress many times a second, and only the bar below shows it.
@@ -64,7 +79,7 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
 
   return (
     <View style={{ height: layout.toolbarHeight }}>
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: band }]} />
+      {!bare && <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: band }]} />}
       <WindowDragRegion style={StyleSheet.absoluteFill} />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: dim }]} pointerEvents="box-none">
         {geometry.sidebarButton !== null && (
@@ -91,7 +106,7 @@ export function Toolbar({ tabId, geometry, windowId, inSplit, focused }: { tabId
         )}
       </Animated.View>
 
-      {tab.url ? <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: StyleSheet.hairlineWidth, backgroundColor: palette.divider }} /> : null}
+      {tab.url && !bare ? <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: StyleSheet.hairlineWidth, backgroundColor: palette.divider }} /> : null}
       {isLoading && <TabProgressBar tabId={tabId} color={palette.background ? palette.icon : theme.accent} />}
     </View>
   );
