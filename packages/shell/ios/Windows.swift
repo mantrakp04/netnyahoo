@@ -387,7 +387,8 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
   // A quit is NNCore's (nn_lifetime's QuitPhase): every quit, ⌘Q, the Dock or logout, asks shouldTerminate once per
   // attempt, JS saves and answers willQuit with replyToTerminate, and when the quit is cancelled after all (a page's
-  // beforeunload said Stay) JS hears quitCancelled and goes on saving. Nothing here remembers an attempt.
+  // beforeunload said Stay) JS hears quitCancelled and goes on saving. All this keeps of an attempt is the wait for that
+  // answer, which asks the user when it runs long.
   var appEventsObserved = false
   /// The JS runtime `emit` reaches (its ShellModule). One going away (a reload) cancels a quit waiting for its answer,
   /// and no quit asks it again.
@@ -421,7 +422,45 @@ final class WindowManager: NSObject, NSWindowDelegate {
     guard appEventsObserved, let emit else { return .terminateNow }
     guard confirmActiveDownloads() else { return .terminateCancel }
     emit("onAppEvent", ["type": "willQuit"])
+    waitForSave()
     return .terminateLater
+  }
+
+  // waits-for: JS willQuit reply
+  // on-timeout: ask the user (Wait / Quit Without Saving)
+  private var saveWait: Timer?
+  private var lateSaveAlert: NSAlert?
+  private let background = ProcessInfo.processInfo.environment["NETNYAHOO_BACKGROUND"] == "1"
+
+  private func waitForSave() {
+    let timer = Timer(timeInterval: 5, repeats: false) { [weak self] _ in self?.saveIsLate() }
+    RunLoop.main.add(timer, forMode: .common)
+    saveWait = timer
+  }
+
+  private func saveIsLate() {
+    saveWait = nil
+    let message = "\(ProcessInfo.processInfo.processName) can't save your session right now."
+    // A test instance never shows it: logged, answered Wait.
+    if background {
+      NSLog("[shell] quit alert: \(message) (Wait / Quit Without Saving): Wait")
+      return waitForSave()
+    }
+    let alert = NSAlert()
+    alert.messageText = message
+    alert.informativeText = "If you quit now, your windows and tabs open as they were when it last saved."
+    alert.addButton(withTitle: "Wait")
+    alert.addButton(withTitle: "Quit Without Saving")
+    lateSaveAlert = alert
+    let response = alert.runModal()
+    lateSaveAlert = nil
+    switch response {
+    case .alertFirstButtonReturn: waitForSave()
+    case .alertSecondButtonReturn:
+      DocumentStore.close()
+      NSApp.reply(toApplicationShouldTerminate: true)
+    default: break  // JS answered while it was up (replyToTerminate).
+    }
   }
 
   private func confirmActiveDownloads() -> Bool {
@@ -439,6 +478,9 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
   /// JS's answer to willQuit. NNCore takes only the answer to the quit it asked about.
   func replyToTerminate(_ ok: Bool) {
+    saveWait?.invalidate()
+    saveWait = nil
+    if lateSaveAlert != nil { NSApp.stopModal(withCode: .abort) }
     NSApp.reply(toApplicationShouldTerminate: ok)
   }
 

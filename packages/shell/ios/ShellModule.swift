@@ -29,6 +29,8 @@ enum DocumentStore {
   private static let lock = NSLock()
   private static var staged: [String: Staged] = [:]
   private static var generation: UInt64 = 0
+  // Quit Without Saving: what is saved stays as it is; a save JS makes from now on is dropped.
+  private static var closed = false
   private static let flushOnQuit = NotificationCenter.default.addObserver(
     forName: NSApplication.willTerminateNotification, object: nil, queue: nil
   ) { _ in flush() }
@@ -46,6 +48,11 @@ enum DocumentStore {
     let url = try ShellModule.documentURL(name)
     let key = url.lastPathComponent
     lock.lock()
+    if closed {
+      lock.unlock()
+      done?(CocoaError(.fileWriteNoPermission))
+      return
+    }
     generation += 1
     let mine = generation
     // Callers still waiting on an older save of this document wait for this one, which supersedes it.
@@ -58,6 +65,7 @@ enum DocumentStore {
   static func remove(_ name: String) throws {
     let url = try ShellModule.documentURL(name)
     lock.lock()
+    if closed { return lock.unlock() }
     generation += 1
     let waiters = staged.removeValue(forKey: url.lastPathComponent)?.waiters ?? []
     lock.unlock()
@@ -91,6 +99,12 @@ enum DocumentStore {
     // Kept staged and tried again, backing off to a minute; a newer save of the document takes over instead.
     let delay = min(60.0, 2.0 * pow(2.0, Double(min(attempt, 5))))
     queue.asyncAfter(deadline: .now() + delay) { land(key, generation, attempt: attempt + 1) }
+  }
+
+  static func close() {
+    lock.lock()
+    closed = true
+    lock.unlock()
   }
 
   // Blocks until everything staged has been written once more (on quit).

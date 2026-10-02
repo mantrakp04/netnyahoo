@@ -4281,6 +4281,25 @@ try {
     return { exitMs, restored: tab.url };
   });
 
+  await check("quit-js-hung", async () => {
+    // ⌘Q while the JS thread never comes back: after 5 s the quit asks the user (Wait / Quit Without Saving); a test
+    // instance logs it and waits. The instance is killed afterwards.
+    const windowId = await appUp("app-quit-hung.out.log");
+    const started = Date.now();
+    await evalApp(`nn.shell.devKeyEquivalent("${windowId}", { key: "q", keyCode: 12, modifiers: ["command"], focus: "window" });
+      for (;;) {}`, 1000).catch(() => null);
+    try {
+      const line = await until("the quit alert's log", async () => appLog.join().split("\n").find((l) => l.includes("[shell] quit alert:")) ?? null, Math.max(0, 6000 - (Date.now() - started)));
+      const ms = Date.now() - started;
+      if (ms > 6000) throw new Error(`the alert came after ${ms} ms`);
+      if (exited) throw new Error("the app quit without the answer");
+      return { ms, line: line.slice(line.indexOf("[shell]")) };
+    } finally {
+      child.kill("SIGKILL");
+      await until("the hung app gone", async () => exited, 10000).catch(() => null);
+    }
+  });
+
   await check("extension-tab-empty-window", async () => {
     // An extension's tabs.create while the app's window shows no page (its tabs closed: a new-tab placeholder only):
     // Chrome puts its tab in that window's Browser, which no app view holds, so the app hears onTabs and opens the
