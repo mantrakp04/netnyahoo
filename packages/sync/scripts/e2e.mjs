@@ -28,30 +28,19 @@ for (const [name, d] of Object.entries(DEV)) d.dir = `${WORK}/${name}`;
 fs.rmSync(WORK, { recursive: true, force: true });
 const report = reporter(`${WORK}/e2e.log`, { name: "sync e2e" });
 // What happened since the last check: in the log, and printed under a failing check.
-let recent = [];
-function note(line) {
-  fs.appendFileSync(report.logFile, `${line}\n`);
-  recent.push(line);
-}
-// An assertion on collected data, so no time on its line (reporter().record always prints one: strip its 0ms).
-function check(name, ok, detail = "") {
-  const error = ok ? null : [detail || "the assertion failed", ...recent.slice(-15)].join("\n");
-  recent = [];
-  const log = console.log;
-  console.log = (line, ...rest) => log(typeof line === "string" ? line.replace(/^(PASS|FAIL) (.*?) 0ms/, "$1 $2") : line, ...rest);
-  try {
-    report.record(name, { error });
-  } finally {
-    console.log = log;
-  }
-}
+const note = report.log;
+// An assertion on collected data (untimed).
+const check = (name, ok, detail = "") => report.record(name, { error: ok ? null : detail || "the assertion failed" });
 
 const apps = {};
 async function start(name) {
   const { dir } = DEV[name];
-  const app = (apps[name] = await launch(APP, { data: dir, env: { NETNYAHOO_SYNC_DEFAULT_FOLDER: FOLDER }, ready: false }));
+  const app = (apps[name] = await launch(APP, {
+    data: dir,
+    env: { NETNYAHOO_SYNC_DEFAULT_FOLDER: FOLDER },
+    ready: { timeout: 120_000, test: "return !!globalThis.nnSync && Object.keys(nn.store.getState().windows).length > 0" },
+  }));
   note(`${name}: pid ${app.pid}, DevTools ${app.port}, log ${app.log}`);
-  await app.ready({ timeout: 120_000, test: "return !!globalThis.nnSync && Object.keys(nn.store.getState().windows).length > 0" });
 }
 
 const short = (x, n) => (x === undefined ? "undefined" : JSON.stringify(x).slice(0, n));
@@ -142,7 +131,7 @@ const server = http
 await new Promise((r, j) => (server.once("listening", r), server.once("error", j)));
 
 try {
-  // Both at once; a failed start still leaves the other in `apps` for the quit below.
+  // Both at once; one that never gets ready is quit by launch(), the other is in `apps` for the quit below.
   const started = await Promise.allSettled([start("A"), start("B")]);
   const notStarted = started.find((r) => r.status === "rejected");
   if (notStarted) throw notStarted.reason;

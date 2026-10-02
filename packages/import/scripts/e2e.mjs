@@ -45,24 +45,9 @@ const SECRET = "e2e-test-secret";
 fs.mkdirSync(SCRATCH, { recursive: true });
 const report = reporter(path.join(SCRATCH, "e2e.log"), { name: "import e2e" });
 // What happened since the last check: in the log, and printed under a failing check.
-let recent = [];
-function note(...parts) {
-  const line = parts.join(" ");
-  fs.appendFileSync(report.logFile, `${line}\n`);
-  recent.push(line);
-}
-// An assertion on collected data, so no time on its line (reporter().record always prints one: strip its 0ms).
-function record(name, ok, detail = "") {
-  const error = ok ? null : [detail || "the assertion failed", ...recent.slice(-15)].join("\n");
-  recent = [];
-  const log = console.log;
-  console.log = (line, ...rest) => log(typeof line === "string" ? line.replace(/^(PASS|FAIL) (.*?) 0ms/, "$1 $2") : line, ...rest);
-  try {
-    report.record(name, { error });
-  } finally {
-    console.log = log;
-  }
-}
+const note = report.log;
+// An assertion on collected data (untimed).
+const record = (name, ok, detail = "") => report.record(name, { error: ok ? null : detail || "the assertion failed" });
 
 // The fixture site: records the Cookie header of each request.
 const seen = [];
@@ -81,10 +66,9 @@ async function launch() {
   app = await launchInstance(APP, {
     data: DATA,
     env: { NETNYAHOO_IMPORT_SOURCE_DIR: `${HOME}/Library/Application Support`, NETNYAHOO_IMPORT_TEST_SECRET: SECRET },
-    ready: false,
+    ready: { timeout: 90_000, test: "return nn.store.getState().windowOrder.length > 0" },
   });
   note("pid", app.pid, "cdp", app.port, "log", app.log);
-  await app.ready({ timeout: 90_000, test: "return nn.store.getState().windowOrder.length > 0" });
 }
 
 async function quit() {
