@@ -2,20 +2,85 @@
 // Native performance benchmark: launch, idle cost, memory, tab/window latency and background throttling of a
 // Release build, driven in hidden instances (NETNYAHOO_BACKGROUND=1, a throwaway NETNYAHOO_DATA_DIR each run).
 //
-//   node apps/browser/scripts/perf/native-bench.mjs --app <Release Netnyahoo.app> --out <dir> [options]
-//     --label <name>        name of this set of results (default: the app's folder name)
-//     --bundle <file>       Hermes bundle of scripts/perf/bench-entry.js to run (built from the working tree when
-//                           omitted). Pass the same file to a before and an after run so only native code differs.
-//     --runs <n>            session runs (default 3); --launch-runs <n> cold launches (default 5)
-//     --idle <secs>         each idle window (default 60)
-//     --only <a,b>          phases: launch, session (idle/memory/switch/new tab/window/close), throttle, churn, sample,
-//                           windows (new windows alone: 8 per run, --runs runs)
-//     --compare <a.json>    print a before/after table against another run's results.json
-//     --report <b.json>     print the table for saved results (with --compare, before/after) without running
+// Gate recipe, what each row means and which rows don't compare across engines: docs/perf/README.md.
+//
+//   node apps/browser/scripts/perf/native-bench.mjs --app <Netnyahoo.app> --out <dir> [options]
+//     --label <name>          name of this set of results (default: the folder two levels above the app, so
+//                             dist/0.2.22/export/Netnyahoo.app is "0.2.22")
+//     --bundle <file>         Hermes bundle of scripts/perf/bench-entry.js to run (built from the working tree when
+//                             omitted). Pass the same file to a before and an after run so only native code differs.
+//                             It must match the app's NATIVE_API_VERSION, or every command fails with the skew.
+//     --control <app>         a baseline app, run in the same process interleaved run by run with --app (control first
+//                             on even runs, candidate first on odd ones), so both see the same machine. Prints control →
+//                             candidate; each side's results land in <out>/<its label>/results.json.
+//     --control-bundle <file> the control's bundle (default: --app's bundle); --control-label <name> (default as --label)
+//     --prepared              --app (and --control) are copies this script already prepared (<out>/<label>/app/
+//                             Netnyahoo.app: bundle swapped in, signed for the marker): run them in place, without
+//                             building a bundle, copying or signing. `--only prepare` makes those copies and exits.
+//     --runs <n>              session and windows runs (default 3); --launch-runs <n> cold launches (default 5)
+//     --idle <secs>           each idle window (default 60)
+//     --only <a,b>            phases (default launch,session,throttle,sample):
+//                               launch     cold launches
+//                               session    one instance per run with all of: idle, memory, switch, newtab, newwindow
+//                               idle, memory, switch, newtab, newwindow
+//                                          only those parts of a session run (still with the 20 tabs they're measured
+//                                          with; the settling waits only the chosen parts need). Compare runs made
+//                                          with the same --only.
+//                               windows    8 new windows per run, alone
+//                               throttle   hidden animating tabs' rAF and timer rates
+//                               churn      leak check: open and close 10 tabs 5 times
+//                               sample     main-thread `sample`s, idle and while switching and scrolling
+//                               prepare    prepare the app copies and exit (see --prepared)
+//     --env K=V               repeatable: extra environment for every instance (DYLD_INSERT_LIBRARIES is appended to
+//                             the marker library). Instances stay muted; don't pass NETNYAHOO_ALLOW_AUDIO.
+//     --hold <secs>           keep each measured instance alive that long before it quits, its pid and data dir logged
+//                             (lldb -p <pid>, heap <pid>, vmmap --summary <pid>). Ctrl-C quits it and stops.
+//     --port <n>              the instances' CDP port (default 9377). One instance runs at a time.
+//     --compare <a.json>      print a before/after table against another run's results.json
+//     --report <b.json>       print the table for saved results (with --compare, before/after) without running
+//     Environment: BENCH_ALLOW_APP_NAP=1 leaves App Nap on (the control for the App Nap row); BENCH_DEBUG=1 logs switches.
 //
 // Results: <out>/<label>/results.json (every sample) and a summary table (median, min–max over runs) on stdout.
 // Needs: Node 22+, swiftc (builds scripts/perf/nnperf.swift), clang (builds scripts/perf/nnmark.m, loaded into the copy
 // of the app to mark when a window's content appears), the app signed with an identity in the keychain.
+//
+// Sections (MARK:)
+//   Probes          nnperf() runs nnperf.swift (rusage, waitwindow, newwindow, quit); markerLibrary() builds nnmark.m;
+//                   usage(), usageDelta(), footprint(): CPU, wakeups and phys_footprint per process kind
+//   Test pages      PAGE_SCRIPT (window.__nn: fcp, frame, visibility, shown), staticPage, animPage, the local server
+//   CDP             Cdp: page targets and their window.__nn
+//   App instances   prepareApp (copy, bundle, marker entitlements, re-sign), buildBundle, Instance (hidden `open -g -n`
+//                   launch, the bench-cmd.js → bench-result.json channel of bench-channel.js, marks(), quit)
+//   Phases          makeTemplate (the seeded data folder each run copies), launchRun, sessionRun, windowsRun, newWindow,
+//                   idleWindow, throttled, throttleRun, churnRun, sampleRun
+//   Report          summary() builds every row below; printTable
+//   Main            options, the candidate and control sides, interleaved()
+//
+// Rows: the function that measures each, and what it waits on. Launch rows count from just before `open`; command rows
+// from Date.now() in the app's JS as the command starts (nn.now()).
+//   launch → window shown                   launchRun   nnperf waitwindow: the pid's first on-screen window ≥ 300×200
+//                                                        with alpha > 0 (CEF builds show it empty, NNCore with content)
+//   launch → window shown with its content  launchRun   the later of that and nnmark's commit of the Core Animation
+//                                                        transaction carrying the first React root's content
+//   launch → JS running                     launchRun   bench-boot.json, written as bench-channel.js loads (after the
+//                                                        app's index.js and its imports)
+//   launch → first page painted             launchRun   the seed tab's first-contentful-paint (PerformanceObserver)
+//   launch → first page's first frame       launchRun   the seed tab's first requestAnimationFrame callback
+//   idle CPU / idle wakeups/s (…)           sessionRun  idle: idleWindow(), nnperf rusage over the process tree --idle
+//                                                        secs apart with the channel paused, at 1 tab and at 20
+//   memory (phys_footprint), …              sessionRun  memory: footprint() of the tree at 1 tab (30 s after launch,
+//                                                        after the idle window), 10 tabs (+10 s), 20 tabs (+15 s), and
+//                                                        closed back to 1 (+30 s); "browser process" rows: that process
+//   after an idle minute: command answered  sessionRun  idle: the first command after the 1-tab idle (App Nap check)
+//   samples left out: page couldn't paint   sessionRun  switch/newtab: throttled(), < 5 rAF frames in 250 ms just before
+//   tab switch → shown                      sessionRun  switch: nn.actions.switchToTab → the page's visibilitychange to
+//                                                        visible + 2 rAFs (16 per run, among 20 tabs)
+//   new tab → first paint / first frame     sessionRun  newtab: store newTab → the new page's FCP / first rAF (5 per run)
+//   new window → on screen                  newWindow   nn.actions.openWindow → nnperf newwindow (2 ms polls; ≥ 300×200,
+//                                                        alpha > 0). 3 per session run (newwindow), 8 per windows run
+//   new window → on screen with its content newWindow   the later of that and nnmark's commit for that window
+//   new window → first paint / first frame  newWindow   the window's page's FCP / first rAF
+// Also printed: "Hidden tabs" (throttleRun), the browser process after each churn round, main-thread sample summaries.
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -40,8 +105,21 @@ const { values: opt } = parseArgs({
     compare: { type: "string" },
     report: { type: "string" },
     port: { type: "string", default: "9377" },
+    control: { type: "string" },
+    "control-bundle": { type: "string" },
+    "control-label": { type: "string" },
+    prepared: { type: "boolean" },
+    env: { type: "string", multiple: true, default: [] },
+    hold: { type: "string", default: "0" },
+    help: { type: "boolean", short: "h" },
   },
 });
+if (opt.help) {
+  // The header above is the usage.
+  const lines = readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1);
+  console.log(lines.slice(0, lines.findIndex((l) => !l.startsWith("//"))).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
+  process.exit(0);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.error(`[bench ${new Date().toISOString().slice(11, 19)}]`, ...a);
@@ -257,8 +335,6 @@ class Cdp {
 
 // MARK: App instances
 
-let benchApp = null;
-
 function prepareApp(app, out, bundle) {
   const copy = join(out, "Netnyahoo.app");
   rmSync(copy, { recursive: true, force: true });
@@ -274,7 +350,21 @@ function prepareApp(app, out, bundle) {
     .filter((key) => !granted.includes(`<key>${key}</key>`)).map((key) => `<key>${key}</key><true/>`).join("");
   writeFileSync(entitlements, granted.replace(/<\/dict>\s*<\/plist>\s*$/, `${marker}</dict></plist>`));
   execFileSync("codesign", ["--force", "--sign", identity, "--options", "runtime", "--entitlements", entitlements, copy], { stdio: "inherit" });
+  writeFileSync(join(out, "prepared.json"), JSON.stringify({ app, bundle, date: new Date().toISOString() }));
   return copy;
+}
+
+// --prepared: a copy prepareApp made (the marker's entitlements say so), run in place.
+function checkPrepared(copy) {
+  if (copy.startsWith("/Applications/")) throw new Error(`--prepared runs the app in place; ${copy} is the owner's`);
+  const granted = spawnSync("codesign", ["-d", "--entitlements", "-", "--xml", copy], { encoding: "utf8" }).stdout ?? "";
+  if (!granted.includes("<key>com.apple.security.cs.allow-dyld-environment-variables</key>"))
+    throw new Error(`${copy} isn't a copy native-bench prepared (run once without --prepared, or with --only prepare)`);
+  try {
+    return JSON.parse(readFileSync(join(dirname(copy), "prepared.json"), "utf8"));
+  } catch {
+    return { app: copy, bundle: join(copy, "Contents/Resources/main.jsbundle") };
+  }
 }
 
 function buildBundle(out) {
@@ -288,22 +378,31 @@ function buildBundle(out) {
   return hbc;
 }
 
+// Instances still running, for Ctrl-C.
+const live = new Set();
+
 class Instance {
-  constructor(dataDir, port, feed) {
+  // side: the app being measured (Main); dataDir: this instance's NETNYAHOO_DATA_DIR.
+  constructor(side, dataDir) {
+    this.side = side;
+    this.app = side.app;
     this.dataDir = dataDir;
-    this.port = port;
-    this.feed = feed;
-    this.cdp = new Cdp(port);
+    this.port = +opt.port;
+    this.feed = `${base()}/appcast.xml`;
+    this.cdp = new Cdp(this.port);
     this.seq = 0;
   }
   async launch() {
-    const exe = join(benchApp, "Contents/MacOS", execFileSync("defaults", ["read", join(benchApp, "Contents/Info.plist"), "CFBundleExecutable"], { encoding: "utf8" }).trim());
+    const exe = join(this.app, "Contents/MacOS", execFileSync("defaults", ["read", join(this.app, "Contents/Info.plist"), "CFBundleExecutable"], { encoding: "utf8" }).trim());
     const main = `^${exe.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`;
     if (spawnSync("pgrep", ["-f", main]).status === 0) throw new Error("a bench instance is still running");
+    // --env K=V; an extra DYLD_INSERT_LIBRARIES loads after the marker.
+    const extra = opt.env.filter((e) => !e.startsWith("DYLD_INSERT_LIBRARIES="));
+    const dyld = [markerLibrary(), ...opt.env.filter((e) => e.startsWith("DYLD_INSERT_LIBRARIES=")).map((e) => e.slice(22))].join(":");
     this.t0 = Date.now();
     execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${this.dataDir}`,
       "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${this.port}`, "--env", `NETNYAHOO_UPDATE_FEED_URL=${this.feed}`,
-      "--env", `DYLD_INSERT_LIBRARIES=${markerLibrary()}`, benchApp,
+      "--env", `DYLD_INSERT_LIBRARIES=${dyld}`, ...extra.flatMap((e) => ["--env", e]), this.app,
       // App Nap would stretch the hidden instance's timers (a tab switch after a quiet minute took seconds).
       // BENCH_ALLOW_APP_NAP=1 leaves it on: the control for the App Nap check in the table. --mute-audio: builds
       // before b7899c26 (0.2.21, whose CEF takes its switches from the command line) aren't muted on their own.
@@ -314,6 +413,7 @@ class Instance {
       else await sleep(5);
     }
     if (!this.pid) throw new Error("the app didn't start");
+    live.add(this);
     const w = nnperf("waitwindow", String(this.pid), "60");
     this.windowAt = w.code === 0 ? +w.out : NaN;
     const boot = await this.waitFile("bench-boot.json", 60_000);
@@ -368,13 +468,23 @@ class Instance {
     }
     return null;
   }
+  // A measured instance's end: --hold keeps it alive first.
+  async done() {
+    const secs = +opt.hold;
+    if (secs > 0 && this.pid && this.alive()) {
+      log(`holding ${this.side.label} pid ${this.pid} for ${secs} s (data ${this.dataDir}): lldb -p ${this.pid}, heap ${this.pid}, vmmap --summary ${this.pid}`);
+      for (const end = Date.now() + secs * 1000; Date.now() < end && this.alive(); ) await sleep(200);
+    }
+    await this.quit();
+  }
   async quit() {
     this.cdp.close();
+    live.delete(this);
     if (!this.pid || !this.alive()) return;
     nnperf("quit", String(this.pid));
     for (let i = 0; i < 100 && this.alive(); i++) await sleep(100);
     if (this.alive()) process.kill(this.pid, "SIGKILL");
-    const helpers = () => spawnSync("pgrep", ["-f", benchApp], { encoding: "utf8" }).stdout.trim();
+    const helpers = () => spawnSync("pgrep", ["-f", this.app], { encoding: "utf8" }).stdout.trim();
     for (let i = 0; i < 100 && helpers(); i++) await sleep(100);
     for (const p of helpers().split("\n").filter(Boolean)) process.kill(+p, "SIGKILL");
   }
@@ -384,17 +494,17 @@ class Instance {
 
 const base = () => `http://127.0.0.1:${server.address().port}`;
 let server;
-const results = { meta: {}, launch: [], session: [], windows: [], throttle: [], sample: [] };
 
 const WINDOW = `(() => { const s = nn.store.getState(); return s.ui.focusedWindowId && s.windows[s.ui.focusedWindowId] ? s.ui.focusedWindowId : s.windowOrder.find((id) => s.windows[id] && !s.windows[id].kind); })()`;
 
-async function makeTemplate(dir) {
-  log("seeding a session");
+async function makeTemplate(side) {
+  const dir = side.template;
+  log(`seeding a session (${side.label})`);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   // Past onboarding: its intro music would play on the owner's Mac from builds without b7899c26 (0.2.21).
   writeFileSync(join(dir, "onboarding.json"), JSON.stringify({ version: 1, completedAt: 1 }));
-  const app = await new Instance(dir, +opt.port, `${base()}/appcast.xml`).launch();
+  const app = await new Instance(side, dir).launch();
   try {
     await app.run(`const w = ${WINDOW}; nn.store.getState().newTab(w, { url: "${base()}/static?id=seed" }); return w;`);
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
@@ -411,38 +521,36 @@ async function makeTemplate(dir) {
   for (const f of ["bench-cmd.js", "bench-result.json", "bench-boot.json"]) rmSync(join(dir, f), { force: true });
 }
 
-function freshDir(template, name) {
-  const dir = join(opt.out, label, "data", name);
+function freshDir(side, name) {
+  const dir = join(side.dir, "data", name);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dirname(dir), { recursive: true });
-  execFileSync("cp", ["-Rc", template, dir]);
+  execFileSync("cp", ["-Rc", side.template, dir]);
   return dir;
 }
 
-async function launchRuns(template) {
-  for (let i = 0; i < +opt["launch-runs"]; i++) {
-    const app = new Instance(freshDir(template, `launch-${i}`), +opt.port, `${base()}/appcast.xml`);
-    try {
-      await app.launch();
-      const page = await app.pageState("id=seed", 30_000, (s) => s.fcp);
-      // On screen with its content, as for new windows: 0.2.21 showed its first window empty and its content after,
-      // 0.2.22 keeps it transparent until the transaction carrying its React content commits.
-      const content = app.marks().find((m) => m.content >= app.t0);
-      const committed = content && app.marks().find((m) => m.committed >= content.content && m.window === content.window);
-      const r = {
-        window: app.windowAt - app.t0,
-        withContent: committed ? Math.max(app.windowAt, committed.committed) - app.t0 : NaN,
-        js: app.jsStart - app.t0,
-        firstPaint: (page?.fcp ?? NaN) - app.t0,
-        firstFrame: (page?.frame ?? NaN) - app.t0,
-      };
-      log(`launch ${i}:`, JSON.stringify(r));
-      results.launch.push(r);
-    } finally {
-      await app.quit();
-    }
-    await sleep(3000);
+async function launchRun(side, i) {
+  const app = new Instance(side, freshDir(side, `launch-${i}`));
+  try {
+    await app.launch();
+    const page = await app.pageState("id=seed", 30_000, (s) => s.fcp);
+    // On screen with its content, as for new windows: 0.2.21 showed its first window empty and its content after,
+    // 0.2.22 keeps it transparent until the transaction carrying its React content commits.
+    const content = app.marks().find((m) => m.content >= app.t0);
+    const committed = content && app.marks().find((m) => m.committed >= content.content && m.window === content.window);
+    const r = {
+      window: app.windowAt - app.t0,
+      withContent: committed ? Math.max(app.windowAt, committed.committed) - app.t0 : NaN,
+      js: app.jsStart - app.t0,
+      firstPaint: (page?.fcp ?? NaN) - app.t0,
+      firstFrame: (page?.frame ?? NaN) - app.t0,
+    };
+    log(`${side.tag}launch ${i}:`, JSON.stringify(r));
+    side.results.launch.push(r);
+  } finally {
+    await app.done();
   }
+  await sleep(3000);
 }
 
 async function idleWindow(app, secs) {
@@ -512,42 +620,49 @@ async function newWindow(app, id) {
   };
 }
 
-async function windowsRun(template, i) {
-  const app = new Instance(freshDir(template, `windows-${i}`), +opt.port, `${base()}/appcast.xml`);
+async function windowsRun(side, i) {
+  const app = new Instance(side, freshDir(side, `windows-${i}`));
   const r = { newWindow: [] };
   try {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
     await sleep(10_000);
     for (let k = 0; k < 8; k++) r.newWindow.push(await newWindow(app, `w${k}`));
-    log(`windows ${i}:`, JSON.stringify(r.newWindow));
-    results.windows.push(r);
+    log(`${side.tag}windows ${i}:`, JSON.stringify(r.newWindow));
+    side.results.windows.push(r);
   } finally {
-    await app.quit();
+    await app.done();
   }
 }
 
-async function sessionRun(template, i) {
+// The parts of a session run (--only session runs them all, in this order, on one instance).
+const SESSION_PARTS = ["idle", "memory", "switch", "newtab", "newwindow"];
+
+async function sessionRun(side, i, parts) {
+  const has = (part) => parts.has(part);
   const secs = +opt.idle;
-  const app = new Instance(freshDir(template, `session-${i}`), +opt.port, `${base()}/appcast.xml`);
+  const app = new Instance(side, freshDir(side, `session-${i}`));
   const r = { memory: {}, idle: {}, tabSwitch: [], newTab: [], newTabFrame: [], newWindow: [], processes: {}, throttled: { tabSwitch: 0, newTab: 0 } };
+  if (parts.size < SESSION_PARTS.length) r.parts = [...parts];
   try {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
-    await sleep(30_000);
-    r.idle.tabs1 = await idleWindow(app, secs);
-    r.memory.tabs1 = footprint(usage(app.pid));
+    if (has("idle") || has("memory")) await sleep(30_000);
+    if (has("idle")) r.idle.tabs1 = await idleWindow(app, secs);
+    if (has("memory")) r.memory.tabs1 = footprint(usage(app.pid));
     await openTabs(app, 1, 10);
-    await sleep(10_000);
-    r.memory.tabs10 = footprint(usage(app.pid));
+    if (has("memory")) {
+      await sleep(10_000);
+      r.memory.tabs10 = footprint(usage(app.pid));
+    }
     await openTabs(app, 10, 20);
     await sleep(15_000);
-    r.memory.tabs20 = footprint(usage(app.pid));
-    r.idle.tabs20 = await idleWindow(app, secs);
+    if (has("memory")) r.memory.tabs20 = footprint(usage(app.pid));
+    if (has("idle")) r.idle.tabs20 = await idleWindow(app, secs);
 
     // Tab switches: command → the page's visibilitychange + two frames.
-    const tabs = (await tabIds(app)).filter(([, url]) => url.includes("/static?id=t"));
-    for (let k = 0; k < 16; k++) {
+    const tabs = has("switch") ? (await tabIds(app)).filter(([, url]) => url.includes("/static?id=t")) : [];
+    for (let k = 0; k < (has("switch") ? 16 : 0); k++) {
       const [id, url] = tabs[(k * 7 + 3) % tabs.length];
       const marker = url.match(/id=(t\d+)/)[1];
       const target = await app.cdp.find(`id=${marker}`);
@@ -563,7 +678,7 @@ async function sessionRun(template, i) {
     }
 
     // New tabs with a page: command → first contentful paint.
-    for (let k = 0; k < 5; k++) {
+    for (let k = 0; k < (has("newtab") ? 5 : 0); k++) {
       const hidden = await throttled(app);
       const at = await app.run(`const t = nn.now(); nn.store.getState().newTab(${WINDOW}, { url: "${base()}/static?id=n${k}" }); return t;`);
       const s = await app.pageState(`id=n${k}`, 20_000, (st) => st.fcp);
@@ -572,27 +687,30 @@ async function sessionRun(template, i) {
       r.newTabFrame.push(s?.frame && !hidden ? s.frame - at : NaN);
       await sleep(800);
     }
-    await app.run(`const s = nn.store.getState(); for (const id of Object.keys(s.tabs)) if (s.tabs[id].url.includes("id=n")) nn.store.getState().closeTab(id); return true;`);
+    if (has("newtab"))
+      await app.run(`const s = nn.store.getState(); for (const id of Object.keys(s.tabs)) if (s.tabs[id].url.includes("id=n")) nn.store.getState().closeTab(id); return true;`);
 
-    for (let k = 0; k < 3; k++) r.newWindow.push(await newWindow(app, `w${k}`));
+    for (let k = 0; k < (has("newwindow") ? 3 : 0); k++) r.newWindow.push(await newWindow(app, `w${k}`));
 
     // Close all but the first tab; memory once the renderers are gone.
-    r.processes.tabs20 = usage(app.pid).length;
-    await app.run(`const s = nn.store.getState(); const w = ${WINDOW}; const keep = s.windows[w].tabIds.find((id) => s.tabs[id].url.includes("id=seed"));
-      nn.store.getState().activate(keep); for (const id of s.windows[w].tabIds) if (id !== keep) nn.store.getState().closeTab(id); return true;`);
-    await sleep(30_000);
-    r.memory.closed = footprint(usage(app.pid));
-    r.processes.closed = r.memory.closed.processes;
+    if (has("memory")) {
+      r.processes.tabs20 = usage(app.pid).length;
+      await app.run(`const s = nn.store.getState(); const w = ${WINDOW}; const keep = s.windows[w].tabIds.find((id) => s.tabs[id].url.includes("id=seed"));
+        nn.store.getState().activate(keep); for (const id of s.windows[w].tabIds) if (id !== keep) nn.store.getState().closeTab(id); return true;`);
+      await sleep(30_000);
+      r.memory.closed = footprint(usage(app.pid));
+      r.processes.closed = r.memory.closed.processes;
+    }
   } finally {
-    await app.quit();
+    await app.done();
   }
-  log(`session ${i}:`, JSON.stringify({ idle: r.idle, mem: Object.fromEntries(Object.entries(r.memory).map(([k, v]) => [k, Math.round(v.totalMB)])), sw: r.tabSwitch, nt: r.newTab, nw: r.newWindow }));
-  results.session.push(r);
+  log(`${side.tag}session ${i}:`, JSON.stringify({ idle: r.idle, mem: Object.fromEntries(Object.entries(r.memory).map(([k, v]) => [k, Math.round(v.totalMB)])), sw: r.tabSwitch, nt: r.newTab, nw: r.newWindow }));
+  side.results.session.push(r);
 }
 
 // Hidden tabs: rAF and timer rates of animating pages that aren't shown.
-async function throttleRun(template) {
-  const app = new Instance(freshDir(template, "throttle"), +opt.port, `${base()}/appcast.xml`);
+async function throttleRun(side) {
+  const app = new Instance(side, freshDir(side, "throttle"));
   try {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
@@ -616,16 +734,16 @@ async function throttleRun(template) {
       tabs[id] = { visibility: s.visibility, rafPerSec: (s.raf - p.raf) / secs, fastTimerPerSec: (s.fast - p.fast) / secs, secondTimerPerSec: (s.ticks - p.ticks) / secs };
     }
     const idle = await idleWindow(app, 20);
-    results.throttle.push({ tabs, idle });
-    log("throttle:", JSON.stringify(tabs), JSON.stringify(idle.total));
+    side.results.throttle.push({ tabs, idle });
+    log(`${side.tag}throttle:`, JSON.stringify(tabs), JSON.stringify(idle.total));
   } finally {
-    await app.quit();
+    await app.done();
   }
 }
 
 // Leak check: open and close 10 tabs five times; the browser process's footprint after each round.
-async function churnRun(template) {
-  const app = new Instance(freshDir(template, "churn"), +opt.port, `${base()}/appcast.xml`);
+async function churnRun(side) {
+  const app = new Instance(side, freshDir(side, "churn"));
   const rounds = [];
   try {
     await app.launch();
@@ -643,17 +761,17 @@ async function churnRun(template) {
       await sleep(15_000);
       rounds.push(measure());
     }
-    results.churn = rounds;
-    log("churn:", JSON.stringify(rounds.map((r) => Math.round(r.browserMB))));
+    side.results.churn = rounds;
+    log(`${side.tag}churn:`, JSON.stringify(rounds.map((r) => Math.round(r.browserMB))));
   } finally {
-    await app.quit();
+    await app.done();
   }
 }
 
 // Main-thread samples: idle with 20 tabs, then while switching tabs and scrolling.
-async function sampleRun(template) {
-  const app = new Instance(freshDir(template, "sample"), +opt.port, `${base()}/appcast.xml`);
-  const dir = join(opt.out, label, "samples");
+async function sampleRun(side) {
+  const app = new Instance(side, freshDir(side, "sample"));
+  const dir = join(side.dir, "samples");
   mkdirSync(dir, { recursive: true });
   try {
     await app.launch();
@@ -673,10 +791,10 @@ async function sampleRun(template) {
       await sleep(150);
     }
     await new Promise((ok) => sampler.on("exit", ok));
-    results.sample.push({ idle: summarizeSample(join(dir, "idle.txt")), active: summarizeSample(join(dir, "switch-scroll.txt")) });
-    log("samples in", dir);
+    side.results.sample.push({ idle: summarizeSample(join(dir, "idle.txt")), active: summarizeSample(join(dir, "switch-scroll.txt")) });
+    log(`${side.tag}samples in`, dir);
   } finally {
-    await app.quit();
+    await app.done();
   }
 }
 
@@ -726,7 +844,8 @@ function summary(res) {
   add("memory, browser process, 20 tabs", S.map((r) => r.memory.tabs20?.kinds.browser), "MB");
   add("memory, browser process, after closing", S.map((r) => r.memory.closed?.kinds.browser), "MB");
   add("after an idle minute: command answered (App Nap check)", S.map((r) => r.idle.tabs1?.afterIdle?.commandMs), "ms");
-  add("samples left out: page couldn't paint (switch + new tab, per run)", S.map((r) => r.throttled ? r.throttled.tabSwitch + r.throttled.newTab : NaN), "");
+  const timedSwitches = (r) => !r.parts || r.parts.includes("switch") || r.parts.includes("newtab");
+  add("samples left out: page couldn't paint (switch + new tab, per run)", S.map((r) => r.throttled && timedSwitches(r) ? r.throttled.tabSwitch + r.throttled.newTab : NaN), "");
   add("tab switch → shown (median of 16 per run)", S.map((r) => median(r.tabSwitch)), "ms");
   add("new tab → first paint (median of 5 per run)", S.map((r) => median(r.newTab)), "ms");
   add("new tab → its page's first frame (median of 5 per run)", S.map((r) => median(r.newTabFrame ?? [])), "ms");
@@ -739,10 +858,11 @@ function summary(res) {
   return rows;
 }
 
-function printTable(rows, other) {
+// `other` is the before column; `names` the two columns' headings.
+function printTable(rows, other, names = ["Before", "After"]) {
   const fmt = (r) => (Number.isFinite(r?.median) ? `${r.median.toFixed(r.digits)} ${r.unit} (${r.min.toFixed(r.digits)}–${r.max.toFixed(r.digits)}, n=${r.n})` : "—");
   const lines = other
-    ? ["| Metric | Before | After |", "|---|---|---|", ...rows.map((r) => `| ${r.name} | ${fmt(other.find((o) => o.name === r.name))} | ${fmt(r)} |`)]
+    ? [`| Metric | ${names[0]} | ${names[1]} |`, "|---|---|---|", ...rows.map((r) => `| ${r.name} | ${fmt(other.find((o) => o.name === r.name))} | ${fmt(r)} |`)]
     : ["| Metric | Median (min–max, runs) |", "|---|---|", ...rows.map((r) => `| ${r.name} | ${fmt(r)} |`)];
   console.log(lines.join("\n"));
 }
@@ -754,42 +874,93 @@ if (opt.report) {
   printTable(summary(JSON.parse(readFileSync(opt.report, "utf8"))), other);
   process.exit(0);
 }
-if (!opt.app) {
-  console.error("usage: native-bench.mjs --app <Netnyahoo.app> [--out dir] [--label name] [--bundle main.jsbundle] ...");
+const fail = (message) => {
+  console.error(message);
   process.exit(64);
+};
+if (!opt.app) fail("usage: native-bench.mjs --app <Netnyahoo.app> [--control <app>] [--out dir] [--only phases] … (--help)");
+const PHASES = ["launch", "session", ...SESSION_PARTS, "windows", "throttle", "churn", "sample", "prepare"];
+const only = new Set(opt.only.split(",").map((p) => p.trim()).filter(Boolean));
+for (const p of only) if (!PHASES.includes(p)) fail(`--only: no phase "${p}"; phases: ${PHASES.join(", ")}`);
+for (const e of opt.env) if (!/^[A-Za-z_]\w*=/.test(e)) fail(`--env wants K=V, got "${e}"`);
+if (!(+opt.hold >= 0)) fail(`--hold wants seconds, got "${opt.hold}"`);
+if (opt.control && opt.compare) log("--compare is ignored with --control: the control is the before column");
+
+// A side: one app being measured, its prepared copy, seeded template and results. The candidate is --app, the
+// control (when given) --control; with both, every phase alternates them run by run.
+const labelOf = (app) => basename(dirname(dirname(resolve(app))));
+function makeSide(app, label, role) {
+  const dir = join(opt.out, label);
+  mkdirSync(dir, { recursive: true });
+  return { role, label, tag: "", src: resolve(app), dir, template: join(dir, "template"), app: null, bundle: null,
+    results: { meta: {}, launch: [], session: [], windows: [], throttle: [], sample: [] } };
 }
-const label = opt.label ?? basename(dirname(dirname(resolve(opt.app))));
-const outDir = join(opt.out, label);
-mkdirSync(outDir, { recursive: true });
+const candidate = makeSide(opt.app, opt.label ?? labelOf(opt.app), "candidate");
+let control = null;
+if (opt.control) {
+  let label = opt["control-label"] ?? labelOf(opt.control);
+  if (label === candidate.label) label += "-control";
+  control = makeSide(opt.control, label, "control");
+  candidate.tag = `${candidate.label} `;
+  control.tag = `${control.label} `;
+}
+const sides = control ? [candidate, control] : [candidate];
+
+// Runs fn(side, i) for i < n, alternating the sides (control first on even runs) so drift hits both alike.
+async function interleaved(n, fn) {
+  for (let i = 0; i < n; i++) for (const side of !control ? sides : i % 2 ? [candidate, control] : [control, candidate]) await fn(side, i);
+}
+
 const cleanup = async () => {
+  for (const app of [...live]) await app.quit().catch(() => {});
   server?.close();
 };
 process.on("SIGINT", async () => {
+  log("interrupted: quitting the instance");
   await cleanup();
   process.exit(130);
 });
 
 try {
   server = await startServer();
-  const bundle = opt.bundle ? resolve(opt.bundle) : buildBundle(join(outDir, "bundle"));
-  benchApp = prepareApp(resolve(opt.app), join(outDir, "app"), bundle);
-  results.meta = { app: resolve(opt.app), bundle, label, date: new Date().toISOString(), runs: +opt.runs, idleSecs: +opt.idle };
-  const template = join(outDir, "template");
-  await makeTemplate(template);
-  const only = new Set(opt.only.split(","));
-  if (only.has("launch")) await launchRuns(template);
-  if (only.has("session")) for (let i = 0; i < +opt.runs; i++) await sessionRun(template, i);
-  if (only.has("windows")) for (let i = 0; i < +opt.runs; i++) await windowsRun(template, i);
-  if (only.has("throttle")) await throttleRun(template);
-  if (only.has("churn")) await churnRun(template);
-  if (only.has("sample")) await sampleRun(template);
-  writeFileSync(join(outDir, "results.json"), JSON.stringify(results, null, 1));
-  const rows = summary(results);
-  const other = opt.compare ? summary(JSON.parse(readFileSync(opt.compare, "utf8"))) : null;
-  printTable(rows, other);
-  if (results.throttle.length) console.log("\nHidden tabs:", JSON.stringify(results.throttle[0].tabs));
-  if (results.churn) console.log("\nBrowser process after each open/close-10-tabs round (MB):", results.churn.map((r) => Math.round(r.browserMB)).join(" → "));
-  if (results.sample.length) console.log("Main thread samples:", JSON.stringify(results.sample[0]));
+  for (const side of sides) {
+    if (opt.prepared) {
+      const from = checkPrepared(side.src);
+      side.app = side.src;
+      side.bundle = join(side.app, "Contents/Resources/main.jsbundle");
+      side.results.meta.preparedFrom = from;
+    } else {
+      // The control runs the candidate's bundle unless it has its own (each must match its app's NATIVE_API_VERSION).
+      const own = side === control ? opt["control-bundle"] : opt.bundle;
+      side.bundle = own ? resolve(own) : side === control ? candidate.bundle : buildBundle(join(side.dir, "bundle"));
+      side.app = prepareApp(side.src, join(side.dir, "app"), side.bundle);
+    }
+    const other = sides.find((s) => s !== side);
+    Object.assign(side.results.meta, { app: side.src, bundle: side.bundle, label: side.label, date: new Date().toISOString(),
+      runs: +opt.runs, idleSecs: +opt.idle, only: [...only], env: opt.env, ...(other ? { role: side.role, interleavedWith: other.label } : {}) });
+  }
+  if (only.has("prepare")) {
+    for (const side of sides) console.log(`prepared ${side.app} (rerun with --app ${side.app} --prepared)`);
+    process.exit(0);
+  }
+  for (const side of sides) await makeTemplate(side);
+  if (only.has("launch")) await interleaved(+opt["launch-runs"], launchRun);
+  const parts = new Set(SESSION_PARTS.filter((p) => only.has("session") || only.has(p)));
+  if (parts.size) await interleaved(+opt.runs, (side, i) => sessionRun(side, i, parts));
+  if (only.has("windows")) await interleaved(+opt.runs, windowsRun);
+  if (only.has("throttle")) await interleaved(1, throttleRun);
+  if (only.has("churn")) await interleaved(1, churnRun);
+  if (only.has("sample")) await interleaved(1, sampleRun);
+  for (const side of sides) writeFileSync(join(side.dir, "results.json"), JSON.stringify(side.results, null, 1));
+  const rows = summary(candidate.results);
+  if (control) printTable(rows, summary(control.results), [`${control.label} (control)`, candidate.label]);
+  else printTable(rows, opt.compare ? summary(JSON.parse(readFileSync(opt.compare, "utf8"))) : null);
+  for (const { results, tag } of sides) {
+    if (results.throttle.length) console.log(`\n${tag}Hidden tabs:`, JSON.stringify(results.throttle[0].tabs));
+    if (results.churn) console.log(`\n${tag}Browser process after each open/close-10-tabs round (MB):`, results.churn.map((r) => Math.round(r.browserMB)).join(" → "));
+    if (results.sample.length) console.log(`${tag}Main thread samples:`, JSON.stringify(results.sample[0]));
+  }
+  if (control) console.log(`\nresults: ${join(candidate.dir, "results.json")}, ${join(control.dir, "results.json")}`);
 } finally {
   await cleanup();
 }

@@ -1,20 +1,52 @@
 #!/usr/bin/env node
-// JS/React benchmark for Netnyahoo on a production (Hermes) bundle.
+// JS/React benchmark for Netnyahoo on a production (Hermes) bundle: what each interaction costs the JS thread
+// (React commits and renders, store updates, native→JS tasks, timers, document writes), counted by the opt-in probe
+// in src/lib/perfProbe.ts. Gate recipe and the other benches: docs/perf/README.md.
 //
 //   node js-bench.mjs bundle <outDir> [--profiling 1]
 //       Builds the production JS bundle of the current tree (metro, --dev false) and compiles it with
 //       hermesc, as the Release build does. Prints sizes and the biggest packages. --profiling 1 bundles
 //       React's profiling renderer, which times each component's render (render-bench.mjs uses it).
-//   node js-bench.mjs run --app <Release Netnyahoo.app> --bundle <main.jsbundle> --label <name>
-//                         [--runs 5] [--scenarios a,b] [--port 47817] [--out <dir>]
+//   node js-bench.mjs run --app <Release Netnyahoo.app> --bundle <main.jsbundle> --label <name> [flags]
 //       Clones the app (APFS clone), swaps in the bundle, and for each run seeds a fresh data folder
 //       (seed.mjs: 200 tabs, 5000 history entries, 1000 bookmarks), launches a hidden instance, runs
-//       the scenarios of bench-app.js through the dev harness and quits it. Writes <label>.json.
+//       the scenarios of bench-app.js through the dev harness and quits it. Writes <out>/<label>.json.
+//       The bundle must match the app's NATIVE_API_VERSION; a release's own is <app>/Contents/Resources/main.jsbundle.
+//         --runs <n>           launches, one per run (default 5)
+//         --scenarios <a,b>    of: startup, persistence, idle, typing, switchTabs, openClose, scroll, pageLoad, hover,
+//                              profileSwipe, storeUpdate, idleLate (default all, in that order; startup must stay first)
+//         --port <n>           the test page server's port (default 47817); instance CDP ports are 9500 + run + …
+//         --out <dir>          default $NN_PERF_OUT or /tmp/nn-perf-js
+//         --append 1           add these runs to an existing <label>.json (to interleave two builds' runs: alternate
+//                              `run --runs 1 --append 1` between them)
+//         --probe <options>    the probe's slower options, written into the perf-probe file: selectors (every store
+//                              selector timed by call site), renders (why each component rendered), listeners
+//         --trace 1            names anonymous timer callbacks by call site (slower: for finding, not timing)
+//         --options '<json>'   options passed to every scenario (bench-app.js), e.g. '{"seconds":20}'
 //   node js-bench.mjs compare <before.json> <after.json>
-//       Prints a before/after table of medians.
+//       Prints a before/after table of medians, after a warning line when the two reports' probe or bench
+//       revisions differ (their numbers count different things).
+//   node js-bench.mjs summary <report.json>
+//       Recomputes a report's summary from its raw results (older reports pick up new lines) and prints it.
 //
 // The app side is the opt-in probe in src/lib/perfProbe.ts, on only when the data folder holds a
 // `perf-probe` file (the seed writes one).
+//
+// Report (<out>/<label>.json):
+//   { label, version (the app's CFBundleShortVersionString), bundle, bundleSize (bytes), when,
+//     probeRevision   nnPerf.revision of the bundle (PERF_PROBE_REVISION in perfProbe.ts; inferred for bundles from
+//                     before it existed: 2 if the probe counts commitTasks, else 1). Mixed after --append: an array.
+//     benchRevision   BENCH_REVISION below: this script's seed and scenarios
+//     results: [{ run, launchedAt (epoch ms before `open`), probeRevision, <scenario>: what nnBench.run returned }]
+//       startup      { marks: { bundleStart, bundleEnd, firstCommit, firstWindow, processStart }, stats }
+//       idle, scroll, idleLate               { stats }
+//       typing       { keys: [ms per key], items, stats }       switchTabs, hover, storeUpdate   { steps: [ms], stats }
+//       openClose    { open: [ms], close: [ms], openStats, closeStats }
+//       pageLoad     { runs: [{ loadMs, stats }] }              profileSwipe   { runs: [{ ms, stats }] }
+//       persistence  { history|session|bookmarks: { ms, bytes } }
+//       stats        nnPerf.read(): counters keyed by name (commits, renders, mounts, hostUpdates, storeUpdates,
+//                    listenerMs, tasks, taskMs, timers, timerMs, writes, writeBytes, writeMs, commitTasks, …)
+//     summary: { lines: { "<scenario>.<metric>": { median, min, max, n } }, detail: { <scenario>: top offenders } } }
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -27,6 +59,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, "../..");
 const repo = resolve(appDir, "../..");
 const defaultOut = process.env.NN_PERF_OUT ?? "/tmp/nn-perf-js";
+// Bump when the seed or bench-app.js scenarios change what the numbers count.
+//   1  until e282ac6e: the seed wrote a favicon index (favicons-default.json) the app deleted at startup
+//   2  e282ac6e: no favicon index
+const BENCH_REVISION = 2;
 
 const [command, ...rest] = process.argv.slice(2);
 const flags = {};
@@ -297,6 +333,9 @@ async function run() {
           const entry = flags.trace && name !== "startup" ? "traced" : name;
           result[name] = await evaluate(dataDir, pid, `return nnBench.run(${JSON.stringify(entry)}, ${options});`);
         }
+        // Asked last, so startup's counts don't include it. Bundles from before nnPerf.revision: 6232fa43 (revision 2)
+        // added commitTasks.
+        result.probeRevision = await evaluate(dataDir, pid, `return nnPerf.revision ?? ("commitTasks" in nnPerf.read() ? 2 : 1);`);
       } finally {
         await quit(pid);
       }
@@ -309,7 +348,13 @@ async function run() {
   // --append 1 adds these runs to an existing report (to interleave two builds' runs under the same load).
   const file = join(out, `${label}.json`);
   if (flags.append && existsSync(file)) results.unshift(...JSON.parse(readFileSync(file, "utf8")).results);
-  const report = { label, version, bundle: jsbundle, bundleSize, when: new Date().toISOString(), results, summary: summarize(results, bundleSize) };
+  const revisions = [...new Set(results.map(runRevision))];
+  if (revisions.length > 1) console.log(`WARNING: these runs mix probe revisions ${revisions.join(", ")}; their numbers don't compare`);
+  const report = {
+    label, version, bundle: jsbundle, bundleSize, when: new Date().toISOString(),
+    probeRevision: revisions.length > 1 ? revisions : revisions[0], benchRevision: BENCH_REVISION,
+    results, summary: summarize(results, bundleSize),
+  };
   writeFileSync(file, JSON.stringify(report, null, 2));
   printSummary(report.summary);
   console.log(`\nwrote ${file}`);
@@ -443,13 +488,26 @@ function printSummary(summary) {
   }
 }
 
+// A run's probe revision: stamped, or inferred from its counters for reports from before the stamp.
+const runRevision = (r) => {
+  if (r.probeRevision !== undefined) return r.probeRevision;
+  const stats = Object.values(r).find((v) => v?.stats)?.stats;
+  return stats ? ("commitTasks" in stats ? 2 : 1) : "unknown";
+};
+const reportRevisions = (report) => {
+  const probe = [...new Set(report.results.map(runRevision))].join("+");
+  return { probe: report.probeRevision === undefined ? `${probe} (inferred)` : probe, bench: report.benchRevision ?? "1 (unstamped)" };
+};
+
 function compare(a, b) {
-  const lines = (file) => {
-    const report = JSON.parse(readFileSync(file, "utf8"));
-    return summarize(report.results, report.bundleSize).lines;
-  };
-  const A = lines(a);
-  const B = lines(b);
+  const reports = [a, b].map((file) => JSON.parse(readFileSync(file, "utf8")));
+  const [ra, rb] = reports.map(reportRevisions);
+  const strip = (v) => String(v).replace(/ \(.*\)$/, "");
+  if (strip(ra.probe) !== strip(rb.probe))
+    console.log(`WARNING: probe revisions differ (before ${ra.probe}, after ${rb.probe}): taskMs, otherJsMs and the other probe counts measure different things; compare builds on the same bundle or on bundles of one revision (perfProbe.ts PERF_PROBE_REVISION).\n`);
+  if (strip(ra.bench) !== strip(rb.bench))
+    console.log(`WARNING: bench revisions differ (before ${ra.bench}, after ${rb.bench}): the seed or scenarios changed between the two runs; rerun both with one js-bench.\n`);
+  const [A, B] = reports.map((report) => summarize(report.results, report.bundleSize).lines);
   console.log(`| metric | before | after | change |\n|---|---:|---:|---:|`);
   for (const key of Object.keys(A)) {
     const x = A[key]?.median;
@@ -461,7 +519,10 @@ function compare(a, b) {
 
 // render-bench.mjs imports the launcher and server from here; the commands run only from the command line.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  if (command === "bundle") bundle(positional[0] ?? join(defaultOut, "bundle"), { profiling: !!flags.profiling });
+  if (command === "help" || command === "--help" || command === "-h" || "help" in flags) {
+    const lines = readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1);
+    console.log(lines.slice(0, lines.findIndex((l) => !l.startsWith("//"))).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
+  } else if (command === "bundle") bundle(positional[0] ?? join(defaultOut, "bundle"), { profiling: !!flags.profiling });
   else if (command === "run") await run();
   else if (command === "compare") compare(positional[0], positional[1]);
   else if (command === "summary") {
@@ -471,7 +532,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     writeFileSync(positional[0], JSON.stringify(report, null, 2));
     printSummary(report.summary);
   } else {
-    console.error("usage: js-bench.mjs bundle <outDir> [--profiling 1] | run --app … --bundle … --label … | compare <a.json> <b.json> | summary <a.json>");
+    console.error("usage: js-bench.mjs bundle <outDir> [--profiling 1] | run --app … --bundle … --label … | compare <a.json> <b.json> | summary <a.json> (--help)");
     process.exit(64);
   }
 }

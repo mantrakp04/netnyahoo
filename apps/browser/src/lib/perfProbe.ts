@@ -59,6 +59,12 @@ const probeOptions = (() => {
 })();
 
 export const perfProbeEnabled = probeOptions !== null;
+
+// What the probe counts, as nnPerf.revision; js-bench stamps it into its reports and `compare` warns when two differ.
+// Bump it whenever a change moves the numbers (a new kind of task timed, a counter redefined).
+//   1  before 6232fa43 (0.2.21 and older): Expo module events (JSI) weren't timed as tasks
+//   2  6232fa43: module events timed as module:<event> tasks, counted in taskMs; commitTasks
+export const PERF_PROBE_REVISION = 2;
 const rendersProbe = !!probeOptions?.includes("renders");
 // "listeners" also times each store listener by the functions that subscribed it.
 const listenersProbe = !!probeOptions?.includes("listeners");
@@ -459,6 +465,7 @@ if (perfProbeEnabled) {
   wrapWrites();
   if (probeOptions?.includes("selectors")) wrapSelectors();
   (globalThis as { nnPerf?: unknown }).nnPerf = {
+    revision: PERF_PROBE_REVISION,
     marks,
     startup,
     get firstCommit() {
