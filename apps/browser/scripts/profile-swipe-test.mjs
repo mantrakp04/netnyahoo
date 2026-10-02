@@ -1,108 +1,53 @@
+// Profile swipes in the sidebar and swipes on web pages, through the native gesture path (NetnyahooSwipe devSimulate)
+// in a hidden instance with two profiles.
+//   node apps/browser/scripts/profile-swipe-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data]
+//     [--stale-window] [--only=<case name substring>] [--bundle-port=<Metro port>]
+// One line per case; the details go to profile-swipe.log and the evidence (native traces) to
+// profile-swipe-results.json beside the instance's data; both are kept with --keep-data or after a failure.
+// The launched app's ownership (scripts/lib/instance.mjs) has its own self-test: `--self-test` runs it.
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-// Ownership of the launched app: parallel runs share one Debug binary, so the owned PID is the
-// single new process of that binary listening on this run's CDP port, and only it is ever killed.
-function parsePort(value) {
-  const n = Number(value);
-  if (!/^\d+$/.test(value) || n < 1 || n > 65535) throw new Error(`--port must be an integer 1..65535, got ${value}`);
-  return n;
-}
-const pidList = (text) => [...new Set(text.split(/\s+/).filter(Boolean).map(Number))].filter((n) => Number.isInteger(n) && n > 0);
-const commandIsBinary = (command, binary) => command === binary || command.startsWith(`${binary} `);
-function listenerPids(port) {
-  const r = spawnSync("lsof", ["-nP", "-t", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8", timeout: 5000 });
-  if (r.error || r.status > 1) throw new Error(`lsof failed for port ${port}: ${r.error ?? r.stderr}`);
-  return pidList(r.stdout);
-}
-// `ps -o lstart= -o command=` line: a 5-token start time, then the full command.
-function parseProcessLine(line) {
-  const m = /^\s*(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.*\S)\s*$/.exec(line);
-  return m ? { started: m[1], command: m[2] } : null;
-}
-function processInfo(pid) {
-  const r = spawnSync("ps", ["-ww", "-p", String(pid), "-o", "lstart=", "-o", "command="], { encoding: "utf8", timeout: 5000 });
-  return r.status === 0 ? parseProcessLine(r.stdout) : null;
-}
-function binaryPids(binary) {
-  const r = spawnSync("ps", ["-ww", "-ax", "-o", "pid=", "-o", "command="], { encoding: "utf8", timeout: 5000 });
-  if (r.status !== 0) throw new Error(`ps failed: ${r.stderr}`);
-  return new Set(r.stdout.split("\n").map((l) => /^\s*(\d+)\s+(.*)$/.exec(l))
-    .filter((m) => m && commandIsBinary(m[2], binary)).map((m) => Number(m[1])));
-}
-// null while nothing listens yet; throws when the port holder cannot be this run's app.
-function ownedCandidate(listeners, before, commandOf, binary) {
-  if (!listeners.length) return null;
-  if (listeners.length !== 1) throw new Error(`port has ${listeners.length} listeners: ${listeners.join(", ")}`);
-  const [pid] = listeners;
-  const command = commandOf(pid) ?? "";
-  if (before.has(pid)) throw new Error(`port listener ${pid} predates the launch`);
-  if (!commandIsBinary(command, binary)) throw new Error(`port listener ${pid} is not ${binary}: ${command}`);
-  return pid;
-}
-const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+import { fileURLToPath } from "node:url";
+import { launch, listenerPids, parsePort, reporter, session, sleep } from "../../../scripts/lib/instance.mjs";
 
 const args = process.argv.slice(2);
 if (args.includes("--self-test")) {
-  const bin = "/tmp/Netnyahoo.app/Contents/MacOS/Netnyahoo";
-  const cmd = (map) => (pid) => map[pid];
-  assert.equal(parsePort("9474"), 9474);
-  for (const bad of ["0", "65536", "94.5", "-1", "", "9474x", "1e3"]) assert.throws(() => parsePort(bad), /1\.\.65535/, bad);
-  assert.deepEqual(pidList("12\n34\n12\n"), [12, 34]);
-  assert.deepEqual(pidList(""), []);
-  assert.ok(commandIsBinary(bin, bin));
-  assert.ok(commandIsBinary(`${bin} --flag`, bin));
-  assert.ok(!commandIsBinary(`${bin}2`, bin));
-  assert.ok(!commandIsBinary(`/tmp/Netnyahoo.app/Contents/Frameworks/Netnyahoo Helper.app/Contents/MacOS/Netnyahoo Helper`, bin));
-  assert.deepEqual(parseProcessLine(`Wed Sep 30 18:44:18 2026     ${bin} --x\n`), { started: "Wed Sep 30 18:44:18 2026", command: `${bin} --x` });
-  assert.equal(parseProcessLine(""), null);
-  assert.equal(ownedCandidate([], new Set(), cmd({}), bin), null);
-  assert.equal(ownedCandidate([7], new Set([5]), cmd({ 7: bin }), bin), 7);
-  // The failure this guards: another run's instance of the same binary must never become ours.
-  assert.throws(() => ownedCandidate([5], new Set([5]), cmd({ 5: bin }), bin), /predates/);
-  assert.throws(() => ownedCandidate([7], new Set(), cmd({ 7: "/usr/bin/python3 -m http.server" }), bin), /is not/);
-  assert.throws(() => ownedCandidate([7], new Set(), cmd({}), bin), /is not/);
-  assert.throws(() => ownedCandidate([7, 8], new Set(), cmd({ 7: bin, 8: bin }), bin), /2 listeners/);
-  assert.ok(isAlive(process.pid));
-  console.log("PASS self-test");
-  process.exit(0);
+  const module = fileURLToPath(new URL("../../../scripts/lib/instance.mjs", import.meta.url));
+  process.exit(spawnSync(process.execPath, [module, "--self-test"], { stdio: "inherit" }).status ?? 1);
 }
 const appArg = args.find((a) => !a.startsWith("--"));
 if (!appArg) {
-  console.error("usage: node profile-swipe-test.mjs <Debug Netnyahoo.app> [--port=9474] [--keep-data] [--stale-window] [--only=<case name substring>] | --self-test");
+  console.error("usage: node profile-swipe-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data] [--stale-window] [--only=<case name substring>] [--bundle-port=<Metro port>] | --self-test");
   process.exit(2);
 }
 const app = resolve(appArg);
 const bundlePort = args.find((a) => a.startsWith("--bundle-port="))?.split("=")[1];
 if (bundlePort) assert.match(bundlePort, /^\d{2,5}$/);
-// The app's Metro for this launch (AppDelegate): arguments after --args would reach Chrome's command line.
-const bundleArgs = bundlePort ? ["--env", `NETNYAHOO_JS_LOCATION=127.0.0.1:${bundlePort}`] : [];
-assert.notEqual(app, "/Applications/Netnyahoo.app", "use an isolated Debug build");
+const portArg = args.find((a) => a.startsWith("--port="))?.slice("--port=".length);
 let port;
-try { port = parsePort(args.find((a) => a.startsWith("--port="))?.slice("--port=".length) ?? "9474"); } catch (error) {
-  console.error(error.message);
+try { port = portArg && parsePort(portArg); } catch (error) {
+  console.error(`--port: ${error.message}`);
   process.exit(2);
 }
 const keep = args.includes("--keep-data");
 const stale = args.includes("--stale-window");
 const only = args.find((a) => a.startsWith("--only="))?.slice("--only=".length).toLowerCase();
 let matched = 0;
-const data = mkdtempSync(join(tmpdir(), "nn-profile-swipe-"));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const binary = `${app}/Contents/MacOS/Netnyahoo`;
+const scratch = mkdtempSync(join(tmpdir(), "nn-profile-swipe-"));
+const data = join(scratch, "data");
+const rep = reporter(join(scratch, "profile-swipe.log"), { name: "profile-swipe-test" });
 const evidence = { app, data, stale, cases: [] };
-// { pid, port, binary, command, started } once verified; the only process cleanup may signal.
+// The instance once launched: the only process cleanup may signal (scripts/lib/instance.mjs).
 let owned;
-let evalId = 0;
 // An Error when the owned app has died (recorded once in evidence.death), else null.
 function ownedDeath() {
-  if (!owned || isAlive(owned.pid)) return null;
+  if (!owned || !owned.exited) return null;
   evidence.death ??= { pid: owned.pid, detectedAt: new Date().toISOString(), alive: false,
-    portListeners: (() => { try { return listenerPids(port); } catch (e) { return String(e); } })() };
+    portListeners: (() => { try { return listenerPids(owned.port); } catch (e) { return String(e); } })() };
   return Object.assign(new Error(`owned app pid ${owned.pid} died`), { appDied: true });
 }
 function assertOwnedAlive() {
@@ -115,32 +60,10 @@ const server = createServer((req, res) => {
   res.end('<!doctype html><title>Swipe scroll fixture</title><body style="margin:0"><div style="width:2600px;height:4000px;background:linear-gradient(120deg,#ffd9dd,#addbff)">Native scroll fixture</div>');
 });
 
-const tab = (id, profileId) => ({ id, windowId: "w1", profileId, url: "netnyahoo://newtab", title: "New Tab", favicon: null,
-  pinned: false, muted: false, zoom: 1, customTitle: null, customIcon: null, pinnedUrl: null, openerId: null,
-  createdAt: 1, lastActiveAt: 1 });
-writeFileSync(join(data, "session.json"), JSON.stringify({ version: 2,
-  profiles: { default: { id: "default", name: "Personal", color: "plum", icon: null, createdAt: 0 },
-    work: { id: "work", name: "Work", color: "blue", icon: null, createdAt: 1 } },
-  profileOrder: ["default", "work"],
-  windows: [{ id: "w1", profileId: "default", incognito: false, tabIds: ["t1", "t2"],
-    activeTabIds: { default: "t1", work: "t2" }, sidebarOpen: true, frame: [80, 80, 1280, 800], createdAt: 1 }],
-  windowOrder: ["w1"], focusedWindowId: "w1", tabs: [tab("t1", "default"), tab("t2", "work")],
-  groups: [], splits: [], closedTabs: [], closedWindows: [], closedGroups: [], cleanedTabs: [],
-}));
+const tab = (id, profileId) => ({ id, profileId, url: "netnyahoo://newtab", title: "New Tab" });
+const fixture = session({ profiles: ["Personal", "Work"], tabs: [tab("t1", "default"), tab("t2", "work")] });
 
-async function nn(body, timeout = 15000) {
-  const id = `swipe-${Date.now()}-${++evalId}`;
-  writeFileSync(join(data, "dev-eval.js"), `// ${id}\n${body}`);
-  for (let start = Date.now(); Date.now() - start < timeout; await sleep(50)) {
-    assertOwnedAlive();
-    let out;
-    try { out = JSON.parse(readFileSync(join(data, "dev-eval-result.json"), "utf8")); } catch { continue; }
-    if (out.id !== id) continue;
-    if (out.error) throw new Error(out.error);
-    return out.result;
-  }
-  throw new Error(`dev harness timeout: ${body}`);
-}
+const nn = (body, timeout = 15000) => owned.eval(body, { timeout });
 const profile = () => nn('return nn.store.getState().windows.w1.profileId;');
 async function waitProfile(expected) {
   for (let start = Date.now(); Date.now() - start < 1800;) {
@@ -209,96 +132,58 @@ async function nativeBatch(steps, blockedMs = 0) {
 async function test(name, fn) {
   if (only && !name.toLowerCase().includes(only)) return;
   matched++;
-  try {
+  let fatal = null;
+  await rep.check(name, async () => {
     const result = await fn();
     evidence.cases.push({ name, passed: true, result });
-    console.log(`PASS ${name}`);
-  } catch (error) {
-    const death = error.appDied ? error : ownedDeath();
-    const failed = { name, passed: false, error: String(error), ...(error.evidence ? { evidence: error.evidence } : {}) };
-    evidence.cases.push(failed);
-    if (!death) failed.windows = await windows().catch((e) => ({ error: String(e) }));
-    console.error(`FAIL ${name}: ${error.message}`);
-    // A dead app fails this case with its traces kept, then stops the run.
-    const fatal = death ?? ownedDeath();
-    if (fatal) {
-      failed.appDeath = evidence.death;
-      throw fatal;
-    }
-  }
-}
-
-// Same start time and binary means the same process; a reused PID gets a new start time.
-function stillOwned() {
-  const info = processInfo(owned.pid);
-  return info?.started === owned.started && commandIsBinary(info.command, owned.binary) ? info : null;
-}
-async function stopOwned() {
-  if (!stillOwned()) return { signal: null, reason: "owned process already gone or pid reused" };
-  if (!listenerPids(owned.port).includes(owned.pid)) return { signal: null, reason: `pid ${owned.pid} no longer listens on ${owned.port}` };
-  process.kill(owned.pid, "SIGTERM");
-  for (const start = Date.now(); Date.now() - start < 3000; await sleep(100)) {
-    if (!stillOwned()) return { signal: "SIGTERM", exited: true };
-  }
-  // The CDP listener may already be closed mid-shutdown, so start time and command decide here.
-  if (!stillOwned()) return { signal: "SIGTERM", exited: true };
-  process.kill(owned.pid, "SIGKILL");
-  return { signal: "SIGKILL", exited: null };
+  }, {
+    async onFail(error) {
+      const death = error.appDied ? error : ownedDeath();
+      const failed = { name, passed: false, error: String(error), ...(error.evidence ? { evidence: error.evidence } : {}) };
+      evidence.cases.push(failed);
+      if (!death) failed.windows = await windows().catch((e) => ({ error: String(e) }));
+      if (error.evidence) rep.log("evidence:", JSON.stringify(error.evidence));
+      // A dead app fails this case with its traces kept, then stops the run.
+      fatal = death ?? ownedDeath();
+      if (fatal) failed.appDeath = evidence.death;
+    },
+  });
+  if (fatal) throw Object.assign(fatal, { reported: true });
 }
 
 async function pageEval(expression) {
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-  const target = targets.find((t) => t.type === "page" && t.url.includes("/scroll-fixture"));
-  assert.ok(target, "scroll fixture should have a CDP target");
-  const ws = new WebSocket(target.webSocketDebuggerUrl);
+  const page = await owned.page("/scroll-fixture", { timeout: 0 }).catch(() => null);
+  assert.ok(page, "scroll fixture should have a CDP target");
   try {
-    await new Promise((r, reject) => { ws.onopen = r; ws.onerror = reject; });
-    return await new Promise((r, reject) => {
-      const timer = setTimeout(() => reject(new Error("CDP fixture timeout")), 3000);
-      ws.onmessage = (e) => {
-        const m = JSON.parse(e.data);
-        if (m.id !== 1) return;
-        clearTimeout(timer);
-        if (m.error || m.result?.exceptionDetails) reject(new Error(JSON.stringify(m)));
-        else r(m.result?.result?.value);
-      };
-      ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, returnByValue: true, awaitPromise: true } }));
-    });
-  } finally { ws.close(); }
+    return await page.eval(expression, { timeout: 3000 });
+  } finally { page.close(); }
 }
 
+let stage = "launch";
 try {
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const occupied = listenerPids(port);
-  if (occupied.length) throw new Error(`CDP port ${port} is already in use by pid ${occupied.join(", ")}; pick a free --port`);
-  const before = binaryPids(binary);
-  evidence.launch = { port, binary, preexistingBinaryPids: [...before] };
-  execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`,
-    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows", ...bundleArgs, app]);
-  for (const start = Date.now(); !owned && Date.now() - start < 30000; await sleep(250)) {
-    let info;
-    const pid = ownedCandidate(listenerPids(port), before, (p) => {
-      info = processInfo(p);
-      return info?.command;
-    }, binary);
-    if (info) owned = { pid, port, binary, ...info };
+  owned = await launch(app, {
+    data, port, session: fixture,
+    switches: "--disable-backgrounding-occluded-windows",
+    // The app's Metro for this launch: pinned (the module's proxy, which refuses reloads and hot updates) unless
+    // --bundle-port names another one.
+    ...(bundlePort ? { js: `127.0.0.1:${bundlePort}` } : {}),
+    ready: 'return !!globalThis.nnSwipe?.sidebar("w1");',
+  });
+  evidence.owner = { pid: owned.pid, port: owned.port, binary: owned.binary, started: owned.started, js: owned.js };
+  // For the log only (rep.log's lines would show under every later failure).
+  appendFileSync(rep.logFile, `instance pid ${owned.pid}, DevTools port ${owned.port}, data ${data}\n`);
+  if (bundlePort) {
+    // Freeze this instance's JS while other engineers edit that Metro's checkout (a pinned instance can't get
+    // updates). Call the client locally; do not change the app's persisted developer settings.
+    evidence.liveUpdatesDisabled = await nn(`
+      const entry=[...globalThis.__r.getModules()].find(([,m])=>m.verboseName?.endsWith("/Libraries/Utilities/HMRClient.js"));
+      if (!entry) throw new Error("HMR client missing");
+      globalThis.__r(entry[0]).default.disable();
+      return true;
+    `);
   }
-  evidence.owner = owned ?? null;
-  assert.ok(owned, `isolated app should listen on CDP port ${port} within 30s`);
-  let ready = false;
-  for (let i = 0; i < 40 && !ready; i++) {
-    try { ready = await nn('return !!globalThis.nnSwipe?.sidebar("w1");', 1500); } catch (error) { if (error.appDied) throw error; }
-    if (!ready) await sleep(500);
-  }
-  assert.ok(ready, "profile swipe dev harness should load; Metro must be running");
-  // Freeze this instance's JS while other engineers edit the shared Metro checkout.
-  // Call the client locally; do not change the app's persisted developer settings.
-  evidence.liveUpdatesDisabled = await nn(`
-    const entry=[...globalThis.__r.getModules()].find(([,m])=>m.verboseName?.endsWith("/Libraries/Utilities/HMRClient.js"));
-    if (!entry) throw new Error("HMR client missing");
-    globalThis.__r(entry[0]).default.disable();
-    return true;
-  `);
+  stage = "the cases";
 
   await sleep(1000);
 
@@ -641,22 +526,26 @@ try {
     assert.ok(result.areas >= 1);
     return result;
   });
+  stage = "the snapshot";
   evidence.snapshot = { path: join(data, "profile-swipe.png"),
     saved: await nn(`return nn.shell.devSnapshotWindow("w1", ${JSON.stringify(join(data, "profile-swipe.png"))});`) };
 } catch (error) {
   evidence.error = String(error);
-  console.error(error);
+  if (!error.reported) rep.record(`stopped at ${stage}`, { error });
 } finally {
   if (only && !matched && !evidence.error) {
     evidence.error = `--only=${only} matched no test`;
-    console.error(`FAIL ${evidence.error}`);
+    rep.record(`--only=${only}`, { error: "matched no test" });
   }
   if (owned) {
-    try { evidence.cleanup = await stopOwned(); } catch (error) { evidence.cleanup = { error: String(error) }; }
+    try { evidence.cleanup = await owned.quit(); } catch (error) { evidence.cleanup = { error: String(error) }; }
   }
-  writeFileSync(join(data, "profile-swipe-results.json"), JSON.stringify(evidence, null, 2));
+  writeFileSync(join(scratch, "profile-swipe-results.json"), JSON.stringify(evidence, null, 2));
   server.close();
-  if (keep || evidence.error || evidence.cases.some((c) => !c.passed)) console.log(`Evidence: ${join(data, "profile-swipe-results.json")}`);
-  else rmSync(data, { recursive: true, force: true });
+  const failed = evidence.error || evidence.cases.some((c) => !c.passed);
+  if (!keep && !failed) {
+    rmSync(data, { recursive: true, force: true });
+    rmSync(join(scratch, "profile-swipe-results.json"), { force: true });
+  } else appendFileSync(rep.logFile, `evidence: ${join(scratch, "profile-swipe-results.json")}\n`);
+  process.exitCode = rep.summary() && !failed ? 0 : 1;
 }
-process.exitCode = evidence.error || evidence.cases.some((c) => !c.passed) ? 1 : 0;
