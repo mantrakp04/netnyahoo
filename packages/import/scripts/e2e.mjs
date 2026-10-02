@@ -13,15 +13,16 @@
 //                    1 card; refused/expired cookies stay out; the site gets the session cookie; a re-import adds nothing
 //   restart          relaunches on the same data dir: the persistent cookie survives
 //   all              (default) import, then restart
-//   --keep           leaves the last instance running (poke it with scripts/ev.mjs <scratch dir>/data '<js>')
+//   --keep           leaves the last instance running (poke it with scripts/agent/nn eval <scratch dir>/data '<js>')
 //
-// The instance runs with NETNYAHOO_BACKGROUND=1 (no focus), its own DevTools port, NETNYAHOO_IMPORT_SOURCE_DIR at
-// the fake home and NETNYAHOO_IMPORT_TEST_SECRET, so the Keychain is never asked. Exit code 1 if any check failed.
+// The instance runs through scripts/lib/instance.mjs (hidden, its own DevTools port) with NETNYAHOO_IMPORT_SOURCE_DIR
+// at the fake home and NETNYAHOO_IMPORT_TEST_SECRET, so the Keychain is never asked. One line per check; everything
+// else goes to <scratch dir>/e2e.log. Exit code 1 if any check failed.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
-import net from "node:net";
 import path from "node:path";
+import { freePort, launch as launchInstance, reporter, sleep } from "../../../scripts/lib/instance.mjs";
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const args = process.argv.slice(2);
@@ -41,15 +42,27 @@ const DATA = path.join(SCRATCH, "data");
 const HOME = path.join(SCRATCH, "home");
 const SECRET = "e2e-test-secret";
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const freePort = () =>
-  new Promise((resolve) => {
-    const probe = net.createServer();
-    probe.listen(0, "127.0.0.1", () => {
-      const { port } = probe.address();
-      probe.close(() => resolve(port));
-    });
-  });
+fs.mkdirSync(SCRATCH, { recursive: true });
+const report = reporter(path.join(SCRATCH, "e2e.log"), { name: "import e2e" });
+// What happened since the last check: in the log, and printed under a failing check.
+let recent = [];
+function note(...parts) {
+  const line = parts.join(" ");
+  fs.appendFileSync(report.logFile, `${line}\n`);
+  recent.push(line);
+}
+// An assertion on collected data, so no time on its line (reporter().record always prints one: strip its 0ms).
+function record(name, ok, detail = "") {
+  const error = ok ? null : [detail || "the assertion failed", ...recent.slice(-15)].join("\n");
+  recent = [];
+  const log = console.log;
+  console.log = (line, ...rest) => log(typeof line === "string" ? line.replace(/^(PASS|FAIL) (.*?) 0ms/, "$1 $2") : line, ...rest);
+  try {
+    report.record(name, { error });
+  } finally {
+    console.log = log;
+  }
+}
 
 // The fixture site: records the Cookie header of each request.
 const seen = [];
@@ -61,76 +74,27 @@ const server = http.createServer((req, res) => {
 const SERVER_PORT = await freePort();
 await new Promise((r) => server.listen(SERVER_PORT, "127.0.0.1", r));
 
-let pid = 0;
-let cdpPort = 0;
-const alive = () => {
-  try {
-    return !!pid && (process.kill(pid, 0), true);
-  } catch {
-    return false;
-  }
-};
+// The instance of this phase (scripts/lib/instance.mjs): one at a time, on DATA.
+let app = null;
 
 async function launch() {
-  cdpPort = await freePort();
-  fs.mkdirSync(DATA, { recursive: true });
-  for (const f of ["dev-eval.js", "dev-eval-result.json"]) fs.rmSync(path.join(DATA, f), { force: true });
-  execFileSync("open", [
-    "-g", "-n",
-    "--env", "NETNYAHOO_BACKGROUND=1",
-    "--env", `NETNYAHOO_DATA_DIR=${DATA}`,
-    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${cdpPort}`,
-    "--env", `NETNYAHOO_IMPORT_SOURCE_DIR=${HOME}/Library/Application Support`,
-    "--env", `NETNYAHOO_IMPORT_TEST_SECRET=${SECRET}`,
-    APP,
-  ]);
-  // The browser process is the one whose environment names our data dir (helpers carry --type=).
-  const binary = path.join(APP, "Contents/MacOS/");
-  for (let i = 0; i < 60 && !pid; i++) {
-    await sleep(500);
-    let pids = [];
-    try {
-      pids = execFileSync("pgrep", ["-f", binary], { encoding: "utf8" }).trim().split("\n");
-    } catch {}
-    for (const p of pids) {
-      const cmd = execFileSync("ps", ["eww", "-o", "command=", "-p", p], { encoding: "utf8" });
-      if (cmd.includes(`NETNYAHOO_DATA_DIR=${DATA}`) && !cmd.includes("--type=")) pid = Number(p);
-    }
-  }
-  if (!pid) throw new Error("instance didn't start");
-  console.log("pid", pid, "cdp", cdpPort);
-  await until("return !!nn.store.getState().windowOrder.length", (r) => r === true, 90_000);
+  app = await launchInstance(APP, {
+    data: DATA,
+    env: { NETNYAHOO_IMPORT_SOURCE_DIR: `${HOME}/Library/Application Support`, NETNYAHOO_IMPORT_TEST_SECRET: SECRET },
+    ready: false,
+  });
+  note("pid", app.pid, "cdp", app.port, "log", app.log);
+  await app.ready({ timeout: 90_000, test: "return nn.store.getState().windowOrder.length > 0" });
 }
 
 async function quit() {
-  if (!alive()) return;
-  process.kill(pid, "SIGTERM");
-  for (let i = 0; i < 40 && alive(); i++) await sleep(250);
-  if (alive()) process.kill(pid, "SIGKILL");
-  pid = 0;
+  if (!app) return;
+  note("quit:", (await app.quit()).how);
+  app = null;
 }
 
-// The dev harness: write $DATA/dev-eval.js (first line `// <id>`), read $DATA/dev-eval-result.json.
-let seq = 0;
-async function evaluate(body, timeout = 60_000) {
-  const id = `e2e-${Date.now()}-${++seq}`;
-  fs.writeFileSync(path.join(DATA, "dev-eval.js"), `// ${id}\n${body}`);
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    if (!alive()) throw new Error("instance died");
-    try {
-      const r = JSON.parse(fs.readFileSync(path.join(DATA, "dev-eval-result.json"), "utf8"));
-      if (r.id === id) {
-        if (r.error) throw new Error(r.error);
-        return r.result;
-      }
-    } catch (e) {
-      if (!(e instanceof SyntaxError) && e.code !== "ENOENT") throw e;
-    }
-    await sleep(250);
-  }
-  throw new Error(`eval timed out: ${body.slice(0, 80)}`);
-}
+// The dev harness ($DATA/dev-eval.js); fails at once if the app dies.
+const evaluate = (body, timeout = 60_000) => app.eval(body, { timeout });
 
 async function until(body, test, timeout = 60_000) {
   const deadline = Date.now() + timeout;
@@ -138,30 +102,20 @@ async function until(body, test, timeout = 60_000) {
   while (Date.now() < deadline) {
     last = await evaluate(body).catch((e) => ({ error: String(e) }));
     if (test(last)) return last;
-    if (!alive()) break;
+    if (app.exited) break;
     await sleep(500);
   }
   throw new Error(`until timed out: ${JSON.stringify(last)?.slice(0, 300)}`);
 }
 
+// Chrome's browser target, one socket per call.
 async function cdp(method, params = {}) {
-  const version = await (await fetch(`http://127.0.0.1:${cdpPort}/json/version`)).json();
-  const ws = new WebSocket(version.webSocketDebuggerUrl);
-  await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)));
-  const reply = await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`cdp ${method} timed out`)), 20_000);
-    ws.onmessage = (m) => {
-      const d = JSON.parse(m.data);
-      if (d.id === 1) {
-        clearTimeout(t);
-        resolve(d);
-      }
-    };
-    ws.send(JSON.stringify({ id: 1, method, params }));
-  });
-  ws.close();
-  if (reply.error) throw new Error(JSON.stringify(reply.error));
-  return reply.result;
+  const browser = await app.browser();
+  try {
+    return await browser.send(method, params, { timeout: 20_000 });
+  } finally {
+    browser.close();
+  }
 }
 
 const fixtureCookies = async () => (await cdp("Storage.getCookies")).cookies.filter((c) => c.name.startsWith("nn_"));
@@ -182,7 +136,7 @@ async function importPhase(ok) {
 
   // A private profile: the native writer refuses it, so the engine never sees the cookies.
   const refused = await evaluate(nativeImport("e2e-private", "incognito-e2e")).catch((e) => ({ error: String(e) }));
-  console.log("private:", JSON.stringify(refused));
+  note("private:", JSON.stringify(refused));
   ok(refused.w?.cookiesFailed === 1 && refused.w?.cookies === 0, "a private profile is refused");
   ok(refused.keys && !refused.keys.includes("cookies"), "import JSON carries no cookie list");
   ok((await fixtureCookies()).length === 0, "nothing landed after the private attempt");
@@ -202,7 +156,7 @@ async function importPhase(ok) {
     (r) => r?.step === "done",
     60_000,
   );
-  console.log("done:", JSON.stringify(done));
+  note("done:", JSON.stringify(done));
   ok(done.counts.cookies === 5, `5 cookies imported (got ${done.counts.cookies})`);
   ok(done.counts.addresses === 1 && done.counts.cards === 1, "1 address and 1 card imported");
   ok(done.failures.length === 0, "no failures");
@@ -221,34 +175,32 @@ async function importPhase(ok) {
 
   const cef = "globalThis.expo.modules.NetnyahooCEF";
   const autofill = await evaluate(`return Promise.all([${cef}.listAddresses(""), ${cef}.listCards("")])`);
-  console.log("autofill:", JSON.stringify(autofill));
+  note("autofill:", JSON.stringify(autofill));
 
   // The site sees the cookies on its next request.
   await evaluate(`nn.actions.openUrls(["http://localhost:${SERVER_PORT}/"]); return true`);
   for (const deadline = Date.now() + 20_000; !seen.length && Date.now() < deadline; ) await sleep(250);
   const header = seen[0]?.cookie ?? "";
-  console.log("server saw:", JSON.stringify(seen));
+  note("server saw:", JSON.stringify(seen));
   ok(header.includes("nn_session=until-quit"), "fixture server got the imported session cookie");
   ok(!header.includes("nn_other_path") && !header.includes("nn_expired"), "path-scoped and expired cookies not sent");
 
   // Importing again keeps what's there.
   const again = await evaluate(nativeImport("e2e-again", ""));
-  console.log("again:", JSON.stringify(again.w));
+  note("again:", JSON.stringify(again.w));
   ok(again.w.cookies === 0 && again.w.cookiesExisting === 5, "a second import keeps the profile's cookies");
 }
 
 async function restartPhase(ok) {
   const names = (await fixtureCookies()).map((c) => c.name);
-  console.log("after restart:", names.join(","));
+  note("after restart:", names.join(","));
   ok(names.includes("nn_sid"), "persistent cookie survives a restart");
 }
 
 const phases = phaseArg === "all" ? ["import", "restart"] : [phaseArg];
-let failures = 0;
 try {
   if (phases[0] === "import") {
     for (const dir of [DATA, HOME]) fs.rmSync(dir, { recursive: true, force: true });
-    fs.mkdirSync(SCRATCH, { recursive: true });
     execFileSync("python3", [path.join(HERE, "e2e_fixture.py"), HOME, SECRET, String(SERVER_PORT)], { stdio: "ignore" });
   } else if (!fs.existsSync(DATA)) {
     throw new Error(`${DATA} doesn't exist: run the import phase first`);
@@ -256,24 +208,25 @@ try {
   for (const [i, phase] of phases.entries()) {
     const failed = [];
     const ok = (cond, msg) => {
-      console.log(cond ? "ok  " : "FAIL", msg);
+      record(msg, cond);
       if (!cond) failed.push(msg);
     };
-    console.log(`== ${phase}`);
+    note(`== ${phase}`);
     try {
       await launch();
       await (phase === "import" ? importPhase(ok) : restartPhase(ok));
     } catch (e) {
-      ok(false, String(e?.stack ?? e));
+      // Named by its first line; the stack goes under it and into result-<phase>.json, as before.
+      const stack = String(e?.stack ?? e);
+      record(stack.split("\n")[0], false, stack);
+      failed.push(stack);
     } finally {
       fs.writeFileSync(path.join(SCRATCH, `result-${phase}.json`), JSON.stringify({ failed }, null, 2));
-      failures += failed.length;
       if (!(keep && i === phases.length - 1)) await quit();
     }
   }
 } finally {
   server.close();
-  if (keep && alive()) console.log(`kept pid ${pid}: node ${path.join(HERE, "ev.mjs")} ${DATA} '<js>'`);
-  console.log(failures ? `${failures} failed` : "all passed");
+  if (keep && app && !app.exited) report.say(`kept pid ${app.pid}: scripts/agent/nn eval ${DATA} '<js>'`);
 }
-process.exit(failures ? 1 : 0);
+process.exit(report.summary() ? 0 : 1);

@@ -1,91 +1,86 @@
 #!/usr/bin/env node
+// End to end: two, then three hidden Netnyahoo instances (A, B, C) syncing through one folder.
+//
+//   node packages/sync/scripts/e2e.mjs [Debug app] [work dir]
+//
+// Each instance runs through scripts/lib/instance.mjs with its own data dir (<work dir>/A, B, C) and DevTools port,
+// and NETNYAHOO_SYNC_DEFAULT_FOLDER at <work dir>/folder. One line per check; everything else goes to
+// <work dir>/e2e.log. Exit code 1 if any check failed.
 import { execSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { freePort, launch, reporter, sleep } from "../../../scripts/lib/instance.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const APP = path.resolve(process.argv[2] ?? `${repo}/apps/browser/build-sync/Build/Products/Debug/Netnyahoo.app`);
 const WORK = path.resolve(process.argv[3] ?? `${process.env.TMPDIR ?? "/tmp"}/nn-sync-e2e`);
 const FOLDER = `${WORK}/folder`;
-const PORT = 8765;
+const PORT = await freePort();
 const W = `http://127.0.0.1:${PORT}`;
-const DEV = { A: { port: 9511 }, B: { port: 9512 }, C: { port: 9513 } };
+const DEV = { A: {}, B: {}, C: {} };
 for (const [name, d] of Object.entries(DEV)) d.dir = `${WORK}/${name}`;
 
 // MARK: Harness
 
-const results = [];
+fs.rmSync(WORK, { recursive: true, force: true });
+const report = reporter(`${WORK}/e2e.log`, { name: "sync e2e" });
+// What happened since the last check: in the log, and printed under a failing check.
+let recent = [];
+function note(line) {
+  fs.appendFileSync(report.logFile, `${line}\n`);
+  recent.push(line);
+}
+// An assertion on collected data, so no time on its line (reporter().record always prints one: strip its 0ms).
 function check(name, ok, detail = "") {
-  results.push({ name, ok: !!ok });
-  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail && !ok ? `\n      ${detail}` : ""}`);
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function launch(name) {
-  const { dir, port } = DEV[name];
-  fs.mkdirSync(dir, { recursive: true });
-  execSync(
-    `open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR=${dir} --env NETNYAHOO_REMOTE_DEBUGGING_PORT=${port} ` +
-      `--env NETNYAHOO_SYNC_DEFAULT_FOLDER=${FOLDER} "${APP}"`,
-  );
-}
-
-function pid(name) {
+  const error = ok ? null : [detail || "the assertion failed", ...recent.slice(-15)].join("\n");
+  recent = [];
+  const log = console.log;
+  console.log = (line, ...rest) => log(typeof line === "string" ? line.replace(/^(PASS|FAIL) (.*?) 0ms/, "$1 $2") : line, ...rest);
   try {
-    return execSync(`lsof -iTCP:${DEV[name].port} -sTCP:LISTEN -t`).toString().trim().split("\n")[0] || null;
-  } catch {
-    return null;
+    report.record(name, { error });
+  } finally {
+    console.log = log;
   }
 }
 
-let counter = 0;
-async function ev(name, body, timeout = 90_000) {
+const apps = {};
+async function start(name) {
   const { dir } = DEV[name];
-  const id = `e${Date.now()}-${++counter}`;
-  fs.writeFileSync(`${dir}/dev-eval.js`, `// ${id}\n${body}`);
-  const end = Date.now() + timeout;
-  while (Date.now() < end) {
-    try {
-      const r = JSON.parse(fs.readFileSync(`${dir}/dev-eval-result.json`, "utf8"));
-      if (r.id === id) {
-        if (r.error) throw new Error(`${name}: ${r.error}`);
-        return r.result;
-      }
-    } catch (e) {
-      if (String(e.message).startsWith(`${name}:`)) throw e;
-    }
-    await sleep(150);
-  }
-  throw new Error(`${name}: timed out running ${body.slice(0, 80)}`);
+  const app = (apps[name] = await launch(APP, { data: dir, env: { NETNYAHOO_SYNC_DEFAULT_FOLDER: FOLDER }, ready: false }));
+  note(`${name}: pid ${app.pid}, DevTools ${app.port}, log ${app.log}`);
+  await app.ready({ timeout: 120_000, test: "return !!globalThis.nnSync && Object.keys(nn.store.getState().windows).length > 0" });
 }
 
-async function ready(name) {
-  const end = Date.now() + 120_000;
-  while (Date.now() < end) {
-    try {
-      if (await ev(name, "return !!globalThis.nnSync && Object.keys(nn.store.getState().windows).length > 0", 3000)) return;
-    } catch {}
-    await sleep(500);
+const short = (x, n) => (x === undefined ? "undefined" : JSON.stringify(x).slice(0, n));
+async function ev(name, body, timeout = 90_000) {
+  const what = body.replace(/\s+/g, " ").trim().slice(0, 160);
+  try {
+    const result = await apps[name].eval(body, { timeout });
+    note(`[${name}] ${what} -> ${short(result, 1000)}`);
+    return result;
+  } catch (e) {
+    note(`[${name}] ${what} -> error ${e.message}`);
+    throw new Error(`${name}: ${e.message}`);
   }
-  throw new Error(`${name} didn't start`);
 }
 
-// A page load, which Chrome records in its history; the store's view shows it once Chrome reports it.
-async function visit(name, url) {
-  const tab = await ev(name, `const s = nn.store.getState(); return s.newTab(s.windowOrder[0], { url: ${JSON.stringify(url)} });`);
+// Chrome records a page load in its history; the store's view shows it once Chrome reports it.
+async function inHistory(name, url) {
   const end = Date.now() + 30_000;
   while (Date.now() < end) {
-    if (await ev(name, `return (nn.store.getState().history.default || []).some((h) => h.url === ${JSON.stringify(url)})`)) {
-      await ev(name, `nn.store.getState().closeTab(${JSON.stringify(tab)}); return true;`);
-      return;
-    }
+    if (await ev(name, `return (nn.store.getState().history.default || []).some((h) => h.url === ${JSON.stringify(url)})`)) return;
     await sleep(300);
   }
   throw new Error(`${name}: ${url} never reached Chrome's history`);
+}
+// A page load, then its tab closes.
+async function visit(name, url) {
+  const tab = await ev(name, `const s = nn.store.getState(); return s.newTab(s.windowOrder[0], { url: ${JSON.stringify(url)} });`);
+  await inHistory(name, url);
+  await ev(name, `nn.store.getState().closeTab(${JSON.stringify(tab)}); return true;`);
 }
 
 const sync = async (...names) => {
@@ -133,7 +128,6 @@ const savePassword = (origin, user, password) =>
 
 // MARK: Run
 
-fs.rmSync(WORK, { recursive: true, force: true });
 fs.mkdirSync(FOLDER, { recursive: true });
 const swift = fs.readFileSync(`${repo}/packages/sync/ios/Core/Wordlist.swift`, "utf8");
 fs.writeFileSync(`${WORK}/english.txt`, [...swift.matchAll(/"([a-z]+)"/g)].map((m) => m[1]).join("\n"));
@@ -145,12 +139,13 @@ const server = http
     res.end(`<!doctype html><title>NNE2E ${name} page</title><h1>${name}</h1>`);
   })
   .listen(PORT, "127.0.0.1");
+await new Promise((r, j) => (server.once("listening", r), server.once("error", j)));
 
 try {
-  launch("A");
-  launch("B");
-  await ready("A");
-  await ready("B");
+  // Both at once; a failed start still leaves the other in `apps` for the quit below.
+  const started = await Promise.allSettled([start("A"), start("B")]);
+  const notStarted = started.find((r) => r.status === "rejected");
+  if (notStarted) throw notStarted.reason;
 
   check("A turns on sync", text(await ev("A", `return nnSync.turnOnSync(${JSON.stringify(FOLDER)})`)) === '{"ok":true}');
   const phrase = (await ev("A", "return nnSync.native.recoveryWords()")).join(" ");
@@ -297,9 +292,10 @@ try {
   const local = ["A", "B"].flatMap((n) => ["sync.json", "sync-state.nns", "sync-journal.nns"].map((f) => `${DEV[n].dir}/${f}`)).filter((f) => fs.existsSync(f));
   check("this Mac's own sync state holds no plaintext password", local.every((f) => !fs.readFileSync(f).includes("NNE2E-concurrent-B")));
 
-  launch("C");
-  await ready("C");
+  await start("C");
   await ev("C", `nn.store.getState().newTab(nn.store.getState().windowOrder[0], { url: "${W}/openc.html?nne2e=tabC" }); return true`);
+  // Loaded before C joins, or its history entry lands after the syncs below and C can't converge with A.
+  await inHistory("C", `${W}/openc.html?nne2e=tabC`);
   check("C joins", text(await ev("C", `return nnSync.enterRecoveryPhrase(${JSON.stringify(FOLDER)}, ${JSON.stringify(phrase)})`)) === '{"ok":true}');
   await sync("C", "C", "A", "B", "C");
   const c = await state("C");
@@ -330,12 +326,7 @@ try {
 } catch (error) {
   check("the run finished", false, error.stack);
 } finally {
-  for (const name of Object.keys(DEV)) {
-    const p = pid(name);
-    if (p) execSync(`kill ${p}`);
-  }
+  await Promise.all(Object.values(apps).map((app) => app.quit().catch((e) => note(`quit ${app.pid}: ${e.message}`))));
   server.close();
-  const failed = results.filter((r) => !r.ok).length;
-  console.log(`\n${results.length - failed}/${results.length} passed`);
-  process.exitCode = failed ? 1 : 0;
+  process.exitCode = report.summary() ? 0 : 1;
 }
