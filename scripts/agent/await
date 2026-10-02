@@ -2,6 +2,7 @@
 # Wait for a condition with a deadline, instead of an open-ended `until …; do sleep; done` loop.
 #
 #   scripts/agent/await [--timeout SECS] [--every SECS] [--pid PID]… [--quiet] -- <test command…>
+#   scripts/agent/await -h | --help
 #
 # Runs the test command until it succeeds (exit 0), then exits 0. Exits 3 as soon as a --pid it
 # watches has exited (the build or app you're waiting on died, so it will never succeed), and 124 at
@@ -12,8 +13,14 @@
 #   scripts/agent/await --timeout 500 -- grep -q '\*\* BUILD' build.log
 set -uo pipefail
 
+help() {
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+  exit 0
+}
+
 timeout=300 every=2 quiet="" pids=()
 while [[ $# -gt 0 && "$1" != "--" ]]; do
+  case "$1" in -h | --help) help ;; esac
   [[ "$1" == --quiet || $# -ge 2 ]] || { echo "await: $1 needs a value" >&2; exit 64; }
   case "$1" in
     --timeout) timeout="$2"; shift 2 ;;
@@ -24,7 +31,7 @@ while [[ $# -gt 0 && "$1" != "--" ]]; do
   esac
 done
 [[ "${1:-}" == "--" ]] && shift
-[[ $# -gt 0 ]] || { echo "usage: $0 [--timeout S] [--every S] [--pid PID]… -- <test command…>" >&2; exit 64; }
+[[ $# -gt 0 ]] || { echo "usage: $0 [--timeout S] [--every S] [--pid PID]… [--quiet] -- <test command…> (--help for more)" >&2; exit 64; }
 
 start=$(date +%s)
 # Each probe gets what's left of the deadline (at least 1 s), so a probe that hangs can't outlast it.

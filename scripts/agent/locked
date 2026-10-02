@@ -4,6 +4,7 @@
 #   scripts/agent/locked <name> [--wait SECS] [--as WHO] -- <command> [args…]   run one command holding it
 #   scripts/agent/locked <name> --take WHO [--ttl MIN] [--wait SECS]              hold it across several calls
 #   scripts/agent/locked <name> --release WHO                                   give back a --take
+#   scripts/agent/locked -h | --help                                            this text
 #
 # <name> is xcodebuild, pod or chromium. The old pattern (`until mkdir /tmp/nn-<name>.lock; …; rmdir`)
 # left the lock behind whenever the shell was killed before its rmdir (a tool timeout, ⌃C), and every
@@ -11,24 +12,37 @@
 #   - everything runs under a kernel lock (lockf) that dies with its holder, and a command's pid is
 #     recorded, so a holder that died is noticed and its lock removed;
 #   - --take records WHO and an expiry (default 60 min); --as WHO runs the taker's own commands (one
-#     at a time) and pushes the expiry back. An expired take counts as abandoned;
+#     at a time) and pushes the expiry back. An expired take counts as abandoned. Taking again what
+#     WHO already holds just renews it;
 #   - the old /tmp/nn-<name>.lock directory is still created while held, so agents on the mkdir
 #     pattern keep waiting for us. One of theirs is never removed: we wait and say so.
+# Nested calls: a command run under `locked <name>` may call `locked <name>` again (the app build runs
+# packages/nncore/scripts/stage-framework.sh, which takes chromium). If an enclosing call already holds that
+# lock, the inner command runs straight through. --as WHO is passed down too (NN_LOCKED_AS), so under
+# `locked xcodebuild --as pip -- …` a nested `locked chromium` uses pip's take; export NN_LOCKED_AS=pip yourself
+# for the same effect from a plain shell.
 # Waiting gives up after --wait seconds (default 500, under the Bash tool's 600 s limit) with exit 75
 # and names the holder. Run long builds with the Bash tool's run_in_background instead of waiting on
-# them in the foreground.
+# them in the foreground. NN_LOCK_ROOT (default /tmp) moves the lock files, for testing this script only.
 set -uo pipefail
+# Set below as plain variables; never inherit them (an enclosing call once leaked on_start into its command).
+unset on_start cmd
 
+help() {
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+  exit 0
+}
 usage() {
-  sed -n '4,6p' "$0" | sed 's/^# *//' >&2
+  sed -n '4,7p' "$0" | sed 's/^# *//' >&2
   exit 64
 }
 
 name="${1:-}"
-case "$name" in xcodebuild | pod | chromium) ;; *) usage ;; esac
+case "$name" in -h | --help) help ;; xcodebuild | pod | chromium) ;; *) usage ;; esac
 shift
 wait=500 as="" take="" release="" ttl=60
 while [[ $# -gt 0 && "$1" != "--" ]]; do
+  case "$1" in -h | --help) help ;; esac
   [[ $# -ge 2 ]] || { echo "locked: $1 needs a value" >&2; usage; }
   case "$1" in
     --wait) wait="$2" ;;
@@ -43,6 +57,8 @@ done
 [[ "${1:-}" == "--" ]] && shift
 [[ -n "$take$release" || $# -gt 0 ]] || usage
 [[ "$wait$ttl" =~ ^[0-9]+$ ]] || { echo "locked: --wait and --ttl take whole numbers" >&2; usage; }
+# A command's own --as wins; otherwise it acts as whoever an enclosing call ran as.
+[[ -z "$as$take$release" ]] && as="${NN_LOCKED_AS:-}"
 
 root=${NN_LOCK_ROOT:-/tmp}
 kernel=$root/nn-$name.lockf
@@ -57,7 +73,7 @@ renew() { sed -i '' "1s/^take [0-9]*/take $(($(now) + ttl * 60))/" "$holder"; }
 
 describe() {
   if [[ "$(field 1)" == take ]]; then
-    echo "taken by $(cut -d' ' -f3- "$holder"), until $(date -r "$(field 2)" '+%H:%M:%S')"
+    echo "taken by $(cut -d' ' -f3- "$holder"), until $(date -r "$(field 2)" '+%H:%M:%S') (if that take is yours, pass --as $(field 3), or export NN_LOCKED_AS=$(field 3) so nested calls use it)"
   elif [[ -s "$holder" ]]; then
     echo "held by pid $(cut -d' ' -f2- "$holder")"
   elif [[ -d "$legacy" ]]; then
@@ -65,9 +81,21 @@ describe() {
   fi
 }
 
-# Runs the command as a child so its pid can be recorded, and passes signals on to it.
+# NN_LOCKED_HELD lists the locks enclosing calls hold for this process tree, one "<pid> <kernel lock path>" a line,
+# the pid being the call that holds it (alive exactly as long as it does).
+held_by_caller() {
+  local pid path
+  while read -r pid path; do
+    [[ -n "$pid" && "$path" == "$kernel" ]] && kill -0 "$pid" 2>/dev/null && { echo "$pid"; return 0; }
+  done <<<"${NN_LOCKED_HELD:-}"
+  return 1
+}
+
+# Runs the command as a child so its pid can be recorded, and passes signals on to it. The child learns which
+# locks it now holds and as whom, so its own nested calls go straight through.
 run() {
-  "$@" &
+  NN_LOCKED_HELD="${NN_LOCKED_HELD:+$NN_LOCKED_HELD
+}$$ $kernel" NN_LOCKED_AS="$as" "$@" &
   child=$!
   trap 'kill -INT "$child" 2>/dev/null; wait "$child"; exit 130' INT
   trap 'kill -TERM "$child" 2>/dev/null; wait "$child"; exit 143' TERM
@@ -76,7 +104,21 @@ run() {
   wait "$child"
 }
 
+# The inner run is always lockf's own child. A command started by an older copy of this script inherited
+# NN_LOCKED_INNER; ignore it there, so its nested calls take the lock properly.
+if [[ -n "${NN_LOCKED_INNER:-}" && "$(ps -o comm= -p "$PPID" 2>/dev/null)" != *lockf ]]; then
+  unset NN_LOCKED_INNER NN_LOCKED_DEADLINE
+fi
+
 if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
+  if outer=$(held_by_caller); then
+    if [[ -n "$take$release" ]]; then
+      echo "locked: $name is held by an enclosing call (pid $outer) of this command; --take/--release it outside that call" >&2
+      exit 64
+    fi
+    echo "locked: $name is already held by an enclosing call (pid $outer); running inside it" >&2
+    exec "$@"
+  fi
   start=$(now)
   deadline=$((start + wait))
   opts=(--wait "$wait" --ttl "$ttl")
@@ -114,7 +156,11 @@ if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
 fi
 
 # Inside the kernel lock: no other caller of this script is in this part at the same time, so the
-# holder file can't change under us.
+# holder file can't change under us. The two variables only tell this inner run where it is; the command must
+# not inherit them, or its own nested calls would skip the kernel lock and exit 77 with nothing said.
+deadline=${NN_LOCKED_DEADLINE:-$(($(now) + wait))}
+unset NN_LOCKED_INNER NN_LOCKED_DEADLINE
+
 if [[ -n "$release" ]]; then
   if taken_by "$release"; then
     rm -f "$holder"
@@ -126,6 +172,12 @@ if [[ -n "$release" ]]; then
   exit 1
 fi
 
+if [[ -n "$take" ]] && taken_by "$take"; then
+  renew
+  echo "locked: $name already taken by $take; renewed for ${ttl} min" >&2
+  exit 0
+fi
+
 if [[ -n "$as" ]] && taken_by "$as"; then
   renew
   run "$@"
@@ -134,7 +186,6 @@ if [[ -n "$as" ]] && taken_by "$as"; then
   exit $status
 fi
 
-deadline=${NN_LOCKED_DEADLINE:-$(($(now) + wait))}
 while ! mkdir "$legacy" 2>/dev/null; do
   stale=""
   case "$(field 1)" in
@@ -174,4 +225,6 @@ cleanup() {
 }
 trap cleanup EXIT
 record() { echo "pid $1 since $(date '+%H:%M:%S') in $PWD: ${cmd}" >"$holder"; }
-cmd="$*" on_start=record run "$@"
+cmd="$*"
+on_start=record
+run "$@"
