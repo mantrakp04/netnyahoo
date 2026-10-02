@@ -16,8 +16,11 @@
 //        (one visit at l; n is the URL's visit count when it's new).
 //   nn_history_delete_urls({urls}) -> {ok}
 //   nn_history_watch() -> {ok}: events for the profile, topic
-//        "history.changed": {kind: "visit", u, t, n, at} | {kind: "modified",
-//        rows: [{u, t, n}]} | {kind: "deleted", all, urls}.
+//        "history.changed": {kind: "batch", changes: [change…]}, in order, each
+//        {kind: "visit", u, t, n, at} | {kind: "modified", rows: [{u, t, n}]} |
+//        {kind: "deleted", all, urls}. Changes within kBatchDelay go together:
+//        an add of many visits (the old history.json's move, sync) reported
+//        each one as its own event, ~88,000 bridge events at one launch.
 //
 // Deleting a time range stays with Clear Browsing Data (BrowsingDataRemover).
 
@@ -36,6 +39,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/cancelable_task_tracker.h"
 #include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/history/history_utils.h"
 #include "chrome/browser/netnyahoo/nn_engine.h"
@@ -99,6 +103,10 @@ base::DictValue Row(const history::URLRow& row) {
 
 // MARK: Watching
 
+// How long a change waits for the ones after it, and how many go at most.
+constexpr base::TimeDelta kBatchDelay = base::Milliseconds(20);
+constexpr size_t kBatchMax = 2000;
+
 class Watcher : public history::HistoryServiceObserver {
  public:
   Watcher(Profile* profile, history::HistoryService* service)
@@ -111,10 +119,9 @@ class Watcher : public history::HistoryServiceObserver {
     if (!Visible(info.visit_row.transition) || info.url_row.hidden()) {
       return;
     }
-    Emit("history.changed", profile_,
-         Row(info.url_row)
-             .Set("kind", "visit")
-             .Set("at", Ms(info.visit_row.visit_time)));
+    Add(Row(info.url_row)
+            .Set("kind", "visit")
+            .Set("at", Ms(info.visit_row.visit_time)));
   }
 
   void OnURLsModified(history::HistoryService*,
@@ -123,8 +130,7 @@ class Watcher : public history::HistoryServiceObserver {
     for (const auto& row : changed) {
       rows.Append(Row(row));
     }
-    Emit("history.changed", profile_,
-         base::DictValue().Set("kind", "modified").Set("rows", std::move(rows)));
+    Add(base::DictValue().Set("kind", "modified").Set("rows", std::move(rows)));
   }
 
   void OnHistoryDeletions(history::HistoryService*,
@@ -139,17 +145,40 @@ class Watcher : public history::HistoryServiceObserver {
         urls.Append(row.url().spec());
       }
     }
-    Emit("history.changed", profile_,
-         base::DictValue()
-             .Set("kind", "deleted")
-             .Set("all", !whole_urls)
-             .Set("urls", std::move(urls)));
+    Add(base::DictValue()
+            .Set("kind", "deleted")
+            .Set("all", !whole_urls)
+            .Set("urls", std::move(urls)));
   }
 
   void HistoryServiceBeingDeleted(history::HistoryService*) override;
 
  private:
+  void Add(base::DictValue change) {
+    pending_.Append(std::move(change));
+    if (pending_.size() >= kBatchMax) {
+      Flush();
+    } else if (!flush_.IsRunning()) {
+      flush_.Start(FROM_HERE, kBatchDelay,
+                   base::BindOnce(&Watcher::Flush, base::Unretained(this)));
+    }
+  }
+
+  void Flush() {
+    flush_.Stop();
+    if (pending_.empty()) {
+      return;
+    }
+    Emit("history.changed", profile_,
+         base::DictValue().Set("kind", "batch").Set("changes",
+                                                    std::move(pending_)));
+    pending_ = base::ListValue();
+  }
+
   raw_ptr<Profile> profile_;
+  base::ListValue pending_;
+  // Owned: stops with the watcher, so Unretained is safe.
+  base::OneShotTimer flush_;
   base::ScopedObservation<history::HistoryService,
                           history::HistoryServiceObserver>
       observation_{this};
@@ -162,6 +191,7 @@ std::map<Profile*, std::unique_ptr<Watcher>>& Watchers() {
 }
 
 void Watcher::HistoryServiceBeingDeleted(history::HistoryService*) {
+  Flush();
   observation_.Reset();
   // Deletes this.
   Watchers().erase(profile_);

@@ -51,12 +51,20 @@ export const deleteHistoryUrls = (profile: string, urls: string[]) =>
 /** Starts `onHistoryChanged` events for the profile. */
 export const watchHistory = (profile: string) => engineCall("nn_history_watch", profile);
 
+type RawChange = Record<string, unknown>;
+
+// The engine sends the changes of each ~20 ms together ({kind: "batch", changes}), in order: an add of many visits
+// (history.json's move, sync) made one event per visit, ~88,000 at one launch.
 export const onHistoryChanged = (listener: (change: HistoryChange) => void) =>
   onEngineEvent((topic, p) => {
     if (topic !== "history.changed") return;
     const profile = p.profile;
-    if (p.kind === "visit") listener({ kind: "visit", profile, url: p.u as string, title: p.t as string, visits: p.n as number, at: p.at as number });
-    else if (p.kind === "modified")
-      listener({ kind: "modified", profile, rows: (p.rows as Row[]).map((r) => ({ url: r.u, title: r.t, visits: r.n })) });
-    else if (p.kind === "deleted") listener({ kind: "deleted", profile, all: !!p.all, urls: (p.urls as string[]) ?? [] });
+    const one = (c: RawChange) => {
+      if (c.kind === "visit") listener({ kind: "visit", profile, url: c.u as string, title: c.t as string, visits: c.n as number, at: c.at as number });
+      else if (c.kind === "modified")
+        listener({ kind: "modified", profile, rows: (c.rows as Row[]).map((r) => ({ url: r.u, title: r.t, visits: r.n })) });
+      else if (c.kind === "deleted") listener({ kind: "deleted", profile, all: !!c.all, urls: (c.urls as string[]) ?? [] });
+    };
+    if (p.kind === "batch") for (const c of (p.changes as RawChange[]) ?? []) one(c);
+    else one(p);
   });
