@@ -42,10 +42,18 @@ const github: LiveSource = {
     const json = await githubGraphql<GithubResponse>(token, GITHUB_QUERY, GITHUB_VARIABLES);
     const ids = detailIds(json, folder.filters);
     const pages = Array.from({ length: Math.ceil(ids.length / DETAILS_PAGE) }, (_, i) => ids.slice(i * DETAILS_PAGE, (i + 1) * DETAILS_PAGE));
-    const details = await Promise.all(
-      pages.map((page) => githubGraphql<{ data?: { nodes: (RawPR | null)[] } }>(token, GITHUB_DETAILS_QUERY, { ids: page })),
-    );
-    return mapGithub(withDetails(json, details.flatMap((d) => d.data?.nodes ?? [])), folder.filters);
+    const page = async (ids: string[]) => {
+      const res = await githubGraphql<{ data?: { nodes: (RawPR | null)[] }; errors?: { message: string }[] }>(token, GITHUB_DETAILS_QUERY, { ids });
+      // Errors beside data leave some PRs out, and a PR left out of a successful fetch counts as merged or reviewed
+      // (resolveGone): fail the refresh instead, which keeps the folder's PRs as they were.
+      if (res.errors?.length) throw new LiveError("other", res.errors[0]!.message);
+      return res.data?.nodes ?? [];
+    };
+    // Every page or none (a partial result would read as PRs gone); a page is small, so a failure is retried once.
+    const retry = (ids: string[]) => (error: unknown) =>
+      error instanceof LiveError && (error.kind === "other" || error.kind === "network") ? page(ids) : Promise.reject(error);
+    const details = await Promise.all(pages.map((ids) => page(ids).catch(retry(ids))));
+    return mapGithub(withDetails(json, details.flat()), folder.filters);
   },
   async resolveGone(items) {
     const prs = items.filter((it) => it.source === "github");
