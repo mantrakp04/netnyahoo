@@ -26,8 +26,9 @@ export function NextMeetingBadge({ tabId }: { tabId: string }) {
   const [label, setLabel] = useState(text);
   useEffect(() => {
     if (text) setLabel(text);
-    Animated.spring(shown, { toValue: text ? 1 : 0, speed: 16, bounciness: text ? 10 : 0, useNativeDriver: true }).start(() => {
-      if (!text) setLabel(null);
+    // Only a finished fade-out drops the label: a badge coming back mid-fade stops it, and must stay.
+    Animated.spring(shown, { toValue: text ? 1 : 0, speed: 16, bounciness: text ? 10 : 0, useNativeDriver: true }).start(({ finished }) => {
+      if (finished && !text) setLabel(null);
     });
   }, [text]);
   if (!label) return null;

@@ -5,7 +5,7 @@ import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, ThemeScope, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { PageProfileContext, useIsActiveTab, usePageProfileId, useSettings, useTab, useTabLive, useWindowId, useWindowProfileId } from "../../store/hooks";
-import { ProfileIndicator } from "../ProfileIndicator";
+import { ProfileIndicator, useProfileIndicatorWidth } from "../ProfileIndicator";
 import { IconButton, useHover } from "../primitives";
 import { clickTab } from "../sidebar/actions";
 import { openGroupMenu, openTabMenu } from "../sidebar/menus";
@@ -16,6 +16,7 @@ import { modifiersOf } from "./controls";
 import { usePageStyle, usePagerPages } from "./profilePager";
 import { ProfileSwipeArea } from "./ProfileSwipe";
 import { openNewTabInSplit } from "./splitActions";
+import { usePeek } from "./usePeek";
 import {
   CHIP_WIDTH_GUESS,
   dragGeometry,
@@ -55,6 +56,7 @@ const FLARE = 15;
 const RIM_HEIGHT = 27.5;
 const PEEK_PAD = 7;
 const PEEK_HEIGHT = ITEM_HEIGHT + PEEK_PAD * 2;
+const PEEK_BORDER = 0.5;
 // Pinned tabs share one container: 34 pt cells 2 apart, 16 pt icons.
 const PINNED_CELL = 34;
 const PINNED_SPACING = 2;
@@ -76,26 +78,34 @@ type Member = { kind: "tab"; id: string; group: string | null } | { kind: "split
 type GroupEntry = { kind: "group"; id: string; collapsed: boolean; members: Member[] };
 type Entry = { kind: "dock"; ids: string[] } | GroupEntry | Member;
 
-export function TopTabStrip({ floating = false }: { floating?: boolean }) {
+// The controls at the strip's end: the profile chip (at most PROFILE_ROOM), then the downloads button.
+const PROFILE_ROOM = 140;
+const DOWNLOADS_BOX = 34;
+const CONTROLS_GAP = 2;
+
+// `width`: the window's (the peek's, floating), from its parent, so a strip mounting again lays its tabs out right on its
+// first frame. `hidden`: page full screen keeps the strip mounted out of view, and gives the traffic lights back.
+// `swipe`: the strip pages profiles; a hidden peek's doesn't, or switching profiles would wait on its pager.
+export function TopTabStrip({ width, floating = false, hidden = false, swipe = true }: { width: number; floating?: boolean; hidden?: boolean; swipe?: boolean }) {
   const windowId = useWindowId();
-  const [width, setWidth] = useState(0);
   const current = useWindowProfileId();
   const { pages } = usePagerPages(windowId);
-  const [controls, setControls] = useState(76);
+  const profileChip = useProfileIndicatorWidth(PROFILE_ROOM);
+  const controls = (profileChip ? profileChip + CONTROLS_GAP : 0) + DOWNLOADS_BOX;
   const left = floating ? 8 : layout.trafficLightsWidth + LIGHTS_GAP;
   const right = Math.max(84, controls + 8 + 6);
   const pageWidth = Math.max(0, width - left - right);
   const flare = floating ? 0 : FLARE;
 
   useEffect(() => {
-    if (floating) return;
+    if (floating || hidden) return;
     void setTrafficLightsCenter(windowId, LIGHTS_CENTER);
     return () => void setTrafficLightsCenter(windowId, null);
-  }, [floating, windowId]);
+  }, [floating, hidden, windowId]);
 
   return (
     <FloatingStrip.Provider value={floating}>
-      <View style={{ height: TOP_STRIP_HEIGHT }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      <View style={{ height: TOP_STRIP_HEIGHT }}>
         <WindowDragRegion style={StyleSheet.absoluteFill} />
         {/* The clip starts a flare's width early so the first tab's flare isn't cut, and ends at the profile chip and
             download button, so tabs scrolled past the end never show under them. */}
@@ -104,16 +114,12 @@ export function TopTabStrip({ floating = false }: { floating?: boolean }) {
             <StripPage key={page.id} profileId={page.id} slot={page.slot} pageWidth={pageWidth} current={page.id === current} resting={!!page.resting} />
           ))}
         </View>
-        <View
-          onLayout={(e) => setControls(Math.ceil(e.nativeEvent.layout.width))}
-          mouseDownCanMoveWindow={false}
-          style={{ position: "absolute", right: 8, top: MID - 17, flexDirection: "row", alignItems: "center", gap: 2 }}
-        >
-          <ProfileIndicator room={140} />
+        <View mouseDownCanMoveWindow={false} style={{ position: "absolute", right: 8, top: MID - 17, flexDirection: "row", alignItems: "center", gap: CONTROLS_GAP }}>
+          <ProfileIndicator room={PROFILE_ROOM} />
           <IconButton
             icon="arrow.down.circle"
             size={16}
-            box={34}
+            box={DOWNLOADS_BOX}
             radius={10}
             tooltip="Downloads (⇧⌘J)"
             onPress={() => {
@@ -122,7 +128,7 @@ export function TopTabStrip({ floating = false }: { floating?: boolean }) {
             }}
           />
         </View>
-        <ProfileSwipeArea surface="strip" style={StyleSheet.absoluteFill} pageWidth={pageWidth + flare * 2} />
+        {swipe && <ProfileSwipeArea surface="strip" style={StyleSheet.absoluteFill} pageWidth={pageWidth + flare * 2} />}
         {!floating && <StripDropHighlight left={left} right={right} />}
       </View>
     </FloatingStrip.Provider>
@@ -1085,56 +1091,44 @@ function NewTabButton({ windowId }: { windowId: string }) {
   );
 }
 
-export function TopStripPeek() {
+export function TopStripPeek({ windowWidth, enabled }: { windowWidth: number; enabled: boolean }) {
   const theme = useTheme();
-  const [visible, setVisible] = useState(false);
-  const slide = useRef(new Animated.Value(0)).current;
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const animate = (to: number, then?: () => void) =>
-    Animated.timing(slide, { toValue: to, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(then);
-  const show = () => {
-    clearTimeout(hideTimer.current);
-    setVisible(true);
-    animate(1);
-  };
-  const hide = () => {
-    clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(() => animate(0, () => setVisible(false)), 120);
-  };
+  const { slide, live, show, hide } = usePeek(enabled);
   return (
     <>
-      <View onMouseEnter={show} style={{ position: "absolute", left: layout.trafficLightsWidth, right: 0, top: 0, height: 6 }} />
-      {visible && (
-        <Animated.View
-          onMouseEnter={show}
-          onMouseLeave={hide}
-          style={{
-            position: "absolute",
-            left: 6,
-            right: 6,
-            top: 4,
-            height: PEEK_HEIGHT,
-            opacity: slide,
-            transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [-PEEK_HEIGHT - 8, 0] }) }],
-          }}
+      {enabled ? <View onMouseEnter={show} style={{ position: "absolute", left: layout.trafficLightsWidth, right: 0, top: 0, height: 6 }} /> : null}
+      <Animated.View
+        pointerEvents={live ? "auto" : "none"}
+        onMouseEnter={live ? show : undefined}
+        onMouseLeave={live ? hide : undefined}
+        style={{
+          position: "absolute",
+          left: 6,
+          width: windowWidth - 12,
+          // Out of the window while hidden (a transform doesn't move hover tracking): its tabs mustn't hover under the page.
+          top: live ? 4 : -10_000,
+          height: PEEK_HEIGHT,
+          opacity: slide,
+          transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [-PEEK_HEIGHT - 8, 0] }) }],
+        }}
+      >
+        <Surface
+          fill={hex(theme.windowTint[0])}
+          cornerRadius={12}
+          borderColor={hex(theme.panelBorder)}
+          borderWidth={PEEK_BORDER}
+          shadowColor="#000000"
+          shadowOpacity={theme.panelShadowOpacity}
+          shadowRadius={20}
+          shadowOffset={[0, 6]}
+          style={{ flex: 1 }}
         >
-          <Surface
-            fill={hex(theme.windowTint[0])}
-            cornerRadius={12}
-            borderColor={hex(theme.panelBorder)}
-            borderWidth={0.5}
-            shadowColor="#000000"
-            shadowOpacity={theme.panelShadowOpacity}
-            shadowRadius={20}
-            shadowOffset={[0, 6]}
-            style={{ flex: 1 }}
-          >
-            <View style={{ position: "absolute", left: 0, right: 0, top: PEEK_PAD - ITEM_TOP, height: TOP_STRIP_HEIGHT }}>
-              <TopTabStrip floating />
-            </View>
-          </Surface>
-        </Animated.View>
-      )}
+          <View style={{ position: "absolute", left: 0, right: 0, top: PEEK_PAD - ITEM_TOP, height: TOP_STRIP_HEIGHT }}>
+            {/* The border insets the strip. */}
+            <TopTabStrip floating swipe={live} width={windowWidth - 12 - PEEK_BORDER * 2} />
+          </View>
+        </Surface>
+      </Animated.View>
     </>
   );
 }

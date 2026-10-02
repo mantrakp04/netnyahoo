@@ -1,7 +1,7 @@
 import { WindowBackdrop } from "@netnyahoo/shaders";
 import { Surface } from "@netnyahoo/shell";
-import { useRef, useState } from "react";
-import { Animated, Easing, StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Animated, StyleSheet, View } from "react-native";
 import { CommandPanel } from "./components/CommandPanel";
 import { ContentCard } from "./components/ContentCard";
 import { BookmarkDialog } from "./components/bookmarks/BookmarkDialog";
@@ -16,6 +16,7 @@ import { CreateProfileHost } from "./components/profiles/CreateProfile";
 import { useFullscreenTab } from "./components/layout/pageState";
 import { ProfileSwipe, ProfileTint } from "./components/layout/ProfileSwipe";
 import { TOP_CARD_INSET, TOP_STRIP_HEIGHT, TopStripPeek, TopTabStrip } from "./components/layout/TopTabStrip";
+import { usePeek } from "./components/layout/usePeek";
 import { useTabLayout } from "./components/layout/windowLayout";
 import { WindowProfile } from "./components/layout/WindowProfile";
 import { Sidebar } from "./components/Sidebar";
@@ -53,8 +54,10 @@ function BrowserWindow() {
   const sidebarOpen = useSidebarOpen();
   const topTabs = useTabLayout() === "top";
   const fullscreen = !!useFullscreenTab(useWindowId());
-  const showSidebar = sidebarOpen && !topTabs && !fullscreen;
-  const showStrip = sidebarOpen && topTabs && !fullscreen;
+  // Page full screen hides the sidebar and the strip without unmounting them: they keep their scroll, rows, measured
+  // sizes and swipe surface. Moved out of the window rather than made transparent, so nothing in them takes the pointer.
+  const showSidebar = sidebarOpen && !topTabs;
+  const showStrip = sidebarOpen && topTabs;
   const [width, setWidth] = useState(0);
 
   return (
@@ -63,9 +66,11 @@ function BrowserWindow() {
       <WindowProfile />
       <ProfileTint />
       {showSidebar && (
-        <ProfileSwipe>
-          <Sidebar />
-        </ProfileSwipe>
+        <View pointerEvents={fullscreen ? "none" : "auto"} style={fullscreen ? { position: "absolute", top: 0, bottom: 0, right: "100%" } : { height: "100%" }}>
+          <ProfileSwipe>
+            <Sidebar />
+          </ProfileSwipe>
+        </View>
       )}
       <View
         style={
@@ -85,11 +90,11 @@ function BrowserWindow() {
         {!fullscreen && <ExtensionSidePanel />}
       </View>
       {showStrip && (
-        <View style={{ position: "absolute", left: 0, right: 0, top: 0 }}>
-          <TopTabStrip />
+        <View pointerEvents={fullscreen ? "none" : "auto"} style={[{ position: "absolute", left: 0, right: 0 }, fullscreen ? { bottom: "100%" } : { top: 0 }]}>
+          <TopTabStrip width={width} hidden={fullscreen} />
         </View>
       )}
-      {!sidebarOpen && !fullscreen && (topTabs ? <TopStripPeek /> : <SidebarPeek />)}
+      {!sidebarOpen && (topTabs ? <TopStripPeek windowWidth={width} enabled={!fullscreen} /> : <SidebarPeek enabled={!fullscreen} />)}
       <CommandPanel windowWidth={width} />
       <DownloadsPopover />
       <ExtensionOverlays />
@@ -103,57 +108,43 @@ function BrowserWindow() {
   );
 }
 
-function SidebarPeek() {
+function SidebarPeek({ enabled }: { enabled: boolean }) {
   const theme = useTheme();
   const sidebarWidth = useSidebarWidth(useWindowId());
-  const [visible, setVisible] = useState(false);
-  const slide = useRef(new Animated.Value(0)).current;
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  const animate = (to: number, then?: () => void) =>
-    Animated.timing(slide, { toValue: to, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(then);
-  const show = () => {
-    clearTimeout(hideTimer.current);
-    setVisible(true);
-    animate(1);
-  };
-  const hide = () => {
-    clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(() => animate(0, () => setVisible(false)), 120);
-  };
+  const { slide, live, show, hide } = usePeek(enabled);
 
   return (
     <>
-      <View onMouseEnter={show} style={{ position: "absolute", left: 0, top: layout.sidebarHeader, bottom: 0, width: 8 }} />
-      {visible && (
-        <Animated.View
-          onMouseEnter={show}
-          onMouseLeave={hide}
-          style={{
-            position: "absolute",
-            left: 6,
-            top: layout.cardTop,
-            bottom: layout.cardInset,
-            width: sidebarWidth,
-            opacity: slide,
-            transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [-sidebarWidth - 12, 0] }) }],
-          }}
+      {enabled ? <View onMouseEnter={show} style={{ position: "absolute", left: 0, top: layout.sidebarHeader, bottom: 0, width: 8 }} /> : null}
+      <Animated.View
+        pointerEvents={live ? "auto" : "none"}
+        onMouseEnter={live ? show : undefined}
+        onMouseLeave={live ? hide : undefined}
+        style={{
+          position: "absolute",
+          // Out of the window while hidden (a transform doesn't move hover tracking): its rows mustn't hover under the page.
+          left: live ? 6 : -10_000,
+          top: layout.cardTop,
+          bottom: layout.cardInset,
+          width: sidebarWidth,
+          opacity: slide,
+          transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [-sidebarWidth - 12, 0] }) }],
+        }}
+      >
+        <Surface
+          fill={hex(theme.windowTint[0])}
+          cornerRadius={12}
+          borderColor={hex(theme.panelBorder)}
+          borderWidth={0.5}
+          shadowColor="#000000"
+          shadowOpacity={theme.panelShadowOpacity}
+          shadowRadius={20}
+          shadowOffset={[0, 6]}
+          style={{ flex: 1, overflow: "hidden" }}
         >
-          <Surface
-            fill={hex(theme.windowTint[0])}
-            cornerRadius={12}
-            borderColor={hex(theme.panelBorder)}
-            borderWidth={0.5}
-            shadowColor="#000000"
-            shadowOpacity={theme.panelShadowOpacity}
-            shadowRadius={20}
-            shadowOffset={[0, 6]}
-            style={{ flex: 1, overflow: "hidden" }}
-          >
-            <Sidebar />
-          </Surface>
-        </Animated.View>
-      )}
+          <Sidebar />
+        </Surface>
+      </Animated.View>
     </>
   );
 }

@@ -331,7 +331,8 @@ export function DownloadMagnet() {
       if (!fresh || s.ui.focusedWindowId !== windowId || !downloadVisibleIn(fresh, s.windows[windowId])) return;
       t.setValue(0);
       setFlight({ id: fresh.id, path: fresh.path || fresh.filename });
-      Animated.timing(t, { toValue: 1, duration: 700, easing: Easing.bezier(0.45, 0, 0.2, 1), useNativeDriver: true }).start(() => setFlight(null));
+      // A second download within the flight restarts it: only the flight that finished lands.
+      Animated.timing(t, { toValue: 1, duration: 700, easing: Easing.bezier(0.45, 0, 0.2, 1), useNativeDriver: true }).start(({ finished }) => finished && setFlight(null));
     });
   }, [windowId]);
 

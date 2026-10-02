@@ -1,10 +1,10 @@
 import { Symbol, showMenu, type MenuItem } from "@netnyahoo/shell";
-import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { createProfile, switchProfile } from "../lib/actions";
 import { PROFILE_COLORS, profileNameColor, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
 import { useIsIncognito, useProfiles, useWindowId, useWindowProfile } from "../store/hooks";
+import { setMeasuredWidth, useMeasuredWidth } from "./layout/measuredWidths";
 import { useHover } from "./primitives";
 import { openSettings } from "./settings/windows";
 
@@ -14,21 +14,30 @@ const MIN_CUT_NAME = 52;
 const ICON_WIDTH = 32;
 export const PROFILE_INDICATOR_X = 84;
 
-export function ProfileIndicator({ room }: { room: number }) {
+function useIndicator(room: number) {
   const theme = useTheme();
-  const windowId = useWindowId();
   const incognito = useIsIncognito();
   const profiles = useProfiles();
   const profile = useWindowProfile();
-  const { hovered, hoverProps } = useHover();
-  const [measured, setMeasured] = useState<{ text: string; width: number } | null>(null);
-  if (!incognito && profiles.length < 2) return null;
-  if (room < ICON_WIDTH) return null;
   const title = incognito ? "Incognito" : profile.name;
-  const color = incognito ? theme.textPrimary : profileNameColor(profile.color, theme.dark);
-  const textWidth = measured?.text === title ? measured.width : 0;
+  const textWidth = useMeasuredWidth(`profile-name|${title}`);
+  const shown = (incognito || profiles.length >= 2) && room >= ICON_WIDTH;
   const nameRoom = room - 2 * PAD;
-  const showName = textWidth > 0 && (textWidth <= nameRoom || nameRoom >= MIN_CUT_NAME);
+  const showName = !!textWidth && (textWidth <= nameRoom || nameRoom >= MIN_CUT_NAME);
+  const width = !shown ? 0 : showName ? Math.min(room, textWidth + 2 * PAD) : ICON_WIDTH;
+  const color = incognito ? theme.textPrimary : profileNameColor(profile.color, theme.dark);
+  return { incognito, title, textWidth, shown, showName, width, color };
+}
+
+/** The indicator's width at `room` (0 when it isn't shown), known before it lays out: the tab strip sizes its tabs by it. */
+export const useProfileIndicatorWidth = (room: number) => useIndicator(room).width;
+
+export function ProfileIndicator({ room }: { room: number }) {
+  const theme = useTheme();
+  const windowId = useWindowId();
+  const { hovered, hoverProps } = useHover();
+  const { incognito, title, textWidth, shown, showName, width, color } = useIndicator(room);
+  if (!shown) return null;
 
   return (
     <View {...hoverProps} tooltip={incognito ? undefined : "Switch between profiles"} style={{ marginTop: 0.5 }}>
@@ -36,7 +45,7 @@ export function ProfileIndicator({ room }: { room: number }) {
         <Text
           numberOfLines={1}
           style={{ alignSelf: "flex-start", fontSize: 13, fontWeight: "600" }}
-          onLayout={(e) => setMeasured({ text: title, width: Math.ceil(e.nativeEvent.layout.width) })}
+          onLayout={(e) => setMeasuredWidth(`profile-name|${title}`, Math.ceil(e.nativeEvent.layout.width))}
         >
           {title}
         </Text>
@@ -46,7 +55,7 @@ export function ProfileIndicator({ room }: { room: number }) {
           <View
             style={{
               height: HEIGHT,
-              width: showName ? Math.min(room, textWidth + 2 * PAD) : ICON_WIDTH,
+              width,
               borderRadius: 10,
               flexDirection: "row",
               alignItems: "center",
@@ -59,7 +68,7 @@ export function ProfileIndicator({ room }: { room: number }) {
               <Text numberOfLines={1} ellipsizeMode="tail" style={{ flexShrink: 1, fontSize: 13, fontWeight: "600", color }}>
                 {title}
               </Text>
-            ) : textWidth > 0 ? (
+            ) : textWidth ? (
               <Symbol name="person.fill" size={14} weight="semibold" color={color} style={{ width: 16, height: 16 }} />
             ) : null}
           </View>
