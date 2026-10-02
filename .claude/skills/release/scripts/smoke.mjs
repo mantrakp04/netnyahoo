@@ -1,9 +1,14 @@
-// usage: node smoke.mjs <cdpPort> <version> <windowsTool> <pid> <pagesOrigin>
+// usage: SMOKE_DATA=<data dir> node smoke.mjs <version> <windowsTool> <pagesOrigin>
+//   Drives the instance smoke.sh launched (scripts/agent/nn launch: recorded in $SMOKE_DATA/instance.json).
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { attach, sleep } from "../../../../scripts/lib/instance.mjs";
 
-const [port, version, windowsTool, pid, pages] = process.argv.slice(2);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const [version, windowsTool, pages] = process.argv.slice(2);
+const instance = attach(process.env.SMOKE_DATA);
+const { port, pid } = instance;
+// DevTools calls as this script has always made them: an error reply is an empty result, and no call times out.
+const quietly = (session, method, params = {}) => session.send(method, params, { timeout: 2 ** 31 - 1 }).catch(() => ({}));
 const results = [];
 const check = (name, ok, detail = "") => {
   results.push({ name, ok });
@@ -18,7 +23,7 @@ const windows = () =>
 const browserInfo = await (await fetch(`http://localhost:${port}/json/version`)).json();
 check("engine is Chromium 154", /Chrome\/154\./.test(browserInfo.Browser), browserInfo.Browser);
 
-let targets = (await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => t.type === "page");
+let targets = (await instance.targets()).filter((t) => t.type === "page");
 const notes = targets.filter((t) => new RegExp(`/release-notes/?#${version.replace(/\./g, "\\.")}$`).test(t.url));
 check("release notes opened once after the update", notes.length === 1, targets.map((t) => t.url).join(", "));
 const page = notes[0] ?? targets.find((t) => t.url.startsWith("http") && !t.url.includes("/count.html"));
@@ -27,28 +32,16 @@ if (!page) {
   process.exit(1);
 }
 
-const ws = new WebSocket(page.webSocketDebuggerUrl);
-await new Promise((r) => (ws.onopen = r));
-let nextId = 1;
-const pending = new Map();
-const listeners = [];
-ws.onmessage = (e) => {
-  const m = JSON.parse(e.data);
-  if (m.id && pending.has(m.id)) pending.get(m.id)(m);
-  else for (const l of listeners) l(m);
-};
-const send = (method, params = {}) =>
-  new Promise((resolve) => {
-    const id = nextId++;
-    pending.set(id, (m) => resolve(m.result ?? {}));
-    ws.send(JSON.stringify({ id, method, params }));
-  });
+const session = await instance.page((t) => t.id === page.id);
+const send = (method, params = {}) => quietly(session, method, params);
 const evaluate = async (expression) =>
   (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result?.value;
 async function go(url, wait = 15000) {
-  const loaded = new Promise((r) => listeners.push((m) => m.method === "Page.loadEventFired" && r()));
+  let off;
+  const loaded = new Promise((r) => (off = session.on("Page.loadEventFired", r)));
   await send("Page.navigate", { url });
   await Promise.race([loaded, sleep(wait)]);
+  off();
   await sleep(800);
 }
 async function click(selector, button = "left") {
@@ -78,23 +71,22 @@ const adScript = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js
 async function adFate(run) {
   const ids = new Set();
   let fate;
-  const listener = (m) => {
-    const p = m.params ?? {};
-    if (m.method === "Network.requestWillBeSent" && (p.request?.url === adScript || ids.has(p.requestId))) {
+  const listener = (method) => (p = {}) => {
+    if (method === "Network.requestWillBeSent" && (p.request?.url === adScript || ids.has(p.requestId))) {
       ids.add(p.requestId);
       if (p.request.url.startsWith("chrome-extension://")) fate ??= "blocked";
     } else if (!ids.has(p.requestId)) {
       return;
-    } else if (m.method === "Network.loadingFailed") {
+    } else if (method === "Network.loadingFailed") {
       fate ??= /ERR_BLOCKED_BY_CLIENT/.test(p.errorText ?? "") || p.blockedReason ? "blocked" : `failed (${p.errorText})`;
-    } else if (m.method === "Network.responseReceived" && new URL(p.response.url).hostname.endsWith("googlesyndication.com")) {
+    } else if (method === "Network.responseReceived" && new URL(p.response.url).hostname.endsWith("googlesyndication.com")) {
       fate ??= p.response.status < 400 ? "loaded" : `failed (${p.response.status})`;
     }
   };
-  listeners.push(listener);
+  const offs = ["Network.requestWillBeSent", "Network.loadingFailed", "Network.responseReceived"].map((m) => session.on(m, listener(m)));
   await run();
   for (const start = Date.now(); !fate && Date.now() - start < 5000; ) await sleep(100);
-  listeners.splice(listeners.indexOf(listener), 1);
+  for (const off of offs) off();
   return fate ?? (ids.size ? "pending" : "not requested");
 }
 await send("Network.enable");
@@ -116,17 +108,26 @@ check("no hidden full-size Chrome window (the app window is Chrome's own)", !!ap
   JSON.stringify(appWindows().map((w) => [w.w, w.h, w.alpha])));
 check("a window left on its second profile reopens as that profile's window, alone on screen",
   appWindows().filter((w) => w.alpha > 0).length === 1, JSON.stringify(appWindows().map((w) => [w.title, w.alpha])));
-const browserWs = new WebSocket(browserInfo.webSocketDebuggerUrl);
-await new Promise((r) => (browserWs.onopen = r));
-let browserId = 1;
-const browserSend = (method) =>
-  new Promise((r) => {
-    const id = browserId++;
-    browserWs.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id === id) r(m.result ?? {}); };
-    browserWs.send(JSON.stringify({ id, method }));
-  });
-const { targetInfos = [] } = await browserSend("Target.getTargets");
-browserWs.close();
+// One DevTools connection per call, to the browser target or a page, closed at once (a client left attached to a page
+// changes what Chrome does with it: see the hang check below).
+async function browserCall(method, params = {}) {
+  const browser = await instance.browser();
+  try {
+    return await quietly(browser, method, params);
+  } finally {
+    browser.close();
+  }
+}
+async function onPage(target, method, params = {}) {
+  const other = await instance.page((t) => t.id === target.id).catch(() => null);
+  if (!other) return {};
+  try {
+    return await quietly(other, method, params);
+  } finally {
+    other.close();
+  }
+}
+const { targetInfos = [] } = await browserCall("Target.getTargets");
 const workContext = targetInfos.find((t) => t.type === "page" && t.url.endsWith("?pin-a"))?.browserContextId;
 const shownContext = targetInfos.find((t) => t.targetId === page.id)?.browserContextId;
 const shownVisible = await evaluate("document.visibilityState");
@@ -193,28 +194,8 @@ check("offline page is Where's Big Yahu?", /No internet/.test(await evaluate("do
 await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 await go(`${pages}/form.html`);
 
-async function browserCall(method, params = {}) {
-  const bws = new WebSocket(browserInfo.webSocketDebuggerUrl);
-  await new Promise((r) => (bws.onopen = r));
-  const result = await new Promise((r) => {
-    bws.onmessage = (e) => r(JSON.parse(e.data).result ?? {});
-    bws.send(JSON.stringify({ id: 1, method, params }));
-  });
-  bws.close();
-  return result;
-}
-async function onPage(target, method, params = {}) {
-  const pws = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((r) => (pws.onopen = r));
-  const result = await new Promise((r) => {
-    pws.onmessage = (e) => r(JSON.parse(e.data).result ?? {});
-    pws.send(JSON.stringify({ id: 1, method, params }));
-  });
-  pws.close();
-  return result;
-}
 async function pinnedPage() {
-  const target = (await (await fetch(`http://localhost:${port}/json`)).json()).find((t) => t.type === "page" && t.url.endsWith("?pin-a"));
+  const target = await instance.pageTarget((t) => t.url.endsWith("?pin-a"));
   if (!target) return undefined;
   const { result } = await onPage(target, "Runtime.evaluate", { expression: "[window.loadNo, document.visibilityState]", returnByValue: true });
   return { target, id: target.id, loads: result?.value?.[0], visibility: result?.value?.[1] };
@@ -238,7 +219,7 @@ check("a pinned tab's page, shown again after a tab over it closed (5 times), is
   !!pinA && pinA.loads === 1 && rounds.every((a) => a?.id === pinA.id && a.loads === 1 && a.visibility === "visible"),
   JSON.stringify({ first: pinA && [pinA.loads, pinA.visibility], rounds: rounds.map((a) => a && [a.id === pinA.id ? "same page" : "new page", a.loads, a.visibility]) }));
 async function shownPage() {
-  for (const t of (await (await fetch(`http://localhost:${port}/json`)).json()).filter((t) => t.type === "page" && t.url.startsWith("http") && !t.url.endsWith("?home"))) {
+  for (const t of (await instance.targets()).filter((t) => t.type === "page" && t.url.startsWith("http") && !t.url.endsWith("?home"))) {
     const { result } = await onPage(t, "Runtime.evaluate", { expression: "document.visibilityState", returnByValue: true });
     if (result?.value === "visible") return t.url;
   }
@@ -320,36 +301,18 @@ check("Personal's pages run in Personal's profile when Work was the last used", 
 // attached to every tab it showed (its drag pictures) and reported no hang in a one-window session; this two-profile
 // session's busy tab isn't captured, so the check passes on 0.2.20 too: it guards hang reporting, not that case. The app's side is read through the dev
 // harness's perf probe (smoke.sh writes perf-probe), which counts every event that reaches the app's JS.
-async function app(body, timeout = 10000) {
-  const id = `smoke-${Date.now()}-${Math.random()}`;
-  writeFileSync(`${process.env.SMOKE_DATA}/dev-eval.js`, `// ${id}\n${body}`);
-  for (const start = Date.now(); Date.now() - start < timeout; await sleep(100)) {
-    let out;
-    try {
-      out = JSON.parse(readFileSync(`${process.env.SMOKE_DATA}/dev-eval-result.json`, "utf8"));
-    } catch {
-      continue;
-    }
-    if (out.id !== id) continue;
-    if (out.error) throw new Error(out.error);
-    return out.result;
-  }
-  throw new Error("the dev harness didn't answer");
-}
 const hangEvents = async () =>
-  Object.entries((await app("return globalThis.nnPerf.read().tasks")) ?? {}).filter(([k]) => /Unresponsive/.test(k)).reduce((n, [, c]) => n + c, 0);
+  Object.entries((await instance.eval("return globalThis.nnPerf.read().tasks", { timeout: 10000 })) ?? {}).filter(([k]) => /Unresponsive/.test(k)).reduce((n, [, c]) => n + c, 0);
 let hang;
 try {
   const { targetId: busyId } = await browserCall("Target.createTarget", { url: `${pages}/busy.html` });
   await sleep(4000); // busy.html loads, then loops 2.5 s later (after 0.2.20's picture at 1.5 s)
   const before = await hangEvents();
-  const busy = (await (await fetch(`http://localhost:${port}/json`)).json()).find((t) => t.id === busyId);
-  const pws = new WebSocket(busy.webSocketDebuggerUrl);
-  await new Promise((r) => (pws.onopen = r));
-  for (const [id, type] of [[1, "mousePressed"], [2, "mouseReleased"]])
-    pws.send(JSON.stringify({ id, method: "Input.dispatchMouseEvent", params: { type, x: 200, y: 200, button: "left", clickCount: 1 } }));
+  const busy = await instance.page((t) => t.id === busyId, { timeout: 0 });
+  for (const type of ["mousePressed", "mouseReleased"])
+    quietly(busy, "Input.dispatchMouseEvent", { type, x: 200, y: 200, button: "left", clickCount: 1 });
   await sleep(300);
-  pws.close();
+  busy.close();
   const start = Date.now();
   while (!hang && Date.now() - start < 28000) {
     await sleep(1000);

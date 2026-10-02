@@ -148,24 +148,20 @@ mkdir -p "$work/data/Chromium"
 printf '{"profile":{"last_used":"Profile p-work"}}' > "$work/data/Chromium/Local State"
 
 codesign --verify --deep --strict "$app"
-before="$(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true)"
-open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR="$work/data" \
-  --env NETNYAHOO_REMOTE_DEBUGGING_PORT="$port" --env NETNYAHOO_RELEASE_NOTES=1 \
-  --env NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows --env NETNYAHOO_PIP_SELFTEST=close "$app"
-for _ in $(seq 1 60); do curl -fs "localhost:$port/json/version" >/dev/null 2>&1 && break; sleep 1; done
+# Hidden, with its own data dir and DevTools port (scripts/lib/instance.mjs). Its pid is the process of this build that
+# started listening on our port: another of the same build may be running, even one the owner opened during the run
+# (a process-list diff once picked theirs and killed it at the end). It records the instance in data/instance.json,
+# which smoke.mjs attaches to; its own bundle's JS (--js none), as a release runs.
+launched="$("$root/scripts/agent/nn" launch "$app" --data "$work/data" --port "$port" --js none --no-wait \
+  --env NETNYAHOO_RELEASE_NOTES=1 --env NETNYAHOO_PIP_SELFTEST=close --switch --disable-backgrounding-occluded-windows)" \
+  || { echo "error: the app didn't start" >&2; exit 1; }
+pid="$(sed -n 's/^pid \([0-9]*\) .*/\1/p' <<<"$launched")"
+[ -n "$pid" ] || { echo "error: the app didn't start ($launched)" >&2; exit 1; }
 sleep 8  # session restore, then the release-notes tab
-# The instance this launched: the one listening on our debugging port. Another of the same build may be running,
-# even one the owner opened during the run (a process-list diff once could pick theirs and kill it at the end).
-pid=""
-for p in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null); do
-  [[ "$(ps -o command= -p "$p")" == "$app/Contents/MacOS/Netnyahoo"* ]] && { pid="$p"; break; }
-done
-[ -n "$pid" ] || pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true) | head -1)"
-[ -n "$pid" ] || { echo "error: the app didn't start" >&2; exit 1; }
 
 locked="$("$work/windows" --locked)"
 [ "$locked" = 1 ] && echo "note: the screen is locked; checks of window order and closing are skipped (they need an unlocked screen)"
-SMOKE_LOCKED="$locked" SMOKE_DATA="$work/data" SMOKE_KEYS="$work/keys" node "$here/smoke.mjs" "$port" "$version" "$work/windows" "$pid" "$pages" || status=1
+SMOKE_LOCKED="$locked" SMOKE_DATA="$work/data" SMOKE_KEYS="$work/keys" node "$here/smoke.mjs" "$version" "$work/windows" "$pages" || status=1
 
 # Chrome's process checks pass under Developer ID signing: the browser's children are the bundle's own helpers.
 children="$(ps -axo ppid=,pid=,comm= | awk -v p="$pid" '$1 == p { $1 = ""; $2 = ""; sub(/^ +/, ""); print }')"

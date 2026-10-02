@@ -17,17 +17,20 @@ import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { binaryOf, binaryPids, isAlive, listenerPids, ownedCandidate, processInfo } from "../../../../scripts/lib/instance.mjs";
 
 const [phase, app, home, port, origin, extra, out] = process.argv.slice(2);
 const here = path.dirname(new URL(import.meta.url).pathname);
 const bundleId = execFileSync("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", `${app}/Contents/Info.plist`]).toString().trim();
 const docs = path.join(home, "Library/Application Support", bundleId);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let pid = null;
-const alive = () => { try { process.kill(Number(pid), 0); return true; } catch { return false; } };
-setTimeout(() => { console.error("carryover: no result in 240 s"); if (pid) try { process.kill(Number(pid), "SIGKILL"); } catch {} process.exit(3); }, 240_000).unref();
+let pid = null, started = null;
+const alive = () => pid !== null && isAlive(pid);
+// Still the process this run launched (a reused pid has another start time): the only one ever signalled.
+const ours = () => alive() && processInfo(pid)?.started === started;
+setTimeout(() => { console.error("carryover: no result in 240 s"); if (ours()) try { process.kill(pid, "SIGKILL"); } catch {} process.exit(3); }, 240_000).unref();
 
-try { await fetch(`http://127.0.0.1:${port}/json/version`); console.error(`carryover: port ${port} is taken`); process.exit(4); } catch {}
+if (listenerPids(port).length) { console.error(`carryover: port ${port} is taken`); process.exit(4); }
 fs.mkdirSync(docs, { recursive: true });
 fs.writeFileSync(path.join(docs, "perf-probe"), ""); // starts the dev harness in a release build's isolated instance
 // The previous build (create, back) predates silent test instances: onboarding done, so its intro music never starts,
@@ -35,14 +38,26 @@ fs.writeFileSync(path.join(docs, "perf-probe"), ""); // starts the dev harness i
 const previousBuild = phase === "create" || phase === "back";
 if (previousBuild && !fs.existsSync(path.join(docs, "onboarding.json")))
   fs.writeFileSync(path.join(docs, "onboarding.json"), JSON.stringify({ version: 1, completedAt: Date.now(), introMusicMuted: true }));
-const exe = `${app}/Contents/MacOS/Netnyahoo`;
-const pids = () => { try { return execSync(`pgrep -f '^${exe}'`).toString().trim().split("\n").filter(Boolean); } catch { return []; } };
-const before = new Set(pids());
+// Launched with open (scripts/lib/instance.mjs's launch() always sets NETNYAHOO_DATA_DIR, which read and use must not),
+// and found as the module finds its instances: the one process of this binary that started listening on our DevTools
+// port. A process-list diff can pick another run's instance of the same build.
+const binary = binaryOf(app);
+const before = binaryPids(binary);
 const env = ["NETNYAHOO_BACKGROUND=1", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, `HOME=${home}`, `CFFIXED_USER_HOME=${home}`,
   "NETNYAHOO_TEST_REAUTH=granted", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows"];
 if (phase === "create" || phase === "back") env.push(`NETNYAHOO_DATA_DIR=${docs}`);
 execFileSync("open", ["-g", "-n", ...env.flatMap((e) => ["--env", e]), app, ...(previousBuild ? ["--args", "--mute-audio"] : [])]);
-for (let i = 0; i < 40 && !pid; i++) { await sleep(500); pid = pids().find((p) => !before.has(p)) ?? null; }
+for (const end = Date.now() + 60_000; !pid && Date.now() < end; ) {
+  await sleep(250);
+  let info;
+  try {
+    pid = ownedCandidate(listenerPids(port), before, (p) => (info = processInfo(p))?.command, binary);
+  } catch (e) {
+    console.error(`carryover: ${e.message}`);
+    process.exit(2);
+  }
+  if (pid) started = info.started;
+}
 if (!pid) { console.error("carryover: the app didn't start"); process.exit(2); }
 
 const step = (what) => { if (process.env.CARRYOVER_VERBOSE) console.error(`carryover ${phase}: ${what}`); };
@@ -165,10 +180,10 @@ try {
 } catch (e) {
   report.error = String(e.stack || e);
 }
-execFileSync(process.env.CARRYOVER_QUIT, [pid]); // the quit Apple event, so Chrome flushes its stores
+execFileSync(process.env.CARRYOVER_QUIT, [String(pid)]); // the quit Apple event, so Chrome flushes its stores
 for (let i = 0; i < 60 && alive(); i++) await sleep(500);
 report.quit = !alive();
-if (alive()) process.kill(Number(pid), "SIGKILL");
+if (ours()) process.kill(pid, "SIGKILL");
 
 if (phase === "use") {
   fs.writeFileSync(out, JSON.stringify(report, null, 2));
