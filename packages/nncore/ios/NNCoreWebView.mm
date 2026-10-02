@@ -1660,8 +1660,10 @@ NSUInteger gZoomScrolls = 0;
 NSString *gDevZoomMiss = nil;
 bool gGestureTrackpad = false;
 
-// Scroll events look the same from a trackpad and a Magic Mouse; the HID service that sent one doesn't. Built-in
-// trackpads and Magic Trackpads are AppleMultitouchTrackpadHIDEventDriver. Momentum events have no sender.
+// Scroll events look the same from a trackpad and a Magic Mouse; the HID service that sent one doesn't. The sender
+// is an AppleMultitouchDevice whose parent driver says which: AppleMultitouchTrackpadHIDEventDriver for built-in
+// trackpads and Magic Trackpads, AppleMultitouchMouseHIDEventDriver for a Magic Mouse (measured on the owner's
+// MacBook, macOS 27: the sender's own class never names the device). Momentum events have no sender.
 BOOL FromTrackpad(NSEvent *event) {
   if (gDevTrackpad >= 0) return gDevTrackpad;
   static auto copyHIDEvent = (CFTypeRef (*)(CGEventRef))dlsym(RTLD_DEFAULT, "CGEventCopyIOHIDEvent");
@@ -1675,12 +1677,20 @@ BOOL FromTrackpad(NSEvent *event) {
   static NSMutableDictionary<NSNumber *, NSNumber *> *trackpads = [NSMutableDictionary dictionary];
   if (NSNumber *known = trackpads[@(sender)]) return known.boolValue;
   BOOL trackpad = NO;
-  io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault, IORegistryEntryIDMatching(sender));
-  if (service) {
+  io_registry_entry_t entry = IOServiceGetMatchingService(kIOMainPortDefault, IORegistryEntryIDMatching(sender));
+  // The sender and up to three of its ancestors; the first event driver among them decides.
+  for (int depth = 0; entry && depth < 4; depth++) {
     io_name_t name;
-    trackpad = IOObjectGetClass(service, name) == KERN_SUCCESS && strstr(name, "Trackpad");
-    IOObjectRelease(service);
+    if (IOObjectGetClass(entry, name) == KERN_SUCCESS) {
+      if (strstr(name, "Trackpad")) trackpad = YES;
+      if (trackpad || strstr(name, "EventDriver")) break;
+    }
+    io_registry_entry_t parent = 0;
+    if (IORegistryEntryGetParentEntry(entry, kIOServicePlane, &parent) != KERN_SUCCESS) parent = 0;
+    IOObjectRelease(entry);
+    entry = parent;
   }
+  if (entry) IOObjectRelease(entry);
   trackpads[@(sender)] = @(trackpad);
   return trackpad;
 }
