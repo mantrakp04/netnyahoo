@@ -6,7 +6,16 @@
 #   scripts/agent/locked <name> --release WHO                                   give back a --take
 #   scripts/agent/locked -h | --help                                            this text
 #
-# <name> is xcodebuild, pod or chromium. The old pattern (`until mkdir /tmp/nn-<name>.lock; …; rmdir`)
+# <name> is xcodebuild, pod or chromium.
+#   - xcodebuild is one lock per derived data: builds with different -derivedDataPath run in parallel (the Podfile and
+#     the build phases keep each build's writes in its own folder); two into the same one take turns. A command
+#     without -derivedDataPath (one run through `sh -c`, say) takes the single shared xcodebuild lock.
+#     scripts/agent/build-app is the quiet way to build the app.
+#   - pod covers pod install, pnpm install and edits to apps/browser/package.json; chromium covers ~/chromium-build.
+#   - The Pods directory is a readers-writer lock between them: any number of xcodebuild commands read it at once,
+#     a pod command rewrites it alone. A pod command waits for running builds to finish, and builds that start
+#     meanwhile wait for it, so it isn't starved.
+# The old pattern (`until mkdir /tmp/nn-<name>.lock; …; rmdir`)
 # left the lock behind whenever the shell was killed before its rmdir (a tool timeout, ⌃C), and every
 # other agent then waited forever. Here:
 #   - everything runs under a kernel lock (lockf) that dies with its holder, and a command's pid is
@@ -60,10 +69,31 @@ done
 # A command's own --as wins; otherwise it acts as whoever an enclosing call ran as.
 [[ -z "$as$take$release" ]] && as="${NN_LOCKED_AS:-}"
 
+# xcodebuild locks the derived data its command names (see above).
+lock=$name
+if [[ $name == xcodebuild && $# -gt 0 && -z "$take$release" ]]; then
+  dd="" prev=""
+  for arg in "$@"; do
+    [[ $prev == -derivedDataPath ]] && dd=$arg
+    prev=$arg
+  done
+  if [[ -n "$dd" ]]; then
+    # One name per directory, however it's spelled (relative, /tmp vs /private/tmp, a trailing slash).
+    dd=${dd%/}
+    [[ "$dd" == /* ]] || dd="$PWD/$dd"
+    if [[ -d "$dd" ]]; then
+      dd=$(cd "$dd" && pwd -P)
+    elif [[ -d "${dd%/*}" ]]; then
+      dd="$(cd "${dd%/*}" && pwd -P)/${dd##*/}"
+    fi
+    lock="xcodebuild-$(printf %s "${dd##*/}" | tr -c 'A-Za-z0-9_.-' _ | cut -c1-40)-$(printf %s "$dd" | shasum | cut -c1-8)"
+  fi
+fi
+
 root=${NN_LOCK_ROOT:-/tmp}
-kernel=$root/nn-$name.lockf
-legacy=$root/nn-$name.lock
-holder=$root/nn-$name.holder
+kernel=$root/nn-$lock.lockf
+legacy=$root/nn-$lock.lock
+holder=$root/nn-$lock.holder
 now() { date +%s; }
 
 # Holder file: "pid <pid> <description>" or "take <expiry epoch> <who> <description>".
@@ -84,12 +114,40 @@ describe() {
 # NN_LOCKED_HELD lists the locks enclosing calls hold for this process tree, one "<pid> <kernel lock path>" a line,
 # the pid being the call that holds it (alive exactly as long as it does).
 held_by_caller() {
-  local pid path
+  local pid path want=${1:-$kernel}
   while read -r pid path; do
-    [[ -n "$pid" && "$path" == "$kernel" ]] && kill -0 "$pid" 2>/dev/null && { echo "$pid"; return 0; }
+    [[ -n "$pid" && "$path" == "$want" ]] && kill -0 "$pid" 2>/dev/null && { echo "$pid"; return 0; }
   done <<<"${NN_LOCKED_HELD:-}"
   return 1
 }
+
+# The Pods readers-writer lock (see above): runs a command holding flock(2) on $root/nn-pods.rw, shared (SH) or
+# exclusive (EX), giving up after a timeout with exit 76 (reported as 75). perl holds the lock itself, so nothing
+# the command starts (Xcode's build service) can keep it.
+rw_perl='
+use Fcntl qw(:flock);
+my ($mode, $path, $timeout, @cmd) = @ARGV;
+open(my $fh, ">>", $path) or die "locked: cannot open $path: $!\n";
+my $deadline = time + ($timeout > 0 ? $timeout : 1);
+my $said = 0;
+until (flock($fh, ($mode eq "EX" ? LOCK_EX : LOCK_SH) | LOCK_NB)) {
+  if (time >= $deadline) {
+    print STDERR $mode eq "EX"
+      ? "locked: app builds still read the Pods after ${timeout}s; run this again once they finish\n"
+      : "locked: a pod install still rewrites the Pods after ${timeout}s\n";
+    exit 76;
+  }
+  print STDERR $mode eq "EX" ? "locked: waiting for running app builds to finish (they read the Pods)\n"
+    : "locked: waiting for a pod install to finish\n" unless $said++;
+  sleep 2;
+}
+my $pid = fork;
+defined $pid or die "locked: fork: $!\n";
+if (!$pid) { close $fh; exec { $cmd[0] } @cmd; die "locked: cannot run $cmd[0]: $!\n"; }
+for my $sig (qw(INT TERM HUP)) { $SIG{$sig} = sub { kill $sig, $pid }; }
+waitpid($pid, 0);
+exit(($? & 127) ? 128 + ($? & 127) : $? >> 8);
+'
 
 # Runs the command as a child so its pid can be recorded, and passes signals on to it. The child learns which
 # locks it now holds and as whom, so its own nested calls go straight through.
@@ -121,6 +179,14 @@ if [[ -z "${NN_LOCKED_INNER:-}" ]]; then
   fi
   start=$(now)
   deadline=$((start + wait))
+  # A build never starts while a pod install rewrites the Pods project (taking the pod lock and letting it go at
+  # once). One already holding it (scripts/release.sh) runs straight through.
+  if [[ $name == xcodebuild && -z "$take$release" ]]; then
+    NN_LOCKED_NO_RW=1 "$0" pod --wait "$wait" -- true 2>/dev/null || {
+      echo "locked: a pod install still holds the pod lock after ${wait}s; see $root/nn-pod.holder" >&2
+      exit 75
+    }
+  fi
   opts=(--wait "$wait" --ttl "$ttl")
   [[ -n "$take" ]] && opts+=(--take "$take")
   [[ -n "$as" ]] && opts+=(--as "$as")
@@ -161,6 +227,18 @@ fi
 deadline=${NN_LOCKED_DEADLINE:-$(($(now) + wait))}
 unset NN_LOCKED_INNER NN_LOCKED_DEADLINE
 
+# The command, behind the Pods readers-writer lock when it's a build or a pod command (NN_LOCKED_NO_RW: the
+# pre-build check above, which only waits for the pod lock). A build under an enclosing pod call already has it.
+rw=()
+if [[ -z "${NN_LOCKED_NO_RW:-}" && $# -gt 0 ]]; then
+  case $name in
+    pod) rw=(perl -e "$rw_perl" EX "$root/nn-pods.rw") ;;
+    xcodebuild) held_by_caller "$root/nn-pod.lockf" >/dev/null || rw=(perl -e "$rw_perl" SH "$root/nn-pods.rw") ;;
+  esac
+fi
+unset NN_LOCKED_NO_RW
+rw_timeout() { local left=$((deadline - $(now))); ((left < 1)) && left=1; echo "$left"; }
+
 if [[ -n "$release" ]]; then
   if taken_by "$release"; then
     rm -f "$holder"
@@ -180,6 +258,7 @@ fi
 
 if [[ -n "$as" ]] && taken_by "$as"; then
   renew
+  if [[ ${#rw[@]} -gt 0 ]]; then set -- "${rw[@]}" "$(rw_timeout)" "$@"; fi
   run "$@"
   status=$?
   taken_by "$as" && renew
@@ -227,4 +306,5 @@ trap cleanup EXIT
 record() { echo "pid $1 since $(date '+%H:%M:%S') in $PWD: ${cmd}" >"$holder"; }
 cmd="$*"
 on_start=record
+if [[ ${#rw[@]} -gt 0 ]]; then set -- "${rw[@]}" "$(rw_timeout)" "$@"; fi
 run "$@"

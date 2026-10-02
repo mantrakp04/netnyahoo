@@ -54,8 +54,9 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
 - NNCore is built outside the repo in `~/chromium-build` (the tree and its patches: `engine/patches`,
   `docs/cef-source-build.md` › "Rebuilding"; `engine/chromium/apply.sh` and `engine/nncore/apply.sh` copy our code in).
   The app's build stages a copy of `out/Release_GN_arm64/Chromium Framework.framework`
-  (`packages/nncore/scripts/stage-framework.sh`, into `apps/browser/build-nncore/NNCoreFramework`, or
-  `NNCORE_STAGE_DIR`), links it and embeds it (`embed.sh`), so every agent's next build picks up a new framework.
+  (`packages/nncore/scripts/stage-framework.sh`: copied and signed once per engine build into
+  `apps/browser/build-nncore/staged`, then cloned into each build's own derived data, `NNCORE_STAGE_DIR`), links it
+  and embeds it (`embed.sh`), so every agent's next build picks up a new framework.
 - One agent at a time edits or builds `~/chromium-build`: hold the chromium lock for the whole edit → build cycle
   (`scripts/agent/locked chromium --take <you>`, then each command as `scripts/agent/locked chromium --as <you> --
   …`, and `--release <you>` at the end; an unreleased take expires after 60 min, so renew it by running commands
@@ -65,8 +66,7 @@ The user is demanding: no sloppy work, every hover state/animation/detail matter
   `cd ~/chromium-build/chromium_git/chromium/src && PATH=$HOME/chromium-build/depot_tools:$PATH DEPOT_TOOLS_UPDATE=0 ~/Documents/netnyahoo/scripts/agent/locked chromium [--as <you>] -- autoninja -C out/Release_GN_arm64 chrome_framework`.
   `apply.sh` copies the whole working tree, so other agents' uncommitted engine files get compiled too.
   A new framework changes every agent's next build, so say so in your report. To try one privately, build the app with
-  `NNCORE_FRAMEWORK=<framework> …/locked xcodebuild -- xcodebuild … NNCORE_STAGE_DIR=<dir>` (the framework from the
-  environment, the stage dir as a build setting).
+  `NNCORE_FRAMEWORK=<framework> scripts/agent/build-app --as <you>` (it stages into your own derived data).
 - New engine code goes in `//chrome/browser/netnyahoo` (`engine/chromium/src`) or `//netnyahoo/core`
   (`engine/nncore/src`), never straight into the tree (`docs/cef-source-build.md` › "Our own code in the tree").
   `engine/patches/series` is the apply order of our patches to Chromium; `engine/patches/series.py check` proves the
@@ -135,10 +135,13 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
     (`~/Library/Application Support/Dia`), nor any other browser's real profile data;
     use fixtures you create. Dia's app bundle (binary, assets) may be read.
 - **Isolated builds/instances** (several agents build and run at once). Use your agent name `<you>`:
-  - Build (in the background, `run_in_background`): `cd apps/browser && ../../scripts/agent/locked xcodebuild -- xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath build-<you> -destination 'platform=macOS,arch=arm64' -configuration Debug build 2>&1 | grep -E "error:|PhaseScriptExecution|\*\* BUILD"`.
-    The build stages the engine framework under the chromium lock (`stage-framework.sh`): `--release` your chromium
-    take first, or build with `locked xcodebuild --as <you>`. When several builds queue, pass `--wait 1500` (with
-    `run_in_background`); `/tmp/nn-<name>.holder` says who holds a lock. Every `scripts/agent` script takes `--help`.
+  - Build (with `run_in_background`): `scripts/agent/build-app --as <you>` (`--config Release`, `--force`; `--help`).
+    It builds into `apps/browser/build-<you>`, in parallel with other agents' builds, and prints only the errors,
+    the warnings count, the result and the .app path (full log in `build-<you>/build-app.log`). Keep your name: a
+    new derived data compiles everything (a few minutes), and a copy of someone else's does too (its paths differ).
+    A JS-only change needs no build: it says so and stops (`--force` builds). A new engine framework is staged
+    under the chromium lock: `--release` your chromium take first, or it uses your take (`--as`).
+    `/tmp/nn-<name>.holder` says who holds a lock. Every `scripts/agent` script takes `--help`.
   - Run: `scripts/agent/nn launch apps/browser/build-<you>/Build/Products/Debug/Netnyahoo.app --data <scratch>/data`
     (hidden: `open -g -n`, `NETNYAHOO_BACKGROUND=1`, its own data dir and DevTools port; prints the pid and port).
     `nn eval|page|quit|status` take that data dir (`--help`); scripts use `scripts/lib/instance.mjs` (`launch`,

@@ -105,8 +105,7 @@ needs.
 # Engine (once, and after engine/nncore changes): engine/nncore/apply.sh, then
 #   scripts/agent/locked chromium -- autoninja -C out/Release_GN_arm64 chrome_framework   (docs/nncore-spike.md)
 # App: apps/browser/macos (the only app project; pod install there after adding native files).
-cd apps/browser && ../../scripts/agent/locked xcodebuild -- xcodebuild -workspace macos/Netnyahoo.xcworkspace \
-  -scheme Netnyahoo-macOS -derivedDataPath build-<you> -destination 'platform=macOS,arch=arm64' -configuration Debug build
+scripts/agent/build-app --as <you>     # into apps/browser/build-<you>; --help
 # Acceptance, hidden (open -g -n, NETNYAHOO_BACKGROUND=1, a scratch data dir); METRO_PORT is a Metro for this checkout.
 METRO_PORT=8081 node packages/nncore/scripts/acceptance.mjs apps/browser/build-<you>/Build/Products/Debug/Netnyahoo.app <scratch dir> [check…]
 ```

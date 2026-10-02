@@ -74,10 +74,9 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   - Verify in proportion. A JS-only change needs no app build (Metro reloads it); run the checks for what
     you changed, each once before and once after, plus one final pass of the nearby checks. The full suite
     and Codex are for engine, native lifetime, focus, quit or security changes, and run once at the end.
-- **Build safely.** Run xcodebuild, `pod install`/`pnpm install` and Chromium builds through
-  `scripts/agent/locked <xcodebuild|pod|chromium> -- <command>` (usage in the script). Its lock dies with
-  its holder; the old `until mkdir /tmp/nn-*.lock` pattern left locks behind that stalled every agent.
-  A "resources-to-copy" error means a collision; retry once nothing else is building.
+- **Build safely.** Build the app with `scripts/agent/build-app --as <you>`: quiet, in parallel with other agents'
+  builds, and it refuses JS-only changes. Run `pod install`/`pnpm install` and Chromium builds through
+  `scripts/agent/locked <pod|chromium> -- <command>` (usage in the script); its lock dies with its holder.
 - **Never wait open-ended.** Every wait has a deadline under the Bash tool's 10-minute limit and fails
   fast when the thing it waits on dies: `scripts/agent/await --pid <pid> -- <test>` instead of
   `until …; do sleep; done`. Run builds with `run_in_background` and act on the notification. Wrap

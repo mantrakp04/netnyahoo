@@ -1,0 +1,163 @@
+#!/bin/bash
+# Builds the app into your own derived data, quietly: the full log goes to a file, and you see only what you need.
+#
+#   scripts/agent/build-app [--as NAME] [--config Debug|Release] [--force] [--wait SECS]
+#   scripts/agent/build-app -h | --help
+#
+# --as NAME     your agent name (default: $NN_LOCKED_AS, else "dev"). Builds into apps/browser/build-NAME, and is
+#               passed to `locked` so a chromium take of yours covers the engine staging.
+# --config      Debug (default) or Release.
+# --force       build even when no native file changed.
+# --wait SECS   how long to wait for a pod install, or for another build into the same derived data (default 1500).
+#
+# - Incremental: keep using the same name. A new derived data compiles everything (a few minutes), and so does a copy
+#   of another one (its paths differ, so Xcode rebuilds all 1040 compiles; measured 2026-10-02).
+# - It refuses a Debug build that can't change the app: when no native file differs from the last successful build
+#   here (packages/*/ios, apps/browser/macos, the Pods, patches, the engine framework…), it prints
+#   "JS-only: Metro reloads it; no build needed" and exits 0. Pass --force to build anyway.
+# - Prints the errors (a failed build script with its last 30 lines), the warnings count, the result, the time and
+#   the .app path. The full log: <derived data>/build-app.log.
+# Builds into different derived data run in parallel (scripts/agent/locked --help). Run it with run_in_background.
+# Exits 0 when built (or nothing to build), 1 when the build failed, 75 when a lock stayed busy.
+set -uo pipefail
+
+help() {
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+  exit 0
+}
+usage() {
+  sed -n '4,5p' "$0" | sed 's/^# *//' >&2
+  exit 64
+}
+
+name=${NN_LOCKED_AS:-dev} config=Debug force="" wait=1500
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h | --help) help ;;
+    --force) force=1; shift; continue ;;
+  esac
+  [[ $# -ge 2 ]] || { echo "build-app: $1 needs a value" >&2; usage; }
+  case "$1" in
+    --as) name="$2" ;;
+    --config) config="$2" ;;
+    --wait) wait="$2" ;;
+    *) echo "build-app: unknown option $1" >&2; usage ;;
+  esac
+  shift 2
+done
+[[ "$config" == Debug || "$config" == Release ]] || { echo "build-app: --config is Debug or Release" >&2; usage; }
+[[ "$name" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "build-app: --as takes letters, digits, . _ -" >&2; usage; }
+
+repo=$(cd "$(dirname "$0")/../.." && pwd)
+app_dir="$repo/apps/browser"
+dd="$app_dir/build-$name"
+log="$dd/build-app.log"
+app="$dd/Build/Products/$config/Netnyahoo.app"
+stamp_file="$dd/.nn-native-stamp-$config"
+
+# Everything the native build reads that git sees, plus the Pods install and the engine framework. A change
+# anywhere else is JS (or docs, tests…), which Metro serves to every instance.
+native_stamp() {
+  (
+    cd "$repo" || exit 1
+    git ls-files -co --exclude-standard -- \
+      apps/browser/macos apps/browser/app.json apps/browser/react-native.config.js \
+      'packages/*/ios' 'packages/*/expo-module.config.json' packages/shell/docktile \
+      packages/nncore/scripts/embed.sh packages/nncore/scripts/stage-framework.sh packages/nncore/scripts/ubol.sh \
+      packages/nncore/scripts/signing engine/nncore/src/netnyahoo/core/public patches pnpm-lock.yaml
+    echo apps/browser/macos/Pods/Manifest.lock
+  ) | python3 -c '
+import hashlib, os, sys
+repo, framework = sys.argv[1], sys.argv[2]
+h = hashlib.sha256()
+for rel in sorted(set(sys.stdin.read().split("\n")) - {""}):
+    path = os.path.join(repo, rel)
+    if os.path.isfile(path):
+        h.update(rel.encode() + b"\0" + hashlib.sha256(open(path, "rb").read()).digest())
+binary = os.path.join(framework, "Versions/Current/Chromium Framework")
+if os.path.exists(binary):
+    st = os.stat(binary)
+    h.update(("engine %s %d %d" % (framework, st.st_mtime, st.st_size)).encode())
+print(h.hexdigest())
+' "$repo" "${NNCORE_FRAMEWORK:-$HOME/chromium-build/chromium_git/chromium/src/out/Release_GN_arm64/Chromium Framework.framework}"
+}
+
+stamp=$(native_stamp) || { echo "build-app: couldn't hash the native files" >&2; exit 1; }
+# (A Release build bundles the JS, so it always builds.)
+if [[ -z "$force" && $config == Debug && -d "$app" && -f "$stamp_file" && "$(cat "$stamp_file")" == "$stamp" ]]; then
+  echo "JS-only: Metro reloads it; no build needed (no native file changed since $app was built; --force builds anyway)"
+  exit 0
+fi
+
+start=$(date +%s)
+mkdir -p "$dd"
+
+echo "build-app: $config into ${dd#"$repo"/} (log: ${log#"$repo"/})"
+(
+  cd "$app_dir" &&
+    "$repo/scripts/agent/locked" xcodebuild --wait "$wait" --as "$name" -- \
+      xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS -derivedDataPath "$dd" \
+      -destination 'platform=macOS,arch=arm64' -configuration "$config" -hideShellScriptEnvironment build
+) >"$log" 2>&1
+status=$?
+elapsed=$(($(date +%s) - start))
+
+# Errors, each failed build command, and a failed script's own last 30 lines.
+python3 - "$log" <<'PY'
+import re, sys
+lines = open(sys.argv[1], errors="replace").read().split("\n")
+seen, errors = set(), []
+for line in lines:
+    if re.search(r"(^|\s)(fatal )?error:|^locked: ", line) and "MACOSX_DEPLOYMENT_TARGET" not in line:
+        key = line.strip()
+        if key not in seen:
+            seen.add(key)
+            errors.append(key)
+for line in errors[:40]:
+    print(line)
+if len(errors) > 40:
+    print(f"… {len(errors) - 40} more errors in the log")
+failed = []
+if "The following build commands failed:" in lines:
+    i = lines.index("The following build commands failed:") + 1
+    while i < len(lines) and lines[i].startswith("\t"):
+        failed.append(lines[i].strip())
+        i += 1
+for command in failed:
+    if not command.startswith(("(", "Building workspace")):
+        print("failed: " + command)
+    m = re.match(r"PhaseScriptExecution (.*?\.sh)", command)
+    if not m:
+        continue
+    head = "PhaseScriptExecution " + m.group(1)
+    starts = [i for i, l in enumerate(lines) if l.startswith(head)]
+    if not starts:
+        continue
+    block = []
+    for l in lines[starts[-1] + 1:]:
+        if l.startswith("** ") or (block and block[-1] == "" and re.match(r"^[A-Z][A-Za-z]+ ", l)):
+            break
+        block.append(l)
+    body = [l for l in block if not l.startswith("    ")]
+    while body and body[-1] == "":
+        body.pop()
+    print("  last 30 lines of its output:")
+    for l in body[-30:]:
+        print("    " + l)
+PY
+warnings=$(grep -E '(^|[[:space:]])warning:' "$log" | grep -v MACOSX_DEPLOYMENT_TARGET | sort -u | wc -l | tr -d ' ')
+duration="$((elapsed / 60))m $((elapsed % 60))s"
+if [[ $status -eq 0 ]] && grep -q '\*\* BUILD SUCCEEDED \*\*' "$log"; then
+  echo "$stamp" >"$stamp_file"
+  echo "warnings: $warnings"
+  echo "BUILD SUCCEEDED in $duration"
+  echo "app: $app"
+  exit 0
+fi
+echo "warnings: $warnings"
+if [[ $status -eq 75 ]]; then
+  echo "NOT BUILT: a lock stayed busy for ${wait}s (above); nothing was built"
+  exit 75
+fi
+echo "BUILD FAILED in $duration (full log: $log)"
+exit 1

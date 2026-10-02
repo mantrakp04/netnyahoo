@@ -81,8 +81,6 @@ sed -i '' 's/MARKETING_VERSION = <previous>;/MARKETING_VERSION = <version>;/; s/
 git add docs/release-notes/<version>.md apps/browser/macos/Netnyahoo.xcodeproj/project.pbxproj
 git commit -m "Release <version>"
 scripts/release.sh <version>     # ~15–25 min with notarization; run it in the background and wait
-# "resources-to-copy-…txt: No such file" in the archive log means another build shared the Pods dir at
-# the same moment (each build writes and deletes that file): make sure no other xcodebuild runs, retry.
 ```
 
 `CURRENT_PROJECT_VERSION` is the build number Sparkle compares — it must go up every release (read the
