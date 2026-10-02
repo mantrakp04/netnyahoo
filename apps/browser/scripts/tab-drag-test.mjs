@@ -221,7 +221,7 @@ try {
     assert.deepEqual(await order("w1"), before);
   });
 
-  await check("a tab dragged over its right neighbour draws on top of it", async () => {
+  await check("a tab dragged over its right neighbour draws on top of it, its card opaque in dark", async () => {
     const now = await run(`return items("w1");`);
     const before = await order("w1");
     // The third item (a tab) held over the left part of the fourth, short of trading places with it.
@@ -230,7 +230,7 @@ try {
     const x1 = x0 + Math.round((a[1] - a[0]) * 0.4);
     // Selected, so it has its card. Under the empty end of the dragged tab (its close button's slot, past its title),
     // the neighbour's icon and title: alone, then with the tab held over them.
-    await run(`st().activate(${JSON.stringify(before[2])}); return settle(600);`);
+    await run(`nn.shell.setAppearance("dark"); st().activate(${JSON.stringify(before[2])}); return settle(800).then(() => st().settings);`);
     const end = a[1] + (x1 - x0);
     const icon = [end - 24, 12, end - 6, 30];
     const shots = [join(data, "z-alone.png"), join(data, "z-over.png")];
@@ -239,10 +239,11 @@ try {
       return settle(150 + 12 * 16 * 2 + 200).then(() => nn.shell.devSnapshotWindow("w1", ${JSON.stringify(shots[1])}));
     }).then(() => settle(1500));`);
     const [alone, over] = shots.map((path) => contrast(readPng(path), icon));
-    // Drawn under the neighbour, its icon would show over the tab's card at full contrast; the card over it (half
-    // opaque in dark, Dia's) dims it.
+    // Drawn under the neighbour, its icon would show over the tab's card at full contrast; under a card that lets it
+    // through (the resting card is half clear in dark), dimmed. The dragged card hides it.
     assert.ok(alone > 12, `the box holds the icon: ${alone}`);
-    assert.ok(over < alone * 0.75, `the neighbour's icon is drawn over the dragged tab: contrast alone ${alone.toFixed(1)}, held over ${over.toFixed(1)}`);
+    assert.ok(over < 3, `the neighbour's icon shows through the dragged tab: contrast alone ${alone.toFixed(1)}, held over ${over.toFixed(1)}`);
+    console.log(`  the neighbour's icon: contrast ${alone.toFixed(1)} alone, ${over.toFixed(1)} under the dragged tab`);
     assert.deepEqual(await order("w1"), before, "it went back");
   });
 

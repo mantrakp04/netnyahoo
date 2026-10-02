@@ -620,7 +620,7 @@ function DraggableChip({ tabId, width, geometry, from, group, tuck }: { tabId: s
   });
   return (
     <Animated.View ref={drag.ref} {...drag.panHandlers} mouseDownCanMoveWindow={false} style={{ ...drag.style, zIndex: drag.dragging ? 10 : active ? 1 : 0 }}>
-      <TabChip tabId={tabId} width={width} tuck={tuck} />
+      <TabChip tabId={tabId} width={width} tuck={tuck} dragged={drag.dragging} />
     </Animated.View>
   );
 }
@@ -636,7 +636,7 @@ function useWebsiteBand(tabId: string) {
 }
 
 // `tuck`: the active tab of a collapsed group shows Dia's "–" instead of ✕, tucking it back into the group.
-function TabChip({ tabId, width, tuck }: { tabId: string; width: number; tuck?: () => void }) {
+function TabChip({ tabId, width, tuck, dragged }: { tabId: string; width: number; tuck?: () => void; dragged: boolean }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const tab = useTab(tabId);
@@ -650,7 +650,7 @@ function TabChip({ tabId, width, tuck }: { tabId: string; width: number; tuck?: 
   const onBand = active && !floating && !!palette.background;
   return (
     <View {...hoverProps} tooltip={tab.url ? `${title}\n${tab.url}` : title} style={{ width, height: TOP_STRIP_HEIGHT }}>
-      {active && <SelectedTab width={width} band={band} />}
+      {active && <SelectedTab width={width} band={band} opaque={dragged} />}
       <ContextMenuArea onContextMenu={() => void openTabMenu(windowId, tab)} style={StyleSheet.absoluteFill}>
         <Pressable onPress={(e) => clickTab(windowId, tab.id, modifiersOf(e))} style={{ flex: 1 }}>
           {({ pressed }) => (
@@ -722,30 +722,38 @@ function ItemRow({ hovered, pressed, children }: { hovered: boolean; pressed: bo
 
 type Fill = string | ReturnType<typeof useEasedColor>;
 
-// The selected tab: the card's own fill (and the toolbar's website colour over it) rising out of the card.
-function SelectedTab({ width, band }: { width: number; band: Fill | null }) {
+// The selected tab: the card's own fill (and the toolbar's website colour over it) rising out of the card. `opaque`:
+// dragged or settling, as Dia's: the card (half clear in dark) goes over the window's own opaque tint, so it looks as it
+// does at rest and the tab it passes doesn't show through.
+function SelectedTab({ width, band, opaque = false }: { width: number; band: Fill | null; opaque?: boolean }) {
   const theme = useTheme();
   const floating = useContext(FloatingStrip);
   if (floating) {
+    const card = {
+      position: "absolute" as const,
+      left: 0,
+      top: ITEM_TOP,
+      width,
+      height: ITEM_HEIGHT,
+      borderRadius: TAB_RADIUS,
+    };
     return (
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          left: 0,
-          top: ITEM_TOP,
-          width,
-          height: ITEM_HEIGHT,
-          borderRadius: TAB_RADIUS,
-          borderWidth: 0.5,
-          borderColor: theme.dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)",
-          backgroundColor: theme.card,
-        }}
-      />
+      <>
+        {opaque && <View pointerEvents="none" style={{ ...card, backgroundColor: theme.windowTint[0] }} />}
+        <View
+          pointerEvents="none"
+          style={{
+            ...card,
+            borderWidth: 0.5,
+            borderColor: theme.dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)",
+            backgroundColor: theme.card,
+          }}
+        />
+      </>
     );
   }
   const body = width - 1;
-  const fills: Fill[] = band ? [theme.card, band] : [theme.card];
+  const fills: Fill[] = [...(opaque ? [theme.windowTint[0]] : []), theme.card, ...(band ? [band] : [])];
   return (
     <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width, height: TOP_STRIP_HEIGHT }}>
       {fills.map((fill, i) => (
@@ -1128,7 +1136,7 @@ function SplitChip({ tabIds, width, geometry, from, group }: { tabIds: string[];
   return (
     <Animated.View ref={drag.ref} {...drag.panHandlers} mouseDownCanMoveWindow={false} style={{ ...drag.style, zIndex: drag.dragging ? 10 : active ? 1 : 0 }}>
       <View {...hoverProps} style={{ width, height: TOP_STRIP_HEIGHT }}>
-        {active && <SelectedTab width={width} band={band} />}
+        {active && <SelectedTab width={width} band={band} opaque={drag.dragging} />}
         <ItemRow hovered={hovered && !active} pressed={false}>
           <Symbol name="rectangle.split.2x1" size={11} color={ink?.secondary ?? theme.textSecondary} style={{ width: 14, height: 16, marginRight: 4 }} />
           {tabIds.map((id, i) => (
