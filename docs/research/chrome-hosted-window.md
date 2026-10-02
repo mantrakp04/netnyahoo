@@ -2,8 +2,8 @@
 
 Status: **shipped as the default in 0.2.0** (2026-09-26). Every app window is a Chrome-hosted window; the
 `NETNYAHOO_CHROME_WINDOW` flag and the hidden "ghost" Browser windows are gone. Design, spike and phases 1–3a
-below; the flip itself in [Shipped as default](#shipped-as-default-020). Screenshots and the test scripts are in
-`docs/research/chrome-hosted-window/`. Results: [Phase 1](#phase-1-engine-done),
+below; the flip itself in [Shipped as default](#shipped-as-default-020). Screenshots are in
+`docs/research/chrome-hosted-window/`; the test scripts (`spike/`) were removed on 2026-10-02, readable at `231625b9`. Results: [Phase 1](#phase-1-engine-done),
 [Phase 2](#phase-2-production-behind-the-flag-done), [Phase 3](#phase-3-per-profile-windows-and-the-rest-in-progress).
 
 ## Shipped as default (0.2.0)
@@ -791,19 +791,10 @@ Code as the spike left it (the flag and `ChromeWindowSpike.swift` are gone since
   and unmounts the root on close.
 - (Spike only, removed in phase 1: `NETNYAHOO_CHROME_WINDOW_ROOT=frame`, the failed frame-view placement.)
 
-Running the checks (the default since 0.2.0; pages served on 8795, or pass another origin):
-
-```bash
-cd apps/browser && xcodebuild -workspace macos/Netnyahoo.xcworkspace -scheme Netnyahoo-macOS \
-  -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath build-spike build
-export SPIKE_DIR=/some/scratch/dir   # data dirs, pids, outputs
-swiftc -O .claude/skills/release/scripts/windows.swift -o $SPIKE_DIR/windows
-python3 -m http.server 8795 --bind 127.0.0.1 --directory docs/research/chrome-hosted-window/spike/pages &
-docs/research/chrome-hosted-window/spike/launch.sh hosted 9512
-node docs/research/chrome-hosted-window/spike/spike.mjs hosted 9512 $(cat $SPIKE_DIR/hosted.pid) \
-  http://localhost:8795 $SPIKE_DIR/out interact autofill passkey alert zoom overlay select menu
-node docs/research/chrome-hosted-window/spike/keys.mjs hosted 9512 $(cat $SPIKE_DIR/hosted.pid) http://localhost:8795
-```
+The check scripts (`spike/*`, cited throughout this doc: `spike.mjs`, `keys.mjs`, `p2.mjs`, `p3.mjs`,
+`swapmeasure.sh`, the `pages` and `ext-popup` fixtures) drove the CEF-era build and were removed on 2026-10-02.
+Read them at `231625b9`: `git ls-tree -r --name-only 231625b9 docs/research/chrome-hosted-window/spike`, then
+`git show 231625b9:docs/research/chrome-hosted-window/spike/<file>`.
 
 Results, same build, fresh data dirs, hidden instances (`NETNYAHOO_BACKGROUND=1`, never frontmost):
 
