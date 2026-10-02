@@ -92,8 +92,12 @@ if (hasTelemetryEnv()) {
   });
   telemetry.exceptions = await attempt("exceptions", async () =>
     (await clickhouse(`
-      SELECT if(${APP}, 'app', 'site') AS where, JSONExtractString(properties['$exception_types'], 1) AS type,
-             substring(JSONExtractString(properties['$exception_values'], 1), 1, 120) AS message,
+      SELECT if(${APP}, 'app', 'site') AS where,
+             -- Native crash reports carry only $exception_list.
+             coalesce(nullIf(JSONExtractString(properties['$exception_types'], 1), ''),
+                      JSONExtractString(properties['$exception_list'], 1, 'type')) AS type,
+             substring(coalesce(nullIf(JSONExtractString(properties['$exception_values'], 1), ''),
+                                JSONExtractString(properties['$exception_list'], 1, 'value')), 1, 120) AS message,
              properties['$app_version'] AS version, count(), toUnixTimestamp(max(timestamp))
       FROM telemetry.events WHERE timestamp > now() - INTERVAL 24 HOUR AND event = '$exception' AND (${SITE} OR ${APP})
       GROUP BY where, type, message, version ORDER BY 6 DESC LIMIT 6`)).map(([where, type, message, version, count, last]) => ({
