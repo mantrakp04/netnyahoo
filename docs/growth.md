@@ -344,3 +344,20 @@ owner's Mac ──▶ netnyahoo.com/_ch/ (read-only ClickHouse user)   netnyahoo
     netnyahoo.com.
   - Errors: none from the app; the site's two are cross-origin `Script error.` (noise).
   - ClickHouse: otel_logs 8 parts (one wide, seven compact), every stats query finished without a timeout.
+- **2026-10-02 06:15 UTC check:** 7,279 visitors all time, 184 since 10:05 yesterday (412 in 24 h). The launch
+  wave is over: 15-19 an hour through 18:00 UTC, then 1-5 an hour overnight. Direct 91 now passes t.co 86
+  (Google 5, Instagram 2); phones 46%.
+  - Downloads: 176 people all time (141 Mac), +7. Since 10:05, Mac desktop 6/68 = 8.8%; Windows 1/18, Linux 0/10.
+  - Phones: the hero's share sheet 3 dismissed, 1 `error` (Firefox on Android; Copy link and Email sit right
+    below it); header panel 1. `mac_link_visit` still 4.
+  - `github_clicked` 12, `screenshot_opened` 13 (8 people), `notify_clicked` 5. Dead clicks mostly the Big Yahu
+    canvas (24 people).
+  - Experiment: band 68/823 (8.3%), control 65/775 (8.4%). Even after two days.
+  - Installs: DMG downloads 239 (+10, 0.2.21 now 14); first launches 47 (+6); update zips 59 (+10). Checks on
+    10-01: 0.2.19 13, 0.2.21 11, 0.2.18 5, 0.2.17 2, 0.2.16 2, so roughly 13-33 copies ran.
+  - Opted-in app users per day: 7, 13, 8 (09-29 to 10-01), 4 so far today; 24 in 7 days.
+  - GitHub: 27 stars, none since 09-30; 2 forks; issues unchanged (Linux support open).
+  - Errors: one 0.2.21 crash (SIGABRT, a CHECK in `PermissionRequest::PermissionGranted` after Allow on a
+    camera + microphone prompt) was the owner's own click at 16:08 UTC and is fixed on main (d1080097), shipping
+    next release. 0.2.11's "Calling the <text> function has failed" is the old loadUrl race (fixed in 0.2.12).
+    The site's only error is a cross-origin `Script error.`.
