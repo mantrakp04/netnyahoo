@@ -19,6 +19,7 @@ import { DragGhost } from "./sidebar/DragGhost";
 import { DragProvider, DragScope, useDragController, useDragItem, type Ghost } from "./sidebar/dnd";
 import { useSidebarEntries } from "./sidebar/entries";
 import { GroupBlock } from "./sidebar/GroupBlock";
+import { dismissHover } from "./sidebar/hover";
 import { LiveFolders } from "./sidebar/LiveFolderBlock";
 import { openOverflowMenu, openSidebarMenu } from "./sidebar/menus";
 import { PinnedGrid } from "./sidebar/PinnedGrid";
@@ -66,6 +67,8 @@ export function Sidebar() {
   const footer = dots || footerDownloads ? PROFILE_DOTS_HEIGHT : 0;
 
   useRevealTabs(windowId, scroll, scrollY, glowRoom);
+  // A card anchored to a row of the page paging away would stay where the row was.
+  useEffect(() => dismissHover(), [current]);
 
   return (
     <DragProvider>
@@ -107,6 +110,7 @@ export function Sidebar() {
                 onScrollY={(y) => {
                   scrollY.current = y;
                   controller.scrollY = y;
+                  dismissHover();
                 }}
               />
             ))}

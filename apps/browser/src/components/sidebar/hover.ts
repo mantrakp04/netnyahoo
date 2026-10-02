@@ -6,15 +6,18 @@ const HIDE_DELAY_MS = 160;
 let showTimer: ReturnType<typeof setTimeout> | undefined;
 let hideTimer: ReturnType<typeof setTimeout> | undefined;
 let suppressed = false;
+// Bumped by everything that ends or replaces a hover: a card measured for an older one never shows.
+let ticket = 0;
 
 export function suppressHover(value: boolean) {
   suppressed = value;
   if (value) dismissHover();
 }
 
-async function show(windowId: string, target: Target) {
+async function show(windowId: string, target: Target, mine: number) {
   const anchor = await measureRow(windowId, target.id);
-  if (anchor && !sidebarUi().iconPicker && !sidebarUi().renaming) setSidebarUi({ hover: { windowId, ...target, anchor } });
+  if (mine !== ticket || suppressed || !anchor || sidebarUi().iconPicker || sidebarUi().renaming) return;
+  setSidebarUi({ hover: { windowId, ...target, anchor } });
 }
 
 export function hoverEnter(windowId: string, target: Target) {
@@ -23,11 +26,13 @@ export function hoverEnter(windowId: string, target: Target) {
   clearTimeout(hideTimer);
   const current = sidebarUi().hover;
   if (current?.id === target.id) return;
-  if (current) void show(windowId, target);
-  else showTimer = setTimeout(() => void show(windowId, target), SHOW_DELAY_MS);
+  const mine = ++ticket;
+  if (current) void show(windowId, target, mine);
+  else showTimer = setTimeout(() => void show(windowId, target, mine), SHOW_DELAY_MS);
 }
 
 export function hoverLeave() {
+  ticket++;
   clearTimeout(showTimer);
   clearTimeout(hideTimer);
   hideTimer = setTimeout(() => setSidebarUi({ hover: null }), HIDE_DELAY_MS);
@@ -35,7 +40,9 @@ export function hoverLeave() {
 
 export const keepHover = () => clearTimeout(hideTimer);
 
+// Clicks, menus, drags, scrolling and profile switches: the card's anchor no longer holds.
 export function dismissHover() {
+  ticket++;
   clearTimeout(showTimer);
   clearTimeout(hideTimer);
   if (sidebarUi().hover) setSidebarUi({ hover: null });
