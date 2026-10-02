@@ -156,7 +156,7 @@ export function Sidebar() {
             )}
           </View>
 
-          <ResizeHandle windowId={windowId} width={width} />
+          <ResizeHandle windowId={windowId} />
           {ghost ? <DragGhost ghost={ghost} /> : null}
         </View>
       )}
