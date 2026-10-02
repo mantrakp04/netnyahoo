@@ -23,6 +23,7 @@
 #include "components/zoom/zoom_controller.h"
 #include "components/blocked_content/popup_blocker_tab_helper.h"
 #include "components/blocked_content/url_list_manager.h"
+#include "base/auto_reset.h"
 #include "base/time/time.h"
 #include "components/zoom/zoom_observer.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
@@ -96,9 +97,6 @@ class WindowHost : public TabStripModelObserver,
   // The user's window: the key one; with none (the app in the background, a test instance,
   // which never has the key window), the last one that was, or the host asked to focus.
   bool IsUsersWindow();
-  // The host asked AppKit to make this window key and it can't be (a test instance): it is the
-  // user's window from now on, as a key window would be.
-  void NoteFocusIntent();
   // Chrome wants `browser` in front (chrome.windows.update focused, DevTools closing): the
   // host's own focus path, never Chrome's bookkeeping alone.
   void RequestActivation(Browser* browser);
@@ -366,8 +364,11 @@ class TabBridge : public content::WebContentsObserver,
   void EnsureFindObserved();
   void EnsureZoomObserved();
   void EnsurePopupsObserved();
-  // Focus the host itself asked for (activateTab:, -focus) isn't the page's.
-  void NoteHostFocus();
+  // While it lives, focus coming to the page is the host's own (activateTab:, -focus, which focus
+  // it synchronously), not the page's: no tabDidGainFocus:.
+  [[nodiscard]] base::AutoReset<bool> HostFocuses() {
+    return base::AutoReset<bool>(&host_focusing_, true);
+  }
 
   // Unresponsive renderer (NNWebContentsDelegate): kept until it answers or the host decides.
   void SetUnresponsive(content::RenderWidgetHost* host, base::RepeatingClosure restarter);
@@ -447,7 +448,7 @@ class TabBridge : public content::WebContentsObserver,
   NSDictionary* __strong security_;
   raw_ptr<zoom::ZoomController> zoom_ = nullptr;
   raw_ptr<blocked_content::PopupBlockerTabHelper> popups_ = nullptr;
-  base::TimeTicks host_focus_at_;
+  bool host_focusing_ = false;
   bool discarded_ = false;
   bool frozen_ = false;
   NSDictionary* __strong media_access_;

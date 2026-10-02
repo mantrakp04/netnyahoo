@@ -1469,8 +1469,8 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   }
   // The strip's selection only: the profile the window shows is the host's own call
   // (setActiveProfile:), so a hidden profile's strip settling never shows that profile.
+  auto focusing = nncore::TabBridge::GetOrCreate(contents)->HostFocuses();
   _host->NoteHostActivated(static_cast<Browser*>(browser));
-  nncore::TabBridge::GetOrCreate(contents)->NoteHostFocus();
   TabStripModel* model = browser->GetTabStripModel();
   int index = model->GetIndexOfWebContents(contents);
   if (index != TabStripModel::kNoTab && index != model->active_index()) {
@@ -1512,10 +1512,6 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 
 - (void)showInactive {
   _host->ShowInactive();
-}
-
-- (void)noteFocusIntent {
-  _host->NoteFocusIntent();
 }
 
 - (BOOL)actedFullScreen {
@@ -2464,7 +2460,7 @@ TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents,
 
 - (void)focus {
   if (_contents) {
-    nncore::TabBridge::GetOrCreate(_contents)->NoteHostFocus();
+    auto focusing = nncore::TabBridge::GetOrCreate(_contents)->HostFocuses();
     _contents->Focus();
   }
 }

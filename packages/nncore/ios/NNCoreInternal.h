@@ -34,9 +34,10 @@ void InstallActivationGuardsLate();
 bool Background();
 // A line in $NETNYAHOO_DATA_DIR/activation.log, as the guards write theirs (what a test instance didn't show).
 void LogActivation(NSString *what);
-// A test instance asked AppKit to make `window` key, which it never becomes there: if it is an app window, Chrome
-// counts it as the user's one, as it would the key window (NNCoreChromeWindow.mm).
-void NoteFocusIntent(NSWindow *window);
+// Test instances: whether the app reads as active (it does unless a check says otherwise); AppKit's key window follows.
+void SetAppActive(bool active);
+// Test instances: -toggleFullScreen: (the menu's Enter Full Screen, the green button) acted out, never a real Space.
+void ActToggleFullScreen(NSWindow *window);
 // A hidden test instance (dataDir non-nil) that crashes leaves its record in <dataDir>/crashes and exits, never
 // reaching macOS's crash reporter, whose "quit unexpectedly" dialog would show on the owner's screen.
 void InstallTestCrashGuard(NSString *_Nullable dataDir);
@@ -89,8 +90,7 @@ extern NSNotificationName const NNCoreWindowSeenDidChange;
 + (void)changedInWindow:(NNCoreWindowController *)controller profile:(NNCoreProfile *)profile cause:(nullable id)cause;
 // The window went: its strips are sent once more, closed.
 + (void)windowClosed:(NNCoreWindowController *)controller;
-// The JS drives Chrome's active tab with commands (views then don't activate their tab when shown).
-@property(class, readonly) BOOL commandsSeen;
+// Chrome made `tab` its strip's active one (didActivateTab:): what the strip reports as active.
 + (void)activated:(NNCoreTab *)tab inWindow:(NNCoreWindowController *)controller;
 + (void)setPinned:(BOOL)pinned tab:(NNCoreTab *)tab;
 @end

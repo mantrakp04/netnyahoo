@@ -9,8 +9,10 @@
 // Chrome's automatic Picture in Picture only acts on https and file pages. The call is a fake conference: Chrome's fake
 // camera, and a Media Session "enterpictureinpicture" handler that counts its calls and opens a document Picture in
 // Picture window. It runs on a copy of the app without the camera and microphone entitlements (ad hoc, hardened
-// runtime), so macOS refuses a real device without asking. A test instance never has the key window: native focus is
-// what the app asked AppKit for (activation.log, "makeKeyAndOrderFront: on NNCoreWindow #<number>").
+// runtime), so macOS refuses a real device without asking. A test instance is never really active; its one fake is that
+// it reads as active (NNCoreActivation.mm's seam), so AppKit's key window and everything after it are production's.
+// Native focus is the key window and what the app asked AppKit for (activation.log, "makeKeyAndOrderFront: on
+// NNCoreWindow #<number>").
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createHttpsServer } from "node:https";
@@ -78,6 +80,7 @@ const server = createHttpsServer({ key: readFileSync(join(certDir, "key.pem")), 
   res.writeHead(200, { "content-type": "text/html" });
   if (url.pathname === "/conf") return res.end(page("Conference", `<video muted playsinline style="width:320px;height:180px"></video>`, conference));
   if (url.pathname === "/ask") return res.end(page("Ask", "ask", asks));
+  if (url.pathname === "/keys") return res.end(page("Keys", "keys", `window.__keys = ""; addEventListener("keydown", (e) => (__keys += e.key), true);`));
   return res.end(page(url.searchParams.get("t") ?? url.pathname.slice(1), url.pathname));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -117,23 +120,28 @@ const pgrep = () => {
   }
 };
 const devtoolsPort = await freePort();
-const before = new Set(pgrep());
-// As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
-execFileSync("open", [
-  "-g", "-n",
-  "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${devtoolsPort}`,
-  "--env", `NETNYAHOO_JS_LOCATION=localhost:${metroProxy.address().port}`,
-  "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--ignore-certificate-errors --netnyahoo-test-system-media-permission=ask",
-  "--stdout", join(scratch, "app.out.log"), "--stderr", join(scratch, "app.out.log"),
-  app,
-]);
 let pid = null;
-for (let i = 0; i < 100 && !pid; i++) {
-  pid = pgrep().find((p) => !before.has(p)) ?? null;
-  if (!pid) await sleep(100);
+// Started again on the same data dir by the restore check.
+async function launch(logName = "app.out.log") {
+  const before = new Set(pgrep());
+  // As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
+  execFileSync("open", [
+    "-g", "-n",
+    "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${devtoolsPort}`,
+    "--env", `NETNYAHOO_JS_LOCATION=localhost:${metroProxy.address().port}`,
+    "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--ignore-certificate-errors --netnyahoo-test-system-media-permission=ask",
+    "--stdout", join(scratch, logName), "--stderr", join(scratch, logName),
+    app,
+  ]);
+  pid = null;
+  for (let i = 0; i < 100 && !pid; i++) {
+    pid = pgrep().find((p) => !before.has(p)) ?? null;
+    if (!pid) await sleep(100);
+  }
+  if (!pid) throw new Error("the app didn't start");
+  writeFileSync(join(scratch, "app.pid"), String(pid));
 }
-if (!pid) throw new Error("the app didn't start");
-writeFileSync(join(scratch, "app.pid"), String(pid));
+await launch();
 const alive = () => {
   try {
     process.kill(pid, 0);
@@ -203,8 +211,7 @@ const appState = () => evalApp(`const s = nn.store.getState();
     const split = Object.values(s.splits ?? {}).find((x) => x.tabIds.includes(shown));
     return [w.id, { profile: w.profileId, shown, url: s.tabs[shown]?.url ?? null, panes: split ? split.tabIds : shown ? [shown] : [] }];
   })) };`);
-// Native focus: what the app asked AppKit to make key (a test instance never has the key window), and Chrome's view
-// of its windows (macOS's key flag).
+// Native focus: what the app asked AppKit to make key, and its windows (the key flag, through the app-active seam).
 const activationLog = () => (existsSync(join(data, "activation.log")) ? readFileSync(join(data, "activation.log"), "utf8") : "");
 const focusRequests = (from = 0) =>
   [...activationLog().slice(from).matchAll(/(makeKeyAndOrderFront:|makeKeyWindow) on \S+ #(\d+)/g)].map((m) => Number(m[2]));
@@ -227,10 +234,11 @@ writeFileSync(join(extDir, "worker.js"), `
   let chain = Promise.resolve();
   const note = (e) => (chain = chain.then(async () => {
     const { events = [] } = await chrome.storage.local.get("events");
-    events.push({ at: Date.now(), ...e });
+    events.push({ at: Date.now(), ...e, ...(e.url ? { url: await e.url } : {}) });
     await chrome.storage.local.set({ events });
   }));
-  chrome.tabs.onActivated.addListener((i) => note({ name: "activated", tabId: i.tabId, windowId: i.windowId }));
+  chrome.tabs.onActivated.addListener((i) => note({ name: "activated", tabId: i.tabId, windowId: i.windowId,
+    url: chrome.tabs.get(i.tabId).then((t) => t.pendingUrl || t.url, () => null) }));
   chrome.windows.onFocusChanged.addListener((windowId) => note({ name: "focus", windowId }));
   self.events = async () => { await chain; return (await chrome.storage.local.get("events")).events ?? []; };
   self.chromeState = async () => {
@@ -313,17 +321,25 @@ async function joinedCall(windowId = mainWindow) {
   return { tab, t, url };
 }
 const pipState = (t) => js(t, "state()");
+const booted = () => until("the dev harness", async () => {
+  try {
+    return await evalApp(`return globalThis.expo.modules.NetnyahooCEF.engineInfo()`, 3000);
+  } catch (e) {
+    if (!alive()) throw e;
+    return null;
+  }
+}, 90000);
+// The app-active seam of a test instance (NNCoreActivation.mm): the user in another app, or back.
+const setAppActive = async (active) => {
+  const n = (await nativeWindows())[0]?.window;
+  const r = await cef(`devWindow(${n}, "fakeAppActive:${active ? 1 : 0}")`);
+  if (r !== (active ? "1" : "0")) throw new Error(`fakeAppActive: ${JSON.stringify(r)} (a build without the seam?)`);
+};
+const keyWindow = async () => (await nativeWindows()).find((w) => w.key)?.window ?? null;
 
 try {
   await check("boot", async () => {
-    await until("the dev harness", async () => {
-      try {
-        return await evalApp(`return globalThis.expo.modules.NetnyahooCEF.engineInfo()`, 3000);
-      } catch (e) {
-        if (!alive()) throw e;
-        return null;
-      }
-    }, 90000);
+    await booted();
     mainWindow = await until("a window", async () => (await appState()).focused ?? Object.keys((await appState()).windows)[0], 30000);
     const installed = await evalApp(`return globalThis.expo.modules.NetnyahooExtensions.install(${JSON.stringify(extDir)}, "")`);
     if (installed?.error) throw new Error(installed.error);
@@ -654,6 +670,198 @@ try {
       await closeTab(notes);
       await closeTab(call.tab);
     }
+  });
+
+  await check("type-after-new-window", async () => {
+    // ⌘N, then typing at once while the new window's content is still mounting (held 800 ms here, as under load): the new
+    // window is key from the start, so no key reaches the page of the window that was, and every key lands in the new
+    // window's address field once it has one.
+    const url = `${origin()}/keys?t=Keys`;
+    const tab = await openTab(url, "Keys");
+    await show(tab);
+    const t = await pageTarget(url);
+    await evalApp(`nn.actions.focus(${JSON.stringify(mainWindow)}); return true`);
+    await cef(`devFocusPage(${await browserOf(tab)})`);
+    await js(t, "__keys = ''; true");
+    const windowsBefore = Object.keys((await appState()).windows);
+    const text = "netnyahoo";
+    let made = null;
+    try {
+      const typed = await evalApp(`const cef = globalThis.expo.modules.NetnyahooCEF;
+        return cef.chromeWindows().then((list) => {
+          const known = new Set(list.map((w) => w.window));
+          globalThis.nnDevMountDelayMs = 800;
+          nn.runCommand({ command: "newWindow", arg: null, windowId: null });
+          const started = Date.now();
+          return new Promise((resolve, reject) => {
+            const poll = () => cef.chromeWindows().then((list) => {
+              const w = list.find((x) => !known.has(x.window));
+              if (w) return nn.shell.devTypeKeys("key", ${JSON.stringify(text)}, 15).then(() => resolve({ window: w.window, alpha: w.alpha, ms: Date.now() - started }));
+              if (Date.now() - started > 5000) return reject(new Error("no new window"));
+              setTimeout(poll, 2);
+            }, reject);
+            poll();
+          });
+        }).finally(() => { delete globalThis.nnDevMountDelayMs; });`);
+      made = await until("the new window in the store", async () => Object.keys((await appState()).windows).find((id) => !windowsBefore.includes(id)) ?? null, 5000);
+      const field = await until("the new window's field to hold the text", async () => {
+        const fields = await evalApp(`return nn.omnibox.ids().filter((id) => id.startsWith(${JSON.stringify(made + ":")})).map((id) => nn.omnibox.get(id).state().typed)`);
+        return fields.find((v) => v === text) ?? null;
+      }, 5000).catch(async (e) => {
+        throw new Error(`${e.message}: fields ${JSON.stringify(await evalApp(`return nn.omnibox.ids().map((id) => [id, nn.omnibox.get(id).state().typed])`))}, old page got ${JSON.stringify(await js(t, "__keys"))}`);
+      });
+      const oldPage = await js(t, "__keys");
+      if (oldPage) throw new Error(`the old window's page got keys: ${JSON.stringify(oldPage)}`);
+      return { typed, field, oldPage };
+    } finally {
+      if (made) await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(made)}); return true`).catch(() => null);
+      await closeTab(tab);
+    }
+  });
+
+  await check("chrome-tab-to-front-window", async () => {
+    // A tab Chrome makes (chrome.windows.create from an extension) goes to the window the user has in front, whichever
+    // of the two was made first.
+    const home = await openTab(`${origin()}/front-a?t=FrontA`, "FrontA");
+    await show(home);
+    const other = await evalApp(`return nn.actions.openWindow({ url: "${origin()}/front-b?t=FrontB", background: true })`);
+    await until("B's tab", () => evalApp(`const s = nn.store.getState(); const w = s.windows[${JSON.stringify(other)}];
+      return s.tabs[w?.activeTabIds[w?.profileId]]?.title === "FrontB" ? true : null`), 20000);
+    const steps = [];
+    try {
+      for (const [win, name] of [[other, "B"], [mainWindow, "A"], [other, "B"]]) {
+        await evalApp(`nn.actions.focus(${JSON.stringify(win)}); return true`);
+        await sleep(300);
+        const path = `/made-${steps.length}`;
+        await ext(`chrome.windows.create({ url: "${origin()}${path}?t=Made" }).then(() => true)`);
+        const placed = await until(`the made tab in the app`, () => evalApp(`return Object.values(nn.store.getState().tabs).find((t) => t.url?.includes(${JSON.stringify(path)}))?.windowId ?? null`), 15000);
+        steps.push({ front: name, landed: placed === mainWindow ? "A" : placed === other ? "B" : placed });
+        await evalApp(`const t = Object.values(nn.store.getState().tabs).find((t) => t.url?.includes(${JSON.stringify(path)})); if (t) nn.store.getState().closeTab(t.id); return true`);
+        if (placed !== win) throw new Error(`front ${name}, the tab went to ${placed}: ${JSON.stringify(steps)}`);
+      }
+      return steps;
+    } finally {
+      await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(other)}); return true`).catch(() => null);
+      await closeTab(home);
+    }
+  });
+
+  await check("split-click-after-host-focus", async () => {
+    // In a split, the app selects B then A (as quick keyboard switching does), and 50 ms later the user clicks into B:
+    // the click is the user's, so B becomes the active tab.
+    const a = await openTab(`${origin()}/pane-a?t=PaneA`, "PaneA");
+    const b = await openTab(`${origin()}/pane-b?t=PaneB`, "PaneB");
+    const rounds = [];
+    try {
+      await evalApp(`return nn.store.getState().createSplit(["${a}", "${b}"])`);
+      await show(a);
+      await until("both panes shown", async () => {
+        const w = (await appState()).windows[mainWindow];
+        return w.panes.includes(a) && w.panes.includes(b);
+      });
+      await sleep(600);
+      const bBrowser = await browserOf(b);
+      for (let i = 0; i < 3; i++) {
+        await evalApp(`nn.actions.switchToTab(${JSON.stringify(b)});
+          return new Promise((r) => setTimeout(() => { nn.actions.switchToTab(${JSON.stringify(a)}); r(true); }, 40))`);
+        await sleep(50);
+        await cef(`devFocusPage(${bBrowser})`);
+        const shown = await until("B active after the click", async () => ((await appState()).windows[mainWindow].shown === b ? b : null), 3000)
+          .catch(async () => { throw new Error(`round ${i}: the click into B was dropped (shown ${(await appState()).windows[mainWindow].shown === a ? "A" : "?"})`); });
+        rounds.push(shown === b ? "B" : shown);
+        await sleep(400);
+      }
+      return { rounds };
+    } finally {
+      await closeTab(a);
+      await closeTab(b);
+    }
+  });
+
+  await check("app-inactive", async () => {
+    // The user in another app (the seam: the app reads as inactive): an extension asking to focus the other window moves
+    // nothing (AppKit isn't asked, Chrome's last focused window stays); back in the app, the key window is the one it was.
+    const home = await openTab(`${origin()}/inactive-a?t=InactiveA`, "InactiveA");
+    await show(home);
+    const numbersBefore = new Set((await nativeWindows()).map((w) => w.window));
+    const other = await evalApp(`return nn.actions.openWindow({ url: "${origin()}/inactive-b?t=InactiveB", background: true })`);
+    await until("B's tab", () => evalApp(`const s = nn.store.getState(); const w = s.windows[${JSON.stringify(other)}];
+      return s.tabs[w?.activeTabIds[w?.profileId]]?.title === "InactiveB" ? true : null`), 20000);
+    const bNumber = await until("B's native window", async () => (await nativeWindows()).find((w) => !numbersBefore.has(w.window))?.window ?? null);
+    try {
+      await evalApp(`nn.actions.focus(${JSON.stringify(mainWindow)}); return true`);
+      const s0 = await ext("chromeState()");
+      const a = chromeWindowOf(s0, "/inactive-a"), b = chromeWindowOf(s0, "/inactive-b");
+      await until("A Chrome's last focused", async () => ((await ext("chromeState()")).lastFocused === a ? true : null), 5000);
+      const aNumber = await keyWindow();
+      await setAppActive(false);
+      const logFrom = activationLog().length;
+      await ext(`chrome.windows.update(${b}, { focused: true }).then(() => true)`);
+      await sleep(1000);
+      const asked = focusRequests(logFrom);
+      const c = await ext("chromeState()");
+      if (asked.includes(bNumber)) throw new Error("AppKit was asked to focus B while the app is inactive");
+      if (c.lastFocused !== a) throw new Error(`Chrome's last focused moved to ${c.lastFocused} (A is ${a})`);
+      await setAppActive(true);
+      const back = await keyWindow();
+      if (back !== aNumber) throw new Error(`back in the app the key window is ${back}, was ${aNumber}`);
+      await until("A Chrome's last focused again", async () => ((await ext("chromeState()")).lastFocused === a ? true : null), 5000);
+      return { askedAppKit: asked.length, lastFocused: "A", keyBack: "A" };
+    } finally {
+      await setAppActive(true).catch(() => null);
+      await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(other)}); return true`).catch(() => null);
+      await closeTab(home);
+    }
+  });
+
+  await check("restore-activates-once", async () => {
+    // Relaunched with two windows, one showing a split: Chrome's selected tab in each is the store's. Chrome selects the
+    // first tab it gets in a window by itself (tabs.onActivated); after that only the strip's command selects, once,
+    // and only the store's tab. A view coming into sight selects nothing (it did: the split's panes, then the store's
+    // pick again, A B A).
+    const ra = await openTab(`${origin()}/restore-a?t=RestoreA`, "RestoreA");
+    const rb = await openTab(`${origin()}/restore-b?t=RestoreB`, "RestoreB");
+    await evalApp(`return nn.store.getState().createSplit(["${ra}", "${rb}"])`);
+    await show(ra);
+    const other = await evalApp(`return nn.actions.openWindow({ url: "${origin()}/restore-c?t=RestoreC", background: true })`);
+    await until("C's tab", () => evalApp(`const s = nn.store.getState(); const w = s.windows[${JSON.stringify(other)}];
+      return s.tabs[w?.activeTabIds[w?.profileId]]?.title === "RestoreC" ? true : null`), 20000);
+    const rd = await openTab(`${origin()}/restore-d?t=RestoreD`, "RestoreD", other);
+    await evalApp(`nn.actions.switchToTab(${JSON.stringify(rd)}); return true`);
+    await until("D shown", async () => (await appState()).windows[other]?.shown === rd);
+    await sleep(1500);
+    // Each window's tab the store shows (the split's is whichever pane it has active), by path.
+    const pathOf = (url) => new URL(url).pathname;
+    const before = await appState();
+    // A window by a tab it has, and the tab it should select.
+    const want = { "/restore-a": pathOf(before.windows[mainWindow].url), "/restore-d": pathOf(before.windows[other].url) };
+    await evalApp(`return nn.shell.devKeyEquivalent(${JSON.stringify(mainWindow)}, { key: "q", keyCode: 12, modifiers: ["command"], focus: "window" })`, 5000).catch(() => null);
+    await until("the app to exit", async () => !alive(), 30000);
+    const relaunched = Date.now();
+    await launch("app-restored.out.log");
+    await booted();
+    worker = await findWorker();
+    await until("the restored windows' selected tabs", async () => {
+      const c = await ext("chromeState()");
+      return Object.keys(want).every((p) => c.windows.some((w) => w.active && w.tabs.some((u) => u?.includes(p)))) ? c : null;
+    }, 30000);
+    await sleep(2500);
+    const final = await ext("chromeState()");
+    const events = (await ext("events()")).filter((e) => e.at >= relaunched && e.name === "activated");
+    const out = {};
+    for (const [path, active] of Object.entries(want)) {
+      const w = final.windows.find((x) => x.tabs.some((u) => u?.includes(path)));
+      if (!w || out[w.id]) continue;
+      const selected = events.filter((e) => e.windowId === w.id).map((e) => (e.url ? pathOf(e.url) : `#${e.tabId}`));
+      out[w.id] = { selected, active: w.active && pathOf(w.active), want: active };
+      if (out[w.id].active !== active) throw new Error(`a window selects ${out[w.id].active}, the store ${active}: ${JSON.stringify(out)}`);
+      // Chrome's own first selection, then at most the strip's one, of the store's tab.
+      const after = selected.slice(1);
+      if (!selected.length || after.length > 1 || after.some((p) => p !== active)) throw new Error(`selections: ${JSON.stringify(out)}`);
+    }
+    if (Object.keys(out).length !== 2) throw new Error(`restored windows: ${JSON.stringify(final.windows)}`);
+    mainWindow = await until("a window", async () => (await appState()).focused ?? Object.keys((await appState()).windows)[0], 30000);
+    return out;
   });
 } finally {
   try {

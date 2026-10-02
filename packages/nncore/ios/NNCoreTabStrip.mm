@@ -14,8 +14,6 @@ namespace {
 
 void (^gHandler)(NSDictionary *);
 int64_t gRev = 0;
-// The JS sends tab-strip commands: only they (and Chrome) change the active tab, not a view becoming visible.
-bool gCommandsSeen = false;
 
 // The strips each window has reported, to send them once more as closed when the window goes.
 NSMapTable<NNCoreWindowController *, NSMutableDictionary<NSNumber *, NSString *> *> *KnownStrips() {
@@ -203,10 +201,6 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
   Send(@{@"rev" : @(++gRev), @"cmd" : NSNull.null, @"strips" : closed});
 }
 
-+ (BOOL)commandsSeen {
-  return gCommandsSeen;
-}
-
 + (void)activated:(NNCoreTab *)tab inWindow:(NNCoreWindowController *)controller {
   NNCoreProfile *profile = tab.profile;
   if (profile) [ActiveTabs(controller) setObject:tab forKey:profile];
@@ -226,7 +220,6 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
 }
 
 + (void)command:(NSInteger)commandId command:(NSDictionary<NSString *, id> *)command {
-  gCommandsSeen = true;
   NSString *op = command[@"op"];
   const int stripId = [command[@"strip"] intValue];
   NNCoreWindowController *found = nil;
@@ -247,7 +240,6 @@ NSArray<NNCoreProfile *> *ProfilesWithTabs(NNCoreWindowController *controller) {
     NNCoreTab *tab = byKey[command[@"key"]];
     if (tab) {
       [found.coreWindow activateTab:tab];
-      [self activated:tab inWindow:found];
     } else {
       rejected = YES;
     }

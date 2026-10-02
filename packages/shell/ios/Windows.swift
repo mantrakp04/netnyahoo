@@ -93,14 +93,11 @@ final class WindowManager: NSObject, NSWindowDelegate {
     windows[id] = window
     if let center = lightsCenters[id] { ChromeWindows.setTrafficLightsCenter(center, in: window) }
     if smallSize == nil { lastPlaced = window }
-    if focus, unrevealed[id] != nil {
-      // Key once it shows: typing and shortcuts mustn't go to a window that can't be seen yet.
-      window.orderFront(nil)
-      unrevealed[id]!.append { [weak self, weak window] in
-        if let window, self?.windows[id] === window { window.makeKeyAndOrderFront(nil) }
-      }
-    } else if focus {
+    if focus {
+      // Key at once, while its content may still be mounting (it shows once it's there): what the user types from now
+      // on is for this window, never the one they left (holdTyping).
       window.makeKeyAndOrderFront(nil)
+      if unrevealed[id] != nil { holdTyping(in: window) }
     } else if let key = NSApp.keyWindow, key !== window {
       // A window opened without focus (tabs Small Yahu sends behind with no main window open) goes behind the
       // key window instead of over it.
@@ -114,7 +111,8 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
   // A window opened while the app runs waits, transparent, until its React content is on screen, as Dia's appear at
   // their final frame with their content: it showed an empty window (the traffic lights alone), then its sidebar
-  // and an unpainted page, for several frames (rec1522, 20.97 s). The first windows at launch show at once.
+  // and an unpainted page, for several frames (rec1522, 20.97 s). The first windows at launch show at once. Content
+  // that doesn't come within the timeout shows the window anyway; the timeout only ever shows it.
   private static let revealTimeout = 0.6
   private var unrevealed: [String: [() -> Void]] = [:]
 
@@ -128,7 +126,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
       observer = nil
       guard let self, let waiting = self.unrevealed.removeValue(forKey: id) else { return }
       window?.alphaValue = 1
-      // On screen now, before making it key and the rest.
+      // On screen now, before the rest.
       CATransaction.flush()
       waiting.forEach { $0() }
     }
@@ -142,6 +140,47 @@ final class WindowManager: NSObject, NSWindowDelegate {
   /// `then` once the window shows its content (now, if it does or isn't one of ours).
   func whenRevealed(_ id: String, _ then: @escaping () -> Void) {
     if unrevealed[id] != nil { unrevealed[id]!.append(then) } else { then() }
+  }
+
+  // Typing into a window that is key before its content is (⌘N, then typing at once): its keys wait for the first
+  // field or page in it to take them (its address field, which focuses once laid out), then go there in order, as
+  // Chrome's new window has its address field from the start. Dropped if the window closes or stops being key first.
+  // ⌘-shortcuts aren't held.
+  private var heldTyping: [ObjectIdentifier: (keys: [NSEvent], watches: [NSObjectProtocol])] = [:]
+  private var typingMonitor: Any?
+
+  private func holdTyping(in window: NSWindow) {
+    typingMonitor = typingMonitor ?? NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+      guard let self, let window = event.window, self.heldTyping[ObjectIdentifier(window)] != nil,
+        !event.modifierFlags.contains(.command)
+      else { return event }
+      self.heldTyping[ObjectIdentifier(window)]!.keys.append(event)
+      return nil
+    }
+    let focused = window.observe(\.firstResponder) { [weak self] window, _ in
+      guard Self.takesTyping(window.firstResponder) else { return }
+      // After the batch that focused it: the field sets its selection next.
+      DispatchQueue.main.async { self?.releaseTyping(in: window, send: true) }
+    }
+    let left = [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification].map {
+      NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self, weak window] _ in
+        if let window { self?.releaseTyping(in: window, send: false) }
+      }
+    }
+    heldTyping[ObjectIdentifier(window)] = ([], left + [focused])
+  }
+
+  private func releaseTyping(in window: NSWindow, send: Bool) {
+    guard let held = heldTyping.removeValue(forKey: ObjectIdentifier(window)) else { return }
+    for watch in held.watches {
+      if let focused = watch as? NSKeyValueObservation { focused.invalidate() } else { NotificationCenter.default.removeObserver(watch) }
+    }
+    if send { held.keys.forEach { NSApp.sendEvent($0) } }
+  }
+
+  // A text field's editor or a page.
+  private static func takesTyping(_ responder: NSResponder?) -> Bool {
+    responder is NSTextView || responder.map { String(describing: type(of: $0)) == "RenderWidgetHostViewCocoa" } == true
   }
 
   private func observeFrame(_ window: NSWindow) {
@@ -733,7 +772,7 @@ final class DragPreview {
       "shape": shape, "shapes": shapes, "visible": panel?.isVisible ?? false, "alpha": panel?.alphaValue ?? 0,
       "frame": [frame.minX, frame.minY, frame.width, frame.height], "page": pageImage != nil, "placeholder": placeholder,
       "key": panel?.isKeyWindow ?? false, "ignoresMouse": panel?.ignoresMouseEvents ?? false,
-      "level": panel?.level.rawValue ?? 0, "activeApp": NSApp.isActive,
+      "level": panel?.level.rawValue ?? 0, "activeApp": NSRunningApplication.current.isActive,
     ]
   }
 

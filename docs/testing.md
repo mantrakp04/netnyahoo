@@ -63,6 +63,10 @@ Launch with `open -g -n --env NAME=value … <app>` (`docs/agent-brief.md`). `NE
 - **Activation:** the process is BackgroundOnly and every activation path is refused and logged to
   `$NETNYAHOO_DATA_DIR/activation.log` (`NNCoreActivation.mm`). File panels never show: they answer with the paths in
   `$NETNYAHOO_DATA_DIR/file-chooser.txt` (one a line, consumed), or cancel. Context menus are reported, not shown.
+  It reads as active all the same (`-[NSApplication isActive]`, the one fake), and AppKit's key window follows as in an
+  active app: the window made key is key and its notifications go out, so focus runs production's path. A check
+  plays the user leaving for another app with `devWindow(n, "fakeAppActive:0")`. Metal views act as in the key
+  window too (the New Tab intro plays in it).
 - **Windows:** full screen is acted out (no new Space); windows answer NO to `-[NSWindow isOccluded]`, so a covered
   window shows a tab at once instead of after Chrome's 1 s delay, with `--disable-backgrounding-occluded-windows`;
   PiP windows stay at alpha 0 and click-through; the drag preview stays above its own window only.

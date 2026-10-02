@@ -180,9 +180,11 @@ public class AppModule: Module {
       #endif
     }.runOnQueue(.main)
 
+    // windowId "key": each key goes where AppKit sends it, to the key window at that moment, through NSApp.sendEvent.
     AsyncFunction("devTypeKeys") { (windowId: String, text: String, interval: Double, promise: Promise) in
       #if DEBUG
-      guard let window = WindowManager.shared.windows[windowId], !text.isEmpty else { return promise.resolve([]) }
+      let toKeyWindow = windowId == "key"
+      guard let window = toKeyWindow ? NSApp.keyWindow : WindowManager.shared.windows[windowId], !text.isEmpty else { return promise.resolve([]) }
       let keys = text.map(String.init)
       let now = { Date().timeIntervalSince1970 * 1000 }
       let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "devTypeKeys")
@@ -192,12 +194,14 @@ public class AppModule: Module {
       var t0 = 0.0
       let press = { (i: Int) in
         let handled = now()
+        let target = toKeyWindow ? NSApp.keyWindow ?? window : window
         for type in [NSEvent.EventType.keyDown, .keyUp] {
           guard let event = NSEvent.keyEvent(
             with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber, context: nil, characters: keys[i], charactersIgnoringModifiers: keys[i],
+            windowNumber: target.windowNumber, context: nil, characters: keys[i], charactersIgnoringModifiers: keys[i],
             isARepeat: false, keyCode: 0) else { continue }
-          if type == .keyDown { window.firstResponder?.keyDown(with: event) } else { window.firstResponder?.keyUp(with: event) }
+          if toKeyWindow { NSApp.sendEvent(event) }
+          else if type == .keyDown { target.firstResponder?.keyDown(with: event) } else { target.firstResponder?.keyUp(with: event) }
         }
         let observer = CFRunLoopObserverCreateWithHandler(
           nil, CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.exit.rawValue, false, 2_000_001
@@ -596,20 +600,14 @@ enum KeyEquivalents {
     return entry
   }
 
+  // The window key for the press, as the user's click into it would make it (a test instance's key window is its
+  // app-active seam's, NNCoreActivation.mm); the one that was key before is again afterwards, unless the press itself
+  // made another window key (⌘N).
   private static func standInKeyWindow(_ window: NSWindow) -> () -> Void {
-    guard let appKey = class_getInstanceMethod(NSApplication.self, #selector(getter: NSApplication.keyWindow)),
-          let isKey = class_getInstanceMethod(NSWindow.self, #selector(getter: NSWindow.isKeyWindow))
-    else { return {} }
-    let appKeyIMP = method_getImplementation(appKey), isKeyIMP = method_getImplementation(isKey)
-    typealias IsKey = @convention(c) (NSWindow, Selector) -> Bool
-    let originalIsKey = unsafeBitCast(isKeyIMP, to: IsKey.self)
-    let appKeyBlock: @convention(block) (NSApplication) -> NSWindow? = { _ in window }
-    let isKeyBlock: @convention(block) (NSWindow) -> Bool = { $0 === window || originalIsKey($0, #selector(getter: NSWindow.isKeyWindow)) }
-    method_setImplementation(appKey, imp_implementationWithBlock(appKeyBlock))
-    method_setImplementation(isKey, imp_implementationWithBlock(isKeyBlock))
-    return {
-      method_setImplementation(appKey, appKeyIMP)
-      method_setImplementation(isKey, isKeyIMP)
+    let previous = NSApp.keyWindow
+    window.makeKey()
+    return { [weak window, weak previous] in
+      if let window, NSApp.keyWindow === window, previous !== window { previous?.makeKey() }
     }
   }
 

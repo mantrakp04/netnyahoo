@@ -548,12 +548,13 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   return controller;
 }
 
-// The app's window to hand a stray tab to: one showing the tab's profile, else any (nil profile: any). A private
-// tab only ever goes to a window showing its own profile.
+// The app's window to hand a stray tab to, the frontmost first (the user's): one showing the tab's profile, else any
+// (nil profile: any). A private tab only ever goes to a window showing its own profile.
 + (NNCoreWebView *)hostingViewForProfile:(NNCoreProfile *)profile {
   NNCoreWebView *any = nil;
-  for (NNCoreWindowController *c in Controllers().objectEnumerator) {
-    if (c.stray || c.standalone) continue;
+  for (NSWindow *window in NSApp.orderedWindows) {
+    NNCoreWindowController *c = [Controllers() objectForKey:window];
+    if (!c || c.stray || c.standalone) continue;
     if (NNCoreWebView *view = profile ? [c anyShownViewForProfile:profile] : nil) return view;
     any = any ?: [c anyView];
   }
@@ -767,6 +768,10 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
     }
     [target emit:@"command" payload:@{@"command" : @"escape", @"text" : @""}];
   }
+  // Only what AppKit treats as a key equivalent: a plain letter is typing. (The View menu's Enter Full Screen is "f" with
+  // the fn modifier, which AppKit drops from an app's own item: a plain "f" a page left alone toggled the window's full
+  // screen.)
+  if (!(mods & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagFunction))) return NO;
   return [NSApp.mainMenu performKeyEquivalent:event];
 }
 
@@ -955,9 +960,10 @@ NSUInteger PopupWindowCount() {
   return PopupWindows().count;
 }
 
-void NoteFocusIntent(NSWindow *window) {
-  NNCoreWindow *coreWindow = [NNCoreWindowController forNSWindow:window].coreWindow;
-  if ([coreWindow respondsToSelector:@selector(noteFocusIntent)]) [coreWindow noteFocusIntent];
+void ActToggleFullScreen(NSWindow *window) {
+  LogActivation(@"toggleFullScreen: (acted out)");
+  if (NNCoreWindow *coreWindow = [NNCoreWindowController forNSWindow:window].coreWindow)
+    ActWindowFullScreen(coreWindow, !IsWindowFullScreen(window), gActedTransition);
 }
 
 }  // namespace nncore_host
@@ -1113,6 +1119,13 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     const double ms = [action substringFromIndex:26].doubleValue;
     gActedOcclusionGap = ms == -1 ? NAN : ms / 1000;
     return [NSString stringWithFormat:@"%.0f", ms];
+  }
+  // "fakeAppActive:<1|0>" (test instances): the app reads as active or not, as when the user comes back or goes to
+  // another app; the key window follows.
+  if ([action hasPrefix:@"fakeAppActive:"]) {
+    if (!nncore_host::Background()) return @"test instances only";
+    nncore_host::SetAppActive([[action substringFromIndex:14] isEqualToString:@"1"]);
+    return @(NSApp.isActive).stringValue;
   }
   if ([action hasPrefix:@"fakeOcclusion:"]) {
     if (!nncore_host::Background()) return @"test instances only";

@@ -194,7 +194,8 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
     device without asking (acceptance.mjs's media checks make one): on 2026-10-01 a Debug build's microphone stream
     raised macOS's consent dialog on the owner's screen.
   - Keyboard shortcuts: `nn.shell.devKeyEquivalent(windowId, { key, keyCode, modifiers, focus, asKey })` presses a
-    key as AppKit dispatches it (Chrome's window, then the menu bar; a test instance never has the key window), and
+    key as AppKit dispatches it (Chrome's window, then the menu bar), `nn.shell.devTypeKeys("key", text, ms)` types
+    into whatever window is key, and
     `node apps/browser/scripts/shortcuts-test.mjs <Debug app>` checks every shortcut in every focus.
   - Page content: CDP (`--env NETNYAHOO_REMOTE_DEBUGGING_PORT`, then `http://localhost:<port>/json`,
     `Runtime.evaluate`, `Page.captureScreenshot`). A `NETNYAHOO_BACKGROUND` instance's windows answer NO to

@@ -634,7 +634,6 @@ const char kPageReportsKey = 0;
   if (_mediaFrames.count) [self emitMedia];
   [self tabDidChangeFavicon:tab];
   if (_tabIndex >= 0) [self placeTab];
-  if (_visible && !NNCoreTabStrip.commandsSeen) [self activate];
   // The strip names the tab by this view's key from now on (re-sent as Chrome's report, cmd null).
   if (NNCoreWindowController *controller = self.controller)
     [NNCoreTabStrip changedInWindow:controller profile:tab.profile cause:NSNull.null];
@@ -739,15 +738,6 @@ const char kPageReportsKey = 0;
   // As CEF's CloseBrowser(true): the app already dropped the tab, so no beforeunload keeps it alive unseen.
   if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
   else [tab close];
-}
-
-- (void)activate {
-  NNCoreWindowController *controller = self.controller;
-  if (!_tab || !controller) return;
-  controller.hostChanges++;
-  [controller.coreWindow activateTab:_tab];
-  [NNCoreTabStrip activated:_tab inWindow:controller];
-  controller.hostChanges--;
 }
 
 - (void)placeTab {
@@ -899,8 +889,6 @@ const char kPageReportsKey = 0;
   if (visible && self.alphaValue < 1 && _tab.view.superview == self && !_tab.view.hidden) self.alphaValue = 1;
   [self schedulePainting];
   [self userSightChanged];
-  // With tab-strip commands, only they (and Chrome) change the active tab.
-  if (visible && !NNCoreTabStrip.commandsSeen) [self activate];
 }
 
 // The one rule for "the user left this page", which automatic Picture in Picture and Chrome's reading of shown tabs
@@ -1022,10 +1010,10 @@ const char kPageReportsKey = 0;
   return view.window.windowNumber;
 }
 
-// Tests: a click into the page as the user's, though a hidden instance's window is never key. For the moment Chrome's
-// page view takes the window as key (AppKit's isKeyWindow and the view's didBecomeKey), and becomes first responder
-// as a mouse down makes it; then the window resigns again. Chrome's own focus path runs (GotFocus →
-// OnWebContentsFocused → tabDidGainFocus:), and nothing is activated.
+// Tests: a click into the page as the user's. As a mouse down does, its window becomes key (a test instance's key window
+// is AppKit's as the app-active seam has it, NNCoreActivation.mm) and the page first responder, taking focus afresh
+// even if it had it; Chrome's own focus path runs (GotFocus → OnWebContentsFocused → tabDidGainFocus:), and nothing is
+// activated.
 + (BOOL)devFocusPageOfBrowser:(int)browserId {
 #if DEBUG
   NNCoreTab *tab = nncore_host::TabWithBrowserId(browserId);
@@ -1038,19 +1026,9 @@ const char kPageReportsKey = 0;
     [queue addObjectsFromArray:v.subviews];
   }
   if (!window || !page) return NO;
-  Method isKey = class_getInstanceMethod(NSWindow.class, @selector(isKeyWindow));
-  IMP original = method_getImplementation(isKey);
-  method_setImplementation(isKey, imp_implementationWithBlock(^BOOL(NSWindow *w) {
-    return w == window || ((BOOL (*)(id, SEL))original)(w, @selector(isKeyWindow));
-  }));
+  [window makeKeyWindow];
   [window makeFirstResponder:nil];
-  ((void (*)(id, SEL, id))objc_msgSend)(page, NSSelectorFromString(@"windowDidBecomeKey:"),
-                                        [NSNotification notificationWithName:NSWindowDidBecomeKeyNotification object:window]);
-  const BOOL took = [window makeFirstResponder:page];
-  method_setImplementation(isKey, original);
-  ((void (*)(id, SEL, id))objc_msgSend)(page, NSSelectorFromString(@"windowDidResignKey:"),
-                                        [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:window]);
-  return took;
+  return [window makeFirstResponder:page];
 #else
   return NO;
 #endif

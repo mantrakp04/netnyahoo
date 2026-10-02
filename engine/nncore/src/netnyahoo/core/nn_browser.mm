@@ -234,7 +234,7 @@ void ActivateExclusively(Browser* browser) {
   state->DidBecomeActive();
 }
 
-// The window that was key last (or the host asked to focus), while none is.
+// The window that was key last, while none is.
 base::WeakPtr<WindowHost>& LastUsersWindow() {
   static base::NoDestructor<base::WeakPtr<WindowHost>> host;
   return *host;
@@ -254,7 +254,7 @@ bool WindowHost::IsUsersWindow() {
       return false;  // the user's window is another one
     }
   }
-  // None yet (a launch, a test instance before the host focused one): the first that asks.
+  // None yet (a launch): the first that asks.
   if (!LastUsersWindow()) {
     LastUsersWindow() = GetWeakPtr();
   }
@@ -272,30 +272,19 @@ void WindowHost::NoteHostActivated(Browser* browser) {
   ActivateExclusively(browser);
 }
 
-void WindowHost::NoteFocusIntent() {
-  if (internal_) {
-    return;
-  }
-  LastUsersWindow() = GetWeakPtr();
-  if (Browser* browser = active_profile_ ? ExistingBrowserFor(active_profile_) : nullptr) {
-    NoteHostActivated(browser);
-  }
-}
-
 void WindowHost::RequestActivation(Browser* browser) {
   if (internal_ || !widget_ || !widget_->IsVisible() ||
       ExistingBrowserFor(browser->GetProfile()) != browser) {
     return;
   }
   // The user is in another app: nothing moves (Chrome would activate the app; its activation
-  // from Chrome's side is refused there anyway). A test instance is never active: it asks.
-  if (!NSApp.isActive && !getenv("NETNYAHOO_BACKGROUND")) {
+  // from Chrome's side is refused there anyway).
+  if (!NSApp.isActive) {
     return;
   }
   if (IsActiveBrowser(browser)) {
     // As the host focuses its windows: the key window then makes the Browser Chrome's active
-    // one (OnWidgetActivationChanged), and a test instance's request counts as the key window
-    // (NoteFocusIntent). The central guard keeps an app in the background where it is.
+    // one (OnWidgetActivationChanged).
     [ns_window() makeKeyAndOrderFront:nil];
     return;
   }
@@ -1378,14 +1367,10 @@ void TabBridge::DidStartNavigation(content::NavigationHandle* handle) {
   }
 }
 
-void TabBridge::NoteHostFocus() {
-  host_focus_at_ = base::TimeTicks::Now();
-}
-
 void TabBridge::OnWebContentsFocused(
     content::RenderWidgetHost* render_widget_host) {
-  // The page's focus, not the one following the host's own activate or -focus.
-  if (base::TimeTicks::Now() - host_focus_at_ < base::Milliseconds(250)) {
+  // The page's focus, not the host's own activate or -focus.
+  if (host_focusing_) {
     return;
   }
   [tab_ notify:@selector(tabDidGainFocus:)];

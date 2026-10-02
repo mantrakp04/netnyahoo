@@ -338,9 +338,6 @@ NNCORE_EXPORT
 // profile's Browser, as its menu item or shortcut would. NO if it is disabled.
 - (BOOL)executeChromeCommand:(int)commandId profile:(NNCoreProfile*)profile;
 - (void)showInactive;
-// The host asked AppKit to make this window key, and it can't be (a test instance never has the
-// key window): Chrome counts it as the user's window, as it would the key window.
-- (void)noteFocusIntent;
 // Test instances act the window's fullscreen out (no Space, no activation): while YES,
 // Chrome counts the window as fullscreen, as it does a real one.
 @property(nonatomic) BOOL actedFullScreen;

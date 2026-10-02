@@ -191,8 +191,10 @@ Test hygiene the run keeps (each was a real failure):
 
 `packages/nncore/scripts/activation-acceptance.mjs <Debug app> <scratch dir> [check…]` asserts three readings together:
 the panes the app shows, Chrome's selected tab and active Browser (an extension that records `tabs.onActivated` and
-reads `chrome.windows`), and native focus (a test instance never has the key window: the requests to make one key,
-`makeKeyAndOrderFront: on NNCoreWindow #<number>` in `activation.log`). Its fixtures are HTTPS (a certificate made per
+reads `chrome.windows`), and native focus (the key window, and the requests to make one key,
+`makeKeyAndOrderFront: on NNCoreWindow #<number>` in `activation.log`). A test instance is never really active: it fakes
+only that it reads as active (`NNCoreActivation.mm`; `devWindow(n, "fakeAppActive:0")` is the user in another app), and
+AppKit's key window follows as in an active app, so Chrome's views hear key changes as in production. Its fixtures are HTTPS (a certificate made per
 run; this instance only gets `--ignore-certificate-errors`), since Chrome's automatic Picture in Picture acts only on
 https and file pages; the call is a fake conference (fake camera, a Media Session `enterpictureinpicture` handler that
 counts its calls) on the media copy.

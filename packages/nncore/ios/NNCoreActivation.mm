@@ -172,6 +172,70 @@ bool Background() {
   return background;
 }
 
+// MARK: The app-active seam
+
+// A hidden test instance is never active, so AppKit never gives it a key window. It fakes that one fact: whether the app
+// is active (yes, unless a check says otherwise: SetAppActive). -[NSApplication isActive] reads it, and AppKit's key
+// window follows it as in an active app, as Chromium's ui::test::ScopedFakeNSWindowFocus has it: a window made key is
+// the key window, and while the app is active the resign and become-key notifications go out, which Chrome's views
+// (OnWidgetActivationChanged), its pages and the app hear. Everything after that is production's own focus path.
+namespace {
+
+bool gAppActive = true;
+__weak NSWindow *gKeyWindow;
+// AppKit's own -makeKeyWindow: in an app that isn't active it makes nothing key, but it is where AppKit sends key events.
+void (*gAppKitMakeKey)(id, SEL);
+
+void PostKey(NSWindow *window, bool key) {
+  if (window)
+    [NSNotificationCenter.defaultCenter postNotificationName:key ? NSWindowDidBecomeKeyNotification : NSWindowDidResignKeyNotification
+                                                      object:window];
+}
+
+void MakeKey(NSWindow *window) {
+  gAppKitMakeKey(window, @selector(makeKeyWindow));
+  if (window == gKeyWindow || !window.canBecomeKeyWindow) return;
+  NSWindow *previous = gKeyWindow;
+  gKeyWindow = window;
+  if (!gAppActive) return;
+  PostKey(previous, false);
+  PostKey(window, true);
+}
+
+// As AppKit does when the key window goes: the frontmost other window that can be key takes over.
+void KeyWindowLeaving(NSWindow *window) {
+  if (window != gKeyWindow) return;
+  gKeyWindow = nil;
+  if (gAppActive) PostKey(window, false);
+  for (NSWindow *next in NSApp.orderedWindows)
+    if (next != window && next.visible && next.canBecomeKeyWindow) return MakeKey(next);
+}
+
+void FakeKeyWindows() {
+  gAppKitMakeKey = (void (*)(id, SEL))method_getImplementation(class_getInstanceMethod(NSWindow.class, @selector(makeKeyWindow)));
+  Swizzle(NSApplication.class, @selector(isActive), ^BOOL(NSApplication *) { return gAppActive; });
+  Swizzle(NSApplication.class, @selector(keyWindow), ^NSWindow *(NSApplication *) { return gAppActive ? gKeyWindow : nil; });
+  Swizzle(NSWindow.class, @selector(isKeyWindow), ^BOOL(NSWindow *window) { return gAppActive && window == gKeyWindow; });
+  auto orderOut = (void (*)(id, SEL, id))method_getImplementation(class_getInstanceMethod(NSWindow.class, @selector(orderOut:)));
+  Swizzle(NSWindow.class, @selector(orderOut:), ^(NSWindow *window, id sender) {
+    KeyWindowLeaving(window);
+    orderOut(window, @selector(orderOut:), sender);
+  });
+  auto close = (void (*)(id, SEL))method_getImplementation(class_getInstanceMethod(NSWindow.class, @selector(close)));
+  Swizzle(NSWindow.class, @selector(close), ^(NSWindow *window) {
+    KeyWindowLeaving(window);
+    close(window, @selector(close));
+  });
+}
+
+}  // namespace
+
+void SetAppActive(bool active) {
+  if (!Background() || active == gAppActive) return;
+  gAppActive = active;
+  PostKey(gKeyWindow, active);
+}
+
 bool UserEvent() {
   switch (NSApp.currentEvent.type) {
     case NSEventTypeLeftMouseDown:
@@ -207,11 +271,11 @@ void InstallActivationGuardsEarly() {
   });
 
   if (!Background()) return;
+  FakeKeyWindows();
   auto note = [](NSString *name, NSWindow *window) {
-    if (!NSApp.isActive)
-      LogLater([NSString stringWithFormat:@"%@ on %@ #%ld \"%@\" (inactive app)", name, window.className,
-                                          (long)window.windowNumber, window.title],
-               NSThread.callStackReturnAddresses);
+    LogLater([NSString stringWithFormat:@"%@ on %@ #%ld \"%@\"%@", name, window.className, (long)window.windowNumber,
+                                        window.title, gAppActive ? @"" : @" (app inactive)"],
+             NSThread.callStackReturnAddresses);
   };
   // A child window ordered to the front (Chrome's bubbles: "extension added", save card…) would come up
   // over the user's other apps while its window stays behind them. Keep it just above its parent.
@@ -228,19 +292,22 @@ void InstallActivationGuardsEarly() {
       note(@"makeKeyAndOrderFront:", window);
       if (aboveParent(window)) [window makeKeyWindow];
       else original(window, selector, sender);
-      NoteFocusIntent(window);
     });
   }
-  for (NSString *name in @[ @"makeKeyWindow", @"orderFrontRegardless" ]) {
-    SEL selector = NSSelectorFromString(name);
+  Swizzle(NSWindow.class, @selector(makeKeyWindow), ^(NSWindow *window) {
+    note(@"makeKeyWindow", window);
+    MakeKey(window);
+  });
+  {
+    SEL selector = @selector(orderFrontRegardless);
     auto original = (void (*)(id, SEL))method_getImplementation(class_getInstanceMethod(NSWindow.class, selector));
-    const bool ordersFront = [name isEqualToString:@"orderFrontRegardless"];
     Swizzle(NSWindow.class, selector, ^(NSWindow *window) {
-      note(name, window);
-      if (!ordersFront || !aboveParent(window)) original(window, selector);
-      if (!ordersFront) NoteFocusIntent(window);
+      note(@"orderFrontRegardless", window);
+      if (!aboveParent(window)) original(window, selector);
     });
   }
+  // The key window makes the View menu's Enter Full Screen live: a real one would open a Space on the owner's screen.
+  Swizzle(NSWindow.class, @selector(toggleFullScreen:), ^(NSWindow *window, id) { ActToggleFullScreen(window); });
   Swizzle(NSApplication.class, @selector(unhide:), ^(NSApplication *app, id sender) {
     Log(@"unhide: (unhiding without activation)", NSThread.callStackSymbols);
     [app unhideWithoutActivation];
