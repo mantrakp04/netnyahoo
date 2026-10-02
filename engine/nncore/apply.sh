@@ -32,7 +32,9 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'g_netnyahoo_dnr_rule_matched(' "$src/extensions/browser/api/declarative_net_request/action_tracker.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/extensions/browser_window_util.cc" &&
     grep -q 'g_netnyahoo_extension_installed(' "$src/chrome/browser/ui/extensions/extension_install_ui_desktop.cc" &&
-    grep -q 'g_netnyahoo_prompts_without_tab' "$src/chrome/browser/download/download_crx_util.cc"
+    grep -q 'g_netnyahoo_prompts_without_tab' "$src/chrome/browser/download/download_crx_util.cc" &&
+    grep -q 'g_netnyahoo_tab_shown_by_host' "$src/chrome/browser/picture_in_picture/auto_picture_in_picture_tab_strip_observer_helper.cc" &&
+    grep -q 'g_netnyahoo_permission_tab_shown' "$src/components/permissions/permission_request_manager.cc"
   exit
 fi
 
@@ -524,29 +526,179 @@ print("hooked the user agent brand")
 PY2
 
 # Chrome's automatic Picture in Picture (a call's own window) follows the tab strip's active tab.
-# The host's own pages (its New Tab page) aren't tabs of the strip: a call left for one stayed the
-# strip's active tab, so Chrome closed the window it had just opened ("activated and unoccluded").
-# With the hook set, a tab the host hid reads as not activated (its cached state, which follows
-# the strip, stays as it was). Only NNCore sets the hook.
+# The host shows more and less than that (engine/nncore nn_host_visibility.h): both panes of a split
+# (focusing the other pane made Chrome take the call as left), and its own pages over the strip's
+# active tab (New Tab, another Space: the strip doesn't change). With the hook set, a tab the host
+# reported reads as activated exactly while the host shows it, and the host's changes reach the
+# observer (NetnyahooAutoPictureInPictureHostVisibilityChanged) as the strip's do. Only NNCore sets
+# the hook.
+python3 - "$src/chrome/browser/picture_in_picture/auto_picture_in_picture_tab_strip_observer_helper.h" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "NetnyahooHostVisibilityChanged" in s:
+    sys.exit(0)
+old = """ private:
+  void UpdateIsTabActivated(const TabStripModel* tab_strip_model);
+"""
+new = """  // Netnyahoo: NNCore's host showed or hid `contents`: if it is this helper's tab, read it
+  // again, as on a strip change (true).
+  bool NetnyahooHostVisibilityChanged(content::WebContents* contents);
+
+""" + old
+assert s.count(old) == 1
+open(path, "w").write(s.replace(old, new))
+PY2
 python3 - "$src/chrome/browser/picture_in_picture/auto_picture_in_picture_tab_strip_observer_helper.cc" <<'PY2'
 import sys
 path = sys.argv[1]
 s = open(path).read()
-if "g_netnyahoo_tab_hidden_by_host" in s:
+if "g_netnyahoo_tab_shown_by_host" in s:
     sys.exit(0)
 old_fn = "// static\nstd::unique_ptr<AutoPictureInPictureTabObserverHelperBase>\n"
-decl = ("// Netnyahoo: NNCore (engine/nncore) hides tabs without changing the strip.\n"
-        "bool (*g_netnyahoo_tab_hidden_by_host)(content::WebContents*) = nullptr;\n\n")
-old = """bool AutoPictureInPictureTabStripObserverHelper::IsTabActivated() {
-"""
-new = old + """  // Netnyahoo: NNCore (not cached: the strip didn't change)
-  if (g_netnyahoo_tab_hidden_by_host &&
-      g_netnyahoo_tab_hidden_by_host(GetObservedWebContents())) {
+decl = """// Netnyahoo: NNCore (engine/nncore) shows tabs itself: 1 shown, 0 hidden, -1 the strip decides.
+int (*g_netnyahoo_tab_shown_by_host)(content::WebContents*) = nullptr;
+
+namespace {
+// Netnyahoo: NNCore: the helpers observing a strip, to tell of the host's changes.
+std::set<AutoPictureInPictureTabStripObserverHelper*>& NetnyahooObserving() {
+  static base::NoDestructor<std::set<AutoPictureInPictureTabStripObserverHelper*>> helpers;
+  return *helpers;
+}
+}  // namespace
+
+// Netnyahoo: NNCore
+void NetnyahooAutoPictureInPictureHostVisibilityChanged(
+    content::WebContents* contents) {
+  for (AutoPictureInPictureTabStripObserverHelper* helper : NetnyahooObserving()) {
+    if (helper->NetnyahooHostVisibilityChanged(contents)) {
+      return;
+    }
+  }
+}
+
+bool AutoPictureInPictureTabStripObserverHelper::NetnyahooHostVisibilityChanged(
+    content::WebContents* contents) {
+  if (!is_observing_ || GetObservedWebContents() != contents) {
     return false;
   }
+  const bool old_is_tab_activated = is_tab_activated_;
+  UpdateIsTabActivated(GetCurrentTabStripModel());
+  if (is_tab_activated_ != old_is_tab_activated) {
+    RunCallback(is_tab_activated_);
+  }
+  return true;
+}
+
 """
-assert s.count(old_fn) == 1 and s.count(old) == 1
-s = s.replace(old_fn, decl + old_fn).replace(old, new)
+include = '#include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_strip_observer_helper.h"\n'
+includes = include + "\n#include <set>\n\n#include \"base/no_destructor.h\"\n"
+start_old = """  is_observing_ = true;
+"""
+start_new = start_old + """  NetnyahooObserving().insert(this);  // Netnyahoo: NNCore
+"""
+stop_old = """  is_observing_ = false;
+"""
+stop_new = stop_old + """  NetnyahooObserving().erase(this);  // Netnyahoo: NNCore
+"""
+update_old = """  if (tab_strip_model) {
+    // If there is not currently a selected tab, then the tabstrip is still
+"""
+update_new = """  if (tab_strip_model) {
+    // Netnyahoo: NNCore (a split's other pane is shown, a tab under the host's own page isn't)
+    const int shown = g_netnyahoo_tab_shown_by_host
+                          ? g_netnyahoo_tab_shown_by_host(GetObservedWebContents())
+                          : -1;
+    if (shown >= 0) {
+      is_tab_activated_ = shown == 1;
+      return;
+    }
+    // If there is not currently a selected tab, then the tabstrip is still
+"""
+# The tab a switch went to, told it became active (and so to close its own window): never one the
+# host hides (leaving a split hides both panes; the strip's active one isn't where the user went).
+active_old = """  return observed_tab_strip_model_->GetActiveWebContents();
+}
+"""
+active_new = """  content::WebContents* active = observed_tab_strip_model_->GetActiveWebContents();
+  // Netnyahoo: NNCore (a tab the host hides isn't the one the user went to)
+  if (active && g_netnyahoo_tab_shown_by_host &&
+      g_netnyahoo_tab_shown_by_host(active) == 0) {
+    return nullptr;
+  }
+  return active;
+}
+"""
+for old in (old_fn, include, start_old, stop_old, update_old, active_old):
+    assert s.count(old) == 1, old
+s = (s.replace(include, includes).replace(old_fn, decl + old_fn).replace(start_old, start_new)
+      .replace(stop_old, stop_new).replace(update_old, update_new).replace(active_old, active_new))
 open(path, "w").write(s)
 print("hooked auto picture-in-picture's tab strip observer")
+PY2
+
+# Permission prompts follow the tab strip's active tab: a split's other pane (shown, not the strip's
+# active tab) couldn't prompt until focused, and a page under the host's own page (New Tab, another
+# Space) could. With the hook set, a tab the host reported (engine/nncore nn_host_visibility.h) can
+# prompt exactly while the host shows it; an open prompt stays with its page (NNCore's prompts keep
+# alive across switches), and NNCore tells the manager of each change through OnVisibilityChanged.
+# Only NNCore sets the hook.
+python3 - "$src/components/permissions/permission_request_manager.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_permission_tab_shown" in s:
+    sys.exit(0)
+old_ns = "namespace permissions {\n"
+decl = """// Netnyahoo: NNCore (engine/nncore) shows tabs itself: 1 shown, 0 hidden, -1 the strip decides.
+int (*g_netnyahoo_permission_tab_shown)(content::WebContents*) = nullptr;
+
+"""
+helper = """
+namespace {
+// Netnyahoo: NNCore: whether a tab can prompt, as the host shows it (or `chrome_says`).
+bool NetnyahooTabActive(content::WebContents* contents, bool chrome_says) {
+  const int shown = g_netnyahoo_permission_tab_shown && contents
+                        ? g_netnyahoo_permission_tab_shown(contents)
+                        : -1;
+  return shown < 0 ? chrome_says : shown == 1;
+}
+}  // namespace
+"""
+vis_old = """  // If `tab_subscriptions_` isn't empty, defer to those listeners instead.
+  if (!tab_subscriptions_.empty()) {
+    return;
+  }
+  bool prior_tab_is_active_ = tab_is_active_;
+  tab_is_active_ = visibility != content::Visibility::HIDDEN;
+"""
+vis_new = """  // If `tab_subscriptions_` isn't empty, defer to those listeners instead.
+  // Netnyahoo: NNCore (unless the host says)
+  const bool host_says =
+      g_netnyahoo_permission_tab_shown &&
+      g_netnyahoo_permission_tab_shown(web_contents()) >= 0;
+  if (!tab_subscriptions_.empty() && !host_says) {
+    return;
+  }
+  bool prior_tab_is_active_ = tab_is_active_;
+  tab_is_active_ = NetnyahooTabActive(
+      web_contents(), visibility != content::Visibility::HIDDEN);
+"""
+adopt_old = """  tab_is_active_ = tab_interface->IsActivated();
+"""
+adopt_new = """  tab_is_active_ =
+      NetnyahooTabActive(web_contents(), tab_interface->IsActivated());  // Netnyahoo: NNCore
+"""
+status_old = """  const bool prior_tab_is_active_ = tab_is_active_;
+  tab_is_active_ = is_active;
+"""
+status_new = """  const bool prior_tab_is_active_ = tab_is_active_;
+  tab_is_active_ = NetnyahooTabActive(web_contents(), is_active);  // Netnyahoo: NNCore
+"""
+for old in (old_ns, vis_old, adopt_old, status_old):
+    assert s.count(old) == 1, old
+s = (s.replace(old_ns, decl + old_ns + helper, 1).replace(vis_old, vis_new)
+      .replace(adopt_old, adopt_new).replace(status_old, status_new))
+open(path, "w").write(s)
+print("hooked the permission request manager's tab activation")
 PY2

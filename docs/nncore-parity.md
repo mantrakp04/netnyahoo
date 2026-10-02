@@ -187,6 +187,25 @@ Test hygiene the run keeps (each was a real failure):
 | small-yahu | A Small Yahu window opens and navigates |
 | quit | ⌘Q → the app's quit flow → NNCore's quit; the session is saved; no crash report |
 
+### Activation (who is in front)
+
+`packages/nncore/scripts/activation-acceptance.mjs <Debug app> <scratch dir> [check…]` asserts three readings together:
+the panes the app shows, Chrome's selected tab and active Browser (an extension that records `tabs.onActivated` and
+reads `chrome.windows`), and native focus (a test instance never has the key window: the requests to make one key,
+`makeKeyAndOrderFront: on NNCoreWindow #<number>` in `activation.log`). Its fixtures are HTTPS (a certificate made per
+run; this instance only gets `--ignore-certificate-errors`), since Chrome's automatic Picture in Picture acts only on
+https and file pages; the call is a fake conference (fake camera, a Media Session `enterpictureinpicture` handler that
+counts its calls) on the media copy.
+
+| Check | What it proves |
+|---|---|
+| split-pane-focus | Clicking between a split's panes (Chrome's focus path) moves Chrome's selected tab and never pops the call out; leaving the split pops it out once; coming back closes it |
+| internal-page-and-space | The app's New Tab page and another Space pop the call out once each (Chrome's selected tab stays the call's) and returning closes it |
+| prompt-follows-page | An open prompt stays with its page across a switch; a hidden page asks only once shown; a split's unfocused pane asks at once |
+| background-window | A window made behind the user's, its Space changed, its shown tab closed: Chrome's last focused window and last used profile stay the user's; nothing asks AppKit to focus it |
+| extension-window-focus | `chrome.windows.update(B, { focused: true })` asks AppKit to focus B and Chrome follows; back to A the same; `focused: false` changes nothing (Chrome on macOS) |
+| quiet-commands | Save Page on the split's unfocused pane (the call): no `tabs.onActivated`, Chrome's selection unchanged; DevTools docked there (Chrome selects the inspected tab itself, as in Chrome): the call stays put |
+
 The engine's own run (`spikes/nncore-host/acceptance.mjs`, 96 checks at 66a7e266) covers what the app's can't
 reach: beforeunload cancelling a close and a quit, Dock/logout quits, IME wiring, tab capture with "Share this tab
 instead" and Stop sharing (`--auto-select-tab-capture-source-by-title`), the context menu's item click path,

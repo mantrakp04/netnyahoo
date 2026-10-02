@@ -2,6 +2,8 @@
 
 #import <AppKit/AppKit.h>
 
+#include <stdlib.h>
+
 #include <algorithm>
 
 #include "base/auto_reset.h"
@@ -232,16 +234,36 @@ void ActivateExclusively(Browser* browser) {
   state->DidBecomeActive();
 }
 
+// The window that was key last (or the host asked to focus), while none is.
+base::WeakPtr<WindowHost>& LastUsersWindow() {
+  static base::NoDestructor<base::WeakPtr<WindowHost>> host;
+  return *host;
+}
+
 }  // namespace
 
-void WindowHost::NoteHostActivated(Browser* browser) {
-  if (internal_ || !browser || ExistingBrowserFor(browser->GetProfile()) != browser) {
-    return;
+bool WindowHost::IsUsersWindow() {
+  if (internal_ || !widget_) {
+    return false;
+  }
+  if (widget_->IsActive()) {
+    return true;
   }
   for (WindowHost* host : Hosts()) {
-    if (host != this && host->widget() && host->widget()->IsActive()) {
-      return;  // the user's window is another one
+    if (host->widget() && host->widget()->IsActive()) {
+      return false;  // the user's window is another one
     }
+  }
+  // None yet (a launch, a test instance before the host focused one): the first that asks.
+  if (!LastUsersWindow()) {
+    LastUsersWindow() = GetWeakPtr();
+  }
+  return LastUsersWindow().get() == this;
+}
+
+void WindowHost::NoteHostActivated(Browser* browser) {
+  if (!IsActiveBrowser(browser) || !IsUsersWindow()) {
+    return;
   }
   if (GlobalBrowserCollection::GetInstance()->GetLastActiveBrowser() == browser &&
       ProfileManager::GetLastUsedProfileIfLoaded() == browser->GetProfile()) {
@@ -250,7 +272,47 @@ void WindowHost::NoteHostActivated(Browser* browser) {
   ActivateExclusively(browser);
 }
 
+void WindowHost::NoteFocusIntent() {
+  if (internal_) {
+    return;
+  }
+  LastUsersWindow() = GetWeakPtr();
+  if (Browser* browser = active_profile_ ? ExistingBrowserFor(active_profile_) : nullptr) {
+    NoteHostActivated(browser);
+  }
+}
+
+void WindowHost::RequestActivation(Browser* browser) {
+  if (internal_ || !widget_ || !widget_->IsVisible() ||
+      ExistingBrowserFor(browser->GetProfile()) != browser) {
+    return;
+  }
+  // The user is in another app: nothing moves (Chrome would activate the app; its activation
+  // from Chrome's side is refused there anyway). A test instance is never active: it asks.
+  if (!NSApp.isActive && !getenv("NETNYAHOO_BACKGROUND")) {
+    return;
+  }
+  if (IsActiveBrowser(browser)) {
+    // As the host focuses its windows: the key window then makes the Browser Chrome's active
+    // one (OnWidgetActivationChanged), and a test instance's request counts as the key window
+    // (NoteFocusIntent). The central guard keeps an app in the background where it is.
+    [ns_window() makeKeyAndOrderFront:nil];
+    return;
+  }
+  // Another profile's Browser: the host shows its tab (the profile comes with it) and focuses
+  // the window, as for a page asking for its tab.
+  content::WebContents* contents = browser->GetTabStripModel()->GetActiveWebContents();
+  NNCoreTab* tab = contents ? TabBridge::GetOrCreate(contents)->tab() : nil;
+  id<NNCoreTabDelegate> delegate = tab.delegate;
+  if ([delegate respondsToSelector:@selector(tab:requestsActivation:)]) {
+    [delegate tab:tab requestsActivation:@"window"];
+  }
+}
+
 void WindowHost::OnWidgetActivationChanged(views::Widget* widget, bool active) {
+  if (active && !internal_) {
+    LastUsersWindow() = GetWeakPtr();
+  }
   Browser* browser = !internal_ && active_profile_ ? ExistingBrowserFor(active_profile_) : nullptr;
   if (!browser) {
     return;
@@ -343,11 +405,12 @@ void WindowHost::SetActiveProfile(Profile* profile) {
   if (old_browser) {
     BrowserActiveStateManager::From(old_browser)->DidBecomeInactive();
   }
-  // The shown profile's Browser is Chrome's last active one: chrome.windows'
-  // currentWindow, keyboard shortcuts and new tabs from Chrome go to it (never one of the
-  // host's own hidden pages).
-  if (Browser* browser = internal_ ? nullptr : ExistingBrowserFor(profile)) {
-    BrowserActiveStateManager::From(browser)->DidBecomeActive();
+  // In the user's window, the shown profile's Browser is Chrome's last active one:
+  // chrome.windows' currentWindow, keyboard shortcuts and new tabs from Chrome go to it. A
+  // window in the background (one being made or restored, a profile prepared behind the
+  // user's) never takes that from the user's, and the host's own hidden pages never have it.
+  if (Browser* browser = ExistingBrowserFor(profile)) {
+    NoteHostActivated(browser);
   }
 }
 
@@ -601,9 +664,6 @@ void WindowHost::ActiveTabChanged(Browser* browser,
   // inside Chrome's tab-strip change).
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&ShowWaitingInstalledBubbles));
-  if (quiet_activation_) {
-    return;
-  }
   base::AutoReset<int> notifying(&g_tab_strip_notifying,
                                  g_tab_strip_notifying + 1);
   NNCoreTab* tab = TabBridge::GetOrCreate(contents)->tab();

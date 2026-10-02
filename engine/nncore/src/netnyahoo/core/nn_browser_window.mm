@@ -10,7 +10,6 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/autofill/save_address_bubble_controller.h"
 #include "chrome/browser/ui/autofill/update_address_bubble_controller.h"
-#include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
@@ -310,12 +309,20 @@ void NNBrowserWindow::Close() {
 }
 
 void NNBrowserWindow::Activate() {
-  // The host's own hidden pages never make their profile Chrome's last used.
-  if (!host_ || !browser_ || host_->internal()) {
-    return;
+  // Through the host's focus (chrome.windows.update focused, undocked DevTools closing): the
+  // window comes forward and its activation tells Chrome, never the bookkeeping alone. Not from
+  // inside Chrome's call: the host may switch tabs or profiles in response.
+  if (host_ && browser_) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(
+                       [](base::WeakPtr<WindowHost> host,
+                          base::WeakPtr<BrowserWindowInterface> browser) {
+                         if (host && browser) {
+                           host->RequestActivation(static_cast<Browser*>(browser.get()));
+                         }
+                       },
+                       host_, browser_->GetWeakPtr()));
   }
-  host_->SetActiveProfile(browser_->GetProfile());
-  BrowserActiveStateManager::From(browser_)->DidBecomeActive();
 }
 
 void NNBrowserWindow::SetBounds(const gfx::Rect& bounds) {

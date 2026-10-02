@@ -20,6 +20,27 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
 #include "chrome/browser/devtools/devtools_window.h"
+#include "base/metrics/user_metrics.h"
+#include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/devtools/devtools_toggle_action.h"
+#include "chrome/browser/ui/tab_contents/core_tab_helper.h"
+#include "chrome/common/content_restriction.h"
+#include "chrome/common/pref_names.h"
+#include "content/public/common/url_utils.h"
+#include "components/policy/core/common/policy_pref_names.h"
+#include "components/web_modal/web_contents_modal_dialog_manager.h"
+#include "pdf/buildflags.h"
+#include "printing/buildflags/buildflags.h"
+#if BUILDFLAG(ENABLE_PDF)
+#include "chrome/browser/pdf/pdf_extension_util.h"
+#include "pdf/pdf_features.h"
+#endif
+#if BUILDFLAG(ENABLE_PRINTING)
+#include "chrome/browser/printing/print_view_manager_common.h"
+#endif
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
+#include "chrome/browser/printing/print_preview_dialog_controller.h"
+#endif
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/extensions/extension_view.h"
 #include "chrome/browser/extensions/extension_view_host.h"
@@ -88,6 +109,7 @@
 #include "netnyahoo/core/nn_context_menu.h"
 #include "netnyahoo/core/nn_desktop_capture.h"
 #include "netnyahoo/core/nn_devtools_call.h"
+#include "netnyahoo/core/nn_host_visibility.h"
 #include "netnyahoo/core/nn_picture_in_picture.h"
 #include "netnyahoo/core/nn_autofill_trigger.h"
 #include "base/trace_event/trace_config.h"
@@ -704,6 +726,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
         nncore::InstallExternalAppPrompts();
         nncore::InstallContextMenuShowHandler();
         nncore::StartPictureInPictureObserver();
+        nncore::StartHostVisibility();
         [g_delegate engineDidStart];
       }),
       .shutting_down = base::BindOnce([] {
@@ -1405,7 +1428,8 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   if (!browser) {
     return;
   }
-  _host->SetActiveProfile(browser->GetProfile());
+  // The strip's selection only: the profile the window shows is the host's own call
+  // (setActiveProfile:), so a hidden profile's strip settling never shows that profile.
   _host->NoteHostActivated(static_cast<Browser*>(browser));
   nncore::TabBridge::GetOrCreate(contents)->NoteHostFocus();
   TabStripModel* model = browser->GetTabStripModel();
@@ -1449,6 +1473,10 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 
 - (void)showInactive {
   _host->ShowInactive();
+}
+
+- (void)noteFocusIntent {
+  _host->NoteFocusIntent();
 }
 
 - (BOOL)actedFullScreen {
@@ -1623,6 +1651,98 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 @end
 
 // --- NNCoreTab --------------------------------------------------------------------------
+
+namespace {
+
+// Chrome's page commands (print, save, DevTools) aimed at `contents` itself, as Chrome's own
+// commands are at the strip's active tab, with the checks those commands make (CanPrint,
+// CanSavePage). For a tab that isn't the active one: selecting it for the command told
+// extensions (tabs.onActivated), automatic Picture in Picture and permission prompts of two
+// tab switches. nullopt: not one of these.
+std::optional<bool> RunPageCommand(content::WebContents* contents, int command) {
+  Profile* profile = Profile::FromBrowserContext(contents->GetBrowserContext());
+  PrefService* prefs = profile->GetPrefs();
+  CoreTabHelper* core = CoreTabHelper::FromWebContents(contents);
+  const int restrictions = core ? core->content_restrictions() : 0;
+  switch (command) {
+#if BUILDFLAG(ENABLE_PRINTING)
+    case IDC_PRINT:
+    case IDC_BASIC_PRINT: {
+      auto* dialogs = web_modal::WebContentsModalDialogManager::FromWebContents(contents);
+      const bool can_print = prefs->GetBoolean(prefs::kPrintingEnabled) && !contents->IsCrashed() &&
+                             !(dialogs && dialogs->IsDialogActive()) &&
+                             !(restrictions & CONTENT_RESTRICTION_PRINT);
+      // The system dialog also from the page's print preview (CanBasicPrint).
+      bool preview = false;
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
+      auto* previews = printing::PrintPreviewDialogController::GetInstance();
+      preview = previews && (previews->GetPrintPreviewForContents(contents) ||
+                             previews->is_creating_print_preview_dialog());
+#endif
+      if (!can_print && !(command == IDC_BASIC_PRINT && preview &&
+                          prefs->GetBoolean(prefs::kPrintingEnabled))) {
+        return false;
+      }
+      if (command == IDC_PRINT) {
+        printing::StartPrint(contents, prefs->GetBoolean(prefs::kPrintPreviewDisabled),
+                             /*has_selection=*/false);
+      } else {
+        printing::StartBasicPrint(contents);
+      }
+      return true;
+    }
+#endif
+    case IDC_SAVE_PAGE: {
+      PrefService* local_state = g_browser_process->local_state();
+      content::NavigationEntry* entry = contents->GetController().GetLastCommittedEntry();
+      if ((local_state && !local_state->GetBoolean(prefs::kAllowFileSelectionDialogs)) ||
+          static_cast<policy::DownloadRestriction>(
+              prefs->GetInteger(policy::policy_prefs::kDownloadRestrictions)) ==
+              policy::DownloadRestriction::ALL_FILES ||
+          (restrictions & CONTENT_RESTRICTION_SAVE) ||
+          (entry && !content::IsSavableURL(entry->GetURL()))) {
+        return false;
+      }
+      base::RecordAction(base::UserMetricsAction("SavePage"));
+#if BUILDFLAG(ENABLE_PDF)
+      // As chrome::SavePage: the PDF viewer saves itself (its edits included).
+      if (contents->GetContentsMimeType() == "application/pdf" &&
+          chrome_pdf::features::IsOopifPdfEnabled() &&
+          pdf_extension_util::MaybeDispatchSaveEvent(contents->GetPrimaryMainFrame())) {
+        return true;
+      }
+#endif
+      contents->OnSavePage();
+      return true;
+    }
+    case IDC_DEV_TOOLS_CONSOLE:
+    case IDC_DEV_TOOLS_INSPECT:
+      DevToolsWindow::OpenDevToolsWindow(
+          contents,
+          command == IDC_DEV_TOOLS_CONSOLE ? DevToolsToggleAction::ShowConsolePanel()
+                                           : DevToolsToggleAction::Inspect(),
+          DevToolsOpenedByAction::kMainMenuOrMainShortcut);
+      return true;
+    case IDC_DEV_TOOLS_TOGGLE: {
+      // As Chrome's toggle: docked tools close (their own beforeunload first, as
+      // DevToolsWindow::Close; still loading, they stay), undocked ones come forward, none open.
+      DevToolsWindow* tools = DevToolsWindow::GetInstanceForInspectedWebContents(contents);
+      if (tools && tools->IsDocked()) {
+        if (content::WebContents* docked = DevToolsWindow::GetInTabWebContents(contents, nullptr)) {
+          docked->DispatchBeforeUnload(/*auto_cancel=*/false);
+        }
+      } else {
+        DevToolsWindow::OpenDevToolsWindow(contents, DevToolsToggleAction::Show(),
+                                           DevToolsOpenedByAction::kMainMenuOrMainShortcut);
+      }
+      return true;
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
 
 @implementation NNCoreTab {
   raw_ptr<content::WebContents> _contents;
@@ -1965,26 +2085,15 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   if (index == active) {
     return chrome::ExecuteCommand(browser, command);
   }
-  // Chrome's page commands act on the active tab: this one, for a moment, unreported.
-  nncore::WindowHost* host = nncore::WindowHost::ForBrowser(browser);
-  if (host) {
-    host->set_quiet_activation(true);
+  // Not the active tab: the command aimed at it, never a moment's switch to it.
+  if (std::optional<bool> ran = RunPageCommand(_contents, command)) {
+    return *ran;
   }
-  base::WeakPtr<content::WebContents> previous =
-      active != TabStripModel::kNoTab ? model->GetWebContentsAt(active)->GetWeakPtr()
-                                      : nullptr;
-  model->ActivateTabAt(index);
-  const bool ran = chrome::ExecuteCommand(browser, command);
-  // Back to the tab that was active (by identity: the command may have moved or closed tabs).
-  const int back = previous ? model->GetIndexOfWebContents(previous.get())
-                            : TabStripModel::kNoTab;
-  if (back != TabStripModel::kNoTab && back != model->active_index()) {
-    model->ActivateTabAt(back);
+  // A command of the whole Browser (caret browsing) needs no tab of its own.
+  if (command == IDC_CARET_BROWSING_TOGGLE) {
+    return chrome::ExecuteCommand(browser, command);
   }
-  if (host) {
-    host->set_quiet_activation(false);
-  }
-  return ran;
+  return NO;
 }
 
 - (void)devToolsCall:(NSString*)method

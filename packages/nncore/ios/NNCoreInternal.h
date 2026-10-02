@@ -34,6 +34,9 @@ void InstallActivationGuardsLate();
 bool Background();
 // A line in $NETNYAHOO_DATA_DIR/activation.log, as the guards write theirs (what a test instance didn't show).
 void LogActivation(NSString *what);
+// A test instance asked AppKit to make `window` key, which it never becomes there: if it is an app window, Chrome
+// counts it as the user's one, as it would the key window (NNCoreChromeWindow.mm).
+void NoteFocusIntent(NSWindow *window);
 // A hidden test instance (dataDir non-nil) that crashes leaves its record in <dataDir>/crashes and exits, never
 // reaching macOS's crash reporter, whose "quit unexpectedly" dialog would show on the owner's screen.
 void InstallTestCrashGuard(NSString *_Nullable dataDir);

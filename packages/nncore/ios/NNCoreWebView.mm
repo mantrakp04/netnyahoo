@@ -578,6 +578,7 @@ const char kPageReportsKey = 0;
   _tab = tab;
   tab.delegate = self;
   [NNCoreTabs setView:self forTab:tab];
+  [NNCoreWebView noteShown:tab];
   [self bindRestoreKey];
   [self takePageReports];
   [self adoptIntoWindow];
@@ -621,6 +622,7 @@ const char kPageReportsKey = 0;
   if (TraceVisibility()) NSLog(@"[nncore-vis] %@ detach tab=%d", _transferKey, (int)_tab.tabId);
   if (_tab.delegate == self) _tab.delegate = nil;
   [NNCoreTabs setView:nil forTab:_tab];
+  [NNCoreWebView noteShown:_tab];
   [self stashPageReports];
   if (_tab.view.superview == self) [_tab.view removeFromSuperview];
   [self dropDevTools];
@@ -837,6 +839,25 @@ const char kPageReportsKey = 0;
   [self schedulePainting];
 }
 
+// Whether the app shows `tab` (the view holding it is visible: both panes of a split are), for Chrome's automatic
+// Picture in Picture and permission prompts, which would otherwise follow Chrome's strip: the app shows pages over its
+// active tab (New Tab, another Space) and a split's other pane beside it (engine: nn_host_visibility.h). Shown at once;
+// hidden once that held 300 ms (each change restarts the wait), so a switch settles first and a tab moving between
+// views never reads as hidden.
++ (void)noteShown:(NNCoreTab *)tab {
+  if (![tab respondsToSelector:@selector(noteShownByHost:)]) return;
+  static NSMapTable<NNCoreTab *, NSNumber *> *changes = [NSMapTable weakToStrongObjectsMapTable];
+  const NSUInteger change = [changes objectForKey:tab].unsignedIntegerValue + 1;
+  [changes setObject:@(change) forKey:tab];
+  NNCoreWebView *view = [NNCoreTabs viewForTab:tab];
+  if (view && view->_visible) return [tab noteShownByHost:YES];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+    if ([changes objectForKey:tab].unsignedIntegerValue != change) return;
+    NNCoreWebView *now = [NNCoreTabs viewForTab:tab];
+    if (!now || !now->_visible) [tab noteShownByHost:NO];
+  });
+}
+
 - (void)setVisible:(BOOL)visible {
   if (_visible == visible) return;
   _visible = visible;
@@ -853,21 +874,7 @@ const char kPageReportsKey = 0;
   [self schedulePainting];
   [self traceAutoPictureInPicture:visible ? @"app: tab shown" : @"app: tab hidden"];
   [self updateAutoPictureInPicture];
-  // Chrome's automatic Picture in Picture (a call's own window) hears of a tab switch from its tab strip. A switch to the
-  // app's New Tab page leaves the strip as it was: tell Chrome once the switch has settled (a new page's tab reaches the
-  // strip a moment later; the engine does nothing when the strip changed meanwhile or Chrome already acted).
-  if ([_tab respondsToSelector:@selector(noteShownByHost:)]) {
-    if (visible) {
-      [_tab noteShownByHost:YES];
-    } else {
-      __weak NNCoreWebView *weakSelf = self;
-      NNCoreTab *tab = _tab;
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        NNCoreWebView *view = weakSelf;
-        if (view && !view->_visible && view->_tab == tab) [tab noteShownByHost:NO];
-      });
-    }
-  }
+  if (_tab) [NNCoreWebView noteShown:_tab];
   // With tab-strip commands, only they (and Chrome) change the active tab.
   if (visible && !NNCoreTabStrip.commandsSeen) [self activate];
 }

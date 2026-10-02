@@ -219,6 +219,7 @@ class NNBrowserWindow : public BrowserWindow, public ExclusiveAccessContext {
   void ShowInactive() override;
   void Close() override;
   void Activate() override;
+  // As Chrome's own on macOS (NativeWidgetMac::Deactivate does nothing).
   void Deactivate() override {}
   void Maximize() override {}
   void Minimize() override {}

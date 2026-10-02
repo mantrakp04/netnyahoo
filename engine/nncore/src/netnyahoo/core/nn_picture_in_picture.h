@@ -23,10 +23,6 @@ void StartPictureInPictureObserver();
 bool PictureInPictureTracing();
 void TracePictureInPicture(const std::string& line);
 
-// The host hid (shown NO) or showed a tab without Chrome's tab strip changing (its own New Tab
-// page or another page of the host took the window): Chrome's automatic Picture in Picture
-// hears of it as a tab switch, as in Chrome, where a New Tab is a tab.
-void NoteTabShownByHost(content::WebContents* contents, bool shown);
 // Chrome's auto PiP inputs for `contents`, traced (a no-op unless tracing).
 void TraceAutoPictureInPictureInputs(content::WebContents* contents, const char* when);
 

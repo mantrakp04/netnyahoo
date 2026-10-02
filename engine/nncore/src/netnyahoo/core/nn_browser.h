@@ -85,19 +85,27 @@ class WindowHost : public TabStripModelObserver,
   Browser* BrowserFor(Profile* profile);
   Browser* ExistingBrowserFor(Profile* profile) const;
   std::vector<Browser*> browsers() const;
+  // Three things kept apart: the strip's selection (each Browser's active tab, the host's to
+  // set), the profile this window shows (here), and Chrome's active Browser (its last used
+  // profile, chrome.windows' focused window), which only the user's window publishes.
   void SetActiveProfile(Profile* profile);
   Profile* active_profile() const { return active_profile_; }
-  // The host showed one of this window's tabs: its Browser becomes Chrome's last active one
-  // (the last-used profile, which tab sharing follows) if this window is the user's (key),
-  // or none is (a hidden instance).
+  // The host showed one of this window's tabs: if it is the shown profile's and this window
+  // is the user's, its Browser is Chrome's active one (again).
   void NoteHostActivated(Browser* browser);
+  // The user's window: the key one; with none (the app in the background, a test instance,
+  // which never has the key window), the last one that was, or the host asked to focus.
+  bool IsUsersWindow();
+  // The host asked AppKit to make this window key and it can't be (a test instance): it is the
+  // user's window from now on, as a key window would be.
+  void NoteFocusIntent();
+  // Chrome wants `browser` in front (chrome.windows.update focused, DevTools closing): the
+  // host's own focus path, never Chrome's bookkeeping alone.
+  void RequestActivation(Browser* browser);
   // views::WidgetObserver: the user's window (key) makes its shown profile's Browser
   // Chrome's active one, as a BrowserView's activation does.
   void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
   bool IsActiveBrowser(const Browser* browser) const;
-  // While set, Chrome's active-tab changes aren't reported (a command run in a background
-  // tab activates it for a moment).
-  void set_quiet_activation(bool quiet) { quiet_activation_ = quiet; }
   // The host's own pages (a hidden extension page, extension popups): never history, and
   // never Chrome's active Browser (its last-used profile, which tab sharing and new windows
   // follow).
@@ -184,7 +192,6 @@ class WindowHost : public TabStripModelObserver,
   raw_ptr<Browser> asking_ = nullptr;
   int close_attempt_ = 0;
   bool widget_close_allowed_ = false;
-  bool quiet_activation_ = false;
   bool internal_ = false;
   bool acted_fullscreen_ = false;
   PendingOpen pending_open_;

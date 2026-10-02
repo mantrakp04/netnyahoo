@@ -883,6 +883,11 @@ NSUInteger PopupWindowCount() {
   return PopupWindows().count;
 }
 
+void NoteFocusIntent(NSWindow *window) {
+  NNCoreWindow *coreWindow = [NNCoreWindowController forNSWindow:window].coreWindow;
+  if ([coreWindow respondsToSelector:@selector(noteFocusIntent)]) [coreWindow noteFocusIntent];
+}
+
 }  // namespace nncore_host
 
 // MARK: - NNChromeWindowHost

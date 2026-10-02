@@ -285,14 +285,15 @@ const TabPane = memo(function TabPane({
             <FindBar tabId={tabId} />
             <StatusBubble tabId={tabId} maxWidth={Math.max(160, frame.width / 2)} />
             <SadTab tabId={tabId} />
-            <PermissionPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 308))} top={4} />
+            {/* A page's own prompts go with its page: not over the New Tab page shown in its place (Back to it). */}
+            {!newTabShown && <PermissionPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 308))} top={4} />}
             <PasswordPrompt tabId={tabId} right={8} top={4} />
-            <ExternalAppPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />
+            {!newTabShown && <ExternalAppPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />}
             {popover === "siteControls" && <SiteControls tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
             {popover === "popups" && <BlockedPopupsPrompt tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
             {popover === "zoom" && <ZoomPopover tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
             <SharePicker tabId={tabId} paneWidth={frame.width} />
-            <DeviceChooser tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />
+            {!newTabShown && <DeviceChooser tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />}
             <CastPicker tabId={tabId} paneWidth={frame.width} />
             <NavigationOverlays tabId={tabId} windowId={windowId} geometry={geometry} />
             <SelectionPopover tabId={tabId} zoom={zoom} />

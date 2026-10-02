@@ -209,7 +209,8 @@ void InstallActivationGuardsEarly() {
   if (!Background()) return;
   auto note = [](NSString *name, NSWindow *window) {
     if (!NSApp.isActive)
-      LogLater([NSString stringWithFormat:@"%@ on %@ \"%@\" (inactive app)", name, window.className, window.title],
+      LogLater([NSString stringWithFormat:@"%@ on %@ #%ld \"%@\" (inactive app)", name, window.className,
+                                          (long)window.windowNumber, window.title],
                NSThread.callStackReturnAddresses);
   };
   // A child window ordered to the front (Chrome's bubbles: "extension added", save card…) would come up
@@ -227,6 +228,7 @@ void InstallActivationGuardsEarly() {
       note(@"makeKeyAndOrderFront:", window);
       if (aboveParent(window)) [window makeKeyWindow];
       else original(window, selector, sender);
+      NoteFocusIntent(window);
     });
   }
   for (NSString *name in @[ @"makeKeyWindow", @"orderFrontRegardless" ]) {
@@ -236,6 +238,7 @@ void InstallActivationGuardsEarly() {
     Swizzle(NSWindow.class, selector, ^(NSWindow *window) {
       note(name, window);
       if (!ordersFront || !aboveParent(window)) original(window, selector);
+      if (!ordersFront) NoteFocusIntent(window);
     });
   }
   Swizzle(NSApplication.class, @selector(unhide:), ^(NSApplication *app, id sender) {

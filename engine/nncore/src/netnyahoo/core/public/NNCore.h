@@ -324,6 +324,9 @@ NNCORE_EXPORT
 // profile's Browser, as its menu item or shortcut would. NO if it is disabled.
 - (BOOL)executeChromeCommand:(int)commandId profile:(NNCoreProfile*)profile;
 - (void)showInactive;
+// The host asked AppKit to make this window key, and it can't be (a test instance never has the
+// key window): Chrome counts it as the user's window, as it would the key window.
+- (void)noteFocusIntent;
 // Test instances act the window's fullscreen out (no Space, no activation): while YES,
 // Chrome counts the window as fullscreen, as it does a real one.
 @property(nonatomic) BOOL actedFullScreen;
@@ -572,8 +575,9 @@ NNCORE_EXPORT
 // Chrome's automatic Picture in Picture takes (or took) this tab's switch away: the page
 // handles "enterpictureinpicture" and Chrome calls it, so the host must not as well.
 @property(readonly) BOOL autoPictureInPictureIsChromes;
-// The host hid or showed this tab without Chrome's tab strip changing (its own New Tab page took
-// the window): Chrome's automatic Picture in Picture hears of it as a tab switch.
+// The host shows this tab (YES: a split's panes are both shown) or stopped showing it (its own
+// page or another Space took the window, whatever Chrome's strip says). Chrome's automatic Picture
+// in Picture and permission prompts follow this, not the strip's active tab (nn_host_visibility.h).
 - (void)noteShownByHost:(BOOL)shown;
 // The page leaves tab fullscreen (the user left the window's own fullscreen).
 - (void)exitFullscreen;

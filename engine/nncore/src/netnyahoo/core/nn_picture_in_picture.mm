@@ -19,11 +19,9 @@
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
 #include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
-#include "content/public/browser/web_contents_user_data.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
-#include "components/tabs/public/tab_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
@@ -35,9 +33,6 @@
 #include "ui/gfx/native_ui_types.h"
 #include "netnyahoo/core/nn_browser.h"
 #import "netnyahoo/core/nncore_internal.h"
-
-// The tab strip observer's hook (engine/nncore/apply.sh).
-extern bool (*g_netnyahoo_tab_hidden_by_host)(content::WebContents*);
 
 namespace nncore {
 
@@ -223,17 +218,6 @@ void TracePictureInPicture(const std::string& line) {
 
 namespace {
 
-// A tab the host hid without Chrome's strip changing (NoteTabShownByHost), until it shows it.
-class HiddenByHost : public content::WebContentsUserData<HiddenByHost> {
- private:
-  explicit HiddenByHost(content::WebContents* contents)
-      : content::WebContentsUserData<HiddenByHost>(*contents) {}
-  friend class content::WebContentsUserData<HiddenByHost>;
-  WEB_CONTENTS_USER_DATA_KEY_DECL();
-};
-
-WEB_CONTENTS_USER_DATA_KEY_IMPL(HiddenByHost);
-
 // Chrome's own inputs to AutoPictureInPictureTabHelper::IsEligibleForAutoPictureInPicture.
 std::string AutoPictureInPictureInputs(content::WebContents* contents) {
   auto* helper = AutoPictureInPictureTabHelper::FromWebContents(contents);
@@ -259,48 +243,6 @@ std::string AutoPictureInPictureInputs(content::WebContents* contents) {
 
 }  // namespace
 
-void NoteTabShownByHost(content::WebContents* contents, bool shown) {
-  auto* helper = AutoPictureInPictureTabHelper::FromWebContents(contents);
-  tabs::TabInterface* tab = tabs::TabInterface::MaybeGetFromContents(contents);
-  // Only while Chrome's strip still has this tab active: a switch to another of its tabs is
-  // Chrome's own (its tab strip observer), and telling it twice would call the page twice.
-  const bool still_active = tab && tab->IsActivated();
-  const bool was_hidden = HiddenByHost::FromWebContents(contents) != nullptr;
-  if (PictureInPictureTracing()) {
-    TracePictureInPicture(base::StringPrintf(
-        "engine: host %s tab; Chrome's strip %s; %s", shown ? "shows" : "hides",
-        still_active ? "unchanged (told as a tab switch)" : "switched tabs itself",
-        AutoPictureInPictureInputs(contents).c_str()));
-  }
-  if (shown) {
-    if (!was_hidden) {
-      return;
-    }
-    contents->RemoveUserData(HiddenByHost::UserDataKey());
-    // As on a switch back in Chrome, the auto PiP window closes.
-    if (helper && helper->IsInAutoPictureInPicture()) {
-      helper->OnTabActivatedChanged(true);
-    }
-    return;
-  }
-  if (!helper || !still_active) {
-    return;
-  }
-  // Chrome's strip observer reads the tab as not activated from now on (apply.sh's hook), or
-  // Chrome would close the window it opens at once ("activated and unoccluded").
-  HiddenByHost::CreateForWebContents(contents);
-  // Chrome acted already (a window of the page's): once is enough.
-  if (helper->IsInAutoPictureInPicture() || helper->AreAutoPictureInPicturePreconditionsMet() ||
-      PictureInPictureWindowManager::GetInstance()->GetWebContents()) {
-    return;
-  }
-  helper->OnTabActivatedChanged(false);
-  if (PictureInPictureTracing()) {
-    TracePictureInPicture("engine: after telling Chrome: " +
-                          AutoPictureInPictureInputs(contents));
-  }
-}
-
 void TraceAutoPictureInPictureInputs(content::WebContents* contents, const char* when) {
   if (PictureInPictureTracing()) {
     TracePictureInPicture(std::string("engine: ") + when + ": " +
@@ -309,14 +251,6 @@ void TraceAutoPictureInPictureInputs(content::WebContents* contents, const char*
 }
 
 void StartPictureInPictureObserver() {
-  g_netnyahoo_tab_hidden_by_host = [](content::WebContents* contents) {
-    const bool hidden = HiddenByHost::FromWebContents(contents) != nullptr;
-    if (PictureInPictureTracing()) {
-      TracePictureInPicture(std::string("engine: Chrome asks if the tab is active; hidden by host: ") +
-                            (hidden ? "yes" : "no"));
-    }
-    return hidden;
-  };
   static base::NoDestructor<PictureInPictureObserver> observer;
   PictureInPictureWindowManager::GetInstance()->AddObserver(observer.get());
   if (Background()) {
