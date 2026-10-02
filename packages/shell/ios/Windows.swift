@@ -554,8 +554,11 @@ final class DragPreview {
     }
     pillSize = chip.size
     self.grab = NSPoint(x: grab.x - chip.minX, y: grab.y - chip.minY)
-    windowImage = Self.snapshot(window)
-    pillImage = windowImage.flatMap { Self.crop($0, to: chip, in: window) }
+    // Rendering the window's layers takes the main thread (0.3 s at 2x, mostly its shadows' blur): the window at
+    // half a point a pixel (the card shows a 1280-pt window at 418 px), and the pill, which shows at full size, alone
+    // at the screen's scale.
+    windowImage = Self.snapshot(window, scale: 0.5)
+    pillImage = Self.snapshot(window, scale: window.backingScaleFactor, of: chip)
     composeCard()
   }
 
@@ -875,27 +878,25 @@ final class DragPreview {
     cardImage = ctx.makeImage()
   }
 
-  private static func snapshot(_ window: NSWindow) -> CGImage? {
+  /// The window, or the part of it at `rect` (from its top-left), as its layers draw it at `scale`.
+  private static func snapshot(_ window: NSWindow, scale: CGFloat, of rect: NSRect? = nil) -> CGImage? {
     guard let view = window.contentView, let layer = view.layer else { return nil }
     let size = view.bounds.size
-    let scale = window.backingScaleFactor
-    guard size.width > 0, size.height > 0,
-      let ctx = CGContext(data: nil, width: Int(size.width * scale), height: Int(size.height * scale), bitsPerComponent: 8, bytesPerRow: 0,
+    let part = rect ?? NSRect(origin: .zero, size: size)
+    guard part.width > 0, part.height > 0,
+      let ctx = CGContext(data: nil, width: Int(part.width * scale), height: Int(part.height * scale), bitsPerComponent: 8, bytesPerRow: 0,
         space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
     else { return nil }
     ctx.setFillColor((window.backgroundColor ?? .windowBackgroundColor).cgColor)
-    ctx.fill(CGRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale))
+    ctx.fill(CGRect(x: 0, y: 0, width: part.width * scale, height: part.height * scale))
     ctx.scaleBy(x: scale, y: scale)
+    // CG's origin is bottom-left: the part's top-left at the context's top-left.
+    ctx.translateBy(x: -part.minX, y: part.maxY - size.height)
     if view.isFlipped || layer.isGeometryFlipped {
       ctx.translateBy(x: 0, y: size.height)
       ctx.scaleBy(x: 1, y: -1)
     }
     layer.render(in: ctx)
     return ctx.makeImage()
-  }
-
-  private static func crop(_ image: CGImage, to rect: NSRect, in window: NSWindow) -> CGImage? {
-    let scale = CGFloat(image.width) / max(1, window.frame.width)
-    return image.cropping(to: CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale))
   }
 }

@@ -56,9 +56,22 @@ startTabPictures();
 let dragSeq = 0;
 // The source window's frame as it is now (in full screen the store keeps the restored one).
 let liveFrame: Frame | null = null;
+// The pointer, kept here: the store has it only while the page or another window needs it (a move along the strip
+// or the list changes nothing anyone draws, so it notifies no one).
+let pointer: [number, number] = [-1, -1];
+// The picture the drag will show once it leaves its list, the shape last sent to it, and whether the native picture
+// was begun (it holds the window's snapshot, and may still be animating after its drag ended).
+type Picture = { chip: () => [number, number, number, number]; grab: [number, number] };
+let picture: Picture | null = null;
+let sentShape: DragPreviewShape = "hidden";
+let begun = false;
 
 export function beginTabDrag(tabId: string | null, tabIds: string[] = tabId ? [tabId] : []): number {
-  dragPreview.cancel();
+  if (begun) dragPreview.cancel();
+  begun = false;
+  picture = null;
+  sentShape = "hidden";
+  pointer = [-1, -1];
   const windowId = useBrowser.getState().tabs[tabIds[0] ?? ""]?.windowId ?? null;
   useTabDrag.setState({ ...IDLE, tabId, tabIds, windowId, x: -1, y: -1 });
   const seq = ++dragSeq;
@@ -83,6 +96,10 @@ export function updateTabDrag(x: number, y: number, lifted: boolean | null = nul
   const over = overWindow ? s.windows[overWindow]?.frame : null;
   const overPoint: [number, number] | null = screen && over ? [screen[0] - over[0], over[1] + over[3] - screen[1]] : null;
   const insert = drag.insert?.windowId === overWindow ? drag.insert : null;
+  pointer = [x, y];
+  // Along its own strip nothing else follows the pointer (the page's targets wait for the tab to leave it, and
+  // another window only matters outside this one): the store, and whatever reads it, hear nothing.
+  if (lifted === false && drag.lifted === false && !outside && !drag.outside) return;
   useTabDrag.setState({ x, y, lifted, outside, overWindow, overPoint, insert });
   syncPreview();
 }
@@ -114,17 +131,35 @@ function previewShape(d: TabDrag): DragPreviewShape {
 
 function syncPreview() {
   const d = useTabDrag.getState();
-  if (d.windowId) dragPreview.update(previewShape(d), [d.x, d.y]);
+  if (!d.windowId) return;
+  const shape = previewShape(d);
+  // Within its list there's no picture: nothing to send while it stays hidden.
+  if (shape === "hidden" && sentShape === "hidden") return;
+  if (shape !== "hidden" && picture) takePicture(picture, d.windowId);
+  sentShape = shape;
+  dragPreview.update(shape, pointer);
 }
 
-/** The dragged item's place in its window (from the top-left) and the pointer's, for its picture. `drag`: the
- * number beginTabDrag gave; a measure that comes back after its drag ended is dropped. */
-export function setDragPicture(drag: number, chip: [number, number, number, number], grab: [number, number]) {
-  const { windowId, tabId, tabIds } = useTabDrag.getState();
+/** The dragged item in its window (from the top-left; `chip` says where it is when asked) and the pointer, for its
+ * picture. `drag`: the number beginTabDrag gave; a measure that comes back after its drag ended is dropped. */
+export function setDragPicture(drag: number, chip: [number, number, number, number] | (() => [number, number, number, number]), grab: [number, number]) {
+  const { windowId, tabIds } = useTabDrag.getState();
   if (drag !== dragSeq || !windowId || !tabIds.length) return;
-  dragPreview.begin(windowId, chip, grab);
+  const rect = typeof chip === "function" ? chip() : chip;
+  picture = { chip: typeof chip === "function" ? chip : () => chip, grab: [grab[0] - rect[0], grab[1] - rect[1]] };
   // The pointer may have left the list before the measure came back.
   syncPreview();
+}
+
+// The window's snapshot takes the main thread for 0.1–0.2 s, so it's taken only once the tab leaves its list (a
+// reorder never needs it): of the item where it is now, with the pointer where it holds it.
+function takePicture({ chip, grab }: Picture, windowId: string) {
+  picture = null;
+  begun = true;
+  const drag = dragSeq;
+  const { tabId } = useTabDrag.getState();
+  const rect = chip();
+  dragPreview.begin(windowId, rect, [rect[0] + grab[0], rect[1] + grab[1]]);
   // The window's own snapshot has no web content: the engine paints the dragged tab's page if it's on screen; a
   // tab in the background shows its last picture (tabPictures.ts), or its icon and title. A selection or a split
   // shows the window's page.
@@ -135,9 +170,9 @@ export function setDragPicture(drag: number, chip: [number, number, number, numb
   // Only a page on screen is painted: a background tab would wait out the capture's deadline.
   const onScreen = !!shown && (shown === active || !!splitOf(s, active)?.tabIds.includes(shown));
   const live = (onScreen && webviews.get(shown)?.capturePicture(0.35).catch(() => null)) || Promise.resolve(null);
-  void live.then((picture) => {
+  void live.then((page) => {
     if (drag !== dragSeq || !useTabDrag.getState().tabIds.length) return;
-    if (picture) return dragPreview.page(picture.data, picture.frame);
+    if (page) return dragPreview.page(page.data, page.frame);
     const tab = shown ? useBrowser.getState().tabs[shown] : undefined;
     // On screen with no web page (a New Tab page): the window's own snapshot already shows it. A web page on screen
     // that couldn't be painted (capture failed or timed out) would leave the card's page blank.
@@ -184,20 +219,24 @@ const IDLE = {
 // window, or a new one) or, as in Dia, over the page away from a split target (a new window).
 export function endTabDrag(): boolean {
   const drag = useTabDrag.getState();
-  const { tabId, tabIds, windowId, outside, x, y, overWindow, overPoint } = drag;
+  const { tabId, tabIds, windowId, outside, overWindow, overPoint } = drag;
+  const [x, y] = pointer;
   const resolveInsert = overWindow && overPoint ? insertResolvers.get(overWindow) : undefined;
   const insertBefore = resolveInsert ? resolveInsert(overPoint!) : drag.insert?.windowId === overWindow ? drag.insert?.beforeId : undefined;
   const target = resolveTarget ? resolveTarget(x, y, drag.target, outside) : drag.target;
   const onPage = !outside && !!(drag.lifted ?? drag.onPage);
   useTabDrag.setState({ ...IDLE, tabIds: [] });
   dragSeq++;
+  picture = null;
+  const shown = begun;
+  sentShape = "hidden";
   if (target && tabId) {
     dragPreview.end();
     dropTabIntoSplit(tabId, target.tabId, target.side);
     return true;
   }
   if (!(outside || onPage) || !windowId || !tabIds.length) {
-    dragPreview.end();
+    if (shown) dragPreview.end();
     return false;
   }
   const asked: { frame: [number, number, number, number] | null } = { frame: null };
@@ -213,5 +252,8 @@ export function endTabDrag(): boolean {
 export function cancelTabDrag() {
   useTabDrag.setState({ ...IDLE, tabIds: [] });
   dragSeq++;
-  dragPreview.cancel();
+  picture = null;
+  if (begun) dragPreview.cancel();
+  begun = false;
+  sentShape = "hidden";
 }

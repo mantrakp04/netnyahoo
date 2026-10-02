@@ -655,6 +655,18 @@ right split"; the numbers are from the pixels.
   into the new window in 0.2 s, then fades in 0.1 s. A background tab's card shows its own page: its last picture
   (taken 1.5 s after it was shown or went to another page; memory only, not in private windows), else its icon
   and title.
+- **Reordering, frame by frame** (the owner's 60 fps phone video of Dia and Netnyahoo 0.2.22, 2026-10-02; frame strips in
+  `output/tab-drag/`): Dia's tab moves with the pointer from the first move and stays within about a frame of it
+  (motion blur limits the reading); it's opaque, so the tab it passes doesn't show through. Once its leading edge
+  passes a neighbour's centre, the neighbour slides into the place it left while the drag goes on: 91 % of the way
+  in 43 ms, 97 % in 60, all of it by ~76 ms (a critically damped spring, ω ≈ 90 rad/s, ~0.07 s). Let go at its
+  place, nothing else moves. Netnyahoo 0.2.22 in the same video: the tab stood still for 20 frames (333 ms) after the
+  pointer set off (the drag picture's window snapshot, 0.13–0.35 s of the main thread at the press), the neighbours
+  never moved (the dragged tab, at 0.92 opacity, slid over them), and the drop snapped everything in one frame. Now
+  (`layout/stripReorder.ts`): the snapshot waits until the tab leaves the strip and costs ~17 ms (the window at
+  half a point a pixel, the pill alone at 2x); the neighbours slide on that spring; the drop is one store update and
+  one Chrome strip command, and the tab settles into its place on the same spring. The sidebar's rows make room and
+  close up on the same spring, and the dropped row's ghost settles into its place before the row shows.
 - **In the strip** (both layouts): an item takes its neighbour's place once its leading edge passes the neighbour's
   centre, so a wide group passes a narrow tab. Not in the recordings, matched to Dia's behaviour: a group moves
   by its chip; a tab dragged into the pinned tabs (its leading edge past the last one's middle) is pinned there, and a

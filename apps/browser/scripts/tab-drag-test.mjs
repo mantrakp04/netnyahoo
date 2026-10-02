@@ -132,6 +132,49 @@ try {
     assert.deepEqual(await run(`return st().windows.w1.frame;`), frame);
   });
 
+  await check("a tab dragged along the strip changes nothing until the drop: then one store update and one Chrome strip command", async () => {
+    const now = await run(`return items("w1");`);
+    const before = await order("w1");
+    const at = (i) => Math.round((now[i][0] + now[i][1]) / 2);
+    // Only tabs with a page are Chrome's: the two it trades places with get one.
+    const live = before.slice(2, 4);
+    await run(`${JSON.stringify(live)}.forEach((id, i) => st().navigate(id, "data:text/html,<h1>" + i));
+      const ready = () => globalThis.nnChromeTabs.strips().some((s) => ${JSON.stringify(live)}.every((id) => s.tabs.some((t) => t.key === id)));
+      const wait = (n) => (ready() || !n ? Promise.resolve(ready()) : settle(100).then(() => wait(n - 1)));
+      return wait(100);`);
+    // The third item (a tab) right past the fourth's middle, with plenty of moves on the way.
+    const path = [[at(2), 21], [at(2) + 20, 21], [at(3), 21], [at(3) + 40, 21]];
+    const seen = await run(`
+      const cef = globalThis.expo.modules.NetnyahooCEF;
+      const send = cef.tabStripCommand;
+      const t0 = performance.now();
+      const log = { commands: [], windows: [], drag: [], picture: [] };
+      cef.tabStripCommand = (...a) => { log.commands.push(performance.now() - t0); return send.apply(cef, a); };
+      const unsubscribe = nn.store.subscribe((s, p) => { if (s.windows !== p.windows) log.windows.push(performance.now() - t0); });
+      const begin = nn.shell.dragPreview.begin;
+      nn.shell.dragPreview.begin = (...a) => { log.picture.push(performance.now() - t0); return begin(...a); };
+      // The drag's own store says when it starts and ends (the drop's store update comes right after, in the same task).
+      const stop = globalThis.nnTabDrag.subscribe((d, was) => { if (!d.tabIds.length !== !was.tabIds.length) log.drag.push([d.tabIds.length > 0, performance.now() - t0]); });
+      return act("w1", "drag:${path.map((p) => p.join(",")).join(";")}").then(() => settle(${path.length * 12 * 16 + 1200})).then(() => {
+        stop(); unsubscribe(); cef.tabStripCommand = send; nn.shell.dragPreview.begin = begin;
+        return log;
+      });`);
+    const start = seen.drag.find(([on]) => on)?.[1];
+    const drop = seen.drag.find(([on]) => !on)?.[1];
+    assert.ok(start !== undefined && drop !== undefined, JSON.stringify(seen.drag));
+    assert.deepEqual(seen.commands.filter((t) => t < drop), [], "no strip command while dragging");
+    assert.deepEqual(seen.windows.filter((t) => t < drop), [], "no store update while dragging");
+    assert.equal(seen.windows.length, 1, `one store update on drop: ${JSON.stringify(seen.windows)}`);
+    assert.equal(seen.commands.length, 1, `one strip command on drop: ${JSON.stringify(seen.commands)}`);
+    // A reorder never takes the window's picture (it stalls the main thread): only leaving the strip does.
+    assert.deepEqual(seen.picture, [], "no drag picture for a reorder");
+    const after = await order("w1");
+    assert.notDeepEqual(after, before, "it moved");
+    // Back where it was, for the cases after this one.
+    await run(`const id = ${JSON.stringify(before[2])}; const ids = ${JSON.stringify(before)}.filter((t) => !st().tabs[t].pinned); st().moveTab(id, ids.indexOf(id)); return settle(300);`);
+    assert.deepEqual(await order("w1"), before);
+  });
+
   await check("a lone tab dragged doesn't move its window", async () => {
     const lone = await run(`return items("w2");`);
     const x = Math.round((lone[0][0] + lone[0][1]) / 2);
@@ -319,6 +362,23 @@ try {
     assert.ok(state.some((t) => t?.side === "left"), `left target ${JSON.stringify(state.slice(-5))}`);
     const splits = await run(`return Object.values(st().splits).map((v) => v.tabIds);`);
     assert.ok(splits.some((ids) => ids[0] === row.id), JSON.stringify(splits));
+  });
+  await check("sidebar: a row let go between two others settles into its place, where the row then is", async () => {
+    await run(`st().newTab("w1"); st().newTab("w1"); st().newTab("w1"); return settle(1200);`);
+    const rows = await run(`return Promise.all([...globalThis.sidebarDrag.items.values()].filter((i) => i.kind === "row" && !i.parentGroup && i.view).map((i) => new Promise((r) => i.view.measureInWindow((x, y, w, h) => r({ id: i.tabIds[0], x, y, w, h })))));`);
+    rows.sort((a, b) => a.y - b.y);
+    assert.ok(rows.length >= 3, JSON.stringify(rows));
+    const row = rows[0];
+    const sx = Math.round(row.x + row.w / 2), sy = Math.round(row.y + row.h / 2);
+    // Down past the next row's middle, short of the one after.
+    const to = Math.round(rows[1].y + rows[1].h * 0.8);
+    const out = await run(`const c = globalThis.sidebarDrag; c.landed = null;
+      return act("w1", "drag:${sx},${sy};${sx},${sy + 10};${sx},${to}").then(() => settle(1500)).then(() => {
+        const l = c.landed; const it = l && c.items.get(l.key);
+        return new Promise((r) => (it ? it.view.measureInWindow((x, y) => r({ landed: l, row: { x, y } })) : r({ landed: l })));
+      });`);
+    assert.equal(out.landed?.key, `t:${row.id}`, JSON.stringify(out));
+    assert.ok(Math.abs(out.landed.x - out.row.x) < 0.5 && Math.abs(out.landed.y - out.row.y) < 0.5, JSON.stringify(out));
   });
 } finally {
   if (pid && alive(pid)) process.kill(pid);

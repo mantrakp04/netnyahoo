@@ -258,13 +258,13 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
                           if (current) onListHeight(measured.current);
                         }}
                       >
-                        <PinnedGrid tabs={tiles} innerWidth={innerWidth} dragging={current && !!ghost} />
+                        <PinnedGrid tabs={tiles} innerWidth={innerWidth} dragging={current && !!ghost && !ghost.landing} />
                         <View
                           ref={(v) => {
                             controller?.regions.set("pinnedGroups", v);
                           }}
                           onLayout={geometry ? (e) => void (geometry.current.regions.pinnedGroups = e.nativeEvent.layout.y) : undefined}
-                          style={{ marginTop: tiles.length || (current && ghost) ? 6 : topGap, gap: layout.rowGap }}
+                          style={{ marginTop: tiles.length || (current && ghost && !ghost.landing) ? 6 : topGap, gap: layout.rowGap }}
                         >
                           {pinnedGroups.map((id) => (
                             <GroupBlock key={id} groupId={id} section="pinnedGroups" />

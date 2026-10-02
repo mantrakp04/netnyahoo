@@ -39,6 +39,7 @@ export const PinnedGrid = memo(function PinnedGrid({ tabs, innerWidth, dragging 
       ref={(v) => {
         controller?.regions.set("tiles", v);
       }}
+      onLayout={() => void controller?.tilesLaidOut()}
       style={{ marginTop: topGap, flexDirection: "row", flexWrap: "wrap", rowGap: GAP, columnGap: GAP }}
     >
       {tabs.map((id) => (
