@@ -17,9 +17,9 @@ import { modifiersOf } from "./controls";
 import { usePageStyle, usePagerPages } from "./profilePager";
 import { ProfileSwipeArea } from "./ProfileSwipe";
 import { openNewTabInSplit } from "./splitActions";
+import { setMeasuredWidth, useMeasuredWidths } from "./measuredWidths";
 import { usePeek } from "./usePeek";
 import {
-  CHIP_WIDTH_GUESS,
   dragGeometry,
   dragRange,
   dropIndex,
@@ -237,16 +237,18 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
   const entries = useBrowser((s) => stripEntries(s, windowId, profileId));
   const activeId = useBrowser((s) => s.windows[windowId]?.activeTabIds[profileId] ?? "");
   const parsed = useMemo(() => parseEntries(entries), [entries]);
-  // Each group's chip as measured (its name's width), so the tabs' width leaves it room.
-  const [chipWidths, setChipWidths] = useState<Record<string, number>>({});
-  const chipOf = (groupId: string) => chipWidths[groupId] ?? CHIP_WIDTH_GUESS;
+  // Each group's chip as measured (its name's width), so the tabs' width leaves it room. Kept for the session: a strip
+  // mounting again (the peek, a layout or sidebar switch) lays out right at once. A new group shows once it's measured.
+  const groupIds = parsed.flatMap((e) => (e.kind === "group" ? [e.id] : []));
+  const chipWidths = useMeasuredWidths(groupIds.map(chipKey));
+  const chipOf = (groupId: string) => chipWidths[groupIds.indexOf(groupId)];
   // What's out in the strip: collapsed groups show only their active member.
   const visible = parsed.flatMap((e): Member[] => (e.kind === "group" ? (e.collapsed ? e.members.filter((m) => holds(m, activeId)) : e.members) : e.kind === "dock" ? [] : [e]));
   const pinnedCount = parsed.reduce((n, e) => n + (e.kind === "dock" ? e.ids.length : 0), 0);
   const chip = stripTabWidth({
     pageWidth,
     dockWidth: pinnedCount ? pinnedCount * (PINNED_CELL + PINNED_SPACING) - PINNED_SPACING + DOCK_GAP : 0,
-    groups: parsed.flatMap((e) => (e.kind === "group" ? [{ chip: chipOf(e.id), expanded: !e.collapsed, shown: e.members.some((m) => holds(m, activeId)) }] : [])),
+    groups: parsed.flatMap((e) => (e.kind === "group" ? [{ chip: chipOf(e.id) ?? 0, expanded: !e.collapsed, shown: e.members.some((m) => holds(m, activeId)) }] : [])),
     tabUnits: visible.reduce((n, m) => n + units(m), 0),
     gap: GAP,
     plus: ITEM_HEIGHT,
@@ -260,7 +262,7 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
       if (e.kind !== "group") return [{ tabIds: tabsOf(e), width: chip * units(e) }];
       const widths = e.members.map((m) => chip * units(m));
       const shown = e.members.findIndex((m) => holds(m, activeId));
-      const width = groupLayout(chipOf(e.id), widths, GAP, !e.collapsed, shown).width;
+      const width = groupLayout(chipOf(e.id) ?? 0, widths, GAP, !e.collapsed, shown).width;
       return [{ tabIds: e.members.flatMap(tabsOf), width, marginLeft: GROUP_MARGIN_LEFT, marginRight: GROUP_MARGIN_RIGHT }];
     }),
     GAP,
@@ -303,7 +305,7 @@ function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId
                       chip={chip}
                       activeId={activeId}
                       chipWidth={chipOf(e.id)}
-                      onChipWidth={(width) => setChipWidths((all) => (all[e.id] === width ? all : { ...all, [e.id]: width }))}
+                      onChipWidth={(width) => setMeasuredWidth(chipKey(e.id), width)}
                     />,
                   ];
                 if (e.kind === "split")
@@ -345,6 +347,7 @@ function parseEntries(keys: string[]): Entry[] {
   return out;
 }
 
+const chipKey = (groupId: string) => `strip-group-chip|${groupId}`;
 const holds = (m: Member, tabId: string) => (m.kind === "split" ? m.tabIds.includes(tabId) : m.id === tabId);
 const tabsOf = (m: Member) => (m.kind === "split" ? m.tabIds : [m.id]);
 // A split shows at most two panes' width.
@@ -822,7 +825,7 @@ function StripGroup({
   from: number;
   chip: number;
   activeId: string;
-  chipWidth: number;
+  chipWidth: number | undefined;
   onChipWidth: (width: number) => void;
 }) {
   const theme = useTheme();
@@ -834,7 +837,8 @@ function StripGroup({
   const expanded = !entry.collapsed;
   const widths = entry.members.map((m) => chip * units(m));
   const shown = entry.members.findIndex((m) => holds(m, activeId));
-  const { offsets, width } = groupLayout(chipWidth, widths, GAP, expanded, shown);
+  const chipSize = chipWidth ?? 0;
+  const { offsets, width } = groupLayout(chipSize, widths, GAP, expanded, shown);
   // Inside an open group, a member trades places with the other members only.
   const members = useMemo(() => dragGeometry(entry.members.map((m, i) => ({ tabIds: tabsOf(m), width: widths[i]! })), GAP), [entry.members, chip]);
   const tuckable = useBrowser((s) => !expanded && shown >= 0 && !!tuckTarget(s, windowId, profileId, entry.id));
@@ -896,7 +900,7 @@ function StripGroup({
   return (
     <Animated.View
       ref={drag.ref}
-      style={{ width: size, height: TOP_STRIP_HEIGHT, marginLeft: GROUP_MARGIN_LEFT, marginRight: GROUP_MARGIN_RIGHT, zIndex: drag.style.zIndex, transform: drag.style.transform }}
+      style={{ width: size, height: TOP_STRIP_HEIGHT, marginLeft: GROUP_MARGIN_LEFT, marginRight: GROUP_MARGIN_RIGHT, zIndex: drag.style.zIndex, transform: drag.style.transform, opacity: chipWidth === undefined ? 0 : 1 }}
     >
       <Animated.View
         pointerEvents="none"
@@ -913,13 +917,13 @@ function StripGroup({
           backgroundColor: tint ? withAlpha(tint, hovered ? 0.24 : 0.18) : hovered ? tokens.groupHeaderHover : tokens.groupFill,
         }}
       />
-      <Animated.View pointerEvents="none" style={{ position: "absolute", left: chipWidth + 0.75, top: MID - 7.5, width: 0.5, height: 15, backgroundColor: divider, opacity: fade }} />
+      <Animated.View pointerEvents="none" style={{ position: "absolute", left: chipSize + 0.75, top: MID - 7.5, width: 0.5, height: 15, backgroundColor: divider, opacity: fade }} />
       {entry.members.map((m, i) => (
         <GroupMember
           key={m.id}
           member={m}
           width={widths[i]!}
-          start={chipWidth + MEMBERS_INSET}
+          start={chipSize + MEMBERS_INSET}
           offset={offsets[i]!}
           open={open}
           interactive={memberInteractive(i === shown, expanded, moving)}

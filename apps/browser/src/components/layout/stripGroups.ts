@@ -14,7 +14,6 @@ export const GROUP_MARGIN_RIGHT = 4;
 export const MEMBERS_INSET = 6.5;
 export const TAIL_COLLAPSED = 4.5;
 export const TAIL_EXPANDED = 30.25;
-export const CHIP_WIDTH_GUESS = 49;
 // Both ways, the members and the container move on one spring: response 0.30 s, damping 0.82 (1 % overshoot,
 // settled in ~0.3 s). A tab tucked back into the group fades out in ~0.12 s.
 export const GROUP_SPRING = springParams(0.3, 0.82);
