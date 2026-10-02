@@ -78,7 +78,7 @@ don't re-render every tab.
 ## Helpers and side effects
 - Pure: store/model.ts — `viewTabIds`, `activeTabId`, `engineProfile` (the WebView `profile` prop), `windowTitle`.
 - Dialogs / native side effects go through lib/actions.ts (`closeTab`, `switchToTab`, `moveTabToProfile`,
-  `moveTabToWindow`, `createProfile`, `renameProfile`, `deleteProfile`, `openWindow`).
+  `moveTabToWindow`, `createProfile`, `deleteProfile`, `openWindow`).
 - Menu commands: lib/commands.ts (JS) + packages/shell/ios/Menus.swift (native menu bar).
 - Tests: `pnpm --filter @netnyahoo/browser test` (`docs/testing.md`).
 

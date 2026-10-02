@@ -10,10 +10,8 @@ import {
   replyToTerminate,
   setAppearance,
   setMenuStateParts,
-  setWindowProfile,
   setWindowTitle,
   windowIds,
-  WindowProfile,
   type MenuBookmark,
   type MenuState,
 } from "@netnyahoo/shell";
@@ -84,7 +82,6 @@ export function startNativeSync() {
     if (s.windows[id]?.incognito) void releaseProfile(incognitoProfileId(id));
   };
 
-  const windowProfiles = new Map<string, string>();
   const syncWindows = (s: BrowserState, prev?: BrowserState) => {
 // Open the focused window last so it comes to front.
     const focused = s.ui.focusedWindowId;
@@ -104,21 +101,10 @@ export function startNativeSync() {
       if (s.windows[id]) continue;
       open.delete(id);
       titles.delete(id);
-      windowProfiles.delete(id);
       void closeWindow(id);
       if (prev?.windows[id]?.incognito) void releaseProfile(incognitoProfileId(id));
     }
     if (prev && s.tabs === prev.tabs && s.windows === prev.windows && s.profiles === prev.profiles) return;
-    for (const id of WindowProfile ? [] : open) {
-      const w = s.windows[id]!;
-      const profile = engineProfile(w.profileId);
-      const key = w.incognito ? profile : `${profile}|${s.profileOrder.join(",")}`;
-      if (windowProfiles.get(id) === key) continue;
-      windowProfiles.set(id, key);
-      const at = s.profileOrder.indexOf(w.profileId);
-      const neighbours = w.incognito || at < 0 ? [] : [s.profileOrder[at - 1], s.profileOrder[at + 1]].filter((p): p is string => !!p).map(engineProfile);
-      void setWindowProfile(id, profile, neighbours);
-    }
     for (const id of open) {
       const title = windowTitle(s, id);
       if (titles.get(id) !== title) {

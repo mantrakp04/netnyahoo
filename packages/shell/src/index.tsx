@@ -218,7 +218,6 @@ const Shell = requireNativeModule<{
   removeDocument(name: string): void;
   openWindow(id: string, options: OpenWindowOptions): Promise<void>;
   closeWindow(id: string): Promise<void>;
-  setWindowProfile(id: string, profile: string, neighbours: string[]): Promise<void>;
   focusWindow(id: string): Promise<void>;
   setTrafficLightsCenter(id: string, center: [number, number] | null): Promise<void>;
   dragPreviewBegin?(windowId: string, chip: Rect4, grab: [number, number]): Promise<void>;
@@ -230,10 +229,9 @@ const Shell = requireNativeModule<{
   dragPreviewEnd?(windowId: string | null, frame: Rect4 | null): Promise<void>;
   setWindowTitle(id: string, title: string): Promise<void>;
   windowIds(): Promise<string[]>;
-  keyWindowId(): Promise<string | null>;
   setAppearance(mode: "auto" | "light" | "dark"): Promise<void>;
   isDarkAppearance(): Promise<boolean>;
-  setMenuState(state: MenuState | Omit<MenuState, MenuBookmarkKey>): Promise<void>;
+  setMenuState(state: Omit<MenuState, MenuBookmarkKey>): Promise<void>;
   setMenuBookmarks(bookmarks: Pick<MenuState, MenuBookmarkKey>): Promise<void>;
   replyToTerminate(ok: boolean): Promise<void>;
   confirm(options: ConfirmOptions): Promise<{ confirmed: boolean; suppressed: boolean }>;
@@ -259,8 +257,6 @@ export function showMenu(items: MenuItem[]): Promise<string | null> {
 }
 
 export const openWindow = (id: string, options: OpenWindowOptions = {}) => Shell.openWindow(id, options);
-export const setWindowProfile = (id: string, profile: string, neighbours: string[]) =>
-  Shell.setWindowProfile(id, profile, neighbours);
 
 export type WindowProfileProps = ViewProps & {
   profile: string;
@@ -292,11 +288,9 @@ export const dragPreview = {
 /** The window's frame now, on screen (AppKit's coordinates); null on builds without it. */
 export const windowFrame = (id: string): Promise<Rect4 | null> => Shell.windowFrame?.(id) ?? Promise.resolve(null);
 export const windowIds = () => Shell.windowIds();
-export const keyWindowId = () => Shell.keyWindowId();
 
 export const setAppearance = (mode: "auto" | "light" | "dark") => Shell.setAppearance(mode);
 export const isDarkAppearance = () => Shell.isDarkAppearance();
-export const setMenuState = (state: MenuState) => Shell.setMenuState(state);
 
 type MenuBookmarkKey = "bookmarkFolders" | "recentBookmarks" | "bookmarksBar" | "otherBookmarks";
 /**

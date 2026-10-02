@@ -32,7 +32,6 @@ import { goBack, goForward } from "../components/layout/history";
 import { openSplitPane } from "../components/layout/splitActions";
 import { runSidebarCommand } from "../components/sidebar/commands";
 import { numberedTabs } from "../components/sidebar/entries";
-import { setZoom } from "./zoom";
 import { openExtensionFromMenu } from "../components/extensions/bridge";
 import { toggleCastPicker } from "../components/media/cast";
 import { openManageExtensions, openPinDialog, openWebStore } from "../components/extensions/state";
@@ -182,11 +181,11 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "toggleSidebar":
       return s.toggleSidebar(windowId);
     case "zoomIn":
-      return page ? setZoom(page.id, 1) : undefined;
+      return page ? void web?.zoomStep(1) : undefined;
     case "zoomOut":
-      return page ? setZoom(page.id, -1) : undefined;
+      return page ? void web?.zoomStep(-1) : undefined;
     case "zoomReset":
-      return page ? setZoom(page.id, 0) : undefined;
+      return page ? void web?.zoomStep(0) : undefined;
     case "devTools":
       return void web?.showDevTools();
     case "toggleDevTools":

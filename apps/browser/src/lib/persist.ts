@@ -1,12 +1,9 @@
-import { cancelDownload, setZoom as setHostZoom, type Download } from "@netnyahoo/nncore";
+import { cancelDownload, type Download } from "@netnyahoo/nncore";
 import { readDocument, writeDocument } from "@netnyahoo/shell";
-import { EMPTY_BOOKMARKS, ensureRoots, newBookmarkId } from "../store/bookmarks";
 import { useBrowser, type BrowserState, type HydrateData } from "../store/browser";
-import { engineProfile, inPinnedContainer, isIncognitoProfile, makeTab, newId, snapshotTab } from "../store/model";
+import { inPinnedContainer, isIncognitoProfile, newId, snapshotTab } from "../store/model";
 import { parkWindowPins } from "../store/parkedPins";
-import { DEFAULT_PROFILE } from "../store/profiles";
-import { DEFAULT_SETTINGS } from "../store/settings";
-import type { Bookmarks, BrowserWindow, ClosedTab, HistoryEntry, Tab } from "../store/types";
+import type { BrowserWindow, ClosedTab, Tab } from "../store/types";
 import { startFavicons } from "./favicons";
 import { startBookmarks } from "./bookmarks";
 import { startHistory } from "./history";
@@ -107,80 +104,9 @@ type SessionV2 = {
   cleanedTabs?: BrowserState["cleanedTabs"];
 };
 
-type SessionV1 = {
-  version: 1;
-  tabs: Pick<Tab, "url" | "title" | "favicon" | "pinned" | "muted" | "zoom">[];
-  activeIndex: number;
-  closedUrls: string[];
-  history: HistoryEntry[];
-  bookmarks: { url: string; title: string; favicon: string | null }[];
-  sidebarOpen: boolean;
-  showFullUrl: boolean;
-};
-
-export function migrateV1(v1: SessionV1): HydrateData {
-  const profileId = DEFAULT_PROFILE.id;
-  const windowId = newId("w");
-  const tabs = v1.tabs.map((t) => ({ ...makeTab(windowId, profileId, "", t), url: t.url, navigation: null }));
-  const active = tabs[Math.min(Math.max(v1.activeIndex, 0), tabs.length - 1)];
-  const window: BrowserWindow = {
-    id: windowId,
-    profileId,
-    incognito: false,
-    tabIds: tabs.map((t) => t.id),
-    activeTabIds: active ? { [profileId]: active.id } : {},
-    sidebarOpen: v1.sidebarOpen,
-    frame: null,
-    createdAt: Date.now(),
-  };
-  const now = Date.now();
-  const closedTabs: ClosedTab[] = v1.closedUrls.map((url, i) => ({
-    kind: "tab",
-    id: newId("ct"),
-    tab: { url, title: "", favicon: null, pinned: false, muted: false, zoom: 1, customTitle: null, customIcon: null, profileId },
-    windowId,
-    index: tabs.length,
-    group: null,
-    closedAt: now - (v1.closedUrls.length - i),
-  }));
-  let [bookmarks, roots] = ensureRoots(EMPTY_BOOKMARKS, profileId);
-  for (const b of v1.bookmarks) {
-    const id = newBookmarkId();
-    const bar = bookmarks.nodes[roots.bar]!;
-    if (bar.kind !== "folder") break;
-    bookmarks = {
-      ...bookmarks,
-      nodes: {
-        ...bookmarks.nodes,
-        [id]: { kind: "url", id, parentId: roots.bar, title: b.title, url: b.url, favicon: b.favicon, addedAt: now },
-        [roots.bar]: { ...bar, children: [...bar.children, id] },
-      },
-    };
-  }
-  return {
-    profiles: { [profileId]: DEFAULT_PROFILE },
-    profileOrder: [profileId],
-    settings: { ...DEFAULT_SETTINGS, showFullUrl: v1.showFullUrl },
-    windows: tabs.length ? { [windowId]: window } : {},
-    windowOrder: tabs.length ? [windowId] : [],
-    focusedWindowId: tabs.length ? windowId : null,
-    tabs: byId(tabs),
-    closedTabs,
-    bookmarks,
-  };
-}
-
-export function loadSession(): { data: HydrateData | null; migrated: boolean } {
-  const session = read<SessionV2 | SessionV1>("session.json");
-  if (session?.version === 1) {
-    write("session.v1.backup.json", JSON.stringify(session));
-    // Chrome keeps history and bookmarks now: lib/history.ts and lib/bookmarks.ts move these files into it.
-    write("history.json", JSON.stringify({ version: VERSION, history: { [DEFAULT_PROFILE.id]: session.history } }));
-    const { bookmarks, ...data } = migrateV1(session);
-    write("bookmarks.json", JSON.stringify({ version: VERSION, bookmarks }));
-    return { data, migrated: true };
-  }
-  if (session?.version !== 2) return { data: null, migrated: false };
+export function loadSession(): HydrateData | null {
+  const session = read<SessionV2>("session.json");
+  if (session?.version !== 2) return null;
   const downloads = read<{ downloads: Download[] }>("downloads.json");
   const data: HydrateData = {
     profiles: session.profiles,
@@ -223,16 +149,7 @@ export function loadSession(): { data: HydrateData | null; migrated: boolean } {
     data.windowOrder = [];
     data.tabs = {};
   }
-  return { data, migrated: false };
-}
-
-function seedHostZoom() {
-  for (const t of Object.values(useBrowser.getState().tabs)) {
-    if (t.zoom === 1 || !t.url) continue;
-    try {
-      void setHostZoom(engineProfile(t.profileId), new URL(t.url).hostname, t.zoom);
-    } catch {}
-  }
+  return data;
 }
 
 let flush: () => void = () => {};
@@ -244,9 +161,7 @@ export function flushPersistence({ final = false } = {}) {
 }
 
 export function startPersistence() {
-  const { data, migrated } = loadSession();
-  useBrowser.getState().hydrate(data ?? {});
-  if (migrated) seedHostZoom();
+  useBrowser.getState().hydrate(loadSession() ?? {});
 
   const lastSources = new Map<string, unknown[]>();
   const lastJson = new Map<string, string>();
@@ -276,12 +191,11 @@ export function startPersistence() {
       const prev = lastSources.get(doc.name);
       if (prev && sources.every((v, i) => v === prev[i])) continue;
       lastSources.set(doc.name, sources);
-      if (!initial || migrated) dirty.add(doc);
+      if (!initial) dirty.add(doc);
     }
     if (dirty.size && !timer) timer = setTimeout(save, SAVE_DELAY_MS);
   };
   check(useBrowser.getState(), true);
-  if (migrated) save();
   const stopFavicons = startFavicons();
   const stopHistory = startHistory();
   const stopBookmarks = startBookmarks();

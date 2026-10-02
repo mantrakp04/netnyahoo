@@ -37,4 +37,3 @@ export function setUrlAnchor(windowId: string, anchor: UrlAnchor) {
   useUrlAnchors.setState({ [windowId]: anchor });
 }
 
-export const useUrlAnchor = (windowId: string): UrlAnchor | undefined => useUrlAnchors((s) => s[windowId]);

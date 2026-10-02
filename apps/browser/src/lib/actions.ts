@@ -1,10 +1,10 @@
 import * as cef from "@netnyahoo/nncore";
 import { listExtensions } from "@netnyahoo/nncore";
-import { confirm, focusWindow, prompt } from "@netnyahoo/shell";
+import { confirm, focusWindow } from "@netnyahoo/shell";
 import { pageToProfile } from "../components/layout/profilePager";
 import { profileNames, requestCreateProfile, type CreateProfilePreset } from "../components/profiles/CreateProfile";
 import { useBrowser, type CreateWindowOptions } from "../store/browser";
-import { activeTabId, closesWindow, engineProfile, isIncognitoProfile, resolveWindowId } from "../store/model";
+import { closesWindow, engineProfile, isIncognitoProfile, resolveWindowId } from "../store/model";
 import { engineIdOf, sharingProfiles } from "../store/profiles";
 import { applyHeldReports } from "./nativeEvents";
 import { webviews } from "./webviews";
@@ -53,13 +53,6 @@ export function toggleMute(tabId: string) {
 
 export function createProfile(windowId?: string, preset?: CreateProfilePreset): Promise<string | null> {
   return requestCreateProfile(windowId, preset);
-}
-
-export async function renameProfile(profileId: string, windowId?: string) {
-  const profile = store().profiles[profileId];
-  if (!profile) return;
-  const name = await prompt({ title: "Rename Profile", value: profile.name, placeholder: "Profile name", confirmTitle: "Rename", windowId });
-  if (name) store().updateProfile(profileId, { name });
 }
 
 export async function deleteProfile(profileId: string, windowId?: string) {
@@ -141,25 +134,10 @@ function cycleTarget(windowId: string, delta: 1 | -1) {
   return s.profileOrder[(i + delta + s.profileOrder.length) % s.profileOrder.length]!;
 }
 
-export function adjacentProfile(windowId: string, delta: 1 | -1): string | null {
-  const s = store();
-  const w = s.windows[windowId];
-  if (!w || w.incognito) return null;
-  const i = s.profileOrder.indexOf(w.profileId);
-  return i < 0 ? null : (s.profileOrder[i + delta] ?? null);
-}
-
 export function openUrls(urls: string[], windowId?: string | null) {
   let target = resolveWindowId(store(), windowId);
   for (const url of urls) {
     if (!target || store().windows[target]?.incognito) target = openWindow({ url });
     else store().newTab(target, { url });
   }
-}
-
-export function activeTabOf(windowId?: string | null) {
-  const s = store();
-  const id = resolveWindowId(s, windowId);
-  const tabId = id ? activeTabId(s, id) : undefined;
-  return tabId ? s.tabs[tabId] : undefined;
 }

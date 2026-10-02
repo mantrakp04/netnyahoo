@@ -204,8 +204,9 @@ The engine gains **`cef-zwindow-translucent.patch`**:
 - Installed shared on 2026-09-26; nothing on the default path asks for it.
 
 The app side:
-- `setWindowProfile(id, profile, neighbours)` from `lib/native.ts` (a no-op for ordinary windows) runs whenever
-  a window's profile changes: a swipe settles, ⌃1–9, a tab of another profile.
+- Each window's `<WindowProfile>` view (`components/layout/WindowProfile.tsx`; at first a `setWindowProfile` call
+  from `lib/native.ts`) passes its profile and neighbours whenever they change: a swipe settles, ⌃1–9, a tab of
+  another profile.
 - The window's Chrome window of that profile takes our root: `NNChromeWindowHost showProfile:inWindow:`, then
   the shell's registry follows through the swap callback.
 - The profiles next to it in profile order get their windows ahead, off screen; each Browser comes with its first tab.

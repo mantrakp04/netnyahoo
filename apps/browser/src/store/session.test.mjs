@@ -31,39 +31,6 @@ function windowWith(...hosts) {
   return { w, ids };
 }
 
-test("v1 session migrates to v2 and round-trips", () => {
-  stub.docs.clear();
-  stub.docs.set("session.json", JSON.stringify({
-    version: 1,
-    tabs: [
-      { url: "https://b.com", title: "B", favicon: null, pinned: true, muted: false, zoom: 1 },
-      { url: "https://a.com", title: "A", favicon: null, pinned: false, muted: true, zoom: 1.5 },
-    ],
-    activeIndex: 1, closedUrls: ["https://gone.com"],
-    history: [{ url: "https://a.com", title: "A", favicon: null, visits: 2, lastVisit: 1 }],
-    bookmarks: [{ url: "https://a.com", title: "A", favicon: null }],
-    sidebarOpen: false, showFullUrl: true,
-  }));
-  const { data, migrated } = loadSession();
-  assert.ok(migrated);
-  S().hydrate(data);
-  const w = S().windowOrder[0];
-  assert.equal(S().windows[w].sidebarOpen, false);
-  assert.equal(S().settings.showFullUrl, true);
-  const shown = S().tabs[active(w)];
-  assert.equal(shown.url, "https://a.com");
-  assert.equal(shown.zoom, 1.5);
-  assert.equal(shown.muted, true);
-  assert.ok(shown.navigation, "active tab loads");
-  assert.equal(S().tabs[model.viewTabIds(S(), w)[0]].navigation, null, "others lazy");
-  assert.equal(S().closedTabs[0].tab.url, "https://gone.com");
-  assert.equal(JSON.parse(stub.docs.get("history.json")).history.default[0].url, "https://a.com", "its history goes to Chrome next");
-  const { bookmarks } = JSON.parse(stub.docs.get("bookmarks.json"));
-  const bar = bookmarks.nodes[bookmarks.roots.default.bar];
-  assert.equal(bookmarks.nodes[bar.children[0]].url, "https://a.com", "its bookmarks go to Chrome next");
-  assert.ok(stub.docs.get("session.v1.backup.json"));
-});
-
 test("hydrate repairs dangling references", () => {
   S().hydrate({
     profiles: { default: { id: "default", name: "Personal", color: "plum", icon: null, createdAt: 0 } },
@@ -306,7 +273,7 @@ test("quit and relaunch after the window closed: the next window has the pinned 
   S().closeWindow(w);
   flushPersistence();
   stop();
-  S().hydrate(loadSession().data);
+  S().hydrate(loadSession());
   assert.equal(S().windowOrder.length, 0, "no window restored");
   const n = S().createWindow();
   assert.deepEqual(sidebar(n), PINS);

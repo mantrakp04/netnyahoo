@@ -1,7 +1,7 @@
 import { Symbol } from "@netnyahoo/shell";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
-import { setZoom } from "../../lib/zoom";
+import { webviews } from "../../lib/webviews";
 import { useTab } from "../../store/hooks";
 import { Popover, PromptButton, ToolbarButton } from "../layout/controls";
 import { setPopover, usePages } from "../layout/pageState";
@@ -35,7 +35,7 @@ export function ZoomPopover({ tabId, right, left, top }: { tabId: string; right?
       <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingLeft: 16, paddingRight: 10, gap: 8 }}>
         <Text style={{ flex: 1, fontSize: 13, fontVariant: ["tabular-nums"], color: theme.textPrimary }}>{`Zoom: ${Math.round(zoom * 100)}%`}</Text>
         <ZoomStepper tabId={tabId} zoom={zoom} percent={false} />
-        <PromptButton title="Reset" onPress={() => setZoom(tabId, 0)} />
+        <PromptButton title="Reset" onPress={() => void webviews.get(tabId)?.zoomStep(0)} />
       </View>
     </Popover>
   );
@@ -45,15 +45,15 @@ export function ZoomStepper({ tabId, zoom, percent = true }: { tabId: string; zo
   const theme = useTheme();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: percent ? 2 : 4 }}>
-      <StepButton icon="minus" tooltip="Zoom Out (⌘-)" onPress={() => setZoom(tabId, -1)} />
+      <StepButton icon="minus" tooltip="Zoom Out (⌘-)" onPress={() => void webviews.get(tabId)?.zoomStep(-1)} />
       {percent ? (
-        <Pressable onPress={() => setZoom(tabId, 0)} tooltip="Reset to 100%">
+        <Pressable onPress={() => void webviews.get(tabId)?.zoomStep(0)} tooltip="Reset to 100%">
           <Text style={{ width: 44, textAlign: "center", fontSize: 12, fontVariant: ["tabular-nums"], color: zoom === 1 ? theme.textSecondary : theme.textPrimary }}>
             {Math.round(zoom * 100)}%
           </Text>
         </Pressable>
       ) : null}
-      <StepButton icon="plus" tooltip="Zoom In (⌘+)" onPress={() => setZoom(tabId, 1)} />
+      <StepButton icon="plus" tooltip="Zoom In (⌘+)" onPress={() => void webviews.get(tabId)?.zoomStep(1)} />
     </View>
   );
 }

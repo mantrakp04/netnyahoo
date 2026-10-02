@@ -93,7 +93,7 @@ test("private entries an older build saved are dropped when the session loads, a
   flushPersistence();
   assert.ok(!saved().includes("secret.example"));
   stop();
-  const { data } = loadSession();
+  const data = loadSession();
   assert.deepEqual(data.cleanedTabs.map((c) => c.id), ["ct-ok"]);
 });
 
@@ -150,7 +150,7 @@ test("incognito downloads never reach downloads.json and leave with their window
   S().upsertDownload(download("2", privateProfile, "cancelled"));
   assert.deepEqual(S().downloads.map((d) => d.id), ["1"]);
 
-  const { data } = loadSession();
+  const data = loadSession();
   assert.deepEqual(data.downloads.map((d) => d.id), ["saved-0"]);
   stop();
 });
@@ -259,7 +259,7 @@ test("queued profile data is deleted once, and stays queued in session.json unti
   assert.deepEqual(S().orphanedProfileData, [""], "a failed deletion stays queued");
   flushPersistence();
   stop();
-  assert.deepEqual(loadSession().data.orphanedProfileData, [""]);
+  assert.deepEqual(loadSession().orphanedProfileData, [""]);
 
   // Next launch: it's tried again and leaves the queue once it succeeds.
   stub.profileDataLeft.clear();
@@ -268,7 +268,7 @@ test("queued profile data is deleted once, and stays queued in session.json unti
   assert.deepEqual(stub.deletedProfileData, ["", ""]);
   assert.deepEqual(S().orphanedProfileData, []);
   flushPersistence();
-  assert.deepEqual(loadSession().data.orphanedProfileData, []);
+  assert.deepEqual(loadSession().orphanedProfileData, []);
   again();
 });
 
