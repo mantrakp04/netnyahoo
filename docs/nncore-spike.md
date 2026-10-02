@@ -258,10 +258,11 @@ Codex (`gpt-6.1-sol`, high effort, read-only) reviewed the sources and the Chrom
 ## Reproduce
 
 ```bash
-# Chromium side (holds the chromium lock only while compiling):
-engine/nncore/apply.sh
-cd ~/chromium-build/chromium_git/chromium/src && source ~/chromium-build/scripts/env.sh
-~/Documents/netnyahoo/scripts/agent/locked chromium -- autoninja -C out/Release_GN_arm64 chrome_framework
+# Chromium side: both apply.sh, then autoninja, under the chromium lock (--help for the steps).
+scripts/agent/engine-build
+# By hand, after engine/chromium/apply.sh and engine/nncore/apply.sh:
+cd ~/chromium-build/chromium_git/chromium/src && PATH=$HOME/chromium-build/depot_tools:$PATH DEPOT_TOOLS_UPDATE=0 \
+  ~/Documents/netnyahoo/scripts/agent/locked chromium -- autoninja -C out/Release_GN_arm64 chrome_framework
 
 # Host app, signed, and the acceptance run:
 spikes/nncore-host/build.sh /tmp/nncore-host
@@ -280,7 +281,7 @@ The screen was locked for the whole spike:
 - the DevTools split;
 - the extension panel's placement.
 
-Use the SCK recorder from `docs/agent-brief.md` on `NNHost` once the screen is unlocked.
+Capture `NNHost`'s window (`screencapture -l`, `docs/agent-brief.md`) once the screen is unlocked.
 
 ## Stage 1 runtime
 

@@ -108,6 +108,6 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   - Every UI pixel is a real capture of the app.
 
 ## Repo map
-`apps/browser` is the React Native macOS app. The native Expo modules are in `packages/{nncore,shell,shaders,import,sync}` (`engine/nncore` is NNCore's engine side),
+`apps/browser` is the React Native macOS app. The native Expo modules are in `packages/{nncore,shell,shaders,import,sync}`; `engine/chromium` is our Chrome-services code (the `nn_*` C calls) and `engine/nncore` NNCore's window and tab layer,
 and `packages/core` holds the omnibox logic and its tests. `apps/site` is netnyahoo.com and
 `apps/launch-video` holds the launch films. The license is Apache-2.0.

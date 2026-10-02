@@ -1,14 +1,14 @@
 # Testing
 
-`pnpm test` at the root runs every unit test (82 cases). Turbo caches the results; a cold run spends most
+`pnpm test` at the root runs every unit test (126 cases). Turbo caches the results; a cold run spends most
 of its time in `swift test`'s first build. Each package also runs its own:
 
 | Package | Command | Cases |
 | --- | --- | --- |
-| `apps/browser` | `pnpm --filter @netnyahoo/browser test` | 49 |
+| `apps/browser` | `pnpm --filter @netnyahoo/browser test` | 72 |
 | `packages/core` | `pnpm --filter @netnyahoo/core test` | 14 |
 | `packages/sync` | `pnpm --filter @netnyahoo/sync test` (`swift test`, then `node --test`) | 5 + 8 |
-| `packages/import` | `pnpm --filter @netnyahoo/import test` (`swift test`) | 5 |
+| `packages/import` | `pnpm --filter @netnyahoo/import test` (`swift test`) | 26 |
 | `extras/raycast-netnyahoo` | `node --test extras/raycast-netnyahoo/src/scripts.test.ts` | 1 |
 
 `apps/browser` runs its TypeScript under plain Node: `src/test-loader.mjs` maps `@netnyahoo/shell`,
@@ -26,6 +26,57 @@ End-to-end checks need a built app and are run by hand:
 | Sync | `node packages/sync/scripts/e2e.mjs <Debug app>` | Two and three hidden instances through one folder (`docs/sync.md`) |
 | Engine patches | `python3 engine/patches/series.py check` | The patch series reproduces the Chromium tree (`docs/cef-source-build.md`) |
 | Engine (NNCore) | `node packages/nncore/scripts/acceptance.mjs <Debug app> <scratch dir>` | The app on NNCore, hidden (`docs/nncore-parity.md`) |
+| Native perf | `node apps/browser/scripts/perf/native-bench.mjs --app <Release app> --out <dir>` | Launch, idle, memory, tab and window latency; the release perf gate (`docs/perf/README.md`) |
+| JS perf | `node apps/browser/scripts/perf/js-bench.mjs run --app <Release app> --bundle <main.jsbundle> --label <name>` | What each interaction costs the JS thread (`docs/perf/README.md`) |
+
+## Test instances
+
+Launch with `open -g -n --env NAME=value … <app>` (`docs/agent-brief.md`). `NETNYAHOO_BACKGROUND=1` and a scratch
+`NETNYAHOO_DATA_DIR` make an instance a test instance; the rest are hooks for one test.
+
+| Variable | Read in | What it does |
+| --- | --- | --- |
+| `NETNYAHOO_BACKGROUND=1` | everywhere (below) | A hidden test instance (below) |
+| `NETNYAHOO_DATA_DIR` | `NNCoreHost.mm`, `packages/shell` `NNIsolation.m` | Scratch data dir (below). A Debug build refuses to start without one |
+| `NETNYAHOO_REMOTE_DEBUGGING_PORT` | `NNCoreHost.mm` | CDP on that port (`--remote-allow-origins=*`) |
+| `NETNYAHOO_JS_LOCATION=host:port` | `AppDelegate.swift` | This launch's Metro, never written to defaults |
+| `NETNYAHOO_CHROMIUM_SWITCHES` | `NNCoreHost.mm` | Extra Chrome switches, space-separated (background mode drops the auto-accept capture ones) |
+| `NETNYAHOO_ALLOW_OCCLUSION=1` | `NNCoreHost.mm` | Background mode keeps Chrome's occlusion |
+| `NETNYAHOO_ALLOW_AUDIO=1` | `NNCoreHost.mm`, `IntroMusic.swift` | Background mode keeps sound |
+| `NETNYAHOO_DOWNLOADS_DIR` | engine `nn_downloads.cc` | Chrome's download folder |
+| `NETNYAHOO_TEST_REAUTH=granted` | engine `nn_reauth.cc` | Background mode grants macOS re-auth requests (otherwise refused, each reported as `reauth.requested`) |
+| `NETNYAHOO_CONTEXT_MENU_LOG` | engine `nn_context_menu.mm` | Context menus go to the host instead of the screen, in any build |
+| `NETNYAHOO_FAKE_FULLSCREEN_MS` | `NNCoreChromeWindow.mm` | Length of the acted-out full-screen transition |
+| `NETNYAHOO_TRAFFIC_LIGHTS_LOG=<file>` | `NNCoreChromeWindow.mm` | Logs every traffic-light change (test instances only) |
+| `NETNYAHOO_PIP_SELFTEST` | `NNCorePictureInPicture.mm` | On the first PiP window: `close` / `backToTab` click Chrome's buttons (`pip-button-selftest.json`), `hover` holds the controls up (`pip-hover.json`, `NETNYAHOO_PIP_HOVER=close\|back`), anything else runs the style self-test (`pip-selftest.json`), all in the data dir |
+| `NETNYAHOO_TRACE_PIP=1` | engine `nn_picture_in_picture.mm` | PiP windows opening and closing, to `/tmp/nn-pip-trace.log` |
+| `NETNYAHOO_TRACE_VISIBILITY=1` | `NNCoreHost.mm`, `NNCoreWebView.mm` | Logs occlusion and each WebView attach/detach (`[nncore-vis]` in the system log) |
+| `NETNYAHOO_SHADERS_FORCE_KEY=1` | `MetalSurface.swift` | Metal views act as in the key window (the New Tab intro) |
+| `NETNYAHOO_RELEASE_NOTES=1` | `AppModule.swift` | Opens the release notes as after an update |
+| `NETNYAHOO_UPDATE_FEED_URL` | `Updater.swift` | Sparkle's feed; an instance with a scratch data dir checks for updates only with one |
+| `NETNYAHOO_SYNC_DEFAULT_FOLDER` | `SyncModule.swift` | The sync folder (`packages/sync/scripts/e2e.mjs`) |
+| `NETNYAHOO_IMPORT_SOURCE_DIR`, `_SAFARI_HOME`, `_TEST_SECRET`, `_DIA_BUNDLE_ID` | `ImportModule.swift` | Import from fixtures: the Application Support root, Safari's home, a fixed Safe Storage secret instead of the keychain, the app Dia's tabs come from (`packages/import/README.md`) |
+| `NETNYAHOO_ONBOARDING=1`, `_WHATS_NEW=1`, `_TELEMETRY=1`, `_LIVE_MOCK=<url>`, `_CALENDAR_FIXTURE=1` | JS, Debug builds only (`launchEnvironment`) | Run onboarding, show What's New, send telemetry, serve live folders from a mock, use the calendar fixture |
+
+`NETNYAHOO_BACKGROUND=1` changes:
+- **Activation:** the process is BackgroundOnly and every activation path is refused and logged to
+  `$NETNYAHOO_DATA_DIR/activation.log` (`NNCoreActivation.mm`). File panels never show: they answer with the paths in
+  `$NETNYAHOO_DATA_DIR/file-chooser.txt` (one a line, consumed), or cancel. Context menus are reported, not shown.
+- **Windows:** full screen is acted out (no new Space); windows answer NO to `-[NSWindow isOccluded]`, so a covered
+  window shows a tab at once instead of after Chrome's 1 s delay, with `--disable-backgrounding-occluded-windows`;
+  PiP windows stay at alpha 0 and click-through; the drag preview stays above its own window only.
+- **Media:** `--mute-audio`, no intro music, `--use-fake-device-for-media-stream` with the microphone kept on a fake
+  input (`nn_fake_media.mm`), and `--disable-modal-animations` (a locked screen never ends a dialog's close animation).
+- **Other:** macOS re-auth prompts never show; requests are refused unless `NETNYAHOO_TEST_REAUTH=granted`.
+
+A scratch `NETNYAHOO_DATA_DIR` holds Chrome's user data and the app's documents, its defaults, keychain items and
+Sparkle state (`NNIsolation.h`); Chrome gets `--use-mock-keychain`; update checks are off without
+`NETNYAHOO_UPDATE_FEED_URL`; a Release build's telemetry is tagged `test`, and the release-notes page stays closed
+unless `NETNYAHOO_RELEASE_NOTES=1`.
+
+A Release or RC build starts the dev harness (`dev-eval.js`) only when `$NETNYAHOO_DATA_DIR/perf-probe` exists in a
+test instance (`src/lib/perfProbe.ts`): `: > "$NETNYAHOO_DATA_DIR/perf-probe"` before launch, as
+`.claude/skills/release/scripts/smoke.sh` does.
 
 ## What's kept, and why
 
