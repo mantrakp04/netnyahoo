@@ -117,7 +117,8 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
   make the smallest possible change, or describe it in your report instead. Other agents
   are editing other files right now; never revert or reformat code you don't own.
 - **Commit your own work to `main`** (`git add -p` or explicit paths, only your hunks). Never commit another
-  agent's work in progress.
+  agent's work in progress. The index is shared, so a plain `git commit` sweeps in what others staged: commit
+  with `git commit --only -- <paths>` (or check `git diff --cached --stat` lists only your files).
 - **Never steal focus from the user.** They are working in other apps.
   - Launch the app only with `open -g` (never plain `open`, never `activate`) **and** with
     `NETNYAHOO_BACKGROUND=1`: `open -g` alone does not stop LaunchServices from making the app
