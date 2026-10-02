@@ -181,6 +181,9 @@ const server = createServer((req, res) => {
   // An extension's rules on a page (content-blocked-count): an image they block, a script they send to a stand-in.
   if (url.pathname === "/nn-ads") return res.end(page("Ads", `<img src="/nnblock-ad.png"><script src="/nnredirect-ad.js"></script>`));
   if (url.pathname === "/a") return res.end(page("Page A", `<a id="next" href="/b">to B</a> <a id="blank" target="_blank" href="/c">blank</a> <a id="cmd" href="/d">cmd</a>`));
+  // A page whose toolbar colour comes from the page script alone (a fixed header, no <meta name="theme-color">).
+  if (url.pathname === "/red-header")
+    return res.end(page("Red header", `<div style="position: fixed; top: 0; left: 0; right: 0; height: 60px; background: rgb(200, 0, 0)"></div><p style="margin-top: 80px">red</p>`));
   if (url.pathname === "/painted") return res.end(page("Painted", "painted", "<style>html, body { background: rgb(60, 60, 60) }</style>"));
   if (url.pathname === "/b") return res.end(page("Page B", "B"));
   if (url.pathname === "/c") return res.end(page("Page C", "C"));
@@ -1160,6 +1163,43 @@ try {
     await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
     await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
   };
+
+  await check("theme-commit", async () => {
+    // The toolbar colour belongs to the page shown: a page the page script never runs in (an error page) doesn't keep
+    // the last site's colour, and a page back from the back/forward cache brings its own colour back.
+    const tab = await openTab(`${base}/red-header?commit`, "Red header");
+    const color = () => evalApp(`return nn.store.getState().live["${tab.id}"]?.themeColor ?? null`);
+    const settled = (title) => until(title, async () => (await state()).tabs.find((t) => t.id === tab.id && t.title === title && !t.loading));
+    try {
+      await until("the red header's colour", async () => (await color()) === "#C80000", 5000);
+      const failed = "http://127.0.0.1:9/theme-commit";
+      await evalApp(`nn.store.getState().navigate("${tab.id}", "${failed}", { userInitiated: true }); return true`);
+      await until("the error page", async () => (await state()).tabs.find((t) => t.id === tab.id && t.url === failed && !t.loading), 10000);
+      await sleep(100);
+      const error = await color();
+
+      // Back/forward cache: red header → Page C (white) → Back restores the red page as it was.
+      await evalApp(`nn.store.getState().navigate("${tab.id}", "${base}/red-header?bf", { userInitiated: true }); return true`);
+      await settled("Red header");
+      await until("red again", async () => (await color()) === "#C80000", 5000);
+      const red = await pageFor(tab.id, "/red-header?bf");
+      await cdp(red, "Runtime.evaluate", { expression: "window.__bf = 1" });
+      await evalApp(`nn.store.getState().navigate("${tab.id}", "${base}/c?bf", { userInitiated: true }); return true`);
+      await settled("Page C");
+      await until("Page C's colour", async () => (await color()) === "#FFFFFF", 5000);
+      await evalApp(`return nn.webviews.get("${tab.id}").goBack()`);
+      await settled("Red header");
+      const back = await pageFor(tab.id, "/red-header?bf");
+      const cached = (await cdp(back, "Runtime.evaluate", { expression: "String(window.__bf)", returnByValue: true })).result.value === "1";
+      if (!cached) throw new Error("Back didn't restore the page from the back/forward cache");
+      const restored = await until("the restored page's colour", async () => ((await color()) === "#C80000" ? "#C80000" : null), 2000).catch(color);
+      if (error === "#C80000" || restored !== "#C80000") throw new Error(`the error page shows ${error}, the page back from the cache ${restored}`);
+      return { error, restored };
+    } finally {
+      await closeTab(tab.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
 
   await check("user-selection", async () => {
     // A mouse selection of page text: the page script reports it (onPageMessage "selection").

@@ -616,6 +616,14 @@
     for (const ms of [300, 1000, 3000]) setTimeout(scheduleTheme, ms);
   };
   onReady(startTheme);
+  // The app forgets a document's colour when another one commits (NNCoreWebView tabDidCommitDocument:): a page back from
+  // the back/forward cache, or a prerendered page shown, says again what it last said.
+  const resendTheme = () => {
+    lastTheme = undefined;
+    reportTheme();
+  };
+  addEventListener("pageshow", (e) => e.persisted && resendTheme());
+  document.addEventListener("prerenderingchange", resendTheme);
   addEventListener("load", scheduleTheme);
   addEventListener("scroll", scheduleTheme, { passive: true, capture: true });
   addEventListener("resize", scheduleTheme);

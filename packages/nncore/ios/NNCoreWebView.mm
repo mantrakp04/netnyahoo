@@ -1134,6 +1134,15 @@ const char kPageReportsKey = 0;
   [self queueNavigation];
 }
 
+// The page script's colour was the last document's: Chrome's (the new page's meta theme-color) until the new document's
+// script says, and none on a page it doesn't run in (an error page, chrome://). A page back from the back/forward cache
+// says again as it shows (page_script.js, pageshow).
+- (void)tabDidCommitDocument:(NNCoreTab *)tab {
+  _pageTheme = nil;
+  _pageThemeSource = nil;
+  [self queueNavigation];
+}
+
 // Load progress at most 10 times a second; its start and end at once (as packages/cef's NNClient).
 - (void)tabDidChangeProgress:(NNCoreTab *)tab {
   const double progress = tab.progress;

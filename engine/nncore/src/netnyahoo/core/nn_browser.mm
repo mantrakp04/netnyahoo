@@ -1577,6 +1577,14 @@ void TabBridge::DidFinishNavigation(content::NavigationHandle* handle) {
       return;
     }
   }
+  // A new document first: what the host knew of the last one goes before anything reports the new one.
+  if (handle->IsInPrimaryMainFrame() && handle->HasCommitted() &&
+      !handle->IsSameDocument()) {
+    [tab_ notify:@selector(tabDidCommitDocument:)];
+    if (!alive) {
+      return;
+    }
+  }
   if (handle->IsInPrimaryMainFrame() && handle->HasCommitted()) {
     CheckSecurity();
   }

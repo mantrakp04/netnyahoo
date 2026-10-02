@@ -408,6 +408,9 @@ NNCORE_EXPORT
 // "current" in the app). Web pages' netnyahoo: navigations are dropped silently.
 - (void)tab:(NNCoreTab*)tab didRequestAppURL:(NSString*)url userGesture:(BOOL)userGesture;
 - (void)tabDidChangeThemeColor:(NNCoreTab*)tab;
+// A new document committed in the tab's main frame: a page, an error page, a page back from the
+// back/forward cache (not a same-document navigation). Before that navigation's tabDidChangeURL:.
+- (void)tabDidCommitDocument:(NNCoreTab*)tab;
 - (void)tabDidGainFocus:(NNCoreTab*)tab;
 - (void)tabDidChangeAudio:(NNCoreTab*)tab;
 // Stage 2.
