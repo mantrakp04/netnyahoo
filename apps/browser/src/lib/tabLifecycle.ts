@@ -25,13 +25,13 @@ const SWEEP_MS = 15_000;
 const FREEZE_SWEEP_MS = 30_000;
 const EVAL_TIMEOUT_MS = 2_000;
 
+// Whether a page is frozen is the engine's alone (showing a page unfreezes it), so nothing here keeps a copy.
 type Lifecycle = {
   discarded: Record<string, true>;
-  frozen: Record<string, true>;
   batterySaver: boolean;
 };
 
-export const useLifecycle = create<Lifecycle>()(() => ({ discarded: {}, frozen: {}, batterySaver: false }));
+export const useLifecycle = create<Lifecycle>()(() => ({ discarded: {}, batterySaver: false }));
 
 export const useIsSleeping = (tabId: string) => useLifecycle((l) => !!l.discarded[tabId]);
 
@@ -51,7 +51,6 @@ function setAppActive(active: boolean) {
 const hiddenAt = new Map<string, number>();
 const unusedSince = new Map<string, number>();
 const loadedProfiles = new Set<string>();
-const dirtyWhenFrozen = new Map<string, boolean>();
 const busyStreak = new Map<string, number>();
 
 let system: SystemState | null = null;
@@ -120,10 +119,9 @@ async function hasUnsavedInput(handle: WebViewHandle): Promise<boolean | null> {
 
 export async function sleepTab(id: string): Promise<boolean> {
   const handle = webviews.get(id);
-  const l = useLifecycle.getState();
-  if (!handle || l.discarded[id]) return false;
-  const unsaved = l.frozen[id] ? (dirtyWhenFrozen.get(id) ?? null) : await hasUnsavedInput(handle);
-  if (unsaved !== false) return false;
+  if (!handle || useLifecycle.getState().discarded[id]) return false;
+  // Asked now, never remembered: a page can be shown and typed in at any moment before this.
+  if ((await hasUnsavedInput(handle)) !== false) return false;
   // The page's reports that came while we waited (audio, loading, capture) count.
   applyHeldReports();
   const s = store();
@@ -142,8 +140,7 @@ export function noteReady(tabId: string) {
 }
 
 export function noteDiscarded(tabId: string) {
-  dirtyWhenFrozen.delete(tabId);
-  useLifecycle.setState((l) => ({ discarded: { ...l.discarded, [tabId]: true }, frozen: omit(l.frozen, tabId) }));
+  useLifecycle.setState((l) => ({ discarded: { ...l.discarded, [tabId]: true } }));
 }
 
 export function noteGone(tabId: string) {
@@ -151,11 +148,10 @@ export function noteGone(tabId: string) {
 }
 
 function forget(tabId: string, all: boolean) {
-  dirtyWhenFrozen.delete(tabId);
   busyStreak.delete(tabId);
   if (all) hiddenAt.delete(tabId);
   const l = useLifecycle.getState();
-  if (l.discarded[tabId] || l.frozen[tabId]) useLifecycle.setState({ discarded: omit(l.discarded, tabId), frozen: omit(l.frozen, tabId) });
+  if (l.discarded[tabId]) useLifecycle.setState({ discarded: omit(l.discarded, tabId) });
 }
 
 function omit<T>(map: Record<string, T>, key: string): Record<string, T> {
@@ -255,11 +251,11 @@ function updateBatterySaver(announce: boolean) {
   }
 }
 
+// Thawing a page that isn't frozen does nothing, and shown pages never are.
 function thawAll() {
-  for (const id of Object.keys(useLifecycle.getState().frozen)) void webviews.get(id)?.setFrozen(false);
-  dirtyWhenFrozen.clear();
+  const shown = shownTabIds(store());
+  for (const id of loadedTabIds()) if (!shown.has(id)) void webviews.get(id)?.setFrozen(false);
   busyStreak.clear();
-  useLifecycle.setState({ frozen: {} });
 }
 
 let freezing = false;
@@ -286,7 +282,7 @@ export async function freezeBusyTabs(overrides: Partial<typeof POLICY> = {}): Pr
     }
     const now = activeClock();
     for (const id of loadedTabIds()) {
-      if (shown.has(id) || useLifecycle.getState().frozen[id]) continue;
+      if (shown.has(id)) continue;
       const streak = (cpu.get(id) ?? 0) >= policy.busyCpu ? (busyStreak.get(id) ?? 0) + 1 : 0;
       busyStreak.set(id, streak);
       if (streak < 2 || now - (hiddenAt.get(id) ?? now) < policy.freezeAfterMs || keepAliveReason(s, id)) continue;
@@ -301,13 +297,10 @@ export async function freezeBusyTabs(overrides: Partial<typeof POLICY> = {}): Pr
 export async function freezeTab(id: string): Promise<boolean> {
   const handle = webviews.get(id);
   if (!handle || !useLifecycle.getState().batterySaver) return false;
-  const unsaved = await hasUnsavedInput(handle);
   applyHeldReports();
   const s = store();
-  if (shownTabIds(s).has(id) || keepAliveReason(s, id) || webviews.get(id) !== handle) return false;
-  dirtyWhenFrozen.set(id, unsaved !== false);
+  if (shownTabIds(s).has(id) || keepAliveReason(s, id)) return false;
   await handle.setFrozen(true);
-  useLifecycle.setState((l) => ({ frozen: { ...l.frozen, [id]: true } }));
   return true;
 }
 
@@ -354,10 +347,6 @@ export function startTabLifecycle() {
     for (const id of shown) {
       hiddenAt.delete(id);
       busyStreak.delete(id);
-      if (useLifecycle.getState().frozen[id]) {
-        dirtyWhenFrozen.delete(id);
-        useLifecycle.setState((l) => ({ frozen: omit(l.frozen, id) }));
-      }
     }
     for (const id of webviews.keys()) if (!shown.has(id) && !hiddenAt.has(id)) hiddenAt.set(id, now);
     lastShown = shown;
