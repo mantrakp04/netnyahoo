@@ -29,9 +29,6 @@ bool TraceVisibility() {
   return on;
 }
 
-constexpr CFTimeInterval kTransferWindow = 3;
-// The tab's current parking (closeBrowser), so an earlier parking's deadline leaves a later one alone.
-const char kParkingKey = 0;
 // How long a page that left the screen keeps painting (leaveScreen): a few frames, under load too.
 constexpr CFTimeInterval kLeaveScreenDelay = 0.1;
 
@@ -47,18 +44,9 @@ NSHashTable<NNCoreWebView *> *PendingPainting() {
 }
 bool gPaintingScheduled = false;
 
-NSMutableDictionary<NSString *, NSNumber *> *TransferRequests() {
-  static NSMutableDictionary *requests = [NSMutableDictionary dictionary];
-  return requests;
-}
-
-bool TransferRequested(NSString *key) {
-  if (!key.length) return false;
-  NSNumber *at = TransferRequests()[key];
-  return at && CACurrentMediaTime() - at.doubleValue < kTransferWindow;
-}
-
-// A tab whose view unmounted while it moves to another window (prepareTransfer), until its new view takes it.
+// A tab whose view went while the app keeps the tab (prepareTransfer: moved to another window, its pane remounted), by
+// its key: until the tab's next view takes it, or the app says the tab is gone (releaseTransfer). No deadline: a view
+// can mount seconds later (a window opened under load).
 NSMutableDictionary<NSString *, NNCoreTab *> *Parked() {
   static NSMutableDictionary *parked = [NSMutableDictionary dictionary];
   return parked;
@@ -350,10 +338,38 @@ const char kPageReportsKey = 0;
   // Just left the screen: still painting (visible to Chrome), at alpha 0, for kLeaveScreenDelay.
   BOOL _leaving;
   NSUInteger _leaveGeneration;
+  // The app keeps this view's tab when the view goes (prepareTransfer): closing parks it instead.
+  BOOL _handingOff;
 }
 
+// From the JS thread, as the app learns a tab outlives its view (lib/tabPages.ts): the view holding the tab hands it off
+// when it goes. On the main queue in call order, so before the unmount that follows and before a window close the app
+// asks for after it (WindowManager's close is a main-queue call too).
 + (void)prepareTransfer:(NSString *)transferKey {
-  if (transferKey.length) TransferRequests()[transferKey] = @(CACurrentMediaTime());
+  if (!transferKey.length) return;
+  NSString *key = [transferKey copy];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    for (NNCoreWebView *view in LiveViews().allObjects)
+      if (view->_tab && [view->_transferKey isEqualToString:key]) view->_handingOff = YES;
+  });
+}
+
+// The app's tab is gone (closed, asleep, an app page, another profile): a page parked for it closes, and a view still
+// holding it closes it when it goes.
++ (void)releaseTransfer:(NSString *)transferKey {
+  if (!transferKey.length) return;
+  NSString *key = [transferKey copy];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    for (NNCoreWebView *view in LiveViews().allObjects)
+      if ([view->_transferKey isEqualToString:key]) view->_handingOff = NO;
+    NNCoreTab *tab = Parked()[key];
+    if (!tab) return;
+    [Parked() removeObjectForKey:key];
+    // At once, as a closed view's tab: a beforeunload prompt nobody sees would keep it (and the hidden window
+    // keepTransfersOfWindow: put it in) alive.
+    if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
+    else [tab close];
+  });
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
@@ -417,7 +433,7 @@ const char kPageReportsKey = 0;
 
 - (void)ensureTab {
   if (_tab || _creating || !self.window || !NNCoreHost.isStarted || !self.controller) return;
-  if (TransferRequested(_transferKey) && [self takeTransferredTab]) return;
+  if ([self takeTransferredTab]) return;
   if ([_adoptId hasPrefix:@"nncore:"] || [_adoptId hasPrefix:@"tab:"]) {
     NNCoreTab *offered = [NNCoreTabs takeOffered:_adoptId];
     _adoptId = nil;
@@ -523,7 +539,7 @@ const char kPageReportsKey = 0;
   // mount: its tab closed with the Browser, and the new view loaded the page afresh (blank for a moment, its history
   // and state gone).
   for (NNCoreWebView *view in LiveViews().allObjects)
-    if (view->_tab && !view->_tab.closed && TransferRequested(view->_transferKey) && [NNCoreWindowController holding:view->_tab] == closing)
+    if (view->_handingOff && view->_tab && !view->_tab.closed && [NNCoreWindowController holding:view->_tab] == closing)
       [view closeBrowser];
   for (NNCoreTab *tab in Parked().allValues) {
     if (tab.closed || [NNCoreWindowController holding:tab] != closing || !tab.profile) continue;
@@ -544,14 +560,17 @@ const char kPageReportsKey = 0;
   return profile.offTheRecord || [nncore_host::ProfileName(profile) isEqualToString:_profile ?: @""];
 }
 
+// The tab's page, parked for this view (closeBrowser), or still in the view this one replaces: in the same batch the
+// old view goes after this one came. A page this view can't show stays parked until the app releases it (the tab moved
+// to another profile: releaseTransfer).
 - (BOOL)takeTransferredTab {
+  if (!_transferKey.length) return NO;
   NNCoreTab *tab = Parked()[_transferKey];
   if (tab && ![self canTake:tab]) return NO;
   if (tab) [Parked() removeObjectForKey:_transferKey];
-  // The new view can mount before the old one unmounts: take the tab from it.
   if (!tab) {
-    for (NNCoreWebView *other in LiveViews()) {
-      if (other == self || ![other.transferKey isEqualToString:_transferKey] || other.window == self.window || !other->_tab) continue;
+    for (NNCoreWebView *other in LiveViews().allObjects) {
+      if (other == self || ![other.transferKey isEqualToString:_transferKey] || !other->_tab) continue;
       if (![self canTake:other->_tab]) return NO;
       tab = other->_tab;
       [other detach];
@@ -559,7 +578,6 @@ const char kPageReportsKey = 0;
     }
   }
   if (!tab || tab.closed) return NO;
-  [TransferRequests() removeObjectForKey:_transferKey];
   _adoptId = nil;
   _transferredURL = tab.url;
   if (SamePage(_pendingURL, _transferredURL)) _pendingURL = nil;
@@ -642,6 +660,7 @@ const char kPageReportsKey = 0;
   [self dropDevTools];
   [self resetBlocked:NO];
   _tab = nil;
+  _handingOff = NO;
   _leaving = NO;
   _leaveGeneration++;
 }
@@ -703,24 +722,11 @@ const char kPageReportsKey = 0;
   _creating = NO;
   if (!_tab) return;
   NNCoreTab *tab = _tab;
-  if (TransferRequested(_transferKey) && !tab.closed) {
-    // Moving to another window: the new view takes it within kTransferWindow, else it closes.
+  if (_handingOff && _transferKey.length && !tab.closed) {
+    // The app keeps the tab: its page waits for the tab's next view (takeTransferredTab) or the app's release.
     [self detach];
     [ParkingView() addSubview:tab.view];
-    NSString *key = [_transferKey copy];
-    Parked()[key] = tab;
-    // Each parking has its own deadline: an earlier one's (the tab taken and parked again since) isn't this one's.
-    static NSUInteger parkings = 0;
-    const NSUInteger parking = ++parkings;
-    objc_setAssociatedObject(tab, &kParkingKey, @(parking), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kTransferWindow * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      if (Parked()[key] != tab || [objc_getAssociatedObject(tab, &kParkingKey) unsignedIntegerValue] != parking) return;
-      [Parked() removeObjectForKey:key];
-      // At once, as a closed view's tab: a beforeunload prompt nobody sees would keep it (and the hidden window
-      // keepTransfersOfWindow: put it in) alive.
-      if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
-      else [tab close];
-    });
+    Parked()[_transferKey] = tab;
     return;
   }
   _closing = YES;

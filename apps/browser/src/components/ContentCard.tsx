@@ -1,4 +1,4 @@
-import { prepareTabTransfer, WebView, type OpenWindowRequest } from "@netnyahoo/nncore";
+import { WebView, type OpenWindowRequest } from "@netnyahoo/nncore";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
@@ -7,6 +7,7 @@ import { noteFavicon } from "../lib/favicons";
 import { isQuitting } from "../lib/native";
 import { layout, useTheme } from "../lib/theme";
 import { startChromeTabs } from "../lib/chromeTabs";
+import { handOff, wantsPage } from "../lib/tabPages";
 import { noteDiscarded, noteGone, noteReady } from "../lib/tabLifecycle";
 import { webviewRef, webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
@@ -28,7 +29,7 @@ import { pagerFor } from "./layout/profilePager";
 import { openFromPage } from "./layout/openFromPage";
 import { setUrlAnchor, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { NewTabPage } from "./NewTabPage";
-import { InternalPage, isInternalTab } from "./pages";
+import { InternalPage } from "./pages";
 import { AutofillPrompt, BlockedPopupsPrompt, ExternalAppPrompt, PasswordPrompt, PermissionPrompt, answerExternalApp, shouldPromptForPopups, showAutofillPrompt, showPasswordPrompt } from "./site/Prompts";
 import { SiteControls } from "./site/SiteControls";
 import { ZoomPopover } from "./site/ZoomControls";
@@ -77,7 +78,7 @@ export function ContentCard() {
       if (memo.tabIds === tabIds && memo.tabs === s.tabs) return memo.ids;
       const ids = (tabIds ?? [])
         .map((id) => s.tabs[id]!)
-        .filter((t) => t && (t.navigation || t.adoptId) && !isInternalTab(t))
+        .filter(wantsPage)
         .map((t) => t.id);
       mountedMemo.current = { tabIds, tabs: s.tabs, ids };
       return ids;
@@ -336,17 +337,14 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
   }, [seq]);
   const fromNewTab = useRef(pageOf(tabId).wasNewTab && !adoptId);
   useEffect(() => () => noteGone(tabId), []);
-  // A web view can go while its tab stays (its window's content laid out again, its pane remounted): the tab's page
-  // waits, parked, for the tab's next view instead of closing with this one. Its loss was a moved tab's page going for
-  // good when the new window's content unmounted it once (acceptance move-tab-to-window). Before the native unmount
-  // (a layout effect's cleanup runs in the commit); a tab that closed, went to sleep, changed profile or is going to one
-  // of the app's own pages closes as before.
+  // This view goes while its tab keeps its page (lib/tabPages.ts): handed off before the native unmount (a layout
+  // effect's cleanup runs in the commit). A tab that closed, went to sleep, changed profile or is going to one of the
+  // app's own pages closes its page with the view.
   const mountedProfile = useRef(profileId);
   useLayoutEffect(
     () => () => {
       const t = tab();
-      if (t && (t.navigation || t.adoptId) && !isInternalTab(t) && engineProfile(t.profileId) === engineProfile(mountedProfile.current) && !isQuitting())
-        prepareTabTransfer(tabId);
+      if (wantsPage(t) && engineProfile(t.profileId) === engineProfile(mountedProfile.current) && !isQuitting()) handOff(tabId, engineProfile(t.profileId));
     },
     [],
   );

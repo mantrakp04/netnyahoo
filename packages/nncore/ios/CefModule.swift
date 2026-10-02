@@ -38,8 +38,10 @@ public class CefModule: Module {
       guard let window = NSApp.window(withWindowNumber: windowNumber) else { return "" }
       return NNChromeWindowHost.devAction(action, window: window) ?? ""
     }.runOnQueue(.main)
-    // Apply tab transfers synchronously before either view mounts or unmounts.
+    // A tab's page outlives its view, and its release: synchronous calls, so they reach the main queue before the
+    // unmount (or window close) the app asks for after them.
     Function("prepareTransfer") { (key: String) in NNCoreWebView.prepareTransfer(key) }
+    Function("releaseTransfer") { (key: String) in NNCoreWebView.releaseTransfer(key) }
     AsyncFunction("tabStripCommand") { (id: Int, command: [String: Any]) in NNCoreTabStrip.command(id, command: command) }
       .runOnQueue(.main)
     AsyncFunction("tabStrips") { NNCoreTabStrip.allStrips }.runOnQueue(.main)

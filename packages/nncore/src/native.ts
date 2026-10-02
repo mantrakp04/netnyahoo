@@ -30,6 +30,7 @@ export const Cef = requireNativeModule<{
   engineInfo(): Promise<EngineInfo>;
   chromeWindows(): Promise<ChromeWindowState[]>;
   prepareTransfer(key: string): void;
+  releaseTransfer(key: string): void;
   addListener(name: "onTabStrip", listener: (tx: TabStripTransaction) => void): EventSubscription;
   tabStripCommand(id: number, command: TabStripCommand): Promise<void>;
   tabStrips(): Promise<TabStripTransaction>;

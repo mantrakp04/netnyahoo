@@ -3917,6 +3917,101 @@ try {
     return { window: id, tab: t };
   });
 
+  // A window whose content mounts late (a window opened under load: devMountDelay in main.tsx holds it back 5 s).
+  const slowMount = async (body) => {
+    await evalApp(`globalThis.nnDevMountDelayMs = 5000; return true`);
+    try {
+      return await body();
+    } finally {
+      await evalApp(`globalThis.nnDevMountDelayMs = 0; return true`);
+    }
+  };
+  const closeWindowOf = (tabId) =>
+    evalApp(`const s = nn.store.getState(); const w = s.tabs[${JSON.stringify(tabId)}]?.windowId; if (w && w !== ${JSON.stringify(mainWindow)}) s.closeWindow(w); return true`);
+
+  await check("move-tab-slow-mount", async () => {
+    // A tab moved to a window that mounts its view late keeps its page (the same WebContents: its history, its state):
+    // the page waits for the tab's next view however long that takes.
+    const tab = await openTab(`${base}/a?slow`, "Page A");
+    try {
+      await evalApp(`nn.store.getState().navigate("${tab.id}", "${base}/b?slow", { userInitiated: true }); return true`);
+      await until("B", async () => (await state()).tabs.find((t) => t.id === tab.id && t.title === "Page B" && !t.loading));
+      await cdp(await pageFor(tab.id, "/b?slow"), "Runtime.evaluate", { expression: "window.__kept = 42" });
+      const browser = await browserOf(tab.id);
+      const windowId = await slowMount(async () => {
+        const id = await evalApp(`return nn.store.getState().moveTabsToWindow(["${tab.id}"], null)`);
+        // Past the mount delay.
+        await sleep(6000);
+        return id;
+      });
+      await until("the tab's view in the new window", () => evalApp(`return !!nn.webviews.get("${tab.id}") && nn.store.getState().tabs["${tab.id}"]?.windowId === "${windowId}"`), 10000);
+      await sleep(500);
+      const t = await pageFor(tab.id, "/b?slow");
+      const page = t && (await cdp(t, "Runtime.evaluate", { expression: "({ kept: String(window.__kept), entries: history.length })", returnByValue: true })).result.value;
+      const after = await browserOf(tab.id);
+      if (page?.kept !== "42" || page?.entries !== 2 || String(after) !== String(browser))
+        throw new Error(`the page reloaded or went: ${JSON.stringify({ page, browser, after })}`);
+      return { windowId, page, browser };
+    } finally {
+      await closeWindowOf(tab.id);
+      await closeTab(tab.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
+  await check("move-last-tab-slow-mount", async () => {
+    // A window's last tab moved to a new window that mounts late: the old window closes at once, its Browser with it,
+    // and the tab's page still waits for its new view.
+    const tab = await openTab(`${base}/a?last`, "Page A");
+    try {
+      const own = await evalApp(`return nn.store.getState().moveTabsToWindow(["${tab.id}"], null)`);
+      await until("the tab's view in a window of its own", () => evalApp(`return !!nn.webviews.get("${tab.id}") && nn.store.getState().tabs["${tab.id}"]?.windowId === "${own}"`), 10000);
+      await sleep(500);
+      await cdp(await pageFor(tab.id, "/a?last"), "Runtime.evaluate", { expression: "window.__kept = 42" });
+      const browser = await browserOf(tab.id);
+      const windowId = await slowMount(async () => {
+        const id = await evalApp(`return nn.store.getState().moveTabsToWindow(["${tab.id}"], null)`);
+        await until("its first window gone", () => evalApp(`return !nn.store.getState().windows["${own}"]`), 5000);
+        await sleep(6000);
+        return id;
+      });
+      await until("the tab's view in the new window", () => evalApp(`return !!nn.webviews.get("${tab.id}") && nn.store.getState().tabs["${tab.id}"]?.windowId === "${windowId}"`), 10000);
+      await sleep(500);
+      const t = await pageFor(tab.id, "/a?last");
+      const page = t && (await cdp(t, "Runtime.evaluate", { expression: "String(window.__kept)", returnByValue: true })).result.value;
+      const after = await browserOf(tab.id);
+      if (page !== "42" || String(after) !== String(browser)) throw new Error(`the page reloaded or went: ${JSON.stringify({ page, browser, after })}`);
+      return { windowId, page, browser };
+    } finally {
+      await closeWindowOf(tab.id);
+      await closeTab(tab.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
+  await check("move-tab-closed-while-parked", async () => {
+    // A moved tab closed before its new view took its page: the page (and its renderer) goes with the tab.
+    const tab = await openTab(`${base}/c?parked`, "Page C");
+    const target = await pageFor(tab.id, "/c?parked");
+    try {
+      return await slowMount(async () => {
+        await evalApp(`nn.store.getState().moveTabsToWindow(["${tab.id}"], null); return true`);
+        // Its view gone (the new window's is 5 s away): the page lives on, parked.
+        await until("the old view gone", () => evalApp(`return !nn.webviews.get("${tab.id}")`), 3000);
+        await sleep(300);
+        if (!(await targets()).some((x) => x.id === target.id)) throw new Error("the page went before its tab closed");
+        await closeTab(tab.id);
+        const closed = Date.now();
+        await until("the parked page gone", async () => !(await targets()).some((x) => x.id === target.id), 1500);
+        return { goneAfterMs: Date.now() - closed };
+      });
+    } finally {
+      await closeWindowOf(tab.id).catch(() => null);
+      await closeTab(tab.id).catch(() => null);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
   await check("move-tab-to-window", async () => {
     // The tab keeps its page (same WebContents: no reload) in the new window.
     const t = await pageTarget(`${base}/a`);

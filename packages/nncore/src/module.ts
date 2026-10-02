@@ -87,6 +87,7 @@ export type ChromeWindowState = {
 export const chromeWindows = () => Cef.chromeWindows();
 export const devWindowAction = (windowNumber: number, action: string) => Cef.devWindow(windowNumber, action);
 export const prepareTabTransfer = (transferKey: string) => Cef.prepareTransfer(transferKey);
+export const releaseTabTransfer = (transferKey: string) => Cef.releaseTransfer(transferKey);
 export const listComponents = () => Cef.components();
 
 export const beginTracing = () => Cef.beginTracing();

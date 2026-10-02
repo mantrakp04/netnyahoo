@@ -3,19 +3,15 @@ import {
   devWindowAction,
   engineInfo,
   onTabStripTransaction,
-  prepareTabTransfer,
   sendTabStripCommand,
   tabStrips,
   type StripState,
   type TabStripCommand,
   type TabStripTransaction,
 } from "@netnyahoo/nncore";
-import { usePages } from "../components/layout/pageState";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { changedIds } from "../store/changes";
 import { chromeChanged, groupStep, stripActual, stripPlan, type GroupBindings } from "../store/liveTabs";
-import { engineProfile } from "../store/model";
-import { webviews } from "./webviews";
 
 // Chrome's tab strips and the store (docs/store-api.md › "Live tabs"). Chrome commits; the engine reports each
 // change as a transaction with a revision and its cause. Transactions apply in revision order. The app's own
@@ -67,7 +63,6 @@ export function startChromeTabs() {
     scheduleProject();
   });
   useBrowser.subscribe((s, prev) => {
-    if (s.tabs !== prev.tabs) announceMoves(s, prev);
     if (s.windows !== prev.windows || s.groups !== prev.groups || placed(s, prev)) scheduleProject();
   });
 }
@@ -169,25 +164,3 @@ function send(strip: number, kind: Kind, sig: string, command: TabStripCommand, 
   tried.set(`${strip}:${kind}`, { sig, since });
   inflight.set(strip, { kind, cmd: sendTabStripCommand(command), ...(command.op !== "activate" ? { keys: command.keys } : {}), makes, successor });
 }
-
-// MARK: Moves between windows
-
-const liveTabs = () =>
-  new Map(
-    Object.entries(usePages.getState().browsers)
-      .filter(([, tabId]) => webviews.has(tabId))
-      .map(([browserId, tabId]) => [tabId, browserId]),
-  );
-
-function announceMoves(s: BrowserState, prev: BrowserState) {
-  let live: Map<string, string> | null = null;
-  for (const id of changedIds(s.tabs, prev.tabs)) {
-    const tab = s.tabs[id];
-    const before = prev.tabs[id];
-    if (!tab || !before || before.windowId === tab.windowId) continue;
-    if (engineProfile(before.profileId) !== engineProfile(tab.profileId)) continue;
-    live ??= liveTabs();
-    if (live.has(id)) prepareTabTransfer(id);
-  }
-}
-

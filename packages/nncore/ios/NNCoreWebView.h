@@ -30,7 +30,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) int browserId;
 @property (nonatomic, readonly) int chromeTabId;
 
+// The app keeps the tab of `transferKey` when its view goes: the page waits, parked, for the tab's next view.
 + (void)prepareTransfer:(NSString *)transferKey;
+// The app's tab of `transferKey` is gone: its parked page closes.
++ (void)releaseTransfer:(NSString *)transferKey;
 // Tests: the last events a tab's view sent, and the window it shows in.
 // The engine the page menu's "Search <engine> for …" names.
 + (void)setSearchEngineName:(NSString *)name;

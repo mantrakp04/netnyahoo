@@ -118,6 +118,7 @@ export const chromeWindows = () => Promise.resolve([]);
 export const devWindowAction = () => Promise.resolve("");
 export const engineInfo = () => Promise.resolve(null);
 export const prepareTabTransfer = () => {};
+export const releaseTabTransfer = () => {};
 export const onTabStripTransaction = (listener) => globalThis.nnTestTabStrip.listen(listener);
 export const sendTabStripCommand = (command) => globalThis.nnTestTabStrip.command(command);
 export const tabStrips = () => globalThis.nnTestTabStrip.snapshot();
