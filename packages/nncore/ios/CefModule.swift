@@ -102,17 +102,18 @@ public class CefModule: Module {
       NNCoreContentBlocker.state { promise.resolve($0) }
     }.runOnQueue(.main)
     AsyncFunction("setContentBlockerEnabled") { (enabled: Bool, promise: Promise) in
-      NNCoreContentBlocker.setEnabled(enabled) { promise.resolve(nil) }
+      NNCoreContentBlocker.setEnabled(enabled) { CefModule.settle(promise, $0) }
     }.runOnQueue(.main)
     AsyncFunction("setFilterListEnabled") { (id: String, enabled: Bool, promise: Promise) in
-      NNCoreContentBlocker.setList(id, enabled: enabled) { promise.resolve(nil) }
+      NNCoreContentBlocker.setList(id, enabled: enabled) { CefModule.settle(promise, $0) }
     }.runOnQueue(.main)
     AsyncFunction("isContentBlockerAllowed") { (host: String, promise: Promise) in
       NNCoreContentBlocker.isAllowed(host: host) { promise.resolve($0) }
     }.runOnQueue(.main)
     AsyncFunction("setContentBlockerAllowed") { (host: String, allowed: Bool, promise: Promise) in
-      NNCoreContentBlocker.setAllowed(allowed, host: host) { promise.resolve(nil) }
+      NNCoreContentBlocker.setAllowed(allowed, host: host) { CefModule.settle(promise, $0) }
     }.runOnQueue(.main)
+    AsyncFunction("devContentBlockerFailNextMessage") { NNCoreContentBlocker.devFailNextMessage() }.runOnQueue(.main)
 
     AsyncFunction("setSiteSetting") { (profile: String, origin: String, type: String, value: String) in
       NNCoreServices.setSiteSetting(value, profile: profile, origin: origin, type: type)
@@ -311,6 +312,11 @@ public class CefModule: Module {
 
       OnViewDidUpdateProps { (view: CefWebView) in view.propsDidUpdate() }
     }
+  }
+
+  // A native change that answers with an error (nil: done) as a JS promise.
+  static func settle(_ promise: Promise, _ error: String?) {
+    if let error { promise.reject("ERR_CONTENT_BLOCKER", error) } else { promise.resolve(nil) }
   }
 }
 

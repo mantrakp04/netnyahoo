@@ -2351,6 +2351,20 @@ try {
     return { enabled: state.enabled, lists: state.lists.length, version: state.version, allowed };
   });
 
+  await check("content-blocker-fails-closed", async () => {
+    // A change whose read fails (uBOL's service worker waking up, its page reloading) changes nothing and reports the
+    // error: devContentBlockerFailNextMessage fails the next call's first message, here the read of the enabled lists.
+    const enabled = async () => (await cef(`getContentBlocker()`)).lists.filter((l) => l.enabled).map((l) => l.id).sort();
+    const before = await enabled();
+    const off = (await cef(`getContentBlocker()`)).lists.find((l) => !l.enabled);
+    await cef(`devContentBlockerFailNextMessage()`);
+    const error = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.setFilterListEnabled(${JSON.stringify(off.id)}, true).then(() => null, (e) => e.message)`);
+    const after = await enabled();
+    if (!error) throw new Error("the failed change reported no error");
+    if (JSON.stringify(after) !== JSON.stringify(before)) throw new Error(`the lists changed: ${before} → ${after}`);
+    return { error, enabled: after.length };
+  });
+
   // The content blocker's rounds on an ad page in a new tab of `profileId` (the window's own when undefined): blocked,
   // allowed for the site (and reloaded, as the app does), blocked again.
   const contentBlockerRounds = async (profileId) => {

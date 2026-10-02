@@ -78,8 +78,12 @@ export function PrivacyPane() {
       });
       if (!confirmed) return;
     }
-    await setCategory(blocker, c, on);
-    refresh();
+    // A change that fails changed nothing (or only the lists before it): show what the blocker has.
+    try {
+      await setCategory(blocker, c, on);
+    } finally {
+      refresh();
+    }
   };
 
   return (
@@ -129,9 +133,12 @@ function FilterListsSheet() {
   const theme = useTheme();
   const [blocker, refresh] = useContentBlocker();
   const toggle = async (l: FilterList, on: boolean) => {
-    await setFilterListEnabled(l.id, on);
-    if (on && blocker && !blocker.enabled) await setContentBlockerEnabled(true);
-    refresh();
+    try {
+      await setFilterListEnabled(l.id, on);
+      if (on && blocker && !blocker.enabled) await setContentBlockerEnabled(true);
+    } finally {
+      refresh();
+    }
   };
   return (
     <Sheet width={500} onClose={closeSettingsSheet}>
