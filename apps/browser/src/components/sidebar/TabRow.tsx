@@ -6,6 +6,7 @@ import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { activeTabId } from "../../store/model";
 import { useIsActiveTab, usePageProfileId, useTab, useWindowId } from "../../store/hooks";
+import { HoverSlot } from "../HoverSlot";
 import { IconButton } from "../primitives";
 import { clickTab, commitRename, endRename, startRename, tabTitle } from "./actions";
 import { useDragItem } from "./dnd";
@@ -127,11 +128,13 @@ export function TabRow({ tabId }: { tabId: string }) {
                 ) : (
                   <FadeLabel text={title} fontSize={13} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 18, marginLeft: 5 }} />
                 )}
-                {hovered && !renaming ? (
-                  <IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => void closeTab(tab.id)} tooltip="Close Tab (⌘W)" />
-                ) : (
-                  loading && <ActivitySpinner style={{ width: 12, height: 12, marginLeft: 6, marginRight: 2 }} />
-                )}
+                <HoverSlot
+                  hovered={hovered && !renaming}
+                  width={22}
+                  hover={<IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => void closeTab(tab.id)} tooltip="Close Tab (⌘W)" />}
+                >
+                  {loading && <ActivitySpinner style={{ width: 12, height: 12, marginRight: 2 }} />}
+                </HoverSlot>
               </Surface>
             )}
           </Pressable>

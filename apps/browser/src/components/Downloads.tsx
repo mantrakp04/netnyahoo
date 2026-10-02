@@ -11,6 +11,7 @@ import { SIDEBAR_FOOTER_DOWNLOADS, useAddressBarInSidebar, useTabLayout } from "
 import { PROFILE_DOTS_HEIGHT } from "./profiles/ProfileDots";
 import { openInternalPage } from "./pages/urls";
 import { useSidebarWidth } from "./sidebar/tokens";
+import { HoverSlot } from "./HoverSlot";
 import { IconButton, useHover } from "./primitives";
 
 // MARK: Formatting
@@ -298,8 +299,12 @@ function DownloadRow({ d, windowId }: { d: Download; windowId: string }) {
                   />
                   <IconButton icon="xmark.circle.fill" size={15} box={26} radius={7} onPress={() => void cancelDownload(d.id)} tooltip="Cancel" />
                 </View>
-              ) : done && hovered ? (
-                <IconButton icon="magnifyingglass.circle.fill" size={15} box={26} radius={7} onPress={() => void revealFile(d.path)} tooltip="Show in Finder" />
+              ) : done ? (
+                <HoverSlot
+                  hovered={hovered}
+                  width={26}
+                  hover={<IconButton icon="magnifyingglass.circle.fill" size={15} box={26} radius={7} onPress={() => void revealFile(d.path)} tooltip="Show in Finder" />}
+                />
               ) : null}
             </View>
           </Pressable>

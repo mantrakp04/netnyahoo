@@ -6,6 +6,7 @@ import { hex, layout, ThemeScope, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { PageProfileContext, useIsActiveTab, usePageProfileId, useSettings, useTab, useTabLive, useWindowId, useWindowProfileId } from "../../store/hooks";
 import { ProfileIndicator, useProfileIndicatorWidth } from "../ProfileIndicator";
+import { HoverSlot } from "../HoverSlot";
 import { IconButton, useHover } from "../primitives";
 import { clickTab } from "../sidebar/actions";
 import { openGroupMenu, openTabMenu } from "../sidebar/menus";
@@ -581,20 +582,22 @@ function TabChip({ tabId, width, tuck }: { tabId: string; width: number; tuck?: 
                 // The label draws 2 pt in, so the text starts 7 after the favicon.
                 style={{ flex: 1, height: 16, marginLeft: 5 }}
               />
-              {hovered ? (
-                <IconButton
-                  icon={tuck ? "minus" : "xmark"}
-                  size={9}
-                  weight="semibold"
-                  box={20}
-                  radius={5}
-                  color={onBand ? palette.icon : undefined}
-                  onPress={tuck ?? (() => void closeTab(tab.id))}
-                  tooltip={tuck ? "Hide in Group" : "Close Tab"}
-                />
-              ) : (
-                <View style={{ width: 20 }} />
-              )}
+              <HoverSlot
+                hovered={hovered}
+                width={20}
+                hover={
+                  <IconButton
+                    icon={tuck ? "minus" : "xmark"}
+                    size={9}
+                    weight="semibold"
+                    box={20}
+                    radius={5}
+                    color={onBand ? palette.icon : undefined}
+                    onPress={tuck ?? (() => void closeTab(tab.id))}
+                    tooltip={tuck ? "Hide in Group" : "Close Tab"}
+                  />
+                }
+              />
             </ItemRow>
           )}
         </Pressable>

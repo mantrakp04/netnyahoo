@@ -14,6 +14,7 @@ import { useBrowser } from "../../store/browser";
 import { usePageProfileId } from "../../store/hooks";
 import { activeTabId, viewTabIds } from "../../store/model";
 import { openSettings } from "../settings/windows";
+import { HoverSlot } from "../HoverSlot";
 import { IconButton, useHover } from "../primitives";
 import { useLiveColors, type LiveColors } from "../live/colors";
 import { clickMods, TabRow } from "./TabRow";
@@ -183,16 +184,22 @@ function FolderHeader({ folderId, windowId, collapsed }: { folderId: string; win
                   <Symbol name="exclamationmark.triangle.fill" size={10} color={colors.pending} style={{ width: 18, height: 18 }} />
                 </Pressable>
               ) : null}
-              {hovered || updating ? (
-                <RefreshButton spinning={updating} tooltip={statusText(folderId)} onPress={() => void refreshFolder(folderId)} />
-              ) : collapsed ? (
-                <View style={{ flexDirection: "row", alignItems: "center", marginRight: 2, gap: 5 }}>
-                  {unread ? <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.pip }} /> : null}
-                  <View style={{ minWidth: 20, height: 18, borderRadius: 9, paddingHorizontal: 6, backgroundColor: tokens.countPill, alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 11, fontWeight: "600", color: theme.textTab, fontVariant: ["tabular-nums"] }}>{count}</Text>
+              <HoverSlot
+                hovered={hovered && !updating}
+                width={22}
+                hover={<RefreshButton spinning={false} tooltip={statusText(folderId)} onPress={() => void refreshFolder(folderId)} />}
+              >
+                {updating ? (
+                  <RefreshButton spinning tooltip={statusText(folderId)} onPress={() => void refreshFolder(folderId)} />
+                ) : collapsed ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", marginRight: 2, gap: 5 }}>
+                    {unread ? <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.pip }} /> : null}
+                    <View style={{ minWidth: 20, height: 18, borderRadius: 9, paddingHorizontal: 6, backgroundColor: tokens.countPill, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: theme.textTab, fontVariant: ["tabular-nums"] }}>{count}</Text>
+                    </View>
                   </View>
-                </View>
-              ) : null}
+                ) : null}
+              </HoverSlot>
             </Surface>
           )}
         </Pressable>
@@ -377,11 +384,13 @@ function LiveItemRow({ folderId, item, windowId, indent = 0 }: { folderId: strin
                   style={{ flex: 1, height: 18, marginLeft: 5 }}
                 />
                 {item.pr?.stack ? <PositionChip position={item.pr.stack.position} /> : null}
-                {hovered && tabId && !completion ? (
-                  <IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => void closeTab(tabId)} tooltip="Close Tab (⌘W)" />
-                ) : (
+                <HoverSlot
+                  hovered={hovered && !!tabId && !completion}
+                  width={22}
+                  hover={<IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => tabId && void closeTab(tabId)} tooltip="Close Tab (⌘W)" />}
+                >
                   <Trailing item={item} completion={completion} colors={colors} />
-                )}
+                </HoverSlot>
               </Surface>
             )}
           </Pressable>
@@ -444,7 +453,7 @@ function Trailing({ item, completion, colors }: { item: LiveItem; completion: Co
     return <Text style={{ fontSize: 11, fontWeight: "500", color: colors[COMPLETION_GLYPH[completion].color], marginRight: 4 }}>{completion === "merged" ? "Merged" : completion === "reviewed" ? "Reviewed" : "Closed"}</Text>;
   }
   const badge = item.pr ? prBadge(item.pr) : null;
-  if (!badge) return <View style={{ width: 4 }} />;
+  if (!badge) return null;
   const spec = BADGES[badge];
   return (
     <View tooltip={spec.tip} style={{ width: 22, height: 22, alignItems: "center", justifyContent: "center" }}>

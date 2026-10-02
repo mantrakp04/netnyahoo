@@ -2,16 +2,15 @@ import { displayHost } from "@netnyahoo/core";
 import { Symbol, type SymbolProps } from "@netnyahoo/shell";
 import { memo, useState } from "react";
 import { Image, Pressable, Text, View, type ViewStyle } from "react-native";
+import { markHoverProps } from "../lib/hoverShift";
 import { faviconFailed, useAppearanceDark, useFavicon, useFaviconTheme } from "../lib/favicons";
 import { bundledSiteIcon } from "../lib/siteIcons";
 import { useTheme } from "../lib/theme";
 
 export function useHover() {
   const [hovered, setHovered] = useState(false);
-  return {
-    hovered,
-    hoverProps: { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) },
-  };
+  const [hoverProps] = useState(() => markHoverProps({ onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) }));
+  return { hovered, hoverProps };
 }
 
 export function IconButton({

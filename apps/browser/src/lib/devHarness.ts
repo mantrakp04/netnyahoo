@@ -60,6 +60,14 @@ export function startDevHarness() {
     get toolbarAutoHide(): typeof import("../components/layout/toolbarAutoHide") {
       return require("../components/layout/toolbarAutoHide");
     },
+    // Hovering moves nothing but a HoverSlot's contents (scripts/hover-shift-test.mjs).
+    get hoverShift(): typeof import("./hoverShift") {
+      return require("./hoverShift");
+    },
+    // Live folders without a service: a test makes a folder and hands it items.
+    get live(): { store: typeof import("../live/store"); engine: typeof import("../live/engine") } {
+      return { store: require("../live/store"), engine: require("../live/engine") };
+    },
   };
   (globalThis as { nn?: typeof nn }).nn = nn;
   const scriptId = (source: string | null) => source?.match(/^\/\/ *(\S+)/)?.[1];

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { markHoverProps } from "../../lib/hoverShift";
 import { measureRow, setSidebarUi, sidebarUi, type Target } from "./state";
 
 const SHOW_DELAY_MS = 650;
@@ -50,17 +51,20 @@ export function dismissHover() {
 
 export function useRowHover(windowId: string, target: Target | null) {
   const [hovered, setHovered] = useState(false);
-  return {
-    hovered,
-    hoverProps: {
+  const latest = useRef({ windowId, target });
+  latest.current = { windowId, target };
+  const [hoverProps] = useState(() =>
+    markHoverProps({
       onMouseEnter: () => {
         setHovered(true);
+        const { windowId, target } = latest.current;
         if (target) hoverEnter(windowId, target);
       },
       onMouseLeave: () => {
         setHovered(false);
-        if (target) hoverLeave();
+        if (latest.current.target) hoverLeave();
       },
-    },
-  };
+    }),
+  );
+  return { hovered, hoverProps };
 }

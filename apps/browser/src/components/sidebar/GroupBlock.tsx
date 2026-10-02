@@ -8,6 +8,7 @@ import { usePageProfileId, useWindowId } from "../../store/hooks";
 import { activeTabId } from "../../store/model";
 import { groupLabel } from "../../store/organize";
 import { MeetingTimeLabel, useMeetingCountdown } from "../live/MeetingCountdown";
+import { HoverSlot } from "../HoverSlot";
 import { IconButton } from "../primitives";
 import { commitRename, endRename, startRename } from "./actions";
 import { useDragItem, useDropInto } from "./dnd";
@@ -216,11 +217,13 @@ function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; 
                   </Animated.View>
                 </Animated.View>
               )}
-              {hovered && !renaming ? (
-                <IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => useBrowser.getState().closeGroup(groupId)} tooltip="Close Group" />
-              ) : countdown.label && !renaming ? (
-                <MeetingTimeLabel label={countdown.label} urgent={countdown.urgent} />
-              ) : null}
+              <HoverSlot
+                hovered={hovered && !renaming}
+                width={22}
+                hover={<IconButton icon="xmark" size={10} weight="semibold" box={22} radius={6} onPress={() => useBrowser.getState().closeGroup(groupId)} tooltip="Close Group" />}
+              >
+                {countdown.label && !renaming ? <MeetingTimeLabel label={countdown.label} urgent={countdown.urgent} /> : null}
+              </HoverSlot>
             </Surface>
           )}
         </Pressable>

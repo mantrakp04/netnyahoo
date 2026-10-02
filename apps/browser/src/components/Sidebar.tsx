@@ -10,6 +10,7 @@ import { cleanedTabsFor, cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
 import { listTopGap, SIDEBAR_FOOTER_DOWNLOADS, SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
+import { HoverSlot } from "./HoverSlot";
 import { IconButton, useHover } from "./primitives";
 import { PROFILE_INDICATOR_X, ProfileIndicator } from "./ProfileIndicator";
 import { usePageStyle, usePagerPages } from "./layout/profilePager";
@@ -398,7 +399,7 @@ const NewTabRow = memo(function NewTabRow({ windowId }: { windowId: string }) {
         )}
       </Pressable>
       <View style={{ position: "absolute", right: 6, flexDirection: "row", alignItems: "center" }}>
-        {cleaned > 0 && hovered ? <Text style={{ fontSize: 11, color: theme.textTertiary, marginRight: 2 }}>{cleaned} cleaned</Text> : null}
+        <HoverSlot hovered={hovered && cleaned > 0} width={0} hover={<Text style={{ fontSize: 11, color: theme.textTertiary, marginRight: 2 }}>{cleaned} cleaned</Text>} />
         <IconButton
           icon="chevron.down"
           size={10}

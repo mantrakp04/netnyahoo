@@ -23,6 +23,7 @@ End-to-end checks need a built app and are run by hand:
 | Shortcuts | `node apps/browser/scripts/shortcuts-test.mjs <Debug app>` | Every shortcut in every focus (0.2.8: ⌘1–9 were swallowed outside a page) |
 | Profile swipes | `node apps/browser/scripts/profile-swipe-test.mjs <Debug app>` | The native pager's races (0.2.14–0.2.18 fixes) |
 | ⌘-scroll | `node apps/browser/scripts/zoom-scroll-test.mjs <Debug app>` | Trackpad scrolls, mouse zooms (regressed in 0.1.4 and 0.2.12) |
+| Hover layout | `node apps/browser/scripts/hover-shift-test.mjs <Debug app>` | Hovering moves nothing: every hover-tracked view in the sidebar, the tab strip and the downloads popover (below) |
 | Sync | `node packages/sync/scripts/e2e.mjs <Debug app>` | Two and three hidden instances through one folder (`docs/sync.md`) |
 | Engine patches | `python3 engine/patches/series.py check` | The patch series reproduces the Chromium tree (`docs/cef-source-build.md`) |
 | Engine (NNCore) | `node packages/nncore/scripts/acceptance.mjs <Debug app> <scratch dir>` | The app on NNCore, hidden (`docs/nncore-parity.md`) |
@@ -46,7 +47,7 @@ Launch with `open -g -n --env NAME=value … <app>` (`docs/agent-brief.md`). `NE
 | `NETNYAHOO_DOWNLOADS_DIR` | engine `nn_downloads.cc` | Chrome's download folder |
 | `NETNYAHOO_TEST_REAUTH=granted` | engine `nn_reauth.cc` | Background mode grants macOS re-auth requests (otherwise refused, each reported as `reauth.requested`) |
 | `NETNYAHOO_CONTEXT_MENU_LOG` | engine `nn_context_menu.mm` | Context menus go to the host instead of the screen, in any build |
-| `NETNYAHOO_FAKE_FULLSCREEN_MS` | `NNCoreChromeWindow.mm` | Length of the acted-out full-screen transition |
+| `NETNYAHOO_FAKE_FULLSCREEN_MS` | `NNCoreChromeWindow.mm` | Length of the acted-out full-screen transition. Dev actions (`devWindow`): `fakeFullScreen:<1\|0>[:<ms>]`, `fakeFullScreenMs:<ms>`, `fakeOcclusion:<visible\|occluded\|off>` (macOS's occlusion state; a test window otherwise counts as seen), `fakeFullScreenOcclusionMs:<ms>` (acted transitions occlude the window, visible again `<ms>` after they end, as a real Space animation) |
 | `NETNYAHOO_TRAFFIC_LIGHTS_LOG=<file>` | `NNCoreChromeWindow.mm` | Logs every traffic-light change (test instances only) |
 | `NETNYAHOO_PIP_SELFTEST` | `NNCorePictureInPicture.mm` | On the first PiP window: `close` / `backToTab` click Chrome's buttons (`pip-button-selftest.json`), `hover` holds the controls up (`pip-hover.json`, `NETNYAHOO_PIP_HOVER=close\|back`), anything else runs the style self-test (`pip-selftest.json`), all in the data dir |
 | `NETNYAHOO_TRACE_PIP=1` | engine `nn_picture_in_picture.mm` | PiP windows opening and closing, to `/tmp/nn-pip-trace.log` |
@@ -88,6 +89,16 @@ the app as a person would rather than writing a new helper:
 | `devMenuCommand(command, arg)` | Fires a menu command as if picked from the menu bar |
 | `devSnapshotWindow(windowId, path, transparent?)` | Writes the window's layers to a PNG in-process (works with the screen locked; `false` = failed) |
 | `devRenderIntroMusic(cues, path)` | Renders the onboarding intro music to an audio file, for the launch films' sound pass |
+
+## Hover never moves anything
+
+A control that shows on hover (a row's ✕, a live folder's refresh, Show in Finder) goes in a `HoverSlot`
+(`components/HoverSlot.tsx`): the slot keeps the width of what it shows at rest, at least the control's, and the control
+lies over it. `useHover` and `useRowHover` mark their handlers, and the dev harness's `nn.hoverShift.check({ scopes })`
+(`src/lib/hoverShift.ts`) hovers each marked view inside the named components in turn, measures every view under its
+parent before and while hovered, and returns what moved or resized; only a HoverSlot's inside may change.
+`hover-shift-test.mjs` runs it on the sidebar (with groups, a live folder and its open items), the tab strip and the
+downloads popover, and fails on any shift. Run it after changing anything a hover touches.
 
 ## What's kept, and why
 
