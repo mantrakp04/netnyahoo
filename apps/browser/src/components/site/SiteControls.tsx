@@ -21,6 +21,7 @@ import { engineProfile, tabLabel } from "../../store/model";
 import { Favicon, useHover } from "../primitives";
 import { Popover, PopoverRow, PopoverSeparator, Toggle } from "../layout/controls";
 import { patchPage, setPopover, usePage } from "../layout/pageState";
+import { showToast } from "../layout/splitActions";
 import { toggleCastPicker } from "../media/cast";
 import { useMedia, usePictureInPicture } from "../media/state";
 import { TranslateRows } from "./TranslateControls";
@@ -96,9 +97,11 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
     if (choice) void setPermission(type, choice as SiteSettingValue);
   };
   const toggleBlocker = async (on: boolean) => {
-    await setContentBlockerAllowed(host, !on);
-    const allowed = await isContentBlockerAllowed(host).catch(() => !on);
+    // A change that fails changed nothing: the toggle shows what the blocker has, and the window says so.
+    const failed = await setContentBlockerAllowed(host, !on).then(() => false, () => true);
+    const allowed = await isContentBlockerAllowed(host);
     setBlocker((b) => (b ? { ...b, allowed } : b));
+    if (failed) return showToast(tab.windowId, "Couldn't Change the Ad Blocker", `Blocking on ${host} is as it was. Try again.`, { icon: "exclamationmark.triangle" });
     // Reload: blocking changes affect new requests only.
     void webviews.get(tabId)?.reload();
   };
