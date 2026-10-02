@@ -1,0 +1,57 @@
+--- a/chrome/browser/ui/autofill/address_bubbles_controller.cc
++++ b/chrome/browser/ui/autofill/address_bubbles_controller.cc
+@@ -29,6 +29,7 @@
+ #include "chrome/browser/ui/autofill/update_address_bubble_controller.h"
+ #include "chrome/browser/ui/browser_window.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+ #include "chrome/browser/ui/desktop_to_mobile_promos/ios_promos_utils.h"
+ #include "chrome/browser/ui/views/frame/browser_view.h"
+ #include "chrome/grit/theme_resources.h"
+@@ -49,14 +50,24 @@
+ 
+ namespace {
+ 
++// Netnyahoo: FindBrowserWindowWithWebContents finds a BrowserView only; a Browser
++// without one (NNCore's) has its own BrowserWindow, which shows the bubbles.
++BrowserWindow* FindBubbleWindow(content::WebContents* web_contents) {
++  if (BrowserWindow* window =
++          BrowserWindow::FindBrowserWindowWithWebContents(web_contents)) {
++    return window;
++  }
++  return BrowserWindow::FromBrowser(
++      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents));
++}
++
+ AutofillBubbleBase* ShowSaveBubble(
+     const AutofillProfile& profile,
+     AutofillClient::SaveAddressBubbleType save_address_bubble_type,
+     content::WebContents* web_contents,
+     bool shown_by_user_gesture,
+     base::WeakPtr<AddressBubbleControllerDelegate> delegate) {
+-  auto browser_window =
+-      BrowserWindow::FindBrowserWindowWithWebContents(web_contents);
++  auto browser_window = FindBubbleWindow(web_contents);
+   if (!browser_window) {
+     return nullptr;
+   }
+@@ -74,8 +85,7 @@
+     content::WebContents* web_contents,
+     bool shown_by_user_gesture,
+     base::WeakPtr<AddressBubbleControllerDelegate> delegate) {
+-  auto browser_window =
+-      BrowserWindow::FindBrowserWindowWithWebContents(web_contents);
++  auto browser_window = FindBubbleWindow(web_contents);
+   if (!browser_window) {
+     return nullptr;
+   }
+@@ -89,8 +99,7 @@
+ #if BUILDFLAG(ENABLE_DICE_SUPPORT)
+ AutofillBubbleBase* ShowSignInPromo(content::WebContents* web_contents,
+                                     const AutofillProfile& autofill_profile) {
+-  auto browser_window =
+-      BrowserWindow::FindBrowserWindowWithWebContents(web_contents);
++  auto browser_window = FindBubbleWindow(web_contents);
+   if (!browser_window) {
+     return nullptr;
+   }

@@ -1,4 +1,4 @@
-import type { BlockedPopup, CrashInfo, ExternalAppRequest, MediaAccess, NavigationState, PasswordPrompt, PermissionRequest, SecurityInfo } from "@netnyahoo/nncore";
+import type { AutofillPrompt, BlockedPopup, CrashInfo, ExternalAppRequest, MediaAccess, NavigationState, PasswordPrompt, PermissionRequest, SecurityInfo } from "@netnyahoo/nncore";
 import { create } from "zustand";
 import { useBrowser } from "../../store/browser";
 import { activeTabId } from "../../store/model";
@@ -15,6 +15,8 @@ export type PageState = {
   popups: BlockedPopup[];
   permission: PermissionRequest | null;
   passwordPrompt: PasswordPrompt | null;
+  /** Chrome's pending offer to save or update an address or card; Chrome decides when it goes. */
+  autofillPrompt: AutofillPrompt | null;
   externalApp: ExternalAppRequest | null;
   mediaAccess: MediaAccess | null;
   wasNewTab: boolean;
@@ -33,6 +35,7 @@ export const IDLE_PAGE: PageState = {
   popups: [],
   permission: null,
   passwordPrompt: null,
+  autofillPrompt: null,
   externalApp: null,
   mediaAccess: null,
   wasNewTab: false,

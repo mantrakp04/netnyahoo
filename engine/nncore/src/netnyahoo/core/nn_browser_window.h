@@ -10,6 +10,7 @@
 #define NETNYAHOO_CORE_NN_BROWSER_WINDOW_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -78,8 +79,10 @@ class NNLocationBar : public LocationBar {
   raw_ptr<BrowserWindowInterface> browser_ = nullptr;
 };
 
-// Chrome's autofill save/update bubbles anchor to its toolbar; with none, they don't show
-// (the host will offer its own, through the API, as Dia does).
+// Chrome's autofill bubbles anchor to its toolbar, which we don't have. Offers to save or
+// update an address or a card go to the host as its own prompts (nn_autofill_prompt.h); the
+// rest (Google Pay, virtual cards, IBANs, offers) don't show. Registered on the window's Browser
+// too, where the payments controllers look it up (AutofillBubbleHandler::Get).
 class NNAutofillBubbleHandler : public autofill::AutofillBubbleHandler {
  public:
   NNAutofillBubbleHandler();
@@ -358,6 +361,9 @@ class NNBrowserWindow : public BrowserWindow, public ExclusiveAccessContext {
   raw_ptr<Browser> browser_ = nullptr;
   std::unique_ptr<NNLocationBar> location_bar_;
   NNAutofillBubbleHandler autofill_bubble_handler_;
+  // The handler as the Browser's unowned user data (from AttachBrowser).
+  std::optional<ui::ScopedUnownedUserData<autofill::AutofillBubbleHandler>>
+      autofill_bubble_handler_registration_;
   bool tab_fullscreen_ = false;
   // Tells the host which page is in tab fullscreen, from Chrome's own record of it (never
   // the active tab: a tab switch selects the next tab before the old one's fullscreen ends).

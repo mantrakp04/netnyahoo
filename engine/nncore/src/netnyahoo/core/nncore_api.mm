@@ -87,6 +87,7 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/unpacked_installer.h"
 #include "extensions/common/extension.h"
+#include "netnyahoo/core/nn_autofill_prompt.h"
 #include "netnyahoo/core/nn_browser.h"
 #include "netnyahoo/core/nn_extension_view.h"
 #include "netnyahoo/core/nn_installed_bubble.h"
@@ -2608,6 +2609,14 @@ TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents,
                      username:(NSString*)username
                      password:(NSString*)password {
   nncore::ResolvePasswordPrompt(_contents, action, username, password);
+}
+
+- (NSDictionary<NSString*, id>*)autofillPrompt {
+  return nncore::AutofillPrompt(_contents);
+}
+
+- (void)resolveAutofillPrompt:(NSInteger)promptId action:(NSString*)action {
+  nncore::ResolveAutofillPrompt(_contents, promptId, action);
 }
 
 - (BOOL)openActionPopupForExtension:(NSString*)extensionId anchor:(NSRect)anchor {

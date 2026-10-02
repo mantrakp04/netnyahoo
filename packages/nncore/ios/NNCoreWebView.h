@@ -93,6 +93,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)resolvePasswordPrompt:(NSString *)action username:(nullable NSString *)username password:(nullable NSString *)password
     NS_SWIFT_NAME(resolvePasswordPrompt(_:username:password:));
+- (void)resolveAutofillPrompt:(NSInteger)promptId action:(NSString *)action NS_SWIFT_NAME(resolveAutofillPrompt(_:action:));
 - (void)setTabStripIndex:(NSInteger)index pinned:(BOOL)pinned NS_SWIFT_NAME(setTabStrip(index:pinned:));
 - (nullable NSString *)executeExtensionAction:(NSString *)extensionId NS_SWIFT_NAME(executeExtensionAction(_:));
 

@@ -284,6 +284,9 @@ public class CefModule: Module {
       AsyncFunction("resolvePasswordPrompt") { (view: CefWebView, action: String, username: String?, password: String?) in
         view.browser.resolvePasswordPrompt(action, username: username, password: password)
       }.runOnQueue(.main)
+      AsyncFunction("resolveAutofillPrompt") { (view: CefWebView, promptId: Int, action: String) in
+        view.browser.resolveAutofillPrompt(promptId, action: action)
+      }.runOnQueue(.main)
       AsyncFunction("setTabStrip") { (view: CefWebView, index: Int, pinned: Bool) in
         view.browser.setTabStrip(index: index, pinned: pinned)
       }.runOnQueue(.main)
@@ -344,6 +347,7 @@ final class CefWebView: ExpoView, NNCoreWebViewDelegate {
     "onReady",
     "onDiscarded",
     "onPasswordPrompt",
+    "onAutofillPrompt",
     "onTabStrip",
     "onExternalApp",
   ]
@@ -381,6 +385,7 @@ final class CefWebView: ExpoView, NNCoreWebViewDelegate {
   let onReady = EventDispatcher()
   let onDiscarded = EventDispatcher()
   let onPasswordPrompt = EventDispatcher()
+  let onAutofillPrompt = EventDispatcher()
   let onTabStrip = EventDispatcher()
   let onExternalApp = EventDispatcher()
 
@@ -441,6 +446,7 @@ final class CefWebView: ExpoView, NNCoreWebViewDelegate {
     case "ready": onReady(payload)
     case "discarded": onDiscarded(payload)
     case "passwordPrompt": onPasswordPrompt(payload)
+    case "autofillPrompt": onAutofillPrompt(payload)
     case "tabStrip": onTabStrip(payload)
     case "externalApp": onExternalApp(payload)
     default: break

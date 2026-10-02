@@ -15,6 +15,8 @@ config("exports") {
 
 source_set("core") {
   sources = [
+    "nn_autofill_prompt.h",
+    "nn_autofill_prompt.mm",
     "nn_autofill_trigger.h",
     "nn_autofill_trigger.mm",
     "nn_browser.h",

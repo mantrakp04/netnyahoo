@@ -9,9 +9,10 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { createServer as createNetServer } from "node:net";
 import { basename, join, resolve } from "node:path";
-import { createHash, createSign, generateKeyPairSync } from "node:crypto";
+import { X509Certificate, createHash, createSign, generateKeyPairSync } from "node:crypto";
 import { crc32, deflateSync, inflateSync } from "node:zlib";
 
 const [appArg, scratchArg, ...only] = process.argv.slice(2);
@@ -176,10 +177,32 @@ const server = createServer((req, res) => {
   if (url.pathname === "/d") return res.end(page("Page D", "D"));
   if (url.pathname === "/e") return res.end(page("Page E", "E"));
   if (url.pathname === "/cookie") return res.end(page("Cookie", `<script>document.cookie="who=" + location.search.slice(1) + "; path=/"</script>`));
+  // Chrome's address and card forms (served over HTTPS too: Chrome offers to save cards from secure pages only). A
+  // POST to /saved, so the values stay out of URLs; ?email adds an email field.
+  const field = (id, autocomplete, label) => `<label>${label} <input id="${id}" name="${id}" autocomplete="${autocomplete}"></label><br>`;
+  if (url.pathname === "/address")
+    return res.end(page("Address", `<form action="/saved" method="post">${field("name", "name", "Name")}${url.searchParams.has("email") ? field("email", "email", "Email") : ""}${field("street", "street-address", "Street")}${field("city", "address-level2", "City")}${field("state", "address-level1", "State")}${field("zip", "postal-code", "ZIP")}${field("country", "country-name", "Country")}<button id="go">Save</button></form>`));
+  if (url.pathname === "/card")
+    return res.end(page("Card", `<form action="/saved" method="post">${field("ccname", "cc-name", "Name on card")}${field("ccnumber", "cc-number", "Number")}${field("ccmonth", "cc-exp-month", "Month")}${field("ccyear", "cc-exp-year", "Year")}<button id="go">Pay</button></form>`));
+  if (url.pathname === "/saved") {
+    req.resume();
+    return res.end(page("Saved", "saved"));
+  }
   return res.end(page(url.pathname, url.pathname));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
+// The same pages over HTTPS, with a certificate made for this run that only this run's instances trust
+// (--ignore-certificate-errors-spki-list: Chrome then treats the page as secure, as the autofill checks need).
+const tlsDir = join(scratch, "tls");
+mkdirSync(tlsDir, { recursive: true });
+execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=127.0.0.1",
+  "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", join(tlsDir, "key.pem"), "-out", join(tlsDir, "cert.pem")], { stdio: "ignore" });
+const tlsCert = readFileSync(join(tlsDir, "cert.pem"));
+const tlsServer = createHttpsServer({ key: readFileSync(join(tlsDir, "key.pem")), cert: tlsCert }, (req, res) => server.emit("request", req, res));
+await new Promise((r) => tlsServer.listen(0, "127.0.0.1", r));
+const secureBase = `https://127.0.0.1:${tlsServer.address().port}`;
+const tlsSpki = createHash("sha256").update(new X509Certificate(tlsCert).publicKey.export({ type: "spki", format: "der" })).digest("base64");
 
 // MARK: The app
 
@@ -219,6 +242,8 @@ process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --host-resolver-rules=${["ib.adnxs.
   .map((host) => `MAP ${host} 127.0.0.1:${server.address().port}`).join(", ")}`;
 // The Web Store's update URL: a .crx downloaded from it is a Web Store install's (extension-download-hidden).
 process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --apps-gallery-update-url=${base}/webstore/crx`;
+// The HTTPS fixture's certificate (autofill-save-prompts).
+process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --ignore-certificate-errors-spki-list=${tlsSpki}`;
 // Starts the app on the run's data dir (again for the relaunch checks), with a fresh DevTools port. `opts.app` runs
 // another bundle (the media checks' copy), `opts.switches` adds Chromium switches.
 async function launch(log = "app.out.log", env = {}, args = [], opts = {}) {
@@ -2529,6 +2554,126 @@ try {
     await cef(`setAutofillSettings("", null, true)`);
     if (off.cards !== false) throw new Error(`cards setting: ${JSON.stringify(off)}`);
     return { card: { last4: card.lastFour ?? card.last4 ?? null, name: card.name }, revealed: true, cardsOff: true };
+  });
+
+  await check("autofill-save-prompts", async () => {
+    // Chrome's offers after a form is sent, as a person sends it (typed values, a click): save an address, update it,
+    // save a card. Chrome's controllers (AddressBubblesController, SaveCardBubbleControllerImpl) ask NNCore's bubble
+    // handler, the app shows the offer on the page (onAutofillPrompt) and answers it (resolveAutofillPrompt); Chrome's
+    // personal data manager then has what was accepted, and nothing that was declined. Switching tabs closes a pending
+    // offer, as Chrome's tab switch does; switching profiles keeps it for when the page is back. A made-up address and
+    // the networks' published test card numbers.
+    // The tab's event log keeps its last 80 events: offers are told apart by their ids, which only grow.
+    const prompts = async () => (await eventsOf(first.id)).filter((x) => x.name === "autofillPrompt");
+    const lastId = async () => Math.max(0, ...(await prompts()).map((x) => x.payload.id));
+    const offerAfter = (id, what) =>
+      until(what, async () => (await prompts()).findLast((x) => !x.payload.closed && x.payload.id > id)?.payload ?? null, 10000);
+    const closed = async (id) => (await prompts()).some((x) => x.payload.closed && x.payload.id === id);
+    const appPrompt = () => evalApp(`return nn.pageState.getState().pages[${JSON.stringify(first.id)}]?.autofillPrompt ?? null`);
+    const answer = (id, action) => evalApp(`return nn.webviews.get(${JSON.stringify(first.id)}).resolveAutofillPrompt(${id}, ${JSON.stringify(action)})`);
+    const addresses = async (profile = "") => (await cef(`listAddresses(${JSON.stringify(profile)})`))?.addresses ?? [];
+    const cards = async (profile = "") => (await cef(`listCards(${JSON.stringify(profile)})`))?.cards ?? [];
+    const sendForm = async (path, title, values) => {
+      await evalApp(`nn.store.getState().navigate(${JSON.stringify(first.id)}, ${JSON.stringify(secureBase + path)}, { userInitiated: true }); return true`);
+      await until(title, async () => (await state()).tabs.find((x) => x.id === first.id && x.title === title && x.url?.endsWith(path) && !x.loading), 15000);
+      const t = await pageFor(first.id, path);
+      for (const [id, text] of values) {
+        await cdp(t, "Runtime.evaluate", { expression: `document.getElementById(${JSON.stringify(id)}).focus()` });
+        await cdp(t, "Input.insertText", { text });
+      }
+      const box = JSON.parse((await cdp(t, "Runtime.evaluate", { expression: "JSON.stringify(document.getElementById('go').getBoundingClientRect())", returnByValue: true })).result.value);
+      const at = { x: box.x + box.width / 2, y: box.y + box.height / 2, button: "left", clickCount: 1 };
+      await cdp(t, "Input.dispatchMouseEvent", { type: "mousePressed", ...at, buttons: 1 });
+      await cdp(t, "Input.dispatchMouseEvent", { type: "mouseReleased", ...at, buttons: 0 });
+      await until("the form sent", async () => (await state()).tabs.find((x) => x.id === first.id && x.title === "Saved" && !x.loading), 15000);
+    };
+    const address = [["name", "Big Yahu"], ["street", "1 Satire Way"], ["city", "Springfield"], ["state", "IL"], ["zip", "62701"], ["country", "United States"]];
+    const card = (number, name) => [["ccname", name], ["ccnumber", number], ["ccmonth", "12"], ["ccyear", "2031"]];
+    let profileB = null;
+    let other = null;
+    try {
+      await evalApp(`nn.actions.switchToTab(${JSON.stringify(first.id)}); return true`);
+      await until("A shown", async () => (await state()).active === first.id);
+      const saveSeen = await lastId();
+
+      // A new address: "Save address?" on the page, saved on accept.
+      await sendForm("/address", "Address", address);
+      const save = await offerAfter(saveSeen, "the save-address offer");
+      if (save.kind !== "saveAddress" || !save.title || !save.accept || !save.decline || !JSON.stringify(save.lines).includes("Springfield"))
+        throw new Error(`save offer ${JSON.stringify(save)}`);
+      const shown = await until("the offer in the app", async () => ((await appPrompt())?.id === save.id ? true : null), 5000);
+      await answer(save.id, "accept");
+      const saved = await until("the address saved", async () => (await addresses()).find((a) => a.city === "Springfield") ?? null);
+      await until("the offer gone from the page", async () => ((await appPrompt()) === null ? true : null), 5000);
+
+      // The same address with an email: "Update address?", pending while another tab is shown: Chrome's tab switch
+      // closes it (the app's offer goes) and it doesn't come back; the address is untouched.
+      const email = "big.yahu@example.com";
+      let seen = await lastId();
+      await sendForm("/address?email", "Address", [...address.slice(0, 1), ["email", email], ...address.slice(1)]);
+      const update = await offerAfter(seen, "the update-address offer");
+      if (update.kind !== "updateAddress" || !JSON.stringify(update.changes ?? []).includes(email))
+        throw new Error(`update offer ${JSON.stringify(update)}`);
+      other = await openTab(`${base}/b`, "Page B");
+      await until("the offer closed by the tab switch", () => closed(update.id), 8000);
+      await evalApp(`nn.actions.switchToTab(${JSON.stringify(first.id)}); return true`);
+      await until("A shown again", async () => (await state()).active === first.id);
+      await sleep(1500);
+      if (await appPrompt()) throw new Error(`the offer came back after the tab switch: ${JSON.stringify(await appPrompt())}`);
+      if ((await addresses()).some((a) => a.email === email)) throw new Error("the ignored update was saved");
+
+      // Again, pending through a profile switch: still offered when the profile is back, and accepting it updates
+      // this profile's address only.
+      seen = await lastId();
+      await sendForm("/address?email", "Address", [...address.slice(0, 1), ["email", email], ...address.slice(1)]);
+      const update2 = await offerAfter(seen, "the update offer again");
+      if (update2.kind !== "updateAddress") throw new Error(`second update offer ${JSON.stringify(update2)}`);
+      const s = await state();
+      profileB = await evalApp(`return nn.store.getState().createProfile({ name: "Prompts" })`);
+      await evalApp(`nn.actions.switchProfile(${JSON.stringify(s.windowId)}, ${JSON.stringify(profileB)}); return true`);
+      await until("profile B shown", async () => (await state()).profileId === profileB);
+      await sleep(1000);
+      await evalApp(`nn.actions.switchProfile(${JSON.stringify(s.windowId)}, ${JSON.stringify(s.profileId)}); return true`);
+      await until("profile A back", async () => (await state()).profileId === s.profileId && (await state()).active === first.id);
+      await sleep(500);
+      const kept = await appPrompt();
+      if (kept?.id !== update2.id) throw new Error(`after the profile switch the page offers ${JSON.stringify(kept)}`);
+      if (await closed(update2.id)) throw new Error("the profile switch closed the offer");
+      await answer(update2.id, "accept");
+      const updated = await until("the address updated", async () => (await addresses()).find((a) => a.email === email) ?? null);
+      if ((await addresses()).length !== 1) throw new Error(`addresses ${JSON.stringify(await addresses())}`);
+      if ((await addresses(profileB)).length) throw new Error("profile B got the address");
+
+      // A card: "Save card?", saved on accept; a second one declined ("No thanks") saves nothing.
+      seen = await lastId();
+      await sendForm("/card", "Card", card("4111111111111111", "Big Yahu"));
+      const cardOffer = await offerAfter(seen, "the save-card offer");
+      if (cardOffer.kind !== "saveCard" || !JSON.stringify(cardOffer.lines).includes("1111")) throw new Error(`card offer ${JSON.stringify(cardOffer)}`);
+      await answer(cardOffer.id, "accept");
+      const savedCard = await until("the card saved", async () => (await cards()).find((c) => c.last4 === "1111") ?? null);
+      seen = await lastId();
+      await sendForm("/card", "Card", card("5555555555554444", "Big Yahu"));
+      const declined = await offerAfter(seen, "the second card's offer");
+      await answer(declined.id, "decline");
+      await until("the declined offer closed", () => closed(declined.id), 5000);
+      await sleep(1000);
+      if ((await cards()).some((c) => c.last4 === "4444")) throw new Error("the declined card was saved");
+      // A stale answer (an offer already answered) changes nothing.
+      await answer(cardOffer.id, "accept");
+      return {
+        save: { title: save.title, accept: save.accept, decline: save.decline, lines: save.lines, shown },
+        saved: { name: saved.name, city: saved.city },
+        update: { title: update.title, changes: update.changes, closedOnTabSwitch: true, keptOverProfileSwitch: true },
+        updated: { email: updated.email },
+        card: { title: cardOffer.title, lines: cardOffer.lines, saved: savedCard.last4, declined: true },
+      };
+    } finally {
+      for (const a of await addresses().catch(() => [])) await cef(`deleteAutofillEntry("", ${JSON.stringify(a.id)})`).catch(() => null);
+      for (const c of await cards().catch(() => [])) await cef(`deleteAutofillEntry("", ${JSON.stringify(c.id)})`).catch(() => null);
+      if (other) await closeTab(other.id).catch(() => null);
+      if (profileB) await evalApp(`nn.store.getState().deleteProfile(${JSON.stringify(profileB)}); return true`).catch(() => null);
+      await backToA();
+    }
   });
 
   await check("settings-services", async () => {

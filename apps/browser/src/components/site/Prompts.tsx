@@ -1,4 +1,4 @@
-import { getSiteSettings, resolveExternalApp, setSiteSetting, type PasswordPrompt as ChromePasswordPrompt, type PasswordPromptAnswer } from "@netnyahoo/nncore";
+import { getSiteSettings, resolveExternalApp, setSiteSetting, type AutofillPrompt as ChromeAutofillPrompt, type AutofillPromptAnswer, type PasswordPrompt as ChromePasswordPrompt, type PasswordPromptAnswer } from "@netnyahoo/nncore";
 import { Symbol } from "@netnyahoo/shell";
 import { useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
@@ -211,6 +211,63 @@ export function PasswordPrompt({ tabId, right, top }: { tabId: string; right: nu
           {!update && <PromptButton title="Never on This Site" onPress={() => answer("never")} />}
           <PromptButton title="Not Now" onPress={() => answer(update ? "nope" : "dismiss")} />
           <PromptButton title={update ? "Update" : "Save"} primary onPress={() => answer(update ? "update" : "save")} />
+        </PromptBody>
+        <CloseButton color={theme.textSecondary} onPress={() => answer("dismiss")} />
+      </View>
+    </Popover>
+  );
+}
+
+// Chrome's offer to save or update an address or card (onAutofillPrompt), or null once offer `id` went.
+export function showAutofillPrompt(tabId: string, prompt: ChromeAutofillPrompt | null, id: number) {
+  if (prompt) patchPage(tabId, { autofillPrompt: prompt });
+  else if (pageOf(tabId).autofillPrompt?.id === id) patchPage(tabId, { autofillPrompt: null });
+}
+
+// Styled as the password prompt, in Chrome's words: what gets saved in a well, an update's new values over its old.
+export function AutofillPrompt({ tabId, right, top }: { tabId: string; right: number; top: number }) {
+  const theme = useTheme();
+  const prompt = usePage(tabId, (p) => p.autofillPrompt);
+  if (!prompt) return null;
+  const answer = (action: AutofillPromptAnswer) => {
+    void webviews.get(tabId)?.resolveAutofillPrompt(prompt.id, action);
+    patchPage(tabId, { autofillPrompt: null });
+  };
+  const well = theme.dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)";
+  const changes = prompt.changes ?? [];
+  const values = (key: "to" | "from") => changes.filter((c) => c[key]).map((c) => c[key]);
+  const section = (lines: string[], label?: string) => (
+    <View key={label ?? "lines"} style={{ gap: 3 }}>
+      {label ? <Text style={{ fontSize: 11, color: theme.textSecondary }}>{label}</Text> : null}
+      {lines.map((line, i) => (
+        <Text key={i} numberOfLines={2} style={{ fontSize: 12, fontWeight: i === 0 && !label ? "500" : "400", color: i === 0 || label ? theme.textPrimary : theme.textSecondary }}>
+          {line}
+        </Text>
+      ))}
+    </View>
+  );
+  const sections =
+    prompt.kind !== "updateAddress"
+      ? [section(prompt.lines)]
+      : prompt.newLabel
+        ? [section(values("to"), prompt.newLabel), section(values("from"), prompt.oldLabel)]
+        : [section(values("to"))];
+  return (
+    <Popover key={prompt.id} width={350} top={top} right={right} modal={false}>
+      <View>
+        <PromptBody
+          icons={[prompt.kind === "saveCard" ? "creditcard.fill" : "mappin.and.ellipse"]}
+          title={prompt.title}
+          message={prompt.message || null}
+          detail={
+            <>
+              <View style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, gap: 8, backgroundColor: well }}>{sections}</View>
+              {prompt.footer ? <Text style={{ fontSize: 11, color: theme.textSecondary }}>{prompt.footer}</Text> : null}
+            </>
+          }
+        >
+          <PromptButton title={prompt.decline} onPress={() => answer("decline")} />
+          <PromptButton title={prompt.accept} primary onPress={() => answer("accept")} />
         </PromptBody>
         <CloseButton color={theme.textSecondary} onPress={() => answer("dismiss")} />
       </View>

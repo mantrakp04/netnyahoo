@@ -29,7 +29,7 @@ import { openFromPage } from "./layout/openFromPage";
 import { setUrlAnchor, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { NewTabPage } from "./NewTabPage";
 import { InternalPage, isInternalTab } from "./pages";
-import { BlockedPopupsPrompt, ExternalAppPrompt, PasswordPrompt, PermissionPrompt, answerExternalApp, shouldPromptForPopups, showPasswordPrompt } from "./site/Prompts";
+import { AutofillPrompt, BlockedPopupsPrompt, ExternalAppPrompt, PasswordPrompt, PermissionPrompt, answerExternalApp, shouldPromptForPopups, showAutofillPrompt, showPasswordPrompt } from "./site/Prompts";
 import { SiteControls } from "./site/SiteControls";
 import { ZoomPopover } from "./site/ZoomControls";
 import { SelectionPopover } from "./site/SelectionPopover";
@@ -288,6 +288,7 @@ const TabPane = memo(function TabPane({
             {/* A page's own prompts go with its page: not over the New Tab page shown in its place (Back to it). */}
             {!newTabShown && <PermissionPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 308))} top={4} />}
             <PasswordPrompt tabId={tabId} right={8} top={4} />
+            <AutofillPrompt tabId={tabId} right={8} top={4} />
             {!newTabShown && <ExternalAppPrompt tabId={tabId} left={Math.max(8, Math.min(geometry.urlLeft, frame.width - 348))} top={4} />}
             {popover === "siteControls" && <SiteControls tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
             {popover === "popups" && <BlockedPopupsPrompt tabId={tabId} {...(toolbar ? { right: 8 } : { left: 8 })} top={2} />}
@@ -453,6 +454,7 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
         if (first) void shouldPromptForPopups(engineProfile(profileId), popup.origin).then((ask) => ask && setPopover(tabId, "popups"));
       }}
       onPasswordPrompt={(prompt) => showPasswordPrompt(tabId, prompt)}
+      onAutofillPrompt={(prompt, id) => showAutofillPrompt(tabId, prompt, id)}
       onExternalApp={(externalApp) => patchPage(tabId, { externalApp })}
       onPageFocus={() => {
         const t = tab();

@@ -660,6 +660,11 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   [[self viewFor:tab] emit:@"passwordPrompt" payload:prompt];
 }
 
+// Chrome's offer to save or update an address or card, or {id, closed} once it went (JS AutofillPrompt).
+- (void)window:(NNCoreWindow *)window autofillPrompt:(NSDictionary<NSString *, id> *)prompt forTab:(NNCoreTab *)tab {
+  [[self viewFor:tab] emit:@"autofillPrompt" payload:prompt];
+}
+
 - (BOOL)windowShouldClose:(NNCoreWindow *)window {
   return [NNChromeWindowHost windowShouldClose:window.window];
 }

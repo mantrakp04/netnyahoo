@@ -119,6 +119,25 @@ export type PasswordPrompt = {
   usernames: string[];
 };
 export type PasswordPromptAnswer = "save" | "update" | "never" | "nope" | "dismiss";
+/** Chrome's offer to save or update an address or card after the page sent a form, in Chrome's words. `lines` is
+ *  what gets saved (an address's lines, a card's "Visa ••1111 • 12/31"); an update lists its `changes` instead, under
+ *  `newLabel` / `oldLabel` (empty when it only adds values). */
+export type AutofillPrompt = {
+  id: number;
+  kind: "saveAddress" | "updateAddress" | "saveCard";
+  origin: string;
+  title: string;
+  message: string;
+  accept: string;
+  decline: string;
+  footer: string;
+  lines: string[];
+  changes?: { field: "name" | "address" | "email" | "phone" | "other"; from: string; to: string }[];
+  newLabel?: string;
+  oldLabel?: string;
+};
+/** "accept" saves (or updates), "decline" is Chrome's "No thanks", "dismiss" closes it undecided. */
+export type AutofillPromptAnswer = "accept" | "decline" | "dismiss";
 export type ExtensionActionResult = "none" | "popup" | "sidePanel";
 
 export type WebViewProps = ViewProps & {
@@ -168,6 +187,8 @@ export type WebViewProps = ViewProps & {
   onReady?: (browserId: number, chromeTabId: number) => void;
   onDiscarded?: (url: string) => void;
   onPasswordPrompt?: (prompt: PasswordPrompt) => void;
+  /** An offer to save an address or card (`prompt`), or null once offer `id` went (answered, or Chrome closed it). */
+  onAutofillPrompt?: (prompt: AutofillPrompt | null, id: number) => void;
   onExternalApp?: (request: ExternalAppRequest) => void;
 };
 
@@ -204,6 +225,7 @@ export type WebViewHandle = {
   clearSiteData(): Promise<{ cookies: number | false; storage: boolean }>;
 
   resolvePasswordPrompt(answer: PasswordPromptAnswer, edits?: { username?: string; password?: string }): Promise<void>;
+  resolveAutofillPrompt(id: number, answer: AutofillPromptAnswer): Promise<void>;
   executeExtensionAction(extensionId: string): Promise<ExtensionActionResult | null>;
 
   resolveDisplayMedia(id: string, sourceId: string | null): Promise<void>;
@@ -253,6 +275,7 @@ type NativeEvents = {
   onReady: { browserId: number; tabId?: number };
   onDiscarded: { url: string };
   onPasswordPrompt: PasswordPrompt;
+  onAutofillPrompt: AutofillPrompt | { id: number; closed: true };
   onExternalApp: ExternalAppRequest;
 };
 type Handlers = keyof NativeEvents;
@@ -290,6 +313,7 @@ const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<
   onReady: (e) => [e.browserId, e.tabId ?? 0],
   onDiscarded: (e) => [toAppUrl(e.url)],
   onPasswordPrompt: (e) => [e],
+  onAutofillPrompt: (e) => ("closed" in e ? [null, e.id] : [e, e.id]),
   onExternalApp: (e) => [e],
 };
 
@@ -369,6 +393,7 @@ export const WebView = forwardRef<WebViewHandle, WebViewProps>(function WebView(
       clearSiteData: () => call({ cookies: false, storage: false }, (n) => n.clearSiteData()),
       resolvePasswordPrompt: (answer, edits) =>
         call(undefined, (n) => n.resolvePasswordPrompt(answer, edits?.username ?? null, edits?.password ?? null)),
+      resolveAutofillPrompt: (id, answer) => call(undefined, (n) => n.resolveAutofillPrompt(id, answer)),
       executeExtensionAction: (extensionId) => call(null, (n) => n.executeExtensionAction(extensionId)),
       resolveDisplayMedia: (id, sourceId) => call(undefined, (n) => n.resolveDisplayMedia(id, sourceId)),
       mediaCaptureSourceId: () => call(null, (n) => n.mediaCaptureSourceId()),

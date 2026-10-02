@@ -1635,6 +1635,10 @@ const char kPageReportsKey = 0;
   [_tab resolvePasswordPrompt:action username:username password:password];
 }
 
+- (void)resolveAutofillPrompt:(NSInteger)promptId action:(NSString *)action {
+  if ([_tab respondsToSelector:@selector(resolveAutofillPrompt:action:)]) [_tab resolveAutofillPrompt:promptId action:action];
+}
+
 - (void)setTabStripIndex:(NSInteger)index pinned:(BOOL)pinned {
   _tabIndex = index;
   _pinned = pinned;

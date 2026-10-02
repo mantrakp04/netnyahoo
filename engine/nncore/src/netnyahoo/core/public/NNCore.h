@@ -265,6 +265,15 @@ NNCORE_EXPORT
 - (void)window:(NNCoreWindow*)window
     passwordPrompt:(NSDictionary<NSString*, id>*)prompt
             forTab:(NNCoreTab*)tab;
+// Chrome offers to save or update an address or a card after the page sent a form (its
+// address and card bubbles), or takes an offer back: {id, kind: "saveAddress" | "updateAddress"
+// | "saveCard", origin, title, message, accept, decline, footer, lines, changes, newLabel,
+// oldLabel} (Chrome's strings; -[NNCoreTab autofillPrompt]), then {id, closed: YES} once it is
+// answered or Chrome closes it (another tab shown, the page gone, a newer offer). The host shows
+// its own UI on the tab's page and answers with -[NNCoreTab resolveAutofillPrompt:action:].
+- (void)window:(NNCoreWindow*)window
+    autofillPrompt:(NSDictionary<NSString*, id>*)prompt
+            forTab:(NNCoreTab*)tab;
 // Chrome wants to offer to save a password; the host shows its own UI and answers on the tab.
 - (void)window:(NNCoreWindow*)window
     passwordSavePromptForTab:(NNCoreTab*)tab
@@ -495,6 +504,11 @@ NNCORE_EXPORT
 - (void)resolvePasswordPrompt:(NSString*)action
                      username:(nullable NSString*)username
                      password:(nullable NSString*)password;
+// The pending offer to save or update an address or card (window:autofillPrompt:forTab:), or nil.
+@property(readonly, nullable) NSDictionary<NSString*, id>* autofillPrompt;
+// Answers offer `promptId` as Chrome's bubble: "accept" (save or update), "decline" ("No
+// thanks"), "dismiss" (closed without a decision). A stale id is ignored.
+- (void)resolveAutofillPrompt:(NSInteger)promptId action:(NSString*)action;
 // Opens the extension's action popup (Chrome's ExtensionViewHost) in a panel attached to
 // the tab's window, under `anchor` (window coordinates). Returns NO if it has no popup.
 - (BOOL)openActionPopupForExtension:(NSString*)extensionId anchor:(NSRect)anchor;

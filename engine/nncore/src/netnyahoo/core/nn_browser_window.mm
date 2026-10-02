@@ -23,6 +23,7 @@
 #include "content/public/browser/keyboard_event_processing_result.h"
 #import "netnyahoo/core/nncore_internal.h"
 #include "content/public/browser/web_contents.h"
+#include "netnyahoo/core/nn_autofill_prompt.h"
 #include "netnyahoo/core/nn_browser.h"
 #include "netnyahoo/core/nn_lifetime.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
@@ -123,18 +124,24 @@ NNAutofillBubbleHandler::~NNAutofillBubbleHandler() = default;
     return nullptr;       \
   }
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::ShowSaveCreditCardBubble(
-    content::WebContents*,
-    autofill::SaveCardBubbleController*,
-    bool) NN_NO_BUBBLE()
+    content::WebContents* web_contents,
+    autofill::SaveCardBubbleController* controller,
+    bool) {
+  return ShowSaveCardPrompt(web_contents, controller);
+}
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::ShowIbanBubble(
-    content::WebContents*,
+    content::WebContents* web_contents,
     autofill::IbanBubbleController*,
     bool,
-    autofill::IbanBubbleType) NN_NO_BUBBLE()
+    autofill::IbanBubbleType) {
+  return SkipIbanBubble(web_contents);
+}
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
-    ShowOfferNotificationBubble(content::WebContents*,
+    ShowOfferNotificationBubble(content::WebContents* web_contents,
                                 autofill::OfferNotificationBubbleController*,
-                                bool) NN_NO_BUBBLE()
+                                bool) {
+  return SkipOfferNotification(web_contents);
+}
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
     ShowSaveAutofillAiDataBubble(content::WebContents*,
                                  autofill::AutofillAiImportDataController*)
@@ -145,19 +152,25 @@ autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
         autofill::AutofillAiImportDataController*) NN_NO_BUBBLE()
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
     ShowSaveAddressProfileBubble(
-        content::WebContents*,
-        std::unique_ptr<autofill::SaveAddressBubbleController>,
-        bool) NN_NO_BUBBLE()
+        content::WebContents* web_contents,
+        std::unique_ptr<autofill::SaveAddressBubbleController> controller,
+        bool) {
+  return ShowSaveAddressPrompt(web_contents, std::move(controller));
+}
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::ShowAddressSignInPromo(
-    content::WebContents*,
-    const autofill::AutofillProfile&) NN_NO_BUBBLE()
+    content::WebContents* web_contents,
+    const autofill::AutofillProfile&) {
+  return SkipAddressSignInPromo(web_contents);
+}
 #endif
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
     ShowUpdateAddressProfileBubble(
-        content::WebContents*,
-        std::unique_ptr<autofill::UpdateAddressBubbleController>,
-        bool) NN_NO_BUBBLE()
+        content::WebContents* web_contents,
+        std::unique_ptr<autofill::UpdateAddressBubbleController> controller,
+        bool) {
+  return ShowUpdateAddressPrompt(web_contents, std::move(controller));
+}
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
     ShowFilledCardInformationBubble(
         content::WebContents*,
@@ -178,9 +191,12 @@ autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
                               autofill::MandatoryReauthBubbleType)
         NN_NO_BUBBLE()
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
-    ShowSaveCardConfirmationBubble(content::WebContents*,
-                                   autofill::SaveCardBubbleController*)
-        NN_NO_BUBBLE()
+    ShowSaveCardConfirmationBubble(
+        content::WebContents* web_contents,
+        autofill::SaveCardBubbleController* controller) {
+  // Google Pay's "card saved" (an upload's): nothing to show, closed unanswered.
+  return ShowSaveCardPrompt(web_contents, controller);
+}
 autofill::AutofillBubbleBase* NNAutofillBubbleHandler::
     ShowSaveIbanConfirmationBubble(content::WebContents*,
                                    autofill::IbanBubbleController*)
@@ -214,6 +230,7 @@ NNBrowserWindow::~NNBrowserWindow() {
   // BrowserWindow implementations tear these down before the window goes (as
   // BrowserView does): they hold references into it.
   devtools_ui_controller_.reset();
+  autofill_bubble_handler_registration_.reset();
   if (browser_) {
     browser_->GetFeatures().TearDownPreBrowserWindowDestruction();
   }
@@ -224,6 +241,8 @@ NNBrowserWindow::~NNBrowserWindow() {
 
 void NNBrowserWindow::AttachBrowser(Browser* browser) {
   browser_ = browser;
+  autofill_bubble_handler_registration_.emplace(
+      browser->GetUnownedUserDataHost(), autofill_bubble_handler_);
   location_bar_->set_browser(browser);
   devtools_ui_controller_ = std::make_unique<DevtoolsUIController>(
       browser,
