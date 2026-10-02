@@ -318,20 +318,26 @@ try {
   });
 
   if (stale) {
+    // NNCore keeps one NSWindow per logical window across profile switches (chromeWindows reports its active
+    // profile and no group), so the source window stays current: the reverse must be recognized there, not in
+    // the logical window ordered in front of it at the same point.
     await test("stale ordinary window cannot redirect into an overlapping logical window", async () => {
       await reset();
-      const sourceInfo = await nativeWindow();
-      const source = sourceInfo.window;
+      const source = (await nativeWindow()).window;
       const first = await simulate(gesture(-1), source);
       await waitProfile("work");
       const otherId = await nn('return nn.store.getState().createWindow({profileId:"default", frame:[80,80,1280,800]});');
       try {
         await sleep(500);
         const all = await windows();
-        const other = all.find((w) => w.hasRoot && w.profile === "" && w.group !== sourceInfo.group);
+        assert.equal(all.find((w) => w.window === source)?.profile, "work", "the source window should show the swiped-to profile");
+        const other = all.find((w) => w.hasRoot && w.window !== source);
         assert.ok(other, "second logical window should exist");
+        assert.equal(other.profile, "", "the second logical window should show the default profile");
         assert.equal(await action(other.window, "ns:front"), "visible=1", "overlapping logical window should be ordered front");
         const reverse = await simulate(gesture(1), source);
+        assert.equal(reverse.where.targetWindow, source, "the source window should still hold its root");
+        assert.equal(reverse.acks.find((a) => a.diag === "begin")?.window, source, "recognition should run in the source window");
         await waitProfile("default");
         assert.equal(await nn(`return nn.store.getState().windows[${JSON.stringify(otherId)}].profileId;`), "default");
         return { source, first, reverse, other: other.window };
