@@ -25,6 +25,7 @@ import { LiveFolders } from "./sidebar/LiveFolderBlock";
 import { openOverflowMenu, openSidebarMenu } from "./sidebar/menus";
 import { PinnedGrid } from "./sidebar/PinnedGrid";
 import { ResizeHandle } from "./sidebar/ResizeHandle";
+import { entriesHeight, rowSpan, type Section } from "./sidebar/geometry";
 import { measureRow } from "./sidebar/state";
 import { SplitRowItem, TabRowItem } from "./sidebar/TabRow";
 import { useSidebarTokens, useSidebarWidth } from "./sidebar/tokens";
@@ -57,6 +58,7 @@ export function Sidebar() {
   };
   const scroll = useRef<ScrollView>(null);
   const scrollY = useRef(0);
+  const geometry = useRef<SidebarGeometry>({ viewport: 0, regions: { pinnedGroups: 0, list: 0 }, newTabAtTop: false });
   const playerTab = useSidebarPlayerTab(windowId);
   const playerHeight = playerTab ? SIDEBAR_PLAYER_HEIGHT : 0;
   const addressBar = useAddressBarInSidebar();
@@ -67,7 +69,7 @@ export function Sidebar() {
   const footerDownloads = addressBar && hasDownloads;
   const footer = dots || footerDownloads ? PROFILE_DOTS_HEIGHT : 0;
 
-  useRevealTabs(windowId, scroll, scrollY, glowRoom);
+  useRevealTabs(windowId, scroll, scrollY, geometry, glowRoom);
   // A card anchored to a row of the page paging away would stay where the row was.
   useEffect(() => dismissHover(), [current]);
 
@@ -103,6 +105,7 @@ export function Sidebar() {
                 glowRoom={glowRoom}
                 ghost={ghost}
                 rows={page.id === current ? undefined : Math.ceil(available / ROW_PITCH) + 1}
+                geometry={page.id === current ? geometry : undefined}
                 onListHeight={onListHeight}
                 onScrollView={(v) => {
                   scroll.current = v;
@@ -174,12 +177,14 @@ type PageProps = {
   glowRoom: number;
   ghost: Ghost | null;
   rows: number | undefined;
+  /** The current page's: where its regions and viewport are, for revealing tabs. */
+  geometry: RefObject<SidebarGeometry> | undefined;
   onListHeight: (height: number) => void;
   onScrollView: (view: ScrollView | null) => void;
   onScrollY: (y: number) => void;
 };
 
-function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoom, ghost, rows, onListHeight, onScrollView, onScrollY }: PageProps) {
+function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoom, ghost, rows, geometry, onListHeight, onScrollView, onScrollY }: PageProps) {
   const windowId = useWindowId();
   const { tiles, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
   // A page's first render mounts only the rows a screen can show; the rest follow in chunks, one per frame, so a
@@ -194,11 +199,15 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
   }, [growing, mountedRows, all.length]);
   const limit = rows ?? (growing ? mountedRows : undefined);
   const list = limit === undefined ? all : all.slice(0, limit);
+  // Rows still to mount hold their room (rows are fixed-height): the list is as tall as it will be, so a tab revealed
+  // early scrolls to its place, and the New Tab row docks once.
+  const pending = useBrowser((s) => (growing ? entriesHeight(s, windowId, profileId, all.slice(mountedRows)) : 0));
   const topGap = listTopGap(useAddressBarInSidebar());
   const newTabsAtTop = useSettings((s) => s.newTabPosition === "top");
   const innerWidth = width - layout.sidebarInset * 2;
   const pageStyle = usePageStyle(windowId, slot, width);
   const inlineNewTab = !current || !docked;
+  if (geometry) geometry.current.newTabAtTop = newTabsAtTop && inlineNewTab;
   const measured = useRef(0);
   useEffect(() => {
     if (current && measured.current) onListHeight(measured.current);
@@ -229,6 +238,14 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
                   <Animated.View style={{ flex: 1, transform: [{ translateY: Animated.multiply(edge, -1) }] }}>
                     <Animated.ScrollView
                       ref={current ? onScrollView : undefined}
+                      onLayout={
+                        geometry
+                          ? (e) => {
+                              geometry.current.viewport = e.nativeEvent.layout.height;
+                              geometry.current.laidOut?.();
+                            }
+                          : undefined
+                      }
                       style={{ flex: 1 }}
                       showsVerticalScrollIndicator={false}
                       scrollEventThrottle={16}
@@ -246,6 +263,7 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
                           ref={(v) => {
                             controller?.regions.set("pinnedGroups", v);
                           }}
+                          onLayout={geometry ? (e) => void (geometry.current.regions.pinnedGroups = e.nativeEvent.layout.y) : undefined}
                           style={{ marginTop: tiles.length || (current && ghost) ? 6 : topGap, gap: layout.rowGap }}
                         >
                           {pinnedGroups.map((id) => (
@@ -258,12 +276,14 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
                           ref={(v) => {
                             controller?.regions.set("list", v);
                           }}
+                          onLayout={geometry ? (e) => void (geometry.current.regions.list = e.nativeEvent.layout.y) : undefined}
                           style={{ marginTop: pinnedGroups.length ? 7 : 0, gap: layout.rowGap }}
                         >
                           {newTabsAtTop && inlineNewTab ? <NewTabRow windowId={windowId} /> : null}
                           {list.map((entry) => (
                             <ListEntry key={entry} entry={entry} />
                           ))}
+                          {pending ? <View style={{ height: pending }} /> : null}
                           <Tail id="tail:list" section="list" />
                           {!newTabsAtTop && inlineNewTab ? <NewTabRow windowId={windowId} /> : null}
                         </View>
@@ -302,51 +322,62 @@ const Tail = memo(function Tail({ id, section }: { id: string; section: "list" |
   return <Animated.View ref={wrapper.ref} style={wrapper.style} />;
 });
 
-function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, scrollY: RefObject<number>, glowRoom: number) {
+type SidebarGeometry = { viewport: number; regions: Record<Section, number>; newTabAtTop: boolean; laidOut?: () => void };
+
+// Keeps the tab just switched to, or else the last tab opened from another in the background, in view: one scroll a
+// frame, to the row's place worked out from the store (rows are fixed-height), mounted or not.
+function useRevealTabs(windowId: string, scroll: RefObject<ScrollView | null>, scrollY: RefObject<number>, geometry: RefObject<SidebarGeometry>, glowRoom: number) {
   useEffect(() => {
-    // A row not mounted yet (long lists mount a chunk per frame) is looked for again every 60 ms, for up to 3 s,
-    // until the user switches tabs again: every reveal belongs to the switch it followed.
-    let switches = 0;
-    let stopped = false;
-    const reveal = (tabId: string, tries = 50, switch_ = switches): ReturnType<typeof setTimeout> =>
-      setTimeout(async () => {
-        const current = () => !stopped && switch_ === switches;
-        if (!current()) return;
-        const row = await measureRow(windowId, tabId);
-        if (!current()) return;
-        if (!row) {
-          if (tries > 1 && useBrowser.getState().tabs[tabId]?.windowId === windowId) reveal(tabId, tries - 1, switch_);
-          return;
-        }
-        const view = scroll.current as unknown as View | null;
-        const viewport = await new Promise<{ y: number; h: number } | null>((resolve) =>
-          view ? view.measureInWindow((_x, y, _w, h) => resolve(h ? { y, h } : null)) : resolve(null),
-        );
-        if (!current() || !viewport || !scroll.current) return;
-        const top = viewport.y + glowRoom;
-        const bottom = viewport.y + viewport.h - 8;
-        const y = scrollY.current ?? 0;
-        if (row.y < top) scroll.current.scrollTo({ y: Math.max(0, y - (top - row.y)), animated: true });
-        else if (row.y + row.height > bottom) scroll.current.scrollTo({ y: y + (row.y + row.height - bottom), animated: true });
-      }, 60);
+    let switched: string | null = null;
+    let opened: string | null = null;
+    let frame = 0;
+    let reveals = 0;
+    const show = (y: number, height: number) => {
+      const top = scrollY.current ?? 0;
+      const viewport = geometry.current.viewport;
+      if (y - top < glowRoom) scroll.current?.scrollTo({ y: Math.max(0, y - glowRoom), animated: true });
+      else if (y + height - top > viewport - 8) scroll.current?.scrollTo({ y: y + height - viewport + 8, animated: true });
+    };
+    const reveal = () => {
+      frame = 0;
+      // A page that hasn't laid out yet (the sidebar just mounted) reveals once it has.
+      if (!geometry.current.viewport || !scroll.current) return;
+      const mine = ++reveals;
+      const tabId = switched ?? opened;
+      switched = opened = null;
+      const s = useBrowser.getState();
+      const profileId = s.windows[windowId]?.profileId;
+      if (!tabId || !profileId) return;
+      const { regions, newTabAtTop } = geometry.current;
+      const span = rowSpan(s, windowId, profileId, tabId, newTabAtTop);
+      if (span) return show(glowRoom + regions[span.section] + span.top, span.height);
+      // A pinned tile or a live folder's row: always mounted, so measured once.
+      const view = scroll.current as unknown as View;
+      void measureRow(windowId, tabId).then((row) =>
+        view.measureInWindow((_x, y) => row && mine === reveals && show(row.y - y + (scrollY.current ?? 0), row.height)),
+      );
+    };
+    // After the frame's layout: the rows it adds are in the list.
+    const schedule = () => {
+      if ((switched || opened) && !frame) frame = requestAnimationFrame(reveal);
+    };
     const unsubscribe = useBrowser.subscribe((s, prev) => {
       if (s.windows === prev.windows && s.tabs === prev.tabs) return;
       const active = activeTabId(s, windowId);
-      if (active && active !== activeTabId(prev, windowId)) {
-        switches++;
-        reveal(active);
-      }
+      if (active && active !== activeTabId(prev, windowId)) switched = active;
       const w = s.windows[windowId];
       const before = prev.windows[windowId];
-      if (!w || !before || w.tabIds === before.tabIds) return;
-      const had = new Set(before.tabIds);
-      for (const id of w.tabIds) {
-        if (!had.has(id) && s.tabs[id]?.openerId && id !== active) reveal(id);
+      if (w && before && w.tabIds !== before.tabIds) {
+        const had = new Set(before.tabIds);
+        for (const id of w.tabIds) if (!had.has(id) && s.tabs[id]?.openerId && id !== active) opened = id;
       }
+      schedule();
     });
+    geometry.current.laidOut = schedule;
     return () => {
-      stopped = true;
+      cancelAnimationFrame(frame);
       unsubscribe();
+      geometry.current.laidOut = undefined;
     };
   }, [windowId, glowRoom]);
 }

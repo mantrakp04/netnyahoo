@@ -5,7 +5,6 @@ import { useShallow } from "zustand/react/shallow";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
 import { usePageProfileId, useWindowId } from "../../store/hooks";
-import { activeTabId } from "../../store/model";
 import { groupLabel } from "../../store/organize";
 import { MeetingTimeLabel, useMeetingCountdown } from "../live/MeetingCountdown";
 import { HoverSlot } from "../HoverSlot";
@@ -13,6 +12,7 @@ import { IconButton } from "../primitives";
 import { commitRename, endRename, startRename } from "./actions";
 import { useDragItem, useDropInto } from "./dnd";
 import { Fold, useFold } from "./Fold";
+import { GROUP_BORDER, GROUP_PAD, keptEntry } from "./geometry";
 import { useGroupEntries } from "./entries";
 import { dismissHover, useRowHover } from "./hover";
 import { openGroupMenu } from "./menus";
@@ -21,7 +21,7 @@ import { TabIcon } from "./TabIcon";
 import { RenameField, SplitRowItem, TabRowItem } from "./TabRow";
 import { GROUP_COLORS, useSidebarTokens, withAlpha } from "./tokens";
 
-const PAD = 2;
+const PAD = GROUP_PAD;
 
 export const GroupBlock = memo(function GroupBlock({ groupId, section }: { groupId: string; section: "list" | "pinnedGroups" }) {
   const windowId = useWindowId();
@@ -36,11 +36,7 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
   });
   const profileId = usePageProfileId();
   // The window's active tab, when it's a member: it stays out while the group is collapsed, as in Arc and Dia.
-  const activeEntry = useBrowser((s) => {
-    const active = activeTabId(s, windowId, profileId);
-    if (!active) return null;
-    return entries.find((e) => e === `t:${active}` || (e.startsWith("s:") && !!s.splits[e.slice(2)]?.tabIds.includes(active))) ?? null;
-  });
+  const activeEntry = useBrowser((s) => keptEntry(s, windowId, profileId, entries));
   const { wrapper, handle, headerRef } = useDragItem(`g:${groupId}`, { kind: "group", tabIds: tabIds.split(",").filter(Boolean), section, groupId, collapsed });
   const tail = useDragItem(`tail:group:${groupId}`, { kind: "tail", tabIds: [], section, parentGroup: groupId });
 
@@ -52,7 +48,7 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
 
   return (
     <Animated.View ref={wrapper.ref} style={wrapper.style}>
-      <View style={{ borderRadius: 12, backgroundColor: fill, borderWidth: 0.5, borderColor: stroke, paddingHorizontal: PAD }}>
+      <View style={{ borderRadius: 12, backgroundColor: fill, borderWidth: GROUP_BORDER, borderColor: stroke, paddingHorizontal: PAD }}>
         <View ref={headerRef} {...handle}>
           <GroupHeader groupId={groupId} windowId={windowId} collapsed={collapsed} open={fold.open} />
         </View>
