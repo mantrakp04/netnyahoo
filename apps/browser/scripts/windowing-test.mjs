@@ -9,27 +9,29 @@
 // blank or half-drawn while the app still shows the old tab, a new window empty but for its traffic lights, an
 // emptied window left on screen. The frame checks are skipped when the screen can't be recorded (locked); the
 // no-reload check needs no screen.
+//
+// One line per check; the details (and the recorder's own output) go to windowing-test.log beside the instance's data.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { launch, reporter, session, sleep } from "../../../scripts/lib/instance.mjs";
 
 const args = process.argv.slice(2);
 const appArg = args.find((a) => !a.startsWith("--"));
 if (!appArg) {
-  console.error("usage: node windowing-test.mjs <Debug Netnyahoo.app> [--port=9483] [--keep-data]");
+  console.error("usage: node windowing-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data]");
   process.exit(2);
 }
-const app = resolve(appArg);
-assert.notEqual(app, "/Applications/Netnyahoo.app", "use an isolated Debug build");
-const port = Number(args.find((a) => a.startsWith("--port="))?.slice(7) ?? 9483);
+const appPath = resolve(appArg);
+const port = args.find((a) => a.startsWith("--port="))?.slice(7);
 const keep = args.includes("--keep-data");
-const binary = `${app}/Contents/MacOS/Netnyahoo`;
-const data = mkdtempSync(join(tmpdir(), "nn-windowing-"));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const scratch = mkdtempSync(join(tmpdir(), "nn-windowing-"));
+const data = join(scratch, "data");
+const rep = reporter(join(scratch, "windowing-test.log"), { name: "windowing-test" });
 
 // Two pages that look nothing alike, so a half-drawn one stands out.
 const page = (bg, ink, title) => `<!doctype html><title>${title}</title><body style="margin:0;background:${bg};color:${ink};font:22px Georgia">
@@ -43,39 +45,20 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
-const tab = (id, windowId, url, createdAt) => ({ id, windowId, profileId: "default", url, title: url ? id : "", favicon: null, pinned: false,
-  muted: false, zoom: 1, customTitle: null, customIcon: null, pinnedUrl: null, openerId: null, createdAt, lastActiveAt: createdAt });
+const tab = (id, windowId, url, createdAt) => ({ id, windowId, url, title: url ? id : "", createdAt, lastActiveAt: createdAt });
 // Frames are AppKit's (from the bottom of the screen); w2 sits clear of w1, to the right.
-const fixture = () => ({ version: 2,
-  profiles: { default: { id: "default", name: "Personal", color: "plum", icon: null, createdAt: 0 } },
-  profileOrder: ["default"],
+const fixture = () => session({
+  profiles: [{ id: "default", name: "Personal", color: "plum" }],
   settings: { tabLayout: "sidebar" },
   windows: [
-    { id: "w1", profileId: "default", incognito: false, tabIds: ["n1", "g1", "b1", "n2"], activeTabIds: { default: "g1" }, sidebarOpen: true, frame: [40, 222, 1000, 700], createdAt: 1 },
-    { id: "w2", profileId: "default", incognito: false, tabIds: ["m1"], activeTabIds: { default: "m1" }, sidebarOpen: true, frame: [1060, 332, 440, 500], createdAt: 2 },
+    { id: "w1", tabIds: ["n1", "g1", "b1", "n2"], activeTabIds: { default: "g1" }, frame: [40, 222, 1000, 700] },
+    { id: "w2", tabIds: ["m1"], activeTabIds: { default: "m1" }, frame: [1060, 332, 440, 500] },
   ],
-  windowOrder: ["w1", "w2"], focusedWindowId: "w2",
+  focusedWindowId: "w2",
   tabs: [tab("n1", "w1", "", 1), tab("g1", "w1", `${base}/gazette`, 2), tab("b1", "w1", `${base}/blue`, 3), tab("n2", "w1", "", 4), tab("m1", "w2", `${base}/blue?moved`, 5)],
-  groups: [], splits: [], closedTabs: [], closedWindows: [], closedGroups: [], cleanedTabs: [],
 });
 
-const pidsOf = () => new Set(spawnSync("pgrep", ["-f", binary], { encoding: "utf8" }).stdout.split(/\s+/).filter(Boolean).map(Number));
-const alive = (p) => { try { process.kill(p, 0); return true; } catch { return false; } };
-let pid = null;
-let evalId = 0;
-async function nn(body, timeout = 20000) {
-  const id = `win-${Date.now()}-${++evalId}`;
-  writeFileSync(join(data, "dev-eval.js"), `// ${id}\n${body}`);
-  for (const start = Date.now(); Date.now() - start < timeout; await sleep(50)) {
-    if (pid && !alive(pid)) throw new Error(`app ${pid} died`);
-    let out;
-    try { out = JSON.parse(readFileSync(join(data, "dev-eval-result.json"), "utf8")); } catch { continue; }
-    if (out.id !== id) continue;
-    if (out.error) throw new Error(out.error);
-    return out.result;
-  }
-  throw new Error(`dev harness timeout: ${body.slice(0, 120)}`);
-}
+let app = null;
 const HELPERS = `
 const C = globalThis.expo.modules.NetnyahooCEF;
 const st = () => nn.store.getState();
@@ -83,7 +66,7 @@ const win = (id) => C.chromeWindows().then((ws) => { const f = st().windows[id].
 const act = (id, a) => win(id).then((n) => C.devWindow(n, a));
 const settle = (ms) => new Promise((r) => setTimeout(r, ms));
 `;
-const run = (body) => nn(`${HELPERS}\n${body}`);
+const run = (body) => app.eval(`${HELPERS}\n${body}`);
 
 // MARK: Frames
 
@@ -94,9 +77,10 @@ let canRecord = false;
 /** Records the instance's windows while `during` runs; resolves to the frames ({t, w, h, g: Uint8Array}). */
 async function record(seconds, during) {
   const file = join(data, `frames-${Date.now()}.jsonl`);
-  const child = spawn(recorder, [String(pid), String(seconds), file], { stdio: ["ignore", "pipe", "inherit"] });
+  const child = spawn(recorder, [String(app.pid), String(seconds), file], { stdio: ["ignore", "pipe", "pipe"] });
   let said = "";
   child.stdout.on("data", (d) => (said += d));
+  child.stderr.on("data", (d) => rep.log(`recorder: ${String(d).trim()}`));
   const done = new Promise((r) => child.on("exit", r));
   for (const start = Date.now(); !said.includes("started") && Date.now() - start < 8000; await sleep(20)) if (child.exitCode !== null) break;
   if (!said.includes("started")) {
@@ -144,42 +128,29 @@ function glitches(frames, r, tolerance = 4) {
   return runs.filter((run) => run.n < 3 && resting.every((s) => diff(crops[run.at], s) > tolerance)).map((run) => ({ t: frames[run.at].t, frames: run.n }));
 }
 
-const results = [];
+// A check that returns a reason was skipped (reporter.check has no skip).
 async function check(name, fn) {
+  const t0 = Date.now();
   try {
-    const skipped = await fn();
-    results.push([skipped ? "SKIP" : "PASS", name]);
-    console.log(`${skipped ? `SKIP (${skipped})` : "PASS"} ${name}`);
+    const skip = await fn();
+    rep.record(name, { ms: Date.now() - t0, skip: skip || undefined });
   } catch (error) {
-    results.push(["FAIL", name, error.message]);
-    console.log(`FAIL ${name}: ${error.message}`);
+    rep.record(name, { ms: Date.now() - t0, error });
   }
 }
 
 try {
+  mkdirSync(data, { recursive: true });
   const built = spawnSync("swiftc", ["-O", recorderSource, "-o", recorder], { encoding: "utf8" });
-  if (built.status !== 0) console.log(`(no recorder: ${built.stderr.trim().split("\n")[0]})`);
-  writeFileSync(join(data, "session.json"), JSON.stringify(fixture()));
-  writeFileSync(join(data, "onboarding.json"), JSON.stringify({ version: 1, completedAt: 1 }));
-  // A Release build runs the dev harness only for a data folder holding this.
-  writeFileSync(join(data, "perf-probe"), "");
-  const before = pidsOf();
-  spawnSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, app]);
-  for (const start = Date.now(); !pid && Date.now() - start < 20000; await sleep(200)) pid = [...pidsOf()].find((p) => !before.has(p)) ?? null;
-  assert.ok(pid, "app didn't start");
-  for (let tries = 0; ; tries++) {
-    try {
-      await nn("return 1", 3000);
-      break;
-    } catch (error) {
-      if (tries > 30) throw error;
-    }
-  }
+  if (built.status !== 0) rep.log(`(no recorder: ${built.stderr.trim().split("\n")[0]})`);
+  // perf-probe: a Release build runs the dev harness only for a data folder holding it.
+  app = await launch(appPath, { data, port, session: fixture(), onboarded: true, probe: true });
+  rep.log(`instance: pid ${app.pid}, DevTools port ${app.port}, data ${data}`);
   await sleep(2500);
   const probe = existsSync(recorder) ? await record(0.5, async () => {}) : null;
   canRecord = !!probe;
   const H = probe ? probe[0].h * 8 : 0;
-  if (!canRecord) console.log("(the screen can't be recorded: frame checks skipped)");
+  if (!canRecord) rep.log("(the screen can't be recorded: frame checks skipped)");
 
   await check("tab switches show the old page or the new one, never a blank or half-drawn page", async () => {
     if (!canRecord) return "no screen";
@@ -240,7 +211,7 @@ try {
     const crops = frames.map((f) => crop(f, page));
     const sd = (c) => { const m = mean(c); return Math.sqrt(c.reduce((s, v) => s + (v - m) ** 2, 0) / c.length); };
     const blank = crops.filter((c) => sd(c) < 3);
-    console.log(`  ${blank.length} frames of w1's page blank`);
+    rep.log(`${blank.length} frames of w1's page blank`);
     await run(`st().closeWindow("${torn[0]}"); return settle(500);`);
     // Not there yet: 1–4 frames blank (was 3–5). The next tab now paints through the drag and shows in the batch that
     // takes the torn tab away (it showed an empty card for 2 more frames). Left: the torn page draws only its
@@ -281,11 +252,9 @@ try {
     assert.ok(blank.length <= 1, `${blank.length} frames of w1's page blank`);
   });
 } finally {
-  if (pid && alive(pid)) process.kill(pid);
+  await app?.quit();
   server.close();
   if (!keep) rmSync(data, { recursive: true, force: true });
-  else console.log(`data: ${data}`);
+  else rep.say(`data: ${data}`);
 }
-const failed = results.filter((r) => r[0] === "FAIL");
-console.log(`${results.filter((r) => r[0] === "PASS").length}/${results.length} passed${failed.length ? "" : ""}`);
-process.exit(failed.length ? 1 : 0);
+process.exit(rep.summary() ? 0 : 1);

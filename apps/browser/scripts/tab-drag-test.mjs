@@ -1,69 +1,51 @@
 // Tab dragging in the top tab strip (and the sidebar's drag onto the page), driven through AppKit's own event path
 // (DEV `drag:`: mouseDown, mouseDragged…, mouseUp sent to the window) in a hidden instance.
 //
-//   node apps/browser/scripts/tab-drag-test.mjs <Debug Netnyahoo.app> [--port=9481] [--keep-data]
+//   node apps/browser/scripts/tab-drag-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data]
 //
 // Guards the owner's 0.2.18 report: pressing a tab in the strip moved the window (the press climbed the responder
 // chain to the strip's WindowDragRegion) and nothing could be dragged. A real mouse is still needed for the feel
 // (AppKit's window drag tracks the hardware pointer, which synthetic events can't).
+//
+// One line per check; the details go to tab-drag-test.log beside the instance's data.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { inflateSync } from "node:zlib";
+import { launch, reporter, session, sleep } from "../../../scripts/lib/instance.mjs";
 
 const args = process.argv.slice(2);
 const appArg = args.find((a) => !a.startsWith("--"));
 if (!appArg) {
-  console.error("usage: node tab-drag-test.mjs <Debug Netnyahoo.app> [--port=9481] [--keep-data]");
+  console.error("usage: node tab-drag-test.mjs <Debug Netnyahoo.app> [--port=<DevTools port>] [--keep-data]");
   process.exit(2);
 }
-const app = resolve(appArg);
-assert.notEqual(app, "/Applications/Netnyahoo.app", "use an isolated Debug build");
-const port = Number(args.find((a) => a.startsWith("--port="))?.slice(7) ?? 9481);
+const appPath = resolve(appArg);
+const port = args.find((a) => a.startsWith("--port="))?.slice(7);
 const keep = args.includes("--keep-data");
-const binary = `${app}/Contents/MacOS/Netnyahoo`;
-const data = mkdtempSync(join(tmpdir(), "nn-tab-drag-"));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const scratch = mkdtempSync(join(tmpdir(), "nn-tab-drag-"));
+const data = join(scratch, "data");
+const rep = reporter(join(scratch, "tab-drag-test.log"), { name: "tab-drag-test" });
 
-const tab = (id, windowId, pinned = false) => ({ id, windowId, profileId: "default", url: "", title: "", favicon: null, pinned, muted: false, zoom: 1,
-  customTitle: null, customIcon: null, pinnedUrl: null, openerId: null, createdAt: 1, lastActiveAt: id === "t1" ? 2 : 1 });
-const fixture = () => ({ version: 2,
-  profiles: { default: { id: "default", name: "Personal", color: "plum", icon: null, createdAt: 0 } },
-  profileOrder: ["default"],
+const tab = (id, windowId, pinned = false) => ({ id, windowId, pinned, lastActiveAt: id === "t1" ? 2 : 1 });
+const fixture = () => session({
+  profiles: [{ id: "default", name: "Personal", color: "plum" }],
   settings: { tabLayout: "top" },
   windows: [
-    { id: "w1", profileId: "default", incognito: false, tabIds: ["p1", "p2", "t1", "t2", "t3", "t4"], activeTabIds: { default: "t1" }, sidebarOpen: true, frame: [80, 80, 1280, 800], createdAt: 1 },
-    { id: "w2", profileId: "default", incognito: false, tabIds: ["l1"], activeTabIds: { default: "l1" }, sidebarOpen: true, frame: [200, 120, 1100, 700], createdAt: 2 },
-    { id: "w3", profileId: "default", incognito: false, tabIds: ["g1", "g2", "x1"], activeTabIds: { default: "x1" }, sidebarOpen: true, frame: [140, 100, 1200, 760], createdAt: 3 },
+    { id: "w1", tabIds: ["p1", "p2", "t1", "t2", "t3", "t4"], activeTabIds: { default: "t1" }, frame: [80, 80, 1280, 800], createdAt: 1 },
+    { id: "w2", tabIds: ["l1"], activeTabIds: { default: "l1" }, frame: [200, 120, 1100, 700], createdAt: 2 },
+    { id: "w3", tabIds: ["g1", "g2", "x1"], activeTabIds: { default: "x1" }, frame: [140, 100, 1200, 760], createdAt: 3 },
     // Side by side, the same height: a tab dragged from one onto the other's strip.
-    { id: "w5", profileId: "default", incognito: false, tabIds: ["a1", "a2"], activeTabIds: { default: "a2" }, sidebarOpen: true, frame: [100, 60, 560, 420], createdAt: 5 },
-    { id: "w6", profileId: "default", incognito: false, tabIds: ["b1", "b2", "b3"], activeTabIds: { default: "b1" }, sidebarOpen: true, frame: [700, 60, 560, 420], createdAt: 6 },
+    { id: "w5", tabIds: ["a1", "a2"], activeTabIds: { default: "a2" }, frame: [100, 60, 560, 420], createdAt: 5 },
+    { id: "w6", tabIds: ["b1", "b2", "b3"], activeTabIds: { default: "b1" }, frame: [700, 60, 560, 420], createdAt: 6 },
   ],
-  windowOrder: ["w1", "w2", "w3", "w5", "w6"], focusedWindowId: "w1",
   tabs: [tab("p1", "w1", true), tab("p2", "w1", true), tab("t1", "w1"), tab("t2", "w1"), tab("t3", "w1"), tab("t4", "w1"), tab("l1", "w2"),
     tab("g1", "w3"), tab("g2", "w3"), tab("x1", "w3"), tab("a1", "w5"), tab("a2", "w5"), tab("b1", "w6"), tab("b2", "w6"), tab("b3", "w6")],
-  groups: [{ id: "grp", windowId: "w3", profileId: "default", name: "Group", icon: null, color: null, collapsed: false, pinned: false, tabIds: ["g1", "g2"], createdAt: 1 }], splits: [], closedTabs: [], closedWindows: [], closedGroups: [], cleanedTabs: [],
+  groups: [{ id: "grp", windowId: "w3", profileId: "default", name: "Group", icon: null, color: null, collapsed: false, pinned: false, tabIds: ["g1", "g2"], createdAt: 1 }],
 });
 
-const pidsOf = () => new Set(spawnSync("pgrep", ["-f", binary], { encoding: "utf8" }).stdout.split(/\s+/).filter(Boolean).map(Number));
-let pid = null;
-let evalId = 0;
-async function nn(body, timeout = 20000) {
-  const id = `drag-${Date.now()}-${++evalId}`;
-  writeFileSync(join(data, "dev-eval.js"), `// ${id}\n${body}`);
-  for (const start = Date.now(); Date.now() - start < timeout; await sleep(50)) {
-    if (pid && !alive(pid)) throw new Error(`app ${pid} died`);
-    let out;
-    try { out = JSON.parse(readFileSync(join(data, "dev-eval-result.json"), "utf8")); } catch { continue; }
-    if (out.id !== id) continue;
-    if (out.error) throw new Error(out.error);
-    return out.result;
-  }
-  throw new Error(`dev harness timeout: ${body.slice(0, 120)}`);
-}
-const alive = (p) => { try { process.kill(p, 0); return true; } catch { return false; } };
+let app = null;
 
 // The page's helpers: `win(id)` the native window number of a store window, `act(id, action)` a DEV window action,
 // `items(id)` the strip's items as [left, right] runs of the hit test along the strip's middle line.
@@ -78,7 +60,7 @@ const items = (id) => win(id).then((n) => { const xs = []; for (let x = 70; x < 
     if (cur) runs.push(cur); return runs; }); });
 const settle = (ms) => new Promise((r) => setTimeout(r, ms));
 `;
-const run = (body) => nn(`${HELPERS}\n${body}`);
+const run = (body) => app.eval(`${HELPERS}\n${body}`);
 const order = (w) => run(`return st().windows.${w}.tabIds;`);
 const drag = (w, points) => run(`return act("${w}", "windowDrags").then(() => act("${w}", "drag:${points.map((p) => p.join(",")).join(";")}")).then(() => settle(${points.length * 12 * 16 + 700})).then(() => act("${w}", "windowDrags")).then((t) => Number(t.split("\\n")[0]));`);
 
@@ -127,33 +109,11 @@ function contrast(png, [x0, y0, x1, y1]) {
   return Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length);
 }
 
-const results = [];
-async function check(name, fn) {
-  try {
-    await fn();
-    results.push(["PASS", name]);
-    console.log(`PASS ${name}`);
-  } catch (error) {
-    results.push(["FAIL", name, error.message]);
-    console.log(`FAIL ${name}: ${error.message}`);
-  }
-}
+const check = (name, fn) => rep.check(name, fn);
 
 try {
-  writeFileSync(join(data, "session.json"), JSON.stringify(fixture()));
-  const before = pidsOf();
-  spawnSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, app]);
-  for (const start = Date.now(); !pid && Date.now() - start < 20000; await sleep(200)) pid = [...pidsOf()].find((p) => !before.has(p)) ?? null;
-  assert.ok(pid, "app didn't start");
-  // The harness ignores a script already there when it starts: ask again until it answers.
-  for (let tries = 0; ; tries++) {
-    try {
-      await nn("return 1", 3000);
-      break;
-    } catch (error) {
-      if (tries > 30) throw error;
-    }
-  }
+  app = await launch(appPath, { data, port, session: fixture() });
+  rep.log(`instance: pid ${app.pid}, DevTools port ${app.port}, data ${data}`);
   await sleep(1500);
   await run(`return act("w1", "windowDrags");`);
 
@@ -243,7 +203,7 @@ try {
     // through (the resting card is half clear in dark), dimmed. The dragged card hides it.
     assert.ok(alone > 12, `the box holds the icon: ${alone}`);
     assert.ok(over < 3, `the neighbour's icon shows through the dragged tab: contrast alone ${alone.toFixed(1)}, held over ${over.toFixed(1)}`);
-    console.log(`  the neighbour's icon: contrast ${alone.toFixed(1)} alone, ${over.toFixed(1)} under the dragged tab`);
+    rep.log(`the neighbour's icon: contrast ${alone.toFixed(1)} alone, ${over.toFixed(1)} under the dragged tab`);
     assert.deepEqual(await order("w1"), before, "it went back");
   });
 
@@ -480,10 +440,8 @@ try {
     assert.ok(Math.abs(out.landed.x - out.row.x) < 0.5 && Math.abs(out.landed.y - out.row.y) < 0.5, JSON.stringify(out));
   });
 } finally {
-  if (pid && alive(pid)) process.kill(pid);
+  await app?.quit();
   if (!keep) rmSync(data, { recursive: true, force: true });
-  else console.log(`data: ${data}`);
+  else rep.say(`data: ${data}`);
 }
-const failed = results.filter((r) => r[0] === "FAIL");
-console.log(`${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length ? 1 : 0);
+process.exit(rep.summary() ? 0 : 1);
