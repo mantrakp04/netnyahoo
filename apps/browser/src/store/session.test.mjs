@@ -163,6 +163,25 @@ test("history.json moves into Chrome once: Chrome's own visits aren't doubled, a
   assert.equal(await migrateHistoryFile(now, { keepMs: 0 }), "none");
 });
 
+// With history.json still to move, Chrome's history isn't watched (nor read) until the move is done: each moved
+// visit came to the JS as an event (~88,000 for a long-used profile, ~200 ms of startup JS), all ignored.
+test("history.json's move goes before watching Chrome's history; the view then has the moved visits", async () => {
+  reset();
+  stub.docs.clear();
+  stub.historyDbs.clear();
+  stub.historyWatches.length = 0;
+  const now = Date.now();
+  const entry = (url, times) => ({ url, title: url, favicon: null, visits: times.length, lastVisit: times.at(-1), visitTimes: times });
+  stub.docs.set("history.json", JSON.stringify({ version: 2, history: { default: [entry("https://moved.com/", [now - DAY, now - 1000])] } }));
+  const stop = startHistory();
+  assert.deepEqual(stub.historyWatches, [], "not watched while the file moves");
+  for (let i = 0; i < 50 && !S().history.default?.length; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(stub.historyWatches, [""], "watched once it's in");
+  assert.equal(S().history.default?.[0]?.url, "https://moved.com/");
+  assert.equal(S().history.default[0].visits, 2);
+  stop();
+});
+
 test("history is a view of Chrome's: visits, deletions and a relaunch all read back what Chrome has", async () => {
   reset();
   stub.docs.clear();

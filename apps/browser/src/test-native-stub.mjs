@@ -61,7 +61,9 @@ const emitHistory = (change) => {
   for (const listener of historyListeners) queueMicrotask(() => listener(change));
 };
 export const onHistoryChanged = (listener) => (historyListeners.add(listener), { remove: () => historyListeners.delete(listener) });
-export const watchHistory = async () => ({ ok: true });
+// Each profile the app asked to watch, in order (Chrome's events reach the app only once it watches).
+export const historyWatches = [];
+export const watchHistory = async (profile) => (historyWatches.push(profile), { ok: true });
 const addVisit = (profile, url, title, at) => {
   const db = chromeHistory(profile);
   const row = db.get(url) ?? { title: "", visits: [] };

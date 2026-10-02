@@ -221,17 +221,22 @@ export function startHistory() {
   const loadAll = (s: Pick<BrowserState, "profiles">) => {
     for (const engine of engineProfiles(s)) if (!loaded.has(engine) && !loads.has(engine)) void load(engine);
   };
-  loadAll(store());
-  // Read again after the move, so the views have the moved visits.
+  // With an old history.json to move in, the views are first read (and Chrome's changes watched) once it's in:
+  // watching during the move sent the JS one event per moved visit (~88,000 for a long-used profile, ~200 ms of
+  // the startup JS), all of them ignored, and the views are read again after it anyway.
+  let moving = readDocument(LEGACY_FILE) !== null;
+  if (!moving) loadAll(store());
   void migrateHistoryFile().then((result) => {
     legacyMoved = result !== "kept";
-    // Read again after a move, so the views have the moved visits; else the views read so far are complete.
-    if (result === "moved") void reloadHistory();
+    if (moving) {
+      moving = false;
+      loadAll(store());
+    } else if (result === "moved") void reloadHistory();
     else if (legacyMoved) for (const engine of loaded) setView(engine, viewOf(engine));
   });
   const stop = useBrowser.subscribe((s, prev) => {
     if (s.profiles === prev.profiles) return;
-    loadAll(s);
+    if (!moving) loadAll(s);
     // A profile sharing another's data shows its list at once.
     for (const id of Object.keys(s.profiles)) {
       if (prev.profiles[id] || isIncognitoProfile(id) || s.history[id]) continue;
