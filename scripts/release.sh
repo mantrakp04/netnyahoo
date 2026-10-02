@@ -230,7 +230,13 @@ for _ in $(seq 1 90); do
   sleep 1
 done
 sleep 5
-pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true) | head -1)"
+# The instance this launched: the one started with our data dir (a copy of the same build the owner is running
+# must never be the one quit or killed here).
+pid=""
+for p in $(pgrep -f "^$app/Contents/MacOS/Netnyahoo\$" || true); do
+  ps -E -ww -o command= -p "$p" 2>/dev/null | grep -qF "NETNYAHOO_DATA_DIR=$check_data" && { pid="$p"; break; }
+done
+[ -n "$pid" ] || pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true) | head -1)"
 [ -n "$pid" ] || die "the app didn't start (or quit)"
 kill -TERM "$pid"
 for _ in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done

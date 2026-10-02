@@ -154,8 +154,13 @@ open -g -n --env NETNYAHOO_BACKGROUND=1 --env NETNYAHOO_DATA_DIR="$work/data" \
   --env NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows --env NETNYAHOO_PIP_SELFTEST=close "$app"
 for _ in $(seq 1 60); do curl -fs "localhost:$port/json/version" >/dev/null 2>&1 && break; sleep 1; done
 sleep 8  # session restore, then the release-notes tab
-# The instance this launched (another of the same build may be running).
-pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true) | head -1)"
+# The instance this launched: the one listening on our debugging port. Another of the same build may be running,
+# even one the owner opened during the run (a process-list diff once could pick theirs and kill it at the end).
+pid=""
+for p in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null); do
+  [[ "$(ps -o command= -p "$p")" == "$app/Contents/MacOS/Netnyahoo"* ]] && { pid="$p"; break; }
+done
+[ -n "$pid" ] || pid="$(comm -13 <(echo "$before") <(pgrep -f "^$app/Contents/MacOS/Netnyahoo" | sort || true) | head -1)"
 [ -n "$pid" ] || { echo "error: the app didn't start" >&2; exit 1; }
 
 locked="$("$work/windows" --locked)"
