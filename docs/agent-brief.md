@@ -115,7 +115,9 @@ Engine files are in `engine/nncore/src/netnyahoo/core`, app files in `packages/n
 ## Rules
 - **Stay inside the files you own** (listed in your task). If you need a change elsewhere,
   make the smallest possible change, or describe it in your report instead. Other agents
-  are editing other files right now; never revert or reformat code you don't own.
+  are editing other files right now; never revert or reformat code you don't own. Never run
+  `git checkout -- <file>`, `git restore`, `git stash` or `git reset --hard` in this checkout: they wipe other
+  agents' uncommitted work in the same file. Undo your own hunks by editing.
 - **Commit your own work to `main`** (`git add -p` or explicit paths, only your hunks). Never commit another
   agent's work in progress. The index is shared, so a plain `git commit` sweeps in what others staged: commit
   with `git commit --only -- <paths>` (or check `git diff --cached --stat` lists only your files).
