@@ -160,8 +160,11 @@ check("passkey dialog shows", !!dialog, dialog?.title ?? "no passkey window");
 if (dialog) {
   const owner = list.slice(list.indexOf(dialog) + 1).find((w) => w.layer === 0 && w.w > 400 && w.h > 300);
   const inside = owner && dialog.x >= owner.x && dialog.x + dialog.w <= owner.x + owner.w && dialog.y >= owner.y && dialog.y + dialog.h <= owner.y + owner.h;
-  checkUnlocked("…in front, directly over the visible app window it belongs to", list[0]?.id === dialog.id && owner?.alpha > 0 && !!inside,
-    `dialog @${dialog.x},${dialog.y} ${dialog.w}x${dialog.h}; window under it ${owner ? `@${owner.x},${owner.y} ${owner.w}x${owner.h} alpha ${owner.alpha}` : "none"}`);
+  const ok = list[0]?.id === dialog.id && owner?.alpha > 0 && !!inside;
+  checkUnlocked("…in front, directly over the visible app window it belongs to", ok,
+    `dialog @${dialog.x},${dialog.y} ${dialog.w}x${dialog.h} alpha ${dialog.alpha}; window under it ${owner ? `@${owner.x},${owner.y} ${owner.w}x${owner.h} alpha ${owner.alpha}` : "none"}` +
+      // On a failure, every window of the app front to back, so a one-off can be read afterwards.
+      (ok ? "" : `; windows ${list.map((w) => `${w.id} L${w.layer} @${w.x},${w.y} ${w.w}x${w.h} a${w.alpha} "${w.title}"`).join(" | ")}`));
 }
 await go(`${pages}/form.html`);
 await sleep(1500);
