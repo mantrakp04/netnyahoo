@@ -557,6 +557,13 @@ bool NNBrowserWindow::HandleKeyboardEvent(
   // CommandDispatcher redispatch does the same (window key equivalents without the first
   // responder, then the main menu); our window has no Chrome dispatcher delegate or parent.
   // Chrome's own accelerators (IDC_NEW_TAB…) don't run: the host's menu owns the keys.
+  // Only what AppKit takes as a key equivalent (⌘, ⌃ or fn): asked directly, the View menu's
+  // Enter Full Screen (fn-F) answers a plain "f" too, so a page's unhandled "f" toggled the
+  // window's full screen.
+  if (!(ns_event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl |
+                                  NSEventModifierFlagFunction))) {
+    return false;
+  }
   return [NSApp.mainMenu performKeyEquivalent:ns_event];
 }
 

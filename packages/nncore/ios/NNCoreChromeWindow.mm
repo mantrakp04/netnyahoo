@@ -768,11 +768,8 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
     }
     [target emit:@"command" payload:@{@"command" : @"escape", @"text" : @""}];
   }
-  // Only what AppKit treats as a key equivalent: a plain letter is typing. (The View menu's Enter Full Screen is "f" with
-  // the fn modifier, which AppKit drops from an app's own item: a plain "f" a page left alone toggled the window's full
-  // screen.)
-  if (!(mods & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagFunction))) return NO;
-  return [NSApp.mainMenu performKeyEquivalent:event];
+  // The engine tries the main menu next, with what AppKit takes as key equivalents.
+  return NO;
 }
 
 @end

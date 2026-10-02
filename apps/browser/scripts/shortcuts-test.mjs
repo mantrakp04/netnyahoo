@@ -170,7 +170,7 @@ const shortcuts = [
   ["⌃⌘C", cmd("c", 8, "control"), { command: "newTabInGroup" }, "(Chrome's)"],
   ["⌃⌘W", cmd("w", 13, "control"), { command: "closeTabGroup" }, "(Chrome's)"],
   ["⌘D", cmd("d", 2), { command: "bookmarkPage" }, "⌘D"],
-  ["⇧⌘D", cmd("D", 2, "shift"), { command: "bookmarkAllTabs" }, "(Chrome's)"],
+  ["⇧⌘D", cmd("D", 2, "shift"), { command: "bookmarkAllTabs" }, "(Chrome's)", "devtools-own"],
   ["⌥⌘B", cmd("b", 11, "option"), { command: "manageBookmarks" }, "⌥⌘B"],
   ["⌘Y", cmd("y", 16), { command: "showHistory" }, "⌘Y"],
   ["⇧⌘⌫", cmd(F(0x7f), 51, "shift"), { command: "clearBrowsingData" }, "⇧⌘⌫", "page-field"],
@@ -255,8 +255,10 @@ for (const [focusName, focus] of Object.entries(focuses)) {
   for (const [name, key, expect, , only] of shortcuts) {
     if (focusName !== "sidebar" && (only === "window-only" || only === "clipboard")) continue;
     // Text fields consume ⌘↩, ⌘←/→, and ⇧⌘⌫.
+    // DevTools' own ⇧⌘D (its dock side) wins while it has the focus, as in Chrome.
     const inField =
-      (only === "not-field" && (focusName === "field" || focusName === "commandBar")) || (only === "page-field" && focusName === "field");
+      (only === "not-field" && (focusName === "field" || focusName === "commandBar")) || (only === "page-field" && focusName === "field") ||
+      (only === "devtools-own" && focusName === "devTools");
     await focus.before?.();
     const r = await press(key, { ...focus.press, dry: true });
     const result = verdict(r, inField ? null : expect);

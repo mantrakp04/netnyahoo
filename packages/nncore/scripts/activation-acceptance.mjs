@@ -672,10 +672,28 @@ try {
     }
   });
 
-  await check("type-after-new-window", async () => {
-    // ⌘N, then typing at once while the new window's content is still mounting (held 800 ms here, as under load): the new
-    // window is key from the start, so no key reaches the page of the window that was, and every key lands in the new
-    // window's address field once it has one.
+  // ⌘N, then `text` typed at once while the new window's content is still mounting (held 800 ms, as under load), into
+  // whatever window is key. The new window's id.
+  const typeIntoNewWindow = async (text) => {
+    const windowsBefore = Object.keys((await appState()).windows);
+    await evalApp(`const cef = globalThis.expo.modules.NetnyahooCEF;
+      return cef.chromeWindows().then((list) => {
+        const known = new Set(list.map((w) => w.window));
+        globalThis.nnDevMountDelayMs = 800;
+        nn.runCommand({ command: "newWindow", arg: null, windowId: null });
+        const started = Date.now();
+        return new Promise((resolve, reject) => {
+          const poll = () => cef.chromeWindows().then((list) => {
+            if (list.some((x) => !known.has(x.window))) return nn.shell.devTypeKeys("key", ${JSON.stringify(text)}, 15).then(() => resolve(true));
+            if (Date.now() - started > 5000) return reject(new Error("no new window"));
+            setTimeout(poll, 2);
+          }, reject);
+          poll();
+        });
+      }).finally(() => { delete globalThis.nnDevMountDelayMs; });`);
+    return until("the new window in the store", async () => Object.keys((await appState()).windows).find((id) => !windowsBefore.includes(id)) ?? null, 5000);
+  };
+  const keysPage = async () => {
     const url = `${origin()}/keys?t=Keys`;
     const tab = await openTab(url, "Keys");
     await show(tab);
@@ -683,27 +701,17 @@ try {
     await evalApp(`nn.actions.focus(${JSON.stringify(mainWindow)}); return true`);
     await cef(`devFocusPage(${await browserOf(tab)})`);
     await js(t, "__keys = ''; true");
-    const windowsBefore = Object.keys((await appState()).windows);
+    return { tab, t };
+  };
+
+  await check("type-after-new-window", async () => {
+    // The new window is key from the start, so no key reaches the page of the window that was, and every key lands in
+    // the new window's address field once it has one.
+    const { tab, t } = await keysPage();
     const text = "netnyahoo";
     let made = null;
     try {
-      const typed = await evalApp(`const cef = globalThis.expo.modules.NetnyahooCEF;
-        return cef.chromeWindows().then((list) => {
-          const known = new Set(list.map((w) => w.window));
-          globalThis.nnDevMountDelayMs = 800;
-          nn.runCommand({ command: "newWindow", arg: null, windowId: null });
-          const started = Date.now();
-          return new Promise((resolve, reject) => {
-            const poll = () => cef.chromeWindows().then((list) => {
-              const w = list.find((x) => !known.has(x.window));
-              if (w) return nn.shell.devTypeKeys("key", ${JSON.stringify(text)}, 15).then(() => resolve({ window: w.window, alpha: w.alpha, ms: Date.now() - started }));
-              if (Date.now() - started > 5000) return reject(new Error("no new window"));
-              setTimeout(poll, 2);
-            }, reject);
-            poll();
-          });
-        }).finally(() => { delete globalThis.nnDevMountDelayMs; });`);
-      made = await until("the new window in the store", async () => Object.keys((await appState()).windows).find((id) => !windowsBefore.includes(id)) ?? null, 5000);
+      made = await typeIntoNewWindow(text);
       const field = await until("the new window's field to hold the text", async () => {
         const fields = await evalApp(`return nn.omnibox.ids().filter((id) => id.startsWith(${JSON.stringify(made + ":")})).map((id) => nn.omnibox.get(id).state().typed)`);
         return fields.find((v) => v === text) ?? null;
@@ -712,9 +720,53 @@ try {
       });
       const oldPage = await js(t, "__keys");
       if (oldPage) throw new Error(`the old window's page got keys: ${JSON.stringify(oldPage)}`);
-      return { typed, field, oldPage };
+      return { field, oldPage };
     } finally {
       if (made) await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(made)}); return true`).catch(() => null);
+      await closeTab(tab);
+    }
+  });
+
+  await check("type-return-after-new-window", async () => {
+    // An address and Return typed before the new window's content mounts: the window goes to that address (Return
+    // takes the field's own text, not the suggestions React had for older text).
+    const { tab, t } = await keysPage();
+    const url = `${origin()}/typed?t=Typed`;
+    let made = null;
+    try {
+      made = await typeIntoNewWindow(`${url}\r`);
+      const opened = await until("the typed address in the new window", () => evalApp(`const s = nn.store.getState();
+        return Object.values(s.tabs).find((x) => x.windowId === ${JSON.stringify(made)} && x.url?.includes("/typed"))?.url ?? null`), 10000)
+        .catch(async (e) => {
+          throw new Error(`${e.message}: its tabs ${JSON.stringify(await evalApp(`const s = nn.store.getState(); return Object.values(s.tabs).filter((x) => x.windowId === ${JSON.stringify(made)}).map((x) => x.url)`))}`);
+        });
+      const oldPage = await js(t, "__keys");
+      if (oldPage) throw new Error(`the old window's page got keys: ${JSON.stringify(oldPage)}`);
+      return { opened: new URL(opened).pathname };
+    } finally {
+      if (made) await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(made)}); return true`).catch(() => null);
+      await closeTab(tab);
+    }
+  });
+
+  await check("plain-key-on-page", async () => {
+    // A plain "f" a page leaves alone does nothing to its window: the View menu's Enter Full Screen is fn-F (and ⌃⌘F).
+    const url = `${origin()}/plain?t=Plain`;
+    const tab = await openTab(url, "Plain");
+    const n = await cef(`devWindowNumber(${await browserOf(tab)})`);
+    try {
+      await show(tab);
+      await evalApp(`nn.actions.focus(${JSON.stringify(mainWindow)}); return true`);
+      await cef(`devFocusPage(${await browserOf(tab)})`);
+      const logFrom = activationLog().length;
+      await evalApp(`return nn.shell.devTypeKeys("key", "f", 20)`);
+      await sleep(1500);
+      const w = JSON.parse(await cef(`devWindow(${n}, "fullScreen")`));
+      const toggled = activationLog().slice(logFrom).includes("toggleFullScreen");
+      if (w.fullScreen || toggled) throw new Error(`"f" toggled the window's full screen: ${JSON.stringify({ fullScreen: w.fullScreen, toggled })}`);
+      return { fullScreen: false };
+    } finally {
+      await cef(`devWindow(${n}, "fakeFullScreen:0")`).catch(() => null);
       await closeTab(tab);
     }
   });
@@ -819,6 +871,8 @@ try {
     // first tab it gets in a window by itself (tabs.onActivated); after that only the strip's command selects, once,
     // and only the store's tab. A view coming into sight selects nothing (it did: the split's panes, then the store's
     // pick again, A B A).
+    // The window the earlier checks used goes with its last tab (as the app closes a window whose last tab closes).
+    if (!(await appState()).windows[mainWindow]) mainWindow = await evalApp(`return nn.actions.openWindow({})`);
     const ra = await openTab(`${origin()}/restore-a?t=RestoreA`, "RestoreA");
     const rb = await openTab(`${origin()}/restore-b?t=RestoreB`, "RestoreB");
     await evalApp(`return nn.store.getState().createSplit(["${ra}", "${rb}"])`);

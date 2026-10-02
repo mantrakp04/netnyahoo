@@ -142,36 +142,50 @@ final class WindowManager: NSObject, NSWindowDelegate {
     if unrevealed[id] != nil { unrevealed[id]!.append(then) } else { then() }
   }
 
-  // Typing into a window that is key before its content is (⌘N, then typing at once): its keys wait for the first
-  // field or page in it to take them (its address field, which focuses once laid out), then go there in order, as
-  // Chrome's new window has its address field from the start. Dropped if the window closes or stops being key first.
-  // ⌘-shortcuts aren't held.
-  private var heldTyping: [ObjectIdentifier: (keys: [NSEvent], watches: [NSObjectProtocol])] = [:]
+  // Typing into a window that is key before its content is (⌘N, then typing at once): its keys wait, in order, for the
+  // first field or page in it to take them (its address field focuses once laid out), as Chrome's new window has its
+  // address field from the start. A ⌘-shortcut acts at once while nothing waits, and takes its turn once something
+  // does. Dropped if the window closes or stops being key first, or past 256 events.
+  private final class TypeAhead {
+    weak var window: NSWindow?
+    var keys: [NSEvent] = []
+    var watches: [NSObjectProtocol] = []
+    init(_ window: NSWindow) { self.window = window }
+  }
+  private var typeAhead: TypeAhead?
   private var typingMonitor: Any?
 
   private func holdTyping(in window: NSWindow) {
+    endTypeAhead(send: false)
+    if Self.takesTyping(window.firstResponder) { return }
     typingMonitor = typingMonitor ?? NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-      guard let self, let window = event.window, self.heldTyping[ObjectIdentifier(window)] != nil,
-        !event.modifierFlags.contains(.command)
+      guard let self, let held = self.typeAhead, let window = held.window, event.window === window,
+        !held.keys.isEmpty || (event.type == .keyDown && !event.modifierFlags.contains(.command))
       else { return event }
-      self.heldTyping[ObjectIdentifier(window)]!.keys.append(event)
+      guard held.keys.count < 256 else {
+        self.endTypeAhead(send: false)
+        return event
+      }
+      held.keys.append(event)
       return nil
     }
-    let focused = window.observe(\.firstResponder) { [weak self] window, _ in
+    let held = TypeAhead(window)
+    held.watches.append(window.observe(\.firstResponder) { [weak self, weak held] window, _ in
       guard Self.takesTyping(window.firstResponder) else { return }
       // After the batch that focused it: the field sets its selection next.
-      DispatchQueue.main.async { self?.releaseTyping(in: window, send: true) }
+      DispatchQueue.main.async { if let held, self?.typeAhead === held { self?.endTypeAhead(send: true) } }
+    })
+    for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification] {
+      held.watches.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self, weak held] _ in
+        if let held, self?.typeAhead === held { self?.endTypeAhead(send: false) }
+      })
     }
-    let left = [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification].map {
-      NotificationCenter.default.addObserver(forName: $0, object: window, queue: .main) { [weak self, weak window] _ in
-        if let window { self?.releaseTyping(in: window, send: false) }
-      }
-    }
-    heldTyping[ObjectIdentifier(window)] = ([], left + [focused])
+    typeAhead = held
   }
 
-  private func releaseTyping(in window: NSWindow, send: Bool) {
-    guard let held = heldTyping.removeValue(forKey: ObjectIdentifier(window)) else { return }
+  private func endTypeAhead(send: Bool) {
+    guard let held = typeAhead else { return }
+    typeAhead = nil
     for watch in held.watches {
       if let focused = watch as? NSKeyValueObservation { focused.invalidate() } else { NotificationCenter.default.removeObserver(watch) }
     }

@@ -71,6 +71,8 @@ void ObserveActivation() {
                                                   object:nil
                                                    queue:nil
                                               usingBlock:^(NSNotification *) {
+                                                // Not the app-active seam's: macOS's.
+                                                if (!NSRunningApplication.currentApplication.isActive) return;
                                                 Log(@"became active (deactivating)", NSThread.callStackSymbols);
                                                 [NSApp deactivate];
                                               }];
@@ -230,10 +232,14 @@ void FakeKeyWindows() {
 
 }  // namespace
 
+// As AppKit tells an app it comes and goes: will, the key window, did.
 void SetAppActive(bool active) {
   if (!Background() || active == gAppActive) return;
+  NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+  [center postNotificationName:active ? NSApplicationWillBecomeActiveNotification : NSApplicationWillResignActiveNotification object:NSApp];
   gAppActive = active;
   PostKey(gKeyWindow, active);
+  [center postNotificationName:active ? NSApplicationDidBecomeActiveNotification : NSApplicationDidResignActiveNotification object:NSApp];
 }
 
 bool UserEvent() {
