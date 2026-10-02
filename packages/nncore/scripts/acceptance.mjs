@@ -1,49 +1,187 @@
 #!/usr/bin/env node
 // Stage 1 acceptance for the app on NNCore (docs/nncore-parity.md): boots the NNCore build of the app hidden
-// (NETNYAHOO_BACKGROUND=1, its own data dir and DevTools port), serves fixture pages, and drives the real app
-// through its dev harness (lib/devHarness.ts: $NETNYAHOO_DATA_DIR/dev-eval.js) and Chrome's DevTools protocol.
+// (NETNYAHOO_BACKGROUND=1, its own data dir and DevTools port; scripts/lib/instance.mjs), serves fixture pages, and
+// drives the real app through its dev harness (lib/devHarness.ts) and Chrome's DevTools protocol.
 //
-//   node packages/nncore/scripts/acceptance.mjs <Netnyahoo.app> <scratch dir> [check…]
+//   node packages/nncore/scripts/acceptance.mjs <Netnyahoo.app> <scratch dir> [--keep] [check…]
+//   node packages/nncore/scripts/acceptance.mjs --attach <scratch dir> [check…]
+//   node packages/nncore/scripts/acceptance.mjs --list
 //
-// It never takes focus and never touches a real profile: the data dir is <scratch dir>/data, wiped first.
+//   [check…]   only these, plus the checks they depend on (`--list` shows them; a kept instance already has most)
+//   --keep     leave the instance running at the end (and reuse the one this scratch dir already keeps)
+//   --attach   run against the instance a --keep run left in <scratch dir>: no boot, seconds per check
+//   SKIP=a,b   leave checks out; VERBOSE=1 prints the log as it goes; METRO_PORT (default 8081)
+//
+// Output: one line per check (PASS/FAIL, ms); a failure adds its first lines; the rest (evidence, state at a failure,
+// diagnostics) goes to <scratch dir>/data/acceptance.log, results to <scratch dir>/results.json. It never takes focus
+// and never touches a real profile: the data dir is <scratch dir>/data, wiped first (not when attaching).
+//
+// Sections (// MARK:): Fixtures (the HTTP/HTTPS fixture server, extensions, a CRX) · The app (launch, evalApp, cdp)
+// · Helpers · Checks (in run order: windows and tabs, pages, choosers and Cast, capture, restore, extensions, content
+// blocker, crashes, downloads, autofill, settings) · Media, Picture in Picture, page focus · Page full screen · moving
+// tabs, startup · quitting and relaunching · Camera and microphone (a copy without device entitlements) · crash-guard.
+//
+// Helpers (top level; `first` is page A's tab from open-url, `mainWindow` the run's window from boot):
+//   evalApp(body, ms)              the app's JS (dev harness): `return …`; throws at once if the app exited
+//   until(what, fn, ms)            polls fn until truthy (200 ms), else throws with the last value
+//   state()                        the main window: { windowId, profileId, tabs: [{ id, url, title, loading, … }], active }
+//   targets() · pageTarget(urlPart) · pageFor(tabId, urlPart) · cdp(target, method, params) · closeFromPage(target)
+//   cef(call) · exts(call)         NetnyahooCEF / NetnyahooExtensions module calls
+//   browserOf(tabId) · eventsOf(tabId) · lastEvent(tabId, name, test) · live(tabId) · pipWindows()
+//   openTab(url, title, background) · closeTab(id) · shownAndMounted(id) · freshTab(url) · backToA() · startVideo(tabId, audio)
+//   launch(log, env, args, opts) · appUp(log)   (re)start the app on the run's data dir; `exited` is set once it's gone
+//   onScreenWindows() · firstPixel(png) · writePopupExtension(opts) · fixtureCrx()
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createServer, request as httpRequest } from "node:http";
+import { createServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
-import { createServer as createNetServer } from "node:net";
 import { basename, join, resolve } from "node:path";
 import { X509Certificate, createHash, createSign, generateKeyPairSync } from "node:crypto";
 import { crc32, deflateSync, inflateSync } from "node:zlib";
+import { attach as attachInstance, launch as launchInstance, onScreenWindows as windowsOf, reporter, sleep } from "../../../scripts/lib/instance.mjs";
 
-const [appArg, scratchArg, ...only] = process.argv.slice(2);
+// MARK: What each check needs
+
+// Checks run in file order. A check named on the command line brings the checks it needs (and theirs) with it; every
+// run starts with boot. A kept instance (--keep, --attach) recovers what boot and open-url leave (the run's window,
+// page A's tab) instead of running them again. Add a check here when it uses what an earlier one leaves behind.
+const usesPageA = [
+  "visibility", "occlusion", "favicon", "navigate-back-forward-reload", "target-blank", "window-open",
+  "cmd-click", "evaluate", "tab-strips", "tab-switch", "status-text", "load-error", "chrome-strings",
+  "context-menu-search", "duplicate-and-reopen", "device-chooser", "bluetooth-chooser",
+  "bluetooth-settings", "cast-dialog", "cast-routes", "theme-commit", "user-selection",
+  "password-prompt", "screen-share-picker", "tab-capture", "share-instead-two-captures",
+  "restore-after-close", "discard-outcomes", "capture-picture", "unresponsive", "permission-dismissed",
+  "save-page", "activate-request", "extension-popup-and-panel", "scroll-zoom", "print-preview",
+  "extension-prompts", "traffic-lights-after-profile-switch", "extension-configure",
+  "private-windows-create", "extension-installed-bubble", "popup-window", "autofill-save-prompts",
+  "settings-services", "download-navigation", "page-events", "page-background", "external-app-answer",
+  "notifications", "now-playing", "media-state", "auto-picture-in-picture", "pip-window", "page-focus",
+  "fullscreen-tab-switch", "fullscreen-native", "fullscreen-hidden-page", "fullscreen-split-sibling",
+  "fullscreen-pip", "autofill-suggestions", "images", "extension-surfaces", "frozen", "discard",
+  "permission-prompt", "popup-blocked", "move-tab-slow-mount", "move-last-tab-slow-mount",
+  "move-tab-closed-while-parked", "move-tab-to-window", "title-bar-close", "last-used-profile",
+];
+const needs = {
+  ...Object.fromEntries([...usesPageA, "kill-task", "internal-pages-not-history", "second-profile"].map((name) => [name, ["open-url"]])),
+  // Another tab with a page: target-blank's C, cmd-click's D in the background, window-open's E.
+  "tab-switch": ["open-url", "target-blank"],
+  "tab-keys-from-page": ["open-url", "target-blank"],
+  "window-close": ["window-open"],
+  "frozen": ["open-url", "cmd-click"],
+  "discard": ["open-url", "cmd-click"],
+  // A's back list (navigate-back-forward-reload), the menu context-menu-search showed, a second window.
+  "duplicate-and-reopen": ["open-url", "navigate-back-forward-reload"],
+  "context-menu-activation-log": ["context-menu-search"],
+  "title-bar-close": ["open-url", "move-tab-to-window"],
+  // The relaunch with NETNYAHOO_CONTEXT_MENU_LOG and its page.
+  "context-menu-incognito": ["context-menu-log"],
+  // Personal set its cookie and the window showed Play when the app quit.
+  "relaunch-profile": ["last-used-profile", "quit"],
+  // A web page open before them: with only the New Tab page (a fresh instance) a renderer crash never reaches the app,
+  // endTracing doesn't answer and chrome.windows.create's tab never shows up (2026-10-02; leads, not yet looked into).
+  "crash": ["open-url"],
+  "tracing": ["open-url"],
+  "chrome-windows-create": ["open-url"],
+  // fullscreen-native's "tab closed mid-transition" step passes in a full run only (alone, with open-url, the window
+  // stays full screen; cause not found yet).
+};
+// Every check's name and section, from this file's source (no app needed).
+function checkIndex() {
+  let section = "Checks";
+  const index = [];
+  for (const line of readFileSync(new URL(import.meta.url), "utf8").split("\n")) {
+    const mark = /^\s*\/\/ MARK: (.*)$/.exec(line)?.[1];
+    if (mark) section = mark.replace(/ \(.*$/, "");
+    const name = /^\s*await (?:check|mediaCheck)\("([a-z0-9-]+)"/.exec(line)?.[1];
+    if (name) index.push({ name, section });
+  }
+  return index;
+}
+function listChecks() {
+  const index = checkIndex();
+  const width = Math.max(...index.map((c) => c.name.length));
+  for (const { name, section } of index) console.log(`${name.padEnd(width)}  ${section.padEnd(28)}  ${(needs[name] ?? []).join(", ")}`);
+  console.log(`${index.length} checks (name, section, needs). Every run starts with boot.`);
+  process.exit(0);
+}
+// The checks a run runs: those asked for, the ones they need, and boot.
+function selection(asked) {
+  const index = checkIndex().map((c) => c.name);
+  const unknown = asked.filter((n) => !index.includes(n));
+  if (unknown.length) {
+    console.error(`no such check: ${unknown.join(", ")} (--list shows them)`);
+    process.exit(64);
+  }
+  if (!asked.length) return { run: new Set(index), deps: new Map() };
+  const run = new Set(["boot", ...asked]);
+  const deps = new Map();  // dependency → the asked checks that need it
+  const add = (name, by) => {
+    for (const dep of needs[name] ?? []) {
+      if (!asked.includes(dep)) deps.set(dep, [...(deps.get(dep) ?? []), by]);
+      if (!run.has(dep)) {
+        run.add(dep);
+        add(dep, by);
+      }
+    }
+  };
+  for (const name of asked) add(name, name);
+  return { run, deps };
+}
+
+const argv = process.argv.slice(2);
+const flag = (name) => (argv.includes(name) ? (argv.splice(argv.indexOf(name), 1), true) : false);
+if (flag("--help") || flag("-h")) {
+  const lines = readFileSync(new URL(import.meta.url), "utf8").split("\n").slice(1);
+  console.log(lines.slice(0, lines.findIndex((l) => !l.startsWith("//"))).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
+  process.exit(0);
+}
+if (flag("--list")) listChecks();
+const attaching = argv[0] === "--attach";
+if (attaching) argv.shift();
+const keep = flag("--keep") || attaching;
+// With --attach the scratch dir comes first and the app is the kept instance's. --keep reuses a kept instance of the
+// same app (another build's is quit first: a cold run then starts on that data dir).
+let kept = null;
+if (attaching || keep) {
+  try {
+    kept = attachInstance(join(resolve(argv[attaching ? 0 : 1] ?? "."), "data"));
+  } catch (e) {
+    if (attaching) {
+      console.error(`--attach: ${e.message}`);
+      process.exit(66);
+    }
+  }
+  if (kept && !attaching && kept.app !== resolve(argv[0])) {
+    await kept.quit();
+    kept = null;
+  }
+}
+const [appArg, scratchArg, ...only] = attaching ? [kept.app, ...argv] : argv;
+const { run: selected, deps } = selection(only);
 if (!appArg || !scratchArg) {
-  console.error("usage: acceptance.mjs <Netnyahoo.app> <scratch dir> [check…]");
+  console.error("usage: acceptance.mjs <Netnyahoo.app> <scratch dir> [--keep] [check…] | --attach <scratch dir> [check…] | --list | --help");
   process.exit(64);
 }
 const app = resolve(appArg);
 const scratch = resolve(scratchArg);
 const data = join(scratch, "data");
-// A DevTools port nothing else listens on (another instance's would answer for the wrong app).
-const freePort = () => new Promise((resolve) => {
-  const probe = createNetServer();
-  probe.listen(0, "127.0.0.1", () => {
-    const { port } = probe.address();
-    probe.close(() => resolve(port));
-  });
-});
 let port;
 const downloadsDir = join(scratch, "downloads");
 // NETNYAHOO_TRAFFIC_LIGHTS_LOG (every launch): each change to a window's buttons and each AppKit layout pass of them.
+// A kept instance keeps writing to its file (checks read what's added after they start).
 const lightsLog = join(scratch, "traffic-lights.log");
-rmSync(lightsLog, { force: true });
-rmSync(data, { recursive: true, force: true });
+if (!kept) {
+  rmSync(lightsLog, { force: true });
+  rmSync(data, { recursive: true, force: true });
+}
 rmSync(downloadsDir, { recursive: true, force: true });
 mkdirSync(downloadsDir, { recursive: true });
 mkdirSync(data, { recursive: true });
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
-const log = (...a) => console.log(...a);
+const report = reporter(join(data, "acceptance.log"), { name: `acceptance ${kept ? `attached to pid ${kept.pid}` : app}` });
+const log = (...a) => report.log(...a);
 const stamp = () => new Date().toISOString().slice(11, 23);
 
 // MARK: Fixtures
@@ -203,49 +341,32 @@ const server = createServer((req, res) => {
   }
   return res.end(page(url.pathname, url.pathname));
 });
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
+// A kept instance's switches name the fixture's ports (host rules, the Web Store URL): the same ports again.
+const listen = (srv, at) => new Promise((r, j) => {
+  srv.once("error", (e) => j(new Error(`fixture port ${at}: ${e.message} (the kept instance needs it back; quit it and run without --attach)`)));
+  srv.listen(at, "127.0.0.1", r);
+});
+await listen(server, kept?.meta.http ?? 0);
 const base = `http://127.0.0.1:${server.address().port}`;
 // The same pages over HTTPS, with a certificate made for this run that only this run's instances trust
 // (--ignore-certificate-errors-spki-list: Chrome then treats the page as secure, as the autofill checks need).
 const tlsDir = join(scratch, "tls");
 mkdirSync(tlsDir, { recursive: true });
-execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=127.0.0.1",
+if (!kept || !existsSync(join(tlsDir, "cert.pem"))) execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=127.0.0.1",
   "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", join(tlsDir, "key.pem"), "-out", join(tlsDir, "cert.pem")], { stdio: "ignore" });
 const tlsCert = readFileSync(join(tlsDir, "cert.pem"));
 const tlsServer = createHttpsServer({ key: readFileSync(join(tlsDir, "key.pem")), cert: tlsCert }, (req, res) => server.emit("request", req, res));
-await new Promise((r) => tlsServer.listen(0, "127.0.0.1", r));
+await listen(tlsServer, kept?.meta.https ?? 0);
 const secureBase = `https://127.0.0.1:${tlsServer.address().port}`;
 const tlsSpki = createHash("sha256").update(new X509Certificate(tlsCert).publicKey.export({ type: "spki", format: "der" })).digest("base64");
 
 // MARK: The app
 
-// The Metro server this tree's JS comes from (METRO_PORT, default 8081), through a proxy that passes the bundle
-// and refuses Metro's websockets (/hot, /message): other agents' edits and reload broadcasts can't restart the app's
-// JS mid-run. The app takes it from NETNYAHOO_JS_LOCATION for that launch only: a Debug build shares its defaults with
-// the installed app, so nothing is written there.
-const metroPort = Number(process.env.METRO_PORT ?? 8081);
-const metroProxy = createServer((req, res) => {
-  const upstream = httpRequest({ host: "127.0.0.1", port: metroPort, path: req.url, method: req.method, headers: req.headers }, (r) => {
-    res.writeHead(r.statusCode ?? 502, r.headers);
-    r.pipe(res);
-  });
-  upstream.on("error", () => res.destroy());
-  req.pipe(upstream);
-});
-metroProxy.on("upgrade", (req, socket) => socket.destroy());
-await new Promise((r) => metroProxy.listen(0, "127.0.0.1", r));
-// As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
-const exeOf = (bundle) => join(bundle, "Contents/MacOS", execFileSync("plutil", ["-extract", "CFBundleExecutable", "raw", join(bundle, "Contents/Info.plist")]).toString().trim());
-let exe = exeOf(app);
-let stdout = join(scratch, "app.out.log");
-let pid, child, launchedAt, exited = null;
-function pgrep() {
-  try {
-    return execFileSync("pgrep", ["-f", `^${exe}`]).toString().split("\n").filter(Boolean).map(Number);
-  } catch {
-    return [];
-  }
-}
+// The app's JS comes from Metro (METRO_PORT, default 8081) through a proxy that passes the bundle and refuses Metro's
+// websockets (scripts/lib/instance.mjs, js "pinned"): other agents' edits and reload broadcasts can't restart the
+// app's JS mid-run, and a kept instance keeps its proxy between runs.
+let exe, stdout, pid, child, launchedAt, exited = null;
+let instance = null;
 // Cast without network devices: the engine's test sink, and Chrome's own Cast/DIAL discovery off (on a Mac it can
 // raise the Local Network prompt). A Bluetooth chooser without an adapter (no Bluetooth permission prompt). Passed with
 // the other test switches below.
@@ -258,75 +379,48 @@ process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --apps-gallery-update-url=${base}/w
 // The HTTPS fixture's certificate (autofill-save-prompts).
 process.env.NETNYAHOO_CHROMIUM_SWITCHES += ` --ignore-certificate-errors-spki-list=${tlsSpki}`;
 // Starts the app on the run's data dir (again for the relaunch checks), with a fresh DevTools port. `opts.app` runs
-// another bundle (the media checks' copy), `opts.switches` adds Chromium switches.
-async function launch(log = "app.out.log", env = {}, args = [], opts = {}) {
-  exe = exeOf(opts.app ?? app);
-  port = await freePort();
-  stdout = join(scratch, log);
-  const pidsBefore = new Set(pgrep());
-  launchedAt = Date.now();
-  execFileSync("open", [
-    "-g", "-n",
-    "--env", "NETNYAHOO_BACKGROUND=1", "--env", "NETNYAHOO_TEST_REAUTH=granted", "--env", `NETNYAHOO_DOWNLOADS_DIR=${downloadsDir}`, "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
-    "--env", `NETNYAHOO_JS_LOCATION=localhost:${metroProxy.address().port}`,
+// another bundle (the media checks' copy), `opts.switches` adds Chromium switches. The pid is the DevTools port's
+// listener, checked against the bundle's binary (scripts/lib/instance.mjs): never another run's instance.
+async function launch(logName = "app.out.log", env = {}, args = [], opts = {}) {
+  instance = await launchInstance(opts.app ?? app, {
+    data, log: join(scratch, logName), args, ready: false,
+    env: {
+      NETNYAHOO_TEST_REAUTH: "granted", NETNYAHOO_DOWNLOADS_DIR: downloadsDir,
+      // Passed through for experiments (e.g. NETNYAHOO_ALLOW_OCCLUSION=1).
+      ...Object.fromEntries(["NETNYAHOO_ALLOW_OCCLUSION", "NETNYAHOO_TRACE_VISIBILITY", "NETNYAHOO_TRACE_PIP"].filter((k) => process.env[k]).map((k) => [k, process.env[k]])),
+      NETNYAHOO_TRAFFIC_LIGHTS_LOG: lightsLog,
+      ...env,
+    },
     // Tab capture without Chrome's picker: getDisplayMedia takes the tab titled "Capture Target" (Chrome's browser-test
     // switch; a tab, so no macOS screen-recording prompt).
-    "--env", `NETNYAHOO_CHROMIUM_SWITCHES=--auto-select-tab-capture-source-by-title=Capture Target --netnyahoo-test-external-protocol-no-launch ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""} ${opts.switches ?? ""}`.trim(),
-    // Passed through for experiments (e.g. NETNYAHOO_ALLOW_OCCLUSION=1).
-    ...["NETNYAHOO_ALLOW_OCCLUSION", "NETNYAHOO_TRACE_VISIBILITY", "NETNYAHOO_TRACE_PIP"].filter((k) => process.env[k]).flatMap((k) => ["--env", `${k}=${process.env[k]}`]),
-    "--env", `NETNYAHOO_TRAFFIC_LIGHTS_LOG=${lightsLog}`,
-    ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
-    "--stdout", stdout, "--stderr", stdout,
-    opts.app ?? app,
-    ...(args.length ? ["--args", ...args] : []),
-  ]);
-  // This run's instance by its data dir (`ps -E` lists a process's environment): runs of the same bundle at once
-  // otherwise each took the first new pid, and one's cleanup killed another's app.
-  const ours = (p) => {
-    try {
-      const env = execFileSync("ps", ["-E", "-ww", "-o", "command=", "-p", String(p)]).toString();
-      return !env.includes("NETNYAHOO_DATA_DIR=") || env.includes(`NETNYAHOO_DATA_DIR=${data} `) || env.trimEnd().endsWith(`NETNYAHOO_DATA_DIR=${data}`);
-    } catch {
-      return false;
-    }
-  };
-  pid = await (async () => {
-    for (let i = 0; i < 100; i++) {
-      const fresh = pgrep().filter((p) => !pidsBefore.has(p) && ours(p));
-      if (fresh.length) return fresh[0];
-      await sleep(100);
-    }
-    throw new Error("the app didn't start");
-  })();
+    switches: `--auto-select-tab-capture-source-by-title=Capture Target --netnyahoo-test-external-protocol-no-launch ${process.env.NETNYAHOO_CHROMIUM_SWITCHES ?? ""} ${opts.switches ?? ""}`.trim(),
+    meta: { http: server.address().port, https: tlsServer.address().port },
+  });
+  adopt(instance);
+}
+// The globals the checks use, from a launched or kept instance.
+function adopt(i) {
+  instance = i;
+  ({ pid, port, launchedAt, binary: exe, log: stdout } = i);
   const own = pid;
-  child = { pid: own, kill: (sig) => { try { process.kill(own, sig); } catch {} } };
+  child = { pid: own, kill: (sig) => { if (i.stillOwned()) try { process.kill(own, sig); } catch {} } };
   exited = null;
   writeFileSync(join(scratch, "app.pid"), String(own));
 }
-await launch();
+if (kept) adopt(kept);
+else await launch();
 const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
 setInterval(() => { if (!exited && !alive()) exited = { pid }; }, 300).unref();
 const appLog = { join: () => (existsSync(stdout) ? readFileSync(stdout, "utf8") : "") };
 
-let evalSeq = 0;
 async function evalApp(body, timeoutMs = 20000) {
-  const id = `e${Date.now()}-${++evalSeq}`;
-  writeFileSync(join(data, "dev-eval.js"), `// ${id}\n${body}`);
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (exited) throw new Error(`app exited ${JSON.stringify(exited)}`);
-    try {
-      const out = JSON.parse(readFileSync(join(data, "dev-eval-result.json"), "utf8"));
-      if (out.id === id) {
-        if (out.error) throw new Error(out.error);
-        return out.result;
-      }
-    } catch (e) {
-      if (!(e instanceof SyntaxError) && e.code !== "ENOENT") throw e;
-    }
-    await sleep(100);
+  if (exited) throw new Error(`app exited ${JSON.stringify(exited)}`);
+  try {
+    return await instance.eval(body, { timeout: timeoutMs });
+  } catch (e) {
+    if (e.appDied) throw new Error(`app exited ${JSON.stringify(exited ?? { pid })}`);
+    throw e;
   }
-  throw new Error(`eval timed out: ${body.slice(0, 80)}`);
 }
 
 async function until(what, fn, timeoutMs = 15000) {
@@ -461,9 +555,7 @@ function fixtureCrx() {
   return (crxCache = Buffer.concat([prefix, header, zip]));
 }
 // The app's windows on screen (CoreGraphics' window numbers).
-const onScreenWindows = () => JSON.parse(execFileSync("osascript", ["-l", "JavaScript", "-e",
-  `ObjC.import("CoreGraphics"); JSON.stringify(ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0)))
-     .filter((w) => w.kCGWindowOwnerPID === ${pid} && w.kCGWindowLayer === 0).map((w) => w.kCGWindowNumber))`], { timeout: 20000 }).toString());
+const onScreenWindows = () => windowsOf(pid);
 // The module's browser id of an app tab.
 const browserOf = (tabId) => evalApp(`return nn.pageState.getState().browsers ? Object.entries(nn.pageState.getState().browsers).find(([, t]) => t === "${tabId}")?.[0] ?? null : null`);
 // The DevTools target of one app tab (several tabs can show the same URL): marked through the app, then found.
@@ -481,6 +573,8 @@ async function pageFor(tabId, urlPart) {
 // The window the run works in: the first one, then the one its first tab is in.
 let mainWindow = null;
 let first;
+// Personal's profile id, from last-used-profile (relaunch-profile switches back to it).
+let personal = null;
 // The dev event log (NNCoreWebView's devEvents) of an app tab.
 const eventsOf = async (tabId) => {
   const browser = await browserOf(tabId);
@@ -489,6 +583,69 @@ const eventsOf = async (tabId) => {
 const state = () =>
   evalApp(`const s = nn.store.getState(); const w = s.windows[${JSON.stringify(mainWindow)}] ?? Object.values(s.windows).filter((w) => !w.incognito && w.kind !== "small").sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))[0];
     return { windowId: w?.id, profileId: w?.profileId, tabs: (w?.tabIds ?? []).map((id) => ({ id, url: s.tabs[id]?.url, title: s.tabs[id]?.title, favicon: s.tabs[id]?.favicon?.slice(0, 40), adoptId: s.tabs[id]?.adoptId, profileId: s.tabs[id]?.profileId, loading: s.live[id]?.isLoading, back: s.live[id]?.canGoBack, fwd: s.live[id]?.canGoForward })), active: w ? w.activeTabIds[w.profileId] : null, windows: Object.keys(s.windows).length, profiles: s.profileOrder };`);
+
+// MARK: Helpers
+
+// A tab of the main window at `url`, loaded; foreground or behind.
+const openTab = async (url, title, background = false) => {
+  const before = new Set((await state()).tabs.map((t) => t.id));
+  await evalApp(`nn.actions.openUrls([${JSON.stringify(url)}], ${JSON.stringify(mainWindow)}); return true`);
+  const tab = await until(`a tab for ${url}`, async () => (await state()).tabs.find((t) => !before.has(t.id) && t.title === title && !t.loading), 15000);
+  if (background) {
+    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    await until("A shown", async () => (await state()).active === first.id);
+  }
+  return tab;
+};
+const closeTab = (id) => evalApp(`nn.store.getState().closeTab("${id}"); return true`);
+// A tab's WebView is mounted (a background or restored tab mounts when shown).
+const shownAndMounted = async (id) => {
+  await evalApp(`nn.actions.switchToTab(${JSON.stringify(id)}); return true`);
+  await until(`${id}'s WebView`, () => evalApp(`return !!nn.webviews.get(${JSON.stringify(id)})`), 15000);
+};
+// A new foreground tab on `url` in the run's window, mounted and loaded (for checks after move-tab-to-window took
+// the first tab to a window of its own).
+const freshTab = async (url) => {
+  const id = await evalApp(`return nn.store.getState().newTab(${JSON.stringify(mainWindow)}, { url: ${JSON.stringify(url)} })`);
+  await shownAndMounted(id);
+  await until(`${url} loaded`, () => evalApp(`const s = nn.store.getState(); return s.tabs[${JSON.stringify(id)}]?.url && !s.live[${JSON.stringify(id)}]?.isLoading ? true : null`));
+  return id;
+};
+const backToA = async () => {
+  await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a", { userInitiated: true }); return true`);
+  await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
+  await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+};
+// The last event of a kind an app tab sent, and the app's own media state for it.
+const lastEvent = async (tabId, name, test = () => true) => (await eventsOf(tabId)).findLast((x) => x.name === name && test(x.payload ?? {})) ?? null;
+const live = (tabId) => evalApp(`return nn.store.getState().live["${tabId}"] ?? null`);
+const pipWindows = () => cef(`devPictureInPicture()`).catch(() => null);
+const startVideo = async (tabId, audio) => {
+  const t = await pageFor(tabId, `${base}/video`);
+  const r = await cdp(t, "Runtime.evaluate", { expression: `start(${audio})`, awaitPromise: true, userGesture: true, returnByValue: true });
+  if (r.result?.value !== "ok") throw new Error(`the video didn't play: ${JSON.stringify(r.result ?? r)}`);
+  await until("the video's first frames", async () => (await cdp(t, "Runtime.evaluate", { expression: "document.getElementById('v').videoWidth", returnByValue: true })).result?.value > 0, 8000);
+  return t;
+};
+// Quits the app (the quit Apple event, then signals: scripts/lib/instance.mjs) before a check starts it again.
+const stopApp = async () => {
+  if (!exited) await instance.quit();
+  await until("the app to exit", async () => exited || !alive(), 5000);
+};
+// Starts the app on the run's data dir when it isn't running (the quit checks), and waits for its window.
+const appUp = async (logName) => {
+  if (exited) await launch(logName);
+  await until("the app", async () => {
+    try {
+      return await evalApp(`return globalThis.expo.modules.NetnyahooCEF.engineInfo()`, 3000);
+    } catch (e) {
+      if (exited) throw e;
+      return null;
+    }
+  }, 90000);
+  mainWindow = null;
+  return (mainWindow = await until("a window", async () => (await state()).windowId, 30000));
+};
 
 // NETNYAHOO_TRACE_VISIBILITY: the first tab's document.visibilityState, sampled every 250 ms over one DevTools
 // connection, each change logged with the time and the check running (the app logs its side as [nncore-vis]).
@@ -513,33 +670,57 @@ function watchVisibility(target) {
   visibilityWatch = { stop: () => { clearInterval(timer); try { ws.close(); } catch {} } };
 }
 
+// What a kept instance already has: boot's window, open-url's page A (wherever it is now).
+const recovered = new Set();
+async function recoverKept() {
+  await until("the kept instance's dev harness", () => evalApp("return true", 3000).catch(() => null), 30000);
+  mainWindow = (await state()).windowId;
+  recovered.add("boot");
+  const a = await evalApp(`const s = nn.store.getState(); const ids = [...(s.windows[${JSON.stringify(mainWindow)}]?.tabIds ?? []), ...Object.keys(s.tabs)];
+    const id = ids.find((i) => s.tabs[i]?.url?.startsWith(${JSON.stringify(`${base}/a`)}) && s.tabs[i]?.title === "Page A");
+    return id ? { id, url: s.tabs[id].url, title: "Page A" } : null`);
+  if (a) {
+    first = a;
+    recovered.add("open-url");
+  }
+}
+
 async function check(name, fn) {
-  if (only.length && !only.includes(name)) return;
+  if (!selected.has(name)) return;
   if ((process.env.SKIP ?? "").split(",").includes(name)) return;
-  const started = Date.now();
+  if (recovered.has(name)) return;
   currentCheck = name;
   if (process.env.NETNYAHOO_TRACE_VISIBILITY) log(`  [check ${stamp()}] ${name}`);
-  try {
+  let failure = null;
+  const started = Date.now();
+  await report.check(name, async () => {
     const evidence = await fn();
     results.push({ name, ok: true, evidence, ms: Date.now() - started });
-    log(`PASS ${name}: ${JSON.stringify(evidence)}`);
-  } catch (e) {
-    let snapshot = null;
-    try {
-      snapshot = await state();
-    } catch {}
-    results.push({ name, ok: false, error: String(e?.message ?? e), state: snapshot, ms: Date.now() - started });
-    log(`FAIL ${name}: ${e?.message ?? e}\n  state: ${JSON.stringify(snapshot)}`);
-    if (process.env.VERBOSE && first)
+    return evidence;
+  }, {
+    async onFail(e) {
+      let snapshot = null;
       try {
-        log(`  events of ${first.id}: ${JSON.stringify((await eventsOf(first.id)).slice(-12))}`);
+        snapshot = await state();
       } catch {}
-  }
+      results.push({ name, ok: false, error: String(e?.message ?? e), state: snapshot, ms: Date.now() - started });
+      log(`state: ${JSON.stringify(snapshot)}`);
+      if (first)
+        try {
+          log(`events of ${first.id}: ${JSON.stringify((await eventsOf(first.id)).slice(-12))}`);
+        } catch {}
+    },
+  });
 }
 
 // MARK: Checks
 
 try {
+  if (kept) await recoverKept();
+  if (kept) report.say(`attached to pid ${pid}${recovered.size ? ` (has ${[...recovered].join(", ")})` : ""}`);
+  for (const [dep, by] of deps) if (!recovered.has(dep)) report.say(`${by.join(", ")} needs ${dep}: running it first`);
+  // MARK: Windows, tabs and navigation
+
   await check("boot", async () => {
     const info = await until("the dev harness", async () => {
       try {
@@ -845,6 +1026,8 @@ try {
   });
 
 
+  // MARK: Page UI
+
   await check("status-text", async () => {
     // Hovering a link shows its URL (Chrome's UpdateTargetURL → onStatus → the status bubble's state).
     const t = await pageFor(first.id, `${base}/a`);
@@ -961,6 +1144,8 @@ try {
     await until("first tab active", async () => (await state()).active === first.id);
     return { copy: copyId, reopened: back.id };
   });
+
+  // MARK: Choosers and Cast
 
   await check("device-chooser", async () => {
     // WebUSB requestDevice: Chrome's chooser comes to the app's sheet (onDeviceChooser); cancelling it rejects
@@ -1133,36 +1318,7 @@ try {
     }
   });
 
-  // A tab of the main window at `url`, loaded; foreground or behind.
-  const openTab = async (url, title, background = false) => {
-    const before = new Set((await state()).tabs.map((t) => t.id));
-    await evalApp(`nn.actions.openUrls([${JSON.stringify(url)}], ${JSON.stringify(mainWindow)}); return true`);
-    const tab = await until(`a tab for ${url}`, async () => (await state()).tabs.find((t) => !before.has(t.id) && t.title === title && !t.loading), 15000);
-    if (background) {
-      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
-      await until("A shown", async () => (await state()).active === first.id);
-    }
-    return tab;
-  };
-  const closeTab = (id) => evalApp(`nn.store.getState().closeTab("${id}"); return true`);
-  // A tab's WebView is mounted (a background or restored tab mounts when shown).
-  const shownAndMounted = async (id) => {
-    await evalApp(`nn.actions.switchToTab(${JSON.stringify(id)}); return true`);
-    await until(`${id}'s WebView`, () => evalApp(`return !!nn.webviews.get(${JSON.stringify(id)})`), 15000);
-  };
-  // A new foreground tab on `url` in the run's window, mounted and loaded (for checks after move-tab-to-window took
-  // the first tab to a window of its own).
-  const freshTab = async (url) => {
-    const id = await evalApp(`return nn.store.getState().newTab(${JSON.stringify(mainWindow)}, { url: ${JSON.stringify(url)} })`);
-    await shownAndMounted(id);
-    await until(`${url} loaded`, () => evalApp(`const s = nn.store.getState(); return s.tabs[${JSON.stringify(id)}]?.url && !s.live[${JSON.stringify(id)}]?.isLoading ? true : null`));
-    return id;
-  };
-  const backToA = async () => {
-    await evalApp(`nn.store.getState().navigate("${first.id}", "${base}/a", { userInitiated: true }); return true`);
-    await until("A again", async () => (await state()).tabs.find((t) => t.id === first.id && t.title === "Page A" && !t.loading));
-    await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
-  };
+  // MARK: Page state and prompts
 
   await check("theme-commit", async () => {
     // The toolbar colour belongs to the page shown: a page the page script never runs in (an error page) doesn't keep
@@ -1278,6 +1434,8 @@ try {
       await backToA();
     }
   });
+
+  // MARK: Screen and tab capture
 
   await check("screen-share-picker", async () => {
     // getDisplayMedia through the app's source picker (setDisplayMediaPicker, as the app sets it): the request reaches
@@ -1443,6 +1601,8 @@ try {
       await evalApp(`nn.actions.switchToTab("${first.id}"); return true`).catch(() => null);
     }
   });
+
+  // MARK: Tab lifecycle
 
   await check("restore-after-close", async () => {
     // A → B, then the tab goes with its window, or by itself from Chrome's side, at once; reopened, Back reaches A.
@@ -1812,6 +1972,8 @@ try {
       await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(last)}); return true`).catch(() => null);
     }
   });
+
+  // MARK: Chrome services and extensions
 
   await check("extension-popup-and-panel", async () => {
     // The extension's action (executeExtensionAction) opens its popup, and its side panel opens beside the page:
@@ -2425,6 +2587,8 @@ try {
     }
   });
 
+  // MARK: Content blocker
+
   await check("content-blocker", async () => {
     // The built-in uBlock Origin Lite, loaded as a component extension and driven through its runtime messages.
     const state = await until("the blocker's state", async () => {
@@ -2516,6 +2680,8 @@ try {
     if (!id) throw new Error("no profile made");
     return { profile: id, ...(await contentBlockerRounds(id)) };
   });
+
+  // MARK: Data, downloads and crashes
 
   await check("internal-pages-not-history", async () => {
     // The host's own pages never reach a profile's history or the omnibox: the content blocker's hidden page
@@ -2884,6 +3050,8 @@ try {
     return { ...result, folderGone: true, windowProfiles: shown };
   });
 
+  // MARK: Page events
+
   await check("page-events", async () => {
     // Zoom steps, the security report, an app link with no app on this Mac, and an Esc the page leaves alone.
     await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
@@ -3083,18 +3251,6 @@ try {
   });
 
   // MARK: Media, Picture in Picture, page focus
-
-  // The last event of a kind an app tab sent, and the app's own media state for it.
-  const lastEvent = async (tabId, name, test = () => true) => (await eventsOf(tabId)).findLast((x) => x.name === name && test(x.payload ?? {})) ?? null;
-  const live = (tabId) => evalApp(`return nn.store.getState().live["${tabId}"] ?? null`);
-  const pipWindows = () => cef(`devPictureInPicture()`).catch(() => null);
-  const startVideo = async (tabId, audio) => {
-    const t = await pageFor(tabId, `${base}/video`);
-    const r = await cdp(t, "Runtime.evaluate", { expression: `start(${audio})`, awaitPromise: true, userGesture: true, returnByValue: true });
-    if (r.result?.value !== "ok") throw new Error(`the video didn't play: ${JSON.stringify(r.result ?? r)}`);
-    await until("the video's first frames", async () => (await cdp(t, "Runtime.evaluate", { expression: "document.getElementById('v').videoWidth", returnByValue: true })).result?.value > 0, 8000);
-    return t;
-  };
 
   await check("media-state", async () => {
     // onMedia as packages/cef reports it: `playing` from the page script (a playing element the page hasn't muted),
@@ -3638,6 +3794,8 @@ try {
     }
   });
 
+  // MARK: Pages, profiles and windows
+
   await check("autofill-suggestions", async () => {
     // Chrome's autofill dropdown in a page: an entry this profile submitted, offered on a click into the field and
     // picked with ↓ and Return (the release smoke test's steps); the same dropdown from the app's Autofill command
@@ -4001,6 +4159,8 @@ try {
   const closeWindowOf = (tabId) =>
     evalApp(`const s = nn.store.getState(); const w = s.tabs[${JSON.stringify(tabId)}]?.windowId; if (w && w !== ${JSON.stringify(mainWindow)}) s.closeWindow(w); return true`);
 
+  // MARK: Moving tabs
+
   await check("move-tab-slow-mount", async () => {
     // A tab moved to a window that mounts its view late keeps its page (the same WebContents: its history, its state):
     // the page waits for the tab's next view however long that takes.
@@ -4101,6 +4261,8 @@ try {
     if (!holding || holding.window !== windowNumber) throw new Error(`the tab's strip is window ${holding?.window}, its view is in ${windowNumber}`);
     return { windowId, kept, strip: holding.strip, window: holding.window };
   });
+
+  // MARK: Startup and engine
 
   await check("title-bar-close", async () => {
     // The title bar's close button on the second window: NNCore asks the app (windowShouldClose:), which closes it.
@@ -4289,7 +4451,8 @@ try {
     return { remaining: result.remaining, left };
   });
 
-  let personal = null;
+  // MARK: Quitting and relaunching
+
   await check("last-used-profile", async () => {
     // Before the quit: Personal sets a cookie, then the window shows another profile, so that profile is Chrome's
     // last used when the app quits (the relaunch check after the quit).
@@ -4360,30 +4523,12 @@ try {
     const t = await pageTarget(`${base}/b?personal-again`);
     const cookie = (await cdp(t, "Runtime.evaluate", { expression: "document.cookie", returnByValue: true })).result.value;
     const info = await evalApp(`return globalThis.expo.modules.NetnyahooCEF.chromeWindows()`);
-    await evalApp(`nn.shell.quit?.(); return true`, 3000).catch(() => null);
     // The next check launches the app again only once this one has gone.
-    await until("the relaunched app to exit", async () => exited, 20000).catch(async () => {
-      try { process.kill(pid, "SIGTERM"); } catch {}
-      await until("the relaunched app killed", async () => exited, 10000);
-    });
+    await stopApp();
     if (!cookie.includes("who=personal") || cookie.includes("who=play")) throw new Error(`Personal's page sees "${cookie}"`);
     return { cookie, windows: info.map((w) => w.profile) };
   });
 
-  // The quit checks below start the app on the run's data dir when it isn't running, and wait for its window.
-  const appUp = async (logName) => {
-    if (exited) await launch(logName);
-    await until("the app", async () => {
-      try {
-        return await evalApp(`return globalThis.expo.modules.NetnyahooCEF.engineInfo()`, 3000);
-      } catch (e) {
-        if (exited) throw e;
-        return null;
-      }
-    }, 90000);
-    mainWindow = null;
-    return (mainWindow = await until("a window", async () => (await state()).windowId, 30000));
-  };
   const pressQuit = (windowId) =>
     evalApp(`return nn.shell.devKeyEquivalent("${windowId}", { key: "q", keyCode: 12, modifiers: ["command"], focus: "window" })`, 5000).catch(() => null);
   const savedSession = () => (existsSync(join(data, "session.json")) ? readFileSync(join(data, "session.json"), "utf8") : "");
@@ -4574,10 +4719,7 @@ try {
   await check("launch-cocoa-args", async () => {
     // Cocoa's argument-domain defaults on the command line ("-NSAppSleepDisabled YES", as the perf bench passes them)
     // are AppKit's: the app starts as usual, Chrome never takes "YES" for a page to open, and AppKit still reads them.
-    if (!exited) {
-      await evalApp(`nn.shell.quit?.(); return true`, 3000).catch(() => null);
-      await until("the app to exit", async () => exited, 20000).catch(() => child.kill("SIGKILL"));
-    }
+    await stopApp();
     await launch("app-args.out.log", {}, ["-NSAppSleepDisabled", "YES", "-ApplePersistenceIgnoreState", "YES"]);
     await until("the relaunched app", async () => {
       try {
@@ -4601,10 +4743,7 @@ try {
     // menu item types), and the item its ".pick" file names ("<label>\t<flags>") runs. Relaunched with it set.
     const menuLog = join(scratch, "context-menu.json");
     rmSync(menuLog, { force: true });
-    if (!exited) {
-      await evalApp(`nn.shell.quit?.(); return true`, 3000).catch(() => null);
-      await until("the app to exit", async () => exited, 20000).catch(() => child.kill("SIGKILL"));
-    }
+    await stopApp();
     await launch("app4.out.log", { NETNYAHOO_CONTEXT_MENU_LOG: menuLog });
     await until("the relaunched app", async () => {
       try {
@@ -4688,10 +4827,7 @@ try {
       execFileSync("codesign", ["-f", "-s", "-", "--options", "runtime", "--entitlements", entitlements, mediaApp], { stdio: "ignore" });
       const signed = execFileSync("codesign", ["-d", "--entitlements", "-", "--xml", mediaApp], { stdio: ["ignore", "pipe", "ignore"] }).toString();
       if (/device\.(camera|audio-input)/.test(signed)) throw new Error("the media copy kept a device entitlement");
-      if (!exited) {
-        await evalApp(`nn.shell.quit?.(); return true`, 3000).catch(() => null);
-        await until("the app to exit", async () => exited, 20000).catch(() => child.kill("SIGKILL"));
-      }
+      await stopApp();
       await launch("app-media.out.log", {}, [], { app: mediaApp, switches: "--netnyahoo-test-system-media-permission=ask" });
       await until("the media copy", async () => {
         try {
@@ -4815,6 +4951,8 @@ try {
     });
   }
 
+  // MARK: Crash guard (ends the run)
+
   await check("crash-guard", async () => {
     // A hidden test instance that crashes (here Chrome's own Browser.crash, an abort on the main thread) leaves its
     // record in <data dir>/crashes and exits: no crash report for macOS's reporter, so no "quit unexpectedly" dialog
@@ -4842,20 +4980,19 @@ try {
   visibilityWatch?.stop();
   writeFileSync(join(scratch, "results.json"), JSON.stringify(results, null, 2));
   const passed = results.filter((r) => r.ok).length;
-  log(`${passed}/${results.length} passed`);
-  try {
-    await evalApp(`nn.shell.quit?.(); return true`, 3000).catch(() => {});
-  } catch {}
-  await sleep(1500);
-  if (!exited) child.kill("SIGTERM");
-  await sleep(1000);
-  if (!exited) child.kill("SIGKILL");
-  rmSync(join(scratch, "media-app"), { recursive: true, force: true });
+  report.summary();
+  if (keep && !exited) {
+    instance.save({ http: server.address().port, https: tlsServer.address().port });
+    report.say(`kept pid ${pid}: --attach ${scratch} [check…] runs more; scripts/agent/nn quit ${data} ends it`);
+  } else {
+    if (keep) report.say("not kept: the app had exited");
+    if (!exited) await instance.quit();
+    rmSync(join(scratch, "media-app"), { recursive: true, force: true });
+  }
   server.closeAllConnections?.();
   server.close();
-  metroProxy.closeAllConnections?.();
-  metroProxy.close();
-  process.exitCode = passed === results.length ? 0 : 1;
-  // A DevTools socket or a page's keep-alive connection can hold the loop open: the run ends here either way.
-  setTimeout(() => process.exit(process.exitCode), 3000);
+  tlsServer.closeAllConnections?.();
+  tlsServer.close();
+  // A DevTools socket or a page's keep-alive connection can hold the loop open: the run ends here.
+  process.exit(passed === results.length ? 0 : 1);
 }
