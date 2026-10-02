@@ -402,7 +402,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.2.22;
-				NNCORE_STAGE_DIR = "$(SRCROOT)/../build-nncore/NNCoreFramework";
+				NNCORE_STAGE_DIR = "$(OBJROOT)/NNCoreFramework";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -437,7 +437,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.2.22;
-				NNCORE_STAGE_DIR = "$(SRCROOT)/../build-nncore-release/NNCoreFramework";
+				NNCORE_STAGE_DIR = "$(OBJROOT)/NNCoreFramework";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

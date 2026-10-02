@@ -13,6 +13,115 @@ ENV['RCT_NEW_ARCH_ENABLED'] ||= '0'
 
 prepare_react_native_project!
 
+# Parallel builds. Agents build at once, each into its own derived data, from this one Pods directory, so no build
+# phase may write a shared file another build reads. The stock scripts do in four places; these hooks move each
+# write into the build's own folder (docs/agent-brief.md, "Isolated builds"):
+#   - [CP] Copy Pods Resources wrote its file list to Pods/resources-to-copy-<target>.txt and deleted it after, so
+#     one build's rsync read a list another had emptied or removed ("resources-to-copy" errors);
+#   - [Expo] Configure project rewrote Pods/…/ExpoModulesProvider.swift every build, under other builds' compiles;
+#   - ReactCodegen's Generate Specs rewrote build/generated/ios on a new derived data's first build;
+#   - Hermes' "Replace Hermes" phase swapped Pods/hermes-engine between its Debug and Release builds whenever the
+#     configuration changed, under any other build linking or embedding it.
+publish_changed = '"${PODS_ROOT}/../publish-changed.sh"'
+
+nn_patch_file = lambda do |path, &edit|
+  next unless File.exist?(path)
+  old = File.read(path)
+  new = edit.call(old.dup)
+  File.write(path, new) if new != old
+end
+
+nn_parallel_post_install = lambda do |installer|
+  support = File.join(installer.sandbox.root, 'Target Support Files')
+
+  # The resources list goes in the build's own derived files.
+  Dir.glob(File.join(support, 'Pods-*', 'Pods-*-resources.sh')).each do |script|
+    nn_patch_file.call(script) do |s|
+      s.sub('RESOURCES_TO_COPY=${PODS_ROOT}/resources-to-copy-${TARGETNAME}.txt',
+            "mkdir -p \"${DERIVED_FILE_DIR}\"\nRESOURCES_TO_COPY=${DERIVED_FILE_DIR}/resources-to-copy-${TARGETNAME}.txt")
+    end
+  end
+
+  # Codegen generates into the build's own folder, then publishes only what changed (its podspec embeds that
+  # folder's path, so it stays out; pod install writes the real one).
+  installer.pods_project.targets.select { |t| t.name == 'ReactCodegen' }.each do |t|
+    t.shell_script_build_phases.select { |p| p.name.to_s.include?('Generate Specs') }.each do |phase|
+      script = phase.shell_script
+      next if script.include?('[Netnyahoo]')
+      script = script.sub('export RCT_SCRIPT_OUTPUT_DIR="$RCT_SCRIPT_POD_INSTALLATION_ROOT"', <<~'SH'.chomp)
+        # [Netnyahoo] Generated into this build's own folder, then published by changed file (Podfile).
+        export RCT_SCRIPT_OUTPUT_DIR="$DERIVED_FILE_DIR/nn-codegen"
+        rm -rf "$RCT_SCRIPT_OUTPUT_DIR"
+        mkdir -p "$RCT_SCRIPT_OUTPUT_DIR/build/generated/autolinking"
+        cp "$RCT_SCRIPT_POD_INSTALLATION_ROOT/build/generated/autolinking/autolinking.json" "$RCT_SCRIPT_OUTPUT_DIR/build/generated/autolinking/" 2>/dev/null || true
+      SH
+      script = script.sub(%q(/bin/sh -c '"$WITH_ENVIRONMENT" "$SCRIPT_PHASES_SCRIPT"'), %q(/bin/sh -c '"$WITH_ENVIRONMENT" "$SCRIPT_PHASES_SCRIPT"' || exit 1))
+      script += "#{publish_changed} \"$RCT_SCRIPT_OUTPUT_DIR/build/generated/ios\" \"$RCT_SCRIPT_POD_INSTALLATION_ROOT/build/generated/ios\" --exclude '*.podspec'\n"
+      phase.shell_script = script
+    end
+  end
+
+  # Hermes: Pods/hermes-engine stays the Debug build; Release builds embed hermes-engine-Release, unpacked here. The
+  # two export the same API (Release's symbols are a subset), so every configuration compiles and links against the
+  # one in Pods/hermes-engine, and nothing is swapped during a build.
+  artifacts = File.join(installer.sandbox.root, 'hermes-engine-artifacts')
+  hermes = installer.pod_targets.find { |t| t.pod_name == 'hermes-engine' }&.root_spec&.version&.to_s&.downcase
+  debug_tgz = File.join(artifacts, "hermes-ios-#{hermes}-debug.tar.gz")
+  release_tgz = File.join(artifacts, "hermes-ios-#{hermes}-release.tar.gz")
+  if hermes && File.exist?(debug_tgz) && File.exist?(release_tgz)
+    root = installer.sandbox.root.to_s
+    unpack = lambda do |tgz, dir|
+      stamp = File.join(dir, '.netnyahoo-from')
+      next if File.exist?(stamp) && File.read(stamp) == "#{File.basename(tgz)} #{File.mtime(tgz).to_i}"
+      FileUtils.rm_rf(dir)
+      FileUtils.mkdir_p(dir)
+      system('tar', '-xf', tgz, '-C', dir, exception: true)
+      File.write(stamp, "#{File.basename(tgz)} #{File.mtime(tgz).to_i}")
+    end
+    last = File.join(root, '.last_build_configuration')
+    if File.exist?(last) && File.read(last).strip != 'Debug'
+      # An earlier build swapped Release in; put Debug back.
+      FileUtils.rm_rf(File.join(root, 'hermes-engine', '.netnyahoo-from'))
+      unpack.call(debug_tgz, File.join(root, 'hermes-engine'))
+    end
+    File.write(last, 'Debug')
+    unpack.call(release_tgz, File.join(root, 'hermes-engine-Release'))
+
+    installer.pods_project.targets.select { |t| t.name == 'hermes-engine' }.each do |t|
+      t.shell_script_build_phases.select { |p| p.name.to_s.include?('Replace Hermes') }.each do |phase|
+        phase.shell_script = "# [Netnyahoo] Nothing to replace: Release builds embed Pods/hermes-engine-Release (Podfile).\n"
+      end
+    end
+    Dir.glob(File.join(support, 'Pods-*', 'Pods-*-frameworks.sh')).each do |script|
+      nn_patch_file.call(script) do |s|
+        s.sub(/(if \[\[ "\$CONFIGURATION" == "Release" \]\]; then\n(?:(?!^fi$).*\n)*?\s*install_framework "\$\{PODS_ROOT\}\/)hermes-engine\//) { "#{$1}hermes-engine-Release/" }
+      end
+    end
+  else
+    Pod::UI.warn("[Netnyahoo] no Hermes #{hermes} archives in #{artifacts}: Hermes still swaps per configuration, so Debug and Release builds must not overlap")
+  end
+end
+
+# Expo writes its configure script while integrating the app project, after post_install.
+nn_parallel_post_integrate = lambda do |installer|
+  installer.aggregate_targets.each do |target|
+    script = File.join(target.support_files_dir, 'expo-configure-project.sh')
+    nn_patch_file.call(script) do |s|
+      next s if s.include?('[Netnyahoo]')
+      provider = s[/--target "([^"]*ExpoModulesProvider\.swift)"/, 1]
+      next s unless provider
+      s = s.sub(%(--target "#{provider}"), '--target "$NN_PROVIDER_DIR/ExpoModulesProvider.swift"')
+      s = s.sub("with_node \\\n", <<~SH + "with_node \\\n")
+        # [Netnyahoo] Generated into this build's own folder, then published only if it changed (Podfile).
+        mkdir -p "${DERIVED_FILE_DIR:-${TMPDIR:-/tmp}}"
+        NN_PROVIDER_DIR=$(mktemp -d "${DERIVED_FILE_DIR:-${TMPDIR:-/tmp}}/expo-provider.XXXXXX")
+        trap 'rm -rf "$NN_PROVIDER_DIR"' EXIT
+      SH
+      s + %(\n"$PODS_ROOT/../publish-changed.sh" "$NN_PROVIDER_DIR" "#{File.dirname(provider)}"\n)
+    end
+  end
+end
+
 target 'Netnyahoo-macOS' do
   platform :macos, '14.0'
 
@@ -36,5 +145,11 @@ target 'Netnyahoo-macOS' do
     installer.pods_project.targets.each do |t|
       t.build_configurations.each { |c| c.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '14.0' }
     end
+
+    nn_parallel_post_install.call(installer)
   end
+end
+
+post_integrate do |installer|
+  nn_parallel_post_integrate.call(installer)
 end
