@@ -159,6 +159,7 @@ class WindowHost : public TabStripModelObserver,
  private:
   enum class CloseState { kOpen, kAsking, kClosing };
   void ContinueClose();
+  void ContinueCloseAttempt(int attempt);
   void OnBeforeUnloadAnswered(bool proceed);
   void CancelClose();
   void CommitClose();
@@ -174,6 +175,11 @@ class WindowHost : public TabStripModelObserver,
   std::map<Profile*, raw_ptr<Browser>> browsers_;
   raw_ptr<Profile> active_profile_ = nullptr;
   CloseState close_state_ = CloseState::kOpen;
+  // The Browser whose pages a close is asking now (ContinueClose), and which close that is:
+  // a continuation posted for an earlier attempt (since cancelled, or overtaken by a quit)
+  // never steers a later one.
+  raw_ptr<Browser> asking_ = nullptr;
+  int close_attempt_ = 0;
   bool widget_close_allowed_ = false;
   bool quiet_activation_ = false;
   bool internal_ = false;

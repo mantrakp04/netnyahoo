@@ -380,6 +380,14 @@ void WindowHost::Close() {
     return;
   }
   close_state_ = CloseState::kAsking;
+  ++close_attempt_;
+  ContinueClose();
+}
+
+void WindowHost::ContinueCloseAttempt(int attempt) {
+  if (attempt != close_attempt_ || browser_shutdown::IsTryingToQuit()) {
+    return;
+  }
   ContinueClose();
 }
 
@@ -389,11 +397,13 @@ void WindowHost::ContinueClose() {
   if (close_state_ != CloseState::kAsking) {
     return;
   }
+  asking_ = nullptr;
   for (Browser* browser : browsers()) {
     if (UnloadController::From(browser)->TryToCloseWindow(
             /*skip_beforeunload=*/false,
             base::BindRepeating(&WindowHost::OnBeforeUnloadAnswered,
                                 GetWeakPtr()))) {
+      asking_ = browser;
       return;  // A page is asking; OnBeforeUnloadAnswered continues.
     }
   }
@@ -421,6 +431,7 @@ void WindowHost::OnBeforeUnloadAnswered(bool proceed) {
   if (close_state_ != CloseState::kAsking) {
     return;
   }
+  asking_ = nullptr;
   if (proceed) {
     ContinueClose();
   } else {
@@ -430,6 +441,8 @@ void WindowHost::OnBeforeUnloadAnswered(bool proceed) {
 
 void WindowHost::CancelClose() {
   close_state_ = CloseState::kOpen;
+  asking_ = nullptr;
+  ++close_attempt_;
   // Browsers whose pages already agreed go back to normal (their unload handlers won't run).
   for (Browser* browser : browsers()) {
     UnloadController::From(browser)->ResetTryToCloseWindow();
@@ -536,6 +549,10 @@ void WindowHost::ConfirmCloseWithDownloads(int count,
 }
 
 void WindowHost::BrowserWindowDestroyed(NNBrowserWindow* window) {
+  const bool was_asking = asking_ && window->browser() == asking_;
+  if (was_asking) {
+    asking_ = nullptr;
+  }
   for (auto it = browsers_.begin(); it != browsers_.end(); ++it) {
     if (it->second == window->browser()) {
       it->second->GetTabStripModel()->RemoveObserver(this);
@@ -551,6 +568,17 @@ void WindowHost::BrowserWindowDestroyed(NNBrowserWindow* window) {
     close_state_ = CloseState::kClosing;
     base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&WindowHost::CloseWidget, GetWeakPtr()));
+  } else if (was_asking && close_state_ == CloseState::kAsking &&
+             !browser_shutdown::IsTryingToQuit()) {
+    // The Browser being asked closed itself (the host closed the tab it was asking: its
+    // UnloadController then closes the Browser and never answers). The close goes on with
+    // the others; without this the window stayed open, hidden, with its compositor (~40 MB
+    // in the browser process and as much in the GPU process, each window the app closed
+    // as its page loaded). A quit owns the asking once it started (its close manager's
+    // callbacks replaced ours): this close then ends with the quit, as QuitCancelled says.
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&WindowHost::ContinueCloseAttempt, GetWeakPtr(),
+                                  close_attempt_));
   }
 }
 
@@ -777,6 +805,8 @@ void WindowHost::QuitCancelled() {
   // over): it ends with the quit, the window as it was.
   if (close_state_ == CloseState::kAsking) {
     close_state_ = CloseState::kOpen;
+    asking_ = nullptr;
+    ++close_attempt_;
     for (Browser* browser : browsers()) {
       UnloadController::From(browser)->ResetTryToCloseWindow();
     }
