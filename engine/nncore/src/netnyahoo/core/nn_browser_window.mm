@@ -12,6 +12,8 @@
 #include "chrome/browser/ui/autofill/update_address_bubble_controller.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+#include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
 #include "chrome/browser/ui/find_bar/find_bar.h"
 #include "chrome/browser/ui/find_bar/find_bar_controller.h"
 #include "ui/gfx/range/range.h"
@@ -249,8 +251,16 @@ bool NNBrowserWindow::IsMinimized() const {
 }
 
 bool NNBrowserWindow::IsFullscreen() const {
-  return tab_fullscreen_ ||
-         (host_ && host_->widget() && host_->widget()->IsFullscreen());
+  if (tab_fullscreen_ ||
+      (host_ && (host_->acted_fullscreen() ||
+                 (host_->widget() && host_->widget()->IsFullscreen())))) {
+    return true;
+  }
+  // A page fullscreen in a window that already was (no EnterFullscreen came) stays "in
+  // fullscreen" after the user leaves the window's: Chrome would ignore its exit otherwise.
+  ExclusiveAccessManager* manager =
+      browser_ ? browser_->GetFeatures().exclusive_access_manager() : nullptr;
+  return manager && manager->fullscreen_controller()->IsTabFullscreen();
 }
 
 gfx::NativeWindow NNBrowserWindow::GetNativeWindow() const {
@@ -597,15 +607,46 @@ void NNBrowserWindow::EnterFullscreen(const url::Origin& origin,
                                       ExclusiveAccessBubbleType bubble_type,
                                       FullscreenTabParams fullscreen_tab_params) {
   tab_fullscreen_ = true;
-  if (host_ && browser_) {
-    host_->FullscreenChanged(browser_, true);
-  }
+  ReportFullscreenTab();
 }
 
 void NNBrowserWindow::ExitFullscreen() {
   tab_fullscreen_ = false;
-  if (host_ && browser_) {
-    host_->FullscreenChanged(browser_, false);
+  ReportFullscreenTab();
+}
+
+// Chrome updates the bubble on every change of who holds fullscreen, including the ones that
+// don't go through Enter/ExitFullscreen (a page entering it in a window that already was).
+void NNBrowserWindow::UpdateExclusiveAccessBubble(
+    const ExclusiveAccessBubbleParams& params,
+    ExclusiveAccessBubbleHideCallback first_hide_callback) {
+  ReportFullscreenTab();
+}
+
+void NNBrowserWindow::ReportFullscreenTab() {
+  ExclusiveAccessManager* manager =
+      browser_ ? browser_->GetFeatures().exclusive_access_manager() : nullptr;
+  FullscreenController* controller =
+      manager ? manager->fullscreen_controller() : nullptr;
+  content::WebContents* now = controller && controller->IsTabFullscreen()
+                                  ? controller->exclusive_access_tab()
+                                  : nullptr;
+  content::WebContents* was = fullscreen_tab_.get();
+  if (now == was) {
+    return;
+  }
+  fullscreen_tab_ = now ? now->GetWeakPtr() : nullptr;
+  if (!host_ || !browser_) {
+    return;
+  }
+  base::WeakPtr<content::WebContents> entering = fullscreen_tab_;
+  if (was) {
+    host_->FullscreenChanged(was, false);
+  }
+  // Unless the host's answer changed it meanwhile (closed the tab, say).
+  if (content::WebContents* contents = entering.get();
+      contents && contents == fullscreen_tab_.get() && host_) {
+    host_->FullscreenChanged(contents, true);
   }
 }
 

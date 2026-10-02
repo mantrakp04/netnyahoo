@@ -140,7 +140,10 @@ class WindowHost : public TabStripModelObserver,
   void DevToolsDockChanged(content::WebContents* inspected,
                            content::WebContents* devtools);
   bool OfferPasswordSave(content::WebContents* contents);
-  void FullscreenChanged(Browser* browser, bool fullscreen);
+  void FullscreenChanged(content::WebContents* contents, bool fullscreen);
+  // Test instances act the window's fullscreen out (no Space): Chrome counts it as real.
+  bool acted_fullscreen() const { return acted_fullscreen_; }
+  void set_acted_fullscreen(bool acted) { acted_fullscreen_ = acted; }
 
   base::WeakPtr<WindowHost> GetWeakPtr() { return weak_factory_.GetWeakPtr(); }
 
@@ -183,6 +186,7 @@ class WindowHost : public TabStripModelObserver,
   bool widget_close_allowed_ = false;
   bool quiet_activation_ = false;
   bool internal_ = false;
+  bool acted_fullscreen_ = false;
   PendingOpen pending_open_;
   base::ObserverList<web_modal::ModalDialogHostObserver> modal_observers_;
   base::WeakPtrFactory<WindowHost> weak_factory_{this};

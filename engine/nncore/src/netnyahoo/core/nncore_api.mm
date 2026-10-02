@@ -44,6 +44,8 @@
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/passwords/passwords_model_delegate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "components/favicon/content/content_favicon_driver.h"
@@ -1449,6 +1451,14 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   _host->ShowInactive();
 }
 
+- (BOOL)actedFullScreen {
+  return _host->acted_fullscreen();
+}
+
+- (void)setActedFullScreen:(BOOL)acted {
+  _host->set_acted_fullscreen(acted);
+}
+
 - (void)adoptTab:(NNCoreTab*)tab {
   if (nncore::IsNotifyingTabStrip()) {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -2056,6 +2066,25 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
 - (void)noteShownByHost:(BOOL)shown {
   if (_contents) {
     nncore::NoteTabShownByHost(_contents, shown);
+  }
+}
+
+- (void)exitFullscreen {
+  if (_contents && _contents->IsFullscreen()) {
+    _contents->ExitFullscreen(/*will_cause_resize=*/true);
+  }
+}
+
+- (void)exitExclusiveAccess {
+  if (!_contents) {
+    return;
+  }
+  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(_contents);
+  ExclusiveAccessManager* manager =
+      browser ? browser->GetFeatures().exclusive_access_manager() : nullptr;
+  if (manager) {
+    manager->OnTabDeactivated(_contents);
   }
 }
 

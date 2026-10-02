@@ -324,6 +324,9 @@ NNCORE_EXPORT
 // profile's Browser, as its menu item or shortcut would. NO if it is disabled.
 - (BOOL)executeChromeCommand:(int)commandId profile:(NNCoreProfile*)profile;
 - (void)showInactive;
+// Test instances act the window's fullscreen out (no Space, no activation): while YES,
+// Chrome counts the window as fullscreen, as it does a real one.
+@property(nonatomic) BOOL actedFullScreen;
 // Closes every Browser (beforeunload first). Cancellable: see windowDidCancelClose:.
 - (void)close;
 
@@ -572,6 +575,11 @@ NNCORE_EXPORT
 // The host hid or showed this tab without Chrome's tab strip changing (its own New Tab page took
 // the window): Chrome's automatic Picture in Picture hears of it as a tab switch.
 - (void)noteShownByHost:(BOOL)shown;
+// The page leaves tab fullscreen (the user left the window's own fullscreen).
+- (void)exitFullscreen;
+// The host stopped showing this tab (its own page took the window, another Space): it gives
+// up fullscreen, pointer lock and keyboard lock, as on a tab switch in Chrome.
+- (void)exitExclusiveAccess;
 // NETNYAHOO_TRACE_PIP=1: a line in /tmp/nn-pip-trace.log, with Chrome's auto PiP inputs for this
 // tab when `withInputs`.
 - (void)tracePictureInPicture:(NSString*)line withInputs:(BOOL)withInputs;

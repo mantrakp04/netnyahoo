@@ -248,6 +248,204 @@ bool IsReservedKey(NSEvent *event) {
 
 }  // namespace
 
+// MARK: - Page full screen
+
+// A page's element full screen fills the window, which enters macOS full screen for it unless it already was, and
+// leaves it afterwards only if it entered for the page, as Chrome does on the Mac (and the CEF build did). Leaving the
+// window's full screen by hand (the green button, ⌃⌘F) takes the page out of full screen too. AppKit ignores
+// -toggleFullScreen: mid-transition: the window catches up once the transition ends.
+//
+// Test instances (NETNYAHOO_BACKGROUND) act the window's full screen out, since a real one opens a Space on the owner's
+// screen: the same notifications go out, Chrome counts the window as full screen (actedFullScreen), and
+// NETNYAHOO_FAKE_FULLSCREEN_MS gives the acted transition AppKit's length.
+
+namespace {
+
+const void *kActedFullScreenKey = &kActedFullScreenKey;
+const void *kActingKey = &kActingKey;
+const void *kPageFullScreenKey = &kPageFullScreenKey;
+
+BOOL IsWindowFullScreen(NSWindow *window) {
+  return window && ((window.styleMask & NSWindowStyleMaskFullScreen) || objc_getAssociatedObject(window, kActedFullScreenKey));
+}
+
+// The window's full screen acted out (a test instance): what -toggleFullScreen: does, without the Space.
+void ActWindowFullScreen(NNCoreWindow *coreWindow, BOOL enter, NSTimeInterval seconds) {
+  NSWindow *window = coreWindow.window;
+  // AppKit ignores a toggle while a transition runs.
+  if (!window || objc_getAssociatedObject(window, kActingKey)) return;
+  __weak NSWindow *weakWindow = window;
+  __weak NNCoreWindow *weakCore = coreWindow;
+  void (^set)(BOOL) = ^(BOOL on) {
+    if (NSWindow *w = weakWindow) objc_setAssociatedObject(w, kActedFullScreenKey, on ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NNCoreWindow *c = weakCore;
+    if ([c respondsToSelector:@selector(setActedFullScreen:)]) c.actedFullScreen = on;
+  };
+  NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+  [center postNotificationName:enter ? NSWindowWillEnterFullScreenNotification : NSWindowWillExitFullScreenNotification object:window];
+  if (enter) set(YES);
+  objc_setAssociatedObject(window, kActingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  void (^finish)(void) = ^{
+    NSWindow *w = weakWindow;
+    if (!w) return;
+    objc_setAssociatedObject(w, kActingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!enter) set(NO);
+    [center postNotificationName:enter ? NSWindowDidEnterFullScreenNotification : NSWindowDidExitFullScreenNotification object:w];
+  };
+  if (seconds > 0) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), finish);
+  else finish();
+}
+
+// The acted transition's length (seconds) for page full screen; the dev action "fakeFullScreenMs:<ms>" sets it.
+NSTimeInterval gActedTransition = NSProcessInfo.processInfo.environment[@"NETNYAHOO_FAKE_FULLSCREEN_MS"].doubleValue / 1000;
+
+void ToggleWindowFullScreen(NNCoreWindow *coreWindow) {
+  NSWindow *window = coreWindow.window;
+  if (!nncore_host::Background()) return [window toggleFullScreen:nil];
+  const BOOL enter = !IsWindowFullScreen(window);
+  nncore_host::LogActivation(enter ? @"toggleFullScreen: (page full screen; acted out)" : @"toggleFullScreen: (page left full screen; acted out)");
+  ActWindowFullScreen(coreWindow, enter, gActedTransition);
+}
+
+}  // namespace
+
+// One per window that had a page in full screen.
+@interface NNPageFullScreen : NSObject
+@end
+
+@implementation NNPageFullScreen {
+  __weak NNCoreWindow *_coreWindow;
+  __weak NNCoreTab *_tab;  // The page in full screen.
+  BOOL _entered;           // The window went full screen for it.
+  BOOL _leaving;           // The window is leaving full screen because the page did.
+  BOOL _gaveUp;            // The window's transition for this page failed: the page fills the window as it is.
+  BOOL _transitioning;
+  BOOL _closed;
+  NSUInteger _transitions;
+  NSArray *_observers;
+}
+
++ (instancetype)ofWindow:(NNCoreWindow *)coreWindow create:(BOOL)create {
+  NSWindow *window = coreWindow.window;
+  if (!window) return nil;
+  NNPageFullScreen *state = objc_getAssociatedObject(window, kPageFullScreenKey);
+  if (state || !create) return state;
+  state = [[NNPageFullScreen alloc] initWithCoreWindow:coreWindow];
+  objc_setAssociatedObject(window, kPageFullScreenKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  return state;
+}
+
+- (instancetype)initWithCoreWindow:(NNCoreWindow *)coreWindow {
+  if ((self = [super init])) {
+    _coreWindow = coreWindow;
+    __weak NNPageFullScreen *weakSelf = self;
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    NSMutableArray *observers = [NSMutableArray array];
+    for (NSNotificationName name in @[
+           NSWindowWillEnterFullScreenNotification, NSWindowWillExitFullScreenNotification,
+           NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification, NSWindowWillCloseNotification
+         ]) {
+      [observers addObject:[center addObserverForName:name
+                                               object:coreWindow.window
+                                                queue:nil
+                                           usingBlock:^(NSNotification *note) {
+                                             [weakSelf windowDid:note.name];
+                                           }]];
+    }
+    _observers = observers;
+  }
+  return self;
+}
+
+- (void)dealloc {
+  for (id observer in _observers) [NSNotificationCenter.defaultCenter removeObserver:observer];
+}
+
+- (void)windowDid:(NSNotificationName)name {
+  if ([name isEqualToString:NSWindowWillCloseNotification]) {
+    _closed = YES;
+    return;
+  }
+  if ([name isEqualToString:NSWindowWillEnterFullScreenNotification] || [name isEqualToString:NSWindowWillExitFullScreenNotification]) {
+    _transitioning = YES;
+    // AppKit sends nothing when a transition fails: don't wait on one forever.
+    const NSUInteger transition = ++_transitions;
+    __weak NNPageFullScreen *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+      NNPageFullScreen *state = weakSelf;
+      if (!state || !state->_transitioning || state->_transitions != transition) return;
+      state->_transitioning = NO;
+      state->_leaving = NO;
+      // What the window is now, not what was asked; a failed entry isn't retried for the same page.
+      const BOOL full = IsWindowFullScreen(state->_coreWindow.window);
+      if (state->_entered && !full) state->_gaveUp = YES;
+      state->_entered = state->_entered && full;
+      [state sync];
+    });
+    return;
+  }
+  _transitioning = NO;
+  const BOOL entered = [name isEqualToString:NSWindowDidEnterFullScreenNotification];
+  // After the window's other observers (packages/shell's Windows) have heard of it.
+  __weak NNPageFullScreen *weakSelf = self;
+  dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf settled:entered]; });
+}
+
+- (void)settled:(BOOL)entered {
+  if (entered && _leaving) {
+    // Our toggle out came while the window was still going full screen (past the 3 s we wait for a transition), and
+    // AppKit ignored it: the window is in full screen for the page still.
+    _leaving = NO;
+    _entered = YES;
+  }
+  if (!entered && !_leaving) {
+    // Left by hand: the page leaves full screen too, and its exit comes back through -tab:fullScreen:.
+    _entered = NO;
+    NNCoreTab *tab = _tab;
+    if (tab && [tab respondsToSelector:@selector(exitFullscreen)]) return [tab exitFullscreen];
+  }
+  if (!entered) _leaving = NO;
+  [self sync];
+}
+
+- (void)tab:(NNCoreTab *)tab fullScreen:(BOOL)fullScreen {
+  if (fullScreen) _tab = tab;
+  else if (_tab == tab || !_tab) _tab = nil;
+  _gaveUp = _gaveUp && _tab;
+  [self sync];
+}
+
+- (void)sync {
+  NNCoreWindow *coreWindow = _coreWindow;
+  NSWindow *window = coreWindow.window;
+  if (!window || _closed || _transitioning) return;
+  const BOOL full = IsWindowFullScreen(window), page = _tab != nil;
+  if (page && !full && !_entered && !_gaveUp) {
+    _entered = YES;
+    ToggleWindowFullScreen(coreWindow);
+  } else if (!page && full && _entered) {
+    _entered = NO;
+    _leaving = YES;
+    ToggleWindowFullScreen(coreWindow);
+  } else if (!page && !_leaving) {
+    _entered = NO;
+  }
+}
+
+- (NSDictionary *)state {
+  NSWindow *window = _coreWindow.window;
+  NNCoreTab *tab = _tab;
+  return @{
+    @"page" : tab ? @(nncore_host::BrowserId(tab)) : NSNull.null,
+    @"entered" : @(_entered),
+    @"leaving" : @(_leaving),
+    @"transitioning" : @(_transitioning),
+    @"fullScreen" : @(IsWindowFullScreen(window)),
+  };
+}
+
+@end
+
 // MARK: - NNCoreWindowController
 
 @implementation NNCoreWindowController {
@@ -452,6 +650,8 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
 
 - (void)window:(NNCoreWindow *)window tab:(NNCoreTab *)tab didChangeFullscreen:(BOOL)fullscreen {
   [[self viewFor:tab] emit:@"fullscreen" payload:@{@"fullscreen" : @(fullscreen)}];
+  // The app's windows only: a hidden one (a stray tab's, extension pages') shows nothing to fill the screen with.
+  if (!_stray && !_standalone) [[NNPageFullScreen ofWindow:window create:fullscreen] tab:tab fullScreen:fullscreen];
 }
 
 // Chrome's password bubble, already in packages/cef's PasswordPrompt shape (save, update or saved; usernames,
@@ -821,6 +1021,33 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
 // "lights": the close button's frame in window coordinates (x,y,w,h, bottom-left origin).
 + (NSString *)devAction:(NSString *)action window:(NSWindow *)window {
   if (!window) return nil;
+  // "fakeFullScreen:<1|0>[:<ms>]" (test instances): the window enters or leaves macOS full screen as the green button
+  // would, acted out; with a duration the transition ends that much later. "fakeFullScreenMs:<ms>": the length of the
+  // acted transitions page full screen starts. "fullScreen": the window's full screen and its page full screen, as JSON.
+  if ([action hasPrefix:@"fakeFullScreenMs:"]) {
+    if (!nncore_host::Background()) return @"test instances only";
+    gActedTransition = MAX(0, [action substringFromIndex:17].doubleValue / 1000);
+    return [NSString stringWithFormat:@"%.0f", gActedTransition * 1000];
+  }
+  if ([action hasPrefix:@"fakeFullScreen:"] || [action isEqualToString:@"fullScreen"]) {
+    NNCoreWindow *coreWindow = [NNCoreWindowController forNSWindow:window].coreWindow;
+    if (!coreWindow) return @"not an NNCore window";
+    NSArray<NSString *> *parts = [action componentsSeparatedByString:@":"];
+    if (parts.count > 1) {
+      if (!nncore_host::Background()) return @"test instances only";
+      const BOOL enter = [parts[1] isEqualToString:@"1"];
+      if (enter != IsWindowFullScreen(window)) ActWindowFullScreen(coreWindow, enter, parts.count > 2 ? parts[2].doubleValue / 1000 : 0);
+    }
+    NSMutableDictionary *state = [@{
+      @"fullScreen" : @(IsWindowFullScreen(window)),
+      @"styleMask" : @((window.styleMask & NSWindowStyleMaskFullScreen) != 0),
+      @"acted" : @(objc_getAssociatedObject(window, kActedFullScreenKey) != nil),
+      @"chromeCounts" : @([coreWindow respondsToSelector:@selector(actedFullScreen)] && coreWindow.actedFullScreen),
+    } mutableCopy];
+    if (NNPageFullScreen *page = [NNPageFullScreen ofWindow:coreWindow create:NO]) state[@"pageFullScreen"] = [page state];
+    NSData *json = [NSJSONSerialization dataWithJSONObject:state options:0 error:nil];
+    return json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : @"{}";
+  }
   NSView *frameView = window.contentView.superview;
   // The window's child windows (Chrome's dropdowns, bubbles and menus attach as children): [{class, frame, visible}].
   if ([action isEqualToString:@"children"]) {

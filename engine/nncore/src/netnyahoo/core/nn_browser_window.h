@@ -340,7 +340,7 @@ class NNBrowserWindow : public BrowserWindow, public ExclusiveAccessContext {
   void ExitFullscreen() override;
   void UpdateExclusiveAccessBubble(
       const ExclusiveAccessBubbleParams& params,
-      ExclusiveAccessBubbleHideCallback first_hide_callback) override {}
+      ExclusiveAccessBubbleHideCallback first_hide_callback) override;
   bool IsExclusiveAccessBubbleDisplayed() const override;
   void OnExclusiveAccessUserInput() override {}
   content::WebContents* GetWebContentsForExclusiveAccess() override;
@@ -358,6 +358,11 @@ class NNBrowserWindow : public BrowserWindow, public ExclusiveAccessContext {
   std::unique_ptr<NNLocationBar> location_bar_;
   NNAutofillBubbleHandler autofill_bubble_handler_;
   bool tab_fullscreen_ = false;
+  // Tells the host which page is in tab fullscreen, from Chrome's own record of it (never
+  // the active tab: a tab switch selects the next tab before the old one's fullscreen ends).
+  void ReportFullscreenTab();
+  // The page last reported as fullscreen.
+  base::WeakPtr<content::WebContents> fullscreen_tab_;
   // Chrome makes this only for a BrowserView; docked DevTools need it (devtools_window.cc
   // asks it whether the Browser can dock, and it reports dock changes to our delegate).
   std::unique_ptr<DevtoolsUIController> devtools_ui_controller_;

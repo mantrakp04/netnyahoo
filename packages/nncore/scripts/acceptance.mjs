@@ -3021,6 +3021,207 @@ try {
     }
   });
 
+  // MARK: Page full screen
+  // A page's element full screen (requestFullscreen, with a gesture): the fullscreen event for that tab, the app's flag
+  // (pageState, which hides the toolbar and sidebar), the page's document.fullscreenElement and the window's macOS full
+  // screen. A test instance acts the window's full screen out (no Space on the owner's screen): devWindow "fullScreen"
+  // reads it, "fakeFullScreen:<1|0>" stands in for the green button and ⌃⌘F.
+  const fsFlag = (tabId) => evalApp(`return !!nn.pageState.getState().pages[${JSON.stringify(tabId)}]?.fullscreen`);
+  const fsWindow = async (tabId, action = "fullScreen") => {
+    const n = await cef(`devWindowNumber(${await browserOf(tabId)})`);
+    const out = await cef(`devWindow(${n}, ${JSON.stringify(action)})`);
+    try {
+      return JSON.parse(out);
+    } catch {
+      throw new Error(`devWindow ${action}: ${JSON.stringify(out)} (a build without page full screen?)`);
+    }
+  };
+  const fsElement = async (t) => (await cdp(t, "Runtime.evaluate", { expression: "!!document.fullscreenElement", returnByValue: true })).result.value;
+  const fsRequest = (t) => cdp(t, "Runtime.evaluate", { expression: "document.documentElement.requestFullscreen().then(() => 'ok', (e) => e.name)", awaitPromise: true, userGesture: true, returnByValue: true });
+  const fsEvents = async (tabId) => (await eventsOf(tabId)).filter((x) => x.name === "fullscreen").map((x) => x.payload.fullscreen);
+  // The page in full screen: its event, the app's flag and the page itself agree.
+  const fsEnter = async (tabId, t) => {
+    const asked = await fsRequest(t);
+    await until("the page in full screen", async () => (await fsFlag(tabId)) && (await fsElement(t)), 6000)
+      .catch((e) => { throw new Error(`${e.message}; requestFullscreen: ${JSON.stringify(asked.result?.value)}`); });
+  };
+  const fsLeft = (tabId, t, what) => until(what, async () => !(await fsFlag(tabId)) && !(await fsElement(t)), 6000);
+  const fsEscape = async (t) => {
+    for (const type of ["rawKeyDown", "keyUp"])
+      await cdp(t, "Input.dispatchKeyEvent", { type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 53 });
+  };
+
+  await check("fullscreen-tab-switch", async () => {
+    // A in full screen, then B and back (A → B → A): Chrome ends A's full screen on the switch, and the app hears it
+    // for A (not for B, the tab Chrome selected by then), so A comes back with its toolbar and sidebar. The window
+    // leaves the macOS full screen it entered for A.
+    const tab = await openTab(`${base}/b?fs-switch`, "Page B");
+    try {
+      const t = await pageFor(tab.id, "/b?fs-switch");
+      await fsEnter(tab.id, t);
+      const during = await fsWindow(tab.id);
+      const bBefore = await fsEvents(first.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+      await until("B shown", async () => (await state()).active === first.id);
+      await until("A's flag cleared on the switch", async () => !(await fsFlag(tab.id)), 5000)
+        .catch(async (e) => { throw new Error(`${e.message}; A's events ${JSON.stringify(await fsEvents(tab.id))}, B's ${JSON.stringify((await fsEvents(first.id)).slice(bBefore.length))}`); });
+      await evalApp(`nn.actions.switchToTab("${tab.id}"); return true`);
+      await until("A shown again", async () => (await state()).active === tab.id);
+      await sleep(600);
+      const back = { flag: await fsFlag(tab.id), element: await fsElement(t), window: await fsWindow(tab.id) };
+      const bGot = (await fsEvents(first.id)).slice(bBefore.length);
+      if (back.flag || back.element || back.window.fullScreen) throw new Error(`A back in full screen: ${JSON.stringify(back)}`);
+      if (bGot.length) throw new Error(`B got A's full-screen events: ${JSON.stringify(bGot)}`);
+      if (!during.fullScreen || !during.pageFullScreen?.entered) throw new Error(`the window didn't go full screen for A: ${JSON.stringify(during)}`);
+      return { during, aEvents: await fsEvents(tab.id), bEvents: bGot.length, back };
+    } finally {
+      await closeTab(tab.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
+  await check("fullscreen-native", async () => {
+    // Page full screen takes the window into macOS full screen and back, as Chrome on the Mac and 0.2.21: from a normal
+    // window (Esc, the green button), from a window already in full screen (which stays), and with the page leaving or
+    // its tab closing while the window's transition runs.
+    const tab = await openTab(`${base}/b?fs-native`, "Page B");
+    const out = {};
+    try {
+      const t = await pageFor(tab.id, "/b?fs-native");
+      const win = () => fsWindow(tab.id);
+      const settled = (what, test) => until(what, async () => {
+        const w = await win();
+        return !w.pageFullScreen?.transitioning && test(w) ? w : null;
+      }, 6000).catch(async (e) => { throw new Error(`${e.message}; window ${JSON.stringify(await win())}`); });
+      // From a normal window: in with the page, out with Esc.
+      await fsEnter(tab.id, t);
+      out.entered = await settled("the window in full screen", (w) => w.fullScreen && w.chromeCounts && w.pageFullScreen?.entered);
+      await fsEscape(t);
+      await fsLeft(tab.id, t, "Esc ended the page's full screen");
+      out.esc = await settled("the window out of full screen after Esc", (w) => !w.fullScreen);
+      // The green button (⌃⌘F) ends the page's full screen too.
+      await fsEnter(tab.id, t);
+      await settled("the window in full screen again", (w) => w.fullScreen);
+      await fsWindow(tab.id, "fakeFullScreen:0");
+      await fsLeft(tab.id, t, "the green button ended the page's full screen");
+      out.greenButton = await settled("the window out after the green button", (w) => !w.fullScreen);
+      // A window already in full screen: the page fills it, Esc leaves the window in full screen.
+      await fsWindow(tab.id, "fakeFullScreen:1");
+      await settled("the window in full screen by hand", (w) => w.fullScreen);
+      await fsEnter(tab.id, t);
+      out.alreadyEntered = await settled("the page full screen in a full-screen window", (w) => w.fullScreen && w.pageFullScreen && !w.pageFullScreen.entered);
+      await fsEscape(t);
+      await fsLeft(tab.id, t, "Esc in a window already full screen");
+      await sleep(400);
+      out.alreadyEsc = await win();
+      if (!out.alreadyEsc.fullScreen) throw new Error(`Esc took the user's full-screen window out: ${JSON.stringify(out.alreadyEsc)}`);
+      // ... and the green button there ends both.
+      await fsEnter(tab.id, t);
+      await fsWindow(tab.id, "fakeFullScreen:0");
+      await fsLeft(tab.id, t, "the green button in a window already full screen");
+      out.alreadyGreen = await settled("the window out", (w) => !w.fullScreen);
+      // The page leaves while the window's transition into full screen runs: the window comes back out once it ends.
+      await fsWindow(tab.id, "fakeFullScreenMs:1500");
+      await fsEnter(tab.id, t);
+      const mid = await win();
+      await cdp(t, "Runtime.evaluate", { expression: "document.exitFullscreen().then(() => 'ok', (e) => e.name)", awaitPromise: true, returnByValue: true });
+      await fsLeft(tab.id, t, "the page out mid-transition");
+      out.midTransition = { during: mid.pageFullScreen, after: await settled("the window out after the transition", (w) => !w.fullScreen && !w.pageFullScreen?.entered) };
+      if (!mid.pageFullScreen?.transitioning) throw new Error(`the transition had ended before the page left: ${JSON.stringify(mid)}`);
+      // Its tab closes while the window goes full screen.
+      await fsEnter(tab.id, t);
+      const n = await cef(`devWindowNumber(${await browserOf(tab.id)})`);
+      const closing = JSON.parse(await cef(`devWindow(${n}, "fullScreen")`)).pageFullScreen;
+      if (!closing?.transitioning) throw new Error(`the transition had ended before the close: ${JSON.stringify(closing)}`);
+      await closeTab(tab.id);
+      await sleep(2500);
+      const afterClose = JSON.parse(await cef(`devWindow(${n}, "fullScreen")`));
+      if (afterClose.fullScreen || afterClose.pageFullScreen?.page != null) throw new Error(`closing the tab mid-transition left ${JSON.stringify(afterClose)}`);
+      out.closedMidTransition = afterClose;
+      // A transition slower than the 3 s the window waits for one: the page's exit, after those 3 s and before the
+      // window is in full screen, still takes the window out once it is.
+      const slow = await openTab(`${base}/b?fs-slow`, "Page B");
+      try {
+        const st = await pageFor(slow.id, "/b?fs-slow");
+        await fsWindow(slow.id, "fakeFullScreenMs:4500");
+        await fsEnter(slow.id, st);
+        await sleep(3300);
+        await cdp(st, "Runtime.evaluate", { expression: "document.exitFullscreen().then(() => 'ok', (e) => e.name)", awaitPromise: true, returnByValue: true });
+        await fsLeft(slow.id, st, "the page out during a slow transition");
+        out.slowTransition = await until("the window out after a slow transition", async () => {
+          const w = await fsWindow(slow.id);
+          return !w.fullScreen && !w.pageFullScreen?.transitioning ? w : null;
+        }, 15000).catch(async (e) => { throw new Error(`${e.message}; window ${JSON.stringify(await fsWindow(slow.id))}`); });
+      } finally {
+        await fsWindow(slow.id, "fakeFullScreenMs:0").catch(() => null);
+        await closeTab(slow.id);
+      }
+      const log = readFileSync(join(data, "activation.log"), "utf8").split("\n").filter((l) => l.includes("toggleFullScreen")).length;
+      out.actedToggles = log;
+      return out;
+    } finally {
+      await cef(`devWindow(${await cef(`devWindowNumber(${await browserOf(first.id)})`)}, "fakeFullScreenMs:0")`).catch(() => null);
+      await closeTab(tab.id).catch(() => null);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
+  await check("fullscreen-hidden-page", async () => {
+    // The app hiding a full-screen page without Chrome's tab strip changing (its New Tab page, another Space) ends the
+    // page's full screen (and its locks), as a tab switch does; a split's other pane hiding while one pane fills the
+    // window doesn't end that pane's.
+    const tab = await openTab(`${base}/b?fs-hide`, "Page B");
+    const s = await state();
+    let profileB = null;
+    const out = {};
+    try {
+      const t = await pageFor(tab.id, "/b?fs-hide");
+      // The app's New Tab page.
+      await fsEnter(tab.id, t);
+      const lock = (await cdp(t, "Runtime.evaluate", { expression: "Promise.resolve(document.body.requestPointerLock()).then(() => !!document.pointerLockElement, (e) => e.name)", awaitPromise: true, userGesture: true, returnByValue: true })).result.value;
+      const keys = (await cdp(t, "Runtime.evaluate", { expression: "navigator.keyboard.lock().then(() => 'locked', (e) => e.name)", awaitPromise: true, userGesture: true, returnByValue: true })).result.value;
+      const ntp = await evalApp(`return nn.store.getState().newTab(${JSON.stringify(s.windowId)})`);
+      await until("the New Tab page shown", async () => (await state()).active === ntp);
+      await fsLeft(tab.id, t, "the New Tab page ended the page's full screen");
+      out.newTab = { pointerLock: lock, keyboardLock: keys, pointerLockAfter: (await cdp(t, "Runtime.evaluate", { expression: "!!document.pointerLockElement", returnByValue: true })).result.value, window: await fsWindow(tab.id) };
+      if (out.newTab.pointerLockAfter) throw new Error(`pointer lock kept: ${JSON.stringify(out.newTab)}`);
+      await closeTab(ntp);
+      await evalApp(`nn.actions.switchToTab("${tab.id}"); return true`);
+      await until("the page shown again", async () => (await state()).active === tab.id);
+      await sleep(500);
+      if ((await fsFlag(tab.id)) || (await fsElement(t))) throw new Error("the page came back in full screen");
+      // Another Space.
+      await fsEnter(tab.id, t);
+      profileB = await evalApp(`return nn.store.getState().createProfile({ name: "Full screen" })`);
+      await evalApp(`nn.actions.switchProfile(${JSON.stringify(s.windowId)}, ${JSON.stringify(profileB)}); return true`);
+      await until("the other Space shown", async () => (await state()).profileId === profileB);
+      await fsLeft(tab.id, t, "the Space switch ended the page's full screen");
+      await evalApp(`nn.actions.switchProfile(${JSON.stringify(s.windowId)}, ${JSON.stringify(s.profileId)}); return true`);
+      await until("the first Space back", async () => (await state()).profileId === s.profileId && (await state()).active === tab.id);
+      await sleep(500);
+      out.space = { flag: await fsFlag(tab.id), element: await fsElement(t), window: await fsWindow(tab.id) };
+      if (out.space.flag || out.space.element || out.space.window.fullScreen) throw new Error(`back from the Space in full screen: ${JSON.stringify(out.space)}`);
+      // A split: the other pane hides while this one fills the window; this one stays in full screen.
+      const split = await evalApp(`return nn.store.getState().createSplit(["${tab.id}", "${first.id}"])`);
+      if (!split) throw new Error("no split");
+      await evalApp(`nn.actions.switchToTab("${tab.id}"); return true`);
+      await until("the split shown", async () => (await state()).active === tab.id && (await evalApp(`return !!nn.webviews.get("${first.id}")`)), 8000);
+      await sleep(400);
+      await fsEnter(tab.id, t);
+      await sleep(1000);
+      out.split = { flag: await fsFlag(tab.id), element: await fsElement(t) };
+      if (!out.split.flag || !out.split.element) throw new Error(`the split pane's full screen ended: ${JSON.stringify(out.split)}`);
+      await cdp(t, "Runtime.evaluate", { expression: "document.exitFullscreen().then(() => 'ok', (e) => e.name)", awaitPromise: true, returnByValue: true });
+      await fsLeft(tab.id, t, "the split pane out of full screen");
+      return out;
+    } finally {
+      await evalApp(`nn.actions.switchProfile(${JSON.stringify(s.windowId)}, ${JSON.stringify(s.profileId)}); return true`).catch(() => null);
+      if (profileB) await evalApp(`nn.store.getState().deleteProfile(${JSON.stringify(profileB)}); return true`).catch(() => null);
+      await closeTab(tab.id);
+      await evalApp(`nn.actions.switchToTab("${first.id}"); return true`);
+    }
+  });
+
   await check("autofill-suggestions", async () => {
     // Chrome's autofill dropdown in a page: an entry this profile submitted, offered on a click into the field and
     // picked with ↓ and Return (the release smoke test's steps); the same dropdown from the app's Autofill command

@@ -840,6 +840,10 @@ const char kPageReportsKey = 0;
 - (void)setVisible:(BOOL)visible {
   if (_visible == visible) return;
   _visible = visible;
+  // A page the app stops showing leaves full screen, pointer lock and keyboard lock, as on a tab switch in Chrome: the
+  // app can hide one without Chrome's tab strip changing (its New Tab page, another Space). A split pane that only
+  // loses focus stays shown and keeps them.
+  if (!visible && [_tab respondsToSelector:@selector(exitExclusiveAccess)]) [_tab exitExclusiveAccess];
   // A page painting already (warm, or just left the screen: its view shown, at alpha 0) shows with the rest of the
   // batch: Chrome has nothing to draw first. Deferred to the end of the turn, the next tab of a window a tab was torn
   // off from (kept warm through the drag, ContentCard) missed the commit the torn page's new window made meanwhile,

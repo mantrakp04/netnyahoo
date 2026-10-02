@@ -733,11 +733,10 @@ bool WindowHost::OfferPasswordSave(content::WebContents* contents) {
   return true;
 }
 
-void WindowHost::FullscreenChanged(Browser* browser, bool fullscreen) {
+void WindowHost::FullscreenChanged(content::WebContents* contents,
+                                   bool fullscreen) {
   NNCoreWindow* owner = owner_;
   id<NNCoreWindowDelegate> delegate = owner.delegate;
-  content::WebContents* contents =
-      browser->GetTabStripModel()->GetActiveWebContents();
   if (contents && [delegate respondsToSelector:@selector
                             (window:tab:didChangeFullscreen:)]) {
     [delegate window:owner
