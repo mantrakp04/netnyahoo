@@ -83,29 +83,113 @@ public enum Firefox {
 
   // MARK: Cookies
 
-  public static func cookies(profile: URL, cancellation: Cancellation = .init()) throws -> [Cookie] {
-    let db = try SQLiteSnapshot(copying: profile.appendingPathComponent("cookies.sqlite"))
+  public struct CookieOutcome {
+    public var items: [Cookie]
+    /// Cookies from containers, private browsing, first-party isolation, or with a partition key that has no
+    /// exact Chromium equivalent: not imported.
+    public var skipped: Int
+  }
+
+  // cookies.sqlite is plaintext on disk: no key or primary password involved.
+  public static func cookies(profile: URL, cancellation: Cancellation = .init()) throws -> CookieOutcome {
+    try cookies(database: profile.appendingPathComponent("cookies.sqlite"), cancellation: cancellation)
+  }
+
+  public static func cookies(database: URL, cancellation: Cancellation = .init()) throws -> CookieOutcome {
+    let db = try SQLiteSnapshot(copying: database)
     guard db.tableExists("moz_cookies") else { throw ImportError.unreadable("cookies.sqlite has no cookies") }
     let now = Date().timeIntervalSince1970 * 1000
     var out: [Cookie] = []
+    var skipped = 0
+    var seen = 0
     try db.query("SELECT * FROM moz_cookies") { row in
-      if out.count % 256 == 0 { try cancellation.check() }
+      seen += 1
+      if seen % 256 == 0 { try cancellation.check() }
       guard let host = row.text("host"), let name = row.text("name") else { return true }
-      let expiry = row.int("expiry").map { Double($0) }.map { $0 > 100_000_000_000 ? $0 : $0 * 1000 }
-      if let expiry, expiry < now { return true }
-      let sameSite: String
-      switch row.int("sameSite") {
-      case 0: sameSite = "none"
-      case 1: sameSite = "lax"
-      case 2: sameSite = "strict"
-      default: sameSite = "unspecified"
+      let attributes = originAttributes(row.text("originAttributes") ?? "")
+      if attributes.isolated {
+        skipped += 1
+        return true
       }
-      out.append(Cookie(domain: host, name: name, value: row.text("value") ?? "", path: row.text("path") ?? "/",
-                        expires: expiry, secure: (row.int("isSecure") ?? 0) != 0, httpOnly: (row.int("isHttpOnly") ?? 0) != 0,
-                        sameSite: sameSite, created: row.int("creationTime").flatMap(Time.fromUnixMicros)))
+      // Older Firefox stored expiry in seconds, newer in milliseconds.
+      let expiry = row.int("expiry").flatMap { $0 > 0 ? Double($0) : nil }.map { $0 > 100_000_000_000 ? $0 : $0 * 1000 }
+      if let expiry, expiry < now { return true }
+      let secure = (row.int("isSecure") ?? 0) != 0
+      let schemeMap = row.int("schemeMap") ?? 0
+      out.append(Cookie(
+        domain: host,
+        name: name,
+        value: row.secret("value") ?? SecretBytes(count: 0),
+        path: row.text("path").flatMap { $0.isEmpty ? nil : $0 } ?? "/",
+        created: row.int("creationTime").flatMap(Time.fromUnixMicros),
+        expires: expiry,
+        lastAccess: row.int("lastAccessed").flatMap(Time.fromUnixMicros),
+        secure: secure,
+        httpOnly: (row.int("isHttpOnly") ?? 0) != 0,
+        sameSite: sameSite(row.int("sameSite"), raw: row.int("rawSameSite"), secure: secure),
+        priority: "medium",
+        partition: attributes.partition,
+        sourceScheme: schemeMap & 2 != 0 ? "secure" : schemeMap & 1 != 0 ? "nonSecure" : "unset",
+        sourcePort: -1
+      ))
       return true
     }
-    return out
+    return CookieOutcome(items: out, skipped: skipped)
+  }
+
+  // nsICookie: SAMESITE_NONE 0, LAX 1, STRICT 2, UNSET 256 (newer). Older Firefox kept what the site sent in
+  // rawSameSite; a differing value means Firefox applied its own default. NONE also meant "not set" in older
+  // Firefox, and Chromium rejects SameSite=None without Secure, so an insecure NONE becomes unspecified.
+  static func sameSite(_ value: Int64?, raw: Int64?, secure: Bool) -> String {
+    if let raw, let value, raw != value { return "unspecified" }
+    switch value {
+    case 0: return secure ? "none" : "unspecified"
+    case 1: return "lax"
+    case 2: return "strict"
+    default: return "unspecified"
+    }
+  }
+
+  /// Parses an originAttributes suffix such as `^partitionKey=%28https%2Cexample.com%29&userContextId=2`.
+  /// `isolated` (containers, private browsing, first-party isolation) and a partition key that can't be turned
+  /// into a Chromium top-level site both mean "don't import".
+  static func originAttributes(_ suffix: String) -> (isolated: Bool, partition: CookiePartition?) {
+    var text = Substring(suffix)
+    if text.hasPrefix("^") { text = text.dropFirst() }
+    var isolated = false
+    var partition: CookiePartition?
+    for pair in text.split(separator: "&") where !pair.isEmpty {
+      let parts = pair.split(separator: "=", maxSplits: 1)
+      let key = String(parts[0])
+      let value = parts.count > 1 ? (String(parts[1]).removingPercentEncoding ?? String(parts[1])) : ""
+      switch key {
+      case "userContextId", "privateBrowsingId":
+        if value != "0" && !value.isEmpty { isolated = true }
+      case "firstPartyDomain", "geckoViewSessionContextId":
+        if !value.isEmpty { isolated = true }
+      case "partitionKey":
+        guard let site = partitionSite(value) else {
+          isolated = true
+          continue
+        }
+        partition = CookiePartition(topLevelSite: site, crossSite: false)
+      default:
+        continue
+      }
+    }
+    return (isolated, partition)
+  }
+
+  /// `(https,example.com[,port])` → `https://example.com` (Chromium's schemeful site has no port).
+  static func partitionSite(_ key: String) -> String? {
+    guard key.hasPrefix("("), key.hasSuffix(")") else { return nil }
+    let fields = key.dropFirst().dropLast().split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+    guard fields.count == 2 || fields.count == 3, fields[0] == "https" || fields[0] == "http" else { return nil }
+    if fields.count == 3 { guard let port = Int(fields[2]), (1...65535).contains(port) else { return nil } }
+    let host = fields[1].lowercased()
+    let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789.-_")
+    guard !host.isEmpty, !host.hasPrefix("."), !host.hasSuffix("."), host.allSatisfy(allowed.contains) else { return nil }
+    return "\(fields[0])://\(host)"
   }
 
   // MARK: Session store

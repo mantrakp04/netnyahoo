@@ -16,6 +16,17 @@ public class ImportModule: Module {
     ))
   }()
 
+  // Safari's home folder; a test instance pointed at fixtures (NETNYAHOO_IMPORT_SOURCE_DIR = <home>/Library/Application
+  // Support) reads Safari's data from that fixture home too, never the user's.
+  private static let safariHome: URL = {
+    let env = ProcessInfo.processInfo.environment
+    if let home = env["NETNYAHOO_IMPORT_SAFARI_HOME"] { return URL(fileURLWithPath: home, isDirectory: true) }
+    if let support = env["NETNYAHOO_IMPORT_SOURCE_DIR"] {
+      return URL(fileURLWithPath: support, isDirectory: true).deletingLastPathComponent().deletingLastPathComponent()
+    }
+    return FileManager.default.homeDirectoryForCurrentUser
+  }()
+
   private static let secret: Importer.SecretProvider = {
     if let fixed = ProcessInfo.processInfo.environment["NETNYAHOO_IMPORT_TEST_SECRET"] {
       return { _, _ in Data(fixed.utf8) }
@@ -26,6 +37,7 @@ public class ImportModule: Module {
   private static let diaBundleId = ProcessInfo.processInfo.environment["NETNYAHOO_IMPORT_DIA_BUNDLE_ID"] ?? DiaAutomation.bundleIdentifier
 
   private let jobs = ImportJobs()
+  private let vault = ImportVault()
   private static let work = DispatchQueue(label: "netnyahoo.import", qos: .userInitiated, attributes: .concurrent)
 
   public func definition() -> ModuleDefinition {
@@ -41,8 +53,10 @@ public class ImportModule: Module {
       let observer = self.observer(jobId: jobId, options: options)
       let parsed = kinds.compactMap(ImportKind.init(rawValue:))
       self.run(promise, job: jobId) {
-        try Self.json(self.importer.importData(browserId: browserId, profileId: profileId, kinds: parsed,
-                                               options: Self.options(options), observer: observer, cancellation: cancellation))
+        var result = try self.importer.importData(browserId: browserId, profileId: profileId, kinds: parsed,
+                                                  options: Self.options(options), observer: observer, cancellation: cancellation)
+        result.vaultToken = self.vault.keep(cookies: result.cookies, addresses: result.addresses, cards: result.cards)
+        return try Self.json(result)
       }
     }
 
@@ -56,14 +70,40 @@ public class ImportModule: Module {
     }
 
     Function("isBrowserUnlocked") { (browserId: String) -> Bool in self.importer.isUnlocked(browserId) }
-    Function("forgetUnlockedKeys") { self.importer.forgetKeys() }
+    Function("forgetUnlockedKeys") {
+      self.importer.forgetKeys()
+      self.vault.discardAll()
+    }
+
+    // Writes what an import kept natively (cookies, addresses, cards) into the app's profile `profile` (its engine
+    // name), so cookie values and card numbers never reach JS. The token works once.
+    AsyncFunction("writeImported") { (token: String, profile: String, kinds: [String], promise: Promise) in
+      guard let entry = self.vault.take(token) else { return promise.reject("notFound", "Nothing to write; import again") }
+      Task { @MainActor in
+        promise.resolve(await ImportWriter.write(entry, profile: profile, kinds: Set(kinds)))
+      }
+    }
+
+    Function("discardImported") { (token: String) in self.vault.discard(token) }
+
+    // The source profile's Chrome Web Store extensions, for the app to offer on the Web Store (nothing is installed).
+    AsyncFunction("listExtensions") { (browserId: String, profileId: String, promise: Promise) in
+      self.run(promise) {
+        guard let def = BrowserDefinition.find(browserId), def.isChromiumBased else { return "[]" }
+        return try Self.json(ChromiumExtensions.list(profile: try self.importer.discovery.profileDirectory(def, profileId)))
+      }
+    }
 
     AsyncFunction("importSafariExport") { (jobId: String, path: String, promise: Promise) in
       let cancellation = self.jobs.start(jobId)
-      self.run(promise, job: jobId) { try Self.json(SafariExport.load(Self.fileURL(path), cancellation: cancellation)) }
+      self.run(promise, job: jobId) {
+        var data = try SafariExport.load(Self.fileURL(path), cancellation: cancellation)
+        data.vaultToken = self.vault.keep(cookies: data.cookies, addresses: [], cards: data.cards)
+        return try Self.json(data)
+      }
     }
 
-    Function("safariHasFullDiskAccess") { () -> Bool in SafariDirect.hasAccess() }
+    Function("safariHasFullDiskAccess") { () -> Bool in SafariDirect.hasAccess(home: Self.safariHome) }
 
     AsyncFunction("openFullDiskAccessSettings") { (promise: Promise) in
       let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
@@ -73,7 +113,11 @@ public class ImportModule: Module {
 
     AsyncFunction("importSafariDirect") { (jobId: String, promise: Promise) in
       let cancellation = self.jobs.start(jobId)
-      self.run(promise, job: jobId) { try Self.json(SafariDirect.load(cancellation: cancellation)) }
+      self.run(promise, job: jobId) {
+        var data = try SafariDirect.load(home: Self.safariHome, cancellation: cancellation)
+        data.vaultToken = self.vault.keep(cookies: data.cookies, addresses: [], cards: data.cards)
+        return try Self.json(data)
+      }
     }
 
     AsyncFunction("diaAutomationStatus") { (promise: Promise) in

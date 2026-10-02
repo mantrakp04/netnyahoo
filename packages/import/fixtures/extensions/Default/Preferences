@@ -1,0 +1,6 @@
+{"extensions":{"settings":{
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{"from_webstore":true,"location":1,"path":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/1.0_0"},
+  "cccccccccccccccccccccccccccccccc":{"from_webstore":false,"location":4,"path":"/Users/someone/unpacked"},
+  "dddddddddddddddddddddddddddddddd":{"from_webstore":true,"location":5,"manifest":{"name":"Component"}},
+  "not-an-id":{"from_webstore":true,"location":1}
+}}}

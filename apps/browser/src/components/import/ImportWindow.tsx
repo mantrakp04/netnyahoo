@@ -1,4 +1,4 @@
-import type { BrowserProfile, BrowserSource, DiaAutomationStatus, DiaTabsResult, ImportKind, ImportResult, SpaceSummary } from "@netnyahoo/import";
+import type { BrowserProfile, BrowserSource, DiaAutomationStatus, DiaTabsResult, ImportedExtension, ImportKind, ImportResult, SpaceSummary } from "@netnyahoo/import";
 import { closeWindow, confirm, Symbol, VisualEffect, WindowDragRegion } from "@netnyahoo/shell";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Animated, AppState, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -10,7 +10,7 @@ import type { ProfileColor } from "../../store/types";
 import { useHover } from "../primitives";
 import { Button, Checkbox, PopUp, useFormColors } from "../settings/controls";
 import { IMPORT_WINDOW_ID } from "../settings/windows";
-import { applyResult, applySafari, emptyCounts, importArcSpace, importBookmarks, importDiaProfile, profileColorFor, type ImportCounts } from "./apply";
+import { applyResult, applySafari, emptyCounts, importArcSpace, importBookmarks, importDiaProfile, openInWebStore, profileColorFor, type ImportCounts } from "./apply";
 import { importModule } from "./module";
 
 const APP = "Netnyahoo";
@@ -22,12 +22,17 @@ const KINDS: { kind: ImportKind; title: string; icon: string }[] = [
   { kind: "bookmarks", title: "Bookmarks", icon: "bookmark" },
   { kind: "history", title: "History", icon: "clock" },
   { kind: "passwords", title: "Passwords", icon: "key" },
+  { kind: "cookies", title: "Cookies (stay signed in)", icon: "person.badge.key" },
+  { kind: "autofill", title: "Addresses and cards", icon: "creditcard" },
   { kind: "tabs", title: "Tabs", icon: "square.on.square" },
   { kind: "spaces", title: "Spaces", icon: "square.stack" },
   { kind: "pinnedTabs", title: "Pinned tabs", icon: "pin" },
   { kind: "favorites", title: "Favorites", icon: "star" },
 ];
 const kindTitle = (k: ImportKind) => KINDS.find((x) => x.kind === k)?.title ?? k;
+
+// The kinds a Chromium-family browser encrypts with its keychain key ("<Browser> Safe Storage").
+const ENCRYPTED: ImportKind[] = ["passwords", "cookies", "autofill"];
 
 const DIA_NOT_SHARED = "Custom tab names, colours, spaces and folders stay in Dia: its AppleScript doesn't share them.";
 
@@ -49,6 +54,8 @@ export function ImportWindow() {
   const [error, setError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [fullDiskAccess, setFullDiskAccess] = useState(false);
+  const [safariCookies, setSafariCookies] = useState(true);
+  const [extensions, setExtensions] = useState<{ profileId: string; list: ImportedExtension[] }>({ profileId: "", list: [] });
   const [diaStatus, setDiaStatus] = useState<DiaAutomationStatus | "checking" | "reading">("checking");
   const [dia, setDia] = useState<DiaTabsResult | null>(null);
   const [asking, setAsking] = useState(false);
@@ -115,9 +122,10 @@ export function ImportWindow() {
       : b.family === "automation"
         ? ["tabs", "pinnedTabs"]
         : [...new Set(b.profiles.flatMap((p) => p.available))];
-    setKinds(new Set(available.filter((k) => k !== "cookies")));
+    setKinds(new Set(available));
     if (b.family === "safari" && api) setFullDiskAccess(api.safariHasFullDiskAccess());
     setDia(null);
+    setExtensions({ profileId: "", list: [] });
     setError(null);
   };
 
@@ -139,7 +147,7 @@ export function ImportWindow() {
       if (source.requiresExport) return setStep("safari");
       if (source.profiles.length > 1 || (isArc && allSpaces.length > 1)) return setStep("profiles");
     }
-    if ((step === "choose" || step === "profiles") && kinds.has("passwords") && source.needsKeychain && api && !api.isBrowserUnlocked(source.id)) {
+    if ((step === "choose" || step === "profiles") && ENCRYPTED.some((k) => kinds.has(k)) && source.needsKeychain && api && !api.isBrowserUnlocked(source.id)) {
       return setStep("unlock");
     }
     void run(kinds);
@@ -154,7 +162,7 @@ export function ImportWindow() {
       void run(kinds);
     } catch {
       setUnlocking(false);
-      setError("macOS didn't allow access to the saved passwords. Try again, or continue without them.");
+      setError(`macOS didn't allow access to ${source.name}'s keychain item. Try again, or skip the encrypted data.`);
     }
   };
 
@@ -189,6 +197,12 @@ export function ImportWindow() {
     const failed = new Map<ImportKind, string[]>();
     const add = (c: ImportCounts) => (Object.keys(total) as (keyof ImportCounts)[]).forEach((k) => (total[k] += c[k]));
     let destinationIndex = 0;
+    const found = new Map<string, ImportedExtension>();
+    let extensionsProfile = "";
+    // Firefox keeps no keychain key: without a primary password its logins open as they are.
+    if (source.family === "firefox" && requested.includes("passwords") && !api.isBrowserUnlocked(source.id)) {
+      await api.unlockBrowser(source.id).catch(() => {});
+    }
 
     for (const profile of selected) {
       let result: ImportResult;
@@ -207,6 +221,10 @@ export function ImportWindow() {
         continue;
       }
       for (const k of result.failed) failed.set(k, [...(failed.get(k) ?? []), profile.name]);
+      const refused = (k: ImportKind) => {
+        const names = failed.get(k) ?? [];
+        if (!names.includes(profile.name)) failed.set(k, [...names, profile.name]);
+      };
 
       if (isArc) {
         const profileSpaces = result.spaces;
@@ -219,12 +237,18 @@ export function ImportWindow() {
           add({ ...emptyCounts(), tabs: r.tabs, bookmarks: r.bookmarks });
         }
         const dest = first ?? (await destination(destinationIndex++, result.profile?.name ?? profile.name, result.profile?.color));
-        add(await applyResult(dest, result, source.name));
+        add(await applyResult(dest, result, source.name, refused));
+        extensionsProfile ||= dest;
       } else {
         const dest = await destination(destinationIndex++, result.profile?.name ?? profile.name, result.profile?.color ?? profile.color);
-        add(await applyResult(dest, result, source.name));
+        add(await applyResult(dest, result, source.name, refused));
+        extensionsProfile ||= dest;
+      }
+      if (source.family === "chromium" || source.family === "arc") {
+        for (const e of await api.listExtensions(source.id, profile.id).catch(() => [])) found.set(e.id, e);
       }
     }
+    setExtensions({ profileId: extensionsProfile, list: [...found.values()] });
     setStatus((st) => Object.fromEntries(Object.entries(st).map(([k, v]) => [k, failed.has(k as ImportKind) ? "failed" : v === "failed" ? v : "done"])));
     setFailures([...failed].map(([kind, names]) => ({ kind, profiles: selected.length > 1 ? names : [] })));
     setCounts(total);
@@ -315,15 +339,16 @@ export function ImportWindow() {
   const importSafari = async (path: string) => {
     if (!api) return;
     setError(null);
-    setStatus({ bookmarks: "active", history: "active", passwords: "active" });
+    setStatus({ bookmarks: "active", history: "active", passwords: "active", autofill: "active" });
     setPreparing(1);
     setStep("progress");
     try {
       const data = await api.importSafariExport(path);
-      const c = await applySafari(target, data);
-      setStatus({ bookmarks: "done", history: "done", passwords: "done" });
+      const failed: ImportKind[] = [];
+      const c = await applySafari(target, data, false, (k) => failed.push(k));
+      setStatus({ bookmarks: "done", history: "done", passwords: "done", autofill: failed.includes("autofill") ? "failed" : "done" });
       setCounts(c);
-      setFailures([]);
+      setFailures(failed.map((kind) => ({ kind, profiles: [] })));
       setTimeout(() => setStep("done"), 700);
     } catch (e) {
       setStep("safari");
@@ -334,16 +359,17 @@ export function ImportWindow() {
   const importSafariDirect = async () => {
     if (!api) return;
     setError(null);
-    setStatus({ bookmarks: "active", history: "active", tabs: "active" });
+    setStatus({ bookmarks: "active", history: "active", tabs: "active", ...(safariCookies ? { cookies: "active" as const } : {}) });
     setPreparing(1);
     setStep("progress");
     abort.current = new AbortController();
     try {
       const data = await api.importSafariDirect({ signal: abort.current.signal });
-      const c = await applySafari(target, data);
-      setStatus({ bookmarks: "done", history: "done", tabs: "done" });
+      const failed: ImportKind[] = [];
+      const c = await applySafari(target, data, safariCookies, (k) => failed.push(k));
+      setStatus({ bookmarks: "done", history: "done", tabs: "done", ...(safariCookies ? { cookies: failed.includes("cookies") ? "failed" : ("done" as const) } : {}) });
       setCounts(c);
-      setFailures([]);
+      setFailures(failed.map((kind) => ({ kind, profiles: [] })));
       setTimeout(() => setStep("done"), 700);
     } catch (e) {
       if ((e as { code?: string }).code === "cancelled") return;
@@ -387,6 +413,12 @@ export function ImportWindow() {
       },
       next,
       back: () => setStep("choose"),
+      unlock,
+      kinds: [...kinds],
+      setKinds: (list: ImportKind[]) => setKinds(new Set(list)),
+      counts,
+      failures,
+      extensions,
       step,
       diaStatus,
       dia,
@@ -414,7 +446,7 @@ export function ImportWindow() {
   } else if (step === "choose") {
     body = (
       <>
-        <Title title="Import from Another Browser" subtitle="Import once and stay in your flow. Your tabs, passwords, bookmarks and history come with you." />
+        <Title title="Import from Another Browser" subtitle="Import once and stay in your flow. Your tabs, passwords, bookmarks and history come with you, and you stay signed in." />
         {!api ? (
           <Note text={`Importing isn't available in this build of ${APP}.`} />
         ) : browsers.length === 0 ? (
@@ -526,7 +558,10 @@ export function ImportWindow() {
     const many = sourceProfiles.length > 1;
     body = (
       <>
-        <Title title="Unlock your data for import" subtitle={`${APP} can securely import logins from your previous browser, so you don't have to enter all of your passwords again.`} />
+        <Title
+          title="Unlock your data for import"
+          subtitle={`${APP} can securely import logins, cookies and cards from your previous browser, so you stay signed in and don't have to enter your passwords again.`}
+        />
         <View style={{ alignItems: "center", marginTop: 10, gap: 14 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
             {source.iconPath ? <Image source={{ uri: `file://${source.iconPath}` }} style={{ width: 56, height: 56 }} /> : null}
@@ -538,6 +573,9 @@ export function ImportWindow() {
               ? `Some data is encrypted, so macOS will ask for your computer password once for each selected profile.`
               : `Some data is encrypted, so macOS will ask for your computer password to bring it securely into ${APP}.`}
           </Text>
+          <Text style={{ fontSize: 12, lineHeight: 17, textAlign: "center", color: theme.textSecondary, maxWidth: 420 }}>
+            {`macOS may ask whether ${APP} can use “${source.name} Safe Storage” from your keychain: it's the key ${source.name} encrypts passwords, cookies and cards with. Click Allow. Your data stays on this Mac.`}
+          </Text>
         </View>
         {error && <ErrorText text={error} />}
       </>
@@ -547,10 +585,12 @@ export function ImportWindow() {
         <Button title="Back" onPress={() => setStep(source.profiles.length > 1 || isArc ? "profiles" : "choose")} />
         <View style={{ flex: 1 }} />
         <Button
-          title="Skip Passwords"
+          title="Skip Encrypted Data"
           onPress={() => {
+            // Addresses need no key; cards, passwords and cookies do (the importer skips cards with a warning).
             const without = new Set(kinds);
             without.delete("passwords");
+            without.delete("cookies");
             setKinds(without);
             void run(without);
           }}
@@ -561,12 +601,15 @@ export function ImportWindow() {
   } else if (step === "safari") {
     body = fullDiskAccess ? (
       <>
-        <Title title="Import from Safari" subtitle={`Netnyahoo can read Safari directly. Bring your bookmarks, history, Reading List and open tabs into ${APP}.`} />
+        <Title title="Import from Safari" subtitle={`Netnyahoo can read Safari directly. Bring your bookmarks, history, Reading List, open tabs and sign-ins into ${APP}.`} />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 18 }}>
           {source?.iconPath ? <Image source={{ uri: `file://${source.iconPath}` }} style={{ width: 40, height: 40 }} /> : null}
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary }}>Bookmarks, history, Reading List and tabs</Text>
             <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 1 }}>Full Disk Access is granted.</Text>
+            <View style={{ marginTop: 8 }}>
+              <Checkbox label="Cookies (stay signed in)" value={safariCookies} onChange={setSafariCookies} />
+            </View>
           </View>
           <Button title="Import from Safari" kind="primary" onPress={() => void importSafariDirect()} />
         </View>
@@ -603,7 +646,7 @@ export function ImportWindow() {
   } else if (step === "access" && source) {
     body = (
       <>
-        <Title title={`Give ${APP} access to ${source.name}`} subtitle={`macOS protects ${source.name}'s data from other apps. To import your bookmarks, history, tabs and passwords, ${APP} needs Full Disk Access.`} />
+        <Title title={`Give ${APP} access to ${source.name}`} subtitle={`macOS protects ${source.name}'s data from other apps. To import your bookmarks, history, tabs, passwords and cookies, ${APP} needs Full Disk Access.`} />
         <FullDiskAccessSteps onOpen={() => void api?.openFullDiskAccessSettings()} onRecheck={() => void recheckAccess()} />
         {error && <ErrorText text={error} />}
       </>
@@ -718,8 +761,30 @@ export function ImportWindow() {
       counts.bookmarks && plural(counts.bookmarks, "bookmark"),
       counts.history && plural(counts.history, "history item"),
       counts.passwords && plural(counts.passwords, "password"),
+      counts.cookies && plural(counts.cookies, "cookie"),
+      counts.addresses && `${counts.addresses} ${counts.addresses === 1 ? "address" : "addresses"}`,
+      counts.cards && plural(counts.cards, "card"),
       counts.tabs && plural(counts.tabs, "tab"),
     ].filter(Boolean) as string[];
+    const extensionList = extensions.list.length ? (
+      <View style={{ alignSelf: "stretch", marginTop: 14, gap: 8 }}>
+        <Text style={{ fontSize: 12, color: theme.textSecondary, textAlign: "center" }}>
+          {`${source?.name ?? "Your browser"} has ${plural(extensions.list.length, "extension")} from the Chrome Web Store. Add the ones you want there:`}
+        </Text>
+        <Text style={{ fontSize: 12, color: theme.textPrimary, textAlign: "center" }} numberOfLines={3}>
+          {extensions.list.map((e) => e.name).join(", ")}
+        </Text>
+        <View style={{ alignItems: "center" }}>
+          <Button
+            title={extensions.list.length === 1 ? "Open in Chrome Web Store" : `Open ${extensions.list.length} in Chrome Web Store`}
+            onPress={() => {
+              openInWebStore(extensions.profileId || target, extensions.list.map((e) => e.webStoreUrl));
+              setExtensions({ profileId: "", list: [] });
+            }}
+          />
+        </View>
+      </View>
+    ) : null;
     body = failures.length ? (
       <>
         <Title title={summary.length ? "Partially imported" : "Import failed"} subtitle="Only some of your data imported. Please try again!" />
@@ -730,6 +795,7 @@ export function ImportWindow() {
           </Text>
         ))}
         {summary.length > 0 && <Text style={{ fontSize: 12, marginTop: 12, color: theme.textSecondary }}>{`Imported ${summary.join(", ")}.`}</Text>}
+        {extensionList}
         <Text style={{ fontSize: 12, marginTop: 12, color: theme.textTertiary }}>You can retry the import later from the app menu.</Text>
       </>
     ) : (
@@ -739,6 +805,7 @@ export function ImportWindow() {
         <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: "center" }}>
           {summary.length ? `Imported ${summary.join(", ")}.` : "There was nothing new to import."}
         </Text>
+        {extensionList}
       </View>
     );
     footer = (

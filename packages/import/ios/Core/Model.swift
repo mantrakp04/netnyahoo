@@ -2,6 +2,7 @@ import Foundation
 
 public enum ImportKind: String, Codable, CaseIterable, Sendable {
   case bookmarks, history, tabs, passwords, cookies
+  case autofill
   case spaces
   case pinnedTabs
   case favorites
@@ -102,16 +103,98 @@ public struct Credential: Codable, Equatable, Sendable {
   }
 }
 
-public struct Cookie: Codable, Equatable, Sendable {
+public struct CookiePartition: Equatable, Sendable {
+  public var topLevelSite: String
+  public var crossSite: Bool
+
+  public init(topLevelSite: String, crossSite: Bool) {
+    self.topLevelSite = topLevelSite
+    self.crossSite = crossSite
+  }
+}
+
+// Times are ms since the Unix epoch. `expires` nil = session cookie. `value` never leaves SecretBytes.
+public struct Cookie: Equatable, Sendable {
   public var domain: String
   public var name: String
-  public var value: String
+  public var value: SecretBytes
   public var path: String
+  public var created: Double?
   public var expires: Double?
+  public var lastAccess: Double?
   public var secure: Bool
   public var httpOnly: Bool
-  public var sameSite: String
-  public var created: Double?
+  public var sameSite: String      // "unspecified" | "none" | "lax" | "strict"
+  public var priority: String      // "low" | "medium" | "high"
+  public var partition: CookiePartition?
+  public var sourceScheme: String  // "unset" | "nonSecure" | "secure"
+  public var sourcePort: Int       // -1 = unspecified
+
+  public init(domain: String, name: String, value: SecretBytes, path: String = "/", created: Double? = nil,
+              expires: Double? = nil, lastAccess: Double? = nil, secure: Bool = false, httpOnly: Bool = false,
+              sameSite: String = "unspecified", priority: String = "medium", partition: CookiePartition? = nil,
+              sourceScheme: String = "unset", sourcePort: Int = -1) {
+    self.domain = domain
+    self.name = name
+    self.value = value
+    self.path = path
+    self.created = created
+    self.expires = expires
+    self.lastAccess = lastAccess
+    self.secure = secure
+    self.httpOnly = httpOnly
+    self.sameSite = sameSite
+    self.priority = priority
+    self.partition = partition
+    self.sourceScheme = sourceScheme
+    self.sourcePort = sourcePort
+  }
+}
+
+public struct ImportedAddress: Codable, Equatable, Sendable {
+  public var name: String?
+  public var organization: String?
+  public var street: String?
+  public var city: String?
+  public var state: String?
+  public var postalCode: String?
+  public var country: String?  // ISO 3166-1 alpha-2 ("US")
+  public var phone: String?
+  public var email: String?
+
+  public init(name: String? = nil, organization: String? = nil, street: String? = nil, city: String? = nil,
+              state: String? = nil, postalCode: String? = nil, country: String? = nil, phone: String? = nil,
+              email: String? = nil) {
+    self.name = name
+    self.organization = organization
+    self.street = street
+    self.city = city
+    self.state = state
+    self.postalCode = postalCode
+    self.country = country
+    self.phone = phone
+    self.email = email
+  }
+
+  var isEmpty: Bool {
+    [name, organization, street, city, state, postalCode, country, phone, email].allSatisfy { $0 == nil }
+  }
+}
+
+public struct ImportedCard: Equatable, Sendable {
+  public var name: String?
+  public var number: SecretBytes
+  public var expMonth: Int?
+  public var expYear: Int?
+  public var nickname: String?
+
+  public init(name: String? = nil, number: SecretBytes, expMonth: Int? = nil, expYear: Int? = nil, nickname: String? = nil) {
+    self.name = name
+    self.number = number
+    self.expMonth = expMonth
+    self.expYear = expYear
+    self.nickname = nickname
+  }
 }
 
 public struct SpaceSuggestion: Codable, Equatable, Sendable {
@@ -154,11 +237,24 @@ public struct ImportResult: Codable, Equatable, Sendable {
   public var tabs: [ImportedTab] = []
   public var tabGroups: [ImportedTabGroup] = []
   public var credentials: [Credential] = []
-  public var cookies: [Cookie] = []
   public var spaces: [SpaceSuggestion] = []
   public var favorites: [ImportedTab] = []
   public var failed: [ImportKind] = []
   public var warnings: [ImportWarning] = []
+  public var vaultToken: String?
+
+  // Secrets: never encoded to JSON. Only their counts are.
+  public var cookies: [Cookie] = [] { didSet { cookieCount = cookies.count } }
+  public var addresses: [ImportedAddress] = [] { didSet { addressCount = addresses.count } }
+  public var cards: [ImportedCard] = [] { didSet { cardCount = cards.count } }
+  public private(set) var cookieCount = 0
+  public private(set) var addressCount = 0
+  public private(set) var cardCount = 0
+
+  enum CodingKeys: String, CodingKey {
+    case browserId, profileId, profile, bookmarks, history, historyCount, tabs, tabGroups, credentials, spaces, favorites,
+         failed, warnings, vaultToken, cookieCount, addressCount, cardCount
+  }
 
   public init(browserId: String, profileId: String) {
     self.browserId = browserId

@@ -62,37 +62,83 @@ public enum ChromiumSecrets {
   public static func cookies(database: URL, key: Data, cancellation: Cancellation = .init()) throws -> Outcome<Cookie> {
     let db = try SQLiteSnapshot(copying: database)
     guard db.tableExists("cookies") else { throw ImportError.unreadable("Cookies has no cookies table") }
+    // Version 24+ prefixes every encrypted value with SHA-256(host_key); older databases never do.
+    let version = db.tableExists("meta")
+      ? (try? db.scalar("SELECT CAST(value AS INTEGER) FROM meta WHERE key='version'")).flatMap { $0 } ?? 0 : 0
+    let hostHashed = version >= 24
     let now = Date().timeIntervalSince1970 * 1000
     var items: [Cookie] = []
     var bad = 0
+    var seen = 0
     try db.query("SELECT * FROM cookies") { row in
-      if items.count % 256 == 0 { try cancellation.check() }
+      seen += 1
+      if seen % 256 == 0 { try cancellation.check() }
       guard let host = row.text("host_key"), let name = row.text("name") else { return true }
-      var value = row.text("value") ?? ""
-      if value.isEmpty, let blob = row.blob("encrypted_value"), !blob.isEmpty {
-        guard let plain = ChromiumCrypto.decrypt(blob, key: key, hostKey: host) else {
+      // Columns were renamed over the years (secure → is_secure, persistent → is_persistent → has_expires).
+      func flag(_ names: String...) -> Bool? {
+        for n in names { if let v = row.int(n) { return v != 0 } }
+        return nil
+      }
+      let persistent = flag("has_expires", "is_persistent", "persistent") ?? true
+      let expires = persistent ? row.int("expires_utc").flatMap(Time.fromWebKit) : nil
+      if let expires, expires < now { return true }
+
+      let value: SecretBytes
+      let plain = row.index("value").flatMap(row.blobPointer) ?? UnsafeRawBufferPointer(start: nil, count: 0)
+      let encrypted = row.blob("encrypted_value") ?? Data()
+      if !plain.isEmpty && !encrypted.isEmpty {
+        bad += 1  // Chromium rejects a row with both.
+        return true
+      } else if !plain.isEmpty {
+        value = SecretBytes(copying: plain)
+      } else if !encrypted.isEmpty {
+        guard let decrypted = ChromiumCrypto.decryptSecret(encrypted, key: key, hostKey: hostHashed ? host : nil) else {
           bad += 1
           return true
         }
-        value = plain
+        value = decrypted
+      } else {
+        value = SecretBytes(count: 0)
       }
-      let persistent = (row.int("is_persistent") ?? row.int("has_expires") ?? 0) != 0
-      let expires = persistent ? row.int("expires_utc").flatMap(Time.fromWebKit) : nil
-      if let expires, expires < now { return true }
+
+      let topFrame = row.text("top_frame_site_key") ?? ""
+      let port = row.int("source_port").map(Int.init) ?? -1
       items.append(Cookie(
         domain: host,
         name: name,
         value: value,
-        path: row.text("path") ?? "/",
+        path: row.text("path").flatMap { $0.isEmpty ? nil : $0 } ?? "/",
+        created: row.int("creation_utc").flatMap(Time.fromWebKit),
         expires: expires,
-        secure: (row.int("is_secure") ?? 0) != 0,
-        httpOnly: (row.int("is_httponly") ?? 0) != 0,
-        sameSite: sameSite(row.int("samesite")),
-        created: row.int("creation_utc").flatMap(Time.fromWebKit)
+        lastAccess: row.int("last_access_utc").flatMap(Time.fromWebKit),
+        secure: flag("is_secure", "secure") ?? false,
+        httpOnly: flag("is_httponly", "httponly") ?? false,
+        sameSite: sameSite(row.int("samesite") ?? row.int("firstpartyonly")),
+        priority: priority(row.int("priority")),
+        partition: topFrame.isEmpty ? nil
+          : CookiePartition(topLevelSite: topFrame, crossSite: (row.int("has_cross_site_ancestor") ?? 0) != 0),
+        sourceScheme: sourceScheme(row.int("source_scheme")),
+        sourcePort: (0...65535).contains(port) ? port : -1
       ))
       return true
     }
     return Outcome(items: items, undecryptable: bad)
+  }
+
+  static func priority(_ v: Int64?) -> String {
+    switch v {
+    case 0: "low"
+    case 2: "high"
+    default: "medium"
+    }
+  }
+
+  static func sourceScheme(_ v: Int64?) -> String {
+    switch v {
+    case 1: "nonSecure"
+    case 2: "secure"
+    default: "unset"
+    }
   }
 
   static func sameSite(_ v: Int64?) -> String {

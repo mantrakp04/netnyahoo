@@ -11,6 +11,13 @@ NS_ASSUME_NONNULL_BEGIN
        profile:(NSString *)profile
           args:(nullable NSString *)args
     completion:(void (^)(NSString *json))completion NS_SWIFT_NAME(call(_:profile:args:completion:));
+// As call:, for arguments that hold secrets (imported cookies, card numbers): `args` is a NUL-terminated JSON object
+// the engine reads in place, zeroed as soon as the export has parsed it, or when the call can't run. A private profile
+// is refused rather than mapped to the default profile's data.
++ (void)callWithSecret:(NSString *)name
+               profile:(NSString *)profile
+                  args:(NSMutableData *)args
+            completion:(void (^)(NSString *json))completion NS_SWIFT_NAME(callWithSecret(_:profile:args:completion:));
 // Every engine event (topic, JSON payload whose "profile" is the app's profile name).
 + (void)setEventHandler:(nullable void (^)(NSString *topic, NSString *json))handler;
 // Every event of `topic` for the native side itself (its payload's "profile" the app's name), for the app's life.

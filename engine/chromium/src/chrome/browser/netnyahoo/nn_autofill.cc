@@ -2,6 +2,8 @@
 
 #include "chrome/browser/netnyahoo/nn_autofill.h"
 
+#include <cmath>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -18,12 +20,14 @@
 #include "base/uuid.h"
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/netnyahoo/nn_reauth.h"
+#include "chrome/browser/netnyahoo/nn_sensitive_args.h"
 #include "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
 #include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
 #include "components/autofill/core/browser/data_manager/personal_data_manager.h"
 #include "components/autofill/core/browser/data_manager/personal_data_manager_observer.h"
 #include "components/autofill/core/browser/data_model/addresses/autofill_i18n_api.h"
 #include "components/autofill/core/browser/data_model/addresses/autofill_profile.h"
+#include "components/autofill/core/browser/data_model/addresses/autofill_profile_comparator.h"
 #include "components/autofill/core/browser/data_model/payments/credit_card.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/common/credit_card_network_identifiers.h"
@@ -217,6 +221,206 @@ void Settle(Write write,
       base::BindOnce(&Settle, write, landed, std::move(result),
                      std::move(reply), checks_left - 1),
       kSettleStep);
+}
+
+// Imports: what the call parses before it returns, kept until the data loads.
+constexpr size_t kMaxImportBytes = 4 * 1024 * 1024;
+constexpr size_t kMaxImportItems = 1000;
+
+struct ImportedAddress {
+  std::vector<std::pair<autofill::FieldType, std::u16string>> fields;
+  std::string country;
+};
+
+struct ImportBatch {
+  std::vector<ImportedAddress> addresses;
+  std::vector<autofill::CreditCard> cards;
+  int rejected = 0;
+};
+
+std::optional<int> IntArg(const base::DictValue& dict, std::string_view key) {
+  if (std::optional<int> value = dict.FindInt(key)) {
+    return value;
+  }
+  if (std::optional<double> value = dict.FindDouble(key);
+      value && std::isfinite(*value) && std::abs(*value) < 1e6) {
+    return static_cast<int>(*value);
+  }
+  int value = 0;
+  const std::string* text = dict.FindString(key);
+  if (text && base::StringToInt(*text, &value)) {
+    return value;
+  }
+  return std::nullopt;
+}
+
+bool PassesLuhn(const std::string& digits) {
+  int sum = 0;
+  bool twice = false;
+  for (size_t i = digits.size(); i-- > 0;) {
+    int digit = digits[i] - '0';
+    if (twice) {
+      digit *= 2;
+      if (digit > 9) {
+        digit -= 9;
+      }
+    }
+    sum += digit;
+    twice = !twice;
+  }
+  return sum % 10 == 0;
+}
+
+std::optional<ImportedAddress> ToAddress(const base::Value& entry) {
+  const base::DictValue* dict = entry.GetIfDict();
+  if (!dict) {
+    return std::nullopt;
+  }
+  ImportedAddress address;
+  for (const auto& [key, type] : kAddressFields) {
+    const std::string* value = dict->FindString(key);
+    if (!value) {
+      continue;
+    }
+    std::u16string trimmed;
+    base::TrimWhitespace(base::UTF8ToUTF16(*value), base::TRIM_ALL, &trimmed);
+    if (!trimmed.empty()) {
+      address.fields.emplace_back(type, std::move(trimmed));
+    }
+  }
+  if (address.fields.empty()) {
+    return std::nullopt;
+  }
+  if (const std::string* country = dict->FindString("country")) {
+    address.country = base::ToUpperASCII(*country);
+  }
+  return address;
+}
+
+// A local card with a 12–19 digit number that passes Luhn and a plausible
+// expiry (an expired card is kept, as Chrome keeps one). The number's copies
+// made here are zeroed.
+std::optional<autofill::CreditCard> ToCard(const base::Value& entry) {
+  const base::DictValue* dict = entry.GetIfDict();
+  if (!dict) {
+    return std::nullopt;
+  }
+  const std::string* number = dict->FindString("number");
+  if (!number) {
+    return std::nullopt;
+  }
+  std::string digits;
+  digits.reserve(number->size());
+  bool clean = true;
+  for (char c : *number) {
+    if (base::IsAsciiDigit(c)) {
+      digits.push_back(c);
+    } else if (c != ' ' && c != '-') {
+      clean = false;
+    }
+  }
+  const bool valid =
+      clean && digits.size() >= 12 && digits.size() <= 19 && PassesLuhn(digits);
+  std::optional<int> month = IntArg(*dict, "expMonth");
+  std::optional<int> year = IntArg(*dict, "expYear");
+  if (year && *year > 0 && *year < 100) {
+    *year += 2000;
+  }
+  const bool valid_expiry =
+      (!month || *month == 0 || (*month >= 1 && *month <= 12)) &&
+      (!year || *year == 0 || (*year >= 1900 && *year <= 2199));
+  if (!valid || !valid_expiry) {
+    Cleanse(digits);
+    return std::nullopt;
+  }
+
+  // As chrome://settings adds a card (autofillPrivate's saveCreditCard).
+  autofill::CreditCard card(base::Uuid::GenerateRandomV4().AsLowercaseString());
+  card.set_is_user_confirmed(true);
+  std::u16string number16 = base::ASCIIToUTF16(digits);
+  card.SetRawInfo(autofill::CREDIT_CARD_NUMBER, number16);
+  Cleanse(number16);
+  Cleanse(digits);
+  if (const std::string* name = dict->FindString("name")) {
+    card.SetRawInfo(autofill::CREDIT_CARD_NAME_FULL, base::UTF8ToUTF16(*name));
+  }
+  if (month && *month > 0) {
+    card.SetExpirationMonth(*month);
+  }
+  if (year && *year > 0) {
+    card.SetExpirationYear(*year);
+  }
+  if (const std::string* nickname = dict->FindString("nickname");
+      nickname && !nickname->empty()) {
+    card.SetNickname(base::UTF8ToUTF16(*nickname));
+  }
+  return card;
+}
+
+// Adds what the profile doesn't have yet; replies once it's queued.
+void ImportLoaded(ImportBatch batch, PersonalDataManager* pdm, Reply reply) {
+  autofill::AddressDataManager& adm = pdm->address_data_manager();
+  autofill::PaymentsDataManager& paydm = pdm->payments_data_manager();
+  autofill::AutofillProfileComparator comparator(adm.app_locale());
+  int existing = 0;
+  int rejected = batch.rejected;
+
+  std::vector<autofill::AutofillProfile> added_addresses;
+  for (const ImportedAddress& address : batch.addresses) {
+    // As chrome://settings saves an address (autofillPrivate's saveAddress).
+    autofill::AutofillProfile profile(
+        adm.IsEligibleForAddressAccountStorage()
+            ? autofill::AutofillProfile::RecordType::kAccount
+            : autofill::AutofillProfile::RecordType::kLocalOrSyncable,
+        !address.country.empty()
+            ? autofill::AddressCountryCode(address.country)
+            : autofill::i18n_model_definition::kLegacyHierarchyCountryCode);
+    for (const auto& [type, value] : address.fields) {
+      profile.SetRawInfoWithVerificationStatus(
+          type, value, autofill::VerificationStatus::kUserVerified);
+    }
+    profile.FinalizeAfterImport();
+    if (profile.IsEmpty(adm.app_locale())) {
+      ++rejected;
+      continue;
+    }
+    bool present = false;
+    for (const autofill::AutofillProfile* other : adm.GetProfiles()) {
+      present = present || profile.IsSubsetOf(comparator, *other);
+    }
+    for (const autofill::AutofillProfile& other : added_addresses) {
+      present = present || profile.IsSubsetOf(comparator, other);
+    }
+    if (present) {
+      ++existing;
+      continue;
+    }
+    adm.AddProfile(profile);
+    added_addresses.push_back(std::move(profile));
+  }
+
+  std::vector<const autofill::CreditCard*> added_cards;
+  for (const autofill::CreditCard& card : batch.cards) {
+    bool present = false;
+    for (const autofill::CreditCard* other : paydm.GetCreditCards()) {
+      present = present || card.HasSameNumberAs(*other);
+    }
+    for (const autofill::CreditCard* other : added_cards) {
+      present = present || card.HasSameNumberAs(*other);
+    }
+    if (present) {
+      ++existing;
+      continue;
+    }
+    paydm.AddCreditCard(card);
+    added_cards.push_back(&card);
+  }
+
+  reply.Send(base::DictValue()
+                 .Set("addresses", static_cast<int>(added_addresses.size()))
+                 .Set("cards", static_cast<int>(added_cards.size()))
+                 .Set("existing", existing)
+                 .Set("rejected", rejected));
 }
 
 }  // namespace
@@ -489,4 +693,55 @@ NN_ENGINE_CALL(nn_autofill_card_number) {
           },
           call.profile(), call.String("id")),
       call.TakeReply());
+}
+
+NN_ENGINE_CALL(nn_autofill_import) {
+  // Parsed here, not by Call, so this copy of the card numbers is ours to
+  // zero.
+  Call call(profile_dir, nullptr, reply, context);
+  if (!call) {
+    return;
+  }
+  if (call.profile()->IsOffTheRecord()) {
+    return call.TakeReply().Error("private profile");
+  }
+  netnyahoo::ImportBatch batch;
+  {
+    netnyahoo::SensitiveArgs args(args_json, netnyahoo::kMaxImportBytes);
+    if (args.too_large()) {
+      return call.TakeReply().Error("arguments too large");
+    }
+    if (!args.dict()) {
+      return call.TakeReply().Error("arguments are not a JSON object");
+    }
+    const base::ListValue* addresses = args.dict()->FindList("addresses");
+    const base::ListValue* cards = args.dict()->FindList("cards");
+    if ((addresses && addresses->size() > netnyahoo::kMaxImportItems) ||
+        (cards && cards->size() > netnyahoo::kMaxImportItems)) {
+      return call.TakeReply().Error("too many items in one call");
+    }
+    if (addresses) {
+      for (const base::Value& entry : *addresses) {
+        if (std::optional<netnyahoo::ImportedAddress> address =
+                netnyahoo::ToAddress(entry)) {
+          batch.addresses.push_back(std::move(*address));
+        } else {
+          ++batch.rejected;
+        }
+      }
+    }
+    if (cards) {
+      for (const base::Value& entry : *cards) {
+        if (std::optional<autofill::CreditCard> card =
+                netnyahoo::ToCard(entry)) {
+          batch.cards.push_back(std::move(*card));
+        } else {
+          ++batch.rejected;
+        }
+      }
+    }
+  }  // The parsed arguments are zeroed here.
+  netnyahoo::Load(call,
+                  base::BindOnce(&netnyahoo::ImportLoaded, std::move(batch)),
+                  call.TakeReply());
 }

@@ -171,11 +171,16 @@ def chromium_logins(path, rows):
     db.close()
 
 
-def chromium_cookies(path, rows):
+COOKIE_DEFAULTS = {"top_frame_site_key": "", "has_cross_site_ancestor": 0, "value": "", "encrypted_value": b"",
+                   "path": "/", "expires": None, "is_secure": 0, "is_httponly": 0, "priority": 1, "samesite": -1,
+                   "source_scheme": 2, "source_port": 443}
+
+
+def chromium_cookies(path, rows, version=24):
     db = new_db(path)
-    db.executescript("""
+    db.executescript(f"""
         CREATE TABLE meta(key LONGVARCHAR NOT NULL UNIQUE PRIMARY KEY, value LONGVARCHAR);
-        INSERT INTO meta VALUES ('version', '24');
+        INSERT INTO meta VALUES ('version', '{version}');
         CREATE TABLE cookies(creation_utc INTEGER NOT NULL,host_key TEXT NOT NULL,top_frame_site_key TEXT NOT NULL,
           name TEXT NOT NULL,value TEXT NOT NULL,encrypted_value BLOB NOT NULL,path TEXT NOT NULL,
           expires_utc INTEGER NOT NULL,is_secure INTEGER NOT NULL,is_httponly INTEGER NOT NULL,
@@ -184,12 +189,93 @@ def chromium_cookies(path, rows):
           source_port INTEGER NOT NULL,last_update_utc INTEGER NOT NULL,source_type INTEGER NOT NULL,
           has_cross_site_ancestor INTEGER NOT NULL);
     """)
-    for host, name, value, encrypted, path_, expires, secure, httponly, samesite in rows:
-        persistent = 1 if expires else 0
-        db.execute("INSERT INTO cookies VALUES (?,?,'',?,?,?,?,?,?,?,?,?,?,1,?,2,443,?,0,0)",
-                   (webkit(BASE_UNIX - 7200), host, name, value, encrypted, path_,
-                    webkit(expires) if expires else 0, secure, httponly, webkit(BASE_UNIX - 60),
-                    persistent, persistent, samesite, webkit(BASE_UNIX - 60)))
+    for row in rows:
+        r = dict(COOKIE_DEFAULTS, **row)
+        persistent = 1 if r["expires"] else 0
+        db.execute("INSERT INTO cookies VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
+                   (webkit(BASE_UNIX - 7200), r["host"], r["top_frame_site_key"], r["name"], r["value"],
+                    r["encrypted_value"], r["path"], webkit(r["expires"]) if r["expires"] else 0, r["is_secure"],
+                    r["is_httponly"], webkit(BASE_UNIX - 60), persistent, persistent, r["priority"], r["samesite"],
+                    r["source_scheme"], r["source_port"], webkit(BASE_UNIX - 60), r["has_cross_site_ancestor"]))
+    db.commit()
+    db.close()
+
+
+def chromium_cookies_old(path):
+    """A pre-v24 database with the old column names and none of the newer columns: no host-hash prefix."""
+    db = new_db(path)
+    db.executescript("""
+        CREATE TABLE meta(key LONGVARCHAR NOT NULL UNIQUE PRIMARY KEY, value LONGVARCHAR);
+        INSERT INTO meta VALUES ('version', '23');
+        CREATE TABLE cookies(creation_utc INTEGER NOT NULL,host_key TEXT NOT NULL,name TEXT NOT NULL,
+          value TEXT NOT NULL,encrypted_value BLOB NOT NULL,path TEXT NOT NULL,expires_utc INTEGER NOT NULL,
+          secure INTEGER NOT NULL,httponly INTEGER NOT NULL,last_access_utc INTEGER NOT NULL,persistent INTEGER NOT NULL,
+          priority INTEGER NOT NULL,firstpartyonly INTEGER NOT NULL);
+    """)
+    db.execute("INSERT INTO cookies VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+               (webkit(BASE_UNIX - 7200), "accounts.example.com", "legacy", "", v10(b"no-host-prefix"), "/",
+                webkit(4102444800), 1, 0, webkit(BASE_UNIX - 60), 1, 2, 2))
+    db.execute("INSERT INTO cookies VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+               (webkit(BASE_UNIX - 7200), "old.example", "sess", "", v10(b"old-session"), "/", 0, 0, 1,
+                webkit(BASE_UNIX - 60), 0, 1, 0))
+    db.commit()
+    db.close()
+
+
+# Chromium Web Data (autofill) ----------------------------------------------------------
+
+def chromium_web_data(path):
+    db = new_db(path)
+    db.executescript("""
+        CREATE TABLE meta(key LONGVARCHAR NOT NULL UNIQUE PRIMARY KEY, value LONGVARCHAR);
+        INSERT INTO meta VALUES ('version', '135');
+        CREATE TABLE addresses (guid VARCHAR PRIMARY KEY, use_count INTEGER NOT NULL DEFAULT 0,
+          use_date INTEGER NOT NULL DEFAULT 0, date_modified INTEGER NOT NULL DEFAULT 0, language_code VARCHAR,
+          label VARCHAR, initial_creator_id INTEGER DEFAULT 0, last_modifier_id INTEGER DEFAULT 0,
+          record_type INTEGER);
+        CREATE TABLE address_type_tokens (guid VARCHAR, type INTEGER, value VARCHAR, verification_status INTEGER DEFAULT 0,
+          observations BLOB, PRIMARY KEY (guid, type));
+        CREATE TABLE autofill_profiles (guid VARCHAR PRIMARY KEY, company_name VARCHAR, street_address VARCHAR,
+          dependent_locality VARCHAR, city VARCHAR, state VARCHAR, zipcode VARCHAR, sorting_code VARCHAR,
+          country_code VARCHAR, date_modified INTEGER NOT NULL DEFAULT 0, origin VARCHAR DEFAULT '',
+          language_code VARCHAR, use_count INTEGER NOT NULL DEFAULT 0, use_date INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE autofill_profile_names (guid VARCHAR, first_name VARCHAR, middle_name VARCHAR, last_name VARCHAR,
+          full_name VARCHAR);
+        CREATE TABLE autofill_profile_emails (guid VARCHAR, email VARCHAR);
+        CREATE TABLE autofill_profile_phones (guid VARCHAR, number VARCHAR);
+        CREATE TABLE credit_cards (guid VARCHAR PRIMARY KEY, name_on_card VARCHAR, expiration_month INTEGER,
+          expiration_year INTEGER, card_number_encrypted BLOB, date_modified INTEGER NOT NULL DEFAULT 0,
+          origin VARCHAR DEFAULT '', use_count INTEGER NOT NULL DEFAULT 0, use_date INTEGER NOT NULL DEFAULT 0,
+          billing_address_id VARCHAR, nickname VARCHAR);
+        CREATE TABLE masked_credit_cards (id VARCHAR, name_on_card VARCHAR, network VARCHAR, last_four VARCHAR,
+          exp_month INTEGER DEFAULT 0, exp_year INTEGER DEFAULT 0);
+        INSERT INTO masked_credit_cards VALUES ('server-1', 'Server Card', 'visa', '1111', 1, 2031);
+    """)
+    modern = {
+        "00000000-0000-4000-8000-00000000a001": [(7, "Alex Example"), (3, "Alex"), (5, "Example"), (60, "Netnyahoo Ltd"),
+            (77, "1 Example Way\nSuite 2"), (30, "1 Example Way"), (31, "Suite 2"), (33, "Cupertino"), (34, "CA"),
+            (35, "95014"), (36, "US"), (14, "+14155550100"), (9, "alex@example.com")],
+        "00000000-0000-4000-8000-00000000a002": [(3, "Sam"), (5, "Smith"), (30, "10 High Street"), (31, "Flat 1"),
+            (33, "London"), (35, "SW1A 1AA"), (36, "gb"), (7, "")],
+    }
+    for guid, tokens in modern.items():
+        db.execute("INSERT INTO addresses(guid, record_type) VALUES (?, 0)", (guid,))
+        for t, v in tokens:
+            db.execute("INSERT INTO address_type_tokens(guid, type, value) VALUES (?,?,?)", (guid, t, v))
+    legacy = "00000000-0000-4000-8000-00000000b001"
+    db.execute("INSERT INTO autofill_profiles(guid, company_name, street_address, city, state, zipcode, country_code) "
+               "VALUES (?,?,?,?,?,?,?)", (legacy, "", "5 Old Road", "Berlin", "", "10115", "DE"))
+    db.execute("INSERT INTO autofill_profile_names VALUES (?,?,?,?,?)", (legacy, "Lee", "", "Legacy", ""))
+    db.execute("INSERT INTO autofill_profile_emails VALUES (?,?)", (legacy, "lee@example.de"))
+    db.execute("INSERT INTO autofill_profile_phones VALUES (?,?)", (legacy, "+49301234567"))
+    cards = [
+        ("00000000-0000-4000-8000-00000000c001", "Alex Example", 4, 2030, v10(b"4111111111111111"), "Travel"),
+        ("00000000-0000-4000-8000-00000000c002", "", 12, 2031, v10(b"5555555555554444"), None),
+        ("00000000-0000-4000-8000-00000000c003", "Wrong Key", 1, 2032, v10(b"4000056655665556", WRONG_KEY), None),
+    ]
+    for guid, name, month, year, number, nickname in cards:
+        db.execute("INSERT INTO credit_cards(guid, name_on_card, expiration_month, expiration_year, card_number_encrypted, "
+                   "nickname) VALUES (?,?,?,?,?,?)", (guid, name, month, year, number, nickname))
     db.commit()
     db.close()
 
@@ -348,13 +434,29 @@ def build_chrome():
 
     future = 4102444800  # 2100-01-01
     chromium_cookies(os.path.join(d, "Network", "Cookies"), [
-        (".example.com", "sid", "", host_hashed(".example.com", "s3ss10n"), "/", future, 1, 1, 1),
-        ("accounts.example.com", "legacy", "", v10(b"no-host-prefix"), "/", future, 1, 0, 2),
-        ("plain.example", "pref", "dark", b"", "/", future, 0, 0, -1),
-        ("session.example", "tmp", "", host_hashed("session.example", "until-quit"), "/app", 0, 0, 0, 0),
-        ("expired.example", "old", "", host_hashed("expired.example", "gone"), "/", 978307200, 0, 0, 0),
-        ("wrong.example", "bad", "", v10(b"x", WRONG_KEY), "/", future, 0, 0, 0),
+        dict(host=".example.com", name="sid", encrypted_value=host_hashed(".example.com", "s3ss10n"), expires=future,
+             is_secure=1, is_httponly=1, samesite=1, priority=2, source_scheme=2, source_port=443),
+        dict(host="plain.example", name="pref", value="dark", expires=future, samesite=-1, priority=0,
+             source_scheme=1, source_port=80),
+        dict(host="session.example", name="tmp", encrypted_value=host_hashed("session.example", "until-quit"),
+             path="/app", samesite=0, source_scheme=0, source_port=-1),
+        dict(host="expired.example", name="old", encrypted_value=host_hashed("expired.example", "gone"), expires=978307200),
+        dict(host="wrong.example", name="bad", encrypted_value=v10(b"x", WRONG_KEY), expires=future),
+        # Version 24 requires the host hash: a value without it is rejected.
+        dict(host="accounts.example.com", name="nohash", encrypted_value=v10(b"no-host-prefix"), expires=future),
+        # Chromium rejects a row with both a plaintext and an encrypted value.
+        dict(host="both.example", name="both", value="plain", encrypted_value=host_hashed("both.example", "enc"),
+             expires=future),
+        dict(host="embed.example", name="chips", encrypted_value=host_hashed("embed.example", "partitioned"),
+             expires=future, is_secure=1, samesite=2, top_frame_site_key="https://top.example",
+             has_cross_site_ancestor=1, source_scheme=2, source_port=8443),
+        dict(host="esc.example", name="esc", encrypted_value=v10(hashlib.sha256(b"esc.example").digest()
+             + 'q"b\\s\x01\n\x1f é🍪'.encode()), expires=future),
+        dict(host="bin.example", name="bin", encrypted_value=v10(hashlib.sha256(b"bin.example").digest() + b"\xff\xfe"),
+             expires=future),
     ])
+    chromium_cookies_old(os.path.join(MISC, "Cookies-v23"))
+    chromium_web_data(os.path.join(d, "Web Data"))
 
     cmds = session_commands()
     sessions = os.path.join(d, "Sessions")
@@ -542,6 +644,72 @@ def build_safari_direct():
     ]}
     with open(os.path.join(safari, "LastSession.plist"), "wb") as f:
         plistlib.dump(session, f, fmt=plistlib.FMT_BINARY)
+
+
+# Safari Cookies.binarycookies --------------------------------------------------------
+
+def binary_cookie(domain, name, path, value, flags, expiry_unix, created_unix, port=None):
+    head = 56 + (2 if port is not None else 0)
+    strings = b""
+    offsets = []
+    for part in (domain, name, path, value):
+        offsets.append(head + len(strings))
+        strings += part.encode() + b"\0"
+    size = head + len(strings)
+    out = struct.pack("<IIII", size, 1, flags, 1 if port is not None else 0)
+    out += struct.pack("<IIIIII", *offsets, 0, 0)
+    out += struct.pack("<dd", float(expiry_unix - 978307200), float(created_unix - 978307200))
+    if port is not None:
+        out += struct.pack("<H", port)
+    return out + strings
+
+
+def binary_cookie_page(cookies):
+    header = 4 + 4 + 4 * len(cookies) + 4
+    offsets, body = [], b""
+    for c in cookies:
+        offsets.append(header + len(body))
+        body += c
+    return (b"\x00\x00\x01\x00" + struct.pack("<I", len(cookies)) + b"".join(struct.pack("<I", o) for o in offsets)
+            + b"\x00\x00\x00\x00" + body)
+
+
+def binary_cookies(pages):
+    out = b"cook" + struct.pack(">I", len(pages)) + b"".join(struct.pack(">I", len(p)) for p in pages) + b"".join(pages)
+    return out + struct.pack(">I", 0) + b"\x07\x17\x20\x05\x00\x00\x00\x4b"
+
+
+def build_safari_cookies():
+    future = 4102444800
+    page1 = binary_cookie_page([
+        binary_cookie(".apple.example", "dc", "/", "domain-cookie", 1, future, BASE_UNIX),
+        binary_cookie("host.example", "hc", "/path", "host-only", 4, future, BASE_UNIX - 10, port=8443),
+    ])
+    page2 = binary_cookie_page([
+        binary_cookie("both.example", "both", "/", 'v"al\\ue', 5, future, BASE_UNIX),
+        binary_cookie("expired.example", "gone", "/", "x", 0, 978307300, 978307200),
+    ])
+    good = binary_cookies([page1, page2])
+    write(os.path.join(HERE, "home", "Library", "Containers", "com.apple.Safari", "Data", "Library", "Cookies",
+                       "Cookies.binarycookies"), good)
+    bad_dir = os.path.join(MISC, "binarycookies")
+    write(os.path.join(bad_dir, "truncated.binarycookies"), good[:len(good) // 2])
+    write(os.path.join(bad_dir, "bad-magic.binarycookies"), b"kooc" + good[4:])
+    write(os.path.join(bad_dir, "page-count.binarycookies"), b"cook" + struct.pack(">I", 0x7FFFFFFF) + good[8:])
+    # The first cookie's name offset points past the cookie.
+    bad = bytearray(good)
+    first_cookie = 8 + 4 * 2 + 4 + 4 + 4 * 2 + 4
+    struct.pack_into("<I", bad, first_cookie + 20, 0xFFFF)
+    write(os.path.join(bad_dir, "bad-offset.binarycookies"), bytes(bad))
+    # The last string loses its NUL terminator.
+    single = binary_cookies([binary_cookie_page([binary_cookie("x.example", "n", "/", "v", 0, future, BASE_UNIX)])])
+    nonul = bytearray(single)
+    nonul[len(single) - 8 - 4 - 1] = ord("!")
+    write(os.path.join(bad_dir, "no-nul.binarycookies"), bytes(nonul))
+    # A cookie size smaller than its own header.
+    small = bytearray(single)
+    struct.pack_into("<I", small, 8 + 4 + 4 + 4 + 4 + 4, 8)
+    write(os.path.join(bad_dir, "small-cookie.binarycookies"), bytes(small))
 
 
 # --------------------------------------------------------------------------------------
@@ -840,10 +1008,22 @@ def firefox_cookies(path):
           isHttpOnly INTEGER, inBrowserElement INTEGER DEFAULT 0, sameSite INTEGER DEFAULT 0, rawSameSite INTEGER DEFAULT 0,
           schemeMap INTEGER DEFAULT 0, isPartitionedAttributeSet INTEGER DEFAULT 0);
     """)
-    db.execute("INSERT INTO moz_cookies (name,value,host,path,expiry,lastAccessed,creationTime,isSecure,isHttpOnly,sameSite) VALUES ('ff','1','.mozilla.example','/',4102444800,0,?,1,1,1)",
-               (BASE_UNIX * 1_000_000,))
-    db.execute("INSERT INTO moz_cookies (name,value,host,path,expiry,lastAccessed,creationTime,isSecure,isHttpOnly,sameSite) VALUES ('ms','2','ms.example','/',4102444800000,0,0,0,0,2)")
-    db.execute("INSERT INTO moz_cookies (name,value,host,path,expiry,lastAccessed,creationTime,isSecure,isHttpOnly,sameSite) VALUES ('old','3','old.example','/',978307200,0,0,0,0,0)")
+    cols = "originAttributes,name,value,host,path,expiry,lastAccessed,creationTime,isSecure,isHttpOnly,sameSite,rawSameSite,schemeMap"
+    us = BASE_UNIX * 1_000_000
+    rows = [
+        ("", "ff", "1", ".mozilla.example", "/", 4102444800, us - 60_000_000, us, 1, 1, 1, 1, 2),       # expiry in s
+        ("", "ms", "2", "ms.example", "/", 4102444800000, 0, 0, 0, 0, 2, 2, 1),                         # expiry in ms
+        ("", "old", "3", "old.example", "/", 978307200, 0, 0, 0, 0, 0, 0, 0),                            # expired
+        ("^partitionKey=%28https%2Ctop.example%29", "part", "p", "embed.example", "/", 4102444800, 0, 0, 1, 0, 256, 256, 2),
+        ("^partitionKey=%28https%2Cported.example%2C8443%29", "port", "q", "embed.example", "/", 4102444800, 0, 0, 1, 0, 0, 0, 3),
+        ("", "none", "n", "insecure.example", "/", 4102444800, 0, 0, 0, 0, 0, 0, 1),                    # insecure NONE
+        ("", "lbd", "l", "laxdefault.example", "/", 4102444800, 0, 0, 0, 0, 1, 0, 0),                   # Firefox's default
+        ("^userContextId=2", "container", "c", "container.example", "/", 4102444800, 0, 0, 0, 0, 0, 0, 0),
+        ("^privateBrowsingId=1", "private", "p", "private.example", "/", 4102444800, 0, 0, 0, 0, 0, 0, 0),
+        ("^partitionKey=%28https%2C%5B%3A%3A1%5D%29", "v6", "x", "v6.example", "/", 4102444800, 0, 0, 0, 0, 0, 0, 0),
+    ]
+    for row in rows:
+        db.execute(f"INSERT INTO moz_cookies ({cols}) VALUES ({','.join('?' * len(row))})", row)
     db.commit()
     db.close()
 
@@ -1005,7 +1185,12 @@ def build_exports():
                                   "marketplace_lookup": {"store_identifier": "123456789"}}]}
     cards = {"metadata": {"browser_name": "Safari", "browser_version": "26.0", "data_type": "payment_cards",
                           "export_time_usec": BASE_UNIX * 1_000_000, "schema_version": 1},
-             "payment_cards": [{"card_number": "0000000000000000", "card_name": "Test card"}]}
+             "payment_cards": [
+                 {"card_number": "4111 1111 1111 1111", "card_name": "Travel", "cardholder_name": "Alex Example",
+                  "card_expiration_month": 4, "card_expiration_year": 2030},
+                 {"card_number": "0000000000000000", "card_name": "Test card"},
+                 {"card_number": "123", "card_name": "Too short"},
+             ]}
     passwords = ("Title,URL,Username,Password,Notes,OTPAuth\r\n"
                  "apple.example (me@example.com),https://apple.example/,me@example.com,\"pa,ss\"\"word\",\"line one\nline two\",otpauth://totp/Example?secret=JBSWY3DPEHPK3PXP\r\n"
                  "no-user.example,https://no-user.example/,,only-password,,\r\n"
@@ -1060,6 +1245,7 @@ def main():
     build_helium()
     build_dia()
     build_safari_direct()
+    build_safari_cookies()
     build_arc()
     build_firefox()
     build_exports()

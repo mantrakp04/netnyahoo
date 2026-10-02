@@ -1,14 +1,15 @@
 import { savePassword } from "@netnyahoo/nncore";
-import type { BookmarkNode as ImportedNode, Credential, DiaTabsProfile, ImportedTab, ImportResult, SafariExport, SpaceSuggestion } from "@netnyahoo/import";
+import type { BookmarkNode as ImportedNode, Credential, DiaTabsProfile, ImportedTab, ImportKind, ImportResult, SafariExport, SpaceSuggestion } from "@netnyahoo/import";
 import type { BookmarkDraft } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";
-import { engineProfile } from "../../store/model";
+import { engineProfile, isIncognitoProfile } from "../../store/model";
 import { withNewTab } from "../../store/tabs";
 import type { ProfileColor } from "../../store/types";
+import { importModule } from "./module";
 
-export type ImportCounts = { bookmarks: number; history: number; tabs: number; passwords: number };
+export type ImportCounts = { bookmarks: number; history: number; tabs: number; passwords: number; cookies: number; addresses: number; cards: number };
 
-export const emptyCounts = (): ImportCounts => ({ bookmarks: 0, history: 0, tabs: 0, passwords: 0 });
+export const emptyCounts = (): ImportCounts => ({ bookmarks: 0, history: 0, tabs: 0, passwords: 0, cookies: 0, addresses: 0, cards: 0 });
 
 const toDraft = (n: ImportedNode): BookmarkDraft =>
   n.type === "url"
@@ -57,10 +58,43 @@ export async function importPasswords(profileId: string, credentials: Credential
   return saved;
 }
 
+/** Writes the cookies, addresses and cards an import kept natively (their values never reach JS) into the profile.
+ * Never into a private profile: the token is dropped instead. `onFailed` hears the kinds the engine refused. */
+export async function importNative(
+  profileId: string,
+  token: string | undefined,
+  kinds: ("cookies" | "autofill")[],
+  onFailed?: (kind: ImportKind) => void,
+): Promise<Pick<ImportCounts, "cookies" | "addresses" | "cards">> {
+  const none = { cookies: 0, addresses: 0, cards: 0 };
+  const api = importModule();
+  if (!api || !token) return none;
+  if (!kinds.length || isIncognitoProfile(profileId) || useBrowser.getState().profiles[profileId] === undefined) {
+    api.discardImported(token);
+    return none;
+  }
+  try {
+    const w = await api.writeImported(token, engineProfile(profileId), kinds);
+    if (w.cookiesFailed) onFailed?.("cookies");
+    if (w.autofillFailed) onFailed?.("autofill");
+    return { cookies: w.cookies, addresses: w.addresses, cards: w.cards };
+  } catch {
+    kinds.forEach((k) => onFailed?.(k));
+    return none;
+  }
+}
+
 function windowFor(profileId: string): string {
   const s = useBrowser.getState();
   const regular = s.ui.focusOrder.find((id) => s.windows[id] && !s.windows[id]!.incognito) ?? s.windowOrder.find((id) => !s.windows[id]!.incognito);
   return regular ?? s.createWindow({ profileId });
+}
+
+/** Opens each extension's Chrome Web Store page in the profile, where the user adds the ones they want. */
+export function openInWebStore(profileId: string, urls: string[]) {
+  if (!urls.length) return;
+  const windowId = windowFor(profileId);
+  urls.forEach((url, i) => useBrowser.getState().newTab(windowId, { url, profileId, background: i > 0 }));
 }
 
 export function importTabs(profileId: string, tabs: Pick<ImportedTab, "url" | "title" | "pinned" | "customTitle">[], group: string | null): number {
@@ -127,21 +161,30 @@ export function importDiaProfile(profileId: string, profile: DiaTabsProfile, wha
   return n;
 }
 
-export async function applyResult(profileId: string, result: ImportResult, browserName: string): Promise<ImportCounts> {
+export async function applyResult(
+  profileId: string,
+  result: ImportResult,
+  browserName: string,
+  onFailed?: (kind: ImportKind) => void,
+): Promise<ImportCounts> {
   const counts = emptyCounts();
   counts.bookmarks += importBookmarks(profileId, result.bookmarks, browserName);
   if (result.history.length) counts.history += importHistory(profileId, result.history);
+  // Sign-ins first, so the imported tabs load signed in.
+  Object.assign(counts, await importNative(profileId, result.vaultToken, ["cookies", "autofill"], onFailed));
   if (result.tabs.length && !result.spaces.length) counts.tabs += importTabs(profileId, result.tabs, "Imported");
   if (result.favorites.length) counts.tabs += importTabs(profileId, result.favorites.map((t) => ({ ...t, pinned: true })), null);
   if (result.credentials.length) counts.passwords += await importPasswords(profileId, result.credentials);
   return counts;
 }
 
-export async function applySafari(profileId: string, data: SafariExport): Promise<ImportCounts> {
+/** `cookies`: whether the user kept Safari's cookies ticked (the export file has none; its cards always come). */
+export async function applySafari(profileId: string, data: SafariExport, cookies = true, onFailed?: (kind: ImportKind) => void): Promise<ImportCounts> {
   const counts = emptyCounts();
   counts.bookmarks = importSafariBookmarks(profileId, data.bookmarks);
   const history = data.profiles.find((p) => !p.name)?.history ?? data.profiles[0]?.history ?? [];
   counts.history = importHistory(profileId, history);
+  Object.assign(counts, await importNative(profileId, data.vaultToken, cookies ? ["cookies", "autofill"] : ["autofill"], onFailed));
   if (data.tabs.length) counts.tabs += importTabs(profileId, data.tabs, "Imported");
   counts.passwords = await importPasswords(profileId, data.credentials);
   return counts;

@@ -36,6 +36,48 @@ public enum ChromiumCrypto {
     return AES.cbc(.decrypt, Data(body), key: key, iv: iv)
   }
 
+  /// Decrypts a v10 value straight into SecretBytes (no Data/String copy of the plaintext). A value without the
+  /// v10 prefix is legacy plaintext and is copied as is. With `hostKey` (Cookies DB version 24+), the plaintext
+  /// must start with SHA-256(hostKey), which is stripped; without it the value is rejected.
+  static func decryptSecret(_ value: Data, key: Data, hostKey: String? = nil) -> SecretBytes? {
+    guard isEncrypted(value) else { return value.withUnsafeBytes { SecretBytes(copying: $0) } }
+    guard key.count == kCCKeySizeAES128 else { return nil }
+    let bodyCount = value.count - prefix.count
+    guard bodyCount > 0, bodyCount % kCCBlockSizeAES128 == 0 else { return nil }
+    let scratch = SecretBytes(count: bodyCount)
+    var written = 0
+    let status = scratch.withUnsafeMutableBytes { dst in
+      value.withUnsafeBytes { src in
+        iv.withUnsafeBytes { iv in
+          key.withUnsafeBytes { key in
+            CCCrypt(CCOperation(kCCDecrypt), CCAlgorithm(kCCAlgorithmAES), CCOptions(kCCOptionPKCS7Padding),
+                    key.baseAddress, key.count, iv.baseAddress,
+                    src.baseAddress! + prefix.count, bodyCount, dst.baseAddress, dst.count, &written)
+          }
+        }
+      }
+    }
+    guard status == kCCSuccess, written >= 0, written <= bodyCount else {
+      scratch.wipe()
+      return nil
+    }
+    var start = 0
+    if let hostKey {
+      let hash = SHA256.hash(data: Data(hostKey.utf8))
+      let matches = written >= SHA256.byteCount && scratch.withUnsafeBytes { plain in
+        hash.withUnsafeBytes { memcmp(plain.baseAddress!, $0.baseAddress!, SHA256.byteCount) == 0 }
+      }
+      guard matches else {
+        scratch.wipe()
+        return nil
+      }
+      start = SHA256.byteCount
+    }
+    let out = scratch.slice(start..<written)
+    scratch.wipe()
+    return out
+  }
+
   public static func decrypt(_ value: Data, key: Data, hostKey: String? = nil) -> String? {
     guard isEncrypted(value) else { return String(data: value, encoding: .utf8) }
     guard var plain = decryptData(value, key: key) else { return nil }

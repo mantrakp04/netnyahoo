@@ -48,20 +48,21 @@ final class ImportTests: XCTestCase {
     XCTAssertThrowsError(try d.profileDirectory(chrome, "Nope"))
   }
 
-  func testFirefoxNeedsConsentForSecrets() throws {
+  func testFirefoxNeedsConsentForPasswordsNotCookies() throws {
     let importer = Importer(discovery: Fixtures.discovery())
     let id = "Profiles/abcd1234.default-release"
     let locked = try importer.importData(browserId: "firefox", profileId: id, kinds: [.bookmarks, .history, .tabs, .passwords, .cookies])
-    XCTAssertEqual(locked.failed, [.passwords, .cookies])
+    XCTAssertEqual(locked.failed, [.passwords])
     XCTAssertEqual(locked.bookmarks?.linkCount, 4)
     XCTAssertEqual(locked.historyCount, 4)
     XCTAssertEqual(locked.tabs.count, 3)
+    XCTAssertEqual(locked.cookieCount, 6)  // cookies.sqlite is plaintext: no consent step
+    XCTAssertTrue(locked.warnings.contains { $0.kind == .cookies && $0.code == "skipped" })
 
     try importer.unlock(browserId: "firefox")
-    let open = try importer.importData(browserId: "firefox", profileId: id, kinds: [.passwords, .cookies])
+    let open = try importer.importData(browserId: "firefox", profileId: id, kinds: [.passwords])
     XCTAssertEqual(open.failed, [])
     XCTAssertEqual(open.credentials.count, 2)
-    XCTAssertEqual(open.cookies.count, 2)
 
     let work = try importer.importData(browserId: "firefox", profileId: "Profiles/zzzz9999.work", kinds: [.passwords])
     XCTAssertEqual(work.failed, [.passwords])

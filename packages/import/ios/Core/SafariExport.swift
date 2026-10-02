@@ -12,6 +12,19 @@ public struct SafariExport: Codable, Equatable, Sendable {
   public var profiles: [Profile] = []
   public var tabs: [ImportedTab] = []
   public var warnings: [ImportWarning] = []
+  public var vaultToken: String?
+
+  // Secrets: never encoded to JSON. Only their counts are.
+  public var cookies: [Cookie] = [] { didSet { cookieCount = cookies.count } }
+  public var cards: [ImportedCard] = [] { didSet { cardCount = cards.count } }
+  public private(set) var cookieCount = 0
+  public private(set) var cardCount = 0
+
+  enum CodingKeys: String, CodingKey {
+    case bookmarks, credentials, profiles, tabs, warnings, vaultToken, cookieCount, cardCount
+  }
+
+  public init() {}
 
   public static func load(_ url: URL, cancellation: Cancellation = .init()) throws -> SafariExport {
     var isDir: ObjCBool = false
@@ -58,7 +71,14 @@ public struct SafariExport: Codable, Equatable, Sendable {
           out.credentials += try PasswordsCSV.parse(String(decoding: data, as: UTF8.self))
           recognised = true
         case "json":
-          let data = try file.read()
+          var data = try file.read()
+          // Card numbers must never reach JSONSerialization (it would make Strings of them).
+          if data.range(of: Data("\"payment_cards\"".utf8)) != nil {
+            defer { data.resetBytes(in: 0..<data.count) }
+            recognised = true
+            out.cards += try paymentCards(&data)
+            continue
+          }
           guard let top = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
           let type = (top["metadata"] as? [String: Any])?["data_type"] as? String
           let profile = profileName(file.name)
@@ -84,6 +104,64 @@ public struct SafariExport: Codable, Equatable, Sendable {
       }
     }
     guard recognised else { throw ImportError.unreadable("This doesn't look like a Safari export. Choose the .zip file Safari saved.") }
+    return out
+  }
+
+  // PaymentCards.json: {"payment_cards":[{"card_number","card_name","cardholder_name","card_expiration_month",
+  // "card_expiration_year"}]}. card_name is the card's nickname. Numbers are plaintext in the file: they're
+  // copied from the raw bytes into SecretBytes and masked in `data` before JSONSerialization sees it, so no
+  // String ever holds one. The caller zeroes `data` afterwards.
+  static func paymentCards(_ data: inout Data) throws -> [ImportedCard] {
+    var numbers: [SecretBytes] = []
+    data.withUnsafeMutableBytes { (buf: UnsafeMutableRawBufferPointer) in
+      let key = Array("\"card_number\"".utf8)
+      var i = 0
+      func isSpace(_ b: UInt8) -> Bool { b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D }
+      while i + key.count <= buf.count {
+        guard (0..<key.count).allSatisfy({ buf[i + $0] == key[$0] }) else {
+          i += 1
+          continue
+        }
+        var j = i + key.count
+        while j < buf.count, isSpace(buf[j]) { j += 1 }
+        guard j < buf.count, buf[j] == UInt8(ascii: ":") else { i = j; continue }
+        j += 1
+        while j < buf.count, isSpace(buf[j]) { j += 1 }
+        guard j < buf.count, buf[j] == UInt8(ascii: "\"") else {
+          numbers.append(SecretBytes(count: 0))
+          i = j
+          continue
+        }
+        let start = j + 1
+        var end = start
+        while end < buf.count, buf[end] != UInt8(ascii: "\""), buf[end] != UInt8(ascii: "\\") { end += 1 }
+        if end < buf.count, buf[end] == UInt8(ascii: "\"") {
+          numbers.append(SecretBytes(copying: UnsafeRawBufferPointer(rebasing: buf[start..<end])))
+          for k in start..<end { buf[k] = UInt8(ascii: "X") }
+        } else {
+          numbers.append(SecretBytes(count: 0))
+        }
+        i = end
+      }
+    }
+    guard let top = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let rows = top["payment_cards"] as? [[String: Any]] else { return [] }
+    let withNumbers = rows.filter { $0["card_number"] != nil }
+    guard withNumbers.count == numbers.count else { throw ImportError.unreadable("PaymentCards.json is malformed") }
+    var out: [ImportedCard] = []
+    for (row, number) in zip(withNumbers, numbers) {
+      guard AutofillWire.cardDigitCount(number) != nil else { continue }
+      func int(_ key: String) -> Int? {
+        (row[key] as? NSNumber)?.intValue ?? (row[key] as? String).flatMap { Int($0) }
+      }
+      out.append(ImportedCard(
+        name: ChromiumAutofill.nonEmpty(row["cardholder_name"] as? String),
+        number: number,
+        expMonth: int("card_expiration_month").flatMap { (1...12).contains($0) ? $0 : nil },
+        expYear: int("card_expiration_year").flatMap { $0 > 0 ? ($0 < 100 ? 2000 + $0 : $0) : nil },
+        nickname: ChromiumAutofill.nonEmpty(row["card_name"] as? String)
+      ))
+    }
     return out
   }
 

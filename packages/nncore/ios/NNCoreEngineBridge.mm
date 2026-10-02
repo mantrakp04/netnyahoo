@@ -79,6 +79,33 @@ void InstallSink() {
   });
 }
 
++ (void)callWithSecret:(NSString *)name profile:(NSString *)profile args:(NSMutableData *)args completion:(void (^)(NSString *))completion {
+  NSMutableData *secret = args;
+  void (^wipe)(void) = ^{
+    // Volatile stores: the compiler can't drop them as dead (memset_s needs __STDC_WANT_LIB_EXT1__ before any
+    // <string.h>, which the pod's prefix header includes first).
+    volatile unsigned char *bytes = (volatile unsigned char *)secret.mutableBytes;
+    for (NSUInteger i = 0; i < secret.length; i++) bytes[i] = 0;
+  };
+  auto call = (nn_engine_call_t)Symbol(name.UTF8String);
+  const char *bytes = (const char *)secret.bytes;
+  if (!call || nncore_host::IsIncognito(profile) || !secret.length || bytes[secret.length - 1] != 0) {
+    wipe();
+    return completion(JSON(@{@"error" : !call ? [NSString stringWithFormat:@"the engine has no %@", name]
+                                     : nncore_host::IsIncognito(profile) ? @"private profile" : @"bad arguments"}));
+  }
+  void (^done)(NSString *) = [completion copy];
+  nncore_host::WithProfile(profile ?: @"", ^(NNCoreProfile *p) {
+    if (!p || !NNCoreHost.isStarted || ([p respondsToSelector:@selector(offTheRecord)] && p.offTheRecord)) {
+      wipe();
+      return done(JSON(@{@"error" : @"profile not loaded"}));
+    }
+    // Exports parse their arguments before returning (public/nn_engine.h): the buffer can go now.
+    call(p.path.UTF8String, (const char *)secret.mutableBytes, Replied, (__bridge_retained void *)done);
+    wipe();
+  });
+}
+
 + (void)setEventHandler:(void (^)(NSString *, NSString *))handler {
   gEventHandler = [handler copy];
   InstallSink();

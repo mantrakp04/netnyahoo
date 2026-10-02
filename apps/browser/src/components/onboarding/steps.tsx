@@ -306,7 +306,7 @@ export function ImportStep() {
           subtitle={
             opened
               ? "Finish up in the import window, then continue here. You can import more any time from the Netnyahoo menu."
-              : "Import bookmarks, history, passwords and tabs from the browser you use now. It all stays on this Mac."
+              : "Import bookmarks, history, passwords and tabs from the browser you use now, and stay signed in to your sites. It all stays on this Mac."
           }
         />
       </Reveal>

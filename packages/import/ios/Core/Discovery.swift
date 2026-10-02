@@ -243,6 +243,7 @@ public struct BrowserDiscovery {
     if !arc, ChromiumSessions.latestFile(profile: dir) != nil { kinds.append(.tabs) }
     if has("Login Data", "Login Data For Account") { kinds.append(.passwords) }
     if has("Network/Cookies", "Cookies") { kinds.append(.cookies) }
+    if has("Web Data") { kinds.append(.autofill) }
     return kinds
   }
 

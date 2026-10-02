@@ -6,6 +6,7 @@ export type ImportKind =
   | "tabs"
   | "passwords"
   | "cookies"
+  | "autofill"
   | "spaces"
   | "pinnedTabs"
   | "favorites";
@@ -87,18 +88,6 @@ export type Credential = {
   timesUsed?: number;
 };
 
-export type ImportedCookie = {
-  domain: string;
-  name: string;
-  value: string;
-  path: string;
-  expires?: number;
-  secure: boolean;
-  httpOnly: boolean;
-  sameSite: "unspecified" | "none" | "lax" | "strict";
-  created?: number;
-};
-
 export type SpaceSuggestion = {
   id: string;
   name: string;
@@ -129,7 +118,12 @@ export type ImportResult = {
   tabs: ImportedTab[];
   tabGroups: ImportedTabGroup[];
   credentials: Credential[];
-  cookies: ImportedCookie[];
+  /** Cookies, addresses and cards stay native (cookie values and card numbers never reach JS): counts here, and
+   * `vaultToken` writes them into a profile with `writeImported`. */
+  cookieCount: number;
+  addressCount: number;
+  cardCount: number;
+  vaultToken?: string;
   spaces: SpaceSuggestion[];
   favorites: ImportedTab[];
   failed: ImportKind[];
@@ -141,8 +135,27 @@ export type SafariExport = {
   credentials: Credential[];
   profiles: { name?: string; history: ImportedHistoryEntry[]; extensions: string[] }[];
   tabs: ImportedTab[];
+  cookieCount: number;
+  cardCount: number;
+  vaultToken?: string;
   warnings: ImportWarning[];
 };
+
+/** What `writeImported` wrote. Cookies the profile already had stay as they are (`cookiesExisting`); `cookiesFailed` /
+ * `autofillFailed` are set when the engine refused the kind (a private profile, say), with its `error`. */
+export type WrittenCounts = {
+  cookies: number;
+  cookiesRejected: number;
+  cookiesExisting: number;
+  addresses: number;
+  cards: number;
+  cookiesFailed?: 1;
+  autofillFailed?: 1;
+  error?: string;
+};
+
+/** An extension the source profile installed from the Chrome Web Store. */
+export type ImportedExtension = { id: string; name: string; webStoreUrl: string };
 
 export type ImportProgress = {
   kind: ImportKind;
@@ -200,6 +213,9 @@ const Native = requireNativeModule<{
   unlockBrowser(browserId: string, primaryPassword: string | null): Promise<null>;
   isBrowserUnlocked(browserId: string): boolean;
   forgetUnlockedKeys(): void;
+  writeImported(token: string, profile: string, kinds: string[]): Promise<string>;
+  discardImported(token: string): void;
+  listExtensions(browserId: string, profileId: string): Promise<string>;
   importSafariExport(jobId: string, path: string): Promise<string>;
   safariHasFullDiskAccess(): boolean;
   openFullDiskAccessSettings(): Promise<null>;
@@ -263,6 +279,16 @@ export const unlockBrowser = (browserId: string, options: { primaryPassword?: st
 export const isBrowserUnlocked = (browserId: string) => Native.isBrowserUnlocked(browserId);
 
 export const forgetUnlockedKeys = () => Native.forgetUnlockedKeys();
+
+/** Writes an import's cookies and/or addresses and cards (`kinds`) into the engine profile `profile` (never a private
+ * one). Each token works once; `discardImported` drops one unused. */
+export const writeImported = (token: string, profile: string, kinds: ("cookies" | "autofill")[]) =>
+  call<WrittenCounts>(Native.writeImported(token, profile, kinds));
+
+export const discardImported = (token: string) => Native.discardImported(token);
+
+/** A Chromium-family profile's Chrome Web Store extensions (empty for other browsers). */
+export const listExtensions = (browserId: string, profileId: string) => call<ImportedExtension[]>(Native.listExtensions(browserId, profileId));
 
 export const importSafariExport = (path: string, options: Pick<ImportOptions, "signal"> = {}) =>
   job<SafariExport>(options, (jobId) => Native.importSafariExport(jobId, path));

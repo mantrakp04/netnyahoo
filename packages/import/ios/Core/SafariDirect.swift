@@ -50,6 +50,10 @@ public enum SafariDirect {
     step("unreadableTabs") {
       out.tabs = tabs(dir.appendingPathComponent("LastSession.plist"))
     }
+    try cancellation.check()
+    step("unreadableCookies") {
+      out.cookies = try SafariCookies.load(home: home, cancellation: cancellation)
+    }
     out.profiles = [SafariExport.Profile(name: nil, history: history, extensions: [])]
     return out
   }

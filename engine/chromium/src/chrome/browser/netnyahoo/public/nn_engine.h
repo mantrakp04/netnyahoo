@@ -16,6 +16,8 @@
 //     (absolute, UTF-8; the profile must be loaded), the arguments as a JSON
 //     object (UTF-8, may be NULL for none), and a reply.
 //   - Call on the browser UI thread (the app's main thread).
+//   - A call reads args_json only before it returns: the caller may wipe or
+//     free the buffer then (arguments holding secrets are zeroed at once).
 //   - The reply runs exactly once, on the UI thread, possibly before the call
 //     returns. Its JSON is an object: {"error": "<message>"} on failure,
 //     otherwise the call's own result. The string is only valid during the

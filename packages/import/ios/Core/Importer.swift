@@ -5,6 +5,8 @@ public final class Importer: @unchecked Sendable {
   private let lock = NSLock()
   private var keys: [String: Data] = [:]
   private var firefoxPasswords: [String: String] = [:]
+  // Bumped by forgetKeys(); an unlock() that started before a forget drops its key instead of storing it.
+  private var generation = 0
 
   public init(discovery: BrowserDiscovery) {
     self.discovery = discovery
@@ -20,10 +22,11 @@ public final class Importer: @unchecked Sendable {
     switch def.family {
     case .chromium, .arc:
       guard let service = def.keychainService, let account = def.keychainAccount else { return }
+      let started = lock.withLock { generation }
       let key = ChromiumCrypto.deriveKey(secret: try secret(service, account))
-      lock.withLock { keys[browserId] = key }
+      lock.withLock { if generation == started { keys[browserId] = key } }
     case .firefox:
-      lock.withLock { firefoxPasswords[browserId] = primaryPassword }
+      lock.withLock { firefoxPasswords[browserId] = primaryPassword }  // nothing to wait on, so no race
     case .safari, .automation:
       break
     }
@@ -37,6 +40,7 @@ public final class Importer: @unchecked Sendable {
 
   public func forgetKeys() {
     lock.withLock {
+      generation += 1
       keys.removeAll()
       firefoxPasswords.removeAll()
     }
@@ -145,9 +149,26 @@ public final class Importer: @unchecked Sendable {
             result.warnings.append(ImportWarning(kind, "undecryptable", "\(outcome.undecryptable) cookies couldn't be decrypted"))
           }
         case (.cookies, .firefox):
-          guard primaryPassword(browserId) != nil else { throw ImportError.locked("Allow Firefox cookie import first") }
-          result.cookies = try Firefox.cookies(profile: dir, cancellation: cancellation)
-          count = result.cookies.count
+          let outcome = try Firefox.cookies(profile: dir, cancellation: cancellation)
+          result.cookies = outcome.items
+          count = outcome.items.count
+          if outcome.skipped > 0 {
+            result.warnings.append(ImportWarning(kind, "skipped",
+              "\(outcome.skipped) cookies from containers or private windows weren't imported"))
+          }
+
+        case (.autofill, .chromium), (.autofill, .arc):
+          let key = key(browserId)
+          let outcome = try ChromiumAutofill.load(profile: dir, key: key, cancellation: cancellation)
+          result.addresses = outcome.addresses
+          result.cards = outcome.cards
+          count = outcome.addresses.count + outcome.cards.count
+          if outcome.lockedCards > 0 {
+            result.warnings.append(ImportWarning(kind, "locked", "Unlock \(def.name) to import \(outcome.lockedCards) saved cards"))
+          }
+          if outcome.undecryptable > 0 {
+            result.warnings.append(ImportWarning(kind, "undecryptable", "\(outcome.undecryptable) cards couldn't be decrypted"))
+          }
 
         default:
           throw ImportError.unsupported("\(def.name) has no \(kind.rawValue) to import")

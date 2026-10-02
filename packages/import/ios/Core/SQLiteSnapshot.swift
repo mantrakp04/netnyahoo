@@ -89,13 +89,19 @@ final class SQLiteSnapshot {
 
   struct Row {
     let stmt: OpaquePointer
+    private let columns: [String: Int32]
 
-    func index(_ name: String) -> Int32? {
-      for i in 0..<sqlite3_column_count(stmt) where String(cString: sqlite3_column_name(stmt, i)) == name {
-        return i
+    init(stmt: OpaquePointer) {
+      self.stmt = stmt
+      var columns: [String: Int32] = [:]
+      for i in 0..<sqlite3_column_count(stmt) {
+        let name = String(cString: sqlite3_column_name(stmt, i))
+        if columns[name] == nil { columns[name] = i }
       }
-      return nil
+      self.columns = columns
     }
+
+    func index(_ name: String) -> Int32? { columns[name] }
 
     func isNull(_ i: Int32) -> Bool { sqlite3_column_type(stmt, i) == SQLITE_NULL }
 
@@ -114,5 +120,20 @@ final class SQLiteSnapshot {
       return Data(bytes: p, count: count)
     }
     func blob(_ name: String) -> Data? { index(name).flatMap { blob($0) } }
+
+    /// The column's raw bytes, valid only until the next step. Use to move plaintext secrets into SecretBytes
+    /// without a Data/String copy.
+    func blobPointer(_ i: Int32) -> UnsafeRawBufferPointer? {
+      guard !isNull(i) else { return nil }
+      let p = sqlite3_column_blob(stmt, i)
+      let count = Int(sqlite3_column_bytes(stmt, i))
+      return UnsafeRawBufferPointer(start: count > 0 ? p : nil, count: count)
+    }
+
+    func secret(_ name: String) -> SecretBytes? {
+      index(name).flatMap { blobPointer($0) }.map { SecretBytes(copying: $0) }
+    }
+
+    func has(_ name: String) -> Bool { index(name) != nil }
   }
 }
