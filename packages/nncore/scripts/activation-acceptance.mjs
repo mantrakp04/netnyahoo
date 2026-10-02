@@ -5,6 +5,9 @@
 //
 //   node packages/nncore/scripts/activation-acceptance.mjs <Netnyahoo.app> <scratch dir> [check…]
 //
+// One line per check (PASS/FAIL, ms); a failure adds its first lines, and the rest (evidence, the state at a failure)
+// goes to <scratch dir>/data/activation-acceptance.log. Every check runs after boot.
+//
 // Fixtures are served over HTTPS (a certificate made here, trusted by this instance only: --ignore-certificate-errors):
 // Chrome's automatic Picture in Picture only acts on https and file pages. The call is a fake conference: Chrome's fake
 // camera, and a Media Session "enterpictureinpicture" handler that counts its calls and opens a document Picture in
@@ -16,9 +19,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createHttpsServer } from "node:https";
-import { createServer, request as httpRequest } from "node:http";
-import { createServer as createNetServer } from "node:net";
 import { basename, join, resolve } from "node:path";
+import { freePort, launch as launchInstance, reporter, sleep } from "../../../scripts/lib/instance.mjs";
 
 const [appArg, scratchArg, ...only] = process.argv.slice(2);
 if (!appArg || !scratchArg) {
@@ -29,9 +31,9 @@ const scratch = resolve(scratchArg);
 const data = join(scratch, "data");
 rmSync(data, { recursive: true, force: true });
 mkdirSync(data, { recursive: true });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const log = (...a) => console.log(...a);
 const results = [];
+const report = reporter(join(data, "activation-acceptance.log"), { name: "activation acceptance" });
+const log = (...a) => report.log(...a);
 
 // MARK: The media copy (no camera or microphone entitlement: macOS refuses a real device without asking)
 
@@ -91,54 +93,19 @@ const origin = () => `https://s${++site}.localhost:${port}`;
 
 // MARK: The app
 
-const freePort = () => new Promise((r) => {
-  const probe = createNetServer();
-  probe.listen(0, "127.0.0.1", () => {
-    const { port } = probe.address();
-    probe.close(() => r(port));
-  });
-});
-// Metro through a proxy that refuses its websockets: other agents' reloads can't restart the app's JS mid-run.
-const metroPort = Number(process.env.METRO_PORT ?? 8081);
-const metroProxy = createServer((req, res) => {
-  const up = httpRequest({ host: "127.0.0.1", port: metroPort, path: req.url, method: req.method, headers: req.headers }, (r) => {
-    res.writeHead(r.statusCode ?? 502, r.headers);
-    r.pipe(res);
-  });
-  up.on("error", () => res.destroy());
-  req.pipe(up);
-});
-metroProxy.on("upgrade", (req, socket) => socket.destroy());
-await new Promise((r) => metroProxy.listen(0, "127.0.0.1", r));
-
-const exe = join(app, "Contents/MacOS", execFileSync("plutil", ["-extract", "CFBundleExecutable", "raw", join(app, "Contents/Info.plist")]).toString().trim());
-const pgrep = () => {
-  try {
-    return execFileSync("pgrep", ["-f", `^${exe}`]).toString().split("\n").filter(Boolean).map(Number);
-  } catch {
-    return [];
-  }
-};
+// Metro through a proxy that refuses its websockets (scripts/lib/instance.mjs, js "pinned"): other agents' reloads
+// can't restart the app's JS mid-run.
 const devtoolsPort = await freePort();
 let pid = null;
-// Started again on the same data dir by the restore check.
+let instance = null;
+// Started again on the same data dir (and DevTools port) by the restore check. The pid is the port's listener,
+// checked against the bundle's binary (scripts/lib/instance.mjs): never another run's instance.
 async function launch(logName = "app.out.log") {
-  const before = new Set(pgrep());
-  // As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
-  execFileSync("open", [
-    "-g", "-n",
-    "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${data}`, "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${devtoolsPort}`,
-    "--env", `NETNYAHOO_JS_LOCATION=localhost:${metroProxy.address().port}`,
-    "--env", "NETNYAHOO_CHROMIUM_SWITCHES=--ignore-certificate-errors --netnyahoo-test-system-media-permission=ask",
-    "--stdout", join(scratch, logName), "--stderr", join(scratch, logName),
-    app,
-  ]);
-  pid = null;
-  for (let i = 0; i < 100 && !pid; i++) {
-    pid = pgrep().find((p) => !before.has(p)) ?? null;
-    if (!pid) await sleep(100);
-  }
-  if (!pid) throw new Error("the app didn't start");
+  instance = await launchInstance(app, {
+    data, port: devtoolsPort, log: join(scratch, logName), ready: false,
+    switches: "--ignore-certificate-errors --netnyahoo-test-system-media-permission=ask",
+  });
+  pid = instance.pid;
   writeFileSync(join(scratch, "app.pid"), String(pid));
 }
 await launch();
@@ -151,25 +118,12 @@ const alive = () => {
   }
 };
 
-let evalSeq = 0;
 async function evalApp(body, timeoutMs = 20000) {
-  const id = `e${Date.now()}-${++evalSeq}`;
-  writeFileSync(join(data, "dev-eval.js"), `// ${id}\n${body}`);
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (!alive()) throw new Error("the app exited");
-    try {
-      const out = JSON.parse(readFileSync(join(data, "dev-eval-result.json"), "utf8"));
-      if (out.id === id) {
-        if (out.error) throw new Error(out.error);
-        return out.result;
-      }
-    } catch (e) {
-      if (!(e instanceof SyntaxError) && e.code !== "ENOENT") throw e;
-    }
-    await sleep(100);
+  try {
+    return await instance.eval(body, { timeout: timeoutMs });
+  } catch (e) {
+    throw e.appDied ? new Error("the app exited") : e;
   }
-  throw new Error(`eval timed out: ${body.slice(0, 80)}`);
 }
 async function until(what, fn, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
@@ -276,19 +230,21 @@ async function check(name, fn) {
   // Every check needs boot's setup.
   if (only.length && !only.includes(name) && name !== "boot") return;
   const started = Date.now();
-  try {
+  await report.check(name, async () => {
     const evidence = await fn();
     neverFront();
     results.push({ name, ok: true, evidence, ms: Date.now() - started });
-    log(`PASS ${name}: ${JSON.stringify(evidence)}`);
-  } catch (e) {
-    let snapshot = null;
-    try {
-      snapshot = { app: await appState(), chrome: worker ? await ext("chromeState()") : null };
-    } catch {}
-    results.push({ name, ok: false, error: String(e?.message ?? e), snapshot, ms: Date.now() - started });
-    log(`FAIL ${name}: ${e?.message ?? e}\n  state: ${JSON.stringify(snapshot)}`);
-  }
+    return evidence;
+  }, {
+    async onFail(e) {
+      let snapshot = null;
+      try {
+        snapshot = { app: await appState(), chrome: worker ? await ext("chromeState()") : null };
+      } catch {}
+      results.push({ name, ok: false, error: String(e?.message ?? e), snapshot, ms: Date.now() - started });
+      log(`state: ${JSON.stringify(snapshot)}`);
+    },
+  });
 }
 
 // MARK: Checks
@@ -918,21 +874,11 @@ try {
     return out;
   });
 } finally {
-  try {
-    await evalApp(`nn.shell.quit?.(); return true`, 3000);
-  } catch {}
-  await until("the app to exit", async () => !alive(), 20000).catch(() => {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {}
-  });
+  await instance.quit();
   try {
     execFileSync(resolve(new URL(".", import.meta.url).pathname, "../../../scripts/agent/unregister-builds"), [], { stdio: "ignore" });
   } catch {}
   server.close();
-  metroProxy.close();
-  const failed = results.filter((r) => !r.ok);
   writeFileSync(join(scratch, "activation-results.json"), JSON.stringify(results, null, 2));
-  log(`\n${results.length - failed.length}/${results.length} passed${failed.length ? `; failed: ${failed.map((r) => r.name).join(", ")}` : ""}`);
-  process.exit(failed.length ? 1 : 0);
+  process.exit(report.summary() ? 0 : 1);
 }
