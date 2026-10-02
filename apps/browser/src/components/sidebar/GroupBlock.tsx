@@ -1,5 +1,5 @@
 import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { hex, layout, useTheme } from "../../lib/theme";
@@ -36,10 +36,11 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
     return !!selection?.length && !!s.groups[groupId]?.tabIds.some((id) => selection.includes(id));
   });
   const profileId = usePageProfileId();
-  const shownWhileCollapsed = useBrowser((s) => {
-    if (!s.groups[groupId]?.collapsed) return null;
+  // The window's active tab, when it's a member: it stays out while the group is collapsed, as in Arc and Dia.
+  const activeEntry = useBrowser((s) => {
     const active = activeTabId(s, windowId, profileId);
-    return entries.find((e) => e === `t:${active}` || (e.startsWith("s:") && !!active && !!s.splits[e.slice(2)]?.tabIds.includes(active))) ?? null;
+    if (!active) return null;
+    return entries.find((e) => e === `t:${active}` || (e.startsWith("s:") && !!s.splits[e.slice(2)]?.tabIds.includes(active))) ?? null;
   });
   const { wrapper, handle, headerRef } = useDragItem(`g:${groupId}`, { kind: "group", tabIds: tabIds.split(",").filter(Boolean), section, groupId, collapsed });
   const tail = useDragItem(`tail:group:${groupId}`, { kind: "tail", tabIds: [], section, parentGroup: groupId });
@@ -73,13 +74,31 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
   // mount for the animation. Rows are fixed-height, so their height is known before they're measured.
   // Selected members stay mounted: a multi-tab drag gathers its rows from the mounted ones (sidebar/dnd.tsx).
   const membersShown = !collapsed || moving || selectedInside;
+  // With the active tab inside, the group folds around it: that row stays put at full opacity while the others slide
+  // away or back (it used to fade out with them and pop back in, a flicker on every click). Each folded row cancels
+  // the list's gap after it.
+  const folding = !!activeEntry && (collapsed || moving);
+  const fold = useMemo(
+    () => ({
+      moving: {
+        height: open.interpolate({ inputRange: [0, 1], outputRange: [0, layout.rowHeight] }),
+        marginBottom: open.interpolate({ inputRange: [0, 1], outputRange: [-layout.rowGap, 0] }),
+        opacity: open,
+        overflow: "hidden" as const,
+      },
+      closed: { height: 0, marginBottom: -layout.rowGap, opacity: 0, overflow: "hidden" as const },
+    }),
+    [open],
+  );
   const contentHeight =
     measured.count === entries.length ? measured.height : entries.length * layout.rowHeight + Math.max(0, entries.length - 1) * layout.rowGap + PAD;
-  const membersStyle = moving
-    ? { height: open.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }), opacity: open, overflow: "hidden" as const }
-    : collapsed
-      ? { height: 0, opacity: 0, overflow: "hidden" as const }
-      : null;
+  const membersStyle = folding
+    ? null
+    : moving
+      ? { height: open.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }), opacity: open, overflow: "hidden" as const }
+      : collapsed
+        ? { height: 0, opacity: 0, overflow: "hidden" as const }
+        : null;
 
   return (
     <Animated.View ref={wrapper.ref} style={wrapper.style}>
@@ -87,21 +106,21 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
         <View ref={headerRef} {...handle}>
           <GroupHeader groupId={groupId} windowId={windowId} collapsed={collapsed} open={open} />
         </View>
-        {shownWhileCollapsed && !moving ? (
-          <View style={{ paddingBottom: PAD }}>
-            <Entry entry={shownWhileCollapsed} section={section} groupId={groupId} />
-          </View>
-        ) : null}
-        <Animated.View style={membersStyle} pointerEvents={collapsed ? "none" : "auto"}>
+        <Animated.View style={membersStyle} pointerEvents={collapsed ? "box-none" : "auto"}>
           <View
-            onLayout={(e) => (!collapsed || moving) && setMeasured({ height: e.nativeEvent.layout.height, count: entries.length })}
+            onLayout={(e) => (!collapsed || moving) && !folding && setMeasured({ height: e.nativeEvent.layout.height, count: entries.length })}
             style={{ gap: layout.rowGap, paddingBottom: PAD }}
           >
-            {membersShown
-              ? entries.map((entry) =>
-                  collapsed && entry === shownWhileCollapsed && !moving ? null : <Entry key={entry} entry={entry} section={section} groupId={groupId} />,
-                )
-              : null}
+            {entries.map((entry) => {
+              const stays = entry === activeEntry;
+              if (!stays && !membersShown) return null;
+              // One wrapper per entry in every state, so the active row never remounts as the group opens or closes.
+              return (
+                <Animated.View key={entry} style={folding && !stays ? (moving ? fold.moving : fold.closed) : null} pointerEvents={collapsed && !stays ? "none" : "auto"}>
+                  <Entry entry={entry} section={section} groupId={groupId} />
+                </Animated.View>
+              );
+            })}
             <Animated.View ref={tail.wrapper.ref} style={tail.wrapper.style} />
           </View>
         </Animated.View>

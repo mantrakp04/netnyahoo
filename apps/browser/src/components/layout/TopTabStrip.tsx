@@ -97,8 +97,9 @@ export function TopTabStrip({ floating = false }: { floating?: boolean }) {
     <FloatingStrip.Provider value={floating}>
       <View style={{ height: TOP_STRIP_HEIGHT }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
         <WindowDragRegion style={StyleSheet.absoluteFill} />
-        {/* The clip starts a flare's width early so the first tab's flare isn't cut. */}
-        <View style={{ position: "absolute", left: left - flare, right: right - flare, top: 0, bottom: 0, overflow: "hidden" }}>
+        {/* The clip starts a flare's width early so the first tab's flare isn't cut, and ends at the profile chip and
+            download button, so tabs scrolled past the end never show under them. */}
+        <View style={{ position: "absolute", left: left - flare, right: Math.max(right - flare, controls + 8), top: 0, bottom: 0, overflow: "hidden" }}>
           {pages.map((page) => (
             <StripPage key={page.id} profileId={page.id} slot={page.slot} pageWidth={pageWidth} current={page.id === current} resting={!!page.resting} />
           ))}
@@ -121,7 +122,7 @@ export function TopTabStrip({ floating = false }: { floating?: boolean }) {
             }}
           />
         </View>
-        <ProfileSwipeArea surface="strip" style={StyleSheet.absoluteFill} pageWidth={pageWidth} />
+        <ProfileSwipeArea surface="strip" style={StyleSheet.absoluteFill} pageWidth={pageWidth + flare * 2} />
         {!floating && <StripDropHighlight left={left} right={right} />}
       </View>
     </FloatingStrip.Provider>
@@ -223,7 +224,9 @@ function IncomingGap({ open, width, origin }: { open: boolean; width: number; or
 function StripPage({ profileId, slot, pageWidth, current, resting }: { profileId: string; slot: number; pageWidth: number; current: boolean; resting: boolean }) {
   const windowId = useWindowId();
   const flare = useContext(FloatingStrip) ? 0 : FLARE;
-  const pageStyle = usePageStyle(windowId, slot, pageWidth);
+  // Pages sit their whole width apart, flares included: only a page's width apart, the next profile's selected tab
+  // and its flare showed at the clip's end, under the profile chip.
+  const pageStyle = usePageStyle(windowId, slot, pageWidth + flare * 2);
   const entries = useBrowser((s) => stripEntries(s, windowId, profileId));
   const activeId = useBrowser((s) => s.windows[windowId]?.activeTabIds[profileId] ?? "");
   const parsed = useMemo(() => parseEntries(entries), [entries]);
