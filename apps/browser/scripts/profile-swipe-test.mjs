@@ -111,6 +111,7 @@ function assertOwnedAlive() {
 }
 const server = createServer((req, res) => {
   res.writeHead(200, { "content-type": "text/html" });
+  if (req.url.startsWith("/history")) return res.end(`<!doctype html><title>${req.url}</title><h1>${req.url}</h1>`);
   res.end('<!doctype html><title>Swipe scroll fixture</title><body style="margin:0"><div style="width:2600px;height:4000px;background:linear-gradient(120deg,#ffd9dd,#addbff)">Native scroll fixture</div>');
 });
 
@@ -578,6 +579,29 @@ try {
     assert.notEqual(routing(result)?.raw?.[0]?.class, "RenderWidgetHostViewCocoa");
     assert.equal(routing(result)?.fallback, false, "an ordinary sidebar hit should match directly");
     return result;
+  });
+  // SwipeOverlay: a discrete swipe's delayed dismiss once landed in the next gesture and dropped its navigation.
+  await test("a tracked swipe right after a discrete swipe goes back too", async () => {
+    await reset();
+    const base = `http://127.0.0.1:${server.address().port}/history`;
+    const url = () => nn('return nn.store.getState().tabs.t1.url;');
+    async function waitUrl(expected, ms) {
+      for (let start = Date.now(); Date.now() - start < ms && (await url()) !== expected;) await sleep(50);
+      return url();
+    }
+    await nn('nn.store.getState().activate("t1"); return true;');
+    for (const n of [1, 2, 3]) {
+      await nn(`nn.store.getState().navigate("t1", ${JSON.stringify(base + n)}); return true;`);
+      assert.equal(await waitUrl(base + n, 5000), base + n);
+    }
+    await sleep(500);
+    // The tracked one starts 50 ms after the discrete one and lasts a quarter second, as a hand's does.
+    const steps = [{ phase: "swipe", dx: 3, atMs: 0 }, { phase: "began", dx: 0, dy: 0, atMs: 50, timestampMs: 50 }];
+    for (let at = 66; at <= 258; at += 16) steps.push({ phase: "changed", dx: 10, dy: 0, atMs: at, timestampMs: at });
+    steps.push({ phase: "ended", dx: 0, dy: 0, atMs: 274, timestampMs: 274 });
+    const result = await nn(`return globalThis.nnSwipe.pane("t1").devSimulate(${JSON.stringify(steps)}, {ignorePreference:true});`);
+    assert.equal(await waitUrl(base + 1, 3000), base + 1, "both swipes should go back");
+    return { events: result.events?.map((e) => [e.phase, e.swallowed ?? e.state]) };
   });
   await test("reordering profiles preserves a native selection queued behind blocked JS", async () => {
     await reset();

@@ -82,8 +82,10 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
   const sizeRef = useRef(size);
   sizeRef.current = size;
 
+  // A new gesture stops everything the last one left running: its springs, its delayed dismiss and its list timer.
   const resetValues = (direction: "back" | "forward") => {
     for (const value of Object.values(v)) value.stopAnimation();
+    clearTimeout(g.idle);
     const { height } = sizeRef.current;
     v.x.setValue(-SIZE);
     v.w.setValue(SIZE);
@@ -125,8 +127,9 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
   };
 
   const presentList = async () => {
-    const items = (await g.items) ?? [];
-    if (!g.active || g.list || !g.confirmed || items.length < 2) return;
+    const gesture = g.items;
+    const items = (await gesture) ?? [];
+    if (g.items !== gesture || !g.active || g.list || !g.confirmed || items.length < 2) return;
     const { height } = sizeRef.current;
     const fit = Math.max(2, Math.floor((height / 2 + ROW / 2 - LIST_PAD - 8) / ROW));
     const list = items.slice(0, fit);
@@ -149,13 +152,13 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     setShown((s) => (s ? { ...s, selected: index } : s));
   };
 
-  const dismiss = () => {
+  const dismiss = (delay = 0) => {
     clearTimeout(g.idle);
     g.active = false;
     Animated.parallel([
-      Animated.timing(v.fade, { toValue: 0, duration: 200, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      Animated.timing(v.scale, { toValue: 0.01, duration: 200, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-    ]).start(({ finished }) => finished && !g.active && setShown(null));
+      Animated.timing(v.fade, { toValue: 0, duration: 200, delay, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(v.scale, { toValue: 0.01, duration: 200, delay, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ]).start(({ finished }) => finished && setShown(null));
   };
 
   const lastDy = useRef(0);
@@ -171,8 +174,8 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
       v.x.setValue(CAPSULE_INSET);
       setConfirmed(true);
       navigate(e.direction, null);
-      setTimeout(dismiss, 120);
-      return;
+      // Confirmed for a moment, then gone; the delay is part of the animation, so the next gesture's reset stops it.
+      return dismiss(120);
     }
     if (e.phase === "cancelled") return dismiss();
     if (e.phase === "ended") {
