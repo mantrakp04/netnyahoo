@@ -12,83 +12,54 @@
 //   node carryover.mjs back <previous app> <home> <cdp port> <pages origin> <used.json> <out.json>  (rollback.sh)
 //     The previous build again (NETNYAHOO_DATA_DIR set, as in create): everything from both sessions must be there.
 // The apps run hidden (NETNYAHOO_BACKGROUND=1, which also keeps them off the login keychain) with HOME and
-// CFFIXED_USER_HOME at <home>; their data folder is named after their (test) bundle id.
+// CFFIXED_USER_HOME at <home>; their data folder is named after their (test) bundle id. They're launched and driven
+// through scripts/lib/instance.mjs (its instance.json lands in that folder, the app's log beside <out.json>).
 import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { binaryOf, binaryPids, isAlive, listenerPids, ownedCandidate, processInfo } from "../../../../scripts/lib/instance.mjs";
+import { launch, listenerPids, sleep } from "../../../../scripts/lib/instance.mjs";
 
 const [phase, app, home, port, origin, extra, out] = process.argv.slice(2);
 const here = path.dirname(new URL(import.meta.url).pathname);
 const bundleId = execFileSync("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", `${app}/Contents/Info.plist`]).toString().trim();
 const docs = path.join(home, "Library/Application Support", bundleId);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let pid = null, started = null;
-const alive = () => pid !== null && isAlive(pid);
-// Still the process this run launched (a reused pid has another start time): the only one ever signalled.
-const ours = () => alive() && processInfo(pid)?.started === started;
-setTimeout(() => { console.error("carryover: no result in 240 s"); if (ours()) try { process.kill(pid, "SIGKILL"); } catch {} process.exit(3); }, 240_000).unref();
+let instance = null;
+const alive = () => !!instance && !instance.exited;
+setTimeout(() => { console.error("carryover: no result in 240 s"); try { instance?.kill(); } catch {} process.exit(3); }, 240_000).unref();
 
 if (listenerPids(port).length) { console.error(`carryover: port ${port} is taken`); process.exit(4); }
 fs.mkdirSync(docs, { recursive: true });
-fs.writeFileSync(path.join(docs, "perf-probe"), ""); // starts the dev harness in a release build's isolated instance
 // The previous build (create, back) predates silent test instances: onboarding done, so its intro music never starts,
 // and Chrome's --mute-audio for page audio. NNCore builds (read, use) mute themselves under NETNYAHOO_BACKGROUND.
 const previousBuild = phase === "create" || phase === "back";
 if (previousBuild && !fs.existsSync(path.join(docs, "onboarding.json")))
   fs.writeFileSync(path.join(docs, "onboarding.json"), JSON.stringify({ version: 1, completedAt: Date.now(), introMusicMuted: true }));
-// Launched with open (scripts/lib/instance.mjs's launch() always sets NETNYAHOO_DATA_DIR, which read and use must not),
-// and found as the module finds its instances: the one process of this binary that started listening on our DevTools
-// port. A process-list diff can pick another run's instance of the same build.
-const binary = binaryOf(app);
-const before = binaryPids(binary);
-const env = ["NETNYAHOO_BACKGROUND=1", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, `HOME=${home}`, `CFFIXED_USER_HOME=${home}`,
-  "NETNYAHOO_TEST_REAUTH=granted", "NETNYAHOO_CHROMIUM_SWITCHES=--disable-backgrounding-occluded-windows"];
-if (phase === "create" || phase === "back") env.push(`NETNYAHOO_DATA_DIR=${docs}`);
-execFileSync("open", ["-g", "-n", ...env.flatMap((e) => ["--env", e]), app, ...(previousBuild ? ["--args", "--mute-audio"] : [])]);
-for (const end = Date.now() + 60_000; !pid && Date.now() < end; ) {
-  await sleep(250);
-  let info;
-  try {
-    pid = ownedCandidate(listenerPids(port), before, (p) => (info = processInfo(p))?.command, binary);
-  } catch (e) {
-    console.error(`carryover: ${e.message}`);
-    process.exit(2);
-  }
-  if (pid) started = info.started;
+// Hidden, on this port; perf-probe starts the dev harness in a release build's isolated instance. read and use start
+// without NETNYAHOO_DATA_DIR (null leaves it out), so the new build finds the installed copy's folder itself.
+try {
+  instance = await launch(app, {
+    data: docs, port, js: "none", ready: false, probe: true, log: path.join(path.dirname(path.resolve(out)), `${phase}.app.log`),
+    env: { HOME: home, CFFIXED_USER_HOME: home, NETNYAHOO_TEST_REAUTH: "granted", ...(previousBuild ? {} : { NETNYAHOO_DATA_DIR: null }) },
+    switches: "--disable-backgrounding-occluded-windows", args: previousBuild ? ["--mute-audio"] : [],
+  });
+} catch (e) {
+  console.error(`carryover: the app didn't start (${e.message})`);
+  process.exit(2);
 }
-if (!pid) { console.error("carryover: the app didn't start"); process.exit(2); }
+const { pid } = instance;
 
 const step = (what) => { if (process.env.CARRYOVER_VERBOSE) console.error(`carryover ${phase}: ${what}`); };
-let seq = 0;
 async function inApp(body, timeoutMs = 30_000) { // lib/devHarness.ts; Hermes has no async functions here
   step(body.trim().split("\n")[0].slice(0, 100));
-  const id = `c${Date.now()}-${seq++}`;
-  fs.writeFileSync(path.join(docs, "dev-eval.js"), `// ${id}\n${body}`);
-  const end = Date.now() + timeoutMs;
-  while (Date.now() < end) {
-    if (!alive()) throw new Error("the app quit");
-    try {
-      const r = JSON.parse(fs.readFileSync(path.join(docs, "dev-eval-result.json"), "utf8"));
-      if (r.id === id) { if (r.error) throw new Error(r.error); return r.result; }
-    } catch (e) { if (!(e instanceof SyntaxError) && e.code !== "ENOENT") throw e; }
-    await sleep(200);
-  }
-  throw new Error(`timed out: ${body.slice(0, 80)}`);
+  return instance.eval(body, { timeout: timeoutMs });
 }
 async function inPage(urlPart, expression) { // Runtime.evaluate in the first page whose URL has urlPart
   for (let i = 0; i < 40; i++) {
-    const targets = await fetch(`http://127.0.0.1:${port}/json`).then((r) => r.json()).catch(() => []);
-    const t = targets.find((t) => t.type === "page" && t.url.includes(urlPart));
-    if (t) {
-      const ws = new WebSocket(t.webSocketDebuggerUrl);
-      await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
-      const v = await new Promise((r) => {
-        ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id === 1) r(m.result?.result?.value); };
-        ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, returnByValue: true } }));
-      });
-      ws.close();
+    const page = await instance.page(urlPart, { timeout: 0 }).catch(() => null);
+    if (page) {
+      const v = await page.send("Runtime.evaluate", { expression, returnByValue: true }).then((r) => r?.result?.value, () => undefined);
+      page.close();
       if (v !== undefined) return v;
     }
     await sleep(500);
@@ -183,7 +154,7 @@ try {
 execFileSync(process.env.CARRYOVER_QUIT, [String(pid)]); // the quit Apple event, so Chrome flushes its stores
 for (let i = 0; i < 60 && alive(); i++) await sleep(500);
 report.quit = !alive();
-if (ours()) process.kill(pid, "SIGKILL");
+if (alive()) instance.kill("SIGKILL");
 
 if (phase === "use") {
   fs.writeFileSync(out, JSON.stringify(report, null, 2));
