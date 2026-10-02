@@ -8,7 +8,7 @@ import { activeTabId } from "../store/model";
 import { downloadsIn } from "../store/ui";
 import { cleanedTabsFor, cleanUpCandidates } from "../store/organize";
 import { openNewTabInSplit } from "./layout/splitActions";
-import { listTopGap, SIDEBAR_FOOTER_DOWNLOADS, SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
+import { listTopGap, SIDEBAR_FIELD, SIDEBAR_FOOTER_DOWNLOADS, SIDEBAR_HEADER_WITH_FIELD, useAddressBarInSidebar } from "./layout/windowLayout";
 import { SIDEBAR_PLAYER_HEIGHT, SidebarPlayer, useSidebarPlayerTab } from "./media/SidebarPlayer";
 import { HoverSlot } from "./HoverSlot";
 import { IconButton, useHover } from "./primitives";
@@ -18,12 +18,12 @@ import { PROFILE_DOTS_HEIGHT, ProfileDots, useProfileDotsShown } from "./profile
 import { SidebarAddressRow, SidebarHeaderTools } from "./sidebar/AddressBar";
 import { DragGhost } from "./sidebar/DragGhost";
 import { DragProvider, DragScope, useDragController, useDragItem, type Ghost } from "./sidebar/dnd";
-import { useSidebarEntries } from "./sidebar/entries";
+import { sidebarEntries, useSidebarEntries } from "./sidebar/entries";
 import { GroupBlock } from "./sidebar/GroupBlock";
 import { dismissHover } from "./sidebar/hover";
 import { LiveFolders } from "./sidebar/LiveFolderBlock";
 import { openOverflowMenu, openSidebarMenu } from "./sidebar/menus";
-import { PinnedGrid } from "./sidebar/PinnedGrid";
+import { PinDropZone, PinnedGrid } from "./sidebar/PinnedGrid";
 import { ResizeHandle } from "./sidebar/ResizeHandle";
 import { entriesHeight, rowSpan, type Section } from "./sidebar/geometry";
 import { measureRow } from "./sidebar/state";
@@ -31,6 +31,8 @@ import { SplitRowItem, TabRowItem } from "./sidebar/TabRow";
 import { useSidebarTokens, useSidebarWidth } from "./sidebar/tokens";
 
 const GLOW_ROOM = 24;
+// The pin target's band between the header and the first row, with no address field there.
+const PIN_BAND = 17;
 const ROW_PITCH = layout.rowHeight + layout.rowGap;
 const DOCKED_BOTTOM = 6;
 // Room the docked New Tab row takes from the list: the row plus one row gap above it.
@@ -68,6 +70,7 @@ export function Sidebar() {
   const dots = useProfileDotsShown();
   const footerDownloads = addressBar && hasDownloads;
   const footer = dots || footerDownloads ? PROFILE_DOTS_HEIGHT : 0;
+  const nothingPinned = useBrowser((s) => sidebarEntries(s, windowId, current).tiles.length === 0);
 
   useRevealTabs(windowId, scroll, scrollY, geometry, glowRoom);
   // A card anchored to a row of the page paging away would stay where the row was.
@@ -160,6 +163,14 @@ export function Sidebar() {
           </View>
 
           <ResizeHandle windowId={windowId} />
+          {/* Nothing pinned: the drag's pin target, over room the sidebar already has, so no row moves. */}
+          {ghost && !ghost.landing && nothingPinned ? (
+            addressBar ? (
+              <PinDropZone top={SIDEBAR_FIELD.top} height={SIDEBAR_FIELD.height} cover />
+            ) : (
+              <PinDropZone top={layout.pinnedTop - PIN_BAND - 3} height={PIN_BAND} cover={false} />
+            )
+          ) : null}
           {ghost ? <DragGhost ghost={ghost} /> : null}
         </View>
       )}
@@ -258,13 +269,13 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
                           if (current) onListHeight(measured.current);
                         }}
                       >
-                        <PinnedGrid tabs={tiles} innerWidth={innerWidth} dragging={current && !!ghost && !ghost.landing} />
+                        <PinnedGrid tabs={tiles} innerWidth={innerWidth} />
                         <View
                           ref={(v) => {
                             controller?.regions.set("pinnedGroups", v);
                           }}
                           onLayout={geometry ? (e) => void (geometry.current.regions.pinnedGroups = e.nativeEvent.layout.y) : undefined}
-                          style={{ marginTop: tiles.length || (current && ghost && !ghost.landing) ? 6 : topGap, gap: layout.rowGap }}
+                          style={{ marginTop: tiles.length ? 6 : topGap, gap: layout.rowGap }}
                         >
                           {pinnedGroups.map((id) => (
                             <GroupBlock key={id} groupId={id} section="pinnedGroups" />

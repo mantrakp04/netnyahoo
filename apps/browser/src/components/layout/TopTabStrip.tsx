@@ -1,6 +1,6 @@
-import { ContextMenuArea, FadeLabel, setTrafficLightsCenter, Surface, Symbol, WindowDragRegion } from "@netnyahoo/shell";
+import { ContextMenuArea, FadeLabel, raiseView, setTrafficLightsCenter, Surface, Symbol, WindowDragRegion } from "@netnyahoo/shell";
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, findNodeHandle, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, ThemeScope, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
@@ -414,17 +414,50 @@ function useStripDrag(item: StripDrag) {
     makeRoom(geometry, from, to < 0 ? from : to);
   };
   const owns = useRef(false);
+  // Drawn over the row while dragged and settling (a group's member over the group's other members).
+  const raised = useRef<number | null>(null);
+  const raise = (on: boolean) => {
+    const tag = on ? findNodeHandle(view.current) : raised.current;
+    raiseView(tag, latest.current.groupId ? 1 : 0, on);
+    raised.current = on ? tag : null;
+  };
   const reset = () => {
     owns.current = false;
     makeRoomAt(-1);
     dx.setValue(0);
     setLifted(false);
     setDragging(false);
+    raise(false);
+  };
+  // Let go: it settles into its new place (`to`; none: back home) with the row already laid out around it, and
+  // only then does the store move it: until that one update, nothing reorders the views, so it stays drawn on top.
+  const settle = useRef<{ land: () => void } | null>(null);
+  const settleInto = (to: number | null, commit: () => boolean) => {
+    const { geometry, from } = latest.current;
+    if (to === null) makeRoomAt(-1);
+    const landing = {
+      land: () => {
+        if (settle.current !== landing) return;
+        settle.current = null;
+        // The row stands where it is about to be laid out, then one store update (React renders it at once here,
+        // outside an event, so the row's items are this geometry's only until then), the item at rest: one batch.
+        if (to !== null) {
+          settleRoom(geometry);
+          commit();
+        }
+        dx.setValue(0);
+        setDragging(false);
+        raise(false);
+      },
+    };
+    settle.current = landing;
+    Animated.spring(dx, { toValue: to === null ? 0 : (reorderOffsets(geometry, from, to)[from] ?? 0), ...SLIDE }).start(() => landing.land());
   };
   // Closed mid-drag (⌘W): RN drops the responder without telling it, so the drag would stay open and block the next;
   // the row it was passing stands where it is laid out.
   useEffect(
     () => () => {
+      settle.current?.land();
       if (!owns.current) return;
       settleRoom(latest.current.geometry);
       if (!latest.current.local) cancelTabDrag();
@@ -446,13 +479,15 @@ function useStripDrag(item: StripDrag) {
         onPanResponderGrant: (e) => {
           const ids = latest.current.ids();
           const grab: [number, number] = [e.nativeEvent.pageX, e.nativeEvent.pageY];
-          // Pressed again while settling from the last drop: from its place.
+          // Pressed again while settling from the last drop: it lands first.
+          settle.current?.land();
           dx.stopAnimation();
           dx.setValue(0);
           const mine = { stripBottom: TOP_STRIP_HEIGHT, lifted: false, ids, dx: 0, to: -1 };
           drag.current = mine;
           owns.current = true;
           setDragging(true);
+          if (latest.current.from >= 0) raise(true);
           if (latest.current.local) return;
           const seq = beginTabDrag(ids.length === 1 ? latest.current.tabId : null, ids);
           view.current?.measureInWindow((x, y, width, height) => {
@@ -484,19 +519,23 @@ function useStripDrag(item: StripDrag) {
           if ((!local && (endTabDrag() || lifted)) || from < 0) return reset();
           const travelled = range ? Math.max(range[0], Math.min(range[1], g.dx)) : g.dx;
           const ids = drag.current.ids;
-          const store = useBrowser.getState();
-          // One store update (its own drop, a group's or the pinned dock's, else a reorder), in this task.
-          const custom = drop?.(travelled, ids) ?? false;
-          const moved = custom ? useBrowser.getState() !== store : reorder(ids, latest.current, g.dx);
-          if (!moved) makeRoomAt(-1);
-          // The row's other items are where the new order lays them out: they stand there.
-          else settleRoom(geometry);
-          // Into or out of the pinned dock, or a selection whose other tabs move too: its place isn't along this
-          // row, so it's simply there.
-          if (moved && ((custom && !local) || ids.length > 1)) return reset();
-          // It settles from where it's drawn into the place the strip gives it now.
-          dx.setValue(drag.current.dx - (moved ? (reorderOffsets(geometry, from, dropIndex(geometry, from, g.dx))[from] ?? 0) : 0));
-          Animated.spring(dx, { toValue: 0, ...SLIDE }).start(({ finished }) => finished && !owns.current && setDragging(false));
+          // Into or out of the pinned dock (its own drop), or a selection whose other tabs move too: its place isn't
+          // along this row, so the store moves it now and it's simply there.
+          if (!local) {
+            const store = useBrowser.getState();
+            const moved = drop?.(travelled, ids) || (ids.length > 1 && reorder(ids, latest.current, g.dx));
+            if (moved && useBrowser.getState() !== store) settleRoom(geometry);
+            if (moved) return reset();
+          }
+          // PanResponder resets its gesture state after this handler: the drop's travel, kept for the landing.
+          const at = g.dx;
+          const to = dropIndex(geometry, from, at);
+          settleInto(to === from ? null : to, () => {
+            const store = useBrowser.getState();
+            if (local) drop?.(travelled, ids);
+            else reorder(ids, latest.current, at);
+            return useBrowser.getState() !== store;
+          });
         },
         onPanResponderTerminate: () => {
           const local = latest.current.local;

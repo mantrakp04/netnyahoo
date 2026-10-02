@@ -224,6 +224,7 @@ const Shell = requireNativeModule<{
   dragPreviewPage?(base64: string, frame: Rect4): Promise<void>;
   dragPreviewUpdate?(shape: DragPreviewShape, point: [number, number]): Promise<void>;
   dragPreviewCancel?(): Promise<void>;
+  raiseView?(tag: number, levels: number, raised: boolean): Promise<void>;
   dragPreviewPlaceholder?(title: string, favicon: string | null): Promise<void>;
   windowFrame?(id: string): Promise<Rect4 | null>;
   dragPreviewEnd?(windowId: string | null, frame: Rect4 | null): Promise<void>;
@@ -284,6 +285,11 @@ export const dragPreview = {
   cancel: () => void Shell.dragPreviewCancel?.(),
   /** A tab with no picture: its icon (a data: or file: URL) and title where its page would be. */
   placeholder: (title: string, favicon: string | null) => void Shell.dragPreviewPlaceholder?.(title, favicon),
+};
+/** Draws the view with React tag `tag` (and `levels` of its ancestors) over its siblings, or back in React's order:
+ * React Native macOS's zIndex doesn't reorder them. A no-op on builds without it. */
+export const raiseView = (tag: number | null, levels: number, raised: boolean) => {
+  if (tag != null) void Shell.raiseView?.(tag, levels, raised);
 };
 /** The window's frame now, on screen (AppKit's coordinates); null on builds without it. */
 export const windowFrame = (id: string): Promise<Rect4 | null> => Shell.windowFrame?.(id) ?? Promise.resolve(null);

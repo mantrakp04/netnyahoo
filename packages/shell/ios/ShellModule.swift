@@ -233,6 +233,32 @@ public class ShellModule: Module {
       DragPreview.shared.update(shape: shape, at: NSPoint(x: point[0], y: point[1]))
     }.runOnQueue(.main)
     AsyncFunction("dragPreviewCancel") { DragPreview.shared.cancel() }.runOnQueue(.main)
+    // A dragged item over its neighbours. React Native macOS's zIndex sets the layer's zPosition, which doesn't change
+    // the order AppKit draws sibling views in: this puts the view with React tag `tag`, and `levels` of its ancestors,
+    // last among their siblings; lowered, they're back in React's order (as React's next change of children puts them).
+    AsyncFunction("raiseView") { (tag: Int, levels: Int, raised: Bool) in
+      guard var view = self.appContext?.findView(withTag: tag, ofType: NSView.self) else { return }
+      for _ in 0...max(0, levels) {
+        guard let parent = view.superview else { return }
+        // AppKit reorders an existing subview for hit testing but leaves its layer where it was: both move.
+        let layers = view.layer.flatMap { layer in parent.layer.flatMap { $0 === layer.superlayer ? (layer, $0) : nil } }
+        if raised {
+          if parent.subviews.last !== view { parent.addSubview(view, positioned: .above, relativeTo: nil) }
+          if let (layer, host) = layers, host.sublayers?.last !== layer { host.addSublayer(layer) }
+        } else if let order = parent.value(forKey: "reactSubviews") as? [NSView], let index = order.firstIndex(where: { $0 === view }) {
+          // Below the next of its React siblings that's on screen (React may have reordered them meanwhile); only this
+          // view moves (asking the parent to re-add all its subviews dropped the clipped ones of a scroll view).
+          if let next = order[(index + 1)...].first(where: { $0.superview === parent }) {
+            parent.addSubview(view, positioned: .below, relativeTo: next)
+            if let (layer, host) = layers, let below = next.layer, below.superlayer === host { host.insertSublayer(layer, below: below) }
+          } else if parent.subviews.last !== view {
+            parent.addSubview(view, positioned: .above, relativeTo: nil)
+            if let (layer, host) = layers { host.addSublayer(layer) }
+          }
+        }
+        view = parent
+      }
+    }.runOnQueue(.main)
     AsyncFunction("dragPreviewPlaceholder") { (title: String, favicon: String?) in
       DragPreview.shared.setPlaceholder(title: title, favicon: favicon)
     }.runOnQueue(.main)

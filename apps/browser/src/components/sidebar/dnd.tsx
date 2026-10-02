@@ -54,8 +54,8 @@ const measure = (view: View | null): Promise<Frame | null> =>
     ? new Promise((resolve) => view.measureInWindow((x, y, w, h) => resolve(w || h ? { x, y, w, h } : null)))
     : Promise.resolve(null);
 
-type Marks = { sources: Set<string>; dropInto: string | null; landing: string | null };
-const NO_MARKS: Marks = { sources: new Set(), dropInto: null, landing: null };
+type Marks = { sources: Set<string>; dropInto: string | null; landing: string | null; pins: boolean };
+const NO_MARKS: Marks = { sources: new Set(), dropInto: null, landing: null, pins: false };
 const noMarks = create<Marks>()(() => NO_MARKS);
 
 class DragController {
@@ -89,11 +89,6 @@ class DragController {
   private scrollTimer: ReturnType<typeof setInterval> | undefined;
   private measured = false;
   private token: object | null = null;
-  // The empty pinned grid's drop zone comes in with the ghost and moves the list down: the frames are measured
-  // again once it's laid out.
-  private awaitingTiles: object | null = null;
-  // This drag brought the empty pinned grid's drop zone in (it goes as the drag ends).
-  private zoned = false;
   landed: { key: string; x: number; y: number } | null = null;
 
   create(key: string): Item {
@@ -141,24 +136,18 @@ class DragController {
     this.setLanding(null);
     this.setSources(new Set(this.sources.map((s) => s.key)));
     this.setGhost(this.ghost);
-    this.zoned = !this.regionFrames.get("tiles");
-    if (this.zoned) this.awaitingTiles = token;
-    else this.follow();
-  }
-
-  /** The pinned grid was laid out (PinnedGrid): with its drop zone in, the list is where the drag will see it. */
-  async tilesLaidOut() {
-    const token = this.awaitingTiles;
-    if (!token) return;
-    this.awaitingTiles = null;
-    await this.measureAll();
-    if (this.token === token) this.follow();
-  }
-
-  private follow() {
     Animated.parallel(this.sources.map((s) => spring(s.size, 0))).start();
     this.measured = true;
     this.move(this.pointer.x, this.pointer.y);
+  }
+
+  /** The pin target overlay (PinDropZone) came in with the ghost, after the drag measured everything: its place. */
+  async tilesLaidOut() {
+    const token = this.token;
+    const frame = await measure(this.regions.get("tiles") ?? null);
+    if (this.token !== token || !this.sources.length) return;
+    this.regionFrames.set("tiles", frame);
+    this.retarget();
   }
 
   private async measureAll() {
@@ -217,10 +206,10 @@ class DragController {
     this.into = null;
     this.ghost = null;
     this.measured = false;
-    this.awaitingTiles = null;
     suppressHover(false);
     this.setSources(new Set());
     this.setDropInto(null);
+    this.marks.setState({ pins: false });
     if (!spot || !ghost) {
       this.token = null;
       this.setLanding(null);
@@ -248,11 +237,12 @@ class DragController {
 
   // The landing item's top-left in the window once the store has moved it: the gap opened before `gapKey` (which
   // it fills), or, dropped nowhere, its own place. Measured now, less what closes above it as it lands: the gaps and
-  // the collapsing source (their springs may be midway), and the empty pinned grid's drop zone.
+  // the collapsing source (their springs may be midway).
   private landingSpot(drop: Drop): Promise<{ x: number; y: number } | null> | null {
     const source = this.sources[0]!;
+    // Pinned, its place is in the grid.
+    if (drop.type === "tabs" && drop.placement.pinned) return null;
     const target = drop.type !== "none" && this.gapKey ? this.items.get(this.gapKey) : undefined;
-    if (target?.section === "tiles") return null;
     const ref = target ?? source;
     const top = ref.frame?.y;
     if (top === undefined) return null;
@@ -263,17 +253,21 @@ class DragController {
     };
     let closing = 0;
     for (const i of this.items.values()) if (i.frame && (i === ref || i.frame.y < top)) closing += now(i.gap);
-    if (source !== ref && source.frame && source.frame.y < top) closing += now(source.size);
+    // A group's member sits in its fold's own wrapper, which can't shrink below nothing: the gap after it stays until
+    // the member goes (Fold.tsx). A top-level row's negative margin cancels its gap.
+    // Its group's last member, the group goes with it: all of the group's room closes.
+    const group = source.parentGroup ? this.items.get(`g:${source.parentGroup}`) : undefined;
+    const emptied = !!group && group.tabIds.every((id) => source.tabIds.includes(id)) && !!group.frame && group.frame.y < top && group !== ref;
+    if (!emptied && source !== ref && source.frame && source.frame.y < top)
+      closing += source.parentGroup ? Math.max(0, now(source.size) - ROW_GAP) + ROW_GAP : now(source.size);
     // A tail is a zero-height mark after its section's or group's last item: its x is the container's.
     const container = ref.kind === "tail" ? [...this.items.values()].find((i) => i !== source && i.kind !== "tail" && i.frame && i.section === ref.section && i.parentGroup === ref.parentGroup) : ref;
-    const zone = this.zoned ? Promise.all([measure(this.regions.get("pinnedGroups") ?? null), measure(this.regions.get("tiles") ?? null)]) : Promise.resolve([null, null]);
     // Dropped nowhere, the list goes back to how it was when the drag began: its place then.
     const home = target ? null : this.at(source.frame);
-    return Promise.all([home ? Promise.resolve(home) : measure(ref.view), zone]).then(([f, [groups, tiles]]) => {
+    if (home) return Promise.resolve({ x: home.x, y: home.y });
+    return Promise.all([measure(ref.view), emptied ? measure(group!.view) : null]).then(([f, gone]) => {
       if (!f) return null;
-      const lift = groups && tiles ? groups.y - tiles.y : 0;
-      if (home) return { x: home.x, y: home.y - lift };
-      return { x: container?.frame?.x ?? f.x, y: f.y - closing - lift + (ref.kind === "tail" ? ROW_GAP : 0) };
+      return { x: container?.frame?.x ?? f.x, y: f.y - closing - (gone ? gone.h + ROW_GAP : 0) + (ref.kind === "tail" ? ROW_GAP : 0) };
     });
   }
 
@@ -306,7 +300,9 @@ class DragController {
       return f.y + Math.min(f.h, i.headerFrame?.h ?? f.h) / 2;
     };
     const byY = (a: Item, b: Item) => this.at(a.frame)!.y - this.at(b.frame)!.y || a.frame!.x - b.frame!.x;
-    const firstTab = (i: Item | undefined) => i?.tabIds[0] ?? null;
+    // Before an item's first tab that isn't being dragged (a group's member dragged out above its own group).
+    const dragged = new Set(this.sources.flatMap((s) => s.tabIds));
+    const firstTab = (i: Item | undefined) => i?.tabIds.find((id) => !dragged.has(id)) ?? null;
     const tabsDrag = source.kind === "row" || source.kind === "tile";
     const rowPitch = (source.kind === "group" ? (source.frame?.h ?? layout.rowHeight) : layout.rowHeight * Math.max(1, this.ghost?.count ?? 1)) + ROW_GAP;
     let drop: Drop = { type: "none" };
@@ -351,7 +347,8 @@ class DragController {
         const pinned = source.kind === "group" && !!list && y < list.y;
         const section: Section = pinned ? "pinnedGroups" : "list";
         const blocks = live.filter((i) => i.section === section && !i.parentGroup && i.kind !== "tail" && i.kind !== "tile").sort(byY);
-        const before = blocks.find((b) => cy(b) > y);
+        // A block holding nothing but what's dragged (a group's last member) isn't a place to land before.
+        const before = blocks.find((b) => cy(b) > y && firstTab(b) !== null);
         gapKey = before?.key ?? `tail:${section}`;
         drop =
           source.kind === "group"
@@ -372,6 +369,7 @@ class DragController {
     this.drop = drop;
     this.into = into;
     this.setDropInto(into);
+    this.marks.setState({ pins: drop.type === "tabs" && drop.placement.pinned });
     if (gapKey !== this.gapKey) {
       const prev = this.gapKey && this.items.get(this.gapKey);
       if (prev) spring(prev.gap, 0).start();
@@ -434,6 +432,8 @@ export function DragScope({ enabled, children }: { enabled: boolean; children: R
 
 export const useDragController = () => useContext(DragContext) ?? undefined;
 export const useDropInto = () => useStore(useContext(DragContext)?.marks ?? noMarks, (m) => m.dropInto);
+/** The drop would pin the dragged tabs. */
+export const useDropPins = () => useStore(useContext(DragContext)?.marks ?? noMarks, (m) => m.pins);
 
 export function useDragItem(key: string, spec: ItemSpec, selection: () => string[] = () => []) {
   const controller = useContext(DragContext) ?? undefined;

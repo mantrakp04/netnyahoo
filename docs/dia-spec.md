@@ -665,8 +665,13 @@ right split"; the numbers are from the pixels.
   never moved (the dragged tab, at 0.92 opacity, slid over them), and the drop snapped everything in one frame. Now
   (`layout/stripReorder.ts`): the snapshot waits until the tab leaves the strip and costs ~17 ms (the window at
   half a point a pixel, the pill alone at 2x); the neighbours slide on that spring; the drop is one store update and
-  one Chrome strip command, and the tab settles into its place on the same spring. The sidebar's rows make room and
-  close up on the same spring, and the dropped row's ghost settles into its place before the row shows.
+  one Chrome strip command, and the tab settles into its place on the same spring, the store moving it as it lands.
+  The dragged item draws over its neighbours: React Native macOS's `zIndex` sets the layer's zPosition, which AppKit
+  ignores between sibling views, so `raiseView` (packages/shell) puts its view and layer last among its siblings while
+  dragged. The sidebar's rows make room and close up on the same spring, and the dropped row's ghost settles into its
+  place before the row shows. With nothing pinned, the pin target is an overlay in room the sidebar already has (the
+  band above the first row, or over the address field) instead of a grid that pushed every row down ~45 pt as a drag
+  began and back up as it ended.
 - **In the strip** (both layouts): an item takes its neighbour's place once its leading edge passes the neighbour's
   centre, so a wide group passes a narrow tab. Not in the recordings, matched to Dia's behaviour: a group moves
   by its chip; a tab dragged into the pinned tabs (its leading edge past the last one's middle) is pinned there, and a

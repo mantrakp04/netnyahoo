@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { inflateSync } from "node:zlib";
 
 const args = process.argv.slice(2);
 const appArg = args.find((a) => !a.startsWith("--"));
@@ -80,6 +81,51 @@ const settle = (ms) => new Promise((r) => setTimeout(r, ms));
 const run = (body) => nn(`${HELPERS}\n${body}`);
 const order = (w) => run(`return st().windows.${w}.tabIds;`);
 const drag = (w, points) => run(`return act("${w}", "windowDrags").then(() => act("${w}", "drag:${points.map((p) => p.join(",")).join(";")}")).then(() => settle(${points.length * 12 * 16 + 700})).then(() => act("${w}", "windowDrags")).then((t) => Number(t.split("\\n")[0]));`);
+
+// An 8-bit RGB(A) PNG's pixels (what devSnapshotWindow writes): { width, height, channels, data }.
+function readPng(path) {
+  const buf = readFileSync(path);
+  let width = 0, height = 0, channels = 4;
+  const idat = [];
+  for (let at = 8; at < buf.length; ) {
+    const length = buf.readUInt32BE(at), type = buf.toString("ascii", at + 4, at + 8);
+    if (type === "IHDR") {
+      width = buf.readUInt32BE(at + 8);
+      height = buf.readUInt32BE(at + 12);
+      assert.equal(buf[at + 16], 8, "8-bit");
+      channels = { 2: 3, 6: 4 }[buf[at + 17]];
+    } else if (type === "IDAT") idat.push(buf.subarray(at + 8, at + 8 + length));
+    at += 12 + length;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * channels;
+  const data = Buffer.alloc(stride * height);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)];
+    for (let x = 0; x < stride; x++) {
+      const v = raw[y * (stride + 1) + 1 + x];
+      const a = x >= channels ? data[y * stride + x - channels] : 0;
+      const b = y ? data[(y - 1) * stride + x] : 0;
+      const c = x >= channels && y ? data[(y - 1) * stride + x - channels] : 0;
+      const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+      const pred = [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][filter];
+      data[y * stride + x] = (v + pred) & 255;
+    }
+  }
+  return { width, height, channels, data };
+}
+// How much a box varies (luminance's standard deviation), in points (the snapshot is at 2x): an icon drawn there
+// varies; covered by a card, it varies by as little as the card lets through.
+function contrast(png, [x0, y0, x1, y1]) {
+  const values = [];
+  for (let y = y0 * 2; y < y1 * 2; y++)
+    for (let x = x0 * 2; x < x1 * 2; x++) {
+      const i = (y * png.width + x) * png.channels;
+      values.push(0.2126 * png.data[i] + 0.7152 * png.data[i + 1] + 0.0722 * png.data[i + 2]);
+    }
+  const mean = values.reduce((a, v) => a + v, 0) / values.length;
+  return Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length);
+}
 
 const results = [];
 async function check(name, fn) {
@@ -173,6 +219,31 @@ try {
     // Back where it was, for the cases after this one.
     await run(`const id = ${JSON.stringify(before[2])}; const ids = ${JSON.stringify(before)}.filter((t) => !st().tabs[t].pinned); st().moveTab(id, ids.indexOf(id)); return settle(300);`);
     assert.deepEqual(await order("w1"), before);
+  });
+
+  await check("a tab dragged over its right neighbour draws on top of it", async () => {
+    const now = await run(`return items("w1");`);
+    const before = await order("w1");
+    // The third item (a tab) held over the left part of the fourth, short of trading places with it.
+    const [a, b] = [now[2], now[3]];
+    const x0 = Math.round((a[0] + a[1]) / 2);
+    const x1 = x0 + Math.round((a[1] - a[0]) * 0.4);
+    // Selected, so it has its card. Under the empty end of the dragged tab (its close button's slot, past its title),
+    // the neighbour's icon and title: alone, then with the tab held over them.
+    await run(`st().activate(${JSON.stringify(before[2])}); return settle(600);`);
+    const end = a[1] + (x1 - x0);
+    const icon = [end - 24, 12, end - 6, 30];
+    const shots = [join(data, "z-alone.png"), join(data, "z-over.png")];
+    await run(`return nn.shell.devSnapshotWindow("w1", ${JSON.stringify(shots[0])}).then(() => {
+      act("w1", "drag:${x0},21;${x0 + 10},21;${x1},21;${x1},21;${x1},21;${x1},21");
+      return settle(150 + 12 * 16 * 2 + 200).then(() => nn.shell.devSnapshotWindow("w1", ${JSON.stringify(shots[1])}));
+    }).then(() => settle(1500));`);
+    const [alone, over] = shots.map((path) => contrast(readPng(path), icon));
+    // Drawn under the neighbour, its icon would show over the tab's card at full contrast; the card over it (half
+    // opaque in dark, Dia's) dims it.
+    assert.ok(alone > 12, `the box holds the icon: ${alone}`);
+    assert.ok(over < alone * 0.75, `the neighbour's icon is drawn over the dragged tab: contrast alone ${alone.toFixed(1)}, held over ${over.toFixed(1)}`);
+    assert.deepEqual(await order("w1"), before, "it went back");
   });
 
   await check("a lone tab dragged doesn't move its window", async () => {
@@ -363,6 +434,33 @@ try {
     const splits = await run(`return Object.values(st().splits).map((v) => v.tabIds);`);
     assert.ok(splits.some((ids) => ids[0] === row.id), JSON.stringify(splits));
   });
+  await check("sidebar: nothing moves as a drag starts or ends (the pin target takes no room)", async () => {
+    const rows = () => run(`return Promise.all([...globalThis.sidebarDrag.items.values()].filter((i) => (i.kind === "row" || i.kind === "group") && i.view).map((i) => new Promise((r) => i.view.measureInWindow((x, y, w, h) => r([i.key, x, y, w, h])))));`);
+    // Nothing pinned: the case whose pin target used to push the list down.
+    await run(`const pinned = st().windows.w1.tabIds.filter((id) => st().tabs[id].pinned); if (pinned.length) st().placeTabs(pinned, { pinned: false, beforeId: null }); return settle(800);`);
+    const start = (await rows()).sort((a, b) => a[2] - b[2]);
+    const top = start.find(([key]) => key.startsWith("t:"));
+    assert.ok(top, JSON.stringify(start));
+    const [key, x, y, w, h] = top;
+    const sx = Math.round(x + w / 2), sy = Math.round(y + h / 2);
+    // Pressed, moved a little within its own place, held, let go: the drag shows its pin target meanwhile.
+    const during = await run(`act("w1", "drag:${sx},${sy};${sx},${sy + 8};${sx},${sy + 8};${sx},${sy + 8};${sx},${sy + 8}");
+      return settle(150 + 12 * 16 * 2 + 150).then(() => Promise.all([...globalThis.sidebarDrag.items.values()].filter((i) => (i.kind === "row" || i.kind === "group") && i.view && i.key !== ${JSON.stringify(key)}).map((i) => new Promise((r) => i.view.measureInWindow((x, y, w, h) => r([i.key, x, y, w, h]))))))
+        .then((rows) => ({ rows, ghost: !!globalThis.sidebarDrag.active, zone: !!globalThis.sidebarDrag.regions.get("tiles") }));`);
+    await run(`return settle(1500);`);
+    const end = await rows();
+    const at = (list) => Object.fromEntries(list.map(([k, x, y]) => [k, [x, y]]));
+    const [s0, s1, s2] = [at(start), at(during.rows), at(end)];
+    assert.ok(during.ghost, "dragging when measured");
+    assert.ok(during.zone, "the pin target showed");
+    for (const k of Object.keys(s1)) {
+      assert.ok(Math.abs(s1[k][1] - s0[k][1]) < 0.5 && Math.abs(s1[k][0] - s0[k][0]) < 0.5, `${k} moved during the drag: ${s0[k]} -> ${s1[k]}`);
+    }
+    for (const k of Object.keys(s0)) {
+      assert.ok(s2[k] && Math.abs(s2[k][1] - s0[k][1]) < 0.5, `${k} moved after the drag: ${s0[k]} -> ${s2[k]}`);
+    }
+  });
+
   await check("sidebar: a row let go between two others settles into its place, where the row then is", async () => {
     await run(`st().newTab("w1"); st().newTab("w1"); st().newTab("w1"); return settle(1200);`);
     const rows = await run(`return Promise.all([...globalThis.sidebarDrag.items.values()].filter((i) => i.kind === "row" && !i.parentGroup && i.view).map((i) => new Promise((r) => i.view.measureInWindow((x, y, w, h) => r({ id: i.tabIds[0], x, y, w, h })))));`);

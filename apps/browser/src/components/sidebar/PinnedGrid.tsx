@@ -11,7 +11,7 @@ import { useIsActiveTab, useTab, useTabLive, useWindowId } from "../../store/hoo
 import { awayFromPin } from "../../store/organize";
 import { NextMeetingBadge } from "../live/NextMeetingBadge";
 import { clickTab, startRename } from "./actions";
-import { useDragController, useDragItem } from "./dnd";
+import { useDragController, useDragItem, useDropPins } from "./dnd";
 import { dismissHover, useRowHover } from "./hover";
 import { openTabMenu } from "./menus";
 import { registerRow } from "./state";
@@ -26,48 +26,63 @@ const MIN_TILE = 50;
 const SELECTION_STROKE = 3;
 const GLASS_RIM = 1;
 
-export const PinnedGrid = memo(function PinnedGrid({ tabs, innerWidth, dragging }: { tabs: string[]; innerWidth: number; dragging: boolean }) {
+export const PinnedGrid = memo(function PinnedGrid({ tabs, innerWidth }: { tabs: string[]; innerWidth: number }) {
   const controller = useDragController();
   const columns = Math.max(1, Math.min(tabs.length || 1, Math.floor((innerWidth + GAP) / (MIN_TILE + GAP))));
   const width = Math.floor(((innerWidth - GAP * (columns - 1)) / columns) * 2) / 2;
   const tail = useDragItem("tail:tiles", { kind: "tail", tabIds: [], section: "tiles" });
   const topGap = listTopGap(useAddressBarInSidebar());
-  const empty = tabs.length === 0;
-  if (empty && !dragging) return null;
+  // With no pinned tabs a drag's pin target is an overlay that takes no room (PinDropZone): nothing here.
+  if (!tabs.length) return null;
+  return (
+    <View
+      ref={(v) => {
+        controller?.regions.set("tiles", v);
+      }}
+      style={{ marginTop: topGap, flexDirection: "row", flexWrap: "wrap", rowGap: GAP, columnGap: GAP }}
+    >
+      {tabs.map((id) => (
+        <PinnedTile key={id} tabId={id} width={width} />
+      ))}
+      <Animated.View ref={tail.wrapper.ref} style={{ position: "absolute", right: 0, bottom: 0, width: 0, height: 0 }} />
+    </View>
+  );
+});
+
+/**
+ * The pin target while a tab is dragged and nothing is pinned yet: laid over the sidebar in room it already has (the
+ * address field, or the band between the header and the first row), so no row moves as a drag starts or ends.
+ * It lights up while the drop would pin.
+ */
+export function PinDropZone({ top, height, cover }: { top: number; height: number; cover: boolean }) {
+  const tokens = useSidebarTokens();
+  const theme = useTheme();
+  const controller = useDragController();
+  const active = useDropPins();
   return (
     <View
       ref={(v) => {
         controller?.regions.set("tiles", v);
       }}
       onLayout={() => void controller?.tilesLaidOut()}
-      style={{ marginTop: topGap, flexDirection: "row", flexWrap: "wrap", rowGap: GAP, columnGap: GAP }}
-    >
-      {tabs.map((id) => (
-        <PinnedTile key={id} tabId={id} width={width} />
-      ))}
-      {empty ? <PinDropZone width={innerWidth} /> : null}
-      <Animated.View ref={tail.wrapper.ref} style={{ position: "absolute", right: 0, bottom: 0, width: 0, height: 0 }} />
-    </View>
-  );
-});
-
-function PinDropZone({ width }: { width: number }) {
-  const tokens = useSidebarTokens();
-  const theme = useTheme();
-  return (
-    <View
+      pointerEvents="none"
       style={{
-        width,
-        height: layout.pinnedHeight,
+        position: "absolute",
+        left: layout.sidebarInset,
+        right: layout.sidebarInset,
+        top,
+        height,
         borderRadius: 10,
-        borderWidth: 1,
+        borderWidth: active ? 1.5 : 1,
         borderStyle: "dashed",
-        borderColor: tokens.dragBorder,
+        borderColor: active ? theme.accent : tokens.dragBorder,
+        // Over the address field it hides it (the drag's silhouette fill); in the empty band it needs none.
+        backgroundColor: cover ? tokens.dragSilhouette : active ? (theme.dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)") : undefined,
         alignItems: "center",
         justifyContent: "center",
       }}
     >
-      <Symbol name="pin" size={13} color={theme.textSecondary} style={{ width: 16, height: 16 }} />
+      <Symbol name="pin" size={13} color={active ? theme.accent : theme.textSecondary} style={{ width: 16, height: 16 }} />
     </View>
   );
 }
