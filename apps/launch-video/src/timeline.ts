@@ -56,6 +56,6 @@ export const CAMERA_BREAKS = [409];
 export const SUPERS = [
   { from: at(1, 2), to: at(2, 1, -4), text: "The sidebar browser." },
   { from: at(5, 2), to: at(6, 1, -4), text: "Every Chrome extension." },
-  { from: at(6, 2), to: at(7, 1, -4), text: "No account. No AI." },
+  { from: at(6, 2), to: at(7, 1, -4), text: "No account." },
   { from: at(7, 2), to: at(8, 1, -4), text: "Open source. Free." },
 ] as const;

@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Netnyahoo is a macOS browser: Dia's polish and Arc's sidebar, built on Chrome's own framework (Chromium 154) through NNCore, our thin layer,
-with no account and no AI. It's also a satire brand. This file is how the owner works; follow it.
+with no account. It's also a satire brand. This file is how the owner works; follow it.
 For the architecture and the test tooling, read `docs/agent-brief.md`.
 
 ## How work gets done
@@ -93,8 +93,8 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
 
   The owner has authorized releases to go all the way through. After an update, the app opens the
   release notes on netnyahoo.com.
-- **Every release gets a tweet draft**: a version line, 4–5 short, witty, simple bullets, "Still free.
-  Still no AI." and the URL, under 280 characters. Add a 1600×1000 image in the site's style built from
+- **Every release gets a tweet draft**: a version line, 4–5 short, witty, simple bullets, "Still free." and
+  the URL, under 280 characters. Add a 1600×1000 image in the site's style built from
   real captures of neutral pages (no random user posts or personal data) at `output/tweets/<version>.png`.
   Only the owner posts it.
 - **Other public actions** (a site deploy outside a release, posting anywhere) need the owner's OK first.

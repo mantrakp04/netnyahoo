@@ -243,7 +243,7 @@ part of a release; for site changes outside a release, ask first.
 ## 7. Tweet draft
 
 Draft the announcement for the owner to post (never post it yourself): `Netnyahoo <version>`, 4–5 short,
-witty, simple bullets from the notes, then "Still free. Still no AI." and netnyahoo.com, under 280
+witty, simple bullets from the notes, then "Still free." and netnyahoo.com, under 280
 characters. Make `output/tweets/<version>.png` (1600×1000, the site's paper background and fonts) from
 real captures of a hidden instance on neutral pages you control; see `output/tweets/0.2.12.png`. Send both
 to the owner.

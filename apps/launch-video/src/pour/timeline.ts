@@ -72,7 +72,7 @@ export const LINES = [
 ] as const;
 
 export const SUPERS = [
-  { from: at(7, 3), to: at(8), text: "No account · No AI · Open source" },
+  { from: at(7, 3), to: at(8), text: "No account · Open source" },
   { from: at(8, 2), to: at(9), text: "NETNYAHOO", kind: "name" },
   { from: at(8, 2), to: at(9), text: "Eau de Chromium", kind: "sub" },
 ] as const;

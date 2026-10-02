@@ -2,7 +2,7 @@
 // The engineering record, styled as a ballot: what's in (ticked), what isn't yet (empty box).
 type Vote = "yes" | "part" | "no";
 const rows: { item: string; detail: string; vote: Vote; label?: string }[] = [
-  { item: "Engine", detail: "Chromium 154. Our own CEF build.", vote: "yes" },
+  { item: "Engine", detail: "Chromium 154. Chrome’s own framework.", vote: "yes" },
   { item: "Windows", detail: "Chrome’s own. Menus and autofill just work.", vote: "yes" },
   { item: "De-Googled", detail: "ungoogled-chromium underneath.", vote: "yes" },
   { item: "H.264 and AAC", detail: "The codecs Chromium leaves out.", vote: "yes" },
@@ -13,7 +13,6 @@ const rows: { item: string; detail: string; vote: Vote; label?: string }[] = [
   { item: "Translate", detail: "On your Mac. Nothing leaves it.", vote: "yes", label: "Yes, macOS 26" },
   { item: "Widevine", detail: "So no Netflix.", vote: "no" },
   { item: "Intel Macs", detail: "Apple Silicon only.", vote: "no", label: "No" },
-  { item: "AI", detail: "", vote: "no", label: "Abstained" },
 ];
 const labels: Record<Vote, string> = { yes: "Yes", part: "Partly", no: "Not yet" };
 ---

@@ -101,5 +101,4 @@ export const alsoPassed: { title: string; body: string }[] = [
   { title: "A broad coalition of shortcuts", body: "Chrome’s and Dia’s. Where they disagree, Dia’s wins." },
   { title: "Updates itself", body: "Quietly, in the background. No press conference." },
   { title: "Austerity budget", body: "Idles under half a percent of CPU with a tab open." },
-  { title: "No AI, on purpose", body: "Nothing in here wants to chat." },
 ];
