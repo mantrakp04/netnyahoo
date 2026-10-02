@@ -1,6 +1,6 @@
 import { ContextMenuArea, FadeLabel, Surface, Symbol } from "@netnyahoo/shell";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, Pressable, Text, View } from "react-native";
+import { memo } from "react";
+import { Animated, Pressable, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
@@ -12,6 +12,7 @@ import { HoverSlot } from "../HoverSlot";
 import { IconButton } from "../primitives";
 import { commitRename, endRename, startRename } from "./actions";
 import { useDragItem, useDropInto } from "./dnd";
+import { Fold, useFold } from "./Fold";
 import { useGroupEntries } from "./entries";
 import { dismissHover, useRowHover } from "./hover";
 import { openGroupMenu } from "./menus";
@@ -21,9 +22,6 @@ import { RenameField, SplitRowItem, TabRowItem } from "./TabRow";
 import { GROUP_COLORS, useSidebarTokens, withAlpha } from "./tokens";
 
 const PAD = 2;
-// Dia 1.50.1 (owner recording, 60 fps): a group opens or closes in about 150 ms, fast at first.
-const TOGGLE_MS = 150;
-const TOGGLE_EASING = Easing.bezier(0.2, 0.9, 0.3, 1);
 
 export const GroupBlock = memo(function GroupBlock({ groupId, section }: { groupId: string; section: "list" | "pinnedGroups" }) {
   const windowId = useWindowId();
@@ -46,85 +44,32 @@ export const GroupBlock = memo(function GroupBlock({ groupId, section }: { group
   const { wrapper, handle, headerRef } = useDragItem(`g:${groupId}`, { kind: "group", tabIds: tabIds.split(",").filter(Boolean), section, groupId, collapsed });
   const tail = useDragItem(`tail:group:${groupId}`, { kind: "tail", tabIds: [], section, parentGroup: groupId });
 
-  const open = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
-  const [measured, setMeasured] = useState({ height: 0, count: -1 });
-  const settled = useRef(collapsed);
-  const [animating, setAnimating] = useState(false);
-  const moving = animating || settled.current !== collapsed;
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    setAnimating(true);
-    // JS driver: the height reflows the rows below.
-    Animated.timing(open, { toValue: collapsed ? 0 : 1, duration: TOGGLE_MS, easing: TOGGLE_EASING, useNativeDriver: false }).start(
-      ({ finished }) => {
-        if (!finished) return;
-        settled.current = collapsed;
-        setAnimating(false);
-      },
-    );
-  }, [collapsed]);
+  const fold = useFold(collapsed);
 
   const spec = color ? GROUP_COLORS[color] : null;
   const fill = spec ? withAlpha(spec.hex, 0.16) : tokens.groupFill;
   const stroke = spec ? withAlpha(spec.hex, 0.3) : tokens.groupStroke;
-  // A collapsed group's members aren't mounted (a big group would otherwise cost as much as if it were open); they
-  // mount for the animation. Rows are fixed-height, so their height is known before they're measured.
-  // Selected members stay mounted: a multi-tab drag gathers its rows from the mounted ones (sidebar/dnd.tsx).
-  const membersShown = !collapsed || moving || selectedInside;
-  // With the active tab inside, the group folds around it: that row stays put at full opacity while the others slide
-  // away or back (it used to fade out with them and pop back in, a flicker on every click). Each folded row cancels
-  // the list's gap after it.
-  const folding = !!activeEntry && (collapsed || moving);
-  const fold = useMemo(
-    () => ({
-      moving: {
-        height: open.interpolate({ inputRange: [0, 1], outputRange: [0, layout.rowHeight] }),
-        marginBottom: open.interpolate({ inputRange: [0, 1], outputRange: [-layout.rowGap, 0] }),
-        opacity: open,
-        overflow: "hidden" as const,
-      },
-      closed: { height: 0, marginBottom: -layout.rowGap, opacity: 0, overflow: "hidden" as const },
-    }),
-    [open],
-  );
-  const contentHeight =
-    measured.count === entries.length ? measured.height : entries.length * layout.rowHeight + Math.max(0, entries.length - 1) * layout.rowGap + PAD;
-  const membersStyle = folding
-    ? null
-    : moving
-      ? { height: open.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }), opacity: open, overflow: "hidden" as const }
-      : collapsed
-        ? { height: 0, opacity: 0, overflow: "hidden" as const }
-        : null;
 
   return (
     <Animated.View ref={wrapper.ref} style={wrapper.style}>
       <View style={{ borderRadius: 12, backgroundColor: fill, borderWidth: 0.5, borderColor: stroke, paddingHorizontal: PAD }}>
         <View ref={headerRef} {...handle}>
-          <GroupHeader groupId={groupId} windowId={windowId} collapsed={collapsed} open={open} />
+          <GroupHeader groupId={groupId} windowId={windowId} collapsed={collapsed} open={fold.open} />
         </View>
-        <Animated.View style={membersStyle} pointerEvents={collapsed ? "box-none" : "auto"}>
-          <View
-            onLayout={(e) => (!collapsed || moving) && !folding && setMeasured({ height: e.nativeEvent.layout.height, count: entries.length })}
-            style={{ gap: layout.rowGap, paddingBottom: PAD }}
-          >
-            {entries.map((entry) => {
-              const stays = entry === activeEntry;
-              if (!stays && !membersShown) return null;
-              // One wrapper per entry in every state, so the active row never remounts as the group opens or closes.
-              return (
-                <Animated.View key={entry} style={folding && !stays ? (moving ? fold.moving : fold.closed) : null} pointerEvents={collapsed && !stays ? "none" : "auto"}>
-                  <Entry entry={entry} section={section} groupId={groupId} />
-                </Animated.View>
-              );
-            })}
-            <Animated.View ref={tail.wrapper.ref} style={tail.wrapper.style} />
-          </View>
-        </Animated.View>
+        {/* A collapsed group's members aren't mounted (a big group would otherwise cost as much as if it were open); they
+            mount for the animation. Selected members stay mounted: a multi-tab drag gathers its rows from the mounted
+            ones (sidebar/dnd.tsx). The active tab stays out while the group is collapsed, as in Arc and Dia. */}
+        <Fold
+          fold={fold}
+          collapsed={collapsed}
+          entries={entries.map((entry) => ({ key: entry, node: <Entry entry={entry} section={section} groupId={groupId} /> }))}
+          keep={activeEntry}
+          gap={layout.rowGap}
+          rowHeight={layout.rowHeight}
+          padBottom={PAD}
+          mountClosed={selectedInside}
+          footer={<Animated.View ref={tail.wrapper.ref} style={tail.wrapper.style} />}
+        />
       </View>
     </Animated.View>
   );
@@ -155,7 +100,6 @@ function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; 
   const dropInto = useDropInto() === groupId;
   const { hovered, hoverProps } = useRowHover(windowId, collapsed && !renaming ? { kind: "group", id: groupId } : null);
   const countdown = useMeetingCountdown(groupId);
-  const [labelWidth, setLabelWidth] = useState(0);
   if (!group) return null;
   const target = { kind: "group" as const, id: groupId };
 
@@ -195,14 +139,14 @@ function GroupHeader({ groupId, windowId, collapsed, open }: { groupId: string; 
               ) : (
                 // Dia: the name, then a chevron right after it (∨ open, › closed), no count.
                 <Animated.View style={{ flex: 1, height: 18, marginLeft: 5, flexDirection: "row", alignItems: "center", transform: [{ rotate: countdown.rotate }] }}>
-                  <Text
-                    numberOfLines={1}
-                    onLayout={(e) => setLabelWidth(Math.ceil(e.nativeEvent.layout.width))}
-                    style={{ position: "absolute", opacity: 0, fontSize: 13, fontWeight: "500" }}
-                  >
-                    {label}
-                  </Text>
-                  <FadeLabel text={label} fontSize={13} weight="medium" color={tokens.groupTitle} style={{ width: labelWidth + 8, flexShrink: 1, height: 18 }} />
+                  {/* The name is as wide as its (transparent) text, laid out in the same pass: the chevron follows it
+                      from the first frame. The label draws over it with 8 pt more for its fade. */}
+                  <View style={{ flexShrink: 1, height: 18, paddingRight: 8, justifyContent: "center" }}>
+                    <Text numberOfLines={1} style={{ opacity: 0, fontSize: 13, fontWeight: "500" }}>
+                      {label}
+                    </Text>
+                    <FadeLabel text={label} fontSize={13} weight="medium" color={tokens.groupTitle} style={{ position: "absolute", left: 0, right: 0, top: 0, height: 18 }} />
+                  </View>
                   <Animated.View
                     style={{
                       width: 10,

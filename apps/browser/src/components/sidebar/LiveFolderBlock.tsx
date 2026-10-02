@@ -18,6 +18,7 @@ import { HoverSlot } from "../HoverSlot";
 import { IconButton, useHover } from "../primitives";
 import { useLiveColors, type LiveColors } from "../live/colors";
 import { clickMods, TabRow } from "./TabRow";
+import { Fold, useFold, type FoldEntry } from "./Fold";
 import { dismissHover, useRowHover } from "./hover";
 import { openLiveFolderMenu, openLiveItemMenu } from "./liveMenus";
 import { registerRow } from "./state";
@@ -45,34 +46,6 @@ export const LiveFolders = memo(function LiveFolders({ windowId, spaced }: { win
   );
 });
 
-function useDisclosure(collapsed: boolean) {
-  const open = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
-  const [height, setHeight] = useState(0);
-  const settled = useRef(collapsed);
-  const [animating, setAnimating] = useState(false);
-  const moving = animating || settled.current !== collapsed;
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    setAnimating(true);
-    // JS driver: the height reflows the rows below.
-    Animated.timing(open, { toValue: collapsed ? 0 : 1, duration: 240, easing: Easing.bezier(0.2, 0.9, 0.3, 1), useNativeDriver: false }).start(({ finished }) => {
-      if (!finished) return;
-      settled.current = collapsed;
-      setAnimating(false);
-    });
-  }, [collapsed]);
-  const style = moving
-    ? { height: open.interpolate({ inputRange: [0, 1], outputRange: [0, height] }), opacity: open, overflow: "hidden" as const }
-    : collapsed
-      ? { height: 0, opacity: 0, overflow: "hidden" as const }
-      : null;
-  return { style, moving, onLayout: (h: number) => setHeight(h) };
-}
-
 function LiveFolderBlock({ folderId, windowId }: { folderId: string; windowId: string }) {
   const tokens = useSidebarTokens();
   const folder = useLive((s) => s.folders[folderId]);
@@ -85,62 +58,55 @@ function LiveFolderBlock({ folderId, windowId }: { folderId: string; windowId: s
   const strays = useBrowser(
     useShallow((s) => viewTabIds(s, windowId, profileId).filter((id) => s.tabs[id]?.liveItem?.folderId === folderId && !itemIds.has(s.tabs[id]!.liveItem!.itemId))),
   );
-  const activeItem = useBrowser((s) => {
-    const t = s.tabs[activeTabId(s, windowId, profileId) ?? ""];
-    return t?.liveItem?.folderId === folderId ? t.liveItem.itemId : null;
+  // The window's active tab, when it's this folder's: its tab and item.
+  const activeTab = useBrowser((s) => {
+    const id = activeTabId(s, windowId, profileId) ?? "";
+    return s.tabs[id]?.liveItem?.folderId === folderId ? id : null;
   });
-  const { style, moving, onLayout } = useDisclosure(collapsed);
+  const activeItem = useBrowser((s) => (activeTab ? (s.tabs[activeTab]?.liveItem?.itemId ?? null) : null));
+  const completed = useCompletedShown(folderId).length > 0;
+  const fold = useFold(collapsed);
   if (!folder) return null;
-  const peek = collapsed && !moving && activeItem ? items.find((i) => i.id === activeItem) : undefined;
-  const peekStray = collapsed && !moving && activeItem && !peek ? strays.find((id) => useBrowser.getState().tabs[id]?.liveItem?.itemId === activeItem) : undefined;
+
+  const entries: FoldEntry[] = rows.length
+    ? rows.map((row) => ({ key: row.key, node: <FolderRowView row={row} folderId={folderId} windowId={windowId} /> }))
+    : [{ key: "note", node: <FolderNote folderId={folderId} /> }];
+  for (const id of strays) entries.push({ key: `stray:${id}`, node: <TabRow tabId={id} /> });
+  if (completed) entries.push({ key: "completed", node: <CompletedFooter folderId={folderId} windowId={windowId} /> });
+  // The active tab's row stays out while the folder is collapsed (its stack, for an item in one).
+  const keep = !activeTab
+    ? null
+    : strays.includes(activeTab)
+      ? `stray:${activeTab}`
+      : (rows.find((r) => (r.kind === "item" && r.item.id === activeItem) || (r.kind === "stack" && r.items.some((i) => i.id === activeItem)))?.key ?? null);
 
   return (
     <View style={{ borderRadius: 12, backgroundColor: tokens.groupFill, borderWidth: 0.5, borderColor: tokens.groupStroke, paddingHorizontal: PAD }}>
       <FolderHeader folderId={folderId} windowId={windowId} collapsed={collapsed} />
-      {peek ? (
-        <View style={{ paddingBottom: PAD }}>
-          <LiveItemRow folderId={folderId} item={peek} windowId={windowId} />
-        </View>
-      ) : peekStray ? (
-        <View style={{ paddingBottom: PAD }}>
-          <TabRow tabId={peekStray} />
-        </View>
-      ) : null}
-      <Animated.View style={style} pointerEvents={collapsed ? "none" : "auto"}>
-        <View onLayout={(e) => onLayout(e.nativeEvent.layout.height)} style={{ gap: layout.rowGap, paddingBottom: PAD }}>
-          <FolderBody folderId={folderId} windowId={windowId} rows={rows} hidden={peek?.id} />
-          {strays.map((id) => (id === peekStray ? null : <TabRow key={id} tabId={id} />))}
-          <CompletedFooter folderId={folderId} windowId={windowId} />
-        </View>
-      </Animated.View>
+      <Fold fold={fold} collapsed={collapsed} entries={entries} keep={keep} gap={layout.rowGap} padBottom={PAD} />
     </View>
   );
 }
 
-function FolderBody({ folderId, windowId, rows, hidden }: { folderId: string; windowId: string; rows: FolderRow[]; hidden?: string }) {
+function FolderRowView({ row, folderId, windowId }: { row: FolderRow; folderId: string; windowId: string }) {
+  switch (row.kind) {
+    case "header":
+      return <SectionTitle title={row.title} />;
+    case "more":
+      return <MoreRow folderId={folderId} section={row.section} count={row.count} />;
+    case "stack":
+      return <StackRow folderId={folderId} windowId={windowId} stack={row} />;
+    case "item":
+      return <LiveItemRow folderId={folderId} item={row.item} windowId={windowId} />;
+  }
+}
+
+function FolderNote({ folderId }: { folderId: string }) {
   const status = useLive((s) => s.status[folderId]);
   const kind = useLive((s) => s.folders[folderId]?.kind);
-  if (!rows.length) {
-    if (!status || status.state === "initializing" || (status.state === "updating" && !status.lastFetch)) return <NoteRow text="Loading…" spinner />;
-    if (status.error) return <NoteRow text={errorText(status.error.kind, status.error.source)} onPress={() => openSettings("liveFolders")} icon="exclamationmark.triangle.fill" />;
-    return <NoteRow text={kind === "pullRequests" ? "No open pull requests" : "No recent documents"} />;
-  }
-  return (
-    <>
-      {rows.map((row) => {
-        switch (row.kind) {
-          case "header":
-            return <SectionTitle key={row.key} title={row.title} />;
-          case "more":
-            return <MoreRow key={row.key} folderId={folderId} section={row.section} count={row.count} />;
-          case "stack":
-            return <StackRow key={row.key} folderId={folderId} windowId={windowId} stack={row} />;
-          case "item":
-            return row.item.id === hidden ? null : <LiveItemRow key={row.key} folderId={folderId} item={row.item} windowId={windowId} />;
-        }
-      })}
-    </>
-  );
+  if (!status || status.state === "initializing" || (status.state === "updating" && !status.lastFetch)) return <NoteRow text="Loading…" spinner />;
+  if (status.error) return <NoteRow text={errorText(status.error.kind, status.error.source)} onPress={() => openSettings("liveFolders")} icon="exclamationmark.triangle.fill" />;
+  return <NoteRow text={kind === "pullRequests" ? "No open pull requests" : "No recent documents"} />;
 }
 
 function FolderHeader({ folderId, windowId, collapsed }: { folderId: string; windowId: string; collapsed: boolean }) {
@@ -292,7 +258,7 @@ function StackRow({ folderId, windowId, stack }: { folderId: string; windowId: s
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const collapsed = useLive((s) => s.expandedStacks[stack.id] === false);
-  const { style, onLayout } = useDisclosure(collapsed);
+  const fold = useFold(collapsed);
   const { hovered, hoverProps } = useHover();
   const repo = stack.repo.split("/")[1] ?? stack.repo;
   return (
@@ -314,13 +280,14 @@ function StackRow({ folderId, windowId, stack }: { folderId: string; windowId: s
           </View>
         </Pressable>
       </View>
-      <Animated.View style={style} pointerEvents={collapsed ? "none" : "auto"}>
-        <View onLayout={(e) => onLayout(e.nativeEvent.layout.height)} style={{ gap: layout.rowGap, paddingTop: layout.rowGap }}>
-          {stack.items.map((item) => (
-            <LiveItemRow key={item.id} folderId={folderId} item={item} windowId={windowId} indent={10} />
-          ))}
-        </View>
-      </Animated.View>
+      <Fold
+        fold={fold}
+        collapsed={collapsed}
+        entries={stack.items.map((item) => ({ key: item.id, node: <LiveItemRow folderId={folderId} item={item} windowId={windowId} indent={10} /> }))}
+        gap={layout.rowGap}
+        rowHeight={layout.rowHeight}
+        padTop={layout.rowGap}
+      />
     </View>
   );
 }
@@ -466,14 +433,22 @@ function Trailing({ item, completion, colors }: { item: LiveItem; completion: Co
   );
 }
 
+// Items completed in the last day and done animating out of the list.
+function useCompletedShown(folderId: string): CompletedItem[] {
+  return useLive(
+    useShallow((s) => {
+      const completing = s.completing[folderId] ?? NONE;
+      return (s.completed[folderId] ?? []).filter((c) => Date.now() - c.at < 24 * 3_600_000 && !completing.includes(c.item.id));
+    }),
+  );
+}
+
 function CompletedFooter({ folderId, windowId }: { folderId: string; windowId: string }) {
   const theme = useTheme();
   const colors = useLiveColors();
-  const completing = useLive((s) => s.completing[folderId] ?? NONE);
-  const completed = useLive(useShallow((s) => (s.completed[folderId] ?? []).filter((c) => Date.now() - c.at < 24 * 3_600_000)));
+  const shown = useCompletedShown(folderId);
   const [open, setOpen] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const shown = completed.filter((c) => !completing.includes(c.item.id));
   if (!shown.length) return null;
   const enter = () => {
     clearTimeout(hideTimer.current);
