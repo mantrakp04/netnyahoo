@@ -1,0 +1,102 @@
+#!/bin/bash
+# Compiles one CocoaPods pod's sources (and the pods it depends on) without building the app: the quick way to
+# check a native change to packages/{nncore,shell,shaders,import,sync} compiles.
+#
+#   scripts/agent/typecheck-pod <PodName> [--derived-data DIR] [--wait SECS]
+#   scripts/agent/typecheck-pod -h | --help
+#
+# <PodName> is a target of apps/browser/macos/Pods/Pods.xcodeproj: NetnyahooImport, NetnyahooNNCore,
+# NetnyahooShaders, NetnyahooShell, NetnyahooSync (or any other pod there). Runs, under
+# `scripts/agent/locked xcodebuild` (--wait passed on):
+#   xcodebuild -workspace apps/browser/macos/Netnyahoo.xcworkspace -scheme <PodName> -configuration Debug
+#     -destination platform=macOS,arch=arm64 -derivedDataPath DIR -quiet build
+# -quiet leaves only warnings, errors and the result; the exit status is xcodebuild's.
+# DIR defaults to apps/browser/build-typecheck, shared by every caller: the first run compiles the pod's
+# dependencies (React Native, Expo; several minutes), later runs only what changed. Pass an app build's own
+# derived data (apps/browser/build-<you>) to reuse what it already compiled.
+# CocoaPods writes a scheme for each pod under Pods.xcodeproj/xcuserdata/<user>.xcuserdatad at `pod install`;
+# if the pod's scheme is missing, this writes one there from the pod's target.
+set -uo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../.." && pwd)
+macos=$repo/apps/browser/macos
+pods=$macos/Pods/Pods.xcodeproj
+
+help() {
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+  exit 0
+}
+usage() {
+  echo "usage: scripts/agent/typecheck-pod <PodName> [--derived-data DIR] [--wait SECS]  (--help for more)" >&2
+  exit 64
+}
+
+pod="" derived="$repo/apps/browser/build-typecheck" wait=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h | --help) help ;;
+    --derived-data | --wait)
+      [[ $# -ge 2 && -n "$2" ]] || { echo "typecheck-pod: $1 needs a value" >&2; usage; }
+      [[ $1 == --wait ]] && wait="$2" || derived="$2"
+      shift 2
+      ;;
+    -*) echo "typecheck-pod: unknown option $1" >&2; usage ;;
+    *)
+      [[ -z "$pod" ]] || { echo "typecheck-pod: one pod at a time ($pod, then $1)" >&2; usage; }
+      pod="$1"
+      shift
+      ;;
+  esac
+done
+[[ -n "$pod" ]] || usage
+[[ -z "$wait" || "$wait" =~ ^[0-9]+$ ]] || { echo "typecheck-pod: --wait takes whole seconds" >&2; usage; }
+[[ -d "$pods" ]] || { echo "typecheck-pod: no $pods (run pod install first)" >&2; exit 1; }
+
+# The pod's native target: "<id> /* <pod> */ = {" followed by "isa = PBXNativeTarget;".
+target=$(awk -v name="$pod" '
+  $2 == "/*" && $3 == name && $4 == "*/" && $5 == "=" && $6 == "{" { id = $1; next }
+  id != "" { if ($0 ~ /isa = PBXNativeTarget;/) { print id; exit } id = "" }
+' "$pods/project.pbxproj")
+if [[ -z "$target" ]]; then
+  echo "typecheck-pod: no pod target named $pod in $pods; the Netnyahoo ones:" >&2
+  grep -oE '/\* Netnyahoo[A-Za-z]+ \*/ = \{' "$pods/project.pbxproj" | awk '{print "  " $2}' | sort -u >&2
+  exit 1
+fi
+
+schemes=$pods/xcuserdata/$(id -un).xcuserdatad/xcschemes
+if [[ ! -f "$schemes/$pod.xcscheme" && ! -f "$pods/xcshareddata/xcschemes/$pod.xcscheme" ]]; then
+  echo "typecheck-pod: writing the missing scheme $schemes/$pod.xcscheme" >&2
+  mkdir -p "$schemes"
+  product=$(grep -oE "productReference = [0-9A-F]+ /\\* $pod \\*/" "$pods/project.pbxproj" | head -1 | awk '{print $3}')
+  file=$(grep -E "^[[:space:]]*$product /\\* $pod \\*/ = \\{isa = PBXFileReference;" "$pods/project.pbxproj" |
+    sed -nE 's/.* path = ([^;]+);.*/\1/p' | tr -d '"')
+  cat >"$schemes/$pod.xcscheme" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion = "1600" version = "1.3">
+   <BuildAction parallelizeBuildables = "YES" buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry buildForTesting = "YES" buildForRunning = "YES" buildForProfiling = "YES"
+            buildForArchiving = "YES" buildForAnalyzing = "YES">
+            <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "$target"
+               BuildableName = "${file:-lib$pod.a}" BlueprintName = "$pod" ReferencedContainer = "container:Pods.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+</Scheme>
+EOF
+fi
+
+lock=(xcodebuild)
+[[ -n "$wait" ]] && lock+=(--wait "$wait")
+echo "typecheck-pod: building $pod into $derived" >&2
+"$here/locked" "${lock[@]}" -- xcodebuild -workspace "$macos/Netnyahoo.xcworkspace" -scheme "$pod" \
+  -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath "$derived" -quiet build
+status=$?
+if [[ $status -eq 0 ]]; then
+  echo "typecheck-pod: $pod compiles" >&2
+else
+  echo "typecheck-pod: $pod failed (exit $status)" >&2
+fi
+exit $status
