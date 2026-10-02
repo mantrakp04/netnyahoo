@@ -1,5 +1,4 @@
 import {
-  extensionActionStates,
   onExtensionInstallPrompt,
   onExtensionSidePanel,
   onExtensionsChanged,
@@ -15,11 +14,11 @@ import { useBrowser, type BrowserState } from "../../store/browser";
 import { changedIds } from "../../store/changes";
 import { activeTabId, engineProfile } from "../../store/model";
 import { tabForBrowser, usePages } from "../layout/pageState";
+import { refreshActionStates } from "./actions";
 import { startExtensionSearchEngines } from "./searchEngines";
 import * as state from "./state";
 import {
   activateExtension,
-  browserIdOf,
   closeExtensionPopup,
   closeSidePanel,
   extensionProfile,
@@ -27,6 +26,7 @@ import {
   openSidePanel,
   refreshExtensions,
   showInstallPrompt,
+  wantedSidePanels,
   syncSidePanel,
   useExtensions,
   windowExtensions,
@@ -51,7 +51,7 @@ export function startExtensionsBridge() {
     if (s.windows !== prev.windows) loadProfiles(s);
   });
 
-  startActionPolling();
+  startActionStates();
   startSidePanels();
   startWebStoreIntegration();
   if (__DEV__) Object.assign(globalThis, { nnExtensionsApp: { ...state, bridge: { openExtensionFromMenu } } });
@@ -80,43 +80,27 @@ function toolbarAnchor(windowId: string, extensionId: string) {
 
 // MARK: Toolbar actions
 
-function startActionPolling() {
-  let running = false;
-  const poll = async (timer = false) => {
-    if (running || (timer && AppState.currentState !== "active")) return;
-    running = true;
-    try {
-      const s = useBrowser.getState();
-      const { popup } = useExtensions.getState();
-      for (const windowId of s.windowOrder) {
-        const ids = windowExtensions(s, windowId)
-          .filter((x) => x.hasAction !== false && (x.pinned || popup?.extensionId === x.id))
-          .map((x) => x.id);
-        const browserId = browserIdOf(activeTabId(s, windowId));
-        if (!ids.length || !browserId) continue;
-        const states = await extensionActionStates(browserId, ids);
-        const previous = useExtensions.getState().actions[browserId];
-        if (previous && JSON.stringify(previous) === JSON.stringify(states)) continue;
-        useExtensions.setState((e) => ({ actions: { ...e.actions, [browserId]: states } }));
-      }
-      await Promise.all(Object.keys(useExtensions.getState().sidePanels).map((windowId) => syncSidePanel(windowId)));
-    } catch {
-    } finally {
-      running = false;
-    }
-  };
-  setInterval(() => void poll(true), 1500);
+function startActionStates() {
+  // Extensions change their action and side panel without telling the app (NNCore has no event for it): look again
+  // every 1.5 s while the app is active. Everything the app itself changes asks at once, below.
+  setInterval(() => {
+    if (AppState.currentState !== "active") return;
+    void refreshActionStates();
+    for (const [windowId] of wantedSidePanels()) void syncSidePanel(windowId);
+  }, 1500);
   // Actions are the shown tabs' own: a change to a tab in the background doesn't ask again.
   useBrowser.subscribe((s, prev) => {
-    if (s.windows !== prev.windows || s.ui.focusedWindowId !== prev.ui.focusedWindowId) return void poll();
+    if (s.windows !== prev.windows || s.ui.focusedWindowId !== prev.ui.focusedWindowId) return void refreshActionStates();
     if (s.tabs === prev.tabs) return;
-    if (s.windowOrder.some((id) => { const active = activeTabId(s, id); return !!active && s.tabs[active] !== prev.tabs[active]; })) void poll();
+    if (s.windowOrder.some((id) => { const active = activeTabId(s, id); return !!active && s.tabs[active] !== prev.tabs[active]; })) void refreshActionStates();
   });
   useExtensions.subscribe((e, prev) => {
-    if (e.lists !== prev.lists || e.popup !== prev.popup) void poll();
+    if (e.lists !== prev.lists || e.popup !== prev.popup) void refreshActionStates();
   });
   usePages.subscribe((p, prev) => {
     if (p.browsers === prev.browsers) return;
+    // A tab's page arriving (or replaced) is a new browser to ask about.
+    void refreshActionStates();
     const actions = useExtensions.getState().actions;
     const gone = Object.keys(actions).filter((id) => !p.browsers[Number(id)]);
     if (!gone.length) return;
@@ -140,7 +124,7 @@ function startSidePanels() {
   useBrowser.subscribe((s, prev) => {
     if (s.windows === prev.windows && s.tabs === prev.tabs) return;
     if (active(s) === active(prev)) return;
-    for (const windowId of Object.keys(useExtensions.getState().sidePanels)) {
+    for (const [windowId] of wantedSidePanels()) {
       if (!s.windows[windowId]) closeSidePanel(windowId);
       else void syncSidePanel(windowId);
     }
@@ -148,9 +132,8 @@ function startSidePanels() {
   useExtensions.subscribe((e, prev) => {
     if (e.lists === prev.lists) return;
     const s = useBrowser.getState();
-    for (const windowId of Object.keys(e.sidePanels)) {
-      const panel = e.sidePanels[windowId]!;
-      if (!windowExtensions(s, windowId).some((x) => x.id === panel.extensionId)) closeSidePanel(windowId);
+    for (const [windowId, extensionId] of wantedSidePanels()) {
+      if (!windowExtensions(s, windowId).some((x) => x.id === extensionId)) closeSidePanel(windowId);
     }
     if (e.popup && !windowExtensions(s, e.popup.windowId).some((x) => x.id === e.popup!.extensionId)) closeExtensionPopup();
   });

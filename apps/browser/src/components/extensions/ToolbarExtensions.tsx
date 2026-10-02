@@ -1,4 +1,4 @@
-import { terminateCastRoute, type CastRoute, type InstalledExtension } from "@netnyahoo/nncore";
+import { terminateCastRoute, type ActionState, type CastRoute, type InstalledExtension } from "@netnyahoo/nncore";
 import { ContextMenuArea, showMenu, Symbol } from "@netnyahoo/shell";
 import { memo, useMemo, useRef } from "react";
 import { Image, Pressable, Text, View } from "react-native";
@@ -83,7 +83,12 @@ function useAnchor(key: string) {
 }
 
 function ExtensionButton({ ext, windowId, browserId, palette }: { ext: InstalledExtension; windowId: string; browserId: number; palette: ToolbarPalette }) {
-  const state = useExtensions((e) => (browserId ? e.actions[browserId]?.[ext.id] : undefined));
+  // A tab's states come a moment after it is shown: until they do, the button keeps what it showed rather than flash
+  // the manifest's icon without the badge. A click goes by the tab's own state (its popup), never the held one.
+  const fetched = useExtensions((e) => (browserId ? e.actions[browserId] : undefined));
+  const held = useRef<ActionState | undefined>(undefined);
+  if (fetched) held.current = fetched[ext.id];
+  const state = held.current;
   const open = useExtensions((e) => e.popup?.windowId === windowId && e.popup.extensionId === ext.id);
   const { hovered, hoverProps } = useHover();
   const { ref, measure } = useAnchor(`${windowId}|${ext.id}`);
@@ -94,7 +99,7 @@ function ExtensionButton({ ext, windowId, browserId, palette }: { ext: Installed
   return (
     <View ref={ref} tooltip={title} {...hoverProps} onLayout={() => void measure()}>
       <ContextMenuArea onContextMenu={() => void showExtensionMenu(windowId, ext)}>
-        <Pressable onPress={async () => activateExtension(windowId, ext, await measure(), state)}>
+        <Pressable onPress={async () => activateExtension(windowId, ext, await measure(), fetched?.[ext.id])}>
           {({ pressed }) => (
             <View
               style={{

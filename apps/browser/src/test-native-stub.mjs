@@ -216,3 +216,8 @@ export const chromeBookmarkEdit = (profile, ops) => {
   for (const op of ops) applyOp(db, op);
   for (const listener of bookmarkListeners) queueMicrotask(() => listener(profile));
 };
+
+// Extensions: what Chrome answers for a tab's action states and side panel; a test swaps in its own (and late) answers.
+export const extensionAnswers = { actionStates: async () => ({}), sidePanelUrl: async () => null };
+export const extensionActionStates = (browserId, ids) => extensionAnswers.actionStates(browserId, ids);
+export const extensionSidePanelUrl = (browserId, extensionId) => extensionAnswers.sidePanelUrl(browserId, extensionId);
