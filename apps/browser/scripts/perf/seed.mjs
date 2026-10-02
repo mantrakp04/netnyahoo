@@ -24,18 +24,6 @@ const WORDS = [
 const words = (n) => Array.from({ length: n }, () => pick(WORDS)).join(" ");
 const title = (n) => words(n).replace(/^\w/, (c) => c.toUpperCase());
 
-// lib/favicons.ts iconName: the file name an icon URL is stored under.
-function iconName(src) {
-  let a = 0x811c9dc5;
-  let b = 0x01000193 ^ src.length;
-  for (let i = 0; i < src.length; i++) {
-    const c = src.charCodeAt(i);
-    a = Math.imul(a ^ c, 0x01000193);
-    b = Math.imul(b ^ c, 0x5bd1e995);
-  }
-  return `i${(a >>> 0).toString(16).padStart(8, "0")}${(b >>> 0).toString(16).padStart(8, "0")}`;
-}
-
 export function buildSeed(origin, appVersion = "") {
   const now = Date.now();
   const profiles = {
@@ -152,30 +140,7 @@ export function buildSeed(origin, appVersion = "") {
   }
   const bookmarks = { version: 2, bookmarks: { nodes, roots } };
 
-  // The favicon index a long-used profile has: every history page and tab mapped to its host's icon
-  // (lib/favicons.ts keeps up to 5000 pages).
-  const icons = {};
-  const pages = {};
-  const hosts = {};
-  const iconFor = (url, src) => {
-    const name = iconName(src);
-    icons[name] ??= { uri: `${origin}/favicon.ico?icon=${name}`, src, at: now };
-    return name;
-  };
-  for (const e of entries) {
-    const name = iconFor(e.url, e.favicon);
-    pages[e.url.replace(/#.*$/, "")] = name;
-    hosts[new URL(e.url).hostname.replace(/^www\./, "")] = name;
-  }
-  for (const t of tabs) {
-    const name = iconFor(t.url, `${origin}/favicon.ico`);
-    pages[t.url] = name;
-    hosts[new URL(t.url).hostname] = name;
-  }
-  const favicons = { icons, pages, hosts };
-
   return {
-    "favicons-default.json": favicons,
     "session.json": session,
     "history.json": history,
     "bookmarks.json": bookmarks,

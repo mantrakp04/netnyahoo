@@ -3,15 +3,21 @@
 // in the app to take several times longer). Each prints the median of repeated runs.
 //
 //   cd apps/browser && node --no-warnings --import ./src/test-loader.mjs scripts/perf/micro-bench.mjs [name…]
+//
+// Cases (all of them when no name is given):
+//   entries        sidebar, strip and group entries of 500/1000-tab windows after a title or progress update
+//   groupNames     a big group's automatic name after a progress or title update
+//   suggest        omnibox pool rebuilds after a visit, with 25k/50k bookmarks (the longest 4 ms slice)
+//   suggest-seed   omnibox keystrokes on js-bench's seed profile (seed.mjs: 5000 history entries, 200 tabs, 1000
+//                  bookmarks); `suggest-seed=<query>` types another query. js-bench `typing` is what a key costs in the app.
 
 const { useBrowser } = await import("../../src/store/browser.ts");
 const { sidebarEntries, groupEntries } = await import("../../src/components/sidebar/entries.ts");
 const { groupLabel } = await import("../../src/store/organize.ts");
 const strip = await import("../../src/components/layout/stripGroups.ts");
-const favicons = await import("../../src/lib/favicons.ts");
-const { webviews } = await import("../../src/lib/webviews.ts");
-const stub = await import("../../src/test-native-stub.mjs");
+await import("../../src/test-native-stub.mjs");
 const core = await import("../../../../packages/core/src/index.ts");
+const { buildSeed } = await import("./seed.mjs");
 
 const S = () => useBrowser.getState();
 const now = () => performance.now();
@@ -114,57 +120,6 @@ const benches = {
     }
   },
 
-  async favicons() {
-    const icons = {};
-    const pages = {};
-    const hosts = {};
-    const t0 = Date.now();
-    for (let i = 0; i < 50_000; i++) icons[`i${i}`] = { uri: `file:///icons/${i}.png`, src: `https://h${i}.com/favicon.ico`, at: t0 };
-    for (let i = 0; i < 5000; i++) pages[`https://h${i}.com/p`] = `i${i}`;
-    for (let i = 0; i < 20_000; i++) hosts[`h${i}.com`] = `i${i}`;
-    stub.docs.set("favicons-default.json", JSON.stringify({ icons, pages, hosts }));
-    const ids = bigSession(10);
-    let n = 0;
-    webviews.set(ids[0], { downloadFavicon: async (src) => ({ uri: `file:///icons/new${n++}.png` }) });
-    const out = [];
-    for (let k = 0; k < 20; k++) {
-      S().updateTab(ids[0], { url: `https://new${k}.com/p` });
-      const t = now();
-      favicons.noteFavicon(ids[0], `https://new${k}.com/favicon.ico`);
-      await new Promise((r) => setTimeout(r, 0));
-      out.push(lastUpdateEnd - t);
-    }
-    report("favicon index: record a new icon (50k icons)", median(out));
-    {
-      // 50k bookmarks with favicons, as compaction reads every favicon source.
-      const nodes = { ...S().bookmarks.nodes };
-      for (let i = 0; i < 50_000; i++) nodes[`bm${i}`] = { kind: "url", id: `bm${i}`, parentId: "x", title: "", url: `https://b${i}.com/`, favicon: `https://b${i}.com/favicon.ico`, addedAt: 0 };
-      useBrowser.setState({ bookmarks: { ...S().bookmarks, nodes } });
-      const t = now();
-      favicons.flushFavicons();
-      report("favicon index: first save after launch (compacts)", now() - t);
-      for (let i = 0; i < 500; i++) {
-        S().updateTab(ids[0], { url: `https://churn${i}.com/p` });
-        favicons.noteFavicon(ids[0], `https://new0.com/favicon.ico`);
-      }
-      const t2 = now();
-      favicons.flushFavicons();
-      report("favicon index: save that compacts again (500 changes later)", now() - t2);
-    }
-    report("favicon index: record a known icon for a new page", time((i) => {
-      S().updateTab(ids[0], { url: `https://seen${i}.com/p` });
-      favicons.noteFavicon(ids[0], `https://new0.com/favicon.ico`);
-    }, 20));
-    report("favicon index: save (serialize + write)", time((i) => {
-      S().updateTab(ids[0], { url: `https://save${i}.com/p` });
-      favicons.noteFavicon(ids[0], `https://new0.com/favicon.ico`);
-      favicons.flushFavicons();
-    }, 10));
-    const index = favicons.useFavicons.getState().profiles.default;
-    report("favicon index: icons kept", Object.keys(index.icons).length, "icons");
-    report("favicon index: hosts kept", Object.keys(index.hosts).length, "hosts");
-  },
-
   suggest() {
     const history = [];
     const t0 = Date.now();
@@ -192,17 +147,37 @@ const benches = {
       report(`suggestions: slices per rebuild, ${count / 1000}k bookmarks`, slices.length / 5, "slices");
     }
   },
+
+  "suggest-seed"(query = "github.com/facebook/react/pull") {
+    const seed = buildSeed("http://127.0.0.1:47817");
+    const history = seed["history.json"].history.default;
+    const tabs = seed["session.json"].tabs.filter((t) => t.profileId === "default");
+    const bookmarks = Object.values(seed["bookmarks.json"].bookmarks.nodes)
+      .filter((n) => n.kind === "url")
+      .map((n) => ({ url: n.url, title: n.title, favicon: n.favicon }));
+    const source = { tabs, history, bookmarks };
+    let t = now();
+    core.prepareSuggestions(source, Infinity);
+    report("suggestions on the seed profile: prepare (cold)", now() - t);
+    const rounds = [];
+    for (let r = 0; r < 20; r++) {
+      const keys = [];
+      for (let i = 1; i <= query.length; i++) {
+        t = now();
+        core.buildSuggestions(query.slice(0, i), source, { now: Date.now() });
+        keys.push(now() - t);
+      }
+      rounds.push(keys);
+    }
+    const perKey = rounds.slice(5).flat();
+    report(`suggestions on the seed profile: keystroke median (${query.length} keys × 15 warm rounds)`, median(perKey));
+    report("suggestions on the seed profile: slowest warm keystroke", Math.max(...perKey));
+    report("suggestions on the seed profile: first round, all keys", rounds[0].reduce((a, b) => a + b, 0));
+  },
 };
 
-let lastUpdateEnd = 0;
-{
-  const original = favicons.useFavicons.setState;
-  favicons.useFavicons.setState = (...args) => {
-    original(...args);
-    lastUpdateEnd = now();
-  };
-}
-
-const wanted = process.argv.slice(2);
-for (const [name, run] of Object.entries(benches)) if (!wanted.length || wanted.includes(name)) await run();
+// `name` or `name=argument`.
+const wanted = new Map(process.argv.slice(2).map((a) => [a.split("=")[0], a.includes("=") ? a.slice(a.indexOf("=") + 1) : undefined]));
+for (const name of wanted.keys()) if (!(name in benches)) throw new Error(`no case ${name}; cases: ${Object.keys(benches).join(", ")}`);
+for (const [name, run] of Object.entries(benches)) if (!wanted.size || wanted.has(name)) await run(wanted.get(name));
 
