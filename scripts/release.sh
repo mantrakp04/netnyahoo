@@ -43,7 +43,7 @@ fi
 sparkle_account="${SPARKLE_ACCOUNT:-netnyahoo}"
 sparkle="$macos/Pods/Sparkle/bin"
 if [ "$rc" = 1 ]; then dist="$root/dist/$version-rc"; else dist="$root/dist/$version"; fi
-# A candidate can go elsewhere (RC_DIST=dist/<version>-rc2) while a copy of the last one is still open from its folder.
+# A candidate can go elsewhere (RC_DIST=dist/final-<version>-rc; keep the -rc ending, unregister-builds keeps those registered) while a copy of the last one is still open from its folder.
 [ "$rc" = 1 ] && [ -n "${RC_DIST:-}" ] && dist="$(cd "$root" && mkdir -p "$RC_DIST" && cd "$RC_DIST" && pwd)"
 build="${RELEASE_BUILD_DIR:-$app_dir/build-release}"
 archive="$dist/Netnyahoo.xcarchive"
