@@ -283,6 +283,9 @@ NSString *JSONString(id value) {
   return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"null";
 }
 
+// The page's reports a view keeps, held on its tab between views (-stashPageReports).
+const char kPageReportsKey = 0;
+
 }  // namespace
 
 @interface NNCoreWebView () <NNCoreTabDelegate>
@@ -570,6 +573,7 @@ NSString *JSONString(id value) {
   _tab = tab;
   tab.delegate = self;
   [NNCoreTabs setView:self forTab:tab];
+  [self takePageReports];
   [self adoptIntoWindow];
   NSView *page = tab.view;
   if (page.superview != self) {
@@ -587,6 +591,8 @@ NSString *JSONString(id value) {
   }
   [self emit:@"ready" payload:@{@"browserId" : @(nncore_host::BrowserId(tab)), @"tabId" : @(tab.tabId)}];
   [self emitNavigation];
+  // A moved tab's app state starts from nothing (moveTabsInto): what plays is sent again.
+  if (_mediaFrames.count) [self emitMedia];
   [self tabDidChangeFavicon:tab];
   if (_tabIndex >= 0) [self placeTab];
   if (_visible && !NNCoreTabStrip.commandsSeen) [self activate];
@@ -600,12 +606,58 @@ NSString *JSONString(id value) {
   if (TraceVisibility()) NSLog(@"[nncore-vis] %@ detach tab=%d", _transferKey, (int)_tab.tabId);
   if (_tab.delegate == self) _tab.delegate = nil;
   [NNCoreTabs setView:nil forTab:_tab];
+  [self stashPageReports];
   if (_tab.view.superview == self) [_tab.view removeFromSuperview];
   [self dropDevTools];
   [self resetBlocked:NO];
   _tab = nil;
   _leaving = NO;
   _leaveGeneration++;
+}
+
+// What the page script and Chrome reported about the page (its theme colour, media, blocked count, a crash…) belongs
+// to the tab: a tab moved to another window, or parked while its view remounts, takes it to its next view, which
+// sends it again (attach), as packages/cef's Client kept it across views. The page script reports a change only, so
+// without it the moved tab lost its colour until the page changed it.
+- (void)stashPageReports {
+  NSMutableDictionary *reports = [NSMutableDictionary dictionary];
+  reports[@"url"] = _tab.url ?: @"";
+  reports[@"theme"] = _pageTheme;
+  reports[@"themeSource"] = _pageThemeSource;
+  reports[@"blocked"] = @(_blockedCount);
+  reports[@"lastBlocked"] = _lastBlocked;
+  reports[@"media"] = _mediaFrames;
+  reports[@"nowPlaying"] = _nowPlaying;
+  reports[@"nowPlayingFrame"] = _nowPlayingFrame;
+  reports[@"notifications"] = _notificationFrames;
+  reports[@"displayRequests"] = _displayRequests;
+  reports[@"pinch"] = @(_pinchScale);
+  reports[@"capturing"] = @(_capturing);
+  reports[@"crashed"] = @(_crashed);
+  if (!_tab.closed) objc_setAssociatedObject(_tab, &kPageReportsKey, reports, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  [self takeReports:nil];
+}
+
+- (void)takePageReports {
+  NSDictionary *reports = objc_getAssociatedObject(_tab, &kPageReportsKey);
+  objc_setAssociatedObject(_tab, &kPageReportsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  // Unless the tab went to another page meanwhile (no view heard that page's reports).
+  [self takeReports:[reports[@"url"] isEqual:_tab.url ?: @""] ? reports : nil];
+}
+
+- (void)takeReports:(NSDictionary *)reports {
+  _pageTheme = reports[@"theme"];
+  _pageThemeSource = reports[@"themeSource"];
+  _blockedCount = [reports[@"blocked"] integerValue];
+  _lastBlocked = reports[@"lastBlocked"];
+  _mediaFrames = reports[@"media"];
+  _nowPlaying = reports[@"nowPlaying"];
+  _nowPlayingFrame = reports[@"nowPlayingFrame"];
+  _notificationFrames = reports[@"notifications"];
+  _displayRequests = reports[@"displayRequests"];
+  _pinchScale = [reports[@"pinch"] doubleValue];
+  _capturing = [reports[@"capturing"] boolValue];
+  _crashed = [reports[@"crashed"] boolValue];
 }
 
 - (void)closeBrowser {
