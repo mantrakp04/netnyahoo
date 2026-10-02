@@ -148,6 +148,8 @@ private let omega = 2 * Double.pi / 0.25
 private let restDisplacement = 0.003
 private let restSpeed = 0.1
 private let historyWindow = 0.1
+// A display link that has missed this long has stopped (its display asleep, as on a locked screen).
+private let linkStall = 0.05
 
 private func rubberBand(_ value: Double, _ dimension: Double) -> Double {
   (1 - 1 / (value * rubberCoefficient / dimension + 1)) * dimension
@@ -164,7 +166,7 @@ private final class NNPagerFrames: NSObject {
   }
 
   @objc func frame(_ link: CADisplayLink) {
-    guard let pager, pager.frame(generation: generation) else { return link.invalidate() }
+    guard let pager, pager.frame(generation: generation, fromLink: true) else { return link.invalidate() }
   }
 }
 
@@ -224,8 +226,9 @@ final class NNPager {
   private var drag = Drag()
   private var history: [(time: TimeInterval, position: Double)] = []
   private var spring: Spring?
-  // A screen link survives the root moving between Chrome windows; the timer is for no screen at all.
+  // Frames come from the screen's link; the timer stands in when there is no screen or the link has stopped.
   private var link: CADisplayLink?
+  private var lastLinkFrame: CFTimeInterval = 0
   private var timer: Timer?
   private var generation = 0
   #if DEBUG
@@ -477,19 +480,23 @@ final class NNPager {
       link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: fps, preferred: fps)
       link.add(to: .main, forMode: .common)
       self.link = link
-    } else {
-      let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
-        guard let self, self.frame(generation: generation) else { return timer.invalidate() }
-      }
-      RunLoop.main.add(timer, forMode: .common)
-      self.timer = timer
+      lastLinkFrame = CACurrentMediaTime()
     }
+    // Without a screen, or while the link has stopped, a timer runs the frames: a settle always lands.
+    let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+      guard let self else { return timer.invalidate() }
+      if self.link != nil, CACurrentMediaTime() - self.lastLinkFrame < linkStall { return }
+      if !self.frame(generation: generation) { timer.invalidate() }
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    self.timer = timer
     publish()
   }
 
   // False once this generation's spring is over, so its link or timer stops.
-  fileprivate func frame(generation: Int) -> Bool {
+  fileprivate func frame(generation: Int, fromLink: Bool = false) -> Bool {
     guard generation == self.generation, spring != nil else { return false }
+    if fromLink { lastLinkFrame = CACurrentMediaTime() }
     step()
     return generation == self.generation
   }
