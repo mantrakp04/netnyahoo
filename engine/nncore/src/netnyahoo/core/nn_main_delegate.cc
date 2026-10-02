@@ -38,6 +38,9 @@
 #include "netnyahoo/core/renderer/nn_content_renderer_client.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 
+// The user agent brand hook (engine/nncore/apply.sh).
+extern const char* g_netnyahoo_user_agent_brand;
+
 namespace nncore {
 
 namespace {
@@ -241,6 +244,10 @@ void NNMainDelegate::PreSandboxStartup() {
   }
   if (process_type.empty()) {
     InstallAppOverrides();
+    // Client hints and navigator.userAgentData say "Google Chrome", as Chrome's and Arc's and
+    // Dia's do (the user agent string already does): Meet's automatic Picture in Picture, among
+    // others, is offered only there (engine/nncore/apply.sh's hook).
+    g_netnyahoo_user_agent_brand = "Google Chrome";
   }
   ChromeMainDelegate::PreSandboxStartup();
 }

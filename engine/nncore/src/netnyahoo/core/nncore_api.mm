@@ -2052,6 +2052,23 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   return capturing;
 }
 
+- (void)noteShownByHost:(BOOL)shown {
+  if (_contents) {
+    nncore::NoteTabShownByHost(_contents, shown);
+  }
+}
+
+- (void)tracePictureInPicture:(NSString*)line withInputs:(BOOL)withInputs {
+  if (!nncore::PictureInPictureTracing()) {
+    return;
+  }
+  if (withInputs && _contents) {
+    nncore::TraceAutoPictureInPictureInputs(_contents, line.UTF8String);
+  } else {
+    nncore::TracePictureInPicture(base::SysNSStringToUTF8(line));
+  }
+}
+
 - (BOOL)autoPictureInPictureIsChromes {
   if (!_contents) {
     return NO;

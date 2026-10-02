@@ -12,7 +12,18 @@
 #include "base/no_destructor.h"
 #include "base/scoped_observation.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/strings/stringprintf.h"
+#include "base/strings/sys_string_conversions.h"
+#include "base/time/time.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
+#include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
+#include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
+#include "content/public/browser/web_contents_user_data.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
+#include "chrome/browser/profiles/profile.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/tabs/public/tab_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
@@ -24,6 +35,9 @@
 #include "ui/gfx/native_ui_types.h"
 #include "netnyahoo/core/nn_browser.h"
 #import "netnyahoo/core/nncore_internal.h"
+
+// The tab strip observer's hook (engine/nncore/apply.sh).
+extern bool (*g_netnyahoo_tab_hidden_by_host)(content::WebContents*);
 
 namespace nncore {
 
@@ -148,10 +162,28 @@ class PictureInPictureObserver : public PictureInPictureWindowManager::Observer 
       return;
     }
     kind_ = manager->GetChildWebContents() ? @"document" : @"video";
+    if (PictureInPictureTracing()) {
+      auto* helper = AutoPictureInPictureTabHelper::FromWebContents(opener);
+      TracePictureInPicture(base::StringPrintf(
+          "engine: PiP window opened (%s) for %s; Chrome's auto PiP: %d",
+          kind_.UTF8String, std::string(opener->GetLastCommittedURL().host()).c_str(),
+          helper && helper->IsInAutoPictureInPicture()));
+    }
     Report(opener_, true, kind_);
   }
 
   void OnExitPictureInPicture() override {
+    if (PictureInPictureTracing()) {
+      // Who closed it (the frames past this observer).
+      NSArray<NSString*>* stack = NSThread.callStackSymbols;
+      NSMutableString* frames = [NSMutableString string];
+      for (NSUInteger i = 1; i < MIN(stack.count, (NSUInteger)14); i++) {
+        NSString* frame = stack[i];
+        NSRange at = [frame rangeOfString:@"0x"];
+        [frames appendFormat:@"\n    %@", at.location == NSNotFound ? frame : [frame substringFromIndex:at.location]];
+      }
+      TracePictureInPicture("engine: PiP window closed, by" + base::SysNSStringToUTF8(frames));
+    }
     if (!opener_) {
       return;
     }
@@ -166,7 +198,125 @@ class PictureInPictureObserver : public PictureInPictureWindowManager::Observer 
 
 }  // namespace
 
+bool PictureInPictureTracing() {
+  static const bool tracing = getenv("NETNYAHOO_TRACE_PIP") != nullptr;
+  return tracing;
+}
+
+void TracePictureInPicture(const std::string& line) {
+  if (!PictureInPictureTracing()) {
+    return;
+  }
+  NSString* text = [NSString stringWithFormat:@"%.3f %s\n", NSDate.date.timeIntervalSince1970,
+                                               line.c_str()];
+  NSFileHandle* file = [NSFileHandle fileHandleForWritingAtPath:@"/tmp/nn-pip-trace.log"];
+  if (!file) {
+    [NSFileManager.defaultManager createFileAtPath:@"/tmp/nn-pip-trace.log"
+                                          contents:nil
+                                        attributes:nil];
+    file = [NSFileHandle fileHandleForWritingAtPath:@"/tmp/nn-pip-trace.log"];
+  }
+  [file seekToEndOfFile];
+  [file writeData:[text dataUsingEncoding:NSUTF8StringEncoding]];
+  [file closeFile];
+}
+
+namespace {
+
+// A tab the host hid without Chrome's strip changing (NoteTabShownByHost), until it shows it.
+class HiddenByHost : public content::WebContentsUserData<HiddenByHost> {
+ private:
+  explicit HiddenByHost(content::WebContents* contents)
+      : content::WebContentsUserData<HiddenByHost>(*contents) {}
+  friend class content::WebContentsUserData<HiddenByHost>;
+  WEB_CONTENTS_USER_DATA_KEY_DECL();
+};
+
+WEB_CONTENTS_USER_DATA_KEY_IMPL(HiddenByHost);
+
+// Chrome's own inputs to AutoPictureInPictureTabHelper::IsEligibleForAutoPictureInPicture.
+std::string AutoPictureInPictureInputs(content::WebContents* contents) {
+  auto* helper = AutoPictureInPictureTabHelper::FromWebContents(contents);
+  const GURL& url = contents->GetLastCommittedURL();
+  Profile* profile = Profile::FromBrowserContext(contents->GetBrowserContext());
+  const ContentSetting setting =
+      HostContentSettingsMapFactory::GetForProfile(profile)->GetContentSetting(
+          url, url, ContentSettingsType::AUTO_PICTURE_IN_PICTURE);
+  scoped_refptr<MediaStreamCaptureIndicator> indicator =
+      MediaCaptureDevicesDispatcher::GetInstance()->GetMediaStreamCaptureIndicator();
+  return base::StringPrintf(
+      "host=%s scheme=%s setting=%d registered=%d camera=%d mic=%d userMedia=%d audible=%d "
+      "inAutoPiP=%d chromeEntered=%d pipWindowOpen=%d incognito=%d",
+      std::string(url.host()).c_str(), std::string(url.scheme()).c_str(), setting,
+      helper && helper->HasAutoPictureInPictureBeenRegistered(),
+      indicator->IsCapturingVideo(contents), indicator->IsCapturingAudio(contents),
+      indicator->IsCapturingUserMedia(contents), contents->IsCurrentlyAudible(),
+      helper && helper->IsInAutoPictureInPicture(),
+      helper && helper->AreAutoPictureInPicturePreconditionsMet(),
+      PictureInPictureWindowManager::GetInstance()->GetWebContents() != nullptr,
+      profile->IsOffTheRecord());
+}
+
+}  // namespace
+
+void NoteTabShownByHost(content::WebContents* contents, bool shown) {
+  auto* helper = AutoPictureInPictureTabHelper::FromWebContents(contents);
+  tabs::TabInterface* tab = tabs::TabInterface::MaybeGetFromContents(contents);
+  // Only while Chrome's strip still has this tab active: a switch to another of its tabs is
+  // Chrome's own (its tab strip observer), and telling it twice would call the page twice.
+  const bool still_active = tab && tab->IsActivated();
+  const bool was_hidden = HiddenByHost::FromWebContents(contents) != nullptr;
+  if (PictureInPictureTracing()) {
+    TracePictureInPicture(base::StringPrintf(
+        "engine: host %s tab; Chrome's strip %s; %s", shown ? "shows" : "hides",
+        still_active ? "unchanged (told as a tab switch)" : "switched tabs itself",
+        AutoPictureInPictureInputs(contents).c_str()));
+  }
+  if (shown) {
+    if (!was_hidden) {
+      return;
+    }
+    contents->RemoveUserData(HiddenByHost::UserDataKey());
+    // As on a switch back in Chrome, the auto PiP window closes.
+    if (helper && helper->IsInAutoPictureInPicture()) {
+      helper->OnTabActivatedChanged(true);
+    }
+    return;
+  }
+  if (!helper || !still_active) {
+    return;
+  }
+  // Chrome's strip observer reads the tab as not activated from now on (apply.sh's hook), or
+  // Chrome would close the window it opens at once ("activated and unoccluded").
+  HiddenByHost::CreateForWebContents(contents);
+  // Chrome acted already (a window of the page's): once is enough.
+  if (helper->IsInAutoPictureInPicture() || helper->AreAutoPictureInPicturePreconditionsMet() ||
+      PictureInPictureWindowManager::GetInstance()->GetWebContents()) {
+    return;
+  }
+  helper->OnTabActivatedChanged(false);
+  if (PictureInPictureTracing()) {
+    TracePictureInPicture("engine: after telling Chrome: " +
+                          AutoPictureInPictureInputs(contents));
+  }
+}
+
+void TraceAutoPictureInPictureInputs(content::WebContents* contents, const char* when) {
+  if (PictureInPictureTracing()) {
+    TracePictureInPicture(std::string("engine: ") + when + ": " +
+                          AutoPictureInPictureInputs(contents));
+  }
+}
+
 void StartPictureInPictureObserver() {
+  g_netnyahoo_tab_hidden_by_host = [](content::WebContents* contents) {
+    const bool hidden = HiddenByHost::FromWebContents(contents) != nullptr;
+    if (PictureInPictureTracing()) {
+      TracePictureInPicture(std::string("engine: Chrome asks if the tab is active; hidden by host: ") +
+                            (hidden ? "yes" : "no"));
+    }
+    return hidden;
+  };
   static base::NoDestructor<PictureInPictureObserver> observer;
   PictureInPictureWindowManager::GetInstance()->AddObserver(observer.get());
   if (Background()) {

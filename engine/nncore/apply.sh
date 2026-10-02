@@ -494,3 +494,59 @@ s = s.replace(old_ns, old_ns + "\n" + decl, 1).replace(old, new)
 open(path, "w").write(s)
 print("hooked download_crx_util's install prompt")
 PY2
+
+# Client hints and navigator.userAgentData name the browser by its product name, which a
+# Chromium-branded build leaves out ("Chromium" and the GREASE brand only). Meet and other sites
+# gate features on a "Google Chrome" brand, which Chrome-based browsers (Arc, Dia) report. With
+# the hook set, the brand list is Chrome's. Only NNCore sets the hook, so CEF behaves as before.
+python3 - "$src/components/embedder_support/user_agent_utils.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_user_agent_brand" in s:
+    sys.exit(0)
+old_ns = "namespace embedder_support {\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) reports Chrome's brand.\n"
+        "const char* g_netnyahoo_user_agent_brand = nullptr;\n\n")
+old = """#if !BUILDFLAG(CHROMIUM_BRANDING)
+  brand = version_info::GetProductName();
+#endif
+"""
+new = old + """  // Netnyahoo: NNCore
+  if (g_netnyahoo_user_agent_brand) {
+    brand = g_netnyahoo_user_agent_brand;
+  }
+"""
+assert s.count(old_ns) >= 1 and s.count(old) == 1
+s = s.replace(old_ns, decl + old_ns, 1).replace(old, new)
+open(path, "w").write(s)
+print("hooked the user agent brand")
+PY2
+
+# Chrome's automatic Picture in Picture (a call's own window) follows the tab strip's active tab.
+# The host's own pages (its New Tab page) aren't tabs of the strip: a call left for one stayed the
+# strip's active tab, so Chrome closed the window it had just opened ("activated and unoccluded").
+# With the hook set, a tab the host hid reads as not activated (its cached state, which follows
+# the strip, stays as it was). Only NNCore sets the hook.
+python3 - "$src/chrome/browser/picture_in_picture/auto_picture_in_picture_tab_strip_observer_helper.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_tab_hidden_by_host" in s:
+    sys.exit(0)
+old_fn = "// static\nstd::unique_ptr<AutoPictureInPictureTabObserverHelperBase>\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) hides tabs without changing the strip.\n"
+        "bool (*g_netnyahoo_tab_hidden_by_host)(content::WebContents*) = nullptr;\n\n")
+old = """bool AutoPictureInPictureTabStripObserverHelper::IsTabActivated() {
+"""
+new = old + """  // Netnyahoo: NNCore (not cached: the strip didn't change)
+  if (g_netnyahoo_tab_hidden_by_host &&
+      g_netnyahoo_tab_hidden_by_host(GetObservedWebContents())) {
+    return false;
+  }
+"""
+assert s.count(old_fn) == 1 and s.count(old) == 1
+s = s.replace(old_fn, decl + old_fn).replace(old, new)
+open(path, "w").write(s)
+print("hooked auto picture-in-picture's tab strip observer")
+PY2

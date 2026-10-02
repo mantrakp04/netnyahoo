@@ -569,6 +569,12 @@ NNCORE_EXPORT
 // Chrome's automatic Picture in Picture takes (or took) this tab's switch away: the page
 // handles "enterpictureinpicture" and Chrome calls it, so the host must not as well.
 @property(readonly) BOOL autoPictureInPictureIsChromes;
+// The host hid or showed this tab without Chrome's tab strip changing (its own New Tab page took
+// the window): Chrome's automatic Picture in Picture hears of it as a tab switch.
+- (void)noteShownByHost:(BOOL)shown;
+// NETNYAHOO_TRACE_PIP=1: a line in /tmp/nn-pip-trace.log, with Chrome's auto PiP inputs for this
+// tab when `withInputs`.
+- (void)tracePictureInPicture:(NSString*)line withInputs:(BOOL)withInputs;
 // A DevTools protocol call on this tab's page, in process (CEF's ExecuteDevToolsMethod):
 // {method, params} through NNCore's own client (attached only while calls are pending, so
 // the page isn't left "debugged", which would hide its hangs; the remote-debugging port keeps

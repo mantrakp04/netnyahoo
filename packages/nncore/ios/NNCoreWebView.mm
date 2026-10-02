@@ -210,6 +210,11 @@ void NoteEvent(int browserId, NSString *name, NSDictionary *payload) {
 NSString *gSearchEngineName = @"Google";
 // The app's screen-share picker (setDisplayMediaPicker): pages' getDisplayMedia asks the app for a source.
 BOOL gDisplayMediaPicker = NO;
+// NETNYAHOO_TRACE_PIP=1: the app's side of a real call's Picture in Picture, in the engine's /tmp/nn-pip-trace.log.
+BOOL TracingPictureInPicture() {
+  static const BOOL tracing = getenv("NETNYAHOO_TRACE_PIP") != nullptr;
+  return tracing;
+}
 
 // CEF's SelectionLabel: whitespace collapsed, cut near 50 characters at a word.
 NSString *SelectionLabel(NSString *text) {
@@ -832,9 +837,40 @@ const char kPageReportsKey = 0;
   // can clear first.
   if (visible && self.alphaValue < 1 && _tab.view.superview == self && !_tab.view.hidden) self.alphaValue = 1;
   [self schedulePainting];
+  [self traceAutoPictureInPicture:visible ? @"app: tab shown" : @"app: tab hidden"];
   [self updateAutoPictureInPicture];
+  // Chrome's automatic Picture in Picture (a call's own window) hears of a tab switch from its tab strip. A switch to the
+  // app's New Tab page leaves the strip as it was: tell Chrome once the switch has settled (a new page's tab reaches the
+  // strip a moment later; the engine does nothing when the strip changed meanwhile or Chrome already acted).
+  if ([_tab respondsToSelector:@selector(noteShownByHost:)]) {
+    if (visible) {
+      [_tab noteShownByHost:YES];
+    } else {
+      __weak NNCoreWebView *weakSelf = self;
+      NNCoreTab *tab = _tab;
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        NNCoreWebView *view = weakSelf;
+        if (view && !view->_visible && view->_tab == tab) [tab noteShownByHost:NO];
+      });
+    }
+  }
   // With tab-strip commands, only they (and Chrome) change the active tab.
   if (visible && !NNCoreTabStrip.commandsSeen) [self activate];
+}
+
+// NETNYAHOO_TRACE_PIP: the app's view of the tab (its now-playing state, what the page says) and Chrome's auto PiP inputs.
+- (void)traceAutoPictureInPicture:(NSString *)what {
+  if (!TracingPictureInPicture() || ![_tab respondsToSelector:@selector(tracePictureInPicture:withInputs:)]) return;
+  NSDictionary *np = _nowPlaying[_nowPlayingFrame ?: @""];
+  [_tab tracePictureInPicture:[NSString stringWithFormat:@"%@ (%@): autoPictureInPicture=%d capturing=%d nowPlaying=%@ actions=%@",
+                                                         what, _tab.url, _autoPictureInPicture, _capturing,
+                                                         np[@"playbackState"] ?: @"none", JSONString(np[@"actions"] ?: @[])]
+                   withInputs:YES];
+  NNCoreTab *tab = _tab;
+  [_tab evaluate:@"post('result', JSON.stringify({ documentPictureInPicture: 'documentPictureInPicture' in window, "
+                  "window: !!window.documentPictureInPicture?.window, videoPip: !!document.pictureInPictureElement, "
+                  "brands: navigator.userAgentData?.brands?.map((b) => b.brand + '/' + b.version), visibility: document.visibilityState }))"
+      completion:^(NSString *json) { [tab tracePictureInPicture:[@"page: " stringByAppendingString:json ?: @"(no answer)"] withInputs:NO]; }];
 }
 
 // A tab switch arrives as one batch of view updates, and showing a page makes Chrome commit the Core Animation
@@ -1142,6 +1178,10 @@ const char kPageReportsKey = 0;
     if (!Finite(dict, @"scale", &scale) || scale <= 0) return;
     _pinchScale = MIN(scale, 100);
     [self emitZoom];
+  } else if ([kind isEqualToString:@"pipTrace"]) {
+    if (TracingPictureInPicture() && [_tab respondsToSelector:@selector(tracePictureInPicture:withInputs:)])
+      [_tab tracePictureInPicture:[NSString stringWithFormat:@"page (%@): %@", main ? @"main frame" : @"subframe", JSONString(dict ?: @{})]
+                       withInputs:NO];
   } else if ([kind isEqualToString:@"pip"] && dict) {
     NSNumber *active = [dict[@"active"] isKindOfClass:NSNumber.class] ? dict[@"active"] : nil;
     NSString *pipKind = [dict[@"kind"] isEqual:@"document"] ? @"document" : @"video";
@@ -1486,18 +1526,23 @@ const char kPageReportsKey = 0;
   if (!_visible && _autoPictureInPicture && wantsDocument) {
     // Chrome's own automatic PiP calls the page's handler on a tab switch too (a call: the camera or microphone in use,
     // https, the setting on), as in Chrome and Dia: the handler runs once, or its second requestWindow closes the first
-    // window. Chrome hears of the switch about when this view hides: ask once it has.
+    // window. Chrome hears of the switch about when this view hides (or 300 ms later, from setVisible:): ask after that.
     __weak NNCoreWebView *weakSelf = self;
     NNCoreTab *tab = _tab;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 450 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
       NNCoreWebView *view = weakSelf;
       if (!view || view->_visible || view->_tab != tab || !view->_autoPictureInPicture) return;
-      if ([tab respondsToSelector:@selector(autoPictureInPictureIsChromes)] && tab.autoPictureInPictureIsChromes) return;
+      if ([tab respondsToSelector:@selector(autoPictureInPictureIsChromes)] && tab.autoPictureInPictureIsChromes) {
+        [view traceAutoPictureInPicture:@"app: auto PiP left to Chrome"];
+        return;
+      }
+      [view traceAutoPictureInPicture:@"app: auto PiP by the app (the page's handler)"];
       view->_autoPictureInPictureActive = YES;
       // The page's handler needs a user activation: an empty gesture first, then the action.
       [view evaluateWithGesture:@"post('result', '0')" completion:^(NSString *) { [weakSelf mediaCommand:@"enterpictureinpicture" seconds:0]; }];
     });
   } else if (!_visible && _autoPictureInPicture && playingVideo) {
+    [self traceAutoPictureInPicture:@"app: auto PiP by the app (the video)"];
     _autoPictureInPictureActive = YES;
     [self requestPictureInPicture:^(BOOL) {}];
   } else if (_visible && _autoPictureInPictureActive) {

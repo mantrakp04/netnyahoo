@@ -122,6 +122,17 @@
     if (e.type !== "volumechange") reportNowPlaying();
   };
   document.addEventListener("enterpictureinpicture", (e) => send("pip", { active: true, kind: "video" }), true);
+  // A page's own document Picture in Picture requests, for NETNYAHOO_TRACE_PIP (the app drops them otherwise).
+  const dpip = window.documentPictureInPicture;
+  if (dpip && typeof dpip.requestWindow === "function") {
+    const requestWindow = dpip.requestWindow;
+    dpip.requestWindow = function () {
+      send("pipTrace", { event: "requestWindow", activation: !!(navigator.userActivation && navigator.userActivation.isActive) });
+      const p = requestWindow.apply(this, arguments);
+      p.then(() => send("pipTrace", { event: "requestWindow opened" }), (e) => send("pipTrace", { event: "requestWindow rejected", error: String(e) }));
+      return p;
+    };
+  }
   document.addEventListener("leavepictureinpicture", (e) => send("pip", { active: false, kind: "video" }), true);
   const mediaEvents = ["play", "playing", "pause", "ended", "volumechange", "emptied", "seeked", "ratechange", "loadedmetadata"];
   for (const e of mediaEvents) document.addEventListener(e, onMediaEvent, true);
@@ -198,6 +209,7 @@
     wrapSetter("playbackState");
     const setActionHandler = proto.setActionHandler;
     proto.setActionHandler = function (action, handler) {
+      if (action === "enterpictureinpicture") send("pipTrace", { event: "setActionHandler", action, set: !!handler });
       const result = setActionHandler.apply(this, arguments);
       if (handler) actions.set(action, handler);
       else actions.delete(action);
