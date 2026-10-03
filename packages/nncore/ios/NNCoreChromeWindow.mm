@@ -519,6 +519,27 @@ NSNotificationName const NNCoreWindowSeenDidChange = @"NNCoreWindowSeenDidChange
 
 @end
 
+namespace {
+
+// A tab Chrome made in a window of its own (chrome.windows.create) while the app shows no page to announce it through:
+// offered to the app (tab:<id>) through the extensions module, which opens it in a window of its profile. Its URL
+// first, as -[NNCoreWebView openedTab:…] waits for it.
+void AnnounceStrayTab(NNCoreTab *tab, int tries) {
+  if (tab.closed) return;
+  NSString *url = tab.url;
+  if ((!url.length || [url isEqualToString:@"about:blank"]) && tries < 20) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 25 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ AnnounceStrayTab(tab, tries + 1); });
+    return;
+  }
+  if (!NNCoreServices.extensionsHandler) return;
+  NNCoreServices.extensionsHandler(@"tabs", @{
+    @"action" : @"open", @"url" : url ?: @"", @"profile" : nncore_host::ProfileName(tab.profile), @"active" : @YES,
+    @"window" : NSNull.null, @"extensionId" : @"", @"adoptId" : [NNCoreTabs offerTab:tab prefix:@"tab"]
+  });
+}
+
+}  // namespace
+
 // MARK: - NNCoreWindowController
 
 @implementation NNCoreWindowController {
@@ -655,7 +676,12 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
     if (!profile) return (void)dispatch_async(dispatch_get_main_queue(), ^{ [tab closeNow]; });
     NNCoreWebView *view = [NNCoreWindowController hostingViewForProfile:profile];
     if (view || !profile.offTheRecord) {
-      if (view) [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
+      // A view of the tab's own profile announces it. With none (a launch on the New Tab page, or only another
+      // profile's pages shown, which would adopt it under their profile), the extensions module does, live.
+      if (view && [view.profile isEqualToString:nncore_host::ProfileName(profile)])
+        [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
+      else
+        AnnounceStrayTab(tab, 0);
       return;
     }
     if (!(view = [NNCoreWindowController hostingViewForProfile:nil])) return;

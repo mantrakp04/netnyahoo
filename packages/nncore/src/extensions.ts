@@ -75,6 +75,8 @@ export type TabsRequest = {
   window: string | null;
   url: string;
   active?: boolean;
+  // A live tab Chrome made (chrome.windows.create with no page shown to announce it): adopt it rather than open the URL.
+  adoptId?: string;
 };
 
 export type ExtensionInstallPrompt = {

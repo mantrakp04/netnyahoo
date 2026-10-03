@@ -60,11 +60,23 @@ export function startExtensionsBridge() {
 function openRequestedTab(request: TabsRequest) {
   if (!request.url) return;
   const s = useBrowser.getState();
+  const ofProfile = (id: string) => !!s.windows[id] && !s.windows[id]!.incognito && engineProfile(s.windows[id]!.profileId) === request.profile;
   const windowId =
     (request.window && s.windows[request.window] ? request.window : undefined) ??
-    s.ui.focusOrder.find((id) => s.windows[id] && !s.windows[id]!.incognito && engineProfile(s.windows[id]!.profileId) === request.profile) ??
+    s.ui.focusOrder.find(ofProfile) ??
     s.ui.focusOrder.find((id) => s.windows[id]);
-  if (windowId) s.newTab(windowId, { url: request.url, background: request.active === false });
+  const background = request.active === false;
+  // A live tab Chrome made keeps its profile's cookies and storage: adopted only under an app profile on that profile,
+  // in a window showing it, else in a new window of it. Without one, the URL opens afresh (and Chrome's tab goes).
+  const profileId = request.adoptId
+    ? windowId && ofProfile(windowId) ? s.windows[windowId]!.profileId : s.profileOrder.find((p) => engineProfile(p) === request.profile)
+    : undefined;
+  if (request.adoptId && profileId) {
+    if (windowId && ofProfile(windowId)) s.newTab(windowId, { url: request.url, adoptId: request.adoptId, profileId, background });
+    else openWindow({ url: request.url, adoptId: request.adoptId, profileId });
+    return;
+  }
+  if (windowId) s.newTab(windowId, { url: request.url, background });
   else openWindow({ url: request.url });
 }
 
