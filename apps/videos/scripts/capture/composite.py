@@ -236,14 +236,13 @@ def main():
         if fr.get("pos") is not None and fr.get("from") is not None and base in incoming:
             # The page travels exactly as far as the pager has (its own position), so page and sidebar move as one.
             frac = min(1.0, max(0.0, abs(fr["pos"] - fr["from"])))
-            if True:
-                if fr.get("label", "").endswith(":settle"):
-                    # After the commit the app shows the new page; the outgoing one is the drag's.
-                    out_tab = outgoing.get(base)
-                    if out_tab:
-                        items = [(out_tab, items[0][1])] if items else items
-                if items:
-                    slide = (frac, int(fr["dir"]), incoming[base])
+            if fr.get("label", "").endswith(":settle"):
+                # After the commit the app shows the new page; the outgoing one is the drag's.
+                out_tab = outgoing.get(base)
+                if out_tab:
+                    items = [(out_tab, items[0][1])] if items else items
+            if items:
+                slide = (frac, int(fr["dir"]), incoming[base])
         elif "p" in fr and fr.get("label") in incoming and items:
             slide = (min(1.0, max(0.0, fr["p"])), int(fr["dir"]), incoming[fr["label"]])
         img = composite(fr["f"], items, fr.get("color"), fr.get("dark", True), tint, slide)

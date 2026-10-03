@@ -71,15 +71,20 @@ function swipeIndex(b: number, events: SwipeEvent[], before = "start") {
     const start = land - e.drag;
     // An epsilon: `start` and a frame's beat can tie in floating point, which used to drop the drag's first frame.
     if (b < start - 1e-6) return index;
-    if (b < land) {
-      const frames = Math.max(1, Math.round((land - start) * BEAT));
-      const n = Math.min(frames - 1, Math.floor((b - start) * BEAT + 1e-6));
+    if (b < land - 1e-6) {
+      // The film frames that fall inside the drag (start and land are not always on whole frames): the curve is
+      // spread over exactly those, so its last value shows on the last one.
+      const first = Math.ceil(start * BEAT - 1e-6);
+      const last = Math.ceil(land * BEAT - 1e-6) - 1;
+      const frames = Math.max(1, last - first + 1);
+      const n = Math.min(frames - 1, Math.max(0, Math.round(b * BEAT) - first));
       const top = Math.min(0.99, PROGRESS[drag[drag.length - 1]] ?? 1);
       const target = easeInOutSine((n + 1) / frames) * top;
       let best = drag[0];
       for (const i of drag) if (Math.abs((PROGRESS[i] ?? 0) - target) < Math.abs((PROGRESS[best] ?? 0) - target)) best = i;
-      // The first frame never overshoots its target (the start must stay soft): the nearest position at or below it.
-      if (n === 0) {
+      // The first and last frames never overshoot their targets: the start stays soft, and the landing frame (with
+      // its plate and thud) closes the last few percent instead of a still page frame before it.
+      if (n === 0 || n === frames - 1) {
         best = drag[0];
         for (const i of drag) if ((PROGRESS[i] ?? 0) <= target && (PROGRESS[i] ?? 0) > (PROGRESS[best] ?? 0)) best = i;
       }
@@ -143,7 +148,7 @@ function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full",
 // interruption plays in on the stab, a frame of the page per film frame, and a pointer heads for its button.
 const ASK_NAMES = ["signin", "ai", "cookies", "upgrade"];
 const ASK_CAMS: Cam[] = [
-  { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.46, ay: 0.62 },
+  { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.5, ay: 0.84 },
   { ...REST, zoom: 1.12, fx: 0.62, fy: 0.45, aim: 1, ax: 0.5, ay: 0.6, rot: -1 },
   { ...REST, zoom: 1.12, fx: 0.5, fy: 0.72, aim: 1, ax: 0.5, ay: 0.62, rot: 1 },
   { ...REST, zoom: 1.12, fx: 0.55, fy: 0.55, aim: 1, ax: 0.5, ay: 0.66 },
@@ -193,7 +198,7 @@ function Nags() {
         {b < 1 ? (
           <Yahu
             id="nags-yahu-peek" clip="Default Dance" framing="bust" yaw={port ? 0.35 : -0.45}
-            from={port ? { x: 0, y: 0.8 } : { x: -0.9, y: 0 }} fade={!port}
+            from={{ x: 0, y: 0.8 }} fade={false}
             time={mix(POSE.steeple, POSE.flex, seg(b, 0.28, 0.22, easeIn))}
             rise={springAt(b, 0.02, { stiffness: 300, damping: 20 }) * (1 - seg(b, 0.55, 0.28, easeIn))}
             squash={kick(b, 0.5, 0.2)}
@@ -653,14 +658,23 @@ function Underline({ id, at }: { id: string; at: number }) {
   );
 }
 
-/** A little victory hop: up and down over half a beat from `at`, in px. */
-function hopAt(b: number, at: number) {
-  const t = (b - at) / 0.55;
-  return t > 0 && t < 1 ? Math.sin(Math.PI * t) * 46 : 0;
+/** The hop on the button: a crouch just before it, the jump with the underline drawing, and a landing. In px.
+ * (In 9:16 he stays on the ground and only squashes and stretches: a jump would put his head into the GitHub line.) */
+function hopAt(b: number, at: number, height: number) {
+  const t = (b - at) / 0.6;
+  return t > 0 && t < 1 ? Math.sin(Math.PI * t) * height : 0;
+}
+/** Squash (+) and stretch (−) for that hop: anticipation, stretch in the air, a squash on landing that settles. */
+function hopSquash(b: number, at: number) {
+  if (b < at - 0.2) return 0;
+  if (b < at) return 0.9 * Math.sin((Math.PI / 2) * ((b - (at - 0.2)) / 0.2));
+  if (b < at + 0.6) return -0.7 * Math.sin(Math.PI * ((b - at) / 0.6));
+  return kick(b, at + 0.6, 0.25) * 1.1;
 }
 
 function End() {
   const b = useBeat();
+  const port = useAspect() === "port";
   const shot = useShot();
   const lockup = shot.marks?.lockup ?? 4;
   const button = shot.marks?.button ?? 11;
@@ -674,7 +688,7 @@ function End() {
   return (
     <Paper>
       <Shake hits={[0, lockup, button]} amount={14}>
-        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} lift={hopAt(b, button + 2)} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2) + kick(b, button + 2.55, 0.18) + (hold > 0 ? 0.08 * Math.sin(hold * Math.PI) : 0)} yaw={b < button ? 0.3 : mix(0.3, -0.75, seg(b, button, 0.4)) + 0.06 * Math.sin(hold * Math.PI * 0.5)} />
+        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} lift={hopAt(b, button, port ? 0 : 125)} squash={kick(b, 0.4, 0.2) + hopSquash(b, button) * (port ? 0.5 : 1) + (hold > 0.6 ? 0.08 * Math.sin(hold * Math.PI) : 0)} yaw={b < button ? 0.3 : mix(0.3, -0.75, seg(b, button, 0.4)) + 0.06 * Math.sin(hold * Math.PI * 0.5)} />
         <AppIcon id={extraId("icon")} at={lockup} cycle={[button - 3, button]} />
         <Underline id="end-url" at={button} />
         <Supers />
