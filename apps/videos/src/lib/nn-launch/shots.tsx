@@ -51,18 +51,17 @@ function playRun(b: number, frames: number[], start: number, end: number) {
 }
 
 /**
- * Which swipe frame shows at beat `b`. Each swipe drags for `drag` beats and commits on its beat: the first settle
- * frame (where the page changes) lands exactly on `commit`, so a label switched on that beat switches with the page.
+ * Which swipe frame shows at beat `b`. Each swipe drags for `drag` beats, the page sliding with the sidebar (the
+ * capture drags the pager to ~96% of a page), and on its commit beat the settled frame lands: the live capture with
+ * the page at its final layout, so nothing jumps after the commit.
  */
 function swipeIndex(b: number, events: { label: string; commit: number; drag: number }[], before = "start") {
   let index = frameOf("swipe", before);
   for (const e of events) {
     const drag = framesOf("swipe", e.label);
-    const settle = framesOf("swipe", `${e.label}:settle`);
     const rest = frameOf("swipe", `${e.label}:rest`);
     if (b < e.commit - e.drag) return index;
     if (b < e.commit) return drag[Math.min(drag.length - 1, Math.floor(((b - (e.commit - e.drag)) / e.drag) * drag.length))];
-    if (b < e.commit + 0.45) return settle[Math.min(settle.length - 1, Math.floor(((b - e.commit) / 0.45) * settle.length))];
     index = rest;
   }
   return index;
@@ -128,7 +127,10 @@ function askPointer(b: number) {
   const mark = (SCENES.asks as { marks?: Record<string, { x: number; y: number }> }).marks?.[`ask:${ASK_NAMES[k]}`];
   if (!mark || b < k + 0.35 || b >= 4) return null;
   const t = easeInOut(clamp((b - (k + 0.35)) / 0.5));
-  return { x: mix(mark.x + 0.14, mark.x, t), y: mix(mark.y + 0.16, mark.y, t), kind: "hand" as const };
+  // It starts inside the window: below-right of the button, or above-right when the button sits low.
+  const sx = Math.min(0.95, mark.x + 0.14);
+  const sy = mark.y > 0.75 ? mark.y - 0.16 : mark.y + 0.16;
+  return { x: mix(sx, mark.x, t), y: mix(sy, mark.y, t), kind: "hand" as const };
 }
 
 /** A real browser, asked for everything: four stabs over four interruptions, then the asks stamped on the snare roll. */
@@ -142,7 +144,8 @@ function Nags() {
   const k = Math.min(3, Math.floor(b));
   // The last six frames of the upgrade stab push into its fine print, the joke worth reading.
   const joke: Cam = { ...REST, zoom: port ? 2.4 : 2.6, fx: 0.5635, fy: 0.52, aim: 1, ax: 0.5, ay: 0.55 };
-  const cam: Cam = b < 4 ? (k === 3 && b >= 3.57 ? joke : ASK_CAMS[k]) : { ...REST, zoom: 1 + 0.015 * knock };
+  // Held for a full beat, into the first stamp of the pile.
+  const cam: Cam = b >= 3.45 && b < 4.45 ? joke : b < 4 ? ASK_CAMS[k] : { ...REST, zoom: 1 + 0.015 * knock };
   const index = b < 4 ? askFrame(b) : framesOf("asks", "ask:upgrade").slice(-1)[0];
   // Big Yahu rises beside the pile, hands steepled; on the last eighth he sweeps his arms out (the swat lands on the drop).
   const rise = springAt(b, 7.1, { stiffness: 200, damping: 16 });
@@ -382,7 +385,7 @@ function dropCam(d: number, port: boolean): Cam {
   // Portrait: the sidebar and the left of the page, big enough to read on a phone, inside the safe zone.
   const whole: Cam = port ? { ...REST, zoom: 0.78, fx: 0.32, fy: 0.5, aim: 1, ax: 0.5, ay: 0.54 } : { ...REST, zoom: 0.8, dy: 40 };
   const macro: Cam = { ...REST, zoom: port ? 1.15 : 1.9, fx: 0.12, fy: 0.2, aim: 1, ax: port ? 0.42 : 0.32, ay: port ? 0.46 : 0.42 };
-  const out = seg(d, 7.4, 1.2, easeInOut);
+  const out = seg(d, 7.4, 2.6, easeInOut);
   let cam: Cam = d < 2.6 ? whole : d < 7.4 ? macro : { ...whole, zoom: mix(macro.zoom, whole.zoom, out), fx: mix(0.12, 0.5, out), fy: mix(0.2, 0.5, out), aim: mix(1, whole.aim, out) };
   if (d < 0) {
     // The poise: a slow push from wider into the framing the drop keeps (no jump on the drop frame).
@@ -613,7 +616,7 @@ function End() {
   return (
     <Paper>
       <Shake hits={[0, lockup, button]} amount={14}>
-        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2)} yaw={0.3} />
+        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2)} yaw={b < button ? 0.3 : mix(0.3, -0.75, seg(b, button, 0.4))} />
         <AppIcon id={extraId("icon")} at={lockup} cycle={[button - 3, button]} />
         <Underline id="end-url" at={button} />
         <Supers />

@@ -253,6 +253,57 @@
       }
     },
     {
+      "id": "nag-no-1",
+      "definition": "type",
+      "label": "nags · NO.",
+      "parentId": null,
+      "values": {
+        "text": "NO.",
+        "size": 130,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 300,
+        "y": 960,
+        "width": 480,
+        "height": 220,
+        "rotation": -8
+      }
+    },
+    {
+      "id": "nag-no-2",
+      "definition": "type",
+      "label": "nags · NO.",
+      "parentId": null,
+      "values": {
+        "text": "NO.",
+        "size": 130,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 300,
+        "y": 960,
+        "width": 480,
+        "height": 220,
+        "rotation": 6
+      }
+    },
+    {
+      "id": "nag-no-3",
+      "definition": "type",
+      "label": "nags · NO.",
+      "parentId": null,
+      "values": {
+        "text": "NO.",
+        "size": 130,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 300,
+        "y": 960,
+        "width": 480,
+        "height": 220,
+        "rotation": -4
+      }
+    },
+    {
       "id": "nag-pile-1",
       "definition": "type",
       "label": "nags · SIGN IN TO SYNC",
@@ -552,10 +603,10 @@
       "label": "end · yahu",
       "parentId": null,
       "values": {
-        "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 780,
+        "x": 90,
+        "y": 830,
+        "width": 900,
+        "height": 700,
         "rotation": 0
       }
     },

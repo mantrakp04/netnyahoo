@@ -253,6 +253,57 @@
       }
     },
     {
+      "id": "nag-no-1",
+      "definition": "type",
+      "label": "nags · NO.",
+      "parentId": null,
+      "values": {
+        "text": "NO.",
+        "size": 150,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 690,
+        "y": 470,
+        "width": 540,
+        "height": 240,
+        "rotation": -8
+      }
+    },
+    {
+      "id": "nag-no-2",
+      "definition": "type",
+      "label": "nags · NO.",
+      "parentId": null,
+      "values": {
+        "text": "NO.",
+        "size": 150,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 700,
+        "y": 470,
+        "width": 540,
+        "height": 240,
+        "rotation": 6
+      }
+    },
+    {
+      "id": "nag-no-3",
+      "definition": "type",
+      "label": "nags · NO.",
+      "parentId": null,
+      "values": {
+        "text": "NO.",
+        "size": 150,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 690,
+        "y": 480,
+        "width": 540,
+        "height": 240,
+        "rotation": -4
+      }
+    },
+    {
       "id": "nag-pile-1",
       "definition": "type",
       "label": "nags · SIGN IN TO SYNC",
@@ -451,7 +502,7 @@
         "color": "#F1ECE2",
         "fill": "#16130F",
         "x": 80,
-        "y": 990,
+        "y": 950,
         "width": 1760,
         "height": 72,
         "rotation": 0
@@ -519,7 +570,7 @@
         "color": "#16130F",
         "fill": "#00000000",
         "x": 80,
-        "y": 990,
+        "y": 950,
         "width": 1760,
         "height": 72,
         "rotation": 0

@@ -76,7 +76,7 @@ const TOP: Record<Aspect, Box> = { land: [80, 50, 1760, 150], port: [60, 230, 88
 const BIG: Box = [80, 250, 1760, 580];
 const BIG_PORT: Box = [60, 420, 880, 820];
 /** A line docked under the window (landscape) or above it (portrait), 64 px or more. */
-const DOCK: Record<Aspect, Box> = { land: [80, 990, 1760, 72], port: [60, 470, 880, 90] };
+const DOCK: Record<Aspect, Box> = { land: [80, 950, 1760, 72], port: [60, 470, 880, 90] };
 /** A profile's name plate, docked top-left beside the window's own profile name. */
 // Beside the sidebar column (which carries the swipe), never over it.
 const PLATE: Record<Aspect, Box> = { land: [560, 40, 1100, 170], port: [60, 230, 880, 200] };
@@ -94,6 +94,10 @@ const nags: Shot = {
     T("nag-try-ai", "TRY AI.", 1, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 2, align: "center", fill: paper, portText: "TRY\nAI." }),
     T("nag-cookies", "ACCEPT ALL.", 2, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 3, align: "center", fill: paper, portText: "ACCEPT\nALL." }),
     T("nag-upgrade", "UPGRADE.", 3, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 4, align: "center", fill: paper, portText: "UPGRADE.", portSize: 150 }),
+    // Each of the first three asks gets its answer stamped on it, half a beat in.
+    T("nag-no-1", "NO.", 0.5, "stamp", 150, [690, 470, 540, 240], [300, 960, 480, 220], { out: 1, rotation: -8, color: P.red, portSize: 130 }),
+    T("nag-no-2", "NO.", 1.5, "stamp", 150, [700, 470, 540, 240], [300, 960, 480, 220], { out: 2, rotation: 6, color: P.red, portSize: 130 }),
+    T("nag-no-3", "NO.", 2.5, "stamp", 150, [690, 480, 540, 240], [300, 960, 480, 220], { out: 3, rotation: -4, color: P.red, portSize: 130 }),
     // Bar 2: the snare roll. The asks stamp down on the browser, each still readable, until Big Yahu swats them off.
     T("nag-pile-1", "SIGN IN TO SYNC", 4, "stamp", 86, [180, 270, 760, 150], [60, 250, 820, 130], { out: 8, rotation: -6, portSize: 70 }),
     T("nag-pile-2", "MEET YOUR AI COPILOT", 5, "stamp", 86, [440, 380, 820, 150], [120, 420, 820, 130], { out: 8, rotation: 4, color: P.blue, portSize: 62 }),
@@ -133,7 +137,7 @@ const swipe: Shot = {
 
 const split: Shot = {
   id: "split", kind: "split", at: 26, beats: 8, window: win("split-window"),
-  extra: [YAHU("split-yahu", [1380, 560, 520, 520], [560, 905, 480, 500])],
+  extra: [YAHU("split-yahu", [1380, 560, 520, 520], [500, 905, 480, 500])],
   type: [
     T("split-two", "TWO PAGES.", 0, "slam", 140, TOP.land, TOP.port, { out: 5, color: paper, fill: ink }),
     T("split-coalition", "NO COALITION TALKS.", 5, "slam", 140, TOP.land, TOP.port, { color: paper, fill: P.red, portText: "NO COALITION\nTALKS." }),
@@ -202,7 +206,7 @@ const typing: Shot = { id: "typing", kind: "typing", at: 72, beats: 8, window: w
 const endShot = (at: number, beats: number, lockup: number, button: number): Shot => ({
   id: "end", kind: "end", at, beats, marks: { lockup, button },
   extra: [
-    YAHU("end-yahu", [1240, 200, 640, 820], [40, 700, 1000, 780]),
+    YAHU("end-yahu", [1240, 200, 640, 820], [90, 830, 900, 700]),
     { id: "end-icon", box: { land: [80, 220, 180, 180], port: [60, 240, 150, 150] } },
   ],
   type: [

@@ -3,6 +3,11 @@
 Remotion videos for Netnyahoo, a Remocn Studio project. Each folder in `src/videos` is a composition, named after the
 folder. Render one with `pnpm -C apps/videos render <id>`, which writes `out/<id>.mp4` (gitignored).
 
+`render` runs `scripts/deliver.sh`. Remotion's own AAC carries 2048 samples of encoder priming with no edit list, so
+every hit would land 43 ms late. The script keeps Remotion's video, re-encodes the score from its WAV with ffmpeg
+(whose mp4 muxer trims the priming) and checks the result with `scripts/check-sync.py`, which must report a lag of
+0 samples.
+
 ## The launch film: "The asks"
 
 | Composition | Size | Length |

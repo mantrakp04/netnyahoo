@@ -55,6 +55,15 @@ function smooth(map: MeshStandardMaterial["map"]) {
   const px = data.data;
   const step = 20;
   for (let i = 0; i < px.length; i += 4) {
+    // Take the bruise out of the scan: strongly red or purple skin (eye sockets, blotchy cheeks) loses most of its
+    // excess red toward an even skin tone.
+    const r = px[i], g = px[i + 1], bl = px[i + 2];
+    const excess = r - (g + bl) / 2;
+    if (excess > 55 && r > 70) {
+      const k = Math.min(1, (excess - 55) / 60) * 0.55;
+      px[i] = r - (r - (g * 1.28 + 6)) * k;
+      px[i + 2] = bl + (g * 0.92 - bl) * k * 0.5;
+    }
     for (let k = 0; k < 3; k++) px[i + k] = Math.round(px[i + k] / step) * step * 0.5 + px[i + k] * 0.5;
   }
   g.putImageData(data, 0, 0);
