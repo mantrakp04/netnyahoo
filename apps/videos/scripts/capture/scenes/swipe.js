@@ -4,16 +4,19 @@
 const sw = globalThis.nnSwipe.sidebar(W);
 const step = (steps) => Promise.resolve(sw.devSimulate(steps, { ignorePreference: true }));
 const ease = (x) => 0.5 - 0.5 * Math.cos(Math.PI * x);
+// The pager's own position (in pages) at each frame, so the film can slide the page exactly with the sidebar.
+const pos = () => { const st8 = globalThis.expo.modules.NetnyahooSwipe.pagerState(W); return st8 ? st8.position : null; };
 const swipe = (name, dir, n) => {
-  then(() => step([{ phase: "began", dx: 0 }]));
+  let from;
+  then(() => { from = pos(); return step([{ phase: "began", dx: 0 }]); });
   const total = dir * WIDTH * 1.02;
   // Hermes' eval shares one binding across a for-let loop's closures: forEach gives each step its own i.
   Array.from({ length: n }, (_, i) => i).forEach((i) => {
     const dx = (ease((i + 1) / n) - ease(i / n)) * total;
-    then(() => step([{ phase: "changed", dx, delayMs: 8 }]).then(() => snap(name, { p: (i + 1) / n, dir })));
+    then(() => step([{ phase: "changed", dx, delayMs: 8 }]).then(() => snap(name, { p: (i + 1) / n, dir, pos: pos(), from })));
   });
   then(() => step([{ phase: "ended", dx: 0 }]));
-  [0, 1, 2, 3, 4, 5].forEach(() => then(() => sleep(60).then(() => snap(name + ":settle"))));
+  [0, 1, 2, 3, 4, 5].forEach(() => then(() => sleep(60).then(() => snap(name + ":settle", { dir, pos: pos(), from }))));
   // A page just shown again repaints in stages: wait, and keep the second picture.
   then(() => sleep(2200).then(() => picShown(name)).then(() => sleep(600)).then(() => picShown(name)).then(() => snap(name + ":rest", { pageKey: Object.fromEntries(shownTabs().map((id) => [id, name + ":" + id])) })));
 };

@@ -167,6 +167,13 @@ def main(name):
             worst = max(worst, abs(d) if d is not None else 99)
         print(f"  sfx {cue['kind']:7s} beat {cue['beat']:6.2f}: {fmt(d)} on its stem")
     print(f"  worst transient sfx offset {worst:.2f} ms (whoosh/swipe/riser swell in by design)")
+    for cue in [c for c in cut.get("sfx", []) if c["kind"] == "swipe"]:  # a swipe should peak 0.16 s after its cue
+        one = score.Mix(name)
+        score.play_sfx(one, cue)
+        e = ndimage.uniform_filter1d((one.bus["sfx"] ** 2).sum(axis=1), int(0.06 * SR))
+        peak = (int(np.argmax(e)) - score.at(cue["beat"])) / SR
+        lvl = 20 * np.log10(np.sqrt(e.max()) + 1e-12)
+        print(f"  swipe beat {cue['beat']:6.2f}: peaks {1000 * peak:5.0f} ms after its cue ({lvl:.1f} dB pre-master)")
 
 
 if __name__ == "__main__":

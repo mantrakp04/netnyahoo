@@ -141,7 +141,7 @@ const CORNER_PT = 21; // macOS 26's window corner, measured from apps/site's Scr
  * the owner can drag on the canvas) and moved by the camera. Fast moves get a directional blur.
  */
 export function Window({
-  id, scene, index, cam, prev, shadow = 1, children, style, pointer, blur: blurOn = false,
+  id, scene, index, cam, prev, shadow = 1, children, style, pointer, blur: blurOn = false, overlay,
 }: {
   id: string;
   scene: Scene;
@@ -153,6 +153,8 @@ export function Window({
   children?: ReactNode;
   style?: CSSProperties;
   pointer?: PointerAt | null;
+  /** Drawn on the window's content, under its corner mask and blur, in window fractions (0–1) via percentages. */
+  overlay?: ReactNode;
   /** Directional motion blur on fast moves; kept for the few whips and dives that need it. */
   blur?: boolean;
 }) {
@@ -207,6 +209,7 @@ export function Window({
         }}
       >
         <Img src={footageSrc(scene, index)} style={{ width: "100%", height: "100%", display: "block", objectFit: "cover" }} />
+        {overlay}
         <div style={{ position: "absolute", inset: 0, borderRadius: radius, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.10)" }} />
       </div>
       {pointer ? <Pointer at={pointer} width={w} /> : null}

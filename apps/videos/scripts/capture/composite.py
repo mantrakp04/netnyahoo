@@ -210,6 +210,8 @@ def main():
     for i, fr in enumerate(frames):
         if fr.get("label", "").endswith(":rest") and own[i]:
             incoming[fr["label"][: -len(":rest")]] = os.path.join(src, next(iter(own[i].values()))["file"])
+    # Each swipe's outgoing page: the picture its drag frames show (filled in as the loop reaches them).
+    outgoing = {}
     last_page = {}
     out = []
     for i, fr in enumerate(frames):
@@ -228,7 +230,21 @@ def main():
                 a, b = rest[fr["profile"]], rest[other]
                 tint = (a[0] * (1 - p) + b[0] * p, a[1] * (1 - p) + b[1] * p)
         slide = None
-        if "p" in fr and fr.get("label") in incoming and items:
+        base = fr.get("label", "").split(":")[0]
+        if "p" in fr and items and base not in outgoing:
+            outgoing[base] = items[0][0]
+        if fr.get("pos") is not None and fr.get("from") is not None and base in incoming:
+            # The page travels exactly as far as the pager has (its own position), so page and sidebar move as one.
+            frac = min(1.0, max(0.0, abs(fr["pos"] - fr["from"])))
+            if frac < 0.995:
+                if fr.get("label", "").endswith(":settle"):
+                    # After the commit the app shows the new page; the outgoing one is the drag's.
+                    out_tab = outgoing.get(base)
+                    if out_tab:
+                        items = [(out_tab, items[0][1])] if items else items
+                if items:
+                    slide = (frac, int(fr["dir"]), incoming[base])
+        elif "p" in fr and fr.get("label") in incoming and items:
             slide = (min(1.0, max(0.0, fr["p"])), int(fr["dir"]), incoming[fr["label"]])
         img = composite(fr["f"], items, fr.get("color"), fr.get("dark", True), tint, slide)
         name = f"{len(out):04d}.jpg"

@@ -241,8 +241,8 @@
       "label": "nags · UPGRADE.",
       "parentId": null,
       "values": {
-        "text": "UP\nGRADE.",
-        "size": 230,
+        "text": "UPGRADE.",
+        "size": 150,
         "color": "#16130F",
         "fill": "#F1ECE2",
         "x": 60,
@@ -441,6 +441,23 @@
       }
     },
     {
+      "id": "swipe-name",
+      "definition": "type",
+      "label": "swipe · SWIPE BETWEEN LIVES.",
+      "parentId": null,
+      "values": {
+        "text": "SWIPE BETWEEN LIVES.",
+        "size": 64,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 60,
+        "y": 470,
+        "width": 880,
+        "height": 90,
+        "rotation": 0
+      }
+    },
+    {
       "id": "swipe-work",
       "definition": "type",
       "label": "swipe · WORK.",
@@ -528,9 +545,9 @@
       "parentId": null,
       "values": {
         "x": 560,
-        "y": 1000,
+        "y": 905,
         "width": 480,
-        "height": 480,
+        "height": 500,
         "rotation": 0
       }
     },

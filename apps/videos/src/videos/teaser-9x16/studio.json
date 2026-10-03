@@ -241,8 +241,8 @@
       "label": "nags · UPGRADE.",
       "parentId": null,
       "values": {
-        "text": "UP\nGRADE.",
-        "size": 230,
+        "text": "UPGRADE.",
+        "size": 150,
         "color": "#16130F",
         "fill": "#F1ECE2",
         "x": 60,

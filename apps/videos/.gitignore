@@ -11,3 +11,5 @@ public/fonts
 public/brand
 # Copied from apps/site by scripts/prepare-assets.sh
 public/models
+# Fetched by scripts/capture/sites/fetch-images.py
+scripts/capture/sites/*/img

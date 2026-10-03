@@ -93,7 +93,7 @@ const nags: Shot = {
     T("nag-sign-in", "SIGN IN.", 0, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 1, align: "center", fill: paper, portText: "SIGN\nIN." }),
     T("nag-try-ai", "TRY AI.", 1, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 2, align: "center", fill: paper, portText: "TRY\nAI." }),
     T("nag-cookies", "ACCEPT ALL.", 2, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 3, align: "center", fill: paper, portText: "ACCEPT\nALL." }),
-    T("nag-upgrade", "UPGRADE.", 3, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 4, align: "center", fill: paper, portText: "UP\nGRADE." }),
+    T("nag-upgrade", "UPGRADE.", 3, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 4, align: "center", fill: paper, portText: "UPGRADE.", portSize: 150 }),
     // Bar 2: the snare roll. The asks stamp down on the browser, each still readable, until Big Yahu swats them off.
     T("nag-pile-1", "SIGN IN TO SYNC", 4, "stamp", 86, [180, 270, 760, 150], [60, 250, 820, 130], { out: 8, rotation: -6, portSize: 70 }),
     T("nag-pile-2", "MEET YOUR AI COPILOT", 5, "stamp", 86, [440, 380, 820, 150], [120, 420, 820, 130], { out: 8, rotation: 4, color: P.blue, portSize: 62 }),
@@ -123,6 +123,7 @@ const swipe: Shot = {
   id: "swipe", kind: "swipe", at: 18, beats: 8, window: win("swipe-window"),
   type: [
     // Docked at the top-left, beside the profile's own name in the window, switching on the frame the page changes.
+    T("swipe-name", "SWIPE BETWEEN LIVES.", 0, "slam", 72, DOCK.land, DOCK.port, { out: 5, color: paper, fill: ink, portSize: 64 }),
     T("swipe-work", "WORK.", 0.75, "slam", 150, PLATE.land, PLATE.port, { out: 2.25, color: paper, fill: P.work }),
     T("swipe-campaign", "CAMPAIGN.", 2.25, "slam", 150, PLATE.land, PLATE.port, { out: 3.75, color: paper, fill: P.orange }),
     T("swipe-side", "SIDE PROJECT.", 3.75, "slam", 150, PLATE.land, PLATE.port, { out: 5, color: paper, fill: P.green }),
@@ -132,7 +133,7 @@ const swipe: Shot = {
 
 const split: Shot = {
   id: "split", kind: "split", at: 26, beats: 8, window: win("split-window"),
-  extra: [YAHU("split-yahu", [1380, 560, 520, 520], [560, 1000, 480, 480])],
+  extra: [YAHU("split-yahu", [1380, 560, 520, 520], [560, 905, 480, 500])],
   type: [
     T("split-two", "TWO PAGES.", 0, "slam", 140, TOP.land, TOP.port, { out: 5, color: paper, fill: ink }),
     T("split-coalition", "NO COALITION TALKS.", 5, "slam", 140, TOP.land, TOP.port, { color: paper, fill: P.red, portText: "NO COALITION\nTALKS." }),

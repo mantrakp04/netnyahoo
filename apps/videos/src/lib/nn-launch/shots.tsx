@@ -82,17 +82,21 @@ const SEC = BEAT / 30; // seconds in a beat
  */
 function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full" }: { id: string; clip: Clip; time: number; rise?: number; squash?: number; yaw?: number; framing?: Framing }) {
   const object = useStudioObject(id);
+  const port = useAspect() === "port";
+  // In portrait the frame's floor is the safe zone's (y 1480), with captions below: he pops up a short way and fades
+  // in there, instead of rising from below the frame.
+  const travel = port ? 0.18 : 1.1;
   const h = object.number("height");
   const geometry = object.geometry(
     { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
     // A spring may overshoot; the rise never lifts him above his box (that would show the canvas's cut edge).
-    { offset: { y: (1 - Math.min(1, rise)) * h * 1.1 } },
+    { offset: { y: (1 - Math.min(1, rise)) * h * travel } },
   );
   if (rise <= 0.001) return null;
   // A head-and-shoulders render ends mid-torso: fade its lower part out, so it reads as rising from behind.
   const fade = framing === "bust" ? { maskImage: "linear-gradient(to bottom, black 70%, transparent 96%)", WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 96%)" } : {};
   return (
-    <div {...object.bind} {...geometry.bind} style={{ ...geometry.style, ...fade }}>
+    <div {...object.bind} {...geometry.bind} style={{ ...geometry.style, ...fade, opacity: port ? Math.min(1, rise * 1.5) : 1 }}>
       <div style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", transform: `scale(${1 + squash * 0.12}, ${1 - squash * 0.12})` }}>
         <Yahu3D width={Math.round(object.number("width"))} height={Math.round(h)} clip={clip} time={Math.max(0, time)} yaw={yaw} framing={framing} />
       </div>
@@ -115,6 +119,8 @@ const ASK_CAMS: Cam[] = [
 function askFrame(b: number) {
   const k = Math.min(3, Math.floor(b));
   const frames = framesOf("asks", `ask:${ASK_NAMES[k]}`);
+  // Frame 0 already has the login wall half up over a dimmed page: it has to stop a scroll.
+  if (k === 0) return playRun(b, frames.slice(6), 0, 0.35);
   return playRun(b, frames, k + 0.05, k + 0.6);
 }
 function askPointer(b: number) {
@@ -129,11 +135,14 @@ function askPointer(b: number) {
 function Nags() {
   const b = useBeat();
   const shot = useShot();
+  const port = useAspect() === "port";
   const stabs = shot.type.filter((t) => t.style === "slam").map((t) => t.at);
   const piles = shot.type.filter((t) => t.style === "stamp").map((t) => t.at);
   const knock = piles.reduce((s, h) => s + kick(b, h, 0.2) * 0.6, 0);
   const k = Math.min(3, Math.floor(b));
-  const cam: Cam = b < 4 ? ASK_CAMS[k] : { ...REST, zoom: 1 + 0.015 * knock };
+  // The last six frames of the upgrade stab push into its fine print, the joke worth reading.
+  const joke: Cam = { ...REST, zoom: port ? 2.4 : 2.6, fx: 0.5635, fy: 0.52, aim: 1, ax: 0.5, ay: 0.55 };
+  const cam: Cam = b < 4 ? (k === 3 && b >= 3.57 ? joke : ASK_CAMS[k]) : { ...REST, zoom: 1 + 0.015 * knock };
   const index = b < 4 ? askFrame(b) : framesOf("asks", "ask:upgrade").slice(-1)[0];
   // Big Yahu rises beside the pile, hands steepled; on the last eighth he sweeps his arms out (the swat lands on the drop).
   const rise = springAt(b, 7.1, { stiffness: 200, damping: 16 });
@@ -261,7 +270,7 @@ function Swipe() {
   const first = RUN_1[0];
   // Fingers slide left (to the next profile) through the drag, then lift.
   const slide = 1 - 2 * clamp((b - (first.commit - first.drag)) / first.drag);
-  const glyph = b < first.commit + 0.6 ? 1 - seg(b, first.commit + 0.2, 0.4) : 0;
+  const glyph = b < first.commit ? 1 : 0;
   return (
     <Paper>
       <Window id={windowId()} scene="swipe" index={index} cam={{ ...cam, zoom: cam.zoom * (1 + bump) }} />
@@ -370,7 +379,8 @@ const RUN_2_TONES = [swatch.green, swatch.yellow, swatch.green, swatch.orange, s
  * macro of the sidebar and the page's edge. On each commit the window is shoved the way the fingers went.
  */
 function dropCam(d: number, port: boolean): Cam {
-  const whole: Cam = port ? { ...REST, zoom: 0.62, fx: 0.5, fy: 0.5, aim: 1, ax: 0.5, ay: 0.56 } : { ...REST, zoom: 0.8, dy: 40 };
+  // Portrait: the sidebar and the left of the page, big enough to read on a phone, inside the safe zone.
+  const whole: Cam = port ? { ...REST, zoom: 0.78, fx: 0.32, fy: 0.5, aim: 1, ax: 0.5, ay: 0.54 } : { ...REST, zoom: 0.8, dy: 40 };
   const macro: Cam = { ...REST, zoom: port ? 1.15 : 1.9, fx: 0.12, fy: 0.2, aim: 1, ax: port ? 0.42 : 0.32, ay: port ? 0.46 : 0.42 };
   const out = seg(d, 7.4, 1.2, easeInOut);
   let cam: Cam = d < 2.6 ? whole : d < 7.4 ? macro : { ...whole, zoom: mix(macro.zoom, whole.zoom, out), fx: mix(0.12, 0.5, out), fy: mix(0.2, 0.5, out), aim: mix(1, whole.aim, out) };
@@ -440,7 +450,8 @@ function SwipeBig() {
   const cam = dropCam(d, port);
   const first = RUN_2[0];
   const lead = shot.marks?.lead ?? 0;
-  const glyph = lead > 0 ? seg(b, 0, 0.15) * (1 - seg(d, 0.2, 0.4)) : 1 - seg(d, 0, 0.3);
+  // The fingers lift on the commit frame (a fade read as a ghost box over the new page).
+  const glyph = d < 0 ? (lead > 0 ? seg(b, 0, 0.15) : 1) : 0;
   const slide = 1 - 2 * clamp((d - (first.commit - first.drag)) / first.drag);
   return (
     <Paper>
@@ -499,6 +510,29 @@ function Nos() {
   );
 }
 
+// netnyahoo.com's hero shows the old glossy render of Big Yahu. The film's Big Yahu is inked, so on the site frames
+// he is drawn over that spot (on the page's own paper), the site itself unchanged. Page fractions → window fractions.
+const PAGE = { x: 190, y: 47, w: 1243, h: 846 };
+const wx = (f: number) => ((PAGE.x + f * PAGE.w) / 1440) * 100;
+const wy = (f: number) => ((PAGE.y + f * PAGE.h) / 900) * 100;
+function SiteYahu({ width }: { width: number }) {
+  const rect = (x0: number, y0: number, x1: number, y1: number) => ({
+    position: "absolute" as const, left: `${wx(x0)}%`, top: `${wy(y0)}%`, width: `${wx(x1) - wx(x0)}%`, height: `${wy(y1) - wy(y0)}%`,
+  });
+  const box = { x0: 0.6, y0: 0.14, x1: 0.96, y1: 0.76 };
+  const pw = Math.round((((box.x1 - box.x0) * PAGE.w) / 1440) * width);
+  const ph = Math.round((pw * (box.y1 - box.y0) * PAGE.h) / ((box.x1 - box.x0) * PAGE.w));
+  return (
+    <>
+      <div style={{ ...rect(0.64, 0.17, 0.98, 0.31), backgroundColor: "rgb(240,235,229)" }} />
+      <div style={{ ...rect(0.64, 0.3, 0.935, 0.74), backgroundColor: "rgb(240,235,229)" }} />
+      <div style={rect(box.x0, box.y0, box.x1, box.y1)}>
+        <Yahu3D width={pw} height={ph} clip="Default Dance" time={POSE.steeple} yaw={-0.3} />
+      </div>
+    </>
+  );
+}
+
 const TYPED = ["n", "ne", "net", "netn", "netny", "netnya", "netnyah", "netnyaho", "netnyahoo", "netnyahoo.", "netnyahoo.c", "netnyahoo.co", "netnyahoo.com"];
 
 /** netnyahoo.com typed into the address bar a key at a time, completed from history; Return; the site; a dive into its headline. */
@@ -508,6 +542,8 @@ function Typing() {
   const typed = [frameOf("typing", "focus"), ...TYPED.map((t) => frameOf("typing", `type:${t}`))];
   const index = b < 0.4 ? frameOf("typing", "before") : b < 4.2 ? playRun(b, typed, 0.4, 4.2) : b < 4.6 ? frameOf("typing", "enter") : frameOf("typing", "site");
   const dive = seg(b, 6.4, 1.6, easeIn);
+  const onSite = index === frameOf("typing", "site");
+  const winWidth = useStudioObject(windowId()).number("width");
   const { cam } = useCam([
     { at: 0, zoom: port ? 1.5 : 2.1, fx: 0.3, fy: 0.06, aim: 1, ax: port ? 0.45 : 0.5, ay: 0.45 },
     { at: 2.5, zoom: port ? 1.9 : 2.7, fx: 0.3, fy: 0.06, aim: 1, ax: port ? 0.45 : 0.5, ay: 0.45, ease: "cut" },
@@ -518,7 +554,7 @@ function Typing() {
   const prev: Cam = { ...live, zoom: cam.zoom + prevDive * (port ? 9 : 6.5) };
   return (
     <Paper>
-      <Window id={windowId()} scene="typing" index={index} cam={live} prev={prev} blur={dive > 0} />
+      <Window id={windowId()} scene="typing" index={index} cam={live} prev={prev} blur={dive > 0} overlay={onSite ? <SiteYahu width={winWidth} /> : null} />
     </Paper>
   );
 }

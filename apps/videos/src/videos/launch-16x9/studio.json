@@ -441,6 +441,23 @@
       }
     },
     {
+      "id": "swipe-name",
+      "definition": "type",
+      "label": "swipe · SWIPE BETWEEN LIVES.",
+      "parentId": null,
+      "values": {
+        "text": "SWIPE BETWEEN LIVES.",
+        "size": 72,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 80,
+        "y": 990,
+        "width": 1760,
+        "height": 72,
+        "rotation": 0
+      }
+    },
+    {
       "id": "swipe-work",
       "definition": "type",
       "label": "swipe · WORK.",

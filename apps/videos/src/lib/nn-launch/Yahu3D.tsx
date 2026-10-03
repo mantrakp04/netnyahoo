@@ -38,6 +38,35 @@ function blob() {
   return new CanvasTexture(c);
 }
 
+/**
+ * The scan's colour texture, smoothed and flattened for the printed look: a small blur takes out the blotchy pores and
+ * creases, and a gentle posterise pulls the skin into fewer, flatter tones. (One atlas for the whole figure.)
+ */
+function smooth(map: MeshStandardMaterial["map"]) {
+  const image = map?.image as (CanvasImageSource & { width: number; height: number }) | undefined;
+  if (!map || !image || !image.width) return map;
+  const c = document.createElement("canvas");
+  c.width = image.width;
+  c.height = image.height;
+  const g = c.getContext("2d")!;
+  g.filter = "blur(2.5px) saturate(0.9)";
+  g.drawImage(image, 0, 0);
+  const data = g.getImageData(0, 0, c.width, c.height);
+  const px = data.data;
+  const step = 20;
+  for (let i = 0; i < px.length; i += 4) {
+    for (let k = 0; k < 3; k++) px[i + k] = Math.round(px[i + k] / step) * step * 0.5 + px[i + k] * 0.5;
+  }
+  g.putImageData(data, 0, 0);
+  const t = new CanvasTexture(c);
+  t.flipY = map.flipY;
+  t.colorSpace = map.colorSpace;
+  t.wrapS = map.wrapS;
+  t.wrapT = map.wrapT;
+  t.channel = map.channel;
+  return t;
+}
+
 /** "full": head to toe, room for the dance. "bust": framed on the face and shoulders (the hands stay out). */
 export type Framing = "full" | "bust";
 
@@ -61,7 +90,7 @@ export function Yahu3D({ width, height, clip, time, yaw = 0, framing = "full" }:
     const ramp = new DataTexture(new Uint8Array([150, 210, 255]), 3, 1, RedFormat);
     ramp.minFilter = ramp.magFilter = NearestFilter;
     ramp.needsUpdate = true;
-    const outline = new OutlineEffect(renderer, { defaultThickness: 0.006, defaultColor: [0.086, 0.075, 0.06], defaultAlpha: 1 });
+    const outline = new OutlineEffect(renderer, { defaultThickness: 0.0038, defaultColor: [0.086, 0.075, 0.06], defaultAlpha: 1 });
     const pmrem = new PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     // Less mirror-like reflection and a warm key: the suit reads as cloth, not lacquer.
@@ -94,7 +123,7 @@ export function Yahu3D({ width, height, clip, time, yaw = 0, framing = "full" }:
             // A printed look for the paper brand: three-tone (posterised) shading over his own colours, and an ink
             // outline (OutlineEffect). It flattens the scan's texture smears and reads as an illustration.
             const toon = (m: MeshStandardMaterial) =>
-              new MeshToonMaterial({ map: m.map, color: m.color, gradientMap: ramp, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side });
+              new MeshToonMaterial({ map: smooth(m.map), color: m.color, gradientMap: ramp, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side });
             o.material = Array.isArray(o.material)
               ? o.material.map((m) => (m instanceof MeshStandardMaterial ? toon(m) : m))
               : o.material instanceof MeshStandardMaterial ? toon(o.material) : o.material;

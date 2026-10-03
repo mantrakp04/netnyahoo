@@ -49,14 +49,9 @@
      "gain": 0.8
     },
     {
-     "kind": "stamp",
-     "beat": 10,
-     "gain": 1.0
-    },
-    {
-     "kind": "stamp",
-     "beat": 61.5,
-     "gain": 1.0
+     "kind": "pop",
+     "beat": 7.1,
+     "gain": 0.9
     },
     {
      "kind": "whoosh",
@@ -64,58 +59,8 @@
      "gain": 1.0
     },
     {
-     "kind": "whoosh",
-     "beat": 78.3,
-     "gain": 1.0
-    },
-    {
-     "kind": "pop",
-     "beat": 7.1,
-     "gain": 0.9
-    },
-    {
-     "kind": "pop",
-     "beat": 31.0,
-     "gain": 0.9
-    },
-    {
-     "kind": "swipe",
-     "beat": 18.35,
-     "gain": 1.0
-    },
-    {
-     "kind": "swipe",
-     "beat": 20.35,
-     "gain": 1.0
-    },
-    {
-     "kind": "swipe",
-     "beat": 22.35,
-     "gain": 1.0
-    },
-    {
-     "kind": "swipe",
-     "beat": 48.45,
-     "gain": 1.0
-    },
-    {
-     "kind": "swipe",
-     "beat": 50.0,
-     "gain": 1.0
-    },
-    {
-     "kind": "swipe",
-     "beat": 51.5,
-     "gain": 1.0
-    },
-    {
-     "kind": "swipe",
-     "beat": 53.0,
-     "gain": 1.0
-    },
-    {
-     "kind": "swipe",
-     "beat": 54.5,
+     "kind": "stamp",
+     "beat": 10,
      "gain": 1.0
     },
     {
@@ -139,6 +84,26 @@
      "gain": 0.8
     },
     {
+     "kind": "swipe",
+     "beat": 18.41,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 19.91,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 21.41,
+     "gain": 1.0
+    },
+    {
+     "kind": "pop",
+     "beat": 31.0,
+     "gain": 0.9
+    },
+    {
      "kind": "click",
      "beat": 36,
      "gain": 0.8
@@ -149,14 +114,34 @@
      "gain": 0.8
     },
     {
+     "kind": "swipe",
+     "beat": 49.16,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 50.66,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 52.16,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 53.66,
+     "gain": 1.0
+    },
+    {
      "kind": "click",
      "beat": 60,
      "gain": 0.8
     },
     {
-     "kind": "click",
-     "beat": 76.2,
-     "gain": 0.8
+     "kind": "stamp",
+     "beat": 61.5,
+     "gain": 1.0
     },
     {
      "kind": "key",
@@ -222,6 +207,16 @@
      "kind": "key",
      "beat": 75.9286,
      "gain": 0.7
+    },
+    {
+     "kind": "click",
+     "beat": 76.2,
+     "gain": 0.8
+    },
+    {
+     "kind": "whoosh",
+     "beat": 78.3,
+     "gain": 1.0
     }
    ],
    "silence": [
@@ -281,38 +276,38 @@
      "gain": 0.8
     },
     {
-     "kind": "whoosh",
-     "beat": 7.85,
-     "gain": 1.0
-    },
-    {
      "kind": "pop",
-     "beat": 7.1,
+     "beat": 6.9,
      "gain": 0.9
     },
     {
-     "kind": "swipe",
-     "beat": 10.45,
+     "kind": "whoosh",
+     "beat": 8.0,
      "gain": 1.0
     },
     {
      "kind": "swipe",
-     "beat": 12.0,
+     "beat": 10.66,
      "gain": 1.0
     },
     {
      "kind": "swipe",
-     "beat": 13.5,
+     "beat": 12.16,
      "gain": 1.0
     },
     {
      "kind": "swipe",
-     "beat": 15.0,
+     "beat": 13.66,
      "gain": 1.0
     },
     {
      "kind": "swipe",
-     "beat": 16.5,
+     "beat": 15.16,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 16.66,
      "gain": 1.0
     }
    ],

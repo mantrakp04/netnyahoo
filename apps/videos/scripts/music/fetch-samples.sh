@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Download the CC0 samples that score.py plays into public/music/samples (gitignored): library files pinned to the
-# upstream commits listed in samples.md and checked against their git blob hashes, and Wikimedia Commons files
-# (commons/) checked against the SHA-1 Commons publishes for them.
+# Download the CC0 samples that score.py plays into public/music/samples (gitignored), pinned to the upstream
+# commits listed in samples.md and checked against their git blob hashes.
 #
 # usage: scripts/music/fetch-samples.sh [--force]   (from apps/videos; --force re-downloads files already there)
 set -euo pipefail
@@ -14,12 +13,11 @@ repo() {  # library prefix -> owner/name@commit
     vsco) echo "sgossner/VSCO-2-CE@440300901dfe9275fd84e0b7763af1f8443ae62e" ;;
     vcsl) echo "sgossner/VCSL@c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e" ;;
     mck) echo "MckAudio/MckSamplePacks@5db40e8fe26785c256845a5bb38921b2654a887f" ;;
-    commons) echo "commons" ;;
     *) echo "unknown library $1" >&2; exit 1 ;;
   esac
 }
 
-manifest() {  # git blob sha (or sha1: for Commons), then the path under public/music/samples
+manifest() {  # git blob sha, then the path under public/music/samples (library prefix + upstream path)
   cat <<'LIST'
 00a9f623324538a93e90e2bdfc5c24b8b27cb06d  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_F2_v3_rr2.wav
 00eecfab16c3bab05a5b84b8671316b76013da0a  vsco/Percussion/cymbal-crash1_ff_rr2.wav
@@ -69,11 +67,9 @@ manifest() {  # git blob sha (or sha1: for Commons), then the path under public/
 62314550a35397a36afe9cc4bd8e21f7ae93a191  mck/TR8/HATS/009_909_Open_HiHat_Short.wav
 636face9d16c505ef6038bf42035f4cfb57ffe3b  vcsl/Membranophones/Struck Membranophones/Snare Drum, Rope Tension/Hi/RopeSnare_hi_sn_Main_vl4_rr1.wav
 63efbcb5542a4477c4d53379583d4c7907daf90e  vsco/Percussion/Timpani/Rolls/Timpani1_Roll_v5_rr1_Sum.wav
-677194bbc25372f1aae6360b9804f19dfa4b742d  vsco/Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr4_Sum.wav
 688419e623c8022563d8b1880e2ab5fc4aa93bf9  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_D3_v4_rr2.wav
 6a8e9210be8110d882d8802b6220a5fabc700f14  vsco/Brass/F Horn/stac/MOHorn_stac_A2_v2_rr1.wav
 6d312fa649c6bb8bed53fd9d5b5d8f4d0e7c03b1  vsco/Brass/F Horn/stac/MOHorn_stac_F2_v2_rr1.wav
-6f9f8d7fdba8779629970e0d86da143aa08c712e  vsco/Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr1_Sum.wav
 6ff7612abefebbfe086f87a843d89492b3c08d78  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_G3_v2_rr2.wav
 73a0b9f07af11d3e2404a652e0d66c3a7c8aebab  vsco/Brass/Tuba/sus/Tuba3_sus_F1_v3_rr1_Mid.wav
 74d14ae56377ebe03606b810a70250809a1c1e19  vcsl/Idiophones/Struck Idiophones/Claps/Clap_rr2.wav
@@ -120,7 +116,6 @@ c713805a6c02679c4f141de8971dfce8afa51d74  vsco/Brass/F Horn/stac/MOHorn_stac_D2_
 cb508c5bf2e3c21dc3441194499fc6d0e7344f4b  vsco/Brass/Trumpet/sus/Sum_SHTrumpet_sus_F4_v3_rr1.wav
 cb97ac413666687d63624c704e832b4196e0ddd6  vsco/Brass/Tenor Trombone/sus/tenortbn_sus_D#3_v3_1.wav
 cbf6e82c288c8ab80c52599ffb60d61ec9751adf  mck/TR8/HATS/008_909_Closed_HiHat.wav
-ccd37e6e9289545bc0e81ccf4289552885163681  vsco/Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr3_Sum.wav
 ce149164e8a227ffbe3adfbed37181223dbe05d2  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_A#2_v3_rr1.wav
 d323f7ba3db673b459f94b23175e9305a5a2995d  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_A#1_v4_rr2.wav
 d4088d29905d60944c524d443f66c55035301e47  vsco/Brass/F Horn/sus/MOHorn_sus_A2_v3_1.wav
@@ -145,19 +140,7 @@ f6b2753da2ae19e4748a91b0ed412decf3973fda  vsco/Brass/Trumpet/sus/Sum_SHTrumpet_s
 f6c1025383f62db27083c3cb78d5046d748ada4c  vsco/Brass/Tenor Trombone/sus/tenortbn_sus_F2_v3_1.wav
 f7c9a73161cf5096507c550f87f04afd491bee98  vsco/Brass/F Horn/stac/MOHorn_stac_C3_v3_rr2.wav
 f86313efe12277b893333660a562a1f3d4ef0afc  vsco/Brass/F Horn/stac/MOHorn_stac_D2_v3_rr1.wav
-f9cd9ddaf2dec7d23060ac268c4913e63306b193  vsco/Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr2_Sum.wav
 fd83d80d30acbc11ee83642866c1f7d293bedc63  vcsl/Membranophones/Struck Membranophones/Snare Drum, Rope Tension/Hi/RopeSnare_hi_sn_Main_vl3_rr1.wav
-sha1:0a61e3bf88fe46b6450bb6977d28ea81d2b6960b  commons/LL-Q1860 (eng)-Robust Footman-no.wav
-sha1:1c7539b8bd9763307d00e2d10d03ee28a400925e  commons/LL-Q1860 (eng)-Pvanp7-hey.wav
-sha1:3e65d10ad41ce768a3cba70b16535a2a05bcd1dc  commons/LL-Q1860 (eng)-Wodencafe-no.wav
-sha1:420e03d95d690d637c0c81d3418fcc40c810a6fa  commons/LL-Q1860 (eng)-LetsgoLeeLee-no.wav
-sha1:424b49efbb70c1046276458efee56ffb0582a568  commons/LL-Q1860 (eng)-ManjiroLL-no.wav
-sha1:4c51626251dd7dad07c2a0b34278868e769c42db  commons/LL-Q1860 (eng)-Grendelkhan-no.wav
-sha1:5166dd691f59efa06e3920de312f3d272b4178ca  commons/LL-Q1860 (eng)-Wodencafe-hey.wav
-sha1:632f9a7661acccc0ff773c77ab6a140a612b55b7  commons/LL-Q1860 (eng)-She animates-no.wav
-sha1:b67fd39232cace520b64a32050a564400d504eb8  commons/LL-Q1860 (eng)-She animates-hey.wav
-sha1:d6fcfdf52c413d88d44279081ed1b9a2c84ec7b6  commons/LL-Q1860 (eng)-Simplificationalizer-no.wav
-sha1:fdab6ebef26d057298780b7dd9293561671ec338  commons/LL-Q1860 (eng)-Grendelkhan-hey.wav
 LIST
 }
 
@@ -173,30 +156,20 @@ while IFS= read -r line; do
   enc=${rel// /%20}
   enc=${enc//#/%23}
   enc=${enc//,/%2C}
-  if [ "$r" = commons ]; then
-    enc=${rel// /_}
-    printf 'url = "https://commons.wikimedia.org/wiki/Special:FilePath/%s"\noutput = "%s/%s"\n' "$enc" "$DEST" "$file" >> "$config"
-  else
-    printf 'url = "https://raw.githubusercontent.com/%s/%s/%s"\noutput = "%s/%s"\n' "${r%@*}" "${r#*@}" "$enc" "$DEST" "$file" >> "$config"
-  fi
+  printf 'url = "https://raw.githubusercontent.com/%s/%s/%s"\noutput = "%s/%s"\n' "${r%@*}" "${r#*@}" "$enc" "$DEST" "$file" >> "$config"
   n=$((n + 1))
 done < <(manifest)
 
 if [ "$n" -gt 0 ]; then
   echo "downloading $n samples into $DEST"
-  curl --fail --silent --show-error --location --retry 3 --create-dirs --parallel --parallel-max 8 \
-    --user-agent "netnyahoo-videos fetch-samples.sh" --config "$config"
+  curl --fail --silent --show-error --location --retry 3 --create-dirs --parallel --parallel-max 8 --config "$config"
 fi
 
 bad=0
 while IFS= read -r line; do
   sha=${line%%  *}
   file=${line#*  }
-  case "$sha" in
-    sha1:*) got="sha1:$(shasum -a 1 "$DEST/$file" | cut -d' ' -f1)" ;;
-    *) got=$(git hash-object "$DEST/$file") ;;
-  esac
-  if [ "$got" != "$sha" ]; then
+  if [ "$(git hash-object "$DEST/$file")" != "$sha" ]; then
     echo "checksum mismatch: $DEST/$file" >&2
     bad=1
   fi

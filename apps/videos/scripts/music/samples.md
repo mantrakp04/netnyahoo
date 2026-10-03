@@ -1,17 +1,16 @@
 # Score samples
 
-Every recorded sample `score.py` plays, and where it comes from. Every file is released under **CC0 1.0** (a
-public domain dedication): no attribution or royalty is required, commercial use included. `fetch-samples.sh`
-downloads exactly these files into `public/music/samples/` (gitignored): library files pinned to the commits below
-and checked against their git blob hashes, Wikimedia Commons files checked against the SHA-1 Commons lists for
-them. A local path is the library prefix plus the upstream path (Commons files: `commons/` + the file name).
+Every recorded sample `score.py` plays, and where it comes from. All three libraries are released under
+**CC0 1.0** (a public domain dedication): no attribution or royalty is required, commercial use included.
+`fetch-samples.sh` downloads exactly these files, pinned to the commits below, into `public/music/samples/`
+(gitignored) and checks each against its git blob hash. A local path is the library prefix plus the upstream path.
+The score uses no recorded voices.
 
 | Library | Author | Repository @ commit | Licence | Used for |
 | --- | --- | --- | --- | --- |
 | VSCO 2 Community Edition (`vsco/`) | Versilian Studios | [sgossner/VSCO-2-CE](https://github.com/sgossner/VSCO-2-CE) @ `440300901dfe` | [CC0 1.0](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/LICENSE) | Brass (trumpet, F horn, tenor trombone, tuba: staccato in two dynamic layers with round robins, and sustains), timpani, concert bass drum, orchestral snare, clash and suspended cymbals, gong |
 | Versilian Community Sample Library (VCSL) (`vcsl/`) | Versilian Studios | [sgossner/VCSL](https://github.com/sgossner/VCSL) @ `c1ea7bcc3c73` | [CC0 1.0](https://github.com/sgossner/VCSL/blob/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/LICENSE) | Rope-tension march snare, hand claps, tom, slapstick, woodblock |
 | MckSamplePacks (TR-8 recordings) (`mck/`) | MckAudio | [MckAudio/MckSamplePacks](https://github.com/MckAudio/MckSamplePacks) @ `5db40e8fe267` | [CC0 1.0](https://github.com/MckAudio/MckSamplePacks/blob/5db40e8fe26785c256845a5bb38921b2654a887f/LICENSE) | 909 kick, clap, closed and open hats recorded from a Roland TR-8 by the repository's author |
-| Lingua Libre word recordings on Wikimedia Commons (`commons/`) | the speakers named below | [commons.wikimedia.org](https://commons.wikimedia.org) | CC0 1.0 on each file's page | The gang shout on the NO run: seven speakers saying "no", four saying "hey", stacked |
 
 MckSamplePacks holds recordings of the author's own TR-8 (a drum machine that models the 808 and 909 circuits),
 which the author released as CC0. Only the 909 kick, clap and hats are used, under the orchestral layers.
@@ -19,11 +18,9 @@ which the author released as CC0. Only the 909 kick, clap and hats are used, und
 A few VSCO files measure off their named pitch and are never played (`EXCLUDE` in `score.py`); none of them
 are fetched.
 
-Only recordings whose Commons page says CC0 are used; the CC BY-SA recordings of the same words are not.
-
-Synthesized in `score.py`, not sampled: the unison-saw stab under the brass, the synth bass, the plucked
-arpeggio, the sine sub under the kick and the bass, the filtered-noise riser, the noise layer of the whoosh and
-swipe effects, and the reverb impulse responses.
+Synthesized in `score.py`, not sampled: the saw and noise layers of the main stab, the unison-saw layer under the
+brass riff, the synth bass, the plucked arpeggio, the sine sub under the kick and the bass, the filtered-noise
+riser, the noise in the whoosh and swipe effects, and the reverb impulse responses.
 
 ## VSCO 2 Community Edition
 
@@ -102,10 +99,6 @@ Commit [`440300901dfe9275fd84e0b7763af1f8443ae62e`](https://github.com/sgossner/
 | [Brass/Trumpet/sus/Sum_SHTrumpet_sus_D4_v3_rr1.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Trumpet/sus/Sum_SHTrumpet_sus_D4_v3_rr1.wav) | `815560ece9` |
 | [Brass/Trumpet/sus/Sum_SHTrumpet_sus_F4_v3_rr1.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Trumpet/sus/Sum_SHTrumpet_sus_F4_v3_rr1.wav) | `cb508c5bf2` |
 | [Brass/Trumpet/sus/Sum_SHTrumpet_sus_G3_v3_rr1.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Trumpet/sus/Sum_SHTrumpet_sus_G3_v3_rr1.wav) | `a301819024` |
-| [Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr1_Sum.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tuba/stac/Tuba3_stac_A%231_v2_rr1_Sum.wav) | `6f9f8d7fdb` |
-| [Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr2_Sum.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tuba/stac/Tuba3_stac_A%231_v2_rr2_Sum.wav) | `f9cd9ddaf2` |
-| [Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr3_Sum.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tuba/stac/Tuba3_stac_A%231_v2_rr3_Sum.wav) | `ccd37e6e92` |
-| [Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr4_Sum.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tuba/stac/Tuba3_stac_A%231_v2_rr4_Sum.wav) | `677194bbc2` |
 | [Brass/Tuba/stac/Tuba3_stac_D#1_v2_rr1_Sum.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tuba/stac/Tuba3_stac_D%231_v2_rr1_Sum.wav) | `950438ecb7` |
 | [Brass/Tuba/stac/Tuba3_stac_D#1_v2_rr2_Sum.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tuba/stac/Tuba3_stac_D%231_v2_rr2_Sum.wav) | `5a2c37217f` |
 | [Brass/Tuba/stac/Tuba3_stac_D#1_v2_rr3_Sum.wav](https://github.com/sgossner/VSCO-2-CE/blob/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tuba/stac/Tuba3_stac_D%231_v2_rr3_Sum.wav) | `aa54df144b` |
@@ -171,22 +164,3 @@ Commit [`5db40e8fe26785c256845a5bb38921b2654a887f`](https://github.com/MckAudio/
 | [TR8/HATS/009_909_Open_HiHat_Short.wav](https://github.com/MckAudio/MckSamplePacks/blob/5db40e8fe26785c256845a5bb38921b2654a887f/TR8/HATS/009_909_Open_HiHat_Short.wav) | `62314550a3` |
 | [TR8/HATS/010_909_Closed_HiHat_Short.wav](https://github.com/MckAudio/MckSamplePacks/blob/5db40e8fe26785c256845a5bb38921b2654a887f/TR8/HATS/010_909_Closed_HiHat_Short.wav) | `bf84f488ef` |
 | [TR8/PERC/019_909_Hand_Clap.wav](https://github.com/MckAudio/MckSamplePacks/blob/5db40e8fe26785c256845a5bb38921b2654a887f/TR8/PERC/019_909_Hand_Clap.wav) | `851ec71255` |
-
-## Wikimedia Commons (Lingua Libre)
-
-Each file's page states its licence (CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/). The SHA-1 is
-the one Commons lists for the version used (uploaded at the time shown).
-
-| File (local path `commons/` + this) | Speaker | Licence | Uploaded | SHA-1 |
-| --- | --- | --- | --- | --- |
-| [LL-Q1860 (eng)-Grendelkhan-hey.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-Grendelkhan-hey.wav) | Grendelkhan | CC0 | 2024-03-12 | `fdab6ebef2` |
-| [LL-Q1860 (eng)-Grendelkhan-no.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-Grendelkhan-no.wav) | Grendelkhan | CC0 | 2024-03-12 | `4c51626251` |
-| [LL-Q1860 (eng)-LetsgoLeeLee-no.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-LetsgoLeeLee-no.wav) | LetsgoLeeLee | CC0 | 2024-06-29 | `420e03d95d` |
-| [LL-Q1860 (eng)-ManjiroLL-no.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-ManjiroLL-no.wav) | ManjiroLL | CC0 | 2024-11-21 | `424b49efbb` |
-| [LL-Q1860 (eng)-Pvanp7-hey.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-Pvanp7-hey.wav) | Pvanp7 | CC0 | 2025-07-03 | `1c7539b8bd` |
-| [LL-Q1860 (eng)-Robust Footman-no.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-Robust_Footman-no.wav) | Robust Footman | CC0 | 2024-09-25 | `0a61e3bf88` |
-| [LL-Q1860 (eng)-She animates-hey.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-She_animates-hey.wav) | She animates | CC0 | 2023-07-02 | `b67fd39232` |
-| [LL-Q1860 (eng)-She animates-no.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-She_animates-no.wav) | She animates | CC0 | 2023-07-02 | `632f9a7661` |
-| [LL-Q1860 (eng)-Simplificationalizer-no.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-Simplificationalizer-no.wav) | Simplificationalizer | CC0 | 2020-07-06 | `d6fcfdf52c` |
-| [LL-Q1860 (eng)-Wodencafe-hey.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-Wodencafe-hey.wav) | Wodencafe | CC0 | 2024-01-06 | `5166dd691f` |
-| [LL-Q1860 (eng)-Wodencafe-no.wav](https://commons.wikimedia.org/wiki/File%3ALL-Q1860_%28eng%29-Wodencafe-no.wav) | Wodencafe | CC0 | 2024-01-06 | `3e65d10ad4` |

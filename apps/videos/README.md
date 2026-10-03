@@ -75,6 +75,7 @@ declares that a document lacks. It keeps existing values, removals and operation
 ```bash
 cd apps/videos
 scripts/prepare-assets.sh          # fonts, Big Yahu's model, the app icon, macOS pointers (AppKit)
+python3 scripts/capture/sites/fetch-images.py   # CC0 / public-domain photos for the stand-in sites
 scripts/music/fetch-samples.sh     # the CC0 samples (public/music/samples)
 python3 scripts/music/score.py     # public/music/launch.wav, teaser.wav (numpy + scipy)
 # footage: a DEV build, captured hidden (needs Metro on :8081, like any DEV instance)
@@ -103,6 +104,8 @@ is captured in-process, frame by frame:
   in `scripts/capture/sites/` (moodwall.example, dailyledger.example, crumbs.example, docpad.example and
   lexicon.example). They carry no real brand, logo, headline or photo. `sites/serve.mjs` serves them, and the
   instance maps `*.example` to it with `--host-resolver-rules`, so the address bar shows their names.
+  - Their photos are CC0 or public-domain files from Wikimedia Commons, fetched and licence-checked by
+    `sites/fetch-images.py` (gitignored; `sites/SOURCES.md` lists each one).
   - Each interruption is the page's own animation, stepped through `window.__t(0…1)`, with a page picture taken
     every step.
   - The dictionary loads the usual ad and tracker tags. Its house "ads" fill only once the ad network's tag has
@@ -128,8 +131,10 @@ is captured in-process, frame by frame:
     repainted) are skipped.
   - The traffic lights are AppKit's own buttons, drawn offscreen as an active window (`lights.swift`). The
     pointer is AppKit's `NSCursor` artwork (`cursor.swift`).
-- **Big Yahu** is drawn as a printed illustration: three-tone toon shading over his own colours, an ink outline
-  (three.js `OutlineEffect`) and a contact shadow. The model is the site's rigged one (`apps/site/public/models/big-yahu.glb`, clips "Griddy" and "Default
+- **Big Yahu** is drawn as a printed illustration: three-tone toon shading over his own colours (the scan's texture
+  smoothed and flattened), a fine ink outline (three.js `OutlineEffect`) and a contact shadow. On the netnyahoo.com
+  frames the site's own glossy render is covered with this one, so the film shows one Big Yahu; the site itself is
+  untouched. The model is the site's rigged one (`apps/site/public/models/big-yahu.glb`, clips "Griddy" and "Default
   Dance"), rendered in the film.
 - **Not captured:** the sidebar's translucency over the desktop. It needs a WindowServer capture.
 
@@ -139,10 +144,13 @@ is captured in-process, frame by frame:
 anthem in F minor at 128.57 BPM, with brass stabs, a march-snare roll, two drops, a break that cuts to silence, an
 end hit, march taps and a final brass button.
 
-- **Produced layers and the shout:** under the sampled brass, the score adds produced synth layers made in
-  `score.py`: a unison-saw stab, a driving saw bass and a plucked arpeggio. The gang shout on the NO run is stacked
-  from CC0 Lingua Libre recordings of "no" and "hey" on Wikimedia Commons. `scripts/music/samples.md` lists each
-  file with its speaker, link and SHA-1, and `fetch-samples.sh` downloads and checks those files too.
+- **The main stab** is a designed hybrid: unison saws with a filter envelope, a short noise transient and the sampled
+  brass as its body, saturated, glued and sent to a room and a plate. It plays the intro stabs, the four NO-run hits,
+  the end hit and the button.
+- **Produced layers:** a driving saw bass and the 909 kit carry the drops, sidechained, with a pluck in drop A. The
+  score uses no recorded voices.
+- **Swipe sound:** a filtered noise sweep timed to peak on the frame each swipe commits.
+- **For a composer:** `MUSIC-BRIEF.md` maps the grid, hits, silences and the button, so a produced track can drop in.
 - **Feel:** inner notes are humanised (seeded jitter and velocity, two dynamic layers, round robins). The
   `breaths` field in `cuts.json` drops the kick, bass and hats under brass stabs (the NO run), then slams back.
 - **Sources:**
