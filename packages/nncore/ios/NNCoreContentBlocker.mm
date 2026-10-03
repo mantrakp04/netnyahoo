@@ -320,8 +320,21 @@ NSString *const kFollow =
      "  return written.then(() => null);"
      "})";
 
+// A profile deleted (or being deleted) or released since the extension loaded into it: forgotten with its page. Every
+// change otherwise failed on it ("not loaded", or "no answer" from a page closing with its profile) once the user had
+// deleted a profile. Loaded again, it loads the extension again and follows the default profile then.
+void ForgetGoneProfiles() {
+  for (NSString *profile in LoadedProfiles().array) {
+    if (nncore_host::LoadedProfile(profile) && !nncore_host::IsDeletedProfile(profile)) continue;
+    [LoadedProfiles() removeObject:profile];
+    [Pages()[profile] fail:@"profile gone"];
+    [Pages() removeObjectForKey:profile];
+  }
+}
+
 void FollowDefault(NSArray<NSString *> *profiles, void (^done)(NSString *error)) {
   done = [done copy];
+  if (!profiles) ForgetGoneProfiles();
   profiles = [(profiles ?: LoadedProfiles().array) filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]];
   if (!profiles.count) return done(nil);
   NSString *read = @"Promise.all([send({what: 'getFilteringModeDetails'}), send({what: 'getEnabledRulesets'})]).then(([modes, lists]) => {"
@@ -335,7 +348,9 @@ void FollowDefault(NSArray<NSString *> *profiles, void (^done)(NSString *error))
     for (NSString *profile in profiles) {
       dispatch_group_enter(group);
       Call(profile, ScriptWith(kFollow, @[ settings ]), ^(id, NSString *error) {
-        failed = failed ?: error;
+        // A profile deleted meanwhile (its page closed under the call) has nothing left to follow.
+        const bool gone = !nncore_host::LoadedProfile(profile) || nncore_host::IsDeletedProfile(profile);
+        if (!gone) failed = failed ?: error;
         dispatch_group_leave(group);
       });
     }

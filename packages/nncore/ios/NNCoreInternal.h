@@ -16,6 +16,8 @@ NS_ASSUME_NONNULL_BEGIN
 namespace nncore_host {
 
 NNCoreProfile *_Nullable LoadedProfile(NSString *name);
+// Being deleted (+deleteProfileData:), or deleted: loaded perhaps, but going.
+bool IsDeletedProfile(NSString *name);
 void WithProfile(NSString *name, void (^completion)(NNCoreProfile *_Nullable profile));
 NSString *ProfileName(NNCoreProfile *_Nullable profile);
 NNCoreProfile *_Nullable PersonalIfLoaded(NNCoreEngine *engine);

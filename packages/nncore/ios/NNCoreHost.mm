@@ -717,6 +717,10 @@ bool IsIncognito(NSString *name) {
   return [name hasPrefix:@"incognito"];
 }
 
+bool IsDeletedProfile(NSString *name) {
+  return [DeletedProfiles() containsObject:name ?: @""];
+}
+
 NNCoreProfile *LoadedProfile(NSString *name) {
   NNCoreProfile *profile = Profiles()[name ?: @""];
   if (!profile.destroyed) return profile;
