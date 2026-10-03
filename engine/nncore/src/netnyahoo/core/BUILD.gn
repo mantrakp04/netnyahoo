@@ -48,6 +48,8 @@ source_set("core") {
     "nn_lifetime.mm",
     "nn_main_delegate.cc",
     "nn_main_delegate.h",
+    "nn_navigation_hold.mm",
+    "nn_navigation_hold.h",
     "nn_page_channel.h",
     "nn_page_channel.mm",
     "nn_password_prompt.h",

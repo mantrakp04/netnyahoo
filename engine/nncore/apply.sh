@@ -3,7 +3,8 @@
 # a dep of the macOS //chrome:chrome_dll on //netnyahoo/core (Chrome's framework then links
 # our layer), ChromeMain making NNCore's main delegate, Browser asking NNCore for the window of a
 # Browser Chrome makes itself, HistoryTabHelper asking NNCore which tabs are history,
-# declarativeNetRequest telling it which rules matched a tab's requests, and three
+# declarativeNetRequest telling it which rules matched a tab's requests and when an extension's
+# rulesets are in force, and three
 # CHECKs made tolerant of Browsers without a BrowserView (CEF's and Chrome's behaviour unchanged).
 # Idempotent. Never touches
 # args.gn; the next autoninja re-runs gn by itself.
@@ -30,6 +31,8 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" &&
     grep -q 'g_netnyahoo_history_eligible(' "$src/chrome/browser/history/history_tab_helper.cc" &&
     grep -q 'g_netnyahoo_dnr_rule_matched(' "$src/extensions/browser/api/declarative_net_request/action_tracker.cc" &&
+    grep -q 'g_netnyahoo_dnr_rulesets_in_force(' "$src/extensions/browser/api/declarative_net_request/rules_monitor_service.cc" &&
+    grep -q 'Netnyahoo: NNCore. A component extension' "$src/extensions/browser/api/declarative_net_request/rules_monitor_service.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/extensions/browser_window_util.cc" &&
     grep -q 'g_netnyahoo_extension_installed(' "$src/chrome/browser/ui/extensions/extension_install_ui_desktop.cc" &&
     grep -q 'g_netnyahoo_prompts_without_tab' "$src/chrome/browser/download/download_crx_util.cc" &&
@@ -399,6 +402,84 @@ assert s.count(old_ns) == 1 and s.count(old) == 1
 s = s.replace(old_ns, decl + old_ns).replace(old, new)
 open(path, "w").write(s)
 print("hooked declarativeNetRequest's ActionTracker")
+PY2
+
+# declarativeNetRequest's RulesMonitorService loads a component extension's enabled static
+# rulesets with the extension, and tells NNCore when the rulesets an extension had as it loaded
+# are in force (read from disk on another sequence, a moment after the load): NNCore holds a
+# profile's navigations until its content blocker's are (nn_navigation_hold.mm). A component
+# extension is never installed, so nothing indexed its rulesets and recorded their checksums:
+# Chrome skipped them all as "checksum not found" and the content blocker had no rules in a new
+# profile until its service worker turned its lists on again. Now they're indexed on that first
+# load (as Chrome indexes a ruleset enabled after install) and their checksums kept. Only NNCore
+# loads component extensions with rulesets and sets the hook, so CEF behaves as before.
+python3 - "$src/extensions/browser/api/declarative_net_request/rules_monitor_service.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_dnr_rulesets_in_force" in s:
+    sys.exit(0)
+old_ns = "namespace extensions {\nnamespace declarative_net_request {\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) holds a profile's navigations until a content blocker's\n"
+        "// rulesets are in force.\n"
+        "void (*g_netnyahoo_dnr_rulesets_in_force)(\n"
+        "    content::BrowserContext* browser_context,\n"
+        "    const extensions::ExtensionId& extension_id,\n"
+        "    bool all_loaded) = nullptr;\n\n")
+old = """  update_dynamic_or_session_rules_queue_map_[load_data.extension_id]
+      .SetReadyToExecuteApiCalls();
+}
+
+void RulesMonitorService::OnNewStaticRulesetsLoaded(
+"""
+new = """  update_dynamic_or_session_rules_queue_map_[load_data.extension_id]
+      .SetReadyToExecuteApiCalls();
+
+  // Netnyahoo: NNCore
+  if (g_netnyahoo_dnr_rulesets_in_force) {
+    g_netnyahoo_dnr_rulesets_in_force(
+        context_, load_data.extension_id,
+        !notify_ruleset_failed_to_load && !global_rule_limit_exceeded);
+  }
+}
+
+void RulesMonitorService::OnNewStaticRulesetsLoaded(
+"""
+old_load = """      if (!helper.GetStaticRulesetChecksum(extension->id(), source.id(),
+                                           expected_ruleset_checksum)) {
+        // This might happen on prefs corruption.
+        LogLoadRulesetResult(LoadRulesetResult::kErrorChecksumNotFound);
+        ruleset_failed_to_load = true;
+        continue;
+      }
+
+      RulesetInfo static_ruleset(std::move(source));
+      static_ruleset.set_expected_checksum(expected_ruleset_checksum);
+      load_data.rulesets.push_back(std::move(static_ruleset));
+"""
+new_load = """      const bool indexed = helper.GetStaticRulesetChecksum(
+          extension->id(), source.id(), expected_ruleset_checksum);
+      // Netnyahoo: NNCore. A component extension was never installed, so
+      // nothing indexed its rulesets: index them now, as for a ruleset
+      // enabled after install (no expected checksum), and keep the checksum.
+      if (!indexed &&
+          !Manifest::IsComponentLocation(extension->location())) {
+        // This might happen on prefs corruption.
+        LogLoadRulesetResult(LoadRulesetResult::kErrorChecksumNotFound);
+        ruleset_failed_to_load = true;
+        continue;
+      }
+
+      RulesetInfo static_ruleset(std::move(source));
+      if (indexed) {
+        static_ruleset.set_expected_checksum(expected_ruleset_checksum);
+      }
+      load_data.rulesets.push_back(std::move(static_ruleset));
+"""
+assert s.count(old_ns) == 1 and s.count(old) == 1 and s.count(old_load) == 1
+s = s.replace(old_ns, decl + old_ns).replace(old, new).replace(old_load, new_load)
+open(path, "w").write(s)
+print("hooked declarativeNetRequest's RulesMonitorService")
 PY2
 
 # The Browser extensions get for their windows when nothing names one (a popup's window.open,

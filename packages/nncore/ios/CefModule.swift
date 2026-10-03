@@ -116,6 +116,7 @@ public class CefModule: Module {
       NNCoreContentBlocker.setAllowed(allowed, host: host) { CefModule.settle(promise, $0) }
     }.runOnQueue(.main)
     AsyncFunction("devContentBlockerFailNextMessage") { NNCoreContentBlocker.devFailNextMessage() }.runOnQueue(.main)
+    AsyncFunction("devContentBlockerDelayNextLoad") { (ms: Double) in NNCoreContentBlocker.devDelayNextLoad(ms) }.runOnQueue(.main)
 
     AsyncFunction("setSiteSetting") { (profile: String, origin: String, type: String, value: String) in
       NNCoreServices.setSiteSetting(value, profile: profile, origin: origin, type: type)

@@ -94,6 +94,7 @@
 #include "netnyahoo/core/nn_installed_bubble.h"
 #include "netnyahoo/core/nn_lifetime.h"
 #include "netnyahoo/core/nn_main_delegate.h"
+#include "netnyahoo/core/nn_navigation_hold.h"
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_password_prompt.h"
 #include "netnyahoo/core/nn_tab_info.h"
@@ -1318,6 +1319,18 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   }
   const std::string extension_id = loader->AddOrReplace(root);
   return extension_id.empty() ? nil : NS(extension_id);
+}
+
+- (void)holdNavigationsUntilRulesetsOf:(NSString*)extensionId {
+  if (_profile) {
+    nncore::HoldNavigationsForRulesets(_profile.get(), base::SysNSStringToUTF8(extensionId));
+  }
+}
+
+- (void)releaseNavigationHold:(NSString*)reason {
+  if (_profile) {
+    nncore::ReleaseNavigationHold(_profile.get(), base::SysNSStringToUTF8(reason));
+  }
 }
 
 - (void)unloadComponentExtension:(NSString*)extensionId {

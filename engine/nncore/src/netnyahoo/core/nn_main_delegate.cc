@@ -32,6 +32,7 @@
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "netnyahoo/core/nn_lifetime.h"
 #include "netnyahoo/core/nn_context_menu.h"
+#include "netnyahoo/core/nn_navigation_hold.h"
 #include "netnyahoo/core/nn_page_channel.h"
 #include "netnyahoo/core/nn_strings.h"
 #include "content/public/browser/web_contents_view_delegate.h"
@@ -152,6 +153,7 @@ class NNContentBrowserClient : public ChromeContentBrowserClient {
       content::NavigationThrottleRegistry& registry) override {
     ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
     AddAppSchemeThrottle(registry);
+    MaybeAddNavigationHoldThrottle(registry);
   }
   // The spare renderer that replaces one a navigation took starts a moment later, not
   // within that navigation's own start: its RenderProcessHostImpl::Init held the UI

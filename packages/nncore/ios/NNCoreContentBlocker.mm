@@ -10,10 +10,14 @@
 #include <sys/clonefile.h>
 #include <sys/stat.h>
 
+#include <utility>
+
 namespace {
 NSString *ExtensionId() { return @"bnjeokpoejhioagiokhkhmdogkhbnbki"; }
 // +devFailNextMessage: the next call's first message to the extension fails.
 bool gFailNextMessage = false;
+// +devDelayNextLoad: the next profile's load of the extension waits that long (ms), its pages held.
+double gDelayNextLoadMs = 0;
 }  // namespace
 
 // The extension's page in one profile. Calls wait until its document has loaded (again, after a reload), then run one
@@ -276,6 +280,24 @@ void LoadIntoProfile(NSString *profile, void (^then)(NSString *error)) {
   });
 }
 
+// Loads the extension into a profile Chrome just loaded, its pages held until the extension's rules are in force:
+// Chrome reads its rulesets from disk after loading it and holds no request meanwhile, so a profile's first pages (a
+// tab restored at launch, a new profile's first window) went out unblocked. Called before anything can open a tab in
+// the profile; NNCore lets its navigations go once the rulesets are in force, or when the load fails here.
+void LoadHeld(NSString *profile) {
+  NNCoreProfile *p = nncore_host::LoadedProfile(profile);
+  const bool hold = p && ![LoadedProfiles() containsObject:profile] && [p respondsToSelector:@selector(holdNavigationsUntilRulesetsOf:)];
+  if (hold) [p holdNavigationsUntilRulesetsOf:ExtensionId()];
+  void (^load)(void) = ^{
+    LoadIntoProfile(profile, ^(NSString *error) {
+      if (error && hold) [p releaseNavigationHold:[NSString stringWithFormat:@"the content blocker didn't load: %@", error]];
+    });
+  };
+  const double delay = std::exchange(gDelayNextLoadMs, 0);
+  if (delay > 0) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_MSEC)), dispatch_get_main_queue(), load);
+  else load();
+}
+
 // Runs `expression` in the profile's extension page, where send(message) is chrome.runtime.sendMessage. Its value
 // (JSON) or the first error it throws come back.
 void Call(NSString *profile, NSString *expression, void (^completion)(id value, NSString *error)) {
@@ -447,7 +469,7 @@ void PrepareContentBlocker() {
 }
 
 void LoadContentBlocker(NSString *profile) {
-  if (!IsIncognito(profile)) LoadIntoProfile(profile ?: @"", ^(NSString *) {});
+  if (!IsIncognito(profile)) LoadHeld(profile ?: @"");
 }
 }  // namespace nncore_host
 
@@ -496,6 +518,10 @@ void LoadContentBlocker(NSString *profile) {
 
 + (void)devFailNextMessage {
   gFailNextMessage = true;
+}
+
++ (void)devDelayNextLoad:(double)ms {
+  gDelayNextLoadMs = ms;
 }
 
 @end

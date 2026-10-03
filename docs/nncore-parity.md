@@ -34,7 +34,10 @@ Keep this list short and shrinking; each item names its owner.
    optimal mode on NNCore and answers ad scripts with its stand-ins (`adsbygoogle.js` → its no-op copy, a 307 to the
    extension's web-accessible resource), so a fetch or a `<script>` "loads" without the request leaving the browser;
    CEF failed those stand-ins (ERR_BLOCKED_BY_CLIENT), which the smoke test counted as "blocked"; its ad checks now
-   judge by the network (2047812f). Proven by `content-blocker-blocks` and `content-blocker-profile`.
+   judge by the network (2047812f). Proven by `content-blocker-blocks` and `content-blocker-profile`. Its rules apply
+   from a profile's first page: a component extension's rulesets are indexed when it loads (Chrome skipped them, as
+   never installed, until uBOL turned its lists on again), and NNCore holds a profile's navigations until they're in
+   force (`nn_navigation_hold.mm`; `content-blocker-held`, `-private`, `-restored`).
 5. ~~**Private-window privacy**~~: done. A private tab Chrome makes goes to a private window of the app (one
    showing its profile, else a new one that adopts it live), never into a normal window (`private-windows-create`,
    `context-menu-incognito`).
@@ -168,6 +171,7 @@ Test hygiene the run keeps (each was a real failure):
 | extension-installed-bubble | A .crx installed with Chrome's UI (`installCrx`): the "added" bubble shows over the profile's window and closes with it; with the profile's windows closed mid-install nothing shows or crashes until a window of it shows a page, then the bubble does |
 | context-menu-reading-mode | The page menu has no "Open in Reading Mode" or "Listen to this page", and no doubled separator |
 | content-blocker, settings-services | uBlock Origin Lite as a component extension: state, lists, allow-list, on/off, a list toggled (also with a profile deleted just before); clearing browsing data, resetting a site, an external-app allowance, a tab's site data |
+| content-blocker-profile, -held, -private, -restored | No ad request from a profile's first page: a new profile's, one whose blocker loads 1.5 s late (held until its rulesets are in force), a private window's before and after its profile went, a tab restored at launch |
 | download, download-controls, download-navigation | Downloads land in the scratch folder through Chrome's manager and the app's list; pause, resume and cancel a running one; a navigation that became a download |
 | site-settings | Set, get, origins, clear site data |
 | tasks-components, tracing | Chrome's task manager (with tab ids), components, tracing start/stop (also on a fresh instance showing only the New Tab page) |

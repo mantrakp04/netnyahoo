@@ -114,6 +114,8 @@ typedef void (^NNCoreResult)(NSDictionary<NSString *, id> *result);
 + (void)setAllowed:(BOOL)allowed onHost:(NSString *)host completion:(void (^)(NSString *_Nullable error))completion NS_SWIFT_NAME(setAllowed(_:host:completion:));
 // Tests: the next call's first message to the extension fails.
 + (void)devFailNextMessage;
+// Tests: the next profile's load of the extension waits `ms`, its pages held meanwhile.
++ (void)devDelayNextLoad:(double)ms;
 @end
 
 NS_ASSUME_NONNULL_END

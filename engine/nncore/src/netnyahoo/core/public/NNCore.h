@@ -202,6 +202,14 @@ NNCORE_EXPORT
 // id. nil on failure.
 - (nullable NSString*)loadComponentExtension:(NSString*)path;
 - (void)unloadComponentExtension:(NSString*)extensionId;
+// Holds this profile's web navigations (its off-the-record profiles' too) until the
+// declarativeNetRequest rulesets of `extensionId`, an extension about to load into it, are in
+// force: a content blocker's rules then apply from the profile's first page. Chrome reads them
+// from disk after loading the extension and holds no request for them. A no-op when they are in
+// force already. Ends by itself once they are, or after 10 s (logged as an error).
+- (void)holdNavigationsUntilRulesetsOf:(NSString*)extensionId;
+// Ends the hold now (the extension couldn't load), logged as an error with `reason`.
+- (void)releaseNavigationHold:(NSString*)reason;
 // Reports this profile's Cast routes to engine:castRoutes:profile: (now and on change).
 - (void)watchCastRoutes;
 // chrome.management-style install of an unpacked extension (MV3 fine).

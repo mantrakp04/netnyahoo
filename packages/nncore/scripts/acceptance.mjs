@@ -258,6 +258,13 @@ const server = createServer((req, res) => {
       });
     </script>`));
   if (url.pathname === "/blocking") return res.end(page("Blocking", `<img src="/nnblock-1.png"><img src="/nnblock-2.png"><img src="/icon.png">`));
+  // A page whose own markup asks for ads as it loads, each request tagged with the page's query (the content
+  // blocker's first page in a profile, a restored tab at launch).
+  if (url.pathname === "/adfirst") {
+    const tag = url.search.slice(1);
+    return res.end(page("Ad first", "ads", `<script src="http://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?${tag}"></script>
+      <script src="http://securepubads.g.doubleclick.net/tag/js/gpt.js?${tag}"></script><img src="http://ib.adnxs.com/ut/v3?${tag}">`));
+  }
   if (url.pathname === "/login") return res.end(page("Login", `<form action="/b" method="get"><input name="u" id="u" autocomplete="username"><input type="password" name="p" id="p" autocomplete="current-password"><button id="go">Sign in</button></form>`));
   if (url.pathname === "/text") return res.end(page("Text", `<p id="t" style="font: 20px sans-serif; margin: 40px">Hello selection world, select me please</p>`));
   if (url.pathname === "/capture-target") return res.end(page("Capture Target", "the tab that tab capture picks"));
@@ -2616,18 +2623,32 @@ try {
     return { error, enabled: after.length };
   });
 
-  // The content blocker's rounds on an ad page in a new tab of `profileId` (the window's own when undefined): blocked,
+  // Requests for ads tagged `tag` (the /adfirst page's) that reached the ad hosts (not the page itself).
+  const adsServedFor = (tag) => adServed.filter((s) => !s.startsWith("adpage.test") && s.endsWith(`?${tag}`));
+
+  // The content blocker's rounds on an ad page in a new tab of `profileId` (the window's own when undefined): its first
+  // page (the profile's very first, in a profile made now) asks for ads as it loads, and none goes out; then blocked,
   // allowed for the site (and reloaded, as the app does), blocked again.
   const contentBlockerRounds = async (profileId) => {
     await until("the blocker's state", async () => ((await cef(`getContentBlocker()`))?.stats?.ready ? true : null), 30000);
-    const page = `http://adpage.test:${server.address().port}/adpage`;
+    const origin = `http://adpage.test:${server.address().port}`;
+    const page = `${origin}/adpage`;
     const tag0 = profileId ? profileId : "personal";
+    const firstTag = `first-${tag0}-${Date.now()}`;
+    const firstPage = `${origin}/adfirst?${firstTag}`;
     // Another profile's page in a window of its own: closing its only tab in the main window would close that window.
-    const ownWindow = profileId ? await evalApp(`return nn.actions.openWindow({ profileId: ${JSON.stringify(profileId)}, url: "${page}?${tag0}" })`) : null;
+    const ownWindow = profileId ? await evalApp(`return nn.actions.openWindow({ profileId: ${JSON.stringify(profileId)}, url: "${firstPage}" })`) : null;
     const tab = ownWindow
       ? await until("the profile's tab", () => evalApp(`return nn.store.getState().windows[${JSON.stringify(ownWindow)}]?.tabIds[0] ?? null`))
-      : await evalApp(`return nn.store.getState().newTab(${JSON.stringify(mainWindow)}, { url: "${page}?${tag0}" })`);
+      : await evalApp(`return nn.store.getState().newTab(${JSON.stringify(mainWindow)}, { url: "${firstPage}" })`);
     try {
+      // Chrome reads an extension's rulesets from disk after loading it, and a profile loaded just now must not show a
+      // page before they're in force (NNCore holds its navigations): none of the first page's ads goes out.
+      await until("the first page", () => evalApp(`const s = nn.store.getState(); const t = s.tabs[${JSON.stringify(tab)}];
+        return t?.title === "Ad first" && !s.live[${JSON.stringify(tab)}]?.isLoading ? true : null`), 20000);
+      await sleep(500);
+      const first = adsServedFor(firstTag);
+      if (first.length) throw new Error(`the first page's ads went out: ${JSON.stringify(first)}`);
       const round = async (tag) => {
         tag = `${tag0}-${tag}`;
         await evalApp(`nn.store.getState().navigate(${JSON.stringify(tab)}, "${page}?${tag}", { userInitiated: true }); return true`);
@@ -2652,16 +2673,6 @@ try {
         return { adnxs: await reached(`http://ib.adnxs.com/ut/v3?${tag}`), gpt: await reached(`http://securepubads.g.doubleclick.net/tag/js/gpt.js?${tag}`), adsbygoogle: await script() };
       };
       const stopped = (r) => !r.adnxs.reached && !r.gpt.reached && r.adnxs.fetch === "failed" && !r.adsbygoogle.reached && r.adsbygoogle.script === "stand-in";
-      // A profile loaded just now: Chrome loads an extension's rulesets from disk after the extension itself, and holds
-      // no request for them (Personal's at launch alike), so the profile's first page can beat them by a few hundred ms
-      // (measured 110–370 ms after its load). Its own rules must be in force within 3 s.
-      let warmup = null;
-      if (profileId) {
-        const start = Date.now();
-        for (let i = 0; !stopped(await round(`warmup${i}`)); i++)
-          if (Date.now() - start > 3000) throw new Error(`the new profile's rules never came into force: ${JSON.stringify(await round("late"))}`);
-        warmup = Date.now() - start;
-      }
       const blocked = await round("blocked");
       await cef(`setContentBlockerAllowed("adpage.test", true)`);
       const allowed = await round("allowed");
@@ -2670,7 +2681,7 @@ try {
       if (!stopped(blocked)) throw new Error(`not blocked: ${JSON.stringify(blocked)}`);
       if (!allowed.adnxs.reached || !allowed.gpt.reached || !allowed.adsbygoogle.reached) throw new Error(`allowing the site let nothing through: ${JSON.stringify(allowed)}`);
       if (!stopped(again)) throw new Error(`blocked again? ${JSON.stringify(again)}`);
-      return { warmup, blocked, allowed, again };
+      return { firstPage: "blocked", blocked, allowed, again };
     } finally {
       if (ownWindow) await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(ownWindow)}); return true`);
       else await evalApp(`nn.store.getState().closeTab(${JSON.stringify(tab)}); return true`);
@@ -2686,10 +2697,57 @@ try {
 
   await check("content-blocker-profile", async () => {
     // The same in a profile made now (the release smoke test's page is in its Work profile): uBOL loads into every
-    // profile, and its rulesets must block there within moments of its first page, and follow Personal's allow-list.
+    // profile, and its rulesets must block there from its very first page, and follow Personal's allow-list.
     const id = await evalApp(`return nn.store.getState().createProfile({ name: "Blocker" })`);
     if (!id) throw new Error("no profile made");
     return { profile: id, ...(await contentBlockerRounds(id)) };
+  });
+
+  await check("content-blocker-held", async () => {
+    // The hold itself, made certain: the next profile's blocker loads 1.5 s late (devContentBlockerDelayNextLoad), so
+    // its first page asks to load long before the rules are in force. NNCore holds it until they are (an explicit
+    // signal from Chrome's ruleset load, not a timer): it loads after the delay, and none of its ads goes out.
+    const delay = 1500;
+    await cef(`devContentBlockerDelayNextLoad(${delay})`);
+    const id = await evalApp(`return nn.store.getState().createProfile({ name: "Held" })`);
+    const tag = `held-${Date.now()}`;
+    const started = Date.now();
+    const w = await evalApp(`return nn.actions.openWindow({ profileId: ${JSON.stringify(id)}, url: "http://adpage.test:${server.address().port}/adfirst?${tag}" })`);
+    try {
+      await until("the held page", () => evalApp(`const s = nn.store.getState(); const t = s.windows[${JSON.stringify(w)}]?.tabIds[0];
+        return t && s.tabs[t]?.title === "Ad first" && !s.live[t]?.isLoading ? true : null`), 20000);
+      const loadedAfterMs = Date.now() - started;
+      await sleep(500);
+      const served = adsServedFor(tag);
+      if (served.length) throw new Error(`the held page's ads went out: ${JSON.stringify(served)}`);
+      if (loadedAfterMs < delay) throw new Error(`the page loaded ${loadedAfterMs} ms in, before the blocker (not held)`);
+      return { profile: id, loadedAfterMs };
+    } finally {
+      await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(w)}); return true`);
+    }
+  });
+
+  await check("content-blocker-private", async () => {
+    // A private window's first page, and the first page of the next one after the first's profile went (released with
+    // its last window): uBOL, a component extension, runs in private windows on its profile's rules.
+    const origin = `http://adpage.test:${server.address().port}`;
+    const out = [];
+    for (const step of ["first", "after-release"]) {
+      const tag = `private-${step}-${Date.now()}`;
+      const w = await evalApp(`return nn.actions.openWindow({ incognito: true, url: "${origin}/adfirst?${tag}" })`);
+      try {
+        await until(`the ${step} private page`, () => evalApp(`const s = nn.store.getState(); const id = s.windows[${JSON.stringify(w)}]?.tabIds[0];
+          return id && s.tabs[id]?.title === "Ad first" && !s.live[id]?.isLoading ? true : null`), 20000);
+        await sleep(500);
+        const served = adsServedFor(tag);
+        if (served.length) throw new Error(`the ${step} private window's ads went out: ${JSON.stringify(served)}`);
+        out.push(step);
+      } finally {
+        await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(w)}); return true`);
+      }
+      await sleep(2000);  // its profile goes (private-release)
+    }
+    return { blocked: out };
   });
 
   // MARK: Data, downloads and crashes
@@ -4588,6 +4646,31 @@ try {
     } finally {
       try { ws.close(); } catch {}
     }
+  });
+
+  await check("content-blocker-restored", async () => {
+    // A tab the app restores at launch asks for ads as it loads: the content blocker loads into Personal as the app
+    // starts, after Chrome has loaded the profile, and NNCore holds Personal's navigations until its rulesets are in
+    // force, so none of the restored page's ads goes out.
+    const windowId = await appUp("app-blocker-restored.out.log");
+    const tag = `restored-${Date.now()}`;
+    const url = `http://adpage.test:${server.address().port}/adfirst?${tag}`;
+    const loaded = (id) => evalApp(`const s = nn.store.getState(); const t = s.tabs[${JSON.stringify(id)}];
+      return t?.title === "Ad first" && !s.live[${JSON.stringify(id)}]?.isLoading ? true : null`);
+    const id = await evalApp(`const s = nn.store.getState(); const id = s.newTab(${JSON.stringify(windowId)}, { url: ${JSON.stringify(url)} });
+      nn.store.getState().activate(id); return id`);
+    await until("the ad page", () => loaded(id), 15000);
+    const beforeQuit = adsServedFor(tag);
+    await until("the ad page saved", async () => savedSession().includes(tag), 10000);
+    await pressQuit(windowId);
+    await until("the app to exit", async () => exited, 20000);
+    const relaunched = Date.now();
+    const tab = await restored(tag);
+    await until("the restored page loaded", () => loaded(tab.id), 20000);
+    await sleep(500);
+    const afterLaunch = adsServedFor(tag).slice(beforeQuit.length);
+    if (beforeQuit.length || afterLaunch.length) throw new Error(`ads went out: ${JSON.stringify({ beforeQuit, afterLaunch })}`);
+    return { restored: tab.url, loadedAfterMs: Date.now() - relaunched - 500 };
   });
 
   await check("closed-tabs-own-lists", async () => {
