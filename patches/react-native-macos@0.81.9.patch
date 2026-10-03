@@ -14,7 +14,7 @@ index 6f332dc..5dd8e99 100644
  @interface RCTUISecureTextFieldCell : NSSecureTextFieldCell
  
  @property (nonatomic, assign) UIEdgeInsets textContainerInset;
-@@ -71,13 +76,46 @@ - (NSText *)setUpFieldEditorAttributes:(NSText *)textObj
+@@ -71,13 +76,53 @@ - (NSText *)setUpFieldEditorAttributes:(NSText *)textObj
 
  #pragma mark - RCTUISecureTextField
 
@@ -28,6 +28,13 @@ index 6f332dc..5dd8e99 100644
    return RCTUISecureTextFieldCell.class;
  }
 
++// NSSecureTextField answers NO here, which keeps Writing Tools out of its field editor; NSTextField's YES would offer
++// them on the secret being typed.
+++ (BOOL)allowsWritingTools
++{
++  return NO;
++}
++
 +// AppKit's secure field editor treats its delegate as an NSSecureTextField: it throws when the delegate isn't one
 +// ("NSSecureTextFieldCell is not secure…", for apps built with a recent SDK), then calls NSSecureTextField's own
 +// methods on it while drawing. This field is an NSTextField with a secure cell, so it says it is one and implements
