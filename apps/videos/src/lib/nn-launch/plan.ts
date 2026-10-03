@@ -87,7 +87,11 @@ const YAHU = (id: string, land: Box, port: Box): WindowLayer => ({ id, box: { la
 
 const nags: Shot = {
   id: "nags", kind: "nags", at: 0, beats: 8, window: win("nags-window", { land: [300, 270, 1320, 825], port: [40, 700, 1500, 938] }),
-  extra: [YAHU("nags-yahu", [1300, 280, 640, 780], [240, 900, 600, 580])],
+  extra: [
+    YAHU("nags-yahu", [1300, 280, 640, 780], [240, 900, 600, 580]),
+    // He leans in from the right edge and delivers the first NO. himself.
+    YAHU("nags-yahu-peek", [1330, 420, 560, 560], [560, 1040, 460, 460]),
+  ],
   type: [
     // Bar 1: four stabs, one ask each, over a site really asking it in a Netnyahoo window (scenes/asks.js).
     T("nag-sign-in", "SIGN IN.", 0, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 1, align: "center", fill: paper, portText: "SIGN\nIN." }),
@@ -137,7 +141,7 @@ const swipe: Shot = {
 
 const split: Shot = {
   id: "split", kind: "split", at: 26, beats: 8, window: win("split-window"),
-  extra: [YAHU("split-yahu", [1380, 560, 520, 520], [500, 905, 480, 500])],
+  extra: [YAHU("split-yahu", [1380, 650, 520, 520], [500, 1010, 480, 500])],
   type: [
     T("split-two", "TWO PAGES.", 0, "slam", 140, TOP.land, TOP.port, { out: 5, color: paper, fill: ink }),
     T("split-coalition", "NO COALITION TALKS.", 5, "slam", 140, TOP.land, TOP.port, { color: paper, fill: P.red, portText: "NO COALITION\nTALKS." }),
@@ -206,14 +210,14 @@ const typing: Shot = { id: "typing", kind: "typing", at: 72, beats: 8, window: w
 const endShot = (at: number, beats: number, lockup: number, button: number): Shot => ({
   id: "end", kind: "end", at, beats, marks: { lockup, button },
   extra: [
-    YAHU("end-yahu", [1240, 200, 640, 820], [90, 830, 900, 700]),
+    YAHU("end-yahu", [1240, 200, 640, 820], [90, 822, 900, 700]),
     { id: "end-icon", box: { land: [80, 220, 180, 180], port: [60, 240, 150, 150] } },
   ],
   type: [
     T("end-immunity", "FULL\nIMMUNITY.", 0, "slam", 360, [80, 120, 1080, 800], [60, 230, 880, 640], { out: lockup }),
     T("end-name", "NETNYAHOO", lockup, "slam", 190, [290, 220, 870, 180], [230, 240, 710, 150], { portSize: 150 }),
     T("end-mac", "THE SIDEBAR BROWSER FOR MAC", lockup + 0.5, "slam", 60, [84, 420, 1076, 70], [60, 410, 880, 120], { color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
-    T("end-download", "DOWNLOAD FREE", lockup + 1, "slam", 96, [84, 520, 1076, 110], [60, 550, 880, 100]),
+    T("end-download", "DOWNLOAD FOR MAC", lockup + 1, "slam", 96, [84, 520, 1076, 110], [60, 550, 880, 100]),
     T("end-url", "NETNYAHOO.COM", lockup + 1, "slam", 190, [80, 630, 1080, 210], [60, 650, 880, 160], { color: P.blue }),
     T("end-source", "GITHUB.COM/MANTRAKP04/NETNYAHOO", lockup + 1.5, "label", 48, [86, 870, 1076, 70], [64, 820, 880, 110], { portSize: 40, portText: "GITHUB.COM/MANTRAKP04/\nNETNYAHOO" }),
   ],

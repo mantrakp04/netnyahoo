@@ -249,13 +249,16 @@ def main():
         img = composite(fr["f"], items, fr.get("color"), fr.get("dark", True), tint, slide)
         name = f"{len(out):04d}.jpg"
         img.save(os.path.join(dst, name), quality=93, subsampling=0)
-        out.append({"file": name, "label": fr.get("label"), "t": fr.get("t"), "profile": fr.get("profile")})
+        progress = round(abs(fr["pos"] - fr["from"]), 4) if fr.get("pos") is not None and fr.get("from") is not None else None
+        out.append({"file": name, "label": fr.get("label"), "t": fr.get("t"), "profile": fr.get("profile"), "progress": progress})
     size = [img.width, img.height]
     json.dump({"frames": out, "size": size}, open(os.path.join(dst, "frames.json"), "w"), indent=1)
     index_path = os.path.join(ROOT, "src", "lib", "nn-launch", "footage.json")
     index = json.load(open(index_path)) if os.path.exists(index_path) else {}
     marks = {fr["label"]: fr["mark"] for fr in frames if fr.get("mark")}
-    index[scene] = {"size": size, "labels": [f["label"] for f in out], **({"marks": marks} if marks else {})}
+    progress = [f["progress"] for f in out]
+    index[scene] = {"size": size, "labels": [f["label"] for f in out], **({"marks": marks} if marks else {}),
+                    **({"progress": progress} if any(p is not None for p in progress) else {})}
     json.dump(dict(sorted(index.items())), open(index_path, "w"), indent=1)
     print(f"{scene}: {len(out)} frames → {dst}")
 

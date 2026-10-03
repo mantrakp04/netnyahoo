@@ -185,6 +185,19 @@
       }
     },
     {
+      "id": "nags-yahu-peek",
+      "definition": "window",
+      "label": "nags · yahu-peek",
+      "parentId": null,
+      "values": {
+        "x": 560,
+        "y": 1040,
+        "width": 460,
+        "height": 460,
+        "rotation": 0
+      }
+    },
+    {
       "id": "nag-sign-in",
       "definition": "type",
       "label": "nags · SIGN IN.",
@@ -596,7 +609,7 @@
       "parentId": null,
       "values": {
         "x": 500,
-        "y": 905,
+        "y": 1010,
         "width": 480,
         "height": 500,
         "rotation": 0
@@ -976,7 +989,7 @@
       "parentId": null,
       "values": {
         "x": 90,
-        "y": 830,
+        "y": 822,
         "width": 900,
         "height": 700,
         "rotation": 0
@@ -1049,10 +1062,10 @@
     {
       "id": "end-download",
       "definition": "type",
-      "label": "end · DOWNLOAD FREE",
+      "label": "end · DOWNLOAD FOR MAC",
       "parentId": null,
       "values": {
-        "text": "DOWNLOAD FREE",
+        "text": "DOWNLOAD FOR MAC",
         "size": 96,
         "color": "#16130F",
         "fill": "#00000000",

@@ -11,7 +11,7 @@ const swipe = (name, dir, n) => {
   then(() => { from = pos(); return step([{ phase: "began", dx: 0 }]); });
   // The tracker moves the pager about half a page per sidebar width dragged: drag far enough that the pager is nearly
   // home before the release, so the film's slide has frames all the way to the commit.
-  const total = dir * WIDTH * 1.9;
+  const total = dir * WIDTH * 1.98;
   // Hermes' eval shares one binding across a for-let loop's closures: forEach gives each step its own i.
   Array.from({ length: n }, (_, i) => i).forEach((i) => {
     const dx = (ease((i + 1) / n) - ease(i / n)) * total;

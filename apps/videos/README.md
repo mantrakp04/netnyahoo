@@ -8,6 +8,13 @@ every hit would land 43 ms late. The script keeps Remotion's video, re-encodes t
 (whose mp4 muxer trims the priming) and checks the result with `scripts/check-sync.py`, which must report a lag of
 0 samples.
 
+Two caveats for delivery:
+- **Edit list.** The mp4's audio relies on an edit list (its first packet is at pts −2112) to trim the priming.
+  QuickTime, browsers and ffmpeg honour it. After uploading, download the film back from each platform (X, YouTube,
+  Instagram) and re-run `check-sync.py` on it: a platform that ignores edit lists plays the audio 44 ms late.
+- **macOS only.** `deliver.sh` encodes with `aac_at` (Apple's AudioToolbox encoder), which keeps peaks under
+  -1 dBTP where ffmpeg's own AAC overshot. That ties delivery to a Mac.
+
 ## The launch film: "The asks"
 
 | Composition | Size | Length |
@@ -38,7 +45,7 @@ paper taking each profile's colour. Then:
 - "SEVEN APP ICONS. ONE FACE.";
 - four "NO" cards;
 - netnyahoo.com typed into the address bar, the camera diving into the site's "Full immunity.";
-- the end card: the icon, the name, DOWNLOAD FREE / NETNYAHOO.COM and the GitHub address, with Big Yahu doing the
+- the end card: the icon, the name, DOWNLOAD FOR MAC / NETNYAHOO.COM and the GitHub address, with Big Yahu doing the
   griddy and landing a flex on the last brass button.
 
 The film uses about 80 words on screen. The type is the site's poster system on warm stock: Archivo, Newsreader and

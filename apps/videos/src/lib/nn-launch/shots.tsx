@@ -51,20 +51,41 @@ function playRun(b: number, frames: number[], start: number, end: number) {
 }
 
 /**
- * Which swipe frame shows at beat `b`. Each swipe drags for `drag` beats, the page sliding with the sidebar (the
- * capture drags the pager to ~96% of a page), and on its commit beat the settled frame lands: the live capture with
- * the page at its final layout, so nothing jumps after the commit.
+ * Which swipe frame shows at beat `b`. Through each drag the frame is picked by the pager's own progress (recorded
+ * per frame, footage.json) on one ease-out curve that reaches its last captured position (~99%) on the frame before
+ * the commit; the page is composited on the same progress, so page and sidebar travel together. On the commit beat
+ * the settled live frame lands.
  */
+const PROGRESS = (SCENES.swipe as { progress?: (number | null)[] }).progress ?? [];
+const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
 function swipeIndex(b: number, events: { label: string; commit: number; drag: number }[], before = "start") {
   let index = frameOf("swipe", before);
   for (const e of events) {
     const drag = framesOf("swipe", e.label);
     const rest = frameOf("swipe", `${e.label}:rest`);
     if (b < e.commit - e.drag) return index;
-    if (b < e.commit) return drag[Math.min(drag.length - 1, Math.floor(((b - (e.commit - e.drag)) / e.drag) * drag.length))];
+    if (b < e.commit) {
+      const lastFrame = e.commit - 1 / BEAT;
+      const t = clamp((b - (e.commit - e.drag)) / Math.max(1e-6, lastFrame - (e.commit - e.drag)));
+      const top = PROGRESS[drag[drag.length - 1]] ?? 1;
+      const target = easeOutCubic(t) * top;
+      let best = drag[0];
+      for (const i of drag) if (Math.abs((PROGRESS[i] ?? 0) - target) < Math.abs((PROGRESS[best] ?? 0) - target)) best = i;
+      return best;
+    }
     index = rest;
   }
   return index;
+}
+
+/** After each commit, a short spring tail by translation only: the page carries ~1% past home and settles. */
+function settleDx(b: number, events: { commit: number; dir?: number }[], width: number) {
+  let dx = 0;
+  for (const e of events) {
+    const f = (b - e.commit) * BEAT;
+    if (f >= 0 && f < 8) dx += (e.dir ?? -1) * 0.012 * width * Math.sin((Math.PI * f) / 4) * Math.exp(-f / 2.5);
+  }
+  return dx;
 }
 
 const Shake = ({ hits, amount, children }: { hits: number[]; amount?: number; children: ReactNode }) => (
@@ -112,7 +133,7 @@ const ASK_CAMS: Cam[] = [
   { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.5, ay: 0.62 },
   { ...REST, zoom: 1.12, fx: 0.62, fy: 0.45, aim: 1, ax: 0.5, ay: 0.6, rot: -1 },
   { ...REST, zoom: 1.12, fx: 0.5, fy: 0.72, aim: 1, ax: 0.5, ay: 0.62, rot: 1 },
-  { ...REST, zoom: 1.12, fx: 0.55, fy: 0.55, aim: 1, ax: 0.5, ay: 0.6 },
+  { ...REST, zoom: 1.12, fx: 0.55, fy: 0.55, aim: 1, ax: 0.5, ay: 0.66 },
 ];
 
 function askFrame(b: number) {
@@ -155,6 +176,13 @@ function Nags() {
       <Shake hits={[...stabs, ...piles]} amount={10}>
         <Window id={windowId()} scene="asks" index={index} cam={cam} pointer={askPointer(b)} />
         <Yahu id={extraId("yahu")} clip="Default Dance" time={mix(POSE.steeple, 1.85, swing)} rise={rise} yaw={-0.25} />
+        {/* He leans in for the first stab, arms going up as he slams the first NO. on its beat, and ducks out. */}
+        <Yahu
+          id="nags-yahu-peek" clip="Default Dance" framing="bust" yaw={-0.45}
+          time={mix(POSE.steeple, POSE.flex, seg(b, 0.25, 0.25, easeIn))}
+          rise={springAt(b, 0.05, { stiffness: 260, damping: 18 }) * (1 - seg(b, 0.95, 0.3, easeIn))}
+          squash={kick(b, 0.5, 0.2)}
+        />
         <Supers />
       </Shake>
     </Paper>
@@ -276,7 +304,7 @@ function Swipe() {
   const glyph = b < first.commit ? 1 : 0;
   return (
     <Paper>
-      <Window id={windowId()} scene="swipe" index={index} cam={{ ...cam, zoom: cam.zoom * (1 + bump) }} />
+      <Window id={windowId()} scene="swipe" index={index} cam={{ ...cam, zoom: cam.zoom * (1 + bump), dx: cam.dx + settleDx(b, RUN_1, port ? 1080 : 1920) }} />
       {glyph > 0 ? <Fingers x={port ? 540 : 1660} y={port ? 1300 : 840} size={port ? 300 : 260} slide={slide} from={1} opacity={glyph} /> : null}
       <Supers />
     </Paper>
@@ -385,22 +413,25 @@ function dropCam(d: number, port: boolean): Cam {
   // Portrait: the sidebar and the left of the page, big enough to read on a phone, inside the safe zone.
   const whole: Cam = port ? { ...REST, zoom: 0.78, fx: 0.32, fy: 0.5, aim: 1, ax: 0.5, ay: 0.54 } : { ...REST, zoom: 0.8, dy: 40 };
   const macro: Cam = { ...REST, zoom: port ? 1.15 : 1.9, fx: 0.12, fy: 0.2, aim: 1, ax: port ? 0.42 : 0.32, ay: port ? 0.46 : 0.42 };
-  const out = seg(d, 7.4, 2.6, easeInOut);
-  let cam: Cam = d < 2.6 ? whole : d < 7.4 ? macro : { ...whole, zoom: mix(macro.zoom, whole.zoom, out), fx: mix(0.12, 0.5, out), fy: mix(0.2, 0.5, out), aim: mix(1, whole.aim, out) };
+  const lerp = (a: Cam, b: Cam, t: number): Cam => ({
+    zoom: mix(a.zoom, b.zoom, t), fx: mix(a.fx, b.fx, t), fy: mix(a.fy, b.fy, t), dx: mix(a.dx, b.dx, t),
+    dy: mix(a.dy, b.dy, t), rot: mix(a.rot, b.rot, t), aim: mix(a.aim, b.aim, t), ax: mix(a.ax, b.ax, t), ay: mix(a.ay, b.ay, t),
+  });
+  let cam: Cam = d < 2.6 ? whole : d < 7.4 ? macro : lerp(macro, whole, seg(d, 7.4, 2.6, easeInOut));
   if (d < 0) {
     // The poise: a slow push from wider into the framing the drop keeps (no jump on the drop frame).
     const push = seg(d, -4, 3.6, easeInOut);
     cam = { ...whole, zoom: whole.zoom * mix(0.88, 1, push) };
   }
-  // The shove: the drag pulls the window a little, the commit throws it on, then it settles.
+  // The drag pulls the window a little the way the fingers go; the commit carries it on and it springs home.
   const W = port ? 1080 : 1920;
   let dx = 0;
   for (const e of RUN_2) {
     const p = clamp((d - (e.commit - e.drag)) / e.drag);
-    if (d >= e.commit - e.drag && d < e.commit) dx += e.dir * 0.03 * W * easeIn(p);
-    if (d >= e.commit) dx += e.dir * 0.03 * W * Math.exp(-(d - e.commit) / 0.12) * Math.cos((d - e.commit) * 10);
+    if (d >= e.commit - e.drag && d < e.commit) dx += e.dir * 0.02 * W * easeIn(p);
+    if (d >= e.commit) dx += e.dir * 0.02 * W * Math.exp(-((d - e.commit) * BEAT) / 3);
   }
-  return { ...cam, dx: cam.dx + dx };
+  return { ...cam, dx: cam.dx + dx + settleDx(d, RUN_2, W) };
 }
 
 /**
@@ -611,12 +642,14 @@ function End() {
   // The griddy until the beat before the button; then his flex lands on the button and holds.
   const flexFrom = button - 1;
   const clip: Clip = b < flexFrom ? "Griddy" : "Default Dance";
-  const time = b < flexFrom ? (b * SEC) % 6.1 : Math.min(2.67, 2.2 + (b - flexFrom) * SEC);
+  // After the flex lands he keeps breathing: the arms ease a little in and out of the flex and he sways.
+  const hold = Math.max(0, b - flexFrom - 1);
+  const time = b < flexFrom ? (b * SEC) % 6.1 : Math.min(2.67, 2.2 + (b - flexFrom) * SEC) - (hold > 0 ? 0.05 * (1 - Math.cos(hold * Math.PI * 0.5)) : 0);
   const rise = springAt(b, 0, { stiffness: 200, damping: 15 });
   return (
     <Paper>
       <Shake hits={[0, lockup, button]} amount={14}>
-        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2)} yaw={b < button ? 0.3 : mix(0.3, -0.75, seg(b, button, 0.4))} />
+        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2) + (hold > 0 ? 0.08 * Math.sin(hold * Math.PI) : 0)} yaw={b < button ? 0.3 : mix(0.3, -0.75, seg(b, button, 0.4)) + 0.06 * Math.sin(hold * Math.PI * 0.5)} />
         <AppIcon id={extraId("icon")} at={lockup} cycle={[button - 3, button]} />
         <Underline id="end-url" at={button} />
         <Supers />

@@ -305,8 +305,11 @@ export function fitSize(text: string, size: number, width: number, height: numbe
   return Math.max(8, Math.min(size, byWidth * 0.97, byHeight));
 }
 
+/** A stamp starts falling this long before its beat, so it lands on the beat's sound. */
+const STAMP_FALL = 3 / BEAT;
 function visible(b: number, layer: TypeLayer, shot: Shot) {
-  return b >= layer.at && b < (layer.out ?? shot.beats + (shot.skip ?? 0));
+  const start = layer.style === "stamp" ? layer.at - STAMP_FALL : layer.at;
+  return b >= start && b < (layer.out ?? shot.beats + (shot.skip ?? 0));
 }
 
 /** One of the film's texts, bound to its Studio object (text, size, colour, plate and box are editable). */
@@ -344,8 +347,9 @@ export function Type({ layer }: { layer: TypeLayer }) {
     scale = 1.07 - 0.07 * s;
     extraRot = (1 - s) * (random(layer.id) - 0.5) * 6;
   } else if (layer.style === "stamp") {
-    const t = clamp(local / (3 / BEAT));
-    scale = t < 1 ? mix(2.4, 0.94, easeIn(t)) : 1 - 0.06 * Math.exp(-(local - 3 / BEAT) * 9);
+    // Falls for three frames and lands (scale 0.94) exactly on its beat.
+    const t = clamp((local + STAMP_FALL) / STAMP_FALL);
+    scale = t < 1 ? mix(2.4, 0.94, easeIn(t)) : 1 - 0.06 * Math.exp(-local * 9);
     opacity = t < 0.15 ? 0 : 1;
   } else if (layer.style === "label") {
     style = mono;
