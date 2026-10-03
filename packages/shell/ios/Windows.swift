@@ -93,11 +93,23 @@ final class WindowManager: NSObject, NSWindowDelegate {
     windows[id] = window
     if let center = lightsCenters[id] { ChromeWindows.setTrafficLightsCenter(center, in: window) }
     if smallSize == nil { lastPlaced = window }
-    if focus {
-      // Key at once, while its content may still be mounting (it shows once it's there): what the user types from now
-      // on is for this window, never the one they left (holdTyping).
+    if focus, unrevealed[id] != nil {
+      // Key once it shows, its content first: made key while its content mounted, the key change's work (the old
+      // window's blur, Chrome's activation, the focus events) went ahead of the content and the window showed a frame or
+      // more later (0.2.23: 53 ms against 37). What the user types from now on is held for it, never the window they
+      // left (holdTyping).
+      window.orderFront(nil)
+      keyOnReveal = window
+      holdTyping(in: window)
+      unrevealed[id]!.append { [weak self, weak window] in
+        // Not if the user went to another window meanwhile, or a newer window is to be key.
+        guard let self, let window, self.windows[id] === window, self.keyOnReveal === window else { return }
+        self.keyOnReveal = nil
+        window.makeKeyAndOrderFront(nil)
+        self.typeAheadKeyed(window)
+      }
+    } else if focus {
       window.makeKeyAndOrderFront(nil)
-      if unrevealed[id] != nil { holdTyping(in: window) }
     } else if let key = NSApp.keyWindow, key !== window {
       // A window opened without focus (tabs Small Yahu sends behind with no main window open) goes behind the
       // key window instead of over it.
@@ -142,25 +154,33 @@ final class WindowManager: NSObject, NSWindowDelegate {
     if unrevealed[id] != nil { unrevealed[id]!.append(then) } else { then() }
   }
 
-  // Typing into a window that is key before its content is (⌘N, then typing at once): its keys wait, in order, for the
-  // first field or page in it to take them (its address field focuses once laid out), as Chrome's new window has its
-  // address field from the start. A ⌘-shortcut acts at once while nothing waits, and takes its turn once something
-  // does. Dropped if the window closes or stops being key first, or past 256 events.
+  // Typing into a new window before its content is there (⌘N, then typing at once). Until it shows and is made key,
+  // every key the app gets is for it: held, shortcuts too (they'd act on the window the user left). Then its keys wait,
+  // in order, for the first field or page in it to take them (its address field focuses once laid out), as Chrome's
+  // new window has its address field from the start; a ⌘-shortcut acts at once while nothing waits, and takes its turn
+  // once something does. Dropped if the window closes or stops being key before that, if another window is made key
+  // before it shows (it isn't made key then), or past 256 events.
   private final class TypeAhead {
     weak var window: NSWindow?
     var keys: [NSEvent] = []
     var watches: [NSObjectProtocol] = []
+    // Made key (it shows): its keys now come with it as their window.
+    var keyed = false
+    // Sending what it held: those go through.
+    var passing = false
     init(_ window: NSWindow) { self.window = window }
   }
   private var typeAhead: TypeAhead?
   private var typingMonitor: Any?
+  // The window opened with focus that is made key once it shows (the newest; nil once another window became key).
+  private weak var keyOnReveal: NSWindow?
 
   private func holdTyping(in window: NSWindow) {
     endTypeAhead(send: false)
-    if Self.takesTyping(window.firstResponder) { return }
     typingMonitor = typingMonitor ?? NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-      guard let self, let held = self.typeAhead, let window = held.window, event.window === window,
-        !held.keys.isEmpty || (event.type == .keyDown && !event.modifierFlags.contains(.command))
+      // Held from a key-down on: the ⌘N's own key-up goes where its key-down went.
+      guard let self, let held = self.typeAhead, let window = held.window, !held.passing, !held.keyed || event.window === window,
+        !held.keys.isEmpty || (event.type == .keyDown && (!held.keyed || !event.modifierFlags.contains(.command)))
       else { return event }
       guard held.keys.count < 256 else {
         self.endTypeAhead(send: false)
@@ -171,7 +191,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     }
     let held = TypeAhead(window)
     held.watches.append(window.observe(\.firstResponder) { [weak self, weak held] window, _ in
-      guard Self.takesTyping(window.firstResponder) else { return }
+      guard held?.keyed == true, Self.takesTyping(window.firstResponder) else { return }
       // After the batch that focused it: the field sets its selection next.
       DispatchQueue.main.async { if let held, self?.typeAhead === held { self?.endTypeAhead(send: true) } }
     })
@@ -180,7 +200,39 @@ final class WindowManager: NSObject, NSWindowDelegate {
         if let held, self?.typeAhead === held { self?.endTypeAhead(send: false) }
       })
     }
+    // Another window made key before this one shows (a click into it): the user went there; this one isn't made key.
+    held.watches.append(NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) {
+      [weak self, weak held, weak window] note in
+      guard let self, let held, self.typeAhead === held, !held.keyed, note.object as? NSWindow !== window else { return }
+      if self.keyOnReveal === window { self.keyOnReveal = nil }
+      self.endTypeAhead(send: false)
+    })
     typeAhead = held
+  }
+
+  // The window held for is key now: what it held goes to it, at once if its field or page already has the focus.
+  private func typeAheadKeyed(_ window: NSWindow) {
+    guard let held = typeAhead, held.window === window, !held.keyed else { return }
+    held.keyed = true
+    held.keys = held.keys.compactMap { Self.retarget($0, to: window) }
+    if Self.takesTyping(window.firstResponder) || !window.isKeyWindow { return endTypeAhead(send: window.isKeyWindow) }
+    // What only waited for it to be key goes now: the shortcuts and key-ups before the first plain key (a ⌘W, or a ⌘Q
+    // in a window whose content never comes).
+    let first = held.keys.firstIndex { $0.type == .keyDown && !$0.modifierFlags.contains(.command) } ?? held.keys.endIndex
+    let now = held.keys[..<first]
+    held.keys.removeFirst(first)
+    held.passing = true
+    now.forEach { NSApp.sendEvent($0) }
+    held.passing = false
+  }
+
+  // A key event held while another window was key, as if it had come to `window`.
+  private static func retarget(_ event: NSEvent, to window: NSWindow) -> NSEvent? {
+    if event.windowNumber == window.windowNumber { return event }
+    return NSEvent.keyEvent(
+      with: event.type, location: event.locationInWindow, modifierFlags: event.modifierFlags, timestamp: event.timestamp,
+      windowNumber: window.windowNumber, context: nil, characters: event.characters ?? "",
+      charactersIgnoringModifiers: event.charactersIgnoringModifiers ?? "", isARepeat: event.isARepeat, keyCode: event.keyCode)
   }
 
   private func endTypeAhead(send: Bool) {

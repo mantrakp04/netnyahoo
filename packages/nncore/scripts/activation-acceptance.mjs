@@ -661,8 +661,8 @@ try {
   };
 
   await check("type-after-new-window", async () => {
-    // The new window is key from the start, so no key reaches the page of the window that was, and every key lands in
-    // the new window's address field once it has one.
+    // Keys typed before the new window shows are held for it (it is made key as it shows), so none reaches the page of
+    // the window that was, and every key lands in the new window's address field once it has one.
     const { tab, t } = await keysPage();
     const text = "netnyahoo";
     let made = null;
