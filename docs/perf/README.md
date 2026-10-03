@@ -2,7 +2,7 @@
 
 How to measure Netnyahoo and gate a release on it. Every script prints its flags with `--help`, and its header
 documents the same flags, so you don't need to read the rest of a script to run it. Results from past
-comparisons: [0.2.19 → 0.2.20](0.2.19-to-0.2.20.md), [0.2.22 → 0.2.23](0.2.22-to-0.2.23.md), [0.2.23 → 0.2.24](0.2.23-to-0.2.24.md).
+comparisons: [0.2.19 → 0.2.20](0.2.19-to-0.2.20.md), [0.2.22 → 0.2.23](0.2.22-to-0.2.23.md), [0.2.23 → 0.2.24](0.2.23-to-0.2.24.md), [0.2.24 → 0.2.25](0.2.24-to-0.2.25.md).
 
 ## Files
 
