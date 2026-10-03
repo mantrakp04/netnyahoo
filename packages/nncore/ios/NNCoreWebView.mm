@@ -52,6 +52,12 @@ NSMutableDictionary<NSString *, NNCoreTab *> *Parked() {
   return parked;
 }
 
+// By transfer key: the JS reload that parked its tab, until a view takes it (+initialize).
+NSMutableDictionary<NSString *, NSNumber *> *ReloadParked() {
+  static NSMutableDictionary *parked = [NSMutableDictionary dictionary];
+  return parked;
+}
+
 NSView *ParkingView() {
   static NSView *view = [[NSView alloc] initWithFrame:NSZeroRect];
   return view;
@@ -372,6 +378,48 @@ const char kPageReportsKey = 0;
   });
 }
 
+// A JS reload (development: Metro) unmounts every view and mounts them again once the new bundle has run: each tab's
+// page is parked for its next view, as prepareTransfer: parks it, instead of closing and loading again (wasted work,
+// and a second history visit for every open page). One the new bundle hasn't shown again within 30 s closes, and an
+// old view torn down later closes its tab as usual. RN posts the notification from any thread, then queues its
+// teardown on the main queue: this goes first.
++ (void)initialize {
+  if (self != NNCoreWebView.class) return;
+  static NSUInteger reloads = 0;
+  [NSNotificationCenter.defaultCenter addObserverForName:@"RCTBridgeWillReloadNotification"
+                                                  object:nil
+                                                   queue:nil
+                                              usingBlock:^(NSNotification *) {
+                                                void (^park)(void) = ^{
+                                                  NSNumber *reload = @(++reloads);
+                                                  NSMapTable<NSString *, NNCoreWebView *> *views = [NSMapTable strongToWeakObjectsMapTable];
+                                                  NSMutableDictionary<NSString *, NNCoreTab *> *handed = [NSMutableDictionary dictionary];
+                                                  for (NNCoreWebView *view in LiveViews().allObjects) {
+                                                    if (!view->_tab || view->_tab.closed || !view->_transferKey.length) continue;
+                                                    view->_handingOff = YES;
+                                                    [views setObject:view forKey:view->_transferKey];
+                                                    handed[view->_transferKey] = view->_tab;
+                                                    ReloadParked()[view->_transferKey] = reload;
+                                                  }
+                                                  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                                                    [handed enumerateKeysAndObjectsUsingBlock:^(NSString *key, NNCoreTab *tab, BOOL *) {
+                                                      // Taken by a view since, or parked again by a later reload.
+                                                      if (![ReloadParked()[key] isEqual:reload]) return;
+                                                      [ReloadParked() removeObjectForKey:key];
+                                                      // An old view not torn down yet closes its tab when it goes.
+                                                      if (NNCoreWebView *view = [views objectForKey:key]; view && view->_tab == tab) view->_handingOff = NO;
+                                                      if (Parked()[key] != tab) return;
+                                                      [Parked() removeObjectForKey:key];
+                                                      if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
+                                                      else [tab close];
+                                                    }];
+                                                  });
+                                                };
+                                                if (NSThread.isMainThread) park();
+                                                else dispatch_async(dispatch_get_main_queue(), park);
+                                              }];
+}
+
 - (instancetype)initWithFrame:(NSRect)frameRect {
   if ((self = [super initWithFrame:frameRect])) {
     _profile = @"";
@@ -578,6 +626,7 @@ const char kPageReportsKey = 0;
     }
   }
   if (!tab || tab.closed) return NO;
+  [ReloadParked() removeObjectForKey:_transferKey];
   _adoptId = nil;
   _transferredURL = tab.url;
   if (SamePage(_pendingURL, _transferredURL)) _pendingURL = nil;
