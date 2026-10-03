@@ -13,7 +13,8 @@ folder. Render one with `pnpm -C apps/videos render <id>`, which writes `out/<id
 | `teaser-9x16` | 1080 × 1920 | 14.9 s |
 
 Every other browser asks for something. Four brass stabs carry "SIGN IN. / TRY AI. / ACCEPT ALL. / UPGRADE.",
-each over a real Netnyahoo window, and then the asks get stamped onto it on a snare roll. Big Yahu rises behind the
+each over a site really asking it in a Netnyahoo window (a sign-in modal, an AI pitch, a cookie banner, an upgrade
+page), and then the asks get stamped onto it on a snare roll. Big Yahu rises behind the
 pile and swats it off as "NETNYAHOO — THE SIDEBAR BROWSER FOR MAC" lands, then stamps "ASKS FOR NOTHING."
 
 The product follows, live:
@@ -24,8 +25,9 @@ The product follows, live:
 - the built-in blocker switched off and on, its count climbing;
 - "IT'S ACTUALLY CHROMIUM.".
 
-The music stops dead for a beat, two fingers rest on a trackpad, and drop B lands on the biggest swipe: five
-profiles in eight beats, the paper taking each profile's colour. Then:
+The window waits on the stock's colour, two fingers settle on a trackpad, the first drag starts inside a beat of
+true silence, and the page change *is* drop B: five profiles in eight beats, each named on the frame it lands, the
+paper taking each profile's colour. Then:
 - "ANY CHROME EXTENSION." with "NO THANKS." stamped on Chrome's own prompt;
 - "SEVEN APP ICONS. ONE FACE.";
 - four "NO" cards;
@@ -96,6 +98,8 @@ The screen was locked when these were made (2026-10-03), so WindowServer recordi
 is captured in-process, frame by frame:
 
 - **The window** is the app drawing its own layers (`nn.shell.devSnapshotWindow`, 2x).
+- **The hook's asks** are real sites in the Personal profile (`scenes/asks.js`): Pinterest's sign-in modal,
+  Notion's AI page, the New York Times' cookie banner and Dropbox's upgrade page.
 - **The pages** are each tab's own picture of itself (`WebViewHandle.capturePicture(2)`), taken again for every
   frame where the page moves.
 - **Live motion**, one real state per film frame:
@@ -125,6 +129,8 @@ is captured in-process, frame by frame:
 anthem in F minor at 128.57 BPM, with brass stabs, a march-snare roll, two drops, a break that cuts to silence, an
 end hit, march taps and a final brass button.
 
+- **Feel:** inner notes are humanised (seeded jitter and velocity, two dynamic layers, round robins). The
+  `breaths` field in `cuts.json` drops the kick, bass and hats under brass stabs (the NO run), then slams back.
 - **Sources:**
   - Brass, timpani, cymbals and the concert bass drum come from VSCO 2 Community Edition.
   - The rope-tension march snare, claps, tom, slapstick and woodblock come from the Versilian Community Sample

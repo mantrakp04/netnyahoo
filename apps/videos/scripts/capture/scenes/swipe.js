@@ -17,7 +17,7 @@ const swipe = (name, dir, n) => {
   // A page just shown again repaints in stages: wait, and keep the second picture.
   then(() => sleep(2200).then(() => picShown(name)).then(() => sleep(600)).then(() => picShown(name)).then(() => snap(name + ":rest", { pageKey: Object.fromEntries(shownTabs().map((id) => [id, name + ":" + id])) })));
 };
-// Side Project shows GitHub's trending page (Tailwind's paints too late after a swipe to be captured).
+// Side Project shows the TypeScript handbook (Tailwind's paints too late after a swipe to be captured).
 then(() => { unsplit(); return goProfile("side"); });
 then(() => { st().activate("t21"); return sleep(3000); });
 // Every profile's page once before the take (a page first shown by a swipe in a hidden instance can stay unpainted

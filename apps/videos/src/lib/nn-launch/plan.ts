@@ -60,7 +60,7 @@ export interface Shot {
 
 const ink = "#16130F";
 const paper = "#F1ECE2";
-const P = { red: "#C3371F", blue: "#2150D9", plum: "#C07A98", work: "#4691C3", orange: "#D87249", green: "#3EB489" };
+const P = { red: "#C3371F", blue: "#2150D9", plum: "#C07A98", work: "#4691C3", orange: "#D87249", green: "#3EB489", yellow: "#E3AC38" };
 
 // Landscape keeps 80 px side and 60 px top/bottom margins. Portrait keeps everything that matters inside y 220–1480
 // and x 60–940 (Reels/TikTok/Shorts put captions and buttons over the bottom ~420 px and the right ~140 px).
@@ -77,19 +77,21 @@ const BIG: Box = [80, 250, 1760, 580];
 const BIG_PORT: Box = [60, 420, 880, 820];
 /** A line docked under the window (landscape) or above it (portrait), 64 px or more. */
 const DOCK: Record<Aspect, Box> = { land: [80, 990, 1760, 72], port: [60, 470, 880, 90] };
+/** A profile's name plate, docked top-left beside the window's own profile name. */
+const PLATE: Record<Aspect, Box> = { land: [80, 40, 900, 170], port: [60, 230, 880, 200] };
 const YAHU = (id: string, land: Box, port: Box): WindowLayer => ({ id, box: { land, port } });
 
 // ---------------------------------------------------------------------------------------------- the hero cut
 
 const nags: Shot = {
-  id: "nags", kind: "nags", at: 0, beats: 8, window: win("nags-window", { land: [360, 180, 1200, 750], port: [40, 640, 1500, 938] }),
+  id: "nags", kind: "nags", at: 0, beats: 8, window: win("nags-window", { land: [300, 270, 1320, 825], port: [40, 700, 1500, 938] }),
   extra: [YAHU("nags-yahu", [1240, 260, 760, 820], [480, 940, 600, 660])],
   type: [
-    // Bar 1: four stabs, one ask each, on a paper plate over a browser.
-    T("nag-sign-in", "SIGN IN.", 0, "slam", 420, BIG, BIG_PORT, { out: 1, align: "center", fill: paper, portText: "SIGN\nIN." }),
-    T("nag-try-ai", "TRY AI.", 1, "slam", 460, BIG, BIG_PORT, { out: 2, align: "center", fill: paper, portText: "TRY\nAI." }),
-    T("nag-cookies", "ACCEPT ALL.", 2, "slam", 420, BIG, BIG_PORT, { out: 3, align: "center", fill: paper, portText: "ACCEPT\nALL." }),
-    T("nag-upgrade", "UPGRADE.", 3, "slam", 420, BIG, BIG_PORT, { out: 4, align: "center", fill: paper, portText: "UP\nGRADE." }),
+    // Bar 1: four stabs, one ask each, over a site really asking it in a Netnyahoo window (scenes/asks.js).
+    T("nag-sign-in", "SIGN IN.", 0, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 1, align: "center", fill: paper, portText: "SIGN\nIN." }),
+    T("nag-try-ai", "TRY AI.", 1, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 2, align: "center", fill: paper, portText: "TRY\nAI." }),
+    T("nag-cookies", "ACCEPT ALL.", 2, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 3, align: "center", fill: paper, portText: "ACCEPT\nALL." }),
+    T("nag-upgrade", "UPGRADE.", 3, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 4, align: "center", fill: paper, portText: "UP\nGRADE." }),
     // Bar 2: the snare roll. The asks stamp down on the browser, each still readable, until Big Yahu swats them off.
     T("nag-pile-1", "SIGN IN TO SYNC", 4, "stamp", 86, [300, 200, 760, 150], [60, 600, 820, 130], { out: 8, rotation: -6, portSize: 70 }),
     T("nag-pile-2", "MEET YOUR AI COPILOT", 5, "stamp", 86, [880, 380, 900, 150], [120, 820, 820, 130], { out: 8, rotation: 4, color: P.blue, portSize: 62 }),
@@ -99,12 +101,12 @@ const nags: Shot = {
 };
 
 const title: Shot = {
-  id: "title", kind: "title", at: 8, beats: 4, window: win("title-window", { land: [360, 300, 1200, 750], port: [40, 760, 1500, 938] }),
+  id: "title", kind: "title", at: 8, beats: 4, window: win("title-window", { land: [360, 340, 1200, 750], port: [40, 760, 1500, 938] }),
   extra: [YAHU("title-yahu", [1240, 260, 760, 820], [480, 940, 600, 660])],
   type: [
-    T("title-name", "NETNYAHOO", 0, "slam", 300, [80, 30, 1760, 250], [60, 230, 880, 300], { align: "center", portSize: 240 }),
-    T("title-what", "THE SIDEBAR BROWSER FOR MAC", 1, "slam", 76, [80, 230, 1760, 80], [60, 540, 880, 150], { align: "center", color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
-    T("title-stamp", "ASKS FOR NOTHING.", 2, "stamp", 84, [420, 820, 760, 150], [50, 1250, 580, 120], { rotation: -6, color: P.red, portSize: 60 }),
+    T("title-name", "NETNYAHOO", 0, "slam", 230, [80, 20, 1760, 215], [60, 230, 880, 300], { align: "center", portSize: 240 }),
+    T("title-what", "THE SIDEBAR BROWSER FOR MAC", 1, "slam", 64, [80, 250, 1760, 70], [60, 540, 880, 150], { align: "center", color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
+    T("title-stamp", "ASKS FOR NOTHING.", 2, "stamp", 84, [420, 850, 760, 150], [60, 700, 520, 110], { rotation: -6, color: P.red, portSize: 56 }),
   ],
 };
 
@@ -119,18 +121,18 @@ const swipe: Shot = {
   id: "swipe", kind: "swipe", at: 18, beats: 8, window: win("swipe-window"),
   type: [
     // Docked at the top-left, beside the profile's own name in the window, switching on the frame the page changes.
-    T("swipe-work", "WORK.", 1, "slam", 150, [80, 40, 900, 170], [60, 230, 880, 200], { out: 3, color: paper, fill: P.work }),
-    T("swipe-campaign", "CAMPAIGN.", 3, "slam", 150, [80, 40, 900, 170], [60, 230, 880, 200], { out: 5, color: paper, fill: P.orange }),
-    T("swipe-side", "SIDE PROJECT.", 5, "slam", 150, [80, 40, 900, 170], [60, 230, 880, 200], { out: 6.5, color: paper, fill: P.green }),
-    T("swipe-deniability", "PLAUSIBLE DENIABILITY COMES STANDARD.", 6.5, "slam", 72, DOCK.land, [60, 230, 880, 220], { portText: "PLAUSIBLE\nDENIABILITY\nCOMES STANDARD.", portSize: 96 }),
+    T("swipe-work", "WORK.", 0.75, "slam", 150, PLATE.land, PLATE.port, { out: 2.25, color: paper, fill: P.work }),
+    T("swipe-campaign", "CAMPAIGN.", 2.25, "slam", 150, PLATE.land, PLATE.port, { out: 3.75, color: paper, fill: P.orange }),
+    T("swipe-side", "SIDE PROJECT.", 3.75, "slam", 150, PLATE.land, PLATE.port, { out: 5, color: paper, fill: P.green }),
+    T("swipe-deniability", "PLAUSIBLE DENIABILITY COMES STANDARD.", 5, "slam", 72, DOCK.land, [60, 230, 880, 220], { portText: "PLAUSIBLE\nDENIABILITY\nCOMES STANDARD.", portSize: 96 }),
   ],
 };
 
 const split: Shot = {
   id: "split", kind: "split", at: 26, beats: 8, window: win("split-window"),
-  extra: [YAHU("split-yahu", [1400, 420, 560, 600], [600, 1000, 480, 520])],
+  extra: [YAHU("split-yahu", [1380, 560, 520, 520], [560, 1000, 480, 480])],
   type: [
-    T("split-two", "TWO PAGES.", 1, "slam", 140, TOP.land, TOP.port, { out: 5, color: paper, fill: ink }),
+    T("split-two", "TWO PAGES.", 0, "slam", 140, TOP.land, TOP.port, { out: 5, color: paper, fill: ink }),
     T("split-coalition", "NO COALITION TALKS.", 5, "slam", 140, TOP.land, TOP.port, { color: paper, fill: P.red, portText: "NO COALITION\nTALKS." }),
   ],
 };
@@ -151,7 +153,19 @@ const chromium: Shot = {
 
 const poise: Shot = { id: "poise", kind: "poise", at: 44, beats: 4, type: [] };
 
-const swipeBig: Shot = { id: "swipe-big", kind: "swipeBig", at: 48, beats: 10, window: win("swipe-big-window", { land: [120, 66, 1680, 1050], port: [40, 520, 1700, 1063] }), type: [] };
+const BIG_PLATE = (id: string, text: string, at: number, out: number, fill: string, color = paper) =>
+  T(id, text, at, "slam", 150, PLATE.land, PLATE.port, { out, color, fill });
+const swipeBig: Shot = {
+  id: "swipe-big", kind: "swipeBig", at: 48, beats: 10, window: win("swipe-big-window", { land: [120, 66, 1680, 1050], port: [40, 520, 1700, 1063] }),
+  // Each name on the frame its page lands (the commits: 0, 1.5, 3, 4.5, 6).
+  type: [
+    BIG_PLATE("big-weekend", "WEEKEND.", 0, 1.5, P.yellow, ink),
+    BIG_PLATE("big-side", "SIDE PROJECT.", 1.5, 3, P.green),
+    BIG_PLATE("big-campaign", "CAMPAIGN.", 3, 4.5, P.orange),
+    BIG_PLATE("big-work", "WORK.", 4.5, 6, P.work),
+    BIG_PLATE("big-personal", "PERSONAL.", 6, 7.6, P.plum),
+  ],
+};
 
 const store: Shot = {
   id: "store", kind: "store", at: 58, beats: 6, window: win("store-window"),
@@ -164,8 +178,8 @@ const store: Shot = {
 const icons: Shot = {
   id: "icons", kind: "icons", at: 64, beats: 4, window: win("icons-window", { land: [394, 120, 1132, 884], port: [40, 700, 1500, 1171] }),
   type: [
-    T("icons-seven", "SEVEN APP ICONS.", 1, "slam", 140, TOP.land, TOP.port, { out: 2.5, color: paper, fill: ink, portText: "SEVEN\nAPP ICONS." }),
-    T("icons-one", "ONE FACE.", 2.5, "slam", 140, TOP.land, TOP.port, { color: paper, fill: P.red }),
+    T("icons-seven", "SEVEN APP ICONS.", 1, "slam", 140, [80, 860, 1760, 170], [60, 1190, 880, 280], { out: 2.5, color: paper, fill: ink, portText: "SEVEN\nAPP ICONS." }),
+    T("icons-one", "ONE FACE.", 2.5, "slam", 140, [80, 860, 1760, 170], [60, 1190, 880, 280], { color: paper, fill: P.red }),
   ],
 };
 
@@ -185,26 +199,28 @@ const typing: Shot = { id: "typing", kind: "typing", at: 72, beats: 8, window: w
 const endShot = (at: number, beats: number, lockup: number, button: number): Shot => ({
   id: "end", kind: "end", at, beats, marks: { lockup, button },
   extra: [
-    YAHU("end-yahu", [1160, 120, 760, 960], [220, 860, 640, 640]),
-    { id: "end-icon", box: { land: [80, 300, 190, 190], port: [60, 300, 170, 170] } },
+    YAHU("end-yahu", [1200, 160, 700, 900], [220, 880, 640, 600]),
+    { id: "end-icon", box: { land: [80, 220, 180, 180], port: [60, 240, 150, 150] } },
   ],
   type: [
     T("end-immunity", "FULL\nIMMUNITY.", 0, "slam", 360, [80, 120, 1080, 800], [60, 230, 880, 640], { out: lockup }),
-    T("end-name", "NETNYAHOO", lockup, "slam", 200, [300, 300, 860, 190], [250, 300, 690, 170], { portSize: 150 }),
-    T("end-download", "DOWNLOAD FREE", lockup, "slam", 96, [84, 540, 1076, 110], [60, 500, 880, 100]),
-    T("end-url", "NETNYAHOO.COM", lockup, "slam", 190, [80, 640, 1080, 210], [60, 600, 880, 170], { color: P.blue }),
-    T("end-source", "GITHUB.COM/MANTRAKP04/NETNYAHOO", lockup, "label", 36, [86, 870, 1076, 50], [64, 790, 880, 50]),
+    T("end-name", "NETNYAHOO", lockup, "slam", 190, [290, 220, 870, 180], [230, 240, 710, 150], { portSize: 150 }),
+    T("end-mac", "THE SIDEBAR BROWSER FOR MAC", lockup + 0.5, "slam", 60, [84, 420, 1076, 70], [60, 410, 880, 120], { color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
+    T("end-download", "DOWNLOAD FREE", lockup + 1, "slam", 96, [84, 520, 1076, 110], [60, 550, 880, 100]),
+    T("end-url", "NETNYAHOO.COM", lockup + 1, "slam", 190, [80, 630, 1080, 210], [60, 650, 880, 160], { color: P.blue }),
+    T("end-source", "GITHUB.COM/MANTRAKP04/NETNYAHOO", lockup + 1.5, "label", 48, [86, 870, 1076, 70], [64, 830, 880, 56], { portSize: 40 }),
   ],
 });
 
-const hero: Shot[] = [nags, title, tabs, swipe, split, block, chromium, poise, swipeBig, store, icons, nos, typing, endShot(80, 16, 4, 11)];
+const hero: Shot[] = [nags, title, tabs, swipe, split, block, chromium, poise, swipeBig, store, icons, nos, typing, endShot(80, 16, 3, 11)];
 
 // ---------------------------------------------------------------------------------------------- the teaser
 
 const teaser: Shot[] = [
   nags,
   { ...title, beats: 2, type: title.type.filter((t) => t.id !== "title-stamp") },
-  { ...swipeBig, at: 10, beats: 10 },
+  // The teaser has no poise: the first swipe drags in from its own start and commits a beat in.
+  { ...swipeBig, at: 10, beats: 10, marks: { lead: 1 }, type: swipeBig.type.map((t) => ({ ...t, at: t.at + 1, out: (t.out ?? 10) + 1 })) },
   { ...nos, at: 20, beats: 4 },
   endShot(24, 8, 2, 4),
 ];

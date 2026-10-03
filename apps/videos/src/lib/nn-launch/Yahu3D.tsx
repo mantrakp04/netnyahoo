@@ -4,8 +4,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { continueRender, delayRender, staticFile } from "remotion";
 import {
-  AnimationMixer, type AnimationAction, Box3, DirectionalLight, Group, HemisphereLight, NeutralToneMapping, type Object3D,
-  PerspectiveCamera, PMREMGenerator, Scene, SkinnedMesh, SRGBColorSpace, Vector3, WebGLRenderer,
+  AnimationMixer, type AnimationAction, Box3, CanvasTexture, DirectionalLight, Group, HemisphereLight, Mesh,
+  MeshBasicMaterial, MeshStandardMaterial, NeutralToneMapping, type Object3D, PCFSoftShadowMap, PerspectiveCamera,
+  PlaneGeometry, PMREMGenerator, Scene, ShadowMaterial, SkinnedMesh, SRGBColorSpace, Vector3, WebGLRenderer,
 } from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
@@ -21,7 +22,24 @@ interface Rig {
   root: Object3D;
 }
 
-export function Yahu3D({ width, height, clip, time, yaw = 0 }: { width: number; height: number; clip: Clip; time: number; yaw?: number }) {
+/** Contact shadow under his feet: a soft radial blob (ambient occlusion) for the paper he stands on. */
+function blob() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d")!;
+  const r = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  r.addColorStop(0, "rgba(22,19,15,0.55)");
+  r.addColorStop(0.45, "rgba(22,19,15,0.28)");
+  r.addColorStop(1, "rgba(22,19,15,0)");
+  g.fillStyle = r;
+  g.fillRect(0, 0, 256, 256);
+  return new CanvasTexture(c);
+}
+
+/** "full": head to toe, room for the dance. "bust": framed on the face and shoulders (the hands stay out). */
+export type Framing = "full" | "bust";
+
+export function Yahu3D({ width, height, clip, time, yaw = 0, framing = "full" }: { width: number; height: number; clip: Clip; time: number; yaw?: number; framing?: Framing }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [rig, setRig] = useState<Rig | null>(null);
   const [handle] = useState(() => delayRender("Big Yahu"));
@@ -34,15 +52,26 @@ export function Yahu3D({ width, height, clip, time, yaw = 0 }: { width: number; 
     renderer.setSize(width, height, false);
     renderer.outputColorSpace = SRGBColorSpace;
     renderer.toneMapping = NeutralToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = PCFSoftShadowMap;
     const scene = new Scene();
     const pmrem = new PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.7;
+    // Less mirror-like reflection and a warm key: the suit reads as cloth, not lacquer.
+    scene.environmentIntensity = 0.4;
     pmrem.dispose();
-    scene.add(new HemisphereLight(0xfff6ea, 0x4a4036, 1.1));
-    const key = new DirectionalLight(0xfff0dc, 2.4);
+    scene.add(new HemisphereLight(0xfff3e4, 0x4a4036, 1.15));
+    const key = new DirectionalLight(0xffe2c2, 2.7);
     key.position.set(-1.1, 3.6, 3.2);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.radius = 6;
+    key.shadow.camera.left = -1;
+    key.shadow.camera.right = 1;
+    key.shadow.camera.top = 1.5;
+    key.shadow.camera.bottom = -0.5;
+    key.shadow.bias = -0.0005;
     scene.add(key);
     const rim = new DirectionalLight(0xb9c8ff, 1.6);
     rim.position.set(2.2, 1.8, -2.4);
@@ -54,6 +83,17 @@ export function Yahu3D({ width, height, clip, time, yaw = 0 }: { width: number; 
         if (cancelled) return;
         gltf.scene.traverse((o: Object3D) => {
           if (o instanceof SkinnedMesh) o.frustumCulled = false;
+          if (o instanceof Mesh) {
+            o.castShadow = true;
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            for (const m of mats) {
+              if (m instanceof MeshStandardMaterial) {
+                m.roughness = Math.max(m.roughness, 0.72);
+                m.metalness = 0;
+                m.envMapIntensity = 0.45;
+              }
+            }
+          }
         });
         const mixer = new AnimationMixer(gltf.scene);
         const actions = new Map<string, AnimationAction>();
@@ -72,10 +112,24 @@ export function Yahu3D({ width, height, clip, time, yaw = 0 }: { width: number; 
         const turn = new Group();
         turn.add(gltf.scene);
         scene.add(turn);
-        // Framed with room above his head for a jump and at his sides for the griddy's arms.
+        // The floor: a cast shadow from the key light, and a soft contact blob under his feet.
+        const floor = new Mesh(new PlaneGeometry(4, 4), new ShadowMaterial({ opacity: 0.22 }));
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+        const contact = new Mesh(new PlaneGeometry(0.75, 0.42), new MeshBasicMaterial({ map: blob(), transparent: true, depthWrite: false }));
+        contact.rotation.x = -Math.PI / 2;
+        contact.position.y = 0.002;
+        scene.add(contact);
         const camera = new PerspectiveCamera(30, width / height, 0.1, 20);
-        camera.position.set(0, 0.62, 2.75);
-        camera.lookAt(0, 0.58, 0);
+        if (framing === "bust") {
+          camera.position.set(0, 0.8, 1.45);
+          camera.lookAt(0, 0.72, 0);
+        } else {
+          // Room above his head for a jump and at his sides for the griddy's arms.
+          camera.position.set(0, 0.62, 2.75);
+          camera.lookAt(0, 0.58, 0);
+        }
         setRig({ renderer, scene, camera, mixer, actions, root: turn });
       })
       .catch((error: unknown) => {
@@ -85,7 +139,7 @@ export function Yahu3D({ width, height, clip, time, yaw = 0 }: { width: number; 
       cancelled = true;
       renderer.dispose();
     };
-  }, [width, height]);
+  }, [width, height, framing]);
 
   useLayoutEffect(() => {
     if (!rig) return;

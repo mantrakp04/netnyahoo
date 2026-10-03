@@ -47,6 +47,15 @@ def bar_loudness(x):
     return -0.691 + 10 * np.log10(ms + 1e-20)
 
 
+def loudness_series(x, window):
+    """Ungated K-weighted loudness of `window` seconds ending at each 100 ms (momentary 0.4 s, short-term 3 s)."""
+    p = (score.k_weight(x) ** 2).sum(axis=1)
+    c = np.concatenate([[0], np.cumsum(p)])
+    w, hop = int(window * SR), int(0.1 * SR)
+    ends = np.arange(w, len(p) + 1, hop)
+    return ends / SR, -0.691 + 10 * np.log10((c[ends] - c[ends - w]) / w + 1e-20)
+
+
 def onset(x, i, search=0.012):
     """Where the attack nearest sample i starts, in ms relative to i: the first 0.25 ms frame within +-search
     whose peak is at least 4 dB above the loudest of the 1-6 ms before it and which leads, within 5 ms, to
@@ -78,7 +87,19 @@ def main(name):
     print(f"ffmpeg ebur128: I {I:.1f} LUFS, LRA {lra:.1f} LU, true peak {tp:.1f} dBTP")
     print(f"script:         I {score.lufs(x):.2f} LUFS, true peak {20 * np.log10(score.true_peak(x).max()):.2f} dBTP")
     f, p = signal.welch(x.mean(axis=1), SR, nperseg=8192)
-    print(f"energy above 8 kHz: {100 * p[f > 8000].sum() / p.sum():.2f}%   above 4 kHz: {100 * p[f > 4000].sum() / p.sum():.2f}%")
+    print(f"energy above 8 kHz: {100 * p[f > 8000].sum() / p.sum():.2f}%   above 4 kHz: {100 * p[f > 4000].sum() / p.sum():.2f}%"
+          f"   below 60 Hz: {100 * p[f < 60].sum() / p.sum():.1f}%")
+    tm, mom = loudness_series(x, 0.4)
+    ts, st = loudness_series(x, 3.0)
+    first = 4 * score.BEAT  # the intro's first bar
+    print(f"intro (bar 1) momentary: max {mom[tm <= first].max():.1f} LUFS, at 0.5 s {mom[np.argmin(abs(tm - 0.5))]:.1f} LUFS")
+    bar = 0
+    for kind, bars in cut["arrangement"]:
+        a, b = 4 * bar * score.BEAT + 3.0, 4 * (bar + bars) * score.BEAT  # short-term windows wholly inside
+        sel = st[(ts >= a) & (ts <= b)]
+        if len(sel):
+            print(f"  {kind:6s} short-term loudness: median {np.median(sel):6.1f}, max {sel.max():6.1f} LUFS")
+        bar += bars
 
     # per bar
     secs, bar = [], 0
@@ -120,6 +141,12 @@ def main(name):
     print("onsets (ms vs the grid):")
     bar = 0
     marks = []
+    for a, b in cut.get("breaths", []):
+        marks.append(("breath slam", b))
+        seg = x[score.at(a) + int(0.05 * SR):score.at(b)]
+        lo = score.filt(seg, "lowpass", 100)
+        print(f"breath {a}-{b}: below-100 Hz rms {20 * np.log10(np.sqrt((lo ** 2).mean()) + 1e-12):.1f} dBFS, "
+              f"loudness {bar_loudness(seg):.1f} LUFS")
     for kind, bars in cut["arrangement"]:
         marks.append((f"{kind} downbeat", 4 * bar))
         if kind == "end":

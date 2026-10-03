@@ -43,11 +43,17 @@ fd83d80d30acbc11ee83642866c1f7d293bedc63  vcsl/Membranophones/Struck Membranopho
 2f986209e0ed7bffdcc000260ef9df60e6674a69  vcsl/Membranophones/Struck Membranophones/Snare Drum, Rope Tension/RopeSnare_stick_Main_vl1_rr1.wav
 08332f4a528dcdeb208a8081b39136778562adcb  vcsl/Membranophones/Struck Membranophones/Tom 1/Stick/TomH_HitS_v4_rr1_Mid.wav
 a5a1cfbe2d2a1287893b29a2f6c3ddef44c751d3  vcsl/Membranophones/Struck Membranophones/Tom 1/Stick/TomH_HitS_v4_rr2_Mid.wav
+6a8e9210be8110d882d8802b6220a5fabc700f14  vsco/Brass/F Horn/stac/MOHorn_stac_A2_v2_rr1.wav
+b23c4741a106b8d7316516b2db6c4c976e44374b  vsco/Brass/F Horn/stac/MOHorn_stac_A2_v2_rr2.wav
 81272129a1b36a49bf14cb044944cba081923699  vsco/Brass/F Horn/stac/MOHorn_stac_A2_v3_rr1.wav
 8dc8428dc7a7e3da2ab0dfbd0579140275561504  vsco/Brass/F Horn/stac/MOHorn_stac_A2_v3_rr2.wav
 f7c9a73161cf5096507c550f87f04afd491bee98  vsco/Brass/F Horn/stac/MOHorn_stac_C3_v3_rr2.wav
+d6a5165f419819413bf907b65c2bec795ba864db  vsco/Brass/F Horn/stac/MOHorn_stac_D2_v2_rr1.wav
+ebb78e98cacebf05e2016b9a244ce0f4481a9621  vsco/Brass/F Horn/stac/MOHorn_stac_D2_v2_rr2.wav
 f86313efe12277b893333660a562a1f3d4ef0afc  vsco/Brass/F Horn/stac/MOHorn_stac_D2_v3_rr1.wav
 c713805a6c02679c4f141de8971dfce8afa51d74  vsco/Brass/F Horn/stac/MOHorn_stac_D2_v3_rr2.wav
+6d312fa649c6bb8bed53fd9d5b5d8f4d0e7c03b1  vsco/Brass/F Horn/stac/MOHorn_stac_F2_v2_rr1.wav
+0cbed0b3f735964ccd62352e0329d280d095c1e3  vsco/Brass/F Horn/stac/MOHorn_stac_F2_v2_rr2.wav
 be315404c5fafc92dd9a064607db00c488f369e4  vsco/Brass/F Horn/stac/MOHorn_stac_F2_v3_rr1.wav
 1fe4faa5848826fd908cadf9aad81bad090a5e18  vsco/Brass/F Horn/stac/MOHorn_stac_F2_v3_rr2.wav
 d4088d29905d60944c524d443f66c55035301e47  vsco/Brass/F Horn/sus/MOHorn_sus_A2_v3_1.wav
@@ -56,8 +62,12 @@ e61e2d828400580fd267e5af934eee65e62d21b7  vsco/Brass/F Horn/sus/MOHorn_sus_D2_v4
 af9345753c5b31083a3e344dd7bbf6c978de59c3  vsco/Brass/F Horn/sus/MOHorn_sus_F2_v3_1.wav
 9947fab6818aebb2977c473e964088638b02ff14  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_A#1_v4_rr1.wav
 d323f7ba3db673b459f94b23175e9305a5a2995d  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_A#1_v4_rr2.wav
+ce149164e8a227ffbe3adfbed37181223dbe05d2  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_A#2_v3_rr1.wav
+56fd03961972f3b2a8c894cbe9256b376ca1eb0c  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_A#2_v3_rr2.wav
 df7df76b2dc43e31e2848b5942b91ffcc4da6548  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_A#2_v4_r2.wav
 8d68825cf75741d32d75bd182130bb6ebb0bf3e9  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_A#2_v4_rr1.wav
+15d871a42884a9a6c8300021790e94a38a9c297b  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_F2_v3_rr1.wav
+00a9f623324538a93e90e2bdfc5c24b8b27cb06d  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_F2_v3_rr2.wav
 1ccb564b7564df62ac16af6947e1216489730941  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_F2_v4_rr1.wav
 86b845ae3d94c6e8213b61364a37c318904efc00  vsco/Brass/Tenor Trombone/stac/tenortbn_stac_F2_v4_rr2.wav
 dfb869ad2e91b4fca51c017c7517c1bbf9958ce6  vsco/Brass/Tenor Trombone/sus/tenortbn_sus_C#3_v3_1.wav
@@ -66,20 +76,34 @@ cb97ac413666687d63624c704e832b4196e0ddd6  vsco/Brass/Tenor Trombone/sus/tenortbn
 eef36ce79c6497eacde16aca18edbfbd0418e837  vsco/Brass/Tenor Trombone/sus/tenortbn_sus_D2_v3_1.wav
 f6c1025383f62db27083c3cb78d5046d748ada4c  vsco/Brass/Tenor Trombone/sus/tenortbn_sus_F2_v3_1.wav
 c6164474bad88e9d7718358a669ba076d825fff7  vsco/Brass/Tenor Trombone/sus/tenortbn_sus_F3_v3_1.wav
+2da16b369ecc935ce024f1250afc4fb2dc151eb6  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_A#3_v2_rr1.wav
+eed06e0833c95cf381ec231b1d737e2eba82d14f  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_A#3_v2_rr2.wav
 b7f76652558f4b2bc8065424e9e8b119859deb8d  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_A#3_v3_rr1.wav
 df3b1287a88e26172ef1c5d83f0b12a08cf30e07  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_A#3_v3_rr2.wav
+e756e2573b1112d1c0a182ffedb71237006e8ff9  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_A4_v2_rr1.wav
+c0822dbc84bbecbf671165b3731b8afeccadf088  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_A4_v2_rr2.wav
 756e786aeabfe7b27f1b66c212ce824d5608de4e  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_A4_v3_rr1.wav
 816cb43dc8f09ad900246dd00a4880a3d62c310c  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_A4_v3_rr2.wav
 059a10515dc4ed409dfea126cff0e0a1b46cd3a7  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_C5_v3_rr1.wav
 371b3c89b59fa63405e0e1e8909ae473104a3049  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_C5_v3_rr2.wav
+a88c16c3a48afb44991c1b2d99fb1394195161f7  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_D#3_v2_rr1.wav
+2087047717d10850a622600ca73ac34799653413  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_D#3_v2_rr2.wav
 77d17d832af6f646de8b2cb2e2793f87e939076f  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_D#3_v3_rr1.wav
 427677a8e7fe48b551ef171c64cfb1414a49550b  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_D#3_v3_rr2.wav
+80d482935d4b79a80938c30dc6f083bfe206e9be  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_D4_v2_rr1.wav
+282b1bf9c727c8a755daaedcd546e9fe887a6ba8  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_D4_v2_rr2.wav
 f1fe8074459f0c37f6212f296f299ff4416da09c  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_D4_v3_rr1.wav
 87e437363c9893fbbe10a70cf9edec17bce2907f  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_D4_v3_rr2.wav
+403be9ea239d244971f7bc0130a8756c88d28640  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_F3_v2_rr1.wav
+48a91912f81a27d4a474a360703ff3d8c4612280  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_F3_v2_rr2.wav
 5b5082d93eade6e6b4307b6e0ab75fe4e27501e4  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_F3_v3_rr1.wav
 3e1d8c464a54b7a070d0ef7380a408fd06c5e0c9  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_F3_v3_rr2.wav
+2cde793a0c0b3e1657ec07b7dc03395eb39d1c84  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_F4_v2_rr1.wav
+01719dfe7beb254f6f16dccb8d56a906c41316c4  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_F4_v2_rr2.wav
 0c64406f6cfacac35e83670215fe84988eb2862d  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_F4_v3_rr1.wav
 e8363c0ab182b9eae55c3d79f855f67ca585b08f  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_F4_v3_rr2.wav
+0b6142ebe63a7f86763391286ef44ec66f26ac7c  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_G3_v2_rr1.wav
+6ff7612abefebbfe086f87a843d89492b3c08d78  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_G3_v2_rr2.wav
 53ef5d48ac2c8263da2f6e70f73302e84e520227  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_G3_v3_rr1.wav
 3e581ffda8f01a633c045f7181474368f100d11f  vsco/Brass/Trumpet/stac/Sum_SHTrumpet_stac_G3_v3_rr2.wav
 f6b2753da2ae19e4748a91b0ed412decf3973fda  vsco/Brass/Trumpet/sus/Sum_SHTrumpet_sus_A#3_v3_rr1.wav
@@ -89,16 +113,28 @@ cb508c5bf2e3c21dc3441194499fc6d0e7344f4b  vsco/Brass/Trumpet/sus/Sum_SHTrumpet_s
 a301819024fe8d1fb8cdf86f9b5d0d8121c8c073  vsco/Brass/Trumpet/sus/Sum_SHTrumpet_sus_G3_v3_rr1.wav
 6f9f8d7fdba8779629970e0d86da143aa08c712e  vsco/Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr1_Sum.wav
 f9cd9ddaf2dec7d23060ac268c4913e63306b193  vsco/Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr2_Sum.wav
-6e010be66e35c4a7b1786651cf43a53c0fa71b03  vsco/Brass/Tuba/stac/Tuba3_stac_A#2_v2_rr1_Sum.wav
-ed320bda30a823e1e732375bfc232aa6d01c9d72  vsco/Brass/Tuba/stac/Tuba3_stac_A#2_v2_rr2_Sum.wav
+ccd37e6e9289545bc0e81ccf4289552885163681  vsco/Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr3_Sum.wav
+677194bbc25372f1aae6360b9804f19dfa4b742d  vsco/Brass/Tuba/stac/Tuba3_stac_A#1_v2_rr4_Sum.wav
+cb59b84d99d0140d00ff29e5548bfc83cecb688d  vsco/Brass/Tuba/stac/Tuba3_stac_A#2_v1_rr1_Sum.wav
+cebcdb351a754aced1d519cacf8fd52411d5db15  vsco/Brass/Tuba/stac/Tuba3_stac_A#2_v1_rr2_Sum.wav
+f15c6feae5049e534b962b906713f5e0b6dbb842  vsco/Brass/Tuba/stac/Tuba3_stac_A#2_v1_rr3_Sum.wav
+595c830ba9f1a4b09c3b173a4b3fa69bef054665  vsco/Brass/Tuba/stac/Tuba3_stac_A#2_v1_rr4_Sum.wav
 950438ecb7217d5a4a6d0c8af6d814a92ab5be0e  vsco/Brass/Tuba/stac/Tuba3_stac_D#1_v2_rr1_Sum.wav
 5a2c37217f7cdb9125142ab5b05dcd41a20e5be2  vsco/Brass/Tuba/stac/Tuba3_stac_D#1_v2_rr2_Sum.wav
-e7dd012d9016e608fad58edccb085bba73621a33  vsco/Brass/Tuba/stac/Tuba3_stac_D2_v2_rr1_Sum.wav
-1ad34440024d83f6f157ef48b11eb025759ed92b  vsco/Brass/Tuba/stac/Tuba3_stac_D2_v2_rr2_Sum.wav
+aa54df144b4bc892fe68cf6fd8519d60898b5362  vsco/Brass/Tuba/stac/Tuba3_stac_D#1_v2_rr3_Sum.wav
+a3d2dce8d8334444818a2c7403f0964ea3aa5122  vsco/Brass/Tuba/stac/Tuba3_stac_D#1_v2_rr4_Sum.wav
+acb7dfa38c0b28c0861c81d5ba39cc62dff10d8b  vsco/Brass/Tuba/stac/Tuba3_stac_D2_v1_rr1_Sum.wav
+35ba93540d47843324241a07706abacdacd5ea6b  vsco/Brass/Tuba/stac/Tuba3_stac_D2_v1_rr2_Sum.wav
+3910accd1dfeb1b104adad1ec2003adda18eecdf  vsco/Brass/Tuba/stac/Tuba3_stac_D2_v1_rr3_Sum.wav
+d40b01368cdb308895fa70837a2dd12e48811259  vsco/Brass/Tuba/stac/Tuba3_stac_D2_v1_rr4_Sum.wav
 ee1eace963e4bceaa70c84b6a0f6cbd67cfacb21  vsco/Brass/Tuba/stac/Tuba3_stac_F1_v2_rr1_Sum.wav
 3e2525a304ec4894d7adb477d2e8134d46b6a3b1  vsco/Brass/Tuba/stac/Tuba3_stac_F1_v2_rr2_Sum.wav
-99f3b8910804b525fcd179c98554a2a4d9e66abb  vsco/Brass/Tuba/stac/Tuba3_stac_F2_v2_rr1_Sum.wav
-2810975d146076a48cef57b20af86cf350cc4f05  vsco/Brass/Tuba/stac/Tuba3_stac_F2_v2_rr2_Sum.wav
+30ccff6f19012dc772f805beb172f0dd7fabf2e6  vsco/Brass/Tuba/stac/Tuba3_stac_F1_v2_rr3_Sum.wav
+5e3664e122ad9321309f2c4476ff9de4444c908b  vsco/Brass/Tuba/stac/Tuba3_stac_F1_v2_rr4_Sum.wav
+26caa2ef6070cdc02df9b63a12abeceab7091099  vsco/Brass/Tuba/stac/Tuba3_stac_F2_v1_rr1_Sum.wav
+62aa72ff55121007112354b5b2bc9444d8793a91  vsco/Brass/Tuba/stac/Tuba3_stac_F2_v1_rr2_Sum.wav
+183c9dbfbe1dca134c768d6032281a3786e97dad  vsco/Brass/Tuba/stac/Tuba3_stac_F2_v1_rr3_Sum.wav
+84acd34a0f1758e8e98de223f95a46f67b39a647  vsco/Brass/Tuba/stac/Tuba3_stac_F2_v1_rr4_Sum.wav
 d46fa53c16a3add22369c3c07cc965eaaf583d71  vsco/Brass/Tuba/sus/Tuba3_sus_D#1_v3_rr1_Mid.wav
 37e4efffdbe853674f4e351c2b8bf74d1b11df42  vsco/Brass/Tuba/sus/Tuba3_sus_F0_v1_rr1_Mid.wav
 73a0b9f07af11d3e2404a652e0d66c3a7c8aebab  vsco/Brass/Tuba/sus/Tuba3_sus_F1_v3_rr1_Mid.wav

@@ -186,7 +186,13 @@ def main():
     own = []
     for fr in frames:
         keys = fr.get("pageKey") or {}
-        own.append({tab: c for tab in fr.get("tabs", []) for c in (pages.get(keys.get(tab, "")), pages.get(tab)) if c and not is_blank(c)})
+        pick = {}
+        for tab in fr.get("tabs", []):
+            # The frame's own picture first; the tab's generic one only when it has none.
+            c = next((c for c in (pages.get(keys.get(tab, "")), pages.get(tab)) if c and not is_blank(c)), None)
+            if c:
+                pick[tab] = c
+        own.append(pick)
     last_page = {}
     out = []
     for i, fr in enumerate(frames):

@@ -268,7 +268,8 @@ export function pointerAt(b: number, stops: { at: number; x: number; y: number; 
 
 const poster: CSSProperties = {
   fontFamily: font.poster, fontWeight: 860, fontStretch: "62%", textTransform: "uppercase", lineHeight: 0.86,
-  letterSpacing: "-0.005em", whiteSpace: "pre-line", margin: 0,
+  // The condensed face's own word space nearly vanishes at 860: "APP ICONS" read as "APPICONS".
+  letterSpacing: "-0.005em", wordSpacing: "0.22em", whiteSpace: "pre-line", margin: 0,
 };
 const mono: CSSProperties = {
   fontFamily: font.mono, fontWeight: 460, fontStretch: "87.5%", letterSpacing: "0.06em", textTransform: "uppercase",
@@ -288,7 +289,8 @@ function lineWidth(text: string, stamp: boolean) {
   canvas.font = `${stamp ? 850 : 860} 100px "${font.poster}"`;
   (canvas as CanvasRenderingContext2D & { fontStretch: string }).fontStretch = stamp ? "condensed" : "extra-condensed";
   const spacing = stamp ? 7 : -0.5;
-  const w = Math.max(...text.toUpperCase().split("\n").map((l) => canvas!.measureText(l).width + spacing * l.length));
+  const words = stamp ? 0 : 22; // poster.wordSpacing, at 100 px
+  const w = Math.max(...text.toUpperCase().split("\n").map((l) => canvas!.measureText(l).width + spacing * l.length + words * (l.split(" ").length - 1)));
   measured.set(key, w);
   return w;
 }
@@ -308,6 +310,7 @@ function visible(b: number, layer: TypeLayer, shot: Shot) {
 export function Type({ layer }: { layer: TypeLayer }) {
   const shot = useShot();
   const b = useBeat();
+  const frame = useVideoConfig();
   const object = useStudioObject(layer.id);
   if (!visible(b, layer, shot)) return null;
   const local = b - layer.at;
@@ -358,6 +361,14 @@ export function Type({ layer }: { layer: TypeLayer }) {
     shown = words.slice(0, n).join(" ");
     const s = springAt(b, layer.at + (n - 1) * step, { stiffness: 520, damping: 24 });
     scale = 1.07 - 0.07 * s;
+  }
+  // An entrance never overshoots past the frame: the scale stays where the box still fits, 16 px in.
+  {
+    const cx = object.number("x") + boxW / 2;
+    const cy = object.number("y") + boxH / 2;
+    const fitX = (Math.min(cx, frame.width - cx) - 16) / (boxW / 2);
+    const fitY = (Math.min(cy, frame.height - cy) - 16) / (boxH / 2);
+    scale = Math.max(0.01, Math.min(scale, Math.max(1, Math.min(fitX, fitY))));
   }
   const geometry = object.geometry(
     { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
@@ -410,24 +421,37 @@ export function Supers() {
   );
 }
 
-/** Two fingertips on a trackpad, drawn as a gesture glyph: the hint for a swipe. `slide` is −1…1 of the travel. */
-export function Fingers({ x, y, size, slide = 0, press = 0, opacity = 1 }: { x: number; y: number; size: number; slide?: number; press?: number; opacity?: number }) {
-  const dot = size * 0.26 * (1 - 0.08 * press);
-  const travel = size * 0.55;
+/**
+ * Two fingers on a trackpad, seen from above: a wide pad, two fingers reaching in from its lower edge with their tips
+ * on it, and an arrow trail behind the tips as they slide. `slide` is −1…1 of the travel; `from` is where it started.
+ */
+export function Fingers({ x, y, size, slide = 0, from = slide, press = 0, opacity = 1 }: { x: number; y: number; size: number; slide?: number; from?: number; press?: number; opacity?: number }) {
+  const W = 240;
+  const H = 200;
+  const travel = 60;
+  const dx = slide * travel;
+  const fx = from * travel;
+  const tip = 1 - 0.05 * press;
+  const finger = (cx: number, tilt: number) => (
+    <g transform={`translate(${cx + dx} 78) rotate(${tilt}) scale(${tip})`}>
+      <path d="M -17 4 C -17 -16 17 -16 17 4 L 19 112 L -19 112 Z" fill="#E7BE9C" stroke={color.ink} strokeWidth={5} strokeLinejoin="round" />
+      <path d="M -10 6 C -10 -5 10 -5 10 6 L 9 26 C 3 29 -3 29 -9 26 Z" fill="#F7E6D6" stroke={color.ink} strokeWidth={3} />
+    </g>
+  );
+  const moving = Math.abs(dx - fx) > 3;
+  const dir = Math.sign(dx - fx);
   return (
-    <div style={{ position: "absolute", left: x - size / 2, top: y - size * 0.32, width: size, height: size * 0.64, opacity }}>
-      <div style={{ position: "absolute", inset: 0, borderRadius: size * 0.08, border: `${size * 0.018}px solid ${color.ink}`, backgroundColor: "rgba(241,236,226,0.85)" }} />
-      {[-0.17, 0.17].map((dx) => (
-        <div
-          key={dx}
-          style={{
-            position: "absolute", width: dot, height: dot, borderRadius: dot, backgroundColor: color.ink,
-            left: size / 2 + dx * size - dot / 2 + slide * travel * 0.5, top: size * 0.32 - dot / 2,
-            boxShadow: `${-slide * size * 0.12}px 0 0 ${-dot * 0.12}px rgba(22,19,15,0.25)`,
-          }}
-        />
-      ))}
-    </div>
+    <svg width={size} height={(size * H) / W} viewBox={`0 0 ${W} ${H}`} style={{ position: "absolute", left: x - size / 2, top: y - (size * H) / W / 2, opacity, overflow: "visible" }}>
+      <rect x={6} y={6} width={W - 12} height={146} rx={16} fill="#D9D3C7" stroke={color.ink} strokeWidth={6} />
+      {moving ? (
+        <g>
+          <line x1={120 + fx} y1={40} x2={120 + dx} y2={40} stroke={color.stamp} strokeWidth={10} strokeLinecap="round" />
+          <path d={`M ${120 + dx + dir * 18} 40 L ${120 + dx - dir * 2} 26 L ${120 + dx - dir * 2} 54 Z`} fill={color.stamp} />
+        </g>
+      ) : null}
+      {finger(98, -5)}
+      {finger(142, 5)}
+    </svg>
   );
 }
 

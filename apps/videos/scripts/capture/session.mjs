@@ -26,7 +26,7 @@ const tabs = [
   T("campaign", "https://en.wikipedia.org/wiki/Lawn_sign"),
   T("side", "https://excalidraw.com/"),
   T("side", "https://tailwindcss.com/"),
-  T("side", "https://github.com/trending"),
+  T("side", "https://www.typescriptlang.org/docs/handbook/intro.html"),
   T("side", "https://www.npmjs.com/"),
   T("weekend", "https://www.nps.gov/grca/index.htm"),
   T("weekend", "https://en.wikipedia.org/wiki/Sourdough"),

@@ -7,7 +7,15 @@ import {
 } from "./kit";
 import { BEAT, CUTS, type ShotKind } from "./plan";
 import { color, font, swatch } from "./theme";
-import { type Clip, Yahu3D } from "./Yahu3D";
+import { type Clip, type Framing, Yahu3D } from "./Yahu3D";
+
+/** A window shown whole: in portrait, centred under the type (inside the safe zone, y 220–1480). */
+const wideCam = (port: boolean, bump = 0): Cam =>
+  port ? { ...REST, zoom: 0.62 * (1 + bump), fx: 0.5, fy: 0.5, aim: 1, ax: 0.5, ay: 0.56 } : { ...REST, zoom: 0.86 * (1 + bump), fx: 0.5, dy: 60 };
+
+// Big Yahu's poses, as times in his "Default Dance" clip (seconds): hands steepled at the chest (his opening and
+// resting pose), arms swept out (the swat), both arms up (the flex).
+const POSE = { steeple: 2.2, swept: 1.8, flex: 2.6 };
 
 function useCam(keys: CamKey[]): { cam: Cam; prev: Cam } {
   const b = useBeat();
@@ -72,7 +80,7 @@ const SEC = BEAT / 30; // seconds in a beat
  * Big Yahu in his Studio box, rendered from his rig at a time of one clip. `rise` (0–1) brings him up from below the
  * frame; `squash` (a decaying kick) squashes and stretches him on a landing.
  */
-function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0 }: { id: string; clip: Clip; time: number; rise?: number; squash?: number; yaw?: number }) {
+function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full" }: { id: string; clip: Clip; time: number; rise?: number; squash?: number; yaw?: number; framing?: Framing }) {
   const object = useStudioObject(id);
   const h = object.number("height");
   const geometry = object.geometry(
@@ -83,7 +91,7 @@ function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0 }: { id: string; c
   return (
     <div {...object.bind} {...geometry.bind} style={geometry.style}>
       <div style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", transform: `scale(${1 + squash * 0.12}, ${1 - squash * 0.12})` }}>
-        <Yahu3D width={Math.round(object.number("width"))} height={Math.round(h)} clip={clip} time={Math.max(0, time)} yaw={yaw} />
+        <Yahu3D width={Math.round(object.number("width"))} height={Math.round(h)} clip={clip} time={Math.max(0, time)} yaw={yaw} framing={framing} />
       </div>
     </div>
   );
@@ -91,28 +99,34 @@ function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0 }: { id: string; c
 
 // ---------------------------------------------------------------------------------------------- the hook
 
-// A hard cut to a new framing of the same window on each stab.
-const STAB_CAMS: Cam[] = [
-  { ...REST },
-  { ...REST, zoom: 1.45, fx: 0.25, fy: 0.3, rot: -2 },
-  { ...REST, zoom: 1.25, fx: 0.72, fy: 0.62, rot: 1.5 },
-  { ...REST, zoom: 1.6, fx: 0.5, fy: 0.18, rot: -1 },
+// Each stab cuts to a site really asking it, in a Netnyahoo window (scenes/asks.js), framed on the ask.
+const ASKS: { label: string; cam: Cam }[] = [
+  { label: "ask:signin", cam: { ...REST, zoom: 1.25, fx: 0.62, fy: 0.42, aim: 1, ax: 0.5, ay: 0.62 } },
+  { label: "ask:ai", cam: { ...REST, zoom: 1.3, fx: 0.42, fy: 0.3, aim: 1, ax: 0.5, ay: 0.6, rot: -1 } },
+  { label: "ask:cookies", cam: { ...REST, zoom: 1.35, fx: 0.62, fy: 0.84, aim: 1, ax: 0.5, ay: 0.66, rot: 1 } },
+  { label: "ask:upgrade", cam: { ...REST, zoom: 1.3, fx: 0.62, fy: 0.42, aim: 1, ax: 0.5, ay: 0.62 } },
 ];
 
-/** A real browser, asked for everything: four stabs, then the asks stamped onto it on the snare roll. */
+/** A real browser, asked for everything: four stabs over four sites asking, then the asks stamped on the snare roll. */
 function Nags() {
   const b = useBeat();
   const shot = useShot();
   const stabs = shot.type.filter((t) => t.style === "slam").map((t) => t.at);
   const piles = shot.type.filter((t) => t.style === "stamp").map((t) => t.at);
-  const knock = stabs.reduce((s, h) => s + kick(b, h, 0.25), 0) + piles.reduce((s, h) => s + kick(b, h, 0.2) * 0.6, 0);
-  // Big Yahu comes up behind the pile on the riser, arms going out as the drop lands (his "Default Dance" at 1.95 s).
+  const knock = piles.reduce((s, h) => s + kick(b, h, 0.2) * 0.6, 0);
+  const k = Math.min(3, Math.floor(b));
+  const ask = ASKS[k];
+  // Each ask pops in on its stab: the window lands from slightly small, as a sheet would.
+  const pop = b < 4 ? 0.94 + 0.06 * springAt(b, k, { stiffness: 420, damping: 20 }) : 1;
+  const cam: Cam = b < 4 ? { ...ask.cam, zoom: ask.cam.zoom * pop } : { ...REST, zoom: 1 + 0.015 * knock };
+  // Big Yahu rises behind the pile, hands steepled; on the last eighth he sweeps his arms out (the swat lands on the drop).
   const rise = springAt(b, 7.1, { stiffness: 200, damping: 16 });
+  const swing = seg(b, 7.72, 0.28, easeIn);
   return (
     <Paper>
       <Shake hits={[...stabs, ...piles]} amount={10}>
-        <Window id={windowId()} scene="tabs" index={tab(1)} cam={{ ...(b < 4 ? STAB_CAMS[Math.floor(b)] : REST), zoom: (b < 4 ? STAB_CAMS[Math.floor(b)].zoom : 1) * (1 + 0.015 * knock) }} />
-        <Yahu id={extraId("yahu")} clip="Default Dance" time={1.95 + (b - 8) * SEC} rise={rise} />
+        <Window id={windowId()} scene="asks" index={frameOf("asks", ask.label)} cam={cam} />
+        <Yahu id={extraId("yahu")} clip="Default Dance" time={mix(POSE.steeple, 1.85, swing)} rise={rise} yaw={-0.25} />
         <Supers />
       </Shake>
     </Paper>
@@ -126,8 +140,9 @@ function Swatted({ id, k }: { id: string; k: number }) {
   const b = useBeat();
   const t = Math.max(0, b * SEC); // seconds since the drop
   const object = useStudioObject(id);
-  const vx = (k % 2 ? 1 : -1) * (900 + random(`vx${id}`) * 900);
-  const vy = -700 - random(`vy${id}`) * 600;
+  // Swept off to the left, away from him: he stands on the right of the frame.
+  const vx = -(1100 + random(`vx${id}`) * 1100) * (0.7 + 0.15 * k);
+  const vy = -500 - random(`vy${id}`) * 700;
   const geometry = object.geometry(
     { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
     { offset: { x: vx * t, y: vy * t + 2600 * t * t, rotation: (k % 2 ? 1 : -1) * 540 * t } },
@@ -153,6 +168,13 @@ function Swatted({ id, k }: { id: string; k: number }) {
   );
 }
 
+/** The swat finishing (arms out), back to steepled, then both arms up as he stamps on beat 2. */
+function titlePose(b: number) {
+  if (b < 0.3) return mix(1.85, POSE.swept, seg(b, 0, 0.3));
+  if (b < 1.6) return mix(POSE.swept, POSE.steeple, seg(b, 0.3, 1.1, easeInOut));
+  return mix(POSE.steeple, POSE.flex, seg(b, 1.6, 0.4, easeIn));
+}
+
 function Title() {
   const b = useBeat();
   const shot = useShot();
@@ -168,7 +190,7 @@ function Title() {
         {NAG_PILE.map((id, k) => (
           <Swatted key={id} id={id} k={k} />
         ))}
-        <Yahu id={extraId("yahu")} clip="Default Dance" time={1.95 + b * SEC} rise={1 - out} squash={kick(b, 2, 0.2)} />
+        <Yahu id={extraId("yahu")} clip="Default Dance" time={titlePose(b)} rise={1 - out} squash={kick(b, 2, 0.2)} yaw={-0.25} />
         <Supers />
       </Shake>
     </Paper>
@@ -191,9 +213,9 @@ function Tabs() {
   ];
   const { cam, prev } = useCam([
     { at: 0, zoom: port ? 1.3 : 1.55, fx: 0.16, fy: 0.25, aim: port ? 1 : 0, ax: 0.42, ay: 0.55 },
-    { at: 2, ...REST, zoom: port ? 0.62 : 0.86, fx: port ? 0.3 : 0.5, dy: port ? 300 : 60, ease: "cut" },
+    { at: 2, ...wideCam(port), ease: "cut" },
     { at: 3.5, ...REST, zoom: port ? 1.4 : 1.5, fx: 0.55, fy: 0.45, aim: 1, ax: 0.5, ay: 0.55, ease: "cut" },
-    { at: 5, ...REST, zoom: port ? 0.62 : 0.86, fx: port ? 0.3 : 0.5, dy: port ? 300 : 60, ease: "cut" },
+    { at: 5, ...wideCam(port), ease: "cut" },
   ]);
   return (
     <Paper>
@@ -204,9 +226,9 @@ function Tabs() {
 }
 
 const RUN_1 = [
-  { label: "toWork", commit: 1, drag: 0.65 },
-  { label: "toCampaign", commit: 3, drag: 0.65 },
-  { label: "toSide", commit: 5, drag: 0.65 },
+  { label: "toWork", commit: 0.75, drag: 0.6 },
+  { label: "toCampaign", commit: 2.25, drag: 0.6 },
+  { label: "toSide", commit: 3.75, drag: 0.6 },
 ];
 
 function Swipe() {
@@ -215,17 +237,18 @@ function Swipe() {
   const index = swipeIndex(b, RUN_1);
   const { cam } = useCam([
     { at: 0, zoom: port ? 1.15 : 2.0, fx: 0.08, fy: 0.16 },
-    { at: 6.3, zoom: port ? 0.62 : 0.84, fx: port ? 0.3 : 0.5, fy: 0.5, dy: port ? 300 : -40 },
+    { at: 5, ...wideCam(port), dy: port ? 0 : -40 },
   ]);
   const bump = RUN_1.reduce((s, e) => s + kick(b, e.commit, 0.2) * 0.015, 0);
   // The gesture, the first time only: two fingers sliding with the first drag.
   const first = RUN_1[0];
-  const slide = clamp((b - (first.commit - first.drag)) / first.drag) * 2 - 1;
-  const glyph = b < first.commit + 0.6 ? 1 - seg(b, first.commit + 0.2, 0.4) : 0;
+  // Fingers slide left (to the next profile) through the drag, then lift.
+  const slide = 1 - 2 * clamp((b - (first.commit - first.drag)) / first.drag);
+  const glyph = b < first.commit + 0.6 ? seg(b, 0, 0.12) * (1 - seg(b, first.commit + 0.2, 0.4)) : 0;
   return (
     <Paper>
       <Window id={windowId()} scene="swipe" index={index} cam={{ ...cam, zoom: cam.zoom * (1 + bump) }} />
-      {glyph > 0 ? <Fingers x={port ? 540 : 1640} y={port ? 1360 : 880} size={port ? 300 : 260} slide={-slide} opacity={glyph} /> : null}
+      {glyph > 0 ? <Fingers x={port ? 540 : 1660} y={port ? 1300 : 840} size={port ? 300 : 260} slide={slide} from={1} opacity={glyph} /> : null}
       <Supers />
     </Paper>
   );
@@ -244,9 +267,10 @@ function Split() {
   const b = useBeat();
   const port = useAspect() === "port";
   const run = framesOf("split", "divider");
-  const index = b < 1 ? frameOf("split", "one") : b < DIVIDER.start ? frameOf("split", "two") : playRun(b, run, DIVIDER.start, DIVIDER.end);
-  const bump = kick(b, 1, 0.25) * 0.02;
-  const wide: Cam = { ...REST, zoom: (port ? 0.62 : 0.86) * (1 + bump), fx: port ? 0.3 : 0.5, dy: port ? 300 : 60 };
+  // Split view is open on the cut (no single-page beat first).
+  const index = b < DIVIDER.start ? frameOf("split", "two") : playRun(b, run, DIVIDER.start, DIVIDER.end);
+  const bump = kick(b, 0, 0.25) * 0.02;
+  const wide = wideCam(port, bump);
   const close: Cam = { ...REST, zoom: port ? 1.3 : 1.45, fx: 0.5, fy: 0.45, aim: 1, ax: 0.5, ay: port ? 0.55 : 0.52 };
   const cam = b >= DIVIDER.start && b < 5 ? close : wide;
   // The pointer holds the divider: its x follows the panes' share (the page area starts after the 190 pt sidebar).
@@ -259,8 +283,8 @@ function Split() {
   return (
     <Paper>
       <Window id={windowId()} scene="split" index={index} cam={cam} pointer={pointer} />
-      <Yahu id={extraId("yahu")} clip="Default Dance" time={0.8 + (b - 5) * SEC} rise={yahuOn} squash={kick(b, 5.3, 0.2)} yaw={-0.35} />
-      <Shake hits={[1, 5]} amount={8}>
+      <Yahu id={extraId("yahu")} clip="Default Dance" time={mix(POSE.steeple, POSE.flex, seg(b, 5.2, 0.5))} rise={yahuOn} squash={kick(b, 5.3, 0.2)} yaw={-0.35} framing="bust" />
+      <Shake hits={[0, 5]} amount={8}>
         <Supers />
       </Shake>
     </Paper>
@@ -274,10 +298,10 @@ function Block() {
   const on = framesOf("block", "on");
   const index = b < 1 ? frameOf("block", "page") : b < 2 ? frameOf("block", "controls") : b < 2.5 ? playRun(b, off, 2, 2.5) : b < 5.5 ? playRun(b, on, 2.5, 5.5) : frameOf("block", "onRest");
   const { cam, prev } = useCam([
-    { at: 0, zoom: port ? 0.75 : 1, fx: 0.5, fy: 0.5, dy: port ? 200 : 0 },
+    { at: 0, ...(port ? wideCam(true) : { ...REST, zoom: 1 }) },
     { at: 1, zoom: port ? 1.7 : 2.4, fx: 0.86, fy: 0.22, aim: 1, ax: port ? 0.5 : 0.62, ay: port ? 0.5 : 0.5, ease: "cut" },
     { at: 2.5, zoom: port ? 2.4 : 3.4, fx: 0.86, fy: 0.27, aim: 1, ax: port ? 0.5 : 0.62, ay: 0.5, ease: "cut" },
-    { at: 4.5, zoom: port ? 0.75 : 1, fx: 0.5, fy: 0.5, dy: port ? 200 : 0, aim: 0, ease: "cut" },
+    { at: 4.5, ...(port ? wideCam(true) : { ...REST, zoom: 1 }), ease: "cut" },
   ]);
   const toggle = { x: 0.898, y: 0.262 };
   const clicks = [
@@ -309,51 +333,90 @@ function Chromium() {
 /** The drop-B window (the swipe-big object), shared by the poise and the run so the drop is a match cut. */
 const BIG_ID = CUTS.launch.shots.find((s) => s.kind === "swipeBig")?.window?.id ?? "swipe-big-window";
 
-/** The bar before drop B: the window waits, two fingers come to rest on the trackpad, and the music stops dead. */
+// Drop B: five swipes. The first drags inside the silence and commits on the drop itself (beat 0 of swipeBig).
+// Beats here are relative to the drop.
+const RUN_2 = [
+  { label: "toWeekend", commit: 0, drag: 0.7, dir: -1 },
+  { label: "backToSide", commit: 1.5, drag: 0.55, dir: 1 },
+  { label: "backToCampaign", commit: 3, drag: 0.5, dir: 1 },
+  { label: "backToWork", commit: 4.5, drag: 0.5, dir: 1 },
+  { label: "backToPersonal", commit: 6, drag: 0.5, dir: 1 },
+];
+const RUN_2_TONES = [swatch.green, swatch.yellow, swatch.green, swatch.orange, swatch.blue, swatch.plum];
+
+/**
+ * The drop-B window at beat `d` (relative to the drop), shared by the poise and the run so the drop is one continuous
+ * shot. The first two swipes are framed whole (sidebar, tint and the coloured stock all change), the next three on a
+ * macro of the sidebar and the page's edge. On each commit the window is shoved the way the fingers went.
+ */
+function dropCam(d: number, port: boolean): Cam {
+  const whole: Cam = port ? { ...REST, zoom: 0.62, fx: 0.5, fy: 0.5, aim: 1, ax: 0.5, ay: 0.56 } : { ...REST, zoom: 0.8, dy: 40 };
+  const macro: Cam = { ...REST, zoom: port ? 1.15 : 1.9, fx: 0.12, fy: 0.2, aim: 1, ax: port ? 0.42 : 0.32, ay: port ? 0.46 : 0.42 };
+  const out = seg(d, 7.4, 1.2, easeInOut);
+  let cam: Cam = d < 2.6 ? whole : d < 7.4 ? macro : { ...whole, zoom: mix(macro.zoom, whole.zoom, out), fx: mix(0.12, 0.5, out), fy: mix(0.2, 0.5, out), aim: mix(1, whole.aim, out) };
+  if (d < 0) {
+    // The poise: a slow push onto the sidebar's header, the stock colour all round.
+    const push = seg(d, -4, 3.2, easeInOut);
+    cam = port
+      ? { ...whole, zoom: mix(0.62, 0.8, push), fx: mix(0.5, 0.25, push), fy: mix(0.5, 0.3, push) }
+      : { ...whole, zoom: mix(0.8, 0.95, push), fx: mix(0.5, 0.2, push), fy: mix(0.5, 0.25, push) };
+  }
+  // The shove: the drag pulls the window a little, the commit throws it on, then it settles.
+  const W = port ? 1080 : 1920;
+  let dx = 0;
+  for (const e of RUN_2) {
+    const p = clamp((d - (e.commit - e.drag)) / e.drag);
+    if (d >= e.commit - e.drag && d < e.commit) dx += e.dir * 0.03 * W * easeIn(p);
+    if (d >= e.commit) dx += e.dir * 0.03 * W * Math.exp(-(d - e.commit) / 0.12) * Math.cos((d - e.commit) * 10);
+  }
+  return { ...cam, dx: cam.dx + dx };
+}
+
+function dropTone(d: number) {
+  const landed = RUN_2.filter((e) => d >= e.commit).length;
+  if (landed === 0) return RUN_2_TONES[0];
+  const last = RUN_2[landed - 1].commit;
+  return interpolateColors(clamp((d - last) / (4 / BEAT)), [0, 1], [RUN_2_TONES[landed - 1], RUN_2_TONES[landed]]);
+}
+
+/** The bar before drop B: the window waits on the stock's colour, the fingers settle, and the first drag starts in the silence. */
 function Poise() {
   const b = useBeat();
   const port = useAspect() === "port";
-  const frozen = Math.min(b, 3); // the last beat, the silence, holds still
-  const land = springAt(frozen, 1, { stiffness: 220, damping: 16 });
-  const zoom = (port ? 1.12 : 1.22) * (1 - 0.04 + 0.04 * seg(frozen, 0, 3, easeInOut));
+  const d = b - 4;
+  const index = swipeIndex(d, RUN_2, "toSide:rest");
+  const land = springAt(b, 1, { stiffness: 220, damping: 16 });
+  const first = RUN_2[0];
+  const slide = 1 - 2 * clamp((d - (first.commit - first.drag)) / first.drag);
   return (
-    <Paper tone={swatch.green}>
-      <Window id={BIG_ID} scene="swipe" index={frameOf("swipe", "toSide:rest")} cam={{ ...REST, zoom, fx: port ? 0.2 : 0.32, fy: 0.3 }} />
-      <Fingers x={port ? 540 : 1580} y={port ? 1340 : 860 + (1 - land) * 400} size={port ? 320 : 280} opacity={land} press={seg(frozen, 2.5, 0.5)} />
+    <Paper tone={dropTone(d)}>
+      <Window id={BIG_ID} scene="swipe" index={index} cam={dropCam(d, port)} />
+      <Fingers x={port ? 540 : 1640} y={(port ? 1300 : 860) + (1 - land) * 500} size={port ? 300 : 260} opacity={land} slide={slide} from={1} press={seg(b, 2.6, 0.4)} />
     </Paper>
   );
 }
 
-// ---------------------------------------------------------------------------------------------- drop B
-
-const RUN_2 = [
-  { label: "toWeekend", commit: 1, drag: 0.55 },
-  { label: "backToSide", commit: 2.5, drag: 0.5 },
-  { label: "backToCampaign", commit: 4, drag: 0.5 },
-  { label: "backToWork", commit: 5.5, drag: 0.5 },
-  { label: "backToPersonal", commit: 7, drag: 0.5 },
-];
-const RUN_2_TONES = [swatch.green, swatch.yellow, swatch.green, swatch.orange, swatch.blue, swatch.plum];
-
-/** The biggest swipe, on drop B: five profiles, each on its beat, the stock taking each profile's colour. */
+/** The biggest swipe, on drop B: five profiles, each named on the frame its page lands, the stock in its colour. */
 function SwipeBig() {
   const b = useBeat();
+  const shot = useShot();
   const port = useAspect() === "port";
-  const index = swipeIndex(b, RUN_2, "toSide:rest");
-  const landed = RUN_2.filter((e) => b >= e.commit).length;
-  const last = landed > 0 ? RUN_2[landed - 1].commit : 0;
-  // The colour eases in over 4 frames on each commit (no hard full-frame flash).
-  const from = RUN_2_TONES[Math.max(0, landed - 1)];
-  const tone = landed === 0 ? RUN_2_TONES[0] : interpolateColors(clamp((b - last) / (4 / BEAT)), [0, 1], [from, RUN_2_TONES[landed]]);
-  const bump = RUN_2.reduce((s, e) => s + kick(b, e.commit, 0.18) * 0.025, 0) + kick(b, 0, 0.3) * 0.04;
-  const out = seg(b, 7.6, 1.2, easeInOut);
-  const macro = b >= 3.25 && b < 6.25;
-  const zoom = (macro ? (port ? 1.7 : 2.1) : mix(port ? 1.12 : 1.22, port ? 0.62 : 0.86, out)) * (1 + bump);
+  // The teaser has no poise: its run starts `lead` beats into the shot.
+  const d = b - (shot.marks?.lead ?? 0);
+  const index = swipeIndex(d, RUN_2, "toSide:rest");
+  const bump = kick(d, 0, 0.3) * 0.03;
+  const cam = dropCam(d, port);
+  const first = RUN_2[0];
+  const lead = shot.marks?.lead ?? 0;
+  const glyph = lead > 0 ? seg(b, 0, 0.15) * (1 - seg(d, 0.2, 0.4)) : 1 - seg(d, 0, 0.3);
+  const slide = 1 - 2 * clamp((d - (first.commit - first.drag)) / first.drag);
   return (
-    <Paper tone={tone}>
-      <Shake hits={[0, ...RUN_2.map((e) => e.commit)]} amount={6}>
-        <Window id={BIG_ID} scene="swipe" index={index} cam={macro ? { ...REST, zoom, fx: 0.1, fy: 0.12, aim: 1, ax: port ? 0.3 : 0.25, ay: port ? 0.35 : 0.3 } : { ...REST, zoom, fx: mix(port ? 0.2 : 0.32, 0.5, out), fy: mix(0.3, 0.5, out) }} />
+    <Paper tone={dropTone(d)}>
+      <Shake hits={RUN_2.map((e) => e.commit + lead)} amount={6}>
+        <Window id={BIG_ID} scene="swipe" index={index} cam={{ ...cam, zoom: cam.zoom * (1 + bump) }} />
       </Shake>
+      {glyph > 0.001 ? <Fingers x={port ? 540 : 1640} y={port ? 1300 : 860} size={port ? 300 : 260} opacity={glyph} slide={slide} from={1} /> : null}
+      <Supers />
     </Paper>
   );
 }
@@ -362,7 +425,7 @@ function Store() {
   const b = useBeat();
   const port = useAspect() === "port";
   const { cam, prev } = useCam([
-    { at: 0, zoom: port ? 0.62 : 0.86, fx: port ? 0.3 : 0.5, dy: port ? 300 : 60 },
+    { at: 0, ...wideCam(port) },
     { at: 1, zoom: port ? 1.5 : 2.2, fx: 0.82, fy: 0.3, dy: 0, aim: 1, ax: 0.5, ay: 0.55, ease: "cut" },
     { at: 3, zoom: port ? 1.8 : 2.6, fx: 0.82, fy: 0.17, aim: 1, ax: 0.5, ay: 0.55, ease: "cut" },
   ]);
@@ -379,7 +442,7 @@ function Store() {
 
 function Icons() {
   const port = useAspect() === "port";
-  const { cam, prev } = useCam([{ at: 0, ...REST, dy: port ? 0 : 40 }, { at: 1, zoom: port ? 1.3 : 1.8, fx: 0.62, fy: 0.88, dy: 0, aim: 1, ax: 0.5, ay: port ? 0.55 : 0.6, ease: "cut" }, { at: 2.5, zoom: port ? 2.6 : 3.6, fx: 0.535, fy: 0.885, aim: 1, ax: 0.5, ay: 0.6, ease: "cut" }]);
+  const { cam, prev } = useCam([{ at: 0, ...REST, dy: port ? 0 : 40 }, { at: 1, zoom: port ? 1.2 : 1.7, fx: 0.62, fy: 0.885, aim: 1, ax: 0.5, ay: port ? 0.5 : 0.5, ease: "cut" }, { at: 2.5, zoom: port ? 1.45 : 2.1, fx: 0.62, fy: 0.885, aim: 1, ax: 0.5, ay: port ? 0.5 : 0.52, ease: "cut" }]);
   return (
     <Paper>
       <Window id={windowId()} scene="windows" index={frameOf("windows", "appearance")} cam={cam} prev={prev} />
@@ -415,7 +478,7 @@ function Typing() {
   const { cam } = useCam([
     { at: 0, zoom: port ? 1.5 : 2.1, fx: 0.3, fy: 0.06, aim: 1, ax: port ? 0.45 : 0.5, ay: 0.45 },
     { at: 2.5, zoom: port ? 1.9 : 2.7, fx: 0.3, fy: 0.06, aim: 1, ax: port ? 0.45 : 0.5, ay: 0.45, ease: "cut" },
-    { at: 4.6, ...REST, zoom: port ? 0.62 : 1, fx: port ? 0.3 : 0.5, dy: port ? 200 : 0, ease: "cut" },
+    { at: 4.6, ...(port ? wideCam(true) : { ...REST, zoom: 1 }), ease: "cut" },
   ]);
   const live: Cam = { ...cam, zoom: cam.zoom + dive * (port ? 9 : 6.5), fx: mix(cam.fx, 0.335, dive), fy: mix(cam.fy, 0.38, dive) };
   const prevDive = seg(b - 1 / BEAT, 6.4, 1.6, easeIn);
@@ -455,7 +518,7 @@ function End() {
   return (
     <Paper>
       <Shake hits={[0, lockup, button]} amount={14}>
-        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2)} />
+        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2)} yaw={0.3} />
         <AppIcon id={extraId("icon")} at={lockup} />
         <Supers />
       </Shake>

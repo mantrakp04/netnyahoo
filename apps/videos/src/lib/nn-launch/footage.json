@@ -1,4 +1,16 @@
 {
+ "asks": {
+  "size": [
+   2880,
+   1800
+  ],
+  "labels": [
+   "ask:signin",
+   "ask:ai",
+   "ask:cookies",
+   "ask:upgrade"
+  ]
+ },
  "block": {
   "size": [
    2880,

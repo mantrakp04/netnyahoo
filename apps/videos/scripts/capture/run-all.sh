@@ -4,7 +4,7 @@
 set -euo pipefail
 APP=$1; SCRATCH=$2; shift 2
 HERE=$(cd "$(dirname "$0")" && pwd); VIDEOS=$(cd "$HERE/../.." && pwd); REPO=$(cd "$VIDEOS/../.." && pwd)
-SCENES=${*:-warm swipe tabs split block store windows typing}
+SCENES=${*:-warm asks swipe tabs split block store windows typing}
 DATA=$SCRATCH/film
 if [ ! -f "$DATA/instance.json" ] || ! "$REPO/scripts/agent/nn" status "$DATA" >/dev/null 2>&1; then
   rm -rf "$DATA"; mkdir -p "$SCRATCH/import-empty"

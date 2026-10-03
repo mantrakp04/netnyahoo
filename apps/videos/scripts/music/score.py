@@ -10,12 +10,14 @@ Synthesis is kept to what a producer adds on top: a sine sub under the kick and 
 and the noise in the whoosh and swipe effects. A generated stereo hall and room (convolution), a kick sidechain, a
 glue compressor and a 4x-oversampled true-peak limiter master it to cuts.json's `lufs` and `truePeak`.
 
-The arrangement, the sound effects and the silent windows come from src/lib/nn-launch/cuts.json, the file the edit
-reads, so every hit lands on the frame the picture cuts on: each sample is trimmed so its attack starts exactly on
-its beat (beat * 22400 samples).
+The arrangement, the sound effects, the silent windows and the breaths (bars where the kick, bass and hats drop out
+under brass stabs) come from src/lib/nn-launch/cuts.json, the file the edit reads, so every hit lands on the frame
+the picture cuts on: each sample is trimmed so its attack starts exactly on its beat (beat * 22400 samples).
 
 usage: python3 scripts/music/score.py [cut ...]   (default: every cut) -> public/music/<cut>.wav (48 kHz, 24-bit)
-Needs numpy, scipy and ffmpeg (to decode the samples). Deterministic: round robins are counters, noise is seeded.
+Needs numpy, scipy and ffmpeg (to decode the samples). Deterministic: round robins are counters; noise and the
+humaniser (inner notes up to 6-12 ms early or late, +-2.5 dB; never a section downbeat, hit, tap, button, breath
+edge or sound-effect beat) are seeded.
 scripts/music/analyze.py measures a render (loudness per bar, R128, top end, onsets, silences, tail).
 """
 
@@ -25,6 +27,7 @@ import re
 import subprocess
 import sys
 import wave
+import zlib
 from fractions import Fraction
 
 import numpy as np
@@ -184,37 +187,48 @@ def shifted(rel, semis, thresh_db=-30.0, norm=None):
 
 
 NOTE_PC = {"C": 0, "C#": 1, "D": 2, "D#": 3, "E": 4, "F": 5, "F#": 6, "G": 7, "G#": 8, "A": 9, "A#": 10, "B": 11}
-EXCLUDE = {"MOHorn_stac_C3_v3_rr1.wav"}  # sounds an octave above its name
+# Files whose measured f0 is off their name (an octave, or more than half a semitone): never played.
+EXCLUDE = {"MOHorn_stac_C3_v3_rr1.wav", "MOHorn_stac_C3_v2_rr1.wav", "MOHorn_stac_C3_v2_rr2.wav",
+           "MOHorn_stac_G1_v1_rr2.wav", "Tuba3_stac_A#0_v2_rr3_Sum.wav", "Tuba3_stac_A#0_v2_rr4_Sum.wav",
+           "Tuba3_stac_A#1_v1_rr1_Sum.wav", "Tuba3_stac_F1_v1_rr1_Sum.wav"}
 
 
 class Multi:
-    """A multi-sampled pitched instrument: the files of one folder, keyed by note. VSCO names notes an octave
-    below scientific pitch (its C3 is middle C, MIDI 60); the measured f0 of every file used agrees."""
+    """A multi-sampled pitched instrument: the files of one folder, keyed by note and dynamic layer, round robins
+    in turn. VSCO names notes an octave below scientific pitch (its C3 is middle C, MIDI 60); the measured f0 of
+    every file played agrees."""
 
     def __init__(self, folder, max_shift=3):
         self.folder = folder
-        self.notes = {}
+        self.notes = {}  # note -> {layer: [files]}
         for f in sorted(os.listdir(os.path.join(SAMPLES, folder))):
-            m = re.search(r"_([A-G]#?)(\d)_v\d", f)
+            m = re.search(r"_([A-G]#?)(\d)_v(\d)", f)
             if not f.endswith(".wav") or not m or f in EXCLUDE:
                 continue
-            self.notes.setdefault(NOTE_PC[m.group(1)] + 12 * (int(m.group(2)) + 2), []).append(f"{folder}/{f}")
+            note = NOTE_PC[m.group(1)] + 12 * (int(m.group(2)) + 2)
+            self.notes.setdefault(note, {}).setdefault(int(m.group(3)), []).append(f"{folder}/{f}")
         self.max_shift = max_shift
         self.rr = {}
 
-    def pick(self, note):
+    def pick(self, note, soft=False):
+        """The nearest sampled note; its loudest layer, or the next one down when `soft` (if it has one)."""
         base = min(self.notes, key=lambda n: (abs(n - note), n > note))
         if abs(base - note) > self.max_shift:
             raise ValueError(f"{self.folder}: {note} is {note - base} semitones from the nearest sample")
-        files = self.notes[base]
-        k = self.rr.get(base, 0)
-        self.rr[base] = k + 1
+        layers = sorted(self.notes[base])
+        layer = layers[-2] if soft and len(layers) > 1 else layers[-1]
+        files = self.notes[base][layer]
+        k = self.rr.get((base, layer), 0)
+        self.rr[(base, layer)] = k + 1
         return files[k % len(files)], note - base
 
-    def play(self, note, dur, release=0.08, thresh_db=-24.0):
-        """One note gated after `dur` seconds with an exponential release; (n, 2), attack PRE samples in."""
-        rel, semis = self.pick(note)
+    def play(self, note, dur, release=0.08, thresh_db=-24.0, soft=False):
+        """One note gated after `dur` seconds with an exponential release; (n, 2), attack PRE samples in. A soft
+        note uses the quieter, darker dynamic layer, levelled the same and then 2.5 dB down."""
+        rel, semis = self.pick(note, soft)
         x = shifted(rel, semis, thresh_db, "rms")
+        if soft:
+            x = x * 0.75
         g = int(dur * SR) + PRE
         n = min(len(x), g + int(release * 6 * SR))
         x = x[:n].copy()
@@ -307,7 +321,8 @@ def sub(note, dur, drop=1.5, tau=0.2, level=1.0):
     g = int(dur * SR)
     x[g:] *= np.linspace(1, 0, n - g)
     x[:48] *= np.linspace(0, 1, 48)
-    return np.concatenate([np.zeros(PRE), x]) * level
+    x = signal.sosfilt(sos("highpass", 35, 2), x)  # nothing below 35 Hz
+    return np.concatenate([np.zeros(PRE), x]) * level * 0.79
 
 
 def noise_riser(beats, level=1.0):
@@ -350,7 +365,21 @@ class Mix:
         self.room = np.zeros((self.n, 2))
         self.kicks = []
         self.sweeps = []  # (buses, start beat, end beat, from Hz, to Hz)
+        self.trims = []  # (start beat, end beat, dB): mix automation
+        self.gates = []  # (buses, start beat, end beat): silenced (breaths)
         self.inst = instruments()
+        self.rng = np.random.default_rng(zlib.crc32(name.encode()))  # the humaniser, seeded per cut
+        self.breaths = [tuple(b) for b in self.cut.get("breaths", [])]
+        self.protected = set()  # beats that are never moved: section downbeats, hits, taps, button, slams
+
+    def in_breath(self, beat):
+        return any(a <= beat < b for a, b in self.breaths)
+
+    def human(self, beat, ms):
+        """(beat, gain) for an inner note: up to +-ms late or early and +-2.5 dB, never on a protected beat."""
+        if any(abs(beat - p) < 1e-9 for p in self.protected):
+            return beat, 1.0
+        return beat + self.rng.uniform(-ms, ms) / 1000 / BEAT, 10 ** (self.rng.uniform(-2.5, 2.5) / 20)
 
     def add(self, bus, x, beat, gain=1.0, pan=0.0, width=1.0, hall=0.0, room=0.0):
         """Add x (attack PRE samples in) so that its attack lands exactly on `beat`."""
@@ -366,8 +395,12 @@ class Mix:
             self.room[i:i + len(x)] += x * room
 
     def kick(self, beat, level=1.0):
-        self.add("drums", self.inst["kick"].hit(), beat, 0.9 * level)
-        self.add("drums", sub(29, 0.2, tau=0.12, level=0.22 * level), beat)
+        if self.in_breath(beat):
+            return
+        if not hasattr(self, "_kick"):  # the 909's body peaks near 58 Hz: trim what sits below it
+            self._kick = shelf(filt(self.inst["kick"].hit(), "highpass", 42), 70, -2.5, high=False)
+        self.add("drums", self._kick, beat, 0.9 * level)
+        self.add("drums", sub(29, 0.2, tau=0.12, level=0.12 * level), beat)
         self.kicks.append(beat)
 
 
@@ -393,17 +426,20 @@ def voicing(ci, top=False):
     return v
 
 
-def tutti(m, ci, beat, beats, level=1.0, top=False, sus=False, release=0.08, hall=0.22, lp=None, voices=None):
-    """A brass chord across the sections: staccato samples for stabs (brass bus), sustains for held chords (bed)."""
+def tutti(m, ci, beat, beats, level=1.0, top=False, sus=False, release=0.08, hall=0.22, lp=None, voices=None,
+          human=0.0, soft=False):
+    """A brass chord across the sections: staccato samples for stabs (brass bus), sustains for held chords (bed).
+    human=ms lets each player land up to that early or late and vary by +-2.5 dB (not on protected beats)."""
     for sec, notes in (voices or voicing(ci, top)).items():
         pan, width = SEC[sec]
         inst = m.inst[sec + "_sus"] if sus else m.inst[sec]
         for k, note in enumerate(notes):
-            x = inst.play(note, beats * BEAT, release)
+            x = inst.play(note, beats * BEAT, release, soft=soft and not sus)
             if lp:
                 x = filt(x, "lowpass", lp)
             off = (k - (len(notes) - 1) / 2) * 0.12
-            m.add("bed" if sus else "brass", x, beat, SEC_GAIN[sec] * level / len(notes) ** 0.35, pan + off, width,
+            t, g = m.human(beat, human) if human else (beat, 1.0)
+            m.add("bed" if sus else "brass", x, t, g * SEC_GAIN[sec] * level / len(notes) ** 0.35, pan + off, width,
                   hall=hall)
 
 
@@ -465,29 +501,30 @@ def reverse_crash(m, end, beats=1.5, level=1.0):
 # ---------------------------------------------------------------------------------------------- sections
 
 def play_hook(m, bar0, bars):
-    """Bar 1: four brass stabs with kick and crash only. Bar 2: a march snare roll, a timpani roll, a cymbal swell
-    and a riser over a soft held horn chord; no kick."""
+    """Bar 1: four brass stabs and a kick, nothing else (no crash, no impact: drop A gets to hit). Bar 2: a march
+    snare roll, a timpani roll, a cymbal swell and a riser over a soft held horn chord; no kick."""
     b0 = 4 * bar0
     for k in range(4):
-        tutti(m, 0 if k < 3 else 3, b0 + k, 0.55, level=1.05, top=True, hall=0.25)
-        m.kick(b0 + k)
-    crash(m, b0)
+        tutti(m, 0 if k < 3 else 3, b0 + k, 0.55, level=0.48, top=True, hall=0.25, human=12)
+        m.kick(b0 + k, 0.6)
     if bars < 2:
         return
     b1 = b0 + 4
     end = stop_before(m.cut, b1, b1 + 4)
-    snare_roll(m, b1, end, 0.3, 0.85, gain=0.55)
-    timp_roll(m, b1, end, 0.5)
-    swell(m, end, end - b1, 0.6)
-    m.add("fx", noise_riser(end - b1, 0.35), b1)
+    snare_roll(m, b1, end, 0.3, 0.85, gain=0.45)
+    timp_roll(m, b1, end, 0.4)
+    swell(m, end, end - b1, 0.5)
+    m.add("fx", noise_riser(end - b1, 0.3), b1)
     tutti(m, 3, b1, end - b1 - 0.25, level=0.35, sus=True, release=0.12, hall=0.35, lp=2500,
           voices={"hn": [c - 12 for c in CHORDS[3]], "tuba": [ROOTS[3]]})
 
 
 def play_drop(m, bar0, bars, big, nxt=None):
     """Four-on-the-floor under a brass riff over a held brass bed. Drop A opens half-time and filtered for two
-    bars; drop B is the biggest section: an impact on its downbeat, trumpets doubled at the octave, a lead line,
-    16th and open hats. The last bar of every four has a fill in place of its fourth kick."""
+    bars, then sits 2.5 dB under drop B; drop B is the biggest section: an impact on its downbeat, trumpets doubled at
+    the octave, a lead line, 16th and open hats. The last bar of every four has a fill in place of its fourth kick.
+    Inside a breath (cuts.json `breaths`) the kick, bass, hats, bed, riff and lead stop and brass stabs hit every
+    beat over the claps and a march snare; everything slams back on its end beat with a crash."""
     I = m.inst
     B0 = 4 * bar0
     if big:
@@ -495,6 +532,8 @@ def play_drop(m, bar0, bars, big, nxt=None):
     else:
         impact(m, B0, 0.5)
         m.sweeps.append((("brass", "bed"), B0, B0 + 8, 600, 16000))
+        m.trims.append((B0 + 8, B0 + 4 * bars, -2.5))  # its half-time opening is already smaller
+    breath = m.in_breath
     for i in range(bars):
         B = B0 + 4 * i
         ci = i % 4
@@ -512,16 +551,21 @@ def play_drop(m, bar0, bars, big, nxt=None):
             m.add("drums", I["claps"].hit(), B + k, 0.5, pan=0.1, width=0.7, room=0.3)
             m.add("drums", I["clap909"].hit(), B + k, 0.32, room=0.15)
             m.add("drums", I["snare"][7].hit(length=0.25, decay=0.09), B + k, 0.32, room=0.25)
+        hats = []  # (beat, kit, level, pan, length)
         for k in range(4):
             if half:
-                m.add("drums", I["hat"].hit(), B + k + 0.5, 0.18, pan=0.3)
+                hats.append((B + k + 0.5, "hat", 0.18, 0.3, None))
             elif big:
-                m.add("drums", I["ohat"].hit(length=0.22, decay=0.08), B + k + 0.5, 0.5, pan=0.3, room=0.1)
-                for s in (0.25, 0.75):
-                    m.add("drums", I["hat"].hit(), B + k + s, 0.24, pan=-0.3)
+                hats.append((B + k + 0.5, "ohat", 0.5, 0.3, 0.22))
+                hats += [(B + k + s, "hat", 0.24, -0.3, None) for s in (0.25, 0.75)]
             else:
-                m.add("drums", I["hat"].hit(), B + k + 0.5, 0.4, pan=0.3)
-                m.add("drums", I["hat"].hit(), B + k + 0.75, 0.16, pan=-0.3)
+                hats += [(B + k + 0.5, "hat", 0.4, 0.3, None), (B + k + 0.75, "hat", 0.16, -0.3, None)]
+        for t, kit, level, pan, length in hats:
+            if breath(t):
+                continue
+            x = I[kit].hit(length=length, decay=None if length is None else 0.08)
+            t, g = m.human(t, 6)
+            m.add("drums", x, t, level * g, pan=pan, room=0.1 if kit == "ohat" else 0.0)
         if fill:
             for s in range(8):  # snare 16ths over beats 3-4, timpani and toms answering
                 m.add("drums", I["snare"][5 if s < 4 else 7 if s < 6 else 9].hit(length=0.3, decay=0.1),
@@ -537,27 +581,50 @@ def play_drop(m, bar0, bars, big, nxt=None):
             m.add("bass", sub(root - 12, 3.8 * BEAT, drop=0.0, tau=3.0, level=0.2), B)
         else:
             for s in [0.5, 1.5, 2.5, 3.5] + ([1.75, 3.75] if big else []):
+                if breath(B + s):
+                    continue
                 pickup = s in (1.75, 3.75)
-                m.add("bass", I["tuba"].play(root + (12 if pickup else 0), 0.22, 0.04), B + s, 0.75, pan=0.05)
+                m.add("bass", I["tuba"].play(root + (12 if pickup else 0), 0.22, 0.04, soft=pickup), B + s, 0.75,
+                      pan=0.05)
                 if not pickup:
                     m.add("bass", sub(root - 12, 0.2, drop=0.0, tau=0.5, level=0.2), B + s)
         # held bed: horns and a trombone, sidechained to the kick
-        tutti(m, ci, B, 3.85, level=0.55 if big else 0.42, sus=True, release=0.12, hall=0.3, lp=3500,
-              voices={"hn": [c - 12 for c in CHORDS[ci]], "tbn": [ROOTS[ci] + 12]})
-        # the riff
+        if not breath(B):
+            tutti(m, ci, B, 3.85, level=0.55 if big else 0.42, sus=True, release=0.12, hall=0.3, lp=3500,
+                  voices={"hn": [c - 12 for c in CHORDS[ci]], "tbn": [ROOTS[ci] + 12]})
+        # the riff: accents on the loudest layer, the rest (all of drop A but its first note) on the softer one
         for step, idx, length in RIFF:
+            t = B + step / 4
+            if breath(t):
+                continue
             note = CHORDS[ci][idx]
             v = {"tpt": [note], "hn": [note - 12]}
             if big:
                 v = {"tpt": [note, note + 12], "hn": [note - 12], "tbn": [note - 24 + (12 if note - 24 < 46 else 0)]}
-            tutti(m, ci, B + step / 4, length / 4 * 0.85, level=0.9 if big else 0.7, hall=0.18, voices=v)
+            soft = step in (3, 10, 14) if big else step != 0
+            tutti(m, ci, t, length / 4 * 0.85, level=0.9 if big else 0.7, hall=0.18, voices=v, human=10, soft=soft)
         if big:  # the lead: sustained trumpet with a staccato front and a trombone an octave below
             for step, note, length in MELODY[ci]:
-                d = length / 4 * 0.92 * BEAT
                 t = B + step / 4
-                m.add("brass", I["tpt_sus"].play(note, d, 0.1), t, 0.55, pan=-0.05, width=0.5, hall=0.3)
-                m.add("brass", I["tpt"].play(note, min(d, 0.18), 0.05), t, 0.35, pan=-0.05, width=0.5)
-                m.add("brass", I["tbn_sus"].play(note - 12, d, 0.1), t, 0.3, pan=0.35, width=0.5, hall=0.25)
+                if breath(t):
+                    continue
+                d = length / 4 * 0.92 * BEAT
+                t, g = m.human(t, 8)
+                m.add("brass", I["tpt_sus"].play(note, d, 0.1), t, 0.55 * g, pan=-0.05, width=0.5, hall=0.3)
+                m.add("brass", I["tpt"].play(note, min(d, 0.18), 0.05), t, 0.35 * g, pan=-0.05, width=0.5)
+                m.add("brass", I["tbn_sus"].play(note - 12, d, 0.1), t, 0.3 * g, pan=0.35, width=0.5, hall=0.25)
+    for a, b in m.breaths:
+        if not B0 <= a < B0 + 4 * bars:
+            continue
+        for t in np.arange(np.ceil(a), b):  # stabs on every beat, a march snare under them
+            ci = int(t - B0) // 4 % 4
+            tutti(m, ci, t, 0.45, level=1.0 if big else 0.85, top=big, hall=0.25, human=10)
+            m.add("drums", I["march"][3].hit(), t, 0.45, pan=0.05, room=0.3)
+        m.gates.append((("bass", "bed"), a, b))
+        if b < B0 + 4 * bars:  # the slam back
+            crash(m, b, 1.0)
+            if b not in m.kicks:
+                m.kick(b)
     end = B0 + 4 * bars
     reverse_crash(m, stop_before(m.cut, end - 2, end), level=0.5 if nxt == "break" else 1.0)
 
@@ -594,16 +661,20 @@ def play_break(m, bar0, bars):
     m.add("fx", noise_riser(end - B1, 0.3), B1)
 
 
+def end_marks(bar0, bars):
+    """The end section's march taps and final button (beats)."""
+    if bars >= 3:
+        tl = 4 * (bar0 + bars - 2)
+        return [tl, tl + 1, tl + 2], tl + 3
+    return [], 4 * (bar0 + 1)
+
+
 def play_end(m, bar0, bars):
     """A huge hit on the downbeat whose chord rings; march taps and a final brass button; then it rings out.
     N >= 3 bars: taps on beats 1-3 of bar N-1 and the button on its beat 4. N == 2: the button on bar 2's downbeat."""
     I = m.inst
     B0 = 4 * bar0
-    if bars >= 3:
-        tl = B0 + 4 * (bars - 2)
-        taps, button = [tl, tl + 1, tl + 2], tl + 3
-    else:
-        taps, button = [], B0 + 4
+    taps, button = end_marks(bar0, bars)
     ring = (taps[0] if taps else button) - B0  # beats the hit's chord rings
     impact(m, B0, 1.2, ring=ring * BEAT, decay=ring * BEAT / 4)
     crash(m, B0, 1.1, length=ring * BEAT, decay=ring * BEAT / 3.5)
@@ -776,6 +847,16 @@ def render(name):
     cut = m.cut
     beats = cut["beats"]
     bar = 0
+    for kind, bars in cut["arrangement"]:  # beats the humaniser never moves
+        m.protected.add(4 * bar)
+        if kind == "end":
+            taps, button = end_marks(bar, bars)
+            m.protected.update(taps + [button])
+        bar += bars
+    m.protected.update(b for a, b in m.breaths)
+    m.protected.update(a for a, b in m.breaths)
+    m.protected.update(c["beat"] for c in cut.get("sfx", []))
+    bar = 0
     kinds = [k for k, _ in cut["arrangement"]] + [None]
     for s, (kind, bars) in enumerate(cut["arrangement"]):
         if kind == "hook":
@@ -798,6 +879,15 @@ def render(name):
         fc = f0 * (f1 / f0) ** ((np.arange(j - i) / (j - i)) ** 2)
         for k in buses:
             B[k][i:j] = lowpass_sweep(B[k][i:j], fc)
+    ramp = int(0.005 * SR)
+    for buses, a, b in m.gates:  # breaths: the bass and the bed stop, with 5 ms fades
+        g = np.ones(n)
+        i, j = at(a), at(b)
+        g[i:j] = 0.0
+        g[i - ramp:i] = np.linspace(1, 0, ramp)
+        g[j - ramp:j] = np.linspace(0, 1, ramp)
+        for k in buses:
+            B[k] *= g[:, None]
     sc = sidechain(n, m.kicks)
     B["bass"] *= (1 - 0.8 * (1 - sc))[:, None]
     B["bed"] *= (1 - 0.6 * (1 - sc))[:, None]
@@ -812,6 +902,14 @@ def render(name):
     mix = (B["drums"] + B["bass"] * 0.8 + B["brass"] * 1.1 + B["bed"] * 0.8 + B["fx"] * 0.8 + B["sfx"] * 0.9
            + hall * 0.55 + room * 0.45)
     mix = shelf(filt(mix, "highpass", 25, 2), 10000, 1.5)[: at(beats)]
+    ramp = int(0.01 * SR)
+    for a, b, db in m.trims:  # mix automation, ramped over the 10 ms before each boundary
+        g = np.ones(len(mix))
+        i, j = at(a), min(at(b), len(mix))
+        g[i:j] = 10 ** (db / 20)
+        g[i - ramp:i] = np.linspace(1, 10 ** (db / 20), ramp)
+        g[j - ramp:j] = np.linspace(10 ** (db / 20), 1, ramp)
+        mix *= g[:, None]
     mix = silence(mix, cut.get("silence", []))
 
     # master: glue compression, then iterate the gain into the true-peak limiter until the loudness target holds

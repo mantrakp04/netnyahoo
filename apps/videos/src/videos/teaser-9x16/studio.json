@@ -165,7 +165,7 @@
       "parentId": null,
       "values": {
         "x": 40,
-        "y": 640,
+        "y": 700,
         "width": 1500,
         "height": 938,
         "rotation": 0
@@ -191,13 +191,13 @@
       "parentId": null,
       "values": {
         "text": "SIGN\nIN.",
-        "size": 420,
+        "size": 230,
         "color": "#16130F",
         "fill": "#F1ECE2",
         "x": 60,
-        "y": 420,
+        "y": 230,
         "width": 880,
-        "height": 820,
+        "height": 440,
         "rotation": 0
       }
     },
@@ -208,13 +208,13 @@
       "parentId": null,
       "values": {
         "text": "TRY\nAI.",
-        "size": 460,
+        "size": 230,
         "color": "#16130F",
         "fill": "#F1ECE2",
         "x": 60,
-        "y": 420,
+        "y": 230,
         "width": 880,
-        "height": 820,
+        "height": 440,
         "rotation": 0
       }
     },
@@ -225,13 +225,13 @@
       "parentId": null,
       "values": {
         "text": "ACCEPT\nALL.",
-        "size": 420,
+        "size": 230,
         "color": "#16130F",
         "fill": "#F1ECE2",
         "x": 60,
-        "y": 420,
+        "y": 230,
         "width": 880,
-        "height": 820,
+        "height": 440,
         "rotation": 0
       }
     },
@@ -242,13 +242,13 @@
       "parentId": null,
       "values": {
         "text": "UP\nGRADE.",
-        "size": 420,
+        "size": 230,
         "color": "#16130F",
         "fill": "#F1ECE2",
         "x": 60,
-        "y": 420,
+        "y": 230,
         "width": 880,
-        "height": 820,
+        "height": 440,
         "rotation": 0
       }
     },
@@ -370,7 +370,7 @@
       "parentId": null,
       "values": {
         "text": "THE SIDEBAR\nBROWSER FOR MAC",
-        "size": 76,
+        "size": 64,
         "color": "#2150D9",
         "fill": "#00000000",
         "x": 60,
@@ -390,6 +390,91 @@
         "y": 520,
         "width": 1700,
         "height": 1063,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "big-weekend",
+      "definition": "type",
+      "label": "swipe-big · WEEKEND.",
+      "parentId": null,
+      "values": {
+        "text": "WEEKEND.",
+        "size": 150,
+        "color": "#16130F",
+        "fill": "#E3AC38",
+        "x": 60,
+        "y": 230,
+        "width": 880,
+        "height": 200,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "big-side",
+      "definition": "type",
+      "label": "swipe-big · SIDE PROJECT.",
+      "parentId": null,
+      "values": {
+        "text": "SIDE PROJECT.",
+        "size": 150,
+        "color": "#F1ECE2",
+        "fill": "#3EB489",
+        "x": 60,
+        "y": 230,
+        "width": 880,
+        "height": 200,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "big-campaign",
+      "definition": "type",
+      "label": "swipe-big · CAMPAIGN.",
+      "parentId": null,
+      "values": {
+        "text": "CAMPAIGN.",
+        "size": 150,
+        "color": "#F1ECE2",
+        "fill": "#D87249",
+        "x": 60,
+        "y": 230,
+        "width": 880,
+        "height": 200,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "big-work",
+      "definition": "type",
+      "label": "swipe-big · WORK.",
+      "parentId": null,
+      "values": {
+        "text": "WORK.",
+        "size": 150,
+        "color": "#F1ECE2",
+        "fill": "#4691C3",
+        "x": 60,
+        "y": 230,
+        "width": 880,
+        "height": 200,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "big-personal",
+      "definition": "type",
+      "label": "swipe-big · PERSONAL.",
+      "parentId": null,
+      "values": {
+        "text": "PERSONAL.",
+        "size": 150,
+        "color": "#F1ECE2",
+        "fill": "#C07A98",
+        "x": 60,
+        "y": 230,
+        "width": 880,
+        "height": 200,
         "rotation": 0
       }
     },
@@ -468,9 +553,9 @@
       "parentId": null,
       "values": {
         "x": 220,
-        "y": 860,
+        "y": 880,
         "width": 640,
-        "height": 640,
+        "height": 600,
         "rotation": 0
       }
     },
@@ -481,9 +566,9 @@
       "parentId": null,
       "values": {
         "x": 60,
-        "y": 300,
-        "width": 170,
-        "height": 170,
+        "y": 240,
+        "width": 150,
+        "height": 150,
         "rotation": 0
       }
     },
@@ -514,10 +599,27 @@
         "size": 150,
         "color": "#16130F",
         "fill": "#00000000",
-        "x": 250,
-        "y": 300,
-        "width": 690,
-        "height": 170,
+        "x": 230,
+        "y": 240,
+        "width": 710,
+        "height": 150,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-mac",
+      "definition": "type",
+      "label": "end · THE SIDEBAR BROWSER FOR MAC",
+      "parentId": null,
+      "values": {
+        "text": "THE SIDEBAR\nBROWSER FOR MAC",
+        "size": 60,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 410,
+        "width": 880,
+        "height": 120,
         "rotation": 0
       }
     },
@@ -532,7 +634,7 @@
         "color": "#16130F",
         "fill": "#00000000",
         "x": 60,
-        "y": 500,
+        "y": 550,
         "width": 880,
         "height": 100,
         "rotation": 0
@@ -549,9 +651,9 @@
         "color": "#2150D9",
         "fill": "#00000000",
         "x": 60,
-        "y": 600,
+        "y": 650,
         "width": 880,
-        "height": 170,
+        "height": 160,
         "rotation": 0
       }
     },
@@ -562,13 +664,13 @@
       "parentId": null,
       "values": {
         "text": "GITHUB.COM/MANTRAKP04/NETNYAHOO",
-        "size": 36,
+        "size": 40,
         "color": "#16130F",
         "fill": "#00000000",
         "x": 64,
-        "y": 790,
+        "y": 830,
         "width": 880,
-        "height": 50,
+        "height": 56,
         "rotation": 0
       }
     }

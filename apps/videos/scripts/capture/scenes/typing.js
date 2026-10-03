@@ -12,6 +12,6 @@ then(() => Promise.resolve(nn.shell.devKeyEquivalent(W, { key: "l", keyCode: 37,
 Array.from({ length: TEXT.length }, (_, i) => TEXT[i]).forEach((c, i) => then(() => act("type:" + c).then(() => sleep(420)).then(() => snap("type:" + TEXT.slice(0, i + 1)))));
 then(() => { const bar = nn.omnibox.get(W + ":panel"); if (bar) bar.submit(); else return act("type:\r"); });
 then(() => sleep(200).then(() => snap("enter")));
-then(() => sleep(6000).then(() => picShown("site")).then(() => snap("site", { pageKey: { [tabId]: "site:" + tabId } })));
+then(() => sleep(9000).then(() => picShown("site")).then(() => sleep(1000)).then(() => picShown("site")).then(() => snap("site", { pageKey: { [tabId]: "site:" + tabId } })));
 then(() => { st().closeTab(tabId); return sleep(500); });
 return finish({ tabId, ids: nn.omnibox.ids() });
