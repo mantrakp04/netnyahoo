@@ -349,7 +349,9 @@ function prepareApp(app, out, bundle) {
   const marker = ["com.apple.security.cs.allow-dyld-environment-variables", "com.apple.security.cs.disable-library-validation"]
     .filter((key) => !granted.includes(`<key>${key}</key>`)).map((key) => `<key>${key}</key><true/>`).join("");
   writeFileSync(entitlements, granted.replace(/<\/dict>\s*<\/plist>\s*$/, `${marker}</dict></plist>`));
-  execFileSync("codesign", ["--force", "--sign", identity, "--options", "runtime", "--entitlements", entitlements, copy], { stdio: "inherit" });
+  // No secure timestamp: both apps' copies are signed the same way, and Apple's timestamp server sometimes doesn't
+  // answer ("A timestamp was expected but was not found"), which used to abort the whole run.
+  execFileSync("codesign", ["--force", "--sign", identity, "--timestamp=none", "--options", "runtime", "--entitlements", entitlements, copy], { stdio: "inherit" });
   writeFileSync(join(out, "prepared.json"), JSON.stringify({ app, bundle, date: new Date().toISOString() }));
   return copy;
 }
