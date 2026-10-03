@@ -6,6 +6,8 @@ const nativeWindow = () => C.chromeWindows().then((ws) => ws.filter((w) => w.has
 const act = (a) => nativeWindow().then((n) => C.devWindow(n, a));
 const TEXT = "netnyahoo.com";
 then(() => { unsplit(); return goProfile("default"); });
+// Only this history, so the dropdown shows nothing from other scenes.
+then(() => { st().clearHistory("default"); return sleep(300); });
 // History, so the field completes the address as it would for anyone who has been there.
 then(() => { tabId = st().newTab(W, { url: "https://netnyahoo.com/" }); return sleep(6000).then(() => { st().navigate(tabId, "https://en.wikipedia.org/wiki/Chromium_(web_browser)"); return sleep(4000); }).then(() => picShown()).then(() => snap("before")); });
 then(() => Promise.resolve(nn.shell.devKeyEquivalent(W, { key: "l", keyCode: 37, modifiers: ["command"] })).then(() => sleep(700)).then(() => snap("focus")));

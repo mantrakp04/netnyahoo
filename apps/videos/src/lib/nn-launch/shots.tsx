@@ -2,7 +2,7 @@ import type { ComponentType, ReactNode } from "react";
 import { AbsoluteFill, Img, interpolateColors, random, staticFile } from "remotion";
 import { useStudioObject } from "../studio-objects-v6";
 import {
-  type Cam, type CamKey, camAt, clamp, easeIn, easeInOut, Fingers, frameOf, kick, mix, Paper, pointerAt, REST, SCENES,
+  type Cam, type CamKey, camAt, clamp, easeIn, easeInOut, Fingers, frameOf, Grain, kick, mix, Paper, pointerAt, REST, SCENES,
   seg, springAt, Supers, useAspect, useBeat, useShake, useShot, Window,
 } from "./kit";
 import { BEAT, CUTS, type ShotKind } from "./plan";
@@ -85,11 +85,14 @@ function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full" 
   const h = object.number("height");
   const geometry = object.geometry(
     { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
-    { offset: { y: (1 - rise) * h * 1.1 } },
+    // A spring may overshoot; the rise never lifts him above his box (that would show the canvas's cut edge).
+    { offset: { y: (1 - Math.min(1, rise)) * h * 1.1 } },
   );
   if (rise <= 0.001) return null;
+  // A head-and-shoulders render ends mid-torso: fade its lower part out, so it reads as rising from behind.
+  const fade = framing === "bust" ? { maskImage: "linear-gradient(to bottom, black 70%, transparent 96%)", WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 96%)" } : {};
   return (
-    <div {...object.bind} {...geometry.bind} style={geometry.style}>
+    <div {...object.bind} {...geometry.bind} style={{ ...geometry.style, ...fade }}>
       <div style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", transform: `scale(${1 + squash * 0.12}, ${1 - squash * 0.12})` }}>
         <Yahu3D width={Math.round(object.number("width"))} height={Math.round(h)} clip={clip} time={Math.max(0, time)} yaw={yaw} framing={framing} />
       </div>
@@ -99,15 +102,30 @@ function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full" 
 
 // ---------------------------------------------------------------------------------------------- the hook
 
-// Each stab cuts to a site really asking it, in a Netnyahoo window (scenes/asks.js), framed on the ask.
-const ASKS: { label: string; cam: Cam }[] = [
-  { label: "ask:signin", cam: { ...REST, zoom: 1.25, fx: 0.62, fy: 0.42, aim: 1, ax: 0.5, ay: 0.62 } },
-  { label: "ask:ai", cam: { ...REST, zoom: 1.3, fx: 0.42, fy: 0.3, aim: 1, ax: 0.5, ay: 0.6, rot: -1 } },
-  { label: "ask:cookies", cam: { ...REST, zoom: 1.35, fx: 0.62, fy: 0.84, aim: 1, ax: 0.5, ay: 0.66, rot: 1 } },
-  { label: "ask:upgrade", cam: { ...REST, zoom: 1.3, fx: 0.62, fy: 0.42, aim: 1, ax: 0.5, ay: 0.62 } },
+// Each stab cuts to a stand-in site interrupting you in a Netnyahoo window (scenes/asks.js, sites/*.example): the
+// interruption plays in on the stab, a frame of the page per film frame, and a pointer heads for its button.
+const ASK_NAMES = ["signin", "ai", "cookies", "upgrade"];
+const ASK_CAMS: Cam[] = [
+  { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.5, ay: 0.62 },
+  { ...REST, zoom: 1.12, fx: 0.62, fy: 0.45, aim: 1, ax: 0.5, ay: 0.6, rot: -1 },
+  { ...REST, zoom: 1.12, fx: 0.5, fy: 0.72, aim: 1, ax: 0.5, ay: 0.62, rot: 1 },
+  { ...REST, zoom: 1.12, fx: 0.55, fy: 0.55, aim: 1, ax: 0.5, ay: 0.6 },
 ];
 
-/** A real browser, asked for everything: four stabs over four sites asking, then the asks stamped on the snare roll. */
+function askFrame(b: number) {
+  const k = Math.min(3, Math.floor(b));
+  const frames = framesOf("asks", `ask:${ASK_NAMES[k]}`);
+  return playRun(b, frames, k + 0.05, k + 0.6);
+}
+function askPointer(b: number) {
+  const k = Math.min(3, Math.floor(b));
+  const mark = (SCENES.asks as { marks?: Record<string, { x: number; y: number }> }).marks?.[`ask:${ASK_NAMES[k]}`];
+  if (!mark || b < k + 0.35 || b >= 4) return null;
+  const t = easeInOut(clamp((b - (k + 0.35)) / 0.5));
+  return { x: mix(mark.x + 0.14, mark.x, t), y: mix(mark.y + 0.16, mark.y, t), kind: "hand" as const };
+}
+
+/** A real browser, asked for everything: four stabs over four interruptions, then the asks stamped on the snare roll. */
 function Nags() {
   const b = useBeat();
   const shot = useShot();
@@ -115,17 +133,15 @@ function Nags() {
   const piles = shot.type.filter((t) => t.style === "stamp").map((t) => t.at);
   const knock = piles.reduce((s, h) => s + kick(b, h, 0.2) * 0.6, 0);
   const k = Math.min(3, Math.floor(b));
-  const ask = ASKS[k];
-  // Each ask pops in on its stab: the window lands from slightly small, as a sheet would.
-  const pop = b < 4 ? 0.94 + 0.06 * springAt(b, k, { stiffness: 420, damping: 20 }) : 1;
-  const cam: Cam = b < 4 ? { ...ask.cam, zoom: ask.cam.zoom * pop } : { ...REST, zoom: 1 + 0.015 * knock };
-  // Big Yahu rises behind the pile, hands steepled; on the last eighth he sweeps his arms out (the swat lands on the drop).
+  const cam: Cam = b < 4 ? ASK_CAMS[k] : { ...REST, zoom: 1 + 0.015 * knock };
+  const index = b < 4 ? askFrame(b) : framesOf("asks", "ask:upgrade").slice(-1)[0];
+  // Big Yahu rises beside the pile, hands steepled; on the last eighth he sweeps his arms out (the swat lands on the drop).
   const rise = springAt(b, 7.1, { stiffness: 200, damping: 16 });
   const swing = seg(b, 7.72, 0.28, easeIn);
   return (
     <Paper>
       <Shake hits={[...stabs, ...piles]} amount={10}>
-        <Window id={windowId()} scene="asks" index={frameOf("asks", ask.label)} cam={cam} />
+        <Window id={windowId()} scene="asks" index={index} cam={cam} pointer={askPointer(b)} />
         <Yahu id={extraId("yahu")} clip="Default Dance" time={mix(POSE.steeple, 1.85, swing)} rise={rise} yaw={-0.25} />
         <Supers />
       </Shake>
@@ -141,13 +157,14 @@ function Swatted({ id, k }: { id: string; k: number }) {
   const t = Math.max(0, b * SEC); // seconds since the drop
   const object = useStudioObject(id);
   // Swept off to the left, away from him: he stands on the right of the frame.
-  const vx = -(1100 + random(`vx${id}`) * 1100) * (0.7 + 0.15 * k);
-  const vy = -500 - random(`vy${id}`) * 700;
+  // Fast, to the left and down: clear of the wordmark (top) within a quarter second.
+  const vx = -(2600 + random(`vx${id}`) * 1200);
+  const vy = 200 + random(`vy${id}`) * 500;
   const geometry = object.geometry(
     { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
     { offset: { x: vx * t, y: vy * t + 2600 * t * t, rotation: (k % 2 ? 1 : -1) * 540 * t } },
   );
-  if (t > 1.2) return null;
+  if (t > 0.7) return null;
   const size = object.number("size");
   const ink = object.text("color");
   return (
@@ -244,7 +261,7 @@ function Swipe() {
   const first = RUN_1[0];
   // Fingers slide left (to the next profile) through the drag, then lift.
   const slide = 1 - 2 * clamp((b - (first.commit - first.drag)) / first.drag);
-  const glyph = b < first.commit + 0.6 ? seg(b, 0, 0.12) * (1 - seg(b, first.commit + 0.2, 0.4)) : 0;
+  const glyph = b < first.commit + 0.6 ? 1 - seg(b, first.commit + 0.2, 0.4) : 0;
   return (
     <Paper>
       <Window id={windowId()} scene="swipe" index={index} cam={{ ...cam, zoom: cam.zoom * (1 + bump) }} />
@@ -291,27 +308,30 @@ function Split() {
   );
 }
 
+/**
+ * The blocker: the page with its ads (blocking switched off, Site Controls open), the pointer switches Block Ads &
+ * Trackers on, the page reloads clean and the count climbs to "13 blocked on this page".
+ */
 function Block() {
   const b = useBeat();
   const port = useAspect() === "port";
   const off = framesOf("block", "off");
   const on = framesOf("block", "on");
-  const index = b < 1 ? frameOf("block", "page") : b < 2 ? frameOf("block", "controls") : b < 2.5 ? playRun(b, off, 2, 2.5) : b < 5.5 ? playRun(b, on, 2.5, 5.5) : frameOf("block", "onRest");
+  const index = b < 2 ? off[off.length - 1] : b < 5 ? playRun(b, on, 2, 5) : frameOf("block", "onRest");
   const { cam, prev } = useCam([
     { at: 0, ...(port ? wideCam(true) : { ...REST, zoom: 1 }) },
-    { at: 1, zoom: port ? 1.7 : 2.4, fx: 0.86, fy: 0.22, aim: 1, ax: port ? 0.5 : 0.62, ay: port ? 0.5 : 0.5, ease: "cut" },
-    { at: 2.5, zoom: port ? 2.4 : 3.4, fx: 0.86, fy: 0.27, aim: 1, ax: port ? 0.5 : 0.62, ay: 0.5, ease: "cut" },
-    { at: 4.5, ...(port ? wideCam(true) : { ...REST, zoom: 1 }), ease: "cut" },
+    { at: 1, zoom: port ? 1.7 : 2.4, fx: 0.86, fy: 0.22, aim: 1, ax: port ? 0.5 : 0.62, ay: 0.5, ease: "cut" },
+    { at: 3, ...(port ? wideCam(true) : { ...REST, zoom: 1 }), ease: "cut" },
+    { at: 4.5, zoom: port ? 2.2 : 3.2, fx: 0.86, fy: 0.27, aim: 1, ax: port ? 0.5 : 0.62, ay: 0.5, ease: "cut" },
   ]);
   const toggle = { x: 0.898, y: 0.262 };
   const clicks = [
     { at: 2, x: toggle.x, y: toggle.y, kind: "hand" as const },
-    { at: 2.5, x: toggle.x, y: toggle.y, kind: "hand" as const },
-    { at: 4.5, x: toggle.x - 0.06, y: toggle.y + 0.05, kind: "hand" as const, click: false },
+    { at: 2.8, x: toggle.x - 0.08, y: toggle.y + 0.08, kind: "hand" as const, click: false },
   ];
   return (
     <Paper>
-      <Window id={windowId()} scene="block" index={index} cam={cam} prev={prev} pointer={pointerAt(b, clicks, 0.4)} />
+      <Window id={windowId()} scene="block" index={index} cam={cam} prev={prev} pointer={pointerAt(b, clicks, 0.5)} />
       <Supers />
     </Paper>
   );
@@ -355,11 +375,9 @@ function dropCam(d: number, port: boolean): Cam {
   const out = seg(d, 7.4, 1.2, easeInOut);
   let cam: Cam = d < 2.6 ? whole : d < 7.4 ? macro : { ...whole, zoom: mix(macro.zoom, whole.zoom, out), fx: mix(0.12, 0.5, out), fy: mix(0.2, 0.5, out), aim: mix(1, whole.aim, out) };
   if (d < 0) {
-    // The poise: a slow push onto the sidebar's header, the stock colour all round.
-    const push = seg(d, -4, 3.2, easeInOut);
-    cam = port
-      ? { ...whole, zoom: mix(0.62, 0.8, push), fx: mix(0.5, 0.25, push), fy: mix(0.5, 0.3, push) }
-      : { ...whole, zoom: mix(0.8, 0.95, push), fx: mix(0.5, 0.2, push), fy: mix(0.5, 0.25, push) };
+    // The poise: a slow push from wider into the framing the drop keeps (no jump on the drop frame).
+    const push = seg(d, -4, 3.6, easeInOut);
+    cam = { ...whole, zoom: whole.zoom * mix(0.88, 1, push) };
   }
   // The shove: the drag pulls the window a little, the commit throws it on, then it settles.
   const W = port ? 1080 : 1920;
@@ -372,11 +390,24 @@ function dropCam(d: number, port: boolean): Cam {
   return { ...cam, dx: cam.dx + dx };
 }
 
-function dropTone(d: number) {
+/**
+ * The backdrop behind the drop-B window: the last profile's colour, with the next one wiped in from the side the page
+ * comes from, tracking the fingers through each drag (complete on the commit).
+ */
+function DropStock({ d }: { d: number }) {
   const landed = RUN_2.filter((e) => d >= e.commit).length;
-  if (landed === 0) return RUN_2_TONES[0];
-  const last = RUN_2[landed - 1].commit;
-  return interpolateColors(clamp((d - last) / (4 / BEAT)), [0, 1], [RUN_2_TONES[landed - 1], RUN_2_TONES[landed]]);
+  const base = RUN_2_TONES[landed];
+  const next = RUN_2[landed];
+  const p = next ? clamp((d - (next.commit - next.drag)) / next.drag) : 0;
+  const reveal = (1 - easeInOut(p)) * 100;
+  const clip = next && next.dir < 0 ? `inset(0 0 0 ${reveal}%)` : `inset(0 ${reveal}% 0 0)`;
+  return (
+    <>
+      <AbsoluteFill style={{ backgroundColor: base }} />
+      {next && p > 0 ? <AbsoluteFill style={{ backgroundColor: RUN_2_TONES[landed + 1], clipPath: clip }} /> : null}
+      <Grain />
+    </>
+  );
 }
 
 /** The bar before drop B: the window waits on the stock's colour, the fingers settle, and the first drag starts in the silence. */
@@ -389,7 +420,8 @@ function Poise() {
   const first = RUN_2[0];
   const slide = 1 - 2 * clamp((d - (first.commit - first.drag)) / first.drag);
   return (
-    <Paper tone={dropTone(d)}>
+    <Paper>
+      <DropStock d={d} />
       <Window id={BIG_ID} scene="swipe" index={index} cam={dropCam(d, port)} />
       <Fingers x={port ? 540 : 1640} y={(port ? 1300 : 860) + (1 - land) * 500} size={port ? 300 : 260} opacity={land} slide={slide} from={1} press={seg(b, 2.6, 0.4)} />
     </Paper>
@@ -411,7 +443,8 @@ function SwipeBig() {
   const glyph = lead > 0 ? seg(b, 0, 0.15) * (1 - seg(d, 0.2, 0.4)) : 1 - seg(d, 0, 0.3);
   const slide = 1 - 2 * clamp((d - (first.commit - first.drag)) / first.drag);
   return (
-    <Paper tone={dropTone(d)}>
+    <Paper>
+      <DropStock d={d} />
       <Shake hits={RUN_2.map((e) => e.commit + lead)} amount={6}>
         <Window id={BIG_ID} scene="swipe" index={index} cam={{ ...cam, zoom: cam.zoom * (1 + bump) }} />
       </Shake>
@@ -492,16 +525,42 @@ function Typing() {
 
 // ---------------------------------------------------------------------------------------------- the end
 
-function AppIcon({ id, at }: { id: string; at: number }) {
+/**
+ * The app icon on the lockup. Through the breath before the button it cycles once through the seven app icons (cut
+ * from the real Settings › Appearance capture: scripts/capture/icons.py), landing back on the default on the button.
+ */
+function AppIcon({ id, at, cycle }: { id: string; at: number; cycle?: [number, number] }) {
   const b = useBeat();
   const object = useStudioObject(id);
   const s = springAt(b, at, { stiffness: 300, damping: 15 });
-  const geometry = object.geometry({ x: "x", y: "y", width: "width", height: "height", rotation: "rotation" }, { scale: Math.max(0.001, s) });
+  const pop = cycle ? kick(b, cycle[1], 0.2) * 0.12 : 0;
+  const geometry = object.geometry({ x: "x", y: "y", width: "width", height: "height", rotation: "rotation" }, { scale: Math.max(0.001, s) * (1 + pop) });
   if (b < at) return null;
+  let src = staticFile("brand/app-icon.png");
+  if (cycle && b >= cycle[0] && b < cycle[1]) {
+    const k = Math.floor(((b - cycle[0]) / (cycle[1] - cycle[0])) * 7);
+    if (k > 0) src = staticFile(`footage/icons/${k}.png`);
+  }
   return (
     <div {...object.bind} {...geometry.bind} style={geometry.style}>
-      <Img src={staticFile("brand/app-icon.png")} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      <Img src={src} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
     </div>
+  );
+}
+
+/** The URL underlines itself on the button, in its own colour, under the URL's box. */
+function Underline({ id, at }: { id: string; at: number }) {
+  const b = useBeat();
+  const url = useStudioObject(id);
+  const w = seg(b, at, 0.35);
+  if (w <= 0) return null;
+  return (
+    <div
+      style={{
+        position: "absolute", left: url.number("x") + 4, top: url.number("y") + url.number("height") * 0.96,
+        width: (url.number("width") - 8) * w, height: Math.max(8, url.number("size") * 0.06), backgroundColor: url.text("color"),
+      }}
+    />
   );
 }
 
@@ -519,7 +578,8 @@ function End() {
     <Paper>
       <Shake hits={[0, lockup, button]} amount={14}>
         <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2)} yaw={0.3} />
-        <AppIcon id={extraId("icon")} at={lockup} />
+        <AppIcon id={extraId("icon")} at={lockup} cycle={[button - 3, button]} />
+        <Underline id="end-url" at={button} />
         <Supers />
       </Shake>
     </Paper>

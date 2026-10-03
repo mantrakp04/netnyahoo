@@ -177,10 +177,10 @@
       "label": "nags · yahu",
       "parentId": null,
       "values": {
-        "x": 1240,
-        "y": 260,
-        "width": 760,
-        "height": 820,
+        "x": 1300,
+        "y": 280,
+        "width": 640,
+        "height": 780,
         "rotation": 0
       }
     },
@@ -262,8 +262,8 @@
         "size": 86,
         "color": "#16130F",
         "fill": "#00000000",
-        "x": 300,
-        "y": 200,
+        "x": 180,
+        "y": 270,
         "width": 760,
         "height": 150,
         "rotation": -6
@@ -279,9 +279,9 @@
         "size": 86,
         "color": "#2150D9",
         "fill": "#00000000",
-        "x": 880,
+        "x": 440,
         "y": 380,
-        "width": 900,
+        "width": 820,
         "height": 150,
         "rotation": 4
       }
@@ -296,9 +296,9 @@
         "size": 86,
         "color": "#C3371F",
         "fill": "#00000000",
-        "x": 260,
-        "y": 600,
-        "width": 860,
+        "x": 140,
+        "y": 590,
+        "width": 820,
         "height": 150,
         "rotation": -3
       }
@@ -313,9 +313,9 @@
         "size": 86,
         "color": "#16130F",
         "fill": "#00000000",
-        "x": 820,
-        "y": 770,
-        "width": 760,
+        "x": 520,
+        "y": 780,
+        "width": 720,
         "height": 150,
         "rotation": 6
       }
@@ -339,10 +339,10 @@
       "label": "title · yahu",
       "parentId": null,
       "values": {
-        "x": 1240,
-        "y": 260,
-        "width": 760,
-        "height": 820,
+        "x": 1300,
+        "y": 280,
+        "width": 640,
+        "height": 780,
         "rotation": 0
       }
     },
@@ -450,9 +450,9 @@
         "size": 150,
         "color": "#F1ECE2",
         "fill": "#4691C3",
-        "x": 80,
+        "x": 560,
         "y": 40,
-        "width": 900,
+        "width": 1100,
         "height": 170,
         "rotation": 0
       }
@@ -467,9 +467,9 @@
         "size": 150,
         "color": "#F1ECE2",
         "fill": "#D87249",
-        "x": 80,
+        "x": 560,
         "y": 40,
-        "width": 900,
+        "width": 1100,
         "height": 170,
         "rotation": 0
       }
@@ -484,9 +484,9 @@
         "size": 150,
         "color": "#F1ECE2",
         "fill": "#3EB489",
-        "x": 80,
+        "x": 560,
         "y": 40,
-        "width": 900,
+        "width": 1100,
         "height": 170,
         "rotation": 0
       }
@@ -651,9 +651,9 @@
         "size": 150,
         "color": "#16130F",
         "fill": "#E3AC38",
-        "x": 80,
+        "x": 700,
         "y": 40,
-        "width": 900,
+        "width": 1140,
         "height": 170,
         "rotation": 0
       }
@@ -668,9 +668,9 @@
         "size": 150,
         "color": "#F1ECE2",
         "fill": "#3EB489",
-        "x": 80,
+        "x": 700,
         "y": 40,
-        "width": 900,
+        "width": 1140,
         "height": 170,
         "rotation": 0
       }
@@ -685,9 +685,9 @@
         "size": 150,
         "color": "#F1ECE2",
         "fill": "#D87249",
-        "x": 80,
+        "x": 700,
         "y": 40,
-        "width": 900,
+        "width": 1140,
         "height": 170,
         "rotation": 0
       }
@@ -702,9 +702,9 @@
         "size": 150,
         "color": "#F1ECE2",
         "fill": "#4691C3",
-        "x": 80,
+        "x": 700,
         "y": 40,
-        "width": 900,
+        "width": 1140,
         "height": 170,
         "rotation": 0
       }
@@ -719,9 +719,9 @@
         "size": 150,
         "color": "#F1ECE2",
         "fill": "#C07A98",
-        "x": 80,
+        "x": 700,
         "y": 40,
-        "width": 900,
+        "width": 1140,
         "height": 170,
         "rotation": 0
       }
@@ -907,10 +907,10 @@
       "label": "end · yahu",
       "parentId": null,
       "values": {
-        "x": 1200,
-        "y": 160,
-        "width": 700,
-        "height": 900,
+        "x": 1240,
+        "y": 200,
+        "width": 640,
+        "height": 820,
         "rotation": 0
       }
     },

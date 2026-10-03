@@ -6,10 +6,76 @@
   ],
   "labels": [
    "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:signin",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
+   "ask:ai",
    "ask:ai",
    "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:cookies",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
+   "ask:upgrade",
    "ask:upgrade"
-  ]
+  ],
+  "marks": {
+   "ask:signin": {
+    "x": 0.5635416666666667,
+    "y": 0.7561111111111111
+   },
+   "ask:ai": {
+    "x": 0.8565972222222222,
+    "y": 0.3948784722222222
+   },
+   "ask:cookies": {
+    "x": 0.22544759114583332,
+    "y": 0.9277777777777778
+   },
+   "ask:upgrade": {
+    "x": 0.5635416666666667,
+    "y": 0.6113888888888889
+   }
+  }
  },
  "block": {
   "size": [
@@ -21,11 +87,6 @@
    "controls",
    "off",
    "off",
-   "off",
-   "on",
-   "on",
-   "on",
-   "on",
    "on",
    "on",
    "on",

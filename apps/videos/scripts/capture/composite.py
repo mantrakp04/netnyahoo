@@ -111,7 +111,7 @@ def sampled_tint(snap_path):
     return top.mean(axis=0), bottom.mean(axis=0)
 
 
-def composite(snap_path, page_items, color, dark, tint=None):
+def composite(snap_path, page_items, color, dark, tint=None, slide=None):
     snap = np.array(Image.open(snap_path).convert("RGBA"))
     H, W = snap.shape[:2]
     a = snap[..., 3:4].astype(np.float32) / 255
@@ -135,6 +135,18 @@ def composite(snap_path, page_items, color, dark, tint=None):
         page = Image.open(page_path).convert("RGB")
         if page.size != (w, h):
             page = page.resize((w, h), Image.LANCZOS)
+        if slide is not None:
+            # A profile swipe: the app slides the sidebar; the film slides the page with it. The outgoing page travels
+            # with the fingers and the incoming one follows it in, offset by the drag fraction.
+            p, direction, incoming = slide
+            inc = Image.open(incoming).convert("RGB")
+            if inc.size != (w, h):
+                inc = inc.resize((w, h), Image.LANCZOS)
+            strip = Image.new("RGB", (w, h))
+            ox = int(round(direction * p * w))
+            strip.paste(page, (ox, 0))
+            strip.paste(inc, (ox - direction * w, 0))
+            page = strip
         page = np.array(page, np.float32)[: y2 - y, : x2 - x]
         m = placeholder_mask(snap[y:y2, x:x2])
         if m.mean() < 0.2 and (snap[y:y2, x:x2, 3] < 128).mean() > 0.6:
@@ -193,6 +205,11 @@ def main():
             if c:
                 pick[tab] = c
         own.append(pick)
+    # Each swipe's incoming page: the picture its rest frame shows.
+    incoming = {}
+    for i, fr in enumerate(frames):
+        if fr.get("label", "").endswith(":rest") and own[i]:
+            incoming[fr["label"][: -len(":rest")]] = os.path.join(src, next(iter(own[i].values()))["file"])
     last_page = {}
     out = []
     for i, fr in enumerate(frames):
@@ -210,7 +227,10 @@ def main():
                 p = min(1.0, max(0.0, fr["p"]))
                 a, b = rest[fr["profile"]], rest[other]
                 tint = (a[0] * (1 - p) + b[0] * p, a[1] * (1 - p) + b[1] * p)
-        img = composite(fr["f"], items, fr.get("color"), fr.get("dark", True), tint)
+        slide = None
+        if "p" in fr and fr.get("label") in incoming and items:
+            slide = (min(1.0, max(0.0, fr["p"])), int(fr["dir"]), incoming[fr["label"]])
+        img = composite(fr["f"], items, fr.get("color"), fr.get("dark", True), tint, slide)
         name = f"{len(out):04d}.jpg"
         img.save(os.path.join(dst, name), quality=93, subsampling=0)
         out.append({"file": name, "label": fr.get("label"), "t": fr.get("t"), "profile": fr.get("profile")})
@@ -218,7 +238,8 @@ def main():
     json.dump({"frames": out, "size": size}, open(os.path.join(dst, "frames.json"), "w"), indent=1)
     index_path = os.path.join(ROOT, "src", "lib", "nn-launch", "footage.json")
     index = json.load(open(index_path)) if os.path.exists(index_path) else {}
-    index[scene] = {"size": size, "labels": [f["label"] for f in out]}
+    marks = {fr["label"]: fr["mark"] for fr in frames if fr.get("mark")}
+    index[scene] = {"size": size, "labels": [f["label"] for f in out], **({"marks": marks} if marks else {})}
     json.dump(dict(sorted(index.items())), open(index_path, "w"), indent=1)
     print(f"{scene}: {len(out)} frames → {dst}")
 

@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><title>moodwall — ideas for everything</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}html,body{height:100%}
+body{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;background:#fff;color:#111;overflow:hidden}
+header{height:64px;display:flex;align-items:center;gap:18px;padding:0 22px;border-bottom:1px solid #eee}
+.logo{font-weight:800;font-size:24px;letter-spacing:-.04em;color:#d6336c}
+.search{flex:1;height:42px;border-radius:21px;background:#f1f1f1;display:flex;align-items:center;padding:0 18px;color:#777;font-size:15px}
+.btn{height:40px;padding:0 18px;border-radius:20px;font-weight:700;font-size:14px;display:flex;align-items:center}
+.red{background:#d6336c;color:#fff}.grey{background:#ececec}
+main{columns:5 220px;column-gap:14px;padding:16px 18px}
+.tile{break-inside:avoid;margin-bottom:14px;border-radius:16px;overflow:hidden}
+.tile .img{border-radius:16px}
+.tile p{font-size:13px;font-weight:600;padding:6px 4px 0}
+#veil{position:fixed;inset:0;background:rgba(0,0,0,calc(var(--t)*.55))}
+#sheet{position:fixed;left:0;right:0;bottom:0;height:560px;display:flex;justify-content:center;transform:translateY(calc((1 - var(--e)) * 110%))}
+.card{width:440px;height:520px;background:#fff;border-radius:28px;padding:36px 40px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.card .mark{width:52px;height:52px;border-radius:50%;background:#d6336c;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:26px}
+.card h1{font-size:28px;letter-spacing:-.02em;margin-bottom:8px}
+.card .sub{color:#555;font-size:15px;margin-bottom:22px}
+.field{height:48px;border:2px solid #ddd;border-radius:14px;text-align:left;padding:13px 14px;color:#999;font-size:15px;margin-bottom:12px}
+.go{height:50px;border-radius:25px;background:#d6336c;color:#fff;font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;margin-top:6px}
+.fine{font-size:12px;color:#888;margin-top:16px}
+</style></head><body style="--t:0;--e:0">
+<header><span class="logo">moodwall</span><span class="btn grey">Explore</span><div class="search">Search for ideas</div><span class="btn red">Log in</span><span class="btn grey">Sign up</span></header>
+<main id="grid"></main>
+<div id="veil"></div>
+<div id="sheet"><div class="card"><div class="mark">m</div><h1>Sign in to keep scrolling</h1><p class="sub">You've looked at 12 ideas. That's the limit without an account.</p>
+<div class="field">Email</div><div class="field">Password</div><div class="go" id="go">Continue</div><p class="fine">By continuing you agree to our 43-page terms.</p></div></div>
+<script>
+// Flat tiles: colour, height, one simple shape, a caption.
+const tiles=[["#f4c7a1",260,"sun","Terracotta living rooms"],["#a7c4b5",340,"hill","Weekend hikes near you"],["#2f3e46",200,"moon","Night sky photography"],["#f2e8cf",300,"cup","Slow mornings"],["#e76f51",230,"sun","Desert colour palettes"],["#8ecae6",320,"wave","Coastal cottages"],["#ffb703",210,"sun","Sunflower fields"],["#606c38",280,"hill","Allotment ideas"],["#cdb4db",250,"moon","Lavender bedrooms"],["#264653",330,"wave","Cold-water swimming"],["#e9c46a",240,"cup","Sourdough starters"],["#bc6c25",300,"hill","Autumn trails"],["#90be6d",220,"sun","Balcony gardens"],["#f28482",280,"cup","Pink kitchens"],["#457b9d",260,"wave","Harbour towns"]];
+const shape={sun:'<circle cx="50" cy="45" r="18" fill="#fff8" />',moon:'<circle cx="62" cy="38" r="14" fill="#fff9"/><circle cx="68" cy="34" r="12" fill="#2f3e46"/>',hill:'<path d="M0 100 L35 55 L55 75 L75 50 L100 100Z" fill="#0003"/>',wave:'<path d="M0 70 Q25 55 50 70 T100 70 V100 H0Z" fill="#fff5"/>',cup:'<rect x="35" y="40" width="30" height="30" rx="4" fill="#0002"/>'};
+document.getElementById("grid").innerHTML=tiles.map(([c,h,s,t])=>`<div class="tile"><svg class="img" viewBox="0 0 100 100" preserveAspectRatio="none" style="display:block;width:100%;height:${h}px;background:${c}">${shape[s]}</svg><p>${t}</p></div>`).join("");
+// The capture drives the wall: __t(0…1). Eased with a small overshoot, as a sheet springs up.
+window.__t=(t)=>{const e=t<=0?0:t>=1?1:1-Math.pow(1-t,3)*Math.cos(t*Math.PI*0.5)*1+Math.sin(t*Math.PI)*0.06;document.body.style.setProperty("--t",Math.min(1,t*1.6));document.body.style.setProperty("--e",e);};
+</script></body></html>

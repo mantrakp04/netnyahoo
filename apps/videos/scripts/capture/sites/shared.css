@@ -1,0 +1,4 @@
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#1d1d1f;background:#fff;overflow:hidden}
+:root{--t:0}

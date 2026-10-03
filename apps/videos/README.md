@@ -13,8 +13,9 @@ folder. Render one with `pnpm -C apps/videos render <id>`, which writes `out/<id
 | `teaser-9x16` | 1080 × 1920 | 14.9 s |
 
 Every other browser asks for something. Four brass stabs carry "SIGN IN. / TRY AI. / ACCEPT ALL. / UPGRADE.",
-each over a site really asking it in a Netnyahoo window (a sign-in modal, an AI pitch, a cookie banner, an upgrade
-page), and then the asks get stamped onto it on a snare roll. Big Yahu rises behind the
+each over a site interrupting you in a real Netnyahoo window: a login wall sliding up, an AI copilot panel sliding
+in over an article, a cookie wall, an "upgrade to keep typing" modal, with a pointer heading for each button. Then
+the asks get stamped onto it on a snare roll. Big Yahu rises behind the
 pile and swats it off as "NETNYAHOO — THE SIDEBAR BROWSER FOR MAC" lands, then stamps "ASKS FOR NOTHING."
 
 The product follows, live:
@@ -98,8 +99,16 @@ The screen was locked when these were made (2026-10-03), so WindowServer recordi
 is captured in-process, frame by frame:
 
 - **The window** is the app drawing its own layers (`nn.shell.devSnapshotWindow`, 2x).
-- **The hook's asks** are real sites in the Personal profile (`scenes/asks.js`): Pinterest's sign-in modal,
-  Notion's AI page, the New York Times' cookie banner and Dropbox's upgrade page.
+- **Stand-in sites.** The hook's four interruptions and the blocker's dictionary page are pages built for the film
+  in `scripts/capture/sites/` (moodwall.example, dailyledger.example, crumbs.example, docpad.example and
+  lexicon.example). They carry no real brand, logo, headline or photo. `sites/serve.mjs` serves them, and the
+  instance maps `*.example` to it with `--host-resolver-rules`, so the address bar shows their names.
+  - Each interruption is the page's own animation, stepped through `window.__t(0…1)`, with a page picture taken
+    every step.
+  - The dictionary loads the usual ad and tracker tags. Its house "ads" fill only once the ad network's tag has
+    loaded, so switching the blocker on really empties them, and the count reads "13 blocked on this page".
+- **The end card's icon cycle** uses the seven app icons cut from the real Settings › Appearance capture
+  (`icons.py`).
 - **The pages** are each tab's own picture of itself (`WebViewHandle.capturePicture(2)`), taken again for every
   frame where the page moves.
 - **Live motion**, one real state per film frame:
@@ -119,7 +128,8 @@ is captured in-process, frame by frame:
     repainted) are skipped.
   - The traffic lights are AppKit's own buttons, drawn offscreen as an active window (`lights.swift`). The
     pointer is AppKit's `NSCursor` artwork (`cursor.swift`).
-- **Big Yahu** is the site's rigged model (`apps/site/public/models/big-yahu.glb`, clips "Griddy" and "Default
+- **Big Yahu** is drawn as a printed illustration: three-tone toon shading over his own colours, an ink outline
+  (three.js `OutlineEffect`) and a contact shadow. The model is the site's rigged one (`apps/site/public/models/big-yahu.glb`, clips "Griddy" and "Default
   Dance"), rendered in the film.
 - **Not captured:** the sidebar's translucency over the desktop. It needs a WindowServer capture.
 
@@ -129,6 +139,10 @@ is captured in-process, frame by frame:
 anthem in F minor at 128.57 BPM, with brass stabs, a march-snare roll, two drops, a break that cuts to silence, an
 end hit, march taps and a final brass button.
 
+- **Produced layers and the shout:** under the sampled brass, the score adds produced synth layers made in
+  `score.py`: a unison-saw stab, a driving saw bass and a plucked arpeggio. The gang shout on the NO run is stacked
+  from CC0 Lingua Libre recordings of "no" and "hey" on Wikimedia Commons. `scripts/music/samples.md` lists each
+  file with its speaker, link and SHA-1, and `fetch-samples.sh` downloads and checks those files too.
 - **Feel:** inner notes are humanised (seeded jitter and velocity, two dynamic layers, round robins). The
   `breaths` field in `cuts.json` drops the kick, bass and hats under brass stabs (the NO run), then slams back.
 - **Sources:**

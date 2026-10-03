@@ -22,7 +22,9 @@ then(() => { unsplit(); return goProfile("side"); });
 then(() => { st().activate("t21"); return sleep(3000); });
 // Every profile's page once before the take (a page first shown by a swipe in a hidden instance can stay unpainted
 // for a while): a "pre" frame each, whose picture the compositor reuses for that tab.
-["work", "campaign", "side", "weekend"].forEach((pid) => then(() => goProfile(pid).then(() => sleep(2500)).then(() => picShown("pre-" + pid)).then(() => snap("pre:" + pid, { pageKey: Object.fromEntries(shownTabs().map((id) => [id, "pre-" + pid + ":" + id])) }))));
+// The Grand Canyon page's newsletter popup is dismissed first ("No Thanks"), as a reader would.
+const dismiss = (id) => { const h = nn.webviews.get(id); return Promise.resolve(h && h.executeJavaScript("[...document.querySelectorAll('button,a')].filter(e=>/no thanks/i.test(e.textContent)).forEach(e=>e.click())")); };
+["work", "campaign", "side", "weekend"].forEach((pid) => then(() => goProfile(pid).then(() => sleep(2500)).then(() => dismiss(activeTab())).then(() => sleep(800)).then(() => picShown("pre-" + pid)).then(() => snap("pre:" + pid, { pageKey: Object.fromEntries(shownTabs().map((id) => [id, "pre-" + pid + ":" + id])) }))));
 then(() => goProfile("default"));
 then(() => { st().activate("t1"); return sleep(2500).then(() => picShown("start")).then(() => snap("start", { pageKey: { t1: "start:t1" } })); });
 swipe("toWork", -1, 24);

@@ -3,11 +3,15 @@
 A campaign-rally anthem in F minor at 128.57 BPM (a beat is exactly 14 frames at 30 fps, 22400 samples at 48 kHz).
 Brass sections (trumpets, horns, trombones, tuba), timpani, a concert bass drum and cymbals from VSCO 2 CE; a
 rope-tension march snare, hand claps, a tom, a slapstick and a woodblock from VCSL; a 909 kick, clap and hats
-recorded from a TR-8 (MckSamplePacks). All three libraries are CC0; scripts/music/samples.md lists every file and
-scripts/music/fetch-samples.sh downloads them into public/music/samples.
+recorded from a TR-8 (MckSamplePacks); a gang shout on the NO run stacked from CC0 Lingua Libre recordings of
+"no" and "hey" (Wikimedia Commons). Everything is CC0; scripts/music/samples.md lists every file and
+scripts/music/fetch-samples.sh downloads them into public/music/samples. Brass notes are never repitched more than
+2 semitones (a voice moves an octave instead).
 
-Synthesis is kept to what a producer adds on top: a sine sub under the kick and the bass, a filtered noise riser,
-and the noise in the whoosh and swipe effects. A generated stereo hall and room (convolution), a kick sidechain, a
+Produced synth layers sit with the samples: a unison-saw stab (filter envelope, saturation, plate) under every brass
+stab and riff note, a driving saw bass with a plucked filter through both drops, a plucked 16th arpeggio with
+dotted-8th echoes; plus a sine sub under the kick and the bass, a filtered noise riser, and the noise in the whoosh
+and swipe effects. A generated stereo hall and room (convolution), a kick sidechain, a
 glue compressor and a 4x-oversampled true-peak limiter master it to cuts.json's `lufs` and `truePeak`.
 
 The arrangement, the sound effects, the silent windows and the breaths (bars where the kick, bass and hats drop out
@@ -190,7 +194,7 @@ NOTE_PC = {"C": 0, "C#": 1, "D": 2, "D#": 3, "E": 4, "F": 5, "F#": 6, "G": 7, "G
 # Files whose measured f0 is off their name (an octave, or more than half a semitone): never played.
 EXCLUDE = {"MOHorn_stac_C3_v3_rr1.wav", "MOHorn_stac_C3_v2_rr1.wav", "MOHorn_stac_C3_v2_rr2.wav",
            "MOHorn_stac_G1_v1_rr2.wav", "Tuba3_stac_A#0_v2_rr3_Sum.wav", "Tuba3_stac_A#0_v2_rr4_Sum.wav",
-           "Tuba3_stac_A#1_v1_rr1_Sum.wav", "Tuba3_stac_F1_v1_rr1_Sum.wav"}
+           "Tuba3_stac_A#1_v1_rr1_Sum.wav", "Tuba3_stac_F1_v1_rr1_Sum.wav", "MOHorn_sus_G1_v3_1.wav"}
 
 
 class Multi:
@@ -198,7 +202,7 @@ class Multi:
     in turn. VSCO names notes an octave below scientific pitch (its C3 is middle C, MIDI 60); the measured f0 of
     every file played agrees."""
 
-    def __init__(self, folder, max_shift=3):
+    def __init__(self, folder, max_shift=2):
         self.folder = folder
         self.notes = {}  # note -> {layer: [files]}
         for f in sorted(os.listdir(os.path.join(SAMPLES, folder))):
@@ -210,8 +214,17 @@ class Multi:
         self.max_shift = max_shift
         self.rr = {}
 
+    def fit(self, note):
+        """The note, or the nearest octave of it that has a sample within max_shift."""
+        for n in sorted((note, note - 12, note + 12, note - 24, note + 24), key=lambda n: abs(n - note)):
+            if min(abs(b - n) for b in self.notes) <= self.max_shift:
+                return n
+        raise ValueError(f"{self.folder}: no sample within {self.max_shift} semitones of {note} or its octaves")
+
     def pick(self, note, soft=False):
-        """The nearest sampled note; its loudest layer, or the next one down when `soft` (if it has one)."""
+        """The nearest sampled note (moving the note an octave if its section has nothing within max_shift); its
+        loudest layer, or the next one down when `soft` (if it has one)."""
+        note = self.fit(note)
         base = min(self.notes, key=lambda n: (abs(n - note), n > note))
         if abs(base - note) > self.max_shift:
             raise ValueError(f"{self.folder}: {note} is {note - base} semitones from the nearest sample")
@@ -256,6 +269,11 @@ class Kit:
         return fade_out(x, 0.006)
 
 
+# Lingua Libre speakers (Wikimedia Commons, CC0) whose recordings of "no" and "hey" make the gang shout.
+VOICES_NO = ["Grendelkhan", "ManjiroLL", "She animates", "Simplificationalizer", "LetsgoLeeLee", "Robust Footman",
+             "Wodencafe"]
+VOICES_HEY = ["Grendelkhan", "Pvanp7", "She animates", "Wodencafe"]
+
 V = "vsco/Brass"
 P = "vsco/Percussion"
 C = "vcsl/Idiophones/Struck Idiophones"
@@ -286,6 +304,8 @@ def instruments():
         "slap": Kit([f"{C}/Slapstick/slapstick_rr1.wav", f"{C}/Slapstick/slapstick_rr2.wav", f"{C}/Slapstick/slapstick_rr3.wav"], -12),
         "wood": Kit([f"{C}/Woodblock/wood_click_f_rr1.wav", f"{C}/Woodblock/wood_click_f_rr2.wav"], -12),
         "wood_soft": Kit([f"{C}/Woodblock/wood_click3_vl2.wav"], -12),
+        "no": [f"commons/LL-Q1860 (eng)-{who}-no.wav" for who in VOICES_NO],
+        "hey": [f"commons/LL-Q1860 (eng)-{who}-hey.wav" for who in VOICES_HEY],
     }
 
 
@@ -343,6 +363,100 @@ def noise_riser(beats, level=1.0):
     return np.concatenate([np.zeros((PRE, 2)), fade_out(y, 0.005)])
 
 
+def polyblep(t, dt):
+    out = np.zeros_like(t)
+    m = t < dt
+    x = t[m] / dt[m]
+    out[m] = x + x - x * x - 1
+    m = t > 1 - dt
+    x = (t[m] - 1) / dt[m]
+    out[m] = x * x + x + x + 1
+    return out
+
+
+def saw(freq, n, phase=0.0):
+    """A band-limited (polyBLEP) saw."""
+    f = np.broadcast_to(np.asarray(freq, dtype=np.float64), (n,))
+    dt = f / SR
+    ph = (phase + np.cumsum(dt)) % 1.0
+    return 2 * ph - 1 - polyblep(ph, dt)
+
+
+def unison(notes, n, voices=5, detune=0.18, spread=0.8, seed=0):
+    """Detuned saws per note spread across the stereo field."""
+    rng = np.random.default_rng(seed)
+    out = np.zeros((n, 2))
+    for note in notes:
+        for v in range(voices):
+            d = (v - (voices - 1) / 2) / max(1, (voices - 1) / 2)
+            w = saw(midi_hz(note + d * detune), n, rng.random())
+            pan = 0.5 + 0.5 * spread * d
+            out[:, 0] += w * np.sqrt(1 - pan)
+            out[:, 1] += w * np.sqrt(pan)
+    return out / np.sqrt(voices * len(notes))
+
+
+def synth_stab(notes, dur, bright=1.0, seed=0):
+    """A produced brass stab: unison saws, a fast filter envelope, saturation. Attack PRE samples in."""
+    n = int((dur + 0.25) * SR)
+    t = np.arange(n) / SR
+    x = unison(notes, n, 5, 0.16, 0.9, seed)
+    fc = 700 + 5200 * bright * np.exp(-t / 0.07) + 900 * np.exp(-t / 0.4)
+    x = lowpass_sweep(x, fc, 0.9)
+    amp = np.minimum(1, t / 0.003) * np.where(t < dur, 1.0, np.exp(-(t - dur) / 0.06))
+    x = np.tanh(x * amp[:, None] * 2.2) / np.tanh(2.2)
+    return np.concatenate([np.zeros((PRE, 2)), fade_out(x, 0.01)])
+
+
+def synth_bass(note, dur, drive=1.0):
+    """A produced bass note: two saws and a square an octave down, a plucked filter envelope, saturation."""
+    n = int((dur + 0.06) * SR)
+    t = np.arange(n) / SR
+    f = midi_hz(note)
+    x = saw(f * 2 ** (-0.06 / 12), n, 0.1) + saw(f * 2 ** (0.06 / 12), n, 0.6)
+    x = x * 0.5 + 0.35 * np.sign(saw(f / 2, n, 0.3)) * 0.6
+    fc = 160 + 1700 * drive * np.exp(-t / 0.055)
+    x = lowpass_sweep(x[:, None], fc, 1.1)[:, 0]
+    amp = np.minimum(1, t / 0.002) * np.where(t < dur, 1.0, np.exp(-(t - dur) / 0.02))
+    x = np.tanh(x * amp * 2.5 * drive) * 0.6
+    return np.concatenate([np.zeros(PRE), fade_out(x[:, None], 0.004)[:, 0]])
+
+
+def pluck(note, seed=0):
+    """A plucked synth note: a saw and a narrow pulse through a snapping filter."""
+    n = int(0.32 * SR)
+    t = np.arange(n) / SR
+    rng = np.random.default_rng(seed)
+    f = midi_hz(note)
+    ph = rng.random()
+    x = saw(f, n, ph) * 0.7 + (saw(f, n, ph) - saw(f, n, (ph + 0.3) % 1)) * 0.3
+    x = lowpass_sweep(x[:, None], 450 + 5000 * np.exp(-t / 0.045), 1.0)[:, 0]
+    x *= np.minimum(1, t / 0.002) * np.exp(-t / 0.12)
+    return np.concatenate([np.zeros(PRE), fade_out(x[:, None], 0.01)[:, 0]])
+
+
+def gang(m, word, beat, level=1.0):
+    """A gang shout: every speaker's recording of `word`, each doubled a little later and slightly retuned, spread
+    across the stereo field and driven together. The first voice's attack lands exactly on the beat."""
+    files = m.inst[word]
+    n = int(0.6 * SR)
+    out = np.zeros((n + int(0.05 * SR), 2))
+    for k, rel in enumerate(files):
+        for d, (semis, late, pan) in enumerate(((0.0, 0.0, -0.7 + 1.4 * k / max(1, len(files) - 1)),
+                                                (-1.0 if k % 2 else 0.5, 0.008 + 0.004 * k, 0.5 * (-1) ** k))):
+            if k == 0 and d == 0:
+                late = 0.0
+            x = shifted(rel, semis, -20.0)[:n].copy()
+            x = x / (np.sqrt((x[PRE:PRE + int(0.25 * SR)] ** 2).mean()) + 1e-9) * 0.08
+            x = place(x, pan, 0.0)
+            i = int(late * SR)
+            out[i:i + len(x)] += x * (1.0 if d == 0 else 0.7)
+    out = filt(out, "highpass", 160)
+    out = shelf(out, 2800, 4.0)
+    out = np.tanh(out * 1.6) / 1.6
+    m.add("vox", fade_out(out, 0.02), beat, 1.1 * level, room=0.3, plate=0.25)
+
+
 def noise_whoosh(dur, lo, hi, level=1.0):
     n = int(dur * SR)
     p = np.arange(n) / n
@@ -354,7 +468,7 @@ def noise_whoosh(dur, lo, hi, level=1.0):
 # ---------------------------------------------------------------------------------------------- the mix
 
 class Mix:
-    BUSES = ["drums", "bass", "brass", "bed", "fx", "sfx"]
+    BUSES = ["drums", "bass", "brass", "bed", "synth", "vox", "fx", "sfx"]
 
     def __init__(self, name):
         self.name = name
@@ -362,6 +476,7 @@ class Mix:
         self.n = at(self.cut["beats"]) + 6 * SR
         self.bus = {k: np.zeros((self.n, 2)) for k in self.BUSES}
         self.hall = np.zeros((self.n, 2))
+        self.plate = np.zeros((self.n, 2))
         self.room = np.zeros((self.n, 2))
         self.kicks = []
         self.sweeps = []  # (buses, start beat, end beat, from Hz, to Hz)
@@ -381,7 +496,7 @@ class Mix:
             return beat, 1.0
         return beat + self.rng.uniform(-ms, ms) / 1000 / BEAT, 10 ** (self.rng.uniform(-2.5, 2.5) / 20)
 
-    def add(self, bus, x, beat, gain=1.0, pan=0.0, width=1.0, hall=0.0, room=0.0):
+    def add(self, bus, x, beat, gain=1.0, pan=0.0, width=1.0, hall=0.0, room=0.0, plate=0.0):
         """Add x (attack PRE samples in) so that its attack lands exactly on `beat`."""
         x = place(x, pan, width) * gain
         i = at(beat) - PRE
@@ -393,6 +508,8 @@ class Mix:
             self.hall[i:i + len(x)] += x * hall
         if room:
             self.room[i:i + len(x)] += x * room
+        if plate:
+            self.plate[i:i + len(x)] += x * plate
 
     def kick(self, beat, level=1.0):
         if self.in_breath(beat):
@@ -427,12 +544,21 @@ def voicing(ci, top=False):
 
 
 def tutti(m, ci, beat, beats, level=1.0, top=False, sus=False, release=0.08, hall=0.22, lp=None, voices=None,
-          human=0.0, soft=False):
+          human=0.0, soft=False, synth=0.0):
     """A brass chord across the sections: staccato samples for stabs (brass bus), sustains for held chords (bed).
-    human=ms lets each player land up to that early or late and vary by +-2.5 dB (not on protected beats)."""
-    for sec, notes in (voices or voicing(ci, top)).items():
+    Every note is played from a sample at most 2 semitones away (a voice moves an octave when its section has
+    none). human=ms lets each player land up to that early or late and vary by +-2.5 dB (not on protected beats).
+    synth=level puts a produced unison-saw stab of the trumpet and horn notes under it, exactly on the beat."""
+    voices = voices or voicing(ci, top)
+    if synth and not sus:
+        notes = sorted({n for sec in ("tpt", "hn") for n in voices.get(sec, [])})
+        notes = [n if n >= 55 else n + 12 for n in notes][-4:]
+        x = synth_stab(sorted(set(notes)), beats * BEAT, seed=int(beat * 4))
+        m.add("synth", x, beat, 0.32 * synth * level, plate=0.3)
+    for sec, notes in voices.items():
         pan, width = SEC[sec]
         inst = m.inst[sec + "_sus"] if sus else m.inst[sec]
+        notes = [inst.fit(n) for n in notes]
         for k, note in enumerate(notes):
             x = inst.play(note, beats * BEAT, release, soft=soft and not sus)
             if lp:
@@ -505,7 +631,7 @@ def play_hook(m, bar0, bars):
     snare roll, a timpani roll, a cymbal swell and a riser over a soft held horn chord; no kick."""
     b0 = 4 * bar0
     for k in range(4):
-        tutti(m, 0 if k < 3 else 3, b0 + k, 0.55, level=0.48, top=True, hall=0.25, human=12)
+        tutti(m, 0 if k < 3 else 3, b0 + k, 0.55, level=0.48, top=True, hall=0.25, human=12, synth=1.0)
         m.kick(b0 + k, 0.6)
     if bars < 2:
         return
@@ -574,19 +700,23 @@ def play_drop(m, bar0, bars, big, nxt=None):
             m.add("fx", timpani(41, length=0.5, decay=0.15), B + 3.5, 0.55, pan=-0.2, hall=0.15)
             m.add("drums", I["tom"].hit(-2, length=0.4, decay=0.12), B + 3.25, 0.35, pan=0.3, room=0.3)
             m.add("drums", I["tom"].hit(-5, length=0.4, decay=0.12), B + 3.75, 0.35, pan=0.1, room=0.3)
-        # bass: tuba staccato and a sine sub on the off-beat 8ths (16th pickups an octave up in drop B)
+        # bass: a driving synth bass (off-beat 8ths with 16th pushes in drop A, rolling 16ths in drop B) doubled
+        # by tuba staccato on the off-beats, a sine sub under it; all sidechained to the kick
         root = ROOTS[ci]
         if half:
-            m.add("bass", I["tuba_sus"].play(root, 3.8 * BEAT, 0.2), B, 0.6)
+            m.add("bass", I["tuba_sus"].play(root, 3.8 * BEAT, 0.2), B, 0.5)
             m.add("bass", sub(root - 12, 3.8 * BEAT, drop=0.0, tau=3.0, level=0.2), B)
+            m.add("bass", synth_bass(root, 3.8 * BEAT, 0.35), B, 0.3)
         else:
-            for s in [0.5, 1.5, 2.5, 3.5] + ([1.75, 3.75] if big else []):
+            steps = [k + f for k in range(4) for f in ((0.25, 0.5, 0.75) if big else (0.5,) if k % 2 == 0 else (0.5, 0.75))]
+            for s in steps:
                 if breath(B + s):
                     continue
-                pickup = s in (1.75, 3.75)
-                m.add("bass", I["tuba"].play(root + (12 if pickup else 0), 0.22, 0.04, soft=pickup), B + s, 0.75,
-                      pan=0.05)
-                if not pickup:
+                up = big and s % 1 == 0.75 and int(s) % 2 == 1  # an octave push into beats 3 and 1
+                m.add("bass", synth_bass(root + (12 if up else 0), BEAT / 4 * 0.8, 1.0 if big else 0.8), B + s,
+                      0.42, pan=0.0)
+                if s % 1 == 0.5:
+                    m.add("bass", I["tuba"].play(root, 0.22, 0.04), B + s, 0.45, pan=0.05)
                     m.add("bass", sub(root - 12, 0.2, drop=0.0, tau=0.5, level=0.2), B + s)
         # held bed: horns and a trombone, sidechained to the kick
         if not breath(B):
@@ -602,7 +732,19 @@ def play_drop(m, bar0, bars, big, nxt=None):
             if big:
                 v = {"tpt": [note, note + 12], "hn": [note - 12], "tbn": [note - 24 + (12 if note - 24 < 46 else 0)]}
             soft = step in (3, 10, 14) if big else step != 0
-            tutti(m, ci, t, length / 4 * 0.85, level=0.9 if big else 0.7, hall=0.18, voices=v, human=10, soft=soft)
+            tutti(m, ci, t, length / 4 * 0.85, level=0.9 if big else 0.7, hall=0.18, voices=v, human=10, soft=soft,
+                  synth=0.8 if big else 0.5)
+        if big or i >= 4:  # a plucked 16th arpeggio with dotted-8th echoes, from drop A's second half on
+            arp = [CHORDS[ci][0], CHORDS[ci][1], CHORDS[ci][2], CHORDS[ci][0] + 12]
+            for k in range(16):
+                t = B + k / 4
+                if breath(t) or (fill and k >= 8):
+                    continue
+                x = pluck(arp[[0, 1, 2, 3, 2, 1, 2, 3][k % 8]] + 12, seed=k + 16 * i)
+                lv = (0.16 if big else 0.12) * (1.25 if k % 4 == 0 else 1.0)
+                m.add("synth", x, t, lv, pan=0.35 * (-1) ** k, plate=0.15)
+                for e in (1, 2):
+                    m.add("synth", filt(x, "lowpass", 3500 / e), t + 0.75 * e, lv * 0.35 ** e, pan=-0.6 * (-1) ** (k + e))
         if big:  # the lead: sustained trumpet with a staccato front and a trombone an octave below
             for step, note, length in MELODY[ci]:
                 t = B + step / 4
@@ -618,11 +760,13 @@ def play_drop(m, bar0, bars, big, nxt=None):
             continue
         for t in np.arange(np.ceil(a), b):  # stabs on every beat, a march snare under them
             ci = int(t - B0) // 4 % 4
-            tutti(m, ci, t, 0.45, level=1.0 if big else 0.85, top=big, hall=0.25, human=10)
+            tutti(m, ci, t, 0.45, level=1.0 if big else 0.85, top=big, hall=0.25, human=10, synth=1.0)
             m.add("drums", I["march"][3].hit(), t, 0.45, pan=0.05, room=0.3)
+            gang(m, "no", t)  # the NO run
         m.gates.append((("bass", "bed"), a, b))
         if b < B0 + 4 * bars:  # the slam back
             crash(m, b, 1.0)
+            gang(m, "hey", b, 1.1)
             if b not in m.kicks:
                 m.kick(b)
     end = B0 + 4 * bars
@@ -680,12 +824,12 @@ def play_end(m, bar0, bars):
     crash(m, B0, 1.1, length=ring * BEAT, decay=ring * BEAT / 3.5)
     m.kick(B0, 1.1)
     m.add("fx", I["gong"].hit(length=ring * BEAT, decay=ring * BEAT / 4), B0, 0.25, pan=-0.3, hall=0.2)
-    tutti(m, 0, B0, 0.6, level=1.2, top=True, hall=0.3)
+    tutti(m, 0, B0, 0.6, level=1.2, top=True, hall=0.3, synth=1.0)
     tutti(m, 0, B0, ring - 1.5, level=0.9, sus=True, release=0.3, hall=0.35,
           voices={"tpt": [68, 72, 77], "hn": [53, 56, 60], "tbn": [53, 60], "tuba": [41, 29]})
     for t in taps:
         m.add("drums", I["march"][3].hit(), t, 0.5, pan=0.05, room=0.35)
-    tutti(m, 0, button, 0.4, level=1.2, top=True, release=0.06, hall=0.3)
+    tutti(m, 0, button, 0.4, level=1.2, top=True, release=0.06, hall=0.3, synth=1.0)
     m.kick(button, 1.1)
     tail = (m.cut["beats"] - button) * BEAT - 0.05
     d = min(0.3, tail / 9)  # everything rings down below -60 dB by the end of the file
@@ -895,11 +1039,16 @@ def render(name):
     B["bass"] = filt(B["bass"], "lowpass", 2500)
     B["brass"] = compress(B["brass"], -22, 2.0, 0.008, 0.12)
     B["fx"] = shelf(B["fx"], 8000, -1.5)
+    B["synth"] = shelf(filt(B["synth"] * (1 - 0.35 * (1 - sc))[:, None], "lowpass", 11000), 7000, -2.0)
     hall = signal.oaconvolve(m.hall * (1 - 0.4 * (1 - sc))[:, None], make_ir(1.7, 0.022, 1), axes=0)[:n]
     room = signal.oaconvolve(m.room, make_ir(0.6, 0.008, 2, hf_ratio=0.5), axes=0)[:n]
     hall = shelf(filt(filt(hall, "highpass", 220), "lowpass", 9500), 3000, -1.5)
     room = filt(filt(room, "highpass", 180), "lowpass", 8000)
-    mix = (B["drums"] + B["bass"] * 0.8 + B["brass"] * 1.1 + B["bed"] * 0.8 + B["fx"] * 0.8 + B["sfx"] * 0.9
+    plate = signal.oaconvolve(m.plate, make_ir(1.1, 0.004, 3, hf_ratio=0.7, lf_ratio=0.8), axes=0)[:n]
+    plate = shelf(filt(filt(plate, "highpass", 300), "lowpass", 9000), 5000, -1.5)
+    mix = (B["drums"] + B["bass"] * 0.8 + B["brass"] * 1.1 + B["bed"] * 0.8 + B["synth"] * 0.9 + plate * 0.4
+           + filt(B["vox"], "lowpass", 10000)
+           + B["fx"] * 0.8 + B["sfx"] * 0.9
            + hall * 0.55 + room * 0.45)
     mix = shelf(filt(mix, "highpass", 25, 2), 10000, 1.5)[: at(beats)]
     ramp = int(0.01 * SR)

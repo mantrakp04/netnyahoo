@@ -4,10 +4,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { continueRender, delayRender, staticFile } from "remotion";
 import {
-  AnimationMixer, type AnimationAction, Box3, CanvasTexture, DirectionalLight, Group, HemisphereLight, Mesh,
+  AnimationMixer, type AnimationAction, Box3, CanvasTexture, DataTexture, MeshToonMaterial, NearestFilter, RedFormat, DirectionalLight, Group, HemisphereLight, Mesh,
   MeshBasicMaterial, MeshStandardMaterial, NeutralToneMapping, type Object3D, PCFSoftShadowMap, PerspectiveCamera,
   PlaneGeometry, PMREMGenerator, Scene, ShadowMaterial, SkinnedMesh, SRGBColorSpace, Vector3, WebGLRenderer,
 } from "three";
+import { OutlineEffect } from "three/examples/jsm/effects/OutlineEffect.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -15,6 +16,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 export type Clip = "Griddy" | "Default Dance";
 interface Rig {
   renderer: WebGLRenderer;
+  outline: OutlineEffect;
   scene: Scene;
   camera: PerspectiveCamera;
   mixer: AnimationMixer;
@@ -56,6 +58,10 @@ export function Yahu3D({ width, height, clip, time, yaw = 0, framing = "full" }:
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = PCFSoftShadowMap;
     const scene = new Scene();
+    const ramp = new DataTexture(new Uint8Array([150, 210, 255]), 3, 1, RedFormat);
+    ramp.minFilter = ramp.magFilter = NearestFilter;
+    ramp.needsUpdate = true;
+    const outline = new OutlineEffect(renderer, { defaultThickness: 0.006, defaultColor: [0.086, 0.075, 0.06], defaultAlpha: 1 });
     const pmrem = new PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     // Less mirror-like reflection and a warm key: the suit reads as cloth, not lacquer.
@@ -85,14 +91,13 @@ export function Yahu3D({ width, height, clip, time, yaw = 0, framing = "full" }:
           if (o instanceof SkinnedMesh) o.frustumCulled = false;
           if (o instanceof Mesh) {
             o.castShadow = true;
-            const mats = Array.isArray(o.material) ? o.material : [o.material];
-            for (const m of mats) {
-              if (m instanceof MeshStandardMaterial) {
-                m.roughness = Math.max(m.roughness, 0.72);
-                m.metalness = 0;
-                m.envMapIntensity = 0.45;
-              }
-            }
+            // A printed look for the paper brand: three-tone (posterised) shading over his own colours, and an ink
+            // outline (OutlineEffect). It flattens the scan's texture smears and reads as an illustration.
+            const toon = (m: MeshStandardMaterial) =>
+              new MeshToonMaterial({ map: m.map, color: m.color, gradientMap: ramp, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side });
+            o.material = Array.isArray(o.material)
+              ? o.material.map((m) => (m instanceof MeshStandardMaterial ? toon(m) : m))
+              : o.material instanceof MeshStandardMaterial ? toon(o.material) : o.material;
           }
         });
         const mixer = new AnimationMixer(gltf.scene);
@@ -130,7 +135,7 @@ export function Yahu3D({ width, height, clip, time, yaw = 0, framing = "full" }:
           camera.position.set(0, 0.62, 2.75);
           camera.lookAt(0, 0.58, 0);
         }
-        setRig({ renderer, scene, camera, mixer, actions, root: turn });
+        setRig({ renderer, outline, scene, camera, mixer, actions, root: turn });
       })
       .catch((error: unknown) => {
         throw new Error(`Big Yahu: ${String(error)} (run scripts/prepare-assets.sh)`);
@@ -149,7 +154,10 @@ export function Yahu3D({ width, height, clip, time, yaw = 0, framing = "full" }:
     }
     rig.mixer.setTime(time);
     rig.root.rotation.y = yaw;
-    rig.renderer.render(rig.scene, rig.camera);
+    // Clear first: the outline pass leaves autoClear off, and the drawing buffer is preserved, so frames would stack.
+    rig.renderer.setClearColor(0x000000, 0);
+    rig.renderer.clear(true, true, true);
+    rig.outline.render(rig.scene, rig.camera);
     if (!released.current) {
       released.current = true;
       continueRender(handle);

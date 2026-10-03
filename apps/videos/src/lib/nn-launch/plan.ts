@@ -78,14 +78,16 @@ const BIG_PORT: Box = [60, 420, 880, 820];
 /** A line docked under the window (landscape) or above it (portrait), 64 px or more. */
 const DOCK: Record<Aspect, Box> = { land: [80, 990, 1760, 72], port: [60, 470, 880, 90] };
 /** A profile's name plate, docked top-left beside the window's own profile name. */
-const PLATE: Record<Aspect, Box> = { land: [80, 40, 900, 170], port: [60, 230, 880, 200] };
+// Beside the sidebar column (which carries the swipe), never over it.
+const PLATE: Record<Aspect, Box> = { land: [560, 40, 1100, 170], port: [60, 230, 880, 200] };
+const BIG_PLATE_BOX: Record<Aspect, Box> = { land: [700, 40, 1140, 170], port: [60, 230, 880, 200] };
 const YAHU = (id: string, land: Box, port: Box): WindowLayer => ({ id, box: { land, port } });
 
 // ---------------------------------------------------------------------------------------------- the hero cut
 
 const nags: Shot = {
   id: "nags", kind: "nags", at: 0, beats: 8, window: win("nags-window", { land: [300, 270, 1320, 825], port: [40, 700, 1500, 938] }),
-  extra: [YAHU("nags-yahu", [1240, 260, 760, 820], [480, 940, 600, 660])],
+  extra: [YAHU("nags-yahu", [1300, 280, 640, 780], [240, 900, 600, 580])],
   type: [
     // Bar 1: four stabs, one ask each, over a site really asking it in a Netnyahoo window (scenes/asks.js).
     T("nag-sign-in", "SIGN IN.", 0, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 1, align: "center", fill: paper, portText: "SIGN\nIN." }),
@@ -93,16 +95,16 @@ const nags: Shot = {
     T("nag-cookies", "ACCEPT ALL.", 2, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 3, align: "center", fill: paper, portText: "ACCEPT\nALL." }),
     T("nag-upgrade", "UPGRADE.", 3, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 4, align: "center", fill: paper, portText: "UP\nGRADE." }),
     // Bar 2: the snare roll. The asks stamp down on the browser, each still readable, until Big Yahu swats them off.
-    T("nag-pile-1", "SIGN IN TO SYNC", 4, "stamp", 86, [300, 200, 760, 150], [60, 600, 820, 130], { out: 8, rotation: -6, portSize: 70 }),
-    T("nag-pile-2", "MEET YOUR AI COPILOT", 5, "stamp", 86, [880, 380, 900, 150], [120, 820, 820, 130], { out: 8, rotation: 4, color: P.blue, portSize: 62 }),
-    T("nag-pile-3", "ACCEPT ALL COOKIES", 6, "stamp", 86, [260, 600, 860, 150], [60, 1040, 820, 130], { out: 8, rotation: -3, color: P.red, portSize: 64 }),
-    T("nag-pile-4", "SET AS DEFAULT?", 6.5, "stamp", 86, [820, 770, 760, 150], [140, 1260, 760, 130], { out: 8, rotation: 6, portSize: 66 }),
+    T("nag-pile-1", "SIGN IN TO SYNC", 4, "stamp", 86, [180, 270, 760, 150], [60, 250, 820, 130], { out: 8, rotation: -6, portSize: 70 }),
+    T("nag-pile-2", "MEET YOUR AI COPILOT", 5, "stamp", 86, [440, 380, 820, 150], [120, 420, 820, 130], { out: 8, rotation: 4, color: P.blue, portSize: 62 }),
+    T("nag-pile-3", "ACCEPT ALL COOKIES", 6, "stamp", 86, [140, 590, 820, 150], [60, 590, 820, 130], { out: 8, rotation: -3, color: P.red, portSize: 64 }),
+    T("nag-pile-4", "SET AS DEFAULT?", 6.5, "stamp", 86, [520, 780, 720, 150], [140, 760, 760, 130], { out: 8, rotation: 6, portSize: 66 }),
   ],
 };
 
 const title: Shot = {
   id: "title", kind: "title", at: 8, beats: 4, window: win("title-window", { land: [360, 340, 1200, 750], port: [40, 760, 1500, 938] }),
-  extra: [YAHU("title-yahu", [1240, 260, 760, 820], [480, 940, 600, 660])],
+  extra: [YAHU("title-yahu", [1300, 280, 640, 780], [240, 900, 600, 580])],
   type: [
     T("title-name", "NETNYAHOO", 0, "slam", 230, [80, 20, 1760, 215], [60, 230, 880, 300], { align: "center", portSize: 240 }),
     T("title-what", "THE SIDEBAR BROWSER FOR MAC", 1, "slam", 64, [80, 250, 1760, 70], [60, 540, 880, 150], { align: "center", color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
@@ -154,7 +156,7 @@ const chromium: Shot = {
 const poise: Shot = { id: "poise", kind: "poise", at: 44, beats: 4, type: [] };
 
 const BIG_PLATE = (id: string, text: string, at: number, out: number, fill: string, color = paper) =>
-  T(id, text, at, "slam", 150, PLATE.land, PLATE.port, { out, color, fill });
+  T(id, text, at, "slam", 150, BIG_PLATE_BOX.land, BIG_PLATE_BOX.port, { out, color, fill });
 const swipeBig: Shot = {
   id: "swipe-big", kind: "swipeBig", at: 48, beats: 10, window: win("swipe-big-window", { land: [120, 66, 1680, 1050], port: [40, 520, 1700, 1063] }),
   // Each name on the frame its page lands (the commits: 0, 1.5, 3, 4.5, 6).
@@ -199,7 +201,7 @@ const typing: Shot = { id: "typing", kind: "typing", at: 72, beats: 8, window: w
 const endShot = (at: number, beats: number, lockup: number, button: number): Shot => ({
   id: "end", kind: "end", at, beats, marks: { lockup, button },
   extra: [
-    YAHU("end-yahu", [1200, 160, 700, 900], [220, 880, 640, 600]),
+    YAHU("end-yahu", [1240, 200, 640, 820], [40, 700, 1000, 780]),
     { id: "end-icon", box: { land: [80, 220, 180, 180], port: [60, 240, 150, 150] } },
   ],
   type: [
@@ -208,7 +210,7 @@ const endShot = (at: number, beats: number, lockup: number, button: number): Sho
     T("end-mac", "THE SIDEBAR BROWSER FOR MAC", lockup + 0.5, "slam", 60, [84, 420, 1076, 70], [60, 410, 880, 120], { color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
     T("end-download", "DOWNLOAD FREE", lockup + 1, "slam", 96, [84, 520, 1076, 110], [60, 550, 880, 100]),
     T("end-url", "NETNYAHOO.COM", lockup + 1, "slam", 190, [80, 630, 1080, 210], [60, 650, 880, 160], { color: P.blue }),
-    T("end-source", "GITHUB.COM/MANTRAKP04/NETNYAHOO", lockup + 1.5, "label", 48, [86, 870, 1076, 70], [64, 830, 880, 56], { portSize: 40 }),
+    T("end-source", "GITHUB.COM/MANTRAKP04/NETNYAHOO", lockup + 1.5, "label", 48, [86, 870, 1076, 70], [64, 820, 880, 110], { portSize: 40, portText: "GITHUB.COM/MANTRAKP04/\nNETNYAHOO" }),
   ],
 });
 
