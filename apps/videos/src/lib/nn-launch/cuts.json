@@ -101,7 +101,7 @@
     {
      "kind": "swipe",
      "beat": 18.0357,
-     "gain": 1.0
+     "gain": 2.5
     },
     {
      "kind": "thud",
@@ -116,7 +116,7 @@
     {
      "kind": "swipe",
      "beat": 19.5357,
-     "gain": 1.0
+     "gain": 2.5
     },
     {
      "kind": "thud",
@@ -131,7 +131,7 @@
     {
      "kind": "swipe",
      "beat": 21.0357,
-     "gain": 1.0
+     "gain": 2.5
     },
     {
      "kind": "thud",
@@ -384,6 +384,11 @@
      "kind": "whoosh",
      "beat": 8.0,
      "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 10.3071,
+     "gain": 2.5
     },
     {
      "kind": "swipe",

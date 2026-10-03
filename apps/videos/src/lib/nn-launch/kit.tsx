@@ -339,7 +339,7 @@ export function Type({ layer }: { layer: TypeLayer }) {
   let extraRot = 0;
   let opacity = 1;
   let shown = text;
-  const align = layer.align ?? "left";
+  const align = (frame.width < frame.height && layer.portAlign) || layer.align || "left";
   let style: CSSProperties = poster;
   if (layer.style === "slam") {
     // A small overshoot only: a bigger one pushed the first frame of a full-width line past the margin.

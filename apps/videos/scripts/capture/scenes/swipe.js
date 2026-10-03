@@ -11,10 +11,12 @@ const swipe = (name, dir, n) => {
   then(() => { from = pos(); return step([{ phase: "began", dx: 0 }]); });
   // The tracker moves the pager about half a page per sidebar width dragged: drag far enough that the pager is nearly
   // home before the release, so the film's slide has frames all the way to the commit.
-  const total = dir * WIDTH * 1.98;
+  const total = dir * WIDTH * 2.07;
   // Hermes' eval shares one binding across a for-let loop's closures: forEach gives each step its own i.
   Array.from({ length: n }, (_, i) => i).forEach((i) => {
-    const dx = (ease((i + 1) / n) - ease(i / n)) * total;
+    // Even steps: the pager's recorded positions come out evenly spaced (about 2.5% of a page apart), so the film can
+    // play any drag curve from them without gaps.
+    const dx = total / n;
     then(() => step([{ phase: "changed", dx, delayMs: 8 }]).then(() => snap(name, { p: (i + 1) / n, dir, pos: pos(), from })));
   });
   then(() => step([{ phase: "ended", dx: 0 }]));
@@ -32,12 +34,12 @@ const dismiss = (id) => { const h = nn.webviews.get(id); return Promise.resolve(
 ["work", "campaign", "side", "weekend"].forEach((pid) => then(() => goProfile(pid).then(() => sleep(2500)).then(() => dismiss(activeTab())).then(() => sleep(800)).then(() => picShown("pre-" + pid)).then(() => snap("pre:" + pid, { pageKey: Object.fromEntries(shownTabs().map((id) => [id, "pre-" + pid + ":" + id])) }))));
 then(() => goProfile("default"));
 then(() => { st().activate("t1"); return sleep(2500).then(() => picShown("start")).then(() => snap("start", { pageKey: { t1: "start:t1" } })); });
-swipe("toWork", -1, 24);
-swipe("toCampaign", -1, 24);
-swipe("toSide", -1, 24);
-swipe("toWeekend", -1, 24);
-swipe("backToSide", 1, 14);
-swipe("backToCampaign", 1, 14);
-swipe("backToWork", 1, 14);
-swipe("backToPersonal", 1, 14);
+swipe("toWork", -1, 40);
+swipe("toCampaign", -1, 40);
+swipe("toSide", -1, 40);
+swipe("toWeekend", -1, 40);
+swipe("backToSide", 1, 40);
+swipe("backToCampaign", 1, 40);
+swipe("backToWork", 1, 40);
+swipe("backToPersonal", 1, 40);
 return finish();

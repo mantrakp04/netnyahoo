@@ -190,10 +190,10 @@
       "label": "nags · yahu-peek",
       "parentId": null,
       "values": {
-        "x": 70,
-        "y": 250,
-        "width": 260,
-        "height": 260,
+        "x": 580,
+        "y": 220,
+        "width": 360,
+        "height": 420,
         "rotation": 0
       }
     },
@@ -209,7 +209,7 @@
         "fill": "#F1ECE2",
         "x": 60,
         "y": 230,
-        "width": 880,
+        "width": 520,
         "height": 440,
         "rotation": 0
       }
@@ -226,7 +226,7 @@
         "fill": "#F1ECE2",
         "x": 60,
         "y": 230,
-        "width": 880,
+        "width": 520,
         "height": 440,
         "rotation": 0
       }
@@ -243,7 +243,7 @@
         "fill": "#F1ECE2",
         "x": 60,
         "y": 230,
-        "width": 880,
+        "width": 520,
         "height": 440,
         "rotation": 0
       }
@@ -260,7 +260,7 @@
         "fill": "#F1ECE2",
         "x": 60,
         "y": 230,
-        "width": 880,
+        "width": 520,
         "height": 440,
         "rotation": 0
       }
@@ -988,10 +988,10 @@
       "label": "end · yahu",
       "parentId": null,
       "values": {
-        "x": 90,
-        "y": 822,
-        "width": 900,
-        "height": 700,
+        "x": 110,
+        "y": 790,
+        "width": 860,
+        "height": 740,
         "rotation": 0
       }
     },
@@ -1090,6 +1090,23 @@
         "y": 650,
         "width": 880,
         "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-fine",
+      "definition": "type",
+      "label": "end · OPEN SOURCE · APPLE SILICON ",
+      "parentId": null,
+      "values": {
+        "text": "OPEN SOURCE · APPLE SILICON · MACOS 14+",
+        "size": 30,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 64,
+        "y": 1540,
+        "width": 880,
+        "height": 50,
         "rotation": 0
       }
     },

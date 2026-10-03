@@ -30,6 +30,8 @@ export interface TypeLayer {
   rotation?: number;
   box: Record<Aspect, Box>;
   align?: "left" | "center" | "right";
+  /** Portrait alignment, when it differs. */
+  portAlign?: "left" | "center" | "right";
   /** `words`: beats between words. */
   step?: number;
 }
@@ -92,14 +94,14 @@ const nags: Shot = {
   extra: [
     YAHU("nags-yahu", [1300, 280, 640, 780], [240, 900, 600, 580]),
     // He pops out from behind the window (right edge in 16:9, top edge in 9:16) to cheer the first NO.
-    YAHU("nags-yahu-peek", [1600, 320, 360, 360], [70, 250, 260, 260]),
+    YAHU("nags-yahu-peek", [1540, 330, 300, 300], [580, 220, 360, 420]),
   ],
   type: [
     // Bar 1: four stabs, one ask each, over a site really asking it in a Netnyahoo window (scenes/asks.js).
-    T("nag-sign-in", "SIGN IN.", 0, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 1, align: "center", fill: paper, portText: "SIGN\nIN." }),
-    T("nag-try-ai", "TRY AI.", 1, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 2, align: "center", fill: paper, portText: "TRY\nAI." }),
-    T("nag-cookies", "ACCEPT ALL.", 2, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 3, align: "center", fill: paper, portText: "ACCEPT\nALL." }),
-    T("nag-upgrade", "UPGRADE.", 3, "slam", 230, [80, 24, 1760, 230], [60, 230, 880, 440], { out: 4, align: "center", fill: paper, portText: "UPGRADE.", portSize: 150 }),
+    T("nag-sign-in", "SIGN IN.", 0, "slam", 230, [80, 24, 1760, 230], [60, 230, 520, 440], { out: 1, align: "center", portAlign: "left", fill: paper, portText: "SIGN\nIN." }),
+    T("nag-try-ai", "TRY AI.", 1, "slam", 230, [80, 24, 1760, 230], [60, 230, 520, 440], { out: 2, align: "center", portAlign: "left", fill: paper, portText: "TRY\nAI." }),
+    T("nag-cookies", "ACCEPT ALL.", 2, "slam", 230, [80, 24, 1760, 230], [60, 230, 520, 440], { out: 3, align: "center", portAlign: "left", fill: paper, portText: "ACCEPT\nALL." }),
+    T("nag-upgrade", "UPGRADE.", 3, "slam", 230, [80, 24, 1760, 230], [60, 230, 520, 440], { out: 4, align: "center", portAlign: "left", fill: paper, portText: "UPGRADE.", portSize: 150 }),
     // Each of the first three asks gets its answer stamped on it, half a beat in.
     T("nag-no-1", "NO.", 0.5, "stamp", 150, [690, 470, 540, 240], [300, 960, 480, 220], { out: 1, rotation: -8, color: P.red, portSize: 130 }),
     T("nag-no-2", "NO.", 1.5, "stamp", 150, [700, 470, 540, 240], [300, 960, 480, 220], { out: 2, rotation: 6, color: P.red, portSize: 130 }),
@@ -212,7 +214,7 @@ const typing: Shot = { id: "typing", kind: "typing", at: 72, beats: 8, window: w
 const endShot = (at: number, beats: number, lockup: number, button: number): Shot => ({
   id: "end", kind: "end", at, beats, marks: { lockup, button },
   extra: [
-    YAHU("end-yahu", [1240, 200, 640, 820], [90, 822, 900, 700]),
+    YAHU("end-yahu", [1240, 200, 640, 820], [110, 790, 860, 740]),
     { id: "end-icon", box: { land: [80, 220, 180, 180], port: [60, 240, 150, 150] } },
   ],
   type: [
@@ -221,6 +223,7 @@ const endShot = (at: number, beats: number, lockup: number, button: number): Sho
     T("end-mac", "THE SIDEBAR BROWSER FOR MAC", lockup + 0.5, "slam", 60, [84, 420, 1076, 70], [60, 410, 880, 120], { color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
     T("end-download", "DOWNLOAD", lockup + 1, "slam", 96, [84, 520, 1076, 110], [60, 550, 880, 100]),
     T("end-url", "NETNYAHOO.COM", lockup + 1, "slam", 190, [80, 630, 1080, 210], [60, 650, 880, 160], { color: P.blue }),
+    T("end-fine", "OPEN SOURCE · APPLE SILICON · MACOS 14+", lockup + 2, "label", 30, [86, 960, 1076, 50], [64, 1540, 880, 50], { portSize: 30 }),
     T("end-source", "GITHUB.COM/MANTRAKP04/NETNYAHOO", lockup + 1.5, "label", 48, [86, 870, 1076, 70], [64, 820, 880, 110], { portSize: 40, portText: "GITHUB.COM/MANTRAKP04/\nNETNYAHOO" }),
   ],
 });

@@ -69,14 +69,20 @@ function swipeIndex(b: number, events: SwipeEvent[], before = "start") {
     const rest = frameOf("swipe", `${e.label}:rest`);
     const land = landOf(e);
     const start = land - e.drag;
-    if (b < start) return index;
+    // An epsilon: `start` and a frame's beat can tie in floating point, which used to drop the drag's first frame.
+    if (b < start - 1e-6) return index;
     if (b < land) {
       const frames = Math.max(1, Math.round((land - start) * BEAT));
       const n = Math.min(frames - 1, Math.floor((b - start) * BEAT + 1e-6));
-      const top = PROGRESS[drag[drag.length - 1]] ?? 1;
+      const top = Math.min(0.99, PROGRESS[drag[drag.length - 1]] ?? 1);
       const target = easeInOutSine((n + 1) / frames) * top;
       let best = drag[0];
       for (const i of drag) if (Math.abs((PROGRESS[i] ?? 0) - target) < Math.abs((PROGRESS[best] ?? 0) - target)) best = i;
+      // The first frame never overshoots its target (the start must stay soft): the nearest position at or below it.
+      if (n === 0) {
+        best = drag[0];
+        for (const i of drag) if ((PROGRESS[i] ?? 0) <= target && (PROGRESS[i] ?? 0) > (PROGRESS[best] ?? 0)) best = i;
+      }
       return best;
     }
     index = rest;
@@ -106,7 +112,7 @@ const SEC = BEAT / 30; // seconds in a beat
  * Big Yahu in his Studio box, rendered from his rig at a time of one clip. `rise` (0–1) brings him up from below the
  * frame; `squash` (a decaying kick) squashes and stretches him on a landing.
  */
-function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full", from }: { id: string; clip: Clip; time: number; rise?: number; squash?: number; yaw?: number; framing?: Framing; from?: { x: number; y: number } }) {
+function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full", from, fade: fadeOn = true, lift = 0 }: { id: string; clip: Clip; time: number; rise?: number; squash?: number; yaw?: number; framing?: Framing; from?: { x: number; y: number }; fade?: boolean; lift?: number }) {
   const object = useStudioObject(id);
   const port = useAspect() === "port";
   // In portrait the frame's floor is the safe zone's (y 1480), with captions below: he pops up a short way and fades
@@ -117,11 +123,11 @@ function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full",
     { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
     // A spring may overshoot; the rise never lifts him above his box (that would show the canvas's cut edge).
     // `from`: where he slides in from, in box sizes (e.g. from behind a window edge); default, up from below.
-    { offset: from ? { x: (1 - Math.min(1, rise)) * object.number("width") * from.x, y: (1 - Math.min(1, rise)) * h * from.y } : { y: (1 - Math.min(1, rise)) * h * travel } },
+    { offset: from ? { x: (1 - Math.min(1, rise)) * object.number("width") * from.x, y: (1 - Math.min(1, rise)) * h * from.y - lift } : { y: (1 - Math.min(1, rise)) * h * travel - lift } },
   );
   if (rise <= 0.001) return null;
   // A head-and-shoulders render ends mid-torso: fade its lower part out, so it reads as rising from behind.
-  const fade = framing === "bust" ? { maskImage: "linear-gradient(to bottom, black 70%, transparent 96%)", WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 96%)" } : {};
+  const fade = framing === "bust" && fadeOn ? { maskImage: "linear-gradient(to bottom, black 70%, transparent 96%)", WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 96%)" } : {};
   return (
     <div {...object.bind} {...geometry.bind} style={{ ...geometry.style, ...fade, opacity: port && !from ? Math.min(1, rise * 1.5) : 1 }}>
       <div style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", transform: `scale(${1 + squash * 0.12}, ${1 - squash * 0.12})` }}>
@@ -137,7 +143,7 @@ function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full",
 // interruption plays in on the stab, a frame of the page per film frame, and a pointer heads for its button.
 const ASK_NAMES = ["signin", "ai", "cookies", "upgrade"];
 const ASK_CAMS: Cam[] = [
-  { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.5, ay: 0.62 },
+  { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.46, ay: 0.62 },
   { ...REST, zoom: 1.12, fx: 0.62, fy: 0.45, aim: 1, ax: 0.5, ay: 0.6, rot: -1 },
   { ...REST, zoom: 1.12, fx: 0.5, fy: 0.72, aim: 1, ax: 0.5, ay: 0.62, rot: 1 },
   { ...REST, zoom: 1.12, fx: 0.55, fy: 0.55, aim: 1, ax: 0.5, ay: 0.66 },
@@ -187,9 +193,9 @@ function Nags() {
         {b < 1 ? (
           <Yahu
             id="nags-yahu-peek" clip="Default Dance" framing="bust" yaw={port ? 0.35 : -0.45}
-            from={port ? { x: 0, y: 0.75 } : { x: -0.9, y: 0 }}
+            from={port ? { x: 0, y: 0.8 } : { x: -0.9, y: 0 }} fade={!port}
             time={mix(POSE.steeple, POSE.flex, seg(b, 0.28, 0.22, easeIn))}
-            rise={springAt(b, 0.02, { stiffness: 300, damping: 20 }) * (1 - seg(b, 0.68, 0.25, easeIn))}
+            rise={springAt(b, 0.02, { stiffness: 300, damping: 20 }) * (1 - seg(b, 0.55, 0.28, easeIn))}
             squash={kick(b, 0.5, 0.2)}
           />
         ) : null}
@@ -647,6 +653,12 @@ function Underline({ id, at }: { id: string; at: number }) {
   );
 }
 
+/** A little victory hop: up and down over half a beat from `at`, in px. */
+function hopAt(b: number, at: number) {
+  const t = (b - at) / 0.55;
+  return t > 0 && t < 1 ? Math.sin(Math.PI * t) * 46 : 0;
+}
+
 function End() {
   const b = useBeat();
   const shot = useShot();
@@ -662,7 +674,7 @@ function End() {
   return (
     <Paper>
       <Shake hits={[0, lockup, button]} amount={14}>
-        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2) + (hold > 0 ? 0.08 * Math.sin(hold * Math.PI) : 0)} yaw={b < button ? 0.3 : mix(0.3, -0.75, seg(b, button, 0.4)) + 0.06 * Math.sin(hold * Math.PI * 0.5)} />
+        <Yahu id={extraId("yahu")} clip={clip} time={time} rise={rise} lift={hopAt(b, button + 2)} squash={kick(b, button, 0.22) + kick(b, 0.4, 0.2) + kick(b, button + 2.55, 0.18) + (hold > 0 ? 0.08 * Math.sin(hold * Math.PI) : 0)} yaw={b < button ? 0.3 : mix(0.3, -0.75, seg(b, button, 0.4)) + 0.06 * Math.sin(hold * Math.PI * 0.5)} />
         <AppIcon id={extraId("icon")} at={lockup} cycle={[button - 3, button]} />
         <Underline id="end-url" at={button} />
         <Supers />

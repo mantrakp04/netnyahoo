@@ -236,7 +236,7 @@ def main():
         if fr.get("pos") is not None and fr.get("from") is not None and base in incoming:
             # The page travels exactly as far as the pager has (its own position), so page and sidebar move as one.
             frac = min(1.0, max(0.0, abs(fr["pos"] - fr["from"])))
-            if frac < 0.995:
+            if True:
                 if fr.get("label", "").endswith(":settle"):
                     # After the commit the app shows the new page; the outgoing one is the drag's.
                     out_tab = outgoing.get(base)
