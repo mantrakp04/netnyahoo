@@ -1,0 +1,6 @@
+# The videos are their own workspace (excluded from the repo root's, which hoists for React Native),
+# so installing them never touches the app's node_modules.
+packages:
+  - .
+allowBuilds:
+  esbuild: true

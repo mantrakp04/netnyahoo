@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { constants, gzipSync } from "node:zlib";
 
-// Big Yahu's model stays at public/models/big-yahu.glb (the launch films copy it from there, and pages from
-// before a deploy ask for that path). A build also writes it as big-yahu.<content hash>.glb, the name the page
-// asks for (scripts/stage.ts) and the only one nginx caches for good (infra/site/nginx.conf). `astro dev`
-// serves public/ as it is, so there the page asks for the plain name.
+// Big Yahu's model stays at public/models/big-yahu.glb (pages from before a deploy ask for that path). A build
+// also writes it as big-yahu.<content hash>.glb, the name the page asks for (scripts/stage.ts) and the only one
+// nginx caches for good (infra/site/nginx.conf). `astro dev` serves public/ as it is, so there the page asks for
+// the plain name.
 const modelSource = new URL("./public/models/big-yahu.glb", import.meta.url);
 const modelHash = createHash("sha256").update(readFileSync(modelSource)).digest("hex").slice(0, 10);
 const hashedModel = `big-yahu.${modelHash}.glb`;

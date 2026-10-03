@@ -99,7 +99,7 @@ the app as a person would rather than writing a new helper:
 | `devTypeKeys(windowId, text, interval)` | Types text into the focused field, a key every `interval` ms; resolves with per-key timings |
 | `devMenuCommand(command, arg)` | Fires a menu command as if picked from the menu bar |
 | `devSnapshotWindow(windowId, path, transparent?)` | Writes the window's layers to a PNG in-process (works with the screen locked; `false` = failed) |
-| `devRenderIntroMusic(cues, path)` | Renders the onboarding intro music to an audio file, for the launch films' sound pass |
+| `devRenderIntroMusic(cues, path)` | Renders the onboarding intro music to an audio file, for a video's soundtrack |
 
 ## Hover never moves anything
 

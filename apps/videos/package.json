@@ -1,0 +1,27 @@
+{
+  "name": "videos",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "render": "remotion render src/index.ts",
+    "studio": "remotion studio"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.529",
+    "@remotion/cli": "4.0.529",
+    "@remotion/media": "4.0.529",
+    "@remotion/player": "4.0.529",
+    "@remotion/renderer": "4.0.529",
+    "@remotion/studio": "4.0.529",
+    "@remotion/zod-types": "4.0.529",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.529",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  }
+}

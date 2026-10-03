@@ -87,8 +87,8 @@ jokes about war, violence, religion or ethnicity, and none at the user's expense
 
 1. `git log --format='%h %s%n%b' v<previous>..HEAD`. The commit bodies explain the user-visible effect.
 2. Keep commits that change what someone using the app sees or can do: `apps/browser`, `packages/*`, the
-   engine (`packages/cef/patches`), `Info.plist`. Drop the site (`apps/site`), the launch video
-   (`apps/launch-video`), docs, tests, refactors, and "Release x.y.z" version bumps.
+   engine (`packages/cef/patches`), `Info.plist`. Drop the site (`apps/site`), the videos
+   (`apps/videos`), docs, tests, refactors, and "Release x.y.z" version bumps.
 3. Merge commits that are one change for the user into one item. Split a commit that fixes two visible
    things into two items.
 4. Sort each section by how many people it affects; crashes and data loss first.

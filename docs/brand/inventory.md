@@ -208,7 +208,7 @@ meets at the top by ~0.4 s. This is Dia 1.50.1's "rebrand" New Tab, copied frame
 | Monospace | `settings/panes/SyncSheets.tsx`, `Passwords.tsx`, `LiveFolders.tsx`; `packages/sync/ios/Core/RecoveryKit.swift` (Courier-Bold) | Menlo | Generic | |
 | Size scale | grep across `components/` | 12 (107 uses), 13 (93), 11 / 11.5 (59), 15 (20), 12.5 (18), 14, 17 (hero input, onboarding tagline), 20, 22, 26, 64 (intro wordmark) | Dia-derived (tab rows 13, pinned/top-tab 12, bar 17/15/14) | Layout-bound; keep. |
 | Weights | | 600 (75), 500 (34), 700, 300 (italic light for "What's new", "Hello!"), 200 (intro wordmark 64pt, tracking −1.5) | Mixed | The thin 64pt wordmark and italic-light display lines echo Dia's onboarding. Cheap to restyle. |
-| Site / film type | `apps/site/src/styles/global.css` L23-25, `apps/launch-video/src/theme.ts` | Archivo Variable (poster), Newsreader Variable (serif), Martian Mono Variable; film uses Archivo | Netnyahoo | Candidate source for an in-app display face. |
+| Site type | `apps/site/src/styles/global.css` L23-25 | Archivo Variable (poster), Newsreader Variable (serif), Martian Mono Variable | Netnyahoo | Candidate source for an in-app display face. |
 
 ## 6. Onboarding, About, Settings, release notes
 
@@ -290,7 +290,6 @@ notes headlines, the outro postcard, tour copy. In-app chrome copy outside those
 | Liquid Glass sidebar | `components/sidebar/Glass.tsx`, `GLASS` tokens | Arc-style neutral grey glass | Arc-derived | Could become the default "non-Dia" look. |
 | Task manager | `taskManager/TaskManagerWindow.tsx` | Chrome/Dia-style table, app icon for the browser row | Generic | Leave. |
 | Website | `apps/site` | Campaign poster system (§1, §6) | Netnyahoo | Source of truth for a new in-app identity. |
-| Launch film | `apps/launch-video/src/theme.ts` | #060607 / #F5F3EF / grey #A09C96 / red #D9432A, Archivo; every UI frame is a real capture, so it shows the Dia-looking app | Netnyahoo frame, Dia-looking content | Re-capture after a rebrand. |
 
 ## 10. Biggest-ticket items
 

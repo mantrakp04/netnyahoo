@@ -1,0 +1,6 @@
+node_modules
+out
+.DS_Store
+# Footage and music are large and live outside git; copy them into public/ to render
+public/footage
+public/music

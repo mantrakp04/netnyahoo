@@ -36,7 +36,7 @@ git log --oneline v<previous>..HEAD
 
 Anything modified or untracked under `apps/browser`, `packages/` or `apps/browser/macos` that isn't
 committed would end up in the build. If it belongs to a running agent, wait for it or ask; don't commit
-someone else's work in progress. Untracked files under `apps/launch-video`, `apps/site` or `output/` don't
+someone else's work in progress. Untracked files under `apps/videos`, `apps/site` or `output/` don't
 affect the app.
 
 `<previous>` is the last tag (`git describe --tags --abbrev=0`). The next version bumps the patch
@@ -51,7 +51,7 @@ the most noticeable change — deadpan, true, political theatre only), then `## 
 
 Source material: `git log --format='%h %s%n%b' v<previous>..HEAD -- apps/browser packages`. The commit
 bodies already describe the user-visible symptom; translate them, don't paste them. Leave out the site,
-the launch video, docs and version bumps. Each bold lead says what the user can do or what stopped being
+the videos, docs and version bumps. Each bold lead says what the user can do or what stopped being
 broken; no file names, flags or commit hashes.
 
 Check it renders: `pnpm -C apps/site build` and grep the headline in

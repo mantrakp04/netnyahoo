@@ -101,15 +101,13 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   Only the owner posts it.
 - **Other public actions** (a site deploy outside a release, posting anywhere) need the owner's OK first.
 
-## Site and launch films
+## Site and videos
 - **Site** (`apps/site`, Astro): short and witty, with real product captures and no generic AI-site
   patterns. It has to look great on phones.
-- **Launch films** (`apps/launch-video`, Remotion; renders go to `output/launch-video/`):
-  - Follow the Apple framework: design and storyboard first, one idea per shot, eased and overlapping
-    motion, a beat grid, and a subtractive sound pass. The edit check must pass before rendering.
-  - Every UI pixel is a real capture of the app.
+- **Videos** (`apps/videos`): Remotion videos (Remocn Studio project); each folder in `src/videos` is a
+  composition; render with `pnpm -C apps/videos render <id>`.
 
 ## Repo map
 `apps/browser` is the React Native macOS app. The native Expo modules are in `packages/{nncore,shell,shaders,import,sync}`; `engine/chromium` is our Chrome-services code (the `nn_*` C calls) and `engine/nncore` NNCore's window and tab layer,
 and `packages/core` holds the omnibox logic and its tests. `apps/site` is netnyahoo.com and
-`apps/launch-video` holds the launch films. The license is Apache-2.0.
+`apps/videos` holds the Remotion videos. The license is Apache-2.0.
