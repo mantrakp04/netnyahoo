@@ -18,12 +18,20 @@ const PR_FIELDS = `
     }
   }`;
 
+// One query for every PR's details timed out on GitHub's side (a 502 after ~10 s) for an account with ~60 authored PRs
+// and ~130 review requests: one 50-PR search with these fields took 7-10 s alone. The searches ask only for ids, and
+// the details come in pages of DETAILS_PAGE (~2.5 s each), fetched in parallel (sources.ts).
 export const GITHUB_QUERY = `query LiveFolder($authored: String!, $review: String!, $direct: String!) {
   viewer { login name avatarUrl(size: 64) }
-  authored: search(query: $authored, type: ISSUE, first: 50) { nodes { ${PR_FIELDS} } }
-  review: search(query: $review, type: ISSUE, first: 50) { nodes { ${PR_FIELDS} } }
+  authored: search(query: $authored, type: ISSUE, first: 50) { nodes { ... on PullRequest { id } } }
+  review: search(query: $review, type: ISSUE, first: 50) { nodes { ... on PullRequest { id } } }
   direct: search(query: $direct, type: ISSUE, first: 50) { nodes { ... on PullRequest { id } } }
 }`;
+
+// `state`: a PR can close or merge between the searches (is:open) and this query; withDetails drops it.
+export const GITHUB_DETAILS_QUERY = `query LiveFolderDetails($ids: [ID!]!) { nodes(ids: $ids) { ${PR_FIELDS} ... on PullRequest { state } } }`;
+
+export const DETAILS_PAGE = 10;
 
 export const GITHUB_VARIABLES = {
   authored: "is:pr is:open author:@me archived:false sort:updated-desc",
@@ -41,8 +49,9 @@ type RawCheck =
   | { __typename: "CheckRun"; name: string; status: string; conclusion: string | null; detailsUrl: string | null }
   | { __typename: "StatusContext"; context: string; state: string; targetUrl: string | null };
 
-type RawPR = {
+export type RawPR = {
   id: string;
+  state?: "OPEN" | "CLOSED" | "MERGED";
   number: number;
   title: string;
   url: string;
@@ -65,8 +74,8 @@ type RawPR = {
 export type GithubResponse = {
   data?: {
     viewer: { login: string; name: string | null; avatarUrl: string };
-    authored: { nodes: (RawPR | Record<string, never>)[] };
-    review: { nodes: (RawPR | Record<string, never>)[] };
+    authored: { nodes: (RawPR | { id: string } | Record<string, never>)[] };
+    review: { nodes: (RawPR | { id: string } | Record<string, never>)[] };
     direct: { nodes: ({ id: string } | Record<string, never>)[] };
   };
   errors?: { type?: string; message: string }[];
@@ -129,6 +138,25 @@ function mapPR(raw: RawPR, section: PullRequestSection): LiveItem {
 }
 
 const isPR = (n: object): n is RawPR => "number" in n;
+
+// The ids whose details the folder shows (GITHUB_DETAILS_QUERY), each once.
+export function detailIds(json: GithubResponse, filters: { authored: boolean; reviewRequests: boolean }): string[] {
+  const data = json.data;
+  if (!data) return [];
+  const sections = [filters.authored && data.authored, filters.reviewRequests && data.review].filter((x) => !!x);
+  return [...new Set(sections.flatMap((section) => section.nodes.map((n) => ("id" in n ? n.id : "")).filter(Boolean)))];
+}
+
+// The search response with each id replaced by its details; an id without open details (closed, merged or deleted
+// between the two queries) drops out.
+export function withDetails(json: GithubResponse, details: (RawPR | null)[]): GithubResponse {
+  const data = json.data;
+  if (!data) return json;
+  const byId = new Map(details.filter((d): d is RawPR => !!d && isPR(d) && d.state === "OPEN").map((d) => [d.id, d]));
+  const fill = (nodes: (RawPR | { id: string } | Record<string, never>)[]) =>
+    nodes.flatMap((n) => ("id" in n && byId.has(n.id) ? [byId.get(n.id)!] : []));
+  return { ...json, data: { ...data, authored: { nodes: fill(data.authored.nodes) }, review: { nodes: fill(data.review.nodes) } } };
+}
 
 export function mapGithub(json: GithubResponse, filters: { authored: boolean; reviewRequests: boolean }): LiveItem[] {
   const data = json.data;

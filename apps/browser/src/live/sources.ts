@@ -1,5 +1,5 @@
 import { CONFLUENCE_CQL, DRIVE_QUERY, mapBitbucket, mapConfluence, mapDrive, mapNotion, NOTION_SEARCH_BODY, type BitbucketPR, type BitbucketStatuses, type ConfluenceSearch, type DriveFiles, type NotionSearch, type NotionUsers } from "./documents";
-import { GITHUB_QUERY, GITHUB_STATE_QUERY, GITHUB_VARIABLES, mapGithub, VIEWER_QUERY, type GithubResponse } from "./github";
+import { DETAILS_PAGE, detailIds, GITHUB_DETAILS_QUERY, GITHUB_QUERY, GITHUB_STATE_QUERY, GITHUB_VARIABLES, mapGithub, VIEWER_QUERY, withDetails, type GithubResponse, type RawPR } from "./github";
 import { basic, deleteSecret, endpoints, form, getSecret, request, setSecret } from "./net";
 import { live, setAccount, updateConfig } from "./store";
 import { LiveError, type CompletionState, type LiveAccount, type LiveFolder, type LiveItem, type LiveSourceId } from "./types";
@@ -38,8 +38,22 @@ const github: LiveSource = {
   kind: "pullRequests",
   site: "https://github.com",
   async fetch(folder) {
-    const json = await githubGraphql<GithubResponse>(await secret("github"), GITHUB_QUERY, GITHUB_VARIABLES);
-    return mapGithub(json, folder.filters);
+    const token = await secret("github");
+    const json = await githubGraphql<GithubResponse>(token, GITHUB_QUERY, GITHUB_VARIABLES);
+    const ids = detailIds(json, folder.filters);
+    const pages = Array.from({ length: Math.ceil(ids.length / DETAILS_PAGE) }, (_, i) => ids.slice(i * DETAILS_PAGE, (i + 1) * DETAILS_PAGE));
+    const page = async (ids: string[]) => {
+      const res = await githubGraphql<{ data?: { nodes: (RawPR | null)[] }; errors?: { message: string }[] }>(token, GITHUB_DETAILS_QUERY, { ids });
+      // Errors beside data leave some PRs out, and a PR left out of a successful fetch counts as merged or reviewed
+      // (resolveGone): fail the refresh instead, which keeps the folder's PRs as they were.
+      if (res.errors?.length) throw new LiveError("other", res.errors[0]!.message);
+      return res.data?.nodes ?? [];
+    };
+    // Every page or none (a partial result would read as PRs gone); a page is small, so a failure is retried once.
+    const retry = (ids: string[]) => (error: unknown) =>
+      error instanceof LiveError && (error.kind === "other" || error.kind === "network") ? page(ids) : Promise.reject(error);
+    const details = await Promise.all(pages.map((ids) => page(ids).catch(retry(ids))));
+    return mapGithub(withDetails(json, details.flat()), folder.filters);
   },
   async resolveGone(items) {
     const prs = items.filter((it) => it.source === "github");
