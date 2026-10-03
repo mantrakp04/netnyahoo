@@ -254,6 +254,8 @@ enum MainMenu {
       cmd("New Window", "newWindow", "n"),
       cmd("New Incognito Window", "newIncognitoWindow", "n", [.command, .shift]),
       cmd("New Small Yahu Window", "newSmallYahu", "n", [.command, .option]),
+      // Its title says where links from other apps will go once chosen (JS sets it from the setting).
+      cmd("Open Links from Other Apps in Main Window", "toggleOpenLinksInSmallYahu"),
       cmd("Reopen Closed Tab", "reopenClosedTab", "t", [.command, .shift]),
       cmd("Reopen Closed Window", "reopenClosedWindow"),
       cmd("Open File…", "openFile", "o"),

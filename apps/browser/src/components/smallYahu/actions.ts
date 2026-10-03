@@ -1,6 +1,6 @@
-import { focus, openUrls, openWindow } from "../../lib/actions";
+import { focus, openWindow } from "../../lib/actions";
 import { useBrowser } from "../../store/browser";
-import { activeTabId, resolveWindowId } from "../../store/model";
+import { activeTabId } from "../../store/model";
 import { isSmall, mainWindowFor } from "../../store/small";
 
 const store = () => useBrowser.getState();
@@ -14,16 +14,29 @@ export function openSmallYahu(url?: string, profileId?: string): string {
 
 const opensInSmallYahu = (url: string) => /^(https?|file):/i.test(url);
 
-// URLs from other apps (Launch Services, `open`, Handoff): one web link opens in its own Small Yahu, even when a
-// Small Yahu is already in front; several at once, or with the setting off, open as tabs like before.
+// URLs from other apps (Launch Services, `open`, Handoff) open in the default profile (Settings › Profiles). With
+// Settings › General › "Open links from other apps in" Small Yahu, one web link opens in its own Small Yahu, even when a
+// Small Yahu is already in front; several at once, or set to a new tab, they open as tabs of the main window.
 export function openExternalUrls(urls: string[]) {
   const [url] = urls;
-  if (store().settings.openLinksInSmallYahu && urls.length === 1 && url && opensInSmallYahu(url)) return void openSmallYahu(url);
-  const inFront = store().ui.focusedWindowId;
-  openUrls(urls);
-  // The tabs went to a main window; show it rather than leave them behind the Small Yahu in front.
-  const target = resolveWindowId(store(), null);
-  if (target && isSmall(store(), inFront)) focus(target);
+  const profileId = store().settings.defaultProfileId;
+  if (store().settings.openLinksInSmallYahu && urls.length === 1 && url && opensInSmallYahu(url)) return void openSmallYahu(url, profileId);
+  openLinksInMainWindow(urls, profileId);
+}
+
+// New tabs in the frontmost main window showing the profile (else the frontmost main window, paged to it), which
+// comes forward; a new window when there's none. The blank window a launch opens takes the first link itself.
+function openLinksInMainWindow(urls: string[], profileId: string) {
+  let target = mainWindowFor(store(), profileId);
+  for (const url of urls) {
+    const s = store();
+    const w = target ? s.windows[target] : undefined;
+    const blank = w && w.tabIds.length === 1 ? s.tabs[w.tabIds[0]!] : undefined;
+    if (!w) target = openWindow({ url, profileId });
+    else if (blank && !blank.url && !blank.navigation && blank.profileId === profileId && !s.windowUi[w.id]?.panel.open) s.navigate(blank.id, url);
+    else s.newTab(w.id, { url, profileId });
+  }
+  if (target) focus(target);
 }
 
 // ⌘O / the bar's button: the live page (history, scroll, playback) moves into the frontmost main window of its

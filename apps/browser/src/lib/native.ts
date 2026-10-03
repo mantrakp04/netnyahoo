@@ -258,6 +258,8 @@ export function menuState(s: BrowserState): MenuState {
     titles.bookmarkPage = "Edit Bookmark…";
   }
 
+  if (!s.settings.openLinksInSmallYahu) titles.toggleOpenLinksInSmallYahu = "Open Links from Other Apps in Small Yahu";
+
   const sidebar = sidebarMenuState(s, windowId);
   disabled.push(...sidebar.disabled);
   Object.assign(titles, sidebar.titles);

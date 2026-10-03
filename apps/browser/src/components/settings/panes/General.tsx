@@ -50,10 +50,22 @@ export function GeneralPane() {
           <Toggle value={settings.warnBeforeClosingWindow} onChange={(v) => update({ warnBeforeClosingWindow: v })} />
         </Row>
         <Row
-          title="Open links from other apps in Small Yahu"
-          description={`A link from Mail, Slack or Notes opens in a small window of its own. ⌘O moves it into ${APP}; closing it throws it away.`}
+          title="Open links from other apps in"
+          description={
+            settings.openLinksInSmallYahu
+              ? `A link from Discord, Slack or Mail opens in Small Yahu, a small window of its own. ⌘O moves it into ${APP}; closing it throws it away.`
+              : `A link from Discord, Slack or Mail opens as a new tab in your ${APP} window, in the default profile.`
+          }
         >
-          <Toggle value={settings.openLinksInSmallYahu} onChange={(v) => update({ openLinksInSmallYahu: v })} />
+          <PopUp
+            value={settings.openLinksInSmallYahu ? "small" : "tab"}
+            options={[
+              { value: "small", title: "Small Yahu" },
+              { value: "tab", title: "A new tab" },
+            ]}
+            onChange={(v) => update({ openLinksInSmallYahu: v === "small" })}
+            minWidth={190}
+          />
         </Row>
       </Group>
 

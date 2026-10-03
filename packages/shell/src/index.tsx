@@ -10,6 +10,7 @@ export type BrowserCommand =
   | "newWindow"
   | "newIncognitoWindow"
   | "newSmallYahu"
+  | "toggleOpenLinksInSmallYahu"
   | "reopenClosedTab"
   | "reopenClosedWindow"
   | "restoreClosed"

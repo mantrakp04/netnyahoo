@@ -58,6 +58,8 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
       return void openWindow({ incognito: true });
     case "newSmallYahu":
       return void openSmallYahu();
+    case "toggleOpenLinksInSmallYahu":
+      return s.updateSettings({ openLinksInSmallYahu: !s.settings.openLinksInSmallYahu });
     case "reopenClosedWindow":
       return s.reopenClosedWindow();
     case "setAppearance":
