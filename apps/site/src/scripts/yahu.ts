@@ -144,6 +144,9 @@ export async function createYahu(modelUrl: string, host: HTMLElement, framing: F
     camera.aspect = width / height;
     camera.fov = baseFov / Math.min(1, camera.aspect / 0.8);
     camera.updateProjectionMatrix();
+    // setSize clears the canvas, and a ResizeObserver runs after this frame's animation frames: drawn now, or he's
+    // blank for a frame on every resize (a window, a browser's toolbar).
+    if (visible && !document.hidden) renderer.render(scene, camera);
     dirty = true;
     invalidate();
   };
