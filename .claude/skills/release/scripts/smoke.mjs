@@ -324,6 +324,26 @@ try {
 }
 check("a page that stops responding is reported (Page Unresponsive)", !!hang, hang ?? "no unresponsive event within 28 s");
 
+// A link from another app (Discord, Mail; the app is the default browser) opens in Small Yahu: a real GURL Apple Event
+// to this instance's pid, as Launch Services sends it. 0.2.22 and 0.2.23 dropped every one (AppKit installed no GURL
+// handler: NNCoreHost.mm's bootstrap delegate came after -finishLaunching registered them).
+const linkUrl = `${pages}/form.html?from-another-app`;
+const linkWindow = `const s = nn.store.getState();
+  return Object.values(s.windows).find((w) => w.kind === "small" && s.tabs[w.tabIds[0]]?.url === ${JSON.stringify(linkUrl)})?.id ?? null;`;
+let linked = null;
+let linkedPage = false;
+try {
+  execFileSync(process.env.SMOKE_GURL, [String(pid), linkUrl]);
+  for (const end = Date.now() + 10000; !(linked && linkedPage) && Date.now() < end; await sleep(250)) {
+    linked = await instance.eval(linkWindow, { timeout: 5000 }).catch(() => null);
+    linkedPage = (await instance.targets()).some((t) => t.type === "page" && t.url === linkUrl);
+  }
+} catch (error) {
+  console.log(`note: ${error.message}`);
+}
+check("a link from another app (a GURL Apple Event) opens in Small Yahu", !!linked && linkedPage,
+  linked ? `${linked}${linkedPage ? "" : ", but no page loaded"}` : "no Small Yahu within 10 s");
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);
 process.exit(failed ? 1 : 0);

@@ -345,6 +345,7 @@ class Instance {
  *             on its default data, as an installed copy; `data` is then the folder its dev harness reads);
  *             `switches` Chromium switches (string or array)
  *   args      arguments after --args (they reach Chrome's command line)
+ *   urls      URLs the launch opens (`open -a <app> <url>…`): a cold launch from a link in another app
  *   js        "pinned" (default: Metro through a proxy that refuses reloads), "live" (Metro itself), "host:port",
  *             or "none" (a Release build's own bundle); `metroPort` (default METRO_PORT or 8081)
  *   port      the DevTools port (default a free one); `log` the app's stdout and stderr (default <data>/app.out.log)
@@ -390,7 +391,7 @@ export async function launch(app, opts = {}) {
   const launchedAt = Date.now();
   // As AGENTS.md says: `open -g -n` with the environment, never a plain open, so it can't take focus.
   execFileSync("open", ["-g", "-n", ...Object.entries(env).filter(([, v]) => v !== null && v !== undefined).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
-    "--stdout", log, "--stderr", log, app, ...(opts.args?.length ? ["--args", ...opts.args] : [])]);
+    "--stdout", log, "--stderr", log, ...(opts.urls?.length ? ["-a", app, ...opts.urls] : [app]), ...(opts.args?.length ? ["--args", ...opts.args] : [])]);
   let owned = null;
   for (const end = Date.now() + (opts.startTimeout ?? 60000); !owned && Date.now() < end; await sleep(100)) {
     let info;

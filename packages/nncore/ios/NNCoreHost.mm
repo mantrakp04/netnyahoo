@@ -78,8 +78,9 @@ bool IsTeamSigned() {
 
 }  // namespace
 
-// NSApp's delegate from the moment AppKit finishes launching (inside Chromium's loop, before the engine is up) until
-// the app's own is made: a cold launch's open-URL events arrive then, and are handed on once it exists.
+// NSApp's delegate from the start of -[NSApp finishLaunching] (inside Chromium's loop, before the engine is up) until
+// the app's own is made: a cold launch's open-URL events arrive then, and are handed on once it exists. Being there
+// when AppKit registers its Apple event handlers is also what makes AppKit handle GURL events at all (runWithArgc).
 @interface NNCoreBootstrapDelegate : NSObject <NSApplicationDelegate>
 @property(nonatomic, readonly) NSMutableArray<NSURL *> *urls;
 @end
@@ -275,14 +276,25 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   nncore_host::InstallTestCrashGuard(scratch && nncore_host::Background() ? scratch.stringByStandardizingPath : nil);
   nncore_host::InstallActivationGuardsEarly();
   nncore_host::PrepareContentBlocker();
+  // The bootstrap delegate goes in at the start of -[NSApp finishLaunching], before AppKit registers its Apple event
+  // handlers there: AppKit installs its open-URL (GURL) handler only when NSApp.delegate answers
+  // application:openURLs: at that moment, and never later. Set from the WillFinishLaunching notification (posted after
+  // the registration), it left no GURL handler: 0.2.22 and 0.2.23 dropped every link from other apps. Not earlier:
+  // Chrome's startup (ChromeBrowserMainPartsMac::PreCreateThreads) expects no delegate before the loop runs.
+  Method finishLaunching = class_getInstanceMethod(NSApplication.class, @selector(finishLaunching));
+  IMP appKitFinishLaunching = method_getImplementation(finishLaunching);
+  method_setImplementation(finishLaunching, imp_implementationWithBlock(^(NSApplication *app) {
+    if (!gAppDelegate && !app.delegate) {
+      gBootstrap = [NNCoreBootstrapDelegate new];
+      app.delegate = gBootstrap;
+    }
+    ((void (*)(id, SEL))appKitFinishLaunching)(app, @selector(finishLaunching));
+  }));
   [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationWillFinishLaunchingNotification
                                                   object:nil
                                                    queue:nil
                                               usingBlock:^(NSNotification *) {
                                                 gAppKitWillFinish = true;
-                                                if (gAppDelegate || NSApp.delegate) return;
-                                                gBootstrap = [NNCoreBootstrapDelegate new];
-                                                NSApp.delegate = gBootstrap;
                                               }];
   if (getenv("NETNYAHOO_TRACE_VISIBILITY")) {
     // What can hide every page at once: a window's occlusion (macOS's or Chrome's own checker), displays asleep, the
