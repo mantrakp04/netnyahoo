@@ -6,13 +6,19 @@ const dir = new URL(".", import.meta.url);
 const load = (name) => JSON.parse(readFileSync(new URL(name, dir), "utf8"));
 
 let github;
+// Every PR the mock knows, listed by a search or not (merged, closed, reviewed): the details come from here.
+let prs;
 let state;
 let approved;
+// /mock/details-error: how the details query fails for one PR (FORBIDDEN, NOT_FOUND, FIELD, OTHER or PAGE).
+let detailsError;
 const log = [];
 function reset() {
   github = load("github.json");
+  prs = new Map([...github.data.authored.nodes, ...github.data.review.nodes].map((n) => [n.id, n]));
   state = {};
   approved = false;
+  detailsError = null;
 }
 reset();
 
@@ -56,8 +62,15 @@ createServer(async (req, res) => {
     const n = 500 + nodes("review").length;
     Object.assign(template, { id: `PR_${n}`, number: n, title: `New review request #${n}`, url: `https://github.com/acme/browser/pull/${n}`, updatedAt: new Date().toISOString() });
     github.data.review.nodes.unshift(template);
+    prs.set(template.id, template);
     github.data.direct.nodes.push({ id: template.id });
     return send(res, 200, { ok: true, id: template.id });
+  }
+
+  if (p === "/mock/details-error") {
+    const id = url.searchParams.get("id");
+    detailsError = id ? { id, type: url.searchParams.get("type") ?? "OTHER" } : null;
+    return send(res, 200, { ok: true, detailsError });
   }
 
   if (p === "/github/login/device/code") return send(res, 200, { device_code: "mock-device", user_code: "WDJB-MJHT", verification_uri: `http://127.0.0.1:${port}/github/login/device`, expires_in: 900, interval: 1 });
@@ -70,8 +83,16 @@ createServer(async (req, res) => {
     if (auth !== "Bearer mock-token") return send(res, 401, { message: "Bad credentials" });
     const { query, variables } = JSON.parse(body || "{}");
     if (query.includes("LiveFolderDetails")) {
-      const all = new Map([...nodes("authored"), ...nodes("review")].map((n) => [n.id, n]));
-      return send(res, 200, { data: { nodes: variables.ids.map((id) => (all.has(id) ? { ...all.get(id), state: state[id] ?? "OPEN" } : null)) } });
+      const i = detailsError ? variables.ids.indexOf(detailsError.id) : -1;
+      if (i >= 0 && detailsError.type === "PAGE") return send(res, 502, { message: "Server Error" });
+      const details = variables.ids.map((id) => (prs.has(id) ? { ...prs.get(id), state: state[id] ?? "OPEN" } : null));
+      if (i < 0) return send(res, 200, { data: { nodes: details } });
+      const field = detailsError.type === "FIELD";
+      if (field) details[i] = { ...details[i], commits: { nodes: [{ commit: { statusCheckRollup: null } }] } };
+      else details[i] = null;
+      const path = field ? ["nodes", i, "commits", "nodes", 0, "commit", "statusCheckRollup"] : ["nodes", i];
+      const error = { type: field ? "FORBIDDEN" : detailsError.type, path, message: `Mock ${detailsError.type} for ${detailsError.id}` };
+      return send(res, 200, { data: { nodes: details }, errors: [error] });
     }
     if (query.includes("LiveFolderGone")) return send(res, 200, { data: { nodes: variables.ids.map((id) => ({ id, state: state[id] ?? "OPEN" })) } });
     if (!query.includes("search(")) return send(res, 200, { data: { viewer: github.data.viewer } });

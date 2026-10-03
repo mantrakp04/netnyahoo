@@ -1,4 +1,4 @@
-import type { CheckState, LiveItem, PullRequestCheck, PullRequestInfo, PullRequestSection } from "./types";
+import { LiveError, type CheckState, type LiveItem, type PullRequestCheck, type PullRequestInfo, type PullRequestSection } from "./types";
 
 const PR_FIELDS = `
   ... on PullRequest {
@@ -145,6 +145,29 @@ export function detailIds(json: GithubResponse, filters: { authored: boolean; re
   if (!data) return [];
   const sections = [filters.authored && data.authored, filters.reviewRequests && data.review].filter((x) => !!x);
   return [...new Set(sections.flatMap((section) => section.nodes.map((n) => ("id" in n ? n.id : "")).filter(Boolean)))];
+}
+
+type GraphqlError = { type?: string; message: string; path?: (string | number)[] };
+export type DetailsResponse = { data?: { nodes?: (RawPR | null)[] } | null; errors?: GraphqlError[] };
+
+// One details page's PRs. A PR missing from a successful fetch counts as merged or reviewed (resolveGone), so a page
+// that may have lost PRs to a passing failure fails the refresh instead, which keeps the folder's PRs as they were.
+// Other errors beside data are kept to what they touch: a field error (a token that can't read checks, say) leaves
+// the PR with that field empty, and a PR GitHub can't find or won't show (deleted, or behind SSO) drops out; failing
+// for those would stop every refresh for as long as the search lists the PR.
+export function detailNodes(ids: string[], res: DetailsResponse): RawPR[] {
+  const errors = res.errors ?? [];
+  const limited = errors.find((e) => e.type === "RATE_LIMITED");
+  if (limited) throw new LiveError("rateLimited", limited.message);
+  const nodes = res.data?.nodes;
+  const fail = (error?: GraphqlError) => new LiveError("other", (error ?? errors[0])?.message ?? "Missing pull request details");
+  if (!nodes || nodes.length !== ids.length) throw fail();
+  return nodes.filter((node, i): node is RawPR => {
+    if (node) return true;
+    const error = errors.find((e) => e.path?.[0] === "nodes" && e.path[1] === i);
+    if (error?.type === "NOT_FOUND" || error?.type === "FORBIDDEN") return false;
+    throw fail(error);
+  });
 }
 
 // The search response with each id replaced by its details; an id without open details (closed, merged or deleted

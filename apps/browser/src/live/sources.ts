@@ -1,5 +1,5 @@
 import { CONFLUENCE_CQL, DRIVE_QUERY, mapBitbucket, mapConfluence, mapDrive, mapNotion, NOTION_SEARCH_BODY, type BitbucketPR, type BitbucketStatuses, type ConfluenceSearch, type DriveFiles, type NotionSearch, type NotionUsers } from "./documents";
-import { DETAILS_PAGE, detailIds, GITHUB_DETAILS_QUERY, GITHUB_QUERY, GITHUB_STATE_QUERY, GITHUB_VARIABLES, mapGithub, VIEWER_QUERY, withDetails, type GithubResponse, type RawPR } from "./github";
+import { DETAILS_PAGE, detailIds, detailNodes, GITHUB_DETAILS_QUERY, GITHUB_QUERY, GITHUB_STATE_QUERY, GITHUB_VARIABLES, mapGithub, VIEWER_QUERY, withDetails, type DetailsResponse, type GithubResponse } from "./github";
 import { basic, deleteSecret, endpoints, form, getSecret, request, setSecret } from "./net";
 import { live, setAccount, updateConfig } from "./store";
 import { LiveError, type CompletionState, type LiveAccount, type LiveFolder, type LiveItem, type LiveSourceId } from "./types";
@@ -42,13 +42,7 @@ const github: LiveSource = {
     const json = await githubGraphql<GithubResponse>(token, GITHUB_QUERY, GITHUB_VARIABLES);
     const ids = detailIds(json, folder.filters);
     const pages = Array.from({ length: Math.ceil(ids.length / DETAILS_PAGE) }, (_, i) => ids.slice(i * DETAILS_PAGE, (i + 1) * DETAILS_PAGE));
-    const page = async (ids: string[]) => {
-      const res = await githubGraphql<{ data?: { nodes: (RawPR | null)[] }; errors?: { message: string }[] }>(token, GITHUB_DETAILS_QUERY, { ids });
-      // Errors beside data leave some PRs out, and a PR left out of a successful fetch counts as merged or reviewed
-      // (resolveGone): fail the refresh instead, which keeps the folder's PRs as they were.
-      if (res.errors?.length) throw new LiveError("other", res.errors[0]!.message);
-      return res.data?.nodes ?? [];
-    };
+    const page = async (ids: string[]) => detailNodes(ids, await githubGraphql<DetailsResponse>(token, GITHUB_DETAILS_QUERY, { ids }));
     // Every page or none (a partial result would read as PRs gone); a page is small, so a failure is retried once.
     const retry = (ids: string[]) => (error: unknown) =>
       error instanceof LiveError && (error.kind === "other" || error.kind === "network") ? page(ids) : Promise.reject(error);
