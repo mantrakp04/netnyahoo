@@ -150,6 +150,8 @@ Test hygiene the run keeps (each was a real failure):
 | status-text, load-error | `onStatus` (a hovered link), `onLoadError` |
 | context-menu-search | Chrome's page menu with the app's "Search <engine> for “…”" in place of Chrome's search item (`setSearchEngineName`; background mode reports the menu) |
 | duplicate-and-reopen | Duplicate (`clone:`) copies the back/forward list; ⇧⌘T (`restore:`) brings a closed tab back with its own list from Chrome's TabRestoreService |
+| closed-tabs-own-lists | Two tabs on the same page closed a moment apart each reopen with their own back/forward list (the entry tagged with the tab's id, `nn_tab_restore_tag`), also after ⌘Q and a relaunch |
+| js-reload-keeps-pages | A JS reload (development: Metro) parks each tab's page for its next view: no second load, no second history visit |
 | device-chooser | WebUSB `requestDevice` → the app's chooser (`onDeviceChooser`); `cancelDeviceChooser` → the page gets NotFoundError |
 | cast-dialog | `showCastDialog` → `onCastDialog` ("Cast tab"), `onCastRoutes` for the profile, `closeCastDialog` |
 | crash | A renderer crash → `onCrashed`, the app keeps running |
@@ -158,17 +160,17 @@ Test hygiene the run keeps (each was a real failure):
 | autofill, autofill-cards | Addresses; cards saved with a published test number, listed, revealed, deleted; the address and card switches |
 | zoom-levels | `setZoom`/`getZoomLevels` on Chrome's host zoom map |
 | extensions, extension-surfaces | Unpacked inspect, install, list, disable, uninstall, reload; action state and side panel URL for a tab; the extension's declarativeNetRequest blocks counted on the page (`onContentBlocked`) |
-| chrome-windows-create | `chrome.windows.create` from an extension → the tab lands in the app's window as a live tab (`tab:<id>`) |
+| chrome-windows-create | `chrome.windows.create` from an extension → the tab lands in the app's window as a live tab (`tab:<id>`), also on a fresh instance showing only the New Tab page (through the extensions module's `onTabs` with an `adoptId`) |
 | extension-popup-window | An action's popup (`extensionHost="popup"`) sees the window it was clicked in as its current window and the page under it as its active tab; it's in no strip and makes no window; Esc in it closes it |
 | extension-windows-hidden | `chrome.windows.getAll` lists only the app's windows; an extension's tab on install and its options page land in the app's window; no window the app didn't show comes on screen |
 | extension-download-hidden | A .crx from the Web Store's update URL (`--apps-gallery-update-url`) is no download in the app, and doesn't open the popover |
 | content-blocked-count | An extension's rules on a page: a blocked image and a script redirected to its stand-in count 2 |
 | extension-installed-bubble | A .crx installed with Chrome's UI (`installCrx`): the "added" bubble shows over the profile's window and closes with it; with the profile's windows closed mid-install nothing shows or crashes until a window of it shows a page, then the bubble does |
 | context-menu-reading-mode | The page menu has no "Open in Reading Mode" or "Listen to this page", and no doubled separator |
-| content-blocker, settings-services | uBlock Origin Lite as a component extension: state, lists, allow-list, on/off, a list toggled; clearing browsing data, resetting a site, an external-app allowance, a tab's site data |
+| content-blocker, settings-services | uBlock Origin Lite as a component extension: state, lists, allow-list, on/off, a list toggled (also with a profile deleted just before); clearing browsing data, resetting a site, an external-app allowance, a tab's site data |
 | download, download-controls, download-navigation | Downloads land in the scratch folder through Chrome's manager and the app's list; pause, resume and cancel a running one; a navigation that became a download |
 | site-settings | Set, get, origins, clear site data |
-| tasks-components, tracing | Chrome's task manager (with tab ids), components, tracing start/stop |
+| tasks-components, tracing | Chrome's task manager (with tab ids), components, tracing start/stop (also on a fresh instance showing only the New Tab page) |
 | delete-profile-data | A loaded profile deleted through Chrome's profile deletion; its folder goes |
 | page-events | `zoomStep` → `onZoom`, `getSecurityInfo` and `onSecurity`, an app link with no app → `onExternalApp`, Esc the page leaves → `onCommand escape` |
 | notifications | A page's `Notification` → `onNotification`, the app's click reaches the page, `close()` → `onNotificationClose` |

@@ -78,13 +78,6 @@ const needs = {
   "context-menu-incognito": ["context-menu-log"],
   // Personal set its cookie and the window showed Play when the app quit.
   "relaunch-profile": ["last-used-profile", "quit"],
-  // A web page open before them: with only the New Tab page (a fresh instance) a renderer crash never reaches the app,
-  // endTracing doesn't answer and chrome.windows.create's tab never shows up (2026-10-02; leads, not yet looked into).
-  "crash": ["open-url"],
-  "tracing": ["open-url"],
-  "chrome-windows-create": ["open-url"],
-  // fullscreen-native's "tab closed mid-transition" step passes in a full run only (alone, with open-url, the window
-  // stays full screen; cause not found yet).
 };
 // Every check's name and section, from this file's source (no app needed).
 function checkIndex() {
@@ -188,8 +181,11 @@ const stamp = () => new Date().toISOString().slice(11, 23);
 
 // Requests that reached a host other than the fixture's own (the ad hosts mapped here, content-blocker-blocks).
 const adServed = [];
+// Every request's path and query, counted (js-reload-keeps-pages: a page loaded once).
+const served = new Map();
 const server = createServer((req, res) => {
   if (!req.headers.host?.startsWith("127.0.0.1")) adServed.push(`${req.headers.host}${req.url}`);
+  served.set(req.url, (served.get(req.url) ?? 0) + 1);
   const url = new URL(req.url, "http://x");
   const page = (title, body, extra = "") =>
     `<!doctype html><html><head><title>${title}</title><link rel="icon" href="/icon.png">${extra}</head><body>${body}</body></html>`;
@@ -2109,9 +2105,12 @@ try {
   await check("crash", async () => {
     // A renderer crash reaches the app (onCrashed → the sad tab), and the app keeps running.
     await evalApp(`nn.actions.openUrls(["${base}/crash-me"], ${JSON.stringify(mainWindow)}); return true`);
-    const tab = await until("the tab to crash", async () => (await state()).tabs.find((x) => x.url?.includes("crash-me") && !x.loading));
+    // Its page committed and loaded (its title), not only the tab's URL: on a fresh instance the first navigation is
+    // slow, and Page.crash then took the initial empty document's renderer, which the navigation replaced.
+    const tab = await until("the tab to crash", async () => (await state()).tabs.find((x) => x.url?.includes("crash-me") && x.title === "/crash-me" && x.loading === false));
     const t = await pageTarget("crash-me");
-    await cdp(t, "Page.crash").catch(() => null);
+    // Page.crash never answers (the page is gone): not waited for.
+    cdp(t, "Page.crash").catch(() => null);
     const crashed = await until("onCrashed", async () => evalApp(`return nn.pageState.getState().pages["${tab.id}"]?.crashed ?? null`), 10000);
     return { crashed };
   });
@@ -2652,16 +2651,26 @@ try {
         };
         return { adnxs: await reached(`http://ib.adnxs.com/ut/v3?${tag}`), gpt: await reached(`http://securepubads.g.doubleclick.net/tag/js/gpt.js?${tag}`), adsbygoogle: await script() };
       };
+      const stopped = (r) => !r.adnxs.reached && !r.gpt.reached && r.adnxs.fetch === "failed" && !r.adsbygoogle.reached && r.adsbygoogle.script === "stand-in";
+      // A profile loaded just now: Chrome loads an extension's rulesets from disk after the extension itself, and holds
+      // no request for them (Personal's at launch alike), so the profile's first page can beat them by a few hundred ms
+      // (measured 110–370 ms after its load). Its own rules must be in force within 3 s.
+      let warmup = null;
+      if (profileId) {
+        const start = Date.now();
+        for (let i = 0; !stopped(await round(`warmup${i}`)); i++)
+          if (Date.now() - start > 3000) throw new Error(`the new profile's rules never came into force: ${JSON.stringify(await round("late"))}`);
+        warmup = Date.now() - start;
+      }
       const blocked = await round("blocked");
       await cef(`setContentBlockerAllowed("adpage.test", true)`);
       const allowed = await round("allowed");
       await cef(`setContentBlockerAllowed("adpage.test", false)`);
       const again = await round("again");
-      const stopped = (r) => !r.adnxs.reached && !r.gpt.reached && r.adnxs.fetch === "failed" && !r.adsbygoogle.reached && r.adsbygoogle.script === "stand-in";
       if (!stopped(blocked)) throw new Error(`not blocked: ${JSON.stringify(blocked)}`);
       if (!allowed.adnxs.reached || !allowed.gpt.reached || !allowed.adsbygoogle.reached) throw new Error(`allowing the site let nothing through: ${JSON.stringify(allowed)}`);
       if (!stopped(again)) throw new Error(`blocked again? ${JSON.stringify(again)}`);
-      return { blocked, allowed, again };
+      return { warmup, blocked, allowed, again };
     } finally {
       if (ownWindow) await evalApp(`nn.store.getState().closeWindow(${JSON.stringify(ownWindow)}); return true`);
       else await evalApp(`nn.store.getState().closeTab(${JSON.stringify(tab)}); return true`);
@@ -2677,7 +2686,7 @@ try {
 
   await check("content-blocker-profile", async () => {
     // The same in a profile made now (the release smoke test's page is in its Work profile): uBOL loads into every
-    // profile, and its rulesets must block there from the first page, and follow Personal's allow-list.
+    // profile, and its rulesets must block there within moments of its first page, and follow Personal's allow-list.
     const id = await evalApp(`return nn.store.getState().createProfile({ name: "Blocker" })`);
     if (!id) throw new Error("no profile made");
     return { profile: id, ...(await contentBlockerRounds(id)) };
@@ -3557,10 +3566,11 @@ try {
       const closing = JSON.parse(await cef(`devWindow(${n}, "fullScreen")`)).pageFullScreen;
       if (!closing?.transitioning) throw new Error(`the transition had ended before the close: ${JSON.stringify(closing)}`);
       await closeTab(tab.id);
-      await sleep(2500);
-      const afterClose = JSON.parse(await cef(`devWindow(${n}, "fullScreen")`));
-      if (afterClose.fullScreen || afterClose.pageFullScreen?.page != null) throw new Error(`closing the tab mid-transition left ${JSON.stringify(afterClose)}`);
-      out.closedMidTransition = afterClose;
+      // The window finishes going in (AppKit ignores a toggle mid-transition), then comes back out: two transitions.
+      out.closedMidTransition = await until("the window out after its tab closed mid-transition", async () => {
+        const w = JSON.parse(await cef(`devWindow(${n}, "fullScreen")`));
+        return !w.fullScreen && !w.pageFullScreen?.transitioning && w.pageFullScreen?.page == null ? w : null;
+      }, 6000).catch(async (e) => { throw new Error(`${e.message}; closing the tab mid-transition left ${await cef(`devWindow(${n}, "fullScreen")`)}`); });
       // A transition slower than the 3 s the window waits for one: the page's exit, after those 3 s and before the
       // window is in full screen, still takes the window out once it is.
       const slow = await openTab(`${base}/b?fs-slow`, "Page B");
@@ -4578,6 +4588,75 @@ try {
     } finally {
       try { ws.close(); } catch {}
     }
+  });
+
+  await check("closed-tabs-own-lists", async () => {
+    // Two tabs on the same page closed a moment apart: ⇧⌘T gives each its own back/forward list (Chrome's
+    // TabRestoreService entry carries the closed tab's id, nn_tab_restore_tag), and after a quit too, from Chrome's file.
+    let windowId = await appUp("app-closed-tabs.out.log");
+    const s = (expr) => evalApp(`const s = nn.store.getState(); return ${expr}`);
+    const entries = (id) => evalApp(`return nn.webviews.get(${JSON.stringify(id)})?.navigationEntries().then((e) => e.map((x) => { const u = new URL(x.url); return u.pathname + u.search; })) ?? null`);
+    const onSamePage = async (tag) => {
+      const id = await evalApp(`return nn.store.getState().newTab(${JSON.stringify(windowId)}, { url: "${base}/a?${tag}" })`);
+      await until(`A?${tag}`, async () => (await s(`s.tabs["${id}"]?.title === "Page A" && !s.live["${id}"]?.isLoading && !!nn.webviews.get("${id}")`)) || null, 15000);
+      await evalApp(`nn.store.getState().navigate("${id}", "${base}/b?same", { userInitiated: true }); return true`);
+      await until(`B from A?${tag}`, async () => (await s(`s.tabs["${id}"]?.title === "Page B" && s.live["${id}"]?.canGoBack && !s.live["${id}"]?.isLoading`)) || null, 15000);
+      return id;
+    };
+    const a = await onSamePage("first-closed"), b = await onSamePage("second-closed");
+    await sleep(1000);
+    const closed = Object.fromEntries(await evalApp(`const s = nn.store.getState(); s.closeTab("${a}"); s.closeTab("${b}");
+      return nn.store.getState().closedTabs.filter((c) => c.tabId === "${a}" || c.tabId === "${b}").map((c) => [c.tabId, c.id])`));
+    if (!closed[a] || !closed[b]) throw new Error(`closed entries: ${JSON.stringify(closed)}`);
+    await sleep(1500);
+    const reopen = async (entryId, expected) => {
+      const id = await evalApp(`const s = nn.store.getState(); const before = new Set(Object.keys(s.tabs));
+        s.restoreClosed(${JSON.stringify(entryId)}, ${JSON.stringify(windowId)});
+        const id = Object.keys(nn.store.getState().tabs).find((t) => !before.has(t)); nn.store.getState().activate(id); return id`);
+      const list = await until(`the reopened tab's list`, async () => {
+        const e = await entries(id);
+        return e?.includes("/b?same") ? e : null;
+      }, 15000);
+      if (JSON.stringify(list) !== JSON.stringify(expected)) throw new Error(`reopened ${entryId}: ${JSON.stringify(list)}, not ${JSON.stringify(expected)}`);
+      await evalApp(`nn.store.getState().closeTab("${id}"); return true`);
+      return list;
+    };
+    const first = await reopen(closed[a], ["/a?first-closed", "/b?same"]);
+    await sleep(1500);
+    // ⌘Q, as the owner quits, then the other one.
+    await pressQuit(windowId);
+    await until("the quit", async () => exited, 30000);
+    windowId = await appUp("app-closed-tabs-2.out.log");
+    const second = await reopen(closed[b], ["/a?second-closed", "/b?same"]);
+    return { first, afterQuit: second };
+  });
+
+  await check("js-reload-keeps-pages", async () => {
+    // A JS reload (development: Metro) parks each tab's page for its next view: the page isn't loaded again, nor
+    // visited again in Chrome's history, and the tab keeps it.
+    const windowId = await appUp("app-js-reload.out.log");
+    const path = `/b?kept-${Date.now()}`;
+    const visits = async () => JSON.parse(await cef(`engineCall("nn_history_query", "", "{}")`)).entries.filter((e) => e.u === `${base}${path}`).map((e) => e.v.length);
+    const id = await evalApp(`return nn.store.getState().newTab(${JSON.stringify(windowId)}, { url: "${base}${path}" })`);
+    await until("the page", async () => (await state()).tabs.find((t) => t.id === id && t.title === "Page B" && !t.loading), 15000);
+    await until("its visit", async () => (await visits()).length || null);
+    // The session is saved a moment after a change; a reload before that wouldn't have the tab at all.
+    await sleep(2000);
+    await evalApp(`setTimeout(() => { try { globalThis.nativeModuleProxy.DevSettings.reload(); } catch {} }, 50); return true`);
+    await sleep(1500);
+    // A reloaded harness skips the script it finds waiting: asked again until the new bundle answers.
+    await until("the reloaded app", async () => {
+      try {
+        return await evalApp(`const s = nn.store.getState(); return Object.keys(s.windows).length > 0 && !!s.historyReady.default && !!nn.webviews.get(${JSON.stringify(id)})`, 3000);
+      } catch (e) {
+        if (exited) throw e;
+        return null;
+      }
+    }, 60000);
+    await sleep(2000);
+    const out = { loads: served.get(path), visits: await visits(), url: (await state()).tabs.find((t) => t.id === id)?.url };
+    if (out.loads !== 1 || JSON.stringify(out.visits) !== "[1]" || out.url !== `${base}${path}`) throw new Error(`after the reload: ${JSON.stringify(out)}`);
+    return out;
   });
 
   await check("quit-js-stall", async () => {
