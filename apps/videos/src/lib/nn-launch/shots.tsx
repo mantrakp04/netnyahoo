@@ -147,8 +147,14 @@ function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full",
 // Each stab cuts to a stand-in site interrupting you in a Netnyahoo window (scenes/asks.js, sites/*.example): the
 // interruption plays in on the stab, a frame of the page per film frame, and a pointer heads for its button.
 const ASK_NAMES = ["signin", "ai", "cookies", "upgrade"];
+// The first ask's framing differs by aspect: in 16:9 the window sits low enough for Big Yahu to pop up over its top
+// edge; in 9:16 the window's top edge stays at y ~617, under the stab plate, where he pops up beside it.
+const ASK_CAM_0: Record<"land" | "port", Cam> = {
+  land: { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.5, ay: 0.8 },
+  port: { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.46, ay: 0.62 },
+};
 const ASK_CAMS: Cam[] = [
-  { ...REST, zoom: 1.12, fx: 0.55, fy: 0.62, aim: 1, ax: 0.5, ay: 0.84 },
+  ASK_CAM_0.land,
   { ...REST, zoom: 1.12, fx: 0.62, fy: 0.45, aim: 1, ax: 0.5, ay: 0.6, rot: -1 },
   { ...REST, zoom: 1.12, fx: 0.5, fy: 0.72, aim: 1, ax: 0.5, ay: 0.62, rot: 1 },
   { ...REST, zoom: 1.12, fx: 0.55, fy: 0.55, aim: 1, ax: 0.5, ay: 0.66 },
@@ -185,7 +191,8 @@ function Nags() {
   // Low enough that the UPGRADE. plate (top of frame) clears the modal's padlock.
   const joke: Cam = { ...REST, zoom: port ? 2.4 : 2.6, fx: 0.5635, fy: 0.52, aim: 1, ax: 0.5, ay: port ? 0.62 : 0.7 };
   // Held for a full beat, into the first stamp of the pile.
-  const cam: Cam = b >= 3.45 && b < 4.45 ? joke : b < 4 ? ASK_CAMS[k] : { ...REST, zoom: 1 + 0.015 * knock };
+  const askCam = k === 0 ? ASK_CAM_0[port ? "port" : "land"] : ASK_CAMS[k];
+  const cam: Cam = b >= 3.45 && b < 4.45 ? joke : b < 4 ? askCam : { ...REST, zoom: 1 + 0.015 * knock };
   const index = b < 4 ? askFrame(b) : framesOf("asks", "ask:upgrade").slice(-1)[0];
   // Big Yahu rises beside the pile, hands steepled; on the last eighth he sweeps his arms out (the swat lands on the drop).
   const rise = springAt(b, 7.1, { stiffness: 200, damping: 16 });

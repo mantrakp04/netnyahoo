@@ -617,7 +617,7 @@
       "parentId": null,
       "values": {
         "x": 110,
-        "y": 755,
+        "y": 740,
         "width": 860,
         "height": 740,
         "rotation": 0
@@ -728,13 +728,13 @@
       "parentId": null,
       "values": {
         "text": "OPEN SOURCE · APPLE SILICON · MACOS 14+",
-        "size": 28,
+        "size": 26,
         "color": "#16130F",
         "fill": "#00000000",
         "x": 64,
-        "y": 1436,
+        "y": 1446,
         "width": 880,
-        "height": 44,
+        "height": 34,
         "rotation": 0
       }
     },

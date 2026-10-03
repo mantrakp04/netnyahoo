@@ -214,7 +214,7 @@ const typing: Shot = { id: "typing", kind: "typing", at: 72, beats: 8, window: w
 const endShot = (at: number, beats: number, lockup: number, button: number): Shot => ({
   id: "end", kind: "end", at, beats, marks: { lockup, button },
   extra: [
-    YAHU("end-yahu", [1240, 200, 640, 820], [110, 755, 860, 740]),
+    YAHU("end-yahu", [1240, 200, 640, 820], [110, 740, 860, 740]),
     { id: "end-icon", box: { land: [80, 220, 180, 180], port: [60, 240, 150, 150] } },
   ],
   type: [
@@ -223,7 +223,7 @@ const endShot = (at: number, beats: number, lockup: number, button: number): Sho
     T("end-mac", "THE SIDEBAR BROWSER FOR MAC", lockup + 0.5, "slam", 60, [84, 420, 1076, 70], [60, 410, 880, 120], { color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
     T("end-download", "DOWNLOAD", lockup + 1, "slam", 96, [84, 520, 1076, 110], [60, 550, 880, 100]),
     T("end-url", "NETNYAHOO.COM", lockup + 1, "slam", 190, [80, 630, 1080, 210], [60, 650, 880, 160], { color: P.blue }),
-    T("end-fine", "OPEN SOURCE · APPLE SILICON · MACOS 14+", lockup + 2, "label", 30, [86, 960, 1076, 50], [64, 1436, 880, 44], { portSize: 28 }),
+    T("end-fine", "OPEN SOURCE · APPLE SILICON · MACOS 14+", lockup + 2, "label", 30, [86, 960, 1076, 50], [64, 1446, 880, 34], { portSize: 26 }),
     T("end-source", "GITHUB.COM/MANTRAKP04/NETNYAHOO", lockup + 1.5, "label", 48, [86, 870, 1076, 70], [64, 820, 880, 110], { portSize: 40, portText: "GITHUB.COM/MANTRAKP04/\nNETNYAHOO" }),
   ],
 });
