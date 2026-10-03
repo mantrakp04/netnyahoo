@@ -2,7 +2,7 @@
 
 How to measure Netnyahoo and gate a release on it. Every script prints its flags with `--help`, and its header
 documents the same flags, so you don't need to read the rest of a script to run it. Results from past
-comparisons: [0.2.19 → 0.2.20](0.2.19-to-0.2.20.md).
+comparisons: [0.2.19 → 0.2.20](0.2.19-to-0.2.20.md), [0.2.22 → 0.2.23](0.2.22-to-0.2.23.md).
 
 ## Files
 
@@ -47,7 +47,7 @@ row is the same or better.
    "Native API skew".
    - When both apps share a version, run the candidate's bundle on both (the default for `--control`). Then only
      native code differs.
-   - When the versions differ (0.2.21 is version 4, 0.2.22 is version 5), pass the control its own bundle with
+   - When the versions differ (0.2.21 is version 4, 0.2.22 is version 5, 0.2.23 is version 6), pass the control its own bundle with
      `--control-bundle`. Keep the bench bundle you gated a release with as `dist/<v>/bench/main.jsbundle`, so the
      next gate can use it as the control. `dist/0.2.21/bench/` and `dist/0.2.22/bench/` hold the bundles from the
      0.2.22 gate.
