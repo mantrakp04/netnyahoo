@@ -1,0 +1,802 @@
+{
+  "version": 1,
+  "video": "teaser-9x16",
+  "definitions": [
+    {
+      "id": "type",
+      "version": 1,
+      "fields": [
+        {
+          "id": "text",
+          "label": "Text",
+          "type": "text",
+          "default": "",
+          "group": "Typography"
+        },
+        {
+          "id": "size",
+          "label": "Size",
+          "type": "number",
+          "default": 100,
+          "min": 8,
+          "max": 800,
+          "step": 1,
+          "unit": "px",
+          "group": "Typography"
+        },
+        {
+          "id": "color",
+          "label": "Colour",
+          "type": "color",
+          "default": "#16130F",
+          "group": "Fill"
+        },
+        {
+          "id": "fill",
+          "label": "Plate",
+          "type": "color",
+          "default": "#00000000",
+          "group": "Fill"
+        },
+        {
+          "id": "x",
+          "label": "X",
+          "type": "number",
+          "default": 0,
+          "min": -1080,
+          "max": 2160,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "y",
+          "label": "Y",
+          "type": "number",
+          "default": 0,
+          "min": -1920,
+          "max": 3840,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "width",
+          "label": "Width",
+          "type": "number",
+          "default": 100,
+          "min": 1,
+          "max": 3240,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "height",
+          "label": "Height",
+          "type": "number",
+          "default": 100,
+          "min": 1,
+          "max": 5760,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "rotation",
+          "label": "Rotation",
+          "type": "number",
+          "default": 0,
+          "min": -180,
+          "max": 180,
+          "step": 0.5,
+          "unit": "deg",
+          "group": "Layout"
+        }
+      ]
+    },
+    {
+      "id": "window",
+      "version": 1,
+      "fields": [
+        {
+          "id": "x",
+          "label": "X",
+          "type": "number",
+          "default": 0,
+          "min": -1080,
+          "max": 2160,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "y",
+          "label": "Y",
+          "type": "number",
+          "default": 0,
+          "min": -1920,
+          "max": 3840,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "width",
+          "label": "Width",
+          "type": "number",
+          "default": 100,
+          "min": 1,
+          "max": 3240,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "height",
+          "label": "Height",
+          "type": "number",
+          "default": 100,
+          "min": 1,
+          "max": 5760,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "rotation",
+          "label": "Rotation",
+          "type": "number",
+          "default": 0,
+          "min": -180,
+          "max": 180,
+          "step": 0.5,
+          "unit": "deg",
+          "group": "Layout"
+        }
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "id": "nag-sign-in",
+      "definition": "type",
+      "label": "nags · SIGN IN.",
+      "parentId": null,
+      "values": {
+        "text": "SIGN\nIN.",
+        "size": 330,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 520,
+        "width": 960,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nag-try-ai",
+      "definition": "type",
+      "label": "nags · TRY AI.",
+      "parentId": null,
+      "values": {
+        "text": "TRY\nAI.",
+        "size": 340,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 520,
+        "width": 960,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nag-cookies",
+      "definition": "type",
+      "label": "nags · ACCEPT ALL.",
+      "parentId": null,
+      "values": {
+        "text": "ACCEPT\nALL.",
+        "size": 300,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 520,
+        "width": 960,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nag-upgrade",
+      "definition": "type",
+      "label": "nags · UPGRADE.",
+      "parentId": null,
+      "values": {
+        "text": "UP\nGRADE.",
+        "size": 300,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 520,
+        "width": 960,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nag-pile-1",
+      "definition": "type",
+      "label": "nags · SIGN IN TO SYNC",
+      "parentId": null,
+      "values": {
+        "text": "SIGN IN TO SYNC",
+        "size": 66,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 240,
+        "width": 800,
+        "height": 130,
+        "rotation": -7
+      }
+    },
+    {
+      "id": "nag-pile-2",
+      "definition": "type",
+      "label": "nags · MEET YOUR AI COPILOT",
+      "parentId": null,
+      "values": {
+        "text": "MEET YOUR AI COPILOT",
+        "size": 60,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 160,
+        "y": 470,
+        "width": 860,
+        "height": 130,
+        "rotation": 5
+      }
+    },
+    {
+      "id": "nag-pile-3",
+      "definition": "type",
+      "label": "nags · SET AS DEFAULT?",
+      "parentId": null,
+      "values": {
+        "text": "SET AS DEFAULT?",
+        "size": 66,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 700,
+        "width": 800,
+        "height": 130,
+        "rotation": 3
+      }
+    },
+    {
+      "id": "nag-pile-4",
+      "definition": "type",
+      "label": "nags · ACCEPT ALL COOKIES",
+      "parentId": null,
+      "values": {
+        "text": "ACCEPT ALL COOKIES",
+        "size": 60,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 180,
+        "y": 930,
+        "width": 840,
+        "height": 130,
+        "rotation": -5
+      }
+    },
+    {
+      "id": "nag-pile-5",
+      "definition": "type",
+      "label": "nags · TRY AI TABS",
+      "parentId": null,
+      "values": {
+        "text": "TRY AI TABS",
+        "size": 66,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 1160,
+        "width": 620,
+        "height": 130,
+        "rotation": 8
+      }
+    },
+    {
+      "id": "nag-pile-6",
+      "definition": "type",
+      "label": "nags · CREATE AN ACCOUNT",
+      "parentId": null,
+      "values": {
+        "text": "CREATE AN ACCOUNT",
+        "size": 60,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 200,
+        "y": 1380,
+        "width": 820,
+        "height": 130,
+        "rotation": -3
+      }
+    },
+    {
+      "id": "nag-pile-7",
+      "definition": "type",
+      "label": "nags · RATE US ★★★★★",
+      "parentId": null,
+      "values": {
+        "text": "RATE US ★★★★★",
+        "size": 64,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 1580,
+        "width": 760,
+        "height": 130,
+        "rotation": 6
+      }
+    },
+    {
+      "id": "nag-pile-8",
+      "definition": "type",
+      "label": "nags · SIGN IN AGAIN",
+      "parentId": null,
+      "values": {
+        "text": "SIGN IN AGAIN",
+        "size": 64,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 320,
+        "y": 90,
+        "width": 700,
+        "height": 130,
+        "rotation": -9
+      }
+    },
+    {
+      "id": "nag-pile-9",
+      "definition": "type",
+      "label": "nags · AI SUMMARY?",
+      "parentId": null,
+      "values": {
+        "text": "AI SUMMARY?",
+        "size": 64,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 360,
+        "y": 1740,
+        "width": 660,
+        "height": 130,
+        "rotation": 4
+      }
+    },
+    {
+      "id": "nag-pile-10",
+      "definition": "type",
+      "label": "nags · UPGRADE TO PRO",
+      "parentId": null,
+      "values": {
+        "text": "UPGRADE TO PRO",
+        "size": 64,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 100,
+        "y": 1020,
+        "width": 800,
+        "height": 130,
+        "rotation": -6
+      }
+    },
+    {
+      "id": "title-window",
+      "definition": "window",
+      "label": "title · window",
+      "parentId": null,
+      "values": {
+        "x": 40,
+        "y": 1080,
+        "width": 1000,
+        "height": 625,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "title-name",
+      "definition": "type",
+      "label": "title · NETNYAHOO",
+      "parentId": null,
+      "values": {
+        "text": "NET\nNYA\nHOO",
+        "size": 330,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 140,
+        "width": 960,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "title-stamp",
+      "definition": "type",
+      "label": "title · ASKS FOR NOTHING.",
+      "parentId": null,
+      "values": {
+        "text": "ASKS FOR NOTHING.",
+        "size": 64,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 200,
+        "y": 860,
+        "width": 820,
+        "height": 130,
+        "rotation": -8
+      }
+    },
+    {
+      "id": "swipe-window",
+      "definition": "window",
+      "label": "swipe · window",
+      "parentId": null,
+      "values": {
+        "x": 40,
+        "y": 700,
+        "width": 1000,
+        "height": 625,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-work",
+      "definition": "type",
+      "label": "swipe · WORK.",
+      "parentId": null,
+      "values": {
+        "text": "WORK.",
+        "size": 300,
+        "color": "#F1ECE2",
+        "fill": "#4691C3",
+        "x": 60,
+        "y": 1420,
+        "width": 960,
+        "height": 400,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-campaign",
+      "definition": "type",
+      "label": "swipe · CAMPAIGN.",
+      "parentId": null,
+      "values": {
+        "text": "CAMPAIGN.",
+        "size": 300,
+        "color": "#F1ECE2",
+        "fill": "#D87249",
+        "x": 60,
+        "y": 1420,
+        "width": 960,
+        "height": 400,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-personal",
+      "definition": "type",
+      "label": "swipe · PERSONAL.",
+      "parentId": null,
+      "values": {
+        "text": "PERSONAL.",
+        "size": 300,
+        "color": "#F1ECE2",
+        "fill": "#C07A98",
+        "x": 60,
+        "y": 1420,
+        "width": 960,
+        "height": 400,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-lives",
+      "definition": "type",
+      "label": "swipe · SEPARATE LIVES. ONE SWIPE.",
+      "parentId": null,
+      "values": {
+        "text": "SEPARATE LIVES.\nONE SWIPE.",
+        "size": 130,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 300,
+        "width": 960,
+        "height": 330,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-deniability",
+      "definition": "type",
+      "label": "swipe · PLAUSIBLE DENIABILITY COMES ",
+      "parentId": null,
+      "values": {
+        "text": "PLAUSIBLE DENIABILITY COMES STANDARD",
+        "size": 24,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 1380,
+        "width": 960,
+        "height": 36,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nos-account",
+      "definition": "type",
+      "label": "nos · NO ACCOUNT.",
+      "parentId": null,
+      "values": {
+        "text": "NO\nACCOUNT.",
+        "size": 300,
+        "color": "#F1ECE2",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 520,
+        "width": 960,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nos-ai",
+      "definition": "type",
+      "label": "nos · NO AI.",
+      "parentId": null,
+      "values": {
+        "text": "NO\nAI.",
+        "size": 420,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 520,
+        "width": 960,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nos-tracking",
+      "definition": "type",
+      "label": "nos · NO TRACKING.",
+      "parentId": null,
+      "values": {
+        "text": "NO\nTRACKING.",
+        "size": 300,
+        "color": "#F1ECE2",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 520,
+        "width": 960,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nos-source",
+      "definition": "type",
+      "label": "nos · OPEN SOURCE.",
+      "parentId": null,
+      "values": {
+        "text": "OPEN\nSOURCE.",
+        "size": 300,
+        "color": "#F1ECE2",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 520,
+        "width": 960,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-personal",
+      "definition": "window",
+      "label": "immunity · personal",
+      "parentId": null,
+      "values": {
+        "x": 60,
+        "y": 1590,
+        "width": 430,
+        "height": 269,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-work",
+      "definition": "window",
+      "label": "immunity · work",
+      "parentId": null,
+      "values": {
+        "x": 325,
+        "y": 1560,
+        "width": 430,
+        "height": 269,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-campaign",
+      "definition": "window",
+      "label": "immunity · campaign",
+      "parentId": null,
+      "values": {
+        "x": 590,
+        "y": 1600,
+        "width": 430,
+        "height": 269,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-headline",
+      "definition": "type",
+      "label": "immunity · FULL IMMUNITY.",
+      "parentId": null,
+      "values": {
+        "text": "FULL\nIMMUNITY.",
+        "size": 330,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 360,
+        "width": 960,
+        "height": 820,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-lede",
+      "definition": "type",
+      "label": "immunity · Real Chromium for the Mac. I",
+      "parentId": null,
+      "values": {
+        "text": "Real Chromium for the Mac.\nImmune to ads, trackers and prosecution.",
+        "size": 48,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 64,
+        "y": 1220,
+        "width": 960,
+        "height": 200,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-stamp",
+      "definition": "type",
+      "label": "immunity · INCUMBENT",
+      "parentId": null,
+      "values": {
+        "text": "INCUMBENT",
+        "size": 66,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 520,
+        "y": 200,
+        "width": 500,
+        "height": 140,
+        "rotation": -9
+      }
+    },
+    {
+      "id": "immunity-label",
+      "definition": "type",
+      "label": "immunity · NETNYAHOO · THE SIDEBAR BROW",
+      "parentId": null,
+      "values": {
+        "text": "NETNYAHOO · THE SIDEBAR BROWSER FOR MAC",
+        "size": 24,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 64,
+        "y": 1450,
+        "width": 960,
+        "height": 80,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-yahu",
+      "definition": "window",
+      "label": "cta · yahu",
+      "parentId": null,
+      "values": {
+        "x": 380,
+        "y": 1040,
+        "width": 660,
+        "height": 880,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-download",
+      "definition": "type",
+      "label": "cta · DOWNLOAD FREE",
+      "parentId": null,
+      "values": {
+        "text": "DOWNLOAD FREE",
+        "size": 110,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 300,
+        "width": 960,
+        "height": 140,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-url",
+      "definition": "type",
+      "label": "cta · NETNYAHOO.COM",
+      "parentId": null,
+      "values": {
+        "text": "NETNYAHOO.COM",
+        "size": 240,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 450,
+        "width": 960,
+        "height": 260,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-fine",
+      "definition": "type",
+      "label": "cta · OPEN SOURCE · APPLE SILICON ",
+      "parentId": null,
+      "values": {
+        "text": "OPEN SOURCE · APPLE SILICON · MACOS 14+",
+        "size": 26,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 64,
+        "y": 740,
+        "width": 960,
+        "height": 80,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-victory",
+      "definition": "type",
+      "label": "cta · VICTORY DANCE",
+      "parentId": null,
+      "values": {
+        "text": "VICTORY DANCE",
+        "size": 56,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 1010,
+        "width": 520,
+        "height": 120,
+        "rotation": 8
+      }
+    }
+  ],
+  "operations": []
+}

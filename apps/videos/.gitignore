@@ -4,3 +4,8 @@ out
 # Footage and music are large and live outside git; copy them into public/ to render
 public/footage
 public/music
+# Raw captures (snapshots and page pictures) before scripts/capture/composite.py
+.capture
+# Copied from apps/site by scripts/prepare-assets.sh
+public/fonts
+public/brand

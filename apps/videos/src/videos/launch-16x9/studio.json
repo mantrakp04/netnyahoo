@@ -1,0 +1,1417 @@
+{
+  "version": 1,
+  "video": "launch-16x9",
+  "definitions": [
+    {
+      "id": "type",
+      "version": 1,
+      "fields": [
+        {
+          "id": "text",
+          "label": "Text",
+          "type": "text",
+          "default": "",
+          "group": "Typography"
+        },
+        {
+          "id": "size",
+          "label": "Size",
+          "type": "number",
+          "default": 100,
+          "min": 8,
+          "max": 800,
+          "step": 1,
+          "unit": "px",
+          "group": "Typography"
+        },
+        {
+          "id": "color",
+          "label": "Colour",
+          "type": "color",
+          "default": "#16130F",
+          "group": "Fill"
+        },
+        {
+          "id": "fill",
+          "label": "Plate",
+          "type": "color",
+          "default": "#00000000",
+          "group": "Fill"
+        },
+        {
+          "id": "x",
+          "label": "X",
+          "type": "number",
+          "default": 0,
+          "min": -1920,
+          "max": 3840,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "y",
+          "label": "Y",
+          "type": "number",
+          "default": 0,
+          "min": -1080,
+          "max": 2160,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "width",
+          "label": "Width",
+          "type": "number",
+          "default": 100,
+          "min": 1,
+          "max": 5760,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "height",
+          "label": "Height",
+          "type": "number",
+          "default": 100,
+          "min": 1,
+          "max": 3240,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "rotation",
+          "label": "Rotation",
+          "type": "number",
+          "default": 0,
+          "min": -180,
+          "max": 180,
+          "step": 0.5,
+          "unit": "deg",
+          "group": "Layout"
+        }
+      ]
+    },
+    {
+      "id": "window",
+      "version": 1,
+      "fields": [
+        {
+          "id": "x",
+          "label": "X",
+          "type": "number",
+          "default": 0,
+          "min": -1920,
+          "max": 3840,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "y",
+          "label": "Y",
+          "type": "number",
+          "default": 0,
+          "min": -1080,
+          "max": 2160,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "width",
+          "label": "Width",
+          "type": "number",
+          "default": 100,
+          "min": 1,
+          "max": 5760,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "height",
+          "label": "Height",
+          "type": "number",
+          "default": 100,
+          "min": 1,
+          "max": 3240,
+          "step": 1,
+          "unit": "px",
+          "group": "Layout"
+        },
+        {
+          "id": "rotation",
+          "label": "Rotation",
+          "type": "number",
+          "default": 0,
+          "min": -180,
+          "max": 180,
+          "step": 0.5,
+          "unit": "deg",
+          "group": "Layout"
+        }
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "id": "nag-sign-in",
+      "definition": "type",
+      "label": "nags · SIGN IN.",
+      "parentId": null,
+      "values": {
+        "text": "SIGN IN.",
+        "size": 460,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 230,
+        "width": 1760,
+        "height": 620,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nag-try-ai",
+      "definition": "type",
+      "label": "nags · TRY AI.",
+      "parentId": null,
+      "values": {
+        "text": "TRY AI.",
+        "size": 500,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 230,
+        "width": 1760,
+        "height": 620,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nag-cookies",
+      "definition": "type",
+      "label": "nags · ACCEPT ALL.",
+      "parentId": null,
+      "values": {
+        "text": "ACCEPT ALL.",
+        "size": 460,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 230,
+        "width": 1760,
+        "height": 620,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nag-upgrade",
+      "definition": "type",
+      "label": "nags · UPGRADE.",
+      "parentId": null,
+      "values": {
+        "text": "UPGRADE.",
+        "size": 460,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 230,
+        "width": 1760,
+        "height": 620,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nag-pile-1",
+      "definition": "type",
+      "label": "nags · SIGN IN TO SYNC",
+      "parentId": null,
+      "values": {
+        "text": "SIGN IN TO SYNC",
+        "size": 82,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 110,
+        "y": 120,
+        "width": 820,
+        "height": 150,
+        "rotation": -7
+      }
+    },
+    {
+      "id": "nag-pile-2",
+      "definition": "type",
+      "label": "nags · MEET YOUR AI COPILOT",
+      "parentId": null,
+      "values": {
+        "text": "MEET YOUR AI COPILOT",
+        "size": 82,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 940,
+        "y": 210,
+        "width": 900,
+        "height": 150,
+        "rotation": 5
+      }
+    },
+    {
+      "id": "nag-pile-3",
+      "definition": "type",
+      "label": "nags · SET AS DEFAULT?",
+      "parentId": null,
+      "values": {
+        "text": "SET AS DEFAULT?",
+        "size": 82,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 220,
+        "y": 450,
+        "width": 800,
+        "height": 150,
+        "rotation": 3
+      }
+    },
+    {
+      "id": "nag-pile-4",
+      "definition": "type",
+      "label": "nags · ACCEPT ALL COOKIES",
+      "parentId": null,
+      "values": {
+        "text": "ACCEPT ALL COOKIES",
+        "size": 82,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 980,
+        "y": 600,
+        "width": 860,
+        "height": 150,
+        "rotation": -5
+      }
+    },
+    {
+      "id": "nag-pile-5",
+      "definition": "type",
+      "label": "nags · TRY AI TABS",
+      "parentId": null,
+      "values": {
+        "text": "TRY AI TABS",
+        "size": 82,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 90,
+        "y": 780,
+        "width": 640,
+        "height": 150,
+        "rotation": 8
+      }
+    },
+    {
+      "id": "nag-pile-6",
+      "definition": "type",
+      "label": "nags · CREATE AN ACCOUNT",
+      "parentId": null,
+      "values": {
+        "text": "CREATE AN ACCOUNT",
+        "size": 82,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 640,
+        "y": 370,
+        "width": 900,
+        "height": 150,
+        "rotation": -3
+      }
+    },
+    {
+      "id": "nag-pile-7",
+      "definition": "type",
+      "label": "nags · RATE US ★★★★★",
+      "parentId": null,
+      "values": {
+        "text": "RATE US ★★★★★",
+        "size": 82,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 1160,
+        "y": 840,
+        "width": 680,
+        "height": 150,
+        "rotation": 6
+      }
+    },
+    {
+      "id": "nag-pile-8",
+      "definition": "type",
+      "label": "nags · SIGN IN AGAIN",
+      "parentId": null,
+      "values": {
+        "text": "SIGN IN AGAIN",
+        "size": 82,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 560,
+        "y": 60,
+        "width": 700,
+        "height": 150,
+        "rotation": -9
+      }
+    },
+    {
+      "id": "nag-pile-9",
+      "definition": "type",
+      "label": "nags · AI SUMMARY?",
+      "parentId": null,
+      "values": {
+        "text": "AI SUMMARY?",
+        "size": 82,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 120,
+        "y": 600,
+        "width": 620,
+        "height": 150,
+        "rotation": 4
+      }
+    },
+    {
+      "id": "nag-pile-10",
+      "definition": "type",
+      "label": "nags · UPGRADE TO PRO",
+      "parentId": null,
+      "values": {
+        "text": "UPGRADE TO PRO",
+        "size": 82,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 760,
+        "y": 720,
+        "width": 760,
+        "height": 150,
+        "rotation": -6
+      }
+    },
+    {
+      "id": "title-window",
+      "definition": "window",
+      "label": "title · window",
+      "parentId": null,
+      "values": {
+        "x": 210,
+        "y": 360,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "title-name",
+      "definition": "type",
+      "label": "title · NETNYAHOO",
+      "parentId": null,
+      "values": {
+        "text": "NETNYAHOO",
+        "size": 380,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 40,
+        "width": 1760,
+        "height": 330,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "title-stamp",
+      "definition": "type",
+      "label": "title · ASKS FOR NOTHING.",
+      "parentId": null,
+      "values": {
+        "text": "ASKS FOR NOTHING.",
+        "size": 78,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 1100,
+        "y": 300,
+        "width": 760,
+        "height": 150,
+        "rotation": -8
+      }
+    },
+    {
+      "id": "tabs-window",
+      "definition": "window",
+      "label": "tabs · window",
+      "parentId": null,
+      "values": {
+        "x": 210,
+        "y": 96,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "tabs-label",
+      "definition": "type",
+      "label": "tabs · FIG. 1 — EVERY TAB, DOWN THE",
+      "parentId": null,
+      "values": {
+        "text": "FIG. 1 — EVERY TAB, DOWN THE SIDE",
+        "size": 24,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 210,
+        "y": 40,
+        "width": 1500,
+        "height": 40,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "tabs-super",
+      "definition": "type",
+      "label": "tabs · TABS DOWN THE SIDE.",
+      "parentId": null,
+      "values": {
+        "text": "TABS DOWN\nTHE SIDE.",
+        "size": 170,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 1100,
+        "y": 640,
+        "width": 760,
+        "height": 380,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-window",
+      "definition": "window",
+      "label": "swipe · window",
+      "parentId": null,
+      "values": {
+        "x": 210,
+        "y": 96,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-work",
+      "definition": "type",
+      "label": "swipe · WORK.",
+      "parentId": null,
+      "values": {
+        "text": "WORK.",
+        "size": 300,
+        "color": "#F1ECE2",
+        "fill": "#4691C3",
+        "x": 900,
+        "y": 380,
+        "width": 940,
+        "height": 360,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-campaign",
+      "definition": "type",
+      "label": "swipe · CAMPAIGN.",
+      "parentId": null,
+      "values": {
+        "text": "CAMPAIGN.",
+        "size": 300,
+        "color": "#F1ECE2",
+        "fill": "#D87249",
+        "x": 900,
+        "y": 380,
+        "width": 940,
+        "height": 360,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-personal",
+      "definition": "type",
+      "label": "swipe · PERSONAL.",
+      "parentId": null,
+      "values": {
+        "text": "PERSONAL.",
+        "size": 300,
+        "color": "#F1ECE2",
+        "fill": "#C07A98",
+        "x": 900,
+        "y": 380,
+        "width": 940,
+        "height": 360,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-lives",
+      "definition": "type",
+      "label": "swipe · SEPARATE LIVES. ONE SWIPE.",
+      "parentId": null,
+      "values": {
+        "text": "SEPARATE LIVES. ONE SWIPE.",
+        "size": 140,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe-deniability",
+      "definition": "type",
+      "label": "swipe · PLAUSIBLE DENIABILITY COMES ",
+      "parentId": null,
+      "values": {
+        "text": "PLAUSIBLE DENIABILITY COMES STANDARD",
+        "size": 24,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 1026,
+        "width": 1760,
+        "height": 36,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "split-window",
+      "definition": "window",
+      "label": "split · window",
+      "parentId": null,
+      "values": {
+        "x": 210,
+        "y": 96,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "split-two",
+      "definition": "type",
+      "label": "split · TWO PAGES.",
+      "parentId": null,
+      "values": {
+        "text": "TWO PAGES.",
+        "size": 150,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "split-three",
+      "definition": "type",
+      "label": "split · THREE.",
+      "parentId": null,
+      "values": {
+        "text": "THREE.",
+        "size": 150,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "split-coalition",
+      "definition": "type",
+      "label": "split · NO COALITION TALKS.",
+      "parentId": null,
+      "values": {
+        "text": "NO COALITION TALKS.",
+        "size": 150,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "layout-window",
+      "definition": "window",
+      "label": "layout · window",
+      "parentId": null,
+      "values": {
+        "x": 210,
+        "y": 96,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "layout-dissolve",
+      "definition": "type",
+      "label": "layout · DISSOLVES THE TOOLBAR.",
+      "parentId": null,
+      "values": {
+        "text": "DISSOLVES\nTHE TOOLBAR.",
+        "size": 170,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 1060,
+        "y": 600,
+        "width": 800,
+        "height": 420,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "layout-whole",
+      "definition": "type",
+      "label": "layout · THE PAGE GETS THE WINDOW.",
+      "parentId": null,
+      "values": {
+        "text": "THE PAGE GETS\nTHE WINDOW.",
+        "size": 170,
+        "color": "#F1ECE2",
+        "fill": "#C3371F",
+        "x": 1060,
+        "y": 600,
+        "width": 800,
+        "height": 420,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "block-window",
+      "definition": "window",
+      "label": "block · window",
+      "parentId": null,
+      "values": {
+        "x": 210,
+        "y": 96,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "block-ads",
+      "definition": "type",
+      "label": "block · IMMUNE TO ADS.",
+      "parentId": null,
+      "values": {
+        "text": "IMMUNE TO ADS.",
+        "size": 150,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "block-trackers",
+      "definition": "type",
+      "label": "block · AND TRACKERS.",
+      "parentId": null,
+      "values": {
+        "text": "AND TRACKERS.",
+        "size": 150,
+        "color": "#F1ECE2",
+        "fill": "#C3371F",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "block-label",
+      "definition": "type",
+      "label": "block · UBLOCK ORIGIN LITE, BUILT IN",
+      "parentId": null,
+      "values": {
+        "text": "UBLOCK ORIGIN LITE, BUILT IN",
+        "size": 24,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 80,
+        "y": 1026,
+        "width": 1760,
+        "height": 36,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "colors-window",
+      "definition": "window",
+      "label": "colors · window",
+      "parentId": null,
+      "values": {
+        "x": 360,
+        "y": 230,
+        "width": 1200,
+        "height": 750,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "colors-words",
+      "definition": "type",
+      "label": "colors · PICK YOUR COLOURS.",
+      "parentId": null,
+      "values": {
+        "text": "PICK YOUR COLOURS.",
+        "size": 150,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "chromium-window",
+      "definition": "window",
+      "label": "chromium · window",
+      "parentId": null,
+      "values": {
+        "x": 860,
+        "y": 300,
+        "width": 980,
+        "height": 613,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "chromium-actually",
+      "definition": "type",
+      "label": "chromium · IT’S ACTUALLY",
+      "parentId": null,
+      "values": {
+        "text": "IT’S ACTUALLY",
+        "size": 120,
+        "color": "#EFE8DC",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 250,
+        "width": 760,
+        "height": 130,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "chromium-name",
+      "definition": "type",
+      "label": "chromium · CHROMIUM.",
+      "parentId": null,
+      "values": {
+        "text": "CHROMIUM.",
+        "size": 260,
+        "color": "#7FA6FF",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 390,
+        "width": 760,
+        "height": 300,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "chromium-not-webkit",
+      "definition": "type",
+      "label": "chromium · NOT WEBKIT.",
+      "parentId": null,
+      "values": {
+        "text": "NOT WEBKIT.",
+        "size": 150,
+        "color": "#EFE8DC",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 260,
+        "width": 760,
+        "height": 170,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "chromium-not-electron",
+      "definition": "type",
+      "label": "chromium · NOT ELECTRON.",
+      "parentId": null,
+      "values": {
+        "text": "NOT ELECTRON.",
+        "size": 150,
+        "color": "#EFE8DC",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 440,
+        "width": 760,
+        "height": 170,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "chromium-own",
+      "definition": "type",
+      "label": "chromium · Every window is Chrome’s own",
+      "parentId": null,
+      "values": {
+        "text": "Every window is Chrome’s own.",
+        "size": 52,
+        "color": "#A79F93",
+        "fill": "#00000000",
+        "x": 84,
+        "y": 650,
+        "width": 760,
+        "height": 80,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "store-window",
+      "definition": "window",
+      "label": "store · window",
+      "parentId": null,
+      "values": {
+        "x": 210,
+        "y": 96,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "store-any",
+      "definition": "type",
+      "label": "store · ANY CHROME EXTENSION.",
+      "parentId": null,
+      "values": {
+        "text": "ANY CHROME EXTENSION.",
+        "size": 150,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "store-add",
+      "definition": "type",
+      "label": "store · ADD TO NETNYAHOO.",
+      "parentId": null,
+      "values": {
+        "text": "ADD TO NETNYAHOO.",
+        "size": 150,
+        "color": "#F1ECE2",
+        "fill": "#2150D9",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "store-no",
+      "definition": "type",
+      "label": "store · NO THANKS.",
+      "parentId": null,
+      "values": {
+        "text": "NO THANKS.",
+        "size": 130,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 1020,
+        "y": 560,
+        "width": 760,
+        "height": 210,
+        "rotation": -10
+      }
+    },
+    {
+      "id": "privacy-window",
+      "definition": "window",
+      "label": "privacy · window",
+      "parentId": null,
+      "values": {
+        "x": 394,
+        "y": 120,
+        "width": 1132,
+        "height": 884,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "privacy-tracks",
+      "definition": "type",
+      "label": "privacy · TRACKS NOTHING YOU DIDN’T SI",
+      "parentId": null,
+      "values": {
+        "text": "TRACKS NOTHING\nYOU DIDN’T SIGN FOR.",
+        "size": 130,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 880,
+        "y": 650,
+        "width": 980,
+        "height": 360,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "privacy-label",
+      "definition": "type",
+      "label": "privacy · UNUSUAL, FOR A MAN IN HIS PO",
+      "parentId": null,
+      "values": {
+        "text": "UNUSUAL, FOR A MAN IN HIS POSITION",
+        "size": 24,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 880,
+        "y": 1026,
+        "width": 980,
+        "height": 36,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "icons-window",
+      "definition": "window",
+      "label": "icons · window",
+      "parentId": null,
+      "values": {
+        "x": 394,
+        "y": 120,
+        "width": 1132,
+        "height": 884,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "icons-seven",
+      "definition": "type",
+      "label": "icons · SEVEN APP ICONS.",
+      "parentId": null,
+      "values": {
+        "text": "SEVEN APP ICONS.",
+        "size": 150,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "icons-one",
+      "definition": "type",
+      "label": "icons · ONE FACE.",
+      "parentId": null,
+      "values": {
+        "text": "ONE FACE.",
+        "size": 150,
+        "color": "#F1ECE2",
+        "fill": "#C3371F",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "fast-window",
+      "definition": "window",
+      "label": "fast · window",
+      "parentId": null,
+      "values": {
+        "x": 210,
+        "y": 96,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "fast-label",
+      "definition": "type",
+      "label": "fast · AUSTERITY BUDGET",
+      "parentId": null,
+      "values": {
+        "text": "AUSTERITY BUDGET",
+        "size": 24,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 210,
+        "y": 40,
+        "width": 1500,
+        "height": 40,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "fast-cpu",
+      "definition": "type",
+      "label": "fast · IDLES UNDER HALF A PERCENT C",
+      "parentId": null,
+      "values": {
+        "text": "IDLES UNDER\nHALF A PERCENT CPU.",
+        "size": 130,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 960,
+        "y": 640,
+        "width": 900,
+        "height": 380,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe2-window",
+      "definition": "window",
+      "label": "swipe2 · window",
+      "parentId": null,
+      "values": {
+        "x": 300,
+        "y": 220,
+        "width": 1320,
+        "height": 825,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "swipe2-swipe",
+      "definition": "type",
+      "label": "swipe2 · SWIPE. SWIPE. SWIPE. SWIPE.",
+      "parentId": null,
+      "values": {
+        "text": "SWIPE. SWIPE. SWIPE. SWIPE.",
+        "size": 140,
+        "color": "#F1ECE2",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 60,
+        "width": 1760,
+        "height": 160,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nos-account",
+      "definition": "type",
+      "label": "nos · NO ACCOUNT.",
+      "parentId": null,
+      "values": {
+        "text": "NO ACCOUNT.",
+        "size": 420,
+        "color": "#F1ECE2",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 230,
+        "width": 1760,
+        "height": 620,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nos-ai",
+      "definition": "type",
+      "label": "nos · NO AI.",
+      "parentId": null,
+      "values": {
+        "text": "NO AI.",
+        "size": 520,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 230,
+        "width": 1760,
+        "height": 620,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nos-tracking",
+      "definition": "type",
+      "label": "nos · NO TRACKING.",
+      "parentId": null,
+      "values": {
+        "text": "NO TRACKING.",
+        "size": 420,
+        "color": "#F1ECE2",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 230,
+        "width": 1760,
+        "height": 620,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nos-source",
+      "definition": "type",
+      "label": "nos · OPEN SOURCE.",
+      "parentId": null,
+      "values": {
+        "text": "OPEN SOURCE.",
+        "size": 420,
+        "color": "#F1ECE2",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 230,
+        "width": 1760,
+        "height": 620,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "burst-window",
+      "definition": "window",
+      "label": "burst · window",
+      "parentId": null,
+      "values": {
+        "x": 210,
+        "y": 96,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "burst-label",
+      "definition": "type",
+      "label": "burst · THE RECORD SO FAR",
+      "parentId": null,
+      "values": {
+        "text": "THE RECORD SO FAR",
+        "size": 24,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
+        "x": 80,
+        "y": 40,
+        "width": 1760,
+        "height": 40,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-personal",
+      "definition": "window",
+      "label": "immunity · personal",
+      "parentId": null,
+      "values": {
+        "x": 1290,
+        "y": 150,
+        "width": 560,
+        "height": 350,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-work",
+      "definition": "window",
+      "label": "immunity · work",
+      "parentId": null,
+      "values": {
+        "x": 1320,
+        "y": 400,
+        "width": 560,
+        "height": 350,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-campaign",
+      "definition": "window",
+      "label": "immunity · campaign",
+      "parentId": null,
+      "values": {
+        "x": 1280,
+        "y": 650,
+        "width": 560,
+        "height": 350,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-headline",
+      "definition": "type",
+      "label": "immunity · FULL IMMUNITY.",
+      "parentId": null,
+      "values": {
+        "text": "FULL\nIMMUNITY.",
+        "size": 380,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 90,
+        "width": 1150,
+        "height": 680,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-lede",
+      "definition": "type",
+      "label": "immunity · Real Chromium for the Mac. I",
+      "parentId": null,
+      "values": {
+        "text": "Real Chromium for the Mac.\nImmune to ads, trackers and prosecution.",
+        "size": 50,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 84,
+        "y": 790,
+        "width": 1240,
+        "height": 140,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "immunity-stamp",
+      "definition": "type",
+      "label": "immunity · INCUMBENT",
+      "parentId": null,
+      "values": {
+        "text": "INCUMBENT",
+        "size": 84,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 880,
+        "y": 110,
+        "width": 480,
+        "height": 150,
+        "rotation": -9
+      }
+    },
+    {
+      "id": "immunity-label",
+      "definition": "type",
+      "label": "immunity · NETNYAHOO · THE SIDEBAR BROW",
+      "parentId": null,
+      "values": {
+        "text": "NETNYAHOO · THE SIDEBAR BROWSER FOR MAC",
+        "size": 24,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 84,
+        "y": 980,
+        "width": 1180,
+        "height": 40,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-yahu",
+      "definition": "window",
+      "label": "cta · yahu",
+      "parentId": null,
+      "values": {
+        "x": 1200,
+        "y": 120,
+        "width": 680,
+        "height": 960,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-download",
+      "definition": "type",
+      "label": "cta · DOWNLOAD FREE",
+      "parentId": null,
+      "values": {
+        "text": "DOWNLOAD FREE",
+        "size": 120,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 210,
+        "width": 1100,
+        "height": 140,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-url",
+      "definition": "type",
+      "label": "cta · NETNYAHOO.COM",
+      "parentId": null,
+      "values": {
+        "text": "NETNYAHOO.COM",
+        "size": 240,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 360,
+        "width": 1100,
+        "height": 280,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-fine",
+      "definition": "type",
+      "label": "cta · OPEN SOURCE · APPLE SILICON ",
+      "parentId": null,
+      "values": {
+        "text": "OPEN SOURCE · APPLE SILICON · MACOS 14+",
+        "size": 26,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 84,
+        "y": 680,
+        "width": 1100,
+        "height": 40,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "cta-victory",
+      "definition": "type",
+      "label": "cta · VICTORY DANCE",
+      "parentId": null,
+      "values": {
+        "text": "VICTORY DANCE",
+        "size": 70,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 1280,
+        "y": 160,
+        "width": 560,
+        "height": 140,
+        "rotation": 8
+      }
+    }
+  ],
+  "operations": []
+}

@@ -1,0 +1,233 @@
+{
+ "block": {
+  "size": [
+   2880,
+   1800
+  ],
+  "labels": [
+   "page",
+   "controls",
+   "controls2"
+  ]
+ },
+ "colors": {
+  "size": [
+   2880,
+   1800
+  ],
+  "labels": [
+   "color:plum",
+   "color:blue",
+   "color:purple",
+   "color:pink",
+   "color:red",
+   "color:orange",
+   "color:yellow",
+   "color:green",
+   "color:neutral",
+   "color:plum"
+  ]
+ },
+ "layout": {
+  "size": [
+   2880,
+   1800
+  ],
+  "labels": [
+   "toolbar",
+   "sidebar",
+   "hidden",
+   "newtab"
+  ]
+ },
+ "site": {
+  "size": [
+   2880,
+   1800
+  ],
+  "labels": [
+   "site",
+   "scroll1",
+   "scroll2",
+   "scroll3",
+   "scroll4",
+   "scroll5",
+   "scroll6"
+  ]
+ },
+ "split": {
+  "size": [
+   2880,
+   1800
+  ],
+  "labels": [
+   "one",
+   "two",
+   "three"
+  ]
+ },
+ "store": {
+  "size": [
+   2880,
+   1800
+  ],
+  "labels": [
+   "store"
+  ]
+ },
+ "swipe": {
+  "size": [
+   2880,
+   1800
+  ],
+  "labels": [
+   "start",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork",
+   "toWork:settle",
+   "toWork:settle",
+   "toWork:settle",
+   "toWork:settle",
+   "toWork:settle",
+   "toWork:settle",
+   "toWork:rest",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign",
+   "toCampaign:settle",
+   "toCampaign:settle",
+   "toCampaign:settle",
+   "toCampaign:settle",
+   "toCampaign:settle",
+   "toCampaign:settle",
+   "toCampaign:rest",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork",
+   "backToWork:settle",
+   "backToWork:settle",
+   "backToWork:settle",
+   "backToWork:settle",
+   "backToWork:settle",
+   "backToWork:settle",
+   "backToWork:rest",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal",
+   "backToPersonal:settle",
+   "backToPersonal:settle",
+   "backToPersonal:settle",
+   "backToPersonal:settle",
+   "backToPersonal:settle",
+   "backToPersonal:settle",
+   "backToPersonal:rest"
+  ]
+ },
+ "tabs": {
+  "size": [
+   2880,
+   1800
+  ],
+  "labels": [
+   "tab:t1",
+   "tab:t2",
+   "tab:t3",
+   "tab:t4",
+   "tab:t5",
+   "tab:t6",
+   "tab:t7",
+   "tab:t8",
+   "tab:t9",
+   "tab:t10",
+   "tab:t11",
+   "tab:t12",
+   "tab:t13",
+   "tab:t14",
+   "tab:t15",
+   "tab:t16",
+   "tab:t17",
+   "tab:t18"
+  ]
+ },
+ "windows": {
+  "size": [
+   1640,
+   1280
+  ],
+  "labels": [
+   "import",
+   "privacy",
+   "profiles",
+   "appearance"
+  ]
+ }
+}

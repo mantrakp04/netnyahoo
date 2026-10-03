@@ -1,0 +1,323 @@
+{
+ "bpm": 128.57142857142858,
+ "fps": 30,
+ "lufs": -14,
+ "cuts": {
+  "launch": {
+   "beats": 96,
+   "arrangement": [
+    [
+     "hook",
+     2
+    ],
+    [
+     "dropA",
+     8
+    ],
+    [
+     "break",
+     2
+    ],
+    [
+     "dropB",
+     8
+    ],
+    [
+     "end",
+     4
+    ]
+   ],
+   "sfx": [
+    {
+     "kind": "stamp",
+     "beat": 4,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 4.5,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 5,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 5.5,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 6,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 6.25,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 6.5,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 6.75,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 7,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 7.25,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 10,
+     "gain": 1.0
+    },
+    {
+     "kind": "stamp",
+     "beat": 50.75,
+     "gain": 1.0
+    },
+    {
+     "kind": "stamp",
+     "beat": 83,
+     "gain": 1.0
+    },
+    {
+     "kind": "stamp",
+     "beat": 91,
+     "gain": 1.0
+    },
+    {
+     "kind": "whoosh",
+     "beat": 8.3,
+     "gain": 0.9
+    },
+    {
+     "kind": "whoosh",
+     "beat": 39.45,
+     "gain": 0.9
+    },
+    {
+     "kind": "whoosh",
+     "beat": 77.8,
+     "gain": 0.9
+    },
+    {
+     "kind": "swipe",
+     "beat": 16.3,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 18.3,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 20.0,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 20.5,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 64.1,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 65.1,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 66.1,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 67.1,
+     "gain": 1.0
+    },
+    {
+     "kind": "click",
+     "beat": 12,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 12.5,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 13,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 13.5,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 14,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 14.5,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 25,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 26,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 29,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 30.5,
+     "gain": 0.8
+    },
+    {
+     "kind": "click",
+     "beat": 33,
+     "gain": 0.8
+    }
+   ]
+  },
+  "teaser": {
+   "beats": 36,
+   "arrangement": [
+    [
+     "hook",
+     2
+    ],
+    [
+     "dropA",
+     4
+    ],
+    [
+     "end",
+     3
+    ]
+   ],
+   "sfx": [
+    {
+     "kind": "stamp",
+     "beat": 4,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 4.5,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 5,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 5.5,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 6,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 6.25,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 6.5,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 6.75,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 7,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 7.25,
+     "gain": 0.7
+    },
+    {
+     "kind": "stamp",
+     "beat": 10,
+     "gain": 1.0
+    },
+    {
+     "kind": "stamp",
+     "beat": 27,
+     "gain": 1.0
+    },
+    {
+     "kind": "stamp",
+     "beat": 31,
+     "gain": 1.0
+    },
+    {
+     "kind": "whoosh",
+     "beat": 8.3,
+     "gain": 0.9
+    },
+    {
+     "kind": "swipe",
+     "beat": 12.3,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 14.3,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 16.0,
+     "gain": 1.0
+    },
+    {
+     "kind": "swipe",
+     "beat": 16.5,
+     "gain": 1.0
+    }
+   ]
+  }
+ }
+}

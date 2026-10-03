@@ -1,0 +1,8 @@
+import { Film, meta as metaFor } from "../../lib/nn-launch/Film";
+import document from "./studio.json";
+
+export const meta = metaFor("launch", 1920, 1080);
+
+export default function Video() {
+  return <Film cut="launch" document={document} />;
+}
