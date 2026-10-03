@@ -151,9 +151,17 @@ echo "==> Archive"
 }
 
 echo "==> Export (Developer ID)"
-xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$macos/ExportOptions-DeveloperID.plist" \
-  -exportPath "$dist/export" -allowProvisioningUpdates > "$dist/export.log" 2>&1 \
-  || { cat "$dist/export.log" >&2; exit 1; }
+# Apple's timestamp server sometimes doesn't answer ("A timestamp was expected but was not found"); one miss among
+# the dozens of pieces the export signs fails it, so retry that, and only that, a few times.
+for attempt in 1 2 3 4 5 6; do
+  rm -rf "$dist/export"
+  xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$macos/ExportOptions-DeveloperID.plist" \
+    -exportPath "$dist/export" -allowProvisioningUpdates > "$dist/export.log" 2>&1 && break
+  grep -q "A timestamp was expected" "$dist/export.log" && [ "$attempt" -lt 6 ] \
+    || { cat "$dist/export.log" >&2; exit 1; }
+  echo "    no timestamp from Apple (attempt $attempt), exporting again"
+  sleep 10
+done
 
 echo "==> Sign Chrome's framework"
 # Xcode's export signs what it knows: the app (with the Developer ID profile its keychain groups need), Sparkle,
@@ -161,7 +169,15 @@ echo "==> Sign Chrome's framework"
 # hardened runtime, the renderer and GPU ones (Aperitif's too) with their JIT entitlements and without library
 # validation (incompatible with JIT), then the framework, then the app again with what the export gave it.
 entitlements_dir="$nncore/scripts/signing"
-sign() { codesign --force --timestamp --sign "$identity" "$@"; }
+sign() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    codesign --force --timestamp --sign "$identity" "$@" && return 0
+    echo "    signing failed (attempt $attempt), likely no timestamp from Apple; retrying" >&2
+    sleep 5
+  done
+  die "couldn't sign ${*: -1}"
+}
 fw="$app/Contents/Frameworks/Chromium Framework.framework"
 fwv="$(cd "$fw/Versions/Current" && pwd -P)" || die "no Chromium Framework.framework in the export"
 for lib in "$fwv"/Libraries/*.dylib; do sign "$lib"; done
@@ -268,7 +284,7 @@ ditto "$app" "$staging/Netnyahoo.app"
 ln -s /Applications "$staging/Applications"
 hdiutil create -volname Netnyahoo -srcfolder "$staging" -format ULFO -ov "$dmg" >/dev/null
 rm -rf "$staging"
-codesign --force --sign "$identity" --timestamp "$dmg"
+sign "$dmg"
 if [ "$notarize" = 1 ]; then
   notarize_file "$dmg"
   xcrun stapler staple "$dmg"
