@@ -9,3 +9,5 @@ public/music
 # Copied from apps/site by scripts/prepare-assets.sh
 public/fonts
 public/brand
+# Copied from apps/site by scripts/prepare-assets.sh
+public/models

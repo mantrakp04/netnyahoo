@@ -159,19 +159,45 @@
   ],
   "objects": [
     {
+      "id": "nags-window",
+      "definition": "window",
+      "label": "nags · window",
+      "parentId": null,
+      "values": {
+        "x": 40,
+        "y": 640,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nags-yahu",
+      "definition": "window",
+      "label": "nags · yahu",
+      "parentId": null,
+      "values": {
+        "x": 480,
+        "y": 940,
+        "width": 600,
+        "height": 660,
+        "rotation": 0
+      }
+    },
+    {
       "id": "nag-sign-in",
       "definition": "type",
       "label": "nags · SIGN IN.",
       "parentId": null,
       "values": {
         "text": "SIGN\nIN.",
-        "size": 330,
+        "size": 420,
         "color": "#16130F",
-        "fill": "#00000000",
+        "fill": "#F1ECE2",
         "x": 60,
-        "y": 520,
-        "width": 960,
-        "height": 880,
+        "y": 420,
+        "width": 880,
+        "height": 820,
         "rotation": 0
       }
     },
@@ -182,13 +208,13 @@
       "parentId": null,
       "values": {
         "text": "TRY\nAI.",
-        "size": 340,
+        "size": 460,
         "color": "#16130F",
-        "fill": "#00000000",
+        "fill": "#F1ECE2",
         "x": 60,
-        "y": 520,
-        "width": 960,
-        "height": 880,
+        "y": 420,
+        "width": 880,
+        "height": 820,
         "rotation": 0
       }
     },
@@ -199,13 +225,13 @@
       "parentId": null,
       "values": {
         "text": "ACCEPT\nALL.",
-        "size": 300,
+        "size": 420,
         "color": "#16130F",
-        "fill": "#00000000",
+        "fill": "#F1ECE2",
         "x": 60,
-        "y": 520,
-        "width": 960,
-        "height": 880,
+        "y": 420,
+        "width": 880,
+        "height": 820,
         "rotation": 0
       }
     },
@@ -216,13 +242,13 @@
       "parentId": null,
       "values": {
         "text": "UP\nGRADE.",
-        "size": 300,
+        "size": 420,
         "color": "#16130F",
-        "fill": "#00000000",
+        "fill": "#F1ECE2",
         "x": 60,
-        "y": 520,
-        "width": 960,
-        "height": 880,
+        "y": 420,
+        "width": 880,
+        "height": 820,
         "rotation": 0
       }
     },
@@ -233,14 +259,14 @@
       "parentId": null,
       "values": {
         "text": "SIGN IN TO SYNC",
-        "size": 66,
+        "size": 70,
         "color": "#16130F",
         "fill": "#00000000",
         "x": 60,
-        "y": 240,
-        "width": 800,
+        "y": 600,
+        "width": 820,
         "height": 130,
-        "rotation": -7
+        "rotation": -6
       }
     },
     {
@@ -250,18 +276,35 @@
       "parentId": null,
       "values": {
         "text": "MEET YOUR AI COPILOT",
-        "size": 60,
+        "size": 62,
         "color": "#2150D9",
         "fill": "#00000000",
-        "x": 160,
-        "y": 470,
-        "width": 860,
+        "x": 120,
+        "y": 820,
+        "width": 820,
         "height": 130,
-        "rotation": 5
+        "rotation": 4
       }
     },
     {
       "id": "nag-pile-3",
+      "definition": "type",
+      "label": "nags · ACCEPT ALL COOKIES",
+      "parentId": null,
+      "values": {
+        "text": "ACCEPT ALL COOKIES",
+        "size": 64,
+        "color": "#C3371F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 1040,
+        "width": 820,
+        "height": 130,
+        "rotation": -3
+      }
+    },
+    {
+      "id": "nag-pile-4",
       "definition": "type",
       "label": "nags · SET AS DEFAULT?",
       "parentId": null,
@@ -270,130 +313,11 @@
         "size": 66,
         "color": "#16130F",
         "fill": "#00000000",
-        "x": 60,
-        "y": 700,
-        "width": 800,
-        "height": 130,
-        "rotation": 3
-      }
-    },
-    {
-      "id": "nag-pile-4",
-      "definition": "type",
-      "label": "nags · ACCEPT ALL COOKIES",
-      "parentId": null,
-      "values": {
-        "text": "ACCEPT ALL COOKIES",
-        "size": 60,
-        "color": "#C3371F",
-        "fill": "#00000000",
-        "x": 180,
-        "y": 930,
-        "width": 840,
-        "height": 130,
-        "rotation": -5
-      }
-    },
-    {
-      "id": "nag-pile-5",
-      "definition": "type",
-      "label": "nags · TRY AI TABS",
-      "parentId": null,
-      "values": {
-        "text": "TRY AI TABS",
-        "size": 66,
-        "color": "#2150D9",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 1160,
-        "width": 620,
-        "height": 130,
-        "rotation": 8
-      }
-    },
-    {
-      "id": "nag-pile-6",
-      "definition": "type",
-      "label": "nags · CREATE AN ACCOUNT",
-      "parentId": null,
-      "values": {
-        "text": "CREATE AN ACCOUNT",
-        "size": 60,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 200,
-        "y": 1380,
-        "width": 820,
-        "height": 130,
-        "rotation": -3
-      }
-    },
-    {
-      "id": "nag-pile-7",
-      "definition": "type",
-      "label": "nags · RATE US ★★★★★",
-      "parentId": null,
-      "values": {
-        "text": "RATE US ★★★★★",
-        "size": 64,
-        "color": "#C3371F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 1580,
+        "x": 140,
+        "y": 1260,
         "width": 760,
         "height": 130,
         "rotation": 6
-      }
-    },
-    {
-      "id": "nag-pile-8",
-      "definition": "type",
-      "label": "nags · SIGN IN AGAIN",
-      "parentId": null,
-      "values": {
-        "text": "SIGN IN AGAIN",
-        "size": 64,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 320,
-        "y": 90,
-        "width": 700,
-        "height": 130,
-        "rotation": -9
-      }
-    },
-    {
-      "id": "nag-pile-9",
-      "definition": "type",
-      "label": "nags · AI SUMMARY?",
-      "parentId": null,
-      "values": {
-        "text": "AI SUMMARY?",
-        "size": 64,
-        "color": "#2150D9",
-        "fill": "#00000000",
-        "x": 360,
-        "y": 1740,
-        "width": 660,
-        "height": 130,
-        "rotation": 4
-      }
-    },
-    {
-      "id": "nag-pile-10",
-      "definition": "type",
-      "label": "nags · UPGRADE TO PRO",
-      "parentId": null,
-      "values": {
-        "text": "UPGRADE TO PRO",
-        "size": 64,
-        "color": "#C3371F",
-        "fill": "#00000000",
-        "x": 100,
-        "y": 1020,
-        "width": 800,
-        "height": 130,
-        "rotation": -6
       }
     },
     {
@@ -403,9 +327,22 @@
       "parentId": null,
       "values": {
         "x": 40,
-        "y": 1080,
-        "width": 1000,
-        "height": 625,
+        "y": 760,
+        "width": 1500,
+        "height": 938,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "title-yahu",
+      "definition": "window",
+      "label": "title · yahu",
+      "parentId": null,
+      "values": {
+        "x": 480,
+        "y": 940,
+        "width": 600,
+        "height": 660,
         "rotation": 0
       }
     },
@@ -415,14 +352,31 @@
       "label": "title · NETNYAHOO",
       "parentId": null,
       "values": {
-        "text": "NET\nNYA\nHOO",
-        "size": 330,
+        "text": "NETNYAHOO",
+        "size": 240,
         "color": "#16130F",
         "fill": "#00000000",
         "x": 60,
-        "y": 140,
-        "width": 960,
-        "height": 880,
+        "y": 230,
+        "width": 880,
+        "height": 300,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "title-what",
+      "definition": "type",
+      "label": "title · THE SIDEBAR BROWSER FOR MAC",
+      "parentId": null,
+      "values": {
+        "text": "THE SIDEBAR\nBROWSER FOR MAC",
+        "size": 76,
+        "color": "#2150D9",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 540,
+        "width": 880,
+        "height": 150,
         "rotation": 0
       }
     },
@@ -433,14 +387,14 @@
       "parentId": null,
       "values": {
         "text": "ASKS FOR NOTHING.",
-        "size": 64,
+        "size": 60,
         "color": "#C3371F",
         "fill": "#00000000",
-        "x": 200,
-        "y": 860,
-        "width": 820,
-        "height": 130,
-        "rotation": -8
+        "x": 50,
+        "y": 1250,
+        "width": 580,
+        "height": 120,
+        "rotation": -6
       }
     },
     {
@@ -450,26 +404,9 @@
       "parentId": null,
       "values": {
         "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 625,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "tabs-label",
-      "definition": "type",
-      "label": "tabs · FIG. 1 — EVERY TAB, DOWN THE",
-      "parentId": null,
-      "values": {
-        "text": "FIG. 1 — EVERY TAB, DOWN THE SIDE",
-        "size": 24,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 620,
-        "width": 960,
-        "height": 40,
+        "y": 560,
+        "width": 1700,
+        "height": 1063,
         "rotation": 0
       }
     },
@@ -480,13 +417,13 @@
       "parentId": null,
       "values": {
         "text": "TABS DOWN\nTHE SIDE.",
-        "size": 160,
+        "size": 150,
         "color": "#F1ECE2",
         "fill": "#16130F",
         "x": 60,
-        "y": 1400,
-        "width": 960,
-        "height": 400,
+        "y": 230,
+        "width": 880,
+        "height": 320,
         "rotation": 0
       }
     },
@@ -497,9 +434,9 @@
       "parentId": null,
       "values": {
         "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 625,
+        "y": 560,
+        "width": 1700,
+        "height": 1063,
         "rotation": 0
       }
     },
@@ -510,13 +447,13 @@
       "parentId": null,
       "values": {
         "text": "WORK.",
-        "size": 300,
+        "size": 150,
         "color": "#F1ECE2",
         "fill": "#4691C3",
         "x": 60,
-        "y": 1420,
-        "width": 960,
-        "height": 400,
+        "y": 230,
+        "width": 880,
+        "height": 200,
         "rotation": 0
       }
     },
@@ -527,47 +464,30 @@
       "parentId": null,
       "values": {
         "text": "CAMPAIGN.",
-        "size": 300,
+        "size": 150,
         "color": "#F1ECE2",
         "fill": "#D87249",
         "x": 60,
-        "y": 1420,
-        "width": 960,
-        "height": 400,
+        "y": 230,
+        "width": 880,
+        "height": 200,
         "rotation": 0
       }
     },
     {
-      "id": "swipe-personal",
+      "id": "swipe-side",
       "definition": "type",
-      "label": "swipe · PERSONAL.",
+      "label": "swipe · SIDE PROJECT.",
       "parentId": null,
       "values": {
-        "text": "PERSONAL.",
-        "size": 300,
+        "text": "SIDE PROJECT.",
+        "size": 150,
         "color": "#F1ECE2",
-        "fill": "#C07A98",
+        "fill": "#3EB489",
         "x": 60,
-        "y": 1420,
-        "width": 960,
-        "height": 400,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "swipe-lives",
-      "definition": "type",
-      "label": "swipe · SEPARATE LIVES. ONE SWIPE.",
-      "parentId": null,
-      "values": {
-        "text": "SEPARATE LIVES.\nONE SWIPE.",
-        "size": 130,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
+        "y": 230,
+        "width": 880,
+        "height": 200,
         "rotation": 0
       }
     },
@@ -577,14 +497,14 @@
       "label": "swipe · PLAUSIBLE DENIABILITY COMES ",
       "parentId": null,
       "values": {
-        "text": "PLAUSIBLE DENIABILITY COMES STANDARD",
-        "size": 24,
+        "text": "PLAUSIBLE\nDENIABILITY\nCOMES STANDARD.",
+        "size": 96,
         "color": "#16130F",
         "fill": "#00000000",
         "x": 60,
-        "y": 1380,
-        "width": 960,
-        "height": 36,
+        "y": 230,
+        "width": 880,
+        "height": 220,
         "rotation": 0
       }
     },
@@ -595,9 +515,22 @@
       "parentId": null,
       "values": {
         "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 625,
+        "y": 560,
+        "width": 1700,
+        "height": 1063,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "split-yahu",
+      "definition": "window",
+      "label": "split · yahu",
+      "parentId": null,
+      "values": {
+        "x": 600,
+        "y": 1000,
+        "width": 480,
+        "height": 520,
         "rotation": 0
       }
     },
@@ -608,30 +541,13 @@
       "parentId": null,
       "values": {
         "text": "TWO PAGES.",
-        "size": 230,
-        "color": "#16130F",
-        "fill": "#00000000",
+        "size": 140,
+        "color": "#F1ECE2",
+        "fill": "#16130F",
         "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "split-three",
-      "definition": "type",
-      "label": "split · THREE.",
-      "parentId": null,
-      "values": {
-        "text": "THREE.",
-        "size": 230,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
+        "y": 230,
+        "width": 880,
+        "height": 300,
         "rotation": 0
       }
     },
@@ -642,60 +558,13 @@
       "parentId": null,
       "values": {
         "text": "NO COALITION\nTALKS.",
-        "size": 230,
-        "color": "#C3371F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "layout-window",
-      "definition": "window",
-      "label": "layout · window",
-      "parentId": null,
-      "values": {
-        "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 625,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "layout-dissolve",
-      "definition": "type",
-      "label": "layout · DISSOLVES THE TOOLBAR.",
-      "parentId": null,
-      "values": {
-        "text": "DISSOLVES\nTHE TOOLBAR.",
-        "size": 160,
-        "color": "#F1ECE2",
-        "fill": "#16130F",
-        "x": 60,
-        "y": 1400,
-        "width": 960,
-        "height": 420,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "layout-whole",
-      "definition": "type",
-      "label": "layout · THE PAGE GETS THE WINDOW.",
-      "parentId": null,
-      "values": {
-        "text": "THE PAGE GETS\nTHE WINDOW.",
-        "size": 150,
+        "size": 140,
         "color": "#F1ECE2",
         "fill": "#C3371F",
         "x": 60,
-        "y": 1400,
-        "width": 960,
-        "height": 420,
+        "y": 230,
+        "width": 880,
+        "height": 300,
         "rotation": 0
       }
     },
@@ -706,90 +575,26 @@
       "parentId": null,
       "values": {
         "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 625,
+        "y": 560,
+        "width": 1700,
+        "height": 1063,
         "rotation": 0
       }
     },
     {
-      "id": "block-ads",
+      "id": "block-immune",
       "definition": "type",
-      "label": "block · IMMUNE TO ADS.",
+      "label": "block · IMMUNE TO ADS AND TRACKERS.",
       "parentId": null,
       "values": {
-        "text": "IMMUNE\nTO ADS.",
-        "size": 230,
-        "color": "#F1ECE2",
-        "fill": "#16130F",
-        "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "block-trackers",
-      "definition": "type",
-      "label": "block · AND TRACKERS.",
-      "parentId": null,
-      "values": {
-        "text": "AND\nTRACKERS.",
-        "size": 230,
+        "text": "IMMUNE TO ADS\nAND TRACKERS.",
+        "size": 140,
         "color": "#F1ECE2",
         "fill": "#C3371F",
         "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "block-label",
-      "definition": "type",
-      "label": "block · UBLOCK ORIGIN LITE, BUILT IN",
-      "parentId": null,
-      "values": {
-        "text": "UBLOCK ORIGIN LITE, BUILT IN",
-        "size": 24,
-        "color": "#F1ECE2",
-        "fill": "#16130F",
-        "x": 60,
-        "y": 1830,
-        "width": 960,
-        "height": 36,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "colors-window",
-      "definition": "window",
-      "label": "colors · window",
-      "parentId": null,
-      "values": {
-        "x": 90,
-        "y": 760,
-        "width": 900,
-        "height": 563,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "colors-words",
-      "definition": "type",
-      "label": "colors · PICK YOUR COLOURS.",
-      "parentId": null,
-      "values": {
-        "text": "PICK YOUR\nCOLOURS.",
-        "size": 230,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
+        "y": 230,
+        "width": 880,
+        "height": 320,
         "rotation": 0
       }
     },
@@ -799,95 +604,40 @@
       "label": "chromium · window",
       "parentId": null,
       "values": {
-        "x": 60,
-        "y": 1160,
-        "width": 960,
-        "height": 600,
+        "x": 40,
+        "y": 820,
+        "width": 1500,
+        "height": 938,
         "rotation": 0
       }
     },
     {
       "id": "chromium-actually",
       "definition": "type",
-      "label": "chromium · IT’S ACTUALLY",
+      "label": "chromium · IT’S ACTUALLY CHROMIUM.",
       "parentId": null,
       "values": {
-        "text": "IT’S ACTUALLY",
-        "size": 120,
+        "text": "IT’S ACTUALLY\nCHROMIUM.",
+        "size": 200,
         "color": "#EFE8DC",
         "fill": "#00000000",
         "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 150,
+        "y": 260,
+        "width": 880,
+        "height": 460,
         "rotation": 0
       }
     },
     {
-      "id": "chromium-name",
-      "definition": "type",
-      "label": "chromium · CHROMIUM.",
+      "id": "swipe-big-window",
+      "definition": "window",
+      "label": "swipe-big · window",
       "parentId": null,
       "values": {
-        "text": "CHROMIUM.",
-        "size": 260,
-        "color": "#7FA6FF",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 470,
-        "width": 960,
-        "height": 330,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "chromium-not-webkit",
-      "definition": "type",
-      "label": "chromium · NOT WEBKIT.",
-      "parentId": null,
-      "values": {
-        "text": "NOT WEBKIT.",
-        "size": 150,
-        "color": "#EFE8DC",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 330,
-        "width": 960,
-        "height": 190,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "chromium-not-electron",
-      "definition": "type",
-      "label": "chromium · NOT ELECTRON.",
-      "parentId": null,
-      "values": {
-        "text": "NOT ELECTRON.",
-        "size": 150,
-        "color": "#EFE8DC",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 530,
-        "width": 960,
-        "height": 190,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "chromium-own",
-      "definition": "type",
-      "label": "chromium · Every window is Chrome’s own",
-      "parentId": null,
-      "values": {
-        "text": "Every window is Chrome’s own.",
-        "size": 52,
-        "color": "#A79F93",
-        "fill": "#00000000",
-        "x": 64,
-        "y": 760,
-        "width": 960,
-        "height": 80,
+        "x": 40,
+        "y": 520,
+        "width": 1700,
+        "height": 1063,
         "rotation": 0
       }
     },
@@ -898,9 +648,9 @@
       "parentId": null,
       "values": {
         "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 625,
+        "y": 560,
+        "width": 1700,
+        "height": 1063,
         "rotation": 0
       }
     },
@@ -911,30 +661,13 @@
       "parentId": null,
       "values": {
         "text": "ANY CHROME\nEXTENSION.",
-        "size": 230,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "store-add",
-      "definition": "type",
-      "label": "store · ADD TO NETNYAHOO.",
-      "parentId": null,
-      "values": {
-        "text": "ADD TO\nNETNYAHOO.",
-        "size": 230,
+        "size": 140,
         "color": "#F1ECE2",
-        "fill": "#2150D9",
+        "fill": "#16130F",
         "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
+        "y": 230,
+        "width": 880,
+        "height": 300,
         "rotation": 0
       }
     },
@@ -945,61 +678,14 @@
       "parentId": null,
       "values": {
         "text": "NO THANKS.",
-        "size": 104,
+        "size": 116,
         "color": "#C3371F",
         "fill": "#00000000",
-        "x": 180,
-        "y": 1280,
-        "width": 840,
-        "height": 190,
+        "x": 100,
+        "y": 1180,
+        "width": 820,
+        "height": 200,
         "rotation": -10
-      }
-    },
-    {
-      "id": "privacy-window",
-      "definition": "window",
-      "label": "privacy · window",
-      "parentId": null,
-      "values": {
-        "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 781,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "privacy-tracks",
-      "definition": "type",
-      "label": "privacy · TRACKS NOTHING YOU DIDN’T SI",
-      "parentId": null,
-      "values": {
-        "text": "TRACKS NOTHING\nYOU DIDN’T SIGN FOR.",
-        "size": 110,
-        "color": "#F1ECE2",
-        "fill": "#16130F",
-        "x": 60,
-        "y": 1420,
-        "width": 960,
-        "height": 380,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "privacy-label",
-      "definition": "type",
-      "label": "privacy · UNUSUAL, FOR A MAN IN HIS PO",
-      "parentId": null,
-      "values": {
-        "text": "UNUSUAL, FOR A MAN IN HIS POSITION",
-        "size": 24,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 1830,
-        "width": 960,
-        "height": 36,
-        "rotation": 0
       }
     },
     {
@@ -1010,8 +696,8 @@
       "values": {
         "x": 40,
         "y": 700,
-        "width": 1000,
-        "height": 781,
+        "width": 1500,
+        "height": 1171,
         "rotation": 0
       }
     },
@@ -1022,13 +708,13 @@
       "parentId": null,
       "values": {
         "text": "SEVEN\nAPP ICONS.",
-        "size": 230,
+        "size": 140,
         "color": "#F1ECE2",
         "fill": "#16130F",
         "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
+        "y": 230,
+        "width": 880,
+        "height": 300,
         "rotation": 0
       }
     },
@@ -1039,90 +725,13 @@
       "parentId": null,
       "values": {
         "text": "ONE FACE.",
-        "size": 230,
+        "size": 140,
         "color": "#F1ECE2",
         "fill": "#C3371F",
         "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "fast-window",
-      "definition": "window",
-      "label": "fast · window",
-      "parentId": null,
-      "values": {
-        "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 625,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "fast-label",
-      "definition": "type",
-      "label": "fast · AUSTERITY BUDGET",
-      "parentId": null,
-      "values": {
-        "text": "AUSTERITY BUDGET",
-        "size": 24,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 620,
-        "width": 960,
-        "height": 40,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "fast-cpu",
-      "definition": "type",
-      "label": "fast · IDLES UNDER HALF A PERCENT C",
-      "parentId": null,
-      "values": {
-        "text": "IDLES UNDER\nHALF A PERCENT CPU.",
-        "size": 110,
-        "color": "#F1ECE2",
-        "fill": "#16130F",
-        "x": 60,
-        "y": 1420,
-        "width": 960,
-        "height": 380,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "swipe2-window",
-      "definition": "window",
-      "label": "swipe2 · window",
-      "parentId": null,
-      "values": {
-        "x": 40,
-        "y": 760,
-        "width": 1000,
-        "height": 625,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "swipe2-swipe",
-      "definition": "type",
-      "label": "swipe2 · SWIPE. SWIPE. SWIPE. SWIPE.",
-      "parentId": null,
-      "values": {
-        "text": "SWIPE. SWIPE.\nSWIPE. SWIPE.",
-        "size": 230,
-        "color": "#F1ECE2",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 330,
+        "y": 230,
+        "width": 880,
+        "height": 300,
         "rotation": 0
       }
     },
@@ -1133,13 +742,13 @@
       "parentId": null,
       "values": {
         "text": "NO\nACCOUNT.",
-        "size": 300,
+        "size": 420,
         "color": "#F1ECE2",
         "fill": "#00000000",
         "x": 60,
-        "y": 520,
-        "width": 960,
-        "height": 880,
+        "y": 420,
+        "width": 880,
+        "height": 820,
         "rotation": 0
       }
     },
@@ -1150,13 +759,13 @@
       "parentId": null,
       "values": {
         "text": "NO\nAI.",
-        "size": 420,
-        "color": "#16130F",
+        "size": 520,
+        "color": "#F1ECE2",
         "fill": "#00000000",
         "x": 60,
-        "y": 520,
-        "width": 960,
-        "height": 880,
+        "y": 420,
+        "width": 880,
+        "height": 820,
         "rotation": 0
       }
     },
@@ -1167,13 +776,13 @@
       "parentId": null,
       "values": {
         "text": "NO\nTRACKING.",
-        "size": 300,
+        "size": 420,
         "color": "#F1ECE2",
         "fill": "#00000000",
         "x": 60,
-        "y": 520,
-        "width": 960,
-        "height": 880,
+        "y": 420,
+        "width": 880,
+        "height": 820,
         "rotation": 0
       }
     },
@@ -1184,232 +793,138 @@
       "parentId": null,
       "values": {
         "text": "OPEN\nSOURCE.",
-        "size": 300,
+        "size": 420,
         "color": "#F1ECE2",
         "fill": "#00000000",
         "x": 60,
-        "y": 520,
-        "width": 960,
-        "height": 880,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "burst-window",
-      "definition": "window",
-      "label": "burst · window",
-      "parentId": null,
-      "values": {
-        "x": 40,
-        "y": 700,
-        "width": 1000,
-        "height": 625,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "burst-label",
-      "definition": "type",
-      "label": "burst · THE RECORD SO FAR",
-      "parentId": null,
-      "values": {
-        "text": "THE RECORD SO FAR",
-        "size": 24,
-        "color": "#F1ECE2",
-        "fill": "#16130F",
-        "x": 60,
-        "y": 200,
-        "width": 960,
-        "height": 40,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-personal",
-      "definition": "window",
-      "label": "immunity · personal",
-      "parentId": null,
-      "values": {
-        "x": 60,
-        "y": 1590,
-        "width": 430,
-        "height": 269,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-work",
-      "definition": "window",
-      "label": "immunity · work",
-      "parentId": null,
-      "values": {
-        "x": 325,
-        "y": 1560,
-        "width": 430,
-        "height": 269,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-campaign",
-      "definition": "window",
-      "label": "immunity · campaign",
-      "parentId": null,
-      "values": {
-        "x": 590,
-        "y": 1600,
-        "width": 430,
-        "height": 269,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-headline",
-      "definition": "type",
-      "label": "immunity · FULL IMMUNITY.",
-      "parentId": null,
-      "values": {
-        "text": "FULL\nIMMUNITY.",
-        "size": 330,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 60,
-        "y": 360,
-        "width": 960,
+        "y": 420,
+        "width": 880,
         "height": 820,
         "rotation": 0
       }
     },
     {
-      "id": "immunity-lede",
-      "definition": "type",
-      "label": "immunity · Real Chromium for the Mac. I",
-      "parentId": null,
-      "values": {
-        "text": "Real Chromium for the Mac.\nImmune to ads, trackers and prosecution.",
-        "size": 48,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 64,
-        "y": 1220,
-        "width": 960,
-        "height": 200,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-stamp",
-      "definition": "type",
-      "label": "immunity · INCUMBENT",
-      "parentId": null,
-      "values": {
-        "text": "INCUMBENT",
-        "size": 66,
-        "color": "#C3371F",
-        "fill": "#00000000",
-        "x": 520,
-        "y": 200,
-        "width": 500,
-        "height": 140,
-        "rotation": -9
-      }
-    },
-    {
-      "id": "immunity-label",
-      "definition": "type",
-      "label": "immunity · NETNYAHOO · THE SIDEBAR BROW",
-      "parentId": null,
-      "values": {
-        "text": "NETNYAHOO · THE SIDEBAR BROWSER FOR MAC",
-        "size": 24,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 64,
-        "y": 1450,
-        "width": 960,
-        "height": 80,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "cta-yahu",
+      "id": "typing-window",
       "definition": "window",
-      "label": "cta · yahu",
+      "label": "typing · window",
       "parentId": null,
       "values": {
-        "x": 380,
-        "y": 1040,
-        "width": 660,
-        "height": 880,
+        "x": 40,
+        "y": 560,
+        "width": 1700,
+        "height": 1063,
         "rotation": 0
       }
     },
     {
-      "id": "cta-download",
+      "id": "end-yahu",
+      "definition": "window",
+      "label": "end · yahu",
+      "parentId": null,
+      "values": {
+        "x": 220,
+        "y": 860,
+        "width": 640,
+        "height": 640,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-icon",
+      "definition": "window",
+      "label": "end · icon",
+      "parentId": null,
+      "values": {
+        "x": 60,
+        "y": 300,
+        "width": 170,
+        "height": 170,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-immunity",
       "definition": "type",
-      "label": "cta · DOWNLOAD FREE",
+      "label": "end · FULL IMMUNITY.",
+      "parentId": null,
+      "values": {
+        "text": "FULL\nIMMUNITY.",
+        "size": 360,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 60,
+        "y": 230,
+        "width": 880,
+        "height": 640,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-name",
+      "definition": "type",
+      "label": "end · NETNYAHOO",
+      "parentId": null,
+      "values": {
+        "text": "NETNYAHOO",
+        "size": 150,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 250,
+        "y": 300,
+        "width": 690,
+        "height": 170,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-download",
+      "definition": "type",
+      "label": "end · DOWNLOAD FREE",
       "parentId": null,
       "values": {
         "text": "DOWNLOAD FREE",
-        "size": 110,
+        "size": 96,
         "color": "#16130F",
         "fill": "#00000000",
         "x": 60,
-        "y": 300,
-        "width": 960,
-        "height": 140,
+        "y": 500,
+        "width": 880,
+        "height": 100,
         "rotation": 0
       }
     },
     {
-      "id": "cta-url",
+      "id": "end-url",
       "definition": "type",
-      "label": "cta · NETNYAHOO.COM",
+      "label": "end · NETNYAHOO.COM",
       "parentId": null,
       "values": {
         "text": "NETNYAHOO.COM",
-        "size": 240,
+        "size": 190,
         "color": "#2150D9",
         "fill": "#00000000",
         "x": 60,
-        "y": 450,
-        "width": 960,
-        "height": 260,
+        "y": 600,
+        "width": 880,
+        "height": 170,
         "rotation": 0
       }
     },
     {
-      "id": "cta-fine",
+      "id": "end-source",
       "definition": "type",
-      "label": "cta · OPEN SOURCE · APPLE SILICON ",
+      "label": "end · GITHUB.COM/MANTRAKP04/NETNYA",
       "parentId": null,
       "values": {
-        "text": "OPEN SOURCE · APPLE SILICON · MACOS 14+",
-        "size": 26,
+        "text": "GITHUB.COM/MANTRAKP04/NETNYAHOO",
+        "size": 36,
         "color": "#16130F",
         "fill": "#00000000",
         "x": 64,
-        "y": 740,
-        "width": 960,
-        "height": 80,
+        "y": 790,
+        "width": 880,
+        "height": 50,
         "rotation": 0
-      }
-    },
-    {
-      "id": "cta-victory",
-      "definition": "type",
-      "label": "cta · VICTORY DANCE",
-      "parentId": null,
-      "values": {
-        "text": "VICTORY DANCE",
-        "size": 56,
-        "color": "#C3371F",
-        "fill": "#00000000",
-        "x": 80,
-        "y": 1010,
-        "width": 520,
-        "height": 120,
-        "rotation": 8
       }
     }
   ],

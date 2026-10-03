@@ -62,3 +62,19 @@ const snapWin = (id, label, extra) => {
   const f = OUT + "/" + String(seq++).padStart(4, "0") + ".png";
   return Promise.resolve(nn.shell.devSnapshotWindow(id, f, true)).then((ok) => { frames.push(Object.assign({ f, label, ok, t: Date.now(), tabs: [], window: id, dark: !!st().ui.appDark }, extra || {})); });
 };
+// Live: page pictures and window snapshots together, as fast as they come, for `ms` (a reload, a counter rising).
+let live = 0;
+const snapLive = (label, ms) => {
+  const end = Date.now() + ms;
+  const loop = () => {
+    if (Date.now() > end) return Promise.resolve();
+    const key = "live" + live++;
+    return picShown(key).then(() => snap(label, { pageKey: Object.fromEntries(shownTabs().map((id) => [id, key + ":" + id])) })).then(loop);
+  };
+  return loop();
+};
+// React's fibers, for driving a control through its own handler (the Studio-free way to "click" a switch).
+const fibers = (from, pred) => { const out = []; const stack = [from]; while (stack.length) { const f = stack.pop(); if (!f) continue; if (pred(f)) out.push(f); if (f.child) stack.push(f.child); if (f.sibling) stack.push(f.sibling); } return out; };
+const roots = () => [...globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__.getFiberRoots(1)];
+// React Native's Animated, so a scene can slow an animation down for the 5-a-second snapshots and restore it.
+const animated = () => { const mods = __r.getModules(); return __r(Number((mods instanceof Map ? [...mods.entries()] : Object.entries(mods)).find(([, m]) => /Libraries\/Animated\/Animated\.js$/.test(m.verboseName || ""))[0])).default; };

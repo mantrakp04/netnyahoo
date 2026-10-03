@@ -16,6 +16,12 @@ im = Image.open(sys.argv[1]).convert("RGBA")
 x0, y0, x1, y1 = im.getchannel("A").point(lambda a: 255 if a > 8 else 0).getbbox()
 im.crop((max(0, x0 - 8), max(0, y0 - 8), min(im.width, x1 + 8), min(im.height, y1 + 8))).save(sys.argv[2])
 PY
+# The app icon (Big Yahu fused with a browser window), at 512 px.
+python3 -c "import sys; from PIL import Image; Image.open(sys.argv[1]).convert('RGBA').resize((512, 512), Image.LANCZOS).save(sys.argv[2])" \
+  "$R/apps/browser/assets/app-icon.png" "$V/public/brand/app-icon.png"
+# Big Yahu's rigged model (clips "Griddy" and "Default Dance"), the site's own.
+mkdir -p "$V/public/models"
+cp "$R/apps/site/public/models/big-yahu.glb" "$V/public/models/"
 # macOS's own pointer artwork, drawn by AppKit (scripts/capture/cursor.swift).
 swift "$V/scripts/capture/cursor.swift" "$V/public/brand" > /dev/null
 echo "fonts and brand → $V/public"

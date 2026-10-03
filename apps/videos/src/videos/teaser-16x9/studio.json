@@ -159,19 +159,45 @@
   ],
   "objects": [
     {
+      "id": "nags-window",
+      "definition": "window",
+      "label": "nags · window",
+      "parentId": null,
+      "values": {
+        "x": 360,
+        "y": 180,
+        "width": 1200,
+        "height": 750,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "nags-yahu",
+      "definition": "window",
+      "label": "nags · yahu",
+      "parentId": null,
+      "values": {
+        "x": 1240,
+        "y": 260,
+        "width": 760,
+        "height": 820,
+        "rotation": 0
+      }
+    },
+    {
       "id": "nag-sign-in",
       "definition": "type",
       "label": "nags · SIGN IN.",
       "parentId": null,
       "values": {
         "text": "SIGN IN.",
-        "size": 460,
+        "size": 420,
         "color": "#16130F",
-        "fill": "#00000000",
+        "fill": "#F1ECE2",
         "x": 80,
-        "y": 230,
+        "y": 250,
         "width": 1760,
-        "height": 620,
+        "height": 580,
         "rotation": 0
       }
     },
@@ -182,13 +208,13 @@
       "parentId": null,
       "values": {
         "text": "TRY AI.",
-        "size": 500,
+        "size": 460,
         "color": "#16130F",
-        "fill": "#00000000",
+        "fill": "#F1ECE2",
         "x": 80,
-        "y": 230,
+        "y": 250,
         "width": 1760,
-        "height": 620,
+        "height": 580,
         "rotation": 0
       }
     },
@@ -199,13 +225,13 @@
       "parentId": null,
       "values": {
         "text": "ACCEPT ALL.",
-        "size": 460,
+        "size": 420,
         "color": "#16130F",
-        "fill": "#00000000",
+        "fill": "#F1ECE2",
         "x": 80,
-        "y": 230,
+        "y": 250,
         "width": 1760,
-        "height": 620,
+        "height": 580,
         "rotation": 0
       }
     },
@@ -216,13 +242,13 @@
       "parentId": null,
       "values": {
         "text": "UPGRADE.",
-        "size": 460,
+        "size": 420,
         "color": "#16130F",
-        "fill": "#00000000",
+        "fill": "#F1ECE2",
         "x": 80,
-        "y": 230,
+        "y": 250,
         "width": 1760,
-        "height": 620,
+        "height": 580,
         "rotation": 0
       }
     },
@@ -233,14 +259,14 @@
       "parentId": null,
       "values": {
         "text": "SIGN IN TO SYNC",
-        "size": 82,
+        "size": 86,
         "color": "#16130F",
         "fill": "#00000000",
-        "x": 110,
-        "y": 120,
-        "width": 820,
+        "x": 300,
+        "y": 200,
+        "width": 760,
         "height": 150,
-        "rotation": -7
+        "rotation": -6
       }
     },
     {
@@ -250,150 +276,48 @@
       "parentId": null,
       "values": {
         "text": "MEET YOUR AI COPILOT",
-        "size": 82,
+        "size": 86,
         "color": "#2150D9",
         "fill": "#00000000",
-        "x": 940,
-        "y": 210,
+        "x": 880,
+        "y": 380,
         "width": 900,
-        "height": 150,
-        "rotation": 5
-      }
-    },
-    {
-      "id": "nag-pile-3",
-      "definition": "type",
-      "label": "nags · SET AS DEFAULT?",
-      "parentId": null,
-      "values": {
-        "text": "SET AS DEFAULT?",
-        "size": 82,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 220,
-        "y": 450,
-        "width": 800,
-        "height": 150,
-        "rotation": 3
-      }
-    },
-    {
-      "id": "nag-pile-4",
-      "definition": "type",
-      "label": "nags · ACCEPT ALL COOKIES",
-      "parentId": null,
-      "values": {
-        "text": "ACCEPT ALL COOKIES",
-        "size": 82,
-        "color": "#C3371F",
-        "fill": "#00000000",
-        "x": 980,
-        "y": 600,
-        "width": 860,
-        "height": 150,
-        "rotation": -5
-      }
-    },
-    {
-      "id": "nag-pile-5",
-      "definition": "type",
-      "label": "nags · TRY AI TABS",
-      "parentId": null,
-      "values": {
-        "text": "TRY AI TABS",
-        "size": 82,
-        "color": "#2150D9",
-        "fill": "#00000000",
-        "x": 90,
-        "y": 780,
-        "width": 640,
-        "height": 150,
-        "rotation": 8
-      }
-    },
-    {
-      "id": "nag-pile-6",
-      "definition": "type",
-      "label": "nags · CREATE AN ACCOUNT",
-      "parentId": null,
-      "values": {
-        "text": "CREATE AN ACCOUNT",
-        "size": 82,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 640,
-        "y": 370,
-        "width": 900,
-        "height": 150,
-        "rotation": -3
-      }
-    },
-    {
-      "id": "nag-pile-7",
-      "definition": "type",
-      "label": "nags · RATE US ★★★★★",
-      "parentId": null,
-      "values": {
-        "text": "RATE US ★★★★★",
-        "size": 82,
-        "color": "#C3371F",
-        "fill": "#00000000",
-        "x": 1160,
-        "y": 840,
-        "width": 680,
-        "height": 150,
-        "rotation": 6
-      }
-    },
-    {
-      "id": "nag-pile-8",
-      "definition": "type",
-      "label": "nags · SIGN IN AGAIN",
-      "parentId": null,
-      "values": {
-        "text": "SIGN IN AGAIN",
-        "size": 82,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 560,
-        "y": 60,
-        "width": 700,
-        "height": 150,
-        "rotation": -9
-      }
-    },
-    {
-      "id": "nag-pile-9",
-      "definition": "type",
-      "label": "nags · AI SUMMARY?",
-      "parentId": null,
-      "values": {
-        "text": "AI SUMMARY?",
-        "size": 82,
-        "color": "#2150D9",
-        "fill": "#00000000",
-        "x": 120,
-        "y": 600,
-        "width": 620,
         "height": 150,
         "rotation": 4
       }
     },
     {
-      "id": "nag-pile-10",
+      "id": "nag-pile-3",
       "definition": "type",
-      "label": "nags · UPGRADE TO PRO",
+      "label": "nags · ACCEPT ALL COOKIES",
       "parentId": null,
       "values": {
-        "text": "UPGRADE TO PRO",
-        "size": 82,
+        "text": "ACCEPT ALL COOKIES",
+        "size": 86,
         "color": "#C3371F",
         "fill": "#00000000",
-        "x": 760,
-        "y": 720,
+        "x": 260,
+        "y": 600,
+        "width": 860,
+        "height": 150,
+        "rotation": -3
+      }
+    },
+    {
+      "id": "nag-pile-4",
+      "definition": "type",
+      "label": "nags · SET AS DEFAULT?",
+      "parentId": null,
+      "values": {
+        "text": "SET AS DEFAULT?",
+        "size": 86,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 820,
+        "y": 770,
         "width": 760,
         "height": 150,
-        "rotation": -6
+        "rotation": 6
       }
     },
     {
@@ -402,10 +326,23 @@
       "label": "title · window",
       "parentId": null,
       "values": {
-        "x": 210,
-        "y": 360,
-        "width": 1500,
-        "height": 938,
+        "x": 360,
+        "y": 300,
+        "width": 1200,
+        "height": 750,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "title-yahu",
+      "definition": "window",
+      "label": "title · yahu",
+      "parentId": null,
+      "values": {
+        "x": 1240,
+        "y": 260,
+        "width": 760,
+        "height": 820,
         "rotation": 0
       }
     },
@@ -416,128 +353,43 @@
       "parentId": null,
       "values": {
         "text": "NETNYAHOO",
-        "size": 380,
+        "size": 300,
         "color": "#16130F",
         "fill": "#00000000",
         "x": 80,
-        "y": 40,
+        "y": 30,
         "width": 1760,
-        "height": 330,
+        "height": 250,
         "rotation": 0
       }
     },
     {
-      "id": "title-stamp",
+      "id": "title-what",
       "definition": "type",
-      "label": "title · ASKS FOR NOTHING.",
+      "label": "title · THE SIDEBAR BROWSER FOR MAC",
       "parentId": null,
       "values": {
-        "text": "ASKS FOR NOTHING.",
-        "size": 78,
-        "color": "#C3371F",
+        "text": "THE SIDEBAR BROWSER FOR MAC",
+        "size": 76,
+        "color": "#2150D9",
         "fill": "#00000000",
-        "x": 1100,
-        "y": 300,
-        "width": 760,
-        "height": 150,
-        "rotation": -8
+        "x": 80,
+        "y": 230,
+        "width": 1760,
+        "height": 80,
+        "rotation": 0
       }
     },
     {
-      "id": "swipe-window",
+      "id": "swipe-big-window",
       "definition": "window",
-      "label": "swipe · window",
+      "label": "swipe-big · window",
       "parentId": null,
       "values": {
-        "x": 210,
-        "y": 96,
-        "width": 1500,
-        "height": 938,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "swipe-work",
-      "definition": "type",
-      "label": "swipe · WORK.",
-      "parentId": null,
-      "values": {
-        "text": "WORK.",
-        "size": 300,
-        "color": "#F1ECE2",
-        "fill": "#4691C3",
-        "x": 900,
-        "y": 380,
-        "width": 940,
-        "height": 360,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "swipe-campaign",
-      "definition": "type",
-      "label": "swipe · CAMPAIGN.",
-      "parentId": null,
-      "values": {
-        "text": "CAMPAIGN.",
-        "size": 300,
-        "color": "#F1ECE2",
-        "fill": "#D87249",
-        "x": 900,
-        "y": 380,
-        "width": 940,
-        "height": 360,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "swipe-personal",
-      "definition": "type",
-      "label": "swipe · PERSONAL.",
-      "parentId": null,
-      "values": {
-        "text": "PERSONAL.",
-        "size": 300,
-        "color": "#F1ECE2",
-        "fill": "#C07A98",
-        "x": 900,
-        "y": 380,
-        "width": 940,
-        "height": 360,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "swipe-lives",
-      "definition": "type",
-      "label": "swipe · SEPARATE LIVES. ONE SWIPE.",
-      "parentId": null,
-      "values": {
-        "text": "SEPARATE LIVES. ONE SWIPE.",
-        "size": 140,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 80,
-        "y": 60,
-        "width": 1760,
-        "height": 160,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "swipe-deniability",
-      "definition": "type",
-      "label": "swipe · PLAUSIBLE DENIABILITY COMES ",
-      "parentId": null,
-      "values": {
-        "text": "PLAUSIBLE DENIABILITY COMES STANDARD",
-        "size": 24,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 80,
-        "y": 1026,
-        "width": 1760,
-        "height": 36,
+        "x": 120,
+        "y": 66,
+        "width": 1680,
+        "height": 1050,
         "rotation": 0
       }
     },
@@ -552,9 +404,9 @@
         "color": "#F1ECE2",
         "fill": "#00000000",
         "x": 80,
-        "y": 230,
+        "y": 250,
         "width": 1760,
-        "height": 620,
+        "height": 580,
         "rotation": 0
       }
     },
@@ -566,12 +418,12 @@
       "values": {
         "text": "NO AI.",
         "size": 520,
-        "color": "#16130F",
+        "color": "#F1ECE2",
         "fill": "#00000000",
         "x": 80,
-        "y": 230,
+        "y": 250,
         "width": 1760,
-        "height": 620,
+        "height": 580,
         "rotation": 0
       }
     },
@@ -586,9 +438,9 @@
         "color": "#F1ECE2",
         "fill": "#00000000",
         "x": 80,
-        "y": 230,
+        "y": 250,
         "width": 1760,
-        "height": 620,
+        "height": 580,
         "rotation": 0
       }
     },
@@ -603,198 +455,121 @@
         "color": "#F1ECE2",
         "fill": "#00000000",
         "x": 80,
-        "y": 230,
+        "y": 250,
         "width": 1760,
-        "height": 620,
+        "height": 580,
         "rotation": 0
       }
     },
     {
-      "id": "immunity-personal",
+      "id": "end-yahu",
       "definition": "window",
-      "label": "immunity · personal",
+      "label": "end · yahu",
       "parentId": null,
       "values": {
-        "x": 1290,
-        "y": 150,
-        "width": 560,
-        "height": 350,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-work",
-      "definition": "window",
-      "label": "immunity · work",
-      "parentId": null,
-      "values": {
-        "x": 1320,
-        "y": 400,
-        "width": 560,
-        "height": 350,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-campaign",
-      "definition": "window",
-      "label": "immunity · campaign",
-      "parentId": null,
-      "values": {
-        "x": 1280,
-        "y": 650,
-        "width": 560,
-        "height": 350,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-headline",
-      "definition": "type",
-      "label": "immunity · FULL IMMUNITY.",
-      "parentId": null,
-      "values": {
-        "text": "FULL\nIMMUNITY.",
-        "size": 380,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 80,
-        "y": 90,
-        "width": 1150,
-        "height": 680,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-lede",
-      "definition": "type",
-      "label": "immunity · Real Chromium for the Mac. I",
-      "parentId": null,
-      "values": {
-        "text": "Real Chromium for the Mac.\nImmune to ads, trackers and prosecution.",
-        "size": 50,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 84,
-        "y": 790,
-        "width": 1240,
-        "height": 140,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "immunity-stamp",
-      "definition": "type",
-      "label": "immunity · INCUMBENT",
-      "parentId": null,
-      "values": {
-        "text": "INCUMBENT",
-        "size": 84,
-        "color": "#C3371F",
-        "fill": "#00000000",
-        "x": 880,
-        "y": 110,
-        "width": 480,
-        "height": 150,
-        "rotation": -9
-      }
-    },
-    {
-      "id": "immunity-label",
-      "definition": "type",
-      "label": "immunity · NETNYAHOO · THE SIDEBAR BROW",
-      "parentId": null,
-      "values": {
-        "text": "NETNYAHOO · THE SIDEBAR BROWSER FOR MAC",
-        "size": 24,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 84,
-        "y": 980,
-        "width": 1180,
-        "height": 40,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "cta-yahu",
-      "definition": "window",
-      "label": "cta · yahu",
-      "parentId": null,
-      "values": {
-        "x": 1200,
+        "x": 1160,
         "y": 120,
-        "width": 680,
+        "width": 760,
         "height": 960,
         "rotation": 0
       }
     },
     {
-      "id": "cta-download",
+      "id": "end-icon",
+      "definition": "window",
+      "label": "end · icon",
+      "parentId": null,
+      "values": {
+        "x": 80,
+        "y": 300,
+        "width": 190,
+        "height": 190,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-immunity",
       "definition": "type",
-      "label": "cta · DOWNLOAD FREE",
+      "label": "end · FULL IMMUNITY.",
+      "parentId": null,
+      "values": {
+        "text": "FULL\nIMMUNITY.",
+        "size": 360,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 80,
+        "y": 120,
+        "width": 1080,
+        "height": 800,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-name",
+      "definition": "type",
+      "label": "end · NETNYAHOO",
+      "parentId": null,
+      "values": {
+        "text": "NETNYAHOO",
+        "size": 200,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 300,
+        "y": 300,
+        "width": 860,
+        "height": 190,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-download",
+      "definition": "type",
+      "label": "end · DOWNLOAD FREE",
       "parentId": null,
       "values": {
         "text": "DOWNLOAD FREE",
-        "size": 120,
-        "color": "#16130F",
-        "fill": "#00000000",
-        "x": 80,
-        "y": 210,
-        "width": 1100,
-        "height": 140,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "cta-url",
-      "definition": "type",
-      "label": "cta · NETNYAHOO.COM",
-      "parentId": null,
-      "values": {
-        "text": "NETNYAHOO.COM",
-        "size": 240,
-        "color": "#2150D9",
-        "fill": "#00000000",
-        "x": 80,
-        "y": 360,
-        "width": 1100,
-        "height": 280,
-        "rotation": 0
-      }
-    },
-    {
-      "id": "cta-fine",
-      "definition": "type",
-      "label": "cta · OPEN SOURCE · APPLE SILICON ",
-      "parentId": null,
-      "values": {
-        "text": "OPEN SOURCE · APPLE SILICON · MACOS 14+",
-        "size": 26,
+        "size": 96,
         "color": "#16130F",
         "fill": "#00000000",
         "x": 84,
-        "y": 680,
-        "width": 1100,
-        "height": 40,
+        "y": 540,
+        "width": 1076,
+        "height": 110,
         "rotation": 0
       }
     },
     {
-      "id": "cta-victory",
+      "id": "end-url",
       "definition": "type",
-      "label": "cta · VICTORY DANCE",
+      "label": "end · NETNYAHOO.COM",
       "parentId": null,
       "values": {
-        "text": "VICTORY DANCE",
-        "size": 70,
-        "color": "#C3371F",
+        "text": "NETNYAHOO.COM",
+        "size": 190,
+        "color": "#2150D9",
         "fill": "#00000000",
-        "x": 1280,
-        "y": 160,
-        "width": 560,
-        "height": 140,
-        "rotation": 8
+        "x": 80,
+        "y": 640,
+        "width": 1080,
+        "height": 210,
+        "rotation": 0
+      }
+    },
+    {
+      "id": "end-source",
+      "definition": "type",
+      "label": "end · GITHUB.COM/MANTRAKP04/NETNYA",
+      "parentId": null,
+      "values": {
+        "text": "GITHUB.COM/MANTRAKP04/NETNYAHOO",
+        "size": 36,
+        "color": "#16130F",
+        "fill": "#00000000",
+        "x": 86,
+        "y": 870,
+        "width": 1076,
+        "height": 50,
+        "rotation": 0
       }
     }
   ],

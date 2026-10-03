@@ -1,6 +1,6 @@
 // Loads every tab once (a restored tab loads when first shown), so titles and favicons are real, and leaves each
 // profile on the tab the film shows. Profiles change through the real swipe (goProfile).
-[["default", "t1"], ["work", "t7"], ["campaign", "t14"]].forEach(([pid, shown]) => {
+[["default", "t1"], ["work", "t7"], ["campaign", "t14"], ["side", "t21"], ["weekend", "t23"]].forEach(([pid, shown]) => {
   then(() => goProfile(pid));
   Object.values(st().tabs).filter((t) => t.profileId === pid).forEach((t) => then(() => { st().activate(t.id); return sleep(2500); }));
   then(() => { st().activate(shown); return sleep(1000); });

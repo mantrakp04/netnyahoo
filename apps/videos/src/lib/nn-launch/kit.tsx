@@ -106,8 +106,13 @@ export interface Cam {
   dx: number;
   dy: number;
   rot: number;
+  /** 0–1: how far the focus point (fx, fy) is carried to the frame point (ax, ay), in frame fractions. Lets a camera
+   * aim at a corner of a window that is wider than a portrait frame. */
+  aim: number;
+  ax: number;
+  ay: number;
 }
-export const REST: Cam = { zoom: 1, fx: 0.5, fy: 0.5, dx: 0, dy: 0, rot: 0 };
+export const REST: Cam = { zoom: 1, fx: 0.5, fy: 0.5, dx: 0, dy: 0, rot: 0, aim: 0, ax: 0.5, ay: 0.5 };
 export type CamKey = Partial<Cam> & { at: number; ease?: "spring" | "out" | "inout" | "cut"; dur?: number };
 
 /** Camera keys over beats: each key moves from the previous pose (spring, eased or cut). Pure in time. */
@@ -122,6 +127,7 @@ export function camAt(keys: CamKey[], b: number): Cam {
     pose = {
       zoom: mix(pose.zoom, target.zoom, t), fx: mix(pose.fx, target.fx, t), fy: mix(pose.fy, target.fy, t),
       dx: mix(pose.dx, target.dx, t), dy: mix(pose.dy, target.dy, t), rot: mix(pose.rot, target.rot, t),
+      aim: mix(pose.aim, target.aim, t), ax: mix(pose.ax, target.ax, t), ay: mix(pose.ay, target.ay, t),
     };
   }
   return pose;
@@ -135,7 +141,7 @@ const CORNER_PT = 21; // macOS 26's window corner, measured from apps/site's Scr
  * the owner can drag on the canvas) and moved by the camera. Fast moves get a directional blur.
  */
 export function Window({
-  id, scene, index, cam, prev, shadow = 1, children, style, pointer,
+  id, scene, index, cam, prev, shadow = 1, children, style, pointer, blur: blurOn = false,
 }: {
   id: string;
   scene: Scene;
@@ -147,18 +153,30 @@ export function Window({
   children?: ReactNode;
   style?: CSSProperties;
   pointer?: PointerAt | null;
+  /** Directional motion blur on fast moves; kept for the few whips and dives that need it. */
+  blur?: boolean;
 }) {
   const object = useStudioObject(id);
   const w = object.number("width");
   const h = object.number("height");
-  const offset = (c: Cam) => ({ x: -(c.fx - 0.5) * w * (c.zoom - 1) + c.dx, y: -(c.fy - 0.5) * h * (c.zoom - 1) + c.dy });
+  const frame = useVideoConfig();
+  const x0 = object.number("x");
+  const y0 = object.number("y");
+  // The focus point stays put under the zoom (it sits at x0 + fx·w); `aim` carries it to (ax, ay) of the frame.
+  const offset = (c: Cam) => {
+    const aim = c.aim ?? 0;
+    return {
+      x: -(c.fx - 0.5) * w * (c.zoom - 1) + c.dx + aim * ((c.ax ?? 0.5) * frame.width - (x0 + c.fx * w)),
+      y: -(c.fy - 0.5) * h * (c.zoom - 1) + c.dy + aim * ((c.ay ?? 0.5) * frame.height - (y0 + c.fy * h)),
+    };
+  };
   const o = offset(cam);
   const geometry = object.geometry(
     { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
     { offset: { x: o.x, y: o.y, rotation: cam.rot }, scale: cam.zoom },
   );
   let blur = { x: 0, y: 0 };
-  if (prev) {
+  if (prev && blurOn) {
     const p = offset(prev);
     const zoomSpeed = (Math.abs(cam.zoom - prev.zoom) / Math.max(cam.zoom, 1)) * w * 0.12;
     // Only fast moves smear (a whip, a throw, a dive), as a shutter would at 30 fps; a slow push stays sharp.
@@ -315,8 +333,9 @@ export function Type({ layer }: { layer: TypeLayer }) {
   const align = layer.align ?? "left";
   let style: CSSProperties = poster;
   if (layer.style === "slam") {
+    // A small overshoot only: a bigger one pushed the first frame of a full-width line past the margin.
     const s = springAt(b, layer.at, { stiffness: 620, damping: 26 });
-    scale = 1.2 - 0.2 * s;
+    scale = 1.07 - 0.07 * s;
     extraRot = (1 - s) * (random(layer.id) - 0.5) * 6;
   } else if (layer.style === "stamp") {
     const t = clamp(local / (3 / BEAT));
@@ -338,7 +357,7 @@ export function Type({ layer }: { layer: TypeLayer }) {
     const n = Math.min(words.length, Math.floor(local / step) + 1);
     shown = words.slice(0, n).join(" ");
     const s = springAt(b, layer.at + (n - 1) * step, { stiffness: 520, damping: 24 });
-    scale = 1.18 - 0.18 * s;
+    scale = 1.07 - 0.07 * s;
   }
   const geometry = object.geometry(
     { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
@@ -388,6 +407,27 @@ export function Supers() {
         <Type key={layer.id} layer={layer} />
       ))}
     </>
+  );
+}
+
+/** Two fingertips on a trackpad, drawn as a gesture glyph: the hint for a swipe. `slide` is −1…1 of the travel. */
+export function Fingers({ x, y, size, slide = 0, press = 0, opacity = 1 }: { x: number; y: number; size: number; slide?: number; press?: number; opacity?: number }) {
+  const dot = size * 0.26 * (1 - 0.08 * press);
+  const travel = size * 0.55;
+  return (
+    <div style={{ position: "absolute", left: x - size / 2, top: y - size * 0.32, width: size, height: size * 0.64, opacity }}>
+      <div style={{ position: "absolute", inset: 0, borderRadius: size * 0.08, border: `${size * 0.018}px solid ${color.ink}`, backgroundColor: "rgba(241,236,226,0.85)" }} />
+      {[-0.17, 0.17].map((dx) => (
+        <div
+          key={dx}
+          style={{
+            position: "absolute", width: dot, height: dot, borderRadius: dot, backgroundColor: color.ink,
+            left: size / 2 + dx * size - dot / 2 + slide * travel * 0.5, top: size * 0.32 - dot / 2,
+            boxShadow: `${-slide * size * 0.12}px 0 0 ${-dot * 0.12}px rgba(22,19,15,0.25)`,
+          }}
+        />
+      ))}
+    </div>
   );
 }
 

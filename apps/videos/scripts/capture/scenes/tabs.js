@@ -1,10 +1,14 @@
-// Clicking down each profile's sidebar: every tab shown, then its page captured.
-[["default", ["t1", "t2", "t3", "t4", "t5", "t6"], "t1"], ["work", ["t7", "t8", "t9", "t10", "t11", "t12"], "t7"], ["campaign", ["t13", "t14", "t15", "t16", "t17", "t18"], "t14"]].forEach(([pid, ids, shown]) => {
-  then(() => { unsplit(); return goProfile(pid); });
-  // A page shown again repaints in stages: wait, then capture twice and keep the second.
-  ids.forEach((id) => then(() => { st().activate(id); return sleep(3500).then(() => picShown()).then(() => sleep(800)).then(() => picShown()).then(() => snap("tab:" + id)); }));
-  // Leave each profile on the tab the other scenes show.
-  then(() => { st().activate(shown); return sleep(800); });
-});
-then(() => goProfile("default"));
+// Clicking down the Personal sidebar (each tab shown, then its page), then a real scroll of Mount Everest's page: one
+// page picture per film frame, the page scrolled by script between them.
+then(() => { unsplit(); return goProfile("default"); });
+["t1", "t2", "t3", "t4", "t5", "t6"].forEach((id) => then(() => { st().activate(id); return sleep(3500).then(() => picShown()).then(() => sleep(800)).then(() => picShown()).then(() => snap("tab:" + id)); }));
+then(() => { st().activate("t1"); return sleep(2500).then(() => picShown()); });
+const ease = (x) => 0.5 - 0.5 * Math.cos(Math.PI * x);
+Array.from({ length: 40 }, (_, i) => i).forEach((i) => then(() => {
+  const y = Math.round(ease(i / 39) * 1400);
+  const h = nn.webviews.get("t1");
+  return Promise.resolve(h && h.executeJavaScript("window.scrollTo({top:" + y + ",behavior:'instant'})")).then(() => sleep(140))
+    .then(() => pic("t1", "scroll" + i + ":t1")).then(() => snap("scroll", { pageKey: { t1: "scroll" + i + ":t1" } }));
+}));
+then(() => { const h = nn.webviews.get("t1"); return Promise.resolve(h && h.executeJavaScript("window.scrollTo(0,0)")).then(() => sleep(500)); });
 return finish();

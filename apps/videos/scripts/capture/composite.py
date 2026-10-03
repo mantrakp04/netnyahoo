@@ -137,6 +137,14 @@ def composite(snap_path, page_items, color, dark, tint=None):
             page = page.resize((w, h), Image.LANCZOS)
         page = np.array(page, np.float32)[: y2 - y, : x2 - x]
         m = placeholder_mask(snap[y:y2, x:x2])
+        if m.mean() < 0.2 and (snap[y:y2, x:x2, 3] < 128).mean() > 0.6:
+            # Right after a profile swipe commits, the hidden instance shows the new page's card a beat late (its
+            # view is re-attached): the snapshot has no card there yet. Put the page where its card goes, as the app
+            # does once attached (card radius 10 pt).
+            card = np.asarray(Image.new("L", (x2 - x, y2 - y), 0), np.float32)
+            mask_img = Image.new("L", (x2 - x, y2 - y), 0)
+            ImageDraw.Draw(mask_img).rounded_rectangle([0, 0, x2 - x - 1, y2 - y - 1], 20, fill=255)
+            m = (np.asarray(mask_img) > 127) & (snap[y:y2, x:x2, 3] < 128)
         reg = out[y:y2, x:x2]
         reg[m] = page[m]
     img = Image.fromarray(out.clip(0, 255).astype(np.uint8)).convert("RGBA")
@@ -145,7 +153,7 @@ def composite(snap_path, page_items, color, dark, tint=None):
     return img.convert("RGB")
 
 
-ORDER = ["default", "work", "campaign"]
+ORDER = ["default", "work", "campaign", "side", "weekend"]
 
 
 def main():
@@ -165,13 +173,26 @@ def main():
             t = sampled_tint(fr["f"])
             if t is not None:
                 rest[fr["profile"]] = t
+    # A page shown again after a swipe can be captured before it repaints: a blank picture. Skip those and keep the
+    # tab's last good one.
+    blank = {}
+    def is_blank(p):
+        if p["file"] not in blank:
+            a = np.asarray(Image.open(os.path.join(src, p["file"])).convert("L").resize((96, 60)), np.float32)
+            blank[p["file"]] = float(a.std()) < 4.0
+        return blank[p["file"]]
+    # Each frame's own picture of a tab, else the tab's last good one, else its next good one (a profile's page
+    # during the swipe that first shows it).
+    own = []
+    for fr in frames:
+        keys = fr.get("pageKey") or {}
+        own.append({tab: c for tab in fr.get("tabs", []) for c in (pages.get(keys.get(tab, "")), pages.get(tab)) if c and not is_blank(c)})
     last_page = {}
     out = []
-    for fr in frames:
+    for i, fr in enumerate(frames):
         items = []
-        keys = fr.get("pageKey") or {}
         for tab in fr.get("tabs", []):
-            p = pages.get(keys.get(tab, "")) or pages.get(tab) or last_page.get(tab)
+            p = own[i].get(tab) or last_page.get(tab) or next((o[tab] for o in own[i + 1:] if tab in o), None)
             if p:
                 last_page[tab] = p
                 items.append((os.path.join(src, p["file"]), p["frame"]))

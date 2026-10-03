@@ -9,25 +9,47 @@ folder. Render one with `pnpm -C apps/videos render <id>`, which writes `out/<id
 | --- | --- | --- |
 | `launch-16x9` | 1920 × 1080 | 44.8 s |
 | `launch-9x16` | 1080 × 1920 | 44.8 s |
-| `teaser-16x9` | 1920 × 1080 | 16.8 s |
-| `teaser-9x16` | 1080 × 1920 | 16.8 s |
+| `teaser-16x9` | 1920 × 1080 | 14.9 s |
+| `teaser-9x16` | 1080 × 1920 | 14.9 s |
 
-The film works like a campaign spot. Every other browser asks for something: sign in, try AI, accept all, upgrade.
-Then the asks pile up, and Netnyahoo shows up asking for nothing. After that comes the product at speed, cut to an
-original score: tabs down the side, the profile swipe (the signature, shown twice), split view, the address bar
-dissolving into the sidebar, the built-in blocker, profile colours, Chromium, the Web Store, privacy settings, the app
-icons, and four "no" cards. It ends on the site's own "Full immunity." and Big Yahu's victory dance. The look is
-the site's poster system: Archivo, Newsreader and Martian Mono on warm stock, with the tie's blue and the stamp's red.
+Every other browser asks for something. Four brass stabs carry "SIGN IN. / TRY AI. / ACCEPT ALL. / UPGRADE.",
+each over a real Netnyahoo window, and then the asks get stamped onto it on a snare roll. Big Yahu rises behind the
+pile and swats it off as "NETNYAHOO — THE SIDEBAR BROWSER FOR MAC" lands, then stamps "ASKS FOR NOTHING."
+
+The product follows, live:
+- clicking down the tabs and scrolling a page;
+- the profile swipe (Personal → Work → Campaign → Side Project), each profile's name and colour switching on the
+  frame its page changes;
+- split view with the divider dragged, Big Yahu popping up for "NO COALITION TALKS.";
+- the built-in blocker switched off and on, its count climbing;
+- "IT'S ACTUALLY CHROMIUM.".
+
+The music stops dead for a beat, two fingers rest on a trackpad, and drop B lands on the biggest swipe: five
+profiles in eight beats, the paper taking each profile's colour. Then:
+- "ANY CHROME EXTENSION." with "NO THANKS." stamped on Chrome's own prompt;
+- "SEVEN APP ICONS. ONE FACE.";
+- four "NO" cards;
+- netnyahoo.com typed into the address bar, the camera diving into the site's "Full immunity.";
+- the end card: the icon, the name, DOWNLOAD FREE / NETNYAHOO.COM and the GitHub address, with Big Yahu doing the
+  griddy and landing a flex on the last brass button.
+
+The film uses about 80 words on screen. The type is the site's poster system on warm stock: Archivo, Newsreader and
+Martian Mono, with the tie's blue and the stamp's red.
 
 `src/lib/nn-launch` holds the film:
 
-- `cuts.json` holds the tempo (128.57 BPM, so a beat is exactly 14 frames at 30 fps), each cut's musical
-  arrangement and its sound effects in beats. The score script and the edit both read it.
-- `plan.ts` is the edit as data. It lists the shots in beats and every text and window with its defaults for both
-  aspects. It has no imports.
-- `shots.tsx` holds one component per kind of shot: camera moves, footage frame choice, swipes, pointer clicks.
-- `kit.tsx` holds the window (real footage with the macOS corner, shadow, camera and motion blur), the pointer, the
-  type styles (slam, stamp, label, lede, words), springs and the paper.
+- `cuts.json` holds the tempo (128.57 BPM, so a beat is exactly 14 frames at 30 fps), each cut's arrangement,
+  silent windows and sound effects in beats, and the master's loudness. The score and the edit both read it.
+- `plan.ts` is the edit as data: the shots in beats and every text and placed object with its defaults for both
+  aspects. It has no imports. Portrait keeps everything that matters inside y 220–1480 and x 60–940, clear of
+  Reels, TikTok and Shorts captions.
+- `shots.tsx` has one component per shot: camera moves and cuts, footage frame choice, swipes timed so each page
+  change lands on its beat, the pointer, and Big Yahu.
+- `kit.tsx` has the window (real footage, the macOS corner and shadow, a camera that can aim a window's corner at
+  the frame, and motion blur used only on the dive), the pointer, the trackpad glyph, the type styles, the springs
+  and the paper.
+- `Yahu3D.tsx` renders the site's rigged Big Yahu with three.js, pure in time. `remotion.config.ts` enables ANGLE
+  for WebGL.
 - `Film.tsx` places the shots on the beat grid and plays the score. `footage.json` indexes the captured frames;
   `scripts/capture/composite.py` writes it.
 
@@ -45,11 +67,12 @@ declares that a document lacks. It keeps existing values, removals and operation
 
 ## Recreating the media (not in git)
 
-`public/footage`, `public/music`, `public/fonts`, `public/brand` and `.capture` are gitignored. To rebuild them:
+`public/footage`, `public/music`, `public/fonts`, `public/brand`, `public/models` and `.capture` are gitignored. To rebuild them:
 
 ```bash
 cd apps/videos
-scripts/prepare-assets.sh          # brand fonts and Big Yahu from apps/site, macOS pointers (AppKit)
+scripts/prepare-assets.sh          # fonts, Big Yahu's model, the app icon, macOS pointers (AppKit)
+scripts/music/fetch-samples.sh     # the CC0 samples (public/music/samples)
 python3 scripts/music/score.py     # public/music/launch.wav, teaser.wav (numpy + scipy)
 # footage: a DEV build, captured hidden (needs Metro on :8081, like any DEV instance)
 ../../scripts/agent/build-app --as videos
@@ -60,44 +83,67 @@ scripts/capture/run-all.sh ../browser/build-videos/Build/Products/Debug/Netnyaho
 
 Every UI pixel comes from Netnyahoo itself, never a mock-up. `run-all.sh` launches a hidden DEV instance
 (`NETNYAHOO_BACKGROUND=1`, a scratch `NETNYAHOO_DATA_DIR`, `--session` from `scripts/capture/session.mjs`). That
-session has three profiles (Personal in plum, Work in blue, Campaign in orange), each with six real sites, the
-address bar in the sidebar, and dark appearance. The script runs each scene in `scripts/capture/scenes` through the
-dev harness (`cap.mjs` with `prelude.js`).
+session has five profiles, each with real sites, in light appearance with the address in the toolbar, so each
+profile's name sits next to the traffic lights in its colour:
+- Personal (plum)
+- Work (blue)
+- Campaign (orange)
+- Side Project (green)
+- Weekend (yellow)
 
-- **The window** is the app drawing its own layers in-process (`nn.shell.devSnapshotWindow`, 2x). This works with
-  the screen locked; on 2026-10-03 the screen was locked, so WindowServer captures came back black.
-- **The pages** are each tab's own picture of itself (`WebViewHandle.capturePicture(2)`), with its frame in the
-  window.
-- **Profile swipes** are fed step by step through the real gesture tracker (`nnSwipe.sidebar(W).devSimulate`), one
-  snapshot per step, so every film frame of a swipe is a real frame of the pager. Profiles always change through
-  the swipe: a programmatic switch leaves the pager's model layers mid-move, and the snapshot then shows two pages
-  on top of each other.
-- **Compositing** (`composite.py`): the snapshot is transparent where the app draws with Metal (the window tint),
-  so the profile's tint goes underneath. The tint is sampled from the snapshot's opaque edge and cross-faded by the
-  pager's position during a swipe, as the app does. Each page's picture goes where the snapshot shows its
-  placeholder, and our own UI over a page stays on top. The traffic lights are AppKit's own buttons, drawn
-  offscreen as an active window (`lights.swift`) at the position `NETNYAHOO_TRAFFIC_LIGHTS_LOG` reports. The
-  pointer is AppKit's own `NSCursor` artwork (`cursor.swift`).
-- **Not captured:** the sidebar's translucency over the desktop and the New Tab's Metal light. Both need a
-  WindowServer capture.
+The script runs each scene in `scripts/capture/scenes` through the dev harness (`cap.mjs` with `prelude.js`).
+The screen was locked when these were made (2026-10-03), so WindowServer recording came back black and everything
+is captured in-process, frame by frame:
 
-## Music and sound: an original score
+- **The window** is the app drawing its own layers (`nn.shell.devSnapshotWindow`, 2x).
+- **The pages** are each tab's own picture of itself (`WebViewHandle.capturePicture(2)`), taken again for every
+  frame where the page moves.
+- **Live motion**, one real state per film frame:
+  - **Profile swipes:** fed step by step through the real gesture tracker (`nnSwipe.sidebar(W).devSimulate`).
+    Profiles always change through the swipe, because a programmatic switch leaves the pager mid-move.
+  - **Typing:** netnyahoo.com typed a key at a time through the window's key path (DEV `type:`), with the
+    field's inline completion, then Return.
+  - **Scrolling:** the page scrolled step by step with a picture each step.
+  - **The split divider:** the panes' sizes set step by step as the divider's drag sets them, both panes
+    re-pictured each step.
+  - **The blocker:** Site Controls' Block Ads & Trackers switch flipped through its own `onChange`, its knob
+    animation slowed 12x, with the page reloading and the blocked count climbing, snapshotted as fast as they come.
+- **Compositing** (`composite.py`):
+  - The snapshot is transparent where the app draws with Metal (the window tint), so the profile's tint goes
+    underneath, sampled from the snapshot and cross-faded by the pager's position during a swipe.
+  - Each page's picture goes where the snapshot shows its placeholder. Blank pictures (a page captured before it
+    repainted) are skipped.
+  - The traffic lights are AppKit's own buttons, drawn offscreen as an active window (`lights.swift`). The
+    pointer is AppKit's `NSCursor` artwork (`cursor.swift`).
+- **Big Yahu** is the site's rigged model (`apps/site/public/models/big-yahu.glb`, clips "Griddy" and "Default
+  Dance"), rendered in the film.
+- **Not captured:** the sidebar's translucency over the desktop. It needs a WindowServer capture.
 
-`scripts/music/score.py` synthesizes the whole track from oscillators and noise. It uses no samples, loops, presets
-or third-party audio. The track is a campaign-rally anthem in F minor at 128.57 BPM. The hook is four brass stabs,
-then a marching-snare roll and a riser. The first drop has four-on-the-floor drums, a supersaw chord bed, a rolling
-sidechained bass and a tresillo brass riff. A two-bar break follows, then a bigger second drop with a lead melody,
-then an end hit, march taps and a final brass button. The sound effects (stamps, whooshes, swipes and clicks) are
-synthesized in the same script, at the beats `cuts.json` gives, and mixed into the score. The master is -14 LUFS
-integrated, peaking around -5 dBFS (ITU-R BS.1770 gating in the script; checked on the renders with
-`ffmpeg -af ebur128`).
+## Music and sound
 
-**License:** the score and its sound effects are original works made for this project by this script. They contain
-no third-party material, so the owner can publish them anywhere, commercially included. Re-running the script with
-the same `cuts.json` reproduces the same audio (the noise is seeded).
+`scripts/music/score.py` is a sampler. It plays recorded instruments on the film's beat grid: a campaign-rally
+anthem in F minor at 128.57 BPM, with brass stabs, a march-snare roll, two drops, a break that cuts to silence, an
+end hit, march taps and a final brass button.
+
+- **Sources:**
+  - Brass, timpani, cymbals and the concert bass drum come from VSCO 2 Community Edition.
+  - The rope-tension march snare, claps, tom, slapstick and woodblock come from the Versilian Community Sample
+    Library (both by Versilian Studios).
+  - The 909 kick, clap and hats come from MckSamplePacks' TR-8 recordings.
+- **Licence:** all three are CC0 1.0 (public domain), so the score can be published anywhere, commercially
+  included, without credit. `scripts/music/samples.md` lists every file with its upstream commit and licence.
+- **Synthesized parts:** only the sub under the kick and bass, the riser, and the whoosh and swipe noise.
+- **Timing and master:** the arrangement, sound effects and silent windows come from `cuts.json`. The master is
+  -11 LUFS integrated with true peak at most -1.6 dBTP, so it stays under -1 dBTP after AAC encoding.
+
+To recreate the audio:
+1. Run `scripts/music/fetch-samples.sh`. It downloads and checks the samples into the gitignored
+   `public/music/samples`.
+2. Run `python3 scripts/music/score.py` (needs numpy, scipy and ffmpeg).
+3. `python3 scripts/music/analyze.py` measures the result.
 
 Other assets: the fonts are Archivo, Newsreader and Martian Mono (SIL Open Font License, via apps/site's
-Fontsource packages). Big Yahu is the site's own render of the mascot. The pages shown are public sites as they
+Fontsource packages). Big Yahu and the app icon are the project's own. The pages shown are public sites as they
 appeared on 2026-10-03.
 
 ## Checking a render
@@ -105,7 +151,7 @@ appeared on 2026-10-03.
 ```bash
 pnpm exec tsc --noEmit
 pnpm -C apps/videos render launch-16x9
-ffmpeg -i out/launch-16x9.mp4 -af ebur128=peak=true -f null - 2>&1 | tail -12   # about -14 LUFS
+ffmpeg -i out/launch-16x9.mp4 -af ebur128=peak=true -f null - 2>&1 | tail -12   # -11 LUFS, true peak under -1 dBTP
 ```
 
 Then extract a contact sheet (one frame per beat: `select='not(mod(n\,14))'`, tiled) and look at it.
