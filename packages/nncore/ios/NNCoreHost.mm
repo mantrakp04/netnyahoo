@@ -326,7 +326,12 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
       "--enable-smooth-scrolling",
       "--disable-stack-profiler",
       "--disable-features=MacAppCodeSignClone",
-      "--enable-features=WebContentsDiscard",
+      // Chrome holds its BEST_EFFORT tasks (the UI thread's queues and the thread pool's) until startup is complete,
+      // which waits for a visible tab to load, else 3 minutes. The app's own New Tab page is no tab, so a launch on it
+      // held them that long (a trace was never written: endTracing didn't answer). ImprovedStartupBestEffortDelay stops
+      // waiting 5 s after launch when no tab shows (Chrome's fix for the Mac's zero-window mode), and still waits for a
+      // restored page to load; StartupDelayStopOnLoadingTimedOut keeps the default's end for a page that never loads.
+      "--enable-features=WebContentsDiscard,ImprovedStartupBestEffortDelay:StartupDelayStopOnLoadingTimedOut/true",
       // Chrome otherwise starts in the profile last used (Local State), and Personal is the Default directory
       // (packages/cef does the same, a4ffd530).
       "--profile-directory=Default",
