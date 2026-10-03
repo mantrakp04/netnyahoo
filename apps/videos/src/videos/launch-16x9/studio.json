@@ -190,10 +190,10 @@
       "label": "nags · yahu-peek",
       "parentId": null,
       "values": {
-        "x": 1330,
-        "y": 420,
-        "width": 560,
-        "height": 560,
+        "x": 1600,
+        "y": 320,
+        "width": 360,
+        "height": 360,
         "rotation": 0
       }
     },
@@ -1062,10 +1062,10 @@
     {
       "id": "end-download",
       "definition": "type",
-      "label": "end · DOWNLOAD FOR MAC",
+      "label": "end · DOWNLOAD",
       "parentId": null,
       "values": {
-        "text": "DOWNLOAD FOR MAC",
+        "text": "DOWNLOAD",
         "size": 96,
         "color": "#16130F",
         "fill": "#00000000",

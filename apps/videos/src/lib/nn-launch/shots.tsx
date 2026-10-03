@@ -5,7 +5,7 @@ import {
   type Cam, type CamKey, camAt, clamp, easeIn, easeInOut, Fingers, frameOf, Grain, kick, mix, Paper, pointerAt, REST, SCENES,
   seg, springAt, Supers, useAspect, useBeat, useShake, useShot, Window,
 } from "./kit";
-import { BEAT, CUTS, type ShotKind } from "./plan";
+import { BEAT, CUTS, LAND, type ShotKind } from "./plan";
 import { color, font, swatch } from "./theme";
 import { type Clip, type Framing, Yahu3D } from "./Yahu3D";
 
@@ -52,23 +52,29 @@ function playRun(b: number, frames: number[], start: number, end: number) {
 
 /**
  * Which swipe frame shows at beat `b`. Through each drag the frame is picked by the pager's own progress (recorded
- * per frame, footage.json) on one ease-out curve that reaches its last captured position (~99%) on the frame before
- * the commit; the page is composited on the same progress, so page and sidebar travel together. On the commit beat
- * the settled live frame lands.
+ * per frame, footage.json) on an ease-in-out: a soft start (the first step is a few percent), the fastest travel
+ * mid-drag and a soft approach, reaching the last captured position (~99%) on the last drag frame, once. The page is
+ * composited on the same progress, so page and sidebar travel together. The settled live frame (new name, title and
+ * URL) lands one frame before the commit beat, as the page arrives; the commit's thud stays on the beat. The drop's
+ * own commit (`onBeat`) lands on its beat.
  */
 const PROGRESS = (SCENES.swipe as { progress?: (number | null)[] }).progress ?? [];
-const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
-function swipeIndex(b: number, events: { label: string; commit: number; drag: number }[], before = "start") {
+type SwipeEvent = { label: string; commit: number; drag: number; onBeat?: boolean; dir?: number };
+const landOf = (e: SwipeEvent) => e.commit - (e.onBeat ? 0 : LAND);
+const easeInOutSine = (t: number) => 0.5 - 0.5 * Math.cos(Math.PI * t);
+function swipeIndex(b: number, events: SwipeEvent[], before = "start") {
   let index = frameOf("swipe", before);
   for (const e of events) {
     const drag = framesOf("swipe", e.label);
     const rest = frameOf("swipe", `${e.label}:rest`);
-    if (b < e.commit - e.drag) return index;
-    if (b < e.commit) {
-      const lastFrame = e.commit - 1 / BEAT;
-      const t = clamp((b - (e.commit - e.drag)) / Math.max(1e-6, lastFrame - (e.commit - e.drag)));
+    const land = landOf(e);
+    const start = land - e.drag;
+    if (b < start) return index;
+    if (b < land) {
+      const frames = Math.max(1, Math.round((land - start) * BEAT));
+      const n = Math.min(frames - 1, Math.floor((b - start) * BEAT + 1e-6));
       const top = PROGRESS[drag[drag.length - 1]] ?? 1;
-      const target = easeOutCubic(t) * top;
+      const target = easeInOutSine((n + 1) / frames) * top;
       let best = drag[0];
       for (const i of drag) if (Math.abs((PROGRESS[i] ?? 0) - target) < Math.abs((PROGRESS[best] ?? 0) - target)) best = i;
       return best;
@@ -79,10 +85,10 @@ function swipeIndex(b: number, events: { label: string; commit: number; drag: nu
 }
 
 /** After each commit, a short spring tail by translation only: the page carries ~1% past home and settles. */
-function settleDx(b: number, events: { commit: number; dir?: number }[], width: number) {
+function settleDx(b: number, events: SwipeEvent[], width: number) {
   let dx = 0;
   for (const e of events) {
-    const f = (b - e.commit) * BEAT;
+    const f = (b - landOf(e)) * BEAT;
     if (f >= 0 && f < 8) dx += (e.dir ?? -1) * 0.012 * width * Math.sin((Math.PI * f) / 4) * Math.exp(-f / 2.5);
   }
   return dx;
@@ -100,7 +106,7 @@ const SEC = BEAT / 30; // seconds in a beat
  * Big Yahu in his Studio box, rendered from his rig at a time of one clip. `rise` (0–1) brings him up from below the
  * frame; `squash` (a decaying kick) squashes and stretches him on a landing.
  */
-function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full" }: { id: string; clip: Clip; time: number; rise?: number; squash?: number; yaw?: number; framing?: Framing }) {
+function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full", from }: { id: string; clip: Clip; time: number; rise?: number; squash?: number; yaw?: number; framing?: Framing; from?: { x: number; y: number } }) {
   const object = useStudioObject(id);
   const port = useAspect() === "port";
   // In portrait the frame's floor is the safe zone's (y 1480), with captions below: he pops up a short way and fades
@@ -110,13 +116,14 @@ function Yahu({ id, clip, time, rise = 1, squash = 0, yaw = 0, framing = "full" 
   const geometry = object.geometry(
     { x: "x", y: "y", width: "width", height: "height", rotation: "rotation" },
     // A spring may overshoot; the rise never lifts him above his box (that would show the canvas's cut edge).
-    { offset: { y: (1 - Math.min(1, rise)) * h * travel } },
+    // `from`: where he slides in from, in box sizes (e.g. from behind a window edge); default, up from below.
+    { offset: from ? { x: (1 - Math.min(1, rise)) * object.number("width") * from.x, y: (1 - Math.min(1, rise)) * h * from.y } : { y: (1 - Math.min(1, rise)) * h * travel } },
   );
   if (rise <= 0.001) return null;
   // A head-and-shoulders render ends mid-torso: fade its lower part out, so it reads as rising from behind.
   const fade = framing === "bust" ? { maskImage: "linear-gradient(to bottom, black 70%, transparent 96%)", WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 96%)" } : {};
   return (
-    <div {...object.bind} {...geometry.bind} style={{ ...geometry.style, ...fade, opacity: port ? Math.min(1, rise * 1.5) : 1 }}>
+    <div {...object.bind} {...geometry.bind} style={{ ...geometry.style, ...fade, opacity: port && !from ? Math.min(1, rise * 1.5) : 1 }}>
       <div style={{ width: "100%", height: "100%", transformOrigin: "50% 100%", transform: `scale(${1 + squash * 0.12}, ${1 - squash * 0.12})` }}>
         <Yahu3D width={Math.round(object.number("width"))} height={Math.round(h)} clip={clip} time={Math.max(0, time)} yaw={yaw} framing={framing} />
       </div>
@@ -164,7 +171,8 @@ function Nags() {
   const knock = piles.reduce((s, h) => s + kick(b, h, 0.2) * 0.6, 0);
   const k = Math.min(3, Math.floor(b));
   // The last six frames of the upgrade stab push into its fine print, the joke worth reading.
-  const joke: Cam = { ...REST, zoom: port ? 2.4 : 2.6, fx: 0.5635, fy: 0.52, aim: 1, ax: 0.5, ay: 0.55 };
+  // Low enough that the UPGRADE. plate (top of frame) clears the modal's padlock.
+  const joke: Cam = { ...REST, zoom: port ? 2.4 : 2.6, fx: 0.5635, fy: 0.52, aim: 1, ax: 0.5, ay: port ? 0.62 : 0.7 };
   // Held for a full beat, into the first stamp of the pile.
   const cam: Cam = b >= 3.45 && b < 4.45 ? joke : b < 4 ? ASK_CAMS[k] : { ...REST, zoom: 1 + 0.015 * knock };
   const index = b < 4 ? askFrame(b) : framesOf("asks", "ask:upgrade").slice(-1)[0];
@@ -174,15 +182,19 @@ function Nags() {
   return (
     <Paper>
       <Shake hits={[...stabs, ...piles]} amount={10}>
+        {/* He pops out from behind the window for the first stab (drawn behind it, so the window hides his body),
+            throws both arms up as the first NO. lands on its beat, and is gone before the cut. */}
+        {b < 1 ? (
+          <Yahu
+            id="nags-yahu-peek" clip="Default Dance" framing="bust" yaw={port ? 0.35 : -0.45}
+            from={port ? { x: 0, y: 0.75 } : { x: -0.9, y: 0 }}
+            time={mix(POSE.steeple, POSE.flex, seg(b, 0.28, 0.22, easeIn))}
+            rise={springAt(b, 0.02, { stiffness: 300, damping: 20 }) * (1 - seg(b, 0.68, 0.25, easeIn))}
+            squash={kick(b, 0.5, 0.2)}
+          />
+        ) : null}
         <Window id={windowId()} scene="asks" index={index} cam={cam} pointer={askPointer(b)} />
         <Yahu id={extraId("yahu")} clip="Default Dance" time={mix(POSE.steeple, 1.85, swing)} rise={rise} yaw={-0.25} />
-        {/* He leans in for the first stab, arms going up as he slams the first NO. on its beat, and ducks out. */}
-        <Yahu
-          id="nags-yahu-peek" clip="Default Dance" framing="bust" yaw={-0.45}
-          time={mix(POSE.steeple, POSE.flex, seg(b, 0.25, 0.25, easeIn))}
-          rise={springAt(b, 0.05, { stiffness: 260, damping: 18 }) * (1 - seg(b, 0.95, 0.3, easeIn))}
-          squash={kick(b, 0.5, 0.2)}
-        />
         <Supers />
       </Shake>
     </Paper>
@@ -396,7 +408,7 @@ const BIG_ID = CUTS.launch.shots.find((s) => s.kind === "swipeBig")?.window?.id 
 // Drop B: five swipes. The first drags inside the silence and commits on the drop itself (beat 0 of swipeBig).
 // Beats here are relative to the drop.
 const RUN_2 = [
-  { label: "toWeekend", commit: 0, drag: 0.7, dir: -1 },
+  { label: "toWeekend", commit: 0, drag: 0.7, dir: -1, onBeat: true },
   { label: "backToSide", commit: 1.5, drag: 0.55, dir: 1 },
   { label: "backToCampaign", commit: 3, drag: 0.5, dir: 1 },
   { label: "backToWork", commit: 4.5, drag: 0.5, dir: 1 },
@@ -427,9 +439,10 @@ function dropCam(d: number, port: boolean): Cam {
   const W = port ? 1080 : 1920;
   let dx = 0;
   for (const e of RUN_2) {
-    const p = clamp((d - (e.commit - e.drag)) / e.drag);
-    if (d >= e.commit - e.drag && d < e.commit) dx += e.dir * 0.02 * W * easeIn(p);
-    if (d >= e.commit) dx += e.dir * 0.02 * W * Math.exp(-((d - e.commit) * BEAT) / 3);
+    const land = landOf(e);
+    const p = clamp((d - (land - e.drag)) / e.drag);
+    if (d >= land - e.drag && d < land) dx += e.dir * 0.02 * W * easeInOutSine(p);
+    if (d >= land) dx += e.dir * 0.02 * W * Math.exp(-((d - land) * BEAT) / 3);
   }
   return { ...cam, dx: cam.dx + dx + settleDx(d, RUN_2, W) };
 }

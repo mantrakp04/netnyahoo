@@ -62,9 +62,12 @@ function smooth(map: MeshStandardMaterial["map"]) {
       const m = (g + bl) / 2;
       const excess = r - m;
       if (excess > 30) {
-        const target = 30 + (excess - 30) * 0.3;
+        // Dark reds (the sockets) are pulled hardest; bright skin (cheeks, ears) keeps more of its warmth.
+        const lum = 0.3 * r + 0.59 * g + 0.11 * bl;
+        const keep = 0.3 + 0.4 * Math.min(1, Math.max(0, (lum - 95) / 70));
+        const target = 30 + (excess - 30) * keep;
         const nr = m + target;
-        const lift = (r - nr) * 0.35;
+        const lift = (r - nr) * 0.3;
         px[i] = nr;
         px[i + 1] = g + lift;
         px[i + 2] = Math.min(bl, g) + lift * 0.8;

@@ -60,6 +60,8 @@ export interface Shot {
 
 const ink = "#16130F";
 const paper = "#F1ECE2";
+/** A swipe's page lands one frame before its commit beat (its thud stays on the beat). */
+export const LAND = 1 / BEAT;
 const P = { red: "#C3371F", blue: "#2150D9", plum: "#C07A98", work: "#4691C3", orange: "#D87249", green: "#3EB489", yellow: "#E3AC38" };
 
 // Landscape keeps 80 px side and 60 px top/bottom margins. Portrait keeps everything that matters inside y 220–1480
@@ -89,8 +91,8 @@ const nags: Shot = {
   id: "nags", kind: "nags", at: 0, beats: 8, window: win("nags-window", { land: [300, 270, 1320, 825], port: [40, 700, 1500, 938] }),
   extra: [
     YAHU("nags-yahu", [1300, 280, 640, 780], [240, 900, 600, 580]),
-    // He leans in from the right edge and delivers the first NO. himself.
-    YAHU("nags-yahu-peek", [1330, 420, 560, 560], [560, 1040, 460, 460]),
+    // He pops out from behind the window (right edge in 16:9, top edge in 9:16) to cheer the first NO.
+    YAHU("nags-yahu-peek", [1600, 320, 360, 360], [70, 250, 260, 260]),
   ],
   type: [
     // Bar 1: four stabs, one ask each, over a site really asking it in a Netnyahoo window (scenes/asks.js).
@@ -132,9 +134,9 @@ const swipe: Shot = {
   type: [
     // Docked at the top-left, beside the profile's own name in the window, switching on the frame the page changes.
     T("swipe-name", "SWIPE BETWEEN LIVES.", 0, "slam", 72, DOCK.land, DOCK.port, { out: 5, color: paper, fill: ink, portSize: 64 }),
-    T("swipe-work", "WORK.", 0.75, "slam", 150, PLATE.land, PLATE.port, { out: 2.25, color: paper, fill: P.work }),
-    T("swipe-campaign", "CAMPAIGN.", 2.25, "slam", 150, PLATE.land, PLATE.port, { out: 3.75, color: paper, fill: P.orange }),
-    T("swipe-side", "SIDE PROJECT.", 3.75, "slam", 150, PLATE.land, PLATE.port, { out: 5, color: paper, fill: P.green }),
+    T("swipe-work", "WORK.", 0.75 - LAND, "slam", 150, PLATE.land, PLATE.port, { out: 2.25 - LAND, color: paper, fill: P.work }),
+    T("swipe-campaign", "CAMPAIGN.", 2.25 - LAND, "slam", 150, PLATE.land, PLATE.port, { out: 3.75 - LAND, color: paper, fill: P.orange }),
+    T("swipe-side", "SIDE PROJECT.", 3.75 - LAND, "slam", 150, PLATE.land, PLATE.port, { out: 5, color: paper, fill: P.green }),
     T("swipe-deniability", "PLAUSIBLE DENIABILITY COMES STANDARD.", 5, "slam", 72, DOCK.land, [60, 230, 880, 220], { portText: "PLAUSIBLE\nDENIABILITY\nCOMES STANDARD.", portSize: 96 }),
   ],
 };
@@ -170,11 +172,11 @@ const swipeBig: Shot = {
   id: "swipe-big", kind: "swipeBig", at: 48, beats: 10, window: win("swipe-big-window", { land: [120, 66, 1680, 1050], port: [40, 520, 1700, 1063] }),
   // Each name on the frame its page lands (the commits: 0, 1.5, 3, 4.5, 6).
   type: [
-    BIG_PLATE("big-weekend", "WEEKEND.", 0, 1.5, P.yellow, ink),
-    BIG_PLATE("big-side", "SIDE PROJECT.", 1.5, 3, P.green),
-    BIG_PLATE("big-campaign", "CAMPAIGN.", 3, 4.5, P.orange),
-    BIG_PLATE("big-work", "WORK.", 4.5, 6, P.work),
-    BIG_PLATE("big-personal", "PERSONAL.", 6, 7.6, P.plum),
+    BIG_PLATE("big-weekend", "WEEKEND.", 0, 1.5 - LAND, P.yellow, ink),
+    BIG_PLATE("big-side", "SIDE PROJECT.", 1.5 - LAND, 3 - LAND, P.green),
+    BIG_PLATE("big-campaign", "CAMPAIGN.", 3 - LAND, 4.5 - LAND, P.orange),
+    BIG_PLATE("big-work", "WORK.", 4.5 - LAND, 6 - LAND, P.work),
+    BIG_PLATE("big-personal", "PERSONAL.", 6 - LAND, 7.6, P.plum),
   ],
 };
 
@@ -217,7 +219,7 @@ const endShot = (at: number, beats: number, lockup: number, button: number): Sho
     T("end-immunity", "FULL\nIMMUNITY.", 0, "slam", 360, [80, 120, 1080, 800], [60, 230, 880, 640], { out: lockup }),
     T("end-name", "NETNYAHOO", lockup, "slam", 190, [290, 220, 870, 180], [230, 240, 710, 150], { portSize: 150 }),
     T("end-mac", "THE SIDEBAR BROWSER FOR MAC", lockup + 0.5, "slam", 60, [84, 420, 1076, 70], [60, 410, 880, 120], { color: P.blue, portText: "THE SIDEBAR\nBROWSER FOR MAC" }),
-    T("end-download", "DOWNLOAD FOR MAC", lockup + 1, "slam", 96, [84, 520, 1076, 110], [60, 550, 880, 100]),
+    T("end-download", "DOWNLOAD", lockup + 1, "slam", 96, [84, 520, 1076, 110], [60, 550, 880, 100]),
     T("end-url", "NETNYAHOO.COM", lockup + 1, "slam", 190, [80, 630, 1080, 210], [60, 650, 880, 160], { color: P.blue }),
     T("end-source", "GITHUB.COM/MANTRAKP04/NETNYAHOO", lockup + 1.5, "label", 48, [86, 870, 1076, 70], [64, 820, 880, 110], { portSize: 40, portText: "GITHUB.COM/MANTRAKP04/\nNETNYAHOO" }),
   ],
