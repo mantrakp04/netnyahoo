@@ -276,10 +276,53 @@ index 3edcc9670a8ccb5eef44524e78445117d2416ed8..4aa0da5897e9ca7f1b21d374ad88d63b
    if (sendIdleEvents) {
      [self startTimers];
 diff --git a/React/Views/RCTView.m b/React/Views/RCTView.m
-index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..78f8909a61d1f8999fd9c4ecc414eaaffaf18be1 100644
+index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..751d6a53f627a66a8199b7fa98cf2fd311fc3329 100644
 --- a/React/Views/RCTView.m
 +++ b/React/Views/RCTView.m
-@@ -1248,17 +1248,8 @@ - (void)displayLayer:(CALayer *)layer
+@@ -143,6 +143,9 @@ @implementation RCTView {
+   NSTrackingArea *_trackingArea;
+   BOOL _hasMouseOver;
+   BOOL _mouseDownCanMoveWindow;
++  // [Netnyahoo: the clip view whose bounds changes this view observes, if any (viewDidMoveToWindow). Netnyahoo]
++  __weak NSClipView *_observedClipView;
++  BOOL _observesBounds;
+ #endif // macOS]
+   NSMutableDictionary<NSString *, NSDictionary *> *accessibilityActionsNameMap;
+   NSMutableDictionary<NSString *, NSDictionary *> *accessibilityActionsLabelMap;
+@@ -784,17 +787,28 @@ - (void)viewDidMoveToWindow
+   // scroll event occurs either due to trackpad/gesture based scrolling or a scrollwheel event
+   // both of which would not cause the mouseExited to be invoked.
+ 
+-  if ([self window] == nil) {
++  // [Netnyahoo: one registration per view. AppKit calls this again whenever a view already in the window is
++  // re-added (didUpdateReactSubviews re-adds every subview each time a container's children change), and each call
++  // added another observer: a long-lived row in a scroll view piled up dozens, every removal scans them all, so
++  // each view leaving the window cost a little more the longer the app ran (profile switches, which mount and unmount
++  // views, slowed with every switch).
++  NSClipView *clipView = [self window] != nil ? [[self enclosingScrollView] contentView] : nil;
++  if (_observesBounds && (clipView == nil || clipView != _observedClipView)) {
+     [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                     name:NSViewBoundsDidChangeNotification
+-                                                  object:nil];
++                                                  object:_observedClipView]; // nil (gone) removes them all
++    _observesBounds = NO;
++    _observedClipView = nil;
+   }
+-  else if ([[self enclosingScrollView] contentView] != nil) {
++  if (!_observesBounds && clipView != nil) {
+     [[NSNotificationCenter defaultCenter] addObserver:self
+                                              selector:@selector(viewBoundsChanged:)
+                                                  name:NSViewBoundsDidChangeNotification
+-                                               object:[[self enclosingScrollView] contentView]];
++                                               object:clipView];
++    _observesBounds = YES;
++    _observedClipView = clipView;
+   }
++  // Netnyahoo]
+ 
+   [self reactViewDidMoveToWindow]; // [macOS] Github#1412
+ 
+@@ -1248,17 +1262,8 @@ - (void)displayLayer:(CALayer *)layer
    RCTUIColor *backgroundColor = _backgroundColor;
  #endif // macOS]
  
@@ -299,6 +342,35 @@ index 0a4efc1fff0a6e32ea1634ab5f863c211f452409..78f8909a61d1f8999fd9c4ecc414eaaf
  
    if (useIOSBorderRendering) {
      layer.cornerRadius = cornerRadii.topLeftHorizontal;
+diff --git a/React/Views/ScrollView/RCTScrollView.m b/React/Views/ScrollView/RCTScrollView.m
+index eb79ff32614392cb16e6eb3dbec6cc5b037fe27a..18b2f96cf65892c3db53b751d2878ecb5b05a71d 100644
+--- a/React/Views/ScrollView/RCTScrollView.m
++++ b/React/Views/ScrollView/RCTScrollView.m
+@@ -740,13 +740,23 @@ - (void)viewDidMoveToWindow
+   NSNotificationCenter *defaultCenter = [NSNotificationCenter defaultCenter];
+   if ([self window] == nil) {
+     // Unregister for bounds change notifications
++    // [Netnyahoo: every clip view's, as RCTView's removal here used to do for it (it now removes only its own).
+     [defaultCenter removeObserver:self
+                              name:NSViewBoundsDidChangeNotification
+-                           object:_scrollView.contentView];
++                           object:nil];
++    // Netnyahoo]
+     [defaultCenter removeObserver:self
+                              name:NSPreferredScrollerStyleDidChangeNotification
+                            object:nil];
+   } else {
++    // [Netnyahoo: AppKit calls this again each time the view is re-added in the same window: register once.
++    [defaultCenter removeObserver:self
++                             name:NSViewBoundsDidChangeNotification
++                           object:_scrollView.contentView];
++    [defaultCenter removeObserver:self
++                             name:NSPreferredScrollerStyleDidChangeNotification
++                           object:nil];
++    // Netnyahoo]
+     // Register for bounds change notifications so we can track scrolling
+     [defaultCenter addObserver:self
+                       selector:@selector(scrollViewDocumentViewBoundsDidChange:)
 diff --git a/React/Views/UIView+React.m b/React/Views/UIView+React.m
 index 30c4f1e53e7b94016c8ed1b425587753fc80c2ce..b1c734080b05e4924a2034aae15b3f03bd071f88 100644
 --- a/React/Views/UIView+React.m

@@ -201,14 +201,20 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
   // A page's first render mounts only the rows a screen can show; the rest follow in chunks, one per frame, so a
   // long sidebar neither holds up the window's first frame nor mounts in one long task after it.
   const [mountedRows, setMountedRows] = useState(FIRST_PAINT_ROWS);
-  const growing = rows === undefined && mountedRows < all.length;
+  // A page beside the current one draws only the rows that fit until it has been current; after that it keeps every
+  // row, so paging mounts nothing (dropping back to a screenful unmounted every row past it on the page leaving and
+  // mounted them again on the page arriving, on every switch).
+  const [visited, setVisited] = useState(current);
+  if (current && !visited) setVisited(true);
+  const cap = visited ? undefined : rows;
+  const growing = cap === undefined && mountedRows < all.length;
   useEffect(() => {
     if (!growing) return;
     // Once caught up, every row mounts with the list (a tab opened later never waits for a chunk).
     const frame = requestAnimationFrame(() => setMountedRows((n) => (n + ROWS_PER_FRAME >= all.length ? Infinity : n + ROWS_PER_FRAME)));
     return () => cancelAnimationFrame(frame);
   }, [growing, mountedRows, all.length]);
-  const limit = rows ?? (growing ? mountedRows : undefined);
+  const limit = cap ?? (growing ? mountedRows : undefined);
   const list = limit === undefined ? all : all.slice(0, limit);
   // Rows still to mount hold their room (rows are fixed-height): the list is as tall as it will be, so a tab revealed
   // early scrolls to its place, and the New Tab row docks once.
