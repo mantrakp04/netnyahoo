@@ -63,13 +63,20 @@ class NNContextMenu : public RenderViewContextMenuMacCocoa {
   using RenderViewContextMenuMacCocoa::RenderViewContextMenuMacCocoa;
   ~NNContextMenu() override { LiveMenus().erase(this); }
 
-  // After Init(): Chrome's items that open its side panel, which our Browsers have none of
-  // (picking Reading mode did nothing), as CEF's menu had none. No separator is left doubled
-  // or at either end.
-  void RemoveSidePanelItems() {
+  // After Init(): Chrome's items for UI our Browsers have none of, as CEF's menu had none: its
+  // side panel (picking Reading mode did nothing), and the bubbles that anchor to a toolbar
+  // or need the side panel: QR code (picking Create QR Code dereferenced the missing
+  // ToolbarButtonProvider and the app vanished), Send to your devices, and Google Lens, which
+  // Chrome offers once Google is its search engine. Reading mode can be added twice (a
+  // selection in a text field). No separator is left doubled or at either end.
+  void RemoveViewlessItems() {
     for (int command : {IDC_CONTENT_CONTEXT_OPEN_IN_READING_MODE,
-                        IDC_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE}) {
-      if (std::optional<size_t> index = menu_model_.GetIndexOfCommandId(command)) {
+                        IDC_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE,
+                        IDC_CONTENT_CONTEXT_GENERATE_QR_CODE, IDC_SEND_TAB_TO_SELF,
+                        IDC_CONTENT_CONTEXT_SEARCHLENSFORIMAGE,
+                        IDC_CONTENT_CONTEXT_SEARCHLENSFORVIDEOFRAME,
+                        IDC_CONTENT_CONTEXT_LENS_REGION_SEARCH}) {
+      while (std::optional<size_t> index = menu_model_.GetIndexOfCommandId(command)) {
         menu_model_.RemoveItemAt(*index);
       }
     }
@@ -188,7 +195,7 @@ class NNViewDelegate : public ChromeWebContentsViewDelegateViewsMac {
         render_frame_host, params, paste_enabled_, paste_and_match_style_enabled_,
         view->GetNativeView().GetNativeNSView());
     menu->Init();
-    menu->RemoveSidePanelItems();
+    menu->RemoveViewlessItems();
     menu->AddHostItems();
     return menu;
   }

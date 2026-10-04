@@ -30,6 +30,7 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/toasts/toast_controller.cc" &&
+    grep -q 'Netnyahoo: NNCore shows no toast' "$src/chrome/browser/ui/toasts/toast_controller.cc" &&
     grep -q 'g_netnyahoo_history_eligible(' "$src/chrome/browser/history/history_tab_helper.cc" &&
     grep -q 'g_netnyahoo_dnr_rule_matched(' "$src/extensions/browser/api/declarative_net_request/action_tracker.cc" &&
     grep -q 'g_netnyahoo_dnr_rulesets_in_force(' "$src/extensions/browser/api/declarative_net_request/rules_monitor_service.cc" &&
@@ -166,6 +167,33 @@ new = """    // Netnyahoo: NNCore's Browsers have no BrowserView to anchor a toa
 assert s.count(old) == 1
 open(path, "w").write(s.replace(old, new))
 print("hooked ToastController")
+PY
+
+# And a viewless Browser turns every toast down up front: ShowToast marks the toast as showing
+# and starts its timer before CreateToast finds no anchor, and with no widget to close nothing
+# ever cleared it, so every later toast queued behind it forever.
+python3 - "$src/chrome/browser/ui/toasts/toast_controller.cc" <<'PY'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "Netnyahoo: NNCore shows no toast" in s:
+    sys.exit(0)
+old = """bool ToastController::MaybeShowToast(ToastParams params) {
+  if (!CanShowToast(params.toast_id)) {"""
+new = """bool ToastController::MaybeShowToast(ToastParams params) {
+  // Netnyahoo: NNCore shows no toast without an anchor, before any state is set.
+  if (browser_window_interface_ && browser_window_interface_->cef_delegate()) {
+    const ToastSpecification* spec =
+        toast_registry_->GetToastSpecification(params.toast_id);
+    if (!spec || !GetAnchorView(spec->is_global_scope())) {
+      RecordToastFailedToShow(params.toast_id);
+      return false;
+    }
+  }
+  if (!CanShowToast(params.toast_id)) {"""
+assert s.count(old) == 1
+open(path, "w").write(s.replace(old, new))
+print("hooked ToastController::MaybeShowToast")
 PY
 
 # A Browser Chrome makes itself (chrome.windows.create, an incognito window, undocked DevTools,
