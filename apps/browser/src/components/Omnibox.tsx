@@ -276,7 +276,7 @@ export function Omnibox({
     key: (key, mods) => onKeyDown({ nativeEvent: { key, ...mods } }),
     submit: () => choose(current),
     measure: () => new Promise((resolve) => root.current?.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }))),
-    state: () => ({ typed, value, completion: shownCompletion, suggested: completion, selected: selectedIndex, scope, scopeFrom: scopeFrom.current, tabScope, items }),
+    state: () => ({ typed, value, selection: selection.current, completion: shownCompletion, suggested: completion, selected: selectedIndex, scope, scopeFrom: scopeFrom.current, tabScope, items }),
   });
 
   const leadingIcon =

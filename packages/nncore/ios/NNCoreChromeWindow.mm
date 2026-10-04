@@ -1226,6 +1226,49 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
     [drags removeAllObjects];
     return out;
   }
+  // "responderChanges" (test instances): first-responder changes since the last call, each with its caller's stack
+  // (who took a field's focus). The first call starts recording.
+  if ([action isEqualToString:@"responderChanges"]) {
+    if (!nncore_host::Background()) return @"test instances only";
+    static NSMutableArray<NSString *> *changes;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      changes = [NSMutableArray array];
+      SEL sel = @selector(makeFirstResponder:);
+      Method m = class_getInstanceMethod(NSWindow.class, sel);
+      IMP original = method_getImplementation(m);
+      method_setImplementation(m, imp_implementationWithBlock(^BOOL(NSWindow *w, NSResponder *r) {
+        [changes addObject:[NSString stringWithFormat:@"-> %@\n%@", Describe((NSView *)r),
+                                                       [[NSThread callStackSymbols] componentsJoinedByString:@"\n"]]];
+        return ((BOOL(*)(id, SEL, NSResponder *))original)(w, sel, r);
+      }));
+    });
+    NSString *out = [NSString stringWithFormat:@"%lu\n%@", (unsigned long)changes.count, [changes componentsJoinedByString:@"\n---\n"]];
+    [changes removeAllObjects];
+    return out;
+  }
+  // "fakeActiveClicks" (test instances): text views and pages take a click in the key window, as in an active app. A
+  // background instance's app is never really active, so AppKit keeps each first click to itself (the caret doesn't
+  // move on unselected text, a click on the page doesn't focus it).
+  if ([action isEqualToString:@"fakeActiveClicks"]) {
+    if (!nncore_host::Background()) return @"test instances only";
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      NSMutableSet<Class> *classes = [NSMutableSet setWithObject:NSTextView.class];
+      if (Class page = NSClassFromString(@"RenderWidgetHostViewCocoa")) [classes addObject:page];
+      for (Class cls in classes) {
+        SEL sel = @selector(acceptsFirstMouse:);
+        Method m = class_getInstanceMethod(cls, sel);
+        IMP original = method_getImplementation(m);
+        IMP takes = imp_implementationWithBlock(^BOOL(NSView *v, NSEvent *e) {
+          return v.window.isKeyWindow || ((BOOL(*)(id, SEL, NSEvent *))original)(v, sel, e);
+        });
+        // Its own method (a subclass may only inherit NSView's).
+        if (!class_addMethod(cls, sel, takes, method_getTypeEncoding(m))) method_setImplementation(m, takes);
+      }
+    });
+    return @"1";
+  }
   if ([action hasPrefix:@"click:"]) {
     NSString *spec = [action substringFromIndex:6];
     bool right = [spec hasSuffix:@",right"];
@@ -1246,6 +1289,28 @@ NSEvent *Key(NSWindow *window, NSEventType type, NSEventModifierFlags flags, NSS
       }
     });
     return hit;
+  }
+  // "mouse:<down|up|dragged|moved>:<x>,<y>[,<clickCount>]": one left-button event posted to the app's queue, as the
+  // window server delivers one. A text field's mouse-down tracks the mouse until its mouse-up comes from the queue
+  // ("click:" sends both at once, which would leave it waiting), so a script sends the up when it means to.
+  if ([action hasPrefix:@"mouse:"]) {
+    NSArray<NSString *> *parts = [action componentsSeparatedByString:@":"];
+    if (parts.count < 3) return @"mouse:<down|up|dragged|moved>:<x>,<y>[,<clickCount>]";
+    NSDictionary<NSString *, NSNumber *> *types = @{
+      @"down" : @(NSEventTypeLeftMouseDown), @"up" : @(NSEventTypeLeftMouseUp),
+      @"dragged" : @(NSEventTypeLeftMouseDragged), @"moved" : @(NSEventTypeMouseMoved),
+    };
+    NSNumber *type = types[parts[1]];
+    if (!type) return @"unknown mouse event";
+    NSArray<NSString *> *n = [parts[2] componentsSeparatedByString:@","];
+    NSPoint p = WindowPoint(window, parts[2]);
+    const NSEventType t = (NSEventType)type.unsignedIntegerValue;
+    NSEvent *event = [NSEvent mouseEventWithType:t location:p modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+                                    windowNumber:window.windowNumber context:nil eventNumber:0
+                                      clickCount:n.count > 2 ? n[2].integerValue : (t == NSEventTypeMouseMoved ? 0 : 1)
+                                        pressure:t == NSEventTypeLeftMouseUp || t == NSEventTypeMouseMoved ? 0 : 1];
+    [NSApp postEvent:event atStart:NO];
+    return Describe([frameView hitTest:p]);
   }
   if ([action hasPrefix:@"drag:"]) {
     NSMutableArray<NSValue *> *points = [NSMutableArray array];

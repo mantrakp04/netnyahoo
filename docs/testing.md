@@ -74,6 +74,12 @@ make an instance a test instance; the rest are hooks for one test.
   active app: the window made key is key and its notifications go out, so focus runs production's path. A check
   plays the user leaving for another app with `devWindow(n, "fakeAppActive:0")`. Metal views act as in the key
   window too (the New Tab intro plays in it).
+- **Clicks:** `devWindow(n, "mouse:<down|up|dragged|moved>:<x>,<y>[,<clicks>]")` posts one event to the queue as the
+  window server would (x, y from the window's top left), so a text field's mouse tracking sees its own mouse-up; a
+  script times the up itself. AppKit still keeps an inactive app's first click on unselected text or a page to
+  itself: `devWindow(n, "fakeActiveClicks")` lets them through, as in the active app. `devWindow(n,
+  "responderChanges")` lists the first-responder changes since the last call with their stacks (who took a field's
+  focus).
 - **Windows:** full screen is acted out (no new Space); windows answer NO to `-[NSWindow isOccluded]`, so a covered
   window shows a tab at once instead of after Chrome's 1 s delay, with `--disable-backgrounding-occluded-windows`;
   PiP windows stay at alpha 0 and click-through; the drag preview stays above its own window only.

@@ -1,3 +1,90 @@
+diff --git a/Libraries/Text/TextInput/RCTBaseTextInputView.mm b/Libraries/Text/TextInput/RCTBaseTextInputView.mm
+index cac171e70c9fa225cdec45b205086342a0d50f06..3e63c9761e540e6450448b5241fe55b9980e64dc 100644
+--- a/Libraries/Text/TextInput/RCTBaseTextInputView.mm
++++ b/Libraries/Text/TextInput/RCTBaseTextInputView.mm
+@@ -47,6 +47,10 @@ @implementation RCTBaseTextInputView {
+ #if TARGET_OS_OSX // [macOS avoids duplicating effects of textInputDid(Begin|End)Editing calls
+   BOOL _isCurrentlyEditing;
+ #endif // macOS]
++#if TARGET_OS_OSX // [Netnyahoo: the edit in progress (counted), and whether a click began it with its focus props to come
++  NSUInteger _editSession;
++  BOOL _clickFocused;
++#endif // Netnyahoo]
+ }
+ 
+ #if !TARGET_OS_OSX // [macOS]
+@@ -521,6 +525,11 @@ - (void)textInputDidBeginEditing
+     return;
+   }
+   _isCurrentlyEditing = YES;
++  // [Netnyahoo
++  _editSession++;
++  NSEventType began = NSApp.currentEvent.type;
++  _clickFocused = began == NSEventTypeLeftMouseDown || began == NSEventTypeRightMouseDown || began == NSEventTypeOtherMouseDown;
++  // Netnyahoo]
+ #endif // macOS]
+   
+   [_eventDispatcher sendTextEventWithType:RCTTextEventTypeFocus
+@@ -894,8 +903,49 @@ - (RCTUIView *)reactAccessibilityElement // [macOS]
+ 
+ #pragma mark - Focus Control
+ 
++#if TARGET_OS_OSX // [Netnyahoo
++// Being edited: its window's first responder is the field editor (single line) or the view itself (multiline).
++- (BOOL)nn_isEditing
++{
++  NSView *backed = self.backedTextInputView;
++  NSResponder *responder = backed.window.firstResponder;
++  return responder && (responder == backed ||
++                       ([backed isKindOfClass:[NSTextField class]] && responder == [(NSTextField *)backed currentEditor]));
++}
++
++- (void)nn_applyFocusPropsInSession:(NSUInteger)session
++{
++  if (session != _editSession || ![self nn_isEditing]) {
++    return;
++  }
++  if (_clearTextOnFocus) {
++    self.backedTextInputView.attributedText = [NSAttributedString new];
++  }
++  if (_selectTextOnFocus) {
++    [self.backedTextInputView selectAll:nil];
++  }
++}
++#endif // Netnyahoo]
++
+ - (void)reactFocus
+ {
++#if TARGET_OS_OSX // [Netnyahoo: focus() on a field already being edited leaves the edit as it is. A press in a TextInput
++  // calls focus() (TextInput.js skips its "already focused" check on macOS), and making an editing NSTextField first
++  // responder again ends its edit (a blur), starts a new one and selects all: a click in the command bar closed it.
++  // A field a click just focused (AppKit, on mouse-down) gets its focus props once, after that click: run inside the
++  // click's mouse tracking, the caret it places would land after them.
++  if ([self nn_isEditing]) {
++    if (_clickFocused) {
++      _clickFocused = NO;
++      NSUInteger session = _editSession;
++      __weak RCTBaseTextInputView *weakSelf = self;
++      [[NSRunLoop mainRunLoop] performInModes:@[ NSDefaultRunLoopMode ] block:^{
++        [weakSelf nn_applyFocusPropsInSession:session];
++      }];
++    }
++    return;
++  }
++#endif // Netnyahoo]
+   [self.backedTextInputView reactFocus];
+ 
+   if (_clearTextOnFocus) {
+@@ -909,6 +959,9 @@ - (void)reactFocus
+     [self.backedTextInputView setSelectedTextRange:NSMakeRange(NSNotFound, 0) notifyDelegate:NO];
+ #endif // macOS]
+   }
++#if TARGET_OS_OSX // [Netnyahoo: applied here
++  _clickFocused = NO;
++#endif // Netnyahoo]
+ }
+ 
+ - (void)reactBlur
 diff --git a/Libraries/Text/TextInput/Singleline/macOS/RCTUISecureTextField.mm b/Libraries/Text/TextInput/Singleline/macOS/RCTUISecureTextField.mm
 index 6f332dc..5dd8e99 100644
 --- a/Libraries/Text/TextInput/Singleline/macOS/RCTUISecureTextField.mm
