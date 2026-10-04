@@ -14,6 +14,8 @@
 //   host's own pops it out once;
 // - permission prompts: a shown tab can prompt (a split's other pane too), a hidden one waits
 //   for its page to show again (an open prompt stays with its page).
+// - Chrome's tab-modal dialogs (TabDialogManager: FedCM, Ask before HTTP): up exactly while
+//   their page is shown, so none stays over the host's own pages.
 // Chrome's strip selection itself (extensions' active tab, keyboard commands, lifecycle focus)
 // stays the strip's: a Browser always has an active tab, and the host's own pages aren't tabs.
 

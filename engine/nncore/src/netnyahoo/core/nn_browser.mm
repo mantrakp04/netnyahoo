@@ -25,6 +25,7 @@
 #include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/unload_controller.h"
+#include "chrome/browser/ui/views/interaction/browser_elements_views_impl.h"
 #include "chrome/browser/ui/passwords/passwords_model_delegate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "components/favicon/content/content_favicon_driver.h"
@@ -204,6 +205,10 @@ WindowHost::~WindowHost() {
   }
   for (auto& [profile, browser] : browsers_) {
     browser->GetTabStripModel()->RemoveObserver(this);
+    // A Browser outliving the widget never reads it again (AddBrowser).
+    if (auto* elements = BrowserElementsViews::From(browser)) {
+      elements->TearDown();
+    }
   }
   browsers_.clear();
   widget_close_allowed_ = true;
@@ -378,6 +383,16 @@ BrowserWindow* WindowHost::HostChromeBrowser(Browser* browser) {
 void WindowHost::AddBrowser(Browser* browser) {
   Profile* profile = browser->GetProfile();
   browsers_[profile] = browser;
+  // This window's widget is the Browser's primary window, as a BrowserView's is: Chrome's
+  // tab-modal dialogs (TabDialogManager: FedCM's "Sign in with", Ask before HTTP, the leaked
+  // password warning) parent to and position against it, and segfaulted without one. Chrome
+  // tears it down before the Browser's window goes (TearDownPreBrowserWindowDestruction), and the
+  // widget outlives every Browser (CloseWidget after the last).
+  if (auto* elements = BrowserElements::From(browser)) {
+    if (auto* views_elements = elements->AsA<BrowserElementsViewsImpl>()) {
+      views_elements->Init(widget_->GetRootView());
+    }
+  }
   browser->GetTabStripModel()->AddObserver(this);
   if (!active_profile_) {
     SetActiveProfile(profile);

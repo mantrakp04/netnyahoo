@@ -6,24 +6,36 @@
 #include <variant>
 #include <vector>
 
+#include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/strings/sys_string_conversions.h"
+#include "chrome/browser/file_system_access/file_system_access_permission_request_manager.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
 #include "chrome/browser/permissions/system/system_permission_settings.h"
 #include "components/permissions/embedded_permission_prompt_flow_model.h"
 #include "components/permissions/permission_prompt.h"
 #include "components/permissions/permission_request.h"
+#include "components/permissions/permission_uma_constants.h"
 #include "components/permissions/permission_util.h"
 #include "components/permissions/request_type.h"
+#include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_observer.h"
 #include "netnyahoo/core/nn_browser.h"
 #include "netnyahoo/core/nn_fake_media.h"
 #include "netnyahoo/core/nn_test_system_permissions.h"
+#include "url/origin.h"
+
+// Set here, defined in Chrome's restore bubble (engine/nncore/apply.sh).
+extern bool (*g_netnyahoo_file_system_restore_prompt)(
+    const FileSystemAccessPermissionRequestManager::RequestData& request,
+    base::OnceCallback<void(permissions::PermissionAction)>& callback,
+    content::WebContents* web_contents);
 
 namespace nncore {
 
@@ -342,17 +354,140 @@ std::unique_ptr<permissions::PermissionPrompt> CreatePrompt(
   return std::make_unique<NNPermissionPrompt>(contents, delegate);
 }
 
+using RestoreCallback = base::OnceCallback<void(permissions::PermissionAction)>;
+
+// A site asking again for files it kept handles to (in IndexedDB, from an earlier visit): Chrome's
+// restore prompt, a bubble anchored to the toolbar's page info icon, is asked of the host as a
+// "fileSystem" request. It answers once: the host, or the page going to another origin or the tab
+// closing, which dismiss it as Chrome's bubble does (a dismissal forgets the saved grants).
+class NNFileRestorePrompt : public content::WebContentsObserver {
+ public:
+  static std::map<std::string, std::unique_ptr<NNFileRestorePrompt>>& All() {
+    static base::NoDestructor<std::map<std::string, std::unique_ptr<NNFileRestorePrompt>>>
+        prompts;
+    return *prompts;
+  }
+
+  static void Start(content::WebContents* contents,
+                    const url::Origin& origin,
+                    RestoreCallback callback) {
+    static int last_id = 0;
+    const std::string id = "r" + std::to_string(++last_id);
+    All()[id] = base::WrapUnique(new NNFileRestorePrompt(contents, id, std::move(callback)));
+    NSDictionary* request = @{
+      @"id" : base::SysUTF8ToNSString(id),
+      @"origin" : base::SysUTF8ToNSString(origin.GetURL().spec()),
+      @"permissions" : @[ @"fileSystem" ],
+    };
+    // Never from inside Chrome's request manager: the host's answer re-enters it.
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(
+                       [](std::string id, NSDictionary* request) {
+                         auto it = All().find(id);
+                         if (it != All().end() && it->second->web_contents()) {
+                           HostPermissionRequest(it->second->web_contents(), request);
+                         }
+                       },
+                       id, request));
+  }
+
+  // The host's answer. Its one "Allow" is Chrome's "Allow this time": the files stay the
+  // site's for this visit and it asks again on the next (Chrome's "Allow on every visit" is a
+  // choice the host's prompt doesn't offer). A remembered "deny" is "Don't allow"; anything
+  // else dismisses.
+  static bool Resolve(const std::string& id, const std::string& result, bool remember) {
+    if (!All().contains(id)) {
+      return false;
+    }
+    permissions::PermissionAction action = permissions::PermissionAction::DISMISSED;
+    if (result == "accept") {
+      action = permissions::PermissionAction::GRANTED_ONCE;
+    } else if (result == "deny" && remember) {
+      action = permissions::PermissionAction::DENIED;
+    }
+    // From a task of its own, never inside the host's call.
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&NNFileRestorePrompt::Finish, id, action,
+                                  /*tell_host=*/false));
+    return true;
+  }
+
+  // content::WebContentsObserver: as LocationBarBubbleDelegateView closes Chrome's bubble.
+  void DidFinishNavigation(content::NavigationHandle* navigation) override {
+    if (navigation->IsInPrimaryMainFrame() && navigation->HasCommitted() &&
+        !url::IsSameOriginWith(navigation->GetPreviousPrimaryMainFrameURL(),
+                               navigation->GetURL())) {
+      Dismiss();
+    }
+  }
+  void WebContentsDestroyed() override { Dismiss(); }
+
+ private:
+  NNFileRestorePrompt(content::WebContents* contents,
+                      std::string id,
+                      RestoreCallback callback)
+      : content::WebContentsObserver(contents),
+        id_(std::move(id)),
+        callback_(std::move(callback)) {}
+
+  void Dismiss() {
+    // Not from inside the observer call: the host may close the tab in response.
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&NNFileRestorePrompt::Finish, id_,
+                                  permissions::PermissionAction::DISMISSED,
+                                  /*tell_host=*/true));
+    Observe(nullptr);
+  }
+
+  // Once: a second answer (the page went after the host answered) finds nothing.
+  static void Finish(std::string id, permissions::PermissionAction action, bool tell_host) {
+    auto it = All().find(id);
+    if (it == All().end()) {
+      return;
+    }
+    RestoreCallback callback = std::move(it->second->callback_);
+    All().erase(it);
+    if (tell_host) {
+      HostPermissionRequestDismissed(base::SysUTF8ToNSString(id));
+    }
+    // Chrome's request manager (bound weakly: a closed tab's runs nothing).
+    std::move(callback).Run(action);
+  }
+
+  const std::string id_;
+  RestoreCallback callback_;
+};
+
+bool AskHostToRestoreFiles(
+    const FileSystemAccessPermissionRequestManager::RequestData& request,
+    RestoreCallback& callback,
+    content::WebContents* contents) {
+  // The host's tabs only; Chrome's own windows keep Chrome's bubble.
+  BrowserWindowInterface* browser =
+      contents ? GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents)
+               : nullptr;
+  if (!browser || !WindowHost::ForBrowser(browser)) {
+    return false;
+  }
+  NNFileRestorePrompt::Start(contents, request.origin, std::move(callback));
+  return true;
+}
+
 }  // namespace
 
 void InstallPermissionPrompts() {
   MaybeInstallTestSystemPermissions();
   InstallFakeMediaDevices();
   SetCreatePermissionPromptFunction(&CreatePrompt);
+  g_netnyahoo_file_system_restore_prompt = &AskHostToRestoreFiles;
 }
 
 void ResolvePermission(const std::string& request_id,
                        const std::string& result,
                        bool remember) {
+  if (NNFileRestorePrompt::Resolve(request_id, result, remember)) {
+    return;
+  }
   auto it = Prompts().find(request_id);
   if (it == Prompts().end() || !it->second) {
     return;

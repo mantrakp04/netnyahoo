@@ -39,7 +39,9 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'g_netnyahoo_extension_installed(' "$src/chrome/browser/ui/extensions/extension_install_ui_desktop.cc" &&
     grep -q 'g_netnyahoo_prompts_without_tab' "$src/chrome/browser/download/download_crx_util.cc" &&
     grep -q 'g_netnyahoo_tab_shown_by_host' "$src/chrome/browser/picture_in_picture/auto_picture_in_picture_tab_strip_observer_helper.cc" &&
-    grep -q 'g_netnyahoo_permission_tab_shown' "$src/components/permissions/permission_request_manager.cc"
+    grep -q 'g_netnyahoo_permission_tab_shown' "$src/components/permissions/permission_request_manager.cc" &&
+    grep -q 'g_netnyahoo_file_system_restore_prompt' "$src/chrome/browser/ui/views/file_system_access/file_system_access_restore_permission_bubble_view.cc" &&
+    grep -q 'g_netnyahoo_tab_shown_by_host' "$src/chrome/browser/ui/tabs/tab_dialog_manager.cc"
   exit
 fi
 
@@ -835,4 +837,89 @@ s = (s.replace(old_ns, decl + old_ns + helper, 1).replace(vis_old, vis_new)
       .replace(adopt_old, adopt_new).replace(status_old, status_new))
 open(path, "w").write(s)
 print("hooked the permission request manager's tab activation")
+PY2
+
+# A site asking again for files it kept handles to (IndexedDB) gets Chrome's restore prompt, a bubble
+# anchored to the toolbar's page info icon: with no BrowserView that segfaulted
+# (bubble_anchor_util::GetPageInfoAnchorConfiguration). With the hook set, NNCore asks its host
+# instead, as for every other permission, and takes the callback; it declines the Browsers it doesn't
+# host, which keep Chrome's bubble. Only NNCore sets the hook.
+python3 - "$src/chrome/browser/ui/views/file_system_access/file_system_access_restore_permission_bubble_view.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_file_system_restore_prompt" in s:
+    sys.exit(0)
+old = """void ShowFileSystemAccessRestorePermissionDialog(
+    const FileSystemAccessPermissionRequestManager::RequestData& request,
+    base::OnceCallback<void(permissions::PermissionAction)> callback,
+    content::WebContents* web_contents) {
+"""
+decl = """// Netnyahoo: NNCore (engine/nncore) asks its host; it takes `callback` when it does.
+bool (*g_netnyahoo_file_system_restore_prompt)(
+    const FileSystemAccessPermissionRequestManager::RequestData& request,
+    base::OnceCallback<void(permissions::PermissionAction)>& callback,
+    content::WebContents* web_contents) = nullptr;
+
+"""
+new = decl + old + """  // Netnyahoo: NNCore
+  if (g_netnyahoo_file_system_restore_prompt &&
+      g_netnyahoo_file_system_restore_prompt(request, callback, web_contents)) {
+    return;
+  }
+"""
+assert s.count(old) == 1
+open(path, "w").write(s.replace(old, new))
+print("hooked the File System Access restore prompt")
+PY2
+
+# Chrome's tab-modal dialogs (TabDialogManager: FedCM's "Sign in with", Ask before HTTP) show while
+# their tab is the strip's active one; the host's own pages (New Tab) cover that tab without the
+# strip changing, so a dialog stayed up over them, and focusing a split's other pane hid it. With the
+# hook set, a tab the host reported (engine/nncore nn_host_visibility.h) shows its dialog exactly
+# while the host shows the tab (a split's other pane too), and NNCore asks the manager again on each
+# change. Only NNCore sets the hook (it is defined with auto Picture in Picture's, above).
+python3 - "$src/chrome/browser/ui/tabs/tab_dialog_manager.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_tab_shown_by_host" in s:
+    sys.exit(0)
+old_ns = "namespace tabs {\n\nclass TabDialogWidgetObserver"
+decl = """// Netnyahoo: NNCore (engine/nncore) shows tabs itself: 1 shown, 0 hidden, -1 the strip decides.
+extern int (*g_netnyahoo_tab_shown_by_host)(content::WebContents*);
+
+"""
+old = """  return GetWidgetVisibility(
+      tab_interface_->IsVisible(),
+      tab_interface_->GetBrowserWindowInterface()->GetWindow()->IsMinimized(),
+      params_->should_show_callback);
+"""
+new = """  // Netnyahoo: NNCore (the host's reading, when it gave one)
+  const int shown =
+      g_netnyahoo_tab_shown_by_host
+          ? g_netnyahoo_tab_shown_by_host(tab_interface_->GetContents())
+          : -1;
+  return GetWidgetVisibility(
+      shown < 0 ? tab_interface_->IsVisible() : shown == 1,
+      tab_interface_->GetBrowserWindowInterface()->GetWindow()->IsMinimized(),
+      params_->should_show_callback);
+"""
+# And a page the host still shows keeps its dialog when the strip's active tab moves off it
+# (focusing a split's other pane: the host's splits aren't Chrome's).
+bg_old = """void TabDialogManager::TabWillEnterBackground(TabInterface* tab_interface) {
+  if (widget_) {
+"""
+bg_new = """void TabDialogManager::TabWillEnterBackground(TabInterface* tab_interface) {
+  // Netnyahoo: NNCore
+  if (widget_ && g_netnyahoo_tab_shown_by_host &&
+      g_netnyahoo_tab_shown_by_host(tab_interface_->GetContents()) == 1) {
+    return;
+  }
+  if (widget_) {
+"""
+assert s.count(old_ns) == 1 and s.count(old) == 1 and s.count(bg_old) == 1
+s = s.replace(old_ns, decl + old_ns).replace(old, new).replace(bg_old, bg_new)
+open(path, "w").write(s)
+print("hooked TabDialogManager's visibility")
 PY2

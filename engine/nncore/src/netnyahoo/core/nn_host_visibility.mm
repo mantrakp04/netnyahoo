@@ -2,7 +2,10 @@
 
 #include "netnyahoo/core/nn_host_visibility.h"
 
+#include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
+#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "components/permissions/permission_request_manager.h"
+#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "netnyahoo/core/nn_picture_in_picture.h"
@@ -58,6 +61,16 @@ void NoteTabShownByHost(content::WebContents* contents, bool shown) {
   NetnyahooAutoPictureInPictureHostVisibilityChanged(contents);
   if (auto* prompts = permissions::PermissionRequestManager::FromWebContents(contents)) {
     prompts->OnVisibilityChanged(contents->GetVisibility());
+  }
+  // A tab-modal dialog (TabDialogManager) shows exactly while its page does.
+  if (auto* tab = tabs::TabInterface::MaybeGetFromContents(contents)) {
+    if (auto* features = tab->GetTabFeatures()) {
+      if (auto* dialogs = features->tab_dialog_manager()) {
+        if (dialogs->UpdateDialogVisibility()) {
+          dialogs->UpdateModalDialogBounds();
+        }
+      }
+    }
   }
 }
 
