@@ -268,11 +268,18 @@ NSString *MenuTitle(NSString *label) {
   return title;
 }
 
-NSNumber *FindMenuItem(NSArray *items, NSString *label) {
-  for (NSDictionary *item in items) {
+// The first item titled `label`, depth first: its id and its indices down the tree (the engine runs it on the submenu
+// model that owns it; ids are only unique within one model).
+NSDictionary *FindMenuItem(NSArray *items, NSString *label) {
+  for (NSUInteger i = 0; i < items.count; i++) {
+    NSDictionary *item = items[i];
     if (![item isKindOfClass:NSDictionary.class]) continue;
-    if ([MenuTitle(Field<NSString>(item, @"label") ?: @"") isEqualToString:label]) return Field<NSNumber>(item, @"id");
-    if (NSNumber *found = FindMenuItem(Field<NSArray>(item, @"submenu"), label)) return found;
+    if ([MenuTitle(Field<NSString>(item, @"label") ?: @"") isEqualToString:label]) {
+      NSNumber *command = Field<NSNumber>(item, @"id");
+      return command ? @{@"command" : command, @"path" : @[ @(i) ]} : nil;
+    }
+    if (NSDictionary *found = FindMenuItem(Field<NSArray>(item, @"submenu"), label))
+      return @{@"command" : found[@"command"], @"path" : [@[ @(i) ] arrayByAddingObjectsFromArray:found[@"path"]]};
   }
   return nil;
 }
@@ -1791,7 +1798,7 @@ const char kPageReportsKey = 0;
   [self tab:tab runContextMenu:@{@"items" : items ?: @[]}];
 }
 
-- (NSDictionary<NSString *, NSNumber *> *)tab:(NNCoreTab *)tab runContextMenu:(NSDictionary<NSString *, id> *)menu {
+- (NSDictionary<NSString *, id> *)tab:(NNCoreTab *)tab runContextMenu:(NSDictionary<NSString *, id> *)menu {
   NSArray *items = Field<NSArray>(menu, @"items") ?: @[];
   NoteEvent(nncore_host::BrowserId(tab), @"contextMenu", @{@"items" : items});
   static const char *log = getenv("NETNYAHOO_CONTEXT_MENU_LOG");
@@ -1817,9 +1824,9 @@ const char kPageReportsKey = 0;
   pick = [pick stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
   // "<label>\t<flags>" picks it as if with those keys held (cef_event_flags_t, the same bits as Chrome's ui::EventFlags).
   NSArray<NSString *> *parts = [pick componentsSeparatedByString:@"\t"];
-  NSNumber *command = pick.length ? FindMenuItem(items, parts[0]) : nil;
-  if (!command) return nil;
-  return @{@"command" : command, @"flags" : @(parts.count > 1 ? parts[1].intValue : 0)};
+  NSDictionary *found = pick.length ? FindMenuItem(items, parts[0]) : nil;
+  if (!found) return nil;
+  return @{@"command" : found[@"command"], @"path" : found[@"path"], @"flags" : @(parts.count > 1 ? parts[1].intValue : 0)};
 }
 
 // Chrome's own picture-in-picture windows: a document's is reported here only (a video's state comes from the page

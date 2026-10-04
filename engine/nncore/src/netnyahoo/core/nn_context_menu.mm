@@ -1,6 +1,7 @@
 #include "netnyahoo/core/nn_context_menu.h"
 
 #import <AppKit/AppKit.h>
+#include <os/log.h>
 
 #include <map>
 #include <string>
@@ -10,6 +11,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/strings/sys_string_conversions.h"
+#include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/renderer_context_menu/render_view_context_menu.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.h"
@@ -301,6 +303,49 @@ NSArray* DescribeMenu(ui::MenuModel* model) {
   return items;
 }
 
+// The picked item's own model and index: a submenu's items belong to its model, whose
+// delegate runs them (Writing Direction's and Speech's are ui::TextServicesContextMenu's,
+// with ids of their own the page menu's ExecuteCommand doesn't know). `path` is the
+// item's indices down DescribeMenu's tree, as the host found it; without one, the first
+// item with that id in the same order.
+bool FindPicked(ui::MenuModel* model,
+                NSArray* path,
+                int command,
+                ui::MenuModel** owner,
+                size_t* index) {
+  if (path) {
+    for (NSUInteger depth = 0; model && depth < path.count; ++depth) {
+      NSNumber* step = [path[depth] isKindOfClass:NSNumber.class] ? path[depth] : nil;
+      if (!step || step.longLongValue < 0 ||
+          static_cast<size_t>(step.longLongValue) >= model->GetItemCount()) {
+        return false;
+      }
+      const size_t i = static_cast<size_t>(step.longLongValue);
+      if (depth + 1 == path.count) {
+        if (model->GetCommandIdAt(i) != command) {
+          return false;
+        }
+        *owner = model;
+        *index = i;
+        return true;
+      }
+      model = model->GetSubmenuModelAt(i);
+    }
+    return false;
+  }
+  for (size_t i = 0; model && i < model->GetItemCount(); ++i) {
+    if (model->GetCommandIdAt(i) == command) {
+      *owner = model;
+      *index = i;
+      return true;
+    }
+    if (FindPicked(model->GetSubmenuModelAt(i), nil, command, owner, index)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 void InstallContextMenuShowHandler() {
@@ -326,6 +371,7 @@ void InstallContextMenuShowHandler() {
             const_cast<ui::SimpleMenuModel*>(&menu->menu_model());
         NSNumber* command = nil;
         NSNumber* flags = nil;
+        NSArray* path = nil;
         if (runs) {
           NSDictionary* picked = [delegate tab:tab
                                 runContextMenu:@{
@@ -337,6 +383,7 @@ void InstallContextMenuShowHandler() {
                                 }];
           command = [picked[@"command"] isKindOfClass:NSNumber.class] ? picked[@"command"] : nil;
           flags = [picked[@"flags"] isKindOfClass:NSNumber.class] ? picked[@"flags"] : nil;
+          path = [picked[@"path"] isKindOfClass:NSArray.class] ? picked[@"path"] : nil;
         } else {
           [delegate tab:tab didShowContextMenu:DescribeMenu(model)];
         }
@@ -345,10 +392,26 @@ void InstallContextMenuShowHandler() {
           return true;
         }
         // Not shown: closed at once, then the pick runs, as a Mac menu closes before its
-        // item's action.
+        // item's action. It runs as a click on it would (MenuControllerCocoa's
+        // itemSelected:): ActivatedAt on the model that owns it, which for a top-level item
+        // is the menu's own ExecuteCommand.
+        ui::MenuModel* owner = nullptr;
+        size_t index = 0;
+        const bool found =
+            command && FindPicked(model, path, command.intValue, &owner, &index);
+        // Which model runs it, in the system log ([nncore-menu]): a submenu's first item
+        // names it.
+        if (command && getenv("NETNYAHOO_CONTEXT_MENU_LOG")) {
+          const std::string where =
+              !found            ? "not found"
+              : owner == model ? "top level"
+                               : "submenu [" + base::UTF16ToUTF8(owner->GetLabelAt(0)) + ", …]";
+          os_log(OS_LOG_DEFAULT, "[nncore-menu] pick %d: %{public}s", command.intValue,
+                 where.c_str());
+        }
         menu->MenuClosed(model);
-        if (weak && command && menu->IsCommandIdEnabled(command.intValue)) {
-          menu->ExecuteCommand(command.intValue, flags.intValue);
+        if (weak && found && owner->IsEnabledAt(index)) {
+          owner->ActivatedAt(index, flags.intValue);
         }
         return true;
       }));

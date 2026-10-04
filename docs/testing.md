@@ -53,7 +53,7 @@ make an instance a test instance; the rest are hooks for one test.
 | `NETNYAHOO_ALLOW_AUDIO=1` | `NNCoreHost.mm`, `IntroMusic.swift` | Background mode keeps sound |
 | `NETNYAHOO_DOWNLOADS_DIR` | engine `nn_downloads.cc` | Chrome's download folder |
 | `NETNYAHOO_TEST_REAUTH=granted` | engine `nn_reauth.cc` | Background mode grants macOS re-auth requests (otherwise refused, each reported as `reauth.requested`) |
-| `NETNYAHOO_CONTEXT_MENU_LOG` | engine `nn_context_menu.mm` | Context menus go to the host instead of the screen, in any build |
+| `NETNYAHOO_CONTEXT_MENU_LOG` | engine `nn_context_menu.mm` | Context menus go to the host instead of the screen, in any build; the pick runs on the model that owns it, logged as `[nncore-menu]` in the system log |
 | `NETNYAHOO_FAKE_FULLSCREEN_MS` | `NNCoreChromeWindow.mm` | Length of the acted-out full-screen transition. Dev actions (`devWindow`): `fakeFullScreen:<1\|0>[:<ms>]`, `fakeFullScreenMs:<ms>`, `fakeOcclusion:<visible\|occluded\|off>` (macOS's occlusion state; a test window otherwise counts as seen), `fakeFullScreenOcclusionMs:<ms>` (acted transitions occlude the window, visible again `<ms>` after they end, as a real Space animation) |
 | `NETNYAHOO_TRAFFIC_LIGHTS_LOG=<file>` | `NNCoreChromeWindow.mm` | Logs every traffic-light change (test instances only) |
 | `NETNYAHOO_PIP_SELFTEST` | `NNCorePictureInPicture.mm` | On the first PiP window: `close` / `backToTab` click Chrome's buttons (`pip-button-selftest.json`), `hover` holds the controls up (`pip-hover.json`, `NETNYAHOO_PIP_HOVER=close\|back`), anything else runs the style self-test (`pip-selftest.json`), all in the data dir |

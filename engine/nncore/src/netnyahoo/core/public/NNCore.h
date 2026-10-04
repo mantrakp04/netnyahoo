@@ -459,10 +459,11 @@ NNCORE_EXPORT
 // (ui::MenuModel::ItemType), submenu?}].
 - (void)tab:(NNCoreTab*)tab didShowContextMenu:(NSArray<NSDictionary*>*)items;
 // The same, implemented instead of the above to run an item as if picked: `menu` is
-// {items, url (the page's), link}; answer {command: an item's id, flags: ui::EventFlags} or
-// nil (dismissed).
-- (nullable NSDictionary<NSString*, NSNumber*>*)tab:(NNCoreTab*)tab
-                                     runContextMenu:(NSDictionary<NSString*, id>*)menu;
+// {items, url (the page's), link}; answer {command: an item's id, path: its indices down
+// `items` (optional; ids are unique only within one menu or submenu), flags: ui::EventFlags}
+// or nil (dismissed).
+- (nullable NSDictionary<NSString*, id>*)tab:(NNCoreTab*)tab
+                              runContextMenu:(NSDictionary<NSString*, id>*)menu;
 // A main-frame navigation became a download (the page stays; Chrome downloads it).
 - (void)tab:(NNCoreTab*)tab navigationBecameDownload:(NSString*)url;
 // Lifecycle.
