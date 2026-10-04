@@ -4,7 +4,7 @@
 # our layer), ChromeMain making NNCore's main delegate, Browser asking NNCore for the window of a
 # Browser Chrome makes itself, HistoryTabHelper asking NNCore which tabs are history,
 # declarativeNetRequest telling it which rules matched a tab's requests and when an extension's
-# rulesets are in force, and three
+# rulesets are in force, and four
 # CHECKs made tolerant of Browsers without a BrowserView (CEF's and Chrome's behaviour unchanged).
 # Idempotent. Never touches
 # args.gn; the next autoninja re-runs gn by itself.
@@ -29,6 +29,7 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'nncore::NNMainDelegate' "$src/chrome/app/chrome_main.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/browser_window/internal/browser_window_features.cc" &&
     grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc" &&
+    grep -q 'Netnyahoo: NNCore' "$src/chrome/browser/ui/toasts/toast_controller.cc" &&
     grep -q 'g_netnyahoo_history_eligible(' "$src/chrome/browser/history/history_tab_helper.cc" &&
     grep -q 'g_netnyahoo_dnr_rule_matched(' "$src/extensions/browser/api/declarative_net_request/action_tracker.cc" &&
     grep -q 'g_netnyahoo_dnr_rulesets_in_force(' "$src/extensions/browser/api/declarative_net_request/rules_monitor_service.cc" &&
@@ -141,6 +142,30 @@ new = """    // Netnyahoo: NNCore's Browsers have no BrowserView, so no side pan
 assert s.count(old) == 1
 open(path, "w").write(s.replace(old, new))
 print("hooked ReadAnythingSidePanelController")
+PY
+
+# Chrome's toasts ("Image copied", "Link copied") anchor to a BrowserView, and without an anchor
+# ToastController CHECKs that it's a test: right-click > Copy Image aborted the app. A viewless
+# Browser shows none.
+python3 - "$src/chrome/browser/ui/toasts/toast_controller.cc" <<'PY'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "Netnyahoo: NNCore" in s:
+    sys.exit(0)
+old = """    if (!webui_browser::IsWebUIBrowserEnabled()) {
+      CHECK_IS_TEST();
+    }"""
+new = """    // Netnyahoo: NNCore's Browsers have no BrowserView to anchor a toast to.
+    // (Every Browser has a delegate under NNCore; CEF's always have a view.)
+    if (!webui_browser::IsWebUIBrowserEnabled() &&
+        !(browser_window_interface_ &&
+          browser_window_interface_->cef_delegate())) {
+      CHECK_IS_TEST();
+    }"""
+assert s.count(old) == 1
+open(path, "w").write(s.replace(old, new))
+print("hooked ToastController")
 PY
 
 # A Browser Chrome makes itself (chrome.windows.create, an incognito window, undocked DevTools,
