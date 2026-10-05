@@ -166,7 +166,7 @@ async function startMetroProxy(data, metroPort) {
 // MARK: DevTools
 
 /** A DevTools session on one target over one socket: eval(expression), send(method, params), on(event, fn). */
-async function devtools(target, { name = target.url } = {}) {
+export async function devtools(target, { name = target.url } = {}) {
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = () => j(new Error(`DevTools connection to ${name} failed`)))));
   let seq = 0, closed = false;

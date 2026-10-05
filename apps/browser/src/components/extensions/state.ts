@@ -218,16 +218,17 @@ let popupRequests = 0;
  * but without running its action (no activeTab grant, no onClicked). Over its own popup it opens afresh, as Chrome's
  * reopens: 1Password asks once its Mac app unlocks, and the page shown while it waited is stale.
  */
-export async function openActionPopup(windowId: string, ext: InstalledExtension, anchor: Anchor, browserId: number) {
-  if (!ext.enabled || !shownIn(windowId, ext.id)) return;
-  // The tab it asked over must still be the one shown once Chrome answers, and a later request wins.
+export async function openActionPopup(windowId: string, extensionId: string, anchor: Anchor, browserId: number) {
+  // The tab it asked over must still be the one shown once Chrome answers, and a later request wins. Chrome has checked
+  // the extension runs here and has a popup for the tab: the app's own list (refreshed a moment after an install) isn't
+  // asked.
   const request = ++popupRequests;
   const tabId = activeTabId(useBrowser.getState(), windowId);
-  const state = browserId ? (await extensionActionStates(browserId, [ext.id]))[ext.id] : undefined;
-  if (request !== popupRequests || activeTabId(useBrowser.getState(), windowId) !== tabId) return;
-  const url = state ? state.popup : ext.popup ? `chrome-extension://${ext.id}/${ext.popup.replace(/^\//, "")}` : "";
-  if (!url) return;
-  useExtensions.setState({ popup: { windowId, pageProfile: pageProfile(useBrowser.getState(), windowId), extensionId: ext.id, url, anchor, opened: request } });
+  const url = (await extensionActionStates(browserId, [extensionId]))[extensionId]?.popup ?? "";
+  if (request !== popupRequests || activeTabId(useBrowser.getState(), windowId) !== tabId)
+    return console.warn(`action.openPopup for ${extensionId}: the tab changed or another call came first`);
+  if (!url) return console.warn(`action.openPopup for ${extensionId}: no popup for the tab`);
+  useExtensions.setState({ popup: { windowId, pageProfile: pageProfile(useBrowser.getState(), windowId), extensionId, url, anchor, opened: request } });
 }
 
 export async function showExtensionMenu(windowId: string, ext: InstalledExtension) {

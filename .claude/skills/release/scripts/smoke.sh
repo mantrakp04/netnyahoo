@@ -212,6 +212,10 @@ fi
 logger=""
 kill -KILL "$pid" 2>/dev/null || true
 pid=""
+# Extension popups on this build's own bundle (a second hidden instance, a fixture extension): chrome.action.openPopup
+# from a service worker with no user gesture (1Password's call once its Mac app unlocks; 0.2.26 said "Browser window
+# has no toolbar."), and the popup's size following its page.
+node "$root/packages/nncore/scripts/popup-check.mjs" "$app" "$work/popup-check" || status=1
 codesign --verify --deep --strict "$app" && echo "PASS  bundle still sealed after running" || { echo "FAIL  running the app changed its bundle"; status=1; }
 # The feed in this build's Info.plist answers (after publishing, feed.sh <version> checks it lists it).
 "$here/feed.sh" "$version" --before-publish "$app" || status=1

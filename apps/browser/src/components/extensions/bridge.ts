@@ -132,8 +132,9 @@ function startActionPopups() {
   onExtensionActionPopup(({ browserId, extensionId }) => {
     const tabId = tabForBrowser(browserId);
     const windowId = tabId ? useBrowser.getState().tabs[tabId]?.windowId : undefined;
-    const ext = windowId ? findExtension(extensionProfile(useBrowser.getState(), windowId), extensionId) : undefined;
-    if (windowId && ext) void state.openActionPopup(windowId, ext, toolbarAnchor(windowId, ext.id), browserId);
+    // The engine fails the call after 10 s (chrome_debug.log says so); this says why.
+    if (!windowId) return console.warn(`action.openPopup for ${extensionId}: ${tabId ? "its tab has no window" : `no tab for browser ${browserId}`}`);
+    void state.openActionPopup(windowId, extensionId, toolbarAnchor(windowId, extensionId), browserId);
   });
 }
 

@@ -223,7 +223,10 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
 
 // chrome.action.openPopup(): the app shows the popup over that tab's window, as its toolbar button would.
 - (BOOL)engine:(NNCoreEngine *)engine extensionActionPopup:(NSDictionary *)popup tab:(NNCoreTab *)tab {
-  if (!gChromeUIHandler || !tab) return NO;
+  if (!gChromeUIHandler || !tab) {
+    NSLog(@"[nncore] action.openPopup for %@: %@", popup[@"extensionId"], tab ? @"the app isn't listening yet" : @"no tab");
+    return NO;
+  }
   NSMutableDictionary *payload = [popup mutableCopy];
   payload[@"browserId"] = @(nncore_host::BrowserId(tab));
   gChromeUIHandler(@"actionPopup", payload);

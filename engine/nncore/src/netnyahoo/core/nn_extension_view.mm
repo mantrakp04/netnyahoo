@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "base/functional/bind.h"
+#include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
@@ -172,10 +173,13 @@ class HostedView : public extensions::ExtensionView,
   // The first load stopped: shown, if a document committed (a popup URL that downloads stops
   // without one, and Chrome's answer requires one).
   void OnLoaded() override {
-    if (shown_callback_) {
-      std::move(shown_callback_)
-          .Run(host_->document_element_available() ? host_.get() : nullptr);
+    if (!shown_callback_) {
+      return;
     }
+    const bool shown = host_->document_element_available();
+    LOG_IF(WARNING, !shown) << "[nncore] action.openPopup for " << extension_id()
+                            << ": its page stopped loading without a document";
+    std::move(shown_callback_).Run(shown ? host_.get() : nullptr);
   }
 
   // content::WebContentsObserver: …and each one that replaces it (the popup's page going to
@@ -234,6 +238,8 @@ class HostedView : public extensions::ExtensionView,
   // An openPopup still waiting: it failed.
   void FailShown() {
     if (shown_callback_) {
+      LOG(WARNING) << "[nncore] action.openPopup for " << extension_id()
+                   << ": the popup closed before its page loaded";
       std::move(shown_callback_).Run(nullptr);
     }
   }
@@ -292,6 +298,7 @@ class PendingPopup : public BrowserCollectionObserver {
   bool Matches(const BrowserWindowInterface* browser, const std::string& extension_id) const {
     return browser == browser_ && extension_id == extension_id_;
   }
+  const std::string& extension_id() const { return extension_id_; }
   ShowPopupCallback TakeCallback() { return std::move(callback_); }
 
   // BrowserCollectionObserver: failed in a later task (never inside Chrome's notification).
@@ -314,12 +321,14 @@ std::unique_ptr<PendingPopup>& Pending() {
 }
 
 // Out of the slot first, then answered: the answer (the extension's API call failing) may
-// start another.
-void FailPending() {
+// start another. `why` goes to Chrome's log (chrome_debug.log), as the extension only hears
+// Chrome's "Failed to open popup.".
+void FailPending(const char* why) {
   std::unique_ptr<PendingPopup> pending = std::move(Pending());
   if (!pending) {
     return;
   }
+  LOG(WARNING) << "[nncore] action.openPopup for " << pending->extension_id() << ": " << why;
   ShowPopupCallback callback = pending->TakeCallback();
   pending.reset();
   if (callback) {
@@ -334,7 +343,9 @@ PendingPopup::PendingPopup(BrowserWindowInterface* browser,
       extension_id_(std::move(extension_id)),
       callback_(std::move(callback)) {
   observation_.Observe(GlobalBrowserCollection::GetInstance());
-  timeout_.Start(FROM_HERE, base::Seconds(10), base::BindOnce(&FailPending));
+  timeout_.Start(FROM_HERE, base::Seconds(10),
+                 base::BindOnce(&FailPending, "no popup of the extension opened in its window "
+                                              "within 10 s"));
 }
 
 void PendingPopup::OnBrowserClosed(BrowserWindowInterface* browser) {
@@ -345,7 +356,7 @@ void PendingPopup::OnBrowserClosed(BrowserWindowInterface* browser) {
       FROM_HERE, base::BindOnce(
                      [](base::WeakPtr<PendingPopup> pending) {
                        if (pending && Pending().get() == pending.get()) {
-                         FailPending();
+                         FailPending("its window closed");
                        }
                      },
                      weak_factory_.GetWeakPtr()));
@@ -363,13 +374,17 @@ std::optional<bool> OpenActionPopup(BrowserWindowInterface& browser,
   }
   tabs::TabInterface* tab = browser.GetActiveTabInterface();
   if (host->internal() || !tab || !tab->GetContents()) {
+    LOG(WARNING) << "[nncore] action.openPopup for " << extension.id() << ": "
+                 << (host->internal() ? "the window is the host's own" : "no active tab");
     *error = "Failed to open popup.";
     return false;
   }
-  FailPending();
+  FailPending("another openPopup came first");
   Pending() = std::make_unique<PendingPopup>(&browser, extension.id(), std::move(callback));
   if (!HostExtensionActionPopup(tab->GetContents(), extension.id())) {
     // Given back: Chrome answers the failure itself.
+    LOG(WARNING) << "[nncore] action.openPopup for " << extension.id()
+                 << ": the host doesn't show popups for extensions";
     if (Pending()) {
       callback = Pending()->TakeCallback();
       Pending().reset();
@@ -413,11 +428,16 @@ content::WebContents* OpenExtensionView(Browser* browser,
   // The NNCoreTab the host attaches, reporting the page's state as a tab's.
   TabBridge::GetOrCreate(contents);
   // The popup an openPopup() asked for: it answers once its page has loaded.
-  if (kind == ExtensionViewKind::kPopup && Pending() &&
-      Pending()->Matches(browser, extension->id())) {
-    ShowPopupCallback callback = Pending()->TakeCallback();
-    Pending().reset();
-    hosted->set_shown_callback(std::move(callback));
+  if (kind == ExtensionViewKind::kPopup && Pending()) {
+    if (Pending()->Matches(browser, extension->id())) {
+      ShowPopupCallback callback = Pending()->TakeCallback();
+      Pending().reset();
+      hosted->set_shown_callback(std::move(callback));
+    } else {
+      LOG(WARNING) << "[nncore] action.openPopup for " << Pending()->extension_id()
+                   << ": a popup of " << extension->id()
+                   << " opened meanwhile, in another window or profile";
+    }
   }
   hosted->Start();
   return contents;
@@ -447,7 +467,7 @@ void InstallActionPopupHook() {
 }
 
 void CloseAllExtensionViews() {
-  FailPending();
+  FailPending("the engine is shutting down");
   std::vector<std::unique_ptr<HostedView>> views;
   for (auto& [contents, view] : Views()) {
     views.push_back(std::move(view));
