@@ -27,7 +27,7 @@ export function ExtensionOverlays() {
   const pin = useExtensions((e) => e.pinDialog?.windowId === windowId);
   return (
     <>
-      {popup && <ActionPopup key={`${popup.extensionId}|${popup.url}`} {...popup} />}
+      {popup && <ActionPopup key={`${popup.extensionId}|${popup.url}|${popup.opened ?? 0}`} {...popup} />}
       {install && <InstallDialog request={install} />}
       {pin && <PinDialog windowId={windowId} />}
     </>
@@ -47,6 +47,7 @@ export function InstallDialogHost({ windowId, onClosed }: { windowId: string; on
 const MIN = { width: 25, height: 25 };
 const MAX = { width: 800, height: 600 };
 
+// Builds whose engine doesn't size the popup (onPreferredSize) measure the page instead: it grows, never shrinks.
 const MEASURE = `
 const measure = () => {
   const d = document.documentElement, b = document.body;
@@ -76,6 +77,8 @@ function ActionPopup({ windowId, pageProfile, url, anchor }: { windowId: string;
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const appear = useRef(new Animated.Value(0)).current;
   const alive = useRef(true);
+  // The engine sizes the popup as Chrome's (its page's auto-resize): measuring the page is only for builds without it.
+  const sized = useRef(false);
 
   useEffect(() => {
     alive.current = true;
@@ -91,17 +94,22 @@ function ActionPopup({ windowId, pageProfile, url, anchor }: { windowId: string;
     if (tabId !== openedOn.current) closeExtensionPopup();
   }, [tabId]);
 
+  const resize = (w: number, h: number) => {
+    const next = {
+      width: Math.min(MAX.width, Math.max(MIN.width, Math.ceil(w))),
+      height: Math.min(MAX.height, Math.max(MIN.height, Math.ceil(h))),
+    };
+    setSize((prev) => {
+      if (!prev) Animated.timing(appear, { toValue: 1, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+      return prev && prev.width === next.width && prev.height === next.height ? prev : next;
+    });
+  };
+
   const watchSize = () => {
+    if (sized.current) return;
     void web.current?.evaluate<{ w: number; h: number }>(MEASURE).then((m) => {
-      if (!alive.current || !m) return;
-      const next = {
-        width: Math.min(MAX.width, Math.max(MIN.width, m.w)),
-        height: Math.min(MAX.height, Math.max(MIN.height, m.h)),
-      };
-      setSize((prev) => {
-        if (!prev) Animated.timing(appear, { toValue: 1, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-        return prev && prev.width === next.width && prev.height === next.height ? prev : next;
-      });
+      if (!alive.current || !m || sized.current) return;
+      resize(m.w, m.h);
       watchSize();
     });
   };
@@ -143,6 +151,10 @@ function ActionPopup({ windowId, pageProfile, url, anchor }: { windowId: string;
               standalone
               extensionHost="popup"
               pageBackgroundColor="#FFFFFF"
+              onPreferredSize={({ width, height }) => {
+                sized.current = true;
+                resize(width, height);
+              }}
               onNavigationChange={({ isLoading }) => {
                 if (isLoading) return;
                 watchSize();

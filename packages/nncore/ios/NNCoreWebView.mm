@@ -686,6 +686,9 @@ const char kPageReportsKey = 0;
   }
   [self emit:@"ready" payload:@{@"browserId" : @(nncore_host::BrowserId(tab)), @"tabId" : @(tab.tabId)}];
   [self emitNavigation];
+  // A popup that sized itself before this view took it.
+  if (_extensionHost.length && [tab respondsToSelector:@selector(preferredSize)] && tab.preferredSize.width > 0)
+    [self tab:tab preferredSizeDidChange:tab.preferredSize];
   // A moved tab's app state starts from nothing (moveTabsInto): what plays is sent again.
   if (_mediaFrames.count) [self emitMedia];
   [self tabDidChangeFavicon:tab];
@@ -1715,6 +1718,11 @@ const char kPageReportsKey = 0;
 
 - (void)tab:(NNCoreTab *)tab didBlockPopup:(NSDictionary<NSString *, NSString *> *)popup {
   [self emit:@"popupBlocked" payload:popup];
+}
+
+// An extension popup's page sized itself (Chrome's auto-resize): the app sizes the popup to it.
+- (void)tab:(NNCoreTab *)tab preferredSizeDidChange:(NSSize)size {
+  [self emit:@"preferredSize" payload:@{@"width" : @(size.width), @"height" : @(size.height)}];
 }
 
 - (void)clearSiteData:(void (^)(NSDictionary<NSString *, id> *))completion {

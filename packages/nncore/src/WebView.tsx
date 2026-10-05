@@ -190,6 +190,8 @@ export type WebViewProps = ViewProps & {
   /** An offer to save an address or card (`prompt`), or null once offer `id` went (answered, or Chrome closed it). */
   onAutofillPrompt?: (prompt: AutofillPrompt | null, id: number) => void;
   onExternalApp?: (request: ExternalAppRequest) => void;
+  /** An extension popup's page sized itself (Chrome's auto-resize, 25×25 to 800×600 points). */
+  onPreferredSize?: (size: { width: number; height: number }) => void;
 };
 
 export type WebViewHandle = {
@@ -277,6 +279,7 @@ type NativeEvents = {
   onPasswordPrompt: PasswordPrompt;
   onAutofillPrompt: AutofillPrompt | { id: number; closed: true };
   onExternalApp: ExternalAppRequest;
+  onPreferredSize: { width: number; height: number };
 };
 type Handlers = keyof NativeEvents;
 type NativeProps = Omit<WebViewProps, Handlers> & { [K in Handlers]?: Evt<NativeEvents[K]> };
@@ -315,6 +318,7 @@ const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<
   onPasswordPrompt: (e) => [e],
   onAutofillPrompt: (e) => ("closed" in e ? [null, e.id] : [e, e.id]),
   onExternalApp: (e) => [e],
+  onPreferredSize: (e) => [e],
 };
 
 type NativeHandle = Omit<

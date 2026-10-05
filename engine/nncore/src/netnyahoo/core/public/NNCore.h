@@ -56,6 +56,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)engine:(NNCoreEngine*)engine
     extensionSidePanel:(NSDictionary<NSString*, id>*)panel
                    tab:(NNCoreTab*)tab;
+// An extension asked for its action popup (chrome.action.openPopup, browserAction.openPopup)
+// over `tab`, the active tab of its window: {extensionId}. YES: the host shows it as for a click
+// on its toolbar button, without running the action (-openExtensionView:profile:kind:), and
+// Chrome answers the extension once the popup's page has loaded (or that it failed, if no
+// popup of the extension opens in that window within 10 s). NO (or no delegate): it fails.
+- (BOOL)engine:(NNCoreEngine*)engine
+    extensionActionPopup:(NSDictionary<NSString*, id>*)popup
+                     tab:(NNCoreTab*)tab;
 // Chrome's extension install prompt ("Add <extension>?": the Web Store, an extension asking
 // for more permissions, re-enabling one): JS ExtensionInstallPrompt without browserId,
 // {requestId, profile, id, name, version, type, icon (PNG data: URL or ""), permissions}.
@@ -424,6 +432,9 @@ NNCORE_EXPORT
 // Chrome's popup blocker kept a popup this page asked for: JS BlockedPopup {id, url, origin}.
 // -openBlockedPopup:always: opens it.
 - (void)tab:(NNCoreTab*)tab didBlockPopup:(NSDictionary<NSString*, NSString*>*)popup;
+// An extension popup's page sized itself (Chrome's auto-resize, within 25×25 and 800×600 points):
+// the host sizes the popup's view to it (-preferredSize has the latest).
+- (void)tab:(NNCoreTab*)tab preferredSizeDidChange:(NSSize)size;
 // A link to another app (mailto:, zoommtg:…) where Chrome would ask "Open <app>?": JS
 // ExternalAppRequest {id, url, scheme, origin, app, appPath, icon, title, message, remember}
 // (app null: nothing on this Mac opens it; nothing to resolve then). Answer with
@@ -655,6 +666,9 @@ NNCORE_EXPORT
 // asked for, in screen points from the top-left of the primary screen, {x, y, width, height}
 // (each only if given; width and height are the page's). nil for other tabs.
 @property(readonly, nullable) NSDictionary<NSString*, NSNumber*>* popupFeatures;
+// An extension popup's own size (tab:preferredSizeDidChange:); zero until its page has laid
+// out, and for other tabs.
+@property(readonly) NSSize preferredSize;
 // The same in one frame (a frameId from tab:didReceivePageMessage:json:frame:main:).
 - (void)callFrame:(NSString*)frameId kind:(NSString*)kind json:(NSString*)json;
 @end

@@ -1995,6 +1995,24 @@ try {
       const strips = await cef(`tabStrips()`);
       const inStrip = strips.strips.some((st) => st.tabs.some((x) => x.key == null));
       const popupVisible = (await cdp(popupTarget, "Runtime.evaluate", { expression: "document.visibilityState", returnByValue: true })).result.value;
+      // The popup sizes itself as Chrome's (its page's auto-resize): it follows the page down as well as up (it only
+      // grew while the app measured the page).
+      const pageSize = async (t) => (await cdp(t, "Runtime.evaluate", { expression: "[innerWidth, innerHeight]", returnByValue: true })).result.value;
+      const grown = await until("the popup sized to its page", async () => { const s = await pageSize(popupTarget); return s[0] > 100 ? s : null; }, 5000);
+      await cdp(popupTarget, "Runtime.evaluate", { expression: "document.body.style.height = '30px'" });
+      const shrunk = await until("the popup shrunk with its page", async () => { const s = await pageSize(popupTarget); return s[1] < grown[1] ? s : null; }, 5000)
+        .catch(async () => { throw new Error(`the popup kept its size: ${JSON.stringify(grown)} → ${JSON.stringify(await pageSize(popupTarget))}`); });
+      // chrome.action.openPopup() from its worker opens it afresh over the active tab, as 1Password does once its Mac
+      // app unlocks (it failed with "Browser window has no toolbar" before).
+      await cdp(popupTarget, "Runtime.evaluate", { expression: "window.__nnOld = 1" });
+      const worker = await until("the extension's worker", async () =>
+        (await targets()).find((t) => t.type === "service_worker" && t.url.includes(`${installed.id}/worker.js`)) ?? null, 10000);
+      const opened = (await cdp(worker, "Runtime.evaluate", { expression: "chrome.action.openPopup().then(() => 'ok', (e) => e.message)", awaitPromise: true, returnByValue: true })).result.value;
+      if (opened !== "ok") throw new Error(`chrome.action.openPopup(): ${opened}`);
+      await until("the popup reopened", async () => {
+        const t = (await targets()).find((x) => x.type === "page" && x.url.includes(`${installed.id}/popup.html`));
+        return t && (await cdp(t, "Runtime.evaluate", { expression: "window.__nnOld === undefined", returnByValue: true })).result.value ? t : null;
+      }, 8000);
       await evalApp(`nn.extensions.closeExtensionPopup(); return true`);
       await until("the popup gone", async () => !(await targets()).some((t) => t.url.includes(`${installed.id}/popup.html`)), 8000);
       await evalApp(`return nn.extensions.openSidePanel(${JSON.stringify(mainWindow)}, "${installed.id}").then(() => !!nn.extensions.useExtensions.getState().sidePanels[${JSON.stringify(mainWindow)}])`);
@@ -2010,7 +2028,7 @@ try {
       }, 8000).catch(async () => (await cef(`chromeWindows()`)).length);
       if (inStrip || panelInStrip) throw new Error("a standalone WebView's tab is in the window's strip");
       if (popupVisible !== "visible" || panelVisible !== "visible") throw new Error(`popup ${popupVisible}, panel ${panelVisible}`);
-      return { popup: popupVisible, panel: panelVisible, windowsBefore, windowsAfter };
+      return { popup: popupVisible, panel: panelVisible, popupSize: `${grown.join("x")} → ${shrunk.join("x")}`, openPopup: opened, windowsBefore, windowsAfter };
     } finally {
       await evalApp(`nn.extensions.closeExtensionPopup(); nn.extensions.closeSidePanel(${JSON.stringify(mainWindow)}); return true`).catch(() => null);
       await exts(`uninstall("${installed.id}", "")`);

@@ -697,6 +697,16 @@ bool HostExtensionSidePanel(content::WebContents* contents,
   return true;
 }
 
+bool HostExtensionActionPopup(content::WebContents* contents,
+                              const std::string& extension_id) {
+  if (![g_delegate respondsToSelector:@selector(engine:extensionActionPopup:tab:)]) {
+    return false;
+  }
+  return [g_delegate engine:g_engine
+       extensionActionPopup:@{@"extensionId" : NS(extension_id)}
+                        tab:TabBridge::GetOrCreate(contents)->tab()];
+}
+
 void HostPermissionRequestDismissed(NSString* request_id) {
   if ([g_delegate respondsToSelector:@selector(engine:permissionRequestDismissed:)]) {
     [g_delegate engine:g_engine permissionRequestDismissed:request_id];
@@ -734,6 +744,7 @@ extern "C" __attribute__((visibility("default"))) int NNCoreMain(
   g_netnyahoo_browser_window_factory = &WindowForChromeBrowser;
   nncore::InstallRuleMatchedHook();
   nncore::InstallExtensionInstalledHook();
+  nncore::InstallActionPopupHook();
   g_netnyahoo_history_eligible = [](content::WebContents* contents) {
     BrowserWindowInterface* browser =
         GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
@@ -2291,6 +2302,12 @@ std::optional<bool> RunPageCommand(content::WebContents* contents, int command) 
 
 - (BOOL)focusedEditable {
   return _contents && _contents->IsFocusedElementEditable();
+}
+
+- (NSSize)preferredSize {
+  const gfx::Size size =
+      _contents ? nncore::ExtensionPopupPreferredSize(_contents) : gfx::Size();
+  return NSMakeSize(size.width(), size.height());
 }
 
 - (NSDictionary<NSString*, NSNumber*>*)popupFeatures {

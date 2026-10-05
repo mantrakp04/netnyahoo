@@ -359,6 +359,7 @@ final class CefWebView: ExpoView, NNCoreWebViewDelegate {
     "onAutofillPrompt",
     "onTabStrip",
     "onExternalApp",
+    "onPreferredSize",
   ]
 
   let browser = NNCoreWebView(frame: .zero)
@@ -397,6 +398,7 @@ final class CefWebView: ExpoView, NNCoreWebViewDelegate {
   let onAutofillPrompt = EventDispatcher()
   let onTabStrip = EventDispatcher()
   let onExternalApp = EventDispatcher()
+  let onPreferredSize = EventDispatcher()
 
   private var propsReady = false
 
@@ -458,6 +460,7 @@ final class CefWebView: ExpoView, NNCoreWebViewDelegate {
     case "autofillPrompt": onAutofillPrompt(payload)
     case "tabStrip": onTabStrip(payload)
     case "externalApp": onExternalApp(payload)
+    case "preferredSize": onPreferredSize(payload)
     default: break
     }
   }

@@ -41,7 +41,8 @@ if [[ "${1:-}" == --check ]]; then
     grep -q 'g_netnyahoo_tab_shown_by_host' "$src/chrome/browser/picture_in_picture/auto_picture_in_picture_tab_strip_observer_helper.cc" &&
     grep -q 'g_netnyahoo_permission_tab_shown' "$src/components/permissions/permission_request_manager.cc" &&
     grep -q 'g_netnyahoo_file_system_restore_prompt' "$src/chrome/browser/ui/views/file_system_access/file_system_access_restore_permission_bubble_view.cc" &&
-    grep -q 'g_netnyahoo_tab_shown_by_host' "$src/chrome/browser/ui/tabs/tab_dialog_manager.cc"
+    grep -q 'g_netnyahoo_tab_shown_by_host' "$src/chrome/browser/ui/tabs/tab_dialog_manager.cc" &&
+    grep -q 'g_netnyahoo_open_action_popup' "$src/chrome/browser/extensions/api/extension_action/extension_action_api.cc"
   exit
 fi
 
@@ -922,4 +923,45 @@ assert s.count(old_ns) == 1 and s.count(old) == 1 and s.count(bg_old) == 1
 s = s.replace(old_ns, decl + old_ns).replace(old, new).replace(bg_old, bg_new)
 open(path, "w").write(s)
 print("hooked TabDialogManager's visibility")
+PY2
+
+# chrome.action.openPopup() (and browserAction.openPopup) asks NNCore first: its Browsers have no
+# toolbar, so Chrome refused every call ("Browser window has no toolbar"). The host shows the
+# popup in its own panel and Chrome answers the extension once the page has loaded (1Password
+# reopens its popup this way once its Mac app unlocks). Only NNCore sets the hook, so CEF
+# behaves as before.
+python3 - "$src/chrome/browser/extensions/api/extension_action/extension_action_api.cc" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path).read()
+if "g_netnyahoo_open_action_popup" in s:
+    sys.exit(0)
+old_ns = "namespace extensions {\n"
+decl = ("// Netnyahoo: NNCore (engine/nncore) shows action popups in the host's own panel. Empty: not\n"
+        "// its Browser; true: shown (it runs `callback`); false: refused, with `error`.\n"
+        "std::optional<bool> (*g_netnyahoo_open_action_popup)(\n"
+        "    BrowserWindowInterface& browser,\n"
+        "    const extensions::Extension& extension,\n"
+        "    ShowPopupCallback& callback,\n"
+        "    std::string* error) = nullptr;\n\n")
+old = """                        ShowPopupCallback callback) {
+#if !BUILDFLAG(IS_ANDROID)
+"""
+new = """                        ShowPopupCallback callback) {
+  // Netnyahoo: NNCore
+  if (g_netnyahoo_open_action_popup) {
+    if (std::optional<bool> shown = g_netnyahoo_open_action_popup(
+            browser, extension, callback, error)) {
+      return *shown;
+    }
+  }
+#if !BUILDFLAG(IS_ANDROID)
+"""
+inc_old = "#include <memory>\n"
+assert s.count(old) == 1 and s.count(inc_old) == 1
+i = s.index(old_ns)
+s = s[:i] + decl + s[i:]
+s = s.replace(old, new).replace(inc_old, inc_old + "#include <optional>\n", 1)
+open(path, "w").write(s)
+print("hooked chrome.action.openPopup")
 PY2

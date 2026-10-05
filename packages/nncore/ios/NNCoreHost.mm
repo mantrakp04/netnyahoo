@@ -221,6 +221,15 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   if (gChromeUIHandler) gChromeUIHandler(@"sidePanel", payload);
 }
 
+// chrome.action.openPopup(): the app shows the popup over that tab's window, as its toolbar button would.
+- (BOOL)engine:(NNCoreEngine *)engine extensionActionPopup:(NSDictionary *)popup tab:(NNCoreTab *)tab {
+  if (!gChromeUIHandler || !tab) return NO;
+  NSMutableDictionary *payload = [popup mutableCopy];
+  payload[@"browserId"] = @(nncore_host::BrowserId(tab));
+  gChromeUIHandler(@"actionPopup", payload);
+  return YES;
+}
+
 - (void)engine:(NNCoreEngine *)engine extensionInstallPrompt:(NSDictionary *)prompt tab:(NNCoreTab *)tab {
   NSMutableDictionary *payload = [prompt mutableCopy];
   payload[@"browserId"] = @(tab ? nncore_host::BrowserId(tab) : 0);

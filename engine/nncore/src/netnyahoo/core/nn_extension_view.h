@@ -13,6 +13,10 @@ namespace content {
 class WebContents;
 }
 
+namespace gfx {
+class Size;
+}
+
 namespace nncore {
 
 enum class ExtensionViewKind { kPopup, kSidePanel };
@@ -30,6 +34,15 @@ bool CloseExtensionView(content::WebContents* contents);
 
 // Before Chrome tears profiles down (each view's host keeps its extension's renderer alive).
 void CloseAllExtensionViews();
+
+// A popup's own size, as Chrome's popup sizes itself (auto-resize, 25×25 to 800×600): empty
+// until its page has laid out, and for side panels and other pages.
+gfx::Size ExtensionPopupPreferredSize(content::WebContents* contents);
+
+// chrome.action.openPopup() for the host's Browsers (the hook in Chrome's
+// extension_action_api.cc, engine/nncore/apply.sh): the host shows the popup
+// (engine:extensionActionPopup:tab:) and Chrome answers the extension once its page loaded.
+void InstallActionPopupHook();
 
 }  // namespace nncore
 

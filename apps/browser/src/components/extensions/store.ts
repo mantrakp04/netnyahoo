@@ -21,7 +21,8 @@ type ExtensionsStore = {
   lists: Record<string, InstalledExtension[]>;
   actions: Record<number, Record<string, ActionState>>;
   /** `pageProfile`: the engine profile its page runs in. */
-  popup: { windowId: string; pageProfile: string; extensionId: string; url: string; anchor: Anchor } | null;
+  // `opened` tells a reopen of the same popup (chrome.action.openPopup over it) from the one shown: a fresh page.
+  popup: { windowId: string; pageProfile: string; extensionId: string; url: string; anchor: Anchor; opened?: number } | null;
   install: InstallRequest | null;
   pinDialog: { windowId: string } | null;
   sidePanels: Record<string, SidePanel>;

@@ -1,5 +1,6 @@
 import {
   onExtensionInstallPrompt,
+  onExtensionActionPopup,
   onExtensionSidePanel,
   onExtensionsChanged,
   onExtensionTabsRequest,
@@ -53,6 +54,7 @@ export function startExtensionsBridge() {
 
   startActionStates();
   startSidePanels();
+  startActionPopups();
   startWebStoreIntegration();
   if (__DEV__) Object.assign(globalThis, { nnExtensionsApp: { ...state, bridge: { openExtensionFromMenu } } });
 }
@@ -123,6 +125,17 @@ function startActionStates() {
 }
 
 // MARK: Side panels
+
+// MARK: chrome.action.openPopup
+
+function startActionPopups() {
+  onExtensionActionPopup(({ browserId, extensionId }) => {
+    const tabId = tabForBrowser(browserId);
+    const windowId = tabId ? useBrowser.getState().tabs[tabId]?.windowId : undefined;
+    const ext = windowId ? findExtension(extensionProfile(useBrowser.getState(), windowId), extensionId) : undefined;
+    if (windowId && ext) void state.openActionPopup(windowId, ext, toolbarAnchor(windowId, ext.id), browserId);
+  });
+}
 
 function startSidePanels() {
   onExtensionSidePanel(({ browserId, extensionId, open }) => {

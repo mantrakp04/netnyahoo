@@ -211,6 +211,25 @@ export async function activateExtension(windowId: string, ext: InstalledExtensio
 
 export const closeExtensionPopup = () => useExtensions.setState({ popup: null });
 
+let popupRequests = 0;
+
+/**
+ * chrome.action.openPopup(): the popup the extension has for the tab `browserId` shows, as for a click on its button
+ * but without running its action (no activeTab grant, no onClicked). Over its own popup it opens afresh, as Chrome's
+ * reopens: 1Password asks once its Mac app unlocks, and the page shown while it waited is stale.
+ */
+export async function openActionPopup(windowId: string, ext: InstalledExtension, anchor: Anchor, browserId: number) {
+  if (!ext.enabled || !shownIn(windowId, ext.id)) return;
+  // The tab it asked over must still be the one shown once Chrome answers, and a later request wins.
+  const request = ++popupRequests;
+  const tabId = activeTabId(useBrowser.getState(), windowId);
+  const state = browserId ? (await extensionActionStates(browserId, [ext.id]))[ext.id] : undefined;
+  if (request !== popupRequests || activeTabId(useBrowser.getState(), windowId) !== tabId) return;
+  const url = state ? state.popup : ext.popup ? `chrome-extension://${ext.id}/${ext.popup.replace(/^\//, "")}` : "";
+  if (!url) return;
+  useExtensions.setState({ popup: { windowId, pageProfile: pageProfile(useBrowser.getState(), windowId), extensionId: ext.id, url, anchor, opened: request } });
+}
+
 export async function showExtensionMenu(windowId: string, ext: InstalledExtension) {
   const profile = extensionProfile(useBrowser.getState(), windowId);
   const choice = await showMenu([

@@ -264,6 +264,11 @@ bool HostExtensionSidePanel(content::WebContents* contents,
                             const std::string& extension_id,
                             bool open);
 
+// An extension asked for its action popup (chrome.action.openPopup) over `contents`, the
+// active tab of one of the host's Browsers. True: the host will show it.
+bool HostExtensionActionPopup(content::WebContents* contents,
+                              const std::string& extension_id);
+
 // Chrome's extension install prompt, to the host (NNCoreEngineDelegate); false: Chrome's own.
 bool HostExtensionInstallPrompt(
     Profile* profile,

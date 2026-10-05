@@ -5,12 +5,13 @@ import ExpoModulesCore
 public class ChromeUIModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NetnyahooChromeUI")
-    Events("onDeviceChooser", "onCastDialog", "onCastRoutes", "onSidePanel")
+    Events("onDeviceChooser", "onCastDialog", "onCastRoutes", "onSidePanel", "onActionPopup")
 
     OnCreate {
       NNCoreHost.chromeUIHandler = { [weak self] name, payload in
         switch name {
         case "sidePanel": self?.sendEvent("onSidePanel", payload)
+        case "actionPopup": self?.sendEvent("onActionPopup", payload)
         case "deviceChooser": self?.sendEvent("onDeviceChooser", payload)
         case "castDialog": self?.sendEvent("onCastDialog", payload)
         case "castRoutes": self?.sendEvent("onCastRoutes", payload)
