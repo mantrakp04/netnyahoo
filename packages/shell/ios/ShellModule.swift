@@ -148,6 +148,7 @@ public class ShellModule: Module {
     OnCreate {
       _ = installTextFieldSelectAll
       _ = installScrollViewInsetFix
+      _ = installOutsidePressMonitor
       DispatchQueue.main.async { [weak self] in
         MenuTarget.shared.handler = { command, arg, windowId in
           if command == "closeTab", WindowManager.shared.closeForeignKeyWindow() { return }
@@ -787,6 +788,51 @@ final class WindowDragRegion: ExpoView {
     return String(cString: type) == "v"
   }
 }
+
+public class OutsidePressAreaModule: Module {
+  public func definition() -> ModuleDefinition {
+    Name("NetnyahooOutsidePressArea")
+
+    View(OutsidePressArea.self) {
+      Events("onOutsidePress")
+    }
+  }
+}
+
+// A popover's area (the command bar): a press anywhere else in its window, on the page, the sidebar or its rows, the
+// tab strip, is `onOutsidePress`, as a click outside Dia's or Safari's address bar closes it. Its field's blur alone
+// can't tell: that comes only when the press moves AppKit's first responder, and the sidebar, its rows and the drag
+// regions never take it, so a click on the empty sidebar left the bar open (the owner's 0.2.27 report). The press
+// goes on to whatever it landed on.
+final class OutsidePressArea: ExpoView {
+  let onOutsidePress = EventDispatcher()
+  fileprivate static let areas = NSHashTable<OutsidePressArea>.weakObjects()
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+    _ = installOutsidePressMonitor
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if window != nil { Self.areas.add(self) } else { Self.areas.remove(self) }
+  }
+
+  fileprivate func pressed(_ event: NSEvent) {
+    guard let window, event.window === window, !isHiddenOrHasHiddenAncestor else { return }
+    if let hit = window.contentView?.superview?.hitTest(event.locationInWindow), hit.isDescendant(of: self) { return }
+    onOutsidePress([:])
+  }
+}
+
+// Installed by ShellModule's OnCreate, before any WindowDragRegion's: local monitors run in the order they were added,
+// and a drag region keeps the presses on the empty sidebar and tab strip from the ones after it.
+let installOutsidePressMonitor: Void = {
+  _ = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
+    for area in OutsidePressArea.areas.allObjects { area.pressed(event) }
+    return event
+  }
+}()
 
 final class SymbolView: ExpoView {
   private let imageView = NSImageView()

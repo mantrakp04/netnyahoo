@@ -1,4 +1,4 @@
-import { Surface } from "@netnyahoo/shell";
+import { OutsidePressArea, Surface } from "@netnyahoo/shell";
 import { hex, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
 import { useWindowId, useWindowUi } from "../store/hooks";
@@ -26,6 +26,7 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
   if (!panel.open || !activeId || !anchor) return null;
 
   const room = (left: number, fallback: number) => (windowWidth > 0 ? windowWidth - left - WINDOW_MARGIN : fallback);
+  // A click anywhere outside the bar closes it, as Esc does (its field's blur alone misses clicks on the sidebar).
   const onCancel = () => useBrowser.getState().closePanel(windowId);
 
   if (anchor.sidebar) {
@@ -42,7 +43,9 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
         shadowOffset={[0, 10]}
         style={{ position: "absolute", top: anchor.top, left: anchor.left, width }}
       >
-        <Omnibox key={activeId} variant="sidebar" tabId={activeId} initialText={panel.initialText} onCancel={onCancel} />
+        <OutsidePressArea onOutsidePress={onCancel}>
+          <Omnibox key={activeId} variant="sidebar" tabId={activeId} initialText={panel.initialText} onCancel={onCancel} />
+        </OutsidePressArea>
       </Surface>
     );
   }
@@ -63,7 +66,9 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
       shadowOffset={[0, 10]}
       style={{ position: "absolute", top, left, width }}
     >
-      <Omnibox key={activeId} variant="panel" tabId={activeId} initialText={panel.initialText} onCancel={onCancel} />
+      <OutsidePressArea onOutsidePress={onCancel}>
+        <Omnibox key={activeId} variant="panel" tabId={activeId} initialText={panel.initialText} onCancel={onCancel} />
+      </OutsidePressArea>
     </Surface>
   );
 }

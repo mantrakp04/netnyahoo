@@ -324,6 +324,9 @@ export const onOpenURLs = (listener: (urls: string[]) => void) =>
 
 export const WindowDragRegion = requireNativeViewManager<ViewProps>("NetnyahooShell");
 
+/** A popover's area: `onOutsidePress` hears a press anywhere else in its window (the press still does its own thing). */
+export const OutsidePressArea = requireNativeViewManager<ViewProps & { onOutsidePress?: () => void }>("NetnyahooOutsidePressArea");
+
 export type SymbolProps = ViewProps & {
   name: string;
   size?: number;

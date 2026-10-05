@@ -388,7 +388,7 @@ string doesn't matter. Afterwards: `kill %1` for the server, quit the app, `rm -
 | NTP release‑notes postcard, Trial Guide, personalize button | ✓ | ✅ | postcard with Dia's geometry and springs, full-page notes, 1 day, never on fresh installs or incognito; Personalize button. Trial Guide is a plans feature (—). Our own artwork |
 | NTP connect‑apps upsell | ✓ | ⏸ | |
 | NTP query restore when navigating back | ✓ | ✅ | |
-| Command bar panel over toolbar (⌘L / click URL) | ✓ | ✅ | ⌘L on the NTP focuses and selects its bar; 1.50's two bar shadows (0.08 r2 / 0.04 r1) |
+| Command bar panel over toolbar (⌘L / click URL) | ✓ | ✅ | ⌘L on the NTP focuses and selects its bar; 1.50's two bar shadows (0.08 r2 / 0.04 r1); a click anywhere outside it (the page, the sidebar or its rows, the tab strip, Small Yahu's bar) closes it as Esc does, and the click still does its own thing (fixed 2026-10-06, the owner's 0.2.27 report: a click on the empty sidebar left it open; `OutsidePressArea`) |
 | URL fixup | ✓ | ✅ | |
 | History suggestions (frecency) | ✓ | ✅ | removable rows |
 | Open‑tab suggestions ("Switch to Tab") | ✓ | ✅ | across windows |

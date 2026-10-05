@@ -9,6 +9,7 @@
       "FadeLabelModule",
       "ActivitySpinnerModule",
       "ContextMenuAreaModule",
+      "OutsidePressAreaModule",
       "SurfaceModule",
       "VisualEffectModule",
       "GlassEffectModule",
