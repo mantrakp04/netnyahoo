@@ -670,31 +670,113 @@ public class SymbolModule: Module {
   }
 }
 
+// A window's title bar, as far as the mouse goes: a press on it moves the window, a double-click does what System
+// Settings › Desktop & Dock › "Double-click a window's title bar to" says (Fill, Zoom, Minimize or nothing).
+//
+// AppKit only does this by itself in the window's real title bar band (the top 32 pt) and never for a double-click
+// (Chrome's content view counts as opaque there), and only when the press lands on the region itself. Over the tab
+// strip it lands on the tabs' scroll view, which covers the whole strip: pressing the empty strip right of "+" moved
+// the window only in its top 32 pt and a double-click did nothing (the owner's 0.2.25 report). So the region watches
+// the window's presses itself: one inside it whose view is the region or the empty part of a scroll view laid over it
+// (no tab, button or field: those are hit instead) is the title bar's.
 final class WindowDragRegion: ExpoView {
+  private var monitor: Any?
+  // The second press of a double-click it claimed: the action runs on its release, as on a title bar.
+  private var doubleClickDown = false
+
   override var mouseDownCanMoveWindow: Bool {
     get { true }
     set {}
   }
 
-  override func mouseDown(with event: NSEvent) {
-    // A press on a view over the region that handles its own (`mouseDownCanMoveWindow` false: a tab in the strip,
-    // which drags to reorder) reaches here through the responder chain; it isn't a window drag.
-    if handledAbove(event) { return }
-    if event.clickCount == 2 {
-      let action = UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") ?? "Maximize"
-      action == "Minimize" ? window?.performMiniaturize(nil) : window?.performZoom(nil)
-      return
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if let monitor { NSEvent.removeMonitor(monitor) }
+    monitor = nil
+    doubleClickDown = false
+    guard window != nil else { return }
+    monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
+      guard let self else { return event }
+      if event.type == .leftMouseUp {
+        guard self.doubleClickDown, event.window === self.window else { return event }
+        self.doubleClickDown = false
+        if event.clickCount == 2, let window = self.window { Self.doubleClick(window, event.modifierFlags) }
+        return nil
+      }
+      self.doubleClickDown = false  // its release went elsewhere
+      guard self.ownsPress(event) else { return event }
+      self.press(event, releaseFollows: true)
+      return nil
     }
-    window?.performDrag(with: event)
   }
 
-  private func handledAbove(_ event: NSEvent) -> Bool {
-    var responder: NSResponder? = window?.contentView?.superview?.hitTest(event.locationInWindow)
-    while let r = responder, r !== self {
-      if let view = r as? NSView, !view.mouseDownCanMoveWindow { return true }
-      responder = r.nextResponder
+  deinit {
+    if let monitor { NSEvent.removeMonitor(monitor) }
+  }
+
+  // A press sent to the view itself, not through the app's event queue.
+  override func mouseDown(with event: NSEvent) {
+    if ownsPress(event) { press(event, releaseFollows: false) } else { super.mouseDown(with: event) }
+  }
+
+  private func ownsPress(_ event: NSEvent) -> Bool {
+    guard let window, event.window === window, !isHiddenOrHasHiddenAncestor, alphaValue > 0,
+          !event.modifierFlags.contains(.control),  // a right-click
+          bounds.contains(convert(event.locationInWindow, from: nil)),
+          let hit = window.contentView?.superview?.hitTest(event.locationInWindow)
+    else { return false }
+    if hit === self { return true }
+    // A scroll view's own background: its clip view, or its document view where no item is.
+    let background = hit is NSClipView || (hit.superview as? NSClipView)?.documentView === hit
+    guard background, let container = superview, hit.isDescendant(of: container) else { return false }
+    // Inside something that keeps its presses (`mouseDownCanMoveWindow={false}`).
+    var view = hit.superview
+    while let v = view, v !== container {
+      if !(v is NSClipView || v is NSScrollView), !v.mouseDownCanMoveWindow { return false }
+      view = v.superview
     }
-    return false
+    return true
+  }
+
+  private func press(_ event: NSEvent, releaseFollows: Bool) {
+    guard let window else { return }
+    // The press never reaches AppKit's own handling, which makes a clicked window key; ⌘-drag moves a window
+    // without bringing it forward, and a dialog of the window's (a child window) keeps the keyboard.
+    var key = NSApp.keyWindow
+    while let k = key, k !== window { key = k.parent }
+    if key == nil, window.canBecomeKey, !event.modifierFlags.contains(.command) { window.makeKeyAndOrderFront(nil) }
+    if event.clickCount == 2 {
+      if releaseFollows { doubleClickDown = true } else { Self.doubleClick(window, event.modifierFlags) }
+      return
+    }
+    window.performDrag(with: event)
+  }
+
+  // AppKit's own title-bar double-click (-[NSTitledFrame _handlePossibleDoubleClickWithModifiers:], which acts on the
+  // setting as the system's title bars do, ⌥ included); else the setting read by hand.
+  static func doubleClick(_ window: NSWindow, _ modifiers: NSEvent.ModifierFlags) {
+    let sel = NSSelectorFromString("_handlePossibleDoubleClickWithModifiers:")
+    if let frame = window.contentView?.superview, let method = class_getInstanceMethod(type(of: frame), sel),
+       method_getNumberOfArguments(method) == 3, Self.returnsVoid(method) {
+      typealias Handle = @convention(c) (AnyObject, Selector, UInt) -> Void
+      unsafeBitCast(method_getImplementation(method), to: Handle.self)(frame, sel, modifiers.rawValue)
+      return
+    }
+    let global = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain) ?? [:]
+    let fill = NSSelectorFromString("_zoomFill:")
+    switch global["AppleActionOnDoubleClick"] as? String {
+    case "Minimize": window.performMiniaturize(nil)
+    case "None": break
+    case "Fill" where window.responds(to: fill): window.perform(fill, with: nil)
+    case nil where (global["AppleMiniaturizeOnDoubleClick"] as? Bool) == true: window.performMiniaturize(nil)
+    default: window.performZoom(nil)
+    }
+  }
+
+  private static func returnsVoid(_ method: Method) -> Bool {
+    let type = method_copyReturnType(method)
+    defer { free(type) }
+    return String(cString: type) == "v"
   }
 }
 

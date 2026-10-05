@@ -9,6 +9,7 @@
 //
 // One line per check; the details go to tab-drag-test.log beside the instance's data.
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -224,6 +225,31 @@ try {
   await check("the empty strip still moves the window", async () => {
     const drags = await drag("w1", [[strip[5][1] + 120, 21], [strip[5][1] + 200, 21]]);
     assert.equal(drags, 1, "window drags");
+  });
+
+  // 0.2.25 (owner's report): below AppKit's 32 pt title bar band the empty strip did nothing, and a double-click never
+  // zoomed. Presses go through the app's event queue here (DEV `mouse:`), where the drag region watches for them.
+  await check("the empty strip moves the window over its whole height, and a double-click on it zooms", async () => {
+    const x = strip[5][1] + 150;
+    const result = await run(`
+      return win("w1").then((n) => {
+        const frame = () => C.chromeWindows().then((ws) => ws.find((w) => w.window === n).frame);
+        const click = (y, count) => C.devWindow(n, "mouse:down:${x}," + y + "," + count).then(() => settle(30)).then(() => C.devWindow(n, "mouse:up:${x}," + y + "," + count)).then(() => settle(60));
+        const out = {};
+        return C.devWindow(n, "windowDrags")
+          .then(() => click(4, 1)).then(() => click(38, 1)).then(() => settle(300))
+          .then(() => C.devWindow(n, "windowDrags")).then((d) => { out.drags = Number(d.split("\\n")[0]); return frame(); })
+          .then((f) => { out.before = f; return click(38, 1).then(() => click(38, 2)); }).then(() => settle(900)).then(frame)
+          .then((f) => { out.zoomed = f; return click(38, 1).then(() => click(38, 2)); }).then(() => settle(900)).then(frame)
+          .then((f) => { out.back = f; return out; });
+      });`);
+    assert.equal(result.drags, 2, "a press at the strip's top and one near its bottom each drag the window");
+    // System Settings › Desktop & Dock › "Double-click a window's title bar to": Fill and Zoom change the frame.
+    let action = null;
+    try { action = execFileSync("defaults", ["read", "-g", "AppleActionOnDoubleClick"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch {}
+    if (action === "None" || action === "Minimize") return;
+    assert.notEqual(result.zoomed, result.before, "a double-click zooms (the title-bar action)");
+    assert.equal(result.back, result.before, "a second double-click puts it back");
   });
 
   await check("a group's member trades places inside the group, and a tab moves past the whole group", async () => {

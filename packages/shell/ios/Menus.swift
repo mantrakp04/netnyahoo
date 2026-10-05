@@ -452,6 +452,8 @@ enum MainMenu {
     let windowMenu = top("Window", [
       std("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
       minimizeAll,
+      // AppKit puts Fill, Center, Move & Resize and Full Screen Tile (and their fn-⌃ shortcuts) after Zoom.
+      std("Zoom", #selector(NSWindow.performZoom(_:))),
       arrange,
       keepOnTop,
       .separator(),

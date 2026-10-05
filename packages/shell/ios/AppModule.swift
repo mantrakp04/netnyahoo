@@ -172,6 +172,86 @@ public class AppModule: Module {
       #endif
     }.runOnQueue(.main)
 
+    // A menu bar menu's items as AppKit has them now, the ones it adds itself included (Window › Fill, Move & Resize…):
+    // [{title, key, modifiers, action, enabled, hidden, alternate, items?}]. `perform` (a path of titles) picks one, as
+    // from the menu bar.
+    // One key press posted to the app's event queue as the window server delivers it (NSApp.sendEvent's whole path,
+    // menus and AppKit's own window shortcuts included), to the window's number: modifiers as in devKeyEquivalent.
+    AsyncFunction("devPostKey") { (windowId: String, key: String, keyCode: Int, modifiers: [String]) -> Bool in
+      #if DEBUG
+      guard let window = WindowManager.shared.windows[windowId] else { return false }
+      let names: [String: NSEvent.ModifierFlags] = [
+        "command": .command, "shift": .shift, "option": .option, "control": .control, "function": .function,
+      ]
+      let mods = NSEvent.ModifierFlags(modifiers.compactMap { names[$0] })
+      // "menu:<key>": straight to the menu bar's key equivalents, as AppKit tries them after the window.
+      if key.hasPrefix("menu:"), let event = NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, characters: String(key.dropFirst(5)),
+        charactersIgnoringModifiers: String(key.dropFirst(5)), isARepeat: false, keyCode: UInt16(keyCode)) {
+        return NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false
+      }
+      for type in [NSEvent.EventType.keyDown, .keyUp] {
+        guard let event = NSEvent.keyEvent(
+          with: type, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: window.windowNumber, context: nil, characters: key, charactersIgnoringModifiers: key,
+          isARepeat: false, keyCode: UInt16(keyCode)) else { return false }
+        NSApp.postEvent(event, atStart: false)
+      }
+      return true
+      #else
+      return false
+      #endif
+    }.runOnQueue(.main)
+
+    AsyncFunction("devMenuItems") { (title: String, perform: [String]?) -> [[String: Any]] in
+      #if DEBUG
+      // "tiling:<windowId>": the window's own Move & Resize menu (the green button's), and whether AppKit tiles it.
+      var tiling: NSMenu?
+      var flags: [String: Any] = [:]
+      if title.hasPrefix("tiling:"), let window = WindowManager.shared.windows[String(title.dropFirst(7))] {
+        for name in ["_canEnterTileMode", "_implicitlyDisallowTiling", "_cgsWindowSaysSupportsTiling"] {
+          let sel = NSSelectorFromString(name)
+          guard window.responds(to: sel) else { continue }
+          typealias Get = @convention(c) (AnyObject, Selector) -> Bool
+          flags[name] = unsafeBitCast(window.method(for: sel), to: Get.self)(window, sel)
+        }
+        let sel = NSSelectorFromString("_windowTilingMenu")
+        if window.responds(to: sel) { tiling = window.perform(sel)?.takeUnretainedValue() as? NSMenu }
+      }
+      guard var menu = tiling ?? NSApp.mainMenu?.items.first(where: { $0.title == title })?.submenu else { return flags.isEmpty ? [] : [flags] }
+      func items(_ menu: NSMenu) -> [[String: Any]] {
+        menu.delegate?.menuNeedsUpdate?(menu)
+        // The items AppKit adds as the menu opens (Window › Fill, Center, Move & Resize…).
+        let populate = NSSelectorFromString("_populateFromSidebandUpdatersOfSign:")
+        if menu.responds(to: populate) {
+          typealias Populate = @convention(c) (AnyObject, Selector, Int) -> Void
+          for sign in [-1, 1] { unsafeBitCast(menu.method(for: populate), to: Populate.self)(menu, populate, sign) }
+        }
+        menu.update()
+        return menu.items.map { item in
+          var out: [String: Any] = [
+            "title": item.isSeparatorItem ? "-" : item.title, "key": item.keyEquivalent,
+            "modifiers": item.keyEquivalentModifierMask.rawValue, "action": item.action.map(NSStringFromSelector) ?? "",
+            "enabled": item.isEnabled, "hidden": item.isHidden, "alternate": item.isAlternate,
+          ]
+          if let sub = item.submenu { out["items"] = items(sub) }
+          return out
+        }
+      }
+      let listed = items(menu)
+      if let perform, !perform.isEmpty {
+        for (i, step) in perform.enumerated() {
+          guard let index = menu.items.firstIndex(where: { $0.title == step && (i == perform.count - 1 || $0.submenu != nil) }) else { return [["error": "no \(step)"]] }
+          if i == perform.count - 1 { menu.performActionForItem(at: index) } else if let sub = menu.items[index].submenu { menu = sub }
+        }
+      }
+      return flags.isEmpty ? listed : [flags] + listed
+      #else
+      return []
+      #endif
+    }.runOnQueue(.main)
+
     AsyncFunction("devSnapshotWindow") { (windowId: String, path: String, transparent: Bool?) -> Bool in
       #if DEBUG
       return Self.snapshot(windowId: windowId, path: path, transparent: transparent ?? false)

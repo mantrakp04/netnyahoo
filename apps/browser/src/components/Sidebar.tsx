@@ -154,9 +154,10 @@ export function Sidebar() {
                 <SidebarAddressRow />
               </>
             ) : (
-              <View style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", paddingLeft: PROFILE_INDICATOR_X, paddingRight: 7, paddingTop: 27 - 17 }}>
+              // Box-none: the header's empty space is the drag region's (it moves the window), not the row's.
+              <View pointerEvents="box-none" style={{ height: layout.sidebarHeader, flexDirection: "row", alignItems: "flex-start", paddingLeft: PROFILE_INDICATOR_X, paddingRight: 7, paddingTop: 27 - 17 }}>
                 <ProfileIndicator room={width - PROFILE_INDICATOR_X - 7 - (hasDownloads ? 34 + 2 : 0)} />
-                <View style={{ flex: 1 }} />
+                <View pointerEvents="none" style={{ flex: 1 }} />
                 {hasDownloads ? <DownloadsButton windowId={windowId} /> : null}
               </View>
             )}
