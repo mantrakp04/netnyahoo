@@ -92,6 +92,14 @@ const gesture = (sign, wobble = false, drift = false) => [
   { phase: "ended", dx: 0, dy: 0 },
 // Hardware-like 16ms event timestamps, whenever the main thread gets to each step.
 ].map((step, index) => ({ ...step, atMs: index * 16, timestampMs: index * 16 }));
+// A flick as a trackpad sends it, through AppKit's dispatch: the swipe, then the momentum macOS adds after the lift.
+function flick(sign) {
+  const swipe = gesture(sign);
+  const end = swipe.at(-1).atMs;
+  const momentum = [["momentumBegan", 20], ["momentum", 14], ["momentum", 8], ["momentum", 3], ["momentumEnded", 0]]
+    .map(([phase, dx], i) => ({ phase, dx: dx * sign, dy: 0, atMs: end + 8 * (i + 1), timestampMs: end + 8 * (i + 1) }));
+  return [...swipe, ...momentum].map((step) => ({ ...step, dispatch: "app" }));
+}
 // Decoded NSEvent timestamps against the requested ones, and the native release velocity.
 function fixtureFidelity(steps, result) {
   const start = Number(result?.startNs) / 1e9;
@@ -316,6 +324,37 @@ try {
     await waitProfile("work");
     return { incomplete, next };
   });
+  // 0.2.25: a swipe's momentum went on to the scroll view under the pointer, whose responsive scrolling then ate every
+  // scroll event on AppKit's event thread until the pointer moved, so the third swipe at one point did nothing. Only
+  // a real trackpad shows the eating; what guards it here is that the momentum never leaves the tracker.
+  for (const surface of ["sidebar", "strip"]) {
+    await test(`a ${surface} swipe's momentum stays with it, so a third swipe at the same point switches`, async () => {
+      await reset();
+      if (surface === "strip") await nn('nn.store.getState().updateSettings({ tabLayout: "top" }); return true;');
+      try {
+        for (let start = Date.now(); Date.now() - start < 3000 && !(await nn(`return !!globalThis.nnSwipe.${surface}("w1");`));) await sleep(50);
+        await sleep(250);
+        const results = [];
+        for (const [sign, expected] of [[-1, "work"], [1, "default"], [-1, "work"]]) {
+          const result = await nn(`return globalThis.nnSwipe.${surface}("w1").devSimulate(${JSON.stringify(flick(sign))}, {ignorePreference:true});`, 15000);
+          results.push(result);
+          const leaked = (result.events ?? []).filter((e) => e.phase.startsWith("momentum") && e.monitorSwallowed !== true);
+          try {
+            assert.ok(result.events?.length, "the flick should be delivered");
+            assert.equal(leaked.length, 0, "a profile swipe's momentum must not reach AppKit's scroll views");
+            await waitProfile(expected);
+          } catch (error) {
+            error.evidence = { swipe: results.length, results };
+            throw error;
+          }
+        }
+        return results.map((r) => r.events.map((e) => [e.phase, e.monitorSwallowed]));
+      } finally {
+        if (surface === "strip") await nn('nn.store.getState().updateSettings({ tabLayout: "sidebar" }); return true;');
+        for (let start = Date.now(); Date.now() - start < 3000 && !(await nn('return !!globalThis.nnSwipe.sidebar("w1");'));) await sleep(50);
+      }
+    });
+  }
 
   if (stale) {
     // NNCore keeps one NSWindow per logical window across profile switches (chromeWindows reports its active

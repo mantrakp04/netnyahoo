@@ -133,6 +133,7 @@ struct Gesture {
   __weak NSView<NNSwipeTarget> *target;
   __weak NNRendererScrollObserver *renderer;
   __weak NSView *hit;
+  BOOL rendererHit = NO;
   CGFloat dx = 0, dy = 0;
   int direction = 0;
   BOOL available = NO;
@@ -149,6 +150,17 @@ int gGestureSeq;
 id gMonitor;
 // A native pager that caught its settle on fingers down, until the gesture tracks it or lets it go.
 __weak NSView<NNSwipeTarget> *gPrepared;
+// The momentum of a swipe tracked over native views is the swipe's own. Passed on, it reaches the scroll view under
+// the pointer (the strip's tabs, the sidebar), whose responsive scrolling then eats every later scroll event on
+// AppKit's event thread, the next swipe's too, until the pointer moves (NSScrollingBehaviorConcurrentVBL).
+struct OwnedMomentum {
+  __weak NSWindow *window;
+  NSTimeInterval endedAt = 0;
+  BOOL armed = NO, flowing = NO;
+};
+OwnedMomentum gMomentum;
+// macOS starts momentum within a few ms of the lift (13 ms at most in the owner's recorded swipes).
+constexpr NSTimeInterval kMomentumStartWait = 0.1;
 
 BOOL IsRenderWidgetView(NSView *view) {
   static Class cls = NSClassFromString(@"RenderWidgetHostViewCocoa");
@@ -172,6 +184,12 @@ NNRendererScrollObserver *ObserverFor(NSView *hit) {
     return observer;
   }
   return nil;
+}
+
+BOOL InRenderer(NSView *hit) {
+  for (NSView *v = hit; v; v = v.superview)
+    if (IsRenderWidgetView(v)) return YES;
+  return NO;
 }
 
 NSView *HitView(NSWindow *window, NSPoint locationInWindow) {
@@ -466,6 +484,7 @@ void Begin(NSWindow *window, NSPoint location, BOOL ignoreSystemPreference, NSTi
   NNRendererScrollObserver *renderer = ObserverFor(hit);
   [renderer reset];
   gGesture.renderer = renderer;
+  gGesture.rendererHit = InRenderer(hit);
 }
 
 BOOL Reject(NSString *reason, NSDictionary *extra = nil) {
@@ -520,6 +539,25 @@ BOOL ShouldTrack() {
   return YES;
 }
 
+// Only the momentum that starts right after the owned swipe's lift, in its window, until that momentum ends.
+BOOL SwallowOwnedMomentum(NSEvent *event, NSWindow *window) {
+  if (!gMomentum.armed) return NO;
+  const NSEventPhase momentum = event.momentumPhase;
+  if (!gMomentum.flowing) {
+    gMomentum.flowing = window == gMomentum.window && (momentum & NSEventPhaseBegan) &&
+                        event.timestamp - gMomentum.endedAt <= kMomentumStartWait;
+    if (!gMomentum.flowing) {
+      gMomentum = OwnedMomentum();
+      return NO;
+    }
+  } else if (window != gMomentum.window) {
+    return NO;
+  }
+  if (momentum & (NSEventPhaseEnded | NSEventPhaseCancelled)) gMomentum = OwnedMomentum();
+  Diag(@{@"diag" : @"ownMomentum", @"seq" : @(gGesture.seq), @"momentum" : @(momentum)});
+  return YES;
+}
+
 // Recognizes on the event's deltas, phases and timestamps at an already resolved window and point.
 // Returns the event when it stays native scrolling, nil when the swipe consumed it.
 NSEvent *HandleScroll(NSEvent *event, NSWindow *window, NSPoint location, BOOL ignoreSystemPreference) {
@@ -531,7 +569,9 @@ NSEvent *HandleScroll(NSEvent *event, NSWindow *window, NSPoint location, BOOL i
   }
 
   // Leave begin/end events to Chromium or wheel-phase scrolling stalls.
-  if (phase == NSEventPhaseNone) return event;
+  if (phase == NSEventPhaseNone) return SwallowOwnedMomentum(event, window) ? nil : event;
+  // Fingers down end any momentum.
+  gMomentum = OwnedMomentum();
   if (phase & NSEventPhaseMayBegin) {
     Prepare(window, location, event.timestamp);
     return event;
@@ -567,6 +607,8 @@ NSEvent *HandleScroll(NSEvent *event, NSWindow *window, NSPoint location, BOOL i
     }
     Emit(phase & NSEventPhaseEnded ? @"ended" : @"cancelled", ReleaseVelocity(event.timestamp));
     gGesture.state = State::Idle;
+    // A page's renderer saw this gesture begin and keeps its own momentum.
+    if (!gGesture.rendererHit) gMomentum = {window, event.timestamp, YES, NO};
     return event;
   }
 
