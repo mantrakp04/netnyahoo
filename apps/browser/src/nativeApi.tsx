@@ -5,7 +5,7 @@ import { AppRegistry, Text, View } from "react-native";
 // starts needing native code an older build lacks (a module, function, view, event or field), so JS never has to
 // guard for older builds. Metro serves the working tree to every dev instance, built before or after a native
 // change; a Release build embeds its own bundle, so there a mismatch can only be a broken build.
-export const NATIVE_API_VERSION = 6;
+export const NATIVE_API_VERSION = 7;
 
 // Only modules every build has: on another version the app's own imports may throw before anything shows.
 const built = requireOptionalNativeModule<{ apiVersion?: number }>("NetnyahooApp")?.apiVersion ?? 0;

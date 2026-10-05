@@ -7,7 +7,7 @@ public class AppModule: Module {
     Name("NetnyahooApp")
     // The JS/native contract: NATIVE_API_VERSION in apps/browser/src/nativeApi.tsx, which a JS bundle checks before it
     // loads the app. Bump both together whenever JS starts needing native code that older builds lack.
-    Constant("apiVersion") { () -> Int in 6 }
+    Constant("apiVersion") { () -> Int in 7 }
     Events("onNotificationResponse", "onScriptCommand")
 
     OnCreate {
@@ -48,8 +48,13 @@ public class AppModule: Module {
       Handoff.setActivity(windowId: windowId, url: url, title: title)
     }.runOnQueue(.main)
 
-    AsyncFunction("share") { (url: String, title: String?, windowId: String?) in
-      SharePicker.show(url: url, title: title, windowId: windowId)
+    // Resolves once the share sheet closes. `anchor`: [x, y, width, height] in the window, from its top left.
+    AsyncFunction("share") { (url: String, title: String?, windowId: String?, anchor: [Double]?, promise: Promise) in
+      SharePicker.show(url: url, title: title, windowId: windowId, anchor: anchor) { promise.resolve(nil) }
+    }.runOnQueue(.main)
+
+    AsyncFunction("shareVia") { (service: String, url: String, title: String?, windowId: String?) in
+      SharePicker.perform(service: service, url: url, title: title, windowId: windowId)
     }.runOnQueue(.main)
 
     // MARK: Dock and app icon

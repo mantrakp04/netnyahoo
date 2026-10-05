@@ -464,6 +464,14 @@ public class ShellModule: Module {
       }
       if let children = item["children"] as? [[String: Any]] {
         entry.submenu = contextMenu(children, target: target)
+      } else if item["share"] as? Bool == true {
+        // The system's sharing services, chosen as "<id>:via:<service>".
+        let id = item["id"] as? String ?? ""
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        SharePicker.menuItems(target: target, action: #selector(MenuChoice.choose(_:)), choice: { "\(id):via:\($0)" })
+          .forEach(submenu.addItem)
+        entry.submenu = submenu
       } else {
         entry.action = #selector(MenuChoice.choose(_:))
         entry.target = target

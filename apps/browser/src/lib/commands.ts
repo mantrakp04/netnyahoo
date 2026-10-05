@@ -5,7 +5,6 @@ import {
   pickFiles,
   prompt,
   setAppearance,
-  sharePage,
   type CommandEvent,
 } from "@netnyahoo/shell";
 import { markdownLink } from "@netnyahoo/core";
@@ -37,6 +36,7 @@ import { toggleCastPicker } from "../components/media/cast";
 import { openManageExtensions, openPinDialog, openWebStore } from "../components/extensions/state";
 import { requestAutofill } from "../components/site/Autofill";
 import { copyPageUrl, jumpToSelection } from "../components/site/selection";
+import { shareTab } from "../components/site/share";
 import { openProfileMenu } from "../components/ProfileIndicator";
 import { groupOf } from "../store/organize";
 import { isSmall, mainWindowFor } from "../store/small";
@@ -147,7 +147,8 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "stop":
       return void web?.stopLoading();
     case "share":
-      return page && /^https?:/i.test(page.url) ? void sharePage(page.url, page.customTitle || page.title, windowId) : undefined;
+      // File › Share's services send "via:<service>"; without one, the share sheet.
+      return void shareTab(page, windowId, arg?.startsWith("via:") ? arg.slice(4) : null);
     case "copyUrl":
       return page ? void copyPageUrl(page.id) : undefined;
     case "copyUrlAsMarkdown":

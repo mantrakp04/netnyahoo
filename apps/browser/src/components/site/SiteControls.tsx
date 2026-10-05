@@ -11,7 +11,7 @@ import {
 } from "@netnyahoo/nncore";
 import { cleanUrl, displayHost } from "@netnyahoo/core";
 import { confirm, copyText, showMenu, Symbol } from "@netnyahoo/shell";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "../../lib/theme";
 import { webviews } from "../../lib/webviews";
@@ -24,6 +24,7 @@ import { patchPage, setPopover, usePage } from "../layout/pageState";
 import { showToast } from "../layout/splitActions";
 import { toggleCastPicker } from "../media/cast";
 import { useMedia, usePictureInPicture } from "../media/state";
+import { shareTab } from "./share";
 import { TranslateRows } from "./TranslateControls";
 import { ZoomStepper } from "./ZoomControls";
 
@@ -59,6 +60,7 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
   const [certOpen, setCertOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [cleared, setCleared] = useState<string | null>(null);
+  const shareRow = useRef<View>(null);
   const url = tab?.url ?? "";
   const origin = originOf(url);
   const host = origin ? new URL(origin).hostname : "";
@@ -120,6 +122,9 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
     setCleared(n ? `Cleared ${n} cookie${n === 1 ? "" : "s"} and site data` : "Cleared site data");
     void webviews.get(tabId)?.reload();
   };
+  // The share sheet points at the row; the popover goes once the sheet closes.
+  const share = () =>
+    shareRow.current?.measureInWindow((x, y, width, height) => void shareTab(tab, tab.windowId, null, [x, y, width, height]).then(close));
   const copyClean = () => {
     copyText(cleanUrl(url));
     setCopied(true);
@@ -205,6 +210,11 @@ export function SiteControls({ tabId, right, left, top }: { tabId: string; right
           </>
         )}
         <PopoverRow icon={copied ? "checkmark" : "link"} title={copied ? "Copied a clean link without trackers" : "Copy Clean Link"} onPress={copyClean} />
+        {origin ? (
+          <View ref={shareRow} collapsable={false}>
+            <PopoverRow icon="square.and.arrow.up" title="Share…" onPress={share} />
+          </View>
+        ) : null}
         <PopoverRow
           icon="text.alignleft"
           title="Show Full URL"

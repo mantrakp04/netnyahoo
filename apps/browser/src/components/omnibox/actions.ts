@@ -55,7 +55,7 @@ const DEFS: ActionDef[] = [
     needs: page,
   },
   { command: "print", title: "Print", icon: "printer", hint: "⌘P", needs: page },
-  { command: "share", title: "Share", icon: "square.and.arrow.up", needs: page },
+  { command: "share", title: "Share", icon: "square.and.arrow.up", keywords: ["airdrop", "share link", "send link"], needs: page },
   { command: "zoomIn", title: "Zoom In", icon: "plus.magnifyingglass", hint: "⌘+", needs: page },
   { command: "zoomOut", title: "Zoom Out", icon: "minus.magnifyingglass", hint: "⌘-", needs: page },
   { command: "zoomReset", title: "Actual Size", icon: "1.magnifyingglass", hint: "⌘0", keywords: ["reset zoom"], needs: page },

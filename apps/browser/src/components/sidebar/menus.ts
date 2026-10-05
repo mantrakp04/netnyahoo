@@ -19,6 +19,7 @@ import {
 } from "./actions";
 import { isCalendarUrl } from "../../live/meetings";
 import { bookmarkTab } from "../bookmarks/actions";
+import { canShare, shareTab } from "../site/share";
 import { calendarMenuItem, newLiveFolderMenuItem, runCalendarMenu, runNewLiveFolder } from "./liveMenus";
 import { openSyncedTab, syncedDevicesMenuItem } from "../../sync/menu";
 import { setSidebarUi } from "./state";
@@ -115,6 +116,7 @@ export async function openTabMenu(windowId: string, tab: Tab) {
     { id: "mute", title: tab.muted ? "Unmute Site" : "Mute Site", symbol: tab.muted ? "speaker.wave.2" : "speaker.slash", enabled: !!tab.url },
     { id: "copy", title: "Copy URL", symbol: "link", enabled: !!tab.url, ...hint("c", "shift", "command") },
     { id: "copyMd", title: "Copy Link as Markdown", symbol: "text.badge.checkmark", enabled: !!tab.url, ...hint("c", "option", "shift", "command") },
+    { id: "share", title: "Share", symbol: "square.and.arrow.up", enabled: canShare(tab), share: true },
     { id: "bookmark", title: "Add to Bookmarks…", symbol: "bookmark", enabled: !!tab.url, ...hint("d", "command") },
     { id: "bookmarkTo", title: "Add Bookmark to Folder", symbol: "folder", enabled: !!tab.url, children: bookmarkFolderItems(windowId, "folder:") },
     sep,
@@ -145,6 +147,7 @@ export async function openTabMenu(windowId: string, tab: Tab) {
   else if (choice === "mute") toggleMute(tab.id);
   else if (choice === "copy") copyUrls([tab.id], false);
   else if (choice === "copyMd") copyUrls([tab.id], true);
+  else if (choice.startsWith("share:via:")) void shareTab(tab, windowId, choice.slice(10));
   // Like ⌘D: bookmarks the page (or finds its bookmark) and opens the dialog; never removes one.
   else if (choice === "bookmark") bookmarkTab(windowId, tab.id);
   else if (choice.startsWith("folder:")) void bookmarkTabs(windowId, [tab.id], choice.slice(7));

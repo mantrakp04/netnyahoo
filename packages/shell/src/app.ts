@@ -109,7 +109,8 @@ type AppModule = {
   setAutomaticUpdateChecks(on: boolean): Promise<void>;
   setAutomaticUpdateDownloads(on: boolean): Promise<void>;
   setWindowActivity(windowId: string, url: string | null, title: string | null): Promise<void>;
-  share(url: string, title: string | null, windowId: string | null): Promise<void>;
+  share(url: string, title: string | null, windowId: string | null, anchor: ShareAnchor | null): Promise<void>;
+  shareVia(service: string, url: string, title: string | null, windowId: string | null): Promise<void>;
   isInDock(): Promise<boolean>;
   addToDock(): Promise<boolean>;
   appIcons(size: number): Promise<AppIcon[]>;
@@ -149,8 +150,16 @@ export const setAutomaticUpdateDownloads = (on: boolean) => App.setAutomaticUpda
 export const setWindowActivity = (windowId: string, url: string | null, title: string | null) =>
   App.setWindowActivity(windowId, url, title);
 
-export const sharePage = (url: string, title?: string | null, windowId?: string | null) =>
-  App.share(url, title ?? null, windowId ?? null);
+// [x, y, width, height] in the window from its top left, as measureInWindow gives it.
+export type ShareAnchor = [number, number, number, number];
+
+// The share sheet, at `anchor` (else the top of the page); resolves once it closes.
+export const sharePage = (url: string, title?: string | null, windowId?: string | null, anchor?: ShareAnchor | null) =>
+  App.share(url, title ?? null, windowId ?? null, anchor ?? null);
+
+// One service from a Share menu (`service` is the title the menu listed it under).
+export const sharePageVia = (service: string, url: string, title?: string | null, windowId?: string | null) =>
+  App.shareVia(service, url, title ?? null, windowId ?? null);
 
 export const isInDock = () => App.isInDock();
 export const addToDock = () => App.addToDock();

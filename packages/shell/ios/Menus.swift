@@ -226,6 +226,10 @@ enum MainMenu {
       CommandItem(title, command, arg: arg, key: key, mods)
     }
 
+    // Its services fill in as it opens (ShareMenu, Handoff.swift).
+    let shareMenu = NSMenu(title: "Share")
+    shareMenu.delegate = ShareMenu.shared
+
     let quit = std("Quit \(appName)", #selector(MenuTarget.quit(_:)), "q")
     quit.target = MenuTarget.shared
     let closeWindow = std("Close Window", #selector(MenuTarget.closeWindow(_:)), "w", [.command, .shift])
@@ -269,7 +273,7 @@ enum MainMenu {
       cmd("Clean Up Tabs", "cleanUpTabs", "k", [.command, .option]),
       .separator(),
       cmd("Save Page As…", "savePage"),
-      cmd("Share…", "share"),
+      sub("Share", [], menu: shareMenu),
       cmd("Email Page Location", "emailPageLocation", "i", [.command, .shift]),
       cmd("Print…", "print", "p"),
       cmd("Print Using System Dialog…", "printWithSystemDialog", "p", [.command, .option]),

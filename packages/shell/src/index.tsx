@@ -150,6 +150,8 @@ export type MenuItem =
       enabled?: boolean;
       checked?: boolean;
       children?: MenuItem[];
+      // A submenu of the system's sharing services; picking one answers "<id>:via:<service>" (sharePageVia).
+      share?: boolean;
     };
 
 export type OpenWindowOptions = {

@@ -170,7 +170,7 @@ const PAGE_COMMANDS = [
   "reload", "forceReload", "zoomIn", "zoomOut", "zoomReset", "print", "devTools", "toggleDevTools", "findInPage", "findNext",
   "findPrevious", "useSelectionForFind", "copyUrl", "copyUrlAsMarkdown", "bookmarkPage", "addBookmarkToFolder", "toggleMute",
   "findAndReplace", "jumpToSelection", "viewSource", "javaScriptConsole", "inspectElements", "savePage", "emailPageLocation",
-  "printWithSystemDialog", "stop", "caretBrowsing",
+  "printWithSystemDialog", "stop", "caretBrowsing", "share",
 ];
 const INTERNAL_PAGE_COMMANDS = ["copyUrl", "copyUrlAsMarkdown", "bookmarkPage", "addBookmarkToFolder"];
 const WINDOW_COMMANDS = [
