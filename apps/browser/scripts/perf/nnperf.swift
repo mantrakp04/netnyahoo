@@ -6,10 +6,14 @@
 //   nnperf newwindow <pid> <secs>     prints "ready" once it knows the pid's windows, then {"at": epoch ms, "id": window
 //                                     number} when a new one is on screen (≥ 300×200, alpha > 0), polling every 2 ms
 //   nnperf quit <pid>                 asks that one process to quit (a quit Apple event, as ⌘Q would)
+//   nnperf input <pid> <secs>         {"inputSecs", "overWindowSecs"}: how long, polling every 250 ms, someone used the
+//                                     mouse, trackpad or keyboard (HIDIdleTime), and how much of that with the pointer
+//                                     moving over one of the pid's windows
 import AppKit
 import CoreGraphics
 import Darwin
 import Foundation
+import IOKit
 
 let args = CommandLine.arguments
 var timebase = mach_timebase_info_data_t()
@@ -43,6 +47,15 @@ func windows(_ pid: pid_t) -> [[String: Any]] {
     return ["id": w[kCGWindowNumber as String] ?? 0, "layer": w[kCGWindowLayer as String] ?? 0,
             "alpha": w[kCGWindowAlpha as String] ?? 0, "w": b["Width"] ?? 0, "h": b["Height"] ?? 0]
   }
+}
+
+// Nanoseconds since the last mouse, trackpad or keyboard event, from anyone (no permission needed).
+func hidIdleNs() -> UInt64? {
+  let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOHIDSystem"))
+  guard service != 0 else { return nil }
+  defer { IOObjectRelease(service) }
+  return (IORegistryEntryCreateCFProperty(service, "HIDIdleTime" as CFString, kCFAllocatorDefault, 0)?
+    .takeRetainedValue() as? NSNumber)?.uint64Value
 }
 
 func printJSON(_ value: Any) {
@@ -85,7 +98,41 @@ case "newwindow":
     usleep(2000)
   }
   exit(2)
+case "input":
+  // The bench's windows are on screen, often in front: a pointer moving over them makes the app work (hover, cursor
+  // updates), so an idle window someone used the Mac in doesn't measure the app alone. Counts are 250 ms ticks.
+  let pid = pid_t(args[2]) ?? 0
+  let tick = 0.25
+  let deadline = Date().addingTimeInterval(Double(args[3]) ?? 60)
+  guard hidIdleNs() != nil else {
+    printJSON(["error": "no HIDIdleTime"])
+    exit(1)
+  }
+  // Whether the frontmost window under the point is one of the pid's (below the Dock, menu bar and overlays).
+  func overOwnWindow(_ at: CGPoint) -> Bool {
+    guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+    else { return false }
+    for w in list {
+      guard let layer = w[kCGWindowLayer as String] as? Int, layer < 20, (w[kCGWindowAlpha as String] as? Double ?? 0) > 0,
+            let b = w[kCGWindowBounds as String] as? [String: Double],
+            CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0).contains(at)
+      else { continue }
+      return (w[kCGWindowOwnerPID as String] as? Int32) == pid
+    }
+    return false
+  }
+  var input = 0, over = 0
+  var last = CGEvent(source: nil)?.location
+  while Date() < deadline {
+    usleep(UInt32(tick * 1e6))
+    let at = CGEvent(source: nil)?.location
+    defer { last = at }
+    guard let idle = hidIdleNs(), Double(idle) < tick * 1e9 else { continue }
+    input += 1
+    if let at, at != last, overOwnWindow(at) { over += 1 }
+  }
+  printJSON(["inputSecs": Double(input) * tick, "overWindowSecs": Double(over) * tick])
 default:
-  FileHandle.standardError.write("usage: nnperf rusage <pid>... | windows <pid> | quit <pid> | waitwindow <pid> <secs> | newwindow <pid> <secs>\n".data(using: .utf8)!)
+  FileHandle.standardError.write("usage: nnperf rusage <pid>... | windows <pid> | quit <pid> | waitwindow <pid> <secs> | newwindow <pid> <secs> | input <pid> <secs>\n".data(using: .utf8)!)
   exit(64)
 }

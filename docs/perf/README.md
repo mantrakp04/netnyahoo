@@ -64,6 +64,11 @@ row is the same or better.
      about once a second. native-bench leaves those switches and new tabs out and counts them in the "samples
      left out" row. A nonzero count there means rerun with the screen awake.
    - WindowServer captures fail while the screen is locked, but the bench doesn't need any.
+   - The instances' windows are on screen, usually in front of everything: when the owner is using the Mac, their
+     pointer moving over one wakes that app (hover, cursor updates), whichever version it is. The "idle windows:
+     someone used the Mac" rows count the seconds of input during each run's idle windows. Don't call an idle
+     regression from runs where they're nonzero. The 0.2.26 gate's idle spikes came in a round the owner was using the
+     Mac and didn't come back in 16 more interleaved runs, 8 of them with the owner at work.
 5. **Collect enough runs.** Use at least 6 launches and 2 session runs per app. Each session run takes about 5
    minutes with `--idle 60`. The table gives the median with min–max and n.
    - Call a row a regression only when the ranges separate, or when it reproduces in a second interleaved round.
@@ -114,6 +119,7 @@ command starts.
 | launch → first page's first frame | The restored tab's first `requestAnimationFrame` |
 | idle CPU, idle wakeups/s | rusage over the whole process tree (or one process kind) across `--idle` seconds, with the channel paused, at 1 tab and at 20 tabs |
 | memory (phys_footprint) | The tree's footprint at 1, 10 and 20 tabs, and 30 s after closing back to 1. The "browser process" rows count that process alone. |
+| idle windows: someone used the Mac (…with the pointer moving over the window) | Seconds of mouse, trackpad or keyboard input during the run's idle windows (HIDIdleTime polled every 250 ms), and of those, with the pointer moving over the instance's window |
 | after an idle minute: command answered | The first command's latency after the 1-tab idle (catches App Nap) |
 | samples left out | Switches and new tabs dropped because the page got fewer than 5 frames in 250 ms |
 | tab switch → shown | `switchToTab` → the page turns visible and has drawn 2 frames (median of 16 among 20 tabs) |

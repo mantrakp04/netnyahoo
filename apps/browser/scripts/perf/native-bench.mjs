@@ -72,6 +72,10 @@
 //                                                        after the idle window), 10 tabs (+10 s), 20 tabs (+15 s), and
 //                                                        closed back to 1 (+30 s); "browser process" rows: that process
 //   after an idle minute: command answered  sessionRun  idle: the first command after the 1-tab idle (App Nap check)
+//   idle windows: someone used the Mac      sessionRun  idle: nnperf input over each idle window: seconds of mouse,
+//                                                        trackpad or keyboard input (HIDIdleTime), and of the pointer
+//                                                        moving over the instance's window. Nonzero means the idle rows
+//                                                        of that run measured the owner's input too
 //   samples left out: page couldn't paint   sessionRun  switch/newtab: throttled(), < 5 rAF frames in 250 ms just before
 //   tab switch → shown                      sessionRun  switch: nn.actions.switchToTab → the page's visibilitychange to
 //                                                        visible + 2 rAFs (16 per run, among 20 tabs)
@@ -557,15 +561,26 @@ async function launchRun(side, i) {
 
 async function idleWindow(app, secs) {
   await app.run(`nn.pause(${secs * 1000 + 1500}); return true;`);
+  // Someone using the Mac meanwhile (the window is on screen, usually in front): its pointer over the window wakes the app.
+  const probe = spawn(join(toolDir, "nnperf"), ["input", String(app.pid), String(secs)], { stdio: ["ignore", "pipe", "ignore"] });
+  let said = "";
+  probe.stdout.on("data", (d) => (said += d));
+  const probed = new Promise((done) => (probe.on("close", done), probe.on("error", done)));
   const a = usage(app.pid);
   await sleep(secs * 1000);
   const b = usage(app.pid);
+  if ((await Promise.race([probed.then(() => true), sleep(2000)])) !== true) probe.kill();
+  let input = null;
+  try {
+    input = JSON.parse(said.trim());
+  } catch {}
+  if (!Number.isFinite(input?.inputSecs)) input = null;
   await sleep(2000);
   // App Nap check: a napped app answers its first command late and stretches a 100 ms timer (the bench passes
   // -NSAppSleepDisabled; NNCore keeps Cocoa's argument-domain switches off Chrome's command line, AppKit reads them).
   const asked = Date.now();
   const late = await app.run(`return new Promise((r) => { const t = Date.now(); setTimeout(() => r(Date.now() - t - 100), 100); });`);
-  return { ...usageDelta(a, b), afterIdle: { commandMs: Date.now() - asked, timerLateMs: late } };
+  return { ...usageDelta(a, b), input, afterIdle: { commandMs: Date.now() - asked, timerLateMs: late } };
 }
 
 // Whether the page on screen can paint right now: frames in 250 ms of requestAnimationFrame. A window macOS stops
@@ -845,6 +860,14 @@ function summary(res) {
   for (const m of ["tabs1", "tabs10", "tabs20", "closed"]) add(`memory (phys_footprint), ${m === "closed" ? "after closing back to 1 tab" : m.slice(4) + " tab(s)"}`, S.map((r) => r.memory[m]?.totalMB), "MB");
   add("memory, browser process, 20 tabs", S.map((r) => r.memory.tabs20?.kinds.browser), "MB");
   add("memory, browser process, after closing", S.map((r) => r.memory.closed?.kinds.browser), "MB");
+  // Nonzero: someone used the Mac during the idle windows, and the pointer over the bench's window raises its wakeups.
+  // A window whose probe failed (input null) makes the run's count unknown, not zero.
+  const used = (r, k) => {
+    const windows = [r.idle.tabs1, r.idle.tabs20].filter(Boolean);
+    return windows.length ? windows.reduce((n, w) => n + (w.input?.[k] ?? NaN), 0) : NaN;
+  };
+  add("idle windows: someone used the Mac (s, per run)", S.map((r) => used(r, "inputSecs")), "s", 2);
+  add("idle windows: …with the pointer moving over the window (s, per run)", S.map((r) => used(r, "overWindowSecs")), "s", 2);
   add("after an idle minute: command answered (App Nap check)", S.map((r) => r.idle.tabs1?.afterIdle?.commandMs), "ms");
   const timedSwitches = (r) => !r.parts || r.parts.includes("switch") || r.parts.includes("newtab");
   add("samples left out: page couldn't paint (switch + new tab, per run)", S.map((r) => r.throttled && timedSwitches(r) ? r.throttled.tabSwitch + r.throttled.newTab : NaN), "");
