@@ -134,6 +134,7 @@ const startedAt = now();
 const startup: [task: string, at: number, ms: number][] = [];
 const roots = new Set<{ current: Fiber }>();
 let firstCommit = 0;
+let firstCommitMounts: Counter | null = null;
 // The native→JS task running now (bridge call, timer callback or native module event), for commitTasks.
 let task: string | null = null;
 
@@ -271,9 +272,15 @@ function installReactHook() {
         stats.commitTimes.push(t);
         stats.commitTaskLog.push(task ?? "other");
       }
+      const mountsBefore = firstCommitMounts ? null : { ...stats.mounts };
       try {
         walk(root.current);
       } catch {}
+      // What the app's first commit mounted, by component: the launch's first frame waits for all of it.
+      if (mountsBefore) {
+        firstCommitMounts = {};
+        for (const key in stats.mounts) if (stats.mounts[key]! > (mountsBefore[key] ?? 0)) firstCommitMounts[key] = stats.mounts[key]! - (mountsBefore[key] ?? 0);
+      }
       stats.commitMs += root.current.actualDuration ?? 0;
       stats.walkMs += now() - t;
     },
@@ -511,6 +518,9 @@ if (perfProbeEnabled) {
     startup,
     get firstCommit() {
       return firstCommit;
+    },
+    get firstCommitMounts() {
+      return firstCommitMounts;
     },
     reset: () => void (stats = fresh()),
     set traceTimers(on: boolean) {
