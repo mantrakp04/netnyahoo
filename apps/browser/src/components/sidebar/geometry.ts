@@ -37,6 +37,14 @@ export function entriesHeight(s: BrowserState, windowId: string, profileId: stri
   return entries.reduce((sum, e) => sum + entryHeight(s, windowId, profileId, e) + GAP, 0) - (entries.length ? GAP : 0);
 }
 
+/** How many of `entries`, from the first, start within `height` of the list's top: the ones a viewport that tall shows. */
+export function entriesWithin(s: BrowserState, windowId: string, profileId: string, entries: string[], height: number): number {
+  let top = 0;
+  let n = 0;
+  while (n < entries.length && top < height) top += entryHeight(s, windowId, profileId, entries[n++]!) + GAP;
+  return n;
+}
+
 /**
  * The row showing `tabId` in its section, from the section's top; null for a pinned tile or a live folder's row.
  * `newTabAtTop`: the list starts with the New Tab row.

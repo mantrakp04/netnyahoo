@@ -25,7 +25,7 @@ import { LiveFolders } from "./sidebar/LiveFolderBlock";
 import { openOverflowMenu, openSidebarMenu } from "./sidebar/menus";
 import { PinDropZone, PinnedGrid } from "./sidebar/PinnedGrid";
 import { ResizeHandle } from "./sidebar/ResizeHandle";
-import { entriesHeight, rowSpan, type Section } from "./sidebar/geometry";
+import { entriesHeight, entriesWithin, rowSpan, type Section } from "./sidebar/geometry";
 import { measureRow } from "./sidebar/state";
 import { SplitRowItem, TabRowItem } from "./sidebar/TabRow";
 import { useSidebarTokens, useSidebarWidth } from "./sidebar/tokens";
@@ -37,9 +37,10 @@ const ROW_PITCH = layout.rowHeight + layout.rowGap;
 const DOCKED_BOTTOM = 6;
 // Room the docked New Tab row takes from the list: the row plus one row gap above it.
 const DOCK = DOCKED_BOTTOM + ROW_PITCH;
-// Rows in 2400 pt, more than the tallest sidebar.
-const FIRST_PAINT_ROWS = 64;
+// A window with no saved frame yet first mounts the rows of 2400 pt, more than the tallest sidebar.
+const FIRST_PAINT_HEIGHT = 2400;
 const ROWS_PER_FRAME = 32;
+const NONE: string[] = [];
 
 export function Sidebar() {
   const windowId = useWindowId();
@@ -199,15 +200,28 @@ type PageProps = {
 function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoom, ghost, rows, geometry, onListHeight, onScrollView, onScrollY }: PageProps) {
   const windowId = useWindowId();
   const { tiles, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
-  // A page's first render mounts only the rows a screen can show; the rest follow in chunks, one per frame, so a
-  // long sidebar neither holds up the window's first frame nor mounts in one long task after it.
-  const [mountedRows, setMountedRows] = useState(FIRST_PAINT_ROWS);
+  // A page's first render mounts only the rows its window can show (a list as tall as the window, from the top: a page
+  // mounts scrolled to the top); the rest follow in chunks, one per frame, so a long sidebar neither holds up the
+  // window's first frame nor mounts in one long task after it.
+  const [mountedRows, setMountedRows] = useState(() => {
+    const s = useBrowser.getState();
+    return Math.max(1, entriesWithin(s, windowId, profileId, all, s.windows[windowId]?.frame?.[3] ?? FIRST_PAINT_HEIGHT));
+  });
   // A page beside the current one draws only the rows that fit until it has been current; after that it keeps every
   // row, so paging mounts nothing (dropping back to a screenful unmounted every row past it on the page leaving and
   // mounted them again on the page arriving, on every switch).
   const [visited, setVisited] = useState(current);
   if (current && !visited) setVisited(true);
-  const cap = visited ? undefined : rows;
+  // A page beside the current one is off screen until a swipe brings it: its tiles and rows mount a frame after it,
+  // so a launch's first frame mounts the current page's alone.
+  const [beside, setBeside] = useState(!current);
+  useEffect(() => {
+    if (!beside) return;
+    const frame = requestAnimationFrame(() => setBeside(false));
+    return () => cancelAnimationFrame(frame);
+  }, [beside]);
+  const offScreen = beside && !current;
+  const cap = offScreen ? 0 : visited ? undefined : rows;
   const growing = cap === undefined && mountedRows < all.length;
   useEffect(() => {
     if (!growing) return;
@@ -276,7 +290,7 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
                           if (current) onListHeight(measured.current);
                         }}
                       >
-                        <PinnedGrid tabs={tiles} innerWidth={innerWidth} />
+                        <PinnedGrid tabs={offScreen ? NONE : tiles} innerWidth={innerWidth} />
                         <View
                           ref={(v) => {
                             controller?.regions.set("pinnedGroups", v);
@@ -284,12 +298,12 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
                           onLayout={geometry ? (e) => void (geometry.current.regions.pinnedGroups = e.nativeEvent.layout.y) : undefined}
                           style={{ marginTop: tiles.length ? 6 : topGap, gap: layout.rowGap }}
                         >
-                          {pinnedGroups.map((id) => (
+                          {(offScreen ? NONE : pinnedGroups).map((id) => (
                             <GroupBlock key={id} groupId={id} section="pinnedGroups" />
                           ))}
                           <Tail id="tail:pinnedGroups" section="pinnedGroups" />
                         </View>
-                        <LiveFolders windowId={windowId} spaced={pinnedGroups.length > 0} />
+                        {offScreen ? null : <LiveFolders windowId={windowId} spaced={pinnedGroups.length > 0} />}
                         <View
                           ref={(v) => {
                             controller?.regions.set("list", v);
