@@ -26,6 +26,7 @@ import { isUtilityWindowId } from "../components/settings/windows";
 import { isInternalTab } from "../components/pages/urls";
 import { sidebarMenuState } from "../components/sidebar/commands";
 import { openWindow as createWindow } from "./actions";
+import { windowOpens } from "./windowOpenOrder";
 import { openExternalUrls } from "../components/smallYahu/actions";
 import { SMALL_YAHU_DISABLED_COMMANDS } from "../components/smallYahu/menu";
 import { runCommand } from "./commands";
@@ -87,19 +88,16 @@ export function startNativeSync() {
   };
 
   const syncWindows = (s: BrowserState, prev?: BrowserState) => {
-// Open the focused window last so it comes to front.
-    const focused = s.ui.focusedWindowId;
-    const order = s.windowOrder.filter((id) => id !== focused);
-    if (focused && s.windows[focused]) order.push(focused);
-    for (const id of order) {
+    // At launch (no prev) the focused window first and the rest behind it once it shows; later the focused one last, so
+    // it comes to front (lib/windowOpenOrder.ts).
+    const opens = windowOpens(s, s.windowOrder.filter((id) => !open.has(id)), !prev);
+    for (const { id, focus, behind } of opens) {
       const w = s.windows[id]!;
-      if (!open.has(id)) {
-        open.add(id);
-        titles.set(id, windowTitle(s, id));
-        const profile = engineProfile(w.profileId);
-        const small = w.kind === "small" ? { kind: "small" as const, size: s.settings.smallYahuSize } : {};
-        void openWindow(id, { frame: w.frame, incognito: w.incognito, title: titles.get(id), focus: id === s.ui.focusedWindowId, profile, ...small });
-      }
+      open.add(id);
+      titles.set(id, windowTitle(s, id));
+      const profile = engineProfile(w.profileId);
+      const small = w.kind === "small" ? { kind: "small" as const, size: s.settings.smallYahuSize } : {};
+      void openWindow(id, { frame: w.frame, incognito: w.incognito, title: titles.get(id), focus, profile, ...(behind ? { behind } : {}), ...small });
     }
     for (const id of [...open]) {
       if (s.windows[id]) continue;

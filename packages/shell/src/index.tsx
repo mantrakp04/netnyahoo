@@ -163,6 +163,8 @@ export type OpenWindowOptions = {
   profile?: string;
   // Small Yahu: its remembered size; the window opens centred on the active screen.
   size?: [number, number];
+  // Launch: opens once that window's content is on screen, right behind it (builds before NATIVE_API 9 ignore it).
+  behind?: string;
 };
 
 export type MenuEntry = { id: string; title: string; current?: boolean };

@@ -57,6 +57,12 @@ export const SWITCHES = {
     removeBy: "2026-12-15",
     live: false,
   },
+  focusedWindowFirst: {
+    about: "A launch with several windows builds the focused one first and opens the others behind it after (lib/windowOpenOrder.ts).",
+    owner: "launch",
+    removeBy: "2026-12-15",
+    live: false,
+  },
 } as const satisfies Record<string, SwitchDef>;
 
 export type SwitchName = keyof typeof SWITCHES;

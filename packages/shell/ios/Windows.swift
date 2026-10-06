@@ -52,12 +52,32 @@ final class WindowManager: NSObject, NSWindowDelegate {
     window.level = window.level == .floating ? .normal : .floating
   }
 
+  // Launch: windows to open behind another once its content is on screen (`behind`), by id, and the browser windows whose
+  // first content is (RCTContentDidAppearNotification).
+  private struct PendingOpen {
+    var frame: [Double]?, incognito: Bool, title: String, kind: String, profile: String?, size: [Double]?, behind: String
+  }
+  private var pendingOpens: [String: PendingOpen] = [:]
+  private var pendingOrder: [String] = []
+  private var contentShown = Set<String>()
+  private var firstContentObservers: [String: NSObjectProtocol] = [:]
+  // Content that doesn't come within this long opens the windows waiting for it anyway.
+  private static let behindTimeout = 1.5
+
   func open(
     id: String, frame: [Double]?, incognito: Bool, title: String, focus: Bool, kind: String = "browser", profile: String? = nil,
-    size: [Double]? = nil
+    size: [Double]? = nil, behind: String? = nil
   ) {
     if let existing = windows[id] {
       if focus { existing.makeKeyAndOrderFront(nil) }
+      return
+    }
+    // The launch's other windows: the focused one's content is the first the app builds (it was the last, 700 ms later
+    // with four windows), then they go behind it, in the order they came, so the last sits right under it.
+    if let behind, !focus, windows[behind] != nil, !contentShown.contains(behind) {
+      if pendingOpens[id] == nil { pendingOrder.append(id) }
+      pendingOpens[id] = PendingOpen(frame: frame, incognito: incognito, title: title, kind: kind, profile: profile, size: size, behind: behind)
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.behindTimeout) { [weak self] in self?.openPending(behind: behind) }
       return
     }
     let small = kind == "small"
@@ -69,11 +89,12 @@ final class WindowManager: NSObject, NSWindowDelegate {
       let root = makeContentView(id)
       ChromeWindows.embed(root, in: chromeWindow)
       holdUntilContent(chromeWindow, id: id, root: root)
+      noteFirstContent(id: id, root: root)
       keepContentSizedAcrossReloads(id: id, root: root)
       ChromeWindows.onSwap { [weak self] from, to in self?.adopt(from: from, to: to) }
       observeDelegateNotifications(chromeWindow)
       if small { configureSmall(chromeWindow) }
-      return show(chromeWindow, id: id, frame: frame, title: title, focus: focus, smallSize: small ? size ?? [] : nil)
+      return show(chromeWindow, id: id, frame: frame, title: title, focus: focus, smallSize: small ? size ?? [] : nil, behind: behind)
     }
     let window = makeWindow()
     let controller = NSViewController()
@@ -86,7 +107,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     show(window, id: id, frame: frame, title: title, focus: focus, smallSize: small ? size ?? [] : nil)
   }
 
-  private func show(_ window: NSWindow, id: String, frame: [Double]?, title: String, focus: Bool, smallSize: [Double]? = nil) {
+  private func show(_ window: NSWindow, id: String, frame: [Double]?, title: String, focus: Bool, smallSize: [Double]? = nil, behind: String? = nil) {
     window.title = title
     if let smallSize { placeSmall(window, size: smallSize) } else { place(window, frame: frame) }
     relayoutRoot(window)
@@ -110,6 +131,8 @@ final class WindowManager: NSObject, NSWindowDelegate {
       }
     } else if focus {
       window.makeKeyAndOrderFront(nil)
+    } else if let behind, let above = windows[behind], above !== window, above.isVisible {
+      window.order(.below, relativeTo: above.windowNumber)
     } else if let key = NSApp.keyWindow, key !== window {
       // A window opened without focus (tabs Small Yahu sends behind with no main window open) goes behind the
       // key window instead of over it.
@@ -147,6 +170,33 @@ final class WindowManager: NSObject, NSWindowDelegate {
       _ in reveal()
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.revealTimeout, execute: reveal)
+  }
+
+  private func noteFirstContent(id: String, root: NSView) {
+    if let old = firstContentObservers.removeValue(forKey: id) { NotificationCenter.default.removeObserver(old) }
+    firstContentObservers[id] = NotificationCenter.default.addObserver(
+      forName: Notification.Name("RCTContentDidAppearNotification"), object: root, queue: .main
+    ) { [weak self] _ in
+      guard let self else { return }
+      if let observer = self.firstContentObservers.removeValue(forKey: id) { NotificationCenter.default.removeObserver(observer) }
+      guard self.windows[id] != nil else { return }
+      self.contentShown.insert(id)
+      guard self.pendingOrder.contains(where: { self.pendingOpens[$0]?.behind == id }) else { return }
+      // On screen first, then the windows behind it: left to the run loop, the commit waited for them to be built
+      // (content 590 ms, on screen 990 ms, big4).
+      CATransaction.flush()
+      self.openPending(behind: id)
+    }
+  }
+
+  private func openPending(behind: String) {
+    let ids = pendingOrder.filter { pendingOpens[$0]?.behind == behind }
+    for id in ids {
+      guard let o = pendingOpens.removeValue(forKey: id) else { continue }
+      pendingOrder.removeAll { $0 == id }
+      contentShown.insert(behind)
+      open(id: id, frame: o.frame, incognito: o.incognito, title: o.title, focus: false, kind: o.kind, profile: o.profile, size: o.size, behind: behind)
+    }
   }
 
   /// `then` once the window shows its content (now, if it does or isn't one of ours).
@@ -266,6 +316,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
   }
 
   func setProfile(id: String, profile: String, neighbours: [String]) {
+    if pendingOpens[id] != nil { pendingOpens[id]!.profile = profile }
     guard let window = windows[id] else { return }
     ChromeWindows.showProfile(profile, in: window)
     if let current = windows[id] { ChromeWindows.prepare(neighbours, for: current) }
@@ -357,6 +408,13 @@ final class WindowManager: NSObject, NSWindowDelegate {
   }
 
   func close(id: String) {
+    if pendingOpens.removeValue(forKey: id) != nil {
+      pendingOrder.removeAll { $0 == id }
+      return
+    }
+    contentShown.remove(id)
+    // Closed before its content came.
+    if let observer = firstContentObservers.removeValue(forKey: id) { NotificationCenter.default.removeObserver(observer) }
     guard let window = windows[id] else { return }
     if ChromeWindows.root(of: window) != nil {
       // Keep Chrome Browser alive until tabs finish moving out.
@@ -383,10 +441,16 @@ final class WindowManager: NSObject, NSWindowDelegate {
   }
 
   func focus(id: String) {
+    // One still waiting to open behind the launch's focused window opens now, in front (a link the app routes to it).
+    if let o = pendingOpens.removeValue(forKey: id) {
+      pendingOrder.removeAll { $0 == id }
+      return open(id: id, frame: o.frame, incognito: o.incognito, title: o.title, focus: true, kind: o.kind, profile: o.profile, size: o.size)
+    }
     windows[id]?.makeKeyAndOrderFront(nil)
   }
 
   func setTitle(id: String, title: String) {
+    if pendingOpens[id] != nil { pendingOpens[id]!.title = title }
     guard let window = windows[id], window.title != title else { return }
     window.title = title
   }
@@ -502,6 +566,9 @@ final class WindowManager: NSObject, NSWindowDelegate {
   func runtimeGone(_ gone: ObjectIdentifier) {
     guard runtime == gone else { return }
     runtime = nil
+    // The next runtime opens the windows its store has (a window still waiting would open for a store that's gone).
+    pendingOpens = [:]
+    pendingOrder = []
     emit = nil
     appEventsObserved = false
     replyToTerminate(false)
