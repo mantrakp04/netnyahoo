@@ -24,7 +24,14 @@
 //     reply. If the engine shuts down first the reply may never run.
 //   - Changes the app should hear about without asking arrive through the one
 //     event sink as (topic, JSON object); every event carries "profile" (the
-//     profile directory). Topics are "<domain>.<what>".
+//     profile directory), and "offTheRecord": true when it happened in that
+//     profile's off-the-record profile. Topics are "<domain>.<what>".
+//   - "offTheRecord": true in a call's arguments (ABI 2) runs it on the
+//     profile's primary off-the-record profile (a private window's session)
+//     instead: {"error": "no private session"} while there is none. Only calls
+//     whose state Chrome keeps per off-the-record profile take it (site
+//     settings, site data, zoom: netnyahoo::OffTheRecord::kAllow); any other
+//     answers {"error": "not for a private session"}.
 
 #ifndef CHROME_BROWSER_NETNYAHOO_PUBLIC_NN_ENGINE_H_
 #define CHROME_BROWSER_NETNYAHOO_PUBLIC_NN_ENGINE_H_
@@ -37,7 +44,7 @@ extern "C" {
 
 // The version of these conventions; bumped only when they change, not when a
 // call is added (a missing call is a missing symbol).
-#define NN_ENGINE_ABI_VERSION 1
+#define NN_ENGINE_ABI_VERSION 2
 
 typedef void (*nn_engine_reply_t)(void* context, const char* json);
 typedef void (*nn_engine_call_t)(const char* profile_dir,

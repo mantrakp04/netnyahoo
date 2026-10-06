@@ -681,11 +681,11 @@ static BOOL HeldSelector(SEL selector) {
   if ([_adoptId hasPrefix:@"nncore:"] || [_adoptId hasPrefix:@"tab:"]) {
     NNCoreTab *offered = [NNCoreTabs takeOffered:_adoptId];
     _adoptId = nil;
-    // Never a private tab in a normal view, or the reverse, and a private view takes only its session's tabs (the
-    // off-the-record profile of the profile it was opened from): the view loads its URL itself instead.
-    const BOOL wantsPrivate = nncore_host::IsIncognito(_profile);
-    if (offered && (offered.closed || !offered.profile || offered.profile.offTheRecord != wantsPrivate ||
-                    (wantsPrivate && !nncore_host::IsOffTheRecordOf(offered.profile, _profile)))) {
+    // Only a tab of this view's own profile (canTake): never a private tab in a normal view or the reverse, a private
+    // view takes only its session's tabs (the off-the-record profile of the profile it was opened from), a normal one
+    // only its profile's (Chrome's tabs reach a view of their profile, NNCoreChromeWindow HandOffTab; another
+    // profile's would keep its cookies under this one's name). Else the view loads its URL itself.
+    if (offered && ![self canTake:offered]) {
       if (!offered.closed) [offered closeNow];
       offered = nil;
     }

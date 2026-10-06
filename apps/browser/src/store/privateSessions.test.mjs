@@ -100,8 +100,13 @@ test("a private session's downloads show in its windows only, never on disk, and
   assert.deepEqual(ids(p2), ["private2"]);
   assert.deepEqual(ids(p2b), ["private2"], "a second window of the session lists it too");
   assert.deepEqual(ids(p1), ["private1"]);
-  assert.deepEqual(ids(a), ["regular2"]);
+  assert.deepEqual(ids(a), [], "Personal's window lists none of Work's downloads");
   assert.deepEqual(ids(b), ["regular2"]);
+  // A window paged to Work lists Work's; a download with no profile (an older build's) is Personal's.
+  S().upsertDownload(download("old", undefined, undefined));
+  assert.deepEqual(ids(a), ["old"]);
+  S().switchProfile(a, work);
+  assert.deepEqual(ids(a), ["regular2"]);
   flushPersistence();
   const saved = stub.docs.get("downloads.json") ?? "";
   assert.ok(saved.includes("regular2"));

@@ -538,6 +538,33 @@ void AnnounceStrayTab(NNCoreTab *tab, int tries) {
   });
 }
 
+// A tab Chrome made that no view of the app asked for (a window Chrome made, an extension's tab in a window paged to
+// another profile): to the app's windows, as a tab Chrome made. A regular tab goes through a view of its own profile,
+// else the extensions module, which opens it in a window of its profile; a private tab to a private window of its
+// session, else to a private window the app opens for it ("incognito") from the profile it's off the record of, never
+// into a normal window or another profile's.
+void HandOffTab(NNCoreTab *tab) {
+  NNCoreProfile *profile = tab.profile;
+  // A profile on its way out (the last private window just closed) has no profile to show it under.
+  if (!profile) return (void)dispatch_async(dispatch_get_main_queue(), ^{ [tab closeNow]; });
+  NNCoreWebView *view = [NNCoreWindowController hostingViewForProfile:profile];
+  if (view || !profile.offTheRecord) {
+    // A view of the tab's own profile announces it. With none (a launch on the New Tab page, or only another
+    // profile's pages shown, which would adopt it under their profile), the extensions module does, live.
+    // A private profile's view is one of its session's windows, whatever its own private name.
+    if (view && ([view.profile isEqualToString:nncore_host::ProfileName(profile)] ||
+                 nncore_host::IsOffTheRecordOf(profile, view.profile)))
+      [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
+    else
+      AnnounceStrayTab(tab, 0);
+    return;
+  }
+  if (!(view = [NNCoreWindowController hostingViewForProfile:nil])) return;
+  // No window of its session yet: the app opens a private window of the profile it's off the record of, which takes
+  // the tab live.
+  [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"incognito"];
+}
+
 }  // namespace
 
 // MARK: - NNCoreWindowController
@@ -667,31 +694,8 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   [NNCoreTabStrip changedInWindow:self profile:tab.profile];
   // The app's own (a WebView opening its tab, or adopting one): the view attaches it itself.
   if (_hostChanges > 0 || [NNCoreTabs viewForTab:tab]) return;
-  if (_stray) {
-    // A window Chrome made (chrome.windows.create, Open Link in Incognito Window): the tab goes to the app's windows,
-    // as a tab Chrome made. A private tab goes to a private window showing its profile, else to a private window the
-    // app opens for it ("incognito"), never into a normal window.
-    NNCoreProfile *profile = tab.profile;
-    // A profile on its way out (the last private window just closed) has no profile to show it under.
-    if (!profile) return (void)dispatch_async(dispatch_get_main_queue(), ^{ [tab closeNow]; });
-    NNCoreWebView *view = [NNCoreWindowController hostingViewForProfile:profile];
-    if (view || !profile.offTheRecord) {
-      // A view of the tab's own profile announces it. With none (a launch on the New Tab page, or only another
-      // profile's pages shown, which would adopt it under their profile), the extensions module does, live.
-      // A private profile's view is one of its session's windows, whatever its own private name.
-      if (view && ([view.profile isEqualToString:nncore_host::ProfileName(profile)] ||
-                   nncore_host::IsOffTheRecordOf(profile, view.profile)))
-        [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
-      else
-        AnnounceStrayTab(tab, 0);
-      return;
-    }
-    if (!(view = [NNCoreWindowController hostingViewForProfile:nil])) return;
-    // No window of its session yet: the app opens a private window of the profile it's off the record of, which
-    // takes the tab live.
-    [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"incognito"];
-    return;
-  }
+  // A window Chrome made (chrome.windows.create, Open Link in Incognito Window): the tab goes to the app's windows.
+  if (_stray) return HandOffTab(tab);
   NNCoreWebView *openerView = [self viewFor:opener];
   if ([disposition isEqualToString:@"popup"] && [tab respondsToSelector:@selector(popupFeatures)]) {
     // A sized window.open (OAuth, payments): a window of its own, not a tab.
@@ -700,19 +704,14 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
   if (openerView) {
     // A page's popup, target=_blank or ⌘-click: placed by the app's opener rules.
     [openerView openedTab:tab adoptId:[NNCoreTabs offerTab:tab] disposition:nncore_host::AppDisposition(disposition)];
+  } else if (NNCoreWebView *view = [self anyShownViewForProfile:tab.profile]) {
+    // A tab Chrome made on its own (an extension's tabs.create): the app takes Chrome's place for it, through a shown
+    // view of its own profile in this window.
+    [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
   } else {
-    // A tab Chrome made on its own (an extension's tabs.create): the app takes Chrome's place for it, through a view
-    // of this window; with none, through the extensions module (the app opens the URL itself).
-    NNCoreWebView *view = [self anyShownViewForProfile:tab.profile] ?: [self anyView];
-    if (view) {
-      [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
-    } else if (NNCoreServices.extensionsHandler) {
-      NNCoreServices.extensionsHandler(@"tabs", @{
-        @"action" : @"open", @"url" : tab.url ?: @"", @"profile" : nncore_host::ProfileName(tab.profile), @"active" : @YES,
-        @"window" : NSNull.null, @"extensionId" : @""
-      });
-      [tab closeNow];
-    }
+    // None here (the window shows another profile now): as a tab of a window Chrome made, so it never lands under
+    // another profile's page, where it would keep its own profile's cookies under the other's name.
+    HandOffTab(tab);
   }
 }
 

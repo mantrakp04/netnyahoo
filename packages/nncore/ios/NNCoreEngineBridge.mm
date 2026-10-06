@@ -40,6 +40,15 @@ NSString *ProfileNamed(NSString *dir) {
   return [name hasPrefix:@"Profile "] ? [name substringFromIndex:8] : @"";
 }
 
+// The engine's conventions (public/nn_engine.h NN_ENGINE_ABI_VERSION); 0 if it can't say.
+int EngineABI() {
+  static int abi = [] {
+    auto version = (nn_engine_abi_version_t)Symbol("nn_engine_abi_version");
+    return version ? version() : 0;
+  }();
+  return abi;
+}
+
 NSMutableDictionary<NSString *, NSMutableArray *> *Observers() {
   static NSMutableDictionary *observers = [NSMutableDictionary dictionary];
   return observers;
@@ -70,14 +79,30 @@ void InstallSink() {
 + (void)call:(NSString *)name profile:(NSString *)profile args:(NSString *)args completion:(void (^)(NSString *))completion {
   auto call = (nn_engine_call_t)Symbol(name.UTF8String);
   if (!call) return completion(JSON(@{@"error" : [NSString stringWithFormat:@"the engine has no %@", name]}));
-  // A private window's calls are its regular profile's (the engine finds a profile by its path, which an
-  // off-the-record profile shares). Those that would clear that profile's data or keep a private window's choice in it
-  // are refused: a private session's data and settings stay its own and go with it.
-  static NSSet<NSString *> *privateRefused = [NSSet setWithArray:@[
-    @"nn_site_data_clear", @"nn_site_settings_set", @"nn_site_settings_reset", @"nn_external_apps_remove", @"nn_browsing_data_clear"
-  ]];
-  if (nncore_host::IsIncognito(profile) && [privateRefused containsObject:name])
-    return completion(JSON(@{@"error" : @"private profile"}));
+  // A private window's calls name its regular profile (the engine finds a profile by its path, which an
+  // off-the-record profile shares). Site settings, site data and zoom are its session's own, as in Chrome's incognito:
+  // they run on that profile's off-the-record profile ("offTheRecord", engine ABI 2) and go with the session. Before
+  // ABI 2 they would have acted on the regular profile, so the ones that change something are refused there; so are
+  // the regular profile's own lists and browsing data, which a private window never changes.
+  if (nncore_host::IsIncognito(profile)) {
+    static NSSet<NSString *> *session = [NSSet setWithArray:@[
+      @"nn_site_settings_get", @"nn_site_settings_origins", @"nn_site_settings_set", @"nn_site_settings_reset",
+      @"nn_site_data_clear", @"nn_zoom_list", @"nn_zoom_set"
+    ]];
+    static NSSet<NSString *> *changes = [NSSet setWithArray:@[
+      @"nn_site_settings_set", @"nn_site_settings_reset", @"nn_site_data_clear", @"nn_zoom_set", @"nn_external_apps_remove",
+      @"nn_browsing_data_clear"
+    ]];
+    if ([session containsObject:name] && EngineABI() >= 2) {
+      NSData *bytes = [(args.length ? args : @"{}") dataUsingEncoding:NSUTF8StringEncoding];
+      NSMutableDictionary *parsed = [[NSJSONSerialization JSONObjectWithData:bytes options:0 error:nil] mutableCopy];
+      if (![parsed isKindOfClass:NSMutableDictionary.class]) return completion(JSON(@{@"error" : @"bad arguments"}));
+      parsed[@"offTheRecord"] = @YES;
+      args = JSON(parsed);
+    } else if ([changes containsObject:name]) {
+      return completion(JSON(@{@"error" : @"private profile"}));
+    }
+  }
   NSString *data = nncore_host::OriginalProfileName(profile);
   void (^done)(NSString *) = [completion copy];
   NSString *argsCopy = [args copy];

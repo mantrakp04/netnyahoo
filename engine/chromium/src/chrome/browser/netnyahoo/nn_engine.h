@@ -49,12 +49,20 @@ class Reply {
 
 // One call's inputs. Replies with an error at construction when the profile
 // isn't loaded or the arguments aren't a JSON object; check it before use.
+// Whether a call may run on a private window's session ("offTheRecord": true
+// in its arguments, public/nn_engine.h): only calls whose state Chrome keeps
+// per off-the-record profile (site settings, site data, zoom) allow it; any
+// other refuses the flag rather than act on the regular profile's data or on
+// a service an off-the-record profile doesn't have.
+enum class OffTheRecord { kRefuse, kAllow };
+
 class Call {
  public:
   Call(const char* profile_dir,
        const char* args_json,
        nn_engine_reply_t reply,
-       void* context);
+       void* context,
+       OffTheRecord off_the_record = OffTheRecord::kRefuse);
   Call(const Call&) = delete;
   Call& operator=(const Call&) = delete;
   ~Call();

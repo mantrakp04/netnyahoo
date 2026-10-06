@@ -153,8 +153,10 @@ std::set<std::string> ExceptionOrigins(HostContentSettingsMap* map,
   }
   for (const ContentSettingPatternSource& rule :
        map->GetSettingsForOneType(type)) {
+    // A private session's own exceptions count in its map (an off-the-record
+    // profile's: a private window's site settings), never in the regular one.
     if (rule.source != content_settings::mojom::ProviderType::kPrefProvider ||
-        rule.incognito) {
+        (rule.incognito && !map->IsOffTheRecord())) {
       continue;
     }
     std::string origin = OriginOfPattern(rule.primary_pattern);
@@ -229,7 +231,8 @@ GURL SiteFor(Call& call) {
 }  // namespace netnyahoo
 
 NN_ENGINE_CALL(nn_site_settings_get) {
-  netnyahoo::Call call(profile_dir, args_json, reply, context);
+  netnyahoo::Call call(profile_dir, args_json, reply, context,
+                       netnyahoo::OffTheRecord::kAllow);
   if (!call) {
     return;
   }
@@ -257,7 +260,8 @@ NN_ENGINE_CALL(nn_site_settings_get) {
 }
 
 NN_ENGINE_CALL(nn_site_settings_set) {
-  netnyahoo::Call call(profile_dir, args_json, reply, context);
+  netnyahoo::Call call(profile_dir, args_json, reply, context,
+                       netnyahoo::OffTheRecord::kAllow);
   if (!call) {
     return;
   }
@@ -291,7 +295,8 @@ NN_ENGINE_CALL(nn_site_settings_set) {
 }
 
 NN_ENGINE_CALL(nn_site_settings_reset) {
-  netnyahoo::Call call(profile_dir, args_json, reply, context);
+  netnyahoo::Call call(profile_dir, args_json, reply, context,
+                       netnyahoo::OffTheRecord::kAllow);
   if (!call) {
     return;
   }
@@ -311,7 +316,8 @@ NN_ENGINE_CALL(nn_site_settings_reset) {
 }
 
 NN_ENGINE_CALL(nn_site_settings_origins) {
-  netnyahoo::Call call(profile_dir, args_json, reply, context);
+  netnyahoo::Call call(profile_dir, args_json, reply, context,
+                       netnyahoo::OffTheRecord::kAllow);
   if (!call) {
     return;
   }
@@ -329,7 +335,8 @@ NN_ENGINE_CALL(nn_site_settings_origins) {
 }
 
 NN_ENGINE_CALL(nn_site_data_clear) {
-  netnyahoo::Call call(profile_dir, args_json, reply, context);
+  netnyahoo::Call call(profile_dir, args_json, reply, context,
+                       netnyahoo::OffTheRecord::kAllow);
   if (!call) {
     return;
   }

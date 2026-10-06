@@ -47,9 +47,14 @@ Profile* ZoomProfile(const Call& call) {
         return true;
       });
   // Only a tab of the profile the call names, or of one of its private
-  // profiles.
-  return found && found->GetOriginalProfile() == call.profile() ? found
-                                                                  : nullptr;
+  // profiles; a private session's call ("offTheRecord"), only its own tabs.
+  if (!found) {
+    return nullptr;
+  }
+  if (call.profile()->IsOffTheRecord()) {
+    return found == call.profile() ? found : nullptr;
+  }
+  return found->GetOriginalProfile() == call.profile() ? found : nullptr;
 }
 
 // Tells the app about every host zoom change in the profile.
@@ -80,7 +85,8 @@ class ZoomState : public ProfileState {
 }  // namespace netnyahoo
 
 NN_ENGINE_CALL(nn_zoom_list) {
-  netnyahoo::Call call(profile_dir, args_json, reply, context);
+  netnyahoo::Call call(profile_dir, args_json, reply, context,
+                       netnyahoo::OffTheRecord::kAllow);
   if (!call) {
     return;
   }
@@ -102,7 +108,8 @@ NN_ENGINE_CALL(nn_zoom_list) {
 }
 
 NN_ENGINE_CALL(nn_zoom_set) {
-  netnyahoo::Call call(profile_dir, args_json, reply, context);
+  netnyahoo::Call call(profile_dir, args_json, reply, context,
+                       netnyahoo::OffTheRecord::kAllow);
   if (!call) {
     return;
   }

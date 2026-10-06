@@ -1,7 +1,7 @@
 import type { Download } from "@netnyahoo/nncore";
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
-import { isIncognitoProfile, privateSession } from "./model";
+import { engineProfile, isIncognitoProfile, privateSession } from "./model";
 import { originalProfile } from "./small";
 import type { FindState, WindowUi } from "./types";
 
@@ -35,11 +35,14 @@ export function downloadSession(d: Pick<Download, "profile" | "offTheRecord">): 
   return d.profile && isIncognitoProfile(d.profile) ? privateSession(d.profile) : null;
 }
 
-// A private window lists its session's downloads (every private window of its profile's), a regular one none of them.
+// A window lists its profile's downloads, as Chrome's per-profile list: a private window its session's (every private
+// window of its profile's), a regular one the regular downloads of the profile it shows (an older one with no profile:
+// Personal's).
 export function downloadVisibleIn(d: Pick<Download, "profile" | "offTheRecord">, window: { incognito: boolean; profileId: string } | undefined): boolean {
   if (!window) return false;
   const session = downloadSession(d);
-  return window.incognito ? session !== null && session === privateSession(window.profileId) : session === null;
+  if (window.incognito) return session !== null && session === privateSession(window.profileId);
+  return session === null && (d.profile ?? "") === engineProfile(window.profileId);
 }
 
 const sessionOpen = (s: Pick<BrowserState, "windows">, session: string) =>

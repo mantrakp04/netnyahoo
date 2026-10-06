@@ -74,7 +74,8 @@ void Reply::Error(std::string_view message) {
 Call::Call(const char* profile_dir,
            const char* args_json,
            nn_engine_reply_t reply,
-           void* context)
+           void* context,
+           OffTheRecord off_the_record)
     : reply_(reply, context) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   if (args_json && *args_json) {
@@ -89,6 +90,25 @@ Call::Call(const char* profile_dir,
   profile_ = ProfileAt(profile_dir ? profile_dir : "");
   if (!profile_) {
     reply_.Error("profile not loaded");
+    return;
+  }
+  // A private window's call: the profile's primary off-the-record profile (its
+  // session, as Chrome's incognito windows), never the profile itself. None
+  // while no private window of the profile is open, or once Chrome is
+  // destroying it (its services are going: nothing may observe them now).
+  if (args_.FindBool("offTheRecord").value_or(false)) {
+    if (off_the_record != OffTheRecord::kAllow) {
+      profile_ = nullptr;
+      reply_.Error("not for a private session");
+      return;
+    }
+    profile_ = profile_->GetPrimaryOTRProfile(/*create_if_needed=*/false);
+    if (profile_ && profile_->ShutdownStarted()) {
+      profile_ = nullptr;
+    }
+    if (!profile_) {
+      reply_.Error("no private session");
+    }
   }
 }
 
@@ -150,6 +170,9 @@ void Emit(std::string_view topic, Profile* profile, base::DictValue payload) {
   }
   if (profile) {
     payload.Set("profile", profile->GetOriginalProfile()->GetPath().value());
+    if (profile->IsOffTheRecord()) {
+      payload.Set("offTheRecord", true);
+    }
   }
   g_sink(g_sink_context, std::string(topic).c_str(), ToJSON(payload).c_str());
 }
