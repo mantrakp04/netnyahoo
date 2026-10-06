@@ -101,6 +101,26 @@ the JS time of the act does.
 Typing and hover don't grow with the tab count; the store-driven interactions do, almost entirely through the per-tab
 subscriptions.
 
+**After the panes (`3963c7f0`, `33e88e6f`) and the rows (`96fb0ab0`)**, 2 runs, probe `renders,selectors,listeners`
+(`out/before-*` is the tree before the rows, the other the same tree with them). Subscriptions notified and selectors
+run per action, 20 tabs | 100 tabs:
+
+| | before rows | after rows |
+|---|---:|---:|
+| live subscriptions | 523 \| 1,643 | 409 \| 1,129 |
+| tab switch, click: notified (selectors) | 398 (637) \| 878 (1,117) | 248 (481) \| 248 (481) |
+| tab switch, shortcut: notified (selectors) | 200 (456) \| 440 (696) | 128 (374) \| 128 (374) |
+| page load, background: notified (selectors) | 2,495 (2,604) \| 5,875 (5,987) | 1,401 (1,485) \| 1,401 (1,485) |
+| page load, active: notified | 2,462 \| 7,703 | 1,430 \| 2,067 |
+
+A switch and a background load now notify the same number of subscriptions at any tab count: a sidebar row follows its
+own tab through `store/tabWatch.ts` (`useTabState`: tab, live state, active, selected; `useWatched` for the per-tab
+stores) and an icon follows its own page (`useFaviconView`), so what is left is the window's fixed ~80 subscriptions
+(`ContentCard`, `ThemeScope`, `GroupBlock`, `PinnedTile`, ...). What still grows with the tab count: the per-tab hooks
+themselves (about 10 per tab, woken only by their tab), one `changed(key)` identity check per watched tab on each
+store update that touches `tabs`, `live`, `windows` or `selection`, and `ContentCard`'s `mounted` and `shown` selectors
+(O(tabs) whenever a tab object changes: 1.3 ms of selector time per background load at 20 tabs, 7.4 ms at 100).
+
 ## Per interaction: the top 10 components and what they render for
 
 Before the fixes, 20 tabs, per action. `why`: `props:x` a prop changed, `fn:x` a new function with the same behaviour,
@@ -457,6 +477,8 @@ and the unit tests (106) pass; nothing visible changes.
 | `cbfeb1ab` | Command bar: AddChip, dictation, Go/Send take stable callbacks (the latest-render ref the suggestion rows already use); AddChip, GoButton, SendButton and IconButton are memoized | keystroke: 45 → 25 renders, 205 → 170 hooks, 31 → 17 native view updates; Cmd-L: 35 → 15 renders; new tab page field: 43 → 25 |
 | `9b7eab76` | Memoized the leaves that re-rendered with the same props: group `Entry`, `NextMeetingBadge`, `GlassFill`, `ZoomIndicator`, `TranslateButton` | wasted per action: switch 2.5 → 0.5 (click), 5 → 1 (shortcut), Enter 18 → 15 |
 | `861b3b73` | ContentCard: mounted-tabs and pane-key selectors skip the O(n log n) rebuild when a switch only rewrote `lastActiveAt` | at 100 tabs the card's selector time per action: click 2.38 → 1.43 ms, shortcut 1.95 → 0.97 ms, Cmd-T 1.71 → 1.36 ms (probe on; counts unchanged) |
+
+| `96fb0ab0` | Sidebar rows wake only for their own tab: `useTabState` (tab, live, active, selected), keyed watchers for the sleeping, PiP, page-state and renaming reads, `useFaviconView` (icon and theme in one subscription, woken by its page), the dark flag from `ThemeScope` as a context, one drag-mark subscription | 100 tabs: tab switch notified 878 → 248 (click), 440 → 128 (shortcut); background load 5,875 → 1,401; live subscriptions 1,643 → 1,129; the same counts at 20 and 100 tabs |
 
 Tooling commits: `ff22f2b3`, `bc34bc05`, `845fc67e` (the census itself).
 
