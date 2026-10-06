@@ -165,14 +165,43 @@ function load(engine: string): Promise<void> {
   return state.running;
 }
 
+// Chrome sends its changes in batches (a page's visit with its redirects and title, ~20 ms of them per event): one
+// event's changes go into the view together, one store update per profile, as soon as the event's own task is done
+// (a microtask: no other native event, timer or user action lands in between). Code already waiting on a promise
+// can run first, as it could before any change's own dispatch.
+let pending: HistoryChange[] = [];
+
 function changed(change: HistoryChange) {
-  const engine = change.profile;
-  if (migrating.has(engine)) return;
-  const running = loads.get(engine);
-  if (running) return void running.queued.push(change);
-  if (!loaded.has(engine)) return;
-  if (change.kind === "deleted" && change.all) return void load(engine);
-  setView(engine, applyHistoryChange(viewOf(engine), change));
+  if (!pending.length) queueMicrotask(applyPending);
+  pending.push(change);
+}
+
+function applyPending() {
+  const changes = pending;
+  pending = [];
+  const views = new Map<string, HistoryEntry[]>();
+  const show = () => {
+    for (const [engine, list] of views) setView(engine, list);
+    views.clear();
+  };
+  for (const change of changes) {
+    const engine = change.profile;
+    if (migrating.has(engine)) continue;
+    const running = loads.get(engine);
+    if (running) {
+      running.queued.push(change);
+      continue;
+    }
+    if (!loaded.has(engine)) continue;
+    if (change.kind === "deleted" && change.all) {
+      // Read again from Chrome: what came before it is in the view first, what comes after is queued for the read.
+      show();
+      void load(engine);
+      continue;
+    }
+    views.set(engine, applyHistoryChange(views.get(engine) ?? viewOf(engine), change));
+  }
+  show();
 }
 
 // MARK: The old file
@@ -269,6 +298,7 @@ export function startHistory() {
     stopped = true;
     events.remove();
     stop();
+    pending = [];
     loaded.clear();
     legacyMoved = false;
   };
