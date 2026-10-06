@@ -26,10 +26,12 @@ export function originalProfile(s: Pick<BrowserState, "profiles">, w: BrowserWin
 }
 
 // The profile of the window used last: links from other apps and a new Small Yahu open in it, never privately. As
-// Chrome's AppController keeps it (lastProfile, set when a window becomes main; for a private window, its original
-// profile, which stays when that window closes; kept across a relaunch as Chrome's last-used profile): ui.lastProfileId,
-// set when a window takes focus or the focused one pages to another profile, and saved with the session. A deleted one
-// falls back to the windows in focus order, then the default profile.
+// Chrome's AppController keeps it (lastProfile, set when a window becomes main; links from other apps open in its
+// original profile, never incognito; kept across a relaunch as Chrome's last-used profile): ui.lastProfileId, set when
+// a window becomes key (a private window counting as its original profile) or the key one pages to another profile.
+// It stays when a private window closes, until another window becomes key; the window in front closing hands it to
+// the next one. It is saved with the session, so it holds after a relaunch until a restored window becomes key. A
+// deleted one falls back to the windows in focus order, then the default profile.
 export function lastActiveProfile(s: BrowserState): string {
   const last = s.ui.lastProfileId;
   if (last && s.profiles[last]) return last;

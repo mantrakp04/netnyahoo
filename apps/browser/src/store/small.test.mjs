@@ -151,7 +151,8 @@ test("the last active profile survives a quit and relaunch", () => {
   assert.equal(saved.lastProfileId, work);
   S().hydrate(saved);
   assert.equal(S().ui.lastProfileId, work);
-  // The private window isn't restored and B (Personal) was the last regular window in front; Work still wins.
+  // Before any restored window becomes key (or with none restored), the remembered Work wins over B (Personal), the
+  // last regular window in front; the private window isn't restored.
   assert.equal(S().ui.focusedWindowId, b);
   openExternalUrls(["https://after-relaunch.example/"]);
   assert.equal(lastSmall().profileId, work);
