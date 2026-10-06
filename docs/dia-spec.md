@@ -169,6 +169,27 @@ Measured materials (our own non-activating panels over solid backdrops; sRGB; ac
   ratio 0.79 (rms 2.4 % of the travel hiding, 3.2 % showing; the recorder delivered frames 17–33 ms apart, so ±1
   frame). 90 % of the travel in 100 ms, a 1–2 pt overshoot at ~0.15 s, at rest by ~0.27 s.
 
+#### Arc note: hiding the sidebar with the address bar in it (owner's Arc recording 2026-10-06)
+
+Arc, not Dia: what our Arc layout (Settings › address bar in the sidebar) does. The recording is a variable-rate 240 fps
+screen capture (frames 8–33 ms apart, most 17), so timings are ±1 frame. Edges traced on rows of the page at 2x.
+
+- Hidden: the page card fills the window; no toolbar row, no traffic lights, no back/forward/address. Arc's card inset is
+  10 pt on every side, docked or hidden (ours keeps Dia's 6/7).
+- Peek (pointer at the window's left edge): a floating panel over the page, which doesn't move. Inset 5 pt from the
+  window's left, top and bottom edges (ours keeps Dia's 6/6/7), 227.5 pt wide (= the docked sidebar's width), rounded,
+  dark, a 0.5 pt light border; it holds the traffic lights, the sidebar button, back/forward/reload, the URL field and the
+  tabs. It slides in from past the window's edge with no fade, on a spring: response 0.185 s, damping 0.77 (three peeks,
+  rms 2.1 % of the travel): 93 % in 66 ms, a 1.5 % (3.5 pt) overshoot at ~0.12 s, at rest by ~0.22 s. It leaves the same
+  way, ease-in-out over ~150 ms (two, rms 3.7 %).
+- Docking from the peek (its sidebar button): instant. The panel becomes the docked sidebar and the page is laid out
+  narrower in one frame (a 2 pt settle over three frames after).
+- Hiding the docked sidebar (its button): the sidebar and the card's left edge slide out together, the page laid out at
+  every step, much quicker than Dia: ease-out cubic, 100 ms (two hides, rms 1.3 %; Dia's spring misses it by 10 %).
+- Showing from hidden without the peek (⌘S) isn't in the recording: ours uses Dia's spring.
+- Ours (`dockMotion.ts`: `ARC_PEEK_SPRING`, `ARC_PEEK_OUT_MS`, `ARC_HIDE_MS`; `dockMotion.test.mjs` holds the traced
+  points), behind `sidebarSlide`.
+
 ## New Tab page
 
 - The card is translucent (no black fill). A glass orb (Dia's logo, 68.5pt; see below) sits above the bar.

@@ -30,7 +30,9 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
   const onCancel = () => useBrowser.getState().closePanel(windowId);
 
   if (anchor.sidebar) {
-    const width = Math.min(Math.max(DROPDOWN_MIN_WIDTH, anchor.width + DROPDOWN_PAST_FIELD), room(anchor.left, DROPDOWN_MIN_WIDTH));
+    // A hidden sidebar (Arc's layout keeps the bar in it) is out of the window: the bar drops from the window's corner.
+    const left = Math.max(WINDOW_MARGIN, anchor.left);
+    const width = Math.min(Math.max(DROPDOWN_MIN_WIDTH, anchor.width + DROPDOWN_PAST_FIELD), room(left, DROPDOWN_MIN_WIDTH));
     return (
       <Surface
         fill={hex(theme.panel)}
@@ -41,7 +43,7 @@ export function CommandPanel({ windowWidth }: { windowWidth: number }) {
         shadowOpacity={theme.panelShadowOpacity}
         shadowRadius={24}
         shadowOffset={[0, 10]}
-        style={{ position: "absolute", top: anchor.top, left: anchor.left, width }}
+        style={{ position: "absolute", top: anchor.top, left, width }}
       >
         <OutsidePressArea onOutsidePress={onCancel}>
           <Omnibox key={activeId} variant="sidebar" tabId={activeId} initialText={panel.initialText} onCancel={onCancel} />

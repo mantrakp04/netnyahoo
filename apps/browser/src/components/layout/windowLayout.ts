@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { switchOn } from "../../lib/killSwitches";
 import { layout } from "../../lib/theme";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
@@ -8,9 +9,16 @@ export function useTabLayout(): "sidebar" | "top" {
   return useBrowser((s) => s.windows[windowId]?.tabLayout ?? s.settings.tabLayout);
 }
 
+// Arc's layout: the address bar stays in the sidebar while it's hidden, as Arc's does (the card has no toolbar row and
+// the bar shows in the peek panel). With the slide's switch off it moves to a toolbar on the card, as before.
 export function addressBarInSidebar(s: BrowserState, windowId: string): boolean {
   const w = s.windows[windowId];
-  return !!w && s.settings.addressBar === "sidebar" && w.sidebarOpen && (w.tabLayout ?? s.settings.tabLayout) === "sidebar";
+  return (
+    !!w &&
+    s.settings.addressBar === "sidebar" &&
+    (w.sidebarOpen || switchOn("sidebarSlide")) &&
+    (w.tabLayout ?? s.settings.tabLayout) === "sidebar"
+  );
 }
 
 export function useAddressBarInSidebar(): boolean {

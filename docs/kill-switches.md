@@ -47,7 +47,7 @@ the updater both read it). A test instance has no updater, so it never fetches.
 | `updatePrewarm` | a staged update waits for the quit without the hidden first run (read natively: `KillSwitch` in `Updater.swift`) | yes |
 | `launchTab` | session.json keeps no launch hint and a launch claims nothing: the restored page loads once its window's content mounts | no |
 | `focusedWindowFirst` | a launch opens every window at once, the focused one last | no |
-| `sidebarSlide` | hiding or showing the sidebar jumps instead of sliding (it stays mounted either way) | yes |
+| `sidebarSlide` | hiding or showing the sidebar jumps instead of sliding (it stays mounted either way); with the address bar in the sidebar, a hidden sidebar's bar moves to a toolbar on the card and the peek is Dia's | yes |
 | `sidebarSlideLean` | every step of the slide lays the traffic lights out (AppKit then rewalks the window's views); read natively, once a launch: `ChromeWindows.swift` | no |
 
 ## Staged rollout

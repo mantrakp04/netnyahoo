@@ -1,6 +1,6 @@
 import { setTrafficLightsCenter, Surface } from "@netnyahoo/shell";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
-import { AccessibilityInfo, Animated, StyleSheet, View } from "react-native";
+import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 import { switchOn } from "../../lib/killSwitches";
 import { hex, layout, useTheme } from "../../lib/theme";
@@ -9,7 +9,17 @@ import { useWindowId } from "../../store/hooks";
 import { Sidebar } from "../Sidebar";
 import { useSidebarUi } from "../sidebar/state";
 import { ProfileSwipe } from "./ProfileSwipe";
-import { DOCK_SPRING, lightsCenter, setDockMoving, springConfig, useDockMotion } from "./dockMotion";
+import {
+  ARC_HIDE_MS,
+  devPeeks,
+  DOCK_SPRING,
+  lightsCenter,
+  peekShown,
+  setDockMoving,
+  setPeekShown,
+  springConfig,
+  useDockMotion,
+} from "./dockMotion";
 import { usePeek } from "./usePeek";
 
 let reduceMotion = false;
@@ -24,9 +34,10 @@ const SPRING = springConfig(DOCK_SPRING);
 /**
  * The window's dock position: 1 with the sidebar shown, 0 with it hidden, springing between them as Dia's does when
  * `open` changes (never on mount: a window restored with its sidebar hidden starts hidden). JS-driven, because the
- * card's left edge is layout: the page is laid out at every step, its right edge never moves.
+ * card's left edge is layout: the page is laid out at every step, its right edge never moves. `arc` (the address bar in
+ * the sidebar): Arc's hide (a 100 ms ease-out), and docking from the peek panel is instant (dockMotion.ts).
  */
-function useSidebarDock(open: boolean, animate: boolean): Animated.Value {
+function useSidebarDock(open: boolean, animate: boolean, arc: boolean): Animated.Value {
   const windowId = useWindowId();
   const dock = useRef(new Animated.Value(open ? 1 : 0)).current;
   const was = useRef(open);
@@ -39,15 +50,25 @@ function useSidebarDock(open: boolean, animate: boolean): Animated.Value {
       setDockMoving(windowId, false);
       return;
     }
+    if (arc && open && peekShown(windowId)) {
+      // Arc: the peek panel becomes the sidebar where it is, and the page is laid out narrower at once.
+      dock.stopAnimation();
+      dock.setValue(1);
+      setDockMoving(windowId, false);
+      return;
+    }
     setDockMoving(windowId, true);
     // Reversing mid-way starts from where it is, with the velocity it had (React Native's spring carries it over).
-    Animated.spring(dock, {
-      toValue: open ? 1 : 0,
-      ...SPRING,
-      restDisplacementThreshold: 0.001,
-      restSpeedThreshold: 0.01,
-      useNativeDriver: false,
-    }).start(({ finished }) => finished && setDockMoving(windowId, false));
+    (arc && !open
+      ? Animated.timing(dock, { toValue: 0, duration: ARC_HIDE_MS, easing: Easing.out(Easing.cubic), useNativeDriver: false })
+      : Animated.spring(dock, {
+          toValue: open ? 1 : 0,
+          ...SPRING,
+          restDisplacementThreshold: 0.001,
+          restSpeedThreshold: 0.01,
+          useNativeDriver: false,
+        })
+    ).start(({ finished }) => finished && setDockMoving(windowId, false));
   }, [open]);
   useEffect(() => () => setDockMoving(windowId, false), []);
   return dock;
@@ -73,13 +94,20 @@ export function DockedLayout({
 }) {
   const windowId = useWindowId();
   // One subscription to the store for both (each store update asks every subscriber; the window had two before).
-  const [open, savedWidth] = useBrowser(
+  const [open, savedWidth, addressBar] = useBrowser(
     useShallow(
-      (s) => [s.windows[windowId]?.sidebarOpen ?? true, s.settings.sidebarWidth ?? layout.sidebarWidth] as const,
+      (s) =>
+        [
+          s.windows[windowId]?.sidebarOpen ?? true,
+          s.settings.sidebarWidth ?? layout.sidebarWidth,
+          s.settings.addressBar === "sidebar",
+        ] as const,
     ),
   );
   const width = useSidebarUi((u) => u.dragWidth[windowId]) ?? savedWidth;
-  const dock = useSidebarDock(open, !topTabs && !fullscreen);
+  // Arc's layout (the address bar in the sidebar): Arc's hide and peek (dockMotion.ts). Off with the slide's switch.
+  const arc = addressBar && !topTabs && switchOn("sidebarSlide");
+  const dock = useSidebarDock(open, !topTabs && !fullscreen, arc);
   const left = useMemo(
     () =>
       dock.interpolate({
@@ -107,7 +135,7 @@ export function DockedLayout({
         {children}
       </Animated.View>
       {/* After the card: the peek panel goes over the page. Docked, it ends where the card starts. */}
-      {!topTabs && <SidebarDock dock={dock} open={open} width={width} fullscreen={fullscreen} />}
+      {!topTabs && <SidebarDock dock={dock} open={open} width={width} fullscreen={fullscreen} arc={arc} />}
     </>
   );
 }
@@ -122,17 +150,23 @@ function SidebarDock({
   open,
   width,
   fullscreen,
+  arc,
 }: {
   dock: Animated.Value;
   open: boolean;
   width: number;
   fullscreen: boolean;
+  arc: boolean;
 }) {
   const theme = useTheme();
   const windowId = useWindowId();
   const moving = useDockMotion((m) => !!m.moving[windowId]);
-  const peek = usePeek(!open && !moving && !fullscreen);
+  const peek = usePeek(!open && !moving && !fullscreen, arc);
   const peeking = !open && !fullscreen && peek.live;
+  useEffect(() => setPeekShown(windowId, peek.live), [windowId, peek.live]);
+  // Development: the dev harness opens and closes the peek without a pointer (nnLayout.peek[windowId].show()).
+  if (__DEV__) devPeeks[windowId] = peek;
+  useEffect(() => () => setPeekShown(windowId, false), [windowId]);
   const panel = useRef(false);
   if (peeking) panel.current = true;
   // Hit testing and hover tracking go by frames, not transforms: at rest a hidden sidebar is moved out of the window,
@@ -159,8 +193,10 @@ function SidebarDock({
   // adding a view re-adds its siblings to their superview (the card with its pages, or the sidebar).
   const strip = useRef(false);
   if (!open) strip.current = true;
+  // Dia's panel fades as it slides; Arc's only slides.
+  const fade = peeking && !arc;
   const peekStyle = {
-    opacity: peeking ? peek.slide : 1,
+    opacity: fade ? peek.slide : 1,
     transform: [{ translateX: peeking ? peekIn : 0 }],
   };
 
@@ -195,7 +231,7 @@ function SidebarDock({
         {panel.current && (
           <Animated.View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, peekStyle, { opacity: peeking ? peek.slide : 0 }]}
+            style={[StyleSheet.absoluteFill, peekStyle, { opacity: fade ? peek.slide : peeking ? 1 : 0 }]}
           >
             <Surface
               fill={hex(theme.windowTint[0])}

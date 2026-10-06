@@ -11,6 +11,22 @@ import { create } from "zustand";
  */
 export const DOCK_SPRING = { response: 0.215, damping: 0.79 } as const;
 
+/**
+ * Arc's motions with the address bar in the sidebar, from the owner's recording of Arc (2026-10-06, the panel's and the
+ * card's edges traced frame by frame; docs/dia-spec.md, "Arc note"). The peek slides a floating panel in from past the
+ * window's edge on a spring (three peeks: response 0.185 s, damping 0.77, rms 2.1 % of the travel; a 1.6 % overshoot)
+ * and out on an ease-in-out (two: 150 ms, rms 3.7 %). Hiding the docked sidebar is quicker than Dia's: an ease-out
+ * cubic of 100 ms (two: rms 1.3 %). Docking from the peek is instant: the panel becomes the sidebar and the page is laid
+ * out narrower in one frame. Showing from hidden (⌘S) isn't in the recording: Dia's spring.
+ */
+export const ARC_PEEK_SPRING = { response: 0.185, damping: 0.77 } as const;
+export const ARC_PEEK_OUT_MS = 150;
+export const ARC_HIDE_MS = 100;
+
+/** Ease-out cubic (Arc's hide) and ease-in-out cubic (Arc's peek leaving), `u` from 0 to 1. */
+export const easeOutCubic = (u: number) => 1 - (1 - u) ** 3;
+export const easeInOutCubic = (u: number) => (u < 0.5 ? 4 * u ** 3 : 1 - (-2 * u + 2) ** 3 / 2);
+
 /** React Native's spring parameters (unit mass) for a response and damping ratio. */
 export function springConfig({ response, damping }: { response: number; damping: number }) {
   const omega = (2 * Math.PI) / response;
@@ -59,6 +75,14 @@ export function setDockMoving(windowId: string, moving: boolean) {
     moving: moving ? { ...current, [windowId]: true } : rest,
   });
 }
+
+// Windows whose peek panel is out (from the moment it starts sliding in until it has slid out): docking from it is
+// instant in Arc's layout. Read when the sidebar is shown, never rendered from.
+const peeking = new Set<string>();
+export const setPeekShown = (windowId: string, shown: boolean) => void (shown ? peeking.add(windowId) : peeking.delete(windowId));
+export const peekShown = (windowId: string) => peeking.has(windowId);
+/** Development: each window's peek, for the dev harness (nnLayout.peek[windowId].show()). */
+export const devPeeks: Record<string, { show(): void; hide(): void }> = {};
 
 // The sidebar's own button with the address bar in the sidebar (Arc's header, sidebar/AddressBar.tsx): after the traffic
 // lights (Dia's 70.75 + 27), back, forward and reload right-aligned 7 pt from the edge, 5 pt apart.

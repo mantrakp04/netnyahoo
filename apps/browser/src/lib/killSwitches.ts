@@ -58,7 +58,7 @@ export const SWITCHES = {
     live: false,
   },
   sidebarSlide: {
-    about: "Hiding or showing the sidebar (⌘S) slides it and the card's edge on Dia's spring; off, they jump (layout/SidebarDock.tsx).",
+    about: "Hiding or showing the sidebar (⌘S) slides it and the card's edge (Arc's motions and toolbar-less card with the address bar in the sidebar); off, they jump (layout/SidebarDock.tsx).",
     owner: "sidebar",
     removeBy: "2026-12-15",
     live: true,
