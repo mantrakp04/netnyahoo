@@ -148,8 +148,8 @@ app build, "JS" only a bundle.
 | 2 | **Prewarm an update before its first launch**: when Sparkle stages an update for install-on-quit (the default, `SUAutomaticallyUpdate`), run the staged copy once, hidden, with `NETNYAHOO_PREWARM=1` (exits at `main`) | first launch after an update: pre-`main` | −130 to −190 ms pre-`main` after Sparkle's own scan (calm); all of the 3–13 s when Sparkle's scan didn't take (1 of 4 updates, loaded Mac). Updates installed from the update window (relaunch at once) don't get it | low (two Codex reviews; hook after Sparkle's preparation, spawned off main, killed at quit or after 90 s) | native | done (be2ca8f7) |
 | 3 | **Fix `perf_launch`**: report process start → content on screen (the CA commit) and → the restored tab's FCP, and tag the first launch of a version | measurement | — (big session: today's metric hides 440 ms) | low | JS + native | proposed |
 | 4 | **Bound the first render of the sidebar**: mount the rows in view (~30) in the first commit, the rest after the first frame (or window the list) | first commit → content (native view creation) | 0 / −300 to −400 | medium: scroll position, drag and drop, ⌘-number shortcuts, measured heights | JS | proposed |
-| 5 | **Start the restored tab's page with the engine, not after React**: at `engineDidStart`, create the focused window's active tab's WebContents from `session.json` and navigate it; the React tab adopts it (`adoptId`, as for Chrome-made tabs) | tab navigation start (496 / 772 ms) | FCP −150 to −200 / −400 | medium: the adopt path at launch, profiles, a session restored without that tab | native + JS | proposed |
-| 6 | **Focused window first, the others after its first frame** (today the focused one opens last so it comes to front; order the rest behind it instead) | big4: window 736, key 1188 | big4: window −250, FCP −250, key −700 | low–medium: z-order, which window is key | JS + native | proposed |
+| 5 | **Start the restored tab's page with the engine, not after React**: at `engineDidStart`, create the focused window's active tab's WebContents from `session.json` and navigate it; the React tab adopts it (`adoptId`, as for Chrome-made tabs) | tab navigation start (496 / 772 ms) | FCP −150 to −200 / −400 | medium: the adopt path at launch, profiles, a session restored without that tab | native + JS | done (e172113b), switch `launchTab`; FCP gain unproven, see Done below |
+| 6 | **Focused window first, the others after its first frame** (today the focused one opens last so it comes to front; order the rest behind it instead) | big4: window 736, key 1188 | big4: window −250, FCP −250, key −700 | low–medium: z-order, which window is key | JS + native | done (c9616e01), switch `focusedWindowFirst`; proven on big4, see Done below |
 | 7 | **Defer the adjacent profile's warm tab** (and so Chrome loading the Work profile at launch) until after the first frame | big: CPU contention during the first commit | 0 / −50 to −150 | low | JS | proposed |
 | 8 | **Start React Native while Chrome starts**: create the bridge and evaluate the bundle on the JS thread from `main`, gating engine-backed native modules until `engineDidStart` | RN start (113 ms) overlapping Chrome's 170 ms | −100 to −150 / same | high: NSApp ownership, RN's main-queue module setup, LogBox | native | proposed |
 | 9 | **Trim React Native's start** (245 → 358 ms): profile the bridge setup (module registry, Expo's 30 modules, bundle read); lazy Expo modules, no main-queue setup where not needed | RN start | −30 to −60 | low–medium | native | proposed |
@@ -177,3 +177,36 @@ warm tab, gets a page at launch).
   pre-`main` time 39/52 ms with the prewarm against 175–232 ms without. Not yet exercised through a real
   install-on-quit (the first update that can show it is the one after the release that ships this code, since the
   old app runs the prewarm).
+- **c9616e01** #6 focused window first (`focusedWindowFirst`): the key window opens first and the others open behind it
+  once its content has committed (`CATransaction.flush()` first, so its frame is not held back by building the
+  rest). Timed series 2026-10-06, probe `big4` (4 windows, 8 pages), interleaved, n=8, load 6 to 12, median
+  (min–max), ms from process start; before = both switches off, same build:
+
+  | big4 | before | after | 0.2.27 |
+  | --- | --- | --- | --- |
+  | focused window on screen | 1600 (1141–3233) | 563 (442–1907) | 1615 (1363–2001) |
+  | its content (CA commit) | 1385 (1041–2863) | 797 (616–2483) | 1550 (1300–1905) |
+  | window key | 1389 (1043–2875) | 519 (428–1801) | 1553 (1309–1907) |
+  | tab navigation start | 1134 (870–2191) | 463 (377–1664) | 1367 (1157–1696) |
+  | tab first contentful paint | 1713 (1278–3399) | 1534 (707–4304) | 1789 (1466–2116) |
+  | last of the other windows on screen | 1600 (1141–2705) | 1465 (1216–4001) | 1615 (1363–2001) |
+
+  The final stack (frames in z order, key window), navigation count (1) and window shifts (0) are identical in all 24
+  runs; the 6 s window captures of before and after are byte-identical
+  (`scratchpad/sprint/launchnext/results/snaps/big4-{before,after,r0227}-<run>/`). Window and key are proven (the focused window
+  shows ~1.0 s earlier, the others no later). The series cannot split #5 from #6 (both switches were toggled
+  together), so the navigation-start gain in this table is shared. Absolute times are about twice the calm-Mac
+  numbers in the timeline above (8 pages loading, load 6 to 12); 0.2.27 in the same series is the control.
+- **e172113b** #5 the restored tab's page starts before the window (`launchTab`). Navigation starts ~670 ms earlier
+  in big4, but the first paint does not follow it: Chrome paints a hidden WebContents only once its view is visible,
+  so at latency 0 the gain is only the network and parse overlap (big4 FCP 1713 → 1534, bimodal 700–900 / 1400–2000
+  after). Single-window sets (`big`, where #6 is a no-op, and `biglat` with the probe's server answering after
+  300 ms) ran while other agents loaded the Mac (load 8 → 55 during the series), so they are noise-dominated:
+  `big` before / after / 0.2.27: window 1444 (510–2656) / 1249 (623–2492) / 877 (467–2940), key 786 (459–2228) /
+  1142 (387–2029) / 825 (420–2684), nav 1151 (748–3106) / 1033 (353–1695) / 1463 (775–3785), FCP 1975 (1356–4402) /
+  2569 (945–4019) / 1959 (1011–4625); `biglat` before / after: window 1607 / 2393, key 1404 / 1860, nav 1805 /
+  1556, FCP 3147 / 3538 (n=8 each; ranges 1.3 to 4 s). The early start did not shorten the first paint there and
+  window/key were later (the +20 to +30 ms seen in single runs is not resolvable, the medians say more), and
+  React Native's setup (`rnLoad`) was slower in most paired runs. Status: unproven; if the owner wants it
+  gone, turn `launchTab` off (`focusedWindowFirst` stands alone). A calm re-run of `big` with only `launchTab`
+  toggled would settle it.
