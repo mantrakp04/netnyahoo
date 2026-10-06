@@ -10,6 +10,9 @@
 //   suggest        omnibox pool rebuilds after a visit, with 25k/50k bookmarks (the longest 4 ms slice)
 //   suggest-seed   omnibox keystrokes on js-bench's seed profile (seed.mjs: 5000 history entries, 200 tabs, 1000
 //                  bookmarks); `suggest-seed=<query>` types another query. js-bench `typing` is what a key costs in the app.
+//   suggest-keys   one keystroke at a time on the seed profile with all 200 tabs: typing "github.com/net" and "react native perf",
+//                  ops (ops.mjs builtin calls) and time per key, cold first key and warm keys. `suggest-keys=<rounds>` repeats the
+//                  sequences that many times with nothing printed (suggest-instr.mjs measures instructions that way).
 //   counts         not a timing: how many builtin calls (string search, regexp, array, Map/Set…) the hot paths above
 //                  make, counted exactly by ops.mjs, so it repeats to the digit on any machine. Prints one
 //                  `counts.<case> <n>` line each and a final `COUNTS {json}` line that ratchet.mjs reads. A change that
@@ -78,6 +81,18 @@ function bigSession(count, bigGroup = 0) {
   });
   return ids;
 }
+
+// js-bench's seed profile as the omnibox sees it: 5000 history entries, 1000 bookmarks, and every one of the 200 tabs.
+function seedSource() {
+  const seed = buildSeed("http://127.0.0.1:47817");
+  const history = seed["history.json"].history.default;
+  const tabs = seed["session.json"].tabs;
+  const bookmarks = Object.values(seed["bookmarks.json"].bookmarks.nodes)
+    .filter((n) => n.kind === "url")
+    .map((n) => ({ url: n.url, title: n.title, favicon: n.favicon }));
+  return { tabs, history, bookmarks };
+}
+const KEY_SEQUENCES = { url: "github.com/net", phrase: "react native perf" };
 
 const benches = {
   entries() {
@@ -183,6 +198,34 @@ const benches = {
     report("suggestions on the seed profile: first round, all keys", rounds[0].reduce((a, b) => a + b, 0));
   },
 
+  "suggest-keys"(rounds) {
+    const source = seedSource();
+    const at = Date.now();
+    core.prepareSuggestions(source, Infinity);
+    const type = (query) => {
+      for (let i = 1; i <= query.length; i++) core.buildSuggestions(query.slice(0, i), source, { now: at });
+    };
+    if (rounds !== undefined) {
+      for (let r = 0; r < Number(rounds); r++) for (const q of Object.values(KEY_SEQUENCES)) type(q);
+      return;
+    }
+    for (const [name, query] of Object.entries(KEY_SEQUENCES)) {
+      for (let r = 0; r < 5; r++) type(query);
+      const perKey = [];
+      for (let r = 0; r < 40; r++) {
+        for (let i = 1; i <= query.length; i++) {
+          const t = now();
+          core.buildSuggestions(query.slice(0, i), source, { now: at });
+          perKey.push(now() - t);
+        }
+      }
+      const { total } = countOps(() => type(query));
+      report(`suggest-keys.${name} ("${query}"): ops per key`, total / query.length, "calls");
+      report(`suggest-keys.${name}: median key`, median(perKey));
+      report(`suggest-keys.${name}: whole sequence`, perKey.slice(-query.length).reduce((a, b) => a + b, 0));
+    }
+  },
+
   instr() {
     const seed = buildSeed("http://127.0.0.1:47817");
     const history = seed["history.json"].history.default;
@@ -230,6 +273,14 @@ const benches = {
     add("suggest.typeAll", () => {
       for (let i = 2; i <= query.length; i++) core.buildSuggestions(query.slice(0, i), source, { now: at });
     });
+    // The same keys with all 200 tabs (the seed's tabs of the work profile too), a typed URL and a typed phrase.
+    const everyTab = seedSource();
+    core.prepareSuggestions(everyTab, Infinity);
+    for (const [name, q] of Object.entries(KEY_SEQUENCES)) {
+      add(`suggest.keys.${name}`, () => {
+        for (let i = 1; i <= q.length; i++) core.buildSuggestions(q.slice(0, i), everyTab, { now: at });
+      });
+    }
     add("suggest.typeAllWords", () => {
       for (const q of ["react native performance", "react native performance hermes"]) for (let i = 1; i <= q.length; i++) core.buildSuggestions(q.slice(0, i), source, { now: at });
     });
