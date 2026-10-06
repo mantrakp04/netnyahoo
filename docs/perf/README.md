@@ -260,6 +260,61 @@ probe existed has been timed by the native bench with the machine quiet enough t
 here with its before and after. Until then a drop in a React count is a drop in work, and a rise is a regression only in
 the sense that something now renders, commits or stores more than it did.
 
+**In-app proof (2026-10-06, the sprint audit):** `96fb0ab0` (sidebar rows wake only for their own tab), reverted on the
+tree's bundle as the "before", against the tree as the "after", both on 0.2.27's Release app, js-bench `idle,switchTabs`
+on the 200-tab seed (12 switches between loaded tabs; `steps` is the JS-thread time of each switch: the store update,
+its listeners, every subscription it woke, React's render and commit). Counts (`--probe selectors`, one run each,
+deterministic): subscriptions notified 19,551 → 4,052 (−79%), selectors run 22,437 → 6,886 (−69%), renders 676 → 676,
+commits 24 → 24. Timing (no selectors probe, under the perflab lock, 5 runs each interleaved, 60 switches a side): median
+14.22 → 14.28 ms a switch, mean 14.54 → 14.94 ms; run medians 12.1–17.6 before, 11.4–16.6 after. **No difference.** A 79%
+cut in subscriptions notified (~1,300 fewer selector calls a switch) saved less than the run-to-run noise (~1 ms); the
+same pair run with the selectors probe on did show 332 → 272 ms over 12 switches, but that probe times every selector,
+so it made each one expensive. The store fan-out counts are **not** a proxy for time at this size.
+
+Which counter families gate on proof:
+
+| Family (ratchet / framecounts) | Status | Evidence |
+|---|---|---|
+| Node builtin calls (`micro`), instructions (`instr`) | **proven** | `f3417151` above (`ratchet-proof.mjs`) |
+| Store fan-out: `subNotified`, `selectorCalls` | **unproven; failed its test** | `96fb0ab0` above: −79% notified, −69% selectors, no change in JS time per switch at 200 tabs |
+| `renders`, `hostUpdates`, `mounts` | unproven | No fix that cut only these has been timed in-app yet (`099fc058`: page-load renders 414 → 134 is the candidate) |
+| `commits` | unproven | No sprint fix moved commits alone |
+| `storeUpdates`, `listenerCalls`, `tasks`, `timers`, `writes` | unproven | `e401203e`'s own A/B cut listener calls 6,524 → 5,086 with listener time 34.0 → 35.9 ms: a count that fell without the time |
+| Frame rig layout passes, mount batches, UI blocks, view updates | unproven | Deterministic; not yet tied to a timed fix |
+
+An unproven count still gates (a rise is more work), but a drop in one is not reported as a speed-up until it has a timed
+before/after like the ones above.
+
+### Complexity check (sprint audit, 2026-10-06)
+
+Each sprint change's production lines (tests and frozen specs not counted) against what it saves per action. The bar:
+a special case, cache or deferral that saves under 0.5 ms an action isn't worth its lines unless it is also simpler.
+
+| Change | Prod lines +/− | Gain per action | Verdict |
+|---|---|---|---|
+| `96fb0ab0` sidebar rows on per-tab watchers | +294 −78 | none measurable: 14.22 → 14.28 ms median per switch at 200 tabs (above) | **out of proportion**; owner's call (revert, or keep for its scaling at 500+ tabs, untimed) |
+| `3963c7f0` hidden panes stop following stores | +149 −39 | notified 3,270 → 878 per switch at 100 tabs: the family above, which showed no time | time it before keeping |
+| `8def9b0b`, `cf07e5f6`, `5020c202` keystroke work | +286 −102 | 1.3 → 0.4 ms (URL), 2.4 → 0.85 ms (phrase) per key in Hermes | keep |
+| `dca4bb3a` letter/digit masks in matchActions | +29 −5 | ~0.03–0.05 ms per key (+374 / +465 builtin calls a key without) | **removed** (`b968c4fd`) |
+| `477ad6d7` history view copies once | +29 −17 | 13.4–16.5 → 6.7–8.8 ms JS per page load | keep |
+| `db144ef6` history changes coalesced per event | +37 −7 | 1.5 store updates per background load (~0.3–0.5 ms) | borderline: kept, covered by `lib/historyView.test.mjs` |
+| `e401203e` store transactions for a flush | +101 −5 | none measured: a single load unchanged; 20 tabs at once 34.0 → 35.9 ms listener time | **should go**; not reverted because `store/pinMirror.ts` (in progress) relies on its listener semantics |
+| `861b3b73` pane list memos | +55 −16 | ~0.4–1 ms per switch at 100 tabs (probe-inflated) | keep; time it |
+| `a3c9eff4` mounted set | +4 −1 | ~n²/2 string compares per switch | keep (simpler than before) |
+| `33e88e6f` page progress out of the store | +84 −13 (incl. preload hunks swept in) | 2 fewer store updates per load | keep |
+| `099fc058`, `cbfeb1ab`, `9b7eab76` narrower reads, memo leaves | +71 −51 | renders 414 → 134 per page load; 45 → 25 per key | keep (unproven family) |
+| `7184f7e8`, `e261559a` deferred sidebar rows | +146 −90 | first commit mounts 2757 → 1150 | keep; `scripts/layout-shift-test.mjs` holds the no-shift rule |
+| `d7e6372a`, `bdee6047` legacy-file launch work | +69 −10 | 400 ms of bundle evaluation, but only on a launch with an old history.json / bookmarks.json | see below |
+| `be2ca8f7` update prewarm | +94 | 130–190 ms on an update's first launch | keep |
+| `9947002f` field timing listener only when sharing | +9 −2 | µs per store update | keep (also correct: off means off) |
+
+**The big seed measures a migration users don't run.** `seed.mjs` writes the session plus a legacy `history.json` and
+`bookmarks.json`, and native-bench's `--seed big` template is written without launching, so every big-seed launch (js-bench,
+the ratchet's `launch`, native-bench `--seed big`, the frame rig) moves 5,000 history entries and 1,000 bookmarks into
+Chrome. Real users did that once, at 0.2.20. `d7e6372a` and `bdee6047` sped that path up (bundle evaluation 531–701 →
+139–274 ms in the seed), which users almost never see. Until the seed is a migrated profile (a template launched once,
+legacy files gone, then copied per run), read big-seed launch numbers as "launch plus a one-time migration".
+
 ## What the rows measure
 
 ### native-bench
