@@ -21,6 +21,8 @@
 //                              `run --runs 1 --append 1` between them)
 //         --probe <options>    the probe's slower options, written into the perf-probe file: selectors (every store
 //                              selector timed by call site), renders (why each component rendered), listeners
+//         --lib <a.js,b.js>    the scenario files to load instead of bench-app.js, in order (a copy of another revision of
+//                              it; ratchet-app.js adds the scenarios ratchet.mjs needs)
 //         --trace 1            names anonymous timer callbacks by call site (slower: for finding, not timing)
 //         --options '<json>'   options passed to every scenario (bench-app.js), e.g. '{"seconds":20}'
 //   node js-bench.mjs compare <before.json> <after.json>
@@ -294,6 +296,18 @@ export async function evaluate(dataDir, pid, body, timeoutMs = 120_000) {
 
 // MARK: Run
 
+// A bundle swapped into the copy breaks the app's code seal ("a sealed resource is missing or invalid"), and macOS
+// kills a hardened-runtime app with a broken seal a few seconds after launch ("app exited" in evaluate). Sign the copy
+// again with the original's identity and entitlements, as native-bench's prepareApp does (no secure timestamp: Apple's
+// server sometimes doesn't answer).
+function resign(app, clone) {
+  const info = spawnSync("codesign", ["-dvv", app], { encoding: "utf8" }).stderr;
+  const identity = info.match(/^Authority=(.+)$/m)?.[1] ?? "-";
+  const entitlements = `${clone}.entitlements.plist`;
+  writeFileSync(entitlements, execFileSync("codesign", ["-d", "--entitlements", "-", "--xml", app], { encoding: "utf8" }));
+  execFileSync("codesign", ["--force", "--sign", identity, "--timestamp=none", "--options", "runtime", "--entitlements", entitlements, clone], { stdio: "inherit" });
+}
+
 const ALL = ["startup", "persistence", "idle", "typing", "switchTabs", "openClose", "scroll", "pageLoad", "hover", "profileSwipe", "storeUpdate", "idleLate"];
 
 async function run() {
@@ -304,11 +318,14 @@ async function run() {
   rmSync(dirname(clone), { recursive: true, force: true });
   mkdirSync(dirname(clone), { recursive: true });
   execFileSync("cp", ["-cR", app, clone]);
-  cpSync(jsbundle, join(clone, "Contents/Resources/main.jsbundle"));
+  const swapped = join(clone, "Contents/Resources/main.jsbundle");
+  const same = readFileSync(jsbundle).equals(readFileSync(swapped));
+  cpSync(jsbundle, swapped);
+  if (!same) resign(app, clone);
   const version = execFileSync("/usr/libexec/PlistBuddy", ["-c", "Print CFBundleShortVersionString", join(clone, "Contents/Info.plist")], { encoding: "utf8" }).trim();
   const origin = `http://127.0.0.1:${port}`;
   const server = await startServer(Number(port));
-  const lib = readFileSync(join(here, "bench-app.js"), "utf8");
+  const libs = (flags.lib ? flags.lib.split(",") : [join(here, "bench-app.js")]).map((file) => readFileSync(file, "utf8"));
   const results = [];
   try {
     for (let r = 0; r < Number(runs); r++) {
@@ -324,7 +341,7 @@ async function run() {
         let ready = false;
         for (let i = 0; i < 30 && !ready; i++) ready = await evaluate(dataDir, pid, "return 1;", 2000).then(() => true, (e) => (String(e).includes("exited") ? Promise.reject(e) : false));
         if (!ready) throw new Error("dev harness never answered");
-        await evaluate(dataDir, pid, lib, 60_000);
+        for (const lib of libs) await evaluate(dataDir, pid, lib, 60_000);
         for (const name of scenarios) {
           process.stderr.write(`[${label} ${r}] ${name}\n`);
           // --trace 1 names anonymous timer callbacks by their call sites (slower; for finding, not timing).

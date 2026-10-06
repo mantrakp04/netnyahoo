@@ -10,6 +10,13 @@
 //   suggest        omnibox pool rebuilds after a visit, with 25k/50k bookmarks (the longest 4 ms slice)
 //   suggest-seed   omnibox keystrokes on js-bench's seed profile (seed.mjs: 5000 history entries, 200 tabs, 1000
 //                  bookmarks); `suggest-seed=<query>` types another query. js-bench `typing` is what a key costs in the app.
+//   counts         not a timing: how many builtin calls (string search, regexp, array, Map/Set…) the hot paths above
+//                  make, counted exactly by ops.mjs, so it repeats to the digit on any machine. Prints one
+//                  `counts.<case> <n>` line each and a final `COUNTS {json}` line that ratchet.mjs reads. A change that
+//                  makes the work cheaper lowers these; ratchet.json holds the ceilings (docs/perf/README.md).
+//   instr          the same hot paths repeated INSTR_ROUNDS times (default 10), with nothing printed: ratchet.mjs runs it
+//                  under `/usr/bin/time -l node --predictable` with 0 and N rounds and divides the difference of the
+//                  "instructions retired" lines (the CPU's own counter, no root needed on Apple silicon) by N.
 
 const { useBrowser } = await import("../../src/store/browser.ts");
 const { sidebarEntries, groupEntries } = await import("../../src/components/sidebar/entries.ts");
@@ -18,6 +25,7 @@ const strip = await import("../../src/components/layout/stripGroups.ts");
 await import("../../src/test-native-stub.mjs");
 const core = await import("../../../../packages/core/src/index.ts");
 const { buildSeed } = await import("./seed.mjs");
+const { countOps } = await import("./ops.mjs");
 
 const S = () => useBrowser.getState();
 const now = () => performance.now();
@@ -173,6 +181,85 @@ const benches = {
     report(`suggestions on the seed profile: keystroke median (${query.length} keys × 15 warm rounds)`, median(perKey));
     report("suggestions on the seed profile: slowest warm keystroke", Math.max(...perKey));
     report("suggestions on the seed profile: first round, all keys", rounds[0].reduce((a, b) => a + b, 0));
+  },
+
+  instr() {
+    const seed = buildSeed("http://127.0.0.1:47817");
+    const history = seed["history.json"].history.default;
+    const tabs = seed["session.json"].tabs.filter((t) => t.profileId === "default");
+    const bookmarks = Object.values(seed["bookmarks.json"].bookmarks.nodes)
+      .filter((n) => n.kind === "url")
+      .map((n) => ({ url: n.url, title: n.title, favicon: n.favicon }));
+    const source = { tabs, history, bookmarks };
+    const at = Date.now();
+    const ids = bigSession(1000, 500);
+    const rounds = Number(process.env.INSTR_ROUNDS ?? 10);
+    for (let r = 0; r < rounds; r++) {
+      for (const q of ["github.com/facebook/react/pull", "react native performance"]) for (let i = 1; i <= q.length; i++) core.buildSuggestions(q.slice(0, i), source, { now: at });
+      S().updateTab(ids[600 + r], { title: `T${r}` });
+      sidebarEntries(S(), "w");
+      strip.stripEntries(S(), "w", "default");
+      groupEntries(S(), "big");
+      S().updateTab(ids[r], { title: `Page ${r} - github` });
+      groupLabel(S(), S().groups.big);
+    }
+  },
+
+  counts() {
+    const out = {};
+    const add = (name, fn) => {
+      const { total, by } = countOps(fn);
+      out[name] = total;
+      report(`counts.${name}`, total, "calls");
+      if (process.env.COUNTS_DETAIL) console.log(`    ${Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+    };
+
+    // The omnibox on the seed profile (5000 history, 200 tabs, 1000 bookmarks): the pool, then each keystroke of the
+    // js-bench `typing` query. Fixed `now` so frecency and recency don't depend on the clock.
+    const seed = buildSeed("http://127.0.0.1:47817");
+    const history = seed["history.json"].history.default;
+    const tabs = seed["session.json"].tabs.filter((t) => t.profileId === "default");
+    const bookmarks = Object.values(seed["bookmarks.json"].bookmarks.nodes)
+      .filter((n) => n.kind === "url")
+      .map((n) => ({ url: n.url, title: n.title, favicon: n.favicon }));
+    const source = { tabs, history, bookmarks };
+    const at = Date.now();
+    add("suggest.prepare", () => core.prepareSuggestions(source, Infinity));
+    const query = "github.com/facebook/react/pull";
+    add("suggest.firstKey", () => core.buildSuggestions(query.slice(0, 1), source, { now: at }));
+    add("suggest.typeAll", () => {
+      for (let i = 2; i <= query.length; i++) core.buildSuggestions(query.slice(0, i), source, { now: at });
+    });
+    add("suggest.typeAllWords", () => {
+      for (const q of ["react native performance", "react native performance hermes"]) for (let i = 1; i <= q.length; i++) core.buildSuggestions(q.slice(0, i), source, { now: at });
+    });
+
+    // Sidebar, strip and group entries of a 1000-tab window after one title or progress update.
+    for (const count of [500, 1000]) {
+      const ids = bigSession(count);
+      const warm = () => {
+        sidebarEntries(S(), "w");
+        strip.stripEntries(S(), "w", "default");
+      };
+      warm();
+      S().updateTab(ids[7], { title: "T7" });
+      add(`entries.sidebar${count}.afterTitle`, () => sidebarEntries(S(), "w"));
+      add(`entries.strip${count}.afterTitle`, () => strip.stripEntries(S(), "w", "default"));
+      warm();
+      S().updateLive(ids[11], { progress: 0.5 });
+      add(`entries.sidebar${count}.afterProgress`, () => sidebarEntries(S(), "w"));
+      add(`entries.strip${count}.afterProgress`, () => strip.stripEntries(S(), "w", "default"));
+    }
+    const ids = bigSession(1000, 500);
+    groupEntries(S(), "big");
+    S().updateTab(ids[600], { title: "T600" });
+    add("entries.group500.afterTitle", () => groupEntries(S(), "big"));
+    groupLabel(S(), S().groups.big);
+    S().updateLive(ids[5], { progress: 0.5 });
+    add("groupLabel.500.afterProgress", () => groupLabel(S(), S().groups.big));
+    S().updateTab(ids[6], { title: "Page 6 - github" });
+    add("groupLabel.500.afterMemberTitle", () => groupLabel(S(), S().groups.big));
+    console.log(`COUNTS ${JSON.stringify(out)}`);
   },
 };
 

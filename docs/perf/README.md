@@ -18,7 +18,9 @@ All of them are in `apps/browser/scripts/perf/`.
 | `bench-app.js` | JS, render | The scenarios js-bench and render-bench run inside the app. **Not** part of native-bench. |
 | `seed.mjs` | JS, render | The big profile those runs start from: 200 tabs, 5000 history entries, 1000 bookmarks. |
 | `render-bench.mjs` | render | Wasted renders per interaction, using React's profiling build (`js-bench.mjs bundle <dir> --profiling 1`). |
-| `micro-bench.mjs` | Node | Store-side work that grows with a profile (sidebar entries, group names, omnibox) in Node. No app needed. |
+| `micro-bench.mjs` | Node | Store-side work that grows with a profile (sidebar entries, group names, omnibox) in Node. No app needed. Its `counts` and `instr` cases feed the ratchet. |
+| `ratchet.mjs`, `ratchet.json` | ratchet | Ceilings on counts that can only go down, and the commands that check, lower and rebuild them. |
+| `ratchet-app.js`, `ops.mjs`, `ratchet-proof.mjs` | ratchet | The `launch` scenario the ratchet adds to js-bench, the builtin-call counter micro-bench uses, and the before/after proof that counts track wall-clock. |
 
 The app side of the JS benches is `apps/browser/src/lib/perfProbe.ts`. It only turns on in an isolated instance
 whose data folder holds a `perf-probe` file.
@@ -102,6 +104,122 @@ For a question that the phases don't answer, don't fork native-bench into a prob
 - `--hold <secs>` keeps each measured instance alive so you can attach `lldb -p`, `heap` or `vmmap`.
 
 If you need a new measurement, add it as a phase and commit it.
+
+## The ratchet
+
+Wall-clock can't gate a release by itself: the same build moves ±20% between runs on a busy Mac, and a gate that cries
+wolf gets ignored. Counts don't move: React commits, renders, store updates, native→JS tasks, timers and document writes
+per interaction mostly come out to the digit in every run, and so do the builtin calls of the Node hot paths.
+`ratchet.json` holds a ceiling for each count that proved steady; a ceiling is lowered when a change cuts the count and
+raised only by hand, with the reason in the commit. Nothing runs in CI, so the check is a command:
+
+```sh
+node apps/browser/scripts/perf/ratchet.mjs run            # 90 s: bundle the tree, run the journeys once, count the Node hot paths, check
+node apps/browser/scripts/perf/ratchet.mjs run --instr    # the same, plus the instruction counter
+node apps/browser/scripts/perf/ratchet.mjs run --own --app dist/<v>-rc/export/Netnyahoo.app   # a release candidate's own bundle
+node apps/browser/scripts/perf/ratchet.mjs check <report.json>          # a js-bench report you already have (several runs: the median run)
+node apps/browser/scripts/perf/ratchet.mjs lower <report.json>          # lock in the counts a change cut; prints the diff
+node apps/browser/scripts/perf/ratchet.mjs baseline       # rebuild ratchet.json (8 runs, about 11 minutes, a quiet machine)
+```
+
+`run` takes about 85 s (6 s of it bundling the tree, 15 s the Node counts, the rest one launch and the nine scenarios of
+one hidden instance), and about 170 s when a count is over and the scenarios run a second time. It exits 1 and prints a
+table of the counts over their ceiling. A count over in the first run gets one more run, and only a count over in both fails: a real regression is in both, a pointer moving over the hidden window or the window
+deactivating mid-scenario is in one. A report of several runs is judged by its median run.
+
+### What is steady
+
+The scenarios run in a fixed order (`ratchet.mjs` header says why): `startup`, `launch` (all the launch's work, read
+once it has stopped), `idle`, `typing`, `switchTabs`, `scroll`, `hover`, `pageLoad`, `openClose`, with
+`--options '{"seconds":5}'`. The census behind `ratchet.json` is 8 launches of 0.2.27's Release app with the tree's
+bundle.
+
+Group totals per scenario over the 16 baseline runs (two batches of 8): a bare number repeated in every run is gated
+exact, `a–b~` moved and is gated as noisy (ceiling: the largest plus 10%), `a–b x` moved too much to gate. Each
+scenario also has named exact counts (one component's renders, one store key, one task): 471 exact counts in all, 54
+noisy totals, 15 Node counts and the instruction count.
+
+| Journey / scenario | commits | renders | hostUpdates | storeUpdates | mounts | listenerCalls | tasks | timers | writes |
+|---|---|---|---|---|---|---|---|---|---|
+| J1 launch (all of it) | 37–60~ | 654–970~ | 340–516~ | 23–77~ | 5594–5684~ | 470–1942~ | 235–500~ | 394–593~ | 9–15~ |
+| idle, 5 s | 0 | 0 | 0 | 0 | 0 | 0 | 25–28~ | 12–18~ | 0 |
+| J2 typing, 30 keys | 122–150~ | 1825–2756 x | 1203–1789 x | 19–20~ | 106–187 x | 56 | 113–171 x | 177–198~ | 0 |
+| J3 switchTabs, 12 | 24–36 x | 676–850~ | 336–430~ | 25–26~ | 1001–1041~ | 950 | 325–355~ | 575–591~ | 2–3 x |
+| scroll | 0–142 x | 0–2116 x | 0–1208 x | 0–12 x | 0–469 x | 0–342 x | 364–651 x | 250–306~ | 0 |
+| hover, 24 rows | 25 | 672 | 384 | 1 | 168 | 0 | 36–39~ | 55–64~ | 0 |
+| J4 pageLoad, 3 loads | 46–58~ | 2172–2281~ | 1201–1253~ | 84–116~ | 33 | 2430–3380~ | 853–980~ | 1760–2058~ | 5–8~ |
+| J2 openClose, 20 tabs open | 67–107~ | 1454–2366~ | 771–1282~ | 98–273 x | 2254–2306~ | 2122–7289 x | 894–1119~ | 1211–1460~ | 4 |
+| J2 openClose, 20 tabs close | 43–80 x | 1114–1789~ | 580–958~ | 56–138 x | 1526–1636~ | 1335–3694 x | 687–819~ | 1154–1286~ | 4–5~ |
+
+What repeats: everything `hover` does, the idle app's zeros (no commit, render, store update or write in 5 s), `typing`'s
+56 store-listener calls, `switchTabs`' 950, `pageLoad`'s 33 mounts, `openClose`'s 4 writes, and 471 named counts (which
+component renders how often, which store key changes, which task runs). What doesn't: anything that follows a page's
+load progress (the launch's restore, `pageLoad`, `openClose`: a page reports progress at its own pace), and the
+outliers that a stray window event makes in single runs (`scroll` had 3 runs of 16 with work in them, `typing` 4 with
+extra commits). `switchTabs` commits, renders, hostUpdates and storeUpdates were identical in all 8 runs of two earlier
+censuses on a calmer machine, and `typing` commits were 122 in 7 of 8; one run in 16 of the baselines above broke each,
+which is why they are noisy here. The baselines were taken with the machine loaded (agents building: load average about
+300), so they are the worst case; `ratchet.mjs baseline` on a quiet machine would move some of these `~` and `x` counts
+to exact.
+
+### Policy
+
+- **exact**: a count that took the same value in every baseline run. Its ceiling is that value. Group totals are held to it
+  exactly; named counts (one component's renders, one task's calls, one timer) are gated too, so a regression says where
+  it is, but get 2 or 5% of room: a timer firing once more says nothing, and the total says whether the work grew.
+- **noisy**: a group total that moves between runs because pages and timers finish at their own pace, with its median
+  within 30% of its largest value. Its ceiling is the largest value plus 10%: it catches a regression, not a few
+  percent. `lower` leaves these alone.
+- **micro**: builtin-call counts of `micro-bench.mjs counts` (omnibox keystrokes on the seed profile, sidebar, strip and
+  group entries at 500 and 1000 tabs, group names). Exact: Node runs them with nothing else going on.
+- **instr**: instructions retired per round of `micro-bench.mjs instr`: the largest of 3 baseline measurements plus 4%.
+- Not gated: counts that wobble beyond that, which are the ones driven by how fast a page loads: `openClose` (20 tabs
+  loading), `startup` (a race against the rest of the launch; `launch` replaces it), and the byte count of the session
+  writes. They stay in the js-bench report.
+- A new component, task or timer that has no ceiling shows up in the group total's ceiling, not on its own: `check`
+  lists the biggest counts without one.
+- The ceilings are for probe revision 2 and bench revision 2 (`perfProbe.ts` `PERF_PROBE_REVISION`, js-bench
+  `BENCH_REVISION`). `check` warns when a report has another; rebuild with `baseline` after a change that redefines a
+  counter.
+
+### In the release gate
+
+Step 4b of the release skill: `ratchet.mjs run --own --app dist/<v>-rc/export/Netnyahoo.app` must print `ratchet: ok` before
+publishing. Counts need no perflab lock (they aren't timings), but run it on a Mac that isn't busy with someone's timing
+run. After a release that cut counts, `ratchet.mjs lower` and commit.
+
+### Node instruction counts
+
+Valgrind doesn't run on macOS arm64, and `perf` doesn't exist. What works without root is the CPU's own counter through
+`/usr/bin/time -l` (`instructions retired`, from `proc_pid_rusage`). Under `node --predictable` (one thread, no concurrent
+compiler) a whole `micro-bench.mjs instr` process repeats within 0.3%, and the difference between a run of 10 rounds and
+a run of none, divided by 10, within 0.5% on a quiet machine (289–292 million instructions a round in 6 runs) and 1.7%
+with the machine loaded (295–300 million in 4 runs). That is too loose to detect a 2% change, so it gets a 4% tolerance, and the exact builtin-call counts (`ops.mjs`) are the sharper tool. `kpc`
+and `xctrace` counters need root or Instruments and weren't tried.
+
+### Do the counts track wall-clock?
+
+`ratchet-proof.mjs` runs one workload on two revisions of the source, exported with `git archive` (nothing is checked
+out), and prints the exact builtin calls and the median wall-clock side by side. The pair is `f3417151^` and `f3417151`,
+the commit "Strip and sidebar entries look tabs' groups and splits up by index", which stopped `sidebarEntries` from
+searching every split for every tab on a title change:
+
+| tabs | builtin calls (exact) | median wall-clock |
+|---|---|---|
+| 200 | 2,691 → 861 (−68%) | 0.28–0.32 → 0.05–0.12 ms (−62 to −83%) |
+| 1000 | 49,271 → 4,121 (−92%) | 19–66 → 0.47–0.60 ms (−97 to −99%); 3.1 → 0.16 ms (−95%) on a calmer machine |
+
+(Five runs under the perflab lock with the load average at about 300, so the milliseconds are inflated and spread out;
+the 3.1 → 0.16 ms line is one run on a calmer machine. The calls are the same in every run.)
+
+Both fall, by more on the bigger window, as a quadratic-to-linear fix predicts, and the time falls further than the
+calls because a call isn't weighted by what it costs (the old code's calls were array scans). **Proven:** builtin calls
+for Node store work: a fix that cut the work cut the count by 68% to 92% and the time by 62% to 99% in every run, and
+`ratchet-proof.mjs` repeats it. **Not proven:** the app-side counts (commits, renders, host updates) against
+milliseconds. They are the same kind of count and `render-bench.mjs` times each component's renders, but no fix since the
+probe existed has been timed by the native bench with the machine quiet enough to see it; the first one should be added
+here with its before and after. Until then a drop in a React count is a drop in work, and a rise is a regression only in
+the sense that something now renders, commits or stores more than it did.
 
 ## What the rows measure
 

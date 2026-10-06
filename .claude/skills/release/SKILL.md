@@ -148,6 +148,23 @@ don't publish) or the check itself going stale after an intended change (fix the
 `scripts/smoke.mjs`, and say so). When a release fixes a new class of bug that can be observed over CDP or
 the window list, add a check for it to `smoke.mjs` so the next release guards it.
 
+### 4b. Perf ratchet
+
+Check the candidate's counts against the ceilings before publishing (about two minutes, no perflab lock needed: they
+are counts, not timings):
+
+```bash
+node apps/browser/scripts/perf/ratchet.mjs run --own --app dist/<version>-rc/export/Netnyahoo.app   # dist/<version>/export without an rc
+```
+
+`--own` runs the app's own `main.jsbundle`, so it checks what ships. It must print `ratchet: ok`. It runs the launch,
+idle, command bar, tab switch, navigate, scroll and hover scenarios in a hidden instance, and a count over its ceiling
+gets one more run (a stray window event isn't a regression; a count over in both is). A failure is a real regression
+(find the commit that added the commit, render, store update or timer, and fix it) or an intended increase: raise that
+one ceiling by hand in `apps/browser/scripts/perf/ratchet.json` and say why in the commit and the release report. When
+the release made counts go down, run `ratchet.mjs lower <the run's report>` (`$TMPDIR/nn-ratchet/ratchet.json`), commit
+the lowered ceilings, and say which counts dropped. The wall-clock gate is a separate step: `docs/perf/README.md`.
+
 ## 5. Publish
 
 ```bash
