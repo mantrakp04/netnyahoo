@@ -288,6 +288,12 @@ NN_ENGINE_CALL(nn_cookies_import) {
     if (!args.dict()) {
       return call.TakeReply().Error("arguments are not a JSON object");
     }
+    // Call reads the private-session flag only from arguments it parsed itself:
+    // refuse it here as Call refuses it for every call that keeps no state per
+    // off-the-record profile (OffTheRecord::kRefuse).
+    if (args.dict()->FindBool("offTheRecord").value_or(false)) {
+      return call.TakeReply().Error("not for a private session");
+    }
     const base::ListValue* list = args.dict()->FindList("cookies");
     if (!list) {
       return call.TakeReply().Error("cookies must be a list");
