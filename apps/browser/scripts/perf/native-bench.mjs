@@ -45,6 +45,7 @@
 //     --env K=V               repeatable: extra environment for every instance (DYLD_INSERT_LIBRARIES is appended to
 //                             the marker library). Instances stay muted; don't pass NETNYAHOO_ALLOW_AUDIO.
 //     --frames-n <n>          repetitions of each interaction per run in frames (default 8; framecounts uses at most 3)
+//     --frames-only <regex>   frames, framecounts: only the interactions whose name matches (case-insensitive)
 //     --frames-sample         frames: `sample` the app over the first repetition of each interaction (<out>/frames-sample/*.txt)
 //     --journey-n <n>         iterations of each journey per run in newtabkey and navigate (default 10)
 //     --page-port <n>         the test pages' server port (default: any free port)
@@ -150,6 +151,7 @@ const { values: opt } = parseArgs({
     "page-port": { type: "string", default: "0" },
     "journey-n": { type: "string", default: "10" },
     "frames-n": { type: "string", default: "8" },
+    "frames-only": { type: "string" },
     "frames-sample": { type: "boolean" },
     hold: { type: "string", default: "0" },
     help: { type: "boolean", short: "h" },

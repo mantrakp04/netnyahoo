@@ -277,7 +277,8 @@ export async function framesRun(c, side, i, { counts }) {
     out.settleMs = Date.now() - settledAt;
     log(`${side.tag}frames ${i}${counts ? " (counts)" : ""}: ${info.screen} ${info.maxFPS} Hz, JS thread ${info.js ? "observed" : "NOT found"}; ${out.settled ? "quiet" : "never quiet"} after ${Math.round(out.settleMs / 1000)} s`);
     const reps = counts ? Math.min(3, +opt["frames-n"]) : +opt["frames-n"];
-    const list = interactions({ app, key, sleep, run, W: WINDOW, probe, base });
+    const only = opt["frames-only"] ? new RegExp(opt["frames-only"], "i") : null;
+    const list = interactions({ app, key, sleep, run, W: WINDOW, probe, base }).filter((it) => !only || only.test(it.name));
     for (const it of list) {
       const rows = [];
       // Stats are computed once the interaction's reps are done: a run-loop iteration that outlasted its window is written
@@ -321,7 +322,7 @@ export async function framesRun(c, side, i, { counts }) {
       await sleep(2500);
       rec.read();
       for (const { t0, extra } of taken) {
-        const stats = { ...windowStats(rec, t0, t0 + it.window, refresh), ...extra, expected: Math.round(it.window / refresh) };
+        const stats = { ...windowStats(rec, t0, t0 + it.window, refresh), ...extra, expected: Math.round(it.window / refresh), t0 };
         // A window with no ticks at all: the display went off or the screen locked meanwhile.
         if (stats.frames) rows.push(stats);
       }

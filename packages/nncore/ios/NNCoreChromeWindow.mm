@@ -8,6 +8,7 @@
 #import "NNCoreWebViewInternal.h"
 #import "NNCoreServices.h"
 
+#import <QuartzCore/QuartzCore.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 
@@ -210,6 +211,78 @@ void RetileTrafficLights(NSWindow *window) {
   NSView *frameView = window.contentView.superview;
   const SEL sel = NSSelectorFromString(@"_updateButtonPositions");
   if ([frameView respondsToSelector:sel]) ((void (*)(id, SEL))objc_msgSend)(frameView, sel);
+}
+
+// MARK: Lights that move every frame
+
+// The sidebar's slide and its peek move the lights every frame (SidebarDock.tsx). Laid out at each step, the buttons'
+// frames moved, and AppKit answers a title-bar button's move by recomputing the window's drag regions on its next display
+// cycle: walks of every view (the window's minimum size from its constraints, the standard-button search), 5-7 ms with
+// the 200-tab sidebar's 3200 views, a dropped frame at 120 Hz each time. So a move is drawn by translating the buttons'
+// layers, and they are laid out at the new spot (one recompute) once they have held still for kLightsSettle.
+const void *kLightsShownKey = &kLightsShownKey;  // where they are drawn while that differs from their layout (NSNull: AppKit's)
+const void *kLightsMoveKey = &kLightsMoveKey;    // the latest move, so only its settle lays them out
+constexpr int64_t kLightsSettle = 50 * NSEC_PER_MSEC;
+
+NSArray<NSButton *> *TrafficLightButtons(NSWindow *window) {
+  NSMutableArray *buttons = [NSMutableArray array];
+  for (NSWindowButton kind : {NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton})
+    if (NSButton *button = [window standardWindowButton:kind]) [buttons addObject:button];
+  return buttons;
+}
+
+// The close button's centre (window top-left points) at `center`, or at its own spot when nil (-_closeButtonOrigin above).
+NSPoint LightsCenter(NSValue *center, NSSize size) {
+  return center ? center.pointValue : NSMakePoint(kTrafficLightInsetX + size.width / 2, kTrafficLightTop + size.height / 2);
+}
+
+void TranslateTrafficLights(NSArray<NSButton *> *buttons, CGFloat dx) {
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  for (NSButton *button in buttons) button.layer.affineTransform = CGAffineTransformMakeTranslation(dx, 0);
+  [CATransaction commit];
+}
+
+// Lays the buttons out where they're drawn and drops the translation, in one transaction (no frame shows either alone).
+void SettleTrafficLights(NSWindow *window) {
+  id shown = objc_getAssociatedObject(window, kLightsShownKey);
+  if (!shown) return;
+  objc_setAssociatedObject(window, kLightsShownKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  objc_setAssociatedObject(window, kLightsCenterKey, shown == NSNull.null ? nil : shown, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  TranslateTrafficLights(TrafficLightButtons(window), 0);
+  RetileTrafficLights(window);
+  [CATransaction commit];
+}
+
+// Draws the lights centred at `center` (nil: AppKit's spot) without laying them out, and lays them out there once they
+// hold still. NO when that can't be drawn as a translation (full screen, a vertical move, buttons without layers).
+bool MoveTrafficLights(NSWindow *window, NSValue *center) {
+  NSArray<NSButton *> *buttons = TrafficLightButtons(window);
+  if (!buttons.count || !objc_getAssociatedObject(window, kInsetLightsKey) || (window.styleMask & NSWindowStyleMaskFullScreen))
+    return false;
+  for (NSButton *button in buttons)
+    if (!button.layer) return false;
+  const NSSize size = buttons[0].frame.size;
+  const NSPoint laidOut = LightsCenter(objc_getAssociatedObject(window, kLightsCenterKey), size), to = LightsCenter(center, size);
+  if (to.y != laidOut.y) return false;
+  TranslateTrafficLights(buttons, to.x - laidOut.x);
+  if (to.x == laidOut.x) {  // back where they're laid out: nothing to settle
+    objc_setAssociatedObject(window, kLightsShownKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(window, kLightsMoveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return true;
+  }
+  objc_setAssociatedObject(window, kLightsShownKey, center ?: NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  NSObject *move = [[NSObject alloc] init];
+  objc_setAssociatedObject(window, kLightsMoveKey, move, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  __weak NSWindow *weakWindow = window;
+  __weak NSObject *weakMove = move;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, kLightsSettle), dispatch_get_main_queue(), ^{
+    // A later move replaced this one (and released it): that one settles.
+    if (NSWindow *w = weakWindow; w && weakMove) SettleTrafficLights(w);
+  });
+  return true;
 }
 
 void InsetTrafficLights(NSWindow *window) {
@@ -1047,10 +1120,22 @@ NSView *NNWindowRootView(NSWindow *window) {
 }
 
 + (void)setTrafficLightsCenter:(NSValue *)center inWindow:(NSWindow *)window {
+  if (objc_getAssociatedObject(window, kLightsShownKey)) {  // drawn elsewhere by a move: laid out here now instead
+    objc_setAssociatedObject(window, kLightsShownKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(window, kLightsMoveKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    TranslateTrafficLights(TrafficLightButtons(window), 0);
+  }
   NSValue *current = objc_getAssociatedObject(window, kLightsCenterKey);
   if (current == center || [current isEqual:center]) return;
   objc_setAssociatedObject(window, kLightsCenterKey, center, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   RetileTrafficLights(window);
+}
+
++ (void)moveTrafficLightsCenter:(NSValue *)center inWindow:(NSWindow *)window {
+  id shown = objc_getAssociatedObject(window, kLightsShownKey);
+  NSValue *current = shown ? (shown == NSNull.null ? nil : shown) : objc_getAssociatedObject(window, kLightsCenterKey);
+  if (current == center || [current isEqual:center]) return;
+  if (!MoveTrafficLights(window, center)) [self setTrafficLightsCenter:center inWindow:window];
 }
 
 + (void)setSwappedHandler:(void (^)(NSWindow *, NSWindow *))handler {

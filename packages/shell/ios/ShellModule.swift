@@ -1047,11 +1047,13 @@ final class GlassEffect: ExpoView {
     tintLayer.backgroundColor = tint?.cgColor
   }
 
-  // RN macOS sets subview frames directly; size them in setFrameSize.
+  // RN macOS sets subview frames directly; size them in setFrameSize. The glass keeps its shape and tint through a
+  // resize: setting them again re-rendered it (a SwiftUI pass) on every frame of a resize, as the sidebar's slide is
+  // for the URL bar.
   override func setFrameSize(_ newSize: NSSize) {
     super.setFrameSize(newSize)
     effect.frame = bounds
-    apply()
+    if tintLayer.superlayer != nil { tintLayer.frame = effect.bounds }
   }
 
   override func hitTest(_ point: NSPoint) -> NSView? { nil }

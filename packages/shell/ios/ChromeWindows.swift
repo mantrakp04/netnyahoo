@@ -37,8 +37,14 @@ enum ChromeWindows {
     host?.perform(NSSelectorFromString("showProfile:inWindow:"), with: profile, with: window)
   }
 
+  // The sidebarSlideLean kill switch (src/lib/killSwitches.ts), read once a launch. On, a move is drawn at once and laid
+  // out once the lights hold still (the sidebar's slide moves them every frame); off, every move lays them out.
+  private static let drawnMoves = KillSwitch.isOn("sidebarSlideLean")
+
   static func setTrafficLightsCenter(_ center: NSPoint?, in window: NSWindow) {
-    host?.perform(NSSelectorFromString("setTrafficLightsCenter:inWindow:"), with: center.map { NSValue(point: $0) }, with: window)
+    let move = NSSelectorFromString("moveTrafficLightsCenter:inWindow:")
+    let selector = drawnMoves && (host as AnyObject?)?.responds(to: move) == true ? move : NSSelectorFromString("setTrafficLightsCenter:inWindow:")
+    host?.perform(selector, with: center.map { NSValue(point: $0) }, with: window)
   }
 
   static func prepare(_ profiles: [String], for window: NSWindow) {

@@ -255,7 +255,10 @@ export async function launch(app, dataDir, port) {
   const launchedAt = Date.now();
   execFileSync("open", [
     "-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${dataDir}`,
-    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`, app,
+    "--env", `NETNYAHOO_REMOTE_DEBUGGING_PORT=${port}`,
+    // Kill switches for this run (docs/kill-switches.md): NETNYAHOO_SWITCHES=name=off node ratchet.mjs run …
+    ...(process.env.NETNYAHOO_SWITCHES ? ["--env", `NETNYAHOO_SWITCHES=${process.env.NETNYAHOO_SWITCHES}`] : []),
+    app,
   ]);
   for (let i = 0; i < 200; i++) {
     const [pid] = pidsOf(binary);

@@ -15,6 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)removeRootViewOfWindow:(NSWindow *)window;
 
 + (void)setTrafficLightsCenter:(nullable NSValue *)center inWindow:(NSWindow *)window;
+/// The same spot, drawn there at once and laid out there once it holds still (a move every frame: the sidebar's slide).
++ (void)moveTrafficLightsCenter:(nullable NSValue *)center inWindow:(NSWindow *)window;
 
 + (void)closeWindow:(NSWindow *)window;
 
