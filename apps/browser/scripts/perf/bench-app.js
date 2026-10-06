@@ -107,6 +107,11 @@ const scenarios = {
       await sleep(250);
     }
     await quiet();
+    // Session saves are throttled (lib/persist.ts: the first change starts an 800 ms timer). One left from the first
+    // pass, or the measured pass's last window still open when the counts are read, made `writes` land at 2 or 3. So
+    // the pass starts with no save pending, and its writes are read once the last window has closed: every save the
+    // switches caused, and nothing else (the other counts are read as the pass ends, as before).
+    await writesSettled(1200, 10000);
     P.reset();
     const steps = [];
     for (const id of ids) {
@@ -119,6 +124,11 @@ const scenarios = {
       await sleep(150);
     }
     const stats = P.read();
+    await sleep(1200);
+    const saved = P.read();
+    stats.writes = saved.writes;
+    stats.writeBytes = saved.writeBytes;
+    stats.writeMs = saved.writeMs;
     timed(() => S().activate(start));
     await quiet();
     return { steps, stats };
