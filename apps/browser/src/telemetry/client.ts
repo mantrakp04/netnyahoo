@@ -30,6 +30,8 @@ type Saved = {
   // perf_launch's cold and since_quit (journeys.ts): when this copy last launched and last quit, epoch ms.
   lastLaunchAt?: number | null;
   lastQuitAt?: number | null;
+  // perf_launch's first_of_version: the build the last launch ran (lastVersion is its version).
+  lastBuild?: string | null;
 };
 
 const DEFAULT: Saved = {
@@ -325,6 +327,7 @@ export function setSharing(on: boolean, source: SharingSource) {
     installId: uuidv4(),
     crashCursor: now,
     lastVersion: appInfo().appVersion,
+    lastBuild: appInfo().appBuild,
     sessionOpen: true,
     decidedAt: now,
     askDoneAt: saved.askDoneAt ?? now,
@@ -352,6 +355,8 @@ export type ClientSession = {
   updatedFrom: string | null;
   lastLaunchAt: number | null;
   lastQuitAt: number | null;
+  // The first launch of this version and build (or the first this copy recorded): macOS scans a new bundle first.
+  firstOfVersion: boolean;
 };
 
 export function startClient(): ClientSession | null {
@@ -369,8 +374,11 @@ export function startClient(): ClientSession | null {
   const previous: PreviousSession = saved.lastVersion === null ? "none" : saved.sessionOpen ? "unclean" : "clean";
   const version = appInfo().appVersion;
   const updatedFrom = saved.lastVersion && saved.lastVersion !== version ? saved.lastVersion : null;
-  const last = { lastLaunchAt: saved.lastLaunchAt ?? null, lastQuitAt: saved.lastQuitAt ?? null };
-  save({ sessionOpen: true, lastVersion: version, lastLaunchAt: appInfo().processStart ?? Date.now() });
+  const build = appInfo().appBuild;
+  // A copy that hasn't recorded its build yet (from before lastBuild) goes by its version alone.
+  const firstOfVersion = saved.lastVersion !== version || (saved.lastBuild != null && saved.lastBuild !== build);
+  const last = { lastLaunchAt: saved.lastLaunchAt ?? null, lastQuitAt: saved.lastQuitAt ?? null, firstOfVersion };
+  save({ sessionOpen: true, lastVersion: version, lastBuild: build, lastLaunchAt: appInfo().processStart ?? Date.now() });
   scheduleFlush(10_000);
   return { previous, updatedFrom, ...last };
 }

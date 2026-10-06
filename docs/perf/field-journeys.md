@@ -62,7 +62,9 @@ window, or at quit), not at the first window as before.
 
 `perf_launch` context, all ranges: `tabs` (0, 1, 2-5, 6-20, 21-50, 51-100, 101-200, 200+ restored), `windows`
 (1…10), `history` (0, <100, <1k, <5k, <20k, 20k+ entries), `cold` (the first launch since the Mac started, by
-`kern.boottime` against this copy's last launch; null until a second launch with sharing on), `since_quit` (<1m, <10m,
+`kern.boottime` against this copy's last launch; null until a second launch with sharing on), `first_of_version` (the
+first launch after the app's version or build changed, or the first this copy recorded: macOS's Gatekeeper scans the new
+bundle before `main`, so these launches are slower; a copy from before this field compares versions only), `since_quit` (<1m, <10m,
 <1h, <8h, <1d, <7d, 7d+, `unclean` when the last session didn't end, `unknown`), `since_boot` (<2m, <10m, <1h, <1d, 1d+).
 
 ### A session's payload
@@ -74,7 +76,7 @@ new tab's bar, Enter, and ⌘L, an address, Enter. The `$`-context properties ar
 ```json
 { "event": "perf_launch", "launch_ms": 1638, "js_ms": 1227, "commit_ms": 1589, "content_ms": 1683, "usable_ms": 1683,
   "tab_request_ms": 1759, "tab_commit_ms": 1846, "tab_paint_ms": 1916,
-  "tabs": "2-5", "windows": 1, "history": "<100", "cold": true, "since_quit": "<1h", "since_boot": "<1h" }
+  "tabs": "2-5", "windows": 1, "history": "<100", "cold": true, "first_of_version": false, "since_quit": "<1h", "since_boot": "<1h" }
 { "event": "perf_journeys",
   "j2_js_p50": 4, "j2_commit_p50": 44, "j2_shown_p50": 67, "j2_typeable_p50": 84, "j2_suggest_p50": 62, "j2_typeable_n": 2,
   "j3_js_p50": 4, "j3_frame_p50": 47, "j3_view_p50": 40, "j3_page_p50": 52, "j3_total_p50": 58, "j3_total_p75": 134,
@@ -117,6 +119,19 @@ GROUP BY version ORDER BY arrayMap(x -> toInt(x), splitByChar('.', version)) DES
 
 Add `AND properties.cold = true` (or group by `properties.tabs`, `properties.history`) to split cold from warm launches
 and small sessions from big ones; that's the field/lab gap's first question.
+
+The first launch of a version against the rest (launch project 3, `launch-critical-path.md`): content on screen and the
+restored tab's first paint. Launches from builds before `first_of_version` show it empty.
+
+```sql
+SELECT properties.$app_version AS version, properties.first_of_version AS first_of_version, count() AS launches,
+  round(quantile(0.5)(toFloat(properties.content_ms))) AS content_p50, round(quantile(0.75)(toFloat(properties.content_ms))) AS content_p75,
+  round(quantile(0.5)(toFloat(properties.tab_paint_ms))) AS paint_p50, round(quantile(0.75)(toFloat(properties.tab_paint_ms))) AS paint_p75
+FROM events
+WHERE event = 'perf_launch' AND timestamp > now() - INTERVAL 30 DAY AND properties.$environment = 'production'
+GROUP BY version, first_of_version
+ORDER BY arrayMap(x -> toInt(x), splitByChar('.', version)) DESC, first_of_version DESC
+```
 
 J2–J4 come as per-summary percentiles. PostHog's SQL has no weighted quantile, so each summary is spread back into
 pseudo-samples (half its `n` at its p50, a quarter at its p75, a fifth at its p95, the rest at its max) and the

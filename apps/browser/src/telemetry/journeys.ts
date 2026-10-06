@@ -222,7 +222,8 @@ const ago = (ms: number) =>
 
 let launch: Launch | null = null;
 let launchSent = false;
-let previousLaunch: { lastLaunchAt: number | null; lastQuitAt: number | null } = { lastLaunchAt: null, lastQuitAt: null };
+type PreviousLaunch = { lastLaunchAt: number | null; lastQuitAt: number | null; firstOfVersion: boolean | null };
+let previousLaunch: PreviousLaunch = { lastLaunchAt: null, lastQuitAt: null, firstOfVersion: null };
 
 // The first window's content committed (main.tsx, the first root's layout effect).
 export function launchCommitted() {
@@ -279,7 +280,7 @@ function sendLaunch(l: Launch, content: number | null, paints: number[]) {
   let history = 0;
   for (const list of Object.values(s.history)) history += list.length;
   const { bootTime } = appInfo();
-  const { lastLaunchAt, lastQuitAt } = previousLaunch;
+  const { lastLaunchAt, lastQuitAt, firstOfVersion } = previousLaunch;
   const ms = (at: number | null | undefined) => (at == null || !(at - l.t0 >= 0 && at - l.t0 < 10 * MINUTE) ? null : Math.round(at - l.t0));
   capture("perf_launch", {
     launch_ms: ms(l.firstWindow),
@@ -296,6 +297,8 @@ function sendLaunch(l: Launch, content: number | null, paints: number[]) {
     history: bucket(history, [[0, "0"], [99, "<100"], [999, "<1k"], [4999, "<5k"], [19_999, "<20k"]], "20k+"),
     // The first launch since the Mac started (its disk cache cold), as far as this copy knows.
     cold: bootTime && lastLaunchAt ? lastLaunchAt < bootTime : null,
+    // The first launch of this version and build, or the first this copy recorded: Gatekeeper scans the new bundle.
+    first_of_version: firstOfVersion,
     since_quit: lastQuitAt && (!lastLaunchAt || lastQuitAt >= lastLaunchAt) ? ago(l.t0 - lastQuitAt) : lastLaunchAt ? "unclean" : "unknown",
     since_boot: bootTime ? bucket(l.t0 - bootTime, [[2 * MINUTE, "<2m"], [10 * MINUTE, "<10m"], [HOUR, "<1h"], [DAY, "<1d"]], "1d+") : "unknown",
   });
@@ -395,7 +398,7 @@ function setOn(next: boolean, initial = false) {
   counts.clear();
 }
 
-export function startJourneys(previous: { lastLaunchAt: number | null; lastQuitAt: number | null } | null) {
+export function startJourneys(previous: PreviousLaunch | null) {
   if (previous) previousLaunch = previous;
   setOn(isSharing(), true);
   useTelemetry.subscribe((t) => setOn(t.sharing));
