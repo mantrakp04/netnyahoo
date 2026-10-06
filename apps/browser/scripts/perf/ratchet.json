@@ -1052,11 +1052,11 @@
     "groupLabel.500.afterLoadState": 38,
     "groupLabel.500.afterMemberTitle": 14888,
     "suggest.firstKey": 23487,
-    "suggest.keys.phrase": 136811,
-    "suggest.keys.url": 56301,
+    "suggest.keys.phrase": 144710,
+    "suggest.keys.url": 61540,
     "suggest.prepare": 174966,
-    "suggest.typeAll": 35871,
-    "suggest.typeAllWords": 280154
+    "suggest.typeAll": 35467,
+    "suggest.typeAllWords": 279443
   },
   "instr": {
     "micro.instrPerRound": 229385072
