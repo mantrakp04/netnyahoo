@@ -11,16 +11,17 @@ import { handOff, wantsPage } from "../lib/tabPages";
 import { noteDiscarded, noteGone, noteReady } from "../lib/tabLifecycle";
 import { webviewRef, webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
+import { shallowEqual, useStoreWhile, useTabValue } from "../store/tabWatch";
 import { useActiveTabId, useSidebarOpen, useWindowId } from "../store/hooks";
 import { activeTabId, engineProfile, wake } from "../store/model";
 import { removeTabs } from "../store/tabs";
 import { splitOf } from "../store/splits";
 import type { SplitView, Tab } from "../store/types";
-import { BOOKMARKS_BAR_HEIGHT, BookmarksBar, useBookmarksBarShown } from "./bookmarks/BookmarksBar";
+import { BOOKMARKS_BAR_HEIGHT, BookmarksBar, bookmarksBarShown, useBookmarksBarMode, type BookmarksBarMode } from "./bookmarks/BookmarksBar";
 import { FindBar } from "./FindBar";
 import { NO_TOOLBAR, splitGeometry, toolbarGeometry, type Rect, type ToolbarGeometry } from "./layout/geometry";
 import { dismissPermissions, startPermissionPrompts } from "./site/permissions";
-import { patchPage, pageOf, setBrowserId, setPopover, useFullscreenTab, usePage, usePopover } from "./layout/pageState";
+import { patchPage, pageOf, setBrowserId, setPopover, useFullscreenTab, usePages } from "./layout/pageState";
 import { useTabDrag } from "./layout/tabDrag";
 import { SadTab, StatusBubble } from "./layout/PaneOverlays";
 import { DropTargets, SplitDividers, SplitToast } from "./layout/SplitChrome";
@@ -61,6 +62,7 @@ export function ContentCard() {
   // Small Yahu draws its own bar above the card (components/smallYahu).
   const small = useBrowser((s) => isSmallWindow(s.windows[windowId]));
   const hideWhileScrolling = useBrowser((s) => s.settings.hideToolbarWhileScrolling);
+  const barMode = useBookmarksBarMode(windowId);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const container = useRef<View>(null);
@@ -233,6 +235,7 @@ export function ContentCard() {
               small={small}
               mounted={mounted.includes(tabId)}
               warm={warmPanes[tabId]}
+              barMode={barMode}
             />
           );
         })}
@@ -260,6 +263,7 @@ const TabPane = memo(function TabPane({
   small,
   mounted,
   warm,
+  barMode,
 }: {
   tabId: string;
   windowId: string;
@@ -279,14 +283,20 @@ const TabPane = memo(function TabPane({
   small: boolean;
   mounted: boolean;
   warm: Rect | undefined;
+  barMode: BookmarksBarMode;
 }) {
   const theme = useTheme();
   const visible = !!rect;
-  const isNewTab = useBrowser((s) => !s.tabs[tabId]?.url);
-  const zoom = useBrowser((s) => s.tabs[tabId]?.zoom ?? 1);
-  const popover = usePopover(tabId);
-  const newTabShown = usePage(tabId, (p) => !!p.newTabShown);
-  const inSomeSplit = useBrowser((s) => !!warm && !!splitOf(s, tabId));
+  // A window mounts a pane for every tab with a page, shown or not. Only a pane on screen or kept painting (`warm`)
+  // follows the stores; a hidden one follows its own tab (what it loads, its document, its bookmarks bar's room), and
+  // reads the rest as it is when it's shown (store/tabWatch.ts).
+  const live = visible || !!warm;
+  const own = useTabValue(tabId, paneTab, shallowEqual);
+  const isNewTab = !own.url;
+  const zoom = own.zoom;
+  const popover = useStoreWhile(usePages, visible, (s) => s.popover[tabId] ?? null);
+  const newTabShown = useStoreWhile(usePages, live, (s) => !!s.pages[tabId]?.newTabShown);
+  const inSomeSplit = useStoreWhile(useBrowser, !!warm, (s) => !!warm && !!splitOf(s, tabId));
   const inSplit = visible ? inActiveSplit : inSomeSplit;
   const frame = rect ?? warm ?? { x: 0, y: 0, width: fullWidth, height: fullHeight };
   useEffect(() => {
@@ -294,8 +304,8 @@ const TabPane = memo(function TabPane({
   }, [visible, isNewTab, mounted]);
   const hideBar = autoHide && visible && !fullscreen;
   const mode = useToolbarMode(tabId, windowId, hideBar);
-  const bookmarksBar = useBookmarksBarShown(tabId) && !fullscreen && !inSplit && !small;
-  const doc = useBrowser((s) => pageKey(s.tabs[tabId]?.url ?? ""));
+  const bookmarksBar = bookmarksBarShown(barMode, own.exists ? own : undefined) && !fullscreen && !inSplit && !small;
+  const doc = pageKey(own.url);
   // The page placed by the toolbar's motion, shown or not, so switching tabs keeps its size.
   const autoLayout = autoHide && toolbar && !fullscreen;
   const motion = useToolbarMotion({ enabled: autoLayout, mode, height: frame.height, extra: bookmarksBar ? BOOKMARKS_BAR_HEIGHT : 0, doc });
@@ -327,11 +337,11 @@ const TabPane = memo(function TabPane({
       ) : (
         <View style={{ height: layout.toolbarHeight }} />
       )}
-      {!autoLayout && bookmarksBar && <BookmarksBar tabId={tabId} placeholder={!visible} />}
+      {!autoLayout && bookmarksBar && <BookmarksBar placeholder={!visible} />}
       {/* The page and what sits on it; with a toolbar that hides, placed and moved by its motion (AutoHideToolbar's
           useToolbarMotion), a bookmarks bar going with it. */}
       <Animated.View style={autoLayout ? motion.groupStyle : { flex: 1 }}>
-        {autoLayout && bookmarksBar && <BookmarksBar tabId={tabId} placeholder={!visible} />}
+        {autoLayout && bookmarksBar && <BookmarksBar placeholder={!visible} />}
         <View style={autoLayout ? { height: motion.pageHeight } : { flex: 1 }}>
           {visible && !fullscreen && <ShareBar tabId={tabId} />}
           <View style={{ flex: 1 }}>
@@ -369,15 +379,17 @@ const TabPane = memo(function TabPane({
   );
 });
 
+const paneTab = (t: Tab | undefined) => ({ exists: !!t, url: t?.url ?? "", zoom: t?.zoom ?? 1 });
+const webViewTab = (t: Tab | undefined) => ({ navigation: t?.navigation, adoptId: t?.adoptId, profileId: t?.profileId ?? "" });
+
 const isBlank = (url: string) => !url || url === "about:blank";
 const pageKey = (url: string) => url.replace(/#.*$/, "");
 const hostOf = (url: string) => url.match(/^[a-z][\w+.-]*:\/\/([^/?#]*)/i)?.[1]?.toLowerCase() ?? "";
 
 // Memoized: its pane re-renders on layout changes, and the web view's props only change with these.
 const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: string; visible: boolean; warm: boolean }) {
-  const navigation = useBrowser((s) => s.tabs[tabId]?.navigation);
-  const adoptId = useBrowser((s) => s.tabs[tabId]?.adoptId);
-  const profileId = useBrowser((s) => s.tabs[tabId]?.profileId ?? "");
+  // Its own tab's fields, shown or not: a hidden tab still loads what it's sent to (store/tabWatch.ts).
+  const { navigation, adoptId, profileId } = useTabValue(tabId, webViewTab, shallowEqual);
   const tab = () => useBrowser.getState().tabs[tabId];
   const store = () => useBrowser.getState();
   const ref = useMemo(() => webviewRef(tabId), [tabId]);

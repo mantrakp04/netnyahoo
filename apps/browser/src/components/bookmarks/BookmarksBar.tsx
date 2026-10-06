@@ -7,6 +7,7 @@ import { folderChildren, folderLinks } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";
 import { useWindowId } from "../../store/hooks";
 import { bookmarkProfileId } from "../../store/model";
+import type { Settings } from "../../store/settings";
 import type { BookmarkNode } from "../../store/types";
 import { openInternalPage } from "../pages/urls";
 import { Favicon, useHover } from "../primitives";
@@ -18,21 +19,24 @@ export const BOOKMARKS_BAR_HEIGHT = 30;
 const ITEM_HEIGHT = 24;
 const OVERFLOW_WIDTH = 28;
 
-// Memoized: every tab's pane renders one, and panes re-render on layout changes (sidebar, splits).
-export const BookmarksBar = memo(function BookmarksBar({ tabId, placeholder }: { tabId: string; placeholder?: boolean }) {
+// Memoized: every tab's pane renders one, and panes re-render on layout changes (sidebar, splits). The pane decides
+// whether it's shown (bookmarksBarShown); a pane that isn't on screen draws only the room it takes.
+export const BookmarksBar = memo(function BookmarksBar({ placeholder }: { placeholder?: boolean }) {
   const windowId = useWindowId();
-  const shown = useBookmarksBarShown(tabId);
-  if (!shown) return null;
   return placeholder ? <View style={{ height: BOOKMARKS_BAR_HEIGHT }} /> : <Bar windowId={windowId} />;
 });
 
-export function useBookmarksBarShown(tabId: string): boolean {
-  return useBrowser((s) => {
-    const tab = s.tabs[tabId];
-    const mode = s.settings.bookmarksBar;
-    if (!tab || mode === "never" || s.windows[tab.windowId]?.incognito) return false;
-    return mode === "always" || !tab.url;
-  });
+/** Whether a tab's pane has a bookmarks bar: `mode` is the setting, "never" in a private window. */
+export function bookmarksBarShown(mode: BookmarksBarMode, tab: { url: string } | undefined): boolean {
+  if (!tab || mode === "never") return false;
+  return mode === "always" || !tab.url;
+}
+
+export type BookmarksBarMode = Settings["bookmarksBar"];
+
+/** The window's bookmarks bar mode: the setting, "never" in a private window. */
+export function useBookmarksBarMode(windowId: string): BookmarksBarMode {
+  return useBrowser((s) => (s.windows[windowId]?.incognito ? "never" : s.settings.bookmarksBar));
 }
 
 function Bar({ windowId }: { windowId: string }) {

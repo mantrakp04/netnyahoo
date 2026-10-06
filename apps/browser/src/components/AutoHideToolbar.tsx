@@ -4,6 +4,7 @@ import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View,
 import { layout, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
 import { useSettings, useTabLive } from "../store/hooks";
+import { useStoreWhile } from "../store/tabWatch";
 import type { ToolbarGeometry } from "./layout/geometry";
 import { toolbarPalette, useEasedColor } from "./layout/toolbarColors";
 import { useHistoryMenu } from "./layout/history";
@@ -42,14 +43,16 @@ AccessibilityInfo.isReduceMotionEnabled().then(
 );
 AccessibilityInfo.addEventListener("reduceMotionChanged", (on) => (reduceMotion = on));
 
+// Disabled (a pane not shown, or a toolbar that doesn't hide), the bar is shown whatever the stores say: nothing is
+// subscribed until it's enabled, and the render that enables it reads them as they are.
 export function useToolbarMode(tabId: string, windowId: string, enabled: boolean): ToolbarMode {
-  const scrolledDown = useToolbarAutoHide((s) => !!s.scrolledDown[tabId]);
-  const peek = useToolbarAutoHide((s) => !!s.peek[tabId]);
-  const hasPage = useBrowser((s) => !!s.tabs[tabId]?.url);
+  const scrolledDown = useStoreWhile(useToolbarAutoHide, enabled, (s) => !!s.scrolledDown[tabId]);
+  const peek = useStoreWhile(useToolbarAutoHide, enabled, (s) => !!s.peek[tabId]);
+  const hasPage = useStoreWhile(useBrowser, enabled, (s) => !!s.tabs[tabId]?.url);
   // Only asked while the bar is down, so a closed panel or find bar elsewhere doesn't re-render every pane.
-  const appNeedsBar = useBrowser((s) => enabled && scrolledDown && needsBar(s, tabId, windowId));
-  const popover = usePages((s) => enabled && scrolledDown && !!s.popover[tabId]);
-  const historyMenu = useHistoryMenu((m) => enabled && scrolledDown && m.menu?.tabId === tabId);
+  const appNeedsBar = useStoreWhile(useBrowser, enabled, (s) => enabled && scrolledDown && needsBar(s, tabId, windowId));
+  const popover = useStoreWhile(usePages, enabled, (s) => enabled && scrolledDown && !!s.popover[tabId]);
+  const historyMenu = useStoreWhile(useHistoryMenu, enabled, (m) => enabled && scrolledDown && m.menu?.tabId === tabId);
   return toolbarMode({ enabled, hasPage, scrolledDown, peek, needsBar: appNeedsBar || popover || historyMenu });
 }
 

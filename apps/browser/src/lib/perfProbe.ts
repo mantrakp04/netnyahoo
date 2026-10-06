@@ -342,7 +342,9 @@ function wrapSelectors() {
     let bySite = counted.get(subscribe as object);
     if (!bySite) counted.set(subscribe as object, (bySite = new Map()));
     let tracked = bySite.get(label);
-    if (!tracked) {
+    // A read that isn't subscribed (store/tabWatch.ts useStoreWhile while not live) isn't a live subscription.
+    if ((subscribe as { inert?: boolean }).inert) tracked = subscribe;
+    else if (!tracked) {
       const raw = subscribe as (cb: () => void) => () => void;
       tracked = (cb: () => void) => {
         bump(subscriptions, label);
@@ -463,7 +465,9 @@ function wrapWrites() {
 export function probeStore(name: string, store: Store) {
   if (!perfProbeEnabled) return;
   const subscribe = store.subscribe;
-  store.subscribe = (listener) => {
+  // React's subscriptions aren't store listeners here: zustand's hooks subscribe through the store's own `subscribe`,
+  // which store/tabWatch.ts reaches as `unprobed`.
+  store.subscribe = Object.assign((listener: Parameters<Store["subscribe"]>[0]) => {
     const site = listenersProbe ? `${name} ${callers(new Error().stack, 3)}` : "";
     return subscribe((s, prev) => {
       const t = now();
@@ -479,7 +483,7 @@ export function probeStore(name: string, store: Store) {
         }
       }
     });
-  };
+  }, { unprobed: subscribe });
   subscribe((s, prev) => {
     bump(stats.storeUpdates, name);
     const a = s as Record<string, unknown>;
