@@ -78,8 +78,8 @@ def cmd_wait(a):
 
 def cmd_status(a):
     bs = builds()
-    last = max([b["started"] for b in bs] or [0])
-    pending = [r for r in requests() if r["t"] > last]
+    # pending until a build of its config starts after it (a batch's Release runs after its Debug)
+    pending = [r for r in requests() if not any(b["config"] == r["config"] and b["started"] >= r["t"] for b in bs)]
     print("pending:", ", ".join(f"{r['as']}({r['config']})" for r in pending) or "none")
     for b in bs[-5:]:
         state = "running" if not b.get("done") else ("ok" if b["ok"] else "FAILED")
