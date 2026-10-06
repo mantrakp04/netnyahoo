@@ -5,8 +5,8 @@
 //   cd apps/browser && node --no-warnings --import ./src/test-loader.mjs scripts/perf/micro-bench.mjs [name…]
 //
 // Cases (all of them when no name is given):
-//   entries        sidebar, strip and group entries of 500/1000-tab windows after a title or progress update
-//   groupNames     a big group's automatic name after a progress or title update
+//   entries        sidebar, strip and group entries of 500/1000-tab windows after a title or load-state update
+//   groupNames     a big group's automatic name after a load-state or title update
 //   suggest        omnibox pool rebuilds after a visit, with 25k/50k bookmarks (the longest 4 ms slice)
 //   suggest-seed   omnibox keystrokes on js-bench's seed profile (seed.mjs: 5000 history entries, 200 tabs, 1000
 //                  bookmarks); `suggest-seed=<query>` types another query. js-bench `typing` is what a key costs in the app.
@@ -139,16 +139,16 @@ const benches = {
         S().updateTab(ids[i++ % count], { title: `T${i}` });
         sidebarEntries(S(), "w");
       }));
-      report(`sidebar entries, ${count} tabs, after a progress update`, time(() => {
-        S().updateLive(ids[i++ % count], { progress: (i % 10) / 10 });
+      report(`sidebar entries, ${count} tabs, after a load-state update`, time(() => {
+        S().updateLive(ids[i++ % count], { isLoading: i % 2 === 0 });
         sidebarEntries(S(), "w");
       }));
       report(`strip entries, ${count} tabs, after a title change`, time(() => {
         S().updateTab(ids[i++ % count], { title: `T${i}` });
         strip.stripEntries(S(), "w", "default");
       }));
-      report(`strip entries, ${count} tabs, after a progress update`, time(() => {
-        S().updateLive(ids[i++ % count], { progress: (i % 10) / 10 });
+      report(`strip entries, ${count} tabs, after a load-state update`, time(() => {
+        S().updateLive(ids[i++ % count], { isLoading: i % 2 === 0 });
         strip.stripEntries(S(), "w", "default");
       }));
     }
@@ -164,8 +164,8 @@ const benches = {
     for (const members of [500, 1000]) {
       const ids = bigSession(members + 100, members);
       let i = 0;
-      report(`auto group name, ${members} members, after a progress update`, time(() => {
-        S().updateLive(ids[i++ % members], { progress: (i % 10) / 10 });
+      report(`auto group name, ${members} members, after a load-state update`, time(() => {
+        S().updateLive(ids[i++ % members], { isLoading: i % 2 === 0 });
         groupLabel(S(), S().groups.big);
       }));
       report(`auto group name, ${members} members, after an outside title change`, time(() => {
@@ -321,7 +321,7 @@ const benches = {
       for (const q of ["react native performance", "react native performance hermes"]) for (let i = 1; i <= q.length; i++) core.buildSuggestions(q.slice(0, i), source, { now: at });
     });
 
-    // Sidebar, strip and group entries of a 1000-tab window after one title or progress update.
+    // Sidebar, strip and group entries of a 1000-tab window after one title or load-state update.
     for (const count of [500, 1000]) {
       const ids = bigSession(count);
       const warm = () => {
@@ -333,17 +333,17 @@ const benches = {
       add(`entries.sidebar${count}.afterTitle`, () => sidebarEntries(S(), "w"));
       add(`entries.strip${count}.afterTitle`, () => strip.stripEntries(S(), "w", "default"));
       warm();
-      S().updateLive(ids[11], { progress: 0.5 });
-      add(`entries.sidebar${count}.afterProgress`, () => sidebarEntries(S(), "w"));
-      add(`entries.strip${count}.afterProgress`, () => strip.stripEntries(S(), "w", "default"));
+      S().updateLive(ids[11], { isLoading: true });
+      add(`entries.sidebar${count}.afterLoadState`, () => sidebarEntries(S(), "w"));
+      add(`entries.strip${count}.afterLoadState`, () => strip.stripEntries(S(), "w", "default"));
     }
     const ids = bigSession(1000, 500);
     groupEntries(S(), "big");
     S().updateTab(ids[600], { title: "T600" });
     add("entries.group500.afterTitle", () => groupEntries(S(), "big"));
     groupLabel(S(), S().groups.big);
-    S().updateLive(ids[5], { progress: 0.5 });
-    add("groupLabel.500.afterProgress", () => groupLabel(S(), S().groups.big));
+    S().updateLive(ids[5], { isLoading: true });
+    add("groupLabel.500.afterLoadState", () => groupLabel(S(), S().groups.big));
     S().updateTab(ids[6], { title: "Page 6 - github" });
     add("groupLabel.500.afterMemberTitle", () => groupLabel(S(), S().groups.big));
     console.log(`COUNTS ${JSON.stringify(out)}`);

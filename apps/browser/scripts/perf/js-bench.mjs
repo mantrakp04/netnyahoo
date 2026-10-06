@@ -65,7 +65,8 @@ const defaultOut = process.env.NN_PERF_OUT ?? "/tmp/nn-perf-js";
 // Bump when the seed or bench-app.js scenarios change what the numbers count.
 //   1  until e282ac6e: the seed wrote a favicon index (favicons-default.json) the app deleted at startup
 //   2  e282ac6e: no favicon index
-const BENCH_REVISION = 2;
+//   3  storeUpdate flips isLoading on a background tab (it wrote `progress`, a field the app dropped in 33e88e6f)
+const BENCH_REVISION = 3;
 
 const [command, ...rest] = process.argv.slice(2);
 const flags = {};

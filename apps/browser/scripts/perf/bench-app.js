@@ -230,8 +230,8 @@ const scenarios = {
     return { runs: out };
   },
 
-  // What one store update costs when nothing on screen depends on it (a background tab's progress):
-  // every subscribed selector runs, React bails out.
+  // What one store update costs when nothing on screen depends on it (a background tab's load state flipping;
+  // progress isn't a store field since 33e88e6f): every subscribed selector runs, React bails out.
   async storeUpdate({ count = 60 } = {}) {
     await quiet();
     const s = S();
@@ -240,10 +240,10 @@ const scenarios = {
     P.reset();
     const steps = [];
     for (let i = 0; i < count; i++) {
-      steps.push(timed(() => S().updateLive(bg, { progress: 0.05 + (i % 10) / 10 })));
+      steps.push(timed(() => S().updateLive(bg, { isLoading: i % 2 === 0 })));
       await sleep(5);
     }
-    timed(() => S().updateLive(bg, { progress: 0 }));
+    timed(() => S().updateLive(bg, { isLoading: false }));
     return { steps, stats: P.read() };
   },
 
