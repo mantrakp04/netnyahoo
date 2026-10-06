@@ -72,6 +72,16 @@ def ours():
     return {p: procs[p] for p in mine}
 
 
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
 def resume_all(*_):
     for pid in paused:
         try:
@@ -93,7 +103,7 @@ try:
             subprocess.run(["taskpolicy", "-b", "-p", str(pid)], capture_output=True)
             backgrounded.add(pid)
         backgrounded &= procs.keys() | set(paused)
-        paused[:] = [p for p in paused if p in procs]
+        paused[:] = [p for p in paused if alive(p)]  # not `in procs`: an orphan reparented to launchd must still be resumed
         cpu = total_cpu()
         if cpu > a.cap:
             budget = cpu - a.cap + 5
