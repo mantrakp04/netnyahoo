@@ -32,7 +32,7 @@ test("a stall that starts in the window and ends after it is the window's; one t
   assert.equal(s.worst, 1000);
   assert.equal(s.frames, 2); // ticks at 16 and 1016, from the last one at or before 10 (8)
   const before = windowStats(rec([0, 8, 508, 516, 524, 532]), 600, 700, R);
-  assert.ok(before.worst <= 8 + 1e-9);
+  assert.equal(before.frames, 0);
 });
 
 test("a 60 Hz screen: every tick is over 8.33 ms and none over 16.7", () => {
