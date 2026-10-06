@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Keep the Mac's total CPU under a cap by throttling only the agents' own work.
+
+  scripts/agent/cpu-cap [--cap 70] [--resume 55] [--every 3]
+
+"Ours" is every process whose command line mentions this checkout or the agents' scratch folders (/private/tmp/claude-*)
+plus all their descendants: builds (xcodebuild, clang, swift, ld, hermesc), benches, Metro, hidden test instances,
+Codex runs started from here. The owner's apps (/Applications/Netnyahoo.app, Claude, games) are never touched.
+
+  - Every process of ours is moved to background QoS (taskpolicy -b -p): efficiency cores, lowest I/O.
+  - While total CPU is over --cap, the busiest processes of ours are paused (SIGSTOP), busiest first.
+  - Once total CPU is under --resume, they are resumed (SIGCONT), one per tick.
+  - On exit (any signal) everything paused is resumed.
+Agents: a paused build or instance just runs slower; give waits their deadlines as usual.
+"""
+import argparse, os, re, signal, subprocess, sys, time
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+MARKERS = (REPO + "/", REPO + " ", "/private/tmp/claude-", "/tmp/nn-")
+NEVER = ("/Applications/Netnyahoo.app/", "/Applications/Claude.app/", "/Applications/League of Legends.app/",
+         "/System/", "/usr/libexec/", "/sbin/launchd")
+ME = os.getpid()
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--cap", type=float, default=70)
+ap.add_argument("--resume", type=float, default=55)
+ap.add_argument("--every", type=float, default=3)
+a = ap.parse_args()
+
+paused = []          # pids, in pause order
+backgrounded = set()
+
+
+def log(msg):
+    print(time.strftime("%H:%M:%S"), msg, flush=True)
+
+
+def total_cpu():
+    out = subprocess.run(["top", "-l", "2", "-s", "1", "-n", "0"], capture_output=True, text=True).stdout
+    lines = [l for l in out.splitlines() if l.startswith("CPU usage")]
+    m = re.search(r"([\d.]+)% idle", lines[-1]) if lines else None
+    return 100 - float(m.group(1)) if m else 0.0
+
+
+def ours():
+    out = subprocess.run(["ps", "-axo", "pid=,ppid=,pcpu=,command="], capture_output=True, text=True).stdout
+    procs = {}
+    for line in out.splitlines():
+        p = line.split(None, 3)
+        if len(p) < 4:
+            continue
+        procs[int(p[0])] = (int(p[1]), float(p[2]), p[3])
+    roots = {pid for pid, (_, _, cmd) in procs.items()
+             if any(m in cmd for m in MARKERS) and not any(n in cmd for n in NEVER)}
+    mine = set()
+    for pid in procs:
+        seen, cur = [], pid
+        while cur in procs and cur > 1 and cur not in seen:
+            if cur in roots or cur in mine:
+                mine.add(pid)
+                break
+            seen.append(cur)
+            cur = procs[cur][0]
+    # never this script or its ancestors (the shell that runs it)
+    cur = ME
+    while cur in procs and cur > 1:
+        mine.discard(cur)
+        cur = procs[cur][0]
+    mine = {p for p in mine if not any(n in procs[p][2] for n in NEVER)}
+    return {p: procs[p] for p in mine}
+
+
+def resume_all(*_):
+    for pid in paused:
+        try:
+            os.kill(pid, signal.SIGCONT)
+        except ProcessLookupError:
+            pass
+    log(f"exit: resumed {len(paused)}")
+    sys.exit(0)
+
+
+for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+    signal.signal(s, resume_all)
+
+log(f"cap {a.cap}% resume {a.resume}% repo {REPO}")
+try:
+    while True:
+        procs = ours()
+        for pid in procs.keys() - backgrounded:
+            subprocess.run(["taskpolicy", "-b", "-p", str(pid)], capture_output=True)
+            backgrounded.add(pid)
+        backgrounded &= procs.keys() | set(paused)
+        paused[:] = [p for p in paused if p in procs]
+        cpu = total_cpu()
+        if cpu > a.cap:
+            budget = cpu - a.cap + 5
+            for pid, (_, pcpu, cmd) in sorted(procs.items(), key=lambda kv: -kv[1][1]):
+                if budget <= 0 or pcpu < 3 or pid in paused:
+                    continue
+                try:
+                    os.kill(pid, signal.SIGSTOP)
+                except ProcessLookupError:
+                    continue
+                paused.append(pid)
+                budget -= pcpu / os.cpu_count()
+                log(f"cpu {cpu:.0f}%: paused {pid} ({pcpu:.0f}%) {cmd[:90]}")
+        elif cpu < a.resume and paused:
+            pid = paused.pop()
+            try:
+                os.kill(pid, signal.SIGCONT)
+                log(f"cpu {cpu:.0f}%: resumed {pid}")
+            except ProcessLookupError:
+                pass
+        time.sleep(a.every)
+except Exception as e:
+    log(f"error {e!r}")
+    resume_all()
