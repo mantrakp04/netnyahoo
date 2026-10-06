@@ -28,15 +28,15 @@ registerHooks({
   },
 });
 const { useBrowser } = await import("./browser.ts");
-const { useIsActiveTab, useTab, useTabLive, AppearanceContext, WindowContext } = await import("./hooks.ts");
+const { useIsActiveTab, useTab, useTabLive, WindowContext } = await import("./hooks.ts");
 const { useTabValue, useStoreWhile, shallowEqual } = await import("./tabWatch.ts");
 const { usePageProgress, setPageProgress } = await import("./pageProgress.ts");
 const { useRowState, ACTIVE, SELECTED, PLAYING, LOADING } = await import("../components/sidebar/rowState.ts");
-const { useIsRenamingTab, setSidebarUi } = await import("../components/sidebar/state.ts");
+const { useSidebarUi, setSidebarUi } = await import("../components/sidebar/state.ts");
 const { useIsSleeping, noteDiscarded, noteReady } = await import("../lib/tabLifecycle.ts");
-const { useIsPipOpen, setPictureInPictureState } = await import("../components/media/state.ts");
+const { useMedia, setPictureInPictureState } = await import("../components/media/state.ts");
 const { usePage, usePages, patchPage } = await import("../components/layout/pageState.ts");
-const { useFavicons, useFaviconView, pageKey } = await import("../lib/favicons.ts");
+const { useFavicons, useFavicon, useFaviconTheme, useAppearanceDark, pageKey } = await import("../lib/favicons.ts");
 const { engineProfile } = await import("./model.ts");
 const { flushPersistence, loadSession, startPersistence } = await import("../lib/persist.ts");
 const stub = await import("../test-native-stub.mjs");
@@ -64,9 +64,9 @@ const row = (tabId, windowId) =>
         selected: !!(flags & SELECTED),
         playing: !!(flags & PLAYING),
         loading: !!(flags & LOADING),
-        renaming: useIsRenamingTab(tabId),
+        renaming: useSidebarUi((u) => u.renaming?.kind === "tab" && u.renaming.id === tabId),
         sleeping: useIsSleeping(tabId),
-        pip: useIsPipOpen(tabId),
+        pip: useMedia((m) => !!m.pipOpen[tabId]),
         capture: usePage(tabId, (p) => !!p.mediaAccess),
         profile: useTabValue(tabId, (t) => t?.profileId),
       };
@@ -236,8 +236,12 @@ const setIcons = (fn) =>
     const icons = f.profiles[key] ?? { pages: {}, srcs: {}, appearances: {} };
     return { ...f, profiles: { ...f.profiles, [key]: fn(icons) } };
   });
-const icon = (url, src, appDark = false) =>
-  mount(({ url, src }) => useFaviconView(url, src, "default", true), { props: { url, src }, contexts: [[AppearanceContext, appDark]] });
+const icon = (url, src) =>
+  mount(({ url, src }) => {
+    // As primitives.tsx's Favicon reads it.
+    useAppearanceDark();
+    return { resolved: useFavicon(url, src, "default"), theme: useFaviconTheme(url, src, "default") };
+  }, { props: { url, src } });
 
 test("an icon: arrives, changes, follows its page and its icon URL, its light/dark pair and theme, and goes", () => {
   S().hydrate({});
@@ -260,9 +264,9 @@ test("an icon: arrives, changes, follows its page and its icon URL, its light/da
   setIcons((x) => ({ ...x, appearances: { ...x.appearances, [pageKey(page)]: ["file:///light.png", "file:///dark.png"] } }));
   assert.equal(i.value.resolved?.uri, "file:///light.png");
   useBrowser.setState((s) => ({ ui: { ...s.ui, appDark: true } }));
-  assert.equal(i.setContext(AppearanceContext, true).resolved?.uri, "file:///dark.png", "dark appearance");
+  assert.equal(i.value.resolved?.uri, "file:///dark.png", "dark appearance");
   useBrowser.setState((s) => ({ ui: { ...s.ui, appDark: false } }));
-  assert.equal(i.setContext(AppearanceContext, false).resolved?.uri, "file:///light.png", "and back");
+  assert.equal(i.value.resolved?.uri, "file:///light.png", "and back");
   // Clear data / history deleted: the profile's icons go.
   useFavicons.setState((f) => ({ ...f, profiles: { ...f.profiles, [key]: { pages: {}, srcs: {}, appearances: {} } } }));
   assert.equal(i.value.resolved, null, "gone");

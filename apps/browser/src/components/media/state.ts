@@ -6,7 +6,6 @@ import { useBrowser } from "../../store/browser";
 import type { BrowserState } from "../../store/browser";
 import { activeTabId } from "../../store/model";
 import { splitOf } from "../../store/splits";
-import { keyedWatch, useWatched } from "../../store/tabWatch";
 
 export type Session = NowPlaying & {
   playedAt: number;
@@ -28,15 +27,6 @@ export type TabShare = {
 };
 
 export const useMedia = create<Store>()(() => ({ sessions: {}, dismissed: {}, pip: {}, pipOpen: {}, displayRequests: {}, tabShares: {} }));
-
-// Every sidebar row has a badge for it: one shared listener wakes the row of the tab whose window opened or closed.
-/** (tests) */
-export const pipWatch = keyedWatch<Store>(
-  useMedia,
-  (id, m, prev) => !!m.pipOpen[id] !== !!prev.pipOpen[id],
-  (m, prev) => m.pipOpen !== prev.pipOpen,
-);
-export const useIsPipOpen = (tabId: string): boolean => useWatched(pipWatch, tabId, () => !!useMedia.getState().pipOpen[tabId]);
 
 export function setPictureInPictureState(tabId: string, { kind, active }: PictureInPictureState) {
   useMedia.setState((s) => {

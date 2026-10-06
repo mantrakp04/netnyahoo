@@ -1,4 +1,4 @@
-import { useMemo, useRef, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { useBrowser, type BrowserState } from "./browser";
 import type { Tab } from "./types";
 
@@ -21,105 +21,34 @@ type Readable<S> = { getState(): S; subscribe(listener: (s: S, prev: S) => void)
 // hook to count the app's store listeners (lib/perfProbe.ts probeStore), and these are subscriptions, not listeners.
 const subscribeOf = <S,>(store: Readable<S>): Readable<S>["subscribe"] => (store.subscribe as { unprobed?: Readable<S>["subscribe"] }).unprobed ?? store.subscribe;
 
-/** What `memoRead` remembers. */
-export type Memo<T> = { deps: readonly unknown[]; value: T } | null;
+const watchers = new Map<string, Set<() => void>>();
+let listening = false;
 
-/**
- * `compute()` unless every dependency is the same object as last time, in which case the last value: a snapshot for
- * `useSyncExternalStore` stays the same value while what it reads does. When it is computed again and `equal` to the last
- * value, the last value is kept, so React sees no change.
- */
-export function memoRead<T>(memo: { current: Memo<T> }, deps: readonly unknown[], compute: () => T, equal: (a: T, b: T) => boolean = Object.is): T {
-  const last = memo.current;
-  if (last && last.deps.length === deps.length && last.deps.every((d, i) => d === deps[i])) return last.value;
-  const next = compute();
-  const value = last && equal(last.value, next) ? last.value : next;
-  memo.current = { deps, value };
-  return value;
+function wake(s: BrowserState, prev: BrowserState) {
+  if (s.tabs === prev.tabs) return;
+  for (const [id, listeners] of watchers) {
+    if (s.tabs[id] === prev.tabs[id]) continue;
+    for (const listener of [...listeners]) listener();
+  }
 }
-
-/** Listeners by key, woken by one shared store listener. See `keyedWatch`. */
-export type KeyedWatch = {
-  /** Calls `listener` after each store update that changed `key`'s entry; returns the unsubscribe. */
-  watch(key: string, listener: () => void): () => void;
-  /** The number of keys with a watcher (tests). */
-  size(): number;
-};
-
-/**
- * One store listener for every watcher of a store's per-key entries. `changed(key, s, prev)` says whether an update
- * changed what `key`'s watchers read; `any(s, prev)` is the cheap test that rules out the whole update first (is the map
- * itself the same object). An update costs one `any` plus one `changed` per watched key, and the hooks of the keys that
- * changed, however many rows watch: no selector runs for the rest.
- */
-export function keyedWatch<S>(store: Readable<S>, changed: (key: string, s: S, prev: S) => boolean, any: (s: S, prev: S) => boolean = () => true): KeyedWatch {
-  const watchers = new Map<string, Set<() => void>>();
-  let listening = false;
-  const wake = (s: S, prev: S) => {
-    if (!any(s, prev)) return;
-    for (const [key, listeners] of watchers) {
-      if (!changed(key, s, prev)) continue;
-      for (const listener of [...listeners]) listener();
-    }
-  };
-  return {
-    watch(key, listener) {
-      if (!listening) {
-        listening = true;
-        subscribeOf(store)(wake);
-      }
-      let listeners = watchers.get(key);
-      if (!listeners) watchers.set(key, (listeners = new Set()));
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-        if (!listeners.size && watchers.get(key) === listeners) watchers.delete(key);
-      };
-    },
-    size: () => watchers.size,
-  };
-}
-
-/**
- * `get` over one key's entry of a `keyedWatch`'s store, re-rendering only when that key changes. `get` must return a
- * stable value (a primitive, or one cached by the entry's identity: see `entrySnapshot`).
- */
-export function useWatched<T>(watch: KeyedWatch, key: string, get: () => T): T {
-  const subscribe = useMemo(() => (listener: () => void) => watch.watch(key, listener), [watch, key]);
-  return useSyncExternalStore(subscribe, get);
-}
-
-/**
- * One key's entry of a keyed store (`read`), through `select`: re-rendering only when that entry changes, and not when
- * `select` gives an equal value. `select` runs again when the entry or the function changes (callers pass inline
- * closures), so it may read the render's props; it must read the entry alone.
- */
-export function useWatchedEntry<E, T>(watch: KeyedWatch, key: string, read: () => E, select: (entry: E) => T, equal: (a: T, b: T) => boolean = Object.is): T {
-  const memo = useRef<Memo<T>>(null);
-  return useWatched(watch, key, () => {
-    const entry = read();
-    return memoRead(memo, [entry, select], () => select(entry), equal);
-  });
-}
-
-const tabs = keyedWatch<BrowserState>(
-  useBrowser,
-  (id, s, prev) => s.tabs[id] !== prev.tabs[id],
-  (s, prev) => s.tabs !== prev.tabs,
-);
 
 /** Calls `listener` after each store update that replaced `tabId`'s tab object (or added or removed it). */
-export const watchTab = tabs.watch;
-
-/** The same for a tab's live state (`store.live[tabId]`). */
-export const liveWatch = keyedWatch<BrowserState>(
-  useBrowser,
-  (id, s, prev) => s.live[id] !== prev.live[id],
-  (s, prev) => s.live !== prev.live,
-);
+export function watchTab(tabId: string, listener: () => void): () => void {
+  if (!listening) {
+    listening = true;
+    subscribeOf(useBrowser)(wake);
+  }
+  let listeners = watchers.get(tabId);
+  if (!listeners) watchers.set(tabId, (listeners = new Set()));
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size && watchers.get(tabId) === listeners) watchers.delete(tabId);
+  };
+}
 
 /** The number of tabs with a watcher (tests). */
-export const watchedTabs = tabs.size;
+export const watchedTabs = () => watchers.size;
 
 /**
  * A snapshot getter for `select` over one tab: the same value (by `equal`) while the tab object is the same, so React
@@ -140,47 +69,6 @@ export function tabSnapshot<T>(tabId: string, select: (tab: Tab | undefined) => 
 export function useTabValue<T>(tabId: string, select: (tab: Tab | undefined) => T, equal?: (a: T, b: T) => boolean): T {
   const [subscribe, get] = useMemo(() => [(listener: () => void) => watchTab(tabId, listener), tabSnapshot(tabId, select, equal)] as const, [tabId]);
   return useSyncExternalStore(subscribe, get);
-}
-
-// What a sidebar row shows: the tab, its live state, whether it is its window's active tab, whether it is selected.
-const isActive = (s: BrowserState, id: string): boolean => {
-  const tab = s.tabs[id];
-  if (!tab) return false;
-  const w = s.windows[tab.windowId];
-  return !!w && w.activeTabIds[tab.profileId] === id;
-};
-const isSelected = (s: BrowserState, id: string): boolean => {
-  const tab = s.tabs[id];
-  return !!tab && !!s.selection[tab.windowId]?.includes(id);
-};
-
-const tabStates = keyedWatch<BrowserState>(
-  useBrowser,
-  (id, s, prev) =>
-    s.tabs[id] !== prev.tabs[id] ||
-    s.live[id] !== prev.live[id] ||
-    (s.windows !== prev.windows && isActive(s, id) !== isActive(prev, id)) ||
-    (s.selection !== prev.selection && isSelected(s, id) !== isSelected(prev, id)),
-  (s, prev) => s.tabs !== prev.tabs || s.live !== prev.live || s.windows !== prev.windows || s.selection !== prev.selection,
-);
-
-/** Calls `listener` after each store update that changed `tabId`'s tab or live state, or made it (not) active or selected. */
-export const watchTabState = tabStates.watch;
-
-/** The number of tabs with a state watcher (tests). */
-export const watchedTabStates = tabStates.size;
-
-/**
- * Something about one tab that depends on the tab, its live state, whether it is the window's active tab and whether it
- * is selected, and on nothing else in the store (a sidebar row's flags): re-rendered only when one of those changes for
- * this tab. A switch wakes the two rows involved, not every row. `select` must read only those.
- */
-export function useTabState<T>(tabId: string, select: (s: BrowserState) => T, equal?: (a: T, b: T) => boolean): T {
-  const memo = useRef<Memo<T>>(null);
-  return useWatched(tabStates, tabId, () => {
-    const s = useBrowser.getState();
-    return memoRead(memo, [s.tabs[tabId], s.live[tabId], s.windows, s.selection, select], () => select(s), equal);
-  });
 }
 
 // Marked so the perf probe doesn't count it as a live subscription.

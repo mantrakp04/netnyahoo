@@ -3,7 +3,7 @@ import { Symbol, type SymbolProps } from "@netnyahoo/shell";
 import { memo, useState } from "react";
 import { Image, Pressable, Text, View, type ViewStyle } from "react-native";
 import { markHoverProps } from "../lib/hoverShift";
-import { faviconFailed, useAppearanceDark, useFaviconView } from "../lib/favicons";
+import { faviconFailed, useAppearanceDark, useFavicon, useFaviconTheme } from "../lib/favicons";
 import { bundledSiteIcon } from "../lib/siteIcons";
 import { useTheme } from "../lib/theme";
 
@@ -83,10 +83,9 @@ export const Favicon = memo(function Favicon({
 }) {
   const theme = useTheme();
   useAppearanceDark();
-  const themed = !(theme.dark || direct);
-  const view = useFaviconView(url, direct ? null : favicon, profileId, themed);
-  const resolved = direct && favicon ? { uri: favicon, profileId: "" } : view.resolved;
-  const shape = view.theme;
+  const cached = useFavicon(url, direct ? null : favicon, profileId);
+  const resolved = direct && favicon ? { uri: favicon, profileId: "" } : cached;
+  const shape = useFaviconTheme(theme.dark || direct ? "" : url, favicon, profileId);
   const white = shape?.kind === "template" && !!shape.stroke;
   const [broken, setBroken] = useState<string | null>(null);
   if (!url && !resolved) return <NewTabIcon size={size} />;

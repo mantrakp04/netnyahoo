@@ -1,12 +1,10 @@
 import { faviconsFor, fetchFavicon, onHistoryChanged, removeLegacyFavicons } from "@netnyahoo/nncore";
 import { iconTheme, readDocument, removeDocument, type IconTheme } from "@netnyahoo/shell";
-import { useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 import { create } from "zustand";
 import { batchStoreUpdates, useBrowser, type BrowserState } from "../store/browser";
-import { AppearanceContext } from "../store/hooks";
 import { engineProfile, isIncognitoProfile } from "../store/model";
 import { DEFAULT_PROFILE_ID } from "../store/settings";
-import { keyedWatch, memoRead, type Memo } from "../store/tabWatch";
 import { webviews } from "./webviews";
 
 // Favicons are Chrome's (FaviconService): Chrome saves a page's icon when the page shows it and drops it with the
@@ -241,8 +239,8 @@ export function resolveFavicon(url: string, src?: string | null, profileId?: str
 }
 
 // Callers re-render on an appearance change themselves (useAppearanceDark): the lookup reads it for
-// icons that have a light and a dark version. The window's ThemeScope follows the store once for all of them.
-export const useAppearanceDark = () => useContext(AppearanceContext) ?? useBrowser.getState().ui.appDark;
+// icons that have a light and a dark version.
+export const useAppearanceDark = () => useBrowser((s) => s.ui.appDark);
 
 // Whether every profile the lookup reads has Chrome's answer for the page (an icon, or none).
 function answered(url: string, profileId?: string): boolean {
@@ -288,85 +286,39 @@ function watch(w: Watcher) {
   };
 }
 
-// The hooks wake an icon only when its own answer changes: one shared listener on the store (store/tabWatch.ts) compares
-// the entries a lookup reads (the page's icon, its light/dark pair, the icon URL's image, each in the profiles it looks
-// in) and a theme by icon, so a page that loads wakes the icons that show that page, not the hundreds in a sidebar.
-const iconKey = (url: string, src?: string | null, profileId?: string) => `${pageKey(url)}\n${src ?? ""}\n${profileId ?? ""}`;
-
-/** (tests) */
-export const iconWatch = keyedWatch<Favicons>(
-  useFavicons,
-  (key, f, prev) => {
-    const i = key.indexOf("\n");
-    const j = key.indexOf("\n", i + 1);
-    const page = key.slice(0, i);
-    const src = key.slice(i + 1, j);
-    for (const id of lookupOrder(key.slice(j + 1) || undefined)) {
-      const k = cacheKey(id);
-      const a = f.profiles[k];
-      const b = prev.profiles[k];
-      if (a !== b && (a?.pages[page] !== b?.pages[page] || a?.appearances[page] !== b?.appearances[page] || (src !== "" && a?.srcs[src] !== b?.srcs[src]))) return true;
-    }
-    return false;
-  },
-  (f, prev) => f.profiles !== prev.profiles,
-);
-/** (tests) */
-export const themeWatch = keyedWatch<Favicons>(
-  useFavicons,
-  (uri, f, prev) => f.themes[uri] !== prev.themes[uri],
-  (f, prev) => f.themes !== prev.themes,
-);
-
-/**
- * What an icon shows: the resolved image, and (`themed`) its shape theme, which is worked out once the image is known.
- * Callers re-render on an appearance change themselves (useAppearanceDark).
- */
-export function useFaviconView(url: string, src?: string | null, profileId?: string, themed = false): { resolved: ResolvedFavicon | null; theme: IconTheme | null | undefined } {
-  const uri = themed && url ? (resolveFavicon(url, src, profileId)?.uri ?? null) : null;
-  const key = iconKey(url, src, profileId);
-  const subscribe = useMemo(
-    () => (listener: () => void) => {
-      const off = [iconWatch.watch(key, listener), uri ? themeWatch.watch(uri, listener) : undefined];
-      return () => off.forEach((f) => f?.());
-    },
-    [key, uri],
-  );
-  const memo = useRef<Memo<{ found: string | null; theme: IconTheme | null | undefined }>>(null);
-  const { found, theme } = useSyncExternalStore(subscribe, () => {
-    const f = useFavicons.getState();
-    return memoRead(
-      memo,
-      [f.profiles, f.themes, useBrowser.getState().ui.appDark, url, src, profileId, themed],
-      () => {
-        const hit = resolveFavicon(url, src, profileId);
-        return { found: hit ? `${hit.profileId} ${hit.uri}` : null, theme: themed && hit ? f.themes[hit.uri] : undefined };
-      },
-      (a, b) => a.found === b.found && a.theme === b.theme,
-    );
+export function useFavicon(url: string, src?: string | null, profileId?: string): ResolvedFavicon | null {
+  const key = useFavicons(() => {
+    const found = resolveFavicon(url, src, profileId);
+    return found ? `${found.profileId} ${found.uri}` : null;
   });
   // No icon yet: ask Chrome, and when it has none, fetch the one the app names. Watched outside React: Chrome
   // answering "none" changes nothing on screen, so it doesn't re-render the icon.
-  const missing = !!url && !found;
+  const missing = !!url && !key;
   // Without a profile the lookup reads every profile: one added since asks too, on the next render.
   const order = missing ? lookupOrder(profileId).join(" ") : "";
   useEffect(() => (missing ? watch({ url, src, profileId }) : undefined), [missing, order, profileId, url, src]);
-  const split = found?.indexOf(" ") ?? -1;
-  const resolved = found ? { profileId: found.slice(0, split), uri: found.slice(split + 1) } : null;
-  const themeUri = themed ? (resolved?.uri ?? null) : null;
-  const pending = !!themeUri && theme === undefined;
-  useEffect(() => {
-    if (!pending || !themeUri || theming.has(themeUri)) return;
-    theming.add(themeUri);
-    void iconTheme({ uri: themeUri })
-      .catch(() => null)
-      .then((found) => queue((f) => (f.themes[themeUri] === (found ?? null) ? f : { ...f, themes: capped(f.themes, themeUri, found ?? null) })))
-      .finally(() => theming.delete(themeUri));
-  }, [pending, themeUri]);
-  return { resolved, theme };
+  const split = key?.indexOf(" ") ?? -1;
+  return key ? { profileId: key.slice(0, split), uri: key.slice(split + 1) } : null;
 }
 
+// MARK: Themes
+
 const theming = new Set<string>();
+
+export function useFaviconTheme(url: string, src?: string | null, profileId?: string): IconTheme | null | undefined {
+  const uri = useFavicons(() => resolveFavicon(url, src, profileId)?.uri ?? null);
+  const theme = useFavicons((f) => (uri ? f.themes[uri] : undefined));
+  const pending = !!uri && theme === undefined;
+  useEffect(() => {
+    if (!pending || !uri || theming.has(uri)) return;
+    theming.add(uri);
+    void iconTheme({ uri })
+      .catch(() => null)
+      .then((found) => queue((f) => (f.themes[uri] === (found ?? null) ? f : { ...f, themes: capped(f.themes, uri, found ?? null) })))
+      .finally(() => theming.delete(uri));
+  }, [pending, uri]);
+  return theme;
+}
 
 // MARK: Housekeeping
 

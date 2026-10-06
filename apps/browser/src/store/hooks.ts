@@ -3,7 +3,6 @@ import { useShallow } from "zustand/react/shallow";
 import { isBookmarked } from "./bookmarks";
 import { useBrowser } from "./browser";
 import { activeTabId, bookmarkProfileId, IDLE_LIVE, profileFor } from "./model";
-import { liveWatch, useTabState, useTabValue, useWatchedEntry } from "./tabWatch";
 import type { Settings } from "./settings";
 import type { BrowserWindow, FindState, Profile, Tab, TabLive } from "./types";
 import { CLOSED_FIND, DEFAULT_WINDOW_UI } from "./ui";
@@ -21,9 +20,6 @@ export function useWindowField<T>(select: (w: BrowserWindow) => T, fallback: T):
     return w ? select(w) : fallback;
   });
 }
-
-/** The system appearance (`ui.appDark`), followed once by the window's ThemeScope instead of by every icon in it. */
-export const AppearanceContext = createContext<boolean | null>(null);
 
 export const PageProfileContext = createContext<string | null>(null);
 
@@ -57,28 +53,21 @@ export function useActiveTab(): Tab | undefined {
   });
 }
 
-// The per-tab hooks below wake a component only when its tab changes (store/tabWatch.ts): a sidebar of hundreds of rows
-// runs no selector per row for a store update that isn't about the row.
 export const useIsActiveTab = (tabId: string) =>
-  useTabState(tabId, (s) => {
+  useBrowser((s) => {
     const tab = s.tabs[tabId];
     return !!tab && activeTabId(s, tab.windowId, tab.profileId) === tabId;
   });
 
-const theTab = (tab: Tab | undefined) => tab;
-export const useTab = (tabId: string | undefined): Tab | undefined => useTabValue(tabId ?? "", theTab);
+export const useTab = (tabId: string | undefined): Tab | undefined => useBrowser((s) => (tabId ? s.tabs[tabId] : undefined));
 
-const theLive = (live: TabLive) => live;
 export function useTabLive(tabId: string | undefined): TabLive;
 export function useTabLive<T>(tabId: string | undefined, select: (live: TabLive) => T): T;
 export function useTabLive<T>(tabId: string | undefined, select?: (live: TabLive) => T) {
-  const id = tabId ?? "";
-  return useWatchedEntry(
-    liveWatch,
-    id,
-    () => (id ? useBrowser.getState().live[id] : undefined) ?? IDLE_LIVE,
-    select ?? (theLive as (live: TabLive) => T),
-  );
+  return useBrowser((s) => {
+    const live = (tabId && s.live[tabId]) || IDLE_LIVE;
+    return select ? select(live) : live;
+  });
 }
 
 export const useFind = (tabId: string | undefined): FindState => useBrowser((s) => (tabId && s.find[tabId]) || CLOSED_FIND);

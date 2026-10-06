@@ -12,7 +12,7 @@ import { useDragItem } from "./dnd";
 import { dismissHover, useRowHover } from "./hover";
 import { openTabMenu } from "./menus";
 import { ACTIVE, LOADING, PLAYING, SELECTED, useRowState } from "./rowState";
-import { registerRow, useIsRenamingTab } from "./state";
+import { registerRow, useSidebarUi } from "./state";
 import { TabIcon } from "./TabIcon";
 import { TabBadges } from "../media/TabBadges";
 import { useSidebarTokens } from "./tokens";
@@ -52,7 +52,7 @@ export function TabRow({ tabId }: { tabId: string }) {
   const selected = !!(flags & SELECTED);
   const playingAudio = !!(flags & PLAYING);
   const loading = !!(flags & LOADING);
-  const renaming = useIsRenamingTab(tabId);
+  const renaming = useSidebarUi((u) => u.renaming?.kind === "tab" && u.renaming.id === tabId);
   const { hovered, hoverProps } = useRowHover(windowId, renaming ? null : { kind: "tab", id: tabId });
   if (!tab) return null;
   const title = tabTitle(tab);

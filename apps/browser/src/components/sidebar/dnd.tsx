@@ -473,11 +473,9 @@ export function useDragItem(key: string, spec: ItemSpec, selection: () => string
     [item],
   );
 
-  // One subscription for both: dragged from here (1), or let go and laid out in its place, hidden until the ghost has
-  // settled there (2).
-  const mark = useStore(marks, (m) => (m.sources.has(key) ? 1 : m.landing === key ? 2 : 0));
-  const source = mark === 1;
-  const landing = mark === 2;
+  const source = useStore(marks, (m) => m.sources.has(key));
+  // Let go: laid out in its place, hidden until the ghost has settled there.
+  const landing = useStore(marks, (m) => m.landing === key);
   const horizontal = spec.kind === "tile";
   const tailOffset = useMemo(() => item && Animated.add(item.gap, -ROW_GAP), [item]);
   const style = item

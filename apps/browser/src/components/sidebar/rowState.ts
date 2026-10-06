@@ -1,11 +1,10 @@
-import type { BrowserState } from "../../store/browser";
+import { useBrowser, type BrowserState } from "../../store/browser";
+import { useTab } from "../../store/hooks";
 import { activeTabId } from "../../store/model";
-import { useTabState } from "../../store/tabWatch";
 import type { Tab } from "../../store/types";
 
-// What a sidebar row shows of its tab, in one read: the tab and its flags (one number). Woken only when this tab changes,
-// goes active or is selected (store/tabWatch.ts useTabState): a sidebar has hundreds of rows, and none of them runs a
-// selector for a store update that isn't about it.
+// What a sidebar row shows of its tab: the tab, and its flags in one number (a sidebar has hundreds of rows, and each
+// selector runs on every store update).
 
 export const ACTIVE = 1;
 export const SELECTED = 2;
@@ -23,8 +22,8 @@ export function rowFlags(s: BrowserState, windowId: string, tabId: string): numb
   return flags;
 }
 
-type RowState = { tab: Tab | undefined; flags: number };
-const sameRow = (a: RowState, b: RowState) => a.tab === b.tab && a.flags === b.flags;
-
-export const useRowState = (tabId: string, windowId: string): RowState =>
-  useTabState(tabId, (s) => ({ tab: s.tabs[tabId], flags: rowFlags(s, windowId, tabId) }), sameRow);
+export function useRowState(tabId: string, windowId: string): { tab: Tab | undefined; flags: number } {
+  const tab = useTab(tabId);
+  const flags = useBrowser((s) => rowFlags(s, windowId, tabId));
+  return { tab, flags };
+}

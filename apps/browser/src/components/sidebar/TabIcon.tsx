@@ -3,7 +3,7 @@ import { memo } from "react";
 import { Text, View } from "react-native";
 import { useIsSleeping } from "../../lib/tabLifecycle";
 import { useTheme } from "../../lib/theme";
-import { useTabValue } from "../../store/tabWatch";
+import { useBrowser } from "../../store/browser";
 import { Favicon } from "../primitives";
 
 export const SYMBOL_PREFIX = "symbol:";
@@ -40,11 +40,10 @@ export const TabIcon = memo(function TabIcon({
 // Looks the tab's profile up only when the caller didn't pass it: a subscription per icon adds up in
 // the sidebar, where every row runs its selectors on every store update.
 function TabProfileIcon({ tabId, ...props }: Omit<Parameters<typeof Icon>[0], "profileId"> & { tabId: string }) {
-  const profileId = useTabValue(tabId, tabProfile);
+  const profileId = useBrowser((s) => s.tabs[tabId]?.profileId);
   return <Icon {...props} profileId={profileId} />;
 }
 
-const tabProfile = (tab: { profileId: string } | undefined) => tab?.profileId;
 const SLEEPING_OPACITY = 0.45;
 
 function Icon({
