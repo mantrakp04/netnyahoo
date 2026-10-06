@@ -226,18 +226,32 @@ export async function framesRun(c, side, i, { counts }) {
   const capFrom = capSize();
   const out = { info: null, display, counts, interactions: {}, load: [Math.round(c.loadavg()[0])], cpuCap: { running: capRunning(), pauses: 0 } };
   const counters = () => probe("counters");
+  // Quiet: no layout pass or UI block for 900 ms (the restored tabs' loads and timers settle), or `maxMs` gone.
+  const quiet = async (maxMs) => {
+    let last = null, since = Date.now();
+    for (const end = Date.now() + maxMs; Date.now() < end; await sleep(200)) {
+      const c = await counters();
+      const now = `${c.layoutPasses}:${c.uiBlocks}`;
+      if (now !== last) (last = now), (since = Date.now());
+      else if (Date.now() - since >= 900) return true;
+    }
+    return false;
+  };
   const jsCounts = () => run(`const p = globalThis.nnPerf?.read(); if (!p) return null; const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
     return { commits: p.commits, hostUpdates: p.hostUpdates, renders: sum(p.renders), storeUpdates: sum(p.storeUpdates), tasks: sum(p.tasks) };`);
   try {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
-    await sleep(8000);
+    await sleep(3000);
     for (const end = Date.now() + 10_000; !rec.read().info && Date.now() < end; ) await sleep(100);
     if (!rec.info) throw new Error("the frame probe didn't start (no display link)");
     const info = await probe("info");
     out.info = { screen: info.screen, maxFPS: info.maxFPS, js: info.js };
     const refresh = 1000 / info.maxFPS;
-    log(`${side.tag}frames ${i}${counts ? " (counts)" : ""}: ${info.screen} ${info.maxFPS} Hz, JS thread ${info.js ? "observed" : "NOT found"}`);
+    const settledAt = Date.now();
+    out.settled = await quiet(90_000);
+    out.settleMs = Date.now() - settledAt;
+    log(`${side.tag}frames ${i}${counts ? " (counts)" : ""}: ${info.screen} ${info.maxFPS} Hz, JS thread ${info.js ? "observed" : "NOT found"}; ${out.settled ? "quiet" : "never quiet"} after ${Math.round(out.settleMs / 1000)} s`);
     const reps = counts ? Math.min(3, +opt["frames-n"]) : +opt["frames-n"];
     const list = interactions({ app, key, sleep, run, W: WINDOW, probe, base });
     for (const it of list) {
@@ -248,7 +262,7 @@ export async function framesRun(c, side, i, { counts }) {
       for (let rep = 0; rep < (it.name.startsWith("idle") ? 2 : reps); rep++) {
         try {
           if (it.before) await it.before();
-          await sleep(900);
+          if (!(await quiet(5000))) out.notQuiet = (out.notQuiet ?? 0) + 1;
           const c0 = await counters();
           const t0 = await it.go();
           await sleep(it.window + 250);
