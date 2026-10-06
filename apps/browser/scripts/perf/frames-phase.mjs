@@ -15,10 +15,10 @@
 //                          thread did not deliver; on a 60 Hz screen every tick is over 8.33 and the column is meaningless
 //   dropped                refresh intervals skipped (a 41.7 ms gap at 120 Hz is 4)
 //   worst                  the longest gap between two ticks
-//   main busy / worst      main-thread run-loop iterations (AfterWaiting → BeforeWaiting, past Core Animation's commit): their
-//                          sum and the longest one. The longest is a stall; a single iteration over 8.33 ms always costs a frame.
-//   JS busy / worst        the same on React Native's JS thread
-//   layout ms              RCTUIManager layout passes (the shadow queue), their sum
+//   main busy / worst      busy: the main thread's CPU time in the window (thread_info at every tick); worst: the longest main-thread
+//                          run-loop iteration (AfterWaiting → BeforeWaiting, past Core Animation's commit observer), cut at every tick:
+//                          an iteration with ticks in it wasn't blocking. A single iteration over 8.33 ms always costs a frame.
+//   JS busy / worst        the same on React Native's JS thread (busy: its CPU time)
 // Counts: layoutPasses, mountBatches, uiBlocks, viewUpdates, viewCreates (native); commits, hostUpdates, renders, storeUpdates,
 // tasks (JS probe, `framecounts` only).
 import { execFileSync, spawnSync } from "node:child_process";
@@ -129,6 +129,16 @@ export function windowStats(rec, a, b, refresh) {
     return { sum, worst, over };
   };
   const m = busy(rec.m), j = busy(rec.j);
+  // CPU time of the threads between the last tick before the window and the last tick in it.
+  const cpu = (key) => {
+    let before = null, last = null;
+    for (const t of ticks) {
+      if (t[key] === undefined || t[key] < 0) continue;
+      if (t.ts <= a) before = t[key];
+      if (t.ts <= b) last = t[key];
+    }
+    return before !== null && last !== null ? last - before : NaN;
+  };
   const l = rec.l.filter((r) => r.a >= a && r.a <= b);
   return {
     frames: gaps.length,
@@ -137,10 +147,12 @@ export function windowStats(rec, a, b, refresh) {
     dropped: gaps.reduce((n, g) => n + Math.max(0, Math.round(g / refresh) - 1), 0),
     worst: gaps.length ? Math.max(...gaps) : NaN,
     late,
-    mainBusy: m.sum,
+    mainBusy: cpu("mc"),
+    mainLoop: m.sum,
     mainWorst: m.worst,
     mainOver8: m.over,
-    jsBusy: j.sum,
+    jsBusy: cpu("jc"),
+    jsLoop: j.sum,
     jsWorst: j.worst,
     layoutMs: l.reduce((n, r) => n + r.d, 0),
   };
@@ -238,7 +250,9 @@ export async function framesRun(c, side, i, { counts }) {
     return false;
   };
   const jsCounts = () => run(`const p = globalThis.nnPerf?.read(); if (!p) return null; const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
-    return { commits: p.commits, hostUpdates: p.hostUpdates, renders: sum(p.renders), storeUpdates: sum(p.storeUpdates), tasks: sum(p.tasks) };`);
+    const top = (o, n = 6) => Object.entries(o).sort((x, y) => y[1] - x[1]).slice(0, n).map(([k, v]) => k + " " + v).join(", ");
+    return { commits: p.commits, hostUpdates: p.hostUpdates, renders: sum(p.renders), storeUpdates: sum(p.storeUpdates), tasks: sum(p.tasks),
+      what: { renders: top(p.renders), tasks: top(p.tasks), timers: top(p.timers), storeKeys: top(p.storeKeys) } };`);
   try {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);

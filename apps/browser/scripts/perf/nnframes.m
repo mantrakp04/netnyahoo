@@ -45,16 +45,16 @@ static double EpochMs(void) {
 
 typedef struct {
   char k, th;
-  double a, b, c;
+  double a, b, c, d, e;
 } Rec;
 #define RING (1 << 17)
 static Rec gRing[RING];
 static _Atomic unsigned long gHead, gTail;
 
-static void Push(char k, char th, double a, double b, double c) {
+static void Push(char k, char th, double a, double b, double c, double d, double e) {
   unsigned long h = atomic_fetch_add(&gHead, 1);
   if (h - atomic_load(&gTail) >= RING) return; // the writer fell behind: drop
-  gRing[h % RING] = (Rec){k, th, a, b, c};
+  gRing[h % RING] = (Rec){k, th, a, b, c, d, e};
 }
 
 static void Flush(void) {
@@ -62,7 +62,7 @@ static void Flush(void) {
   for (; t < h; t++) {
     Rec r = gRing[t % RING];
     switch (r.k) {
-      case 'f': fprintf(gOut, "{\"k\":\"f\",\"ts\":%.3f,\"now\":%.3f,\"tgt\":%.3f}\n", r.a, r.b, r.c); break;
+      case 'f': fprintf(gOut, "{\"k\":\"f\",\"ts\":%.3f,\"now\":%.3f,\"tgt\":%.3f,\"mc\":%.3f,\"jc\":%.3f}\n", r.a, r.b, r.c, r.d, r.e); break;
       case 'r': fprintf(gOut, "{\"k\":\"r\",\"th\":\"%c\",\"a\":%.3f,\"d\":%.3f}\n", r.th, r.a, r.b); break;
       case 'l': fprintf(gOut, "{\"k\":\"l\",\"a\":%.3f,\"d\":%.3f}\n", r.a, r.b); break;
       case 'k': fprintf(gOut, "{\"k\":\"key\",\"made\":%.3f,\"seen\":%.3f}\n", r.a, r.b); break;
@@ -90,7 +90,7 @@ static void SwizzleUIManager(void) {
       double a = EpochMs();
       ((void (*)(id, SEL))orig)(self, NSSelectorFromString(@"_layoutAndMount"));
       atomic_fetch_add(&gLayoutPasses, 1);
-      Push('l', 0, a, EpochMs() - a, 0);
+      Push('l', 0, a, EpochMs() - a, 0, 0, 0);
     };
   });
   Swizzle(cls, NSSelectorFromString(@"flushUIBlocksWithCompletion:"), ^id(IMP orig) {
@@ -117,6 +117,18 @@ static void SwizzleUIManager(void) {
   });
 }
 
+// MARK: Thread CPU time (cumulative ms; user + system), sampled at every tick: a window's difference is how long the thread
+// really ran, with none of the time a nested run loop or a wait spends inside one iteration.
+
+static mach_port_t gMainThread, gJSThread;
+static double ThreadCpuMs(mach_port_t t) {
+  if (!t) return -1;
+  thread_basic_info_data_t i;
+  mach_msg_type_number_t n = THREAD_BASIC_INFO_COUNT;
+  if (thread_info(t, THREAD_BASIC_INFO, (thread_info_t)&i, &n) != KERN_SUCCESS) return -1;
+  return (i.user_time.seconds + i.system_time.seconds) * 1e3 + (i.user_time.microseconds + i.system_time.microseconds) / 1e3;
+}
+
 // MARK: Run-loop busy time
 
 typedef struct {
@@ -131,7 +143,7 @@ static void LoopActivity(CFRunLoopObserverRef observer, CFRunLoopActivity activi
     st->start = EpochMs();
   } else if (st->start > 0) {
     double end = EpochMs();
-    if (end - st->start >= 0.05) Push('r', st->th, st->start, end - st->start, 0);
+    if (end - st->start >= 0.05) Push('r', st->th, st->start, end - st->start, 0, 0, 0);
     st->start = 0;
   }
 }
@@ -158,11 +170,13 @@ static void FindJSThread(void) {
       CFRunLoopRef loop = loopFor(p);
       if (loop) {
         ObserveLoop(loop, &gJSLoop);
+        gJSThread = threads[i];
         gJSObserved = YES;
       }
     }
   }
-  for (mach_msg_type_number_t i = 0; i < n; i++) mach_port_deallocate(mach_task_self(), threads[i]);
+  for (mach_msg_type_number_t i = 0; i < n; i++)
+    if (threads[i] != gJSThread) mach_port_deallocate(mach_task_self(), threads[i]);
   vm_deallocate(mach_task_self(), (vm_address_t)threads, n * sizeof *threads);
 }
 
@@ -220,7 +234,7 @@ static void FindJSThread(void) {
   _booted = YES;
   [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
     double now = EpochMs();
-    Push('k', 0, now - (NSProcessInfo.processInfo.systemUptime - event.timestamp) * 1000, now, 0);
+    Push('k', 0, now - (NSProcessInfo.processInfo.systemUptime - event.timestamp) * 1000, now, 0, 0, 0);
     return event;
   }];
   [self startOn:w];
@@ -248,7 +262,14 @@ static void FindJSThread(void) {
   double now = EpochMs();
   double off = now - CACurrentMediaTime() * 1000;
   double ts = l.timestamp * 1000 + off;
-  Push('f', 0, ts, now, l.targetTimestamp * 1000 + off);
+  // A tick inside a main-thread iteration cuts it there: an iteration that contains ticks wasn't blocking (the display link
+  // fires from the same run loop), one that doesn't is a stall whole. Nested run loops in modes we don't observe look like
+  // one long iteration otherwise.
+  if (gMainLoop.start > 0) {
+    if (now - gMainLoop.start >= 0.05) Push('r', 'm', gMainLoop.start, now - gMainLoop.start, 0, 0, 0);
+    gMainLoop.start = now;
+  }
+  Push('f', 0, ts, now, l.targetTimestamp * 1000 + off, ThreadCpuMs(gMainThread), ThreadCpuMs(gJSThread));
   atomic_fetch_add(&gTicks, 1);
   if (_step) {
     BOOL done = NO;
@@ -380,6 +401,7 @@ __attribute__((constructor)) static void Start(void) {
   if (!dir || !getenv("NN_BENCH_FRAMES")) return;
   // Only the app: Chrome's helper processes inherit the environment.
   if (![NSBundle.mainBundle.bundlePath hasSuffix:@".app"] || [NSBundle.mainBundle.bundlePath containsString:@"Helper"]) return;
+  gMainThread = mach_thread_self(); // dyld runs constructors on the main thread
   gDir = [NSString stringWithUTF8String:dir];
   gOut = fopen([gDir stringByAppendingPathComponent:@"bench-frames.jsonl"].UTF8String, "a");
   if (!gOut) return;

@@ -43,7 +43,7 @@ test("a 60 Hz screen: every tick is over 8.33 ms and none over 16.7", () => {
 test("busy time is clipped to the window; the worst run-loop iteration is the one that started in it", () => {
   const m = [{ k: "r", th: "m", a: -5, d: 10 }, { k: "r", th: "m", a: 20, d: 12 }, { k: "r", th: "m", a: 95, d: 20 }];
   const s = windowStats(rec([0, R], { m, l: [{ a: 30, d: 3 }, { a: 500, d: 9 }] }), 0, 100, R);
-  assert.equal(s.mainBusy, 5 + 12 + 5);
+  assert.equal(s.mainLoop, 5 + 12 + 5);
   assert.equal(s.mainWorst, 20);
   assert.equal(s.mainOver8, 2);
   assert.equal(s.layoutMs, 3);
@@ -66,4 +66,12 @@ test("ratchet: the median of the repetitions is judged against the ceiling", () 
   const ratchet = { ceilings: { "tab switch": { layoutPasses: 25 } } };
   assert.equal(ratchetCheck(runs("tab switch", [{ layoutPasses: 25 }, { layoutPasses: 25 }, { layoutPasses: 90 }]), ratchet)[0].over, false);
   assert.equal(ratchetCheck(runs("tab switch", [{ layoutPasses: 26 }, { layoutPasses: 26 }]), ratchet)[0].over, true);
+});
+
+test("thread CPU time: the difference between the last tick before the window and the last tick in it", () => {
+  const t = [0, 10, 20, 30, 40].map((ts, i) => ({ k: "f", ts, now: ts, tgt: ts + 10, mc: i * 4, jc: 100 + i * 2 }));
+  const s = windowStats({ f: t, m: [], j: [], l: [] }, 15, 35, 10);
+  assert.equal(s.mainBusy, 8); // ticks at 10 (mc 4) → 30 (mc 12)
+  assert.equal(s.jsBusy, 4);
+  assert.ok(Number.isNaN(windowStats(rec([0, 10, 20]), 5, 15, 10).mainBusy)); // no CPU samples (an older probe)
 });
