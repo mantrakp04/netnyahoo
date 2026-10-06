@@ -110,6 +110,16 @@ For a question that the phases don't answer, don't fork native-bench into a prob
 
 If you need a new measurement, add it as a phase and commit it.
 
+### Against 0.2.17 (the release notes' table)
+
+`scripts/release-compare-0.2.17.sh <rc app> <out dir>` runs the comparison the release notes' "Faster" table comes from.
+0.2.17 is CEF-era: it has no native API version check, no field timing and no perf probe or dev harness in a release
+bundle, so `--control-bundle` is a bundle built from 0.2.17's own tree with the legacy command channel
+(`apps/browser/scripts/perf/legacy-bundle.mjs`, entry and channel in `scripts/perf/legacy/`). Comparable rows: launch (to
+window with its content, to first page painted), first launch after an install (`--fresh-copy`), tab switch, new tab,
+new window, idle CPU and wakeups at 1 and 20 tabs, memory. Not on 0.2.17 (kept in the table as "–"): the J2 and J4 journeys
+(`newtabkey`, `navigate`), the frame rig, the js-bench and ratchet counts.
+
 ## The ratchet
 
 Wall-clock can't gate a release by itself: the same build moves ±20% between runs on a busy Mac, and a gate that cries

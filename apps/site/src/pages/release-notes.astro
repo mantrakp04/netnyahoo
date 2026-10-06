@@ -25,7 +25,11 @@ const releases = notes.map((n, i) => ({
   date: n.data.date,
   headline: n.data.headline,
   // Written for GitHub, where "##" is a section; here the release's headline is the h2.
-  html: (n.rendered?.html ?? "").replace(/<(\/?)h2\b/g, "<$1h3"),
+  // A table gets a box of its own, so on a phone it scrolls sideways there and not the page.
+  html: (n.rendered?.html ?? "")
+    .replace(/<(\/?)h2\b/g, "<$1h3")
+    .replace(/<table\b/g, '<div class="table-scroll"><table')
+    .replace(/<\/table>/g, "</table></div>"),
 }));
 const latest = releases[0]!;
 const longDate = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
@@ -430,6 +434,54 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     text-underline-offset: 0.2em;
   }
 
+  /* A table (the "Faster" section's old-against-new numbers): rules like the item list's, tabular figures, and on a
+     phone it scrolls sideways inside its own box instead of widening the page. */
+  .notes > :global(.table-scroll) {
+    margin: 0 0 30px;
+    overflow-x: auto;
+    border-top: 1px solid var(--rule-strong);
+  }
+  .notes :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--t-small);
+    font-variant-numeric: tabular-nums;
+  }
+  .notes :global(th),
+  .notes :global(td) {
+    padding: 11px 18px 11px 0;
+    border-bottom: 1px solid var(--rule);
+    text-align: right;
+    white-space: nowrap;
+    color: var(--ink-2);
+  }
+  .notes :global(th:first-child),
+  .notes :global(td:first-child) {
+    text-align: left;
+    white-space: normal;
+    min-width: 11em;
+    color: var(--ink);
+  }
+  .notes :global(th:last-child),
+  .notes :global(td:last-child) {
+    padding-right: 0;
+    white-space: normal;
+    min-width: 7em;
+  }
+  .notes :global(th) {
+    font-family: var(--mono);
+    font-size: var(--t-label);
+    font-stretch: 87.5%;
+    font-weight: 520;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .notes :global(td:last-child) {
+    font-weight: 560;
+    color: var(--ink);
+  }
+
   .end {
     padding-top: clamp(28px, 3.4vw, 44px);
     border-top: 2px solid var(--ink);
@@ -503,6 +555,21 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     .notes > :global(h3) {
       padding-top: 0;
       margin-bottom: 10px;
+    }
+    /* The table's last column (the change) is the one people came for: keep it on screen. */
+    .notes :global(th),
+    .notes :global(td) {
+      padding-right: 10px;
+      font-size: 0.86rem;
+    }
+    .notes :global(th:first-child),
+    .notes :global(td:first-child) {
+      min-width: 0;
+      width: 36%;
+    }
+    .notes :global(th:last-child),
+    .notes :global(td:last-child) {
+      min-width: 6.4em;
     }
     .stamp {
       top: 34px;

@@ -36,17 +36,22 @@ Body:
 
 - An intro paragraph before the first section is optional. Use it only for a big release (the first one,
   a redesign) and keep it to two or three plain sentences.
-- Sections are `##` headings, only the ones the release needs, in this order: `## New`, `## Fixed`,
-  `## Smaller`, `## Not yet`. When a release is mostly a fix for something broken, put `## Fixed` first
+- Sections are `##` headings, only the ones the release needs, in this order: `## New`, `## Faster`,
+  `## Fixed`, `## Smaller`, `## Not yet`. When a release is mostly a fix for something broken, put `## Fixed` first
   (0.1.1 does).
   - **New**: things people can do now that they couldn't before.
+  - **Faster**: the measured old-against-new table (below), plus a bullet for any speed-up worth a sentence.
   - **Fixed**: things that were broken and now work.
   - **Smaller**: polish and minor fixes, one line each, no bold lead.
   - **Not yet**: known gaps worth saying out loud (a big release only).
 - Each item is one bullet: a **bold lead sentence** that states the change from the user's side, then at
   most three plain sentences: what people saw before, what happens now, where to find it or who it
   affects. Items in Smaller are a single sentence without bold.
-- Nothing else: no images, no tables, no nested lists, no links unless the item is about a page. The site
+- `## Faster` carries one table, made by `scripts/release-compare-0.2.17.sh` (see the release skill's "Perf gate":
+  columns old version, new version, change; plain-language row names; "–" where the old release can't be measured).
+  Paste the script's output as it is, then say in one sentence what moved most. The site renders it as a table that
+  scrolls inside its own box on a phone; GitHub and Sparkle render it as Markdown.
+- Nothing else: no images, no other tables, no nested lists, no links unless the item is about a page. The site
   numbers the items and puts the section names in the margin.
 
 ## Voice

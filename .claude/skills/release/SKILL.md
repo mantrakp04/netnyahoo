@@ -46,8 +46,8 @@ affect the app.
 
 Create `docs/release-notes/<version>.md` following `docs/release-notes/README.md`: frontmatter `date`
 (today, `YYYY-MM-DD`) and `headline` (30–60 chars, the only witty line: the incumbent's office announcing
-the most noticeable change — deadpan, true, political theatre only), then `## New` / `## Fixed` /
-`## Smaller` bullets written from the user's side.
+the most noticeable change — deadpan, true, political theatre only), then `## New` / `## Faster` (the
+perf-gate table, step 4c) / `## Fixed` / `## Smaller` bullets written from the user's side.
 
 Source material: `git log --format='%h %s%n%b' v<previous>..HEAD -- apps/browser packages`. The commit
 bodies already describe the user-visible symptom; translate them, don't paste them. Leave out the site,
@@ -164,6 +164,29 @@ gets one more run (a stray window event isn't a regression; a count over in both
 one ceiling by hand in `apps/browser/scripts/perf/ratchet.json` and say why in the commit and the release report. When
 the release made counts go down, run `ratchet.mjs lower <the run's report>` (`$TMPDIR/nn-ratchet/ratchet.json`), commit
 the lowered ceilings, and say which counts dropped. The wall-clock gate is a separate step: `docs/perf/README.md`.
+
+### 4c. Perf gate and the "Faster" table
+
+The notes carry a table comparing the release with 0.2.17 (the last release before NNCore, the one people remember).
+One command, about 45 minutes, so start it as soon as the RC is built and write the notes meanwhile:
+
+```bash
+scripts/release-compare-0.2.17.sh dist/<version>-rc/export/Netnyahoo.app /tmp/nn-compare/perf-gate/<version> > /tmp/nn-compare-<version>.log 2>&1 &   # run_in_background
+```
+
+It downloads 0.2.17's own release zip once (cached under `~/.cache/netnyahoo/perf-gate/0.2.17`; the folder name
+`perf-gate` keeps scripts/agent/cpu-cap from demoting these instances to background QoS), builds its bench bundle from
+its own tree (`apps/browser/scripts/perf/legacy-bundle.mjs`), then, holding the perflab lock, runs native-bench with both
+apps interleaved (8 launches, 2 session and 2 window runs), the first launch after an install (`--fresh-copy`), the new
+release's ⌘T and keystroke journeys and js-bench typing (0.2.17 has neither: its column shows "–"), and prints the
+Markdown table. Afterwards read `scripts/agent/cpu-cap`'s log (`cpu-cap.log`): a pause of the bench or its instances
+during the run invalidates it, so rerun. `table-detail.md` next to `table.md` has min–max and n per row; call a row a
+regression only when the ranges separate (`docs/perf/README.md`). The previous-release gate (RC against the last
+release, same or better on every row) is the separate run described there.
+
+Paste `table.md` under `## Faster` in `docs/release-notes/<version>.md` (the style guide is in `docs/release-notes/README.md`),
+with one sentence naming the biggest win. Rows where the new release is slower stay in the table; say so in the report.
+Check the page with `pnpm -C apps/site build` (the table renders as a box that scrolls sideways on a phone).
 
 ## 5. Publish
 
