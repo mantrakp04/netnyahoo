@@ -199,6 +199,94 @@ type PageProps = {
 
 function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoom, ghost, rows, geometry, onListHeight, onScrollView, onScrollY }: PageProps) {
   const windowId = useWindowId();
+  const topGap = listTopGap(useAddressBarInSidebar());
+  const pageStyle = usePageStyle(windowId, slot, width);
+  // The viewport starts glowRoom above the header's foot so the first row's glow isn't cut, but scrolled rows
+  // must never show there, under the traffic lights and the profile name. The viewport's top edge follows the
+  // first row down to the header's foot as the list scrolls (outer view moves the clip, inner one cancels it).
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [onScroll] = useState(() =>
+    Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+      useNativeDriver: true,
+      listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => onScrollY(e.nativeEvent.contentOffset.y),
+    }),
+  );
+  const edge = scrollY.interpolate({ inputRange: [0, Math.max(1, topGap)], outputRange: [0, glowRoom], extrapolate: "clamp" });
+  const inlineNewTab = !current || !docked;
+
+  return (
+    <Animated.View
+      pointerEvents={current ? "auto" : "none"}
+      style={{ position: "absolute", top: 0, bottom: 0, left: 0, width, display: resting ? "none" : "flex", ...pageStyle }}
+    >
+      <PageProfileContext.Provider value={profileId}>
+        <ThemeScope>
+          <DragScope enabled={current}>
+            <PageContent>
+              {(controller) => (
+                <Animated.View style={{ flex: 1, overflow: "hidden", transform: [{ translateY: edge }] }}>
+                  <Animated.View style={{ flex: 1, transform: [{ translateY: Animated.multiply(edge, -1) }] }}>
+                    <Animated.ScrollView
+                      ref={current ? onScrollView : undefined}
+                      onLayout={
+                        geometry
+                          ? (e) => {
+                              geometry.current.viewport = e.nativeEvent.layout.height;
+                              geometry.current.laidOut?.();
+                            }
+                          : undefined
+                      }
+                      style={{ flex: 1 }}
+                      showsVerticalScrollIndicator={false}
+                      scrollEventThrottle={16}
+                      onScroll={current ? onScroll : undefined}
+                      contentContainerStyle={{ flexGrow: 1, width, paddingHorizontal: layout.sidebarInset, paddingTop: glowRoom }}
+                    >
+                      <PageRows
+                        windowId={windowId}
+                        profileId={profileId}
+                        current={current}
+                        rows={rows}
+                        inlineNewTab={inlineNewTab}
+                        glowRoom={glowRoom}
+                        topGap={topGap}
+                        innerWidth={width - layout.sidebarInset * 2}
+                        controller={controller}
+                        geometry={geometry}
+                        onListHeight={onListHeight}
+                      />
+                      <ContextMenuArea style={{ flexGrow: 1, minHeight: inlineNewTab ? 24 : 0 }} onContextMenu={() => void openSidebarMenu(windowId)}>
+                        <View style={{ flex: 1 }} onDoubleClick={() => useBrowser.getState().newTab(windowId)} />
+                      </ContextMenuArea>
+                    </Animated.ScrollView>
+                  </Animated.View>
+                </Animated.View>
+              )}
+            </PageContent>
+          </DragScope>
+        </ThemeScope>
+      </PageProfileContext.Provider>
+    </Animated.View>
+  );
+}
+
+type PageRowsProps = {
+  windowId: string;
+  profileId: string;
+  current: boolean;
+  rows: number | undefined;
+  inlineNewTab: boolean;
+  glowRoom: number;
+  topGap: number;
+  innerWidth: number;
+  controller: ReturnType<typeof useDragController>;
+  geometry: RefObject<SidebarGeometry> | undefined;
+  onListHeight: (height: number) => void;
+};
+
+// A page's tiles, groups and rows. Their own component, so the rows mounting chunk by chunk (and a tab opening or
+// closing) re-render this list alone, not the page's scroll view.
+function PageRows({ windowId, profileId, current, rows, inlineNewTab, glowRoom, topGap, innerWidth, controller, geometry, onListHeight }: PageRowsProps) {
   const { tiles, pinnedGroups, list: all } = useSidebarEntries(windowId, profileId);
   // A page's first render mounts only the rows its window can show (a list as tall as the window, from the top: a page
   // mounts scrolled to the top); the rest follow in chunks, one per frame, so a long sidebar neither holds up the
@@ -234,105 +322,51 @@ function SidebarPage({ profileId, slot, width, current, resting, docked, glowRoo
   // Rows still to mount hold their room (rows are fixed-height): the list is as tall as it will be, so a tab revealed
   // early scrolls to its place, and the New Tab row docks once.
   const pending = useBrowser((s) => (growing ? entriesHeight(s, windowId, profileId, all.slice(mountedRows)) : 0));
-  const topGap = listTopGap(useAddressBarInSidebar());
   const newTabsAtTop = useSettings((s) => s.newTabPosition === "top");
-  const innerWidth = width - layout.sidebarInset * 2;
-  const pageStyle = usePageStyle(windowId, slot, width);
-  const inlineNewTab = !current || !docked;
   if (geometry) geometry.current.newTabAtTop = newTabsAtTop && inlineNewTab;
   const measured = useRef(0);
   useEffect(() => {
     if (current && measured.current) onListHeight(measured.current);
   }, [current]);
-  // The viewport starts glowRoom above the header's foot so the first row's glow isn't cut, but scrolled rows
-  // must never show there, under the traffic lights and the profile name. The viewport's top edge follows the
-  // first row down to the header's foot as the list scrolls (outer view moves the clip, inner one cancels it).
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const [onScroll] = useState(() =>
-    Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-      useNativeDriver: true,
-      listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => onScrollY(e.nativeEvent.contentOffset.y),
-    }),
-  );
-  const edge = scrollY.interpolate({ inputRange: [0, Math.max(1, topGap)], outputRange: [0, glowRoom], extrapolate: "clamp" });
 
   return (
-    <Animated.View
-      pointerEvents={current ? "auto" : "none"}
-      style={{ position: "absolute", top: 0, bottom: 0, left: 0, width, display: resting ? "none" : "flex", ...pageStyle }}
+    <View
+      onLayout={(e) => {
+        measured.current = e.nativeEvent.layout.height + glowRoom - (inlineNewTab ? ROW_PITCH : 0);
+        if (current) onListHeight(measured.current);
+      }}
     >
-      <PageProfileContext.Provider value={profileId}>
-        <ThemeScope>
-          <DragScope enabled={current}>
-            <PageContent>
-              {(controller) => (
-                <Animated.View style={{ flex: 1, overflow: "hidden", transform: [{ translateY: edge }] }}>
-                  <Animated.View style={{ flex: 1, transform: [{ translateY: Animated.multiply(edge, -1) }] }}>
-                    <Animated.ScrollView
-                      ref={current ? onScrollView : undefined}
-                      onLayout={
-                        geometry
-                          ? (e) => {
-                              geometry.current.viewport = e.nativeEvent.layout.height;
-                              geometry.current.laidOut?.();
-                            }
-                          : undefined
-                      }
-                      style={{ flex: 1 }}
-                      showsVerticalScrollIndicator={false}
-                      scrollEventThrottle={16}
-                      onScroll={current ? onScroll : undefined}
-                      contentContainerStyle={{ flexGrow: 1, width, paddingHorizontal: layout.sidebarInset, paddingTop: glowRoom }}
-                    >
-                      <View
-                        onLayout={(e) => {
-                          measured.current = e.nativeEvent.layout.height + glowRoom - (inlineNewTab ? ROW_PITCH : 0);
-                          if (current) onListHeight(measured.current);
-                        }}
-                      >
-                        <PinnedGrid tabs={offScreen ? NONE : tiles} innerWidth={innerWidth} />
-                        <View
-                          ref={(v) => {
-                            controller?.regions.set("pinnedGroups", v);
-                          }}
-                          onLayout={geometry ? (e) => void (geometry.current.regions.pinnedGroups = e.nativeEvent.layout.y) : undefined}
-                          style={{ marginTop: tiles.length ? 6 : topGap, gap: layout.rowGap }}
-                        >
-                          {(offScreen ? NONE : pinnedGroups).map((id) => (
-                            <GroupBlock key={id} groupId={id} section="pinnedGroups" />
-                          ))}
-                          <Tail id="tail:pinnedGroups" section="pinnedGroups" />
-                        </View>
-                        {offScreen ? null : <LiveFolders windowId={windowId} spaced={pinnedGroups.length > 0} />}
-                        <View
-                          ref={(v) => {
-                            controller?.regions.set("list", v);
-                          }}
-                          onLayout={geometry ? (e) => void (geometry.current.regions.list = e.nativeEvent.layout.y) : undefined}
-                          style={{ marginTop: pinnedGroups.length ? 7 : 0, gap: layout.rowGap }}
-                        >
-                          {newTabsAtTop && inlineNewTab ? <NewTabRow windowId={windowId} /> : null}
-                          {list.map((entry) => (
-                            <ListEntry key={entry} entry={entry} />
-                          ))}
-                          {pending ? <View style={{ height: pending }} /> : null}
-                          <Tail id="tail:list" section="list" />
-                          {!newTabsAtTop && inlineNewTab ? <NewTabRow windowId={windowId} /> : null}
-                        </View>
-                        {current ? <CleanUpUpsell windowId={windowId} /> : null}
-                      </View>
-                      <ContextMenuArea style={{ flexGrow: 1, minHeight: inlineNewTab ? 24 : 0 }} onContextMenu={() => void openSidebarMenu(windowId)}>
-                        <View style={{ flex: 1 }} onDoubleClick={() => useBrowser.getState().newTab(windowId)} />
-                      </ContextMenuArea>
-                    </Animated.ScrollView>
-                  </Animated.View>
-                </Animated.View>
-              )}
-            </PageContent>
-          </DragScope>
-        </ThemeScope>
-      </PageProfileContext.Provider>
-    </Animated.View>
+      <PinnedGrid tabs={offScreen ? NONE : tiles} innerWidth={innerWidth} />
+      <View
+        ref={(v) => {
+          controller?.regions.set("pinnedGroups", v);
+        }}
+        onLayout={geometry ? (e) => void (geometry.current.regions.pinnedGroups = e.nativeEvent.layout.y) : undefined}
+        style={{ marginTop: tiles.length ? 6 : topGap, gap: layout.rowGap }}
+      >
+        {(offScreen ? NONE : pinnedGroups).map((id) => (
+          <GroupBlock key={id} groupId={id} section="pinnedGroups" />
+        ))}
+        <Tail id="tail:pinnedGroups" section="pinnedGroups" />
+      </View>
+      {offScreen ? null : <LiveFolders windowId={windowId} spaced={pinnedGroups.length > 0} />}
+      <View
+        ref={(v) => {
+          controller?.regions.set("list", v);
+        }}
+        onLayout={geometry ? (e) => void (geometry.current.regions.list = e.nativeEvent.layout.y) : undefined}
+        style={{ marginTop: pinnedGroups.length ? 7 : 0, gap: layout.rowGap }}
+      >
+        {newTabsAtTop && inlineNewTab ? <NewTabRow windowId={windowId} /> : null}
+        {list.map((entry) => (
+          <ListEntry key={entry} entry={entry} />
+        ))}
+        {pending ? <View style={{ height: pending }} /> : null}
+        <Tail id="tail:list" section="list" />
+        {!newTabsAtTop && inlineNewTab ? <NewTabRow windowId={windowId} /> : null}
+      </View>
+      {current ? <CleanUpUpsell windowId={windowId} /> : null}
+    </View>
   );
 }
 
