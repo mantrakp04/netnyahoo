@@ -543,12 +543,14 @@
     "entries.strip500.afterTitle": 2029,
     "groupLabel.500.afterMemberTitle": 14888,
     "groupLabel.500.afterProgress": 38,
-    "suggest.firstKey": 47858,
-    "suggest.prepare": 162926,
-    "suggest.typeAll": 91751,
-    "suggest.typeAllWords": 929700
+    "suggest.firstKey": 23487,
+    "suggest.keys.phrase": 136811,
+    "suggest.keys.url": 56301,
+    "suggest.prepare": 174966,
+    "suggest.typeAll": 35871,
+    "suggest.typeAllWords": 280154
   },
   "instr": {
-    "micro.instrPerRound": 298579967
+    "micro.instrPerRound": 229385072
   }
 }
