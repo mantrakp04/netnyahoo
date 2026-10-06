@@ -23,7 +23,8 @@
 // tasks (JS probe, `framecounts` only).
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // scripts/agent/cpu-cap keeps our processes on background QoS (efficiency cores) and SIGSTOPs the busiest while the Mac is
 // over its cap. Frame timings from a run it touched are invalid: its log says when it paused one of this run's processes.
@@ -347,18 +348,70 @@ export function frameTable(resultsByLabel) {
   return out.join("\n");
 }
 
-// `node frames-phase.mjs table <results.json>...`: the markdown table of saved results (labels from each file's meta).
+// The ratchet for the counts that repeat (frames-ratchet.json): per interaction, the most layout passes, mount batches, UI
+// blocks, view updates (native) and React commits and host updates (framecounts) a run may take. Exact when every repetition of
+// every baseline run agreed, else the largest plus 10%. Not gated: ticks, busy times, renders and store updates (they follow
+// timing or page load progress).
+const RATCHET_FILE = join(dirname(fileURLToPath(import.meta.url)), "frames-ratchet.json");
+const GATED = ["layoutPasses", "mountBatches", "uiBlocks", "viewUpdates", "commits", "hostUpdates"];
+// Interactions whose counts follow a page's load or a window's start-up rather than the interaction.
+const NOT_GATED = ["idle (no interaction)", "new window"];
+
+function repsOf(results, name) {
+  return (results.frames ?? []).filter((r) => !r.skipped).flatMap((r) => r.interactions?.[name] ?? []);
+}
+
+export function ratchetInit(results) {
+  const names = [...new Set((results.frames ?? []).flatMap((r) => Object.keys(r.interactions ?? {})))].filter((n) => !NOT_GATED.includes(n));
+  const ceilings = {};
+  for (const name of names) {
+    ceilings[name] = {};
+    for (const key of GATED) {
+      const values = repsOf(results, name).map((x) => x[key]).filter(Number.isFinite);
+      if (!values.length) continue;
+      const max = Math.max(...values);
+      ceilings[name][key] = values.every((v) => v === max) ? max : Math.ceil(max * 1.1);
+    }
+  }
+  return { revision: 1, ceilings };
+}
+
+// A count is judged by its median over the results' repetitions: an outlier (a stray window event) doesn't fail the gate.
+export function ratchetCheck(results, ratchet) {
+  const rows = [];
+  for (const [name, limits] of Object.entries(ratchet.ceilings)) {
+    for (const [key, ceiling] of Object.entries(limits)) {
+      const values = repsOf(results, name).map((x) => x[key]).filter(Number.isFinite);
+      if (!values.length) continue;
+      const got = median(values);
+      rows.push({ name, key, ceiling, got, over: got > ceiling });
+    }
+  }
+  return rows;
+}
+
 if (process.argv[1] && process.argv[1].endsWith("frames-phase.mjs")) {
   const [cmd, ...files] = process.argv.slice(2);
+  const load = (f) => JSON.parse(readFileSync(f, "utf8"));
   if (cmd === "table") {
     const by = {};
     for (const f of files) {
-      const r = JSON.parse(readFileSync(f, "utf8"));
+      const r = load(f);
       by[r.meta?.label ?? f] = r;
     }
     console.log(frameTable(by));
+  } else if (cmd === "init") {
+    writeFileSync(RATCHET_FILE, JSON.stringify(ratchetInit(load(files[0])), null, 1) + "\n");
+    console.log(`wrote ${RATCHET_FILE}`);
+  } else if (cmd === "check") {
+    const rows = ratchetCheck(load(files[0]), load(RATCHET_FILE));
+    const over = rows.filter((r) => r.over);
+    for (const r of over) console.log(`over: ${r.name}: ${r.key} ${r.got} > ${r.ceiling}`);
+    const below = rows.filter((r) => r.got < r.ceiling).length;
+    console.log(`frames ratchet: ${over.length ? "FAILED" : "ok"} (${rows.length} counts, ${over.length} over, ${below} below their ceiling)`);
+    process.exit(over.length ? 1 : 0);
   } else {
-    console.error("usage: frames-phase.mjs table <results.json>...");
+    console.error("usage: frames-phase.mjs table <results.json>... | init <framecounts results.json> | check <results.json>");
     process.exit(64);
   }
 }

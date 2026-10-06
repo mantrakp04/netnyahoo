@@ -13,6 +13,7 @@ All of them are in `apps/browser/scripts/perf/`.
 | `native-bench.mjs` | native | Launch, idle CPU and wakeups, memory, tab and window latency, throttling, on a Release app in hidden instances. Its header maps every section and output row to the function that measures it. |
 | `nnperf.swift` | native | Process probes (rusage, phys_footprint, window on screen, quit) and `postkeys` (real key events posted to one pid with `CGEventPostToPid`), built on demand with swiftc. |
 | `nnmark.m` | native | Injected into the bench's copy of the app: marks when a window's React content commits, and (`NN_BENCH_KEYLOG=1`) every key down the app's event loop sees. |
+| `nnframes.m`, `frames-phase.mjs`, `frames-phase.test.mjs` | native | The frame rig (`native-bench.mjs --only frames`, `framecounts`): `nnframes.m` is injected like `nnmark.m` and records display-link ticks, main- and JS-thread run-loop busy time and layout counters; `frames-phase.mjs` drives the interactions and reads them; the test checks the window arithmetic. Rows: [What the frame rows measure](#what-the-frame-rows-measure). |
 | `bench-entry.js`, `bench-channel.js`, `bench-offline.js` | native | The JS entry of the bench bundle: the app's `index.js` plus the command channel (`nn.journeys()` is the field timing's own view). `bench-offline.js` answers every non-local `fetch` itself when the data folder holds a `bench-offline` file, so nothing is uploaded while sharing is on. |
 | `js-bench.mjs` | JS | React commits, renders, store updates and JS tasks per interaction, on a production bundle. |
 | `bench-app.js` | JS, render | The scenarios js-bench and render-bench run inside the app. **Not** part of native-bench. |
@@ -267,6 +268,43 @@ command starts.
 | J2 ⌘T key made → the app's event loop saw it | The key's timestamp → nnmark.m's key monitor. Part of every J2 and J4 row. `nnperf hands ⌘T over → the event's timestamp` is the poster's own lead (not in any row) |
 | J4 Enter → engine asked to load / Chrome started / committed / first contentful paint | A URL of the bench's local page typed with real keys (25 ms apart) into a new tab's bar (⌘T) or a page's panel (⌘L), then a real Enter: the app's marks `request` (our side), `start`, `commit`, `fcp`. The page's own first contentful paint over CDP is the same number. `request → fcp` is the engine's and the network's share (a local server here) |
 | journeys: iterations lost, load average | Iterations where a key never arrived (CGEventPostToPid sometimes drops a key; the app's key log catches it and the key is made again), a bar or panel never opened, or a page never painted; the 1-minute load average at each run's start and end |
+
+### What the frame rows measure
+
+`--only frames` (timings, run under the perflab lock) and `--only framecounts` (counts, no lock) run the app's own UI
+interactions on the big seed (200 tabs in two profiles) and ask, per interaction, how many frames the main thread
+delivered. `--frames-n` repetitions (default 8; `framecounts` at most 3) per run, `--runs` runs per app, interleaved
+with `--control`. They need the display on: `nnperf display` is checked before and after, a run on an asleep or
+locked display is left out ("runs skipped"), because macOS stops giving windows display-link frames then.
+
+The probe (`nnframes.m`, loaded with `NN_BENCH_FRAMES=1`) links a `CADisplayLink` of the window's screen, asked for the
+screen's maximum rate (`NSScreen.maximumFramesPerSecond`: 120 on a ProMotion built-in display, 60 on an external
+one; the "screen ..., maximum refresh rate" row says which). A tick is the main thread getting to a vsync. Each
+interaction's window starts at the interaction (a real key event for the command bar, the store call otherwise; the
+scroll and hover are driven in-process from the display link's own ticks, so they are stepped by frames) and ends a
+fixed time later.
+
+| Row | Measures |
+|---|---|
+| frames delivered | Display-link ticks in the window; the screen asked for window / refresh interval of them |
+| ticks over 8.33 ms / over 16.7 ms | Ticks that came more than 8.33 (16.7) + 2 ms after the one before: a 120 Hz (60 Hz) frame the main thread did not deliver. On a 60 Hz screen every tick is over 8.33: read that column only when the rate row says 120. |
+| refresh intervals skipped (results.json) | Σ round(gap / refresh) − 1 over the window's gaps |
+| worst frame | The longest gap between two ticks |
+| main thread busy / longest stall | Main-thread run-loop iterations (AfterWaiting → BeforeWaiting, past Core Animation's commit observer): their sum, clipped to the window, and the longest one that started in it. One iteration over 8.33 ms always costs a frame. Includes the Core Animation commit but not the render server or GPU. |
+| JS thread busy / longest task | The same on React Native's JS thread (`com.facebook.react.JavaScript`'s run loop) |
+| layout passes, mount batches, UI blocks run, view updates sent by JS | **Deterministic**: `RCTUIManager`'s `_layoutAndMount` calls, `flushUIBlocksWithCompletion:` calls with work, the blocks in them, and `updateView:` calls. Taken in every frames run and in `framecounts`. |
+| React commits, host updates, renders, store updates | **Deterministic**, `framecounts` only (the JS probe is on): the counts the ratchet takes from js-bench, per interaction |
+
+What it does not see: the render server and the GPU. A frame the main thread delivered on time but the GPU drew late (an
+offscreen pass for a shadow or blur) is not counted; the layout and mount counters and the code are where those are
+looked for. Over-budget counts are noisy; the layout, mount and React counts repeat to the digit, which is why
+`frames-ratchet.json` holds ceilings for those only (`node apps/browser/scripts/perf/frames-phase.mjs check <results.json>`).
+Results and the fix list: [frames.md](frames.md).
+
+**cpu-cap.** `scripts/agent/cpu-cap` puts our processes on background QoS (efficiency cores) and pauses the busiest while
+the Mac is over its cap. Timings from a run it touched are not a user's: the table has a row that counts the runs under
+cap and one for runs it paused the instance in (those timings are invalid; rerun). Compare apps run interleaved in the same
+conditions and lean on the counts.
 
 ### js-bench
 

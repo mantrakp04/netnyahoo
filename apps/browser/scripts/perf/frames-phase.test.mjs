@@ -1,7 +1,7 @@
 // windowStats (frames-phase.mjs) on synthetic probe records: `node --test apps/browser/scripts/perf/frames-phase.test.mjs`
 import assert from "node:assert/strict";
 import test from "node:test";
-import { windowStats } from "./frames-phase.mjs";
+import { ratchetCheck, ratchetInit, windowStats } from "./frames-phase.mjs";
 
 const R = 1000 / 120;
 const ticks = (times) => times.map((ts) => ({ k: "f", ts, now: ts + 0.4, tgt: ts + R }));
@@ -47,4 +47,23 @@ test("busy time is clipped to the window; the worst run-loop iteration is the on
   assert.equal(s.mainWorst, 20);
   assert.equal(s.mainOver8, 2);
   assert.equal(s.layoutMs, 3);
+});
+
+const runs = (name, reps) => ({ frames: [{ interactions: { [name]: reps } }] });
+
+test("ratchet: exact when every repetition agrees, +10% when they moved; timing-driven interactions are left out", () => {
+  const results = {
+    frames: [
+      { interactions: { "tab switch": [{ layoutPasses: 25, commits: 4 }, { layoutPasses: 25, commits: 5 }], "new window": [{ layoutPasses: 40 }] } },
+      { skipped: "display asleep" },
+    ],
+  };
+  const r = ratchetInit(results);
+  assert.deepEqual(r.ceilings, { "tab switch": { layoutPasses: 25, commits: 6 } });
+});
+
+test("ratchet: the median of the repetitions is judged against the ceiling", () => {
+  const ratchet = { ceilings: { "tab switch": { layoutPasses: 25 } } };
+  assert.equal(ratchetCheck(runs("tab switch", [{ layoutPasses: 25 }, { layoutPasses: 25 }, { layoutPasses: 90 }]), ratchet)[0].over, false);
+  assert.equal(ratchetCheck(runs("tab switch", [{ layoutPasses: 26 }, { layoutPasses: 26 }]), ratchet)[0].over, true);
 });
