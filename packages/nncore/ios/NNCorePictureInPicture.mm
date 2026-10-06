@@ -3,6 +3,7 @@
 #import "NNCorePictureInPicture.h"
 
 #import "NNChromeWindow.h"
+#import "NNCorePiPZoom.h"
 #import "NNCoreWebViewInternal.h"
 
 #import <objc/runtime.h>
@@ -20,7 +21,10 @@ constexpr CGFloat kCornerRadius = 6;
 constexpr CGFloat kRimAlpha = 0.17;
 
 NSString *const kKeepOnTopDefault = @"NNPictureInPictureKeepOnTop";
+// Kill switch for ⌘-scroll / pinch zoom: `defaults write <bundle id> NNPictureInPictureZoom -bool NO`.
+NSString *const kZoomDefault = @"NNPictureInPictureZoom";
 const void *const kControllerKey = &kControllerKey;
+const void *const kZoomKey = &kZoomKey;
 
 BOOL KeepOnTop() {
   id value = [NSUserDefaults.standardUserDefaults objectForKey:kKeepOnTopDefault];
@@ -424,6 +428,26 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 
 // MARK: Self-test
 
+// The window as Core Animation draws it, at 2x over a slate backdrop, to $NETNYAHOO_DATA_DIR/pip-<name>.png.
+- (NSString *)snapshot:(NSString *)name {
+  NSWindow *window = _window;
+  NSString *dir = [NSString stringWithUTF8String:getenv("NETNYAHOO_DATA_DIR") ?: "/tmp"];
+  NSView *content = NNWindowRootView(window);
+  NSSize size = content.bounds.size;
+  NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil pixelsWide:size.width * 2 pixelsHigh:size.height * 2
+                                                                bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+                                                               colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
+  CGContextRef cg = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep].CGContext;
+  CGContextSetRGBFillColor(cg, 0.36, 0.42, 0.5, 1);
+  CGContextFillRect(cg, CGRectMake(0, 0, size.width * 2, size.height * 2));
+  CGContextScaleCTM(cg, 2, 2);
+  if (content.isFlipped) CGContextTranslateCTM(cg, 0, size.height), CGContextScaleCTM(cg, 1, -1);
+  [content.layer renderInContext:cg];
+  NSString *path = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"pip-%@.png", name]];
+  [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:path atomically:YES];
+  return path;
+}
+
 - (void)runSelfTest {
   NSMutableArray *steps = [NSMutableArray array];
   NSWindow *window = _window;
@@ -436,22 +460,7 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
     NSLog(@"[pip-selftest] %@ %@ %@", name, pass ? @"PASS" : @"FAIL", step);
   };
   NSString *dir = [NSString stringWithUTF8String:getenv("NETNYAHOO_DATA_DIR") ?: "/tmp"];
-  auto snapshot = [=](NSString *name) {
-    NSView *content = NNWindowRootView(window);
-    NSSize size = content.bounds.size;
-    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil pixelsWide:size.width * 2 pixelsHigh:size.height * 2
-                                                                  bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
-                                                                 colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
-    CGContextRef cg = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep].CGContext;
-    CGContextSetRGBFillColor(cg, 0.36, 0.42, 0.5, 1);
-    CGContextFillRect(cg, CGRectMake(0, 0, size.width * 2, size.height * 2));
-    CGContextScaleCTM(cg, 2, 2);
-    if (content.isFlipped) CGContextTranslateCTM(cg, 0, size.height), CGContextScaleCTM(cg, 1, -1);
-    [content.layer renderInContext:cg];
-    [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}]
-        writeToFile:[dir stringByAppendingPathComponent:[NSString stringWithFormat:@"pip-%@.png", name]]
-         atomically:YES];
-  };
+  auto snapshot = [=](NSString *name) { [self snapshot:name]; };
   auto write = [=] {
     NSString *path = [dir stringByAppendingPathComponent:@"pip-selftest.json"];
     NSDictionary *result = @{@"windowNumber" : @(window.windowNumber), @"host" : self.host ?: @"", @"steps" : steps};
@@ -613,6 +622,182 @@ typedef NS_ENUM(NSInteger, NNPiPEdge) { NNPiPEdgeNone = 0, NNPiPEdgeLeft = -1, N
 
 @end
 
+
+// MARK: - Zoom
+
+// ⌘-scroll (wheel or trackpad) and pinch over a Picture in Picture window resize it, keeping its aspect ratio, docked
+// to the screen edges it sits against (else around the pointer), within Chrome's own limits (its minimum, 80 % of the
+// work area) and on screen; the math is NNCorePiPZoom.h. Chrome saves the new size with its place
+// (NetnyahooPictureInPicture.plist, engine/chromium pip/) and the next window opens at it.
+@interface NNPiPZoom : NSObject
++ (BOOL)handle:(NSEvent *)event;
+@end
+
+@implementation NNPiPZoom {
+  __weak NSWindow *_window;
+  NSRect _last;    // the frame this set last; any other frame starts over from the window's
+  double _width;   // the exact width (rounding never eats a slow scroll)
+  double _aspect;  // width / height, kept while zooming
+  double _target;  // a wheel's notches ease to this width (0: none)
+  NSPoint _pointer;
+  NSTimer *_ease;
+}
+
+// A window this zooms: Chrome's video PiP (styled by NNPiPController, not tucked at an edge) or its document PiP.
++ (BOOL)zooms:(NSWindow *)window {
+  if (!window.visible || !(window.styleMask & NSWindowStyleMaskResizable)) return NO;
+  NNPiPController *controller = [NNPiPController forWindow:window];
+  if (controller) return controller.stashedEdge == NNPiPEdgeNone;
+  return IsChromeDocumentPictureInPicture(window) && IsChromeFloatingWindow(window);
+}
+
++ (instancetype)forWindow:(NSWindow *)window {
+  NNPiPZoom *zoom = objc_getAssociatedObject(window, kZoomKey);
+  if (!zoom) {
+    zoom = [[NNPiPZoom alloc] init];
+    zoom->_window = window;
+    objc_setAssociatedObject(window, kZoomKey, zoom, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  }
+  return zoom;
+}
+
+// The scroll gesture (trackpad phases and its momentum) that started or turned into a zoom over this window: the
+// rest of it zooms too, even once ⌘ is let go, and never scrolls the page under it.
+static __weak NSWindow *gZoomGesture;
+
++ (BOOL)handle:(NSEvent *)event {
+  BOOL handled = [self route:event];
+  // NETNYAHOO_PIP_ZOOM_TRACE=1: every scroll and pinch the app sees, and what became of it.
+  static BOOL trace = getenv("NETNYAHOO_PIP_ZOOM_TRACE") != nullptr;
+  if (trace)
+    NSLog(@"[pip-zoom] type %lu window %ld (%@) cmd %d phase %lu/%lu dy %.2f precise %d mag %.3f -> %@ %@", (unsigned long)event.type,
+          (long)event.windowNumber, event.window.className, (event.modifierFlags & NSEventModifierFlagCommand) != 0,
+          (unsigned long)(event.type == NSEventTypeScrollWheel ? event.phase : 0),
+          (unsigned long)(event.type == NSEventTypeScrollWheel ? event.momentumPhase : 0),
+          event.type == NSEventTypeScrollWheel ? event.scrollingDeltaY : 0,
+          event.type == NSEventTypeScrollWheel ? event.hasPreciseScrollingDeltas : 0,
+          event.type == NSEventTypeMagnify ? event.magnification : 0, handled ? @"zoomed" : @"passed",
+          NSStringFromRect(event.window.frame));
+  return handled;
+}
+
+// The window an event is for: its own, or with none (an event the window server sent to no window, as for a test
+// instance's PiP, which ignores the pointer), the frontmost Picture in Picture window under its location.
++ (NSWindow *)windowFor:(NSEvent *)event {
+  if (event.window) return event.window;
+  NSPoint point = event.locationInWindow;  // in screen coordinates without a window
+  for (NSWindow *window in NSApp.orderedWindows)
+    if (NSPointInRect(point, window.frame) && [self zooms:window]) return window;
+  return nil;
+}
+
++ (BOOL)route:(NSEvent *)event {
+  NSWindow *window = [self windowFor:event];
+  BOOL command = (event.modifierFlags & NSEventModifierFlagCommand) != 0;
+  BOOL scroll = event.type == NSEventTypeScrollWheel;
+  if (scroll) {
+    NSEventPhase phase = event.phase, momentum = event.momentumPhase;
+    BOOL wheel = phase == NSEventPhaseNone && momentum == NSEventPhaseNone;
+    // A new gesture (or a wheel's line) decides afresh; the rest of a zoom gesture stays with its window, even once
+    // the window has shrunk out from under the pointer.
+    if (wheel || (phase & (NSEventPhaseBegan | NSEventPhaseMayBegin))) gZoomGesture = nil;
+    if (gZoomGesture) window = gZoomGesture;
+    if (!window || (!command && gZoomGesture != window)) return NO;
+    if (![self zooms:window] || ![self enabled]) return NO;
+    if (!wheel) gZoomGesture = window;
+    if (momentum & (NSEventPhaseEnded | NSEventPhaseCancelled)) gZoomGesture = nil;
+    double dy = event.scrollingDeltaY;
+    if (dy == 0) return YES;
+    [[self forWindow:window] zoomBy:nncore_pip_zoom::ScrollFactor(dy, event.hasPreciseScrollingDeltas)
+                                 at:[self screenPoint:event]
+                               ease:!event.hasPreciseScrollingDeltas];
+    return YES;
+  }
+  // Pinch.
+  if (!window || ![self zooms:window] || ![self enabled]) return NO;
+  [[self forWindow:window] zoomBy:nncore_pip_zoom::MagnifyFactor(event.magnification)
+                               at:[self screenPoint:event]
+                             ease:NO];
+  return YES;
+}
+
++ (NSPoint)screenPoint:(NSEvent *)event {
+  return event.window ? [event.window convertPointToScreen:event.locationInWindow] : event.locationInWindow;
+}
+
++ (BOOL)enabled {
+  id value = [NSUserDefaults.standardUserDefaults objectForKey:kZoomDefault];
+  return value ? [value boolValue] : YES;
+}
+
+- (void)zoomBy:(double)factor at:(NSPoint)pointer ease:(BOOL)ease {
+  NSWindow *window = _window;
+  NSRect frame = window.frame;
+  if (!NSEqualRects(frame, _last) || _width <= 0) {
+    // Keep the ratio from before when the frame still has it (to its rounding): whole points would drift it.
+    double aspect = NSWidth(frame) / MAX(NSHeight(frame), 1);
+    if (!(_aspect > 0 && fabs(NSWidth(frame) / _aspect - NSHeight(frame)) <= 1)) _aspect = aspect;
+    _width = NSWidth(frame), _target = 0;
+    [_ease invalidate], _ease = nil;
+  }
+  _pointer = pointer;
+  if (!ease) {
+    [_ease invalidate], _ease = nil, _target = 0;
+    return [self step:factor];
+  }
+  // A wheel's notch is a jump of several points: ease to it over ~0.1 s, retargeting with each new notch.
+  double low, high;
+  nncore_pip_zoom::WidthLimits(_aspect, [self minSize], [self maxSize], [self visible], &low, &high);
+  _target = MIN(MAX((_target > 0 ? _target : _width) * factor, low), high);
+  if (_ease) return;
+  __weak NNPiPZoom *weakSelf = self;
+  _ease = [NSTimer timerWithTimeInterval:1.0 / 120 repeats:YES block:^(NSTimer *timer) {
+    NNPiPZoom *strongSelf = weakSelf;
+    if (!strongSelf || !strongSelf->_window.visible || !NSEqualRects(strongSelf->_window.frame, strongSelf->_last)) {
+      if (strongSelf) strongSelf->_ease = nil, strongSelf->_target = 0;
+      return [timer invalidate];
+    }
+    double width = strongSelf->_width, target = strongSelf->_target;
+    BOOL done = fabs(target - width) < 0.25;
+    [strongSelf step:(done ? target : width + (target - width) * 0.25) / width];
+    if (!done) return;
+    strongSelf->_ease = nil, strongSelf->_target = 0;
+    [timer invalidate];
+  }];
+  [NSRunLoop.currentRunLoop addTimer:_ease forMode:NSRunLoopCommonModes];
+  // Set _last now: the timer checks it before its first step.
+  _last = frame;
+}
+
+- (nncore_pip_zoom::Size)minSize {
+  NSSize size = _window.contentMinSize;
+  return {size.width, size.height};
+}
+
+- (nncore_pip_zoom::Size)maxSize {
+  NSSize size = _window.contentMaxSize;
+  return {size.width > 0 ? size.width : CGFLOAT_MAX, size.height > 0 ? size.height : CGFLOAT_MAX};
+}
+
+- (nncore_pip_zoom::Rect)visible {
+  NSRect visible = ScreenFor(_window.frame).visibleFrame;
+  return {NSMinX(visible), NSMinY(visible), NSWidth(visible), NSHeight(visible)};
+}
+
+- (void)step:(double)factor {
+  NSWindow *window = _window;
+  NSRect frame = window.frame;
+  nncore_pip_zoom::Result result = nncore_pip_zoom::Zoom(
+      {NSMinX(frame), NSMinY(frame), NSWidth(frame), NSHeight(frame)}, _width, _aspect, factor, {_pointer.x, _pointer.y},
+      [self visible], [self minSize], [self maxSize]);
+  _width = result.width;
+  NSRect next = NSMakeRect(result.frame.x, result.frame.y, result.frame.w, result.frame.h);
+  if (!NSEqualRects(next, frame)) [window setFrame:next display:YES];
+  _last = window.frame;
+}
+
+@end
+
 // MARK: - Glue
 
 namespace nncore_pip {
@@ -629,6 +814,15 @@ void InstallMenuMonitor() {
                                                     if (!controller) return event;
                                                     [NSMenu popUpContextMenu:[controller menu] withEvent:event forView:controller.overlay];
                                                     return nil;
+                                                  }];
+}
+
+void InstallZoomMonitor() {
+  static id monitor;
+  if (monitor) return;
+  monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel | NSEventMaskMagnify
+                                                  handler:^NSEvent *(NSEvent *event) {
+                                                    return [NNPiPZoom handle:event] ? nil : event;
                                                   }];
 }
 
@@ -649,6 +843,7 @@ bool Attach(NNCoreWebView *view, NSString *host, NSString *frameId) {
       window.ignoresMouseEvents = YES;
     }
     InstallMenuMonitor();
+    InstallZoomMonitor();
     NSString *selfTest = NSProcessInfo.processInfo.environment[@"NETNYAHOO_PIP_SELFTEST"];
     if (fresh && [@[ @"close", @"backToTab" ] containsObject:selfTest]) [controller runButtonSelfTest:selfTest];
     else if (fresh && [selfTest isEqual:@"hover"]) [controller runHoverSelfTest];
@@ -659,6 +854,8 @@ bool Attach(NNCoreWebView *view, NSString *host, NSString *frameId) {
 }
 
 }
+
+void WatchZoom() { InstallZoomMonitor(); }
 
 void VideoChanged(NNCoreWebView *view, NSString *host, NSString *frameId, bool active) {
   if (!active) return;
@@ -707,12 +904,17 @@ void VideoChanged(NNCoreWebView *view, NSString *host, NSString *frameId, bool a
       @"stashed" : @(controller.stashedEdge),
       @"host" : controller.host ?: @"",
       @"backToTab" : @(controller.view != nil),
+      @"minSize" : NSStringFromSize(window.contentMinSize),
+      @"maxSize" : NSStringFromSize(window.contentMaxSize),
+      @"resizable" : @((window.styleMask & NSWindowStyleMaskResizable) != 0),
+      @"visibleFrame" : NSStringFromRect(ScreenFor(window.frame).visibleFrame),
     }];
   }
   return list;
 }
 
-// "selftest" (packages/cef's NETNYAHOO_PIP_SELFTEST: rounding, stash at both edges, the handle, the saved place,
+// "snapshot:<name>" (the window → pip-<name>.png, its path returned), "frame:<NSRect>" (moves it), "selftest" (packages/cef's
+// NETNYAHOO_PIP_SELFTEST: rounding, stash at both edges, the handle, the saved place,
 // Keep on Top, Back to Tab → $NETNYAHOO_DATA_DIR/pip-selftest.json), "close" or "backToTab" (Chrome's own buttons
 // clicked → pip-button-selftest.json), "menu" (our menu's titles), on the newest styled window.
 + (NSString *)devPictureInPictureAction:(NSString *)action {
@@ -723,6 +925,8 @@ void VideoChanged(NNCoreWebView *view, NSString *host, NSString *frameId, bool a
   if ([action isEqual:@"selftest"]) [controller runSelfTest];
   else if ([@[ @"close", @"backToTab" ] containsObject:action]) [controller runButtonSelfTest:action];
   else if ([action isEqual:@"menu"]) return [[controller.menu.itemArray valueForKey:@"title"] componentsJoinedByString:@"|"];
+  else if ([action hasPrefix:@"snapshot:"]) return [controller snapshot:[action substringFromIndex:9]];
+  else if ([action hasPrefix:@"frame:"]) [controller.window setFrame:NSRectFromString([action substringFromIndex:6]) display:YES];
   else return @"";
   return @"started";
 }

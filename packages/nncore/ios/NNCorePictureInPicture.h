@@ -9,6 +9,9 @@
 namespace nncore_pip {
 
 // The page script's "pip" report for a video: the window Chrome just opened for `view`'s page (frame `frameId`).
+// ⌘-scroll and pinch resize any Picture in Picture window (a video's or a document's) from now on.
+void WatchZoom();
+
 void VideoChanged(NNCoreWebView *view, NSString *host, NSString *frameId, bool active);
 
 }

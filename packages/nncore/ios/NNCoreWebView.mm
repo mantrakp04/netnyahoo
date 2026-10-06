@@ -1322,6 +1322,7 @@ void NNCoreWebViewsSetFieldTiming(BOOL on) {
     if (!active) return;
     _inPictureInPicture = active.boolValue;
     [self emit:@"pictureInPicture" payload:@{@"kind" : pipKind, @"active" : active}];
+    if (active.boolValue) nncore_pip::WatchZoom();
     // Chrome's video window, styled and handled as on CEF (NNCorePictureInPicture).
     if ([pipKind isEqual:@"video"]) nncore_pip::VideoChanged(self, [NSURL URLWithString:tab.url ?: @""].host ?: @"", frameId, active.boolValue);
   } else if ([kind isEqualToString:@"notification"] && dict) {
