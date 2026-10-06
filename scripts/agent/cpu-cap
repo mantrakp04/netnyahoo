@@ -22,7 +22,7 @@ MARKERS = (REPO + "/", REPO + " ", "/private/tmp/claude-", "/tmp/nn-")
 NEVER = ("/Applications/Netnyahoo.app/", "/Applications/Claude.app/", "/Applications/League of Legends.app/",
          "/System/", "/usr/libexec/", "/sbin/launchd")
 # Shared build daemons and coordinators: pausing one stalls every build behind it; pause their workers instead.
-COORD = {"SWBBuildService", "ibtoold", "xcodebuild", "XCBBuildService", "lockf"}
+COORD = {"SWBBuildService", "ibtoold", "xcodebuild", "XCBBuildService", "lockf", "siso", "ninja", "autoninja", "gn"}
 TOOLS = COORD | {"bash", "zsh", "sh", "-zsh", "top", "ps", "git", "perl", "lockf", "timeout", "sleep", "python3", "Python",
          "osascript", "log", "caffeinate", "codex", "node_repl"}
 ME = os.getpid()
