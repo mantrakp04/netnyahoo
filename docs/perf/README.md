@@ -18,6 +18,7 @@ All of them are in `apps/browser/scripts/perf/`.
 | `bench-app.js` | JS, render | The scenarios js-bench and render-bench run inside the app. **Not** part of native-bench. |
 | `seed.mjs` | JS, render | The big profile those runs start from: 200 tabs, 5000 history entries, 1000 bookmarks. |
 | `render-bench.mjs` | render | Wasted renders per interaction, using React's profiling build (`js-bench.mjs bundle <dir> --profiling 1`). |
+| `census.mjs` | render | Per action of each journey (Cmd-T, keystroke, Cmd-L, tab switch, Enter, page load, hover): components rendered, wasted renders, hooks run, store subscriptions notified, selectors evaluated, native view updates, timers scheduled. Its results and fix list: [render-census.md](render-census.md). |
 | `micro-bench.mjs` | Node | Store-side work that grows with a profile (sidebar entries, group names, omnibox) in Node. No app needed. Its `counts` and `instr` cases feed the ratchet. |
 | `ratchet.mjs`, `ratchet.json` | ratchet | Ceilings on counts that can only go down, and the commands that check, lower and rebuild them. |
 | `ratchet-app.js`, `ops.mjs`, `ratchet-proof.mjs` | ratchet | The `launch` scenario the ratchet adds to js-bench, the builtin-call counter micro-bench uses, and the before/after proof that counts track wall-clock. |
