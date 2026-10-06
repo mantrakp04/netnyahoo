@@ -6,6 +6,12 @@
 //   nnperf newwindow <pid> <secs>     prints "ready" once it knows the pid's windows, then {"at": epoch ms, "id": window
 //                                     number} when a new one is on screen (≥ 300×200, alpha > 0), polling every 2 ms
 //   nnperf quit <pid>                 asks that one process to quit (a quit Apple event, as ⌘Q would)
+//   nnperf postkeys <pid> <gap ms> <spec>...
+//                                     real key events posted to that one process (CGEventPostToPid: the window server's
+//                                     event path into the app's queue, as a keyboard's are). A spec is a chord (`cmd+t`,
+//                                     `enter`, `esc`) or `text:<chars>` (US layout, a key down and up per character,
+//                                     <gap ms> apart). Prints {"spec", "at"} per spec: epoch ms when its first key down
+//                                     was created, the instant the press starts for the journey rows
 //   nnperf input <pid> <secs>         {"inputSecs", "overWindowSecs"}: how long, polling every 250 ms, someone used the
 //                                     mouse, trackpad or keyboard (HIDIdleTime), and how much of that with the pointer
 //                                     moving over one of the pid's windows
@@ -132,7 +138,68 @@ case "input":
     if let at, at != last, overOwnWindow(at) { over += 1 }
   }
   printJSON(["inputSecs": Double(input) * tick, "overWindowSecs": Double(over) * tick])
+case "postkeys":
+  guard args.count >= 5, let pid = pid_t(args[2]), pid > 1, let gap = Double(args[3]) else {
+    FileHandle.standardError.write("usage: nnperf postkeys <pid> <gap ms> <spec>...\n".data(using: .utf8)!)
+    exit(64)
+  }
+  // US ANSI virtual key codes; `shifted` are the characters typed with shift on the same key.
+  let codes: [Character: UInt16] = [
+    "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
+    "y": 16, "t": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "=": 24, "9": 25, "7": 26, "-": 27, "8": 28, "0": 29,
+    "o": 31, "u": 32, "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, ";": 41, ",": 43, "/": 44, "n": 45, "m": 46, ".": 47, " ": 49,
+  ]
+  let shifted: [Character: Character] = ["?": "/", ":": ";", "_": "-", "+": "=", "&": "7"]
+  let named: [String: UInt16] = ["enter": 36, "return": 36, "tab": 48, "esc": 53, "escape": 53, "delete": 51, "space": 49, "down": 125, "up": 126]
+  let source = CGEventSource(stateID: .combinedSessionState)
+  // One key press (down, then up) to the pid, as a keyboard makes it; returns when its key down was created.
+  func press(_ code: UInt16, _ flags: CGEventFlags, _ chars: String?) -> Double {
+    let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true)
+    let at = nowMs()
+    down?.flags = flags
+    if let chars { down?.keyboardSetUnicodeString(stringLength: chars.utf16.count, unicodeString: Array(chars.utf16)) }
+    down?.postToPid(pid)
+    let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false)
+    up?.flags = flags
+    up?.postToPid(pid)
+    return at
+  }
+  for spec in args.dropFirst(4) {
+    var first = 0.0
+    if spec.hasPrefix("text:") {
+      for (i, ch) in spec.dropFirst(5).enumerated() {
+        let shift = shifted[ch] != nil || (ch.isUppercase)
+        let base = shifted[ch] ?? Character(ch.lowercased())
+        guard let code = codes[base] else {
+          FileHandle.standardError.write("nnperf postkeys: no key for \(ch)\n".data(using: .utf8)!)
+          exit(64)
+        }
+        let at = press(code, shift ? .maskShift : [], String(ch))
+        if i == 0 { first = at }
+        if gap > 0 { usleep(UInt32(gap * 1000)) }
+      }
+    } else {
+      var flags: CGEventFlags = []
+      var key = ""
+      for part in spec.split(separator: "+").map(String.init) {
+        switch part {
+        case "cmd": flags.insert(.maskCommand)
+        case "shift": flags.insert(.maskShift)
+        case "opt": flags.insert(.maskAlternate)
+        case "ctrl": flags.insert(.maskControl)
+        default: key = part
+        }
+      }
+      guard let code = named[key] ?? key.first.flatMap({ key.count == 1 ? codes[$0] : nil }) else {
+        FileHandle.standardError.write("nnperf postkeys: no key for \(spec)\n".data(using: .utf8)!)
+        exit(64)
+      }
+      first = press(code, flags, flags.isEmpty && key.count == 1 ? key : nil)
+    }
+    printJSON(["spec": spec, "at": (first * 10).rounded() / 10])
+    fflush(stdout)
+  }
 default:
-  FileHandle.standardError.write("usage: nnperf rusage <pid>... | windows <pid> | quit <pid> | waitwindow <pid> <secs> | newwindow <pid> <secs> | input <pid> <secs>\n".data(using: .utf8)!)
+  FileHandle.standardError.write("usage: nnperf rusage <pid>... | windows <pid> | quit <pid> | waitwindow <pid> <secs> | newwindow <pid> <secs> | input <pid> <secs> | postkeys <pid> <gap ms> <spec>...\n".data(using: .utf8)!)
   exit(64)
 }

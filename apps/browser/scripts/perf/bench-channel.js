@@ -6,6 +6,8 @@ import { runCommand } from "../../src/lib/commands";
 import { webviews } from "../../src/lib/webviews";
 import { usePages } from "../../src/components/layout/pageState";
 import { useBrowser } from "../../src/store/browser";
+import { devJourneys } from "../../src/telemetry/journeys";
+import { devState as telemetryState } from "../../src/telemetry/client";
 
 writeDocument("bench-boot.json", JSON.stringify({ jsStart: Date.now() }));
 
@@ -18,6 +20,10 @@ const nn = {
   webviews,
   shell,
   now: () => Date.now(),
+  // The field timing's own view (telemetry/journeys.ts): pending journeys, the steps it has timed, the native marks.
+  journeys: devJourneys,
+  telemetry: telemetryState,
+  blockedFetches: () => globalThis.__nnBlockedFetches?.() ?? [],
   pause(ms) {
     pausedUntil = Date.now() + ms;
   },

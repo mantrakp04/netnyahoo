@@ -4,6 +4,8 @@
 // The bench writes `bench-cmd.js` (first line `// <id>`) into NETNYAHOO_DATA_DIR; the body gets `nn` and its
 // return value (or promise) lands in `bench-result.json`. Polling stops while the bench measures idle
 // (`nn.pause(ms)`), so the channel adds no wakeups to what it measures.
+// First: nothing the app sends leaves this machine (see bench-offline.js).
+import "./bench-offline";
 import "../../index";
 import { answerWithSkew, nativeApiSkew } from "../../src/nativeApi";
 

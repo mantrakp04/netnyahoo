@@ -26,6 +26,11 @@
 //                                          only those parts of a session run (still with the 20 tabs they're measured
 //                                          with; the settling waits only the chosen parts need). Compare runs made
 //                                          with the same --only.
+//                               newtabkey  J2: a real ⌘T key event into the app → its command bar committed, on screen and
+//                                          typeable; a keystroke → its suggestions on screen (one instance per run)
+//                               navigate   J4: a real Enter in the command bar with a local test page's URL → the engine
+//                                          asked to load, navigation started, committed, first contentful paint; from a new
+//                                          tab's bar (⌘T) and from a page's panel (⌘L). Same instance as newtabkey.
 //                               windows    8 new windows per run, alone
 //                               throttle   hidden animating tabs' rAF and timer rates
 //                               churn      leak check: open and close 10 tabs 5 times
@@ -33,7 +38,9 @@
 //                               prepare    prepare the app copies and exit (see --prepared)
 //     --env K=V               repeatable: extra environment for every instance (DYLD_INSERT_LIBRARIES is appended to
 //                             the marker library). Instances stay muted; don't pass NETNYAHOO_ALLOW_AUDIO.
-//     --seed big              launch phase only: start every launch from seed.mjs's big saved session (200 tabs in two
+//     --journey-n <n>         iterations of each journey per run in newtabkey and navigate (default 10)
+//     --page-port <n>         the test pages' server port (default: any free port)
+//     --seed big              launch, newtabkey and navigate phases: start every launch from seed.mjs's big saved session (200 tabs in two
 //                             profiles, 5000 history entries, 1000 bookmarks) instead of one tab, to time what a
 //                             long-time user's launch does. Its active tab is the bench's id=seed page, so the launch
 //                             rows mean the same; the other 199 tabs point at the bench server's /static?id=p-…
@@ -91,6 +98,11 @@
 //                                                        alpha > 0). 3 per session run (newwindow), 8 per windows run
 //   new window → on screen with its content newWindow   the later of that and nnmark's commit for that window
 //   new window → first paint / first frame  newWindow   the window's page's FCP / first rAF
+//   ⌘T → …, keystroke → suggestions         journeyRun  newtabkey: nnperf postkeys (CGEventPostToPid into this pid) → the app's field timing
+//                                                        (journeys.ts + NNCoreFieldTiming.mm; sharing on in the bench's data folder,
+//                                                        every non-local fetch answered by bench-offline.js so nothing is uploaded)
+//   Enter → engine asked / started / committed / first contentful paint
+//                                           journeyRun  navigate: the same, from a real Enter; also the page's own FCP over CDP
 // Also printed: "Hidden tabs" (throttleRun), the browser process after each churn round, main-thread sample summaries.
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -124,6 +136,8 @@ const { values: opt } = parseArgs({
     env: { type: "string", multiple: true, default: [] },
     seed: { type: "string" },
     "fresh-copy": { type: "boolean" },
+    "page-port": { type: "string", default: "0" },
+    "journey-n": { type: "string", default: "10" },
     hold: { type: "string", default: "0" },
     help: { type: "boolean", short: "h" },
   },
@@ -283,7 +297,7 @@ function startServer() {
       if (!html) return res.writeHead(404).end();
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }).end(html);
     });
-    server.listen(0, "127.0.0.1", () => resolveServer(server));
+    server.listen(+opt["page-port"], "127.0.0.1", () => resolveServer(server));
   });
 }
 
@@ -407,13 +421,15 @@ class Instance {
     this.feed = `${base()}/appcast.xml`;
     this.cdp = new Cdp(this.port);
     this.seq = 0;
+    // Extra K=V environment for this instance alone (journeyRun: NN_BENCH_KEYLOG).
+    this.env = [];
   }
   async launch() {
     const exe = join(this.app, "Contents/MacOS", execFileSync("defaults", ["read", join(this.app, "Contents/Info.plist"), "CFBundleExecutable"], { encoding: "utf8" }).trim());
     const main = `^${exe.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`;
     if (spawnSync("pgrep", ["-f", main]).status === 0) throw new Error("a bench instance is still running");
     // --env K=V; an extra DYLD_INSERT_LIBRARIES loads after the marker.
-    const extra = opt.env.filter((e) => !e.startsWith("DYLD_INSERT_LIBRARIES="));
+    const extra = [...opt.env, ...this.env].filter((e) => !e.startsWith("DYLD_INSERT_LIBRARIES="));
     const dyld = [markerLibrary(), ...opt.env.filter((e) => e.startsWith("DYLD_INSERT_LIBRARIES=")).map((e) => e.slice(22))].join(":");
     this.t0 = Date.now();
     execFileSync("open", ["-g", "-n", "--env", "NETNYAHOO_BACKGROUND=1", "--env", `NETNYAHOO_DATA_DIR=${this.dataDir}`,
@@ -692,6 +708,193 @@ async function windowsRun(side, i) {
   }
 }
 
+// MARK: Journeys: real key events in, the app's field timing out
+
+// The app times a journey only while the user shares diagnostics (telemetry/journeys.ts), so these runs turn sharing
+// on in their data folder, with a `bench-offline` file that makes bench-offline.js answer every non-local fetch itself:
+// the Release bundle would otherwise send the events to our collector. Input is real: nnperf postkeys posts key events
+// to this one pid (CGEventPostToPid), which reach the app as a keyboard's do (NSApp.sendEvent, the menu bar's ⌘T, the
+// focused field). Every row starts at the instant nnperf created the key down (epoch ms, the clock the app's marks use).
+const TELEMETRY_ON = { version: 1, sharing: true, decidedAt: 1, askDoneAt: 1, installId: "00000000-0000-4000-8000-0000000000b0", lastVersion: null, sessionOpen: false };
+
+function postKeys(app, gap, ...specs) {
+  const r = nnperf("postkeys", String(app.pid), String(gap), ...specs);
+  if (r.code !== 0) throw new Error(`nnperf postkeys ${specs.join(" ")} failed (${r.code}): ${r.out}`);
+  return r.out.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+}
+
+const journeyState = (app) => app.run(`const j = nn.journeys(); const s = nn.store.getState();
+  return { on: j.on, native: j.native, pending: j.pending, samples: j.samples, counts: j.counts, marks: j.marks,
+    tabs: Object.keys(s.tabs).length, focused: s.ui.focusedWindowId };`);
+
+async function waitFor(app, accept, timeout, every = 60) {
+  for (const end = Date.now() + timeout; Date.now() < end; ) {
+    const st = await journeyState(app);
+    if (accept(st)) return st;
+    await sleep(every);
+  }
+  return null;
+}
+
+const sampled = (st, step) => st.samples[step]?.length ?? 0;
+// The first mark of `kind` for any tab at or after `from` (epoch ms).
+function markAfter(st, kind, from) {
+  let first = NaN;
+  for (const list of Object.values(st.marks))
+    for (const [k, at] of list) if (k === kind && at >= from - 1 && !(at >= first)) first = at;
+  return first;
+}
+const markOf = (st, key, kind, from) => (st.marks[key] ?? []).filter(([k, at]) => k === kind && at >= from - 1).map(([, at]) => at).sort((a, b) => a - b)[0] ?? NaN;
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+// How long a key sat between being made (nnperf's CGEvent, the event's timestamp) and the app's event loop getting to it
+// (nnmark.m's key log), for the key nnperf made at `at`.
+function delivery(app, at) {
+  const keys = app.marks().filter((m) => m.keydown !== undefined && Math.abs(m.made - at) < 100);
+  keys.sort((a, b) => Math.abs(a.made - at) - Math.abs(b.made - at));
+  return keys[0] ? keys[0].keydown - keys[0].made : NaN;
+}
+
+// ⌘T, and its new tab's command bar committed (the key pressed again once if the app didn't act on it: the press that
+// counts is the one that did).
+async function openNewTab(app) {
+  let press, bar = null;
+  for (let attempt = 0; attempt < 2 && !bar; attempt++) {
+    [press] = postKeys(app, 0, "cmd+t");
+    bar = await waitFor(app, (st) => st.pending.some((q) => q.journey === "j2" && q.bar !== undefined && q.t0 >= press.at - 5), 2500);
+  }
+  return { press, bar };
+}
+
+// J2: ⌘T → the new tab's command bar committed, on screen, focused; one keystroke → its suggestions on screen.
+async function newTabKey(app, i, k) {
+  const before = await journeyState(app);
+  const { press, bar } = await openNewTab(app);
+  const p = bar?.pending.filter((q) => q.journey === "j2" && q.bar !== undefined && q.t0 >= press.at - 5).at(-1);
+  if (!p) return { lost: "no bar" };
+  // Type once the field has focus (its typeable mark; the app hands marks over once a second), as a person would.
+  if (!(await waitFor(app, (st) => markOf(st, p.key, "typeable", press.at) >= 0, 5000, 150))) return { lost: "never typeable", tab: p.key };
+  await sleep(150);
+  const [key] = postKeys(app, 0, "text:n");
+  const done = await waitFor(app, (st) => sampled(st, "j2_suggest") > sampled(before, "j2_suggest"), 8000, 120);
+  if (!done) return { lost: "no suggestions", tab: p.key };
+  const last = (step) => (sampled(done, step) > sampled(before, step) ? done.samples[step].at(-1) : NaN);
+  return {
+    tab: p.key,
+    // Cumulative from the ⌘T key down (nnperf's stamp), the app's own steps in ms.
+    js: p.heard - press.at,
+    commit: p.bar - press.at,
+    shown: markOf(done, p.key, "bar", press.at) - press.at,
+    typeable: markOf(done, p.key, "typeable", press.at) - press.at,
+    suggest: markOf(done, p.key, "suggest", key.at) - key.at,
+    // The app's own numbers (its t0 is the event's timestamp), and how far that was from ours.
+    appTypeable: last("j2_typeable"),
+    appSuggest: last("j2_suggest"),
+    t0Skew: p.t0 - press.at,
+    delivery: delivery(app, press.at),
+    suggestDelivery: delivery(app, key.at),
+  };
+}
+
+// J4: a URL typed into the bar (from a new tab's bar, or ⌘L's panel over a page), Enter → the engine asked to load,
+// navigation started, committed, first contentful paint (the app's marks, and the page's own over CDP).
+async function navigateByEnter(app, side, id, from) {
+  const url = `127.0.0.1:${server.address().port}/static?id=${id}`;
+  let tab = null;
+  if (from === "newtab") {
+    const { press, bar } = await openNewTab(app);
+    tab = bar?.pending.filter((q) => q.journey === "j2" && q.bar !== undefined && q.t0 >= press.at - 5).at(-1)?.key;
+    if (!tab) return { lost: "no bar" };
+    if (!(await waitFor(app, (st) => markOf(st, tab, "typeable", press.at) >= 0, 5000, 150))) return { lost: "never typeable", tab };
+  } else {
+    const w = JSON.stringify(await app.run(`return ${WINDOW};`));
+    let open = false;
+    // A key the app didn't act on (it was still busy, or the window wasn't key yet) is pressed again, once.
+    for (let attempt = 0; attempt < 2 && !open; attempt++) {
+      postKeys(app, 0, "cmd+l");
+      for (const end = Date.now() + 2500; !open && Date.now() < end; await sleep(60)) open = await app.run(`return !!nn.store.getState().windowUi[${w}]?.panel.open;`);
+    }
+    if (!open) return { lost: "no panel" };
+  }
+  await sleep(from === "newtab" ? 150 : 900);
+  postKeys(app, 6, `text:${url}`);
+  // Let the typed address settle (its suggestions, the inline completion) before Enter, as a person's pause would.
+  await journeyState(app);
+  await sleep(500);
+  const before = await journeyState(app);
+  const [enter] = postKeys(app, 0, "enter");
+  const page = await app.pageState(`id=${id}`, 20_000, (s) => s.fcp);
+  const done = await waitFor(app, (st) => sampled(st, "j4_fcp") > sampled(before, "j4_fcp") || (st.counts.j4_no_load ?? 0) > (before.counts.j4_no_load ?? 0), 8000, 120);
+  if (!page || !done || sampled(done, "j4_fcp") <= sampled(before, "j4_fcp")) {
+    const urls = await app.run(`const s = nn.store.getState(); return Object.values(s.tabs).map((t) => t.url);`);
+    return { lost: `${!page ? "no page" : "no sample"} (tabs: ${urls.map((u) => u.slice(-24)).join(" ")})`, tab };
+  }
+  const at = (kind) => markAfter(done, kind, enter.at) - enter.at;
+  const last = (step) => (sampled(done, step) > sampled(before, step) ? done.samples[step].at(-1) : NaN);
+  return {
+    tab,
+    request: at("request"), start: at("start"), commit: at("commit"), fcp: at("fcp"),
+    engine: markAfter(done, "fcp", enter.at) - markAfter(done, "request", enter.at),
+    pageFcp: page.fcp - enter.at,
+    appFcp: last("j4_fcp"),
+    delivery: delivery(app, enter.at),
+  };
+}
+
+async function journeyRun(side, i, parts) {
+  const dir = freshDir(side, `journeys-${i}`);
+  writeFileSync(join(dir, "telemetry.json"), JSON.stringify({ ...TELEMETRY_ON, crashCursor: Date.now() }));
+  writeFileSync(join(dir, "bench-offline"), "1");
+  const n = +opt["journey-n"];
+  const app = new Instance(side, dir);
+  app.env.push("NN_BENCH_KEYLOG=1");
+  const r = { j2: [], j4new: [], j4page: [], lost: { j2: [], j4new: [], j4page: [] }, guard: null };
+  const note = (kind, x, k) => (x.lost ? (r.lost[kind].push(x.lost), log(`${side.tag}journeys ${i} ${kind} ${k}: lost (${x.lost})`)) : r[kind].push(x));
+  try {
+    await app.launch();
+    await app.pageState("id=seed", 30_000, (s) => s.fcp);
+    await sleep(6000);
+    // Nothing may leave: the guard answers a collector URL itself, and the field timing is on with native marks.
+    r.guard = await app.run(`return fetch("https://netnyahoo.com/otel/v1/logs", { method: "POST", body: "{}" }).then((res) => {
+      const j = nn.journeys();
+      return { blocked: res.headers.get("x-bench-blocked"), on: j.on, native: j.native, sharing: nn.telemetry().saved.sharing };
+    });`);
+    if (r.guard.blocked !== "1") throw new Error("bench-offline.js isn't guarding fetch: refusing to run with sharing on");
+    if (!r.guard.on || !r.guard.native) throw new Error(`field timing isn't on in the app: ${JSON.stringify(r.guard)}`);
+    const closeTab = (tab) => tab && app.run(`nn.store.getState().closeTab(${JSON.stringify(tab)}); return true;`);
+    if (parts.has("newtabkey")) {
+      for (let k = 0; k < n; k++) {
+        const x = await newTabKey(app, i, k);
+        note("j2", x, k);
+        await sleep(1200);
+        await closeTab(x.tab);
+        await sleep(1000);
+      }
+      log(`${side.tag}journeys ${i} j2:`, JSON.stringify(r.j2.map((x) => Math.round(x.typeable))));
+    }
+    if (parts.has("navigate")) {
+      for (let k = 0; k < n; k++) {
+        const x = await navigateByEnter(app, side, `j${i}n${pad2(k)}`, "newtab");
+        note("j4new", x, k);
+        await sleep(1500);
+        await closeTab(x.tab);
+        await sleep(1000);
+      }
+      for (let k = 0; k < n; k++) {
+        const x = await navigateByEnter(app, side, `j${i}p${pad2(k)}`, "page");
+        note("j4page", x, k);
+        await sleep(1800);
+      }
+      log(`${side.tag}journeys ${i} j4:`, JSON.stringify([r.j4new.map((x) => Math.round(x.fcp)), r.j4page.map((x) => Math.round(x.fcp))]));
+    }
+    r.blocked = (await app.run(`return nn.blockedFetches();`)).length;
+    side.results.journeys.push(r);
+  } finally {
+    await app.done();
+  }
+}
+
 // The parts of a session run (--only session runs them all, in this order, on one instance).
 const SESSION_PARTS = ["idle", "memory", "switch", "newtab", "newwindow"];
 
@@ -920,12 +1123,47 @@ function summary(res) {
   add("new window → on screen with its content (median per run)", W.map((r) => median(r.newWindow.map((w) => w.withContent))), "ms");
   add("new window → first paint (median per run)", W.map((r) => median(r.newWindow.map((w) => w.firstPaint))), "ms");
   add("new window → its page's first frame (median per run)", W.map((r) => median(r.newWindow.map((w) => w.firstFrame))), "ms");
+  // The journeys: every sample of every run pooled (median, p75 by nearest rank, min–max, n).
+  const J = res.journeys ?? [];
+  const pooled = (name, get) => {
+    const v = J.flatMap((r) => get(r)).filter(Number.isFinite).sort((a, b) => a - b);
+    if (!v.length) return;
+    rows.push({ name, median: median(v), p75: v[Math.min(v.length - 1, Math.ceil(v.length * 0.75) - 1)], min: v[0], max: v.at(-1), n: v.length, unit: "ms", digits: 0 });
+  };
+  const of = (kind, field) => (r) => r[kind].map((x) => x[field]);
+  pooled("J2 ⌘T key → JS has the new tab", of("j2", "js"));
+  pooled("J2 ⌘T key → its command bar committed", of("j2", "commit"));
+  pooled("J2 ⌘T key → that commit on screen", of("j2", "shown"));
+  pooled("J2 ⌘T key → bar focused and on screen (typeable)", of("j2", "typeable"));
+  pooled("J2 keystroke → its suggestions on screen", of("j2", "suggest"));
+  pooled("J2 the app's own ⌘T → typeable (its t0 is the event's timestamp)", of("j2", "appTypeable"));
+  pooled("J2 the app's t0 minus the key down's creation", of("j2", "t0Skew"));
+  pooled("J2 ⌘T key made → the app's event loop saw it", of("j2", "delivery"));
+  pooled("J2 keystroke made → the app's event loop saw it", of("j2", "suggestDelivery"));
+  for (const [kind, from] of [["j4new", "new tab's bar (⌘T)"], ["j4page", "page's panel (⌘L)"]]) {
+    pooled(`J4 ${from}: Enter → engine asked to load (our side)`, of(kind, "request"));
+    pooled(`J4 ${from}: Enter → Chrome started the navigation`, of(kind, "start"));
+    pooled(`J4 ${from}: Enter → document committed`, of(kind, "commit"));
+    pooled(`J4 ${from}: Enter → first contentful paint (the app's mark)`, of(kind, "fcp"));
+    pooled(`J4 ${from}: Enter → first contentful paint (the page's own, CDP)`, of(kind, "pageFcp"));
+    pooled(`J4 ${from}: request → first contentful paint (engine and network)`, of(kind, "engine"));
+    pooled(`J4 ${from}: Enter made → the app's event loop saw it`, of(kind, "delivery"));
+  }
+  if (J.length) {
+    for (const kind of ["j2", "j4new", "j4page"]) {
+      const lost = J.reduce((n, r) => n + r.lost[kind].length, 0);
+      const kept = J.reduce((n, r) => n + r[kind].length, 0);
+      if (lost || kept) rows.push({ name: `journeys ${kind}: iterations lost (no bar, panel, page or sample)`, median: lost, min: lost, max: lost, n: lost + kept, unit: "", digits: 0 });
+    }
+    rows.push({ name: "journeys: fetches the guard answered (nothing left the machine)", median: J.reduce((n, r) => n + (r.blocked ?? 0), 0), min: 0, max: 0, n: J.length, unit: "", digits: 0 });
+  }
   return rows;
 }
 
 // `other` is the before column; `names` the two columns' headings.
 function printTable(rows, other, names = ["Before", "After"]) {
-  const fmt = (r) => (Number.isFinite(r?.median) ? `${r.median.toFixed(r.digits)} ${r.unit} (${r.min.toFixed(r.digits)}–${r.max.toFixed(r.digits)}, n=${r.n})` : "—");
+  const fmt = (r) =>
+    Number.isFinite(r?.median) ? `${r.median.toFixed(r.digits)} ${r.unit}${r.p75 === undefined ? "" : `, p75 ${r.p75.toFixed(r.digits)}`} (${r.min.toFixed(r.digits)}–${r.max.toFixed(r.digits)}, n=${r.n})` : "—";
   const lines = other
     ? [`| Metric | ${names[0]} | ${names[1]} |`, "|---|---|---|", ...rows.map((r) => `| ${r.name} | ${fmt(other.find((o) => o.name === r.name))} | ${fmt(r)} |`)]
     : ["| Metric | Median (min–max, runs) |", "|---|---|", ...rows.map((r) => `| ${r.name} | ${fmt(r)} |`)];
@@ -944,12 +1182,13 @@ const fail = (message) => {
   process.exit(64);
 };
 if (!opt.app) fail("usage: native-bench.mjs --app <Netnyahoo.app> [--control <app>] [--out dir] [--only phases] … (--help)");
-const PHASES = ["launch", "session", ...SESSION_PARTS, "windows", "throttle", "churn", "sample", "prepare"];
+const JOURNEY_PHASES = ["newtabkey", "navigate"];
+const PHASES = ["launch", "session", ...SESSION_PARTS, ...JOURNEY_PHASES, "windows", "throttle", "churn", "sample", "prepare"];
 const only = new Set(opt.only.split(",").map((p) => p.trim()).filter(Boolean));
 for (const p of only) if (!PHASES.includes(p)) fail(`--only: no phase "${p}"; phases: ${PHASES.join(", ")}`);
 if (opt.seed && opt.seed !== "big") fail(`--seed: only "big" exists, got "${opt.seed}"`);
 if (opt["fresh-copy"] && ![...only].every((p) => p === "launch" || p === "prepare")) fail("--fresh-copy works with --only launch");
-if (opt.seed && ![...only].every((p) => p === "launch" || p === "prepare")) fail("--seed big works with --only launch (the other phases measure a one-tab session)");
+if (opt.seed && ![...only].every((p) => p === "launch" || p === "prepare" || JOURNEY_PHASES.includes(p))) fail("--seed big works with --only launch, newtabkey and navigate (the other phases measure a one-tab session)");
 for (const e of opt.env) if (!/^[A-Za-z_]\w*=/.test(e)) fail(`--env wants K=V, got "${e}"`);
 if (!(+opt.hold >= 0)) fail(`--hold wants seconds, got "${opt.hold}"`);
 if (opt.control && opt.compare) log("--compare is ignored with --control: the control is the before column");
@@ -961,7 +1200,7 @@ function makeSide(app, label, role) {
   const dir = join(opt.out, label);
   mkdirSync(dir, { recursive: true });
   return { role, label, tag: "", src: resolve(app), dir, template: join(dir, "template"), app: null, bundle: null,
-    results: { meta: {}, launch: [], session: [], windows: [], throttle: [], sample: [] } };
+    results: { meta: {}, launch: [], session: [], windows: [], journeys: [], throttle: [], sample: [] } };
 }
 const candidate = makeSide(opt.app, opt.label ?? labelOf(opt.app), "candidate");
 let control = null;
@@ -1015,6 +1254,8 @@ try {
   if (only.has("launch")) await interleaved(+opt["launch-runs"], launchRun);
   const parts = new Set(SESSION_PARTS.filter((p) => only.has("session") || only.has(p)));
   if (parts.size) await interleaved(+opt.runs, (side, i) => sessionRun(side, i, parts));
+  const journeys = new Set(JOURNEY_PHASES.filter((p) => only.has(p)));
+  if (journeys.size) await interleaved(+opt.runs, (side, i) => journeyRun(side, i, journeys));
   if (only.has("windows")) await interleaved(+opt.runs, windowsRun);
   if (only.has("throttle")) await interleaved(1, throttleRun);
   if (only.has("churn")) await interleaved(1, churnRun);

@@ -24,6 +24,17 @@ __attribute__((constructor)) static void Start(void) {
   if (![NSBundle.mainBundle.bundlePath hasSuffix:@".app"] || [NSBundle.mainBundle.bundlePath containsString:@"Helper"]) return;
   gOut = fopen([NSString stringWithFormat:@"%s/bench-marks.jsonl", dir].UTF8String, "a");
   if (!gOut) return;
+  // NN_BENCH_KEYLOG=1 (native-bench's journey phases): every key down the app's event loop sees, with the time the key was
+  // made (the event's timestamp) and the time the app got to it, and the window it went to.
+  if (getenv("NN_BENCH_KEYLOG")) {
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+      double now = NSDate.date.timeIntervalSince1970 * 1000;
+      fprintf(gOut, "{\"keydown\":%.1f,\"made\":%.1f,\"window\":%ld,\"chars\":\"%s\"}\n", now,
+              now - (NSProcessInfo.processInfo.systemUptime - event.timestamp) * 1000, (long)event.windowNumber, event.characters.UTF8String ?: "");
+      fflush(gOut);
+      return event;
+    }];
+  }
   [NSNotificationCenter.defaultCenter addObserverForName:@"RCTContentDidAppearNotification" object:nil queue:nil
                                               usingBlock:^(NSNotification *note) {
     NSInteger window = [note.object isKindOfClass:NSView.class] ? ((NSView *)note.object).window.windowNumber : 0;
