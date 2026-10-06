@@ -192,8 +192,9 @@ warm tab, gets a page at launch).
   | last of the other windows on screen | 1600 (1141–2705) | 1465 (1216–4001) | 1615 (1363–2001) |
 
   The final stack (frames in z order, key window), navigation count (1) and window shifts (0) are identical in all 24
-  runs; the 6 s window captures of before and after are byte-identical
-  (`scratchpad/sprint/launchnext/results/snaps/big4-{before,after,r0227}-<run>/`). Window and key are proven (the focused window
+  runs. The 6 s window captures (one PNG per window; run 0 of before and after is byte-identical, the others differ in
+  small details such as page content) are in
+  `scratchpad/sprint/launchnext/results/snaps/big4-{before,after,r0227}-<run>/`. Window and key are proven (the focused window
   shows ~1.0 s earlier, the others no later). The series cannot split #5 from #6 (both switches were toggled
   together), so the navigation-start gain in this table is shared. Absolute times are about twice the calm-Mac
   numbers in the timeline above (8 pages loading, load 6 to 12); 0.2.27 in the same series is the control.
@@ -207,6 +208,6 @@ warm tab, gets a page at launch).
   2569 (945–4019) / 1959 (1011–4625); `biglat` before / after: window 1607 / 2393, key 1404 / 1860, nav 1805 /
   1556, FCP 3147 / 3538 (n=8 each; ranges 1.3 to 4 s). The early start did not shorten the first paint there and
   window/key were later (the +20 to +30 ms seen in single runs is not resolvable, the medians say more), and
-  React Native's setup (`rnLoad`) was slower in most paired runs. Status: unproven; if the owner wants it
+  React Native's setup (`rnLoad`) was slower after in 5 of 8 pairs. Status: unproven; if the owner wants it
   gone, turn `launchTab` off (`focusedWindowFirst` stands alone). A calm re-run of `big` with only `launchTab`
   toggled would settle it.
