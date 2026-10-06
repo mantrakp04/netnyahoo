@@ -33,6 +33,13 @@
 //                               prepare    prepare the app copies and exit (see --prepared)
 //     --env K=V               repeatable: extra environment for every instance (DYLD_INSERT_LIBRARIES is appended to
 //                             the marker library). Instances stay muted; don't pass NETNYAHOO_ALLOW_AUDIO.
+//     --seed big              launch phase only: start every launch from seed.mjs's big saved session (200 tabs in two
+//                             profiles, 5000 history entries, 1000 bookmarks) instead of one tab, to time what a
+//                             long-time user's launch does. Its active tab is the bench's id=seed page, so the launch
+//                             rows mean the same; the other 199 tabs point at the bench server's /static?id=p-…
+//     --fresh-copy            launch phase only: every launch runs from its own APFS clone of the app (same signature,
+//                             a new path and inodes), removed after, as the first launch after an install or update
+//                             is. Without it only the first launch of a prepared copy is cold; the rest are warm.
 //     --hold <secs>           keep each measured instance alive that long before it quits, its pid and data dir logged
 //                             (lldb -p <pid>, heap <pid>, vmmap --summary <pid>). Ctrl-C quits it and stops.
 //     --port <n>              the instances' CDP port (default 9377). One instance runs at a time.
@@ -88,10 +95,11 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
+import { loadavg, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { buildSeed } from "./seed.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(here, "../..");
@@ -114,6 +122,8 @@ const { values: opt } = parseArgs({
     "control-label": { type: "string" },
     prepared: { type: "boolean" },
     env: { type: "string", multiple: true, default: [] },
+    seed: { type: "string" },
+    "fresh-copy": { type: "boolean" },
     hold: { type: "string", default: "0" },
     help: { type: "boolean", short: "h" },
   },
@@ -503,11 +513,31 @@ let server;
 
 const WINDOW = `(() => { const s = nn.store.getState(); return s.ui.focusedWindowId && s.windows[s.ui.focusedWindowId] ? s.ui.focusedWindowId : s.windowOrder.find((id) => s.windows[id] && !s.windows[id].kind); })()`;
 
+// --seed big: the template is seed.mjs's profile, written without launching anything. No perf-probe file (that
+// turns the JS probe on, which native-bench's launches don't run with). The seed's tabs point at /static?id=p-<tab>
+// on the bench server, and its active tab of the default profile at the page launchRun waits for.
+function writeBigSeed(side) {
+  const dir = side.template;
+  const version = execFileSync("defaults", ["read", join(side.src, "Contents/Info.plist"), "CFBundleShortVersionString"], { encoding: "utf8" }).trim();
+  const files = buildSeed(base(), version);
+  delete files["perf-probe"];
+  const session = files["session.json"];
+  const win = session.windows[0];
+  for (const t of session.tabs) {
+    const id = t.id === win.activeTabIds.default ? "seed" : `p-${t.id}`;
+    t.url = `${base()}/static?id=${id}`;
+    if (t.pinnedUrl) t.pinnedUrl = t.url;
+  }
+  for (const [name, value] of Object.entries(files)) writeFileSync(join(dir, name), JSON.stringify(value));
+  log(`seeded the big session (${side.label}): ${session.tabs.length} tabs, ${files["history.json"].history.default.length} history entries`);
+}
+
 async function makeTemplate(side) {
   const dir = side.template;
-  log(`seeding a session (${side.label})`);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
+  if (opt.seed) return writeBigSeed(side);
+  log(`seeding a session (${side.label})`);
   // Past onboarding: its intro music would play on the owner's Mac from builds without b7899c26 (0.2.21).
   writeFileSync(join(dir, "onboarding.json"), JSON.stringify({ version: 1, completedAt: 1 }));
   const app = await new Instance(side, dir).launch();
@@ -536,7 +566,13 @@ function freshDir(side, name) {
 }
 
 async function launchRun(side, i) {
-  const app = new Instance(side, freshDir(side, `launch-${i}`));
+  const copy = opt["fresh-copy"] ? join(side.dir, "fresh", `app-${i}`) : null;
+  if (copy) {
+    rmSync(copy, { recursive: true, force: true });
+    mkdirSync(copy, { recursive: true });
+    execFileSync("cp", ["-Rc", side.app, join(copy, "Netnyahoo.app")]);
+  }
+  const app = new Instance(copy ? { ...side, app: join(copy, "Netnyahoo.app") } : side, freshDir(side, `launch-${i}`));
   try {
     await app.launch();
     const page = await app.pageState("id=seed", 30_000, (s) => s.fcp);
@@ -550,11 +586,15 @@ async function launchRun(side, i) {
       js: app.jsStart - app.t0,
       firstPaint: (page?.fcp ?? NaN) - app.t0,
       firstFrame: (page?.frame ?? NaN) - app.t0,
+      // The machine's 1-minute load average as the launch ends: what else was running (other builds, other agents).
+      load: Math.round(loadavg()[0] * 10) / 10,
     };
+    if (opt.seed) r.pageTargets = (await app.cdp.targets()).length;
     log(`${side.tag}launch ${i}:`, JSON.stringify(r));
     side.results.launch.push(r);
   } finally {
     await app.done();
+    if (copy) rmSync(copy, { recursive: true, force: true });
   }
   await sleep(3000);
 }
@@ -907,6 +947,9 @@ if (!opt.app) fail("usage: native-bench.mjs --app <Netnyahoo.app> [--control <ap
 const PHASES = ["launch", "session", ...SESSION_PARTS, "windows", "throttle", "churn", "sample", "prepare"];
 const only = new Set(opt.only.split(",").map((p) => p.trim()).filter(Boolean));
 for (const p of only) if (!PHASES.includes(p)) fail(`--only: no phase "${p}"; phases: ${PHASES.join(", ")}`);
+if (opt.seed && opt.seed !== "big") fail(`--seed: only "big" exists, got "${opt.seed}"`);
+if (opt["fresh-copy"] && ![...only].every((p) => p === "launch" || p === "prepare")) fail("--fresh-copy works with --only launch");
+if (opt.seed && ![...only].every((p) => p === "launch" || p === "prepare")) fail("--seed big works with --only launch (the other phases measure a one-tab session)");
 for (const e of opt.env) if (!/^[A-Za-z_]\w*=/.test(e)) fail(`--env wants K=V, got "${e}"`);
 if (!(+opt.hold >= 0)) fail(`--hold wants seconds, got "${opt.hold}"`);
 if (opt.control && opt.compare) log("--compare is ignored with --control: the control is the before column");
@@ -962,7 +1005,7 @@ try {
     }
     const other = sides.find((s) => s !== side);
     Object.assign(side.results.meta, { app: side.src, bundle: side.bundle, label: side.label, date: new Date().toISOString(),
-      runs: +opt.runs, idleSecs: +opt.idle, only: [...only], env: opt.env, ...(other ? { role: side.role, interleavedWith: other.label } : {}) });
+      runs: +opt.runs, idleSecs: +opt.idle, only: [...only], env: opt.env, seed: opt.seed ?? null, freshCopy: !!opt["fresh-copy"], ...(other ? { role: side.role, interleavedWith: other.label } : {}) });
   }
   if (only.has("prepare")) {
     for (const side of sides) console.log(`prepared ${side.app} (rerun with --app ${side.app} --prepared)`);
