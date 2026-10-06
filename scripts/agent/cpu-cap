@@ -7,7 +7,9 @@
 plus all their descendants: builds (xcodebuild, clang, swift, ld, hermesc), benches, Metro, hidden test instances,
 Codex runs started from here. The owner's apps (/Applications/Netnyahoo.app, Claude, games) are never touched.
 
-  - Every process of ours is moved to background QoS (taskpolicy -b -p): efficiency cores, lowest I/O.
+  - Every process of ours is moved to background QoS (taskpolicy -b -p): efficiency cores, lowest I/O. Except
+    processes whose command line holds "/perf-gate/" (put a release gate's app copies in such a folder) so its
+    timings stand for what users get; those can still be paused.
   - While total CPU is over --cap, the busiest processes of ours are paused (SIGSTOP), busiest first.
   - Once total CPU is under --resume, they are resumed (SIGCONT), one per tick.
   - On exit (any signal) everything paused is resumed.
@@ -100,6 +102,8 @@ try:
     while True:
         procs = ours()
         for pid in procs.keys() - backgrounded:
+            if "/perf-gate/" in procs[pid][2]:
+                continue  # a release perf gate's instances keep normal QoS (both apps alike); they can still be paused
             subprocess.run(["taskpolicy", "-b", "-p", str(pid)], capture_output=True)
             backgrounded.add(pid)
         backgrounded &= procs.keys() | set(paused)
