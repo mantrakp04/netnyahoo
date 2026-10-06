@@ -173,6 +173,8 @@ static void FindJSThread(void) {
 @property(nonatomic, strong) CADisplayLink *link;
 @property(nonatomic, copy) NSString *screenName;
 @property(nonatomic) NSInteger maxFPS;
+- (BOOL)booted;
+- (void)boot;
 @end
 
 @implementation NNFramesProbe {
@@ -181,6 +183,7 @@ static void FindJSThread(void) {
   NSString *_driverId;
   NSString *_driverOp;
   NSString *_lastCmd;
+  BOOL _booted;
 }
 
 + (instancetype)shared {
@@ -202,17 +205,29 @@ static void FindJSThread(void) {
 // The first window with a layer-backed content view big enough to be the app's: the screen to link to.
 - (NSWindow *)appWindow {
   for (NSWindow *w in NSApp.windows)
-    if (w.isVisible && w.frame.size.width >= 300 && w.frame.size.height >= 200 && w.screen) return w;
+    if (w.isVisible && w.frame.size.width >= 300 && w.frame.size.height >= 200) return w;
   return nil;
 }
 
-- (void)start {
-  NSWindow *w = [self appWindow];
-  if (!w) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ [self start]; });
-    return;
-  }
-  NSScreen *screen = w.screen;
+- (BOOL)booted {
+  return _booted;
+}
+
+- (void)boot {
+  NSWindow *w = NSApp ? [self appWindow] : nil;
+  if (!w) return; // the timer below tries again
+  if (_booted) return;
+  _booted = YES;
+  [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+    double now = EpochMs();
+    Push('k', 0, now - (NSProcessInfo.processInfo.systemUptime - event.timestamp) * 1000, now, 0);
+    return event;
+  }];
+  [self startOn:w];
+}
+
+- (void)startOn:(NSWindow *)w {
+  NSScreen *screen = w.screen ?: NSScreen.screens.firstObject;
   self.screenName = screen.localizedName;
   self.maxFPS = screen.maximumFramesPerSecond;
   self.link = [screen displayLinkWithTarget:self selector:@selector(tick:)];
@@ -222,10 +237,11 @@ static void FindJSThread(void) {
   ObserveLoop(CFRunLoopGetMain(), &gMainLoop);
   fprintf(gOut, "{\"k\":\"info\",\"screen\":\"%s\",\"maxFPS\":%ld,\"at\":%.3f}\n", self.screenName.UTF8String, (long)self.maxFPS, EpochMs());
   // The JS thread may not exist yet.
-  [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *t) {
+  CFRunLoopTimerRef find = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + 0.25, 0.25, 0, 0, ^(CFRunLoopTimerRef t) {
     FindJSThread();
-    if (gJSObserved) [t invalidate];
-  }];
+    if (gJSObserved) CFRunLoopTimerInvalidate(t);
+  });
+  CFRunLoopAddTimer(CFRunLoopGetMain(), find, kCFRunLoopCommonModes);
 }
 
 - (void)tick:(CADisplayLink *)l {
@@ -368,8 +384,11 @@ __attribute__((constructor)) static void Start(void) {
   gOut = fopen([gDir stringByAppendingPathComponent:@"bench-frames.jsonl"].UTF8String, "a");
   if (!gOut) return;
   // The writer: records out of the main thread's way, and the command file polled.
-  dispatch_queue_t q = dispatch_queue_create("nnframes.writer", DISPATCH_QUEUE_SERIAL);
-  dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
+  // Both kept alive by statics: ARC would release a local source at the end of this function and cancel it.
+  static dispatch_queue_t q;
+  static dispatch_source_t timer;
+  q = dispatch_queue_create("nnframes.writer", DISPATCH_QUEUE_SERIAL);
+  timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
   dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 0), 5 * NSEC_PER_MSEC, 1 * NSEC_PER_MSEC);
   __block int n = 0;
   __block NSData *last = nil;
@@ -386,13 +405,12 @@ __attribute__((constructor)) static void Start(void) {
     }
   });
   dispatch_resume(timer);
-  // Keys: the app's event loop saw one (nnperf posts them; CGEventPostToPid drops one in ten).
-  [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidFinishLaunchingNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
-    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
-      double now = EpochMs();
-      Push('k', 0, now - (NSProcessInfo.processInfo.systemUptime - event.timestamp) * 1000, now, 0);
-      return event;
-    }];
-    dispatch_async(dispatch_get_main_queue(), ^{ [NNFramesProbe.shared start]; });
-  }];
+  // Once the app's window exists (NSApp stays untouched until then: Chrome creates it; reading the global doesn't): the display
+  // link, the counters and the key monitor. Polled, since Chrome's run loop may never post didFinishLaunching to us.
+  // A timer in the main run loop's common modes (Chrome's message pump doesn't service dispatch_after on the main queue early on).
+  CFRunLoopTimerRef boot = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + 0.1, 0.1, 0, 0, ^(CFRunLoopTimerRef t) {
+    [NNFramesProbe.shared boot];
+    if ([NNFramesProbe.shared booted]) CFRunLoopTimerInvalidate(t);
+  });
+  CFRunLoopAddTimer(CFRunLoopGetMain(), boot, kCFRunLoopCommonModes);
 }

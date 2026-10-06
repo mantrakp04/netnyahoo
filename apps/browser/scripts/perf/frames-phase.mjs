@@ -241,6 +241,9 @@ export async function framesRun(c, side, i, { counts }) {
     const list = interactions({ app, key, sleep, run, W: WINDOW, probe, base });
     for (const it of list) {
       const rows = [];
+      // Stats are computed once the interaction's reps are done: a run-loop iteration that outlasted its window is written
+      // when it ends, and counts for nothing before that.
+      const taken = [];
       for (let rep = 0; rep < (it.name.startsWith("idle") ? 2 : reps); rep++) {
         try {
           if (it.before) await it.before();
@@ -249,17 +252,21 @@ export async function framesRun(c, side, i, { counts }) {
           const t0 = await it.go();
           await sleep(it.window + 250);
           const c1 = await counters();
-          const stats = windowStats(rec.read(), t0, t0 + it.window, refresh);
-          for (const n of ["layoutPasses", "mountBatches", "uiBlocks", "viewUpdates", "viewCreates"]) stats[n] = c1[n] - c0[n];
-          if (counts) Object.assign(stats, await jsCounts());
-          stats.expected = Math.round(it.window / refresh);
-          rows.push(stats);
-          // A window with no ticks at all: the display went off or the screen locked meanwhile.
-          if (!stats.frames) rows.pop();
+          const extra = {};
+          for (const n of ["layoutPasses", "mountBatches", "uiBlocks", "viewUpdates", "viewCreates"]) extra[n] = c1[n] - c0[n];
+          if (counts) Object.assign(extra, await jsCounts());
+          taken.push({ t0, extra });
         } catch (error) {
           log(`${side.tag}frames ${i} ${it.name} #${rep}: lost (${String(error.message ?? error).slice(0, 160)})`);
         }
         if (it.after) await it.after().catch(() => {});
+      }
+      await sleep(2500);
+      rec.read();
+      for (const { t0, extra } of taken) {
+        const stats = { ...windowStats(rec, t0, t0 + it.window, refresh), ...extra, expected: Math.round(it.window / refresh) };
+        // A window with no ticks at all: the display went off or the screen locked meanwhile.
+        if (stats.frames) rows.push(stats);
       }
       out.interactions[it.name] = rows;
       log(`${side.tag}frames ${i} ${it.name}: ${rows.length} reps, frames ${median(rows.map((r) => r.frames))}, >8.33 ${median(rows.map((r) => r.over8))}, worst ${median(rows.map((r) => r.worst)).toFixed?.(1)} ms, main worst ${median(rows.map((r) => r.mainWorst)).toFixed?.(1)} ms`);
