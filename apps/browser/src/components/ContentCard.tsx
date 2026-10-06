@@ -105,6 +105,9 @@ export function ContentCard() {
     }),
   );
 
+  // Asked once per pane: a set, not a scan of the list per pane.
+  const mountedIds = useMemo(() => new Set(mounted), [mounted]);
+
   const { panes, dividers } = useMemo(() => {
     const full: Rect = { x: 0, y: 0, width: size.width, height: size.height };
     if (fullscreenTab) {
@@ -233,7 +236,7 @@ export function ContentCard() {
               toolbar={!addressInSidebar && !small}
               autoHide={hideWhileScrolling && tabLayout === "top" && !addressInSidebar && !small}
               small={small}
-              mounted={mounted.includes(tabId)}
+              mounted={mountedIds.has(tabId)}
               warm={warmPanes[tabId]}
               barMode={barMode}
             />
