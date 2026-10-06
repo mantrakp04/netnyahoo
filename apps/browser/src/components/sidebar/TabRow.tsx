@@ -3,16 +3,15 @@ import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Pressable, TextInput, View, type GestureResponderEvent } from "react-native";
 import { closeTab, toggleMute } from "../../lib/actions";
 import { hex, layout, useTheme } from "../../lib/theme";
-import { useBrowser, type BrowserState } from "../../store/browser";
-import { activeTabId } from "../../store/model";
+import { useBrowser } from "../../store/browser";
 import { useIsActiveTab, usePageProfileId, useTab, useWindowId } from "../../store/hooks";
-import { useTabState } from "../../store/tabWatch";
 import { HoverSlot } from "../HoverSlot";
 import { IconButton } from "../primitives";
 import { clickTab, commitRename, endRename, startRename, tabTitle } from "./actions";
 import { useDragItem } from "./dnd";
 import { dismissHover, useRowHover } from "./hover";
 import { openTabMenu } from "./menus";
+import { ACTIVE, LOADING, PLAYING, SELECTED, useRowState } from "./rowState";
 import { registerRow, useIsRenamingTab } from "./state";
 import { TabIcon } from "./TabIcon";
 import { TabBadges } from "../media/TabBadges";
@@ -44,31 +43,11 @@ export const TabRowItem = memo(function TabRowItem({
   );
 });
 
-const ACTIVE = 1;
-const SELECTED = 2;
-const PLAYING = 4;
-const LOADING = 8;
-
-function rowFlags(s: BrowserState, windowId: string, tabId: string): number {
-  const tab = s.tabs[tabId];
-  const live = s.live[tabId];
-  let flags = 0;
-  if (tab && activeTabId(s, tab.windowId, tab.profileId) === tabId) flags |= ACTIVE;
-  if (s.selection[windowId]?.includes(tabId)) flags |= SELECTED;
-  if (live?.playingAudio) flags |= PLAYING;
-  if (live?.isLoading) flags |= LOADING;
-  return flags;
-}
-
-const sameRow = (a: { tab: unknown; flags: number }, b: { tab: unknown; flags: number }) => a.tab === b.tab && a.flags === b.flags;
-
 export function TabRow({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const windowId = useWindowId();
-  // The tab and the row's flags (one number), woken only when this tab changes, goes active or is selected: a sidebar has
-  // hundreds of rows, and none of them runs a selector for a store update that isn't about it.
-  const { tab, flags } = useTabState(tabId, (s) => ({ tab: s.tabs[tabId], flags: rowFlags(s, windowId, tabId) }), sameRow);
+  const { tab, flags } = useRowState(tabId, windowId);
   const active = !!(flags & ACTIVE);
   const selected = !!(flags & SELECTED);
   const playingAudio = !!(flags & PLAYING);

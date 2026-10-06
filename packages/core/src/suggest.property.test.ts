@@ -108,6 +108,8 @@ function compareRun(seed: number, size: number) {
     currentUrl: r.int(3) ? undefined : (p.history[r.int(Math.max(1, p.history.length))]?.url ?? undefined),
     scope,
   };
+  // A second profile of the same size, for switching profiles (or windows) mid-typing.
+  const other = makeProfile(rng(seed + 100_000), size);
   let source: SuggestionSource = p;
   // Some keys come twice, the second time with other remote suggestions (they arrive after the key does).
   const queries = [...sequence(r, p), ...sequence(r, p)].flatMap((q) => (r.int(5) === 0 ? [q, q] : [q]));
@@ -120,6 +122,21 @@ function compareRun(seed: number, size: number) {
     }
     if (r.int(11) === 0) source = { ...source, bookmarks: [...(source.bookmarks ?? [])] };
     if (r.int(9) === 0) source = { ...source, tabs: source.tabs.slice(r.int(3)) };
+    // Mid-typing, the rest of what the app does to a profile (each makes new lists; rows are replaced, never edited): a
+    // history entry deleted, history cleared, a tab retitled or opened, a bookmark added or removed, another profile.
+    if (r.int(10) === 0 && source.history.length) source = { ...source, history: source.history.filter((_, at) => at !== r.int(source.history.length)) };
+    if (r.int(40) === 0) source = { ...source, history: [] };
+    if (r.int(10) === 0 && source.tabs.length) {
+      const at = r.int(source.tabs.length);
+      source = { ...source, tabs: source.tabs.map((t, i) => (i === at ? { ...t, title: `${r.pick(WORDS)} ${t.title}` } : t)) };
+    }
+    if (r.int(12) === 0) source = { ...source, tabs: [...source.tabs, { id: `new${i}`, url: `https://${r.pick(HOSTS)}/${r.pick(WORDS)}`, title: r.pick(WORDS), favicon: null }] };
+    if (r.int(10) === 0) {
+      const h = source.history.length ? r.pick(source.history) : null;
+      source = { ...source, bookmarks: [...(source.bookmarks ?? []), { url: h ? h.url : `https://${r.pick(HOSTS)}/${r.pick(WORDS)}`, title: h ? h.title : r.pick(WORDS), favicon: null }] };
+    }
+    if (r.int(10) === 0 && source.bookmarks?.length) source = { ...source, bookmarks: source.bookmarks.filter((_, at) => at !== r.int(source.bookmarks!.length)) };
+    if (r.int(25) === 0) source = source === p ? other : p;
     if (r.int(13) === 0) prepareSuggestions(source, Date.now() + 1);
     const options: SuggestOptions = { ...base, remote: r.int(3) ? [] : [`${q} one`, "two", q.toUpperCase(), `${q} three`, "four", "five"] };
     const want = reference.buildSuggestions(q, source, options);

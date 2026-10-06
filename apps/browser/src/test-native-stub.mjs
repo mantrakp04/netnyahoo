@@ -60,6 +60,8 @@ const historyListeners = new Set();
 const emitHistory = (change) => {
   for (const listener of historyListeners) queueMicrotask(() => listener(change));
 };
+/** Any change event Chrome sends (a title change: "modified"; Clear Browsing Data: "deleted" with all). */
+export const chromeHistoryEvent = (change) => emitHistory(change);
 export const onHistoryChanged = (listener) => (historyListeners.add(listener), { remove: () => historyListeners.delete(listener) });
 // Each profile the app asked to watch, in order (Chrome's events reach the app only once it watches).
 export const historyWatches = [];
