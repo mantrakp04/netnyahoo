@@ -20,12 +20,15 @@ modules before using them — this is a summary from the agent that built it.
   `switchProfile`, Reopen Closed Window, ⇧⌘T of a tile's page), and the park empties, so nothing comes back twice.
   With several windows of a profile open, each keeps the pins it has; a closing one's pins go to the next new window.
   Sync publishes parked pins as the profile's pins and applies changes to them in place (sync/adapters `pinnedAdapter`).
-- UI: `ui.focusedWindowId`, `ui.appDark`, `windowUi[windowId]` (command panel, downloads popover), `find[tabId]`.
+- UI: `ui.focusedWindowId`, `ui.focusOrder`, `ui.lastProfileId` (the regular profile of the window used last, a private
+  window counting as its `originalProfileId`; saved with the session; read it through `lastActiveProfile(s)`, store/small.ts),
+  `ui.appDark`, `windowUi[windowId]` (command panel, downloads popover), `find[tabId]`.
 
 ## Actions
 - Windows: `createWindow`, `closeWindow`, `switchProfile`, `moveTabsToWindow`, `moveTabToProfile`,
   `mergeAllWindows`, `reopenClosed` / `reopenClosedTab` / `reopenClosedWindow`, `restoreClosed`.
-  Small Yahu (Little Arc): `createWindow({ small: true, url })` makes a `kind: "small"` window with one tab (store/small.ts).
+  Small Yahu (Little Arc): `createWindow({ small: true, url })` makes a `kind: "small"` window with one tab (store/small.ts),
+  in `lastActiveProfile(s)` unless `profileId` says otherwise; never private.
   `newTab` into it goes to `mainWindowFor(s, profileId)`; `resolveWindowId(s, null)` never picks it; closing it records a
   `ClosedTab` with `small: true` that reopens in a new Small Yahu; it isn't saved with the session.
 - Tabs: `newTab(windowId, { url, background, adoptId, openerId, profileId, pinned, index })`, `closeTab`,

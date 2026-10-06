@@ -18,8 +18,24 @@ export function mainWindowFor(s: BrowserState, profileId?: string): string | und
   return (profileId ? order.find((id) => s.windows[id]!.profileId === profileId) : undefined) ?? order[0];
 }
 
-// A new Small Yahu uses the profile the frontmost main window shows, else the default profile.
-export function smallYahuProfile(s: BrowserState): string {
-  const main = mainWindowFor(s);
-  return main ? s.windows[main]!.profileId : s.settings.defaultProfileId;
+// The regular profile a window belongs to: the one it shows, or for a private window the one it was opened from
+// (Chrome's GetOriginalProfile; in the engine every private window is Personal's off-the-record profile).
+export function originalProfile(s: Pick<BrowserState, "profiles">, w: BrowserWindow | undefined): string | undefined {
+  const id = w?.incognito ? w.originalProfileId : w?.profileId;
+  return id && s.profiles[id] ? id : undefined;
+}
+
+// The profile of the window used last: links from other apps and a new Small Yahu open in it, never privately. As
+// Chrome's AppController keeps it (lastProfile, set when a window becomes main; for a private window, its original
+// profile, which stays when that window closes; kept across a relaunch as Chrome's last-used profile): ui.lastProfileId,
+// set when a window takes focus or the focused one pages to another profile, and saved with the session. A deleted one
+// falls back to the windows in focus order, then the default profile.
+export function lastActiveProfile(s: BrowserState): string {
+  const last = s.ui.lastProfileId;
+  if (last && s.profiles[last]) return last;
+  for (const id of [...s.ui.focusOrder, ...[...s.windowOrder].reverse()]) {
+    const profile = originalProfile(s, s.windows[id]);
+    if (profile) return profile;
+  }
+  return s.settings.defaultProfileId;
 }

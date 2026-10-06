@@ -17,7 +17,7 @@ import {
 } from "./model";
 import { restoringGroup } from "./organize";
 import { adoptParkedPins, parkWindowPins } from "./parkedPins";
-import { isSmall, isSmallWindow, mainWindowFor, smallYahuProfile } from "./small";
+import { isSmall, isSmallWindow, lastActiveProfile, mainWindowFor, originalProfile } from "./small";
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
 import type { BrowserWindow, ClosedTab, ClosedWindow, Frame, ParkedPins, Tab, TabGroup } from "./types";
 
@@ -65,12 +65,21 @@ function emptyWindow(id: string, profileId: string, incognito: boolean, frame: F
 // Small Yahu opens centred at its remembered size (packages/shell Windows.swift), so it keeps no frame.
 const smallWindow = (id: string, profileId: string): BrowserWindow => ({ ...emptyWindow(id, profileId, false), sidebarOpen: false, kind: "small" });
 
+// The window in front closing hands the last profile to the next one in focus order (it comes forward), unless it was
+// private: then its regular profile stays, as Chrome's last-used profile does when an incognito window goes.
+function lastProfileAfterClosing(s: BrowserState, id: string): string | null {
+  const w = s.windows[id];
+  if (!w || w.incognito || s.ui.focusedWindowId !== id) return s.ui.lastProfileId;
+  const next = s.ui.focusOrder.find((f) => f !== id && s.windows[f]);
+  return originalProfile(s, next ? s.windows[next] : undefined) ?? s.ui.lastProfileId;
+}
+
 function withWindow(s: BrowserState, w: BrowserWindow): BrowserState {
   return {
     ...s,
     windows: { ...s.windows, [w.id]: w },
     windowOrder: [...s.windowOrder, w.id],
-    ui: { ...s.ui, focusedWindowId: w.id, focusOrder: [w.id, ...s.ui.focusOrder] },
+    ui: { ...s.ui, focusedWindowId: w.id, focusOrder: [w.id, ...s.ui.focusOrder], lastProfileId: originalProfile(s, w) ?? s.ui.lastProfileId },
   };
 }
 
@@ -129,9 +138,11 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
       : o.profileId && s.profiles[o.profileId]
         ? o.profileId
         : small
-          ? smallYahuProfile(s)
+          ? lastActiveProfile(s)
           : s.settings.defaultProfileId;
-    let next = withWindow(s, small ? smallWindow(id, profileId) : emptyWindow(id, profileId, !!o.incognito, o.frame ?? null));
+    const w = small ? smallWindow(id, profileId) : emptyWindow(id, profileId, !!o.incognito, o.frame ?? null);
+    if (o.incognito) w.originalProfileId = lastActiveProfile(s);
+    let next = withWindow(s, w);
     if (o.tabIds?.length && !small) next = moveTabsInto(next, o.tabIds, id);
     if (!next.windows[id]!.tabIds.length) next = withNewTab(next, id, { url: o.url, adoptId: o.adoptId })[0];
     const first = next.windows[id]!.tabIds[0]!;
@@ -140,7 +151,10 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     next = apply(next, activated(next, shown));
     const focused = s.ui.focusedWindowId;
     if (o.background && focused && s.windows[focused]) {
-      next = { ...next, ui: { ...next.ui, focusedWindowId: focused, focusOrder: [focused, id, ...s.ui.focusOrder.filter((w) => w !== focused)] } };
+      next = {
+        ...next,
+        ui: { ...next.ui, focusedWindowId: focused, focusOrder: [focused, id, ...s.ui.focusOrder.filter((w) => w !== focused)], lastProfileId: s.ui.lastProfileId },
+      };
     }
     set(next);
     return id;
@@ -183,6 +197,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
         ...next.ui,
         focusOrder: next.ui.focusOrder.filter((f) => f !== id),
         focusedWindowId: next.ui.focusedWindowId === id ? (next.ui.focusOrder.find((f) => f !== id) ?? null) : next.ui.focusedWindowId,
+        lastProfileId: lastProfileAfterClosing(s, id),
       },
     });
   },
@@ -216,7 +231,10 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     let target = remembered && s.tabs[remembered]?.windowId === windowId ? remembered : undefined;
     target ??= s.windows[windowId]!.tabIds.find((id) => s.tabs[id]?.profileId === profileId && !s.tabs[id]!.unloaded);
     if (!target) [s, target] = withNewTab(s, windowId, { profileId, background: true });
-    set(apply(s, activated(s, target)));
+    s = apply(s, activated(s, target));
+    // Paging the window in front changes the active profile (store/small.ts lastActiveProfile).
+    if (s.ui.focusedWindowId === windowId) s = { ...s, ui: { ...s.ui, lastProfileId: profileId } };
+    set(s);
   },
 
   moveTabsToWindow(tabIds, windowId) {
@@ -331,7 +349,7 @@ function restoreTab(s: BrowserState, entry: ClosedTab, requested?: string | null
   const closedTabs = s.closedTabs.filter((c) => c.id !== entry.id);
   if (entry.small && !isIncognitoProfile(entry.tab.profileId)) {
     const id = newId("w");
-    const profileId = s.profiles[entry.tab.profileId] ? entry.tab.profileId : smallYahuProfile(s);
+    const profileId = s.profiles[entry.tab.profileId] ? entry.tab.profileId : lastActiveProfile(s);
     const next = withWindow({ ...s, closedTabs }, smallWindow(id, profileId));
     return withNewTab(next, id, {
       url: entry.tab.url || undefined,

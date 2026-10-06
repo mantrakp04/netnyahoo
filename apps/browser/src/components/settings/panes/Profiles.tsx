@@ -42,7 +42,7 @@ export function ProfilesPane() {
 
       <SectionHeader title="New windows open with" />
       <Group>
-        <Row title="Default profile" description="Used for new windows and links opened from other apps.">
+        <Row title="Default profile" description="Used for new windows. Links from other apps open in the profile you used last.">
           <PopUp
             value={defaultId}
             options={profiles.map((p) => ({ value: p.id, title: p.name }))}

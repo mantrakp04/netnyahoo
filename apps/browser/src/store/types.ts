@@ -24,6 +24,8 @@ export type BrowserWindow = {
   createdAt: number;
   // Small Yahu (Arc's Little Arc): one page, no sidebar, never saved with the session (store/small.ts).
   kind?: "small";
+  // A private window's regular profile: the one active when it opened (store/small.ts originalProfile).
+  originalProfileId?: string;
 };
 
 export type Tab = {

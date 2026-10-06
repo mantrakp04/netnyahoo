@@ -35,7 +35,7 @@ const DOCS: Doc[] = [
   },
   {
     name: "session.json",
-    sources: (s) => [s.profiles, s.profileOrder, s.orphanedProfileData, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.parkedPins, s.settings, s.ui.focusedWindowId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
+    sources: (s) => [s.profiles, s.profileOrder, s.orphanedProfileData, s.windows, s.windowOrder, s.tabs, s.groups, s.splits, s.closedTabs, s.closedWindows, s.parkedPins, s.settings, s.ui.focusedWindowId, s.ui.lastProfileId, s.closedGroups, s.deletedGroups, s.cleanedTabs],
     json: serialized((s) => {
       // Small Yahu windows aren't restored: closing (or quitting) throws their page away.
       const windows = Object.values(s.windows).filter((w) => !w.incognito && w.kind !== "small");
@@ -49,6 +49,7 @@ const DOCS: Doc[] = [
         windows,
         windowOrder: s.windowOrder.filter((id) => kept.has(id)),
         focusedWindowId: s.ui.focusOrder.find((id) => kept.has(id)) ?? null,
+        lastProfileId: s.ui.lastProfileId,
         tabs: Object.values(s.tabs).filter((t) => kept.has(t.windowId)).map(persistedTab),
         groups: Object.values(s.groups).filter((g) => kept.has(g.windowId)),
         splits: Object.values(s.splits).filter((v) => kept.has(v.windowId)),
@@ -93,6 +94,7 @@ type SessionV2 = {
   windows: BrowserWindow[];
   windowOrder: string[];
   focusedWindowId: string | null;
+  lastProfileId?: string | null;
   tabs: Tab[];
   groups: BrowserState["groups"][string][];
   splits: BrowserState["splits"][string][];
@@ -116,6 +118,7 @@ export function loadSession(): HydrateData | null {
     windows: byId(session.windows),
     windowOrder: session.windowOrder,
     focusedWindowId: session.focusedWindowId,
+    lastProfileId: session.lastProfileId ?? null,
     tabs: byId(session.tabs),
     groups: byId(session.groups),
     splits: byId(session.splits),

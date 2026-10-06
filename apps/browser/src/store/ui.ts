@@ -2,6 +2,7 @@ import type { Download } from "@netnyahoo/nncore";
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
 import { isIncognitoProfile } from "./model";
+import { originalProfile } from "./small";
 import type { FindState, WindowUi } from "./types";
 
 export type UiSlice = {
@@ -9,6 +10,8 @@ export type UiSlice = {
     focusedWindowId: string | null;
     focusOrder: string[];
     appDark: boolean;
+    // The regular profile of the window used last (store/small.ts lastActiveProfile).
+    lastProfileId: string | null;
   };
   windowUi: Record<string, WindowUi>;
   find: Record<string, FindState>;
@@ -45,15 +48,19 @@ function patchWindowUi(s: BrowserState, windowId: string, patch: Partial<WindowU
 }
 
 export const createUiSlice: StateCreator<BrowserState, [], [], UiSlice> = (set, get) => ({
-  ui: { focusedWindowId: null, focusOrder: [], appDark: true },
+  ui: { focusedWindowId: null, focusOrder: [], appDark: true, lastProfileId: null },
   windowUi: {},
   find: {},
   downloads: [],
 
   setFocusedWindow(id) {
-    const { ui, windows } = get();
-    if (!windows[id] || ui.focusedWindowId === id) return;
-    set({ ui: { ...ui, focusedWindowId: id, focusOrder: [id, ...ui.focusOrder.filter((w) => w !== id)] } });
+    const s = get();
+    const { ui, windows } = s;
+    if (!windows[id]) return;
+    // The store may already call it focused (it opened, or the one in front closed) before the window says it's key.
+    const lastProfileId = originalProfile(s, windows[id]) ?? ui.lastProfileId;
+    if (ui.focusedWindowId === id && ui.lastProfileId === lastProfileId) return;
+    set({ ui: { ...ui, focusedWindowId: id, focusOrder: [id, ...ui.focusOrder.filter((w) => w !== id)], lastProfileId } });
   },
 
   setAppDark(appDark) {

@@ -49,7 +49,7 @@ export type HydrateData = Partial<
     | "downloads"
     | "settings"
   >
-> & { focusedWindowId?: string | null };
+> & { focusedWindowId?: string | null; lastProfileId?: string | null };
 
 // Batch external updates; React Native otherwise commits once per subscriber.
 let batch = (update: () => void) => update();
@@ -169,7 +169,12 @@ export const useBrowser = create<BrowserState>()(transactions.middleware(batched
       downloads: data.downloads ?? [],
       windowUi: {},
       find: {},
-      ui: { ...s.ui, focusedWindowId: focused, focusOrder: focused ? [focused, ...windowOrder.filter((id) => id !== focused).reverse()] : [] },
+      ui: {
+        ...s.ui,
+        focusedWindowId: focused,
+        focusOrder: focused ? [focused, ...windowOrder.filter((id) => id !== focused).reverse()] : [],
+        lastProfileId: data.lastProfileId && profiles[data.lastProfileId] ? data.lastProfileId : null,
+      },
     };
     for (const w of Object.values(windows)) next = apply(next, activated(next, w.activeTabIds[w.profileId]!));
     set(next);

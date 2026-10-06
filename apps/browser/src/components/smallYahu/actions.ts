@@ -1,7 +1,7 @@
 import { focus, openWindow } from "../../lib/actions";
 import { useBrowser } from "../../store/browser";
 import { activeTabId } from "../../store/model";
-import { isSmall, mainWindowFor } from "../../store/small";
+import { isSmall, lastActiveProfile, mainWindowFor } from "../../store/small";
 
 const store = () => useBrowser.getState();
 
@@ -14,12 +14,13 @@ export function openSmallYahu(url?: string, profileId?: string): string {
 
 const opensInSmallYahu = (url: string) => /^(https?|file):/i.test(url);
 
-// URLs from other apps (Launch Services, `open`, Handoff) open in the default profile (Settings › Profiles). With
-// Settings › General › "Open links from other apps in" Small Yahu, one web link opens in its own Small Yahu, even when a
-// Small Yahu is already in front; several at once, or set to a new tab, they open as tabs of the main window.
+// URLs from other apps (Launch Services, `open`, Handoff) open in the profile of the window used last, even when another
+// app is in front now; a private window's counts as the profile it was opened from (store/small.ts lastActiveProfile).
+// With Settings › General › "Open links from other apps in" Small Yahu, one web link opens in its own Small Yahu, even
+// when a Small Yahu is already in front; several at once, or set to a new tab, they open as tabs of the main window.
 export function openExternalUrls(urls: string[]) {
   const [url] = urls;
-  const profileId = store().settings.defaultProfileId;
+  const profileId = lastActiveProfile(store());
   if (store().settings.openLinksInSmallYahu && urls.length === 1 && url && opensInSmallYahu(url)) return void openSmallYahu(url, profileId);
   openLinksInMainWindow(urls, profileId);
 }
