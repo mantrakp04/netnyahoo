@@ -165,27 +165,36 @@ function interactions(c) {
   const reset = () => run(`const s = nn.store.getState(); const w = ${W};
     if (s.windowUi[w]?.panel.open) s.closePanel(w);
     for (const id of s.windows[w].tabIds) if (!s.tabs[id].url && s.windows[w].tabIds.length > 1) nn.store.getState().closeTab(id);
-    const seed = ${seedTab}; if (seed && s.windows[w].activeTabId !== seed) nn.store.getState().activate(seed);
+    const seed = ${seedTab}; if (seed && s.windows[w].activeTabIds[s.windows[w].profileId] !== seed) nn.store.getState().activate(seed);
     return true;`);
   const store = (code) => run(`globalThis.nnPerf?.reset(); const t = nn.now(); ${code}; return t;`);
   let k = 0;
+  // The sidebar in the state an interaction starts from (a toggle each repetition would alternate), with its swap settled.
+  const want = async (open) => {
+    if ((await run(`return ${"nn.store.getState().windows[" + W + "].sidebarOpen"};`)) !== open) {
+      await run(`nn.store.getState().toggleSidebar(${W}); return 1;`);
+      await sleep(2500);
+    }
+  };
+  const ui = `nn.store.getState().windowUi[${W}]?.panel.open`;
+  const win = `nn.store.getState().windows[${W}]`;
   return [
     { name: "idle (no interaction)", window: 1500, go: async () => Date.now() },
-    { name: "command bar open (⌘T)", window: 600, go: () => key("cmd+t"), after: async () => { await sleep(900); } },
-    { name: "command bar close (Esc)", window: 600, before: () => key.open("cmd+t"), go: () => key("esc"), after: reset },
-    { name: "command bar open (⌘L)", window: 600, before: reset, go: () => key("cmd+l"), after: async () => { await sleep(900); } },
-    { name: "command bar close (Esc, from ⌘L)", window: 600, before: async () => { await reset(); await key.open("cmd+l"); }, go: () => key("esc"), after: reset },
-    { name: "tab switch", window: 500, before: reset, go: () => run(`globalThis.nnPerf?.reset(); const t = nn.now(); const s = nn.store.getState(); const w = ${W};
+    { name: "command bar open (⌘T)", window: 600, verify: `return !!${ui};`, go: () => key("cmd+t"), after: async () => { await sleep(900); } },
+    { name: "command bar close (Esc)", window: 600, before: () => key.open("cmd+t"), verify: `return !${ui};`, go: () => key("esc"), after: reset },
+    { name: "command bar open (⌘L)", window: 600, verify: `return !!${ui};`, before: reset, go: () => key("cmd+l"), after: async () => { await sleep(900); } },
+    { name: "command bar close (Esc, from ⌘L)", window: 600, verify: `return !${ui};`, before: async () => { await reset(); await key.open("cmd+l"); }, go: () => key("esc"), after: reset },
+    { name: "tab switch", window: 500, verify: `const s = nn.store.getState(); return s.windows[${W}].activeTabIds[s.windows[${W}].profileId] === globalThis.__frameTarget;`, before: reset, go: () => run(`globalThis.nnPerf?.reset(); const t = nn.now(); const s = nn.store.getState(); const w = ${W};
         const ids = s.windows[w].tabIds.filter((id) => !s.tabs[id].pinned); const id = ids[(${k++} * 7 + 3) % ids.length];
-        nn.actions.switchToTab(id); return t;`) },
-    { name: "sidebar collapse", window: 800, before: reset, go: () => store(`nn.store.getState().toggleSidebar(${W})`) },
-    { name: "sidebar expand", window: 800, go: () => store(`nn.store.getState().toggleSidebar(${W})`), after: () => sleep(300) },
-    { name: "profile swipe (next profile)", window: 1200, before: reset, go: () => store(`nn.runCommand({ command: "nextProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
-    { name: "profile swipe (previous profile)", window: 1200, go: () => store(`nn.runCommand({ command: "previousProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
+        globalThis.__frameTarget = id; nn.actions.switchToTab(id); return t;`) },
+    { name: "sidebar collapse", window: 800, verify: `return !${win}.sidebarOpen;`, before: async () => { await reset(); await want(true); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`) },
+    { name: "sidebar expand", window: 800, verify: `return ${win}.sidebarOpen;`, before: async () => { await reset(); await want(false); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`), after: () => sleep(300) },
+    { name: "profile swipe (next profile)", window: 1200, verify: `return ${win}.profileId !== globalThis.__frameProfile;`, before: async () => { await reset(); await run(`globalThis.__frameProfile = ${win}.profileId; return 1;`); }, go: () => store(`nn.runCommand({ command: "nextProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
+    { name: "profile swipe (previous profile)", window: 1200, verify: `return ${win}.profileId !== globalThis.__frameProfile;`, before: () => run(`globalThis.__frameProfile = ${win}.profileId; return 1;`), go: () => store(`nn.runCommand({ command: "previousProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
     { name: "sidebar scroll (200 tabs, flick down and back)", window: 2300, before: reset,
       go: async () => { await run(`globalThis.nnPerf?.reset(); return 1;`); const t = Date.now(); await probe("scroll", { distance: 4000, seconds: 1, back: true }, false); return t; } },
     { name: "sidebar hover (20 rows, 60 ms apart)", window: 1500, before: reset, go: async () => { await run(`globalThis.nnPerf?.reset(); return 1;`); const t = Date.now(); await probe("hover", { rows: 20, gapMs: 60 }, false); return t; } },
-    { name: "new window", window: 1200, before: reset,
+    { name: "new window", window: 1200, verify: `return nn.store.getState().windowOrder.length > globalThis.__frameWindows;`, before: async () => { await reset(); await run(`globalThis.__frameWindows = nn.store.getState().windowOrder.length; return 1;`); },
       go: () => store(`nn.actions.openWindow({ url: "${base()}/static?id=fw${k++}" })`),
       after: async () => { await sleep(1500); await run(`const s = nn.store.getState(); for (const id of s.windowOrder) if (s.windows[id] && id !== ${W} && !s.windows[id].kind) nn.store.getState().closeWindow(id); return true;`); await sleep(1500); } },
   ];
@@ -289,6 +298,12 @@ export async function framesRun(c, side, i, { counts }) {
           const t0 = await it.go();
           await sleep(it.window + 250);
           const c1 = await counters();
+          if (it.verify && !(await run(it.verify))) {
+            log(`${side.tag}frames ${i} ${it.name} #${rep}: no effect (the interaction didn't do what it should); left out`);
+            if (it.after) await it.after().catch(() => {});
+            out.noEffect = (out.noEffect ?? 0) + 1;
+            continue;
+          }
           const extra = {};
           for (const n of ["layoutPasses", "mountBatches", "uiBlocks", "viewUpdates", "viewCreates"]) extra[n] = c1[n] - c0[n];
           if (counts) Object.assign(extra, await jsCounts());
