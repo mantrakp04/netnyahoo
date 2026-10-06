@@ -119,6 +119,8 @@ export const removeDocument = (name) => docs.delete(name);
 export const chromeWindows = () => Promise.resolve([]);
 export const devWindowAction = () => Promise.resolve("");
 export const engineInfo = () => Promise.resolve(null);
+// //chrome/browser/netnyahoo's calls (packages/nncore/src/engine.ts): a test installs globalThis.nnTestEngineCall.
+export const engineCall = (name, profile, args) => globalThis.nnTestEngineCall?.(name, profile, args) ?? Promise.resolve({});
 export const prepareTabTransfer = () => {};
 export const releaseTabTransfer = () => {};
 export const onTabStripTransaction = (listener) => globalThis.nnTestTabStrip.listen(listener);

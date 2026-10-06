@@ -64,6 +64,10 @@ export function startDevHarness() {
     get hoverShift(): typeof import("./hoverShift") {
       return require("./hoverShift");
     },
+    // New-tab prewarm and the bar's preloading (benches turn the prewarm off for a control).
+    get preload(): typeof import("./preload") {
+      return require("./preload");
+    },
     // Live folders without a service: a test makes a folder and hands it items.
     get live(): { store: typeof import("../live/store"); engine: typeof import("../live/engine") } {
       return { store: require("../live/store"), engine: require("../live/engine") };

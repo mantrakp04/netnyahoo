@@ -19,6 +19,7 @@ import { SuggestionIcon, SuggestionList, type RowActions } from "./omnibox/Sugge
 import { useDropdownStart } from "./omnibox/dropdownStart";
 import { useInlineCompletion } from "./omnibox/useInlineCompletion";
 import { scopeFor, useSuggestions } from "./omnibox/useSuggestions";
+import { barOpened, barTyped } from "../lib/preload";
 import { setPopover } from "./layout/pageState";
 import { IconButton, useHover } from "./primitives";
 
@@ -127,8 +128,28 @@ export function Omnibox({
 
   const dismiss = () => (hero ? reset() : onCancel?.());
 
-  const go = (url: string, disposition: Disposition = "current") => {
+  // What the bar shows Chrome's predictor (lib/preload.ts): it preloads the page Enter would open once it has
+  // learnt to expect it, and learns from what the bar opens, or that it closed without opening anything.
+  const preloading = useRef<"idle" | "typed" | "opened">("idle");
+  useEffect(() => {
+    if (!edited || scope) {
+      // Back to its start (Escape, a reset) or into a search scope: what was typed opened nothing.
+      if (preloading.current === "typed") barOpened(tabId, "");
+      preloading.current = "idle";
+      return;
+    }
+    preloading.current = "typed";
+    barTyped(tabId, typed, items, selectedIndex);
+  }, [typed, items, selectedIndex, edited, scope, tabId]);
+  useEffect(() => () => void (preloading.current === "typed" && barOpened(tabId, "")), [tabId]);
+  const opened = (url: string, learn = true) => {
+    if (preloading.current === "typed") barOpened(tabId, url, { learn });
+    preloading.current = "opened";
+  };
+
+  const go = (url: string, disposition: Disposition = "current", pasted = false) => {
     if (!url) return;
+    opened(url, !pasted);
     if (disposition === "current") journeyNavigate(tabId);
     openFromBar(url, tabId, disposition);
     if (disposition !== "current") dismiss();
@@ -145,6 +166,7 @@ export function Omnibox({
     switch (s.kind) {
       case "page":
         if (s.tabId) {
+          opened(s.url);
           switchFromBar(s.tabId, s.url, tabId, disposition);
           if (hero && disposition === "current") reset();
           return;
@@ -233,7 +255,7 @@ export function Omnibox({
       { separator: true },
       { id: "selectAll", title: "Select All", enabled: !!value },
     ]);
-    if (choice === "pasteAndGo" && paste) return go(pasteTarget(paste));
+    if (choice === "pasteAndGo" && paste) return go(pasteTarget(paste), "current", true);
     if (choice === "copy" || choice === "cut") copyText(value.slice(start, end));
     if (choice === "cut" || choice === "paste") {
       const insert = choice === "paste" ? (await readClipboard()).replace(/\s*\n\s*/g, " ") : "";
