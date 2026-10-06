@@ -61,11 +61,15 @@ function setView(engine: string, list: HistoryEntry[], floor?: number) {
     const full = list.length >= MAX_HISTORY ? list[list.length - 1]!.lastVisit : -Infinity;
     const next = Math.max(floor ?? was, full);
     const ready = legacyMoved;
-    if (ids.every((id) => s.history[id] === list && (s.historyFloor[id] ?? -Infinity) === next && (!ready || s.historyReady[id]))) return {};
+    const sameList = ids.every((id) => s.history[id] === list);
+    const sameFloor = ids.every((id) => (s.historyFloor[id] ?? -Infinity) === next);
+    const sameReady = !ready || ids.every((id) => s.historyReady[id]);
+    if (sameList && sameFloor && sameReady) return {};
+    // Only what changed gets a new object: most events (a visit, a title) change the list alone.
     return {
-      history: { ...s.history, ...Object.fromEntries(ids.map((id) => [id, list])) },
-      historyFloor: { ...s.historyFloor, ...Object.fromEntries(ids.map((id) => [id, next])) },
-      ...(ready ? { historyReady: { ...s.historyReady, ...Object.fromEntries(ids.map((id) => [id, true as const])) } } : {}),
+      ...(sameList ? {} : { history: { ...s.history, ...Object.fromEntries(ids.map((id) => [id, list])) } }),
+      ...(sameFloor ? {} : { historyFloor: { ...s.historyFloor, ...Object.fromEntries(ids.map((id) => [id, next])) } }),
+      ...(sameReady ? {} : { historyReady: { ...s.historyReady, ...Object.fromEntries(ids.map((id) => [id, true as const])) } }),
     };
   });
 }
@@ -78,7 +82,8 @@ export function applyHistoryChange(list: HistoryEntry[], change: Exclude<History
   switch (change.kind) {
     case "visit": {
       if (!shownInHistory(change.url)) return list;
-      const old = list.find((h) => h.url === change.url);
+      const oldAt = list.findIndex((h) => h.url === change.url);
+      const old = oldAt < 0 ? undefined : list[oldAt];
       if (old?.visitTimes?.includes(change.at)) return list;
       const times = [...(old?.visitTimes ?? []), change.at].sort((a, b) => a - b).slice(-MAX_VISIT_TIMES);
       const entry: HistoryEntry = {
@@ -89,20 +94,27 @@ export function applyHistoryChange(list: HistoryEntry[], change: Exclude<History
         lastVisit: times[times.length - 1]!,
         visitTimes: times,
       };
-      const rest = list.filter((h) => h !== old);
-      const at = rest.findIndex((h) => h.lastVisit <= entry.lastVisit);
-      return (at < 0 ? [...rest, entry] : [...rest.slice(0, at), entry, ...rest.slice(at)]).slice(0, MAX_HISTORY);
+      // One copy of the list (up to 5000 entries, on every visit Chrome reports): the page's old entry drops out and the
+      // new one goes before the first entry visited no later than it.
+      const next = list.slice();
+      if (old) next.splice(oldAt, 1);
+      const at = next.findIndex((h) => h.lastVisit <= entry.lastVisit);
+      if (at < 0) next.push(entry);
+      else next.splice(at, 0, entry);
+      if (next.length > MAX_HISTORY) next.length = MAX_HISTORY;
+      return next;
     }
     case "modified": {
-      const rows = new Map(change.rows.map((r) => [r.url, r]));
-      let changed = false;
-      const next = list.map((h) => {
-        const row = rows.get(h.url);
-        if (!row || ((row.title === h.title || !row.title) && row.visits === h.visits)) return h;
-        changed = true;
-        return { ...h, title: row.title || h.title, visits: row.visits };
-      });
-      return changed ? next : list;
+      // A title or count change names a page or two: look those up, copy the list only if one differs.
+      let next: HistoryEntry[] | null = null;
+      for (const row of new Map(change.rows.map((r) => [r.url, r])).values()) {
+        const at = list.findIndex((h) => h.url === row.url);
+        const h = at < 0 ? undefined : list[at];
+        if (!h || ((row.title === h.title || !row.title) && row.visits === h.visits)) continue;
+        next ??= list.slice();
+        next[at] = { ...h, title: row.title || h.title, visits: row.visits };
+      }
+      return next ?? list;
     }
     case "deleted": {
       const gone = new Set(change.urls);
