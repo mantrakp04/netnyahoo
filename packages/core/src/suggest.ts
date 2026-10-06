@@ -222,14 +222,19 @@ export function prepareSuggestions(source: SuggestionSource, deadline: number): 
   return advance(b, bookmarks, deadline);
 }
 
-type TabsOver = { pool: Pool; currentTabId: string | undefined; tabIds: Map<string, string>; extra: Candidate[] };
+type TabsOver = { pool: Pool; currentTabId: string | undefined; rows: TabRow[]; tabIds: Map<string, string>; extra: Candidate[] };
 const tabsOverCache = new WeakMap<readonly TabRow[], TabsOver>();
 
 // Which pool entries are open tabs, and the open tabs the pool doesn't have. Kept for one tabs list, pool and current tab:
-// typing changes none of them.
+// typing changes none of them. (A row is replaced when a tab changes, never edited: pageText relies on that too. The list may
+// be edited, so the rows are compared.)
 function tabsOver(pool: Pool, tabs: readonly TabRow[], currentTabId?: string): TabsOver {
   const cached = tabsOverCache.get(tabs);
-  if (cached && cached.pool === pool && cached.currentTabId === currentTabId) return cached;
+  if (cached && cached.pool === pool && cached.currentTabId === currentTabId && cached.rows.length === tabs.length) {
+    let same = true;
+    for (let i = 0; same && i < tabs.length; i++) same = cached.rows[i] === tabs[i];
+    if (same) return cached;
+  }
   const tabIds = new Map<string, string>();
   const extra: Candidate[] = [];
   for (const t of tabs) {
@@ -239,7 +244,7 @@ function tabsOver(pool: Pool, tabs: readonly TabRow[], currentTabId?: string): T
     tabIds.set(text.key, t.id);
     if (!pool.byKey.has(text.key)) extra.push({ url: t.url, title: t.title, favicon: t.favicon, visits: 0, lastVisit: 0, logVisits: 0, fresh: true, bookmarked: false, tabId: t.id, text });
   }
-  const result = { pool, currentTabId, tabIds, extra };
+  const result = { pool, currentTabId, rows: tabs.slice(), tabIds, extra };
   tabsOverCache.set(tabs, result);
   return result;
 }
@@ -449,12 +454,13 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
       const key = c.text.key;
       const derank = currentKey !== null && key === currentKey ? 80 : 0;
       // Frecency, as it was before it was inlined: log2 part kept per candidate, age part without Math.max/min.
-      let age: number;
-      if (c.fresh) age = 0;
-      else if (c.lastVisit) {
-        const d = (now - c.lastVisit) / DAY;
-        age = d > 0 ? (d < 30 ? d : 30) : 0;
-      } else age = 10;
+      // A tab the pool doesn't have was last visited `now`.
+      const lastVisit = c.fresh ? now : c.lastVisit;
+      let age = 10;
+      if (lastVisit) {
+        const d = (now - lastVisit) / DAY;
+        age = d < 0 ? 0 : d > 30 ? 30 : d;
+      }
       const base = c.logVisits - age + (c.bookmarked ? 20 : 0);
       // Without the open-tab bonus (6) the row can't get in the list, and can't be the inline completion: skip it
       // before looking up its tab. The extra point is for float rounding.

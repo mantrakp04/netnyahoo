@@ -43,3 +43,17 @@ test("matchActions ranks and matches exactly as the reference does", () => {
   }
   assert.ok(hits > 1000, `only ${hits} matches were compared`);
 });
+
+test("an actions list edited in place is read again", () => {
+  const actions: ActionCandidate[] = [{ id: "reload", title: "Reload" }];
+  const same = (query: string) => assert.deepStrictEqual(matchActions(query, actions), reference.matchActions(query, actions), query);
+  same("reload");
+  actions[0]!.title = "New Tab";
+  same("new tab");
+  actions.push({ id: "close", title: "Close Tab", keywords: ["shut"] });
+  same("close tab");
+  actions[1]!.keywords = ["quit"];
+  same("quit");
+  actions.length = 1;
+  same("close tab");
+});

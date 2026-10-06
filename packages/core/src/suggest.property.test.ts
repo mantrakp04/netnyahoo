@@ -147,3 +147,32 @@ test("an empty profile and a one-row profile", () => {
   compareRun(77, 0);
   compareRun(78, 1);
 });
+
+// Found by review (Codex): inputs the app never makes, which the old code answered and a cache must too.
+test("a tab is last visited `now`, even when now is 0 or NaN", () => {
+  const source = {
+    history: [{ url: "https://history.example/", title: "abc", favicon: null, visits: 2, lastVisit: 0 }],
+    tabs: [{ id: "t", url: "https://tab.example/", title: "abc", favicon: null }],
+  };
+  for (const now of [0, NaN, Infinity, 1]) {
+    const options = { now, preference: "search" as const };
+    assert.deepStrictEqual(buildSuggestions("abc", source, options), reference.buildSuggestions("abc", source, options), `now ${now}`);
+  }
+  const twins = { tabs: [], history: [2, 20].map((visits, i) => ({ url: `https://t${i}.example/`, title: "abc", favicon: null, visits, lastVisit: 1 })) };
+  for (const now of [NaN, Infinity]) {
+    assert.deepStrictEqual(buildSuggestions("abc", twins, { now }), reference.buildSuggestions("abc", twins, { now }), `now ${now}`);
+  }
+});
+
+test("a tabs list edited in place is read again", () => {
+  const source = { tabs: [] as { id: string; url: string; title: string; favicon: string | null }[], history: [] };
+  const options = { now: NOW, preference: "search" as const };
+  const same = () => assert.deepStrictEqual(buildSuggestions("example", source, options), reference.buildSuggestions("example", source, options));
+  same();
+  source.tabs.push({ id: "t", url: "https://example.com/", title: "Example", favicon: null });
+  same();
+  source.tabs[0] = { id: "t", url: "https://example.com/", title: "Example", favicon: "new.ico" };
+  same();
+  source.tabs.length = 0;
+  same();
+});

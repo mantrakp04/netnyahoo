@@ -51,14 +51,23 @@ function nameOf(text: string): Name {
   }
   return { lower, words: words(lower), letters, digits };
 }
-const prepared = new WeakMap<readonly ActionCandidate[], Name[][]>();
 
-function preparedNames(actions: readonly ActionCandidate[]): Name[][] {
+// Kept for one array of actions while its rows, titles and keyword lists are the same (the bar's list is made again when its
+// inputs change; the names of an action edited in place are made again).
+type Prepared = { action: ActionCandidate; title: string; keywords: readonly string[] | undefined; names: Name[] };
+const prepared = new WeakMap<readonly ActionCandidate[], Prepared[]>();
+
+function preparedNames(actions: readonly ActionCandidate[]): Prepared[] {
   let list = prepared.get(actions);
-  if (!list) {
-    list = actions.map((action) => [action.title, ...(action.keywords ?? [])].map(nameOf));
-    prepared.set(actions, list);
+  if (!list) prepared.set(actions, (list = []));
+  for (let a = 0; a < actions.length; a++) {
+    const action = actions[a]!;
+    let p = list[a];
+    if (!p || p.action !== action || p.title !== action.title || p.keywords !== action.keywords) {
+      p = list[a] = { action, title: action.title, keywords: action.keywords, names: [action.title, ...(action.keywords ?? [])].map(nameOf) };
+    }
   }
+  list.length = actions.length;
   return list;
 }
 
@@ -96,7 +105,7 @@ export function matchActions<T extends ActionCandidate>(query: string, actions: 
   const names = preparedNames(actions);
   const hits: ActionMatch<T>[] = [];
   for (let a = 0; a < actions.length; a++) {
-    const list = names[a]!;
+    const list = names[a]!.names;
     let score = -Infinity;
     let exact = false;
     for (let i = 0; i < list.length; i++) {
