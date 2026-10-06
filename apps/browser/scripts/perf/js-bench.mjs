@@ -249,8 +249,21 @@ const alive = (pid) => {
   }
 };
 
+// NETNYAHOO_SWITCHES ("name=off,other=on") as the switches file a launch reads: a Release build's JS ignores the
+// variable (launchEnvironment is DEBUG-only), so a bench of a Release app sets its switches this way.
+export function writeSwitches(dataDir, text) {
+  if (!text) return;
+  const switches = {};
+  for (const part of text.split(",")) {
+    const [name, value] = part.split("=").map((x) => x.trim());
+    if (name && value) switches[name] = !["off", "0", "false"].includes(value);
+  }
+  writeFileSync(join(dataDir, "switches-cache.json"), JSON.stringify({ version: 1, switches }));
+}
+
 export async function launch(app, dataDir, port) {
   const binary = join(app, "Contents/MacOS/Netnyahoo");
+  writeSwitches(dataDir, process.env.NETNYAHOO_SWITCHES);
   if (pidsOf(binary).length) throw new Error(`an instance of ${app} is already running`);
   const launchedAt = Date.now();
   execFileSync("open", [

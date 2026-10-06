@@ -176,6 +176,12 @@ function interactions(c) {
       await sleep(2500);
     }
   };
+  const arcLayout = async (on) => {
+    const value = on ? "sidebar" : "toolbar";
+    if ((await run(`return nn.store.getState().settings.addressBar;`)) === value) return;
+    await run(`nn.store.getState().updateSettings({ addressBar: "${value}" }); return 1;`);
+    await sleep(1500);
+  };
   const ui = `nn.store.getState().windowUi[${W}]?.panel.open`;
   const win = `nn.store.getState().windows[${W}]`;
   return [
@@ -189,6 +195,9 @@ function interactions(c) {
         globalThis.__frameTarget = id; nn.actions.switchToTab(id); return t;`) },
     { name: "sidebar collapse", window: 800, verify: `return !${win}.sidebarOpen;`, before: async () => { await reset(); await want(true); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`) },
     { name: "sidebar expand", window: 800, verify: `return ${win}.sidebarOpen;`, before: async () => { await reset(); await want(false); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`), after: () => sleep(300) },
+    // Arc's layout (the address bar in the sidebar): no toolbar row on the card, Arc's 100 ms hide (SidebarDock.tsx).
+    { name: "sidebar collapse (address bar in the sidebar)", window: 800, verify: `return !${win}.sidebarOpen;`, before: async () => { await reset(); await arcLayout(true); await want(true); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`) },
+    { name: "sidebar expand (address bar in the sidebar)", window: 800, verify: `return ${win}.sidebarOpen;`, before: async () => { await reset(); await arcLayout(true); await want(false); }, go: () => store(`nn.store.getState().toggleSidebar(${W})`), after: async () => { await sleep(300); await arcLayout(false); } },
     { name: "profile swipe (next profile)", window: 1200, verify: `return ${win}.profileId !== globalThis.__frameProfile;`, before: async () => { await reset(); await run(`globalThis.__frameProfile = ${win}.profileId; return 1;`); }, go: () => store(`nn.runCommand({ command: "nextProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
     { name: "profile swipe (previous profile)", window: 1200, verify: `return ${win}.profileId !== globalThis.__frameProfile;`, before: () => run(`globalThis.__frameProfile = ${win}.profileId; return 1;`), go: () => store(`nn.runCommand({ command: "previousProfile", arg: null, windowId: ${W} })`), after: () => sleep(600) },
     { name: "sidebar scroll (200 tabs, flick down and back)", window: 2300, before: reset,
