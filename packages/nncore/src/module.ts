@@ -88,6 +88,9 @@ export const chromeWindows = () => Cef.chromeWindows();
 export const devWindowAction = (windowNumber: number, action: string) => Cef.devWindow(windowNumber, action);
 export const prepareTabTransfer = (transferKey: string) => Cef.prepareTransfer(transferKey);
 export const releaseTabTransfer = (transferKey: string) => Cef.releaseTransfer(transferKey);
+/** The launch's first page, as the hydrated app shows it ("" for none): the page the engine started for it before the
+ *  app ran is kept for that tab's view (by its transfer key), or closed if the app shows another. */
+export const claimLaunchTab = (transferKey: string, url: string, profile: string) => Cef.claimLaunchTab?.(transferKey, url, profile);
 export const listComponents = () => Cef.components();
 
 export const beginTracing = () => Cef.beginTracing();

@@ -59,6 +59,28 @@ NSMutableDictionary<NSString *, NSNumber *> *ReloadParked() {
   return parked;
 }
 
+// The launch's first page (+startLaunchTab:…) until the app claims it: the tab, and what it was started for.
+NNCoreTab *gLaunchTab;
+NSString *gLaunchKey;
+NSString *gLaunchURL;
+NSString *gLaunchProfile;
+// The app claimed (claimLaunchTab:): a page started after that would never be claimed.
+BOOL gLaunchClaimed;
+// On the launch page's tab until a view takes it: its NNCoreLaunchTabHolder.
+const char kLaunchHolderKey = 0;
+// The app's tabs whose launch page Chrome closed before their view came (an extension's tabs.remove): their view
+// tells the app the tab closed instead of loading it again, until the app releases the tab (releaseTransfer:).
+NSMutableSet<NSString *> *ClosedLaunch() {
+  static NSMutableSet<NSString *> *keys = [NSMutableSet set];
+  return keys;
+}
+
+void CloseTab(NNCoreTab *tab) {
+  if (!tab || tab.closed) return;
+  if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
+  else [tab close];
+}
+
 NSView *ParkingView() {
   static NSView *view = [[NSView alloc] initWithFrame:NSZeroRect];
   return view;
@@ -298,6 +320,116 @@ const char kPageReportsKey = 0;
 @interface NNCoreWebView () <NNCoreTabDelegate>
 @end
 
+// The page script's hello from a frame of `tab`, answered with the frame's settings as CEF's NNClient answers it:
+// autoplay blocked for the top page's site, and what the page script turns on.
+static void AnswerHello(NNCoreTab *tab, NSString *profile, NSDictionary *hello, NSString *frameId, BOOL main) {
+  NSString *frameURL = Text(hello, @"url", 8192) ?: tab.url;
+  NSString *origin = OriginOf(main ? frameURL : tab.url);
+  __weak NNCoreTab *weakTab = tab;
+  void (^answer)(BOOL) = ^(BOOL blockAutoplay) {
+    NNCoreTab *to = weakTab;
+    if (!frameId.length || ![to respondsToSelector:@selector(callFrame:kind:json:)]) return;
+    NSMutableDictionary *config = [NSMutableDictionary dictionary];
+    if (blockAutoplay) config[@"blockAutoplay"] = @YES;
+    // The app's screen-share picker, when the engine can grant the picked source to getUserMedia (CEF's
+    // site::AllowDesktopCapture).
+    if (gDisplayMediaPicker && [NNCoreEngine respondsToSelector:@selector(allowDesktopCapture:tab:frame:origin:)])
+      config[@"displayMediaPicker"] = @YES;
+    // The page reports its first contentful paint and its first frames once shown (page_script.js › Field timing).
+    if (main && NNFieldTimingEnabled()) config[@"fieldTiming"] = @YES;
+    [to callFrame:frameId kind:@"config" json:JSONString(config)];
+  };
+  if (origin && [origin hasPrefix:@"http"])
+    [NNCoreServices siteSettings:profile ?: @"" origin:origin completion:^(NSDictionary *settings) {
+      NSDictionary *autoplay = [settings[@"autoplay"] isKindOfClass:NSDictionary.class] ? settings[@"autoplay"] : nil;
+      answer([autoplay[@"value"] isEqual:@"block"]);
+    }];
+  else
+    answer(NO);
+}
+
+// The launch's first page has no view until the app's window mounts: this is its tab's delegate meanwhile, and keeps
+// what Chrome told it (the page script's hello, which a view answers with the page's settings; a navigation that became
+// a download; a crash; blocked requests…) for the view that takes the tab, which hears it all then, in order. Calls that
+// answer something (a context menu's items) aren't taken: a page nobody sees has none.
+@interface NNCoreLaunchTabHolder : NSObject <NNCoreTabDelegate>
+@property (nonatomic, copy) NSString *url;
+// The profile it loads in (its site settings answer the page's hello), and whether Chrome closed it meanwhile (an
+// extension's tabs.remove): the app's tab then closes too, instead of loading again.
+@property (nonatomic, copy) NSString *profile;
+@property (nonatomic, readonly) BOOL closedByChrome;
+- (void)replayTo:(NNCoreWebView *)view tab:(NNCoreTab *)tab;
+@end
+
+@implementation NNCoreLaunchTabHolder {
+  NSMutableArray<NSInvocation *> *_calls;
+}
+
+static BOOL HeldSelector(SEL selector) {
+  struct objc_method_description d = protocol_getMethodDescription(@protocol(NNCoreTabDelegate), selector, NO, YES);
+  if (!d.name || ![NNCoreWebView instancesRespondToSelector:selector]) return NO;
+  NSMethodSignature *signature = [NNCoreWebView instanceMethodSignatureForSelector:selector];
+  return signature && strcmp(signature.methodReturnType, @encode(void)) == 0;
+}
+
+- (BOOL)respondsToSelector:(SEL)selector {
+  return [super respondsToSelector:selector] || HeldSelector(selector);
+}
+
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)selector {
+  return HeldSelector(selector) ? [NNCoreWebView instanceMethodSignatureForSelector:selector] : [super methodSignatureForSelector:selector];
+}
+
+- (void)forwardInvocation:(NSInvocation *)invocation {
+  // Every one of them names the tab first, which holds this object: not kept here (replayTo:tab: puts it back).
+  if (!HeldSelector(invocation.selector) || invocation.methodSignature.numberOfArguments < 3) return [super forwardInvocation:invocation];
+  // The page's hello is answered now, as a view would: a page that blocks autoplay pauses a video that starts before
+  // the view comes (the replay answers it again, the same).
+  if (invocation.selector == @selector(tab:didReceivePageMessage:json:frame:main:)) {
+    // One declaration each: in `__unsafe_unretained NSString *a, *b` ARC takes only `a` as unretained, and releases `b`
+    // (a string it never retained).
+    __unsafe_unretained NNCoreTab *tab = nil;
+    __unsafe_unretained NSString *kind = nil;
+    __unsafe_unretained NSString *json = nil;
+    __unsafe_unretained NSString *frame = nil;
+    BOOL main = NO;
+    [invocation getArgument:&tab atIndex:2];
+    [invocation getArgument:&kind atIndex:3];
+    [invocation getArgument:&json atIndex:4];
+    [invocation getArgument:&frame atIndex:5];
+    [invocation getArgument:&main atIndex:6];
+    if ([kind isEqualToString:@"hello"]) {
+      id hello = JSONValue(json);
+      AnswerHello(tab, _profile, [hello isKindOfClass:NSDictionary.class] ? hello : nil, frame ?: @"", main);
+    }
+  }
+  if (!_calls) _calls = [NSMutableArray array];
+  // A page left loading unseen for long: its first reports are what matter.
+  if (_calls.count >= 2000) return;
+  // Cleared before the arguments are retained: once retained, setting it again doesn't release the tab.
+  __unsafe_unretained id none = nil;
+  [invocation setArgument:&none atIndex:2];
+  invocation.target = nil;
+  [invocation retainArguments];
+  [_calls addObject:invocation];
+}
+
+- (void)tabWillClose:(NNCoreTab *)tab {
+  _closedByChrome = YES;
+}
+
+- (void)replayTo:(NNCoreWebView *)view tab:(NNCoreTab *)tab {
+  NSArray<NSInvocation *> *calls = _calls;
+  _calls = nil;
+  __unsafe_unretained NNCoreTab *named = tab;
+  for (NSInvocation *call in calls) {
+    [call setArgument:&named atIndex:2];
+    [call invokeWithTarget:view];
+  }
+}
+
+@end
+
 @implementation NNCoreWebView {
   NNCoreTab *_tab;
   // The app's first load (a restored tab's URL), and the URL the app last asked for until a document commits: what a
@@ -307,6 +439,8 @@ const char kPageReportsKey = 0;
   NSString *_requestedURL;
   BOOL _creating;
   BOOL _closing;
+  // The app was told its launch page closed (takeTransferredTab).
+  BOOL _launchCloseSent;
   BOOL _moving;
   NSString *_pendingURL;
   // The URL a new tab opens with: the page's first loadURL asks for it again (ContentCard), and loading it twice
@@ -376,6 +510,7 @@ const char kPageReportsKey = 0;
   dispatch_async(dispatch_get_main_queue(), ^{
     for (NNCoreWebView *view in LiveViews().allObjects)
       if ([view->_transferKey isEqualToString:key]) view->_handingOff = NO;
+    [ClosedLaunch() removeObject:key];
     NNCoreTab *tab = Parked()[key];
     if (!tab) return;
     [Parked() removeObjectForKey:key];
@@ -384,6 +519,59 @@ const char kPageReportsKey = 0;
     if ([tab respondsToSelector:@selector(closeNow)]) [tab closeNow];
     else [tab close];
   });
+}
+
+// React Native just started running the app's bundle: the page the app's focused window will show (session.json's hint)
+// starts loading now, in a hidden window of its profile, instead of once that window's content has mounted (200 to
+// 400 ms later). Only a web page, in a profile Chrome already has, that wasn't a download (skipsNavigationDownload:).
+// The app claims it as it hydrates (claimLaunchTab:); an app that never does leaves it 30 s.
++ (void)startLaunchTab:(NSString *)transferKey url:(NSString *)url profile:(NSString *)profileName {
+  if (gLaunchTab || gLaunchClaimed || !transferKey.length || !url.length || !NNCoreHost.isStarted) return;
+  NSString *scheme = [NSURLComponents componentsWithString:url].scheme.lowercaseString;
+  if (![scheme isEqualToString:@"http"] && ![scheme isEqualToString:@"https"]) return;
+  profileName = profileName ?: @"";
+  if (nncore_host::IsIncognito(profileName) || nncore_host::IsDeletedProfile(profileName)) return;
+  NNCoreProfile *profile = nncore_host::LoadedProfile(profileName);
+  if (!profile || nncore_host::WasNavigationDownload(url, profileName)) return;
+  NNCoreWindowController *keeper = [NNCoreWindowController strayWindowForProfile:profile];
+  if (!keeper) return;
+  keeper.hostChanges++;
+  NNCoreTab *tab = [keeper.coreWindow openTab:url profile:profile foreground:NO];
+  keeper.hostChanges--;
+  if (!tab) return [keeper.coreWindow close];
+  [ParkingView() addSubview:tab.view];
+  NNCoreLaunchTabHolder *holder = [NNCoreLaunchTabHolder new];
+  holder.url = url;
+  holder.profile = profileName;
+  objc_setAssociatedObject(tab, &kLaunchHolderKey, holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  tab.delegate = holder;
+  gLaunchTab = tab;
+  gLaunchKey = [transferKey copy];
+  gLaunchURL = [url copy];
+  gLaunchProfile = [profileName copy];
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    if (gLaunchTab == tab) [NNCoreWebView claimLaunchTab:@"" url:@"" profile:@""];
+  });
+}
+
+// From the JS thread (lib/tabPages.ts), before the app opens its windows: on the main queue in call order, so before
+// any view mounts. The page started for the same tab, URL and profile waits, parked, for that tab's view, as a page
+// handed off does (the app releases it the same way: releaseTransfer:); any other closes.
++ (void)claimLaunchTab:(NSString *)transferKey url:(NSString *)url profile:(NSString *)profile {
+  NSString *key = [transferKey copy], *claimed = [url copy], *name = [profile copy];
+  void (^claim)(void) = ^{
+    NNCoreTab *tab = gLaunchTab;
+    gLaunchClaimed = YES;
+    const BOOL same = tab && key.length && [gLaunchKey isEqualToString:key] && [gLaunchURL isEqualToString:claimed] &&
+                      [gLaunchProfile isEqualToString:name ?: @""] && !Parked()[key];
+    gLaunchTab = nil;
+    gLaunchKey = gLaunchURL = gLaunchProfile = nil;
+    if (!same) return CloseTab(tab);
+    // Parked even when Chrome closed it already: the view sees that (takeTransferredTab) and the app's tab closes.
+    Parked()[key] = tab;
+  };
+  if (NSThread.isMainThread) claim();
+  else dispatch_async(dispatch_get_main_queue(), claim);
 }
 
 // A JS reload (development: Metro) unmounts every view and mounts them again once the new bundle has run: each tab's
@@ -625,6 +813,25 @@ const char kPageReportsKey = 0;
 - (BOOL)takeTransferredTab {
   if (!_transferKey.length) return NO;
   NNCoreTab *tab = Parked()[_transferKey];
+  // The launch's first page, closed by Chrome before this view came (an extension's tabs.remove): the app's tab closes,
+  // as it would have with the view there, instead of loading again.
+  NNCoreLaunchTabHolder *held = tab ? objc_getAssociatedObject(tab, &kLaunchHolderKey) : nil;
+  if (held && (tab.closed || held.closedByChrome)) {
+    [Parked() removeObjectForKey:_transferKey];
+    [ClosedLaunch() addObject:_transferKey];
+  }
+  if ([ClosedLaunch() containsObject:_transferKey]) {
+    if (!_launchCloseSent) {
+      _launchCloseSent = YES;
+      // After this mount: the app hears it as it hears a tab Chrome closed (onWindowClose).
+      __weak NNCoreWebView *weakSelf = self;
+      dispatch_async(dispatch_get_main_queue(), ^{
+        NNCoreWebView *view = weakSelf;
+        if (view && !view->_tab) [view emit:@"windowClose" payload:@{}];
+      });
+    }
+    return YES;
+  }
   if (tab && ![self canTake:tab]) return NO;
   if (tab) [Parked() removeObjectForKey:_transferKey];
   if (!tab) {
@@ -639,9 +846,20 @@ const char kPageReportsKey = 0;
   if (!tab || tab.closed) return NO;
   [ReloadParked() removeObjectForKey:_transferKey];
   _adoptId = nil;
-  _transferredURL = tab.url;
+  // The launch's first page: compared by the URL it was asked for, which its tab may not show yet (nothing committed)
+  // or at all (a redirect).
+  NNCoreLaunchTabHolder *launch = objc_getAssociatedObject(tab, &kLaunchHolderKey);
+  objc_setAssociatedObject(tab, &kLaunchHolderKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  _transferredURL = launch.url ?: tab.url;
   if (SamePage(_pendingURL, _transferredURL)) _pendingURL = nil;
   [self attach:tab];
+  if (launch) {
+    // This view's first load, as ensureTab would have made it, then what the page reported before the view came.
+    _loadedOnce = YES;
+    _requestedURL = launch.url;
+    [launch replayTo:self tab:tab];
+    [self focusAfterLoad];
+  }
   return YES;
 }
 
@@ -1247,28 +1465,7 @@ void NNCoreWebViewsSetFieldTiming(BOOL on) {
     if (main) [self resetPageMedia];
     // A real document committed (not a new tab's initial about:blank): the app's request didn't become a download.
     if (main && ![(Text(dict, @"url", 8192) ?: @"about:") hasPrefix:@"about:"]) _requestedURL = nil;
-    // The frame's settings, as CEF's NNClient answers hello: autoplay blocked for the top page's site.
-    NSString *frameURL = Text(dict, @"url", 8192) ?: tab.url;
-    NSString *origin = OriginOf(main ? frameURL : tab.url);
-    __weak NNCoreWebView *weakSelf = self;
-    void (^answer)(BOOL) = ^(BOOL blockAutoplay) {
-      NSMutableDictionary *config = [NSMutableDictionary dictionary];
-      if (blockAutoplay) config[@"blockAutoplay"] = @YES;
-      // The app's screen-share picker, when the engine can grant the picked source to getUserMedia (CEF's
-      // site::AllowDesktopCapture).
-      if (gDisplayMediaPicker && [NNCoreEngine respondsToSelector:@selector(allowDesktopCapture:tab:frame:origin:)])
-        config[@"displayMediaPicker"] = @YES;
-      // The page reports its first contentful paint and its first frames once shown (page_script.js › Field timing).
-      if (main && NNFieldTimingEnabled()) config[@"fieldTiming"] = @YES;
-      [weakSelf callFrame:frameId kind:@"config" json:JSONString(config)];
-    };
-    if (origin && [origin hasPrefix:@"http"])
-      [NNCoreServices siteSettings:_profile ?: @"" origin:origin completion:^(NSDictionary *settings) {
-        NSDictionary *autoplay = [settings[@"autoplay"] isKindOfClass:NSDictionary.class] ? settings[@"autoplay"] : nil;
-        answer([autoplay[@"value"] isEqual:@"block"]);
-      }];
-    else
-      answer(NO);
+    AnswerHello(tab, _profile, dict, frameId, main);
   } else if ([kind isEqualToString:@"selection"] && main) {
     [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : SelectionState(dict) ?: NSNull.null}];
   } else if ([kind isEqualToString:@"perf"] && main && NNFieldTimingEnabled()) {

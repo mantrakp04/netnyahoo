@@ -110,9 +110,13 @@
     send("nowPlaying", state && { ...state, timestamp: Date.now() });
   }, 100);
   let blockAutoplay = false;
+  // What plays now, in the document or not (new Audio()): what autoplay blocking that comes late pauses.
+  const playingMedia = new Set();
   const onMediaEvent = (e) => {
     const m = e.target;
     if (!(m instanceof HTMLMediaElement)) return;
+    if (e.type === "play" || e.type === "playing") playingMedia.add(m);
+    else if (e.type === "pause" || e.type === "ended" || e.type === "emptied") playingMedia.delete(m);
     if (blockAutoplay && e.type === "play" && !(navigator.userActivation && navigator.userActivation.hasBeenActive)) {
       m.pause();
       return;
@@ -547,8 +551,23 @@
   };
   handlers.fieldTiming = (message) => setFieldTiming(!!(message && message.on));
 
+  // Media that started before the browser said autoplay is blocked (its answer crosses processes, and a fast page, as
+  // the one a launch starts early, can play first): paused now, as its play event would have been.
+  const pauseUnasked = (media, activated) => {
+    if (activated) return 0;
+    let paused = 0;
+    for (const m of media)
+      if (m && !m.paused) {
+        m.pause();
+        paused++;
+      }
+    return paused;
+  };
+
   handlers.config = (config) => {
     blockAutoplay = !!config.blockAutoplay;
+    if (blockAutoplay)
+      pauseUnasked([...playingMedia, ...document.querySelectorAll("video, audio")], !!(navigator.userActivation && navigator.userActivation.hasBeenActive));
     if (config.displayMediaPicker) installDisplayMedia();
     if (config.fieldTiming) setFieldTiming(true);
   };

@@ -42,6 +42,10 @@ public class CefModule: Module {
     // unmount (or window close) the app asks for after them.
     Function("prepareTransfer") { (key: String) in NNCoreWebView.prepareTransfer(key) }
     Function("releaseTransfer") { (key: String) in NNCoreWebView.releaseTransfer(key) }
+    // The launch's first page, which the engine started before the app ran: the app's hydrated choice ("" for none).
+    Function("claimLaunchTab") { (key: String, url: String, profile: String) in
+      NNCoreWebView.claimLaunchTab(key, url: url, profile: profile)
+    }
     AsyncFunction("tabStripCommand") { (id: Int, command: [String: Any]) in NNCoreTabStrip.command(id, command: command) }
       .runOnQueue(.main)
     AsyncFunction("tabStrips") { NNCoreTabStrip.allStrips }.runOnQueue(.main)

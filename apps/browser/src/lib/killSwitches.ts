@@ -51,6 +51,12 @@ export const SWITCHES = {
     removeBy: "2026-12-15",
     live: true,
   },
+  launchTab: {
+    about: "The focused window's page starts loading as the app starts, before its window is up (store/launchTab.ts).",
+    owner: "launch",
+    removeBy: "2026-12-15",
+    live: false,
+  },
 } as const satisfies Record<string, SwitchDef>;
 
 export type SwitchName = keyof typeof SWITCHES;

@@ -34,6 +34,10 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)prepareTransfer:(NSString *)transferKey;
 // The app's tab of `transferKey` is gone: its parked page closes.
 + (void)releaseTransfer:(NSString *)transferKey;
+// The launch's first page, started as React Native starts the bundle (NNCoreHost, from session.json's hint), and the app's claim of
+// it once its store is hydrated ("" for none): kept, parked, for the view of `transferKey`, or closed.
++ (void)startLaunchTab:(NSString *)transferKey url:(NSString *)url profile:(NSString *)profile;
++ (void)claimLaunchTab:(NSString *)transferKey url:(NSString *)url profile:(NSString *)profile;
 // Tests: the last events a tab's view sent, and the window it shows in.
 // The engine the page menu's "Search <engine> for …" names.
 + (void)setSearchEngineName:(NSString *)name;

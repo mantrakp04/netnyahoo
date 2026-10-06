@@ -2,6 +2,7 @@ import { cancelDownload, type Download } from "@netnyahoo/nncore";
 import { readDocument, writeDocument } from "@netnyahoo/shell";
 import { useBrowser, type BrowserState, type HydrateData } from "../store/browser";
 import { inPinnedContainer, isIncognitoProfile, newId, snapshotTab } from "../store/model";
+import { earlyLaunchTabOn, launchTab, type LaunchTab } from "../store/launchTab";
 import { parkWindowPins } from "../store/parkedPins";
 import type { BrowserWindow, ClosedTab, Tab } from "../store/types";
 import { startFavicons } from "./favicons";
@@ -40,6 +41,7 @@ const DOCS: Doc[] = [
       // Small Yahu windows aren't restored: closing (or quitting) throws their page away.
       const windows = Object.values(s.windows).filter((w) => !w.incognito && w.kind !== "small");
       const kept = new Set(windows.map((w) => w.id));
+      const focusedWindowId = s.ui.focusOrder.find((id) => kept.has(id)) ?? null;
       return {
         version: VERSION,
         profiles: s.profiles,
@@ -48,8 +50,10 @@ const DOCS: Doc[] = [
         settings: s.settings,
         windows,
         windowOrder: s.windowOrder.filter((id) => kept.has(id)),
-        focusedWindowId: s.ui.focusOrder.find((id) => kept.has(id)) ?? null,
+        focusedWindowId,
         lastProfileId: s.ui.lastProfileId,
+        // Read by the engine as it starts, to load this page before the app's window is up (NNCoreHost).
+        launchTab: earlyLaunchTabOn() ? launchTab(s, focusedWindowId) : null,
         tabs: Object.values(s.tabs).filter((t) => kept.has(t.windowId)).map(persistedTab),
         groups: Object.values(s.groups).filter((g) => kept.has(g.windowId)),
         splits: Object.values(s.splits).filter((v) => kept.has(v.windowId)),
@@ -104,6 +108,7 @@ type SessionV2 = {
   closedGroups?: BrowserState["closedGroups"];
   deletedGroups?: BrowserState["deletedGroups"];
   cleanedTabs?: BrowserState["cleanedTabs"];
+  launchTab?: LaunchTab | null;
 };
 
 export function loadSession(): HydrateData | null {

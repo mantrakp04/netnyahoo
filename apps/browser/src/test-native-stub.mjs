@@ -123,6 +123,7 @@ export const engineInfo = () => Promise.resolve(null);
 export const engineCall = (name, profile, args) => globalThis.nnTestEngineCall?.(name, profile, args) ?? Promise.resolve({});
 export const prepareTabTransfer = () => {};
 export const releaseTabTransfer = () => {};
+export const claimLaunchTab = () => {};
 export const onTabStripTransaction = (listener) => globalThis.nnTestTabStrip.listen(listener);
 export const sendTabStripCommand = (command) => globalThis.nnTestTabStrip.command(command);
 export const tabStrips = () => globalThis.nnTestTabStrip.snapshot();

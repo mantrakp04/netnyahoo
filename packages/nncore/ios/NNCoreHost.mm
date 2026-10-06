@@ -109,6 +109,23 @@ void (^gExtensionsEventHandler)(NSString *, NSDictionary *);
 NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDictionary dictionary];
 }  // namespace
 
+// session.json's hint of the page the app's focused window will show (store/launchTab.ts), from the app's documents
+// folder (ShellModule.documentURL): its load starts now, before the app has hydrated (NNCoreWebView startLaunchTab:).
+static void StartLaunchTab() {
+  NSString *dir = gScratchDataDir ? [gDataDirectory stringByDeletingLastPathComponent] : nil;
+  if (!dir) {
+    NSURL *support = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
+    dir = [support URLByAppendingPathComponent:NSBundle.mainBundle.bundleIdentifier ?: @"Netnyahoo"].path;
+  }
+  NSData *data = dir ? [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"session.json"]] : nil;
+  NSDictionary *session = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+  NSDictionary *hint = [session isKindOfClass:NSDictionary.class] ? session[@"launchTab"] : nil;
+  if (![hint isKindOfClass:NSDictionary.class]) return;
+  NSString *key = hint[@"id"], *url = hint[@"url"], *profile = hint[@"profile"];
+  if (![key isKindOfClass:NSString.class] || ![url isKindOfClass:NSString.class] || ![profile isKindOfClass:NSString.class]) return;
+  [NNCoreWebView startLaunchTab:key url:url profile:profile];
+}
+
 // MARK: - Engine delegate
 
 @interface NNCoreHostEngineDelegate : NSObject <NNCoreEngineDelegate>
@@ -142,6 +159,18 @@ NSMutableDictionary<NSString *, NSDictionary *> *gInstallPrompts = [NSMutableDic
   CFRunLoopObserverRef idle = CFRunLoopObserverCreateWithHandler(
       nullptr, kCFRunLoopBeforeWaiting, false, 0, ^(CFRunLoopObserverRef observer, CFRunLoopActivity) {
         CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, kCFRunLoopCommonModes);
+        // Once React Native's main-queue setup is done and its thread runs the bundle (the main thread is free until the
+        // app opens its windows): started right after launchApp, the page's creation held that setup up ~100 ms.
+        __block id started = [NSNotificationCenter.defaultCenter
+            addObserverForName:@"RCTJavaScriptWillStartExecutingNotification"
+                        object:nil
+                         queue:nil
+                    usingBlock:^(NSNotification *) {
+                      [NSNotificationCenter.defaultCenter removeObserver:started];
+                      started = nil;
+                      // On the main queue ahead of anything the bundle asks of it (the app's claim).
+                      dispatch_async(dispatch_get_main_queue(), ^{ StartLaunchTab(); });
+                    }];
         [self launchApp];
       });
   CFRunLoopAddObserver(CFRunLoopGetMain(), idle, kCFRunLoopCommonModes);

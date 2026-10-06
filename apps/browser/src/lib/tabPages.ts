@@ -1,7 +1,8 @@
-import { prepareTabTransfer, releaseTabTransfer } from "@netnyahoo/nncore";
+import { claimLaunchTab, prepareTabTransfer, releaseTabTransfer } from "@netnyahoo/nncore";
 import { isInternalTab } from "../components/pages/urls";
 import { useBrowser } from "../store/browser";
 import { changedIds } from "../store/changes";
+import { earlyLaunchTabOn, launchTab } from "../store/launchTab";
 import { engineProfile } from "../store/model";
 import type { Tab } from "../store/types";
 import { webviews } from "./webviews";
@@ -28,6 +29,7 @@ export function handOff(tabId: string, profile: string) {
  *  order they subscribed, so a tab moved out of a window that closes with the move (its last tab) is handed off before
  *  that window's close reaches the main queue (NNCoreWebView keepTransfersOfWindow:). */
 export function startTabPages() {
+  claimLaunch();
   useBrowser.subscribe((s, prev) => {
     if (s.tabs === prev.tabs) return;
     for (const id of changedIds(s.tabs, prev.tabs)) {
@@ -42,4 +44,17 @@ export function startTabPages() {
       }
     }
   });
+}
+
+// The engine started the launch's first page from session.json's hint before the app ran (NNCoreHost): the hydrated
+// store says which page its focused window shows. That page waits, parked, for its tab's view as a handed-off one does,
+// and is released the same way if the tab stops wanting it first; any other page the engine started closes. Before
+// startNativeSync opens the windows, so the claim reaches the main queue ahead of the view.
+function claimLaunch() {
+  const s = useBrowser.getState();
+  const launch = earlyLaunchTabOn() ? launchTab(s, s.ui.focusedWindowId) : null;
+  const tab = launch ? s.tabs[launch.id] : undefined;
+  const kept = launch && wantsPage(tab) && tab.navigation?.url === launch.url ? launch : null;
+  if (kept) handedOff.set(kept.id, kept.profile);
+  claimLaunchTab(kept?.id ?? "", kept?.url ?? "", kept?.profile ?? "");
 }
