@@ -133,7 +133,7 @@ function UpdatesSection() {
     <>
       <SectionHeader title="Updates" description={ready ? undefined : "Updates aren't set up for this build."} />
       <Group>
-        <Row title="Check for updates automatically" description={SHARING_COPY.updateChecks}>
+        <Row title="Check for updates automatically" description={`${SHARING_COPY.updateChecks} ${SHARING_COPY.switchFile}`}>
           <Toggle value={ready && state.automaticChecks} disabled={!ready} onChange={(v) => set({ automaticChecks: v })} />
         </Row>
         <Row title={`Automatically update ${APP}`} description="Downloads updates in the background and installs them the next time it restarts.">

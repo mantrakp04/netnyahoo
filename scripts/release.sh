@@ -2,6 +2,12 @@
 # Builds a release (docs/releasing.md):
 #   scripts/release.sh <version>          dist/<version>/: what gets published
 #   scripts/release.sh <version> --rc     dist/<version>-rc/: a candidate from the working tree, never published
+#   scripts/release.sh <version> --phased <seconds>
+#                                         the appcast's item carries <sparkle:phasedRolloutInterval>: Sparkle offers the
+#                                         update to 1/7 of the copies that check every <seconds>, a seventh more each
+#                                         time (the whole release takes 7 x <seconds>; 86400 is a week). A copy picks its
+#                                         place at random on its own Mac: no ID, no server state. Users who press
+#                                         Check for Updates… get it at once. Off by default (everyone, at once).
 #
 # Archives the Release configuration of apps/browser/macos (arm64), exports it with Developer ID, signs Chrome's
 # framework inside out the way Chrome signs its own (chrome/installer/mac/signing/parts.py), checks the signatures and
@@ -21,9 +27,23 @@
 # RELEASE_BUILD_DIR   the derived data folder (default apps/browser/build-release)
 set -euo pipefail
 
-version="${1:?usage: scripts/release.sh <version> [--rc]}"
+version="${1:?usage: scripts/release.sh <version> [--rc] [--phased <seconds>]}"
+shift
 rc=0
-[ "${2:-}" = --rc ] && rc=1
+phased=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --rc) rc=1 ;;
+    --phased)
+      phased="${2:-}"
+      shift
+      case "$phased" in '' | *[!0-9]* | 0) echo "error: --phased takes whole seconds (86400 is a day), got '$phased'" >&2; exit 1 ;; esac
+      ;;
+    *) echo "error: unknown option $1 (usage: scripts/release.sh <version> [--rc] [--phased <seconds>])" >&2; exit 1 ;;
+  esac
+  shift
+done
+[ "$rc" = 1 ] && [ -n "$phased" ] && { echo "error: a candidate is never published, so --phased doesn't apply to --rc" >&2; exit 1; }
 root="$(cd "$(dirname "$0")/.." && pwd -P)"
 app_dir="$root/apps/browser"
 macos="$app_dir/macos"
@@ -326,7 +346,11 @@ key="$(mktemp -d)/sparkle-key"
 trap 'rm -rf "$(dirname "$key")"' EXIT
 "$sparkle/generate_keys" --account "$sparkle_account" -x "$key" >/dev/null
 # --full-release-notes-url: "You're up to date" › Version History (packages/shell/ios/Updater.swift).
-"$sparkle/generate_appcast" --ed-key-file "$key" \
+# --phased: the new item's <sparkle:phasedRolloutInterval> (generate_appcast writes it for the item it generates; items
+# already in the appcast keep what they had).
+phased_args=()
+[ -n "$phased" ] && phased_args=(--phased-rollout-interval "$phased")
+"$sparkle/generate_appcast" --ed-key-file "$key" ${phased_args[@]+"${phased_args[@]}"} \
   --download-url-prefix "https://github.com/$repo/releases/download/v$version/" \
   --embed-release-notes --full-release-notes-url "$notes_page" \
   --link "https://github.com/$repo" "$updates"
@@ -336,4 +360,5 @@ rm -rf "$updates"
 echo
 [ "$notarize" = 1 ] && echo "Notarized and stapled." || echo "NOT notarized."
 [ "$rc" = 1 ] && echo "Release candidate: never publish dist/$version-rc."
+[ -n "$phased" ] && echo "Phased rollout: $phased s between steps (the appcast item has phasedRolloutInterval; the whole release takes $((phased * 7)) s)."
 du -sh "$app" "$dmg" "$zip" "$dist/appcast.xml" "$dist/release-notes.md"

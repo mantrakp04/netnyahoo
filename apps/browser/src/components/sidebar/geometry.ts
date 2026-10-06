@@ -45,6 +45,23 @@ export function entriesWithin(s: BrowserState, windowId: string, profileId: stri
   return n;
 }
 
+// Entries a page's first commit mounts with the lazySidebarRows switch off: the launch before lazy mounting.
+const EAGER_FIRST_PAINT_ENTRIES = 64;
+// A window with no saved frame yet first mounts the entries of 2400 pt, more than the tallest sidebar.
+export const FIRST_PAINT_HEIGHT = 2400;
+
+/**
+ * How many of `entries` a page mounts in its first commit: those a window as tall as the saved frame shows (lazy), or
+ * the first 64 (the lazySidebarRows switch off).
+ */
+export function firstPaintEntries(s: BrowserState, windowId: string, profileId: string, entries: string[], lazy: boolean): number {
+  if (!lazy) return EAGER_FIRST_PAINT_ENTRIES;
+  return Math.max(1, entriesWithin(s, windowId, profileId, entries, s.windows[windowId]?.frame?.[3] ?? FIRST_PAINT_HEIGHT));
+}
+
+/** A page beside the current one starts with its tiles and rows held back a frame (lazy); off, it mounts them at once. */
+export const startsOffScreen = (lazy: boolean, current: boolean) => lazy && !current;
+
 /**
  * The row showing `tabId` in its section, from the section's top; null for a pinned tile or a live folder's row.
  * `newTabAtTop`: the list starts with the New Tab row.

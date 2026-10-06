@@ -8,6 +8,7 @@ import { DevErrorBoundary } from "./DevErrorBoundary";
 import { startTranslate } from "./components/site/translate";
 import { firstWindowCommitted } from "./lib/afterFirstWindow";
 import { startAppIntegration } from "./lib/appIntegration";
+import { startKillSwitches } from "./lib/killSwitchesLaunch";
 import { startNativeSync } from "./lib/native";
 import { startPersistence } from "./lib/persist";
 import { perfMark, perfProbeEnabled, probeStore } from "./lib/perfProbe";
@@ -32,6 +33,7 @@ startTabLifecycle();
 startTranslate();
 startSync();
 startTelemetry();
+startKillSwitches();
 if (__DEV__ || perfProbeEnabled) require("./lib/devHarness").startDevHarness();
 
 // Development: `globalThis.nnDevMountDelayMs` holds a window's content back that long after its root starts, as a

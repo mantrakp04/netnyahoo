@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../../store/browser.ts");
 const { sidebarEntries } = await import("./entries.ts");
-const { entriesHeight, entriesWithin, entryHeight } = await import("./geometry.ts");
+const { entriesHeight, entriesWithin, entryHeight, firstPaintEntries, startsOffScreen, FIRST_PAINT_HEIGHT } = await import("./geometry.ts");
 await import("../../test-native-stub.mjs");
 
 const S = () => useBrowser.getState();
@@ -51,4 +51,26 @@ test("the entries within a height cover it: the rest start below it", () => {
     assert.ok(n === list.length || entriesHeight(s, "w", "default", list.slice(0, n)) + 3 >= height, `height ${height}`);
     assert.ok(n === 0 || entriesHeight(s, "w", "default", list.slice(0, n - 1)) + (n > 1 ? 3 : 0) < height, `height ${height}`);
   }
+});
+
+// The lazySidebarRows kill switch (lib/killSwitches.ts): on, a page first mounts what its window shows and a page beside the
+// current one waits a frame; off, the launch before that (64 entries, every page at once).
+test("lazySidebarRows on: a page first mounts the entries its window's saved frame shows", () => {
+  const list = hydrate();
+  const s = S();
+  const n = firstPaintEntries(s, "w", "default", list, true);
+  assert.equal(n, entriesWithin(s, "w", "default", list, 800));
+  assert.ok(n > 0 && n < list.length);
+  // No saved frame yet: the 2400 pt a tall sidebar can't exceed.
+  S().hydrate({ ...s, windows: { w: { ...s.windows.w, frame: undefined } } });
+  assert.equal(firstPaintEntries(S(), "w", "default", list, true), entriesWithin(S(), "w", "default", list, FIRST_PAINT_HEIGHT));
+  assert.equal(startsOffScreen(true, false), true);
+  assert.equal(startsOffScreen(true, true), false);
+});
+
+test("lazySidebarRows off: 64 entries at first, and no page waits", () => {
+  const list = hydrate();
+  assert.equal(firstPaintEntries(S(), "w", "default", list, false), 64);
+  assert.equal(startsOffScreen(false, false), false);
+  assert.equal(startsOffScreen(false, true), false);
 });

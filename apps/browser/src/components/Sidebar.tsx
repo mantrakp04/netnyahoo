@@ -1,6 +1,7 @@
 import { ContextMenuArea, FadeLabel, Symbol, WindowDragRegion } from "@netnyahoo/shell";
 import { memo, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { switchOn } from "../lib/killSwitches";
 import { layout, ThemeScope, useTheme } from "../lib/theme";
 import { useBrowser } from "../store/browser";
 import { PageProfileContext, useSettings, useWindowId, useWindowProfileId } from "../store/hooks";
@@ -25,7 +26,7 @@ import { LiveFolders } from "./sidebar/LiveFolderBlock";
 import { openOverflowMenu, openSidebarMenu } from "./sidebar/menus";
 import { PinDropZone, PinnedGrid } from "./sidebar/PinnedGrid";
 import { ResizeHandle } from "./sidebar/ResizeHandle";
-import { entriesHeight, entriesWithin, rowSpan, type Section } from "./sidebar/geometry";
+import { entriesHeight, firstPaintEntries, rowSpan, startsOffScreen, type Section } from "./sidebar/geometry";
 import { measureRow } from "./sidebar/state";
 import { SplitRowItem, TabRowItem } from "./sidebar/TabRow";
 import { useSidebarTokens, useSidebarWidth } from "./sidebar/tokens";
@@ -37,8 +38,6 @@ const ROW_PITCH = layout.rowHeight + layout.rowGap;
 const DOCKED_BOTTOM = 6;
 // Room the docked New Tab row takes from the list: the row plus one row gap above it.
 const DOCK = DOCKED_BOTTOM + ROW_PITCH;
-// A window with no saved frame yet first mounts the rows of 2400 pt, more than the tallest sidebar.
-const FIRST_PAINT_HEIGHT = 2400;
 const ROWS_PER_FRAME = 32;
 const NONE: string[] = [];
 
@@ -291,10 +290,9 @@ function PageRows({ windowId, profileId, current, rows, inlineNewTab, glowRoom, 
   // A page's first render mounts only the rows its window can show (a list as tall as the window, from the top: a page
   // mounts scrolled to the top); the rest follow in chunks, one per frame, so a long sidebar neither holds up the
   // window's first frame nor mounts in one long task after it.
-  const [mountedRows, setMountedRows] = useState(() => {
-    const s = useBrowser.getState();
-    return Math.max(1, entriesWithin(s, windowId, profileId, all, s.windows[windowId]?.frame?.[3] ?? FIRST_PAINT_HEIGHT));
-  });
+  // (The lazySidebarRows kill switch, read at launch: off, a page first mounts 64 rows and mounts a beside page at once.)
+  const [lazy] = useState(() => switchOn("lazySidebarRows"));
+  const [mountedRows, setMountedRows] = useState(() => firstPaintEntries(useBrowser.getState(), windowId, profileId, all, lazy));
   // A page beside the current one draws only the rows that fit until it has been current; after that it keeps every
   // row, so paging mounts nothing (dropping back to a screenful unmounted every row past it on the page leaving and
   // mounted them again on the page arriving, on every switch).
@@ -302,7 +300,7 @@ function PageRows({ windowId, profileId, current, rows, inlineNewTab, glowRoom, 
   if (current && !visited) setVisited(true);
   // A page beside the current one is off screen until a swipe brings it: its tiles and rows mount a frame after it,
   // so a launch's first frame mounts the current page's alone.
-  const [beside, setBeside] = useState(!current);
+  const [beside, setBeside] = useState(() => startsOffScreen(lazy, current));
   useEffect(() => {
     if (!beside) return;
     const frame = requestAnimationFrame(() => setBeside(false));

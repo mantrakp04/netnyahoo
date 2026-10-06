@@ -26,7 +26,7 @@ export function WhatsSentSheet() {
     <Sheet width={500} onClose={closeSettingsSheet}>
       <Text style={{ fontSize: 15, fontWeight: "600", color: theme.textPrimary }}>{SHARING_COPY.whatsSent}</Text>
       <Text style={{ fontSize: 12, marginTop: 4, color: theme.textSecondary, lineHeight: 16 }}>
-        Only while “{SHARING_COPY.toggle}” is on. {SHARING_COPY.updateChecks}
+        Only while “{SHARING_COPY.toggle}” is on, except what’s under “Even with sharing off”.
       </Text>
       <ScrollView style={{ maxHeight: 420, marginTop: 4 }}>
         {WHATS_SENT.map((group) => (

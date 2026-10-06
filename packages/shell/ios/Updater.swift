@@ -155,7 +155,8 @@ extension AppUpdater: SPUUpdaterDelegate {
   // installed when the app quits: prewarm it now, long before the user's next launch. Sparkle keeps its own schedule
   // (false). Updates installed from the update window relaunch at once and keep Sparkle's own scan only.
   public func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem, immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
-    UpdatePrewarm.start(version: item.versionString)
+    // The updatePrewarm kill switch (src/lib/killSwitches.ts): off, the staged copy just waits for the quit, as before.
+    if KillSwitch.isOn("updatePrewarm") { UpdatePrewarm.start(version: item.versionString) }
     return false
   }
 
@@ -163,6 +164,32 @@ extension AppUpdater: SPUUpdaterDelegate {
     guard Self.isPresentingFullScreen else { return false }
     deferredRelaunch = installHandler
     return true
+  }
+}
+
+/// The app's kill switches (src/lib/killSwitches.ts) as native code reads them: this launch's NETNYAHOO_SWITCHES
+/// ("name=off,other=on"), else the answer the app saved from netnyahoo.com/switches.json (switches-cache.json in the
+/// data dir), else on. Only `live` switches are read here: the app rewrites the file at launch and this reads it each time.
+enum KillSwitch {
+  static let cacheDocument = "switches-cache.json"
+
+  static func isOn(
+    _ name: String,
+    environment: [String: String] = ProcessInfo.processInfo.environment,
+    cache: () -> String? = { DocumentStore.read(cacheDocument) }
+  ) -> Bool {
+    for part in (environment["NETNYAHOO_SWITCHES"] ?? "").split(separator: ",") {
+      let pair = part.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+      guard pair.count == 2, pair[0] == name else { continue }
+      if ["off", "0", "false"].contains(pair[1]) { return false }
+      if ["on", "1", "true"].contains(pair[1]) { return true }
+    }
+    guard let data = cache()?.data(using: .utf8),
+      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let switches = json["switches"] as? [String: Any],
+      let value = switches[name] as? NSNumber, CFGetTypeID(value) == CFBooleanGetTypeID()
+    else { return true }
+    return value.boolValue
   }
 }
 

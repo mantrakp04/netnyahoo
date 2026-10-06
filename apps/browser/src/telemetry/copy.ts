@@ -12,6 +12,9 @@ export const SHARING_COPY = {
   },
   // Not opt-in: the update feed (infra/site/nginx.conf) counts every check, the one thing any copy sends.
   updateChecks: "netnyahoo.com counts update checks by version and day, and whether it's this copy's first. Nothing else.",
+  // Not opt-in either: lib/killSwitchesLaunch.ts reads the site's switches file once a launch, where the update check runs.
+  switchFile:
+    "While update checks are on, each launch also reads netnyahoo.com/switches.json: one small file, the same for everyone, that lets us turn off a speed-up that misbehaves. It sends no ID, no cookies and nothing about you.",
   onboarding: {
     title: "Help us fix what breaks",
     row: "Crashes, errors, feature counts and speed. Never your sites, typing or tabs.",
@@ -55,6 +58,10 @@ export const WHATS_SENT: { title: string; items: string[] }[] = [
       "At launch, in rough ranges: how many tabs and windows came back, how much history there is, and whether it's the first launch since the Mac started",
       "Memory use and the number of tabs, once an hour",
     ],
+  },
+  {
+    title: "Even with sharing off",
+    items: [SHARING_COPY.updateChecks, SHARING_COPY.switchFile],
   },
   {
     title: "Never",

@@ -180,6 +180,34 @@ Both must show the new version. Copies from 0.2.13 and earlier poll GitHub's URL
 netnyahoo.com/appcast.xml, which counts the check (version, day, first check or not) and redirects to the
 same GitHub file. feed.sh reads the URL from the built Info.plist, so it checks what this build will poll.
 
+### 5b. Staged rollout (an NNCore-sized or risky release)
+
+Three steps, in this order. Nothing here publishes by itself; each needs the owner's go-ahead (the first is the standing
+rule that a release which changes the engine or something users would notice publishes only after the owner has tested
+the final RC and said ship).
+
+1. **The owner tests the RC first.** Build `scripts/release.sh <version> --rc`, hand it over, and wait for "ship". Not
+   for a JS-only fix that passed the smoke test.
+2. **Phased appcast.** Build the release with `scripts/release.sh <version> --phased 86400`. The new appcast item then
+   carries `<sparkle:phasedRolloutInterval>86400</sparkle:phasedRolloutInterval>` (check with
+   `grep -c phasedRolloutInterval dist/<version>/appcast.xml`, which must print 1): Sparkle gives each copy a random
+   group on that Mac (no ID, nothing sent) and offers the update to the first seventh of copies at once, a seventh more
+   every interval, so everyone has it after a week. Someone who clicks Check for Updates… gets it at once. Publish as in
+   step 5 and watch a day or two: `crash.log`, new PostHog `$exception`s, `update_check` counts by version
+   (`docs/growth.md`). A problem found: flip the release's kill switch (`docs/kill-switches.md`) if it has one, and
+   publish a fixed build with a higher build number: copies that haven't updated yet go straight to it.
+3. **Everyone.** Remove the interval from the published appcast, so every copy sees the update:
+   ```bash
+   gh release download v<version> -R mantrakp04/netnyahoo -p appcast.xml -D /tmp/nn-appcast --clobber
+   sed -i '' '/<sparkle:phasedRolloutInterval>/d' /tmp/nn-appcast/appcast.xml
+   gh release upload v<version> -R mantrakp04/netnyahoo /tmp/nn-appcast/appcast.xml --clobber
+   .claude/skills/release/scripts/feed.sh <version>
+   ```
+   (The appcast isn't signed as a whole, only its zip's `edSignature`, so editing the line keeps it valid.) The next
+   release's `release.sh` starts from this published appcast, so it doesn't bring the interval back.
+
+A release without `--phased` goes to everyone at once, as before.
+
 ## 6. Deploy the site
 
 The download button builds its URL from `VERSION` (`releases/latest/download/Netnyahoo-<VERSION>.dmg`),
