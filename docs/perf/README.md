@@ -182,6 +182,15 @@ someone fixes the code or raises them by hand with a reason: `switchTabs.listene
 `switchTabs` commits, hostUpdates, storeUpdates, listenerCalls and mounts, and `launch.firstCommitMounts` were identical in all 8
 runs.
 
+**Store fan-out counts** (`<scenario>.subNotified`, `<scenario>.selectorCalls`: subscriptions a store update woke, and
+selectors evaluated, from the probe's `selectors` option; totals only, since the per-site names are call stacks). The big
+session's runs carry the probe now (a tenth slower, no other count moves: 2 runs without it came out with the same counts as
+3 with it). Over 6 runs on the 200-tab session: `switchTabs` 4052 and 6886, `hover` 10 and 202, `idle` and `scroll` 0, all
+identical in every run, so exact; `pageLoad` 9115-9275 and 10118-10276, `typing` 205-219 and 1235-1245 and `launch` 4677-7313
+and 9132-11877 wobble with load timing, so noisy (largest plus 10%). A sidebar row that subscribes to the global store
+again shows up here at once: `switchTabs.subNotified` grows by the row count per switch. Ceilings for runs without the probe
+(an app from before it) read as 0 and pass.
+
 ### Policy
 
 - **exact**: a count that took the same value in every baseline run. Its ceiling is that value. Group totals are held to it

@@ -84,8 +84,11 @@ const MIN_RUNS = 6;
 // MARK: Flatten
 
 const COUNTERS = ["renders", "mounts", "storeUpdates", "storeKeys", "listenerCalls", "tasks", "timers", "writes", "writeBytes", "commitTasks"];
+// The store fan-out, from the `selectors` probe (the ratchet runs with it): subscriptions notified by a store update and
+// selectors evaluated. Only the totals are counts: the per-site names are call stacks.
+const FAN_OUT = ["subNotified", "selectorCalls"];
 const SCALARS = ["commits", "hostUpdates"];
-const TOTALS = new Set([...COUNTERS, ...SCALARS, "firstCommitMounts"]);
+const TOTALS = new Set([...COUNTERS, ...SCALARS, ...FAN_OUT, "firstCommitMounts"]);
 
 const add = (into, key, value) => {
   into[key] = (into[key] ?? 0) + value;
@@ -106,6 +109,10 @@ function flattenStats(into, prefix, stats) {
       total += value;
     }
     add(into, `${prefix}.${k}`, total);
+  }
+  for (const k of FAN_OUT) {
+    const counter = stats[k];
+    if (counter) add(into, `${prefix}.${k}`, Object.values(counter).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0));
   }
 }
 
@@ -450,7 +457,10 @@ function jsSetup(flags, out, mark) {
   const smallLabel = `s${label.slice(1)}`;
   const args = (runs, append, small = false) => {
     const a = [join(here, "js-bench.mjs"), "run", "--app", app, "--bundle", jsbundle, "--label", small ? smallLabel : label, "--runs", String(runs), "--port", flags.port ?? "47831", "--out", out, "--scenarios", small ? "startup,launch" : scenarios, "--options", OPTIONS];
+    // The big session runs with the `selectors` probe, for the fan-out counts (subscriptions notified, selectors run). It
+    // slows a run by a tenth and moves no other count.
     if (small) a.push("--seed", "small");
+    else a.push("--probe", "selectors");
     if (append) a.push("--append", "1");
     a.push("--lib", libs);
     return a;
