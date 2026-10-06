@@ -23,6 +23,7 @@
 //                              selector timed by call site), renders (why each component rendered), listeners
 //         --lib <a.js,b.js>    the scenario files to load instead of bench-app.js, in order (a copy of another revision of
 //                              it; ratchet-app.js adds the scenarios ratchet.mjs needs)
+//         --seed small         one window with one tab instead of the 200-tab session (the report's `seed` says which)
 //         --trace 1            names anonymous timer callbacks by call site (slower: for finding, not timing)
 //         --options '<json>'   options passed to every scenario (bench-app.js), e.g. '{"seconds":20}'
 //   node js-bench.mjs compare <before.json> <after.json>
@@ -296,6 +297,22 @@ export async function evaluate(dataDir, pid, body, timeoutMs = 120_000) {
 
 // MARK: Run
 
+// --seed small: the seed's profile (history, bookmarks, settings) with a session of one window holding one tab, the
+// launch of someone who has barely used the browser (ratchet.mjs gates the first commit's mounts on both).
+function smallSession(dataDir) {
+  const file = join(dataDir, "session.json");
+  const session = JSON.parse(readFileSync(file, "utf8"));
+  const win = session.windows[0];
+  const keep = win.activeTabIds[win.profileId];
+  session.tabs = session.tabs.filter((t) => t.id === keep);
+  session.groups = [];
+  session.profiles = { [win.profileId]: session.profiles[win.profileId] };
+  session.profileOrder = [win.profileId];
+  win.tabIds = [keep];
+  win.activeTabIds = { [win.profileId]: keep };
+  writeFileSync(file, JSON.stringify(session));
+}
+
 // A bundle swapped into the copy breaks the app's code seal ("a sealed resource is missing or invalid"), and macOS
 // kills a hardened-runtime app with a broken seal a few seconds after launch ("app exited" in evaluate). Sign the copy
 // again with the original's identity and entitlements, as native-bench's prepareApp does (no secure timestamp: Apple's
@@ -332,6 +349,7 @@ async function run() {
       const dataDir = join(out, "data", `${label}-${flags.append ? `${Date.now()}-` : ""}${r}`);
       rmSync(dataDir, { recursive: true, force: true });
       writeSeed(dataDir, origin, version);
+      if (flags.seed === "small") smallSession(dataDir);
       // --probe selectors (etc.) turns on the probe's slower options (src/lib/perfProbe.ts).
       if (flags.probe) writeFileSync(join(dataDir, "perf-probe"), flags.probe);
       const { pid, launchedAt } = await launch(clone, dataDir, 9500 + r + (label.length % 50) * 10);
@@ -368,7 +386,7 @@ async function run() {
   const revisions = [...new Set(results.map(runRevision))];
   if (revisions.length > 1) console.log(`WARNING: these runs mix probe revisions ${revisions.join(", ")}; their numbers don't compare`);
   const report = {
-    label, version, bundle: jsbundle, bundleSize, when: new Date().toISOString(),
+    label, version, seed: flags.seed ?? "big", bundle: jsbundle, bundleSize, when: new Date().toISOString(),
     probeRevision: revisions.length > 1 ? revisions : revisions[0], benchRevision: BENCH_REVISION,
     results, summary: summarize(results, bundleSize),
   };

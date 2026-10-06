@@ -27,7 +27,8 @@ const extra = {
         since = Date.now();
       } else if (Date.now() - since >= quietMs) break;
     }
-    return { stats: P.read(), settled: Date.now() < end };
+    // firstCommitMounts: what the first React commit mounted (the probe records it; absent in older bundles).
+    return { stats: P.read(), settled: Date.now() < end, firstCommitMounts: P.firstCommitMounts ?? null };
   },
 };
 

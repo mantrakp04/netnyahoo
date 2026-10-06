@@ -13,10 +13,11 @@
 //       dist/<v>/export/Netnyahoo.app, which must have the tree's native API. --own runs the app's own main.jsbundle
 //       instead of a bundle of the tree: that is how a release candidate is gated. --bundle runs a bundle js-bench.mjs
 //       built earlier. --lib <bench-app.js> swaps in another copy of the scenarios. --instr adds the instruction counter.
-//   node ratchet.mjs baseline [--runs 8] [--app …] [--bundle …] [--out <dir>]
+//   node ratchet.mjs baseline [--runs 8] [--app …] [--bundle …] [--out <dir>] [--measure-only]
 //       Rebuilds ratchet.json from scratch: runs the scenarios 8 times on a bundle of the tree (about
 //       8 minutes) and calls `init` on them. Do it on a quiet machine, from a tree whose counts you accept as the new
-//       floor; the diff of ratchet.json is the review.
+//       floor; the diff of ratchet.json is the review. --measure-only stops after the runs and prints the two reports
+//       (the big and the one-tab session), to `lower` or `init` from by hand.
 //   node ratchet.mjs check <js-bench report.json> [--micro <counts.json>] [--instr <n>]
 //       Exit 1 with a table when a count is over its ceiling. A report of several runs counts as its median run.
 //   node ratchet.mjs lower <js-bench report.json> [--micro <counts.json>] [--instr <n>]
@@ -25,6 +26,8 @@
 //   node ratchet.mjs init <js-bench report.json…> [--micro <counts.json…>] [--no-instr]
 //       Rebuilds ratchet.json from reports of at least 6 runs in all (see the policy below), counting the Node hot paths
 //       twice and measuring the instruction count itself. Prints what it dropped.
+//       With --adopt it merges into the existing ratchet.json instead, never raising a ceiling: new counts are added,
+//       ceilings the runs beat are lowered (noisy ones too), counts that came out higher are listed and keep theirs.
 //   node ratchet.mjs census <js-bench report.json…>
 //       Every count with its values per run, steady ones apart from wobbling ones, for choosing what to gate.
 //
@@ -56,7 +59,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const appDir = resolve(here, "../..");
+// RATCHET_APP_DIR: run the Node counts on another copy of apps/browser (an export of HEAD, to count the committed tree).
+const appDir = process.env.RATCHET_APP_DIR ? resolve(process.env.RATCHET_APP_DIR) : resolve(here, "../..");
 const repo = resolve(appDir, "../..");
 const ceilingsFile = join(here, "ratchet.json");
 
@@ -81,7 +85,7 @@ const MIN_RUNS = 6;
 
 const COUNTERS = ["renders", "mounts", "storeUpdates", "storeKeys", "listenerCalls", "tasks", "timers", "writes", "writeBytes", "commitTasks"];
 const SCALARS = ["commits", "hostUpdates"];
-const TOTALS = new Set([...COUNTERS, ...SCALARS]);
+const TOTALS = new Set([...COUNTERS, ...SCALARS, "firstCommitMounts"]);
 
 const add = (into, key, value) => {
   into[key] = (into[key] ?? 0) + value;
@@ -106,15 +110,25 @@ function flattenStats(into, prefix, stats) {
 }
 
 // One run of js-bench (a `results` entry) as { counts: { name: value }, ran: scenarios }.
-export function flatten(result) {
+export function flatten(result, prefix = "") {
   const out = {};
   const ran = new Set();
   const one = (scenario, stats) => {
-    ran.add(scenario);
-    flattenStats(out, scenario, stats);
+    ran.add(prefix + scenario);
+    flattenStats(out, prefix + scenario, stats);
   };
   // `startup` reads the probe when the first window appears, a race against the rest of the launch: not a count.
   for (const name of ["launch", "typing", "switchTabs", "scroll", "hover", "storeUpdate", "idle"]) if (result[name]?.stats) one(name, result[name].stats);
+  // What the launch's first React commit mounted, by component: the first frame waits for all of it.
+  if (result.launch?.firstCommitMounts) {
+    let total = 0;
+    for (const [name, value] of Object.entries(result.launch.firstCommitMounts)) {
+      out[`${prefix}launch.firstCommitMounts.${name}`] = value;
+      total += value;
+    }
+    out[`${prefix}launch.firstCommitMounts`] = total;
+  }
+  if (prefix) return { counts: out, ran };
   if (result.openClose) {
     ran.add("openClose");
     flattenStats(out, "open", result.openClose.openStats);
@@ -133,24 +147,38 @@ export function flatten(result) {
 }
 
 // A count's scenario, as js-bench names it: open.* and close.* belong to openClose.
+// small.<scenario>.* is a scenario of the one-tab seed's runs.
 const scenarioOf = (key) => {
-  const head = key.split(".")[0];
+  const [head, second] = key.split(".");
+  if (head === "small") return `small.${second}`;
   return head === "open" || head === "close" ? "openClose" : head;
 };
 // Whether a count is a group total (<scenario>.<counter>, or profileSwipe.<command>.<counter>).
-const isTotal = (key) => TOTALS.has(key.split(".").at(-1)) && key.split(".").length === (key.startsWith("profileSwipe.") ? 3 : 2);
+const isTotal = (key) => {
+  const parts = key.replace(/^small\./, "").split(".");
+  return TOTALS.has(parts.at(-1)) && parts.length === (key.includes("profileSwipe.") ? 3 : 2);
+};
 
 const readJson = (file) => JSON.parse(readFileSync(file, "utf8"));
 
-// The runs of one or more reports: { values: { count: [value per run] }, runs, ran: scenarios every run had }.
+// The runs of one or more reports: { values: { count: [value per run] }, runs, ran: scenarios every run had }. Reports of
+// the one-tab seed (`seed: "small"`) are runs of their own: their counts are prefixed `small.`.
 function collect(reports) {
-  const runs = reports.flatMap((r) => r.results.map(flatten));
-  const ran = new Set(runs[0]?.ran);
-  for (const r of runs) for (const s of [...ran]) if (!r.ran.has(s)) ran.delete(s);
-  const keys = new Set(runs.flatMap((r) => Object.keys(r.counts)));
   const values = {};
-  for (const key of keys) values[key] = runs.map((r) => r.counts[key] ?? 0);
-  return { values, runs: runs.length, ran };
+  const ran = new Set();
+  let runs = 0;
+  for (const seed of ["big", "small"]) {
+    const group = reports.filter((r) => (r.seed ?? "big") === seed);
+    if (!group.length) continue;
+    const prefix = seed === "small" ? "small." : "";
+    const flat = group.flatMap((r) => r.results.map((x) => flatten(x, prefix)));
+    const sharedRan = new Set(flat[0]?.ran);
+    for (const r of flat) for (const s of [...sharedRan]) if (!r.ran.has(s)) sharedRan.delete(s);
+    for (const s of sharedRan) ran.add(s);
+    for (const key of new Set(flat.flatMap((r) => Object.keys(r.counts)))) values[key] = flat.map((r) => r.counts[key] ?? 0);
+    if (seed === "big") runs = flat.length;
+  }
+  return { values, runs, ran };
 }
 
 const sorted = (xs) => [...xs].sort((a, b) => a - b);
@@ -295,7 +323,7 @@ function lower(files, micro, instr) {
   console.log(`\nlowered ${diff.length} ceilings in ${ceilingsFile}`);
 }
 
-function init(files, microRuns, instr) {
+function init(files, microRuns, instr, { adopt = false } = {}) {
   const reports = files.map(readJson);
   const { values, runs, ran } = collect(reports);
   if (runs < MIN_RUNS) throw new Error(`init needs at least ${MIN_RUNS} runs to tell a steady count from a wobbling one; got ${runs}`);
@@ -332,9 +360,42 @@ function init(files, microRuns, instr) {
     micro,
     instr: instr === null ? {} : { "micro.instrPerRound": instr },
   };
+  if (adopt) return adoptCeilings(ceilings, dropped);
   writeFileSync(ceilingsFile, `${serialize(ceilings)}\n`);
   console.log(`wrote ${ceilingsFile}: ${Object.keys(exact).length} exact, ${Object.keys(noisy).length} noisy, ${Object.keys(micro).length} micro, ${Object.keys(ceilings.instr).length} instr, over ${runs} runs`);
   if (dropped.length) console.log(`not gated (totals whose median is more than ${NOISY_SPREAD * 100}% below their largest value):\n${dropped.map((d) => `  ${d.key}  [${d.v.join(", ")}]`).join("\n")}`);
+}
+
+// init --adopt: merges a fresh baseline into ratchet.json without ever raising a ceiling: counts the baseline adds are
+// added, ceilings it beat (noisy ones too) are lowered, and counts it found higher keep their ceiling and are listed, so
+// the check keeps failing on them until someone fixes the code or raises the ceiling by hand with a reason.
+function adoptCeilings(next, dropped) {
+  const old = readCeilings();
+  const merged = { ...next, exact: {}, noisy: {}, micro: {}, instr: {} };
+  const report = { added: [], lowered: [], higher: [] };
+  for (const tier of ["exact", "noisy", "micro", "instr"]) {
+    for (const key of new Set([...Object.keys(old[tier]), ...Object.keys(next[tier])])) {
+      const was = old[tier][key];
+      const now = next[tier][key];
+      if (was === undefined) {
+        merged[tier][key] = now;
+        report.added.push({ tier, key, ceiling: null, value: now });
+      } else if (now === undefined || now >= was) {
+        merged[tier][key] = was;
+        if (now !== undefined && now > was) report.higher.push({ tier, key, ceiling: was, value: now });
+      } else {
+        merged[tier][key] = now;
+        report.lowered.push({ tier, key, ceiling: was, value: now });
+      }
+    }
+  }
+  // A count that was noisy and is now exact is gated exact only.
+  for (const key of Object.keys(merged.exact)) delete merged.noisy[key];
+  writeFileSync(ceilingsFile, `${serialize(merged)}\n`);
+  const counts = (tier, rows) => rows.filter((r) => r.tier === tier).length;
+  console.log(`adopted into ${ceilingsFile}: ${report.added.length} added (${["exact", "noisy", "micro", "instr"].map((t) => `${counts(t, report.added)} ${t}`).join(", ")}), ${report.lowered.length} lowered, ${report.higher.length} kept above what the baseline measured`);
+  if (report.lowered.length) console.log(`\nLOWERED\n${table(report.lowered)}`);
+  if (report.higher.length) console.log(`\nHIGHER IN THE BASELINE (ceiling kept; a regression or a change to accept by hand)\n${table(report.higher.map((r) => ({ ...r })))}`);
 }
 
 function census(files) {
@@ -384,13 +445,17 @@ function jsSetup(flags, out, mark) {
   const libs = [flags.lib ? resolve(flags.lib) : join(here, "bench-app.js"), join(here, "ratchet-app.js")].join(",");
   // The instance's CDP port is 9500 + run + (label length % 50) * 10 (js-bench.mjs): the label picks the port range.
   const label = flags.label ?? "ratchet";
-  const args = (runs, append) => {
-    const a = [join(here, "js-bench.mjs"), "run", "--app", app, "--bundle", jsbundle, "--label", label, "--runs", String(runs), "--port", flags.port ?? "47831", "--out", out, "--scenarios", scenarios, "--options", OPTIONS];
+  // The launch alone again from a one-tab session (--seed small): what the first commit mounts for someone who has
+  // barely used the browser. Its own label (same length, so the same CDP port range) and report.
+  const smallLabel = `s${label.slice(1)}`;
+  const args = (runs, append, small = false) => {
+    const a = [join(here, "js-bench.mjs"), "run", "--app", app, "--bundle", jsbundle, "--label", small ? smallLabel : label, "--runs", String(runs), "--port", flags.port ?? "47831", "--out", out, "--scenarios", small ? "startup,launch" : scenarios, "--options", OPTIONS];
+    if (small) a.push("--seed", "small");
     if (append) a.push("--append", "1");
     a.push("--lib", libs);
     return a;
   };
-  return { app, scenarios, report: join(out, `${label}.json`), args };
+  return { app, scenarios, report: join(out, `${label}.json`), smallReport: join(out, `${smallLabel}.json`), args };
 }
 
 async function run(flags) {
@@ -404,6 +469,7 @@ async function run(flags) {
     setup = jsSetup(flags, out, mark);
     mark(`running ${setup.scenarios} on ${setup.app}`);
     sh(process.execPath, setup.args(1, false), { stdio: ["ignore", "ignore", "inherit"] });
+    sh(process.execPath, setup.args(1, false, true), { stdio: ["ignore", "ignore", "inherit"] });
   }
   let micro = null;
   let instr = null;
@@ -413,11 +479,13 @@ async function run(flags) {
     if (flags.instr) instr = Math.max(instrPerRound(), instrPerRound());
   }
   mark("checking");
-  let result = evaluate(ceilings, { files: setup ? [setup.report] : [], micro, instr });
+  const reports = () => (setup ? [setup.report, setup.smallReport] : []);
+  let result = evaluate(ceilings, { files: reports(), micro, instr });
   if (setup && result.rows.some((r) => r.kind === "over" && ["exact", "noisy"].includes(r.tier))) {
     mark("some counts are over: running the scenarios once more (only a count over in both runs fails)");
     sh(process.execPath, setup.args(1, true), { stdio: ["ignore", "ignore", "inherit"] });
-    result = evaluate(ceilings, { files: [setup.report], micro, instr });
+    sh(process.execPath, setup.args(1, true, true), { stdio: ["ignore", "ignore", "inherit"] });
+    result = evaluate(ceilings, { files: reports(), micro, instr });
   }
   const ok = printCheck(result, ceilings, { quiet: true });
   console.error(`[ratchet] ${((Date.now() - started) / 1000).toFixed(0)}s`);
@@ -433,8 +501,10 @@ async function baseline(flags) {
   const setup = jsSetup(flags, out, mark);
   mark(`running ${setup.scenarios} ${flags.runs ?? 8} times on ${setup.app}`);
   sh(process.execPath, setup.args(flags.runs ?? 8, false), { stdio: ["ignore", "ignore", "inherit"] });
+  sh(process.execPath, setup.args(flags.runs ?? 8, false, true), { stdio: ["ignore", "ignore", "inherit"] });
+  if (flags["measure-only"]) return console.log(`${setup.report} ${setup.smallReport}`);
   mark("counting the Node hot paths and instructions");
-  init([setup.report], [microCounts(), microCounts()], Math.max(instrPerRound(), instrPerRound(), instrPerRound()));
+  init([setup.report, setup.smallReport], [microCounts(), microCounts()], Math.max(instrPerRound(), instrPerRound(), instrPerRound()));
 }
 
 // The Node counts: micro-bench.mjs `counts`, whose last line is COUNTS {json}.
@@ -474,7 +544,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     else if (command === "init") {
       // The Node counts are measured here twice (they must agree to the digit), the instruction count three times.
       const microRuns = flags.micro ? flags.micro.map(readJson) : [microCounts(), microCounts()];
-      init(positional, microRuns, flags["no-instr"] ? null : Math.max(instrPerRound(), instrPerRound(), instrPerRound()));
+      init(positional, microRuns, flags["no-instr"] ? null : Math.max(instrPerRound(), instrPerRound(), instrPerRound()), { adopt: !!flags.adopt });
     }
     else if (command === "census") census(positional);
     else {
