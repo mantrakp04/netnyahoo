@@ -25,8 +25,13 @@ import { TranslateButton } from "./site/TranslateControls";
 import { ZoomIndicator } from "./site/ZoomControls";
 
 // What the toolbar shows of its tab: the page's favicon and the tab's bookkeeping (last active, …) don't re-render it.
+// Nor does a web page's title (it changes several times while a page loads): the field shows a title only after a
+// non-web address (a file, an app page), so only then is it part of what the toolbar reads.
 type ToolbarTab = Pick<Tab, "id" | "url" | "title" | "windowId" | "zoom">;
-const toolbarTab = (t: Tab | undefined): ToolbarTab | undefined => t && { id: t.id, url: t.url, title: t.title, windowId: t.windowId, zoom: t.zoom };
+const toolbarTab = (t: Tab | undefined): ToolbarTab | undefined =>
+  t && { id: t.id, url: t.url, title: isWebUrl(t.url) ? "" : t.title, windowId: t.windowId, zoom: t.zoom };
+const isWebUrl = (url: string) => /^https?:/i.test(url);
+export const useToolbarTab = (tabId: string | undefined) => useBrowser(useShallow((s) => toolbarTab(tabId ? s.tabs[tabId] : undefined)));
 
 // bare: no band or divider of its own (AutoHideToolbar draws them, so the controls can fade over a band that doesn't).
 export function Toolbar({
@@ -45,7 +50,7 @@ export function Toolbar({
   bare?: boolean;
 }) {
   const theme = useTheme();
-  const tab = useBrowser(useShallow((s) => toolbarTab(s.tabs[tabId])));
+  const tab = useToolbarTab(tabId);
   // Narrow on purpose: a loading page reports progress many times a second, and only the bar below shows it.
   const isLoading = useTabLive(tabId, (l) => l.isLoading);
   const themeColor = useTabLive(tabId, (l) => l.themeColor);
@@ -91,8 +96,8 @@ export function Toolbar({
             tooltip="Auto-Hide Tabs (⌘S)"
           />
         )}
-        <HistoryButton style={at.back} tab={tab} direction={-1} disabled={!history.back} palette={palette} onFocus={focus} />
-        <HistoryButton style={at.forward} tab={tab} direction={1} disabled={!history.forward} palette={palette} onFocus={focus} />
+        <HistoryButton style={at.back} tabId={tab.id} windowId={tab.windowId} direction={-1} disabled={!history.back} palette={palette} onFocus={focus} />
+        <HistoryButton style={at.forward} tabId={tab.id} windowId={tab.windowId} direction={1} disabled={!history.forward} palette={palette} onFocus={focus} />
         <ReloadButton style={at.reload} tab={tab} loading={isLoading} palette={palette} onFocus={focus} />
         <ToolbarExtensions tabId={tab.id} windowId={windowId} palette={palette} top={21.2 - 14} right={inSplit ? 8 + 60 : 8} />
         {tab.url ? (
@@ -174,14 +179,16 @@ function ProgressBar({ progress, color }: { progress: number; color: string }) {
 }
 
 export const HistoryButton = memo(function HistoryButton({
-  tab,
+  tabId,
+  windowId,
   direction,
   disabled,
   palette,
   style,
   onFocus,
 }: {
-  tab: Pick<Tab, "id" | "windowId">;
+  tabId: string;
+  windowId: string;
   direction: -1 | 1;
   disabled: boolean;
   palette: ToolbarPalette;
@@ -191,16 +198,16 @@ export const HistoryButton = memo(function HistoryButton({
   const openMenu = () => {
     onFocus();
     const open = useHistoryMenu.getState().menu;
-    if (open?.tabId === tab.id && open.direction === direction) return closeHistoryMenu();
-    void openHistoryMenu(tab.id, direction);
+    if (open?.tabId === tabId && open.direction === direction) return closeHistoryMenu();
+    void openHistoryMenu(tabId, direction);
   };
   const onPress = async (m: ClickModifiers & { middle?: boolean }) => {
     onFocus();
     closeHistoryMenu();
     const mode = openModeFor(m);
-    if (mode === "current" || mode === "split") return direction < 0 ? goBack(tab.id) : goForward(tab.id);
-    const [target] = await historyItems(tab.id, direction, 1);
-    if (target?.url) openUrl(target.url, tab.windowId, mode);
+    if (mode === "current" || mode === "split") return direction < 0 ? goBack(tabId) : goForward(tabId);
+    const [target] = await historyItems(tabId, direction, 1);
+    if (target?.url) openUrl(target.url, windowId, mode);
   };
   return (
     <MouseArea style={style} onMiddleClick={(e) => !disabled && void onPress({ ...e, middle: true })}>
@@ -260,7 +267,7 @@ export const UrlField = memo(function UrlField({
   const host = isFile ? "File" : breadcrumb(tab.url).host;
   const full = isFile ? ` ${safeDecode(tab.url.slice("file://".length))}` : urlForDisplay(tab.url);
   const path = !isFile && full.startsWith(host) ? full.slice(host.length) : full;
-  const web = /^https?:/i.test(tab.url);
+  const web = isWebUrl(tab.url);
   const trail = hovered ? path : showFullUrl ? path.replace(/\/$/, "") : !web && tab.title ? ` / ${tab.title}` : "";
 
   return (

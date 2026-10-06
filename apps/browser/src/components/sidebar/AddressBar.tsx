@@ -3,9 +3,8 @@ import { FadeLabel } from "@netnyahoo/shell";
 import { Pressable, StyleSheet, View } from "react-native";
 import { layout, useTheme } from "../../lib/theme";
 import { useBrowser } from "../../store/browser";
-import { useActiveTab, useTabLive, useWindowId } from "../../store/hooks";
+import { useActiveTabId, useTabLive, useWindowId } from "../../store/hooks";
 import { splitOf } from "../../store/splits";
-import type { Tab } from "../../store/types";
 import { ToolbarExtensions, useToolbarExtensionsWidth } from "../extensions/ToolbarExtensions";
 import { useHistoryAvailability } from "../layout/history";
 import { toolbarPalette, type ToolbarPalette } from "../layout/toolbarColors";
@@ -14,7 +13,7 @@ import { addressBarInSidebar, setUrlAnchor, SIDEBAR_FIELD } from "../layout/wind
 import { focusHeroBar } from "../omnibox/barState";
 import { GlassFill, liquidGlass } from "../glass";
 import { useHover } from "../primitives";
-import { HistoryButton, ReloadButton, UrlField } from "../Toolbar";
+import { HistoryButton, ReloadButton, UrlField, useToolbarTab } from "../Toolbar";
 
 const BUTTON = layout.toolbarButton;
 const GAP = 5;
@@ -27,7 +26,7 @@ const TOGGLE_MIN_WIDTH = TOGGLE_X + BUTTON / 2 + GAP + NAV_WIDTH + EDGE;
 
 export function SidebarHeaderTools({ width }: { width: number }) {
   const windowId = useWindowId();
-  const tab = useActiveTab();
+  const tab = useToolbarTab(useActiveTabId());
   const palette = toolbarPalette(useTheme(), null);
   const top = LIGHTS_Y - BUTTON / 2;
   return (
@@ -50,13 +49,13 @@ export function SidebarHeaderTools({ width }: { width: number }) {
 
 const alreadyFocused = () => {};
 
-function NavigationButtons({ tab, palette }: { tab: Tab; palette: ToolbarPalette }) {
+function NavigationButtons({ tab, palette }: { tab: NonNullable<ReturnType<typeof useToolbarTab>>; palette: ToolbarPalette }) {
   const loading = useTabLive(tab.id, (l) => l.isLoading);
   const history = useHistoryAvailability(tab.id);
   return (
     <>
-      <HistoryButton tab={tab} direction={-1} disabled={!history.back} palette={palette} onFocus={alreadyFocused} />
-      <HistoryButton tab={tab} direction={1} disabled={!history.forward} palette={palette} onFocus={alreadyFocused} />
+      <HistoryButton tabId={tab.id} windowId={tab.windowId} direction={-1} disabled={!history.back} palette={palette} onFocus={alreadyFocused} />
+      <HistoryButton tabId={tab.id} windowId={tab.windowId} direction={1} disabled={!history.forward} palette={palette} onFocus={alreadyFocused} />
       <ReloadButton tab={tab} loading={loading} palette={palette} onFocus={alreadyFocused} />
     </>
   );
@@ -64,7 +63,7 @@ function NavigationButtons({ tab, palette }: { tab: Tab; palette: ToolbarPalette
 
 export function SidebarAddressRow() {
   const windowId = useWindowId();
-  const tab = useActiveTab();
+  const tab = useToolbarTab(useActiveTabId());
   const field = useRef<View>(null);
   const anchor = () =>
     field.current?.measureInWindow((x, y, width, height) => {
@@ -82,7 +81,7 @@ export function SidebarAddressRow() {
   );
 }
 
-function PageField({ tab, windowId }: { tab: Tab; windowId: string }) {
+function PageField({ tab, windowId }: { tab: NonNullable<ReturnType<typeof useToolbarTab>>; windowId: string }) {
   const palette = toolbarPalette(useTheme(), null);
   const progress = useTabLive(tab.id, (l) => (l.isLoading ? l.progress : null));
   const inSplit = useBrowser((s) => !!splitOf(s, tab.id));
