@@ -34,3 +34,14 @@ The field/lab gap on J1 is the first thing to explain: lab launches restore a ti
 - `launch-critical-path.md`: J1 timeline and projects.
 - `render-census.md`: renders, hooks and selectors per interaction.
 - `field-journeys.md`: field events and queries.
+
+## Lessons we hold ourselves to
+
+From the critique of claude.ai's sprint, where cached sidebars showed deleted chats and metrics said "fine" while rows
+visibly popped in:
+- Every cache, prefetch, prewarm, coalescing or deferral ships with a staleness test (create, update, delete, relaunch).
+- A count gates releases only after it has been shown to move wall-clock time once.
+- Late content reserves its space or fades in a defined way; a test fails on any shift of what was already shown.
+- Every win has its own guardrail; user-visible ones are kill-switchable and reach the owner first, then a few
+  users, then everyone. Kill switches are capped and dated.
+- Before/after captures of anything a user would notice go to the owner.
