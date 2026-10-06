@@ -45,6 +45,9 @@ export function registerRow(windowId: string, id: string, view: View | null) {
   else byId.delete(id);
 }
 
+/** The rows a window has mounted (the perf probe's layout watch, lib/layoutWatch.ts). */
+export const rowIds = (windowId: string): string[] => [...(rows.get(windowId)?.keys() ?? [])];
+
 export function rowView(windowId: string, id: string): View | undefined {
   return rows.get(windowId)?.get(id);
 }

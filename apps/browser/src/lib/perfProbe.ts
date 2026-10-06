@@ -68,6 +68,10 @@ export const PERF_PROBE_REVISION = 2;
 const rendersProbe = !!probeOptions?.includes("renders");
 // "listeners" also times each store listener by the functions that subscribed it.
 const listenersProbe = !!probeOptions?.includes("listeners");
+// "layout": where each sidebar row is after every commit of the launch's first seconds (lib/layoutWatch.ts);
+// "layoutEdit" also opens, closes and moves a tab while the launch's rows fill in.
+const layoutProbe = !!probeOptions?.includes("layout");
+const layoutEditAt = probeOptions?.includes("layoutEdit") ? 2 : 0;
 
 const now = () => performance.now();
 const bump = (c: Counter, key: string, by = 1) => void (c[key] = (c[key] ?? 0) + by);
@@ -283,6 +287,12 @@ function installReactHook() {
       }
       stats.commitMs += root.current.actualDuration ?? 0;
       stats.walkMs += now() - t;
+      // Required here: the probe loads before the app's modules.
+      if (layoutProbe) {
+        try {
+          (require("./layoutWatch") as typeof import("./layoutWatch")).layoutCommitted(layoutEditAt);
+        } catch {}
+      }
     },
   };
 }
