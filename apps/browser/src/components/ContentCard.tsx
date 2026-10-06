@@ -15,7 +15,7 @@ import { useActiveTabId, useSidebarOpen, useWindowId } from "../store/hooks";
 import { activeTabId, engineProfile, wake } from "../store/model";
 import { removeTabs } from "../store/tabs";
 import { splitOf } from "../store/splits";
-import type { SplitView } from "../store/types";
+import type { SplitView, Tab } from "../store/types";
 import { BOOKMARKS_BAR_HEIGHT, BookmarksBar, useBookmarksBarShown } from "./bookmarks/BookmarksBar";
 import { FindBar } from "./FindBar";
 import { NO_TOOLBAR, splitGeometry, toolbarGeometry, type Rect, type ToolbarGeometry } from "./layout/geometry";
@@ -69,18 +69,36 @@ export function ContentCard() {
   useEffect(startMedia, []);
   useEffect(startSelectionTools, []);
 
-  // Recomputed only when the window's tabs change, not on every store update (page progress, say).
-  const mountedMemo = useRef<{ tabIds?: string[]; tabs?: object; ids: string[] }>({ ids: [] });
+  // Recomputed only when the window's tabs change, not on every store update (page progress, say). Switching tabs
+  // rewrites the tab map too (lastActiveAt), so with the same tab list a tab that is still the object it was costs
+  // nothing: only a tab that changed is asked again, and the answer is reused when it's the same.
+  const mountedMemo = useRef<{ tabIds?: string[]; tabs?: object; ids: string[]; seen: (Tab | undefined)[]; wants: boolean[] }>({ ids: [], seen: [], wants: [] });
   const mounted = useBrowser(
     useShallow((s) => {
       const tabIds = s.windows[windowId]?.tabIds;
       const memo = mountedMemo.current;
       if (memo.tabIds === tabIds && memo.tabs === s.tabs) return memo.ids;
-      const ids = (tabIds ?? [])
-        .map((id) => s.tabs[id]!)
-        .filter(wantsPage)
-        .map((t) => t.id);
-      mountedMemo.current = { tabIds, tabs: s.tabs, ids };
+      if (tabIds && memo.tabIds === tabIds) {
+        let same = true;
+        const seen = memo.seen.slice();
+        const wants = memo.wants.slice();
+        for (let i = 0; i < tabIds.length; i++) {
+          const t = s.tabs[tabIds[i]!];
+          if (t === seen[i]) continue;
+          seen[i] = t;
+          const want = wantsPage(t);
+          if (want !== wants[i]) same = false;
+          wants[i] = want;
+        }
+        if (same) {
+          mountedMemo.current = { ...memo, tabs: s.tabs, seen, wants };
+          return memo.ids;
+        }
+      }
+      const seen = (tabIds ?? []).map((id) => s.tabs[id]);
+      const wants = seen.map((t) => wantsPage(t));
+      const ids = (tabIds ?? []).filter((_, i) => wants[i]);
+      mountedMemo.current = { tabIds, tabs: s.tabs, ids, seen, wants };
       return ids;
     }),
   );
@@ -133,18 +151,39 @@ export function ContentCard() {
     return out;
   }, [warm, warmSplits, size.width, size.height]);
 
-  const shownMemo = useRef<{ mounted?: string[]; panes?: object; tabs?: object; keys: string[] }>({ keys: [] });
+  // The panes' keys in mount order: recomputed when what is mounted or laid out changes, or when a tab in them changes
+  // its order or profile (a switch rewrites the tab map for lastActiveAt alone).
+  const shownMemo = useRef<{ mounted?: string[]; panes?: object; tabs?: object; keys: string[]; ids: string[]; found: (Tab | undefined)[] }>({ keys: [], ids: [], found: [] });
   const shown = useBrowser(
     useShallow((s) => {
       const memo = shownMemo.current;
-      if (memo.mounted === mounted && memo.panes === panes && memo.tabs === s.tabs) return memo.keys;
-      const keys = [...new Set([...mounted, ...Object.keys(panes)])]
-        .map((id) => s.tabs[id])
-        .filter((t) => !!t)
+      if (memo.mounted === mounted && memo.panes === panes) {
+        if (memo.tabs === s.tabs) return memo.keys;
+        let same = true;
+        let found = memo.found;
+        for (let i = 0; i < memo.ids.length && same; i++) {
+          const t = s.tabs[memo.ids[i]!];
+          const was = found[i];
+          if (t === was) continue;
+          if (!t || !was || t.createdAt !== was.createdAt || t.profileId !== was.profileId) same = false;
+          else {
+            if (found === memo.found) found = found.slice();
+            found[i] = t;
+          }
+        }
+        if (same) {
+          shownMemo.current = { ...memo, tabs: s.tabs, found };
+          return memo.keys;
+        }
+      }
+      const ids = [...new Set([...mounted, ...Object.keys(panes)])];
+      const found = ids.map((id) => s.tabs[id]);
+      const keys = found
+        .filter((t): t is Tab => !!t)
         // Keep mount order stable; reordering native subviews while tabs move can shuffle them.
-        .sort((a, b) => a!.createdAt - b!.createdAt)
-        .map((t) => `${t!.id}|${t!.profileId}`);
-      shownMemo.current = { mounted, panes, tabs: s.tabs, keys };
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .map((t) => `${t.id}|${t.profileId}`);
+      shownMemo.current = { mounted, panes, tabs: s.tabs, keys, ids, found };
       return keys;
     }),
   );
