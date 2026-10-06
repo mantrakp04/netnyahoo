@@ -222,7 +222,8 @@ export async function framesRun(c, side, i, { counts }) {
     const id = `f${++seq}-${Date.now()}`;
     writeFileSync(join(dir, "bench-frames-cmd.json"), JSON.stringify({ id, op, ...args }));
     if (!wait) return { id };
-    const r = await app.waitFile("bench-frames-result.json", 15_000, (v) => v.id === id);
+    // Generous: a loaded Mac on efficiency cores can keep the main thread busy for seconds (a launch of 200 tabs).
+    const r = await app.waitFile("bench-frames-result.json", 60_000, (v) => v.id === id);
     if (!r?.ok) throw new Error(`probe ${op}: ${JSON.stringify(r)}`);
     return r;
   };
@@ -266,7 +267,7 @@ export async function framesRun(c, side, i, { counts }) {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
     await sleep(3000);
-    for (const end = Date.now() + 10_000; !rec.read().info && Date.now() < end; ) await sleep(100);
+    for (const end = Date.now() + 60_000; !rec.read().info && Date.now() < end; ) await sleep(100);
     if (!rec.info) throw new Error("the frame probe didn't start (no display link)");
     const info = await probe("info");
     out.info = { screen: info.screen, maxFPS: info.maxFPS, js: info.js };
