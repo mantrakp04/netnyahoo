@@ -552,6 +552,8 @@ function censusScenarios() {
     return w.tabIds.filter((id) => s.tabs[id]?.profileId === w.profileId);
   };
   const run = (command, arg = null) => () => nn.runCommand({ command, arg, windowId: windowId() });
+  // The command bar's variant: a floating panel, or the sidebar's dropdown with the address bar there.
+  const panelId = (w) => `${w}:${S().settings.addressBar === "sidebar" ? "sidebar" : "panel"}`;
   async function driverOf(id) {
     if (!(await until(() => nn.omnibox.get(id), 4000))) throw new Error(`no omnibox driver ${id}`);
     await sleep(800);
@@ -618,7 +620,7 @@ function censusScenarios() {
       const keys = sink();
       for (let r = 0; r < repeats; r++) {
         await action(run("focusCommandBar"), 900, open);
-        const driver = await driverOf(`${w}:panel`);
+        const driver = await driverOf(panelId(w));
         if (r === 0) for (let i = 1; i <= query.length; i++) await action(() => driver.type(query.slice(0, i)), gapMs, keys);
         await action(() => driver.key("Escape"), 700, close);
         await quiet(300);
@@ -633,7 +635,7 @@ function censusScenarios() {
       for (let r = 0; r < repeats; r++) {
         await quiet(600);
         S().openPanel(w, "");
-        const driver = await driverOf(`${w}:panel`);
+        const driver = await driverOf(panelId(w));
         driver.type(`${origin}/heavy?run=cen-${r}-${Date.now()}`);
         await sleep(600);
         const tab = activeId();
