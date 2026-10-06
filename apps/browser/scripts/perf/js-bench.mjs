@@ -52,7 +52,7 @@
 //     summary: { lines: { "<scenario>.<metric>": { median, min, max, n } }, detail: { <scenario>: top offenders } } }
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -262,7 +262,8 @@ export function writeSwitches(dataDir, text) {
 }
 
 export async function launch(app, dataDir, port) {
-  const binary = join(app, "Contents/MacOS/Netnyahoo");
+  // realpath: ps shows the resolved path (/private/var/… for a clone under tmpdir()'s /var/…).
+  const binary = join(realpathSync(app), "Contents/MacOS/Netnyahoo");
   writeSwitches(dataDir, process.env.NETNYAHOO_SWITCHES);
   if (pidsOf(binary).length) throw new Error(`an instance of ${app} is already running`);
   const launchedAt = Date.now();
