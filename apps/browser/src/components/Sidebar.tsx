@@ -29,7 +29,7 @@ import { ResizeHandle } from "./sidebar/ResizeHandle";
 import { entriesHeight, firstPaintEntries, rowSpan, startsOffScreen, type Section } from "./sidebar/geometry";
 import { measureRow } from "./sidebar/state";
 import { SplitRowItem, TabRowItem } from "./sidebar/TabRow";
-import { useSidebarTokens, useSidebarWidth } from "./sidebar/tokens";
+import { useSidebarTokens } from "./sidebar/tokens";
 
 const GLOW_ROOM = 24;
 // The pin target's band between the header and the first row, with no address field there.
@@ -41,9 +41,9 @@ const DOCK = DOCKED_BOTTOM + ROW_PITCH;
 const ROWS_PER_FRAME = 32;
 const NONE: string[] = [];
 
-export function Sidebar() {
+// `width`: the window's sidebar width (its frame, layout/SidebarDock.tsx, reads it once for both).
+export function Sidebar({ width }: { width: number }) {
   const windowId = useWindowId();
-  const width = useSidebarWidth(windowId);
   const current = useWindowProfileId();
   const { pages, paging } = usePagerPages(windowId);
   const [available, setAvailable] = useState(0);

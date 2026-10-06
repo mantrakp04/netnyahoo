@@ -38,7 +38,7 @@ export async function locateAnchor(windowId: string, id: TourAnchor): Promise<Re
     case "sidebarButton": {
       const url = useUrlAnchors.getState()[windowId];
       if (!url || url.sidebar || tabLayout !== "sidebar" || splitOf(s, activeTabId(s, windowId))) return null;
-      const g = toolbarGeometry({ sidebarButton: true, clearTrafficLights: !w.sidebarOpen });
+      const g = toolbarGeometry({ sidebarButton: true });
       if (g.sidebarButton === null) return null;
       const size = layout.toolbarButton;
       return { x: url.left - g.urlLeft + g.sidebarButton - size / 2, y: url.top + 21.2 - size / 2, width: size, height: size };

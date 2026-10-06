@@ -20,7 +20,9 @@ export function ResizeHandle({ windowId }: { windowId: string }) {
     <View
       {...handlers}
       onDoubleClick={() => useBrowser.getState().updateSettings({ sidebarWidth: 190 })}
-      style={{ position: "absolute", top: 46, bottom: 0, right: -3, width: 7, cursor: "col-resize" }}
+      // Inside the sidebar's edge: the sidebar is drawn over the card (its peek goes over the page), and the card's
+      // first points are the page's.
+      style={{ position: "absolute", top: 46, bottom: 0, right: 0, width: 4, cursor: "col-resize" }}
     />
   );
 }

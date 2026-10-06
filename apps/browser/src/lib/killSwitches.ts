@@ -63,6 +63,12 @@ export const SWITCHES = {
     removeBy: "2026-12-15",
     live: false,
   },
+  sidebarSlide: {
+    about: "Hiding or showing the sidebar (⌘S) slides it and the card's edge on Dia's spring; off, they jump (layout/SidebarDock.tsx).",
+    owner: "sidebar",
+    removeBy: "2026-12-15",
+    live: true,
+  },
 } as const satisfies Record<string, SwitchDef>;
 
 export type SwitchName = keyof typeof SWITCHES;

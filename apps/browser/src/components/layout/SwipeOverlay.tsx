@@ -50,7 +50,8 @@ type Shown = { direction: "back" | "forward"; confirmed: boolean; list: HistoryI
 export function SwipeOverlay({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const history = useHistoryAvailability(tabId);
-  const [size, setSize] = useState({ width: 0, height: 0 });
+  // Read only when a gesture starts: a ref, so a resize (the sidebar sliding resizes the card every frame) renders nothing.
+  const sizeRef = useRef({ width: 0, height: 0 });
   const [shown, setShown] = useState<Shown | null>(null);
   const area = useRef<SwipeAreaHandle>(null);
 
@@ -79,8 +80,6 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
     fade: new Animated.Value(1),
     scale: new Animated.Value(1),
   }).current;
-  const sizeRef = useRef(size);
-  sizeRef.current = size;
 
   // A new gesture stops everything the last one left running: its springs, its delayed dismiss and its list timer.
   const resetValues = (direction: "back" | "forward") => {
@@ -214,7 +213,7 @@ export function SwipeOverlay({ tabId }: { tabId: string }) {
         canSwipeForward={history.forward}
         allowsVerticalMotion={!!shown?.list}
         onSwipe={onSwipe}
-        onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+        onLayout={(e) => void (sizeRef.current = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
       />
       {shown && (
         <Animated.View

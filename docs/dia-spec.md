@@ -154,6 +154,21 @@ Measured materials (our own non-activating panels over solid backdrops; sRGB; ac
   over a 0.16 hover fill. It sits one row gap (3 pt) under the tab above it, background to background.
 - Pinned tile hover: a custom tooltip showing the title and URL.
 
+### Hiding and showing the sidebar (Auto-Hide Tabs, ⌘S; owner recording 2026-10-06, 240 fps)
+
+- The button is the card toolbar's first one (`sidebar.left`, centre 21 from the card's edge: x 211 with a 190
+  sidebar, x 27 hidden). Clicking it hides the sidebar; clicking it again shows it.
+- Hidden: no sidebar and **no traffic lights** (not even with the pointer on the button, where the close button was).
+  The card goes from 6 pt to 6 pt (left and right edges of the page area measured the same way: 6 and 6), top 6; its
+  toolbar is the shown state's, starting at the card's edge (toggle 27, back 61, forward 97, reload 131, host 160).
+- Motion: the sidebar, its top row with the traffic lights and the card's left edge move together; the card's right
+  edge and everything anchored to it (extension buttons, Chat) stay. The page is resized as it goes (a centred
+  element moves by half the travel, with Chrome's usual lag of a frame or two). The lights slide out with the sidebar
+  and are clipped by the window's edge.
+- Curve: the card's left edge traced through two hides and one show, one spring both ways: response 0.215 s, damping
+  ratio 0.79 (rms 2.4 % of the travel hiding, 3.2 % showing; the recorder delivered frames 17–33 ms apart, so ±1
+  frame). 90 % of the travel in 100 ms, a 1–2 pt overshoot at ~0.15 s, at rest by ~0.27 s.
+
 ## New Tab page
 
 - The card is translucent (no black fill). A glass orb (Dia's logo, 68.5pt; see below) sits above the bar.

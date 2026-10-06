@@ -31,7 +31,8 @@ export function usePeek(enabled: boolean) {
   useEffect(() => {
     if (enabled) return;
     clearTimeout(hideTimer.current);
-    slideOut();
+    // Nothing out (a window mounting with its sidebar shown): no animation to run, no state to set.
+    if (live) slideOut();
   }, [enabled]);
   useEffect(() => () => clearTimeout(hideTimer.current), []);
   return { slide, live, show, hide };

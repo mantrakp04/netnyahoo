@@ -15,34 +15,30 @@ import { focusHeroBar } from "../omnibox/barState";
 import { GlassFill, liquidGlass } from "../glass";
 import { useHover } from "../primitives";
 import { HistoryButton, ReloadButton, UrlField, useToolbarTab } from "../Toolbar";
+import { HEADER_TOOLS, navButtonsFitting } from "../layout/dockMotion";
 
 const BUTTON = layout.toolbarButton;
-const GAP = 5;
-const NAV_WIDTH = 3 * BUTTON + 2 * GAP;
+const { gap: GAP, toggleX: TOGGLE_X, edge: EDGE } = HEADER_TOOLS;
 // Dia: lights y26.75pt, x70.75pt; 5pt gap, 7pt inset.
 const LIGHTS_Y = 26.75;
-const TOGGLE_X = 70.75 + 27;
-const EDGE = 7;
-const TOGGLE_MIN_WIDTH = TOGGLE_X + BUTTON / 2 + GAP + NAV_WIDTH + EDGE;
 
 export function SidebarHeaderTools({ width }: { width: number }) {
   const windowId = useWindowId();
   const tab = useToolbarTab(useActiveTabId());
   const palette = toolbarPalette(useTheme(), null);
   const top = LIGHTS_Y - BUTTON / 2;
+  const fitting = navButtonsFitting(width, BUTTON);
   return (
     <>
-      {width >= TOGGLE_MIN_WIDTH ? (
-        <ToolbarButton
-          style={{ position: "absolute", top, left: TOGGLE_X - BUTTON / 2 }}
-          palette={palette}
-          icon="sidebar.left"
-          onPress={() => useBrowser.getState().toggleSidebar(windowId)}
-          tooltip="Auto-Hide Tabs (⌘S)"
-        />
-      ) : null}
+      <ToolbarButton
+        style={{ position: "absolute", top, left: TOGGLE_X - BUTTON / 2 }}
+        palette={palette}
+        icon="sidebar.left"
+        onPress={() => useBrowser.getState().toggleSidebar(windowId)}
+        tooltip="Auto-Hide Tabs (⌘S)"
+      />
       <View style={{ position: "absolute", top, right: EDGE, flexDirection: "row", gap: GAP }}>
-        {tab ? <NavigationButtons tab={tab} palette={palette} /> : null}
+        {tab && fitting ? <NavigationButtons tab={tab} palette={palette} count={fitting} /> : null}
       </View>
     </>
   );
@@ -50,14 +46,14 @@ export function SidebarHeaderTools({ width }: { width: number }) {
 
 const alreadyFocused = () => {};
 
-function NavigationButtons({ tab, palette }: { tab: NonNullable<ReturnType<typeof useToolbarTab>>; palette: ToolbarPalette }) {
+function NavigationButtons({ tab, palette, count }: { tab: NonNullable<ReturnType<typeof useToolbarTab>>; palette: ToolbarPalette; count: number }) {
   const loading = useTabLive(tab.id, (l) => l.isLoading);
   const history = useHistoryAvailability(tab.id);
   return (
     <>
       <HistoryButton tabId={tab.id} windowId={tab.windowId} direction={-1} disabled={!history.back} palette={palette} onFocus={alreadyFocused} />
-      <HistoryButton tabId={tab.id} windowId={tab.windowId} direction={1} disabled={!history.forward} palette={palette} onFocus={alreadyFocused} />
-      <ReloadButton tab={tab} loading={loading} palette={palette} onFocus={alreadyFocused} />
+      {count > 1 && <HistoryButton tabId={tab.id} windowId={tab.windowId} direction={1} disabled={!history.forward} palette={palette} onFocus={alreadyFocused} />}
+      {count > 2 && <ReloadButton tab={tab} loading={loading} palette={palette} onFocus={alreadyFocused} />}
     </>
   );
 }

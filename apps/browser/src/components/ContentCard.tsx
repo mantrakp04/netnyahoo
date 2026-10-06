@@ -14,7 +14,7 @@ import { webviewRef, webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
 import { setPageProgress } from "../store/pageProgress";
 import { shallowEqual, useStoreWhile, useTabValue } from "../store/tabWatch";
-import { useActiveTabId, useSidebarOpen, useWindowId } from "../store/hooks";
+import { useActiveTabId, useWindowId } from "../store/hooks";
 import { activeTabId, engineProfile, navigationTo, wake } from "../store/model";
 import { removeTabs } from "../store/tabs";
 import { splitOf } from "../store/splits";
@@ -30,6 +30,7 @@ import { DropTargets, SplitDividers, SplitToast } from "./layout/SplitChrome";
 import { SplitEmptyState } from "./layout/SplitEmptyState";
 import { pagerFor } from "./layout/profilePager";
 import { openFromPage } from "./layout/openFromPage";
+import { dockMoving, useDockMotion } from "./layout/dockMotion";
 import { setUrlAnchor, useAddressBarInSidebar, useTabLayout } from "./layout/windowLayout";
 import { NewTabPage } from "./NewTabPage";
 import { InternalPage } from "./pages";
@@ -58,7 +59,6 @@ export function ContentCard() {
   const activeId = useActiveTabId();
   const split = useBrowser((s) => splitOf(s, activeId));
   const fullscreenTab = useFullscreenTab(windowId);
-  const sidebarOpen = useSidebarOpen();
   const tabLayout = useTabLayout();
   const addressInSidebar = useAddressBarInSidebar();
   // Small Yahu draws its own bar above the card (components/smallYahu).
@@ -198,7 +198,7 @@ export function ContentCard() {
   const geometryFor = (rect: Rect | undefined): ToolbarGeometry => {
     if (addressInSidebar || small) return NO_TOOLBAR;
     const leading = !!rect && rect.x === 0 && rect.y === 0;
-    return toolbarGeometry({ sidebarButton: leading && tabLayout === "sidebar", clearTrafficLights: leading && tabLayout === "sidebar" && !sidebarOpen });
+    return toolbarGeometry({ sidebarButton: leading && tabLayout === "sidebar" });
   };
 
   const focusedRect = activeId ? panes[activeId] : undefined;
@@ -206,7 +206,27 @@ export function ContentCard() {
     if (!origin || !focusedRect || addressInSidebar || small) return;
     const g = geometryFor(focusedRect);
     setUrlAnchor(windowId, { left: origin.x + focusedRect.x + g.urlLeft, top: origin.y + focusedRect.y, width: focusedRect.width - g.urlLeft - 12 });
-  }, [origin, focusedRect?.x, focusedRect?.y, focusedRect?.width, tabLayout, sidebarOpen, addressInSidebar]);
+  }, [origin, focusedRect?.x, focusedRect?.y, focusedRect?.width, tabLayout, addressInSidebar]);
+
+  // While the sidebar slides, the card's size changes every frame: a pane filling the card follows it by itself (flex),
+  // and the card's own size (split rects, hidden panes, the URL bar's anchor) is taken once the motion ends, so the
+  // motion re-renders nothing (components/layout/dockMotion.ts).
+  const settled = useRef<{ width: number; height: number } | null>(null);
+  const measure = (width: number, height: number) => {
+    setSize({ width, height });
+    container.current?.measureInWindow((x, y) => setOrigin({ x, y }));
+  };
+  // A subscription, not a selector: the motion starting or ending re-renders the card only when it has a size to take.
+  useEffect(
+    () =>
+      useDockMotion.subscribe((m) => {
+        if (m.moving[windowId] || !settled.current) return;
+        const { width, height } = settled.current;
+        settled.current = null;
+        measure(width, height);
+      }),
+    [windowId],
+  );
 
   return (
     <View
@@ -214,8 +234,9 @@ export function ContentCard() {
       style={{ flex: 1 }}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
-        setSize({ width, height });
-        container.current?.measureInWindow((x, y) => setOrigin({ x, y }));
+        // A split's panes are placed from the card's size: they follow it every frame (a re-render each).
+        if (size.width > 0 && dockMoving(windowId) && !split) settled.current = { width, height };
+        else measure(width, height);
       }}
     >
       {size.width > 0 &&
@@ -228,6 +249,7 @@ export function ContentCard() {
               tabId={tabId}
               windowId={windowId}
               rect={rect}
+              fills={!!rect && rect.x === 0 && rect.y === 0 && rect.width === size.width && rect.height === size.height}
               fullWidth={size.width}
               fullHeight={size.height}
               focused={tabId === activeId}
@@ -256,6 +278,7 @@ const TabPane = memo(function TabPane({
   tabId,
   windowId,
   rect,
+  fills,
   fullWidth,
   fullHeight,
   focused,
@@ -273,6 +296,9 @@ const TabPane = memo(function TabPane({
   tabId: string;
   windowId: string;
   rect: Rect | undefined;
+  // Shown over the whole card: laid out by the card itself, so it follows the card's size between renders (the sidebar's
+  // slide resizes the card every frame and re-renders nothing).
+  fills: boolean;
   fullWidth: number;
   fullHeight: number;
   focused: boolean;
@@ -328,10 +354,7 @@ const TabPane = memo(function TabPane({
       }}
       style={{
         position: "absolute",
-        left: frame.x,
-        top: frame.y,
-        width: frame.width,
-        height: frame.height,
+        ...(fills ? { left: 0, top: 0, right: 0, bottom: 0 } : { left: frame.x, top: frame.y, width: frame.width, height: frame.height }),
         borderRadius: fullscreen ? 0 : layout.cardRadius,
         overflow: "hidden",
         opacity: covered ? 0 : 1,
@@ -469,7 +492,9 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
         if (tab()?.muted) void webviews.get(tabId)?.setMuted(true);
       }}
       onNavigationChange={({ url, title, canGoBack, canGoForward, isLoading, themeColor, themeColorSource }) => {
-        const target = pending.current;
+        // Before the effect that loads a new navigation has run (it sets pending), a prewarmed tab's late about:blank
+        // report is still not the tab's: nothing has committed in this view yet, so the navigation is the target.
+        const target = pending.current ?? (lastPage.current === null ? (tab()?.navigation?.url ?? null) : null);
         if (target === null && prewarmOnly()) {
           if (isBlank(url)) return;
           // Chrome navigated the prewarmed tab itself (an extension's chrome.tabs.update): the tab has that page now.
