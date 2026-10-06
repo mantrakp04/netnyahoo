@@ -9,6 +9,7 @@ import { openSettings } from "../components/settings/windows";
 import { useBrowser, type BrowserState } from "../store/browser";
 import { activeTabId, engineProfile, isIncognitoProfile, wake } from "../store/model";
 import { splitOf } from "../store/splits";
+import { keyedWatch, useWatched } from "../store/tabWatch";
 import { applyHeldReports } from "./nativeEvents";
 import { webviews } from "./webviews";
 
@@ -33,7 +34,13 @@ type Lifecycle = {
 
 export const useLifecycle = create<Lifecycle>()(() => ({ discarded: {}, batterySaver: false }));
 
-export const useIsSleeping = (tabId: string) => useLifecycle((l) => !!l.discarded[tabId]);
+// Every sidebar row asks: one shared listener wakes the row of the tab that went to sleep or woke (store/tabWatch.ts).
+const sleepWatch = keyedWatch<Lifecycle>(
+  useLifecycle,
+  (id, l, prev) => l.discarded[id] !== prev.discarded[id],
+  (l, prev) => l.discarded !== prev.discarded,
+);
+export const useIsSleeping = (tabId: string) => useWatched(sleepWatch, tabId, () => !!useLifecycle.getState().discarded[tabId]);
 
 const store = () => useBrowser.getState();
 

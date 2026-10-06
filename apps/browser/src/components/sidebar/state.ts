@@ -1,5 +1,6 @@
 import type { View } from "react-native";
 import { create } from "zustand";
+import { keyedWatch, useWatched } from "../../store/tabWatch";
 
 export type Anchor = { x: number; y: number; width: number; height: number };
 export type Target = { kind: "tab" | "group" | "live"; id: string };
@@ -23,6 +24,16 @@ export const useSidebarUi = create<SidebarUi>()(() => ({
 }));
 
 export const sidebarUi = () => useSidebarUi.getState();
+
+// Every row asks whether it is being renamed: one shared listener wakes the rows whose answer changed.
+const isRenamingTab = (u: SidebarUi, tabId: string) => u.renaming?.kind === "tab" && u.renaming.id === tabId;
+/** (tests) */
+export const renamingWatch = keyedWatch<SidebarUi>(
+  useSidebarUi,
+  (id, u, prev) => isRenamingTab(u, id) !== isRenamingTab(prev, id),
+  (u, prev) => u.renaming !== prev.renaming,
+);
+export const useIsRenamingTab = (tabId: string): boolean => useWatched(renamingWatch, tabId, () => isRenamingTab(useSidebarUi.getState(), tabId));
 export const setSidebarUi = (patch: Partial<SidebarUi>) => useSidebarUi.setState(patch);
 
 const rows = new Map<string, Map<string, View>>();

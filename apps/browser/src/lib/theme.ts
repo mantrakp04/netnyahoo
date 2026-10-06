@@ -1,7 +1,7 @@
 import type { AreaLightPalette } from "@netnyahoo/shaders";
 import { createContext, createElement, useContext, type ReactNode } from "react";
 import { useBrowser, type BrowserState } from "../store/browser";
-import { PageProfileContext, WindowContext } from "../store/hooks";
+import { AppearanceContext, PageProfileContext, WindowContext } from "../store/hooks";
 import type { ProfileColor } from "../store/types";
 import { backdropTint, opaqueTint, tintForHue, type BackdropTint } from "./windowTint";
 
@@ -232,7 +232,8 @@ export function ThemeScope({ children }: { children: ReactNode }) {
   const windowId = useContext(WindowContext);
   const page = useContext(PageProfileContext);
   const key = useBrowser((s) => themeKey(s, windowId, page));
-  return createElement(ThemeContext.Provider, { value: themeFor(key) }, children);
+  const appDark = useBrowser((s) => s.ui.appDark);
+  return createElement(AppearanceContext.Provider, { value: appDark }, createElement(ThemeContext.Provider, { value: themeFor(key) }, children));
 }
 
 export function useTheme(): Theme {

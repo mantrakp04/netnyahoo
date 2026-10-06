@@ -1,6 +1,6 @@
 import { iconTheme, type IconTheme } from "@netnyahoo/shell";
 import { useEffect, useState } from "react";
-import { useAppearanceDark, useFavicon, useFaviconTheme } from "./favicons";
+import { useAppearanceDark, useFaviconView } from "./favicons";
 
 export type TileTheme = { theme: IconTheme; image?: string; emoji?: string };
 
@@ -9,8 +9,7 @@ const emojiThemes = new Map<string, Promise<IconTheme | null>>();
 export function useTileTheme(url: string, favicon: string | null | undefined, customIcon: string | null | undefined, profileId: string): TileTheme | null {
   const emoji = customIcon && !customIcon.startsWith("symbol:") ? customIcon : null;
   useAppearanceDark();
-  const resolved = useFavicon(customIcon ? "" : url, favicon, profileId);
-  const pageTheme = useFaviconTheme(customIcon ? "" : url, favicon, profileId);
+  const { resolved, theme: pageTheme } = useFaviconView(customIcon ? "" : url, favicon, profileId, true);
   const [emojiTheme, setEmojiTheme] = useState<{ emoji: string; theme: IconTheme | null } | null>(null);
   useEffect(() => {
     if (!emoji) return;

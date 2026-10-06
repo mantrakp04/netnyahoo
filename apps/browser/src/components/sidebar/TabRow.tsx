@@ -6,13 +6,14 @@ import { hex, layout, useTheme } from "../../lib/theme";
 import { useBrowser, type BrowserState } from "../../store/browser";
 import { activeTabId } from "../../store/model";
 import { useIsActiveTab, usePageProfileId, useTab, useWindowId } from "../../store/hooks";
+import { useTabState } from "../../store/tabWatch";
 import { HoverSlot } from "../HoverSlot";
 import { IconButton } from "../primitives";
 import { clickTab, commitRename, endRename, startRename, tabTitle } from "./actions";
 import { useDragItem } from "./dnd";
 import { dismissHover, useRowHover } from "./hover";
 import { openTabMenu } from "./menus";
-import { registerRow, useSidebarUi } from "./state";
+import { registerRow, useIsRenamingTab } from "./state";
 import { TabIcon } from "./TabIcon";
 import { TabBadges } from "../media/TabBadges";
 import { useSidebarTokens } from "./tokens";
@@ -59,18 +60,20 @@ function rowFlags(s: BrowserState, windowId: string, tabId: string): number {
   return flags;
 }
 
+const sameRow = (a: { tab: unknown; flags: number }, b: { tab: unknown; flags: number }) => a.tab === b.tab && a.flags === b.flags;
+
 export function TabRow({ tabId }: { tabId: string }) {
   const theme = useTheme();
   const tokens = useSidebarTokens();
   const windowId = useWindowId();
-  const tab = useTab(tabId);
-  // The row's flags in one number: a sidebar has hundreds of rows, and each selector runs on every store update.
-  const flags = useBrowser((s) => rowFlags(s, windowId, tabId));
+  // The tab and the row's flags (one number), woken only when this tab changes, goes active or is selected: a sidebar has
+  // hundreds of rows, and none of them runs a selector for a store update that isn't about it.
+  const { tab, flags } = useTabState(tabId, (s) => ({ tab: s.tabs[tabId], flags: rowFlags(s, windowId, tabId) }), sameRow);
   const active = !!(flags & ACTIVE);
   const selected = !!(flags & SELECTED);
   const playingAudio = !!(flags & PLAYING);
   const loading = !!(flags & LOADING);
-  const renaming = useSidebarUi((u) => u.renaming?.kind === "tab" && u.renaming.id === tabId);
+  const renaming = useIsRenamingTab(tabId);
   const { hovered, hoverProps } = useRowHover(windowId, renaming ? null : { kind: "tab", id: tabId });
   if (!tab) return null;
   const title = tabTitle(tab);

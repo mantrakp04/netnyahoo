@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { useBrowser } from "../../store/browser";
 import { activeTabId } from "../../store/model";
 import { splitOf } from "../../store/splits";
+import { keyedWatch, useWatchedEntry } from "../../store/tabWatch";
 
 export type PageState = {
   status: string;
@@ -65,8 +66,17 @@ export function patchPage(tabId: string, patch: Partial<PageState>) {
 
 export const pageOf = (tabId: string | undefined): PageState => (tabId && usePages.getState().pages[tabId]) || IDLE_PAGE;
 
+// One shared store listener wakes a page's readers only when that tab's page state changed (store/tabWatch.ts).
+/** (tests) */
+export const pageWatch = keyedWatch<Store>(
+  usePages,
+  (id, s, prev) => s.pages[id] !== prev.pages[id],
+  (s, prev) => s.pages !== prev.pages,
+);
+
 export function usePage<T>(tabId: string | undefined, select: (p: PageState) => T): T {
-  return usePages((s) => select((tabId && s.pages[tabId]) || IDLE_PAGE));
+  const id = tabId ?? "";
+  return useWatchedEntry(pageWatch, id, () => (id ? usePages.getState().pages[id] : undefined) ?? IDLE_PAGE, select);
 }
 
 export function setBrowserId(tabId: string, browserId: number) {

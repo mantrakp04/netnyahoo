@@ -4,7 +4,7 @@ import { View } from "react-native";
 import { hex } from "../../lib/theme";
 import { usePage } from "../layout/pageState";
 import { useSidebarTokens } from "../sidebar/tokens";
-import { useMedia } from "./state";
+import { useIsPipOpen } from "./state";
 import { CAPTURE_RED } from "./tokens";
 
 // `pip: false` where Dia shows no picture-in-picture badge (the top tab strip).
@@ -19,7 +19,7 @@ export const TabBadges = memo(function TabBadges({ tabId, size = 16, pip = true 
 
 function PipBadge({ tabId, size }: { tabId: string; size: number }) {
   const tokens = useSidebarTokens();
-  const open = useMedia((m) => !!m.pipOpen[tabId]);
+  const open = useIsPipOpen(tabId);
   if (!open) return null;
   const d = Math.round(size * 0.72);
   return (
