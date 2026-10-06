@@ -510,9 +510,31 @@
     };
   };
 
+  // MARK: Field timing — only while the user shares diagnostics (the browser says so in config): when the page first
+  // painted content, and its first frame each time it's shown again after being hidden. Times only, as epoch ms.
+  const PO = window.PerformanceObserver;
+  const raf = window.requestAnimationFrame;
+  const dateNow = Date.now;
+  const timeOrigin = performance.timeOrigin;
+  let fieldTiming = false;
+  const installFieldTiming = () => {
+    if (fieldTiming || !isTop) return;
+    fieldTiming = true;
+    try {
+      new PO((list) => {
+        for (const e of list.getEntries()) if (e.name === "first-contentful-paint") send("perf", { fcp: timeOrigin + e.startTime });
+      }).observe({ type: "paint", buffered: true });
+    } catch (e) {}
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      apply(raf, window, [() => apply(raf, window, [() => send("perf", { shown: apply(dateNow, Date, []) })])]);
+    });
+  };
+
   handlers.config = (config) => {
     blockAutoplay = !!config.blockAutoplay;
     if (config.displayMediaPicker) installDisplayMedia();
+    if (config.fieldTiming) installFieldTiming();
   };
   send("hello", { top: isTop, url: location.href });
 

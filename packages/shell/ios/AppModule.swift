@@ -129,6 +129,7 @@ public class AppModule: Module {
         "isolatedInstance": env["NETNYAHOO_BACKGROUND"] == "1" || env["NETNYAHOO_DATA_DIR"] != nil,
         "forceReleaseNotes": env["NETNYAHOO_RELEASE_NOTES"] == "1",
         "processStart": Self.processStart as Any,
+        "bootTime": Self.bootTime as Any,
         "inApplicationsFolder": Self.inApplicationsFolder,
       ]
     }
@@ -420,6 +421,15 @@ public class AppModule: Module {
 }
 
 extension AppModule {
+  /// When the Mac started (kern.boottime), epoch ms: telemetry's first launch since boot is a cold one.
+  fileprivate static let bootTime: Double? = {
+    var boot = timeval()
+    var size = MemoryLayout<timeval>.stride
+    var mib: [Int32] = [CTL_KERN, KERN_BOOTTIME]
+    guard sysctl(&mib, 2, &boot, &size, nil, 0) == 0 else { return nil }
+    return Double(boot.tv_sec) * 1000 + Double(boot.tv_usec) / 1000
+  }()
+
   fileprivate static let processStart: Double? = {
     var info = kinfo_proc()
     var size = MemoryLayout<kinfo_proc>.stride

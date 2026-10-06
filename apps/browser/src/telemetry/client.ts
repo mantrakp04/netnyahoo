@@ -27,6 +27,9 @@ type Saved = {
   crashCursor: number;
   lastVersion: string | null;
   sessionOpen: boolean;
+  // perf_launch's cold and since_quit (journeys.ts): when this copy last launched and last quit, epoch ms.
+  lastLaunchAt?: number | null;
+  lastQuitAt?: number | null;
 };
 
 const DEFAULT: Saved = {
@@ -344,7 +347,14 @@ export function loadChoice() {
   useTelemetry.setState({ sharing: saved.sharing, decided: saved.decidedAt !== null, askDone: saved.askDoneAt !== null });
 }
 
-export function startClient(): { previous: PreviousSession; updatedFrom: string | null } | null {
+export type ClientSession = {
+  previous: PreviousSession;
+  updatedFrom: string | null;
+  lastLaunchAt: number | null;
+  lastQuitAt: number | null;
+};
+
+export function startClient(): ClientSession | null {
   loadChoice();
   void engineInfo()
     .then((e) => (engineVersion = `NNCore / Chromium ${e.chromiumVersion}`))
@@ -359,14 +369,15 @@ export function startClient(): { previous: PreviousSession; updatedFrom: string 
   const previous: PreviousSession = saved.lastVersion === null ? "none" : saved.sessionOpen ? "unclean" : "clean";
   const version = appInfo().appVersion;
   const updatedFrom = saved.lastVersion && saved.lastVersion !== version ? saved.lastVersion : null;
-  save({ sessionOpen: true, lastVersion: version });
+  const last = { lastLaunchAt: saved.lastLaunchAt ?? null, lastQuitAt: saved.lastQuitAt ?? null };
+  save({ sessionOpen: true, lastVersion: version, lastLaunchAt: appInfo().processStart ?? Date.now() });
   scheduleFlush(10_000);
-  return { previous, updatedFrom };
+  return { previous, updatedFrom, ...last };
 }
 
 export function endSession() {
   if (!saved.sharing) return;
-  save({ sessionOpen: false });
+  save({ sessionOpen: false, lastQuitAt: Date.now() });
   persistQueue(true);
 }
 

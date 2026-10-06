@@ -1,4 +1,5 @@
 import { appInfo, capture, isSharing } from "./client";
+import { launchFirstWindow } from "./journeys";
 
 export type SuggestionType = "history" | "bookmark" | "tab" | "url" | "search" | "calc" | "action" | "create" | "typed";
 
@@ -46,8 +47,8 @@ export function markFirstWindow() {
   firstWindowAt = Date.now();
   const start = appInfo().processStart;
   if (!isSharing() || !start) return;
-  const ms = Math.round(firstWindowAt - start);
-  if (ms > 0 && ms < 10 * 60_000) capture("perf_launch", { launch_ms: ms });
+  // perf_launch goes once the launch's later steps are in (journeys.ts); launch_ms keeps this meaning.
+  if (firstWindowAt - start > 0 && firstWindowAt - start < 10 * 60_000) launchFirstWindow(firstWindowAt);
 }
 
 export const devOmniboxSampler = () => ({ keystrokes, pending: latency.length });

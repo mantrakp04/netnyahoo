@@ -60,6 +60,8 @@ export type SystemInfo = {
   isolatedInstance?: boolean;
   forceReleaseNotes?: boolean;
   processStart?: number | null;
+  /** When the Mac started, epoch ms (kern.boottime). */
+  bootTime?: number | null;
   inApplicationsFolder?: boolean;
 };
 

@@ -1,7 +1,7 @@
 // The app itself, which index.js loads once the native build matches this bundle (nativeApi.tsx).
 // First, so every native module listener the app adds applies held page reports before it runs.
 import "./lib/nativeEvents";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { AppRegistry, unstable_batchedUpdates } from "react-native";
 import { WindowRoot } from "./App";
 import { DevErrorBoundary } from "./DevErrorBoundary";
@@ -15,6 +15,7 @@ import { startTabPages } from "./lib/tabPages";
 import { startSync } from "./sync/engine";
 import { setStoreBatching, useBrowser } from "./store/browser";
 import { installErrorReporting, startTelemetry } from "./telemetry";
+import { launchCommitted } from "./telemetry/journeys";
 import { markFirstWindow } from "./telemetry/track";
 
 probeStore("browser", useBrowser);
@@ -44,6 +45,7 @@ function Root({ windowId }: { windowId: string }) {
     const timer = setTimeout(() => setHeld(false), delay);
     return () => clearTimeout(timer);
   }, []);
+  useLayoutEffect(() => launchCommitted(), []);
   useEffect(() => {
     perfMark("firstWindow");
     markFirstWindow();

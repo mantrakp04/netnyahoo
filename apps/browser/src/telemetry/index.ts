@@ -2,6 +2,7 @@ import { devCrash } from "@netnyahoo/shell";
 import { createElement } from "react";
 import { devState, flush, requestLog, setSharing, useTelemetry } from "./client";
 import { captureException, installErrorReporting, reportNativeCrashes } from "./errors";
+import { devJourneys, emitJourneys } from "./journeys";
 import { devOmniboxSampler } from "./track";
 import { devHourly, sessionEnding, startUsage } from "./usage";
 
@@ -18,6 +19,8 @@ export function startTelemetry() {
       flush,
       hourly: devHourly,
       omniboxSampler: devOmniboxSampler,
+      journeys: devJourneys,
+      emitJourneys,
       quit: sessionEnding,
       reportNativeCrashes,
       captureException,

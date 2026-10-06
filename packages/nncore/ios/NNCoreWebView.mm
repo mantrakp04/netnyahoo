@@ -16,6 +16,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 
+#import "NNCoreFieldTiming.h"
 #import "NNCoreNavigationDownloads.h"
 
 #include <climits>
@@ -559,9 +560,12 @@ const char kPageReportsKey = 0;
       return;
     }
     if (url.length && [view skipsNavigationDownload:url userInitiated:view->_pendingUserInitiated]) url = nil;
+    if (url.length) NNFieldMark(view->_transferKey, @"request", NNFieldNow());
     controller.hostChanges++;
     NNCoreTab *tab = [controller.coreWindow openTab:url.length ? url : @"about:blank" profile:profile foreground:NO];
     controller.hostChanges--;
+    // Its navigation started in openTab, before this view was its delegate (tabDidChangeLoading:).
+    if (url.length && tab.loading) NNFieldMark(view->_transferKey, @"start", NNFieldNow());
     if (tab) [view attach:tab];
     if (tab && url.length) [view focusAfterLoad];
   });
@@ -947,6 +951,8 @@ const char kPageReportsKey = 0;
   // can clear first.
   if (visible && self.alphaValue < 1 && _tab.view.superview == self && !_tab.view.hidden) self.alphaValue = 1;
   [self schedulePainting];
+  // Field timing (a tab switch): the commit that shows this page.
+  if (visible) NNFieldMarkAtCommit(_transferKey, @"view");
   [self userSightChanged];
 }
 
@@ -1151,6 +1157,7 @@ const char kPageReportsKey = 0;
 - (void)tabDidChangeLoading:(NNCoreTab *)tab {
   // A page starting to load starts its blocked count again, as CEF's at each main-frame navigation request.
   if (tab.loading) [self resetBlocked:YES];
+  if (tab.loading) NNFieldMark(_transferKey, @"start", NNFieldNow());
   [self queueNavigation];
 }
 
@@ -1175,6 +1182,7 @@ const char kPageReportsKey = 0;
 // script says, and none on a page it doesn't run in (an error page, chrome://). A page back from the back/forward cache
 // says again as it shows (page_script.js, pageshow).
 - (void)tabDidCommitDocument:(NNCoreTab *)tab {
+  NNFieldMark(_transferKey, @"commit", NNFieldNow());
   _pageTheme = nil;
   _pageThemeSource = nil;
   [self queueNavigation];
@@ -1244,6 +1252,8 @@ const char kPageReportsKey = 0;
       // site::AllowDesktopCapture).
       if (gDisplayMediaPicker && [NNCoreEngine respondsToSelector:@selector(allowDesktopCapture:tab:frame:origin:)])
         config[@"displayMediaPicker"] = @YES;
+      // The page reports its first contentful paint and its first frames once shown (page_script.js › Field timing).
+      if (main && NNFieldTimingEnabled()) config[@"fieldTiming"] = @YES;
       [weakSelf callFrame:frameId kind:@"config" json:JSONString(config)];
     };
     if (origin && [origin hasPrefix:@"http"])
@@ -1255,6 +1265,12 @@ const char kPageReportsKey = 0;
       answer(NO);
   } else if ([kind isEqualToString:@"selection"] && main) {
     [self emit:@"pageMessage" payload:@{@"kind" : @"selection", @"data" : SelectionState(dict) ?: NSNull.null}];
+  } else if ([kind isEqualToString:@"perf"] && main) {
+    // Field timing: epoch ms from the page's clock, kept only when plausible.
+    for (NSString *what in @[ @"fcp", @"shown" ]) {
+      NSNumber *at = [dict[what] isKindOfClass:NSNumber.class] ? dict[what] : nil;
+      if (at && fabs(at.doubleValue - NNFieldNow()) < 600000) NNFieldMark(_transferKey, what, at.doubleValue);
+    }
   } else if ([kind isEqualToString:@"scroll"] && main) {
     // The page's scroll direction, for the toolbar that hides while scrolling (page_script.js › Scroll direction).
     NSString *state = Text(dict, @"state", 8);
@@ -1438,6 +1454,7 @@ const char kPageReportsKey = 0;
 
 - (void)loadNow:(NSString *)url userInitiated:(BOOL)userInitiated {
   if ([self skipsNavigationDownload:url userInitiated:userInitiated]) return;
+  NNFieldMark(_transferKey, @"request", NNFieldNow());
   if ([_tab respondsToSelector:@selector(loadURL:userInitiated:)]) [_tab loadURL:url userInitiated:userInitiated];
   else [_tab loadURL:url];
   [self focusAfterLoad];

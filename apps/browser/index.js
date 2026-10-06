@@ -1,4 +1,5 @@
-// First: the opt-in benchmark probe has to be in place before React's renderer loads.
+// First: when JS started (launch telemetry), then the opt-in benchmark probe, before React's renderer loads.
+import "./src/telemetry/jsStart";
 import "./src/lib/perfProbe";
 import { LogBox } from "react-native";
 import { nativeApiSkew, startSkewed } from "./src/nativeApi";

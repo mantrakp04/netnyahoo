@@ -5,6 +5,7 @@ import { useBrowser } from "../store/browser";
 import { useSync } from "../sync/engine";
 import { capture, endSession, flush, isSharing, startClient } from "./client";
 import { reportNativeCrashes } from "./errors";
+import { emitJourneys, journeysEnding, startJourneys } from "./journeys";
 import { takeOmniboxLatency } from "./track";
 
 const HOUR_MS = 60 * 60_000;
@@ -122,6 +123,7 @@ function emitOmniboxLatency() {
 function hourly() {
   emitCounts();
   emitOmniboxLatency();
+  emitJourneys();
   void sampleMemory();
 }
 
@@ -132,6 +134,7 @@ export function startUsage() {
     if (session.updatedFrom) capture("app_updated", { from_version: session.updatedFrom });
     setTimeout(() => void reportNativeCrashes(), 5000);
   }
+  startJourneys(session);
   watchStore();
   watchSync();
   watchTranslate();
@@ -145,6 +148,7 @@ export function sessionEnding() {
   if (!isSharing()) return;
   emitCounts();
   emitOmniboxLatency();
+  journeysEnding();
   capture("app_session_ended", { duration_minutes: Math.round((Date.now() - startedAt) / 60_000) });
   endSession();
 }

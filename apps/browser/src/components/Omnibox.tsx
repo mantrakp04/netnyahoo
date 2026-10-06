@@ -3,6 +3,7 @@ import { ContextMenuArea, Symbol, copyText, pickFiles, showMenu, startDictation 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useTheme } from "../lib/theme";
+import { journeyBarCommitted, journeyBarFocused, journeyKeystroke, journeyNavigate, journeySuggestions } from "../telemetry/journeys";
 import { sampleOmniboxLatency, trackSuggestionChosen } from "../telemetry/track";
 import { useBrowser } from "../store/browser";
 import { useWindowId, useWindowProfileId } from "../store/hooks";
@@ -128,6 +129,7 @@ export function Omnibox({
 
   const go = (url: string, disposition: Disposition = "current") => {
     if (!url) return;
+    if (disposition === "current") journeyNavigate(tabId);
     openFromBar(url, tabId, disposition);
     if (disposition !== "current") dismiss();
   };
@@ -246,6 +248,12 @@ export function Omnibox({
     input.current?.focus();
   };
 
+  // Opt-in field timing (telemetry/journeys.ts): a new tab's bar, and its first suggestions.
+  useLayoutEffect(() => journeyBarCommitted(tabId), []);
+  useLayoutEffect(() => {
+    if (items.length) journeySuggestions(tabId);
+  }, [items]);
+
   const heardAt = useRef(0);
   const keyAt = useRef(0);
   useLayoutEffect(() => {
@@ -264,6 +272,7 @@ export function Omnibox({
       return;
     }
     keyAt.current = Date.now();
+    journeyKeystroke(tabId);
     setEdited(true);
     setTyped(change.typed);
     setSuppressCompletion(change.suppress);
@@ -296,6 +305,7 @@ export function Omnibox({
     input.current?.focus();
     const { start, end } = selection.current;
     input.current?.setSelection(start, end);
+    journeyBarFocused(tabId);
   };
 
   const field = (
