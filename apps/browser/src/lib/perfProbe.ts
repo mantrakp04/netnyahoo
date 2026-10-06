@@ -281,6 +281,8 @@ function installReactHook() {
 }
 
 let traceTimers = false;
+// How many frames name an anonymous timer's call site (nnPerf.traceDepth).
+let traceDepth = 4;
 
 const callers = (stack: string | undefined, depth = 4) =>
   (stack ?? "")
@@ -298,7 +300,7 @@ function wrapTimers() {
       if (typeof callback !== "function") return original.call(this, callback, ...rest);
       let label = `${name}:${callback.name || "anonymous"}`;
       // With nnPerf.traceTimers on, anonymous callbacks are named by the functions that scheduled them.
-      if (traceTimers && !callback.name) label += ` <${callers(new Error().stack)}>`;
+      if (traceTimers && !callback.name) label += ` <${callers(new Error().stack, traceDepth)}>`;
       bump(stats.timersScheduled, label);
       return original.call(
         this,
@@ -513,6 +515,9 @@ if (perfProbeEnabled) {
     reset: () => void (stats = fresh()),
     set traceTimers(on: boolean) {
       traceTimers = on;
+    },
+    set traceDepth(n: number) {
+      traceDepth = n;
     },
     read: () => ({ ...stats, elapsed: now() - stats.since }),
     now,

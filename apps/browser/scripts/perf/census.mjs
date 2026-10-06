@@ -7,7 +7,7 @@
 //   node js-bench.mjs bundle <dir> --profiling 1            the bundle (main.jsbundle) to run
 //   node census.mjs run --app <Release Netnyahoo.app> --bundle <dir>/main.jsbundle --label <name>
 //                       [--runs 3] [--tabs 20] [--probe renders|renders,selectors,listeners] [--port 47841]
-//                       [--debug-port 9640] [--out <dir>] [--only cenSwitch,cenPanel,…] [--trace 1]
+//                       [--debug-port 9640] [--out <dir>] [--only cenSwitch,cenPanel,…] [--trace 1|<frames>] [--address-bar sidebar]
 //       Clones the app with the bundle swapped in; per run launches a hidden instance on a fresh `--tabs`-tab
 //       session (3 pinned, a group of 4), runs the cen* scenarios of bench-app.js, writes <out>/<label>.json.
 //       `--probe renders` (default) is the cheap pass (use it for ms); add `selectors,listeners` for the
@@ -119,7 +119,9 @@ async function run() {
         if (!ready) throw new Error("dev harness never answered");
         await evaluate(dir, pid, lib, 60_000);
         // --trace 1 names anonymous timers by the functions that scheduled them (slower: for finding, not timing).
-        if (flags.trace) await evaluate(dir, pid, "nnPerf.traceTimers = true; return 1;");
+        if (flags.trace) await evaluate(dir, pid, `nnPerf.traceTimers = true; nnPerf.traceDepth = ${Number(flags.trace) > 1 ? Number(flags.trace) : 4}; return 1;`);
+        // --address-bar sidebar: the field in the sidebar instead of the toolbar (the default).
+        if (flags["address-bar"]) await evaluate(dir, pid, `nn.store.getState().updateSettings({ addressBar: ${JSON.stringify(flags["address-bar"])} }); return 1;`);
         for (const name of scenarios) {
           process.stderr.write(`[${label} ${r}] ${name}\n`);
           const options = JSON.stringify({ origin });

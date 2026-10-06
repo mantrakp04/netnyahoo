@@ -557,6 +557,22 @@ function censusScenarios() {
     await sleep(800);
     return nn.omnibox.get(id);
   }
+  function untilStore(test, timeoutMs) {
+    return new Promise((resolve) => {
+      if (test(S())) return resolve(true);
+      let timer;
+      const off = store.subscribe((st) => {
+        if (!test(st)) return;
+        off();
+        clearTimeout(timer);
+        resolve(true);
+      });
+      timer = setTimeout(() => {
+        off();
+        resolve(false);
+      }, timeoutMs);
+    });
+  }
   return {
     // The first window's counters since the bundle started (everything until the window was up).
     async cenStartup() {
@@ -629,7 +645,8 @@ function censusScenarios() {
         enter.per.push(summary(rd, ms));
         merge(enter.stats, rd);
         P.reset();
-        await until(() => !S().live[tab]?.isLoading, 15000, 10);
+        // Woken by the store, not polled: a polling timer would count among the app's timers.
+        await untilStore((st) => !st.live[tab]?.isLoading, 15000);
         await sleep(1500);
         rd = P.read();
         for (const k of SKIP) delete rd[k];
