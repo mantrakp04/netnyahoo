@@ -368,12 +368,20 @@ export function journeyNavigate(tabId: string) {
 
 // MARK: Lifecycle
 
+let unwatchStore: (() => void) | undefined;
+
 // `initial`: said to native even when it matches, as native can still be on from a bridge this JS replaced (a reload).
 function setOn(next: boolean, initial = false) {
   if (next === on && !initial) return;
   on = next;
   native?.setEnabled(next);
-  if (next) return;
+  // The store has no listener of ours unless the user shares: opted out, a store update costs nothing extra.
+  if (next) {
+    unwatchStore ??= useBrowser.subscribe(watchStore);
+    return;
+  }
+  unwatchStore?.();
+  unwatchStore = undefined;
   // A launch that saw sharing off isn't sent, even if it comes back on.
   clearTimeout(usableTimer);
   usableTimer = undefined;
@@ -391,7 +399,6 @@ export function startJourneys(previous: { lastLaunchAt: number | null; lastQuitA
   if (previous) previousLaunch = previous;
   setOn(isSharing(), true);
   useTelemetry.subscribe((t) => setOn(t.sharing));
-  useBrowser.subscribe(watchStore);
 }
 
 // Quitting: perf_launch with what it has, if it hasn't gone yet, and this session's journeys.
