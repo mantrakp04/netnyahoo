@@ -6,6 +6,7 @@ import { useBrowser, type BrowserState } from "../store/browser";
 import { orderSections, syncGroupOrder } from "../store/groups";
 import { engineProfile, makeTab, pinnedFirst, without } from "../store/model";
 import { adoptParkedPins, parkWindowPins } from "../store/parkedPins";
+import { pinKeyOf } from "../store/pinMirror";
 import { removeTabs } from "../store/tabs";
 import { DEFAULT_PROFILE_ID, type Settings } from "../store/settings";
 import type { BookmarkNode, HistoryEntry, Profile, Tab, TabGroup } from "../store/types";
@@ -346,9 +347,11 @@ type Window = BrowserState["windows"][string];
 // Small Yahu's page isn't one of the open tabs: it's thrown away when the window closes.
 const openWindows = (s: BrowserState) => s.windowOrder.map((id) => s.windows[id]).filter((w): w is Window => !!w && !w.incognito && w.kind !== "small");
 
+// Where the profile's pins change: a window that shows it (store/pinMirror.ts carries the change to the others).
 function homeWindow(s: BrowserState, profileId: string): Window | undefined {
   const order = [...s.ui.focusOrder, ...s.windowOrder].map((id) => s.windows[id]).filter((w): w is Window => !!w && !w.incognito && w.kind !== "small");
-  return order.find((w) => w.profileId === profileId) ?? order[0];
+  const shows = (w: Window) => w.tabIds.some((id) => s.tabs[id]?.profileId === profileId);
+  return order.find((w) => w.profileId === profileId && shows(w)) ?? order.find(shows) ?? order.find((w) => w.profileId === profileId) ?? order[0];
 }
 
 export function pinnedAdapter(profileId: string): Adapter {
@@ -362,19 +365,25 @@ export function pinnedAdapter(profileId: string): Adapter {
       const members = new Map<string, Pin[]>();
       const pinnedGroupOf = new Map<string, TabGroup>();
       for (const g of Object.values(s.groups)) if (g.pinned && g.profileId === profileId) g.tabIds.forEach((id) => pinnedGroupOf.set(id, g));
-      for (const w of openWindows(s)) {
+      // Every window has a copy of each pin (store/pinMirror.ts): one per key.
+      // The home window first: it's the copy a change from elsewhere is written to.
+      const seen = new Set<string>();
+      const home = homeWindow(s, profileId);
+      for (const w of home ? [home, ...openWindows(s).filter((w) => w.id !== home.id)] : openWindows(s)) {
         for (const id of w.tabIds) {
           const t = s.tabs[id];
-          if (!t || t.profileId !== profileId) continue;
+          if (!t || t.profileId !== profileId || seen.has(pinKeyOf(t))) continue;
           const g = pinnedGroupOf.get(id);
-          if (t.pinned) tiles.push(t);
+          if (t.pinned) tiles.push({ ...t, id: pinKeyOf(t) });
           else if (g) {
-            if (!members.has(g.id)) {
-              members.set(g.id, []);
-              groups.push(g);
+            const key = pinKeyOf(g);
+            if (!members.has(key)) {
+              members.set(key, []);
+              groups.push({ ...g, id: key });
             }
-            members.get(g.id)!.push(t);
-          }
+            members.get(key)!.push({ ...t, id: pinKeyOf(t) });
+          } else continue;
+          seen.add(pinKeyOf(t));
         }
       }
       const park = s.parkedPins[profileId];
@@ -404,11 +413,20 @@ export function pinnedAdapter(profileId: string): Adapter {
         const stand: Window = { id: PARK, profileId, incognito: false, tabIds: [], activeTabIds: {}, sidebarOpen: true, frame: null, createdAt: 0 };
         s = adoptParkedPins({ ...s, windows: { ...s.windows, [PARK]: stand } }, PARK, profileId);
       }
+      // Pins are keyed by pinKey: here the home window's copy (or the park's) stands for each, and the profile's
+      // other windows follow it (store/pinMirror.ts).
+      const scope = new Set([home.id, PARK]);
+      const tabOfKey = new Map<string, string>();
+      const groupOfKey = new Map<string, string>();
+      for (const wid of scope) for (const id of s.windows[wid]?.tabIds ?? []) if (s.tabs[id]?.profileId === profileId && !tabOfKey.has(pinKeyOf(s.tabs[id]!))) tabOfKey.set(pinKeyOf(s.tabs[id]!), id);
+      for (const g of Object.values(s.groups)) if (g.profileId === profileId && scope.has(g.windowId) && !groupOfKey.has(pinKeyOf(g))) groupOfKey.set(pinKeyOf(g), g.id);
+      const tid = (key: string) => tabOfKey.get(key) ?? key;
+      const gid = (key: string) => groupOfKey.get(key) ?? key;
       const pins = new Map<string, PinValue>();
       const groupValues = new Map<string, PinGroupValue>();
       for (const [k, v] of visible) {
-        if (k.startsWith("pin:t:")) pins.set(k.slice(6), v as PinValue);
-        else if (k.startsWith("pin:g:")) groupValues.set(k.slice(6), v as PinGroupValue);
+        if (k.startsWith("pin:t:")) pins.set(tid(k.slice(6)), { ...(v as PinValue), g: (v as PinValue).g && gid((v as PinValue).g!) });
+        else if (k.startsWith("pin:g:")) groupValues.set(gid(k.slice(6)), v as PinGroupValue);
       }
       const byPos = <T extends { pos: string }>(m: Map<string, T>) => (a: string, z: string) =>
         m.get(a)!.pos < m.get(z)!.pos ? -1 : m.get(a)!.pos > m.get(z)!.pos ? 1 : a < z ? -1 : 1;
@@ -416,16 +434,19 @@ export function pinnedAdapter(profileId: string): Adapter {
       const tileOrder = [...pins.keys()].filter((id) => { const g = pins.get(id)!.g; return !g || !groupValues.has(g); }).sort(byPos(pins));
       const memberOrder = new Map(groupOrder.map((g) => [g, [...pins.keys()].filter((id) => pins.get(id)!.g === g).sort(byPos(pins))]));
 
-      const goneTabs = [...changed].filter((k) => k.startsWith("pin:t:") && !visible.has(k)).map((k) => k.slice(6)).filter((id) => s.tabs[id]);
+      const goneTabs = [...changed].filter((k) => k.startsWith("pin:t:") && !visible.has(k)).map((k) => tid(k.slice(6))).filter((id) => s.tabs[id] && scope.has(s.tabs[id]!.windowId));
+      // A pin deleted elsewhere: a tile with a page (or on screen) here stays as a regular tab.
       const removable = goneTabs.filter((id) => {
-        const w = s.windows[s.tabs[id]!.windowId];
-        return w && w.tabIds.some((other) => other !== id && !goneTabs.includes(other));
+        const t = s.tabs[id]!;
+        const w = s.windows[t.windowId];
+        const kept = !!t.navigation || !!t.adoptId || Object.values(w?.activeTabIds ?? {}).includes(id);
+        return w && !kept && w.tabIds.some((other) => other !== id && !goneTabs.includes(other));
       });
       s = removeTabs(s, removable, false);
       const tabs = { ...s.tabs };
-      for (const id of goneTabs) if (tabs[id]) tabs[id] = { ...tabs[id]!, pinned: false, pinnedUrl: null };
+      for (const id of goneTabs) if (tabs[id]) tabs[id] = { ...tabs[id]!, pinned: false, pinnedUrl: null, pinKey: undefined };
       let groups = { ...s.groups };
-      for (const k of changed) if (k.startsWith("pin:g:") && !visible.has(k)) delete groups[k.slice(6)];
+      for (const k of changed) if (k.startsWith("pin:g:") && !visible.has(k) && scope.has(groups[gid(k.slice(6))]?.windowId ?? "")) delete groups[gid(k.slice(6))];
       const windows = { ...s.windows };
 
       for (const id of groupOrder) {

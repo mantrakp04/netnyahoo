@@ -18,8 +18,15 @@ modules before using them — this is a summary from the agent that built it.
   URL) and pinned groups, with their order and tab/group ids; the next window that shows the profile takes them back,
   unloaded (`createWindow` — ⌘N, the Dock, a link from another app, the first window after a relaunch —,
   `switchProfile`, Reopen Closed Window, ⇧⌘T of a tile's page), and the park empties, so nothing comes back twice.
-  With several windows of a profile open, each keeps the pins it has; a closing one's pins go to the next new window.
+  Only the last window of a profile parks: while another window shows the profile, the pins are there.
   Sync publishes parked pins as the profile's pins and applies changes to them in place (sync/adapters `pinnedAdapter`).
+- Pins are per profile in every window (store/pinMirror.ts): each regular window showing a profile holds its own copy
+  (a Tab, a TabGroup) of every pinned tile and pinned group, linked by `pinKey` (unset on the first copy, whose id is
+  the key; `pinKeyOf`). A store listener (`mirrorPins`) carries a change of one window's pinned section to the others
+  (the focused changed window wins) and gives a window that starts showing a profile its pins (the union, for windows
+  that differ at launch). Copies it makes are unloaded; a copy it drops goes if it never loaded, else stays as a regular
+  tab. Moving a pinned tab between windows (`moveTabsInto`, an extension's move) leaves a copy behind
+  (`settleMovedPins`). Sync keys pins by `pinKey` and changes the home window's copy.
 - UI: `ui.focusedWindowId`, `ui.focusOrder`, `ui.lastProfileId` (the regular profile of the window used last, a private
   window counting as its `originalProfileId`; saved with the session; read it through `lastActiveProfile(s)`, store/small.ts),
   `ui.appDark`, `windowUi[windowId]` (command panel, downloads popover), `find[tabId]`.

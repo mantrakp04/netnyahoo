@@ -17,6 +17,7 @@ import {
 } from "./model";
 import { restoringGroup } from "./organize";
 import { adoptParkedPins, parkWindowPins } from "./parkedPins";
+import { settleMovedPins } from "./pinMirror";
 import { isSmall, isSmallWindow, lastActiveProfile, mainWindowFor, originalProfile } from "./small";
 import { activated, apply, removeTabs, withNewTab } from "./tabs";
 import type { BrowserWindow, ClosedTab, ClosedWindow, Frame, ParkedPins, Tab, TabGroup } from "./types";
@@ -115,7 +116,7 @@ export function moveTabsInto(s: BrowserState, ids: string[], targetId: string): 
     const recent = src.tabIds.map((t) => next.tabs[t]!).sort((a, b) => b.lastActiveAt - a.lastActiveAt)[0];
     if (recent) next = apply(next, activated(next, src.activeTabIds[recent.profileId] ?? recent.id));
   }
-  return next;
+  return settleMovedPins(s, next, moving.map((t) => t.id), targetId);
 }
 
 function restoreGroup(groups: Record<string, TabGroup>, g: Omit<TabGroup, "tabIds">, tabIds: string[]) {
@@ -284,8 +285,14 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     const tabIds = others.flatMap((id) => s.windows[id]!.tabIds);
     if (!tabIds.length) return;
     let next = moveTabsInto(s, tabIds, target);
-    const groups = { ...s.groups };
-    for (const g of Object.values(s.groups)) if (others.includes(g.windowId)) groups[g.id] = { ...g, windowId: target };
+    // The groups come along with the tabs that did (a pinned tab's copy the target already had stays behind).
+    const groups = { ...next.groups };
+    const taken = new Set(Object.values(next.groups).flatMap((g) => g.tabIds));
+    for (const g of Object.values(s.groups)) {
+      if (!others.includes(g.windowId)) continue;
+      const members = g.tabIds.filter((id) => next.tabs[id]?.windowId === target && !taken.has(id));
+      if (members.length) groups[g.id] = { ...g, windowId: target, tabIds: members };
+    }
     next = { ...next, groups };
     set(next);
   },

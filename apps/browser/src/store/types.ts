@@ -49,6 +49,8 @@ export type Tab = {
   wakeAdoptId?: string;
   liveItem?: { folderId: string; itemId: string };
   unloaded?: boolean;
+  // The pinned tab this one is a window's copy of (store/pinMirror.ts); unset on the first copy, whose id is the key.
+  pinKey?: string;
   createdAt: number;
   lastActiveAt: number;
 };
@@ -77,6 +79,8 @@ export type TabGroup = {
   autoUngroup?: boolean;
   // The pinned tab whose links, opened behind, this group collects (Dia: they gather below the pinned tabs).
   pinnedOpenerId?: string;
+  // The pinned group this one is a window's copy of (store/pinMirror.ts).
+  pinKey?: string;
 };
 
 export type SplitView = {

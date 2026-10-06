@@ -3,6 +3,7 @@ import type { BrowserState } from "./browser";
 import { engineProfile, pinnedFirst } from "./model";
 import { forgetOpeners, switchKeepsOpeners } from "./openers";
 import { groupOf, placing, withGroup } from "./organize";
+import { settleMovedPins } from "./pinMirror";
 import { splitOf } from "./splits";
 import { activated, apply, removeTabs } from "./tabs";
 
@@ -298,7 +299,7 @@ function intoWindow(s: BrowserState, key: string, to: string): BrowserState {
     live: live ? { ...next.live, [key]: live } : next.live,
     windows: { ...next.windows, [to]: { ...w, tabIds: pinnedFirst([...w.tabIds, key], tabs) } },
   };
-  return next;
+  return settleMovedPins(s, next, [key], to);
 }
 
 // Shows `key` as the store's activate does, for the profile its window shows (a profile in the background keeps

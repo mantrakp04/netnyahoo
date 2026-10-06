@@ -63,7 +63,7 @@ export function processInfo(pid) {
   return r.status === 0 ? parseProcessLine(r.stdout) : null;
 }
 export function binaryPids(binary) {
-  const r = spawnSync("ps", ["-ww", "-ax", "-o", "pid=", "-o", "command="], { encoding: "utf8", timeout: 5000 });
+  const r = spawnSync("ps", ["-ww", "-ax", "-o", "pid=", "-o", "command="], { encoding: "utf8", timeout: 5000, maxBuffer: 64 << 20 });
   if (r.status !== 0) throw new Error(`ps failed: ${r.stderr}`);
   return new Set(r.stdout.split("\n").map((l) => /^\s*(\d+)\s+(.*)$/.exec(l))
     .filter((m) => m && commandIsBinary(m[2], binary)).map((m) => Number(m[1])));

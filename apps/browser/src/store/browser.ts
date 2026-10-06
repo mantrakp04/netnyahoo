@@ -5,6 +5,7 @@ import { createGroupsSlice, type GroupsSlice } from "./groups";
 import { createHistorySlice, type HistorySlice } from "./history";
 import { IDLE_LIVE, isIncognitoProfile, pinnedFirst } from "./model";
 import { createOrganizeSlice, forgetClosedPrivateWindows, keptDeletedGroups, type OrganizeSlice } from "./organize";
+import { mirrorPins } from "./pinMirror";
 import { createProfilesSlice, DEFAULT_PROFILE, engineIdOf, type ProfilesSlice } from "./profiles";
 import { createSettingsSlice, DEFAULT_SETTINGS, type SettingsSlice } from "./settings";
 import { createSplitsSlice, sanitizeSplits, type SplitsSlice } from "./splits";
@@ -184,6 +185,21 @@ export const useBrowser = create<BrowserState>()(transactions.middleware(batched
 useBrowser.subscribe((s, prev) => {
   const patch = s.windows !== prev.windows && forgetClosedPrivateWindows(s);
   if (patch) useBrowser.setState(patch);
+});
+
+// Every window of a profile shows its pinned tabs (store/pinMirror.ts). Its own write comes back here and changes
+// nothing; a write another listener makes meanwhile is mirrored too. The depth cap only guards against a bug.
+let mirroring = 0;
+useBrowser.subscribe((s, prev) => {
+  if (mirroring > 3) return;
+  const next = mirrorPins(s, prev);
+  if (!next) return;
+  mirroring++;
+  try {
+    useBrowser.setState(next);
+  } finally {
+    mirroring--;
+  }
 });
 
 export type { CreateWindowOptions } from "./windows";

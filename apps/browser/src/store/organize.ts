@@ -302,7 +302,8 @@ export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveFor
   const active = activeTabId(s, windowId);
   const grouped = new Set(Object.values(s.groups).flatMap((g) => g.tabIds));
   const inSplit = new Set(Object.values(s.splits).flatMap((v) => v.tabIds));
-  const keep = (t: Tab) => t.id === active || t.pinned || s.live[t.id]?.playingAudio;
+  // A pinned group's tab is the profile's, in every window (store/pinMirror.ts): never a duplicate to clean up.
+  const keep = (t: Tab) => t.id === active || inPinnedContainer(s, t.id) || s.live[t.id]?.playingAudio;
   const out = new Set<string>();
   const byPage = new Map<string, Tab[]>();
   for (const id of view) {

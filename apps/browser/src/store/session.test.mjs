@@ -254,7 +254,7 @@ test("⌘W until the window closes, then ⌘N: the pinned tabs and pinned groups
   assert.equal(S().groups[work].pinned, true);
   assert.deepEqual(S().parkedPins, {}, "the park is empty");
   const n2 = S().createWindow();
-  assert.deepEqual(sidebar(n2), []);
+  assert.deepEqual(sidebar(n2), PINS, "a second window shows them too, unloaded copies (store/pinMirror.ts)");
 });
 
 test("⇧⌘T after the close, then ⌘N: no second set of pinned tabs", () => {
@@ -267,8 +267,8 @@ test("⇧⌘T after the close, then ⌘N: no second set of pinned tabs", () => {
   assert.deepEqual(sidebar(restored), PINS, "the reopened window has them");
   assert.deepEqual(model.viewTabIds(S(), restored).filter((id) => !model.inPinnedContainer(S(), id)).map((id) => S().tabs[id].url), ["https://a.com"]);
   const n = S().createWindow();
-  assert.deepEqual(sidebar(n), [], "⌘N: none again");
-  assert.equal(Object.values(S().tabs).filter((t) => t.url === "https://mail.com").length, 1);
+  assert.deepEqual(sidebar(n), PINS, "⌘N: the same pins, one copy each");
+  assert.equal(Object.values(S().tabs).filter((t) => t.windowId === restored && t.url === "https://mail.com").length, 1, "no second set in the reopened window");
 });
 
 test("quit and relaunch after the window closed: the next window has the pinned tabs, unloaded", () => {
