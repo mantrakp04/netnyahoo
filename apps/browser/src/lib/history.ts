@@ -1,6 +1,7 @@
 import { addHistoryVisits, onHistoryChanged, queryHistory, watchHistory, type EngineHistoryEntry, type HistoryChange } from "@netnyahoo/nncore";
 import { readDocument, removeDocument } from "@netnyahoo/shell";
 import { useBrowser, type BrowserState } from "../store/browser";
+import { afterFirstWindow } from "./afterFirstWindow";
 import { MAX_HISTORY, MAX_VISIT_TIMES } from "../store/history";
 import { engineProfile, isIncognitoProfile } from "../store/model";
 import type { HistoryEntry } from "../store/types";
@@ -237,15 +238,23 @@ export function startHistory() {
   // watching during the move sent the JS one event per moved visit (~88,000 for a long-used profile, ~200 ms of
   // the startup JS), all of them ignored, and the views are read again after it anyway.
   let moving = readDocument(LEGACY_FILE) !== null;
+  let stopped = false;
   if (!moving) loadAll(store());
-  void migrateHistoryFile().then((result) => {
-    legacyMoved = result !== "kept";
-    if (moving) {
-      moving = false;
-      loadAll(store());
-    } else if (result === "moved") void reloadHistory();
-    else if (legacyMoved) for (const engine of loaded) setView(engine, viewOf(engine));
-  });
+  const migrate = () => {
+    if (stopped) return;
+    void migrateHistoryFile().then((result) => {
+      legacyMoved = result !== "kept";
+      if (moving) {
+        moving = false;
+        loadAll(store());
+      } else if (result === "moved") void reloadHistory();
+      else if (legacyMoved) for (const engine of loaded) setView(engine, viewOf(engine));
+    });
+  };
+  // The move reads and parses the whole file (2 MB for 5000 pages, ~100 ms) before its first await: it waits for the
+  // first window, which shows no history.
+  if (moving) afterFirstWindow(migrate);
+  else migrate();
   const stop = useBrowser.subscribe((s, prev) => {
     if (s.profiles === prev.profiles) return;
     if (!moving) loadAll(s);
@@ -257,6 +266,7 @@ export function startHistory() {
     }
   });
   return () => {
+    stopped = true;
     events.remove();
     stop();
     loaded.clear();

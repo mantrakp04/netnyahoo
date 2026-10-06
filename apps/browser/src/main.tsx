@@ -6,6 +6,7 @@ import { AppRegistry, unstable_batchedUpdates } from "react-native";
 import { WindowRoot } from "./App";
 import { DevErrorBoundary } from "./DevErrorBoundary";
 import { startTranslate } from "./components/site/translate";
+import { firstWindowCommitted } from "./lib/afterFirstWindow";
 import { startAppIntegration } from "./lib/appIntegration";
 import { startNativeSync } from "./lib/native";
 import { startPersistence } from "./lib/persist";
@@ -49,6 +50,7 @@ function Root({ windowId }: { windowId: string }) {
   useEffect(() => {
     perfMark("firstWindow");
     markFirstWindow();
+    firstWindowCommitted();
   }, []);
   if (held) return null;
   return __DEV__ ? (

@@ -5,6 +5,7 @@ const { useBrowser } = await import("./browser.ts");
 const model = await import("./model.ts");
 const { migrateHistoryFile, reloadHistory, startHistory } = await import("../lib/history.ts");
 const { flushPersistence, loadSession, startPersistence } = await import("../lib/persist.ts");
+const { firstWindowCommitted } = await import("../lib/afterFirstWindow.ts");
 const stub = await import("../test-native-stub.mjs");
 
 const S = () => useBrowser.getState();
@@ -142,6 +143,11 @@ test("history.json's move goes before watching Chrome's history; the view then h
   stub.docs.set("history.json", JSON.stringify({ version: 2, history: { default: [entry("https://moved.com/", [now - DAY, now - 1000])] } }));
   const stop = startHistory();
   assert.deepEqual(stub.historyWatches, [], "not watched while the file moves");
+  // The move waits for the launch's first window: the file is still there, untouched, until it has committed.
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(stub.docs.has("history.json"));
+  assert.equal(stub.chromeHistory("").size, 0, "nothing moved before the first window");
+  firstWindowCommitted();
   for (let i = 0; i < 50 && !S().history.default?.length; i++) await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(stub.historyWatches, [""], "watched once it's in");
   assert.equal(S().history.default?.[0]?.url, "https://moved.com/");
