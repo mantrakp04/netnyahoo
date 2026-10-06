@@ -34,6 +34,7 @@ The field/lab gap on J1 is the first thing to explain: lab launches restore a ti
 - `launch-critical-path.md`: J1 timeline and projects.
 - `render-census.md`: renders, hooks and selectors per interaction.
 - `field-journeys.md`: field events and queries.
+- `ideas.md`: speed ideas not taken yet, and what each needs first.
 
 ## Lessons we hold ourselves to
 

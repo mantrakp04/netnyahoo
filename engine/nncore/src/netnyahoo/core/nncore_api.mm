@@ -1439,7 +1439,10 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
   if (!browser) {
     return nil;
   }
-  NavigateParams params(browser, GURL(base::SysNSStringToUTF8(url)),
+  // No URL: a tab made ahead of its page (a New Tab page's prewarm), on about:blank. It stays
+  // out of Back and of Chrome's closed-tab list (nncore::OnlyShowedBlank).
+  const bool ahead = !url.length;
+  NavigateParams params(browser, GURL(ahead ? "about:blank" : base::SysNSStringToUTF8(url)),
                         ui::PAGE_TRANSITION_TYPED);
   params.disposition = foreground ? WindowOpenDisposition::NEW_FOREGROUND_TAB
                                   : WindowOpenDisposition::NEW_BACKGROUND_TAB;
@@ -1450,7 +1453,14 @@ void WatchTracingStart(std::shared_ptr<TracingStart> start, int checks_left) {
       &_host->pending_open(), nncore::WindowHost::PendingOpen{params.disposition, nullptr});
   Navigate(&params);
   content::WebContents* contents = params.navigated_or_inserted_contents;
-  return contents ? nncore::TabBridge::GetOrCreate(contents)->tab() : nil;
+  if (!contents) {
+    return nil;
+  }
+  nncore::TabBridge* bridge = nncore::TabBridge::GetOrCreate(contents);
+  if (ahead) {
+    bridge->set_made_ahead();
+  }
+  return bridge->tab();
 }
 
 - (NNCoreTab*)openExtensionView:(NSString*)url
@@ -1869,13 +1879,10 @@ std::optional<bool> RunPageCommand(content::WebContents* contents, int command) 
   params.has_user_gesture = userInitiated;
   // A New Tab page's tab, made ahead on about:blank (the app's prewarm): its first page
   // takes that entry's place, so Back never lands on the blank page.
-  content::NavigationController& controller = _contents->GetController();
-  content::NavigationEntry* committed = controller.GetLastCommittedEntry();
-  if (controller.GetEntryCount() == 1 && committed && !committed->IsInitialEntry() &&
-      committed->GetURL().IsAboutBlank()) {
+  if (nncore::OnlyShowedBlank(_contents)) {
     params.should_replace_current_entry = true;
   }
-  controller.LoadURLWithParams(params);
+  _contents->GetController().LoadURLWithParams(params);
 }
 
 - (void)goToOffset:(int)offset {
@@ -2572,12 +2579,9 @@ TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents,
   // Chrome's closed-tab entry (⇧⌘T, chrome.sessions), as a user's close records it, now: a
   // tag the host set just before is in it. Not for incognito, a page that never committed, or
   // a New Tab page's tab that only ever showed about:blank (made ahead of its navigation).
-  content::NavigationController& controller = _contents->GetController();
-  content::NavigationEntry* committed = controller.GetLastCommittedEntry();
-  const bool only_blank = controller.GetEntryCount() == 1 && committed &&
-                          committed->GetURL().IsAboutBlank();
+  content::NavigationEntry* committed = _contents->GetController().GetLastCommittedEntry();
   if (!Profile::FromBrowserContext(_contents->GetBrowserContext())->IsOffTheRecord() &&
-      committed && !committed->IsInitialEntry() && !only_blank) {
+      committed && !committed->IsInitialEntry() && !nncore::OnlyShowedBlank(_contents)) {
     model->delegate()->CreateHistoricalTab(_contents);
   }
   model->DetachAndDeleteWebContentsAt(index);
@@ -2602,8 +2606,12 @@ TabSharingInfoBarDelegate* TabSharingDelegateFor(content::WebContents* contents,
   TabStripModel* model = browser->GetTabStripModel();
   int index = model->GetIndexOfWebContents(_contents);
   if (index != TabStripModel::kNoTab) {
-    model->CloseWebContentsAt(index, TabCloseTypes::CLOSE_USER_GESTURE |
-                                         TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB);
+    // As closeNow: a tab that only showed about:blank (made ahead) leaves no closed-tab entry.
+    uint32_t close_types = TabCloseTypes::CLOSE_USER_GESTURE;
+    if (!nncore::OnlyShowedBlank(_contents)) {
+      close_types |= TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB;
+    }
+    model->CloseWebContentsAt(index, close_types);
   }
 }
 

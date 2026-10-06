@@ -24,7 +24,7 @@ const nn = {
   journeys: devJourneys,
   telemetry: telemetryState,
   blockedFetches: () => globalThis.__nnBlockedFetches?.() ?? [],
-  // The new tab's prewarm and the bar's preloading (src/lib/preload.ts).
+  // The New Tab page's prewarm (src/lib/preload.ts).
   get preload() {
     return require("../../src/lib/preload");
   },

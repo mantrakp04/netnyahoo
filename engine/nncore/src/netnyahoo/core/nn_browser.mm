@@ -38,6 +38,8 @@
 #include "extensions/browser/api/web_request/web_request_info.h"
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/common/constants.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
 #include "chrome/browser/tab_list/tab_removed_reason.h"
 #include "net/base/net_errors.h"
@@ -657,6 +659,30 @@ int g_tab_strip_notifying = 0;
 
 bool IsNotifyingTabStrip() {
   return g_tab_strip_notifying > 0;
+}
+
+bool OnlyShowedBlank(content::WebContents* contents) {
+  TabBridge* bridge = TabBridge::FromWebContents(contents);
+  if (!bridge || !bridge->made_ahead()) {
+    return false;
+  }
+  content::NavigationController& controller = contents->GetController();
+  content::NavigationEntry* committed = controller.GetLastCommittedEntry();
+  return controller.GetEntryCount() == 1 && committed && !committed->IsInitialEntry() &&
+         committed->GetURL().IsAboutBlank();
+}
+
+void CloseBlankTabsBeforeWindowCloses(Browser* browser) {
+  TabStripModel* model = browser->GetTabStripModel();
+  // Not from inside a tab-strip change (the strip can't change then).
+  if (IsNotifyingTabStrip() || !model) {
+    return;
+  }
+  for (int i = model->count() - 1; i >= 0; --i) {
+    if (OnlyShowedBlank(model->GetWebContentsAt(i))) {
+      model->DetachAndDeleteWebContentsAt(i);
+    }
+  }
 }
 
 void WindowHost::ActiveTabChanged(Browser* browser,
@@ -1557,6 +1583,11 @@ void TabBridge::ReportBlocked() {
 void TabBridge::DidFinishNavigation(content::NavigationHandle* handle) {
   EnsureFaviconObserved();
   EnsureZoomObserved();
+  // A tab made ahead has had its first page: from now on it's an ordinary tab, whatever it shows.
+  if (made_ahead_ && handle->IsInPrimaryMainFrame() && handle->HasCommitted() &&
+      !handle->GetURL().IsAboutBlank()) {
+    made_ahead_ = false;
+  }
   base::WeakPtr<TabBridge> alive = weak_factory_.GetWeakPtr();
   // A navigation the content blocker cancelled (main frame or subframe).
   if (handle->GetNetErrorCode() == net::ERR_BLOCKED_BY_CLIENT &&

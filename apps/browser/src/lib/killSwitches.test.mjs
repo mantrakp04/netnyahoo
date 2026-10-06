@@ -43,18 +43,18 @@ test("the site's switches.json is a version 1 file naming only switches the app 
 
 test("a cached value is read synchronously; unknown names and non-booleans are ignored", () => {
   reset();
-  docs.set("switches-cache.json", JSON.stringify(file({ omniboxPreload: false, newTabPrewarm: "no", gone: false, lazySidebarRows: 0 })));
-  assert.equal(ks.switchOn("omniboxPreload"), false);
+  docs.set("switches-cache.json", JSON.stringify(file({ sidebarSlide: false, newTabPrewarm: "no", gone: false, lazySidebarRows: 0 })));
+  assert.equal(ks.switchOn("sidebarSlide"), false);
   assert.equal(ks.switchOn("newTabPrewarm"), true);
   assert.equal(ks.switchOn("lazySidebarRows"), true);
   reset();
   docs.set("switches-cache.json", "not json");
-  assert.equal(ks.switchOn("omniboxPreload"), true);
+  assert.equal(ks.switchOn("sidebarSlide"), true);
 });
 
 test("NETNYAHOO_SWITCHES text parses to values, and ignores what it doesn't know", () => {
-  assert.deepEqual(ks.parseOverride("omniboxPreload=off, lazySidebarRows=on,nope=off,newTabPrewarm=maybe,=1"), {
-    omniboxPreload: false,
+  assert.deepEqual(ks.parseOverride("sidebarSlide=off, lazySidebarRows=on,nope=off,newTabPrewarm=maybe,=1"), {
+    sidebarSlide: false,
     lazySidebarRows: true,
   });
   assert.deepEqual(ks.parseOverride(null), {});
@@ -65,19 +65,19 @@ test("a fetch asks for the plain URL (no cookies, no query), saves the answer, a
   let asked;
   const fetchFn = async (url, init) => {
     asked = { url, init };
-    return answer(file({ omniboxPreload: false, lazySidebarRows: false }))();
+    return answer(file({ sidebarSlide: false, lazySidebarRows: false }))();
   };
   assert.equal(await ks.refreshSwitches(fetchFn), "updated");
   assert.equal(asked.url, "https://netnyahoo.com/switches.json");
   assert.equal(asked.init.credentials, "omit");
   assert.equal(asked.init.headers, undefined);
   assert.ok(!asked.url.includes("?"));
-  // live: omniboxPreload is off at once; lazySidebarRows keeps this launch's value (on).
-  assert.equal(ks.switchOn("omniboxPreload"), false);
+  // live: sidebarSlide is off at once; lazySidebarRows keeps this launch's value (on).
+  assert.equal(ks.switchOn("sidebarSlide"), false);
   assert.equal(ks.switchOn("lazySidebarRows"), true);
   // The next launch reads both from the cache.
   ks.reloadSwitches();
-  assert.equal(ks.switchOn("omniboxPreload"), false);
+  assert.equal(ks.switchOn("sidebarSlide"), false);
   assert.equal(ks.switchOn("lazySidebarRows"), false);
 });
 
@@ -92,13 +92,13 @@ test("at most one fetch a launch", async () => {
 
 test("a switch the file stops naming goes back on (staleness: the cache follows the file, not the first answer)", async () => {
   reset();
-  await ks.refreshSwitches(answer(file({ omniboxPreload: false })));
-  assert.equal(ks.switchOn("omniboxPreload"), false);
+  await ks.refreshSwitches(answer(file({ sidebarSlide: false })));
+  assert.equal(ks.switchOn("sidebarSlide"), false);
   ks.resetRefreshForTests();
   await ks.refreshSwitches(answer(file({})));
-  assert.equal(ks.switchOn("omniboxPreload"), true);
+  assert.equal(ks.switchOn("sidebarSlide"), true);
   ks.reloadSwitches();
-  assert.equal(ks.switchOn("omniboxPreload"), true);
+  assert.equal(ks.switchOn("sidebarSlide"), true);
 });
 
 test("offline, an error, an odd answer or a slow one keeps the cached value (or the default)", async () => {
@@ -106,20 +106,20 @@ test("offline, an error, an odd answer or a slow one keeps the cached value (or 
     ["offline", async () => Promise.reject(new TypeError("Network request failed"))],
     ["404", answer("", { ok: false })],
     ["html", answer("<html>")],
-    ["wrong version", answer({ version: 2, switches: { omniboxPreload: true } })],
+    ["wrong version", answer({ version: 2, switches: { sidebarSlide: true } })],
     ["no switches", answer({ version: 1 })],
-    ["huge", answer(file({ omniboxPreload: true, pad: "x".repeat(5000) }))],
+    ["huge", answer(file({ sidebarSlide: true, pad: "x".repeat(5000) }))],
   ]) {
     reset();
-    docs.set("switches-cache.json", JSON.stringify(file({ omniboxPreload: false })));
+    docs.set("switches-cache.json", JSON.stringify(file({ sidebarSlide: false })));
     const before = docs.get("switches-cache.json");
     assert.equal(await ks.refreshSwitches(fetchFn), "failed", label);
-    assert.equal(ks.switchOn("omniboxPreload"), false, label);
+    assert.equal(ks.switchOn("sidebarSlide"), false, label);
     assert.equal(docs.get("switches-cache.json"), before, label);
   }
   reset();
   assert.equal(await ks.refreshSwitches(answer("<html>")), "failed");
-  assert.equal(ks.switchOn("omniboxPreload"), true);
+  assert.equal(ks.switchOn("sidebarSlide"), true);
 });
 
 test("a slow answer is dropped after the timeout", async (t) => {
@@ -129,5 +129,5 @@ test("a slow answer is dropped after the timeout", async (t) => {
   const result = ks.refreshSwitches(slow);
   t.mock.timers.tick(5000);
   assert.equal(await result, "failed");
-  assert.equal(ks.switchOn("omniboxPreload"), true);
+  assert.equal(ks.switchOn("sidebarSlide"), true);
 });

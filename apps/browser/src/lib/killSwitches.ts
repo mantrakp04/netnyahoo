@@ -27,12 +27,6 @@ export type SwitchDef = {
 export const MAX_SWITCHES = 8;
 
 export const SWITCHES = {
-  omniboxPreload: {
-    about: "The command bar tells the engine what Enter would open, so it connects or prerenders ahead (lib/preload.ts).",
-    owner: "command bar",
-    removeBy: "2026-12-15",
-    live: true,
-  },
   newTabPrewarm: {
     about: "A New Tab page's engine tab is made a moment after it opens, so Enter only navigates it (lib/preload.ts).",
     owner: "command bar",
@@ -68,6 +62,12 @@ export const SWITCHES = {
     owner: "sidebar",
     removeBy: "2026-12-15",
     live: true,
+  },
+  sidebarSlideLean: {
+    about: "The sidebar's slide draws the traffic lights' moves and lays them out once they stop (NNCoreChromeWindow.mm).",
+    owner: "sidebar",
+    removeBy: "2026-12-15",
+    live: false,
   },
 } as const satisfies Record<string, SwitchDef>;
 

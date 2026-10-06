@@ -64,7 +64,7 @@ export function startDevHarness() {
     get hoverShift(): typeof import("./hoverShift") {
       return require("./hoverShift");
     },
-    // New-tab prewarm and the bar's preloading (benches turn the prewarm off for a control).
+    // The New Tab page's prewarm (benches turn it off for a control).
     get preload(): typeof import("./preload") {
       return require("./preload");
     },

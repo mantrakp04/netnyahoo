@@ -258,6 +258,14 @@ NNBrowserDelegate* DelegateFor(const BrowserWindowInterface* browser);
 // asks for now must wait for the next turn.
 bool IsNotifyingTabStrip();
 
+// A tab the host made ahead of its first page (a New Tab page's prewarm) that has shown nothing
+// but its about:blank: never in Chrome's closed-tab list (⇧⌘T, chrome.sessions) or in Back.
+bool OnlyShowedBlank(content::WebContents* contents);
+// Closes those tabs of `browser`, with no closed-tab entry, before its window closes: Chrome
+// records a closing window's tabs (UnloadController::OnWindowClosing). Only once the close is
+// decided (the host's, after its checks, or the quit's), so a cancelled close keeps them.
+void CloseBlankTabsBeforeWindowCloses(Browser* browser);
+
 // An extension's side panel opening or closing in one of the host's tabs (the API tells the
 // engine delegate). True: the host took it.
 bool HostExtensionSidePanel(content::WebContents* contents,
@@ -395,6 +403,9 @@ class TabBridge : public content::WebContentsObserver,
 
   // The host closed it (-[NNCoreTab close]): no tabWillClose.
   void set_closed_by_host() { closed_by_host_ = true; }
+  // The host made it ahead of its first page (-openTab: with no URL, a New Tab page's prewarm).
+  void set_made_ahead() { made_ahead_ = true; }
+  bool made_ahead() const { return made_ahead_; }
   // Reports tabWillClose once, for a close the host didn't ask for.
   void ReportWillClose();
   const GURL& favicon_url() const { return favicon_url_; }
@@ -464,6 +475,7 @@ class TabBridge : public content::WebContentsObserver,
   base::WeakPtrFactory<TabBridge> weak_factory_{this};
   float pinch_scale_ = 1;
   bool closed_by_host_ = false;
+  bool made_ahead_ = false;
   // Blocked requests since the last tab:didBlockRequests:lastURL: (sent next turn).
   void NoteBlocked(const GURL& url);
   void ReportBlocked();

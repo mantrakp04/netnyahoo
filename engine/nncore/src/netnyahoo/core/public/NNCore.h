@@ -333,6 +333,9 @@ NNCORE_EXPORT
 @property(readonly) NSView* hostView;
 @property(weak, nullable) id<NNCoreWindowDelegate> delegate;
 
+// An empty `url`: a tab made ahead of its page (a New Tab page's prewarm), on about:blank. Its
+// first page takes the blank entry's place (no Back to it), and closing it before any page, or
+// closing its window or quitting, leaves nothing in Chrome's closed-tab list.
 - (NNCoreTab*)openTab:(NSString*)url
               profile:(NNCoreProfile*)profile
            foreground:(BOOL)foreground;

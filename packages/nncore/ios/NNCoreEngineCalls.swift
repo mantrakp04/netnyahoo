@@ -6,6 +6,6 @@ extension CefModule {
     "nn_favicons_get", "nn_favicons_set",
     "nn_tab_restore_load",
     "nn_bookmarks_tree", "nn_bookmarks_apply", "nn_bookmarks_watch",
-    "nn_omnibox_typed", "nn_omnibox_opened",
+    "nn_omnibox_opened",
   ]
 }

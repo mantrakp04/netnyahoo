@@ -6,6 +6,7 @@
 #include "base/task/single_thread_task_runner.h"
 
 #include "chrome/browser/devtools/devtools_ui_controller.h"
+#include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/autofill/save_address_bubble_controller.h"
@@ -323,6 +324,15 @@ void NNBrowserWindow::Close() {
   }
   UnloadController* unload = UnloadController::From(browser_);
   if (unload) {
+    // Its window's close records its tabs in Chrome's closed-tab list: a New Tab page's tab
+    // made ahead on about:blank goes first, unrecorded. Only for the host's close (decided:
+    // after beforeunload and the downloads question) or the quit's. One Chrome starts on its
+    // own (an extension's windows.remove) may still be refused here, and keeps it; one that
+    // races a quit's pending beforeunload and is refused loses only the prewarm (the New Tab
+    // page makes its tab at Enter instead).
+    if ((host_ && host_->closing()) || browser_shutdown::IsTryingToQuit()) {
+      CloseBlankTabsBeforeWindowCloses(browser_);
+    }
     unload->OnWindowClosing();
   }
 }

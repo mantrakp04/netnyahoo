@@ -9,7 +9,7 @@ import { layout, useTheme } from "../lib/theme";
 import { startChromeTabs } from "../lib/chromeTabs";
 import { handOff, wantsPage } from "../lib/tabPages";
 import { noteDiscarded, noteGone, noteReady } from "../lib/tabLifecycle";
-import { forgetChromeTab, noteChromeTab, usePrewarm } from "../lib/preload";
+import { usePrewarm } from "../lib/preload";
 import { webviewRef, webviews } from "../lib/webviews";
 import { useBrowser } from "../store/browser";
 import { setPageProgress } from "../store/pageProgress";
@@ -374,7 +374,7 @@ const TabPane = memo(function TabPane({
         <View style={autoLayout ? { height: motion.pageHeight } : { flex: 1 }}>
           {visible && !fullscreen && <ShareBar tabId={tabId} />}
           <View style={{ flex: 1 }}>
-            {(mounted || prewarmed) && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={(!!warm && !newTabShown && !isNewTab) || prewarmed} />}
+            {(mounted || prewarmed) && <TabWebView tabId={tabId} visible={visible && !newTabShown && !isNewTab} warm={!!warm && !newTabShown && !isNewTab} />}
             {visible && isNewTab && !small && (inSplit ? <SplitEmptyState tabId={tabId} focused={focused} /> : <NewTabPage key={tabId} tabId={tabId} toolbar={toolbar} />)}
             {visible && <InternalPage tabId={tabId} />}
             {visible && (
@@ -444,7 +444,6 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
   useEffect(
     () => () => {
       noteGone(tabId);
-      forgetChromeTab(tabId);
     },
     [],
   );
@@ -485,9 +484,8 @@ const TabWebView = memo(function TabWebView({ tabId, visible, warm }: { tabId: s
       // The card under the page (ContentCard's background) is drawn once, by the app: a page without a background of its
       // own shows it, as on CEF. The page drawing it again darkened every transparent page.
       pageBackgroundColor="transparent"
-      onReady={(browserId, chromeTabId) => {
+      onReady={(browserId) => {
         setBrowserId(tabId, browserId);
-        noteChromeTab(tabId, chromeTabId);
         noteReady(tabId);
         if (tab()?.muted) void webviews.get(tabId)?.setMuted(true);
       }}

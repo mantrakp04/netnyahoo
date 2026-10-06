@@ -750,7 +750,9 @@ static BOOL HeldSelector(SEL selector) {
     if (url.length && [view skipsNavigationDownload:url userInitiated:view->_pendingUserInitiated]) url = nil;
     if (url.length) NNFieldMarkNow(view->_transferKey, @"request");
     controller.hostChanges++;
-    NNCoreTab *tab = [controller.coreWindow openTab:url.length ? url : @"about:blank" profile:profile foreground:NO];
+    // No URL yet (a New Tab page's prewarm, or a download's tab): made ahead, which keeps its about:blank out of Back
+    // and Chrome's closed-tab list.
+    NNCoreTab *tab = [controller.coreWindow openTab:url.length ? url : @"" profile:profile foreground:NO];
     controller.hostChanges--;
     // Its navigation started in openTab, before this view was its delegate (tabDidChangeLoading:).
     if (url.length && tab.loading) NNFieldMarkNow(view->_transferKey, @"start");
@@ -1061,6 +1063,16 @@ static BOOL HeldSelector(SEL selector) {
 
 - (void)tabRemovedFromWindow:(NNCoreWindow *)window {
   if (_moving || _closing || !_tab) return;
+  // A tab Chrome deleted without telling the view (a New Tab page's prewarm, which a window's close or the quit drops
+  // first, and either may still be refused): the view lets it go, and its next load makes another. A move keeps it.
+  {
+    NNCoreTab *removed = _tab;
+    __weak NNCoreWebView *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      NNCoreWebView *view = weakSelf;
+      if (view && view->_tab == removed && removed.closed) [view detach];
+    });
+  }
   // A stage 1 engine says when Chrome closes a tab (tabWillClose:); a removal is then a move (an extension's
   // tabs.move to another window), which keeps the tab.
   if (nncore_host::EngineHasTabModel()) return;
