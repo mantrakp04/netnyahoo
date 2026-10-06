@@ -19,6 +19,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 MARKERS = (REPO + "/", REPO + " ", "/private/tmp/claude-", "/tmp/nn-")
 NEVER = ("/Applications/Netnyahoo.app/", "/Applications/Claude.app/", "/Applications/League of Legends.app/",
          "/System/", "/usr/libexec/", "/sbin/launchd")
+TOOLS = {"bash", "zsh", "sh", "-zsh", "top", "ps", "git", "perl", "lockf", "timeout", "sleep", "python3", "Python",
+         "osascript", "log", "caffeinate"}
 ME = os.getpid()
 
 ap = argparse.ArgumentParser()
@@ -98,6 +100,8 @@ try:
             for pid, (_, pcpu, cmd) in sorted(procs.items(), key=lambda kv: -kv[1][1]):
                 if budget <= 0 or pcpu < 3 or pid in paused:
                     continue
+                if os.path.basename(cmd.split()[0]) in TOOLS:
+                    continue  # a shell or a probe: pausing it would hang an agent's command, not save CPU
                 try:
                     os.kill(pid, signal.SIGSTOP)
                 except ProcessLookupError:
