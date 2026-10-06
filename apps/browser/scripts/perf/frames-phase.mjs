@@ -407,6 +407,10 @@ export function frameTable(resultsByLabel) {
 // blocks, view updates (native) and React commits and host updates (framecounts) a run may take. Exact when every repetition of
 // every baseline run agreed, else the largest plus 10%. Not gated: ticks, busy times, renders and store updates (they follow
 // timing or page load progress).
+//
+// A count only gates once it has been shown to move frame time: a change that cut it also cut the interaction's main-thread
+// CPU or its over-budget frames, in a before/after run (docs/perf/frames.md). `proof` names that evidence per count; a count
+// with none is UNPROVEN: `check` lists it when it is over its ceiling but doesn't fail on it. Nothing is proven yet.
 const RATCHET_FILE = join(dirname(fileURLToPath(import.meta.url)), "frames-ratchet.json");
 const GATED = ["layoutPasses", "mountBatches", "uiBlocks", "viewUpdates", "commits", "hostUpdates"];
 // Interactions whose counts follow a page's load or a window's start-up rather than the interaction.
@@ -428,18 +432,19 @@ export function ratchetInit(results) {
       ceilings[name][key] = values.every((v) => v === max) ? max : Math.ceil(max * 1.1);
     }
   }
-  return { revision: 1, ceilings };
+  return { revision: 2, proof: Object.fromEntries(GATED.map((key) => [key, null])), ceilings };
 }
 
 // A count is judged by its median over the results' repetitions: an outlier (a stray window event) doesn't fail the gate.
 export function ratchetCheck(results, ratchet) {
   const rows = [];
+  const proven = (key) => !!ratchet.proof?.[key];
   for (const [name, limits] of Object.entries(ratchet.ceilings)) {
     for (const [key, ceiling] of Object.entries(limits)) {
       const values = repsOf(results, name).map((x) => x[key]).filter(Number.isFinite);
       if (!values.length) continue;
       const got = median(values);
-      rows.push({ name, key, ceiling, got, over: got > ceiling });
+      rows.push({ name, key, ceiling, got, over: got > ceiling, proven: proven(key) });
     }
   }
   return rows;
@@ -460,10 +465,12 @@ if (process.argv[1] && process.argv[1].endsWith("frames-phase.mjs")) {
     console.log(`wrote ${RATCHET_FILE}`);
   } else if (cmd === "check") {
     const rows = ratchetCheck(load(files[0]), load(RATCHET_FILE));
-    const over = rows.filter((r) => r.over);
-    for (const r of over) console.log(`over: ${r.name}: ${r.key} ${r.got} > ${r.ceiling}`);
+    const over = rows.filter((r) => r.over && r.proven);
+    const advisory = rows.filter((r) => r.over && !r.proven);
+    for (const r of over) console.log(`over: ${r.name}: ${r.key} ${r.got} > ${r.ceiling} (proven)`);
+    for (const r of advisory) console.log(`advisory (unproven): ${r.name}: ${r.key} ${r.got} > ${r.ceiling}`);
     const below = rows.filter((r) => r.got < r.ceiling).length;
-    console.log(`frames ratchet: ${over.length ? "FAILED" : "ok"} (${rows.length} counts, ${over.length} over, ${below} below their ceiling)`);
+    console.log(`frames ratchet: ${over.length ? "FAILED" : "ok"} (${rows.length} counts: ${rows.filter((r) => r.proven).length} proven, ${rows.filter((r) => !r.proven).length} unproven; ${over.length} proven over, ${advisory.length} unproven over, ${below} below their ceiling)`);
     process.exit(over.length ? 1 : 0);
   } else {
     console.error("usage: frames-phase.mjs table <results.json>... | init <framecounts results.json> | check <results.json>");

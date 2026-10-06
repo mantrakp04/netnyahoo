@@ -64,6 +64,7 @@ test("ratchet: exact when every repetition agrees, +10% when they moved; timing-
   };
   const r = ratchetInit(results);
   assert.deepEqual(r.ceilings, { "tab switch": { layoutPasses: 25, commits: 6 } });
+  assert.ok(Object.values(r.proof).every((p) => p === null), "a new ratchet proves nothing");
 });
 
 test("ratchet: the median of the repetitions is judged against the ceiling", () => {
@@ -78,4 +79,10 @@ test("thread CPU time: the difference between the last tick before the window an
   assert.equal(s.mainBusy, 12); // ticks at 10 (mc 4) → 40 (mc 16): the first tick at or after the window's end
   assert.equal(s.jsBusy, 6);
   assert.ok(Number.isNaN(windowStats(rec([0, 10, 20]), 5, 15, 10).mainBusy)); // no CPU samples (an older probe)
+});
+
+test("ratchet: a count with no proof is advisory, one with proof gates", () => {
+  const ratchet = { proof: { layoutPasses: null, uiBlocks: "docs/perf/frames.md" }, ceilings: { "tab switch": { layoutPasses: 25, uiBlocks: 100 } } };
+  const rows = ratchetCheck(runs("tab switch", [{ layoutPasses: 30, uiBlocks: 120 }]), ratchet);
+  assert.deepEqual(rows.map((r) => [r.key, r.over, r.proven]), [["layoutPasses", true, false], ["uiBlocks", true, true]]);
 });
