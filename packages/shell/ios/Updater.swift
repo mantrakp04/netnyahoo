@@ -151,10 +151,98 @@ extension AppUpdater: SPUUpdaterDelegate {
     return [["key": "first", "value": "1"]]
   }
 
+  // An update downloaded in the background (SUAutomaticallyUpdate), extracted and checked by Sparkle's installer, is
+  // installed when the app quits: prewarm it now, long before the user's next launch. Sparkle keeps its own schedule
+  // (false). Updates installed from the update window relaunch at once and keep Sparkle's own scan only.
+  public func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem, immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
+    UpdatePrewarm.start(version: item.versionString)
+    return false
+  }
+
   public func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
     guard Self.isPresentingFullScreen else { return false }
     deferredRelaunch = installHandler
     return true
+  }
+}
+
+/// Runs an update Sparkle has staged for install-on-quit once, hidden, before the user launches it (main.swift's
+/// NETNYAHOO_PREWARM: it exits before NSApp, a window or the data dir). macOS checks a copy it hasn't run at its first
+/// exec, and that stays with the bundle's files through Sparkle's move into place. Sparkle's own `gktool scan` (when it
+/// applies) covers Gatekeeper's scan of the bundle (4.5 s for 0.2.27 on a calm Mac); the exec also covers what only a
+/// launch does (130–190 ms more before main), and all of it when Sparkle's scan didn't take
+/// (docs/perf/launch-critical-path.md). Best effort: spawned off the main thread (the exec itself waits for those
+/// checks), killed after `timeout` or when the app quits.
+enum UpdatePrewarm {
+  static let timeout: TimeInterval = 90
+  private static var started = Set<String>()
+  private static var running: pid_t = 0
+
+  static func start(version: String) {
+    guard !started.contains(version), let executable = stagedApp(version: version)?.executableURL else { return }
+    started.insert(version)
+    NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in stop() }
+    DispatchQueue.global(qos: .utility).async {
+      let task = Process()
+      task.executableURL = executable
+      var env = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("NETNYAHOO_") && !$0.key.hasPrefix("DYLD_") }
+      // Every version this updates to has it (it came with this code; Sparkle never installs an older one).
+      env["NETNYAHOO_PREWARM"] = "1"
+      task.environment = env
+      task.standardInput = FileHandle.nullDevice
+      task.standardOutput = FileHandle.nullDevice
+      task.standardError = FileHandle.nullDevice
+      let began = Date()
+      task.terminationHandler = { ended in
+        DispatchQueue.main.async {
+          if running == ended.processIdentifier { running = 0 }
+          NSLog("Netnyahoo: prewarmed update \(version) in \(Int(Date().timeIntervalSince(began) * 1000)) ms (status \(ended.terminationStatus))")
+        }
+      }
+      do {
+        try task.run()
+      } catch {
+        return NSLog("Netnyahoo: couldn't prewarm update \(version): \(error.localizedDescription)")
+      }
+      let pid = task.processIdentifier
+      DispatchQueue.main.async {
+        if task.isRunning { running = pid }
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+          guard running == pid, task.isRunning else { return }
+          NSLog("Netnyahoo: update prewarm still running after \(Int(timeout)) s; stopping it")
+          stop()
+        }
+      }
+    }
+  }
+
+  /// Kills a prewarm still running (only ours: the pid is cleared once it has been reaped).
+  static func stop() {
+    guard running != 0 else { return }
+    kill(running, SIGKILL)
+    running = 0
+  }
+
+  /// The update Sparkle's installer extracted: ~/Library/Caches/<bundle id>/org.sparkle-project.Sparkle/Installation/
+  /// <session>/…/<name>.app with our bundle id at that build number, the newest if there are several.
+  static func stagedApp(version: String, bundleId: String? = Bundle.main.bundleIdentifier, root: URL? = nil) -> Bundle? {
+    guard let bundleId,
+      let root = root ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+        .appendingPathComponent(bundleId).appendingPathComponent("org.sparkle-project.Sparkle/Installation")
+    else { return nil }
+    guard let walk = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey],
+                                                     options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return nil }
+    var found: [(Bundle, Date)] = []
+    for case let url as URL in walk {
+      if walk.level > 4 { walk.skipDescendants(); continue }
+      guard url.pathExtension == "app", let bundle = Bundle(url: url), let info = bundle.infoDictionary,
+        info["CFBundleIdentifier"] as? String == bundleId, info["CFBundleVersion"] as? String == version,
+        let executable = bundle.executableURL, FileManager.default.isExecutableFile(atPath: executable.path)
+      else { continue }
+      let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+      found.append((bundle, date))
+    }
+    return found.max { $0.1 < $1.1 }?.0
   }
 }
 
