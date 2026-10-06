@@ -11,9 +11,9 @@ All of them are in `apps/browser/scripts/perf/`.
 | File | Bench | What it is |
 |---|---|---|
 | `native-bench.mjs` | native | Launch, idle CPU and wakeups, memory, tab and window latency, throttling, on a Release app in hidden instances. Its header maps every section and output row to the function that measures it. |
-| `nnperf.swift` | native | Process probes (rusage, phys_footprint, window on screen, quit), built on demand with swiftc. |
-| `nnmark.m` | native | Injected into the bench's copy of the app: marks when a window's React content commits. |
-| `bench-entry.js`, `bench-channel.js` | native | The JS entry of the bench bundle: the app's `index.js` plus the command channel. |
+| `nnperf.swift` | native | Process probes (rusage, phys_footprint, window on screen, quit) and `postkeys` (real key events posted to one pid with `CGEventPostToPid`), built on demand with swiftc. |
+| `nnmark.m` | native | Injected into the bench's copy of the app: marks when a window's React content commits, and (`NN_BENCH_KEYLOG=1`) every key down the app's event loop sees. |
+| `bench-entry.js`, `bench-channel.js`, `bench-offline.js` | native | The JS entry of the bench bundle: the app's `index.js` plus the command channel (`nn.journeys()` is the field timing's own view). `bench-offline.js` answers every non-local `fetch` itself when the data folder holds a `bench-offline` file, so nothing is uploaded while sharing is on. |
 | `js-bench.mjs` | JS | React commits, renders, store updates and JS tasks per interaction, on a production bundle. |
 | `bench-app.js` | JS, render | The scenarios js-bench and render-bench run inside the app. **Not** part of native-bench. |
 | `seed.mjs` | JS, render | The big profile those runs start from: 200 tabs, 5000 history entries, 1000 bookmarks. |
@@ -33,7 +33,8 @@ Each bench drives the app through files in the instance's `NETNYAHOO_DATA_DIR`:
 |---|---|---|
 | `bench-cmd.js` → `bench-result.json` | native-bench | bench-channel.js (first line `// <id>`; the result carries the same id) |
 | `bench-boot.json` | native-bench | bench-channel.js as it loads (the "JS running" mark) |
-| `bench-marks.jsonl` | native-bench | nnmark.m (`content`/`committed` epoch ms per window) |
+| `bench-marks.jsonl` | native-bench | nnmark.m (`content`/`committed` epoch ms per window; `keydown`/`made`/`window`/`char` per key with `NN_BENCH_KEYLOG`) |
+| `telemetry.json`, `bench-offline` | native-bench `newtabkey`, `navigate` | the phase: diagnostics sharing on (the app times journeys only then) and the file that makes `bench-offline.js` guard `fetch` |
 | `dev-eval.js` → `dev-eval-result.json` | js-bench, render-bench | the dev harness (`src/lib/devHarness.ts`) |
 | `perf-probe` | js-bench, render-bench | the seed. Its contents turn on the probe's options: `selectors`, `renders`, `listeners` |
 
@@ -102,6 +103,7 @@ For a question that the phases don't answer, don't fork native-bench into a prob
 
 - `--prepared` reuses the signed copies without rebuilding or re-signing.
 - `--only switch`, `newtab`, `memory`, `idle` or `newwindow` runs one part of a session.
+- `--only newtabkey,navigate` runs the J2 and J4 journeys from real key events (below). Add `--journey-n` (iterations per run, default 10) and `--page-port`.
 - `--env K=V` passes extra environment, such as a trace switch or an extra `DYLD_INSERT_LIBRARIES`.
 - `--hold <secs>` keeps each measured instance alive so you can attach `lldb -p`, `heap` or `vmmap`.
 
@@ -260,6 +262,11 @@ command starts.
 | tab switch → shown | `switchToTab` → the page turns visible and has drawn 2 frames (median of 16 among 20 tabs) |
 | new tab → first paint / first frame | Store `newTab` → the page's FCP / first frame (median of 5) |
 | new window → on screen / with its content / first paint / first frame | `openWindow` → the window on screen (2 ms polls) / the later of that and its content commit / its page's FCP / first frame |
+| J2 ⌘T key → JS has the new tab / command bar committed / on screen / typeable | A real ⌘T posted to the instance's pid (nnperf `postkeys`), from the key down's own timestamp (what the field journeys start from) to the app's field-timing marks: the store has the new tab, its command bar's layout effect, that commit's Core Animation transaction committed, its field focused and on screen. The last is the J2 total. Sharing is on in the instance's data folder and nothing is uploaded (`bench-offline.js`). |
+| J2 keystroke → its suggestions on screen | One real key into the typeable bar → the commit with its suggestions on screen (the mark `suggest`) |
+| J2 ⌘T key made → the app's event loop saw it | The key's timestamp → nnmark.m's key monitor. Part of every J2 and J4 row. `nnperf hands ⌘T over → the event's timestamp` is the poster's own lead (not in any row) |
+| J4 Enter → engine asked to load / Chrome started / committed / first contentful paint | A URL of the bench's local page typed with real keys (25 ms apart) into a new tab's bar (⌘T) or a page's panel (⌘L), then a real Enter: the app's marks `request` (our side), `start`, `commit`, `fcp`. The page's own first contentful paint over CDP is the same number. `request → fcp` is the engine's and the network's share (a local server here) |
+| journeys: iterations lost, load average | Iterations where a key never arrived (CGEventPostToPid drops about 1 in 10; the app's key log catches it and the key is made again), a bar or panel never opened, or a page never painted; the 1-minute load average at each run's start and end |
 
 ### js-bench
 

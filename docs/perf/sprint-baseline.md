@@ -24,7 +24,8 @@ Cells are median, p75 (nearest rank), min–max, n. Phase rows are differences o
    native start → JS running (387 ms).
 4. J3 (27 ms) is already near its floor: 10 ms of JS plus the visibility change and two frames.
 5. J2's per-keystroke cost is 6.2 ms median and matches the field (p50 6 ms), so the lab is representative there.
-   Cmd-T → typeable and J4's Enter → commit → first contentful paint have no lab measurement (end of this file).
+   Cmd-T → typeable and J4's Enter → commit → first contentful paint were measured afterwards, from real key events
+   (sections J2 and J4 below; a Release build of the tree after 0.2.27, so not the shipped 0.2.27 binary).
 
 ## Machine state
 
@@ -105,11 +106,39 @@ The field's `perf_omnibox` p50 is 6 ms, the same quantity as the first row (keys
 after the commit), so the lab and the field agree. Each key renders 63 components in 4 commits; `SuggestionIcon`,
 `SuggestionRow` and `Favicon` lead the render counts.
 
-Missing: ⌘T → command bar open and typeable. No lab row covers the key event reaching JS, `openPanel` →
-committed, or the input getting focus. The "new tab" rows start at the store call, not at the key, and open a page
-rather than the bar. The omnibox driver (`nn.omnibox`) is only registered when the data folder holds a
-`perf-probe` file, which native-bench's instances don't have, so a native phase needs the probe on (and a way to
-inject the ⌘T key, or the menu command). Estimated at 2 to 3 hours, so not built here.
+### J2 from a real ⌘T (new `newtabkey` phase)
+
+native-bench `--only newtabkey`: a real ⌘T posted to the instance's pid (nnperf `postkeys`, `CGEventPostToPid`), one
+real key `n` once the bar is focused, 10 per run, 3 runs. Rows start at the key down's own timestamp (what the field's
+`perf_journeys` starts from) and end at the app's field-timing marks (`NNCoreFieldTiming.mm`: a post-commit handler on
+the Core Animation transaction carrying the change). Cumulative from the key, n=30, median, p75, min–max:
+
+| Step (`perf_journeys` name) | All 3 runs | Run 1 (load 15 to 55) | Run 2 (load 55 to 5) | Run 3 (load 5 to 12) |
+|---|---|---|---|---|
+| key made → the app's event loop saw it | 7 ms, p75 10, 1–20 | | | |
+| → JS has the new tab (`j2_js`) | 8 ms, p75 15, 1–61 | 14 | 8 | 5 |
+| → command bar committed (`j2_commit`) | 17 ms, p75 30, 7–74 | 28 | 17 | 11 |
+| → that commit on screen (`j2_shown`) | 52 ms, p75 90, 26–136 | 90 | 47 | 40 |
+| → field focused and on screen: **typeable** (`j2_typeable`, the J2 total) | **55 ms, p75 96, 29–136** | 98 | 54 | 40 |
+| keystroke → its suggestions on screen (`j2_suggest`) | 35 ms, p75 47, 8–945 (n=30) | 44 | 34 | 14 |
+
+Per-run cells are medians. Phases of the total: about 8 ms for the key to reach JS and the store, 9 ms more to the
+bar's layout effect, 35 ms to its Core Animation commit (React and layout work for the bar and the page's new-tab
+view), 3 ms to focus. So the 52 ms to "on screen" is mostly the commit and layout of the bar, not our JS. A keystroke's
+suggestions take 35 ms to the screen on this one-tab, empty-history profile, against 6 ms for the JS commit alone
+(`perf_omnibox`, the first row of the table above): the rest is the commit reaching the screen. The app's own `j2_typeable`
+(its start is the event's timestamp) is identical to this row (0 ms apart, n=30). Machine load moved the rows by a factor
+of 2.5 between runs 1 and 3, so read the quiet run as the floor and the pooled column as the typical case here.
+
+### J2 and J4: what the rows count and don't
+
+The instance runs with diagnostics sharing on in its scratch data folder (the app times a journey only then) and
+`bench-offline.js` answers every non-local `fetch` itself (a collector URL was checked first in every run; 111 calls
+were answered, nothing left the machine). Input is posted to the one pid the bench started. `CGEventPostToPid`
+sometimes drops a key (seen in smoke runs, several in ten at times; not counted in the final runs); the app's key log (`NN_BENCH_KEYLOG`) catches it and the key is made again (1 of 90 iterations was
+lost for good: an Enter that never arrived). The event system stamps a key 27 ms (16–78) after nnperf hands it over:
+that lead is not in any row. A real keyboard's key goes HID → window server → app, the same path from the stamp on.
+Not covered: the key's HID scan before its stamp, and the display's refresh after the commit (up to 1 frame).
 
 ## J3 Tab switch
 
@@ -126,17 +155,30 @@ switch to a tab whose page is not loaded yet (js-bench's first pass wakes them b
 
 ## J4 Navigate
 
-Nothing measures Enter → navigation committed → first contentful paint. Closest rows:
+### J4 from a real Enter (new `navigate` phase)
 
-| Row | Source | Result |
+native-bench `--only navigate`: `127.0.0.1:47881/static?id=…` (the bench's local page, no network) typed with real keys
+25 ms apart, then a real Enter. Two ways in, 10 per run, 3 runs. The app's marks give the steps (`j4_request`, `j4_start`,
+`j4_commit`, `j4_fcp`); the page's own first contentful paint over CDP is the same entry the app reads, and the two agree to the ms in all 59 pairs (it checks the plumbing; it isn't an independent clock). Cumulative
+from Enter's timestamp, median, p75, min–max:
+
+| Step | From a new tab's bar (⌘T, n=29) | From a page's panel (⌘L, n=30) |
 |---|---|---|
-| new tab → first paint of a local static page (store `newTab`, no network) | native-bench | 103 ms, p75 110, 85–125, n=10 |
-| JS time of a page load (`navigate` to the heavy page, tab loading → loaded) | js-bench `pageLoad` | 17 commits, 751 renders, 138 ms of JS tasks, 21 store updates (3 runs); `loadMs` 3147 ms, dominated by the test page's artificial image delays, not by us |
+| Enter made → the app's event loop saw it | 4 ms, p75 7, 1–24 | 5 ms, p75 7, 1–13 |
+| → engine asked to load (`j4_request`, **our side**) | 19 ms, p75 30, 8–61 | 11 ms, p75 17, 4–30 |
+| → Chrome started the navigation (`j4_start`) | 24 ms, p75 37, 13–72 | 13 ms, p75 19, 6–32 |
+| → document committed (`j4_commit`) | 44 ms, p75 66, 29–118 | 33 ms, p75 53, 21–70 |
+| → first contentful paint (`j4_fcp`, **the J4 total**) | **106 ms, p75 129, 81–204** | **52 ms, p75 77, 38–101** |
+| request → first contentful paint (`j4_engine`) | 88 ms, p75 104, 70–143 | 39 ms, p75 58, 33–91 |
+| per run, FCP median (load 15 to 55 / 55 to 5 / 5 to 12) | 141 / 102 / 98 | 89 / 45 / 49 |
 
-Missing: Enter (the `submit` of the omnibox driver) → `isLoading` / URL committed in the store → the page's FCP,
-and the engine's commit → first paint share. Building it needs the probe-enabled omnibox driver (as for J2) plus
-the page's FCP over CDP, which native-bench already reads: about 2 hours, not built here. The field events from
-8d6e466f (`perf_journeys`) are the other agent's.
+Phases: our side (Enter to the engine being asked) is 11 to 19 ms, 10 to 18% of the total; the engine's share is 39 to
+88 ms on a local server. A new tab costs 54 ms more than navigating a page in place: 49 ms of it in the engine's share
+(a new engine tab against a reused one: 88 against 39 ms) and 8 ms on our side. One of the 60 navigations was lost
+(an Enter that never arrived).
+
+Not covered: a remote page (network and server time), so `j4_engine` here is the engine's floor; the typed URL
+resolving through suggestions (a person who picks a suggestion, not Enter on typed text); and a page that paints late.
 
 ## Commands
 
@@ -158,6 +200,13 @@ scripts/agent/locked perflab -- node apps/browser/scripts/perf/native-bench.mjs 
 # cold launches: every launch from its own clone of the app
 scripts/agent/locked perflab -- node apps/browser/scripts/perf/native-bench.mjs --app $A --bundle $B --out $S/native-fresh \
   --port 9612 --only launch --launch-runs 6 --fresh-copy
+```
+
+```sh
+# J2 and J4 from real key events, on a Release build of the tree (scripts/agent/build-app --as <you> --config Release);
+# first `--only prepare` (or any run) makes the signed copy, then --prepared reuses it
+scripts/agent/locked perflab --as <you> -- node apps/browser/scripts/perf/native-bench.mjs --app $S/prepared/Netnyahoo.app --prepared \
+  --label rel --out $S/journeys --port 9684 --page-port 47881 --only newtabkey,navigate --runs 3 --journey-n 10
 ```
 
 Both new flags are `--only launch` options in `native-bench.mjs` (`--seed big`, `--fresh-copy`); each launch row now

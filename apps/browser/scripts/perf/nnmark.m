@@ -29,8 +29,8 @@ __attribute__((constructor)) static void Start(void) {
   if (getenv("NN_BENCH_KEYLOG")) {
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
       double now = NSDate.date.timeIntervalSince1970 * 1000;
-      fprintf(gOut, "{\"keydown\":%.1f,\"made\":%.1f,\"window\":%ld,\"chars\":\"%s\"}\n", now,
-              now - (NSProcessInfo.processInfo.systemUptime - event.timestamp) * 1000, (long)event.windowNumber, event.characters.UTF8String ?: "");
+      fprintf(gOut, "{\"keydown\":%.1f,\"made\":%.1f,\"window\":%ld,\"char\":%d}\n", now,
+              now - (NSProcessInfo.processInfo.systemUptime - event.timestamp) * 1000, (long)event.windowNumber, event.characters.length ? (int)[event.characters characterAtIndex:0] : 0);
       fflush(gOut);
       return event;
     }];

@@ -455,7 +455,13 @@ class Instance {
   // The content marker's marks (nnmark.m): {content|committed: epoch ms, window}.
   marks() {
     try {
-      return readFileSync(join(this.dataDir, "bench-marks.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+      return readFileSync(join(this.dataDir, "bench-marks.jsonl"), "utf8").split("\n").filter(Boolean).flatMap((l) => {
+        try {
+          return [JSON.parse(l)];
+        } catch {
+          return []; // a line still being written
+        }
+      });
     } catch {
       return [];
     }
@@ -714,13 +720,37 @@ async function windowsRun(side, i) {
 // on in their data folder, with a `bench-offline` file that makes bench-offline.js answer every non-local fetch itself:
 // the Release bundle would otherwise send the events to our collector. Input is real: nnperf postkeys posts key events
 // to this one pid (CGEventPostToPid), which reach the app as a keyboard's do (NSApp.sendEvent, the menu bar's ⌘T, the
-// focused field). Every row starts at the instant nnperf created the key down (epoch ms, the clock the app's marks use).
+// focused field). Every row starts at the key down's own timestamp (epoch ms, the clock the app's marks use): the instant the app's field timing starts a journey from.
 const TELEMETRY_ON = { version: 1, sharing: true, decidedAt: 1, askDoneAt: 1, installId: "00000000-0000-4000-8000-0000000000b0", lastVersion: null, sessionOpen: false };
+
+// After a lost iteration: the bar's panel closed and any empty new tab closed, so the next one starts from the same place.
+async function recover(app) {
+  await app.run(`const s = nn.store.getState(); const w = ${WINDOW};
+    if (s.windowUi[w]?.panel.open) s.closePanel(w);
+    for (const id of s.windows[w].tabIds) if (!s.tabs[id].url && s.windows[w].tabIds.length > 1) nn.store.getState().closeTab(id);
+    return true;`);
+  await sleep(1500);
+}
 
 function postKeys(app, gap, ...specs) {
   const r = nnperf("postkeys", String(app.pid), String(gap), ...specs);
   if (r.code !== 0) throw new Error(`nnperf postkeys ${specs.join(" ")} failed (${r.code}): ${r.out}`);
   return r.out.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+}
+
+// CGEventPostToPid sometimes drops an event (about one in ten here); the app's key log (nnmark.m) says whether this one
+// arrived, and a key it never saw is made again. Returns the press that arrived: `at` is the event's own timestamp (when
+// the system made the key, the instant the app's field timing starts every journey from), `posted` the moment nnperf
+// handed it over, which the event system stamps a few ms to a few tens of ms later (the row "poster → timestamp").
+async function postSeen(app, spec) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const [press] = postKeys(app, 0, spec);
+    for (const end = Date.now() + 1500; Date.now() < end; await sleep(15)) {
+      const seen = app.marks().find((m) => m.keydown !== undefined && m.made >= press.at - 5 && m.made < press.at + 400);
+      if (seen) return { posted: press.at, at: seen.made, attempts: attempt + 1 };
+    }
+  }
+  return null;
 }
 
 const journeyState = (app) => app.run(`const j = nn.journeys(); const s = nn.store.getState();
@@ -761,7 +791,8 @@ function delivery(app, at) {
 async function openNewTab(app) {
   let press, bar = null;
   for (let attempt = 0; attempt < 2 && !bar; attempt++) {
-    [press] = postKeys(app, 0, "cmd+t");
+    press = await postSeen(app, "cmd+t");
+    if (!press) break;
     bar = await waitFor(app, (st) => st.pending.some((q) => q.journey === "j2" && q.bar !== undefined && q.t0 >= press.at - 5), 2500);
   }
   return { press, bar };
@@ -776,9 +807,15 @@ async function newTabKey(app, i, k) {
   // Type once the field has focus (its typeable mark; the app hands marks over once a second), as a person would.
   if (!(await waitFor(app, (st) => markOf(st, p.key, "typeable", press.at) >= 0, 5000, 150))) return { lost: "never typeable", tab: p.key };
   await sleep(150);
-  const [key] = postKeys(app, 0, "text:n");
+  const key = await postSeen(app, "text:n");
+  if (!key) return { lost: "key never arrived", tab: p.key };
   const done = await waitFor(app, (st) => sampled(st, "j2_suggest") > sampled(before, "j2_suggest"), 8000, 120);
-  if (!done) return { lost: "no suggestions", tab: p.key };
+  if (!done) {
+    const now = await journeyState(app);
+    const q = now.pending.find((x) => x.key === p.key);
+    const d = (v) => (v === undefined ? "-" : Math.round(v - press.at));
+    return { lost: `no suggestions (pending: ${q ? `bar ${d(q.bar)} keyAt ${d(q.keyAt)} suggested ${d(q.suggested)}` : "gone"}; typed at +${Math.round(key.at - press.at)} (seen by the app after ${Math.round(delivery(app, key.at))} ms); marks ${(now.marks[p.key] ?? []).map(([k]) => k).join()})`, tab: p.key };
+  }
   const last = (step) => (sampled(done, step) > sampled(before, step) ? done.samples[step].at(-1) : NaN);
   return {
     tab: p.key,
@@ -794,6 +831,7 @@ async function newTabKey(app, i, k) {
     t0Skew: p.t0 - press.at,
     delivery: delivery(app, press.at),
     suggestDelivery: delivery(app, key.at),
+    postGap: press.at - press.posted,
   };
 }
 
@@ -812,18 +850,23 @@ async function navigateByEnter(app, side, id, from) {
     let open = false;
     // A key the app didn't act on (it was still busy, or the window wasn't key yet) is pressed again, once.
     for (let attempt = 0; attempt < 2 && !open; attempt++) {
-      postKeys(app, 0, "cmd+l");
+      if (!(await postSeen(app, "cmd+l"))) continue;
       for (const end = Date.now() + 2500; !open && Date.now() < end; await sleep(60)) open = await app.run(`return !!nn.store.getState().windowUi[${w}]?.panel.open;`);
     }
     if (!open) return { lost: "no panel" };
   }
   await sleep(from === "newtab" ? 150 : 900);
-  postKeys(app, 6, `text:${url}`);
+  const [typed] = postKeys(app, 25, `text:${url}`);
+  // Every character has to have arrived (the bar's text is what Enter sends), and the app caught up with them.
+  const arrived = () => app.marks().filter((m) => m.keydown !== undefined && m.made >= typed.at - 5 && m.made < typed.at + url.length * 60).length;
+  for (const end = Date.now() + 6000; arrived() < url.length && Date.now() < end; ) await sleep(30);
+  if (arrived() < url.length) return { lost: "typed keys dropped", tab };
   // Let the typed address settle (its suggestions, the inline completion) before Enter, as a person's pause would.
   await journeyState(app);
   await sleep(500);
   const before = await journeyState(app);
-  const [enter] = postKeys(app, 0, "enter");
+  const enter = await postSeen(app, "enter");
+  if (!enter) return { lost: "enter never arrived", tab };
   const page = await app.pageState(`id=${id}`, 20_000, (s) => s.fcp);
   const done = await waitFor(app, (st) => sampled(st, "j4_fcp") > sampled(before, "j4_fcp") || (st.counts.j4_no_load ?? 0) > (before.counts.j4_no_load ?? 0), 8000, 120);
   if (!page || !done || sampled(done, "j4_fcp") <= sampled(before, "j4_fcp")) {
@@ -849,8 +892,13 @@ async function journeyRun(side, i, parts) {
   const n = +opt["journey-n"];
   const app = new Instance(side, dir);
   app.env.push("NN_BENCH_KEYLOG=1");
-  const r = { j2: [], j4new: [], j4page: [], lost: { j2: [], j4new: [], j4page: [] }, guard: null };
-  const note = (kind, x, k) => (x.lost ? (r.lost[kind].push(x.lost), log(`${side.tag}journeys ${i} ${kind} ${k}: lost (${x.lost})`)) : r[kind].push(x));
+  const r = { j2: [], j4new: [], j4page: [], lost: { j2: [], j4new: [], j4page: [] }, guard: null, load: [Math.round(loadavg()[0])] };
+  const note = async (kind, x, k) => {
+    if (!x.lost) return void r[kind].push(x);
+    r.lost[kind].push(x.lost);
+    log(`${side.tag}journeys ${i} ${kind} ${k}: lost (${x.lost})`);
+    await recover(app);
+  };
   try {
     await app.launch();
     await app.pageState("id=seed", 30_000, (s) => s.fcp);
@@ -866,7 +914,7 @@ async function journeyRun(side, i, parts) {
     if (parts.has("newtabkey")) {
       for (let k = 0; k < n; k++) {
         const x = await newTabKey(app, i, k);
-        note("j2", x, k);
+        await note("j2", x, k);
         await sleep(1200);
         await closeTab(x.tab);
         await sleep(1000);
@@ -876,19 +924,20 @@ async function journeyRun(side, i, parts) {
     if (parts.has("navigate")) {
       for (let k = 0; k < n; k++) {
         const x = await navigateByEnter(app, side, `j${i}n${pad2(k)}`, "newtab");
-        note("j4new", x, k);
+        await note("j4new", x, k);
         await sleep(1500);
         await closeTab(x.tab);
         await sleep(1000);
       }
       for (let k = 0; k < n; k++) {
         const x = await navigateByEnter(app, side, `j${i}p${pad2(k)}`, "page");
-        note("j4page", x, k);
+        await note("j4page", x, k);
         await sleep(1800);
       }
       log(`${side.tag}journeys ${i} j4:`, JSON.stringify([r.j4new.map((x) => Math.round(x.fcp)), r.j4page.map((x) => Math.round(x.fcp))]));
     }
     r.blocked = (await app.run(`return nn.blockedFetches();`)).length;
+    r.load.push(Math.round(loadavg()[0]));
     side.results.journeys.push(r);
   } finally {
     await app.done();
@@ -1137,7 +1186,8 @@ function summary(res) {
   pooled("J2 ⌘T key → bar focused and on screen (typeable)", of("j2", "typeable"));
   pooled("J2 keystroke → its suggestions on screen", of("j2", "suggest"));
   pooled("J2 the app's own ⌘T → typeable (its t0 is the event's timestamp)", of("j2", "appTypeable"));
-  pooled("J2 the app's t0 minus the key down's creation", of("j2", "t0Skew"));
+  pooled("J2 the app's t0 minus the key's timestamp (should be 0)", of("j2", "t0Skew"));
+  pooled("J2 nnperf hands ⌘T over → the event's timestamp (not in the rows)", of("j2", "postGap"));
   pooled("J2 ⌘T key made → the app's event loop saw it", of("j2", "delivery"));
   pooled("J2 keystroke made → the app's event loop saw it", of("j2", "suggestDelivery"));
   for (const [kind, from] of [["j4new", "new tab's bar (⌘T)"], ["j4page", "page's panel (⌘L)"]]) {
@@ -1155,6 +1205,8 @@ function summary(res) {
       const kept = J.reduce((n, r) => n + r[kind].length, 0);
       if (lost || kept) rows.push({ name: `journeys ${kind}: iterations lost (no bar, panel, page or sample)`, median: lost, min: lost, max: lost, n: lost + kept, unit: "", digits: 0 });
     }
+    const loads = J.flatMap((r) => r.load ?? []);
+    if (loads.length) rows.push({ name: "journeys: 1-minute load average at each run's start and end", median: median(loads), min: Math.min(...loads), max: Math.max(...loads), n: loads.length, unit: "", digits: 0 });
     rows.push({ name: "journeys: fetches the guard answered (nothing left the machine)", median: J.reduce((n, r) => n + (r.blocked ?? 0), 0), min: 0, max: 0, n: J.length, unit: "", digits: 0 });
   }
   return rows;
