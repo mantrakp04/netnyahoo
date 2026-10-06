@@ -136,3 +136,33 @@ test("a native module's listener runs after the held reports, in one batch with 
   emit("onDownload", 1);
   assert.equal(log.length, 4, "and so does its subscription");
 });
+
+test("a flush's reports run in one store transaction; a listener's error at its end is reported like a report's", () => {
+  const log = [];
+  const bridge = { __callFunction: (_m, _method, args) => log.push(args[1]), __invokeCallback: () => {} };
+  const scheduled = [];
+  const errors = [];
+  let ends = 0;
+  const transaction = (run) => {
+    log.push("{");
+    run();
+    log.push("}");
+    if (++ends === 2) throw new Error("listener");
+  };
+  const held = createHold({ batch: (u) => u(), transaction, schedule: (c) => scheduled.push(c), report: (e) => errors.push(e.message) });
+  holdPageReports(bridge, held);
+  const event = (name) => bridge.__callFunction("RCTEventEmitter", "receiveEvent", [1, name, {}]);
+  event("topNavigationChange");
+  event("topProgress");
+  scheduled[0]();
+  assert.deepEqual(log, ["{", "topNavigationChange", "topProgress", "}"]);
+  event("topFavicon");
+  scheduled[1]();
+  assert.deepEqual(log.slice(4), ["{", "topFavicon", "}"]);
+  assert.deepEqual(errors, []);
+  scheduled[2]();
+  assert.deepEqual(errors, ["listener"]);
+  event("topStatus");
+  scheduled[3]();
+  assert.deepEqual(log.slice(7), ["{", "topStatus", "}"], "and the next flush starts afresh");
+});

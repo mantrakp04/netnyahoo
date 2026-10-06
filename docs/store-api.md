@@ -92,8 +92,11 @@ find, zoom, a new page's ready report), a timer, a callback, and every native mo
 a tab strip transaction or a download), which also runs as one commit with them. Nothing is reordered or dropped, and
 nothing a user action waits on is held. Work JSI delivers without a listener (an Expo promise settling) can run before
 held reports, as it already could before a view event's own dispatch hop: code that decides from a page's live state
-after awaiting the engine calls `applyHeldReports()` first (tabLifecycle's sleep and freeze, closeTab). Store
-notifications stay one per `set()`; the batch saves the commits and renders between them.
+after awaiting the engine calls `applyHeldReports()` first (tabLifecycle's sleep and freeze, closeTab). A flush
+also runs as one store transaction (`storeTransaction`, store/transaction.ts): its writes apply at once, and the store's
+listeners and subscriptions hear them together at the end, except a write that changes a tab's address or starts or
+ends its load, which is heard as it lands (a value that flips back within the flush stays visible to the listeners
+that act on it: translate's detection, the web store's script, a screen-share request going with its page).
 
 ## Live tabs: Chrome's tab strips (lib/chromeTabs.ts, store/liveTabs.ts, packages/nncore/src/tabStrip.ts)
 

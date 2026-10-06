@@ -24,6 +24,11 @@ type Options = {
   schedule: (callback: () => void) => void;
   /** An error a held report threw (the bridge's own guard reports it the same way). */
   report: (error: unknown) => void;
+  /**
+   * Runs a flush's reports with the store's listeners hearing them together, at the end (store/browser.ts
+   * storeTransaction; a new address and a load starting or ending are heard as they land).
+   */
+  transaction?: (run: () => void) => void;
 };
 export type Hold = ReturnType<typeof createHold>;
 
@@ -42,7 +47,7 @@ export const HELD_EVENTS: ReadonlySet<string> = new Set([
   "topLoadError",
 ]);
 /** The queue: `hold` keeps a report for later, `flush` applies everything held, in order, as one batch. */
-export function createHold({ batch, schedule, report }: Options) {
+export function createHold({ batch, schedule, report, transaction = (run) => run() }: Options) {
   let held: (() => void)[] = [];
   // The next held report to apply. A flush that starts while one runs (a listener a report set off) goes on from
   // there, so what it runs still comes after every report held before it.
@@ -66,7 +71,17 @@ export function createHold({ batch, schedule, report }: Options) {
     else {
       flushing = true;
       try {
-        batch(() => drain(errors));
+        batch(() => {
+          // The listeners hear the reports at the end: one of them throwing is reported like a report's error.
+          // A listener can hold another report as it hears: that runs too, in a transaction of its own.
+          while (next < held.length) {
+            try {
+              transaction(() => drain(errors));
+            } catch (error) {
+              errors.push(error);
+            }
+          }
+        });
       } finally {
         held = [];
         next = 0;
@@ -144,7 +159,8 @@ if (!g.__nnApplyHeldReports && bridge && emitter && typeof bridge.__callFunction
   // Required here, not imported: tests load this module without React Native.
   const batch = (update: () => void) => (require("react-native") as typeof import("react-native")).unstable_batchedUpdates(update);
   // A 0 ms timer runs at once on the JS thread (RCTTiming), so its call queues behind the ones already waiting.
-  const held = createHold({ batch, schedule: (callback) => setTimeout(callback, 0), report: (error) => g.ErrorUtils?.reportFatalError(error) });
+  const transaction = (run: () => void) => (require("../store/browser") as typeof import("../store/browser")).storeTransaction(run);
+  const held = createHold({ batch, transaction, schedule: (callback) => setTimeout(callback, 0), report: (error) => g.ErrorUtils?.reportFatalError(error) });
   holdPageReports(bridge, held);
   afterHeldReports(emitter, held);
   g.__nnApplyHeldReports = held.flush;

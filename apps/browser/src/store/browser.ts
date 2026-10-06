@@ -1,5 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { createBookmarksSlice, ensureRoots, type BookmarksSlice } from "./bookmarks";
+import { changedIds } from "./changes";
 import { createGroupsSlice, type GroupsSlice } from "./groups";
 import { createHistorySlice, type HistorySlice } from "./history";
 import { IDLE_LIVE, isIncognitoProfile, pinnedFirst } from "./model";
@@ -8,6 +9,7 @@ import { createProfilesSlice, DEFAULT_PROFILE, engineIdOf, type ProfilesSlice } 
 import { createSettingsSlice, DEFAULT_SETTINGS, type SettingsSlice } from "./settings";
 import { createSplitsSlice, sanitizeSplits, type SplitsSlice } from "./splits";
 import { activated, apply, createTabsSlice, type TabsSlice } from "./tabs";
+import { transactional } from "./transaction";
 import type { BrowserWindow, Tab } from "./types";
 import { createUiSlice, type UiSlice } from "./ui";
 import { createWindowsSlice, type WindowsSlice } from "./windows";
@@ -65,7 +67,23 @@ const batched =
     return creator(batchedSet, get, api);
   };
 
-export const useBrowser = create<BrowserState>()(batched((...a) => ({
+// A tab's address or loading state can flip back within one transaction (a load that starts and ends, a same-document
+// A → B → A), which hearing only the end would hide from the listeners that act on the change (translate's language
+// detection, the web store's script, a screen-share request going with its page): each such write is heard as it
+// lands; a title, an icon, the back and forward state and the rest join the next.
+const pageMoved = (s: BrowserState, prev: BrowserState) => {
+  if (s.tabs !== prev.tabs) for (const id of changedIds(s.tabs, prev.tabs)) if (s.tabs[id]?.url !== prev.tabs[id]?.url) return true;
+  if (s.live !== prev.live) for (const id of changedIds(s.live, prev.live)) if (!!s.live[id]?.isLoading !== !!prev.live[id]?.isLoading) return true;
+  return false;
+};
+const transactions = transactional<BrowserState>(pageMoved);
+/**
+ * Runs `run` with the store's listeners (and components) hearing its writes once, at the end (store/transaction.ts).
+ * For writes that arrive together and mean nothing apart: a flush of a page's reports (lib/nativeEvents.ts).
+ */
+export const storeTransaction = transactions.transaction;
+
+export const useBrowser = create<BrowserState>()(transactions.middleware(batched((...a) => ({
   ...createProfilesSlice(...a),
   ...createWindowsSlice(...a),
   ...createTabsSlice(...a),
@@ -156,7 +174,7 @@ export const useBrowser = create<BrowserState>()(batched((...a) => ({
     for (const w of Object.values(windows)) next = apply(next, activated(next, w.activeTabIds[w.profileId]!));
     set(next);
   },
-})));
+}))));
 
 useBrowser.subscribe((s, prev) => {
   const patch = s.windows !== prev.windows && forgetClosedPrivateWindows(s);
