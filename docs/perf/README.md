@@ -121,7 +121,8 @@ node apps/browser/scripts/perf/ratchet.mjs run --instr    # the same, plus the i
 node apps/browser/scripts/perf/ratchet.mjs run --own --app dist/<v>-rc/export/Netnyahoo.app   # a release candidate's own bundle
 node apps/browser/scripts/perf/ratchet.mjs check <report.json>          # a js-bench report you already have (several runs: the median run)
 node apps/browser/scripts/perf/ratchet.mjs lower <report.json>          # lock in the counts a change cut; prints the diff
-node apps/browser/scripts/perf/ratchet.mjs baseline       # rebuild ratchet.json (8 runs, about 11 minutes, a quiet machine)
+node apps/browser/scripts/perf/ratchet.mjs baseline       # rebuild ratchet.json (8 runs of each session, about 13 minutes, a quiet machine)
+node apps/browser/scripts/perf/ratchet.mjs baseline --measure-only   # the runs only; then `init <the two reports> --adopt` merges them without raising a ceiling
 ```
 
 `run` takes about 85 s (6 s of it bundling the tree, 15 s the Node counts, the rest one launch and the nine scenarios of
@@ -133,7 +134,9 @@ deactivating mid-scenario is in one. A report of several runs is judged by its m
 
 The scenarios run in a fixed order (`ratchet.mjs` header says why): `startup`, `launch` (all the launch's work, read
 once it has stopped), `idle`, `typing`, `switchTabs`, `scroll`, `hover`, `pageLoad`, `openClose`, with
-`--options '{"seconds":5}'`. The census behind `ratchet.json` is 8 launches of 0.2.27's Release app with the tree's
+`--options '{"seconds":5}'`, followed by a second launch from a one-tab session (`js-bench.mjs --seed small`, counts
+prefixed `small.`). `launch.firstCommitMounts` (and `small.launch.firstCommitMounts`) is what the launch's first React
+commit mounted (`nnPerf.firstCommitMounts`): the first frame waits for all of it. The census behind `ratchet.json` is 8 launches of 0.2.27's Release app with the tree's
 bundle.
 
 Group totals per scenario over the 16 baseline runs (two batches of 8): a bare number repeated in every run is gated
@@ -163,6 +166,18 @@ censuses on a calmer machine, and `typing` commits were 122 in 7 of 8; one run i
 which is why they are noisy here. The baselines were taken with the machine loaded (agents building: load average about
 300), so they are the worst case; `ratchet.mjs baseline` on a quiet machine would move some of these `~` and `x` counts
 to exact.
+
+Re-based on `dcd3ce1f` (8 launches of each session, the machine quiet at the start: load average 4): the render cuts of
+the sprint's first day came in as lower ceilings (`init --adopt` never raises one). The big ones: `pageLoad` renders
+2172–2281 → 1182–1198, hostUpdates 1201–1253 → 644–648, listenerCalls 3380 → 2532; `typing` renders 1825–2756 → 1225–1321 and
+hostUpdates 1203–1789 → 783–839, with commits steady at 122; `switchTabs` renders 676–850 → 676–697. The first commit of a
+launch mounts 1150 components on the 200-tab session (2757 before `7184f7e8`) and 133 on the one-tab session, in every
+run. Three exact counts came out higher than the 0.2.27 baseline and keep their ceiling, so `check` fails on them until
+someone fixes the code or raises them by hand with a reason: `switchTabs.listenerCalls` 950 → 975 and
+`typing.listenerCalls` 56 → 57 (one more store listener, and 25 more calls over 12 switches), and the launch renders
+`ScrollView` 18 → 22 (two more `SidebarPage` renders). With the machine quiet, `typing` commits and listenerCalls,
+`switchTabs` commits, hostUpdates, storeUpdates, listenerCalls and mounts, and `launch.firstCommitMounts` were identical in all 8
+runs.
 
 ### Policy
 
