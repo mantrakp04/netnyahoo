@@ -80,6 +80,9 @@ function fresh() {
     // The task of each commit in commitTimes.
     commitTaskLog: [] as string[],
     renders: {} as Counter,
+    // Hooks run by those renders: per component, the length of its hook list (state, memo, ref and effect hooks;
+    // useContext keeps no list entry) times its renders.
+    hooks: {} as Counter,
     mounts: {} as Counter,
     hostUpdates: 0,
     walkMs: 0,
@@ -98,6 +101,11 @@ function fresh() {
     commitTasks: {} as Counter,
     timers: {} as Counter,
     timerMs: {} as Counter,
+    // Timers and animation frames scheduled (timers counts the callbacks that ran).
+    timersScheduled: {} as Counter,
+    // With the "selectors" probe: store notifications that reached a component's subscription, by call site (each runs
+    // that hook's selector once), against selectorCalls (every evaluation, renders included).
+    subNotified: {} as Counter,
     selectorCalls: {} as Counter,
     selectorMs: {} as Counter,
     writes: {} as Counter,
@@ -119,6 +127,8 @@ function fresh() {
 }
 
 let stats = fresh();
+// Live store subscriptions by call site (the "selectors" probe); not reset with the stats.
+const subscriptions: Counter = {};
 const marks: Record<string, number> = {};
 const startedAt = now();
 const startup: [task: string, at: number, ms: number][] = [];
@@ -151,7 +161,13 @@ function walk(fiber: Fiber) {
     if (COMPONENT_TAGS.has(c.tag)) {
       if (!c.alternate) bump(stats.mounts, nameOf(c.type));
       else if (c.flags & PERFORMED_WORK) {
-        bump(stats.renders, nameOf(c.type));
+        const name = nameOf(c.type);
+        bump(stats.renders, name);
+        if (c.tag !== 1) {
+          let hooks = 0;
+          for (let h = c.memoizedState as Hook | null; h; h = h.next) hooks++;
+          bump(stats.hooks, name, hooks);
+        }
         if (rendersProbe) classify(c, c.alternate);
       }
     } else if (c.tag === HOST_COMPONENT && c.alternate && c.flags & UPDATE) stats.hostUpdates++;
@@ -283,6 +299,7 @@ function wrapTimers() {
       let label = `${name}:${callback.name || "anonymous"}`;
       // With nnPerf.traceTimers on, anonymous callbacks are named by the functions that scheduled them.
       if (traceTimers && !callback.name) label += ` <${callers(new Error().stack)}>`;
+      bump(stats.timersScheduled, label);
       return original.call(
         this,
         function (this: unknown, ...args: unknown[]) {
@@ -308,8 +325,30 @@ function wrapTimers() {
 function wrapSelectors() {
   const react = require("react") as { useSyncExternalStore: (...a: unknown[]) => unknown };
   const original = react.useSyncExternalStore;
+  // A subscribe function per (store, call site), so React keeps its subscription across renders; the gauge counts the
+  // live subscriptions by call site (nnPerf.subscriptions()).
+  const counted = new WeakMap<object, Map<string, unknown>>();
   react.useSyncExternalStore = (subscribe: unknown, getSnapshot: unknown, getServerSnapshot: unknown) => {
     const label = callers(new Error().stack, 4);
+    let bySite = counted.get(subscribe as object);
+    if (!bySite) counted.set(subscribe as object, (bySite = new Map()));
+    let tracked = bySite.get(label);
+    if (!tracked) {
+      const raw = subscribe as (cb: () => void) => () => void;
+      tracked = (cb: () => void) => {
+        bump(subscriptions, label);
+        const off = raw(() => {
+          bump(stats.subNotified, label);
+          cb();
+        });
+        return () => {
+          bump(subscriptions, label, -1);
+          off();
+        };
+      };
+      bySite.set(label, tracked);
+    }
+    subscribe = tracked;
     const get = getSnapshot as () => unknown;
     const timed = () => {
       const t = now();
@@ -480,5 +519,6 @@ if (perfProbeEnabled) {
     batch: (fn: () => void) => (require("react-native") as typeof import("react-native")).unstable_batchedUpdates(fn),
     findFibers,
     nameOf,
+    subscriptions: () => ({ ...subscriptions }),
   };
 }

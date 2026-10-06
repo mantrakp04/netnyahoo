@@ -329,6 +329,7 @@ const scenarios = {
 };
 
 Object.assign(scenarios, renderScenarios());
+Object.assign(scenarios, censusScenarios());
 
 // Hermes' runtime compiler takes async methods but not async arrows.
 scenarios.traced = function ({ scenario, ...options }) {
@@ -499,6 +500,193 @@ function renderScenarios() {
       S().setDownloadsOpen(windowId(), false);
       await sleep(400);
       return { steps, stats };
+    },
+  };
+}
+
+
+// The render census's journeys (census.mjs, docs/perf/render-census.md). Each action is measured alone: reset the
+// probe, act, settle, read; a scenario returns `per` (one summary per action) and `stats` (the actions' counters
+// summed, for the offender tables).
+function censusScenarios() {
+  const total = (o) => Object.values(o ?? {}).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0);
+  const summary = (r, ms) => ({
+    ms,
+    commits: r.commits,
+    renders: total(r.renders),
+    wasted: total(r.wasted),
+    hooks: total(r.hooks),
+    hostUpdates: r.hostUpdates,
+    storeUpdates: total(r.storeUpdates),
+    subNotified: total(r.subNotified),
+    selectors: total(r.selectorCalls),
+    timers: total(r.timersScheduled),
+    renderMs: total(r.renderMs),
+    commitMs: r.commitMs,
+    taskMs: total(r.taskMs),
+  });
+  const merge = (into, from) => {
+    for (const key of Object.keys(from)) {
+      const v = from[key];
+      if (typeof v === "number") into[key] = (into[key] ?? 0) + v;
+      else if (v && typeof v === "object" && !Array.isArray(v)) merge((into[key] ??= {}), v);
+    }
+    return into;
+  };
+  const SKIP = new Set(["commitTimes", "commitTaskLog", "taskLog", "since"]);
+  // One measured action: probe reset, the action (batched, timed), a settle, the probe's counters.
+  async function action(act, settleMs, sink) {
+    P.reset();
+    const ms = timed(act);
+    await sleep(settleMs);
+    const r = P.read();
+    for (const k of SKIP) delete r[k];
+    sink.per.push(summary(r, ms));
+    merge(sink.stats, r);
+    return r;
+  }
+  const sink = () => ({ per: [], stats: {} });
+  const tabsInView = () => {
+    const s = S();
+    const w = s.windows[windowId()];
+    return w.tabIds.filter((id) => s.tabs[id]?.profileId === w.profileId);
+  };
+  const run = (command, arg = null) => () => nn.runCommand({ command, arg, windowId: windowId() });
+  async function driverOf(id) {
+    if (!(await until(() => nn.omnibox.get(id), 4000))) throw new Error(`no omnibox driver ${id}`);
+    await sleep(800);
+    return nn.omnibox.get(id);
+  }
+  return {
+    // The first window's counters since the bundle started (everything until the window was up).
+    async cenStartup() {
+      await until(() => P.marks.firstWindow, 20000);
+      const r = P.read();
+      for (const k of SKIP) delete r[k];
+      return { per: [summary(r, 0)], stats: r, marks: { ...P.marks, firstCommit: P.firstCommit } };
+    },
+    // J2, Cmd-T: a blank tab with the new tab page's field.
+    async cenNewTab({ count = 4 } = {}) {
+      const out = sink();
+      for (let i = 0; i < count; i++) {
+        await quiet(500);
+        let id;
+        await action(() => {
+          nn.runCommand({ command: "newTab", arg: null, windowId: windowId() });
+          id = activeId();
+        }, 900, out);
+        await until(() => nn.omnibox.get(`${windowId()}:hero`), 3000);
+        S().closeTab(id);
+        await sleep(500);
+      }
+      return out;
+    },
+    // J2: keystrokes in the new tab page's field (per key), then the tab closed.
+    async cenTypeHero({ query = "github.com/facebook/react", gapMs = 120 } = {}) {
+      const w = windowId();
+      await quiet(600);
+      const id = S().newTab(w);
+      const driver = await driverOf(`${w}:hero`);
+      const out = sink();
+      for (let i = 1; i <= query.length; i++) await action(() => driver.type(query.slice(0, i)), gapMs, out);
+      if (typeof id === "string") S().closeTab(id);
+      await sleep(400);
+      return out;
+    },
+    // J2, Cmd-L: the command bar opens over a page, keystrokes, Esc closes it.
+    async cenPanel({ query = "github.com/facebook/react", gapMs = 120, repeats = 3 } = {}) {
+      const w = windowId();
+      await quiet(600);
+      const open = sink();
+      const close = sink();
+      const keys = sink();
+      for (let r = 0; r < repeats; r++) {
+        await action(run("focusCommandBar"), 900, open);
+        const driver = await driverOf(`${w}:panel`);
+        if (r === 0) for (let i = 1; i <= query.length; i++) await action(() => driver.type(query.slice(0, i)), gapMs, keys);
+        await action(() => driver.key("Escape"), 700, close);
+        await quiet(300);
+      }
+      return { open, keys, close };
+    },
+    // J4: Enter on a URL in the command bar, then the page load's updates (title, favicon, progress, loading).
+    async cenEnter({ origin, repeats = 3 } = {}) {
+      const w = windowId();
+      const enter = sink();
+      const load = sink();
+      for (let r = 0; r < repeats; r++) {
+        await quiet(600);
+        S().openPanel(w, "");
+        const driver = await driverOf(`${w}:panel`);
+        driver.type(`${origin}/heavy?run=cen-${r}-${Date.now()}`);
+        await sleep(600);
+        const tab = activeId();
+        P.reset();
+        const ms = timed(() => driver.submit());
+        await sleep(150);
+        let rd = P.read();
+        for (const k of SKIP) delete rd[k];
+        enter.per.push(summary(rd, ms));
+        merge(enter.stats, rd);
+        P.reset();
+        await until(() => !S().live[tab]?.isLoading, 15000, 10);
+        await sleep(1500);
+        rd = P.read();
+        for (const k of SKIP) delete rd[k];
+        load.per.push(summary(rd, 0));
+        merge(load.stats, rd);
+      }
+      return { enter, load };
+    },
+    // J3: a click on a sidebar row (what clickTab does) and the shortcuts (⌘1-9, ⌃Tab's next tab), between loaded tabs.
+    async cenSwitch({ count = 10, gapMs = 300 } = {}) {
+      const w = windowId();
+      const s = S();
+      const ids = tabsInView().filter((id) => !s.tabs[id].pinned).slice(0, count);
+      const start = activeId();
+      await quiet(800);
+      const click = sink();
+      for (const id of ids) {
+        await action(() => {
+          S().setSelection(w, []);
+          S().activate(id);
+        }, gapMs, click);
+      }
+      const shortcut = sink();
+      for (let i = 0; i < count; i++) await action(run(i % 2 ? "nextTab" : "selectTab", i % 2 ? null : String(1 + (i % 5))), gapMs, shortcut);
+      timed(() => S().activate(start));
+      await quiet(800);
+      return { click, shortcut };
+    },
+    // Sidebar hover: the pointer entering and leaving rows.
+    async cenHover({ rows = 14, from = 0, gapMs = 150 } = {}) {
+      await quiet(800);
+      const hosts = P.findFibers("TabRow", 400).map(hostOf).filter((h) => h && typeof h.memoizedProps?.onMouseEnter === "function").slice(from, from + rows);
+      if (hosts.length < 2) throw new Error(`only ${hosts.length} hoverable rows`);
+      const out = sink();
+      let prev = null;
+      for (const h of hosts) {
+        const before = prev;
+        await action(() => {
+          before?.memoizedProps.onMouseLeave?.({ nativeEvent: {} });
+          h.memoizedProps.onMouseEnter({ nativeEvent: {} });
+        }, gapMs, out);
+        prev = h;
+      }
+      await action(() => prev.memoizedProps.onMouseLeave?.({ nativeEvent: {} }), gapMs, out);
+      return out;
+    },
+    // J4's page-load updates in a background tab: its row only should render.
+    async cenBgLoad({ origin, repeats = 2 } = {}) {
+      const out = sink();
+      for (let r = 0; r < repeats; r++) {
+        await quiet(800);
+        const s = S();
+        const id = tabsInView().find((t) => t !== activeId() && !s.tabs[t].pinned && s.live[t]);
+        if (!id) throw new Error("no loaded background tab");
+        await action(() => S().navigate(id, `${origin}/heavy?run=cenbg-${r}-${Date.now()}`), 3500, out);
+      }
+      return out;
     },
   };
 }
