@@ -21,17 +21,22 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 MARKERS = (REPO + "/", REPO + " ", "/private/tmp/claude-", "/tmp/nn-")
 NEVER = ("/Applications/Netnyahoo.app/", "/Applications/Claude.app/", "/Applications/League of Legends.app/",
          "/System/", "/usr/libexec/", "/sbin/launchd")
-TOOLS = {"bash", "zsh", "sh", "-zsh", "top", "ps", "git", "perl", "lockf", "timeout", "sleep", "python3", "Python",
+# Shared build daemons and coordinators: pausing one stalls every build behind it; pause their workers instead.
+COORD = {"SWBBuildService", "ibtoold", "xcodebuild", "XCBBuildService", "lockf"}
+TOOLS = COORD | {"bash", "zsh", "sh", "-zsh", "top", "ps", "git", "perl", "lockf", "timeout", "sleep", "python3", "Python",
          "osascript", "log", "caffeinate", "codex", "node_repl"}
 ME = os.getpid()
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--cap", type=float, default=70)
-ap.add_argument("--resume", type=float, default=55)
+ap.add_argument("--resume", type=float, default=60)
 ap.add_argument("--every", type=float, default=3)
+ap.add_argument("--max-pause", type=float, default=60, help="seconds; a job paused this long gets a turn (no starvation)")
 a = ap.parse_args()
 
 paused = []          # pids, in pause order
+paused_at = {}       # pid -> when it was paused
+turn_until = {}      # pid -> it was given a turn; don't pause it again before this
 backgrounded = set()
 
 
@@ -108,11 +113,21 @@ try:
             backgrounded.add(pid)
         backgrounded &= procs.keys() | set(paused)
         paused[:] = [p for p in paused if alive(p)]  # not `in procs`: an orphan reparented to launchd must still be resumed
+        now = time.time()
+        for pid in [p for p in paused if now - paused_at.get(p, now) > a.max_pause]:
+            try:
+                os.kill(pid, signal.SIGCONT)
+                log(f"turn: resumed {pid} after {now - paused_at[pid]:.0f}s")
+            except ProcessLookupError:
+                pass
+            paused.remove(pid)
+            paused_at.pop(pid, None)
+            turn_until[pid] = now + a.max_pause / 2
         cpu = total_cpu()
         if cpu > a.cap:
             budget = cpu - a.cap + 5
             for pid, (_, pcpu, cmd) in sorted(procs.items(), key=lambda kv: -kv[1][1]):
-                if budget <= 0 or pcpu < 3 or pid in paused:
+                if budget <= 0 or pcpu < 3 or pid in paused or turn_until.get(pid, 0) > now:
                     continue
                 if os.path.basename(cmd.split()[0]) in TOOLS:
                     continue  # a shell or a probe: pausing it would hang an agent's command, not save CPU
@@ -121,10 +136,12 @@ try:
                 except ProcessLookupError:
                     continue
                 paused.append(pid)
+                paused_at[pid] = now
                 budget -= pcpu / os.cpu_count()
                 log(f"cpu {cpu:.0f}%: paused {pid} ({pcpu:.0f}%) {cmd[:90]}")
         elif cpu < a.resume and paused:
-            pid = paused.pop()
+            pid = paused.pop(0)  # longest-paused first
+            paused_at.pop(pid, None)
             try:
                 os.kill(pid, signal.SIGCONT)
                 log(f"cpu {cpu:.0f}%: resumed {pid}")
