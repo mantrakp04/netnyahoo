@@ -180,6 +180,9 @@ sign() {
 }
 fw="$app/Contents/Frameworks/Chromium Framework.framework"
 fwv="$(cd "$fw/Versions/Current" && pwd -P)" || die "no Chromium Framework.framework in the export"
+# Local symbols out (40% of the framework's bytes, which a new copy's first-launch Gatekeeper scan reads); the
+# unstripped files stay in dist/<version>/symbols for symbolicating crash reports. Keep that folder with the release.
+"$nncore/scripts/strip-engine.sh" "$app" "$dist/symbols"
 for lib in "$fwv"/Libraries/*.dylib; do sign "$lib"; done
 for helper in "$fwv"/Helpers/*.app; do
   case "$(basename "$helper")" in
