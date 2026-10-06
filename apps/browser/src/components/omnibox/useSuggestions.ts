@@ -3,7 +3,6 @@ import {
   createSuggestFetcher,
   engineById,
   findScope,
-  hostOf,
   prepareSuggestions,
   type SearchEngine,
   type SearchScope,
@@ -16,6 +15,7 @@ import { bookmarkProfileId } from "../../store/model";
 import { defaultSearchEngine, searchEngines } from "../../store/settings";
 import type { Bookmarks, HistoryEntry } from "../../store/types";
 import { currentBarActions } from "./actions";
+import { historyHosts, knownHosts } from "./knownHosts";
 
 const NO_HISTORY: HistoryEntry[] = [];
 const NO_REMOTE: string[] = [];
@@ -38,25 +38,6 @@ function profileBookmarks(b: Bookmarks, profileId: string): BookmarkRow[] {
     perProfile.set(profileId, rows);
   }
   return rows;
-}
-
-const historyHostCache = new WeakMap<HistoryEntry[], string[]>();
-
-function historyHosts(history: HistoryEntry[]): string[] {
-  let hosts = historyHostCache.get(history);
-  if (!hosts) {
-    const set = new Set<string>();
-    for (const h of history) set.add(hostOf(h.url));
-    set.delete("");
-    historyHostCache.set(history, (hosts = [...set]));
-  }
-  return hosts;
-}
-
-function knownHosts(s: BrowserState, profileId: string): string[] {
-  const hosts: string[] = [];
-  for (const t of Object.values(s.tabs)) if (t.profileId === profileId && t.url) hosts.push(hostOf(t.url));
-  return hosts.concat(historyHosts(s.history[profileId] ?? NO_HISTORY));
 }
 
 export function scopeFor(text: string, windowId: string): SearchScope | null {

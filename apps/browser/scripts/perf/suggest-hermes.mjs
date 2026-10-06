@@ -50,6 +50,11 @@ const implFile = join(core, impl);
 load(implFile);
 const seedFile = join(here, "seed.mjs");
 load(seedFile);
+const knownHostsFile = join(here, "../../src/components/omnibox/knownHosts.ts");
+load(knownHostsFile);
+const coreFile = join(core, "index.ts");
+load(coreFile);
+const actionsJson = readFileSync(join(here, "bar-actions.json"), "utf8");
 
 const driver = `
 var seed = __require(${JSON.stringify(seedFile)}).buildSeed("http://127.0.0.1:47817");
@@ -60,22 +65,43 @@ var bookmarks = [];
 var nodes = seed["bookmarks.json"].bookmarks.nodes;
 Object.keys(nodes).forEach(function (k) { var n = nodes[k]; if (n.kind === "url") bookmarks.push({ url: n.url, title: n.title, favicon: n.favicon }); });
 var source = { tabs: tabs, history: history, bookmarks: bookmarks };
+// One key of the command bar: the known-hosts check, the window's actions, the suggestions (see keystroke in micro-bench.mjs).
+var BEFORE = ${/reference/.test(impl)};
+var coreIndex = __require(${JSON.stringify(coreFile)});
+var knownHosts = __require(${JSON.stringify(knownHostsFile)}).knownHosts;
+var BAR_ACTIONS = ${actionsJson};
+var state = { tabs: {}, history: { default: history } };
+tabs.forEach(function (t) { state.tabs[t.id] = t; });
+var pastHosts = null;
+function hostsFor() {
+  if (!BEFORE) return knownHosts(state, "default");
+  var hosts = [];
+  Object.keys(state.tabs).forEach(function (k) { var t = state.tabs[k]; if (t.profileId === "default" && t.url) hosts.push(coreIndex.hostOf(t.url)); });
+  if (!pastHosts) { var seen = new Set(); history.forEach(function (h) { seen.add(coreIndex.hostOf(h.url)); }); seen.delete(""); pastHosts = Array.from(seen); }
+  return hosts.concat(pastHosts);
+}
+function keystroke(q) {
+  coreIndex.findScope(q, { engines: coreIndex.BUILT_IN_ENGINES, hosts: hostsFor() });
+  var actions = BEFORE ? BAR_ACTIONS.map(function (a) { return Object.assign({}, a); }) : BAR_ACTIONS;
+  return impl.buildSuggestions(q, source, { now: at, actions: actions });
+}
 var at = Date.now();
 var t0 = Date.now();
-if (impl.prepareSuggestions) impl.prepareSuggestions(source, Infinity); else impl.buildSuggestions("a", source, { now: at });
+impl.prepareSuggestions(source, Infinity);
 print("prepare (cold): " + (Date.now() - t0) + " ms");
+hostsFor();
 var seqs = { url: "github.com/net", phrase: "react native perf" };
 var ROUNDS = ${rounds};
 Object.keys(seqs).forEach(function (name) {
   var q = seqs[name];
-  for (var w = 0; w < 5; w++) for (var i = 1; i <= q.length; i++) impl.buildSuggestions(q.slice(0, i), source, { now: at });
+  for (var w = 0; w < 5; w++) for (var i = 1; i <= q.length; i++) keystroke(q.slice(0, i));
   var per = [];
   for (var i = 1; i <= q.length; i++) per.push(0);
   var total = 0;
   for (var r = 0; r < ROUNDS; r++) {
     for (var i = 1; i <= q.length; i++) {
       var t = Date.now();
-      impl.buildSuggestions(q.slice(0, i), source, { now: at });
+      keystroke(q.slice(0, i));
       per[i - 1] += Date.now() - t;
     }
   }

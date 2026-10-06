@@ -113,4 +113,14 @@ export function runBarAction(id: string, windowId: string) {
   runCommand({ command, arg, windowId });
 }
 
-export const currentBarActions = (windowId: string) => barActions(useBrowser.getState(), windowId);
+// The actions for one store state: a bar asks on every key, and typing doesn't change the store.
+const barActionsOf = new WeakMap<BrowserState, Map<string, CommandAction[]>>();
+
+export function currentBarActions(windowId: string): CommandAction[] {
+  const s = useBrowser.getState();
+  let byWindow = barActionsOf.get(s);
+  if (!byWindow) barActionsOf.set(s, (byWindow = new Map()));
+  let actions = byWindow.get(windowId);
+  if (!actions) byWindow.set(windowId, (actions = barActions(s, windowId)));
+  return actions;
+}

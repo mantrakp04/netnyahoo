@@ -4,7 +4,7 @@
 // that was meant: change the spec on purpose, in its own commit. Don't import it from the app.
 import { calculate } from "./calculator.ts";
 import { BUILT_IN_ENGINES, searchUrl, type SearchEngine } from "./engines.ts";
-import { matchActions, type ActionCandidate } from "./fuzzy.ts";
+import { matchActions, type ActionCandidate } from "./fuzzy.reference.ts";
 import { fixupUrl, hostOf, urlForDisplay } from "./omnibox.ts";
 import { matchQuickCreate } from "./quickCreate.ts";
 import { scopedSearchUrl, type SearchScope } from "./siteSearch.ts";
