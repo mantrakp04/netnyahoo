@@ -266,7 +266,7 @@ command starts.
 | J2 keystroke → its suggestions on screen | One real key into the typeable bar → the commit with its suggestions on screen (the mark `suggest`) |
 | J2 ⌘T key made → the app's event loop saw it | The key's timestamp → nnmark.m's key monitor. Part of every J2 and J4 row. `nnperf hands ⌘T over → the event's timestamp` is the poster's own lead (not in any row) |
 | J4 Enter → engine asked to load / Chrome started / committed / first contentful paint | A URL of the bench's local page typed with real keys (25 ms apart) into a new tab's bar (⌘T) or a page's panel (⌘L), then a real Enter: the app's marks `request` (our side), `start`, `commit`, `fcp`. The page's own first contentful paint over CDP is the same number. `request → fcp` is the engine's and the network's share (a local server here) |
-| journeys: iterations lost, load average | Iterations where a key never arrived (CGEventPostToPid drops about 1 in 10; the app's key log catches it and the key is made again), a bar or panel never opened, or a page never painted; the 1-minute load average at each run's start and end |
+| journeys: iterations lost, load average | Iterations where a key never arrived (CGEventPostToPid sometimes drops a key; the app's key log catches it and the key is made again), a bar or panel never opened, or a page never painted; the 1-minute load average at each run's start and end |
 
 ### js-bench
 
