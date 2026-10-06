@@ -20,7 +20,7 @@ MARKERS = (REPO + "/", REPO + " ", "/private/tmp/claude-", "/tmp/nn-")
 NEVER = ("/Applications/Netnyahoo.app/", "/Applications/Claude.app/", "/Applications/League of Legends.app/",
          "/System/", "/usr/libexec/", "/sbin/launchd")
 TOOLS = {"bash", "zsh", "sh", "-zsh", "top", "ps", "git", "perl", "lockf", "timeout", "sleep", "python3", "Python",
-         "osascript", "log", "caffeinate"}
+         "osascript", "log", "caffeinate", "codex", "node_repl"}
 ME = os.getpid()
 
 ap = argparse.ArgumentParser()
