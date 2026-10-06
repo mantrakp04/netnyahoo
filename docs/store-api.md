@@ -6,6 +6,11 @@ modules before using them — this is a summary from the agent that built it.
 ## State
 - `profiles` + `profileOrder`; default profile id is `"default"`.
 - `windows`: `{ profileId, incognito, tabIds (sidebar order, pinned first), activeTabIds[profileId], sidebarOpen, frame }` + `windowOrder`.
+  A private window's `profileId` is `incognito:<window id>@<originalProfileId>` (`incognitoProfileId`, store/model.ts),
+  `originalProfileId` the regular profile it was opened from (`createWindow({ incognito: true, profileId })`, default
+  `lastActiveProfile`). Its engine profile (`engineProfile`) is that profile's off-the-record one: private windows of one
+  profile share a session (`privateSession(profileId)`, the regular engine name), another profile's never. Downloads
+  carry `offTheRecord` and their regular profile (`downloadSession`, store/ui.ts); a session's go with its last window.
 - `tabs` (persisted) vs `live` (loading/progress/back-forward/audio/theme colour; never persisted).
 - `groups`: `{ windowId, profileId, name, icon, color, collapsed, pinned, tabIds }` (members contiguous).
 - `splits` (store/splits.ts): `{ windowId, tabIds (2–3, pane order), orientation, sizes, stack? }` — `stack` = two panes sharing a slot the other way (Add Bottom Split). Members are contiguous in `window.tabIds`; the window's active tab is the focused pane. `window.tabLayout` ("sidebar" | "top", unset = Settings).

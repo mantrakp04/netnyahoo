@@ -18,7 +18,7 @@ import {
 import { Appearance } from "react-native";
 import { folderChildren, isBookmarked } from "../store/bookmarks";
 import { useBrowser, type BrowserState } from "../store/browser";
-import { activeTab, bookmarkProfileId, engineProfile, IDLE_LIVE, incognitoProfileId, tabLabel, windowTitle } from "../store/model";
+import { activeTab, bookmarkProfileId, engineProfile, IDLE_LIVE, tabLabel, windowTitle } from "../store/model";
 import { splitOf } from "../store/splits";
 import { canGoBack, canGoForward } from "../components/layout/history";
 import type { Bookmarks, BookmarkNode } from "../store/types";
@@ -84,7 +84,8 @@ export function startNativeSync() {
   const titles = new Map<string, string>();
 
   const releaseIfIncognito = (id: string, s: BrowserState) => {
-    if (s.windows[id]?.incognito) void releaseProfile(incognitoProfileId(id));
+    const w = s.windows[id];
+    if (w?.incognito) void releaseProfile(engineProfile(w.profileId));
   };
 
   const syncWindows = (s: BrowserState, prev?: BrowserState) => {
@@ -104,7 +105,8 @@ export function startNativeSync() {
       open.delete(id);
       titles.delete(id);
       void closeWindow(id);
-      if (prev?.windows[id]?.incognito) void releaseProfile(incognitoProfileId(id));
+      const was = prev?.windows[id];
+      if (was?.incognito) void releaseProfile(engineProfile(was.profileId));
     }
     if (prev && s.tabs === prev.tabs && s.windows === prev.windows && s.profiles === prev.profiles) return;
     for (const id of open) {

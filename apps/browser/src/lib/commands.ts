@@ -39,7 +39,7 @@ import { copyPageUrl, jumpToSelection } from "../components/site/selection";
 import { shareTab } from "../components/site/share";
 import { openProfileMenu } from "../components/ProfileIndicator";
 import { groupOf } from "../store/organize";
-import { isSmall, mainWindowFor } from "../store/small";
+import { isSmall, mainWindowFor, originalProfile } from "../store/small";
 import { closeSmallYahu, openInMainWindow, openSmallYahu } from "../components/smallYahu/actions";
 
 export function runCommand({ command, arg, windowId: requested }: CommandEvent) {
@@ -55,7 +55,8 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent) 
     case "newWindow":
       return void openWindow({ profileId: arg ?? undefined });
     case "newIncognitoWindow":
-      return void openWindow({ incognito: true });
+      // From the window it's asked in (a private one: its own regular profile), else the last active profile.
+      return void openWindow({ incognito: true, profileId: originalProfile(s, s.windows[requested ?? ""]) });
     case "newSmallYahu":
       return void openSmallYahu();
     case "toggleOpenLinksInSmallYahu":

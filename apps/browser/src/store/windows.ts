@@ -26,6 +26,7 @@ import type { BrowserWindow, ClosedTab, ClosedWindow, Frame, ParkedPins, Tab, Ta
 const restoreId = (tabId: string) => `restore:${tabId}`;
 
 export type CreateWindowOptions = {
+  // A private window's: the regular profile it's opened from (its session's; default: the last active profile).
   profileId?: string;
   incognito?: boolean;
   url?: string;
@@ -134,15 +135,13 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     const s = get();
     const id = newId("w");
     const small = !!o.small && !o.incognito;
-    const profileId = o.incognito
-      ? incognitoProfileId(id)
-      : o.profileId && s.profiles[o.profileId]
-        ? o.profileId
-        : small
-          ? lastActiveProfile(s)
-          : s.settings.defaultProfileId;
+    const known = o.profileId && s.profiles[o.profileId] ? o.profileId : undefined;
+    const original = o.incognito ? (known ?? lastActiveProfile(s)) : undefined;
+    const profileId = original !== undefined
+      ? incognitoProfileId(id, original)
+      : (known ?? (small ? lastActiveProfile(s) : s.settings.defaultProfileId));
     const w = small ? smallWindow(id, profileId) : emptyWindow(id, profileId, !!o.incognito, o.frame ?? null);
-    if (o.incognito) w.originalProfileId = lastActiveProfile(s);
+    if (original !== undefined) w.originalProfileId = original;
     let next = withWindow(s, w);
     if (o.tabIds?.length && !small) next = moveTabsInto(next, o.tabIds, id);
     if (!next.windows[id]!.tabIds.length) next = withNewTab(next, id, { url: o.url, adoptId: o.adoptId })[0];

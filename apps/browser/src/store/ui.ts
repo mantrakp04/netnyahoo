@@ -1,7 +1,7 @@
 import type { Download } from "@netnyahoo/nncore";
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "./browser";
-import { isIncognitoProfile } from "./model";
+import { isIncognitoProfile, privateSession } from "./model";
 import { originalProfile } from "./small";
 import type { FindState, WindowUi } from "./types";
 
@@ -29,11 +29,23 @@ export type UiSlice = {
   forgetDownloads(profile: string): void;
 };
 
-export function downloadVisibleIn(d: Pick<Download, "profile">, window: { incognito: boolean; profileId: string } | undefined): boolean {
-  if (!window) return false;
-  const incognito = !!d.profile && isIncognitoProfile(d.profile);
-  return window.incognito ? d.profile === window.profileId : !incognito;
+// The private session a download is in (the engine names its regular profile and says it's off the record), or null.
+export function downloadSession(d: Pick<Download, "profile" | "offTheRecord">): string | null {
+  if (d.offTheRecord) return d.profile ?? "";
+  return d.profile && isIncognitoProfile(d.profile) ? privateSession(d.profile) : null;
 }
+
+// A private window lists its session's downloads (every private window of its profile's), a regular one none of them.
+export function downloadVisibleIn(d: Pick<Download, "profile" | "offTheRecord">, window: { incognito: boolean; profileId: string } | undefined): boolean {
+  if (!window) return false;
+  const session = downloadSession(d);
+  return window.incognito ? session !== null && session === privateSession(window.profileId) : session === null;
+}
+
+const sessionOpen = (s: Pick<BrowserState, "windows">, session: string) =>
+  Object.values(s.windows).some((w) => w.incognito && privateSession(w.profileId) === session);
+// Downloads of private sessions that ended: a late update never brings one into the profile's next session.
+const endedPrivateDownloads = new Set<string>();
 
 export const downloadsIn = (s: Pick<BrowserState, "downloads" | "windows">, windowId: string) =>
   s.downloads.filter((d) => downloadVisibleIn(d, s.windows[windowId]));
@@ -86,8 +98,11 @@ export const createUiSlice: StateCreator<BrowserState, [], [], UiSlice> = (set, 
   upsertDownload(d) {
     set((s) => {
       const exists = s.downloads.some((x) => x.id === d.id);
-      // A private window's downloads leave with it; the engine's late "cancelled" update mustn't bring one back.
-      if (!exists && d.profile && isIncognitoProfile(d.profile) && !Object.values(s.windows).some((w) => w.profileId === d.profile)) {
+      // A private session's downloads leave with its last window; the engine's late "cancelled" update mustn't bring one
+      // back.
+      const session = downloadSession(d);
+      if (!exists && session !== null && (!sessionOpen(s, session) || endedPrivateDownloads.has(d.id))) {
+        endedPrivateDownloads.add(d.id);
         return {};
       }
       const downloads = exists ? s.downloads.map((x) => (x.id === d.id ? d : x)) : [d, ...s.downloads].slice(0, MAX_DOWNLOADS);
@@ -108,6 +123,10 @@ export const createUiSlice: StateCreator<BrowserState, [], [], UiSlice> = (set, 
   },
 
   forgetDownloads(profile) {
-    set((s) => (s.downloads.some((d) => d.profile === profile) ? { downloads: s.downloads.filter((d) => d.profile !== profile) } : {}));
+    // A private profile id: its whole session's.
+    const session = privateSession(profile);
+    const gone = (d: Download) => (session !== null ? downloadSession(d) === session : d.profile === profile);
+    if (session !== null) for (const d of get().downloads) if (gone(d)) endedPrivateDownloads.add(d.id);
+    set((s) => (s.downloads.some(gone) ? { downloads: s.downloads.filter((d) => !gone(d)) } : {}));
   },
 });

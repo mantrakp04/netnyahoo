@@ -42,6 +42,8 @@ export type OpenWindowRequest = {
   userGesture?: boolean;
   /** The new tab's navigation is a form's POST. */
   postBody?: boolean;
+  /** "incognito" with a private tab Chrome made: the regular profile (engine name) it is off the record of. */
+  profile?: string;
 };
 
 export type BlockedPopup = { id: string; url: string; origin: string };

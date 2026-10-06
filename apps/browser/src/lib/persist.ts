@@ -1,10 +1,11 @@
 import { cancelDownload, type Download } from "@netnyahoo/nncore";
 import { readDocument, writeDocument } from "@netnyahoo/shell";
 import { useBrowser, type BrowserState, type HydrateData } from "../store/browser";
-import { inPinnedContainer, isIncognitoProfile, newId, snapshotTab } from "../store/model";
+import { inPinnedContainer, isIncognitoProfile, newId, privateSession, snapshotTab } from "../store/model";
 import { earlyLaunchTabOn, launchTab, type LaunchTab } from "../store/launchTab";
 import { parkWindowPins } from "../store/parkedPins";
 import type { BrowserWindow, ClosedTab, Tab } from "../store/types";
+import { downloadSession } from "../store/ui";
 import { startFavicons } from "./favicons";
 import { startBookmarks } from "./bookmarks";
 import { startHistory } from "./history";
@@ -30,7 +31,7 @@ const DOCS: Doc[] = [
     json: serialized((s) => ({
       version: VERSION,
       downloads: s.downloads
-        .filter((d) => !d.profile || !isIncognitoProfile(d.profile))
+        .filter((d) => downloadSession(d) === null)
         .map((d) => (d.state === "downloading" ? { ...d, state: "failed" } : d)),
     })),
   },
@@ -111,10 +112,14 @@ type SessionV2 = {
   launchTab?: LaunchTab | null;
 };
 
+// downloads.json held private downloads (saved by an older build): rewritten without them once persistence starts.
+let droppedPrivateDownloads = false;
+
 export function loadSession(): HydrateData | null {
   const session = read<SessionV2>("session.json");
   if (session?.version !== 2) return null;
   const downloads = read<{ downloads: Download[] }>("downloads.json");
+  droppedPrivateDownloads = (downloads?.downloads ?? []).some((d) => downloadSession(d) !== null);
   const data: HydrateData = {
     profiles: session.profiles,
     profileOrder: session.profileOrder,
@@ -133,7 +138,8 @@ export function loadSession(): HydrateData | null {
     closedGroups: session.closedGroups ?? [],
     deletedGroups: session.deletedGroups ?? [],
     cleanedTabs: session.cleanedTabs ?? [],
-    downloads: (downloads?.downloads ?? []).map((d, i) => ({ ...d, id: `saved-${i}` })),
+    // Builds before 2026-10-06 saved private windows' downloads (marked offTheRecord): they're dropped.
+    downloads: (downloads?.downloads ?? []).filter((d) => downloadSession(d) === null).map((d, i) => ({ ...d, id: `saved-${i}` })),
   };
   if (session.settings && session.settings.restoreSession === false) {
     const now = Date.now();
@@ -213,6 +219,11 @@ export function startPersistence() {
     if (dirty.size && !timer) timer = setTimeout(save, SAVE_DELAY_MS);
   };
   check(useBrowser.getState(), true);
+  if (droppedPrivateDownloads) {
+    droppedPrivateDownloads = false;
+    dirty.add(DOCS.find((d) => d.name === "downloads.json")!);
+    timer ??= setTimeout(save, SAVE_DELAY_MS);
+  }
   resume = () => {
     check(useBrowser.getState());
     save();
@@ -234,10 +245,13 @@ export function startPersistence() {
   };
 }
 
+// A private session's downloads go with its last window (the engine ends the session then too).
 function forgetClosedIncognito(s: BrowserState, prev: BrowserState) {
   for (const w of Object.values(prev.windows)) {
     if (!w.incognito || s.windows[w.id]) continue;
-    for (const d of s.downloads) if (d.profile === w.profileId && d.state === "downloading") void cancelDownload(d.id);
+    const session = privateSession(w.profileId);
+    if (Object.values(s.windows).some((o) => o.incognito && privateSession(o.profileId) === session)) continue;
+    for (const d of s.downloads) if (downloadSession(d) === session && d.state === "downloading") void cancelDownload(d.id);
     s.forgetDownloads(w.profileId);
   }
 }

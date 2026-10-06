@@ -41,6 +41,13 @@ NSMutableSet<NSString *> *DeletedProfiles() {
   return deleted;
 }
 
+// Private windows' names released (their window closed): a window's name is never used again, so a late request for
+// one (a service still finishing for the window) gets no profile, never one that keeps its session alive.
+NSMutableSet<NSString *> *ReleasedPrivateNames() {
+  static NSMutableSet *released = [NSMutableSet set];
+  return released;
+}
+
 // A deletion asked for while the profile was still loading: run once Chrome has it, through Chrome's deletion.
 NSMutableDictionary<NSString *, void (^)(NNCoreProfile *)> *DeletionsAfterLoad() {
   static NSMutableDictionary *deletions = [NSMutableDictionary dictionary];
@@ -240,8 +247,14 @@ static void StartLaunchTab() {
 }
 
 - (void)engine:(NNCoreEngine *)engine castRoutes:(NSArray *)routes profile:(NNCoreProfile *)profile {
-  if (gChromeUIHandler)
-    gChromeUIHandler(@"castRoutes", @{@"profile" : nncore_host::ProfileName(profile), @"routes" : routes ?: @[]});
+  if (!gChromeUIHandler) return;
+  // A private session's routes go to each of its windows' names (the app asks per window).
+  NSMutableArray<NSString *> *names = [NSMutableArray array];
+  if (profile.offTheRecord)
+    for (NSString *name in nncore_host::LoadedProfileNames())
+      if (nncore_host::LoadedProfile(name) == profile) [names addObject:name];
+  if (!names.count) [names addObject:nncore_host::ProfileName(profile)];
+  for (NSString *name in names) gChromeUIHandler(@"castRoutes", @{@"profile" : name, @"routes" : routes ?: @[]});
 }
 
 - (void)engine:(NNCoreEngine *)engine extensionSidePanel:(NSDictionary *)panel tab:(NNCoreTab *)tab {
@@ -532,13 +545,14 @@ static void StartLaunchTab() {
   NNCoreEngine *engine = NNCoreEngine.sharedEngine;
   NNCoreProfile *p = nncore_host::LoadedProfile(profile);
   if (nncore_host::IsIncognito(profile)) {
+    if (profile) [ReleasedPrivateNames() addObject:profile];
     [Profiles() removeObjectForKey:profile];
     // Still being asked for (WithPrivateProfile): whoever waits gets none.
     NSArray *waiting = ProfileWaiters()[profile];
     [ProfileWaiters() removeObjectForKey:profile];
     for (void (^waiter)(NNCoreProfile *) in waiting) waiter(nil);
     nncore_host::ForgetPrivateNavigationDownloads(profile);
-    // Every private window shares the one off-the-record profile: it goes only once no other private window of the
+    // A profile's private windows share its off-the-record profile: it goes only once no other private window of the
     // app holds it, even one whose window isn't made yet.
     if ([Profiles().allValues containsObject:p]) return;
   }
@@ -758,6 +772,11 @@ void ForgetDestroyedProfiles() {
     if (Profiles()[name].destroyed) [Profiles() removeObjectForKey:name];
 }
 
+NSArray<NSString *> *LoadedProfileNames() {
+  ForgetDestroyedProfiles();
+  return Profiles().allKeys;
+}
+
 NSArray<NNCoreProfile *> *LoadedProfiles() {
   ForgetDestroyedProfiles();
   NSMutableArray *profiles = [NSMutableArray array];
@@ -768,6 +787,24 @@ NSArray<NNCoreProfile *> *LoadedProfiles() {
 
 bool IsIncognito(NSString *name) {
   return [name hasPrefix:@"incognito"];
+}
+
+NSString *OriginalProfileName(NSString *name) {
+  if (!IsIncognito(name)) return name ?: @"";
+  NSRange at = [name rangeOfString:@"@"];
+  return at.location == NSNotFound ? @"" : [name substringFromIndex:NSMaxRange(at)];
+}
+
+NSString *OriginalProfileNameOf(NNCoreProfile *profile) {
+  if (!profile.offTheRecord) return ProfileName(profile);
+  // Named after its original's directory ("Default", "Profile <id>").
+  NSString *dir = profile.name;
+  return [dir hasPrefix:@"Profile "] ? [dir substringFromIndex:8] : @"";
+}
+
+bool IsOffTheRecordOf(NNCoreProfile *profile, NSString *name) {
+  return profile.offTheRecord && IsIncognito(name) &&
+         [profile.name isEqualToString:DirectoryName(OriginalProfileName(name))];
 }
 
 bool IsDeletedProfile(NSString *name) {
@@ -783,17 +820,28 @@ NNCoreProfile *LoadedProfile(NSString *name) {
 
 namespace {
 
-// A private window's profile: Personal's off-the-record one, never Personal itself. While the last one is still
-// being destroyed the engine answers once it has gone, with a new one. Asked once per name at a time; when the name is
-// released meanwhile (its window closed, +releaseProfile:), a profile nobody holds goes again.
+// A private window's profile: the off-the-record one of the regular profile it was opened from (its name says which,
+// OriginalProfileName), as Chrome's GetPrimaryOTRProfile, never that profile itself. Private windows of one profile
+// share it; another profile's are another. While its last one is still being destroyed the engine answers once it has
+// gone, with a new one. Asked once per name at a time; when the name is released meanwhile (its window closed,
+// +releaseProfile:), a profile nobody holds goes again.
 void WithPrivateProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
+  if ([ReleasedPrivateNames() containsObject:name]) return completion(nil);
   if (NSMutableArray *waiters = ProfileWaiters()[name]) return (void)[waiters addObject:completion];
   ProfileWaiters()[name] = [NSMutableArray arrayWithObject:completion];
-  WithProfile(@"", ^(NNCoreProfile *base) {
+  NSString *original = OriginalProfileName(name);
+  WithProfile(original, ^(NNCoreProfile *base) {
     NNCoreEngine *engine = NNCoreEngine.sharedEngine;
     void (^answer)(NNCoreProfile *, NSString *) = ^(NNCoreProfile *otr, NSString *error) {
       NSArray *pending = ProfileWaiters()[name];
       [ProfileWaiters() removeObjectForKey:name];
+      // Its profile was deleted while the engine answered (it waited for the last session to go): none.
+      if (IsDeletedProfile(original)) {
+        if (otr && ![Profiles().allValues containsObject:otr]) [engine releaseProfile:otr];
+        if (pending) NSLog(@"[nncore] no private profile for %@: its profile was deleted", name);
+        for (void (^waiter)(NNCoreProfile *) in pending) waiter(nil);
+        return;
+      }
       if (!pending) {
         if (otr && ![Profiles().allValues containsObject:otr]) [engine releaseProfile:otr];
         return;
@@ -802,7 +850,7 @@ void WithPrivateProfile(NSString *name, void (^completion)(NNCoreProfile *)) {
       else NSLog(@"[nncore] no private profile for %@: %@", name, error ?: @"it went");
       for (void (^waiter)(NNCoreProfile *) in pending) waiter(Profiles()[name]);
     };
-    if (!base) return answer(nil, @"Personal isn't loaded");
+    if (!base) return answer(nil, [NSString stringWithFormat:@"profile \"%@\" isn't loaded", original]);
     if (![engine respondsToSelector:@selector(offTheRecordProfileFor:completion:)]) return answer(nil, @"the engine is too old");
     [engine offTheRecordProfileFor:base completion:answer];
   });

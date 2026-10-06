@@ -1,4 +1,5 @@
 import type { BrowserState } from "./browser";
+import { engineProfile } from "./model";
 import type { BrowserWindow } from "./types";
 
 // Small Yahu, our Little Arc: a small window with one page and no sidebar. Links from other apps open there
@@ -19,10 +20,18 @@ export function mainWindowFor(s: BrowserState, profileId?: string): string | und
 }
 
 // The regular profile a window belongs to: the one it shows, or for a private window the one it was opened from
-// (Chrome's GetOriginalProfile; in the engine every private window is Personal's off-the-record profile).
+// (Chrome's GetOriginalProfile; in the engine a private window is that profile's off-the-record profile).
 export function originalProfile(s: Pick<BrowserState, "profiles">, w: BrowserWindow | undefined): string | undefined {
   const id = w?.incognito ? w.originalProfileId : w?.profileId;
   return id && s.profiles[id] ? id : undefined;
+}
+
+// The regular profile of a private window a page opens (Open Link in Incognito Window, an extension's incognito
+// window): the one Chrome's private tab is off the record of (`engineName`, the engine's name for it), else the page's
+// window's.
+export function privateWindowProfile(s: Pick<BrowserState, "profiles" | "profileOrder">, w: BrowserWindow | undefined, engineName?: string) {
+  const named = engineName !== undefined ? s.profileOrder.find((p) => engineProfile(p) === engineName) : undefined;
+  return named ?? originalProfile(s, w);
 }
 
 // The profile of the window used last: links from other apps and a new Small Yahu open in it, never privately. As

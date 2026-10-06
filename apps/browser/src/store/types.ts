@@ -24,7 +24,8 @@ export type BrowserWindow = {
   createdAt: number;
   // Small Yahu (Arc's Little Arc): one page, no sidebar, never saved with the session (store/small.ts).
   kind?: "small";
-  // A private window's regular profile: the one active when it opened (store/small.ts originalProfile).
+  // A private window's regular profile: the one it was opened from (store/small.ts originalProfile). Its session is that
+  // profile's off-the-record one, which its profile id names too (model.ts incognitoProfileId).
   originalProfileId?: string;
 };
 

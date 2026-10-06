@@ -4,6 +4,7 @@ import { focus, openWindow } from "../../lib/actions";
 import { folderLinks } from "../../store/bookmarks";
 import { useBrowser } from "../../store/browser";
 import { activeTabId, bookmarkProfileId, resolveWindowId, viewTabIds } from "../../store/model";
+import { originalProfile } from "../../store/small";
 
 export type OpenMode = "current" | "background" | "foreground" | "window" | "incognito" | "split";
 
@@ -17,11 +18,11 @@ export function openModeFor(e: { metaKey?: boolean; shiftKey?: boolean; altKey?:
 export function openUrl(url: string, windowId: string | null | undefined, mode: OpenMode) {
   const s = useBrowser.getState();
   const id = resolveWindowId(s, windowId);
-  if (mode === "incognito") return void openWindow({ incognito: true, url });
+  const w = id ? s.windows[id] : undefined;
+  if (mode === "incognito") return void openWindow({ incognito: true, url, profileId: originalProfile(s, w) });
   if (!id || mode === "window") {
-    const w = id ? s.windows[id] : undefined;
-    // From a private window, a new window stays private.
-    const created = openWindow(w?.incognito ? { incognito: true, url } : { url, profileId: w?.profileId });
+    // From a private window, a new window stays private (in its session).
+    const created = openWindow(w?.incognito ? { incognito: true, url, profileId: originalProfile(s, w) } : { url, profileId: w?.profileId });
     return focus(created);
   }
   const tabId = activeTabId(s, id);

@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { webviews } from "../../lib/webviews";
 import { useBrowser } from "../../store/browser";
 import { changedIds } from "../../store/changes";
-import { isIncognitoProfile } from "../../store/model";
+import { incognitoOriginal, isIncognitoProfile } from "../../store/model";
 import { hideKeyedToast, showToast } from "../layout/splitActions";
 import { translatorCall, type Passage } from "./pageTranslator";
 
@@ -49,10 +49,10 @@ function hostOf(url: string): string {
   }
 }
 
-// MARK: Never Translate This Site (per profile; incognito windows follow their default profile's)
+// MARK: Never Translate This Site (per profile; a private window follows the profile it was opened from)
 
 function listOwner(profileId: string): string {
-  return isIncognitoProfile(profileId) ? useBrowser.getState().settings.defaultProfileId : profileId;
+  return isIncognitoProfile(profileId) ? incognitoOriginal(profileId) : profileId;
 }
 export function isNeverTranslated(profileId: string, url: string): boolean {
   const host = hostOf(url);

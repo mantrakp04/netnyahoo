@@ -53,11 +53,12 @@ void (^gExtensionsHandler)(NSString *, NSDictionary *);
 
 void Changed(NSString *profile, NSString *extensionId, NSString *event) {
   if (gExtensionsHandler && extensionId.length)
-    gExtensionsHandler(@"changed", @{@"profile" : nncore_host::IsIncognito(profile) ? @"" : (profile ?: @""), @"id" : extensionId, @"event" : event});
+    gExtensionsHandler(@"changed", @{@"profile" : nncore_host::OriginalProfileName(profile), @"id" : extensionId, @"event" : event});
 }
 
 NSString *ProfileDirectory(NSString *profile) {
-  NSString *dir = profile.length && !nncore_host::IsIncognito(profile) ? [@"Profile " stringByAppendingString:profile] : @"Default";
+  NSString *name = nncore_host::OriginalProfileName(profile);
+  NSString *dir = name.length ? [@"Profile " stringByAppendingString:name] : @"Default";
   return [NNCoreHost.dataDirectory stringByAppendingPathComponent:dir];
 }
 
@@ -149,14 +150,14 @@ NSString *StoreFolder(NSString *profile, NSString *extensionId, id version) {
 // MARK: Preferences
 
 + (BOOL)boolPreference:(NSString *)name profile:(NSString *)profile {
-  NNCoreProfile *p = nncore_host::LoadedProfile(nncore_host::IsIncognito(profile) ? @"" : profile);
+  NNCoreProfile *p = nncore_host::LoadedProfile(nncore_host::OriginalProfileName(profile));
   if (![p respondsToSelector:@selector(boolPreference:)]) return YES;
   NSNumber *value = [p boolPreference:name];
   return value ? value.boolValue : YES;
 }
 
 + (void)setBoolPreference:(NSString *)name value:(BOOL)value profile:(NSString *)profile {
-  NNCoreProfile *p = nncore_host::LoadedProfile(nncore_host::IsIncognito(profile) ? @"" : profile);
+  NNCoreProfile *p = nncore_host::LoadedProfile(nncore_host::OriginalProfileName(profile));
   if ([p respondsToSelector:@selector(setBoolPreference:value:)]) [p setBoolPreference:name value:value];
 }
 

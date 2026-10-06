@@ -12,7 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 // MARK: Profiles
 // The app names profiles as packages/cef does: "" is Chrome's default profile ("Default"), "<id>" is
-// "Profile <id>", and "incognito…" is the default profile's off-the-record profile.
+// "Profile <id>", and "incognito:<window>@<name>" is the off-the-record profile of the regular profile <name> (one per
+// private window's name, the same profile for every private window of <name>; "incognito…" with no "@": Personal's).
 namespace nncore_host {
 
 NNCoreProfile *_Nullable LoadedProfile(NSString *name);
@@ -22,6 +23,13 @@ void WithProfile(NSString *name, void (^completion)(NNCoreProfile *_Nullable pro
 NSString *ProfileName(NNCoreProfile *_Nullable profile);
 NNCoreProfile *_Nullable PersonalIfLoaded(NNCoreEngine *engine);
 bool IsIncognito(NSString *name);
+// The regular profile a name is, or is off the record of: a private name's original ("" for Personal).
+NSString *OriginalProfileName(NSString *_Nullable name);
+NSString *OriginalProfileNameOf(NNCoreProfile *_Nullable profile);
+// Whether `profile` is the off-the-record profile the private name `name` stands for (its original's).
+bool IsOffTheRecordOf(NNCoreProfile *_Nullable profile, NSString *_Nullable name);
+// The names the app has a live profile for (several private names may share one).
+NSArray<NSString *> *LoadedProfileNames();
 
 // A stable id per tab for the app's lifetime (the WebView's browserId).
 int BrowserId(NNCoreTab *tab);

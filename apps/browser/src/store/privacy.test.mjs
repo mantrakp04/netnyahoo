@@ -26,7 +26,7 @@ test("incognito window: own profile, closing records nothing, history ignored", 
   S().hydrate({});
   const w = S().createWindow({ incognito: true, url: "secret.com" });
   const tab = S().tabs[model.activeTabId(S(), w)];
-  assert.equal(tab.profileId, `incognito:${w}`);
+  assert.equal(tab.profileId, `incognito:${w}@default`);
   stub.historyDbs.clear();
   assert.equal(S().importHistory(tab.profileId, [{ url: "https://secret.com/", title: "S", visits: 1, lastVisit: Date.now() }]), 0);
   S().removeHistory(tab.profileId, ["https://secret.com/"]);

@@ -11,18 +11,34 @@ export const newId = (prefix: string) => `${prefix}-${launch}-${(++counter).toSt
 let navSeq = 0;
 export const navigationTo = (url: string, userInitiated = false) => ({ url, seq: ++navSeq, ...(userInitiated ? { userInitiated } : {}) });
 
-export const incognitoProfileId = (windowId: string) => `incognito:${windowId}`;
+// A private window's profile: incognito:<window id>@<the regular profile it was opened from>. Its engine profile is
+// that profile's off-the-record one (Chrome's GetPrimaryOTRProfile): private windows opened from one profile share a
+// session, never another profile's (packages/nncore NNCoreHost.mm OriginalProfileName).
+export const incognitoProfileId = (windowId: string, originalProfileId: string) => `incognito:${windowId}@${originalProfileId}`;
 export const isIncognitoProfile = (profileId: string) => profileId.startsWith("incognito:");
+// The regular profile a private profile id was opened from (an id without one: the default profile's, as before).
+export const incognitoOriginal = (profileId: string) => {
+  const at = profileId.indexOf("@");
+  return at < 0 ? DEFAULT_PROFILE_ID : profileId.slice(at + 1);
+};
 
 let sharedDataIds: Record<string, string> = {};
 export const setSharedDataIds = (map: Record<string, string>) => {
   sharedDataIds = map;
 };
 
-export const engineProfile = (profileId: string) => {
+export const engineProfile = (profileId: string): string => {
+  if (isIncognitoProfile(profileId)) {
+    const at = profileId.indexOf("@");
+    return `${at < 0 ? profileId : profileId.slice(0, at)}@${engineProfile(incognitoOriginal(profileId))}`;
+  }
   const id = sharedDataIds[profileId] ?? profileId;
   return id === DEFAULT_PROFILE_ID ? "" : id;
 };
+
+// The off-the-record session a private profile id is in, named by its regular engine profile; null for a regular one.
+export const privateSession = (profileId: string): string | null =>
+  isIncognitoProfile(profileId) ? engineProfile(incognitoOriginal(profileId)) : null;
 
 export const INCOGNITO_PROFILE: Profile = { id: "incognito", name: "Incognito", color: "neutral", icon: null, createdAt: 0 };
 
@@ -117,8 +133,10 @@ export function profileFor(s: BrowserState, profileId: string): Profile {
   return isIncognitoProfile(profileId) ? INCOGNITO_PROFILE : (s.profiles[profileId] ?? s.profiles[s.settings.defaultProfileId] ?? INCOGNITO_PROFILE);
 }
 
+// A private window's are the profile's it was opened from, as Chrome's incognito bookmarks bar.
 export function bookmarkProfileId(s: BrowserState, window: BrowserWindow | undefined): string {
-  return !window || window.incognito ? s.settings.defaultProfileId : window.profileId;
+  const id = window?.incognito ? window.originalProfileId : window?.profileId;
+  return id && s.profiles[id] ? id : s.settings.defaultProfileId;
 }
 
 export function resolveWindowId(s: BrowserState, id?: string | null): string | undefined {

@@ -14,7 +14,9 @@ export type Download = {
   total: number;
   speed: number;
   mimeType: string;
+  /** The regular profile's name; a private window's download is its off-the-record profile's (offTheRecord). */
   profile?: string;
+  offTheRecord?: boolean;
 };
 
 export type PermissionKind =

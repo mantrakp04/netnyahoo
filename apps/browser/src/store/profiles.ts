@@ -109,8 +109,10 @@ export const createProfilesSlice: StateCreator<BrowserState, [], [], ProfilesSli
     },
 
     deleteProfile(id) {
+      if (!get().profiles[id] || get().profileOrder.length <= 1) return;
+      // Its private windows close with it, as Chrome's do: their session is its off-the-record profile.
+      for (const w of Object.values(get().windows)) if (w.incognito && w.originalProfileId === id) get().closeWindow(w.id);
       let s = get();
-      if (!s.profiles[id] || s.profileOrder.length <= 1) return;
       const profileOrder = s.profileOrder.filter((p) => p !== id);
       const fallback = s.settings.defaultProfileId === id ? profileOrder[0]! : s.settings.defaultProfileId;
       const settings = {

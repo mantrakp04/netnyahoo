@@ -681,12 +681,12 @@ static BOOL HeldSelector(SEL selector) {
   if ([_adoptId hasPrefix:@"nncore:"] || [_adoptId hasPrefix:@"tab:"]) {
     NNCoreTab *offered = [NNCoreTabs takeOffered:_adoptId];
     _adoptId = nil;
-    // Never a private tab in a normal view, or the reverse, and a private view takes only Personal's private tabs
-    // (its profile): the view loads its URL itself instead.
+    // Never a private tab in a normal view, or the reverse, and a private view takes only its session's tabs (the
+    // off-the-record profile of the profile it was opened from): the view loads its URL itself instead.
     const BOOL wantsPrivate = nncore_host::IsIncognito(_profile);
-    if (offered && (!offered.profile || offered.profile.offTheRecord != wantsPrivate ||
-                    (wantsPrivate && ![offered.profile.name isEqualToString:@"Default"]))) {
-      [offered closeNow];
+    if (offered && (offered.closed || !offered.profile || offered.profile.offTheRecord != wantsPrivate ||
+                    (wantsPrivate && !nncore_host::IsOffTheRecordOf(offered.profile, _profile)))) {
+      if (!offered.closed) [offered closeNow];
       offered = nil;
     }
     if (offered && !offered.closed) return [self attach:offered];
@@ -804,7 +804,8 @@ static BOOL HeldSelector(SEL selector) {
 - (BOOL)canTake:(NNCoreTab *)tab {
   NNCoreProfile *profile = tab.profile;
   if (!profile || tab.closed || profile.offTheRecord != nncore_host::IsIncognito(_profile)) return NO;
-  return profile.offTheRecord || [nncore_host::ProfileName(profile) isEqualToString:_profile ?: @""];
+  if (profile.offTheRecord) return nncore_host::IsOffTheRecordOf(profile, _profile);
+  return [nncore_host::ProfileName(profile) isEqualToString:_profile ?: @""];
 }
 
 // The tab's page, parked for this view (closeBrowser), or still in the view this one replaces: in the same batch the
@@ -1046,14 +1047,16 @@ static BOOL HeldSelector(SEL selector) {
     });
     return;
   }
-  [self emit:@"openWindow"
-      payload:@{
-        @"url" : url ?: @"",
-        @"disposition" : disposition,
-        @"adoptId" : adoptId,
-        @"userGesture" : @YES,
-        @"postBody" : @NO,
-      }];
+  NSMutableDictionary *payload = [@{
+    @"url" : url ?: @"",
+    @"disposition" : disposition,
+    @"adoptId" : adoptId,
+    @"userGesture" : @YES,
+    @"postBody" : @NO,
+  } mutableCopy];
+  // A private tab: the regular profile it's off the record of, whose private window takes it.
+  if (tab.profile.offTheRecord) payload[@"profile"] = nncore_host::OriginalProfileNameOf(tab.profile);
+  [self emit:@"openWindow" payload:payload];
 }
 
 - (void)tabRemovedFromWindow:(NNCoreWindow *)window {

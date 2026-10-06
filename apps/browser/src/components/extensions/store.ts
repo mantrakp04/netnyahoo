@@ -2,7 +2,7 @@ import type { ActionState, ExtensionInstallPrompt, ExtensionPackage, InstalledEx
 import { useMemo } from "react";
 import { create } from "zustand";
 import { useBrowser, type BrowserState } from "../../store/browser";
-import { activeTabId, engineProfile } from "../../store/model";
+import { activeTabId, engineProfile, privateSession } from "../../store/model";
 import { usePages } from "../layout/pageState";
 
 export type Anchor = { x: number; y: number; width: number; height: number };
@@ -41,10 +41,10 @@ export const useExtensions = create<ExtensionsStore>()(() => ({ lists: {}, actio
 
 const EMPTY: InstalledExtension[] = [];
 
-/** The profile whose extensions a window lists. Private windows are the default profile's, off the record. */
+/** The profile whose extensions a window lists. A private window's is the profile it was opened from, off the record. */
 export function extensionProfile(s: BrowserState, windowId: string | null | undefined): string {
   const w = windowId ? s.windows[windowId] : undefined;
-  return !w || w.incognito ? "" : engineProfile(w.profileId);
+  return !w ? "" : (privateSession(w.profileId) ?? engineProfile(w.profileId));
 }
 
 export const isPrivate = (s: BrowserState, windowId: string) => !!s.windows[windowId]?.incognito;

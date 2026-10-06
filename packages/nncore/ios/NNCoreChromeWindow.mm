@@ -678,18 +678,18 @@ NSMapTable<NNCoreProfile *, NNCoreWindowController *> *StandaloneWindows() {
     if (view || !profile.offTheRecord) {
       // A view of the tab's own profile announces it. With none (a launch on the New Tab page, or only another
       // profile's pages shown, which would adopt it under their profile), the extensions module does, live.
-      if (view && [view.profile isEqualToString:nncore_host::ProfileName(profile)])
+      // A private profile's view is one of its session's windows, whatever its own private name.
+      if (view && ([view.profile isEqualToString:nncore_host::ProfileName(profile)] ||
+                   nncore_host::IsOffTheRecordOf(profile, view.profile)))
         [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"foreground"];
       else
         AnnounceStrayTab(tab, 0);
       return;
     }
     if (!(view = [NNCoreWindowController hostingViewForProfile:nil])) return;
-    // The app's private windows are Personal's off-the-record profile: another profile's (an extension of Work's)
-    // opens afresh in one, and Chrome's tab goes.
-    const BOOL personals = [profile.name isEqualToString:@"Default"];
-    [view openedTab:tab adoptId:personals ? [NNCoreTabs offerTab:tab prefix:@"tab"] : @"" disposition:@"incognito"];
-    if (!personals) dispatch_async(dispatch_get_main_queue(), ^{ [tab closeNow]; });
+    // No window of its session yet: the app opens a private window of the profile it's off the record of, which
+    // takes the tab live.
+    [view openedTab:tab adoptId:[NNCoreTabs offerTab:tab prefix:@"tab"] disposition:@"incognito"];
     return;
   }
   NNCoreWebView *openerView = [self viewFor:opener];
