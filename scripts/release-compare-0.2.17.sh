@@ -13,11 +13,15 @@
 #      bench bundle from its own source (apps/browser/scripts/perf/legacy-bundle.mjs -> dist/0.2.17/bench/main.jsbundle);
 #   2. native-bench interleaved, both apps, run by run: launch x8, then session x2 (idle, memory, tab switch, new tab,
 #      new window) and windows x2 (more new windows);
+#      and, for "Switching tabs", `--only switch` x3 (0.2.17 freezes background tabs after 60 s, so the session's late
+#      switches wait on thawing pages and can't be timed the same way; the dedicated run switches right after opening);
 #   3. native-bench --fresh-copy: the first launch after an install, x4;
 #   4. the RC alone: newtabkey (⌘T and a keystroke from real key events) and js-bench typing. 0.2.17 can't run either: it
 #      has no field timing (journeys) and no perf probe or dev harness in a release bundle. Those rows show "–" for it;
 #   5. scripts/release-compare-table.mjs turns the results into the table.
 # Afterwards check scripts/agent/cpu-cap's log for pauses during the run (a pause makes the timings invalid).
+# Test knobs (a release-day run uses the defaults): NN_COMPARE_LAUNCH_RUNS (8), NN_COMPARE_RUNS (2), NN_COMPARE_IDLE (60 s),
+# NN_COMPARE_RC_BUNDLE (a prebuilt bench bundle for the RC; default: built from this tree), NN_COMPARE_CACHE, BENCH_CMD_TIMEOUT_MS.
 # Ports: CDP 9770 (native-bench), js-bench 47971 (its instances use CDP 9500+). Needs the display awake (caffeinate runs).
 # The old release is the control: the rows that need the new phases (frames, J4) aren't in it. See docs/perf/README.md.
 set -uo pipefail
@@ -54,20 +58,24 @@ if [ ! -f "$BUNDLE_OLD" ]; then
 fi
 
 # 2-4. Everything that times something holds the perflab lock for the whole run (one lock, one command).
+export LAUNCH_RUNS=${NN_COMPARE_LAUNCH_RUNS:-8} RUNS=${NN_COMPARE_RUNS:-2} IDLE=${NN_COMPARE_IDLE:-60}
+export RC_BUNDLE_FLAG=${NN_COMPARE_RC_BUNDLE:+--bundle $NN_COMPARE_RC_BUNDLE}
 export REPO RC OUT OLD NEW CACHE BUNDLE_OLD PERF
-exec caffeinate -d scripts/agent/locked perflab --wait 540 --as compare -- bash -c '
+exec caffeinate -d scripts/agent/locked perflab --wait 3000 --as compare -- bash -c '
 set -uo pipefail
 cd "$REPO"
 log() { echo "[compare $(date +%H:%M:%S)] $*"; }
-NB="node $PERF/native-bench.mjs --app $RC --label $NEW --control $CACHE/Netnyahoo.app --control-label $OLD --control-bundle $BUNDLE_OLD"
+NB="node $PERF/native-bench.mjs --app $RC --label $NEW --control $CACHE/Netnyahoo.app --control-label $OLD --control-bundle $BUNDLE_OLD $RC_BUNDLE_FLAG --idle $IDLE"
 log "launch, session, windows: $OLD and $NEW interleaved"
-$NB --out $OUT/nb --port 9770 --only launch,session,windows --launch-runs 8 --runs 2 || exit 1
+$NB --out $OUT/nb --port 9770 --only launch,session,windows --launch-runs $LAUNCH_RUNS --runs $RUNS || exit 1
+log "tab switches, right after the tabs open (0.2.17 freezes background tabs after a minute; a full session switches late)"
+$NB --out $OUT/switch --port 9770 --only switch --runs $((RUNS + 1)) || log "switch runs failed: that row falls back to the full session"
 log "first launch after an install (fresh copies)"
-$NB --out $OUT/fresh --port 9770 --only launch --fresh-copy --launch-runs 4 || log "fresh-copy launches failed: those rows stay empty"
+$NB --out $OUT/fresh --port 9770 --only launch --fresh-copy --launch-runs $((LAUNCH_RUNS / 2)) || log "fresh-copy launches failed: those rows stay empty"
 log "$NEW alone: ⌘T and keystroke journeys"
-node $PERF/native-bench.mjs --app $RC --label $NEW --out $OUT/journeys --port 9770 --only newtabkey --runs 2 || log "journeys failed: those rows stay empty"
+node $PERF/native-bench.mjs --app $RC --label $NEW --out $OUT/journeys --port 9770 --only newtabkey --runs $RUNS $RC_BUNDLE_FLAG || log "journeys failed: those rows stay empty"
 log "$NEW alone: js-bench typing (own bundle)"
-node $PERF/js-bench.mjs run --app $RC --bundle $RC/Contents/Resources/main.jsbundle --label $NEW --scenarios startup,typing --runs 3 --port 47971 --out $OUT/js >$OUT/js.log 2>&1 || log "js-bench failed (see $OUT/js.log): those rows stay empty"
+node $PERF/js-bench.mjs run --app $RC --bundle $RC/Contents/Resources/main.jsbundle --label $NEW --scenarios startup,typing --runs $((RUNS + 1)) --port 47971 --out $OUT/js >$OUT/js.log 2>&1 || log "js-bench failed (see $OUT/js.log): those rows stay empty"
 log "table"
 node scripts/release-compare-table.mjs $OUT $OLD $NEW
 scripts/agent/unregister-builds >/dev/null 2>&1 || true

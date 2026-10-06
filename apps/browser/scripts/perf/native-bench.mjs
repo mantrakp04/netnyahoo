@@ -60,7 +60,9 @@
 //     --port <n>              the instances' CDP port (default 9377). One instance runs at a time.
 //     --compare <a.json>      print a before/after table against another run's results.json
 //     --report <b.json>       print the table for saved results (with --compare, before/after) without running
-//     Environment: BENCH_ALLOW_APP_NAP=1 leaves App Nap on (the control for the App Nap row); BENCH_DEBUG=1 logs switches.
+//     Environment: BENCH_ALLOW_APP_NAP=1 leaves App Nap on (the control for the App Nap row); BENCH_DEBUG=1 logs switches;
+//     BENCH_CMD_TIMEOUT_MS=<ms> how long a command to the app may take to answer (default 30000; raise it for a dry run
+//     on a loaded Mac where scripts/agent/cpu-cap pauses the instance. Timings taken meanwhile are invalid).
 //
 // Results: <out>/<label>/results.json (every sample) and a summary table (median, min–max over runs) on stdout.
 // Needs: Node 22+, swiftc (builds scripts/perf/nnperf.swift), clang (builds scripts/perf/nnmark.m, loaded into the copy
@@ -499,7 +501,7 @@ class Instance {
     return null;
   }
   // Runs `body` (JS with `nn` in scope) in the app and returns its result.
-  async run(body, timeout = 30_000) {
+  async run(body, timeout = +(process.env.BENCH_CMD_TIMEOUT_MS ?? 30_000)) {
     const id = `b${process.pid}-${++this.seq}-${Date.now()}`;
     writeFileSync(join(this.dataDir, "bench-cmd.js"), `// ${id}\n${body}`);
     const r = await this.waitFile("bench-result.json", timeout, (v) => v.id === id);

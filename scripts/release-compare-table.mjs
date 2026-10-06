@@ -5,7 +5,7 @@
 //   node scripts/release-compare-table.mjs <out dir> <old label> <new label>
 //
 // Reads <out>/nb/<label>/results.json (native-bench: launch, session, windows), <out>/fresh/<label>/results.json
-// (the first launch after an install), <out>/journeys/<new label>/results.json (newtabkey, the new release only) and
+// (the first launch after an install), <out>/switch/<label>/results.json (tab switches alone), <out>/journeys/<new label>/results.json (newtabkey, the new release only) and
 // <out>/js/<new label>.json (js-bench typing, the new release only). A row the old release can't be measured on stays
 // in the table with "–" in its column and no change. Prints the table (Markdown) to stdout and writes
 // <out>/table.md (the same) and <out>/table-detail.md (every row with min–max and n, for whoever judges the gate).
@@ -57,6 +57,10 @@ if (!newN) {
   console.error(`no results for ${newLabel} in ${outDir}/nb`);
   process.exit(1);
 }
+// Tab switches come from their own run (right after the tabs open) when there is one: 0.2.17 freezes background tabs after
+// a minute, and the full session's switches come late.
+const oldSwitch = native(oldLabel, "switch")?.switch;
+const newSwitch = native(newLabel, "switch")?.switch;
 const oldFresh = native(oldLabel, "fresh");
 const newFresh = native(newLabel, "fresh");
 
@@ -74,7 +78,7 @@ const rows = [
   ["Opening the app", "ms", "faster", oldN?.open, newN.open],
   ["Opening the app, until the first page has painted", "ms", "faster", oldN?.paint, newN.paint],
   ["Opening the app for the first time after an update", "ms", "faster", oldFresh?.open, newFresh?.open],
-  ["Switching tabs", "ms", "faster", oldN?.switch, newN.switch],
+  ["Switching tabs", "ms", "faster", oldSwitch ?? oldN?.switch, newSwitch ?? newN.switch],
   ["Opening a new tab, until its page has painted", "ms", "faster", oldN?.newTab, newN.newTab],
   ["Opening a new window", "ms", "faster", oldN?.newWindow, newN.newWindow],
   ["⌘T until you can type in the command bar", "ms", "faster", null, J.length ? pooled((r) => r.j2.map((x) => x.typeable)) : null],
