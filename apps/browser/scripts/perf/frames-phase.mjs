@@ -180,8 +180,8 @@ function interactions(c) {
   const win = `nn.store.getState().windows[${W}]`;
   return [
     { name: "idle (no interaction)", window: 1500, go: async () => Date.now() },
-    { name: "command bar open (⌘T)", window: 600, verify: `return !!${ui};`, go: () => key("cmd+t"), after: async () => { await sleep(900); } },
-    { name: "command bar close (Esc)", window: 600, before: () => key.open("cmd+t"), verify: `return !${ui};`, go: () => key("esc"), after: reset },
+    { name: "new tab with the command bar (⌘T)", window: 600, verify: `const s = nn.store.getState(); return s.windows[${W}].tabIds.some((id) => !s.tabs[id].url);`, go: () => key("cmd+t"), after: async () => { await sleep(900); } },
+    { name: "close the new tab (⌘W)", window: 600, before: () => key.open("cmd+t"), verify: `const s = nn.store.getState(); return !s.windows[${W}].tabIds.some((id) => !s.tabs[id].url);`, go: () => key("cmd+w"), after: reset },
     { name: "command bar open (⌘L)", window: 600, verify: `return !!${ui};`, before: reset, go: () => key("cmd+l"), after: async () => { await sleep(900); } },
     { name: "command bar close (Esc, from ⌘L)", window: 600, verify: `return !${ui};`, before: async () => { await reset(); await key.open("cmd+l"); }, go: () => key("esc"), after: reset },
     { name: "tab switch", window: 500, verify: `const s = nn.store.getState(); return s.windows[${W}].activeTabIds[s.windows[${W}].profileId] === globalThis.__frameTarget;`, before: reset, go: () => run(`globalThis.nnPerf?.reset(); const t = nn.now(); const s = nn.store.getState(); const w = ${W};
@@ -282,19 +282,22 @@ export async function framesRun(c, side, i, { counts }) {
       // Stats are computed once the interaction's reps are done: a run-loop iteration that outlasted its window is written
       // when it ends, and counts for nothing before that.
       const taken = [];
+      // --frames-sample: `sample` of the app over all of this interaction's repetitions (a sampler on background QoS gets
+      // few samples per second, so one window isn't enough), to see where the main thread's time goes.
+      let sampler = null;
+      if (opt["frames-sample"] && !it.name.startsWith("idle")) {
+        mkdirSync(join(c.out ?? dir, "frames-sample"), { recursive: true });
+        const file = join(c.out ?? dir, "frames-sample", `${side.label}-${it.name.replace(/[^a-z0-9]+/gi, "-")}.txt`);
+        const child = spawn("sample", [String(app.pid), String(Math.ceil(reps * (it.window / 1000 + 4))), "2", "-file", file], { stdio: "ignore" });
+        sampler = new Promise((done) => (child.on("close", done), child.on("error", done)));
+      }
       for (let rep = 0; rep < (it.name.startsWith("idle") ? 2 : reps); rep++) {
         try {
           if (it.before) await it.before();
           if (!(await quiet(5000))) out.notQuiet = (out.notQuiet ?? 0) + 1;
           if (counts) await run(`globalThis.nnPerf?.reset(); return 1;`);
           const c0 = await counters();
-          // --frames-sample: `sample` of the app over the first repetition's window, to see where the main thread's time goes.
-          if (opt["frames-sample"] && rep === 0 && !it.name.startsWith("idle")) {
-            mkdirSync(join(c.out ?? dir, "frames-sample"), { recursive: true });
-            const file = join(c.out ?? dir, "frames-sample", `${side.label}-${it.name.replace(/[^a-z0-9]+/gi, "-")}.txt`);
-            spawn("sample", [String(app.pid), String(Math.ceil(it.window / 1000) + 1), "1", "-file", file], { stdio: "ignore" });
-            await sleep(700);
-          }
+
           const t0 = await it.go();
           await sleep(it.window + 250);
           const c1 = await counters();
@@ -313,6 +316,7 @@ export async function framesRun(c, side, i, { counts }) {
         }
         if (it.after) await it.after().catch(() => {});
       }
+      if (sampler) await Promise.race([sampler, sleep(120_000)]);
       await sleep(2500);
       rec.read();
       for (const { t0, extra } of taken) {
