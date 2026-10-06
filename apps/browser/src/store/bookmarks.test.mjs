@@ -169,3 +169,18 @@ test("at launch the bar shows the last tree read from Chrome until Chrome's load
   assert.ok(!stub.chromeBookmarks("").has(gone), "the cache's stale bookmark isn't written back");
   stop();
 });
+
+test("a launch with bookmarks.json shows its tree at once, then moves it into Chrome", async () => {
+  S().hydrate({});
+  stub.docs.clear();
+  stub.bookmarkDbs.clear();
+  stub.docs.set("bookmarks.json", JSON.stringify(legacyFile()));
+  const expected = { bar: { "Bookmarks Bar": ["A=https://a.example/", { F: ["B=https://b.example/"] }] }, other: { "Other Bookmarks": ["C=https://c.example/"] } };
+  const stop = startBookmarks();
+  assert.deepEqual(storeTree(), expected, "the file's tree shows before anything is read");
+  for (let i = 0; i < 50 && JSON.stringify(chromeTree()) !== JSON.stringify(expected); i++) await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(chromeTree(), expected);
+  await reloadBookmarks();
+  assert.deepEqual(storeTree(), expected);
+  stop();
+});

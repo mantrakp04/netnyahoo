@@ -369,17 +369,27 @@ function launchTrees(): Record<string, Flat> {
   try {
     const legacy = (JSON.parse(readDocument(LEGACY_FILE) ?? "null") as { bookmarks?: Bookmarks } | null)?.bookmarks;
     const s = store();
+    // An old id's UUID is the same in every profile: each is hashed once, not once per profile and per reference
+    // (node, parent, child): 1000 hashes instead of 6000 for 1000 bookmarks in two profiles, a tenth of the time.
+    const uuids = new Map<string, string>();
+    const uuidOf = (old: string) => {
+      let uuid = uuids.get(old);
+      if (uuid === undefined) uuids.set(old, (uuid = bookmarkUuidFor(old)));
+      return uuid;
+    };
     for (const [profileId, roots] of Object.entries(legacy?.roots ?? {})) {
       if (!s.profiles[profileId] || isIncognitoProfile(profileId)) continue;
       const engine = engineProfile(profileId);
+      // Profiles sharing data saved the same tree: the first one's shows.
+      if (out[engine]) continue;
       const ids = rootIdsFor(engine);
-      const id = (old: string) => (old === roots.bar ? ids.bar : old === roots.other ? ids.other : bookmarkUuidFor(old));
+      const id = (old: string) => (old === roots.bar ? ids.bar : old === roots.other ? ids.other : uuidOf(old));
       const nodes: Bookmarks["nodes"] = {};
       for (const n of Object.values(legacy!.nodes)) {
         const mapped = { ...n, id: id(n.id), parentId: n.parentId === null ? null : id(n.parentId) } as BookmarkNode;
         nodes[mapped.id] = mapped.kind === "folder" ? { ...mapped, children: mapped.children.map(id) } : mapped;
       }
-      out[engine] ??= flatFromStore({ nodes, roots: {} }, engine);
+      out[engine] = flatFromStore({ nodes, roots: {} }, engine);
     }
   } catch {}
   return out;
