@@ -45,6 +45,7 @@
 //     --env K=V               repeatable: extra environment for every instance (DYLD_INSERT_LIBRARIES is appended to
 //                             the marker library). Instances stay muted; don't pass NETNYAHOO_ALLOW_AUDIO.
 //     --frames-n <n>          repetitions of each interaction per run in frames (default 8; framecounts uses at most 3)
+//     --frames-sample         frames: `sample` the app over the first repetition of each interaction (<out>/frames-sample/*.txt)
 //     --journey-n <n>         iterations of each journey per run in newtabkey and navigate (default 10)
 //     --page-port <n>         the test pages' server port (default: any free port)
 //     --seed big              launch, newtabkey and navigate phases: start every launch from seed.mjs's big saved session (200 tabs in two
@@ -147,6 +148,7 @@ const { values: opt } = parseArgs({
     "page-port": { type: "string", default: "0" },
     "journey-n": { type: "string", default: "10" },
     "frames-n": { type: "string", default: "8" },
+    "frames-sample": { type: "boolean" },
     hold: { type: "string", default: "0" },
     help: { type: "boolean", short: "h" },
   },
@@ -1318,7 +1320,7 @@ try {
   if (only.has("launch")) await interleaved(+opt["launch-runs"], launchRun);
   const parts = new Set(SESSION_PARTS.filter((p) => only.has("session") || only.has(p)));
   if (parts.size) await interleaved(+opt.runs, (side, i) => sessionRun(side, i, parts));
-  const framesCtx = { Instance, freshDir, nnperf, sleep, log, WINDOW, base, opt, toolDir, loadavg };
+  const framesCtx = { Instance, freshDir, nnperf, sleep, log, WINDOW, base, opt, toolDir, loadavg, out: opt.out };
   if (only.has("frames")) await interleaved(+opt.runs, (side, i) => framesRun(framesCtx, side, i, { counts: false }));
   if (only.has("framecounts")) await interleaved(+opt.runs, (side, i) => framesRun(framesCtx, side, i, { counts: true }));
   const journeys = new Set(JOURNEY_PHASES.filter((p) => only.has(p)));

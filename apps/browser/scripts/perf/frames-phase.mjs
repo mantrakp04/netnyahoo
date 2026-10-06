@@ -21,8 +21,8 @@
 //   JS busy / worst        the same on React Native's JS thread (busy: its CPU time)
 // Counts: layoutPasses, mountBatches, uiBlocks, viewUpdates, viewCreates (native); commits, hostUpdates, renders, storeUpdates,
 // tasks (JS probe, `framecounts` only).
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -238,12 +238,13 @@ export async function framesRun(c, side, i, { counts }) {
   const capFrom = capSize();
   const out = { info: null, display, counts, interactions: {}, load: [Math.round(c.loadavg()[0])], cpuCap: { running: capRunning(), pauses: 0 } };
   const counters = () => probe("counters");
-  // Quiet: no layout pass or UI block for 900 ms (the restored tabs' loads and timers settle), or `maxMs` gone.
+  // Quiet: no UI block or mount for 900 ms (the restored tabs' loads settle), or `maxMs` gone. (Layout passes and React commits
+  // never stop on the big seed: engine events from the 200 tabs and the bench channel's own timers.)
   const quiet = async (maxMs) => {
     let last = null, since = Date.now();
     for (const end = Date.now() + maxMs; Date.now() < end; await sleep(200)) {
       const c = await counters();
-      const now = `${c.layoutPasses}:${c.uiBlocks}`;
+      const now = `${c.mountBatches}:${c.uiBlocks}`;
       if (now !== last) (last = now), (since = Date.now());
       else if (Date.now() - since >= 900) return true;
     }
@@ -263,7 +264,7 @@ export async function framesRun(c, side, i, { counts }) {
     out.info = { screen: info.screen, maxFPS: info.maxFPS, js: info.js };
     const refresh = 1000 / info.maxFPS;
     const settledAt = Date.now();
-    out.settled = await quiet(90_000);
+    out.settled = await quiet(30_000);
     out.settleMs = Date.now() - settledAt;
     log(`${side.tag}frames ${i}${counts ? " (counts)" : ""}: ${info.screen} ${info.maxFPS} Hz, JS thread ${info.js ? "observed" : "NOT found"}; ${out.settled ? "quiet" : "never quiet"} after ${Math.round(out.settleMs / 1000)} s`);
     const reps = counts ? Math.min(3, +opt["frames-n"]) : +opt["frames-n"];
@@ -277,7 +278,15 @@ export async function framesRun(c, side, i, { counts }) {
         try {
           if (it.before) await it.before();
           if (!(await quiet(5000))) out.notQuiet = (out.notQuiet ?? 0) + 1;
+          if (counts) await run(`globalThis.nnPerf?.reset(); return 1;`);
           const c0 = await counters();
+          // --frames-sample: `sample` of the app over the first repetition's window, to see where the main thread's time goes.
+          if (opt["frames-sample"] && rep === 0 && !it.name.startsWith("idle")) {
+            mkdirSync(join(c.out ?? dir, "frames-sample"), { recursive: true });
+            const file = join(c.out ?? dir, "frames-sample", `${side.label}-${it.name.replace(/[^a-z0-9]+/gi, "-")}.txt`);
+            spawn("sample", [String(app.pid), String(Math.ceil(it.window / 1000) + 1), "1", "-file", file], { stdio: "ignore" });
+            await sleep(700);
+          }
           const t0 = await it.go();
           await sleep(it.window + 250);
           const c1 = await counters();
